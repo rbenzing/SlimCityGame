@@ -2,8 +2,8 @@
  * Zoning types expansion contract: the three appended ZoneType values
  * (ResMediumRow=6, ResMedium=7, Mixed=8) and
  * the catalog entries that let them grow real buildings, plus the ResHigh/
- * ComHigh milestone retune that turns the 5-zone model into the fuller CS
- * progression.
+ * ComHigh milestone retune that turns the 5-zone model into the fuller
+ * city-builder progression.
  *
  * SAVE-SAFETY is the load-bearing invariant here: ZoneType numbers 1–5 are
  * serialized into grid.zone bytes, saves, and ZonePatch — this suite pins

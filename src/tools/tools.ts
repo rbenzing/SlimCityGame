@@ -238,7 +238,7 @@ export function footprintTiles(
  * tiles from `center` — a thin circle shell for the ghost preview, cheap
  * regardless of brush size (O(radius) tiles, not O(radius²)). This is NOT
  * the area the sim kernel edits (that's the filled {@link brushDiscTiles});
- * CS2-style brush cursors show only the outline, never the whole falloff
+ * genre-standard brush cursors show only the outline, never the whole falloff
  * disc. A tile is on the ring when its rounded Euclidean distance from
  * `center` equals `radius`; out-of-bounds tiles are dropped.
  */

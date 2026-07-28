@@ -53,7 +53,7 @@ const LOW_DEMAND = -0.5;
 
 function zoneSector(zone: ZoneType): Sector | null {
   switch (zone) {
-    // The new CS-style zones all draw on residential demand.
+    // The new city-builder zones all draw on residential demand.
     // ResMediumRow/ResMedium are pure residential; Mixed's building carries
     // both residents and jobs, but its *demand* pull is residential (com
     // demand already reads the jobs those buildings add, no separate case

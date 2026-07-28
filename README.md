@@ -10,7 +10,7 @@
 [![License: AGPL v3+](https://img.shields.io/badge/License-AGPL%20v3%2B-blue.svg?style=for-the-badge)](./LICENSE)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/russellbenzing)
 
-**A small-form-factor Cities: Skylines 2 in the browser — an engine showcase built on Three.js**
+**A small-form-factor city builder in the browser — an engine showcase built on Three.js**
 
 🌐 **Browser-Native** • ⚡ **WebGPU + WebGL2 Fallback** • 🧠 **Deterministic Worker Sim** • 🧩 **Fully Instanced**
 
@@ -20,11 +20,11 @@
 
 ---
 
-SlimCity is CS2's play grammar and UI layout at reduced scale: milestone-gated
-zoning (low → medium-row → medium → mixed-use → high density, plus business &
-industry), demand-driven growth, a road hierarchy with statistical traffic in
-lanes, road-carried power & water, diffusing data fields, a full economy,
-CS-parity terraforming with animated water, a day/night cycle with emissive
+SlimCity is a familiar city-builder play grammar and UI layout at reduced scale:
+milestone-gated zoning (low → medium-row → medium → mixed-use → high density,
+plus business & industry), demand-driven growth, a road hierarchy with
+statistical traffic in lanes, road-carried power & water, diffusing data fields,
+a full economy, full terraforming with animated water, a day/night cycle with emissive
 windows + bloom — all running smoothly in a browser tab. The simulation runs
 deterministically in a Web Worker at a fixed timestep; rendering is fully
 instanced Three.js.
@@ -56,16 +56,16 @@ instanced Three.js.
 
 ## 🛠️ Tech Stack
 
-| Layer | Tech |
-|---|---|
-| Language | TypeScript (strict) |
-| Rendering | Three.js — `WebGPURenderer` with automatic WebGL2 fallback |
-| UI shell | React + Zustand + Tailwind CSS (HTML overlay only; no R3F in the render path) |
-| Build | Vite |
-| Simulation | Deterministic fixed-timestep loop in a Web Worker over typed-array tile layers |
-| Terrain noise | `simplex-noise` |
-| Testing | Vitest (unit + determinism) · Playwright (headless visual smoke) |
-| Quality | ESLint + Prettier (kept at zero errors) |
+| Layer         | Tech                                                                           |
+| ------------- | ------------------------------------------------------------------------------ |
+| Language      | TypeScript (strict)                                                            |
+| Rendering     | Three.js — `WebGPURenderer` with automatic WebGL2 fallback                     |
+| UI shell      | React + Zustand + Tailwind CSS (HTML overlay only; no R3F in the render path)  |
+| Build         | Vite                                                                           |
+| Simulation    | Deterministic fixed-timestep loop in a Web Worker over typed-array tile layers |
+| Terrain noise | `simplex-noise`                                                                |
+| Testing       | Vitest (unit + determinism) · Playwright (headless visual smoke)               |
+| Quality       | ESLint + Prettier (kept at zero errors)                                        |
 
 ---
 
@@ -101,17 +101,17 @@ Every change exits through the same gates:
 
 ## 🎮 Controls
 
-| Input | Action |
-|---|---|
-| Left drag | Active tool (draw road / paint zone / bulldoze) |
-| Left click | Select a building (info panel) |
-| Middle / right drag, wheel | Camera rotate / zoom-to-cursor; `WASD` + edge-scroll pan |
-| `Space` | Pause / resume |
-| `1`–`7` | Tool categories (roads / zoning / power / … / landscaping) |
-| `R` | Rotate ploppable |
-| `Esc` | Cancel tool / deselect |
-| `Ctrl+Z` / `Ctrl+Y` | Undo / redo (refund-accurate, worker-computed inverses) |
-| `Ctrl+S` / `Ctrl+Shift+L` | Save / load latest (IndexedDB; autosaves every 2 game-months) |
+| Input                      | Action                                                        |
+| -------------------------- | ------------------------------------------------------------- |
+| Left drag                  | Active tool (draw road / paint zone / bulldoze)               |
+| Left click                 | Select a building (info panel)                                |
+| Middle / right drag, wheel | Camera rotate / zoom-to-cursor; `WASD` + edge-scroll pan      |
+| `Space`                    | Pause / resume                                                |
+| `1`–`7`                    | Tool categories (roads / zoning / power / … / landscaping)    |
+| `R`                        | Rotate ploppable                                              |
+| `Esc`                      | Cancel tool / deselect                                        |
+| `Ctrl+Z` / `Ctrl+Y`        | Undo / redo (refund-accurate, worker-computed inverses)       |
+| `Ctrl+S` / `Ctrl+Shift+L`  | Save / load latest (IndexedDB; autosaves every 2 game-months) |
 
 New here? See the [Player Guide](docs/USERGUIDE.md).
 
@@ -141,7 +141,7 @@ deterministic — no `Math.random`, no `Date.now`; seeded RNG streams, hash-test
 
 ## 📚 Documentation
 
-- **[docs/SPEC.md](docs/SPEC.md)** — the living product spec: CS2-grammar UI
+- **[docs/SPEC.md](docs/SPEC.md)** — the living product spec: the city-builder UI
   shell, in-world feedback, night cycle, and the visual/systems detail for roads,
   zoning, utilities, services, transit, districts, terraforming, and landmarks.
 - **[docs/ROADMAP.md](docs/ROADMAP.md)** — design pillars, systems, milestones,

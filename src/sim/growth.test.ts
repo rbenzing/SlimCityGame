@@ -115,7 +115,7 @@ const resL3: BuildingCatalogEntry = {
 
 const growthCatalog: BuildingCatalogEntry[] = [resL1, resL2, resL3];
 
-// New CS-style zones: ResMediumRow(6)/ResMedium(7)/Mixed(8).
+// New city-builder zones: ResMediumRow(6)/ResMedium(7)/Mixed(8).
 // Milestone gates: row housing M1, medium M2, mixed M3.
 const resMediumRowL1: BuildingCatalogEntry = {
   id: 'res-medium-row-l1',

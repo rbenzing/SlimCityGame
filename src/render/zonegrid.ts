@@ -1,5 +1,5 @@
 /**
- * Zoning-grid visualization: while a zone tool is active, CS2
+ * Zoning-grid visualization: while a zone tool is active, a city builder
  * shows two things over the city — a grid over every tile you could
  * usefully zone (buildable, road- and building-free, within reach of a
  * road), and a colored tint over tiles that already carry a zone.
@@ -8,12 +8,12 @@
  * through heightAt, the roadsmesh.ts corner-sampling pattern) rather than
  * flat quads, which would be buried by the uphill part of any sloped tile
  * (zonable tiles allow up to MAX_BUILD_SLOPE (4m) of height delta). The look
- * follows the CS reference: thin near-white grid LINES along the tile
+ * follows the standard look: thin near-white grid LINES along the tile
  * boundaries (shared boundaries deduped via {@link boundaryEdges}) over a
  * subtle grey cell fill, plus the RCI-colored tint layer for painted zones.
  *
  * The zonable-tile SELECTION rule lives in
- * {@link ../world/zonable.ts} (CS-style perpendicular frontage marching,
+ * {@link ../world/zonable.ts} (standard perpendicular-frontage marching,
  * depth 4, stopping at the first blocking cell, never off a dangling road
  * end) — this module just re-exports it applied to a `ZoneGridSource`, so the
  * grid matches world/grid.ts's zone-painting gate exactly.
@@ -51,7 +51,7 @@ import {
 const FILL_Y_OFFSET = 0.09;
 const TINT_Y_OFFSET = 0.11;
 const LINE_Y_OFFSET = 0.13;
-/** Grid-line strip width in meters (reads like CS's thin white tile lines). */
+/** Grid-line strip width in meters (thin white tile lines). */
 export const LINE_WIDTH_M = 0.35;
 /**
  * One quad per tile. A tile's 4 corners land exactly on the terrain mesh's
@@ -68,7 +68,7 @@ const FILL_OPACITY = 0.16;
 const LINE_OPACITY = 0.55;
 const TINT_OPACITY = 0.5;
 
-/** Subtle grey cell fill under the lines (the CS "grey tiles" read). */
+/** Subtle grey cell fill under the lines (the standard grey-tiles read). */
 const FILL_RGB: readonly [number, number, number] = [0.78, 0.82, 0.86];
 /** Near-white boundary lines. */
 const LINE_RGB: readonly [number, number, number] = [0.96, 0.97, 0.98];
@@ -134,7 +134,7 @@ export type ZoneGridSource = ZonableGridSource;
 
 /**
  * Zonable tiles for the render grid: delegates entirely to
- * world/zonable.ts's `computeZonableTiles` (CS frontage model
+ * world/zonable.ts's `computeZonableTiles` (standard perpendicular-frontage model
  * — perpendicular march off a road's frontage sides, depth 4, stopping at
  * the first blocking cell, never off a dangling road end), the ONE shared
  * predicate that also drives zone painting. Re-exported (rather than importing

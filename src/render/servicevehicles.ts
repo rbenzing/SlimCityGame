@@ -43,7 +43,7 @@ function hexToRGB(hex: number): readonly [number, number, number] {
 // ---------------------------------------------------------------------------
 // Fixed liveries: fire=red, police=blue, ambulance=white, plus a roof
 // light-bar accent (red for fire/ambulance, red+blue read as "police" via
-// the body blue itself, so the bar stays red -- CS2-style single-color bars).
+// the body blue itself, so the bar stays red -- genre-standard single-color bars).
 // ---------------------------------------------------------------------------
 
 const FIRE_RED = hexToRGB(0xd9362c);

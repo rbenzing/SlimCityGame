@@ -1,5 +1,5 @@
 /**
- * CS2-style floating map-pin sprite: a canvas-drawn teardrop
+ * genre-standard floating map-pin sprite: a canvas-drawn teardrop
  * billboard in accent blue, shown above a selected building's roof while its
  * info panel is open, gently bobbing over elapsed visual time. Consumes a
  * plain anchor point only — this file never imports buildings.ts;
@@ -32,7 +32,7 @@ export function bobOffset(t: number): number {
 /**
  * Canvas-drawn teardrop pin texture: a circular head with a tapered tip
  * pointing down at the anchor, accent-blue fill, soft dark outline, white
- * core dot (CS2's marker look). Falls back to a blank (but still valid)
+ * core dot (the standard marker look). Falls back to a blank (but still valid)
  * canvas when a 2D context isn't available (e.g. jsdom without the optional
  * `canvas` npm package) — real browsers always have one.
  */

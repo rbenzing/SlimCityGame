@@ -320,7 +320,7 @@ describe('setZones', () => {
   const idx = (x: number, z: number, size = 6) => z * size + x;
 
   // Lays a 4-tile straight TwoLane road run along z=0 (x=0..3). Per the
-  // CS frontage model (world/zonable.ts) a straight run's frontage is
+  // standard perpendicular-frontage model (world/zonable.ts) a straight run's frontage is
   // its two non-connected sides — here N and S — so every tile at z=1..4
   // directly south of x=0..3 falls inside the road's frontage and is
   // isZonable. Tests below rely on this to give (1,1)/(2,1) frontage.

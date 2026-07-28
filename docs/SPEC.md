@@ -1,10 +1,10 @@
 # SlimCity — Living Product Spec
 
 The authoritative, living specification for how SlimCity looks and behaves: the
-CS2-grammar UI shell, in-world feedback, the night cycle, and the visual/systems
+city-builder UI shell, in-world feedback, the night cycle, and the visual/systems
 detail for roads, zoning, utilities, services, transit, districts, terraforming,
-and landmarks. It began as the UI visual-parity spec (derived from three Cities:
-Skylines 2 reference screenshots supplied 2026-07-21 — building info panel; road
+and landmarks. It began as the UI visual-parity spec (derived from three
+city-builder reference screenshots supplied 2026-07-21 — building info panel; road
 tool + asset drawer; zone painting) and now absorbs the systems detail as the
 single source of truth for the product's intended form. Keep it current as
 features land.
@@ -19,7 +19,7 @@ Companion docs: [ROADMAP.md](ROADMAP.md) (milestones + delivery status),
 
 ---
 
-## 1. Layout (bottom-heavy, CS2 grammar)
+## 1. Layout (bottom-heavy, city-builder grammar)
 
 Top corners carry only small circular utility buttons. Everything load-bearing
 lives in two stacked bottom bars.
@@ -49,7 +49,7 @@ lives in two stacked bottom bars.
 - **Center**: one row of category icon buttons (~40px, icon-only, tooltip on
   hover): Zoning, Roads, Electricity, Water, Health, Fire, Police, Education,
   Parks, Bulldoze. Active category = filled accent-blue circular highlight
-  (exactly CS2's active-tool treatment). Clicking toggles the asset drawer.
+  (the genre-standard active-tool treatment). Clicking toggles the asset drawer.
 - **Right cluster**: Infoviews toggle (◐ — opens the lens grid, replaces the
   current standalone InfoviewPicker placement), overlay-off shortcut, stats
   panel toggle (line charts, wave 3), photo mode (wave 3 — omit until real).
@@ -57,6 +57,7 @@ lives in two stacked bottom bars.
 ## 3. Status strip (bottom bar #2)
 
 Left → right, single 28px row, separated by subtle dividers:
+
 - **Sim controls**: ▶/⏸ toggle; speed as chevron count (▶ =1×, ▶▶ =2×, ▶▶▶ =4×),
   active speed highlighted. Space = pause, +/- = speed (already bound).
 - **Clock + date**: `HH:MM` from time-of-day (tick within TICKS_PER_DAY mapped
@@ -83,14 +84,15 @@ Left → right, single 28px row, separated by subtle dividers:
   item (road cross-section stripes by tier; zone = colored cell block; building
   = simple elevation silhouette tinted by catalog color), name beneath, cost
   chip bottom-right (¢ for ploppables/roads, blank for zones). Selected card =
-  accent-blue border + fill (CS2 treatment). Locked (unlockMilestone > current)
+  accent-blue border + fill (genre-standard treatment). Locked (unlockMilestone > current)
   = 40% opacity + 🔒 + tooltip "Unlocks at {milestone name}".
 - Drawer and tool options close on ESC (first ESC cancels drag, second closes
-  drawer, third deselects category — CS2's escape stack).
+  drawer, third deselects category — the genre-standard escape stack).
 
 ## 5. Tool options panel (floating left of the drawer, only when relevant)
 
-Rows exactly in CS2 order, but only rows whose toggles do something real:
+Rows in the genre-standard order, but only rows whose toggles do something real:
+
 - **Tool Mode** (road tools): `Straight` (direct segment: single-axis lock) |
   `L-path` (current two-leg mode) | `Grid` (drag rect → perimeter+internal
   grid streets, wave-2 stretch). Zone tools: `Brush` | `Rect` (current).
@@ -115,7 +117,7 @@ Rows exactly in CS2 order, but only rows whose toggles do something real:
   funds", "Locked"). One chip stack, right of cursor.
 - **Zoning grid visualization**: while any zone tool is active, render the
   zonable cells along roads (within 3 tiles of a road, buildable) as faint
-  translucent grid squares (CS2's zoning grid) — green-tinted where hovered
+  translucent grid squares (the classic zoning grid) — green-tinted where hovered
   brush will paint. Implemented as an instanced quad layer fed from grid data;
   hidden when tool inactive.
 - **Selection highlight**: selected building gets a green edge outline
@@ -157,7 +159,7 @@ instance id — zero per-frame randomness, no Math.random):
   read as **09:00**, not 00:00 — a fresh city that boots into `nightFactor=1`
   is a near-black screen and made every placed model invisible in playtest.
   One shared constant `CLOCK_START_OFFSET_TICKS = round(VISUAL_DAY_TICKS *
-  9/24)` is added to the tick in BOTH places that derive visual time (the
+9/24)` is added to the tick in BOTH places that derive visual time (the
   main-thread `dayT` computation and `ui/format`'s status-strip clock) so the
   displayed clock and the lighting always agree. Pure display shift: sim
   ticks, saves, and the calendar are untouched.
@@ -171,6 +173,7 @@ box setbacks on towers, rooftop clutter. We get there in two stages:
 **Stage 1 — procedural facade shader (wave 3).** Extends the night-window grid
 (§6.5) into a full day/night facade on the instanced material — one system,
 both looks, windows guaranteed to align:
+
 - **Window grid**: floors = height/3.2m, bays from footprint; grid drawn in
   shader (mullion lines + inset window cells). Day: window cells tinted
   glass-blue with slight per-window reflectance variation from the §6.5 hash;
@@ -190,7 +193,7 @@ both looks, windows guaranteed to align:
 - Construction state keeps the §6.5 treatment (scaled + grey); Abandoned gets
   boarded (dark window cells, desaturated walls).
 - **Palette preset (reference screenshot 6)**: the base city reads
-  *desaturated* — off-white/bone/grey walls with beige/tan accents and rare
+  _desaturated_ — off-white/bone/grey walls with beige/tan accents and rare
   dark accents (industrial), saturation reserved for zone tints, overlays,
   selection green, and night glow. Family hues from §6.6 stay but clamp
   saturation low (masonry ≈ dusty tan rather than fire-red). This keeps data
@@ -205,6 +208,7 @@ both looks, windows guaranteed to align:
 
 Roads graduate from tinted quads to readable streets — all vertex-color/
 geometry work on the existing per-chunk road mesh, no textures required:
+
 - **Asphalt**: light-grey per §6.6 palette (darker than sidewalk, lighter than
   the old near-black), slight tier darkening (highway darkest).
 - **Lane markings** as thin geometry strips: two-lane = dashed white
@@ -216,8 +220,9 @@ geometry work on the existing per-chunk road mesh, no textures required:
   crossing exactly like the render; crosswalk bars at junction edges are a
   stretch item.
 
-**Roads v2 (playtest round 2, 2026-07-23 — CS street reference: median
+**Roads v2 (playtest round 2, 2026-07-23 — city-builder street reference: median
 avenue + proper intersections + true-ratio paint):**
+
 - **True-ratio paint**: line strips drop from tile-scaled to real-world
   proportions — paint width ~0.15m; centerline dashes ~3m painted / ~4.5m
   gap (metric dash phase still derived from GLOBAL world coords so the
@@ -239,34 +244,35 @@ avenue + proper intersections + true-ratio paint):**
   raised ~1.8m center median — concrete edge tint, grass-green top — with a
   deterministic low tree (simple trunk+canopy, ~every 2nd tile, from tile
   hash) planted on it; median and trees break at intersections and corners
-  so turn paths stay clear (the CS reference's tree-lined boulevard read).
+  so turn paths stay clear (the genre-standard tree-lined boulevard read).
 - **Highway divider**: straight highway runs get a low ~0.6m concrete
   barrier band instead of a painted median.
 
 **Roads v3 — catalog expansion + road-carried utilities (user request
-2026-07-23, source: cs2.paradoxwikis.com/Roads):**
-- **Road-carried utilities (the realism core)**: CS2 rule — every road except
+2026-07-23, source: city-builder road-design reference):**
+
+- **Road-carried utilities (the realism core)**: the genre rule — every road except
   highways implicitly carries water/sewage pipes and a 40 MW low-voltage
   power line. SlimCity adopts it: power and water no longer radiate from
   utility buildings as plain radius coverage — they propagate along the ROAD
   GRAPH from any road tile adjacent to a supplying utility building, and a
-  building/zone tile is powered/watered when within 1 tile of a *supplied*
+  building/zone tile is powered/watered when within 1 tile of a _supplied_
   road. Highways conduct power only (street lighting), never water. The §6
   power/water lenses keep working unchanged (they read the same coverage
   bytes); disconnected road islands correctly read unsupplied.
 - **Catalog v3 new specs** (roads.json + RoadSpec additive fields
   `noiseMult`, `oneWay?`, `carriesWater`):
   - **Gravel Road** — ¢8/tile, slow (speed 8), capacity 200, unlock M0:
-    dusty tan unpaved look, no paint, no curbs, 2× noise (CS2 numbers).
+    dusty tan unpaved look, no paint, no curbs, 2× noise (genre-standard numbers).
   - **Alley** — ¢14/tile, narrow (~6m), no sidewalks, unlock M1.
   - **One-Way Road** (two-lane footprint, both directions' capacity one
     way) — unlock M1: pavement direction arrows every ~3rd tile; RoadNetwork
-    gains directed edges; A* and cosmetic vehicles respect direction (CS2:
-    service vehicles must detour — ours simply route with the graph).
+    gains directed edges; A* and cosmetic vehicles respect direction (in the
+    genre, service vehicles must detour — ours simply route with the graph).
   - **Four-Lane Road** — between avenue and two-lane (¢32/tile, unlock M1),
     dashed lane dividers, no median.
 - **Road noise**: roads emit into the Noise field by tier — gravel 2×,
-  standard 1×, highway 3× (CS2 multipliers) — scaled by assigned traffic
+  standard 1×, highway 3× (genre-standard multipliers) — scaled by assigned traffic
   volume so busy arterials read loud on the noise lens.
 - **Explicitly deferred (§9)**: roundabouts + curved geometry (no curved
   roads v1 — ROADMAP §9), parking-lane roads, quays, bridges/elevation,
@@ -280,6 +286,7 @@ avenue + proper intersections + true-ratio paint):**
 
 Vehicles graduate from single boxes to the toy-kit look — multi-part merged
 geometry, still one InstancedMesh per kind (no draw-call growth):
+
 - **Construction**: per-kind merged BufferGeometry of 3 parts — body slab,
   darker inset cabin/window mass (`#1a1f26`), wheel cylinders. A region mask
   vertex attribute lets `instanceColor` tint ONLY body vertices; windows/
@@ -294,7 +301,7 @@ geometry, still one InstancedMesh per kind (no draw-call growth):
   saturation contrast against the §6.6 desaturated city; yellow reads as taxi
   without needing a livery system.
 - **Night** (fulfills the §6.5 stretch): warm headlight emissive quads front,
-  red taillights rear, switched by nightFactor threshold — headlight *cones*
+  red taillights rear, switched by nightFactor threshold — headlight _cones_
   and ground pools stay deferred.
 - **No wheel spin** — imperceptible at RTS zoom; skipped deliberately.
 - **Service liveries** (police lightbar, ambulance, fire ladder, roof-sign
@@ -304,6 +311,7 @@ geometry, still one InstancedMesh per kind (no draw-call growth):
 ### 6.9 Parked cars & lot life (reference screenshot 8, airport parking rows)
 
 Static parked cars as an occupancy signal — not decoration:
+
 - **Placement**: along each Active building's road-facing edge (the footprint
   side nearest a road tile), inset 0.3 tile, spaced ~0.45 tile. Count =
   min(level + 1, edge capacity); **Constructing/Abandoned buildings park
@@ -333,6 +341,7 @@ more landmarks (stadium, observatory) reuse the same path later.
 
 Trees graduate from cone+cylinder to a four-species low-poly kit — merged
 geometry per species, one InstancedMesh each, no textures (stage 1):
+
 - **Species silhouettes**: broadleaf (2–3 offset canopy blobs on a trunk,
   broad — the default), pine (3 stacked narrowing cones, tall), poplar
   (single tall ellipsoid, columnar), shrub (low single blob, near-groundcover).
@@ -355,6 +364,7 @@ per grid square")**: v1's count-per-tile + ±32%-of-tile jitter leaves the
 16 m tile lattice visible from the air; forests read as a dot grid. v2 keeps
 the per-tile bookkeeping (clearAt must keep working tile-keyed) but breaks
 the lattice — individual-tree ("sitree-style") stand variation:
+
 - **Cluster-noise density modulation**: a smooth seeded value-noise field
   over tile coords multiplies each tile's tree count (0.0–1.6×) so equal-
   density map regions produce clearings, thickets, and lone trees instead of
@@ -366,12 +376,14 @@ the lattice — individual-tree ("sitree-style") stand variation:
   scale range — mature stands 1.0–1.6 with the odd sapling, young stands
   0.45–0.9 — so clumps read as stands of different ages, not clones.
 - Same PRNG discipline: everything from the existing mulberry32(seed) stream
-  + tileHash; zero Math.random.
+  - tileHash; zero Math.random.
 
 ### 6.13 Ground cover — grass variation (reference screenshot 10; per user: no
+
 blade geometry, color variation with brown patches)
 
 All vertex-color work on the existing terrain chunks — zero new geometry:
+
 - **Grass tint variants**: 3 hues (fresh green / olive / yellow-green) blended
   by low-frequency value noise over world coords (seeded, deterministic) — the
   "different grass types" read.
@@ -386,6 +398,7 @@ All vertex-color work on the existing terrain chunks — zero new geometry:
 ### 6.6b Industrial family details (reference screenshot 11, warehouse kit)
 
 The industrial facade family gets its own language, matching the kit:
+
 - **Sheds**: large-footprint industrial renders as long low volumes with a
   roof cap band (bevel illusion of the curved roof), corrugated wall striping
   (fine vertical stripe modulation in the facade shader), and a single
@@ -401,6 +414,7 @@ The industrial facade family gets its own language, matching the kit:
 ### 6.14 Sky, sun & clouds (reference screenshot 12, cumulus photo — wave 4)
 
 Three layers on top of the existing §6.5 time-of-day ramp:
+
 - **Sky dome**: gradient dome replacing the flat background color — deep blue
   at zenith falling to pale haze at the horizon (the photo's read), colors
   driven by the same keyframe ramp (warm horizon at golden hour/dusk, deep
@@ -434,7 +448,7 @@ ownership clean for parallel work.
 - **Parked-car orientation (#3, bug)**: stalls face the car outward from the
   building edge → perpendicular to the street ("vertical on the road").
   Rotate stalls 90° to **parallel street parking** (car long axis along the
-  road), the CS default; angled (~60°) is an acceptable alternative but
+  road), the genre default; angled (~60°) is an acceptable alternative but
   parallel is the target. Keep the deterministic stall spacing.
 - **Building night darkness (#7)**: `NIGHT_BODY_TINT` multiplies day color to
   ~13% → buildings read as flat black. Lift it so night facades are a
@@ -449,7 +463,7 @@ ownership clean for parallel work.
 - **Rounded roads (#5)**: carriageway reads boxy. Round the visible road
   geometry — chamfered/filleted corners at turns and rounded end caps on
   dangling road ends — within the existing per-chunk vertex-mesh model (no
-  curved *centerlines*; ROADMAP §9 still bans true curved roads — this is
+  curved _centerlines_; ROADMAP §9 still bans true curved roads — this is
   cosmetic corner/edge rounding only, a fan of triangles at convex corners).
 - **Auto-flatten under footprints (#6)**: placing a road or building on
   sloped/varied ground leaves terrain "diamonds" poking through the tiles.
@@ -463,7 +477,7 @@ ownership clean for parallel work.
 - **Night lighting look (#2) — honest reframe of "ray tracing"**: real-time
   ray/path tracing of a full city is not feasible in a browser Three.js
   renderer (WebGPU path tracers target static scenes, not a 60fps
-  interactive sim), so we will NOT claim RT. Instead deliver the *perceptual*
+  interactive sim), so we will NOT claim RT. Instead deliver the _perceptual_
   goals the request is really about: (a) **light cones** — additive
   translucent cone/quad geometry under each street lamp + a warm ground
   light-pool (extends the §6.5 lamp system), fading in on the night ramp;
@@ -480,9 +494,10 @@ gains two live rows for terrain tools: **Brush radius** (2–16 tiles) and
 **Strength** (1–5); Level shows the sampled target height readout chip.
 
 **Simulation side (this is a sim feature, not a shader)**:
+
 - New command `terraform { mode, center, radius, strength, targetHeight? }` —
   smoothstep falloff kernel over the brush; tiles carrying roads or buildings
-  are EXCLUDED from the kernel (CS-style "can't terraform under structures";
+  are EXCLUDED from the kernel (genre-standard "can't terraform under structures";
   cursor chip shows the warning when the brush covers only excluded tiles).
 - Cost per edited volume (≈¢0.5 × |Δheight| per tile), funds-gated like every
   edit; ack inverse is a `terraformSet {x,z,w,h,heights}` patch restore, so
@@ -494,6 +509,7 @@ gains two live rows for terrain tools: **Brush radius** (2–16 tiles) and
   channel consumed by TerrainRenderer.markDirty.
 
 **Water rendering (the §6.5-grade visual pass)**:
+
 - **Seabed**: terrain continues visibly under water — underwater vertex
   colors ramp blue-green with depth, fully tinted at MAX_WATER_DEPTH_VIS
   (12 m), so the land-to-water line reads under the surface exactly as asked.
@@ -502,7 +518,7 @@ gains two live rows for terrain tools: **Brush radius** (2–16 tiles) and
 - **Surface animation**: two scrolling normal/wave layers + a gentle
   sine-sum vertex swell, depth-keyed color (shallow teal → deep navy),
   glancing-angle opacity, and sun glint tied to the §6.5 time-of-day ramp.
-- **Dimensional water v2 (playtest fix, 2026-07-22 — reference: CS2 dam
+- **Dimensional water v2 (playtest fix, 2026-07-22 — reference: city-builder dam
   reservoir screenshot)**: the v1 surface reads as a flat slate sheet from
   RTS camera distance (~600 m) because every animated detail lives at 7–11 m
   wavelengths and 0.15 m amplitude. v2 keeps the v1 formula family and adds
@@ -517,7 +533,7 @@ gains two live rows for terrain tools: **Brush radius** (2–16 tiles) and
   static waterline; (d) broader two-lobe sun glint so the glitter track
   survives the wide shot. All four mirrored as pure tested functions, same
   as v1. Planar reflections (a true mirror render pass) stay deferred — §9.
-- **Explicit non-goal**: dynamic fluid flow (CS2's flowing rivers/flood sim)
+- **Explicit non-goal**: dynamic fluid flow (a genre-standard flowing rivers/flood sim)
   stays in the backlog with rationale — heightfield flow is a perf tar pit,
   and the derived sea-level model covers seas, lakes, and dug canals.
 
@@ -535,7 +551,7 @@ Playtest verdict on v1: "I don't actually see any models when attempting to
 drop power plant / roads / parks" — root causes were the midnight boot
 (§6.5 fix) **and** that utility ploppables render as generic §6.6 facade
 boxes: a wind turbine was a 40 m office tower with glowing windows. Ploppables
-whose real-world silhouette *is* their identity get a **detail kit** (the
+whose real-world silhouette _is_ their identity get a **detail kit** (the
 §6.10 LandmarkRenderer pattern — a kit renderer beside BuildingInstancer fed
 the same BuildingDelta stream, merged low-poly geometry, deterministic from
 instance id):
@@ -564,7 +580,7 @@ unlit except a small red turbine nacelle beacon at night).
 ghost cells stay, but every preview adds a **crisp border frame**:
 
 - **Combined outer border**: a bright 2-px-feel border quad strip around the
-  *outer perimeter* of the previewed tile set — inner edges between two
+  _outer perimeter_ of the previewed tile set — inner edges between two
   previewed tiles are skipped, so a 4×4 power plant reads as ONE bordered
   square, a road drag as one bordered ribbon, any brush shape as its true
   outline. White at 90% when valid, §8 danger red when invalid.
@@ -597,16 +613,16 @@ ghost cells stay, but every preview adds a **crisp border frame**:
   fresh city fills the frame with land at 09:00 light (§6.5 fix) rather than
   a horizon-dominated wide shot.
 
-### 6.19 Zoning grid v2 — CS frontage model (playtest round 5, 2026-07-24)
+### 6.19 Zoning grid v2 — genre-standard frontage model (playtest round 5, 2026-07-24)
 
 The zonable area is wrong in four ways; all trace to there being no single
 "is this tile zonable" rule. Fix by making ONE shared pure predicate
 (new `src/world/zonable.ts`) drive BOTH the visual grid (render/zonegrid.ts)
 AND zone painting (world/grid.ts setZones) — today setZones lets you paint
 any buildable tile regardless of roads, while the grid draws a Chebyshev-3
-box; they must be the same rule, and it must be CS-style frontage zoning:
+box; they must be the same rule, and it must be genre-standard frontage zoning:
 
-- **Perpendicular frontage depth, default 4 (ref: CS road-zoning screenshot)**:
+- **Perpendicular frontage depth, default 4 (ref: city-builder road-zoning screenshot)**:
   a cell is zonable only if it sits within `ZONE_DEPTH` (=4) cells measured
   PERPENDICULAR to a road's travel axis, off a road's SIDE frontage — not the
   old king-move box. Frontage = the two sides parallel to the road's run; the
@@ -669,18 +685,19 @@ wave work.
   gate (buildings keep MAX_BUILD_SLOPE); the existing footprint auto-flatten
   then makes the placed road sit clean on the re-leveled ground.
 
-### 6.21 Zoning types expansion — CS zone set (user request 2026-07-24)
+### 6.21 Zoning types expansion — genre-standard zone set (user request 2026-07-24)
 
 Grow the 5-zone model (ResLow/ResHigh/ComLow/ComHigh/Industrial) into the
-fuller CS set, milestone-gated to city size, each with its own low-poly
+fuller genre-standard set, milestone-gated to city size, each with its own low-poly
 building look. ADDITIVE + save-safe: existing ZoneType numbers 1–5 keep their
 values; new zones take new numbers.
 
 **New ZoneType values** (append; do not renumber 1–5):
 `ResMediumRow = 6`, `ResMedium = 7`, `Mixed = 8`.
 
-**Zone set + milestone progression** (our MILESTONES 0–6; CS's 0/1/2/5/8/9
+**Zone set + milestone progression** (our MILESTONES 0–6; the genre's 0/1/2/5/8/9
 remapped to our city-size tiers):
+
 - **Low Density Housing** = ResLow (single/semi-detached houses) — M0 (have).
 - **Medium Density Row Housing** = ResMediumRow (row houses, narrow attached
   1×2..1×6 footprints) — M1. NEW.
@@ -721,7 +738,7 @@ card zones end-to-end and grows real buildings.
   selection).
 - Rows (label caps-grey left, value right):
   - `ZONE` — zone/category display name ("Low Density Residential").
-  - `LEVEL` — pips: filled rounded segments level/3 (green), CS2-style.
+  - `LEVEL` — pips: filled rounded segments level/3 (green), genre-standard.
   - Res: `HOUSEHOLDS n/cap` (cap = residents/4 rounded up, occupied portion
     from population share) and `RESIDENTS n`; Com/Ind: `JOBS n`; Service:
     `COVERAGE kind + range`; Utility: `OUTPUT MW/kL`.
@@ -771,8 +788,8 @@ Each lands only with its backing system — never as chrome.
 6. `night-cycle` — sky/light ramp keyframes + stars, deterministic emissive
    window system with dusk sweep + night tint swap, instanced street lamps
    with glow pools (§6.5); VISUAL_DAY_TICKS decoupling.
-Acceptance for every ticket: TDD per project rules, no dead controls, side-by-
-side eyeball against the four reference screenshots.
+   Acceptance for every ticket: TDD per project rules, no dead controls, side-by-
+   side eyeball against the four reference screenshots.
 
 ## 10b. Wave-6 ticket map (playtest feedback round 1, 2026-07-22)
 
@@ -786,16 +803,17 @@ side eyeball against the four reference screenshots.
 5. `water-v2` — §6.11 dimensional water v2 (owns render/water.ts).
 6. `utility-kits` — §6.15 silhouette kits + instancer plinth mode (owns NEW
    render/utilitykits.ts + additive buildings.ts change).
-Integration: §6.5 CLOCK_START_OFFSET_TICKS (constants + ui/format + main),
-§6.17 boot framing, all wiring, gates, AND the visual smoke harness
-(tools/visual-smoke.mjs — screenshots must be looked at; 1375 green unit
-tests shipped an invisible game once already).
+   Integration: §6.5 CLOCK_START_OFFSET_TICKS (constants + ui/format + main),
+   §6.17 boot framing, all wiring, gates, AND the visual smoke harness
+   (tools/visual-smoke.mjs — screenshots must be looked at; 1375 green unit
+   tests shipped an invisible game once already).
 
 ---
 
 ## 11. Bus transit (epic — v2 backlog, ROADMAP §10)
 
 Player-built bus lines over the existing road graph; statistical ridership; cosmetic buses.
+
 - **Contracts (added by the contracts phase):** `TransitLine { id, stops: TilePoint[], color }`; Commands `createTransitLine`/`updateTransitLine`/`deleteTransitLine` (worker owns the authoritative line list); SimSnapshot additive `transit?: { lines: TransitLine[]; ridership: number[] }`; `LensId += 'transit'`; a `bus-stop` ploppable in catalog.json (small, road-adjacent); VehicleKind.Bus already exists (2).
 - **Sim (NEW src/sim/transit.ts, pure + injected RoadNetwork/pathfind):** a line is an ordered stop list; route = A* concatenation of stop→stop paths over roads (reuse world/pathfind). Ridership is statistical: a line's ridership scales with the population/jobs within N tiles of its stops and the line's road-length (no per-agent sim). Ridership relieves road volume proportionally (a modest congestion feedback) — keep it simple + tested.
 - **Render (NEW src/render/transit.ts):** instanced bus-stop posts at stops, a colored route ribbon along the line's road path (transit overlay), and cosmetic buses (VehicleKind.Bus) spawned along the route at a density from ridership — reuse the VehicleRenderer buffer conventions/lane offset.
@@ -805,6 +823,7 @@ Player-built bus lines over the existing road graph; statistical ridership; cosm
 ## 12. Service dispatch (epic — cosmetic, ROADMAP §10 / M6 "feels alive")
 
 Fire/police/ambulance vehicles actually drive from stations to incidents. Cosmetic — coverage/economy unchanged.
+
 - **Contracts:** `Incident { kind: 'fire'|'crime'|'medical'; x; z; severity; }`; SimSnapshot additive `incidents?: Incident[]` + a service-vehicle channel (reuse the vehicle buffer with new `VehicleKind.Fire=3/Police=4/Ambulance=5`, or a parallel buffer — contracts picks one); no player command (automatic).
 - **Sim (NEW src/sim/dispatch.ts, pure + injected RoadNetwork/pathfind + registry):** deterministically spawn incidents (seeded, rate scaled by pollution/crime/coverage gaps — reuse existing fields), pick the nearest covering station, A* a route station→incident→back, resolve the incident after a travel+service time. No effect on the existing service-coverage sim beyond consuming it as input.
 - **Render:** service-vehicle liveries (red fire truck / blue police / white ambulance) on the route — extend the vehicle kit deterministically; an incident marker pin at active incidents.
@@ -813,6 +832,7 @@ Fire/police/ambulance vehicles actually drive from stations to incidents. Cosmet
 ## 13. Districts & policies (epic — ROADMAP §10)
 
 Paint named districts; apply per-district policies.
+
 - **Contracts:** `District { id, name, color }` + a per-tile district id layer (additive GridState `district: Uint8Array` OR a render-thread-only mask fed by patches — contracts decides; prefer a worker-owned layer for policy application); `Policy` set (e.g. `lowTax`, `highTax`, `noHeavyTraffic`, `greenEnergy`); Commands `paintDistrict { districtId, tiles }` + `setDistrictPolicy { districtId, policy, on }`; SimSnapshot additive `districts?` patches; `LensId += 'districts'`.
 - **Sim (NEW src/world/districts.ts + src/sim/policy.ts, pure):** district paint = a flood/brush layer; policy application modifies the relevant per-tile/economy inputs for tiles in that district (e.g. tax multiplier feeding economy, a traffic-weight bump feeding pathfind cost). Keep policy effects small, explicit, tested.
 - **Render (NEW src/render/districts.ts):** a colored district overlay (like the zone tint) + boundary lines; a districts lens.
@@ -822,12 +842,14 @@ Paint named districts; apply per-district policies.
 ## 14. Stats charts + photo mode (epic — M6 unfinished)
 
 Data-viz infoview + a demo-reel camera.
+
 - **Contracts:** none in the sim protocol — stats history is recorded render-side from the existing `SimSnapshot.stats` stream; photo mode is UI/render only.
 - **Stats (NEW src/ui/statshistory.ts + src/ui/StatsPanel.tsx):** a ring-buffer recorder sampling population/funds/demand/happiness from each snapshot; a panel drawing simple line charts (SVG, no external chart lib) with a couple of series toggles. Opens from a dock/corner button.
 - **Photo mode (NEW src/render/photomode.ts helper + a small UI toggle):** hides all DOM chrome, unlocks the CameraRig to a free-fly (or just wider pitch/zoom + hidden UI), optional day-time scrub; ESC exits. Deterministic; no sim coupling.
 - **Acceptance:** charts plot live history and update as the city runs; photo mode hides the UI and lets you frame a clean shot, ESC restores; existing UI/camera tests green.
 
 ### Epic wave ownership (playtest → epics, 2026-07-25)
+
 Contracts phase (one agent) owns src/shared/types.ts + constants.ts + src/data/*.json — ALL additive protocol/type/data for §11–§14. Each epic agent owns ONLY its NEW modules + tests and must use dependency injection (never import another epic's or a chokepoint file; export a clean API + list required wiring). The integrate agent (lifted ownership) wires everything into the chokepoints — worker.entry.ts (commands + tick systems + snapshot channels), main.ts (renderers + tool routing + photo toggle), tools.ts, ui/categories.ts, ui/store.ts, ui/App.tsx, render/overlays.ts, ui/icons — then runs gates + the visual smoke harness per epic.
 
 ---
@@ -835,7 +857,8 @@ Contracts phase (one agent) owns src/shared/types.ts + constants.ts + src/data/*
 ## 15. Transit & props visual polish (playtest, 2026-07-25)
 
 Render-only refinement round (no sim/protocol changes) from reference images.
-- **Bus-stop shelter (render/transit.ts):** replace the bare stop post with a real modeled shelter — roof canopy on 2 posts + a bench + a stop sign/pole, low-poly, instanced, deterministic per stop. Reads like the CS reference. Keep the existing stop position/data contract.
+
+- **Bus-stop shelter (render/transit.ts):** replace the bare stop post with a real modeled shelter — roof canopy on 2 posts + a bench + a stop sign/pole, low-poly, instanced, deterministic per stop. Reads like the genre-standard reference. Keep the existing stop position/data contract.
 - **Pedestrians (NEW render/pedestrians.ts):** cosmetic low-poly people — a few idling at each bus stop and a sparse scatter walking sidewalks near Active buildings. Instanced, deterministic (seeded/hashed, NO Math.random, NO agent sim — pure decoration; ROADMAP §9). Fed stop positions (transit snapshot) + building positions (building deltas) via apply(); a slow deterministic walk-cycle offset from an update(tMs) frame hook is fine.
 - **Shadows on small elements:** ensure lamps, bus stops, shelters, pedestrians, vehicles (cosmetic + service), trees, and buildings all `castShadow`/`receiveShadow` appropriately so small props read as grounded. Tune the sun shadow-camera (scene.ts) coverage/resolution to include them within the §8 budget (no per-frame cost blowup — instanced meshes cast as one).
 - **Street-lamp model detail (render/lamps.ts):** upgrade the §6.20 cantilever lamp to a properly modeled luminaire — tapered pole, arm bracket, a real lamp housing (not a bare box), still instanced + night-emissive + light cone. More detail, same deterministic placement.

@@ -1,8 +1,8 @@
 /**
- * The ONE shared "is this tile zonable" predicate (CS frontage model). This
+ * The ONE shared "is this tile zonable" predicate (the standard perpendicular-frontage model). This
  * pure module is the single source of truth for BOTH the visual zoning grid
  * (render/zonegrid.ts) and zone painting (world/grid.ts setZones) — they must
- * agree, and the rule is CS-style perpendicular frontage zoning.
+ * agree, and the rule is the standard perpendicular-frontage zoning.
  *
  * The model:
  *  - A road tile's FRONTAGE sides are the two sides parallel to the road's run

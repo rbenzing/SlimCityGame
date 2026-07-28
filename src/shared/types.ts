@@ -25,7 +25,7 @@ export const ZoneType = {
   Industrial: 5,
   // Zoning types expansion — additive, save-safe. Values 1–5 above are
   // serialized into GridState.zone bytes, saves, and ZonePatch — they MUST NOT
-  // be reordered. New CS-style zones append with new numbers:
+  // be reordered. New city-builder zones append with new numbers:
   //   ResMediumRow (6) — Medium Density Row Housing (narrow attached rows)
   //   ResMedium    (7) — Medium Density Housing (small apartment blocks)
   //   Mixed        (8) — Mixed Housing (commercial ground floor + apartments)
@@ -50,7 +50,7 @@ export const RoadTier = {
 export type RoadTier = (typeof RoadTier)[keyof typeof RoadTier];
 
 /**
- * Scalar fields (SimCity-style diffusing layers). Each is a Uint8Array of
+ * Scalar fields (classic diffusing scalar layers). Each is a Uint8Array of
  * MAP_SIZE² tiles, 0..255. Indexed by FieldId into GridState.fields.
  */
 export const FieldId = {
@@ -405,7 +405,7 @@ export interface RoadSpec {
   noiseMult?: number;
   /** Directed edges — traffic and pathfinding follow the drag direction only. Default false (bidirectional). */
   oneWay?: boolean;
-  /** CS2 road-carried utilities: carries water/sewage pipes along the road graph. Default true — highways set false (power/street lighting only). */
+  /** road-carried utilities: carries water/sewage pipes along the road graph. Default true — highways set false (power/street lighting only). */
   carriesWater?: boolean;
   /** Pavement surface for render/audio treatment: unpaved gravel gets no paint or curbs. Default 'paved'. */
   surface?: 'paved' | 'gravel';

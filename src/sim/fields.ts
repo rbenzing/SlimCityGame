@@ -2,7 +2,7 @@
  * SlimCity scalar-field simulation.
  *
  * Nine Uint8 layers per tile (see FieldId in shared/types.ts) that emit,
- * diffuse and decay each tick - the classic SimCity trick. All math is
+ * diffuse and decay each tick - the classic diffusing-field trick. All math is
  * integer/fixed-point so the sim stays deterministic across machines.
  *
  * ---- Fixed-point constants (numerator over 256; applied as `(x * N) >> 8`) ----

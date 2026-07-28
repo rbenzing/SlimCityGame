@@ -38,7 +38,7 @@ function edgeCost(edge: GraphEdge): number {
  * straight one-way run — the only shape this rule describes — the
  * two are equivalent, and this keeps the whole rule derivable purely from
  * data GraphEdge already carries (tier + tiles), needing no shared-type
- * change. This is a deliberate approximation (CS2 itself derives
+ * change. This is a deliberate approximation (modern city builders themselves derive
  * direction from drag direction, which we don't track) — a corner-turning
  * one-way run resolves by whichever axis has the larger endpoint delta.
  */
