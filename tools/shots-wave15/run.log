@@ -1,0 +1,17 @@
+anchor {"x":20,"z":24}
+utilities placed, buildings=22
+t+9s pop=468 jobs=326 ms=1 bld=166 tick=1362 clk=22:37
+grown pop=468 ms=1 bld=166
+after transit pop=486
+  settle i=0 tick=2610 dayT=0.463 clk=11:06
+  settle i=20 tick=2672 dayT=0.488 clk=11:43
+  settle i=40 tick=2734 dayT=0.514 clk=12:20
+  settle i=60 tick=2796 dayT=0.540 clk=12:57
+  settle i=80 tick=2858 dayT=0.566 clk=13:34
+  settle i=100 tick=2920 dayT=0.592 clk=14:11
+PAUSED at tick=2942 dayT=0.601 clock=14:25
+shot a
+shot b
+shot c
+shot d
+final pop=486 ms=1 bld=174 clk=14:25

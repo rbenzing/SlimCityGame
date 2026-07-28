@@ -1,0 +1,50 @@
+@import 'tailwindcss';
+
+/**
+ * Style tokens. Tailwind v4's CSS-first theme: any --color-NAME
+ * custom property here is automatically usable as a bg-NAME, text-NAME, or
+ * border-NAME utility (incl. opacity modifiers, e.g. `bg-panel/85`).
+ */
+@theme {
+  --color-panel: #0d1621;
+  --color-accent: #38b6e3;
+  --color-positive: #5dd06b;
+  --color-warning: #f0a13c;
+  --color-danger: #e5533f;
+  --color-rci-res: #63c96a;
+  --color-rci-com: #4a9fe3;
+  --color-rci-ind: #e3a44a;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    sans-serif;
+  user-select: none;
+}
+
+#viewport {
+  position: fixed;
+  inset: 0;
+}
+
+#viewport canvas {
+  display: block;
+}
+
+#ui-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+#ui-root > * {
+  pointer-events: auto;
+}

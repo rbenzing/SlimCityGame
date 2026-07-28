@@ -1,0 +1,12 @@
+anchor {"x":20,"z":24}
+utilities placed, buildings=22
+t+9s pop=462 jobs=360 ms=1 bld=174 pwrS=84 pwrD=32.65 watS=800 watD=56.29999999999996
+grown pop=462 ms=1
+after transit pop=486
+shot 11
+shot 12
+shot 13
+shot 14
+shot 15 beforeVis=true statsBtnInPhoto=0
+shot 16 statsBtnAfterEsc=1
+final pop=486 ms=1
