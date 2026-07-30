@@ -203,30 +203,31 @@ describe('computeStallPlacements', () => {
     expect(placements[2]!.worldX - placements[1]!.worldX).toBeCloseTo(spacingM, 6);
   });
 
-  it('insets the N row by STALL_INSET_TILES tiles north of the building edge', () => {
+  it('insets the N row INWARD (south, onto the lot) from the building edge', () => {
     const edge = { side: 'N' as const, edgeTiles: 1 };
     const [p] = computeStallPlacements(5, 5, 1, 1, edge, 1);
-    // building's north edge line is at z=5*16=80; row sits `inset` further north (smaller z).
-    expect(p!.worldZ).toBeCloseTo(80 - insetM, 6);
+    // building's north edge line is at z=5*16=80; row sits `inset` INTO the lot
+    // (larger z), never north onto the road.
+    expect(p!.worldZ).toBeCloseTo(80 + insetM, 6);
   });
 
-  it('insets the S row south of the building edge', () => {
+  it('insets the S row INWARD (north, onto the lot) from the building edge', () => {
     const edge = { side: 'S' as const, edgeTiles: 1 };
     const [p] = computeStallPlacements(5, 5, 1, 1, edge, 1);
-    // south edge line at z=(5+1)*16=96; row sits further south (larger z).
-    expect(p!.worldZ).toBeCloseTo(96 + insetM, 6);
+    // south edge line at z=(5+1)*16=96; row sits INTO the lot (smaller z).
+    expect(p!.worldZ).toBeCloseTo(96 - insetM, 6);
   });
 
-  it('insets the E row east of the building edge', () => {
+  it('insets the E row INWARD (west, onto the lot) from the building edge', () => {
     const edge = { side: 'E' as const, edgeTiles: 1 };
     const [p] = computeStallPlacements(5, 5, 1, 1, edge, 1);
-    expect(p!.worldX).toBeCloseTo(96 + insetM, 6);
+    expect(p!.worldX).toBeCloseTo(96 - insetM, 6);
   });
 
-  it('insets the W row west of the building edge', () => {
+  it('insets the W row INWARD (east, onto the lot) from the building edge', () => {
     const edge = { side: 'W' as const, edgeTiles: 1 };
     const [p] = computeStallPlacements(5, 5, 1, 1, edge, 1);
-    expect(p!.worldX).toBeCloseTo(80 - insetM, 6);
+    expect(p!.worldX).toBeCloseTo(80 + insetM, 6);
   });
 
   it('gives each of the four sides a distinct base yaw', () => {

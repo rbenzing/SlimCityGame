@@ -415,13 +415,20 @@ export class TerrainRenderer {
     const iz = Math.floor(gz);
     const u = gx - ix;
     const v = gz - iz;
-    const h00 = this.cornerHeight(ix, iz);
-    const h10 = this.cornerHeight(ix + 1, iz);
-    const h01 = this.cornerHeight(ix, iz + 1);
-    const h11 = this.cornerHeight(ix + 1, iz + 1);
+    // Fast path for exact tile corners — the per-vertex sampling
+    // makeChunkGeometry does for every mesh vertex — needs just one corner.
+    if (u === 0 && v === 0) return this.cornerHeight(ix, iz);
+    // Otherwise interpolate within the one triangle (u+v=1 diagonal) the point
+    // falls in — only the three corners of that triangle are needed.
     if (u + v <= 1) {
+      const h00 = this.cornerHeight(ix, iz);
+      const h10 = this.cornerHeight(ix + 1, iz);
+      const h01 = this.cornerHeight(ix, iz + 1);
       return h00 + u * (h10 - h00) + v * (h01 - h00);
     }
+    const h11 = this.cornerHeight(ix + 1, iz + 1);
+    const h01 = this.cornerHeight(ix, iz + 1);
+    const h10 = this.cornerHeight(ix + 1, iz);
     return h11 + (1 - u) * (h01 - h11) + (1 - v) * (h10 - h11);
   }
 

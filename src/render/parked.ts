@@ -26,8 +26,15 @@ import { TILE_METERS } from '../shared/constants';
 // Tunables
 // ---------------------------------------------------------------------------
 
-/** How far the stall row sits from the building's own footprint edge, in tiles. */
-export const STALL_INSET_TILES = 0.3;
+/**
+ * How far the stall row sits INWARD from the building's road-facing footprint
+ * edge, in tiles (onto the lot, toward the building — never outward onto the
+ * road). ~1.1 m: a parallel-parked car (1.8 m wide) then sits fully inside the
+ * footprint tile, clear of the carriageway.
+ */
+export const STALL_INSET_TILES = 0.07;
+/** Depth of the paved apron strip, inward from the footprint edge, in tiles. */
+export const APRON_DEPTH_TILES = 0.14;
 /** Center-to-center spacing between stalls along the edge, in tiles. */
 export const STALL_SPACING_TILES = 0.45;
 /** Max absolute per-car yaw jitter, radians. */
@@ -57,9 +64,9 @@ const APRON_COLOR: readonly [number, number, number] = [0.6, 0.6, 0.58];
 const APRON_Y_OFFSET = 0.05;
 const STRIPE_LINE_Y_OFFSET = 0.06;
 const STRIPE_LINE_HALF_WIDTH_TILES = 0.03;
-/** Divider lines span this perpendicular band, straddling the stall inset. */
-const STRIPE_LINE_NEAR_TILES = 0.05;
-const STRIPE_LINE_FAR_TILES = 0.55;
+/** Divider lines run inward across the apron strip (from the footprint edge). */
+const STRIPE_LINE_NEAR_TILES = 0.0;
+const STRIPE_LINE_FAR_TILES = APRON_DEPTH_TILES;
 
 const BODY_WIDTH = 1.8;
 const BODY_HEIGHT = 1.0;
@@ -234,8 +241,9 @@ const EDGE_BASE_YAW: Record<Side, number> = {
 /**
  * Deterministic stall centers along the chosen edge: evenly spaced every
  * STALL_SPACING_TILES tiles (each stall centered within its spacing slot),
- * inset STALL_INSET_TILES tiles from the building's own edge line, toward
- * the road side. Pure function of (x, z, w, d, edge, count) — no hashing.
+ * inset STALL_INSET_TILES tiles INWARD from the building's own edge line, onto
+ * the lot (away from the road). Pure function of (x, z, w, d, edge, count) —
+ * no hashing.
  */
 export function computeStallPlacements(
   x: number,
@@ -254,7 +262,7 @@ export function computeStallPlacements(
   const placements: StallPlacement[] = [];
   for (let i = 0; i < count; i++) {
     const along = (i + 0.5) * spacingM;
-    const { x: worldX, z: worldZ } = frameToWorld(frame, along, STALL_INSET_TILES);
+    const { x: worldX, z: worldZ } = frameToWorld(frame, along, -STALL_INSET_TILES);
     placements.push({ worldX, worldZ, baseYaw });
   }
   return placements;
@@ -552,7 +560,9 @@ export class ParkedCarRenderer {
     const colors: number[] = [];
 
     const edgeLenM = edge.edgeTiles * TILE_METERS;
-    // The light-grey apron: the whole road-facing strip tile, under the stall row.
+    // The light-grey apron: a shallow paved strip on the lot's own frontage,
+    // running INWARD from the footprint edge (negative depth) so it never
+    // paves the road tile beyond the building.
     pushFrameQuad(
       positions,
       colors,
@@ -560,7 +570,7 @@ export class ParkedCarRenderer {
       0,
       edgeLenM,
       0,
-      1,
+      -APRON_DEPTH_TILES,
       APRON_Y_OFFSET,
       APRON_COLOR,
       this.heightAt,
@@ -577,8 +587,8 @@ export class ParkedCarRenderer {
         frame,
         centerAlong - halfLineM,
         centerAlong + halfLineM,
-        STRIPE_LINE_NEAR_TILES,
-        STRIPE_LINE_FAR_TILES,
+        -STRIPE_LINE_NEAR_TILES,
+        -STRIPE_LINE_FAR_TILES,
         STRIPE_LINE_Y_OFFSET,
         NEAR_WHITE_STRIPE_COLOR,
         this.heightAt,

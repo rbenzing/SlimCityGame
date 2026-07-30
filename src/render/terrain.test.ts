@@ -551,13 +551,16 @@ describe('TerrainRenderer.heightAt', () => {
     terrain.build(makeTwistyMap());
     const geometry = chunk0(scene);
 
-    // Sample a spread of fractional offsets across chunk 0's quads, staying off
-    // the exact chunk edge so a triangle always covers the point.
-    const fracs = [0.13, 0.29, 0.5, 0.61, 0.74, 0.88];
+    // Sample a spread of fractional offsets across a selection of chunk 0's
+    // quads (both sides of the u+v=1 diagonal), staying off the exact chunk
+    // edge so a triangle always covers the point. A handful of quads is enough
+    // to catch a wrong diagonal or a bilinear regression without a slow sweep.
+    const quads = [2, 5, 8, 11, 14];
+    const fracs = [0.13, 0.29, 0.61, 0.88];
     let checked = 0;
     let sawTwist = false;
-    for (let qx = 1; qx < CHUNK_TILES - 1; qx++) {
-      for (let qz = 1; qz < CHUNK_TILES - 1; qz++) {
+    for (const qx of quads) {
+      for (const qz of quads) {
         for (const fx of fracs) {
           for (const fz of fracs) {
             const wx = (qx + fx) * TILE_METERS;

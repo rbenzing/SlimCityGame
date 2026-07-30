@@ -29,6 +29,12 @@ windows + bloom — all running smoothly in a browser tab. The simulation runs
 deterministically in a Web Worker at a fixed timestep; rendering is fully
 instanced Three.js.
 
+<div align="center">
+
+![SlimCity — a city block at night, with lit windows, street lamps and traffic](screenshots/screenshot-01.png)
+
+</div>
+
 ---
 
 ## ✨ Features
