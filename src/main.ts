@@ -46,6 +46,7 @@ import { OverlayRenderer } from './render/overlays';
 import { BuildingInstancer } from './render/buildings';
 import { MassingRenderer } from './render/massing';
 import { RoofPropRenderer } from './render/props';
+import { HouseRoofRenderer } from './render/houses';
 import { ParkedCarRenderer } from './render/parked';
 import { LandmarkRenderer } from './render/landmarks';
 import { RoadMeshRenderer } from './render/roadsmesh';
@@ -64,7 +65,7 @@ import { SelectionOutline } from './render/outline';
 import { MapPin } from './render/pin';
 import { CameraRig } from './render/camera';
 import { IdPicker } from './render/picking';
-import { ToolManager, footprintTiles, type ToolEnv } from './tools/tools';
+import { ToolManager, footprintTiles, ZONE_TOOL_TO_TYPE, type ToolEnv } from './tools/tools';
 import { UndoStack } from './tools/undo';
 import { useCityStore } from './ui/store';
 import { mountUi } from './ui/App';
@@ -128,10 +129,6 @@ async function boot(): Promise<void> {
   // (fire/police/ambulance from the shared buffer + incident pins), and the
   // district tint/boundary overlay. All fed from the snapshot channels.
   const transitRenderer = new TransitRenderer(world.scene, heightAt);
-  // Cosmetic pedestrians: a few idlers at each bus-stop shelter + a sparse
-  // deterministic walker scatter near Active buildings. Fed the flattened
-  // transit stop list + the same BuildingDelta stream the other renderers get.
-  const pedestrianRenderer = new PedestrianRenderer(world.scene, heightAt);
   const serviceVehicles = new ServiceVehicleRenderer(world.scene, heightAt);
   const districtsRenderer = new DistrictsRenderer(world.scene, heightAt);
   const overlays = new OverlayRenderer(world.scene);
@@ -159,6 +156,15 @@ async function boot(): Promise<void> {
   const roadAt = (x: number, z: number): boolean =>
     inBounds(x, z) && clientGrid.roadTier[z * clientGrid.size + x] !== RoadTier.None;
   const parkedCars = new ParkedCarRenderer(world.scene, heightAt, catalog, roadAt);
+  // Residential house kit: pitched roofs on every detached/row home, plus a
+  // garage + street-facing driveway on the larger detached lots (roadAt orients
+  // them toward the frontage). Fed the same BuildingDelta stream.
+  const houseRoofs = new HouseRoofRenderer(world.scene, heightAt, catalog, roadAt);
+  // Cosmetic pedestrians: a few idlers at each bus-stop shelter + a sparse
+  // deterministic walker scatter near Active buildings, strolling a small loop
+  // on the frontage sidewalk (roadAt) near home. Fed the flattened transit stop
+  // list + the same BuildingDelta stream the other renderers get.
+  const pedestrianRenderer = new PedestrianRenderer(world.scene, heightAt, roadAt);
 
   // Landmark detail kits: terminal roof monitors,
   // control tower + pulsing beacon, apron plate, parked planes — fed the same
@@ -390,6 +396,12 @@ async function boot(): Promise<void> {
         // the rotated w×d and its min corner is the origin tile).
         let opts: SetPreviewOptions | undefined;
         const tool = toolManager.tool;
+        // Zone previews: tint the ghost with the zone being painted (R/C/I),
+        // so the preview color matches the tiles it will lay down.
+        if (tool.startsWith('zone.')) {
+          const zone = ZONE_TOOL_TO_TYPE[tool];
+          if (zone !== undefined) opts = { zone };
+        }
         if (tool.startsWith('plop.') && preview.tiles.length > 0) {
           const entry = catalogById.get(tool.slice('plop.'.length));
           if (entry) {
@@ -521,6 +533,7 @@ async function boot(): Promise<void> {
     instancer.setNightFactor(nightFactor);
     massing.setNightFactor(nightFactor);
     roofProps.setNightFactor(nightFactor);
+    houseRoofs.setNightFactor(nightFactor);
     roadsMesh.setNightFactor(nightFactor); // dim the unlit road so only lamp pools stay bright
     lamps.setNightFactor(nightFactor);
     vehicles.setNightFactor(nightFactor);
@@ -558,6 +571,7 @@ async function boot(): Promise<void> {
       instancer.apply(snap.buildings);
       massing.apply(snap.buildings);
       roofProps.apply(snap.buildings);
+      houseRoofs.apply(snap.buildings);
       parkedCars.apply(snap.buildings);
       landmarks.apply(snap.buildings);
       utilityKits.apply(snap.buildings);

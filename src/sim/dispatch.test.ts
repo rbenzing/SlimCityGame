@@ -370,7 +370,7 @@ describe('DispatchSystem: no coupling into ServiceSim', () => {
       expect(g.fields[f]).toEqual(fieldsSnapshot[f]);
     }
     expect(buildings).toEqual(buildingsSnapshot);
-  });
+  }, 15000); // 300 ticks + full field/building deep-equal is slow; avoid a load-related 5s-default timeout flake
 });
 
 // ---------------------------------------------------------------------------

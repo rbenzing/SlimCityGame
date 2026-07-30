@@ -33,9 +33,11 @@ import {
   BuildingDelta,
   BuildingInstance,
   BuildingState,
+  ZoneType,
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { deriveFacadeParams } from './facade';
+import { maxHeightOverFootprint } from './footprint';
 
 // ---------------------------------------------------------------------------
 // computeSetbacks (pure)
@@ -57,8 +59,21 @@ export interface SetbackResult {
   boxes: SetbackBox[];
 }
 
-/** Mirrors buildings.ts's own (private) FOOTPRINT_SHRINK so the base tier lines up with BuildingInstancer's own box edges. */
+/** Default footprint shrink so neighboring buildings don't touch — mirrors buildings.ts so the base tier lines up with BuildingInstancer's own box edges. */
 export const MASSING_FOOTPRINT_SHRINK = 0.85;
+/** Detached single-family homes fill barely over half their lot, leaving a visible yard (SPEC §16). */
+export const RES_LOW_FOOTPRINT_SHRINK = 0.55;
+
+/**
+ * Zone-aware footprint fill: the fraction of a building's tile footprint its
+ * rendered mass occupies. Detached homes (ResLow) leave a yard; everything
+ * else nearly fills its lot. The single source of truth shared by
+ * BuildingInstancer, the massing tiers, and the pitched-roof kit so a house's
+ * body, setbacks, and roof all stay flush. Pure.
+ */
+export function footprintShrinkFor(entry: BuildingCatalogEntry): number {
+  return entry.zone === ZoneType.ResLow ? RES_LOW_FOOTPRINT_SHRINK : MASSING_FOOTPRINT_SHRINK;
+}
 /** "10-20% setbacks". */
 export const MIN_SETBACK_INSET = 0.1;
 export const MAX_SETBACK_INSET = 0.2;
@@ -104,8 +119,9 @@ export function computeSetbacks(entry: BuildingCatalogEntry, buildingId: number)
   const totalHeight = entry.height;
   const tierHeight = totalHeight / level;
 
-  const baseW = entry.footprint.w * TILE_METERS * MASSING_FOOTPRINT_SHRINK;
-  const baseD = entry.footprint.d * TILE_METERS * MASSING_FOOTPRINT_SHRINK;
+  const shrink = footprintShrinkFor(entry);
+  const baseW = entry.footprint.w * TILE_METERS * shrink;
+  const baseD = entry.footprint.d * TILE_METERS * shrink;
 
   const boxes: SetbackBox[] = [];
   let w = baseW;
@@ -363,7 +379,15 @@ export class MassingRenderer {
 
     const centerX = (building.x + entry.footprint.w / 2) * TILE_METERS;
     const centerZ = (building.z + entry.footprint.d / 2) * TILE_METERS;
-    const groundY = this.heightAt(centerX, centerZ);
+    // Match BuildingInstancer's footprint-max base so setback tiers stack on
+    // the same ground the body sits on (no slope poke-through / float).
+    const groundY = maxHeightOverFootprint(
+      this.heightAt,
+      building.x,
+      building.z,
+      entry.footprint.w,
+      entry.footprint.d,
+    );
 
     const slots: number[] = [];
     for (let tier = 1; tier < boxes.length; tier++) {

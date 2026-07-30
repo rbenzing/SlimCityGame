@@ -410,6 +410,15 @@ The industrial facade family gets its own language, matching the kit:
   cylinder, warning-light emissive at night); large industrial (≥3×3) may get
   a 3–4 silo cluster at a footprint corner (deterministic); rooftop vents per
   §6.6 roofs-everywhere.
+- **Overhang loading doors (2026-07-29):** the industrial ground floor shows a
+  repeating row of wide roll-up/sectional loading doors on every face
+  (`INDUSTRIAL_DOOR_BAYS`), overriding the ground-floor windows — the
+  loading-dock read.
+- **Truck parking (2026-07-29):** industrial lots park box **trucks** (the
+  shared parked-vehicle silhouette scaled to a ~2.4×2.4×7 m box truck), where
+  commercial lots park cars. Homes never street-park (garage/driveway; §17).
+  Deferred: a true multi-row/side parking lot needs sim lot-reservation — the
+  current road-facing stall strip (apron + stripes) reads as a small lot.
 
 ### 6.14 Sky, sun & clouds (reference screenshot 12, cumulus photo — wave 4)
 
@@ -670,12 +679,16 @@ wave work.
   (no cross-grass shortcuts — they shouldn't today, assert it); (d) the
   visible car speed must scale with the playback multiplier (it rides the
   tick rate — verify it reads right at 1×/2×/4×).
-- **Corner rounding v2 (wave)**: 90° turns still read square. Round the turn
-  properly: the outer corner arcs (already a small fillet — widen it to a
-  believable turn radius), the inner curb/sidewalk follows the same radius,
-  and the lane markings CURVE through the turn (an arc of dashes) instead of
-  stopping square at the tile edge. Cosmetic only — centerlines stay
-  grid-aligned between tiles (ROADMAP §9), this is corner geometry.
+- **Corner rounding v3 (done, 2026-07-29)**: earlier fillet/corner-fill
+  attempts still read as a squared L with a hard corner. Replaced entirely: a
+  turn tile (exactly 2 adjacent connections) is now a true **quarter-annulus
+  curved road** (`emitCurvedTurn`) — a constant-width carriageway swept 90°
+  around the tile corner shared by the two connected sides (inner radius
+  `armDepth`, outer `TILE_HALF + coreHalf`), meeting each edge opening at
+  ±`coreHalf` so it is seamless with the straight neighbor tiles. Curved
+  sidewalks fill the rest of the tile to its edges (inner fan sector + outer
+  band). Cosmetic only — the road graph stays grid-aligned (ROADMAP §9). Turn
+  tiles carry no painted lane lines yet (a curved centerline is a follow-up).
 - **Road-on-slope placement (wave)**: roads currently can't be placed up an
   embankment — `isBuildable`'s single `MAX_BUILD_SLOPE` (4 m) gate rejects
   the tiles. Roads should be placeable on MODERATE slopes (auto-flatten
@@ -864,3 +877,50 @@ Render-only refinement round (no sim/protocol changes) from reference images.
 - **Street-lamp model detail (render/lamps.ts):** upgrade the §6.20 cantilever lamp to a properly modeled luminaire — tapered pole, arm bracket, a real lamp housing (not a bare box), still instanced + night-emissive + light cone. More detail, same deterministic placement.
 - **Road-end cap v2 (render/roadsmesh.ts + terrain ground-cover):** the wave-10 dead-end cap rounds the ASPHALT but leaves the sidewalk square and skips the ground transition. (1) The curb/sidewalk arcs around the cap at the cap radius (curb-follows-cap, like §6.20 corner curb-follows-fillet). (2) A sidewalk→dirt→grass transition ring conforms to the rounded cap perimeter (extend the §6.13 road-adjacent dirt band to the arc, not just square tiles).
 - **Acceptance:** stops read as shelters with a few people; lamps look modeled; small props cast shadows; a dead-end road shows a rounded sidewalk + dirt→grass ring. Determinism preserved; all gates green; per-item screenshot review.
+- **Status (2026-07-29):** road-end cap v2 DONE — curb/sidewalk arc wraps the cap (`emitEndCapCurb`) and a worn-earth dirt→grass apron ring (`emitEndCapApron`) feathers it into the lawn, conforming to the rounded perimeter. Bus-stop/pedestrian/lamp/shadow items still open.
+
+## 16. Scale bible — one human-scaled proportion for the whole city (user request 2026-07-29)
+
+The world reads as one consistent scale, anchored on the **cosmetic car = 4.0 m long × 1.8 m wide** as the human-scale unit. `TILE_METERS = 16` is fixed (load-bearing: grid, fields, pathfinding, saves) — so "narrower roads + smaller homes" turns the leftover tile area into **yards and grass verges**, which is the intended suburban look, not wasted space. All dimensional constants across roads, vehicles, buildings, and props conform to the table below; where a file's own numbers disagree, this section wins.
+
+**Roads** — the paved *carriageway* is lanes only; the rest of the tile is sidewalk + grass verge. Standard lane ≈ 3.25 m. Half-width fraction = carriageway ÷ (2 × 16):
+
+| Tier | Lanes | Carriageway | Half-width fraction | (was) |
+| ---- | ----- | ----------- | ------------------- | ----- |
+| Alley | 1 | 3.5 m | 0.109 | 0.188 |
+| Gravel | ~1.5 | 5.0 m | 0.156 | 0.219 |
+| TwoLane | 2 | 6.5 m | 0.203 | 0.300 |
+| OneWay | 2 | 6.5 m | 0.203 | 0.300 |
+| FourLane | 4 | 13.0 m | 0.406 | 0.425 |
+| Avenue | 4 + median | 15.0 m | 0.469 | 0.425 |
+| Highway | 4 + shoulders | 14.5 m | 0.453 | 0.460 |
+
+Local streets get visibly narrower (TwoLane 9.6→6.5 m); arterials stay wide — the contrast is the point. Cosmetic-vehicle lane centers re-derive from the new carriageway (lane center = ±carriageway/4), so cars still track their lanes.
+
+**Vehicles** (already realistic — the anchor; unchanged): car 1.8 × 1.5 × 4.0 m, truck 2.2 × 2.6 × 7.0 m, bus 2.5 × 3.0 × 10.0 m, service ≈ fire 2.4 × 2.8 × 8.2 m.
+
+**Buildings** — standard storey 3.2 m. Footprint *fill* is zone-aware (not one global 0.85): detached homes leave a yard; dense/commercial fill more of the tile.
+
+| Zone | Storeys | Eaves height | Roof | Footprint fill | Notes |
+| ---- | ------- | ------------ | ---- | -------------- | ----- |
+| ResLow (detached) | 1–2 | 3.2–6.5 m | pitched 2.0–3.5 m | ~0.55 (8–9 m in tile) | yard + driveway + garage |
+| ResMediumRow (townhouse) | 2–3 | 6.5–9.5 m | shallow pitch | ~0.75 wide, narrow units | attached, per-unit 5–6 m bays |
+| ResMedium (small apts) | 3–4 | 10–13 m | low/flat | ~0.8 | small pitched or flat cap |
+| ResHigh | 5–14 | 16–45 m | flat | ~0.85 | keep tall (unchanged) |
+| ComLow / ComHigh | 1–2 / 4–10 | as catalog | flat + parapet | ~0.85 | re-checked vs. car anchor |
+| Industrial | 1 (tall bay) | 6–10 m | flat/sawtooth | ~0.9 | low & wide sheds |
+
+**Props:** street lamp pole ~5.5 m; bus-stop shelter ~2.6 m; residential fence ~1.2 m; trees 4–12 m (unchanged).
+
+## 17. Residential home models — procedural houses (user request 2026-07-29, ref: suburban detached-homes screenshot)
+
+Residential buildings currently render as the same tinted `BoxGeometry` box as commercial/industrial — only color + window density differ — so a "house" reads as a small office block. Give the residential zones real **procedural house geometry**, still fully instanced, layered over the existing facade-shader body as separate instanced **kits**:
+
+- **Pitched roof kit:** an instanced roof prism (gable/hip variants) capping ResLow/ResMediumRow/ResMedium bodies, sized to the body footprint, seeded per building for gable-vs-hip + orientation + roof-color palette. ResHigh/Com/Ind keep a flat roof.
+- **Garage + driveway (ResLow):** a small attached garage box offset to one side + a driveway strip decal running to the road frontage. Seeded presence/side per building.
+- **Fenced yard (ResLow/ResMediumRow):** a low instanced fence/hedge ring around the yard margin inside the tile (the gap between the shrunk body and the tile edge), broken at the driveway. Reads as a private lot.
+- **Massing variety:** body footprint fill + eaves height + roof pitch/type + wall & roof palette all seeded per building id (deterministic hash, no Math.random), so a residential block reads as a varied street of individual homes, not clones. Bounded variant set for instancing.
+- **Re-proportion:** apply the §16 residential heights + zone-aware footprint fill so homes sit at 1–2 storeys with visible yards, human-scaled against the §16 narrower local streets and the 4 m car.
+- **Constraints:** all kits instanced + deterministic; night cycle still works (bodies keep the emissive-window shader; roofs/garages/fences are unlit geometry that takes the same day/night body tint); lifecycle tint (constructing/abandoned) still applies to bodies; picking still resolves to the building body. Determinism hash-test + per-archetype vertex/kit tests; screenshot review (daylight top-down + angled street).
+- **Owners:** render/buildings.ts (kits + instance feed), a possible render/housekits.ts helper for kit geometry, src/data/catalog.json + shared/types.ts BuildingCatalogEntry (roof/garage/fill/variant fields), render/roadsmesh.ts + vehicles.ts (§16 road width + lane offsets).
+- **Status (2026-07-29):** shipped as render/houses.ts `HouseRoofRenderer` (full house kit) + catalog. Detached homes have a hard **2×2 minimum footprint** (nothing smaller ever builds): res-low-1 = 2×2 (no garage), res-low-2 = 2×3 and res-low-3 = 3×3 (both garage). Each detached/row home gets a per-seeded **pitched gable roof**; every 2×3+ detached lot that faces a street also gets an **attached garage**, a **driveway** strip to the road, and the resident's **car parked on the driveway**. Homes never street-park — render/parked.ts skips `category==='res'` (that lot-parking feature is commercial/industrial only). Roof/garage/driveway share the body's night tint; the car is lit naturally. All kits instanced + deterministic; picking still resolves to the body.

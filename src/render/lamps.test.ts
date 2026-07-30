@@ -3,8 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { computeLampPlacements, LampRenderer, tierGetsLamp } from './lamps';
 import { RoadTier, TilePoint } from '../shared/types';
 import { LAMP_SPACING_TILES } from '../shared/constants';
+import { carriagewayHalfWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
 
 const flatHeightAt = (): number => 0;
+
+/** Default (no-tier -> TwoLane) curbside pole offset the placements carry. */
+const OFF = carriagewayHalfWidthMeters(RoadTier.TwoLane) + SIDEWALK_WIDTH_M * 0.5;
 
 /** Builds a straight run of tiles, either horizontal (fixed z) or vertical (fixed x). */
 function strip(fixed: number, from: number, to: number, orientation: 'ew' | 'ns'): TilePoint[] {
@@ -25,8 +29,8 @@ describe('computeLampPlacements (pure)', () => {
     const placements = computeLampPlacements(tiles);
 
     expect(placements).toEqual([
-      { x: 1, z: 5, axis: 'z', side: 1 },
-      { x: 4, z: 5, axis: 'z', side: -1 },
+      { x: 1, z: 5, axis: 'z', side: 1, lateralOffset: OFF },
+      { x: 4, z: 5, axis: 'z', side: -1, lateralOffset: OFF },
     ]);
   });
 
@@ -35,8 +39,8 @@ describe('computeLampPlacements (pure)', () => {
     const placements = computeLampPlacements(tiles);
 
     expect(placements).toEqual([
-      { x: 5, z: 1, axis: 'x', side: 1 },
-      { x: 5, z: 4, axis: 'x', side: -1 },
+      { x: 5, z: 1, axis: 'x', side: 1, lateralOffset: OFF },
+      { x: 5, z: 4, axis: 'x', side: -1, lateralOffset: OFF },
     ]);
   });
 
@@ -60,7 +64,7 @@ describe('computeLampPlacements (pure)', () => {
 
   it('defaults an isolated (non-adjacent) selected tile to the z axis', () => {
     const placements = computeLampPlacements([{ x: 9, z: 9 }]); // sum=18, divisible by 3, no neighbors
-    expect(placements).toEqual([{ x: 9, z: 9, axis: 'z', side: 1 }]);
+    expect(placements).toEqual([{ x: 9, z: 9, axis: 'z', side: 1, lateralOffset: OFF }]);
   });
 
   it('skips tiles whose (x+z) is not a multiple of LAMP_SPACING_TILES', () => {
@@ -120,22 +124,17 @@ describe('LampRenderer', () => {
     expect(renderer.armInstanceCount()).toBe(5);
     expect(renderer.housingInstanceCount()).toBe(5);
     expect(renderer.coneInstanceCount()).toBe(5);
-    expect(renderer.poolInstanceCount()).toBe(5);
   });
 
-  it('adds exactly one InstancedMesh per layer (pole/arm/housing/cone/pool) to the scene', () => {
+  it('adds exactly one InstancedMesh per layer (pole/arm/housing/cone) to the scene', () => {
     const scene = new THREE.Scene();
     const renderer = new LampRenderer(scene, flatHeightAt);
     renderer.rebuild(strip(0, 0, 12, 'ew'));
 
     const instancedMeshes = scene.children.filter((c) => c instanceof THREE.InstancedMesh);
-    // Model parts: pole, arm, housing, cone, pool. No square glow
+    // Model parts: pole, arm, housing, cone. No square glow
     // billboard — the bloom pass provides the housing glow instead.
-    expect(instancedMeshes.length).toBe(5);
-
-    // Only one PlaneGeometry layer remains (the ground pool).
-    const planeMeshes = instancedMeshes.filter((c) => c.geometry.type === 'PlaneGeometry');
-    expect(planeMeshes.length).toBe(1);
+    expect(instancedMeshes.length).toBe(4);
 
     // The pole is still a single tapered cylinder.
     const cylinderMeshes = instancedMeshes.filter((c) => c.geometry.type === 'CylinderGeometry');
@@ -185,7 +184,6 @@ describe('LampRenderer', () => {
     expect(renderer.armInstanceCount()).toBe(0);
     expect(renderer.housingInstanceCount()).toBe(0);
     expect(renderer.coneInstanceCount()).toBe(0);
-    expect(renderer.poolInstanceCount()).toBe(0);
     expect(scene.children.filter((c) => c instanceof THREE.InstancedMesh).length).toBe(0);
   });
 
@@ -198,11 +196,11 @@ describe('LampRenderer', () => {
     renderer.rebuild(strip(0, 0, 30, 'ew'));
     const secondMeshes = scene.children.filter((c) => c instanceof THREE.InstancedMesh);
 
-    expect(secondMeshes.length).toBe(5);
+    expect(secondMeshes.length).toBe(4);
     for (const mesh of firstMeshes) expect(scene.children).not.toContain(mesh);
   });
 
-  it('casts shadows from the pole, arm, and housing — the light cone and ground pool stay non-shadow-casting FX', () => {
+  it('casts shadows from the pole, arm, and housing — the light cone stays non-shadow-casting FX', () => {
     const scene = new THREE.Scene();
     const renderer = new LampRenderer(scene, flatHeightAt);
     renderer.rebuild(strip(0, 0, 12, 'ew'));
@@ -215,12 +213,10 @@ describe('LampRenderer', () => {
       (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh,
     );
     const cone = instancedMeshes.find((c) => c.geometry.type === 'ConeGeometry')!;
-    const pool = instancedMeshes.find((c) => c.geometry.type === 'PlaneGeometry')!;
     expect(cone.castShadow).toBe(false);
-    expect(pool.castShadow).toBe(false);
   });
 
-  it('setNightFactor fades the housing/cone/pool layers together and clamps to [0,1]', () => {
+  it('setNightFactor fades the housing/cone layers together and clamps to [0,1]', () => {
     const scene = new THREE.Scene();
     const renderer = new LampRenderer(scene, flatHeightAt);
     renderer.rebuild(strip(0, 0, 12, 'ew'));
@@ -228,12 +224,10 @@ describe('LampRenderer', () => {
     renderer.setNightFactor(0);
     expect(renderer.housingEmissiveIntensity()).toBe(0);
     expect(renderer.coneOpacity()).toBe(0);
-    expect(renderer.poolOpacity()).toBe(0);
 
     renderer.setNightFactor(1);
     expect(renderer.housingEmissiveIntensity()).toBeCloseTo(1, 9);
     expect(renderer.coneOpacity()).toBeGreaterThan(0);
-    expect(renderer.poolOpacity()).toBeGreaterThan(0);
 
     renderer.setNightFactor(-4);
     expect(renderer.housingEmissiveIntensity()).toBe(0);
@@ -264,7 +258,6 @@ describe('LampRenderer', () => {
 
     const polePos = renderer.polePosition(0);
     const housingPos = renderer.housingPosition(0);
-    const poolPos = renderer.poolPosition(0);
     const conePos = renderer.conePosition(0);
 
     // Pole side is -1 on axis z: pole.z < tile center. The housing must be
@@ -277,13 +270,11 @@ describe('LampRenderer', () => {
     expect(housingPos.z).toBeLessThan(tileCenterZ);
     expect(tileCenterZ - housingPos.z).toBeLessThan(poleOffsetFromCenter);
 
-    // Cone and pool are centered under the housing (over the road), not at
+    // Cone is centered under the housing (over the road), not at
     // the pole's x/z (the old "beside the road" position).
-    expect(poolPos.x).toBeCloseTo(housingPos.x, 9);
-    expect(poolPos.z).toBeCloseTo(housingPos.z, 9);
     expect(conePos.x).toBeCloseTo(housingPos.x, 9);
     expect(conePos.z).toBeCloseTo(housingPos.z, 9);
-    expect(poolPos.z).not.toBeCloseTo(polePos.z, 1);
+    expect(conePos.z).not.toBeCloseTo(polePos.z, 1);
   });
 
   it('the arm bracket yaw rotates its local +X reach to match the actual world direction it must extend toward the road, for every axis/side combination', () => {
@@ -324,7 +315,6 @@ describe('LampRenderer', () => {
       arm: renderer.armPosition(2),
       housing: renderer.housingPosition(2),
       cone: renderer.conePosition(2),
-      pool: renderer.poolPosition(2),
     };
 
     renderer.rebuild(tiles);
@@ -333,17 +323,15 @@ describe('LampRenderer', () => {
       arm: renderer.armPosition(2),
       housing: renderer.housingPosition(2),
       cone: renderer.conePosition(2),
-      pool: renderer.poolPosition(2),
     };
 
     expect(b.pole).toEqual(a.pole);
     expect(b.arm).toEqual(a.arm);
     expect(b.housing).toEqual(a.housing);
     expect(b.cone).toEqual(a.cone);
-    expect(b.pool).toEqual(a.pool);
   });
 
-  it('adds a light-cone layer with one instance per lamp, apex at the housing, base at the ground pool', () => {
+  it('adds a light-cone layer with one instance per lamp, apex at the housing, base just above the road', () => {
     const heights = new Map<string, number>([['80,80', 12]]);
     const heightAt = (x: number, z: number): number =>
       heights.get(`${Math.round(x)},${Math.round(z)}`) ?? 0;
@@ -354,20 +342,19 @@ describe('LampRenderer', () => {
     expect(renderer.coneInstanceCount()).toBe(1);
 
     const housingPos = renderer.housingPosition(0);
-    const poolPos = renderer.poolPosition(0);
+    const conePos = renderer.conePosition(0);
     const coneApexY = renderer.coneApexY(0);
     const coneBaseY = renderer.coneBaseY(0);
 
-    // Apex sits exactly at the housing height; base sits exactly at the
-    // ground light-pool height, so the cone visibly spans housing -> ground.
+    // Apex sits exactly at the housing height; base sits just above the road
+    // surface, so the cone visibly spans housing -> ground.
     expect(coneApexY).toBeCloseTo(housingPos.y, 4);
     expect(coneBaseY).toBeGreaterThan(0);
     expect(coneBaseY).toBeLessThan(housingPos.y);
-    expect(coneBaseY).toBeCloseTo(poolPos.y, 4);
-    // The cone/pool sit laterally over the housing's position (over the
-    // road), not the pole's.
-    expect(poolPos.x).toBeCloseTo(housingPos.x, 9);
-    expect(poolPos.z).toBeCloseTo(housingPos.z, 9);
+    // The cone sits laterally over the housing's position (over the road),
+    // not the pole's.
+    expect(conePos.x).toBeCloseTo(housingPos.x, 9);
+    expect(conePos.z).toBeCloseTo(housingPos.z, 9);
   });
 
   it('cone opacity fades in on the night factor: 0 in daylight, positive at night', () => {

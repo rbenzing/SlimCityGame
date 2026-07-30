@@ -125,7 +125,16 @@ export default function App() {
       <MainDock
         activeCategory={activeCategory}
         onToggleCategory={(category) =>
-          setActiveCategory((current) => (current === category ? null : category))
+          setActiveCategory((current) => {
+            // Any dock navigation (open, switch, or close a category) drops the
+            // active tool back to `select`, so placement mode only persists
+            // while a card in the open drawer is actually selected — otherwise
+            // a ploppable stayed "in hand" after the drawer closed and kept
+            // placing on click.
+            const store = useCityStore.getState();
+            if (store.selectedTool !== 'select') store.setTool('select');
+            return current === category ? null : category;
+          })
         }
         infoviewOpen={infoviewOpen}
         onToggleInfoview={() => setInfoviewOpen((v) => !v)}

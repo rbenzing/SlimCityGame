@@ -24,6 +24,7 @@ import {
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { deriveFacadeParams } from './facade';
+import { maxHeightOverFootprint } from './footprint';
 import {
   computeSetbacks,
   CONSTRUCTING_MASSING_HEIGHT_SCALE,
@@ -31,6 +32,7 @@ import {
   massingLifecycleTint,
   SetbackBox,
 } from './massing';
+import { isRoofedEntry } from './houses';
 
 // ---------------------------------------------------------------------------
 // Deterministic hashing (never Math.random/Date.now) — each render/*.ts file
@@ -468,6 +470,14 @@ export class RoofPropRenderer {
 
     const entry = this.catalogById.get(building.catalogId);
     if (!entry) return;
+    // Rooftop clutter (vents/AC/antennas) is only for real facade buildings:
+    // residential apartments, commercial, industrial. Utilities (water tower,
+    // wind turbine, power), parks and civic plinths carry their own model kit
+    // and have no flat roof — props would float in the air above them.
+    if (entry.category !== 'res' && entry.category !== 'com' && entry.category !== 'ind') return;
+    // Detached/row homes get a pitched roof (houses.ts) instead of a flat roof
+    // with vents/AC/antennas — rooftop clutter would poke through the pitch.
+    if (isRoofedEntry(entry)) return;
 
     const { boxes } = computeSetbacks(entry, building.id);
     const topBox = boxes[boxes.length - 1]!;
@@ -479,7 +489,15 @@ export class RoofPropRenderer {
 
     const centerX = (building.x + entry.footprint.w / 2) * TILE_METERS;
     const centerZ = (building.z + entry.footprint.d / 2) * TILE_METERS;
-    const groundY = this.heightAt(centerX, centerZ);
+    // Match BuildingInstancer's footprint-max base so roof props land on the
+    // actual roof plane on sloped lots, not a centre-sampled approximation.
+    const groundY = maxHeightOverFootprint(
+      this.heightAt,
+      building.x,
+      building.z,
+      entry.footprint.w,
+      entry.footprint.d,
+    );
     const roofY = groundY + (topBox.yOffset + topBox.h) * heightScale;
 
     const slots = emptySlots();

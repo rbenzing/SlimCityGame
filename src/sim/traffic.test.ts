@@ -650,23 +650,46 @@ describe('TrafficSystem over a real one-way RoadNetwork', () => {
     const network = new RoadNetwork();
     network.rebuild(g);
 
-    // A single reachable origin/destination pair, so every one of
-    // TRIPS_PER_TICK sampled trips succeeds identically (real network, real
-    // path) regardless of the rng seed — no scripted draw budget needed.
+    // A single reachable origin/destination pair. Traffic now alternates trip
+    // direction (home->work / work->home) for two-way flow, so of the
+    // TRIPS_PER_TICK sampled trips the forward (with-flow) half succeed and the
+    // reversed half are blocked by the one-way — hence volume TRIPS_PER_TICK/2.
     const sys = new TrafficSystem(createSeededRng(11), network);
     sys.tick({ origins: [{ x: 2, z: 5 }], destinations: [{ x: 6, z: 5 }], tickNo: 1 });
 
     const edge = network.getEdges()[0]!;
     expect(edge.tier).toBe(RoadTier.OneWay);
-    expect(edge.volume).toBe(TRIPS_PER_TICK);
+    expect(edge.volume).toBe(TRIPS_PER_TICK / 2);
 
-    // The spawned vehicle travels forward (increasing x), matching the
-    // one-way flow direction.
+    // The first (forward, i=0) trip's vehicle sits at slot 0, travelling
+    // forward (increasing x) along the one-way flow direction.
     expect(sys.vehicleBuffer[0]).toBeCloseTo(tileToWorld(2), 3);
     expect(sys.vehicleBuffer[2]).toBeCloseTo(Math.PI / 2, 6); // heading along +X
   });
 
-  it('finds no route (and assigns no volume) for a trip against the one-way flow with no detour', () => {
+  it('alternating trip direction fills a two-way road with vehicles heading BOTH ways (not a one-way convoy)', () => {
+    const size = 12;
+    const g = makeGrid(size);
+    for (const x of [2, 3, 4, 5, 6]) g.roadTier[z(size, x, 5)] = RoadTier.TwoLane;
+
+    const network = new RoadNetwork();
+    network.rebuild(g);
+
+    const sys = new TrafficSystem(createSeededRng(11), network);
+    sys.tick({ origins: [{ x: 2, z: 5 }], destinations: [{ x: 6, z: 5 }], tickNo: 1 });
+
+    const headings: number[] = [];
+    for (let slot = 0; slot < MAX_VEHICLES; slot += 1) {
+      const base = slot * VEHICLE_STRIDE;
+      if (sys.vehicleBuffer[base] !== INACTIVE_VEHICLE_X) headings.push(sys.vehicleBuffer[base + 2]!);
+    }
+    expect(headings.length).toBeGreaterThan(1);
+    // Forward trips head +X (atan2(+,0)=+π/2); reversed trips head -X (-π/2).
+    expect(headings.some((h) => Math.abs(h - Math.PI / 2) < 1e-6)).toBe(true);
+    expect(headings.some((h) => Math.abs(h + Math.PI / 2) < 1e-6)).toBe(true);
+  });
+
+  it('a one-way edge routes only in its flow direction (against-flow finds no route)', () => {
     const size = 12;
     const g = makeGrid(size);
     for (const x of [2, 3, 4, 5, 6]) g.roadTier[z(size, x, 5)] = RoadTier.OneWay;
@@ -674,11 +697,10 @@ describe('TrafficSystem over a real one-way RoadNetwork', () => {
     const network = new RoadNetwork();
     network.rebuild(g);
 
-    const sys = new TrafficSystem(createSeededRng(7), network);
-    sys.tick({ origins: [{ x: 6, z: 5 }], destinations: [{ x: 2, z: 5 }], tickNo: 1 });
-
-    expect(network.getEdges()[0]!.volume).toBe(0);
-    expect(countActiveSlots(sys.vehicleBuffer)).toBe(0);
+    // Direct routing check, independent of trip-direction alternation: with the
+    // flow routes, against it does not.
+    expect(network.findPath({ x: 2, z: 5 }, { x: 6, z: 5 })).not.toBeNull();
+    expect(network.findPath({ x: 6, z: 5 }, { x: 2, z: 5 })).toBeNull();
   });
 
   it('always routes a chain of cardinally-adjacent tiles, including across a corner turn (§6.20 #3 on-road guarantee)', () => {

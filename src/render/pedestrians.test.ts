@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   PedestrianRenderer,
   computeIdlePlacements,
+  computeWalkAnchor,
   computeWalkOffset,
   computeWalkerBuildingIds,
   idleCountForStop,
@@ -11,6 +12,7 @@ import {
   isWalkerBuilding,
   walkAnchorOffset,
   walkerTint,
+  WALK_ANCHOR_SEARCH_TILES,
   IDLE_MIN_PER_STOP,
   IDLE_MAX_PER_STOP,
   MAX_IDLE_PEDESTRIANS,
@@ -183,18 +185,62 @@ describe('computeWalkOffset / walkAnchorOffset (pure)', () => {
     expect(b).not.toEqual(c);
   });
 
-  it('offset stays within the walk amplitude bound on either axis', () => {
-    for (let t = 0; t < 20000; t += 777) {
+  it('stays within a small stroll-loop radius of the anchor (a believable circuit near home, not a long line)', () => {
+    // Max loop extent = max radius (TILE*0.42) * max aspect (1.4) ≈ 9.41m.
+    const bound = 16 * 0.42 * 1.4 + 1e-6;
+    for (let t = 0; t < 40000; t += 777) {
       const s = computeWalkOffset(11, t);
-      const magnitude = Math.hypot(s.dx, s.dz);
-      expect(magnitude).toBeLessThanOrEqual(16 * 0.9 + 1e-6);
+      expect(Math.hypot(s.dx, s.dz)).toBeLessThanOrEqual(bound);
     }
+  });
+
+  it('traces a CLOSED loop (position returns after one full period) — not an open back-and-forth line', () => {
+    const period = 16_000;
+    const a = computeWalkOffset(11, 1234);
+    const b = computeWalkOffset(11, 1234 + period);
+    expect(b.dx).toBeCloseTo(a.dx, 6);
+    expect(b.dz).toBeCloseTo(a.dz, 6);
+  });
+
+  it('heading turns smoothly around the loop rather than snapping between two opposite directions', () => {
+    // Sample many headings; the old ping-pong produced only 2 distinct values.
+    const headings = new Set<number>();
+    for (let t = 0; t < 16_000; t += 500) {
+      headings.add(Math.round(computeWalkOffset(11, t).heading * 100));
+    }
+    expect(headings.size).toBeGreaterThan(8);
   });
 
   it('walkAnchorOffset is deterministic and nonzero', () => {
     const a = walkAnchorOffset(3);
     expect(walkAnchorOffset(3)).toEqual(a);
     expect(Math.hypot(a.x, a.z)).toBeGreaterThan(0);
+  });
+
+  it('computeWalkAnchor lands on the frontage tile next to the nearest road (one step back toward the building)', () => {
+    const b = building(5, 10, 10);
+    // A road tile two east of the building; frontage is one east (10+1, 10).
+    const roadAt = (x: number, z: number): boolean => x === 12 && z === 10;
+    const anchor = computeWalkAnchor(b, roadAt);
+    expect(anchor.x).toBeCloseTo((11 + 0.5) * 16, 6); // tileToWorld(11)
+    expect(anchor.z).toBeCloseTo((10 + 0.5) * 16, 6);
+  });
+
+  it('computeWalkAnchor falls back beside the building when no road is within search range', () => {
+    const b = building(5, 10, 10);
+    const anchor = computeWalkAnchor(b, () => false);
+    const off = walkAnchorOffset(5);
+    expect(anchor.x).toBeCloseTo((10 + 0.5) * 16 + off.x, 6);
+    expect(anchor.z).toBeCloseTo((10 + 0.5) * 16 + off.z, 6);
+  });
+
+  it('WALK_ANCHOR_SEARCH_TILES bounds the road search', () => {
+    const b = building(5, 10, 10);
+    // Road just past the search radius -> not found -> fallback.
+    const far = 10 + WALK_ANCHOR_SEARCH_TILES + 1;
+    const anchor = computeWalkAnchor(b, (x, z) => x === far && z === 10);
+    const off = walkAnchorOffset(5);
+    expect(anchor.x).toBeCloseTo((10 + 0.5) * 16 + off.x, 6);
   });
 
   it('walkerTint is deterministic and in [0, 1)', () => {

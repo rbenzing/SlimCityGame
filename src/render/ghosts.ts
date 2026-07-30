@@ -53,8 +53,9 @@
  *    when invalid.
  */
 import * as THREE from 'three';
-import type { TilePoint } from '../shared/types';
+import type { TilePoint, ZoneType } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { zoneTintColor } from './zonegrid';
 
 export type GhostKind = 'road' | 'zone' | 'plop' | 'bulldoze';
 
@@ -122,11 +123,30 @@ function darken(rgb: readonly [number, number, number], factor: number): [number
 
 const ZONE_BORDER_RGB = darken(ZONE_FILL_RGB, ZONE_BORDER_DARKEN);
 
-/** Base-layer color for `kind` at the given validity. Pure and exported for tests. */
-export function baseColorFor(kind: GhostKind, valid: boolean): readonly [number, number, number] {
+/**
+ * Base-layer color for `kind` at the given validity. Zone previews take the
+ * painted zone's own RCI tint (R green / C blue / I orange — the same
+ * `zoneTintColor` the placed tiles use) so the ghost reads as the zone you're
+ * about to paint, not a generic green; falls back to the generic zone green
+ * when no specific zone is supplied (e.g. de-zone). Pure and exported for tests.
+ */
+export function baseColorFor(
+  kind: GhostKind,
+  valid: boolean,
+  zone?: ZoneType,
+): readonly [number, number, number] {
   if (!valid) return INVALID_RGB;
-  if (kind === 'zone') return ZONE_BORDER_RGB;
+  if (kind === 'zone') {
+    const tint = zone != null ? zoneTintColor(zone) : null;
+    return tint ? darken(tint, ZONE_BORDER_DARKEN) : ZONE_BORDER_RGB;
+  }
   return ACCENT_RGB;
+}
+
+/** Fill-layer color for a zone preview: the zone's own RCI tint, or the generic zone green when unspecified. Pure and exported for tests. */
+export function fillColorFor(zone?: ZoneType): readonly [number, number, number] {
+  const tint = zone != null ? zoneTintColor(zone) : null;
+  return tint ?? ZONE_FILL_RGB;
 }
 
 /**
@@ -373,6 +393,8 @@ export interface GhostVolume {
 
 export interface SetPreviewOptions {
   volume?: GhostVolume;
+  /** Zone being painted — colors the base + fill layers to match the placed tiles (zone kind only). */
+  zone?: ZoneType;
 }
 
 export interface VolumeBoxTransform {
@@ -529,8 +551,9 @@ export class GhostRenderer {
       return;
     }
 
-    this.writeBase(tiles, valid, kind);
+    this.writeBase(tiles, valid, kind, opts?.zone);
     if (valid && kind === 'zone') {
+      this.fillMaterial.color.setRGB(...fillColorFor(opts?.zone));
       this.writeFill(tiles);
     } else {
       this.setGeometry(this.fillMesh, new Float32Array(0));
@@ -600,8 +623,8 @@ export class GhostRenderer {
     mesh.geometry = geometry;
   }
 
-  private writeBase(tiles: TilePoint[], valid: boolean, kind: GhostKind): void {
-    this.baseMaterial.color.setRGB(...baseColorFor(kind, valid));
+  private writeBase(tiles: TilePoint[], valid: boolean, kind: GhostKind, zone?: ZoneType): void {
+    this.baseMaterial.color.setRGB(...baseColorFor(kind, valid, zone));
     const positions = buildConformingTilePositions(
       tiles,
       this.heightAt,

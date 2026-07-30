@@ -342,9 +342,20 @@ export class RoadNetwork implements RoadNetworkApi {
     return findNearestNode(this.nodes, x, z);
   }
 
-  findPath(from: TilePoint, to: TilePoint): PathResult | null {
+  findPath(
+    from: TilePoint,
+    to: TilePoint,
+    edgeCostMultiplier?: (edge: GraphEdge) => number,
+  ): PathResult | null {
     this.ensureFresh();
-    return runAstar(this.nodes, this.edges, from, to, this.edgeCostHook ?? undefined);
+    const hook = this.edgeCostHook;
+    // Compose the district cost hook with the caller's per-trip multiplier so
+    // both apply; either may be absent.
+    const composed =
+      edgeCostMultiplier === undefined
+        ? (hook ?? undefined)
+        : (edge: GraphEdge): number => (hook ? hook(edge) : 1) * edgeCostMultiplier(edge);
+    return runAstar(this.nodes, this.edges, from, to, composed);
   }
 
   addVolume(edgeIds: number[], amount: number): void {

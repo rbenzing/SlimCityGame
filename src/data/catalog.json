@@ -1,8 +1,8 @@
 {
   "buildings": [
-    { "id": "res-low-1", "name": "Small House", "category": "res", "zone": 1, "level": 1, "footprint": { "w": 1, "d": 1 }, "height": 5, "color": 5011661, "residents": 4, "powerUse": 0.1, "waterUse": 0.4, "cost": 0, "upkeep": 0, "unlockMilestone": 0 },
-    { "id": "res-low-2", "name": "Family Home", "category": "res", "zone": 1, "level": 2, "footprint": { "w": 1, "d": 1 }, "height": 7, "color": 6851298, "residents": 6, "powerUse": 0.15, "waterUse": 0.5, "cost": 0, "upkeep": 0, "unlockMilestone": 0 },
-    { "id": "res-low-3", "name": "Garden Villa", "category": "res", "zone": 1, "level": 3, "footprint": { "w": 2, "d": 2 }, "height": 9, "color": 8692189, "residents": 14, "powerUse": 0.3, "waterUse": 0.9, "cost": 0, "upkeep": 0, "unlockMilestone": 0 },
+    { "id": "res-low-1", "name": "Small House", "category": "res", "zone": 1, "level": 1, "footprint": { "w": 2, "d": 2 }, "height": 4, "color": 5011661, "residents": 4, "powerUse": 0.1, "waterUse": 0.4, "cost": 0, "upkeep": 0, "unlockMilestone": 0 },
+    { "id": "res-low-2", "name": "Family Home", "category": "res", "zone": 1, "level": 2, "footprint": { "w": 2, "d": 3 }, "height": 5, "color": 6851298, "residents": 8, "powerUse": 0.15, "waterUse": 0.5, "cost": 0, "upkeep": 0, "unlockMilestone": 0 },
+    { "id": "res-low-3", "name": "Garden Villa", "category": "res", "zone": 1, "level": 3, "footprint": { "w": 3, "d": 3 }, "height": 6.5, "color": 8692189, "residents": 16, "powerUse": 0.3, "waterUse": 0.9, "cost": 0, "upkeep": 0, "unlockMilestone": 0 },
     { "id": "res-high-1", "name": "Walk-up Flats", "category": "res", "zone": 2, "level": 1, "footprint": { "w": 2, "d": 2 }, "height": 18, "color": 4886754, "residents": 40, "powerUse": 0.8, "waterUse": 2.4, "cost": 0, "upkeep": 0, "unlockMilestone": 4 },
     { "id": "res-high-2", "name": "Apartment Block", "category": "res", "zone": 2, "level": 2, "footprint": { "w": 2, "d": 2 }, "height": 28, "color": 5610722, "residents": 70, "powerUse": 1.4, "waterUse": 4, "cost": 0, "upkeep": 0, "unlockMilestone": 4 },
     { "id": "res-high-3", "name": "Residential Tower", "category": "res", "zone": 2, "level": 3, "footprint": { "w": 3, "d": 3 }, "height": 46, "color": 6203635, "residents": 150, "powerUse": 3, "waterUse": 8, "cost": 0, "upkeep": 0, "unlockMilestone": 4 },

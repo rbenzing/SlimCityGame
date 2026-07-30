@@ -387,6 +387,12 @@ const _position = new THREE.Vector3();
 const _quaternion = new THREE.Quaternion();
 const _yAxis = new THREE.Vector3(0, 1, 0);
 const _unitScale = new THREE.Vector3(1, 1, 1);
+/**
+ * Industrial lots park box TRUCKS, not cars: the shared car silhouette scaled
+ * up to a box-truck footprint (base 1.8×1.0×4.0 → ~2.4×2.4×7.0 m) — wider,
+ * much taller, longer. A distinct cab-plus-cargo mesh is a later refinement.
+ */
+const _truckScale = new THREE.Vector3(1.35, 2.4, 1.75);
 const _tmpColor = new THREE.Color();
 const HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
 
@@ -471,6 +477,12 @@ export class ParkedCarRenderer {
 
     const entry = this.catalogById.get(building.catalogId);
     if (!entry) return;
+    // Parked-car stalls + frontage apron are for COMMERCIAL and INDUSTRIAL lots
+    // only. Homes park off-street (garage/driveway, render/houses.ts); utilities
+    // (water tower, wind turbine, power, etc.), parks and civic plinths get no
+    // parking apron — a water tower next to a road must not sprout a grey
+    // parking rectangle bleeding into the street.
+    if (entry.category !== 'com' && entry.category !== 'ind') return;
 
     const edge = findRoadFacingEdge(
       building.x,
@@ -493,6 +505,7 @@ export class ParkedCarRenderer {
       count,
     );
 
+    const vehicleScale = entry.category === 'ind' ? _truckScale : _unitScale;
     const slots: number[] = [];
     for (let i = 0; i < placements.length; i++) {
       const placement = placements[i]!;
@@ -502,7 +515,7 @@ export class ParkedCarRenderer {
 
       _position.set(placement.worldX, groundY, placement.worldZ);
       _quaternion.setFromAxisAngle(_yAxis, yaw);
-      _matrix.compose(_position, _quaternion, _unitScale);
+      _matrix.compose(_position, _quaternion, vehicleScale);
       this.carMesh!.setMatrixAt(slot, _matrix);
 
       _tmpColor.setHex(CAR_PALETTE[stallColorIndex(building.id, i)]!);

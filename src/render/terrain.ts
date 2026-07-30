@@ -378,29 +378,51 @@ export class TerrainRenderer {
     }
   }
 
-  /** Bilinear world-space height in meters. Edge-clamped; 0 before build(). */
-  heightAt(x: number, z: number): number {
+  /**
+   * Height in meters at a tile corner (worldX/Z = cornerIx/cornerIz *
+   * TILE_METERS) — the bilinear average of the four map cells meeting there.
+   * These are the exact values makeChunkGeometry writes into the terrain mesh
+   * vertices, so heightAt() (below) reproduces the *rendered* surface rather
+   * than a separate interpolation that would drift from it between corners.
+   */
+  private cornerHeight(cornerIx: number, cornerIz: number): number {
     const map = this.map;
     if (!map) return 0;
     const size = map.size;
-    const fx = x / TILE_METERS - 0.5;
-    const fz = z / TILE_METERS - 0.5;
-    const x0 = Math.floor(fx);
-    const z0 = Math.floor(fz);
-    const tx = fx - x0;
-    const tz = fz - z0;
-    const cx0 = clampInt(x0, 0, size - 1);
-    const cx1 = clampInt(x0 + 1, 0, size - 1);
-    const cz0 = clampInt(z0, 0, size - 1);
-    const cz1 = clampInt(z0 + 1, 0, size - 1);
     const h = map.height;
-    const h00 = h[cz0 * size + cx0]!;
-    const h10 = h[cz0 * size + cx1]!;
-    const h01 = h[cz1 * size + cx0]!;
-    const h11 = h[cz1 * size + cx1]!;
-    const top = lerp(h00, h10, tx);
-    const bottom = lerp(h01, h11, tx);
-    return lerp(top, bottom, tz);
+    const cx0 = clampInt(cornerIx - 1, 0, size - 1);
+    const cx1 = clampInt(cornerIx, 0, size - 1);
+    const cz0 = clampInt(cornerIz - 1, 0, size - 1);
+    const cz1 = clampInt(cornerIz, 0, size - 1);
+    return 0.25 * (h[cz0 * size + cx0]! + h[cz0 * size + cx1]! + h[cz1 * size + cx0]! + h[cz1 * size + cx1]!);
+  }
+
+  /**
+   * World-space surface height in meters, matching the *triangulated* terrain
+   * mesh exactly (not a bilinear approximation that only agrees at corners).
+   * Each terrain quad is split by PlaneGeometry along the u+v=1 diagonal into
+   * triangles (H00,H10,H01) and (H11,H01,H10); we interpolate within whichever
+   * triangle the point falls in. This is what keeps roads, driveways, aprons
+   * and props sitting flush on the surface they conform to instead of dipping
+   * below a terrain bulge and letting it poke through. Edge-clamped via
+   * cornerHeight; 0 before build().
+   */
+  heightAt(x: number, z: number): number {
+    if (!this.map) return 0;
+    const gx = x / TILE_METERS;
+    const gz = z / TILE_METERS;
+    const ix = Math.floor(gx);
+    const iz = Math.floor(gz);
+    const u = gx - ix;
+    const v = gz - iz;
+    const h00 = this.cornerHeight(ix, iz);
+    const h10 = this.cornerHeight(ix + 1, iz);
+    const h01 = this.cornerHeight(ix, iz + 1);
+    const h11 = this.cornerHeight(ix + 1, iz + 1);
+    if (u + v <= 1) {
+      return h00 + u * (h10 - h00) + v * (h01 - h00);
+    }
+    return h11 + (1 - u) * (h01 - h11) + (1 - v) * (h10 - h11);
   }
 
   /**

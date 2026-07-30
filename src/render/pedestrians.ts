@@ -144,18 +144,23 @@ const SLOT_WALK_AXIS = 41;
 const SLOT_WALK_SIDE = 42;
 const SLOT_WALK_PHASE = 43;
 const SLOT_WALK_TINT = 44;
+const SLOT_WALK_RADIUS = 45;
+const SLOT_WALK_ASPECT = 46;
 
 /** "Sparse": only a minority of Active buildings get a walker. */
 export const WALKER_BUILDING_PROBABILITY = 0.12;
 export const MAX_WALKING_PEDESTRIANS = 64;
 
-/** How far a walker's stretch sits from the building's own tile point, off to one side (world meters). */
-const WALK_LATERAL_OFFSET_METERS = TILE_METERS * 0.7;
-/** Half-length of the back-and-forth walked stretch, world meters. */
-const WALK_AMPLITUDE_METERS = TILE_METERS * 0.9;
-/** One full there-and-back cycle, ms -- a slow, ambient pace. */
-const WALK_PERIOD_MS = 14_000;
+/** Fallback lateral offset placing a walker beside its building when no nearby sidewalk is found (world meters). */
+const WALK_LATERAL_OFFSET_METERS = TILE_METERS * 0.5;
+/** One full loop around the stroll path, ms -- a slow, ambient pace (a gentle jog/dog-walk, not pacing). */
+const WALK_PERIOD_MS = 16_000;
 const WALK_ANGULAR_RATE = (Math.PI * 2) / WALK_PERIOD_MS;
+/** Stroll-loop radius range (world meters): a person wanders a small, believable circuit near home rather than sliding back and forth in a line. */
+const WALK_LOOP_RADIUS_MIN_METERS = TILE_METERS * 0.22;
+const WALK_LOOP_RADIUS_MAX_METERS = TILE_METERS * 0.42;
+/** How many tiles out from a building to look for a road, so the stroll loop can anchor on the frontage sidewalk. */
+export const WALK_ANCHOR_SEARCH_TILES = 3;
 
 function buildingSeed(id: number): number {
   return id * BUILDING_SEED_MULTIPLIER;
@@ -174,30 +179,79 @@ export interface WalkSample {
 }
 
 /**
- * Pure function of (buildingId, tMs): a slow deterministic back-and-forth
- * walk offset (world meters, relative to the building's own walkAnchorOffset)
- * approximating a lerp along a short sidewalk stretch beside the building.
- * Sinusoidal rather than a literal ping-pong lerp, but reads identically
- * (smooth there-and-back motion) and stays trivially pure/stateless.
+ * Pure function of (buildingId, tMs): a slow deterministic STROLL LOOP offset
+ * (world meters, relative to the walker's anchor) — the person traces a small
+ * closed ellipse near home (a dog-walk / jog circuit) rather than sliding
+ * back and forth along a line. Heading follows the loop tangent, so they
+ * always face the way they're moving and turn smoothly instead of snapping
+ * 180° at each end (the old ping-pong's "weird back-and-forth" read). Per-id
+ * hashes vary radius, ellipse aspect, direction (CW/CCW), and start phase so a
+ * street of walkers isn't synchronized. Stateless — position is fully
+ * reconstructible from tMs alone.
  */
 export function computeWalkOffset(buildingId: number, tMs: number): WalkSample {
-  const axisIsX = hash1(buildingSeed(buildingId) + SLOT_WALK_AXIS) < 0.5;
-  const phase = hash1(buildingSeed(buildingId) + SLOT_WALK_PHASE) * Math.PI * 2;
-  const t = tMs * WALK_ANGULAR_RATE + phase;
-  const s = Math.sin(t) * WALK_AMPLITUDE_METERS;
-  const facingForward = Math.cos(t) >= 0;
+  const seed = buildingSeed(buildingId);
+  const phase = hash1(seed + SLOT_WALK_PHASE) * Math.PI * 2;
+  const dir = hash1(seed + SLOT_WALK_AXIS) < 0.5 ? 1 : -1; // clockwise / counter-clockwise
+  const rBase =
+    WALK_LOOP_RADIUS_MIN_METERS +
+    hash1(seed + SLOT_WALK_RADIUS) * (WALK_LOOP_RADIUS_MAX_METERS - WALK_LOOP_RADIUS_MIN_METERS);
+  const aspect = 0.6 + hash1(seed + SLOT_WALK_ASPECT) * 0.8; // 0.6..1.4 — a squashed circuit, not a perfect circle
+  const rx = rBase;
+  const rz = rBase * aspect;
 
-  if (axisIsX) return { dx: s, dz: 0, heading: facingForward ? Math.PI / 2 : -Math.PI / 2 };
-  return { dx: 0, dz: s, heading: facingForward ? 0 : Math.PI };
+  const t = dir * (tMs * WALK_ANGULAR_RATE) + phase;
+  const dx = Math.cos(t) * rx;
+  const dz = Math.sin(t) * rz;
+  // Tangent of the ellipse = velocity direction; heading is the Y-yaw that
+  // aims a +Z-nosed mesh along it (same convention as transit/traffic).
+  const vx = -Math.sin(t) * rx * dir;
+  const vz = Math.cos(t) * rz * dir;
+  return { dx, dz, heading: Math.atan2(vx, vz) };
 }
 
-/** Deterministic lateral offset placing a building's walked stretch just beside it, alternating which side by hash. */
+/** Deterministic fallback lateral offset placing a walker beside its building when no nearby sidewalk is found, alternating which side by hash. */
 export function walkAnchorOffset(buildingId: number): WorldPoint {
   const axisIsX = hash1(buildingSeed(buildingId) + SLOT_WALK_AXIS) < 0.5;
   const side = hash1(buildingSeed(buildingId) + SLOT_WALK_SIDE) < 0.5 ? 1 : -1;
   return axisIsX
     ? { x: 0, z: WALK_LATERAL_OFFSET_METERS * side }
     : { x: WALK_LATERAL_OFFSET_METERS * side, z: 0 };
+}
+
+/**
+ * World-space anchor for a walker's stroll loop: the frontage SIDEWALK next to
+ * the building's nearest road (searched ring-by-ring out to
+ * WALK_ANCHOR_SEARCH_TILES, deterministic N→E→S→W order), so pedestrians walk
+ * along the path in front of their home rather than through the middle of the
+ * lot or road. Falls back to a spot just beside the building when no road is
+ * within range (or `roadAt` isn't wired). The small loop radius keeps the
+ * whole circuit within a believable radius of the residence.
+ */
+export function computeWalkAnchor(
+  building: BuildingInstance,
+  roadAt: (x: number, z: number) => boolean,
+): WorldPoint {
+  const bx = building.x;
+  const bz = building.z;
+  for (let r = 1; r <= WALK_ANCHOR_SEARCH_TILES; r += 1) {
+    const candidates: ReadonlyArray<readonly [number, number]> = [
+      [bx, bz - r],
+      [bx + r, bz],
+      [bx, bz + r],
+      [bx - r, bz],
+    ];
+    for (const [rx, rz] of candidates) {
+      if (!roadAt(rx, rz)) continue;
+      // Step one tile back from the road toward the building — the frontage
+      // (sidewalk/verge) tile the pedestrian walks on.
+      const fx = rx + Math.sign(bx - rx);
+      const fz = rz + Math.sign(bz - rz);
+      return { x: tileToWorld(fx), z: tileToWorld(fz) };
+    }
+  }
+  const off = walkAnchorOffset(building.id);
+  return { x: tileToWorld(bx) + off.x, z: tileToWorld(bz) + off.z };
 }
 
 export function walkerTint(buildingId: number): number {
@@ -259,6 +313,7 @@ const HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
 export class PedestrianRenderer {
   private readonly scene: THREE.Scene;
   private readonly heightAt: (x: number, z: number) => number;
+  private readonly roadAt: (x: number, z: number) => boolean;
 
   private readonly bodyGeometry = new THREE.CapsuleGeometry(BODY_RADIUS, BODY_HEIGHT, 4, 8);
   private readonly headGeometry = new THREE.SphereGeometry(HEAD_RADIUS, 8, 6);
@@ -271,11 +326,23 @@ export class PedestrianRenderer {
   private readonly buildingsById = new Map<number, BuildingInstance>();
   private idlePlacements: IdlePlacement[] = [];
   private walkerIds: number[] = [];
+  /** World-space stroll-loop anchor per walker, aligned index-for-index with `walkerIds` (recomputed each apply). */
+  private walkerAnchors: WorldPoint[] = [];
   private visible = true;
 
-  constructor(scene: THREE.Scene, heightAt: (x: number, z: number) => number) {
+  /**
+   * `roadAt` (optional) lets walkers anchor their stroll loop on the sidewalk
+   * in front of their home; without it they fall back to a spot beside the
+   * building.
+   */
+  constructor(
+    scene: THREE.Scene,
+    heightAt: (x: number, z: number) => number,
+    roadAt: (x: number, z: number) => boolean = () => false,
+  ) {
     this.scene = scene;
     this.heightAt = heightAt;
+    this.roadAt = roadAt;
   }
 
   /**
@@ -292,6 +359,12 @@ export class PedestrianRenderer {
 
     this.idlePlacements = computeIdlePlacements(snapshot.stops);
     this.walkerIds = computeWalkerBuildingIds([...this.buildingsById.values()]);
+    // Resolve each walker's frontage-sidewalk anchor once per apply (buildings
+    // are static once placed) so update() stays a cheap per-frame loop step.
+    this.walkerAnchors = this.walkerIds.map((id) => {
+      const building = this.buildingsById.get(id)!;
+      return computeWalkAnchor(building, this.roadAt);
+    });
 
     this.rebuildMeshes();
   }
@@ -310,12 +383,13 @@ export class PedestrianRenderer {
         continue;
       }
 
-      const worldX = tileToWorld(building.x);
-      const worldZ = tileToWorld(building.z);
-      const lateral = walkAnchorOffset(buildingId);
+      const anchor = this.walkerAnchors[w] ?? {
+        x: tileToWorld(building.x),
+        z: tileToWorld(building.z),
+      };
       const walk = computeWalkOffset(buildingId, tMs);
-      const px = worldX + lateral.x + walk.dx;
-      const pz = worldZ + lateral.z + walk.dz;
+      const px = anchor.x + walk.dx;
+      const pz = anchor.z + walk.dz;
       const groundY = this.heightAt(px, pz);
 
       this.writePerson(slot, px, groundY, pz, walk.heading, paletteColor(walkerTint(buildingId)));

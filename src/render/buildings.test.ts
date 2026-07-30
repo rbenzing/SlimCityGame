@@ -113,9 +113,9 @@ describe('BuildingInstancer', () => {
     expect(pos.x).toBeCloseTo((2 + 0.5) * TILE_METERS, 5);
     expect(pos.z).toBeCloseTo((3 + 0.5) * TILE_METERS, 5);
     expect(pos.y).toBeCloseTo(10 / 2, 5); // groundY(0) + height/2
-    expect(scl.x).toBeCloseTo(1 * TILE_METERS * 0.85, 5);
+    expect(scl.x).toBeCloseTo(1 * TILE_METERS * 0.55, 5); // ResLow detached: yard fill (SPEC §16)
     expect(scl.y).toBeCloseTo(10, 5);
-    expect(scl.z).toBeCloseTo(1 * TILE_METERS * 0.85, 5);
+    expect(scl.z).toBeCloseTo(1 * TILE_METERS * 0.55, 5);
   });
 
   it('offsets by heightAt(x,z) at the footprint center', () => {
@@ -261,7 +261,7 @@ describe('BuildingInstancer', () => {
       expect(pos.x).toBeCloseTo((i + 0.5) * TILE_METERS, 5);
       expect(pos.z).toBeCloseTo(0.5 * TILE_METERS, 5);
       expect(pos.y).toBeCloseTo(5, 5);
-      expect(scl.x).toBeCloseTo(TILE_METERS * 0.85, 5);
+      expect(scl.x).toBeCloseTo(TILE_METERS * 0.55, 5); // ResLow detached: yard fill (SPEC §16)
       expect(scl.y).toBeCloseTo(10, 5);
       // Every id must still resolve correctly post-grow.
       expect(instancer.buildingIdAt({ catalogId: 'house', instanceIndex: i })).toBe(i + 1);
@@ -881,7 +881,7 @@ describe('plinth mode (UI-SPEC §6.15) — additive-only 4th constructor arg, de
     expect(materialOf(instancer, UTILITY_ENTRY.id).emissiveNode).not.toBeNull();
   });
 
-  it('scales a plinth-designated entry to height*0.08 instead of full height', () => {
+  it('renders a plinth-designated entry as a fixed thin PAD (0.25m), not scaled to its tall model height', () => {
     const instancer = new BuildingInstancer(
       new THREE.Scene(),
       MIXED_CATALOG,
@@ -896,11 +896,11 @@ describe('plinth mode (UI-SPEC §6.15) — additive-only 4th constructor arg, de
     const mesh = instancer.getPickables().find((p) => p.catalogId === UTILITY_ENTRY.id)
       ?.mesh as THREE.InstancedMesh;
     const { pos, scl } = decomposeAt(mesh, 0);
-    expect(scl.y).toBeCloseTo(UTILITY_ENTRY.height * 0.08, 5);
-    expect(pos.y).toBeCloseTo((UTILITY_ENTRY.height * 0.08) / 2, 5); // groundY(0) + height/2
+    expect(scl.y).toBeCloseTo(0.25, 5); // PLINTH_PAD_HEIGHT, independent of the 24m+ model
+    expect(pos.y).toBeCloseTo(0.25 / 2, 5); // groundY(0) + pad height/2
   });
 
-  it('clamps the plinth height to a 0.4m minimum for a short catalog entry', () => {
+  it('renders even a short catalog entry as the same fixed thin pad (no per-entry height scaling)', () => {
     const instancer = new BuildingInstancer(
       new THREE.Scene(),
       MIXED_CATALOG,
@@ -915,8 +915,7 @@ describe('plinth mode (UI-SPEC §6.15) — additive-only 4th constructor arg, de
     const mesh = instancer.getPickables().find((p) => p.catalogId === SHORT_UTILITY_ENTRY.id)
       ?.mesh as THREE.InstancedMesh;
     const { scl } = decomposeAt(mesh, 0);
-    // 2 * 0.08 = 0.16, below the 0.4m floor.
-    expect(scl.y).toBeCloseTo(0.4, 5);
+    expect(scl.y).toBeCloseTo(0.25, 5); // same fixed PLINTH_PAD_HEIGHT
   });
 
   it('leaves footprint span (X/Z) untouched by plinth mode — only height changes', () => {
@@ -955,7 +954,7 @@ describe('plinth mode (UI-SPEC §6.15) — additive-only 4th constructor arg, de
     const mesh = instancer.getPickables().find((p) => p.catalogId === UTILITY_ENTRY.id)
       ?.mesh as THREE.InstancedMesh;
     const { scl } = decomposeAt(mesh, 0);
-    expect(scl.y).toBeCloseTo(UTILITY_ENTRY.height * 0.08 * 0.25, 5);
+    expect(scl.y).toBeCloseTo(0.25 * 0.25, 5); // PLINTH_PAD_HEIGHT × Constructing scale
   });
 
   it('gives plinth-designated entries a PLAIN material with no emissive/window graph at all', () => {

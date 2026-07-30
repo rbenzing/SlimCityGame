@@ -494,52 +494,128 @@ describe('chunkOfTile', () => {
   });
 });
 
+/**
+ * Height of the *rendered* terrain surface at (px, pz) read straight from a
+ * chunk mesh's triangles: find the triangle whose XZ projection contains the
+ * point and barycentrically interpolate its vertex Ys. This is the ground
+ * truth heightAt() must match — roads/buildings sit on the mesh, not on a
+ * separate interpolation of the heightmap. Returns null if no triangle covers
+ * the point (outside the chunk).
+ */
+const meshSurfaceHeightAt = (geometry: THREE.BufferGeometry, px: number, pz: number): number | null => {
+  const pos = geometry.attributes.position!;
+  const index = geometry.index!;
+  const eps = 1e-6;
+  for (let t = 0; t < index.count; t += 3) {
+    const ia = index.getX(t);
+    const ib = index.getX(t + 1);
+    const ic = index.getX(t + 2);
+    const ax = pos.getX(ia);
+    const az = pos.getZ(ia);
+    const bx = pos.getX(ib);
+    const bz = pos.getZ(ib);
+    const cx = pos.getX(ic);
+    const cz = pos.getZ(ic);
+    const denom = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+    if (Math.abs(denom) < eps) continue;
+    const wa = ((bz - cz) * (px - cx) + (cx - bx) * (pz - cz)) / denom;
+    const wb = ((cz - az) * (px - cx) + (ax - cx) * (pz - cz)) / denom;
+    const wc = 1 - wa - wb;
+    if (wa >= -eps && wb >= -eps && wc >= -eps) {
+      return wa * pos.getY(ia) + wb * pos.getY(ib) + wc * pos.getY(ic);
+    }
+  }
+  return null;
+};
+
 describe('TerrainRenderer.heightAt', () => {
-  it('bilinearly interpolates a hand-built 4-tile (2x2) map', () => {
-    // tileIndex(x,z) = z*size + x for this 2x2 grid:
-    //   (0,0)=0   (1,0)=10
-    //   (0,1)=20  (1,1)=30
-    const map: MapData = {
-      name: 'four-tile',
-      size: 2,
-      height: new Float32Array([0, 10, 20, 30]),
-      water: new Uint8Array(4),
-      trees: new Uint8Array(4),
-      seaLevel: 0,
-      spawn: { x: 0, z: 0 },
-    };
+  // A twisty heightmap so the mesh's per-quad triangulation genuinely differs
+  // from a naive bilinear read — the case that used to let terrain poke through
+  // roads/buildings. Deterministic (no rng).
+  const makeTwistyMap = (): MapData => {
+    const map = makeFlatMap(MAP_SIZE);
+    for (let z = 0; z < MAP_SIZE; z++) {
+      for (let x = 0; x < MAP_SIZE; x++) {
+        map.height[z * MAP_SIZE + x] = ((x * 7 + z * 13) % 11) * 3 + ((x % 5) * (z % 5));
+      }
+    }
+    return map;
+  };
+
+  const chunk0 = (scene: THREE.Scene): THREE.BufferGeometry =>
+    (scene.children[0] as THREE.Mesh).geometry as THREE.BufferGeometry;
+
+  it('matches the rendered mesh surface exactly at interior points (triangulated, not bilinear)', () => {
     const scene = new THREE.Scene();
     const terrain = new TerrainRenderer(scene);
-    terrain.build(map);
+    terrain.build(makeTwistyMap());
+    const geometry = chunk0(scene);
 
-    expect(terrain.heightAt(tileToWorld(0), tileToWorld(0))).toBeCloseTo(0, 5);
-    expect(terrain.heightAt(tileToWorld(1), tileToWorld(0))).toBeCloseTo(10, 5);
-    expect(terrain.heightAt(tileToWorld(0), tileToWorld(1))).toBeCloseTo(20, 5);
-    expect(terrain.heightAt(tileToWorld(1), tileToWorld(1))).toBeCloseTo(30, 5);
-
-    const midX = (tileToWorld(0) + tileToWorld(1)) / 2;
-    const midZ = (tileToWorld(0) + tileToWorld(1)) / 2;
-    expect(terrain.heightAt(midX, midZ)).toBeCloseTo((0 + 10 + 20 + 30) / 4, 5);
-    expect(terrain.heightAt(midX, tileToWorld(0))).toBeCloseTo((0 + 10) / 2, 5);
-    expect(terrain.heightAt(tileToWorld(0), midZ)).toBeCloseTo((0 + 20) / 2, 5);
+    // Sample a spread of fractional offsets across chunk 0's quads, staying off
+    // the exact chunk edge so a triangle always covers the point.
+    const fracs = [0.13, 0.29, 0.5, 0.61, 0.74, 0.88];
+    let checked = 0;
+    let sawTwist = false;
+    for (let qx = 1; qx < CHUNK_TILES - 1; qx++) {
+      for (let qz = 1; qz < CHUNK_TILES - 1; qz++) {
+        for (const fx of fracs) {
+          for (const fz of fracs) {
+            const wx = (qx + fx) * TILE_METERS;
+            const wz = (qz + fz) * TILE_METERS;
+            const mesh = meshSurfaceHeightAt(geometry, wx, wz);
+            expect(mesh).not.toBeNull();
+            expect(terrain.heightAt(wx, wz)).toBeCloseTo(mesh!, 4);
+            checked++;
+          }
+        }
+      }
+    }
+    // Confirm at least one sampled quad actually has twist (mesh != bilinear),
+    // so this test genuinely exercises the triangulated path.
+    const wx = 4.5 * TILE_METERS;
+    const wz = 4.5 * TILE_METERS;
+    const h00 = terrain.heightAt(4 * TILE_METERS, 4 * TILE_METERS);
+    const h10 = terrain.heightAt(5 * TILE_METERS, 4 * TILE_METERS);
+    const h01 = terrain.heightAt(4 * TILE_METERS, 5 * TILE_METERS);
+    const h11 = terrain.heightAt(5 * TILE_METERS, 5 * TILE_METERS);
+    const bilinearCenter = (h00 + h10 + h01 + h11) / 4;
+    const meshCenter = meshSurfaceHeightAt(geometry, wx, wz)!;
+    if (Math.abs(meshCenter - bilinearCenter) > 1e-3) sawTwist = true;
+    expect(sawTwist).toBe(true);
+    expect(terrain.heightAt(wx, wz)).toBeCloseTo(meshCenter, 4);
+    expect(checked).toBeGreaterThan(0);
   });
 
-  it('clamps to the nearest edge value outside the grid', () => {
-    const map: MapData = {
-      name: 'four-tile',
-      size: 2,
-      height: new Float32Array([0, 10, 20, 30]),
-      water: new Uint8Array(4),
-      trees: new Uint8Array(4),
-      seaLevel: 0,
-      spawn: { x: 0, z: 0 },
-    };
+  it('returns each chunk mesh vertex height exactly at its tile corner', () => {
     const scene = new THREE.Scene();
     const terrain = new TerrainRenderer(scene);
-    terrain.build(map);
+    terrain.build(makeTwistyMap());
+    const geometry = chunk0(scene);
+    const pos = geometry.attributes.position!;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const z = pos.getZ(i);
+      expect(terrain.heightAt(x, z)).toBeCloseTo(pos.getY(i), 4);
+    }
+  });
 
-    expect(terrain.heightAt(-10_000, tileToWorld(0))).toBeCloseTo(0, 5);
-    expect(terrain.heightAt(10_000, tileToWorld(0))).toBeCloseTo(10, 5);
+  it('is flat across a flat map', () => {
+    const scene = new THREE.Scene();
+    const terrain = new TerrainRenderer(scene);
+    terrain.build(makeFlatMapAtHeight(MAP_SIZE, 42));
+    expect(terrain.heightAt(tileToWorld(3), tileToWorld(7))).toBeCloseTo(42, 5);
+    expect(terrain.heightAt(3.37 * TILE_METERS, 7.81 * TILE_METERS)).toBeCloseTo(42, 5);
+  });
+
+  it('clamps to the nearest edge height outside the grid', () => {
+    const scene = new THREE.Scene();
+    const terrain = new TerrainRenderer(scene);
+    terrain.build(makeTwistyMap());
+    // Far outside the map: clamps to the edge, so it equals the on-edge sample.
+    const zOnGrid = 5 * TILE_METERS;
+    expect(terrain.heightAt(-10_000, zOnGrid)).toBeCloseTo(terrain.heightAt(0, zOnGrid), 4);
+    const eastEdge = MAP_SIZE * TILE_METERS;
+    expect(terrain.heightAt(10 * eastEdge, zOnGrid)).toBeCloseTo(terrain.heightAt(eastEdge, zOnGrid), 4);
   });
 
   it('returns 0 before build() has ever been called', () => {
@@ -699,10 +775,10 @@ describe('TerrainRenderer.applyHeightPatches', () => {
         { x: MAP_SIZE - 1, z: MAP_SIZE - 1, w: 3, h: 3, heights: new Float32Array(9).fill(5) },
       ]),
     ).not.toThrow();
-    expect(terrain.heightAt(tileToWorld(MAP_SIZE - 1), tileToWorld(MAP_SIZE - 1))).toBeCloseTo(
-      5,
-      3,
-    );
+    // The in-bounds cell was written: the map's far corner vertex (where that
+    // clamped cell fully determines the mesh height) reads the patched value.
+    const corner = MAP_SIZE * TILE_METERS;
+    expect(terrain.heightAt(corner, corner)).toBeCloseTo(5, 3);
   });
 
   it('is a safe no-op before build() has ever been called', () => {

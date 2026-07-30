@@ -152,24 +152,27 @@ export function dashSegments(lo: number, hi: number): Array<[number, number]> {
 }
 
 /**
- * Carriageway ratios, expressed
- * as a half-width fraction of TILE_METERS (so `2 * fraction * TILE_METERS` is
- * the total paved carriageway width):
- * - two-lane -> 9.6m; the freed width goes to the widened sidewalk band.
- * - avenue -> 13.6m, leaving room for the 1.8m median inside the same paved
- *   plate.
- * - highway -> 14.72m (near full-width) — a narrow ~0.64m band per
- *   side reads as a shoulder rather than a full sidewalk.
+ * Road sizing rule (user 2026-07-29): one lane is 1.5× the widest vehicle, and
+ * a sidewalk is 0.5× a lane. The widest vehicle is the bus at 2.5m
+ * (render/vehicles.ts sizeForKind), so a lane is 3.75m and a sidewalk 1.875m.
+ * A tier's carriageway = laneCount × LANE_WIDTH_M; whatever the carriageway +
+ * two sidewalks leave of the 16m tile is a grass verge (narrow local streets
+ * get a wide verge; 4-lane arterials fill the tile and the sidewalk clamps).
  */
-const TWO_LANE_HALF_WIDTH_FRACTION = 0.3;
-const AVENUE_HALF_WIDTH_FRACTION = 0.425;
-const HIGHWAY_HALF_WIDTH_FRACTION = 0.46;
-/** Gravel: narrower core (~7m) of the 16m tile. */
-const GRAVEL_HALF_WIDTH_FRACTION = 7 / (2 * TILE_METERS);
-/** Alley: narrow (~6m). */
-const ALLEY_HALF_WIDTH_FRACTION = 6 / (2 * TILE_METERS);
-/** Four-Lane: avenue-width carriageway. */
-const FOUR_LANE_HALF_WIDTH_FRACTION = AVENUE_HALF_WIDTH_FRACTION;
+export const LANE_WIDTH_M = 3.75;
+export const SIDEWALK_WIDTH_M = 0.5 * LANE_WIDTH_M; // 1.875m
+/** Half-carriageway as a fraction of TILE_METERS, from a tier's lane count. */
+const laneFraction = (lanes: number): number => (lanes * LANE_WIDTH_M) / (2 * TILE_METERS);
+
+export const TWO_LANE_HALF_WIDTH_FRACTION = laneFraction(2); // 7.5m carriageway
+export const AVENUE_HALF_WIDTH_FRACTION = laneFraction(4); // 15m (4 lanes + median inside)
+export const HIGHWAY_HALF_WIDTH_FRACTION = laneFraction(4); // 15m (4 lanes + shoulders inside)
+/** Gravel: rural ~1.5-lane. */
+export const GRAVEL_HALF_WIDTH_FRACTION = laneFraction(1.5);
+/** Alley: single lane. */
+export const ALLEY_HALF_WIDTH_FRACTION = laneFraction(1);
+/** Four-Lane: 4 lanes, no median. */
+export const FOUR_LANE_HALF_WIDTH_FRACTION = laneFraction(4);
 
 /** Gravel's dusty tan base color family, before per-tile jitter. */
 const GRAVEL_BASE_COLOR: readonly [number, number, number] = [0.62, 0.55, 0.42];
@@ -192,6 +195,11 @@ interface QuadSpec {
   hasCurbs: boolean;
   /** Whether this tier is painted at all: gates axis markings AND junction arm markings (false only for Gravel). */
   paved: boolean;
+}
+
+/** Carriageway half-width (meters) for a tier — the road-edge distance from the centerline, e.g. for placing curbside props. */
+export function carriagewayHalfWidthMeters(tier: RoadTier): number {
+  return TILE_METERS * tierSpec(tier).halfWidthFraction;
 }
 
 function tierSpec(tier: RoadTier): QuadSpec {
@@ -800,70 +808,19 @@ const HIGHWAY_BARRIER_Y_OFFSET = ROAD_Y_OFFSET + HIGHWAY_BARRIER_RAISE;
 const HIGHWAY_BARRIER_COLOR: readonly [number, number, number] = [0.5, 0.5, 0.5];
 
 // ---------------------------------------------------------------------------
-// Rounded roads: cosmetic-only corner rounding
-// layered on top of the existing per-tile quads, NOT curved centerlines
-// (the road GRAPH/centerline stays grid-aligned tile-to-tile; only this
-// per-tile cosmetic paint/geometry curves) —
-// a triangle fan at each convex 90° corner of the carriageway.
-//
-// The core/extension/corner-fill scheme above always leaves the plate's
-// silhouette perfectly straight EXCEPT at exactly one place: a turn tile
-// (mask popcount 2, non-collinear) has a single convex "elbow" — the core
-// plate's own corner diagonally opposite its two connected sides, where the
-// plate occupies only one of the four surrounding quadrants (the other three
-// are curb/void). A dangling stub (popcount 1) similarly ends in a flat,
-// square-cut dead end.
-//
-// Turn-corner fillet: a believable turn radius WIDENS the pavement outward,
-// into the curb, like a real curb return. The elbow is a corner of the
-// asphalt plate itself, so a fan centers its arc directly ON the elbow corner
-// (apex = arc center) and sweeps outward at the turn radius, bulging past the
-// core boundary into the curb strip, replacing a quarter-disc of curb with
-// asphalt. Because the curb strips beneath are simple full-coverage
-// rectangles and this fan sits a hair above curb height
-// (FILLET_Y_OFFSET), the curb is only ever visible OUTSIDE the fan's radius
-// — so the effective curb/asphalt boundary the player sees is exactly this
-// arc, not a square notch, with no separate curb-geometry edit required.
-// The radius is a fraction of the carriageway HALF-WIDTH (`coreHalf`,
-// not the curb offset `armDepth`) — a real turn-radius scale — capped by
-// `armDepth` so the bulge never spills past the tile's own outer edge.
-//
-// The dead-end (popcount 1) cap is sized differently: an armDepth-scaled
-// radius would read as a tiny nub far narrower than the road it caps. Its
-// radius is instead the tier's own carriageway HALF-WIDTH (`coreHalf` — the
-// same value the core plate uses), so the half-disc spans the FULL
-// carriageway width and reads as a proper turnaround wide enough for a car to
-// U-turn across both lanes, rather than a narrow dead-end nub. This is
-// unrelated to the turn-corner fillet's own radius above.
+// Dangling road end (popcount 1): a smooth half-CIRCLE turnaround cap. A
+// dead-end must read as a proper rounded bulb wide enough for a car to U-turn
+// across both lanes, so its half-disc spans the full carriageway width
+// (radius = coreHalf) and bulges outward by min(coreHalf, armDepth) — the
+// carriageway continued, drawn coplanar with the road (a hair above, no lip)
+// so it reads as one fluid surface, with the curved cap curb (emitEndCapCurb)
+// wrapping the sidewalk around it.
 // ---------------------------------------------------------------------------
 
-/**
- * Turn-corner fillet radius as a fraction of the carriageway HALF-WIDTH
- * (`coreHalf`) — ~0.5 of the carriageway half-width, tuned to look like a car
- * could round it. Always capped by `armDepth` (the curb strip's own width) in
- * emitCornerFillet, so the bulge can never spill past the tile's outer edge
- * even on tight tiers (e.g. highway, whose armDepth is much narrower than
- * half its own coreHalf).
- */
-const TURN_RADIUS_FRACTION = 0.5;
-/** A hair above curb height — visible over the curb quads beneath it, no z-fighting. */
-export const FILLET_Y_OFFSET = CURB_Y_OFFSET + 0.01;
-/**
- * Quarter-circle turn-corner fillet, subdivided into this many triangles.
- * Kept EVEN so the fan's own vertex count (segments * 3) is itself a multiple
- * of 6 — preserving the file's existing "whole 18-float quad" invariant that
- * every (tier, mask) vertex-count-sanity test checks across mask 0..15.
- */
-export const CORNER_FILLET_SEGMENTS = 4;
-/** Half-disc dead-end cap, subdivided into this many triangles (also even, same invariant reason). */
-export const END_CAP_SEGMENTS = 6;
-/**
- * Fraction of the dead-end's outward room (armDepth) the rounded asphalt cap
- * fills; the remainder is the sidewalk arc that wraps it to the tile edge.
- * Keeping asphalt+sidewalk within armDepth contains the whole cap inside the
- * tile instead of ballooning a full coreHalf past its edge.
- */
-export const END_CAP_ASPHALT_DEPTH_FRACTION = 0.55;
+/** Cap asphalt sits a hair above the road so it renders over any seam without a visible lip (still below curb height). */
+export const CAP_Y_OFFSET = ROAD_Y_OFFSET + 0.002;
+/** Half-disc dead-end cap, subdivided into this many triangles (even, so the fan's vertex count stays a multiple of 6 — the file's "whole 18-float quad" invariant). A high count reads as a smooth half-circle, not a low-poly fan. */
+export const END_CAP_SEGMENTS = 16;
 
 /**
  * Pushes a triangle fan from `apex` across consecutive pairs of `ring`
@@ -907,43 +864,114 @@ function pushFan(
   }
 }
 
+
+/** Segments across a turn tile's 90° arc — smoothness of the curved road. */
+export const TURN_ARC_SEGMENTS = 12;
+
 /**
- * Turn-tile corner fillet: the single
- * convex elbow of a turn's asphalt plate sits at the core corner diagonally
- * opposite the two connected sides (e.g. N|E connected -> the elbow is the
- * core's SW corner). The fan's apex IS the arc's center: a quarter-circle of
- * `radius` swept directly around the elbow, bulging OUTWARD past the core
- * boundary into the curb strip (a real turn radius / curb-return shape),
- * rather than chamfering inward into the already-solid core.
+ * A curved 90° turn tile as a QUARTER-ANNULUS road, replacing the old square
+ * "L" (core + arms + corner-fill) that read as a hard corner with a flat
+ * triangle. The carriageway sweeps a constant-width arc from one edge opening
+ * to the other around the tile CORNER shared by the two connected sides
+ * (`pivot`): inner radius `armDepth`, outer radius `TILE_HALF + coreHalf`, so
+ * the band is exactly `2*coreHalf` wide (the tier carriageway) throughout and
+ * meets each opening at x/z ∈ [-coreHalf, coreHalf] — seamless with the
+ * straight neighbor tiles. Sidewalks fill the rest of the tile to its edges
+ * (an inner fan sector toward the pivot + an outer band clamped to the tile
+ * boundary), so the whole tile is covered exactly like a straight tile
+ * (road flanked by sidewalk), just curved.
+ *
+ * Parametrized by a unit direction v(θ) = cosθ·d1 + sinθ·d2 swept over 90°,
+ * where d1/d2 are the two edge-opening directions from the pivot — correct for
+ * all four corner orientations with no angle-wrap cases.
  */
-function emitCornerFillet(
+function emitCurvedTurn(
   positions: number[],
   colors: number[],
   centerX: number,
   centerZ: number,
   coreHalf: number,
   armDepth: number,
+  sidewalkWidth: number,
+  hasN: boolean,
   hasE: boolean,
-  hasS: boolean,
-  color: readonly [number, number, number],
+  plateColor: readonly [number, number, number],
+  hasCurbs: boolean,
   hAt: (x: number, z: number) => number,
 ): void {
-  const signX = hasE ? -1 : 1;
-  const signZ = hasS ? -1 : 1;
-  const radius = Math.min(TURN_RADIUS_FRACTION * coreHalf, armDepth);
-  if (radius <= 0) return;
-  const corner: [number, number] = [signX * coreHalf, signZ * coreHalf];
-  const startAngle = Math.atan2(signZ, 0);
-  const endAngle = Math.atan2(0, signX);
-  let delta = endAngle - startAngle;
-  if (delta > Math.PI) delta -= 2 * Math.PI;
-  if (delta < -Math.PI) delta += 2 * Math.PI;
-  const ring: Array<[number, number]> = [];
-  for (let i = 0; i <= CORNER_FILLET_SEGMENTS; i++) {
-    const angle = startAngle + (delta * i) / CORNER_FILLET_SEGMENTS;
-    ring.push([corner[0] + radius * Math.cos(angle), corner[1] + radius * Math.sin(angle)]);
+  if (coreHalf <= 0 || armDepth <= 0) return;
+  const pxSign = hasE ? 1 : -1; // pivot corner on the east (E connected) or west
+  const pzSign = hasN ? -1 : 1; // pivot corner on the north (N connected) or south
+  const pivotX = pxSign * TILE_HALF;
+  const pivotZ = pzSign * TILE_HALF;
+  const rIn = armDepth;
+  const rOut = TILE_HALF + coreHalf;
+
+  // Unit sweep direction from the pivot into the tile: d1 toward the N/S-edge
+  // opening (along x), d2 toward the E/W-edge opening (along z).
+  const dirX = (t: number): number => -pxSign * Math.cos(t);
+  const dirZ = (t: number): number => -pzSign * Math.sin(t);
+  const at = (r: number, t: number): [number, number] => [pivotX + r * dirX(t), pivotZ + r * dirZ(t)];
+  /** Distance from the pivot along v(θ) to the tile boundary (for the outer sidewalk clamp). */
+  const boundary = (t: number): number => {
+    const c = Math.cos(t);
+    const s = Math.sin(t);
+    const tx = c > 1e-6 ? (2 * TILE_HALF) / c : Infinity;
+    const tz = s > 1e-6 ? (2 * TILE_HALF) / s : Infinity;
+    return Math.min(tx, tz);
+  };
+  // Emits one triangle, FORCING it up-facing (CCW as seen from +Y, three's
+  // FrontSide). Per pushQuad's convention an up-facing ground triangle has a
+  // NEGATIVE (x,z) cross of its first two edges; flip the last two verts when
+  // it comes out positive. Absolute (not just self-consistent) orientation is
+  // essential — the road material is single-sided MeshBasicMaterial, so a
+  // down-facing triangle is culled and the curved carriageway vanishes.
+  const pushTriUp = (
+    p0: readonly [number, number],
+    p1: readonly [number, number],
+    p2: readonly [number, number],
+    y: number,
+    color: readonly [number, number, number],
+  ): void => {
+    const cross = (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p1[1] - p0[1]) * (p2[0] - p0[0]);
+    const tri = cross > 0 ? [p0, p2, p1] : [p0, p1, p2];
+    for (const p of tri) {
+      const wx = centerX + p[0];
+      const wz = centerZ + p[1];
+      pushVertex(positions, colors, wx, hAt(wx, wz) + y, wz, color);
+    }
+  };
+  // Quad (a,b = inner,outer at one angle; c,d = inner,outer at the next),
+  // split into two up-facing triangles.
+  const pushQuad2 = (
+    a: readonly [number, number],
+    b: readonly [number, number],
+    c: readonly [number, number],
+    d: readonly [number, number],
+    y: number,
+    color: readonly [number, number, number],
+  ): void => {
+    pushTriUp(a, b, c, y, color);
+    pushTriUp(c, b, d, y, color);
+  };
+
+  for (let i = 0; i < TURN_ARC_SEGMENTS; i++) {
+    const t0 = (i / TURN_ARC_SEGMENTS) * (Math.PI / 2);
+    const t1 = ((i + 1) / TURN_ARC_SEGMENTS) * (Math.PI / 2);
+    // Carriageway band [rIn, rOut].
+    pushQuad2(at(rIn, t0), at(rOut, t0), at(rIn, t1), at(rOut, t1), ROAD_Y_OFFSET, plateColor);
+    if (hasCurbs) {
+      // Fixed-width curb bands hugging both edges of the carriageway; the rest
+      // of the tile (inside the inner band, outside the outer band up to the
+      // edge) is grass verge. Inner band clamps at the pivot; outer band clamps
+      // at the tile boundary.
+      const innerLo = Math.max(0, rIn - sidewalkWidth);
+      pushQuad2(at(innerLo, t0), at(rIn, t0), at(innerLo, t1), at(rIn, t1), CURB_Y_OFFSET, SIDEWALK_COLOR);
+      const outerHi0 = Math.min(rOut + sidewalkWidth, boundary(t0));
+      const outerHi1 = Math.min(rOut + sidewalkWidth, boundary(t1));
+      pushQuad2(at(rOut, t0), at(outerHi0, t0), at(rOut, t1), at(outerHi1, t1), CURB_Y_OFFSET, SIDEWALK_COLOR);
+    }
   }
-  pushFan(positions, colors, centerX, centerZ, corner, ring, FILLET_Y_OFFSET, color, hAt);
 }
 
 /**
@@ -972,7 +1000,11 @@ function emitEndCap(
   color: readonly [number, number, number],
   hAt: (x: number, z: number) => number,
 ): void {
-  const alongDepth = armDepth * END_CAP_ASPHALT_DEPTH_FRACTION;
+  // Full half-CIRCLE turnaround: bulge outward by the carriageway half-width
+  // (coreHalf) so the end reads as a rounded cul-de-sac like the curved
+  // corners, clamped to the tier's outward room so it never spills past the
+  // tile edge on wide tiers.
+  const alongDepth = Math.min(coreHalf, armDepth);
   if (coreHalf <= 0 || alongDepth <= 0) return;
   const edgeAlong = outwardSign * coreHalf;
   const apex: [number, number] = vertical ? [0, edgeAlong] : [edgeAlong, 0];
@@ -983,7 +1015,7 @@ function emitEndCap(
     const angle = -Math.PI / 2 + (Math.PI * i) / END_CAP_SEGMENTS;
     ring.push(endCapRingPoint(coreHalf, alongDepth, angle, edgeAlong, outwardSign, vertical));
   }
-  pushFan(positions, colors, centerX, centerZ, apex, ring, FILLET_Y_OFFSET, color, hAt);
+  pushFan(positions, colors, centerX, centerZ, apex, ring, CAP_Y_OFFSET, color, hAt);
 }
 
 /**
@@ -1034,173 +1066,202 @@ function emitEndCapCurb(
   color: readonly [number, number, number],
   hAt: (x: number, z: number) => number,
 ): void {
-  // Sidewalk arc wrapping the asphalt ellipse: from the asphalt rim out to the
-  // tile edge, concentric so it hugs the rounded cap. Widths in cross and
-  // along both equal the leftover of armDepth past the asphalt cap.
-  const innerAlong = armDepth * END_CAP_ASPHALT_DEPTH_FRACTION;
-  const outerAlong = armDepth;
-  const bandWidth = outerAlong - innerAlong;
-  if (bandWidth <= 0) return;
-  const innerCross = coreHalf;
-  const outerCross = coreHalf + bandWidth;
-  const edgeAlong = outwardSign * coreHalf;
-  const push = (p: readonly [number, number]): void => {
-    const wx = centerX + p[0];
-    const wz = centerZ + p[1];
-    pushVertex(positions, colors, wx, hAt(wx, wz) + CURB_Y_OFFSET, wz, color);
+  // A sidewalk half-annulus wrapping the round cap, concentric with the bulb
+  // (center = the core's dead-end edge midpoint, radius = the cap bulge
+  // min(coreHalf, armDepth)). It extends outward by a full sidewalk width where
+  // a full sidewalk width, meeting the straight flank sidewalks at ±90° and
+  // rounding the tip past the tile edge into the open ground the dead end
+  // faces — one continuous half-circle wrap, never a flat cut.
+  const capRadius = Math.min(coreHalf, armDepth);
+  if (capRadius <= 0) return;
+  const pivotAlong = outwardSign * coreHalf; // bulb center along the road axis
+  // Local [x, z] of a point `r` out from the bulb center at sweep angle `a`.
+  const point = (r: number, a: number): [number, number] => {
+    const along = pivotAlong + outwardSign * r * Math.cos(a);
+    const cross = r * Math.sin(a);
+    return vertical ? [cross, along] : [along, cross];
   };
-  for (let i = 0; i < END_CAP_SEGMENTS; i++) {
-    const a0 = -Math.PI / 2 + (Math.PI * i) / END_CAP_SEGMENTS;
-    const a1 = -Math.PI / 2 + (Math.PI * (i + 1)) / END_CAP_SEGMENTS;
-    const innerA = endCapRingPoint(innerCross, innerAlong, a0, edgeAlong, outwardSign, vertical);
-    const outerA = endCapRingPoint(outerCross, outerAlong, a0, edgeAlong, outwardSign, vertical);
-    const innerB = endCapRingPoint(innerCross, innerAlong, a1, edgeAlong, outwardSign, vertical);
-    const outerB = endCapRingPoint(outerCross, outerAlong, a1, edgeAlong, outwardSign, vertical);
-    const cross =
-      (outerA[0] - innerA[0]) * (innerB[1] - innerA[1]) -
-      (outerA[1] - innerA[1]) * (innerB[0] - innerA[0]);
-    const tri1 = cross >= 0 ? [innerA, outerA, innerB] : [innerA, innerB, outerA];
-    const tri2 = cross >= 0 ? [innerB, outerA, outerB] : [innerB, outerB, outerA];
-    for (const tri of [tri1, tri2]) for (const p of tri) push(p);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Curved centerline through a turn: without this, a turn tile's two straight
-// axis-marking calls (see emitAxisMarkings below) each reach all the way to
-// the CORE's far boundary on their own unconnected side and cross through the
-// tile center at a hard 90°, which reads as square even though there's no gap
-// in the asphalt underneath. Restricted to the tiers with a single plain
-// dashed centerline (TwoLane, One-Way — isPlainCenterlineTier): the caller
-// clamps each straight arm to stop at its OWN near-core-boundary (never
-// crossing into the core interior at all), and this function fills the gap
-// with a quarter-circle arc of dashes, radius = coreHalf, centered on the
-// turn's INNER pivot (the corner-fill corner, diagonally opposite the
-// fillet's outer elbow) — tangent to both straight arms exactly where they
-// stop, so the dash sequence reads as one continuous curve. Avenue/
-// FourLane (multi-line: solid center pair + dashed lane lines) and Highway
-// (solid edge lines only) keep their square-stop behavior — curving multiple
-// parallel offset lines through a turn is excluded.
-// ---------------------------------------------------------------------------
-
-/** True for tiers whose ONLY straight-run marking is a single dashed centerline (emitAxisMarkings' `dashed(0)` case) — the only tiers whose centerline curves through a turn. */
-export function isPlainCenterlineTier(tier: RoadTier): boolean {
-  return tier === RoadTier.TwoLane || tier === RoadTier.OneWay;
-}
-
-/** Straight sub-quads used to approximate one painted centerline dash's sweep through a turn-tile arc — kept small enough that a ~3m dash visibly curves rather than reading as a flat chord dropped onto the curve. */
-export const DASH_ARC_SEGMENTS = 3;
-
-/**
- * Pushes one quad of a curved paint band: the region between radius `rInner`
- * and `rOuter`, swept from `angleA` to `angleB` around `pivotLocal` (a LOCAL
- * [x, z] point relative to the tile center). Splits the quad along the
- * (outerA, innerB) diagonal into 2 triangles and auto-corrects winding via
- * one local-space cross product (both triangles share the same correction,
- * valid since the quad is planar/convex in local space) — matches this
- * file's CCW-from-+Y convention regardless of which way `angleA`->`angleB`
- * sweeps (see pushFan for the analogous fan-shaped version of this trick).
- */
-function pushArcBandSegment(
-  positions: number[],
-  colors: number[],
-  centerX: number,
-  centerZ: number,
-  pivotLocal: readonly [number, number],
-  angleA: number,
-  angleB: number,
-  rInner: number,
-  rOuter: number,
-  yOffset: number,
-  color: readonly [number, number, number],
-  hAt: (x: number, z: number) => number,
-): void {
-  const at = (angle: number, r: number): [number, number] => [
-    pivotLocal[0] + r * Math.cos(angle),
-    pivotLocal[1] + r * Math.sin(angle),
-  ];
-  const innerA = at(angleA, rInner);
-  const outerA = at(angleA, rOuter);
-  const innerB = at(angleB, rInner);
-  const outerB = at(angleB, rOuter);
-  const cross =
-    (outerA[0] - innerA[0]) * (innerB[1] - innerA[1]) -
-    (outerA[1] - innerA[1]) * (innerB[0] - innerA[0]);
-  const tri1 = cross >= 0 ? [innerA, outerA, innerB] : [innerA, innerB, outerA];
-  const tri2 = cross >= 0 ? [innerB, outerA, outerB] : [innerB, outerB, outerA];
-  for (const tri of [tri1, tri2]) {
+  // Force each triangle up-facing (+Y normal): the single-sided road material
+  // culls down-wound faces (the bug that made curved geometry vanish).
+  const pushTriUp = (p0: [number, number], p1: [number, number], p2: [number, number]): void => {
+    const cr = (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p1[1] - p0[1]) * (p2[0] - p0[0]);
+    const tri = cr > 0 ? [p0, p2, p1] : [p0, p1, p2];
     for (const p of tri) {
       const wx = centerX + p[0];
       const wz = centerZ + p[1];
-      pushVertex(positions, colors, wx, hAt(wx, wz) + yOffset, wz, color);
+      pushVertex(positions, colors, wx, hAt(wx, wz) + CURB_Y_OFFSET, wz, color);
     }
+  };
+  // A constant full-width band — NOT clamped to the tile edge. A dead end's
+  // bulb faces open ground (no road neighbor), so letting the wrap round the
+  // tip past the tile boundary keeps the sidewalk a smooth half-circle instead
+  // of a flat cut where it would otherwise hit the edge.
+  const rOut = capRadius + SIDEWALK_WIDTH_M;
+  for (let i = 0; i < END_CAP_SEGMENTS; i++) {
+    const a0 = -Math.PI / 2 + (Math.PI * i) / END_CAP_SEGMENTS;
+    const a1 = -Math.PI / 2 + (Math.PI * (i + 1)) / END_CAP_SEGMENTS;
+    const innerA = point(capRadius, a0);
+    const outerA = point(rOut, a0);
+    const innerB = point(capRadius, a1);
+    const outerB = point(rOut, a1);
+    pushTriUp(innerA, outerA, innerB);
+    pushTriUp(innerB, outerA, outerB);
   }
 }
 
+
+/** How far back into the paved tile the paved→gravel transition band reaches. */
+export const GRAVEL_SEAM_DEPTH_M = 2.6;
+
 /**
- * Emits the curved dashed-centerline connector for a turn tile (see the
- * block comment above). The arc's radius is exactly `coreHalf`, centered on
- * the turn's inner pivot, tangent to both straight arms at their own
- * near-core-boundary stop points. Painted sub-segments reuse dashSegments'
- * GLOBAL world-meter phase, seeded from the vertical arm's own entry world-Z
- * (phase continuity INTO the turn — exact continuity out the far/exit side
- * isn't generally possible since the arc length rarely divides evenly by the
- * dash period, matching the spec's "where practical").
+ * Paved→dirt transition at the seam where a paved tile meets a GRAVEL
+ * neighbor: a band along that connected edge that TAPERS from the paved
+ * carriageway half-width down to the gravel's narrower half-width and blends
+ * the paved grey into the dusty gravel tan (per-vertex color), so the two
+ * roads flow together instead of meeting at a hard grey/tan step. Drawn a hair
+ * above the carriageway. `edgeSign` (+1/-1) and `vertical` (N/S vs E/W) select
+ * the edge; forced up-facing to survive the single-sided road material.
  */
-function emitCurvedCenterlineDashes(
+function emitGravelSeam(
+  positions: number[],
+  colors: number[],
+  tileX: number,
+  tileZ: number,
+  centerX: number,
+  centerZ: number,
+  coreHalf: number,
+  gravelHalf: number,
+  edgeSign: 1 | -1,
+  vertical: boolean,
+  plateColor: readonly [number, number, number],
+  hAt: (x: number, z: number) => number,
+): void {
+  const edge = edgeSign * TILE_HALF;
+  const inner = edge - edgeSign * GRAVEL_SEAM_DEPTH_M;
+  const y = ROAD_Y_OFFSET + 0.004; // above the carriageway plate, below curbs
+  const tan = gravelColorAt(vertical ? tileX : tileX + edgeSign, vertical ? tileZ + edgeSign : tileZ);
+  const pt = (along: number, cross: number): [number, number] => (vertical ? [cross, along] : [along, cross]);
+  const innerL = pt(inner, -coreHalf);
+  const innerR = pt(inner, coreHalf);
+  const edgeL = pt(edge, -gravelHalf);
+  const edgeR = pt(edge, gravelHalf);
+  const pushTri = (
+    a: readonly [number, number],
+    ca: readonly [number, number, number],
+    b: readonly [number, number],
+    cb: readonly [number, number, number],
+    c: readonly [number, number],
+    cc: readonly [number, number, number],
+  ): void => {
+    const cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    const tri = cross > 0 ? [[c, cc], [b, cb], [a, ca]] : [[a, ca], [b, cb], [c, cc]];
+    for (const [p, col] of tri as Array<[readonly [number, number], readonly [number, number, number]]>) {
+      const wx = centerX + p[0];
+      const wz = centerZ + p[1];
+      pushVertex(positions, colors, wx, hAt(wx, wz) + y, wz, col);
+    }
+  };
+  // Trapezoid: inner edge (paved grey, full width) -> tile edge (gravel tan, narrow width).
+  pushTri(innerL, plateColor, edgeL, tan, innerR, plateColor);
+  pushTri(innerR, plateColor, edgeL, tan, edgeR, tan);
+}
+
+/** Segments across a junction corner's rounded curb-return arc. */
+export const JUNCTION_CORNER_SEGMENTS = 8;
+
+/**
+ * A rounded curb-return at one corner of a JUNCTION, replacing the square
+ * corner-fill. Concentric with the OUTER tile corner: a small grass nub in the
+ * very corner, then a curved SIDEWALK band, then the carriageway filling in to
+ * the arms. So the SMALL curve faces out toward the grass and the LONG curve
+ * (the road edge) is on the inner/intersection side — streets meet with a
+ * rounded sidewalk sweeping around the corner. (signX, signZ) select the
+ * quadrant; radii measured from the tile corner inward toward the core.
+ */
+function emitRoundedCornerFill(
   positions: number[],
   colors: number[],
   centerX: number,
   centerZ: number,
-  coreHalf: number,
-  hasE: boolean,
-  hasS: boolean,
+  armDepth: number,
+  signX: 1 | -1,
+  signZ: 1 | -1,
+  plateColor: readonly [number, number, number],
+  hasCurbs: boolean,
   hAt: (x: number, z: number) => number,
 ): void {
-  const radius = coreHalf;
-  if (radius <= 0) return;
-  const signX = hasE ? -1 : 1;
-  const signZ = hasS ? -1 : 1;
-  // Inner pivot: the corner-fill corner, diagonally opposite the fillet's outer elbow.
-  const pivotLocal: [number, number] = [-signX * coreHalf, -signZ * coreHalf];
-
-  const angleEntry = Math.atan2(0, signX);
-  const angleExit = Math.atan2(signZ, 0);
-  let delta = angleExit - angleEntry;
-  if (delta > Math.PI) delta -= 2 * Math.PI;
-  if (delta < -Math.PI) delta += 2 * Math.PI;
-  const arcLength = radius * Math.abs(delta);
-  if (arcLength <= 0) return;
-
-  // Entry tangent point's world Z, on the vertical arm's x=0 centerline —
-  // seeds the dash phase so it continues from wherever the straight arm's
-  // own dash pattern left off.
-  const entryWorldZ = centerZ + pivotLocal[1];
-
-  for (const [lo, hi] of dashSegments(entryWorldZ, entryWorldZ + arcLength)) {
-    const tLo = (lo - entryWorldZ) / arcLength;
-    const tHi = (hi - entryWorldZ) / arcLength;
-    const dashAngleLo = angleEntry + delta * tLo;
-    const dashAngleHi = angleEntry + delta * tHi;
-    for (let seg = 0; seg < DASH_ARC_SEGMENTS; seg++) {
-      const a0 = dashAngleLo + ((dashAngleHi - dashAngleLo) * seg) / DASH_ARC_SEGMENTS;
-      const a1 = dashAngleLo + ((dashAngleHi - dashAngleLo) * (seg + 1)) / DASH_ARC_SEGMENTS;
-      pushArcBandSegment(
-        positions,
-        colors,
-        centerX,
-        centerZ,
-        pivotLocal,
-        a0,
-        a1,
-        radius - PAINT_HALF_WIDTH_M,
-        radius + PAINT_HALF_WIDTH_M,
-        MARK_Y_OFFSET,
-        MARKING_COLOR,
-        hAt,
-      );
+  if (armDepth <= 0) return;
+  // A point `r` in from the tile corner at sweep angle `t` (toward the core).
+  const at = (r: number, t: number): [number, number] => [
+    signX * (TILE_HALF - r * Math.cos(t)),
+    signZ * (TILE_HALF - r * Math.sin(t)),
+  ];
+  // Distance from the tile corner to the inner armpit edge (arm/core) at angle t.
+  const boundary = (t: number): number => {
+    const c = Math.cos(t);
+    const s = Math.sin(t);
+    return Math.min(c > 1e-6 ? armDepth / c : Infinity, s > 1e-6 ? armDepth / s : Infinity);
+  };
+  const pushTriUp = (
+    p0: [number, number],
+    p1: [number, number],
+    p2: [number, number],
+    y: number,
+    color: readonly [number, number, number],
+  ): void => {
+    const cr = (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p1[1] - p0[1]) * (p2[0] - p0[0]);
+    const tri = cr > 0 ? [p0, p2, p1] : [p0, p1, p2];
+    for (const p of tri) {
+      const wx = centerX + p[0];
+      const wz = centerZ + p[1];
+      pushVertex(positions, colors, wx, hAt(wx, wz) + y, wz, color);
     }
-  }
+  };
+  const band = (
+    rIn: (t: number) => number,
+    rOut: (t: number) => number,
+    y: number,
+    color: readonly [number, number, number],
+  ): void => {
+    for (let i = 0; i < JUNCTION_CORNER_SEGMENTS; i++) {
+      const t0 = (i / JUNCTION_CORNER_SEGMENTS) * (Math.PI / 2);
+      const t1 = ((i + 1) / JUNCTION_CORNER_SEGMENTS) * (Math.PI / 2);
+      const iA = at(rIn(t0), t0);
+      const oA = at(rOut(t0), t0);
+      const iB = at(rIn(t1), t1);
+      const oB = at(rOut(t1), t1);
+      pushTriUp(iA, oA, iB, y, color);
+      pushTriUp(iB, oA, oB, y, color);
+    }
+  };
+  const sidewalk = Math.min(SIDEWALK_WIDTH_M, armDepth);
+  // Grass nub in the very tile corner, then the sidewalk band, then the
+  // carriageway. The nub is armDepth − sidewalk so the sidewalk band lands at
+  // exactly [coreHalf, coreHalf + sidewalk] where it meets each tile edge —
+  // i.e. flush with the straight sidewalks of the roads running into the
+  // junction (seamless), not a few pixels off.
+  const grassNub = hasCurbs ? Math.max(0, armDepth - sidewalk) : 0;
+  const roadStart = hasCurbs ? grassNub + sidewalk : 0;
+  // Carriageway: from roadStart out to the arm/core edge.
+  band(
+    () => roadStart,
+    (t) => boundary(t),
+    ROAD_Y_OFFSET,
+    plateColor,
+  );
+  if (!hasCurbs) return;
+  // Curved sidewalk curb-return band (small curve toward the grass corner, long curve inner).
+  band(
+    () => grassNub,
+    () => grassNub + sidewalk,
+    CURB_Y_OFFSET,
+    SIDEWALK_COLOR,
+  );
+}
+
+/** True for tiers whose ONLY straight-run marking is a single dashed centerline (emitAxisMarkings' `dashed(0)` case). */
+export function isPlainCenterlineTier(tier: RoadTier): boolean {
+  return tier === RoadTier.TwoLane || tier === RoadTier.OneWay;
 }
 
 function isCollinearMask(mask: number): boolean {
@@ -1374,12 +1435,34 @@ function emitHighwayDivider(
  * highway divider on straight runs, and per-arm junction markings on
  * intersections (popcount >= 3).
  */
+/**
+ * Per-side neighbor tiers (RoadTier.None when that side has no road neighbor).
+ * Optional — omitted means "unknown / none", which reproduces the pre-neighbor
+ * behavior exactly (every existing caller/test routes identically). Used only
+ * for cross-tile seam treatment: a paved tile blends into an adjacent unpaved
+ * (gravel) neighbor.
+ */
+export interface NeighborTiers {
+  n: RoadTier;
+  e: RoadTier;
+  s: RoadTier;
+  w: RoadTier;
+}
+
+const NO_NEIGHBORS: NeighborTiers = {
+  n: RoadTier.None,
+  e: RoadTier.None,
+  s: RoadTier.None,
+  w: RoadTier.None,
+};
+
 export function roadTileVertices(
   x: number,
   z: number,
   tier: RoadTier,
   mask: number,
   hAt: (x: number, z: number) => number,
+  neighbors: NeighborTiers = NO_NEIGHBORS,
 ): { positions: number[]; colors: number[] } {
   if (!Number.isInteger(mask) || mask < 0 || mask > 15) {
     throw new RangeError(`roadTileVertices: mask ${mask} out of the 4-bit range 0..15`);
@@ -1404,6 +1487,31 @@ export function roadTileVertices(
   // tier's flat spec color; every other tier keeps its flat tier shade.
   const plateColor = tier === RoadTier.Gravel ? gravelColorAt(x, z) : spec.color;
 
+  const connections = (hasN ? 1 : 0) + (hasE ? 1 : 0) + (hasS ? 1 : 0) + (hasW ? 1 : 0);
+  const isJunction = connections >= 3;
+  const isTurn = connections === 2 && !isCollinearMask(mask);
+
+  // A TURN tile (exactly 2 adjacent connections) is a curved quarter-annulus
+  // road; every other shape (straight run, dead end, junction) is the
+  // rectangular core + extensions + corner-fills + straight sidewalks below.
+  if (isTurn) {
+    emitCurvedTurn(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      coreHalf,
+      armDepth,
+      Math.min(SIDEWALK_WIDTH_M, armDepth),
+      hasN,
+      hasE,
+      plateColor,
+      spec.hasCurbs,
+      hAt,
+    );
+  }
+
+  if (!isTurn) {
   // Core plate: always present, tier-colored.
   pushLocalRect(
     positions,
@@ -1481,165 +1589,72 @@ export function roadTileVertices(
     );
   }
 
-  // Corner fills: close the diagonal gap wherever two adjacent sides both connect.
-  if (hasN && hasE) {
-    pushLocalRect(
-      positions,
-      colors,
-      centerX,
-      centerZ,
-      coreHalf,
-      TILE_HALF,
-      -TILE_HALF,
-      -coreHalf,
-      ROAD_Y_OFFSET,
-      plateColor,
-      hAt,
-    );
-  }
-  if (hasS && hasE) {
-    pushLocalRect(
-      positions,
-      colors,
-      centerX,
-      centerZ,
-      coreHalf,
-      TILE_HALF,
-      coreHalf,
-      TILE_HALF,
-      ROAD_Y_OFFSET,
-      plateColor,
-      hAt,
-    );
-  }
-  if (hasS && hasW) {
-    pushLocalRect(
-      positions,
-      colors,
-      centerX,
-      centerZ,
-      -TILE_HALF,
-      -coreHalf,
-      coreHalf,
-      TILE_HALF,
-      ROAD_Y_OFFSET,
-      plateColor,
-      hAt,
-    );
-  }
-  if (hasN && hasW) {
-    pushLocalRect(
-      positions,
-      colors,
-      centerX,
-      centerZ,
-      -TILE_HALF,
-      -coreHalf,
-      -TILE_HALF,
-      -coreHalf,
-      ROAD_Y_OFFSET,
-      plateColor,
-      hAt,
-    );
-  }
+  // Corner fills: only JUNCTIONS reach here (a TURN takes emitCurvedTurn
+  // above). Each is a rounded curb-return — the carriageway turns the corner
+  // with a tight radius and a curved sidewalk wraps it, grass beyond — so the
+  // sidewalks flow together instead of a hard square paved corner.
+  const cornerFill = (signX: 1 | -1, signZ: 1 | -1): void => {
+    emitRoundedCornerFill(positions, colors, centerX, centerZ, armDepth, signX, signZ, plateColor, spec.hasCurbs, hAt);
+  };
+  if (hasN && hasE) cornerFill(1, -1);
+  if (hasS && hasE) cornerFill(1, 1);
+  if (hasS && hasW) cornerFill(-1, 1);
+  if (hasN && hasW) cornerFill(-1, -1);
 
-  // Sidewalks/shoulders: raised curb along every edge that does NOT border
-  // another road tile, sized to fill exactly the gap between the
-  // (tier-specific) core edge and the tile boundary.
-  // Gravel and Alley have `hasCurbs: false` — no curb geometry at all, a bare
-  // shoulder/terrain-level taper on their unconnected sides.
+  // Sidewalks/shoulders: a raised curb strip of fixed width SIDEWALK_WIDTH_M
+  // (0.5× a lane) hugging the carriageway on every edge that does NOT border
+  // another road tile; whatever the 16m tile has left beyond it is a grass
+  // verge (not paved). On wide tiers (4-lane) the carriageway leaves less than
+  // a full sidewalk, so the width clamps to the room available (`armDepth`).
+  // Gravel/Alley (`hasCurbs: false`) get no curb geometry at all.
   if (spec.hasCurbs) {
-    const curbWidth = armDepth;
-    if (!hasN) {
-      pushLocalRect(
-        positions,
-        colors,
-        centerX,
-        centerZ,
-        -TILE_HALF,
-        TILE_HALF,
-        -TILE_HALF,
-        -TILE_HALF + curbWidth,
-        CURB_Y_OFFSET,
-        SIDEWALK_COLOR,
-        hAt,
-      );
+    const curbWidth = Math.min(SIDEWALK_WIDTH_M, armDepth);
+    // At a dead end the rounded cap fills the tile end; the straight sidewalk on
+    // the BULB-FACING side (opposite the single connection) would lay a square
+    // strip across the round cap, so it's suppressed — the curved cap curb
+    // (emitEndCapCurb) wraps that side instead. The two flank sidewalks stay.
+    const deadEnd = connections === 1;
+    // At a dead end the flank sidewalks (the two sides parallel to the road)
+    // stop at the bulb base (core edge) rather than running to the tile edge,
+    // so they don't overhang past the rounded end — the curved cap curb wraps
+    // that region instead. Clip the bulb-side extent (opposite the connection).
+    const flankZLo = deadEnd && hasS ? -coreHalf : -TILE_HALF;
+    const flankZHi = deadEnd && hasN ? coreHalf : TILE_HALF;
+    const flankXLo = deadEnd && hasE ? -coreHalf : -TILE_HALF;
+    const flankXHi = deadEnd && hasW ? coreHalf : TILE_HALF;
+    if (!hasN && !(deadEnd && hasS)) {
+      pushLocalRect(positions, colors, centerX, centerZ, flankXLo, flankXHi, -coreHalf - curbWidth, -coreHalf, CURB_Y_OFFSET, SIDEWALK_COLOR, hAt);
     }
-    if (!hasS) {
-      pushLocalRect(
-        positions,
-        colors,
-        centerX,
-        centerZ,
-        -TILE_HALF,
-        TILE_HALF,
-        TILE_HALF - curbWidth,
-        TILE_HALF,
-        CURB_Y_OFFSET,
-        SIDEWALK_COLOR,
-        hAt,
-      );
+    if (!hasS && !(deadEnd && hasN)) {
+      pushLocalRect(positions, colors, centerX, centerZ, flankXLo, flankXHi, coreHalf, coreHalf + curbWidth, CURB_Y_OFFSET, SIDEWALK_COLOR, hAt);
     }
-    if (!hasE) {
-      pushLocalRect(
-        positions,
-        colors,
-        centerX,
-        centerZ,
-        TILE_HALF - curbWidth,
-        TILE_HALF,
-        -TILE_HALF,
-        TILE_HALF,
-        CURB_Y_OFFSET,
-        SIDEWALK_COLOR,
-        hAt,
-      );
+    if (!hasE && !(deadEnd && hasW)) {
+      pushLocalRect(positions, colors, centerX, centerZ, coreHalf, coreHalf + curbWidth, flankZLo, flankZHi, CURB_Y_OFFSET, SIDEWALK_COLOR, hAt);
     }
-    if (!hasW) {
-      pushLocalRect(
-        positions,
-        colors,
-        centerX,
-        centerZ,
-        -TILE_HALF,
-        -TILE_HALF + curbWidth,
-        -TILE_HALF,
-        TILE_HALF,
-        CURB_Y_OFFSET,
-        SIDEWALK_COLOR,
-        hAt,
-      );
+    if (!hasW && !(deadEnd && hasE)) {
+      pushLocalRect(positions, colors, centerX, centerZ, -coreHalf - curbWidth, -coreHalf, flankZLo, flankZHi, CURB_Y_OFFSET, SIDEWALK_COLOR, hAt);
     }
   }
+  } // end !isTurn (straight/junction rectangular geometry)
 
-  const connections = (hasN ? 1 : 0) + (hasE ? 1 : 0) + (hasS ? 1 : 0) + (hasW ? 1 : 0);
-  const isJunction = connections >= 3;
-  const isTurn = connections === 2 && !isCollinearMask(mask);
   const medianEligible = isAvenueMedianEligible(tier, mask);
   const dividerEligible = isHighwayDividerEligible(tier, mask);
   const hasVertical = hasN || hasS;
   const hasHorizontal = hasE || hasW;
-  // Only the plain single-centerline tiers get the curved connector — see the
-  // block comment above emitCurvedCenterlineDashes for why
-  // Avenue/Highway/FourLane are excluded.
-  const curvedCenterline = isTurn && isPlainCenterlineTier(tier);
 
   // Paint: Gravel is unpaved (`paved: false`) and gets none of axis markings
   // / one-way arrows / junction arm markings — gravel junctions stay
   // unpainted. Every other tier (including Alley/One-Way/Four-Lane) is a paved
   // tier and gets the full marking behavior below.
   if (spec.paved) {
-    // Lane markings: suppressed at junctions (mask popcount >= 3) — those get
-    // per-arm stop-lines + crosswalks instead (below).
-    if (!isJunction) {
+    // Lane markings: suppressed at junctions (mask popcount >= 3, per-arm
+    // stop-lines + crosswalks instead) and at TURNS (the curved carriageway
+    // carries no straight lane lines — they'd cut across the arc). Straight
+    // runs and dead ends get their axis markings here.
+    if (!isJunction && !isTurn) {
       if (hasVertical) {
-        // curvedCenterline: the straight dash stops at ITS OWN near-core
-        // boundary (same sign as the connected direction) instead of
-        // crossing the whole core to the far boundary — emitCurvedCenterlineDashes
-        // fills the rest with an arc. Every other case (straight run, dead
-        // end) keeps the plain ±coreHalf clamp.
-        const zLo = hasN ? -TILE_HALF : curvedCenterline ? coreHalf : -coreHalf;
-        const zHi = hasS ? TILE_HALF : curvedCenterline ? -coreHalf : coreHalf;
+        const zLo = hasN ? -TILE_HALF : -coreHalf;
+        const zHi = hasS ? TILE_HALF : coreHalf;
         emitAxisMarkings(
           positions,
           colors,
@@ -1655,8 +1670,8 @@ export function roadTileVertices(
         );
       }
       if (hasHorizontal) {
-        const xLo = hasW ? -TILE_HALF : curvedCenterline ? coreHalf : -coreHalf;
-        const xHi = hasE ? TILE_HALF : curvedCenterline ? -coreHalf : coreHalf;
+        const xLo = hasW ? -TILE_HALF : -coreHalf;
+        const xHi = hasE ? TILE_HALF : coreHalf;
         emitAxisMarkings(
           positions,
           colors,
@@ -1670,9 +1685,6 @@ export function roadTileVertices(
           medianEligible,
           hAt,
         );
-      }
-      if (curvedCenterline) {
-        emitCurvedCenterlineDashes(positions, colors, centerX, centerZ, coreHalf, hasE, hasS, hAt);
       }
 
       // One-Way direction arrows: every ARROW_PERIOD_TILES-th tile by GLOBAL
@@ -1765,6 +1777,8 @@ export function roadTileVertices(
   if (connections === 1) {
     const vertical = hasN || hasS;
     const outwardSign: 1 | -1 = hasN ? 1 : hasS ? -1 : hasE ? -1 : 1;
+    // Half-circle asphalt cap, then the curb ring last (tests rely on the curb
+    // ring being the final quads emitted).
     emitEndCap(
       positions,
       colors,
@@ -1795,19 +1809,21 @@ export function roadTileVertices(
         hAt,
       );
     }
-  } else if (isTurn) {
-    emitCornerFillet(
-      positions,
-      colors,
-      centerX,
-      centerZ,
-      coreHalf,
-      armDepth,
-      hasE,
-      hasS,
-      plateColor,
-      hAt,
-    );
+  }
+  // Turn tiles are fully drawn by emitCurvedTurn (curved carriageway + curved
+  // sidewalks) near the top of this function — no dead-end cap here.
+
+  // Paved -> dirt transition: a tapered grey->tan band on any connected edge
+  // whose neighbor is an unpaved gravel road, so the two flow together. Only
+  // the paved side emits it (gravel has no seam logic), so it's never doubled.
+  if (spec.paved) {
+    const gravelHalf = TILE_METERS * GRAVEL_HALF_WIDTH_FRACTION;
+    const seam = (edgeSign: 1 | -1, vertical: boolean): void =>
+      emitGravelSeam(positions, colors, x, z, centerX, centerZ, coreHalf, gravelHalf, edgeSign, vertical, plateColor, hAt);
+    if (hasN && neighbors.n === RoadTier.Gravel) seam(-1, true);
+    if (hasS && neighbors.s === RoadTier.Gravel) seam(1, true);
+    if (hasE && neighbors.e === RoadTier.Gravel) seam(1, false);
+    if (hasW && neighbors.w === RoadTier.Gravel) seam(-1, false);
   }
 
   return { positions, colors };
@@ -1924,6 +1940,12 @@ export class RoadMeshRenderer {
     return this.treeTrunkMesh ? this.treeTrunkMesh.count : 0;
   }
 
+  /** The road tier at tile (x,z) across all chunks, or None — for neighbor-aware seam treatment. */
+  private tierAt(x: number, z: number): RoadTier {
+    const chunk = this.chunks.get(chunkKeyOf(x, z));
+    return chunk?.tiles.get(localTileKeyOf(x, z))?.tier ?? RoadTier.None;
+  }
+
   private rebuildChunk(key: number): void {
     const chunk = this.chunks.get(key);
     if (!chunk) return;
@@ -1938,7 +1960,13 @@ export class RoadMeshRenderer {
     const positions: number[] = [];
     const colors: number[] = [];
     for (const tile of chunk.tiles.values()) {
-      const vertices = roadTileVertices(tile.x, tile.z, tile.tier, tile.mask, this.heightAt);
+      const neighbors: NeighborTiers = {
+        n: this.tierAt(tile.x, tile.z - 1),
+        e: this.tierAt(tile.x + 1, tile.z),
+        s: this.tierAt(tile.x, tile.z + 1),
+        w: this.tierAt(tile.x - 1, tile.z),
+      };
+      const vertices = roadTileVertices(tile.x, tile.z, tile.tier, tile.mask, this.heightAt, neighbors);
       for (const n of vertices.positions) positions.push(n);
       for (const n of vertices.colors) colors.push(n);
     }

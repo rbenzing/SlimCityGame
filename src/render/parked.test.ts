@@ -33,10 +33,12 @@ function roadAtTiles(
 
 function makeCatalogEntry(overrides: Partial<BuildingCatalogEntry> = {}): BuildingCatalogEntry {
   return {
+    // Parked-car lots are a commercial/industrial feature — homes park
+    // off-street (garage/driveway), so the geometry fixtures here are a shop.
     id: 'house',
-    name: 'Test House',
-    category: 'res',
-    zone: 1,
+    name: 'Test Shop',
+    category: 'com',
+    zone: 3,
     level: 1,
     footprint: { w: 1, d: 1 },
     height: 5,
@@ -310,6 +312,58 @@ describe('ParkedCarRenderer', () => {
     expect(renderer.stallSlotsFor(1)).toHaveLength(2); // min(1+1, floor(1/0.45)=2) = 2
     expect(renderer.carMeshCount()).toBe(1);
     expect(renderer.carInstanceCount()).toBeGreaterThanOrEqual(2);
+  });
+
+  it('parks zero cars for a RESIDENTIAL building even when road-adjacent (homes park off-street)', () => {
+    const scene = new THREE.Scene();
+    const home = makeCatalogEntry({ category: 'res', zone: 1, footprint: { w: 2, d: 2 } });
+    const renderer = new ParkedCarRenderer(scene, flatHeightAt, [home], roadAtTiles([[5, 4]]));
+
+    renderer.apply(deltaAdd(makeBuilding({ id: 1, level: 2 })));
+
+    expect(renderer.stallSlotsFor(1)).toHaveLength(0);
+    expect(renderer.hasStripeMesh(1)).toBe(false);
+  });
+
+  it('parks zero cars and draws NO frontage apron for a UTILITY building (water tower) next to a road', () => {
+    const scene = new THREE.Scene();
+    const utility = makeCatalogEntry({ category: 'utility', footprint: { w: 2, d: 2 } });
+    const renderer = new ParkedCarRenderer(scene, flatHeightAt, [utility], roadAtTiles([[5, 4]]));
+
+    renderer.apply(deltaAdd(makeBuilding({ id: 1, level: 1 })));
+
+    expect(renderer.stallSlotsFor(1)).toHaveLength(0);
+    expect(renderer.hasStripeMesh(1)).toBe(false); // no grey apron bleeding into the road
+  });
+
+  it('industrial lots park box TRUCKS (scaled-up vehicles); commercial lots park cars', () => {
+    const scene = new THREE.Scene();
+    const factory = makeCatalogEntry({ id: 'factory', category: 'ind', zone: 5, footprint: { w: 2, d: 1 } });
+    const shop = makeCatalogEntry({ id: 'shop', category: 'com', zone: 3, footprint: { w: 2, d: 1 } });
+    const renderer = new ParkedCarRenderer(
+      scene,
+      flatHeightAt,
+      [factory, shop],
+      roadAtTiles([
+        [5, 4],
+        [20, 4],
+      ]),
+    );
+    renderer.apply(deltaAdd(makeBuilding({ id: 1, catalogId: 'factory', level: 1 })));
+    renderer.apply(deltaAdd(makeBuilding({ id: 2, catalogId: 'shop', x: 20, level: 1 })));
+
+    const m = new THREE.Matrix4();
+    const scale = new THREE.Vector3();
+    const q = new THREE.Quaternion();
+    const p = new THREE.Vector3();
+
+    renderer.getCarMatrix(renderer.stallSlotsFor(1)[0]!, m);
+    m.decompose(p, q, scale);
+    expect(scale.y).toBeGreaterThan(2); // truck: much taller than a car
+
+    renderer.getCarMatrix(renderer.stallSlotsFor(2)[0]!, m);
+    m.decompose(p, q, scale);
+    expect(scale.y).toBeCloseTo(1, 5); // car: unit scale
   });
 
   it('clamps stall count to edge capacity for a high level on a short edge', () => {

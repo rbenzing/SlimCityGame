@@ -8,6 +8,7 @@ import {
   buildConformingEdgePositions,
   buildConformingTilePositions,
   computeFootprintEdges,
+  fillColorFor,
   frameColorFor,
   hexToRgb01,
   stripeAxisIsX,
@@ -17,6 +18,8 @@ import {
   volumeColorFor,
 } from './ghosts';
 import type { GhostEdgeSegment } from './ghosts';
+import { ZoneType } from '../shared/types';
+import { zoneTintColor } from './zonegrid';
 
 const flatHeightAt = (): number => 0;
 
@@ -188,6 +191,33 @@ describe('GhostRenderer.setPreview — road kind', () => {
     expect(stripe.count).toBe(0);
     const baseColor = colorAt(base);
     expect(baseColor.r).toBeGreaterThan(baseColor.b); // invalid orange-red
+  });
+});
+
+describe('zone ghost color matches the painted zone (RCI), not a generic green', () => {
+  it('commercial ghost is the commercial blue tint, not green', () => {
+    const com = zoneTintColor(ZoneType.ComLow)!;
+    // Fill takes the zone tint verbatim; base is a darkened version of it.
+    expect(fillColorFor(ZoneType.ComLow)).toEqual(com);
+    const base = baseColorFor('zone', true, ZoneType.ComLow);
+    expect(base[2]).toBeGreaterThan(base[1]); // blue-dominant (commercial), not green-dominant
+    // and it is a scaled-down commercial tint (same hue family)
+    expect(base[2] / base[0]).toBeCloseTo(com[2] / com[0], 5);
+  });
+
+  it('each RCI zone yields a distinct ghost tint', () => {
+    const res = fillColorFor(ZoneType.ResLow);
+    const com = fillColorFor(ZoneType.ComLow);
+    const ind = fillColorFor(ZoneType.Industrial);
+    expect(res).not.toEqual(com);
+    expect(com).not.toEqual(ind);
+    expect(res[1]).toBeGreaterThan(res[2]); // residential green-dominant
+    expect(ind[0]).toBeGreaterThan(ind[2]); // industrial warm (orange), red > blue
+  });
+
+  it('an unspecified zone falls back to the generic zone green (dezone / no zone)', () => {
+    expect(fillColorFor(undefined)).toEqual(fillColorFor(ZoneType.None));
+    expect(baseColorFor('zone', true, ZoneType.None)).toEqual(baseColorFor('zone', true));
   });
 });
 

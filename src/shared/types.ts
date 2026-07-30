@@ -451,7 +451,17 @@ export interface RoadNetworkApi {
   /** Mark a tile region dirty; implementation may rebuild lazily. */
   invalidateRegion(minX: number, minZ: number, maxX: number, maxZ: number): void;
   nearestNode(x: number, z: number): number | null;
-  findPath(from: TilePoint, to: TilePoint): PathResult | null;
+  /**
+   * `edgeCostMultiplier` (optional) scales each edge's cost on top of the
+   * network's own district/congestion cost — e.g. a small per-trip jitter so
+   * many trips over a grid spread across its equal-cost parallel routes
+   * instead of all collapsing onto one. Omitted -> no change.
+   */
+  findPath(
+    from: TilePoint,
+    to: TilePoint,
+    edgeCostMultiplier?: (edge: GraphEdge) => number,
+  ): PathResult | null;
   addVolume(edgeIds: number[], amount: number): void;
   decayVolumes(factor: number): void;
   getEdges(): readonly GraphEdge[];

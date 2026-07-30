@@ -33,6 +33,8 @@ import {
 } from '../shared/types';
 import { NIGHT_WINDOW_LIT_MAX, NIGHT_WINDOW_LIT_MIN, TILE_METERS } from '../shared/constants';
 import { encodeId, buildIdColorArray } from './picking';
+import { footprintShrinkFor } from './massing';
+import { maxHeightOverFootprint } from './footprint';
 import {
   ACCENT_BLUE,
   ACCENT_RED,
@@ -56,18 +58,17 @@ import {
 } from './facade';
 
 const INITIAL_CAPACITY = 64;
-/** Footprint tiles are shrunk by this factor so neighboring buildings don't touch. */
-const FOOTPRINT_SHRINK = 0.85;
 /** Constructing buildings render at this fraction of their final height. */
 const CONSTRUCTING_HEIGHT_SCALE = 0.25;
 /**
  * Catalog ids whose visual identity comes from a utilitykits.ts detail kit
- * render as a low PLINTH instead of the full facade box — ≈8% of catalog
- * height, clamped to this floor so even a short catalog entry (e.g. a 2m park
- * slab) still reads as a real, pickable slab.
+ * render their footprint as a thin ground PAD (a paved lot the kit sits on),
+ * not the full facade box — a fixed low height regardless of the catalog
+ * entry's tall model height, so a 24m water tower gets a subtle concrete pad
+ * (matching the model) rather than a big raised dark block. Still a real,
+ * pickable/outlinable slab through the shared instancer path.
  */
-const PLINTH_HEIGHT_FRACTION = 0.08;
-const PLINTH_MIN_HEIGHT = 0.4;
+const PLINTH_PAD_HEIGHT = 0.25;
 
 const TINT_ACTIVE: readonly [number, number, number] = [1, 1, 1];
 const TINT_CONSTRUCTING: readonly [number, number, number] = [0.55, 0.55, 0.55];
@@ -113,6 +114,15 @@ export const COOL_WINDOW_COLOR = 0xcfe4ff;
  */
 export const NIGHT_BODY_TINT: readonly [number, number, number] = [0.34, 0.38, 0.46];
 const WINDOW_EMISSIVE_STRENGTH = 2.2;
+
+/** Industrial ground floor: a row of wide roll-up loading doors per face. */
+const INDUSTRIAL_DOOR_BAYS = 3;
+/** Side margin within each door bay (mullion between doors), as a fraction of the bay. */
+const INDUSTRIAL_DOOR_MARGIN = 0.16;
+/** Door height as a fraction of the ground-floor band. */
+const INDUSTRIAL_DOOR_HEIGHT_FRACTION = 0.82;
+/** Sectional metal roll-up door tone. */
+const INDUSTRIAL_DOOR_COLOR: readonly [number, number, number] = [0.44, 0.46, 0.49];
 
 const MIN_WINDOW_COLS = 2;
 const MAX_WINDOW_COLS = 8;
@@ -548,16 +558,39 @@ export class BuildingInstancer {
       vec3(warmColor.r, warmColor.g, warmColor.b),
     );
 
-    // --- night emissive ---------------------------------------------------
-    const gate = isWall.and(isLit).and(activeAttr.greaterThan(0.5));
+    // --- window grid: pane vs mullion frame -------------------------------
+    // Computed BEFORE the emissive so a lit window at night is exactly the
+    // glass PANE you see by day (mullion-inset sub-rectangle), not the whole
+    // grid cell — otherwise night reads as big glowing rectangles instead of
+    // real windows. windowInset (punched vs curtain-wall) and the ground
+    // floor's taller storefront glazing change the inset margin; industrial
+    // additionally thins the pane population via an independently-salted hash.
+    const isGroundFloor = uvNode.y.lessThan(groundBandThreshold);
+    const cellU = fract(uvNode.x.mul(cols));
+    const cellV = fract(uvNode.y.mul(rows));
+    const baseMargin = isIndustrial
+      ? MULLION_MARGIN_INDUSTRIAL
+      : windowInset
+        ? MULLION_MARGIN_PUNCHED
+        : MULLION_MARGIN_CURTAIN;
+    const margin = select(isGroundFloor, float(MULLION_MARGIN_GROUND_FLOOR), float(baseMargin));
+    const insidePaneX = cellU.greaterThan(margin).and(cellU.lessThan(float(1).sub(margin)));
+    const insidePaneY = cellV.greaterThan(margin).and(cellV.lessThan(float(1).sub(margin)));
+    let isPane: Node<'bool'> = insidePaneX.and(insidePaneY);
+    if (isIndustrial) {
+      const existsSeed = windowSeed.mul(WINDOW_EXISTS_SALT_MUL).add(WINDOW_EXISTS_SALT_ADD);
+      isPane = isPane.and(hash(existsSeed).lessThan(INDUSTRIAL_WINDOW_DENSITY));
+    }
+
+    // --- night emissive: only the glass pane glows (a defined window, not a
+    // full-cell rectangle) — same across residential/commercial/industrial ---
+    const gate = isWall.and(isLit).and(isPane).and(activeAttr.greaterThan(0.5));
     const emissiveOn = windowColorNode.mul(this.nightFactorUniform).mul(WINDOW_EMISSIVE_STRENGTH);
     material.emissiveNode = select(gate, emissiveOn, vec3(0, 0, 0));
 
     // --- day facade -------------------------------------------------------
     const wallColorNode = buildWallColorNode(entry, buildingIdAttr, isIndustrial);
     const roofColorNode = buildRoofColorNode(buildingIdAttr, wallColorNode, isIndustrial);
-
-    const isGroundFloor = uvNode.y.lessThan(groundBandThreshold);
     const isParapet = uvNode.y.greaterThan(1 - parapetThreshold);
 
     // Solid wall base (the frame/mullion color where there is no pane):
@@ -574,27 +607,6 @@ export class BuildingInstancer {
         .lessThan(SPANDREL_BAND_FRACTION)
         .or(rowFrac.greaterThan(1 - SPANDREL_BAND_FRACTION));
       solidWall = select(nearRowEdge, wallColorNode.mul(SPANDREL_DARKEN), solidWall);
-    }
-
-    // Window pane vs frame: windowInset (punched vs curtain-wall) and the
-    // ground floor's taller storefront glazing both just change the inset
-    // margin; industrial additionally thins the pane population itself
-    // ("sparse small windows") via an independently-salted hash, so the
-    // night lit-gate above is never touched.
-    const cellU = fract(uvNode.x.mul(cols));
-    const cellV = fract(uvNode.y.mul(rows));
-    const baseMargin = isIndustrial
-      ? MULLION_MARGIN_INDUSTRIAL
-      : windowInset
-        ? MULLION_MARGIN_PUNCHED
-        : MULLION_MARGIN_CURTAIN;
-    const margin = select(isGroundFloor, float(MULLION_MARGIN_GROUND_FLOOR), float(baseMargin));
-    const insidePaneX = cellU.greaterThan(margin).and(cellU.lessThan(float(1).sub(margin)));
-    const insidePaneY = cellV.greaterThan(margin).and(cellV.lessThan(float(1).sub(margin)));
-    let isPane: Node<'bool'> = insidePaneX.and(insidePaneY);
-    if (isIndustrial) {
-      const existsSeed = windowSeed.mul(WINDOW_EXISTS_SALT_MUL).add(WINDOW_EXISTS_SALT_ADD);
-      isPane = isPane.and(hash(existsSeed).lessThan(INDUSTRIAL_WINDOW_DENSITY));
     }
 
     const reflectanceSeed = windowSeed
@@ -650,7 +662,20 @@ export class BuildingInstancer {
       .and(uvNode.x.lessThan(0.5 + ENTRANCE_HALF_WIDTH));
     const isEntranceY = uvNode.y.lessThan(groundBandThreshold * ENTRANCE_HEIGHT_FRACTION);
     const isEntrance = isEntranceFace.and(isEntranceX).and(isEntranceY);
-    const withEntrance = select(isEntrance, vec3(...DOOR_COLOR), wallWithWindows);
+    let withEntrance: Node<'vec3'> = select(isEntrance, vec3(...DOOR_COLOR), wallWithWindows);
+
+    // Industrial overhang doors: a repeating row of wide roll-up loading doors
+    // across the ground floor of every face, overriding the ground-floor
+    // windows — the warehouse/loading-dock read.
+    if (isIndustrial) {
+      const bay = fract(uvNode.x.mul(INDUSTRIAL_DOOR_BAYS));
+      const inBayX = bay
+        .greaterThan(INDUSTRIAL_DOOR_MARGIN)
+        .and(bay.lessThan(1 - INDUSTRIAL_DOOR_MARGIN));
+      const inDoorY = uvNode.y.lessThan(groundBandThreshold * INDUSTRIAL_DOOR_HEIGHT_FRACTION);
+      const isOverhangDoor = inBayX.and(inDoorY);
+      withEntrance = select(isOverhangDoor, vec3(...INDUSTRIAL_DOOR_COLOR), withEntrance);
+    }
 
     // Parapet lip always wins at the very top edge.
     const parapetColor = isIndustrial
@@ -817,15 +842,23 @@ export class BuildingInstancer {
     // Plinth-designated ids collapse to a low slab (picking/outline/bulldoze
     // keep working through this same instancer path) while utilitykits.ts
     // carries the real visual identity beside it.
-    const baseHeight = this.plinthIds.has(entry.id)
-      ? Math.max(PLINTH_MIN_HEIGHT, entry.height * PLINTH_HEIGHT_FRACTION)
-      : entry.height;
+    const baseHeight = this.plinthIds.has(entry.id) ? PLINTH_PAD_HEIGHT : entry.height;
     const height = baseHeight * heightScale;
-    const spanX = entry.footprint.w * TILE_METERS * FOOTPRINT_SHRINK;
-    const spanZ = entry.footprint.d * TILE_METERS * FOOTPRINT_SHRINK;
+    const shrink = footprintShrinkFor(entry);
+    const spanX = entry.footprint.w * TILE_METERS * shrink;
+    const spanZ = entry.footprint.d * TILE_METERS * shrink;
     const centerX = (instance.x + entry.footprint.w / 2) * TILE_METERS;
     const centerZ = (instance.z + entry.footprint.d / 2) * TILE_METERS;
-    const groundY = this.heightAt(centerX, centerZ);
+    // Seat the base at the highest terrain under the footprint so no slope can
+    // poke up through the body (sampling only the centre lets uphill corners
+    // spike through). Roofs/props key off this same value via the same helper.
+    const groundY = maxHeightOverFootprint(
+      this.heightAt,
+      instance.x,
+      instance.z,
+      entry.footprint.w,
+      entry.footprint.d,
+    );
 
     _position.set(centerX, groundY + height / 2, centerZ);
     _quaternion.setFromAxisAngle(_yAxis, instance.rotation * (Math.PI / 2));

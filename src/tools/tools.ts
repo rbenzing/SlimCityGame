@@ -81,7 +81,7 @@ export interface ToolEnv {
   hasStructure?(tile: TilePoint): boolean;
 }
 
-const ZONE_TOOL_TO_TYPE: Record<string, ZoneType> = {
+export const ZONE_TOOL_TO_TYPE: Record<string, ZoneType> = {
   'zone.resLow': ZoneTypeValue.ResLow,
   'zone.resHigh': ZoneTypeValue.ResHigh,
   'zone.comLow': ZoneTypeValue.ComLow,

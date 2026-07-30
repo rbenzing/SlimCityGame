@@ -103,6 +103,29 @@ describe('App', () => {
       expect(screen.queryByText('Two-Lane Road')).not.toBeInTheDocument(); // drawer closed
       expect(useCityStore.getState().selectedTool).toBe('select'); // placement mode exited
     });
+
+    it('closing the drawer via the dock category toggle also exits placement mode (no sticky tool)', () => {
+      render(<App />);
+      fireEvent.click(screen.getByRole('button', { name: 'Water' }));
+      fireEvent.click(screen.getByText('Water Tower'));
+      expect(useCityStore.getState().selectedTool).toBe('plop.water-tower');
+
+      // Second click on the same category button closes the drawer — previously
+      // this left the ploppable "in hand" so clicks kept placing it.
+      fireEvent.click(screen.getByRole('button', { name: 'Water' }));
+      expect(screen.queryByText('Water Tower')).not.toBeInTheDocument();
+      expect(useCityStore.getState().selectedTool).toBe('select');
+    });
+
+    it('switching categories drops the previously-held tool (must pick a new asset to place)', () => {
+      render(<App />);
+      fireEvent.click(screen.getByRole('button', { name: 'Water' }));
+      fireEvent.click(screen.getByText('Water Tower'));
+      expect(useCityStore.getState().selectedTool).toBe('plop.water-tower');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Roads' }));
+      expect(useCityStore.getState().selectedTool).toBe('select');
+    });
   });
 
   describe('staged Escape stack (UI-SPEC §4)', () => {

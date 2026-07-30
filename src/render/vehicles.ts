@@ -40,7 +40,6 @@ import {
 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MAX_VEHICLES, VEHICLE_STRIDE, INACTIVE_VEHICLE_X, VehicleKind } from '../shared/types';
-import { TILE_METERS } from '../shared/constants';
 
 const TWO_PI = Math.PI * 2;
 
@@ -110,12 +109,15 @@ export function lerpVehicle(
 // i.e. exactly opposite offsets for opposite travel directions, so opposing
 // flows land on opposite sides of the road centerline.
 //
-// LANE_OFFSET_METERS is picked to sit inside every road tier's carriageway
-// with margin, including the narrowest (Alley, half-width 3m at
-// TILE_METERS=16 — see roadsmesh.ts's ALLEY_HALF_WIDTH_FRACTION = 6/(2*16)).
+// LANE_OFFSET_METERS puts a vehicle in the CENTER of its lane: half a lane off
+// the centerline. Lanes are 3.75m (roadsmesh LANE_WIDTH_M = 1.5× the widest
+// vehicle), so the offset is 1.875m — on a two-lane road opposing flows sit
+// 3.75m apart, each dead-center in its 3.75m lane. Wider tiers have the same
+// lane width, so this centers the near lane there too; the narrowest single-
+// lane tiers (Alley/Gravel) carry negligible cosmetic traffic and read fine.
 // ---------------------------------------------------------------------------
 
-export const LANE_OFFSET_METERS = TILE_METERS * 0.125; // 2m
+export const LANE_OFFSET_METERS = 1.875; // half a 3.75m lane (roadsmesh LANE_WIDTH_M / 2)
 
 /** Perpendicular "drive on the right" world-space (x, z) offset for a vehicle facing `heading`. */
 export function laneOffset(heading: number): { dx: number; dz: number } {

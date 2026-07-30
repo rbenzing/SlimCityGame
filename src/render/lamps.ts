@@ -5,9 +5,9 @@
  *   POLE (tapered mast, wider base, curbside) -> ARM (a curved/angled
  *   bracket — a short rising NECK off the pole top, then a longer REACH
  *   arcing back down over the road) -> HOUSING (a tapered box/cowl luminaire
- *   hanging from the arm end, over the road, pointing down) -> CONE (apex at
- *   the housing, widening down to a ground light-pool centered under the
- *   housing, on the road) + the warm ground pool quad.
+ *   hanging from the arm end, over the road, pointing down) -> CONE (a warm
+ *   translucent beam, apex at the housing, widening down to just above the
+ *   road surface — open-ended, no ground disc).
  * All layers fade in together on the shared nightFactor dusk ramp. Every
  * part (pole/arm/housing) is one merged, instanced geometry — one draw call
  * per part regardless of lamp count — and each casts a shadow (the sun
@@ -17,7 +17,8 @@
  */
 import * as THREE from 'three';
 import { RoadTier, TilePoint } from '../shared/types';
-import { LAMP_SPACING_TILES, TILE_METERS, tileToWorld } from '../shared/constants';
+import { LAMP_SPACING_TILES, tileToWorld } from '../shared/constants';
+import { carriagewayHalfWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
 
 const POLE_HEIGHT = 5.5;
 const POLE_RADIUS_TOP = 0.12;
@@ -25,16 +26,13 @@ const POLE_RADIUS_BOTTOM = 0.16;
 const POLE_RADIAL_SEGMENTS = 8;
 const POLE_COLOR = 0x2a2e33;
 
-/** How far a lamp's pole sits from the road tile's centerline, alongside the road (the curbside pole base). */
-const LAMP_LATERAL_OFFSET_METERS = TILE_METERS * 0.6;
-
 /**
  * The cantilever arm reaches from the pole top TOWARD the road centerline
- * (direction = opposite the pole's lateral-offset sign). Its length is a
- * fraction of the pole's own lateral offset so the housing lands short of
- * the centerline — roughly over the near lane, not the middle of the road.
+ * (direction = opposite the pole's lateral-offset sign). A short reach — the
+ * pole is already curbside — so the housing (and its light cone) land over the
+ * near LANE of the road rather than the far side.
  */
-const ARM_LENGTH_METERS = LAMP_LATERAL_OFFSET_METERS * 0.8;
+const ARM_LENGTH_METERS = 2.8;
 const ARM_THICKNESS = 0.1;
 const ARM_Y_OFFSET = POLE_HEIGHT - 0.05; // pole-top mount height, just below the pole top
 
@@ -51,8 +49,8 @@ const ARM_NECK_LENGTH = ARM_LENGTH_METERS * ARM_NECK_FRACTION;
 const ARM_REACH_LENGTH = ARM_LENGTH_METERS - ARM_NECK_LENGTH;
 const ARM_RISE = 0.32; // upward bend of the neck before the reach arcs back down
 
-// How far below the arm mount the housing attach point hangs. The cone apex /
-// ground pool anchors are derived from this.
+// How far below the arm mount the housing attach point hangs. The cone apex is
+// derived from this.
 const HOUSING_DROP = 0.22;
 
 const HOUSING_CAP_LENGTH = 0.36; // mounting cap, along the arm direction
@@ -65,22 +63,17 @@ const HOUSING_COWL_SEGMENTS = 4; // 4-sided taper reads as a "boxy" cowl, not a 
 const HOUSING_TILT_RAD = THREE.MathUtils.degToRad(18); // angled downward, toward the road
 const HOUSING_COLOR = 0xffd9a0;
 
-const POOL_SIZE = 7.5;
-const POOL_Y_OFFSET = 0.08;
-const POOL_MAX_OPACITY = 0.55;
-
 /**
- * Light cone: apex exactly
- * at the housing attach point (over the road, at the arm end), base exactly
- * at the ground light-pool (centered under the housing, on the road) — same
- * Y references the housing/pool meshes already use, so the cone visibly
- * spans "housing down to ground pool", falling ON the road instead of
- * beside it. `openEnded` drops the bottom cap (the pool quad already covers
- * the ground disc), leaving just the additive translucent cone wall.
+ * Light cone: apex at the housing attach point (over the road, at the arm
+ * end), base just ABOVE the road surface so the additive translucent beam
+ * pools on the pavement. There is no ground disc — the base sits above
+ * ROAD_Y_OFFSET (0.15) so nothing clips through/under the raised road — and
+ * the cone is `openEnded` (no bottom cap), so only the translucent wall shows.
  */
+const CONE_BASE_Y_OFFSET = 0.16; // a hair above the road surface (ROAD_Y_OFFSET 0.15)
 const CONE_APEX_Y_OFFSET = ARM_Y_OFFSET - HOUSING_DROP; // matches the housing attach point
-const CONE_HEIGHT = CONE_APEX_Y_OFFSET - POOL_Y_OFFSET; // matches the pool mesh's Y offset
-const CONE_BASE_RADIUS = POOL_SIZE * 0.35;
+const CONE_HEIGHT = CONE_APEX_Y_OFFSET - CONE_BASE_Y_OFFSET;
+const CONE_BASE_RADIUS = 2.6;
 const CONE_RADIAL_SEGMENTS = 12;
 const CONE_MAX_OPACITY = 0.4;
 
@@ -101,6 +94,13 @@ export interface LampPlacement {
   axis: LampAxis;
   /** Sign of the lateral offset along `axis`; alternates every LAMP_SPACING_TILES. */
   side: 1 | -1;
+  /** Meters from the road centerline to the pole — the tier's carriageway edge + half a sidewalk (curbside). */
+  lateralOffset: number;
+}
+
+/** Curbside pole offset (m) for a tier: on the sidewalk just past the carriageway edge. */
+function lampLateralOffset(tier: RoadTier | undefined): number {
+  return carriagewayHalfWidthMeters(tier ?? RoadTier.TwoLane) + SIDEWALK_WIDTH_M * 0.5;
 }
 
 /** Wide fixed stride so (x,z) pairs never collide without needing MAP_SIZE here. */
@@ -141,15 +141,9 @@ export function computeLampPlacements(roadTiles: readonly LampRoadTile[]): LampP
 
     const group = sum / LAMP_SPACING_TILES;
     const side: 1 | -1 = group % 2 === 0 ? 1 : -1;
-    placements.push({ x: tile.x, z: tile.z, axis, side });
+    placements.push({ x: tile.x, z: tile.z, axis, side, lateralOffset: lampLateralOffset(tile.tier) });
   }
   return placements;
-}
-
-function flatPlaneGeometry(size: number): THREE.PlaneGeometry {
-  const geometry = new THREE.PlaneGeometry(size, size);
-  geometry.rotateX(-Math.PI / 2); // lie flat, facing up
-  return geometry;
 }
 
 /** Concatenates N indexed BufferGeometries (position+normal+index) into one, disposing the sources — same idiom as landmarks.ts's part-merge helper. */
@@ -288,21 +282,12 @@ export class LampRenderer {
     emissiveIntensity: 0,
   });
 
-  private readonly poolGeometry = flatPlaneGeometry(POOL_SIZE);
-  private readonly poolMaterial = new THREE.MeshBasicMaterial({
-    color: HOUSING_COLOR,
-    transparent: true,
-    opacity: 0,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-  });
-
   private readonly coneGeometry = new THREE.ConeGeometry(
     CONE_BASE_RADIUS,
     CONE_HEIGHT,
     CONE_RADIAL_SEGMENTS,
     1,
-    true, // openEnded: the pool quad already covers the ground disc
+    true, // openEnded: no bottom cap — just the translucent beam wall
   );
   private readonly coneMaterial = new THREE.MeshBasicMaterial({
     color: HOUSING_COLOR,
@@ -317,7 +302,6 @@ export class LampRenderer {
   private armMesh: THREE.InstancedMesh | null = null;
   private housingMesh: THREE.InstancedMesh | null = null;
   private coneMesh: THREE.InstancedMesh | null = null;
-  private poolMesh: THREE.InstancedMesh | null = null;
   private placements: LampPlacement[] = [];
 
   constructor(scene: THREE.Scene, heightAt: (x: number, z: number) => number) {
@@ -337,15 +321,13 @@ export class LampRenderer {
     this.armMesh = new THREE.InstancedMesh(this.armGeometry, this.poleMaterial, count);
     this.housingMesh = new THREE.InstancedMesh(this.housingGeometry, this.housingMaterial, count);
     this.coneMesh = new THREE.InstancedMesh(this.coneGeometry, this.coneMaterial, count);
-    this.poolMesh = new THREE.InstancedMesh(this.poolGeometry, this.poolMaterial, count);
     this.poleMesh.count = count;
     this.armMesh.count = count;
     this.housingMesh.count = count;
     this.coneMesh.count = count;
-    this.poolMesh.count = count;
 
     // Pole/arm/housing are real modeled geometry, not additive FX — they
-    // cast shadows. The cone/pool stay non-shadow-casting.
+    // cast shadows. The cone stays non-shadow-casting.
     this.poleMesh.castShadow = true;
     this.armMesh.castShadow = true;
     this.housingMesh.castShadow = true;
@@ -356,17 +338,15 @@ export class LampRenderer {
     this.armMesh.instanceMatrix.needsUpdate = true;
     this.housingMesh.instanceMatrix.needsUpdate = true;
     this.coneMesh.instanceMatrix.needsUpdate = true;
-    this.poolMesh.instanceMatrix.needsUpdate = true;
 
-    this.scene.add(this.poleMesh, this.armMesh, this.housingMesh, this.coneMesh, this.poolMesh);
+    this.scene.add(this.poleMesh, this.armMesh, this.housingMesh, this.coneMesh);
   }
 
-  /** Fades the housing glow, light cone, and ground light-pool together on the dusk ramp. */
+  /** Fades the housing glow and light cone together on the dusk ramp. */
   setNightFactor(nightFactor: number): void {
     const f = Math.min(1, Math.max(0, nightFactor));
     this.housingMaterial.emissiveIntensity = f;
     this.coneMaterial.opacity = f * CONE_MAX_OPACITY;
-    this.poolMaterial.opacity = f * POOL_MAX_OPACITY;
   }
 
   /** Number of lamps placed by the last rebuild(); every layer matches this 1:1. */
@@ -390,20 +370,12 @@ export class LampRenderer {
     return this.coneMesh?.count ?? 0;
   }
 
-  poolInstanceCount(): number {
-    return this.poolMesh?.count ?? 0;
-  }
-
   housingEmissiveIntensity(): number {
     return this.housingMaterial.emissiveIntensity;
   }
 
   coneOpacity(): number {
     return this.coneMaterial.opacity;
-  }
-
-  poolOpacity(): number {
-    return this.poolMaterial.opacity;
   }
 
   poleCastShadow(): boolean {
@@ -434,10 +406,6 @@ export class LampRenderer {
     return this.positionOf(this.coneMesh, slot);
   }
 
-  poolPosition(slot = 0): THREE.Vector3 {
-    return this.positionOf(this.poolMesh, slot);
-  }
-
   /** World-space rotation of the arm instance at `slot` (test introspection for the direction-dependent yaw). */
   armQuaternion(slot = 0): THREE.Quaternion {
     const quat = new THREE.Quaternion();
@@ -455,7 +423,7 @@ export class LampRenderer {
     return this.conePosition(slot).y + CONE_HEIGHT / 2;
   }
 
-  /** Cone base Y (world) at `slot` — matches the ground pool. */
+  /** Cone base Y (world) at `slot` — the beam's foot, just above the road surface. */
   coneBaseY(slot = 0): number {
     return this.conePosition(slot).y - CONE_HEIGHT / 2;
   }
@@ -471,8 +439,8 @@ export class LampRenderer {
     const tileCenterX = tileToWorld(placement.x);
     const tileCenterZ = tileToWorld(placement.z);
 
-    // Pole: curbside placement from axis/side.
-    const poleOffset = LAMP_LATERAL_OFFSET_METERS * placement.side;
+    // Pole: curbside placement from axis/side, at the tier-aware sidewalk offset.
+    const poleOffset = placement.lateralOffset * placement.side;
     const poleX = placement.axis === 'x' ? tileCenterX + poleOffset : tileCenterX;
     const poleZ = placement.axis === 'z' ? tileCenterZ + poleOffset : tileCenterZ;
     const groundY = this.heightAt(poleX, poleZ);
@@ -511,16 +479,12 @@ export class LampRenderer {
     this.housingMesh!.setMatrixAt(slot, _matrix);
 
     // ConeGeometry is centered on its own local Y axis (apex at +height/2,
-    // base at -height/2), so its world center sits midway between the pool
-    // (base) and housing (apex) heights. Both are now over the road, at the
+    // base at -height/2), so its world center sits midway between the beam foot
+    // (just above the road) and the housing (apex), over the road at the
     // housing's x/z, not the pole's.
-    _position.set(housingX, groundY + POOL_Y_OFFSET + CONE_HEIGHT / 2, housingZ);
+    _position.set(housingX, groundY + CONE_BASE_Y_OFFSET + CONE_HEIGHT / 2, housingZ);
     _matrix.compose(_position, _identityQuat, _scale);
     this.coneMesh!.setMatrixAt(slot, _matrix);
-
-    _position.set(housingX, groundY + POOL_Y_OFFSET, housingZ);
-    _matrix.compose(_position, _identityQuat, _scale);
-    this.poolMesh!.setMatrixAt(slot, _matrix);
   }
 
   private disposeMeshes(): void {
@@ -528,11 +492,9 @@ export class LampRenderer {
     if (this.armMesh) this.scene.remove(this.armMesh);
     if (this.housingMesh) this.scene.remove(this.housingMesh);
     if (this.coneMesh) this.scene.remove(this.coneMesh);
-    if (this.poolMesh) this.scene.remove(this.poolMesh);
     this.poleMesh = null;
     this.armMesh = null;
     this.housingMesh = null;
     this.coneMesh = null;
-    this.poolMesh = null;
   }
 }

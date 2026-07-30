@@ -1,0 +1,21 @@
+[console.warning] No available adapters.
+[console.warning] THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend.
+[console.warning] THREE.PostProcessing: "PostProcessing" has been renamed to "RenderPipeline". Please update your code to use "THREE.RenderPipeline" instead.
+[console.warning] [.WebGL-0x25fc001b0800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+[console.warning] [.WebGL-0x25fc001b0800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+[console.warning] [.WebGL-0x25fc001b0800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+[console.warning] [.WebGL-0x25fc001b0800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)
+anchor: {"x":20,"z":20}
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+page.waitForFunction: Timeout 90000ms exceeded.
+    at ready (C:\GIT\city-builder\tools\houses-check.mjs:24:26)
+    at call (C:\GIT\city-builder\tools\houses-check.mjs:27:17)
+    at async file:///C:/GIT/city-builder/tools/houses-check.mjs:95:1 {
+  log: [],
+  name: 'TimeoutError'
+}
+
+Node.js v22.22.3

@@ -37,6 +37,37 @@ export interface Rng {
 /** Trips sampled from the origin/destination lists per tick. */
 export const TRIPS_PER_TICK = 4;
 
+/**
+ * Per-trip edge-cost jitter amplitude. A grid has many equal-cost routes
+ * between two points; a deterministic A* tie-breaks them the SAME way every
+ * time, so every trip funnels onto one path and the cosmetic vehicles line up
+ * nose-to-tail (the "snake"). A small per-trip cost jitter (stable within a
+ * trip, varied across trips) makes different trips prefer different parallel
+ * streets, spreading traffic across the network. The jitter seed is a pure
+ * hash of the trip's origin/destination — deterministic, and it consumes NO
+ * RNG draw so the sim's seeded RNG sequence is unchanged.
+ */
+const ROUTE_JITTER = 0.35;
+
+/** 32-bit avalanche mix of two integers (murmur3-style finalizer) -> [0,1). Pure & deterministic. */
+function hash2Unit(a: number, b: number): number {
+  let h = (a ^ 0x9e3779b9) >>> 0;
+  h = Math.imul(h ^ b, 0x85ebca6b) >>> 0;
+  h = (h ^ (h >>> 13)) >>> 0;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h = (h ^ (h >>> 16)) >>> 0;
+  return (h >>> 0) / 0xffffffff;
+}
+
+/** Deterministic per-trip seed from its origin/destination tiles (no RNG draw). */
+function tripSeed(from: TilePoint, to: TilePoint): number {
+  let h = (from.x * 73856093) >>> 0;
+  h = (h ^ Math.imul(from.z, 19349663)) >>> 0;
+  h = (h ^ Math.imul(to.x, 83492791)) >>> 0;
+  h = (h ^ Math.imul(to.z, 1266122987)) >>> 0;
+  return h >>> 0;
+}
+
 /** Fixed sim timestep in seconds (TICK_RATE ticks/sec). */
 const TICK_SECONDS = 1 / TICK_RATE;
 
@@ -192,11 +223,24 @@ export class TrafficSystem {
     let densityCap: number | null = null;
 
     for (let i = 0; i < TRIPS_PER_TICK; i += 1) {
-      const from = origins[this.rng.int(origins.length)];
-      const to = destinations[this.rng.int(destinations.length)];
-      if (from === undefined || to === undefined) continue;
+      const origin = origins[this.rng.int(origins.length)];
+      const dest = destinations[this.rng.int(destinations.length)];
+      if (origin === undefined || dest === undefined) continue;
 
-      const path = this.network.findPath(from, to);
+      // Alternate trip direction so roads carry BOTH flows (home->work and
+      // work->home), not a one-way stream.
+      const reverse = i % 2 === 1;
+      const from = reverse ? dest : origin;
+      const to = reverse ? origin : dest;
+
+      // Per-trip cost jitter (stable within this trip via its OD-hash seed) so
+      // this trip picks its own route among the grid's equal-cost alternatives.
+      const seed = tripSeed(from, to);
+      const path = this.network.findPath(
+        from,
+        to,
+        (edge) => 1 + ROUTE_JITTER * hash2Unit(edge.id, seed),
+      );
       if (path === null) continue;
 
       this.network.addVolume(path.edges, 1);
