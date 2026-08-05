@@ -24,6 +24,7 @@ import type {
 } from '../shared/types';
 import { DEFAULT_BRUSH_SETTINGS } from '../tools/tools';
 import type { StatsSample } from './statshistory';
+import { type GameSettings, loadSettings, saveSettings } from '../app/session';
 
 const MAX_NOTIFICATIONS = 50;
 
@@ -46,6 +47,10 @@ export interface BoundActions {
   setSpeed: (speed: SimSpeed) => void;
   /** Photo mode: toggles the render-thread PhotoModeController + camera. */
   togglePhoto: () => void;
+  /** Saves the current game (in-game menu "Save Game"); no-op with no worker. */
+  saveGame: () => void;
+  /** Applies side effects of a settings change (e.g. sandbox → worker command). Persistence itself is handled by the store. */
+  onSettings: (patch: Partial<GameSettings>) => void;
 }
 
 /**
@@ -135,6 +140,14 @@ export interface CityStoreState {
   /** Whether photo mode is active (drives chrome hiding). */
   photoMode: boolean;
 
+  // --- Start menu ----------------------------------------------------------
+  /** 'menu' = start screen (no world booted); 'playing' = a game is live. */
+  screen: 'menu' | 'playing';
+  /** In-game pause overlay: the start menu shown over a paused running game. */
+  menuOpen: boolean;
+  /** Persisted user options (bloom / sandbox / audio). */
+  settings: GameSettings;
+
   applySnapshotStats: (stats: CityStats) => void;
   setTool: (tool: ToolId) => void;
   setOverlay: (overlay: LensId | null) => void;
@@ -169,6 +182,12 @@ export interface CityStoreState {
   setStatsOpen: (open: boolean) => void;
   /** Sets the photo-mode active flag (chrome hiding). */
   setPhotoMode: (active: boolean) => void;
+  /** Sets the top-level screen ('menu' before a game boots, 'playing' once live). */
+  setScreen: (screen: 'menu' | 'playing') => void;
+  /** Opens/closes the in-game pause menu overlay. */
+  setMenuOpen: (open: boolean) => void;
+  /** Merges a partial patch into settings and persists it to localStorage. */
+  setSettings: (settings: Partial<GameSettings>) => void;
 }
 
 export const useCityStore = create<CityStoreState>((set, get) => ({
@@ -196,6 +215,9 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   statsSamples: [],
   statsOpen: false,
   photoMode: false,
+  screen: 'menu',
+  menuOpen: false,
+  settings: loadSettings(),
 
   applySnapshotStats: (stats) =>
     set((state) => {
@@ -260,4 +282,14 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   setStatsSamples: (samples) => set({ statsSamples: samples }),
   setStatsOpen: (open) => set({ statsOpen: open }),
   setPhotoMode: (active) => set({ photoMode: active }),
+  setScreen: (screen) => set({ screen }),
+  setMenuOpen: (open) => set({ menuOpen: open }),
+  setSettings: (patch) => {
+    set((state) => {
+      const settings = { ...state.settings, ...patch };
+      saveSettings(settings);
+      return { settings };
+    });
+    get().bound?.onSettings(patch);
+  },
 }));

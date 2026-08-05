@@ -176,6 +176,8 @@ describe('setSpeed', () => {
       redo: vi.fn(),
       setSpeed: setSpeedMock,
       togglePhoto: vi.fn(),
+      saveGame: vi.fn(),
+      onSettings: vi.fn(),
     });
     useCityStore.getState().setSpeed(2);
     expect(useCityStore.getState().speed).toBe(2);
@@ -293,9 +295,15 @@ describe('bindActions', () => {
     const undo = vi.fn();
     const redo = vi.fn();
     const setSpeed = vi.fn();
-    useCityStore
-      .getState()
-      .bindActions({ sendCommands, undo, redo, setSpeed, togglePhoto: vi.fn() });
+    useCityStore.getState().bindActions({
+      sendCommands,
+      undo,
+      redo,
+      setSpeed,
+      togglePhoto: vi.fn(),
+      saveGame: vi.fn(),
+      onSettings: vi.fn(),
+    });
     const { bound } = useCityStore.getState();
     bound?.sendCommands('Bulldoze', []);
     bound?.undo();

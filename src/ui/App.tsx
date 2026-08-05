@@ -17,6 +17,7 @@ import { CornerButtons } from './CornerButtons';
 import { InfoPanel } from './InfoPanel';
 import { InfoviewGrid } from './InfoviewGrid';
 import { MainDock } from './MainDock';
+import { MenuScreen } from './MenuScreen';
 import { CityInfoPopover, HelpPopover, MilestonePopover } from './Popovers';
 import { DistrictPanel } from './DistrictPanel';
 import { StatsPanel } from './StatsPanel';
@@ -40,6 +41,9 @@ export default function App() {
   const setStatsOpen = useCityStore((s) => s.setStatsOpen);
   const statsSamples = useCityStore((s) => s.statsSamples);
   const photoMode = useCityStore((s) => s.photoMode);
+  // Gate the game chrome/HUD on a live game: the menu-only screen boots no
+  // world/worker, so none of the panels below have anything to read.
+  const screen = useCityStore((s) => s.screen);
 
   // The staged escape stack. Stage 1 (cancel an active drag) is
   // main.ts's tool-level concern: its window keydown listener registers
@@ -62,85 +66,98 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [activeCategory]);
 
-  // Photo mode: hide every DOM chrome element while active (exit via ESC,
-  // handled by main.ts's global keydown -> PhotoModeController.handleKeyDown).
-  if (photoMode) return null;
-
   return (
     <>
-      <CornerButtons
-        cityInfoOpen={cityInfoOpen}
-        onToggleCityInfo={() => setCityInfoOpen((v) => !v)}
-        helpOpen={helpOpen}
-        onToggleHelp={() => setHelpOpen((v) => !v)}
-        statsOpen={statsOpen}
-        onToggleStats={() => setStatsOpen(!statsOpen)}
-        photoActive={photoMode}
-        onTogglePhoto={() => useCityStore.getState().bound?.togglePhoto()}
-      />
-      {cityInfoOpen && (
-        <div className="pointer-events-none fixed left-3 top-14 z-20">
-          <CityInfoPopover />
-        </div>
-      )}
-      {helpOpen && (
-        <div className="pointer-events-none fixed right-3 top-14 z-20">
-          <HelpPopover />
-        </div>
-      )}
+      {/* MenuScreen self-gates on screen/menuOpen and sits above all chrome
+          below (the start screen, or the in-game pause overlay). */}
+      <MenuScreen />
 
-      <InfoPanel />
-      <Toasts />
-      <DistrictPanel />
-      <TransitLinesPanel />
-      <StatsPanel open={statsOpen} onClose={() => setStatsOpen(false)} samples={statsSamples} />
+      {/* Photo mode: hide every DOM chrome element while active (exit via ESC,
+          handled by main.ts's global keydown -> PhotoModeController.handleKeyDown).
+          No world/worker exists on the menu-only screen, so the chrome below
+          only makes sense once a game is actually running. */}
+      {screen === 'playing' && !photoMode && (
+        <>
+          <CornerButtons
+            cityInfoOpen={cityInfoOpen}
+            onToggleCityInfo={() => setCityInfoOpen((v) => !v)}
+            helpOpen={helpOpen}
+            onToggleHelp={() => setHelpOpen((v) => !v)}
+            statsOpen={statsOpen}
+            onToggleStats={() => setStatsOpen(!statsOpen)}
+            photoActive={photoMode}
+            onTogglePhoto={() => useCityStore.getState().bound?.togglePhoto()}
+            onOpenMenu={() => useCityStore.getState().setMenuOpen(true)}
+          />
+          {cityInfoOpen && (
+            <div className="pointer-events-none fixed left-3 top-14 z-20">
+              <CityInfoPopover />
+            </div>
+          )}
+          {helpOpen && (
+            <div className="pointer-events-none fixed right-3 top-14 z-20">
+              <HelpPopover />
+            </div>
+          )}
 
-      {milestoneOpen && (
-        <div className="pointer-events-none fixed bottom-24 left-2 z-20">
-          <MilestonePopover onClose={() => setMilestoneOpen(false)} />
-        </div>
-      )}
-      {infoviewOpen && (
-        <div className="pointer-events-none fixed bottom-24 right-2 z-20">
-          <InfoviewGrid />
-        </div>
-      )}
+          <InfoPanel />
+          <Toasts />
+          <DistrictPanel />
+          <TransitLinesPanel />
+          <StatsPanel
+            open={statsOpen}
+            onClose={() => setStatsOpen(false)}
+            samples={statsSamples}
+          />
 
-      <ToolOptionsPanel />
-      {/*
-       * The drawer's own ✕ is a deliberate "I'm done placing" action (unlike
-       * the staged Escape stack above): it closes the drawer AND drops the
-       * active tool back to `select`, which exits placement mode and hides the
-       * zoning grid (main.ts keys grid visibility off a zone tool being in
-       * hand).
-       */}
-      <AssetDrawer
-        category={activeCategory}
-        onClose={() => {
-          setActiveCategory(null);
-          const store = useCityStore.getState();
-          if (store.selectedTool !== 'select') store.setTool('select');
-        }}
-      />
-      <MainDock
-        activeCategory={activeCategory}
-        onToggleCategory={(category) =>
-          setActiveCategory((current) => {
-            // Any dock navigation (open, switch, or close a category) drops the
-            // active tool back to `select`, so placement mode only persists
-            // while a card in the open drawer is actually selected — otherwise
-            // a ploppable stayed "in hand" after the drawer closed and kept
-            // placing on click.
-            const store = useCityStore.getState();
-            if (store.selectedTool !== 'select') store.setTool('select');
-            return current === category ? null : category;
-          })
-        }
-        infoviewOpen={infoviewOpen}
-        onToggleInfoview={() => setInfoviewOpen((v) => !v)}
-        onOpenMilestones={() => setMilestoneOpen((v) => !v)}
-      />
-      <StatusStrip />
+          {milestoneOpen && (
+            <div className="pointer-events-none fixed bottom-24 left-2 z-20">
+              <MilestonePopover onClose={() => setMilestoneOpen(false)} />
+            </div>
+          )}
+          {infoviewOpen && (
+            <div className="pointer-events-none fixed bottom-24 right-2 z-20">
+              <InfoviewGrid />
+            </div>
+          )}
+
+          <ToolOptionsPanel />
+          {/*
+           * The drawer's own ✕ is a deliberate "I'm done placing" action (unlike
+           * the staged Escape stack above): it closes the drawer AND drops the
+           * active tool back to `select`, which exits placement mode and hides the
+           * zoning grid (main.ts keys grid visibility off a zone tool being in
+           * hand).
+           */}
+          <AssetDrawer
+            category={activeCategory}
+            onClose={() => {
+              setActiveCategory(null);
+              const store = useCityStore.getState();
+              if (store.selectedTool !== 'select') store.setTool('select');
+            }}
+          />
+          <MainDock
+            activeCategory={activeCategory}
+            onToggleCategory={(category) =>
+              setActiveCategory((current) => {
+                // Any dock navigation (open, switch, or close a category) drops the
+                // active tool back to `select`, so placement mode only persists
+                // while a card in the open drawer is actually selected — otherwise
+                // a ploppable stayed "in hand" after the drawer closed and kept
+                // placing on click.
+                const store = useCityStore.getState();
+                if (store.selectedTool !== 'select') store.setTool('select');
+                return current === category ? null : category;
+              })
+            }
+            infoviewOpen={infoviewOpen}
+            onToggleInfoview={() => setInfoviewOpen((v) => !v)}
+            onOpenMilestones={() => setMilestoneOpen((v) => !v)}
+          />
+          <StatusStrip />
+        </>
+      )}
     </>
   );
 }

@@ -40,7 +40,8 @@ export type IconName =
   | 'leaf'
   | 'transit'
   | 'districts'
-  | 'camera';
+  | 'camera'
+  | 'menu';
 
 function Base({ children, ...props }: SVGProps<SVGSVGElement>): JSX.Element {
   return (
@@ -275,6 +276,13 @@ const GLYPHS: Record<IconName, Glyph> = {
     <Base {...p}>
       <path d="M4 8h3l1.5-2.5h7L17 8h3v11H4z" />
       <circle cx="12" cy="13" r="3.2" />
+    </Base>
+  ),
+  menu: (p) => (
+    <Base {...p}>
+      <line x1="4" y1="6.5" x2="20" y2="6.5" />
+      <line x1="4" y1="12" x2="20" y2="12" />
+      <line x1="4" y1="17.5" x2="20" y2="17.5" />
     </Base>
   ),
 };

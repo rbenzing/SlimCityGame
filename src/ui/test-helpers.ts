@@ -3,6 +3,7 @@
  * so vitest's `include` glob never collects it as a suite — plain test
  * utility module.
  */
+import { DEFAULT_SETTINGS } from '../app/session';
 import { DEFAULT_BRUSH_SETTINGS } from '../tools/tools';
 import { createInitialStats, useCityStore } from './store';
 
@@ -24,5 +25,10 @@ export function resetCityStore(): void {
     previousMonthFunds: createInitialStats().funds,
     selectionInfo: null,
     brushSettings: DEFAULT_BRUSH_SETTINGS,
+    // Component tests assume a live game (the App chrome/HUD only renders
+    // while screen === 'playing'); menu-screen behavior gets its own tests.
+    screen: 'playing',
+    menuOpen: false,
+    settings: { ...DEFAULT_SETTINGS },
   });
 }

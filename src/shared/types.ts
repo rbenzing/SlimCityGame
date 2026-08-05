@@ -154,7 +154,9 @@ export type Command =
   // Paint `districtId` (0 = erase back to unassigned) onto GridState.district for `tiles`.
   | { kind: 'paintDistrict'; districtId: number; tiles: TilePoint[] }
   // Toggle a policy for a district on/off; the sim applies its economy/traffic effect.
-  | { kind: 'setDistrictPolicy'; districtId: number; policy: Policy; on: boolean };
+  | { kind: 'setDistrictPolicy'; districtId: number; policy: Policy; on: boolean }
+  // Sandbox mode: when on, every build item is placeable regardless of milestone.
+  | { kind: 'setSandbox'; on: boolean };
 
 /**
  * Worker acknowledges each command batch: actual cost charged, and the

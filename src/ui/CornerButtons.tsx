@@ -16,6 +16,8 @@ export interface CornerButtonsProps {
   onToggleStats: () => void;
   photoActive: boolean;
   onTogglePhoto: () => void;
+  /** Opens the in-game pause menu overlay (StartMenu shown over the running game). */
+  onOpenMenu?: () => void;
 }
 
 function CornerButton({
@@ -53,6 +55,7 @@ export function CornerButtons({
   onToggleStats,
   photoActive,
   onTogglePhoto,
+  onOpenMenu,
 }: CornerButtonsProps): JSX.Element {
   return (
     <>
@@ -78,6 +81,9 @@ export function CornerButtons({
           icon="camera"
         />
         <CornerButton label="Help" active={helpOpen} onClick={onToggleHelp} icon="help" />
+        {onOpenMenu && (
+          <CornerButton label="Menu" active={false} onClick={onOpenMenu} icon="menu" />
+        )}
       </div>
     </>
   );

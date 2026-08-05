@@ -226,6 +226,70 @@ export async function loadLatestSave(): Promise<{ header: SaveHeader; data: Arra
 }
 
 // ---------------------------------------------------------------------------
+// Multi-slot save API
+// ---------------------------------------------------------------------------
+
+/**
+ * A stored save's header plus its stable IndexedDB record key. The key is the
+ * autoIncrement 'id' the 'saves' object store assigns each record (see
+ * openDb()); it isn't part of the header JSON embedded in the save bytes, so
+ * it's stitched on here for slot-picking UI.
+ */
+export interface SaveHeaderWithId extends SaveHeader {
+  id: number;
+}
+
+/** Sorts save headers newest-first by `savedAt`. Pure — no IndexedDB involved. */
+export function sortSaveHeadersNewestFirst<T extends { savedAt: number }>(headers: T[]): T[] {
+  return [...headers].sort((a, b) => b.savedAt - a.savedAt);
+}
+
+/** Every stored save's header (with its slot id), newest first. */
+export async function listSaves(): Promise<SaveHeaderWithId[]> {
+  const db = await openDb();
+  try {
+    const tx = db.transaction(SAVES_STORE, 'readonly');
+    const store = tx.objectStore(SAVES_STORE);
+    const records = (await requestToPromise(store.getAll())) as SaveRecord[];
+    const headers = records.map((record) => ({
+      ...decodeSave(record.data).header,
+      id: record.id!,
+    }));
+    return sortSaveHeadersNewestFirst(headers);
+  } finally {
+    db.close();
+  }
+}
+
+/** Deletes one stored save by its slot id. No-op if the id doesn't exist. */
+export async function deleteSave(id: number): Promise<void> {
+  const db = await openDb();
+  try {
+    const tx = db.transaction(SAVES_STORE, 'readwrite');
+    const store = tx.objectStore(SAVES_STORE);
+    await requestToPromise(store.delete(id));
+  } finally {
+    db.close();
+  }
+}
+
+/** One stored save's payload by its slot id, or null when no such save exists. */
+export async function getSaveById(
+  id: number,
+): Promise<{ header: SaveHeaderWithId; data: ArrayBuffer } | null> {
+  const db = await openDb();
+  try {
+    const tx = db.transaction(SAVES_STORE, 'readonly');
+    const store = tx.objectStore(SAVES_STORE);
+    const record = (await requestToPromise(store.get(id))) as SaveRecord | undefined;
+    if (!record) return null;
+    return { header: { ...decodeSave(record.data).header, id: record.id! }, data: record.data };
+  } finally {
+    db.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Worker bridges
 // ---------------------------------------------------------------------------
 
@@ -235,11 +299,28 @@ export function saveNow(worker: Worker): void {
   worker.postMessage(msg);
 }
 
+/**
+ * Posts a decoded save's bytes into the sim worker as a 'loadSave' message,
+ * exactly like the historical loadLatest() body. Pure aside from the
+ * postMessage call — factored out so loadLatest()/loadSaveById() share it and
+ * so the message shape is unit-testable with a stub worker (no IndexedDB
+ * needed).
+ */
+export function postLoadSaveMessage(worker: Worker, entry: { data: ArrayBuffer } | null): boolean {
+  if (!entry) return false;
+  const msg: MainToWorker = { type: 'loadSave', data: entry.data };
+  worker.postMessage(msg, [entry.data]);
+  return true;
+}
+
 /** Loads the most recent save into the sim worker. Resolves false when no save exists. */
 export async function loadLatest(worker: Worker): Promise<boolean> {
   const latest = await loadLatestSave();
-  if (!latest) return false;
-  const msg: MainToWorker = { type: 'loadSave', data: latest.data };
-  worker.postMessage(msg, [latest.data]);
-  return true;
+  return postLoadSaveMessage(worker, latest);
+}
+
+/** Loads one save slot by id into the sim worker. Resolves false when no such save exists. */
+export async function loadSaveById(worker: Worker, id: number): Promise<boolean> {
+  const entry = await getSaveById(id);
+  return postLoadSaveMessage(worker, entry);
 }

@@ -69,11 +69,11 @@ import { ToolManager, footprintTiles, ZONE_TOOL_TO_TYPE, type ToolEnv } from './
 import { UndoStack } from './tools/undo';
 import { useCityStore } from './ui/store';
 import { mountUi } from './ui/App';
-import { AutoSaver, loadLatest, saveNow, storeSave } from './app/persist';
+import { AutoSaver, getSaveById, loadLatest, saveNow, storeSave } from './app/persist';
 import { CursorChipStack } from './app/cursorchip';
 import { ClientGridMirror } from './app/clientgrid';
+import { readAppSession, type AppSession } from './app/session';
 
-const SEED = 1337;
 const MAP_NAME = 'Riverton';
 const OVERLAY_REFRESH_MS = 500; // 2 Hz while an infoview lens is active
 const SNAPSHOT_INTERVAL_MS = 1000 / SNAPSHOT_HZ;
@@ -92,18 +92,31 @@ const CATEGORY_HOTKEYS: Record<string, ToolId> = {
   Digit7: 'terraform.raise', // Landscaping, appended past the original six
 };
 
-async function boot(): Promise<void> {
+async function startGame(session: Extract<AppSession, { screen: 'playing' }>): Promise<void> {
   const viewport = document.getElementById('viewport');
   const uiRoot = document.getElementById('ui-root');
   if (!viewport || !uiRoot) {
     throw new Error('SlimCity: #viewport / #ui-root missing from index.html');
   }
 
+  // Seed + optional load payload: a Load Game intent carries no fresh seed of
+  // its own (session.seed is 0 — see session.ts's startLoadGame), so the
+  // stored save's header seed is what actually rebuilds the same terrain.
+  let seed = session.seed;
+  let loadData: ArrayBuffer | null = null;
+  if (session.mode === 'load' && session.saveId != null) {
+    const entry = await getSaveById(session.saveId);
+    if (entry) {
+      seed = entry.header.seed;
+      loadData = entry.data;
+    }
+  }
+
   // --- renderer, scene, world ------------------------------------------------
   const handle = await createRenderer(viewport);
   const world = createWorldScene();
 
-  const map = generateProceduralMap(SEED, MAP_NAME);
+  const map = generateProceduralMap(seed, MAP_NAME);
 
   const terrain = new TerrainRenderer(world.scene);
   terrain.build(map);
@@ -114,7 +127,7 @@ async function boot(): Promise<void> {
   const clouds = new CloudLayer(world.scene);
 
   const trees = new TreeRenderer(world.scene, heightAt);
-  trees.build(map, SEED);
+  trees.build(map, seed);
 
   // Utility detail kits: wind turbines, water towers,
   // coal plants, and small parks render as real modelled kits; the ids the
@@ -247,8 +260,12 @@ async function boot(): Promise<void> {
 
   // --- sim worker --------------------------------------------------------------
   const worker = new Worker(new URL('./sim/worker.entry.ts', import.meta.url), { type: 'module' });
-  const initMsg: MainToWorker = { type: 'init', seed: SEED, map };
+  const initMsg: MainToWorker = { type: 'init', seed, map };
   worker.postMessage(initMsg);
+  if (loadData) {
+    const loadMsg: MainToWorker = { type: 'loadSave', data: loadData };
+    worker.postMessage(loadMsg, [loadData]);
+  }
 
   const store = useCityStore;
   const queue = new CommandQueue();
@@ -293,6 +310,13 @@ async function boot(): Promise<void> {
     worker.postMessage(msg);
     return seq;
   };
+
+  // Sandbox setting is applied as a worker command (not init state), so it
+  // takes effect immediately whether carried over from Options or toggled
+  // live mid-game (see bindActions' onSettings below).
+  if (store.getState().settings.sandboxUnlockAll) {
+    postCommands([{ kind: 'setSandbox', on: true }], true);
+  }
 
   const syncUndoState = (): void => {
     store.getState().setUndoState(undoStack.canUndo(), undoStack.canRedo());
@@ -674,6 +698,12 @@ async function boot(): Promise<void> {
       worker.postMessage(msg);
     },
     togglePhoto,
+    saveGame: () => saveNow(worker),
+    onSettings: (patch) => {
+      if (patch.sandboxUnlockAll !== undefined) {
+        postCommands([{ kind: 'setSandbox', on: patch.sandboxUnlockAll }], true);
+      }
+    },
   });
 
   const requestField = (field: FieldId): void => {
@@ -852,6 +882,7 @@ async function boot(): Promise<void> {
 
   // --- UI ------------------------------------------------------------------------------
   mountUi(uiRoot);
+  useCityStore.getState().setScreen('playing');
 
   // --- bloom post-process ------------------------------------------
   // Wraps the plain renderer.render(scene, camera) so emissive windows, lamp
@@ -915,7 +946,7 @@ async function boot(): Promise<void> {
       if (typeof overlay === 'number') requestField(overlay);
     }
 
-    if (bloomPipeline) {
+    if (bloomPipeline && useCityStore.getState().settings.bloom) {
       bloomPipeline.setStrength(lastNightFactor * BLOOM_NIGHT_STRENGTH);
       bloomPipeline.render();
     } else {
@@ -924,6 +955,31 @@ async function boot(): Promise<void> {
   });
 }
 
-void boot().catch((err: unknown) => {
+async function main(): Promise<void> {
+  const session = readAppSession();
+  if (session.screen === 'playing') {
+    await startGame(session);
+    return;
+  }
+  // Menu-only boot: mount the UI (App renders the StartMenu when
+  // screen === 'menu'); no world/worker exists until New/Load Game reloads
+  // into startGame() above.
+  const uiRoot = document.getElementById('ui-root');
+  if (!uiRoot) throw new Error('SlimCity: #ui-root missing');
+  const store = useCityStore.getState();
+  store.setScreen('menu');
+  store.bindActions({
+    sendCommands: () => {},
+    undo: () => {},
+    redo: () => {},
+    setSpeed: () => {},
+    togglePhoto: () => {},
+    saveGame: () => {},
+    onSettings: () => {},
+  });
+  mountUi(uiRoot);
+}
+
+void main().catch((err: unknown) => {
   console.error('SlimCity failed to boot:', err);
 });

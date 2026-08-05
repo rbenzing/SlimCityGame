@@ -155,6 +155,7 @@ export function AssetDrawer({ category, onClose }: AssetDrawerProps): JSX.Elemen
   const selectedTool = useCityStore((s) => s.selectedTool);
   const setTool = useCityStore((s) => s.setTool);
   const milestoneLevel = useCityStore((s) => s.stats.milestoneLevel);
+  const sandboxUnlockAll = useCityStore((s) => s.settings.sandboxUnlockAll);
 
   const groups = category ? subTabsFor(category) : [];
 
@@ -217,7 +218,7 @@ export function AssetDrawer({ category, onClose }: AssetDrawerProps): JSX.Elemen
 
       <div className="mt-2 flex flex-wrap gap-2 overflow-y-auto">
         {cards.map((card) => {
-          const locked = card.unlockMilestone > milestoneLevel;
+          const locked = !sandboxUnlockAll && card.unlockMilestone > milestoneLevel;
           const active = selectedTool === card.id;
           return (
             <button

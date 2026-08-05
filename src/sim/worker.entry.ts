@@ -286,6 +286,8 @@ class SimWorld implements WorkerSim {
   private readonly districtDefById = new Map<number, District>();
   private districtDirty: DirtyRect | null = null;
   private districtDefsChanged = false;
+  /** Sandbox mode: when true, milestone gates are bypassed for all build items. */
+  private sandbox = false;
 
   /**
    * Statistical population+jobs accessor for transit ridership: sums the
@@ -1013,6 +1015,9 @@ class SimWorld implements WorkerSim {
           ],
         };
       }
+      case 'setSandbox':
+        this.sandbox = command.on;
+        return { ok: true, cost: 0, inverse: [] };
     }
   }
 
@@ -1052,7 +1057,7 @@ class SimWorld implements WorkerSim {
   private cmdBuildRoad(tier: RoadTier, tiles: TilePoint[]): CommandResult {
     const spec = this.roadSpecByTier.get(tier);
     if (!spec) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
-    if (spec.unlockMilestone > this.stats.milestoneLevel) {
+    if (!this.sandbox && spec.unlockMilestone > this.stats.milestoneLevel) {
       return { ok: false, cost: 0, inverse: [], reason: 'locked' };
     }
 
@@ -1219,7 +1224,7 @@ class SimWorld implements WorkerSim {
   ): CommandResult {
     const entry = this.catalogById.get(catalogId);
     if (!entry) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
-    if (entry.unlockMilestone > this.stats.milestoneLevel) {
+    if (!this.sandbox && entry.unlockMilestone > this.stats.milestoneLevel) {
       return { ok: false, cost: 0, inverse: [], reason: 'locked' };
     }
     if (this.stats.funds < entry.cost) return { ok: false, cost: 0, inverse: [], reason: 'funds' };

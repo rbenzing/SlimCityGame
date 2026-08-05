@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { TICKS_PER_MONTH } from '../shared/constants';
-import { SAVE_VERSION, type SaveHeader } from '../shared/types';
-import { AutoSaver, decodeSave, encodeSave, stampSavedAt, type SaveMeta } from './persist';
+import { SAVE_VERSION, type MainToWorker, type SaveHeader } from '../shared/types';
+import {
+  AutoSaver,
+  decodeSave,
+  encodeSave,
+  postLoadSaveMessage,
+  sortSaveHeadersNewestFirst,
+  stampSavedAt,
+  type SaveHeaderWithId,
+  type SaveMeta,
+} from './persist';
 
 function sampleHeader(): SaveHeader {
   return { version: SAVE_VERSION, seed: 1337, tick: 4200, mapName: 'Riverton', savedAt: 0 };
@@ -127,5 +136,72 @@ describe('AutoSaver', () => {
     expect(saves).toBe(1);
     saver.onSnapshotTick(4 * TICKS_PER_MONTH);
     expect(saves).toBe(2);
+  });
+});
+
+// NOTE: The repo has no IndexedDB test harness (no fake-indexeddb dependency,
+// and vitest here runs with `environment: 'node'`, so no browser `indexedDB`
+// global either). Per scope, no new dependency was added. The multi-slot
+// storage functions (listSaves/deleteSave/getSaveById/loadSaveById's
+// getSaveById call) that open a real IndexedDB connection are therefore only
+// exercised in the browser, not here. The tests below cover everything that
+// can be tested without IndexedDB: the pure newest-first sort helper the
+// multi-slot API shares, and the pure "post the found save to the worker"
+// helper that loadLatest()/loadSaveById() both funnel through.
+
+function stubWorker(): { worker: Worker; posted: { msg: unknown; transfer?: Transferable[] }[] } {
+  const posted: { msg: unknown; transfer?: Transferable[] }[] = [];
+  const worker = {
+    postMessage: (msg: unknown, transfer?: Transferable[]) => {
+      posted.push({ msg, transfer });
+    },
+  } as unknown as Worker;
+  return { worker, posted };
+}
+
+function sampleHeaderWithId(id: number, savedAt: number): SaveHeaderWithId {
+  return { ...sampleHeader(), savedAt, id };
+}
+
+describe('sortSaveHeadersNewestFirst', () => {
+  it('sorts by savedAt descending without mutating the input array', () => {
+    const input = [
+      sampleHeaderWithId(1, 100),
+      sampleHeaderWithId(2, 300),
+      sampleHeaderWithId(3, 200),
+    ];
+    const sorted = sortSaveHeadersNewestFirst(input);
+
+    expect(sorted.map((h) => h.id)).toEqual([2, 3, 1]);
+    // Original array order is untouched.
+    expect(input.map((h) => h.id)).toEqual([1, 2, 3]);
+  });
+
+  it('is a no-op on an empty list', () => {
+    expect(sortSaveHeadersNewestFirst([])).toEqual([]);
+  });
+});
+
+describe('postLoadSaveMessage', () => {
+  it('posts a loadSave message with the entry data, transferring the buffer', () => {
+    const { worker, posted } = stubWorker();
+    const data = sampleGrid();
+
+    const found = postLoadSaveMessage(worker, { data });
+
+    expect(found).toBe(true);
+    expect(posted).toHaveLength(1);
+    const expected: MainToWorker = { type: 'loadSave', data };
+    expect(posted[0]!.msg).toEqual(expected);
+    expect(posted[0]!.transfer).toEqual([data]);
+  });
+
+  it('returns false and posts nothing when there is no entry', () => {
+    const { worker, posted } = stubWorker();
+
+    const found = postLoadSaveMessage(worker, null);
+
+    expect(found).toBe(false);
+    expect(posted).toHaveLength(0);
   });
 });
