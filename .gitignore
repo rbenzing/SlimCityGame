@@ -3,3 +3,11 @@ dist/
 *.local
 .claude/settings.local.json
 .DS_Store
+
+# Screenshot / capture-run artifacts from the tools/ visual harnesses.
+# The .mjs capture scripts stay tracked; their PNG/log/txt output does not.
+tools/shots-*/*.png
+tools/shots-*/*.jpg
+tools/shots-*/*.jpeg
+tools/shots-*/*.log
+tools/shots-*/*.txt

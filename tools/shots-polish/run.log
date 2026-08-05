@@ -1,4 +1,0 @@
-anchor: {"x":20,"z":24}
-after setup: {"tick":166,"funds":43240,"monthlyIncome":0,"monthlyExpenses":0,"population":0,"jobs":0,"employed":0,"demand":{"res":0.3466666666666667,"com":0.15,"ind":0.4},"happiness":58,"powerSupply":6,"powerDemand":0.2,"waterSupply":400,"waterDemand":0,"milestoneLevel":0,"milestoneProgress":0,"loanBalance":0,"taxRates":{"res":0.09,"com":0.09,"ind":0.09},"serviceFunding":{"police":1,"fire":1,"health":1,"education":1,"park":1}}
-paused tick=166 dayT=0.444
-final: {"tick":166,"funds":43240,"monthlyIncome":0,"monthlyExpenses":0,"population":0,"jobs":0,"employed":0,"demand":{"res":0.3466666666666667,"com":0.15,"ind":0.4},"happiness":58,"powerSupply":6,"powerDemand":0.2,"waterSupply":400,"waterDemand":0,"milestoneLevel":0,"milestoneProgress":0,"loanBalance":0,"taxRates":{"res":0.09,"com":0.09,"ind":0.09},"serviceFunding":{"police":1,"fire":1,"health":1,"education":1,"park":1}}
