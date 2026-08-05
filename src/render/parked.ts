@@ -412,7 +412,9 @@ export class ParkedCarRenderer {
 
   private readonly carGeometry = buildCarGeometry();
   private readonly carMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
-  private readonly stripeMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
+  // Lit so the paved apron receives the parked cars' cast shadows (flat +Y
+  // faces read nearly uniform in daylight, like the lit road).
+  private readonly stripeMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
 
   private carMesh: THREE.InstancedMesh | null = null;
   private carCapacity = 0;
@@ -598,7 +600,9 @@ export class ParkedCarRenderer {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geometry.computeVertexNormals(); // Lambert lighting needs normals (flat +Y apron)
     const mesh = new THREE.Mesh(geometry, this.stripeMaterial);
+    mesh.receiveShadow = true; // apron takes the parked cars' shadows
     this.scene.add(mesh);
     this.buildingStripes.set(building.id, mesh);
   }
@@ -625,6 +629,8 @@ export class ParkedCarRenderer {
     this.carCapacity = INITIAL_CAR_CAPACITY;
     this.carMesh = new THREE.InstancedMesh(this.carGeometry, this.carMaterial, this.carCapacity);
     this.carMesh.count = 0;
+    this.carMesh.castShadow = true; // parked cars cast onto the apron/road
+    this.carMesh.receiveShadow = true;
     this.scene.add(this.carMesh);
   }
 
@@ -632,6 +638,8 @@ export class ParkedCarRenderer {
     const previous = this.carMesh!;
     const newCapacity = this.carCapacity * 2;
     const newMesh = new THREE.InstancedMesh(this.carGeometry, this.carMaterial, newCapacity);
+    newMesh.castShadow = true;
+    newMesh.receiveShadow = true;
 
     const m = new THREE.Matrix4();
     const c = new THREE.Color();

@@ -1962,7 +1962,10 @@ const _treeScale = new THREE.Vector3(1, 1, 1);
 export class RoadMeshRenderer {
   private readonly scene: THREE.Scene;
   private readonly heightAt: (x: number, z: number) => number;
-  private readonly material = new THREE.MeshBasicMaterial({ vertexColors: true });
+  // Lit (Lambert) so the pavement receives cast shadows from cars, lamps and
+  // buildings and shades with the sun; road faces are flat +Y, so daylight
+  // reads nearly as uniform as the old unlit fill but now grounds its traffic.
+  private readonly material = new THREE.MeshLambertMaterial({ vertexColors: true });
   private readonly chunks = new Map<number, ChunkEntry>();
 
   // Median trees: a single trunk InstancedMesh + a single
@@ -1998,10 +2001,11 @@ export class RoadMeshRenderer {
   }
 
   /**
-   * Dims the road toward ROAD_NIGHT_DIM at night. The material is unlit
-   * (final color = material.color × vertexColor), so scaling material.color
-   * darkens every road vertex without touching per-tile colors, leaving the
-   * additive lamp pools as the only bright spots.
+   * Extra night dim toward ROAD_NIGHT_DIM, on top of the Lambert lighting's own
+   * darkening. Scales material.color (a multiplier on lit vertex color), so it
+   * deepens the pavement at night without touching per-tile colors, keeping the
+   * additive lamp pools as the bright spots. At day (factor 0) it is 1 → the
+   * road shows its full lit color.
    */
   setNightFactor(nightFactor: number): void {
     const f = Math.min(1, Math.max(0, nightFactor));
@@ -2070,7 +2074,11 @@ export class RoadMeshRenderer {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    // Lambert needs normals; the road soup carries none. Flat +Y-ish per-face
+    // normals are exactly right for the near-planar carriageway.
+    geometry.computeVertexNormals();
     const mesh = new THREE.Mesh(geometry, this.material);
+    mesh.receiveShadow = true; // pavement takes cast shadows from cars/lamps/buildings
     chunk.mesh = mesh;
     this.scene.add(mesh);
   }
@@ -2128,6 +2136,10 @@ export class RoadMeshRenderer {
     }
     trunkMesh.instanceMatrix.needsUpdate = true;
     canopyMesh.instanceMatrix.needsUpdate = true;
+    trunkMesh.castShadow = true; // median foliage casts onto the road, like street trees
+    canopyMesh.castShadow = true;
+    trunkMesh.receiveShadow = true;
+    canopyMesh.receiveShadow = true;
 
     this.scene.add(trunkMesh);
     this.scene.add(canopyMesh);
