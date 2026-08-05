@@ -321,17 +321,18 @@ export function createWorldScene(): WorldScene {
 
   const sun = new THREE.DirectionalLight(0xffffff, 1.5);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(4096, 4096);
   sun.shadow.bias = -0.0006;
 
-  // Shadow sweep: rather than stretch one 2048² map
-  // over the whole 4096m map (~2.2 m/texel — far too coarse to resolve a lamp
-  // pole, a pedestrian, or a tree trunk, so their shadows vanish), the frustum
+  // Shadow sweep: rather than stretch one map over the
+  // whole 4096m map (~1.1 m/texel — far too coarse to resolve a lamp pole, a
+  // pedestrian, or a slim tree trunk, so their shadows vanish), the frustum
   // covers only a focused region around the camera target (SHADOW_SPAN_METERS
-  // each side → ~0.35 m/texel) and follows it via setShadowFocus() every frame.
-  // Same map budget, ~6× the shadow resolution where the player is actually
-  // looking — the standard "shadows near the camera" technique. Distant props
-  // simply fall outside the shadow frustum, which is fine for a top-down RTS.
+  // each side) and follows it via setShadowFocus() every frame. At 4096² over
+  // ±360m that is ~0.18 m/texel — dense enough to catch a ~0.25m tree trunk, so
+  // a tree's shadow bridges from its trunk base to the canopy blob instead of
+  // reading as a detached floating patch. Distant props fall outside the
+  // frustum, which is fine for a top-down RTS.
   const SHADOW_SPAN_METERS = 360;
   const shadowCamera = sun.shadow.camera;
   shadowCamera.left = -SHADOW_SPAN_METERS;
@@ -362,17 +363,41 @@ export function createWorldScene(): WorldScene {
   const sunBillboard = new SunBillboard(scene);
 
   const sunDistance = mapMeters * 1.4;
+  // Minimum elevation (as sin θ) the shadow-casting direction is lifted to when
+  // the sun is low — ~27°, capping cast-shadow length at ~2× object height so
+  // dawn/dusk tree shadows stay tight instead of raking across the ground.
+  const MIN_SHADOW_SUN_ELEVATION_SIN = 0.45;
 
   // Re-places the sun light so it sits `sunDistance` up-sun of the current
-  // shadow focus, with its target ON the focus — the directional light's
-  // direction (position - target) stays exactly `sunDir`, so scene lighting is
-  // unchanged; only the shadow frustum's centre moves. Called whenever either
-  // the time-of-day (sunDir) or the focus point changes.
+  // shadow focus, with its target ON the focus. Called whenever either the
+  // time-of-day (sunDir) or the focus point changes.
+  //
+  // The light direction is `sunDir` EXCEPT its elevation is floored at
+  // MIN_SHADOW_SUN_ELEVATION_SIN: cast-shadow length ≈ objectHeight /
+  // tan(elevation), so at a low dawn/dusk sun the tall tree canopies otherwise
+  // rake into long streaks far from the trunk (thin lamp poles barely show it).
+  // Flooring the elevation caps every cast shadow's length so foliage reads as
+  // grounded, not smeared, while shadows still track the sun's azimuth and
+  // shorten toward noon. Color/intensity/the visible sun billboard still use
+  // the true `sunDir`, so the day/night look is unchanged; only the direction
+  // the shadow map is projected from is lifted, and only while the sun is low.
   const placeSun = (): void => {
+    let dx = sunDir.x;
+    let dy = sunDir.y;
+    let dz = sunDir.z;
+    if (dy < MIN_SHADOW_SUN_ELEVATION_SIN) {
+      const horizLen = Math.hypot(dx, dz) || 1e-6;
+      const horizScale =
+        Math.sqrt(Math.max(0, 1 - MIN_SHADOW_SUN_ELEVATION_SIN * MIN_SHADOW_SUN_ELEVATION_SIN)) /
+        horizLen;
+      dx *= horizScale;
+      dz *= horizScale;
+      dy = MIN_SHADOW_SUN_ELEVATION_SIN;
+    }
     sun.position.set(
-      shadowFocus.x + sunDir.x * sunDistance,
-      shadowFocus.y + sunDir.y * sunDistance,
-      shadowFocus.z + sunDir.z * sunDistance,
+      shadowFocus.x + dx * sunDistance,
+      shadowFocus.y + dy * sunDistance,
+      shadowFocus.z + dz * sunDistance,
     );
     sun.target.position.copy(shadowFocus);
     sun.target.updateMatrixWorld();
