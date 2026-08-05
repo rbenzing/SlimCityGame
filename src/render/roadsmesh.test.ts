@@ -1083,9 +1083,15 @@ describe('roadTileVertices — curved turn (quarter-annulus)', () => {
     }
   });
 
-  it('a turn carries NO painted lane markings (the curved carriageway is unpainted)', () => {
-    const { colors } = roadTileVertices(0, 0, RoadTier.TwoLane, N | E, flatHeightAt);
-    expect(countWhere(colors, isMarkingWhite)).toBe(0);
+  it('a plain-centerline turn (TwoLane, OneWay) carries a curved dashed centerline; bare tiers stay unpainted', () => {
+    for (const tier of [RoadTier.TwoLane, RoadTier.OneWay]) {
+      const { colors } = roadTileVertices(0, 0, tier, N | E, flatHeightAt);
+      expect(countWhere(colors, isMarkingWhite)).toBeGreaterThan(0);
+    }
+    for (const tier of [RoadTier.Gravel, RoadTier.Alley]) {
+      const { colors } = roadTileVertices(0, 0, tier, N | E, flatHeightAt);
+      expect(countWhere(colors, isMarkingWhite)).toBe(0);
+    }
   });
 
   it('the carriageway is one quad per arc segment (TURN_ARC_SEGMENTS = 12 quads of plate color)', () => {

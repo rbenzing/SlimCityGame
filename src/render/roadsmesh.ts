@@ -975,6 +975,68 @@ function emitCurvedTurn(
 }
 
 /**
+ * Curved dashed centerline for a TURN tile: the same quarter-annulus the
+ * carriageway follows (emitCurvedTurn), but a thin painted ribbon on the
+ * mid-radius arc rMid = (rIn+rOut)/2, dashed along its arc length with the
+ * same DASH_PAINT/DASH_GAP metric the straight arms use. Reuses emitCurvedTurn's
+ * pivot + at(r,θ) math verbatim so the paint tracks the road exactly. Phase is
+ * anchored at the arc start (θ=0) — a small offset from the straight arms'
+ * global phase at the junction, but reads as a normal curve marking.
+ */
+function emitCurvedCenterlineDashes(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  coreHalf: number,
+  armDepth: number,
+  hasN: boolean,
+  hasE: boolean,
+  hAt: (x: number, z: number) => number,
+): void {
+  if (coreHalf <= 0 || armDepth <= 0) return;
+  const pxSign = hasE ? 1 : -1;
+  const pzSign = hasN ? -1 : 1;
+  const pivotX = pxSign * TILE_HALF;
+  const pivotZ = pzSign * TILE_HALF;
+  const rMid = (armDepth + TILE_HALF + coreHalf) / 2;
+  if (rMid <= 0) return;
+  const dirX = (t: number): number => -pxSign * Math.cos(t);
+  const dirZ = (t: number): number => -pzSign * Math.sin(t);
+  const at = (r: number, t: number): [number, number] => [pivotX + r * dirX(t), pivotZ + r * dirZ(t)];
+  const pushTriUp = (
+    p0: readonly [number, number],
+    p1: readonly [number, number],
+    p2: readonly [number, number],
+  ): void => {
+    const cross = (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p1[1] - p0[1]) * (p2[0] - p0[0]);
+    const tri = cross > 0 ? [p0, p2, p1] : [p0, p1, p2];
+    for (const p of tri) {
+      const wx = centerX + p[0];
+      const wz = centerZ + p[1];
+      pushVertex(positions, colors, wx, hAt(wx, wz) + MARK_Y_OFFSET, wz, MARKING_COLOR);
+    }
+  };
+  const rA = rMid - PAINT_HALF_WIDTH_M;
+  const rB = rMid + PAINT_HALF_WIDTH_M;
+  const arcLen = rMid * (Math.PI / 2);
+  const STEP_M = 0.6; // sub-segment length so each painted dash stays smooth
+  for (const [s0, s1] of dashSegments(0, arcLen)) {
+    const steps = Math.max(1, Math.ceil((s1 - s0) / STEP_M));
+    for (let k = 0; k < steps; k++) {
+      const ta = (s0 + ((s1 - s0) * k) / steps) / rMid;
+      const tb = (s0 + ((s1 - s0) * (k + 1)) / steps) / rMid;
+      const a = at(rA, ta);
+      const b = at(rB, ta);
+      const c = at(rA, tb);
+      const d = at(rB, tb);
+      pushTriUp(a, b, c);
+      pushTriUp(c, b, d);
+    }
+  }
+}
+
+/**
  * Dangling road-end cap (mask popcount 1): a half-disc fan centered on the
  * core plate's flat dead-end edge, bulging outward (away from the single
  * connection) by `radius`, rounding what would otherwise be a hard square
@@ -1509,6 +1571,12 @@ export function roadTileVertices(
       spec.hasCurbs,
       hAt,
     );
+    // Plain-centerline tiers get a curved dashed centerline around the turn
+    // (matches the straight arms' single dashed line); richer tier markings
+    // (avenue double-solid, highway edge lines) stay straight-only for now.
+    if (isPlainCenterlineTier(tier)) {
+      emitCurvedCenterlineDashes(positions, colors, centerX, centerZ, coreHalf, armDepth, hasN, hasE, hAt);
+    }
   }
 
   if (!isTurn) {

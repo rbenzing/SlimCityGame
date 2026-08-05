@@ -687,8 +687,20 @@ wave work.
   `armDepth`, outer `TILE_HALF + coreHalf`), meeting each edge opening at
   ±`coreHalf` so it is seamless with the straight neighbor tiles. Curved
   sidewalks fill the rest of the tile to its edges (inner fan sector + outer
-  band). Cosmetic only — the road graph stays grid-aligned (ROADMAP §9). Turn
-  tiles carry no painted lane lines yet (a curved centerline is a follow-up).
+  band). Cosmetic only — the road graph stays grid-aligned (ROADMAP §9).
+  - **Curved centerline (done, 2026-08-05):** plain-centerline turn tiles
+    (TwoLane, One-Way) now carry a **curved dashed centerline**
+    (`emitCurvedCenterlineDashes`) sweeping the mid-radius arc
+    `(armDepth + TILE_HALF + coreHalf)/2` with the same DASH_PAINT/DASH_GAP
+    metric as the straight arms, so the single dashed line reads continuously
+    around the bend. Reuses `emitCurvedTurn`'s pivot + `at(r,θ)` math verbatim
+    so the paint tracks the carriageway exactly, and forces up-facing tris
+    (single-sided material). Phase is anchored at the arc start — a small
+    offset from the straight arms' global phase at the junction, acceptable on
+    a curve. Richer tier markings (avenue double-solid, highway edge lines)
+    stay straight-only for now — a further follow-up. Verified with a
+    before/after Playwright render on a seeded L-road (GPU renders in the
+    Playwright browser here) plus the roadsmesh winding/marking unit tests.
 - **Road-on-slope placement (wave)**: roads currently can't be placed up an
   embankment — `isBuildable`'s single `MAX_BUILD_SLOPE` (4 m) gate rejects
   the tiles. Roads should be placeable on MODERATE slopes (auto-flatten
