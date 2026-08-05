@@ -689,18 +689,24 @@ wave work.
   sidewalks fill the rest of the tile to its edges (inner fan sector + outer
   band). Cosmetic only — the road graph stays grid-aligned (ROADMAP §9).
   - **Curved centerline (done, 2026-08-05):** plain-centerline turn tiles
-    (TwoLane, One-Way) now carry a **curved dashed centerline**
-    (`emitCurvedCenterlineDashes`) sweeping the mid-radius arc
-    `(armDepth + TILE_HALF + coreHalf)/2` with the same DASH_PAINT/DASH_GAP
-    metric as the straight arms, so the single dashed line reads continuously
-    around the bend. Reuses `emitCurvedTurn`'s pivot + `at(r,θ)` math verbatim
-    so the paint tracks the carriageway exactly, and forces up-facing tris
-    (single-sided material). Phase is anchored at the arc start — a small
-    offset from the straight arms' global phase at the junction, acceptable on
-    a curve. Richer tier markings (avenue double-solid, highway edge lines)
-    stay straight-only for now — a further follow-up. Verified with a
-    before/after Playwright render on a seeded L-road (GPU renders in the
-    Playwright browser here) plus the roadsmesh winding/marking unit tests.
+    now carry **curved lane markings** (`emitCurvedMarkings`), the arc analog
+    of `emitAxisMarkings`. The curved carriageway is a constant-width annulus
+    (`armDepth = TILE_HALF - coreHalf`), so its centerline radius is exactly
+    rMid = TILE_HALF and radial half-width coreHalf; a straight-tile marking at
+    perpendicular offset `o` maps to an arc at radius `rMid + o`. Each line is
+    a thin ribbon `[r-PAINT, r+PAINT]` swept over the 90°, dashed (same
+    DASH_PAINT/DASH_GAP metric as the straight arms) or solid. Per-tier set
+    mirrors the straight run: two-lane / one-way single dashed centerline;
+    avenue / four-lane double-solid center + dashed lane lines; highway solid
+    edge lines; gravel / alley none. Reuses `emitCurvedTurn`'s pivot +
+    `at(r,θ)` math verbatim so the paint tracks the carriageway exactly, and
+    forces up-facing tris (single-sided material). Dash phase is anchored at
+    the arc start — a small offset from the straight arms at the junction,
+    fine on a curve. Verified with a before/after Playwright render on a
+    seeded two-lane L-road (the app renders under GPU in the Playwright browser
+    here); avenue/highway are milestone-locked so unreachable from the dev
+    command path — those are covered by the roadsmesh winding + per-tier
+    marking unit tests (identical arc primitive, different radii).
 - **Road-on-slope placement (wave)**: roads currently can't be placed up an
   embankment — `isBuildable`'s single `MAX_BUILD_SLOPE` (4 m) gate rejects
   the tiles. Roads should be placeable on MODERATE slopes (auto-flatten

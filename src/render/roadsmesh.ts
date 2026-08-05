@@ -54,16 +54,13 @@
  * arcing around the corner (instead of a square notch) as an emergent
  * effect of height layering, with no separate curb-geometry edit needed —
  * see the block comment above `emitCornerFillet` for the full reasoning.
- * The two plain-single-centerline tiers (TwoLane, One-Way —
- * `isPlainCenterlineTier`) additionally get a curved dash sequence
- * (`emitCurvedCenterlineDashes`) connecting their two straight arms through
- * the turn tile via a matching quarter-circle arc, instead of both arms
- * running the full core depth and crossing at a hard 90° in the middle.
- * Multi-line tiers (Avenue, Highway, Four-Lane) and unmarked tiers
- * (Gravel, Alley) are excluded and keep their square-stop
- * marking behavior. None of this touches the road GRAPH — centerlines stay
- * grid-aligned tile-to-tile; only this per-tile cosmetic
- * paint/geometry curves.
+ * Turn tiles additionally get curved lane markings (`emitCurvedMarkings`, the
+ * arc analog of `emitAxisMarkings`): each tier's straight-run line set is
+ * swept around the quarter-annulus at radius `rMid + offset` — two-lane /
+ * one-way single dashed centerline, avenue / four-lane double-solid center +
+ * dashed lane lines, highway solid edge lines, gravel / alley none. None of
+ * this touches the road GRAPH — centerlines stay grid-aligned tile-to-tile;
+ * only this per-tile cosmetic paint/geometry curves.
  */
 import * as THREE from 'three';
 import { RoadTileDelta, RoadTier } from '../shared/types';
@@ -975,17 +972,24 @@ function emitCurvedTurn(
 }
 
 /**
- * Curved dashed centerline for a TURN tile: the same quarter-annulus the
- * carriageway follows (emitCurvedTurn), but a thin painted ribbon on the
- * mid-radius arc rMid = (rIn+rOut)/2, dashed along its arc length with the
- * same DASH_PAINT/DASH_GAP metric the straight arms use. Reuses emitCurvedTurn's
- * pivot + at(r,θ) math verbatim so the paint tracks the road exactly. Phase is
- * anchored at the arc start (θ=0) — a small offset from the straight arms'
- * global phase at the junction, but reads as a normal curve marking.
+ * Curved lane markings for a TURN tile — the arc analog of emitAxisMarkings.
+ * The curved carriageway (emitCurvedTurn) is a constant-width annulus centered
+ * on the tile-corner pivot: inner radius `armDepth = TILE_HALF - coreHalf`,
+ * outer `TILE_HALF + coreHalf`, so its centerline radius is exactly rMid =
+ * TILE_HALF and its radial half-width is coreHalf. A straight-tile marking at
+ * perpendicular offset `o` therefore maps to an arc at radius rMid + o. Each
+ * marking line is a thin painted ribbon [r-PAINT, r+PAINT] swept over the 90°,
+ * dashed (by arc length, same DASH metric as the straight arms) or solid.
+ * Reuses emitCurvedTurn's pivot + at(r,θ) math so paint tracks the road, and
+ * forces up-facing tris for the single-sided road material. Per-tier line set
+ * mirrors emitAxisMarkings; gravel/alley draw nothing. Dash phase is anchored
+ * at the arc start — a small offset from the straight arms at the junction,
+ * fine on a curve. Medians never replace the avenue center pair on a turn.
  */
-function emitCurvedCenterlineDashes(
+function emitCurvedMarkings(
   positions: number[],
   colors: number[],
+  tier: RoadTier,
   centerX: number,
   centerZ: number,
   coreHalf: number,
@@ -1017,22 +1021,48 @@ function emitCurvedCenterlineDashes(
       pushVertex(positions, colors, wx, hAt(wx, wz) + MARK_Y_OFFSET, wz, MARKING_COLOR);
     }
   };
-  const rA = rMid - PAINT_HALF_WIDTH_M;
-  const rB = rMid + PAINT_HALF_WIDTH_M;
-  const arcLen = rMid * (Math.PI / 2);
-  const STEP_M = 0.6; // sub-segment length so each painted dash stays smooth
-  for (const [s0, s1] of dashSegments(0, arcLen)) {
-    const steps = Math.max(1, Math.ceil((s1 - s0) / STEP_M));
-    for (let k = 0; k < steps; k++) {
-      const ta = (s0 + ((s1 - s0) * k) / steps) / rMid;
-      const tb = (s0 + ((s1 - s0) * (k + 1)) / steps) / rMid;
-      const a = at(rA, ta);
-      const b = at(rB, ta);
-      const c = at(rA, tb);
-      const d = at(rB, tb);
-      pushTriUp(a, b, c);
-      pushTriUp(c, b, d);
+  const STEP_M = 0.6; // sub-segment length so each painted arc stays smooth
+  /** One marking line at radial offset `o` from the centerline, solid or dashed. */
+  const arcLine = (o: number, dashed: boolean): void => {
+    const r = rMid + o;
+    if (r <= PAINT_HALF_WIDTH_M) return;
+    const rA = r - PAINT_HALF_WIDTH_M;
+    const rB = r + PAINT_HALF_WIDTH_M;
+    const arcLen = r * (Math.PI / 2);
+    const segs = dashed ? dashSegments(0, arcLen) : [[0, arcLen] as [number, number]];
+    for (const [s0, s1] of segs) {
+      const steps = Math.max(1, Math.ceil((s1 - s0) / STEP_M));
+      for (let k = 0; k < steps; k++) {
+        const ta = (s0 + ((s1 - s0) * k) / steps) / r;
+        const tb = (s0 + ((s1 - s0) * (k + 1)) / steps) / r;
+        pushTriUp(at(rA, ta), at(rB, ta), at(rA, tb));
+        pushTriUp(at(rA, tb), at(rB, ta), at(rB, tb));
+      }
     }
+  };
+
+  switch (tier) {
+    case RoadTier.TwoLane:
+    case RoadTier.OneWay:
+      arcLine(0, true);
+      break;
+    case RoadTier.Avenue:
+    case RoadTier.FourLane: {
+      arcLine(CENTER_LINE_OFFSET, false);
+      arcLine(-CENTER_LINE_OFFSET, false);
+      const laneOffset = coreHalf * LANE_LINE_OFFSET_FRACTION;
+      arcLine(laneOffset, true);
+      arcLine(-laneOffset, true);
+      break;
+    }
+    case RoadTier.Highway: {
+      const edgeOffset = coreHalf - EDGE_LINE_MARGIN;
+      arcLine(edgeOffset, false);
+      arcLine(-edgeOffset, false);
+      break;
+    }
+    default:
+      break;
   }
 }
 
@@ -1571,12 +1601,10 @@ export function roadTileVertices(
       spec.hasCurbs,
       hAt,
     );
-    // Plain-centerline tiers get a curved dashed centerline around the turn
-    // (matches the straight arms' single dashed line); richer tier markings
-    // (avenue double-solid, highway edge lines) stay straight-only for now.
-    if (isPlainCenterlineTier(tier)) {
-      emitCurvedCenterlineDashes(positions, colors, centerX, centerZ, coreHalf, armDepth, hasN, hasE, hAt);
-    }
+    // Curved lane markings around the turn, matching each tier's straight-run
+    // set (two-lane dashed centerline, avenue/four-lane double-solid + dashed
+    // lane lines, highway solid edge lines; gravel/alley none).
+    emitCurvedMarkings(positions, colors, tier, centerX, centerZ, coreHalf, armDepth, hasN, hasE, hAt);
   }
 
   if (!isTurn) {

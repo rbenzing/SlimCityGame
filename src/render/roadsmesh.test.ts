@@ -1083,8 +1083,14 @@ describe('roadTileVertices — curved turn (quarter-annulus)', () => {
     }
   });
 
-  it('a plain-centerline turn (TwoLane, OneWay) carries a curved dashed centerline; bare tiers stay unpainted', () => {
-    for (const tier of [RoadTier.TwoLane, RoadTier.OneWay]) {
+  it('marked tiers carry curved lane markings around the turn; bare tiers (Gravel, Alley) stay unpainted', () => {
+    for (const tier of [
+      RoadTier.TwoLane,
+      RoadTier.OneWay,
+      RoadTier.Avenue,
+      RoadTier.Highway,
+      RoadTier.FourLane,
+    ]) {
       const { colors } = roadTileVertices(0, 0, tier, N | E, flatHeightAt);
       expect(countWhere(colors, isMarkingWhite)).toBeGreaterThan(0);
     }
