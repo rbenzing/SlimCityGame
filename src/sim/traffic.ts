@@ -20,7 +20,14 @@ import {
   VEHICLE_STRIDE,
   VehicleKind,
 } from '../shared/types';
-import { TICKS_PER_DAY, TICK_RATE, TILE_METERS, tileToWorld } from '../shared/constants';
+import {
+  CLOCK_START_OFFSET_TICKS,
+  TICKS_PER_DAY,
+  TICK_RATE,
+  TILE_METERS,
+  VISUAL_DAY_TICKS,
+  tileToWorld,
+} from '../shared/constants';
 
 /** Seeded random source, injected — see project rule: never Math.random/Date.now. */
 export interface Rng {
@@ -34,8 +41,66 @@ export interface Rng {
   fork(streamId: number): Rng;
 }
 
-/** Trips sampled from the origin/destination lists per tick. */
+/**
+ * Fallback trips sampled per tick when no population is supplied (test doubles
+ * that drive `tick` without a `population`). The live sim always passes a
+ * population, so it runs the people-and-work-rhythm model in `tripsForTick`.
+ */
 export const TRIPS_PER_TICK = 4;
+
+// ---------------------------------------------------------------------------
+// Trip-volume model: cosmetic traffic is tied to the city's PEOPLE and their
+// WORK RHYTHM. Trips generated per tick scale with the resident population
+// (more people -> more commuters) and ebb/flow over the visual day on a
+// rush-hour curve (morning + evening commute peaks, near-empty overnight).
+// This is the SPAWN RATE; concurrent vehicles are still bounded by
+// vehicleDensityCap -- so roads fill toward the cap at rush hour and thin out
+// to almost nothing at 3am. Every trip is a resident<->job (com/ind) commute
+// already (see the worker's origin/destination lists), so no car exists that
+// isn't a person going to or from work.
+// ---------------------------------------------------------------------------
+
+/** Baseline trips/tick (population-independent) at full activity — a lone active neighborhood still has commuters. */
+export const BASE_TRIPS_PER_TICK = 5;
+/** Extra trips/tick added as the city fills toward POP_FULL_TRAFFIC, at full activity. */
+export const POP_TRIPS_SPAN = 5;
+/** Resident population at (and above) which the population bonus saturates. */
+export const POP_FULL_TRAFFIC = 2000;
+/** Overnight activity floor (fraction of peak) so a city is never 100% dead. */
+export const NIGHT_ACTIVITY_FLOOR = 0.04;
+
+/** Visual-clock hour [0, 24) for a sim tick — same phase the render day/night uses. */
+export function dayHourFromTick(tickNo: number): number {
+  const span = VISUAL_DAY_TICKS;
+  const frac = (((tickNo + CLOCK_START_OFFSET_TICKS) % span) + span) % span;
+  return (frac / span) * 24;
+}
+
+/**
+ * Rush-hour activity in [NIGHT_ACTIVITY_FLOOR, 1] for a clock hour: two commute
+ * peaks (morning ~8:00, evening ~17:30) riding a daytime plateau, dropping to
+ * the overnight floor roughly 21:00–6:00. Pure & deterministic.
+ */
+export function rushHourActivity(hour: number): number {
+  const morning = Math.exp(-((hour - 8) ** 2) / (2 * 1.5 * 1.5));
+  const evening = Math.exp(-((hour - 17.5) ** 2) / (2 * 2 * 2));
+  const daytime = hour >= 7 && hour <= 20 ? 0.4 : 0;
+  return Math.max(NIGHT_ACTIVITY_FLOOR, morning, evening, daytime);
+}
+
+/**
+ * Deterministic integer trips to attempt this tick: a population-scaled trip
+ * ceiling times the rush-hour curve. Population only ADDS on top of a baseline,
+ * so a small-but-active town still shows daytime traffic while a metropolis at
+ * rush hour spawns markedly more. The people-gate (no homes or no jobs -> no
+ * trips) lives in sampleTrips; concurrent count is bounded by vehicleDensityCap,
+ * so a bigger road network also carries more cars.
+ */
+export function tripsForTick(population: number, tickNo: number): number {
+  const popFactor = Math.min(1, Math.max(0, population / POP_FULL_TRAFFIC));
+  const ceiling = BASE_TRIPS_PER_TICK + POP_TRIPS_SPAN * popFactor;
+  return Math.round(ceiling * rushHourActivity(dayHourFromTick(tickNo)));
+}
 
 /**
  * Per-trip edge-cost jitter amplitude. A grid has many equal-cost routes
@@ -197,23 +262,30 @@ export class TrafficSystem {
     }
   }
 
-  tick(input: { origins: TilePoint[]; destinations: TilePoint[]; tickNo: number }): void {
-    const { origins, destinations, tickNo } = input;
+  tick(input: {
+    origins: TilePoint[];
+    destinations: TilePoint[];
+    tickNo: number;
+    /** Resident population; drives the people-tied, rush-hour trip volume. Omit (test doubles) to fall back to TRIPS_PER_TICK. */
+    population?: number;
+  }): void {
+    const { origins, destinations, tickNo, population } = input;
 
     if (tickNo % TICKS_PER_DAY === 0) {
       this.network.decayVolumes(DAILY_DECAY_FACTOR);
     }
 
     this.advanceVehicles();
-    this.sampleTrips(origins, destinations);
+    const tripBudget = population === undefined ? TRIPS_PER_TICK : tripsForTick(population, tickNo);
+    this.sampleTrips(origins, destinations, tripBudget);
   }
 
   private activeVehicleCount(): number {
     return MAX_VEHICLES - this.freeSlots.length;
   }
 
-  private sampleTrips(origins: TilePoint[], destinations: TilePoint[]): void {
-    if (origins.length === 0 || destinations.length === 0) return;
+  private sampleTrips(origins: TilePoint[], destinations: TilePoint[], tripCount: number): void {
+    if (origins.length === 0 || destinations.length === 0 || tripCount <= 0) return;
 
     // Lazily built (and cached for the rest of this tick) only if a route
     // that actually needs a cosmetic vehicle is found.
@@ -222,7 +294,7 @@ export class TrafficSystem {
     // actually being considered this tick.
     let densityCap: number | null = null;
 
-    for (let i = 0; i < TRIPS_PER_TICK; i += 1) {
+    for (let i = 0; i < tripCount; i += 1) {
       const origin = origins[this.rng.int(origins.length)];
       const dest = destinations[this.rng.int(destinations.length)];
       if (origin === undefined || dest === undefined) continue;

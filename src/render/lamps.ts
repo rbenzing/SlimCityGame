@@ -24,7 +24,11 @@ const POLE_HEIGHT = 5.5;
 const POLE_RADIUS_TOP = 0.12;
 const POLE_RADIUS_BOTTOM = 0.16;
 const POLE_RADIAL_SEGMENTS = 8;
-const POLE_COLOR = 0x2a2e33;
+// Charcoal-grey painted metal. The old near-black (0x2a2e33) sat below the
+// Lambert shading range in daylight, so a slim pole read as a flat black wire
+// against grass/sky rather than a modeled post; a mid charcoal takes visible
+// sun shading (lit vs. shaded faces) and still reads as a dark street lamp.
+const POLE_COLOR = 0x50555d;
 
 /**
  * The cantilever arm reaches from the pole top TOWARD the road centerline

@@ -2,9 +2,16 @@ import { describe, it, expect } from 'vitest';
 import {
   TrafficSystem,
   TRIPS_PER_TICK,
+  BASE_TRIPS_PER_TICK,
+  POP_TRIPS_SPAN,
+  POP_FULL_TRAFFIC,
+  NIGHT_ACTIVITY_FLOOR,
   VEHICLE_DENSITY_MIN_CAP,
   VEHICLES_PER_ROAD_TILE,
+  dayHourFromTick,
   isCardinallyAdjacent,
+  rushHourActivity,
+  tripsForTick,
   truncateToAdjacentChain,
   vehicleDensityCap,
   type Rng,
@@ -793,5 +800,80 @@ describe('TrafficSystem determinism', () => {
     }
 
     expect(Array.from(sysA.vehicleBuffer)).not.toEqual(Array.from(sysB.vehicleBuffer));
+  });
+});
+
+describe('trip-volume model (people + work rhythm)', () => {
+  it('dayHourFromTick maps tick 0 to the 9:00 clock start and wraps over the visual day', () => {
+    expect(dayHourFromTick(0)).toBeCloseTo(9, 6);
+    expect(dayHourFromTick(2400)).toBeCloseTo(9, 6); // one visual day later
+    expect(dayHourFromTick(2300)).toBeCloseTo(8, 6); // 100 ticks before the 9:00 start -> 08:00
+  });
+
+  it('rushHourActivity peaks at the morning and evening commutes and bottoms out overnight', () => {
+    const morning = rushHourActivity(8);
+    const evening = rushHourActivity(17.5);
+    const night = rushHourActivity(3);
+    const midday = rushHourActivity(13);
+    expect(morning).toBeCloseTo(1, 5);
+    expect(evening).toBeGreaterThan(0.95);
+    expect(night).toBeCloseTo(NIGHT_ACTIVITY_FLOOR, 6);
+    expect(midday).toBeGreaterThan(night);
+    expect(midday).toBeLessThan(morning);
+    for (let h = 0; h < 24; h += 0.5) {
+      const a = rushHourActivity(h);
+      expect(a).toBeGreaterThanOrEqual(NIGHT_ACTIVITY_FLOOR - 1e-9);
+      expect(a).toBeLessThanOrEqual(1 + 1e-9);
+    }
+  });
+
+  it('tripsForTick keeps a population-independent baseline at rush hour, adds more for a big city, and drops to 0 overnight', () => {
+    // Morning peak (activity 1): baseline at pop 0, saturating to BASE+SPAN.
+    expect(tripsForTick(0, 2300)).toBe(BASE_TRIPS_PER_TICK); // lone active town still has commuters
+    expect(tripsForTick(POP_FULL_TRAFFIC, 2300)).toBe(BASE_TRIPS_PER_TICK + POP_TRIPS_SPAN); // full city
+    expect(tripsForTick(POP_FULL_TRAFFIC, 2300)).toBeGreaterThan(tripsForTick(0, 2300));
+    // 03:00 -> essentially no new trips, whatever the size.
+    expect(tripsForTick(0, 1800)).toBe(0);
+    expect(tripsForTick(POP_FULL_TRAFFIC, 1800)).toBe(0);
+    // Deterministic.
+    expect(tripsForTick(800, 2300)).toBe(tripsForTick(800, 2300));
+  });
+
+  it('generates far more trips at a rush-hour tick than an overnight tick for the same city', () => {
+    const path = makePath(
+      [
+        { x: 0, z: 0 },
+        { x: 1, z: 0 },
+      ],
+      [11],
+    );
+    const origins = [{ x: 0, z: 0 }];
+    const destinations = [{ x: 1, z: 0 }];
+
+    const rushNet = createFakeNetwork(() => path, [makeEdge(11, RoadTier.TwoLane)]);
+    const rushSys = new TrafficSystem(createSeededRng(7), rushNet);
+    rushSys.tick({ origins, destinations, tickNo: 2300, population: POP_FULL_TRAFFIC }); // 08:00
+
+    const nightNet = createFakeNetwork(() => path, [makeEdge(11, RoadTier.TwoLane)]);
+    const nightSys = new TrafficSystem(createSeededRng(7), nightNet);
+    nightSys.tick({ origins, destinations, tickNo: 1800, population: POP_FULL_TRAFFIC }); // 03:00
+
+    expect(rushNet.addVolumeCalls.length).toBe(tripsForTick(POP_FULL_TRAFFIC, 2300));
+    expect(nightNet.addVolumeCalls.length).toBe(0);
+    expect(rushNet.addVolumeCalls.length).toBeGreaterThan(nightNet.addVolumeCalls.length);
+  });
+
+  it('falls back to TRIPS_PER_TICK when no population is supplied (test-double contract)', () => {
+    const path = makePath(
+      [
+        { x: 0, z: 0 },
+        { x: 1, z: 0 },
+      ],
+      [11],
+    );
+    const network = createFakeNetwork(() => path, [makeEdge(11, RoadTier.TwoLane)]);
+    const sys = new TrafficSystem(createSeededRng(3), network);
+    sys.tick({ origins: [{ x: 0, z: 0 }], destinations: [{ x: 1, z: 0 }], tickNo: 1 });
+    expect(network.addVolumeCalls.length).toBe(TRIPS_PER_TICK);
   });
 });

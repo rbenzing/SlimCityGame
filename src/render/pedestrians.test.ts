@@ -278,6 +278,34 @@ describe('PedestrianRenderer.apply', () => {
     }
   });
 
+  it('clusters idlers around a stop shelter anchor when one is provided (not the tile center)', () => {
+    const scene = new THREE.Scene();
+    const renderer = new PedestrianRenderer(scene, flatHeightAt);
+    // Anchor far from the stop tile's own center (tileToWorld(0) = 8) so a
+    // clustered-at-anchor idler is unambiguously distinguishable from the old
+    // scatter-around-the-tile-center behavior.
+    const anchor = { x: 200, z: 200 };
+    renderer.apply({ stops: [{ x: 0, z: 0, anchor }], buildings: emptyDelta() });
+
+    const body = scene.children.filter((c) => c instanceof THREE.InstancedMesh)[0] as
+      | THREE.InstancedMesh
+      | undefined;
+    const count = renderer.idleCount();
+    expect(count).toBeGreaterThan(0);
+    expect(body).toBeDefined();
+
+    const m = new THREE.Matrix4();
+    const p = new THREE.Vector3();
+    for (let i = 0; i < count; i += 1) {
+      body!.getMatrixAt(i, m);
+      p.setFromMatrixPosition(m);
+      // idleOffset scatters at most IDLE_SCATTER_RADIUS_MAX (2.2 m) from the base
+      expect(Math.hypot(p.x - anchor.x, p.z - anchor.z)).toBeLessThanOrEqual(2.2 + 1e-6);
+      // ...and is therefore nowhere near the stop tile center (8, 8).
+      expect(Math.hypot(p.x - 8, p.z - 8)).toBeGreaterThan(100);
+    }
+  });
+
   it('scales pedestrian count with the number of stops', () => {
     const scene = new THREE.Scene();
     const renderer = new PedestrianRenderer(scene, flatHeightAt);

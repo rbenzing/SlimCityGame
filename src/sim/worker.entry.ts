@@ -644,7 +644,7 @@ class SimWorld implements WorkerSim {
         destinations.push({ x: inst.x, z: inst.z });
       }
     }
-    this.traffic.tick({ origins, destinations, tickNo: t });
+    this.traffic.tick({ origins, destinations, tickNo: t, population: this.stats.population });
 
     // Bus transit: recompute every line's route + statistical ridership
     // and apply its modest congestion relief to the road graph (same cadence

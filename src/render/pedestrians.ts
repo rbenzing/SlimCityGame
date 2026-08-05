@@ -277,9 +277,19 @@ export const MAX_PEDESTRIANS = MAX_IDLE_PEDESTRIANS + MAX_WALKING_PEDESTRIANS;
 // PedestrianRenderer
 // ---------------------------------------------------------------------------
 
+/**
+ * A stop the idle crowd waits at. `anchor` (world meters) is the shelter's
+ * ground center — idlers cluster there (on the sidewalk, beside the bench)
+ * rather than on the carriageway. Absent (plain tile point) → idlers fall back
+ * to scattering around the stop tile's own center, the pre-shelter behavior.
+ */
+export interface StopIdleInput extends TilePoint {
+  readonly anchor?: WorldPoint;
+}
+
 export interface PedestrianSnapshot {
-  /** Flattened stop tile-points across every transit line (transit snapshot). */
-  stops: readonly TilePoint[];
+  /** Flattened stops across every transit line (transit snapshot), each with an optional shelter anchor. */
+  stops: readonly StopIdleInput[];
   buildings: BuildingDelta;
 }
 
@@ -325,6 +335,8 @@ export class PedestrianRenderer {
 
   private readonly buildingsById = new Map<number, BuildingInstance>();
   private idlePlacements: IdlePlacement[] = [];
+  /** Per-stop-tile shelter ground anchor (world meters) idlers cluster around; missing key → scatter around the tile center. */
+  private idleAnchors = new Map<number, WorldPoint>();
   private walkerIds: number[] = [];
   /** World-space stroll-loop anchor per walker, aligned index-for-index with `walkerIds` (recomputed each apply). */
   private walkerAnchors: WorldPoint[] = [];
@@ -358,6 +370,10 @@ export class PedestrianRenderer {
     for (const b of snapshot.buildings.updated) this.buildingsById.set(b.id, b);
 
     this.idlePlacements = computeIdlePlacements(snapshot.stops);
+    this.idleAnchors = new Map<number, WorldPoint>();
+    for (const stop of snapshot.stops) {
+      if (stop.anchor) this.idleAnchors.set(tileKey(stop.x, stop.z), stop.anchor);
+    }
     this.walkerIds = computeWalkerBuildingIds([...this.buildingsById.values()]);
     // Resolve each walker's frontage-sidewalk anchor once per apply (buildings
     // are static once placed) so update() stays a cheap per-frame loop step.
@@ -453,11 +469,15 @@ export class PedestrianRenderer {
 
     for (let i = 0; i < this.idlePlacements.length; i += 1) {
       const p = this.idlePlacements[i]!;
-      const worldX = tileToWorld(p.x);
-      const worldZ = tileToWorld(p.z);
+      // Cluster around the shelter (sidewalk) when an anchor is known; else the
+      // stop tile's own center (pre-shelter fallback).
+      const base = this.idleAnchors.get(tileKey(p.x, p.z)) ?? {
+        x: tileToWorld(p.x),
+        z: tileToWorld(p.z),
+      };
       const off = idleOffset(p.x, p.z, p.personIndex);
-      const px = worldX + off.x;
-      const pz = worldZ + off.z;
+      const px = base.x + off.x;
+      const pz = base.z + off.z;
       const groundY = this.heightAt(px, pz);
       const heading = idleHeading(p.x, p.z, p.personIndex);
       const tint = paletteColor(idleTint(p.x, p.z, p.personIndex));

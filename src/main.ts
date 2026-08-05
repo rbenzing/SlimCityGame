@@ -51,8 +51,14 @@ import { ParkedCarRenderer } from './render/parked';
 import { LandmarkRenderer } from './render/landmarks';
 import { RoadMeshRenderer } from './render/roadsmesh';
 import { VehicleRenderer } from './render/vehicles';
-import { TransitRenderer } from './render/transit';
-import { PedestrianRenderer } from './render/pedestrians';
+import {
+  TransitRenderer,
+  computeShelterLayout,
+  computeStopHeading,
+  shelterSide,
+  toWorldPoints,
+} from './render/transit';
+import { PedestrianRenderer, type StopIdleInput } from './render/pedestrians';
 import { ServiceVehicleRenderer } from './render/servicevehicles';
 import { DistrictsRenderer } from './render/districts';
 import { PhotoModeController } from './render/photomode';
@@ -289,7 +295,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   /** Latest flattened transit stop tile-points, mirrored so pedestrian
    * idlers can be re-applied on building-only deltas (PedestrianRenderer does
    * not cache stops itself — same pattern as knownBuildings above). */
-  let latestStopPoints: TilePoint[] = [];
+  let latestStopPoints: StopIdleInput[] = [];
   const autoSaver = new AutoSaver(() => saveNow(worker));
 
   let snapshotAgeMs = 0;
@@ -631,7 +637,21 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       state.setTransit(snap.transit.lines, snap.transit.ridership);
       // Refresh the idler crowd from the current stop set (walkers keep
       // their incrementally-tracked building set; an empty delta leaves it be).
-      latestStopPoints = snap.transit.lines.flatMap((l) => l.stops);
+      // Enrich each stop with its shelter's ground anchor (the same
+      // heading/side the TransitRenderer builds the shelter from) so idle
+      // pedestrians cluster at the shelter on the sidewalk instead of on the
+      // carriageway.
+      latestStopPoints = snap.transit.lines.flatMap((l) => {
+        const pts = toWorldPoints(l.stops);
+        return l.stops.map((s, i) => {
+          const layout = computeShelterLayout(
+            pts[i]!,
+            computeStopHeading(pts, i),
+            shelterSide(s.x, s.z),
+          );
+          return { x: s.x, z: s.z, anchor: layout.benchCenter };
+        });
+      });
       pedestrianRenderer.apply({
         stops: latestStopPoints,
         buildings: snap.buildings ?? { added: [], removed: [], updated: [] },

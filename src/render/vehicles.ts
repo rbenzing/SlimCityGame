@@ -40,8 +40,18 @@ import {
 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MAX_VEHICLES, VEHICLE_STRIDE, INACTIVE_VEHICLE_X, VehicleKind } from '../shared/types';
+import { TILE_METERS } from '../shared/constants';
 
 const TWO_PI = Math.PI * 2;
+
+/**
+ * Squared prev→curr jump (m²) beyond which a slot's two consecutive snapshots
+ * are a cosmetic-pool HANDOFF to a brand-new vehicle, not real motion, so the
+ * mesh must snap to curr rather than slide across the terrain between an old
+ * route's end and a new route's start. A real vehicle covers under ~0.4 tiles
+ * per tick (TICK_RATE 20), so 2 tiles cleanly separates motion from a handoff.
+ */
+const TELEPORT_SNAP_DIST_SQ = (2 * TILE_METERS) * (2 * TILE_METERS);
 
 /** Wraps b-a into (-PI, PI] so lerping heading always takes the shortest arc. */
 function shortestAngleDelta(a: number, b: number): number {
@@ -85,6 +95,17 @@ export function lerpVehicle(
 
   const prevZ = req(prev, 1, 'lerpVehicle prev');
   const prevHeading = req(prev, 2, 'lerpVehicle prev');
+
+  // Slot-handoff guard: the fixed cosmetic pool frees an arrived vehicle's slot
+  // and can reallocate it to a new vehicle (elsewhere on the map) as early as
+  // the same tick, so a slot's prev/curr can be two unrelated routes. Snap to
+  // curr on an implausibly large jump so the mesh doesn't streak across grass
+  // between the old destination and the new origin.
+  const jumpX = currX - prevX;
+  const jumpZ = currZ - prevZ;
+  if (jumpX * jumpX + jumpZ * jumpZ > TELEPORT_SNAP_DIST_SQ) {
+    return { x: currX, z: currZ, heading: currHeading };
+  }
 
   const x = prevX + (currX - prevX) * alpha;
   const z = prevZ + (currZ - prevZ) * alpha;

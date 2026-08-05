@@ -194,13 +194,15 @@ describe('ServiceVehicleRenderer', () => {
     const renderer = new ServiceVehicleRenderer(scene, flatHeightAt);
     renderer.setBuffer(makeBuffer({ 2: [0, 0, 0, 5, VehicleKind.Police] }));
     renderer.update(0);
-    renderer.setBuffer(makeBuffer({ 2: [100, 0, 0, 5, VehicleKind.Police] }));
+    // 12 m step: a realistic per-snapshot move under the slot-handoff
+    // teleport-snap threshold, so this exercises interpolation, not the guard.
+    renderer.setBuffer(makeBuffer({ 2: [12, 0, 0, 5, VehicleKind.Police] }));
     renderer.update(0.5);
 
     const mesh = meshForKind(scene, VehicleKind.Police);
     const { pos } = decomposeAt(mesh, 2);
     const offset = laneOffset(0); // heading is 0 in both frames
-    expect(pos.x).toBeCloseTo(50 + offset.dx, 4);
+    expect(pos.x).toBeCloseTo(6 + offset.dx, 4);
   });
 
   it('hides every service mesh slot for an inactive (INACTIVE_VEHICLE_X) slot', () => {

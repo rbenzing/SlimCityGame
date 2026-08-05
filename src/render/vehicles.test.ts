@@ -44,6 +44,25 @@ describe('lerpVehicle', () => {
     expect(result.heading).toBeCloseTo(deg(90), 6);
   });
 
+  it('snaps to curr on a slot handoff (an implausibly large prev->curr jump) instead of sliding across the map', () => {
+    // The cosmetic pool can hand one slot to a brand-new vehicle elsewhere, so
+    // prev/curr are two unrelated routes far apart (>2 tiles / 32 m).
+    const prev = [0, 0, deg(0), 10, VehicleKind.Car];
+    const curr = [300, 300, deg(90), 12, VehicleKind.Truck];
+    const result = lerpVehicle(prev, curr, 0.5);
+    expect(result.x).toBeCloseTo(300, 6);
+    expect(result.z).toBeCloseTo(300, 6);
+    expect(result.heading).toBeCloseTo(deg(90), 6);
+  });
+
+  it('still lerps a normal in-route step (jump under the handoff threshold)', () => {
+    const prev = [100, 100, 0, 10, VehicleKind.Car];
+    const curr = [104, 100, 0, 10, VehicleKind.Car]; // 4 m — well under 2 tiles
+    const result = lerpVehicle(prev, curr, 0.5);
+    expect(result.x).toBeCloseTo(102, 6);
+    expect(result.z).toBeCloseTo(100, 6);
+  });
+
   it('takes the shortest angular arc across the +-180 degree wraparound', () => {
     const prev = [0, 0, deg(170), 10, VehicleKind.Car];
     const curr = [0, 0, deg(-170), 10, VehicleKind.Car];
@@ -223,13 +242,16 @@ describe('VehicleRenderer', () => {
     const renderer = new VehicleRenderer(scene, flatHeightAt);
     renderer.setBuffer(makeBuffer({ 0: [0, 0, 0, 5, VehicleKind.Car] }));
     renderer.update(0);
-    renderer.setBuffer(makeBuffer({ 0: [100, 0, 0, 5, VehicleKind.Car] }));
+    // 12 m step: a realistic per-snapshot move (2 ticks at highway speed) that
+    // stays under the slot-handoff teleport-snap threshold, so this exercises
+    // the interpolation path, not the snap-on-teleport guard.
+    renderer.setBuffer(makeBuffer({ 0: [12, 0, 0, 5, VehicleKind.Car] }));
     renderer.update(0.5);
 
     const mesh = meshForKind(scene, VehicleKind.Car);
     const { pos } = decomposeAt(mesh, 0);
     const offset = laneOffset(0); // heading is 0 in both frames
-    expect(pos.x).toBeCloseTo(50 + offset.dx, 5);
+    expect(pos.x).toBeCloseTo(6 + offset.dx, 5);
   });
 
   it('renders each vehicle kind via its own kind-tagged InstancedMesh (§6.8: one InstancedMesh per kind), sized per kind, and hides a slot in every kind-mesh that is not its current kind', () => {
@@ -293,18 +315,21 @@ describe('VehicleRenderer', () => {
       const renderer = new VehicleRenderer(scene, flatHeightAt);
       renderer.setBuffer(makeBuffer({ 0: [0, 0, 0, 5, VehicleKind.Car] }));
       renderer.update(0);
-      renderer.setBuffer(makeBuffer({ 0: [100, 0, 0, 5, VehicleKind.Car] }));
+      // 12 m step: a realistic per-snapshot move that stays under the
+      // slot-handoff teleport-snap threshold (a 100 m jump would be a pool
+      // handoff, not motion, and correctly snaps instead of lerping).
+      renderer.setBuffer(makeBuffer({ 0: [12, 0, 0, 5, VehicleKind.Car] }));
 
       const mesh = meshForKind(scene, VehicleKind.Car);
       const offset = laneOffset(0);
       // A higher playback speed simply means more, closer-together alpha
       // samples arrive per real second (driven by the caller) -- not a
       // different mapping here. Sweeping alpha densely must always track
-      // the same straight line between prev (x=0) and curr (x=100).
+      // the same straight line between prev (x=0) and curr (x=12).
       for (const alpha of [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1]) {
         renderer.update(alpha);
         const { pos } = decomposeAt(mesh, 0);
-        expect(pos.x).toBeCloseTo(100 * alpha + offset.dx, 5);
+        expect(pos.x).toBeCloseTo(12 * alpha + offset.dx, 5);
       }
     });
   });
