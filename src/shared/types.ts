@@ -545,6 +545,10 @@ export interface SaveHeader {
   tick: number;
   mapName: string;
   savedAt: number; // epoch ms, stamped by the main thread
+  /** City stats at save time, for the load-browser rows. Optional: saves
+   * written before this field existed simply omit it. */
+  population?: number;
+  funds?: number;
 }
 
 // ---------------------------------------------------------------------------

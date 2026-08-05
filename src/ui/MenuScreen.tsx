@@ -18,7 +18,13 @@ import { quitToMenu, startLoadGame, startNewGame } from '../app/session';
 type SubView = 'main' | 'options' | 'saves';
 
 function toSaveRow(header: SaveHeaderWithId): SaveRow {
-  return { id: header.id, name: header.mapName || 'City', timestamp: header.savedAt };
+  return {
+    id: header.id,
+    name: header.mapName || 'City',
+    timestamp: header.savedAt,
+    population: header.population,
+    funds: header.funds,
+  };
 }
 
 export function MenuScreen(): JSX.Element | null {

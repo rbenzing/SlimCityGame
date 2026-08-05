@@ -897,6 +897,8 @@ class SimWorld implements WorkerSim {
         tick: this.tickNo,
         mapName: this.mapName,
         savedAt: 0, // stamped by the main thread (persist.storeSave) — no Date.now in the worker
+        population: this.stats.population,
+        funds: this.stats.funds,
       },
       grid: serializeGrid(this.grid),
       meta: { registry: this.registry.serialize(), stats: cloneStats(this.stats) },
