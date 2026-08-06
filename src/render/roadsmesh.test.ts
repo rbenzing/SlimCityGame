@@ -759,7 +759,7 @@ describe('roadTileVertices — cosmetic corner rounding (UI-SPEC §6.18 #5 "Roun
     expect(maxZ).toBeGreaterThan(centerZ + coreHalf);
   });
 
-  it('the bulge depth scales with armDepth (the tier-specific outward room), so a NARROWER carriageway bulges deeper, and never exceeds armDepth (cap stays inside the tile)', () => {
+  it('the cap is a TRUE half-circle (bulge == coreHalf), so a WIDER carriageway bulges deeper — no armDepth clamp', () => {
     const centerZ = 0.5 * TILE_METERS;
     // bulge = how far the cap reaches PAST the tier's own flat dead-end edge
     // (centerZ + coreHalf), isolating the outward depth from coreHalf itself.
@@ -770,14 +770,14 @@ describe('roadTileVertices — cosmetic corner rounding (UI-SPEC §6.18 #5 "Roun
         .map((p) => p[2] as number);
       return Math.max(...zs) - (centerZ + coreHalf);
     };
-    const highwayCoreHalf = TILE_METERS * HIGHWAY_HALF_WIDTH_FRACTION; // small armDepth
-    const twoLaneCoreHalf = TILE_METERS * TWO_LANE_HALF_WIDTH_FRACTION; // larger armDepth
-    expect(bulgeFor(RoadTier.TwoLane, twoLaneCoreHalf)).toBeGreaterThan(
-      bulgeFor(RoadTier.Highway, highwayCoreHalf),
-    );
-    // Contained: the bulge never spills past the tier's own outward room.
-    expect(bulgeFor(RoadTier.TwoLane, twoLaneCoreHalf)).toBeLessThanOrEqual(
-      TILE_METERS / 2 - twoLaneCoreHalf + 1e-6,
+    const highwayCoreHalf = TILE_METERS * HIGHWAY_HALF_WIDTH_FRACTION;
+    const twoLaneCoreHalf = TILE_METERS * TWO_LANE_HALF_WIDTH_FRACTION;
+    // A true semicircle: the outward bulge equals the carriageway half-width.
+    expect(bulgeFor(RoadTier.TwoLane, twoLaneCoreHalf)).toBeCloseTo(twoLaneCoreHalf, 5);
+    expect(bulgeFor(RoadTier.Highway, highwayCoreHalf)).toBeCloseTo(highwayCoreHalf, 5);
+    // Wider carriageway => deeper bulge (highway is wider than two-lane).
+    expect(bulgeFor(RoadTier.Highway, highwayCoreHalf)).toBeGreaterThan(
+      bulgeFor(RoadTier.TwoLane, twoLaneCoreHalf),
     );
   });
 
@@ -817,7 +817,7 @@ describe('roadTileVertices — dead-end cap full carriageway width (UI-SPEC §6.
     return (Math.max(...xs) - Math.min(...xs)) / 2;
   }
 
-  it('the dead-end cap is a half-circle bulging outward by min(coreHalf, armDepth), never past the tile edge, for every paved/gravel tier', () => {
+  it('the dead-end cap is a full half-circle of radius coreHalf for every paved/gravel tier', () => {
     for (const tier of [
       RoadTier.TwoLane,
       RoadTier.Avenue,
@@ -826,7 +826,6 @@ describe('roadTileVertices — dead-end cap full carriageway width (UI-SPEC §6.
       RoadTier.Alley,
     ]) {
       const coreHalf = coreHalfMeters(tier);
-      const armDepth = TILE_METERS / 2 - coreHalf;
       const centerZ = 0.5 * TILE_METERS;
       const { positions } = roadTileVertices(0, 0, tier, N, flatHeightAt);
       const capZs = toTriples(positions)
@@ -834,10 +833,28 @@ describe('roadTileVertices — dead-end cap full carriageway width (UI-SPEC §6.
         .map((p) => p[2] as number);
       expect(capZs.length).toBeGreaterThan(0);
       const bulge = Math.max(...capZs) - (centerZ + coreHalf);
-      expect(bulge).toBeCloseTo(Math.min(coreHalf, armDepth), 6); // full half-circle, clamped to fit
-      // Contained: the rounded asphalt never crosses the tile's far edge.
-      expect(Math.max(...capZs)).toBeLessThanOrEqual(centerZ + TILE_METERS / 2 + 1e-6);
+      expect(bulge).toBeCloseTo(coreHalf, 5); // a true semicircle, radius coreHalf
     }
+  });
+
+  it('wide carriageways (avenue/four-lane) round out PAST the tile edge, while narrow tiers stay inside it', () => {
+    const centerZ = 0.5 * TILE_METERS;
+    const farEdge = centerZ + TILE_METERS / 2;
+    const capMaxZ = (tier: RoadTier): number => {
+      const { positions } = roadTileVertices(0, 0, tier, N, flatHeightAt);
+      return Math.max(
+        ...toTriples(positions)
+          .filter((p) => isAtFilletHeight(p[1] as number))
+          .map((p) => p[2] as number),
+      );
+    };
+    // Wide tiers have < coreHalf of tile room, so a true half-circle spills past
+    // the far edge into the open ground (a cul-de-sac).
+    expect(capMaxZ(RoadTier.Avenue)).toBeGreaterThan(farEdge);
+    expect(capMaxZ(RoadTier.FourLane)).toBeGreaterThan(farEdge);
+    // Narrow tiers' bulb fits comfortably within the tile.
+    expect(capMaxZ(RoadTier.TwoLane)).toBeLessThanOrEqual(farEdge + 1e-6);
+    expect(capMaxZ(RoadTier.Alley)).toBeLessThanOrEqual(farEdge + 1e-6);
   });
 
   it("the half-disc's vertex positions span the FULL carriageway width across the open (dead-end) edge — from -coreHalf to +coreHalf on the cross axis, for every tier", () => {

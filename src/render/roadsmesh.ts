@@ -807,11 +807,12 @@ const HIGHWAY_BARRIER_COLOR: readonly [number, number, number] = [0.5, 0.5, 0.5]
 // ---------------------------------------------------------------------------
 // Dangling road end (popcount 1): a smooth half-CIRCLE turnaround cap. A
 // dead-end must read as a proper rounded bulb wide enough for a car to U-turn
-// across both lanes, so its half-disc spans the full carriageway width
-// (radius = coreHalf) and bulges outward by min(coreHalf, armDepth) — the
-// carriageway continued, drawn coplanar with the road (a hair above, no lip)
-// so it reads as one fluid surface, with the curved cap curb (emitEndCapCurb)
-// wrapping the sidewalk around it.
+// across both lanes, so its half-disc is a TRUE semicircle of radius coreHalf —
+// spanning the full carriageway width AND bulging outward the same coreHalf. On
+// wide tiers that bulb rounds out past the tile edge into the open ground the
+// dead-end faces (a cul-de-sac), rather than collapsing to a flat sliver. Drawn
+// coplanar with the road (a hair above, no lip) so it reads as one fluid
+// surface, with the curved cap curb (emitEndCapCurb) wrapping the sidewalk.
 // ---------------------------------------------------------------------------
 
 /** Cap asphalt sits a hair above the road so it renders over any seam without a visible lip (still below curb height). */
@@ -1074,11 +1075,14 @@ function emitCurvedMarkings(
  *
  * Unlike the turn-corner
  * fillet, `radius` here is the tier's own carriageway HALF-WIDTH (`coreHalf`
- * — the same value the core plate itself uses), NOT
- * `TURN_RADIUS_FRACTION * coreHalf` (capped by armDepth). A dead-end must read as a proper
- * full-width rounded turnaround (a car could U-turn across both lanes), so
- * the half-disc spans the entire carriageway width rather than the narrow
- * nub an armDepth-scaled radius would produce.
+ * — the same value the core plate itself uses), NOT `TURN_RADIUS_FRACTION *
+ * coreHalf`. A dead-end must read as a proper full-width rounded turnaround (a
+ * car could U-turn across both lanes / the curb rounds off), so the cap is a
+ * TRUE half-circle of radius `coreHalf` spanning the entire carriageway. For
+ * wide tiers (avenue / highway / four-lane) that bulb is larger than the strip
+ * of tile left beyond the carriageway, so it rounds out past the tile edge into
+ * the open ground the dead-end faces — exactly like a real cul-de-sac, and the
+ * same reason emitEndCapCurb lets its sidewalk wrap past the edge too.
  */
 function emitEndCap(
   positions: number[],
@@ -1086,22 +1090,20 @@ function emitEndCap(
   centerX: number,
   centerZ: number,
   coreHalf: number,
-  armDepth: number,
   vertical: boolean,
   outwardSign: 1 | -1,
   color: readonly [number, number, number],
   hAt: (x: number, z: number) => number,
 ): void {
   // Full half-CIRCLE turnaround: bulge outward by the carriageway half-width
-  // (coreHalf) so the end reads as a rounded cul-de-sac like the curved
-  // corners, clamped to the tier's outward room so it never spills past the
-  // tile edge on wide tiers.
-  const alongDepth = Math.min(coreHalf, armDepth);
-  if (coreHalf <= 0 || alongDepth <= 0) return;
+  // (coreHalf) so the end reads as a rounded cul-de-sac like the curved corners,
+  // at every tier — wide carriageways round out past the tile edge.
+  const alongDepth = coreHalf;
+  if (coreHalf <= 0) return;
   const edgeAlong = outwardSign * coreHalf;
   const apex: [number, number] = vertical ? [0, edgeAlong] : [edgeAlong, 0];
-  // Half-ELLIPSE: spans the full carriageway width across (coreHalf) but bulges
-  // outward only `alongDepth`, so the rounded end stays inside the tile.
+  // Half-circle: cross radius and outward bulge both `coreHalf`, so the rounded
+  // end is a true semicircle spanning the full carriageway width.
   const ring: Array<[number, number]> = [];
   for (let i = 0; i <= END_CAP_SEGMENTS; i++) {
     const angle = -Math.PI / 2 + (Math.PI * i) / END_CAP_SEGMENTS;
@@ -1129,22 +1131,16 @@ function endCapRingPoint(
 }
 
 /**
- * A half-annulus curb/sidewalk ring hugging a
- * dangling road-end cap's rounded asphalt perimeter — the curb/sidewalk
- * arcs around the rounded cap at the cap radius, the same idea as
- * the turn-corner curb-follows-fillet, but made an explicit geometry
- * edit here (rather than relying on height-layering alone) because the
- * dead-end cap's own radius (coreHalf) commonly EXCEEDS the plain curb
- * strip's width (armDepth) — see emitEndCap's doc comment — so the existing
- * straight curb quad's flat far boundary sits well short of the asphalt
- * bulge's own rim, leaving a visible straight cut slicing across the round
- * cap instead of backing it. This ring reuses emitEndCap's exact pivot/angle
- * parametrization (`endCapRingPoint`) at the SAME inner radius (`coreHalf`,
- * the cap's own edge — a perfect seam with the asphalt fan's rim) and
- * extends outward by `curbWidth` (the tier's own armDepth, matching every
- * other curb strip's width), additive on top of the plain straight curb
- * quads (never removing them — exactly like the corner fillet, which layers
- * over rather than edits the curb underneath).
+ * A half-annulus curb/sidewalk ring hugging a dangling road-end cap's rounded
+ * asphalt perimeter — the curb/sidewalk arcs around the cap at its own radius,
+ * concentric with the half-circle bulb. Its inner radius is `coreHalf` (a
+ * perfect seam with the asphalt fan's rim) and it extends outward one sidewalk
+ * width; it meets the straight flank sidewalks at ±90° and wraps the tip past
+ * the tile edge into the open ground the dead end faces — one continuous
+ * half-circle wrap, never a flat cut. Additive over the plain straight curb
+ * quads (never removing them — like the corner fillet, it layers over the curb
+ * underneath). For wide tiers the whole ring rounds out past the tile edge with
+ * the asphalt bulb it backs.
  */
 function emitEndCapCurb(
   positions: number[],
@@ -1152,19 +1148,17 @@ function emitEndCapCurb(
   centerX: number,
   centerZ: number,
   coreHalf: number,
-  armDepth: number,
   vertical: boolean,
   outwardSign: 1 | -1,
   color: readonly [number, number, number],
   hAt: (x: number, z: number) => number,
 ): void {
   // A sidewalk half-annulus wrapping the round cap, concentric with the bulb
-  // (center = the core's dead-end edge midpoint, radius = the cap bulge
-  // min(coreHalf, armDepth)). It extends outward by a full sidewalk width where
-  // a full sidewalk width, meeting the straight flank sidewalks at ±90° and
-  // rounding the tip past the tile edge into the open ground the dead end
-  // faces — one continuous half-circle wrap, never a flat cut.
-  const capRadius = Math.min(coreHalf, armDepth);
+  // (center = the core's dead-end edge midpoint, radius = the cap's own
+  // coreHalf). It extends outward by a full sidewalk width, meeting the straight
+  // flank sidewalks at ±90° and rounding the tip past the tile edge into the
+  // open ground the dead end faces — one continuous half-circle wrap.
+  const capRadius = coreHalf;
   if (capRadius <= 0) return;
   const pivotAlong = outwardSign * coreHalf; // bulb center along the road axis
   // Local [x, z] of a point `r` out from the bulb center at sweep angle `a`.
@@ -1881,7 +1875,6 @@ export function roadTileVertices(
       centerX,
       centerZ,
       coreHalf,
-      armDepth,
       vertical,
       outwardSign,
       plateColor,
@@ -1898,7 +1891,6 @@ export function roadTileVertices(
         centerX,
         centerZ,
         coreHalf,
-        armDepth,
         vertical,
         outwardSign,
         SIDEWALK_COLOR,
