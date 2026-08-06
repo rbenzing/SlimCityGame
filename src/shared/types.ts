@@ -168,7 +168,10 @@ export type Command =
   // for `tiles`. Collected trash piles up on these tiles; painting more expands capacity.
   | { kind: 'paintLandfill'; tiles: TilePoint[]; on: boolean }
   // Sandbox mode: when on, every build item is placeable regardless of milestone.
-  | { kind: 'setSandbox'; on: boolean };
+  | { kind: 'setSandbox'; on: boolean }
+  // Unlimited money (testing): when on, funds/cost gates are ignored so anything
+  // can be built even in the red. Cash flow is still tracked; the HUD shows ∞.
+  | { kind: 'setUnlimitedMoney'; on: boolean };
 
 /**
  * Worker acknowledges each command batch: actual cost charged, and the

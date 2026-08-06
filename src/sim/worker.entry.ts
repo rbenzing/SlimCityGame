@@ -309,6 +309,8 @@ class SimWorld implements WorkerSim {
   private garbageDirty = false;
   /** Sandbox mode: when true, milestone gates are bypassed for all build items. */
   private sandbox = false;
+  /** Unlimited money (testing): when true, funds/cost gates are ignored. */
+  private unlimitedMoney = false;
 
   /**
    * Statistical population+jobs accessor for transit ridership: sums the
@@ -1157,6 +1159,9 @@ class SimWorld implements WorkerSim {
       case 'setSandbox':
         this.sandbox = command.on;
         return { ok: true, cost: 0, inverse: [] };
+      case 'setUnlimitedMoney':
+        this.unlimitedMoney = command.on;
+        return { ok: true, cost: 0, inverse: [] };
     }
   }
 
@@ -1215,7 +1220,7 @@ class SimWorld implements WorkerSim {
       }
     }
     const cost = on ? newTiles * LANDFILL_PAINT_COST_PER_TILE : 0;
-    if (on && !this.sandbox && cost > this.stats.funds) {
+    if (on && !this.sandbox && !this.unlimitedMoney && cost > this.stats.funds) {
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
     }
 
@@ -1286,7 +1291,8 @@ class SimWorld implements WorkerSim {
     }
 
     const cost = changedCount * spec.costPerTile;
-    if (this.stats.funds < cost) return { ok: false, cost: 0, inverse: [], reason: 'funds' };
+    if (!this.unlimitedMoney && this.stats.funds < cost)
+      return { ok: false, cost: 0, inverse: [], reason: 'funds' };
 
     const deltas = applyRoad(g, valid, tier);
     for (const d of deltas) this.pendingRoadDeltas.set(tileIndex(d.x, d.z), d);
@@ -1412,7 +1418,8 @@ class SimWorld implements WorkerSim {
     if (!this.sandbox && entry.unlockMilestone > this.stats.milestoneLevel) {
       return { ok: false, cost: 0, inverse: [], reason: 'locked' };
     }
-    if (this.stats.funds < entry.cost) return { ok: false, cost: 0, inverse: [], reason: 'funds' };
+    if (!this.unlimitedMoney && this.stats.funds < entry.cost)
+      return { ok: false, cost: 0, inverse: [], reason: 'funds' };
 
     const { w, d } = footprintForRotation(entry, rotation);
     if (!canPlaceFootprint(this.grid, x, z, w, d)) {
@@ -1445,7 +1452,8 @@ class SimWorld implements WorkerSim {
   private cmdTerraform(command: TerraformCommand): CommandResult {
     const result = computeTerraformPatch(this.grid, command);
     if (!result) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
-    if (this.stats.funds < result.cost) return { ok: false, cost: 0, inverse: [], reason: 'funds' };
+    if (!this.unlimitedMoney && this.stats.funds < result.cost)
+      return { ok: false, cost: 0, inverse: [], reason: 'funds' };
 
     applyHeightPatch(this.grid, result.patch);
     this.stats.funds -= result.cost;

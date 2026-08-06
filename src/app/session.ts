@@ -70,6 +70,8 @@ export function quitToMenu(): void {
 export interface GameSettings {
   bloom: boolean;
   sandboxUnlockAll: boolean;
+  /** Testing: ignore funds/costs so anything is buildable (cash flow still tracked; HUD shows ∞). */
+  unlimitedMoney: boolean;
   masterVolume: number; // 0..1
   muted: boolean;
 }
@@ -77,6 +79,7 @@ export interface GameSettings {
 export const DEFAULT_SETTINGS: GameSettings = {
   bloom: true,
   sandboxUnlockAll: false,
+  unlimitedMoney: false,
   masterVolume: 0.7,
   muted: false,
 };

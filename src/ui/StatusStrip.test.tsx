@@ -186,6 +186,21 @@ describe('StatusStrip', () => {
       expect(screen.getByTestId('funds-delta')).toHaveTextContent('-¢400/mo');
     });
 
+    it('shows ∞ for the funds amount (keeping the /mo delta) when unlimited money is on', () => {
+      useCityStore.setState((s) => ({ settings: { ...s.settings, unlimitedMoney: true } }));
+      useCityStore.getState().applySnapshotStats({
+        ...createInitialStats(),
+        funds: -9_999,
+        monthlyIncome: 2_000,
+        monthlyExpenses: 800,
+      });
+      render(<StatusStrip />);
+      const el = screen.getByTestId('funds-amount');
+      expect(el).toHaveTextContent('∞');
+      expect(el).not.toHaveClass('funds-negative'); // ∞ never reads as debt
+      expect(screen.getByTestId('funds-delta')).toHaveTextContent('+¢1,200/mo'); // cash flow still tracked
+    });
+
     it('shows a funds trend arrow vs. the previous month rollover, independent of the /mo rate', () => {
       useCityStore
         .getState()

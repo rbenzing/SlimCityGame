@@ -213,6 +213,31 @@ describe('worker sim', () => {
     expect(buildingAck.reason).toBeUndefined();
   });
 
+  it('unlimited money bypasses the funds gate (build anything even when broke)', () => {
+    // Drain funds via a save round-trip so the coal plant (12000) is unaffordable.
+    h.sim.handleMessage({ type: 'requestSave' });
+    const saveMsg = h.messages.find((m) => m.type === 'save');
+    if (!saveMsg || saveMsg.type !== 'save') throw new Error('no save message');
+    const payload = decodeSave(saveMsg.data);
+    payload.meta.stats.funds = 100;
+    h.sim.handleMessage({ type: 'loadSave', data: encodeSave(payload) });
+
+    // Baseline: too poor -> funds fail (milestone-0 building, so not a lock).
+    send(h, 10, [{ kind: 'placeBuilding', catalogId: 'coal-plant', x: 100, z: 100, rotation: 0 }]);
+    h.ticks(1);
+    expect(h.ackFor(10)!.ok).toBe(false);
+    expect(h.ackFor(10)!.reason).toBe('funds');
+
+    // Unlimited money on: the same placement now succeeds despite the low funds.
+    send(h, 11, [{ kind: 'setUnlimitedMoney', on: true }]);
+    h.ticks(1);
+    send(h, 12, [{ kind: 'placeBuilding', catalogId: 'coal-plant', x: 110, z: 110, rotation: 0 }]);
+    h.ticks(1);
+    const ack = h.ackFor(12)!;
+    expect(ack.ok).toBe(true);
+    expect(ack.reason).toBeUndefined();
+  });
+
   it('paints zones and acks with a de-zoning inverse', () => {
     // Frontage: a non-None paint only lands on tiles with qualifying road
     // frontage. Lay a straight road one row north (z=49) so the four tiles at

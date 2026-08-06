@@ -47,6 +47,17 @@ export function OptionsPanel({ settings, onChange, onBack }: OptionsPanelProps):
           />
         </label>
 
+        <label className="flex items-center justify-between gap-3 text-sm">
+          <span>Unlimited money</span>
+          <input
+            type="checkbox"
+            aria-label="Unlimited money"
+            checked={settings.unlimitedMoney}
+            onChange={(e) => onChange({ unlimitedMoney: e.target.checked })}
+            className="h-4 w-4 accent-accent"
+          />
+        </label>
+
         <div className="flex flex-col gap-2">
           <div className={LABEL}>Audio</div>
           <p className="text-[11px] text-white/50">Minimal audio settings for now.</p>

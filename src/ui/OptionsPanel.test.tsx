@@ -11,6 +11,7 @@ afterEach(() => {
 const SETTINGS: GameSettings = {
   bloom: true,
   sandboxUnlockAll: false,
+  unlimitedMoney: false,
   masterVolume: 0.5,
   muted: false,
 };
@@ -36,6 +37,13 @@ describe('OptionsPanel', () => {
     render(<OptionsPanel settings={SETTINGS} onChange={onChange} onBack={vi.fn()} />);
     fireEvent.click(screen.getByRole('checkbox', { name: 'Sandbox: unlock all build items' }));
     expect(onChange).toHaveBeenCalledWith({ sandboxUnlockAll: true });
+  });
+
+  it('toggling Unlimited money calls onChange with only that field', () => {
+    const onChange = vi.fn();
+    render(<OptionsPanel settings={SETTINGS} onChange={onChange} onBack={vi.fn()} />);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Unlimited money' }));
+    expect(onChange).toHaveBeenCalledWith({ unlimitedMoney: true });
   });
 
   it('dragging the Master Volume slider calls onChange with only masterVolume', () => {

@@ -118,6 +118,7 @@ export function StatusStrip(): JSX.Element {
   const funds = useCityStore((s) => s.stats.funds);
   const monthlyIncome = useCityStore((s) => s.stats.monthlyIncome);
   const monthlyExpenses = useCityStore((s) => s.stats.monthlyExpenses);
+  const unlimitedMoney = useCityStore((s) => s.settings.unlimitedMoney);
   const happiness = useCityStore((s) => s.stats.happiness);
   const previousMonthPopulation = useCityStore((s) => s.previousMonthPopulation);
   const previousMonthFunds = useCityStore((s) => s.previousMonthFunds);
@@ -167,12 +168,13 @@ export function StatusStrip(): JSX.Element {
       <div className="flex shrink-0 items-center gap-1.5">
         <span
           data-testid="funds-amount"
-          className={`font-medium ${fundsNegative ? 'funds-negative text-[#e5533f]' : ''}`}
+          className={`font-medium ${!unlimitedMoney && fundsNegative ? 'funds-negative text-[#e5533f]' : ''}`}
         >
-          {fundsNegative ? '-' : ''}
-          {formatFunds(funds)}
+          {unlimitedMoney ? '∞' : `${fundsNegative ? '-' : ''}${formatFunds(funds)}`}
         </span>
-        {fundsTrend !== 'flat' && <TrendArrow trend={fundsTrend} testId="funds-trend" />}
+        {!unlimitedMoney && fundsTrend !== 'flat' && (
+          <TrendArrow trend={fundsTrend} testId="funds-trend" />
+        )}
         <span
           data-testid="funds-delta"
           className={

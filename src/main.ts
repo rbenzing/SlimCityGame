@@ -325,6 +325,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   if (store.getState().settings.sandboxUnlockAll) {
     postCommands([{ kind: 'setSandbox', on: true }], true);
   }
+  if (store.getState().settings.unlimitedMoney) {
+    postCommands([{ kind: 'setUnlimitedMoney', on: true }], true);
+  }
 
   const syncUndoState = (): void => {
     store.getState().setUndoState(undoStack.canUndo(), undoStack.canRedo());
@@ -729,6 +732,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     onSettings: (patch) => {
       if (patch.sandboxUnlockAll !== undefined) {
         postCommands([{ kind: 'setSandbox', on: patch.sandboxUnlockAll }], true);
+      }
+      if (patch.unlimitedMoney !== undefined) {
+        postCommands([{ kind: 'setUnlimitedMoney', on: patch.unlimitedMoney }], true);
       }
     },
   });
