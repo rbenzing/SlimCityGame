@@ -119,6 +119,9 @@ const ROAD_TOOL_TO_TIER: Record<string, RoadTier> = {
   'road.alley': RoadTierValue.Alley,
   'road.oneway': RoadTierValue.OneWay,
   'road.four': RoadTierValue.FourLane,
+  // Transit lane variants (roads epic R2).
+  'road.bus': RoadTierValue.BusLane,
+  'road.bike': RoadTierValue.BikeLane,
 };
 
 /** The 'terraform' Command's mode field (shared/types.ts), named locally for readability. */

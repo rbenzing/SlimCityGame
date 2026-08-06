@@ -34,6 +34,11 @@ describe('RoadTier v3 members (UI-SPEC §6.7 Roads v3)', () => {
     expect(RoadTier.FourLane).toBe(7);
   });
 
+  it('gains the roads-epic transit lane members at 8..9', () => {
+    expect(RoadTier.BusLane).toBe(8);
+    expect(RoadTier.BikeLane).toBe(9);
+  });
+
   it('all tier values fit the grid roadTier Uint8Array and stay unique', () => {
     const values = Object.values(RoadTier);
     expect(new Set(values).size).toBe(values.length);
@@ -90,10 +95,42 @@ describe('RoadSpec v3 optional fields (UI-SPEC §6.7 Roads v3)', () => {
 });
 
 describe('roads.json catalog v3 (UI-SPEC §6.7 Roads v3)', () => {
-  it('holds exactly seven specs with unique tiers 1..7', () => {
-    expect(specs).toHaveLength(7);
-    expect(new Set(specs.map((s) => s.tier)).size).toBe(7);
-    expect([...specs.map((s) => s.tier)].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  it('holds exactly nine specs with unique tiers 1..9', () => {
+    expect(specs).toHaveLength(9);
+    expect(new Set(specs.map((s) => s.tier)).size).toBe(9);
+    expect([...specs.map((s) => s.tier)].sort((a, b) => a - b)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9,
+    ]);
+  });
+
+  it('Bus Lane (tier 8): transit-priority, unlock M2, above avenue in cost + capacity', () => {
+    const bus = byTier(RoadTier.BusLane);
+    expect(bus).toEqual({
+      tier: 8,
+      name: 'Bus Lane',
+      costPerTile: 55,
+      upkeepPerTile: 1.1,
+      speed: 18,
+      capacity: 2200,
+      unlockMilestone: 2,
+    });
+    // Paved + bidirectional (differentiator is cosmetic colored paint, not routing).
+    expect(bus?.surface).toBeUndefined();
+    expect(bus?.oneWay).toBeUndefined();
+  });
+
+  it('Bike Lane (tier 9): cheap, unlock M1, modest capacity above two-lane', () => {
+    const bike = byTier(RoadTier.BikeLane);
+    expect(bike).toEqual({
+      tier: 9,
+      name: 'Bike Lane',
+      costPerTile: 28,
+      upkeepPerTile: 0.5,
+      speed: 14,
+      capacity: 750,
+      unlockMilestone: 1,
+    });
+    expect(bike!.capacity).toBeGreaterThan(byTier(RoadTier.TwoLane)!.capacity);
   });
 
   it('keeps the existing three specs byte-for-byte on their v1 numbers', () => {

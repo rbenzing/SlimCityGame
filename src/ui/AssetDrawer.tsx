@@ -49,9 +49,10 @@ function roadHeightClass(id: ToolId): string {
     case 'road.alley':
       return 'h-3';
     case 'road.four':
+    case 'road.bus':
       return 'h-6';
     default:
-      return 'h-4'; // road.oneway: two-lane look
+      return 'h-4'; // road.oneway / road.bike: two-lane look
   }
 }
 
@@ -74,11 +75,16 @@ function CardPictogram({ card }: { card: AssetCard }): JSX.Element {
     return <div className={`h-11 rounded-[6px] ${zoneClass(card.id)}`} aria-hidden="true" />;
   }
   if (card.id.startsWith('road.')) {
-    // Gravel is unpaved: a plain dusty-tan strip, no dashed paint.
+    // Gravel is unpaved (dusty-tan strip); transit lanes read as their painted
+    // color (terracotta bus / green bike); every other road is dashed white.
     const strip =
       card.id === 'road.gravel'
         ? 'bg-[#9e8c6b]'
-        : 'bg-[repeating-linear-gradient(90deg,#fff_0px,#fff_6px,transparent_6px,transparent_12px)]';
+        : card.id === 'road.bus'
+          ? 'bg-[#b8492f]'
+          : card.id === 'road.bike'
+            ? 'bg-[#268a44]'
+            : 'bg-[repeating-linear-gradient(90deg,#fff_0px,#fff_6px,transparent_6px,transparent_12px)]';
     return (
       <div
         className="flex h-11 items-center justify-center rounded-[6px] bg-[#2a2f36]"

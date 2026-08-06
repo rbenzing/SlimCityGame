@@ -1,11 +1,90 @@
 {
   "specs": [
-    { "tier": 1, "name": "Two-Lane Road", "costPerTile": 20, "upkeepPerTile": 0.4, "speed": 14, "capacity": 600, "unlockMilestone": 0 },
-    { "tier": 2, "name": "Avenue", "costPerTile": 45, "upkeepPerTile": 0.9, "speed": 18, "capacity": 1600, "unlockMilestone": 1 },
-    { "tier": 3, "name": "Highway", "costPerTile": 90, "upkeepPerTile": 1.8, "speed": 28, "capacity": 4000, "unlockMilestone": 3, "carriesWater": false, "noiseMult": 3 },
-    { "tier": 4, "name": "Gravel Road", "costPerTile": 8, "upkeepPerTile": 0.15, "speed": 8, "capacity": 200, "unlockMilestone": 0, "noiseMult": 2, "surface": "gravel" },
-    { "tier": 5, "name": "Alley", "costPerTile": 14, "upkeepPerTile": 0.3, "speed": 10, "capacity": 350, "unlockMilestone": 1 },
-    { "tier": 6, "name": "One-Way Road", "costPerTile": 24, "upkeepPerTile": 0.45, "speed": 16, "capacity": 1100, "unlockMilestone": 1, "oneWay": true },
-    { "tier": 7, "name": "Four-Lane Road", "costPerTile": 32, "upkeepPerTile": 0.7, "speed": 17, "capacity": 1200, "unlockMilestone": 1 }
+    {
+      "tier": 1,
+      "name": "Two-Lane Road",
+      "costPerTile": 20,
+      "upkeepPerTile": 0.4,
+      "speed": 14,
+      "capacity": 600,
+      "unlockMilestone": 0
+    },
+    {
+      "tier": 2,
+      "name": "Avenue",
+      "costPerTile": 45,
+      "upkeepPerTile": 0.9,
+      "speed": 18,
+      "capacity": 1600,
+      "unlockMilestone": 1
+    },
+    {
+      "tier": 3,
+      "name": "Highway",
+      "costPerTile": 90,
+      "upkeepPerTile": 1.8,
+      "speed": 28,
+      "capacity": 4000,
+      "unlockMilestone": 3,
+      "carriesWater": false,
+      "noiseMult": 3
+    },
+    {
+      "tier": 4,
+      "name": "Gravel Road",
+      "costPerTile": 8,
+      "upkeepPerTile": 0.15,
+      "speed": 8,
+      "capacity": 200,
+      "unlockMilestone": 0,
+      "noiseMult": 2,
+      "surface": "gravel"
+    },
+    {
+      "tier": 5,
+      "name": "Alley",
+      "costPerTile": 14,
+      "upkeepPerTile": 0.3,
+      "speed": 10,
+      "capacity": 350,
+      "unlockMilestone": 1
+    },
+    {
+      "tier": 6,
+      "name": "One-Way Road",
+      "costPerTile": 24,
+      "upkeepPerTile": 0.45,
+      "speed": 16,
+      "capacity": 1100,
+      "unlockMilestone": 1,
+      "oneWay": true
+    },
+    {
+      "tier": 7,
+      "name": "Four-Lane Road",
+      "costPerTile": 32,
+      "upkeepPerTile": 0.7,
+      "speed": 17,
+      "capacity": 1200,
+      "unlockMilestone": 1
+    },
+    {
+      "tier": 8,
+      "name": "Bus Lane",
+      "costPerTile": 55,
+      "upkeepPerTile": 1.1,
+      "speed": 18,
+      "capacity": 2200,
+      "unlockMilestone": 2
+    },
+    {
+      "tier": 9,
+      "name": "Bike Lane",
+      "costPerTile": 28,
+      "upkeepPerTile": 0.5,
+      "speed": 14,
+      "capacity": 750,
+      "unlockMilestone": 1
+    }
   ]
 }

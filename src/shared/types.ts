@@ -46,6 +46,10 @@ export const RoadTier = {
   Alley: 5,
   OneWay: 6,
   FourLane: 7,
+  // Roads epic R2 — transit lane variants (cosmetic colored lanes on the
+  // same 1-tile model). Append only; persisted as roadTier bytes.
+  BusLane: 8,
+  BikeLane: 9,
 } as const;
 export type RoadTier = (typeof RoadTier)[keyof typeof RoadTier];
 
@@ -530,6 +534,9 @@ export type ToolId =
   | 'road.alley'
   | 'road.oneway'
   | 'road.four'
+  // Roads epic R2 — transit lane variants.
+  | 'road.bus'
+  | 'road.bike'
   | 'zone.resLow'
   | 'zone.resHigh'
   | 'zone.comLow'

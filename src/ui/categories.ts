@@ -78,6 +78,10 @@ function roadToolId(tier: RoadTier): ToolId | null {
       return 'road.oneway';
     case RoadTierValue.FourLane:
       return 'road.four';
+    case RoadTierValue.BusLane:
+      return 'road.bus';
+    case RoadTierValue.BikeLane:
+      return 'road.bike';
     default:
       return null;
   }
@@ -212,7 +216,13 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
         ...roadCard(RoadTierValue.Highway),
       ],
     },
-    { id: 'maintenance', label: 'Maintenance', cards: [] },
+    // Transit lane variants (roads epic) — bus/bike lanes, later joined by
+    // trams/trains. Cheaper bike lane first, then the bus lane.
+    {
+      id: 'transit',
+      label: 'Transit Lanes',
+      cards: [...roadCard(RoadTierValue.BikeLane), ...roadCard(RoadTierValue.BusLane)],
+    },
   ],
   electricity: [
     {
@@ -230,7 +240,11 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
   ],
   // Garbage: the landfill-area brush + garbage-processing ploppables (incinerator).
   garbage: [
-    { id: 'all', label: 'Garbage', cards: [LANDFILL_PAINT_CARD, ...catalogCards((e) => !!e.garbage)] },
+    {
+      id: 'all',
+      label: 'Garbage',
+      cards: [LANDFILL_PAINT_CARD, ...catalogCards((e) => !!e.garbage)],
+    },
   ],
   health: [
     {

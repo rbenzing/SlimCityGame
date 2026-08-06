@@ -57,10 +57,14 @@ describe('AssetDrawer', () => {
       expect(screen.queryByText('Residential (Low)')).not.toBeInTheDocument();
     });
 
-    it('Roads drops the empty Maintenance sub-tab, keeping only Small/Large Roads', () => {
+    it('Roads renders Small / Large / Transit Lanes, dropping the empty Maintenance sub-tab', () => {
       render(<AssetDrawer category="roads" onClose={vi.fn()} />);
       const tabs = screen.getAllByRole('tab');
-      expect(tabs.map((t) => t.textContent)).toEqual(['Small Roads', 'Large Roads']);
+      expect(tabs.map((t) => t.textContent)).toEqual([
+        'Small Roads',
+        'Large Roads',
+        'Transit Lanes',
+      ]);
       expect(screen.queryByRole('tab', { name: /maintenance/i })).not.toBeInTheDocument();
     });
 

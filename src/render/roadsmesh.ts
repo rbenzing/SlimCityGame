@@ -44,6 +44,13 @@
  *   dashed lane dividers + solid double center, but never a median (medians
  *   are gated on tier === Avenue elsewhere, so Four-Lane simply never
  *   qualifies).
+ * - **Bus Lane** (tier 8): four-lane-width carriageway with the four-lane
+ *   white marking set, plus a terracotta band painted over each curbside lane
+ *   and a periodic white transit diamond (`emitColoredLaneBands`).
+ * - **Bike Lane** (tier 9): three-lane-width carriageway with the two-lane
+ *   white centerline, plus a green edge strip each side and a periodic white
+ *   bicycle pictogram (`emitColoredLaneBands`). Both transit variants paint
+ *   their colored band on straight runs only; junctions/turns break it.
  *
  * Corner rounding: the turn-corner fillet
  * (`emitCornerFillet`) is
@@ -170,6 +177,10 @@ export const GRAVEL_HALF_WIDTH_FRACTION = laneFraction(1.5);
 export const ALLEY_HALF_WIDTH_FRACTION = laneFraction(1);
 /** Four-Lane: 4 lanes, no median. */
 export const FOUR_LANE_HALF_WIDTH_FRACTION = laneFraction(4);
+/** Bus Lane: 4 lanes wide (the outer curbside lane each side is a painted bus lane). */
+export const BUS_LANE_HALF_WIDTH_FRACTION = laneFraction(4);
+/** Bike Lane: 3 lanes wide — two travel lanes plus a painted edge bike lane each side. */
+export const BIKE_LANE_HALF_WIDTH_FRACTION = laneFraction(3);
 
 /** Gravel's dusty tan base color family, before per-tile jitter. */
 const GRAVEL_BASE_COLOR: readonly [number, number, number] = [0.62, 0.55, 0.42];
@@ -184,6 +195,17 @@ const ONE_WAY_COLOR: readonly [number, number, number] = [0.5, 0.5, 0.51];
  * look like a physical concrete band.
  */
 const FOUR_LANE_COLOR: readonly [number, number, number] = [0.6, 0.6, 0.61];
+/** Bus/Bike lanes reuse a mid asphalt base — the colored lane band is the differentiator, not the base shade. */
+const TRANSIT_LANE_COLOR: readonly [number, number, number] = [0.5, 0.5, 0.51];
+/** Painted bus-lane surface (terracotta red — the universal transit-lane tint). */
+const BUS_LANE_PAINT_COLOR: readonly [number, number, number] = [0.6, 0.24, 0.18];
+/** Painted bike-lane surface (deep green). */
+const BIKE_LANE_PAINT_COLOR: readonly [number, number, number] = [0.13, 0.42, 0.22];
+/** Bus-lane band = the full curbside lane; bike-lane band = a narrow edge strip. */
+const BUS_LANE_BAND_WIDTH_M = LANE_WIDTH_M;
+const BIKE_LANE_BAND_WIDTH_M = 1.6;
+/** Colored lane fill sits above the asphalt plate but below the white lane paint, so markings/glyphs read on top. */
+const LANE_TINT_Y_OFFSET = ROAD_Y_OFFSET + 0.003;
 
 interface QuadSpec {
   halfWidthFraction: number;
@@ -247,6 +269,20 @@ function tierSpec(tier: RoadTier): QuadSpec {
       return {
         halfWidthFraction: FOUR_LANE_HALF_WIDTH_FRACTION,
         color: FOUR_LANE_COLOR,
+        hasCurbs: true,
+        paved: true,
+      };
+    case RoadTier.BusLane:
+      return {
+        halfWidthFraction: BUS_LANE_HALF_WIDTH_FRACTION,
+        color: TRANSIT_LANE_COLOR,
+        hasCurbs: true,
+        paved: true,
+      };
+    case RoadTier.BikeLane:
+      return {
+        halfWidthFraction: BIKE_LANE_HALF_WIDTH_FRACTION,
+        color: TRANSIT_LANE_COLOR,
         hasCurbs: true,
         paved: true,
       };
@@ -491,7 +527,10 @@ function emitAxisMarkings(
     pushDashedLine(positions, colors, vertical, centerX, centerZ, offset, lo, hi, hAt);
 
   switch (tier) {
+    // Bike Lane shares the two-lane white marking set (single dashed
+    // centerline); its green edge lanes are painted separately.
     case RoadTier.TwoLane:
+    case RoadTier.BikeLane:
       dashed(0);
       break;
     case RoadTier.Avenue:
@@ -515,7 +554,11 @@ function emitAxisMarkings(
       // Two-lane look: same single dashed centerline.
       dashed(0);
       break;
+    // Bus Lane shares the four-lane white marking set (solid double center +
+    // dashed lane dividers); the divider falls exactly at the bus-lane band's
+    // inner edge, so it reads as the line separating the bus lane from traffic.
     case RoadTier.FourLane:
+    case RoadTier.BusLane:
       // Avenue-style dashed lane dividers + solid double center, but NEVER a
       // median (medianEligible/suppressCenterPair is only ever true for
       // Avenue itself, so Four-Lane always keeps its center pair).
@@ -608,6 +651,266 @@ function emitDirectionArrow(
         MARKING_COLOR,
         hAt,
       );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Transit lane variants (Bus Lane / Bike Lane): a colored lane band painted on
+// the carriageway (terracotta bus lane / green bike lane) plus a periodic white
+// glyph — a transit diamond in each bus lane, a bicycle pictogram in each bike
+// lane. Painted on STRAIGHT runs only (like medians/arrows); junctions and
+// turns break the band, matching how real lane paint stops at crossings. The
+// white lane markings themselves come from the reused emitAxisMarkings /
+// emitCurvedMarkings cases (bus mirrors four-lane, bike mirrors two-lane).
+// ---------------------------------------------------------------------------
+
+/** Lane glyphs repeat every Nth straight tile by GLOBAL coordinate. */
+export const LANE_GLYPH_PERIOD_TILES = 3;
+
+/** True every LANE_GLYPH_PERIOD_TILES-th global tile coordinate, negative-safe. */
+export function isLaneGlyphTile(coord: number): boolean {
+  return (
+    ((coord % LANE_GLYPH_PERIOD_TILES) + LANE_GLYPH_PERIOD_TILES) % LANE_GLYPH_PERIOD_TILES === 0
+  );
+}
+
+/**
+ * Pushes one flat triangle at yOffset, FORCING up-facing winding (CCW from +Y)
+ * so the single-sided road material never culls it. Points are LOCAL [x, z]
+ * offsets from the tile center.
+ */
+function pushGroundTri(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  p0: readonly [number, number],
+  p1: readonly [number, number],
+  p2: readonly [number, number],
+  yOffset: number,
+  color: readonly [number, number, number],
+  hAt: (x: number, z: number) => number,
+): void {
+  const cross = (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p1[1] - p0[1]) * (p2[0] - p0[0]);
+  const tri = cross > 0 ? [p0, p2, p1] : [p0, p1, p2];
+  for (const p of tri) {
+    const wx = centerX + p[0];
+    const wz = centerZ + p[1];
+    pushVertex(positions, colors, wx, hAt(wx, wz) + yOffset, wz, color);
+  }
+}
+
+/** A flat ring (annulus) centered at local (cx, cz) — a bike wheel viewed from above. */
+function pushRing(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  cx: number,
+  cz: number,
+  rInner: number,
+  rOuter: number,
+  segments: number,
+  yOffset: number,
+  color: readonly [number, number, number],
+  hAt: (x: number, z: number) => number,
+): void {
+  for (let i = 0; i < segments; i++) {
+    const a0 = (i / segments) * Math.PI * 2;
+    const a1 = ((i + 1) / segments) * Math.PI * 2;
+    const iA: [number, number] = [cx + rInner * Math.cos(a0), cz + rInner * Math.sin(a0)];
+    const oA: [number, number] = [cx + rOuter * Math.cos(a0), cz + rOuter * Math.sin(a0)];
+    const iB: [number, number] = [cx + rInner * Math.cos(a1), cz + rInner * Math.sin(a1)];
+    const oB: [number, number] = [cx + rOuter * Math.cos(a1), cz + rOuter * Math.sin(a1)];
+    pushGroundTri(positions, colors, centerX, centerZ, iA, oA, iB, yOffset, color, hAt);
+    pushGroundTri(positions, colors, centerX, centerZ, iB, oA, oB, yOffset, color, hAt);
+  }
+}
+
+/** Bus-lane transit diamond (white filled), centered across `across`, oriented along travel. */
+function emitTransitDiamond(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  vertical: boolean,
+  across: number,
+  hAt: (x: number, z: number) => number,
+): void {
+  const halfAlong = 0.9;
+  const halfAcross = 0.5;
+  const mp = (along: number, acr: number): [number, number] =>
+    vertical ? [acr, along] : [along, acr];
+  const fore = mp(halfAlong, across);
+  const aft = mp(-halfAlong, across);
+  const left = mp(0, across + halfAcross);
+  const right = mp(0, across - halfAcross);
+  pushGroundTri(
+    positions,
+    colors,
+    centerX,
+    centerZ,
+    fore,
+    left,
+    aft,
+    MARK_Y_OFFSET,
+    MARKING_COLOR,
+    hAt,
+  );
+  pushGroundTri(
+    positions,
+    colors,
+    centerX,
+    centerZ,
+    fore,
+    aft,
+    right,
+    MARK_Y_OFFSET,
+    MARKING_COLOR,
+    hAt,
+  );
+}
+
+/** A flat rectangular bar between LOCAL points p0 and p1, half-thickness `ht`, at yOffset. */
+function pushBar(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  p0: readonly [number, number],
+  p1: readonly [number, number],
+  ht: number,
+  yOffset: number,
+  color: readonly [number, number, number],
+  hAt: (x: number, z: number) => number,
+): void {
+  const dx = p1[0] - p0[0];
+  const dz = p1[1] - p0[1];
+  const len = Math.hypot(dx, dz);
+  if (len < 1e-6) return;
+  const nx = (-dz / len) * ht;
+  const nz = (dx / len) * ht;
+  const a: [number, number] = [p0[0] + nx, p0[1] + nz];
+  const bb: [number, number] = [p1[0] + nx, p1[1] + nz];
+  const c: [number, number] = [p1[0] - nx, p1[1] - nz];
+  const d: [number, number] = [p0[0] - nx, p0[1] - nz];
+  pushGroundTri(positions, colors, centerX, centerZ, a, bb, c, yOffset, color, hAt);
+  pushGroundTri(positions, colors, centerX, centerZ, a, c, d, yOffset, color, hAt);
+}
+
+/**
+ * Bike-lane pictogram (white): a side-profile bicycle laid flat on the lane —
+ * two wheel rings inline along travel plus a frame (down tube, seat tube, top
+ * tube, fork) rising toward one side, with a seat + handlebar. This mirrors the
+ * real-world bike-lane stencil (a side-view bike painted on the pavement),
+ * which reads clearly from the overhead camera. `across` is the band centerline
+ * offset; the frame rises toward the carriageway center so both edge lanes read
+ * upright the same way.
+ */
+function emitBicycleGlyph(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  vertical: boolean,
+  across: number,
+  hAt: (x: number, z: number) => number,
+): void {
+  // up>0 lifts the frame toward the carriageway centerline (across shrinks
+  // toward 0), so the silhouette stands upright regardless of which edge lane.
+  const upSign = across >= 0 ? -1 : 1;
+  const P = (along: number, up: number): [number, number] => {
+    const acr = across + upSign * up;
+    return vertical ? [acr, along] : [along, acr];
+  };
+  const wheelR = 0.42;
+  const wheelThick = 0.1;
+  const rearHub = P(-0.62, 0);
+  const frontHub = P(0.62, 0);
+  pushRing(positions, colors, centerX, centerZ, rearHub[0], rearHub[1], wheelR - wheelThick, wheelR, 12, MARK_Y_OFFSET, MARKING_COLOR, hAt);
+  pushRing(positions, colors, centerX, centerZ, frontHub[0], frontHub[1], wheelR - wheelThick, wheelR, 12, MARK_Y_OFFSET, MARKING_COLOR, hAt);
+  const crank = P(0, 0);
+  const saddle = P(-0.3, 0.62);
+  const handle = P(0.62, 0.62);
+  const ht = 0.06;
+  pushBar(positions, colors, centerX, centerZ, rearHub, crank, ht, MARK_Y_OFFSET, MARKING_COLOR, hAt); // chain stay
+  pushBar(positions, colors, centerX, centerZ, crank, saddle, ht, MARK_Y_OFFSET, MARKING_COLOR, hAt); // seat tube
+  pushBar(positions, colors, centerX, centerZ, saddle, handle, ht, MARK_Y_OFFSET, MARKING_COLOR, hAt); // top tube
+  pushBar(positions, colors, centerX, centerZ, handle, frontHub, ht, MARK_Y_OFFSET, MARKING_COLOR, hAt); // fork
+  pushBar(positions, colors, centerX, centerZ, crank, handle, ht, MARK_Y_OFFSET, MARKING_COLOR, hAt); // down tube
+  // Seat + handlebar cross-caps.
+  pushBar(positions, colors, centerX, centerZ, P(-0.46, 0.62), P(-0.14, 0.62), ht, MARK_Y_OFFSET, MARKING_COLOR, hAt);
+  pushBar(positions, colors, centerX, centerZ, P(0.46, 0.62), P(0.78, 0.62), ht, MARK_Y_OFFSET, MARKING_COLOR, hAt);
+}
+
+/**
+ * Paints the colored transit-lane band(s) + periodic glyph for a Bus Lane or
+ * Bike Lane straight run along one travel axis. A band hugs each carriageway
+ * edge (bus: the full curbside lane, terracotta; bike: a narrow edge strip,
+ * green) between along-offsets [lo, hi]; the glyph sits centered in each band,
+ * repeating every LANE_GLYPH_PERIOD_TILES tiles by global coordinate.
+ */
+function emitColoredLaneBands(
+  positions: number[],
+  colors: number[],
+  tier: RoadTier,
+  x: number,
+  z: number,
+  centerX: number,
+  centerZ: number,
+  coreHalf: number,
+  vertical: boolean,
+  lo: number,
+  hi: number,
+  hAt: (x: number, z: number) => number,
+): void {
+  const isBus = tier === RoadTier.BusLane;
+  const bandWidth = isBus ? BUS_LANE_BAND_WIDTH_M : BIKE_LANE_BAND_WIDTH_M;
+  if (bandWidth <= 0 || coreHalf <= bandWidth * 0.5) return;
+  const paint = isBus ? BUS_LANE_PAINT_COLOR : BIKE_LANE_PAINT_COLOR;
+  const bandCenter = coreHalf - bandWidth / 2;
+
+  const rect = (a0: number, a1: number, c0: number, c1: number): void => {
+    if (vertical)
+      pushLocalRect(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        c0,
+        c1,
+        a0,
+        a1,
+        LANE_TINT_Y_OFFSET,
+        paint,
+        hAt,
+      );
+    else
+      pushLocalRect(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        a0,
+        a1,
+        c0,
+        c1,
+        LANE_TINT_Y_OFFSET,
+        paint,
+        hAt,
+      );
+  };
+
+  const glyphHere = vertical ? isLaneGlyphTile(z) : isLaneGlyphTile(x);
+  for (const side of [1, -1] as const) {
+    const cInner = side * (coreHalf - bandWidth);
+    const cOuter = side * coreHalf;
+    rect(lo, hi, Math.min(cInner, cOuter), Math.max(cInner, cOuter));
+    if (glyphHere) {
+      const across = side * bandCenter;
+      if (isBus) emitTransitDiamond(positions, colors, centerX, centerZ, vertical, across, hAt);
+      else emitBicycleGlyph(positions, colors, centerX, centerZ, vertical, across, hAt);
     }
   }
 }
@@ -862,7 +1165,6 @@ function pushFan(
   }
 }
 
-
 /** Segments across a turn tile's 90° arc — smoothness of the curved road. */
 export const TURN_ARC_SEGMENTS = 12;
 
@@ -909,7 +1211,10 @@ function emitCurvedTurn(
   // opening (along x), d2 toward the E/W-edge opening (along z).
   const dirX = (t: number): number => -pxSign * Math.cos(t);
   const dirZ = (t: number): number => -pzSign * Math.sin(t);
-  const at = (r: number, t: number): [number, number] => [pivotX + r * dirX(t), pivotZ + r * dirZ(t)];
+  const at = (r: number, t: number): [number, number] => [
+    pivotX + r * dirX(t),
+    pivotZ + r * dirZ(t),
+  ];
   /** Distance from the pivot along v(θ) to the tile boundary (for the outer sidewalk clamp). */
   const boundary = (t: number): number => {
     const c = Math.cos(t);
@@ -964,10 +1269,24 @@ function emitCurvedTurn(
       // edge) is grass verge. Inner band clamps at the pivot; outer band clamps
       // at the tile boundary.
       const innerLo = Math.max(0, rIn - sidewalkWidth);
-      pushQuad2(at(innerLo, t0), at(rIn, t0), at(innerLo, t1), at(rIn, t1), CURB_Y_OFFSET, SIDEWALK_COLOR);
+      pushQuad2(
+        at(innerLo, t0),
+        at(rIn, t0),
+        at(innerLo, t1),
+        at(rIn, t1),
+        CURB_Y_OFFSET,
+        SIDEWALK_COLOR,
+      );
       const outerHi0 = Math.min(rOut + sidewalkWidth, boundary(t0));
       const outerHi1 = Math.min(rOut + sidewalkWidth, boundary(t1));
-      pushQuad2(at(rOut, t0), at(outerHi0, t0), at(rOut, t1), at(outerHi1, t1), CURB_Y_OFFSET, SIDEWALK_COLOR);
+      pushQuad2(
+        at(rOut, t0),
+        at(outerHi0, t0),
+        at(rOut, t1),
+        at(outerHi1, t1),
+        CURB_Y_OFFSET,
+        SIDEWALK_COLOR,
+      );
     }
   }
 }
@@ -1008,7 +1327,10 @@ function emitCurvedMarkings(
   if (rMid <= 0) return;
   const dirX = (t: number): number => -pxSign * Math.cos(t);
   const dirZ = (t: number): number => -pzSign * Math.sin(t);
-  const at = (r: number, t: number): [number, number] => [pivotX + r * dirX(t), pivotZ + r * dirZ(t)];
+  const at = (r: number, t: number): [number, number] => [
+    pivotX + r * dirX(t),
+    pivotZ + r * dirZ(t),
+  ];
   const pushTriUp = (
     p0: readonly [number, number],
     p1: readonly [number, number],
@@ -1045,10 +1367,12 @@ function emitCurvedMarkings(
   switch (tier) {
     case RoadTier.TwoLane:
     case RoadTier.OneWay:
+    case RoadTier.BikeLane:
       arcLine(0, true);
       break;
     case RoadTier.Avenue:
-    case RoadTier.FourLane: {
+    case RoadTier.FourLane:
+    case RoadTier.BusLane: {
       arcLine(CENTER_LINE_OFFSET, false);
       arcLine(-CENTER_LINE_OFFSET, false);
       const laneOffset = coreHalf * LANE_LINE_OFFSET_FRACTION;
@@ -1200,7 +1524,6 @@ function emitEndCapCurb(
   }
 }
 
-
 /**
  * Lane markings swept around a dead-end cap's half-circle — the cap analog of
  * emitCurvedMarkings. Each symmetric marking-line pair at cross-offset ±o on the
@@ -1263,12 +1586,13 @@ function emitEndCapMarkings(
       break;
     case RoadTier.Avenue:
     case RoadTier.FourLane:
+    case RoadTier.BusLane:
       arc(CENTER_LINE_OFFSET, false);
       arc(coreHalf * LANE_LINE_OFFSET_FRACTION, true);
       break;
     default:
-      // TwoLane / OneWay: a single centerline at offset 0 — nothing to wrap.
-      // Gravel / Alley: unpainted.
+      // TwoLane / OneWay / BikeLane: a single centerline at offset 0 — nothing
+      // to wrap. Gravel / Alley: unpainted.
       break;
   }
 }
@@ -1302,8 +1626,12 @@ function emitGravelSeam(
   const edge = edgeSign * TILE_HALF;
   const inner = edge - edgeSign * GRAVEL_SEAM_DEPTH_M;
   const y = ROAD_Y_OFFSET + 0.004; // above the carriageway plate, below curbs
-  const tan = gravelColorAt(vertical ? tileX : tileX + edgeSign, vertical ? tileZ + edgeSign : tileZ);
-  const pt = (along: number, cross: number): [number, number] => (vertical ? [cross, along] : [along, cross]);
+  const tan = gravelColorAt(
+    vertical ? tileX : tileX + edgeSign,
+    vertical ? tileZ + edgeSign : tileZ,
+  );
+  const pt = (along: number, cross: number): [number, number] =>
+    vertical ? [cross, along] : [along, cross];
   const innerL = pt(inner, -coreHalf);
   const innerR = pt(inner, coreHalf);
   const edgeL = pt(edge, -gravelHalf);
@@ -1317,8 +1645,21 @@ function emitGravelSeam(
     cc: readonly [number, number, number],
   ): void => {
     const cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
-    const tri = cross > 0 ? [[c, cc], [b, cb], [a, ca]] : [[a, ca], [b, cb], [c, cc]];
-    for (const [p, col] of tri as Array<[readonly [number, number], readonly [number, number, number]]>) {
+    const tri =
+      cross > 0
+        ? [
+            [c, cc],
+            [b, cb],
+            [a, ca],
+          ]
+        : [
+            [a, ca],
+            [b, cb],
+            [c, cc],
+          ];
+    for (const [p, col] of tri as Array<
+      [readonly [number, number], readonly [number, number, number]]
+    >) {
       const wx = centerX + p[0];
       const wz = centerZ + p[1];
       pushVertex(positions, colors, wx, hAt(wx, wz) + y, wz, col);
@@ -1675,133 +2016,203 @@ export function roadTileVertices(
     // Curved lane markings around the turn, matching each tier's straight-run
     // set (two-lane dashed centerline, avenue/four-lane double-solid + dashed
     // lane lines, highway solid edge lines; gravel/alley none).
-    emitCurvedMarkings(positions, colors, tier, centerX, centerZ, coreHalf, armDepth, hasN, hasE, hAt);
+    emitCurvedMarkings(
+      positions,
+      colors,
+      tier,
+      centerX,
+      centerZ,
+      coreHalf,
+      armDepth,
+      hasN,
+      hasE,
+      hAt,
+    );
   }
 
   if (!isTurn) {
-  // Core plate: always present, tier-colored.
-  pushLocalRect(
-    positions,
-    colors,
-    centerX,
-    centerZ,
-    -coreHalf,
-    coreHalf,
-    -coreHalf,
-    coreHalf,
-    ROAD_Y_OFFSET,
-    plateColor,
-    hAt,
-  );
+    // Core plate: always present, tier-colored.
+    pushLocalRect(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      -coreHalf,
+      coreHalf,
+      -coreHalf,
+      coreHalf,
+      ROAD_Y_OFFSET,
+      plateColor,
+      hAt,
+    );
 
-  // Extensions: push the plate flush to the tile edge on every connected side.
-  if (hasN) {
-    pushLocalRect(
-      positions,
-      colors,
-      centerX,
-      centerZ,
-      -coreHalf,
-      coreHalf,
-      -TILE_HALF,
-      -coreHalf,
-      ROAD_Y_OFFSET,
-      plateColor,
-      hAt,
-    );
-  }
-  if (hasS) {
-    pushLocalRect(
-      positions,
-      colors,
-      centerX,
-      centerZ,
-      -coreHalf,
-      coreHalf,
-      coreHalf,
-      TILE_HALF,
-      ROAD_Y_OFFSET,
-      plateColor,
-      hAt,
-    );
-  }
-  if (hasE) {
-    pushLocalRect(
-      positions,
-      colors,
-      centerX,
-      centerZ,
-      coreHalf,
-      TILE_HALF,
-      -coreHalf,
-      coreHalf,
-      ROAD_Y_OFFSET,
-      plateColor,
-      hAt,
-    );
-  }
-  if (hasW) {
-    pushLocalRect(
-      positions,
-      colors,
-      centerX,
-      centerZ,
-      -TILE_HALF,
-      -coreHalf,
-      -coreHalf,
-      coreHalf,
-      ROAD_Y_OFFSET,
-      plateColor,
-      hAt,
-    );
-  }
+    // Extensions: push the plate flush to the tile edge on every connected side.
+    if (hasN) {
+      pushLocalRect(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        -coreHalf,
+        coreHalf,
+        -TILE_HALF,
+        -coreHalf,
+        ROAD_Y_OFFSET,
+        plateColor,
+        hAt,
+      );
+    }
+    if (hasS) {
+      pushLocalRect(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        -coreHalf,
+        coreHalf,
+        coreHalf,
+        TILE_HALF,
+        ROAD_Y_OFFSET,
+        plateColor,
+        hAt,
+      );
+    }
+    if (hasE) {
+      pushLocalRect(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        coreHalf,
+        TILE_HALF,
+        -coreHalf,
+        coreHalf,
+        ROAD_Y_OFFSET,
+        plateColor,
+        hAt,
+      );
+    }
+    if (hasW) {
+      pushLocalRect(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        -TILE_HALF,
+        -coreHalf,
+        -coreHalf,
+        coreHalf,
+        ROAD_Y_OFFSET,
+        plateColor,
+        hAt,
+      );
+    }
 
-  // Corner fills: only JUNCTIONS reach here (a TURN takes emitCurvedTurn
-  // above). Each is a rounded curb-return — the carriageway turns the corner
-  // with a tight radius and a curved sidewalk wraps it, grass beyond — so the
-  // sidewalks flow together instead of a hard square paved corner.
-  const cornerFill = (signX: 1 | -1, signZ: 1 | -1): void => {
-    emitRoundedCornerFill(positions, colors, centerX, centerZ, armDepth, signX, signZ, plateColor, spec.hasCurbs, hAt);
-  };
-  if (hasN && hasE) cornerFill(1, -1);
-  if (hasS && hasE) cornerFill(1, 1);
-  if (hasS && hasW) cornerFill(-1, 1);
-  if (hasN && hasW) cornerFill(-1, -1);
+    // Corner fills: only JUNCTIONS reach here (a TURN takes emitCurvedTurn
+    // above). Each is a rounded curb-return — the carriageway turns the corner
+    // with a tight radius and a curved sidewalk wraps it, grass beyond — so the
+    // sidewalks flow together instead of a hard square paved corner.
+    const cornerFill = (signX: 1 | -1, signZ: 1 | -1): void => {
+      emitRoundedCornerFill(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        armDepth,
+        signX,
+        signZ,
+        plateColor,
+        spec.hasCurbs,
+        hAt,
+      );
+    };
+    if (hasN && hasE) cornerFill(1, -1);
+    if (hasS && hasE) cornerFill(1, 1);
+    if (hasS && hasW) cornerFill(-1, 1);
+    if (hasN && hasW) cornerFill(-1, -1);
 
-  // Sidewalks/shoulders: a raised curb strip of fixed width SIDEWALK_WIDTH_M
-  // (0.5× a lane) hugging the carriageway on every edge that does NOT border
-  // another road tile; whatever the 16m tile has left beyond it is a grass
-  // verge (not paved). On wide tiers (4-lane) the carriageway leaves less than
-  // a full sidewalk, so the width clamps to the room available (`armDepth`).
-  // Gravel/Alley (`hasCurbs: false`) get no curb geometry at all.
-  if (spec.hasCurbs) {
-    const curbWidth = Math.min(SIDEWALK_WIDTH_M, armDepth);
-    // At a dead end the rounded cap fills the tile end; the straight sidewalk on
-    // the BULB-FACING side (opposite the single connection) would lay a square
-    // strip across the round cap, so it's suppressed — the curved cap curb
-    // (emitEndCapCurb) wraps that side instead. The two flank sidewalks stay.
-    const deadEnd = connections === 1;
-    // At a dead end the flank sidewalks (the two sides parallel to the road)
-    // stop at the bulb base (core edge) rather than running to the tile edge,
-    // so they don't overhang past the rounded end — the curved cap curb wraps
-    // that region instead. Clip the bulb-side extent (opposite the connection).
-    const flankZLo = deadEnd && hasS ? -coreHalf : -TILE_HALF;
-    const flankZHi = deadEnd && hasN ? coreHalf : TILE_HALF;
-    const flankXLo = deadEnd && hasE ? -coreHalf : -TILE_HALF;
-    const flankXHi = deadEnd && hasW ? coreHalf : TILE_HALF;
-    if (!hasN && !(deadEnd && hasS)) {
-      pushLocalRect(positions, colors, centerX, centerZ, flankXLo, flankXHi, -coreHalf - curbWidth, -coreHalf, CURB_Y_OFFSET, SIDEWALK_COLOR, hAt);
+    // Sidewalks/shoulders: a raised curb strip of fixed width SIDEWALK_WIDTH_M
+    // (0.5× a lane) hugging the carriageway on every edge that does NOT border
+    // another road tile; whatever the 16m tile has left beyond it is a grass
+    // verge (not paved). On wide tiers (4-lane) the carriageway leaves less than
+    // a full sidewalk, so the width clamps to the room available (`armDepth`).
+    // Gravel/Alley (`hasCurbs: false`) get no curb geometry at all.
+    if (spec.hasCurbs) {
+      const curbWidth = Math.min(SIDEWALK_WIDTH_M, armDepth);
+      // At a dead end the rounded cap fills the tile end; the straight sidewalk on
+      // the BULB-FACING side (opposite the single connection) would lay a square
+      // strip across the round cap, so it's suppressed — the curved cap curb
+      // (emitEndCapCurb) wraps that side instead. The two flank sidewalks stay.
+      const deadEnd = connections === 1;
+      // At a dead end the flank sidewalks (the two sides parallel to the road)
+      // stop at the bulb base (core edge) rather than running to the tile edge,
+      // so they don't overhang past the rounded end — the curved cap curb wraps
+      // that region instead. Clip the bulb-side extent (opposite the connection).
+      const flankZLo = deadEnd && hasS ? -coreHalf : -TILE_HALF;
+      const flankZHi = deadEnd && hasN ? coreHalf : TILE_HALF;
+      const flankXLo = deadEnd && hasE ? -coreHalf : -TILE_HALF;
+      const flankXHi = deadEnd && hasW ? coreHalf : TILE_HALF;
+      if (!hasN && !(deadEnd && hasS)) {
+        pushLocalRect(
+          positions,
+          colors,
+          centerX,
+          centerZ,
+          flankXLo,
+          flankXHi,
+          -coreHalf - curbWidth,
+          -coreHalf,
+          CURB_Y_OFFSET,
+          SIDEWALK_COLOR,
+          hAt,
+        );
+      }
+      if (!hasS && !(deadEnd && hasN)) {
+        pushLocalRect(
+          positions,
+          colors,
+          centerX,
+          centerZ,
+          flankXLo,
+          flankXHi,
+          coreHalf,
+          coreHalf + curbWidth,
+          CURB_Y_OFFSET,
+          SIDEWALK_COLOR,
+          hAt,
+        );
+      }
+      if (!hasE && !(deadEnd && hasW)) {
+        pushLocalRect(
+          positions,
+          colors,
+          centerX,
+          centerZ,
+          coreHalf,
+          coreHalf + curbWidth,
+          flankZLo,
+          flankZHi,
+          CURB_Y_OFFSET,
+          SIDEWALK_COLOR,
+          hAt,
+        );
+      }
+      if (!hasW && !(deadEnd && hasE)) {
+        pushLocalRect(
+          positions,
+          colors,
+          centerX,
+          centerZ,
+          -coreHalf - curbWidth,
+          -coreHalf,
+          flankZLo,
+          flankZHi,
+          CURB_Y_OFFSET,
+          SIDEWALK_COLOR,
+          hAt,
+        );
+      }
     }
-    if (!hasS && !(deadEnd && hasN)) {
-      pushLocalRect(positions, colors, centerX, centerZ, flankXLo, flankXHi, coreHalf, coreHalf + curbWidth, CURB_Y_OFFSET, SIDEWALK_COLOR, hAt);
-    }
-    if (!hasE && !(deadEnd && hasW)) {
-      pushLocalRect(positions, colors, centerX, centerZ, coreHalf, coreHalf + curbWidth, flankZLo, flankZHi, CURB_Y_OFFSET, SIDEWALK_COLOR, hAt);
-    }
-    if (!hasW && !(deadEnd && hasE)) {
-      pushLocalRect(positions, colors, centerX, centerZ, -coreHalf - curbWidth, -coreHalf, flankZLo, flankZHi, CURB_Y_OFFSET, SIDEWALK_COLOR, hAt);
-    }
-  }
   } // end !isTurn (straight/junction rectangular geometry)
 
   const medianEligible = isAvenueMedianEligible(tier, mask);
@@ -1835,6 +2246,21 @@ export function roadTileVertices(
           medianEligible,
           hAt,
         );
+        if (tier === RoadTier.BusLane || tier === RoadTier.BikeLane)
+          emitColoredLaneBands(
+            positions,
+            colors,
+            tier,
+            x,
+            z,
+            centerX,
+            centerZ,
+            coreHalf,
+            true,
+            zLo,
+            zHi,
+            hAt,
+          );
       }
       if (hasHorizontal) {
         const xLo = hasW ? -TILE_HALF : -coreHalf;
@@ -1852,6 +2278,21 @@ export function roadTileVertices(
           medianEligible,
           hAt,
         );
+        if (tier === RoadTier.BusLane || tier === RoadTier.BikeLane)
+          emitColoredLaneBands(
+            positions,
+            colors,
+            tier,
+            x,
+            z,
+            centerX,
+            centerZ,
+            coreHalf,
+            false,
+            xLo,
+            xHi,
+            hAt,
+          );
       }
 
       // One-Way direction arrows: every ARROW_PERIOD_TILES-th tile by GLOBAL
@@ -1978,7 +2419,17 @@ export function roadTileVertices(
     // Lane markings wrap the rounded end too (e.g. highway edge lines follow the
     // curb around), so the paint doesn't stop dead at the cap base.
     if (spec.paved) {
-      emitEndCapMarkings(positions, colors, tier, centerX, centerZ, coreHalf, vertical, outwardSign, hAt);
+      emitEndCapMarkings(
+        positions,
+        colors,
+        tier,
+        centerX,
+        centerZ,
+        coreHalf,
+        vertical,
+        outwardSign,
+        hAt,
+      );
     }
   }
   // Turn tiles are fully drawn by emitCurvedTurn (curved carriageway + curved
@@ -1990,7 +2441,20 @@ export function roadTileVertices(
   if (spec.paved) {
     const gravelHalf = TILE_METERS * GRAVEL_HALF_WIDTH_FRACTION;
     const seam = (edgeSign: 1 | -1, vertical: boolean): void =>
-      emitGravelSeam(positions, colors, x, z, centerX, centerZ, coreHalf, gravelHalf, edgeSign, vertical, plateColor, hAt);
+      emitGravelSeam(
+        positions,
+        colors,
+        x,
+        z,
+        centerX,
+        centerZ,
+        coreHalf,
+        gravelHalf,
+        edgeSign,
+        vertical,
+        plateColor,
+        hAt,
+      );
     if (hasN && neighbors.n === RoadTier.Gravel) seam(-1, true);
     if (hasS && neighbors.s === RoadTier.Gravel) seam(1, true);
     if (hasE && neighbors.e === RoadTier.Gravel) seam(1, false);
@@ -2141,7 +2605,14 @@ export class RoadMeshRenderer {
         s: this.tierAt(tile.x, tile.z + 1),
         w: this.tierAt(tile.x - 1, tile.z),
       };
-      const vertices = roadTileVertices(tile.x, tile.z, tile.tier, tile.mask, this.heightAt, neighbors);
+      const vertices = roadTileVertices(
+        tile.x,
+        tile.z,
+        tile.tier,
+        tile.mask,
+        this.heightAt,
+        neighbors,
+      );
       for (const n of vertices.positions) positions.push(n);
       for (const n of vertices.colors) colors.push(n);
     }

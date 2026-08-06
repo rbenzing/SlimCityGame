@@ -10,15 +10,15 @@
 [![License: AGPL v3+](https://img.shields.io/badge/License-AGPL%20v3%2B-blue.svg?style=for-the-badge)](./LICENSE)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/russellbenzing)
 
-[![Play — Live Demo](https://img.shields.io/badge/Play-Live%20Demo-2ea44f?style=for-the-badge&logo=github&logoColor=white)](https://rbenzing.github.io/CitySim/)
-[![Release](https://img.shields.io/github/v/release/rbenzing/CitySim?style=for-the-badge&label=Release)](https://github.com/rbenzing/CitySim/releases)
-[![CI](https://img.shields.io/github/actions/workflow/status/rbenzing/CitySim/ci.yml?branch=main&style=for-the-badge&label=CI)](https://github.com/rbenzing/CitySim/actions/workflows/ci.yml)
+[![Play — Live Demo](https://img.shields.io/badge/Play-Live%20Demo-2ea44f?style=for-the-badge&logo=github&logoColor=white)](https://rbenzing.github.io/SlimCityGame/)
+[![Release](https://img.shields.io/github/v/release/rbenzing/SlimCityGame?style=for-the-badge&label=Release)](https://github.com/rbenzing/SlimCityGame/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/rbenzing/SlimCityGame/ci.yml?branch=main&style=for-the-badge&label=CI)](https://github.com/rbenzing/SlimCityGame/actions/workflows/ci.yml)
 
 **A small-form-factor city builder in the browser — an engine showcase built on Three.js**
 
 🌐 **Browser-Native** • ⚡ **WebGPU + WebGL2 Fallback** • 🧠 **Deterministic Worker Sim** • 🧩 **Fully Instanced**
 
-[Play](https://rbenzing.github.io/CitySim/) • [Features](#-features) • [Quick Start](#-quick-start) • [Controls](#-controls) • [Releases](#-releases--deployment) • [Documentation](#-documentation) • [License](#-license)
+[Play](https://rbenzing.github.io/SlimCityGame/) • [Features](#-features) • [Quick Start](#-quick-start) • [Controls](#-controls) • [Releases](#-releases--deployment) • [Documentation](#-documentation) • [License](#-license)
 
 </div>
 
@@ -125,7 +125,7 @@ version. Nobody edits the version by hand.
 - release-please keeps a rolling **release PR** with the next version + a
   generated `CHANGELOG.md`. Merging it tags `vX.Y.Z`, cuts a **GitHub Release**,
   and the workflow deploys the built SPA to **GitHub Pages** at
-  [rbenzing.github.io/CitySim](https://rbenzing.github.io/CitySim/).
+  [rbenzing.github.io/SlimCityGame](https://rbenzing.github.io/SlimCityGame/).
 
 See **[CONTRIBUTING.md](./CONTRIBUTING.md)** for the commit conventions and the
 full release flow.

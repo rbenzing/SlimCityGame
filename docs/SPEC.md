@@ -282,6 +282,30 @@ avenue + proper intersections + true-ratio paint):**
   that borders a non-road tile — one extra quad pair per edge tile, vertex
   colored near-white.
 
+**Roads epic R2 — transit lane variants (user request 2026-08-06):** additive
+cosmetic road types on the existing 1-tile model, NOT a refactor. Two new
+tiers (roads.json + RoadTier append at 8/9), each differentiated by a colored
+lane band painted on the carriageway plus a periodic white glyph, with the
+white lane markings reused from an existing tier:
+
+- **Bus Lane** (tier 8) — ¢55/tile, unlock M2, capacity 2200: four-lane-width
+  carriageway with the four-lane white marking set; the outer curbside lane
+  each side is painted terracotta (the universal transit-lane tint) with a
+  periodic white transit **diamond** centered in it. The dashed lane divider
+  falls exactly at the band's inner edge, reading as the bus-lane separator.
+- **Bike Lane** (tier 9) — ¢28/tile, unlock M1, capacity 750: three-lane-width
+  carriageway with the two-lane dashed centerline; a green edge strip each
+  side carries a periodic white **bicycle** pictogram (two wheel rings + frame
+  - handlebar/seat bars, viewed top-down).
+- Colored bands + glyphs are painted on STRAIGHT runs only (like the avenue
+  median / one-way arrows); junctions and turns break the band, matching how
+  real lane paint stops at crossings. `emitColoredLaneBands` sits just above
+  the asphalt plate and below the white paint so markings/glyphs read on top.
+  Both variants are paved, bidirectional, curbed — carriageway half-widths
+  flow through `carriagewayHalfWidthMeters`, so lamps/furniture/vehicles place
+  correctly with no per-tier edits. UI: a new **Transit Lanes** roads sub-tab.
+- Next in the epic (later stages): trams (R3), trains (R4), cosmetic-first.
+
 ### 6.8 Vehicle kit (reference screenshot 7, low-poly vehicle set)
 
 Vehicles graduate from single boxes to the toy-kit look — multi-part merged
@@ -896,39 +920,39 @@ Render-only refinement round (no sim/protocol changes) from reference images.
 - **Road-end cap v2 (render/roadsmesh.ts + terrain ground-cover):** the wave-10 dead-end cap rounds the ASPHALT but leaves the sidewalk square and skips the ground transition. (1) The curb/sidewalk arcs around the cap at the cap radius (curb-follows-cap, like §6.20 corner curb-follows-fillet). (2) A sidewalk→dirt→grass transition ring conforms to the rounded cap perimeter (extend the §6.13 road-adjacent dirt band to the arc, not just square tiles).
 - **Acceptance:** stops read as shelters with a few people; lamps look modeled; small props cast shadows; a dead-end road shows a rounded sidewalk + dirt→grass ring. Determinism preserved; all gates green; per-item screenshot review.
 - **Status (2026-07-29):** road-end cap v2 DONE — curb/sidewalk arc wraps the cap (`emitEndCapCurb`) and a worn-earth dirt→grass apron ring (`emitEndCapApron`) feathers it into the lawn, conforming to the rounded perimeter. Bus-stop/pedestrian/lamp/shadow items still open.
-- **Status (2026-08-05, shelter/lamp/pedestrian visual review):** all four models were already implemented across prior waves (shelter = roof + 2 posts + bench + sign; idlers + sidewalk walkers; full cantilever luminaire; shadows). A Playwright close-up review of a grown city surfaced two genuine readability gaps, both now fixed. (1) **Lamp pole read as a flat black wire** in daylight — the old `POLE_COLOR 0x2a2e33` sat below the Lambert shading range, so a slim pole disappeared into a 1 px dark line; lightened to a mid charcoal `0x50555d` (lamps.ts) that takes visible sun shading and reads as painted metal. (2) **Idle pedestrians stood in the carriageway** — they scattered 0.8–2.2 m in a full circle around the stop's road-tile *center*, while the shelter sits 4.8 m off to `shelterSide`; idlers now cluster around the shelter's ground anchor on the sidewalk. main.ts enriches each transit stop with its shelter anchor (via the exported `computeStopHeading`/`shelterSide`/`computeShelterLayout`) and pedestrians.ts scatters idlers around that anchor (falling back to the tile center when absent, so the pure idle-placement unit tests are unchanged). Verified with a daylight before/after Playwright render of a grown town; full suite green (2146), tsc + eslint clean.
-- **Status (2026-08-05):** shadow/grounding DONE. Casters were already set on lamps, bus-stop shelters, pedestrians, cosmetic + service vehicles, trees, buildings, and every `InstancedSlotPool` (house/utility/park kits, props); terrain + water receive. The remaining gap was the *receivers on the ground plane*: roads and parking aprons used an unlit `MeshBasicMaterial`, which ignores lights and so could never show a cast shadow. Switched the road material (roadsmesh.ts) and the parking-apron material (parked.ts) to `MeshLambertMaterial` (both still `FrontSide`, so the §6.20 winding rules hold; `computeVertexNormals()` added since the pavement geometry carried none). Road faces are flat +Y, so daylight reads nearly as uniform as the old fill while now taking car/lamp/building shadows and shading with the sun; `setNightFactor` stays as an extra night dim on top of the lighting. Also set parked cars + median trees to cast. The sun shadow-camera was already a focused 360 m span that follows the camera target (~0.35 m/texel — resolves poles/props). Verified with a before/after Playwright render on a seeded two-lane L (shadow lands on the pavement in the lit build, absent in the unlit one) plus roadsmesh/parked/scene unit tests.
+- **Status (2026-08-05, shelter/lamp/pedestrian visual review):** all four models were already implemented across prior waves (shelter = roof + 2 posts + bench + sign; idlers + sidewalk walkers; full cantilever luminaire; shadows). A Playwright close-up review of a grown city surfaced two genuine readability gaps, both now fixed. (1) **Lamp pole read as a flat black wire** in daylight — the old `POLE_COLOR 0x2a2e33` sat below the Lambert shading range, so a slim pole disappeared into a 1 px dark line; lightened to a mid charcoal `0x50555d` (lamps.ts) that takes visible sun shading and reads as painted metal. (2) **Idle pedestrians stood in the carriageway** — they scattered 0.8–2.2 m in a full circle around the stop's road-tile _center_, while the shelter sits 4.8 m off to `shelterSide`; idlers now cluster around the shelter's ground anchor on the sidewalk. main.ts enriches each transit stop with its shelter anchor (via the exported `computeStopHeading`/`shelterSide`/`computeShelterLayout`) and pedestrians.ts scatters idlers around that anchor (falling back to the tile center when absent, so the pure idle-placement unit tests are unchanged). Verified with a daylight before/after Playwright render of a grown town; full suite green (2146), tsc + eslint clean.
+- **Status (2026-08-05):** shadow/grounding DONE. Casters were already set on lamps, bus-stop shelters, pedestrians, cosmetic + service vehicles, trees, buildings, and every `InstancedSlotPool` (house/utility/park kits, props); terrain + water receive. The remaining gap was the _receivers on the ground plane_: roads and parking aprons used an unlit `MeshBasicMaterial`, which ignores lights and so could never show a cast shadow. Switched the road material (roadsmesh.ts) and the parking-apron material (parked.ts) to `MeshLambertMaterial` (both still `FrontSide`, so the §6.20 winding rules hold; `computeVertexNormals()` added since the pavement geometry carried none). Road faces are flat +Y, so daylight reads nearly as uniform as the old fill while now taking car/lamp/building shadows and shading with the sun; `setNightFactor` stays as an extra night dim on top of the lighting. Also set parked cars + median trees to cast. The sun shadow-camera was already a focused 360 m span that follows the camera target (~0.35 m/texel — resolves poles/props). Verified with a before/after Playwright render on a seeded two-lane L (shadow lands on the pavement in the lit build, absent in the unlit one) plus roadsmesh/parked/scene unit tests.
 
 ## 16. Scale bible — one human-scaled proportion for the whole city (user request 2026-07-29)
 
 The world reads as one consistent scale, anchored on the **cosmetic car = 4.0 m long × 1.8 m wide** as the human-scale unit. `TILE_METERS = 16` is fixed (load-bearing: grid, fields, pathfinding, saves) — so "narrower roads + smaller homes" turns the leftover tile area into **yards and grass verges**, which is the intended suburban look, not wasted space. All dimensional constants across roads, vehicles, buildings, and props conform to the table below; where a file's own numbers disagree, this section wins.
 
-**Roads** — the paved *carriageway* is lanes only; the rest of the tile is sidewalk + grass verge. Standard lane ≈ 3.25 m. Half-width fraction = carriageway ÷ (2 × 16):
+**Roads** — the paved _carriageway_ is lanes only; the rest of the tile is sidewalk + grass verge. Standard lane ≈ 3.25 m. Half-width fraction = carriageway ÷ (2 × 16):
 
-| Tier | Lanes | Carriageway | Half-width fraction | (was) |
-| ---- | ----- | ----------- | ------------------- | ----- |
-| Alley | 1 | 3.5 m | 0.109 | 0.188 |
-| Gravel | ~1.5 | 5.0 m | 0.156 | 0.219 |
-| TwoLane | 2 | 6.5 m | 0.203 | 0.300 |
-| OneWay | 2 | 6.5 m | 0.203 | 0.300 |
-| FourLane | 4 | 13.0 m | 0.406 | 0.425 |
-| Avenue | 4 + median | 15.0 m | 0.469 | 0.425 |
-| Highway | 4 + shoulders | 14.5 m | 0.453 | 0.460 |
+| Tier     | Lanes         | Carriageway | Half-width fraction | (was) |
+| -------- | ------------- | ----------- | ------------------- | ----- |
+| Alley    | 1             | 3.5 m       | 0.109               | 0.188 |
+| Gravel   | ~1.5          | 5.0 m       | 0.156               | 0.219 |
+| TwoLane  | 2             | 6.5 m       | 0.203               | 0.300 |
+| OneWay   | 2             | 6.5 m       | 0.203               | 0.300 |
+| FourLane | 4             | 13.0 m      | 0.406               | 0.425 |
+| Avenue   | 4 + median    | 15.0 m      | 0.469               | 0.425 |
+| Highway  | 4 + shoulders | 14.5 m      | 0.453               | 0.460 |
 
 Local streets get visibly narrower (TwoLane 9.6→6.5 m); arterials stay wide — the contrast is the point. Cosmetic-vehicle lane centers re-derive from the new carriageway (lane center = ±carriageway/4), so cars still track their lanes.
 
 **Vehicles** (already realistic — the anchor; unchanged): car 1.8 × 1.5 × 4.0 m, truck 2.2 × 2.6 × 7.0 m, bus 2.5 × 3.0 × 10.0 m, service ≈ fire 2.4 × 2.8 × 8.2 m.
 
-**Buildings** — standard storey 3.2 m. Footprint *fill* is zone-aware (not one global 0.85): detached homes leave a yard; dense/commercial fill more of the tile.
+**Buildings** — standard storey 3.2 m. Footprint _fill_ is zone-aware (not one global 0.85): detached homes leave a yard; dense/commercial fill more of the tile.
 
-| Zone | Storeys | Eaves height | Roof | Footprint fill | Notes |
-| ---- | ------- | ------------ | ---- | -------------- | ----- |
-| ResLow (detached) | 1–2 | 3.2–6.5 m | pitched 2.0–3.5 m | ~0.55 (8–9 m in tile) | yard + driveway + garage |
-| ResMediumRow (townhouse) | 2–3 | 6.5–9.5 m | shallow pitch | ~0.75 wide, narrow units | attached, per-unit 5–6 m bays |
-| ResMedium (small apts) | 3–4 | 10–13 m | low/flat | ~0.8 | small pitched or flat cap |
-| ResHigh | 5–14 | 16–45 m | flat | ~0.85 | keep tall (unchanged) |
-| ComLow / ComHigh | 1–2 / 4–10 | as catalog | flat + parapet | ~0.85 | re-checked vs. car anchor |
-| Industrial | 1 (tall bay) | 6–10 m | flat/sawtooth | ~0.9 | low & wide sheds |
+| Zone                     | Storeys      | Eaves height | Roof              | Footprint fill           | Notes                         |
+| ------------------------ | ------------ | ------------ | ----------------- | ------------------------ | ----------------------------- |
+| ResLow (detached)        | 1–2          | 3.2–6.5 m    | pitched 2.0–3.5 m | ~0.55 (8–9 m in tile)    | yard + driveway + garage      |
+| ResMediumRow (townhouse) | 2–3          | 6.5–9.5 m    | shallow pitch     | ~0.75 wide, narrow units | attached, per-unit 5–6 m bays |
+| ResMedium (small apts)   | 3–4          | 10–13 m      | low/flat          | ~0.8                     | small pitched or flat cap     |
+| ResHigh                  | 5–14         | 16–45 m      | flat              | ~0.85                    | keep tall (unchanged)         |
+| ComLow / ComHigh         | 1–2 / 4–10   | as catalog   | flat + parapet    | ~0.85                    | re-checked vs. car anchor     |
+| Industrial               | 1 (tall bay) | 6–10 m       | flat/sawtooth     | ~0.9                     | low & wide sheds              |
 
 **Props:** street lamp pole ~5.5 m; bus-stop shelter ~2.6 m; residential fence ~1.2 m; trees 4–12 m (unchanged).
 
@@ -947,7 +971,7 @@ Residential buildings currently render as the same tinted `BoxGeometry` box as c
 
 ## 18. Terrain conformance — heightAt matches the rendered surface + footprint-max seating (user request 2026-07-30, "fix terrain clipping for good across all types")
 
-Terrain still poked through roads and buildings on any varied ground. Root cause was a mismatch between how the terrain is *rendered* and how everything else *samples* it — not something the §6.18 #6 auto-flatten or the §6.19 conform-offset band could fully cure, because both only mask the symptom. Fixed at the source:
+Terrain still poked through roads and buildings on any varied ground. Root cause was a mismatch between how the terrain is _rendered_ and how everything else _samples_ it — not something the §6.18 #6 auto-flatten or the §6.19 conform-offset band could fully cure, because both only mask the symptom. Fixed at the source:
 
 - **heightAt now reproduces the triangulated mesh (render/terrain.ts):** the terrain chunks are `PlaneGeometry`, i.e. a piecewise-linear surface split along each quad's `u+v=1` diagonal into two triangles, but `heightAt()` returned a **bilinear** blend that only agrees with that surface at the four corners. Every road/driveway/apron/prop sampling `heightAt` mid-quad therefore sat below a terrain bulge and let it poke through. `heightAt` now interpolates within whichever triangle the point falls in, so it returns the exact height the GPU draws. A factored-out `cornerHeight(ix,iz)` (the bilinear-of-4-cells average) is provably equal to the old value at every corner, so the **mesh geometry is byte-for-byte unchanged** — only the between-corner interpolation switched from bilinear to triangulated. Every consumer of the injected `heightAt` callback (roads, driveways, parking aprons, ground props, vehicles, pedestrians, lamps) is corrected by this one change.
 - **Footprint-max base seating (render/footprint.ts `maxHeightOverFootprint`):** buildings/roofs/setback tiers/roof-props seated their base at the footprint **centre** height, so on a slope the uphill footprint corner rose above the base and terrain spiked through the body. They now seat at the **maximum** terrain height over the footprint's `(w+1)×(d+1)` tile-corner grid. Because footprint corners land exactly on terrain vertices and the surface is piecewise-linear between them, that max is exact (not sampled/approximate) — no terrain can rise through the body. All four seat points (render/buildings.ts, massing.ts, houses.ts, props.ts) call the one helper with the same formula, so body, roof, tiers and roof-props stay mutually flush; on a slope the lot floats by at most the corner-to-corner terrain delta rather than embedding.
@@ -968,14 +992,14 @@ A start screen shown on first load, with a self-generated **SlimCity** logo (no 
 
 ## 20. Traffic realism — on-road cars, tied to people, rush-hour rhythm (user request 2026-08-05)
 
-Two complaints about the cosmetic traffic: (1) cars appeared to **drive off the road**, streaking straight across grass to the far end of a street; (2) traffic **"just existed"** — a constant ambient stream unrelated to the city's people or the time of day. SPEC §3.5 stands (statistical assignment + cosmetic agents on *real* routes); this makes the cosmetics read correctly.
+Two complaints about the cosmetic traffic: (1) cars appeared to **drive off the road**, streaking straight across grass to the far end of a street; (2) traffic **"just existed"** — a constant ambient stream unrelated to the city's people or the time of day. SPEC §3.5 stands (statistical assignment + cosmetic agents on _real_ routes); this makes the cosmetics read correctly.
 
 - **Off-road streak = a pooled-slot handoff, not a route (render/vehicles.ts).** Cosmetic vehicles live in a fixed slot pool; `TrafficSystem` frees an arrived car's slot and can reallocate it to a brand-new car elsewhere on the map **in the same tick** (the free list is LIFO, and `advanceVehicles` runs before `sampleTrips`). Snapshots are posted every `SNAPSHOT_TICKS` (=2) ticks, so a slot's two consecutive snapshots could be an old route's end and a new route's start, and `lerpVehicle` interpolated straight between them — the mesh slid across the terrain. Fixed with a **teleport guard**: a real vehicle covers under ~0.4 tiles/tick (TICK_RATE 20), so any prev→curr jump beyond 2 tiles is a handoff, not motion — `lerpVehicle` snaps to `curr` instead of lerping. (The pre-existing inactive-marker snap already handled clean despawns; this covers same-window reuse.) The two renderer tests that interpolated an impossible 100 m/snapshot step were retuned to a realistic ~12 m step.
 - **Tied to people (already the model, now enforced by the gate).** Every sampled trip is a resident→job commute: the worker builds the origin list from Active **residential** buildings and the destination list from Active **commercial/industrial** buildings, and `sampleTrips` no-ops when either list is empty — so no car exists without a home and a workplace behind it.
-- **Rush-hour rhythm + population scale (src/sim/traffic.ts).** The trips generated per tick were a constant `TRIPS_PER_TICK`; they now come from `tripsForTick(population, tickNo)` = `round( rushHourActivity(hour) × (BASE_TRIPS_PER_TICK + POP_TRIPS_SPAN × min(1, population/POP_FULL_TRAFFIC)) )`. `rushHourActivity` (pure) peaks at the morning (~08:00) and evening (~17:30) commutes over a daytime plateau and drops to a small overnight floor between ~21:00 and ~06:00, using the same visual-day phase the render clock shows (`dayHourFromTick` off `VISUAL_DAY_TICKS`/`CLOCK_START_OFFSET_TICKS`). So roads fill toward the `vehicleDensityCap` at rush hour and empty out at 3am, and a bigger city carries more cars (both from the population term and because the density cap scales with road-network size). Population only *adds* on top of a baseline, so a small-but-active town still shows daytime traffic. `tick` keeps a `population`-less fallback to `TRIPS_PER_TICK` for the pure test doubles.
+- **Rush-hour rhythm + population scale (src/sim/traffic.ts).** The trips generated per tick were a constant `TRIPS_PER_TICK`; they now come from `tripsForTick(population, tickNo)` = `round( rushHourActivity(hour) × (BASE_TRIPS_PER_TICK + POP_TRIPS_SPAN × min(1, population/POP_FULL_TRAFFIC)) )`. `rushHourActivity` (pure) peaks at the morning (~08:00) and evening (~17:30) commutes over a daytime plateau and drops to a small overnight floor between ~21:00 and ~06:00, using the same visual-day phase the render clock shows (`dayHourFromTick` off `VISUAL_DAY_TICKS`/`CLOCK_START_OFFSET_TICKS`). So roads fill toward the `vehicleDensityCap` at rush hour and empty out at 3am, and a bigger city carries more cars (both from the population term and because the density cap scales with road-network size). Population only _adds_ on top of a baseline, so a small-but-active town still shows daytime traffic. `tick` keeps a `population`-less fallback to `TRIPS_PER_TICK` for the pure test doubles.
 - **Verification.** Unit: `rushHourActivity` peaks/overnight-floor, `dayHourFromTick` phase, `tripsForTick` (baseline at pop 0, population bonus, overnight → 0, deterministic), an integration tick showing far more trips at a rush-hour tick than an overnight tick, and the `lerpVehicle` teleport-snap vs. normal-step guard. Full suite green (2153); tsc + eslint clean. Visual: a Playwright capture of one grown city screenshotted at a rush-hour sim tick vs. an overnight sim tick (render pinned to daylight both times so only car density differs).
 - **Owners:** render/vehicles.ts (`lerpVehicle` teleport guard), src/sim/traffic.ts (`rushHourActivity`/`dayHourFromTick`/`tripsForTick`, `sampleTrips` trip budget), src/sim/worker.entry.ts (passes `population` to `traffic.tick`).
-- **Not done here (possible follow-ups):** cars physically pulling *into* a parking lot / driveway at trip ends (currently they despawn at the destination road tile); per-vehicle home↔work identity (still aggregate-statistical per §3.5).
+- **Not done here (possible follow-ups):** cars physically pulling _into_ a parking lot / driveway at trip ends (currently they despawn at the destination road tile); per-vehicle home↔work identity (still aggregate-statistical per §3.5).
 
 ## 21. Garbage & waste management — landfill (painted) + incinerator (user request 2026-08-06)
 
@@ -987,7 +1011,7 @@ Active buildings in **all three sectors (R/C/I)** generate trash over time (rate
 
 **Contracts (shared/types.ts):** `Command += { kind: 'paintLandfill'; tiles; on: boolean }`; `GridState += landfill: Uint8Array` (persisted, trailing, **SAVE_VERSION 3**, defaulting to 0 for v1/v2 saves); `VehicleKind += Garbage: 6`; `LensId += 'trash'`; `SimSnapshot` gains a `landfill?: { tiles patches; fill: 0..1 }` channel (pile heights + area) and a `trash?` coverage channel (lens); `BuildingCatalogEntry += garbage?: { collectionRange; bufferCapacity; burnRate; trucks }`. Trash itself is **runtime sim state, not a scalar FieldId and not saved** — it rebuilds within a few ticks of load (like traffic volume), so the field-count/save surface is untouched.
 
-**Stage plan (each stage ends green + Playwright-checked):** A = landfill core (trash generation + `paintLandfill` + collection + fill + full-stops-collection + render pile/tint + `'trash'` lens + upkeep + paint tool + drawer card). B = incinerator ploppable (catalog + garbage descriptor + burn + pollution + buffer + milestone gate + kit render). C = cosmetic garbage trucks (`VehicleKind.Garbage` + dispatch + servicevehicles livery). Follow-up: persist facility fill/buffer state in the save meta (Stage A ships with landfill *area* persisted but fill resetting to 0 on load).
+**Stage plan (each stage ends green + Playwright-checked):** A = landfill core (trash generation + `paintLandfill` + collection + fill + full-stops-collection + render pile/tint + `'trash'` lens + upkeep + paint tool + drawer card). B = incinerator ploppable (catalog + garbage descriptor + burn + pollution + buffer + milestone gate + kit render). C = cosmetic garbage trucks (`VehicleKind.Garbage` + dispatch + servicevehicles livery). Follow-up: persist facility fill/buffer state in the save meta (Stage A ships with landfill _area_ persisted but fill resetting to 0 on load).
 
 **Status (2026-08-06):** Stage A ✅ (committed 35abba1) and Stage B ✅ (incinerator: catalog entry `incinerator`, per-facility 400k buffer + fixed burn + full-buffer-stops-collection in `garbage.ts`, catalog `pollution` emitted while active via the normal per-building pass, milestone-3 gate + funds gate via the standard plop flow, `utilitykits.ts` incinerator kit = concrete hall + single thick flue + tipping bay, and a new **Garbage** dock category grouping the Landfill brush + Incinerator). Stage C ✅ (cosmetic garbage trucks: `src/sim/garbagetrucks.ts` `GarbageTruckSystem` dispatches each active incinerator's `garbage.trucks` count on depot→serviced-building→depot routed trips over the road graph, own 16-slot buffer overlaid before the service-vehicle tail, deterministic/no-RNG; green hopper livery in `servicevehicles.ts`). Save-persistence follow-up ✅: the landfill pile total + per-incinerator buffers now round-trip through `SaveMeta.garbage` (`GarbageSystem.serializeState`/`restoreState`), restored on load; the per-tile trash layer and cosmetic trucks stay runtime-only (rebuilt within a few ticks). Pre-Stage-A saves (no `garbage` meta) load fine — fill starts at 0.
 

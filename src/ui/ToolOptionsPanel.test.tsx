@@ -54,6 +54,9 @@ describe('ToolOptionsPanel', () => {
     'road.alley',
     'road.oneway',
     'road.four',
+    // Roads-epic transit lane variants get the same options rows.
+    'road.bus',
+    'road.bike',
   ] as const)('for road tool %s', (tool) => {
     beforeEach(() => {
       useCityStore.getState().setTool(tool);

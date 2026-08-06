@@ -66,12 +66,11 @@ describe('subTabsFor', () => {
     expect(byId('zone.industrial')?.unlockMilestone).toBe(0);
   });
 
-  it('drops the empty Maintenance sub-tab for Roads, keeping only Small/Large', () => {
-    // The four extra roads join the two tabs in cost order —
-    // gravel/alley/one-way with the two-lane under Small,
-    // four-lane with avenue/highway under Large.
+  it('splits Roads into Small / Large / Transit Lanes (empty Maintenance dropped)', () => {
+    // Gravel/alley/one-way with the two-lane under Small; four-lane with
+    // avenue/highway under Large; the roads-epic bus/bike lanes under Transit.
     const tabs = subTabsFor('roads');
-    expect(tabs.map((t) => t.label)).toEqual(['Small Roads', 'Large Roads']);
+    expect(tabs.map((t) => t.label)).toEqual(['Small Roads', 'Large Roads', 'Transit Lanes']);
     expect(tabs.find((t) => t.id === 'small')?.cards.map((c) => c.id)).toEqual([
       'road.gravel',
       'road.alley',
@@ -83,6 +82,26 @@ describe('subTabsFor', () => {
       'road.avenue',
       'road.highway',
     ]);
+    expect(tabs.find((t) => t.id === 'transit')?.cards.map((c) => c.id)).toEqual([
+      'road.bike',
+      'road.bus',
+    ]);
+  });
+
+  it('the roads-epic transit cards carry their roads.json costs + unlock milestones', () => {
+    const cards = subTabsFor('roads').flatMap((t) => t.cards);
+    expect(cards.find((c) => c.id === 'road.bus')).toEqual({
+      id: 'road.bus',
+      name: 'Bus Lane',
+      cost: 55,
+      unlockMilestone: 2,
+    });
+    expect(cards.find((c) => c.id === 'road.bike')).toEqual({
+      id: 'road.bike',
+      name: 'Bike Lane',
+      cost: 28,
+      unlockMilestone: 1,
+    });
   });
 
   it('the §6.7 Roads v3 cards carry their roads.json costs and unlock milestones', () => {
@@ -173,7 +192,12 @@ describe('subTabsFor', () => {
     const tabs = subTabsFor('garbage');
     expect(tabs).toHaveLength(1);
     expect(tabs[0]?.cards).toEqual([
-      { id: 'landfill.paint', name: 'Landfill', cost: LANDFILL_PAINT_COST_PER_TILE, unlockMilestone: 1 },
+      {
+        id: 'landfill.paint',
+        name: 'Landfill',
+        cost: LANDFILL_PAINT_COST_PER_TILE,
+        unlockMilestone: 1,
+      },
       { id: 'plop.incinerator', name: 'Incinerator', cost: 40000, unlockMilestone: 3 },
     ]);
   });

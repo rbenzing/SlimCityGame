@@ -23,6 +23,9 @@ import {
   CURB_Y_OFFSET,
   TWO_LANE_HALF_WIDTH_FRACTION,
   HIGHWAY_HALF_WIDTH_FRACTION,
+  carriagewayHalfWidthMeters,
+  isLaneGlyphTile,
+  LANE_GLYPH_PERIOD_TILES,
 } from './roadsmesh';
 import { RoadTileDelta, RoadTier } from '../shared/types';
 import { CHUNK_TILES, TILE_METERS } from '../shared/constants';
@@ -83,6 +86,70 @@ function countWhere(colors: readonly number[], pred: (t: readonly number[]) => b
 function vertexCount(positions: readonly number[]): number {
   return positions.length / 3;
 }
+
+describe('roadTileVertices — transit lane variants (Bus Lane / Bike Lane)', () => {
+  const isBusPaint = (t: readonly number[]): boolean => {
+    const [r, g, b] = t as [number, number, number];
+    return r > 0.45 && r > g + 0.2 && r > b + 0.2 && g < 0.35 && b < 0.32;
+  };
+  const isBikePaint = (t: readonly number[]): boolean => {
+    const [r, g, b] = t as [number, number, number];
+    return g > 0.3 && g > r + 0.15 && g > b + 0.12 && r < 0.28;
+  };
+
+  it('paints a terracotta band + keeps white markings on a straight bus-lane run', () => {
+    const { colors } = roadTileVertices(0, 0, RoadTier.BusLane, N | S, flatHeightAt);
+    expect(countWhere(colors, isBusPaint)).toBeGreaterThan(0);
+    expect(countWhere(colors, isMarkingWhite)).toBeGreaterThan(0); // four-lane white set reused
+    expect(countWhere(colors, isBikePaint)).toBe(0);
+  });
+
+  it('paints a green band on a straight bike-lane run, never terracotta', () => {
+    const { colors } = roadTileVertices(0, 0, RoadTier.BikeLane, N | S, flatHeightAt);
+    expect(countWhere(colors, isBikePaint)).toBeGreaterThan(0);
+    expect(countWhere(colors, isBusPaint)).toBe(0);
+  });
+
+  it('breaks the colored band at junctions (paint stops at crossings)', () => {
+    const straight = roadTileVertices(0, 0, RoadTier.BusLane, N | S, flatHeightAt);
+    const junction = roadTileVertices(0, 0, RoadTier.BusLane, N | E | S | W, flatHeightAt);
+    expect(countWhere(straight.colors, isBusPaint)).toBeGreaterThan(0);
+    expect(countWhere(junction.colors, isBusPaint)).toBe(0);
+  });
+
+  it('places lane glyphs periodically + deterministically', () => {
+    expect(LANE_GLYPH_PERIOD_TILES).toBeGreaterThanOrEqual(2);
+    expect(isLaneGlyphTile(0)).toBe(true);
+    expect(isLaneGlyphTile(LANE_GLYPH_PERIOD_TILES)).toBe(true);
+    expect(isLaneGlyphTile(-LANE_GLYPH_PERIOD_TILES)).toBe(true);
+    expect(isLaneGlyphTile(1)).toBe(false);
+    // A glyph tile (z=0) carries more white paint than a non-glyph tile (z=1).
+    const glyph = roadTileVertices(0, 0, RoadTier.BusLane, N | S, flatHeightAt);
+    const plain = roadTileVertices(0, 1, RoadTier.BusLane, N | S, flatHeightAt);
+    expect(countWhere(glyph.colors, isMarkingWhite)).toBeGreaterThan(
+      countWhere(plain.colors, isMarkingWhite),
+    );
+  });
+
+  it('is deterministic — identical output for identical inputs', () => {
+    const a = roadTileVertices(2, 5, RoadTier.BikeLane, N | S, flatHeightAt);
+    const b = roadTileVertices(2, 5, RoadTier.BikeLane, N | S, flatHeightAt);
+    expect(a.positions).toEqual(b.positions);
+    expect(a.colors).toEqual(b.colors);
+  });
+
+  it('carriageways match their documented lane widths', () => {
+    // Bus = four-lane/highway width; Bike sits between two-lane and four-lane.
+    expect(carriagewayHalfWidthMeters(RoadTier.BusLane)).toBeCloseTo(
+      carriagewayHalfWidthMeters(RoadTier.Highway),
+    );
+    const two = carriagewayHalfWidthMeters(RoadTier.TwoLane);
+    const bike = carriagewayHalfWidthMeters(RoadTier.BikeLane);
+    const four = carriagewayHalfWidthMeters(RoadTier.FourLane);
+    expect(bike).toBeGreaterThan(two);
+    expect(bike).toBeLessThan(four);
+  });
+});
 
 describe('roadTileVertices — asphalt base plate', () => {
   it('returns no geometry for RoadTier.None, regardless of mask', () => {
@@ -339,7 +406,6 @@ describe('roadTileVertices — true-ratio dashed/solid markings by tier (UI-SPEC
     const { colors } = roadTileVertices(0, 0, RoadTier.TwoLane, E | W, flatHeightAt);
     expect(countWhere(colors, isMarkingWhite)).toBe(dashCountFor(0) * 6);
   });
-
 });
 
 describe('roadTileVertices — intersection suppression / proper intersections (mask popcount >= 3)', () => {
@@ -660,7 +726,6 @@ describe('roadTileVertices — vertex count sanity per tile kind', () => {
     expect(vertexCount(positions)).toBe(30 + 4 * rounded + markingVerts);
     expect(markingVerts).toBeGreaterThan(0); // v2: junctions now carry arm markings on every side
   });
-
 });
 
 describe('roadTileVertices — terrain-conforming tessellation on slopes', () => {
@@ -889,7 +954,6 @@ describe('roadTileVertices — dead-end cap full carriageway width (UI-SPEC §6.
       expect(Math.max(...capZs)).toBeCloseTo(centerZ + coreHalf, 6);
     }
   });
-
 });
 
 describe('roadTileVertices — road-end-cap-v2: curb ring hugs the rounded dead-end cap (UI-SPEC §15)', () => {
@@ -1180,14 +1244,24 @@ describe('roadTileVertices — sidewalks/shoulders (§6.7)', () => {
     // side sidewalk does: x ∈ [8 + coreHalf, 8 + coreHalf + sidewalk].
     const coreHalf = TILE_METERS * TWO_LANE_HALF_WIDTH_FRACTION;
     const sidewalk = 1.875;
-    const { positions, colors } = roadTileVertices(0, 0, RoadTier.TwoLane, N | E | S | W, flatHeightAt);
+    const { positions, colors } = roadTileVertices(
+      0,
+      0,
+      RoadTier.TwoLane,
+      N | E | S | W,
+      flatHeightAt,
+    );
     const pos = toTriples(positions);
     const col = toTriples(colors);
     const xs: number[] = [];
     for (let i = 0; i < pos.length; i++) {
       const p = pos[i] as number[];
       // north edge (z≈0), east half (x>center) → the NE corner's sidewalk.
-      if (isSidewalk(col[i] as number[]) && Math.abs((p[2] as number) - 0) < 1e-6 && (p[0] as number) > 8) {
+      if (
+        isSidewalk(col[i] as number[]) &&
+        Math.abs((p[2] as number) - 0) < 1e-6 &&
+        (p[0] as number) > 8
+      ) {
         xs.push(p[0] as number);
       }
     }
