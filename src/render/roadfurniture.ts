@@ -46,15 +46,19 @@ const METER_DISPLAY_COLOR = 0x20242a; // dark display face
 const METER_PERIOD = 5; // a meter pair on every (x+z) multiple of 5
 const METER_ALONG = 3; // the pair straddles the tile center by ±3m along the run
 
-// --- Traffic sign ------------------------------------------------------------
+// --- Traffic signs -----------------------------------------------------------
+// Standard road signs, each a recognizable shape+color on the shared pole.
 const SIGN_POLE_RADIUS = 0.04;
 const SIGN_POLE_HEIGHT = 2.2;
-const SIGN_FRAME = 0.6; // outer border board
-const SIGN_FACE = 0.5; // inner sign face
+const SIGN_BOARD = 0.6; // board footprint used to seat every type near the pole top
+const SIGN_BOARD_Y = SIGN_POLE_HEIGHT - SIGN_BOARD / 2 - 0.05; // board center height
 const SIGN_POLE_COLOR = 0x50555d; // charcoal pole
-const SIGN_FRAME_COLOR = 0xc0392b; // red regulatory border
-const SIGN_FACE_COLOR = 0xe8e8e8; // white sign face
-const SIGN_PERIOD = 8; // a periodic sign on every (x+z) multiple of 8
+const SIGN_RED = 0xc0392b; // regulatory / warning red
+const SIGN_WHITE = 0xf0f0f0; // sign white
+const SIGN_FIELD = 0xf3e9b5; // pale warning-triangle field
+const SIGN_BLUE = 0x1f6fd0; // one-way blue
+const ONEWAY_SIGN_PERIOD = 6; // a one-way marker on every (x+z) multiple of 6
+const SPEED_SIGN_PERIOD = 10; // a speed marker on every (x+z) multiple of 10
 
 // Distinct hash slots so each per-tile draw is decorrelated from the others.
 const HASH_MANHOLE_SELECT = 1;
@@ -133,19 +137,26 @@ export interface MeterPlacement {
   along: number;
 }
 
+/** The standard sign a road tile's role earns; see {@link classifySign}. */
+export type SignType = 'stop' | 'giveway' | 'bend' | 'oneway' | 'speed' | 'nothrough';
+
 export interface SignPlacement {
   x: number;
   z: number;
   axis: FurnitureAxis;
   side: FurnitureSide;
   lateralOffset: number;
-  /** True when this sign marks a dead-end tile (exactly one road neighbor). */
-  deadEnd: boolean;
+  /** Which standard sign this tile's role earned. */
+  type: SignType;
 }
 
-/** Curbside offset (m): the sidewalk just past the carriageway edge. */
+/**
+ * Curbside offset (m): a full sidewalk width out from the carriageway edge, so
+ * curbside props (boxes, meters, signs) sit clear of the road on the verge —
+ * only manholes belong on the carriageway itself.
+ */
 function curbsideLateralOffset(tier: RoadTier | undefined): number {
-  return carriagewayHalfWidthMeters(tier ?? RoadTier.TwoLane) + SIDEWALK_WIDTH_M * 0.5;
+  return carriagewayHalfWidthMeters(tier ?? RoadTier.TwoLane) + SIDEWALK_WIDTH_M;
 }
 
 /** Manholes sit on any paved surface — every tier but gravel. */
@@ -186,6 +197,41 @@ function neighborCount(tileSet: Set<number>, x: number, z: number): number {
   let count = 0;
   for (const d of NEIGHBOR_DIRS) if (tileSet.has(tileKey(x + d.dx, z + d.dz))) count++;
   return count;
+}
+
+interface PresentSides {
+  n: boolean;
+  e: boolean;
+  s: boolean;
+  w: boolean;
+}
+
+/** Which orthogonal neighbors are road tiles. */
+function presentSides(tileSet: Set<number>, x: number, z: number): PresentSides {
+  return {
+    n: tileSet.has(tileKey(x, z - 1)),
+    e: tileSet.has(tileKey(x + 1, z)),
+    s: tileSet.has(tileKey(x, z + 1)),
+    w: tileSet.has(tileKey(x - 1, z)),
+  };
+}
+
+/** True iff the tile connects on exactly one axis — a straight-through run. */
+function isCollinear2(sides: PresentSides): boolean {
+  const ns = sides.n && sides.s && !sides.e && !sides.w;
+  const ew = sides.e && sides.w && !sides.n && !sides.s;
+  return ns || ew;
+}
+
+/** The largest neighborCount among this tile's present road-neighbors (0 if none). */
+function maxNeighborDegree(tileSet: Set<number>, x: number, z: number): number {
+  let max = 0;
+  for (const d of NEIGHBOR_DIRS) {
+    const nx = x + d.dx;
+    const nz = z + d.dz;
+    if (tileSet.has(tileKey(nx, nz))) max = Math.max(max, neighborCount(tileSet, nx, nz));
+  }
+  return max;
 }
 
 /** The sides whose neighbor tile is absent — the sidewalk edges. */
@@ -292,15 +338,49 @@ export function computeMeterPlacements(roadTiles: readonly FurnitureRoadTile[]):
   return out;
 }
 
-/** One traffic sign per dead-end tile, plus a periodic sign every 8th curbed tile. */
+/**
+ * The one standard sign a road tile's role earns, or null. First match wins:
+ * dead-end, then junction approach, then turn, then the periodic one-way / speed
+ * markers on straight runs.
+ */
+function classifySign(tileSet: Set<number>, tile: FurnitureRoadTile): SignType | null {
+  const { x, z } = tile;
+  const nc = neighborCount(tileSet, x, z);
+
+  if (nc === 1) return 'nothrough'; // dead-end
+
+  // Approach into a junction: a low-degree tile whose busiest neighbor is one.
+  if (nc <= 2) {
+    const maxDeg = maxNeighborDegree(tileSet, x, z);
+    if (maxDeg >= 4) return 'stop'; // crossroads approach
+    if (maxDeg >= 3) return 'giveway'; // T-junction approach
+  }
+
+  const sides = presentSides(tileSet, x, z);
+  if (nc === 2 && !isCollinear2(sides)) return 'bend'; // turn tile
+
+  const straight = nc === 2 && isCollinear2(sides);
+  if (tile.tier === RoadTier.OneWay && straight && periodHits(x, z, ONEWAY_SIGN_PERIOD))
+    return 'oneway';
+  if (
+    (tile.tier === RoadTier.Highway || tile.tier === RoadTier.Avenue) &&
+    straight &&
+    periodHits(x, z, SPEED_SIGN_PERIOD)
+  )
+    return 'speed';
+
+  return null;
+}
+
+/** One typed sign per curbed tile whose road-tile role earns it. */
 export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): SignPlacement[] {
   const tileSet = buildTileSet(roadTiles);
   const out: SignPlacement[] = [];
   for (const tile of roadTiles) {
     if (!tierHasCurb(tile.tier)) continue;
 
-    const deadEnd = neighborCount(tileSet, tile.x, tile.z) === 1;
-    if (!deadEnd && !periodHits(tile.x, tile.z, SIGN_PERIOD)) continue;
+    const type = classifySign(tileSet, tile);
+    if (!type) continue;
 
     const pick = pickSide(
       availableSidewalkSides(tileSet, tile.x, tile.z),
@@ -314,7 +394,7 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
       axis: pick.axis,
       side: pick.side,
       lateralOffset: curbsideLateralOffset(tile.tier),
-      deadEnd,
+      type,
     });
   }
   return out;
@@ -455,20 +535,156 @@ function buildMeterGeometry(): THREE.BufferGeometry {
   ]);
 }
 
-/** Pole plus a red-bordered white sign board; the renderer turns it road-ward. */
-function buildSignGeometry(): THREE.BufferGeometry {
+/** The shared charcoal pole every sign type sits on (base at local y=0). */
+function buildSignPole(): THREE.BufferGeometry {
   const pole = new THREE.CylinderGeometry(SIGN_POLE_RADIUS, SIGN_POLE_RADIUS, SIGN_POLE_HEIGHT, 12);
   pole.translate(0, SIGN_POLE_HEIGHT / 2, 0);
-  const boardY = SIGN_POLE_HEIGHT - SIGN_FRAME / 2 - 0.05;
-  const frame = new THREE.BoxGeometry(SIGN_FRAME, SIGN_FRAME, 0.04);
-  frame.translate(0, boardY, 0);
-  const face = new THREE.BoxGeometry(SIGN_FACE, SIGN_FACE, 0.06);
-  face.translate(0, boardY, 0.03);
+  return pole;
+}
+
+/**
+ * A flat triangular board (thin prism) from three (x,y) verts given CCW,
+ * extruded a hair along z and centered on the board height. Normals computed so
+ * the shared Lambert material lights it.
+ */
+function triangleBoard(points: readonly [number, number][], depth: number): THREE.BufferGeometry {
+  const hz = depth / 2;
+  const positions: number[] = [];
+  for (const [px, py] of points) positions.push(px, py, hz); // 0,1,2 front
+  for (const [px, py] of points) positions.push(px, py, -hz); // 3,4,5 back
+  const indices = [0, 1, 2, 3, 5, 4];
+  for (let i = 0; i < 3; i++) {
+    const j = (i + 1) % 3;
+    indices.push(i, j, j + 3, i, j + 3, i + 3); // side quad
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/** A thin forward-facing disc (octagon at 8 segments) centered on the board height. */
+function discBoard(radius: number, segments: number, z: number): THREE.BufferGeometry {
+  const disc = new THREE.CylinderGeometry(radius, radius, 0.05, segments);
+  disc.rotateX(Math.PI / 2); // circular face now points forward (±z)
+  disc.translate(0, SIGN_BOARD_Y, z);
+  return disc;
+}
+
+/** Red OCTAGON with a white inset ring. */
+function buildStopSign(): THREE.BufferGeometry {
+  const board = discBoard(0.3, 8, 0);
+  const ring = new THREE.RingGeometry(0.18, 0.24, 8);
+  ring.translate(0, SIGN_BOARD_Y, 0.03);
   return mergeColoredGeometries([
-    { geometry: pole, color: SIGN_POLE_COLOR },
-    { geometry: frame, color: SIGN_FRAME_COLOR },
-    { geometry: face, color: SIGN_FACE_COLOR },
+    { geometry: buildSignPole(), color: SIGN_POLE_COLOR },
+    { geometry: board, color: SIGN_RED },
+    { geometry: ring, color: SIGN_WHITE },
   ]);
+}
+
+/** Red INVERTED triangle (point down) with a white inner triangle. */
+function buildGiveWaySign(): THREE.BufferGeometry {
+  const y = SIGN_BOARD_Y;
+  const outer = triangleBoard(
+    [
+      [-0.28, y + 0.24],
+      [0.28, y + 0.24],
+      [0, y - 0.28],
+    ],
+    0.05,
+  );
+  const inner = triangleBoard(
+    [
+      [-0.18, y + 0.14],
+      [0.18, y + 0.14],
+      [0, y - 0.18],
+    ],
+    0.06,
+  );
+  return mergeColoredGeometries([
+    { geometry: buildSignPole(), color: SIGN_POLE_COLOR },
+    { geometry: outer, color: SIGN_RED },
+    { geometry: inner, color: SIGN_WHITE },
+  ]);
+}
+
+/** Red WARNING triangle (point up), pale field, a small dark curve bar. */
+function buildBendSign(): THREE.BufferGeometry {
+  const y = SIGN_BOARD_Y;
+  const outer = triangleBoard(
+    [
+      [-0.28, y - 0.24],
+      [0.28, y - 0.24],
+      [0, y + 0.28],
+    ],
+    0.05,
+  );
+  const inner = triangleBoard(
+    [
+      [-0.18, y - 0.16],
+      [0.18, y - 0.16],
+      [0, y + 0.18],
+    ],
+    0.06,
+  );
+  const curve = new THREE.BoxGeometry(0.06, 0.18, 0.07);
+  curve.translate(0, y - 0.02, 0.03);
+  return mergeColoredGeometries([
+    { geometry: buildSignPole(), color: SIGN_POLE_COLOR },
+    { geometry: outer, color: SIGN_RED },
+    { geometry: inner, color: SIGN_FIELD },
+    { geometry: curve, color: MANHOLE_RIM_COLOR },
+  ]);
+}
+
+/** Horizontal blue rectangle with a white arrow bar across it. */
+function buildOneWaySign(): THREE.BufferGeometry {
+  const board = new THREE.BoxGeometry(0.62, 0.24, 0.05);
+  board.translate(0, SIGN_BOARD_Y, 0);
+  const arrow = new THREE.BoxGeometry(0.46, 0.06, 0.06);
+  arrow.translate(0, SIGN_BOARD_Y, 0.03);
+  return mergeColoredGeometries([
+    { geometry: buildSignPole(), color: SIGN_POLE_COLOR },
+    { geometry: board, color: SIGN_BLUE },
+    { geometry: arrow, color: SIGN_WHITE },
+  ]);
+}
+
+/** White CIRCLE with a red ring (larger red disc set behind the white face). */
+function buildSpeedSign(): THREE.BufferGeometry {
+  const rim = discBoard(0.32, 20, -0.005);
+  const face = discBoard(0.28, 20, 0.01);
+  return mergeColoredGeometries([
+    { geometry: buildSignPole(), color: SIGN_POLE_COLOR },
+    { geometry: rim, color: SIGN_RED },
+    { geometry: face, color: SIGN_WHITE },
+  ]);
+}
+
+/** Red CIRCLE with a white horizontal bar — a no-entry read. */
+function buildNoThroughSign(): THREE.BufferGeometry {
+  const disc = discBoard(0.3, 20, 0);
+  const bar = new THREE.BoxGeometry(0.4, 0.1, 0.06);
+  bar.translate(0, SIGN_BOARD_Y, 0.03);
+  return mergeColoredGeometries([
+    { geometry: buildSignPole(), color: SIGN_POLE_COLOR },
+    { geometry: disc, color: SIGN_RED },
+    { geometry: bar, color: SIGN_WHITE },
+  ]);
+}
+
+/** One merged board geometry per sign type, all on the shared charcoal pole. */
+function buildSignGeometries(): Record<SignType, THREE.BufferGeometry> {
+  return {
+    stop: buildStopSign(),
+    giveway: buildGiveWaySign(),
+    bend: buildBendSign(),
+    oneway: buildOneWaySign(),
+    speed: buildSpeedSign(),
+    nothrough: buildNoThroughSign(),
+  };
 }
 
 const _matrix = new THREE.Matrix4();
@@ -498,13 +714,13 @@ export class RoadFurnitureRenderer {
   private readonly meterGeometry = buildMeterGeometry();
   private readonly meterMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
 
-  private readonly signGeometry = buildSignGeometry();
+  private readonly signGeometries = buildSignGeometries();
   private readonly signMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
 
   private manholeMesh: THREE.InstancedMesh | null = null;
   private boxMesh: THREE.InstancedMesh | null = null;
   private meterMesh: THREE.InstancedMesh | null = null;
-  private signMesh: THREE.InstancedMesh | null = null;
+  private signMeshes: THREE.InstancedMesh[] = [];
 
   private manholes: ManholePlacement[] = [];
   private boxes: BoxPlacement[] = [];
@@ -567,14 +783,22 @@ export class RoadFurnitureRenderer {
       this.scene.add(mesh);
     }
 
-    if (this.signs.length) {
-      const mesh = new THREE.InstancedMesh(this.signGeometry, this.signMaterial, this.signs.length);
-      mesh.count = this.signs.length;
+    // One InstancedMesh per sign type present, grouping the placements by type.
+    const byType = new Map<SignType, SignPlacement[]>();
+    for (const s of this.signs) {
+      const group = byType.get(s.type);
+      if (group) group.push(s);
+      else byType.set(s.type, [s]);
+    }
+    for (const [type, group] of byType) {
+      const mesh = new THREE.InstancedMesh(this.signGeometries[type], this.signMaterial, group.length);
+      mesh.count = group.length;
       mesh.castShadow = true;
-      for (let i = 0; i < this.signs.length; i++) this.writeSign(mesh, i, this.signs[i]!);
+      for (let i = 0; i < group.length; i++) this.writeSign(mesh, i, group[i]!);
       mesh.instanceMatrix.needsUpdate = true;
       mesh.userData.furnitureKind = 'sign';
-      this.signMesh = mesh;
+      mesh.userData.signType = type;
+      this.signMeshes.push(mesh);
       this.scene.add(mesh);
     }
   }
@@ -625,21 +849,24 @@ export class RoadFurnitureRenderer {
     const off = p.lateralOffset * p.side;
     const wx = p.axis === 'x' ? tileToWorld(p.x) + off : tileToWorld(p.x);
     const wz = p.axis === 'z' ? tileToWorld(p.z) + off : tileToWorld(p.z);
-    // Turn the board's flat face toward the road: a curb offset along x needs a
-    // quarter turn; a z offset already faces along z.
-    _quat.setFromAxisAngle(_yAxis, p.axis === 'x' ? Math.PI / 2 : 0);
+    // Face the board along the road toward oncoming drivers (not across it): a
+    // curb offset along x means the road runs N-S, so the board (default facing
+    // ±z) already faces the traffic; a z offset means an E-W road, so quarter-turn
+    // it to face ±x.
+    _quat.setFromAxisAngle(_yAxis, p.axis === 'x' ? 0 : Math.PI / 2);
     _position.set(wx, this.heightAt(wx, wz), wz);
     _matrix.compose(_position, _quat, _scale);
     mesh.setMatrixAt(slot, _matrix);
   }
 
   private disposeMeshes(): void {
-    for (const mesh of [this.manholeMesh, this.boxMesh, this.meterMesh, this.signMesh])
+    for (const mesh of [this.manholeMesh, this.boxMesh, this.meterMesh])
       if (mesh) this.scene.remove(mesh);
+    for (const mesh of this.signMeshes) this.scene.remove(mesh);
     this.manholeMesh = null;
     this.boxMesh = null;
     this.meterMesh = null;
-    this.signMesh = null;
+    this.signMeshes = [];
   }
 
   /** Removes every layer from the scene and frees the shared geometries/materials. */
@@ -648,7 +875,7 @@ export class RoadFurnitureRenderer {
     this.manholeGeometry.dispose();
     this.boxGeometry.dispose();
     this.meterGeometry.dispose();
-    this.signGeometry.dispose();
+    for (const geometry of Object.values(this.signGeometries)) geometry.dispose();
     this.manholeMaterial.dispose();
     this.boxMaterial.dispose();
     this.meterMaterial.dispose();

@@ -112,13 +112,90 @@ describe('road-furniture placement (pure)', () => {
     expect(alongs).toEqual([3, -3]);
   });
 
-  it('gives a dead-end tile (exactly one road neighbor) a sign', () => {
-    // (5,5)-(6,5)-(7,5): the two endpoints are dead ends, the middle is not.
+  it("marks a dead-end tile (exactly one road neighbor) 'nothrough' and nothing else", () => {
+    // (5,5)-(6,5)-(7,5): the two endpoints are dead ends, the middle is a plain run.
     const signs = computeSignPlacements(strip(5, 5, 7, 'ew', RoadTier.TwoLane));
-    const dead = new Set(signs.filter((s) => s.deadEnd).map((s) => `${s.x},${s.z}`));
-    expect(dead.has('5,5')).toBe(true);
-    expect(dead.has('7,5')).toBe(true);
-    expect(signs.some((s) => s.x === 6)).toBe(false); // middle: two neighbors, not periodic
+    expect(signs.every((s) => s.type === 'nothrough')).toBe(true);
+    expect(signs.filter((s) => s.x === 5).length).toBe(1); // exactly one on the dead end
+    expect(signs.filter((s) => s.x === 7).length).toBe(1);
+    expect(signs.some((s) => s.x === 6)).toBe(false); // middle run earns nothing
+  });
+
+  it("gives a 4-way crossroads its straight approaches a 'stop' sign", () => {
+    const t = RoadTier.TwoLane;
+    // A plus with arms of length two: the distance-1 tiles are the approaches.
+    const tiles: FurnitureRoadTile[] = [
+      { x: 0, z: 0, tier: t },
+      { x: 1, z: 0, tier: t },
+      { x: 2, z: 0, tier: t },
+      { x: -1, z: 0, tier: t },
+      { x: -2, z: 0, tier: t },
+      { x: 0, z: 1, tier: t },
+      { x: 0, z: 2, tier: t },
+      { x: 0, z: -1, tier: t },
+      { x: 0, z: -2, tier: t },
+    ];
+    const signs = computeSignPlacements(tiles);
+    const at = (x: number, z: number): string | undefined =>
+      signs.find((s) => s.x === x && s.z === z)?.type;
+    for (const [x, z] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const)
+      expect(at(x, z)).toBe('stop');
+    expect(signs.some((s) => s.x === 0 && s.z === 0)).toBe(false); // the junction itself: no sign
+  });
+
+  it("gives a T-junction its approaches a 'giveway' sign", () => {
+    const t = RoadTier.TwoLane;
+    // An east-west bar with a stem dropping south from its center.
+    const tiles: FurnitureRoadTile[] = [
+      { x: -2, z: 0, tier: t },
+      { x: -1, z: 0, tier: t },
+      { x: 0, z: 0, tier: t },
+      { x: 1, z: 0, tier: t },
+      { x: 2, z: 0, tier: t },
+      { x: 0, z: 1, tier: t },
+      { x: 0, z: 2, tier: t },
+    ];
+    const signs = computeSignPlacements(tiles);
+    const at = (x: number, z: number): string | undefined =>
+      signs.find((s) => s.x === x && s.z === z)?.type;
+    for (const [x, z] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+    ] as const)
+      expect(at(x, z)).toBe('giveway');
+    expect(signs.some((s) => s.x === 0 && s.z === 0)).toBe(false); // the junction itself: no sign
+  });
+
+  it("marks a turn (L) tile 'bend'", () => {
+    const t = RoadTier.TwoLane;
+    // (0,0)-(1,0)-(2,0) then up to (2,-1)-(2,-2); (2,0) is the corner.
+    const tiles: FurnitureRoadTile[] = [
+      { x: 0, z: 0, tier: t },
+      { x: 1, z: 0, tier: t },
+      { x: 2, z: 0, tier: t },
+      { x: 2, z: -1, tier: t },
+      { x: 2, z: -2, tier: t },
+    ];
+    const signs = computeSignPlacements(tiles);
+    expect(signs.find((s) => s.x === 2 && s.z === 0)?.type).toBe('bend');
+  });
+
+  it("marks the periodic tiles of a One-Way straight run 'oneway'", () => {
+    const signs = computeSignPlacements(strip(0, 0, 18, 'ew', RoadTier.OneWay)); // z=0
+    const oneways = signs.filter((s) => s.type === 'oneway').map((s) => s.x);
+    expect([...oneways].sort((a, b) => a - b)).toEqual([6, 12]); // (x+0) % 6 === 0, interior only
+  });
+
+  it("marks the periodic tiles of a Highway straight run 'speed'", () => {
+    const signs = computeSignPlacements(strip(0, 0, 30, 'ew', RoadTier.Highway)); // z=0
+    const speeds = signs.filter((s) => s.type === 'speed').map((s) => s.x);
+    expect([...speeds].sort((a, b) => a - b)).toEqual([10, 20]); // (x+0) % 10 === 0, interior only
   });
 
   it('produces no placements for an empty road tile list', () => {
@@ -171,6 +248,22 @@ describe('RoadFurnitureRenderer', () => {
 
     const box = meshes.find((m) => m.userData.furnitureKind === 'box')!;
     expect(box.castShadow).toBe(true);
+  });
+
+  it('tags each sign layer by furnitureKind and its signType, casting shadows', () => {
+    const scene = new THREE.Scene();
+    const renderer = new RoadFurnitureRenderer(scene, flatHeightAt);
+    renderer.rebuild(representativeGrid());
+
+    const meshes = scene.children.filter(
+      (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh,
+    );
+    const signMeshes = meshes.filter((m) => m.userData.furnitureKind === 'sign');
+    expect(signMeshes.length).toBeGreaterThan(0);
+    for (const mesh of signMeshes) {
+      expect(mesh.castShadow).toBe(true);
+      expect(typeof mesh.userData.signType).toBe('string');
+    }
   });
 
   it('a second rebuild disposes the previous meshes instead of accumulating them', () => {
