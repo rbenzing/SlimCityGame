@@ -62,6 +62,7 @@ describe('buildServiceVehicleGeometry', () => {
       VehicleKind.Fire,
       VehicleKind.Police,
       VehicleKind.Ambulance,
+      VehicleKind.Garbage,
     ] as ServiceVehicleKind[]) {
       const geo = buildServiceVehicleGeometry(kind);
       expect(geo.getAttribute('position').count).toBeGreaterThan(0);
@@ -99,6 +100,9 @@ describe('buildServiceVehicleGeometry', () => {
     const ambulance = firstPartColor(
       buildServiceVehicleGeometry(VehicleKind.Ambulance as ServiceVehicleKind),
     );
+    const garbage = firstPartColor(
+      buildServiceVehicleGeometry(VehicleKind.Garbage as ServiceVehicleKind),
+    );
 
     expect(fire[0]).toBeGreaterThan(0.7); // red-dominant
     expect(fire[0]).toBeGreaterThan(fire[2]);
@@ -107,11 +111,13 @@ describe('buildServiceVehicleGeometry', () => {
     expect(ambulance[0]).toBeGreaterThan(0.8); // near-white: every channel high
     expect(ambulance[1]).toBeGreaterThan(0.8);
     expect(ambulance[2]).toBeGreaterThan(0.8);
+    expect(garbage[1]).toBeGreaterThan(garbage[0]); // green-dominant
+    expect(garbage[1]).toBeGreaterThan(garbage[2]);
   });
 });
 
 describe('ServiceVehicleRenderer', () => {
-  it('adds one hidden InstancedMesh per service kind (Fire/Police/Ambulance) up front, sized MAX_VEHICLES, plus an incident-marker mesh', () => {
+  it('adds one hidden InstancedMesh per service kind (Fire/Police/Ambulance/Garbage) up front, sized MAX_VEHICLES, plus an incident-marker mesh', () => {
     const scene = new THREE.Scene();
     const renderer = new ServiceVehicleRenderer(scene, flatHeightAt);
     expect(() => renderer.update(0.5)).not.toThrow();
@@ -119,17 +125,20 @@ describe('ServiceVehicleRenderer', () => {
     const fireMesh = meshForKind(scene, VehicleKind.Fire);
     const policeMesh = meshForKind(scene, VehicleKind.Police);
     const ambulanceMesh = meshForKind(scene, VehicleKind.Ambulance);
+    const garbageMesh = meshForKind(scene, VehicleKind.Garbage);
     expect(fireMesh.count).toBe(MAX_VEHICLES);
     expect(policeMesh.count).toBe(MAX_VEHICLES);
     expect(ambulanceMesh.count).toBe(MAX_VEHICLES);
+    expect(garbageMesh.count).toBe(MAX_VEHICLES);
     expect(isHiddenAt(fireMesh, 0)).toBe(true);
     expect(isHiddenAt(policeMesh, 0)).toBe(true);
     expect(isHiddenAt(ambulanceMesh, 0)).toBe(true);
+    expect(isHiddenAt(garbageMesh, 0)).toBe(true);
 
     const instancedMeshes = scene.children.filter(
       (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh,
     );
-    expect(instancedMeshes.length).toBe(4); // fire + police + ambulance + incident pins
+    expect(instancedMeshes.length).toBe(5); // fire + police + ambulance + garbage + incident pins
   });
 
   it('disables frustum culling on every mesh it owns (spans the whole map, moves every frame)', () => {
@@ -162,6 +171,24 @@ describe('ServiceVehicleRenderer', () => {
     expect(scl.x).toBeGreaterThan(0);
   });
 
+  it('places an active Garbage-kind slot in the garbage mesh and hides it in the other service meshes', () => {
+    const scene = new THREE.Scene();
+    const renderer = new ServiceVehicleRenderer(scene, flatHeightAt);
+    const buf = makeBuffer({ 7: [32, 48, 0, 5, VehicleKind.Garbage] });
+    renderer.setBuffer(buf);
+    renderer.update(0);
+
+    const garbageMesh = meshForKind(scene, VehicleKind.Garbage);
+    expect(isHiddenAt(garbageMesh, 7)).toBe(false);
+    for (const kind of [VehicleKind.Fire, VehicleKind.Police, VehicleKind.Ambulance]) {
+      expect(isHiddenAt(meshForKind(scene, kind), 7)).toBe(true);
+    }
+
+    const { pos, scl } = decomposeAt(garbageMesh, 7);
+    expect(pos.y).toBeCloseTo(scl.y / 2, 5); // sits on flat ground
+    expect(scl.x).toBeGreaterThan(0);
+  });
+
   it('scales the fire truck larger than the police sedan (distinct per-kind sizes)', () => {
     const scene = new THREE.Scene();
     const renderer = new ServiceVehicleRenderer(scene, flatHeightAt);
@@ -184,7 +211,12 @@ describe('ServiceVehicleRenderer', () => {
     renderer.setBuffer(buf);
     renderer.update(0);
 
-    for (const kind of [VehicleKind.Fire, VehicleKind.Police, VehicleKind.Ambulance]) {
+    for (const kind of [
+      VehicleKind.Fire,
+      VehicleKind.Police,
+      VehicleKind.Ambulance,
+      VehicleKind.Garbage,
+    ]) {
       expect(isHiddenAt(meshForKind(scene, kind), 0)).toBe(true);
     }
   });
@@ -210,7 +242,12 @@ describe('ServiceVehicleRenderer', () => {
     const renderer = new ServiceVehicleRenderer(scene, flatHeightAt);
     renderer.setBuffer(makeBuffer({}));
     renderer.update(0);
-    for (const kind of [VehicleKind.Fire, VehicleKind.Police, VehicleKind.Ambulance]) {
+    for (const kind of [
+      VehicleKind.Fire,
+      VehicleKind.Police,
+      VehicleKind.Ambulance,
+      VehicleKind.Garbage,
+    ]) {
       expect(isHiddenAt(meshForKind(scene, kind), 0)).toBe(true);
     }
   });

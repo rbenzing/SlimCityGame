@@ -82,7 +82,7 @@ import { FieldSim } from './fields';
 import { BuildingRegistry, footprintForRotation } from './buildings';
 import { computeDemand } from './demand';
 import { GrowthSystem } from './growth';
-import { ServiceSim } from './services';
+import { ServiceSim, nearestRoadTile } from './services';
 import { EconomySystem, buildingMonthlyTax } from './economy';
 import { recomputeUtilities } from './network';
 import { TrafficSystem } from './traffic';
@@ -97,6 +97,12 @@ import {
   type GarbageFacility,
   type TrashSector,
 } from './garbage';
+import {
+  GarbageTruckSystem,
+  MAX_GARBAGE_TRUCKS,
+  type TruckDepot,
+  type TruckTarget,
+} from './garbagetrucks';
 import { encodeSave, decodeSave } from '../app/persist';
 
 /** Packed-hex palette for auto-created district defs (id 1..255 cycle through these). */
@@ -298,6 +304,7 @@ class SimWorld implements WorkerSim {
   private districtDefsChanged = false;
   /** Garbage: trash generation + landfill collection. Runtime state (not saved). */
   private readonly garbage = new GarbageSystem(MAP_SIZE);
+  private readonly garbageTrucks = new GarbageTruckSystem();
   private landfillDirty: DirtyRect | null = null;
   private garbageDirty = false;
   /** Sandbox mode: when true, milestone gates are bypassed for all build items. */
@@ -543,6 +550,7 @@ class SimWorld implements WorkerSim {
     // Garbage is runtime-only: reset the trash/fill and republish the loaded
     // landfill area as full state so the render side rebuilds it.
     this.garbage.reset();
+    this.garbageTrucks.reset();
     this.landfillDirty = { minX: 0, minZ: 0, maxX: MAP_SIZE - 1, maxZ: MAP_SIZE - 1 };
     this.garbageDirty = true;
     this.recomputeUtilitiesNow();
@@ -688,14 +696,30 @@ class SimWorld implements WorkerSim {
 
     const origins: TilePoint[] = [];
     const destinations: TilePoint[] = [];
+    // Cosmetic garbage trucks: depots = active garbage facilities (source at
+    // their nearest road tile); targets = active R/C/I buildings they visit.
+    const garbageTargets: TruckTarget[] = [];
+    const garbageDepots: TruckDepot[] = [];
     for (const inst of this.registry.all()) {
       if (inst.state !== BuildingState.Active) continue;
       const entry = this.catalogById.get(inst.catalogId);
       if (!entry) continue;
+      if (entry.garbage) {
+        const road = nearestRoadTile(this.grid, [tileIndex(inst.x, inst.z)]);
+        if (road !== null) {
+          garbageDepots.push({
+            id: inst.id,
+            sourceTile: { x: road % MAP_SIZE, z: Math.floor(road / MAP_SIZE) },
+            budget: entry.garbage.trucks,
+          });
+        }
+        continue;
+      }
       if (entry.category === 'res') origins.push({ x: inst.x, z: inst.z });
       else if (entry.category === 'com' || entry.category === 'ind') {
         destinations.push({ x: inst.x, z: inst.z });
-      }
+      } else continue;
+      garbageTargets.push({ id: inst.id, tile: { x: inst.x, z: inst.z } });
     }
     this.traffic.tick({ origins, destinations, tickNo: t, population: this.stats.population });
 
@@ -708,6 +732,11 @@ class SimWorld implements WorkerSim {
       grid: g,
       buildings: this.registry.all(),
       network: this.network,
+    });
+    this.garbageTrucks.tick({
+      network: this.network,
+      depots: garbageDepots,
+      targets: garbageTargets,
     });
 
     if (t % TRAFFIC_FIELD_PERIOD === TRAFFIC_FIELD_OFFSET) {
@@ -770,6 +799,12 @@ class SimWorld implements WorkerSim {
     vehicles.set(
       this.dispatch.vehicleBuffer,
       (MAX_VEHICLES - MAX_SERVICE_VEHICLES) * VEHICLE_STRIDE,
+    );
+    // Cosmetic garbage trucks ride the same buffer, in the slice just before
+    // the service-vehicle tail (traffic fills low slots first, leaving room).
+    vehicles.set(
+      this.garbageTrucks.vehicleBuffer,
+      (MAX_VEHICLES - MAX_SERVICE_VEHICLES - MAX_GARBAGE_TRUCKS) * VEHICLE_STRIDE,
     );
     const snap: SimSnapshot = {
       stats: cloneStats(this.stats),

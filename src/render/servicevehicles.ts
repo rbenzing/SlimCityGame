@@ -1,8 +1,8 @@
 /**
- * Service-dispatch vehicle rendering: fire/police/ambulance
+ * Service-dispatch vehicle rendering: fire/police/ambulance/garbage
  * liveries riding the SAME shared vehicle buffer (SimSnapshot.vehicles) as
  * cosmetic cars/trucks/buses -- distinguished only by VehicleKind.Fire/
- * Police/Ambulance (see shared/types.ts's contract note). This file owns a
+ * Police/Ambulance/Garbage (see shared/types.ts's contract note). This file owns a
  * SEPARATE set of InstancedMeshes from render/vehicles.ts's VehicleRenderer
  * (a chokepoint file, not edited here): VehicleRenderer's ALL_KINDS list is
  * [Car, Truck, Bus] only, so it already harmlessly hides any slot whose kind
@@ -29,11 +29,21 @@ import {
 import { TILE_METERS, tileToWorld } from '../shared/constants';
 import { laneOffset, lerpVehicle } from './vehicles';
 
-const SERVICE_KINDS = [VehicleKind.Fire, VehicleKind.Police, VehicleKind.Ambulance] as const;
+const SERVICE_KINDS = [
+  VehicleKind.Fire,
+  VehicleKind.Police,
+  VehicleKind.Ambulance,
+  VehicleKind.Garbage,
+] as const;
 export type ServiceVehicleKind = (typeof SERVICE_KINDS)[number];
 
 function isServiceKind(kind: number): kind is ServiceVehicleKind {
-  return kind === VehicleKind.Fire || kind === VehicleKind.Police || kind === VehicleKind.Ambulance;
+  return (
+    kind === VehicleKind.Fire ||
+    kind === VehicleKind.Police ||
+    kind === VehicleKind.Ambulance ||
+    kind === VehicleKind.Garbage
+  );
 }
 
 function hexToRGB(hex: number): readonly [number, number, number] {
@@ -41,17 +51,21 @@ function hexToRGB(hex: number): readonly [number, number, number] {
 }
 
 // ---------------------------------------------------------------------------
-// Fixed liveries: fire=red, police=blue, ambulance=white, plus a roof
-// light-bar accent (red for fire/ambulance, red+blue read as "police" via
-// the body blue itself, so the bar stays red -- genre-standard single-color bars).
+// Fixed liveries: fire=red, police=blue, ambulance=white, garbage=municipal
+// green, plus a roof light-bar accent (red for fire/ambulance, red+blue read
+// as "police" via the body blue itself, so the bar stays red -- genre-standard
+// single-color bars). Garbage swaps the bar for a rear hopper + amber beacon.
 // ---------------------------------------------------------------------------
 
 const FIRE_RED = hexToRGB(0xd9362c);
 const POLICE_BLUE = hexToRGB(0x2f6fd6);
 const AMBULANCE_WHITE = hexToRGB(0xe9edf0);
+const GARBAGE_GREEN = hexToRGB(0x3f7d4f);
+const GARBAGE_HOPPER = hexToRGB(0x2f5e3b);
 const CABIN_DARK = hexToRGB(0x1a1f26);
 const LIGHTBAR_RED = hexToRGB(0xff2a20);
 const LIGHTBAR_BLUE = hexToRGB(0x274b8f);
+const BEACON_AMBER = hexToRGB(0xe0a020);
 const RED_CROSS = hexToRGB(0xc21f2b);
 
 function bodyColorForKind(kind: ServiceVehicleKind): readonly [number, number, number] {
@@ -60,6 +74,8 @@ function bodyColorForKind(kind: ServiceVehicleKind): readonly [number, number, n
       return FIRE_RED;
     case VehicleKind.Police:
       return POLICE_BLUE;
+    case VehicleKind.Garbage:
+      return GARBAGE_GREEN;
     case VehicleKind.Ambulance:
     default:
       return AMBULANCE_WHITE;
@@ -71,6 +87,8 @@ function sizeForKind(kind: ServiceVehicleKind): readonly [number, number, number
   switch (kind) {
     case VehicleKind.Fire:
       return [2.4, 2.8, 8.2];
+    case VehicleKind.Garbage:
+      return [2.3, 2.7, 7.0];
     case VehicleKind.Ambulance:
       return [2.2, 2.4, 6.2];
     case VehicleKind.Police:
@@ -121,20 +139,30 @@ function buildWheelParts(): THREE.BufferGeometry[] {
 
 /**
  * Builds the merged multi-part geometry for one service-vehicle kind: body
- * slab (livery color) + cabin/window band (dark) + roof light-bar (kind's
- * accent color) + 4 simple wheel boxes, all vertex-colored (no per-instance
- * tinting is needed since the livery is fixed per kind, not randomized).
+ * slab (livery color) + cabin/window band (dark) + 4 simple wheel boxes, all
+ * vertex-colored (no per-instance tinting is needed since the livery is fixed
+ * per kind, not randomized). Emergency kinds add a roof light-bar (kind's
+ * accent color); garbage adds a raised rear hopper + amber beacon instead.
  */
 export function buildServiceVehicleGeometry(kind: ServiceVehicleKind): THREE.BufferGeometry {
   const body = bodyColorForKind(kind);
-  const lightbar = kind === VehicleKind.Police ? LIGHTBAR_BLUE : LIGHTBAR_RED;
 
   const parts: THREE.BufferGeometry[] = [
     box(0.92, 0.56, 0.94, 0, -0.2, 0, body),
     box(0.7, 0.3, 0.5, 0, 0.22, 0.05, CABIN_DARK),
-    box(0.5, 0.12, 0.32, 0, 0.42, -0.05, lightbar),
     ...buildWheelParts(),
   ];
+
+  if (kind === VehicleKind.Garbage) {
+    // Refuse truck: a raised rear hopper/compactor box over the back ~40% of
+    // the body (darker green) plus a small amber beacon -- no emergency bar.
+    parts.push(box(0.86, 0.66, 0.38, 0, 0.13, -0.27, GARBAGE_HOPPER));
+    parts.push(box(0.16, 0.1, 0.14, 0, 0.42, 0.05, BEACON_AMBER));
+  } else {
+    // Emergency roof light-bar (blue for police, red for fire/ambulance).
+    const lightbar = kind === VehicleKind.Police ? LIGHTBAR_BLUE : LIGHTBAR_RED;
+    parts.push(box(0.5, 0.12, 0.32, 0, 0.42, -0.05, lightbar));
+  }
 
   if (kind === VehicleKind.Ambulance) {
     // Small red-cross accent on the roof, front of the light bar.
