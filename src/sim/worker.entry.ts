@@ -549,9 +549,12 @@ class SimWorld implements WorkerSim {
     }
     this.districtDirty = { minX: 0, minZ: 0, maxX: MAP_SIZE - 1, maxZ: MAP_SIZE - 1 };
     this.districtDefsChanged = true;
-    // Garbage is runtime-only: reset the trash/fill and republish the loaded
-    // landfill area as full state so the render side rebuilds it.
+    // Garbage: the per-tile trash layer + cosmetic trucks are runtime-only
+    // (rebuilt from the sim), but the landfill pile + incinerator buffers are
+    // restored from the save meta so fill survives a reload. Republish the
+    // loaded landfill area as full state so the render side rebuilds it.
     this.garbage.reset();
+    this.garbage.restoreState(payload.meta.garbage);
     this.garbageTrucks.reset();
     this.landfillDirty = { minX: 0, minZ: 0, maxX: MAP_SIZE - 1, maxZ: MAP_SIZE - 1 };
     this.garbageDirty = true;
@@ -1038,7 +1041,11 @@ class SimWorld implements WorkerSim {
         funds: this.stats.funds,
       },
       grid: serializeGrid(this.grid),
-      meta: { registry: this.registry.serialize(), stats: cloneStats(this.stats) },
+      meta: {
+        registry: this.registry.serialize(),
+        stats: cloneStats(this.stats),
+        garbage: this.garbage.serializeState(),
+      },
     });
     this.post({ type: 'save', data }, [data]);
   }

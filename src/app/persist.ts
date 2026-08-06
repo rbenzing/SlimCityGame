@@ -14,6 +14,7 @@
 import { TICKS_PER_MONTH } from '../shared/constants';
 import type { CityStats, MainToWorker, SaveHeader } from '../shared/types';
 import type { SerializedBuildingRegistry } from '../sim/buildings';
+import type { GarbageSaveState } from '../sim/garbage';
 
 // ---------------------------------------------------------------------------
 // Save payload codec (pure)
@@ -23,6 +24,8 @@ import type { SerializedBuildingRegistry } from '../sim/buildings';
 export interface SaveMeta {
   registry: SerializedBuildingRegistry;
   stats: CityStats;
+  /** §21 garbage fill (landfill pile + incinerator buffers). Absent in pre-Stage-A saves. */
+  garbage?: GarbageSaveState;
 }
 
 export interface SavePayload {

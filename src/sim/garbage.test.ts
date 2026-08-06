@@ -159,3 +159,45 @@ describe('GarbageSystem incinerators', () => {
     expect(sys.incineratorStored(incinId)).toBe(0);
   });
 });
+
+describe('GarbageSystem save state', () => {
+  it('round-trips landfill fill through serialize/restore', () => {
+    const { g } = baseWorld();
+    const sys = new GarbageSystem(g.size);
+    for (let i = 0; i < 3; i++) sys.tick(g, [COM]);
+    expect(sys.landfillStored()).toBeGreaterThan(0);
+
+    const saved = sys.serializeState();
+    expect(saved.incinerators).toHaveLength(0);
+
+    const loaded = new GarbageSystem(g.size);
+    loaded.reset();
+    loaded.restoreState(saved);
+    expect(loaded.landfillStored()).toBe(sys.landfillStored());
+  });
+
+  it('round-trips incinerator buffers through serialize/restore', () => {
+    const { g, incinId } = incinWorld();
+    const sys = new GarbageSystem(g.size);
+    for (let i = 0; i < 3; i++) sys.tick(g, [IND], [facility({ burnRate: 0 })]);
+    const stored = sys.incineratorStored(incinId);
+    expect(stored).toBeGreaterThan(0);
+
+    const saved = sys.serializeState();
+    expect(saved.incinerators.find((e) => e.id === incinId)?.units).toBe(stored);
+
+    const loaded = new GarbageSystem(g.size);
+    loaded.reset();
+    loaded.restoreState(saved);
+    expect(loaded.incineratorStored(incinId)).toBe(stored);
+  });
+
+  it('ignores an absent save state (pre-Stage-A saves)', () => {
+    const { g } = baseWorld();
+    const sys = new GarbageSystem(g.size);
+    sys.tick(g, [COM]);
+    const before = sys.landfillStored();
+    sys.restoreState(undefined); // no-op
+    expect(sys.landfillStored()).toBe(before);
+  });
+});

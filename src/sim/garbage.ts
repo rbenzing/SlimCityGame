@@ -66,6 +66,16 @@ export interface GarbageFacility {
   burnRate: number;
 }
 
+/**
+ * The persistable garbage fill: the landfill pile total + each incinerator's
+ * buffer (by building id). The per-tile trash layer and cosmetic trucks are
+ * NOT saved — they rebuild within a few ticks of a load.
+ */
+export interface GarbageSaveState {
+  landfillStored: number;
+  incinerators: { id: number; units: number }[];
+}
+
 const clampTile = (v: number): number => (v < 0 ? 0 : v > TRASH_TILE_MAX ? TRASH_TILE_MAX : v);
 
 export class GarbageSystem {
@@ -241,11 +251,31 @@ export class GarbageSystem {
     return capacity > 0 && this.landfillStoredUnits >= capacity;
   }
 
-  /** Clears runtime trash + fill (e.g. on load — this state is not persisted). */
+  /** Clears runtime trash + fill (e.g. on load — the trash layer is not persisted). */
   reset(): void {
     this.trash.fill(0);
     this.landfillStoredUnits = 0;
     this.incineratorStore.clear();
     this.incineratorBurned.clear();
+  }
+
+  /** The persistable fill state (landfill pile + incinerator buffers). */
+  serializeState(): GarbageSaveState {
+    return {
+      landfillStored: this.landfillStoredUnits,
+      incinerators: [...this.incineratorStore.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([id, units]) => ({ id, units })),
+    };
+  }
+
+  /** Restores fill saved by serializeState (call after reset). Ignores undefined (pre-Stage-A saves). */
+  restoreState(state: GarbageSaveState | undefined): void {
+    if (!state) return;
+    this.landfillStoredUnits = Math.max(0, state.landfillStored || 0);
+    this.incineratorStore.clear();
+    for (const { id, units } of state.incinerators ?? []) {
+      if (units > 0) this.incineratorStore.set(id, units);
+    }
   }
 }
