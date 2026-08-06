@@ -52,8 +52,21 @@ export const RoadTier = {
   BikeLane: 9,
   // Roads epic R3 — tram track (embedded rails on a shared street).
   Tram: 10,
+  // Roads epic R4 — dedicated heavy-rail line (ballast bed; not drivable by cars).
+  RailTrack: 11,
 } as const;
 export type RoadTier = (typeof RoadTier)[keyof typeof RoadTier];
+
+/**
+ * True for road tiers that behave as a functional STREET — carrying vehicle
+ * traffic + road-graph utilities (power/water) + providing road frontage for
+ * zoning/growth/service coverage. RailTrack (a dedicated rail line) sits on the
+ * grid and blocks building like any road, but is NOT a street: it does none of
+ * the above. None is not a street either. Accepts a raw roadTier byte.
+ */
+export function isStreetTier(tier: number): boolean {
+  return tier !== RoadTier.None && tier !== RoadTier.RailTrack;
+}
 
 /**
  * Scalar fields (classic diffusing scalar layers). Each is a Uint8Array of
@@ -541,6 +554,8 @@ export type ToolId =
   | 'road.bike'
   // Roads epic R3 — tram track.
   | 'road.tram'
+  // Roads epic R4 — dedicated rail track.
+  | 'road.rail'
   | 'zone.resLow'
   | 'zone.resHigh'
   | 'zone.comLow'

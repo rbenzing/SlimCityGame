@@ -55,6 +55,10 @@
  *   rails + periodic cross-tie sleepers down the centre (`emitTramTrack`), and
  *   NO painted centerline (the rails are the centre). Track paints on straight
  *   runs only; junctions/turns break it, same as the colored bands.
+ * - **Rail Track** (tier 11): a dedicated heavy-rail line — a dark ballast bed
+ *   (`paved: false`, no curbs/markings/crosswalks) carrying the same embedded
+ *   `emitTramTrack` rails + sleepers. Not a street: excluded from the drivable
+ *   traffic graph so cosmetic cars never route onto it.
  *
  * Corner rounding: the turn-corner fillet
  * (`emitCornerFillet`) is
@@ -187,6 +191,8 @@ export const BUS_LANE_HALF_WIDTH_FRACTION = laneFraction(4);
 export const BIKE_LANE_HALF_WIDTH_FRACTION = laneFraction(3);
 /** Tram Track: a shared two-lane street with rails embedded down the centre. */
 export const TRAM_HALF_WIDTH_FRACTION = laneFraction(2);
+/** Rail Track: a dedicated single-track ballast corridor (~5.6m wide), no traffic lanes. */
+export const RAIL_HALF_WIDTH_FRACTION = laneFraction(1.5);
 
 /** Gravel's dusty tan base color family, before per-tile jitter. */
 const GRAVEL_BASE_COLOR: readonly [number, number, number] = [0.62, 0.55, 0.42];
@@ -217,6 +223,8 @@ const TRAM_SLEEPER_PERIOD_M = 1.6;
 /** Sleepers sit on the road; rails ride a hair above the sleepers, both below the marking layer. */
 const TRAM_SLEEPER_Y_OFFSET = ROAD_Y_OFFSET + 0.004;
 const TRAM_RAIL_Y_OFFSET = ROAD_Y_OFFSET + 0.012;
+/** Rail Track ballast bed: dark crushed-stone grey, distinct from asphalt tiers and gravel's tan. */
+const RAIL_BALLAST_COLOR: readonly [number, number, number] = [0.34, 0.33, 0.31];
 /** Painted bus-lane surface (terracotta red — the universal transit-lane tint). */
 const BUS_LANE_PAINT_COLOR: readonly [number, number, number] = [0.6, 0.24, 0.18];
 /** Painted bike-lane surface (deep green). */
@@ -312,6 +320,15 @@ function tierSpec(tier: RoadTier): QuadSpec {
         color: TRANSIT_LANE_COLOR,
         hasCurbs: true,
         paved: true,
+      };
+    case RoadTier.RailTrack:
+      // Dedicated rail: ballast bed, no curbs/sidewalks, and unpaved so it gets
+      // no lane markings or junction crosswalks — just the embedded rails.
+      return {
+        halfWidthFraction: RAIL_HALF_WIDTH_FRACTION,
+        color: RAIL_BALLAST_COLOR,
+        hasCurbs: false,
+        paved: false,
       };
     default:
       throw new RangeError(`roadTileVertices: no quad spec for tier ${tier}`);
@@ -2419,6 +2436,24 @@ export function roadTileVertices(
   // / one-way arrows / junction arm markings — gravel junctions stay
   // unpainted. Every other tier (including Alley/One-Way/Four-Lane) is a paved
   // tier and gets the full marking behavior below.
+  // Embedded steel track: Tram (rails in a paved shared street) and RailTrack
+  // (rails on a dedicated unpaved ballast bed) both lay two rails + cross-tie
+  // sleepers down the centre of a straight run. Emitted OUTSIDE the `spec.paved`
+  // gate below so it also fires for RailTrack (paved: false); junctions/turns
+  // break the track, matching the R2 colored bands.
+  if ((tier === RoadTier.Tram || tier === RoadTier.RailTrack) && !isJunction && !isTurn) {
+    if (hasVertical) {
+      const zLo = hasN ? -TILE_HALF : -coreHalf;
+      const zHi = hasS ? TILE_HALF : coreHalf;
+      emitTramTrack(positions, colors, centerX, centerZ, true, zLo, zHi, hAt);
+    }
+    if (hasHorizontal) {
+      const xLo = hasW ? -TILE_HALF : -coreHalf;
+      const xHi = hasE ? TILE_HALF : coreHalf;
+      emitTramTrack(positions, colors, centerX, centerZ, false, xLo, xHi, hAt);
+    }
+  }
+
   if (spec.paved) {
     // Lane markings: suppressed at junctions (mask popcount >= 3, per-arm
     // stop-lines + crosswalks instead) and at TURNS (the curved carriageway
@@ -2456,8 +2491,6 @@ export function roadTileVertices(
             zHi,
             hAt,
           );
-        if (tier === RoadTier.Tram)
-          emitTramTrack(positions, colors, centerX, centerZ, true, zLo, zHi, hAt);
       }
       if (hasHorizontal) {
         const xLo = hasW ? -TILE_HALF : -coreHalf;
@@ -2490,8 +2523,6 @@ export function roadTileVertices(
             xHi,
             hAt,
           );
-        if (tier === RoadTier.Tram)
-          emitTramTrack(positions, colors, centerX, centerZ, false, xLo, xHi, hAt);
       }
 
       // One-Way direction arrows: every ARROW_PERIOD_TILES-th tile by GLOBAL

@@ -58,6 +58,7 @@ describe('ToolOptionsPanel', () => {
     'road.bus',
     'road.bike',
     'road.tram',
+    'road.rail',
   ] as const)('for road tool %s', (tool) => {
     beforeEach(() => {
       useCityStore.getState().setTool(tool);

@@ -94,6 +94,15 @@
       "speed": 16,
       "capacity": 1900,
       "unlockMilestone": 3
+    },
+    {
+      "tier": 11,
+      "name": "Rail Track",
+      "costPerTile": 40,
+      "upkeepPerTile": 0.8,
+      "speed": 30,
+      "capacity": 3000,
+      "unlockMilestone": 4
     }
   ]
 }

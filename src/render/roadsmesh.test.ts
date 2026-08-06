@@ -190,6 +190,51 @@ describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
   });
 });
 
+describe('roadTileVertices — dedicated rail line (RoadTier.RailTrack)', () => {
+  const isRail = (t: readonly number[]): boolean => {
+    const [r, g, b] = t as [number, number, number];
+    return r > 0.66 && r < 0.78 && Math.abs(r - g) < 0.05 && Math.abs(g - b) < 0.05;
+  };
+  const isSleeper = (t: readonly number[]): boolean => {
+    const [r, g, b] = t as [number, number, number];
+    return r > 0.2 && r < 0.32 && r > g && g >= b;
+  };
+  const isBallast = (t: readonly number[]): boolean => {
+    const [r, g, b] = t as [number, number, number];
+    return r > 0.3 && r < 0.38 && Math.abs(r - g) < 0.04 && Math.abs(g - b) < 0.04;
+  };
+
+  it('lays a ballast bed with embedded rails + sleepers on a straight run', () => {
+    const { colors } = roadTileVertices(0, 0, RoadTier.RailTrack, N | S, flatHeightAt);
+    expect(countWhere(colors, isBallast)).toBeGreaterThan(0);
+    expect(countWhere(colors, isRail)).toBeGreaterThan(0);
+    expect(countWhere(colors, isSleeper)).toBeGreaterThan(0);
+  });
+
+  it('is unpaved + curbless: no lane markings and no sidewalk strip', () => {
+    const { colors } = roadTileVertices(0, 0, RoadTier.RailTrack, N | S, flatHeightAt);
+    expect(countWhere(colors, isMarkingWhite)).toBe(0);
+    expect(countWhere(colors, isSidewalk)).toBe(0);
+  });
+
+  it('breaks the track at junctions (rails stop at crossings)', () => {
+    const straight = roadTileVertices(0, 0, RoadTier.RailTrack, N | S, flatHeightAt);
+    const junction = roadTileVertices(0, 0, RoadTier.RailTrack, N | E | S | W, flatHeightAt);
+    expect(countWhere(straight.colors, isRail)).toBeGreaterThan(0);
+    expect(countWhere(junction.colors, isRail)).toBe(0);
+  });
+
+  it('rides a narrow dedicated corridor (gravel-class width) and is deterministic', () => {
+    expect(carriagewayHalfWidthMeters(RoadTier.RailTrack)).toBeCloseTo(
+      carriagewayHalfWidthMeters(RoadTier.Gravel),
+    );
+    const a = roadTileVertices(6, 7, RoadTier.RailTrack, N | S, flatHeightAt);
+    const b = roadTileVertices(6, 7, RoadTier.RailTrack, N | S, flatHeightAt);
+    expect(a.positions).toEqual(b.positions);
+    expect(a.colors).toEqual(b.colors);
+  });
+});
+
 describe('roadTileVertices — asphalt base plate', () => {
   it('returns no geometry for RoadTier.None, regardless of mask', () => {
     for (const mask of [0, 15]) {

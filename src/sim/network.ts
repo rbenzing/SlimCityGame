@@ -20,7 +20,7 @@
  */
 
 import type { BuildingCatalogEntry, BuildingInstance, GridState, RoadSpec } from '../shared/types';
-import { BuildingState, RoadTier } from '../shared/types';
+import { BuildingState, RoadTier, isStreetTier } from '../shared/types';
 import { MAP_SIZE, inBounds, tileIndex } from '../shared/constants';
 import roadsData from '../data/roads.json';
 
@@ -170,14 +170,14 @@ function computeCoverage(
   return radiate(g, sources);
 }
 
-/** Every road tile conducts power (highways included — street lighting). */
-function conductsPower(): boolean {
-  return true;
+/** Every drivable street conducts power (highways included — street lighting); rail is not a street and conducts nothing. */
+function conductsPower(tier: number): boolean {
+  return isStreetTier(tier);
 }
 
-/** Only road tiles whose spec carries water conduct it (highways excluded by default). */
+/** Only drivable streets whose spec carries water conduct it (highways excluded by default; rail is not a street). */
 function conductsWater(tier: number): boolean {
-  return tierCarriesWater(tier);
+  return isStreetTier(tier) && tierCarriesWater(tier);
 }
 
 /**

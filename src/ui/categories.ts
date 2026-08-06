@@ -84,6 +84,8 @@ function roadToolId(tier: RoadTier): ToolId | null {
       return 'road.bike';
     case RoadTierValue.Tram:
       return 'road.tram';
+    case RoadTierValue.RailTrack:
+      return 'road.rail';
     default:
       return null;
   }
@@ -227,6 +229,7 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
         ...roadCard(RoadTierValue.BikeLane),
         ...roadCard(RoadTierValue.BusLane),
         ...roadCard(RoadTierValue.Tram),
+        ...roadCard(RoadTierValue.RailTrack),
       ],
     },
   ],

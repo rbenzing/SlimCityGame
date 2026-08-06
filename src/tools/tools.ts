@@ -124,6 +124,8 @@ const ROAD_TOOL_TO_TIER: Record<string, RoadTier> = {
   'road.bike': RoadTierValue.BikeLane,
   // Tram track (roads epic R3).
   'road.tram': RoadTierValue.Tram,
+  // Rail track (roads epic R4).
+  'road.rail': RoadTierValue.RailTrack,
 };
 
 /** The 'terraform' Command's mode field (shared/types.ts), named locally for readability. */

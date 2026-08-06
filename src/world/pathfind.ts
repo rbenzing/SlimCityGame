@@ -59,6 +59,9 @@ function oneWayForwardIsAtoB(edge: GraphEdge): boolean {
  * edge is traversable only in its flow direction (see `oneWayForwardIsAtoB`).
  */
 export function edgeTraversable(edge: GraphEdge, fromNodeId: number): boolean {
+  // Rail is never drivable (buildGraph already keeps rail out of the graph;
+  // this is a belt-and-suspenders backstop so no stray rail edge is traversed).
+  if (edge.tier === RoadTier.RailTrack) return false;
   if (edge.tier !== RoadTier.OneWay) return true;
   return oneWayForwardIsAtoB(edge) ? fromNodeId === edge.a : fromNodeId === edge.b;
 }

@@ -24,7 +24,7 @@
  * No three.js, no DOM. The buildability (slope) check is reimplemented locally
  * (like render/zonegrid.ts does) so this module never imports sim/grid code.
  */
-import { RoadTier } from '../shared/types';
+import { RoadTier, isStreetTier } from '../shared/types';
 import { MAX_BUILD_SLOPE } from '../shared/constants';
 
 /** Perpendicular frontage depth: cells marched out from a road side. */
@@ -114,15 +114,16 @@ export function computeZonableMask(g: ZonableGridSource, depth = ZONE_DEPTH): Ui
 
   for (let z = 0; z < size; z++) {
     for (let x = 0; x < size; x++) {
-      if (g.roadTier[z * size + x] === RoadTier.None) continue;
+      // Only drivable streets provide zoning frontage — rail is not a street.
+      if (!isStreetTier(g.roadTier[z * size + x]!)) continue;
 
-      // Road-connected sides of this road tile.
+      // Street-connected sides of this road tile.
       const connected: number[] = [];
       for (let d = 0; d < 4; d++) {
         const nx = x + DIRS[d]![0]!;
         const nz = z + DIRS[d]![1]!;
         if (nx < 0 || nz < 0 || nx >= size || nz >= size) continue;
-        if (g.roadTier[nz * size + nx] !== RoadTier.None) connected.push(d);
+        if (isStreetTier(g.roadTier[nz * size + nx]!)) connected.push(d);
       }
 
       // March out from each frontage side, stopping at the first block.

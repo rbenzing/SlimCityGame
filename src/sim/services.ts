@@ -16,7 +16,7 @@ import type {
   GridState,
   ServiceKind,
 } from '../shared/types';
-import { BuildingState, FieldId, RoadTier, ZoneType } from '../shared/types';
+import { BuildingState, FieldId, ZoneType, isStreetTier } from '../shared/types';
 import { MAP_SIZE, MAP_TILES, inBounds, tileIndex } from '../shared/constants';
 
 /** Radius (orthogonal steps) searched around a building's footprint for its nearest road tile. */
@@ -72,7 +72,7 @@ export function nearestRoadTile(g: GridState, footprint: readonly number[]): num
         const nz = z + dz;
         if (!inBounds(nx, nz)) continue;
         const ni = tileIndex(nx, nz);
-        if (g.roadTier[ni]! === RoadTier.None) continue;
+        if (!isStreetTier(g.roadTier[ni]!)) continue;
         const dist = Math.abs(dx) + Math.abs(dz);
         if (dist < bestDist || (dist === bestDist && (best === null || ni < best))) {
           bestDist = dist;
@@ -85,7 +85,11 @@ export function nearestRoadTile(g: GridState, footprint: readonly number[]): num
 }
 
 /** BFS hop-distance from `start` across connected road tiles, not expanding past maxDist. */
-export function roadBfsDistances(g: GridState, start: number, maxDist: number): Map<number, number> {
+export function roadBfsDistances(
+  g: GridState,
+  start: number,
+  maxDist: number,
+): Map<number, number> {
   const dist = new Map<number, number>([[start, 0]]);
   const queue = [start];
   let head = 0;
@@ -102,7 +106,7 @@ export function roadBfsDistances(g: GridState, start: number, maxDist: number): 
       if (!inBounds(nx, nz)) continue;
       const ni = tileIndex(nx, nz);
       if (dist.has(ni)) continue;
-      if (g.roadTier[ni]! === RoadTier.None) continue;
+      if (!isStreetTier(g.roadTier[ni]!)) continue;
       dist.set(ni, d + 1);
       queue.push(ni);
     }

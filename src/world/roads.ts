@@ -6,7 +6,7 @@
  */
 
 import { findPath as runAstar, nearestNode as findNearestNode } from './pathfind';
-import { RoadTier, ZoneType } from '../shared/types';
+import { RoadTier, ZoneType, isStreetTier } from '../shared/types';
 import type {
   GraphEdge,
   GraphNode,
@@ -71,6 +71,21 @@ export function computeMask(g: GridState, x: number, z: number): number {
   if (tierAt(g, x + 1, z) !== RoadTier.None) mask |= 2;
   if (tierAt(g, x, z + 1) !== RoadTier.None) mask |= 4;
   if (tierAt(g, x - 1, z) !== RoadTier.None) mask |= 8;
+  return mask;
+}
+
+/**
+ * Neighbor bitmask counting only DRIVABLE-street neighbors — excludes
+ * RailTrack, so the vehicle graph (buildGraph) never treats rail as connected
+ * even though `computeMask` still renders rail abutting a road (level-crossing
+ * look). Identical to `computeMask` on any rail-free grid.
+ */
+function computeDrivableMask(g: GridState, x: number, z: number): number {
+  let mask = 0;
+  if (isStreetTier(tierAt(g, x, z - 1))) mask |= 1;
+  if (isStreetTier(tierAt(g, x + 1, z))) mask |= 2;
+  if (isStreetTier(tierAt(g, x, z + 1))) mask |= 4;
+  if (isStreetTier(tierAt(g, x - 1, z))) mask |= 8;
   return mask;
 }
 
@@ -212,8 +227,10 @@ function buildGraph(g: GridState): BuiltGraph {
     for (let x = 0; x < size; x++) {
       const idx = indexOf(size, x, z);
       const tier = tierAtIdx(g, idx);
-      if (tier === RoadTier.None) continue;
-      const mask = computeMask(g, x, z);
+      // Rail is on the grid but is not a drivable street — keep it out of the
+      // vehicle graph entirely (no cars/service vehicles ever route onto it).
+      if (!isStreetTier(tier)) continue;
+      const mask = computeDrivableMask(g, x, z);
       if (isNodeTile(g, x, z, tier, mask)) {
         nodeIdOf.set(idx, nodeTileIdx.length);
         nodeTileIdx.push(idx);
@@ -236,7 +253,7 @@ function buildGraph(g: GridState): BuiltGraph {
     const startId = nodeIdOf.get(startIdx)!;
     const sx = startIdx % size;
     const sz = Math.floor(startIdx / size);
-    const startMask = computeMask(g, sx, sz);
+    const startMask = computeDrivableMask(g, sx, sz);
 
     for (const d of DIRS) {
       if ((startMask & d.bit) === 0) continue;
@@ -252,7 +269,7 @@ function buildGraph(g: GridState): BuiltGraph {
 
       while (!nodeIdOf.has(curIdx)) {
         runTiles.push({ x: curX, z: curZ });
-        const curMask = computeMask(g, curX, curZ);
+        const curMask = computeDrivableMask(g, curX, curZ);
         let onward: Dir | null = null;
         for (const d2 of DIRS) {
           if ((curMask & d2.bit) !== 0 && d2.bit !== cameFromBit) {

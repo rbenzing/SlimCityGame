@@ -228,6 +228,37 @@ describe('removeRoad', () => {
   });
 });
 
+describe('RoadNetwork — rail exclusion (roads epic R4)', () => {
+  it('keeps a dedicated rail line out of the drivable graph entirely', () => {
+    const size = 12;
+    const g = makeGrid(size);
+    for (const x of [2, 3, 4, 5, 6]) g.roadTier[idx(size, x, 5)] = RoadTier.RailTrack;
+    const net = new RoadNetwork();
+    net.rebuild(g);
+    expect(net.getNodes().length).toBe(0);
+    expect(net.getEdges().length).toBe(0);
+  });
+
+  it('never folds a rail tile into a road edge — rail is not a drivable bridge', () => {
+    // Two two-lane stubs separated by one rail tile: [2,3] R(4) [5,6] on row 5.
+    const size = 14;
+    const g = makeGrid(size);
+    for (const x of [2, 3]) g.roadTier[idx(size, x, 5)] = RoadTier.TwoLane;
+    g.roadTier[idx(size, 4, 5)] = RoadTier.RailTrack;
+    for (const x of [5, 6]) g.roadTier[idx(size, x, 5)] = RoadTier.TwoLane;
+    const net = new RoadNetwork();
+    net.rebuild(g);
+    // The rail tile does not bridge the two road stubs.
+    expect(net.findPath({ x: 2, z: 5 }, { x: 6, z: 5 })).toBeNull();
+    // No drivable edge ever covers the rail tile.
+    for (const e of net.getEdges()) {
+      for (const t of e.tiles) {
+        expect(g.roadTier[idx(size, t.x, t.z)]).not.toBe(RoadTier.RailTrack);
+      }
+    }
+  });
+});
+
 describe('RoadNetwork', () => {
   it('builds 2 nodes and 1 edge for a straight line', () => {
     const size = 12;

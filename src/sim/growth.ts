@@ -10,7 +10,7 @@
  * covered over many passes rather than rescanned every time.
  */
 import { inBounds, tileIndex } from '../shared/constants';
-import { BuildingState, FieldId, Problem, RoadTier, ZoneType } from '../shared/types';
+import { BuildingState, FieldId, Problem, ZoneType, isStreetTier } from '../shared/types';
 import type {
   BuildingCatalogEntry,
   BuildingDelta,
@@ -94,7 +94,7 @@ function hasNearbyRoad(g: GridState, x: number, z: number, radius: number): bool
       const tx = x + dx;
       const tz = z + dz;
       if (!inBounds(tx, tz)) continue;
-      if (readTile(g.roadTier, tileIndex(tx, tz)) !== RoadTier.None) return true;
+      if (isStreetTier(readTile(g.roadTier, tileIndex(tx, tz)))) return true;
     }
   }
   return false;

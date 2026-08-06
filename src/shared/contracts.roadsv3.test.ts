@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { RoadSpec } from './types';
-import { RoadTier } from './types';
+import { RoadTier, isStreetTier } from './types';
 import { MILESTONES } from './constants';
 import roadsData from '../data/roads.json';
 
@@ -34,10 +34,30 @@ describe('RoadTier v3 members (UI-SPEC §6.7 Roads v3)', () => {
     expect(RoadTier.FourLane).toBe(7);
   });
 
-  it('gains the roads-epic transit members at 8..10', () => {
+  it('gains the roads-epic transit members at 8..11', () => {
     expect(RoadTier.BusLane).toBe(8);
     expect(RoadTier.BikeLane).toBe(9);
     expect(RoadTier.Tram).toBe(10);
+    expect(RoadTier.RailTrack).toBe(11);
+  });
+
+  it('isStreetTier excludes None + RailTrack, includes every drivable tier', () => {
+    expect(isStreetTier(RoadTier.None)).toBe(false);
+    expect(isStreetTier(RoadTier.RailTrack)).toBe(false);
+    for (const t of [
+      RoadTier.TwoLane,
+      RoadTier.Avenue,
+      RoadTier.Highway,
+      RoadTier.Gravel,
+      RoadTier.Alley,
+      RoadTier.OneWay,
+      RoadTier.FourLane,
+      RoadTier.BusLane,
+      RoadTier.BikeLane,
+      RoadTier.Tram,
+    ]) {
+      expect(isStreetTier(t)).toBe(true);
+    }
   });
 
   it('all tier values fit the grid roadTier Uint8Array and stay unique', () => {
@@ -96,12 +116,28 @@ describe('RoadSpec v3 optional fields (UI-SPEC §6.7 Roads v3)', () => {
 });
 
 describe('roads.json catalog v3 (UI-SPEC §6.7 Roads v3)', () => {
-  it('holds exactly ten specs with unique tiers 1..10', () => {
-    expect(specs).toHaveLength(10);
-    expect(new Set(specs.map((s) => s.tier)).size).toBe(10);
+  it('holds exactly eleven specs with unique tiers 1..11', () => {
+    expect(specs).toHaveLength(11);
+    expect(new Set(specs.map((s) => s.tier)).size).toBe(11);
     expect([...specs.map((s) => s.tier)].sort((a, b) => a - b)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
     ]);
+  });
+
+  it('Rail Track (tier 11): dedicated heavy rail, unlock M4, paved + bidirectional spec fields', () => {
+    const rail = byTier(RoadTier.RailTrack);
+    expect(rail).toEqual({
+      tier: 11,
+      name: 'Rail Track',
+      costPerTile: 40,
+      upkeepPerTile: 0.8,
+      speed: 30,
+      capacity: 3000,
+      unlockMilestone: 4,
+    });
+    // Not drivable at the graph level (isStreetTier === false), but its spec
+    // stays a plain road spec — the exclusion lives in the sim, not the data.
+    expect(isStreetTier(RoadTier.RailTrack)).toBe(false);
   });
 
   it('Tram Track (tier 10): rail transit, unlock M3, paved + bidirectional', () => {
