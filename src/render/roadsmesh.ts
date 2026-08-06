@@ -1148,18 +1148,23 @@ function emitEndCapCurb(
   centerX: number,
   centerZ: number,
   coreHalf: number,
+  armDepth: number,
   vertical: boolean,
   outwardSign: 1 | -1,
   color: readonly [number, number, number],
   hAt: (x: number, z: number) => number,
 ): void {
-  // A sidewalk half-annulus wrapping the round cap, concentric with the bulb
-  // (center = the core's dead-end edge midpoint, radius = the cap's own
-  // coreHalf). It extends outward by a full sidewalk width, meeting the straight
-  // flank sidewalks at ±90° and rounding the tip past the tile edge into the
-  // open ground the dead end faces — one continuous half-circle wrap.
+  // A curb/sidewalk half-annulus wrapping the round cap, concentric with the
+  // bulb (center = the core's dead-end edge midpoint, radius = the cap's own
+  // coreHalf). Its band width matches the tier's STRAIGHT edge treatment
+  // (min(SIDEWALK_WIDTH_M, armDepth)) — a full sidewalk on narrow tiers, a thin
+  // shoulder curb on wide arterials/highways — so the cap never sprouts a
+  // sidewalk the straight run doesn't have. Meets the straight flank curbs at
+  // ±90° and rounds the tip past the tile edge into the open ground.
   const capRadius = coreHalf;
   if (capRadius <= 0) return;
+  const curbBand = Math.min(SIDEWALK_WIDTH_M, armDepth);
+  if (curbBand <= 0) return;
   const pivotAlong = outwardSign * coreHalf; // bulb center along the road axis
   // Local [x, z] of a point `r` out from the bulb center at sweep angle `a`.
   const point = (r: number, a: number): [number, number] => {
@@ -1178,11 +1183,11 @@ function emitEndCapCurb(
       pushVertex(positions, colors, wx, hAt(wx, wz) + CURB_Y_OFFSET, wz, color);
     }
   };
-  // A constant full-width band — NOT clamped to the tile edge. A dead end's
-  // bulb faces open ground (no road neighbor), so letting the wrap round the
-  // tip past the tile boundary keeps the sidewalk a smooth half-circle instead
-  // of a flat cut where it would otherwise hit the edge.
-  const rOut = capRadius + SIDEWALK_WIDTH_M;
+  // A constant-width band — NOT clamped to the tile edge. A dead end's bulb
+  // faces open ground (no road neighbor), so letting the wrap round the tip
+  // past the tile boundary keeps the curb a smooth half-circle instead of a
+  // flat cut where it would otherwise hit the edge.
+  const rOut = capRadius + curbBand;
   for (let i = 0; i < END_CAP_SEGMENTS; i++) {
     const a0 = -Math.PI / 2 + (Math.PI * i) / END_CAP_SEGMENTS;
     const a1 = -Math.PI / 2 + (Math.PI * (i + 1)) / END_CAP_SEGMENTS;
@@ -1195,6 +1200,78 @@ function emitEndCapCurb(
   }
 }
 
+
+/**
+ * Lane markings swept around a dead-end cap's half-circle — the cap analog of
+ * emitCurvedMarkings. Each symmetric marking-line pair at cross-offset ±o on the
+ * straight run becomes one arc of radius o about the cap's pivot (the core
+ * dead-end edge midpoint), joining the two straight lines around the rounded
+ * end. Highway's solid edge lines wrap the curb; avenue/four-lane wrap their
+ * double-center + dashed lane lines; a single centerline (offset 0, two-lane /
+ * one-way) has nothing to wrap; gravel/alley paint nothing. Forces up-facing
+ * tris for the single-sided road material; dashes by arc length.
+ */
+function emitEndCapMarkings(
+  positions: number[],
+  colors: number[],
+  tier: RoadTier,
+  centerX: number,
+  centerZ: number,
+  coreHalf: number,
+  vertical: boolean,
+  outwardSign: 1 | -1,
+  hAt: (x: number, z: number) => number,
+): void {
+  if (coreHalf <= 0) return;
+  const pivotAlong = outwardSign * coreHalf;
+  const point = (r: number, a: number): [number, number] => {
+    const along = pivotAlong + outwardSign * r * Math.cos(a);
+    const cross = r * Math.sin(a);
+    return vertical ? [cross, along] : [along, cross];
+  };
+  const pushTriUp = (p0: [number, number], p1: [number, number], p2: [number, number]): void => {
+    const cr = (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p1[1] - p0[1]) * (p2[0] - p0[0]);
+    const tri = cr > 0 ? [p0, p2, p1] : [p0, p1, p2];
+    for (const p of tri) {
+      const wx = centerX + p[0];
+      const wz = centerZ + p[1];
+      pushVertex(positions, colors, wx, hAt(wx, wz) + MARK_Y_OFFSET, wz, MARKING_COLOR);
+    }
+  };
+  const STEP_M = 0.6;
+  // One marking ribbon arc at radius r (a ±r straight pair joined around the
+  // half-circle), solid or dashed by arc length.
+  const arc = (r: number, dashed: boolean): void => {
+    if (r <= PAINT_HALF_WIDTH_M) return;
+    const rA = r - PAINT_HALF_WIDTH_M;
+    const rB = r + PAINT_HALF_WIDTH_M;
+    const arcLen = r * Math.PI; // full half-circle
+    const segs = dashed ? dashSegments(0, arcLen) : [[0, arcLen] as [number, number]];
+    for (const [s0, s1] of segs) {
+      const steps = Math.max(1, Math.ceil((s1 - s0) / STEP_M));
+      for (let k = 0; k < steps; k++) {
+        const aa = -Math.PI / 2 + (s0 + ((s1 - s0) * k) / steps) / r;
+        const ab = -Math.PI / 2 + (s0 + ((s1 - s0) * (k + 1)) / steps) / r;
+        pushTriUp(point(rA, aa), point(rB, aa), point(rA, ab));
+        pushTriUp(point(rA, ab), point(rB, aa), point(rB, ab));
+      }
+    }
+  };
+  switch (tier) {
+    case RoadTier.Highway:
+      arc(coreHalf - EDGE_LINE_MARGIN, false);
+      break;
+    case RoadTier.Avenue:
+    case RoadTier.FourLane:
+      arc(CENTER_LINE_OFFSET, false);
+      arc(coreHalf * LANE_LINE_OFFSET_FRACTION, true);
+      break;
+    default:
+      // TwoLane / OneWay: a single centerline at offset 0 — nothing to wrap.
+      // Gravel / Alley: unpainted.
+      break;
+  }
+}
 
 /** How far back into the paved tile the paved→gravel transition band reaches. */
 export const GRAVEL_SEAM_DEPTH_M = 2.6;
@@ -1891,11 +1968,17 @@ export function roadTileVertices(
         centerX,
         centerZ,
         coreHalf,
+        armDepth,
         vertical,
         outwardSign,
         SIDEWALK_COLOR,
         hAt,
       );
+    }
+    // Lane markings wrap the rounded end too (e.g. highway edge lines follow the
+    // curb around), so the paint doesn't stop dead at the cap base.
+    if (spec.paved) {
+      emitEndCapMarkings(positions, colors, tier, centerX, centerZ, coreHalf, vertical, outwardSign, hAt);
     }
   }
   // Turn tiles are fully drawn by emitCurvedTurn (curved carriageway + curved
