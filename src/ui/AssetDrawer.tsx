@@ -84,7 +84,9 @@ function CardPictogram({ card }: { card: AssetCard }): JSX.Element {
           ? 'bg-[#b8492f]'
           : card.id === 'road.bike'
             ? 'bg-[#268a44]'
-            : 'bg-[repeating-linear-gradient(90deg,#fff_0px,#fff_6px,transparent_6px,transparent_12px)]';
+            : card.id === 'road.tram'
+              ? 'bg-[repeating-linear-gradient(0deg,#b6b8bd_0px,#b6b8bd_2px,#4a4d53_2px,#4a4d53_7px)]'
+              : 'bg-[repeating-linear-gradient(90deg,#fff_0px,#fff_6px,transparent_6px,transparent_12px)]';
     return (
       <div
         className="flex h-11 items-center justify-center rounded-[6px] bg-[#2a2f36]"

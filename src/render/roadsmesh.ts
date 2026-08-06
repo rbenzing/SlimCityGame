@@ -51,6 +51,10 @@
  *   white centerline, plus a green edge strip each side and a periodic white
  *   bicycle pictogram (`emitColoredLaneBands`). Both transit variants paint
  *   their colored band on straight runs only; junctions/turns break it.
+ * - **Tram** (tier 10): two-lane-width shared street with two embedded steel
+ *   rails + periodic cross-tie sleepers down the centre (`emitTramTrack`), and
+ *   NO painted centerline (the rails are the centre). Track paints on straight
+ *   runs only; junctions/turns break it, same as the colored bands.
  *
  * Corner rounding: the turn-corner fillet
  * (`emitCornerFillet`) is
@@ -181,6 +185,8 @@ export const FOUR_LANE_HALF_WIDTH_FRACTION = laneFraction(4);
 export const BUS_LANE_HALF_WIDTH_FRACTION = laneFraction(4);
 /** Bike Lane: 3 lanes wide — two travel lanes plus a painted edge bike lane each side. */
 export const BIKE_LANE_HALF_WIDTH_FRACTION = laneFraction(3);
+/** Tram Track: a shared two-lane street with rails embedded down the centre. */
+export const TRAM_HALF_WIDTH_FRACTION = laneFraction(2);
 
 /** Gravel's dusty tan base color family, before per-tile jitter. */
 const GRAVEL_BASE_COLOR: readonly [number, number, number] = [0.62, 0.55, 0.42];
@@ -197,6 +203,20 @@ const ONE_WAY_COLOR: readonly [number, number, number] = [0.5, 0.5, 0.51];
 const FOUR_LANE_COLOR: readonly [number, number, number] = [0.6, 0.6, 0.61];
 /** Bus/Bike lanes reuse a mid asphalt base — the colored lane band is the differentiator, not the base shade. */
 const TRANSIT_LANE_COLOR: readonly [number, number, number] = [0.5, 0.5, 0.51];
+/** Tram rail: bright steel, distinctly lighter/metallic against asphalt (but below marking white). */
+const TRAM_RAIL_COLOR: readonly [number, number, number] = [0.7, 0.71, 0.74];
+/** Tram sleeper (cross-tie): dark creosote timber. */
+const TRAM_SLEEPER_COLOR: readonly [number, number, number] = [0.26, 0.22, 0.19];
+/** Track gauge (rail-to-rail); rails sit at ±half this from the centreline. */
+const TRAM_GAUGE_HALF_M = 0.75;
+/** Rail ribbon half-width + sleeper metrics. */
+const TRAM_RAIL_HALF_W_M = 0.07;
+const TRAM_SLEEPER_HALF_LEN_M = 1.15;
+const TRAM_SLEEPER_HALF_W_M = 0.16;
+const TRAM_SLEEPER_PERIOD_M = 1.6;
+/** Sleepers sit on the road; rails ride a hair above the sleepers, both below the marking layer. */
+const TRAM_SLEEPER_Y_OFFSET = ROAD_Y_OFFSET + 0.004;
+const TRAM_RAIL_Y_OFFSET = ROAD_Y_OFFSET + 0.012;
 /** Painted bus-lane surface (terracotta red — the universal transit-lane tint). */
 const BUS_LANE_PAINT_COLOR: readonly [number, number, number] = [0.6, 0.24, 0.18];
 /** Painted bike-lane surface (deep green). */
@@ -282,6 +302,13 @@ function tierSpec(tier: RoadTier): QuadSpec {
     case RoadTier.BikeLane:
       return {
         halfWidthFraction: BIKE_LANE_HALF_WIDTH_FRACTION,
+        color: TRANSIT_LANE_COLOR,
+        hasCurbs: true,
+        paved: true,
+      };
+    case RoadTier.Tram:
+      return {
+        halfWidthFraction: TRAM_HALF_WIDTH_FRACTION,
         color: TRANSIT_LANE_COLOR,
         hasCurbs: true,
         paved: true,
@@ -828,20 +855,123 @@ function emitBicycleGlyph(
   const wheelThick = 0.1;
   const rearHub = P(-0.62, 0);
   const frontHub = P(0.62, 0);
-  pushRing(positions, colors, centerX, centerZ, rearHub[0], rearHub[1], wheelR - wheelThick, wheelR, 12, MARK_Y_OFFSET, MARKING_COLOR, hAt);
-  pushRing(positions, colors, centerX, centerZ, frontHub[0], frontHub[1], wheelR - wheelThick, wheelR, 12, MARK_Y_OFFSET, MARKING_COLOR, hAt);
+  pushRing(
+    positions,
+    colors,
+    centerX,
+    centerZ,
+    rearHub[0],
+    rearHub[1],
+    wheelR - wheelThick,
+    wheelR,
+    12,
+    MARK_Y_OFFSET,
+    MARKING_COLOR,
+    hAt,
+  );
+  pushRing(
+    positions,
+    colors,
+    centerX,
+    centerZ,
+    frontHub[0],
+    frontHub[1],
+    wheelR - wheelThick,
+    wheelR,
+    12,
+    MARK_Y_OFFSET,
+    MARKING_COLOR,
+    hAt,
+  );
   const crank = P(0, 0);
   const saddle = P(-0.3, 0.62);
   const handle = P(0.62, 0.62);
   const ht = 0.06;
-  pushBar(positions, colors, centerX, centerZ, rearHub, crank, ht, MARK_Y_OFFSET, MARKING_COLOR, hAt); // chain stay
-  pushBar(positions, colors, centerX, centerZ, crank, saddle, ht, MARK_Y_OFFSET, MARKING_COLOR, hAt); // seat tube
-  pushBar(positions, colors, centerX, centerZ, saddle, handle, ht, MARK_Y_OFFSET, MARKING_COLOR, hAt); // top tube
-  pushBar(positions, colors, centerX, centerZ, handle, frontHub, ht, MARK_Y_OFFSET, MARKING_COLOR, hAt); // fork
-  pushBar(positions, colors, centerX, centerZ, crank, handle, ht, MARK_Y_OFFSET, MARKING_COLOR, hAt); // down tube
+  pushBar(
+    positions,
+    colors,
+    centerX,
+    centerZ,
+    rearHub,
+    crank,
+    ht,
+    MARK_Y_OFFSET,
+    MARKING_COLOR,
+    hAt,
+  ); // chain stay
+  pushBar(
+    positions,
+    colors,
+    centerX,
+    centerZ,
+    crank,
+    saddle,
+    ht,
+    MARK_Y_OFFSET,
+    MARKING_COLOR,
+    hAt,
+  ); // seat tube
+  pushBar(
+    positions,
+    colors,
+    centerX,
+    centerZ,
+    saddle,
+    handle,
+    ht,
+    MARK_Y_OFFSET,
+    MARKING_COLOR,
+    hAt,
+  ); // top tube
+  pushBar(
+    positions,
+    colors,
+    centerX,
+    centerZ,
+    handle,
+    frontHub,
+    ht,
+    MARK_Y_OFFSET,
+    MARKING_COLOR,
+    hAt,
+  ); // fork
+  pushBar(
+    positions,
+    colors,
+    centerX,
+    centerZ,
+    crank,
+    handle,
+    ht,
+    MARK_Y_OFFSET,
+    MARKING_COLOR,
+    hAt,
+  ); // down tube
   // Seat + handlebar cross-caps.
-  pushBar(positions, colors, centerX, centerZ, P(-0.46, 0.62), P(-0.14, 0.62), ht, MARK_Y_OFFSET, MARKING_COLOR, hAt);
-  pushBar(positions, colors, centerX, centerZ, P(0.46, 0.62), P(0.78, 0.62), ht, MARK_Y_OFFSET, MARKING_COLOR, hAt);
+  pushBar(
+    positions,
+    colors,
+    centerX,
+    centerZ,
+    P(-0.46, 0.62),
+    P(-0.14, 0.62),
+    ht,
+    MARK_Y_OFFSET,
+    MARKING_COLOR,
+    hAt,
+  );
+  pushBar(
+    positions,
+    colors,
+    centerX,
+    centerZ,
+    P(0.46, 0.62),
+    P(0.78, 0.62),
+    ht,
+    MARK_Y_OFFSET,
+    MARKING_COLOR,
+    hAt,
+  );
 }
 
 /**
@@ -912,6 +1042,71 @@ function emitColoredLaneBands(
       if (isBus) emitTransitDiamond(positions, colors, centerX, centerZ, vertical, across, hAt);
       else emitBicycleGlyph(positions, colors, centerX, centerZ, vertical, across, hAt);
     }
+  }
+}
+
+/**
+ * Embedded tram track for a straight Tram run along one travel axis: two steel
+ * rails at ±TRAM_GAUGE_HALF_M down the tile centreline plus periodic cross-tie
+ * sleepers under them. Sleeper phase is anchored at GLOBAL world-meter 0 (like
+ * the dash pattern) so ties line up continuously across tile/chunk seams. Drawn
+ * on straight runs only (junctions/turns break the track, matching R2's colored
+ * bands); the Tram tier has no painted centerline — the rails ARE the centre.
+ */
+function emitTramTrack(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  vertical: boolean,
+  lo: number,
+  hi: number,
+  hAt: (x: number, z: number) => number,
+): void {
+  // rect in (along, across) space -> world, mapping the perpendicular axis.
+  const rect = (
+    a0: number,
+    a1: number,
+    c0: number,
+    c1: number,
+    yOff: number,
+    color: readonly [number, number, number],
+  ): void => {
+    if (vertical)
+      pushLocalRect(positions, colors, centerX, centerZ, c0, c1, a0, a1, yOff, color, hAt);
+    else pushLocalRect(positions, colors, centerX, centerZ, a0, a1, c0, c1, yOff, color, hAt);
+  };
+
+  // Sleepers first (below), spanning across both rails, at global-anchored phase.
+  const originGlobal = vertical ? centerZ : centerX;
+  const gLo = originGlobal + lo;
+  const gHi = originGlobal + hi;
+  for (
+    let k = Math.ceil(gLo / TRAM_SLEEPER_PERIOD_M);
+    k <= Math.floor(gHi / TRAM_SLEEPER_PERIOD_M);
+    k++
+  ) {
+    const a = k * TRAM_SLEEPER_PERIOD_M - originGlobal;
+    rect(
+      a - TRAM_SLEEPER_HALF_W_M,
+      a + TRAM_SLEEPER_HALF_W_M,
+      -TRAM_SLEEPER_HALF_LEN_M,
+      TRAM_SLEEPER_HALF_LEN_M,
+      TRAM_SLEEPER_Y_OFFSET,
+      TRAM_SLEEPER_COLOR,
+    );
+  }
+
+  // Two continuous rails on top.
+  for (const off of [TRAM_GAUGE_HALF_M, -TRAM_GAUGE_HALF_M]) {
+    rect(
+      lo,
+      hi,
+      off - TRAM_RAIL_HALF_W_M,
+      off + TRAM_RAIL_HALF_W_M,
+      TRAM_RAIL_Y_OFFSET,
+      TRAM_RAIL_COLOR,
+    );
   }
 }
 
@@ -2261,6 +2456,8 @@ export function roadTileVertices(
             zHi,
             hAt,
           );
+        if (tier === RoadTier.Tram)
+          emitTramTrack(positions, colors, centerX, centerZ, true, zLo, zHi, hAt);
       }
       if (hasHorizontal) {
         const xLo = hasW ? -TILE_HALF : -coreHalf;
@@ -2293,6 +2490,8 @@ export function roadTileVertices(
             xHi,
             hAt,
           );
+        if (tier === RoadTier.Tram)
+          emitTramTrack(positions, colors, centerX, centerZ, false, xLo, xHi, hAt);
       }
 
       // One-Way direction arrows: every ARROW_PERIOD_TILES-th tile by GLOBAL

@@ -50,6 +50,8 @@ export const RoadTier = {
   // same 1-tile model). Append only; persisted as roadTier bytes.
   BusLane: 8,
   BikeLane: 9,
+  // Roads epic R3 — tram track (embedded rails on a shared street).
+  Tram: 10,
 } as const;
 export type RoadTier = (typeof RoadTier)[keyof typeof RoadTier];
 
@@ -537,6 +539,8 @@ export type ToolId =
   // Roads epic R2 — transit lane variants.
   | 'road.bus'
   | 'road.bike'
+  // Roads epic R3 — tram track.
+  | 'road.tram'
   | 'zone.resLow'
   | 'zone.resHigh'
   | 'zone.comLow'

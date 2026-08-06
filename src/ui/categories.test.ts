@@ -85,6 +85,7 @@ describe('subTabsFor', () => {
     expect(tabs.find((t) => t.id === 'transit')?.cards.map((c) => c.id)).toEqual([
       'road.bike',
       'road.bus',
+      'road.tram',
     ]);
   });
 
@@ -101,6 +102,12 @@ describe('subTabsFor', () => {
       name: 'Bike Lane',
       cost: 28,
       unlockMilestone: 1,
+    });
+    expect(cards.find((c) => c.id === 'road.tram')).toEqual({
+      id: 'road.tram',
+      name: 'Tram Track',
+      cost: 70,
+      unlockMilestone: 3,
     });
   });
 

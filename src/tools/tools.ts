@@ -122,6 +122,8 @@ const ROAD_TOOL_TO_TIER: Record<string, RoadTier> = {
   // Transit lane variants (roads epic R2).
   'road.bus': RoadTierValue.BusLane,
   'road.bike': RoadTierValue.BikeLane,
+  // Tram track (roads epic R3).
+  'road.tram': RoadTierValue.Tram,
 };
 
 /** The 'terraform' Command's mode field (shared/types.ts), named locally for readability. */

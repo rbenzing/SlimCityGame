@@ -151,6 +151,45 @@ describe('roadTileVertices — transit lane variants (Bus Lane / Bike Lane)', ()
   });
 });
 
+describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
+  const isRail = (t: readonly number[]): boolean => {
+    const [r, g, b] = t as [number, number, number];
+    return r > 0.66 && r < 0.78 && Math.abs(r - g) < 0.05 && Math.abs(g - b) < 0.05;
+  };
+  const isSleeper = (t: readonly number[]): boolean => {
+    const [r, g, b] = t as [number, number, number];
+    return r > 0.2 && r < 0.34 && r > g && g >= b;
+  };
+
+  it('embeds two steel rails + cross-tie sleepers on a straight run', () => {
+    const { colors } = roadTileVertices(0, 0, RoadTier.Tram, N | S, flatHeightAt);
+    expect(countWhere(colors, isRail)).toBeGreaterThan(0);
+    expect(countWhere(colors, isSleeper)).toBeGreaterThan(0);
+  });
+
+  it('has NO painted centerline on a straight run (the rails are the centre)', () => {
+    const { colors } = roadTileVertices(0, 0, RoadTier.Tram, N | S, flatHeightAt);
+    expect(countWhere(colors, isMarkingWhite)).toBe(0);
+  });
+
+  it('breaks the track at junctions (rails stop at crossings)', () => {
+    const straight = roadTileVertices(0, 0, RoadTier.Tram, N | S, flatHeightAt);
+    const junction = roadTileVertices(0, 0, RoadTier.Tram, N | E | S | W, flatHeightAt);
+    expect(countWhere(straight.colors, isRail)).toBeGreaterThan(0);
+    expect(countWhere(junction.colors, isRail)).toBe(0);
+  });
+
+  it('rides a two-lane-width carriageway and is deterministic', () => {
+    expect(carriagewayHalfWidthMeters(RoadTier.Tram)).toBeCloseTo(
+      carriagewayHalfWidthMeters(RoadTier.TwoLane),
+    );
+    const a = roadTileVertices(3, 4, RoadTier.Tram, N | S, flatHeightAt);
+    const b = roadTileVertices(3, 4, RoadTier.Tram, N | S, flatHeightAt);
+    expect(a.positions).toEqual(b.positions);
+    expect(a.colors).toEqual(b.colors);
+  });
+});
+
 describe('roadTileVertices — asphalt base plate', () => {
   it('returns no geometry for RoadTier.None, regardless of mask', () => {
     for (const mask of [0, 15]) {

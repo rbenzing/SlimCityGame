@@ -34,9 +34,10 @@ describe('RoadTier v3 members (UI-SPEC §6.7 Roads v3)', () => {
     expect(RoadTier.FourLane).toBe(7);
   });
 
-  it('gains the roads-epic transit lane members at 8..9', () => {
+  it('gains the roads-epic transit members at 8..10', () => {
     expect(RoadTier.BusLane).toBe(8);
     expect(RoadTier.BikeLane).toBe(9);
+    expect(RoadTier.Tram).toBe(10);
   });
 
   it('all tier values fit the grid roadTier Uint8Array and stay unique', () => {
@@ -95,12 +96,27 @@ describe('RoadSpec v3 optional fields (UI-SPEC §6.7 Roads v3)', () => {
 });
 
 describe('roads.json catalog v3 (UI-SPEC §6.7 Roads v3)', () => {
-  it('holds exactly nine specs with unique tiers 1..9', () => {
-    expect(specs).toHaveLength(9);
-    expect(new Set(specs.map((s) => s.tier)).size).toBe(9);
+  it('holds exactly ten specs with unique tiers 1..10', () => {
+    expect(specs).toHaveLength(10);
+    expect(new Set(specs.map((s) => s.tier)).size).toBe(10);
     expect([...specs.map((s) => s.tier)].sort((a, b) => a - b)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
     ]);
+  });
+
+  it('Tram Track (tier 10): rail transit, unlock M3, paved + bidirectional', () => {
+    const tram = byTier(RoadTier.Tram);
+    expect(tram).toEqual({
+      tier: 10,
+      name: 'Tram Track',
+      costPerTile: 70,
+      upkeepPerTile: 1.3,
+      speed: 16,
+      capacity: 1900,
+      unlockMilestone: 3,
+    });
+    expect(tram?.surface).toBeUndefined();
+    expect(tram?.oneWay).toBeUndefined();
   });
 
   it('Bus Lane (tier 8): transit-priority, unlock M2, above avenue in cost + capacity', () => {
