@@ -304,7 +304,32 @@ white lane markings reused from an existing tier:
   Both variants are paved, bidirectional, curbed — carriageway half-widths
   flow through `carriagewayHalfWidthMeters`, so lamps/furniture/vehicles place
   correctly with no per-tier edits. UI: a new **Transit Lanes** roads sub-tab.
-- Next in the epic (later stages): trams (R3), trains (R4), cosmetic-first.
+**Roads epic R3 — tram track (user "start R3" 2026-08-06):**
+
+- **Tram Track** (tier 10) — ¢70/tile, unlock M3, capacity 1900: a two-lane-
+  width shared street with two embedded steel rails at a 1.5m gauge plus
+  periodic cross-tie sleepers down the centre (`emitTramTrack`), and NO painted
+  centerline (the rails are the centre). Sleeper phase is anchored at global
+  world-meter 0 so ties line up across tile/chunk seams. Track paints on
+  straight runs only and breaks at junctions/turns, like the R2 bands.
+
+**Roads epic R4 — dedicated rail line (user "start R4" 2026-08-06):**
+
+- **Rail Track** (tier 11) — ¢40/tile, unlock M4: a dedicated heavy-rail line —
+  a dark ballast bed (`paved: false`, no curbs/markings/crosswalks) carrying
+  the same `emitTramTrack` rails + sleepers on a narrower (gravel-class)
+  corridor. Emitted outside the `spec.paved` gate so it fires on the unpaved
+  bed.
+- Rail is present on the grid (blocks building) but is NOT a street. A shared
+  `isStreetTier(tier)` helper (`src/shared/types.ts`, excludes None + RailTrack)
+  gates it out of every functional road system: the drivable vehicle graph
+  (`buildGraph` via a street-only `computeDrivableMask`, so cosmetic cars,
+  service vehicles, garbage trucks, and the traffic field never route onto
+  rail), pathfinding (`edgeTraversable` backstop), road-carried utilities
+  (power/water conduction), and zoning frontage / growth road-access / service
+  coverage. The render mask is unchanged, so rail still abuts roads as a level
+  crossing. UI: joins the **Transit Lanes** sub-tab.
+- Roads epic complete: R1 furniture kit → R2 bus/bike lanes → R3 tram → R4 rail.
 
 ### 6.8 Vehicle kit (reference screenshot 7, low-poly vehicle set)
 
