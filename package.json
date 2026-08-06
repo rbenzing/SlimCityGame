@@ -1,6 +1,6 @@
 {
   "name": "slimcity",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "SlimCity — a small-form-factor city builder in the browser, built on Three.js as an engine showcase.",

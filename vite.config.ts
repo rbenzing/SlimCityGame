@@ -3,7 +3,10 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
-export default defineConfig({
+// GitHub Pages serves this project site under /CitySim/, so the production
+// build needs that base for correct asset URLs. Dev + Playwright stay at '/'.
+export default defineConfig(({ mode }) => ({
+  base: mode === 'production' ? '/CitySim/' : '/',
   plugins: [react(), tailwindcss()],
   build: {
     target: 'esnext',
@@ -37,4 +40,4 @@ export default defineConfig({
     // shares the test file's vitest module graph.
     server: { deps: { inline: ['@testing-library/jest-dom'] } },
   },
-});
+}));
