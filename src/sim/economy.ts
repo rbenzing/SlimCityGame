@@ -19,6 +19,7 @@ import type {
 } from '../shared/types';
 import { BuildingState, FieldId, RoadTier } from '../shared/types';
 import {
+  LANDFILL_UPKEEP_PER_TILE,
   LOAN_MONTHLY_INTEREST,
   MAP_TILES,
   MAX_LOAN,
@@ -230,8 +231,14 @@ export class EconomySystem {
         if (spec) roadUpkeep += spec.upkeepPerTile * count;
       }
 
+      // Landfill: monthly upkeep scales with the painted area.
+      let landfillUpkeep = 0;
+      for (let i = 0; i < MAP_TILES; i++) {
+        if (g.landfill[i] === 1) landfillUpkeep += LANDFILL_UPKEEP_PER_TILE;
+      }
+
       const loanInterest = stats.loanBalance * LOAN_MONTHLY_INTEREST;
-      const expenses = buildingUpkeep + roadUpkeep + loanInterest;
+      const expenses = buildingUpkeep + roadUpkeep + landfillUpkeep + loanInterest;
 
       funds += income - expenses;
       statsPatch.monthlyIncome = income;

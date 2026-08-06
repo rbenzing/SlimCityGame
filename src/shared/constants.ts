@@ -154,3 +154,24 @@ export const MAX_WATER_DEPTH_VIS = 12;
  * draw the waterline, giving every coast a drawn edge.
  */
 export const SHORELINE_BAND_METERS = 0.4;
+
+// --- garbage & waste (§21) --------------------------------------------------
+/** Ticks between garbage generation + collection passes (staggered like the other periodic sim work). */
+export const GARBAGE_PERIOD = 10;
+export const GARBAGE_OFFSET = 5;
+/** Trash units an active building adds per pass, by sector, before its level multiplier. */
+export const TRASH_EMIT_RES = 2;
+export const TRASH_EMIT_COM = 4;
+export const TRASH_EMIT_IND = 8;
+/** Per-tile uncollected-trash value is clamped to this (matches the 0..255 lens byte). */
+export const TRASH_TILE_MAX = 255;
+/** Trash units one landfill tile holds before it's full; area capacity = tiles × this. */
+export const LANDFILL_CAPACITY_PER_TILE = 600;
+/** Road-BFS tile radius a landfill services — generous, so one covers a small/medium city. */
+export const LANDFILL_COLLECTION_RANGE = 28;
+/** ¢ to paint one landfill tile. */
+export const LANDFILL_PAINT_COST_PER_TILE = 40;
+/** ¢/month upkeep per painted landfill tile. */
+export const LANDFILL_UPKEEP_PER_TILE = 3;
+/** Rendered trash-pile height (m) at a full landfill tile. */
+export const LANDFILL_MAX_PILE_METERS = 6;

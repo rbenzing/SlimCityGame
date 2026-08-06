@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { allCardsFor, CATEGORY_DEFS, catalogEntryForTool, subTabsFor } from './categories';
+import { LANDFILL_PAINT_COST_PER_TILE } from '../shared/constants';
 
 describe('CATEGORY_DEFS', () => {
   it('lists the ten UI-SPEC §2 categories plus §6.11 Landscaping and the §11/§13 Transit + Districts categories, in order', () => {
@@ -156,7 +157,7 @@ describe('subTabsFor', () => {
     });
   });
 
-  it('Landscaping (UI-SPEC §6.11) is a single flat group of the four real terraform tools', () => {
+  it('Landscaping (UI-SPEC §6.11) is a single flat group of the four terraform tools + the landfill brush', () => {
     const tabs = subTabsFor('landscaping');
     expect(tabs).toHaveLength(1);
     expect(tabs[0]?.cards).toEqual([
@@ -164,6 +165,8 @@ describe('subTabsFor', () => {
       { id: 'terraform.lower', name: 'Lower', cost: 0, unlockMilestone: 0 },
       { id: 'terraform.level', name: 'Level', cost: 0, unlockMilestone: 0 },
       { id: 'terraform.smooth', name: 'Smooth', cost: 0, unlockMilestone: 0 },
+      // §21 garbage: the landfill-area brush lives in Landscaping for now.
+      { id: 'landfill.paint', name: 'Landfill', cost: LANDFILL_PAINT_COST_PER_TILE, unlockMilestone: 1 },
     ]);
   });
 });

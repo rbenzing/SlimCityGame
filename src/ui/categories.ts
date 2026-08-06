@@ -7,6 +7,7 @@ import catalogData from '../data/catalog.json';
 import roadsData from '../data/roads.json';
 import type { BuildingCatalogEntry, RoadSpec, RoadTier, ToolId } from '../shared/types';
 import { RoadTier as RoadTierValue } from '../shared/types';
+import { LANDFILL_PAINT_COST_PER_TILE } from '../shared/constants';
 import type { IconName } from './icons';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
@@ -144,6 +145,14 @@ const DISTRICT_PAINT_CARD: AssetCard = {
   unlockMilestone: 0,
 };
 
+/** Landfill area brush (paints GridState.landfill); cost is per painted tile. */
+const LANDFILL_PAINT_CARD: AssetCard = {
+  id: 'landfill.paint',
+  name: 'Landfill',
+  cost: LANDFILL_PAINT_COST_PER_TILE,
+  unlockMilestone: 1,
+};
+
 /**
  * The four real terraform brushes. Zero cost/unlockMilestone, same reasoning
  * as zone cards — a terraform stroke's real charge depends on the volume
@@ -257,7 +266,9 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
   // Districts: the paint tool (district selection + policies live in the DistrictPanel).
   districts: [{ id: 'all', label: 'Districts', cards: [DISTRICT_PAINT_CARD] }],
   bulldoze: [{ id: 'all', label: 'Bulldoze', cards: [BULLDOZE_CARD] }],
-  landscaping: [{ id: 'all', label: 'Landscaping', cards: TERRAFORM_CARDS }],
+  landscaping: [
+    { id: 'all', label: 'Landscaping', cards: [...TERRAFORM_CARDS, LANDFILL_PAINT_CARD] },
+  ],
 };
 
 /** Non-empty sub-tab groups for a category. Length <= 1 means "no tab row — one flat grid". */

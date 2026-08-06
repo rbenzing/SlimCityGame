@@ -81,7 +81,10 @@ export function coverageColor(value: number): [number, number, number] {
   return value > 0 ? [...COVERAGE_COVERED] : [...COVERAGE_UNCOVERED];
 }
 
-export type CoverageKind = 'power' | 'watered';
+export type CoverageKind = 'power' | 'watered' | 'trash';
+
+/** Coverage kinds painted as a graded 0..255 heatmap (rampColor) rather than the two-tone on/off ramp. */
+const GRADED_COVERAGE: ReadonlySet<CoverageKind> = new Set<CoverageKind>(['trash']);
 
 export class OverlayRenderer {
   private readonly mesh: THREE.Mesh;
@@ -91,6 +94,7 @@ export class OverlayRenderer {
   private readonly coverageCache: Record<CoverageKind, Uint8Array> = {
     power: new Uint8Array(MAP_SIZE * MAP_SIZE),
     watered: new Uint8Array(MAP_SIZE * MAP_SIZE),
+    trash: new Uint8Array(MAP_SIZE * MAP_SIZE),
   };
 
   constructor(scene: THREE.Scene) {
@@ -203,14 +207,16 @@ export class OverlayRenderer {
   }
 
   private isCoverageKind(lens: LensId): lens is CoverageKind {
-    return lens === 'power' || lens === 'watered';
+    return lens === 'power' || lens === 'watered' || lens === 'trash';
   }
 
   private paintCoverage(kind: CoverageKind): void {
     const cache = this.coverageCache[kind];
+    const graded = GRADED_COVERAGE.has(kind);
     const count = MAP_SIZE * MAP_SIZE;
     for (let i = 0; i < count; i++) {
-      const [r, g, b] = coverageColor(cache[i] ?? 0);
+      const value = cache[i] ?? 0;
+      const [r, g, b] = graded ? rampColor(value) : coverageColor(value);
       const base = i * 4;
       this.textureData[base] = Math.round(r * 255);
       this.textureData[base + 1] = Math.round(g * 255);

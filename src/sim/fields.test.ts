@@ -18,6 +18,7 @@ function makeGrid(): GridState {
     watered: new Uint8Array(MAP_TILES),
     fields: Array.from({ length: FIELD_COUNT }, () => new Uint8Array(MAP_TILES)),
     district: new Uint8Array(MAP_TILES),
+    landfill: new Uint8Array(MAP_TILES),
   };
 }
 

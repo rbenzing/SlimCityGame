@@ -75,6 +75,7 @@ function makeGrid(n: number): GridState {
     watered: new Uint8Array(n * n),
     fields: Array.from({ length: FIELD_COUNT }, () => new Uint8Array(n * n)),
     district: new Uint8Array(n * n),
+    landfill: new Uint8Array(n * n),
   };
 }
 

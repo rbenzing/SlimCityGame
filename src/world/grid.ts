@@ -61,6 +61,7 @@ export function createGrid(size?: number): GridState {
     watered: new Uint8Array(n),
     fields,
     district: new Uint8Array(n),
+    landfill: new Uint8Array(n),
   };
 }
 
@@ -73,12 +74,14 @@ export function createGrid(size?: number): GridState {
 // ---------------------------------------------------------------------------
 
 const HEADER_BYTES = 8; // uint32 version + uint32 size
-// SAVE_VERSION 2 layout: 4 (height) + 4 (buildingId) + 17 single-byte layers
+// SAVE_VERSION 3 layout: 4 (height) + 4 (buildingId) + 18 single-byte layers
 // (7 flat: water/trees/zone/roadTier/roadMask/power/watered) + 9 fields + 1
-// district (trailing).
-const BYTES_PER_TILE = 25;
-// SAVE_VERSION 1 predates the trailing district layer, so it is exactly one
-// byte-per-tile smaller. deserializeGrid accepts it and defaults district to 0.
+// district + 1 landfill (both trailing).
+const BYTES_PER_TILE = 26;
+// v2 has the trailing district layer but not landfill (one byte-per-tile
+// smaller); v1 predates both (two smaller). deserializeGrid accepts both and
+// defaults the absent trailing layer(s) to 0.
+const BYTES_PER_TILE_V2 = 25;
 const BYTES_PER_TILE_V1 = 24;
 
 function bufferBytesFor(size: number, bytesPerTile: number = BYTES_PER_TILE): number {
@@ -127,9 +130,12 @@ export function serializeGrid(g: GridState): ArrayBuffer {
     offset += n;
   }
 
-  // District layer — trailing (SAVE_VERSION 2). Placed last so a v1 buffer
-  // is simply this buffer without these final n bytes (see deserializeGrid).
+  // Trailing additive layers, in version order: district (v2), then landfill
+  // (v3). Placed last so an older buffer is simply this buffer without its final
+  // n bytes per absent layer (see deserializeGrid).
   bytes.set(g.district, offset);
+  offset += n;
+  bytes.set(g.landfill, offset);
 
   return buffer;
 }
@@ -137,18 +143,25 @@ export function serializeGrid(g: GridState): ArrayBuffer {
 export function deserializeGrid(buf: ArrayBuffer): GridState {
   const view = new DataView(buf);
   const version = view.getUint32(0, true);
-  // SAVE_VERSION 2 is current; v1 is accepted for migration — it is identical
-  // except it lacks the trailing per-tile district layer (defaulted to 0 here).
-  if (version !== SAVE_VERSION && version !== 1) {
+  // SAVE_VERSION 3 is current; v1 and v2 are accepted for migration — they are
+  // identical except for the trailing district (v2+) and landfill (v3+) layers,
+  // each defaulted to 0 here when absent.
+  if (version !== SAVE_VERSION && version !== 2 && version !== 1) {
     throw new Error(
       `deserializeGrid: unsupported save version ${version} (expected ${SAVE_VERSION})`,
     );
   }
   const hasDistrict = version >= 2;
+  const hasLandfill = version >= 3;
 
   const size = view.getUint32(4, true);
   const n = size * size;
-  const expectedBytes = bufferBytesFor(size, hasDistrict ? BYTES_PER_TILE : BYTES_PER_TILE_V1);
+  const bytesPerTile = hasLandfill
+    ? BYTES_PER_TILE
+    : hasDistrict
+      ? BYTES_PER_TILE_V2
+      : BYTES_PER_TILE_V1;
+  const expectedBytes = bufferBytesFor(size, bytesPerTile);
   if (buf.byteLength !== expectedBytes) {
     throw new Error(
       `deserializeGrid: buffer length ${buf.byteLength} does not match expected ${expectedBytes} for size ${size}`,
@@ -194,6 +207,9 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
 
   // District layer (v2+). v1 buffers stop here — district defaults to 0.
   const district = hasDistrict ? bytes.slice(offset, offset + n) : new Uint8Array(n);
+  if (hasDistrict) offset += n;
+  // Landfill layer (v3+). v1/v2 buffers stop here — landfill defaults to 0.
+  const landfill = hasLandfill ? bytes.slice(offset, offset + n) : new Uint8Array(n);
 
   return {
     size,
@@ -208,6 +224,7 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
     watered,
     fields,
     district,
+    landfill,
   };
 }
 

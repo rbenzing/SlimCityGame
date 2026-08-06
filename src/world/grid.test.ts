@@ -71,6 +71,7 @@ function fillDeterministic(g: GridState): void {
     g.power[i] = i % 2;
     g.watered[i] = (i + 1) % 2;
     g.district[i] = (i * 7) % 256;
+    g.landfill[i] = i % 4 === 0 ? 1 : 0;
     for (let f = 0; f < g.fields.length; f++) {
       const layer = g.fields[f];
       if (layer) layer[i] = (i + f * 13) % 256;
@@ -98,6 +99,7 @@ describe('serializeGrid / deserializeGrid', () => {
     expect(Array.from(back.power)).toEqual(Array.from(g.power));
     expect(Array.from(back.watered)).toEqual(Array.from(g.watered));
     expect(Array.from(back.district)).toEqual(Array.from(g.district));
+    expect(Array.from(back.landfill)).toEqual(Array.from(g.landfill));
     expect(back.fields.length).toBe(g.fields.length);
     for (let f = 0; f < g.fields.length; f++) {
       expect(Array.from(back.fields[f]!)).toEqual(Array.from(g.fields[f]!));
@@ -134,23 +136,25 @@ describe('serializeGrid / deserializeGrid', () => {
     expect(() => deserializeGrid(buf)).toThrow();
   });
 
-  it('migrates a v1 buffer (no district layer) — loads with district all-zero, other layers intact', () => {
-    // Build a v2 grid, serialize it, then synthesize the equivalent v1 buffer
-    // by (a) stamping the version to 1 and (b) truncating the trailing district
-    // layer (n bytes). deserializeGrid must accept it and default district to 0.
+  it('migrates a v1 buffer (no district/landfill layers) — loads them all-zero, other layers intact', () => {
+    // Synthesize a v1 buffer from the current serialize by (a) stamping the
+    // version to 1 and (b) truncating BOTH trailing layers (district + landfill,
+    // 2n bytes). deserializeGrid must accept it and default both to 0.
     const size = 5;
     const n = size * size;
     const g = createGrid(size);
     fillDeterministic(g);
-    const v2 = serializeGrid(g);
+    const cur = serializeGrid(g); // current version: trailing district + landfill
 
-    const v1 = v2.slice(0, v2.byteLength - n); // drop the trailing district bytes
+    const v1 = cur.slice(0, cur.byteLength - 2 * n); // drop trailing district + landfill
     new DataView(v1).setUint32(0, 1, true); // stamp version 1
 
     const back = deserializeGrid(v1);
     expect(back.size).toBe(size);
     expect(back.district.length).toBe(n);
     expect(back.district.every((v) => v === 0)).toBe(true); // defaulted
+    expect(back.landfill.length).toBe(n);
+    expect(back.landfill.every((v) => v === 0)).toBe(true); // defaulted
     // Every pre-district layer still round-trips.
     expect(Array.from(back.height)).toEqual(Array.from(g.height));
     expect(Array.from(back.zone)).toEqual(Array.from(g.zone));
@@ -159,6 +163,25 @@ describe('serializeGrid / deserializeGrid', () => {
     for (let f = 0; f < g.fields.length; f++) {
       expect(Array.from(back.fields[f]!)).toEqual(Array.from(g.fields[f]!));
     }
+  });
+
+  it('migrates a v2 buffer (district but no landfill layer) — loads landfill all-zero, district intact', () => {
+    // Drop only the trailing landfill layer (n bytes) from the current serialize
+    // and stamp version 2: district must survive, landfill defaults to 0.
+    const size = 5;
+    const n = size * size;
+    const g = createGrid(size);
+    fillDeterministic(g);
+    const cur = serializeGrid(g);
+
+    const v2 = cur.slice(0, cur.byteLength - n); // drop the trailing landfill bytes
+    new DataView(v2).setUint32(0, 2, true); // stamp version 2
+
+    const back = deserializeGrid(v2);
+    expect(back.size).toBe(size);
+    expect(Array.from(back.district)).toEqual(Array.from(g.district)); // survives
+    expect(back.landfill.length).toBe(n);
+    expect(back.landfill.every((v) => v === 0)).toBe(true); // defaulted
   });
 
   it('rejects a buffer whose length does not match its declared size', () => {

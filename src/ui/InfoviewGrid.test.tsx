@@ -16,9 +16,9 @@ afterEach(() => {
 });
 
 describe('InfoviewGrid', () => {
-  it('renders a button per FieldId lens (9) plus Power, Watered, Transit, Districts and None (14 total), None active by default', () => {
+  it('renders a button per FieldId lens (9) plus Power, Watered, Trash, Transit, Districts and None (15 total), None active by default', () => {
     render(<InfoviewGrid />);
-    expect(screen.getAllByRole('button')).toHaveLength(14);
+    expect(screen.getAllByRole('button')).toHaveLength(15);
     expect(screen.getByRole('button', { name: /None/ })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: /Traffic/ })).toHaveAttribute(
       'aria-pressed',
@@ -43,6 +43,15 @@ describe('InfoviewGrid', () => {
     render(<InfoviewGrid />);
     fireEvent.click(screen.getByRole('button', { name: /^Water$/ }));
     expect(useCityStore.getState().overlay).toBe('watered');
+  });
+
+  it('renders a Trash lens button that sets overlay to the "trash" LensId (SPEC §21)', () => {
+    render(<InfoviewGrid />);
+    const trash = screen.getByRole('button', { name: /^Trash$/ });
+    expect(trash).toBeInTheDocument();
+    fireEvent.click(trash);
+    expect(useCityStore.getState().overlay).toBe('trash');
+    expect(screen.getByRole('button', { name: /^Trash$/ })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('clicking a lens activates that overlay and highlights it', () => {

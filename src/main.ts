@@ -61,6 +61,7 @@ import {
 import { PedestrianRenderer, type StopIdleInput } from './render/pedestrians';
 import { ServiceVehicleRenderer } from './render/servicevehicles';
 import { DistrictsRenderer } from './render/districts';
+import { LandfillRenderer } from './render/landfill';
 import { PhotoModeController } from './render/photomode';
 import { StatsHistory } from './ui/statshistory';
 import { GhostRenderer, type GhostKind, type SetPreviewOptions } from './render/ghosts';
@@ -150,6 +151,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const transitRenderer = new TransitRenderer(world.scene, heightAt);
   const serviceVehicles = new ServiceVehicleRenderer(world.scene, heightAt);
   const districtsRenderer = new DistrictsRenderer(world.scene, heightAt);
+  const landfillRenderer = new LandfillRenderer(world.scene, heightAt);
   const overlays = new OverlayRenderer(world.scene);
   const idPicker = new IdPicker();
 
@@ -663,6 +665,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (snap.districts) {
       districtsRenderer.applyDistrictPatches(snap.districts.patches, snap.districts.defs);
       if (snap.districts.defs.length > 0) state.setDistricts(snap.districts.defs);
+    }
+    // Garbage: landfill-area tint + trash piles, and feed the 'trash' coverage lens.
+    if (snap.garbage) {
+      landfillRenderer.apply(snap.garbage);
+      if (snap.garbage.trash) overlays.setCoverage('trash', snap.garbage.trash);
     }
   };
 

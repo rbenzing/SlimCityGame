@@ -18,6 +18,9 @@ import {
   TICK_MS,
   TICK_RATE,
   SNAPSHOT_HZ,
+  GARBAGE_PERIOD,
+  GARBAGE_OFFSET,
+  LANDFILL_PAINT_COST_PER_TILE,
   inBounds,
   tileIndex,
 } from '../shared/constants';
@@ -87,6 +90,8 @@ import { TransitSystem, type PopulationJobsAccessor, type TransitTickResult } fr
 import { DispatchSystem, MAX_SERVICE_VEHICLES } from './dispatch';
 import { PolicyStore, effectivePollution, trafficWeight } from './policy';
 import { paintDistrict } from '../world/districts';
+import { canLandfill, paintLandfill } from '../world/landfill';
+import { GarbageSystem, type GarbageBuilding, type TrashSector } from './garbage';
 import { encodeSave, decodeSave } from '../app/persist';
 
 /** Packed-hex palette for auto-created district defs (id 1..255 cycle through these). */
@@ -286,6 +291,10 @@ class SimWorld implements WorkerSim {
   private readonly districtDefById = new Map<number, District>();
   private districtDirty: DirtyRect | null = null;
   private districtDefsChanged = false;
+  /** Garbage: trash generation + landfill collection. Runtime state (not saved). */
+  private readonly garbage = new GarbageSystem(MAP_SIZE);
+  private landfillDirty: DirtyRect | null = null;
+  private garbageDirty = false;
   /** Sandbox mode: when true, milestone gates are bypassed for all build items. */
   private sandbox = false;
 
@@ -526,6 +535,11 @@ class SimWorld implements WorkerSim {
     }
     this.districtDirty = { minX: 0, minZ: 0, maxX: MAP_SIZE - 1, maxZ: MAP_SIZE - 1 };
     this.districtDefsChanged = true;
+    // Garbage is runtime-only: reset the trash/fill and republish the loaded
+    // landfill area as full state so the render side rebuilds it.
+    this.garbage.reset();
+    this.landfillDirty = { minX: 0, minZ: 0, maxX: MAP_SIZE - 1, maxZ: MAP_SIZE - 1 };
+    this.garbageDirty = true;
     this.recomputeUtilitiesNow();
     this.powerDirty = true;
     this.wateredDirty = true;
@@ -547,6 +561,8 @@ class SimWorld implements WorkerSim {
     this.utilitiesDirty = false;
     this.districtDirty = null;
     this.districtDefsChanged = false;
+    this.landfillDirty = null;
+    this.garbageDirty = false;
   }
 
   // -------------------------------------------------------------------------
@@ -631,6 +647,27 @@ class SimWorld implements WorkerSim {
 
     if (t % SERVICE_PERIOD === SERVICE_OFFSET) {
       this.services.tick(g, this.registry.all(), this.stats.serviceFunding);
+    }
+
+    if (t % GARBAGE_PERIOD === GARBAGE_OFFSET) {
+      const garbageBuildings: GarbageBuilding[] = [];
+      for (const inst of this.registry.all()) {
+        if (inst.state !== BuildingState.Active) continue;
+        const entry = this.catalogById.get(inst.catalogId);
+        if (!entry) continue;
+        const sector: TrashSector | null =
+          entry.category === 'res'
+            ? 'res'
+            : entry.category === 'com'
+              ? 'com'
+              : entry.category === 'ind'
+                ? 'ind'
+                : null;
+        if (sector === null) continue;
+        garbageBuildings.push({ id: inst.id, sector, level: entry.level ?? 1 });
+      }
+      this.garbage.tick(g, garbageBuildings);
+      this.garbageDirty = true;
     }
 
     const origins: TilePoint[] = [];
@@ -747,6 +784,21 @@ class SimWorld implements WorkerSim {
       this.districtDefsChanged = false;
     }
 
+    // Garbage: landfill membership patch (on paint) + trash coverage + area fill.
+    if (this.landfillDirty || this.garbageDirty) {
+      const garbage: NonNullable<SimSnapshot['garbage']> = {};
+      if (this.landfillDirty) {
+        garbage.landfill = [this.landfillPatchFor(this.landfillDirty)];
+        this.landfillDirty = null;
+      }
+      if (this.garbageDirty) {
+        garbage.trash = [this.trashPatch()];
+        garbage.landfillFill = this.garbage.landfillFillFraction(this.grid);
+        this.garbageDirty = false;
+      }
+      snap.garbage = garbage;
+    }
+
     if (this.pendingRoadDeltas.size > 0) {
       snap.roads = Array.from(this.pendingRoadDeltas.values());
       this.pendingRoadDeltas.clear();
@@ -847,6 +899,24 @@ class SimWorld implements WorkerSim {
       }
     }
     return { x: rect.minX, z: rect.minZ, w, h, data };
+  }
+
+  /** Landfill membership patch: same shape/loop as districtPatchFor, reading grid.landfill. */
+  private landfillPatchFor(rect: DirtyRect): ZonePatch {
+    const w = rect.maxX - rect.minX + 1;
+    const h = rect.maxZ - rect.minZ + 1;
+    const data = new Uint8Array(w * h);
+    for (let dz = 0; dz < h; dz++) {
+      for (let dx = 0; dx < w; dx++) {
+        data[dz * w + dx] = this.grid.landfill[tileIndex(rect.minX + dx, rect.minZ + dz)] ?? 0;
+      }
+    }
+    return { x: rect.minX, z: rect.minZ, w, h, data };
+  }
+
+  /** Full-grid uncollected-trash coverage (0..255 per tile) for the 'trash' lens. */
+  private trashPatch(): ZonePatch {
+    return { x: 0, z: 0, w: MAP_SIZE, h: MAP_SIZE, data: this.garbage.trash.slice() };
   }
 
   /**
@@ -1002,6 +1072,8 @@ class SimWorld implements WorkerSim {
       }
       case 'paintDistrict':
         return this.cmdPaintDistrict(command.districtId, command.tiles);
+      case 'paintLandfill':
+        return this.cmdPaintLandfill(command.tiles, command.on);
       case 'setDistrictPolicy': {
         this.policyStore.setPolicy(command.districtId, command.policy, command.on);
         return {
@@ -1054,6 +1126,52 @@ class SimWorld implements WorkerSim {
 
     this.districtDirty = growRect(this.districtDirty, applied);
     return { ok: true, cost: 0, inverse };
+  }
+
+  /**
+   * Landfill paint: gated to empty land (canLandfill). Painting charges
+   * LANDFILL_PAINT_COST_PER_TILE per newly-added tile and is funds-gated like a
+   * ploppable; erasing is free. Inverse restores each changed tile's previous
+   * membership (mirrors cmdPaintDistrict's per-tile inverse).
+   */
+  private cmdPaintLandfill(tiles: TilePoint[], on: boolean): CommandResult {
+    const g = this.grid;
+    const prev = new Map<number, number>();
+    for (const t of tiles) {
+      if (!inBounds(t.x, t.z)) continue;
+      prev.set(tileIndex(t.x, t.z), g.landfill[tileIndex(t.x, t.z)] ?? 0);
+    }
+
+    let newTiles = 0;
+    if (on) {
+      for (const t of tiles) {
+        if (!inBounds(t.x, t.z)) continue;
+        if ((g.landfill[tileIndex(t.x, t.z)] ?? 0) === 0 && canLandfill(g, t.x, t.z)) newTiles += 1;
+      }
+    }
+    const cost = on ? newTiles * LANDFILL_PAINT_COST_PER_TILE : 0;
+    if (on && !this.sandbox && cost > this.stats.funds) {
+      return { ok: false, cost: 0, inverse: [], reason: 'funds' };
+    }
+
+    const applied = paintLandfill(g, tiles, on);
+    if (applied.length === 0) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+
+    const turnedOn: TilePoint[] = [];
+    const turnedOff: TilePoint[] = [];
+    for (const t of applied) {
+      const was = prev.get(tileIndex(t.x, t.z)) ?? 0;
+      const now = g.landfill[tileIndex(t.x, t.z)] ?? 0;
+      if (was === now) continue;
+      if (now === 1) turnedOn.push(t);
+      else turnedOff.push(t);
+    }
+    const inverse: Command[] = [];
+    if (turnedOn.length > 0) inverse.push({ kind: 'paintLandfill', tiles: turnedOn, on: false });
+    if (turnedOff.length > 0) inverse.push({ kind: 'paintLandfill', tiles: turnedOff, on: true });
+
+    this.landfillDirty = growRect(this.landfillDirty, applied);
+    return { ok: true, cost, inverse };
   }
 
   private cmdBuildRoad(tier: RoadTier, tiles: TilePoint[]): CommandResult {

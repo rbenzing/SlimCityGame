@@ -46,7 +46,7 @@ const clamp255 = (v: number): number => {
 };
 
 /** Building-id -> footprint tile indices, derived from the grid's occupancy layer. */
-function footprintsByBuildingId(g: GridState): Map<number, number[]> {
+export function footprintsByBuildingId(g: GridState): Map<number, number[]> {
   const map = new Map<number, number[]>();
   for (let i = 0; i < g.buildingId.length; i++) {
     const id = g.buildingId[i]!;
@@ -59,7 +59,7 @@ function footprintsByBuildingId(g: GridState): Map<number, number[]> {
 }
 
 /** Closest road tile to any tile in `footprint`, searched within NEAR_ROAD_RADIUS; ties broken by lowest tile index. */
-function nearestRoadTile(g: GridState, footprint: readonly number[]): number | null {
+export function nearestRoadTile(g: GridState, footprint: readonly number[]): number | null {
   let best: number | null = null;
   let bestDist = Infinity;
   for (const idx of footprint) {
@@ -85,7 +85,7 @@ function nearestRoadTile(g: GridState, footprint: readonly number[]): number | n
 }
 
 /** BFS hop-distance from `start` across connected road tiles, not expanding past maxDist. */
-function roadBfsDistances(g: GridState, start: number, maxDist: number): Map<number, number> {
+export function roadBfsDistances(g: GridState, start: number, maxDist: number): Map<number, number> {
   const dist = new Map<number, number>([[start, 0]]);
   const queue = [start];
   let head = 0;
@@ -111,7 +111,7 @@ function roadBfsDistances(g: GridState, start: number, maxDist: number): Map<num
 }
 
 /** Per-tile coverage: max over reached road tiles within COVERAGE_RADIATE_RANGE of strength*(1 - dist/range). */
-function radiateWeighted(
+export function radiateWeighted(
   reached: ReadonlyMap<number, number>,
   range: number,
   strength: number,

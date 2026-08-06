@@ -23,6 +23,7 @@ function makeGrid(): GridState {
     watered: new Uint8Array(n),
     fields,
     district: new Uint8Array(n),
+    landfill: new Uint8Array(n),
   };
 }
 

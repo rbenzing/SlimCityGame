@@ -12,6 +12,7 @@ import {
   TERRAFORM_COST_PER_METER_TILE,
   TERRAFORM_STRENGTH_MAX,
   TERRAFORM_STRENGTH_MIN,
+  LANDFILL_PAINT_COST_PER_TILE,
   TILE_METERS,
 } from '../shared/constants';
 import type {
@@ -295,6 +296,11 @@ function isTransitTool(tool: ToolId): boolean {
 /** District paint tool: brush/rect paint the selected district id onto tiles. */
 function isDistrictTool(tool: ToolId): boolean {
   return tool === 'district.paint';
+}
+
+/** Landfill paint tool: brush/rect paint the landfill area onto tiles. */
+function isPaintLandfillTool(tool: ToolId): boolean {
+  return tool === 'landfill.paint';
 }
 
 /** A minimum of 2 stops makes a routable bus line (mirrors sim/transit.ts). */
@@ -585,6 +591,14 @@ export class ToolManager {
       });
       return;
     }
+    if (isPaintLandfillTool(tool)) {
+      const startTile = this.dragStart ?? current;
+      const tiles = this.zoneTiles(startTile, current);
+      const cost = tiles.length * LANDFILL_PAINT_COST_PER_TILE;
+      const { valid, invalidReason } = this.evaluate(tiles, cost, 1, true);
+      this.env.onPreview({ tiles, valid, cost, label: 'Landfill', invalidReason });
+      return;
+    }
 
     const start = this.dragStart ?? current;
     if (tool === 'bulldoze') {
@@ -722,6 +736,11 @@ export class ToolManager {
       // Stamp the selected district id over the brushed/rect tiles.
       this.env.send(`District ${this.districtId}`, [
         { kind: 'paintDistrict', districtId: this.districtId, tiles: this.zoneTiles(start, end) },
+      ]);
+    } else if (isPaintLandfillTool(tool)) {
+      // Paint the landfill area over the brushed/rect tiles (sim gates to empty land).
+      this.env.send('Landfill', [
+        { kind: 'paintLandfill', tiles: this.zoneTiles(start, end), on: true },
       ]);
     }
     this.env.onPreview(null);

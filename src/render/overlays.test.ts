@@ -266,3 +266,47 @@ describe('OverlayRenderer coverage lenses (power/watered, UI-SPEC §2/§8)', () 
     expect(bytes[0]).toBe(Math.round(uncovered[0] * 255));
   });
 });
+
+describe('OverlayRenderer trash coverage lens (graded 0..255, SPEC §21)', () => {
+  const getTextureData = (scene: THREE.Scene): Uint8Array => {
+    const mesh = scene.children[0] as THREE.Mesh;
+    const material = mesh.material as THREE.MeshBasicMaterial;
+    const texture = material.map as THREE.DataTexture;
+    return texture.image.data as Uint8Array;
+  };
+
+  function coverPatch(x: number, z: number, w: number, h: number, data: number[]): ZonePatch {
+    return { x, z, w, h, data: Uint8Array.from(data) };
+  }
+
+  it('setActive("trash") shows the overlay quad', () => {
+    const scene = new THREE.Scene();
+    const overlay = new OverlayRenderer(scene);
+    overlay.setActive('trash');
+    expect(scene.children[0]!.visible).toBe(true);
+    overlay.setActive(null);
+    expect(scene.children[0]!.visible).toBe(false);
+  });
+
+  it('setCoverage("trash", ...) ramps each tile 0..255 through the graded rampColor, not the two-tone coverage ramp', () => {
+    const scene = new THREE.Scene();
+    const overlay = new OverlayRenderer(scene);
+    overlay.setActive('trash');
+    overlay.setCoverage('trash', [coverPatch(0, 0, 3, 1, [0, 128, 255])]);
+
+    const bytes = getTextureData(scene);
+    for (const [tile, value] of [
+      [0, 0],
+      [1, 128],
+      [2, 255],
+    ] as const) {
+      const [r, g, b] = rampColor(value);
+      const base = tile * 4;
+      expect(bytes[base]).toBe(Math.round(r * 255));
+      expect(bytes[base + 1]).toBe(Math.round(g * 255));
+      expect(bytes[base + 2]).toBe(Math.round(b * 255));
+    }
+    // Graded: a mid value (128) must NOT collapse to the two-tone "covered" accent.
+    expect(bytes[4]).not.toBe(Math.round(coverageColor(128)[0] * 255));
+  });
+});

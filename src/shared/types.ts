@@ -94,6 +94,14 @@ export interface GridState {
    * defaulted to all-zero (no districts), so old saves remain loadable.
    */
   district: Uint8Array; // District id per tile
+  /**
+   * Garbage — per-tile landfill membership (0 = none, 1 = landfill area tile
+   * that collected trash piles up on). Worker-owned, painted by `paintLandfill`.
+   * ADDITIVE layer: serialized LAST in the grid save (SAVE_VERSION 3), after the
+   * district layer, so v1/v2 saves load with this defaulted to all-zero (no
+   * landfill). See src/world/grid.ts serialize/deserialize + the migration note.
+   */
+  landfill: Uint8Array;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +163,10 @@ export type Command =
   | { kind: 'paintDistrict'; districtId: number; tiles: TilePoint[] }
   // Toggle a policy for a district on/off; the sim applies its economy/traffic effect.
   | { kind: 'setDistrictPolicy'; districtId: number; policy: Policy; on: boolean }
+  // ---- Garbage: landfill area brush ----
+  // Paint (on:true) or erase (on:false) landfill membership onto GridState.landfill
+  // for `tiles`. Collected trash piles up on these tiles; painting more expands capacity.
+  | { kind: 'paintLandfill'; tiles: TilePoint[]; on: boolean }
   // Sandbox mode: when on, every build item is placeable regardless of milestone.
   | { kind: 'setSandbox'; on: boolean };
 
@@ -276,6 +288,7 @@ export const VehicleKind = {
   Fire: 3,
   Police: 4,
   Ambulance: 5,
+  Garbage: 6,
 } as const;
 export type VehicleKind = (typeof VehicleKind)[keyof typeof VehicleKind];
 
@@ -316,6 +329,21 @@ export interface SimSnapshot {
    * after init/load; subsequent snapshots send only changed patches.
    */
   districts?: { patches: ZonePatch[]; defs: District[] };
+  /**
+   * Garbage & waste. `landfill` patches are ZonePatch-shaped membership regions
+   * (data bytes 0/1, row-major, exactly like SimSnapshot.zones) so the render
+   * side tints landfill tiles; `landfillFill` is the whole painted area's 0..1
+   * fill fraction (render raises every landfill tile's pile mesh ∝ this).
+   * `trash` patches carry per-tile uncollected-trash 0..255 for the 'trash'
+   * lens. `incinerators` reports each incinerator building's fill for the UI.
+   * Additive + all-optional; full state after init/load, then changed patches.
+   */
+  garbage?: {
+    landfill?: ZonePatch[];
+    landfillFill?: number;
+    trash?: ZonePatch[];
+    incinerators?: { id: number; fill: number; capacity: number }[];
+  };
 }
 
 export interface CityNotification {
@@ -366,6 +394,19 @@ export interface UtilitySpec {
   waterKL?: number; // produced
 }
 
+/**
+ * Garbage facility descriptor (incinerator ploppable). `collectionRange` is the
+ * road-BFS tile radius it services; `bufferCapacity` is how much trash it can
+ * hold; `burnRate` is trash burned per collection tick (0 = pure store); it
+ * emits Pollution ∝ burn. `trucks` is the cosmetic garbage-truck count.
+ */
+export interface GarbageSpec {
+  collectionRange: number;
+  bufferCapacity: number;
+  burnRate: number;
+  trucks: number;
+}
+
 // 'transit' is additive — the bus-stop ploppable's category and the Transit
 // dock category. Existing members unchanged.
 export type BuildingCategory = 'res' | 'com' | 'ind' | 'service' | 'utility' | 'park' | 'transit';
@@ -389,6 +430,7 @@ export interface BuildingCatalogEntry {
   landValueBonus?: number; // 0..255 emitted into LandValue field
   service?: ServiceSpec;
   utility?: UtilitySpec;
+  garbage?: GarbageSpec; // set for the incinerator ploppable
   cost: number; // 0 for grown buildings
   upkeep: number; // per month
   unlockMilestone: number; // MILESTONES index required
@@ -507,6 +549,8 @@ export type ToolId =
   // Districts: brush-paint the selected district id onto tiles
   // (emits paintDistrict). Additive.
   | 'district.paint'
+  // Garbage: brush-paint the landfill area onto tiles (emits paintLandfill). Additive.
+  | 'landfill.paint'
   | `plop.${string}`; // ploppable by catalog id, e.g. 'plop.police-station'
 
 export interface CameraState {
@@ -530,14 +574,15 @@ export interface ReversibleEdit {
 // ---------------------------------------------------------------------------
 
 /**
- * Version 2 carries the additive GridState.district layer: the grid save has
- * one trailing Uint8Array (MAP_SIZE² bytes, per-tile district id). Migration:
- * src/world/grid.ts deserializeGrid still accepts v1 buffers
- * (which lack the district layer) and loads them with district defaulted to
- * all-zero; serializeGrid always writes v2. No other layer's byte layout or
- * order changed, so every v1..v2 field round-trips unchanged.
+ * Version 2 added the trailing GridState.district layer; version 3 adds a
+ * further trailing GridState.landfill layer (MAP_SIZE² bytes, per-tile landfill
+ * membership 0/1) after it. Migration: src/world/grid.ts deserializeGrid still
+ * accepts v1 buffers (no district, no landfill) and v2 buffers (district, no
+ * landfill), defaulting each absent trailing layer to all-zero; serializeGrid
+ * always writes the current version. No earlier layer's byte layout or order
+ * changed, so every v1..v3 field round-trips unchanged.
  */
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export interface SaveHeader {
   version: number;
@@ -623,7 +668,7 @@ export interface CursorChip {
  * 'transit' (bus ridership overlay) and 'districts' (district tint overlay) are
  * additive — existing members unchanged.
  */
-export type LensId = FieldId | 'power' | 'watered' | 'transit' | 'districts';
+export type LensId = FieldId | 'power' | 'watered' | 'transit' | 'districts' | 'trash';
 
 // ---------------------------------------------------------------------------
 // Landscaping & water. Additive contracts only.
