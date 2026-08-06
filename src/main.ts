@@ -68,6 +68,7 @@ import { GhostRenderer, type GhostKind, type SetPreviewOptions } from './render/
 import { UtilityKitRenderer } from './render/utilitykits';
 import { ZoneGridRenderer } from './render/zonegrid';
 import { LampRenderer } from './render/lamps';
+import { RoadFurnitureRenderer } from './render/roadfurniture';
 import { SelectionOutline } from './render/outline';
 import { MapPin } from './render/pin';
 import { CameraRig } from './render/camera';
@@ -159,6 +160,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const ghosts = new GhostRenderer(world.scene, heightAt);
   const zoneGrid = new ZoneGridRenderer(world.scene, heightAt);
   const lamps = new LampRenderer(world.scene, heightAt);
+  const roadFurniture = new RoadFurnitureRenderer(world.scene, heightAt);
   const selectionOutline = new SelectionOutline(world.scene);
   const mapPin = new MapPin(world.scene);
   const cursorChip = new CursorChipStack(viewport);
@@ -600,6 +602,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       zoneGrid.rebuild(clientGrid);
       const roadTiles = clientGrid.roadTiles();
       lamps.rebuild(roadTiles);
+      roadFurniture.rebuild(roadTiles);
       terrain.applyRoadTiles(roadTiles); // mown ground-cover band
     }
     if (snap.buildings) {
