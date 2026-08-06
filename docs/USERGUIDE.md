@@ -55,6 +55,15 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
 - **Landscaping** — raise / lower / level / smooth the terrain, with real water
   that floods below sea level. Roads and buildings auto-flatten the ground they
   sit on.
+- **Garbage** — every zone generates trash. Paint a **landfill** area (in the
+  Garbage tools) where trash piles up to a maximum height; total capacity grows
+  with the painted area. Or, at a later milestone, plop an **incinerator** — it
+  collects trash within a road radius into a large buffer and **burns** it down
+  over time (a permanent fix while it keeps ahead of the city), at the cost of
+  some air pollution, and ships with its own garbage-truck fleet. When a landfill
+  fills up or an incinerator's buffer maxes out, collection in its area stops
+  until you expand the landfill or add another facility. Cosmetic garbage trucks
+  drive out from each facility to the blocks they service.
 - **Bulldoze** — remove roads, buildings, and zoning. Player edits are undoable.
 
 ## Reading your city
@@ -63,8 +72,9 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   Industrial. Full bars mean that zone type is in demand; paint more of it.
 - **Milestone badge** — the circular XP chip; click it for milestone history.
   Progress unlocks new zones, roads, and services.
-- **Infoview lenses** — overlays for land value, pollution, traffic, and service
-  coverage. Turn a lens on to see the city as data.
+- **Infoview lenses** — overlays for land value, pollution, traffic, service
+  coverage, and trash. Turn a lens on to see the city as data — the trash lens
+  reddens where garbage is going uncollected.
 - **Stats panel** — line charts of population, money, and other trends over time.
 - **Money & happiness** — the status strip shows funds and monthly balance
   (upkeep vs. income) and a city happiness face. Watch for a red monthly balance.
@@ -102,3 +112,10 @@ for a clean screenshot.
   rather than clustering.
 - Use the infoview lenses before expanding: fix pollution, traffic, and coverage
   gaps in what you have before painting more.
+- Watch **garbage** the way you watch power and water: a landfill that fills up
+  or an overwhelmed incinerator silently stops collecting its area. Check the
+  trash lens, then expand the landfill or add a facility across town.
+- **Sandbox / testing options** (Options menu): _"Sandbox: unlock all build
+  items"_ ignores milestone locks, and _"Unlimited money"_ ignores funds and
+  costs — the money readout shows ∞, though cash flow is still tracked, so you
+  can build anything even in the red. Handy for experimenting with a layout.

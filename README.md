@@ -10,11 +10,15 @@
 [![License: AGPL v3+](https://img.shields.io/badge/License-AGPL%20v3%2B-blue.svg?style=for-the-badge)](./LICENSE)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/russellbenzing)
 
+[![Play — Live Demo](https://img.shields.io/badge/Play-Live%20Demo-2ea44f?style=for-the-badge&logo=github&logoColor=white)](https://rbenzing.github.io/CitySim/)
+[![Release](https://img.shields.io/github/v/release/rbenzing/CitySim?style=for-the-badge&label=Release)](https://github.com/rbenzing/CitySim/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/rbenzing/CitySim/ci.yml?branch=main&style=for-the-badge&label=CI)](https://github.com/rbenzing/CitySim/actions/workflows/ci.yml)
+
 **A small-form-factor city builder in the browser — an engine showcase built on Three.js**
 
 🌐 **Browser-Native** • ⚡ **WebGPU + WebGL2 Fallback** • 🧠 **Deterministic Worker Sim** • 🧩 **Fully Instanced**
 
-[Features](#-features) • [Quick Start](#-quick-start) • [Controls](#-controls) • [Documentation](#-documentation) • [License](#-license)
+[Play](https://rbenzing.github.io/CitySim/) • [Features](#-features) • [Quick Start](#-quick-start) • [Controls](#-controls) • [Releases](#-releases--deployment) • [Documentation](#-documentation) • [License](#-license)
 
 </div>
 
@@ -51,6 +55,10 @@ instanced Three.js.
   statistical assignment model, not per-car physics.
 - **🚌 Services & transit** — fire, police, health, education, parks; cosmetic
   service dispatch; bus lines with ridership; districts & policies.
+- **🗑️ Sanitation** — every zone generates trash; paint **landfill** areas where
+  it piles up to a max height, or plop a milestone-gated **incinerator** that
+  burns it down (emitting pollution) with its own garbage-truck fleet; cosmetic
+  trucks service the city and a **trash lens** shows collection gaps.
 - **⛰️ Terraforming & water** — raise / lower / level / smooth brushes with real
   depth-rendered, animated water that floods below sea level.
 - **🌗 Living day/night** — continuous sun cycle with emissive windows, pooled
@@ -93,7 +101,7 @@ npm run format     # Prettier
 
 ## ✅ Quality Gates
 
-Built test-first throughout — **2,094+ unit/integration tests across 80 files**.
+Built test-first throughout — **2,200+ unit/integration tests across 90 files**.
 Every change exits through the same gates:
 
 - ✅ `typecheck` — strict TypeScript, no errors
@@ -102,6 +110,25 @@ Every change exits through the same gates:
 - ✅ `lint` — ESLint at zero errors, Prettier-clean
 - ✅ **no-stub audit** — every rendered control is wired to real behavior
 - ✅ **screenshot review** — visual features are verified in a headless browser
+
+---
+
+## 🚢 Releases & Deployment
+
+Versioning is automated with [release-please](https://github.com/googleapis/release-please)
+driven by [Conventional Commits](https://www.conventionalcommits.org/) — the
+commit history is the single source of truth for the [SemVer](https://semver.org/)
+version. Nobody edits the version by hand.
+
+- **`fix:`** → patch · **`feat:`** → minor · **`feat!:` / `BREAKING CHANGE:`** → major
+- Every push to `main` runs the **CI** workflow (typecheck · lint · test · build).
+- release-please keeps a rolling **release PR** with the next version + a
+  generated `CHANGELOG.md`. Merging it tags `vX.Y.Z`, cuts a **GitHub Release**,
+  and the workflow deploys the built SPA to **GitHub Pages** at
+  [rbenzing.github.io/CitySim](https://rbenzing.github.io/CitySim/).
+
+See **[CONTRIBUTING.md](./CONTRIBUTING.md)** for the commit conventions and the
+full release flow.
 
 ---
 
@@ -156,6 +183,9 @@ deterministic — no `Math.random`, no `Date.now`; seeded RNG streams, hash-test
   deferred backlog and deliberately-rejected directions, with reasoning.
 - **[docs/USERGUIDE.md](docs/USERGUIDE.md)** — how to play: the gameplay loop,
   tools, reading the city, and controls.
+- **[CONTRIBUTING.md](./CONTRIBUTING.md)** — quality gates, commit conventions,
+  and how automated versioning + deployment work.
+- **[CHANGELOG.md](./CHANGELOG.md)** — generated per release by release-please.
 
 ---
 

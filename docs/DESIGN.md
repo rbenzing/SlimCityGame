@@ -31,7 +31,9 @@ visual/systems spec, see [SPEC.md](SPEC.md).
 - Terrain painting; a procedural map generator complementing curated maps.
   (Dynamic water _flow_ simulation stays deferred — a perf tar pit; the derived
   sea-level model already covers seas/lakes/canals.)
-- Sewage / garbage / recycling / internet / heating as distinct networks.
+- Sewage / recycling / internet / heating as distinct networks. (Garbage has
+  since shipped — but as a service-radius collection system, landfills + an
+  incinerator + cosmetic trucks, not a utility network; see ROADMAP / SPEC §21.)
 - Citizen _cohorts_ (age/education/wealth demographics coloring the demand
   model — still not agents).
 - Modding / plugin API (TS plugins, custom JSON assets).
