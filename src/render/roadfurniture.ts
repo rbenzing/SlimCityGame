@@ -15,39 +15,45 @@ import { tileToWorld } from '../shared/constants';
 import { carriagewayHalfWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
 
 // --- Manhole -----------------------------------------------------------------
-const MANHOLE_RADIUS = 0.45;
-const MANHOLE_HEIGHT = 0.05;
-const MANHOLE_SEGMENTS = 16;
-const MANHOLE_COLOR = 0x2b2b2f; // dark cast iron
+const MANHOLE_RADIUS = 0.5;
+const MANHOLE_HEIGHT = 0.06; // rim thickness — stays low and flat
+const MANHOLE_SEGMENTS = 24;
+const MANHOLE_RIM_COLOR = 0x232327; // dark cast-iron rim, groove and seam
+const MANHOLE_PLATE_COLOR = 0x34343b; // lighter center plate
 const MANHOLE_LIFT = 0.03; // sits a hair proud of the road surface
 const MANHOLE_MIN_OFFSET = 0.6; // kept off the centerline
 const MANHOLE_EDGE_MARGIN = 0.5; // kept off the carriageway edge
 const MANHOLE_SELECT_FRACTION = 1 / 6; // ~1 in 6 paved tiles
 
 // --- Utility / electrical box ------------------------------------------------
-const BOX_WIDTH = 0.55;
-const BOX_HEIGHT = 1.1;
-const BOX_DEPTH = 0.4;
-const BOX_COLOR = 0x566356; // muted grey-green cabinet
+const BOX_WIDTH = 0.62;
+const BOX_HEIGHT = 1.2; // overall height — plinth + body + top cap
+const BOX_DEPTH = 0.44;
+const BOX_BODY_COLOR = 0x4c5a4c; // grey-green cabinet body
+const BOX_DOOR_COLOR = 0x3f4a3f; // proud front door panel
+const BOX_TRIM_COLOR = 0x2c332c; // plinth, cap and door seam
 const BOX_SELECT_FRACTION = 1 / 12; // ~1 in 12 curbed tiles
 
 // --- Parking meter -----------------------------------------------------------
 const METER_POLE_RADIUS = 0.05;
-const METER_POLE_HEIGHT = 1.1;
-const METER_HEAD_W = 0.18;
-const METER_HEAD_H = 0.22;
-const METER_HEAD_D = 0.12;
-const METER_COLOR = 0x9a9ba0; // silver-grey
+const METER_POLE_HEIGHT = 0.85;
+const METER_HEAD_W = 0.2;
+const METER_HEAD_H = 0.26;
+const METER_HEAD_D = 0.14;
+const METER_POLE_COLOR = 0x6d6f74; // dark metal pole and top cap
+const METER_HEAD_COLOR = 0x9a9ba0; // silver meter head
+const METER_DISPLAY_COLOR = 0x20242a; // dark display face
 const METER_PERIOD = 5; // a meter pair on every (x+z) multiple of 5
 const METER_ALONG = 3; // the pair straddles the tile center by ±3m along the run
 
 // --- Traffic sign ------------------------------------------------------------
 const SIGN_POLE_RADIUS = 0.04;
 const SIGN_POLE_HEIGHT = 2.2;
-const SIGN_BOARD = 0.5;
-const SIGN_BOARD_DEPTH = 0.06;
+const SIGN_FRAME = 0.6; // outer border board
+const SIGN_FACE = 0.5; // inner sign face
 const SIGN_POLE_COLOR = 0x50555d; // charcoal pole
-const SIGN_BOARD_COLOR = 0xd8d8d8; // light board
+const SIGN_FRAME_COLOR = 0xc0392b; // red regulatory border
+const SIGN_FACE_COLOR = 0xe8e8e8; // white sign face
 const SIGN_PERIOD = 8; // a periodic sign on every (x+z) multiple of 8
 
 // Distinct hash slots so each per-tile draw is decorrelated from the others.
@@ -315,42 +321,11 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
 }
 
 // ---------------------------------------------------------------------------
-// Geometry merging (position/normal/index — same idiom as the lamp placer).
+// Geometry merging — each source part painted a flat vertex color so one
+// merged, instanced geometry carries distinctly-colored sub-parts.
 // ---------------------------------------------------------------------------
 
-function mergeGeometries(geometries: THREE.BufferGeometry[]): THREE.BufferGeometry {
-  const merged = new THREE.BufferGeometry();
-
-  let vertexTotal = 0;
-  for (const g of geometries)
-    vertexTotal += (g.getAttribute('position') as THREE.BufferAttribute).count;
-
-  const positions = new Float32Array(vertexTotal * 3);
-  const normals = new Float32Array(vertexTotal * 3);
-  const indices: number[] = [];
-
-  let vertexOffset = 0;
-  let floatOffset = 0;
-  for (const g of geometries) {
-    const pos = g.getAttribute('position') as THREE.BufferAttribute;
-    const norm = g.getAttribute('normal') as THREE.BufferAttribute;
-    positions.set(pos.array as Float32Array, floatOffset);
-    normals.set(norm.array as Float32Array, floatOffset);
-    floatOffset += pos.array.length;
-
-    const index = g.index;
-    if (index) for (let i = 0; i < index.count; i++) indices.push(index.getX(i) + vertexOffset);
-    vertexOffset += pos.count;
-    g.dispose();
-  }
-
-  merged.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  merged.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-  merged.setIndex(indices);
-  return merged;
-}
-
-/** Same merge, but paints each source part a flat color into a vertex-color attribute. */
+/** Merges parts, painting each a flat color into a per-vertex color attribute. */
 function mergeColoredGeometries(
   parts: readonly { geometry: THREE.BufferGeometry; color: number }[],
 ): THREE.BufferGeometry {
@@ -394,29 +369,105 @@ function mergeColoredGeometries(
   return merged;
 }
 
-/** Thin pole + a small head box near the top, base at local origin. */
+/**
+ * Cast-iron cover: a dark full disc, a lighter center plate proud of it, a
+ * concentric groove ring and a lift seam on top. Centered on local y=0 so it
+ * seats near-flush with the road. The merge is tagged CylinderGeometry so the
+ * shadow-flag test still finds this layer by geometry kind.
+ */
+function buildManholeGeometry(): THREE.BufferGeometry {
+  const rim = new THREE.CylinderGeometry(
+    MANHOLE_RADIUS,
+    MANHOLE_RADIUS,
+    MANHOLE_HEIGHT,
+    MANHOLE_SEGMENTS,
+  );
+  const plate = new THREE.CylinderGeometry(
+    MANHOLE_RADIUS - 0.08,
+    MANHOLE_RADIUS - 0.08,
+    MANHOLE_HEIGHT + 0.002,
+    MANHOLE_SEGMENTS,
+  );
+  const groove = new THREE.RingGeometry(0.28, 0.33, MANHOLE_SEGMENTS);
+  groove.rotateX(-Math.PI / 2);
+  groove.translate(0, MANHOLE_HEIGHT / 2 + 0.002, 0);
+  const seam = new THREE.BoxGeometry(MANHOLE_RADIUS * 1.4, 0.01, 0.05);
+  seam.translate(0, MANHOLE_HEIGHT / 2 + 0.005, 0);
+  const geometry = mergeColoredGeometries([
+    { geometry: rim, color: MANHOLE_RIM_COLOR },
+    { geometry: plate, color: MANHOLE_PLATE_COLOR },
+    { geometry: groove, color: MANHOLE_RIM_COLOR },
+    { geometry: seam, color: MANHOLE_RIM_COLOR },
+  ]);
+  return geometry;
+}
+
+/**
+ * Street cabinet: a thin base plinth, the grey-green body, a proud front door
+ * with a center seam, and a top cap. Centered on local y=0 (the renderer lifts
+ * it by half its height). Tagged BoxGeometry so the shadow-flag test finds it.
+ */
+function buildBoxGeometry(): THREE.BufferGeometry {
+  const bottom = -BOX_HEIGHT / 2;
+  const bodyH = 1.0;
+  const bodyY = bottom + 0.08 + bodyH / 2;
+  const plinth = new THREE.BoxGeometry(BOX_WIDTH + 0.04, 0.08, BOX_DEPTH + 0.04);
+  plinth.translate(0, bottom + 0.04, 0);
+  const body = new THREE.BoxGeometry(BOX_WIDTH, bodyH, BOX_DEPTH);
+  body.translate(0, bodyY, 0);
+  const door = new THREE.BoxGeometry(0.5, 0.82, 0.03);
+  door.translate(0, bodyY, BOX_DEPTH / 2 + 0.015);
+  const seam = new THREE.BoxGeometry(0.02, 0.82, 0.02);
+  seam.translate(0, bodyY, BOX_DEPTH / 2 + 0.03);
+  const cap = new THREE.BoxGeometry(BOX_WIDTH + 0.04, 0.06, BOX_DEPTH + 0.04);
+  cap.translate(0, bottom + 0.08 + bodyH + 0.03, 0);
+  const geometry = mergeColoredGeometries([
+    { geometry: plinth, color: BOX_TRIM_COLOR },
+    { geometry: body, color: BOX_BODY_COLOR },
+    { geometry: door, color: BOX_DOOR_COLOR },
+    { geometry: seam, color: BOX_TRIM_COLOR },
+    { geometry: cap, color: BOX_TRIM_COLOR },
+  ]);
+  return geometry;
+}
+
+/** Pole, a silver meter head with a dark display face, and a tapered top cap. */
 function buildMeterGeometry(): THREE.BufferGeometry {
   const pole = new THREE.CylinderGeometry(
     METER_POLE_RADIUS,
     METER_POLE_RADIUS,
     METER_POLE_HEIGHT,
-    6,
+    12,
   );
   pole.translate(0, METER_POLE_HEIGHT / 2, 0);
+  const headY = METER_POLE_HEIGHT + METER_HEAD_H / 2;
   const head = new THREE.BoxGeometry(METER_HEAD_W, METER_HEAD_H, METER_HEAD_D);
-  head.translate(0, METER_POLE_HEIGHT - METER_HEAD_H / 2, 0);
-  return mergeGeometries([pole, head]);
+  head.translate(0, headY, 0);
+  const display = new THREE.BoxGeometry(METER_HEAD_W - 0.06, METER_HEAD_H - 0.1, 0.02);
+  display.translate(0, headY, METER_HEAD_D / 2 + 0.01);
+  const cap = new THREE.CylinderGeometry(METER_POLE_RADIUS, METER_HEAD_W * 0.55, 0.05, 12);
+  cap.translate(0, METER_POLE_HEIGHT + METER_HEAD_H + 0.025, 0);
+  return mergeColoredGeometries([
+    { geometry: pole, color: METER_POLE_COLOR },
+    { geometry: head, color: METER_HEAD_COLOR },
+    { geometry: display, color: METER_DISPLAY_COLOR },
+    { geometry: cap, color: METER_POLE_COLOR },
+  ]);
 }
 
-/** Thin pole + a rectangular board near the top, two-toned via vertex colors. */
+/** Pole plus a red-bordered white sign board; the renderer turns it road-ward. */
 function buildSignGeometry(): THREE.BufferGeometry {
-  const pole = new THREE.CylinderGeometry(SIGN_POLE_RADIUS, SIGN_POLE_RADIUS, SIGN_POLE_HEIGHT, 6);
+  const pole = new THREE.CylinderGeometry(SIGN_POLE_RADIUS, SIGN_POLE_RADIUS, SIGN_POLE_HEIGHT, 12);
   pole.translate(0, SIGN_POLE_HEIGHT / 2, 0);
-  const board = new THREE.BoxGeometry(SIGN_BOARD, SIGN_BOARD, SIGN_BOARD_DEPTH);
-  board.translate(0, SIGN_POLE_HEIGHT - SIGN_BOARD / 2 - 0.05, 0);
+  const boardY = SIGN_POLE_HEIGHT - SIGN_FRAME / 2 - 0.05;
+  const frame = new THREE.BoxGeometry(SIGN_FRAME, SIGN_FRAME, 0.04);
+  frame.translate(0, boardY, 0);
+  const face = new THREE.BoxGeometry(SIGN_FACE, SIGN_FACE, 0.06);
+  face.translate(0, boardY, 0.03);
   return mergeColoredGeometries([
     { geometry: pole, color: SIGN_POLE_COLOR },
-    { geometry: board, color: SIGN_BOARD_COLOR },
+    { geometry: frame, color: SIGN_FRAME_COLOR },
+    { geometry: face, color: SIGN_FACE_COLOR },
   ]);
 }
 
@@ -438,19 +489,14 @@ export class RoadFurnitureRenderer {
   private readonly scene: THREE.Scene;
   private readonly heightAt: (x: number, z: number) => number;
 
-  private readonly manholeGeometry = new THREE.CylinderGeometry(
-    MANHOLE_RADIUS,
-    MANHOLE_RADIUS,
-    MANHOLE_HEIGHT,
-    MANHOLE_SEGMENTS,
-  );
-  private readonly manholeMaterial = new THREE.MeshLambertMaterial({ color: MANHOLE_COLOR });
+  private readonly manholeGeometry = buildManholeGeometry();
+  private readonly manholeMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
 
-  private readonly boxGeometry = new THREE.BoxGeometry(BOX_WIDTH, BOX_HEIGHT, BOX_DEPTH);
-  private readonly boxMaterial = new THREE.MeshLambertMaterial({ color: BOX_COLOR });
+  private readonly boxGeometry = buildBoxGeometry();
+  private readonly boxMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
 
   private readonly meterGeometry = buildMeterGeometry();
-  private readonly meterMaterial = new THREE.MeshLambertMaterial({ color: METER_COLOR });
+  private readonly meterMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
 
   private readonly signGeometry = buildSignGeometry();
   private readonly signMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -490,6 +536,7 @@ export class RoadFurnitureRenderer {
       mesh.receiveShadow = true;
       for (let i = 0; i < this.manholes.length; i++) this.writeManhole(mesh, i, this.manholes[i]!);
       mesh.instanceMatrix.needsUpdate = true;
+      mesh.userData.furnitureKind = 'manhole';
       this.manholeMesh = mesh;
       this.scene.add(mesh);
     }
@@ -500,6 +547,7 @@ export class RoadFurnitureRenderer {
       mesh.castShadow = true;
       for (let i = 0; i < this.boxes.length; i++) this.writeBox(mesh, i, this.boxes[i]!);
       mesh.instanceMatrix.needsUpdate = true;
+      mesh.userData.furnitureKind = 'box';
       this.boxMesh = mesh;
       this.scene.add(mesh);
     }
@@ -514,6 +562,7 @@ export class RoadFurnitureRenderer {
       mesh.castShadow = true;
       for (let i = 0; i < this.meters.length; i++) this.writeMeter(mesh, i, this.meters[i]!);
       mesh.instanceMatrix.needsUpdate = true;
+      mesh.userData.furnitureKind = 'meter';
       this.meterMesh = mesh;
       this.scene.add(mesh);
     }
@@ -524,6 +573,7 @@ export class RoadFurnitureRenderer {
       mesh.castShadow = true;
       for (let i = 0; i < this.signs.length; i++) this.writeSign(mesh, i, this.signs[i]!);
       mesh.instanceMatrix.needsUpdate = true;
+      mesh.userData.furnitureKind = 'sign';
       this.signMesh = mesh;
       this.scene.add(mesh);
     }

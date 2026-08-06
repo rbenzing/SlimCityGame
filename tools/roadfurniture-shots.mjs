@@ -63,6 +63,11 @@ await page.screenshot({ path: `${out}/fourlane-street.png` });
 // The dead-end stub (traffic sign) close.
 await cam(X0 + 3, Z0 - 2, 16); await page.waitForTimeout(900);
 await page.screenshot({ path: `${out}/deadend-sign.png` });
+// Extreme close-up on the dead-end sign tile + a two-lane curb, to read prop detail.
+await cam(X0 + 3, Z0 - 4, 10); await page.waitForTimeout(900);
+await page.screenshot({ path: `${out}/extreme-sign.png` });
+await cam(X0 + 5, Z0, 10); await page.waitForTimeout(900);
+await page.screenshot({ path: `${out}/extreme-curb.png` });
 // Block overview.
 await cam(X0 + 7, Z0 + 4, 80); await page.waitForTimeout(900);
 await page.screenshot({ path: `${out}/block-overview.png` });

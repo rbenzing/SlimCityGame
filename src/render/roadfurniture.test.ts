@@ -165,11 +165,11 @@ describe('RoadFurnitureRenderer', () => {
     const meshes = scene.children.filter(
       (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh,
     );
-    const manhole = meshes.find((m) => m.geometry.type === 'CylinderGeometry')!;
+    const manhole = meshes.find((m) => m.userData.furnitureKind === 'manhole')!;
     expect(manhole.castShadow).toBe(false);
     expect(manhole.receiveShadow).toBe(true);
 
-    const box = meshes.find((m) => m.geometry.type === 'BoxGeometry')!;
+    const box = meshes.find((m) => m.userData.furnitureKind === 'box')!;
     expect(box.castShadow).toBe(true);
   });
 
