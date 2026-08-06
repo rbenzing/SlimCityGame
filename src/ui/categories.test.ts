@@ -3,12 +3,13 @@ import { allCardsFor, CATEGORY_DEFS, catalogEntryForTool, subTabsFor } from './c
 import { LANDFILL_PAINT_COST_PER_TILE } from '../shared/constants';
 
 describe('CATEGORY_DEFS', () => {
-  it('lists the ten UI-SPEC §2 categories plus §6.11 Landscaping and the §11/§13 Transit + Districts categories, in order', () => {
+  it('lists the eleven UI-SPEC §2 categories plus §6.11 Landscaping and the §11/§13 Transit + Districts categories, in order', () => {
     expect(CATEGORY_DEFS.map((c) => c.label)).toEqual([
       'Zoning',
       'Roads',
       'Electricity',
       'Water',
+      'Garbage',
       'Health',
       'Fire',
       'Police',
@@ -157,7 +158,7 @@ describe('subTabsFor', () => {
     });
   });
 
-  it('Landscaping (UI-SPEC §6.11) is a single flat group of the four terraform tools + the landfill brush', () => {
+  it('Landscaping (UI-SPEC §6.11) is a single flat group of the four terraform tools', () => {
     const tabs = subTabsFor('landscaping');
     expect(tabs).toHaveLength(1);
     expect(tabs[0]?.cards).toEqual([
@@ -165,8 +166,15 @@ describe('subTabsFor', () => {
       { id: 'terraform.lower', name: 'Lower', cost: 0, unlockMilestone: 0 },
       { id: 'terraform.level', name: 'Level', cost: 0, unlockMilestone: 0 },
       { id: 'terraform.smooth', name: 'Smooth', cost: 0, unlockMilestone: 0 },
-      // §21 garbage: the landfill-area brush lives in Landscaping for now.
+    ]);
+  });
+
+  it('Garbage is a single flat group of the landfill brush + the incinerator ploppable', () => {
+    const tabs = subTabsFor('garbage');
+    expect(tabs).toHaveLength(1);
+    expect(tabs[0]?.cards).toEqual([
       { id: 'landfill.paint', name: 'Landfill', cost: LANDFILL_PAINT_COST_PER_TILE, unlockMilestone: 1 },
+      { id: 'plop.incinerator', name: 'Incinerator', cost: 40000, unlockMilestone: 3 },
     ]);
   });
 });

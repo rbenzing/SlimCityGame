@@ -20,6 +20,7 @@ export type IconName =
   | 'landscaping'
   | 'land-value'
   | 'pollution'
+  | 'garbage'
   | 'noise'
   | 'traffic'
   | 'crime'
@@ -139,6 +140,12 @@ const GLYPHS: Record<IconName, Glyph> = {
   pollution: (p) => (
     <Base {...p}>
       <path d="M6 17a3.5 3.5 0 0 1 .5-7 4.5 4.5 0 0 1 8.7-1.6A3.8 3.8 0 0 1 18 15.6a1 1 0 0 1-.2 1.4H6Z" />
+    </Base>
+  ),
+  garbage: (p) => (
+    <Base {...p}>
+      <path d="M5 7h14M9 7V4h6v3M6 7l1 13h10l1-13" />
+      <path d="M10 11v6M14 11v6" />
     </Base>
   ),
   noise: (p) => (

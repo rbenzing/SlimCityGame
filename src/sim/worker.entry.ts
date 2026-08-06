@@ -91,7 +91,12 @@ import { DispatchSystem, MAX_SERVICE_VEHICLES } from './dispatch';
 import { PolicyStore, effectivePollution, trafficWeight } from './policy';
 import { paintDistrict } from '../world/districts';
 import { canLandfill, paintLandfill } from '../world/landfill';
-import { GarbageSystem, type GarbageBuilding, type TrashSector } from './garbage';
+import {
+  GarbageSystem,
+  type GarbageBuilding,
+  type GarbageFacility,
+  type TrashSector,
+} from './garbage';
 import { encodeSave, decodeSave } from '../app/persist';
 
 /** Packed-hex palette for auto-created district defs (id 1..255 cycle through these). */
@@ -651,10 +656,21 @@ class SimWorld implements WorkerSim {
 
     if (t % GARBAGE_PERIOD === GARBAGE_OFFSET) {
       const garbageBuildings: GarbageBuilding[] = [];
+      const facilities: GarbageFacility[] = [];
       for (const inst of this.registry.all()) {
         if (inst.state !== BuildingState.Active) continue;
         const entry = this.catalogById.get(inst.catalogId);
         if (!entry) continue;
+        // Incinerators are collection facilities, not trash sources.
+        if (entry.garbage) {
+          facilities.push({
+            id: inst.id,
+            collectionRange: entry.garbage.collectionRange,
+            bufferCapacity: entry.garbage.bufferCapacity,
+            burnRate: entry.garbage.burnRate,
+          });
+          continue;
+        }
         const sector: TrashSector | null =
           entry.category === 'res'
             ? 'res'
@@ -666,7 +682,7 @@ class SimWorld implements WorkerSim {
         if (sector === null) continue;
         garbageBuildings.push({ id: inst.id, sector, level: entry.level ?? 1 });
       }
-      this.garbage.tick(g, garbageBuildings);
+      this.garbage.tick(g, garbageBuildings, facilities);
       this.garbageDirty = true;
     }
 
@@ -794,6 +810,7 @@ class SimWorld implements WorkerSim {
       if (this.garbageDirty) {
         garbage.trash = [this.trashPatch()];
         garbage.landfillFill = this.garbage.landfillFillFraction(this.grid);
+        garbage.incinerators = this.incineratorSnapshot();
         this.garbageDirty = false;
       }
       snap.garbage = garbage;
@@ -917,6 +934,19 @@ class SimWorld implements WorkerSim {
   /** Full-grid uncollected-trash coverage (0..255 per tile) for the 'trash' lens. */
   private trashPatch(): ZonePatch {
     return { x: 0, z: 0, w: MAP_SIZE, h: MAP_SIZE, data: this.garbage.trash.slice() };
+  }
+
+  /** Per-incinerator buffer fill (0..1) + capacity, for the UI readout. */
+  private incineratorSnapshot(): { id: number; fill: number; capacity: number }[] {
+    const out: { id: number; fill: number; capacity: number }[] = [];
+    for (const inst of this.registry.all()) {
+      const entry = this.catalogById.get(inst.catalogId);
+      if (!entry?.garbage) continue;
+      const capacity = entry.garbage.bufferCapacity;
+      const fill = capacity > 0 ? Math.min(1, this.garbage.incineratorStored(inst.id) / capacity) : 0;
+      out.push({ id: inst.id, fill, capacity });
+    }
+    return out;
   }
 
   /**

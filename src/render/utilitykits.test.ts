@@ -15,6 +15,9 @@ import {
   computeCoalHallLayout,
   computeCoalHeapLocalPlacement,
   computeCoalSmokestackLocalPlacements,
+  computeIncineratorBayLocalPlacement,
+  computeIncineratorHallLayout,
+  computeIncineratorStackLocalPlacement,
   computeParkBenchPlacements,
   computeParkTreeCount,
   computeParkTreePlacements,
@@ -46,6 +49,9 @@ const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'coalHall',
   'coalSmokestack',
   'coalHeap',
+  'incineratorHall',
+  'incineratorStack',
+  'incineratorBay',
   'parkGround',
   'parkTree',
   'parkBench',
@@ -102,6 +108,24 @@ function makeCoalPlantEntry(overrides: Partial<BuildingCatalogEntry> = {}): Buil
     cost: 12000,
     upkeep: 800,
     unlockMilestone: 0,
+    ...overrides,
+  };
+}
+
+function makeIncineratorEntry(overrides: Partial<BuildingCatalogEntry> = {}): BuildingCatalogEntry {
+  return {
+    id: 'incinerator',
+    name: 'Incinerator',
+    category: 'utility',
+    footprint: { w: 4, d: 4 },
+    height: 20,
+    color: 0x6b6d72,
+    powerUse: 2,
+    waterUse: 2,
+    pollution: 120,
+    cost: 40000,
+    upkeep: 1500,
+    unlockMilestone: 3,
     ...overrides,
   };
 }
@@ -195,11 +219,12 @@ function decomposeQuaternion(m: THREE.Matrix4): THREE.Quaternion {
 // ---------------------------------------------------------------------------
 
 describe('UTILITY_KIT_CATALOG_IDS', () => {
-  it('is exactly the 4 silhouette-kit ids (UI-SPEC §6.15)', () => {
+  it('is exactly the 5 silhouette-kit ids (UI-SPEC §6.15)', () => {
     expect(UTILITY_KIT_CATALOG_IDS).toEqual([
       'wind-turbine',
       'water-tower',
       'coal-plant',
+      'incinerator',
       'small-park',
     ]);
   });
@@ -370,6 +395,55 @@ describe('computeCoalHeapLocalPlacement (pure)', () => {
   it('is deterministic and pure', () => {
     expect(computeCoalHeapLocalPlacement({ w: 4, d: 4 })).toEqual(
       computeCoalHeapLocalPlacement({ w: 4, d: 4 }),
+    );
+  });
+});
+
+describe('computeIncineratorHallLayout (pure)', () => {
+  it('covers ~3x4 of a 4x4 footprint (hall width = footprint.w - 1 tiles, full depth)', () => {
+    const layout = computeIncineratorHallLayout({ w: 4, d: 4 });
+    expect(layout.hallHalfW * 2).toBeCloseTo(3 * TILE_METERS, 9);
+    expect(layout.hallHalfD * 2).toBeCloseTo(4 * TILE_METERS, 9);
+  });
+
+  it('leaves a bay strip whose width plus the hall width fills the whole footprint', () => {
+    const layout = computeIncineratorHallLayout({ w: 4, d: 4 });
+    const { halfW } = footprintHalfExtents({ w: 4, d: 4 });
+    expect(layout.hallHalfW + layout.bayHalfW).toBeCloseTo(halfW, 9);
+  });
+
+  it('is deterministic and pure', () => {
+    expect(computeIncineratorHallLayout({ w: 4, d: 4 })).toEqual(
+      computeIncineratorHallLayout({ w: 4, d: 4 }),
+    );
+  });
+});
+
+describe('computeIncineratorStackLocalPlacement (pure)', () => {
+  it('sits within the hall footprint (over the processing hall roof)', () => {
+    const layout = computeIncineratorHallLayout({ w: 4, d: 4 });
+    const stack = computeIncineratorStackLocalPlacement({ w: 4, d: 4 });
+    expect(stack.x).toBeCloseTo(layout.hallCenterX, 9);
+    expect(Math.abs(stack.z)).toBeLessThan(layout.hallHalfD);
+  });
+
+  it('is deterministic and pure', () => {
+    expect(computeIncineratorStackLocalPlacement({ w: 4, d: 4 })).toEqual(
+      computeIncineratorStackLocalPlacement({ w: 4, d: 4 }),
+    );
+  });
+});
+
+describe('computeIncineratorBayLocalPlacement (pure)', () => {
+  it('sits in the free strip beside the hall, not inside the hall footprint', () => {
+    const layout = computeIncineratorHallLayout({ w: 4, d: 4 });
+    const bay = computeIncineratorBayLocalPlacement({ w: 4, d: 4 });
+    expect(bay.x).toBeGreaterThan(layout.hallCenterX + layout.hallHalfW - 1e-9);
+  });
+
+  it('is deterministic and pure', () => {
+    expect(computeIncineratorBayLocalPlacement({ w: 4, d: 4 })).toEqual(
+      computeIncineratorBayLocalPlacement({ w: 4, d: 4 }),
     );
   });
 });
@@ -726,6 +800,46 @@ describe('coal-plant kit', () => {
 });
 
 // ---------------------------------------------------------------------------
+// UtilityKitRenderer: incinerator
+// ---------------------------------------------------------------------------
+
+describe('incinerator kit', () => {
+  it('places 1 incineratorHall, 1 incineratorStack, and 1 incineratorBay slot per instance', () => {
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
+      makeIncineratorEntry(),
+    ]);
+    renderer.apply(deltaAdd(makeInstance(1, 'incinerator')));
+    expect(renderer.partSlotsFor(1, 'incineratorHall')).toHaveLength(1);
+    expect(renderer.partSlotsFor(1, 'incineratorStack')).toHaveLength(1);
+    expect(renderer.partSlotsFor(1, 'incineratorBay')).toHaveLength(1);
+  });
+
+  it('places the single flue at the world position matching computeIncineratorStackLocalPlacement', () => {
+    const entry = makeIncineratorEntry();
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [entry]);
+    renderer.apply(deltaAdd(makeInstance(1, 'incinerator', { x: 0, z: 0, rotation: 0 })));
+
+    const centerX = (0 + entry.footprint.w / 2) * TILE_METERS;
+    const centerZ = (0 + entry.footprint.d / 2) * TILE_METERS;
+    const local = computeIncineratorStackLocalPlacement(entry.footprint);
+    const slot = renderer.partSlotsFor(1, 'incineratorStack')[0]!;
+
+    const m = new THREE.Matrix4();
+    renderer.getPartMatrix('incinerator', 'incineratorStack', slot, m);
+    const pos = decomposePosition(m);
+    expect(pos.x).toBeCloseTo(centerX + local.x, 5);
+    expect(pos.z).toBeCloseTo(centerZ + local.z, 5);
+  });
+
+  it('scales part counts consistently across a bigger footprint (still exactly 1 flue)', () => {
+    const entry = makeIncineratorEntry({ footprint: { w: 6, d: 6 } });
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [entry]);
+    renderer.apply(deltaAdd(makeInstance(1, 'incinerator')));
+    expect(renderer.partSlotsFor(1, 'incineratorStack')).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // UtilityKitRenderer: small-park
 // ---------------------------------------------------------------------------
 
@@ -815,11 +929,13 @@ describe('night cycle (UI-SPEC §6.15 — "kits stay unlit except a small red tu
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
       makeWaterTowerEntry(),
       makeCoalPlantEntry(),
+      makeIncineratorEntry(),
       makeSmallParkEntry(),
     ]);
     renderer.setNightFactor(1);
     expect(renderer.partEmissiveHex('water-tower', 'waterTank')).toBe(0);
     expect(renderer.partEmissiveHex('coal-plant', 'coalHall')).toBe(0);
+    expect(renderer.partEmissiveHex('incinerator', 'incineratorHall')).toBe(0);
     expect(renderer.partEmissiveHex('small-park', 'parkGround')).toBe(0);
   });
 });
@@ -870,6 +986,20 @@ describe('removal exactness', () => {
     expect(renderer.partSlotsFor(1, 'coalHall')).toHaveLength(0);
     expect(renderer.partSlotsFor(1, 'coalSmokestack')).toHaveLength(0);
     expect(renderer.partSlotsFor(1, 'coalHeap')).toHaveLength(0);
+  });
+
+  it('zero-scales and frees every slot a removed incinerator instance owned (add -> remove -> counts)', () => {
+    const entry = makeIncineratorEntry();
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [entry]);
+    renderer.apply(deltaAdd(makeInstance(1, 'incinerator')));
+    expect(renderer.partSlotsFor(1, 'incineratorStack')).toHaveLength(1);
+
+    renderer.apply(deltaRemove(1));
+
+    expect(renderer.hasInstance(1)).toBe(false);
+    expect(renderer.partSlotsFor(1, 'incineratorHall')).toHaveLength(0);
+    expect(renderer.partSlotsFor(1, 'incineratorStack')).toHaveLength(0);
+    expect(renderer.partSlotsFor(1, 'incineratorBay')).toHaveLength(0);
   });
 
   it('removing one instance leaves another instance fully intact', () => {
@@ -938,11 +1068,12 @@ describe('removal exactness', () => {
 // ---------------------------------------------------------------------------
 
 describe('multiple kits coexisting', () => {
-  it('builds and applies all 4 kits from one catalog + one delta without cross-talk', () => {
+  it('builds and applies all 5 kits from one catalog + one delta without cross-talk', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
       makeTurbineEntry(),
       makeWaterTowerEntry(),
       makeCoalPlantEntry(),
+      makeIncineratorEntry(),
       makeSmallParkEntry(),
     ]);
     renderer.apply(
@@ -950,7 +1081,8 @@ describe('multiple kits coexisting', () => {
         makeInstance(1, 'wind-turbine', { x: 0, z: 0 }),
         makeInstance(2, 'water-tower', { x: 5, z: 0 }),
         makeInstance(3, 'coal-plant', { x: 10, z: 0 }),
-        makeInstance(4, 'small-park', { x: 20, z: 0 }),
+        makeInstance(4, 'incinerator', { x: 15, z: 0 }),
+        makeInstance(5, 'small-park', { x: 20, z: 0 }),
       ),
     );
 
@@ -958,6 +1090,7 @@ describe('multiple kits coexisting', () => {
     expect(renderer.partSlotsFor(1, 'turbineTower')).toHaveLength(1);
     expect(renderer.partSlotsFor(2, 'waterTank')).toHaveLength(1);
     expect(renderer.partSlotsFor(3, 'coalSmokestack')).toHaveLength(2);
-    expect(renderer.partSlotsFor(4, 'parkBench')).toHaveLength(2);
+    expect(renderer.partSlotsFor(4, 'incineratorStack')).toHaveLength(1);
+    expect(renderer.partSlotsFor(5, 'parkBench')).toHaveLength(2);
   });
 });

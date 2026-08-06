@@ -7,7 +7,7 @@ import {
   tileIndex,
 } from '../shared/constants';
 import { createGrid } from '../world/grid';
-import { GarbageSystem, type GarbageBuilding } from './garbage';
+import { GarbageSystem, type GarbageBuilding, type GarbageFacility } from './garbage';
 
 /**
  * A full MAP_SIZE grid with a vertical road column x=10 (z 10..40), a 2-tile
@@ -89,5 +89,73 @@ describe('GarbageSystem', () => {
       sysB.tick(b.g, [COM]);
     }
     expect(sysA.landfillStored()).toBe(sysB.landfillStored());
+  });
+});
+
+const IND: GarbageBuilding = { id: 7, sector: 'ind', level: 1 };
+
+/** baseWorld with the landfill removed and an incinerator footprint at (11,25). */
+function incinWorld(): { g: GridState; buildingTile: number; incinId: number } {
+  const { g, buildingTile } = baseWorld();
+  g.landfill.fill(0); // isolate the incinerator as the only collector
+  const incinId = 20;
+  g.buildingId[tileIndex(11, 25)] = incinId; // 1 tile off the road column
+  return { g, buildingTile, incinId };
+}
+
+const facility = (over: Partial<GarbageFacility> = {}): GarbageFacility => ({
+  id: 20,
+  collectionRange: 40,
+  bufferCapacity: 400000,
+  burnRate: 2,
+  ...over,
+});
+
+describe('GarbageSystem incinerators', () => {
+  it('collects covered trash into its buffer then burns burnRate off the top', () => {
+    const { g, buildingTile, incinId } = incinWorld();
+    const sys = new GarbageSystem(g.size);
+
+    sys.tick(g, [COM], [facility({ burnRate: 2 })]);
+
+    // COM emitted TRASH_EMIT_COM; all collected into the buffer, then 2 burned.
+    expect(sys.incineratorStored(incinId)).toBe(TRASH_EMIT_COM - 2);
+    expect(sys.incineratorBurnedLast(incinId)).toBe(2);
+    expect(sys.trash[buildingTile]).toBe(0);
+  });
+
+  it('stops collecting when its buffer is full; trash backs up but it keeps its cap', () => {
+    const { g, buildingTile, incinId } = incinWorld();
+    const sys = new GarbageSystem(g.size);
+    const cap = 2 * TRASH_EMIT_IND;
+    const f = facility({ burnRate: 0, bufferCapacity: cap }); // pure store → fills fast
+
+    for (let i = 0; i < 6; i++) sys.tick(g, [IND], [f]);
+
+    expect(sys.incineratorStored(incinId)).toBe(cap); // capped, never exceeds
+    expect(sys.trash[buildingTile]).toBeGreaterThan(0); // collection stopped → backs up
+  });
+
+  it('is a permanent fix when burn >= inflow — buffer stays empty, nothing backs up', () => {
+    const { g, buildingTile, incinId } = incinWorld();
+    const sys = new GarbageSystem(g.size);
+    const f = facility({ burnRate: 1000 }); // >> per-pass inflow
+
+    for (let i = 0; i < 20; i++) sys.tick(g, [COM], [f]);
+
+    expect(sys.incineratorStored(incinId)).toBe(0);
+    expect(sys.incineratorBurnedLast(incinId)).toBe(TRASH_EMIT_COM);
+    expect(sys.trash[buildingTile]).toBe(0);
+  });
+
+  it("drops a removed incinerator's buffer", () => {
+    const { g, incinId } = incinWorld();
+    const sys = new GarbageSystem(g.size);
+
+    sys.tick(g, [COM], [facility({ burnRate: 0 })]);
+    expect(sys.incineratorStored(incinId)).toBeGreaterThan(0);
+
+    sys.tick(g, [COM], []); // incinerator gone → buffer pruned
+    expect(sys.incineratorStored(incinId)).toBe(0);
   });
 });

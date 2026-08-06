@@ -17,7 +17,7 @@ afterEach(() => {
 const noop = (): void => {};
 
 describe('MainDock', () => {
-  it('renders exactly the ten UI-SPEC §2 category buttons plus §6.11 Landscaping, icon-only with a tooltip name', () => {
+  it('renders every dock category button (incl. Garbage + Landscaping), icon-only with a tooltip name', () => {
     render(
       <MainDock
         activeCategory={null}
@@ -32,6 +32,7 @@ describe('MainDock', () => {
       'Roads',
       'Electricity',
       'Water',
+      'Garbage',
       'Health',
       'Fire',
       'Police',

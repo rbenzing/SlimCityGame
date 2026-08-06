@@ -20,6 +20,7 @@ export type DockCategory =
   | 'roads'
   | 'electricity'
   | 'water'
+  | 'garbage'
   | 'health'
   | 'fire'
   | 'police'
@@ -35,6 +36,7 @@ export const CATEGORY_DEFS: ReadonlyArray<{ id: DockCategory; label: string; ico
   { id: 'roads', label: 'Roads', icon: 'roads' },
   { id: 'electricity', label: 'Electricity', icon: 'electricity' },
   { id: 'water', label: 'Water', icon: 'water' },
+  { id: 'garbage', label: 'Garbage', icon: 'garbage' },
   { id: 'health', label: 'Health', icon: 'health' },
   { id: 'fire', label: 'Fire', icon: 'fire' },
   { id: 'police', label: 'Police', icon: 'police' },
@@ -226,6 +228,10 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
       cards: catalogCards((e) => e.category === 'utility' && e.utility?.waterKL !== undefined),
     },
   ],
+  // Garbage: the landfill-area brush + garbage-processing ploppables (incinerator).
+  garbage: [
+    { id: 'all', label: 'Garbage', cards: [LANDFILL_PAINT_CARD, ...catalogCards((e) => !!e.garbage)] },
+  ],
   health: [
     {
       id: 'all',
@@ -266,9 +272,7 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
   // Districts: the paint tool (district selection + policies live in the DistrictPanel).
   districts: [{ id: 'all', label: 'Districts', cards: [DISTRICT_PAINT_CARD] }],
   bulldoze: [{ id: 'all', label: 'Bulldoze', cards: [BULLDOZE_CARD] }],
-  landscaping: [
-    { id: 'all', label: 'Landscaping', cards: [...TERRAFORM_CARDS, LANDFILL_PAINT_CARD] },
-  ],
+  landscaping: [{ id: 'all', label: 'Landscaping', cards: [...TERRAFORM_CARDS] }],
 };
 
 /** Non-empty sub-tab groups for a category. Length <= 1 means "no tab row — one flat grid". */

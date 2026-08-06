@@ -15,7 +15,7 @@
  * bulldoze keep working through that existing path while this file carries
  * the actual visual identity.
  *
- * Four kits today:
+ * Five kits today:
  *  - wind-turbine: tapered mast + nacelle ("turbineTower"), a separate
  *    "turbineRotor" InstancedMesh whose per-instance rotation advances every
  *    update(tMs) (slow spin, phase offset hashed from the building id so
@@ -29,6 +29,11 @@
  *    footprint, 2 striped smokestacks ("coalSmokestack", chimney
  *    language), and a low coal-heap wedge ("coalHeap") in the strip beside
  *    the hall.
+ *  - incinerator: a low concrete processing hall ("incineratorHall")
+ *    covering ~3x4 of its 4x4 footprint, ONE thick tall flue
+ *    ("incineratorStack" — single/unstriped, unlike the coal plant's 2
+ *    striped stacks), and a low tipping-bay box ("incineratorBay") in the
+ *    strip beside the hall.
  *  - small-park: a flat lawn plate + path cross ("parkGround"), 2-3
  *    self-contained trees ("parkTree" — trunk+canopy built locally; this file
  *    deliberately does NOT import trees.ts), and 2 benches ("parkBench").
@@ -55,6 +60,7 @@ export const UTILITY_KIT_CATALOG_IDS: readonly string[] = [
   'wind-turbine',
   'water-tower',
   'coal-plant',
+  'incinerator',
   'small-park',
 ];
 
@@ -67,6 +73,9 @@ export type UtilityKitPartKind =
   | 'coalHall'
   | 'coalSmokestack'
   | 'coalHeap'
+  | 'incineratorHall'
+  | 'incineratorStack'
+  | 'incineratorBay'
   | 'parkGround'
   | 'parkTree'
   | 'parkBench';
@@ -558,6 +567,124 @@ function buildCoalHeapGeometry(): THREE.BufferGeometry {
 }
 
 // ---------------------------------------------------------------------------
+// incinerator: low concrete processing hall (~3x4 of its 4x4 footprint),
+// ONE thick tall flue (single/unstriped, unlike the coal plant's 2 striped
+// stacks), a low tipping-bay box in the strip beside the hall.
+// ---------------------------------------------------------------------------
+
+const INCINERATOR_HALL_INSET_TILES = 1; // hall width = footprint.w - this, in tiles ("3x4 of its 4x4")
+const INCINERATOR_HALL_HEIGHT = 11; // lower & boxier than the coal hall
+const INCINERATOR_ROOF_CAP_HEIGHT = 1.0;
+const INCINERATOR_STACK_HEIGHT = 30; // taller than the coal stacks
+const INCINERATOR_STACK_RADIUS_BOTTOM = 2.9; // one thick flue vs. the coal plant's thinner pair
+const INCINERATOR_STACK_RADIUS_TOP = 2.4;
+const INCINERATOR_STACK_RIM_HEIGHT = 1.6;
+const INCINERATOR_STACK_RIM_RADIUS_BONUS = 0.25;
+const INCINERATOR_STACK_Z_FRACTION = -0.25; // of hallHalfD, from hall center
+const INCINERATOR_BAY_WIDTH = 6;
+const INCINERATOR_BAY_HEIGHT = 6;
+const INCINERATOR_BAY_DEPTH = 10;
+const INCINERATOR_BAY_CAP_HEIGHT = 0.8;
+const INCINERATOR_BAY_Z_FRACTION = 0.15; // of hallHalfD
+
+const INCINERATOR_HALL_RGB: RGB = [0.42, 0.435, 0.447]; // industrial concrete grey (catalog 0x6b6f72)
+const INCINERATOR_ROOF_CAP_RGB: RGB = [0.3, 0.31, 0.32];
+const INCINERATOR_STACK_RGB: RGB = [0.52, 0.53, 0.55];
+const INCINERATOR_STACK_RIM_RGB: RGB = [0.32, 0.33, 0.34];
+const INCINERATOR_BAY_RGB: RGB = [0.5, 0.515, 0.525];
+const INCINERATOR_BAY_CAP_RGB: RGB = [0.33, 0.34, 0.35];
+
+export interface IncineratorHallLayout {
+  hallHalfW: number;
+  hallHalfD: number;
+  hallCenterX: number;
+  bayCenterX: number;
+  bayHalfW: number;
+}
+
+/**
+ * Low concrete processing hall covering ~3x4 of its 4x4 footprint: the hall
+ * spans the full depth but only footprint.w - INCINERATOR_HALL_INSET_TILES
+ * tiles of width, flush against the local -X edge, leaving a strip along +X
+ * for the tipping bay. Pure; deterministic per footprint.
+ */
+export function computeIncineratorHallLayout(footprint: FootprintSize): IncineratorHallLayout {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const hallWidthTiles = Math.max(1, footprint.w - INCINERATOR_HALL_INSET_TILES);
+  const hallHalfW = (hallWidthTiles * TILE_METERS) / 2;
+  const hallCenterX = -halfW + hallHalfW;
+  const bayHalfW = halfW - hallHalfW;
+  // Algebra (see computeCoalHallLayout): bayCenterX = hallHalfW.
+  const bayCenterX = hallHalfW;
+  return { hallHalfW, hallHalfD: halfD, hallCenterX, bayCenterX, bayHalfW };
+}
+
+/** The single flue rises over the hall roof, offset toward the -Z end. Pure; fixed (no per-instance variation is called for). */
+export function computeIncineratorStackLocalPlacement(footprint: FootprintSize): Vec2 {
+  const { hallCenterX, hallHalfD } = computeIncineratorHallLayout(footprint);
+  return { x: hallCenterX, z: hallHalfD * INCINERATOR_STACK_Z_FRACTION };
+}
+
+/** The tipping bay sits in the free strip beside the hall. Pure; fixed. */
+export function computeIncineratorBayLocalPlacement(footprint: FootprintSize): Vec2 {
+  const { bayCenterX, hallHalfD } = computeIncineratorHallLayout(footprint);
+  return { x: bayCenterX, z: hallHalfD * INCINERATOR_BAY_Z_FRACTION };
+}
+
+/** Hall body + a darker roof-cap band, merged; local Y=0 is the GROUND plane. */
+function buildIncineratorHallGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { hallHalfW, hallHalfD, hallCenterX } = computeIncineratorHallLayout(footprint);
+  const width = hallHalfW * 2;
+  const depth = hallHalfD * 2;
+
+  const body = new THREE.BoxGeometry(width, INCINERATOR_HALL_HEIGHT, depth);
+  body.translate(hallCenterX, INCINERATOR_HALL_HEIGHT / 2, 0);
+  paintVertexColor(body, hexFromRgb(INCINERATOR_HALL_RGB));
+
+  const cap = new THREE.BoxGeometry(width * 1.02, INCINERATOR_ROOF_CAP_HEIGHT, depth * 1.02);
+  cap.translate(hallCenterX, INCINERATOR_HALL_HEIGHT + INCINERATOR_ROOF_CAP_HEIGHT / 2, 0);
+  paintVertexColor(cap, hexFromRgb(INCINERATOR_ROOF_CAP_RGB));
+
+  return mergeParts([body, cap]);
+}
+
+/** One thick tapered flue + a dark rim at the mouth, merged; local Y=0 is the GROUND plane. */
+function buildIncineratorStackGeometry(): THREE.BufferGeometry {
+  const flue = new THREE.CylinderGeometry(
+    INCINERATOR_STACK_RADIUS_TOP,
+    INCINERATOR_STACK_RADIUS_BOTTOM,
+    INCINERATOR_STACK_HEIGHT,
+    12,
+  );
+  flue.translate(0, INCINERATOR_STACK_HEIGHT / 2, 0);
+  paintVertexColor(flue, hexFromRgb(INCINERATOR_STACK_RGB));
+
+  const rimRadius = INCINERATOR_STACK_RADIUS_TOP + INCINERATOR_STACK_RIM_RADIUS_BONUS;
+  const rim = new THREE.CylinderGeometry(rimRadius, rimRadius, INCINERATOR_STACK_RIM_HEIGHT, 12);
+  rim.translate(0, INCINERATOR_STACK_HEIGHT - INCINERATOR_STACK_RIM_HEIGHT / 2, 0);
+  paintVertexColor(rim, hexFromRgb(INCINERATOR_STACK_RIM_RGB));
+
+  return mergeParts([flue, rim]);
+}
+
+/** Low tipping-bay box + a flat overhanging roof cap, merged; local Y=0 is the GROUND plane. */
+function buildIncineratorBayGeometry(): THREE.BufferGeometry {
+  const body = new THREE.BoxGeometry(INCINERATOR_BAY_WIDTH, INCINERATOR_BAY_HEIGHT, INCINERATOR_BAY_DEPTH);
+  body.translate(0, INCINERATOR_BAY_HEIGHT / 2, 0);
+  paintVertexColor(body, hexFromRgb(INCINERATOR_BAY_RGB));
+
+  const cap = new THREE.BoxGeometry(
+    INCINERATOR_BAY_WIDTH * 1.08,
+    INCINERATOR_BAY_CAP_HEIGHT,
+    INCINERATOR_BAY_DEPTH * 1.08,
+  );
+  cap.translate(0, INCINERATOR_BAY_HEIGHT + INCINERATOR_BAY_CAP_HEIGHT / 2, 0);
+  paintVertexColor(cap, hexFromRgb(INCINERATOR_BAY_CAP_RGB));
+
+  return mergeParts([body, cap]);
+}
+
+// ---------------------------------------------------------------------------
 // small-park: flat lawn plate (lush green), a light
 // path cross, 2-3 simple trees (self-contained), 2 benches.
 // ---------------------------------------------------------------------------
@@ -841,6 +968,8 @@ export class UtilityKitRenderer {
         return this.buildWaterTowerKit(entry);
       case 'coal-plant':
         return this.buildCoalPlantKit(entry);
+      case 'incinerator':
+        return this.buildIncineratorKit(entry);
       case 'small-park':
         return this.buildSmallParkKit(entry);
       default:
@@ -929,6 +1058,34 @@ export class UtilityKitRenderer {
     };
   }
 
+  private buildIncineratorKit(entry: BuildingCatalogEntry): KitDefinition {
+    const lambert = (): THREE.MeshLambertMaterial =>
+      new THREE.MeshLambertMaterial({ vertexColors: true });
+    return {
+      entry,
+      pools: {
+        incineratorHall: new InstancedSlotPool(
+          this.scene,
+          buildIncineratorHallGeometry(entry.footprint),
+          lambert(),
+          INITIAL_KIT_CAPACITY,
+        ),
+        incineratorStack: new InstancedSlotPool(
+          this.scene,
+          buildIncineratorStackGeometry(),
+          lambert(),
+          INITIAL_KIT_CAPACITY,
+        ),
+        incineratorBay: new InstancedSlotPool(
+          this.scene,
+          buildIncineratorBayGeometry(),
+          lambert(),
+          INITIAL_KIT_CAPACITY,
+        ),
+      },
+    };
+  }
+
   private buildSmallParkKit(entry: BuildingCatalogEntry): KitDefinition {
     const lambert = (): THREE.MeshLambertMaterial =>
       new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -1004,6 +1161,9 @@ export class UtilityKitRenderer {
         return;
       case 'coal-plant':
         this.applyCoalPlant(kit, building, entry, centerX, groundY, centerZ, rotation);
+        return;
+      case 'incinerator':
+        this.applyIncinerator(kit, building, entry, centerX, groundY, centerZ, rotation);
         return;
       case 'small-park':
         this.applySmallPark(kit, building, entry, centerX, groundY, centerZ, rotation);
@@ -1114,6 +1274,48 @@ export class UtilityKitRenderer {
     this.instances.set(building.id, {
       catalogId: building.catalogId,
       slots: { coalHall: [hallSlot], coalSmokestack: stackSlots, coalHeap: [heapSlot] },
+    });
+  }
+
+  private applyIncinerator(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    centerX: number,
+    groundY: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+  ): void {
+    const hallPool = kit.pools.incineratorHall;
+    const stackPool = kit.pools.incineratorStack;
+    const bayPool = kit.pools.incineratorBay;
+    if (!hallPool || !stackPool || !bayPool) return;
+
+    const hallSlot = this.placeAt(hallPool, centerX, groundY, centerZ, rotation);
+
+    const stackLocal = computeIncineratorStackLocalPlacement(entry.footprint);
+    const stackRotated = rotateLocalXZ(stackLocal.x, stackLocal.z, rotation);
+    const stackSlot = this.placeAt(
+      stackPool,
+      centerX + stackRotated.x,
+      groundY,
+      centerZ + stackRotated.z,
+      rotation,
+    );
+
+    const bayLocal = computeIncineratorBayLocalPlacement(entry.footprint);
+    const bayRotated = rotateLocalXZ(bayLocal.x, bayLocal.z, rotation);
+    const baySlot = this.placeAt(
+      bayPool,
+      centerX + bayRotated.x,
+      groundY,
+      centerZ + bayRotated.z,
+      rotation,
+    );
+
+    this.instances.set(building.id, {
+      catalogId: building.catalogId,
+      slots: { incineratorHall: [hallSlot], incineratorStack: [stackSlot], incineratorBay: [baySlot] },
     });
   }
 
