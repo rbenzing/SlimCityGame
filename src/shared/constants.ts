@@ -32,9 +32,9 @@ export const TICK_MS = 1000 / TICK_RATE;
  */
 export const SPEED_MULTIPLIERS: Readonly<Record<0 | 1 | 2 | 4, number>> = {
   0: 0,
-  1: 0.5,
-  2: 2,
-  4: 8,
+  1: 0.5 / 1.5,
+  2: 2 / 1.5,
+  4: 8 / 1.5,
 };
 export const TICKS_PER_DAY = 200; // 10s per game day at 1x
 export const DAYS_PER_MONTH = 30;
