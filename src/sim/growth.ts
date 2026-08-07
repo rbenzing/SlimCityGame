@@ -139,17 +139,42 @@ function writeStamp(g: GridState, x: number, z: number, w: number, d: number, id
   }
 }
 
+/**
+ * True when ANY tile of the w*d footprint at (x, z) is served by `layer`.
+ *
+ * Power and water only reach one tile beyond a road, while a footprint always
+ * extends from its origin corner towards +x/+z. Testing the origin alone
+ * therefore made service depend on which side the street was: a lot fronting
+ * a road to its north or west was served, while the identical lot fronting a
+ * road to its south or east never was — its only served row would push the
+ * footprint into the road, and the row that fits was out of reach. A lot is
+ * connected as soon as one of its tiles is.
+ */
+function footprintServed(layer: Uint8Array, x: number, z: number, w: number, d: number): boolean {
+  for (let dz = 0; dz < d; dz++) {
+    for (let dx = 0; dx < w; dx++) {
+      const tx = x + dx;
+      const tz = z + dz;
+      if (!inBounds(tx, tz)) continue;
+      if (readTile(layer, tileIndex(tx, tz))) return true;
+    }
+  }
+  return false;
+}
+
 function computeProblems(
   g: GridState,
   x: number,
   z: number,
   sector: Sector | null,
   demandForSector: number,
+  w = 1,
+  d = 1,
 ): number {
   const idx = tileIndex(x, z);
   let problems = 0;
-  if (!readTile(g.power, idx)) problems |= Problem.NoPower;
-  if (!readTile(g.watered, idx)) problems |= Problem.NoWater;
+  if (!footprintServed(g.power, x, z, w, d)) problems |= Problem.NoPower;
+  if (!footprintServed(g.watered, x, z, w, d)) problems |= Problem.NoWater;
   if (!hasNearbyRoad(g, x, z, ROAD_CHECK_RADIUS)) problems |= Problem.NoRoad;
   if (fieldAt(g, FieldId.Crime, idx) > HIGH_CRIME) problems |= Problem.HighCrime;
   if (sector === 'res' && fieldAt(g, FieldId.Pollution, idx) > HIGH_POLLUTION)
@@ -265,7 +290,16 @@ export class GrowthSystem {
 
       const sector = zoneSector(entry.zone);
       const demandForSector = sector ? demand[sector] : 0;
-      const newProblems = computeProblems(g, inst.x, inst.z, sector, demandForSector);
+      const footprint = footprintForRotation(entry, inst.rotation);
+      const newProblems = computeProblems(
+        g,
+        inst.x,
+        inst.z,
+        sector,
+        demandForSector,
+        footprint.w,
+        footprint.d,
+      );
       const hasBlocker = (newProblems & (Problem.NoPower | Problem.NoWater | Problem.NoRoad)) !== 0;
 
       if (inst.state === BuildingState.Active) {
@@ -394,7 +428,6 @@ export class GrowthSystem {
       const zone = readTile(g.zone, flat) as ZoneType;
       const sector = zoneSector(zone);
       if (!sector) continue;
-      if (!readTile(g.power, flat) || !readTile(g.watered, flat)) continue;
 
       const x = flat % size;
       const z = Math.floor(flat / size);
@@ -407,6 +440,11 @@ export class GrowthSystem {
 
       const { w, d } = footprintForRotation(entry, 0);
       if (!this.canPlace(g, x, z, w, d)) continue;
+      // Service is judged over the whole lot, so it cannot depend on which
+      // side of the building the street happens to sit (see footprintServed).
+      if (!footprintServed(g.power, x, z, w, d) || !footprintServed(g.watered, x, z, w, d)) {
+        continue;
+      }
 
       const demandForSector = demand[sector];
       if (demandForSector <= 0) continue;

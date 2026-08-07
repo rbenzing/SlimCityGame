@@ -563,4 +563,117 @@ describe('GrowthSystem', () => {
       expect(totals.jobs).toBeGreaterThan(0);
     });
   });
+
+  describe('service reach is judged over the whole lot', () => {
+    /** A 2x2 level-1 industrial entry — the footprint size that exposed this. */
+    const indL1: BuildingCatalogEntry = {
+      id: 'ind-1',
+      name: 'Workshop Yard',
+      category: 'ind',
+      zone: ZoneType.Industrial,
+      level: 1,
+      footprint: { w: 2, d: 2 },
+      height: 9,
+      color: 0x8b6f4f,
+      jobs: 16,
+      powerUse: 1,
+      waterUse: 1,
+      cost: 0,
+      upkeep: 0,
+      unlockMilestone: 0,
+    };
+
+    /** The real buildability rule: a footprint may not cover a road or another building. */
+    const footprintClear = (g: GridState, x: number, z: number, w: number, d: number): boolean => {
+      for (let dz = 0; dz < d; dz++) {
+        for (let dx = 0; dx < w; dx++) {
+          const idx = tileIndex(x + dx, z + dz);
+          if (g.roadTier[idx] !== RoadTier.None) return false;
+          if (g.buildingId[idx] !== 0) return false;
+        }
+      }
+      return true;
+    };
+
+    /**
+     * Zones a 2x2 lot at (x, z) and lays a road along `side`, servicing only
+     * the tiles one step from that road — what SERVICE_RADIUS = 1 produces.
+     */
+    function lotFronting(g: GridState, x: number, z: number, side: 'N' | 'S' | 'W' | 'E'): void {
+      for (let dz = 0; dz < 2; dz++) {
+        for (let dx = 0; dx < 2; dx++) g.zone[tileIndex(x + dx, z + dz)] = ZoneType.Industrial;
+      }
+      const road: Array<[number, number]> =
+        side === 'N'
+          ? [
+              [x, z - 1],
+              [x + 1, z - 1],
+            ]
+          : side === 'S'
+            ? [
+                [x, z + 2],
+                [x + 1, z + 2],
+              ]
+            : side === 'W'
+              ? [
+                  [x - 1, z],
+                  [x - 1, z + 1],
+                ]
+              : [
+                  [x + 2, z],
+                  [x + 2, z + 1],
+                ];
+      for (const [rx, rz] of road) g.roadTier[tileIndex(rx, rz)] = RoadTier.TwoLane;
+      for (const [rx, rz] of road) {
+        const spread: Array<[number, number]> = [
+          [0, 0],
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ];
+        for (const [ox, oz] of spread) {
+          const idx = tileIndex(rx + ox, rz + oz);
+          g.power[idx] = 1;
+          g.watered[idx] = 1;
+        }
+      }
+    }
+
+    function growsFronting(side: 'N' | 'S' | 'W' | 'E'): boolean {
+      const g = makeGrid();
+      lotFronting(g, 20, 20, side);
+      const registry = new BuildingRegistry([indL1]);
+      const system = new GrowthSystem([indL1], constantRng(0), footprintClear);
+      for (let tick = 1; tick <= 4000; tick++) {
+        if (system.tick(g, registry, neutralDemand, 0, tick).added.length > 0) return true;
+      }
+      return false;
+    }
+
+    it('spawns a multi-tile lot whichever side of it the street is on', () => {
+      // Service used to be read at the origin corner only. Since a footprint
+      // grows towards +x/+z, a lot fronting a road to its south or east had
+      // its one serviced row pushed into the road and could never spawn —
+      // which silently killed industrial districts laid out that way.
+      for (const side of ['N', 'S', 'W', 'E'] as const) {
+        expect(growsFronting(side), `road on the ${side} side`).toBe(true);
+      }
+    });
+
+    it('still refuses a lot with no power or water anywhere on its footprint', () => {
+      const g = makeGrid();
+      for (let dz = 0; dz < 2; dz++) {
+        for (let dx = 0; dx < 2; dx++) g.zone[tileIndex(20 + dx, 20 + dz)] = ZoneType.Industrial;
+      }
+      g.roadTier[tileIndex(20, 22)] = RoadTier.TwoLane; // in road reach, but unserviced
+      const registry = new BuildingRegistry([indL1]);
+      const system = new GrowthSystem([indL1], constantRng(0), footprintClear);
+      let placed = 0;
+      for (let tick = 1; tick <= 1000; tick++) {
+        placed += system.tick(g, registry, neutralDemand, 0, tick).added.length;
+      }
+      expect(placed).toBe(0);
+    });
+  });
 });

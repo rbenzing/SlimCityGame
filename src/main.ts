@@ -286,6 +286,25 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         water: Array.from(clientGrid.water),
         height: Array.from(clientGrid.height),
       }),
+      // Every known building instance with its lifecycle state and problem
+      // bits — tells a harness whether lots are failing to spawn, stuck
+      // constructing, or spawning and then being abandoned.
+      readBuildings: (): Array<{
+        id: number;
+        catalogId: string;
+        x: number;
+        z: number;
+        state: number;
+        problems: number;
+      }> =>
+        Array.from(knownBuildings.values()).map((b) => ({
+          id: b.id,
+          catalogId: b.catalogId,
+          x: b.x,
+          z: b.z,
+          state: b.state,
+          problems: b.problems,
+        })),
     };
   }
 
