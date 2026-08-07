@@ -41,6 +41,7 @@ import {
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MAX_VEHICLES, VEHICLE_STRIDE, INACTIVE_VEHICLE_X, VehicleKind } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { ROAD_Y_OFFSET } from './roadsmesh';
 
 const TWO_PI = Math.PI * 2;
 
@@ -51,7 +52,7 @@ const TWO_PI = Math.PI * 2;
  * route's end and a new route's start. A real vehicle covers under ~0.4 tiles
  * per tick (TICK_RATE 20), so 2 tiles cleanly separates motion from a handoff.
  */
-const TELEPORT_SNAP_DIST_SQ = (2 * TILE_METERS) * (2 * TILE_METERS);
+const TELEPORT_SNAP_DIST_SQ = 2 * TILE_METERS * (2 * TILE_METERS);
 
 /** Wraps b-a into (-PI, PI] so lerping heading always takes the shortest arc. */
 function shortestAngleDelta(a: number, b: number): number {
@@ -148,7 +149,7 @@ export function laneOffset(heading: number): { dx: number; dz: number } {
   };
 }
 
-function sizeForKind(kind: number): readonly [number, number, number] {
+export function sizeForKind(kind: number): readonly [number, number, number] {
   switch (kind) {
     case VehicleKind.Truck:
       return [2.2, 2.6, 7.0];
@@ -263,7 +264,7 @@ const TRUCK_VARIANT_SCALE: readonly (readonly [number, number, number])[] = [
 ];
 const BUS_VARIANT_SCALE: readonly (readonly [number, number, number])[] = [[1.0, 1.0, 1.0]];
 
-function variantScaleForKind(
+export function variantScaleForKind(
   kind: number,
   variantIndex: number,
 ): readonly [number, number, number] {
@@ -500,7 +501,7 @@ export function buildVehicleGeometry(kind: number): THREE.BufferGeometry {
  */
 type DiffuseColorBuilder = Parameters<MeshLambertNodeMaterial['setupDiffuseColor']>[0];
 
-class VehiclePartMaterial extends MeshLambertNodeMaterial {
+export class VehiclePartMaterial extends MeshLambertNodeMaterial {
   // NodeMaterial's shared lighting setup reads `this.emissiveNode` generically
   // (used by MeshStandardNodeMaterial et al.), but MeshLambertNodeMaterial's
   // own type doesn't declare it -- add it here with the same type so
@@ -532,6 +533,102 @@ const _scale = new THREE.Vector3();
 const _color = new THREE.Color();
 const _yAxis = new THREE.Vector3(0, 1, 0);
 const HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
+
+/**
+ * A growable InstancedMesh of ONE vehicle-kit geometry for STATIC vehicles
+ * (parked lots, driveways) — the moving-traffic path uses VehicleRenderer's
+ * fixed-size buffer instead. The instanceColor buffer doubles as the
+ * `vehicleInstanceTint` attribute (re-aliased on growth) so
+ * VehiclePartMaterial tints ONLY body vertices; no emissive node is attached,
+ * so parked vehicles keep their lights off at night.
+ *
+ * `mesh` is swapped out by growth — never cache it across an allocate() call.
+ */
+export class VehicleKitPool {
+  readonly kind: number;
+  mesh: THREE.InstancedMesh;
+  private capacity: number;
+  private used = 0;
+  private readonly freeSlots: number[] = [];
+  private readonly geometry: THREE.BufferGeometry;
+  private readonly material: VehiclePartMaterial;
+  private readonly scene: THREE.Scene;
+
+  constructor(scene: THREE.Scene, kind: number, capacity: number) {
+    this.scene = scene;
+    this.kind = kind;
+    this.capacity = capacity;
+    this.geometry = buildVehicleGeometry(kind);
+    this.material = new VehiclePartMaterial();
+    this.material.vertexColors = true;
+    this.mesh = this.buildMesh(capacity);
+    scene.add(this.mesh);
+  }
+
+  private buildMesh(capacity: number): THREE.InstancedMesh {
+    const mesh = new THREE.InstancedMesh(this.geometry, this.material, capacity);
+    mesh.count = 0;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    const tintAttribute = new THREE.InstancedBufferAttribute(
+      new Float32Array(capacity * 3).fill(1),
+      3,
+    );
+    mesh.instanceColor = tintAttribute;
+    this.geometry.setAttribute('vehicleInstanceTint', tintAttribute);
+    return mesh;
+  }
+
+  allocate(): number {
+    const recycled = this.freeSlots.pop();
+    if (recycled !== undefined) return recycled;
+    if (this.used >= this.capacity) this.grow();
+    return this.used++;
+  }
+
+  free(slot: number): void {
+    this.mesh.setMatrixAt(slot, HIDDEN_MATRIX);
+    this.mesh.instanceMatrix.needsUpdate = true;
+    this.freeSlots.push(slot);
+  }
+
+  /** Flushes matrix/color buffers and re-arms frustum culling after a batch of writes. */
+  finalize(): void {
+    this.mesh.count = this.used;
+    this.mesh.instanceMatrix.needsUpdate = true;
+    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    // Invalidate the cached frustum-cull sphere (three.js only recomputes it
+    // while null — otherwise cars added after the first cull pass stay culled).
+    this.mesh.boundingSphere = null;
+  }
+
+  usedSlots(): number {
+    return this.used;
+  }
+
+  private grow(): void {
+    const previous = this.mesh;
+    const newCapacity = this.capacity * 2;
+    const newMesh = this.buildMesh(newCapacity);
+
+    const m = new THREE.Matrix4();
+    const c = new THREE.Color();
+    for (let i = 0; i < this.used; i++) {
+      previous.getMatrixAt(i, m);
+      newMesh.setMatrixAt(i, m);
+      previous.getColorAt(i, c);
+      newMesh.setColorAt(i, c);
+    }
+    newMesh.count = this.used;
+    newMesh.instanceMatrix.needsUpdate = true;
+    if (newMesh.instanceColor) newMesh.instanceColor.needsUpdate = true;
+
+    this.scene.remove(previous);
+    this.scene.add(newMesh);
+    this.mesh = newMesh;
+    this.capacity = newCapacity;
+  }
+}
 
 export class VehicleRenderer {
   private readonly heightAt: (x: number, z: number) => number;
@@ -673,7 +770,9 @@ export class VehicleRenderer {
       const renderX = x + offset.dx;
       const renderZ = z + offset.dz;
 
-      const groundY = this.heightAt(renderX, renderZ);
+      // Vehicles ride ON the road plate (terrain + ROAD_Y_OFFSET), not on the
+      // bare terrain under it — otherwise wheels sink into the asphalt.
+      const groundY = this.heightAt(renderX, renderZ) + ROAD_Y_OFFSET;
       _position.set(renderX, groundY + sy / 2, renderZ);
       _quaternion.setFromAxisAngle(_yAxis, heading);
       _scale.set(sx, sy, sz);

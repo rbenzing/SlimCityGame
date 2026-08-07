@@ -28,6 +28,7 @@ import {
 } from '../shared/types';
 import { TILE_METERS, tileToWorld } from '../shared/constants';
 import { laneOffset, lerpVehicle } from './vehicles';
+import { ROAD_Y_OFFSET } from './roadsmesh';
 
 const SERVICE_KINDS = [
   VehicleKind.Fire,
@@ -291,7 +292,8 @@ export class ServiceVehicleRenderer {
       const offset = laneOffset(heading);
       const renderX = x + offset.dx;
       const renderZ = z + offset.dz;
-      const groundY = this.heightAt(renderX, renderZ);
+      // Ride ON the road plate, not the bare terrain under it (wheel clipping).
+      const groundY = this.heightAt(renderX, renderZ) + ROAD_Y_OFFSET;
 
       _position.set(renderX, groundY + sy / 2, renderZ);
       _quaternion.setFromAxisAngle(_yAxis, heading);

@@ -1,8 +1,9 @@
 /**
  * Parked cars & lot life: a static, deterministic occupancy
  * signal drawn along each Active building's road-facing footprint edge.
- * Fully independent of vehicles.ts/buildings.ts/facade.ts by design — the
- * two-box car geometry below is a small, intentional local duplication.
+ * Cars are real vehicle-kit models (render/vehicles.ts geometries — wheels,
+ * cabin, light quads, body-only palette tint) parked NOSE-IN, perpendicular
+ * to the road, in painted parking bays on the lot's frontage apron.
  *
  * Coordinate conventions (matching the rest of src/render):
  *  - `heightAt(worldX, worldZ)` takes WORLD METERS and returns world height,
@@ -19,31 +20,50 @@ import {
   BuildingDelta,
   BuildingInstance,
   BuildingState,
+  VehicleKind,
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { sizeForKind, variantScaleForKind, VehicleKitPool } from './vehicles';
 
 // ---------------------------------------------------------------------------
 // Tunables
 // ---------------------------------------------------------------------------
 
+/** Lot category: commercial rows park customer cars, industrial rows mix in trucks. */
+export type LotCategory = 'com' | 'ind';
+
 /**
- * How far the stall row sits INWARD from the building's road-facing footprint
- * edge, in tiles (onto the lot, toward the building — never outward onto the
- * road). ~1.1 m: a parallel-parked car (1.8 m wide) then sits fully inside the
- * footprint tile, clear of the carriageway.
+ * Center-to-center bay pitch along the edge, in tiles. A car is 1.8 m wide
+ * (wagon variant unchanged in width), a box-truck 2.31 m — both pitches leave
+ * a full walking gap between neighbors, so parked vehicles never touch.
  */
-export const STALL_INSET_TILES = 0.07;
-/** Depth of the paved apron strip, inward from the footprint edge, in tiles. */
-export const APRON_DEPTH_TILES = 0.14;
-/** Center-to-center spacing between stalls along the edge, in tiles. */
-export const STALL_SPACING_TILES = 0.45;
-/** Max absolute per-car yaw jitter, radians. */
-export const YAW_JITTER_MAX = 0.06;
+export const BAY_PITCH_TILES: Readonly<Record<LotCategory, number>> = {
+  com: 0.1875, // 3.0 m car bays
+  ind: 0.24, // 3.84 m truck bays
+};
+
+/**
+ * Bay depth (how far the paved bay runs INWARD from the footprint edge, onto
+ * the lot), in tiles. Deep enough that the longest vehicle parked
+ * perpendicular sits fully inside the bay: 4.6 m wagon in a 5.3 m car bay,
+ * 7 m box-truck in an 8.3 m truck bay.
+ */
+export const BAY_DEPTH_TILES: Readonly<Record<LotCategory, number>> = {
+  com: 0.33,
+  ind: 0.52,
+};
+
+/** Unpainted margin kept at each end of the bay row, in tiles. */
+export const BAY_END_MARGIN_TILES = 0.06;
+
+/** Max absolute per-car yaw jitter, radians — parked cars sit nearly straight in their bays. */
+export const YAW_JITTER_MAX = 0.03;
 
 /**
  * Curated ~10-color saturated palette: red, blue, teal, green, magenta, pink,
  * yellow, orange, white, charcoal — deliberate saturation contrast against
- * the desaturated city palette.
+ * the desaturated city palette. Tints the kit body region only (cabin,
+ * wheels and light quads keep their baked colors).
  */
 export const CAR_PALETTE: readonly number[] = [
   0xd8433a, // red
@@ -61,21 +81,18 @@ export const CAR_PALETTE: readonly number[] = [
 const NEAR_WHITE_STRIPE_COLOR: readonly [number, number, number] = [0.93, 0.93, 0.9];
 const APRON_COLOR: readonly [number, number, number] = [0.6, 0.6, 0.58];
 
-const APRON_Y_OFFSET = 0.05;
-const STRIPE_LINE_Y_OFFSET = 0.06;
-const STRIPE_LINE_HALF_WIDTH_TILES = 0.03;
-/** Divider lines run inward across the apron strip (from the footprint edge). */
-const STRIPE_LINE_NEAR_TILES = 0.0;
-const STRIPE_LINE_FAR_TILES = APRON_DEPTH_TILES;
+/** Apron rides above the terrain overlays but below the road plate (0.15). */
+const APRON_Y_OFFSET = 0.12;
+const STRIPE_LINE_Y_OFFSET = 0.135;
+const STRIPE_LINE_HALF_WIDTH_M = 0.06;
 
-const BODY_WIDTH = 1.8;
-const BODY_HEIGHT = 1.0;
-const BODY_LENGTH = 4.0;
-const CABIN_WIDTH = 1.5;
-const CABIN_HEIGHT = 0.6;
-const CABIN_LENGTH = 2.0;
-/** Cabin sits slightly toward the rear (local +Z; local forward is -Z). */
-const CABIN_Z_OFFSET = 0.3;
+/**
+ * Max conforming sub-quad size: ground quads are subdivided so their surface
+ * samples the in-tile terrain curve instead of just its corners (a single
+ * 4-corner quad across a whole frontage lets a hill bulge straight through).
+ * Matches roadsmesh.ts's 2 m adaptive cell target.
+ */
+const CONFORM_MAX_CELL_M = 2;
 
 const INITIAL_CAR_CAPACITY = 64;
 
@@ -103,6 +120,21 @@ export function stallYawJitter(buildingId: number, stallIndex: number): number {
   const h = hash2(buildingId, stallIndex * 2);
   const frac = h / 0xffffffff; // [0,1]
   return (frac * 2 - 1) * YAW_JITTER_MAX;
+}
+
+/**
+ * Deterministic vehicle kind for a stall: commercial lots park customer CARS;
+ * industrial lots mix box-trucks/pickups with workers' cars (~40% cars).
+ */
+export function stallKind(category: LotCategory, buildingId: number, stallIndex: number): number {
+  if (category === 'com') return VehicleKind.Car;
+  return hash2(buildingId, stallIndex * 3 + 2) % 5 < 2 ? VehicleKind.Car : VehicleKind.Truck;
+}
+
+/** Deterministic kit silhouette variant (sedan/wagon/hatch, box-truck/pickup) for a stall. */
+export function stallVariantIndex(buildingId: number, stallIndex: number, kind: number): number {
+  const count = kind === VehicleKind.Truck ? 2 : 3;
+  return hash2(buildingId, stallIndex * 5 + 4) % count;
 }
 
 // ---------------------------------------------------------------------------
@@ -158,9 +190,10 @@ export function findRoadFacingEdge(
 // Stall count & placement (pure)
 // ---------------------------------------------------------------------------
 
-/** count = min(level + 1, floor(edgeTiles / STALL_SPACING_TILES)). */
-export function computeStallCount(level: number, edgeTiles: number): number {
-  const maxByCapacity = Math.floor(edgeTiles / STALL_SPACING_TILES);
+/** count = min(level + 1, floor((edgeTiles - 2*margin) / pitchTiles)). */
+export function computeStallCount(level: number, edgeTiles: number, pitchTiles: number): number {
+  const usable = edgeTiles - 2 * BAY_END_MARGIN_TILES;
+  const maxByCapacity = Math.floor(usable / pitchTiles);
   return Math.max(0, Math.min(level + 1, maxByCapacity));
 }
 
@@ -169,6 +202,8 @@ export interface StallPlacement {
   worldZ: number;
   /** Base facing yaw (radians) before per-car jitter; see EDGE_BASE_YAW. */
   baseYaw: number;
+  /** Bay center's along-edge coordinate, meters from the edge start. */
+  along: number;
 }
 
 /**
@@ -217,33 +252,32 @@ function frameToWorld(
 }
 
 /**
- * heading convention: yaw 0 faces local/world -Z ("N"); see buildCarGeometry.
- * The car's long axis (BODY_LENGTH) runs along local Z, so a bare yaw of
- * {N:0, S:PI, E:-PI/2, W:PI/2} points that long axis straight outward,
- * across the edge — nose-in *perpendicular* parking. *Parallel* street
- * parking is wanted instead: the long axis must run ALONG the
- * road-facing edge, not across it. Adding Math.PI/2 to each side rotates the
- * car a quarter turn so its local-Z (long) axis now tracks the edge's own
- * "along" axis (world X for N/S, world Z for E/W) instead of the outward
- * axis — before/after per side:
- *   N: 0       -> PI/2
- *   E: -PI/2   -> 0
- *   S: PI      -> -PI/2 (i.e. 3*PI/2, wrapped into (-PI, PI])
- *   W: PI/2    -> PI
+ * Heading convention: the vehicle-kit geometry's nose is local +Z
+ * (render/vehicles.ts — headlights at z=+0.49), and rotationY(yaw) maps local
+ * +Z to world (sin yaw, cos yaw). Perpendicular NOSE-IN parking points the
+ * nose INWARD, away from the road, so each side's base yaw sends +Z along the
+ * inward direction: N-side lots face the road to their north, so inward is
+ * world +Z (yaw 0); S: -Z (PI); E: -X (-PI/2); W: +X (PI/2).
  */
 const EDGE_BASE_YAW: Record<Side, number> = {
-  N: Math.PI / 2,
-  S: -Math.PI / 2,
-  E: 0,
-  W: Math.PI,
+  N: 0,
+  S: Math.PI,
+  E: -Math.PI / 2,
+  W: Math.PI / 2,
 };
 
+/** Along-edge coordinate (meters) of the bay row's start: the row is centered on the frontage. */
+export function bayRowStart(edgeTiles: number, count: number, pitchTiles: number): number {
+  const edgeLenM = edgeTiles * TILE_METERS;
+  const rowLenM = count * pitchTiles * TILE_METERS;
+  return (edgeLenM - rowLenM) / 2;
+}
+
 /**
- * Deterministic stall centers along the chosen edge: evenly spaced every
- * STALL_SPACING_TILES tiles (each stall centered within its spacing slot),
- * inset STALL_INSET_TILES tiles INWARD from the building's own edge line, onto
- * the lot (away from the road). Pure function of (x, z, w, d, edge, count) —
- * no hashing.
+ * Deterministic stall centers along the chosen edge: `count` bays of
+ * `pitchTiles` pitch, the whole row CENTERED on the frontage, each vehicle
+ * centered halfway into its bay's depth (perpendicular, nose-in). Pure
+ * function of the arguments — no hashing.
  */
 export function computeStallPlacements(
   x: number,
@@ -252,40 +286,34 @@ export function computeStallPlacements(
   d: number,
   edge: RoadFacingEdge,
   count: number,
+  pitchTiles: number,
+  depthTiles: number,
 ): StallPlacement[] {
   if (count <= 0) return [];
 
   const frame = edgeFrameFor(edge.side, x, z, w, d);
-  const spacingM = STALL_SPACING_TILES * TILE_METERS;
+  const pitchM = pitchTiles * TILE_METERS;
+  const start = bayRowStart(edge.edgeTiles, count, pitchTiles);
   const baseYaw = EDGE_BASE_YAW[edge.side];
 
   const placements: StallPlacement[] = [];
   for (let i = 0; i < count; i++) {
-    const along = (i + 0.5) * spacingM;
-    const { x: worldX, z: worldZ } = frameToWorld(frame, along, -STALL_INSET_TILES);
-    placements.push({ worldX, worldZ, baseYaw });
+    const along = start + (i + 0.5) * pitchM;
+    const { x: worldX, z: worldZ } = frameToWorld(frame, along, -depthTiles / 2);
+    placements.push({ worldX, worldZ, baseYaw, along });
   }
   return placements;
 }
 
 // ---------------------------------------------------------------------------
-// Raw quad builders for the stall-striping mesh (mirrors render/roadsmesh.ts)
+// Conforming ground quads for the apron/bay-line mesh. Every quad is
+// subdivided to <= CONFORM_MAX_CELL_M cells and split on the terrain
+// PlaneGeometry's own (x0,z1)-(x1,z0) diagonal, so the pavement follows the
+// rendered ground at a constant offset instead of letting a hill bulge
+// through the middle of a long 4-corner quad (see render/zonegrid.ts).
 // ---------------------------------------------------------------------------
 
-function pushVertex(
-  positions: number[],
-  colors: number[],
-  x: number,
-  y: number,
-  z: number,
-  color: readonly [number, number, number],
-): void {
-  positions.push(x, y, z);
-  colors.push(color[0], color[1], color[2]);
-}
-
-/** Two triangles covering an axis-aligned world-space quad, corners sampled via heightAt. */
-function pushQuad(
+function pushConformingSubQuad(
   positions: number[],
   colors: number[],
   x0: number,
@@ -300,14 +328,44 @@ function pushQuad(
   const y10 = heightAt(x1, z0) + yOffset;
   const y11 = heightAt(x1, z1) + yOffset;
   const y01 = heightAt(x0, z1) + yOffset;
+  positions.push(x0, y00, z0, x0, y01, z1, x1, y10, z0);
+  positions.push(x0, y01, z1, x1, y11, z1, x1, y10, z0);
+  for (let i = 0; i < 6; i++) colors.push(color[0], color[1], color[2]);
+}
 
-  pushVertex(positions, colors, x0, y00, z0, color);
-  pushVertex(positions, colors, x1, y11, z1, color);
-  pushVertex(positions, colors, x1, y10, z0, color);
-
-  pushVertex(positions, colors, x0, y00, z0, color);
-  pushVertex(positions, colors, x0, y01, z1, color);
-  pushVertex(positions, colors, x1, y11, z1, color);
+/** Terrain-conforming axis-aligned world-space quad, subdivided to CONFORM_MAX_CELL_M cells. */
+function pushQuad(
+  positions: number[],
+  colors: number[],
+  x0: number,
+  z0: number,
+  x1: number,
+  z1: number,
+  yOffset: number,
+  color: readonly [number, number, number],
+  heightAt: (x: number, z: number) => number,
+): void {
+  const nx = Math.max(1, Math.ceil((x1 - x0) / CONFORM_MAX_CELL_M));
+  const nz = Math.max(1, Math.ceil((z1 - z0) / CONFORM_MAX_CELL_M));
+  const stepX = (x1 - x0) / nx;
+  const stepZ = (z1 - z0) / nz;
+  for (let iz = 0; iz < nz; iz++) {
+    for (let ix = 0; ix < nx; ix++) {
+      const cx0 = x0 + ix * stepX;
+      const cz0 = z0 + iz * stepZ;
+      pushConformingSubQuad(
+        positions,
+        colors,
+        cx0,
+        cz0,
+        cx0 + stepX,
+        cz0 + stepZ,
+        yOffset,
+        color,
+        heightAt,
+      );
+    }
+  }
 }
 
 /** Pushes a quad specified in an edge's (along, depthTiles) space instead of raw world x/z. */
@@ -333,76 +391,20 @@ function pushFrameQuad(
 }
 
 // ---------------------------------------------------------------------------
-// The shared two-box car geometry (built once; intentional local duplication)
-// ---------------------------------------------------------------------------
-
-/** Concatenates two indexed BufferGeometries (position+normal+index) into one. */
-function mergeTwoBoxGeometries(
-  a: THREE.BufferGeometry,
-  b: THREE.BufferGeometry,
-): THREE.BufferGeometry {
-  const merged = new THREE.BufferGeometry();
-
-  const posA = a.getAttribute('position') as THREE.BufferAttribute;
-  const posB = b.getAttribute('position') as THREE.BufferAttribute;
-  const normA = a.getAttribute('normal') as THREE.BufferAttribute;
-  const normB = b.getAttribute('normal') as THREE.BufferAttribute;
-
-  const positions = new Float32Array(posA.array.length + posB.array.length);
-  positions.set(posA.array as Float32Array, 0);
-  positions.set(posB.array as Float32Array, posA.array.length);
-
-  const normals = new Float32Array(normA.array.length + normB.array.length);
-  normals.set(normA.array as Float32Array, 0);
-  normals.set(normB.array as Float32Array, normA.array.length);
-
-  merged.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  merged.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-
-  const indices: number[] = [];
-  const idxA = a.index;
-  const idxB = b.index;
-  if (idxA) for (let i = 0; i < idxA.count; i++) indices.push(idxA.getX(i));
-  const vertexOffsetB = posA.count;
-  if (idxB) for (let i = 0; i < idxB.count; i++) indices.push(idxB.getX(i) + vertexOffsetB);
-  merged.setIndex(indices);
-
-  a.dispose();
-  b.dispose();
-  return merged;
-}
-
-/**
- * The shared "two-box" car silhouette: a body slab plus a
- * smaller cabin box merged into a single BufferGeometry, so every parked car
- * is one instance of one InstancedMesh. Local origin sits at ground level,
- * centered in X/Z; local -Z is "forward" (matches EDGE_BASE_YAW's N=0).
- */
-function buildCarGeometry(): THREE.BufferGeometry {
-  const body = new THREE.BoxGeometry(BODY_WIDTH, BODY_HEIGHT, BODY_LENGTH);
-  body.translate(0, BODY_HEIGHT / 2, 0);
-  const cabin = new THREE.BoxGeometry(CABIN_WIDTH, CABIN_HEIGHT, CABIN_LENGTH);
-  cabin.translate(0, BODY_HEIGHT + CABIN_HEIGHT / 2, CABIN_Z_OFFSET);
-  return mergeTwoBoxGeometries(body, cabin);
-}
-
-// ---------------------------------------------------------------------------
 // ParkedCarRenderer
 // ---------------------------------------------------------------------------
 
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
 const _quaternion = new THREE.Quaternion();
+const _scale = new THREE.Vector3();
 const _yAxis = new THREE.Vector3(0, 1, 0);
-const _unitScale = new THREE.Vector3(1, 1, 1);
-/**
- * Industrial lots park box TRUCKS, not cars: the shared car silhouette scaled
- * up to a box-truck footprint (base 1.8×1.0×4.0 → ~2.4×2.4×7.0 m) — wider,
- * much taller, longer. A distinct cab-plus-cargo mesh is a later refinement.
- */
-const _truckScale = new THREE.Vector3(1.35, 2.4, 1.75);
 const _tmpColor = new THREE.Color();
-const HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
+
+interface StallRef {
+  kind: number;
+  slot: number;
+}
 
 export class ParkedCarRenderer {
   private readonly scene: THREE.Scene;
@@ -410,18 +412,12 @@ export class ParkedCarRenderer {
   private readonly roadAt: (x: number, z: number) => boolean;
   private readonly catalogById: Map<string, BuildingCatalogEntry>;
 
-  private readonly carGeometry = buildCarGeometry();
-  private readonly carMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
   // Lit so the paved apron receives the parked cars' cast shadows (flat +Y
   // faces read nearly uniform in daylight, like the lit road).
   private readonly stripeMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
 
-  private carMesh: THREE.InstancedMesh | null = null;
-  private carCapacity = 0;
-  private usedSlotCount = 0;
-  private readonly freeSlots: number[] = [];
-
-  private readonly buildingSlots = new Map<number, number[]>();
+  private readonly pools = new Map<number, VehicleKitPool>();
+  private readonly buildingSlots = new Map<number, StallRef[]>();
   private readonly buildingStripes = new Map<number, THREE.Mesh>();
 
   constructor(
@@ -445,34 +441,36 @@ export class ParkedCarRenderer {
 
   // --- test/debug accessors --------------------------------------------------
 
-  /** Number of instances the car InstancedMesh currently draws (includes hidden, recycled slots). */
+  /** Total instances across all kind pools (includes hidden, recycled slots). */
   carInstanceCount(): number {
-    return this.carMesh?.count ?? 0;
+    let total = 0;
+    for (const pool of this.pools.values()) total += pool.usedSlots();
+    return total;
   }
 
-  /** How many InstancedMeshes this renderer has added to the scene (0 or 1). */
+  /** How many InstancedMeshes this renderer has added to the scene. */
   carMeshCount(): number {
     return this.scene.children.filter((c) => c instanceof THREE.InstancedMesh).length;
   }
 
-  /** Car instance slot indices currently owned by a building (empty if it has no cars). */
-  stallSlotsFor(buildingId: number): readonly number[] {
+  /** Stall refs ({kind, slot}) currently owned by a building (empty if it has no cars). */
+  stallSlotsFor(buildingId: number): readonly StallRef[] {
     return this.buildingSlots.get(buildingId) ?? [];
   }
 
-  getCarMatrix(slot: number, out: THREE.Matrix4): void {
-    this.carMesh?.getMatrixAt(slot, out);
+  getCarMatrix(ref: StallRef, out: THREE.Matrix4): void {
+    this.pools.get(ref.kind)?.mesh.getMatrixAt(ref.slot, out);
   }
 
-  getCarColor(slot: number, out: THREE.Color): void {
-    this.carMesh?.getColorAt(slot, out);
+  getCarColor(ref: StallRef, out: THREE.Color): void {
+    this.pools.get(ref.kind)?.mesh.getColorAt(ref.slot, out);
   }
 
   hasStripeMesh(buildingId: number): boolean {
     return this.buildingStripes.has(buildingId);
   }
 
-  /** Vertex count of a building's merged apron+divider-stripe geometry (0 if it has none). */
+  /** Vertex count of a building's merged apron+bay-line geometry (0 if it has none). */
   stripeVertexCountFor(buildingId: number): number {
     const mesh = this.buildingStripes.get(buildingId);
     const pos = mesh?.geometry.getAttribute('position');
@@ -487,12 +485,13 @@ export class ParkedCarRenderer {
 
     const entry = this.catalogById.get(building.catalogId);
     if (!entry) return;
-    // Parked-car stalls + frontage apron are for COMMERCIAL and INDUSTRIAL lots
+    // Parked-car bays + frontage apron are for COMMERCIAL and INDUSTRIAL lots
     // only. Homes park off-street (garage/driveway, render/houses.ts); utilities
     // (water tower, wind turbine, power, etc.), parks and civic plinths get no
     // parking apron — a water tower next to a road must not sprout a grey
     // parking rectangle bleeding into the street.
     if (entry.category !== 'com' && entry.category !== 'ind') return;
+    const category: LotCategory = entry.category;
 
     const edge = findRoadFacingEdge(
       building.x,
@@ -503,7 +502,9 @@ export class ParkedCarRenderer {
     );
     if (!edge) return;
 
-    const count = computeStallCount(building.level, edge.edgeTiles);
+    const pitchTiles = BAY_PITCH_TILES[category];
+    const depthTiles = BAY_DEPTH_TILES[category];
+    const count = computeStallCount(building.level, edge.edgeTiles, pitchTiles);
     if (count <= 0) return;
 
     const placements = computeStallPlacements(
@@ -513,36 +514,57 @@ export class ParkedCarRenderer {
       entry.footprint.d,
       edge,
       count,
+      pitchTiles,
+      depthTiles,
     );
 
-    const vehicleScale = entry.category === 'ind' ? _truckScale : _unitScale;
-    const slots: number[] = [];
+    const refs: StallRef[] = [];
+    const touchedPools = new Set<VehicleKitPool>();
     for (let i = 0; i < placements.length; i++) {
       const placement = placements[i]!;
-      const slot = this.allocateSlot();
-      const groundY = this.heightAt(placement.worldX, placement.worldZ);
+      const kind = stallKind(category, building.id, i);
+      const pool = this.poolFor(kind);
+      const slot = pool.allocate();
+
+      const size = sizeForKind(kind);
+      const variant = variantScaleForKind(kind, stallVariantIndex(building.id, i, kind));
+      const sx = size[0] * variant[0];
+      const sy = size[1] * variant[1];
+      const sz = size[2] * variant[2];
+
+      // Cars stand ON the apron pavement (terrain + APRON_Y_OFFSET), not on
+      // the bare terrain underneath it — otherwise wheels clip into the slab.
+      const groundY = this.heightAt(placement.worldX, placement.worldZ) + APRON_Y_OFFSET;
       const yaw = placement.baseYaw + stallYawJitter(building.id, i);
 
-      _position.set(placement.worldX, groundY, placement.worldZ);
+      // Kit geometry is a unit cube with its base at y=-0.5: instance scale
+      // sets real meters, and the center rides at ground + half height.
+      _position.set(placement.worldX, groundY + sy / 2, placement.worldZ);
       _quaternion.setFromAxisAngle(_yAxis, yaw);
-      _matrix.compose(_position, _quaternion, vehicleScale);
-      this.carMesh!.setMatrixAt(slot, _matrix);
+      _scale.set(sx, sy, sz);
+      _matrix.compose(_position, _quaternion, _scale);
+      pool.mesh.setMatrixAt(slot, _matrix);
 
       _tmpColor.setHex(CAR_PALETTE[stallColorIndex(building.id, i)]!);
-      this.carMesh!.setColorAt(slot, _tmpColor);
+      pool.mesh.setColorAt(slot, _tmpColor);
 
-      slots.push(slot);
+      refs.push({ kind, slot });
+      touchedPools.add(pool);
     }
 
-    this.carMesh!.count = this.usedSlotCount;
-    this.carMesh!.instanceMatrix.needsUpdate = true;
-    if (this.carMesh!.instanceColor) this.carMesh!.instanceColor.needsUpdate = true;
-    // Invalidate the cached frustum-cull sphere (three.js only recomputes it
-    // while null — otherwise cars added after the first cull pass stay culled).
-    this.carMesh!.boundingSphere = null;
-    this.buildingSlots.set(building.id, slots);
+    for (const pool of touchedPools) pool.finalize();
+    this.buildingSlots.set(building.id, refs);
 
-    this.rebuildStripes(building, entry, edge, count);
+    this.rebuildStripes(building, entry, edge, count, pitchTiles, depthTiles);
+  }
+
+  private poolFor(kind: number): VehicleKitPool {
+    let pool = this.pools.get(kind);
+    if (!pool) {
+      pool = new VehicleKitPool(this.scene, kind, INITIAL_CAR_CAPACITY);
+      this.pools.set(kind, pool);
+    }
+    return pool;
   }
 
   private rebuildStripes(
@@ -550,6 +572,8 @@ export class ParkedCarRenderer {
     entry: BuildingCatalogEntry,
     edge: RoadFacingEdge,
     count: number,
+    pitchTiles: number,
+    depthTiles: number,
   ): void {
     const frame = edgeFrameFor(
       edge.side,
@@ -561,36 +585,39 @@ export class ParkedCarRenderer {
     const positions: number[] = [];
     const colors: number[] = [];
 
-    const edgeLenM = edge.edgeTiles * TILE_METERS;
-    // The light-grey apron: a shallow paved strip on the lot's own frontage,
+    const pitchM = pitchTiles * TILE_METERS;
+    const marginM = BAY_END_MARGIN_TILES * TILE_METERS;
+    const rowStart = bayRowStart(edge.edgeTiles, count, pitchTiles);
+    const rowEnd = rowStart + count * pitchM;
+
+    // The light-grey apron: the paved bay row plus an end margin each side,
     // running INWARD from the footprint edge (negative depth) so it never
     // paves the road tile beyond the building.
     pushFrameQuad(
       positions,
       colors,
       frame,
+      rowStart - marginM,
+      rowEnd + marginM,
       0,
-      edgeLenM,
-      0,
-      -APRON_DEPTH_TILES,
+      -depthTiles,
       APRON_Y_OFFSET,
       APRON_COLOR,
       this.heightAt,
     );
 
-    // Near-white divider lines between each pair of adjacent stalls.
-    const spacingM = STALL_SPACING_TILES * TILE_METERS;
-    const halfLineM = STRIPE_LINE_HALF_WIDTH_TILES * TILE_METERS;
-    for (let i = 1; i < count; i++) {
-      const centerAlong = i * spacingM;
+    // Near-white bay lines: count+1 boundaries running the full bay depth,
+    // perpendicular to the road, so each vehicle sits inside a painted bay.
+    for (let i = 0; i <= count; i++) {
+      const centerAlong = rowStart + i * pitchM;
       pushFrameQuad(
         positions,
         colors,
         frame,
-        centerAlong - halfLineM,
-        centerAlong + halfLineM,
-        -STRIPE_LINE_NEAR_TILES,
-        -STRIPE_LINE_FAR_TILES,
+        centerAlong - STRIPE_LINE_HALF_WIDTH_M,
+        centerAlong + STRIPE_LINE_HALF_WIDTH_M,
+        0,
+        -depthTiles,
         STRIPE_LINE_Y_OFFSET,
         NEAR_WHITE_STRIPE_COLOR,
         this.heightAt,
@@ -608,12 +635,10 @@ export class ParkedCarRenderer {
   }
 
   private freeBuilding(buildingId: number): void {
-    const slots = this.buildingSlots.get(buildingId);
-    if (slots && this.carMesh) {
-      for (const slot of slots) this.carMesh.setMatrixAt(slot, HIDDEN_MATRIX);
-      this.carMesh.instanceMatrix.needsUpdate = true;
+    const refs = this.buildingSlots.get(buildingId);
+    if (refs) {
+      for (const ref of refs) this.pools.get(ref.kind)?.free(ref.slot);
       this.buildingSlots.delete(buildingId);
-      for (const slot of slots) this.freeSlots.push(slot);
     }
 
     const stripeMesh = this.buildingStripes.get(buildingId);
@@ -622,48 +647,5 @@ export class ParkedCarRenderer {
       stripeMesh.geometry.dispose();
       this.buildingStripes.delete(buildingId);
     }
-  }
-
-  private ensureCarMesh(): void {
-    if (this.carMesh) return;
-    this.carCapacity = INITIAL_CAR_CAPACITY;
-    this.carMesh = new THREE.InstancedMesh(this.carGeometry, this.carMaterial, this.carCapacity);
-    this.carMesh.count = 0;
-    this.carMesh.castShadow = true; // parked cars cast onto the apron/road
-    this.carMesh.receiveShadow = true;
-    this.scene.add(this.carMesh);
-  }
-
-  private growCarCapacity(): void {
-    const previous = this.carMesh!;
-    const newCapacity = this.carCapacity * 2;
-    const newMesh = new THREE.InstancedMesh(this.carGeometry, this.carMaterial, newCapacity);
-    newMesh.castShadow = true;
-    newMesh.receiveShadow = true;
-
-    const m = new THREE.Matrix4();
-    const c = new THREE.Color();
-    for (let i = 0; i < this.usedSlotCount; i++) {
-      previous.getMatrixAt(i, m);
-      newMesh.setMatrixAt(i, m);
-      previous.getColorAt(i, c);
-      newMesh.setColorAt(i, c);
-    }
-    newMesh.count = this.usedSlotCount;
-    newMesh.instanceMatrix.needsUpdate = true;
-    if (newMesh.instanceColor) newMesh.instanceColor.needsUpdate = true;
-
-    this.scene.remove(previous);
-    this.scene.add(newMesh);
-    this.carMesh = newMesh;
-    this.carCapacity = newCapacity;
-  }
-
-  private allocateSlot(): number {
-    this.ensureCarMesh();
-    const recycled = this.freeSlots.pop();
-    if (recycled !== undefined) return recycled;
-    if (this.usedSlotCount >= this.carCapacity) this.growCarCapacity();
-    return this.usedSlotCount++;
   }
 }

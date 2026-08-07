@@ -11,7 +11,7 @@
  */
 import * as THREE from 'three';
 import { RoadTier, TilePoint } from '../shared/types';
-import { tileToWorld } from '../shared/constants';
+import { TILE_METERS, tileToWorld } from '../shared/constants';
 import { carriagewayHalfWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
 
 // --- Manhole -----------------------------------------------------------------
@@ -148,6 +148,15 @@ export interface SignPlacement {
   lateralOffset: number;
   /** Which standard sign this tile's role earned. */
   type: SignType;
+  /**
+   * Bend signs on TURN tiles position by explicit world offset from the tile
+   * center (the curve's outer corner, just past the curved sidewalk) with
+   * their own facing yaw — the straight-axis side/lateralOffset rule would
+   * strand them deep in the grass. Unset for every other sign.
+   */
+  worldOffsetX?: number;
+  worldOffsetZ?: number;
+  yaw?: number;
 }
 
 /**
@@ -178,13 +187,17 @@ function tierHasParking(tier: RoadTier | undefined): boolean {
 
 // Canonical neighbor order (N, E, S, W); each carries the outward curbside
 // offset (axis + sign) for the sidewalk on that side.
-const NEIGHBOR_DIRS: readonly { dx: number; dz: number; axis: FurnitureAxis; side: FurnitureSide }[] =
-  [
-    { dx: 0, dz: -1, axis: 'z', side: -1 },
-    { dx: 1, dz: 0, axis: 'x', side: 1 },
-    { dx: 0, dz: 1, axis: 'z', side: 1 },
-    { dx: -1, dz: 0, axis: 'x', side: -1 },
-  ];
+const NEIGHBOR_DIRS: readonly {
+  dx: number;
+  dz: number;
+  axis: FurnitureAxis;
+  side: FurnitureSide;
+}[] = [
+  { dx: 0, dz: -1, axis: 'z', side: -1 },
+  { dx: 1, dz: 0, axis: 'x', side: 1 },
+  { dx: 0, dz: 1, axis: 'z', side: 1 },
+  { dx: -1, dz: 0, axis: 'x', side: -1 },
+];
 
 function buildTileSet(roadTiles: readonly FurnitureRoadTile[]): Set<number> {
   const set = new Set<number>();
@@ -221,6 +234,19 @@ function isCollinear2(sides: PresentSides): boolean {
   const ns = sides.n && sides.s && !sides.e && !sides.w;
   const ew = sides.e && sides.w && !sides.n && !sides.s;
   return ns || ew;
+}
+
+/**
+ * True for a TURN tile: exactly two non-collinear road neighbors. The
+ * carriageway sweeps a curve across the tile, so any straight-axis lateral
+ * placement rule would drop props into the middle of the road — turn tiles
+ * skip in-road/curbside furniture and get only the bend sign, positioned at
+ * the curve's outer corner (see computeSignPlacements).
+ */
+function isTurnTile(tileSet: Set<number>, x: number, z: number): boolean {
+  const sides = presentSides(tileSet, x, z);
+  const count = (sides.n ? 1 : 0) + (sides.e ? 1 : 0) + (sides.s ? 1 : 0) + (sides.w ? 1 : 0);
+  return count === 2 && !isCollinear2(sides);
 }
 
 /** The largest neighborCount among this tile's present road-neighbors (0 if none). */
@@ -276,6 +302,7 @@ export function computeManholePlacements(
   const out: ManholePlacement[] = [];
   for (const tile of roadTiles) {
     if (!tierIsPaved(tile.tier)) continue;
+    if (isTurnTile(tileSet, tile.x, tile.z)) continue; // curved carriageway: no straight-axis seat
     if (hashTile(tile.x, tile.z, HASH_MANHOLE_SELECT) >= MANHOLE_SELECT_FRACTION) continue;
 
     const lo = MANHOLE_MIN_OFFSET;
@@ -301,6 +328,7 @@ export function computeBoxPlacements(roadTiles: readonly FurnitureRoadTile[]): B
   const out: BoxPlacement[] = [];
   for (const tile of roadTiles) {
     if (!tierHasCurb(tile.tier)) continue;
+    if (isTurnTile(tileSet, tile.x, tile.z)) continue; // the curve owns the tile; no curbside seat
     if (hashTile(tile.x, tile.z, HASH_BOX_SELECT) >= BOX_SELECT_FRACTION) continue;
 
     const pick = pickSide(
@@ -326,6 +354,7 @@ export function computeMeterPlacements(roadTiles: readonly FurnitureRoadTile[]):
   const out: MeterPlacement[] = [];
   for (const tile of roadTiles) {
     if (!tierHasParking(tile.tier)) continue;
+    if (isTurnTile(tileSet, tile.x, tile.z)) continue; // no curb parking on a curve
     if (!periodHits(tile.x, tile.z, METER_PERIOD)) continue;
 
     const curbAxis = lateralAxis(tileSet, tile.x, tile.z);
@@ -372,6 +401,9 @@ function classifySign(tileSet: Set<number>, tile: FurnitureRoadTile): SignType |
   return null;
 }
 
+/** How far past the curve's outer sidewalk edge the bend sign stands. */
+const BEND_SIGN_CURVE_MARGIN = 0.5;
+
 /** One typed sign per curbed tile whose road-tile role earns it. */
 export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): SignPlacement[] {
   const tileSet = buildTileSet(roadTiles);
@@ -381,6 +413,38 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
 
     const type = classifySign(tileSet, tile);
     if (!type) continue;
+
+    if (type === 'bend') {
+      // A turn tile's carriageway is a quarter-annulus centered on the corner
+      // shared by its two connected edges. The sign stands on the OUTER side
+      // of the curve — along the diagonal from that corner through the tile
+      // center, just past the curved sidewalk band — facing back toward the
+      // corner so drivers rounding the bend see the board.
+      const sides = presentSides(tileSet, tile.x, tile.z);
+      const half = TILE_METERS / 2;
+      const cornerX = sides.e ? half : -half;
+      const cornerZ = sides.s ? half : -half;
+      const invLen = 1 / Math.hypot(cornerX, cornerZ);
+      const dirX = -cornerX * invLen;
+      const dirZ = -cornerZ * invLen;
+      const radius =
+        half +
+        carriagewayHalfWidthMeters(tile.tier ?? RoadTier.TwoLane) +
+        SIDEWALK_WIDTH_M +
+        BEND_SIGN_CURVE_MARGIN;
+      out.push({
+        x: tile.x,
+        z: tile.z,
+        axis: 'x',
+        side: 1,
+        lateralOffset: 0,
+        type,
+        worldOffsetX: cornerX + dirX * radius,
+        worldOffsetZ: cornerZ + dirZ * radius,
+        yaw: Math.atan2(-dirX, -dirZ),
+      });
+      continue;
+    }
 
     const pick = pickSide(
       availableSidewalkSides(tileSet, tile.x, tile.z),
@@ -791,7 +855,11 @@ export class RoadFurnitureRenderer {
       else byType.set(s.type, [s]);
     }
     for (const [type, group] of byType) {
-      const mesh = new THREE.InstancedMesh(this.signGeometries[type], this.signMaterial, group.length);
+      const mesh = new THREE.InstancedMesh(
+        this.signGeometries[type],
+        this.signMaterial,
+        group.length,
+      );
       mesh.count = group.length;
       mesh.castShadow = true;
       for (let i = 0; i < group.length; i++) this.writeSign(mesh, i, group[i]!);
@@ -846,6 +914,18 @@ export class RoadFurnitureRenderer {
   }
 
   private writeSign(mesh: THREE.InstancedMesh, slot: number, p: SignPlacement): void {
+    // Turn-tile bend signs carry an explicit world offset + facing yaw
+    // (positioned at the curve's outer corner rather than by side rule).
+    if (p.worldOffsetX !== undefined && p.worldOffsetZ !== undefined) {
+      const wx = tileToWorld(p.x) + p.worldOffsetX;
+      const wz = tileToWorld(p.z) + p.worldOffsetZ;
+      _quat.setFromAxisAngle(_yAxis, p.yaw ?? 0);
+      _position.set(wx, this.heightAt(wx, wz), wz);
+      _matrix.compose(_position, _quat, _scale);
+      mesh.setMatrixAt(slot, _matrix);
+      return;
+    }
+
     const off = p.lateralOffset * p.side;
     const wx = p.axis === 'x' ? tileToWorld(p.x) + off : tileToWorld(p.x);
     const wz = p.axis === 'z' ? tileToWorld(p.z) + off : tileToWorld(p.z);

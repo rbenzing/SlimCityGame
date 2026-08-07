@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
+  BAY_DEPTH_TILES,
+  BAY_END_MARGIN_TILES,
+  BAY_PITCH_TILES,
+  bayRowStart,
   CAR_PALETTE,
   computeStallCount,
   computeStallPlacements,
   findRoadFacingEdge,
   ParkedCarRenderer,
-  STALL_INSET_TILES,
-  STALL_SPACING_TILES,
   stallColorIndex,
+  stallKind,
+  stallVariantIndex,
   stallYawJitter,
   YAW_JITTER_MAX,
 } from './parked';
@@ -17,8 +21,13 @@ import {
   BuildingDelta,
   BuildingInstance,
   BuildingState,
+  VehicleKind,
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { sizeForKind, variantScaleForKind } from './vehicles';
+
+const COM_PITCH = BAY_PITCH_TILES.com;
+const COM_DEPTH = BAY_DEPTH_TILES.com;
 
 const flatHeightAt = (): number => 0;
 const noRoad = (): boolean => false;
@@ -170,20 +179,88 @@ describe('findRoadFacingEdge', () => {
 
 describe('computeStallCount', () => {
   it('uses level + 1 when the edge has ample capacity', () => {
-    expect(computeStallCount(1, 20)).toBe(2);
-    expect(computeStallCount(2, 20)).toBe(3);
-    expect(computeStallCount(3, 20)).toBe(4);
+    expect(computeStallCount(1, 20, COM_PITCH)).toBe(2);
+    expect(computeStallCount(2, 20, COM_PITCH)).toBe(3);
+    expect(computeStallCount(3, 20, COM_PITCH)).toBe(4);
   });
 
-  it('clamps to floor(edgeTiles / 0.45) when capacity is the binding constraint', () => {
-    // floor(1 / 0.45) = 2
-    expect(computeStallCount(3, 1)).toBe(2);
-    // floor(2 / 0.45) = 4
-    expect(computeStallCount(5, 2)).toBe(4);
+  it('clamps to the margin-trimmed bay capacity when it is the binding constraint', () => {
+    // floor((1 - 2*margin) / pitch) car bays fit a 1-tile edge.
+    const capacity = Math.floor((1 - 2 * BAY_END_MARGIN_TILES) / COM_PITCH);
+    expect(computeStallCount(9, 1, COM_PITCH)).toBe(capacity);
+    // Truck bays are wider, so fewer fit the same edge.
+    const truckCapacity = Math.floor((1 - 2 * BAY_END_MARGIN_TILES) / BAY_PITCH_TILES.ind);
+    expect(computeStallCount(9, 1, BAY_PITCH_TILES.ind)).toBe(truckCapacity);
+    expect(truckCapacity).toBeLessThan(capacity);
   });
 
   it('never returns a negative count', () => {
-    expect(computeStallCount(0, 1)).toBeGreaterThanOrEqual(0);
+    expect(computeStallCount(0, 1, COM_PITCH)).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('stallKind / stallVariantIndex', () => {
+  it('commercial lots park only cars', () => {
+    for (let i = 0; i < 20; i++) expect(stallKind('com', 7, i)).toBe(VehicleKind.Car);
+  });
+
+  it('industrial lots mix trucks with some cars', () => {
+    const kinds = new Set<number>();
+    for (let id = 1; id <= 10; id++) for (let i = 0; i < 4; i++) kinds.add(stallKind('ind', id, i));
+    expect(kinds.has(VehicleKind.Truck)).toBe(true);
+    expect(kinds.has(VehicleKind.Car)).toBe(true);
+  });
+
+  it('variant index stays within the kind variant count and varies', () => {
+    const carVariants = new Set<number>();
+    for (let i = 0; i < 30; i++) {
+      const v = stallVariantIndex(5, i, VehicleKind.Car);
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThan(3);
+      carVariants.add(v);
+    }
+    expect(carVariants.size).toBeGreaterThan(1);
+    for (let i = 0; i < 30; i++) {
+      const v = stallVariantIndex(5, i, VehicleKind.Truck);
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThan(2);
+    }
+  });
+
+  it('parked vehicles never touch: every bay pitch exceeds the widest vehicle in it', () => {
+    // Commercial car bays vs the widest car variant.
+    let maxCarW = 0;
+    for (let v = 0; v < 3; v++)
+      maxCarW = Math.max(
+        maxCarW,
+        sizeForKind(VehicleKind.Car)[0] * variantScaleForKind(VehicleKind.Car, v)[0],
+      );
+    expect(COM_PITCH * TILE_METERS).toBeGreaterThan(maxCarW);
+    // Industrial truck bays vs the widest truck variant.
+    let maxTruckW = 0;
+    for (let v = 0; v < 2; v++)
+      maxTruckW = Math.max(
+        maxTruckW,
+        sizeForKind(VehicleKind.Truck)[0] * variantScaleForKind(VehicleKind.Truck, v)[0],
+      );
+    expect(BAY_PITCH_TILES.ind * TILE_METERS).toBeGreaterThan(maxTruckW);
+  });
+
+  it('perpendicular vehicles fit inside their bay depth (longest variant included)', () => {
+    let maxCarL = 0;
+    for (let v = 0; v < 3; v++)
+      maxCarL = Math.max(
+        maxCarL,
+        sizeForKind(VehicleKind.Car)[2] * variantScaleForKind(VehicleKind.Car, v)[2],
+      );
+    expect(COM_DEPTH * TILE_METERS).toBeGreaterThan(maxCarL);
+    let maxTruckL = 0;
+    for (let v = 0; v < 2; v++)
+      maxTruckL = Math.max(
+        maxTruckL,
+        sizeForKind(VehicleKind.Truck)[2] * variantScaleForKind(VehicleKind.Truck, v)[2],
+      );
+    expect(BAY_DEPTH_TILES.ind * TILE_METERS).toBeGreaterThan(maxTruckL);
   });
 });
 
@@ -192,68 +269,74 @@ describe('computeStallCount', () => {
 // ---------------------------------------------------------------------------
 
 describe('computeStallPlacements', () => {
-  const insetM = STALL_INSET_TILES * TILE_METERS;
-  const spacingM = STALL_SPACING_TILES * TILE_METERS;
+  const pitchM = COM_PITCH * TILE_METERS;
+  const halfDepthM = (COM_DEPTH * TILE_METERS) / 2;
+  const place = (
+    edge: { side: 'N' | 'E' | 'S' | 'W'; edgeTiles: number },
+    count: number,
+  ): ReturnType<typeof computeStallPlacements> =>
+    computeStallPlacements(5, 5, 1, 1, edge, count, COM_PITCH, COM_DEPTH);
 
-  it('spaces consecutive stalls by STALL_SPACING_TILES tiles', () => {
+  it('spaces consecutive bays by the pitch', () => {
     const edge = { side: 'N' as const, edgeTiles: 5 };
-    const placements = computeStallPlacements(2, 2, 5, 1, edge, 3);
+    const placements = computeStallPlacements(2, 2, 5, 1, edge, 3, COM_PITCH, COM_DEPTH);
     expect(placements).toHaveLength(3);
-    expect(placements[1]!.worldX - placements[0]!.worldX).toBeCloseTo(spacingM, 6);
-    expect(placements[2]!.worldX - placements[1]!.worldX).toBeCloseTo(spacingM, 6);
+    expect(placements[1]!.worldX - placements[0]!.worldX).toBeCloseTo(pitchM, 6);
+    expect(placements[2]!.worldX - placements[1]!.worldX).toBeCloseTo(pitchM, 6);
   });
 
-  it('insets the N row INWARD (south, onto the lot) from the building edge', () => {
-    const edge = { side: 'N' as const, edgeTiles: 1 };
-    const [p] = computeStallPlacements(5, 5, 1, 1, edge, 1);
-    // building's north edge line is at z=5*16=80; row sits `inset` INTO the lot
-    // (larger z), never north onto the road.
-    expect(p!.worldZ).toBeCloseTo(80 + insetM, 6);
+  it('centers the bay row on the frontage', () => {
+    const edge = { side: 'N' as const, edgeTiles: 5 };
+    const placements = computeStallPlacements(2, 2, 5, 1, edge, 3, COM_PITCH, COM_DEPTH);
+    const edgeCenterX = 2 * TILE_METERS + (5 * TILE_METERS) / 2;
+    const rowCenterX = (placements[0]!.worldX + placements[2]!.worldX) / 2;
+    expect(rowCenterX).toBeCloseTo(edgeCenterX, 6);
+    // bayRowStart is the pure helper behind that centering.
+    expect(bayRowStart(5, 3, COM_PITCH)).toBeCloseTo((5 * TILE_METERS - 3 * pitchM) / 2, 6);
   });
 
-  it('insets the S row INWARD (north, onto the lot) from the building edge', () => {
-    const edge = { side: 'S' as const, edgeTiles: 1 };
-    const [p] = computeStallPlacements(5, 5, 1, 1, edge, 1);
-    // south edge line at z=(5+1)*16=96; row sits INTO the lot (smaller z).
-    expect(p!.worldZ).toBeCloseTo(96 - insetM, 6);
+  it('seats the N row half a bay depth INWARD (south, onto the lot)', () => {
+    const [p] = place({ side: 'N', edgeTiles: 1 }, 1);
+    // building's north edge line is at z=5*16=80; the vehicle sits centered in
+    // its bay, half the bay depth INTO the lot (larger z), never on the road.
+    expect(p!.worldZ).toBeCloseTo(80 + halfDepthM, 6);
   });
 
-  it('insets the E row INWARD (west, onto the lot) from the building edge', () => {
-    const edge = { side: 'E' as const, edgeTiles: 1 };
-    const [p] = computeStallPlacements(5, 5, 1, 1, edge, 1);
-    expect(p!.worldX).toBeCloseTo(96 - insetM, 6);
+  it('seats the S row half a bay depth INWARD (north, onto the lot)', () => {
+    const [p] = place({ side: 'S', edgeTiles: 1 }, 1);
+    expect(p!.worldZ).toBeCloseTo(96 - halfDepthM, 6);
   });
 
-  it('insets the W row INWARD (east, onto the lot) from the building edge', () => {
-    const edge = { side: 'W' as const, edgeTiles: 1 };
-    const [p] = computeStallPlacements(5, 5, 1, 1, edge, 1);
-    expect(p!.worldX).toBeCloseTo(80 + insetM, 6);
+  it('seats the E row half a bay depth INWARD (west, onto the lot)', () => {
+    const [p] = place({ side: 'E', edgeTiles: 1 }, 1);
+    expect(p!.worldX).toBeCloseTo(96 - halfDepthM, 6);
+  });
+
+  it('seats the W row half a bay depth INWARD (east, onto the lot)', () => {
+    const [p] = place({ side: 'W', edgeTiles: 1 }, 1);
+    expect(p!.worldX).toBeCloseTo(80 + halfDepthM, 6);
   });
 
   it('gives each of the four sides a distinct base yaw', () => {
-    const yaws = (['N', 'E', 'S', 'W'] as const).map((side) => {
-      const [p] = computeStallPlacements(5, 5, 1, 1, { side, edgeTiles: 1 }, 1);
-      return p!.baseYaw;
-    });
+    const yaws = (['N', 'E', 'S', 'W'] as const).map(
+      (side) => place({ side, edgeTiles: 1 }, 1)[0]!.baseYaw,
+    );
     expect(new Set(yaws).size).toBe(4);
   });
 
-  it('base yaw per side is rotated a quarter turn from the perpendicular convention, for PARALLEL street parking (UI-SPEC §6.18 #3)', () => {
-    // Long axis (BODY_LENGTH, local Z) must run ALONG the road-facing edge,
-    // not across it -- so each side's old perpendicular yaw {N:0, S:PI,
-    // E:-PI/2, W:PI/2} gets +PI/2 added (S wraps 3*PI/2 -> -PI/2).
-    const yawFor = (side: 'N' | 'E' | 'S' | 'W'): number => {
-      const [p] = computeStallPlacements(5, 5, 1, 1, { side, edgeTiles: 1 }, 1);
-      return p!.baseYaw;
-    };
-    expect(yawFor('N')).toBeCloseTo(Math.PI / 2, 10);
-    expect(yawFor('E')).toBeCloseTo(0, 10);
-    expect(yawFor('S')).toBeCloseTo(-Math.PI / 2, 10);
-    expect(yawFor('W')).toBeCloseTo(Math.PI, 10);
+  it('base yaw points the kit nose (+Z) INWARD — perpendicular, nose-in parking', () => {
+    const yawFor = (side: 'N' | 'E' | 'S' | 'W'): number =>
+      place({ side, edgeTiles: 1 }, 1)[0]!.baseYaw;
+    // rotationY(yaw) maps local +Z to world (sin yaw, cos yaw); inward for an
+    // N-side lot (road to its north) is world +Z -> yaw 0, and so on around.
+    expect(yawFor('N')).toBeCloseTo(0, 10);
+    expect(yawFor('S')).toBeCloseTo(Math.PI, 10);
+    expect(yawFor('E')).toBeCloseTo(-Math.PI / 2, 10);
+    expect(yawFor('W')).toBeCloseTo(Math.PI / 2, 10);
   });
 
   it('returns an empty array for count 0', () => {
-    expect(computeStallPlacements(5, 5, 1, 1, { side: 'N', edgeTiles: 1 }, 0)).toEqual([]);
+    expect(place({ side: 'N', edgeTiles: 1 }, 0)).toEqual([]);
   });
 });
 
@@ -310,8 +393,8 @@ describe('ParkedCarRenderer', () => {
     const building = makeBuilding({ id: 1, level: 1 });
     renderer.apply(deltaAdd(building));
 
-    expect(renderer.stallSlotsFor(1)).toHaveLength(2); // min(1+1, floor(1/0.45)=2) = 2
-    expect(renderer.carMeshCount()).toBe(1);
+    expect(renderer.stallSlotsFor(1)).toHaveLength(2); // min(1+1, capacity 4) = 2
+    expect(renderer.carMeshCount()).toBe(1); // commercial lots park cars only -> one kind pool
     expect(renderer.carInstanceCount()).toBeGreaterThanOrEqual(2);
   });
 
@@ -337,10 +420,20 @@ describe('ParkedCarRenderer', () => {
     expect(renderer.hasStripeMesh(1)).toBe(false); // no grey apron bleeding into the road
   });
 
-  it('industrial lots park box TRUCKS (scaled-up vehicles); commercial lots park cars', () => {
+  it('industrial lots mix in TRUCK kit models; commercial lots park only cars, sized in real meters', () => {
     const scene = new THREE.Scene();
-    const factory = makeCatalogEntry({ id: 'factory', category: 'ind', zone: 5, footprint: { w: 2, d: 1 } });
-    const shop = makeCatalogEntry({ id: 'shop', category: 'com', zone: 3, footprint: { w: 2, d: 1 } });
+    const factory = makeCatalogEntry({
+      id: 'factory',
+      category: 'ind',
+      zone: 5,
+      footprint: { w: 4, d: 1 },
+    });
+    const shop = makeCatalogEntry({
+      id: 'shop',
+      category: 'com',
+      zone: 3,
+      footprint: { w: 4, d: 1 },
+    });
     const renderer = new ParkedCarRenderer(
       scene,
       flatHeightAt,
@@ -350,21 +443,29 @@ describe('ParkedCarRenderer', () => {
         [20, 4],
       ]),
     );
-    renderer.apply(deltaAdd(makeBuilding({ id: 1, catalogId: 'factory', level: 1 })));
-    renderer.apply(deltaAdd(makeBuilding({ id: 2, catalogId: 'shop', x: 20, level: 1 })));
+    // High level so multiple stalls exercise the deterministic kind mix.
+    renderer.apply(deltaAdd(makeBuilding({ id: 1, catalogId: 'factory', level: 9 })));
+    renderer.apply(deltaAdd(makeBuilding({ id: 2, catalogId: 'shop', x: 20, level: 9 })));
 
+    // Industrial stall kinds follow the pure stallKind rule (trucks + some cars).
+    const indKinds = renderer.stallSlotsFor(1).map((ref) => ref.kind);
+    indKinds.forEach((kind, i) => expect(kind).toBe(stallKind('ind', 1, i)));
+
+    // Commercial stalls are all cars, instanced at the kit's real car size.
+    const comRefs = renderer.stallSlotsFor(2);
+    expect(comRefs.length).toBeGreaterThan(0);
     const m = new THREE.Matrix4();
     const scale = new THREE.Vector3();
     const q = new THREE.Quaternion();
     const p = new THREE.Vector3();
-
-    renderer.getCarMatrix(renderer.stallSlotsFor(1)[0]!, m);
-    m.decompose(p, q, scale);
-    expect(scale.y).toBeGreaterThan(2); // truck: much taller than a car
-
-    renderer.getCarMatrix(renderer.stallSlotsFor(2)[0]!, m);
-    m.decompose(p, q, scale);
-    expect(scale.y).toBeCloseTo(1, 5); // car: unit scale
+    for (const ref of comRefs) {
+      expect(ref.kind).toBe(VehicleKind.Car);
+      renderer.getCarMatrix(ref, m);
+      m.decompose(p, q, scale);
+      // car height 1.5 m x variant scale (0.94..1.12)
+      expect(scale.y).toBeGreaterThan(1.3);
+      expect(scale.y).toBeLessThan(1.8);
+    }
   });
 
   it('clamps stall count to edge capacity for a high level on a short edge', () => {
@@ -372,10 +473,11 @@ describe('ParkedCarRenderer', () => {
     const catalog = makeCatalogEntry({ footprint: { w: 1, d: 1 } });
     const renderer = new ParkedCarRenderer(scene, flatHeightAt, [catalog], roadAtTiles([[5, 4]]));
 
-    const building = makeBuilding({ id: 1, level: 3 }); // level+1=4, but capacity is 2
+    const building = makeBuilding({ id: 1, level: 9 }); // level+1=10, but a 1-tile edge caps out
     renderer.apply(deltaAdd(building));
 
-    expect(renderer.stallSlotsFor(1)).toHaveLength(2);
+    const capacity = Math.floor((1 - 2 * BAY_END_MARGIN_TILES) / COM_PITCH);
+    expect(renderer.stallSlotsFor(1)).toHaveLength(capacity);
   });
 
   it('parks zero cars for a Constructing building even when road-adjacent', () => {
@@ -499,31 +601,37 @@ describe('ParkedCarRenderer', () => {
     expect(countAfterSecond).toBe(countAfterFirst);
   });
 
-  it('produces stripe geometry with exactly 6 * stallCount vertices (apron + dividers)', () => {
+  it('produces conforming stripe geometry that grows with the bay count (apron + bay lines)', () => {
     const scene = new THREE.Scene();
     // A wide footprint so the edge (10 tiles) comfortably fits several stalls.
     const catalog = makeCatalogEntry({ footprint: { w: 10, d: 1 }, level: 3 });
     const renderer = new ParkedCarRenderer(scene, flatHeightAt, [catalog], roadAtTiles([[0, -1]]));
 
-    const building = makeBuilding({ id: 1, x: 0, z: 0, level: 3 });
-    renderer.apply(deltaAdd(building));
+    renderer.apply(deltaAdd(makeBuilding({ id: 1, x: 0, z: 0, level: 3 })));
+    const countBig = renderer.stallSlotsFor(1).length;
+    expect(countBig).toBeGreaterThan(1);
+    const vertsBig = renderer.stripeVertexCountFor(1);
+    // Conforming quads are triangle soups: always whole triangles.
+    expect(vertsBig).toBeGreaterThan(0);
+    expect(vertsBig % 3).toBe(0);
 
-    const count = renderer.stallSlotsFor(1).length;
-    expect(count).toBeGreaterThan(1); // exercise at least one divider line
-    expect(renderer.stripeVertexCountFor(1)).toBe(6 * count);
+    renderer.apply(deltaUpdate(makeBuilding({ id: 1, x: 0, z: 0, level: 0 })));
+    const countSmall = renderer.stallSlotsFor(1).length;
+    expect(countSmall).toBeLessThan(countBig);
+    // Fewer bays -> shorter apron + fewer bay lines -> strictly less geometry.
+    expect(renderer.stripeVertexCountFor(1)).toBeLessThan(vertsBig);
   });
 
-  it('still draws the apron (6 vertices) with a single stall and no divider lines', () => {
+  it('subdivides the apron into conforming cells (more than one quad even for one bay)', () => {
     const scene = new THREE.Scene();
     const catalog = makeCatalogEntry({ footprint: { w: 1, d: 1 } });
     const renderer = new ParkedCarRenderer(scene, flatHeightAt, [catalog], roadAtTiles([[5, 4]]));
 
-    // Force exactly 1 stall via a level that still clamps to the 1-tile edge capacity (2)...
-    // use a 1-tile edge is capacity 2, so instead directly assert the general invariant
-    // via the count actually produced (>=1) rather than hard-coding 1.
-    renderer.apply(deltaAdd(makeBuilding({ id: 1, level: 1 })));
-    const count = renderer.stallSlotsFor(1).length;
-    expect(renderer.stripeVertexCountFor(1)).toBe(6 * count);
+    renderer.apply(deltaAdd(makeBuilding({ id: 1, level: 0 })));
+    expect(renderer.stallSlotsFor(1)).toHaveLength(1);
+    // One flat 4-corner quad would be exactly 6 vertices; the conforming
+    // subdivision (<= 2 m cells over a ~4 m x 5.3 m apron + bay lines) is far more.
+    expect(renderer.stripeVertexCountFor(1)).toBeGreaterThan(6);
   });
 
   it('is deterministic: two renderer instances given the same delta produce identical matrices and colors', () => {
@@ -612,9 +720,9 @@ describe('ParkedCarRenderer', () => {
       renderer.getCarMatrix(slot, m);
       m.decompose(pos, quat, scale);
       euler.setFromQuaternion(quat);
-      // base yaw for the N edge is PI/2 (parallel-parking rotation), so
-      // jitter alone should keep the yaw within YAW_JITTER_MAX of PI/2.
-      expect(Math.abs(euler.y - Math.PI / 2)).toBeLessThanOrEqual(YAW_JITTER_MAX + 1e-9);
+      // base yaw for the N edge is 0 (nose-in, pointing into the lot), so
+      // jitter alone should keep the yaw within YAW_JITTER_MAX of 0.
+      expect(Math.abs(euler.y)).toBeLessThanOrEqual(YAW_JITTER_MAX + 1e-9);
     }
   });
 

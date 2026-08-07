@@ -148,6 +148,25 @@ const TRUCK_SHARE_CEILING = 0.95;
 const DAILY_DECAY_FACTOR = 0.5;
 
 // ---------------------------------------------------------------------------
+// Convoy breakers: identical cruise speeds + same-instant same-origin spawns
+// made cosmetic vehicles ride in lockstep "snakes", nose-to-tail. Each knob
+// below attacks one cause: per-vehicle speed variation (no lockstep), a
+// staggered start offset (no coincident spawns), one spawn per origin tile
+// per tick (no same-doorstep convoys), and a minimum headway so a faster
+// follower closes up to a gap, not into the leader's bumper.
+// ---------------------------------------------------------------------------
+
+/** Per-vehicle cruise-speed multiplier range: [MIN, MIN + SPAN). */
+export const SPEED_JITTER_MIN = 0.85;
+export const SPEED_JITTER_SPAN = 0.3;
+/** New spawns start up to this far into their first segment. */
+const SPAWN_STAGGER_MAX_M = 8;
+/** Minimum gap kept behind the nearest vehicle ahead on the same segment. */
+export const MIN_HEADWAY_M = 6;
+/** Corner arc: how far before/after a turn's corner point the arc begins/ends. */
+const TURN_ARC_RADIUS_M = 6;
+
+// ---------------------------------------------------------------------------
 // On-road guarantee: a cosmetic vehicle's animation path must only
 // ever step between cardinally-adjacent road tiles, or the straight-line lerp
 // between two points (render/vehicles.ts) would visibly cut across grass/
@@ -199,7 +218,7 @@ export function truncateToAdjacentChain(points: readonly TilePoint[]): TilePoint
 /** Concurrent-vehicle cap floor, regardless of how small the road network is. */
 export const VEHICLE_DENSITY_MIN_CAP = 24;
 /** Concurrent cosmetic vehicles allowed per live road tile, before clamping. */
-export const VEHICLES_PER_ROAD_TILE = 0.5;
+export const VEHICLES_PER_ROAD_TILE = 0.35;
 
 /**
  * Pure: the concurrent cosmetic-vehicle cap for a network with
@@ -220,6 +239,51 @@ function countRoadTiles(edges: readonly GraphEdge[]): number {
 }
 
 type VehicleKindValue = (typeof VehicleKind)[keyof typeof VehicleKind];
+
+/**
+ * Rounds every turn in a world-space polyline into a short arc so vehicles
+ * STEER around curved road corners instead of cutting straight across them
+ * (tile-center chords drive over the inside verge of a curved turn tile).
+ * Each non-collinear interior point is replaced by an entry point
+ * TURN_ARC_RADIUS_M before the corner, two quadratic-bezier samples, and an
+ * exit point after it — headings then rotate smoothly through the turn, which
+ * also keeps the render-side lane offset tracking the curve. Pure.
+ */
+export function smoothCorners(
+  points: readonly { x: number; z: number }[],
+): { x: number; z: number }[] {
+  if (points.length < 3) return [...points];
+  const out: { x: number; z: number }[] = [points[0]!];
+  for (let i = 1; i < points.length - 1; i += 1) {
+    const prev = points[i - 1]!;
+    const p = points[i]!;
+    const next = points[i + 1]!;
+    const inLen = Math.hypot(p.x - prev.x, p.z - prev.z);
+    const outLen = Math.hypot(next.x - p.x, next.z - p.z);
+    if (inLen === 0 || outLen === 0) continue;
+    const inX = (p.x - prev.x) / inLen;
+    const inZ = (p.z - prev.z) / inLen;
+    const outX = (next.x - p.x) / outLen;
+    const outZ = (next.z - p.z) / outLen;
+    if (inX * outX + inZ * outZ > 0.99) {
+      out.push(p); // straight-through: keep the point as-is
+      continue;
+    }
+    const r = Math.min(TURN_ARC_RADIUS_M, inLen / 2, outLen / 2);
+    const pin = { x: p.x - inX * r, z: p.z - inZ * r };
+    const pout = { x: p.x + outX * r, z: p.z + outZ * r };
+    out.push(pin);
+    for (const t of [1 / 3, 2 / 3]) {
+      const a = (1 - t) * (1 - t);
+      const b = 2 * (1 - t) * t;
+      const c = t * t;
+      out.push({ x: a * pin.x + b * p.x + c * pout.x, z: a * pin.z + b * p.z + c * pout.z });
+    }
+    out.push(pout);
+  }
+  out.push(points[points.length - 1]!);
+  return out;
+}
 
 interface WorldPoint {
   readonly x: number;
@@ -341,10 +405,11 @@ export class TrafficSystem {
     const slot = this.freeSlots.pop();
     if (slot === undefined) return; // pool full: volume already counted, skip cosmetic spawn
 
-    const points: WorldPoint[] = animPoints.map((p) => ({
-      x: tileToWorld(p.x),
-      z: tileToWorld(p.z),
-    }));
+    // Round every turn into a short arc so the vehicle steers around curved
+    // corners instead of cutting the chord across the inside of the turn.
+    const points: WorldPoint[] = smoothCorners(
+      animPoints.map((p) => ({ x: tileToWorld(p.x), z: tileToWorld(p.z) })),
+    );
 
     const segmentLengths: number[] = [];
     for (let i = 0; i < points.length - 1; i += 1) {
@@ -353,7 +418,10 @@ export class TrafficSystem {
       segmentLengths.push(Math.hypot(b.x - a.x, b.z - a.z));
     }
 
-    const speedMps = this.averageTierSpeedMps(edgeIds, edgeTiers);
+    // Per-vehicle cruise-speed jitter: no two vehicles ride in exact lockstep.
+    const speedMps =
+      this.averageTierSpeedMps(edgeIds, edgeTiers) *
+      (SPEED_JITTER_MIN + SPEED_JITTER_SPAN * this.rng.next());
 
     const kindRoll = this.rng.next();
     const kind: VehicleKindValue =
@@ -363,11 +431,37 @@ export class TrafficSystem {
           ? VehicleKind.Truck
           : VehicleKind.Bus;
 
+    // Staggered start: begin partway into the first segment so vehicles that
+    // do share a departure point never materialize at the same spot.
+    const firstSegLen = segmentLengths[0] ?? 0;
+    const startOffset = this.rng.next() * Math.min(SPAWN_STAGGER_MAX_M, firstSegLen * 0.9);
+
+    // Never materialize on a leader's bumper: if any active vehicle occupies
+    // this route's first segment within MIN_HEADWAY_M of the start offset,
+    // skip the cosmetic spawn entirely (its volume is already counted).
+    const a0 = points[0]!;
+    const b0 = points[1]!;
+    for (const other of this.slots) {
+      if (!other || other.segIndex >= other.segmentLengths.length) continue;
+      const oa = other.points[other.segIndex]!;
+      const ob = other.points[other.segIndex + 1]!;
+      if (
+        oa.x === a0.x &&
+        oa.z === a0.z &&
+        ob.x === b0.x &&
+        ob.z === b0.z &&
+        Math.abs(other.distanceIntoSegment - startOffset) < MIN_HEADWAY_M
+      ) {
+        this.freeSlots.push(slot);
+        return;
+      }
+    }
+
     const vehicle: ActiveVehicle = {
       points,
       segmentLengths,
       segIndex: 0,
-      distanceIntoSegment: 0,
+      distanceIntoSegment: startOffset,
       speedMps,
       kind,
     };
@@ -391,7 +485,28 @@ export class TrafficSystem {
     return tilesPerSecond * TILE_METERS;
   }
 
+  /** Key identifying the exact directed segment a vehicle currently occupies. */
+  private static segmentKey(vehicle: ActiveVehicle): string {
+    const a = vehicle.points[vehicle.segIndex]!;
+    const b = vehicle.points[vehicle.segIndex + 1]!;
+    return `${a.x},${a.z},${b.x},${b.z}`;
+  }
+
   private advanceVehicles(): void {
+    // Pre-advance headway snapshot: which vehicles share the same directed
+    // segment, and how far along it each one sits. Snapshotting BEFORE any
+    // movement keeps the clamp independent of slot iteration order.
+    const segOccupancy = new Map<string, { slot: number; dist: number }[]>();
+    for (let slot = 0; slot < MAX_VEHICLES; slot += 1) {
+      const vehicle = this.slots[slot];
+      if (!vehicle || vehicle.segIndex >= vehicle.segmentLengths.length) continue;
+      const key = TrafficSystem.segmentKey(vehicle);
+      const entry = { slot, dist: vehicle.distanceIntoSegment };
+      const list = segOccupancy.get(key);
+      if (list) list.push(entry);
+      else segOccupancy.set(key, [entry]);
+    }
+
     for (let slot = 0; slot < MAX_VEHICLES; slot += 1) {
       const vehicle = this.slots[slot];
       if (!vehicle) continue;
@@ -399,12 +514,58 @@ export class TrafficSystem {
       let remaining = vehicle.speedMps * TICK_SECONDS;
       const segCount = vehicle.segmentLengths.length;
 
+      // Headway: never advance to within MIN_HEADWAY_M of the nearest vehicle
+      // ahead on the same segment (ties broken by slot so coincident legacy
+      // vehicles unstack instead of deadlocking). Followers wait for the gap.
+      if (vehicle.segIndex < segCount) {
+        const sharing = segOccupancy.get(TrafficSystem.segmentKey(vehicle));
+        if (sharing && sharing.length > 1) {
+          const myDist = vehicle.distanceIntoSegment;
+          let leaderDist = Infinity;
+          for (const other of sharing) {
+            if (other.slot === slot) continue;
+            const isAhead = other.dist > myDist || (other.dist === myDist && other.slot < slot);
+            if (isAhead) leaderDist = Math.min(leaderDist, other.dist);
+          }
+          if (leaderDist !== Infinity) {
+            remaining = Math.max(0, Math.min(remaining, leaderDist - MIN_HEADWAY_M - myDist));
+          }
+        }
+      }
+
       // Each iteration either fully consumes a segment (segIndex++, bounded
       // by segCount) or zeroes `remaining` — so this always terminates.
       while (remaining > 0 && vehicle.segIndex < segCount) {
         const segLen = vehicle.segmentLengths[vehicle.segIndex]!;
         const distLeft = segLen - vehicle.distanceIntoSegment;
         if (remaining >= distLeft) {
+          // About to cross into the next segment: don't enter closer than
+          // MIN_HEADWAY_M behind any vehicle already occupying it (per the
+          // pre-advance snapshot) — entering unguarded is how a follower
+          // could otherwise land on a slow leader's bumper.
+          const nextIndex = vehicle.segIndex + 1;
+          if (nextIndex < segCount) {
+            const a = vehicle.points[nextIndex]!;
+            const b = vehicle.points[nextIndex + 1]!;
+            const occupants = segOccupancy.get(`${a.x},${a.z},${b.x},${b.z}`);
+            if (occupants) {
+              let minAhead = Infinity;
+              for (const other of occupants) {
+                if (other.slot !== slot) minAhead = Math.min(minAhead, other.dist);
+              }
+              if (minAhead !== Infinity) {
+                const allowedOvershoot = minAhead - MIN_HEADWAY_M;
+                if (remaining - distLeft > allowedOvershoot) {
+                  remaining = Math.max(0, distLeft + allowedOvershoot);
+                  if (remaining < distLeft) {
+                    // Held short of the boundary this tick; settle here.
+                    vehicle.distanceIntoSegment += remaining;
+                    break;
+                  }
+                }
+              }
+            }
+          }
           remaining -= distLeft;
           vehicle.segIndex += 1;
           vehicle.distanceIntoSegment = 0;

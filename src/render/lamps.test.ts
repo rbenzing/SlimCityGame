@@ -76,6 +76,23 @@ describe('computeLampPlacements (pure)', () => {
     expect(computeLampPlacements([])).toEqual([]);
   });
 
+  it('places no lamp on a TURN tile (the curved carriageway owns it), keeping its straight neighbors lit', () => {
+    // L-corner at (2,1): connects W (1,1) and N (2,0) — sum 3, so the corner
+    // itself is a selected lamp tile and would get a mid-road pole without
+    // the turn skip. Straight tiles at sum-multiples still get lamps.
+    const tiles = [
+      { x: 0, z: 1 },
+      { x: 1, z: 1 },
+      { x: 2, z: 1 }, // the turn (selected: 2+1=3)
+      { x: 2, z: 0 },
+      { x: 2, z: -1 },
+      { x: 2, z: -2 }, // straight (selected: 2-2=0)
+    ];
+    const placements = computeLampPlacements(tiles);
+    expect(placements.some((p) => p.x === 2 && p.z === 1)).toBe(false); // no pole in the curve
+    expect(placements.some((p) => p.x === 2 && p.z === -2)).toBe(true); // neighbors still lit
+  });
+
   it('gates lamps by tier: every tier but gravel is lamp-eligible', () => {
     expect(tierGetsLamp(RoadTier.Gravel)).toBe(false);
     for (const tier of [

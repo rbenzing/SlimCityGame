@@ -13,6 +13,7 @@ import {
   type Incident,
 } from '../shared/types';
 import { laneOffset } from './vehicles';
+import { ROAD_Y_OFFSET } from './roadsmesh';
 
 const flatHeightAt = (): number => 0;
 
@@ -167,7 +168,7 @@ describe('ServiceVehicleRenderer', () => {
     expect(isHiddenAt(ambulanceMesh, 5)).toBe(true);
 
     const { pos, scl } = decomposeAt(fireMesh, 5);
-    expect(pos.y).toBeCloseTo(scl.y / 2, 5); // sits on flat ground
+    expect(pos.y).toBeCloseTo(ROAD_Y_OFFSET + scl.y / 2, 5); // rides the road plate
     expect(scl.x).toBeGreaterThan(0);
   });
 
@@ -185,7 +186,7 @@ describe('ServiceVehicleRenderer', () => {
     }
 
     const { pos, scl } = decomposeAt(garbageMesh, 7);
-    expect(pos.y).toBeCloseTo(scl.y / 2, 5); // sits on flat ground
+    expect(pos.y).toBeCloseTo(ROAD_Y_OFFSET + scl.y / 2, 5); // rides the road plate
     expect(scl.x).toBeGreaterThan(0);
   });
 

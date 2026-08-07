@@ -134,10 +134,18 @@ export function computeLampPlacements(roadTiles: readonly LampRoadTile[]): LampP
     const mod = ((sum % LAMP_SPACING_TILES) + LAMP_SPACING_TILES) % LAMP_SPACING_TILES;
     if (mod !== 0) continue;
 
-    const hasEW =
-      tileSet.has(tileKey(tile.x - 1, tile.z)) || tileSet.has(tileKey(tile.x + 1, tile.z));
-    const hasNS =
-      tileSet.has(tileKey(tile.x, tile.z - 1)) || tileSet.has(tileKey(tile.x, tile.z + 1));
+    const n = tileSet.has(tileKey(tile.x, tile.z - 1));
+    const e = tileSet.has(tileKey(tile.x + 1, tile.z));
+    const s = tileSet.has(tileKey(tile.x, tile.z + 1));
+    const w = tileSet.has(tileKey(tile.x - 1, tile.z));
+    const hasEW = e || w;
+    const hasNS = n || s;
+    // A TURN tile (exactly two perpendicular neighbors) sweeps its curved
+    // carriageway across the tile — the straight-axis lateral rule would
+    // plant the pole in the middle of the road, so turn tiles carry no lamp
+    // (their straight neighbors light the corner).
+    const neighborCount = (n ? 1 : 0) + (e ? 1 : 0) + (s ? 1 : 0) + (w ? 1 : 0);
+    if (neighborCount === 2 && hasNS && hasEW) continue;
     // An east-west road (neighbors differ in x) gets lamps offset along z,
     // and vice versa. An isolated tile or a 4-way intersection (both
     // directions present) falls back to a z offset.
@@ -145,7 +153,13 @@ export function computeLampPlacements(roadTiles: readonly LampRoadTile[]): LampP
 
     const group = sum / LAMP_SPACING_TILES;
     const side: 1 | -1 = group % 2 === 0 ? 1 : -1;
-    placements.push({ x: tile.x, z: tile.z, axis, side, lateralOffset: lampLateralOffset(tile.tier) });
+    placements.push({
+      x: tile.x,
+      z: tile.z,
+      axis,
+      side,
+      lateralOffset: lampLateralOffset(tile.tier),
+    });
   }
   return placements;
 }

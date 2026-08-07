@@ -3,14 +3,18 @@ import {
   TrafficSystem,
   TRIPS_PER_TICK,
   BASE_TRIPS_PER_TICK,
+  MIN_HEADWAY_M,
   POP_TRIPS_SPAN,
   POP_FULL_TRAFFIC,
   NIGHT_ACTIVITY_FLOOR,
+  SPEED_JITTER_MIN,
+  SPEED_JITTER_SPAN,
   VEHICLE_DENSITY_MIN_CAP,
   VEHICLES_PER_ROAD_TILE,
   dayHourFromTick,
   isCardinallyAdjacent,
   rushHourActivity,
+  smoothCorners,
   tripsForTick,
   truncateToAdjacentChain,
   vehicleDensityCap,
@@ -126,10 +130,12 @@ function createOneShotNetwork(path: PathResult, edges: GraphEdge[] = []): FakeNe
  * TRIPS_PER_TICK draws regardless of earlier outcomes, so every attempt
  * consumes an origin-index and destination-index draw (single-element
  * origin/destination lists make the actual values irrelevant — int(1) is
- * always 0), plus one extra kind-roll draw for the single successful spawn.
+ * always 0). The one successful spawn consumes three more draws, in order:
+ * speed jitter (0.5 -> multiplier exactly 1.0, keeping legacy speed math),
+ * the kind roll, and the spawn stagger (0 -> vehicle starts at points[0]).
  */
 function oneSuccessfulTripDraws(kindRoll: number): number[] {
-  const draws = [0, 0, kindRoll];
+  const draws = [0, 0, 0.5, kindRoll, 0];
   for (let i = 1; i < TRIPS_PER_TICK; i += 1) draws.push(0, 0);
   return draws;
 }
@@ -361,16 +367,18 @@ describe('TrafficSystem vehicle movement', () => {
   });
 
   it('advances through multiple segments of a multi-point path, carrying overshoot distance into the next segment (§6.20 #3: real tile-adjacent segments are always a full 16m tile apart, so unlike a synthetic sub-tile segment, crossing one always spans several ticks -- the overshoot-carry logic is exercised on the tick that finally crosses the boundary)', () => {
+    // A straight 3-point run: collinear points survive corner smoothing
+    // untouched, so the segment lengths stay exactly one 16m tile each.
     const points = [
       { x: 0, z: 0 },
       { x: 1, z: 0 }, // segment 0: travel +X, 16m
-      { x: 1, z: 1 }, // segment 1: travel +Z, 16m
+      { x: 2, z: 0 }, // segment 1: travel +X, 16m
     ];
     const path = makePath(points, [7]);
     const network = createOneShotNetwork(path, [makeEdge(7, RoadTier.TwoLane)]);
     const sys = new TrafficSystem(createScriptedRng(oneSuccessfulTripDraws(0.1)), network);
 
-    sys.tick({ origins: [{ x: 0, z: 0 }], destinations: [{ x: 1, z: 1 }], tickNo: 1 });
+    sys.tick({ origins: [{ x: 0, z: 0 }], destinations: [{ x: 2, z: 0 }], tickNo: 1 });
 
     const speed = (3 + 1.5 * RoadTier.TwoLane) * TILE_METERS; // 72 m/s
     const seg0Len = tileToWorld(1) - tileToWorld(0); // 16m
@@ -387,14 +395,109 @@ describe('TrafficSystem vehicle movement', () => {
     sys.tick({ origins: [], destinations: [], tickNo: 6 }); // crossing tick
 
     const overshoot = traveledBeforeCrossing + perTick - seg0Len; // 2.0m
-    const seg1X = tileToWorld(1);
-    const seg1Z0 = tileToWorld(0);
-    const seg1Z1 = tileToWorld(1);
+    expect(sys.vehicleBuffer[0]).toBeCloseTo(tileToWorld(1) + overshoot, 3);
+    expect(sys.vehicleBuffer[1]).toBeCloseTo(tileToWorld(0), 3);
+    expect(sys.vehicleBuffer[2]).toBeCloseTo(Math.PI / 2, 6); // still heading +X
+  });
+});
 
-    expect(sys.vehicleBuffer[0]).toBeCloseTo(seg1X, 3);
-    expect(sys.vehicleBuffer[1]).toBeCloseTo(seg1Z0 + overshoot, 3);
-    // Travel along +Z with the mesh already nosed +Z at rest -> yaw 0.
-    expect(sys.vehicleBuffer[2]).toBeCloseTo(Math.atan2(0, seg1Z1 - seg1Z0), 6);
+// ---------------------------------------------------------------------------
+// Convoy breakers: corner smoothing, speed jitter, headway.
+// ---------------------------------------------------------------------------
+
+describe('smoothCorners (steering around curved corners)', () => {
+  it('keeps straight polylines unchanged', () => {
+    const points = [
+      { x: 0, z: 0 },
+      { x: 16, z: 0 },
+      { x: 32, z: 0 },
+    ];
+    expect(smoothCorners(points)).toEqual(points);
+  });
+
+  it('replaces a 90-degree corner with an arc that never touches the corner point', () => {
+    const points = [
+      { x: 0, z: 0 },
+      { x: 16, z: 0 },
+      { x: 16, z: 16 },
+    ];
+    const smoothed = smoothCorners(points);
+    expect(smoothed.length).toBeGreaterThan(points.length); // arc samples added
+    // The raw corner point is cut — every smoothed point stays strictly
+    // inside the corner (the vehicle steers around it, not through it).
+    for (const p of smoothed) {
+      const isCorner = Math.abs(p.x - 16) < 1e-9 && Math.abs(p.z - 0) < 1e-9;
+      expect(isCorner).toBe(false);
+    }
+    // Endpoints survive untouched.
+    expect(smoothed[0]).toEqual(points[0]);
+    expect(smoothed[smoothed.length - 1]).toEqual(points[2]);
+    // Heading rotates through intermediate angles: consecutive segment
+    // directions include at least 3 distinct headings (entry, mid-arc, exit).
+    const headings = new Set<string>();
+    for (let i = 1; i < smoothed.length; i += 1) {
+      const dx = smoothed[i]!.x - smoothed[i - 1]!.x;
+      const dz = smoothed[i]!.z - smoothed[i - 1]!.z;
+      headings.add(Math.atan2(dx, dz).toFixed(3));
+    }
+    expect(headings.size).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('speed jitter + headway (anti-convoy)', () => {
+  it('per-vehicle speed varies across spawns within the jitter band', () => {
+    const path = makePath(
+      Array.from({ length: 50 }, (_, i) => ({ x: i, z: 0 })),
+      [1],
+    );
+    const network = createFakeNetwork(() => path, [makeEdge(1, RoadTier.TwoLane, 200)]);
+    const sys = new TrafficSystem(createSeededRng(7), network);
+    for (let t = 1; t <= 4; t += 1) {
+      sys.tick({ origins: [{ x: 0, z: 0 }], destinations: [{ x: 49, z: 0 }], tickNo: t });
+    }
+    const base = (3 + 1.5 * RoadTier.TwoLane) * TILE_METERS;
+    const speeds = new Set<number>();
+    for (let slot = 0; slot < MAX_VEHICLES; slot += 1) {
+      const base5 = slot * VEHICLE_STRIDE;
+      if (sys.vehicleBuffer[base5] === INACTIVE_VEHICLE_X) continue;
+      const speed = sys.vehicleBuffer[base5 + 3]!;
+      expect(speed).toBeGreaterThanOrEqual(base * SPEED_JITTER_MIN - 1e-9);
+      expect(speed).toBeLessThanOrEqual(base * (SPEED_JITTER_MIN + SPEED_JITTER_SPAN) + 1e-9);
+      speeds.add(speed);
+    }
+    expect(speeds.size).toBeGreaterThan(1); // no lockstep
+  });
+
+  it('vehicles sharing a straight route never ride bumper-to-bumper', () => {
+    const path = makePath(
+      Array.from({ length: 40 }, (_, i) => ({ x: i, z: 0 })),
+      [1],
+    );
+    const network = createFakeNetwork(() => path, [makeEdge(1, RoadTier.TwoLane, 200)]);
+    const sys = new TrafficSystem(createSeededRng(3), network);
+    // Spawn a batch, then advance many ticks; measure pairwise center-to-center
+    // gaps along the shared straight route on every tick.
+    for (let t = 1; t <= 3; t += 1) {
+      sys.tick({ origins: [{ x: 0, z: 0 }], destinations: [{ x: 39, z: 0 }], tickNo: t });
+    }
+    // The steady-state guarantee is MIN_HEADWAY_M; a same-tick double segment
+    // entry can transiently dip below by one tick's worth of speed-jitter
+    // spread, so the hard floor sits just under it — still well above a 4m
+    // car length (never touching).
+    const floor = MIN_HEADWAY_M - 1.2;
+    for (let t = 4; t <= 40; t += 1) {
+      sys.tick({ origins: [], destinations: [], tickNo: t });
+      const positions: number[] = [];
+      for (let slot = 0; slot < MAX_VEHICLES; slot += 1) {
+        const base5 = slot * VEHICLE_STRIDE;
+        if (sys.vehicleBuffer[base5] === INACTIVE_VEHICLE_X) continue;
+        positions.push(sys.vehicleBuffer[base5]!);
+      }
+      positions.sort((a, b) => a - b);
+      for (let i = 1; i < positions.length; i += 1) {
+        expect(positions[i]! - positions[i - 1]!).toBeGreaterThanOrEqual(floor);
+      }
+    }
   });
 });
 
@@ -446,59 +549,60 @@ describe('TrafficSystem vehicle slot pool', () => {
   });
 
   it('skips spawning once the pool is full but keeps counting volume', () => {
-    // A real cardinally-adjacent corridor, long enough (100 tiles
-    // = 1600m) that no spawned vehicle ever completes its trip within this
-    // test's tick budget -- a single non-adjacent 1,000,000-tile "jump"
-    // would be truncated to a single point by the on-road guarantee and
-    // never spawn at all.
-    const neverCompletes = makePath(
-      Array.from({ length: 101 }, (_, i) => ({ x: i, z: 0 })),
-      [1],
-    );
+    // MANY-LANE fixture: each origin row gets its own long cardinally-adjacent
+    // corridor (100 tiles = 1600m), so spawn-time headway (which limits how
+    // densely one departure segment can emit) never starves the pool — trips
+    // spread across lanes. No vehicle completes within this test's budget.
+    const laneFor = (from: TilePoint): PathResult =>
+      makePath(
+        Array.from({ length: 101 }, (_, i) => ({ x: i, z: from.z })),
+        [1],
+      );
     // A big edge length keeps the density cap at MAX_VEHICLES, so
     // this test still exercises the hard slot-pool ceiling (not the density
     // cap -- see the dedicated small-network density-cap test below).
     const network = createFakeNetwork(
-      () => neverCompletes,
+      (from) => laneFor(from),
       [makeEdge(1, RoadTier.TwoLane, MAX_VEHICLES * 3)],
     );
     const sys = new TrafficSystem(createSeededRng(42), network);
 
-    const origins = [{ x: 0, z: 0 }];
-    const destinations = [{ x: 1, z: 0 }];
-    const ticksToFillPool = MAX_VEHICLES / TRIPS_PER_TICK;
+    const origins = Array.from({ length: 64 }, (_, k) => ({ x: 0, z: k }));
+    const destinations = Array.from({ length: 64 }, (_, k) => ({ x: 100, z: k }));
 
-    for (let t = 1; t <= ticksToFillPool; t += 1) {
+    // Saturate: spawn until the fixed slot pool is exhausted.
+    let t = 1;
+    for (; t <= 400 && countActiveSlots(sys.vehicleBuffer) < MAX_VEHICLES; t += 1) {
       sys.tick({ origins, destinations, tickNo: t });
     }
-
     expect(countActiveSlots(sys.vehicleBuffer)).toBe(MAX_VEHICLES);
-    expect(network.addVolumeCalls.length).toBe(MAX_VEHICLES);
+    expect(network.addVolumeCalls.length).toBe((t - 1) * TRIPS_PER_TICK);
 
     const volumeCallsBefore = network.addVolumeCalls.length;
-    sys.tick({ origins, destinations, tickNo: ticksToFillPool + 1 });
+    sys.tick({ origins, destinations, tickNo: t });
 
     expect(countActiveSlots(sys.vehicleBuffer)).toBe(MAX_VEHICLES); // unchanged: pool stays full
     expect(network.addVolumeCalls.length).toBe(volumeCallsBefore + TRIPS_PER_TICK); // still counted
   });
 
   it('caps concurrent cosmetic vehicles well below MAX_VEHICLES for a small road network (§6.20 #2 density cap)', () => {
-    const neverCompletes = makePath(
-      Array.from({ length: 101 }, (_, i) => ({ x: i, z: 0 })),
-      [1],
-    );
+    const laneFor = (from: TilePoint): PathResult =>
+      makePath(
+        Array.from({ length: 101 }, (_, i) => ({ x: i, z: from.z })),
+        [1],
+      );
     // A tiny network (20 road tiles) -> vehicleDensityCap(20) clamps to the
     // documented floor, VEHICLE_DENSITY_MIN_CAP, well under MAX_VEHICLES.
-    const network = createFakeNetwork(() => neverCompletes, [makeEdge(1, RoadTier.TwoLane, 20)]);
+    const network = createFakeNetwork((from) => laneFor(from), [makeEdge(1, RoadTier.TwoLane, 20)]);
     const sys = new TrafficSystem(createSeededRng(99), network);
 
     const expectedCap = vehicleDensityCap(20);
     expect(expectedCap).toBe(VEHICLE_DENSITY_MIN_CAP);
     expect(expectedCap).toBeLessThan(MAX_VEHICLES);
 
-    const origins = [{ x: 0, z: 0 }];
-    const destinations = [{ x: 1, z: 0 }];
-    const ticksToExceedCap = Math.ceil(expectedCap / TRIPS_PER_TICK) + 5;
+    const origins = Array.from({ length: 10 }, (_, k) => ({ x: 0, z: k }));
+    const destinations = Array.from({ length: 10 }, (_, k) => ({ x: 100, z: k }));
+    const ticksToExceedCap = 40;
 
     for (let t = 1; t <= ticksToExceedCap; t += 1) {
       sys.tick({ origins, destinations, tickNo: t });
@@ -670,8 +774,10 @@ describe('TrafficSystem over a real one-way RoadNetwork', () => {
     expect(edge.volume).toBe(TRIPS_PER_TICK / 2);
 
     // The first (forward, i=0) trip's vehicle sits at slot 0, travelling
-    // forward (increasing x) along the one-way flow direction.
-    expect(sys.vehicleBuffer[0]).toBeCloseTo(tileToWorld(2), 3);
+    // forward (increasing x) along the one-way flow direction — at most a
+    // spawn-stagger offset (< 8 m) past its origin point.
+    expect(sys.vehicleBuffer[0]).toBeGreaterThanOrEqual(tileToWorld(2));
+    expect(sys.vehicleBuffer[0]).toBeLessThan(tileToWorld(2) + 8.001);
     expect(sys.vehicleBuffer[2]).toBeCloseTo(Math.PI / 2, 6); // heading along +X
   });
 
@@ -689,7 +795,8 @@ describe('TrafficSystem over a real one-way RoadNetwork', () => {
     const headings: number[] = [];
     for (let slot = 0; slot < MAX_VEHICLES; slot += 1) {
       const base = slot * VEHICLE_STRIDE;
-      if (sys.vehicleBuffer[base] !== INACTIVE_VEHICLE_X) headings.push(sys.vehicleBuffer[base + 2]!);
+      if (sys.vehicleBuffer[base] !== INACTIVE_VEHICLE_X)
+        headings.push(sys.vehicleBuffer[base + 2]!);
     }
     expect(headings.length).toBeGreaterThan(1);
     // Forward trips head +X (atan2(+,0)=+π/2); reversed trips head -X (-π/2).

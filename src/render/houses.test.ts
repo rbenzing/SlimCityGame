@@ -181,7 +181,9 @@ describe('houses — garage + driveway', () => {
     expect(hasGarage(entry({ zone: ZoneType.ResLow, footprint: { w: 2, d: 3 } }))).toBe(true);
     expect(hasGarage(entry({ zone: ZoneType.ResLow, footprint: { w: 3, d: 3 } }))).toBe(true);
     expect(hasGarage(entry({ zone: ZoneType.ResLow, footprint: { w: 2, d: 2 } }))).toBe(false);
-    expect(hasGarage(entry({ zone: ZoneType.ResMediumRow, footprint: { w: 1, d: 4 } }))).toBe(false);
+    expect(hasGarage(entry({ zone: ZoneType.ResMediumRow, footprint: { w: 1, d: 4 } }))).toBe(
+      false,
+    );
     expect(hasGarage(entry({ zone: ZoneType.ResHigh, footprint: { w: 3, d: 3 } }))).toBe(false);
   });
 
@@ -218,7 +220,10 @@ describe('houses — garage + driveway', () => {
       removed: [],
     });
     expect(r.garageSlotFor(1)).not.toBeNull();
-    expect(r.drivewaySlotFor(1)).not.toBeNull();
+    expect(r.hasDriveway(1)).toBe(true);
+    // Conforming slab: subdivided triangle soup, not a single flat quad.
+    expect(r.drivewayVertexCountFor(1)).toBeGreaterThan(6);
+    expect(r.drivewayVertexCountFor(1) % 3).toBe(0);
     expect(r.garageSlotFor(2)).toBeNull(); // 2x2: no garage
     expect(r.garageCount()).toBe(1);
     expect(r.drivewayCount()).toBe(1);
@@ -231,20 +236,29 @@ describe('houses — garage + driveway', () => {
   it('without a roadAt wiring, even a 2x3 home skips the garage/driveway (nothing to face)', () => {
     const scene = new THREE.Scene();
     const r = new HouseRoofRenderer(scene, flatHeightAt, garageCatalog); // roadAt defaults to none
-    r.apply({ added: [instance({ id: 1, catalogId: 'big', x: 0, z: 0 })], updated: [], removed: [] });
+    r.apply({
+      added: [instance({ id: 1, catalogId: 'big', x: 0, z: 0 })],
+      updated: [],
+      removed: [],
+    });
     expect(r.roofSlotFor(1)).not.toBeNull(); // roof still there
     expect(r.garageSlotFor(1)).toBeNull();
-    expect(r.drivewaySlotFor(1)).toBeNull();
+    expect(r.hasDriveway(1)).toBe(false);
   });
 
   it('removing a home frees its garage + driveway slots too', () => {
     const scene = new THREE.Scene();
     const r = new HouseRoofRenderer(scene, flatHeightAt, garageCatalog, () => true);
-    r.apply({ added: [instance({ id: 1, catalogId: 'big', x: 0, z: 0 })], updated: [], removed: [] });
+    r.apply({
+      added: [instance({ id: 1, catalogId: 'big', x: 0, z: 0 })],
+      updated: [],
+      removed: [],
+    });
     expect(r.garageSlotFor(1)).not.toBeNull();
     r.apply({ added: [], updated: [], removed: [1] });
     expect(r.garageSlotFor(1)).toBeNull();
-    expect(r.drivewaySlotFor(1)).toBeNull();
+    expect(r.hasDriveway(1)).toBe(false);
+    expect(r.drivewayVertexCountFor(1)).toBe(0);
     expect(r.roofSlotFor(1)).toBeNull();
   });
 });

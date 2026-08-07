@@ -81,7 +81,8 @@ import * as THREE from 'three';
 import { RoadTileDelta, RoadTier } from '../shared/types';
 import { TILE_METERS, CHUNK_TILES, CHUNKS_PER_SIDE } from '../shared/constants';
 
-const ROAD_Y_OFFSET = 0.15;
+/** The road plate rides this far above the terrain — anything standing ON a road must add it. */
+export const ROAD_Y_OFFSET = 0.15;
 /** Max sub-quad edge length (m) when a road quad is tessellated to follow a slope. */
 const ROAD_QUAD_MAX_CELL_M = 2;
 /** Corner+center height spread below which a quad is flat and stays one quad. */

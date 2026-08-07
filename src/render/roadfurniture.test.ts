@@ -9,7 +9,7 @@ import {
   RoadFurnitureRenderer,
 } from './roadfurniture';
 import { RoadTier } from '../shared/types';
-import { carriagewayHalfWidthMeters } from './roadsmesh';
+import { carriagewayHalfWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
 
 const flatHeightAt = (): number => 0;
 
@@ -184,6 +184,70 @@ describe('road-furniture placement (pure)', () => {
     ];
     const signs = computeSignPlacements(tiles);
     expect(signs.find((s) => s.x === 2 && s.z === 0)?.type).toBe('bend');
+  });
+
+  it('positions the bend sign at the curve OUTER corner, just past the sidewalk, facing the curve', () => {
+    const t = RoadTier.TwoLane;
+    // Corner (2,0) connects W (1,0) and N (2,-1): the curve hugs the NW tile
+    // corner, so the sign stands on the opposite (SE) diagonal.
+    const tiles: FurnitureRoadTile[] = [
+      { x: 0, z: 0, tier: t },
+      { x: 1, z: 0, tier: t },
+      { x: 2, z: 0, tier: t },
+      { x: 2, z: -1, tier: t },
+      { x: 2, z: -2, tier: t },
+    ];
+    const sign = computeSignPlacements(tiles).find((s) => s.x === 2 && s.z === 0)!;
+    expect(sign.type).toBe('bend');
+    // radius = tileHalf + carriagewayHalf + sidewalk + margin, along the
+    // (+1,+1)/sqrt(2) diagonal from the NW corner (-8,-8).
+    const radius = 8 + carriagewayHalfWidthMeters(t) + SIDEWALK_WIDTH_M + 0.5;
+    const expected = -8 + radius * Math.SQRT1_2;
+    expect(sign.worldOffsetX).toBeCloseTo(expected, 5);
+    expect(sign.worldOffsetZ).toBeCloseTo(expected, 5);
+    // Faces back toward the corner (the oncoming curve traffic).
+    expect(sign.yaw).toBeCloseTo(Math.atan2(-Math.SQRT1_2, -Math.SQRT1_2), 5);
+    // Stays inside its own tile (never strands deep in a neighbor's grass).
+    expect(Math.abs(sign.worldOffsetX!)).toBeLessThan(8);
+    expect(Math.abs(sign.worldOffsetZ!)).toBeLessThan(8);
+  });
+
+  it('keeps manholes, boxes and meters OFF turn tiles (the curve owns the tile)', () => {
+    // A staircase where every interior tile is a non-collinear 2-neighbor
+    // turn — plenty of tiles so each prop layer's hash/period rules would
+    // otherwise fire on several of them.
+    const t = RoadTier.TwoLane;
+    const tiles: FurnitureRoadTile[] = [];
+    let x = 0;
+    let z = 0;
+    tiles.push({ x, z, tier: t });
+    for (let k = 0; k < 24; k++) {
+      if (k % 2 === 0) x += 1;
+      else z += 1;
+      tiles.push({ x, z, tier: t });
+    }
+    const turnTiles = new Set<string>();
+    const byKey = new Set(tiles.map((p) => `${p.x},${p.z}`));
+    for (const p of tiles) {
+      const n = byKey.has(`${p.x},${p.z - 1}`);
+      const e = byKey.has(`${p.x + 1},${p.z}`);
+      const s = byKey.has(`${p.x},${p.z + 1}`);
+      const w = byKey.has(`${p.x - 1},${p.z}`);
+      const count = (n ? 1 : 0) + (e ? 1 : 0) + (s ? 1 : 0) + (w ? 1 : 0);
+      const collinear = (n && s && !e && !w) || (e && w && !n && !s);
+      if (count === 2 && !collinear) turnTiles.add(`${p.x},${p.z}`);
+    }
+    expect(turnTiles.size).toBeGreaterThan(10); // the staircase really is all turns
+
+    for (const m of computeManholePlacements(tiles)) {
+      expect(turnTiles.has(`${m.x},${m.z}`)).toBe(false);
+    }
+    for (const b of computeBoxPlacements(tiles)) {
+      expect(turnTiles.has(`${b.x},${b.z}`)).toBe(false);
+    }
+    for (const m of computeMeterPlacements(tiles)) {
+      expect(turnTiles.has(`${m.x},${m.z}`)).toBe(false);
+    }
   });
 
   it("marks the periodic tiles of a One-Way straight run 'oneway'", () => {

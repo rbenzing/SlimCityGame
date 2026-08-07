@@ -13,6 +13,7 @@ import {
   VEHICLE_PALETTE,
   VEHICLE_REGION,
 } from './vehicles';
+import { ROAD_Y_OFFSET } from './roadsmesh';
 import { MAX_VEHICLES, VEHICLE_STRIDE, INACTIVE_VEHICLE_X, VehicleKind } from '../shared/types';
 
 const deg = (d: number): number => (d * Math.PI) / 180;
@@ -219,7 +220,7 @@ describe('VehicleRenderer', () => {
     const offset = laneOffset(0);
     expect(pos.x).toBeCloseTo(32 + offset.dx, 5);
     expect(pos.z).toBeCloseTo(48 + offset.dz, 5);
-    expect(pos.y).toBeCloseTo(scl.y / 2, 5); // sits on flat ground (heightAt = 0)
+    expect(pos.y).toBeCloseTo(ROAD_Y_OFFSET + scl.y / 2, 5); // rides the road plate over flat ground
     expect(scl.x).toBeGreaterThan(0);
     expect(scl.y).toBeGreaterThan(0);
     expect(scl.z).toBeGreaterThan(0);
