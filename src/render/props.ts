@@ -28,6 +28,7 @@ import { maxHeightOverFootprint } from './footprint';
 import {
   computeSetbacks,
   CONSTRUCTING_MASSING_HEIGHT_SCALE,
+  frontageSetbackFor,
   InstancedSlotPool,
   massingLifecycleTint,
   SetbackBox,
@@ -329,6 +330,8 @@ const _yAxis = new THREE.Vector3(0, 1, 0);
 
 export class RoofPropRenderer {
   private readonly heightAt: (x: number, z: number) => number;
+  /** Answers "is this grid tile a road" for the frontage parking setback; the default never finds one. */
+  private readonly roadAt: (x: number, z: number) => boolean;
   private readonly catalogById: Map<string, BuildingCatalogEntry>;
   private readonly warningLightMaterial: THREE.MeshLambertMaterial;
   private readonly pools: Record<PropKind, InstancedSlotPool>;
@@ -338,8 +341,10 @@ export class RoofPropRenderer {
     scene: THREE.Scene,
     heightAt: (x: number, z: number) => number,
     catalog: BuildingCatalogEntry[],
+    roadAt?: (x: number, z: number) => boolean,
   ) {
     this.heightAt = heightAt;
+    this.roadAt = roadAt ?? ((): boolean => false);
     this.catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
 
     this.warningLightMaterial = new THREE.MeshLambertMaterial({
@@ -479,7 +484,10 @@ export class RoofPropRenderer {
     // with vents/AC/antennas — rooftop clutter would poke through the pitch.
     if (isRoofedEntry(entry)) return;
 
-    const { boxes } = computeSetbacks(entry, building.id);
+    // Same frontage setback as the body renderers so com/ind rooftop clutter
+    // stays on the set-back roof instead of floating over the parking bays.
+    const frontage = frontageSetbackFor(entry, building.x, building.z, this.roadAt);
+    const { boxes } = computeSetbacks(entry, building.id, frontage);
     const topBox = boxes[boxes.length - 1]!;
     const { floors } = deriveFacadeParams(entry, building.id);
 
@@ -487,8 +495,8 @@ export class RoofPropRenderer {
       building.state === BuildingState.Constructing ? CONSTRUCTING_MASSING_HEIGHT_SCALE : 1;
     const tint = massingLifecycleTint(building.state);
 
-    const centerX = (building.x + entry.footprint.w / 2) * TILE_METERS;
-    const centerZ = (building.z + entry.footprint.d / 2) * TILE_METERS;
+    const centerX = (building.x + entry.footprint.w / 2) * TILE_METERS + frontage.centerXM;
+    const centerZ = (building.z + entry.footprint.d / 2) * TILE_METERS + frontage.centerZM;
     // Match BuildingInstancer's footprint-max base so roof props land on the
     // actual roof plane on sloped lots, not a centre-sampled approximation.
     const groundY = maxHeightOverFootprint(

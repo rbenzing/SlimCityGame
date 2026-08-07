@@ -33,7 +33,7 @@ import {
 } from '../shared/types';
 import { NIGHT_WINDOW_LIT_MAX, NIGHT_WINDOW_LIT_MIN, TILE_METERS } from '../shared/constants';
 import { encodeId, buildIdColorArray } from './picking';
-import { footprintShrinkFor } from './massing';
+import { footprintShrinkFor, frontageSetbackFor } from './massing';
 import { maxHeightOverFootprint } from './footprint';
 import {
   ACCENT_BLUE,
@@ -397,16 +397,20 @@ export class BuildingInstancer {
   private readonly nightFactorUniform = uniform(0);
   /** Catalog ids rendered as a low plinth (see createPlinthMaterial/writeInstance) instead of the full facade box. Empty unless the 4th constructor arg is passed. */
   private readonly plinthIds: ReadonlySet<string>;
+  /** Answers "is this grid tile a road" for the frontage parking setback (see writeInstance); the default never finds one. */
+  private readonly roadAt: (x: number, z: number) => boolean;
 
   constructor(
     scene: THREE.Scene,
     catalog: BuildingCatalogEntry[],
     heightAt: (x: number, z: number) => number,
     plinthIds?: Set<string>,
+    roadAt?: (x: number, z: number) => boolean,
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
     this.plinthIds = plinthIds ?? new Set();
+    this.roadAt = roadAt ?? ((): boolean => false);
     for (const entry of catalog) {
       this.buckets.set(entry.id, this.createBucket(entry));
     }
@@ -845,10 +849,14 @@ export class BuildingInstancer {
     const baseHeight = this.plinthIds.has(entry.id) ? PLINTH_PAD_HEIGHT : entry.height;
     const height = baseHeight * heightScale;
     const shrink = footprintShrinkFor(entry);
-    const spanX = entry.footprint.w * TILE_METERS * shrink;
-    const spanZ = entry.footprint.d * TILE_METERS * shrink;
-    const centerX = (instance.x + entry.footprint.w / 2) * TILE_METERS;
-    const centerZ = (instance.z + entry.footprint.d / 2) * TILE_METERS;
+    // Commercial/industrial bodies pull back from their road-facing edge so
+    // the parked-car bay row (parked.ts) sits flush in front of the facade
+    // instead of underneath it; every other category gets a zero setback.
+    const frontage = frontageSetbackFor(entry, instance.x, instance.z, this.roadAt);
+    const spanX = entry.footprint.w * TILE_METERS * shrink - frontage.spanXM;
+    const spanZ = entry.footprint.d * TILE_METERS * shrink - frontage.spanZM;
+    const centerX = (instance.x + entry.footprint.w / 2) * TILE_METERS + frontage.centerXM;
+    const centerZ = (instance.z + entry.footprint.d / 2) * TILE_METERS + frontage.centerZM;
     // Seat the base at the highest terrain under the footprint so no slope can
     // poke up through the body (sampling only the centre lets uphill corners
     // spike through). Roofs/props key off this same value via the same helper.

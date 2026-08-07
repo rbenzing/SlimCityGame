@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   computeSetbacks,
+  frontageSetbackFor,
   InstancedSlotPool,
   massingLifecycleTint,
   MassingRenderer,
@@ -9,6 +10,7 @@ import {
   MAX_SETBACK_INSET,
   MIN_SETBACK_INSET,
 } from './massing';
+import { BAY_DEPTH_TILES } from './parked';
 import { deriveFacadeParams } from './facade';
 import {
   BuildingCatalogEntry,
@@ -65,6 +67,16 @@ function deltaRemove(...ids: number[]): BuildingDelta {
 function isZeroScale(m: THREE.Matrix4): boolean {
   const e = m.elements;
   return e[0] === 0 && e[5] === 0 && e[10] === 0;
+}
+
+const noRoad = (): boolean => false;
+
+/** A predicate that is true only for the given set of tile coordinates. */
+function roadAtTiles(
+  tiles: ReadonlyArray<readonly [number, number]>,
+): (x: number, z: number) => boolean {
+  const set = new Set(tiles.map(([x, z]) => `${x},${z}`));
+  return (x: number, z: number): boolean => set.has(`${x},${z}`);
 }
 
 function decompose(m: THREE.Matrix4) {
@@ -174,6 +186,146 @@ describe('computeSetbacks', () => {
 
   it('rounds a non-integer level defensively', () => {
     expect(computeSetbacks(entry({ level: 2.4 }), 1).boxes).toHaveLength(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// frontageSetbackFor (pure) — body setback that clears the parking-bay row
+// ---------------------------------------------------------------------------
+
+describe('frontageSetbackFor', () => {
+  // 2x2 footprint at (5,5): the shrunk body face sits 2*(1-0.85)/2 = 0.15
+  // tiles inside each footprint edge; the bay row runs BAY_DEPTH_TILES inward,
+  // so the span loses the remainder and the center shifts half of it.
+  const com = entry({ category: 'com', zone: 3, footprint: { w: 2, d: 2 } });
+  const comSetbackM = (BAY_DEPTH_TILES.com - 0.15) * TILE_METERS;
+
+  it('is all-zero when no side is road-adjacent', () => {
+    expect(frontageSetbackFor(com, 5, 5, noRoad)).toEqual({
+      spanXM: 0,
+      spanZM: 0,
+      centerXM: 0,
+      centerZM: 0,
+    });
+  });
+
+  it('is all-zero for categories parked.ts gives no bays, even with a road-facing edge', () => {
+    for (const category of ['res', 'service', 'utility', 'park'] as const) {
+      const e = entry({ category, footprint: { w: 2, d: 2 } });
+      expect(frontageSetbackFor(e, 5, 5, roadAtTiles([[5, 4]]))).toEqual({
+        spanXM: 0,
+        spanZM: 0,
+        centerXM: 0,
+        centerZM: 0,
+      });
+    }
+  });
+
+  /** Field-wise comparison — the setback is computed in floats, so exact deep-equal is too strict. */
+  function expectSetback(
+    actual: { spanXM: number; spanZM: number; centerXM: number; centerZM: number },
+    expected: { spanXM: number; spanZM: number; centerXM: number; centerZM: number },
+  ): void {
+    expect(actual.spanXM).toBeCloseTo(expected.spanXM, 9);
+    expect(actual.spanZM).toBeCloseTo(expected.spanZM, 9);
+    expect(actual.centerXM).toBeCloseTo(expected.centerXM, 9);
+    expect(actual.centerZM).toBeCloseTo(expected.centerZM, 9);
+  }
+
+  it('N-side road: reduces the Z span and shifts the center south (away from the road)', () => {
+    expectSetback(frontageSetbackFor(com, 5, 5, roadAtTiles([[5, 4]])), {
+      spanXM: 0,
+      spanZM: comSetbackM,
+      centerXM: 0,
+      centerZM: comSetbackM / 2,
+    });
+  });
+
+  it('S-side road: reduces the Z span and shifts the center north', () => {
+    expectSetback(frontageSetbackFor(com, 5, 5, roadAtTiles([[5, 7]])), {
+      spanXM: 0,
+      spanZM: comSetbackM,
+      centerXM: 0,
+      centerZM: -comSetbackM / 2,
+    });
+  });
+
+  it('E-side road: reduces the X span and shifts the center west', () => {
+    expectSetback(frontageSetbackFor(com, 5, 5, roadAtTiles([[7, 5]])), {
+      spanXM: comSetbackM,
+      spanZM: 0,
+      centerXM: -comSetbackM / 2,
+      centerZM: 0,
+    });
+  });
+
+  it('W-side road: reduces the X span and shifts the center east', () => {
+    expectSetback(frontageSetbackFor(com, 5, 5, roadAtTiles([[4, 5]])), {
+      spanXM: comSetbackM,
+      spanZM: 0,
+      centerXM: comSetbackM / 2,
+      centerZM: 0,
+    });
+  });
+
+  it('lands the body road-side face exactly where the bay row ends (flush, no overlap, no gap)', () => {
+    const setback = frontageSetbackFor(com, 5, 5, roadAtTiles([[5, 4]]));
+    const spanZ = 2 * TILE_METERS * MASSING_FOOTPRINT_SHRINK - setback.spanZM;
+    const centerZ = (5 + 1) * TILE_METERS + setback.centerZM;
+    const northFace = centerZ - spanZ / 2;
+    expect(northFace).toBeCloseTo(5 * TILE_METERS + BAY_DEPTH_TILES.com * TILE_METERS, 9);
+    // The back face never moves.
+    expect(centerZ + spanZ / 2).toBeCloseTo(7 * TILE_METERS - 0.15 * TILE_METERS, 9);
+  });
+
+  it('uses the deeper industrial bay depth for ind lots', () => {
+    const ind = entry({ category: 'ind', zone: 5, footprint: { w: 2, d: 2 } });
+    const setback = frontageSetbackFor(ind, 5, 5, roadAtTiles([[5, 4]]));
+    expect(setback.spanZM).toBeCloseTo((BAY_DEPTH_TILES.ind - 0.15) * TILE_METERS, 9);
+    expect(setback.centerZM).toBeCloseTo(setback.spanZM / 2, 9);
+  });
+
+  it('clamps to zero when the shrunk face already clears the bay row (very deep footprints)', () => {
+    // 8-tile frontage axis: margin 8*0.075 = 0.6 tiles > BAY_DEPTH_TILES.com.
+    const deep = entry({ category: 'com', zone: 3, footprint: { w: 8, d: 8 } });
+    expect(frontageSetbackFor(deep, 5, 5, roadAtTiles([[5, 4]]))).toEqual({
+      spanXM: 0,
+      spanZM: 0,
+      centerXM: 0,
+      centerZM: 0,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeSetbacks x frontage setback
+// ---------------------------------------------------------------------------
+
+describe('computeSetbacks with a frontage setback', () => {
+  const com = entry({ category: 'com', zone: 3, footprint: { w: 2, d: 2 }, level: 2, height: 20 });
+
+  it('narrows the base tier by the frontage span reductions', () => {
+    const frontage = frontageSetbackFor(com, 5, 5, roadAtTiles([[5, 4]]));
+    const { boxes } = computeSetbacks(com, 7, frontage);
+    expect(boxes[0]!.w).toBeCloseTo(2 * TILE_METERS * MASSING_FOOTPRINT_SHRINK, 9);
+    expect(boxes[0]!.d).toBeCloseTo(
+      2 * TILE_METERS * MASSING_FOOTPRINT_SHRINK - frontage.spanZM,
+      9,
+    );
+  });
+
+  it('keeps every upper tier within the set-back base tier', () => {
+    const frontage = frontageSetbackFor(com, 5, 5, roadAtTiles([[5, 4]]));
+    const { boxes } = computeSetbacks(com, 7, frontage);
+    for (let tier = 1; tier < boxes.length; tier++) {
+      expect(boxes[tier]!.w).toBeLessThan(boxes[tier - 1]!.w);
+      expect(boxes[tier]!.d).toBeLessThan(boxes[tier - 1]!.d);
+    }
+  });
+
+  it('omitting the frontage argument matches an all-zero setback exactly', () => {
+    const zero = frontageSetbackFor(com, 5, 5, noRoad);
+    expect(computeSetbacks(com, 7, zero)).toEqual(computeSetbacks(com, 7));
   });
 });
 
@@ -527,6 +679,62 @@ describe('MassingRenderer', () => {
     const towerIndex = realCatalog.findIndex((c) => c.id === 'res-high-3');
     expect(towerIndex).toBeGreaterThanOrEqual(0);
     expect(renderer.upperBoxSlotsFor(towerIndex + 1)).toHaveLength(2);
+  });
+});
+
+describe('MassingRenderer frontage setback (optional roadAt)', () => {
+  const COM = entry({ category: 'com', zone: 3, footprint: { w: 2, d: 2 }, level: 2, height: 20 });
+
+  it('shifts the upper tiers with the set-back body when the com lot faces a road', () => {
+    const roadAt = roadAtTiles([[5, 4]]); // N of the footprint at (5,5)
+    const scene = new THREE.Scene();
+    const renderer = new MassingRenderer(scene, flatHeightAt, [COM], roadAt);
+    renderer.apply(deltaAdd(building({ level: 2 })));
+
+    const frontage = frontageSetbackFor(COM, 5, 5, roadAt);
+    const { boxes } = computeSetbacks(COM, 1, frontage);
+    const upper = boxes[1]!;
+
+    const slot = renderer.upperBoxSlotsFor(1)[0]!;
+    const m = new THREE.Matrix4();
+    renderer.getBoxMatrix(slot, m);
+    const { pos, scl } = decompose(m);
+    expect(pos.x).toBeCloseTo((5 + 1) * TILE_METERS, 5);
+    expect(pos.z).toBeCloseTo((5 + 1) * TILE_METERS + frontage.centerZM, 5);
+    expect(scl.x).toBeCloseTo(upper.w, 5);
+    expect(scl.z).toBeCloseTo(upper.d, 5);
+  });
+
+  it('with roadAt present but no road nearby, tiers match the no-roadAt renderer exactly', () => {
+    const withRoadAt = new MassingRenderer(new THREE.Scene(), flatHeightAt, [COM], noRoad);
+    const withoutRoadAt = new MassingRenderer(new THREE.Scene(), flatHeightAt, [COM]);
+    withRoadAt.apply(deltaAdd(building({ level: 2 })));
+    withoutRoadAt.apply(deltaAdd(building({ level: 2 })));
+
+    const mA = new THREE.Matrix4();
+    const mB = new THREE.Matrix4();
+    withRoadAt.getBoxMatrix(withRoadAt.upperBoxSlotsFor(1)[0]!, mA);
+    withoutRoadAt.getBoxMatrix(withoutRoadAt.upperBoxSlotsFor(1)[0]!, mB);
+    expect(mA.elements).toEqual(mB.elements);
+  });
+
+  it('leaves a road-adjacent RES building untouched even with roadAt wired', () => {
+    const res = entry({ category: 'res', footprint: { w: 2, d: 2 }, level: 2, height: 20 });
+    const withRoad = new MassingRenderer(
+      new THREE.Scene(),
+      flatHeightAt,
+      [res],
+      roadAtTiles([[5, 4]]),
+    );
+    const withoutRoad = new MassingRenderer(new THREE.Scene(), flatHeightAt, [res]);
+    withRoad.apply(deltaAdd(building({ level: 2 })));
+    withoutRoad.apply(deltaAdd(building({ level: 2 })));
+
+    const mA = new THREE.Matrix4();
+    const mB = new THREE.Matrix4();
+    withRoad.getBoxMatrix(withRoad.upperBoxSlotsFor(1)[0]!, mA);
+    withoutRoad.getBoxMatrix(withoutRoad.upperBoxSlotsFor(1)[0]!, mB);
+    expect(mA.elements).toEqual(mB.elements);
   });
 });
 

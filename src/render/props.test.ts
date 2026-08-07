@@ -23,7 +23,7 @@ import {
   siloCorner,
   smokestackCorner,
 } from './props';
-import { computeSetbacks, SetbackBox } from './massing';
+import { computeSetbacks, frontageSetbackFor, SetbackBox } from './massing';
 import {
   BuildingCatalogEntry,
   BuildingDelta,
@@ -684,5 +684,101 @@ describe('RoofPropRenderer', () => {
     const siloCount = renderer.slotsFor(ind2Id, 'silo').length; // footprint 3x3
     expect(siloCount).toBeGreaterThanOrEqual(3);
     expect(siloCount).toBeLessThanOrEqual(4);
+  });
+});
+
+describe('RoofPropRenderer frontage setback (optional roadAt)', () => {
+  /** A predicate that is true only for the given set of tile coordinates. */
+  function roadAtTiles(
+    tiles: ReadonlyArray<readonly [number, number]>,
+  ): (x: number, z: number) => boolean {
+    const set = new Set(tiles.map(([x, z]) => `${x},${z}`));
+    return (x: number, z: number): boolean => set.has(`${x},${z}`);
+  }
+
+  it('places every ind prop kind on the road-set-back roof (inset area + shifted center)', () => {
+    const e = entry({
+      id: 'ind-road',
+      category: 'ind',
+      level: MIN_SMOKESTACK_LEVEL,
+      footprint: { w: MIN_SILO_FOOTPRINT_TILES, d: MIN_SILO_FOOTPRINT_TILES },
+      height: 14,
+    });
+    const roadAt = roadAtTiles([[5, 4]]); // N of the footprint at (5,5)
+    const scene = new THREE.Scene();
+    const renderer = new RoofPropRenderer(scene, flatHeightAt, [e], roadAt);
+    renderer.apply(deltaAdd(building({ catalogId: 'ind-road', level: MIN_SMOKESTACK_LEVEL })));
+
+    const frontage = frontageSetbackFor(e, 5, 5, roadAt);
+    expect(frontage.centerZM).toBeGreaterThan(0); // the setback really is in play
+    const { boxes } = computeSetbacks(e, 1, frontage);
+    const topBox = boxes[boxes.length - 1]!;
+    const centerX = (5 + e.footprint.w / 2) * TILE_METERS + frontage.centerXM;
+    const centerZ = (5 + e.footprint.d / 2) * TILE_METERS + frontage.centerZM;
+
+    const m = new THREE.Matrix4();
+    const kinds: PropKind[] = ['vent', 'ac', 'antenna', 'smokestack', 'silo'];
+    let checked = 0;
+    for (const kind of kinds) {
+      for (const slot of renderer.slotsFor(1, kind)) {
+        renderer.getMatrix(kind, slot, m);
+        const { pos } = decompose(m);
+        // Every prop stays within the set-back top box, so nothing can float
+        // over the parking bays in front of the north face.
+        expect(Math.abs(pos.x - centerX)).toBeLessThanOrEqual(topBox.w / 2 + 1e-6);
+        expect(Math.abs(pos.z - centerZ)).toBeLessThanOrEqual(topBox.d / 2 + 1e-6);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('scattered AC placement matches the pure pipeline recomputed with the frontage setback', () => {
+    const e = entry({ id: 'com-road', category: 'com', footprint: { w: 2, d: 2 }, height: 12 });
+    const roadAt = roadAtTiles([[5, 4]]);
+    const scene = new THREE.Scene();
+    const renderer = new RoofPropRenderer(scene, flatHeightAt, [e], roadAt);
+    renderer.apply(deltaAdd(building({ id: 3, catalogId: 'com-road' })));
+
+    const frontage = frontageSetbackFor(e, 5, 5, roadAt);
+    const { boxes } = computeSetbacks(e, 3, frontage);
+    const topBox = boxes[boxes.length - 1]!;
+    const centerX = (5 + 1) * TILE_METERS + frontage.centerXM;
+    const centerZ = (5 + 1) * TILE_METERS + frontage.centerZM;
+
+    const slots = renderer.slotsFor(3, 'ac');
+    expect(slots.length).toBeGreaterThan(0);
+    const m = new THREE.Matrix4();
+    slots.forEach((slot, i) => {
+      const local = computePropPlacement(topBox, 3, i);
+      renderer.getMatrix('ac', slot, m);
+      const { pos } = decompose(m);
+      expect(pos.x).toBeCloseTo(centerX + local.x, 5);
+      expect(pos.z).toBeCloseTo(centerZ + local.z, 5);
+    });
+  });
+
+  it('leaves a road-adjacent RES building byte-identical to the roadAt-less renderer', () => {
+    const e = entry({ id: 'res-road', category: 'res', footprint: { w: 2, d: 2 }, height: 12 });
+    const withRoad = new RoofPropRenderer(
+      new THREE.Scene(),
+      flatHeightAt,
+      [e],
+      roadAtTiles([[5, 4]]),
+    );
+    const withoutRoad = new RoofPropRenderer(new THREE.Scene(), flatHeightAt, [e]);
+    withRoad.apply(deltaAdd(building({ catalogId: 'res-road' })));
+    withoutRoad.apply(deltaAdd(building({ catalogId: 'res-road' })));
+
+    const slotsA = withRoad.slotsFor(1, 'ac');
+    const slotsB = withoutRoad.slotsFor(1, 'ac');
+    expect(slotsA).toEqual(slotsB);
+    const mA = new THREE.Matrix4();
+    const mB = new THREE.Matrix4();
+    slotsA.forEach((slot, i) => {
+      withRoad.getMatrix('ac', slot, mA);
+      withoutRoad.getMatrix('ac', slotsB[i]!, mB);
+      expect(mA.elements).toEqual(mB.elements);
+    });
   });
 });

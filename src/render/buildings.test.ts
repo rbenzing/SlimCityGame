@@ -15,6 +15,8 @@ import {
   windowLitFraction,
 } from './buildings';
 import { decodeId } from './picking';
+import { BAY_DEPTH_TILES } from './parked';
+import { MASSING_FOOTPRINT_SHRINK } from './massing';
 import {
   BuildingCatalogEntry,
   BuildingInstance,
@@ -1017,6 +1019,158 @@ describe('plinth mode (UI-SPEC §6.15) — additive-only 4th constructor arg, de
     );
     expect(() => instancer.apply({ added, removed: [], updated: [] })).not.toThrow();
     expect(instancer.instanceCount()).toBe(realCatalog.length);
+  });
+});
+
+describe('frontage parking setback — additive-only 5th constructor arg, default byte-identical', () => {
+  const SHOP: BuildingCatalogEntry = {
+    id: 'shop',
+    name: 'Retail Strip',
+    category: 'com',
+    zone: ZoneType.ComLow,
+    level: 1,
+    footprint: { w: 2, d: 2 },
+    height: 10,
+    color: 0xf1b2b6,
+    jobs: 20,
+    powerUse: 0.8,
+    waterUse: 0.8,
+    cost: 0,
+    upkeep: 0,
+    unlockMilestone: 0,
+  };
+  const FACTORY: BuildingCatalogEntry = {
+    ...SHOP,
+    id: 'factory',
+    name: 'Workshop Yard',
+    category: 'ind',
+    zone: ZoneType.Industrial,
+    height: 9,
+  };
+  const STATION: BuildingCatalogEntry = {
+    ...SHOP,
+    id: 'station',
+    name: 'Police Station',
+    category: 'service',
+    zone: undefined,
+    jobs: undefined,
+    service: { kind: 'police', strength: 160, range: 48 },
+  };
+  const SETBACK_CATALOG: BuildingCatalogEntry[] = [SHOP, FACTORY, STATION, HOUSE];
+
+  /** A predicate that is true only for the given set of tile coordinates. */
+  function roadAtTiles(
+    tiles: ReadonlyArray<readonly [number, number]>,
+  ): (x: number, z: number) => boolean {
+    const set = new Set(tiles.map(([x, z]) => `${x},${z}`));
+    return (x: number, z: number): boolean => set.has(`${x},${z}`);
+  }
+
+  function meshOf(instancer: BuildingInstancer, catalogId: string): THREE.InstancedMesh {
+    return instancer.getPickables().find((p) => p.catalogId === catalogId)
+      ?.mesh as THREE.InstancedMesh;
+  }
+
+  // 2x2 footprint at (5,5): shrunk body face sits 2*(1-0.85)/2 = 0.15 tiles
+  // inside the footprint edge; the setback removes the rest of the bay depth.
+  const marginTiles = (2 * (1 - MASSING_FOOTPRINT_SHRINK)) / 2;
+
+  it('sets a road-facing com body back so its face lands exactly at the bay-row depth (0.33 tiles)', () => {
+    const instancer = new BuildingInstancer(
+      new THREE.Scene(),
+      SETBACK_CATALOG,
+      flatHeightAt,
+      undefined,
+      roadAtTiles([[5, 4]]), // road north of the footprint at (5,5)
+    );
+    instancer.apply({
+      added: [instanceAt(1, 5, 5, { catalogId: 'shop' })],
+      removed: [],
+      updated: [],
+    });
+
+    const setbackM = (BAY_DEPTH_TILES.com - marginTiles) * TILE_METERS;
+    const { pos, scl } = decomposeAt(meshOf(instancer, 'shop'), 0);
+    expect(scl.z).toBeCloseTo(2 * TILE_METERS * MASSING_FOOTPRINT_SHRINK - setbackM, 5);
+    expect(pos.z).toBeCloseTo((5 + 1) * TILE_METERS + setbackM / 2, 5); // shifted AWAY from the road
+    // Road-side face flush with the bay row's inner end; back face unmoved.
+    expect(pos.z - scl.z / 2).toBeCloseTo((5 + BAY_DEPTH_TILES.com) * TILE_METERS, 5);
+    expect(pos.z + scl.z / 2).toBeCloseTo((7 - marginTiles) * TILE_METERS, 5);
+    // The cross axis is untouched.
+    expect(scl.x).toBeCloseTo(2 * TILE_METERS * MASSING_FOOTPRINT_SHRINK, 5);
+    expect(pos.x).toBeCloseTo((5 + 1) * TILE_METERS, 5);
+  });
+
+  it('uses the deeper ind bay depth (0.52 tiles) for an industrial body', () => {
+    const instancer = new BuildingInstancer(
+      new THREE.Scene(),
+      SETBACK_CATALOG,
+      flatHeightAt,
+      undefined,
+      roadAtTiles([[5, 4]]),
+    );
+    instancer.apply({
+      added: [instanceAt(1, 5, 5, { catalogId: 'factory' })],
+      removed: [],
+      updated: [],
+    });
+
+    const { pos, scl } = decomposeAt(meshOf(instancer, 'factory'), 0);
+    expect(pos.z - scl.z / 2).toBeCloseTo((5 + BAY_DEPTH_TILES.ind) * TILE_METERS, 5);
+    expect(pos.z).toBeGreaterThan((5 + 1) * TILE_METERS); // shifted away from the N road
+  });
+
+  it('leaves road-adjacent res/service bodies byte-identical to the roadAt-less instancer', () => {
+    const roadAt = roadAtTiles([
+      [5, 4],
+      [10, 4],
+    ]);
+    const withRoad = new BuildingInstancer(
+      new THREE.Scene(),
+      SETBACK_CATALOG,
+      flatHeightAt,
+      undefined,
+      roadAt,
+    );
+    const withoutRoad = new BuildingInstancer(new THREE.Scene(), SETBACK_CATALOG, flatHeightAt);
+    const added = [
+      instanceAt(1, 5, 5, { catalogId: 'house' }),
+      instanceAt(2, 10, 5, { catalogId: 'station' }),
+    ];
+    withRoad.apply({ added, removed: [], updated: [] });
+    withoutRoad.apply({ added: [...added], removed: [], updated: [] });
+
+    for (const catalogId of ['house', 'station']) {
+      const mA = new THREE.Matrix4();
+      const mB = new THREE.Matrix4();
+      meshOf(withRoad, catalogId).getMatrixAt(0, mA);
+      meshOf(withoutRoad, catalogId).getMatrixAt(0, mB);
+      expect(mA.elements).toEqual(mB.elements);
+    }
+  });
+
+  it('leaves a com body untouched when roadAt finds no road-facing edge', () => {
+    const withRoadAt = new BuildingInstancer(
+      new THREE.Scene(),
+      SETBACK_CATALOG,
+      flatHeightAt,
+      undefined,
+      () => false,
+    );
+    const defaultInstancer = new BuildingInstancer(
+      new THREE.Scene(),
+      SETBACK_CATALOG,
+      flatHeightAt,
+    );
+    const added = [instanceAt(1, 5, 5, { catalogId: 'shop' })];
+    withRoadAt.apply({ added, removed: [], updated: [] });
+    defaultInstancer.apply({ added: [...added], removed: [], updated: [] });
+
+    const mA = new THREE.Matrix4();
+    const mB = new THREE.Matrix4();
+    meshOf(withRoadAt, 'shop').getMatrixAt(0, mA);
+    meshOf(defaultInstancer, 'shop').getMatrixAt(0, mB);
+    expect(mA.elements).toEqual(mB.elements);
   });
 });
 

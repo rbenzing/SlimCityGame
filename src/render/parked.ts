@@ -20,9 +20,11 @@ import {
   BuildingDelta,
   BuildingInstance,
   BuildingState,
+  RoadTier,
   VehicleKind,
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { carriagewayHalfWidthMeters, ROAD_Y_OFFSET, SIDEWALK_WIDTH_M } from './roadsmesh';
 import { sizeForKind, variantScaleForKind, VehicleKitPool } from './vehicles';
 
 // ---------------------------------------------------------------------------
@@ -86,6 +88,30 @@ const APRON_Y_OFFSET = 0.12;
 const STRIPE_LINE_Y_OFFSET = 0.135;
 const STRIPE_LINE_HALF_WIDTH_M = 0.06;
 
+/** Sidewalk slabs sit this far above the road plate; the curb cut must clear them. */
+const SIDEWALK_TOP_ABOVE_ROAD_M = 0.08;
+/** The driveway crossing rides just over the sidewalk it interrupts. */
+const CURB_CUT_Y_OFFSET = ROAD_Y_OFFSET + SIDEWALK_TOP_ABOVE_ROAD_M + 0.01;
+/** Width of the lot's driveway entrance, in meters — two cars wide. */
+export const CURB_CUT_WIDTH_M = 7;
+
+/**
+ * Grass verge between a building's footprint edge and the near edge of the
+ * adjacent street's sidewalk. The road tile is TILE_METERS wide and centered
+ * on the carriageway, so the verge is whatever is left over once the
+ * carriageway half-width and the sidewalk are taken out — 0 on wide tiers
+ * whose sidewalk already reaches the tile boundary.
+ */
+export function vergeDepthMeters(tier: RoadTier): number {
+  return Math.max(0, TILE_METERS / 2 - carriagewayHalfWidthMeters(tier) - SIDEWALK_WIDTH_M);
+}
+
+/** Depth of the sidewalk band the curb cut crosses, clamped to what fits inside the road tile. */
+export function sidewalkDepthMeters(tier: RoadTier): number {
+  const toCarriageway = Math.max(0, TILE_METERS / 2 - carriagewayHalfWidthMeters(tier));
+  return Math.min(SIDEWALK_WIDTH_M, toCarriageway);
+}
+
 /**
  * Max conforming sub-quad size: ground quads are subdivided so their surface
  * samples the in-tile terrain curve instead of just its corners (a single
@@ -147,21 +173,25 @@ export interface RoadFacingEdge {
   side: Side;
   /** Length of the selected edge, in tiles (w for N/S, d for E/W). */
   edgeTiles: number;
+  /** First road tile found along that side — the street the lot's driveway meets. */
+  roadTileX: number;
+  roadTileZ: number;
 }
 
-function stripHasRoad(
+/** Index of the first road tile in the strip, or -1 when the strip has none. */
+function firstRoadInStrip(
   startX: number,
   startZ: number,
   length: number,
   axis: 'x' | 'z',
   roadAt: (x: number, z: number) => boolean,
-): boolean {
+): number {
   for (let i = 0; i < length; i++) {
     const tx = axis === 'x' ? startX + i : startX;
     const tz = axis === 'z' ? startZ + i : startZ;
-    if (roadAt(tx, tz)) return true;
+    if (roadAt(tx, tz)) return i;
   }
-  return false;
+  return -1;
 }
 
 /**
@@ -179,11 +209,89 @@ export function findRoadFacingEdge(
 ): RoadFacingEdge | null {
   if (w < 1 || d < 1) return null;
 
-  if (stripHasRoad(x, z - 1, w, 'x', roadAt)) return { side: 'N', edgeTiles: w };
-  if (stripHasRoad(x + w, z, d, 'z', roadAt)) return { side: 'E', edgeTiles: d };
-  if (stripHasRoad(x, z + d, w, 'x', roadAt)) return { side: 'S', edgeTiles: w };
-  if (stripHasRoad(x - 1, z, d, 'z', roadAt)) return { side: 'W', edgeTiles: d };
+  const north = firstRoadInStrip(x, z - 1, w, 'x', roadAt);
+  if (north >= 0) {
+    return { side: 'N', edgeTiles: w, roadTileX: x + north, roadTileZ: z - 1 };
+  }
+  const east = firstRoadInStrip(x + w, z, d, 'z', roadAt);
+  if (east >= 0) {
+    return { side: 'E', edgeTiles: d, roadTileX: x + w, roadTileZ: z + east };
+  }
+  const south = firstRoadInStrip(x, z + d, w, 'x', roadAt);
+  if (south >= 0) {
+    return { side: 'S', edgeTiles: w, roadTileX: x + south, roadTileZ: z + d };
+  }
+  const west = firstRoadInStrip(x - 1, z, d, 'z', roadAt);
+  if (west >= 0) {
+    return { side: 'W', edgeTiles: d, roadTileX: x - 1, roadTileZ: z + west };
+  }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Lot occupancy over the day (pure)
+// ---------------------------------------------------------------------------
+
+/** Linear ramp from 0 at `from` to 1 at `to` (either direction), clamped outside. */
+function ramp(v: number, from: number, to: number): number {
+  const t = (v - from) / (to - from);
+  return t < 0 ? 0 : t > 1 ? 1 : t;
+}
+
+/** Overnight floor for industrial lots — the late shift never fully clears out. */
+export const IND_NIGHT_OCCUPANCY = 0.15;
+
+/**
+ * How full a lot is at a given time of day, 0..1, where `dayFraction` is the
+ * day's progress (0 = midnight, 0.5 = midday) — the same clock the sky uses.
+ * Commercial lots fill for trading hours and empty overnight; industrial lots
+ * fill earlier for the day shift and keep a few late-shift vehicles all night.
+ */
+export function lotOccupancy(category: LotCategory, dayFraction: number): number {
+  const hour = (((dayFraction % 1) + 1) % 1) * 24;
+  if (category === 'com') {
+    // Shut overnight; customers arrive from 08:00, peak trade 11:00-19:00, gone by 21:00.
+    if (hour < 8 || hour >= 21) return 0;
+    return hour < 11 ? ramp(hour, 8, 11) : hour <= 19 ? 1 : 1 - ramp(hour, 19, 21);
+  }
+  // Industry starts earlier and runs a skeleton late shift through the night.
+  if (hour < 5 || hour >= 19) return IND_NIGHT_OCCUPANCY;
+  const busy = hour < 8 ? ramp(hour, 5, 8) : hour <= 17 ? 1 : 1 - ramp(hour, 17, 19);
+  return IND_NIGHT_OCCUPANCY + (1 - IND_NIGHT_OCCUPANCY) * busy;
+}
+
+/**
+ * Each stall's own arrival threshold in [0,1): the stall holds a vehicle while
+ * {@link lotOccupancy} is above it. Spreading thresholds across the row makes
+ * cars trickle in and out one at a time instead of the lot blinking full/empty.
+ */
+export function stallOccupancyThreshold(buildingId: number, stallIndex: number): number {
+  return hash2(buildingId, stallIndex * 7 + 3) / 0x100000000;
+}
+
+/** Whether a stall is parked-in at the given time of day. */
+export function stallOccupied(
+  category: LotCategory,
+  buildingId: number,
+  stallIndex: number,
+  dayFraction: number,
+): boolean {
+  return stallOccupancyThreshold(buildingId, stallIndex) < lotOccupancy(category, dayFraction);
+}
+
+/**
+ * How deep a strip the parking-bay row claims along a building's road-facing
+ * footprint edge, in tiles: BAY_DEPTH_TILES for exactly the buildings this
+ * renderer paints bays for (commercial/industrial lots with a road-facing
+ * edge — the same gates applyOne uses), 0 for everything else. The single
+ * source of truth body renderers (buildings/massing/props) use to set the
+ * base box back from the frontage edge so the bay row sits flush in FRONT of
+ * the facade instead of underneath it.
+ */
+export function frontageInsetTiles(category: string, edge: RoadFacingEdge | null): number {
+  if (!edge) return 0;
+  if (category !== 'com' && category !== 'ind') return 0;
+  return BAY_DEPTH_TILES[category];
 }
 
 // ---------------------------------------------------------------------------
@@ -406,6 +514,21 @@ interface StallRef {
   slot: number;
 }
 
+/** A parked stall plus the transform it uses while occupied (zero-scale hides it). */
+interface Stall {
+  ref: StallRef;
+  matrix: THREE.Matrix4;
+}
+
+interface LotRecord {
+  category: LotCategory;
+  stalls: Stall[];
+}
+
+/** Occupancy is re-evaluated when the day advances by more than this fraction. */
+const OCCUPANCY_STEP = 1 / 96;
+const HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
+
 export class ParkedCarRenderer {
   private readonly scene: THREE.Scene;
   private readonly heightAt: (x: number, z: number) => number;
@@ -416,20 +539,51 @@ export class ParkedCarRenderer {
   // faces read nearly uniform in daylight, like the lit road).
   private readonly stripeMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
 
+  private readonly roadTierAt: (x: number, z: number) => RoadTier;
+
   private readonly pools = new Map<number, VehicleKitPool>();
-  private readonly buildingSlots = new Map<number, StallRef[]>();
+  private readonly buildingSlots = new Map<number, LotRecord>();
   private readonly buildingStripes = new Map<number, THREE.Mesh>();
+
+  /** Time of day driving lot occupancy (0.5 = midday, the default until the clock reports in). */
+  private dayFraction = 0.5;
 
   constructor(
     scene: THREE.Scene,
     heightAt: (x: number, z: number) => number,
     catalog: BuildingCatalogEntry[],
     roadAt: (x: number, z: number) => boolean,
+    roadTierAt: (x: number, z: number) => RoadTier = () => RoadTier.TwoLane,
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
     this.roadAt = roadAt;
+    this.roadTierAt = roadTierAt;
     this.catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
+  }
+
+  /**
+   * Advances the clock that drives lot occupancy. Cheap to call every
+   * snapshot: the stall pass only runs once the day has moved a visible step,
+   * and each stall flips independently at its own threshold so vehicles
+   * arrive and leave a few at a time.
+   */
+  setDayFraction(dayFraction: number): void {
+    const next = ((dayFraction % 1) + 1) % 1;
+    if (Math.abs(next - this.dayFraction) < OCCUPANCY_STEP) return;
+    this.dayFraction = next;
+    for (const [buildingId, lot] of this.buildingSlots) this.applyOccupancy(buildingId, lot);
+    for (const pool of this.pools.values()) pool.finalize();
+  }
+
+  /** Writes each stall's real or hidden transform for the current time of day. */
+  private applyOccupancy(buildingId: number, lot: LotRecord): void {
+    for (let i = 0; i < lot.stalls.length; i++) {
+      const stall = lot.stalls[i]!;
+      const occupied = stallOccupied(lot.category, buildingId, i, this.dayFraction);
+      const pool = this.pools.get(stall.ref.kind);
+      pool?.mesh.setMatrixAt(stall.ref.slot, occupied ? stall.matrix : HIDDEN_MATRIX);
+    }
   }
 
   /** Consumes one BuildingDelta: removed ids free their stalls; added/updated recompute theirs. */
@@ -455,7 +609,18 @@ export class ParkedCarRenderer {
 
   /** Stall refs ({kind, slot}) currently owned by a building (empty if it has no cars). */
   stallSlotsFor(buildingId: number): readonly StallRef[] {
-    return this.buildingSlots.get(buildingId) ?? [];
+    return (this.buildingSlots.get(buildingId)?.stalls ?? []).map((s) => s.ref);
+  }
+
+  /** How many of a building's stalls hold a vehicle right now. */
+  occupiedStallCount(buildingId: number): number {
+    const lot = this.buildingSlots.get(buildingId);
+    if (!lot) return 0;
+    let n = 0;
+    for (let i = 0; i < lot.stalls.length; i++) {
+      if (stallOccupied(lot.category, buildingId, i, this.dayFraction)) n += 1;
+    }
+    return n;
   }
 
   getCarMatrix(ref: StallRef, out: THREE.Matrix4): void {
@@ -468,6 +633,11 @@ export class ParkedCarRenderer {
 
   hasStripeMesh(buildingId: number): boolean {
     return this.buildingStripes.has(buildingId);
+  }
+
+  /** A building's merged apron + bay-line mesh (undefined if it has none). */
+  stripeMeshFor(buildingId: number): THREE.Mesh | undefined {
+    return this.buildingStripes.get(buildingId);
   }
 
   /** Vertex count of a building's merged apron+bay-line geometry (0 if it has none). */
@@ -518,7 +688,7 @@ export class ParkedCarRenderer {
       depthTiles,
     );
 
-    const refs: StallRef[] = [];
+    const stalls: Stall[] = [];
     const touchedPools = new Set<VehicleKitPool>();
     for (let i = 0; i < placements.length; i++) {
       const placement = placements[i]!;
@@ -543,17 +713,20 @@ export class ParkedCarRenderer {
       _quaternion.setFromAxisAngle(_yAxis, yaw);
       _scale.set(sx, sy, sz);
       _matrix.compose(_position, _quaternion, _scale);
-      pool.mesh.setMatrixAt(slot, _matrix);
 
       _tmpColor.setHex(CAR_PALETTE[stallColorIndex(building.id, i)]!);
       pool.mesh.setColorAt(slot, _tmpColor);
 
-      refs.push({ kind, slot });
+      stalls.push({ ref: { kind, slot }, matrix: _matrix.clone() });
       touchedPools.add(pool);
     }
 
+    const lot: LotRecord = { category, stalls };
+    this.buildingSlots.set(building.id, lot);
+    // Seed the new lot at the current hour, so a shop that finishes building
+    // overnight opens with an empty forecourt rather than a full one.
+    this.applyOccupancy(building.id, lot);
     for (const pool of touchedPools) pool.finalize();
-    this.buildingSlots.set(building.id, refs);
 
     this.rebuildStripes(building, entry, edge, count, pitchTiles, depthTiles);
   }
@@ -586,25 +759,46 @@ export class ParkedCarRenderer {
     const colors: number[] = [];
 
     const pitchM = pitchTiles * TILE_METERS;
-    const marginM = BAY_END_MARGIN_TILES * TILE_METERS;
     const rowStart = bayRowStart(edge.edgeTiles, count, pitchTiles);
-    const rowEnd = rowStart + count * pitchM;
+    const edgeLenM = edge.edgeTiles * TILE_METERS;
 
-    // The light-grey apron: the paved bay row plus an end margin each side,
-    // running INWARD from the footprint edge (negative depth) so it never
-    // paves the road tile beyond the building.
+    // The light-grey apron: the bay row's depth, run the FULL length of the
+    // frontage and out across the grass verge to meet the sidewalk, so the lot
+    // reads as one paved forecourt rather than a strip under the cars.
+    const tier = this.roadTierAt(edge.roadTileX, edge.roadTileZ);
+    const vergeTiles = vergeDepthMeters(tier) / TILE_METERS;
     pushFrameQuad(
       positions,
       colors,
       frame,
-      rowStart - marginM,
-      rowEnd + marginM,
       0,
+      edgeLenM,
+      vergeTiles,
       -depthTiles,
       APRON_Y_OFFSET,
       APRON_COLOR,
       this.heightAt,
     );
+
+    // Curb cut: the driveway carries the same grey across the sidewalk to the
+    // carriageway, so the street shows where vehicles enter the lot.
+    const sidewalkTiles = sidewalkDepthMeters(tier) / TILE_METERS;
+    if (sidewalkTiles > 0) {
+      const cutCenter = edgeLenM / 2;
+      const cutHalf = Math.min(CURB_CUT_WIDTH_M, edgeLenM) / 2;
+      pushFrameQuad(
+        positions,
+        colors,
+        frame,
+        cutCenter - cutHalf,
+        cutCenter + cutHalf,
+        vergeTiles,
+        vergeTiles + sidewalkTiles,
+        CURB_CUT_Y_OFFSET,
+        APRON_COLOR,
+        this.heightAt,
+      );
+    }
 
     // Near-white bay lines: count+1 boundaries running the full bay depth,
     // perpendicular to the road, so each vehicle sits inside a painted bay.
@@ -635,9 +829,9 @@ export class ParkedCarRenderer {
   }
 
   private freeBuilding(buildingId: number): void {
-    const refs = this.buildingSlots.get(buildingId);
-    if (refs) {
-      for (const ref of refs) this.pools.get(ref.kind)?.free(ref.slot);
+    const lot = this.buildingSlots.get(buildingId);
+    if (lot) {
+      for (const stall of lot.stalls) this.pools.get(stall.ref.kind)?.free(stall.ref.slot);
       this.buildingSlots.delete(buildingId);
     }
 

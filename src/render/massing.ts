@@ -38,6 +38,7 @@ import {
 import { TILE_METERS } from '../shared/constants';
 import { deriveFacadeParams } from './facade';
 import { maxHeightOverFootprint } from './footprint';
+import { findRoadFacingEdge, frontageInsetTiles } from './parked';
 
 // ---------------------------------------------------------------------------
 // computeSetbacks (pure)
@@ -73,6 +74,62 @@ export const RES_LOW_FOOTPRINT_SHRINK = 0.55;
  */
 export function footprintShrinkFor(entry: BuildingCatalogEntry): number {
   return entry.zone === ZoneType.ResLow ? RES_LOW_FOOTPRINT_SHRINK : MASSING_FOOTPRINT_SHRINK;
+}
+
+/**
+ * World-meter body adjustments that clear the frontage parking-bay row
+ * (parked.ts): span reductions along the frontage axis plus the matching
+ * center shift away from the road. All zero when the building gets no bays.
+ */
+export interface FrontageSetback {
+  /** Meters removed from the body's X span (E/W frontage road). */
+  spanXM: number;
+  /** Meters removed from the body's Z span (N/S frontage road). */
+  spanZM: number;
+  /** Meters added to the body's center X (moves the body away from the road). */
+  centerXM: number;
+  /** Meters added to the body's center Z (moves the body away from the road). */
+  centerZM: number;
+}
+
+const ZERO_FRONTAGE_SETBACK: FrontageSetback = { spanXM: 0, spanZM: 0, centerXM: 0, centerZM: 0 };
+
+/**
+ * How far a building's body must pull back from its road-facing footprint
+ * edge so the parked-car bay row sits in FRONT of the facade instead of
+ * underneath it. The bay row runs frontageInsetTiles inward from the
+ * footprint edge; the shrunk body face already sits tiles*(1-shrink)/2
+ * inside that edge, so only the remainder comes off the frontage-axis span,
+ * with the center shifted half that away from the road — the road-side face
+ * lands exactly where the bay row ends (flush, no overlap, no gap) while the
+ * other three faces stay put. Zero for buildings parked.ts gives no bays
+ * (non-com/ind categories, or no road-facing edge). Pure.
+ */
+export function frontageSetbackFor(
+  entry: BuildingCatalogEntry,
+  x: number,
+  z: number,
+  roadAt: (tileX: number, tileZ: number) => boolean,
+): FrontageSetback {
+  if (entry.category !== 'com' && entry.category !== 'ind') return ZERO_FRONTAGE_SETBACK;
+
+  const edge = findRoadFacingEdge(x, z, entry.footprint.w, entry.footprint.d, roadAt);
+  const insetTiles = frontageInsetTiles(entry.category, edge);
+  if (!edge || insetTiles <= 0) return ZERO_FRONTAGE_SETBACK;
+
+  const axisTiles = edge.side === 'N' || edge.side === 'S' ? entry.footprint.d : entry.footprint.w;
+  const marginTiles = (axisTiles * (1 - footprintShrinkFor(entry))) / 2;
+  const setbackM = Math.max(0, insetTiles - marginTiles) * TILE_METERS;
+  switch (edge.side) {
+    case 'N':
+      return { spanXM: 0, spanZM: setbackM, centerXM: 0, centerZM: setbackM / 2 };
+    case 'S':
+      return { spanXM: 0, spanZM: setbackM, centerXM: 0, centerZM: -setbackM / 2 };
+    case 'E':
+      return { spanXM: setbackM, spanZM: 0, centerXM: -setbackM / 2, centerZM: 0 };
+    default: // 'W'
+      return { spanXM: setbackM, spanZM: 0, centerXM: setbackM / 2, centerZM: 0 };
+  }
 }
 /** "10-20% setbacks". */
 export const MIN_SETBACK_INSET = 0.1;
@@ -112,16 +169,22 @@ function setbackInsetFraction(buildingId: number, tierIndex: number): number {
  * exactly (no floating-point drift from repeated addition). Each tier after
  * the first is inset 10-20% narrower than the tier directly below it, the
  * fraction independently re-drawn per tier from buildingId so a level-3
- * building's second setback isn't just a repeat of its first.
+ * building's second setback isn't just a repeat of its first. An optional
+ * `frontage` setback (frontageSetbackFor) narrows the base tier along the
+ * frontage axis so every tier stays within the road-set-back body.
  */
-export function computeSetbacks(entry: BuildingCatalogEntry, buildingId: number): SetbackResult {
+export function computeSetbacks(
+  entry: BuildingCatalogEntry,
+  buildingId: number,
+  frontage?: FrontageSetback,
+): SetbackResult {
   const level = Math.min(3, Math.max(1, Math.round(entry.level ?? 1)));
   const totalHeight = entry.height;
   const tierHeight = totalHeight / level;
 
   const shrink = footprintShrinkFor(entry);
-  const baseW = entry.footprint.w * TILE_METERS * shrink;
-  const baseD = entry.footprint.d * TILE_METERS * shrink;
+  const baseW = entry.footprint.w * TILE_METERS * shrink - (frontage?.spanXM ?? 0);
+  const baseD = entry.footprint.d * TILE_METERS * shrink - (frontage?.spanZM ?? 0);
 
   const boxes: SetbackBox[] = [];
   let w = baseW;
@@ -291,6 +354,8 @@ const NIGHT_BODY_TINT: readonly [number, number, number] = [0.11, 0.13, 0.19];
 
 export class MassingRenderer {
   private readonly heightAt: (x: number, z: number) => number;
+  /** Answers "is this grid tile a road" for the frontage parking setback; the default never finds one. */
+  private readonly roadAt: (x: number, z: number) => boolean;
   private readonly catalogById: Map<string, BuildingCatalogEntry>;
   private readonly geometry = new THREE.BoxGeometry(1, 1, 1);
   private readonly material: MeshStandardNodeMaterial;
@@ -304,8 +369,10 @@ export class MassingRenderer {
     scene: THREE.Scene,
     heightAt: (x: number, z: number) => number,
     catalog: BuildingCatalogEntry[],
+    roadAt?: (x: number, z: number) => boolean,
   ) {
     this.heightAt = heightAt;
+    this.roadAt = roadAt ?? ((): boolean => false);
     this.catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
     this.material = this.createMaterial();
     this.pool = new InstancedSlotPool(
@@ -369,7 +436,8 @@ export class MassingRenderer {
     const entry = this.catalogById.get(building.catalogId);
     if (!entry) return;
 
-    const { boxes } = computeSetbacks(entry, building.id);
+    const frontage = frontageSetbackFor(entry, building.x, building.z, this.roadAt);
+    const { boxes } = computeSetbacks(entry, building.id, frontage);
     if (boxes.length <= 1) return; // level 1 / ploppables: nothing beyond the base BuildingInstancer already draws
 
     const heightScale =
@@ -377,8 +445,8 @@ export class MassingRenderer {
     const tint = massingLifecycleTint(building.state);
     const { wallColor } = deriveFacadeParams(entry, building.id);
 
-    const centerX = (building.x + entry.footprint.w / 2) * TILE_METERS;
-    const centerZ = (building.z + entry.footprint.d / 2) * TILE_METERS;
+    const centerX = (building.x + entry.footprint.w / 2) * TILE_METERS + frontage.centerXM;
+    const centerZ = (building.z + entry.footprint.d / 2) * TILE_METERS + frontage.centerZM;
     // Match BuildingInstancer's footprint-max base so setback tiers stack on
     // the same ground the body sits on (no slope poke-through / float).
     const groundY = maxHeightOverFootprint(
