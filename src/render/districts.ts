@@ -98,7 +98,10 @@ export function districtBoundaryEdges(
 /**
  * Two triangles covering the quad (x0,z0)-(x1,z1), every corner's y sampled
  * independently through `heightAt` + yOffset so the quad follows the terrain
- * contour (render/zonegrid.ts's pushConformingQuad pattern). CCW from +Y.
+ * contour (render/zonegrid.ts's pushConformingQuad pattern). The split runs on
+ * the (x0,z1)-(x1,z0) diagonal to MATCH the terrain mesh's own triangulation —
+ * the opposite diagonal lets the ground bulge through on twisted cells. CCW
+ * from +Y.
  */
 function pushConformingQuad(
   positions: number[],
@@ -113,8 +116,8 @@ function pushConformingQuad(
   const y10 = heightAt(x1, z0) + yOffset;
   const y11 = heightAt(x1, z1) + yOffset;
   const y01 = heightAt(x0, z1) + yOffset;
-  positions.push(x0, y00, z0, x0, y01, z1, x1, y11, z1);
-  positions.push(x0, y00, z0, x1, y11, z1, x1, y10, z0);
+  positions.push(x0, y00, z0, x0, y01, z1, x1, y10, z0);
+  positions.push(x0, y01, z1, x1, y11, z1, x1, y10, z0);
 }
 
 /** {@link pushConformingQuad} subdivided into CELL_SUBDIV² sub-quads — a

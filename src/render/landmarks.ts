@@ -501,7 +501,13 @@ function pushVertex(
   colors.push(color[0], color[1], color[2]);
 }
 
-/** Two triangles covering an axis-aligned WORLD-space quad, corners sampled via heightAt (mirrors parked.ts's pushQuad). */
+/**
+ * Terrain-conforming axis-aligned WORLD-space quad: subdivided to ~2m cells
+ * (a whole multi-tile apron with 4 height samples lets slopes bulge straight
+ * through it) and split on the (x0,z1)-(x1,z0) diagonal to MATCH the terrain
+ * mesh's own triangulation (render/zonegrid.ts's documented pattern).
+ */
+const CONFORM_CELL_M = 2;
 function pushWorldQuad(
   positions: number[],
   colors: number[],
@@ -513,18 +519,28 @@ function pushWorldQuad(
   color: readonly [number, number, number],
   heightAt: (x: number, z: number) => number,
 ): void {
-  const y00 = heightAt(x0, z0) + yOffset;
-  const y10 = heightAt(x1, z0) + yOffset;
-  const y11 = heightAt(x1, z1) + yOffset;
-  const y01 = heightAt(x0, z1) + yOffset;
-
-  pushVertex(positions, colors, x0, y00, z0, color);
-  pushVertex(positions, colors, x1, y11, z1, color);
-  pushVertex(positions, colors, x1, y10, z0, color);
-
-  pushVertex(positions, colors, x0, y00, z0, color);
-  pushVertex(positions, colors, x0, y01, z1, color);
-  pushVertex(positions, colors, x1, y11, z1, color);
+  const nx = Math.max(1, Math.ceil((x1 - x0) / CONFORM_CELL_M));
+  const nz = Math.max(1, Math.ceil((z1 - z0) / CONFORM_CELL_M));
+  const stepX = (x1 - x0) / nx;
+  const stepZ = (z1 - z0) / nz;
+  for (let iz = 0; iz < nz; iz++) {
+    const cz0 = z0 + iz * stepZ;
+    const cz1 = iz === nz - 1 ? z1 : cz0 + stepZ;
+    for (let ix = 0; ix < nx; ix++) {
+      const cx0 = x0 + ix * stepX;
+      const cx1 = ix === nx - 1 ? x1 : cx0 + stepX;
+      const y00 = heightAt(cx0, cz0) + yOffset;
+      const y10 = heightAt(cx1, cz0) + yOffset;
+      const y11 = heightAt(cx1, cz1) + yOffset;
+      const y01 = heightAt(cx0, cz1) + yOffset;
+      pushVertex(positions, colors, cx0, y00, cz0, color);
+      pushVertex(positions, colors, cx0, y01, cz1, color);
+      pushVertex(positions, colors, cx1, y10, cz0, color);
+      pushVertex(positions, colors, cx0, y01, cz1, color);
+      pushVertex(positions, colors, cx1, y11, cz1, color);
+      pushVertex(positions, colors, cx1, y10, cz0, color);
+    }
+  }
 }
 
 /** Pushes a quad given in the footprint-LOCAL frame, rotated + translated to world (90-degree rotations keep it axis-aligned, so min/max still forms a valid world rect). */

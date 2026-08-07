@@ -1809,3 +1809,97 @@ describe('RoadMeshRenderer', () => {
     void before;
   });
 });
+
+// ---------------------------------------------------------------------------
+// Terrain conformance: on SLOPED ground every emitted ground shell must ride
+// within its documented offset band above the terrain surface — never cut
+// under it (terrain bulging through the road) and never float far above it
+// (daylight gaps). The height field below is piecewise-linear per 16m tile,
+// split on the (x0,z1)-(x1,z0) anti-diagonal — the EXACT surface model the
+// real terrain mesh renders and terrain.heightAt interpolates — so the road
+// emitters' conformance against it is conformance against the real ground.
+// ---------------------------------------------------------------------------
+
+describe('roadTileVertices — terrain conformance on twisted slopes', () => {
+  // Deterministic pseudo-random corner heights in [0, 2.5m].
+  const cornerHeight = (cx: number, cz: number): number => {
+    let h = (cx * 73856093) ^ (cz * 19349663);
+    h = Math.imul(h ^ (h >>> 13), 0x85ebca6b);
+    h = (h ^ (h >>> 16)) >>> 0;
+    return (h / 0xffffffff) * 2.5;
+  };
+  // terrain.ts's exact barycentric interpolation over the anti-diagonal split.
+  const twistedHeightAt = (x: number, z: number): number => {
+    const tx = Math.floor(x / TILE_METERS);
+    const tz = Math.floor(z / TILE_METERS);
+    const u = x / TILE_METERS - tx;
+    const v = z / TILE_METERS - tz;
+    const h00 = cornerHeight(tx, tz);
+    const h10 = cornerHeight(tx + 1, tz);
+    const h01 = cornerHeight(tx, tz + 1);
+    const h11 = cornerHeight(tx + 1, tz + 1);
+    if (u + v <= 1) return h00 + u * (h10 - h00) + v * (h01 - h00);
+    return h11 + (1 - u) * (h01 - h11) + (1 - v) * (h10 - h11);
+  };
+
+  // Ground shells span ROAD_Y_OFFSET (0.15) up to the highway barrier (0.35);
+  // fold-straddling 2m cells and arc strips carry a small residual on a
+  // twisted field. The band catches the OLD defects by an order of magnitude
+  // (wrong-diagonal caps/turns deviated by up to ~half the terrain twist).
+  const MIN_DELTA = 0.15 - 0.06;
+  const MAX_DELTA = 0.35 + 0.12;
+
+  const assertConforms = (tier: RoadTier, mask: number, label: string): void => {
+    const { positions } = roadTileVertices(3, 5, tier, mask, twistedHeightAt);
+    expect(positions.length).toBeGreaterThan(0);
+    for (let i = 0; i + 8 < positions.length; i += 9) {
+      // Sample each triangle at its centroid and its three edge midpoints.
+      const pts: Array<[number, number, number]> = [];
+      const ax = positions[i]!;
+      const ay = positions[i + 1]!;
+      const az = positions[i + 2]!;
+      const bx = positions[i + 3]!;
+      const by = positions[i + 4]!;
+      const bz = positions[i + 5]!;
+      const cx = positions[i + 6]!;
+      const cy = positions[i + 7]!;
+      const cz = positions[i + 8]!;
+      pts.push([(ax + bx + cx) / 3, (ay + by + cy) / 3, (az + bz + cz) / 3]);
+      pts.push([(ax + bx) / 2, (ay + by) / 2, (az + bz) / 2]);
+      pts.push([(bx + cx) / 2, (by + cy) / 2, (bz + cz) / 2]);
+      pts.push([(ax + cx) / 2, (ay + cy) / 2, (az + cz) / 2]);
+      for (const [px, py, pz] of pts) {
+        const delta = py - twistedHeightAt(px, pz);
+        expect(delta, `${label}: shell point (${px.toFixed(2)}, ${pz.toFixed(2)})`).toBeGreaterThan(
+          MIN_DELTA,
+        );
+        expect(delta, `${label}: shell point (${px.toFixed(2)}, ${pz.toFixed(2)})`).toBeLessThan(
+          MAX_DELTA,
+        );
+      }
+    }
+  };
+
+  it('a straight two-lane run conforms (plate, sidewalks, markings)', () => {
+    assertConforms(RoadTier.TwoLane, N | S, 'two-lane straight');
+  });
+
+  it('a wide avenue run conforms (15m plate, median, lane lines)', () => {
+    assertConforms(RoadTier.Avenue, E | W, 'avenue straight');
+  });
+
+  it('a dead-end cap conforms (semicircle fan + wrap curb)', () => {
+    assertConforms(RoadTier.TwoLane, N, 'two-lane dead end');
+    assertConforms(RoadTier.Avenue, W, 'avenue dead end');
+  });
+
+  it('a curved turn conforms (quarter-annulus plate + curb bands + arc markings)', () => {
+    assertConforms(RoadTier.TwoLane, N | E, 'two-lane turn');
+    assertConforms(RoadTier.Avenue, S | W, 'avenue turn');
+  });
+
+  it('a 4-way junction conforms (box, corner fills, crosswalks, stop lines)', () => {
+    assertConforms(RoadTier.TwoLane, N | E | S | W, 'two-lane crossroads');
+    assertConforms(RoadTier.FourLane, N | E | S | W, 'four-lane crossroads');
+  });
+});

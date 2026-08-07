@@ -370,9 +370,56 @@ function pushVertex(
 }
 
 /**
- * Two triangles covering a horizontal quad centered at (cx, cz), corners
- * sampled independently through `hAt` so the quad follows terrain contour.
- * Winding is CCW as seen from +Y (matches three's default FrontSide culling).
+ * Break coordinates for terrain-conforming subdivision: `a`, `b`, and every
+ * multiple of ROAD_QUAD_MAX_CELL_M strictly between them. Because the cell
+ * size divides TILE_METERS evenly, the lattice includes every tile-corner
+ * line, so (1) every emitter shares identical break lines — adjoining pieces
+ * (plate / extensions / sidewalks / markings) can never T-crack on a slope —
+ * and (2) sub-quads never straddle a terrain-cell boundary.
+ */
+function latticeBreaks(a: number, b: number): number[] {
+  const out = [a];
+  const first = Math.floor(a / ROAD_QUAD_MAX_CELL_M) * ROAD_QUAD_MAX_CELL_M;
+  for (let v = first + ROAD_QUAD_MAX_CELL_M; v < b - 1e-6; v += ROAD_QUAD_MAX_CELL_M) {
+    if (v > a + 1e-6) out.push(v);
+  }
+  out.push(b);
+  return out;
+}
+
+/** One conforming sub-quad split on the terrain mesh's own (x0,z1)-(x1,z0) anti-diagonal, CCW from +Y. */
+function pushConformingSubQuad(
+  positions: number[],
+  colors: number[],
+  x0: number,
+  z0: number,
+  x1: number,
+  z1: number,
+  yOffset: number,
+  color: readonly [number, number, number],
+  hAt: (x: number, z: number) => number,
+): void {
+  const y00 = hAt(x0, z0) + yOffset;
+  const y10 = hAt(x1, z0) + yOffset;
+  const y11 = hAt(x1, z1) + yOffset;
+  const y01 = hAt(x0, z1) + yOffset;
+  pushVertex(positions, colors, x0, y00, z0, color);
+  pushVertex(positions, colors, x0, y01, z1, color);
+  pushVertex(positions, colors, x1, y10, z0, color);
+  pushVertex(positions, colors, x0, y01, z1, color);
+  pushVertex(positions, colors, x1, y11, z1, color);
+  pushVertex(positions, colors, x1, y10, z0, color);
+}
+
+/**
+ * Terrain-conforming horizontal quad centered at (cx, cz). The terrain mesh is
+ * piecewise-linear per tile, split on the (x0,z1)-(x1,z0) ANTI-diagonal, and
+ * `hAt` interpolates that exact surface — so a ground quad conforms iff its
+ * own triangulation matches: sub-quads on the tile-corner-aligned 2m lattice
+ * (latticeBreaks), each split on the SAME anti-diagonal. The old version split
+ * on the opposite diagonal, letting slopes bulge through wide plates or open
+ * gaps beneath them. Flat spans (every lattice sample within epsilon) still
+ * emit a single quad — on flat ground any diagonal is exact.
  */
 function pushQuad(
   positions: number[],
@@ -389,36 +436,38 @@ function pushQuad(
   const x1 = cx + halfX;
   const z0 = cz - halfZ;
   const z1 = cz + halfZ;
+  const xs = latticeBreaks(x0, x1);
+  const zs = latticeBreaks(z0, z1);
 
-  // Flat quads stay a single quad; only sloped quads tessellate to hug terrain.
-  const hSpread =
-    Math.max(hAt(x0, z0), hAt(x1, z0), hAt(x1, z1), hAt(x0, z1), hAt(cx, cz)) -
-    Math.min(hAt(x0, z0), hAt(x1, z0), hAt(x1, z1), hAt(x0, z1), hAt(cx, cz));
-  const subdivide = hSpread > ROAD_QUAD_FLAT_EPSILON_M;
-  const nx = subdivide ? Math.max(1, Math.ceil((2 * halfX) / ROAD_QUAD_MAX_CELL_M)) : 1;
-  const nz = subdivide ? Math.max(1, Math.ceil((2 * halfZ) / ROAD_QUAD_MAX_CELL_M)) : 1;
-  const stepX = (x1 - x0) / nx;
-  const stepZ = (z1 - z0) / nz;
+  // Flat gate over the FULL lattice (not just 5 samples — a bump between
+  // sparse samples must not slip through): flat spans stay one quad.
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const zz of zs) {
+    for (const xx of xs) {
+      const h = hAt(xx, zz);
+      if (h < lo) lo = h;
+      if (h > hi) hi = h;
+    }
+  }
+  if (hi - lo <= ROAD_QUAD_FLAT_EPSILON_M) {
+    pushConformingSubQuad(positions, colors, x0, z0, x1, z1, yOffset, color, hAt);
+    return;
+  }
 
-  for (let iz = 0; iz < nz; iz++) {
-    const cz0 = z0 + iz * stepZ;
-    const cz1 = iz === nz - 1 ? z1 : cz0 + stepZ;
-    for (let ix = 0; ix < nx; ix++) {
-      const cx0 = x0 + ix * stepX;
-      const cx1 = ix === nx - 1 ? x1 : cx0 + stepX;
-      const y00 = hAt(cx0, cz0) + yOffset;
-      const y10 = hAt(cx1, cz0) + yOffset;
-      const y11 = hAt(cx1, cz1) + yOffset;
-      const y01 = hAt(cx0, cz1) + yOffset;
-
-      // Same CCW-from-+Y winding as the single-quad triangulation.
-      pushVertex(positions, colors, cx0, y00, cz0, color);
-      pushVertex(positions, colors, cx1, y11, cz1, color);
-      pushVertex(positions, colors, cx1, y10, cz0, color);
-
-      pushVertex(positions, colors, cx0, y00, cz0, color);
-      pushVertex(positions, colors, cx0, y01, cz1, color);
-      pushVertex(positions, colors, cx1, y11, cz1, color);
+  for (let iz = 0; iz < zs.length - 1; iz++) {
+    for (let ix = 0; ix < xs.length - 1; ix++) {
+      pushConformingSubQuad(
+        positions,
+        colors,
+        xs[ix]!,
+        zs[iz]!,
+        xs[ix + 1]!,
+        zs[iz + 1]!,
+        yOffset,
+        color,
+        hAt,
+      );
     }
   }
 }
@@ -1355,26 +1404,72 @@ function pushFan(
   color: readonly [number, number, number],
   hAt: (x: number, z: number) => number,
 ): void {
-  const worldOf = (p: readonly [number, number]): [number, number, number] => {
-    const wx = centerX + p[0];
-    const wz = centerZ + p[1];
-    return [wx, hAt(wx, wz) + yOffset, wz];
+  // One triangle in local [x,z] space, per-vertex terrain-sampled, forced
+  // up-facing (CCW from +Y) via the 2D cross — matches pushTriUp's rule.
+  const pushTri = (
+    p0: readonly [number, number],
+    p1: readonly [number, number],
+    p2: readonly [number, number],
+  ): void => {
+    const cross = (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p1[1] - p0[1]) * (p2[0] - p0[0]);
+    const tri = cross > 0 ? [p0, p2, p1] : [p0, p1, p2];
+    for (const p of tri) {
+      const wx = centerX + p[0];
+      const wz = centerZ + p[1];
+      pushVertex(positions, colors, wx, hAt(wx, wz) + yOffset, wz, color);
+    }
   };
-  const apexWorld = worldOf(apex);
+  const lerp = (
+    a: readonly [number, number],
+    b: readonly [number, number],
+    t: number,
+  ): [number, number] => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  const hOf = (p: readonly [number, number]): number => hAt(centerX + p[0], centerZ + p[1]);
+
+  // Flat gate: on flat ground a plain apex fan is exact — subdivide only when
+  // the terrain under the fan (apex, rim, and mid-spoke samples) varies.
+  let lo = hOf(apex);
+  let hi = lo;
+  for (const p of ring) {
+    for (const t of [0.5, 1]) {
+      const h = hOf(lerp(apex, p, t));
+      if (h < lo) lo = h;
+      if (h > hi) hi = h;
+    }
+  }
+  const flat = hi - lo <= ROAD_QUAD_FLAT_EPSILON_M;
+
   for (let i = 0; i < ring.length - 1; i++) {
     const a = ring[i]!;
     const b = ring[i + 1]!;
-    const e1x = a[0] - apex[0];
-    const e1z = a[1] - apex[1];
-    const e2x = b[0] - apex[0];
-    const e2z = b[1] - apex[1];
-    const cross = e1x * e2z - e1z * e2x;
-    const [first, second] = cross < 0 ? [a, b] : [b, a];
-    const firstWorld = worldOf(first);
-    const secondWorld = worldOf(second);
-    pushVertex(positions, colors, apexWorld[0], apexWorld[1], apexWorld[2], color);
-    pushVertex(positions, colors, firstWorld[0], firstWorld[1], firstWorld[2], color);
-    pushVertex(positions, colors, secondWorld[0], secondWorld[1], secondWorld[2], color);
+    if (flat) {
+      pushTri(apex, a, b);
+      continue;
+    }
+    // A whole apex-to-rim triangle spans the carriageway half-width (up to
+    // 7.5m) with only 3 terrain samples — on a slope the interior cuts under
+    // or floats above the ground. Subdivide RADIALLY into ~2m rings so every
+    // strip is sampled densely enough to hug the terrain surface.
+    const spokeLen = Math.max(
+      Math.hypot(a[0] - apex[0], a[1] - apex[1]),
+      Math.hypot(b[0] - apex[0], b[1] - apex[1]),
+    );
+    const rings = Math.max(1, Math.ceil(spokeLen / ROAD_QUAD_MAX_CELL_M));
+    let prevA: readonly [number, number] = apex;
+    let prevB: readonly [number, number] = apex;
+    for (let k = 1; k <= rings; k++) {
+      const t = k / rings;
+      const curA = lerp(apex, a, t);
+      const curB = lerp(apex, b, t);
+      if (k === 1) {
+        pushTri(apex, curA, curB); // innermost tip triangle
+      } else {
+        pushTri(prevA, curA, prevB);
+        pushTri(prevB, curA, curB);
+      }
+      prevA = curA;
+      prevB = curB;
+    }
   }
 }
 
@@ -1458,7 +1553,10 @@ function emitCurvedTurn(
     }
   };
   // Quad (a,b = inner,outer at one angle; c,d = inner,outer at the next),
-  // split into two up-facing triangles.
+  // subdivided RADIALLY into ~2m strips (a single quad across a 7.5-15m
+  // carriageway has only 4 terrain samples — slopes bulge through or open
+  // gaps beneath it), each strip split into two up-facing triangles with
+  // per-vertex terrain sampling.
   const pushQuad2 = (
     a: readonly [number, number],
     b: readonly [number, number],
@@ -1467,8 +1565,43 @@ function emitCurvedTurn(
     y: number,
     color: readonly [number, number, number],
   ): void => {
-    pushTriUp(a, b, c, y, color);
-    pushTriUp(c, b, d, y, color);
+    const span = Math.max(
+      Math.hypot(b[0] - a[0], b[1] - a[1]),
+      Math.hypot(d[0] - c[0], d[1] - c[1]),
+    );
+    const steps = Math.max(1, Math.ceil(span / ROAD_QUAD_MAX_CELL_M));
+    const lerp = (
+      p: readonly [number, number],
+      q: readonly [number, number],
+      t: number,
+    ): [number, number] => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+    // Flat gate over the would-be subdivision samples: on flat ground one
+    // quad is exact, so subdivide only when the terrain actually varies.
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let k = 0; k <= steps; k++) {
+      const t = k / steps;
+      for (const p of [lerp(a, b, t), lerp(c, d, t)]) {
+        const h = hAt(centerX + p[0], centerZ + p[1]);
+        if (h < lo) lo = h;
+        if (h > hi) hi = h;
+      }
+    }
+    if (hi - lo <= ROAD_QUAD_FLAT_EPSILON_M) {
+      pushTriUp(a, b, c, y, color);
+      pushTriUp(c, b, d, y, color);
+      return;
+    }
+    for (let k = 0; k < steps; k++) {
+      const t0r = k / steps;
+      const t1r = (k + 1) / steps;
+      const a0 = lerp(a, b, t0r);
+      const b0 = lerp(a, b, t1r);
+      const c0 = lerp(c, d, t0r);
+      const d0 = lerp(c, d, t1r);
+      pushTriUp(a0, b0, c0, y, color);
+      pushTriUp(c0, b0, d0, y, color);
+    }
   };
 
   for (let i = 0; i < TURN_ARC_SEGMENTS; i++) {
@@ -1878,9 +2011,42 @@ function emitGravelSeam(
       pushVertex(positions, colors, wx, hAt(wx, wz) + y, wz, col);
     }
   };
-  // Trapezoid: inner edge (paved grey, full width) -> tile edge (gravel tan, narrow width).
-  pushTri(innerL, plateColor, edgeL, tan, innerR, plateColor);
-  pushTri(innerR, plateColor, edgeL, tan, edgeR, tan);
+  // Trapezoid: inner edge (paved grey, full width) -> tile edge (gravel tan,
+  // narrow width). Subdivided cross-wise into ~2m slices — two triangles over
+  // a whole (up to 15m wide) trapezoid sample the terrain at only 4 points, so
+  // slopes bulge through it (same defect as the untessellated plates).
+  const lerp2 = (
+    p: readonly [number, number],
+    q: readonly [number, number],
+    t: number,
+  ): [number, number] => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+  const slices = Math.max(
+    1,
+    Math.ceil((2 * Math.max(coreHalf, gravelHalf)) / ROAD_QUAD_MAX_CELL_M),
+  );
+  // Flat gate over the would-be slice samples: on flat ground the plain
+  // 2-triangle trapezoid is exact.
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let k = 0; k <= slices; k++) {
+    const t = k / slices;
+    for (const p of [lerp2(innerL, innerR, t), lerp2(edgeL, edgeR, t)]) {
+      const h = hAt(centerX + p[0], centerZ + p[1]);
+      if (h < lo) lo = h;
+      if (h > hi) hi = h;
+    }
+  }
+  const effectiveSlices = hi - lo <= ROAD_QUAD_FLAT_EPSILON_M ? 1 : slices;
+  for (let k = 0; k < effectiveSlices; k++) {
+    const t0 = k / effectiveSlices;
+    const t1 = (k + 1) / effectiveSlices;
+    const i0 = lerp2(innerL, innerR, t0);
+    const i1 = lerp2(innerL, innerR, t1);
+    const e0 = lerp2(edgeL, edgeR, t0);
+    const e1 = lerp2(edgeL, edgeR, t1);
+    pushTri(i0, plateColor, e0, tan, i1, plateColor);
+    pushTri(i1, plateColor, e0, tan, e1, tan);
+  }
 }
 
 /** Segments across a junction corner's rounded curb-return arc. */
@@ -1943,12 +2109,33 @@ function emitRoundedCornerFill(
     for (let i = 0; i < JUNCTION_CORNER_SEGMENTS; i++) {
       const t0 = (i / JUNCTION_CORNER_SEGMENTS) * (Math.PI / 2);
       const t1 = ((i + 1) / JUNCTION_CORNER_SEGMENTS) * (Math.PI / 2);
-      const iA = at(rIn(t0), t0);
-      const oA = at(rOut(t0), t0);
-      const iB = at(rIn(t1), t1);
-      const oB = at(rOut(t1), t1);
-      pushTriUp(iA, oA, iB, y, color);
-      pushTriUp(iB, oA, oB, y, color);
+      // Radial ~2m substeps: one quad across the whole band (up to armDepth
+      // wide) samples terrain at only 4 corners and clips on slopes. On flat
+      // ground (sampled over the same substeps) one quad is exact — keep it.
+      const span = Math.max(rOut(t0) - rIn(t0), rOut(t1) - rIn(t1));
+      const steps = Math.max(1, Math.ceil(span / ROAD_QUAD_MAX_CELL_M));
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (let k = 0; k <= steps; k++) {
+        const f = k / steps;
+        for (const t of [t0, t1]) {
+          const p = at(rIn(t) + f * (rOut(t) - rIn(t)), t);
+          const h = hAt(centerX + p[0], centerZ + p[1]);
+          if (h < lo) lo = h;
+          if (h > hi) hi = h;
+        }
+      }
+      const effectiveSteps = hi - lo <= ROAD_QUAD_FLAT_EPSILON_M ? 1 : steps;
+      for (let k = 0; k < effectiveSteps; k++) {
+        const f0 = k / effectiveSteps;
+        const f1 = (k + 1) / effectiveSteps;
+        const iA = at(rIn(t0) + f0 * (rOut(t0) - rIn(t0)), t0);
+        const oA = at(rIn(t0) + f1 * (rOut(t0) - rIn(t0)), t0);
+        const iB = at(rIn(t1) + f0 * (rOut(t1) - rIn(t1)), t1);
+        const oB = at(rIn(t1) + f1 * (rOut(t1) - rIn(t1)), t1);
+        pushTriUp(iA, oA, iB, y, color);
+        pushTriUp(iB, oA, oB, y, color);
+      }
     }
   };
   const sidewalk = Math.min(SIDEWALK_WIDTH_M, armDepth);
@@ -2808,6 +2995,39 @@ export class RoadMeshRenderer {
   /** Current median-tree instance count (test/inspection hook). */
   medianTreeCount(): number {
     return this.treeTrunkMesh ? this.treeTrunkMesh.count : 0;
+  }
+
+  /**
+   * Rebuilds every chunk whose road geometry can be affected by a terrain
+   * height change in the given tile rects. Terraform strokes, building
+   * auto-flatten and the grading of a neighboring run all move the ground
+   * under EXISTING roads without emitting any road delta — without this, those
+   * roads keep stale pre-change geometry (buried edges / floating caps). A
+   * 1-tile halo covers corner sharing (a rendered corner averages the four
+   * cells around it) and cap/sidewalk overhang past the tile edge.
+   */
+  invalidateHeights(patches: ReadonlyArray<{ x: number; z: number; w: number; h: number }>): void {
+    const dirty = new Set<number>();
+    for (const p of patches) {
+      const x0 = p.x - 1;
+      const z0 = p.z - 1;
+      const x1 = p.x + p.w;
+      const z1 = p.z + p.h;
+      for (let cz = Math.floor(z0 / CHUNK_TILES); cz <= Math.floor(z1 / CHUNK_TILES); cz++) {
+        for (let cx = Math.floor(x0 / CHUNK_TILES); cx <= Math.floor(x1 / CHUNK_TILES); cx++) {
+          dirty.add(cz * CHUNKS_PER_SIDE + cx);
+        }
+      }
+    }
+    let rebuilt = false;
+    for (const key of dirty) {
+      const chunk = this.chunks.get(key);
+      if (chunk && chunk.tiles.size > 0) {
+        this.rebuildChunk(key);
+        rebuilt = true;
+      }
+    }
+    if (rebuilt) this.rebuildMedianTrees();
   }
 
   /** The road tier at tile (x,z) across all chunks, or None — for neighbor-aware seam treatment. */
