@@ -20,7 +20,11 @@ import {
   SNAPSHOT_HZ,
   GARBAGE_PERIOD,
   GARBAGE_OFFSET,
+  LANDFILL_MIN_AREA_TILES,
   LANDFILL_PAINT_COST_PER_TILE,
+  LANDFILL_TRUCKS_BASE,
+  LANDFILL_TRUCKS_MAX,
+  LANDFILL_TRUCKS_PER_TILES,
   inBounds,
   tileIndex,
 } from '../shared/constants';
@@ -29,6 +33,7 @@ import {
   BuildingState,
   FieldId,
   RoadTier,
+  isStreetTier,
   ZoneType,
   MAX_VEHICLES,
   VEHICLE_STRIDE,
@@ -90,7 +95,14 @@ import { TransitSystem, type PopulationJobsAccessor, type TransitTickResult } fr
 import { DispatchSystem, MAX_SERVICE_VEHICLES } from './dispatch';
 import { PolicyStore, effectivePollution, trafficWeight } from './policy';
 import { paintDistrict } from '../world/districts';
-import { canLandfill, paintLandfill } from '../world/landfill';
+import {
+  hasUndersizedArea,
+  landfillAreas,
+  landfillPlacementMask,
+  landfillTruckDepots,
+  paintLandfill,
+  type LandfillArea,
+} from '../world/landfill';
 import {
   GarbageSystem,
   type GarbageBuilding,
@@ -306,6 +318,8 @@ class SimWorld implements WorkerSim {
   private readonly garbage = new GarbageSystem(MAP_SIZE);
   private readonly garbageTrucks = new GarbageTruckSystem();
   private landfillDirty: DirtyRect | null = null;
+  /** Cached landfill areas (office/entrance + dump routes) — dropped when landfill paint or road edits change them. */
+  private landfillAreasCache: LandfillArea[] | null = null;
   private garbageDirty = false;
   /** Sandbox mode: when true, milestone gates are bypassed for all build items. */
   private sandbox = false;
@@ -556,6 +570,7 @@ class SimWorld implements WorkerSim {
     this.garbage.reset();
     this.garbage.restoreState(payload.meta.garbage);
     this.garbageTrucks.reset();
+    this.landfillAreasCache = null;
     this.landfillDirty = { minX: 0, minZ: 0, maxX: MAP_SIZE - 1, maxZ: MAP_SIZE - 1 };
     this.garbageDirty = true;
     this.recomputeUtilitiesNow();
@@ -726,6 +741,27 @@ class SimWorld implements WorkerSim {
       } else continue;
       garbageTargets.push({ id: inst.id, tile: { x: inst.x, z: inst.z } });
     }
+    // Landfill areas field their own trucks from the office's street tile and
+    // drive in to dump on the grounds; a full landfill stops sending them.
+    if (!this.garbage.isLandfillFull(g)) {
+      const depots = landfillTruckDepots(
+        this.landfillAreasFor(g),
+        LANDFILL_MIN_AREA_TILES,
+        LANDFILL_TRUCKS_BASE,
+        LANDFILL_TRUCKS_PER_TILES,
+        LANDFILL_TRUCKS_MAX,
+      );
+      for (const d of depots) {
+        // Negative ids keep landfill depots clear of building instance ids.
+        garbageDepots.push({
+          id: -(d.index + 1),
+          sourceTile: d.sourceTile,
+          budget: d.budget,
+          dumpPath: d.dumpPath,
+        });
+      }
+    }
+
     this.traffic.tick({ origins, destinations, tickNo: t, population: this.stats.population });
 
     // Bus transit: recompute every line's route + statistical ridership
@@ -983,7 +1019,8 @@ class SimWorld implements WorkerSim {
       const entry = this.catalogById.get(inst.catalogId);
       if (!entry?.garbage) continue;
       const capacity = entry.garbage.bufferCapacity;
-      const fill = capacity > 0 ? Math.min(1, this.garbage.incineratorStored(inst.id) / capacity) : 0;
+      const fill =
+        capacity > 0 ? Math.min(1, this.garbage.incineratorStored(inst.id) / capacity) : 0;
       out.push({ id: inst.id, fill, capacity });
     }
     return out;
@@ -1206,7 +1243,8 @@ class SimWorld implements WorkerSim {
   }
 
   /**
-   * Landfill paint: gated to empty land (canLandfill). Painting charges
+   * Landfill paint: gated to the zonable road-frontage grid, exactly like the
+   * zone brushes (landfillPlacementMask). Painting charges
    * LANDFILL_PAINT_COST_PER_TILE per newly-added tile and is funds-gated like a
    * ploppable; erasing is free. Inverse restores each changed tile's previous
    * membership (mirrors cmdPaintDistrict's per-tile inverse).
@@ -1221,9 +1259,12 @@ class SimWorld implements WorkerSim {
 
     let newTiles = 0;
     if (on) {
+      const mask = landfillPlacementMask(g);
       for (const t of tiles) {
         if (!inBounds(t.x, t.z)) continue;
-        if ((g.landfill[tileIndex(t.x, t.z)] ?? 0) === 0 && canLandfill(g, t.x, t.z)) newTiles += 1;
+        if ((g.landfill[tileIndex(t.x, t.z)] ?? 0) === 0 && mask[tileIndex(t.x, t.z)] === 1) {
+          newTiles += 1;
+        }
       }
     }
     const cost = on ? newTiles * LANDFILL_PAINT_COST_PER_TILE : 0;
@@ -1243,12 +1284,32 @@ class SimWorld implements WorkerSim {
       if (now === 1) turnedOn.push(t);
       else turnedOff.push(t);
     }
+
+    // An area must be big enough to field its gatehouse office and a truck
+    // dump run — reject a batch that leaves a new-but-undersized fragment
+    // (expanding an existing area past the minimum is fine).
+    if (on && hasUndersizedArea(g.size, g.landfill, turnedOn, LANDFILL_MIN_AREA_TILES)) {
+      for (const t of turnedOn) g.landfill[tileIndex(t.x, t.z)] = 0;
+      return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+    }
+
     const inverse: Command[] = [];
     if (turnedOn.length > 0) inverse.push({ kind: 'paintLandfill', tiles: turnedOn, on: false });
     if (turnedOff.length > 0) inverse.push({ kind: 'paintLandfill', tiles: turnedOff, on: true });
 
     this.landfillDirty = growRect(this.landfillDirty, applied);
+    this.landfillAreasCache = null;
     return { ok: true, cost, inverse };
+  }
+
+  /** Landfill areas (office/entrance + dump route per 4-connected patch), cached between edits. */
+  private landfillAreasFor(g: GridState): LandfillArea[] {
+    if (this.landfillAreasCache === null) {
+      this.landfillAreasCache = landfillAreas(MAP_SIZE, g.landfill, (x, z) =>
+        inBounds(x, z) ? isStreetTier((g.roadTier[tileIndex(x, z)] ?? 0) as RoadTier) : false,
+      );
+    }
+    return this.landfillAreasCache;
   }
 
   private cmdBuildRoad(tier: RoadTier, tiles: TilePoint[]): CommandResult {
@@ -1303,6 +1364,7 @@ class SimWorld implements WorkerSim {
 
     const deltas = applyRoad(g, valid, tier);
     for (const d of deltas) this.pendingRoadDeltas.set(tileIndex(d.x, d.z), d);
+    this.landfillAreasCache = null; // street layout feeds the landfill entrances
     this.invalidateAround(valid);
     this.zoneDirty = growRect(this.zoneDirty, valid); // roads de-zone their tiles
     this.stats.funds -= cost;
@@ -1346,6 +1408,7 @@ class SimWorld implements WorkerSim {
 
     // Roads first, via removeRoad, so neighbor masks are recomputed properly.
     const roadDeltas = removeRoad(g, inBoundsTiles);
+    this.landfillAreasCache = null; // street layout feeds the landfill entrances
     for (const d of roadDeltas) this.pendingRoadDeltas.set(tileIndex(d.x, d.z), d);
     for (const [tier, roadTiles] of roadsByTier) {
       const spec = this.roadSpecByTier.get(tier);

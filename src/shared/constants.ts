@@ -24,10 +24,11 @@ export const TICK_MS = 1000 / TICK_RATE;
  * Real-time pacing multiplier for each speed button. The FixedTimestep is a
  * pure driver (1.0 = TICK_RATE ticks/real-second); the worker maps the
  * player-facing SimSpeed button (1/2/4) through this table before advancing, so:
- *   1× → 0.5  (a calm baseline — a visual day takes ~4 real min)
- *   2× → 2.0  (4× the 1× rate)
- *   4× → 8.0  (16× the 1× rate — each button is an exponential ×4 step)
- * Pause (0) maps to 0. Keyed by the SimSpeed union (0 | 1 | 2 | 4).
+ *   1× → 1/3   (a calm baseline — a visual day takes ~6 real min)
+ *   2× → 4/3   (4× the 1× rate)
+ *   4× → 16/3  (16× the 1× rate — each button is an exponential ×4 step)
+ * Every step is a third slower than the pacing it replaced, which read as too
+ * hurried. Pause (0) maps to 0. Keyed by the SimSpeed union (0 | 1 | 2 | 4).
  */
 export const SPEED_MULTIPLIERS: Readonly<Record<0 | 1 | 2 | 4, number>> = {
   0: 0,
@@ -175,3 +176,9 @@ export const LANDFILL_PAINT_COST_PER_TILE = 40;
 export const LANDFILL_UPKEEP_PER_TILE = 3;
 /** Rendered trash-pile height (m) at a full landfill tile. */
 export const LANDFILL_MAX_PILE_METERS = 6;
+/** Cosmetic trucks a landfill area fields: base + one per LANDFILL_TRUCKS_PER_TILES painted tiles, capped. */
+export const LANDFILL_TRUCKS_BASE = 1;
+export const LANDFILL_TRUCKS_PER_TILES = 16;
+export const LANDFILL_TRUCKS_MAX = 4;
+/** Smallest connected landfill area (tiles) that can operate — room for the gatehouse office plus a truck dump run. Paint batches leaving a smaller new fragment are rejected. */
+export const LANDFILL_MIN_AREA_TILES = 4;

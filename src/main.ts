@@ -31,7 +31,7 @@ import type {
   ToolId,
   WorkerToMain,
 } from './shared/types';
-import { RoadTier } from './shared/types';
+import { RoadTier, isStreetTier } from './shared/types';
 import catalogData from './data/catalog.json';
 import roadsData from './data/roads.json';
 import { CommandQueue } from './core/commands';
@@ -130,6 +130,17 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   terrain.build(map);
   const heightAt = (x: number, z: number): number => terrain.heightAt(x, z);
 
+  // Render-thread mirror of the worker's grid, fed from snapshot deltas —
+  // backs the zoning grid, lamp placement, and the plop overlap check. The two
+  // tile lookups over it are read by every frontage-aware renderer below
+  // (parking bays, building setbacks, landfill entrances); onSnapshot updates
+  // the mirror before it feeds buildings.
+  const clientGrid = new ClientGridMirror(map);
+  const roadAt = (x: number, z: number): boolean =>
+    inBounds(x, z) && clientGrid.roadTier[z * clientGrid.size + x] !== RoadTier.None;
+  const streetAt = (x: number, z: number): boolean =>
+    inBounds(x, z) && isStreetTier((clientGrid.roadTier[z * clientGrid.size + x] ?? 0) as RoadTier);
+
   // Animated water surface and cumulus layer; both tick in the frame loop below.
   const water = new WaterRenderer(world.scene, heightAt);
   const clouds = new CloudLayer(world.scene);
@@ -143,7 +154,13 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // instancer draws only a low plinth slab under them (picking/outline/
   // bulldoze still flow through the instancer path).
   const utilityKits = new UtilityKitRenderer(world.scene, heightAt, catalog);
-  const instancer = new BuildingInstancer(world.scene, catalog, heightAt, utilityKits.kitIds());
+  const instancer = new BuildingInstancer(
+    world.scene,
+    catalog,
+    heightAt,
+    utilityKits.kitIds(),
+    roadAt,
+  );
   const roadsMesh = new RoadMeshRenderer(world.scene, heightAt);
   const vehicles = new VehicleRenderer(world.scene, heightAt);
   // Bus transit (stop posts + route ribbon + cosmetic buses), service vehicles
@@ -152,7 +169,6 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const transitRenderer = new TransitRenderer(world.scene, heightAt);
   const serviceVehicles = new ServiceVehicleRenderer(world.scene, heightAt);
   const districtsRenderer = new DistrictsRenderer(world.scene, heightAt);
-  const landfillRenderer = new LandfillRenderer(world.scene, heightAt);
   const overlays = new OverlayRenderer(world.scene);
   const idPicker = new IdPicker();
 
@@ -165,20 +181,25 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const mapPin = new MapPin(world.scene);
   const cursorChip = new CursorChipStack(viewport);
 
-  // Render-thread mirror of the worker's grid, fed from snapshot deltas —
-  // backs the zoning grid, lamp placement, and the plop overlap check.
-  const clientGrid = new ClientGridMirror(map);
   zoneGrid.rebuild(clientGrid); // primes its map size so zone patches apply
 
-  // Building dressing: setback massing tiers, roof
-  // props, and road-facing parked cars, all fed the same BuildingDelta stream
-  // as BuildingInstancer. ParkedCarRenderer's roadAt reads the accumulated
-  // road mirror (tile coords), which onSnapshot updates before buildings.
-  const massing = new MassingRenderer(world.scene, heightAt, catalog);
-  const roofProps = new RoofPropRenderer(world.scene, heightAt, catalog);
-  const roadAt = (x: number, z: number): boolean =>
-    inBounds(x, z) && clientGrid.roadTier[z * clientGrid.size + x] !== RoadTier.None;
-  const parkedCars = new ParkedCarRenderer(world.scene, heightAt, catalog, roadAt);
+  // Landfill facility: dumping-ground tint + trash piles + the entrance office
+  // kit. The entrance pick wants streets only (rail gives no frontage). It's a
+  // physical facility, not a lens overlay — always visible once painted.
+  const landfillRenderer = new LandfillRenderer(world.scene, heightAt, streetAt);
+  landfillRenderer.setVisible(true);
+
+  // Building dressing: setback massing tiers, roof props, and road-facing
+  // parked cars, all fed the same BuildingDelta stream as BuildingInstancer.
+  // They share roadAt so the body setback, its roof props, and the parking
+  // bays all agree on which edge faces the street.
+  const massing = new MassingRenderer(world.scene, heightAt, catalog, roadAt);
+  const roofProps = new RoofPropRenderer(world.scene, heightAt, catalog, roadAt);
+  const parkedCars = new ParkedCarRenderer(world.scene, heightAt, catalog, roadAt, (x, z) =>
+    inBounds(x, z)
+      ? ((clientGrid.roadTier[z * clientGrid.size + x] ?? 0) as RoadTier)
+      : RoadTier.None,
+  );
   // Residential house kit: pitched roofs on every detached/row home, plus a
   // garage + street-facing driveway on the larger detached lots (roadAt orients
   // them toward the frontage). Fed the same BuildingDelta stream.
@@ -566,6 +587,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     water.setSkyColors(colors.skyZenithColor, colors.skyHorizonColor);
     lastTick = snap.stats.tick;
     lastDayT = dayT;
+    // Lot occupancy follows the clock: shops fill for trading hours, industry
+    // keeps a late shift, and both empty out overnight.
+    parkedCars.setDayFraction(dayT);
     lastNightFactor = nightFactor;
     instancer.setNightFactor(nightFactor);
     massing.setNightFactor(nightFactor);
@@ -595,6 +619,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       terrain.applyHeightPatches(snap.heightPatches);
       clientGrid.applyHeightPatches(snap.heightPatches);
       zoneGrid.rebuild(clientGrid);
+      // Roads sample terrain height at build time: any height change under or
+      // beside an existing road (terraform, building auto-flatten, a neighbor
+      // run's grading) must rebuild the affected road chunks, or their
+      // geometry keeps stale heights (buried edges / floating caps).
+      roadsMesh.invalidateHeights(snap.heightPatches);
     }
     if (snap.roads) {
       roadsMesh.apply(snap.roads);
@@ -790,8 +819,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   store.subscribe((state, prev) => {
     if (state.selectedTool !== prev.selectedTool) {
       toolManager.setTool(state.selectedTool);
-      // Zoning grid layer only while a zone tool is in hand.
-      zoneGrid.setVisible(state.selectedTool.startsWith('zone.'));
+      // Zoning grid layer while a zone tool is in hand — and for the landfill
+      // brush, which paints into the same road-frontage grid.
+      zoneGrid.setVisible(
+        state.selectedTool.startsWith('zone.') || state.selectedTool === 'landfill.paint',
+      );
       // The dedicated overlays follow tool selection too.
       refreshEpicVisibility();
     }

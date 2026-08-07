@@ -6,8 +6,14 @@ import {
   type TruckTarget,
 } from './garbagetrucks';
 import type { GridState } from '../shared/types';
-import { FIELD_COUNT, INACTIVE_VEHICLE_X, RoadTier, VEHICLE_STRIDE, VehicleKind } from '../shared/types';
-import { MAP_SIZE, tileIndex } from '../shared/constants';
+import {
+  FIELD_COUNT,
+  INACTIVE_VEHICLE_X,
+  RoadTier,
+  VEHICLE_STRIDE,
+  VehicleKind,
+} from '../shared/types';
+import { MAP_SIZE, tileIndex, tileToWorld, worldToTile } from '../shared/constants';
 import { RoadNetwork } from '../world/roads';
 
 function makeGrid(): GridState {
@@ -61,7 +67,11 @@ describe('GarbageTruckSystem', () => {
     const network = net(g);
     const sys = new GarbageTruckSystem();
 
-    sys.tick({ network, depots: [depot(1, 0, 0, 2)], targets: [target(100, 4, 1), target(101, 7, 1), target(102, 10, 1)] });
+    sys.tick({
+      network,
+      depots: [depot(1, 0, 0, 2)],
+      targets: [target(100, 4, 1), target(101, 7, 1), target(102, 10, 1)],
+    });
 
     expect(countActive(sys.vehicleBuffer)).toBe(2);
     for (let slot = 0; slot < MAX_GARBAGE_TRUCKS; slot++) {
@@ -114,7 +124,8 @@ describe('GarbageTruckSystem', () => {
       // The single truck lives in whichever slot is active this tick.
       for (let slot = 0; slot < MAX_GARBAGE_TRUCKS; slot++) {
         const base = slot * VEHICLE_STRIDE;
-        if (sys.vehicleBuffer[base] !== INACTIVE_VEHICLE_X) speeds.push(sys.vehicleBuffer[base + 3]!);
+        if (sys.vehicleBuffer[base] !== INACTIVE_VEHICLE_X)
+          speeds.push(sys.vehicleBuffer[base + 3]!);
       }
     }
     expect(speeds.some((s) => s > 0)).toBe(true); // travelling
@@ -138,7 +149,11 @@ describe('GarbageTruckSystem', () => {
     straightRoad(g, 0, 0, 6);
     const network = net(g);
     const sys = new GarbageTruckSystem();
-    sys.tick({ network, depots: [depot(1, 0, 0, 2)], targets: [target(100, 3, 1), target(101, 5, 1)] });
+    sys.tick({
+      network,
+      depots: [depot(1, 0, 0, 2)],
+      targets: [target(100, 3, 1), target(101, 5, 1)],
+    });
     expect(countActive(sys.vehicleBuffer)).toBeGreaterThan(0);
 
     sys.reset();
@@ -152,6 +167,111 @@ describe('GarbageTruckSystem', () => {
       const network = net(g);
       const sys = new GarbageTruckSystem();
       const depots = [depot(1, 0, 0, 3)];
+      const targets = [target(100, 3, 1), target(101, 6, 1), target(102, 9, 1)];
+      for (let t = 0; t < 300; t++) sys.tick({ network, depots, targets });
+      return sys.vehicleBuffer.slice();
+    }
+    expect(Array.from(run())).toEqual(Array.from(run()));
+  });
+
+  it('drives into the landfill along its dumpPath and dwells at the dump spot', () => {
+    const g = makeGrid();
+    straightRoad(g, 0, 0, 8);
+    const network = net(g);
+    const sys = new GarbageTruckSystem();
+    // Dump route off the road: entrance (0,1) beside the source tile, dump spot (0,2).
+    const depots = [
+      {
+        ...depot(1, 0, 0, 1),
+        dumpPath: [
+          { x: 0, z: 1 },
+          { x: 0, z: 2 },
+        ],
+      },
+    ];
+    const targets = [target(100, 6, 1)];
+
+    let dwellTicksAtDump = 0;
+    for (let t = 0; t < 60; t++) {
+      sys.tick({ network, depots, targets });
+      for (let slot = 0; slot < MAX_GARBAGE_TRUCKS; slot++) {
+        const base = slot * VEHICLE_STRIDE;
+        if (
+          sys.vehicleBuffer[base] === tileToWorld(0) &&
+          sys.vehicleBuffer[base + 1] === tileToWorld(2) &&
+          sys.vehicleBuffer[base + 3] === 0
+        ) {
+          dwellTicksAtDump++;
+        }
+      }
+    }
+    expect(dwellTicksAtDump).toBeGreaterThanOrEqual(8); // parked at the dump spot for the dwell
+  });
+
+  it('returns from the dump and frees its slot after the full cycle', () => {
+    const g = makeGrid();
+    straightRoad(g, 0, 0, 8);
+    const network = net(g);
+    const sys = new GarbageTruckSystem();
+    const depots = [
+      {
+        ...depot(1, 0, 0, 1),
+        dumpPath: [
+          { x: 0, z: 1 },
+          { x: 0, z: 2 },
+        ],
+      },
+    ];
+
+    sys.tick({ network, depots, targets: [target(100, 6, 1)] });
+    expect(countActive(sys.vehicleBuffer)).toBe(1);
+    // No further targets -> the one dispatched truck runs its whole cycle and despawns.
+    for (let t = 0; t < 100; t++) sys.tick({ network, depots, targets: [] });
+    expect(countActive(sys.vehicleBuffer)).toBe(0);
+  });
+
+  it('without a dumpPath the truck resolves at the depot and never leaves road/target tiles', () => {
+    const g = makeGrid();
+    straightRoad(g, 0, 0, 8);
+    const network = net(g);
+    const sys = new GarbageTruckSystem();
+    const depots = [depot(1, 0, 0, 1)];
+
+    sys.tick({ network, depots, targets: [target(100, 6, 1)] });
+    let sawActive = false;
+    for (let t = 0; t < 100; t++) {
+      sys.tick({ network, depots, targets: [] });
+      for (let slot = 0; slot < MAX_GARBAGE_TRUCKS; slot++) {
+        const base = slot * VEHICLE_STRIDE;
+        const x = sys.vehicleBuffer[base]!;
+        if (x === INACTIVE_VEHICLE_X) continue;
+        sawActive = true;
+        const tx = worldToTile(x);
+        const tz = worldToTile(sys.vehicleBuffer[base + 1]!);
+        const onRoad = g.roadTier[tileIndex(tx, tz)]! > 0;
+        const onTarget = tx === 6 && tz === 1;
+        expect(onRoad || onTarget).toBe(true);
+      }
+    }
+    expect(sawActive).toBe(true);
+    expect(countActive(sys.vehicleBuffer)).toBe(0); // despawned at the depot, no dump run
+  });
+
+  it('is deterministic with a dumpPath — identical inputs give byte-identical buffers', () => {
+    function run(): Float32Array {
+      const g = makeGrid();
+      straightRoad(g, 0, 0, 10);
+      const network = net(g);
+      const sys = new GarbageTruckSystem();
+      const depots = [
+        {
+          ...depot(1, 0, 0, 3),
+          dumpPath: [
+            { x: 0, z: 1 },
+            { x: 0, z: 2 },
+          ],
+        },
+      ];
       const targets = [target(100, 3, 1), target(101, 6, 1), target(102, 9, 1)];
       for (let t = 0; t < 300; t++) sys.tick({ network, depots, targets });
       return sys.vehicleBuffer.slice();

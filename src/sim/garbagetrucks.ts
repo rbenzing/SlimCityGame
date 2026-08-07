@@ -6,7 +6,8 @@
  * building list and writes only its own slice of the shared vehicle buffer;
  * it never touches the sim (collection/economy stay in garbage.ts). The
  * per-facility truck count is the depot's budget (the incinerator's
- * catalog `garbage.trucks`).
+ * catalog `garbage.trucks`). Depots with a `dumpPath` (landfills) send the
+ * returning truck off the road into the fill area to dump before it despawns.
  *
  * Deterministic: no Rng — targets are picked nearest-first with a building-id
  * tiebreak, and stepping mirrors DispatchSystem's segment walker exactly.
@@ -23,6 +24,8 @@ const TICK_SECONDS = 1 / TICK_RATE;
 const TRUCK_SPEED_MPS = TILE_METERS * TICK_RATE;
 /** Ticks a truck dwells at a building before heading back. */
 const COLLECT_TICKS = 8;
+/** Ticks a truck dwells at the dump spot inside a landfill before leaving. */
+const DUMP_TICKS = 8;
 /** Nearest candidates a depot probes with findPath before giving up on a spawn. */
 const MAX_TARGET_PROBES = 12;
 
@@ -32,6 +35,13 @@ export interface TruckDepot {
   id: number;
   sourceTile: TilePoint;
   budget: number;
+  /**
+   * Optional drive-in route inside the facility (landfills): tile steps off the
+   * road, where [0] is the entrance adjacent to sourceTile and the last element
+   * is the dump spot. Returning trucks drive it, dump, and retrace it before
+   * despawning. Absent/empty -> trucks despawn at the depot as usual.
+   */
+  dumpPath?: readonly TilePoint[];
 }
 
 /** A building a truck can visit (active R/C/I), by instance id + tile. */
@@ -53,7 +63,7 @@ interface RoutedVehicle {
   distanceIntoSegment: number;
 }
 
-type TruckPhase = 'toBuilding' | 'collecting' | 'toDepot';
+type TruckPhase = 'toBuilding' | 'collecting' | 'toDepot' | 'toDump' | 'dumping' | 'leavingDump';
 
 interface ActiveTruck {
   depotId: number;
@@ -64,10 +74,13 @@ interface ActiveTruck {
   phase: TruckPhase;
   vehicle: RoutedVehicle;
   collectTicksRemaining: number;
+  /** Depot dump route captured at spawn (depot arrays are rebuilt every tick). Empty -> no dump run. */
+  dumpPath: readonly TilePoint[];
+  dumpTicksRemaining: number;
 }
 
-function buildRoutedVehicle(path: PathResult): RoutedVehicle {
-  const points: WorldPoint[] = path.points.map((p) => ({ x: tileToWorld(p.x), z: tileToWorld(p.z) }));
+function buildRoutedVehicle(tiles: readonly TilePoint[]): RoutedVehicle {
+  const points: WorldPoint[] = tiles.map((p) => ({ x: tileToWorld(p.x), z: tileToWorld(p.z) }));
   const segmentLengths: number[] = [];
   for (let i = 0; i < points.length - 1; i++) {
     const a = points[i]!;
@@ -138,11 +151,19 @@ export class GarbageTruckSystem {
         if (truck.collectTicksRemaining <= 0) this.startReturn(truck, network, i);
         continue;
       }
+      if (truck.phase === 'dumping') {
+        truck.dumpTicksRemaining -= 1;
+        this.writeSlot(truck.slot, truck.vehicle, 0);
+        if (truck.dumpTicksRemaining <= 0) this.startLeavingDump(truck);
+        continue;
+      }
       stepVehicle(truck.vehicle);
       const arrived = vehicleArrived(truck.vehicle);
       this.writeSlot(truck.slot, truck.vehicle, arrived ? 0 : TRUCK_SPEED_MPS);
       if (!arrived) continue;
       if (truck.phase === 'toBuilding') truck.phase = 'collecting';
+      else if (truck.phase === 'toDepot' && truck.dumpPath.length > 0) this.startDumpRun(truck);
+      else if (truck.phase === 'toDump') truck.phase = 'dumping';
       else this.resolve(i);
     }
   }
@@ -153,8 +174,20 @@ export class GarbageTruckSystem {
       this.resolve(index);
       return;
     }
-    truck.vehicle = buildRoutedVehicle(path);
+    truck.vehicle = buildRoutedVehicle(path.points);
     truck.phase = 'toDepot';
+  }
+
+  /** Depot reached with a dump route: drive off the road into the facility to the dump spot. */
+  private startDumpRun(truck: ActiveTruck): void {
+    truck.vehicle = buildRoutedVehicle([truck.sourceTile, ...truck.dumpPath]);
+    truck.phase = 'toDump';
+  }
+
+  /** Dump dwell finished: retrace the dump route back out to the depot's source tile. */
+  private startLeavingDump(truck: ActiveTruck): void {
+    truck.vehicle = buildRoutedVehicle([...truck.dumpPath].reverse().concat(truck.sourceTile));
+    truck.phase = 'leavingDump';
   }
 
   private resolve(index: number): void {
@@ -212,7 +245,7 @@ export class GarbageTruckSystem {
   private spawnTruck(depot: TruckDepot, target: TruckTarget, pathToBuilding: PathResult): void {
     const slot = this.freeSlots.pop();
     if (slot === undefined) return;
-    const vehicle = buildRoutedVehicle(pathToBuilding);
+    const vehicle = buildRoutedVehicle(pathToBuilding.points);
     this.active.push({
       depotId: depot.id,
       sourceTile: depot.sourceTile,
@@ -222,6 +255,8 @@ export class GarbageTruckSystem {
       phase: 'toBuilding',
       vehicle,
       collectTicksRemaining: COLLECT_TICKS,
+      dumpPath: depot.dumpPath ?? [],
+      dumpTicksRemaining: DUMP_TICKS,
     });
     this.activeTargets.add(target.id);
     this.writeSlot(slot, vehicle, TRUCK_SPEED_MPS);
