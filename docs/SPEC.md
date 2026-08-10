@@ -1368,12 +1368,29 @@ land.
   stepper in the tool options raises a deliberate viaduct over dry land, up to
   `BRIDGE_MAX_ELEVATION`; left at zero, it only auto-bridges water.
 - **What a deck looks like.** A flat slab at deck height with no terrain
-  conformance, parapet railings where an at-grade tile draws curbs and
+  conformance, a girder under it so the span reads as a structure rather than a
+  floating ribbon of tarmac, parapets where an at-grade tile draws curbs and
   sidewalk, and piers dropped to the terrain or seabed every
-  `PIER_SPACING_TILES`. The curbside furniture rules invert: lamps stand on the
-  deck, verge grass, trees, and parking meters do not. Vehicles and pedestrians
-  read `deckHeightAt` (terrain + elevation) in place of `heightAt`, so traffic
-  rides the bridge instead of swimming under it.
+  `PIER_SPACING_TILES`. The structure oversails the carriageway by a footway
+  plus the style's overhang, so the road never overhangs its own bridge. The
+  curbside furniture rules invert: lamps stand on the deck, verge grass, trees,
+  and parking meters do not. Vehicles and pedestrians read `deckHeightAt`
+  (terrain + elevation) in place of `heightAt`, so traffic rides the bridge
+  instead of swimming under it.
+- **A span is built in the family its road deserves** (`bridgeStyleFor`), so a
+  player reads what a bridge carries from across the map. Four clearly
+  different silhouettes rather than one per tier:
+  - **plank** (gravel, alley, bike lane) — timber decking on light posts and a
+    thin rail; a farm track over a creek, not an engineering work.
+  - **beam** (every ordinary street) — the concrete beam on round columns.
+  - **box** (avenue, highway) — a deep box girder on heavy squared piers. The
+    depth *is* the silhouette; it is what a big road crossing looks like from a
+    distance.
+  - **truss** (rail) — a shallow deck carried inside steel lattice sides that
+    rise above it with overhead bracing, the through-truss every railway bridge
+    is. It carries no parapet: the truss is the edge.
+  Each family draws in its own instanced meshes, so a city with a footbridge and
+  a motorway viaduct pays two draw calls per part, not one per span.
 - **What the deck costs and what it denies.** Elevated tiles add
   `BRIDGE_COST_PER_METER_TILE` per metre of height on top of the tier's own
   per-tile cost, and the same premium proportionally on upkeep — height is the
