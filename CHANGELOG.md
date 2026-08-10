@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.1.0...slimcity-v1.2.0) (2026-08-10)
+
+
+### Features
+
+* city soundscape, UI cues, and a music player fed from public/songs ([de13dec](https://github.com/rbenzing/SlimCityGame/commit/de13decafec2ad79c5d5e6be4e4bbbccee790826))
+* light the road under street lamps, not just the lamp head ([24e09c3](https://github.com/rbenzing/SlimCityGame/commit/24e09c3efc5646962453245e01b402cf428ff5fe))
+
+
+### Bug Fixes
+
+* judge a lot's power and water over its whole footprint ([d96870d](https://github.com/rbenzing/SlimCityGame/commit/d96870d89b3add2fd551d99228e463998e5aaaf6))
+
 ## [1.1.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.0.0...slimcity-v1.1.0) (2026-08-07)
 
 
