@@ -308,10 +308,46 @@ describe('road-furniture placement (pure)', () => {
     expect([...oneways].sort((a, b) => a - b)).toEqual([6, 12]); // (x+0) % 6 === 0, interior only
   });
 
-  it("marks the periodic tiles of a Highway straight run 'speed'", () => {
-    const signs = computeSignPlacements(strip(0, 0, 30, 'ew', RoadTier.Highway)); // z=0
+  it("marks the periodic tiles of an Avenue straight run 'speed'", () => {
+    const signs = computeSignPlacements(strip(0, 0, 30, 'ew', RoadTier.Avenue)); // z=0
     const speeds = signs.filter((s) => s.type === 'speed').map((s) => s.x);
     expect([...speeds].sort((a, b) => a - b)).toEqual([10, 20]); // (x+0) % 10 === 0, interior only
+  });
+
+  it('signs a highway overhead only — no street furniture on a motorway', () => {
+    const tiles = strip(0, 0, 30, 'ew', RoadTier.Highway); // z=0
+    const signs = computeSignPlacements(tiles);
+    const types = new Set(signs.map((s) => s.type));
+
+    // Nothing that belongs beside a street: no speed boards, no stopping, no
+    // giving way, no bend or dead-end plates.
+    for (const street of ['speed', 'stop', 'giveway', 'bend', 'oneway', 'nothrough', 'signal'])
+      expect(types.has(street as never)).toBe(false);
+
+    // Gantries instead, straddling the centreline rather than standing at a curb.
+    const gantries = signs.filter((s) => s.type === 'gantry');
+    expect(gantries.length).toBeGreaterThan(0);
+    for (const g of gantries) expect(g.lateralOffset).toBe(0);
+  });
+
+  it('carries no boxes or meters along a highway', () => {
+    const tiles = strip(0, 0, 30, 'ew', RoadTier.Highway);
+    expect(computeBoxPlacements(tiles)).toEqual([]);
+    expect(computeMeterPlacements(tiles)).toEqual([]);
+  });
+
+  it('marks where something leaves a highway as an exit', () => {
+    const t = RoadTier.Highway;
+    // A slip road dropping south off a highway running east-west.
+    const tiles: FurnitureRoadTile[] = [
+      ...strip(0, 0, 8, 'ew', t),
+      { x: 4, z: 1, tier: t },
+      { x: 4, z: 2, tier: t },
+    ];
+    const signs = computeSignPlacements(tiles);
+    expect(signs.some((s) => s.type === 'exit')).toBe(true);
+    // Never a signal or a stop board on a motorway junction.
+    expect(signs.some((s) => s.type === 'signal' || s.type === 'stop')).toBe(false);
   });
 
   it('produces no placements for an empty road tile list', () => {

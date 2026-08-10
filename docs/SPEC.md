@@ -338,12 +338,33 @@ white lane markings reused from an existing tier:
   approaches instead. Manholes are the deliberate exception — they belong in
   the carriageway, so a junction is a fine place for one.
 - **Junction control follows the tier.** A junction approach on a multi-lane
-  road (avenue, highway, four-lane, bus lane) earns a **traffic signal** — a
-  mast with a short arm reaching out over the carriageway and a three-lens head
-  hung off it, yawed by `signalYaw` so the arm always reaches inward from the
-  curb it stands on. Smaller tiers keep the boards: **stop** at a crossroads,
-  **give way** at a T. Cosmetic, like the rest of the kit — the sim models no
-  signal phase, so the head shows its three lenses and does not cycle.
+  street (avenue, four-lane, bus lane) earns a **traffic signal** — a mast with
+  a short arm reaching out over the carriageway and a three-lens head hung off
+  it. Smaller tiers keep the boards: **stop** at a crossroads, **give way** at a
+  T. Cosmetic, like the rest of the kit — the sim models no signal phase, so the
+  head shows its three lenses and does not cycle.
+- **A motorway is signed like a motorway, not like a street.** The highway tier
+  takes none of the street furniture — no curb, so no utility boxes, no parking
+  meters, no stop/give-way/bend/speed boards, and never a signal: you do not
+  halt traffic on a motorway, you give it an exit. It gets its own two:
+  - **Exit** where something leaves it — a cantilever: one post at the shoulder,
+    a lattice truss arm over the carriageway, and a green panel hung off it with
+    its exit-number tab riding above the top edge, a diagonal exit arrow, and a
+    yellow advisory-speed plaque beneath.
+  - **Gantry** periodically along a straight run — legs outside both shoulders,
+    a truss carrying right across, and two panels beneath it with lane-assignment
+    down-arrows. This is the one sign type that straddles the centreline instead
+    of standing at a curb, so it takes no lateral offset.
+  Both are authored reaching along +X and yawed by `signalYaw`, which every
+  cantilevered type shares: a flat board reads from either side, but an arm
+  pointed the wrong way hangs over the grass.
+- **Direction arrows during placement.** Dragging a road whose direction is real
+  — a one-way street or a highway — draws translucent arrows along the ghost
+  path pointing the way the drag ran, so the player can see which way traffic
+  will run *before* committing. They live in the preview layer and vanish with
+  the rest of the ghost when placement ends. `arrowYaw` turns each one down the
+  path, following an L-path around its corner rather than holding the first
+  heading.
 
 ### 6.8 Vehicle kit (reference screenshot 7, low-poly vehicle set)
 

@@ -75,7 +75,13 @@ import { SelectionOutline } from './render/outline';
 import { MapPin } from './render/pin';
 import { CameraRig } from './render/camera';
 import { IdPicker } from './render/picking';
-import { ToolManager, footprintTiles, ZONE_TOOL_TO_TYPE, type ToolEnv } from './tools/tools';
+import {
+  ToolManager,
+  footprintTiles,
+  ROAD_TOOL_TO_TIER,
+  ZONE_TOOL_TO_TYPE,
+  type ToolEnv,
+} from './tools/tools';
 import { UndoStack } from './tools/undo';
 import { useCityStore } from './ui/store';
 import { mountUi } from './ui/App';
@@ -502,6 +508,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const catalogById = new Map<string, BuildingCatalogEntry>(catalog.map((e) => [e.id, e]));
 
   /** Ghost tint/decoration family for the active tool. */
+  /**
+   * Road tiers where direction is a real property of the road rather than a
+   * drawing artifact: a one-way street, and a highway whose carriageways run
+   * opposite ways. These get flow arrows on the placement ghost.
+   */
+  const isDirectionalTier = (tier: RoadTier): boolean =>
+    tier === RoadTier.Highway || roadSpecByTier.get(tier)?.oneWay === true;
+
   const ghostKindFor = (tool: ToolId): GhostKind => {
     if (tool === 'bulldoze') return 'bulldoze';
     if (tool.startsWith('road.')) return 'road';
@@ -542,6 +556,13 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         if (tool.startsWith('zone.')) {
           const zone = ZONE_TOOL_TO_TYPE[tool];
           if (zone !== undefined) opts = { zone };
+        }
+        // Direction arrows while dragging a road whose direction is real. A
+        // one-way or a highway laid the wrong way round is otherwise only
+        // obvious once there is traffic on it.
+        const previewTier = ROAD_TOOL_TO_TIER[tool];
+        if (previewTier !== undefined && isDirectionalTier(previewTier)) {
+          opts = { ...opts, flowArrows: true };
         }
         if (tool.startsWith('plop.') && preview.tiles.length > 0) {
           const entry = catalogById.get(tool.slice('plop.'.length));

@@ -76,6 +76,11 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   coverage, and trash. Turn a lens on to see the city as data — the trash lens
   reddens where garbage is going uncollected.
 - **Stats panel** — line charts of population, money, and other trends over time.
+- **Roads sign themselves** — junctions get stop or give-way boards, and on
+  bigger streets traffic signals instead. Highways are signed as highways:
+  cantilevered exit boards where a road leaves, and overhead gantries along the
+  run. While you drag a one-way or a highway, translucent arrows show which way
+  traffic will run, so you can catch a road laid backwards before you build it.
 - **Bridges** — drag a road across a river and it crosses on a deck, on piers,
   ramping down onto each bank. Start the drag well back from the water: the
   approach needs room to climb, and a crossing that would end in mid-air is

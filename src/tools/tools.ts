@@ -110,7 +110,9 @@ const ZONE_TOOL_TO_LABEL: Record<string, string> = {
   'zone.mixed': 'Mixed-Use',
 };
 
-const ROAD_TOOL_TO_TIER: Record<string, RoadTier> = {
+/** Road tool id -> the tier it lays. Exported so the integration layer can ask
+ * what a road preview is actually building. */
+export const ROAD_TOOL_TO_TIER: Record<string, RoadTier> = {
   'road.two': RoadTierValue.TwoLane,
   'road.avenue': RoadTierValue.Avenue,
   'road.highway': RoadTierValue.Highway,

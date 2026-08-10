@@ -4,6 +4,7 @@ import type { TilePoint } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import {
   GhostRenderer,
+  arrowYaw,
   baseColorFor,
   buildConformingEdgePositions,
   buildConformingTilePositions,
@@ -133,10 +134,10 @@ describe('stripeAxisIsX', () => {
 });
 
 describe('GhostRenderer construction', () => {
-  it('adds exactly 6 layers to the scene (4 merged Mesh + 1 instanced stripe + 1 volume box Mesh), all empty/hidden', () => {
+  it('adds exactly 7 layers to the scene (4 merged Mesh + stripe + volume box + flow arrows), all empty/hidden', () => {
     const scene = new THREE.Scene();
     const renderer = new GhostRenderer(scene, flatHeightAt);
-    expect(scene.children.length).toBe(6);
+    expect(scene.children.length).toBe(7);
     const { base, fill, stripe, border, inner } = renderer.layers();
     expect(vertCount(base)).toBe(0);
     expect(vertCount(fill)).toBe(0);
@@ -346,7 +347,7 @@ describe('GhostRenderer — stripe instanced-capacity growth beyond the initial 
     const tiles = straightLine(150);
     renderer.setPreview(tiles, true, 'road');
 
-    expect(scene.children.length).toBe(6); // a grown stripe mesh replaces, never accumulates
+    expect(scene.children.length).toBe(7); // a grown stripe mesh replaces, never accumulates
     const { base, stripe } = renderer.layers();
     expect(vertCount(base)).toBe(150 * VERTS_PER_GHOST_CELL);
     expect(stripe.count).toBe(75); // ceil(150 / 2)
@@ -362,7 +363,7 @@ describe('GhostRenderer — stripe instanced-capacity growth beyond the initial 
     renderer.setPreview(straightLine(150), true, 'road');
     renderer.setPreview(straightLine(3), true, 'road');
 
-    expect(scene.children.length).toBe(6);
+    expect(scene.children.length).toBe(7);
     const { base, stripe } = renderer.layers();
     expect(vertCount(base)).toBe(3 * VERTS_PER_GHOST_CELL);
     expect(stripe.count).toBe(2); // indices 0, 2
@@ -379,6 +380,86 @@ function sortEdges(edges: readonly GhostEdgeSegment[]): GhostEdgeSegment[] {
     (a, b) => a.cx - b.cx || a.cz - b.cz || Number(a.alongX) - Number(b.alongX),
   );
 }
+
+describe('flow arrows on a directional road preview', () => {
+  const path = (n: number): TilePoint[] =>
+    Array.from({ length: n }, (_, i) => ({ x: i, z: 0 }));
+
+  it('draws none unless the preview asks for them', () => {
+    const scene = new THREE.Scene();
+    const renderer = new GhostRenderer(scene, flatHeightAt);
+    renderer.setPreview(path(8), true, 'road');
+    expect(renderer.layers().arrows.count).toBe(0);
+  });
+
+  it('draws them along the path when the tier has a direction', () => {
+    const scene = new THREE.Scene();
+    const renderer = new GhostRenderer(scene, flatHeightAt);
+    renderer.setPreview(path(8), true, 'road', { flowArrows: true });
+    expect(renderer.layers().arrows.count).toBeGreaterThan(0);
+  });
+
+  it('drops them again as soon as the preview clears — placement is over', () => {
+    const scene = new THREE.Scene();
+    const renderer = new GhostRenderer(scene, flatHeightAt);
+    renderer.setPreview(path(8), true, 'road', { flowArrows: true });
+    renderer.setPreview([], true, 'road', { flowArrows: true });
+    expect(renderer.layers().arrows.count).toBe(0);
+  });
+
+  it('drops them on an invalid preview, which is never going to be placed', () => {
+    const scene = new THREE.Scene();
+    const renderer = new GhostRenderer(scene, flatHeightAt);
+    renderer.setPreview(path(8), false, 'road', { flowArrows: true });
+    expect(renderer.layers().arrows.count).toBe(0);
+  });
+
+  it('grows its instance capacity for a drag longer than the initial 64', () => {
+    const scene = new THREE.Scene();
+    const renderer = new GhostRenderer(scene, flatHeightAt);
+    renderer.setPreview(path(400), true, 'road', { flowArrows: true });
+    expect(renderer.layers().arrows.count).toBe(200); // every other tile
+  });
+});
+
+describe('arrowYaw', () => {
+  it('points along the drag, not against it', () => {
+    const east: TilePoint[] = [
+      { x: 0, z: 0 },
+      { x: 1, z: 0 },
+    ];
+    const west: TilePoint[] = [
+      { x: 1, z: 0 },
+      { x: 0, z: 0 },
+    ];
+    // A rotation of θ about Y sends local +X to (cos θ, 0, −sin θ).
+    expect(Math.cos(arrowYaw(east, 0))).toBeCloseTo(1, 6);
+    expect(Math.cos(arrowYaw(west, 0))).toBeCloseTo(-1, 6);
+  });
+
+  it('turns with an L-path rather than holding the first heading', () => {
+    const bend: TilePoint[] = [
+      { x: 0, z: 0 },
+      { x: 1, z: 0 },
+      { x: 1, z: 1 },
+    ];
+    expect(Math.cos(arrowYaw(bend, 0))).toBeCloseTo(1, 6); // east
+    expect(-Math.sin(arrowYaw(bend, 1))).toBeCloseTo(1, 6); // then south
+  });
+
+  it('carries the last heading through the final tile', () => {
+    const run: TilePoint[] = [
+      { x: 0, z: 0 },
+      { x: 1, z: 0 },
+      { x: 2, z: 0 },
+    ];
+    expect(arrowYaw(run, 2)).toBeCloseTo(arrowYaw(run, 1), 6);
+  });
+
+  it('is stable for a single-tile preview with no direction at all', () => {
+    expect(arrowYaw([{ x: 3, z: 3 }], 0)).toBe(0);
+  });
+});
 
 describe('computeFootprintEdges', () => {
   it('a single tile produces its 4 edges as outer, none inner', () => {
@@ -675,7 +756,7 @@ describe('GhostRenderer — §6.16 border + inner grid', () => {
     const renderer = new GhostRenderer(scene, flatHeightAt);
     renderer.setPreview(straightLine(150), true, 'road');
 
-    expect(scene.children.length).toBe(6); // merged layers are never re-added, only re-geometried
+    expect(scene.children.length).toBe(7); // merged layers are never re-added, only re-geometried
     const { border, inner } = renderer.layers();
     expect(vertCount(border)).toBe((2 * 150 + 2) * VERTS_PER_GHOST_EDGE); // 302 segments
     expect(vertCount(inner)).toBe(149 * VERTS_PER_GHOST_EDGE);
@@ -687,7 +768,7 @@ describe('GhostRenderer — §6.16 border + inner grid', () => {
     renderer.setPreview(straightLine(150), true, 'road');
     renderer.setPreview(straightLine(3), true, 'road');
 
-    expect(scene.children.length).toBe(6);
+    expect(scene.children.length).toBe(7);
     const { border, inner } = renderer.layers();
     expect(vertCount(border)).toBe(8 * VERTS_PER_GHOST_EDGE); // 2*3+2 side/end segments (ribbon formula above)
     expect(vertCount(inner)).toBe(2 * VERTS_PER_GHOST_EDGE);
@@ -784,7 +865,7 @@ describe('GhostRenderer — §6.16 plop volume ghost', () => {
       });
       renderer.setPreview([{ x: 0, z: 0 }], true, 'plop');
     }
-    expect(scene.children.length).toBe(6);
+    expect(scene.children.length).toBe(7);
   });
 });
 

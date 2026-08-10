@@ -68,6 +68,27 @@ const SIGNAL_HOUSING_COLOR = 0x2f3338;
 const SIGNAL_RED = 0xd6402f;
 const SIGNAL_AMBER = 0xe8a33a;
 const SIGNAL_GREEN = 0x46b360;
+
+// --- Motorway signage --------------------------------------------------------
+const HIGHWAY_GREEN = 0x1d6b45; // the standard motorway board green
+const ADVISORY_YELLOW = 0xe0b230; // ramp advisory-speed plaque
+const ADVISORY_PLAQUE = 0.5;
+const EXIT_POST_HEIGHT = 5.2;
+const EXIT_POST_RADIUS = 0.13;
+/** How far the cantilever arm reaches out over the carriageway. */
+const EXIT_ARM_LENGTH = 3.2;
+const EXIT_TRUSS_DEPTH = 0.42;
+const EXIT_BOARD_WIDTH = 2.8;
+const EXIT_BOARD_HEIGHT = 1.5;
+/** Tiles between overhead gantries along a straight motorway run. */
+const GANTRY_PERIOD = 12;
+const GANTRY_HEIGHT = 6.4; // clears anything the vehicle kit puts on the road
+const GANTRY_LEG_RADIUS = 0.12;
+const GANTRY_LEG_CLEARANCE = 1.2; // legs stand outside both shoulders
+const GANTRY_TRUSS_DEPTH = 0.62;
+const GANTRY_PANEL_WIDTH = 5.2;
+const GANTRY_PANEL_HEIGHT = 1.6;
+const GANTRY_STEEL = 0x8d9299; // galvanised legs and truss beam
 const SIGN_RED = 0xc0392b; // regulatory / warning red
 const SIGN_WHITE = 0xf0f0f0; // sign white
 const SIGN_FIELD = 0xf3e9b5; // pale warning-triangle field
@@ -160,7 +181,9 @@ export type SignType =
   | 'oneway'
   | 'speed'
   | 'nothrough'
-  | 'signal';
+  | 'signal'
+  | 'exit'
+  | 'gantry';
 
 export interface SignPlacement {
   x: number;
@@ -195,8 +218,27 @@ function tierIsPaved(tier: RoadTier | undefined): boolean {
   return (tier ?? RoadTier.TwoLane) !== RoadTier.Gravel;
 }
 
-/** Boxes/signs need a raised curb: excludes gravel and alley. */
+/**
+ * A grade-separated road: no sidewalk, no curb parking, no street furniture and
+ * no street signage. It gets its own signage family instead — see
+ * {@link classifySign}.
+ */
+function tierIsMotorway(tier: RoadTier | undefined): boolean {
+  return (tier ?? RoadTier.TwoLane) === RoadTier.Highway;
+}
+
+/**
+ * Boxes and other pavement clutter need a raised curb with a footway behind it:
+ * excludes gravel and alley, which have none, and the highway, which has a
+ * shoulder rather than a sidewalk.
+ */
 function tierHasCurb(tier: RoadTier | undefined): boolean {
+  const t = tier ?? RoadTier.TwoLane;
+  return t !== RoadTier.Gravel && t !== RoadTier.Alley && !tierIsMotorway(t);
+}
+
+/** Every tier that carries signage of some kind — the highway included. */
+function tierGetsSigns(tier: RoadTier | undefined): boolean {
   const t = tier ?? RoadTier.TwoLane;
   return t !== RoadTier.Gravel && t !== RoadTier.Alley;
 }
@@ -209,17 +251,13 @@ function tierHasParking(tier: RoadTier | undefined): boolean {
 
 /**
  * Tiers whose junctions get a signal head rather than a board. The multi-lane
- * roads carry enough traffic to be worth signalising; a two-lane street or an
- * alley takes a stop or give-way sign.
+ * streets carry enough traffic to be worth signalising; a two-lane street or an
+ * alley takes a stop or give-way sign. The highway takes neither — you do not
+ * stop traffic on a motorway, you give it an exit.
  */
 function tierIsSignalised(tier: RoadTier | undefined): boolean {
   const t = tier ?? RoadTier.TwoLane;
-  return (
-    t === RoadTier.Avenue ||
-    t === RoadTier.Highway ||
-    t === RoadTier.FourLane ||
-    t === RoadTier.BusLane
-  );
+  return t === RoadTier.Avenue || t === RoadTier.FourLane || t === RoadTier.BusLane;
 }
 
 // Canonical neighbor order (N, E, S, W); each carries the outward curbside
@@ -427,6 +465,19 @@ export function computeMeterPlacements(roadTiles: readonly FurnitureRoadTile[]):
 function classifySign(tileSet: Set<number>, tile: FurnitureRoadTile): SignType | null {
   const { x, z } = tile;
   const nc = neighborCount(tileSet, x, z);
+  const sides = presentSides(tileSet, x, z);
+  const straight = nc === 2 && isCollinear2(sides);
+
+  // A motorway reads nothing like a street, so it takes none of the street
+  // furniture below: no stopping, no giving way, no bends, no speed boards on
+  // the verge. Where something leaves it, that is an EXIT; along the run, the
+  // information goes overhead on a GANTRY spanning both carriageways, which is
+  // the only way to sign a road nobody is walking beside.
+  if (tierIsMotorway(tile.tier)) {
+    if (nc <= 2 && maxNeighborDegree(tileSet, x, z) >= 3) return 'exit';
+    if (straight && periodHits(x, z, GANTRY_PERIOD)) return 'gantry';
+    return null;
+  }
 
   if (nc === 1) return 'nothrough'; // dead-end
 
@@ -441,17 +492,11 @@ function classifySign(tileSet: Set<number>, tile: FurnitureRoadTile): SignType |
     if (maxDeg >= 3) return signalised ? 'signal' : 'giveway'; // T-junction approach
   }
 
-  const sides = presentSides(tileSet, x, z);
   if (nc === 2 && !isCollinear2(sides)) return 'bend'; // turn tile
 
-  const straight = nc === 2 && isCollinear2(sides);
   if (tile.tier === RoadTier.OneWay && straight && periodHits(x, z, ONEWAY_SIGN_PERIOD))
     return 'oneway';
-  if (
-    (tile.tier === RoadTier.Highway || tile.tier === RoadTier.Avenue) &&
-    straight &&
-    periodHits(x, z, SPEED_SIGN_PERIOD)
-  )
+  if (tile.tier === RoadTier.Avenue && straight && periodHits(x, z, SPEED_SIGN_PERIOD))
     return 'speed';
 
   return null;
@@ -465,7 +510,7 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
   const tileSet = buildTileSet(roadTiles);
   const out: SignPlacement[] = [];
   for (const tile of roadTiles) {
-    if (!tierHasCurb(tile.tier)) continue;
+    if (!tierGetsSigns(tile.tier)) continue;
 
     const type = classifySign(tileSet, tile);
     if (!type) continue;
@@ -498,6 +543,22 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
         worldOffsetX: cornerX + dirX * radius,
         worldOffsetZ: cornerZ + dirZ * radius,
         yaw: Math.atan2(-dirX, -dirZ),
+      });
+      continue;
+    }
+
+    if (type === 'gantry') {
+      // The one sign that spans the road rather than standing beside it: it
+      // straddles the centreline on legs outside both shoulders, so it takes no
+      // lateral offset and no side. Its authored span runs along local X and
+      // the shared yaw rule turns it to match the road's run.
+      out.push({
+        x: tile.x,
+        z: tile.z,
+        axis: lateralAxis(tileSet, tile.x, tile.z),
+        side: 1,
+        lateralOffset: 0,
+        type,
       });
       continue;
     }
@@ -842,6 +903,169 @@ function buildTrafficSignal(): THREE.BufferGeometry {
   return mergeColoredGeometries(parts);
 }
 
+/** A lattice truss between two points along local X: two chords and diagonals. */
+function trussSection(
+  fromX: number,
+  toX: number,
+  y: number,
+  depth: number,
+  bays: number,
+): THREE.BufferGeometry[] {
+  const out: THREE.BufferGeometry[] = [];
+  const span = toX - fromX;
+  const midX = (fromX + toX) / 2;
+  const chordSize = depth * 0.32;
+
+  for (const dy of [-depth / 2, depth / 2]) {
+    const chord = new THREE.BoxGeometry(span, chordSize, chordSize);
+    chord.translate(midX, y + dy, 0);
+    out.push(chord);
+  }
+
+  // Alternating diagonals between the chords — the zig-zag that makes a beam
+  // read as a sign truss rather than a plain girder.
+  const bayWidth = span / bays;
+  const diagonal = Math.hypot(bayWidth, depth);
+  const tilt = Math.atan2(depth, bayWidth);
+  for (let i = 0; i < bays; i++) {
+    const web = new THREE.BoxGeometry(diagonal, chordSize * 0.7, chordSize * 0.7);
+    web.rotateZ(i % 2 === 0 ? tilt : -tilt);
+    web.translate(fromX + bayWidth * (i + 0.5), y, 0);
+    out.push(web);
+  }
+  return out;
+}
+
+/**
+ * A motorway exit board, cantilevered: one post at the shoulder, a truss arm
+ * reaching out over the carriageway, and the green panel hung off the arm with
+ * its exit-number tab riding above the top edge and a yellow advisory plaque
+ * below. Authored reaching along +X, like the traffic signal, so `signalYaw`
+ * turns the arm inward from whichever curb it lands on.
+ */
+function buildExitSign(): THREE.BufferGeometry {
+  const parts: { geometry: THREE.BufferGeometry; color: number }[] = [];
+
+  const post = new THREE.CylinderGeometry(
+    EXIT_POST_RADIUS,
+    EXIT_POST_RADIUS,
+    EXIT_POST_HEIGHT,
+    12,
+  );
+  post.translate(0, EXIT_POST_HEIGHT / 2, 0);
+  parts.push({ geometry: post, color: GANTRY_STEEL });
+
+  const armY = EXIT_POST_HEIGHT - EXIT_TRUSS_DEPTH;
+  for (const g of trussSection(0, EXIT_ARM_LENGTH, armY, EXIT_TRUSS_DEPTH, 3))
+    parts.push({ geometry: g, color: GANTRY_STEEL });
+
+  // Panel hangs under the arm, centred on the arm's far half.
+  const panelX = EXIT_ARM_LENGTH * 0.62;
+  const panelY = armY - EXIT_TRUSS_DEPTH / 2 - EXIT_BOARD_HEIGHT / 2;
+  const board = new THREE.BoxGeometry(EXIT_BOARD_WIDTH, EXIT_BOARD_HEIGHT, 0.07);
+  board.translate(panelX, panelY, 0);
+  parts.push({ geometry: board, color: HIGHWAY_GREEN });
+
+  // Two white legend bars — a place name over a street name, as on a real board.
+  for (const [row, width] of [
+    [0.2, 0.66],
+    [-0.16, 0.5],
+  ] as const) {
+    const legend = new THREE.BoxGeometry(
+      EXIT_BOARD_WIDTH * width,
+      EXIT_BOARD_HEIGHT * 0.14,
+      0.02,
+    );
+    legend.translate(panelX - EXIT_BOARD_WIDTH * 0.08, panelY + EXIT_BOARD_HEIGHT * row, 0.05);
+    parts.push({ geometry: legend, color: SIGN_WHITE });
+  }
+
+  // The diagonal exit arrow in the panel's bottom corner.
+  const arrow = new THREE.BoxGeometry(EXIT_BOARD_WIDTH * 0.16, EXIT_BOARD_HEIGHT * 0.1, 0.02);
+  arrow.rotateZ(Math.PI / 4);
+  arrow.translate(panelX + EXIT_BOARD_WIDTH * 0.33, panelY - EXIT_BOARD_HEIGHT * 0.2, 0.05);
+  parts.push({ geometry: arrow, color: SIGN_WHITE });
+
+  // Exit-number tab, riding above the panel's top edge on its outer end.
+  const tabW = EXIT_BOARD_WIDTH * 0.3;
+  const tabH = EXIT_BOARD_HEIGHT * 0.3;
+  const tab = new THREE.BoxGeometry(tabW, tabH, 0.06);
+  tab.translate(panelX - EXIT_BOARD_WIDTH * 0.3, panelY + EXIT_BOARD_HEIGHT / 2 + tabH / 2, 0);
+  parts.push({ geometry: tab, color: HIGHWAY_GREEN });
+  const tabLegend = new THREE.BoxGeometry(tabW * 0.7, tabH * 0.24, 0.02);
+  tabLegend.translate(
+    panelX - EXIT_BOARD_WIDTH * 0.3,
+    panelY + EXIT_BOARD_HEIGHT / 2 + tabH / 2,
+    0.04,
+  );
+  parts.push({ geometry: tabLegend, color: SIGN_WHITE });
+
+  // Yellow advisory-speed plaque under the panel — the small square that tells
+  // you how fast the ramp actually takes.
+  const plaque = new THREE.BoxGeometry(ADVISORY_PLAQUE, ADVISORY_PLAQUE, 0.05);
+  plaque.translate(panelX, panelY - EXIT_BOARD_HEIGHT / 2 - ADVISORY_PLAQUE / 2 - 0.08, 0);
+  parts.push({ geometry: plaque, color: ADVISORY_YELLOW });
+
+  return mergeColoredGeometries(parts);
+}
+
+/**
+ * An overhead gantry: legs OUTSIDE both shoulders, a truss beam carrying right
+ * across the carriageway between them, and a panel hung beneath it over the
+ * traffic. Authored spanning local X and centred on the tile, so writeSign's
+ * existing yaw rule turns it to span whichever way the road runs — this is the
+ * one sign type that sits on the centreline rather than at a curb.
+ */
+function buildGantrySign(): THREE.BufferGeometry {
+  const parts: { geometry: THREE.BufferGeometry; color: number }[] = [];
+  const reach = carriagewayHalfWidthMeters(RoadTier.Highway) + GANTRY_LEG_CLEARANCE;
+
+  for (const side of [-1, 1]) {
+    const leg = new THREE.CylinderGeometry(GANTRY_LEG_RADIUS, GANTRY_LEG_RADIUS, GANTRY_HEIGHT, 10);
+    leg.translate(side * reach, GANTRY_HEIGHT / 2, 0);
+    parts.push({ geometry: leg, color: GANTRY_STEEL });
+  }
+
+  const beamY = GANTRY_HEIGHT - GANTRY_TRUSS_DEPTH / 2;
+  for (const g of trussSection(-reach, reach, beamY, GANTRY_TRUSS_DEPTH, 8))
+    parts.push({ geometry: g, color: GANTRY_STEEL });
+
+  // Two panels hung side by side under the truss — through traffic on the left,
+  // the exit on the right, which is what makes a gantry worth having over a
+  // roadside board: it can tell you which LANE, not just which turning.
+  const panelY = beamY - GANTRY_TRUSS_DEPTH / 2 - GANTRY_PANEL_HEIGHT / 2;
+  const panels: { centerX: number; width: number }[] = [
+    { centerX: -GANTRY_PANEL_WIDTH * 0.3, width: GANTRY_PANEL_WIDTH * 0.52 },
+    { centerX: GANTRY_PANEL_WIDTH * 0.34, width: GANTRY_PANEL_WIDTH * 0.36 },
+  ];
+
+  for (const { centerX, width } of panels) {
+    const panel = new THREE.BoxGeometry(width, GANTRY_PANEL_HEIGHT, 0.08);
+    panel.translate(centerX, panelY, 0);
+    parts.push({ geometry: panel, color: HIGHWAY_GREEN });
+
+    const legend = new THREE.BoxGeometry(width * 0.62, GANTRY_PANEL_HEIGHT * 0.16, 0.02);
+    legend.translate(centerX, panelY + GANTRY_PANEL_HEIGHT * 0.16, 0.06);
+    parts.push({ geometry: legend, color: SIGN_WHITE });
+
+    // Lane-assignment down-arrows along the panel's bottom edge: a shaft with a
+    // rotated square head, the detail that reads as "this lane, this way".
+    const arrowY = panelY - GANTRY_PANEL_HEIGHT * 0.2;
+    for (const t of [-0.25, 0.25]) {
+      const shaft = new THREE.BoxGeometry(width * 0.035, GANTRY_PANEL_HEIGHT * 0.22, 0.02);
+      shaft.translate(centerX + width * t, arrowY, 0.06);
+      parts.push({ geometry: shaft, color: SIGN_WHITE });
+
+      const head = new THREE.BoxGeometry(width * 0.09, width * 0.09, 0.02);
+      head.rotateZ(Math.PI / 4);
+      head.translate(centerX + width * t, arrowY - GANTRY_PANEL_HEIGHT * 0.12, 0.06);
+      parts.push({ geometry: head, color: SIGN_WHITE });
+    }
+  }
+
+  return mergeColoredGeometries(parts);
+}
+
 function buildSignGeometries(): Record<SignType, THREE.BufferGeometry> {
   return {
     stop: buildStopSign(),
@@ -851,12 +1075,24 @@ function buildSignGeometries(): Record<SignType, THREE.BufferGeometry> {
     speed: buildSpeedSign(),
     nothrough: buildNoThroughSign(),
     signal: buildTrafficSignal(),
+    exit: buildExitSign(),
+    gantry: buildGantrySign(),
   };
 }
 
 /**
- * Yaw that swings a signal's authored +X mast arm inward over the road, given
- * the curb it stands on. A rotation of θ about Y sends local +X to world
+ * Sign types that reach out over the road on an arm rather than standing flat
+ * at the curb. A flat board reads from either side, so its yaw can ignore which
+ * curb it is on; an arm cannot — point it the wrong way and it hangs over the
+ * grass.
+ */
+function isCantilevered(type: SignType): boolean {
+  return type === 'signal' || type === 'exit';
+}
+
+/**
+ * Yaw that swings an authored +X mast arm inward over the road, given the curb
+ * it stands on. A rotation of θ about Y sends local +X to world
  * (cos θ, 0, −sin θ); the arm must point opposite the lateral offset, so each
  * axis/side pair has exactly one answer.
  */
@@ -1050,7 +1286,10 @@ export class RoadFurnitureRenderer {
     // A signal is not a flat board: its arm reaches out over the carriageway, so
     // it also has to know WHICH curb it is standing on. Its yaw turns the
     // authored +X arm toward the tile centre — away from the side it sits on.
-    _quat.setFromAxisAngle(_yAxis, p.type === 'signal' ? signalYaw(p.axis, p.side) : p.axis === 'x' ? 0 : Math.PI / 2);
+    _quat.setFromAxisAngle(
+      _yAxis,
+      isCantilevered(p.type) ? signalYaw(p.axis, p.side) : p.axis === 'x' ? 0 : Math.PI / 2,
+    );
     _position.set(wx, this.heightAt(wx, wz), wz);
     _matrix.compose(_position, _quat, _scale);
     mesh.setMatrixAt(slot, _matrix);

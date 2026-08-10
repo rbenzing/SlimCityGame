@@ -74,6 +74,19 @@ const ZONE_BORDER_DARKEN = 0.55; // base-layer shade under the zone fill
 
 const STRIPE_PERIOD = 2; // every other path tile carries a dash (deterministic)
 const STRIPE_LENGTH_FRACTION = 0.6;
+
+// --- Flow arrows -------------------------------------------------------------
+// Shown only while dragging a road that actually has a direction (one-way,
+// highway), so the player can see which way traffic will run BEFORE committing
+// — a one-way laid backwards is otherwise only obvious once cars are on it.
+// They live in the preview layer, so they vanish with the rest of the ghost the
+// moment placement ends.
+const ARROW_Y_OFFSET = 0.26; // just above the stripe dashes
+const ARROW_PERIOD = 2; // an arrow every other path tile
+const ARROW_LENGTH_FRACTION = 0.5;
+const ARROW_WIDTH_FRACTION = 0.34;
+const ARROW_OPACITY = 0.55;
+const ARROW_COLOR = 0xffffff;
 const STRIPE_WIDTH_FRACTION = 0.08;
 
 const BASE_OPACITY = 0.55; // "valid = blue 55%"
@@ -395,6 +408,26 @@ export interface SetPreviewOptions {
   volume?: GhostVolume;
   /** Zone being painted — colors the base + fill layers to match the placed tiles (zone kind only). */
   zone?: ZoneType;
+  /**
+   * Draw translucent arrows along the path, pointing the way the drag ran.
+   * For road tiers where direction is real — one-way streets and highways.
+   */
+  flowArrows?: boolean;
+}
+
+/**
+ * Yaw that aims a +X-pointing arrow down the path at `index`. A rotation of θ
+ * about Y sends local +X to (cos θ, 0, −sin θ), so the heading to the next tile
+ * inverts to θ = atan2(−dz, dx). The last tile has no next tile and reuses the
+ * heading into it, which keeps the final arrow from snapping to a default.
+ */
+export function arrowYaw(tiles: readonly TilePoint[], index: number): number {
+  const from = index + 1 < tiles.length ? tiles[index]! : tiles[Math.max(0, index - 1)]!;
+  const to = index + 1 < tiles.length ? tiles[index + 1]! : tiles[index]!;
+  const dx = to.x - from.x;
+  const dz = to.z - from.z;
+  if (dx === 0 && dz === 0) return 0;
+  return Math.atan2(-dz, dx);
 }
 
 export interface VolumeBoxTransform {
@@ -429,6 +462,36 @@ const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
 const _scale = new THREE.Vector3();
 const IDENTITY_QUAT = new THREE.Quaternion();
+const _quat = new THREE.Quaternion();
+const _yAxis = new THREE.Vector3(0, 1, 0);
+
+/**
+ * A flat chevron lying in the XZ plane, pointing along +X, sized in tile
+ * fractions so the instance scale is just TILE_METERS. Two triangles: the head
+ * and a short tail, which reads as an arrow at a glance where a bare triangle
+ * reads as a wedge.
+ */
+function buildArrowGeometry(): THREE.BufferGeometry {
+  const half = ARROW_LENGTH_FRACTION / 2;
+  const wing = ARROW_WIDTH_FRACTION / 2;
+  const tailWing = wing * 0.4;
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(
+      [
+        // Head: apex forward, two barbs back.
+        half, 0, 0, -half * 0.1, 0, -wing, -half * 0.1, 0, wing,
+        // Tail: a narrow strip running back from the barbs.
+        -half * 0.1, 0, -tailWing, -half, 0, -tailWing, -half, 0, tailWing, -half * 0.1, 0,
+        -tailWing, -half, 0, tailWing, -half * 0.1, 0, tailWing,
+      ],
+      3,
+    ),
+  );
+  geometry.computeVertexNormals();
+  return geometry;
+}
 
 /** A BufferGeometry with a zero-length position attribute already attached,
  * so callers can inspect `.getAttribute('position').count` even before the
@@ -465,6 +528,12 @@ export class GhostRenderer {
    * instanced (flat, single-height-sample) rather than merged/conforming. */
   private stripeMesh: THREE.InstancedMesh;
   private stripeCapacity = INITIAL_CAPACITY;
+
+  /** Direction arrows, instanced like the stripe dashes and shown the same way. */
+  private readonly arrowGeometry: THREE.BufferGeometry;
+  private readonly arrowMaterial: THREE.MeshBasicMaterial;
+  private arrowMesh: THREE.InstancedMesh;
+  private arrowCapacity = INITIAL_CAPACITY;
 
   private readonly volumeMesh: THREE.Mesh;
 
@@ -521,13 +590,23 @@ export class GhostRenderer {
     this.baseMesh = new THREE.Mesh(emptyGeometry(), this.baseMaterial);
     this.fillMesh = new THREE.Mesh(emptyGeometry(), this.fillMaterial);
     this.stripeMesh = this.makeStripeMesh(INITIAL_CAPACITY);
+    this.arrowGeometry = buildArrowGeometry();
+    this.arrowMaterial = new THREE.MeshBasicMaterial({
+      color: ARROW_COLOR,
+      transparent: true,
+      opacity: ARROW_OPACITY,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    this.arrowMesh = this.makeArrowMesh(INITIAL_CAPACITY);
     this.borderMesh = new THREE.Mesh(emptyGeometry(), this.borderMaterial);
     this.innerMesh = new THREE.Mesh(emptyGeometry(), this.innerMaterial);
     this.volumeMesh = new THREE.Mesh(this.volumeGeometry, this.volumeMaterial);
     this.volumeMesh.visible = false;
 
     // Fixed scene order (base, fill, stripe, then border/inner/volume) —
-    // tests rely on it; keep it if you add another layer.
+    // tests rely on it; keep it if you add another layer. The arrow layer is
+    // appended last for exactly that reason.
     scene.add(
       this.baseMesh,
       this.fillMesh,
@@ -535,6 +614,7 @@ export class GhostRenderer {
       this.borderMesh,
       this.innerMesh,
       this.volumeMesh,
+      this.arrowMesh,
     );
   }
 
@@ -562,6 +642,10 @@ export class GhostRenderer {
       valid && kind === 'road'
         ? this.writeStripe(tiles, this.stripeCapacity)
         : this.hide(this.stripeMesh, this.stripeCapacity);
+    this.arrowCapacity =
+      valid && kind === 'road' && opts?.flowArrows
+        ? this.writeArrows(tiles, this.arrowCapacity)
+        : this.hide(this.arrowMesh, this.arrowCapacity);
 
     const edges = computeFootprintEdges(tiles);
     this.writeBorder(edges.outer, valid);
@@ -574,6 +658,7 @@ export class GhostRenderer {
     this.setGeometry(this.baseMesh, new Float32Array(0));
     this.setGeometry(this.fillMesh, new Float32Array(0));
     this.stripeMesh.count = 0;
+    this.arrowMesh.count = 0;
     this.setGeometry(this.borderMesh, new Float32Array(0));
     this.setGeometry(this.innerMesh, new Float32Array(0));
     this.volumeMesh.visible = false;
@@ -595,6 +680,7 @@ export class GhostRenderer {
     stripe: THREE.InstancedMesh;
     border: THREE.Mesh;
     inner: THREE.Mesh;
+    arrows: THREE.InstancedMesh;
   } {
     return {
       base: this.baseMesh,
@@ -602,6 +688,7 @@ export class GhostRenderer {
       stripe: this.stripeMesh,
       border: this.borderMesh,
       inner: this.innerMesh,
+      arrows: this.arrowMesh,
     };
   }
 
@@ -687,6 +774,44 @@ export class GhostRenderer {
     const mesh = new THREE.InstancedMesh(this.quad, this.stripeMaterial, capacity);
     mesh.count = 0;
     return mesh;
+  }
+
+  private makeArrowMesh(capacity: number): THREE.InstancedMesh {
+    const mesh = new THREE.InstancedMesh(this.arrowGeometry, this.arrowMaterial, capacity);
+    mesh.count = 0;
+    return mesh;
+  }
+
+  private writeArrows(tiles: TilePoint[], capacity: number): number {
+    const indices: number[] = [];
+    for (let i = 0; i < tiles.length; i += ARROW_PERIOD) indices.push(i);
+
+    let mesh = this.arrowMesh;
+    let newCapacity = capacity;
+    if (indices.length > capacity) {
+      newCapacity = Math.max(1, capacity);
+      while (newCapacity < indices.length) newCapacity *= 2;
+      this.scene.remove(mesh);
+      mesh = this.makeArrowMesh(newCapacity);
+      this.scene.add(mesh);
+      this.arrowMesh = mesh;
+    }
+
+    for (let slot = 0; slot < indices.length; slot++) {
+      const pathIndex = indices[slot]!;
+      const tile = tiles[pathIndex]!;
+      const cx = (tile.x + 0.5) * TILE_METERS;
+      const cz = (tile.z + 0.5) * TILE_METERS;
+      _position.set(cx, this.heightAt(cx, cz) + ARROW_Y_OFFSET, cz);
+      _quat.setFromAxisAngle(_yAxis, arrowYaw(tiles, pathIndex));
+      _scale.set(TILE_METERS, 1, TILE_METERS);
+      _matrix.compose(_position, _quat, _scale);
+      mesh.setMatrixAt(slot, _matrix);
+    }
+    mesh.count = indices.length;
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.boundingSphere = null; // three.js only recomputes it while null
+    return newCapacity;
   }
 
   private hide(mesh: THREE.InstancedMesh, capacity: number): number {
