@@ -3,6 +3,7 @@ DO
  - follow spec and architecture guidelines
  - write meaninging documentation
  - build and lint check at the end of every development task
+ - use Ephemeral and Idempotent strategies
 
 DON'T
  - write comments referencing documentation
