@@ -27,7 +27,9 @@ visual/systems spec, see [SPEC.md](SPEC.md).
 - Traffic lights / stop signs (cosmetic first).
 - Weather, seasons, flooding; climate variation.
 - Supply chains, imports/exports; deeper industry.
-- Bridges, tunnels, elevated roads, roundabouts (bridges likely first).
+- Tunnels and roundabouts. (Bridges + elevated roads have since shipped — a
+  deck-height layer over the existing 1-tile road model, per SPEC §25; road-over-road
+  overpasses stay deferred, since one tile carries one road tier.)
 - Terrain painting; a procedural map generator complementing curated maps.
   (Dynamic water _flow_ simulation stays deferred — a perf tar pit; the derived
   sea-level model already covers seas/lakes/canals.)

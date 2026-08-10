@@ -77,6 +77,22 @@ export const SEA_LEVEL = 0;
  */
 export const ROAD_MAX_SLOPE = 10; // max height delta (m) across a tile's neighbor, for road placement only
 
+// --- bridges & elevated roads -----------------------------------------------
+/** Deck underside clearance (m) above the water surface on an auto-bridge. */
+export const BRIDGE_CLEARANCE_M = 5;
+/**
+ * Steepest an approach ramp may climb, in metres of deck per tile. Holds the
+ * ramp to a grade a road can plausibly carry and keeps a tall deck from
+ * erupting out of flat ground in one tile.
+ */
+export const BRIDGE_MAX_GRADE = 2;
+/** Ceiling on deliberate elevation, and on what an auto-bridge may solve to. */
+export const BRIDGE_MAX_ELEVATION = 40;
+/** Per metre of deck height, per tile, on top of the road tier's own cost. */
+export const BRIDGE_COST_PER_METER_TILE = 6;
+/** Piers drop to the ground every Nth deck tile. */
+export const PIER_SPACING_TILES = 3;
+
 // --- milestones -------------------------------------------------------------
 export interface Milestone {
   name: string;

@@ -44,6 +44,11 @@ export interface ZonableGridSource {
   zone: Uint8Array;
   buildingId: Uint32Array;
   height: Float32Array;
+  /**
+   * Deck heights, when the source has them. A source without the layer reads as
+   * entirely at grade, which is what every pre-bridge caller means.
+   */
+  roadElevation?: Uint8Array;
 }
 
 // Orthogonal directions, index-aligned: 0=N 1=E 2=S 3=W. Even indices (N/S)
@@ -116,6 +121,9 @@ export function computeZonableMask(g: ZonableGridSource, depth = ZONE_DEPTH): Ui
     for (let x = 0; x < size; x++) {
       // Only drivable streets provide zoning frontage — rail is not a street.
       if (!isStreetTier(g.roadTier[z * size + x]!)) continue;
+      // Nor does a bridge deck: there is no way onto a lot from a road passing
+      // overhead, so an elevated tile fronts nothing.
+      if ((g.roadElevation?.[z * size + x] ?? 0) > 0) continue;
 
       // Street-connected sides of this road tile.
       const connected: number[] = [];

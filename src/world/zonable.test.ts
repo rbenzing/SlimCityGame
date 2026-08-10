@@ -78,6 +78,20 @@ describe('computeZonableTiles — straight road', () => {
     expect(set.has('6,1')).toBe(false);
     expect(set.has('6,8')).toBe(false);
   });
+
+  it('grants no frontage from a stretch that is up on a bridge deck', () => {
+    const g = straight();
+    g.roadElevation = new Uint8Array(size * size);
+    // Lift the middle of the run: there is no way onto a lot from up there.
+    for (const z of [4, 5]) g.roadElevation[idx(size, 5, z)] = 8;
+
+    const set = coordSet(computeZonableTiles(g));
+    expect(set.has('6,4')).toBe(false);
+    expect(set.has('4,5')).toBe(false);
+    // The at-grade stretch either side still fronts as it always did.
+    expect(set.has('6,3')).toBe(true);
+    expect(set.has('4,6')).toBe(true);
+  });
 });
 
 describe('computeZonableTiles — dangling end', () => {

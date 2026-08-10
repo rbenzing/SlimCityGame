@@ -13,6 +13,7 @@ import {
   TERRAFORM_STRENGTH_MAX,
   TERRAFORM_STRENGTH_MIN,
   LANDFILL_PAINT_COST_PER_TILE,
+  BRIDGE_MAX_ELEVATION,
   TILE_METERS,
 } from '../shared/constants';
 import type {
@@ -344,6 +345,11 @@ export class ToolManager {
   private terraformStrokeCost = 0;
   /** District id the paint tool stamps (set from the UI store's selectedDistrict). */
   private districtId = 1;
+  /**
+   * Deliberate deck height for the road tool, in metres. Zero means follow the
+   * ground and only bridge where the drag crosses water.
+   */
+  private roadElevation = 0;
   /** Pending bus-line stops accumulated by successive clicks. */
   private transitStops: TilePoint[] = [];
   /** Index into TRANSIT_LINE_PALETTE for the next committed line's color. */
@@ -382,6 +388,12 @@ export class ToolManager {
   /** The district id the paint tool stamps (from the UI store). */
   setDistrictId(id: number): void {
     this.districtId = id;
+    if (this.hoverTile) this.emitPreview(this.hoverTile);
+  }
+
+  /** Deck height the road tool builds at, in metres (from the tool-options panel). */
+  setRoadElevation(metres: number): void {
+    this.roadElevation = Math.max(0, Math.min(BRIDGE_MAX_ELEVATION, Math.round(metres)));
     if (this.hoverTile) this.emitPreview(this.hoverTile);
   }
 
@@ -734,7 +746,14 @@ export class ToolManager {
     } else if (tool in ROAD_TOOL_TO_TIER) {
       const tier = ROAD_TOOL_TO_TIER[tool] as RoadTier;
       const spec = this.env.roadSpec(tier);
-      this.env.send(spec.name, [{ kind: 'buildRoad', tier, tiles: this.roadPath(start, end) }]);
+      this.env.send(spec.name, [
+        {
+          kind: 'buildRoad',
+          tier,
+          tiles: this.roadPath(start, end),
+          elevation: this.roadElevation,
+        },
+      ]);
     } else if (tool in ZONE_TOOL_TO_TYPE) {
       const zone = ZONE_TOOL_TO_TYPE[tool] as ZoneType;
       const label = ZONE_TOOL_TO_LABEL[tool] ?? 'Zone';

@@ -19,6 +19,7 @@ function makeGrid(size: number): GridState {
     fields: Array.from({ length: FIELD_COUNT }, () => new Uint8Array(n)),
     district: new Uint8Array(n),
     landfill: new Uint8Array(n),
+    roadElevation: new Uint8Array(n),
   };
 }
 
@@ -111,9 +112,9 @@ describe('applyRoad', () => {
 
     expect(deltas.length).toBe(3);
     const byX = new Map(deltas.map((d) => [d.x, d]));
-    expect(byX.get(2)).toEqual({ x: 2, z: 5, tier: RoadTier.TwoLane, mask: 2 }); // E only
-    expect(byX.get(3)).toEqual({ x: 3, z: 5, tier: RoadTier.TwoLane, mask: 8 | 2 }); // W|E
-    expect(byX.get(4)).toEqual({ x: 4, z: 5, tier: RoadTier.TwoLane, mask: 8 }); // W only
+    expect(byX.get(2)).toEqual({ x: 2, z: 5, tier: RoadTier.TwoLane, mask: 2, elevation: 0 }); // E only
+    expect(byX.get(3)).toEqual({ x: 3, z: 5, tier: RoadTier.TwoLane, mask: 8 | 2, elevation: 0 }); // W|E
+    expect(byX.get(4)).toEqual({ x: 4, z: 5, tier: RoadTier.TwoLane, mask: 8, elevation: 0 }); // W only
 
     expect(g.roadTier[idx(size, 3, 5)]).toBe(RoadTier.TwoLane);
     expect(g.roadMask[idx(size, 3, 5)]).toBe(8 | 2);
@@ -168,14 +169,14 @@ describe('applyRoad', () => {
     const size = 10;
     const g = makeGrid(size);
     const first = applyRoad(g, [{ x: 5, z: 5 }], RoadTier.TwoLane);
-    expect(first).toEqual([{ x: 5, z: 5, tier: RoadTier.TwoLane, mask: 0 }]);
+    expect(first).toEqual([{ x: 5, z: 5, tier: RoadTier.TwoLane, mask: 0, elevation: 0 }]);
 
     const second = applyRoad(g, [{ x: 6, z: 5 }], RoadTier.TwoLane);
     const byXZ = new Map(second.map((d) => [`${d.x},${d.z}`, d]));
 
     expect(second.length).toBe(2);
-    expect(byXZ.get('6,5')).toEqual({ x: 6, z: 5, tier: RoadTier.TwoLane, mask: 8 }); // W
-    expect(byXZ.get('5,5')).toEqual({ x: 5, z: 5, tier: RoadTier.TwoLane, mask: 2 }); // E, updated though untouched
+    expect(byXZ.get('6,5')).toEqual({ x: 6, z: 5, tier: RoadTier.TwoLane, mask: 8, elevation: 0 }); // W
+    expect(byXZ.get('5,5')).toEqual({ x: 5, z: 5, tier: RoadTier.TwoLane, mask: 2, elevation: 0 }); // E, updated though untouched
   });
 
   it('ignores out-of-bounds tiles', () => {
@@ -209,9 +210,9 @@ describe('removeRoad', () => {
     const deltas = removeRoad(g, [{ x: 3, z: 5 }]);
     const byXZ = new Map(deltas.map((d) => [`${d.x},${d.z}`, d]));
 
-    expect(byXZ.get('3,5')).toEqual({ x: 3, z: 5, tier: RoadTier.None, mask: 0 });
-    expect(byXZ.get('2,5')).toEqual({ x: 2, z: 5, tier: RoadTier.TwoLane, mask: 0 }); // lost its E neighbor
-    expect(byXZ.get('4,5')).toEqual({ x: 4, z: 5, tier: RoadTier.TwoLane, mask: 0 }); // lost its W neighbor
+    expect(byXZ.get('3,5')).toEqual({ x: 3, z: 5, tier: RoadTier.None, mask: 0, elevation: 0 });
+    expect(byXZ.get('2,5')).toEqual({ x: 2, z: 5, tier: RoadTier.TwoLane, mask: 0, elevation: 0 }); // lost its E neighbor
+    expect(byXZ.get('4,5')).toEqual({ x: 4, z: 5, tier: RoadTier.TwoLane, mask: 0, elevation: 0 }); // lost its W neighbor
 
     expect(g.roadTier[idx(size, 3, 5)]).toBe(RoadTier.None);
     expect(g.roadMask[idx(size, 3, 5)]).toBe(0);

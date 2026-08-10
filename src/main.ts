@@ -50,6 +50,7 @@ import { HouseRoofRenderer } from './render/houses';
 import { ParkedCarRenderer } from './render/parked';
 import { LandmarkRenderer } from './render/landmarks';
 import { RoadMeshRenderer } from './render/roadsmesh';
+import { BridgeRenderer } from './render/bridges';
 import { VehicleRenderer } from './render/vehicles';
 import {
   TransitRenderer,
@@ -144,6 +145,37 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const streetAt = (x: number, z: number): boolean =>
     inBounds(x, z) && isStreetTier((clientGrid.roadTier[z * clientGrid.size + x] ?? 0) as RoadTier);
 
+  /**
+   * Height of the road SURFACE, as opposed to the ground: identical to heightAt
+   * everywhere no deck is involved, and a bilinear blend of the surrounding
+   * tiles' deck heights where one is. The blend is what makes an approach ramp
+   * a slope rather than a stack of steps, and it is scoped to the neighbourhood
+   * of a bridge so ordinary roads keep sampling the terrain exactly as before.
+   * Everything that rides the road takes this instead of heightAt.
+   */
+  const roadSurfaceAt = (wx: number, wz: number): number => {
+    const tx = worldToTile(wx);
+    const tz = worldToTile(wz);
+    if (!clientGrid.nearElevated(tx, tz)) return heightAt(wx, wz);
+
+    // Tile centres sit at (t + 0.5) * TILE_METERS, so shifting by half a tile
+    // puts the samples on the centre lattice the interpolation runs over.
+    const fx = wx / TILE_METERS - 0.5;
+    const fz = wz / TILE_METERS - 0.5;
+    const x0 = Math.floor(fx);
+    const z0 = Math.floor(fz);
+    const sx = fx - x0;
+    const sz = fz - z0;
+
+    const h00 = clientGrid.deckHeightAt(x0, z0);
+    const h10 = clientGrid.deckHeightAt(x0 + 1, z0);
+    const h01 = clientGrid.deckHeightAt(x0, z0 + 1);
+    const h11 = clientGrid.deckHeightAt(x0 + 1, z0 + 1);
+    return (
+      h00 * (1 - sx) * (1 - sz) + h10 * sx * (1 - sz) + h01 * (1 - sx) * sz + h11 * sx * sz
+    );
+  };
+
   // Animated water surface and cumulus layer; both tick in the frame loop below.
   const water = new WaterRenderer(world.scene, heightAt);
   const clouds = new CloudLayer(world.scene);
@@ -164,8 +196,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     utilityKits.kitIds(),
     roadAt,
   );
-  const roadsMesh = new RoadMeshRenderer(world.scene, heightAt);
-  const vehicles = new VehicleRenderer(world.scene, heightAt);
+  const roadsMesh = new RoadMeshRenderer(world.scene, roadSurfaceAt);
+  const bridges = new BridgeRenderer(world.scene);
+  const vehicles = new VehicleRenderer(world.scene, roadSurfaceAt);
   // Bus transit (stop posts + route ribbon + cosmetic buses), service vehicles
   // (fire/police/ambulance from the shared buffer + incident pins), and the
   // district tint/boundary overlay. All fed from the snapshot channels.
@@ -178,8 +211,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // World feedback & selection FX.
   const ghosts = new GhostRenderer(world.scene, heightAt);
   const zoneGrid = new ZoneGridRenderer(world.scene, heightAt);
-  const lamps = new LampRenderer(world.scene, heightAt);
-  const roadFurniture = new RoadFurnitureRenderer(world.scene, heightAt);
+  const lamps = new LampRenderer(world.scene, roadSurfaceAt);
+  const roadFurniture = new RoadFurnitureRenderer(world.scene, roadSurfaceAt);
   const selectionOutline = new SelectionOutline(world.scene);
   const mapPin = new MapPin(world.scene);
   const cursorChip = new CursorChipStack(viewport);
@@ -211,7 +244,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // deterministic walker scatter near Active buildings, strolling a small loop
   // on the frontage sidewalk (roadAt) near home. Fed the flattened transit stop
   // list + the same BuildingDelta stream the other renderers get.
-  const pedestrianRenderer = new PedestrianRenderer(world.scene, heightAt, roadAt);
+  const pedestrianRenderer = new PedestrianRenderer(world.scene, roadSurfaceAt, roadAt);
 
   // Landmark detail kits: terminal roof monitors,
   // control tower + pulsing beacon, apron plate, parked planes — fed the same
@@ -696,7 +729,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       const roadTiles = clientGrid.roadTiles();
       lamps.rebuild(roadTiles);
       roadFurniture.rebuild(roadTiles);
-      terrain.applyRoadTiles(roadTiles); // mown ground-cover band
+      bridges.rebuild(clientGrid.deckTiles());
+      // Ground cover follows the road only where the road touches the ground —
+      // a mown band under a bridge would be a stripe of lawn across a river.
+      terrain.applyRoadTiles(
+        roadTiles.filter((t) => clientGrid.roadElevation[t.z * clientGrid.size + t.x] === 0),
+      );
     }
     if (snap.buildings) {
       instancer.apply(snap.buildings);
@@ -903,6 +941,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     }
     if (state.toolFlags !== prev.toolFlags) {
       toolManager.setFlags(state.toolFlags);
+    }
+    if (state.roadElevation !== prev.roadElevation) {
+      toolManager.setRoadElevation(state.roadElevation); // viaduct height stepper
     }
     if (state.brushSettings !== prev.brushSettings) {
       toolManager.setBrush(state.brushSettings); // Brush radius / Strength rows

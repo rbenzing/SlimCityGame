@@ -65,8 +65,8 @@ describe('ClientGridMirror', () => {
 
   it('applies road deltas, including removals (tier None)', () => {
     mirror.applyRoadDeltas([
-      { x: 3, z: 4, tier: RoadTier.TwoLane, mask: 0 },
-      { x: 4, z: 4, tier: RoadTier.Avenue, mask: 0 },
+      { x: 3, z: 4, tier: RoadTier.TwoLane, mask: 0, elevation: 0 },
+      { x: 4, z: 4, tier: RoadTier.Avenue, mask: 0, elevation: 0 },
     ]);
     expect(mirror.roadTier[4 * SIZE + 3]).toBe(RoadTier.TwoLane);
     expect(mirror.roadTier[4 * SIZE + 4]).toBe(RoadTier.Avenue);
@@ -75,9 +75,38 @@ describe('ClientGridMirror', () => {
       { x: 4, z: 4, tier: RoadTier.Avenue },
     ]);
 
-    mirror.applyRoadDeltas([{ x: 3, z: 4, tier: RoadTier.None, mask: 0 }]);
+    mirror.applyRoadDeltas([{ x: 3, z: 4, tier: RoadTier.None, mask: 0, elevation: 0 }]);
     expect(mirror.roadTier[4 * SIZE + 3]).toBe(RoadTier.None);
     expect(mirror.roadTiles()).toEqual([{ x: 4, z: 4, tier: RoadTier.Avenue }]);
+  });
+
+  it('tracks deck heights and reports the elevated tiles as bridge structure', () => {
+    mirror.applyRoadDeltas([
+      { x: 6, z: 6, tier: RoadTier.TwoLane, mask: 1 | 4, elevation: 0 },
+      { x: 6, z: 7, tier: RoadTier.TwoLane, mask: 1 | 4, elevation: 9 },
+    ]);
+
+    // The road surface rides the deck; the ground under it is untouched.
+    expect(mirror.deckHeightAt(6, 7)).toBe(mirror.height[7 * SIZE + 6]! + 9);
+    expect(mirror.deckHeightAt(6, 6)).toBe(mirror.height[6 * SIZE + 6]!);
+
+    const decks = mirror.deckTiles();
+    expect(decks).toHaveLength(1);
+    expect(decks[0]).toMatchObject({ x: 6, z: 7, tier: RoadTier.TwoLane, mask: 1 | 4 });
+
+    // The at-grade tile is a neighbour of a deck, so the road mesh has to blend
+    // across it rather than sampling raw terrain.
+    expect(mirror.nearElevated(6, 6)).toBe(true);
+    expect(mirror.nearElevated(0, 0)).toBe(false);
+  });
+
+  it('drops the deck when the road is bulldozed', () => {
+    mirror.applyRoadDeltas([{ x: 8, z: 8, tier: RoadTier.TwoLane, mask: 0, elevation: 12 }]);
+    expect(mirror.deckTiles()).toHaveLength(1);
+
+    mirror.applyRoadDeltas([{ x: 8, z: 8, tier: RoadTier.None, mask: 0, elevation: 0 }]);
+    expect(mirror.deckTiles()).toEqual([]);
+    expect(mirror.nearElevated(8, 8)).toBe(false);
   });
 
   it('applies zone patches into the zone layer', () => {
@@ -172,7 +201,7 @@ describe('ClientGridMirror', () => {
       expect(mirror.isFreeForPlop([{ x: -1, z: 0 }])).toBe(false);
       expect(mirror.isFreeForPlop([{ x: SIZE, z: 0 }])).toBe(false);
       expect(mirror.isFreeForPlop([{ x: 5, z: 5 }])).toBe(false); // water
-      mirror.applyRoadDeltas([{ x: 6, z: 6, tier: RoadTier.TwoLane, mask: 0 }]);
+      mirror.applyRoadDeltas([{ x: 6, z: 6, tier: RoadTier.TwoLane, mask: 0, elevation: 0 }]);
       expect(mirror.isFreeForPlop([{ x: 6, z: 6 }])).toBe(false); // road
       mirror.applyBuildingDelta(
         { added: [instance(1, 20, 20, 0)], removed: [], updated: [] },

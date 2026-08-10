@@ -10,11 +10,15 @@
  */
 import type { JSX } from 'react';
 import {
+  BRIDGE_MAX_ELEVATION,
   TERRAFORM_BRUSH_MAX,
   TERRAFORM_BRUSH_MIN,
   TERRAFORM_STRENGTH_MAX,
   TERRAFORM_STRENGTH_MIN,
 } from '../shared/constants';
+
+/** One press of the elevation stepper, in metres. */
+const ELEVATION_STEP_M = 2;
 import type { ToolMode } from './store';
 import { useCityStore } from './store';
 import { PANEL_ROUNDED } from './theme';
@@ -87,6 +91,8 @@ export function ToolOptionsPanel(): JSX.Element | null {
   const toolFlags = useCityStore((s) => s.toolFlags);
   const setToolMode = useCityStore((s) => s.setToolMode);
   const setToolFlags = useCityStore((s) => s.setToolFlags);
+  const roadElevation = useCityStore((s) => s.roadElevation);
+  const setRoadElevation = useCityStore((s) => s.setRoadElevation);
 
   if (isTerraformTool(tool)) return <TerraformOptions />;
   if (!isRoadTool(tool)) return null;
@@ -116,6 +122,35 @@ export function ToolOptionsPanel(): JSX.Element | null {
           {modeButton('straight', 'Straight')}
           {modeButton('lpath', 'L-path')}
         </div>
+      </div>
+      <div className="flex flex-col gap-1">
+        <span className="text-[10px] uppercase tracking-wide text-white/60">Elevation</span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            aria-label="Lower the road"
+            disabled={roadElevation === 0}
+            onClick={() => setRoadElevation(roadElevation - ELEVATION_STEP_M)}
+            className="rounded-md bg-white/10 px-2 py-1 text-xs font-medium text-white/80 transition-colors hover:bg-white/20 disabled:opacity-40 disabled:hover:bg-white/10"
+          >
+            −
+          </button>
+          <span className="min-w-12 text-center text-xs tabular-nums">
+            {roadElevation === 0 ? 'Ground' : `${roadElevation} m`}
+          </span>
+          <button
+            type="button"
+            aria-label="Raise the road"
+            disabled={roadElevation >= BRIDGE_MAX_ELEVATION}
+            onClick={() => setRoadElevation(roadElevation + ELEVATION_STEP_M)}
+            className="rounded-md bg-white/10 px-2 py-1 text-xs font-medium text-white/80 transition-colors hover:bg-white/20 disabled:opacity-40 disabled:hover:bg-white/10"
+          >
+            +
+          </button>
+        </div>
+        <span className="text-[10px] leading-tight text-white/45">
+          At ground level a drag still bridges water on its own.
+        </span>
       </div>
       <div className="flex flex-col gap-1">
         <span className="text-[10px] uppercase tracking-wide text-white/60">Snapping</span>

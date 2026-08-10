@@ -1290,3 +1290,71 @@ second, with the right count; click it and the camera lands on an affected
 building; fix it and the issue disappears; a healthy city shows an empty
 advisor.
 
+## 25. Bridges & elevated roads (user request 2026-08-10)
+
+Water is currently an absolute wall. `buildableWithSlope` rejects any tile with
+`g.water[i]` set, so a river cuts the map into pieces no road will ever join,
+and the procedural maps all have rivers. Every other system is ready for the
+crossing — the road graph, road-carried power and water, traffic, the zoning
+frontage rule — and none of them can be reached across the bank. Bridges are
+the missing tile type, and elevated road is the same mechanism pointed at dry
+land.
+
+- **Elevation is one additive layer.** `GridState.roadElevation: Uint8Array` —
+  the deck height in whole meters above that tile's terrain, `0` meaning at
+  grade. It rides alongside `roadTier`, so a bridge tile is an ordinary road
+  tile that happens to sit higher: the road graph, the mask/auto-tiling, the
+  utility propagation, and the traffic model all keep working untouched, which
+  is the whole reason to model it this way rather than as a parallel network.
+  Serialized last, `SAVE_VERSION` 3 → 4, following the district and landfill
+  precedent — a v3 save loads with the layer zeroed and every existing road
+  stays exactly where it was.
+- **Elevated tiles skip the ground rules.** A deck rests on piers, so
+  `isBridgeBuildable` drops both gates `isRoadBuildable` enforces: the water
+  rejection (that is the point) and the slope ceiling (the deck is level
+  regardless of what the ground does underneath). Bounds and the
+  no-building-here check still apply. Terrain is never flattened under an
+  elevated tile — the valley stays a valley.
+- **Crossing water needs no new gesture.** Drag a road across a river and the
+  water tiles come out elevated on their own, at the higher bank's height plus
+  `BRIDGE_CLEARANCE_M` over the water surface. The approach tiles on each bank
+  ramp down to grade at no more than `BRIDGE_MAX_GRADE` metres per tile; if
+  there is not enough road on the bank to land the ramp, the whole placement
+  fails with a `grade` reason rather than building half a bridge. A height
+  stepper in the tool options raises a deliberate viaduct over dry land, up to
+  `BRIDGE_MAX_ELEVATION`; left at zero, it only auto-bridges water.
+- **What a deck looks like.** A flat slab at deck height with no terrain
+  conformance, parapet railings where an at-grade tile draws curbs and
+  sidewalk, and piers dropped to the terrain or seabed every
+  `PIER_SPACING_TILES`. The curbside furniture rules invert: lamps stand on the
+  deck, verge grass, trees, and parking meters do not. Vehicles and pedestrians
+  read `deckHeightAt` (terrain + elevation) in place of `heightAt`, so traffic
+  rides the bridge instead of swimming under it.
+- **What the deck costs and what it denies.** Elevated tiles add
+  `BRIDGE_COST_PER_METER_TILE` per metre of height on top of the tier's own
+  per-tile cost, and the same premium proportionally on upkeep — height is the
+  expensive thing, not the span. A deck grants no frontage: `zonable.ts` skips
+  elevated road tiles, so nothing zones off a bridge, and the ground beneath a
+  deck stays occupied exactly as it is under any road tile today. Bulldozing
+  clears the elevation with the tier.
+- **Deferred, deliberately.** One tile carries one road tier, so a road
+  crossing over another road is not representable and is not attempted here —
+  overpasses need a second road layer, which is the refactor this epic exists
+  to avoid. Tunnels, pier styling, and suspension/arch spans are likewise out;
+  a bridge here is a slab on piers.
+
+**Owners:** `src/world/grid.ts` (layer + serialize/deserialize + migration),
+`src/world/roads.ts` (elevation in `applyRoad`/`removeRoad` + `RoadTileDelta`),
+`src/shared/constants.ts` (the five bridge constants) + `src/shared/types.ts`
+(`SAVE_VERSION` 4), `src/sim/worker.entry.ts` (auto-bridge + ramp solve +
+costing in `cmdBuildRoad`, no flatten when elevated), `src/world/zonable.ts`
+(no frontage off a deck), NEW `src/render/bridges.ts` (deck, piers, parapets)
++ edits to `src/render/roadsmesh.ts`, `vehicles.ts`, `pedestrians.ts`,
+`lamps.ts`, `roadfurniture.ts` (deck height), `src/ui/ToolOptionsPanel.tsx`
+(height stepper).
+**Acceptance:** a road dragged bank to bank across a river lands as a deck on
+piers with ramped approaches; cars and pedestrians cross on the deck; power and
+water propagate over it and a zone on the far bank grows; nothing zones off the
+bridge itself; a v3 save loads with every road at grade; bulldozing the span
+returns the river.
+

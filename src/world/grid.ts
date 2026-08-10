@@ -62,6 +62,7 @@ export function createGrid(size?: number): GridState {
     fields,
     district: new Uint8Array(n),
     landfill: new Uint8Array(n),
+    roadElevation: new Uint8Array(n),
   };
 }
 
@@ -74,13 +75,14 @@ export function createGrid(size?: number): GridState {
 // ---------------------------------------------------------------------------
 
 const HEADER_BYTES = 8; // uint32 version + uint32 size
-// SAVE_VERSION 3 layout: 4 (height) + 4 (buildingId) + 18 single-byte layers
+// SAVE_VERSION 4 layout: 4 (height) + 4 (buildingId) + 19 single-byte layers
 // (7 flat: water/trees/zone/roadTier/roadMask/power/watered) + 9 fields + 1
-// district + 1 landfill (both trailing).
-const BYTES_PER_TILE = 26;
-// v2 has the trailing district layer but not landfill (one byte-per-tile
-// smaller); v1 predates both (two smaller). deserializeGrid accepts both and
-// defaults the absent trailing layer(s) to 0.
+// district + 1 landfill + 1 roadElevation (all three trailing).
+const BYTES_PER_TILE = 27;
+// Each older version drops one trailing layer: v3 has district + landfill but
+// no roadElevation, v2 district only, v1 none of them. deserializeGrid accepts
+// all of them and defaults every absent trailing layer to 0.
+const BYTES_PER_TILE_V3 = 26;
 const BYTES_PER_TILE_V2 = 25;
 const BYTES_PER_TILE_V1 = 24;
 
@@ -130,12 +132,14 @@ export function serializeGrid(g: GridState): ArrayBuffer {
     offset += n;
   }
 
-  // Trailing additive layers, in version order: district (v2), then landfill
-  // (v3). Placed last so an older buffer is simply this buffer without its final
-  // n bytes per absent layer (see deserializeGrid).
+  // Trailing additive layers, in version order: district (v2), landfill (v3),
+  // then roadElevation (v4). Placed last so an older buffer is simply this
+  // buffer without its final n bytes per absent layer (see deserializeGrid).
   bytes.set(g.district, offset);
   offset += n;
   bytes.set(g.landfill, offset);
+  offset += n;
+  bytes.set(g.roadElevation, offset);
 
   return buffer;
 }
@@ -143,24 +147,27 @@ export function serializeGrid(g: GridState): ArrayBuffer {
 export function deserializeGrid(buf: ArrayBuffer): GridState {
   const view = new DataView(buf);
   const version = view.getUint32(0, true);
-  // SAVE_VERSION 3 is current; v1 and v2 are accepted for migration — they are
-  // identical except for the trailing district (v2+) and landfill (v3+) layers,
-  // each defaulted to 0 here when absent.
-  if (version !== SAVE_VERSION && version !== 2 && version !== 1) {
+  // SAVE_VERSION 4 is current; v1..v3 are accepted for migration — they are
+  // identical except for the trailing district (v2+), landfill (v3+), and
+  // roadElevation (v4+) layers, each defaulted to 0 here when absent.
+  if (version !== SAVE_VERSION && version !== 3 && version !== 2 && version !== 1) {
     throw new Error(
       `deserializeGrid: unsupported save version ${version} (expected ${SAVE_VERSION})`,
     );
   }
   const hasDistrict = version >= 2;
   const hasLandfill = version >= 3;
+  const hasRoadElevation = version >= 4;
 
   const size = view.getUint32(4, true);
   const n = size * size;
-  const bytesPerTile = hasLandfill
+  const bytesPerTile = hasRoadElevation
     ? BYTES_PER_TILE
-    : hasDistrict
-      ? BYTES_PER_TILE_V2
-      : BYTES_PER_TILE_V1;
+    : hasLandfill
+      ? BYTES_PER_TILE_V3
+      : hasDistrict
+        ? BYTES_PER_TILE_V2
+        : BYTES_PER_TILE_V1;
   const expectedBytes = bufferBytesFor(size, bytesPerTile);
   if (buf.byteLength !== expectedBytes) {
     throw new Error(
@@ -210,6 +217,9 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
   if (hasDistrict) offset += n;
   // Landfill layer (v3+). v1/v2 buffers stop here — landfill defaults to 0.
   const landfill = hasLandfill ? bytes.slice(offset, offset + n) : new Uint8Array(n);
+  if (hasLandfill) offset += n;
+  // Elevation layer (v4+). Older buffers stop here — every road loads at grade.
+  const roadElevation = hasRoadElevation ? bytes.slice(offset, offset + n) : new Uint8Array(n);
 
   return {
     size,
@@ -225,6 +235,7 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
     fields,
     district,
     landfill,
+    roadElevation,
   };
 }
 
@@ -274,6 +285,22 @@ export function isBuildable(g: GridState, x: number, z: number): boolean {
  */
 export function isRoadBuildable(g: GridState, x: number, z: number): boolean {
   return buildableWithSlope(g, x, z, ROAD_MAX_SLOPE);
+}
+
+/**
+ * Buildability for a tile that will carry an ELEVATED deck. A deck rests on
+ * piers, so neither ground rule applies: water is exactly what a bridge is for,
+ * and the deck stays level no matter what the terrain does beneath it. Only
+ * bounds survive — the caller still checks that no building occupies the tile.
+ */
+export function isBridgeBuildable(g: GridState, x: number, z: number): boolean {
+  return inBoundsOf(g.size, x, z);
+}
+
+/** Deck height in metres above terrain at a tile, 0 where the road is at grade. */
+export function elevationAt(g: GridState, x: number, z: number): number {
+  if (!inBoundsOf(g.size, x, z)) return 0;
+  return g.roadElevation[indexOf(g.size, x, z)] ?? 0;
 }
 
 /**

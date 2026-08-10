@@ -9,6 +9,7 @@
  * ({size, roadTier, water, zone, buildingId, height}).
  */
 import { RoadTier } from '../shared/types';
+import type { BridgeDeckTile } from '../render/bridges';
 import type {
   BuildingCatalogEntry,
   BuildingDelta,
@@ -25,6 +26,8 @@ export class ClientGridMirror {
   readonly water: Uint8Array;
   readonly zone: Uint8Array;
   readonly roadTier: Uint8Array;
+  readonly roadMask: Uint8Array;
+  readonly roadElevation: Uint8Array;
   readonly buildingId: Uint32Array;
 
   /** building id -> the tile indices its footprint was stamped onto. */
@@ -37,6 +40,8 @@ export class ClientGridMirror {
     this.water = map.water.slice();
     this.zone = new Uint8Array(n);
     this.roadTier = new Uint8Array(n);
+    this.roadMask = new Uint8Array(n);
+    this.roadElevation = new Uint8Array(n);
     this.buildingId = new Uint32Array(n);
   }
 
@@ -51,8 +56,35 @@ export class ClientGridMirror {
   applyRoadDeltas(deltas: RoadTileDelta[]): void {
     for (const d of deltas) {
       if (!this.inBounds(d.x, d.z)) continue;
-      this.roadTier[this.idx(d.x, d.z)] = d.tier;
+      const i = this.idx(d.x, d.z);
+      this.roadTier[i] = d.tier;
+      this.roadMask[i] = d.mask;
+      this.roadElevation[i] = d.elevation;
     }
+  }
+
+  /**
+   * World height of the road surface at a tile centre: the terrain, plus the
+   * deck if the tile carries one. What anything riding the road — traffic,
+   * pedestrians, lamps, the road mesh — sits on.
+   */
+  deckHeightAt(x: number, z: number): number {
+    if (!this.inBounds(x, z)) return 0;
+    const i = this.idx(x, z);
+    return (this.height[i] ?? 0) + (this.roadElevation[i] ?? 0);
+  }
+
+  /** True where this tile or any of its 8 neighbours carries a deck. */
+  nearElevated(x: number, z: number): boolean {
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx;
+        const nz = z + dz;
+        if (!this.inBounds(nx, nz)) continue;
+        if ((this.roadElevation[this.idx(nx, nz)] ?? 0) > 0) return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -118,6 +150,32 @@ export class ClientGridMirror {
       for (let x = 0; x < this.size; x++) {
         const tier = this.roadTier[this.idx(x, z)] as RoadTier;
         if (tier !== RoadTier.None) tiles.push({ x, z, tier });
+      }
+    }
+    return tiles;
+  }
+
+  /**
+   * Every tile carrying a bridge deck, with what the structure renderer needs
+   * to stand it up: how wide the carriageway is, which way it runs, and the gap
+   * between deck and ground the piers have to fill.
+   */
+  deckTiles(): BridgeDeckTile[] {
+    const tiles: BridgeDeckTile[] = [];
+    for (let z = 0; z < this.size; z++) {
+      for (let x = 0; x < this.size; x++) {
+        const i = this.idx(x, z);
+        const tier = this.roadTier[i] as RoadTier;
+        if (tier === RoadTier.None) continue;
+        if ((this.roadElevation[i] ?? 0) === 0) continue;
+        tiles.push({
+          x,
+          z,
+          tier,
+          mask: this.roadMask[i] ?? 0,
+          deckY: this.deckHeightAt(x, z),
+          groundY: this.height[i] ?? 0,
+        });
       }
     }
     return tiles;

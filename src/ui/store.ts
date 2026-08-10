@@ -6,7 +6,12 @@
  * on each SimSnapshot, setUndoState after every push/undo/redo, etc).
  */
 import { create } from 'zustand';
-import { DEFAULT_TAX_RATE, START_FUNDS, TICKS_PER_MONTH } from '../shared/constants';
+import {
+  BRIDGE_MAX_ELEVATION,
+  DEFAULT_TAX_RATE,
+  START_FUNDS,
+  TICKS_PER_MONTH,
+} from '../shared/constants';
 import type {
   BrushSettings,
   BuildingInstance,
@@ -109,6 +114,11 @@ export interface CityStoreState {
   toolFlags: ToolFlags;
   /** The tool-options "Tool Mode" segmented control, road tools only so far. */
   toolMode: ToolMode;
+  /**
+   * Deck height the road tool builds at, in metres. Zero follows the ground and
+   * bridges only where a drag crosses water; above zero raises a viaduct.
+   */
+  roadElevation: number;
   /** Population as of the last monthly rollover — feeds the status-strip trend arrow. */
   previousMonthPopulation: number;
   /** Funds as of the last monthly rollover — feeds the status-strip trend arrow. */
@@ -172,6 +182,8 @@ export interface CityStoreState {
   setToolFlags: (flags: Partial<ToolFlags>) => void;
   /** Sets the Tool Mode segmented control and mirrors toolFlags.straightMode. */
   setToolMode: (mode: ToolMode) => void;
+  /** Sets the road tool's deck height, clamped to 0..BRIDGE_MAX_ELEVATION metres. */
+  setRoadElevation: (metres: number) => void;
   setSelectionInfo: (info: SelectionInfo | null) => void;
   /** Merges a partial patch into brushSettings (the Brush radius / Strength sliders). */
   setBrushSettings: (settings: Partial<BrushSettings>) => void;
@@ -216,6 +228,7 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   bound: null,
   toolFlags: createInitialToolFlags(),
   toolMode: 'lpath',
+  roadElevation: 0,
   previousMonthPopulation: createInitialStats().population,
   previousMonthFunds: createInitialStats().funds,
   selectionInfo: null,
@@ -276,6 +289,8 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
       toolMode: mode,
       toolFlags: { ...state.toolFlags, straightMode: mode === 'straight' },
     })),
+  setRoadElevation: (metres) =>
+    set({ roadElevation: Math.max(0, Math.min(BRIDGE_MAX_ELEVATION, Math.round(metres))) }),
   setSelectionInfo: (info) => set({ selectionInfo: info }),
   setBrushSettings: (settings) =>
     set((state) => ({ brushSettings: { ...state.brushSettings, ...settings } })),

@@ -1713,7 +1713,7 @@ describe('roadTileVertices — v3 tiers share the v1/v2 unknown-tier guard', () 
 });
 
 function makeDelta(x: number, z: number, tier: RoadTier, mask = 0): RoadTileDelta {
-  return { x, z, tier, mask };
+  return { x, z, tier, mask, elevation: 0 };
 }
 
 describe('RoadMeshRenderer', () => {

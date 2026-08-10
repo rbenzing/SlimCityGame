@@ -3,6 +3,7 @@ import {
   MAP_SIZE,
   MAP_TILES,
   SPEED_MULTIPLIERS,
+  BRIDGE_MAX_GRADE,
   START_FUNDS,
   TICK_MS,
   tileIndex,
@@ -1467,5 +1468,127 @@ describe('auto-flatten under footprints (UI-SPEC §6.18 #6)', () => {
         expect(g1.height[tileIndex(x, z)]).toBe(g2.height[tileIndex(x, z)]);
       }
     }
+  });
+});
+
+describe('bridges — crossing water', () => {
+  const RIVER_Z = 100;
+  const RIVER_X0 = 98;
+  const RIVER_X1 = 102;
+  // Banks sit BELOW the clearance height, so a crossing genuinely has to climb
+  // and then ramp back down — at flatMap's 5m the deck would come out level
+  // with the banks and never exercise a ramp at all.
+  const BANK_HEIGHT = 1;
+  const BED_DEPTH = -3;
+
+  /** Low flat banks with a north-south river channel cut through them. */
+  function riverMap(): MapData {
+    const map = flatMap();
+    map.height.fill(BANK_HEIGHT);
+    for (let z = 0; z < MAP_SIZE; z++) {
+      for (let x = RIVER_X0; x <= RIVER_X1; x++) {
+        const i = tileIndex(x, z);
+        map.water[i] = 1;
+        map.height[i] = BED_DEPTH;
+      }
+    }
+    return map;
+  }
+
+  function initializedRiver(): Harness {
+    const h = makeHarness();
+    h.sim.handleMessage({ type: 'init', seed: 1337, map: riverMap() });
+    return h;
+  }
+
+  let h: Harness;
+  beforeEach(() => {
+    h = initializedRiver();
+  });
+
+  it('refuses a crossing that lands on the far bank with no room to ramp down', () => {
+    // Bank to bank and one tile past: the deck is still 4m up when the road
+    // runs out, so there is nowhere for the ramp to reach the ground.
+    const tiles = roadRow(RIVER_X0 - 1, RIVER_Z, 7);
+    send(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles }]);
+    h.ticks(2);
+
+    const ack = h.ackFor(1)!;
+    expect(ack.ok).toBe(false);
+    expect(ack.reason).toBe('grade');
+    expect(h.lastSnapshot()!.stats.funds).toBe(START_FUNDS);
+  });
+
+  it('bridges the river when the drag reaches back onto both banks', () => {
+    const tiles = roadRow(RIVER_X0 - 8, RIVER_Z, 5 + 16);
+    send(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles }]);
+    h.ticks(2);
+
+    const ack = h.ackFor(1)!;
+    expect(ack.ok).toBe(true);
+    // The span costs more than the same length of plain road: height is charged.
+    expect(ack.cost).toBeGreaterThan(tiles.length * twoLaneSpec.costPerTile);
+
+    h.sim.handleMessage({ type: 'requestSave' });
+    const g = latestSaveGrid(h);
+    for (let x = RIVER_X0; x <= RIVER_X1; x++) {
+      const i = tileIndex(x, RIVER_Z);
+      expect(g.roadTier[i]).toBe(RoadTier.TwoLane);
+      // Deck stands clear of the water, and the riverbed is still a riverbed.
+      expect(g.roadElevation[i]).toBeGreaterThan(0);
+      expect(g.height[i]).toBe(BED_DEPTH);
+      expect(g.water[i]).toBe(1);
+    }
+    // Both banks are at grade, so the road meets the ground where it should.
+    expect(g.roadElevation[tileIndex(RIVER_X0 - 8, RIVER_Z)]).toBe(0);
+    expect(g.roadElevation[tileIndex(RIVER_X1 + 8, RIVER_Z)]).toBe(0);
+  });
+
+  it('leaves the deck smooth in world height across the whole span', () => {
+    const tiles = roadRow(RIVER_X0 - 8, RIVER_Z, 5 + 16);
+    send(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles }]);
+    h.ticks(2);
+
+    h.sim.handleMessage({ type: 'requestSave' });
+    const g = latestSaveGrid(h);
+    const deckY = tiles.map((t) => {
+      const i = tileIndex(t.x, t.z);
+      return g.height[i]! + g.roadElevation[i]!;
+    });
+    for (let i = 1; i < deckY.length; i++) {
+      expect(Math.abs(deckY[i]! - deckY[i - 1]!)).toBeLessThanOrEqual(BRIDGE_MAX_GRADE);
+    }
+    // It really does rise off the bank rather than staying flat all the way.
+    expect(Math.max(...deckY)).toBeGreaterThan(BANK_HEIGHT);
+  });
+
+  it('bulldozing the span returns the river to open water', () => {
+    const tiles = roadRow(RIVER_X0 - 8, RIVER_Z, 5 + 16);
+    send(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles }]);
+    h.ticks(2);
+    send(h, 2, [{ kind: 'bulldoze', tiles }]);
+    h.ticks(2);
+
+    h.sim.handleMessage({ type: 'requestSave' });
+    const g = latestSaveGrid(h);
+    for (let x = RIVER_X0; x <= RIVER_X1; x++) {
+      const i = tileIndex(x, RIVER_Z);
+      expect(g.roadTier[i]).toBe(RoadTier.None);
+      expect(g.roadElevation[i]).toBe(0);
+    }
+  });
+
+  it('raises a viaduct over dry land when the tool asks for height', () => {
+    const tiles = roadRow(20, 20, 24);
+    send(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles, elevation: 10 }]);
+    h.ticks(2);
+
+    expect(h.ackFor(1)!.ok).toBe(true);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const g = latestSaveGrid(h);
+    const heights = tiles.map((t) => g.roadElevation[tileIndex(t.x, t.z)]!);
+    expect(Math.max(...heights)).toBe(10);
+    expect(heights[0]).toBe(0); // ramps down at both ends
+    expect(heights[heights.length - 1]).toBe(0);
   });
 });

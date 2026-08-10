@@ -25,6 +25,7 @@ import {
   LANDFILL_TRUCKS_BASE,
   LANDFILL_TRUCKS_MAX,
   LANDFILL_TRUCKS_PER_TILES,
+  BRIDGE_COST_PER_METER_TILE,
   inBounds,
   tileIndex,
 } from '../shared/constants';
@@ -70,11 +71,13 @@ import {
   clearTiles,
   createGrid,
   deserializeGrid,
+  isBridgeBuildable,
   isRoadBuildable,
   serializeGrid,
   setZones,
 } from '../world/grid';
 import { RoadNetwork, applyRoad, removeRoad } from '../world/roads';
+import { solveElevationProfile } from '../world/bridges';
 import {
   applyHeightPatch,
   computeTerraformPatch,
@@ -533,7 +536,13 @@ class SimWorld implements WorkerSim {
         const idx = tileIndex(x, z);
         const tier = (this.grid.roadTier[idx] ?? 0) as RoadTier;
         if (tier !== 0) {
-          this.pendingRoadDeltas.set(idx, { x, z, tier, mask: this.grid.roadMask[idx] ?? 0 });
+          this.pendingRoadDeltas.set(idx, {
+            x,
+            z,
+            tier,
+            mask: this.grid.roadMask[idx] ?? 0,
+            elevation: this.grid.roadElevation[idx] ?? 0,
+          });
         }
       }
     }
@@ -1123,7 +1132,12 @@ class SimWorld implements WorkerSim {
   private applyCommand(command: Command): CommandResult {
     switch (command.kind) {
       case 'buildRoad':
-        return this.cmdBuildRoad(command.tier, command.tiles);
+        return this.cmdBuildRoad(
+          command.tier,
+          command.tiles,
+          command.elevation,
+          command.elevations,
+        );
       case 'bulldoze':
         return this.cmdBulldoze(command.tiles);
       case 'paintZone':
@@ -1312,7 +1326,12 @@ class SimWorld implements WorkerSim {
     return this.landfillAreasCache;
   }
 
-  private cmdBuildRoad(tier: RoadTier, tiles: TilePoint[]): CommandResult {
+  private cmdBuildRoad(
+    tier: RoadTier,
+    tiles: TilePoint[],
+    elevation = 0,
+    exact?: number[],
+  ): CommandResult {
     const spec = this.roadSpecByTier.get(tier);
     if (!spec) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
     if (!this.sandbox && spec.unlockMilestone > this.stats.milestoneLevel) {
@@ -1321,24 +1340,57 @@ class SimWorld implements WorkerSim {
 
     const g = this.grid;
     const valid: TilePoint[] = [];
+    const validElevations: number[] = [];
     const created: TilePoint[] = [];
     const upgradedByPrevTier = new Map<number, TilePoint[]>();
+    // Deck heights as they stood before this command, so undo can put them back
+    // exactly rather than re-solving against a grid that may have moved on.
+    const priorElevationByTile = new Map<number, number>();
+    const reprofiled: TilePoint[] = [];
+    const reprofiledElevations: number[] = [];
     let changedCount = 0;
+    let bridgeCost = 0;
 
-    for (const t of tiles) {
+    // Deck heights come first: the profile is solved over the WHOLE drag, in
+    // drag order, because a tile's height depends on its neighbors' — and an
+    // elevated tile is then judged by isBridgeBuildable rather than the ground
+    // rules, which is what lets a span cross water at all.
+    const profile = exact
+      ? ({ ok: true, elevations: exact, cost: 0 } as const)
+      : solveElevationProfile(g, tiles, elevation);
+    if (!profile.ok) return { ok: false, cost: 0, inverse: [], reason: profile.reason };
+
+    for (let i = 0; i < tiles.length; i++) {
+      const t = tiles[i]!;
       if (!inBounds(t.x, t.z)) continue;
       const idx = tileIndex(t.x, t.z);
       if ((g.buildingId[idx] ?? 0) !== 0) continue;
       const current = (g.roadTier[idx] ?? 0) as RoadTier;
+      const deck = profile.elevations[i] ?? 0;
       // Road-on-slope placement: a NEW road tile uses the road-specific
       // slope gate (ROAD_MAX_SLOPE, steeper than MAX_BUILD_SLOPE) since the
       // auto-flatten below re-levels/banks it right after. Upgrading
       // an existing road tile (current !== 0) skips the gate entirely — it's
-      // already a road, already flattened once.
-      if (current === 0 && !isRoadBuildable(g, t.x, t.z)) continue;
+      // already a road, already flattened once. An elevated tile answers to
+      // neither: its deck rests on piers, clear of the ground.
+      const buildable = deck > 0 ? isBridgeBuildable(g, t.x, t.z) : isRoadBuildable(g, t.x, t.z);
+      if (current === 0 && !buildable) continue;
       valid.push(t);
+      validElevations.push(deck);
+      const priorDeck = g.roadElevation[idx] ?? 0;
+      if (deck !== priorDeck) {
+        bridgeCost += deck * BRIDGE_COST_PER_METER_TILE;
+        // A tile whose tier is unchanged but whose deck moved still changed —
+        // count it so a pure re-profile is not mistaken for a no-op.
+        if (current >= tier) {
+          changedCount += 1;
+          reprofiled.push(t);
+          reprofiledElevations.push(priorDeck);
+        }
+      }
       if (current < tier) {
         changedCount += 1;
+        priorElevationByTile.set(idx, priorDeck);
         if (current === 0) {
           created.push(t);
         } else {
@@ -1358,11 +1410,11 @@ class SimWorld implements WorkerSim {
       };
     }
 
-    const cost = changedCount * spec.costPerTile;
+    const cost = changedCount * spec.costPerTile + bridgeCost;
     if (!this.unlimitedMoney && this.stats.funds < cost)
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
 
-    const deltas = applyRoad(g, valid, tier);
+    const deltas = applyRoad(g, valid, tier, validElevations);
     for (const d of deltas) this.pendingRoadDeltas.set(tileIndex(d.x, d.z), d);
     this.landfillAreasCache = null; // street layout feeds the landfill entrances
     this.invalidateAround(valid);
@@ -1373,10 +1425,23 @@ class SimWorld implements WorkerSim {
     const rebuilt = [...created, ...Array.from(upgradedByPrevTier.values()).flat()];
     if (rebuilt.length > 0) inverse.push({ kind: 'bulldoze', tiles: rebuilt });
     for (const [prevTier, prevTiles] of upgradedByPrevTier) {
-      inverse.push({ kind: 'buildRoad', tier: prevTier as RoadTier, tiles: prevTiles });
+      inverse.push({
+        kind: 'buildRoad',
+        tier: prevTier as RoadTier,
+        tiles: prevTiles,
+        elevations: prevTiles.map((t) => priorElevationByTile.get(tileIndex(t.x, t.z)) ?? 0),
+      });
     }
-    // Auto-flatten: the newly built/upgraded tiles + a 1-tile apron.
-    this.flattenFootprint(rebuilt, true, inverse);
+    // Tiles this command only re-profiled keep their tier on undo; restoring
+    // their old deck is the entire reversal.
+    if (reprofiled.length > 0) {
+      inverse.push({ kind: 'buildRoad', tier, tiles: reprofiled, elevations: reprofiledElevations });
+    }
+    // Auto-flatten: the newly built/upgraded tiles + a 1-tile apron. Elevated
+    // tiles are exempt — the deck spans the ground, it does not sit on it, and
+    // levelling a riverbed under a bridge would drain the river.
+    const grounded = rebuilt.filter((t) => (g.roadElevation[tileIndex(t.x, t.z)] ?? 0) === 0);
+    this.flattenFootprint(grounded, true, inverse);
     return { ok: true, cost, inverse };
   }
 
@@ -1643,9 +1708,13 @@ class SimWorld implements WorkerSim {
     }
     if (rSet.size === 0) return null;
 
-    // A tile provides road continuity if it is in R or already carries road.
+    // A tile provides road continuity if it is in R or already carries road —
+    // but a tile up on a deck does not. Its ground is a riverbed or a valley
+    // floor that no road ever touches, and averaging a bank into it would drag
+    // the shoreline down into the water the bridge was built to cross.
     const isRoadSource = (x: number, z: number): boolean => {
       const idx = tileIndex(x, z);
+      if ((g.roadElevation[idx] ?? 0) > 0) return false;
       return rSet.has(idx) || g.roadTier[idx] !== RoadTier.None;
     };
 

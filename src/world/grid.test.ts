@@ -136,17 +136,18 @@ describe('serializeGrid / deserializeGrid', () => {
     expect(() => deserializeGrid(buf)).toThrow();
   });
 
-  it('migrates a v1 buffer (no district/landfill layers) — loads them all-zero, other layers intact', () => {
+  it('migrates a v1 buffer (no district/landfill/elevation layers) — loads them all-zero, other layers intact', () => {
     // Synthesize a v1 buffer from the current serialize by (a) stamping the
-    // version to 1 and (b) truncating BOTH trailing layers (district + landfill,
-    // 2n bytes). deserializeGrid must accept it and default both to 0.
+    // version to 1 and (b) truncating ALL THREE trailing layers (district +
+    // landfill + roadElevation, 3n bytes). deserializeGrid must accept it and
+    // default every one of them to 0.
     const size = 5;
     const n = size * size;
     const g = createGrid(size);
     fillDeterministic(g);
-    const cur = serializeGrid(g); // current version: trailing district + landfill
+    const cur = serializeGrid(g); // current version: district + landfill + elevation
 
-    const v1 = cur.slice(0, cur.byteLength - 2 * n); // drop trailing district + landfill
+    const v1 = cur.slice(0, cur.byteLength - 3 * n); // drop all three trailing layers
     new DataView(v1).setUint32(0, 1, true); // stamp version 1
 
     const back = deserializeGrid(v1);
@@ -155,6 +156,8 @@ describe('serializeGrid / deserializeGrid', () => {
     expect(back.district.every((v) => v === 0)).toBe(true); // defaulted
     expect(back.landfill.length).toBe(n);
     expect(back.landfill.every((v) => v === 0)).toBe(true); // defaulted
+    expect(back.roadElevation.length).toBe(n);
+    expect(back.roadElevation.every((v) => v === 0)).toBe(true); // defaulted
     // Every pre-district layer still round-trips.
     expect(Array.from(back.height)).toEqual(Array.from(g.height));
     expect(Array.from(back.zone)).toEqual(Array.from(g.zone));
@@ -165,16 +168,16 @@ describe('serializeGrid / deserializeGrid', () => {
     }
   });
 
-  it('migrates a v2 buffer (district but no landfill layer) — loads landfill all-zero, district intact', () => {
-    // Drop only the trailing landfill layer (n bytes) from the current serialize
-    // and stamp version 2: district must survive, landfill defaults to 0.
+  it('migrates a v2 buffer (district but no landfill/elevation layers) — loads those all-zero, district intact', () => {
+    // Drop the trailing landfill + roadElevation layers (2n bytes) and stamp
+    // version 2: district must survive, both later layers default to 0.
     const size = 5;
     const n = size * size;
     const g = createGrid(size);
     fillDeterministic(g);
     const cur = serializeGrid(g);
 
-    const v2 = cur.slice(0, cur.byteLength - n); // drop the trailing landfill bytes
+    const v2 = cur.slice(0, cur.byteLength - 2 * n); // drop landfill + elevation
     new DataView(v2).setUint32(0, 2, true); // stamp version 2
 
     const back = deserializeGrid(v2);
@@ -182,6 +185,27 @@ describe('serializeGrid / deserializeGrid', () => {
     expect(Array.from(back.district)).toEqual(Array.from(g.district)); // survives
     expect(back.landfill.length).toBe(n);
     expect(back.landfill.every((v) => v === 0)).toBe(true); // defaulted
+    expect(back.roadElevation.every((v) => v === 0)).toBe(true); // defaulted
+  });
+
+  it('migrates a v3 buffer (district + landfill but no elevation layer) — every road loads at grade', () => {
+    // The bridges epic's own migration: a pre-bridge save has no elevation
+    // layer, and must come back with every road on the ground.
+    const size = 5;
+    const n = size * size;
+    const g = createGrid(size);
+    fillDeterministic(g);
+    const cur = serializeGrid(g);
+
+    const v3 = cur.slice(0, cur.byteLength - n); // drop the trailing elevation bytes
+    new DataView(v3).setUint32(0, 3, true); // stamp version 3
+
+    const back = deserializeGrid(v3);
+    expect(back.size).toBe(size);
+    expect(Array.from(back.district)).toEqual(Array.from(g.district)); // survives
+    expect(Array.from(back.landfill)).toEqual(Array.from(g.landfill)); // survives
+    expect(back.roadElevation.length).toBe(n);
+    expect(back.roadElevation.every((v) => v === 0)).toBe(true); // defaulted
   });
 
   it('rejects a buffer whose length does not match its declared size', () => {

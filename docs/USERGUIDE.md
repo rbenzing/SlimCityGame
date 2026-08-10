@@ -76,6 +76,13 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   coverage, and trash. Turn a lens on to see the city as data — the trash lens
   reddens where garbage is going uncollected.
 - **Stats panel** — line charts of population, money, and other trends over time.
+- **Bridges** — drag a road across a river and it crosses on a deck, on piers,
+  ramping down onto each bank. Start the drag well back from the water: the
+  approach needs room to climb, and a crossing that would end in mid-air is
+  refused rather than half-built. The road tool's Elevation stepper raises a
+  deliberate viaduct over dry ground; at Ground it still bridges water on its
+  own. Height is what costs — nothing zones off a bridge, and the ground
+  underneath is left alone.
 - **Advisor** — the warning-triangle button (top right) lists what is actually
   wrong right now, worst first: buildings cut off from a road, power, or water,
   a utility grid running short, a budget bleeding out. A red badge counts the

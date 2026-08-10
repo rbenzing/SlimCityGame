@@ -121,6 +121,15 @@ export interface GridState {
    * landfill). See src/world/grid.ts serialize/deserialize + the migration note.
    */
   landfill: Uint8Array;
+  /**
+   * Bridges & elevated roads — deck height in whole metres above this tile's
+   * terrain, 0 = at grade. Only meaningful where roadTier is set: an elevated
+   * tile is an ordinary road tile that sits higher, so the road graph, masks,
+   * utility propagation, and traffic are unaffected by it. ADDITIVE layer:
+   * serialized LAST in the grid save (SAVE_VERSION 4), after the landfill
+   * layer, so v1–v3 saves load with every road at grade.
+   */
+  roadElevation: Uint8Array;
 }
 
 // ---------------------------------------------------------------------------
@@ -145,7 +154,17 @@ export type Sector = 'res' | 'com' | 'ind';
 export type ServiceKind = 'police' | 'fire' | 'health' | 'education' | 'park';
 
 export type Command =
-  | { kind: 'buildRoad'; tier: RoadTier; tiles: TilePoint[] } // contiguous path
+  // `elevation` raises a deliberate viaduct (metres, 0 = follow the ground and
+  // auto-bridge water only). `elevations`, when present, is the exact per-tile
+  // deck profile to restore instead of solving one — undo uses it so a reverted
+  // span comes back at precisely the heights it had.
+  | {
+      kind: 'buildRoad';
+      tier: RoadTier;
+      tiles: TilePoint[]; // contiguous path
+      elevation?: number;
+      elevations?: number[];
+    }
   | { kind: 'bulldoze'; tiles: TilePoint[] } // clears road/building/zone/trees
   | { kind: 'paintZone'; zone: ZoneType; tiles: TilePoint[] }
   | { kind: 'placeBuilding'; catalogId: string; x: number; z: number; rotation: 0 | 1 | 2 | 3 }
@@ -276,6 +295,7 @@ export interface RoadTileDelta {
   z: number;
   tier: RoadTier;
   mask: number; // neighbor bitmask, see GridState.roadMask
+  elevation: number; // deck height in metres above terrain, 0 = at grade
 }
 
 export interface ZonePatch {
@@ -603,15 +623,17 @@ export interface ReversibleEdit {
 // ---------------------------------------------------------------------------
 
 /**
- * Version 2 added the trailing GridState.district layer; version 3 adds a
- * further trailing GridState.landfill layer (MAP_SIZE² bytes, per-tile landfill
- * membership 0/1) after it. Migration: src/world/grid.ts deserializeGrid still
- * accepts v1 buffers (no district, no landfill) and v2 buffers (district, no
- * landfill), defaulting each absent trailing layer to all-zero; serializeGrid
- * always writes the current version. No earlier layer's byte layout or order
- * changed, so every v1..v3 field round-trips unchanged.
+ * Version 2 added the trailing GridState.district layer; version 3 a further
+ * trailing GridState.landfill layer (MAP_SIZE² bytes, per-tile landfill
+ * membership 0/1) after it; version 4 a trailing GridState.roadElevation layer
+ * (MAP_SIZE² bytes, deck height in metres) after that. Migration:
+ * src/world/grid.ts deserializeGrid still accepts every older buffer,
+ * defaulting each absent trailing layer to all-zero — so a pre-v4 save loads
+ * with every road at grade; serializeGrid always writes the current version. No
+ * earlier layer's byte layout or order changed, so every v1..v4 field
+ * round-trips unchanged.
  */
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 export interface SaveHeader {
   version: number;
