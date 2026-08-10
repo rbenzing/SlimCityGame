@@ -443,6 +443,32 @@ describe('LampRenderer', () => {
     expect(poolCenter.y).toBeGreaterThan(0);
   });
 
+  it('winds every pool to face upward, whichever way the road runs', () => {
+    // The two lamp axes are a 90° rotation of each other, not a coordinate
+    // swap: a swap mirrors the plane, reversing the winding, and a pool wound
+    // downward is back-face culled — the road simply has no light on it.
+    for (const orientation of ['ew', 'ns'] as const) {
+      const scene = new THREE.Scene();
+      const renderer = new LampRenderer(scene, flatHeightAt);
+      renderer.rebuild(strip(4, 0, 12, orientation));
+      expect(renderer.lampCount()).toBeGreaterThan(0);
+      for (const tri of [0, 1, 5]) {
+        expect(renderer.poolTriangleFacing(tri)).toBe(1);
+      }
+    }
+  });
+
+  it('lights a north-south road as brightly as an east-west one', () => {
+    const ew = new LampRenderer(new THREE.Scene(), flatHeightAt);
+    ew.rebuild(strip(4, 0, 12, 'ew'));
+    const ns = new LampRenderer(new THREE.Scene(), flatHeightAt);
+    ns.rebuild(strip(4, 0, 12, 'ns'));
+
+    expect(ns.lampCount()).toBe(ew.lampCount());
+    expect(ns.poolVertexCount()).toBe(ew.poolVertexCount());
+    expect(ns.poolTriangleFacing(0)).toBe(ew.poolTriangleFacing(0));
+  });
+
   it('stretches the pool down the roadway, not across it, so successive lamps light a continuous corridor', () => {
     const scene = new THREE.Scene();
     const renderer = new LampRenderer(scene, flatHeightAt);

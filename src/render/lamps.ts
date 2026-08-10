@@ -378,8 +378,11 @@ function buildPoolGeometry(
     const base = lamp * POOL_VERTICES_PER_LAMP;
     // `axis` is the LATERAL axis the pole is offset along, so the roadway runs
     // along the other one — that is the direction the pool stretches down.
-    const alongX = placement.axis === 'x' ? 0 : 1;
-    const alongZ = placement.axis === 'x' ? 1 : 0;
+    // The two bases below are a 90° ROTATION of each other, not a coordinate
+    // swap: swapping mirrors the plane, which reverses triangle winding and
+    // gets one road direction's pools back-face culled into invisibility.
+    const [alongX, alongZ, acrossX, acrossZ] =
+      placement.axis === 'x' ? [0, 1, -1, 0] : [1, 0, 0, 1];
 
     positions.push(centerX, heightAt(centerX, centerZ) + POOL_Y_OFFSET, centerZ);
     colors.push(1, 1, 1);
@@ -393,8 +396,8 @@ function buildPoolGeometry(
         const angle = (s / POOL_SEGMENTS) * Math.PI * 2;
         const along = Math.cos(angle) * radius * POOL_ALONG_SCALE;
         const across = Math.sin(angle) * radius * POOL_ACROSS_SCALE;
-        const vx = centerX + alongX * along + alongZ * across;
-        const vz = centerZ + alongZ * along + alongX * across;
+        const vx = centerX + alongX * along + acrossX * across;
+        const vz = centerZ + alongZ * along + acrossZ * across;
         positions.push(vx, heightAt(vx, vz) + POOL_Y_OFFSET, vz);
         colors.push(intensity, intensity, intensity);
 
@@ -591,6 +594,29 @@ export class LampRenderer {
 
   poolOpacity(): number {
     return this.poolMaterial.opacity;
+  }
+
+  /**
+   * Sign of the Y component of triangle `tri`'s geometric normal: +1 when it
+   * faces up (and so survives back-face culling from a camera above), -1 when
+   * it is wound the other way. Test introspection — a pool wound backwards is
+   * simply invisible in the running game, which no vertex-count check catches.
+   */
+  poolTriangleFacing(tri = 0): number {
+    const geometry = this.poolMesh?.geometry;
+    const index = geometry?.getIndex();
+    const position = geometry?.getAttribute('position');
+    if (!index || !position) return 0;
+
+    const at = (i: number): THREE.Vector3 => {
+      const v = index.getX(tri * 3 + i);
+      return new THREE.Vector3(position.getX(v), position.getY(v), position.getZ(v));
+    };
+    const a = at(0);
+    const normal = new THREE.Vector3()
+      .subVectors(at(1), a)
+      .cross(new THREE.Vector3().subVectors(at(2), a));
+    return Math.sign(normal.y);
   }
 
   /** World coordinate of pool vertex `vertex` — test introspection for shape and conformance. */
