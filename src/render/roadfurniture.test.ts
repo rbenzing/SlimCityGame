@@ -148,6 +148,58 @@ describe('road-furniture placement (pure)', () => {
     expect(signs.some((s) => s.x === 0 && s.z === 0)).toBe(false); // the junction itself: no sign
   });
 
+  it('signalises a crossroads on the bigger tiers instead of signing it', () => {
+    const t = RoadTier.Avenue;
+    const tiles: FurnitureRoadTile[] = [
+      { x: 0, z: 0, tier: t },
+      { x: 1, z: 0, tier: t },
+      { x: 2, z: 0, tier: t },
+      { x: -1, z: 0, tier: t },
+      { x: -2, z: 0, tier: t },
+      { x: 0, z: 1, tier: t },
+      { x: 0, z: 2, tier: t },
+      { x: 0, z: -1, tier: t },
+      { x: 0, z: -2, tier: t },
+    ];
+    const signs = computeSignPlacements(tiles);
+    const at = (x: number, z: number): string | undefined =>
+      signs.find((s) => s.x === x && s.z === z)?.type;
+    for (const [x, z] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const)
+      expect(at(x, z)).toBe('signal');
+  });
+
+  it('leaves a two-lane crossroads on stop signs — a side street is not signalised', () => {
+    const t = RoadTier.TwoLane;
+    // Two-tile arms: the tile next to the junction has to be a through tile,
+    // or it reads as a dead-end and takes that sign instead.
+    const tiles: FurnitureRoadTile[] = [
+      { x: 0, z: 0, tier: t },
+      { x: 1, z: 0, tier: t },
+      { x: 2, z: 0, tier: t },
+      { x: -1, z: 0, tier: t },
+      { x: -2, z: 0, tier: t },
+      { x: 0, z: 1, tier: t },
+      { x: 0, z: 2, tier: t },
+      { x: 0, z: -1, tier: t },
+      { x: 0, z: -2, tier: t },
+    ];
+    const types = new Set(computeSignPlacements(tiles).map((s) => s.type));
+    expect(types.has('stop')).toBe(true);
+    expect(types.has('signal')).toBe(false);
+  });
+
+  it('seats no parking meter across a junction, where there is no curb', () => {
+    const t = RoadTier.TwoLane;
+    const tiles = [...strip(4, 0, 20, 'ew', t), ...strip(4, 0, 20, 'ns', t)];
+    const meters = computeMeterPlacements(tiles);
+    expect(meters.some((m) => m.x === 4 && m.z === 4)).toBe(false);
+  });
+
   it("gives a T-junction its approaches a 'giveway' sign", () => {
     const t = RoadTier.TwoLane;
     // An east-west bar with a stem dropping south from its center.

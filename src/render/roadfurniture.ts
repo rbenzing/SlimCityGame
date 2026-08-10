@@ -53,6 +53,21 @@ const SIGN_POLE_HEIGHT = 2.2;
 const SIGN_BOARD = 0.6; // board footprint used to seat every type near the pole top
 const SIGN_BOARD_Y = SIGN_POLE_HEIGHT - SIGN_BOARD / 2 - 0.05; // board center height
 const SIGN_POLE_COLOR = 0x50555d; // charcoal pole
+
+// --- Traffic signals ---------------------------------------------------------
+const SIGNAL_MAST_RADIUS = 0.07;
+const SIGNAL_MAST_HEIGHT = 4.2;
+const SIGNAL_ARM_LENGTH = 1.9;
+const SIGNAL_ARM_THICKNESS = 0.09;
+const SIGNAL_HEAD_WIDTH = 0.34;
+const SIGNAL_HEAD_HEIGHT = 0.86;
+const SIGNAL_HEAD_DEPTH = 0.24;
+const SIGNAL_LENS_RADIUS = 0.1;
+const SIGNAL_LENS_SPACING = 0.26;
+const SIGNAL_HOUSING_COLOR = 0x2f3338;
+const SIGNAL_RED = 0xd6402f;
+const SIGNAL_AMBER = 0xe8a33a;
+const SIGNAL_GREEN = 0x46b360;
 const SIGN_RED = 0xc0392b; // regulatory / warning red
 const SIGN_WHITE = 0xf0f0f0; // sign white
 const SIGN_FIELD = 0xf3e9b5; // pale warning-triangle field
@@ -138,7 +153,14 @@ export interface MeterPlacement {
 }
 
 /** The standard sign a road tile's role earns; see {@link classifySign}. */
-export type SignType = 'stop' | 'giveway' | 'bend' | 'oneway' | 'speed' | 'nothrough';
+export type SignType =
+  | 'stop'
+  | 'giveway'
+  | 'bend'
+  | 'oneway'
+  | 'speed'
+  | 'nothrough'
+  | 'signal';
 
 export interface SignPlacement {
   x: number;
@@ -183,6 +205,21 @@ function tierHasCurb(tier: RoadTier | undefined): boolean {
 function tierHasParking(tier: RoadTier | undefined): boolean {
   const t = tier ?? RoadTier.TwoLane;
   return t === RoadTier.TwoLane || t === RoadTier.FourLane || t === RoadTier.OneWay;
+}
+
+/**
+ * Tiers whose junctions get a signal head rather than a board. The multi-lane
+ * roads carry enough traffic to be worth signalising; a two-lane street or an
+ * alley takes a stop or give-way sign.
+ */
+function tierIsSignalised(tier: RoadTier | undefined): boolean {
+  const t = tier ?? RoadTier.TwoLane;
+  return (
+    t === RoadTier.Avenue ||
+    t === RoadTier.Highway ||
+    t === RoadTier.FourLane ||
+    t === RoadTier.BusLane
+  );
 }
 
 // Canonical neighbor order (N, E, S, W); each carries the outward curbside
@@ -271,12 +308,25 @@ function availableSidewalkSides(tileSet: Set<number>, x: number, z: number): Sid
 /**
  * Lateral (perpendicular-to-run) offset axis, derived from neighbor presence:
  * an east-west road offsets along z, a north-south road along x. Isolated tiles
- * and 4-way intersections fall back to z — the same rule the lamp placer uses.
+ * and junctions fall back to z — meaningful only for props that belong IN the
+ * carriageway; anything curbside must check {@link hasCrossingRoad} first.
  */
 function lateralAxis(tileSet: Set<number>, x: number, z: number): FurnitureAxis {
   const hasEW = tileSet.has(tileKey(x - 1, z)) || tileSet.has(tileKey(x + 1, z));
   const hasNS = tileSet.has(tileKey(x, z - 1)) || tileSet.has(tileKey(x, z + 1));
   return hasNS && !hasEW ? 'x' : 'z';
+}
+
+/**
+ * True where road runs through the tile on BOTH axes — a turn, a T, or a
+ * crossroads. Such a tile has no curb: the lateral offset that clears one
+ * carriageway lands inside the other, which is how furniture ends up standing
+ * in the middle of an intersection. Nothing curbside may seat here.
+ */
+export function hasCrossingRoad(tileSet: Set<number>, x: number, z: number): boolean {
+  const hasEW = tileSet.has(tileKey(x - 1, z)) || tileSet.has(tileKey(x + 1, z));
+  const hasNS = tileSet.has(tileKey(x, z - 1)) || tileSet.has(tileKey(x, z + 1));
+  return hasEW && hasNS;
 }
 
 /** Deterministically picks one of the available sides from a [0,1) hash. */
@@ -354,7 +404,9 @@ export function computeMeterPlacements(roadTiles: readonly FurnitureRoadTile[]):
   const out: MeterPlacement[] = [];
   for (const tile of roadTiles) {
     if (!tierHasParking(tile.tier)) continue;
-    if (isTurnTile(tileSet, tile.x, tile.z)) continue; // no curb parking on a curve
+    // No curb parking on a curve, and none across a junction — both cases have
+    // road on the crossing axis where the meter would stand.
+    if (hasCrossingRoad(tileSet, tile.x, tile.z)) continue;
     if (!periodHits(tile.x, tile.z, METER_PERIOD)) continue;
 
     const curbAxis = lateralAxis(tileSet, tile.x, tile.z);
@@ -379,10 +431,14 @@ function classifySign(tileSet: Set<number>, tile: FurnitureRoadTile): SignType |
   if (nc === 1) return 'nothrough'; // dead-end
 
   // Approach into a junction: a low-degree tile whose busiest neighbor is one.
+  // A road big enough to carry serious traffic gets a signal head; the smaller
+  // tiers get a board, which is the real-world split too — you do not signalise
+  // a residential side street.
   if (nc <= 2) {
     const maxDeg = maxNeighborDegree(tileSet, x, z);
-    if (maxDeg >= 4) return 'stop'; // crossroads approach
-    if (maxDeg >= 3) return 'giveway'; // T-junction approach
+    const signalised = tierIsSignalised(tile.tier);
+    if (maxDeg >= 4) return signalised ? 'signal' : 'stop'; // crossroads approach
+    if (maxDeg >= 3) return signalised ? 'signal' : 'giveway'; // T-junction approach
   }
 
   const sides = presentSides(tileSet, x, z);
@@ -740,6 +796,52 @@ function buildNoThroughSign(): THREE.BufferGeometry {
 }
 
 /** One merged board geometry per sign type, all on the shared charcoal pole. */
+/**
+ * A traffic signal: a taller mast than a sign pole, a short arm reaching out
+ * over the carriageway, and a dark head hung off it carrying the three lenses.
+ * The lenses are plain colored discs — the head reads correctly at gameplay
+ * distance without a per-junction phase state to drive, which the sim does not
+ * model. Authored facing ±z like the boards, so writeSign's yaw rule applies
+ * unchanged.
+ */
+function buildTrafficSignal(): THREE.BufferGeometry {
+  const mast = new THREE.CylinderGeometry(
+    SIGNAL_MAST_RADIUS,
+    SIGNAL_MAST_RADIUS,
+    SIGNAL_MAST_HEIGHT,
+    12,
+  );
+  mast.translate(0, SIGNAL_MAST_HEIGHT / 2, 0);
+
+  // The arm reaches toward the road, i.e. opposite the curb the mast stands on.
+  const arm = new THREE.BoxGeometry(SIGNAL_ARM_LENGTH, SIGNAL_ARM_THICKNESS, SIGNAL_ARM_THICKNESS);
+  arm.translate(SIGNAL_ARM_LENGTH / 2, SIGNAL_MAST_HEIGHT - SIGNAL_ARM_THICKNESS, 0);
+
+  const headX = SIGNAL_ARM_LENGTH;
+  const headY = SIGNAL_MAST_HEIGHT - SIGNAL_ARM_THICKNESS - SIGNAL_HEAD_HEIGHT / 2;
+  const housing = new THREE.BoxGeometry(SIGNAL_HEAD_WIDTH, SIGNAL_HEAD_HEIGHT, SIGNAL_HEAD_DEPTH);
+  housing.translate(headX, headY, 0);
+
+  const parts: { geometry: THREE.BufferGeometry; color: number }[] = [
+    { geometry: mast, color: SIGN_POLE_COLOR },
+    { geometry: arm, color: SIGN_POLE_COLOR },
+    { geometry: housing, color: SIGNAL_HOUSING_COLOR },
+  ];
+
+  // Red on top, amber, green — stacked down the face, standing just proud of
+  // the housing so they are not z-fighting with it.
+  const lensZ = SIGNAL_HEAD_DEPTH / 2 + 0.01;
+  const lensColors = [SIGNAL_RED, SIGNAL_AMBER, SIGNAL_GREEN];
+  for (let i = 0; i < lensColors.length; i++) {
+    const lens = new THREE.CylinderGeometry(SIGNAL_LENS_RADIUS, SIGNAL_LENS_RADIUS, 0.02, 10);
+    lens.rotateX(Math.PI / 2); // face ±z, like the sign boards
+    lens.translate(headX, headY + SIGNAL_LENS_SPACING * (1 - i), lensZ);
+    parts.push({ geometry: lens, color: lensColors[i]! });
+  }
+
+  return mergeColoredGeometries(parts);
+}
+
 function buildSignGeometries(): Record<SignType, THREE.BufferGeometry> {
   return {
     stop: buildStopSign(),
@@ -748,7 +850,19 @@ function buildSignGeometries(): Record<SignType, THREE.BufferGeometry> {
     oneway: buildOneWaySign(),
     speed: buildSpeedSign(),
     nothrough: buildNoThroughSign(),
+    signal: buildTrafficSignal(),
   };
+}
+
+/**
+ * Yaw that swings a signal's authored +X mast arm inward over the road, given
+ * the curb it stands on. A rotation of θ about Y sends local +X to world
+ * (cos θ, 0, −sin θ); the arm must point opposite the lateral offset, so each
+ * axis/side pair has exactly one answer.
+ */
+export function signalYaw(axis: FurnitureAxis, side: FurnitureSide): number {
+  if (axis === 'x') return side > 0 ? Math.PI : 0;
+  return side > 0 ? Math.PI / 2 : -Math.PI / 2;
 }
 
 const _matrix = new THREE.Matrix4();
@@ -933,7 +1047,10 @@ export class RoadFurnitureRenderer {
     // curb offset along x means the road runs N-S, so the board (default facing
     // ±z) already faces the traffic; a z offset means an E-W road, so quarter-turn
     // it to face ±x.
-    _quat.setFromAxisAngle(_yAxis, p.axis === 'x' ? 0 : Math.PI / 2);
+    // A signal is not a flat board: its arm reaches out over the carriageway, so
+    // it also has to know WHICH curb it is standing on. Its yaw turns the
+    // authored +X arm toward the tile centre — away from the side it sits on.
+    _quat.setFromAxisAngle(_yAxis, p.type === 'signal' ? signalYaw(p.axis, p.side) : p.axis === 'x' ? 0 : Math.PI / 2);
     _position.set(wx, this.heightAt(wx, wz), wz);
     _matrix.compose(_position, _quat, _scale);
     mesh.setMatrixAt(slot, _matrix);

@@ -18,7 +18,7 @@ function fakeParam(): AudioParam {
 interface FakeCtx {
   ctx: AudioContext;
   gains: { gain: AudioParam; connect: ReturnType<typeof vi.fn> }[];
-  oscillators: { frequency: { value: number }; start: ReturnType<typeof vi.fn> }[];
+  oscillators: { frequency: AudioParam; start: ReturnType<typeof vi.fn> }[];
   resumed: ReturnType<typeof vi.fn>;
   closed: ReturnType<typeof vi.fn>;
 }
@@ -41,9 +41,11 @@ function fakeContext(): FakeCtx {
       return node;
     },
     createOscillator: () => {
+      // frequency is a full AudioParam: swept wildlife notes ramp it rather
+      // than just assigning a value.
       const node = {
         type: 'sine',
-        frequency: { value: 0 },
+        frequency: fakeParam(),
         connect: vi.fn(),
         start: vi.fn(),
         stop: vi.fn(),
@@ -108,14 +110,27 @@ describe('ambientMix', () => {
     expect(small.traffic).toBeLessThan(rush.traffic * 0.3);
   });
 
-  it('brings insects out at night, and thins them as the city fills in', () => {
-    const day = ambientMix({ hour: 12, population: 1000, nightFactor: 0 });
+  it('keeps wildlife to the quiet edges, thinning it as the city fills in', () => {
     const rural = ambientMix({ hour: 1, population: 200, nightFactor: 1 });
     const downtown = ambientMix({ hour: 1, population: 40000, nightFactor: 1 });
 
-    expect(day.night).toBe(0);
-    expect(rural.night).toBeGreaterThan(0.5);
-    expect(downtown.night).toBeLessThan(rural.night);
+    expect(rural.wildlife).toBeGreaterThan(0.5);
+    expect(downtown.wildlife).toBeLessThan(rural.wildlife);
+  });
+
+  it('has something calling day and night, loudest at the dawn chorus', () => {
+    const dawn = ambientMix({ hour: 5.5, population: 500, nightFactor: 0 });
+    const midday = ambientMix({ hour: 13, population: 500, nightFactor: 0 });
+    const night = ambientMix({ hour: 1, population: 500, nightFactor: 1 });
+
+    expect(dawn.wildlife).toBeGreaterThan(midday.wildlife);
+    expect(midday.wildlife).toBeGreaterThan(0); // never dead silent out there
+    expect(night.wildlife).toBeGreaterThan(midday.wildlife);
+  });
+
+  it('picks the voice from the light: birds by day, insects after dark', () => {
+    expect(ambientMix({ hour: 13, population: 500, nightFactor: 0 }).nocturnal).toBe(0);
+    expect(ambientMix({ hour: 1, population: 500, nightFactor: 1 }).nocturnal).toBe(1);
   });
 
   it('keeps a wind floor at all hours', () => {
@@ -130,7 +145,7 @@ describe('AudioEngine', () => {
     const createContext = vi.fn(() => fakeContext().ctx);
     const engine = new AudioEngine({ createContext });
 
-    engine.setAmbient({ traffic: 1, night: 1, wind: 1 });
+    engine.setAmbient({ traffic: 1, wind: 1, wildlife: 1, nocturnal: 0 });
     engine.play('click');
 
     expect(createContext).not.toHaveBeenCalled();
@@ -159,7 +174,7 @@ describe('AudioEngine', () => {
     const fake = fakeContext();
     const engine = new AudioEngine({ createContext: () => fake.ctx });
 
-    engine.setAmbient({ traffic: 1, night: 0, wind: 0 });
+    engine.setAmbient({ traffic: 1, wind: 0, wildlife: 0, nocturnal: 0 });
     engine.unlock();
 
     const scheduled = fake.gains.flatMap((g) =>
@@ -205,6 +220,71 @@ describe('AudioEngine', () => {
 
     engine.play('build'); // two-tone
     expect(fake.oscillators.length).toBe(before + 3);
+  });
+
+  it('builds no looping voice for wildlife — the ambient bed is noise only', () => {
+    const fake = fakeContext();
+    const engine = new AudioEngine({ createContext: () => fake.ctx });
+    engine.unlock();
+
+    // The old insect layer stood up a permanently-running LFO oscillator, which
+    // is what made it read as a loop. Unlocking must create no oscillator at
+    // all: every animal voice is a one-shot scheduled later.
+    expect(fake.oscillators).toHaveLength(0);
+  });
+
+  it('schedules wildlife as discrete calls at irregular times', () => {
+    vi.useFakeTimers();
+    try {
+      const fake = fakeContext();
+      const engine = new AudioEngine({ createContext: () => fake.ctx });
+      engine.unlock();
+      engine.setAmbient({ traffic: 0, wind: 0, wildlife: 1, nocturnal: 0 });
+
+      vi.advanceTimersByTime(5000);
+      const starts = fake.oscillators.flatMap((o) =>
+        (o.start as unknown as { mock: { calls: number[][] } }).mock.calls.map((c) => c[0]!),
+      );
+      expect(starts.length).toBeGreaterThan(0);
+
+      // Calls land at distinct times rather than on a fixed period — the gaps
+      // between them are not all equal.
+      const unique = new Set(starts.map((s) => s.toFixed(4)));
+      expect(unique.size).toBeGreaterThan(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stays silent when there is no wildlife about', () => {
+    vi.useFakeTimers();
+    try {
+      const fake = fakeContext();
+      const engine = new AudioEngine({ createContext: () => fake.ctx });
+      engine.unlock();
+      engine.setAmbient({ traffic: 1, wind: 1, wildlife: 0, nocturnal: 0 });
+
+      vi.advanceTimersByTime(8000);
+      expect(fake.oscillators).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops scheduling once disposed, so no timer outlives the engine', () => {
+    vi.useFakeTimers();
+    try {
+      const fake = fakeContext();
+      const engine = new AudioEngine({ createContext: () => fake.ctx });
+      engine.unlock();
+      engine.setAmbient({ traffic: 0, wind: 0, wildlife: 1, nocturnal: 1 });
+      engine.dispose();
+
+      vi.advanceTimersByTime(10_000);
+      expect(fake.oscillators).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('survives a browser that refuses to give us a context', () => {

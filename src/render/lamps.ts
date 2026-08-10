@@ -220,16 +220,14 @@ export function computeLampPlacements(roadTiles: readonly LampRoadTile[]): LampP
     const w = tileSet.has(tileKey(tile.x - 1, tile.z));
     const hasEW = e || w;
     const hasNS = n || s;
-    // A TURN tile (exactly two perpendicular neighbors) sweeps its curved
-    // carriageway across the tile — the straight-axis lateral rule would
-    // plant the pole in the middle of the road, so turn tiles carry no lamp
-    // (their straight neighbors light the corner).
-    const neighborCount = (n ? 1 : 0) + (e ? 1 : 0) + (s ? 1 : 0) + (w ? 1 : 0);
-    if (neighborCount === 2 && hasNS && hasEW) continue;
-    // An east-west road (neighbors differ in x) gets lamps offset along z,
-    // and vice versa. An isolated tile or a 4-way intersection (both
-    // directions present) falls back to a z offset.
-    const axis: LampAxis = hasNS && !hasEW ? 'x' : 'z';
+    // Any tile with road running through it on BOTH axes — a turn, a T, a
+    // crossroads — has no curb to stand a pole on: the lateral offset that
+    // clears one carriageway lands inside the other one. Such tiles carry no
+    // lamp, and their straight neighbours light the junction from the approach.
+    if (hasNS && hasEW) continue;
+    // An east-west road (neighbors differ in x) gets lamps offset along z, and
+    // vice versa. An isolated tile has no run axis at all and falls back to z.
+    const axis: LampAxis = hasNS ? 'x' : 'z';
 
     const group = sum / LAMP_SPACING_TILES;
     const side: 1 | -1 = group % 2 === 0 ? 1 : -1;

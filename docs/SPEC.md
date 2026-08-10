@@ -330,6 +330,20 @@ white lane markings reused from an existing tier:
   coverage. The render mask is unchanged, so rail still abuts roads as a level
   crossing. UI: joins the **Transit Lanes** sub-tab.
 - Roads epic complete: R1 furniture kit → R2 bus/bike lanes → R3 tram → R4 rail.
+- **Nothing curbside seats on a tile with road on both axes** — a turn, a T, or
+  a crossroads. Such a tile has no curb: the lateral offset that clears one
+  carriageway lands inside the other, which is precisely how a lamp ends up
+  standing in the middle of an intersection. Lamps and parking meters skip
+  those tiles (`hasCrossingRoad`) and the junction is lit and served from its
+  approaches instead. Manholes are the deliberate exception — they belong in
+  the carriageway, so a junction is a fine place for one.
+- **Junction control follows the tier.** A junction approach on a multi-lane
+  road (avenue, highway, four-lane, bus lane) earns a **traffic signal** — a
+  mast with a short arm reaching out over the carriageway and a three-lens head
+  hung off it, yawed by `signalYaw` so the arm always reaches inward from the
+  curb it stands on. Smaller tiers keep the boards: **stop** at a crossroads,
+  **give way** at a T. Cosmetic, like the rest of the kit — the sim models no
+  signal phase, so the head shows its three lenses and does not cycle.
 
 ### 6.8 Vehicle kit (reference screenshot 7, low-poly vehicle set)
 
@@ -1166,10 +1180,19 @@ of assets, zero load time, and each sound is a pure function of its parameters.
 - **Ambient bed**, remixed once per snapshot from `ambientMix({hour,
 population, nightFactor})` (pure, exported, unit-tested): a **traffic** layer
   (lowpassed noise, gain scaling with population and the commute curve — loud at
-  rush hour, near-silent at 3am), a **night** layer (sparse filtered chirps that
-  rise with `nightFactor`), and a constant quiet **wind** floor. The curve is
-  computed in `audio.ts` from the hour rather than imported from
-  `sim/traffic.ts`, keeping the app layer free of sim imports.
+  rush hour, near-silent at 3am) and a constant quiet **wind** floor. Both are
+  broadband noise with no periodic feature, which is the only kind of sound that
+  survives being looped forever. The curve is computed in `audio.ts` from the
+  hour rather than imported from `sim/traffic.ts`, keeping the app layer free of
+  sim imports.
+- **Wildlife is scheduled, not looped.** The same pure mix reports a
+  `wildlife` RATE and how `nocturnal` the hour is; the engine then commits
+  individual calls a couple of seconds ahead on the audio clock, at gaps drawn
+  fresh each time — birdsong by day (a short phrase of swept notes, loudest at
+  the dawn chorus), dry cricket ticks after dark. Anything looped at a fixed
+  period stops sounding like an animal within about two cycles of hearing it,
+  which is exactly what a steadily-pulsed noise layer did. Wildlife thins as the
+  city fills in: it belongs to the quiet edges, not downtown.
 - **UI sounds**, one short synthesized cue each: `click` (tool/dock selection),
   `build` (a successful `CommandAck`), `denied` (a rejected ack or a
   `warn`/`error` notification), `notify` (an `info` notification).

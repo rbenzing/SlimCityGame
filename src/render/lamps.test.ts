@@ -36,6 +36,34 @@ describe('computeLampPlacements (pure)', () => {
     expect(LAMP_SPACING_TILES).toBe(2); // a pole every 32 m, as real streets run
   });
 
+  it('stands no pole on a crossroads — there is no curb to stand it on', () => {
+    // A full 4-way at (4,4): both axes run through it, so the lateral offset
+    // that clears one carriageway lands inside the other.
+    const tiles = [...strip(4, 0, 8, 'ew'), ...strip(4, 0, 8, 'ns')];
+    const placements = computeLampPlacements(tiles);
+    expect(placements.some((p) => p.x === 4 && p.z === 4)).toBe(false);
+  });
+
+  it('stands no pole on a T-junction either', () => {
+    // Stem running north into an east-west road at (4,4).
+    const tiles = [...strip(4, 0, 8, 'ew'), ...strip(4, 0, 4, 'ns')];
+    const placements = computeLampPlacements(tiles);
+    expect(placements.some((p) => p.x === 4 && p.z === 4)).toBe(false);
+  });
+
+  it('still lights the approaches either side of a junction', () => {
+    const tiles = [...strip(4, 0, 8, 'ew'), ...strip(4, 0, 8, 'ns')];
+    const placements = computeLampPlacements(tiles);
+    // The straight run is untouched by the junction rule, so the crossing is
+    // still lit from its approaches rather than going dark.
+    expect(placements.length).toBeGreaterThan(0);
+    for (const p of placements) {
+      const onEW = p.z === 4 && p.x !== 4;
+      const onNS = p.x === 4 && p.z !== 4;
+      expect(onEW || onNS).toBe(true);
+    }
+  });
+
   it('places lamps every LAMP_SPACING_TILES along an east-west road, offset on z, alternating sides', () => {
     const tiles = strip(5, 0, 6, 'ew'); // (0,5)..(6,5)
     const placements = computeLampPlacements(tiles);

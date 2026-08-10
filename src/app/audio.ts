@@ -13,11 +13,19 @@
  * first unlock() and every call before that is a no-op instead of an error.
  */
 
-/** Layer gains, 0..1, for one moment of city life. */
+/** What the city sounds like at one moment: bed gains plus wildlife activity. */
 export interface AmbientMix {
   traffic: number;
-  night: number;
   wind: number;
+  /**
+   * How much wildlife is about, 0..1 — a RATE, not a layer gain. Birdsong and
+   * insects are scheduled as individual calls at random intervals rather than
+   * mixed in as a continuous bed: anything looped at a fixed period stops
+   * sounding like an animal within about two cycles of hearing it.
+   */
+  wildlife: number;
+  /** 0 = daytime birds, 1 = after-dark insects; blended in between. */
+  nocturnal: number;
 }
 
 export interface AmbientInput {
@@ -58,23 +66,50 @@ export function ambientMix(input: AmbientInput): AmbientMix {
   const activity = activityForHour(input.hour);
   const size = Math.min(1, Math.max(0, input.population) / POP_FULL_TRAFFIC);
   const night = Math.min(1, Math.max(0, input.nightFactor));
+  // Wildlife belongs to the quiet edges of a city rather than a downtown, so it
+  // thins out as the place fills up.
+  const rural = 1 - 0.7 * size;
   return {
     traffic: activity * (TRAFFIC_FLOOR + (1 - TRAFFIC_FLOOR) * size),
-    // Insect shimmer belongs to the dark, and to the quiet edges of a city
-    // rather than a downtown — it thins out as the place fills up.
-    night: night * (1 - 0.6 * size),
     // Always there, a touch stronger after dark when nothing masks it.
     wind: 0.55 + 0.45 * night,
+    // Something is calling at most hours — loudest at the dawn chorus, steady
+    // through the night, at its thinnest through the middle of the day.
+    wildlife: rural * (0.3 + 0.7 * Math.max(night, dawnChorus(input.hour))),
+    nocturnal: night,
   };
+}
+
+/**
+ * The dawn chorus: birds are at their loudest for a couple of hours after
+ * first light and taper off through the morning.
+ */
+export function dawnChorus(hour: number): number {
+  const h = ((hour % 24) + 24) % 24;
+  if (h < 4 || h > 9) return 0;
+  return Math.max(0, 1 - Math.abs(h - 5.5) / 3.5);
 }
 
 /** The short cues the UI fires. */
 export type UiSound = 'click' | 'build' | 'denied' | 'notify';
 
+/** The continuously-running beds. Wildlife is scheduled, not mixed. */
+export type BedLayer = 'traffic' | 'wind';
+const BED_LAYERS: readonly BedLayer[] = ['traffic', 'wind'];
 /** Per-layer ceilings — the bed sits under the game, never on top of it. */
-const LAYER_GAIN: AmbientMix = { traffic: 0.32, night: 0.16, wind: 0.07 };
+const LAYER_GAIN: Record<BedLayer, number> = { traffic: 0.32, wind: 0.07 };
 /** Seconds for a layer to glide to a new gain, so the mix never steps. */
 const MIX_GLIDE_S = 1.5;
+
+/** Loudest a single call gets. */
+const WILDLIFE_PEAK = 0.06;
+/** Mean seconds between calls when wildlife is at its thickest. */
+const WILDLIFE_BASE_GAP_S = 3.5;
+/** How often the scheduler wakes, and how far ahead it commits calls. */
+const WILDLIFE_TICK_MS = 900;
+const WILDLIFE_LOOKAHEAD_S = 2.2;
+/** Below this there is nothing about worth hearing. */
+const WILDLIFE_SILENT_BELOW = 0.02;
 
 export interface AudioEngineOptions {
   /** Injected so tests can drive a fake; defaults to the browser's context. */
@@ -93,12 +128,16 @@ export class AudioEngine {
   private ambientBus: GainNode | null = null;
   private uiBus: GainNode | null = null;
   private music: GainNode | null = null;
-  private layers: { [K in keyof AmbientMix]?: GainNode } = {};
+  private layers: { [K in BedLayer]?: GainNode } = {};
   private volume = 0.7;
   private muted = false;
   private musicVolume = 0.7;
   /** Remembered while inert so the first unlock() starts at the right mix. */
-  private pendingMix: AmbientMix = { traffic: 0, night: 0, wind: 0 };
+  private pendingMix: AmbientMix = { traffic: 0, wind: 0, wildlife: 0, nocturnal: 0 };
+  /** Wakes periodically to commit the next few seconds of calls. */
+  private wildlifeTimer: ReturnType<typeof setInterval> | null = null;
+  /** Context time the next call is due at. */
+  private nextCallAt = 0;
 
   constructor(options: AudioEngineOptions = {}) {
     this.createContext =
@@ -149,6 +188,8 @@ export class AudioEngine {
 
     this.buildAmbientBed(ctx, this.ambientBus);
     this.setAmbient(this.pendingMix);
+    this.nextCallAt = ctx.currentTime;
+    this.wildlifeTimer = setInterval(() => this.scheduleWildlife(), WILDLIFE_TICK_MS);
     void ctx.resume();
   }
 
@@ -186,7 +227,7 @@ export class AudioEngine {
     this.pendingMix = mix;
     const ctx = this.ctx;
     if (!ctx) return;
-    for (const layer of ['traffic', 'night', 'wind'] as const) {
+    for (const layer of BED_LAYERS) {
       const node = this.layers[layer];
       if (!node) continue;
       const target = Math.min(1, Math.max(0, mix[layer])) * LAYER_GAIN[layer];
@@ -221,6 +262,10 @@ export class AudioEngine {
   /** Releases the context. Called on teardown; safe to call twice. */
   dispose(): void {
     const ctx = this.ctx;
+    if (this.wildlifeTimer !== null) {
+      clearInterval(this.wildlifeTimer);
+      this.wildlifeTimer = null;
+    }
     this.ctx = null;
     this.master = null;
     this.ambientBus = null;
@@ -256,26 +301,101 @@ export class AudioEngine {
   }
 
   /**
-   * The three looping layers. All are shaped noise: a lowpassed rumble for
-   * traffic, a near-DC hiss for wind, and a bandpassed shimmer slowly
-   * modulated by an LFO for the night insects — which avoids a JS timer
-   * scheduling individual chirps.
+   * The looping layers, both shaped noise: a lowpassed rumble for traffic and a
+   * near-DC hiss for wind. Broadband textures with no periodic feature, which
+   * is the only kind of sound that survives being looped forever. Wildlife is
+   * deliberately NOT here — see scheduleWildlife.
    */
   private buildAmbientBed(ctx: AudioContext, bus: GainNode): void {
     const noise = this.noiseBuffer(ctx);
-
     this.layers.traffic = this.noiseLayer(ctx, bus, noise, 'lowpass', 420, 0.7);
     this.layers.wind = this.noiseLayer(ctx, bus, noise, 'lowpass', 180, 0.4);
+  }
 
-    const night = this.noiseLayer(ctx, bus, noise, 'bandpass', 4200, 9);
-    this.layers.night = night;
-    const lfo = ctx.createOscillator();
-    const lfoDepth = ctx.createGain();
-    lfo.frequency.value = 5.5; // the pulse of a cricket chorus
-    lfoDepth.gain.value = 0.5;
-    lfo.connect(lfoDepth);
-    lfoDepth.connect(night.gain); // rides on top of the layer's own gain
-    lfo.start();
+  /**
+   * Commits the next couple of seconds of individual animal calls, at gaps
+   * drawn fresh each time. A JS timer is only accurate enough to decide WHAT
+   * happens soon; each call is then handed an exact context-clock start time,
+   * so the audio itself never jitters with the timer.
+   *
+   * Math.random is right here where the rest of the codebase avoids it: this is
+   * the app layer, outside the deterministic sim, and irregularity is the whole
+   * point — a fixed pattern is exactly what made the old shimmer read as a
+   * machine rather than an animal.
+   */
+  private scheduleWildlife(): void {
+    const ctx = this.ctx;
+    const bus = this.ambientBus;
+    if (!ctx || !bus) return;
+
+    const { wildlife, nocturnal } = this.pendingMix;
+    const now = ctx.currentTime;
+    if (this.nextCallAt < now) this.nextCallAt = now;
+    if (wildlife < WILDLIFE_SILENT_BELOW) {
+      this.nextCallAt = now; // nothing about; do not bank up a backlog of calls
+      return;
+    }
+
+    const horizon = now + WILDLIFE_LOOKAHEAD_S;
+    while (this.nextCallAt < horizon) {
+      if (Math.random() < nocturnal) {
+        this.insectCall(ctx, bus, this.nextCallAt);
+      } else {
+        this.birdCall(ctx, bus, this.nextCallAt);
+      }
+      const mean = WILDLIFE_BASE_GAP_S / Math.max(wildlife, WILDLIFE_SILENT_BELOW);
+      this.nextCallAt += mean * (0.45 + Math.random() * 1.1);
+    }
+  }
+
+  /** A short phrase of swept notes — the shape of a small bird. */
+  private birdCall(ctx: AudioContext, bus: GainNode, at: number): void {
+    const notes = 2 + Math.floor(Math.random() * 3);
+    const base = 2200 + Math.random() * 1800;
+    let t = at;
+    for (let i = 0; i < notes; i++) {
+      const from = base * (0.9 + Math.random() * 0.2);
+      // Most notes sweep up; the odd one falls, which keeps a phrase from
+      // sounding like the same note stamped out repeatedly.
+      const to = from * (Math.random() < 0.65 ? 1.35 + Math.random() * 0.4 : 0.72);
+      const duration = 0.05 + Math.random() * 0.07;
+      this.sweep(ctx, bus, from, to, duration, t, WILDLIFE_PEAK * (0.7 + Math.random() * 0.3));
+      t += duration + 0.03 + Math.random() * 0.08;
+    }
+  }
+
+  /** A burst of dry ticks — a cricket, rather than a tone. */
+  private insectCall(ctx: AudioContext, bus: GainNode, at: number): void {
+    const ticks = 3 + Math.floor(Math.random() * 4);
+    let t = at;
+    for (let i = 0; i < ticks; i++) {
+      this.sweep(ctx, bus, 4200, 4500, 0.012, t, WILDLIFE_PEAK * 0.55);
+      t += 0.05 + Math.random() * 0.02;
+    }
+  }
+
+  /** One note that glides between two pitches, self-cleaning. */
+  private sweep(
+    ctx: AudioContext,
+    bus: GainNode,
+    from: number,
+    to: number,
+    duration: number,
+    start: number,
+    peak: number,
+  ): void {
+    const osc = ctx.createOscillator();
+    const env = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(from, start);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(1, to), start + duration);
+    env.gain.setValueAtTime(0, start);
+    env.gain.linearRampToValueAtTime(peak, start + 0.006);
+    env.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+    osc.connect(env);
+    env.connect(bus);
+    osc.start(start);
+    osc.stop(start + duration + 0.02);
   }
 
   private noiseLayer(
