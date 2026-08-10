@@ -5,12 +5,17 @@
  *   POLE (tapered mast, wider base, curbside) -> ARM (a curved/angled
  *   bracket — a short rising NECK off the pole top, then a longer REACH
  *   arcing back down over the road) -> HOUSING (a tapered box/cowl luminaire
- *   hanging from the arm end, over the road, pointing down) -> CONE (a warm
- *   translucent beam, apex at the housing, widening down to just above the
- *   road surface — open-ended, no ground disc).
- * All layers fade in together on the shared nightFactor dusk ramp. Every
- * part (pole/arm/housing) is one merged, instanced geometry — one draw call
- * per part regardless of lamp count — and each casts a shadow (the sun
+ *   hanging from the arm end, over the road, pointing down) -> LENS (a warm
+ *   sphere seated in the cowl mouth — the actual light source) -> POOL (a soft
+ *   disc of light lying on the pavement below it).
+ * There is no beam volume: housing and lens ramp their emissive well past the
+ * bloom luminance threshold so the post pass smears them into a halo, and the
+ * pool lights the road itself — bloom can only bleed around bright pixels, so
+ * a halo at head height cannot brighten pavement that has none of its own.
+ * All three fade on the lamp's own clock schedule (lampGlowFactor), not the
+ * shared dusk ramp.
+ * Every part (pole/arm/housing) is one merged, instanced geometry — one draw
+ * call per part regardless of lamp count — and each casts a shadow (the sun
  * shadow map + `renderer.shadowMap.enabled` are already wired in scene.ts;
  * this file only needs `castShadow = true` on its own meshes).
  * Cheap instanced geometry, not per-pixel lighting.
@@ -18,7 +23,7 @@
 import * as THREE from 'three';
 import { RoadTier, TilePoint } from '../shared/types';
 import { LAMP_SPACING_TILES, tileToWorld } from '../shared/constants';
-import { carriagewayHalfWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
+import { carriagewayHalfWidthMeters, ROAD_Y_OFFSET, SIDEWALK_WIDTH_M } from './roadsmesh';
 
 const POLE_HEIGHT = 5.5;
 const POLE_RADIUS_TOP = 0.12;
@@ -33,8 +38,8 @@ const POLE_COLOR = 0x50555d;
 /**
  * The cantilever arm reaches from the pole top TOWARD the road centerline
  * (direction = opposite the pole's lateral-offset sign). A short reach — the
- * pole is already curbside — so the housing (and its light cone) land over the
- * near LANE of the road rather than the far side.
+ * pole is already curbside — so the housing (and the pool it casts) land over
+ * the near LANE of the road rather than the far side.
  */
 const ARM_LENGTH_METERS = 2.8;
 const ARM_THICKNESS = 0.1;
@@ -53,8 +58,7 @@ const ARM_NECK_LENGTH = ARM_LENGTH_METERS * ARM_NECK_FRACTION;
 const ARM_REACH_LENGTH = ARM_LENGTH_METERS - ARM_NECK_LENGTH;
 const ARM_RISE = 0.32; // upward bend of the neck before the reach arcs back down
 
-// How far below the arm mount the housing attach point hangs. The cone apex is
-// derived from this.
+// How far below the arm mount the housing attach point hangs.
 const HOUSING_DROP = 0.22;
 
 const HOUSING_CAP_LENGTH = 0.36; // mounting cap, along the arm direction
@@ -67,19 +71,95 @@ const HOUSING_COWL_SEGMENTS = 4; // 4-sided taper reads as a "boxy" cowl, not a 
 const HOUSING_TILT_RAD = THREE.MathUtils.degToRad(18); // angled downward, toward the road
 const HOUSING_COLOR = 0xffd9a0;
 
+/** Housing attach point: where the arm ends and the luminaire hangs. */
+const HOUSING_ATTACH_Y_OFFSET = ARM_Y_OFFSET - HOUSING_DROP;
+
 /**
- * Light cone: apex at the housing attach point (over the road, at the arm
- * end), base just ABOVE the road surface so the additive translucent beam
- * pools on the pavement. There is no ground disc — the base sits above
- * ROAD_Y_OFFSET (0.15) so nothing clips through/under the raised road — and
- * the cone is `openEnded` (no bottom cap), so only the translucent wall shows.
+ * Lens: the bulb itself, a small sphere seated in the cowl mouth. It is
+ * deliberately wider than the cowl's bottom radius so it bulges past the rim
+ * and stays visible from the game's angled camera — a compact, very bright
+ * core is exactly what the bloom pass needs to bleed a believable halo over
+ * the road.
  */
-const CONE_BASE_Y_OFFSET = 0.16; // a hair above the road surface (ROAD_Y_OFFSET 0.15)
-const CONE_APEX_Y_OFFSET = ARM_Y_OFFSET - HOUSING_DROP; // matches the housing attach point
-const CONE_HEIGHT = CONE_APEX_Y_OFFSET - CONE_BASE_Y_OFFSET;
-const CONE_BASE_RADIUS = 2.6;
-const CONE_RADIAL_SEGMENTS = 12;
-const CONE_MAX_OPACITY = 0.4;
+const LENS_COLOR = 0xfff1d0; // hotter and whiter than the fixture's warm body
+const LENS_UNLIT_COLOR = 0x2b2620; // dark glass by day, so it still takes some sun shading
+const LENS_RADIUS = 0.26;
+const LENS_WIDTH_SEGMENTS = 8;
+const LENS_HEIGHT_SEGMENTS = 6;
+/** Distance from the housing attach point down its own (tilted) axis to the lens center. */
+const LENS_DROP = HOUSING_CAP_HEIGHT + HOUSING_COWL_HEIGHT;
+
+/**
+ * Ground pool: the light the lamp actually throws on the road. Bloom only
+ * bleeds around bright pixels, so a halo at head height can never light the
+ * pavement however wide its radius — the road needs bright pixels of its own.
+ * The pool supplies them, and being the largest bright area on the lamp it is
+ * also its widest bloom source. Additive with no depth write, soft-edged by
+ * vertex color rather than a texture, and terrain-conforming (every vertex
+ * samples the ground) so it lies on a road running across a slope instead of
+ * slicing through it.
+ *
+ * It is an ELLIPSE, not a circle: a real cantilever luminaire aims down the
+ * roadway and throws a pool far longer along the road than across it. Stretched
+ * that way the pools of successive lamps overlap into a continuously lit
+ * corridor, which is what a lit street looks like — equal-radius circles read
+ * as isolated puddles with dark road between them.
+ */
+const POOL_RADIUS = 4.5;
+const POOL_ALONG_SCALE = 3; // down the roadway — ~27 m of road per lamp
+const POOL_ACROSS_SCALE = 1; // across it — the carriageway plus a little verge
+const POOL_SEGMENTS = 24;
+const POOL_Y_OFFSET = ROAD_Y_OFFSET + 0.06; // clears the raised road surface
+const POOL_MAX_OPACITY = 0.55;
+/** Sodium-warm: road light is warmer and deeper than the fixture's own body. */
+const POOL_COLOR = 0xffc27a;
+/**
+ * [radius fraction, brightness] rings from the core outward; the last must end
+ * at 0. The curve decays steeply and never plateaus — a broad flat core reads
+ * as a painted shape with an edge, while a hot point trailing off over most of
+ * the radius reads as light falling on a surface.
+ */
+const POOL_RINGS: ReadonlyArray<readonly [number, number]> = [
+  [0.12, 0.72],
+  [0.3, 0.4],
+  [0.55, 0.18],
+  [0.78, 0.06],
+  [1, 0],
+];
+
+/**
+ * Night emissive strengths. The housing sits in the same range as lit building
+ * windows (buildings.ts WINDOW_EMISSIVE_STRENGTH) so the fixture reads as lit;
+ * the lens goes far hotter because it is a handful of pixels and needs to clear
+ * the bloom threshold by a wide margin to smear into a halo.
+ */
+const HOUSING_EMISSIVE_STRENGTH = 3.2;
+const LENS_EMISSIVE_STRENGTH = 14;
+
+/**
+ * Lamp schedule, in clock hours (hour = dayT × 24, matching ui/format.ts's
+ * status-strip clock: sunrise 06:00, sunset 18:00). Lamps deliberately do NOT
+ * follow nightFactor — that ramp only reaches 0 at noon, which left lamps
+ * faintly lit all morning.
+ */
+const LAMP_ON_START_HOUR = 18; // sunset: lamps begin to come up
+const LAMP_ON_FULL_HOUR = 19.5; // fully lit by the time dusk has settled
+const LAMP_OFF_START_HOUR = 6; // sunrise: lamps begin to fade
+export const LAMP_OFF_HOUR = 7; // dark by one hour past sunrise
+
+/**
+ * 0 (off) .. 1 (full) lamp glow for a visual-day fraction in [0,1). Pure: no
+ * three.js, no globals. Off through the daylight hours, ramping up from sunset
+ * and out over the hour after sunrise.
+ */
+export function lampGlowFactor(dayT: number): number {
+  const hour = ((((dayT % 1) + 1) % 1) * 24) % 24;
+  if (hour <= LAMP_OFF_START_HOUR || hour >= LAMP_ON_FULL_HOUR) return 1;
+  if (hour < LAMP_OFF_HOUR)
+    return 1 - (hour - LAMP_OFF_START_HOUR) / (LAMP_OFF_HOUR - LAMP_OFF_START_HOUR);
+  if (hour < LAMP_ON_START_HOUR) return 0;
+  return (hour - LAMP_ON_START_HOUR) / (LAMP_ON_FULL_HOUR - LAMP_ON_START_HOUR);
+}
 
 export type LampAxis = 'x' | 'z';
 
@@ -250,8 +330,99 @@ function buildHousingGeometry(): THREE.BufferGeometry {
   return mergeGeometries([cap, cowl]);
 }
 
+/** World XZ of the pole for a placement — curbside, offset along the placement's axis. */
+function poleWorldXZ(placement: LampPlacement): { x: number; z: number } {
+  const tileCenterX = tileToWorld(placement.x);
+  const tileCenterZ = tileToWorld(placement.z);
+  const offset = placement.lateralOffset * placement.side;
+  return {
+    x: placement.axis === 'x' ? tileCenterX + offset : tileCenterX,
+    z: placement.axis === 'z' ? tileCenterZ + offset : tileCenterZ,
+  };
+}
+
+/**
+ * World XZ of the luminaire — the arm end, out over the near lane. The arm
+ * reaches back toward the road centerline, i.e. opposite the pole's own
+ * lateral offset.
+ */
+function housingWorldXZ(placement: LampPlacement): { x: number; z: number } {
+  const pole = poleWorldXZ(placement);
+  const armOffset = ARM_LENGTH_METERS * -placement.side;
+  return {
+    x: placement.axis === 'x' ? pole.x + armOffset : pole.x,
+    z: placement.axis === 'z' ? pole.z + armOffset : pole.z,
+  };
+}
+
+/** Vertices in one pool disc: the core, plus a ring of segments per falloff step. */
+export const POOL_VERTICES_PER_LAMP = 1 + POOL_RINGS.length * POOL_SEGMENTS;
+
+/**
+ * One merged terrain-conforming disc per lamp, brightness carried by
+ * per-vertex color: a hot core that decays fast and trails off to nothing at
+ * the rim. A single center-to-rim gradient reads as a painted coin, so the
+ * falloff is shaped by concentric rings; the zero-brightness rim also means
+ * ground the disc can't quite match never shows a hard edge. Sampling
+ * `heightAt` per vertex is what keeps the pool ON the road across a slope —
+ * one flat disc at a single Y slices straight through it.
+ */
+function buildPoolGeometry(
+  placements: readonly LampPlacement[],
+  heightAt: (x: number, z: number) => number,
+): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+
+  placements.forEach((placement, lamp) => {
+    const { x: centerX, z: centerZ } = housingWorldXZ(placement);
+    const base = lamp * POOL_VERTICES_PER_LAMP;
+    // `axis` is the LATERAL axis the pole is offset along, so the roadway runs
+    // along the other one — that is the direction the pool stretches down.
+    const alongX = placement.axis === 'x' ? 0 : 1;
+    const alongZ = placement.axis === 'x' ? 1 : 0;
+
+    positions.push(centerX, heightAt(centerX, centerZ) + POOL_Y_OFFSET, centerZ);
+    colors.push(1, 1, 1);
+
+    for (let ring = 0; ring < POOL_RINGS.length; ring++) {
+      const [radiusFraction, intensity] = POOL_RINGS[ring]!;
+      const radius = POOL_RADIUS * radiusFraction;
+      const firstVertex = base + 1 + ring * POOL_SEGMENTS;
+      const innerFirst = firstVertex - POOL_SEGMENTS;
+      for (let s = 0; s < POOL_SEGMENTS; s++) {
+        const angle = (s / POOL_SEGMENTS) * Math.PI * 2;
+        const along = Math.cos(angle) * radius * POOL_ALONG_SCALE;
+        const across = Math.sin(angle) * radius * POOL_ACROSS_SCALE;
+        const vx = centerX + alongX * along + alongZ * across;
+        const vz = centerZ + alongZ * along + alongX * across;
+        positions.push(vx, heightAt(vx, vz) + POOL_Y_OFFSET, vz);
+        colors.push(intensity, intensity, intensity);
+
+        const here = firstVertex + s;
+        const next = firstVertex + ((s + 1) % POOL_SEGMENTS);
+        if (ring === 0) {
+          indices.push(base, next, here); // fan off the core vertex
+        } else {
+          const innerHere = innerFirst + s;
+          const innerNext = innerFirst + ((s + 1) % POOL_SEGMENTS);
+          indices.push(innerHere, innerNext, here, innerNext, next, here);
+        }
+      }
+    }
+  });
+
+  const pool = new THREE.BufferGeometry();
+  pool.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  pool.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  pool.setIndex(indices);
+  return pool;
+}
+
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
+const _lensOffset = new THREE.Vector3();
 const _identityQuat = new THREE.Quaternion();
 const _scale = new THREE.Vector3(1, 1, 1);
 const _upAxis = new THREE.Vector3(0, 1, 0);
@@ -300,26 +471,36 @@ export class LampRenderer {
     emissiveIntensity: 0,
   });
 
-  private readonly coneGeometry = new THREE.ConeGeometry(
-    CONE_BASE_RADIUS,
-    CONE_HEIGHT,
-    CONE_RADIAL_SEGMENTS,
-    1,
-    true, // openEnded: no bottom cap — just the translucent beam wall
+  /**
+   * The bulb: a near-black body so by day it reads as a dark lens in the cowl
+   * and by night contributes nothing but its own emissive glow.
+   */
+  private readonly lensGeometry = new THREE.SphereGeometry(
+    LENS_RADIUS,
+    LENS_WIDTH_SEGMENTS,
+    LENS_HEIGHT_SEGMENTS,
   );
-  private readonly coneMaterial = new THREE.MeshBasicMaterial({
-    color: HOUSING_COLOR,
+  private readonly lensMaterial = new THREE.MeshLambertMaterial({
+    color: LENS_UNLIT_COLOR,
+    emissive: LENS_COLOR,
+    emissiveIntensity: 0,
+  });
+
+  private readonly poolMaterial = new THREE.MeshBasicMaterial({
+    color: POOL_COLOR,
+    vertexColors: true,
     transparent: true,
     opacity: 0,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
-    side: THREE.DoubleSide,
   });
 
   private poleMesh: THREE.InstancedMesh | null = null;
   private armMesh: THREE.InstancedMesh | null = null;
   private housingMesh: THREE.InstancedMesh | null = null;
-  private coneMesh: THREE.InstancedMesh | null = null;
+  private lensMesh: THREE.InstancedMesh | null = null;
+  /** Not instanced: each disc carries its own terrain-sampled vertex heights. */
+  private poolMesh: THREE.Mesh | null = null;
   private placements: LampPlacement[] = [];
 
   constructor(scene: THREE.Scene, heightAt: (x: number, z: number) => number) {
@@ -338,14 +519,18 @@ export class LampRenderer {
     this.poleMesh = new THREE.InstancedMesh(this.poleGeometry, this.poleMaterial, count);
     this.armMesh = new THREE.InstancedMesh(this.armGeometry, this.poleMaterial, count);
     this.housingMesh = new THREE.InstancedMesh(this.housingGeometry, this.housingMaterial, count);
-    this.coneMesh = new THREE.InstancedMesh(this.coneGeometry, this.coneMaterial, count);
+    this.lensMesh = new THREE.InstancedMesh(this.lensGeometry, this.lensMaterial, count);
+    this.poolMesh = new THREE.Mesh(
+      buildPoolGeometry(this.placements, this.heightAt),
+      this.poolMaterial,
+    );
     this.poleMesh.count = count;
     this.armMesh.count = count;
     this.housingMesh.count = count;
-    this.coneMesh.count = count;
+    this.lensMesh.count = count;
 
-    // Pole/arm/housing are real modeled geometry, not additive FX — they
-    // cast shadows. The cone stays non-shadow-casting.
+    // Pole/arm/housing are real modeled geometry — they cast shadows. The lens
+    // is a light source, so it stays non-shadow-casting.
     this.poleMesh.castShadow = true;
     this.armMesh.castShadow = true;
     this.housingMesh.castShadow = true;
@@ -355,16 +540,20 @@ export class LampRenderer {
     this.poleMesh.instanceMatrix.needsUpdate = true;
     this.armMesh.instanceMatrix.needsUpdate = true;
     this.housingMesh.instanceMatrix.needsUpdate = true;
-    this.coneMesh.instanceMatrix.needsUpdate = true;
+    this.lensMesh.instanceMatrix.needsUpdate = true;
 
-    this.scene.add(this.poleMesh, this.armMesh, this.housingMesh, this.coneMesh);
+    this.scene.add(this.poleMesh, this.armMesh, this.housingMesh, this.lensMesh, this.poolMesh);
   }
 
-  /** Fades the housing glow and light cone together on the dusk ramp. */
-  setNightFactor(nightFactor: number): void {
-    const f = Math.min(1, Math.max(0, nightFactor));
-    this.housingMaterial.emissiveIntensity = f;
-    this.coneMaterial.opacity = f * CONE_MAX_OPACITY;
+  /**
+   * Drives the fixture, lens and ground pool from the visual-day fraction:
+   * lamps light at dusk, burn overnight, and go dark an hour past sunrise.
+   */
+  setTimeOfDay(dayT: number): void {
+    const f = lampGlowFactor(dayT);
+    this.housingMaterial.emissiveIntensity = f * HOUSING_EMISSIVE_STRENGTH;
+    this.lensMaterial.emissiveIntensity = f * LENS_EMISSIVE_STRENGTH;
+    this.poolMaterial.opacity = f * POOL_MAX_OPACITY;
   }
 
   /** Number of lamps placed by the last rebuild(); every layer matches this 1:1. */
@@ -384,16 +573,42 @@ export class LampRenderer {
     return this.housingMesh?.count ?? 0;
   }
 
-  coneInstanceCount(): number {
-    return this.coneMesh?.count ?? 0;
+  lensInstanceCount(): number {
+    return this.lensMesh?.count ?? 0;
   }
 
   housingEmissiveIntensity(): number {
     return this.housingMaterial.emissiveIntensity;
   }
 
-  coneOpacity(): number {
-    return this.coneMaterial.opacity;
+  lensEmissiveIntensity(): number {
+    return this.lensMaterial.emissiveIntensity;
+  }
+
+  /** Vertices in the merged pool mesh — POOL_VERTICES_PER_LAMP per lamp. */
+  poolVertexCount(): number {
+    const position = this.poolMesh?.geometry.getAttribute('position');
+    return position ? position.count : 0;
+  }
+
+  poolOpacity(): number {
+    return this.poolMaterial.opacity;
+  }
+
+  /** World coordinate of pool vertex `vertex` — test introspection for shape and conformance. */
+  poolVertexX(vertex: number): number {
+    const position = this.poolMesh?.geometry.getAttribute('position');
+    return position ? position.getX(vertex) : NaN;
+  }
+
+  poolVertexY(vertex: number): number {
+    const position = this.poolMesh?.geometry.getAttribute('position');
+    return position ? position.getY(vertex) : NaN;
+  }
+
+  poolVertexZ(vertex: number): number {
+    const position = this.poolMesh?.geometry.getAttribute('position');
+    return position ? position.getZ(vertex) : NaN;
   }
 
   poleCastShadow(): boolean {
@@ -420,8 +635,16 @@ export class LampRenderer {
     return this.positionOf(this.housingMesh, slot);
   }
 
-  conePosition(slot = 0): THREE.Vector3 {
-    return this.positionOf(this.coneMesh, slot);
+  lensPosition(slot = 0): THREE.Vector3 {
+    return this.positionOf(this.lensMesh, slot);
+  }
+
+  /** World XZ+Y of the core vertex of lamp `slot`'s pool disc. */
+  poolCenter(slot = 0): THREE.Vector3 {
+    const position = this.poolMesh?.geometry.getAttribute('position');
+    if (!position) return new THREE.Vector3(NaN, NaN, NaN);
+    const vertex = slot * POOL_VERTICES_PER_LAMP;
+    return new THREE.Vector3(position.getX(vertex), position.getY(vertex), position.getZ(vertex));
   }
 
   /** World-space rotation of the arm instance at `slot` (test introspection for the direction-dependent yaw). */
@@ -434,16 +657,6 @@ export class LampRenderer {
     const scale = new THREE.Vector3();
     matrix.decompose(position, quat, scale);
     return quat;
-  }
-
-  /** Cone apex Y (world) at `slot` — matches the housing attach point. */
-  coneApexY(slot = 0): number {
-    return this.conePosition(slot).y + CONE_HEIGHT / 2;
-  }
-
-  /** Cone base Y (world) at `slot` — the beam's foot, just above the road surface. */
-  coneBaseY(slot = 0): number {
-    return this.conePosition(slot).y - CONE_HEIGHT / 2;
   }
 
   private positionOf(mesh: THREE.InstancedMesh | null, slot: number): THREE.Vector3 {
@@ -492,27 +705,34 @@ export class LampRenderer {
     this.armMesh!.setMatrixAt(slot, _matrix);
 
     // Housing hangs at the arm end, over the road (near lane), angled down.
-    _position.set(housingX, groundY + CONE_APEX_Y_OFFSET, housingZ);
+    const housingY = groundY + HOUSING_ATTACH_Y_OFFSET;
+    _position.set(housingX, housingY, housingZ);
     _matrix.compose(_position, housingQuat, _scale);
     this.housingMesh!.setMatrixAt(slot, _matrix);
 
-    // ConeGeometry is centered on its own local Y axis (apex at +height/2,
-    // base at -height/2), so its world center sits midway between the beam foot
-    // (just above the road) and the housing (apex), over the road at the
-    // housing's x/z, not the pole's.
-    _position.set(housingX, groundY + CONE_BASE_Y_OFFSET + CONE_HEIGHT / 2, housingZ);
+    // Lens sits in the cowl mouth: straight down the HOUSING's own axis, not
+    // the world's, so the housing's downward tilt carries the bulb with it.
+    _lensOffset.set(0, -LENS_DROP, 0).applyQuaternion(housingQuat);
+    _position.set(housingX + _lensOffset.x, housingY + _lensOffset.y, housingZ + _lensOffset.z);
     _matrix.compose(_position, _identityQuat, _scale);
-    this.coneMesh!.setMatrixAt(slot, _matrix);
+    this.lensMesh!.setMatrixAt(slot, _matrix);
   }
 
   private disposeMeshes(): void {
     if (this.poleMesh) this.scene.remove(this.poleMesh);
     if (this.armMesh) this.scene.remove(this.armMesh);
     if (this.housingMesh) this.scene.remove(this.housingMesh);
-    if (this.coneMesh) this.scene.remove(this.coneMesh);
+    if (this.lensMesh) this.scene.remove(this.lensMesh);
+    if (this.poolMesh) {
+      this.scene.remove(this.poolMesh);
+      // Unlike every other layer's geometry, this one is rebuilt per road
+      // change (it bakes terrain heights), so it owns nothing shared.
+      this.poolMesh.geometry.dispose();
+    }
     this.poleMesh = null;
     this.armMesh = null;
     this.housingMesh = null;
-    this.coneMesh = null;
+    this.lensMesh = null;
+    this.poolMesh = null;
   }
 }

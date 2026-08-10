@@ -2961,7 +2961,7 @@ export class RoadMeshRenderer {
    * Extra night dim toward ROAD_NIGHT_DIM, on top of the Lambert lighting's own
    * darkening. Scales material.color (a multiplier on lit vertex color), so it
    * deepens the pavement at night without touching per-tile colors, keeping the
-   * additive lamp pools as the bright spots. At day (factor 0) it is 1 → the
+   * lamp pools as the bright spots. At day (factor 0) it is 1 → the
    * road shows its full lit color.
    */
   setNightFactor(nightFactor: number): void {

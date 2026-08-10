@@ -122,9 +122,11 @@ export const VISUAL_DAY_TICKS = 2400;
 export const CLOCK_START_OFFSET_TICKS = Math.round((VISUAL_DAY_TICKS * 9) / 24);
 /**
  * Street lamps are auto-placed on every Nth road tile (alternating sides,
- * deterministic from tile coords).
+ * deterministic from tile coords). At TILE_METERS that is a pole every 32 m,
+ * inside the real-world range for street lighting (roughly 25-45 m) and close
+ * enough that neighboring light pools overlap into a continuously lit street.
  */
-export const LAMP_SPACING_TILES = 3;
+export const LAMP_SPACING_TILES = 2;
 /**
  * Fraction of a building's windows lit at full night: each window's
  * hash(buildingId, windowIndex) threshold lands in this band, so 40–70%

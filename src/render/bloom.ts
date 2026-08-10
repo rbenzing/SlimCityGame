@@ -30,7 +30,10 @@ export interface BloomPipeline {
 export const MIN_BLOOM_STRENGTH = 0;
 export const MAX_BLOOM_STRENGTH = 3;
 
-const BLOOM_RADIUS = 0.4;
+// Wide spread: night lights (windows, lamp heads, the lamps' road pools) bleed
+// as a soft glow rather than a tight rim. Costs nothing in daylight — the
+// caller scales strength by nightFactor, so the pass contributes zero at noon.
+const BLOOM_RADIUS = 0.9;
 const BLOOM_LUMINANCE_THRESHOLD = 0.35;
 
 /** Clamps a caller-supplied bloom strength into the supported range. Pure, exported for reuse/testing. */
