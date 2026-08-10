@@ -13,6 +13,8 @@ export interface StartMenuProps {
   hasSaves: boolean;
   /** Rendered above the button stack; falls back to a plain text heading. */
   logoSlot?: ReactNode;
+  /** Closes the pause overlay and hands the city back. Absent on the start screen. */
+  onResume?: () => void;
   onNewGame: () => void;
   onSaveGame: () => void;
   onLoadGame: () => void;
@@ -50,6 +52,7 @@ export function StartMenu({
   hasActiveGame,
   hasSaves,
   logoSlot,
+  onResume,
   onNewGame,
   onSaveGame,
   onLoadGame,
@@ -63,11 +66,13 @@ export function StartMenu({
       aria-label="Main menu"
     >
       <div className="w-64">
-        {logoSlot ?? (
-          <h1 className="text-center text-3xl font-bold text-white">SlimCity</h1>
-        )}
+        {logoSlot ?? <h1 className="text-center text-3xl font-bold text-white">SlimCity</h1>}
       </div>
       <div className={`flex w-64 flex-col gap-3 p-4 ${PANEL_ROUNDED}`}>
+        {/* Only over a running game, where it is the way back to the city —
+            and the first thing the eye lands on, since leaving is the common
+            reason to open this overlay. */}
+        {hasActiveGame && onResume && <MenuButton label="Resume Game" onClick={onResume} />}
         <MenuButton label="New Game" onClick={onNewGame} />
         <MenuButton label="Save Game" onClick={onSaveGame} disabled={!hasActiveGame} />
         <MenuButton label="Load Game" onClick={onLoadGame} disabled={!hasSaves} />

@@ -11,8 +11,7 @@
 
 /** What the next boot should show. Persisted in sessionStorage (per tab). */
 export type AppSession =
-  | { screen: 'menu' }
-  | { screen: 'playing'; seed: number; mode: 'new' | 'load'; saveId?: number };
+  { screen: 'menu' } | { screen: 'playing'; seed: number; mode: 'new' | 'load'; saveId?: number };
 
 const SESSION_KEY = 'slimcity.session';
 const SETTINGS_KEY = 'slimcity.settings';
@@ -74,6 +73,10 @@ export interface GameSettings {
   unlimitedMoney: boolean;
   masterVolume: number; // 0..1
   muted: boolean;
+  /** Music mixes independently of the city bed and UI cues. */
+  musicVolume: number; // 0..1
+  musicShuffle: boolean;
+  musicRepeat: 'off' | 'all' | 'one';
 }
 
 export const DEFAULT_SETTINGS: GameSettings = {
@@ -82,6 +85,9 @@ export const DEFAULT_SETTINGS: GameSettings = {
   unlimitedMoney: false,
   masterVolume: 0.7,
   muted: false,
+  musicVolume: 0.6,
+  musicShuffle: false,
+  musicRepeat: 'all',
 };
 
 export function loadSettings(): GameSettings {

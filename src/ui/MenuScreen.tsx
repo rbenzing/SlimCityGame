@@ -5,10 +5,12 @@
  * persist.ts (the save-slot list). Self-gates: renders nothing unless the
  * menu-only screen is showing or the in-game pause overlay is open.
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
+import type { SimSpeed } from '../shared/types';
 import BrandLogo from './BrandLogo';
 import { OptionsPanel } from './OptionsPanel';
+import { audioRuntime } from '../app/audioruntime';
 import { SaveBrowser, type SaveRow } from './SaveBrowser';
 import { StartMenu } from './StartMenu';
 import { useCityStore } from './store';
@@ -60,22 +62,33 @@ export function MenuScreen(): JSX.Element | null {
     };
   }, [open]);
 
-  // Opening the pause overlay over a running game pauses the sim; closing it
-  // (Escape, below) leaves speed as-is — Space still resumes it.
+  // Opening the pause overlay over a running game pauses the sim. The speed
+  // the player was running at is remembered here so leaving the menu puts them
+  // back exactly where they were — including still-paused, if that is how they
+  // opened it.
+  const resumeSpeed = useRef<SimSpeed>(1);
   useEffect(() => {
-    if (screen === 'playing' && menuOpen) useCityStore.getState().setSpeed(0);
+    if (screen !== 'playing' || !menuOpen) return;
+    resumeSpeed.current = useCityStore.getState().speed;
+    useCityStore.getState().setSpeed(0);
   }, [screen, menuOpen]);
 
-  // Escape resumes gameplay by closing the in-game pause overlay. The
-  // menu-only screen has no running game to return to, so it's a no-op there.
+  /** The single way back to the city: close the overlay, restore the clock. */
+  const resumeGame = useCallback(() => {
+    useCityStore.getState().setMenuOpen(false);
+    useCityStore.getState().setSpeed(resumeSpeed.current);
+  }, []);
+
+  // Escape is the keyboard half of Resume Game — same effect, so the two can
+  // never disagree. The menu-only screen has no running game to return to.
   useEffect(() => {
     if (!(screen === 'playing' && menuOpen)) return;
     function onKeyDown(e: KeyboardEvent): void {
-      if (e.key === 'Escape') useCityStore.getState().setMenuOpen(false);
+      if (e.key === 'Escape') resumeGame();
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [screen, menuOpen]);
+  }, [screen, menuOpen, resumeGame]);
 
   if (!open) return null;
 
@@ -85,6 +98,7 @@ export function MenuScreen(): JSX.Element | null {
         settings={settings}
         onChange={(patch) => useCityStore.getState().setSettings(patch)}
         onBack={() => setSub('main')}
+        musicPlayer={audioRuntime().music}
       />
     );
   }
@@ -108,6 +122,7 @@ export function MenuScreen(): JSX.Element | null {
       hasActiveGame={screen === 'playing'}
       hasSaves={saves.length > 0}
       logoSlot={<BrandLogo className="text-white" />}
+      onResume={resumeGame}
       onNewGame={startNewGame}
       onSaveGame={() => useCityStore.getState().bound?.saveGame()}
       onLoadGame={() => setSub('saves')}

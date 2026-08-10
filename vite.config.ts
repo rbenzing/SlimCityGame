@@ -2,12 +2,13 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import { songsManifestPlugin } from './tools/vite-songs-manifest';
 
 // GitHub Pages serves this project site under /CitySim/, so the production
 // build needs that base for correct asset URLs. Dev + Playwright stay at '/'.
 export default defineConfig(({ mode }) => ({
   base: mode === 'production' ? '/CitySim/' : '/',
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), songsManifestPlugin()],
   build: {
     target: 'esnext',
     rollupOptions: {
@@ -21,7 +22,8 @@ export default defineConfig(({ mode }) => ({
           const path = id.replace(/\\/g, '/');
           if (!path.includes('/node_modules/')) return undefined;
           if (/\/node_modules\/(three|@types\/three)\//.test(path)) return 'vendor-three';
-          if (/\/node_modules\/(react|react-dom|scheduler|zustand)\//.test(path)) return 'vendor-ui';
+          if (/\/node_modules\/(react|react-dom|scheduler|zustand)\//.test(path))
+            return 'vendor-ui';
           return undefined;
         },
       },
@@ -31,6 +33,11 @@ export default defineConfig(({ mode }) => ({
   test: {
     environment: 'node',
     include: ['src/**/*.test.{ts,tsx}'],
+    // A handful of tests diffuse or hash full 256² grids. Each runs in well
+    // under a second of real CPU, but under full-suite parallel load on the
+    // vmThreads pool they can brush past vitest's 5s default and fail on
+    // scheduler jitter rather than on anything about the code.
+    testTimeout: 20_000,
     // The default 'threads'/'forks' pools crash at collection time with this
     // vitest 4.1.10 + vite 8.1.5 combination (`runner` singleton undefined when
     // describe() executes). vmThreads initializes the runner context correctly.

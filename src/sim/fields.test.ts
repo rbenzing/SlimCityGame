@@ -176,8 +176,14 @@ describe('FieldSim stagger schedule', () => {
 
     sim.tick(g, 7); // no period-4 offset (0,1,2) or period-8 offset (0..5) equals 7 mod its period
 
+    // Deep-equality over every 256² field is what made this the slowest test
+    // in the file — slow enough to brush vitest's 5s default under full-suite
+    // parallel load. Scanning for the first differing cell is the same
+    // assertion, runs in a fraction of the time, and names the field that moved.
     for (let id = 0; id < g.fields.length; id++) {
-      expect(g.fields[id]).toEqual(before[id]);
+      const original = before[id]!;
+      const firstChange = g.fields[id]!.findIndex((value, i) => value !== original[i]);
+      expect({ id, firstChange }).toEqual({ id, firstChange: -1 });
     }
   });
 });

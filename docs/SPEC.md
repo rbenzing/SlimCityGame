@@ -145,11 +145,11 @@ instance id — zero per-frame randomness, no Math.random):
   with three TSL node material + instanceIndex hash; one material per
   archetype, zero extra draw calls.
 - **Street lamps**: instanced lamp posts auto-placed along road tiles (every
-  3rd tile, alternating sides, deterministic from tile coords), emissive head +
-  additive glow sprite + a warm **ground light-pool quad** — the screenshot's
-  dominant night cue — pooled/instanced, no real point lights (perf budget
-  §ROADMAP 8). Lamps fade in on the same dusk ramp. Vehicle headlight/taillight
-  quads are a stretch inside this ticket.
+  2nd tile ≈ 32 m, alternating sides, deterministic from tile coords), with a
+  hot-emissive luminaire head whose glow is carried by the bloom pass and a
+  light pool on the pavement below it (§22) — the dominant night cue —
+  pooled/instanced, no real point lights (perf budget §ROADMAP 8). Lamps run on their own clock schedule (§22), not the raw dusk
+  ramp. Vehicle headlight/taillight quads are a stretch inside this ticket.
 - **Clock coupling**: visual time-of-day runs on `VISUAL_DAY_TICKS` (own
   constant, ~2 min real time per full cycle at 1×), decoupled from the
   calendar day (TICKS_PER_DAY=200 would strobe day/night every 10s — the
@@ -1012,7 +1012,9 @@ A start screen shown on first load, with a self-generated **SlimCity** logo (no 
 - **New Game = random seed.** `randomSeed()` (crypto, app-layer — never in the sim tick) seeds a fresh procedural map. The seed is stored in the save header (it already was, from the worker's `init`), so **Load reconstructs the exact terrain** by reading `header.seed` before generating the map, then posting `loadSave`.
 - **Multi-slot save browser.** `persist.ts` gained `listSaves()`/`getSaveById()`/`deleteSave()`/`loadSaveById()` over the existing up-to-10 IndexedDB store; `SaveBrowser` lists name + formatted timestamp with Load/Delete.
 - **Options** (persisted to localStorage, `GameSettings`): **Bloom** (default on — gates the bloom pass live each frame), **Sandbox: unlock all build items** (sends the `{kind:'setSandbox'}` worker command that bypasses the milestone gate, and flips the AssetDrawer lock), and minimal **audio** (master volume + mute, settings-backed for when audio lands).
-- **UI.** `StartMenu`/`OptionsPanel`/`SaveBrowser`/`BrandLogo` are pure presentational components; `MenuScreen` composes them + wires the store/session. It renders on the `menu` screen and as a paused in-game overlay (opened via a ☰ corner button; Escape closes it). Disable rules: Save + Quit need an active game; Load needs ≥1 save.
+- **UI.** `StartMenu`/`OptionsPanel`/`SaveBrowser`/`BrandLogo` are pure presentational components; `MenuScreen` composes them + wires the store/session. It renders on the `menu` screen and as a paused in-game overlay (opened via a ☰ corner button). Disable rules: Save + Quit need an active game; Load needs ≥1 save.
+- **Resume Game (user request 2026-08-10).** Opening the overlay pauses the city, but closing it used to leave the clock at 0 with no hint that Space restarts it — and there was no button that simply meant "back to my game". `StartMenu` now takes an optional `onResume` and shows **Resume Game** at the top of the stack whenever `hasActiveGame`, so it is absent on the start screen where there is nothing to resume. `MenuScreen` remembers the speed the player was running at when the overlay opened and restores exactly that — including still-paused, if that is how they opened it, rather than starting a city they had deliberately stopped. Escape routes through the same `resumeGame()`, so the key and the button can never drift apart.
+- **Not built: save file export/import.** ROADMAP M7 lists it, but save/load + autosave already meet the milestone's exit criteria ("ship a save, reload it, keep playing"), and a browser city builder is not a file-management app — per user call (2026-08-10), saves stay in IndexedDB.
 - **Verification.** Unit: persist helpers, sandbox-bypass worker test, component RTL tests (full suite green, 2145). The dev environment **does** render under GPU in the Playwright browser (contrary to the §18 note written before that was known), so the whole loop was validated live: first-load menu with correct disabled states → New Game (random-seed world) → in-game overlay → Save (verified persisted to IndexedDB) → Load list → Options → Quit (verified full teardown, save survives).
 
 ## 20. Traffic realism — on-road cars, tied to people, rush-hour rhythm (user request 2026-08-05)
@@ -1052,3 +1054,192 @@ The landfill brush behaves like the **zone brushes**, and a painted area renders
 - **Render (`render/landfill.ts`).** The office tile is excluded from tint and piles and instead carries the **gatehouse kit**: a terrain-conforming concrete yard pad, a small office box with roof cap and street-facing door, a two-bay striped nose-in parking row, and a yard light with a glowing head — all laid out in a road-facing frame (u across the frontage, v inward from the street edge) so it stays inside its tile on any orientation. Every other member tile is **dumping grounds** (tint + pile ∝ `landfillFill`). Areas that are undersized or have no street contact get no office. The renderer is always visible (a facility, not a lens).
 - **Trucks drive in and dump.** Each qualifying area is its own truck depot (negative depot ids, so they never collide with building instance ids), budget `clamp(1 + tiles/16, ≤ 4)`, skipped once the landfill is full. `garbagetrucks.ts` gains an optional `TruckDepot.dumpPath` and the phases **toDump → dumping → leavingDump** after the normal depot return: the truck drives the in-area polyline, dwells on the grounds, retraces, and despawns. Depots without a `dumpPath` (incinerators) are unchanged.
 - **Frontage setback (same request).** Grown com/ind bodies were drawn over their own parking bays. `massing.ts` `frontageSetbackFor` (pure) pulls the body back from the road-facing footprint edge by exactly the bay-row depth minus the shrink margin, so the road-side face lands **flush where the bay row ends** — lot in front, building behind, no overlap and no gap; the other three faces don't move. `buildings.ts` (body/facade), `massing.ts` (base tier) and `props.ts` (roof area) all apply it, sharing `parked.ts`'s `findRoadFacingEdge`/`frontageInsetTiles` so the setback and the bays can never disagree. `roadAt` is optional on all three renderers (default "no road"), so existing call sites are unaffected.
+
+## 22. Street-lamp night glow — bloom head instead of a light cone (user request 2026-08-07)
+
+Emissive house windows read beautifully after dark because they push the bloom
+pass hard (`WINDOW_EMISSIVE_STRENGTH = 2.2`); street lamps did not, because
+their glow was carried by an additive translucent **light cone** whose faint
+head barely crossed the bloom luminance threshold. The cone is removed and the
+lamp becomes a genuine light source for the post pass.
+
+- **No light cone.** `render/lamps.ts` drops the cone geometry/material/mesh
+  layer entirely. Nothing replaces it as a beam volume over the road — the
+  glow is the bloomed lamp head plus a flat pool on the pavement.
+- **A hot luminaire instead.** Two emitters, both fading on the lamp schedule
+  below: the **housing** (cap + cowl) ramps its emissive to
+  `HOUSING_EMISSIVE_STRENGTH` (3.2 — past lit-window strength, so the fixture
+  itself blooms), and a new **lens** layer — a warm sphere seated in the cowl
+  mouth, offset along the housing's own tilted down axis so it stays seated
+  whatever way the lamp faces — ramps to `LENS_EMISSIVE_STRENGTH` (14). The
+  lens is the over-threshold core the bloom pass smears into the halo; the
+  fixture is the supporting glow. Bloom is a blur of the thresholded frame, so
+  emitter **area** matters as much as intensity: the lens is sized to roughly
+  the cowl's own width (`LENS_RADIUS` 0.26 m) — at a pinprick size the halo
+  stayed invisible at play zoom no matter how hot it burned. Near-black by day
+  (a dark lens in the cowl). One instanced draw call each, no real point
+  lights, no shadow casting from the lens.
+- **A ground pool lights the road.** Bloom bleeds around bright pixels, so a
+  halo at head height cannot brighten pavement that has none of its own — a
+  wider bloom radius alone left the road dark. Each lamp therefore lays warm
+  light on the pavement under its luminaire (additive, no depth write,
+  `POOL_MAX_OPACITY` 0.55, sodium-warm `POOL_COLOR`, fading on the same lamp
+  schedule). Three properties make it read as light on a street rather than a
+  painted shape:
+  - **Elliptical, aligned down the roadway** (`POOL_RADIUS` 4.5 m ×
+    `POOL_ALONG_SCALE` 3 along the road, × `POOL_ACROSS_SCALE` 1 across it).
+    A real cantilever luminaire aims down the road and throws a long oval;
+    equal-radius circles read as isolated puddles with dark road between them.
+    `axis` on a placement is the _lateral_ axis, so the pool stretches along
+    the other one.
+  - **Brightness from per-vertex color on concentric rings** (`POOL_RINGS`):
+    a hot point decaying steeply and trailing off to zero at the rim. A broad
+    flat core reads as a shape with an edge; the zero-brightness rim also means
+    ground the pool can't quite match never shows a hard line.
+  - **Terrain-conforming** — every vertex samples `heightAt`, because one flat
+    disc at a single Y slices through a road running across a slope. That bakes
+    terrain heights into the geometry, so unlike the other four layers the pool
+    is **not instanced**: one merged `Mesh` rebuilt with the lamp set and
+    disposed on each rebuild. It is also the lamp's largest bright area, hence
+    its widest bloom source.
+- **`LAMP_SPACING_TILES` 3 → 2.** A pole every 48 m was well outside real
+  street-lighting practice (~25-45 m) and left long dark gaps no pool size
+  could close. At 32 m, with pools stretched down the roadway, successive
+  lamps light a continuous corridor — which is what a lit street looks like.
+  Poles still alternate sides, so the arrangement is staggered.
+- **Bloom pass:** `BLOOM_RADIUS` 0.4 → 0.9 for a wider, softer spread on every
+  night light. `BLOOM_NIGHT_STRENGTH` stays 0.25 — lamp glow is bought with
+  brighter/larger lamp emitters, not a stronger pass, which would blow out the
+  windows that already look right. (Strength scales with `nightFactor`, so the
+  radius change cannot affect daylight: at noon the pass contributes nothing.)
+- **Lamp schedule (own clock, not `nightFactor`).** `nightFactor` never
+  reaches 0 until noon, so lamps used to stay faintly lit all morning. Lamps
+  now run on a pure `lampGlowFactor(dayT)` ramp keyed to the status-strip clock
+  (`hour = dayT × 24`; sunrise 06:00, sunset 18:00): full on from **19:30**
+  through **06:00**, ramping up from sunset (18:00 → 19:30), and fading out
+  over the hour after sunrise to **fully off at 07:00** — one hour past
+  sunrise, per the request — then off through the day. `LampRenderer` exposes
+  `setTimeOfDay(dayT)` (replacing `setNightFactor`); `main.ts` passes the same
+  `dayT` it feeds the lighting rig.
+
+**Owners:** `src/render/lamps.ts` (cone removal, lens + pool layers, schedule),
+`src/render/bloom.ts` (radius), `src/main.ts` (call site),
+`src/render/roadsmesh.ts` (night-dim comments only — the road still dims, the
+bright spots are now the lamp pools and their halos).
+**Validation:** `tools/lampglow-shots.mjs` pins the clock at 22:00 / 03:00 /
+06:00 / 06:30 / 07:00 / 12:00 / 18:30 over a grown residential street, with
+bloom left ON (unlike the other harnesses, the glow is what is under test).
+
+## 23. Audio — city soundscape, UI feedback, and a user-supplied music player (M6, user request 2026-08-10)
+
+The last unbuilt slice of M6. §19 shipped Master Volume and Mute controls
+"for when audio lands", so until now the Options panel carried the only **dead
+controls** in the app — §10's acceptance bar forbids exactly that. Audio is an
+**app-layer** concern (`src/app/`, beside `session.ts`): it reads snapshots and
+settings, and is never imported by `src/sim` or `src/render`, so it cannot
+touch determinism.
+
+### 23.1 Engine & routing
+
+- **One `AudioContext`, three buses.** `src/app/audio.ts` owns the context and a
+  master `GainNode` feeding **ambient** / **ui** / **music** sub-gains, so each
+  layer mixes independently under one master. Nothing is created at import
+  time — a context constructed outside a user gesture starts `suspended` and,
+  in some browsers, logs warnings.
+- **Unlock on first gesture.** Browsers block audio until the user interacts.
+  `unlock()` runs on the first `pointerdown`/`keydown` and resumes the context;
+  every play call before that is a no-op rather than an error. Starting a game
+  from the menu is itself a click, so the game world is never silent by the
+  time it is on screen.
+- **Settings drive gain, live.** Master gain = `muted ? 0 : masterVolume`,
+  applied through the existing `bindActions` `onSettings` path that already
+  applies bloom/sandbox live. `GameSettings` gains `musicVolume`, `musicShuffle`
+  and `musicRepeat` (all persisted to localStorage with the rest).
+
+### 23.2 Sound is synthesized, never shipped
+
+There is no audio asset pipeline (§5 covers raster only) and binary blobs do
+not belong in the repo, so **every built-in sound is generated with WebAudio
+primitives** — oscillators, envelopes, and filtered noise buffers. Zero bytes
+of assets, zero load time, and each sound is a pure function of its parameters.
+
+- **Ambient bed**, remixed once per snapshot from `ambientMix({hour,
+population, nightFactor})` (pure, exported, unit-tested): a **traffic** layer
+  (lowpassed noise, gain scaling with population and the commute curve — loud at
+  rush hour, near-silent at 3am), a **night** layer (sparse filtered chirps that
+  rise with `nightFactor`), and a constant quiet **wind** floor. The curve is
+  computed in `audio.ts` from the hour rather than imported from
+  `sim/traffic.ts`, keeping the app layer free of sim imports.
+- **UI sounds**, one short synthesized cue each: `click` (tool/dock selection),
+  `build` (a successful `CommandAck`), `denied` (a rejected ack or a
+  `warn`/`error` notification), `notify` (an `info` notification).
+
+### 23.3 Music — a `public/songs/` folder the player owns
+
+The player supplies the music; the game ships none. Drop `.mp3`/`.wav` files
+into **`public/songs/`** and they become the in-game playlist.
+
+- **Discovery via a generated manifest.** A small Vite plugin
+  (`tools/vite-songs-manifest.ts`) scans the folder and serves
+  `/songs/manifest.json`, regenerating on add/remove while the dev server runs
+  and emitting it once at build. Vite already serves `public/` verbatim in both
+  modes, so the audio files themselves need no bundling. The UI also offers an
+  explicit **Rescan**.
+- **Idempotent.** A track's identity is its manifest path (dropped files: name +
+  size + lastModified). Rescanning, re-dropping the same file, or re-running
+  `initMusic()` converges on the same playlist — no duplicate entries, no
+  stacked `<audio>` elements or listeners, and a rescan **keeps the current
+  track playing** if it still exists rather than restarting the queue.
+- **Ephemeral.** Nothing about the music is persisted or copied: tracks stream
+  from disk through `HTMLAudioElement` → `MediaElementAudioSourceNode` (so a
+  long album never sits decoded in memory, and seeking is free), files dropped
+  onto the window live only as object URLs that are **revoked** when replaced or
+  on unload, and the repo `.gitignore`s the audio formats so no one's music can
+  be committed. Only _preferences_ persist (volume, shuffle, repeat) — never
+  audio data.
+- **Two ways in.** The folder is the documented path; **drag-and-drop onto the
+  window** adds tracks to the session playlist for players who just want to try
+  a file. Both funnel into the same idempotent playlist.
+- **User control.** A `MusicPlayer` panel (in the Options Audio section, and a
+  compact now-playing chip with prev/play/next): play/pause, prev/next, seek,
+  track list with the current track marked, shuffle, repeat (off/all/one),
+  music volume independent of SFX, rescan, and clear-dropped. Empty state
+  explains where to put files. Shuffle takes an injected `rng` (defaulting to
+  `Math.random`) so the ordering is deterministic under test — and it is app
+  layer, so the §3.5 no-RNG-in-sim rule is untouched.
+
+### 23.4 Testing
+
+`jsdom` has no WebAudio and no `HTMLMediaElement` playback, so the engine takes
+an **injected context factory** and the music player an **injected element
+factory**; unit tests drive fakes that record calls. The mixing math
+(`ambientMix`), the playlist logic (dedupe, advance, shuffle, repeat modes,
+rescan-preserves-current), and the manifest parser are pure and tested
+directly. A Playwright pass confirms the real context unlocks on gesture and a
+dropped file plays.
+
+**Owners:** NEW `src/app/audio.ts`, `src/app/music.ts`, `src/ui/MusicPlayer.tsx`,
+`tools/vite-songs-manifest.ts`, `public/songs/` (+ README/.gitignore);
+edits to `src/app/session.ts` (settings), `src/ui/OptionsPanel.tsx` (real audio
+section), `src/main.ts` (engine lifecycle + snapshot/ack hooks), `vite.config.ts`
+(plugin).
+**Acceptance:** volume/mute move real sound; the city hums at rush hour and
+goes quiet at 3am; tool clicks, builds and rejections are audible; dropping
+MP3s into `public/songs/` makes them playable with full transport control;
+rescanning twice never duplicates a track; no audio file is ever committed.
+
+**Validation:** `tools/audio-check.mjs` drives the real browser, where the unit
+fakes cannot reach: it generates a throwaway WAV into `public/songs/`, then
+asserts the plugin's manifest lists it, a click gesture moves the context to
+`running`, the player discovers and actually plays the file with its clock
+advancing, two further rescans do not duplicate it, and mute zeroes the master
+gain (restoring on unmute). It deletes the probe file on the way out.
+
+**Status (2026-08-10):** DONE — 8/8 browser checks pass, 58 unit tests across
+`audio.test.ts`, `music.test.ts`, `MusicPanel.test.tsx` and
+`songsmanifest.test.ts`. Two things surfaced only in the real browser and are
+worth keeping in mind: playback started from the **start menu** has no gameplay
+gesture listeners behind it, so `MusicPlayer.play()` unlocks the engine itself
+(otherwise menu music would bypass master volume and mute); and the runtime
+scans the folder on creation rather than at game start, so the playlist is
+populated in the menu too.

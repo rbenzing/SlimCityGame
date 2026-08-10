@@ -14,13 +14,18 @@ const SETTINGS: GameSettings = {
   unlimitedMoney: false,
   masterVolume: 0.5,
   muted: false,
+  musicVolume: 0.6,
+  musicShuffle: false,
+  musicRepeat: 'all',
 };
 
 describe('OptionsPanel', () => {
   it('reflects the current settings in each control', () => {
     render(<OptionsPanel settings={SETTINGS} onChange={vi.fn()} onBack={vi.fn()} />);
     expect(screen.getByRole('checkbox', { name: 'Bloom' })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'Sandbox: unlock all build items' })).not.toBeChecked();
+    expect(
+      screen.getByRole('checkbox', { name: 'Sandbox: unlock all build items' }),
+    ).not.toBeChecked();
     expect(screen.getByRole('slider', { name: 'Master Volume' })).toHaveValue('0.5');
     expect(screen.getByRole('checkbox', { name: 'Mute' })).not.toBeChecked();
   });

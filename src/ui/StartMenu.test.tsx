@@ -16,14 +16,7 @@ function renderMenu(overrides: Partial<Parameters<typeof StartMenu>[0]> = {}) {
     onOptions: vi.fn(),
     onQuit: vi.fn(),
   };
-  render(
-    <StartMenu
-      hasActiveGame={false}
-      hasSaves={false}
-      {...handlers}
-      {...overrides}
-    />,
-  );
+  render(<StartMenu hasActiveGame={false} hasSaves={false} {...handlers} {...overrides} />);
   return handlers;
 }
 
@@ -49,6 +42,31 @@ describe('StartMenu', () => {
       'Options',
       'Quit',
     ]);
+  });
+
+  it('offers Resume Game first when it is opened over a running city', () => {
+    renderMenu({ hasActiveGame: true, onResume: vi.fn() });
+    const buttons = screen.getAllByRole('button');
+    expect(buttons.map((b) => b.textContent)).toEqual([
+      'Resume Game',
+      'New Game',
+      'Save Game',
+      'Load Game',
+      'Options',
+      'Quit',
+    ]);
+  });
+
+  it('has no Resume Game on the start screen — there is nothing to resume', () => {
+    renderMenu({ hasActiveGame: false, onResume: vi.fn() });
+    expect(screen.queryByRole('button', { name: 'Resume Game' })).not.toBeInTheDocument();
+  });
+
+  it('fires onResume when Resume Game is clicked', () => {
+    const onResume = vi.fn();
+    renderMenu({ hasActiveGame: true, onResume });
+    fireEvent.click(screen.getByRole('button', { name: 'Resume Game' }));
+    expect(onResume).toHaveBeenCalledTimes(1);
   });
 
   it('disables Save Game and Quit when !hasActiveGame, but keeps New Game/Options enabled', () => {

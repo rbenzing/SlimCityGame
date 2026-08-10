@@ -6,6 +6,8 @@
 import type { JSX } from 'react';
 import { LABEL, PANEL_ROUNDED } from './theme';
 import type { GameSettings } from '../app/session';
+import type { MusicPlayer } from '../app/music';
+import { MusicPanel } from './MusicPanel';
 
 export type { GameSettings };
 
@@ -13,9 +15,16 @@ export interface OptionsPanelProps {
   settings: GameSettings;
   onChange: (partial: Partial<GameSettings>) => void;
   onBack: () => void;
+  /** Optional so the panel still renders standalone (and in its own tests). */
+  musicPlayer?: MusicPlayer;
 }
 
-export function OptionsPanel({ settings, onChange, onBack }: OptionsPanelProps): JSX.Element {
+export function OptionsPanel({
+  settings,
+  onChange,
+  onBack,
+  musicPlayer,
+}: OptionsPanelProps): JSX.Element {
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-[#05070cd9] p-6 backdrop-blur-sm"
@@ -60,7 +69,6 @@ export function OptionsPanel({ settings, onChange, onBack }: OptionsPanelProps):
 
         <div className="flex flex-col gap-2">
           <div className={LABEL}>Audio</div>
-          <p className="text-[11px] text-white/50">Minimal audio settings for now.</p>
           <div className="flex items-center justify-between gap-3 text-sm">
             <span>Master Volume</span>
             <input
@@ -85,6 +93,15 @@ export function OptionsPanel({ settings, onChange, onBack }: OptionsPanelProps):
             />
           </label>
         </div>
+
+        {musicPlayer && (
+          <MusicPanel
+            player={musicPlayer}
+            musicVolume={settings.musicVolume}
+            onVolumeChange={(musicVolume) => onChange({ musicVolume })}
+            onModeChange={onChange}
+          />
+        )}
 
         <button
           type="button"

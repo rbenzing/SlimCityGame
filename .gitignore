@@ -4,6 +4,11 @@ dist/
 .claude/settings.local.json
 .DS_Store
 
+# Player-supplied music: the folder and its README stay tracked, the audio
+# never is. The game ships no music of its own.
+public/songs/*.mp3
+public/songs/*.wav
+
 # Screenshot / capture-run artifacts from the tools/ visual harnesses.
 # The .mjs capture scripts stay tracked; their PNG/log/txt output does not.
 tools/shots-*/*.png

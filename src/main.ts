@@ -80,7 +80,9 @@ import { mountUi } from './ui/App';
 import { AutoSaver, getSaveById, loadLatest, saveNow, storeSave } from './app/persist';
 import { CursorChipStack } from './app/cursorchip';
 import { ClientGridMirror } from './app/clientgrid';
-import { readAppSession, type AppSession } from './app/session';
+import { readAppSession, type AppSession, type GameSettings } from './app/session';
+import { audioRuntime } from './app/audioruntime';
+import { ambientMix } from './app/audio';
 
 const MAP_NAME = 'Riverton';
 const OVERLAY_REFRESH_MS = 500; // 2 Hz while an infoview lens is active
@@ -323,6 +325,29 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // Stats history (recorded every snapshot) + photo-mode controller.
   const statsHistory = new StatsHistory();
   const photoMode = new PhotoModeController();
+
+  // --- audio ----------------------------------------------------------------------------
+  // Shared with the menu screen, so music carries across menu <-> game. The
+  // engine stays inert (and silent) until the first gesture unlocks it.
+  const { engine: audio, music } = audioRuntime();
+  const applyAudioSettings = (settings: GameSettings): void => {
+    audio.setMasterVolume(settings.masterVolume, settings.muted);
+    audio.setMusicVolume(settings.musicVolume);
+    music.setShuffle(settings.musicShuffle);
+    music.setRepeat(settings.musicRepeat);
+  };
+  applyAudioSettings(store.getState().settings);
+  const unlockAudio = (): void => audio.unlock();
+  window.addEventListener('pointerdown', unlockAudio);
+  window.addEventListener('keydown', unlockAudio);
+  // Files dropped anywhere on the window join the playlist for this session.
+  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('drop', (e) => {
+    const files = e.dataTransfer?.files;
+    if (!files || files.length === 0) return;
+    e.preventDefault();
+    if (music.addFiles(Array.from(files)) > 0) audio.play('notify');
+  });
   /** The dedicated renderers show only when their lens/tool is live. */
   const refreshEpicVisibility = (): void => {
     const { overlay, selectedTool } = store.getState();
@@ -430,6 +455,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     const hook = (window as unknown as Record<string, unknown>).__slimcity;
     if (hook && typeof hook === 'object') {
       (hook as Record<string, unknown>).screenToTile = screenToTile;
+      // Audio can only be judged in a real browser (jsdom has no WebAudio and
+      // no playback), so tools/audio-check.mjs drives it through here.
+      (hook as Record<string, unknown>).audio = { engine: audio, music };
     }
   }
 
@@ -566,7 +594,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       });
       clearTreesFor(edit.forward);
       syncUndoState();
+      audio.play('build');
     } else {
+      audio.play('denied');
       store.getState().pushNotification({
         id: -ack.seq,
         severity: 'warning',
@@ -602,6 +632,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     world.setTimeOfDay(dayT);
     const colors = timeOfDayColors(dayT);
     const nightFactor = colors.nightFactor;
+    // The soundscape rides the same clock and city size the visuals do. The
+    // engine glides between mixes, so updating per snapshot never steps.
+    audio.setAmbient(
+      ambientMix({ hour: dayT * 24, population: snap.stats.population, nightFactor }),
+    );
     // The water surface mirrors the same sky ramp the dome uses.
     water.setSkyColors(colors.skyZenithColor, colors.skyHorizonColor);
     lastTick = snap.stats.tick;
@@ -614,8 +649,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     massing.setNightFactor(nightFactor);
     roofProps.setNightFactor(nightFactor);
     houseRoofs.setNightFactor(nightFactor);
-    roadsMesh.setNightFactor(nightFactor); // dim the unlit road so only lamp pools stay bright
-    lamps.setNightFactor(nightFactor);
+    roadsMesh.setNightFactor(nightFactor); // dim the unlit road so lamp pools stay the bright spots
+    lamps.setTimeOfDay(dayT); // lamps run their own dusk-to-dawn schedule, not the night ramp
     vehicles.setNightFactor(nightFactor);
     landmarks.setNightFactor(nightFactor);
     utilityKits.setNightFactor(nightFactor);
@@ -787,6 +822,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       if (patch.unlimitedMoney !== undefined) {
         postCommands([{ kind: 'setUnlimitedMoney', on: patch.unlimitedMoney }], true);
       }
+      applyAudioSettings(store.getState().settings);
     },
   });
 
@@ -838,6 +874,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   store.subscribe((state, prev) => {
     if (state.selectedTool !== prev.selectedTool) {
       toolManager.setTool(state.selectedTool);
+      audio.play('click');
       // Zoning grid layer while a zone tool is in hand — and for the landfill
       // brush, which paints into the same road-frontage grid.
       zoneGrid.setVisible(
@@ -973,7 +1010,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
 
   // --- bloom post-process ------------------------------------------
   // Wraps the plain renderer.render(scene, camera) so emissive windows, lamp
-  // heads/cones, and vehicle lights bleed softly at night. createBloomPipeline
+  // heads, and vehicle lights bleed softly at night. createBloomPipeline
   // is self-degrading (it catches a failed node-graph build or first-frame
   // render and permanently falls back to a direct scene render), but we also
   // guard construction itself so a throw here can never abort boot — the frame
@@ -995,10 +1032,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // Bloom intensity at full night; scales linearly with nightFactor so it
   // fades in on the same dusk ramp as the emissive materials it blooms. Kept
   // deliberately low: the additive bloom node (bloom.ts, scenePassColor + bloom)
-  // is combined on top of already-bright emissive windows/lamp pools, so higher
-  // values (1.0+) blow the whole night scene to white. ~0.35 reads as a soft
-  // halo around lights while leaving shaded building bodies and discrete lamp
-  // pools legible.
+  // is combined on top of already-bright emissive windows/lamp heads, so higher
+  // values (1.0+) blow the whole night scene to white. Lamps get their heavier
+  // glow from hotter emitters (lamps.ts), not from raising this — that would
+  // blow out the windows this level is tuned for.
   const BLOOM_NIGHT_STRENGTH = 0.25;
 
   // --- frame loop -------------------------------------------------------------------------
