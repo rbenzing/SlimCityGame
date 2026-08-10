@@ -21,6 +21,7 @@ export function resetCityStore(): void {
     bound: null,
     toolFlags: { angleLock: false, straightMode: false },
     toolMode: 'lpath',
+    roadElevation: 0,
     previousMonthPopulation: createInitialStats().population,
     previousMonthFunds: createInitialStats().funds,
     selectionInfo: null,

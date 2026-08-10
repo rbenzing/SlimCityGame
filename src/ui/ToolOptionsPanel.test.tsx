@@ -45,82 +45,12 @@ describe('ToolOptionsPanel', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  describe.each([
-    'road.two',
-    'road.avenue',
-    'road.highway',
-    // The four extra road tools get the same options rows.
-    'road.gravel',
-    'road.alley',
-    'road.oneway',
-    'road.four',
-    // Roads-epic transit lane variants get the same options rows.
-    'road.bus',
-    'road.bike',
-    'road.tram',
-    'road.rail',
-  ] as const)('for road tool %s', (tool) => {
-    beforeEach(() => {
-      useCityStore.getState().setTool(tool);
-    });
-
-    it('shows the Tool Mode row (Straight | L-path) and the 90° lock snapping chip', () => {
-      render(<ToolOptionsPanel />);
-      expect(screen.getByRole('button', { name: 'Straight' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'L-path' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /90.*lock/ })).toBeInTheDocument();
-    });
-
-    it('defaults to L-path selected and the lock chip off', () => {
-      render(<ToolOptionsPanel />);
-      expect(screen.getByRole('button', { name: 'L-path' })).toHaveAttribute(
-        'aria-pressed',
-        'true',
-      );
-      expect(screen.getByRole('button', { name: 'Straight' })).toHaveAttribute(
-        'aria-pressed',
-        'false',
-      );
-      expect(screen.getByRole('button', { name: /90.*lock/ })).toHaveAttribute(
-        'aria-pressed',
-        'false',
-      );
-    });
-
-    it('clicking Straight writes toolMode and the mirrored straightMode contract flag', () => {
-      render(<ToolOptionsPanel />);
-      fireEvent.click(screen.getByRole('button', { name: 'Straight' }));
-      expect(useCityStore.getState().toolMode).toBe('straight');
-      expect(useCityStore.getState().toolFlags.straightMode).toBe(true);
-      expect(screen.getByRole('button', { name: 'Straight' })).toHaveAttribute(
-        'aria-pressed',
-        'true',
-      );
-      expect(screen.getByRole('button', { name: 'L-path' })).toHaveAttribute(
-        'aria-pressed',
-        'false',
-      );
-    });
-
-    it('clicking L-path after Straight switches back and clears straightMode', () => {
-      useCityStore.getState().setToolMode('straight');
-      render(<ToolOptionsPanel />);
-      fireEvent.click(screen.getByRole('button', { name: 'L-path' }));
-      expect(useCityStore.getState().toolMode).toBe('lpath');
-      expect(useCityStore.getState().toolFlags.straightMode).toBe(false);
-    });
-
-    it('toggles the 90° lock chip on and off, independent of tool mode', () => {
-      render(<ToolOptionsPanel />);
-      const chip = screen.getByRole('button', { name: /90.*lock/ });
-      fireEvent.click(chip);
-      expect(useCityStore.getState().toolFlags.angleLock).toBe(true);
-      expect(chip).toHaveAttribute('aria-pressed', 'true');
-      fireEvent.click(chip);
-      expect(useCityStore.getState().toolFlags.angleLock).toBe(false);
-      expect(chip).toHaveAttribute('aria-pressed', 'false');
-    });
+  it('renders nothing for road tools — their options ride in the roads drawer header', () => {
+    useCityStore.getState().setTool('road.two');
+    const { container } = render(<ToolOptionsPanel />);
+    expect(container).toBeEmptyDOMElement();
   });
+
 
   describe.each([
     'terraform.raise',

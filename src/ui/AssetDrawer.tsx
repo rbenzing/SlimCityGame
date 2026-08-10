@@ -9,6 +9,7 @@ import { MILESTONES } from '../shared/constants';
 import type { ToolId } from '../shared/types';
 import { catalogEntryForTool, subTabsFor, type AssetCard, type DockCategory } from './categories';
 import { Icon } from './icons';
+import { RoadToolOptions } from './RoadToolOptions';
 import { useCityStore } from './store';
 import { PANEL_ROUNDED } from './theme';
 
@@ -216,6 +217,13 @@ export function AssetDrawer({ category, onClose }: AssetDrawerProps): JSX.Elemen
           </div>
         ) : (
           <div />
+        )}
+        {/* Road options ride here rather than in a panel of their own: they are
+            this drawer's state, and there is room beside the close button. */}
+        {category === 'roads' && (
+          <div className="ml-auto mr-3">
+            <RoadToolOptions />
+          </div>
         )}
         <button
           type="button"

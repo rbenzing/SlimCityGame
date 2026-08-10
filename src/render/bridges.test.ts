@@ -13,7 +13,12 @@ import {
 } from './bridges';
 import { carriagewayHalfWidthMeters } from './roadsmesh';
 
-function deckTile(x: number, z: number, tier = RoadTier.TwoLane, over = 8): BridgeDeckTile {
+function deckTile(
+  x: number,
+  z: number,
+  tier: RoadTier = RoadTier.TwoLane,
+  over = 8,
+): BridgeDeckTile {
   return { x, z, tier, mask: 1 | 4, deckY: over, groundY: 0 };
 }
 

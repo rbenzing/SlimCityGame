@@ -263,7 +263,14 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
       }
       return { stats };
     }),
-  setTool: (tool) => set({ selectedTool: tool }),
+  // Elevation drops back to ground whenever the road tool is put down. Left
+  // sticky it is invisible state: a height set for one viaduct silently turns
+  // the next short drag into a stray hump with a bridge under it.
+  setTool: (tool) =>
+    set((state) => ({
+      selectedTool: tool,
+      roadElevation: tool.startsWith('road.') ? state.roadElevation : 0,
+    })),
   setOverlay: (overlay) => set({ overlay }),
   setSpeed: (speed) => {
     set({ speed });

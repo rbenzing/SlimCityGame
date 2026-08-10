@@ -1364,9 +1364,17 @@ land.
   `BRIDGE_CLEARANCE_M` over the water surface. The approach tiles on each bank
   ramp down to grade at no more than `BRIDGE_MAX_GRADE` metres per tile; if
   there is not enough road on the bank to land the ramp, the whole placement
-  fails with a `grade` reason rather than building half a bridge. A height
-  stepper in the tool options raises a deliberate viaduct over dry land, up to
-  `BRIDGE_MAX_ELEVATION`; left at zero, it only auto-bridges water.
+  fails with a `grade` reason rather than building half a bridge.
+- **Raise and lower are how a bridge gets built deliberately.** The roads
+  drawer's own header carries the control (`RoadToolOptions`, beside Path and
+  Snap — it is that panel's state, not a floating panel of its own), and
+  Page Up / Page Down drive it live while a drag is in flight, so a span can be
+  raised or dropped as it is drawn. **Ground is the floor** and
+  `BRIDGE_MAX_ELEVATION` the ceiling; below-ground waits on the underground
+  epic. At Ground a drag still auto-bridges water. Elevation drops back to
+  Ground whenever the road tool is put down: left sticky it is invisible state,
+  and a height set for one viaduct silently turns the next short drag into a
+  stray hump with a bridge under it.
 - **What a deck looks like.** A flat slab at deck height with no terrain
   conformance, a girder under it so the span reads as a structure rather than a
   floating ribbon of tarmac, parapets where an at-grade tile draws curbs and

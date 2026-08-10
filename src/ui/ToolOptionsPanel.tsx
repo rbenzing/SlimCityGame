@@ -1,31 +1,25 @@
 /**
- * Tool options panel, floating left of the asset drawer. Rule zero: only
- * rows whose toggles flip real, currently-consumed behavior are rendered.
- * That's road tools (the Tool Mode segmented control and the 90° lock
- * snapping chip) and the terraform brush family (Brush
- * radius / Strength sliders, plus Level's sampled-height readout). Zone
- * tools only have one real mode (Rect — Brush isn't implemented), and
- * Bulldoze is explicitly "Rect only -> row hidden", so this panel renders
- * nothing for any other tool.
+ * Terraform options panel, floating left of the asset drawer: the brush
+ * radius / strength sliders plus Level's sampled-height readout. Rule zero
+ * applies — only controls that flip real, currently-consumed behavior render.
+ *
+ * Road options used to live here too and now sit in the roads drawer's own
+ * header (see RoadToolOptions), where they belong. Terraform has no drawer
+ * header to ride in — its cards are brush pictograms — so it keeps the panel.
+ * Zone tools have one real mode (Rect; Brush isn't implemented) and Bulldoze is
+ * Rect-only, so neither renders anything.
  */
 import type { JSX } from 'react';
 import {
-  BRIDGE_MAX_ELEVATION,
   TERRAFORM_BRUSH_MAX,
   TERRAFORM_BRUSH_MIN,
   TERRAFORM_STRENGTH_MAX,
   TERRAFORM_STRENGTH_MIN,
 } from '../shared/constants';
 
-/** One press of the elevation stepper, in metres. */
-const ELEVATION_STEP_M = 2;
-import type { ToolMode } from './store';
 import { useCityStore } from './store';
 import { PANEL_ROUNDED } from './theme';
 
-function isRoadTool(tool: string): boolean {
-  return tool.startsWith('road.');
-}
 
 function isTerraformTool(tool: string): boolean {
   return tool.startsWith('terraform.');
@@ -87,86 +81,10 @@ function TerraformOptions(): JSX.Element {
 
 export function ToolOptionsPanel(): JSX.Element | null {
   const tool = useCityStore((s) => s.selectedTool);
-  const toolMode = useCityStore((s) => s.toolMode);
-  const toolFlags = useCityStore((s) => s.toolFlags);
-  const setToolMode = useCityStore((s) => s.setToolMode);
-  const setToolFlags = useCityStore((s) => s.setToolFlags);
-  const roadElevation = useCityStore((s) => s.roadElevation);
-  const setRoadElevation = useCityStore((s) => s.setRoadElevation);
 
   if (isTerraformTool(tool)) return <TerraformOptions />;
-  if (!isRoadTool(tool)) return null;
-
-  const modeButton = (mode: ToolMode, label: string): JSX.Element => (
-    <button
-      type="button"
-      aria-pressed={toolMode === mode}
-      onClick={() => setToolMode(mode)}
-      className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-        toolMode === mode ? 'bg-accent text-white' : 'bg-white/10 text-white/80 hover:bg-white/20'
-      }`}
-    >
-      {label}
-    </button>
-  );
-
-  return (
-    <div
-      className={`pointer-events-auto fixed bottom-28 left-2 z-10 flex w-52 flex-col gap-2.5 p-3 text-white ${PANEL_ROUNDED}`}
-      role="group"
-      aria-label="Tool options"
-    >
-      <div className="flex flex-col gap-1">
-        <span className="text-[10px] uppercase tracking-wide text-white/60">Tool Mode</span>
-        <div className="flex gap-1">
-          {modeButton('straight', 'Straight')}
-          {modeButton('lpath', 'L-path')}
-        </div>
-      </div>
-      <div className="flex flex-col gap-1">
-        <span className="text-[10px] uppercase tracking-wide text-white/60">Elevation</span>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            aria-label="Lower the road"
-            disabled={roadElevation === 0}
-            onClick={() => setRoadElevation(roadElevation - ELEVATION_STEP_M)}
-            className="rounded-md bg-white/10 px-2 py-1 text-xs font-medium text-white/80 transition-colors hover:bg-white/20 disabled:opacity-40 disabled:hover:bg-white/10"
-          >
-            −
-          </button>
-          <span className="min-w-12 text-center text-xs tabular-nums">
-            {roadElevation === 0 ? 'Ground' : `${roadElevation} m`}
-          </span>
-          <button
-            type="button"
-            aria-label="Raise the road"
-            disabled={roadElevation >= BRIDGE_MAX_ELEVATION}
-            onClick={() => setRoadElevation(roadElevation + ELEVATION_STEP_M)}
-            className="rounded-md bg-white/10 px-2 py-1 text-xs font-medium text-white/80 transition-colors hover:bg-white/20 disabled:opacity-40 disabled:hover:bg-white/10"
-          >
-            +
-          </button>
-        </div>
-        <span className="text-[10px] leading-tight text-white/45">
-          At ground level a drag still bridges water on its own.
-        </span>
-      </div>
-      <div className="flex flex-col gap-1">
-        <span className="text-[10px] uppercase tracking-wide text-white/60">Snapping</span>
-        <button
-          type="button"
-          aria-pressed={toolFlags.angleLock}
-          onClick={() => setToolFlags({ angleLock: !toolFlags.angleLock })}
-          className={`self-start rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-            toolFlags.angleLock
-              ? 'bg-accent text-white'
-              : 'bg-white/10 text-white/80 hover:bg-white/20'
-          }`}
-        >
-          90° lock
-        </button>
-      </div>
-    </div>
-  );
+  // Road options moved into the roads drawer's own header (RoadToolOptions):
+  // they are that panel's state, and a second floating panel beside it was
+  // chrome for its own sake.
+  return null;
 }

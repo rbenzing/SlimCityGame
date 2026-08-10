@@ -84,10 +84,14 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
 - **Bridges** — drag a road across a river and it crosses on a deck, on piers,
   ramping down onto each bank. Start the drag well back from the water: the
   approach needs room to climb, and a crossing that would end in mid-air is
-  refused rather than half-built. The road tool's Elevation stepper raises a
-  deliberate viaduct over dry ground; at Ground it still bridges water on its
-  own. Height is what costs — nothing zones off a bridge, and the ground
-  underneath is left alone.
+  refused rather than half-built. To build one deliberately, use **Raise** and
+  **Lower** in the roads panel header — or Page Up / Page Down, which work while
+  you are still dragging. Ground is as low as it goes for now; anything above it
+  builds as a bridge, and the style follows the road: planking for a track, a
+  concrete beam for a street, a deep box girder for a motorway, steel truss for
+  rail. Height is what costs. Nothing zones off a bridge, the ground underneath
+  is left alone, and the setting drops back to Ground when you put the road tool
+  down so it can't surprise you on the next drag.
 - **Advisor** — the warning-triangle button (top right) lists what is actually
   wrong right now, worst first: buildings cut off from a road, power, or water,
   a utility grid running short, a budget bleeding out. A red badge counts the

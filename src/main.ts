@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import {
   CLOCK_START_OFFSET_TICKS,
   MAP_SIZE,
+  ROAD_ELEVATION_STEP_M,
   SNAPSHOT_HZ,
   TILE_METERS,
   VISUAL_DAY_TICKS,
@@ -1052,6 +1053,17 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     }
     if (e.code === 'KeyR' && !e.ctrlKey && !e.metaKey) {
       toolManager.rotatePlop();
+      return;
+    }
+    // Road elevation, on the keys every builder reaches for. Live mid-drag: the
+    // ghost re-solves its profile on the next preview, so the span can be
+    // raised or dropped while it is being drawn. Ground is the floor until
+    // there is somewhere below it to go.
+    if ((e.code === 'PageUp' || e.code === 'PageDown') && ROAD_TOOL_TO_TIER[toolManager.tool]) {
+      e.preventDefault();
+      const state = store.getState();
+      const step = e.code === 'PageUp' ? ROAD_ELEVATION_STEP_M : -ROAD_ELEVATION_STEP_M;
+      state.setRoadElevation(state.roadElevation + step);
       return;
     }
     if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {

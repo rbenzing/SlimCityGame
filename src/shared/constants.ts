@@ -86,8 +86,14 @@ export const BRIDGE_CLEARANCE_M = 5;
  * erupting out of flat ground in one tile.
  */
 export const BRIDGE_MAX_GRADE = 2;
-/** Ceiling on deliberate elevation, and on what an auto-bridge may solve to. */
+/**
+ * Ceiling on deliberate elevation, and on what an auto-bridge may solve to.
+ * Ground level is the floor — there is nowhere below it to build until roads
+ * can go under.
+ */
 export const BRIDGE_MAX_ELEVATION = 40;
+/** One press of the raise/lower control, in metres. */
+export const ROAD_ELEVATION_STEP_M = 2;
 /** Per metre of deck height, per tile, on top of the road tier's own cost. */
 export const BRIDGE_COST_PER_METER_TILE = 6;
 /** Piers drop to the ground every Nth deck tile. */
