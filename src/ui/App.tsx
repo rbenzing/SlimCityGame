@@ -21,6 +21,8 @@ import { MenuScreen } from './MenuScreen';
 import { CityInfoPopover, HelpPopover, MilestonePopover } from './Popovers';
 import { DistrictPanel } from './DistrictPanel';
 import { StatsPanel } from './StatsPanel';
+import { AdvisorPanel } from './AdvisorPanel';
+import { criticalCount } from './advisor';
 import { StatusStrip } from './StatusStrip';
 import { useCityStore } from './store';
 import { Toasts } from './Toasts';
@@ -41,6 +43,8 @@ export default function App() {
   const setStatsOpen = useCityStore((s) => s.setStatsOpen);
   const statsSamples = useCityStore((s) => s.statsSamples);
   const photoMode = useCityStore((s) => s.photoMode);
+  const advisorOpen = useCityStore((s) => s.advisorOpen);
+  const advisorIssues = useCityStore((s) => s.advisorIssues);
   // Gate the game chrome/HUD on a live game: the menu-only screen boots no
   // world/worker, so none of the panels below have anything to read.
   const screen = useCityStore((s) => s.screen);
@@ -87,6 +91,9 @@ export default function App() {
             onToggleStats={() => setStatsOpen(!statsOpen)}
             photoActive={photoMode}
             onTogglePhoto={() => useCityStore.getState().bound?.togglePhoto()}
+            advisorOpen={advisorOpen}
+            onToggleAdvisor={() => useCityStore.getState().setAdvisorOpen(!advisorOpen)}
+            advisorAlerts={criticalCount(advisorIssues)}
             onOpenMenu={() => useCityStore.getState().setMenuOpen(true)}
           />
           {cityInfoOpen && (
@@ -108,6 +115,12 @@ export default function App() {
             open={statsOpen}
             onClose={() => setStatsOpen(false)}
             samples={statsSamples}
+          />
+          <AdvisorPanel
+            open={advisorOpen}
+            onClose={() => useCityStore.getState().setAdvisorOpen(false)}
+            issues={advisorIssues}
+            onFocus={(x, z) => useCityStore.getState().bound?.focusTile(x, z)}
           />
 
           {milestoneOpen && (

@@ -178,6 +178,7 @@ describe('setSpeed', () => {
       togglePhoto: vi.fn(),
       saveGame: vi.fn(),
       onSettings: vi.fn(),
+      focusTile: vi.fn(),
     });
     useCityStore.getState().setSpeed(2);
     expect(useCityStore.getState().speed).toBe(2);
@@ -303,6 +304,7 @@ describe('bindActions', () => {
       togglePhoto: vi.fn(),
       saveGame: vi.fn(),
       onSettings: vi.fn(),
+      focusTile: vi.fn(),
     });
     const { bound } = useCityStore.getState();
     bound?.sendCommands('Bulldoze', []);

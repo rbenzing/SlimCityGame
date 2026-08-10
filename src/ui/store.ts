@@ -24,6 +24,7 @@ import type {
 } from '../shared/types';
 import { DEFAULT_BRUSH_SETTINGS } from '../tools/tools';
 import type { StatsSample } from './statshistory';
+import type { CityIssue } from './advisor';
 import { type GameSettings, loadSettings, saveSettings } from '../app/session';
 
 const MAX_NOTIFICATIONS = 50;
@@ -51,6 +52,8 @@ export interface BoundActions {
   saveGame: () => void;
   /** Applies side effects of a settings change (e.g. sandbox → worker command). Persistence itself is handled by the store. */
   onSettings: (patch: Partial<GameSettings>) => void;
+  /** Moves the camera to a tile — the advisor's "show me" jump. Render-side only. */
+  focusTile: (x: number, z: number) => void;
 }
 
 /**
@@ -140,6 +143,12 @@ export interface CityStoreState {
   /** Whether photo mode is active (drives chrome hiding). */
   photoMode: boolean;
 
+  // --- Advisor -------------------------------------------------------------
+  /** Ranked city problems (recomputed by main.ts on a slow snapshot cadence). */
+  advisorIssues: CityIssue[];
+  /** Whether the advisor panel is open. */
+  advisorOpen: boolean;
+
   // --- Start menu ----------------------------------------------------------
   /** 'menu' = start screen (no world booted); 'playing' = a game is live. */
   screen: 'menu' | 'playing';
@@ -182,6 +191,10 @@ export interface CityStoreState {
   setStatsOpen: (open: boolean) => void;
   /** Sets the photo-mode active flag (chrome hiding). */
   setPhotoMode: (active: boolean) => void;
+  /** Replaces the ranked advisor issues. */
+  setAdvisorIssues: (issues: CityIssue[]) => void;
+  /** Opens/closes the advisor panel. */
+  setAdvisorOpen: (open: boolean) => void;
   /** Sets the top-level screen ('menu' before a game boots, 'playing' once live). */
   setScreen: (screen: 'menu' | 'playing') => void;
   /** Opens/closes the in-game pause menu overlay. */
@@ -215,6 +228,8 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   statsSamples: [],
   statsOpen: false,
   photoMode: false,
+  advisorIssues: [],
+  advisorOpen: false,
   screen: 'menu',
   menuOpen: false,
   settings: loadSettings(),
@@ -281,6 +296,8 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
     }),
   setStatsSamples: (samples) => set({ statsSamples: samples }),
   setStatsOpen: (open) => set({ statsOpen: open }),
+  setAdvisorIssues: (issues) => set({ advisorIssues: issues }),
+  setAdvisorOpen: (open) => set({ advisorOpen: open }),
   setPhotoMode: (active) => set({ photoMode: active }),
   setScreen: (screen) => set({ screen }),
   setMenuOpen: (open) => set({ menuOpen: open }),

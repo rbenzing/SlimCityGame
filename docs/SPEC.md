@@ -1243,3 +1243,50 @@ gesture listeners behind it, so `MusicPlayer.play()` unlocks the engine itself
 (otherwise menu music would bypass master volume and mute); and the runtime
 scans the folder on creation rather than at game start, so the playlist is
 populated in the menu too.
+
+## 24. Advisor — what is actually wrong with the city (M6, 2026-08-10)
+
+M6's last item. The pieces were already there and unused: every building
+carries `Problem` bit-flags (`NoPower`/`NoWater`/`NoRoad`/`HighCrime`/
+`HighPollution`/`LowDemand`) in the snapshot, and `CityStats` carries the
+supply/demand and budget numbers. What was missing is the step that turns
+thousands of individual flags into the two or three sentences a player can act
+on. Toasts already report **events** ("that failed"); the advisor reports
+**state** — what is wrong right now, worst first.
+
+- **Pure aggregation (NEW `src/ui/advisor.ts`).** `cityIssues(buildings, stats)`
+  returns a ranked `CityIssue[]`. No three.js, no store, no worker — a function
+  of the mirrored building list plus the stats block, so the whole ranking is
+  unit-testable. Two families feed it:
+  - **Building problems**, one issue per flag with the count of buildings
+    carrying it, and a **focus tile** taken from the lowest-id affected
+    building so the same city always points at the same place.
+  - **City-level checks** from `CityStats`: power and water demand outrunning
+    supply, expenses outrunning income, funds gone, and jobs — both "nobody is
+    hiring" and "nobody to hire".
+- **Severity, then weight.** `critical` (buildings cut off from road/power/
+  water, a utility grid in deficit, insolvency) ranks above `warning` (budget
+  deficit, crime, pollution, unemployment) above `info` (soft demand). Within a
+  severity, more affected buildings ranks higher; ties break on a stable id so
+  the list never reshuffles under a player's cursor.
+- **Click to see it.** Each issue with a focus tile jumps the camera there —
+  `BoundActions.focusTile`, the same bridge Save/Photo use, moving the
+  `CameraRig` target without touching the sim.
+- **Recomputed on a slow cadence.** Snapshots arrive ~10×/s; the advisor
+  aggregates every `ADVISOR_REFRESH_SNAPSHOTS`th one instead. Iterating the
+  building mirror is cheap, but a list that re-ranks ten times a second is
+  unreadable, and this is a panel a player reads rather than watches.
+- **UI (`AdvisorPanel.tsx`).** Opened from a corner button that badges the
+  number of critical issues, so an unopened panel still says "something is
+  wrong". Empty state is a plain "nothing needs attention" — an advisor that
+  invents problems to look busy trains players to ignore it.
+
+**Owners:** NEW `src/ui/advisor.ts` + `src/ui/AdvisorPanel.tsx`; edits to
+`src/ui/store.ts` (issues state + `focusTile`), `src/ui/App.tsx` +
+`CornerButtons.tsx` (surface), `src/main.ts` (aggregate on snapshot, focus the
+rig).
+**Acceptance:** cut a district's power and it appears at the top within a
+second, with the right count; click it and the camera lands on an affected
+building; fix it and the issue disappears; a healthy city shows an empty
+advisor.
+

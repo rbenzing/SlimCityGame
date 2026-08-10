@@ -76,6 +76,11 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   coverage, and trash. Turn a lens on to see the city as data — the trash lens
   reddens where garbage is going uncollected.
 - **Stats panel** — line charts of population, money, and other trends over time.
+- **Advisor** — the warning-triangle button (top right) lists what is actually
+  wrong right now, worst first: buildings cut off from a road, power, or water,
+  a utility grid running short, a budget bleeding out. A red badge counts the
+  critical problems while the panel is closed. Click any entry and the camera
+  flies to a building suffering from it. An empty list means nothing needs you.
 - **Money & happiness** — the status strip shows funds and monthly balance
   (upkeep vs. income) and a city happiness face. Watch for a red monthly balance.
 

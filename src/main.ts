@@ -64,6 +64,7 @@ import { DistrictsRenderer } from './render/districts';
 import { LandfillRenderer } from './render/landfill';
 import { PhotoModeController } from './render/photomode';
 import { StatsHistory } from './ui/statshistory';
+import { ADVISOR_REFRESH_SNAPSHOTS, cityIssues } from './ui/advisor';
 import { GhostRenderer, type GhostKind, type SetPreviewOptions } from './render/ghosts';
 import { UtilityKitRenderer } from './render/utilitykits';
 import { ZoneGridRenderer } from './render/zonegrid';
@@ -361,6 +362,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const silentSeqs = new Set<number>();
   /** Client-side mirror of building instances, for select-tool info panels. */
   const knownBuildings = new Map<number, BuildingInstance>();
+  /** Counts down to the next advisor re-rank (see ADVISOR_REFRESH_SNAPSHOTS). */
+  let snapshotsSinceAdvice = 0;
   /** Latest flattened transit stop tile-points, mirrored so pedestrian
    * idlers can be re-applied on building-only deltas (PedestrianRenderer does
    * not cache stops itself — same pattern as knownBuildings above). */
@@ -622,6 +625,13 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     statsHistory.record(snap.stats);
     state.setStatsSamples(statsHistory.samples());
 
+    // The advisor re-ranks on a slow cadence: iterating the building mirror is
+    // cheap, but a problem list that reshuffles ten times a second is unreadable.
+    if (++snapshotsSinceAdvice >= ADVISOR_REFRESH_SNAPSHOTS) {
+      snapshotsSinceAdvice = 0;
+      state.setAdvisorIssues(cityIssues(knownBuildings.values(), snap.stats));
+    }
+
     // Visual day/night runs on VISUAL_DAY_TICKS, decoupled
     // from the calendar day and consistent with the status-strip clock —
     // both shift by CLOCK_START_OFFSET_TICKS so tick 0 = 09:00 morning light
@@ -823,6 +833,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         postCommands([{ kind: 'setUnlimitedMoney', on: patch.unlimitedMoney }], true);
       }
       applyAudioSettings(store.getState().settings);
+    },
+    // Advisor "show me": drop the camera on a tile, keeping the player's own
+    // zoom. Render-side only — the sim never hears about it.
+    focusTile: (x, z) => {
+      rig.state = { ...rig.state, targetX: tileToWorld(x), targetZ: tileToWorld(z) };
     },
   });
 
@@ -1100,6 +1115,7 @@ async function main(): Promise<void> {
     togglePhoto: () => {},
     saveGame: () => {},
     onSettings: () => {},
+    focusTile: () => {},
   });
   mountUi(uiRoot);
 }

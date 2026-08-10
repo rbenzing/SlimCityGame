@@ -16,6 +16,10 @@ export interface CornerButtonsProps {
   onToggleStats: () => void;
   photoActive: boolean;
   onTogglePhoto: () => void;
+  advisorOpen: boolean;
+  onToggleAdvisor: () => void;
+  /** Critical issues right now — badged so a closed panel still says something is wrong. */
+  advisorAlerts: number;
   /** Opens the in-game pause menu overlay (StartMenu shown over the running game). */
   onOpenMenu?: () => void;
 }
@@ -55,6 +59,9 @@ export function CornerButtons({
   onToggleStats,
   photoActive,
   onTogglePhoto,
+  advisorOpen,
+  onToggleAdvisor,
+  advisorAlerts,
   onOpenMenu,
 }: CornerButtonsProps): JSX.Element {
   return (
@@ -68,6 +75,22 @@ export function CornerButtons({
         />
       </div>
       <div className="fixed right-3 top-3 z-20 flex items-center gap-1.5">
+        <div className="pointer-events-none relative">
+          <CornerButton
+            label="Advisor"
+            active={advisorOpen}
+            onClick={onToggleAdvisor}
+            icon="advisor"
+          />
+          {advisorAlerts > 0 && (
+            <span
+              aria-label={`${advisorAlerts} critical issue${advisorAlerts === 1 ? '' : 's'}`}
+              className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white"
+            >
+              {advisorAlerts}
+            </span>
+          )}
+        </div>
         <CornerButton
           label="City stats"
           active={statsOpen}

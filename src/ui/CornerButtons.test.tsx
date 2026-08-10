@@ -25,6 +25,9 @@ describe('CornerButtons', () => {
         onToggleStats={vi.fn()}
         photoActive={false}
         onTogglePhoto={vi.fn()}
+        advisorOpen={false}
+        onToggleAdvisor={vi.fn()}
+        advisorAlerts={0}
       />,
     );
     expect(screen.getByRole('button', { name: /city info/i })).toBeInTheDocument();
@@ -44,6 +47,9 @@ describe('CornerButtons', () => {
         onToggleStats={vi.fn()}
         photoActive={false}
         onTogglePhoto={vi.fn()}
+        advisorOpen={false}
+        onToggleAdvisor={vi.fn()}
+        advisorAlerts={0}
       />,
     );
 

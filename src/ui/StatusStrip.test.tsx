@@ -55,6 +55,7 @@ describe('StatusStrip', () => {
         togglePhoto: vi.fn(),
         saveGame: vi.fn(),
         onSettings: vi.fn(),
+        focusTile: vi.fn(),
       });
       useCityStore.setState({ canUndo: true, canRedo: true });
       cleanup();
