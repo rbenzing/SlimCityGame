@@ -5,6 +5,7 @@
  * "Overlapping items" check without asking the worker.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
+import { TILE_METERS } from '../shared/constants';
 import { RoadTier, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingInstance, MapData } from '../shared/types';
 import { ClientGridMirror } from './clientgrid';
@@ -117,6 +118,73 @@ describe('ClientGridMirror', () => {
     expect(
       mirror.applyRoadDeltas([{ x: 6, z: 7, tier: RoadTier.None, mask: 0, elevation: 0 }]),
     ).toEqual([{ x: 6, z: 7 }]);
+  });
+
+  describe('deckSurfaceAt', () => {
+    const CENTRE = (t: number): number => (t + 0.5) * TILE_METERS;
+
+    /** A north-south span at x=6 over a gouged-out riverbed, level at 9m. */
+    function bridgeOverRiver(): void {
+      for (let z = 4; z <= 10; z++) {
+        for (let x = 4; x <= 8; x++) {
+          const i = z * SIZE + x;
+          mirror.water[i] = 1;
+          mirror.height[i] = -7; // the bed the span crosses
+        }
+      }
+      mirror.applyRoadDeltas(
+        Array.from({ length: 7 }, (_, k) => ({
+          x: 6,
+          z: 4 + k,
+          tier: RoadTier.TwoLane,
+          mask: 1 | 4,
+          elevation: 16, // -7 + 16 = 9m deck
+        })),
+      );
+    }
+
+    it('reads the terrain where no deck governs the point', () => {
+      expect(mirror.deckSurfaceAt(CENTRE(20), CENTRE(20))).toBeNull();
+    });
+
+    it('runs flat across the width of the deck, because a bridge has no camber', () => {
+      bridgeOverRiver();
+      const crown = mirror.deckSurfaceAt(CENTRE(6), CENTRE(7));
+      expect(crown).toBeCloseTo(9, 5);
+
+      // Out to where the structure's edge sits — past the carriageway, past
+      // the footway, and on out over the water either side. Blending across
+      // the run would drag every one of these down toward the -7m bed.
+      for (const offset of [-7.9, -5.875, -3.75, 3.75, 5.875, 7.9]) {
+        expect(mirror.deckSurfaceAt(CENTRE(6) + offset, CENTRE(7))).toBeCloseTo(9, 5);
+      }
+    });
+
+    it('still reads the deck just past the tile edge, where a wide span oversails it', () => {
+      bridgeOverRiver();
+      // A tile beyond the ribbon: the structure of a big road reaches here.
+      expect(mirror.deckSurfaceAt(CENTRE(7), CENTRE(7))).toBeCloseTo(9, 5);
+    });
+
+    it('slopes along the run, so an approach ramp is a slope and not a step', () => {
+      // A ramp climbing 2m per tile northward off flat ground.
+      mirror.applyRoadDeltas(
+        Array.from({ length: 5 }, (_, k) => ({
+          x: 12,
+          z: 12 + k,
+          tier: RoadTier.TwoLane,
+          mask: 1 | 4,
+          elevation: 2 * k,
+        })),
+      );
+
+      const at = (z: number): number => mirror.deckSurfaceAt(CENTRE(12), z)!;
+      // Halfway between two tile centres is halfway up the step between them.
+      const low = at(CENTRE(13));
+      const high = at(CENTRE(14));
+      expect(at((CENTRE(13) + CENTRE(14)) / 2)).toBeCloseTo((low + high) / 2, 5);
+      expect(high).toBeGreaterThan(low);
+    });
   });
 
   it('drops the deck when the road is bulldozed', () => {

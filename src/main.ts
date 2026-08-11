@@ -153,35 +153,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     inBounds(x, z) && isStreetTier((clientGrid.roadTier[z * clientGrid.size + x] ?? 0) as RoadTier);
 
   /**
-   * Height of the road SURFACE, as opposed to the ground: identical to heightAt
-   * everywhere no deck is involved, and a bilinear blend of the surrounding
-   * tiles' deck heights where one is. The blend is what makes an approach ramp
-   * a slope rather than a stack of steps, and it is scoped to the neighbourhood
-   * of a bridge so ordinary roads keep sampling the terrain exactly as before.
-   * Everything that rides the road takes this instead of heightAt.
+   * Height of the road SURFACE, as opposed to the ground: the deck where one
+   * governs the point, the terrain everywhere else. Everything that rides the
+   * road — the road mesh, the bridge structure under it, traffic, pedestrians,
+   * lamps, furniture — takes this instead of heightAt, so they cannot disagree
+   * about where the road is.
    */
-  const roadSurfaceAt = (wx: number, wz: number): number => {
-    const tx = worldToTile(wx);
-    const tz = worldToTile(wz);
-    if (!clientGrid.nearElevated(tx, tz)) return heightAt(wx, wz);
-
-    // Tile centres sit at (t + 0.5) * TILE_METERS, so shifting by half a tile
-    // puts the samples on the centre lattice the interpolation runs over.
-    const fx = wx / TILE_METERS - 0.5;
-    const fz = wz / TILE_METERS - 0.5;
-    const x0 = Math.floor(fx);
-    const z0 = Math.floor(fz);
-    const sx = fx - x0;
-    const sz = fz - z0;
-
-    const h00 = clientGrid.deckHeightAt(x0, z0);
-    const h10 = clientGrid.deckHeightAt(x0 + 1, z0);
-    const h01 = clientGrid.deckHeightAt(x0, z0 + 1);
-    const h11 = clientGrid.deckHeightAt(x0 + 1, z0 + 1);
-    return (
-      h00 * (1 - sx) * (1 - sz) + h10 * sx * (1 - sz) + h01 * (1 - sx) * sz + h11 * sx * sz
-    );
-  };
+  const roadSurfaceAt = (wx: number, wz: number): number =>
+    clientGrid.deckSurfaceAt(wx, wz) ?? heightAt(wx, wz);
 
   // Animated water surface and cumulus layer; both tick in the frame loop below.
   const water = new WaterRenderer(world.scene, heightAt);

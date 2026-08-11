@@ -8,8 +8,9 @@
  * worker. Structurally satisfies render/zonegrid.ts's ZoneGridSource
  * ({size, roadTier, water, zone, buildingId, height}).
  */
+import { TILE_METERS, worldToTile } from '../shared/constants';
 import { RoadTier } from '../shared/types';
-import type { BridgeDeckTile } from '../render/bridges';
+import { runsAlongZ, type BridgeDeckTile } from '../render/bridges';
 import type {
   BuildingCatalogEntry,
   BuildingDelta,
@@ -86,6 +87,62 @@ export class ClientGridMirror {
     if (!this.inBounds(x, z)) return 0;
     const i = this.idx(x, z);
     return (this.height[i] ?? 0) + (this.roadElevation[i] ?? 0);
+  }
+
+  /**
+   * Height of the deck at a world point, or null where no deck governs it and
+   * the caller should read the terrain instead.
+   *
+   * A deck's height varies ALONG the run and is constant ACROSS it: a bridge
+   * has no camber. So this interpolates the deck profile in the run direction
+   * only. Interpolating in both axes drags the edges of the deck toward
+   * whatever the road is passing over — a tile centre is 8m away, and the
+   * structure oversails the carriageway far enough to pick up a third of the
+   * riverbed — which crowns the road into a ridge and splays the girder into
+   * wedges hanging under it.
+   */
+  deckSurfaceAt(wx: number, wz: number): number | null {
+    const tx = worldToTile(wx);
+    const tz = worldToTile(wz);
+    if (!this.nearElevated(tx, tz)) return null;
+
+    const ribbon = this.ribbonTileAt(tx, tz);
+    if (!ribbon) return null;
+
+    const alongZ = runsAlongZ(this.roadMask[this.idx(ribbon.x, ribbon.z)] ?? 0);
+    // Tile centres sit at (t + 0.5) * TILE_METERS, so shifting by half a tile
+    // puts the samples on the centre lattice the interpolation runs over.
+    const f = (alongZ ? wz : wx) / TILE_METERS - 0.5;
+    const i0 = Math.floor(f);
+    const s = f - i0;
+    const near = alongZ ? this.deckHeightAt(ribbon.x, i0) : this.deckHeightAt(i0, ribbon.z);
+    const far = alongZ ? this.deckHeightAt(ribbon.x, i0 + 1) : this.deckHeightAt(i0 + 1, ribbon.z);
+    return near * (1 - s) + far * s;
+  }
+
+  /**
+   * The road tile whose deck governs a sample taken in tile (x, z). Usually the
+   * tile itself; a wide span's structure oversails its own tile, so a sample
+   * just past the edge is resolved back onto the deck it hangs off rather than
+   * onto the water underneath.
+   */
+  private ribbonTileAt(x: number, z: number): TilePoint | null {
+    if (!this.inBounds(x, z)) return null;
+    if (this.roadTier[this.idx(x, z)] !== RoadTier.None) return { x, z };
+    for (const [dx, dz] of [
+      [0, -1],
+      [1, 0],
+      [0, 1],
+      [-1, 0],
+    ] as const) {
+      const nx = x + dx;
+      const nz = z + dz;
+      if (!this.inBounds(nx, nz)) continue;
+      const i = this.idx(nx, nz);
+      if (this.roadTier[i] !== RoadTier.None && (this.roadElevation[i] ?? 0) > 0)
+        return { x: nx, z: nz };
+    }
+    return null;
   }
 
   /** True where this tile or any of its 8 neighbours carries a deck. */

@@ -1406,6 +1406,15 @@ land.
     is. It carries no parapet: the truss is the edge.
   Piers, footings and truss members are instanced per family, so a city with a
   footbridge and a motorway viaduct pays per family rather than per span.
+- **A deck is a ribbon, so its height is sampled along the run only.** The road
+  surface interpolates the deck profile in the direction the road runs and is
+  constant across it — a bridge has no camber. Interpolating in both axes drags
+  the edges of the deck toward whatever the span passes over: a tile centre is
+  half a tile away and the structure oversails the carriageway far enough to
+  pick up a third of the riverbed, which crowns the road into a ridge and splays
+  the girder into wedges hanging beneath it. A sample landing just off the
+  ribbon — a wide span's structure reaches past its own tile — resolves back
+  onto the deck it hangs off rather than onto the water underneath.
 - **The structure conforms to the deck, it does not tile it.** Girder and
   parapets are MERGED geometry whose corner heights come from the same smooth
   sampler the road surface uses, so two neighbouring tiles evaluate their shared
