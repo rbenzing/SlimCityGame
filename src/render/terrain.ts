@@ -442,8 +442,13 @@ export class TerrainRenderer {
    * skirt's top-row "mown" color via applyRoadTiles's own markDirty call).
    */
   markDirty(minX: number, minZ: number, maxX: number, maxZ: number): void {
-    const lo = chunkOfTile(Math.min(minX, maxX), Math.min(minZ, maxZ));
-    const hi = chunkOfTile(Math.max(minX, maxX), Math.max(minZ, maxZ));
+    // One tile of halo, because a rendered corner averages the four tiles
+    // around it (see cornerHeight). A tile on a chunk boundary therefore owns
+    // vertices the NEXT chunk draws too — rebuild only the patched chunk and
+    // the neighbour keeps the old height for their shared edge, tearing the
+    // two meshes apart into a crack you can see the water through.
+    const lo = chunkOfTile(Math.min(minX, maxX) - 1, Math.min(minZ, maxZ) - 1);
+    const hi = chunkOfTile(Math.max(minX, maxX) + 1, Math.max(minZ, maxZ) + 1);
     const czLo = Math.max(0, lo.cz);
     const czHi = Math.min(CHUNKS_PER_SIDE - 1, hi.cz);
     const cxLo = Math.max(0, lo.cx);

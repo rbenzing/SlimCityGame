@@ -610,6 +610,36 @@ describe('TerrainRenderer.heightAt', () => {
     expect(terrain.heightAt(3.37 * TILE_METERS, 7.81 * TILE_METERS)).toBeCloseTo(42, 5);
   });
 
+  it('leaves no crack at a chunk seam when a patch stops on the boundary', () => {
+    // A rendered corner averages the four tiles around it, so the vertices
+    // along a chunk boundary belong to BOTH chunks. Patching only up to the
+    // boundary must still rebuild the neighbour, or the two meshes part and
+    // the map tears open along the seam.
+    const scene = new THREE.Scene();
+    const terrain = new TerrainRenderer(scene);
+    terrain.build(makeFlatMapAtHeight(MAP_SIZE, 10));
+
+    // Raise a block whose east edge is the last tile of chunk column 0.
+    const w = 4;
+    const x0 = CHUNK_TILES - w;
+    terrain.applyHeightPatches([
+      { x: x0, z: 4, w, h: 4, heights: new Float32Array(w * 4).fill(30) },
+    ]);
+    terrain.update();
+
+    // Read the seam from the chunk on either side of it. Both must agree; the
+    // gap between them IS the crack.
+    const seamX = cornerWorld(CHUNK_TILES);
+    const meshes = scene.children.filter((c): c is THREE.Mesh => c instanceof THREE.Mesh);
+    const zProbe = cornerWorld(6);
+    const readings = meshes
+      .map((m) => meshSurfaceHeightAt(m.geometry as THREE.BufferGeometry, seamX, zProbe))
+      .filter((h): h is number => h !== null);
+
+    expect(readings.length).toBeGreaterThan(1); // the seam really is shared
+    expect(Math.max(...readings) - Math.min(...readings)).toBeCloseTo(0, 5);
+  });
+
   it('clamps to the nearest edge height outside the grid', () => {
     const scene = new THREE.Scene();
     const terrain = new TerrainRenderer(scene);

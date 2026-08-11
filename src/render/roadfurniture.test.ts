@@ -413,6 +413,27 @@ describe('road-furniture placement (pure)', () => {
     });
   });
 
+  it('never seats a cabinet on a tile that already carries a sign', () => {
+    // A lattice of streets: long runs for the cabinets, junctions and dead ends
+    // for the boards. Both stand at the tile centre on a chosen side at the
+    // same offset out from the carriageway, so sharing a tile means growing
+    // through each other.
+    const tiles: FurnitureRoadTile[] = [];
+    for (const line of [0, 4, 8, 12, 16, 20]) {
+      tiles.push(...strip(line, 0, 20, 'ew', RoadTier.TwoLane));
+      tiles.push(...strip(line, 0, 20, 'ns', RoadTier.TwoLane));
+    }
+
+    const boxes = computeBoxPlacements(tiles);
+    const signs = computeSignPlacements(tiles);
+    expect(boxes.length).toBeGreaterThan(0); // both layers really fired
+    expect(signs.length).toBeGreaterThan(0);
+
+    const signTiles = new Set(signs.map((s) => `${s.x},${s.z}`));
+    const clashes = boxes.filter((b) => signTiles.has(`${b.x},${b.z}`));
+    expect(clashes).toEqual([]);
+  });
+
   it('leaves a rail line alone — a track is not a street', () => {
     const track = strip(0, 0, 39, 'ew', RoadTier.RailTrack);
     expect(computeManholePlacements(track)).toEqual([]);

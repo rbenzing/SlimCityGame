@@ -337,6 +337,13 @@ white lane markings reused from an existing tier:
   those tiles (`hasCrossingRoad`) and the junction is lit and served from its
   approaches instead. Manholes are the deliberate exception — they belong in
   the carriageway, so a junction is a fine place for one.
+- **One prop per curbside slot.** A sign and a utility cabinet both stand at the
+  tile centre, on a side of the road, the same distance out from the
+  carriageway — the same piece of ground. A tile that earns a board therefore
+  seats no cabinet: the board is what the road needs to be driven, the cabinet
+  is scenery and there is always another tile for it. Meters escape the clash
+  by sitting ±3m along the run rather than at the centre, which is also what
+  keeps them clear of a lamp.
 - **Junction control follows the tier.** A junction approach on a multi-lane
   street (avenue, four-lane, bus lane) earns a **traffic signal** — a mast with
   a short arm reaching out over the carriageway and a three-lens head hung off
@@ -600,6 +607,12 @@ gains two live rows for terrain tools: **Brush radius** (2–16 tiles) and
   **Digging below sea level floods the hole** — lakes and canals are
   creatable today with zero new physics; snapshot gains a height-patch
   channel consumed by TerrainRenderer.markDirty.
+- **Dirtying a tile dirties its neighbours' chunks.** A rendered corner averages
+  the four tiles around it, so the vertices along a chunk boundary are drawn by
+  BOTH chunks. `markDirty` therefore expands its rectangle by a tile before
+  picking chunks: rebuild only the edited chunk and its neighbour keeps the old
+  height for their shared edge, parting the two meshes into a crack that shows
+  the water plane straight through the ground.
 
 **Water rendering (the §6.5-grade visual pass)**:
 

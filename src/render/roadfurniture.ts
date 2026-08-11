@@ -446,6 +446,7 @@ export function computeBoxPlacements(roadTiles: readonly FurnitureRoadTile[]): B
     if (!tierHasCurb(tile.tier)) continue;
     if (tile.elevated) continue; // no verge on a deck to seat a cabinet on
     if (isTurnTile(tileSet, tile.x, tile.z)) continue; // the curve owns the tile; no curbside seat
+    if (effectiveSign(tileSet, tile)) continue; // the board has the slot; a cabinet is not worth sharing it
     if (hashTile(tile.x, tile.z, HASH_BOX_SELECT) >= BOX_SELECT_FRACTION) continue;
 
     const pick = pickSide(
@@ -532,6 +533,21 @@ function classifySign(tileSet: Set<number>, tile: FurnitureRoadTile): SignType |
   return null;
 }
 
+/**
+ * The sign a tile will ACTUALLY carry, gates included — not just the one its
+ * shape earns. Shared so that anything else wanting the same curbside slot can
+ * ask, rather than growing straight through the board: a sign and a utility
+ * cabinet both stand at the tile centre on a chosen side at the same offset out
+ * from the carriageway, so two of them on one tile occupy the same space.
+ */
+function effectiveSign(tileSet: Set<number>, tile: FurnitureRoadTile): SignType | null {
+  if (!tierGetsSigns(tile.tier)) return null;
+  const type = classifySign(tileSet, tile);
+  if (!type) return null;
+  if (tile.elevated && !DECK_SIGNS.has(type)) return null;
+  return type;
+}
+
 /** How far past the curve's outer sidewalk edge the bend sign stands. */
 const BEND_SIGN_CURVE_MARGIN = 0.5;
 
@@ -540,11 +556,8 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
   const tileSet = buildTileSet(roadTiles);
   const out: SignPlacement[] = [];
   for (const tile of roadTiles) {
-    if (!tierGetsSigns(tile.tier)) continue;
-
-    const type = classifySign(tileSet, tile);
+    const type = effectiveSign(tileSet, tile);
     if (!type) continue;
-    if (tile.elevated && !DECK_SIGNS.has(type)) continue;
 
     if (type === 'bend') {
       // A turn tile's carriageway is a quarter-annulus centered on the corner
