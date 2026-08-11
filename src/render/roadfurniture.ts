@@ -132,8 +132,11 @@ function hashTile(x: number, z: number, slot: number): number {
 export type FurnitureAxis = 'x' | 'z';
 export type FurnitureSide = 1 | -1;
 
-/** A road tile furniture may sit on; `tier` is optional (undefined -> TwoLane). */
-export type FurnitureRoadTile = TilePoint & { tier?: RoadTier };
+/**
+ * A road tile furniture may sit on; `tier` is optional (undefined -> TwoLane),
+ * `elevated` marks a tile up on a bridge deck (undefined -> on the ground).
+ */
+export type FurnitureRoadTile = TilePoint & { tier?: RoadTier; elevated?: boolean };
 
 /** A curbside sidewalk edge: the world axis to offset along and its sign. */
 interface SideChoice {
@@ -213,10 +216,34 @@ function curbsideLateralOffset(tier: RoadTier | undefined): number {
   return carriagewayHalfWidthMeters(tier ?? RoadTier.TwoLane) + SIDEWALK_WIDTH_M;
 }
 
-/** Manholes sit on any paved surface — every tier but gravel. */
-function tierIsPaved(tier: RoadTier | undefined): boolean {
-  return (tier ?? RoadTier.TwoLane) !== RoadTier.Gravel;
+/**
+ * A rail line is not a road. It sits on the grid and blocks building like one,
+ * but nothing that belongs beside a street belongs beside a track: no lamps, no
+ * meters, no boards telling a train to give way.
+ */
+function tierIsRail(tier: RoadTier | undefined): boolean {
+  return (tier ?? RoadTier.TwoLane) === RoadTier.RailTrack;
 }
+
+/** Manholes sit on a paved carriageway — not gravel, and not a ballast bed. */
+function tierIsPaved(tier: RoadTier | undefined): boolean {
+  const t = tier ?? RoadTier.TwoLane;
+  return t !== RoadTier.Gravel && !tierIsRail(t);
+}
+
+/**
+ * What survives up on a deck. A bridge has no verge and no ground beneath it,
+ * so the kerbside clutter has nowhere to stand and nothing to cover — but a
+ * junction on a deck is still a junction, and overhead motorway signage is
+ * exactly how an elevated motorway is signed.
+ */
+const DECK_SIGNS: ReadonlySet<SignType> = new Set<SignType>([
+  'stop',
+  'giveway',
+  'signal',
+  'exit',
+  'gantry',
+]);
 
 /**
  * A grade-separated road: no sidewalk, no curb parking, no street furniture and
@@ -234,13 +261,13 @@ function tierIsMotorway(tier: RoadTier | undefined): boolean {
  */
 function tierHasCurb(tier: RoadTier | undefined): boolean {
   const t = tier ?? RoadTier.TwoLane;
-  return t !== RoadTier.Gravel && t !== RoadTier.Alley && !tierIsMotorway(t);
+  return t !== RoadTier.Gravel && t !== RoadTier.Alley && !tierIsMotorway(t) && !tierIsRail(t);
 }
 
-/** Every tier that carries signage of some kind — the highway included. */
+/** Every tier that carries road signage of some kind — the highway included. */
 function tierGetsSigns(tier: RoadTier | undefined): boolean {
   const t = tier ?? RoadTier.TwoLane;
-  return t !== RoadTier.Gravel && t !== RoadTier.Alley;
+  return t !== RoadTier.Gravel && t !== RoadTier.Alley && !tierIsRail(t);
 }
 
 /** Meters sit on street tiers that allow curb parking. */
@@ -390,6 +417,7 @@ export function computeManholePlacements(
   const out: ManholePlacement[] = [];
   for (const tile of roadTiles) {
     if (!tierIsPaved(tile.tier)) continue;
+    if (tile.elevated) continue; // a deck has no sewer under it to cover
     if (isTurnTile(tileSet, tile.x, tile.z)) continue; // curved carriageway: no straight-axis seat
     if (hashTile(tile.x, tile.z, HASH_MANHOLE_SELECT) >= MANHOLE_SELECT_FRACTION) continue;
 
@@ -416,6 +444,7 @@ export function computeBoxPlacements(roadTiles: readonly FurnitureRoadTile[]): B
   const out: BoxPlacement[] = [];
   for (const tile of roadTiles) {
     if (!tierHasCurb(tile.tier)) continue;
+    if (tile.elevated) continue; // no verge on a deck to seat a cabinet on
     if (isTurnTile(tileSet, tile.x, tile.z)) continue; // the curve owns the tile; no curbside seat
     if (hashTile(tile.x, tile.z, HASH_BOX_SELECT) >= BOX_SELECT_FRACTION) continue;
 
@@ -442,6 +471,7 @@ export function computeMeterPlacements(roadTiles: readonly FurnitureRoadTile[]):
   const out: MeterPlacement[] = [];
   for (const tile of roadTiles) {
     if (!tierHasParking(tile.tier)) continue;
+    if (tile.elevated) continue; // nobody parks on a viaduct
     // No curb parking on a curve, and none across a junction — both cases have
     // road on the crossing axis where the meter would stand.
     if (hasCrossingRoad(tileSet, tile.x, tile.z)) continue;
@@ -514,6 +544,7 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
 
     const type = classifySign(tileSet, tile);
     if (!type) continue;
+    if (tile.elevated && !DECK_SIGNS.has(type)) continue;
 
     if (type === 'bend') {
       // A turn tile's carriageway is a quarter-annulus centered on the corner

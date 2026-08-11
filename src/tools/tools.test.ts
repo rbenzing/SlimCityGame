@@ -79,6 +79,43 @@ const ROAD_SPECS: Partial<Record<RoadTier, RoadSpec>> = {
     capacity: 1200,
     unlockMilestone: 1,
   },
+  // The transit tiers, so a sweep over every road tool has a spec to price.
+  [RoadTier.BusLane]: {
+    tier: RoadTier.BusLane,
+    name: 'Bus Lane',
+    costPerTile: 28,
+    upkeepPerTile: 0.6,
+    speed: 15,
+    capacity: 900,
+    unlockMilestone: 2,
+  },
+  [RoadTier.BikeLane]: {
+    tier: RoadTier.BikeLane,
+    name: 'Bike Lane',
+    costPerTile: 10,
+    upkeepPerTile: 0.2,
+    speed: 8,
+    capacity: 200,
+    unlockMilestone: 2,
+  },
+  [RoadTier.Tram]: {
+    tier: RoadTier.Tram,
+    name: 'Tram Track',
+    costPerTile: 40,
+    upkeepPerTile: 0.8,
+    speed: 14,
+    capacity: 800,
+    unlockMilestone: 3,
+  },
+  [RoadTier.RailTrack]: {
+    tier: RoadTier.RailTrack,
+    name: 'Rail Track',
+    costPerTile: 50,
+    upkeepPerTile: 1,
+    speed: 25,
+    capacity: 0,
+    unlockMilestone: 3,
+  },
 };
 
 const CATALOG: Record<string, BuildingCatalogEntry> = {
@@ -291,6 +328,33 @@ describe('road preview cost + commit', () => {
     expect(previews.at(-1)?.cost).toBe(2 * costPerTile);
     tm.pointerUp(1, 0, 0);
     expect(sent[0]?.commands[0]).toMatchObject({ kind: 'buildRoad', tier });
+  });
+
+  it('carries the deck height on every road tool — bridging is not just for big roads', () => {
+    const tools = [
+      'road.two',
+      'road.avenue',
+      'road.highway',
+      'road.gravel',
+      'road.alley',
+      'road.oneway',
+      'road.four',
+      'road.bus',
+      'road.bike',
+      'road.tram',
+      'road.rail',
+    ] as const;
+
+    for (const toolId of tools) {
+      const { env, sent } = makeEnv();
+      const tm = new ToolManager(env);
+      tm.setTool(toolId);
+      tm.setRoadElevation(12);
+      tm.pointerDown(0, 0, 0);
+      tm.pointerMove(1, 0, 0);
+      tm.pointerUp(1, 0, 0);
+      expect(sent[0]?.commands[0]).toMatchObject({ kind: 'buildRoad', elevation: 12 });
+    }
   });
 });
 

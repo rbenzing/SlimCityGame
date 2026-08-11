@@ -1387,11 +1387,25 @@ land.
   floating ribbon of tarmac, parapets where an at-grade tile draws curbs and
   sidewalk, and piers dropped to the terrain or seabed every
   `PIER_SPACING_TILES`. The structure oversails the carriageway by a footway
-  plus the style's overhang, so the road never overhangs its own bridge. The
-  curbside furniture rules invert: lamps stand on the deck, verge grass, trees,
-  and parking meters do not. Vehicles and pedestrians read `deckHeightAt`
-  (terrain + elevation) in place of `heightAt`, so traffic rides the bridge
-  instead of swimming under it.
+  plus the style's overhang, so the road never overhangs its own bridge.
+  Vehicles and pedestrians read the deck surface in place of `heightAt`, so
+  traffic rides the bridge instead of swimming under it.
+- **A deck carries lamps and right-of-way signage, and nothing else.** The
+  kerbside rules invert up there: a deck has no verge to stand things on and no
+  ground beneath it, so parking meters, utility cabinets, manhole covers, verge
+  grass and street trees all drop out. What survives is what the road still
+  needs to be driven: lamps, and the boards that govern right of way — stop,
+  give-way and signals where a junction lands on the deck, plus the exit boards
+  and gantries of an elevated motorway, whose signage is overhead precisely
+  because nobody is walking beside it. The verge boards (bend, one-way, speed,
+  no-through) go with the verge.
+- **Every tier bridges, under its own rules.** Elevation is a property of a road
+  tile, not a privilege of the big roads: all eleven tiers route through the
+  same `buildRoad` command with the same solver, and each gets the span its tier
+  earns via `bridgeStyleFor`. Their existing tier restrictions carry onto the
+  deck unchanged — a motorway still takes no meters or street signs, gravel and
+  alley still take no signage, and a rail line takes none of it plus no lamps,
+  because a track is not a street.
 - **A span is built in the family its road deserves** (`bridgeStyleFor`), so a
   player reads what a bridge carries from across the map. Four clearly
   different silhouettes rather than one per tier:

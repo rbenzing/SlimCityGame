@@ -72,13 +72,13 @@ describe('ClientGridMirror', () => {
     expect(mirror.roadTier[4 * SIZE + 3]).toBe(RoadTier.TwoLane);
     expect(mirror.roadTier[4 * SIZE + 4]).toBe(RoadTier.Avenue);
     expect(mirror.roadTiles()).toEqual([
-      { x: 3, z: 4, tier: RoadTier.TwoLane },
-      { x: 4, z: 4, tier: RoadTier.Avenue },
+      { x: 3, z: 4, tier: RoadTier.TwoLane, elevated: false },
+      { x: 4, z: 4, tier: RoadTier.Avenue, elevated: false },
     ]);
 
     mirror.applyRoadDeltas([{ x: 3, z: 4, tier: RoadTier.None, mask: 0, elevation: 0 }]);
     expect(mirror.roadTier[4 * SIZE + 3]).toBe(RoadTier.None);
-    expect(mirror.roadTiles()).toEqual([{ x: 4, z: 4, tier: RoadTier.Avenue }]);
+    expect(mirror.roadTiles()).toEqual([{ x: 4, z: 4, tier: RoadTier.Avenue, elevated: false }]);
   });
 
   it('tracks deck heights and reports the elevated tiles as bridge structure', () => {
@@ -99,6 +99,16 @@ describe('ClientGridMirror', () => {
     // across it rather than sampling raw terrain.
     expect(mirror.nearElevated(6, 6)).toBe(true);
     expect(mirror.nearElevated(0, 0)).toBe(false);
+  });
+
+  it('tags road tiles with whether they are up on a deck', () => {
+    mirror.applyRoadDeltas([
+      { x: 6, z: 6, tier: RoadTier.TwoLane, mask: 1 | 4, elevation: 0 },
+      { x: 6, z: 7, tier: RoadTier.TwoLane, mask: 1 | 4, elevation: 9 },
+    ]);
+    const byTile = new Map(mirror.roadTiles().map((t) => [`${t.x},${t.z}`, t.elevated]));
+    expect(byTile.get('6,6')).toBe(false);
+    expect(byTile.get('6,7')).toBe(true);
   });
 
   it('reports which tiles changed height, so their baked geometry can be rebuilt', () => {

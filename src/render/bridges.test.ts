@@ -10,6 +10,7 @@ import {
   runsAlongZ,
   structureHalfWidth,
   type BridgeDeckTile,
+  type BridgeStyle,
 } from './bridges';
 import { carriagewayHalfWidthMeters } from './roadsmesh';
 
@@ -91,11 +92,20 @@ describe('bridgeStyleFor', () => {
     for (const tier of [RoadTier.TwoLane, RoadTier.FourLane, RoadTier.OneWay, RoadTier.BusLane])
       expect(bridgeStyleFor(tier)).toBe('beam');
   });
+
+  it('gives every tier a span it can be built in — a tram line bridges too', () => {
+    const styles: BridgeStyle[] = ['plank', 'beam', 'box', 'truss'];
+    for (const tier of ALL_TIERS) expect(styles).toContain(bridgeStyleFor(tier));
+  });
 });
 
+/** Every buildable tier — bridging is not a privilege of the big roads. */
+const ALL_TIERS = Object.values(RoadTier).filter((t) => t !== RoadTier.None) as RoadTier[];
+
 describe('structureHalfWidth', () => {
-  it('oversails the carriageway, so the road never overhangs its own bridge', () => {
-    for (const tier of [RoadTier.TwoLane, RoadTier.Highway, RoadTier.Gravel]) {
+  it('oversails the carriageway of every tier, so no road overhangs its own bridge', () => {
+    expect(ALL_TIERS.length).toBeGreaterThan(8); // guards against an empty sweep
+    for (const tier of ALL_TIERS) {
       const style = bridgeStyleFor(tier);
       expect(structureHalfWidth(tier, style)).toBeGreaterThan(carriagewayHalfWidthMeters(tier));
     }

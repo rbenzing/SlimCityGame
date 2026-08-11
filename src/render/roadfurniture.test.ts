@@ -350,6 +350,77 @@ describe('road-furniture placement (pure)', () => {
     expect(signs.some((s) => s.type === 'signal' || s.type === 'stop')).toBe(false);
   });
 
+  describe('up on a bridge deck', () => {
+    /** The same run, once on the ground and once carried on a deck. */
+    const grounded = (tier = RoadTier.TwoLane): FurnitureRoadTile[] =>
+      strip(0, 0, 39, 'ew', tier);
+    const onDeck = (tier = RoadTier.TwoLane): FurnitureRoadTile[] =>
+      grounded(tier).map((t) => ({ ...t, elevated: true }));
+
+    it('carries none of the kerbside clutter, which has no verge to stand on', () => {
+      // Each of these fires on the grounded run, so an empty deck result is the
+      // deck rule and not an accident of the test's geometry.
+      expect(computeManholePlacements(grounded()).length).toBeGreaterThan(0);
+      expect(computeBoxPlacements(grounded()).length).toBeGreaterThan(0);
+      expect(computeMeterPlacements(grounded()).length).toBeGreaterThan(0);
+
+      expect(computeManholePlacements(onDeck())).toEqual([]);
+      expect(computeBoxPlacements(onDeck())).toEqual([]);
+      expect(computeMeterPlacements(onDeck())).toEqual([]);
+    });
+
+    it('still signs a junction on the deck, because it is still a junction', () => {
+      const deckPlus = (tier: RoadTier): FurnitureRoadTile[] =>
+        [
+          [0, 0],
+          [1, 0],
+          [2, 0],
+          [-1, 0],
+          [-2, 0],
+          [0, 1],
+          [0, 2],
+          [0, -1],
+          [0, -2],
+        ].map(([x, z]) => ({ x: x!, z: z!, tier, elevated: true }));
+
+      const boards = computeSignPlacements(deckPlus(RoadTier.TwoLane));
+      expect(boards.filter((s) => s.type === 'stop').length).toBe(4);
+
+      const signals = computeSignPlacements(deckPlus(RoadTier.Avenue));
+      expect(signals.filter((s) => s.type === 'signal').length).toBe(4);
+    });
+
+    it('signs an elevated motorway overhead, where its signage belongs anyway', () => {
+      const tiles: FurnitureRoadTile[] = strip(0, 0, 39, 'ew', RoadTier.Highway).map((t) => ({
+        ...t,
+        elevated: true,
+      }));
+      const signs = computeSignPlacements(tiles);
+      expect(signs.length).toBeGreaterThan(0);
+      expect(signs.every((s) => s.type === 'gantry')).toBe(true);
+    });
+
+    it('drops the verge boards, which would stand on thin air', () => {
+      // A dead-ended deck run: 'nothrough' is a board on the verge, and a deck
+      // has none.
+      const stub = strip(5, 5, 7, 'ew', RoadTier.TwoLane);
+      expect(computeSignPlacements(stub).some((s) => s.type === 'nothrough')).toBe(true);
+      expect(
+        computeSignPlacements(stub.map((t) => ({ ...t, elevated: true }))).some(
+          (s) => s.type === 'nothrough',
+        ),
+      ).toBe(false);
+    });
+  });
+
+  it('leaves a rail line alone — a track is not a street', () => {
+    const track = strip(0, 0, 39, 'ew', RoadTier.RailTrack);
+    expect(computeManholePlacements(track)).toEqual([]);
+    expect(computeBoxPlacements(track)).toEqual([]);
+    expect(computeMeterPlacements(track)).toEqual([]);
+    expect(computeSignPlacements(track)).toEqual([]);
+  });
+
   it('produces no placements for an empty road tile list', () => {
     expect(computeManholePlacements([])).toEqual([]);
     expect(computeBoxPlacements([])).toEqual([]);

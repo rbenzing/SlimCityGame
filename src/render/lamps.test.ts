@@ -136,6 +136,7 @@ describe('computeLampPlacements (pure)', () => {
 
   it('gates lamps by tier: every tier but gravel is lamp-eligible', () => {
     expect(tierGetsLamp(RoadTier.Gravel)).toBe(false);
+    expect(tierGetsLamp(RoadTier.RailTrack)).toBe(false); // a track is not a street
     for (const tier of [
       RoadTier.TwoLane,
       RoadTier.Avenue,

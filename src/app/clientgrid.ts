@@ -214,13 +214,18 @@ export class ClientGridMirror {
     for (const inst of delta.added) this.stampFootprint(inst, entryFor(inst.catalogId));
   }
 
-  /** Every road tile, row-major, tagged with its RoadTier for tier-aware consumers. */
-  roadTiles(): (TilePoint & { tier: RoadTier })[] {
-    const tiles: (TilePoint & { tier: RoadTier })[] = [];
+  /**
+   * Every road tile, row-major, tagged with its RoadTier and whether it is up
+   * on a deck — the two things a tier-aware, deck-aware consumer (lamps, road
+   * furniture, ground cover) needs to decide what belongs on it.
+   */
+  roadTiles(): (TilePoint & { tier: RoadTier; elevated: boolean })[] {
+    const tiles: (TilePoint & { tier: RoadTier; elevated: boolean })[] = [];
     for (let z = 0; z < this.size; z++) {
       for (let x = 0; x < this.size; x++) {
-        const tier = this.roadTier[this.idx(x, z)] as RoadTier;
-        if (tier !== RoadTier.None) tiles.push({ x, z, tier });
+        const i = this.idx(x, z);
+        const tier = this.roadTier[i] as RoadTier;
+        if (tier !== RoadTier.None) tiles.push({ x, z, tier, elevated: (this.roadElevation[i] ?? 0) > 0 });
       }
     }
     return tiles;

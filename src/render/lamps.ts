@@ -166,9 +166,12 @@ export type LampAxis = 'x' | 'z';
 /** A road tile a lamp may sit on; `tier` is optional (undefined = eligible). */
 export type LampRoadTile = TilePoint & { tier?: RoadTier };
 
-/** Whether a road tier gets street lamps. Unpaved gravel/dirt roads do not. */
+/**
+ * Whether a road tier gets street lamps. Unpaved gravel/dirt roads do not, and
+ * neither does a rail line — a track is not a street, and nobody lights one.
+ */
 export function tierGetsLamp(tier: RoadTier | undefined): boolean {
-  return tier !== RoadTier.Gravel;
+  return tier !== RoadTier.Gravel && tier !== RoadTier.RailTrack;
 }
 
 export interface LampPlacement {

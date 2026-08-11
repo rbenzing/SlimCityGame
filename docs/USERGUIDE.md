@@ -89,9 +89,13 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   you are still dragging. Ground is as low as it goes for now; anything above it
   builds as a bridge, and the style follows the road: planking for a track, a
   concrete beam for a street, a deep box girder for a motorway, steel truss for
-  rail. Height is what costs. Nothing zones off a bridge, the ground underneath
-  is left alone, and the setting drops back to Ground when you put the road tool
-  down so it can't surprise you on the next drag.
+  rail. Every road type can be raised, from a gravel track to a rail line.
+  Height is what costs. Up on a deck a road keeps its lamps and the signs that
+  govern right of way — stop boards, signals, and a motorway's overhead gantries
+  — but loses the kerbside things that need a verge: no parking meters, utility
+  boxes, manholes, grass or trees on a bridge. Nothing zones off a bridge, the
+  ground underneath is left alone, and the setting drops back to Ground when you
+  put the road tool down so it can't surprise you on the next drag.
 - **Advisor** — the warning-triangle button (top right) lists what is actually
   wrong right now, worst first: buildings cut off from a road, power, or water,
   a utility grid running short, a budget bleeding out. A red badge counts the

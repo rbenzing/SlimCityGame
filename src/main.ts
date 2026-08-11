@@ -740,9 +740,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       bridges.rebuild(clientGrid.deckTiles());
       // Ground cover follows the road only where the road touches the ground —
       // a mown band under a bridge would be a stripe of lawn across a river.
-      terrain.applyRoadTiles(
-        roadTiles.filter((t) => clientGrid.roadElevation[t.z * clientGrid.size + t.x] === 0),
-      );
+      terrain.applyRoadTiles(roadTiles.filter((t) => !t.elevated));
     }
     if (snap.buildings) {
       instancer.apply(snap.buildings);
