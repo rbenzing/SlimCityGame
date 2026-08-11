@@ -24,8 +24,10 @@ import {
   TWO_LANE_HALF_WIDTH_FRACTION,
   HIGHWAY_HALF_WIDTH_FRACTION,
   carriagewayHalfWidthMeters,
+  curbWidthMeters,
   isLaneGlyphTile,
   LANE_GLYPH_PERIOD_TILES,
+  SIDEWALK_WIDTH_M,
 } from './roadsmesh';
 import { RoadTileDelta, RoadTier } from '../shared/types';
 import { CHUNK_TILES, TILE_METERS } from '../shared/constants';
@@ -136,6 +138,22 @@ describe('roadTileVertices — transit lane variants (Bus Lane / Bike Lane)', ()
     const b = roadTileVertices(2, 5, RoadTier.BikeLane, N | S, flatHeightAt);
     expect(a.positions).toEqual(b.positions);
     expect(a.colors).toEqual(b.colors);
+  });
+
+  it('gives a wide tier the curb it has room for, not a footway it does not', () => {
+    // A two-lane leaves plenty of tile beyond its carriageway, so it draws a
+    // full footway. A motorway is 15m of road in a 16m tile: half a metre of
+    // kerb, because its shoulders are inside the paved width already.
+    expect(curbWidthMeters(RoadTier.TwoLane)).toBeCloseTo(SIDEWALK_WIDTH_M, 5);
+    const kerb = curbWidthMeters(RoadTier.Highway);
+    expect(kerb).toBeGreaterThan(0);
+    expect(kerb).toBeLessThan(SIDEWALK_WIDTH_M);
+    expect(carriagewayHalfWidthMeters(RoadTier.Highway) + kerb).toBeCloseTo(TILE_METERS / 2, 5);
+  });
+
+  it('draws no curb at all where the tier has none', () => {
+    for (const tier of [RoadTier.Gravel, RoadTier.Alley, RoadTier.RailTrack])
+      expect(curbWidthMeters(tier)).toBe(0);
   });
 
   it('carriageways match their documented lane widths', () => {

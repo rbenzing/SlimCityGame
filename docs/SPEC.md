@@ -337,6 +337,15 @@ white lane markings reused from an existing tier:
   those tiles (`hasCrossingRoad`) and the junction is lit and served from its
   approaches instead. Manholes are the deliberate exception — they belong in
   the carriageway, so a junction is a fine place for one.
+- **Curb width is what the tile has room for, not a footway by assumption.**
+  A two-lane leaves plenty of tile beyond its carriageway and draws a full
+  footway; an avenue or a motorway is 15m of road in a 16m tile and draws half a
+  metre of kerb, because its shoulders are already inside the paved width. The
+  road mesh has always clamped it that way; `curbWidthMeters` makes it the one
+  number everything standing beside a road measures from — lamps, signage, and
+  the deck of a bridge. Assuming a full footway instead sizes a motorway span
+  nearly two metres wider than its road on each side and strands the lamp
+  columns out in the blank strip between traffic and parapet.
 - **One prop per curbside slot.** A sign and a utility cabinet both stand at the
   tile centre, on a side of the road, the same distance out from the
   carriageway — the same piece of ground. A tile that earns a board therefore
@@ -1399,8 +1408,9 @@ land.
   height, a girder under it so the span reads as a structure rather than a
   floating ribbon of tarmac, parapets where an at-grade tile draws curbs and
   sidewalk, and piers dropped to the terrain or seabed every
-  `PIER_SPACING_TILES`. The structure oversails the carriageway by a footway
-  plus the style's overhang, so the road never overhangs its own bridge.
+  `PIER_SPACING_TILES`. The structure oversails the carriageway by the tier's
+  own curb plus the style's overhang, so the road never overhangs its own
+  bridge and the deck never fans out into blank tarmac either side of it.
   Vehicles and pedestrians read the deck surface in place of `heightAt`, so
   traffic rides the bridge instead of swimming under it.
 - **A deck carries lamps and right-of-way signage, and nothing else.** The

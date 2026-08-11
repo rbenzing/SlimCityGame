@@ -23,7 +23,7 @@
 import * as THREE from 'three';
 import { RoadTier, TilePoint } from '../shared/types';
 import { LAMP_SPACING_TILES, tileToWorld } from '../shared/constants';
-import { carriagewayHalfWidthMeters, ROAD_Y_OFFSET, SIDEWALK_WIDTH_M } from './roadsmesh';
+import { carriagewayHalfWidthMeters, curbWidthMeters, ROAD_Y_OFFSET } from './roadsmesh';
 
 const POLE_HEIGHT = 5.5;
 const POLE_RADIUS_TOP = 0.12;
@@ -185,9 +185,16 @@ export interface LampPlacement {
   lateralOffset: number;
 }
 
-/** Curbside pole offset (m) for a tier: on the sidewalk just past the carriageway edge. */
+/**
+ * Curbside pole offset (m) for a tier: the middle of whatever curb the road
+ * actually draws, just past the carriageway edge. On a motorway that is the
+ * half-metre kerb rather than a footway it does not have, which is where a
+ * motorway's columns stand anyway — and on a bridge it puts the column on the
+ * deck's kerb instead of stranding it out in the middle of the span.
+ */
 function lampLateralOffset(tier: RoadTier | undefined): number {
-  return carriagewayHalfWidthMeters(tier ?? RoadTier.TwoLane) + SIDEWALK_WIDTH_M * 0.5;
+  const t = tier ?? RoadTier.TwoLane;
+  return carriagewayHalfWidthMeters(t) + curbWidthMeters(t) * 0.5;
 }
 
 /** Wide fixed stride so (x,z) pairs never collide without needing MAP_SIZE here. */

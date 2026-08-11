@@ -10,7 +10,7 @@ import {
 } from './lamps';
 import { RoadTier, TilePoint } from '../shared/types';
 import { LAMP_SPACING_TILES, TILE_METERS } from '../shared/constants';
-import { carriagewayHalfWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
+import { carriagewayHalfWidthMeters, curbWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
 
 const flatHeightAt = (): number => 0;
 
@@ -42,6 +42,23 @@ describe('computeLampPlacements (pure)', () => {
     const tiles = [...strip(4, 0, 8, 'ew'), ...strip(4, 0, 8, 'ns')];
     const placements = computeLampPlacements(tiles);
     expect(placements.some((p) => p.x === 4 && p.z === 4)).toBe(false);
+  });
+
+  it('stands a motorway column on its kerb, not out in the middle of the deck', () => {
+    // A motorway is 15m of carriageway in a 16m tile — half a metre of kerb,
+    // not a footway. A column offset by a full sidewalk width lands beyond the
+    // road entirely, which on a bridge is the blank strip out to the parapet.
+    const tier = RoadTier.Highway;
+    const road = carriagewayHalfWidthMeters(tier);
+    const kerb = curbWidthMeters(tier);
+    expect(kerb).toBeLessThan(SIDEWALK_WIDTH_M); // the case being guarded
+
+    const placements = computeLampPlacements(strip(4, 0, 8, 'ew').map((t) => ({ ...t, tier })));
+    expect(placements.length).toBeGreaterThan(0);
+    for (const p of placements) {
+      expect(p.lateralOffset).toBeGreaterThan(road);
+      expect(p.lateralOffset).toBeLessThan(road + kerb);
+    }
   });
 
   it('stands no pole on a T-junction either', () => {

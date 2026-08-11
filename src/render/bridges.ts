@@ -23,7 +23,7 @@
 import * as THREE from 'three';
 import { PIER_SPACING_TILES, TILE_METERS, tileToWorld } from '../shared/constants';
 import { RoadTier } from '../shared/types';
-import { carriagewayHalfWidthMeters, ROAD_Y_OFFSET, SIDEWALK_WIDTH_M } from './roadsmesh';
+import { carriagewayHalfWidthMeters, curbWidthMeters, ROAD_Y_OFFSET } from './roadsmesh';
 
 /** A deck tile as the renderer needs it: where it is, how high, how wide. */
 export interface BridgeDeckTile {
@@ -178,9 +178,14 @@ export function runsAlongZ(mask: number): boolean {
   return true;
 }
 
-/** Half-width of the structure under a tile: carriageway, footway and overhang. */
+/**
+ * Half-width of the structure under a tile: carriageway, whatever curb the tier
+ * actually draws, and the style's overhang. A deck is built to the road it
+ * carries — a motorway's curb is half a metre, so its span hugs the
+ * carriageway rather than fanning out into empty tarmac either side.
+ */
 export function structureHalfWidth(tier: RoadTier, style: BridgeStyle): number {
-  return carriagewayHalfWidthMeters(tier) + SIDEWALK_WIDTH_M + STYLES[style].overhang;
+  return carriagewayHalfWidthMeters(tier) + curbWidthMeters(tier) + STYLES[style].overhang;
 }
 
 interface StyleGroup {

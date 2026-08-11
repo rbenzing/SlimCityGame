@@ -250,6 +250,24 @@ export function carriagewayHalfWidthMeters(tier: RoadTier): number {
   return TILE_METERS * tierSpec(tier).halfWidthFraction;
 }
 
+/**
+ * Width (meters) of the curb strip a tier actually draws outside its
+ * carriageway — a full footway where the tile has room for one, clamped to
+ * whatever is left over where it does not. A motorway or an avenue is 15m of
+ * carriageway in a 16m tile, so it gets half a metre of curb, not a pavement:
+ * its shoulders are inside the paved width already. Gravel, alley and rail draw
+ * no curb at all.
+ *
+ * This is what anything standing beside a road must measure from — lamps,
+ * signs, and the deck of a bridge. Assuming a full footway instead leaves a
+ * motorway bridge two metres wider than its road on each side, with the lamps
+ * marooned out in the middle of the empty strip.
+ */
+export function curbWidthMeters(tier: RoadTier): number {
+  if (!tierSpec(tier).hasCurbs) return 0;
+  return Math.max(0, Math.min(SIDEWALK_WIDTH_M, TILE_METERS / 2 - carriagewayHalfWidthMeters(tier)));
+}
+
 function tierSpec(tier: RoadTier): QuadSpec {
   switch (tier) {
     case RoadTier.TwoLane:

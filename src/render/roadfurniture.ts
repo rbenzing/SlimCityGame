@@ -12,7 +12,7 @@
 import * as THREE from 'three';
 import { RoadTier, TilePoint } from '../shared/types';
 import { TILE_METERS, tileToWorld } from '../shared/constants';
-import { carriagewayHalfWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
+import { carriagewayHalfWidthMeters, curbWidthMeters } from './roadsmesh';
 
 // --- Manhole -----------------------------------------------------------------
 const MANHOLE_RADIUS = 0.5;
@@ -208,12 +208,15 @@ export interface SignPlacement {
 }
 
 /**
- * Curbside offset (m): a full sidewalk width out from the carriageway edge, so
- * curbside props (boxes, meters, signs) sit clear of the road on the verge —
- * only manholes belong on the carriageway itself.
+ * Curbside offset (m): the outer edge of whatever curb the tier actually draws,
+ * so curbside props (boxes, meters, signs) sit clear of the road on the verge —
+ * only manholes belong on the carriageway itself. A motorway's curb is half a
+ * metre, not a footway, so its signage stands there rather than a metre and a
+ * half out in the grass — or, on a bridge, out over the parapet.
  */
 function curbsideLateralOffset(tier: RoadTier | undefined): number {
-  return carriagewayHalfWidthMeters(tier ?? RoadTier.TwoLane) + SIDEWALK_WIDTH_M;
+  const t = tier ?? RoadTier.TwoLane;
+  return carriagewayHalfWidthMeters(t) + curbWidthMeters(t);
 }
 
 /**
@@ -572,10 +575,11 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
       const invLen = 1 / Math.hypot(cornerX, cornerZ);
       const dirX = -cornerX * invLen;
       const dirZ = -cornerZ * invLen;
+      const bendTier = tile.tier ?? RoadTier.TwoLane;
       const radius =
         half +
-        carriagewayHalfWidthMeters(tile.tier ?? RoadTier.TwoLane) +
-        SIDEWALK_WIDTH_M +
+        carriagewayHalfWidthMeters(bendTier) +
+        curbWidthMeters(bendTier) +
         BEND_SIGN_CURVE_MARGIN;
       out.push({
         x: tile.x,

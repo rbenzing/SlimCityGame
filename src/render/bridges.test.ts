@@ -12,7 +12,7 @@ import {
   type BridgeDeckTile,
   type BridgeStyle,
 } from './bridges';
-import { carriagewayHalfWidthMeters } from './roadsmesh';
+import { carriagewayHalfWidthMeters, curbWidthMeters } from './roadsmesh';
 
 function deckTile(
   x: number,
@@ -108,6 +108,20 @@ describe('structureHalfWidth', () => {
     for (const tier of ALL_TIERS) {
       const style = bridgeStyleFor(tier);
       expect(structureHalfWidth(tier, style)).toBeGreaterThan(carriagewayHalfWidthMeters(tier));
+    }
+  });
+
+  it('hugs the road it carries, leaving no empty tarmac out to the parapet', () => {
+    // The deck must reach past the carriageway — nothing should overhang its
+    // own bridge — but only by the structure's overhang, not by a footway the
+    // road does not have. A motorway sized to a full sidewalk puts nearly two
+    // metres of blank deck either side of the traffic.
+    for (const tier of ALL_TIERS) {
+      const style = bridgeStyleFor(tier);
+      const roadEdge = carriagewayHalfWidthMeters(tier) + curbWidthMeters(tier);
+      const deckEdge = structureHalfWidth(tier, style);
+      expect(deckEdge).toBeGreaterThan(carriagewayHalfWidthMeters(tier));
+      expect(deckEdge - roadEdge).toBeLessThanOrEqual(0.5);
     }
   });
 
