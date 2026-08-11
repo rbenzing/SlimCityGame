@@ -27,7 +27,7 @@ export class ClientGridMirror {
   readonly zone: Uint8Array;
   readonly roadTier: Uint8Array;
   readonly roadMask: Uint8Array;
-  readonly roadElevation: Uint8Array;
+  readonly roadElevation: Float32Array;
   readonly buildingId: Uint32Array;
 
   /** building id -> the tile indices its footprint was stamped onto. */
@@ -41,7 +41,7 @@ export class ClientGridMirror {
     this.zone = new Uint8Array(n);
     this.roadTier = new Uint8Array(n);
     this.roadMask = new Uint8Array(n);
-    this.roadElevation = new Uint8Array(n);
+    this.roadElevation = new Float32Array(n);
     this.buildingId = new Uint32Array(n);
   }
 
@@ -53,14 +53,28 @@ export class ClientGridMirror {
     return x >= 0 && z >= 0 && x < this.size && z < this.size;
   }
 
-  applyRoadDeltas(deltas: RoadTileDelta[]): void {
+  /**
+   * Applies road deltas and reports back the tiles whose deck height moved.
+   *
+   * A deck lifts the road SURFACE of the tiles around it as well as its own —
+   * the blend that turns an approach into a slope reaches a tile either side —
+   * and those neighbours carry no delta of their own. Anything that baked the
+   * old surface into geometry has to rebuild that halo, so the caller is handed
+   * the list rather than left to work it out. Returning it also forces the only
+   * safe call order: you cannot mesh the road against elevations the mirror has
+   * not absorbed yet.
+   */
+  applyRoadDeltas(deltas: RoadTileDelta[]): TilePoint[] {
+    const raised: TilePoint[] = [];
     for (const d of deltas) {
       if (!this.inBounds(d.x, d.z)) continue;
       const i = this.idx(d.x, d.z);
+      if ((this.roadElevation[i] ?? 0) !== d.elevation) raised.push({ x: d.x, z: d.z });
       this.roadTier[i] = d.tier;
       this.roadMask[i] = d.mask;
       this.roadElevation[i] = d.elevation;
     }
+    return raised;
   }
 
   /**

@@ -100,6 +100,25 @@ describe('ClientGridMirror', () => {
     expect(mirror.nearElevated(0, 0)).toBe(false);
   });
 
+  it('reports which tiles changed height, so their baked geometry can be rebuilt', () => {
+    // Raising a road moves the surface everything else was drawn against.
+    const raised = mirror.applyRoadDeltas([
+      { x: 6, z: 6, tier: RoadTier.TwoLane, mask: 1 | 4, elevation: 0 },
+      { x: 6, z: 7, tier: RoadTier.TwoLane, mask: 1 | 4, elevation: 9 },
+    ]);
+    expect(raised).toEqual([{ x: 6, z: 7 }]);
+
+    // Re-sending the same deltas moves nothing, so nothing needs rebuilding.
+    expect(
+      mirror.applyRoadDeltas([{ x: 6, z: 7, tier: RoadTier.TwoLane, mask: 1 | 4, elevation: 9 }]),
+    ).toEqual([]);
+
+    // And dropping back to the ground is a height change in its own right.
+    expect(
+      mirror.applyRoadDeltas([{ x: 6, z: 7, tier: RoadTier.None, mask: 0, elevation: 0 }]),
+    ).toEqual([{ x: 6, z: 7 }]);
+  });
+
   it('drops the deck when the road is bulldozed', () => {
     mirror.applyRoadDeltas([{ x: 8, z: 8, tier: RoadTier.TwoLane, mask: 0, elevation: 12 }]);
     expect(mirror.deckTiles()).toHaveLength(1);

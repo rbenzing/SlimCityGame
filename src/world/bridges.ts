@@ -45,6 +45,14 @@ function floorY(g: GridState, t: TilePoint): number {
   return Math.max(ground, SEA_LEVEL + BRIDGE_CLEARANCE_M);
 }
 
+/**
+ * Below this much lift, a tile is on the ground. Guards against a profile that
+ * arithmetic left a fraction of a millimetre off the terrain registering as an
+ * elevated tile — which would cost money, skip its frontage, and try to stand a
+ * bridge up under a road that is plainly lying on the dirt.
+ */
+const AT_GRADE_EPSILON_M = 0.01;
+
 const DIRS: ReadonlyArray<readonly [number, number]> = [
   [0, -1],
   [1, 0],
@@ -143,7 +151,15 @@ export function solveElevationProfile(
     }
   }
 
-  const elevations = tiles.map((t, i) => Math.max(0, Math.round(deckY[i]! - groundY(g, t))));
+  // The stored layer is the offset from each tile's own terrain, kept exact:
+  // rounding it to whole metres would make the deck inherit the fraction of
+  // whatever it crosses, bowing a level span as the riverbed rises and falls.
+  // Only a hair above the ground counts as none, so arithmetic slack on a tile
+  // nothing actually lifted cannot make it read as a bridge.
+  const elevations = tiles.map((t, i) => {
+    const lift = deckY[i]! - groundY(g, t);
+    return lift > AT_GRADE_EPSILON_M ? lift : 0;
+  });
   if (elevations.some((e) => e > BRIDGE_MAX_ELEVATION)) return { ok: false, reason: 'height' };
 
   // A span has to land. An end tile still in the air over dry ground, with no
@@ -157,7 +173,9 @@ export function solveElevationProfile(
     return { ok: false, reason: 'grade' };
   }
 
-  const cost = elevations.reduce((sum, e) => sum + e * BRIDGE_COST_PER_METER_TILE, 0);
+  const cost = Math.round(
+    elevations.reduce((sum, e) => sum + e * BRIDGE_COST_PER_METER_TILE, 0),
+  );
   return { ok: true, elevations, cost };
 }
 

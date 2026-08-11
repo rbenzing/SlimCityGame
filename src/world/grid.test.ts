@@ -72,6 +72,9 @@ function fillDeterministic(g: GridState): void {
     g.watered[i] = (i + 1) % 2;
     g.district[i] = (i * 7) % 256;
     g.landfill[i] = i % 4 === 0 ? 1 : 0;
+    // Fractional on purpose: a deck height is whatever it takes to sit level
+    // over uneven ground, not a whole number of metres.
+    g.roadElevation[i] = i % 3 === 0 ? 0 : (i % 11) + 0.25;
     for (let f = 0; f < g.fields.length; f++) {
       const layer = g.fields[f];
       if (layer) layer[i] = (i + f * 13) % 256;
@@ -100,6 +103,8 @@ describe('serializeGrid / deserializeGrid', () => {
     expect(Array.from(back.watered)).toEqual(Array.from(g.watered));
     expect(Array.from(back.district)).toEqual(Array.from(g.district));
     expect(Array.from(back.landfill)).toEqual(Array.from(g.landfill));
+    // Deck heights survive to the fraction — quantizing them bows a level span.
+    expect(Array.from(back.roadElevation)).toEqual(Array.from(g.roadElevation));
     expect(back.fields.length).toBe(g.fields.length);
     for (let f = 0; f < g.fields.length; f++) {
       expect(Array.from(back.fields[f]!)).toEqual(Array.from(g.fields[f]!));
@@ -138,16 +143,16 @@ describe('serializeGrid / deserializeGrid', () => {
 
   it('migrates a v1 buffer (no district/landfill/elevation layers) — loads them all-zero, other layers intact', () => {
     // Synthesize a v1 buffer from the current serialize by (a) stamping the
-    // version to 1 and (b) truncating ALL THREE trailing layers (district +
-    // landfill + roadElevation, 3n bytes). deserializeGrid must accept it and
-    // default every one of them to 0.
+    // version to 1 and (b) truncating ALL THREE trailing layers — district (n)
+    // + landfill (n) + roadElevation (4n, a float per tile). deserializeGrid
+    // must accept it and default every one of them to 0.
     const size = 5;
     const n = size * size;
     const g = createGrid(size);
     fillDeterministic(g);
     const cur = serializeGrid(g); // current version: district + landfill + elevation
 
-    const v1 = cur.slice(0, cur.byteLength - 3 * n); // drop all three trailing layers
+    const v1 = cur.slice(0, cur.byteLength - 6 * n); // drop all three trailing layers
     new DataView(v1).setUint32(0, 1, true); // stamp version 1
 
     const back = deserializeGrid(v1);
@@ -169,7 +174,7 @@ describe('serializeGrid / deserializeGrid', () => {
   });
 
   it('migrates a v2 buffer (district but no landfill/elevation layers) — loads those all-zero, district intact', () => {
-    // Drop the trailing landfill + roadElevation layers (2n bytes) and stamp
+    // Drop the trailing landfill (n) + roadElevation (4n) layers and stamp
     // version 2: district must survive, both later layers default to 0.
     const size = 5;
     const n = size * size;
@@ -177,7 +182,7 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g);
 
-    const v2 = cur.slice(0, cur.byteLength - 2 * n); // drop landfill + elevation
+    const v2 = cur.slice(0, cur.byteLength - 5 * n); // drop landfill + elevation
     new DataView(v2).setUint32(0, 2, true); // stamp version 2
 
     const back = deserializeGrid(v2);
@@ -197,7 +202,7 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g);
 
-    const v3 = cur.slice(0, cur.byteLength - n); // drop the trailing elevation bytes
+    const v3 = cur.slice(0, cur.byteLength - 4 * n); // drop the trailing elevation floats
     new DataView(v3).setUint32(0, 3, true); // stamp version 3
 
     const back = deserializeGrid(v3);
@@ -206,6 +211,30 @@ describe('serializeGrid / deserializeGrid', () => {
     expect(Array.from(back.landfill)).toEqual(Array.from(g.landfill)); // survives
     expect(back.roadElevation.length).toBe(n);
     expect(back.roadElevation.every((v) => v === 0)).toBe(true); // defaulted
+  });
+
+  it('migrates a v4 buffer (elevation stored as whole metres) — bridges keep their height', () => {
+    // v4 wrote one byte per tile. Rebuild that tail by hand and stamp the
+    // version: the saved decks must come back standing, not on the ground.
+    const size = 5;
+    const n = size * size;
+    const g = createGrid(size);
+    fillDeterministic(g);
+    const cur = serializeGrid(g);
+
+    const body = cur.slice(0, cur.byteLength - 4 * n); // everything before the float tail
+    const v4 = new ArrayBuffer(body.byteLength + n);
+    const bytes = new Uint8Array(v4);
+    bytes.set(new Uint8Array(body));
+    const wholeMetres = Array.from({ length: n }, (_, i) => i % 13);
+    bytes.set(Uint8Array.from(wholeMetres), body.byteLength);
+    new DataView(v4).setUint32(0, 4, true);
+
+    const back = deserializeGrid(v4);
+    expect(back.size).toBe(size);
+    expect(back.roadElevation).toBeInstanceOf(Float32Array);
+    expect(Array.from(back.roadElevation)).toEqual(wholeMetres);
+    expect(Array.from(back.landfill)).toEqual(Array.from(g.landfill)); // untouched
   });
 
   it('rejects a buffer whose length does not match its declared size', () => {

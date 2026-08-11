@@ -19,7 +19,7 @@ function makeGrid(): GridState {
     fields: Array.from({ length: FIELD_COUNT }, () => new Uint8Array(MAP_TILES)),
     district: new Uint8Array(MAP_TILES),
     landfill: new Uint8Array(MAP_TILES),
-    roadElevation: new Uint8Array(MAP_TILES),
+    roadElevation: new Float32Array(MAP_TILES),
   };
 }
 

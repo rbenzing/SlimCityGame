@@ -25,7 +25,7 @@ function makeGrid(size: number): GridState {
     fields: Array.from({ length: FIELD_COUNT }, () => new Uint8Array(n)),
     district: new Uint8Array(n),
     landfill: new Uint8Array(n),
-    roadElevation: new Uint8Array(n),
+    roadElevation: new Float32Array(n),
   };
 }
 
@@ -48,6 +48,36 @@ function carveRiver(g: GridState, z: number, fromX: number, toX: number, depth =
 }
 
 describe('solveElevationProfile', () => {
+  it('crosses a dished riverbed dead level, because the stored offset keeps its fraction', () => {
+    // The deck is stored as a height ABOVE each tile's own terrain, so a bed
+    // that dips and rises under it has to be cancelled exactly. Rounded to
+    // whole metres, the leftover fraction bows a level span by up to half a
+    // metre — which is what the reconstruction below would show.
+    const g = makeGrid(40);
+    const z = 10;
+    const from = 8;
+    const to = 28;
+    for (let x = from; x <= to; x++) {
+      const i = idx(g.size, x, z);
+      g.water[i] = 1;
+      // A smooth bowl: no two tiles of bed at the same height.
+      g.height[i] = -6 * Math.sin((Math.PI * (x - from)) / (to - from));
+    }
+
+    const result = solveElevationProfile(g, run(z, 3, 32));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // Reconstruct the deck the way every renderer does: terrain + stored offset.
+    const tiles = run(z, 3, 32);
+    const deck = tiles.map((t, i) => g.height[idx(g.size, t.x, t.z)]! + result.elevations[i]!);
+    const overWater = deck.filter((_, i) => {
+      const t = tiles[i]!;
+      return g.water[idx(g.size, t.x, t.z)] === 1;
+    });
+    expect(Math.max(...overWater) - Math.min(...overWater)).toBeLessThan(0.01);
+  });
+
   it('leaves a run across dry flat ground at grade, for free', () => {
     const g = makeGrid(16);
     const result = solveElevationProfile(g, run(5, 2, 10));

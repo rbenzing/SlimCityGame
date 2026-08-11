@@ -48,7 +48,7 @@ export interface ZonableGridSource {
    * Deck heights, when the source has them. A source without the layer reads as
    * entirely at grade, which is what every pre-bridge caller means.
    */
-  roadElevation?: Uint8Array;
+  roadElevation?: Float32Array;
 }
 
 // Orthogonal directions, index-aligned: 0=N 1=E 2=S 3=W. Even indices (N/S)

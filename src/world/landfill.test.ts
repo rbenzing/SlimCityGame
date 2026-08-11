@@ -19,7 +19,7 @@ function makeGrid(size: number): LandfillGridSource {
   return {
     size,
     landfill: new Uint8Array(n),
-    roadElevation: new Uint8Array(n),
+    roadElevation: new Float32Array(n),
     water: new Uint8Array(n),
     roadTier: new Uint8Array(n),
     buildingId: new Uint32Array(n),

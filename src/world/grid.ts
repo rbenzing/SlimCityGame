@@ -62,7 +62,7 @@ export function createGrid(size?: number): GridState {
     fields,
     district: new Uint8Array(n),
     landfill: new Uint8Array(n),
-    roadElevation: new Uint8Array(n),
+    roadElevation: new Float32Array(n),
   };
 }
 
@@ -75,13 +75,15 @@ export function createGrid(size?: number): GridState {
 // ---------------------------------------------------------------------------
 
 const HEADER_BYTES = 8; // uint32 version + uint32 size
-// SAVE_VERSION 4 layout: 4 (height) + 4 (buildingId) + 19 single-byte layers
-// (7 flat: water/trees/zone/roadTier/roadMask/power/watered) + 9 fields + 1
-// district + 1 landfill + 1 roadElevation (all three trailing).
-const BYTES_PER_TILE = 27;
-// Each older version drops one trailing layer: v3 has district + landfill but
-// no roadElevation, v2 district only, v1 none of them. deserializeGrid accepts
-// all of them and defaults every absent trailing layer to 0.
+// SAVE_VERSION 5 layout: 4 (height) + 4 (buildingId) + 4 (roadElevation) + 18
+// single-byte layers (7 flat: water/trees/zone/roadTier/roadMask/power/watered)
+// + 9 fields + 1 district + 1 landfill (both trailing).
+const BYTES_PER_TILE = 30;
+// v4 is this layout with roadElevation still one byte per tile; each version
+// before that drops one trailing layer — v3 district + landfill but no
+// elevation, v2 district only, v1 none of them. deserializeGrid accepts all of
+// them, widening v4's byte and defaulting every absent trailing layer to 0.
+const BYTES_PER_TILE_V4 = 27;
 const BYTES_PER_TILE_V3 = 26;
 const BYTES_PER_TILE_V2 = 25;
 const BYTES_PER_TILE_V1 = 24;
@@ -133,13 +135,16 @@ export function serializeGrid(g: GridState): ArrayBuffer {
   }
 
   // Trailing additive layers, in version order: district (v2), landfill (v3),
-  // then roadElevation (v4). Placed last so an older buffer is simply this
-  // buffer without its final n bytes per absent layer (see deserializeGrid).
+  // then roadElevation (v4, widened to a float in v5). Placed last so an older
+  // buffer is simply this buffer without its final bytes per absent layer (see
+  // deserializeGrid).
   bytes.set(g.district, offset);
   offset += n;
   bytes.set(g.landfill, offset);
   offset += n;
-  bytes.set(g.roadElevation, offset);
+  for (let i = 0; i < n; i++) {
+    view.setFloat32(offset + i * 4, g.roadElevation[i]!, true);
+  }
 
   return buffer;
 }
@@ -147,10 +152,11 @@ export function serializeGrid(g: GridState): ArrayBuffer {
 export function deserializeGrid(buf: ArrayBuffer): GridState {
   const view = new DataView(buf);
   const version = view.getUint32(0, true);
-  // SAVE_VERSION 4 is current; v1..v3 are accepted for migration — they are
+  // SAVE_VERSION 5 is current; v1..v4 are accepted for migration — they are
   // identical except for the trailing district (v2+), landfill (v3+), and
-  // roadElevation (v4+) layers, each defaulted to 0 here when absent.
-  if (version !== SAVE_VERSION && version !== 3 && version !== 2 && version !== 1) {
+  // roadElevation (v4+) layers, each defaulted to 0 here when absent, and for
+  // v4 storing that elevation as one byte per tile rather than a float.
+  if (version !== SAVE_VERSION && version !== 4 && version !== 3 && version !== 2 && version !== 1) {
     throw new Error(
       `deserializeGrid: unsupported save version ${version} (expected ${SAVE_VERSION})`,
     );
@@ -158,16 +164,19 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
   const hasDistrict = version >= 2;
   const hasLandfill = version >= 3;
   const hasRoadElevation = version >= 4;
+  const elevationIsByte = version === 4;
 
   const size = view.getUint32(4, true);
   const n = size * size;
-  const bytesPerTile = hasRoadElevation
-    ? BYTES_PER_TILE
-    : hasLandfill
-      ? BYTES_PER_TILE_V3
-      : hasDistrict
-        ? BYTES_PER_TILE_V2
-        : BYTES_PER_TILE_V1;
+  const bytesPerTile = elevationIsByte
+    ? BYTES_PER_TILE_V4
+    : hasRoadElevation
+      ? BYTES_PER_TILE
+      : hasLandfill
+        ? BYTES_PER_TILE_V3
+        : hasDistrict
+          ? BYTES_PER_TILE_V2
+          : BYTES_PER_TILE_V1;
   const expectedBytes = bufferBytesFor(size, bytesPerTile);
   if (buf.byteLength !== expectedBytes) {
     throw new Error(
@@ -218,8 +227,15 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
   // Landfill layer (v3+). v1/v2 buffers stop here — landfill defaults to 0.
   const landfill = hasLandfill ? bytes.slice(offset, offset + n) : new Uint8Array(n);
   if (hasLandfill) offset += n;
-  // Elevation layer (v4+). Older buffers stop here — every road loads at grade.
-  const roadElevation = hasRoadElevation ? bytes.slice(offset, offset + n) : new Uint8Array(n);
+  // Elevation layer (v4+). Older buffers stop here — every road loads at
+  // grade. A v4 buffer stored it as whole metres per tile; widening the byte
+  // keeps the bridge, at the height it was saved at.
+  const roadElevation = new Float32Array(n);
+  if (elevationIsByte) {
+    for (let i = 0; i < n; i++) roadElevation[i] = bytes[offset + i] ?? 0;
+  } else if (hasRoadElevation) {
+    for (let i = 0; i < n; i++) roadElevation[i] = view.getFloat32(offset + i * 4, true);
+  }
 
   return {
     size,

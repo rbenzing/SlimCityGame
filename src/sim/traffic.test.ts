@@ -750,7 +750,7 @@ function makeGrid(size: number): GridState {
     fields: Array.from({ length: FIELD_COUNT }, () => new Uint8Array(n)),
     district: new Uint8Array(n),
     landfill: new Uint8Array(n),
-    roadElevation: new Uint8Array(n),
+    roadElevation: new Float32Array(n),
   };
 }
 

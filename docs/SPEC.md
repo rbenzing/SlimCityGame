@@ -1344,15 +1344,22 @@ frontage rule — and none of them can be reached across the bank. Bridges are
 the missing tile type, and elevated road is the same mechanism pointed at dry
 land.
 
-- **Elevation is one additive layer.** `GridState.roadElevation: Uint8Array` —
-  the deck height in whole meters above that tile's terrain, `0` meaning at
-  grade. It rides alongside `roadTier`, so a bridge tile is an ordinary road
-  tile that happens to sit higher: the road graph, the mask/auto-tiling, the
-  utility propagation, and the traffic model all keep working untouched, which
-  is the whole reason to model it this way rather than as a parallel network.
-  Serialized last, `SAVE_VERSION` 3 → 4, following the district and landfill
-  precedent — a v3 save loads with the layer zeroed and every existing road
-  stays exactly where it was.
+- **Elevation is one additive layer.** `GridState.roadElevation: Float32Array` —
+  the deck height in metres above that tile's terrain, `0` meaning at grade. It
+  rides alongside `roadTier`, so a bridge tile is an ordinary road tile that
+  happens to sit higher: the road graph, the mask/auto-tiling, the utility
+  propagation, and the traffic model all keep working untouched, which is the
+  whole reason to model it this way rather than as a parallel network.
+  Serialized last, `SAVE_VERSION` 3 → 4 → 5, following the district and landfill
+  precedent — a v3 save loads with the layer zeroed and every existing road stays
+  exactly where it was, and a v4 save's whole-metre bytes widen into it.
+- **The offset is continuous, and it has to be.** Every consumer reconstructs
+  the deck as terrain + offset, so the offset carries the fraction that cancels
+  the ground underneath. Quantized to whole metres it cannot, and a level span
+  inherits the shape of whatever it crosses — a dished riverbed bows a flat deck
+  by up to half a metre. The solver therefore stores the exact lift, and treats
+  anything under a centimetre of it as at grade so arithmetic slack on a
+  genuinely grounded tile cannot bill for a bridge or deny it its frontage.
 - **Elevated tiles skip the ground rules.** A deck rests on piers, so
   `isBridgeBuildable` drops both gates `isRoadBuildable` enforces: the water
   rejection (that is the point) and the slope ceiling (the deck is level
@@ -1375,8 +1382,8 @@ land.
   Ground whenever the road tool is put down: left sticky it is invisible state,
   and a height set for one viaduct silently turns the next short drag into a
   stray hump with a bridge under it.
-- **What a deck looks like.** A flat slab at deck height with no terrain
-  conformance, a girder under it so the span reads as a structure rather than a
+- **What a deck looks like.** A road surface at deck height rather than terrain
+  height, a girder under it so the span reads as a structure rather than a
   floating ribbon of tarmac, parapets where an at-grade tile draws curbs and
   sidewalk, and piers dropped to the terrain or seabed every
   `PIER_SPACING_TILES`. The structure oversails the carriageway by a footway
@@ -1406,6 +1413,14 @@ land.
   tile one flat box instead is what makes a bridge read as a row of slabs
   stacked next to each other, with a step at every tile boundary and a ramp that
   climbs in stairs.
+- **The grid mirror updates before anything meshes against it.** The road
+  surface sampler reads deck heights out of `ClientGridMirror`, so applying a
+  snapshot's road deltas has to precede `RoadMeshRenderer.apply` — mesh first
+  and the carriageway bakes at terrain height while the structure, lamps and
+  furniture stand at deck height, leaving the road threaded under its own
+  bridge. `applyRoadDeltas` returns the tiles whose height moved so their
+  neighbours, which carry no delta of their own but do sample the ramp blend,
+  can be rebuilt too.
 - **What the deck costs and what it denies.** Elevated tiles add
   `BRIDGE_COST_PER_METER_TILE` per metre of height on top of the tier's own
   per-tile cost, and the same premium proportionally on upkeep — height is the
@@ -1422,7 +1437,7 @@ land.
 **Owners:** `src/world/grid.ts` (layer + serialize/deserialize + migration),
 `src/world/roads.ts` (elevation in `applyRoad`/`removeRoad` + `RoadTileDelta`),
 `src/shared/constants.ts` (the five bridge constants) + `src/shared/types.ts`
-(`SAVE_VERSION` 4), `src/sim/worker.entry.ts` (auto-bridge + ramp solve +
+(`SAVE_VERSION` 5), `src/sim/worker.entry.ts` (auto-bridge + ramp solve +
 costing in `cmdBuildRoad`, no flatten when elevated), `src/world/zonable.ts`
 (no frontage off a deck), NEW `src/render/bridges.ts` (deck, piers, parapets)
 + edits to `src/render/roadsmesh.ts`, `vehicles.ts`, `pedestrians.ts`,
@@ -1431,6 +1446,8 @@ costing in `cmdBuildRoad`, no flatten when elevated), `src/world/zonable.ts`
 **Acceptance:** a road dragged bank to bank across a river lands as a deck on
 piers with ramped approaches; cars and pedestrians cross on the deck; power and
 water propagate over it and a zone on the far bank grows; nothing zones off the
-bridge itself; a v3 save loads with every road at grade; bulldozing the span
+bridge itself; the carriageway sits on the girder rather than under it, and a
+span crossing a dished riverbed reads level rather than bowed; a v3 save loads
+with every road at grade and a v4 save keeps its bridges; bulldozing the span
 returns the river.
 

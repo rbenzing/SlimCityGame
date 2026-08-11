@@ -745,8 +745,15 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       roadsMesh.invalidateHeights(snap.heightPatches);
     }
     if (snap.roads) {
+      // The mirror goes first. The road mesh samples roadSurfaceAt, which reads
+      // deck heights back out of the mirror — meshing before those land lays
+      // the carriageway on the ground underneath its own bridge.
+      const raised = clientGrid.applyRoadDeltas(snap.roads);
       roadsMesh.apply(snap.roads);
-      clientGrid.applyRoadDeltas(snap.roads);
+      // Tiles beside a deck sample the ramp blend but carry no delta of their
+      // own, so their geometry only rebuilds if we ask for it.
+      if (raised.length > 0)
+        roadsMesh.invalidateHeights(raised.map((t) => ({ x: t.x, z: t.z, w: 1, h: 1 })));
       zoneGrid.rebuild(clientGrid);
       const roadTiles = clientGrid.roadTiles();
       lamps.rebuild(roadTiles);

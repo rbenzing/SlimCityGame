@@ -81,9 +81,10 @@ describe('computeZonableTiles — straight road', () => {
 
   it('grants no frontage from a stretch that is up on a bridge deck', () => {
     const g = straight();
-    g.roadElevation = new Uint8Array(size * size);
+    const elevation = new Float32Array(size * size);
+    g.roadElevation = elevation;
     // Lift the middle of the run: there is no way onto a lot from up there.
-    for (const z of [4, 5]) g.roadElevation[idx(size, 5, z)] = 8;
+    for (const z of [4, 5]) elevation[idx(size, 5, z)] = 8;
 
     const set = coordSet(computeZonableTiles(g));
     expect(set.has('6,4')).toBe(false);
