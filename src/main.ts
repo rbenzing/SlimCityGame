@@ -204,7 +204,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     roadAt,
   );
   const roadsMesh = new RoadMeshRenderer(world.scene, roadSurfaceAt);
-  const bridges = new BridgeRenderer(world.scene);
+  const bridges = new BridgeRenderer(world.scene, roadSurfaceAt);
   const vehicles = new VehicleRenderer(world.scene, roadSurfaceAt);
   // Bus transit (stop posts + route ribbon + cosmetic buses), service vehicles
   // (fire/police/ambulance from the shared buffer + incident pins), and the

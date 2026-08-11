@@ -1397,8 +1397,15 @@ land.
   - **truss** (rail) — a shallow deck carried inside steel lattice sides that
     rise above it with overhead bracing, the through-truss every railway bridge
     is. It carries no parapet: the truss is the edge.
-  Each family draws in its own instanced meshes, so a city with a footbridge and
-  a motorway viaduct pays two draw calls per part, not one per span.
+  Piers, footings and truss members are instanced per family, so a city with a
+  footbridge and a motorway viaduct pays per family rather than per span.
+- **The structure conforms to the deck, it does not tile it.** Girder and
+  parapets are MERGED geometry whose corner heights come from the same smooth
+  sampler the road surface uses, so two neighbouring tiles evaluate their shared
+  edge identically and a span runs as one continuous paved road. Giving each
+  tile one flat box instead is what makes a bridge read as a row of slabs
+  stacked next to each other, with a step at every tile boundary and a ramp that
+  climbs in stairs.
 - **What the deck costs and what it denies.** Elevated tiles add
   `BRIDGE_COST_PER_METER_TILE` per metre of height on top of the tier's own
   per-tile cost, and the same premium proportionally on upkeep — height is the

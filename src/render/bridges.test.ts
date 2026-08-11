@@ -22,8 +22,26 @@ function deckTile(
   return { x, z, tier, mask: 1 | 4, deckY: over, groundY: 0 };
 }
 
+/** Deck sampler matching deckTile's default height: a level span. */
+const flatDeckAt = (): number => 8;
+
+/** A deck that climbs with world x — the shape of an approach ramp. */
+const rampDeckAt = (wx: number): number => 8 + wx * 0.05;
+
 function instancedIn(scene: THREE.Scene): THREE.InstancedMesh[] {
   return scene.children.filter((c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh);
+}
+
+/** The merged, deck-conforming layers (girder + parapets). */
+function mergedIn(scene: THREE.Scene): THREE.Mesh[] {
+  return scene.children.filter(
+    (c): c is THREE.Mesh => c instanceof THREE.Mesh && !(c instanceof THREE.InstancedMesh),
+  );
+}
+
+function vertexYs(mesh: THREE.Mesh): number[] {
+  const position = mesh.geometry.getAttribute('position');
+  return Array.from({ length: position.count }, (_, i) => position.getY(i));
 }
 
 describe('isPierTile', () => {
@@ -112,31 +130,59 @@ describe('groupByStyle', () => {
 describe('BridgeRenderer', () => {
   it('adds nothing to the scene when the city has no decks', () => {
     const scene = new THREE.Scene();
-    const renderer = new BridgeRenderer(scene);
+    const renderer = new BridgeRenderer(scene, flatDeckAt);
     renderer.rebuild([]);
     expect(scene.children).toHaveLength(0);
     renderer.dispose();
   });
 
-  it('builds a girder and two parapets per deck tile', () => {
+  it('builds the girder and parapets as merged geometry, not one box per tile', () => {
     const scene = new THREE.Scene();
-    const renderer = new BridgeRenderer(scene);
-    const tiles = [deckTile(1, 0), deckTile(1, 1), deckTile(1, 2)];
-    renderer.rebuild(tiles);
+    const renderer = new BridgeRenderer(scene, flatDeckAt);
+    renderer.rebuild([deckTile(1, 0), deckTile(1, 1), deckTile(1, 2)]);
 
-    const counts = instancedIn(scene)
-      .map((m) => m.count)
-      .sort((a, b) => a - b);
-    expect(counts).toContain(tiles.length); // girders
-    expect(counts).toContain(tiles.length * 2); // parapets
+    const merged = mergedIn(scene);
+    expect(merged).toHaveLength(2); // girder run + parapet run
+    for (const mesh of merged) expect(vertexYs(mesh).length).toBeGreaterThan(0);
+    renderer.dispose();
+  });
+
+  it('follows the deck profile, so a ramp is a slope and not a flight of steps', () => {
+    const scene = new THREE.Scene();
+    const renderer = new BridgeRenderer(scene, rampDeckAt);
+    renderer.rebuild([deckTile(0, 0), deckTile(1, 0), deckTile(2, 0)]);
+
+    const ys = vertexYs(mergedIn(scene)[0]!);
+    // A per-tile constant box gives only a handful of distinct heights (one top
+    // and one bottom per tile). Conforming geometry samples the profile at every
+    // corner, so a climbing deck produces many.
+    expect(new Set(ys.map((y) => y.toFixed(3))).size).toBeGreaterThan(4);
+    // And it genuinely climbs rather than sitting level.
+    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(0);
+  });
+
+  it('meets its neighbour exactly, so consecutive spans share an edge', () => {
+    // Two tiles adjacent along the run. Sampling the shared edge from either
+    // side must agree, or the span shows a seam.
+    const scene = new THREE.Scene();
+    const renderer = new BridgeRenderer(scene, rampDeckAt);
+    renderer.rebuild([deckTile(4, 4), deckTile(4, 5)]);
+
+    const ys = vertexYs(mergedIn(scene)[0]!);
+    const rounded = ys.map((y) => y.toFixed(4));
+    // Every height appears an even number of times: each shared corner is
+    // emitted once per adjoining face, at the identical value.
+    const counts = new Map<string, number>();
+    for (const y of rounded) counts.set(y, (counts.get(y) ?? 0) + 1);
+    expect([...counts.values()].every((n) => n > 1)).toBe(true);
     renderer.dispose();
   });
 
   it('raises steel above a rail deck that a road deck never gets', () => {
     const road = new THREE.Scene();
-    new BridgeRenderer(road).rebuild([deckTile(1, 0), deckTile(1, 1)]);
+    new BridgeRenderer(road, flatDeckAt).rebuild([deckTile(1, 0), deckTile(1, 1)]);
     const rail = new THREE.Scene();
-    new BridgeRenderer(rail).rebuild([
+    new BridgeRenderer(rail, flatDeckAt).rebuild([
       deckTile(1, 0, RoadTier.RailTrack),
       deckTile(1, 1, RoadTier.RailTrack),
     ]);
@@ -160,9 +206,9 @@ describe('BridgeRenderer', () => {
 
   it('leaves a plank span without the parapet a street bridge carries', () => {
     const plank = new THREE.Scene();
-    new BridgeRenderer(plank).rebuild([deckTile(1, 0, RoadTier.Gravel)]);
+    new BridgeRenderer(plank, flatDeckAt).rebuild([deckTile(1, 0, RoadTier.Gravel)]);
     const beam = new THREE.Scene();
-    new BridgeRenderer(beam).rebuild([deckTile(1, 0, RoadTier.TwoLane)]);
+    new BridgeRenderer(beam, flatDeckAt).rebuild([deckTile(1, 0, RoadTier.TwoLane)]);
     // Both carry a rail of some kind, but the plank's is far slimmer — its
     // structure totals fewer instances than the concrete beam's.
     const total = (scene: THREE.Scene): number =>
@@ -172,7 +218,7 @@ describe('BridgeRenderer', () => {
 
   it('draws each family in its own instanced meshes', () => {
     const scene = new THREE.Scene();
-    const renderer = new BridgeRenderer(scene);
+    const renderer = new BridgeRenderer(scene, flatDeckAt);
     const mixedOnly = instancedIn(scene).length;
     renderer.rebuild([deckTile(0, 0, RoadTier.TwoLane), deckTile(9, 9, RoadTier.RailTrack)]);
     expect(instancedIn(scene).length).toBeGreaterThan(mixedOnly);
@@ -181,16 +227,18 @@ describe('BridgeRenderer', () => {
 
   it('leaves a deck lying on the ground without piers', () => {
     const scene = new THREE.Scene();
-    const renderer = new BridgeRenderer(scene);
+    const renderer = new BridgeRenderer(scene, flatDeckAt);
     renderer.rebuild([{ ...deckTile(0, 0), deckY: 0, groundY: 0 }]);
-    // Girder + two parapets only — no pier or footing mesh was created.
-    expect(instancedIn(scene)).toHaveLength(2);
+    // Merged girder + parapets only; nothing instanced, since piers and
+    // footings are the only instanced parts a beam span has.
+    expect(instancedIn(scene)).toHaveLength(0);
+    expect(mergedIn(scene)).toHaveLength(2);
     renderer.dispose();
   });
 
   it('replaces the structure on rebuild rather than stacking it up', () => {
     const scene = new THREE.Scene();
-    const renderer = new BridgeRenderer(scene);
+    const renderer = new BridgeRenderer(scene, flatDeckAt);
     renderer.rebuild([deckTile(0, 0), deckTile(0, 1)]);
     const afterFirst = scene.children.length;
     renderer.rebuild([deckTile(0, 0), deckTile(0, 1)]);
@@ -200,7 +248,7 @@ describe('BridgeRenderer', () => {
 
   it('clears the scene on dispose', () => {
     const scene = new THREE.Scene();
-    const renderer = new BridgeRenderer(scene);
+    const renderer = new BridgeRenderer(scene, flatDeckAt);
     renderer.rebuild([deckTile(2, 2)]);
     expect(scene.children.length).toBeGreaterThan(0);
     renderer.dispose();

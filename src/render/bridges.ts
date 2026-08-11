@@ -188,6 +188,80 @@ interface StyleGroup {
   tiles: BridgeDeckTile[];
 }
 
+/** A corner of a tile's structure footprint, in world XZ. */
+type Corner = readonly [number, number];
+
+/**
+ * Emits one prism into `positions`: four corners in world XZ, each with its own
+ * top height, extruded down by `depth`. The sides and the underside are drawn;
+ * the top is not, because the road surface covers it.
+ *
+ * Corner heights come from the SAME sampler the road surface uses, so two
+ * neighbouring tiles evaluate their shared edge to the same pair of heights and
+ * the structure runs continuously across it. Giving each tile one flat height
+ * instead is what makes a span read as a stack of separate slabs.
+ */
+export function emitPrism(
+  positions: number[],
+  corners: readonly [Corner, Corner, Corner, Corner],
+  topY: readonly [number, number, number, number],
+  depth: number,
+): void {
+  const push = (i: number, y: number): void => {
+    positions.push(corners[i]![0], y, corners[i]![1]);
+  };
+  const quad = (a: number, b: number, c: number, d: number, ys: readonly number[]): void => {
+    push(a, ys[0]!);
+    push(b, ys[1]!);
+    push(c, ys[2]!);
+    push(a, ys[0]!);
+    push(c, ys[2]!);
+    push(d, ys[3]!);
+  };
+
+  const bot = topY.map((y) => y - depth);
+  // Sides, wound outward-facing for a corner list running counter-clockwise.
+  for (let i = 0; i < 4; i++) {
+    const j = (i + 1) % 4;
+    quad(i, j, j, i, [topY[i]!, topY[j]!, bot[j]!, bot[i]!]);
+  }
+  // Underside, wound to face down.
+  quad(0, 2, 1, 0, [bot[0]!, bot[2]!, bot[1]!, bot[0]!]);
+  quad(0, 3, 2, 0, [bot[0]!, bot[3]!, bot[2]!, bot[0]!]);
+}
+
+/**
+ * The four corners of a tile's structure footprint, in world XZ, listed
+ * counter-clockwise. `half` is the structure's half-width; the run direction
+ * decides which axis it spreads along.
+ */
+export function footprintCorners(
+  wx: number,
+  wz: number,
+  half: number,
+  alongZ: boolean,
+  span: number,
+  lateralFrom = -1,
+  lateralTo = 1,
+): [Corner, Corner, Corner, Corner] {
+  const a = span / 2;
+  const l0 = half * lateralFrom;
+  const l1 = half * lateralTo;
+  return alongZ
+    ? [
+        [wx + l0, wz - a],
+        [wx + l1, wz - a],
+        [wx + l1, wz + a],
+        [wx + l0, wz + a],
+      ]
+    : [
+        [wx - a, wz + l0],
+        [wx - a, wz + l1],
+        [wx + a, wz + l1],
+        [wx + a, wz + l0],
+      ];
+}
+
 /** Buckets deck tiles by the family their road is bridged in. */
 export function groupByStyle(tiles: readonly BridgeDeckTile[]): StyleGroup[] {
   const byStyle = new Map<BridgeStyle, BridgeDeckTile[]>();
@@ -206,10 +280,16 @@ export class BridgeRenderer {
   private readonly boxGeometry = new THREE.BoxGeometry(1, 1, 1);
   private readonly columnGeometry = new THREE.CylinderGeometry(1, 1, 1, PIER_RADIAL_SEGMENTS);
   private readonly materials = new Map<number, THREE.MeshLambertMaterial>();
-  private meshes: THREE.InstancedMesh[] = [];
+  private meshes: (THREE.InstancedMesh | THREE.Mesh)[] = [];
+  private readonly deckHeightAt: (wx: number, wz: number) => number;
 
-  constructor(scene: THREE.Scene) {
+  /**
+   * `deckHeightAt` must be the SAME sampler the road mesh uses, or the
+   * structure and the surface it carries will disagree about where the deck is.
+   */
+  constructor(scene: THREE.Scene, deckHeightAt: (wx: number, wz: number) => number) {
     this.scene = scene;
+    this.deckHeightAt = deckHeightAt;
   }
 
   /** Replaces the whole structure from the current set of deck tiles. */
@@ -229,11 +309,12 @@ export class BridgeRenderer {
         (t) => isPierTile(t.x, t.z) && t.deckY - t.groundY > FOOTING_HEIGHT,
       );
 
-      const girders = this.addMesh(this.boxGeometry, spec.girderColor, group.length);
-      const parapets =
-        spec.parapetHeight > 0
-          ? this.addMesh(this.boxGeometry, spec.parapetColor, group.length * 2)
-          : null;
+      // Girder and parapets are MERGED, deck-conforming geometry rather than
+      // one box per tile: they sample the same smooth deck profile the road
+      // surface does, so neighbouring tiles meet exactly and a span reads as
+      // one continuous paved road instead of a row of stacked slabs.
+      const girderPositions: number[] = [];
+      const parapetPositions: number[] = [];
       const columns =
         piers.length > 0
           ? this.addMesh(
@@ -251,7 +332,7 @@ export class BridgeRenderer {
         : null;
       let trussSlot = 0;
 
-      group.forEach((tile, i) => {
+      group.forEach((tile) => {
         const wx = tileToWorld(tile.x);
         const wz = tileToWorld(tile.z);
         const half = structureHalfWidth(tile.tier, style);
@@ -259,27 +340,36 @@ export class BridgeRenderer {
         const deckTop = tile.deckY + ROAD_Y_OFFSET;
         const span = TILE_SPAN;
 
-        // Girder: a slab spanning the tile, hung just under the road surface.
-        pos.set(wx, deckTop - spec.girderDepth / 2, wz);
-        scale.set(alongZ ? half * 2 : span, spec.girderDepth, alongZ ? span : half * 2);
-        m.compose(pos, q, scale);
-        girders.setMatrixAt(i, m);
+        /** Deck top at a world point, from the shared smooth profile. */
+        const topAt = (c: Corner): number => this.deckHeightAt(c[0], c[1]) + ROAD_Y_OFFSET;
+        const topsOf = (corners: readonly [Corner, Corner, Corner, Corner]): [
+          number,
+          number,
+          number,
+          number,
+        ] => [topAt(corners[0]), topAt(corners[1]), topAt(corners[2]), topAt(corners[3])];
 
-        if (parapets) {
-          for (const side of [-1, 1]) {
-            const offset = half - spec.parapetThickness / 2;
-            pos.set(
-              wx + (alongZ ? side * offset : 0),
-              deckTop + spec.parapetHeight / 2,
-              wz + (alongZ ? 0 : side * offset),
-            );
-            scale.set(
-              alongZ ? spec.parapetThickness : span,
-              spec.parapetHeight,
-              alongZ ? span : spec.parapetThickness,
-            );
-            m.compose(pos, q, scale);
-            parapets.setMatrixAt(i * 2 + (side === -1 ? 0 : 1), m);
+        // Girder: the slab under the whole road width, following the deck.
+        const girderCorners = footprintCorners(wx, wz, half, alongZ, span);
+        emitPrism(girderPositions, girderCorners, topsOf(girderCorners), spec.girderDepth);
+
+        if (spec.parapetHeight > 0) {
+          // A parapet is the same conforming prism, inverted: it stands ON the
+          // deck, so its "depth" runs upward from a top placed a parapet-height
+          // above the surface.
+          const t = spec.parapetThickness / half;
+          for (const [from, to] of [
+            [-1, -1 + t],
+            [1 - t, 1],
+          ] as const) {
+            const corners = footprintCorners(wx, wz, half, alongZ, span, from, to);
+            const tops = topsOf(corners).map((y) => y + spec.parapetHeight) as [
+              number,
+              number,
+              number,
+              number,
+            ];
+            emitPrism(parapetPositions, corners, tops, spec.parapetHeight);
           }
         }
 
@@ -322,7 +412,10 @@ export class BridgeRenderer {
         footings.setMatrixAt(i, m);
       });
 
-      for (const mesh of [girders, parapets, columns, footings, trussParts]) {
+      this.addMergedMesh(girderPositions, spec.girderColor);
+      this.addMergedMesh(parapetPositions, spec.parapetColor);
+
+      for (const mesh of [columns, footings, trussParts]) {
         if (!mesh) continue;
         mesh.instanceMatrix.needsUpdate = true;
       }
@@ -438,10 +531,27 @@ export class BridgeRenderer {
     return mesh;
   }
 
+  /** Adds one merged, deck-conforming layer. No-op for an empty position list. */
+  private addMergedMesh(positions: number[], color: number): THREE.Mesh | null {
+    if (positions.length === 0) return null;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.computeVertexNormals();
+    const mesh = new THREE.Mesh(geometry, this.material(color));
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    this.scene.add(mesh);
+    this.meshes.push(mesh);
+    return mesh;
+  }
+
   private clearMeshes(): void {
     for (const mesh of this.meshes) {
       this.scene.remove(mesh);
-      mesh.dispose();
+      // Merged layers own their geometry outright; instanced ones share the
+      // renderer's unit box/cylinder, which dispose() leaves alone.
+      if (mesh instanceof THREE.InstancedMesh) mesh.dispose();
+      else mesh.geometry.dispose();
     }
     this.meshes = [];
   }
