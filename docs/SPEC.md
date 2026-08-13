@@ -1497,3 +1497,14 @@ span crossing a dished riverbed reads level rather than bowed; a v3 save loads
 with every road at grade and a v4 save keeps its bridges; bulldozing the span
 returns the river.
 
+**Verification:** every bridge fault found so far — the road threaded under its
+own girder, a crowned deck, a motorway span two metres too wide — passed the
+unit suite and was caught by eye, because each was a disagreement between
+numbers that were individually correct. `tools/bridge-shots.mjs` builds one span
+of every structural family across a real crossing on the deterministic seed and
+shoots each edge-on, along the run, and from overhead; `tools/bridge-probe.mjs`
+reports the same spans as numbers — deck flatness, clearance, and where each
+pier lands — so a picture that looks wrong can be checked before it is believed.
+Both need the dev-only `__slimcity` hook, which takes an optional camera
+yaw/pitch for the low angles these faults show at.
+

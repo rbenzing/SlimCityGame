@@ -274,8 +274,25 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       setDayT: (t: number | null): void => {
         devDayTOverride = t;
       },
-      setCamera: (targetX: number, targetZ: number, distance: number): void => {
-        rig.state = { ...rig.state, targetX, targetZ, distance };
+      // yaw/pitch are optional and keep the current angle when omitted. A low
+      // pitch is what a screenshot check needs to see a structure edge-on —
+      // the default overhead angle hides exactly the faults (a deck sagging at
+      // its edges, a prop floating off a kerb) that read instantly from the side.
+      setCamera: (
+        targetX: number,
+        targetZ: number,
+        distance: number,
+        yaw?: number,
+        pitch?: number,
+      ): void => {
+        rig.state = {
+          ...rig.state,
+          targetX,
+          targetZ,
+          distance,
+          ...(yaw === undefined ? {} : { yaw }),
+          ...(pitch === undefined ? {} : { pitch }),
+        };
       },
       setTool: (tool: ToolId): void => {
         useCityStore.getState().setTool(tool);
@@ -296,6 +313,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       readGrid: (): {
         size: number;
         roadTier: number[];
+        roadElevation: number[];
         buildingId: number[];
         zone: number[];
         water: number[];
@@ -303,6 +321,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       } => ({
         size: clientGrid.size,
         roadTier: Array.from(clientGrid.roadTier),
+        // Deck height per tile: lets a screenshot check confirm a span actually
+        // rose before it reads anything into the picture of it.
+        roadElevation: Array.from(clientGrid.roadElevation),
         buildingId: Array.from(clientGrid.buildingId),
         zone: Array.from(clientGrid.zone),
         water: Array.from(clientGrid.water),
