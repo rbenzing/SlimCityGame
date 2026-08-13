@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   TransitRenderer,
   ridershipToBusCount,
+  ridershipToTrainCount,
+  MAX_TRAINS_PER_LINE,
+  TRAIN_CARS_PER_SET,
   toWorldPoints,
   polylineLength,
   sampleAlongPolyline,
@@ -542,5 +545,80 @@ describe('TransitRenderer.dispose', () => {
 
     renderer.dispose();
     expect(scene.children).toHaveLength(0);
+  });
+});
+
+describe('rail lines (SPEC 26)', () => {
+  const railLine = (id: number, stops: { x: number; z: number }[]): TransitLine => ({
+    id,
+    stops,
+    color: 0x42a5f5,
+    mode: 'rail',
+  });
+
+  const longRoute = [
+    { x: 0, z: 0 },
+    { x: 40, z: 0 },
+  ];
+
+  it('counts trains at rail scale, not bus scale', () => {
+    expect(ridershipToTrainCount(0)).toBe(0);
+    // Any ridership at all puts a train on the line: an empty track reads as
+    // broken rather than as quiet.
+    expect(ridershipToTrainCount(1)).toBe(1);
+    expect(ridershipToTrainCount(100_000)).toBe(MAX_TRAINS_PER_LINE);
+    // Far fewer vehicles than a bus line off the same riders.
+    expect(ridershipToTrainCount(400)).toBeLessThan(ridershipToBusCount(400));
+  });
+
+  it('draws a train as several cars, not one long box', () => {
+    const scene = new THREE.Scene();
+    const renderer = new TransitRenderer(scene, flatHeightAt);
+    renderer.apply({ lines: [railLine(1, longRoute)], ridership: [220] });
+
+    expect(renderer.busCount()).toBe(TRAIN_CARS_PER_SET);
+  });
+
+  it('stands no bus shelter at a rail stop — the station is already there', () => {
+    const scene = new THREE.Scene();
+    const renderer = new TransitRenderer(scene, flatHeightAt);
+    renderer.apply({ lines: [railLine(1, longRoute)], ridership: [220] });
+    expect(renderer.stopCount()).toBe(0);
+
+    // The same geometry as a bus line does get shelters.
+    const busScene = new THREE.Scene();
+    const busRenderer = new TransitRenderer(busScene, flatHeightAt);
+    busRenderer.apply({ lines: [line(1, longRoute, 0xff0000)], ridership: [220] });
+    expect(busRenderer.stopCount()).toBe(2);
+  });
+
+  it('keeps a train coupled: its cars stay a fixed distance apart as it runs', () => {
+    const scene = new THREE.Scene();
+    const renderer = new TransitRenderer(scene, flatHeightAt);
+    renderer.apply({ lines: [railLine(1, longRoute)], ridership: [220] });
+
+    const mesh = scene.children.find(
+      (c): c is THREE.InstancedMesh =>
+        c instanceof THREE.InstancedMesh && c.count === TRAIN_CARS_PER_SET,
+    );
+    expect(mesh).toBeDefined();
+
+    const gaps = (): number[] => {
+      const m = new THREE.Matrix4();
+      const p = new THREE.Vector3();
+      const xs: number[] = [];
+      for (let i = 0; i < TRAIN_CARS_PER_SET; i++) {
+        mesh!.getMatrixAt(i, m);
+        p.setFromMatrixPosition(m);
+        xs.push(p.x);
+      }
+      return xs.slice(1).map((x, i) => Math.abs(x - xs[i]!));
+    };
+
+    const before = gaps();
+    renderer.update(1.5);
+    const after = gaps();
+    expect(before.length).toBe(TRAIN_CARS_PER_SET - 1);
+    for (let i = 0; i < before.length; i++) expect(after[i]!).toBeCloseTo(before[i]!, 4);
   });
 });

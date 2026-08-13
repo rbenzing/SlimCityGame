@@ -392,7 +392,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   /** The dedicated renderers show only when their lens/tool is live. */
   const refreshEpicVisibility = (): void => {
     const { overlay, selectedTool } = store.getState();
-    transitRenderer.setVisible(overlay === 'transit' || selectedTool === 'transit.line');
+    transitRenderer.setVisible(
+      overlay === 'transit' || selectedTool === 'transit.line' || selectedTool === 'transit.rail',
+    );
     districtsRenderer.setVisible(overlay === 'districts' || selectedTool === 'district.paint');
   };
   refreshEpicVisibility(); // start hidden until their lens/tool is selected
@@ -523,7 +525,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (tool.startsWith('zone.')) return 'zone';
     // District paint reads as a zone-style tint; transit stops read as a road path.
     if (tool === 'district.paint') return 'zone';
-    if (tool === 'transit.line') return 'road';
+    if (tool === 'transit.line' || tool === 'transit.rail') return 'road';
     return 'plop';
   };
 

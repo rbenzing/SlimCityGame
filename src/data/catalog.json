@@ -31,6 +31,7 @@
     { "id": "school", "name": "Elementary School", "category": "service", "footprint": { "w": 3, "d": 3 }, "height": 10, "color": 14004347, "powerUse": 0.8, "waterUse": 1.2, "service": { "kind": "education", "strength": 150, "range": 56 }, "cost": 6000, "upkeep": 400, "unlockMilestone": 1 },
     { "id": "small-park", "name": "Pocket Park", "category": "park", "footprint": { "w": 1, "d": 1 }, "height": 2, "color": 3900462, "powerUse": 0, "waterUse": 0.2, "landValueBonus": 40, "service": { "kind": "park", "strength": 80, "range": 16 }, "cost": 400, "upkeep": 20, "unlockMilestone": 0 },
     { "id": "airport", "name": "International Airport", "category": "park", "footprint": { "w": 8, "d": 6 }, "height": 14, "color": 14932681, "powerUse": 8, "waterUse": 6, "pollution": 30, "noise": 160, "landValueBonus": 120, "service": { "kind": "park", "strength": 200, "range": 80 }, "cost": 60000, "upkeep": 2500, "unlockMilestone": 5 },
-    { "id": "bus-stop", "name": "Bus Stop", "category": "transit", "footprint": { "w": 1, "d": 1 }, "height": 3, "color": 3108751, "powerUse": 0, "waterUse": 0, "cost": 150, "upkeep": 10, "unlockMilestone": 1 }
+    { "id": "bus-stop", "name": "Bus Stop", "category": "transit", "footprint": { "w": 1, "d": 1 }, "height": 3, "color": 3108751, "powerUse": 0, "waterUse": 0, "cost": 150, "upkeep": 10, "unlockMilestone": 1 },
+    { "id": "rail-station", "name": "Rail Station", "category": "transit", "footprint": { "w": 2, "d": 3 }, "height": 9, "color": 10255194, "powerUse": 0.6, "waterUse": 0.4, "landValueBonus": 30, "cost": 7000, "upkeep": 420, "unlockMilestone": 3, "requiresAdjacent": "rail" }
   ]
 }

@@ -140,6 +140,30 @@ export function ridershipToBusCount(ridership: number): number {
   return Math.min(MAX_BUSES_PER_LINE, Math.max(0, raw));
 }
 
+// --- Trains -------------------------------------------------------------------
+
+/** A train car is longer and taller than a bus; several of them make a train. */
+const TRAIN_CAR_SIZE: readonly [number, number, number] = [3.2, 3.8, 14];
+export const TRAIN_CARS_PER_SET = 3;
+/** Nose-to-nose spacing down the polyline: a car plus a coupling gap. */
+const TRAIN_CAR_PITCH = TRAIN_CAR_SIZE[2] + 1.2;
+const TRAIN_SPEED_MPS = TILE_METERS * 3; // a train outruns the traffic beside it
+
+/** A train carries far more than a bus, so a line needs far fewer of them. */
+export const RIDERSHIP_PER_TRAIN = 220;
+export const MAX_TRAINS_PER_LINE = 3;
+
+/**
+ * Deterministic train count for a line, same shape as the bus rule but at
+ * rail's scale — and at least one train wherever a rail line carries anyone at
+ * all, since an empty track reads as broken rather than as quiet.
+ */
+export function ridershipToTrainCount(ridership: number): number {
+  if (!(ridership > 0)) return 0;
+  const raw = Math.round(ridership / RIDERSHIP_PER_TRAIN);
+  return Math.min(MAX_TRAINS_PER_LINE, Math.max(1, raw));
+}
+
 export interface WorldPoint {
   readonly x: number;
   readonly z: number;
@@ -272,10 +296,19 @@ export function sampleAlongPolyline(
   return { x: last.x, z: last.z, heading: 0 };
 }
 
-interface ActiveBus {
+/**
+ * One animated transit vehicle slot: a bus, or a single car of a train. A train
+ * is not a bigger box — it is several cars following each other down the same
+ * polyline at a fixed spacing, which is the whole silhouette.
+ */
+interface ActiveVehicle {
   readonly points: readonly WorldPoint[];
   readonly totalLength: number;
   progress: number; // meters travelled along the polyline, loops modulo totalLength
+  readonly size: readonly [number, number, number];
+  readonly speed: number;
+  /** Buses keep right; a train sits on the track it runs on. */
+  readonly keepsRight: boolean;
 }
 
 const _matrix = new THREE.Matrix4();
@@ -285,7 +318,8 @@ const _identityQuat = new THREE.Quaternion();
 /** Scratch quaternion for the shelter roof/bench/sign's heading-aligned yaw (reused per-instance, never retained). */
 const _headingQuat = new THREE.Quaternion();
 const _unitScale = new THREE.Vector3(1, 1, 1);
-const _busScale = new THREE.Vector3(...BUS_SIZE);
+/** Per-instance scale: a bus and a train car are different sizes in one mesh. */
+const _vehicleScale = new THREE.Vector3(...BUS_SIZE);
 const _color = new THREE.Color();
 const _yAxis = new THREE.Vector3(0, 1, 0);
 const HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -362,7 +396,7 @@ export class TransitRenderer {
   private ribbonMesh: THREE.Mesh | null = null;
   private busMesh: THREE.InstancedMesh | null = null;
 
-  private buses: (ActiveBus | null)[] = [];
+  private buses: (ActiveVehicle | null)[] = [];
   private busColors: number[] = [];
   private visible = true;
   private stopTotal = 0;
@@ -398,19 +432,21 @@ export class TransitRenderer {
       }
 
       if (bus.totalLength > 0) {
-        bus.progress = (bus.progress + BUS_SPEED_MPS * deltaSeconds) % bus.totalLength;
+        bus.progress = (bus.progress + bus.speed * deltaSeconds) % bus.totalLength;
         if (bus.progress < 0) bus.progress += bus.totalLength;
       }
 
       const sample = sampleAlongPolyline(bus.points, bus.progress);
-      const offset = laneOffset(sample.heading);
+      // A bus keeps right on a two-way street; a train has the track to itself.
+      const offset = bus.keepsRight ? laneOffset(sample.heading) : { dx: 0, dz: 0 };
       const renderX = sample.x + offset.dx;
       const renderZ = sample.z + offset.dz;
       const groundY = this.heightAt(renderX, renderZ);
 
-      _position.set(renderX, groundY + BUS_SIZE[1] / 2, renderZ);
+      _position.set(renderX, groundY + bus.size[1] / 2, renderZ);
       _quaternion.setFromAxisAngle(_yAxis, sample.heading);
-      _matrix.compose(_position, _quaternion, _busScale);
+      _vehicleScale.set(bus.size[0], bus.size[1], bus.size[2]);
+      _matrix.compose(_position, _quaternion, _vehicleScale);
       this.busMesh.setMatrixAt(slot, _matrix);
 
       const [r, g, b] = hexToRGB(this.busColors[slot] ?? 0xffffff);
@@ -484,6 +520,10 @@ export class TransitRenderer {
   private buildShelters(lines: readonly TransitLine[]): void {
     const placements: { x: number; z: number; color: number; heading: number }[] = [];
     for (const line of lines) {
+      // A rail stop is a station: a ploppable building the player placed, which
+      // already stands there. Dropping a bus shelter on top of it would be a
+      // second, smaller shelter inside the first.
+      if (line.mode === 'rail') continue;
       const worldPoints = toWorldPoints(line.stops);
       for (let i = 0; i < line.stops.length; i += 1) {
         const stop = line.stops[i]!;
@@ -656,13 +696,14 @@ export class TransitRenderer {
   }
 
   private buildBuses(lines: readonly TransitLine[], ridership: readonly number[]): void {
-    const buses: (ActiveBus | null)[] = [];
+    const buses: (ActiveVehicle | null)[] = [];
     const colors: number[] = [];
 
     for (let i = 0; i < lines.length; i += 1) {
       const line = lines[i]!;
       const riders = ridership[i] ?? 0;
-      const count = ridershipToBusCount(riders);
+      const isRail = line.mode === 'rail';
+      const count = isRail ? ridershipToTrainCount(riders) : ridershipToBusCount(riders);
       if (count === 0) continue;
 
       const worldPoints = toWorldPoints(line.stops);
@@ -670,14 +711,32 @@ export class TransitRenderer {
       const totalLength = polylineLength(worldPoints);
       if (totalLength <= 0) continue;
 
+      // A bus is one vehicle; a train is a set of cars trailing the one in
+      // front, so a rail line emits CARS slots per train rather than one.
+      const carsEach = isRail ? TRAIN_CARS_PER_SET : 1;
+      // A set is placed with its LEAD car far enough along that the whole train
+      // is on the line. Wrapping a trailing car past the start would sample the
+      // far end of the polyline instead — the cars are a fixed arc-length
+      // apart either way, but on an open route that puts them at opposite ends
+      // of the map rather than coupled.
+      const trainLength = (carsEach - 1) * TRAIN_CAR_PITCH;
+      const runway = Math.max(0, totalLength - trainLength);
       for (let b = 0; b < count; b += 1) {
-        if (buses.length >= MAX_BUSES) break;
-        buses.push({
-          points: worldPoints,
-          totalLength,
-          progress: (totalLength * b) / count, // evenly spaced along the route
-        });
-        colors.push(line.color);
+        const lead = trainLength + (runway * b) / count; // sets evenly spaced along the runway
+        for (let car = 0; car < carsEach; car += 1) {
+          if (buses.length >= MAX_BUSES) break;
+          const behind = car * TRAIN_CAR_PITCH;
+          const progress = (((lead - behind) % totalLength) + totalLength) % totalLength;
+          buses.push({
+            points: worldPoints,
+            totalLength,
+            progress,
+            size: isRail ? TRAIN_CAR_SIZE : BUS_SIZE,
+            speed: isRail ? TRAIN_SPEED_MPS : BUS_SPEED_MPS,
+            keepsRight: !isRail,
+          });
+          colors.push(line.color);
+        }
       }
     }
 

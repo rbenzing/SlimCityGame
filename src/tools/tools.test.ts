@@ -1491,3 +1491,59 @@ describe('ToolManager.dragActive (UI-SPEC §4 staged ESC, stage 1)', () => {
     expect(tm.dragActive).toBe(false);
   });
 });
+
+describe('transit line tools', () => {
+  /** Clicks a run of stops, then right-clicks to commit. */
+  function drawLine(tm: ToolManager, stops: [number, number][]): void {
+    for (const [x, z] of stops) tm.pointerDown(x, z, 0);
+    tm.pointerDown(0, 0, 2);
+  }
+
+  it('commits a bus line with no explicit mode, as it always did', () => {
+    const { env, sent } = makeEnv();
+    const tm = new ToolManager(env);
+    tm.setTool('transit.line');
+    drawLine(tm, [
+      [0, 0],
+      [3, 0],
+    ]);
+
+    expect(sent[0]?.label).toBe('Bus line');
+    expect(sent[0]?.commands[0]).toMatchObject({ kind: 'createTransitLine' });
+    const line = (sent[0]!.commands[0] as { line: { mode?: string; stops: unknown[] } }).line;
+    expect(line.mode).toBe('bus');
+    expect(line.stops).toHaveLength(2);
+  });
+
+  it('commits a rail line the worker will route over the track', () => {
+    const { env, sent } = makeEnv();
+    const tm = new ToolManager(env);
+    tm.setTool('transit.rail');
+    drawLine(tm, [
+      [0, 0],
+      [3, 0],
+    ]);
+
+    expect(sent[0]?.label).toBe('Rail line');
+    const line = (sent[0]!.commands[0] as { line: { mode?: string } }).line;
+    expect(line.mode).toBe('rail');
+  });
+
+  it('commits nothing from a single stop, whichever mode', () => {
+    for (const tool of ['transit.line', 'transit.rail'] as const) {
+      const { env, sent } = makeEnv();
+      const tm = new ToolManager(env);
+      tm.setTool(tool);
+      drawLine(tm, [[0, 0]]);
+      expect(sent).toEqual([]);
+    }
+  });
+
+  it('names the pending line by its mode while drawing', () => {
+    const { env, previews } = makeEnv();
+    const tm = new ToolManager(env);
+    tm.setTool('transit.rail');
+    tm.pointerDown(0, 0, 0);
+    expect(previews.at(-1)?.label).toContain('Rail line');
+  });
+});

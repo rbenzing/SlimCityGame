@@ -295,6 +295,22 @@ export class TransitSystem {
     return Array.from(this.lines.values());
   }
 
+  /**
+   * Replaces the line list from a save. `nextId` resumes past the highest id
+   * restored, so a line created after loading can never collide with one that
+   * came out of the save — the same never-reuse rule createLine follows within
+   * a session.
+   */
+  restore(lines: readonly TransitLine[]): void {
+    this.lines.clear();
+    let maxId = 0;
+    for (const line of lines) {
+      this.lines.set(line.id, { ...line, stops: [...line.stops] });
+      maxId = Math.max(maxId, line.id);
+    }
+    this.nextId = maxId + 1;
+  }
+
   getLine(id: number): TransitLine | undefined {
     return this.lines.get(id);
   }

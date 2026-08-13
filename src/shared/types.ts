@@ -492,6 +492,14 @@ export interface BuildingCatalogEntry {
   cost: number; // 0 for grown buildings
   upkeep: number; // per month
   unlockMilestone: number; // MILESTONES index required
+  /**
+   * A transport tier this building's footprint must touch to be placed at all.
+   * Absent for everything that goes anywhere buildable, which is every
+   * ploppable to date — a utility "needs a road" only in the sense that the
+   * road carries its power, not as a placement gate. `'rail'` is the first real
+   * one: a station off the track is not a station, it is a shed.
+   */
+  requiresAdjacent?: 'rail';
 }
 
 export interface RoadSpec {
@@ -611,6 +619,8 @@ export type ToolId =
   // Bus transit: click stops in sequence, commit the line
   // (emits createTransitLine). Additive.
   | 'transit.line'
+  // Rail transit: the same gesture over the track, committing a rail-mode line.
+  | 'transit.rail'
   // Districts: brush-paint the selected district id onto tiles
   // (emits paintDistrict). Additive.
   | 'district.paint'

@@ -1,11 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { MAP_SIZE, MAX_BUILD_SLOPE, ROAD_MAX_SLOPE } from '../shared/constants';
-import { FIELD_COUNT, RoadTier, SAVE_VERSION, ZoneType, type GridState } from '../shared/types';
+import {
+  FIELD_COUNT,
+  isRailTier,
+  isStreetTier,
+  RoadTier,
+  SAVE_VERSION,
+  ZoneType,
+  type GridState,
+} from '../shared/types';
 import {
   canPlaceFootprint,
   clearTiles,
   createGrid,
   deserializeGrid,
+  hasAdjacentTier,
   isBuildable,
   isRoadBuildable,
   serializeGrid,
@@ -336,6 +345,40 @@ describe('isRoadBuildable (UI-SPEC §6.20 road-on-slope placement)', () => {
     g.height[idx(3, 2)] = 10 + ROAD_MAX_SLOPE + 1;
     expect(isRoadBuildable(g, 2, 2)).toBe(false); // its E neighbor is too steep
     expect(isRoadBuildable(g, 3, 2)).toBe(false); // symmetric, its W neighbor is too steep
+  });
+});
+
+describe('hasAdjacentTier', () => {
+  const at = (g: GridState, x: number, z: number, size = 10): number => z * size + x;
+
+  it('sees track running alongside the footprint', () => {
+    const g = createGrid(10);
+    // A 2x3 station at (4,4); track down its west side.
+    for (let z = 4; z < 7; z++) g.roadTier[at(g, 3, z)] = RoadTier.RailTrack;
+    expect(hasAdjacentTier(g, 4, 4, 2, 3, isRailTier)).toBe(true);
+  });
+
+  it('does not count track a tile away, or only touching a corner', () => {
+    const g = createGrid(10);
+    for (let z = 4; z < 7; z++) g.roadTier[at(g, 2, z)] = RoadTier.RailTrack; // one tile short
+    expect(hasAdjacentTier(g, 4, 4, 2, 3, isRailTier)).toBe(false);
+
+    const corner = createGrid(10);
+    corner.roadTier[at(corner, 3, 3)] = RoadTier.RailTrack; // diagonal off the NW corner
+    expect(hasAdjacentTier(corner, 4, 4, 2, 3, isRailTier)).toBe(false);
+  });
+
+  it('does not mistake a street for track', () => {
+    const g = createGrid(10);
+    for (let z = 4; z < 7; z++) g.roadTier[at(g, 3, z)] = RoadTier.Avenue;
+    expect(hasAdjacentTier(g, 4, 4, 2, 3, isRailTier)).toBe(false);
+    expect(hasAdjacentTier(g, 4, 4, 2, 3, isStreetTier)).toBe(true);
+  });
+
+  it('ignores track under the footprint itself — a building sits beside its line, not on it', () => {
+    const g = createGrid(10);
+    g.roadTier[at(g, 4, 4)] = RoadTier.RailTrack;
+    expect(hasAdjacentTier(g, 4, 4, 2, 3, isRailTier)).toBe(false);
   });
 });
 

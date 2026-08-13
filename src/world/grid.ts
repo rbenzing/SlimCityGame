@@ -346,6 +346,38 @@ export function canPlaceFootprint(
   return true;
 }
 
+/**
+ * True when any tile orthogonally touching the w x d footprint at (x, z)
+ * carries a tier `inNetwork` accepts — the ring around the footprint, not the
+ * footprint itself, since the building sits on its own tiles and the track runs
+ * beside them.
+ *
+ * This is a PLACEMENT gate, unlike the road access that governs whether a lot
+ * develops: a station off the track is not a station.
+ */
+export function hasAdjacentTier(
+  g: GridState,
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+  inNetwork: (tier: RoadTier) => boolean,
+): boolean {
+  for (let dz = -1; dz <= d; dz++) {
+    for (let dx = -1; dx <= w; dx++) {
+      const insideX = dx >= 0 && dx < w;
+      const insideZ = dz >= 0 && dz < d;
+      if (insideX && insideZ) continue; // the footprint itself
+      if ((dx === -1 || dx === w) && (dz === -1 || dz === d)) continue; // corners touch nothing
+      const tx = x + dx;
+      const tz = z + dz;
+      if (!inBoundsOf(g.size, tx, tz)) continue;
+      if (inNetwork((g.roadTier[indexOf(g.size, tx, tz)] ?? RoadTier.None) as RoadTier)) return true;
+    }
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Zoning
 // ---------------------------------------------------------------------------

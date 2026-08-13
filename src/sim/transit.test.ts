@@ -704,3 +704,36 @@ describe('applyStationRelief', () => {
     expect(net.addVolumeCalls).toEqual([]);
   });
 });
+
+describe('TransitSystem.restore', () => {
+  it('brings lines back from a save and never reissues their ids', () => {
+    const sys = new TransitSystem(createFakeNetwork(() => null));
+    sys.restore([
+      { id: 4, color: 1, stops: [{ x: 1, z: 1 }] },
+      { id: 9, color: 2, stops: [{ x: 2, z: 2 }], mode: 'rail' },
+    ]);
+
+    expect(sys.getLines().map((l) => l.id)).toEqual([4, 9]);
+    expect(sys.getLine(9)!.mode).toBe('rail');
+    // The next line created cannot collide with one that came out of the save.
+    expect(sys.createLine([{ x: 3, z: 3 }], 0).id).toBe(10);
+  });
+
+  it('replaces whatever was there, and copies the stops', () => {
+    const sys = new TransitSystem(createFakeNetwork(() => null));
+    sys.createLine([{ x: 0, z: 0 }], 0);
+    const stops = [{ x: 5, z: 5 }];
+    sys.restore([{ id: 1, color: 0, stops }]);
+
+    expect(sys.getLines()).toHaveLength(1);
+    stops.push({ x: 6, z: 6 }); // mutating the source must not reach the system
+    expect(sys.getLine(1)!.stops).toHaveLength(1);
+  });
+
+  it('restores nothing from an empty save', () => {
+    const sys = new TransitSystem(createFakeNetwork(() => null));
+    sys.createLine([{ x: 0, z: 0 }], 0);
+    sys.restore([]);
+    expect(sys.getLines()).toEqual([]);
+  });
+});

@@ -49,7 +49,12 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   lenses and drag down happiness.
 - **Transit** — bus lines with stops and cosmetic buses; ridership depends on
   stops being close enough to demand. (Place stops within a few tiles of where
-  people are.)
+  people are.) Later, **rail**: lay rail track like any road, plop **stations**
+  along it — a station must touch the track, or it is just a shed — and draw a
+  **Rail Line** between them the same way you draw a bus line. Trains run it.
+  People walk further to a train than to a bus stop and a train carries more of
+  them, so a rail line serving a busy district takes real traffic off the
+  streets around its stations. Your lines are saved with the city now.
 - **Districts & Policies** — paint districts over areas, then set policies
   (e.g. tax and traffic rules) that apply within them.
 - **Landscaping** — raise / lower / level / smooth the terrain, with real water

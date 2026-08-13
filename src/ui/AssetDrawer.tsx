@@ -100,7 +100,7 @@ function CardPictogram({ card }: { card: AssetCard }): JSX.Element {
       </div>
     );
   }
-  if (card.id === 'transit.line') {
+  if (card.id === 'transit.line' || card.id === 'transit.rail') {
     return (
       <div
         className="flex h-11 items-center justify-center rounded-[6px] bg-[#1a2230] text-[#4fc3f7]"

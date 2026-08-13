@@ -145,6 +145,17 @@ const TRANSIT_LINE_CARD: AssetCard = {
 };
 
 /**
+ * The rail-line drawing tool card. Same gesture as the bus line, committed
+ * against the track instead of the streets; unlocks with the station.
+ */
+const RAIL_LINE_CARD: AssetCard = {
+  id: 'transit.rail',
+  name: 'Rail Line',
+  cost: 0,
+  unlockMilestone: 3,
+};
+
+/**
  * The district paint-brush tool card. Zero cost, always available — districts
  * are administrative regions, painted onto any tile.
  */
@@ -289,7 +300,11 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
     {
       id: 'all',
       label: 'Transit',
-      cards: [...catalogCards((e) => e.category === 'transit'), TRANSIT_LINE_CARD],
+      cards: [
+        ...catalogCards((e) => e.category === 'transit'),
+        TRANSIT_LINE_CARD,
+        RAIL_LINE_CARD,
+      ],
     },
   ],
   // Districts: the paint tool (district selection + policies live in the DistrictPanel).

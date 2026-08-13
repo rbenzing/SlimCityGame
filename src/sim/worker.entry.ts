@@ -69,6 +69,7 @@ import type { CommandBatch } from '../core/commands';
 import type { SelectionInfo } from '../shared/types';
 import {
   canPlaceFootprint,
+  hasAdjacentTier,
   clearTiles,
   createGrid,
   deserializeGrid,
@@ -566,6 +567,9 @@ class SimWorld implements WorkerSim {
     // (per-session state). Rebuild defs for whatever district ids the loaded
     // tile layer carries so the overlay tints and the UI lists them.
     this.transit = new TransitSystem(this.network, this.railNetwork);
+    // Lines come back with the city. A save written before they persisted has
+    // none, which is what loading always used to leave behind anyway.
+    this.transit.restore(payload.meta.transitLines ?? []);
     this.dispatch = new DispatchSystem(CATALOG, createRng(this.seed).fork(3));
     this.policyStore = new PolicyStore();
     this.transitResult = { lines: [], ridership: [] };
@@ -1100,6 +1104,7 @@ class SimWorld implements WorkerSim {
         registry: this.registry.serialize(),
         stats: cloneStats(this.stats),
         garbage: this.garbage.serializeState(),
+        transitLines: this.transit.getLines().map((l) => ({ ...l, stops: [...l.stops] })),
       },
     });
     this.post({ type: 'save', data }, [data]);
@@ -1572,6 +1577,14 @@ class SimWorld implements WorkerSim {
 
     const { w, d } = footprintForRotation(entry, rotation);
     if (!canPlaceFootprint(this.grid, x, z, w, d)) {
+      return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+    }
+    // A station has to touch the track it serves; everything else goes anywhere
+    // buildable, exactly as before.
+    if (
+      entry.requiresAdjacent === 'rail' &&
+      !hasAdjacentTier(this.grid, x, z, w, d, isRailTier)
+    ) {
       return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
     }
     const inst = this.registry.place(this.grid, entry, x, z, rotation);

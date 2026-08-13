@@ -113,6 +113,42 @@ describe('save payload codec', () => {
   it('decodeSave rejects a buffer that is too short to be a save', () => {
     expect(() => decodeSave(new ArrayBuffer(3))).toThrow();
   });
+
+  it('carries transit lines, of both modes, through a round trip', () => {
+    // Lines used to be dropped on load outright — a bus route survived exactly
+    // as long as the tab did.
+    const meta: SaveMeta = {
+      ...sampleMeta(),
+      transitLines: [
+        {
+          id: 1,
+          color: 0xef5350,
+          stops: [
+            { x: 3, z: 4 },
+            { x: 9, z: 4 },
+          ],
+        },
+        {
+          id: 2,
+          color: 0x42a5f5,
+          mode: 'rail',
+          stops: [
+            { x: 2, z: 20 },
+            { x: 18, z: 20 },
+          ],
+        },
+      ],
+    };
+    const decoded = decodeSave(encodeSave({ header: sampleHeader(), grid: sampleGrid(), meta }));
+    expect(decoded.meta.transitLines).toEqual(meta.transitLines);
+  });
+
+  it('reads a save written before lines persisted', () => {
+    const decoded = decodeSave(
+      encodeSave({ header: sampleHeader(), grid: sampleGrid(), meta: sampleMeta() }),
+    );
+    expect(decoded.meta.transitLines).toBeUndefined(); // loads with none, as it always did
+  });
 });
 
 describe('AutoSaver', () => {

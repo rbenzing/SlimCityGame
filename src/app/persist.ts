@@ -12,7 +12,7 @@
  *     saveNow()/loadLatest() worker bridges.
  */
 import { TICKS_PER_MONTH } from '../shared/constants';
-import type { CityStats, MainToWorker, SaveHeader } from '../shared/types';
+import type { CityStats, MainToWorker, SaveHeader, TransitLine } from '../shared/types';
 import type { SerializedBuildingRegistry } from '../sim/buildings';
 import type { GarbageSaveState } from '../sim/garbage';
 
@@ -26,6 +26,12 @@ export interface SaveMeta {
   stats: CityStats;
   /** §21 garbage fill (landfill pile + incinerator buffers). Absent in pre-Stage-A saves. */
   garbage?: GarbageSaveState;
+  /**
+   * Player-built transit lines, bus and rail. Absent in saves written before
+   * lines persisted, which load with none — exactly what every save did before,
+   * since loading used to discard them outright.
+   */
+  transitLines?: TransitLine[];
 }
 
 export interface SavePayload {

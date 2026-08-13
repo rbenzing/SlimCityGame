@@ -26,6 +26,7 @@ import type {
   TilePoint,
   ToolFlags,
   ToolId,
+  TransitMode,
   ZoneType,
 } from '../shared/types';
 import { RoadTier as RoadTierValue, ZoneType as ZoneTypeValue } from '../shared/types';
@@ -300,7 +301,12 @@ function isTerraformTool(tool: ToolId): boolean {
 
 /** Bus-line tool: click stops in sequence, right-click to commit the line. */
 function isTransitTool(tool: ToolId): boolean {
-  return tool === 'transit.line';
+  return tool === 'transit.line' || tool === 'transit.rail';
+}
+
+/** Which mode the pending line commits as — the tool picks the network. */
+function transitModeOf(tool: ToolId): TransitMode {
+  return tool === 'transit.rail' ? 'rail' : 'bus';
 }
 
 /** District paint tool: brush/rect paint the selected district id onto tiles. */
@@ -595,7 +601,7 @@ export class ToolManager {
         tiles,
         valid: tiles.length >= MIN_TRANSIT_STOPS,
         cost: 0,
-        label: `Bus line (${this.transitStops.length} stop${this.transitStops.length === 1 ? '' : 's'})`,
+        label: `${transitModeOf(tool) === 'rail' ? 'Rail' : 'Bus'} line (${this.transitStops.length} stop${this.transitStops.length === 1 ? '' : 's'})`,
       });
       return;
     }
@@ -783,8 +789,12 @@ export class ToolManager {
     if (this.transitStops.length >= MIN_TRANSIT_STOPS) {
       const color = TRANSIT_LINE_PALETTE[this.transitColorIndex % TRANSIT_LINE_PALETTE.length]!;
       this.transitColorIndex += 1;
-      this.env.send('Bus line', [
-        { kind: 'createTransitLine', line: { id: 0, stops: [...this.transitStops], color } },
+      const mode = transitModeOf(this._tool);
+      this.env.send(mode === 'rail' ? 'Rail line' : 'Bus line', [
+        {
+          kind: 'createTransitLine',
+          line: { id: 0, stops: [...this.transitStops], color, mode },
+        },
       ]);
     }
     this.transitStops = [];
