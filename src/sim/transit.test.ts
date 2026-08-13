@@ -4,6 +4,7 @@ import {
   routeLine,
   estimateRidership,
   applyRidershipRelief,
+  applyStationRelief,
   RIDERSHIP_STOP_RADIUS_TILES,
   CONGESTION_RELIEF_PER_RIDER,
   type PopulationJobsAccessor,
@@ -11,6 +12,7 @@ import {
 } from './transit';
 import {
   FIELD_COUNT,
+  isRailTier,
   RoadTier,
   type GraphEdge,
   type GridState,
@@ -527,5 +529,178 @@ describe('TransitSystem.tick', () => {
     expect(sys.ridership(line.id, fixedAccessor(100))).toBeGreaterThan(0);
     expect(sys.route(999)).toBeNull();
     expect(sys.ridership(999, fixedAccessor(100))).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rail: the same machinery over a second network (SPEC 26)
+// ---------------------------------------------------------------------------
+
+describe('rail lines', () => {
+  const SIZE = 28;
+  const STREET_Z = 3;
+  const RAIL_Z = 20;
+
+  /** Streets on one row, track on another, far enough apart not to snap together. */
+  function mixedGrid(): GridState {
+    const g = makeGrid(SIZE);
+    for (let x = 2; x <= 12; x++) g.roadTier[STREET_Z * SIZE + x] = RoadTier.TwoLane;
+    for (let x = 2; x <= 12; x++) g.roadTier[RAIL_Z * SIZE + x] = RoadTier.RailTrack;
+    return g;
+  }
+
+  function networks(): { road: RoadNetwork; rail: RoadNetwork } {
+    const g = mixedGrid();
+    const road = new RoadNetwork();
+    road.rebuild(g);
+    const rail = new RoadNetwork(isRailTier);
+    rail.rebuild(g);
+    return { road, rail };
+  }
+
+  it('routes a rail line over the track and a bus line over the streets', () => {
+    const { road, rail } = networks();
+    const sys = new TransitSystem(road, rail);
+
+    const train = sys.createLine(
+      [
+        { x: 2, z: RAIL_Z },
+        { x: 12, z: RAIL_Z },
+      ],
+      0,
+      'rail',
+    );
+    const bus = sys.createLine(
+      [
+        { x: 2, z: STREET_Z },
+        { x: 12, z: STREET_Z },
+      ],
+      0,
+    );
+
+    for (const p of sys.route(train.id)!.points) expect(p.z).toBe(RAIL_Z);
+    for (const p of sys.route(bus.id)!.points) expect(p.z).toBe(STREET_Z);
+  });
+
+  it('gives a rail line no route where the city has no track', () => {
+    // No rail network injected at all — the pre-rail wiring, and the same
+    // answer as a bus line whose stops nothing connects.
+    const road = new RoadNetwork();
+    road.rebuild(mixedGrid());
+    const sys = new TransitSystem(road);
+    const train = sys.createLine(
+      [
+        { x: 2, z: RAIL_Z },
+        { x: 12, z: RAIL_Z },
+      ],
+      0,
+      'rail',
+    );
+    expect(sys.route(train.id)).toBeNull();
+    expect(sys.ridership(train.id, fixedAccessor(100))).toBe(0);
+  });
+
+  it('carries more riders than the same line as a bus, off the same demand', () => {
+    const { road, rail } = networks();
+    const sys = new TransitSystem(road, rail);
+    const stops = [
+      { x: 2, z: RAIL_Z },
+      { x: 12, z: RAIL_Z },
+    ];
+    const train = sys.createLine(stops, 0, 'rail');
+
+    const busSys = new TransitSystem(rail); // same geometry, bus rates
+    const bus = busSys.createLine(stops, 0);
+
+    const riders = sys.ridership(train.id, fixedAccessor(100));
+    expect(riders).toBeGreaterThan(busSys.ridership(bus.id, fixedAccessor(100)));
+  });
+
+  it('keeps the mode across an edit that does not mention one', () => {
+    const { road, rail } = networks();
+    const sys = new TransitSystem(road, rail);
+    const train = sys.createLine(
+      [
+        { x: 2, z: RAIL_Z },
+        { x: 12, z: RAIL_Z },
+      ],
+      0,
+      'rail',
+    );
+    sys.updateLine(
+      train.id,
+      [
+        { x: 2, z: RAIL_Z },
+        { x: 10, z: RAIL_Z },
+      ],
+      0,
+    );
+    expect(sys.getLine(train.id)!.mode).toBe('rail');
+    expect(sys.route(train.id)).not.toBeNull(); // still routed over track
+  });
+});
+
+describe('applyStationRelief', () => {
+  /** One road node at (5,5) with two edges carrying volume. */
+  function stationNetwork(): FakeNetwork {
+    const edges = [makeEdge(1, 10), makeEdge(2, 10), makeEdge(3, 10)];
+    const net = createFakeNetwork(() => null, edges);
+    return {
+      ...net,
+      // Edges 1 and 2 meet at the station's door; edge 3 is elsewhere.
+      nearestNode: () => 0,
+      getNodes: () => [{ id: 0, x: 5, z: 5, edges: [1, 2] }],
+    };
+  }
+
+  const railLine = (stops: TilePoint[]): TransitLine => ({ id: 1, stops, color: 0, mode: 'rail' });
+
+  it('relieves the streets meeting the station door, and nothing further off', () => {
+    const net = stationNetwork();
+    applyStationRelief(net, railLine([{ x: 5, z: 5 }]), 100);
+
+    const relieved = new Set(net.addVolumeCalls.flatMap((c) => c.edgeIds));
+    expect(relieved).toEqual(new Set([1, 2]));
+    expect(net.addVolumeCalls.every((c) => c.amount < 0)).toBe(true);
+  });
+
+  it('relieves a shared doorstep once, not once per stop', () => {
+    const net = stationNetwork();
+    applyStationRelief(
+      net,
+      railLine([
+        { x: 5, z: 5 },
+        { x: 6, z: 5 },
+      ]),
+      100,
+    );
+    const ids = net.addVolumeCalls.flatMap((c) => c.edgeIds);
+    expect(ids.length).toBe(new Set(ids).size);
+  });
+
+  it('never drives an edge negative', () => {
+    const edges = [makeEdge(1, 2)];
+    const base = createFakeNetwork(() => null, edges);
+    const net: FakeNetwork = {
+      ...base,
+      nearestNode: () => 0,
+      getNodes: () => [{ id: 0, x: 5, z: 5, edges: [1] }],
+    };
+    applyStationRelief(net, railLine([{ x: 5, z: 5 }]), 100_000);
+    expect(edges[0]!.volume).toBeGreaterThanOrEqual(0);
+  });
+
+  it('relieves nothing for a station no street reaches', () => {
+    const edges = [makeEdge(1, 10)];
+    const base = createFakeNetwork(() => null, edges);
+    const net: FakeNetwork = { ...base, nearestNode: () => null };
+    applyStationRelief(net, railLine([{ x: 5, z: 5 }]), 100);
+    expect(net.addVolumeCalls).toEqual([]);
+  });
+
+  it('does nothing without riders', () => {
+    const net = stationNetwork();
+    applyStationRelief(net, railLine([{ x: 5, z: 5 }]), 0);
+    expect(net.addVolumeCalls).toEqual([]);
   });
 });

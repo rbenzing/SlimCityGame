@@ -769,10 +769,19 @@ export interface BrushSettings {
  * RGB (same convention as BuildingCatalogEntry.color / District.color) used for
  * the route ribbon + line list. `id` is worker-assigned and stable per session.
  */
+/** Which network carries a transit line: the streets, or the track. */
+export type TransitMode = 'bus' | 'rail';
+
 export interface TransitLine {
   id: number;
   stops: TilePoint[];
   color: number; // packed hex RGB
+  /**
+   * Absent means 'bus', so every line and command written before rail existed
+   * still means what it did. The mode picks which network routes the line and
+   * which vehicle draws it; stops, colour and id are shared.
+   */
+  mode?: TransitMode;
 }
 
 /**

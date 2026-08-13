@@ -34,6 +34,7 @@ import {
   BuildingState,
   FieldId,
   RoadTier,
+  isRailTier,
   isStreetTier,
   ZoneType,
   MAX_VEHICLES,
@@ -302,6 +303,12 @@ class SimWorld implements WorkerSim {
   private readonly services = new ServiceSim(CATALOG);
   private readonly economy = new EconomySystem(CATALOG, ROAD_SPECS);
   private readonly network = new RoadNetwork();
+  /**
+   * The train network — the same implementation over the rail tiles instead of
+   * the drivable ones. Kept in step with the road one: every rebuild and
+   * invalidation hits both, since a single grid edit can lay track or street.
+   */
+  private readonly railNetwork = new RoadNetwork(isRailTier);
   private growth: GrowthSystem;
   private traffic: TrafficSystem;
   // --- transit / dispatch / policies systems -------------------------------
@@ -377,7 +384,7 @@ class SimWorld implements WorkerSim {
     const rng = createRng(0);
     this.growth = new GrowthSystem(CATALOG, rng.fork(1), canPlaceFootprint);
     this.traffic = new TrafficSystem(rng.fork(2), this.network);
-    this.transit = new TransitSystem(this.network);
+    this.transit = new TransitSystem(this.network, this.railNetwork);
     this.dispatch = new DispatchSystem(CATALOG, rng.fork(3));
     // noHeavyTraffic policy: bump pathfind cost on a district's roads so
     // through-traffic routes around it. With no policy set the multiplier is
@@ -472,10 +479,11 @@ class SimWorld implements WorkerSim {
     const rng = createRng(seed);
     this.growth = new GrowthSystem(CATALOG, rng.fork(1), canPlaceFootprint);
     this.network.rebuild(this.grid);
+    this.railNetwork.rebuild(this.grid);
     this.traffic = new TrafficSystem(rng.fork(2), this.network);
     // transit / dispatch / policy systems are stateful (lines / active incidents / policies)
     // and must reset per game session, mirroring how traffic is re-created.
-    this.transit = new TransitSystem(this.network);
+    this.transit = new TransitSystem(this.network, this.railNetwork);
     this.dispatch = new DispatchSystem(CATALOG, rng.fork(3));
     this.policyStore = new PolicyStore();
     this.transitResult = { lines: [], ridership: [] };
@@ -525,6 +533,7 @@ class SimWorld implements WorkerSim {
     }
 
     this.network.rebuild(this.grid);
+    this.railNetwork.rebuild(this.grid);
     this.resetDeltas();
 
     // Full resync for the render thread: everything re-added, all roads/zones
@@ -556,7 +565,7 @@ class SimWorld implements WorkerSim {
     // grid serialize/deserialize, but the def registry + policies do not
     // (per-session state). Rebuild defs for whatever district ids the loaded
     // tile layer carries so the overlay tints and the UI lists them.
-    this.transit = new TransitSystem(this.network);
+    this.transit = new TransitSystem(this.network, this.railNetwork);
     this.dispatch = new DispatchSystem(CATALOG, createRng(this.seed).fork(3));
     this.policyStore = new PolicyStore();
     this.transitResult = { lines: [], ridership: [] };
@@ -1168,7 +1177,11 @@ class SimWorld implements WorkerSim {
       case 'terraformSet':
         return this.cmdTerraformSet(command);
       case 'createTransitLine': {
-        const line = this.transit.createLine(command.line.stops, command.line.color);
+        const line = this.transit.createLine(
+          command.line.stops,
+          command.line.color,
+          command.line.mode,
+        );
         return { ok: true, cost: 0, inverse: [{ kind: 'deleteTransitLine', id: line.id }] };
       }
       case 'updateTransitLine': {
@@ -1177,6 +1190,7 @@ class SimWorld implements WorkerSim {
           command.line.id,
           command.line.stops,
           command.line.color,
+          command.line.mode,
         );
         if (!updated) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
         return {
@@ -1823,6 +1837,7 @@ class SimWorld implements WorkerSim {
     const rect = growRect(null, tiles);
     if (!rect) return;
     this.network.invalidateRegion(rect.minX - 1, rect.minZ - 1, rect.maxX + 1, rect.maxZ + 1);
+    this.railNetwork.invalidateRegion(rect.minX - 1, rect.minZ - 1, rect.maxX + 1, rect.maxZ + 1);
   }
 }
 

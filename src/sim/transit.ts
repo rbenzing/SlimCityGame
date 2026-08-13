@@ -15,7 +15,7 @@
  * BuildingInstance.id convention in src/world/buildings.ts), and every
  * numeric formula below is a pure function of its inputs.
  */
-import type { RoadNetworkApi, TilePoint, TransitLine } from '../shared/types';
+import type { RoadNetworkApi, TilePoint, TransitLine, TransitMode } from '../shared/types';
 
 // ---------------------------------------------------------------------------
 // Registry access (injected — this module never touches GridState/BuildingInstance
@@ -71,6 +71,22 @@ export const RIDERSHIP_LENGTH_BONUS_CAP = 2; // multiplier caps at 1 + this = 3x
  */
 export const CONGESTION_RELIEF_PER_RIDER = 0.02;
 
+/**
+ * What differs between the two modes, and nothing else does. People walk
+ * further to a train than to a bus stop and a train carries more of them, so
+ * rail draws on a wider catchment at a higher rate — but it is the same
+ * statistical estimate, not a second model.
+ */
+export const MODE_RATES: Record<TransitMode, { stopRadiusTiles: number; perDemandUnit: number }> = {
+  bus: { stopRadiusTiles: RIDERSHIP_STOP_RADIUS_TILES, perDemandUnit: RIDERSHIP_PER_DEMAND_UNIT },
+  rail: { stopRadiusTiles: 14, perDemandUnit: 0.28 },
+};
+
+/** A line with no mode is a bus line — see TransitLine.mode. */
+export function modeOf(line: TransitLine): TransitMode {
+  return line.mode ?? 'bus';
+}
+
 // ---------------------------------------------------------------------------
 // Route computation (pure, given an injected RoadNetworkApi).
 // ---------------------------------------------------------------------------
@@ -125,16 +141,18 @@ export function estimateRidership(
 ): number {
   if (!route || line.stops.length === 0) return 0;
 
+  const rates = MODE_RATES[modeOf(line)];
+
   let nearbyTotal = 0;
   for (const stop of line.stops) {
-    nearbyTotal += accessor.nearbyPopulationJobs(stop.x, stop.z, RIDERSHIP_STOP_RADIUS_TILES);
+    nearbyTotal += accessor.nearbyPopulationJobs(stop.x, stop.z, rates.stopRadiusTiles);
   }
   if (nearbyTotal <= 0) return 0;
 
   const lengthMultiplier =
     1 + Math.min(RIDERSHIP_LENGTH_BONUS_CAP, route.lengthTiles * RIDERSHIP_LENGTH_BONUS_PER_TILE);
 
-  return nearbyTotal * RIDERSHIP_PER_DEMAND_UNIT * lengthMultiplier;
+  return nearbyTotal * rates.perDemandUnit * lengthMultiplier;
 }
 
 // ---------------------------------------------------------------------------
@@ -169,6 +187,50 @@ export function applyRidershipRelief(
   }
 }
 
+/**
+ * Rail's version of the relief above, and the one formula in the epic that is
+ * not the bus one reused.
+ *
+ * A bus relieves the road edges it drives over, which is right because those
+ * are the streets its riders would otherwise have driven. A train drives over
+ * no road edge at all, so that rule would relieve nothing. Its riders' car
+ * trips would instead have STARTED or ENDED at a station, so the relief lands
+ * on the streets meeting each station's door — the road nodes nearest the
+ * stops, and the edges incident to them.
+ *
+ * A station with no street within reach relieves nothing, which is correct: it
+ * has taken no car off any road, because nobody could drive there anyway.
+ */
+export function applyStationRelief(
+  roadNetwork: RoadNetworkApi,
+  line: TransitLine,
+  ridership: number,
+): void {
+  if (ridership <= 0 || line.stops.length === 0) return;
+  const relief = ridership * CONGESTION_RELIEF_PER_RIDER;
+  if (relief <= 0) return;
+
+  const nodesById = new Map(roadNetwork.getNodes().map((n) => [n.id, n] as const));
+  const edgesById = new Map(roadNetwork.getEdges().map((e) => [e.id, e] as const));
+
+  // Deduplicated: two stops sharing a doorstep street relieve it once, not
+  // twice, exactly as a bus route revisiting an edge relieves it once.
+  const doorstep = new Set<number>();
+  for (const stop of line.stops) {
+    const nodeId = roadNetwork.nearestNode(stop.x, stop.z);
+    if (nodeId === null) continue;
+    const node = nodesById.get(nodeId);
+    if (!node) continue;
+    for (const edgeId of node.edges) doorstep.add(edgeId);
+  }
+
+  for (const edgeId of doorstep) {
+    const edge = edgesById.get(edgeId);
+    if (!edge || edge.volume <= 0) continue;
+    roadNetwork.addVolume([edgeId], -Math.min(relief, edge.volume));
+  }
+}
+
 // ---------------------------------------------------------------------------
 // TransitSystem -- the worker's authoritative line list.
 // ---------------------------------------------------------------------------
@@ -181,25 +243,45 @@ export interface TransitTickResult {
 
 export class TransitSystem {
   private readonly network: RoadNetworkApi;
+  /**
+   * The train network. Null in a context that has no rail (existing callers and
+   * tests), in which case a rail line simply has no route — the same answer as
+   * a bus line whose stops nothing connects.
+   */
+  private readonly railNetwork: RoadNetworkApi | null;
   private readonly lines = new Map<number, TransitLine>();
   private nextId = 1;
 
-  constructor(network: RoadNetworkApi) {
+  constructor(network: RoadNetworkApi, railNetwork: RoadNetworkApi | null = null) {
     this.network = network;
+    this.railNetwork = railNetwork;
+  }
+
+  /** The network that carries a line: the streets, or the track. */
+  private networkFor(line: TransitLine): RoadNetworkApi | null {
+    return modeOf(line) === 'rail' ? this.railNetwork : this.network;
   }
 
   /** Creates a new line; the worker always assigns the id (ignores any caller-supplied id). */
-  createLine(stops: TilePoint[], color: number): TransitLine {
-    const line: TransitLine = { id: this.nextId, stops: [...stops], color };
+  createLine(stops: TilePoint[], color: number, mode: TransitMode = 'bus'): TransitLine {
+    const line: TransitLine = { id: this.nextId, stops: [...stops], color, mode };
     this.lines.set(line.id, line);
     this.nextId += 1;
     return line;
   }
 
   /** Replaces an existing line's stops/color. Returns null if `id` doesn't exist. */
-  updateLine(id: number, stops: TilePoint[], color: number): TransitLine | null {
-    if (!this.lines.has(id)) return null;
-    const line: TransitLine = { id, stops: [...stops], color };
+  updateLine(
+    id: number,
+    stops: TilePoint[],
+    color: number,
+    mode?: TransitMode,
+  ): TransitLine | null {
+    const prev = this.lines.get(id);
+    if (!prev) return null;
+    // A line does not change what carries it on an edit: an update that omits
+    // the mode keeps the one the line was created with.
+    const line: TransitLine = { id, stops: [...stops], color, mode: mode ?? modeOf(prev) };
     this.lines.set(id, line);
     return line;
   }
@@ -217,17 +299,19 @@ export class TransitSystem {
     return this.lines.get(id);
   }
 
-  /** This line's current road-network route, or null (see routeLine). */
+  /** This line's current route over whichever network carries it, or null. */
   route(id: number): TransitRoute | null {
     const line = this.lines.get(id);
-    return line ? routeLine(this.network, line) : null;
+    if (!line) return null;
+    const network = this.networkFor(line);
+    return network ? routeLine(network, line) : null;
   }
 
   /** This line's current statistical ridership estimate, or 0 (see estimateRidership). */
   ridership(id: number, accessor: PopulationJobsAccessor): number {
     const line = this.lines.get(id);
     if (!line) return 0;
-    return estimateRidership(line, routeLine(this.network, line), accessor);
+    return estimateRidership(line, this.route(id), accessor);
   }
 
   /**
@@ -240,9 +324,13 @@ export class TransitSystem {
     const ridership: number[] = [];
 
     for (const line of this.lines.values()) {
-      const route = routeLine(this.network, line);
+      const network = this.networkFor(line);
+      const route = network ? routeLine(network, line) : null;
       const riders = estimateRidership(line, route, accessor);
-      applyRidershipRelief(this.network, route, riders);
+      // A bus relieves the streets it drives; a train relieves the streets at
+      // its stations' doors, because it drives none of them.
+      if (modeOf(line) === 'rail') applyStationRelief(this.network, line, riders);
+      else applyRidershipRelief(this.network, route, riders);
       lines.push(line);
       ridership.push(riders);
     }
