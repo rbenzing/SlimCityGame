@@ -13,6 +13,7 @@ import {
 import {
   FIELD_COUNT,
   isRailTier,
+  isTramTier,
   RoadTier,
   type GraphEdge,
   type GridState,
@@ -637,6 +638,129 @@ describe('rail lines', () => {
     );
     expect(sys.getLine(train.id)!.mode).toBe('rail');
     expect(sys.route(train.id)).not.toBeNull(); // still routed over track
+  });
+});
+
+describe('tram lines', () => {
+  const SIZE = 28;
+  const STREET_Z = 3;
+  const TRAM_Z = 20;
+
+  /** Track on one row, an unrelated street far enough away not to snap to it. */
+  function tramGrid(): GridState {
+    const g = makeGrid(SIZE);
+    for (let x = 2; x <= 12; x++) g.roadTier[STREET_Z * SIZE + x] = RoadTier.TwoLane;
+    for (let x = 2; x <= 12; x++) g.roadTier[TRAM_Z * SIZE + x] = RoadTier.Tram;
+    return g;
+  }
+
+  function networks(g: GridState): { road: RoadNetwork; tram: RoadNetwork } {
+    const road = new RoadNetwork();
+    road.rebuild(g);
+    const tram = new RoadNetwork(isTramTier);
+    tram.rebuild(g);
+    return { road, tram };
+  }
+
+  /** Road edges lying wholly on one row. */
+  function edgesOnRow(road: RoadNetwork, z: number): GraphEdge[] {
+    return road.getEdges().filter((e) => e.tiles.every((t) => t.z === z));
+  }
+
+  it('puts a tram tile in both graphs — it is a street as well as a track', () => {
+    const { road, tram } = networks(tramGrid());
+    expect(edgesOnRow(road, TRAM_Z).length).toBeGreaterThan(0); // cars may drive it
+    expect(tram.getEdges().length).toBeGreaterThan(0); // and a tram may run it
+  });
+
+  it('confines a tram to the track, where a bus would detour around a gap', () => {
+    // The track is broken at x=7, with an ordinary street bridging the break
+    // one row over. A car can go around; a tram cannot leave its rails.
+    const g = tramGrid();
+    g.roadTier[TRAM_Z * SIZE + 7] = RoadTier.None;
+    for (const x of [6, 8]) g.roadTier[(TRAM_Z - 1) * SIZE + x] = RoadTier.TwoLane;
+    for (let x = 6; x <= 8; x++) g.roadTier[(TRAM_Z - 1) * SIZE + x] = RoadTier.TwoLane;
+    const { road, tram } = networks(g);
+
+    const stops = [
+      { x: 2, z: TRAM_Z },
+      { x: 12, z: TRAM_Z },
+    ];
+    const sys = new TransitSystem(road, null, tram);
+    const line = sys.createLine(stops, 0, 'tram');
+    expect(sys.route(line.id)).toBeNull();
+
+    const busSys = new TransitSystem(road);
+    const bus = busSys.createLine(stops, 0);
+    expect(busSys.route(bus.id)).not.toBeNull(); // the detour is open to a car
+  });
+
+  it('gives a tram line no route where the city has no tram track', () => {
+    const road = new RoadNetwork();
+    road.rebuild(tramGrid());
+    const sys = new TransitSystem(road); // no tram network injected
+    const line = sys.createLine(
+      [
+        { x: 2, z: TRAM_Z },
+        { x: 12, z: TRAM_Z },
+      ],
+      0,
+      'tram',
+    );
+    expect(sys.route(line.id)).toBeNull();
+    expect(sys.ridership(line.id, fixedAccessor(100))).toBe(0);
+  });
+
+  it('carries more riders than a bus and fewer than a train, off the same demand', () => {
+    const g = tramGrid();
+    const { road, tram } = networks(g);
+    const stops = [
+      { x: 2, z: TRAM_Z },
+      { x: 12, z: TRAM_Z },
+    ];
+
+    const tramSys = new TransitSystem(road, null, tram);
+    const tramLine = tramSys.createLine(stops, 0, 'tram');
+    const busSys = new TransitSystem(tram); // same geometry, bus rates
+    const busLine = busSys.createLine(stops, 0);
+    const railSys = new TransitSystem(road, tram); // same geometry, rail rates
+    const railLine = railSys.createLine(stops, 0, 'rail');
+
+    const trams = tramSys.ridership(tramLine.id, fixedAccessor(100));
+    expect(trams).toBeGreaterThan(busSys.ridership(busLine.id, fixedAccessor(100)));
+    expect(trams).toBeLessThan(railSys.ridership(railLine.id, fixedAccessor(100)));
+  });
+
+  it('relieves the streets it runs down, not the ones its edge ids collide with', () => {
+    const g = tramGrid();
+    const { road, tram } = networks(g);
+    const START_VOLUME = 10;
+    road.addVolume(
+      road.getEdges().map((e) => e.id),
+      START_VOLUME,
+    );
+
+    const sys = new TransitSystem(road, null, tram);
+    const line = sys.createLine(
+      [
+        { x: 2, z: TRAM_Z },
+        { x: 12, z: TRAM_Z },
+      ],
+      0,
+      'tram',
+    );
+
+    // The trap this test exists for: the tram graph numbers its edges from 0,
+    // and road edge 0 is the far-off street, because its row is scanned first.
+    // Relieving by the tram route's own ids would improve the wrong street.
+    const tramEdgeIds = new Set(sys.route(line.id)!.edges);
+    const collisions = road.getEdges().filter((e) => tramEdgeIds.has(e.id));
+    expect(collisions.some((e) => e.tiles.every((t) => t.z === STREET_Z))).toBe(true);
+
+    sys.tick(fixedAccessor(200));
+
+    for (const edge of edgesOnRow(road, TRAM_Z)) expect(edge.volume).toBeLessThan(START_VOLUME);
+    for (const edge of edgesOnRow(road, STREET_Z)) expect(edge.volume).toBe(START_VOLUME);
   });
 });
 

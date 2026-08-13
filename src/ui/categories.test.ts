@@ -228,3 +228,18 @@ describe('catalogEntryForTool', () => {
     expect(catalogEntryForTool('road.two')).toBeUndefined();
   });
 });
+
+describe('transit line tools', () => {
+  it('offers one line tool per transit mode', () => {
+    const ids = subTabsFor('transit')
+      .flatMap((t) => t.cards)
+      .map((c) => c.id);
+    expect(ids).toEqual(expect.arrayContaining(['transit.line', 'transit.rail', 'transit.tram']));
+  });
+
+  it('unlocks the tram line with the track, needing no station of its own', () => {
+    const cards = subTabsFor('transit').flatMap((t) => t.cards);
+    const tram = cards.find((c) => c.id === 'transit.tram');
+    expect(tram).toEqual({ id: 'transit.tram', name: 'Tram Line', cost: 0, unlockMilestone: 3 });
+  });
+});

@@ -1,7 +1,8 @@
 /**
- * SlimCity bus transit system.
+ * SlimCity transit system.
  *
- * Player-built bus lines over the existing road graph. This module owns the
+ * Player-built lines — bus, rail or tram — each carried by whichever network its
+ * mode names. This module owns the
  * authoritative in-worker line list (create/update/delete), route
  * computation (A* stop-to-stop concatenation over an INJECTED
  * RoadNetworkApi — never a direct import of src/world/roads.ts, per the
@@ -72,14 +73,16 @@ export const RIDERSHIP_LENGTH_BONUS_CAP = 2; // multiplier caps at 1 + this = 3x
 export const CONGESTION_RELIEF_PER_RIDER = 0.02;
 
 /**
- * What differs between the two modes, and nothing else does. People walk
- * further to a train than to a bus stop and a train carries more of them, so
- * rail draws on a wider catchment at a higher rate — but it is the same
- * statistical estimate, not a second model.
+ * What differs between the modes, and nothing else does. People walk further to
+ * a train than to a bus stop and a train carries more of them, so rail draws on
+ * a wider catchment at a higher rate; a tram sits between the two, because a
+ * fixed visible route earns a longer walk than a bus stop but not a station's.
+ * It is the same statistical estimate throughout, not a model per mode.
  */
 export const MODE_RATES: Record<TransitMode, { stopRadiusTiles: number; perDemandUnit: number }> = {
   bus: { stopRadiusTiles: RIDERSHIP_STOP_RADIUS_TILES, perDemandUnit: RIDERSHIP_PER_DEMAND_UNIT },
   rail: { stopRadiusTiles: 14, perDemandUnit: 0.28 },
+  tram: { stopRadiusTiles: 10, perDemandUnit: 0.2 },
 };
 
 /** A line with no mode is a bus line — see TransitLine.mode. */
@@ -249,17 +252,31 @@ export class TransitSystem {
    * a bus line whose stops nothing connects.
    */
   private readonly railNetwork: RoadNetworkApi | null;
+  /**
+   * The tram network — the tram tiles alone, a subset of the streets rather
+   * than a world apart like the rail one. Null where there is no tram track, in
+   * which case a tram line has no route, exactly as for rail.
+   */
+  private readonly tramNetwork: RoadNetworkApi | null;
   private readonly lines = new Map<number, TransitLine>();
   private nextId = 1;
 
-  constructor(network: RoadNetworkApi, railNetwork: RoadNetworkApi | null = null) {
+  constructor(
+    network: RoadNetworkApi,
+    railNetwork: RoadNetworkApi | null = null,
+    tramNetwork: RoadNetworkApi | null = null,
+  ) {
     this.network = network;
     this.railNetwork = railNetwork;
+    this.tramNetwork = tramNetwork;
   }
 
-  /** The network that carries a line: the streets, or the track. */
+  /** The network that carries a line: the streets, the track, or the tram track. */
   private networkFor(line: TransitLine): RoadNetworkApi | null {
-    return modeOf(line) === 'rail' ? this.railNetwork : this.network;
+    const mode = modeOf(line);
+    if (mode === 'rail') return this.railNetwork;
+    if (mode === 'tram') return this.tramNetwork;
+    return this.network;
   }
 
   /** Creates a new line; the worker always assigns the id (ignores any caller-supplied id). */
@@ -343,14 +360,37 @@ export class TransitSystem {
       const network = this.networkFor(line);
       const route = network ? routeLine(network, line) : null;
       const riders = estimateRidership(line, route, accessor);
-      // A bus relieves the streets it drives; a train relieves the streets at
-      // its stations' doors, because it drives none of them.
-      if (modeOf(line) === 'rail') applyStationRelief(this.network, line, riders);
-      else applyRidershipRelief(this.network, route, riders);
+      this.relieve(line, route, riders);
       lines.push(line);
       ridership.push(riders);
     }
 
     return { lines, ridership };
+  }
+
+  /**
+   * Feeds a line's riders back into the road network as relieved volume.
+   *
+   * A bus relieves the streets it drives, and its route is already a road-graph
+   * route. A train relieves the streets at its stations' doors, because it
+   * drives none of them. A tram drives streets like the bus — but its route came
+   * off the TRAM graph, whose edge ids are its own numbering, so the same
+   * integer names a different street in the road graph. Relieving by those ids
+   * would quietly improve traffic somewhere else in the city, so a tram's relief
+   * route is recomputed against the roads, which can carry it because tram track
+   * is a street.
+   */
+  private relieve(line: TransitLine, route: TransitRoute | null, riders: number): void {
+    if (riders <= 0) return;
+    const mode = modeOf(line);
+    if (mode === 'rail') {
+      applyStationRelief(this.network, line, riders);
+      return;
+    }
+    applyRidershipRelief(
+      this.network,
+      mode === 'tram' ? routeLine(this.network, line) : route,
+      riders,
+    );
   }
 }

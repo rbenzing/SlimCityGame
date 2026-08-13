@@ -339,6 +339,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         lines: useCityStore.getState().transitLines,
         ridership: useCityStore.getState().transitRidership,
       }),
+      // What the transit renderer actually built. A transit vehicle and a
+      // traffic-spawned one look alike in a screenshot, so a shot cannot tell
+      // whether a line's own vehicles are on the road; this can.
+      readTransitRender: (): { lines: number; stops: number; vehicles: number } => ({
+        lines: transitRenderer.lineCount(),
+        stops: transitRenderer.stopCount(),
+        vehicles: transitRenderer.busCount(),
+      }),
       readBuildings: (): Array<{
         id: number;
         catalogId: string;
@@ -399,9 +407,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   /** The dedicated renderers show only when their lens/tool is live. */
   const refreshEpicVisibility = (): void => {
     const { overlay, selectedTool } = store.getState();
-    transitRenderer.setVisible(
-      overlay === 'transit' || selectedTool === 'transit.line' || selectedTool === 'transit.rail',
-    );
+    transitRenderer.setVisible(overlay === 'transit' || selectedTool.startsWith('transit.'));
     districtsRenderer.setVisible(overlay === 'districts' || selectedTool === 'district.paint');
   };
   refreshEpicVisibility(); // start hidden until their lens/tool is selected
@@ -532,7 +538,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (tool.startsWith('zone.')) return 'zone';
     // District paint reads as a zone-style tint; transit stops read as a road path.
     if (tool === 'district.paint') return 'zone';
-    if (tool === 'transit.line' || tool === 'transit.rail') return 'road';
+    if (tool.startsWith('transit.')) return 'road';
     return 'plop';
   };
 

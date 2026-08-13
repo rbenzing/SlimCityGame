@@ -1,10 +1,13 @@
 /**
- * Bus transit rendering: instanced
+ * Transit rendering: instanced
  * bus-stop SHELTERS at every line's stops, a colored route ribbon per line,
  * and cosmetic buses animated along that ribbon whose count derives from the
  * line's statistical ridership. Reuses render/vehicles.ts's shared bus
  * geometry builder + the "drive on the right" lane offset so cosmetic
- * transit buses read exactly like the regular traffic vehicle kit.
+ * transit buses read exactly like the regular traffic vehicle kit. A line's mode
+ * picks the vehicle out of MODE_VEHICLE and nothing else about this module
+ * changes: a train and a tram are the same animated slots at a different size,
+ * count and spacing, several cars to a set.
  *
  * Contract note: `SimSnapshot.transit` (shared/types.ts) carries each line's
  * ordered `stops` + a per-line ridership figure -- it does NOT carry the
@@ -34,7 +37,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildVehicleGeometry, laneOffset } from './vehicles';
-import { VehicleKind, type TilePoint, type TransitLine } from '../shared/types';
+import { VehicleKind, type TilePoint, type TransitLine, type TransitMode } from '../shared/types';
 import { TILE_METERS, tileToWorld } from '../shared/constants';
 
 /** Matches SimSnapshot.transit's shape (shared/types.ts) without importing the whole SimSnapshot type. */
@@ -162,6 +165,75 @@ export function ridershipToTrainCount(ridership: number): number {
   if (!(ridership > 0)) return 0;
   const raw = Math.round(ridership / RIDERSHIP_PER_TRAIN);
   return Math.min(MAX_TRAINS_PER_LINE, Math.max(1, raw));
+}
+
+// --- Trams --------------------------------------------------------------------
+
+/** A tram car is longer and taller than a bus, and narrower than a train car. */
+const TRAM_CAR_SIZE: readonly [number, number, number] = [2.6, 3.4, 11];
+/** Two cars, articulated — they sit closer together than a train's are coupled. */
+export const TRAM_CARS_PER_SET = 2;
+const TRAM_CAR_PITCH = TRAM_CAR_SIZE[2] + 0.4;
+/** A tram runs in traffic, so it moves at traffic's pace, not a train's. */
+const TRAM_SPEED_MPS = TILE_METERS * 2.2;
+
+/** Between a bus and a train, like everything else about a tram. */
+export const RIDERSHIP_PER_TRAM = 90;
+export const MAX_TRAMS_PER_LINE = 4;
+
+/** Same rule again at the tram's scale — see ridershipToTrainCount. */
+export function ridershipToTramCount(ridership: number): number {
+  if (!(ridership > 0)) return 0;
+  const raw = Math.round(ridership / RIDERSHIP_PER_TRAM);
+  return Math.min(MAX_TRAMS_PER_LINE, Math.max(1, raw));
+}
+
+/**
+ * Everything that differs between a bus, a train and a tram on screen. A mode is
+ * data here, not a branch: a bus is a single box that keeps right, a train is
+ * three cars down the middle of its own track, a tram is two that hold their
+ * lane because they are sharing a street.
+ */
+interface ModeVehicle {
+  readonly size: readonly [number, number, number];
+  readonly carsPerSet: number;
+  /** Nose-to-nose spacing between cars of one set; unused for a single-car mode. */
+  readonly pitch: number;
+  readonly speed: number;
+  readonly keepsRight: boolean;
+  readonly countFor: (ridership: number) => number;
+}
+
+const MODE_VEHICLE: Record<TransitMode, ModeVehicle> = {
+  bus: {
+    size: BUS_SIZE,
+    carsPerSet: 1,
+    pitch: 0,
+    speed: BUS_SPEED_MPS,
+    keepsRight: true,
+    countFor: ridershipToBusCount,
+  },
+  rail: {
+    size: TRAIN_CAR_SIZE,
+    carsPerSet: TRAIN_CARS_PER_SET,
+    pitch: TRAIN_CAR_PITCH,
+    speed: TRAIN_SPEED_MPS,
+    keepsRight: false,
+    countFor: ridershipToTrainCount,
+  },
+  tram: {
+    size: TRAM_CAR_SIZE,
+    carsPerSet: TRAM_CARS_PER_SET,
+    pitch: TRAM_CAR_PITCH,
+    speed: TRAM_SPEED_MPS,
+    keepsRight: true,
+    countFor: ridershipToTramCount,
+  },
+};
+
+/** A line with no mode is a bus line, matching sim/transit.ts's modeOf. */
+function modeOf(line: TransitLine): TransitMode {
+  return line.mode ?? 'bus';
 }
 
 export interface WorldPoint {
@@ -297,14 +369,23 @@ export function sampleAlongPolyline(
 }
 
 /**
- * One animated transit vehicle slot: a bus, or a single car of a train. A train
- * is not a bigger box — it is several cars following each other down the same
- * polyline at a fixed spacing, which is the whole silhouette.
+ * One animated transit vehicle slot: a bus, or a single car of a train or tram.
+ * A train is not a bigger box — it is several cars following each other down the
+ * same polyline at a fixed spacing, which is the whole silhouette.
  */
 interface ActiveVehicle {
   readonly points: readonly WorldPoint[];
   readonly totalLength: number;
-  progress: number; // meters travelled along the polyline, loops modulo totalLength
+  /**
+   * Metres travelled by this car's SET, looping modulo totalLength — shared by
+   * every car of the set rather than tracked per car. Wrapping each car's own
+   * distance would tear a set apart every lap: the lead restarts at 0 while its
+   * trailing cars are still at the far end of an open route, which puts the two
+   * halves of one tram at opposite ends of the city.
+   */
+  progress: number;
+  /** How far behind the set's lead this car sits, in metres. */
+  readonly trail: number;
   readonly size: readonly [number, number, number];
   readonly speed: number;
   /** Buses keep right; a train sits on the track it runs on. */
@@ -436,7 +517,10 @@ export class TransitRenderer {
         if (bus.progress < 0) bus.progress += bus.totalLength;
       }
 
-      const sample = sampleAlongPolyline(bus.points, bus.progress);
+      // Clamped, not wrapped: a trailing car whose lead has just looped waits at
+      // the start of the route for the set to stretch back out, rather than
+      // reappearing at the far end of it.
+      const sample = sampleAlongPolyline(bus.points, Math.max(0, bus.progress - bus.trail));
       // A bus keeps right on a two-way street; a train has the track to itself.
       const offset = bus.keepsRight ? laneOffset(sample.heading) : { dx: 0, dz: 0 };
       const renderX = sample.x + offset.dx;
@@ -523,7 +607,7 @@ export class TransitRenderer {
       // A rail stop is a station: a ploppable building the player placed, which
       // already stands there. Dropping a bus shelter on top of it would be a
       // second, smaller shelter inside the first.
-      if (line.mode === 'rail') continue;
+      if (modeOf(line) === 'rail') continue;
       const worldPoints = toWorldPoints(line.stops);
       for (let i = 0; i < line.stops.length; i += 1) {
         const stop = line.stops[i]!;
@@ -702,8 +786,8 @@ export class TransitRenderer {
     for (let i = 0; i < lines.length; i += 1) {
       const line = lines[i]!;
       const riders = ridership[i] ?? 0;
-      const isRail = line.mode === 'rail';
-      const count = isRail ? ridershipToTrainCount(riders) : ridershipToBusCount(riders);
+      const vehicle = MODE_VEHICLE[modeOf(line)];
+      const count = vehicle.countFor(riders);
       if (count === 0) continue;
 
       const worldPoints = toWorldPoints(line.stops);
@@ -711,29 +795,25 @@ export class TransitRenderer {
       const totalLength = polylineLength(worldPoints);
       if (totalLength <= 0) continue;
 
-      // A bus is one vehicle; a train is a set of cars trailing the one in
-      // front, so a rail line emits CARS slots per train rather than one.
-      const carsEach = isRail ? TRAIN_CARS_PER_SET : 1;
-      // A set is placed with its LEAD car far enough along that the whole train
-      // is on the line. Wrapping a trailing car past the start would sample the
-      // far end of the polyline instead — the cars are a fixed arc-length
-      // apart either way, but on an open route that puts them at opposite ends
-      // of the map rather than coupled.
-      const trainLength = (carsEach - 1) * TRAIN_CAR_PITCH;
-      const runway = Math.max(0, totalLength - trainLength);
+      // A bus is one vehicle; a train or a tram is a set of cars trailing the
+      // one in front, so those modes emit CARS slots per set rather than one.
+      // Every car of a set carries the set's own lead distance and its own
+      // trail behind it, so the set moves as one thing — see ActiveVehicle.
+      // The lead starts far enough along that the whole set is on the route.
+      const setLength = (vehicle.carsPerSet - 1) * vehicle.pitch;
+      const runway = Math.max(0, totalLength - setLength);
       for (let b = 0; b < count; b += 1) {
-        const lead = trainLength + (runway * b) / count; // sets evenly spaced along the runway
-        for (let car = 0; car < carsEach; car += 1) {
+        const lead = setLength + (runway * b) / count; // sets evenly spaced along the runway
+        for (let car = 0; car < vehicle.carsPerSet; car += 1) {
           if (buses.length >= MAX_BUSES) break;
-          const behind = car * TRAIN_CAR_PITCH;
-          const progress = (((lead - behind) % totalLength) + totalLength) % totalLength;
           buses.push({
             points: worldPoints,
             totalLength,
-            progress,
-            size: isRail ? TRAIN_CAR_SIZE : BUS_SIZE,
-            speed: isRail ? TRAIN_SPEED_MPS : BUS_SPEED_MPS,
-            keepsRight: !isRail,
+            progress: lead % totalLength,
+            trail: car * vehicle.pitch,
+            size: vehicle.size,
+            speed: vehicle.speed,
+            keepsRight: vehicle.keepsRight,
           });
           colors.push(line.color);
         }

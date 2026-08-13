@@ -23,9 +23,9 @@ visual/systems spec, see [SPEC.md](SPEC.md).
 
 - Metro and ferry; richer route editor + stats. (Bus lines, districts &
   policies, one-way roads, cosmetic service dispatch have since shipped — see
-  ROADMAP. Passenger **rail** is in progress as SPEC §26, over the rail tier the
-  roads epic laid; freight rail stays deferred with the deeper-industry epic it
-  belongs to.)
+  ROADMAP. Passenger **rail** shipped as SPEC §26 and **trams** as SPEC §27, each
+  over a tier the roads epic had already laid; freight rail stays deferred with
+  the deeper-industry epic it belongs to.)
 - Signal _phase_ simulation. (The signals and boards themselves have since
   shipped, cosmetic-first as intended — a junction approach earns a signal head
   on the multi-lane tiers and a stop or give-way board on the smaller ones, and

@@ -1,18 +1,22 @@
 /**
- * Bus transit line list. Shown while the
- * transit.line tool is in hand or the 'transit' lens is active. Lists each
- * committed bus line with its color swatch + statistical ridership, a delete
- * affordance (emits deleteTransitLine), and a one-line hint for the click-to-
- * place-stops / right-click-to-finish drawing flow.
+ * Transit line list. Shown while any line tool is in hand or the 'transit' lens
+ * is active. Lists each committed line with its mode, color swatch and
+ * statistical ridership, a delete affordance (emits deleteTransitLine), and a
+ * one-line hint for the click-to-place-stops / right-click-to-finish drawing
+ * flow.
  */
 import type { JSX } from 'react';
 import { Icon } from './icons';
 import { useCityStore } from './store';
 import { LABEL, PANEL_ROUNDED } from './theme';
+import type { TransitMode } from '../shared/types';
 
 function hexColor(n: number): string {
   return `#${n.toString(16).padStart(6, '0')}`;
 }
+
+/** Which mode a line runs as — the swatch alone cannot say bus from tram. */
+const MODE_LABEL: Record<TransitMode, string> = { bus: 'Bus', rail: 'Rail', tram: 'Tram' };
 
 export function TransitLinesPanel(): JSX.Element | null {
   const selectedTool = useCityStore((s) => s.selectedTool);
@@ -21,7 +25,8 @@ export function TransitLinesPanel(): JSX.Element | null {
   const ridership = useCityStore((s) => s.transitRidership);
   const deleteLine = useCityStore((s) => s.deleteTransitLine);
 
-  const visible = selectedTool === 'transit.line' || overlay === 'transit';
+  const drawing = selectedTool.startsWith('transit.');
+  const visible = drawing || overlay === 'transit';
   if (!visible) return null;
 
   return (
@@ -31,12 +36,10 @@ export function TransitLinesPanel(): JSX.Element | null {
       >
         <div className="flex items-center gap-2 font-semibold">
           <Icon name="transit" className="h-5 w-5 text-white/70" />
-          Bus Lines
+          Transit Lines
         </div>
 
-        {selectedTool === 'transit.line' && (
-          <div className={LABEL}>Click stops in order · right-click to finish</div>
-        )}
+        {drawing && <div className={LABEL}>Click stops in order · right-click to finish</div>}
 
         {lines.length === 0 ? (
           <div className={LABEL}>No lines yet</div>
@@ -52,7 +55,7 @@ export function TransitLinesPanel(): JSX.Element | null {
                     className="inline-block h-3 w-3 rounded-full"
                     style={{ backgroundColor: hexColor(line.color) }}
                   />
-                  Line {line.id}
+                  {MODE_LABEL[line.mode ?? 'bus']} {line.id}
                 </span>
                 <span className="text-white/60">{Math.round(ridership[i] ?? 0)} riders</span>
                 <button

@@ -156,6 +156,17 @@ const RAIL_LINE_CARD: AssetCard = {
 };
 
 /**
+ * The tram-line drawing tool card. Same gesture again, committed against the
+ * tram track; unlocks with the track itself, since a tram needs no station.
+ */
+const TRAM_LINE_CARD: AssetCard = {
+  id: 'transit.tram',
+  name: 'Tram Line',
+  cost: 0,
+  unlockMilestone: 3,
+};
+
+/**
  * The district paint-brush tool card. Zero cost, always available — districts
  * are administrative regions, painted onto any tile.
  */
@@ -295,7 +306,7 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
     },
   ],
   parks: [{ id: 'all', label: 'Parks', cards: catalogCards((e) => e.category === 'park') }],
-  // Transit: bus-stop ploppable(s) from the catalog + the Bus Line tool.
+  // Transit: the stop/station ploppables from the catalog + one line tool per mode.
   transit: [
     {
       id: 'all',
@@ -304,6 +315,7 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
         ...catalogCards((e) => e.category === 'transit'),
         TRANSIT_LINE_CARD,
         RAIL_LINE_CARD,
+        TRAM_LINE_CARD,
       ],
     },
   ],

@@ -79,6 +79,17 @@ export function isRailTier(tier: number): boolean {
 }
 
 /**
+ * True for the tram tier — the tiles a TRAM's network is built from. Unlike the
+ * rail predicate this one is NOT disjoint from isStreetTier: tram track is a
+ * street, so cars drive it and it carries utilities and frontage like any other
+ * road. A tram tile is therefore in both graphs, and only the tram is confined
+ * to the smaller one.
+ */
+export function isTramTier(tier: number): boolean {
+  return tier === RoadTier.Tram;
+}
+
+/**
  * Scalar fields (classic diffusing scalar layers). Each is a Uint8Array of
  * MAP_SIZE² tiles, 0..255. Indexed by FieldId into GridState.fields.
  */
@@ -621,6 +632,8 @@ export type ToolId =
   | 'transit.line'
   // Rail transit: the same gesture over the track, committing a rail-mode line.
   | 'transit.rail'
+  // Tram transit: the same gesture over tram track, committing a tram-mode line.
+  | 'transit.tram'
   // Districts: brush-paint the selected district id onto tiles
   // (emits paintDistrict). Additive.
   | 'district.paint'
@@ -780,7 +793,7 @@ export interface BrushSettings {
  * the route ribbon + line list. `id` is worker-assigned and stable per session.
  */
 /** Which network carries a transit line: the streets, or the track. */
-export type TransitMode = 'bus' | 'rail';
+export type TransitMode = 'bus' | 'rail' | 'tram';
 
 export interface TransitLine {
   id: number;

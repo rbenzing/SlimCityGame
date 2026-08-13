@@ -299,15 +299,24 @@ function isTerraformTool(tool: ToolId): boolean {
   return tool.startsWith('terraform.');
 }
 
-/** Bus-line tool: click stops in sequence, right-click to commit the line. */
+/** Transit-line tools: click stops in sequence, right-click to commit the line. */
 function isTransitTool(tool: ToolId): boolean {
-  return tool === 'transit.line' || tool === 'transit.rail';
+  return tool === 'transit.line' || tool === 'transit.rail' || tool === 'transit.tram';
 }
 
 /** Which mode the pending line commits as — the tool picks the network. */
 function transitModeOf(tool: ToolId): TransitMode {
-  return tool === 'transit.rail' ? 'rail' : 'bus';
+  if (tool === 'transit.rail') return 'rail';
+  if (tool === 'transit.tram') return 'tram';
+  return 'bus';
 }
+
+/** What the player is drawing, for the preview label and the command name. */
+const TRANSIT_MODE_LABEL: Record<TransitMode, string> = {
+  bus: 'Bus',
+  rail: 'Rail',
+  tram: 'Tram',
+};
 
 /** District paint tool: brush/rect paint the selected district id onto tiles. */
 function isDistrictTool(tool: ToolId): boolean {
@@ -601,7 +610,7 @@ export class ToolManager {
         tiles,
         valid: tiles.length >= MIN_TRANSIT_STOPS,
         cost: 0,
-        label: `${transitModeOf(tool) === 'rail' ? 'Rail' : 'Bus'} line (${this.transitStops.length} stop${this.transitStops.length === 1 ? '' : 's'})`,
+        label: `${TRANSIT_MODE_LABEL[transitModeOf(tool)]} line (${this.transitStops.length} stop${this.transitStops.length === 1 ? '' : 's'})`,
       });
       return;
     }
@@ -781,7 +790,7 @@ export class ToolManager {
   }
 
   /**
-   * Commits the pending bus line (>= MIN_TRANSIT_STOPS stops) as a
+   * Commits the pending line (>= MIN_TRANSIT_STOPS stops) as a
    * createTransitLine command with the next palette color, then resets the
    * pending-stop list. A right-click with too few stops just clears them.
    */
@@ -790,7 +799,7 @@ export class ToolManager {
       const color = TRANSIT_LINE_PALETTE[this.transitColorIndex % TRANSIT_LINE_PALETTE.length]!;
       this.transitColorIndex += 1;
       const mode = transitModeOf(this._tool);
-      this.env.send(mode === 'rail' ? 'Rail line' : 'Bus line', [
+      this.env.send(`${TRANSIT_MODE_LABEL[mode]} line`, [
         {
           kind: 'createTransitLine',
           line: { id: 0, stops: [...this.transitStops], color, mode },

@@ -9,9 +9,9 @@ Two identities, one build:
 
 _Design rationale and scope guards (deferred / rejected directions) live in [DESIGN.md](DESIGN.md). The living visual/systems spec is [SPEC.md](SPEC.md); the player-facing how-to-play is [USERGUIDE.md](USERGUIDE.md)._
 
-> **Delivery status (2026-08-11):** the M0–M7 core spine plus bus transit, service
+> **Delivery status (2026-08-13):** the M0–M7 core spine plus bus transit, service
 > dispatch, districts & policies, stats charts + photo mode, and eight playtest-feedback
-> rounds are shipped and gate-green (2,557 tests / 100 files). Delivered on top of the
+> rounds are shipped and gate-green (2,610 tests / 101 files). Delivered on top of the
 > original milestones: the city-builder UI shell + night cycle, full building/street/vehicle/tree
 > visual language, full terraforming + animated water + sky, the airport landmark,
 > code-split bundle, plus the playtest refinements captured in SPEC.md (utility
@@ -25,8 +25,10 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > what is wrong with the city right now, per SPEC §24; bridges + elevated roads,
 > which finally let a road cross water, per SPEC §25; road signage — junction
 > signals and boards, motorway exit boards and gantries, and placement-time flow
-> arrows, per SPEC §6.7; and rail transit — stations, trains and rail lines over
-> the rail tier, which until then carried nothing, per SPEC §26). Versioning + deploy are
+> arrows, per SPEC §6.7; rail transit — stations, trains and rail lines over
+> the rail tier, which until then carried nothing, per SPEC §26; and tram transit,
+> which does the same for the tram tier — street-running lines that need no
+> station and relieve the streets they run down, per SPEC §27). Versioning + deploy are
 > automated (release-please + Conventional Commits → GitHub Pages; see the repo README).
 > Deferred/optional next: AI raster map packs, facade-atlas stage 2, screen-space
 > AO/reflections, and the [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper

@@ -55,6 +55,11 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   People walk further to a train than to a bus stop and a train carries more of
   them, so a rail line serving a busy district takes real traffic off the
   streets around its stations. Your lines are saved with the city now.
+  **Trams** sit between the two: lay tram track — it is still a street, so cars
+  keep using it — and draw a **Tram Line** along it. A tram needs no station and
+  takes no land; its stops get a shelter like a bus stop's. It only runs where
+  the track goes, so a break in the track breaks the line even though a car
+  could drive around it, and it relieves the very streets it runs down.
 - **Districts & Policies** — paint districts over areas, then set policies
   (e.g. tax and traffic rules) that apply within them.
 - **Landscaping** — raise / lower / level / smooth the terrain, with real water

@@ -35,6 +35,7 @@ import {
   FieldId,
   RoadTier,
   isRailTier,
+  isTramTier,
   isStreetTier,
   ZoneType,
   MAX_VEHICLES,
@@ -310,6 +311,12 @@ class SimWorld implements WorkerSim {
    * invalidation hits both, since a single grid edit can lay track or street.
    */
   private readonly railNetwork = new RoadNetwork(isRailTier);
+  /**
+   * The tram network — the tram tiles alone. Unlike the rail one it overlaps the
+   * road network, because tram track is a street: cars route over these tiles
+   * too, and only the tram is confined to them.
+   */
+  private readonly tramNetwork = new RoadNetwork(isTramTier);
   private growth: GrowthSystem;
   private traffic: TrafficSystem;
   // --- transit / dispatch / policies systems -------------------------------
@@ -385,7 +392,7 @@ class SimWorld implements WorkerSim {
     const rng = createRng(0);
     this.growth = new GrowthSystem(CATALOG, rng.fork(1), canPlaceFootprint);
     this.traffic = new TrafficSystem(rng.fork(2), this.network);
-    this.transit = new TransitSystem(this.network, this.railNetwork);
+    this.transit = new TransitSystem(this.network, this.railNetwork, this.tramNetwork);
     this.dispatch = new DispatchSystem(CATALOG, rng.fork(3));
     // noHeavyTraffic policy: bump pathfind cost on a district's roads so
     // through-traffic routes around it. With no policy set the multiplier is
@@ -481,10 +488,11 @@ class SimWorld implements WorkerSim {
     this.growth = new GrowthSystem(CATALOG, rng.fork(1), canPlaceFootprint);
     this.network.rebuild(this.grid);
     this.railNetwork.rebuild(this.grid);
+    this.tramNetwork.rebuild(this.grid);
     this.traffic = new TrafficSystem(rng.fork(2), this.network);
     // transit / dispatch / policy systems are stateful (lines / active incidents / policies)
     // and must reset per game session, mirroring how traffic is re-created.
-    this.transit = new TransitSystem(this.network, this.railNetwork);
+    this.transit = new TransitSystem(this.network, this.railNetwork, this.tramNetwork);
     this.dispatch = new DispatchSystem(CATALOG, rng.fork(3));
     this.policyStore = new PolicyStore();
     this.transitResult = { lines: [], ridership: [] };
@@ -535,6 +543,7 @@ class SimWorld implements WorkerSim {
 
     this.network.rebuild(this.grid);
     this.railNetwork.rebuild(this.grid);
+    this.tramNetwork.rebuild(this.grid);
     this.resetDeltas();
 
     // Full resync for the render thread: everything re-added, all roads/zones
@@ -566,7 +575,7 @@ class SimWorld implements WorkerSim {
     // grid serialize/deserialize, but the def registry + policies do not
     // (per-session state). Rebuild defs for whatever district ids the loaded
     // tile layer carries so the overlay tints and the UI lists them.
-    this.transit = new TransitSystem(this.network, this.railNetwork);
+    this.transit = new TransitSystem(this.network, this.railNetwork, this.tramNetwork);
     // Lines come back with the city. A save written before they persisted has
     // none, which is what loading always used to leave behind anyway.
     this.transit.restore(payload.meta.transitLines ?? []);
@@ -1457,7 +1466,12 @@ class SimWorld implements WorkerSim {
     // Tiles this command only re-profiled keep their tier on undo; restoring
     // their old deck is the entire reversal.
     if (reprofiled.length > 0) {
-      inverse.push({ kind: 'buildRoad', tier, tiles: reprofiled, elevations: reprofiledElevations });
+      inverse.push({
+        kind: 'buildRoad',
+        tier,
+        tiles: reprofiled,
+        elevations: reprofiledElevations,
+      });
     }
     // Auto-flatten: the newly built/upgraded tiles + a 1-tile apron. Elevated
     // tiles are exempt — the deck spans the ground, it does not sit on it, and
@@ -1584,10 +1598,7 @@ class SimWorld implements WorkerSim {
     }
     // A station has to touch the track it serves; everything else goes anywhere
     // buildable, exactly as before.
-    if (
-      entry.requiresAdjacent === 'rail' &&
-      !hasAdjacentTier(this.grid, x, z, w, d, isRailTier)
-    ) {
+    if (entry.requiresAdjacent === 'rail' && !hasAdjacentTier(this.grid, x, z, w, d, isRailTier)) {
       return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
     }
     const inst = this.registry.place(this.grid, entry, x, z, rotation);
@@ -1854,6 +1865,7 @@ class SimWorld implements WorkerSim {
     if (!rect) return;
     this.network.invalidateRegion(rect.minX - 1, rect.minZ - 1, rect.maxX + 1, rect.maxZ + 1);
     this.railNetwork.invalidateRegion(rect.minX - 1, rect.minZ - 1, rect.maxX + 1, rect.maxZ + 1);
+    this.tramNetwork.invalidateRegion(rect.minX - 1, rect.minZ - 1, rect.maxX + 1, rect.maxZ + 1);
   }
 }
 

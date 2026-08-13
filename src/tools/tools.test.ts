@@ -1529,8 +1529,22 @@ describe('transit line tools', () => {
     expect(line.mode).toBe('rail');
   });
 
+  it('commits a tram line the worker will route over the tram track', () => {
+    const { env, sent } = makeEnv();
+    const tm = new ToolManager(env);
+    tm.setTool('transit.tram');
+    drawLine(tm, [
+      [0, 0],
+      [3, 0],
+    ]);
+
+    expect(sent[0]?.label).toBe('Tram line');
+    const line = (sent[0]!.commands[0] as { line: { mode?: string } }).line;
+    expect(line.mode).toBe('tram');
+  });
+
   it('commits nothing from a single stop, whichever mode', () => {
-    for (const tool of ['transit.line', 'transit.rail'] as const) {
+    for (const tool of ['transit.line', 'transit.rail', 'transit.tram'] as const) {
       const { env, sent } = makeEnv();
       const tm = new ToolManager(env);
       tm.setTool(tool);

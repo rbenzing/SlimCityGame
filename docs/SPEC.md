@@ -1590,3 +1590,103 @@ dispatch and bus test must stay green while the graph builder becomes
 parameterised, and a rail-free city must produce a byte-identical road graph.
 `tools/bridge-shots.mjs` already frames a rail truss; a train on it is the visual
 check that the deck sampler carries rail vehicles too.
+
+---
+
+## 27. Tram transit — street-running lines on the track already laid (2026-08-13)
+
+**Why:** the tram tier is now the only built road tier that carries nothing. A
+player pays ¢70/tile for embedded rails and sleepers and gets a two-lane street
+with a nicer texture — precisely the complaint that opened §26, one tier over.
+The machinery §26 built (a tier predicate on the graph, a mode on a line, a
+per-slot vehicle size) was built to take a third mode, and this is it. If this
+epic needs a new pathfinder, a new ridership model, or a second relief formula,
+something has been designed wrong.
+
+**What a tram is, and it is not a small train.** Rail is a separate world: its
+own corridor, a graph disjoint from the streets by construction, and a station
+that is a building on land somebody had to clear. A tram shares the street with
+the cars. That single difference is the whole epic — it changes three things,
+and deliberately nothing else.
+
+- **The tram network is a SUBSET of the road network, not disjoint from it.**
+  `isStreetTier` already accepts the tram tier, so a tram tile sits in the road
+  graph and the tram graph at once: cars keep driving over tram track exactly as
+  they do today, and that is correct — it is a street. Trams, though, route on
+  the tram graph *only*. A tram that could route down any street would make the
+  track a decoration, which is the defect this epic exists to fix. The two rail
+  predicates stay disjoint from each other; only tram overlaps the streets.
+- **Relief is the bus's rule, not the station's — but it cannot be taken from
+  the tram route directly.** A tram's riders would otherwise have driven the
+  very streets it runs down, so route relief is right where a train needed
+  station relief. The trap: the route comes off the tram graph, whose edge ids
+  are its own numbering, and the same integer means a different edge in the road
+  graph. Feeding tram edge ids to the road network would silently relieve
+  unrelated streets somewhere else in the city — traffic would improve in the
+  wrong place, and nothing would look broken. The relief route is therefore
+  recomputed against the road network, which can carry the line because tram
+  tiles are streets. That is one extra A\* per tram line per tick, for a handful
+  of lines, against the thousands traffic already runs each tick.
+- **A stop is a shelter, not a building.** No ploppable, no milestone gate
+  beyond the track's own, no land taken — which is a tram's entire economic
+  argument against a railway, and it should be the thing the player feels.
+- **Ridership sits between the two.** A 10-tile catchment at 0.20 per demand
+  unit: people walk further to a fixed, visible, permanent route than to a bus
+  stop, and not as far as they will walk to a train.
+- **A tram is two cars and keeps right.** It rides the per-slot size/speed/
+  keeps-right fields §26 added for train cars, so the renderer takes no new
+  concepts — a train is three cars down the middle of its own track, a tram is
+  two that hold their lane like every other street vehicle.
+- **Deferred, deliberately.** No overhead wires or catenary poles, no tram
+  priority at junctions, no depots, and no line that mixes tram and rail track.
+
+**Two faults this epic surfaced in the machinery under it**, both found by
+running the game rather than by any unit test, and both older than the tram:
+
+- **A stop standing mid-run was off the network.** Endpoints resolve to a graph
+  node by proximity within 8 tiles, and a long junction-free run has nodes only
+  at its two ends — which is precisely the shape of a dedicated transit
+  corridor. A stop in the middle of one snapped to nothing, so the line silently
+  carried nobody: rail had been shipping with this, and only escaped notice
+  because its harness happened to place stations near the ends of the track.
+  Snapping now falls back to the nearer end of the run a point stands ON, via a
+  tile→edge index built lazily so routing that finds a node by proximity — all
+  of traffic — never pays for it. A point genuinely off the network still
+  reports as off it, and the fallback cannot bridge two networks, because the
+  index only ever holds the edges of its own graph.
+- **A vehicle set tore itself apart every lap.** Each car wrapped its own
+  distance modulo the route length, so on an OPEN polyline the lead car
+  restarted while its trailing cars were still at the far end — one tram at both
+  ends of the city at once. A set now carries one shared lead distance and each
+  car a fixed trail behind it, clamped rather than wrapped, so the cars queue
+  briefly at the terminus instead of scattering.
+
+**Owners:** `src/shared/types.ts` (`isTramTier`, the `'tram'` mode, the tool
+id), `src/world/roads.ts` (a third network instance — no new code, just a third
+predicate), `src/sim/transit.ts` (tram rates, the tram's relief route),
+`src/sim/worker.entry.ts` (the tram network, rebuilt and invalidated with the
+others), `src/tools/tools.ts` + `src/ui/categories.ts` (a tram line tool beside
+the bus and rail ones), `src/render/transit.ts` (the tram car, and the set that
+holds together), `src/world/roads.ts` + `src/world/pathfind.ts` (the mid-run
+snap), `src/ui/TransitLinesPanel.tsx` (which had only ever opened for the bus
+tool, and names a line by its mode now that there are three).
+
+**Acceptance:** a tram line drawn along tram track routes over that track and
+not over the ordinary streets beside it; trams run it and keep right; ridership
+responds to population near the stops; a busy tram line measurably drops road
+volume on the streets it runs down, and specifically not on unrelated streets
+that happen to share an edge id; shelters stand at tram stops as they do at bus
+stops; bus and rail lines behave exactly as they did; and a tram line survives a
+save.
+
+**Verification:** the edge-id trap is the one that would ship silently, so the
+relief test asserts on the road edges under the tram's own tiles and on an
+untouched decoy street built to hold the colliding id. Everything else is
+covered by making a tram line do, on tram track, what the bus tests already
+assert on streets.
+
+`tools/tram-shots.mjs` grows a real district before it draws anything, because
+ridership is demand-driven and an empty sandbox carries nobody — the harness
+that only builds track can prove a line exists but never that it works. It reads
+the transit renderer's own counts rather than reading a screenshot, since a tram
+and a traffic-spawned bus are the same silhouette on the same street.

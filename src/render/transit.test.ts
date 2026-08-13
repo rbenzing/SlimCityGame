@@ -4,8 +4,11 @@ import {
   TransitRenderer,
   ridershipToBusCount,
   ridershipToTrainCount,
+  ridershipToTramCount,
   MAX_TRAINS_PER_LINE,
+  MAX_TRAMS_PER_LINE,
   TRAIN_CARS_PER_SET,
+  TRAM_CARS_PER_SET,
   toWorldPoints,
   polylineLength,
   sampleAlongPolyline,
@@ -620,5 +623,124 @@ describe('rail lines (SPEC 26)', () => {
     const after = gaps();
     expect(before.length).toBe(TRAIN_CARS_PER_SET - 1);
     for (let i = 0; i < before.length; i++) expect(after[i]!).toBeCloseTo(before[i]!, 4);
+  });
+});
+
+describe('tram lines (SPEC 27)', () => {
+  const modeLine = (
+    id: number,
+    stops: { x: number; z: number }[],
+    mode: TransitLine['mode'],
+  ): TransitLine => ({ id, stops, color: 0x66bb6a, mode });
+
+  /** Runs due +X, so "keeps right" shows up as a non-zero z offset. */
+  const straightRoute = [
+    { x: 0, z: 0 },
+    { x: 40, z: 0 },
+  ];
+
+  it('counts trams between the bus and the train scale', () => {
+    expect(ridershipToTramCount(0)).toBe(0);
+    expect(ridershipToTramCount(1)).toBe(1);
+    expect(ridershipToTramCount(100_000)).toBe(MAX_TRAMS_PER_LINE);
+    expect(ridershipToTramCount(400)).toBeLessThan(ridershipToBusCount(400));
+    expect(ridershipToTramCount(400)).toBeGreaterThan(ridershipToTrainCount(400));
+  });
+
+  it('draws a tram as two cars', () => {
+    const scene = new THREE.Scene();
+    const renderer = new TransitRenderer(scene, flatHeightAt);
+    renderer.apply({ lines: [modeLine(1, straightRoute, 'tram')], ridership: [90] });
+    expect(renderer.busCount()).toBe(TRAM_CARS_PER_SET);
+  });
+
+  it('stands a shelter at a tram stop — a tram takes no land for a station', () => {
+    const scene = new THREE.Scene();
+    const renderer = new TransitRenderer(scene, flatHeightAt);
+    renderer.apply({ lines: [modeLine(1, straightRoute, 'tram')], ridership: [90] });
+    expect(renderer.stopCount()).toBe(straightRoute.length);
+  });
+
+  it('keeps a tram in its lane, where a train has its track to itself', () => {
+    const carZ = (mode: TransitLine['mode'], cars: number): number => {
+      const scene = new THREE.Scene();
+      const renderer = new TransitRenderer(scene, flatHeightAt);
+      renderer.apply({ lines: [modeLine(1, straightRoute, mode)], ridership: [220] });
+      const mesh = scene.children.find(
+        (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh && c.count === cars,
+      );
+      expect(mesh).toBeDefined();
+      const m = new THREE.Matrix4();
+      const p = new THREE.Vector3();
+      mesh!.getMatrixAt(0, m);
+      p.setFromMatrixPosition(m);
+      return p.z;
+    };
+
+    const centerline = tileToWorld(0); // the route's own z, both stops being on tile row 0
+    expect(Math.abs(carZ('tram', TRAM_CARS_PER_SET) - centerline)).toBeGreaterThan(0);
+    expect(carZ('rail', TRAIN_CARS_PER_SET)).toBe(centerline);
+  });
+});
+
+describe('a vehicle set stays together across the end of its route', () => {
+  /**
+   * Widest gap between any two cars of one set, over a full lap and then some.
+   * Three stops keep every shelter mesh's instance count clear of the vehicle
+   * mesh's, so the mesh picked below is unambiguously the cars.
+   */
+  const widestSpan = (mode: TransitLine['mode'], riders: number, cars: number): number => {
+    const scene = new THREE.Scene();
+    const renderer = new TransitRenderer(scene, flatHeightAt);
+    renderer.apply({
+      lines: [
+        {
+          id: 1,
+          stops: [
+            { x: 0, z: 0 },
+            { x: 20, z: 0 },
+            { x: 40, z: 0 },
+          ],
+          color: 0xffffff,
+          mode,
+        },
+      ],
+      ridership: [riders],
+    });
+    expect(renderer.busCount()).toBe(cars);
+    const mesh = scene.children.find(
+      (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh && c.count === cars,
+    );
+    expect(mesh).toBeDefined();
+
+    const m = new THREE.Matrix4();
+    const p = new THREE.Vector3();
+    let worst = 0;
+    // A 640 m route at these speeds laps in well under 30 s of sim time.
+    for (let step = 0; step < 120; step += 1) {
+      renderer.update(0.25);
+      const xs: number[] = [];
+      for (let i = 0; i < cars; i += 1) {
+        mesh!.getMatrixAt(i, m);
+        p.setFromMatrixPosition(m);
+        xs.push(p.x);
+      }
+      worst = Math.max(worst, Math.max(...xs) - Math.min(...xs));
+    }
+    return worst;
+  };
+
+  // The defect this guards: each car used to wrap its own distance past the end
+  // of an OPEN polyline, so the lead restarted while its trailing cars were
+  // still at the far end — one tram at both ends of the city at once.
+  // Bounds are the set's own coupled length — 3 train cars at a ~15m pitch span
+  // ~31m, 2 tram cars at a ~11m pitch span ~11m — not merely "less than the
+  // route", so a set that drifts a few tiles apart fails just as a torn one does.
+  it('never strands a train car at the far end of the line', () => {
+    expect(widestSpan('rail', 220, TRAIN_CARS_PER_SET)).toBeLessThan(35);
+  });
+
+  it('never strands a tram car at the far end of the line', () => {
+    expect(widestSpan('tram', 90, TRAM_CARS_PER_SET)).toBeLessThan(15);
   });
 });
