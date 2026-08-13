@@ -23,9 +23,10 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > cosmetic garbage trucks, and a trash lens, per SPEC §21; the city soundscape + UI
 > audio + user-supplied music player, per SPEC §23; the advisor panel that ranks
 > what is wrong with the city right now, per SPEC §24; bridges + elevated roads,
-> which finally let a road cross water, per SPEC §25; and road signage — junction
+> which finally let a road cross water, per SPEC §25; road signage — junction
 > signals and boards, motorway exit boards and gantries, and placement-time flow
-> arrows, per SPEC §6.7). Versioning + deploy are
+> arrows, per SPEC §6.7; and rail transit — stations, trains and rail lines over
+> the rail tier, which until then carried nothing, per SPEC §26). Versioning + deploy are
 > automated (release-please + Conventional Commits → GitHub Pages; see the repo README).
 > Deferred/optional next: AI raster map packs, facade-atlas stage 2, screen-space
 > AO/reflections, and the [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper

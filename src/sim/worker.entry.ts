@@ -881,6 +881,9 @@ class SimWorld implements WorkerSim {
         id: l.id,
         stops: l.stops.map((s) => ({ ...s })),
         color: l.color,
+        // Without this the render thread sees every line as a bus line, and a
+        // rail line draws bus shelters at its stations and buses on its track.
+        mode: l.mode,
       })),
       ridership: [...this.transitResult.ridership],
     };

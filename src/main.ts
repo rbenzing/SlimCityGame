@@ -332,6 +332,13 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // Every known building instance with its lifecycle state and problem
       // bits — tells a harness whether lots are failing to spawn, stuck
       // constructing, or spawning and then being abandoned.
+      // Lines and their ridership as the worker last reported them: lets a
+      // screenshot check confirm a line actually routed and carries anyone
+      // before reading anything into a picture of a train.
+      readTransit: (): { lines: unknown[]; ridership: number[] } => ({
+        lines: useCityStore.getState().transitLines,
+        ridership: useCityStore.getState().transitRidership,
+      }),
       readBuildings: (): Array<{
         id: number;
         catalogId: string;

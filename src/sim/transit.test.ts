@@ -705,6 +705,20 @@ describe('applyStationRelief', () => {
   });
 });
 
+describe('what tick() hands to the snapshot', () => {
+  it('reports each line WITH its mode', () => {
+    // The wire mapping used to enumerate id/stops/color and drop the mode, so
+    // the render thread saw every rail line as a bus line — bus shelters at the
+    // stations, buses on the track.
+    const sys = new TransitSystem(createFakeNetwork(() => null));
+    sys.createLine([{ x: 1, z: 1 }], 0, 'rail');
+    sys.createLine([{ x: 2, z: 2 }], 0);
+
+    const result = sys.tick(fixedAccessor(0));
+    expect(result.lines.map((l) => l.mode)).toEqual(['rail', 'bus']);
+  });
+});
+
 describe('TransitSystem.restore', () => {
   it('brings lines back from a save and never reissues their ids', () => {
     const sys = new TransitSystem(createFakeNetwork(() => null));
