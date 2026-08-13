@@ -174,9 +174,16 @@ export function findPath(
    * network passes its own so a train can cross the track edges a car cannot.
    */
   inNetwork?: (tier: RoadTier) => boolean,
+  /**
+   * How an endpoint tile resolves to a graph node. Defaults to plain proximity
+   * over the node list, which is what every caller got before this existed. A
+   * caller that can snap better — RoadNetwork, which also knows which run a
+   * tile lies on — passes its own so a point standing mid-run still routes.
+   */
+  snap: (x: number, z: number) => number | null = (x, z) => nearestNode(nodes, x, z),
 ): PathResult | null {
-  const startId = nearestNode(nodes, from.x, from.z);
-  const endId = nearestNode(nodes, to.x, to.z);
+  const startId = snap(from.x, from.z);
+  const endId = snap(to.x, to.z);
   if (startId === null || endId === null) return null;
 
   const nodeById = new Map<number, GraphNode>();

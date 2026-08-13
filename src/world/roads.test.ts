@@ -558,3 +558,54 @@ describe('RoadNetwork', () => {
     expect(net.nearestNode(19, 19)).toBeNull();
   });
 });
+
+describe('RoadNetwork — snapping a point that stands mid-run', () => {
+  const SIZE = 40;
+  const ROW = 10;
+
+  /** A single straight run, long enough that its middle is far from both ends. */
+  function corridorGrid(): GridState {
+    const g = makeGrid(SIZE);
+    for (let x = 2; x <= 32; x++) g.roadTier[ROW * SIZE + x] = RoadTier.TwoLane;
+    return g;
+  }
+
+  it('routes between two points on a long junction-free corridor', () => {
+    const net = new RoadNetwork();
+    net.rebuild(corridorGrid());
+
+    // The premise: nodes only at the two dead ends, so both points below are
+    // well beyond the proximity radius from either of them.
+    expect(net.getNodes()).toHaveLength(2);
+    for (const node of net.getNodes()) {
+      expect(Math.abs(node.x - 17)).toBeGreaterThan(8);
+    }
+
+    expect(net.nearestNode(17, ROW)).not.toBeNull();
+    const path = net.findPath({ x: 10, z: ROW }, { x: 24, z: ROW });
+    expect(path).not.toBeNull();
+  });
+
+  it('snaps to the nearer end of the run it stands on', () => {
+    const net = new RoadNetwork();
+    net.rebuild(corridorGrid());
+    const nodeAt = (id: number | null): number => net.getNodes().find((n) => n.id === id)!.x;
+    expect(nodeAt(net.nearestNode(14, ROW))).toBe(2);
+    expect(nodeAt(net.nearestNode(30, ROW))).toBe(32);
+  });
+
+  it('still reports a point genuinely off the network as off it', () => {
+    const net = new RoadNetwork();
+    net.rebuild(corridorGrid());
+    expect(net.nearestNode(17, ROW + 9)).toBeNull();
+    expect(net.findPath({ x: 17, z: ROW + 9 }, { x: 24, z: ROW })).toBeNull();
+  });
+
+  it('does not let the fallback bridge two networks: rail track is not a street', () => {
+    const g = makeGrid(SIZE);
+    for (let x = 2; x <= 32; x++) g.roadTier[ROW * SIZE + x] = RoadTier.RailTrack;
+    const road = new RoadNetwork();
+    road.rebuild(g);
+    expect(road.nearestNode(17, ROW)).toBeNull();
+  });
+});

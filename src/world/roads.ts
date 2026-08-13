@@ -358,6 +358,14 @@ export class RoadNetwork implements RoadNetworkApi {
    */
   private readonly inNetwork: NetworkTiers;
 
+  /**
+   * Tile index -> the id of the edge whose run covers it. Built lazily, only
+   * when a snap actually needs it, and dropped with the graph. Keeps the
+   * mid-run fallback in nearestNode off the hot path: routing that finds a node
+   * by proximity — nearly all of it — never builds this at all.
+   */
+  private tileEdge: Map<number, number> | null = null;
+
   constructor(inNetwork: NetworkTiers = isStreetTier) {
     this.inNetwork = inNetwork;
   }
@@ -372,6 +380,7 @@ export class RoadNetwork implements RoadNetworkApi {
     const built = buildGraph(grid, this.inNetwork);
     this.nodes = built.nodes;
     this.edges = built.edges;
+    this.tileEdge = null;
     this.dirty = false;
   }
 
@@ -389,12 +398,49 @@ export class RoadNetwork implements RoadNetworkApi {
     const built = buildGraph(this.grid, this.inNetwork);
     this.nodes = built.nodes;
     this.edges = built.edges;
+    this.tileEdge = null;
     this.dirty = false;
   }
 
+  /** The edge whose run covers this tile, or null if the tile is off-network. */
+  private edgeCovering(x: number, z: number): GraphEdge | null {
+    const grid = this.grid;
+    if (!grid) return null;
+    if (!this.tileEdge) {
+      const index = new Map<number, number>();
+      for (const edge of this.edges) {
+        for (const tile of edge.tiles) index.set(indexOf(grid.size, tile.x, tile.z), edge.id);
+      }
+      this.tileEdge = index;
+    }
+    const id = this.tileEdge.get(indexOf(grid.size, x, z));
+    return id === undefined ? null : (this.edges[id] ?? null);
+  }
+
+  /**
+   * The node a point routes through: the nearest one by proximity, as always.
+   *
+   * Failing that, a point standing ON a run snaps to the nearer END of that
+   * run. A long junction-free corridor has graph nodes only at its two ends, so
+   * proximity alone calls a stop in the middle of one off-network however
+   * plainly it is standing on the rails — which is exactly the shape of a
+   * dedicated transit corridor, and why a tram or rail line down one carried
+   * nobody. An ordinary street grid is junction-dense and never reaches here.
+   */
   nearestNode(x: number, z: number): number | null {
     this.ensureFresh();
-    return findNearestNode(this.nodes, x, z);
+    const near = findNearestNode(this.nodes, x, z);
+    if (near !== null) return near;
+
+    const edge = this.edgeCovering(x, z);
+    if (!edge) return null;
+    const a = this.nodes[edge.a];
+    const b = this.nodes[edge.b];
+    if (!a) return b?.id ?? null;
+    if (!b) return a.id;
+    const toA = Math.abs(a.x - x) + Math.abs(a.z - z);
+    const toB = Math.abs(b.x - x) + Math.abs(b.z - z);
+    return toA <= toB ? a.id : b.id;
   }
 
   findPath(
@@ -410,7 +456,11 @@ export class RoadNetwork implements RoadNetworkApi {
       edgeCostMultiplier === undefined
         ? (hook ?? undefined)
         : (edge: GraphEdge): number => (hook ? hook(edge) : 1) * edgeCostMultiplier(edge);
-    return runAstar(this.nodes, this.edges, from, to, composed, this.inNetwork);
+    // Snapping goes through this network's own rule, not the plain proximity
+    // search, so a route between two points standing mid-run still finds them.
+    return runAstar(this.nodes, this.edges, from, to, composed, this.inNetwork, (x, z) =>
+      this.nearestNode(x, z),
+    );
   }
 
   addVolume(edgeIds: number[], amount: number): void {
