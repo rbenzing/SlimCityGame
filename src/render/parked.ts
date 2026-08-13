@@ -25,7 +25,13 @@ import {
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { carriagewayHalfWidthMeters, ROAD_Y_OFFSET, SIDEWALK_WIDTH_M } from './roadsmesh';
-import { sizeForKind, variantScaleForKind, VehicleKitPool } from './vehicles';
+import {
+  sizeForKind,
+  variantScaleForKind,
+  VehicleKitPool,
+  VEHICLE_PALETTE_HEX,
+} from './vehicles';
+import { materialUnit } from './palette';
 
 // ---------------------------------------------------------------------------
 // Tunables
@@ -62,26 +68,15 @@ export const BAY_END_MARGIN_TILES = 0.06;
 export const YAW_JITTER_MAX = 0.03;
 
 /**
- * Curated ~10-color saturated palette: red, blue, teal, green, magenta, pink,
- * yellow, orange, white, charcoal — deliberate saturation contrast against
- * the desaturated city palette. Tints the kit body region only (cabin,
- * wheels and light quads keep their baked colors).
+ * A parked car is painted from the same list as a moving one — see
+ * VEHICLE_PALETTE_HEX. Tints the kit body region only (cabin, wheels and light
+ * quads keep their baked colors).
  */
-export const CAR_PALETTE: readonly number[] = [
-  0xd8433a, // red
-  0x2f6fd6, // blue
-  0x1f9e8f, // teal
-  0x3fae4a, // green
-  0xb0399c, // magenta
-  0xe37fb0, // pink
-  0xe8c93a, // yellow
-  0xe08a2e, // orange
-  0xefefe8, // white
-  0x33383d, // charcoal
-];
+export const CAR_PALETTE: readonly number[] = VEHICLE_PALETTE_HEX;
 
 const NEAR_WHITE_STRIPE_COLOR: readonly [number, number, number] = [0.93, 0.93, 0.9];
-const APRON_COLOR: readonly [number, number, number] = [0.6, 0.6, 0.58];
+/** Bay aprons are asphalt, and asphalt is a measured material. */
+const APRON_COLOR: readonly [number, number, number] = materialUnit('brightAsphalt');
 
 /** Apron rides above the terrain overlays but below the road plate (0.15). */
 const APRON_Y_OFFSET = 0.12;

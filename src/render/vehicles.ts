@@ -199,18 +199,32 @@ export const VEHICLE_NIGHT_LIGHT_THRESHOLD = 0.4;
 // desaturated city palette.
 // ---------------------------------------------------------------------------
 
-export const VEHICLE_PALETTE: readonly (readonly [number, number, number])[] = [
-  hexToRGB(0xd9362c), // red
-  hexToRGB(0x2f6fd6), // blue
-  hexToRGB(0x1aa39c), // teal
-  hexToRGB(0x3fae55), // green
-  hexToRGB(0xb03bab), // magenta
-  hexToRGB(0xf06fa0), // pink
-  hexToRGB(0xf2c230), // yellow -- reads as taxi, no livery system needed
-  hexToRGB(0xe8792b), // orange
-  hexToRGB(0xe9edf0), // white
-  hexToRGB(0x2b2e33), // charcoal
+/**
+ * The one list of car colours in the game. Vehicle paint is the deliberate
+ * exception to the calibrated material palette (render/palette.ts): a car is
+ * meant to read as a saturated dot against desaturated concrete, so these sit
+ * far above the albedo ceiling on purpose.
+ *
+ * Packed hex is the source form because most callers want it that way; the
+ * float-triple view below is derived rather than typed out again. There were
+ * three hand-maintained copies of this list before — traffic's, the parked-car
+ * row's, and the one on a house's driveway — and all three had drifted.
+ */
+export const VEHICLE_PALETTE_HEX: readonly number[] = [
+  0xd9362c, // red
+  0x2f6fd6, // blue
+  0x1aa39c, // teal
+  0x3fae55, // green
+  0xb03bab, // magenta
+  0xf06fa0, // pink
+  0xf2c230, // yellow -- reads as taxi, no livery system needed
+  0xe8792b, // orange
+  0xe9edf0, // white
+  0x2b2e33, // charcoal
 ];
+
+export const VEHICLE_PALETTE: readonly (readonly [number, number, number])[] =
+  VEHICLE_PALETTE_HEX.map(hexToRGB);
 
 /** Deterministic 32-bit integer bit-mixer (Thomas Wang style) -- no Math.random/Date.now. */
 function hash32(n: number): number {

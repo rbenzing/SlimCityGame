@@ -46,6 +46,7 @@ import * as THREE from 'three';
 import { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { InstancedSlotPool } from './massing';
+import { materialHex, materialUnit } from './palette';
 
 // ---------------------------------------------------------------------------
 // Registry ("acts ONLY on catalog ids in its landmark registry"). Fixed today
@@ -207,7 +208,7 @@ export function computeWindowBandVertical(entryHeight: number): WindowBandVertic
 // ---------------------------------------------------------------------------
 
 const APRON_Y_OFFSET = 0.05;
-const APRON_COLOR: readonly [number, number, number] = [0.56, 0.55, 0.52];
+const APRON_COLOR: readonly [number, number, number] = materialUnit('cleanConcrete');
 const TAXIWAY_COLOR: readonly [number, number, number] = [0.85, 0.78, 0.25];
 const TAXIWAY_STRIPE_Y_OFFSET = 0.08;
 const TAXIWAY_STRIPE_WIDTH = 0.9; // meters
@@ -638,7 +639,7 @@ const ALL_LANDMARK_PART_KINDS: readonly LandmarkPartKind[] = [
   'jetBridge',
 ];
 
-const STRUCTURE_COLOR = 0xcac5b8;
+const STRUCTURE_COLOR = materialHex('whiteBrick');
 const BEACON_COLOR = 0xff2a2a;
 const APRON_LIGHT_COLOR = 0xfff0c2;
 const WINDOW_BAND_COLOR = 0xffd9a0;

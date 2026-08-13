@@ -15,6 +15,7 @@
  */
 import { BuildingCatalogEntry, ZoneType } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { materialUnit, saturatedUnit } from './palette';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,26 +71,26 @@ export const MAX_WALL_LIGHTNESS = 0.92;
 /** Deterministic per-instance hue jitter ±4% from building id. */
 export const HUE_JITTER_FRACTION = 0.04;
 
-/** Roof plate tinted distinctly from walls (white/grey/tan rotation by id hash). */
+/** Roof plate tinted distinctly from walls (pale/dark/warm rotation by id hash). */
 export const ROOF_PALETTE: readonly RGB[] = [
-  [0.93, 0.91, 0.87], // off-white/bone
-  [0.58, 0.58, 0.61], // grey
-  [0.78, 0.67, 0.52], // tan
+  materialUnit('whiteBrick'), // pale
+  materialUnit('brightBitumen'), // dark
+  materialUnit('clayRoof'), // warm
 ];
 /** Minimum RGB distance a roof color must clear from the wall color ("distinct from walls"). */
 export const MIN_ROOF_WALL_DISTANCE = 0.12;
 
-/** Palette: steel blue / light grey / off-white walls (desaturated rules apply). */
+/** Palette: steel blue / sheet metal / pale brick walls (desaturated rules apply). */
 export const INDUSTRIAL_WALL_PALETTE: readonly RGB[] = [
-  [0.45, 0.52, 0.58], // steel blue
-  [0.68, 0.68, 0.7], // light grey
-  [0.9, 0.89, 0.86], // off-white
+  materialUnit('bluePlaster'), // steel blue
+  materialUnit('metalPlates'), // sheet metal
+  materialUnit('whiteBrick'), // pale
 ];
 /** Grey roof plates — fixed, not rotated. */
-export const INDUSTRIAL_ROOF_COLOR: RGB = [0.42, 0.43, 0.45];
-/** One accent stripe band (red or blue by id hash). */
-export const ACCENT_RED: RGB = [0.72, 0.2, 0.18];
-export const ACCENT_BLUE: RGB = [0.18, 0.34, 0.65];
+export const INDUSTRIAL_ROOF_COLOR: RGB = materialUnit('metalPlates');
+/** One accent stripe band (red or blue by id hash), at the chart's saturation. */
+export const ACCENT_RED: RGB = saturatedUnit('red');
+export const ACCENT_BLUE: RGB = saturatedUnit('blue');
 /** Accent stripe sits at 2/3 height. */
 export const INDUSTRIAL_ACCENT_HEIGHT_FRACTION = 2 / 3;
 

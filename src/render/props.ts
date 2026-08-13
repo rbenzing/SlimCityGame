@@ -34,6 +34,7 @@ import {
   SetbackBox,
 } from './massing';
 import { isRoofedEntry } from './houses';
+import { materialHex } from './palette';
 
 // ---------------------------------------------------------------------------
 // Deterministic hashing (never Math.random/Date.now) — each render/*.ts file
@@ -288,10 +289,13 @@ const SILO_SIZE: PropSize = { w: 2.2, h: 4, d: 2.2 };
 const WARNING_LIGHT_DIAMETER = 0.3;
 
 const VENT_COLOR = 0x53585d;
-const AC_COLOR = 0xced2d5;
+/** Galvanised sheet — the brightest thing on a roof, and still inside the chart. */
+const AC_COLOR = materialHex('whiteBrick');
 const ANTENNA_COLOR = 0x2b2e33;
 const SMOKESTACK_COLOR = 0x4a4d50;
-const SILO_COLOR = 0xd8d4c8;
+/** Poured concrete, not the near-white it used to be. */
+const SILO_COLOR = materialHex('whitePlaster');
+/** A lamp, not a material: emissive, so the albedo ceiling does not apply. */
 const WARNING_LIGHT_COLOR = 0xff3b30;
 
 const INITIAL_PROP_CAPACITY = 32;

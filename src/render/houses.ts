@@ -37,7 +37,13 @@ import {
   InstancedSlotPool,
   massingLifecycleTint,
 } from './massing';
-import { sizeForKind, variantScaleForKind, VehicleKitPool } from './vehicles';
+import {
+  sizeForKind,
+  variantScaleForKind,
+  VehicleKitPool,
+  VEHICLE_PALETTE_HEX,
+} from './vehicles';
+import { materialHex } from './palette';
 
 // Same avalanche hash every render/*.ts keeps a local copy of.
 function hash1(n: number): number {
@@ -73,12 +79,23 @@ const ROOF_PITCH_JITTER = 0.28;
 /** A gable roof never rises more than this share of the base — keeps a 1x6 terrace from spiking. */
 const ROOF_MAX_RISE_METERS = 4.5;
 
-/** Roof-tile palette: terracotta, slate, weathered brown, charcoal, moss. */
-const ROOF_PALETTE: readonly number[] = [0x9c5a3c, 0x6d7178, 0x7a5a44, 0x3f4247, 0x5b6b52];
-/** Garage wall — a light warm render/stucco tone, distinct from the roof. */
-const GARAGE_WALL_COLOR = 0xcfc7b6;
-/** Driveway — plain concrete grey. */
-const DRIVEWAY_COLOR = 0x8b9097;
+/**
+ * Roof-tile palette, spread across the calibrated range rather than bunched at
+ * its dark end: pale, mid, warm, cool, dark. The ceiling is a ceiling, not a
+ * target — five roofs all picked from 47..75 turn a street of houses into one
+ * dark mass, which is a worse picture than the over-bright one it replaced.
+ */
+const ROOF_PALETTE: readonly number[] = [
+  materialHex('whiteBrick'), // pale
+  materialHex('stoneBrick'), // mid
+  materialHex('clayRoof'), // warm
+  materialHex('metalPlates'), // cool
+  materialHex('slateRoof'), // dark
+];
+/** Garage wall — plaster, distinct from the roof. */
+const GARAGE_WALL_COLOR = materialHex('whitePlaster');
+/** Driveway — plain concrete. */
+const DRIVEWAY_COLOR = materialHex('cleanConcrete');
 
 /** A detached home is big enough for a garage + driveway once its lot is 2x3 (area >= 6 tiles); a 2x2 home stays garage-less. */
 export function hasGarage(entry: BuildingCatalogEntry): boolean {
@@ -103,10 +120,8 @@ export const GARAGE_ROAD_SEARCH_TILES = 3;
 // parked.ts, which skips residential). A real vehicle-kit Car model
 // (render/vehicles.ts), deterministic sedan/wagon/hatch variant per home.
 const CAR_LENGTH_METERS = sizeForKind(VehicleKind.Car)[2];
-/** Saturated body colors, picked per building — reads against the muted city. */
-const CAR_PALETTE: readonly number[] = [
-  0xd8433a, 0x2f6fd6, 0x1f9e8f, 0x3fae4a, 0xe8c93a, 0xe08a2e, 0xefefe8, 0x33383d,
-];
+/** A resident's car is painted from the same list as every other car. */
+const CAR_PALETTE: readonly number[] = VEHICLE_PALETTE_HEX;
 
 /** Zones whose buildings get a pitched roof (detached homes + attached rows). */
 export function isRoofedEntry(entry: BuildingCatalogEntry): boolean {

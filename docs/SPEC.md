@@ -1690,3 +1690,77 @@ ridership is demand-driven and an empty sandbox carries nobody — the harness
 that only builds track can prove a line exists but never that it works. It reads
 the transit renderer's own counts rather than reading a screenshot, since a tram
 and a traffic-spawned bus are the same silhouette on the same street.
+
+---
+
+## 28. Building lots and archetypes — paved lots, filled grids, and models that say what they are (user request 2026-08-13)
+
+**Why:** a building today is a shrunken box standing in grass it does not own.
+`MASSING_FOOTPRINT_SHRINK` leaves 15% of every footprint edge empty (55% for a
+detached home) and nothing occupies the gap, so a dense block reads as scattered
+boxes rather than a street of lots. The footprint the sim reserves and the mass
+the player sees disagree, and the space between them is nobody's. Meanwhile a
+warehouse, a factory and an office differ only in height and wall colour: the
+silhouette never says what the building does.
+
+**The lot is the unit, not the building.** This is the hinge, and everything
+below follows from it. A lot pad claims the building's WHOLE tile footprint; the
+body sits on that pad, set back from the street; the remainder is paved yard,
+parking or planting according to what the building is. "Fill the grid space" is
+the lot's job and never the body's — a body that filled its tiles would share a
+wall with its neighbour, which is why the shrink exists and why it stays. What
+changes is that the leftover is now claimed, surfaced and used.
+
+- **Lot pads tile the block.** Adjacent buildings' pads meet edge to edge with
+  no grass seam, so a zoned block reads as continuous developed land. The pad
+  stops short of the road at the verge the parking apron already respects, so
+  the sidewalk, verge and curb-cut geometry keep working unchanged.
+- **Parking is a lot feature, not a frontage strip.** Today one row of bays runs
+  along the road-facing footprint edge. A lot deep enough earns rows and an
+  aisle; a lot too small keeps the single row it has now. A detached home keeps
+  its driveway and garage, which is its version of the same thing.
+- **An archetype is an assembly of parts, not a box with a different colour.**
+  A category and level pick the parts: a warehouse gets a long low slab, roll-up
+  doors and a loading dock; a factory gets a monitor roof, stacks and silos; a
+  green works gets clean massing and a roof array and NO stack, which is the
+  whole point of it; a shop gets an awning and a signage band; a home keeps its
+  pitched roof. Parts are shared, so an archetype is a recipe over one kit.
+- **The palette is calibrated and we are outside it.** The reference caps albedo
+  brightness so lighting has headroom; the brightest material in the chart is
+  snow at 140/142/144. Several of ours are far past it — a silo at 216/212/200,
+  an AC unit at 206/210/213, a garage wall at 207/199/182, an airport structure
+  at 202/197/184 — which is why lit roofs blow out. Colour also lives in five
+  modules that each keep their own palette, and the duplicates have already
+  drifted: two different `CAR_PALETTE`s and two different `APRON_COLOR`s. One
+  module becomes the source of truth, with a test that no material channel
+  exceeds 144 and nothing but snow exceeds 140. Colours are RESCALED into range,
+  never clipped per channel, so hue survives the correction.
+- **The budget binds the merged mesh, not the part.** The reference caps a mesh
+  at 65,536 vertices. A procedural part is tens of triangles and a whole
+  building assembly is in the low hundreds, so no single building can approach
+  it; what can is merged lot geometry across a chunk. Lot pads and their
+  markings are therefore built per chunk with an explicit cap, and the cap is
+  asserted rather than assumed.
+- **Deferred, deliberately.** No authored FBX/OBJ assets or importer (the
+  procedural kit is the decision, per the user 2026-08-13), no per-archetype
+  bespoke textures, no interior geometry, no LOD meshes — the parts are already
+  cheap enough that distance culling is the whole LOD story.
+
+**Owners:** `src/render/palette.ts` (new — the calibrated material palette and
+its rescale), `src/render/lots.ts` (new — lot pads and their surfaces),
+`src/render/parked.ts` (rows and an aisle where the lot allows), `src/render/
+massing.ts` (the archetype recipe over the setback tiers), `src/render/props.ts`
+(the shared part kit), `src/render/facade.ts` + `src/render/houses.ts` +
+`src/render/landmarks.ts` (colour moves out to the palette module).
+
+**Acceptance:** every Active building stands on a paved lot filling its
+footprint; neighbouring lots meet with no grass seam; commercial and industrial
+lots carry parking that scales with lot depth; a warehouse, a factory and a
+green works are distinguishable by silhouette alone at overhead camera distance;
+no material colour exceeds the calibration; and the per-chunk merged lot mesh
+stays under the vertex cap with the cap asserted in a test.
+
+**Verification:** the palette rule is a test over the palette module, not a
+review. Lot tiling is checked by measuring adjacent pads for a gap. Archetype
+silhouettes are a screenshot check — they are a claim about what the eye can
+tell apart, which no unit test can make.
