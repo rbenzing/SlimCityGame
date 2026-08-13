@@ -69,6 +69,16 @@ export function isStreetTier(tier: number): boolean {
 }
 
 /**
+ * True for the dedicated heavy-rail tier — the tiles a TRAIN's network is built
+ * from, exactly as isStreetTier picks the tiles a car's is. The two predicates
+ * are disjoint, which is what keeps the two graphs from ever sharing an edge:
+ * a car cannot railroad and a train cannot drive down a street.
+ */
+export function isRailTier(tier: number): boolean {
+  return tier === RoadTier.RailTrack;
+}
+
+/**
  * Scalar fields (classic diffusing scalar layers). Each is a Uint8Array of
  * MAP_SIZE² tiles, 0..255. Indexed by FieldId into GridState.fields.
  */

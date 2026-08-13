@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FIELD_COUNT, RoadTier, ZoneType } from '../shared/types';
+import { FIELD_COUNT, isRailTier, RoadTier, ZoneType } from '../shared/types';
 import type { GridState } from '../shared/types';
 import { applyRoad, computeMask, removeRoad, RoadNetwork } from './roads';
 
@@ -257,6 +257,68 @@ describe('RoadNetwork — rail exclusion (roads epic R4)', () => {
         expect(g.roadTier[idx(size, t.x, t.z)]).not.toBe(RoadTier.RailTrack);
       }
     }
+  });
+});
+
+describe('RoadNetwork — the rail network off the same implementation', () => {
+  // Rows far enough apart that nearestNode's 8-tile snap cannot reach from one
+  // network to the other — otherwise an "unreachable" assertion only proves
+  // the endpoint snapped to a node of the network it started in.
+  const SIZE = 28;
+  const STREET_Z = 3;
+  const RAIL_Z = 20;
+
+  /** Streets on one row, a rail line on another, crossing nothing. */
+  function mixedGrid(size = SIZE): GridState {
+    const g = makeGrid(size);
+    for (let x = 2; x <= 10; x++) g.roadTier[idx(size, x, STREET_Z)] = RoadTier.TwoLane;
+    for (let x = 2; x <= 10; x++) g.roadTier[idx(size, x, RAIL_Z)] = RoadTier.RailTrack;
+    return g;
+  }
+
+  it('leaves the road graph identical whether or not the city has rail', () => {
+    // The whole risk of parameterizing the graph builder: a city that never
+    // touches rail must route exactly as it did before.
+    const roadsOnly = makeGrid(SIZE);
+    for (let x = 2; x <= 10; x++) roadsOnly.roadTier[idx(SIZE, x, STREET_Z)] = RoadTier.TwoLane;
+
+    const a = new RoadNetwork();
+    a.rebuild(roadsOnly);
+    const b = new RoadNetwork();
+    b.rebuild(mixedGrid());
+
+    expect(b.getNodes()).toEqual(a.getNodes());
+    expect(b.getEdges()).toEqual(a.getEdges());
+  });
+
+  it('builds a graph over the track a car is kept off', () => {
+    const rail = new RoadNetwork(isRailTier);
+    rail.rebuild(mixedGrid());
+    expect(rail.getNodes().length).toBeGreaterThan(0);
+    expect(rail.getEdges().length).toBeGreaterThan(0);
+    for (const e of rail.getEdges()) expect(e.tier).toBe(RoadTier.RailTrack);
+  });
+
+  it('routes a train along the rail and never down a street', () => {
+    const g = mixedGrid();
+    const rail = new RoadNetwork(isRailTier);
+    rail.rebuild(g);
+
+    const along = rail.findPath({ x: 2, z: RAIL_Z }, { x: 10, z: RAIL_Z });
+    expect(along).not.toBeNull();
+    for (const p of along!.points)
+      expect(g.roadTier[idx(SIZE, p.x, p.z)]).toBe(RoadTier.RailTrack);
+
+    // The street is a different network: unreachable from the track.
+    expect(rail.findPath({ x: 2, z: RAIL_Z }, { x: 10, z: STREET_Z })).toBeNull();
+  });
+
+  it('keeps a car off the track the train runs on', () => {
+    const g = mixedGrid();
+    const road = new RoadNetwork();
+    road.rebuild(g);
+    expect(road.findPath({ x: 2, z: STREET_Z }, { x: 10, z: RAIL_Z })).toBeNull();
+    for (const e of road.getEdges()) expect(e.tier).not.toBe(RoadTier.RailTrack);
   });
 });
 

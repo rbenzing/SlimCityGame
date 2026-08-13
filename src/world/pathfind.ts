@@ -7,7 +7,7 @@
  */
 
 import roadsData from '../data/roads.json';
-import { RoadTier } from '../shared/types';
+import { isStreetTier, RoadTier } from '../shared/types';
 import type { GraphEdge, GraphNode, PathResult, RoadSpec, TilePoint } from '../shared/types';
 
 const ROAD_SPECS: readonly RoadSpec[] = (roadsData as { specs: RoadSpec[] }).specs;
@@ -57,11 +57,21 @@ function oneWayForwardIsAtoB(edge: GraphEdge): boolean {
  * Two-way tiers (every tier except RoadTier.OneWay) are always traversable
  * in both directions — zero behavior change for existing tiers. A one-way
  * edge is traversable only in its flow direction (see `oneWayForwardIsAtoB`).
+ *
+ * `inNetwork` is the membership test of the network being traversed, and
+ * defaults to the drivable-street one, so a caller that does not pass it
+ * behaves exactly as before. It generalises what used to be a hardcoded "rail
+ * is never drivable" veto: a graph is built from one network's tiles, so an
+ * edge of any OTHER network's tier has no business being crossed. Belt and
+ * suspenders — buildGraph already keeps the two apart — but it is what stops a
+ * train routing down a street as surely as it stops a car railroading.
  */
-export function edgeTraversable(edge: GraphEdge, fromNodeId: number): boolean {
-  // Rail is never drivable (buildGraph already keeps rail out of the graph;
-  // this is a belt-and-suspenders backstop so no stray rail edge is traversed).
-  if (edge.tier === RoadTier.RailTrack) return false;
+export function edgeTraversable(
+  edge: GraphEdge,
+  fromNodeId: number,
+  inNetwork: (tier: RoadTier) => boolean = isStreetTier,
+): boolean {
+  if (!inNetwork(edge.tier)) return false;
   if (edge.tier !== RoadTier.OneWay) return true;
   return oneWayForwardIsAtoB(edge) ? fromNodeId === edge.a : fromNodeId === edge.b;
 }
@@ -158,6 +168,12 @@ export function findPath(
    * (every existing caller and test routes identically).
    */
   edgeCostMultiplier?: (edge: GraphEdge) => number,
+  /**
+   * Membership test of the network being routed over. Defaults to the
+   * drivable-street one, so every existing caller routes identically; the rail
+   * network passes its own so a train can cross the track edges a car cannot.
+   */
+  inNetwork?: (tier: RoadTier) => boolean,
 ): PathResult | null {
   const startId = nearestNode(nodes, from.x, from.z);
   const endId = nearestNode(nodes, to.x, to.z);
@@ -203,7 +219,7 @@ export function findPath(
     for (const edgeId of current.edges) {
       const edge = edgeById.get(edgeId);
       if (!edge) continue;
-      if (!edgeTraversable(edge, currentId)) continue; // one-way edge, wrong direction
+      if (!edgeTraversable(edge, currentId, inNetwork)) continue; // wrong network, or one-way against the flow
       const otherId: number = edge.a === currentId ? edge.b : edge.a;
       if (otherId === currentId || closed.has(otherId)) continue;
 

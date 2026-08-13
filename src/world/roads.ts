@@ -75,17 +75,24 @@ export function computeMask(g: GridState, x: number, z: number): number {
 }
 
 /**
- * Neighbor bitmask counting only DRIVABLE-street neighbors — excludes
- * RailTrack, so the vehicle graph (buildGraph) never treats rail as connected
- * even though `computeMask` still renders rail abutting a road (level-crossing
- * look). Identical to `computeMask` on any rail-free grid.
+ * Membership test for a transport network: which tiers its graph is built from.
+ * `isStreetTier` gives the vehicle network, `isRailTier` the train one.
  */
-function computeDrivableMask(g: GridState, x: number, z: number): number {
+export type NetworkTiers = (tier: RoadTier) => boolean;
+
+/**
+ * Neighbor bitmask counting only neighbours that belong to the SAME network —
+ * so the vehicle graph never treats rail as connected, and the rail graph never
+ * treats a street as connected, even though `computeMask` still renders the two
+ * abutting (the level-crossing look). Identical to `computeMask` on a grid of
+ * one network's tiles alone.
+ */
+function computeNetworkMask(g: GridState, x: number, z: number, inNetwork: NetworkTiers): number {
   let mask = 0;
-  if (isStreetTier(tierAt(g, x, z - 1))) mask |= 1;
-  if (isStreetTier(tierAt(g, x + 1, z))) mask |= 2;
-  if (isStreetTier(tierAt(g, x, z + 1))) mask |= 4;
-  if (isStreetTier(tierAt(g, x - 1, z))) mask |= 8;
+  if (inNetwork(tierAt(g, x, z - 1))) mask |= 1;
+  if (inNetwork(tierAt(g, x + 1, z))) mask |= 2;
+  if (inNetwork(tierAt(g, x, z + 1))) mask |= 4;
+  if (inNetwork(tierAt(g, x - 1, z))) mask |= 8;
   return mask;
 }
 
@@ -235,7 +242,7 @@ interface BuiltGraph {
   edges: GraphEdge[];
 }
 
-function buildGraph(g: GridState): BuiltGraph {
+function buildGraph(g: GridState, inNetwork: NetworkTiers): BuiltGraph {
   const size = g.size;
   const nodeIdOf = new Map<number, number>(); // tile idx -> node id
   const nodeTileIdx: number[] = [];
@@ -244,10 +251,12 @@ function buildGraph(g: GridState): BuiltGraph {
     for (let x = 0; x < size; x++) {
       const idx = indexOf(size, x, z);
       const tier = tierAtIdx(g, idx);
-      // Rail is on the grid but is not a drivable street — keep it out of the
-      // vehicle graph entirely (no cars/service vehicles ever route onto it).
-      if (!isStreetTier(tier)) continue;
-      const mask = computeDrivableMask(g, x, z);
+      // A graph is built from ONE network's tiles: the drivable streets for the
+      // vehicle network, the track for the train one. Everything else on the
+      // grid is invisible to it, which is what keeps a car off the rails and a
+      // train off the road.
+      if (!inNetwork(tier)) continue;
+      const mask = computeNetworkMask(g, x, z, inNetwork);
       if (isNodeTile(g, x, z, tier, mask)) {
         nodeIdOf.set(idx, nodeTileIdx.length);
         nodeTileIdx.push(idx);
@@ -270,7 +279,7 @@ function buildGraph(g: GridState): BuiltGraph {
     const startId = nodeIdOf.get(startIdx)!;
     const sx = startIdx % size;
     const sz = Math.floor(startIdx / size);
-    const startMask = computeDrivableMask(g, sx, sz);
+    const startMask = computeNetworkMask(g, sx, sz, inNetwork);
 
     for (const d of DIRS) {
       if ((startMask & d.bit) === 0) continue;
@@ -286,7 +295,7 @@ function buildGraph(g: GridState): BuiltGraph {
 
       while (!nodeIdOf.has(curIdx)) {
         runTiles.push({ x: curX, z: curZ });
-        const curMask = computeDrivableMask(g, curX, curZ);
+        const curMask = computeNetworkMask(g, curX, curZ, inNetwork);
         let onward: Dir | null = null;
         for (const d2 of DIRS) {
           if ((curMask & d2.bit) !== 0 && d2.bit !== cameFromBit) {
@@ -341,6 +350,18 @@ export class RoadNetwork implements RoadNetworkApi {
    */
   private edgeCostHook: ((edge: GraphEdge) => number) | null = null;
 
+  /**
+   * Which tiers this network is built from. Defaults to the drivable streets,
+   * so an unparameterized instance is the vehicle network it has always been;
+   * `isRailTier` gives the train network off the same implementation. The two
+   * predicates are disjoint, so the graphs never share an edge.
+   */
+  private readonly inNetwork: NetworkTiers;
+
+  constructor(inNetwork: NetworkTiers = isStreetTier) {
+    this.inNetwork = inNetwork;
+  }
+
   /** Injects the per-edge cost multiplier; pass null to clear it. */
   setEdgeCostHook(hook: ((edge: GraphEdge) => number) | null): void {
     this.edgeCostHook = hook;
@@ -348,7 +369,7 @@ export class RoadNetwork implements RoadNetworkApi {
 
   rebuild(grid: GridState): void {
     this.grid = grid;
-    const built = buildGraph(grid);
+    const built = buildGraph(grid, this.inNetwork);
     this.nodes = built.nodes;
     this.edges = built.edges;
     this.dirty = false;
@@ -365,7 +386,7 @@ export class RoadNetwork implements RoadNetworkApi {
 
   private ensureFresh(): void {
     if (!this.dirty || !this.grid) return;
-    const built = buildGraph(this.grid);
+    const built = buildGraph(this.grid, this.inNetwork);
     this.nodes = built.nodes;
     this.edges = built.edges;
     this.dirty = false;
@@ -389,7 +410,7 @@ export class RoadNetwork implements RoadNetworkApi {
       edgeCostMultiplier === undefined
         ? (hook ?? undefined)
         : (edge: GraphEdge): number => (hook ? hook(edge) : 1) * edgeCostMultiplier(edge);
-    return runAstar(this.nodes, this.edges, from, to, composed);
+    return runAstar(this.nodes, this.edges, from, to, composed, this.inNetwork);
   }
 
   addVolume(edgeIds: number[], amount: number): void {
