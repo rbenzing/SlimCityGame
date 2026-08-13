@@ -9,9 +9,9 @@ Two identities, one build:
 
 _Design rationale and scope guards (deferred / rejected directions) live in [DESIGN.md](DESIGN.md). The living visual/systems spec is [SPEC.md](SPEC.md); the player-facing how-to-play is [USERGUIDE.md](USERGUIDE.md)._
 
-> **Delivery status (2026-08-10):** the M0–M7 core spine plus bus transit, service
+> **Delivery status (2026-08-11):** the M0–M7 core spine plus bus transit, service
 > dispatch, districts & policies, stats charts + photo mode, and eight playtest-feedback
-> rounds are shipped and gate-green (2,489 tests / 99 files). Delivered on top of the
+> rounds are shipped and gate-green (2,557 tests / 100 files). Delivered on top of the
 > original milestones: the city-builder UI shell + night cycle, full building/street/vehicle/tree
 > visual language, full terraforming + animated water + sky, the airport landmark,
 > code-split bundle, plus the playtest refinements captured in SPEC.md (utility
@@ -22,8 +22,10 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > **landfill/garbage sanitation epic** — paintable landfills, an incinerator facility,
 > cosmetic garbage trucks, and a trash lens, per SPEC §21; the city soundscape + UI
 > audio + user-supplied music player, per SPEC §23; the advisor panel that ranks
-> what is wrong with the city right now, per SPEC §24; and bridges + elevated roads,
-> which finally let a road cross water, per SPEC §25). Versioning + deploy are
+> what is wrong with the city right now, per SPEC §24; bridges + elevated roads,
+> which finally let a road cross water, per SPEC §25; and road signage — junction
+> signals and boards, motorway exit boards and gantries, and placement-time flow
+> arrows, per SPEC §6.7). Versioning + deploy are
 > automated (release-please + Conventional Commits → GitHub Pages; see the repo README).
 > Deferred/optional next: AI raster map packs, facade-atlas stage 2, screen-space
 > AO/reflections, and the [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper

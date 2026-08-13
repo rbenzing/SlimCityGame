@@ -1508,3 +1508,85 @@ pier lands — so a picture that looks wrong can be checked before it is believe
 Both need the dev-only `__slimcity` hook, which takes an optional camera
 yaw/pitch for the low angles these faults show at.
 
+
+---
+
+## 26. Rail transit — stations, trains, and lines on the track already laid (user request 2026-08-11)
+
+**Why:** the rail tier ships and does nothing. A player can lay track, watch it
+bridge a river on a steel truss, and never see a train — `buildGraph` filters on
+`isStreetTier`, so rail is deliberately absent from the vehicle graph, and
+transit is bus-only. Rail is the one built feature in the game with no behaviour
+behind it. This epic gives it the behaviour, and it is mostly composition: the
+transit module was written network-agnostic and has been waiting for a second
+network.
+
+- **The hinge is that transit never knew what a road was.** `routeLine` and
+  `estimateRidership` take an injected `RoadNetworkApi` and call `findPath` /
+  `nearestNode` on it; they contain nothing road-specific. `RoadNetwork` builds
+  its graph by filtering tiles through `isStreetTier`. A rail network is the
+  same class under a different tier predicate, and rail lines then route through
+  the existing code unchanged. No second pathfinder, no second ridership model —
+  if this epic grows one, something has been designed wrong.
+- **Two networks, one graph implementation.** The tier predicate becomes a
+  constructor parameter (`isStreetTier` for the road network, rail-only for the
+  rail one). `computeDrivableMask` generalises the same way. The road network's
+  behaviour must not change: on a rail-free grid the two are identical today,
+  and the existing traffic/dispatch/bus tests are the guard.
+- **A line knows its mode.** `TransitLine` gains `mode: 'bus' | 'rail'`,
+  defaulting to bus so every existing line and command keeps working. The mode
+  picks which network routes it and which vehicle draws it; everything else
+  about a line — stops, colour, id — is shared.
+- **A station is a ploppable that wants track, not road.** Bigger than a bus
+  stop, at a later milestone, and gated on adjacency to rail rather than to a
+  street — the first ploppable whose access rule is not "next to a road", so the
+  placement check takes the tier it requires instead of assuming a street.
+  Stations are where rail meets the city: a station with no road near it is
+  reachable by train and by nobody else, and that is the player's problem to
+  solve, not the game's to prevent.
+- **Ridership is the bus model with rail's numbers.** Same statistical estimate —
+  population and jobs near each stop, times a per-demand rate, times a capped
+  route-length bonus — with a wider catchment and a higher rate, because people
+  walk further for a train and a train carries more of them. No per-agent
+  simulation here either.
+- **Relief lands on the roads, not on the rails.** A bus relieves the road edges
+  it drives over, which is exactly right for a bus. A train drives over no road
+  edge at all, so the same rule would relieve nothing. Rail ridership instead
+  relieves road volume around its STATIONS — the trips it took off the street
+  are the ones that would have started or ended there. This is the one formula
+  in the epic that is genuinely new rather than reused, and it is the one to
+  check against the traffic lens.
+- **A train is cosmetic, like a bus.** `VehicleKind` gains a rail entry and
+  trains ride the existing vehicle buffer along their line's route. A train is
+  several cars long rather than one box — that length is the whole silhouette,
+  the way a box girder is a motorway bridge's — and it rides the deck sampler on
+  an elevated stretch like everything else that follows a road.
+- **Lines must survive a save.** `load()` currently replaces the transit system
+  outright, so bus lines are lost on load today — a pre-existing gap this epic
+  inherits rather than causes, and one that is worse for rail, since a rail line
+  represents far more money than a bus route. Lines join the save payload's meta
+  alongside the building registry. Bus lines get this for free.
+- **Deferred, deliberately.** No timetables, no per-train capacity or bunching,
+  no signal-block simulation, no freight (that belongs with the deeper-industry
+  epic, not here), and no level crossings that stop traffic — rail and road
+  cross visually today and continue to.
+
+**Owners:** `src/world/roads.ts` (tier predicate on the graph builder + a rail
+network instance), `src/sim/transit.ts` (mode-aware routing, rail ridership
+rates, station-radius relief), `src/shared/types.ts` (`TransitLine.mode`,
+`VehicleKind` rail entry, save meta gains lines), `src/sim/worker.entry.ts`
+(second network, station placement rule, save/load of lines), `src/data/catalog.json`
+(the station), `src/ui/categories.ts` + `TransitLinesPanel.tsx` (a rail line tool
+beside the bus one), `src/render/transit.ts` + `vehicles.ts` (trains).
+
+**Acceptance:** a rail line drawn between two stations routes over track and not
+over roads; trains run it; ridership responds to population near the stations and
+shows in the transit panel; road volume near a busy station measurably drops on
+the traffic lens; a bus line still routes over roads exactly as before; lines
+survive save and load; and a station refuses to sit where no track reaches it.
+
+**Verification:** the road network's own behaviour is the risk — every traffic,
+dispatch and bus test must stay green while the graph builder becomes
+parameterised, and a rail-free city must produce a byte-identical road graph.
+`tools/bridge-shots.mjs` already frames a rail truss; a train on it is the visual
+check that the deck sampler carries rail vehicles too.
