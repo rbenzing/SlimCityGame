@@ -566,3 +566,34 @@ describe('lampGlowFactor (pure)', () => {
     expect(lampGlowFactor(MIDDAY - 4)).toBe(lampGlowFactor(MIDDAY));
   });
 });
+
+describe('lamps keep out of a lot entrance', () => {
+  const tileKeyOf = (x: number, z: number): number => x * 100_000 + z;
+  const row = (z: number, x0: number, x1: number): LampRoadTile[] =>
+    Array.from({ length: x1 - x0 + 1 }, (_, i) => ({ x: x0 + i, z, tier: RoadTier.TwoLane }));
+
+  // A lamp planted in a car park entrance stands in the middle of the way in.
+  it('skips a tile a driveway crosses', () => {
+    const tiles = row(8, 0, 20);
+    const all = computeLampPlacements(tiles);
+    expect(all.length).toBeGreaterThan(0);
+
+    const victim = all[0]!;
+    const blocked = computeLampPlacements(tiles, new Set([tileKeyOf(victim.x, victim.z)]));
+    expect(blocked.some((p) => p.x === victim.x && p.z === victim.z)).toBe(false);
+    expect(blocked.length).toBe(all.length - 1);
+  });
+
+  it('leaves every other lamp exactly where it was', () => {
+    const tiles = row(8, 0, 20);
+    const all = computeLampPlacements(tiles);
+    const victim = all[0]!;
+    const blocked = computeLampPlacements(tiles, new Set([tileKeyOf(victim.x, victim.z)]));
+    expect(blocked).toEqual(all.filter((p) => !(p.x === victim.x && p.z === victim.z)));
+  });
+
+  it('changes nothing when no driveway is in the way', () => {
+    const tiles = row(8, 0, 20);
+    expect(computeLampPlacements(tiles, new Set())).toEqual(computeLampPlacements(tiles));
+  });
+});

@@ -16,6 +16,7 @@ import {
   frontageInsetTiles,
   hasOwnLotParking,
   IND_NIGHT_OCCUPANCY,
+  kerbTileAllowsParking,
   lotOccupancy,
   ParkedCarRenderer,
   sidewalkDepthMeters,
@@ -1257,5 +1258,63 @@ describe('kerbside placement', () => {
 
   it('places nothing for a count of zero', () => {
     expect(computeRoadsideStallPlacements(4, 6, 2, 2, edge, RoadTier.TwoLane, 0)).toEqual([]);
+  });
+});
+
+describe('a kerbside car never leaves the tarmac', () => {
+  const edge: RoadFacingEdge = { side: 'S', edgeTiles: 4, roadTileX: 4, roadTileZ: 8 };
+  const allTiers = (): RoadTier => RoadTier.TwoLane;
+
+  it('refuses a junction tile, which has no kerb at all', () => {
+    // Road on both axes through (4,8): a turn, a T or a crossroads.
+    const roadAt = (x: number, z: number): boolean => z === 8 || x === 4;
+    expect(kerbTileAllowsParking(4, 8, roadAt, allTiers)).toBe(false);
+  });
+
+  it('accepts a straight run', () => {
+    const roadAt = (_x: number, z: number): boolean => z === 8;
+    expect(kerbTileAllowsParking(4, 8, roadAt, allTiers)).toBe(true);
+  });
+
+  it('refuses a tile with no road on it — that is the grass', () => {
+    expect(kerbTileAllowsParking(4, 8, () => false, allTiers)).toBe(false);
+  });
+
+  it('refuses a street whose tier forbids parking', () => {
+    const roadAt = (_x: number, z: number): boolean => z === 8;
+    expect(kerbTileAllowsParking(4, 8, roadAt, () => RoadTier.Highway)).toBe(false);
+  });
+
+  // The defect: a frontage is a straight line of tiles, but the street it faces
+  // can curve away. A row measured only from the building marched off the bend
+  // and parked on the verge.
+  it('drops the cars whose stretch of street has curved away', () => {
+    // Road under only the first two tiles of a four-tile frontage.
+    const roadAt = (x: number, z: number): boolean => z === 8 && x >= 4 && x < 6;
+    const all = computeRoadsideStallPlacements(4, 6, 4, 2, edge, RoadTier.TwoLane, 8);
+    const vetted = computeRoadsideStallPlacements(4, 6, 4, 2, edge, RoadTier.TwoLane, 8, (tx, tz) =>
+      kerbTileAllowsParking(tx, tz, roadAt, allTiers),
+    );
+
+    expect(all.length).toBe(8);
+    expect(vetted.length).toBeGreaterThan(0);
+    expect(vetted.length).toBeLessThan(all.length);
+    for (const p of vetted) {
+      const tileX = Math.floor(p.worldX / TILE_METERS);
+      expect(roadAt(tileX, Math.floor(p.worldZ / TILE_METERS))).toBe(true);
+    }
+  });
+
+  it('leaves the corner of a bend empty while still parking its straight arm', () => {
+    // An L meeting at (4,8): only that tile has road on both axes.
+    const roadAt = (x: number, z: number): boolean => z === 8 || x === 4;
+    const vetted = computeRoadsideStallPlacements(4, 6, 4, 2, edge, RoadTier.TwoLane, 8, (tx, tz) =>
+      kerbTileAllowsParking(tx, tz, roadAt, allTiers),
+    );
+
+    expect(vetted.length).toBeGreaterThan(0);
+    for (const p of vetted) {
+      expect(Math.floor(p.worldX / TILE_METERS), 'a car stands in the junction').not.toBe(4);
+    }
   });
 });

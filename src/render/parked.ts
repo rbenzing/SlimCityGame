@@ -92,6 +92,25 @@ export function tierAllowsRoadsideParking(tier: RoadTier): boolean {
   return ROAD_SPECS.find((s) => s.tier === tier)?.roadsideParking === true;
 }
 
+/**
+ * The road tile a building's driveway crosses — the mouth of its car park or
+ * the end of its drive — or null when it has neither.
+ *
+ * Anything that stands on the kerb has to keep off this tile: it is the one
+ * stretch of frontage cars drive over, so a lamp post planted in it sits in the
+ * middle of the entrance.
+ */
+export function curbCutTileFor(
+  entry: BuildingCatalogEntry,
+  x: number,
+  z: number,
+  roadAt: (tileX: number, tileZ: number) => boolean,
+): { x: number; z: number } | null {
+  if (!hasOwnLotParking(entry, x, z, roadAt)) return null;
+  const edge = findRoadFacingEdge(x, z, entry.footprint.w, entry.footprint.d, roadAt);
+  return edge ? { x: edge.roadTileX, z: edge.roadTileZ } : null;
+}
+
 /** The categories whose occupants own cars at all. */
 const PARKING_CATEGORIES: ReadonlySet<string> = new Set(['res', 'com', 'ind']);
 
@@ -506,9 +525,38 @@ export function computeRoadsideStallCount(edgeTiles: number): number {
 }
 
 /**
+ * Whether a car may stand at the kerb of THIS tile: there has to be a road
+ * here, its tier has to allow parking, and it must not be a tile the road
+ * crosses on both axes.
+ *
+ * A turn, a T or a crossroads has no kerb — the lateral offset that clears one
+ * carriageway lands inside the other — which is the same rule that keeps lamps
+ * and signs out of junctions. Checking the tile a car would actually stand in
+ * is also what keeps it off the grass: a frontage is a straight line of tiles,
+ * but the street it faces can curve away from it, and a row measured only from
+ * the building would march right off the tarmac.
+ */
+export function kerbTileAllowsParking(
+  tileX: number,
+  tileZ: number,
+  roadAt: (x: number, z: number) => boolean,
+  roadTierAt: (x: number, z: number) => RoadTier,
+): boolean {
+  if (!roadAt(tileX, tileZ)) return false;
+  if (!tierAllowsRoadsideParking(roadTierAt(tileX, tileZ))) return false;
+  const hasEW = roadAt(tileX - 1, tileZ) || roadAt(tileX + 1, tileZ);
+  const hasNS = roadAt(tileX, tileZ - 1) || roadAt(tileX, tileZ + 1);
+  return !(hasEW && hasNS);
+}
+
+/**
  * Deterministic kerbside car centres along the frontage, the row centred on it.
  * Cars sit PARALLEL to the street — yaw a quarter turn off the nose-in bay
  * yaw — because that is what fits between a moving lane and a kerb.
+ *
+ * `tileAllows` vets the tile each car would actually stand in and drops the
+ * ones that fail, so a row never runs off a bend onto the verge or parks in a
+ * junction. Omitted, every candidate is kept (pure-geometry callers/tests).
  */
 export function computeRoadsideStallPlacements(
   x: number,
@@ -518,6 +566,7 @@ export function computeRoadsideStallPlacements(
   edge: RoadFacingEdge,
   tier: RoadTier,
   count: number,
+  tileAllows?: (tileX: number, tileZ: number) => boolean,
 ): StallPlacement[] {
   if (count <= 0) return [];
 
@@ -531,6 +580,11 @@ export function computeRoadsideStallPlacements(
   for (let i = 0; i < count; i++) {
     const along = start + (i + 0.5) * pitchM;
     const { x: worldX, z: worldZ } = frameToWorld(frame, along, depth);
+    if (tileAllows) {
+      const tileX = Math.floor(worldX / TILE_METERS);
+      const tileZ = Math.floor(worldZ / TILE_METERS);
+      if (!tileAllows(tileX, tileZ)) continue;
+    }
     placements.push({ worldX, worldZ, baseYaw, along });
   }
   return placements;
@@ -831,7 +885,9 @@ export class ParkedCarRenderer {
       edge,
       tier,
       count,
+      (tileX, tileZ) => kerbTileAllowsParking(tileX, tileZ, this.roadAt, this.roadTierAt),
     );
+    if (placements.length === 0) return;
 
     const stalls: Stall[] = [];
     const touchedPools = new Set<VehicleKitPool>();

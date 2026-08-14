@@ -212,7 +212,15 @@ function tileKey(x: number, z: number): number {
  * selected tiles alternate sides. Pure function of the input list: no rng,
  * no dependency on tile ordering.
  */
-export function computeLampPlacements(roadTiles: readonly LampRoadTile[]): LampPlacement[] {
+export function computeLampPlacements(
+  roadTiles: readonly LampRoadTile[],
+  /**
+   * Tiles a lot's driveway crosses, as tileKey values. A lamp here would stand
+   * in the mouth of a car park entrance, which is the one piece of kerb that
+   * has to stay clear — cars drive over it. Omitted, nothing is blocked.
+   */
+  drivewayTiles?: ReadonlySet<number>,
+): LampPlacement[] {
   const tileSet = new Set<number>();
   for (const tile of roadTiles) tileSet.add(tileKey(tile.x, tile.z));
 
@@ -220,6 +228,7 @@ export function computeLampPlacements(roadTiles: readonly LampRoadTile[]): LampP
   for (const tile of roadTiles) {
     // Gravel/dirt tiles carry no lamp but stay in tileSet for neighbor orientation.
     if (!tierGetsLamp(tile.tier)) continue;
+    if (drivewayTiles?.has(tileKey(tile.x, tile.z))) continue;
 
     const sum = tile.x + tile.z;
     const mod = ((sum % LAMP_SPACING_TILES) + LAMP_SPACING_TILES) % LAMP_SPACING_TILES;
@@ -521,9 +530,9 @@ export class LampRenderer {
   }
 
   /** Full rebuild from the current road tile set (roads change relatively rarely). */
-  rebuild(roadTiles: readonly LampRoadTile[]): void {
+  rebuild(roadTiles: readonly LampRoadTile[], drivewayTiles?: ReadonlySet<number>): void {
     this.disposeMeshes();
-    this.placements = computeLampPlacements(roadTiles);
+    this.placements = computeLampPlacements(roadTiles, drivewayTiles);
 
     const count = this.placements.length;
     if (count === 0) return;

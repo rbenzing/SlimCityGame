@@ -48,7 +48,7 @@ import { BuildingInstancer } from './render/buildings';
 import { MassingRenderer } from './render/massing';
 import { RoofPropRenderer } from './render/props';
 import { HouseRoofRenderer } from './render/houses';
-import { ParkedCarRenderer } from './render/parked';
+import { curbCutTileFor, ParkedCarRenderer } from './render/parked';
 import { LotRenderer } from './render/lots';
 import { BuildingKitRenderer } from './render/buildingkit';
 import { LandmarkRenderer } from './render/landmarks';
@@ -94,6 +94,13 @@ import { ClientGridMirror } from './app/clientgrid';
 import { readAppSession, type AppSession, type GameSettings } from './app/session';
 import { audioRuntime } from './app/audioruntime';
 import { ambientMix } from './app/audio';
+
+/** Cheap set equality, so an unchanged driveway set costs no lamp rebuild. */
+function sameTileKeySet(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
+  if (a.size !== b.size) return false;
+  for (const key of a) if (!b.has(key)) return false;
+  return true;
+}
 
 const MAP_NAME = 'Riverton';
 const OVERLAY_REFRESH_MS = 500; // 2 Hz while an infoview lens is active
@@ -480,6 +487,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const silentSeqs = new Set<number>();
   /** Client-side mirror of building instances, for select-tool info panels. */
   const knownBuildings = new Map<number, BuildingInstance>();
+  /**
+   * Road tiles a lot's driveway crosses, keyed the way lamps.ts keys tiles.
+   * Kerb furniture keeps off these — a lamp in a car park entrance stands in
+   * the middle of the way in. Rebuilt whenever the building set changes, which
+   * is also when the lamps have to be rebuilt to notice.
+   */
+  let drivewayTiles: ReadonlySet<number> = new Set();
+  let latestRoadTiles: ReturnType<typeof clientGrid.roadTiles> = [];
   /** Counts down to the next advisor re-rank (see ADVISOR_REFRESH_SNAPSHOTS). */
   let snapshotsSinceAdvice = 0;
   /** Latest flattened transit stop tile-points, mirrored so pedestrian
@@ -834,7 +849,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         roadsMesh.invalidateHeights(raised.map((t) => ({ x: t.x, z: t.z, w: 1, h: 1 })));
       zoneGrid.rebuild(clientGrid);
       const roadTiles = clientGrid.roadTiles();
-      lamps.rebuild(roadTiles);
+      latestRoadTiles = roadTiles;
+      lamps.rebuild(roadTiles, drivewayTiles);
       roadFurniture.rebuild(roadTiles);
       bridges.rebuild(clientGrid.deckTiles());
       // Ground cover follows the road only where the road touches the ground —
@@ -858,6 +874,20 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       for (const inst of snap.buildings.added) knownBuildings.set(inst.id, inst);
       for (const inst of snap.buildings.updated) knownBuildings.set(inst.id, inst);
       for (const id of snap.buildings.removed) knownBuildings.delete(id);
+
+      // A lot's driveway is decided by its building, so the tiles kerb furniture
+      // must avoid change with the building set, not with the roads.
+      const nextDriveways = new Set<number>();
+      for (const inst of knownBuildings.values()) {
+        const entry = catalogById.get(inst.catalogId);
+        if (!entry) continue;
+        const cut = curbCutTileFor(entry, inst.x, inst.z, roadAt);
+        if (cut) nextDriveways.add(cut.x * 100_000 + cut.z);
+      }
+      if (!sameTileKeySet(nextDriveways, drivewayTiles)) {
+        drivewayTiles = nextDriveways;
+        if (latestRoadTiles.length > 0) lamps.rebuild(latestRoadTiles, drivewayTiles);
+      }
 
       const selected = state.selectedBuilding;
       if (selected) {
