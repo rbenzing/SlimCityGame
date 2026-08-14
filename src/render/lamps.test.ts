@@ -7,6 +7,7 @@ import {
   LampRenderer,
   POOL_VERTICES_PER_LAMP,
   tierGetsLamp,
+  type LampRoadTile,
 } from './lamps';
 import { RoadTier, TilePoint } from '../shared/types';
 import { LAMP_SPACING_TILES, TILE_METERS } from '../shared/constants';

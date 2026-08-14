@@ -157,9 +157,15 @@ const WALK_LATERAL_OFFSET_METERS = TILE_METERS * 0.5;
 /** One full loop around the stroll path, ms -- a slow, ambient pace (a gentle jog/dog-walk, not pacing). */
 const WALK_PERIOD_MS = 16_000;
 const WALK_ANGULAR_RATE = (Math.PI * 2) / WALK_PERIOD_MS;
-/** Stroll-loop radius range (world meters): a person wanders a small, believable circuit near home rather than sliding back and forth in a line. */
-const WALK_LOOP_RADIUS_MIN_METERS = TILE_METERS * 0.22;
-const WALK_LOOP_RADIUS_MAX_METERS = TILE_METERS * 0.42;
+/**
+ * How far along the pavement a walker ranges from their anchor, in world
+ * meters. A stretch of a couple of tiles reads as walking somewhere; the old
+ * sub-tile radius read as pacing on the spot.
+ */
+const WALK_PATH_HALF_LENGTH_MIN_METERS = TILE_METERS * 0.9;
+const WALK_PATH_HALF_LENGTH_MAX_METERS = TILE_METERS * 1.8;
+/** How far across the pavement the turn at each end swings — kept narrow. */
+const WALK_PATH_HALF_WIDTH_METERS = TILE_METERS * 0.11;
 /** How many tiles out from a building to look for a road, so the stroll loop can anchor on the frontage sidewalk. */
 export const WALK_ANCHOR_SEARCH_TILES = 3;
 
@@ -180,35 +186,48 @@ export interface WalkSample {
 }
 
 /**
- * Pure function of (buildingId, tMs): a slow deterministic STROLL LOOP offset
- * (world meters, relative to the walker's anchor) — the person traces a small
- * closed ellipse near home (a dog-walk / jog circuit) rather than sliding
- * back and forth along a line. Heading follows the loop tangent, so they
- * always face the way they're moving and turn smoothly instead of snapping
- * 180° at each end (the old ping-pong's "weird back-and-forth" read). Per-id
- * hashes vary radius, ellipse aspect, direction (CW/CCW), and start phase so a
- * street of walkers isn't synchronized. Stateless — position is fully
- * reconstructible from tMs alone.
+ * Pure function of (buildingId, tMs, alongX): a slow deterministic offset in
+ * world meters, relative to the walker's anchor on the frontage sidewalk.
+ *
+ * The path is an ellipse stretched hard ALONG the pavement and kept narrow
+ * across it, so a person walks a good stretch of street and turns around at
+ * each end. Two things this is deliberately not: it is not a circuit around
+ * the building, which from above reads as pacing rings around the house; and
+ * it is not a straight ping-pong, which snapped 180° at each end. The ellipse
+ * keeps the turn smooth because heading follows its tangent, and the
+ * eccentricity is what makes it read as a pavement rather than a loop.
+ *
+ * Per-id hashes vary length, direction and start phase so a street of walkers
+ * isn't synchronised. Stateless — position is fully reconstructible from tMs.
  */
-export function computeWalkOffset(buildingId: number, tMs: number): WalkSample {
+export function computeWalkOffset(
+  buildingId: number,
+  tMs: number,
+  alongX: boolean = true,
+): WalkSample {
   const seed = buildingSeed(buildingId);
   const phase = hash1(seed + SLOT_WALK_PHASE) * Math.PI * 2;
-  const dir = hash1(seed + SLOT_WALK_AXIS) < 0.5 ? 1 : -1; // clockwise / counter-clockwise
-  const rBase =
-    WALK_LOOP_RADIUS_MIN_METERS +
-    hash1(seed + SLOT_WALK_RADIUS) * (WALK_LOOP_RADIUS_MAX_METERS - WALK_LOOP_RADIUS_MIN_METERS);
-  const aspect = 0.6 + hash1(seed + SLOT_WALK_ASPECT) * 0.8; // 0.6..1.4 — a squashed circuit, not a perfect circle
-  const rx = rBase;
-  const rz = rBase * aspect;
+  const dir = hash1(seed + SLOT_WALK_AXIS) < 0.5 ? 1 : -1; // up the street / down it
+  const rAlong =
+    WALK_PATH_HALF_LENGTH_MIN_METERS +
+    hash1(seed + SLOT_WALK_RADIUS) *
+      (WALK_PATH_HALF_LENGTH_MAX_METERS - WALK_PATH_HALF_LENGTH_MIN_METERS);
+  // Narrow enough to stay on the pavement — this is the width of the turn at
+  // each end, not a lane to wander in.
+  const rAcross =
+    WALK_PATH_HALF_WIDTH_METERS * (0.7 + hash1(seed + SLOT_WALK_ASPECT) * 0.6);
 
   const t = dir * (tMs * WALK_ANGULAR_RATE) + phase;
-  const dx = Math.cos(t) * rx;
-  const dz = Math.sin(t) * rz;
+  const along = Math.cos(t) * rAlong;
+  const across = Math.sin(t) * rAcross;
   // Tangent of the ellipse = velocity direction; heading is the Y-yaw that
   // aims a +Z-nosed mesh along it (same convention as transit/traffic).
-  const vx = -Math.sin(t) * rx * dir;
-  const vz = Math.cos(t) * rz * dir;
-  return { dx, dz, heading: Math.atan2(vx, vz) };
+  const vAlong = -Math.sin(t) * rAlong * dir;
+  const vAcross = Math.cos(t) * rAcross * dir;
+
+  return alongX
+    ? { dx: along, dz: across, heading: Math.atan2(vAlong, vAcross) }
+    : { dx: across, dz: along, heading: Math.atan2(vAcross, vAlong) };
 }
 
 /** Deterministic fallback lateral offset placing a walker beside its building when no nearby sidewalk is found, alternating which side by hash. */
@@ -233,6 +252,22 @@ export function computeWalkAnchor(
   building: BuildingInstance,
   roadAt: (x: number, z: number) => boolean,
 ): WorldPoint {
+  return computeWalkPath(building, roadAt).anchor;
+}
+
+/**
+ * Where a walker strolls: the frontage sidewalk point, plus WHICH WAY that
+ * pavement runs.
+ *
+ * The axis is what stops them circling. Anchored on the sidewalk but walking a
+ * loop of its own, a person orbits the point — and from above that reads as
+ * pacing rings around the house. Walking the pavement's own direction is what
+ * makes it look like a pavement.
+ */
+export function computeWalkPath(
+  building: BuildingInstance,
+  roadAt: (x: number, z: number) => boolean,
+): { anchor: WorldPoint; alongX: boolean } {
   const bx = building.x;
   const bz = building.z;
   for (let r = 1; r <= WALK_ANCHOR_SEARCH_TILES; r += 1) {
@@ -248,11 +283,20 @@ export function computeWalkAnchor(
       // (sidewalk/verge) tile the pedestrian walks on.
       const fx = rx + Math.sign(bx - rx);
       const fz = rz + Math.sign(bz - rz);
-      return { x: tileToWorld(fx), z: tileToWorld(fz) };
+      // The street runs whichever way its own neighbours continue. A road tile
+      // north or south of the building runs east-west, and the reverse — but
+      // ask the tiles rather than assume, so a corner reads correctly.
+      const runsEW = roadAt(rx - 1, rz) || roadAt(rx + 1, rz);
+      const runsNS = roadAt(rx, rz - 1) || roadAt(rx, rz + 1);
+      const alongX = runsEW || !runsNS;
+      return { anchor: { x: tileToWorld(fx), z: tileToWorld(fz) }, alongX };
     }
   }
   const off = walkAnchorOffset(building.id);
-  return { x: tileToWorld(bx) + off.x, z: tileToWorld(bz) + off.z };
+  return {
+    anchor: { x: tileToWorld(bx) + off.x, z: tileToWorld(bz) + off.z },
+    alongX: off.z !== 0,
+  };
 }
 
 export function walkerTint(buildingId: number): number {
@@ -340,7 +384,7 @@ export class PedestrianRenderer {
   private idleAnchors = new Map<number, WorldPoint>();
   private walkerIds: number[] = [];
   /** World-space stroll-loop anchor per walker, aligned index-for-index with `walkerIds` (recomputed each apply). */
-  private walkerAnchors: WorldPoint[] = [];
+  private walkerPaths: { anchor: WorldPoint; alongX: boolean }[] = [];
   private visible = true;
 
   /**
@@ -378,9 +422,9 @@ export class PedestrianRenderer {
     this.walkerIds = computeWalkerBuildingIds([...this.buildingsById.values()]);
     // Resolve each walker's frontage-sidewalk anchor once per apply (buildings
     // are static once placed) so update() stays a cheap per-frame loop step.
-    this.walkerAnchors = this.walkerIds.map((id) => {
+    this.walkerPaths = this.walkerIds.map((id) => {
       const building = this.buildingsById.get(id)!;
-      return computeWalkAnchor(building, this.roadAt);
+      return computeWalkPath(building, this.roadAt);
     });
 
     this.rebuildMeshes();
@@ -400,11 +444,12 @@ export class PedestrianRenderer {
         continue;
       }
 
-      const anchor = this.walkerAnchors[w] ?? {
-        x: tileToWorld(building.x),
-        z: tileToWorld(building.z),
+      const path = this.walkerPaths[w] ?? {
+        anchor: { x: tileToWorld(building.x), z: tileToWorld(building.z) },
+        alongX: true,
       };
-      const walk = computeWalkOffset(buildingId, tMs);
+      const anchor = path.anchor;
+      const walk = computeWalkOffset(buildingId, tMs, path.alongX);
       const px = anchor.x + walk.dx;
       const pz = anchor.z + walk.dz;
       const groundY = this.heightAt(px, pz);

@@ -185,13 +185,34 @@ describe('computeWalkOffset / walkAnchorOffset (pure)', () => {
     expect(b).not.toEqual(c);
   });
 
-  it('stays within a small stroll-loop radius of the anchor (a believable circuit near home, not a long line)', () => {
-    // Max loop extent = max radius (TILE*0.42) * max aspect (1.4) ≈ 9.41m.
-    const bound = 16 * 0.42 * 1.4 + 1e-6;
-    for (let t = 0; t < 40000; t += 777) {
-      const s = computeWalkOffset(11, t);
-      expect(Math.hypot(s.dx, s.dz)).toBeLessThanOrEqual(bound);
+  // Walkers range along the pavement and barely at all across it: that is what
+  // reads as walking down a street rather than pacing rings around a house.
+  // Still bounded, so nobody wanders off across the map.
+  it('ranges along the pavement but stays on it across', () => {
+    const alongBound = 16 * 1.8 + 1e-6; // max half-length
+    const acrossBound = 16 * 0.11 * 1.3 + 1e-6; // max half-width
+    for (const alongX of [true, false]) {
+      let alongSeen = 0;
+      for (let t = 0; t < 40000; t += 777) {
+        const s = computeWalkOffset(11, t, alongX);
+        const along = alongX ? s.dx : s.dz;
+        const across = alongX ? s.dz : s.dx;
+        expect(Math.abs(along)).toBeLessThanOrEqual(alongBound);
+        expect(Math.abs(across)).toBeLessThanOrEqual(acrossBound);
+        alongSeen = Math.max(alongSeen, Math.abs(along));
+      }
+      // And they really do cover ground, rather than shuffling on the spot.
+      expect(alongSeen).toBeGreaterThan(16 * 0.5);
     }
+  });
+
+  it('walks the axis of the pavement it was given', () => {
+    const ew = computeWalkOffset(11, 3000, true);
+    const ns = computeWalkOffset(11, 3000, false);
+    // The same walker on a north-south street travels in z where an east-west
+    // one travels in x — the path is mirrored across the diagonal, not reused.
+    expect(ns.dz).toBeCloseTo(ew.dx, 6);
+    expect(ns.dx).toBeCloseTo(ew.dz, 6);
   });
 
   it('traces a CLOSED loop (position returns after one full period) — not an open back-and-forth line', () => {
