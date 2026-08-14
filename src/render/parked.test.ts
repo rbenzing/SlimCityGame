@@ -6,11 +6,15 @@ import {
   BAY_PITCH_TILES,
   bayRowStart,
   CAR_PALETTE,
+  computeRoadsideStallCount,
+  computeRoadsideStallPlacements,
   computeStallCount,
   computeStallPlacements,
   CURB_CUT_WIDTH_M,
+  roadsideDepthTiles,
   findRoadFacingEdge,
   frontageInsetTiles,
+  hasOwnLotParking,
   IND_NIGHT_OCCUPANCY,
   lotOccupancy,
   ParkedCarRenderer,
@@ -21,6 +25,8 @@ import {
   stallOccupied,
   stallVariantIndex,
   stallYawJitter,
+  tierAllowsRoadsideParking,
+  usesRoadsideParking,
   vergeDepthMeters,
   YAW_JITTER_MAX,
   type RoadFacingEdge,
@@ -32,6 +38,7 @@ import {
   BuildingState,
   RoadTier,
   VehicleKind,
+  ZoneType,
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { sizeForKind, variantScaleForKind } from './vehicles';
@@ -703,15 +710,49 @@ describe('ParkedCarRenderer', () => {
     expect(renderer.carInstanceCount()).toBeGreaterThanOrEqual(2);
   });
 
-  it('parks zero cars for a RESIDENTIAL building even when road-adjacent (homes park off-street)', () => {
+  it('gives a RESIDENTIAL building no bay row or apron — a home parks at the kerb, not on a forecourt', () => {
     const scene = new THREE.Scene();
     const home = makeCatalogEntry({ category: 'res', zone: 1, footprint: { w: 2, d: 2 } });
-    const renderer = new ParkedCarRenderer(scene, flatHeightAt, [home], roadAtTiles([[5, 4]]));
+    const renderer = new ParkedCarRenderer(scene, flatHeightAt, [home], roadAtTiles([[5, 4]]), () =>
+      RoadTier.TwoLane,
+    );
 
     renderer.apply(deltaAdd(makeBuilding({ id: 1, level: 2 })));
 
-    expect(renderer.stallSlotsFor(1)).toHaveLength(0);
+    // No apron, no painted bays: the kerb is already paved.
     expect(renderer.hasStripeMesh(1)).toBe(false);
+    // But the small home does line the kerb, which is the whole point of it.
+    expect(renderer.stallSlotsFor(1).length).toBeGreaterThan(0);
+  });
+
+  it('keeps a home with a garage off the kerb — it already parks on its own drive', () => {
+    const scene = new THREE.Scene();
+    const garaged = makeCatalogEntry({
+      category: 'res',
+      zone: ZoneType.ResLow,
+      footprint: { w: 2, d: 3 },
+    });
+    const renderer = new ParkedCarRenderer(
+      scene,
+      flatHeightAt,
+      [garaged],
+      roadAtTiles([[5, 4]]),
+      () => RoadTier.TwoLane,
+    );
+
+    renderer.apply(deltaAdd(makeBuilding({ id: 1, level: 2 })));
+    expect(renderer.stallSlotsFor(1)).toHaveLength(0);
+  });
+
+  it('keeps every home off the kerb of a street that forbids parking', () => {
+    const scene = new THREE.Scene();
+    const home = makeCatalogEntry({ category: 'res', zone: 1, footprint: { w: 2, d: 2 } });
+    const renderer = new ParkedCarRenderer(scene, flatHeightAt, [home], roadAtTiles([[5, 4]]), () =>
+      RoadTier.Highway,
+    );
+
+    renderer.apply(deltaAdd(makeBuilding({ id: 1, level: 2 })));
+    expect(renderer.stallSlotsFor(1)).toHaveLength(0);
   });
 
   it('parks zero cars and draws NO frontage apron for a UTILITY building (water tower) next to a road', () => {
@@ -1066,5 +1107,155 @@ describe('ParkedCarRenderer frustum-culling regression (wave 6)', () => {
 
     renderer.apply(deltaAdd(makeBuilding({ id: 2, x: 8 })));
     expect((mesh as THREE.InstancedMesh).boundingSphere).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Who is allowed to park where: the road's rule, then the building's.
+// ---------------------------------------------------------------------------
+
+describe('tierAllowsRoadsideParking', () => {
+  it('allows the kerb on low-speed streets', () => {
+    for (const tier of [RoadTier.TwoLane, RoadTier.Gravel, RoadTier.Alley, RoadTier.OneWay]) {
+      expect(tierAllowsRoadsideParking(tier), `tier ${tier}`).toBe(true);
+    }
+  });
+
+  it('refuses the kerb where the edge has a better use', () => {
+    // Through-routes, reserved lanes, rails — and nothing at all.
+    for (const tier of [
+      RoadTier.Avenue,
+      RoadTier.Highway,
+      RoadTier.FourLane,
+      RoadTier.BusLane,
+      RoadTier.BikeLane,
+      RoadTier.Tram,
+      RoadTier.RailTrack,
+      RoadTier.None,
+    ]) {
+      expect(tierAllowsRoadsideParking(tier), `tier ${tier}`).toBe(false);
+    }
+  });
+});
+
+describe('hasOwnLotParking', () => {
+  const roadSouthOf = (bx: number, bz: number, w: number, d: number) => {
+    void bx;
+    void w;
+    return (x: number, z: number): boolean => z === bz + d && x >= bx && x < bx + w;
+  };
+
+  it('counts a shop or works with a bay row on its own frontage', () => {
+    const roadAt = roadSouthOf(4, 6, 2, 2);
+    for (const category of ['com', 'ind'] as const) {
+      const entry = makeCatalogEntry({ category, footprint: { w: 2, d: 2 } });
+      expect(hasOwnLotParking(entry, 4, 6, roadAt), category).toBe(true);
+    }
+  });
+
+  it('counts a house with a garage and driveway', () => {
+    const entry = makeCatalogEntry({
+      category: 'res',
+      zone: ZoneType.ResLow,
+      footprint: { w: 2, d: 3 },
+    });
+    expect(hasOwnLotParking(entry, 4, 6, roadSouthOf(4, 6, 2, 3))).toBe(true);
+  });
+
+  it('does not count a small home or a row house, which have nowhere of their own', () => {
+    const small = makeCatalogEntry({
+      category: 'res',
+      zone: ZoneType.ResLow,
+      footprint: { w: 2, d: 2 },
+    });
+    const row = makeCatalogEntry({
+      category: 'res',
+      zone: ZoneType.ResMediumRow,
+      footprint: { w: 1, d: 4 },
+    });
+    expect(hasOwnLotParking(small, 4, 6, roadSouthOf(4, 6, 2, 2))).toBe(false);
+    expect(hasOwnLotParking(row, 4, 6, roadSouthOf(4, 6, 1, 4))).toBe(false);
+  });
+});
+
+describe('usesRoadsideParking', () => {
+  const roadSouth = (x: number, z: number): boolean => z === 8 && x >= 4 && x < 6;
+  const tierIs =
+    (tier: RoadTier) =>
+    (): RoadTier =>
+      tier;
+
+  const smallHome = makeCatalogEntry({
+    category: 'res',
+    zone: ZoneType.ResLow,
+    footprint: { w: 2, d: 2 },
+  });
+
+  it('lets a building with nowhere of its own use a street that allows it', () => {
+    expect(usesRoadsideParking(smallHome, 4, 6, roadSouth, tierIs(RoadTier.TwoLane))).toBe(true);
+  });
+
+  // The rule the user asked for: a lot with its own parking does not also line
+  // the kerb outside it.
+  it('refuses a building that already parks on its own lot', () => {
+    const shop = makeCatalogEntry({ category: 'com', footprint: { w: 2, d: 2 } });
+    expect(hasOwnLotParking(shop, 4, 6, roadSouth)).toBe(true);
+    expect(usesRoadsideParking(shop, 4, 6, roadSouth, tierIs(RoadTier.TwoLane))).toBe(false);
+
+    const garaged = makeCatalogEntry({
+      category: 'res',
+      zone: ZoneType.ResLow,
+      footprint: { w: 2, d: 3 },
+    });
+    expect(usesRoadsideParking(garaged, 4, 6, roadSouth, tierIs(RoadTier.TwoLane))).toBe(false);
+  });
+
+  it('refuses a street that does not allow parking, however needy the building', () => {
+    for (const tier of [RoadTier.Highway, RoadTier.BikeLane, RoadTier.Tram]) {
+      expect(usesRoadsideParking(smallHome, 4, 6, roadSouth, tierIs(tier)), `tier ${tier}`).toBe(
+        false,
+      );
+    }
+  });
+
+  it('refuses a building with no street at all', () => {
+    expect(usesRoadsideParking(smallHome, 4, 6, () => false, tierIs(RoadTier.TwoLane))).toBe(false);
+  });
+});
+
+describe('kerbside placement', () => {
+  const edge: RoadFacingEdge = { side: 'S', edgeTiles: 2, roadTileX: 4, roadTileZ: 8 };
+
+  it('leaves both ends of the frontage clear', () => {
+    // 2 tiles of frontage, 0.25 tiles clear each end, 0.375 pitch -> 4 cars.
+    expect(computeRoadsideStallCount(2)).toBe(4);
+    expect(computeRoadsideStallCount(0.4)).toBe(0);
+  });
+
+  it('parks along the street, not nose-in to it', () => {
+    const kerb = computeRoadsideStallPlacements(4, 6, 2, 2, edge, RoadTier.TwoLane, 2);
+    const bays = computeStallPlacements(4, 6, 2, 2, edge, 2, COM_PITCH, COM_DEPTH);
+    const quarterTurn = Math.abs(kerb[0]!.baseYaw - bays[0]!.baseYaw);
+    expect(quarterTurn).toBeCloseTo(Math.PI / 2, 6);
+  });
+
+  // A kerbside car stands in the street; a bay car stands on the lot. They must
+  // end up on opposite sides of the building's own footprint edge.
+  it('stands in the street, where a bay car stands on the lot', () => {
+    const footprintEdgeZ = (6 + 2) * TILE_METERS;
+    const kerb = computeRoadsideStallPlacements(4, 6, 2, 2, edge, RoadTier.TwoLane, 2);
+    const bays = computeStallPlacements(4, 6, 2, 2, edge, 2, COM_PITCH, COM_DEPTH);
+    for (const p of kerb) expect(p.worldZ).toBeGreaterThan(footprintEdgeZ);
+    for (const p of bays) expect(p.worldZ).toBeLessThan(footprintEdgeZ);
+  });
+
+  it('clears the verge and the sidewalk it parks beyond', () => {
+    const tier = RoadTier.TwoLane;
+    const depthM = roadsideDepthTiles(tier) * TILE_METERS;
+    expect(depthM).toBeGreaterThan(vergeDepthMeters(tier) + sidewalkDepthMeters(tier));
+  });
+
+  it('places nothing for a count of zero', () => {
+    expect(computeRoadsideStallPlacements(4, 6, 2, 2, edge, RoadTier.TwoLane, 0)).toEqual([]);
   });
 });

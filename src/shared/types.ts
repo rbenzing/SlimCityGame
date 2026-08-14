@@ -530,6 +530,13 @@ export interface RoadSpec {
   carriesWater?: boolean;
   /** Pavement surface for render/audio treatment: unpaved gravel gets no paint or curbs. Default 'paved'. */
   surface?: 'paved' | 'gravel';
+  /**
+   * Cars may park along this road's kerb. Default false: a through-route, a
+   * reserved lane and a railway all have better uses for their edge than
+   * storage, so a tier earns kerbside parking explicitly rather than by
+   * omission.
+   */
+  roadsideParking?: boolean;
 }
 
 // ---------------------------------------------------------------------------

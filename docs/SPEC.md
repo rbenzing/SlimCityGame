@@ -1715,10 +1715,21 @@ changes is that the leftover is now claimed, surfaced and used.
   no grass seam, so a zoned block reads as continuous developed land. The pad
   stops short of the road at the verge the parking apron already respects, so
   the sidewalk, verge and curb-cut geometry keep working unchanged.
-- **Parking is a lot feature, not a frontage strip.** Today one row of bays runs
-  along the road-facing footprint edge. A lot deep enough earns rows and an
-  aisle; a lot too small keeps the single row it has now. A detached home keeps
-  its driveway and garage, which is its version of the same thing.
+- **A car stands on its own lot, or at the kerb, never both** (user 2026-08-13).
+  Two rules, and they compose. The ROAD decides whether its kerb may be parked
+  on at all: a through-route, a reserved bus or bike lane, tram rails and a
+  railway all have better uses for their edge, so a tier earns kerbside parking
+  by declaring it in `roads.json` rather than by omission — today the two-lane,
+  gravel, alley and one-way tiers, and nothing else. The BUILDING decides
+  whether it needs the kerb: a shop or works with a bay row on its own frontage
+  does not use it, and neither does a house with a garage and drive, because
+  somewhere to put the car is somewhere to put the car. What is left — a small
+  home, a row house, a lot too tight for bays — is exactly who the kerb is for,
+  which is what makes it read as a residential street rather than as spillover.
+  Utilities, parks and civic plinths never park: they have nobody to park.
+  Kerbside cars sit PARALLEL, past the verge and the sidewalk and half a car
+  into the carriageway, because that is what fits between a moving lane and a
+  kerb; they get no apron and no painted bays, since the road is already paved.
 - **An archetype is an assembly of parts, not a box with a different colour.**
   A category and level pick the parts: a warehouse gets a long low slab, roll-up
   doors and a loading dock; a factory gets a monitor roof, stacks and silos; a
@@ -1738,20 +1749,36 @@ changes is that the leftover is now claimed, surfaced and used.
 - **The budget binds the merged mesh, not the part.** The reference caps a mesh
   at 65,536 vertices. A procedural part is tens of triangles and a whole
   building assembly is in the low hundreds, so no single building can approach
-  it; what can is merged lot geometry across a chunk. Lot pads and their
-  markings are therefore built per chunk with an explicit cap, and the cap is
-  asserted rather than assumed.
+  it; what can is merged ground geometry. A pad is one mesh per building — the
+  pattern the frontage apron already uses — and the cap is asserted against the
+  largest pad actually built rather than assumed. Merging pads per CHUNK to cut
+  draw calls is deferred until measured: it would halve nothing today, since the
+  apron layer already costs one mesh per building, and the right time to change
+  both is together.
+- **Nothing laid on the ground may clip it.** A ground surface drawn as one
+  four-corner quad is a plane through its corners, so any slope between them
+  pushes through it and any dip leaves it floating. Pads, aprons, driveways and
+  bay markings all go through one builder that subdivides to cells small enough
+  to hold no curve, samples the real surface at every corner, and splits each
+  cell on the SAME diagonal the terrain mesh uses — a quad split the other way
+  crosses the terrain's own triangles and clips along the seam even when all
+  four of its corners are right. There were two hand-rolled copies of this
+  before, which is two chances to get the diagonal wrong.
 - **Deferred, deliberately.** No authored FBX/OBJ assets or importer (the
   procedural kit is the decision, per the user 2026-08-13), no per-archetype
   bespoke textures, no interior geometry, no LOD meshes — the parts are already
   cheap enough that distance culling is the whole LOD story.
 
 **Owners:** `src/render/palette.ts` (new — the calibrated material palette and
-its rescale), `src/render/lots.ts` (new — lot pads and their surfaces),
-`src/render/parked.ts` (rows and an aisle where the lot allows), `src/render/
-massing.ts` (the archetype recipe over the setback tiers), `src/render/props.ts`
-(the shared part kit), `src/render/facade.ts` + `src/render/houses.ts` +
-`src/render/landmarks.ts` (colour moves out to the palette module).
+its rescale), `src/render/groundquad.ts` (new — the one terrain-conforming
+ground surface builder), `src/render/lots.ts` (new — lot pads and their
+surfaces), `src/render/parked.ts` (the kerb rules and kerbside cars; it also
+owns `hasGarage`, since "does this building park on its own land" is one
+question whichever building asks it), `src/data/roads.json` (which tiers allow
+kerbside parking), `src/render/massing.ts` (the archetype recipe over the
+setback tiers), `src/render/props.ts` (the shared part kit), `src/render/
+facade.ts` + `src/render/houses.ts` + `src/render/landmarks.ts` (colour moves
+out to the palette module).
 
 **Acceptance:** every Active building stands on a paved lot filling its
 footprint; neighbouring lots meet with no grass seam; commercial and industrial

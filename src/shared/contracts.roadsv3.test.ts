@@ -239,6 +239,7 @@ describe('roads.json catalog v3 (UI-SPEC §6.7 Roads v3)', () => {
       unlockMilestone: 0,
       noiseMult: 2,
       surface: 'gravel',
+      roadsideParking: true,
     });
   });
 
@@ -251,6 +252,7 @@ describe('roads.json catalog v3 (UI-SPEC §6.7 Roads v3)', () => {
       speed: 10,
       capacity: 350,
       unlockMilestone: 1,
+      roadsideParking: true,
     });
   });
 
@@ -264,6 +266,7 @@ describe('roads.json catalog v3 (UI-SPEC §6.7 Roads v3)', () => {
       capacity: 1100,
       unlockMilestone: 1,
       oneWay: true,
+      roadsideParking: true,
     });
   });
 

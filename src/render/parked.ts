@@ -20,9 +20,12 @@ import {
   BuildingDelta,
   BuildingInstance,
   BuildingState,
+  RoadSpec,
   RoadTier,
   VehicleKind,
+  ZoneType,
 } from '../shared/types';
+import roadsData from '../data/roads.json';
 import { TILE_METERS } from '../shared/constants';
 import { carriagewayHalfWidthMeters, ROAD_Y_OFFSET, SIDEWALK_WIDTH_M } from './roadsmesh';
 import {
@@ -32,6 +35,7 @@ import {
   VEHICLE_PALETTE_HEX,
 } from './vehicles';
 import { materialUnit } from './palette';
+import { pushConformingQuad } from './groundquad';
 
 // ---------------------------------------------------------------------------
 // Tunables
@@ -63,6 +67,78 @@ export const BAY_DEPTH_TILES: Readonly<Record<LotCategory, number>> = {
 
 /** Unpainted margin kept at each end of the bay row, in tiles. */
 export const BAY_END_MARGIN_TILES = 0.06;
+
+// ---------------------------------------------------------------------------
+// Where a car is allowed to stand: the road's rule, then the building's.
+// ---------------------------------------------------------------------------
+
+const ROAD_SPECS: readonly RoadSpec[] = (roadsData as { specs: RoadSpec[] }).specs;
+
+/**
+ * A detached home is big enough for a garage + driveway once its lot is 2x3
+ * (area >= 6 tiles); a 2x2 home stays garage-less, as does a row house.
+ */
+export function hasGarage(entry: BuildingCatalogEntry): boolean {
+  return entry.zone === ZoneType.ResLow && entry.footprint.w * entry.footprint.d >= 6;
+}
+
+/**
+ * Whether cars may park along this tier's kerb. Data, not a rule derived from
+ * speed: a through-route, a reserved bus or bike lane, tram rails and a railway
+ * all have better uses for their edge than storage, so a tier earns kerbside
+ * parking by declaring it (roads.json) rather than by omission.
+ */
+export function tierAllowsRoadsideParking(tier: RoadTier): boolean {
+  return ROAD_SPECS.find((s) => s.tier === tier)?.roadsideParking === true;
+}
+
+/** The categories whose occupants own cars at all. */
+const PARKING_CATEGORIES: ReadonlySet<string> = new Set(['res', 'com', 'ind']);
+
+/**
+ * Whether a building parks its cars ON ITS OWN LOT — a commercial or industrial
+ * bay row, or a house's garage and driveway.
+ *
+ * This is the half of the rule the street cares about: a lot with its own
+ * parking does not ALSO line the kerb outside it. Somewhere to put the car is
+ * somewhere to put the car, and a building that has it does not need the
+ * street's, which is what leaves kerb space for the buildings that have none.
+ */
+export function hasOwnLotParking(
+  entry: BuildingCatalogEntry,
+  x: number,
+  z: number,
+  roadAt: (tileX: number, tileZ: number) => boolean,
+): boolean {
+  if (entry.category === 'com' || entry.category === 'ind') {
+    const edge = findRoadFacingEdge(x, z, entry.footprint.w, entry.footprint.d, roadAt);
+    return edge !== null && frontageInsetTiles(entry.category, edge) > 0;
+  }
+  // A house with a garage has a driveway to stand on; a small home or a row
+  // house has neither, and is exactly who the kerb is for.
+  return hasGarage(entry);
+}
+
+/**
+ * Whether this building may line the kerb of the street it fronts: the street
+ * has to allow parking, and the building has to have nowhere of its own.
+ */
+export function usesRoadsideParking(
+  entry: BuildingCatalogEntry,
+  x: number,
+  z: number,
+  roadAt: (tileX: number, tileZ: number) => boolean,
+  roadTierAt: (tileX: number, tileZ: number) => RoadTier,
+): boolean {
+  // Only buildings whose people own cars. A water tower, a park or a civic
+  // plinth has nobody to park, and lining the kerb outside one would read as
+  // abandoned vehicles rather than as a working street.
+  if (!PARKING_CATEGORIES.has(entry.category)) return false;
+  if (hasOwnLotParking(entry, x, z, roadAt)) return false;
+  const edge = findRoadFacingEdge(x, z, entry.footprint.w, entry.footprint.d, roadAt);
+  if (!edge) return false;
+  return tierAllowsRoadsideParking(roadTierAt(edge.roadTileX, edge.roadTileZ));
+}
 
 /** Max absolute per-car yaw jitter, radians — parked cars sit nearly straight in their bays. */
 export const YAW_JITTER_MAX = 0.03;
@@ -106,14 +182,6 @@ export function sidewalkDepthMeters(tier: RoadTier): number {
   const toCarriageway = Math.max(0, TILE_METERS / 2 - carriagewayHalfWidthMeters(tier));
   return Math.min(SIDEWALK_WIDTH_M, toCarriageway);
 }
-
-/**
- * Max conforming sub-quad size: ground quads are subdivided so their surface
- * samples the in-tile terrain curve instead of just its corners (a single
- * 4-corner quad across a whole frontage lets a hill bulge straight through).
- * Matches roadsmesh.ts's 2 m adaptive cell target.
- */
-const CONFORM_MAX_CELL_M = 2;
 
 const INITIAL_CAR_CAPACITY = 64;
 
@@ -409,66 +477,63 @@ export function computeStallPlacements(
 }
 
 // ---------------------------------------------------------------------------
-// Conforming ground quads for the apron/bay-line mesh. Every quad is
-// subdivided to <= CONFORM_MAX_CELL_M cells and split on the terrain
-// PlaneGeometry's own (x0,z1)-(x1,z0) diagonal, so the pavement follows the
-// rendered ground at a constant offset instead of letting a hill bulge
-// through the middle of a long 4-corner quad (see render/zonegrid.ts).
+// Kerbside parking: cars parallel to the street rather than nose-in on a lot.
 // ---------------------------------------------------------------------------
 
-function pushConformingSubQuad(
-  positions: number[],
-  colors: number[],
-  x0: number,
-  z0: number,
-  x1: number,
-  z1: number,
-  yOffset: number,
-  color: readonly [number, number, number],
-  heightAt: (x: number, z: number) => number,
-): void {
-  const y00 = heightAt(x0, z0) + yOffset;
-  const y10 = heightAt(x1, z0) + yOffset;
-  const y11 = heightAt(x1, z1) + yOffset;
-  const y01 = heightAt(x0, z1) + yOffset;
-  positions.push(x0, y00, z0, x0, y01, z1, x1, y10, z0);
-  positions.push(x0, y01, z1, x1, y11, z1, x1, y10, z0);
-  for (let i = 0; i < 6; i++) colors.push(color[0], color[1], color[2]);
+/** Nose-to-tail pitch, in tiles: a car plus the room to pull out of the space. */
+export const ROADSIDE_PITCH_TILES = 0.375; // 6.0 m
+/** Half a car's width — how far its centre clears the kerb line. */
+const ROADSIDE_CAR_HALF_WIDTH_M = 0.9;
+/** Kerb space left clear at each end of the frontage, in tiles (corners, driveways). */
+export const ROADSIDE_END_MARGIN_TILES = 0.25;
+
+/**
+ * How far a kerbside car's centre sits OUTWARD from the building's footprint
+ * edge, in tiles: across the verge, across the sidewalk, then half a car into
+ * the carriageway. Positive is toward the street.
+ */
+export function roadsideDepthTiles(tier: RoadTier): number {
+  return (
+    (vergeDepthMeters(tier) + sidewalkDepthMeters(tier) + ROADSIDE_CAR_HALF_WIDTH_M) / TILE_METERS
+  );
 }
 
-/** Terrain-conforming axis-aligned world-space quad, subdivided to CONFORM_MAX_CELL_M cells. */
-function pushQuad(
-  positions: number[],
-  colors: number[],
-  x0: number,
-  z0: number,
-  x1: number,
-  z1: number,
-  yOffset: number,
-  color: readonly [number, number, number],
-  heightAt: (x: number, z: number) => number,
-): void {
-  const nx = Math.max(1, Math.ceil((x1 - x0) / CONFORM_MAX_CELL_M));
-  const nz = Math.max(1, Math.ceil((z1 - z0) / CONFORM_MAX_CELL_M));
-  const stepX = (x1 - x0) / nx;
-  const stepZ = (z1 - z0) / nz;
-  for (let iz = 0; iz < nz; iz++) {
-    for (let ix = 0; ix < nx; ix++) {
-      const cx0 = x0 + ix * stepX;
-      const cz0 = z0 + iz * stepZ;
-      pushConformingSubQuad(
-        positions,
-        colors,
-        cx0,
-        cz0,
-        cx0 + stepX,
-        cz0 + stepZ,
-        yOffset,
-        color,
-        heightAt,
-      );
-    }
+/** How many cars fit along a frontage, once both ends are kept clear. */
+export function computeRoadsideStallCount(edgeTiles: number): number {
+  const usable = edgeTiles - 2 * ROADSIDE_END_MARGIN_TILES;
+  if (usable <= 0) return 0;
+  return Math.max(0, Math.floor(usable / ROADSIDE_PITCH_TILES));
+}
+
+/**
+ * Deterministic kerbside car centres along the frontage, the row centred on it.
+ * Cars sit PARALLEL to the street — yaw a quarter turn off the nose-in bay
+ * yaw — because that is what fits between a moving lane and a kerb.
+ */
+export function computeRoadsideStallPlacements(
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+  edge: RoadFacingEdge,
+  tier: RoadTier,
+  count: number,
+): StallPlacement[] {
+  if (count <= 0) return [];
+
+  const frame = edgeFrameFor(edge.side, x, z, w, d);
+  const pitchM = ROADSIDE_PITCH_TILES * TILE_METERS;
+  const start = bayRowStart(edge.edgeTiles, count, ROADSIDE_PITCH_TILES);
+  const baseYaw = EDGE_BASE_YAW[edge.side] + Math.PI / 2;
+  const depth = roadsideDepthTiles(tier);
+
+  const placements: StallPlacement[] = [];
+  for (let i = 0; i < count; i++) {
+    const along = start + (i + 0.5) * pitchM;
+    const { x: worldX, z: worldZ } = frameToWorld(frame, along, depth);
+    placements.push({ worldX, worldZ, baseYaw, along });
   }
+  return placements;
 }
 
 /** Pushes a quad specified in an edge's (along, depthTiles) space instead of raw world x/z. */
@@ -490,7 +555,7 @@ function pushFrameQuad(
   const x1 = Math.max(a.x, b.x);
   const z0 = Math.min(a.z, b.z);
   const z1 = Math.max(a.z, b.z);
-  pushQuad(positions, colors, x0, z0, x1, z1, yOffset, color, heightAt);
+  pushConformingQuad(positions, colors, x0, z0, x1, z1, yOffset, color, heightAt);
 }
 
 // ---------------------------------------------------------------------------
@@ -655,7 +720,13 @@ export class ParkedCarRenderer {
     // (water tower, wind turbine, power, etc.), parks and civic plinths get no
     // parking apron — a water tower next to a road must not sprout a grey
     // parking rectangle bleeding into the street.
-    if (entry.category !== 'com' && entry.category !== 'ind') return;
+    //
+    // Everything else falls through to the kerb, which is where a building with
+    // nowhere of its own puts its cars — and only there.
+    if (entry.category !== 'com' && entry.category !== 'ind') {
+      this.applyRoadside(building, entry);
+      return;
+    }
     const category: LotCategory = entry.category;
 
     const edge = findRoadFacingEdge(
@@ -665,7 +736,10 @@ export class ParkedCarRenderer {
       entry.footprint.d,
       this.roadAt,
     );
-    if (!edge) return;
+    if (!edge) {
+      this.applyRoadside(building, entry);
+      return;
+    }
 
     const pitchTiles = BAY_PITCH_TILES[category];
     const depthTiles = BAY_DEPTH_TILES[category];
@@ -724,6 +798,75 @@ export class ParkedCarRenderer {
     for (const pool of touchedPools) pool.finalize();
 
     this.rebuildStripes(building, entry, edge, count, pitchTiles, depthTiles);
+  }
+
+  /**
+   * Cars along the kerb for a building that parks nowhere of its own, on a
+   * street whose tier allows it. Kerbside cars share the lot machinery — the
+   * same pools, the same occupancy rhythm — so a street empties overnight the
+   * way a forecourt does. No apron and no bay stripes: the space is the road's,
+   * and the road is already paved.
+   */
+  private applyRoadside(building: BuildingInstance, entry: BuildingCatalogEntry): void {
+    if (!usesRoadsideParking(entry, building.x, building.z, this.roadAt, this.roadTierAt)) return;
+
+    const edge = findRoadFacingEdge(
+      building.x,
+      building.z,
+      entry.footprint.w,
+      entry.footprint.d,
+      this.roadAt,
+    );
+    if (!edge) return;
+
+    const tier = this.roadTierAt(edge.roadTileX, edge.roadTileZ);
+    const count = computeRoadsideStallCount(edge.edgeTiles);
+    if (count <= 0) return;
+
+    const placements = computeRoadsideStallPlacements(
+      building.x,
+      building.z,
+      entry.footprint.w,
+      entry.footprint.d,
+      edge,
+      tier,
+      count,
+    );
+
+    const stalls: Stall[] = [];
+    const touchedPools = new Set<VehicleKitPool>();
+    for (let i = 0; i < placements.length; i++) {
+      const placement = placements[i]!;
+      const kind = VehicleKind.Car; // a resident's car, never a box truck
+      const pool = this.poolFor(kind);
+      const slot = pool.allocate();
+
+      const size = sizeForKind(kind);
+      const variant = variantScaleForKind(kind, stallVariantIndex(building.id, i, kind));
+      const sx = size[0] * variant[0];
+      const sy = size[1] * variant[1];
+      const sz = size[2] * variant[2];
+
+      // A kerbside car stands on the carriageway, not on an apron.
+      const groundY = this.heightAt(placement.worldX, placement.worldZ) + ROAD_Y_OFFSET;
+      const yaw = placement.baseYaw + stallYawJitter(building.id, i);
+
+      _position.set(placement.worldX, groundY + sy / 2, placement.worldZ);
+      _quaternion.setFromAxisAngle(_yAxis, yaw);
+      _scale.set(sx, sy, sz);
+      _matrix.compose(_position, _quaternion, _scale);
+
+      _tmpColor.setHex(CAR_PALETTE[stallColorIndex(building.id, i)]!);
+      pool.mesh.setColorAt(slot, _tmpColor);
+
+      stalls.push({ ref: { kind, slot }, matrix: _matrix.clone() });
+      touchedPools.add(pool);
+    }
+
+    const lot: LotRecord = { category: 'com', stalls };
+    this.buildingSlots.set(building.id, lot);
+    this.applyOccupancy(building.id, lot);
+    for (const pool of touchedPools) pool.finalize();
   }
 
   private poolFor(kind: number): VehicleKitPool {

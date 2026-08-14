@@ -49,6 +49,7 @@ import { MassingRenderer } from './render/massing';
 import { RoofPropRenderer } from './render/props';
 import { HouseRoofRenderer } from './render/houses';
 import { ParkedCarRenderer } from './render/parked';
+import { LotRenderer } from './render/lots';
 import { LandmarkRenderer } from './render/landmarks';
 import { RoadMeshRenderer } from './render/roadsmesh';
 import { BridgeRenderer } from './render/bridges';
@@ -215,6 +216,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // parked cars, all fed the same BuildingDelta stream as BuildingInstancer.
   // They share roadAt so the body setback, its roof props, and the parking
   // bays all agree on which edge faces the street.
+  // Lot pads go down before anything that stands on them: the building mass,
+  // the parking apron, a driveway. They claim the whole footprint so a block of
+  // lots meets edge to edge instead of leaving grass between properties.
+  const lots = new LotRenderer(world.scene, heightAt, catalog);
   const massing = new MassingRenderer(world.scene, heightAt, catalog, roadAt);
   const roofProps = new RoofPropRenderer(world.scene, heightAt, catalog, roadAt);
   const parkedCars = new ParkedCarRenderer(world.scene, heightAt, catalog, roadAt, (x, z) =>
@@ -339,6 +344,25 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         lines: useCityStore.getState().transitLines,
         ridership: useCityStore.getState().transitRidership,
       }),
+      // Where a building's cars actually stand. A parked car and a moving one
+      // look alike in a shot, so a screenshot cannot tell whether the kerb rule
+      // is being honoured; this can.
+      readParking: (
+        buildingId: number,
+      ): { stalls: number; category: string; northTier: number } | null => {
+        const b = knownBuildings.get(buildingId);
+        if (!b) return null;
+        const entry = catalogById.get(b.catalogId);
+        return {
+          stalls: parkedCars.stallSlotsFor(buildingId).length,
+          category: entry?.category ?? '?',
+          // Only the tile north of the origin — NOT the frontage the renderer
+          // actually chose, which may be any of the four sides.
+          northTier: inBounds(b.x, b.z - 1)
+            ? (clientGrid.roadTier[(b.z - 1) * clientGrid.size + b.x] ?? 0)
+            : 0,
+        };
+      },
       // What the transit renderer actually built. A transit vehicle and a
       // traffic-spawned one look alike in a screenshot, so a shot cannot tell
       // whether a line's own vehicles are on the road; this can.
@@ -779,6 +803,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       terrain.applyRoadTiles(roadTiles.filter((t) => !t.elevated));
     }
     if (snap.buildings) {
+      lots.apply(snap.buildings);
       instancer.apply(snap.buildings);
       massing.apply(snap.buildings);
       roofProps.apply(snap.buildings);

@@ -183,6 +183,22 @@ console.log(
   JSON.stringify(await call(() => window.__slimcity.readTransitRender())),
 );
 
+// Kerbside parking: who actually got stalls, grouped by what they are. A home
+// with no drive should line the kerb; a shop with a bay row should not.
+const parking = await call(() => {
+  const out = {};
+  for (const b of window.__slimcity.readBuildings()) {
+    const p = window.__slimcity.readParking(b.id);
+    if (!p) continue;
+    const key = `${p.category}:north${p.northTier}`;
+    out[key] = out[key] ?? { buildings: 0, withStalls: 0 };
+    out[key].buildings += 1;
+    if (p.stalls > 0) out[key].withStalls += 1;
+  }
+  return out;
+});
+console.log('parking by category/frontage tier:', JSON.stringify(parking));
+
 // Park the clock near midday so the shots are lit.
 const dayTof = (t) => ((t + 900) % 2400) / 2400;
 for (let i = 0; i < 500; i++) {

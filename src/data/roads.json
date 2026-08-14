@@ -7,7 +7,8 @@
       "upkeepPerTile": 0.4,
       "speed": 14,
       "capacity": 600,
-      "unlockMilestone": 0
+      "unlockMilestone": 0,
+      "roadsideParking": true
     },
     {
       "tier": 2,
@@ -38,7 +39,8 @@
       "capacity": 200,
       "unlockMilestone": 0,
       "noiseMult": 2,
-      "surface": "gravel"
+      "surface": "gravel",
+      "roadsideParking": true
     },
     {
       "tier": 5,
@@ -47,7 +49,8 @@
       "upkeepPerTile": 0.3,
       "speed": 10,
       "capacity": 350,
-      "unlockMilestone": 1
+      "unlockMilestone": 1,
+      "roadsideParking": true
     },
     {
       "tier": 6,
@@ -57,7 +60,8 @@
       "speed": 16,
       "capacity": 1100,
       "unlockMilestone": 1,
-      "oneWay": true
+      "oneWay": true,
+      "roadsideParking": true
     },
     {
       "tier": 7,

@@ -44,6 +44,7 @@ import {
   VEHICLE_PALETTE_HEX,
 } from './vehicles';
 import { materialHex } from './palette';
+import { pushConformingQuad } from './groundquad';
 
 // Same avalanche hash every render/*.ts keeps a local copy of.
 function hash1(n: number): number {
@@ -97,10 +98,13 @@ const GARAGE_WALL_COLOR = materialHex('whitePlaster');
 /** Driveway — plain concrete. */
 const DRIVEWAY_COLOR = materialHex('cleanConcrete');
 
-/** A detached home is big enough for a garage + driveway once its lot is 2x3 (area >= 6 tiles); a 2x2 home stays garage-less. */
-export function hasGarage(entry: BuildingCatalogEntry): boolean {
-  return entry.zone === ZoneType.ResLow && entry.footprint.w * entry.footprint.d >= 6;
-}
+/**
+ * Whether a home has a garage + driveway. Lives with the parking rules rather
+ * than here, because "does this building park on its own land" is one question
+ * whichever building is asking it, and the kerb needs the same answer.
+ */
+import { hasGarage } from './parked';
+export { hasGarage };
 
 const GARAGE_WIDTH_METERS = 4.2;
 const GARAGE_DEPTH_METERS = 5.5;
@@ -210,11 +214,9 @@ function buildGarageGeometry(): THREE.BoxGeometry {
 }
 
 /**
- * Terrain-conforming driveway slab: the axis-aligned rect subdivided to
- * <= DRIVEWAY_CONFORM_CELL_M cells, each corner sampled through heightAt and
- * split on the terrain PlaneGeometry's own (x0,z1)-(x1,z0) diagonal, so the
+ * Terrain-conforming driveway slab — the shared ground-quad builder, so the
  * slab rides a constant offset above the rendered ground instead of a flat
- * single-sample plane the terrain can bulge through (see render/zonegrid.ts).
+ * single-sample plane the terrain can bulge through.
  */
 function buildConformingDrivewayGeometry(
   x0: number,
@@ -226,25 +228,18 @@ function buildConformingDrivewayGeometry(
 ): THREE.BufferGeometry {
   const positions: number[] = [];
   const colors: number[] = [];
-  const nx = Math.max(1, Math.ceil((x1 - x0) / DRIVEWAY_CONFORM_CELL_M));
-  const nz = Math.max(1, Math.ceil((z1 - z0) / DRIVEWAY_CONFORM_CELL_M));
-  const stepX = (x1 - x0) / nx;
-  const stepZ = (z1 - z0) / nz;
-  for (let iz = 0; iz < nz; iz++) {
-    for (let ix = 0; ix < nx; ix++) {
-      const cx0 = x0 + ix * stepX;
-      const cz0 = z0 + iz * stepZ;
-      const cx1 = cx0 + stepX;
-      const cz1 = cz0 + stepZ;
-      const y00 = heightAt(cx0, cz0) + DRIVEWAY_Y_OFFSET;
-      const y10 = heightAt(cx1, cz0) + DRIVEWAY_Y_OFFSET;
-      const y11 = heightAt(cx1, cz1) + DRIVEWAY_Y_OFFSET;
-      const y01 = heightAt(cx0, cz1) + DRIVEWAY_Y_OFFSET;
-      positions.push(cx0, y00, cz0, cx0, y01, cz1, cx1, y10, cz0);
-      positions.push(cx0, y01, cz1, cx1, y11, cz1, cx1, y10, cz0);
-      for (let i = 0; i < 6; i++) colors.push(color.r, color.g, color.b);
-    }
-  }
+  pushConformingQuad(
+    positions,
+    colors,
+    x0,
+    z0,
+    x1,
+    z1,
+    DRIVEWAY_Y_OFFSET,
+    [color.r, color.g, color.b],
+    heightAt,
+    DRIVEWAY_CONFORM_CELL_M,
+  );
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
