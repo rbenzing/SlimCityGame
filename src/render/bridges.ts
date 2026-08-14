@@ -24,6 +24,7 @@ import * as THREE from 'three';
 import { PIER_SPACING_TILES, TILE_METERS, tileToWorld } from '../shared/constants';
 import { RoadTier } from '../shared/types';
 import { carriagewayHalfWidthMeters, curbWidthMeters, ROAD_Y_OFFSET } from './roadsmesh';
+import { setInstanceCount } from './groundquad';
 
 /** A deck tile as the renderer needs it: where it is, how high, how wide. */
 export interface BridgeDeckTile {
@@ -424,7 +425,7 @@ export class BridgeRenderer {
         if (!mesh) continue;
         mesh.instanceMatrix.needsUpdate = true;
       }
-      if (trussParts) trussParts.count = trussSlot;
+      if (trussParts) setInstanceCount(trussParts, trussSlot);
     }
   }
 

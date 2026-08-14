@@ -24,6 +24,7 @@ import * as THREE from 'three';
 import { RoadTier, TilePoint } from '../shared/types';
 import { LAMP_SPACING_TILES, tileToWorld } from '../shared/constants';
 import { carriagewayHalfWidthMeters, curbWidthMeters, ROAD_Y_OFFSET } from './roadsmesh';
+import { setInstanceCount } from './groundquad';
 
 const POLE_HEIGHT = 5.5;
 const POLE_RADIUS_TOP = 0.12;
@@ -535,10 +536,10 @@ export class LampRenderer {
       buildPoolGeometry(this.placements, this.heightAt),
       this.poolMaterial,
     );
-    this.poleMesh.count = count;
-    this.armMesh.count = count;
-    this.housingMesh.count = count;
-    this.lensMesh.count = count;
+    setInstanceCount(this.poleMesh, count);
+    setInstanceCount(this.armMesh, count);
+    setInstanceCount(this.housingMesh, count);
+    setInstanceCount(this.lensMesh, count);
 
     // Pole/arm/housing are real modeled geometry — they cast shadows. The lens
     // is a light source, so it stays non-shadow-casting.

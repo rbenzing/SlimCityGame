@@ -424,6 +424,11 @@ export class BuildingInstancer {
 
     for (const bucket of touched) {
       bucket.mesh.count = bucket.count;
+      // A bucket with no instances is not drawn. There is one bucket per
+      // catalog entry, created up front, so an early city otherwise submits a
+      // few dozen draw calls a frame with a vertex count of zero — which the
+      // WebGPU backend warns about, and which is work either way.
+      bucket.mesh.visible = bucket.count > 0;
       bucket.mesh.instanceMatrix.needsUpdate = true;
       if (bucket.mesh.instanceColor) bucket.mesh.instanceColor.needsUpdate = true;
       bucket.windowSeed.needsUpdate = true;
@@ -728,6 +733,7 @@ export class BuildingInstancer {
 
     const mesh = new THREE.InstancedMesh(geometry, material, capacity);
     mesh.count = 0;
+    mesh.visible = false; // nothing in it yet; apply() turns it on when it fills
     // Shadow sweep: building bodies both receive the sun's shadow
     // (props/lamps/trees fall onto their walls) and cast their own onto
     // the streets — one instanced draw per archetype bucket keeps it cheap.
@@ -754,6 +760,7 @@ export class BuildingInstancer {
     newWindowSeed.array.set(bucket.windowSeed.array);
     newWindowActive.array.set(bucket.windowActive.array);
     newMesh.count = bucket.mesh.count;
+    newMesh.visible = bucket.mesh.visible;
 
     this.scene.remove(bucket.mesh);
     this.scene.add(newMesh);

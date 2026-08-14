@@ -349,6 +349,28 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         lines: useCityStore.getState().transitLines,
         ridership: useCityStore.getState().transitRidership,
       }),
+      // Meshes the renderer would submit an empty draw for — no vertices, or
+      // an instanced mesh with a count of zero. WebGPU warns on these, and the
+      // warning names no object, so this finds the culprit.
+      readEmptyDraws: (): { name: string; vertices: number; instances: number }[] => {
+        const found: { name: string; vertices: number; instances: number }[] = [];
+        world.scene.traverse((obj) => {
+          const mesh = obj as THREE.Mesh & { isMesh?: boolean };
+          if (!mesh.isMesh) return;
+          const position = mesh.geometry?.getAttribute('position');
+          const vertices = position ? position.count : 0;
+          const instanced = obj as THREE.InstancedMesh & { isInstancedMesh?: boolean };
+          const instances = instanced.isInstancedMesh ? instanced.count : 1;
+          if (vertices !== 0 && instances !== 0) return;
+          // Only meshes that would actually be submitted: an invisible one, or
+          // one under an invisible parent, is never drawn and never warns.
+          for (let n: THREE.Object3D | null = obj; n; n = n.parent) {
+            if (!n.visible) return;
+          }
+          found.push({ name: mesh.name || mesh.type || 'unnamed', vertices, instances });
+        });
+        return found;
+      },
       // Which archetype parts the kit actually built. A silhouette claim is
       // exactly the kind a screenshot cannot settle on its own.
       readKit: (): Record<string, number> => ({

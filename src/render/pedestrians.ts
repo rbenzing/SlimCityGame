@@ -23,6 +23,7 @@
 import * as THREE from 'three';
 import { BuildingDelta, BuildingInstance, BuildingState, TilePoint } from '../shared/types';
 import { TILE_METERS, tileToWorld } from '../shared/constants';
+import { setInstanceCount } from './groundquad';
 
 // ---------------------------------------------------------------------------
 // Deterministic hashing (never Math.random/Date.now) -- same recipe kept
@@ -454,8 +455,8 @@ export class PedestrianRenderer {
 
     const bodyMesh = new THREE.InstancedMesh(this.bodyGeometry, this.bodyMaterial, total);
     const headMesh = new THREE.InstancedMesh(this.headGeometry, this.headMaterial, total);
-    bodyMesh.count = total;
-    headMesh.count = total;
+    setInstanceCount(bodyMesh, total);
+    setInstanceCount(headMesh, total);
     bodyMesh.castShadow = true;
     bodyMesh.receiveShadow = true;
     headMesh.castShadow = true;

@@ -37,6 +37,13 @@ import {
   tileToWorld,
 } from '../shared/constants';
 import { landfillAreas } from '../world/landfill';
+import { setInstanceCount } from './groundquad';
+
+/** True when a mesh's geometry actually has vertices to draw. */
+function hasGeometry(mesh: THREE.Mesh): boolean {
+  const position = mesh.geometry.getAttribute('position');
+  return position !== undefined && position.count > 0;
+}
 
 /** Tiny lift above the terrain so the tint reads on the ground without z-fighting (matches render/districts.ts's TINT_Y_OFFSET). */
 const TINT_Y_OFFSET = 0.16;
@@ -363,13 +370,19 @@ export class LandfillRenderer {
     this.rebuildPiles([]);
   }
 
-  /** Shows/hides every layer together. The ONLY mutator of visibility. */
+  /**
+   * Shows/hides every layer together. The ONLY mutator of visibility.
+   *
+   * A layer with nothing in it stays hidden even when shown: these meshes are
+   * built empty and live in the scene from the start, and an empty geometry is
+   * still submitted as a draw call with a vertex count of zero.
+   */
   setVisible(v: boolean): void {
     this.visible = v;
-    this.tintMesh.visible = v;
-    this.officeMesh.visible = v;
-    this.markMesh.visible = v;
-    if (this.pileMesh) this.pileMesh.visible = v;
+    this.tintMesh.visible = v && hasGeometry(this.tintMesh);
+    this.officeMesh.visible = v && hasGeometry(this.officeMesh);
+    this.markMesh.visible = v && hasGeometry(this.markMesh);
+    if (this.pileMesh) this.pileMesh.visible = v && this.pileMesh.count > 0;
   }
 
   /**
@@ -486,6 +499,9 @@ export class LandfillRenderer {
     this.rebuildTint(grounds);
     this.rebuildPiles(grounds);
     this.rebuildOffices(officeKits);
+    // Re-evaluate visibility: the layers just changed between empty and not,
+    // and an empty one stays hidden even while the lens is on.
+    this.setVisible(this.visible);
   }
 
   private rebuildTint(members: number[]): void {
@@ -516,10 +532,10 @@ export class LandfillRenderer {
 
     const mesh = new THREE.InstancedMesh(this.pileGeometry, this.pileMaterial, capacity);
     mesh.name = 'landfill-piles';
-    mesh.count = drawCount;
+    setInstanceCount(mesh, drawCount);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    mesh.visible = this.visible;
+    mesh.visible = this.visible && drawCount > 0;
 
     const footprint = PILE_FOOTPRINT_FRACTION * TILE_METERS;
     for (let slot = 0; slot < drawCount; slot++) {

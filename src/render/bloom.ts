@@ -1,5 +1,5 @@
 /**
- * Bloom/glow post-process pass: builds a three/webgpu PostProcessing pipeline with a
+ * Bloom/glow post-process pass: builds a three/webgpu RenderPipeline with a
  * bloom TSL node over the rendered scene, so emissive windows, lamp heads,
  * and vehicle lights bleed softly at night. All cheap post-FX, no per-pixel
  * tracing. Strength is driven by the caller from the shared nightFactor
@@ -12,7 +12,8 @@
  * a passthrough that renders the scene directly with no post-FX.
  */
 import type * as THREE from 'three';
-import { PostProcessing, type WebGPURenderer } from 'three/webgpu';
+// `PostProcessing` is the deprecated alias three keeps for this and warns on.
+import { RenderPipeline, type WebGPURenderer } from 'three/webgpu';
 import { pass } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
@@ -43,7 +44,7 @@ export function clampBloomStrength(strength: number): number {
 
 /**
  * The minimal shape createBloomPipeline needs from a built node graph —
- * deliberately narrower than the real `PostProcessing`/`UniformNode` types
+ * deliberately narrower than the real `RenderPipeline`/`UniformNode` types
  * so a test can inject a plain stand-in object without constructing real
  * three/webgpu nodes.
  */
@@ -69,7 +70,7 @@ function buildBloomGraph(
   scene: THREE.Scene,
   camera: THREE.Camera,
 ): BloomGraph {
-  const postProcessing = new PostProcessing(renderer);
+  const postProcessing = new RenderPipeline(renderer);
   const scenePass = pass(scene, camera);
   const scenePassColor = scenePass.getTextureNode('output');
   const bloomPass = bloom(scenePassColor, 0, BLOOM_RADIUS, BLOOM_LUMINANCE_THRESHOLD);

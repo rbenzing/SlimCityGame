@@ -293,6 +293,11 @@ export class InstancedSlotPool {
   /** Flushes mesh.count + the dirty flags; call once per apply() batch, not per instance. */
   commit(): void {
     this.mesh.count = this.used;
+    // An instanced mesh with no instances still gets submitted as a draw call
+    // with a vertex count of zero, which the WebGPU backend warns about on
+    // every frame. A pool that holds nothing is simply not drawn. Nothing
+    // outside the pool owns this flag — lens toggles live on their own meshes.
+    this.mesh.visible = this.used > 0;
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
     // Invalidate the frustum-culling sphere: three.js's Frustum.intersectsObject
@@ -309,6 +314,7 @@ export class InstancedSlotPool {
   private buildMesh(capacity: number): THREE.InstancedMesh {
     const mesh = new THREE.InstancedMesh(this.geometry, this.material, capacity);
     mesh.count = 0;
+    mesh.visible = false; // empty until commit() says otherwise — see commit()
     // Shadow sweep: pooled building-massing tiers + prop/landmark/utility
     // kits both cast and receive the sun's shadow (one instanced draw each,
     // so the budget cost is a single extra shadow-map draw per pool).

@@ -187,16 +187,30 @@ describe('LandfillRenderer.setVisible', () => {
     const scene = new THREE.Scene();
     const renderer = new LandfillRenderer(scene, flatHeightAt);
     renderer.setVisible(true);
-    expect(renderer.layers().tint.visible).toBe(true);
-    expect(renderer.layers().piles!.visible).toBe(true);
-
     // A rebuild recreates the pile mesh — it must inherit the visible state.
     renderer.apply({ landfill: [patch(0, 0, 1, 1, [1])], landfillFill: 0.5 });
+    expect(renderer.layers().tint.visible).toBe(true);
     expect(renderer.layers().piles!.visible).toBe(true);
 
     renderer.setVisible(false);
     expect(renderer.layers().tint.visible).toBe(false);
     expect(renderer.layers().piles!.visible).toBe(false);
+  });
+
+  // An empty layer is still submitted as a draw call with a vertex count of
+  // zero, which the WebGPU backend warns about. Showing the lens over a city
+  // with no landfill must not turn empty geometry on.
+  it('keeps an empty layer hidden even when the lens is on', () => {
+    const scene = new THREE.Scene();
+    const renderer = new LandfillRenderer(scene, flatHeightAt);
+    renderer.setVisible(true);
+    expect(renderer.layers().tint.visible).toBe(false);
+    expect(renderer.layers().piles!.visible).toBe(false);
+
+    // ...and turns them on as soon as there is something to draw.
+    renderer.apply({ landfill: [patch(0, 0, 1, 1, [1])], landfillFill: 0.5 });
+    expect(renderer.layers().tint.visible).toBe(true);
+    expect(renderer.layers().piles!.visible).toBe(true);
   });
 });
 

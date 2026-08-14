@@ -582,6 +582,7 @@ export class VehicleKitPool {
   private buildMesh(capacity: number): THREE.InstancedMesh {
     const mesh = new THREE.InstancedMesh(this.geometry, this.material, capacity);
     mesh.count = 0;
+    mesh.visible = false; // empty until finalize() says otherwise
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     const tintAttribute = new THREE.InstancedBufferAttribute(
@@ -609,6 +610,9 @@ export class VehicleKitPool {
   /** Flushes matrix/color buffers and re-arms frustum culling after a batch of writes. */
   finalize(): void {
     this.mesh.count = this.used;
+    // A pool holding no vehicles is not drawn: an instanced mesh with zero
+    // instances is still submitted, and the backend warns about the empty draw.
+    this.mesh.visible = this.used > 0;
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
     // Invalidate the cached frustum-cull sphere (three.js only recomputes it

@@ -152,18 +152,21 @@ export default function App() {
           />
           <MainDock
             activeCategory={activeCategory}
-            onToggleCategory={(category) =>
-              setActiveCategory((current) => {
-                // Any dock navigation (open, switch, or close a category) drops the
-                // active tool back to `select`, so placement mode only persists
-                // while a card in the open drawer is actually selected — otherwise
-                // a ploppable stayed "in hand" after the drawer closed and kept
-                // placing on click.
-                const store = useCityStore.getState();
-                if (store.selectedTool !== 'select') store.setTool('select');
-                return current === category ? null : category;
-              })
-            }
+            onToggleCategory={(category) => {
+              // Any dock navigation (open, switch, or close a category) drops the
+              // active tool back to `select`, so placement mode only persists
+              // while a card in the open drawer is actually selected — otherwise
+              // a ploppable stayed "in hand" after the drawer closed and kept
+              // placing on click.
+              //
+              // This runs in the event handler, NOT inside the setActiveCategory
+              // updater: React runs an updater during the render phase, so a
+              // store write in there updates every component subscribed to the
+              // tool while this one is still rendering.
+              const store = useCityStore.getState();
+              if (store.selectedTool !== 'select') store.setTool('select');
+              setActiveCategory((current) => (current === category ? null : category));
+            }}
             infoviewOpen={infoviewOpen}
             onToggleInfoview={() => setInfoviewOpen((v) => !v)}
             onOpenMilestones={() => setMilestoneOpen((v) => !v)}

@@ -21,6 +21,7 @@
 import * as THREE from 'three';
 import { MapData, TilePoint } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { setInstanceCount } from './groundquad';
 
 export type TreeSpecies = 'broadleaf' | 'pine' | 'poplar' | 'shrub';
 
@@ -753,7 +754,7 @@ export class TreeRenderer {
         this.materials[species],
         capacity,
       );
-      mesh.count = pending.length;
+      setInstanceCount(mesh, pending.length);
       mesh.castShadow = true; // shadow sweep: foliage casts onto ground/buildings
       const colorArray = new Float32Array(capacity * 3).fill(1);
       mesh.instanceColor = new THREE.InstancedBufferAttribute(colorArray, 3);

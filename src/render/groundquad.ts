@@ -22,6 +22,22 @@
  */
 export const CONFORM_MAX_CELL_M = 2;
 
+/**
+ * Sets an instanced mesh's live count and hides it when that count is zero.
+ *
+ * An InstancedMesh with no instances is still submitted as a draw call with a
+ * vertex count of zero — work for nothing, and the WebGPU backend warns about
+ * each one. Pools are allocated up front all over this renderer, so a young
+ * city otherwise issues dozens of them every frame.
+ */
+export function setInstanceCount(
+  mesh: { count: number; visible: boolean },
+  count: number,
+): void {
+  mesh.count = count;
+  mesh.visible = count > 0;
+}
+
 /** The terrain PlaneGeometry's diagonal runs (x0,z1)-(x1,z0); ours must match. */
 function pushCell(
   positions: number[],
