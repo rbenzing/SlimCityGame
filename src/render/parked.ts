@@ -726,6 +726,19 @@ export class ParkedCarRenderer {
     return (this.buildingSlots.get(buildingId)?.stalls ?? []).map((s) => s.ref);
   }
 
+  /**
+   * Where a building's stalls ARE, in world meters, whether or not a car is
+   * standing in one right now. An empty stall is hidden with a zero-scale
+   * matrix, so reading the mesh would report every unoccupied car at the origin
+   * — the placement is what the kerb rules are about, not the occupancy.
+   */
+  stallWorldPositions(buildingId: number): { x: number; z: number }[] {
+    return (this.buildingSlots.get(buildingId)?.stalls ?? []).map((s) => ({
+      x: s.matrix.elements[12] ?? 0,
+      z: s.matrix.elements[14] ?? 0,
+    }));
+  }
+
   /** How many of a building's stalls hold a vehicle right now. */
   occupiedStallCount(buildingId: number): number {
     const lot = this.buildingSlots.get(buildingId);

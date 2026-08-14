@@ -669,6 +669,22 @@ describe('ParkedCarRenderer occupancy over the day', () => {
     expect(m.toArray()).toEqual(parked.toArray()); // back in the same bay
   });
 
+  it('reports where stalls are even when the cars have gone home', () => {
+    const renderer = comLot();
+
+    renderer.setDayFraction(13 / 24);
+    const midday = renderer.stallWorldPositions(1);
+    expect(midday.length).toBeGreaterThan(0);
+
+    // The mesh hides an empty stall by zeroing its transform, which would put
+    // every departed car at the origin. A stall is somewhere whether or not
+    // anything is standing in it, and the kerb rules are about the somewhere.
+    renderer.setDayFraction(3 / 24);
+    expect(renderer.occupiedStallCount(1)).toBe(0);
+    expect(renderer.stallWorldPositions(1)).toEqual(midday);
+    expect(midday.every((p) => p.x !== 0 || p.z !== 0)).toBe(true);
+  });
+
   it('opens a lot that finishes building overnight with an empty forecourt', () => {
     const scene = new THREE.Scene();
     const catalog = makeCatalogEntry({ footprint: { w: 4, d: 2 } });

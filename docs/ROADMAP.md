@@ -11,7 +11,7 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 
 > **Delivery status (2026-08-13):** the M0–M7 core spine plus bus transit, service
 > dispatch, districts & policies, stats charts + photo mode, and eight playtest-feedback
-> rounds are shipped and gate-green (2,692 tests / 106 files). Delivered on top of the
+> rounds are shipped and gate-green (2,705 tests / 106 files). Delivered on top of the
 > original milestones: the city-builder UI shell + night cycle, full building/street/vehicle/tree
 > visual language, full terraforming + animated water + sky, the airport landmark,
 > code-split bundle, plus the playtest refinements captured in SPEC.md (utility
@@ -30,8 +30,9 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > which does the same for the tram tier — street-running lines that need no
 > station and relieve the streets they run down, per SPEC §27; and building lots
 > and archetypes — a calibrated material palette, paved lots that claim the whole
-> footprint, one kerbside-parking rule, and warehouse/factory/green-works and
-> shopfront silhouettes, per SPEC §28). Versioning + deploy are
+> footprint, one kerbside-parking rule, warehouse/factory/green-works and
+> shopfront silhouettes, and one junction rule shared by every piece of kerb
+> furniture, per SPEC §28). Versioning + deploy are
 > automated (release-please + Conventional Commits → GitHub Pages; see the repo README).
 > Deferred/optional next: AI raster map packs, facade-atlas stage 2, screen-space
 > AO/reflections, and the [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper

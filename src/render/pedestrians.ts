@@ -481,6 +481,20 @@ export class PedestrianRenderer {
     return this.walkerIds.length;
   }
 
+  /**
+   * Each walker's resolved stroll path — the building it belongs to, the
+   * frontage anchor it walks around, and which world axis the pavement runs
+   * along. A walker circling its house and one striding down the street look
+   * alike in a single frame, so a screenshot cannot tell them apart; this can.
+   */
+  walkerPathsForAudit(): { buildingId: number; anchor: WorldPoint; alongX: boolean }[] {
+    return this.walkerIds.map((buildingId, i) => ({
+      buildingId,
+      anchor: this.walkerPaths[i]?.anchor ?? { x: 0, z: 0 },
+      alongX: this.walkerPaths[i]?.alongX ?? true,
+    }));
+  }
+
   /** Total instanced pedestrian count -- always <= MAX_PEDESTRIANS. */
   totalCount(): number {
     return this.idlePlacements.length + this.walkerIds.length;

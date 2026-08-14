@@ -364,6 +364,28 @@ describe('PedestrianRenderer.apply', () => {
     expect(renderer.walkerCount()).toBe(0);
   });
 
+  it('reports each walker against the building and street axis it actually walks', () => {
+    const scene = new THREE.Scene();
+    // An east-west street along z=1: every building south of it fronts a
+    // pavement that runs along X.
+    const renderer = new PedestrianRenderer(scene, flatHeightAt, (_x, z) => z === 1);
+
+    const buildings: BuildingInstance[] = [];
+    for (let id = 0; id < 300; id += 1) buildings.push(building(id, id, 3));
+    renderer.apply({ stops: [], buildings: { added: buildings, removed: [], updated: [] } });
+
+    const paths = renderer.walkerPathsForAudit();
+    expect(paths).toHaveLength(renderer.walkerCount());
+    const known = new Set(buildings.map((b) => b.id));
+    for (const p of paths) {
+      expect(known.has(p.buildingId)).toBe(true);
+      expect(p.alongX).toBe(true);
+    }
+    // Index-for-index with the walker set: a shifted report would audit one
+    // walker's axis against another's street.
+    expect(new Set(paths.map((p) => p.buildingId)).size).toBe(paths.length);
+  });
+
   it('non-Active buildings never spawn a walker', () => {
     const scene = new THREE.Scene();
     const renderer = new PedestrianRenderer(scene, flatHeightAt);

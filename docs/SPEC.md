@@ -1730,6 +1730,34 @@ changes is that the leftover is now claimed, surfaced and used.
   Kerbside cars sit PARALLEL, past the verge and the sidewalk and half a car
   into the carriageway, because that is what fits between a moving lane and a
   kerb; they get no apron and no painted bays, since the road is already paved.
+- **Kerb furniture is vetted against the tile it stands in, not the thing that
+  placed it.** A frontage is a straight line of tiles but the street it faces
+  need not be: measure a row of cars from the building alone and the row marches
+  off a bend onto the verge, because the building has no idea the road left.
+  Every kerbside object — a parked car, a lamp, a sign — is therefore checked
+  against the tile it would occupy: a road is there, that tier allows it, and
+  the tile is not a junction. A junction is the general case of the bend, and it
+  is excluded for a reason that is not tidiness: where two carriageways cross
+  there is no kerb, so the lateral offset that clears one lane lands inside the
+  other. Candidates are dropped one at a time rather than by the row, so a lot
+  whose frontage runs half onto a corner still parks the half that works.
+- **A driveway is a hole in the lamp line.** Lamps are placed from road tiles
+  and a road tile knows nothing about the lot across the kerb, so a lamp lands
+  in the curb cut and the cars drive through the post. The driveway tiles are an
+  input to lamp placement and are skipped. They belong to BUILDINGS, not roads,
+  so the lamp line is rebuilt when the building set changes and not only when
+  the road set does — guarded by comparing the sets, so an unchanged city pays
+  nothing.
+- **A walker walks along the pavement, not around the house.** A cosmetic walker
+  is anchored on its building's frontage sidewalk and then traces a closed loop,
+  and a loop with equal radii is a circle: correctly anchored people orbiting a
+  point still read as broken. The loop is stretched hard along the street and
+  kept narrow across it, so it covers pavement instead of orbiting. Which way
+  "along" points is read from the ROAD tile's own neighbours rather than from
+  the building's facing, so a corner lot resolves to the street the walker is
+  actually standing on. It stays a loop deliberately — the loop replaced an
+  earlier ping-pong that snapped 180° at each end — and heading follows the
+  tangent, so the turns stay smooth at both extremes.
 - **An archetype is an assembly of parts, not a box with a different colour.**
   A category and level pick the parts: a **warehouse** gets a loading dock and a
   bank of roll-up doors; a **factory** gets a monitor roof over its stacks and
@@ -1787,8 +1815,11 @@ its rescale), `src/render/groundquad.ts` (new — the one terrain-conforming
 ground surface builder), `src/render/lots.ts` (new — lot pads and their
 surfaces), `src/render/parked.ts` (the kerb rules and kerbside cars; it also
 owns `hasGarage`, since "does this building park on its own land" is one
-question whichever building asks it), `src/data/roads.json` (which tiers allow
-kerbside parking), `src/render/massing.ts` (the archetype recipe over the
+question whichever building asks it, and the kerb-tile vetting every piece of
+furniture shares), `src/data/roads.json` (which tiers allow
+kerbside parking), `src/render/lamps.ts` (the driveway exclusion),
+`src/render/pedestrians.ts` (the along-the-pavement walk path),
+`src/render/massing.ts` (the archetype recipe over the
 setback tiers), `src/render/props.ts` (the shared part kit), `src/render/
 facade.ts` + `src/render/houses.ts` + `src/render/landmarks.ts` (colour moves
 out to the palette module).
@@ -1797,10 +1828,20 @@ out to the palette module).
 footprint; neighbouring lots meet with no grass seam; commercial and industrial
 lots carry parking that scales with lot depth; a warehouse, a factory and a
 green works are distinguishable by silhouette alone at overhead camera distance;
-no material colour exceeds the calibration; and the per-chunk merged lot mesh
-stays under the vertex cap with the cap asserted in a test.
+no material colour exceeds the calibration; the per-chunk merged lot mesh
+stays under the vertex cap with the cap asserted in a test; no kerbside object
+stands off the carriageway, on a tier that forbids it, or in a junction; no lamp
+stands in a curb cut; and a walker's path runs down the street it fronts rather
+than around its building.
 
 **Verification:** the palette rule is a test over the palette module, not a
 review. Lot tiling is checked by measuring adjacent pads for a gap. Archetype
 silhouettes are a screenshot check — they are a claim about what the eye can
-tell apart, which no unit test can make.
+tell apart, which no unit test can make. The kerb rules are checked in the
+RUNNING game rather than only in unit tests: `tools/kerb-audit.mjs` grows a real
+district on a staircase street that turns every other tile, then re-derives from
+the live grid the tile every kerbside car and every lamp actually stands in, and
+the street axis every walker actually walks. A fixture proves the rule; only the
+real city proves the inputs the rule is fed, and only a street that BENDS can
+fail the way these did. The audit asserts it found cars, driveways and walkers
+at all, so a city that grew nothing reports nothing proven rather than green.

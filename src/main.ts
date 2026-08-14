@@ -48,7 +48,12 @@ import { BuildingInstancer } from './render/buildings';
 import { MassingRenderer } from './render/massing';
 import { RoofPropRenderer } from './render/props';
 import { HouseRoofRenderer } from './render/houses';
-import { curbCutTileFor, ParkedCarRenderer } from './render/parked';
+import {
+  curbCutTileFor,
+  ParkedCarRenderer,
+  tierAllowsRoadsideParking,
+  usesRoadsideParking,
+} from './render/parked';
 import { LotRenderer } from './render/lots';
 import { BuildingKitRenderer } from './render/buildingkit';
 import { LandmarkRenderer } from './render/landmarks';
@@ -407,6 +412,104 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           northTier: inBounds(b.x, b.z - 1)
             ? (clientGrid.roadTier[(b.z - 1) * clientGrid.size + b.x] ?? 0)
             : 0,
+        };
+      },
+      // Every piece of kerb furniture, re-derived from where it ACTUALLY
+      // stands. Placement code and this audit share no helper on purpose: the
+      // positions come from the rendered transforms and the tiles come from the
+      // live grid, so a rule that is right about a fixture and wrong about the
+      // city it is fed still fails here.
+      readKerbAudit: (): {
+        cars: {
+          total: number;
+          offRoad: number;
+          junction: number;
+          wrongTier: number;
+          samples: { id: number; tx: number; tz: number; why: string }[];
+        };
+        lamps: { total: number; driveways: number; onDriveway: number; samples: number[][] };
+        walkers: { total: number; noFrontage: number; wrongAxis: number };
+      } => {
+        const isRoad = (tx: number, tz: number): boolean =>
+          inBounds(tx, tz) && (clientGrid.roadTier[tz * clientGrid.size + tx] ?? 0) !== RoadTier.None;
+        const tierOf = (tx: number, tz: number): RoadTier =>
+          inBounds(tx, tz)
+            ? ((clientGrid.roadTier[tz * clientGrid.size + tx] ?? 0) as RoadTier)
+            : RoadTier.None;
+
+        const cars = { total: 0, offRoad: 0, junction: 0, wrongTier: 0 };
+        const carSamples: { id: number; tx: number; tz: number; why: string }[] = [];
+        for (const building of knownBuildings.values()) {
+          const entry = catalogById.get(building.catalogId);
+          if (!entry) continue;
+          // Only kerbside cars are the street's business — a bay-row car stands
+          // on its owner's lot and has no kerb rule to break.
+          if (!usesRoadsideParking(entry, building.x, building.z, roadAt, tierOf)) continue;
+          for (const stall of parkedCars.stallWorldPositions(building.id)) {
+            const tx = worldToTile(stall.x);
+            const tz = worldToTile(stall.z);
+            cars.total += 1;
+            let why = '';
+            if (!isRoad(tx, tz)) why = 'off-road';
+            else if (!tierAllowsRoadsideParking(tierOf(tx, tz))) why = 'tier';
+            else if (
+              (isRoad(tx - 1, tz) || isRoad(tx + 1, tz)) &&
+              (isRoad(tx, tz - 1) || isRoad(tx, tz + 1))
+            )
+              why = 'junction';
+            if (why === 'off-road') cars.offRoad += 1;
+            if (why === 'tier') cars.wrongTier += 1;
+            if (why === 'junction') cars.junction += 1;
+            if (why && carSamples.length < 8) carSamples.push({ id: building.id, tx, tz, why });
+          }
+        }
+
+        const lampSamples: number[][] = [];
+        let onDriveway = 0;
+        for (let slot = 0; slot < lamps.lampCount(); slot += 1) {
+          const pole = lamps.polePosition(slot);
+          const tx = worldToTile(pole.x);
+          const tz = worldToTile(pole.z);
+          if (drivewayTiles.has(tx * 100_000 + tz)) {
+            onDriveway += 1;
+            if (lampSamples.length < 8) lampSamples.push([tx, tz]);
+          }
+        }
+
+        const walkers = { total: 0, noFrontage: 0, wrongAxis: 0 };
+        for (const path of pedestrianRenderer.walkerPathsForAudit()) {
+          walkers.total += 1;
+          const ax = worldToTile(path.anchor.x);
+          const az = worldToTile(path.anchor.z);
+          // The anchor stands on the frontage tile, so the street it belongs to
+          // is one of the four next door.
+          const road = (
+            [
+              [ax, az - 1],
+              [ax + 1, az],
+              [ax, az + 1],
+              [ax - 1, az],
+            ] as const
+          ).find(([rx, rz]) => isRoad(rx, rz));
+          if (!road) {
+            walkers.noFrontage += 1;
+            continue;
+          }
+          const [rx, rz] = road;
+          const runsEW = isRoad(rx - 1, rz) || isRoad(rx + 1, rz);
+          const runsNS = isRoad(rx, rz - 1) || isRoad(rx, rz + 1);
+          if (path.alongX !== (runsEW || !runsNS)) walkers.wrongAxis += 1;
+        }
+
+        return {
+          cars: { ...cars, samples: carSamples },
+          lamps: {
+            total: lamps.lampCount(),
+            driveways: drivewayTiles.size,
+            onDriveway,
+            samples: lampSamples,
+          },
+          walkers,
         };
       },
       // What the transit renderer actually built. A transit vehicle and a
