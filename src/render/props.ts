@@ -35,6 +35,7 @@ import {
 } from './massing';
 import { isRoofedEntry } from './houses';
 import { materialHex } from './palette';
+import { isCleanIndustry } from './archetypes';
 
 // ---------------------------------------------------------------------------
 // Deterministic hashing (never Math.random/Date.now) — each render/*.ts file
@@ -173,6 +174,19 @@ export const SILO_CLUSTER_MIN = 3;
 export const SILO_CLUSTER_MAX = 4;
 /** Industrial level >= 2 adds a smokestack. */
 export const MIN_SMOKESTACK_LEVEL = 2;
+
+/**
+ * Whether this building gets a stack: big enough industry that actually emits
+ * something. Clean industry never does, which is the entire silhouette
+ * difference between it and the factory it grew out of — and it is read from
+ * the building's own pollution figure, so a stack on the skyline always means
+ * pollution in the air.
+ */
+export function hasSmokestack(entry: BuildingCatalogEntry): boolean {
+  if (entry.category !== 'ind') return false;
+  if ((entry.level ?? 1) < MIN_SMOKESTACK_LEVEL) return false;
+  return !isCleanIndustry(entry);
+}
 /** Large industrial (>= 3x3) may get a silo cluster. */
 export const MIN_SILO_FOOTPRINT_TILES = 3;
 
@@ -559,7 +573,7 @@ export class RoofPropRenderer {
 
     // --- industrial extras ---------------------------------------
     if (entry.category === 'ind') {
-      if ((entry.level ?? 1) >= MIN_SMOKESTACK_LEVEL) {
+      if (hasSmokestack(entry)) {
         const local = computeCornerOffset(topBox, smokestackCorner(building.id));
         const rotated = rotateLocalOffset(local.x, local.z, building.rotation);
         const worldX = centerX + rotated.x;

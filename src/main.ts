@@ -50,6 +50,7 @@ import { RoofPropRenderer } from './render/props';
 import { HouseRoofRenderer } from './render/houses';
 import { ParkedCarRenderer } from './render/parked';
 import { LotRenderer } from './render/lots';
+import { BuildingKitRenderer } from './render/buildingkit';
 import { LandmarkRenderer } from './render/landmarks';
 import { RoadMeshRenderer } from './render/roadsmesh';
 import { BridgeRenderer } from './render/bridges';
@@ -222,6 +223,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const lots = new LotRenderer(world.scene, heightAt, catalog);
   const massing = new MassingRenderer(world.scene, heightAt, catalog, roadAt);
   const roofProps = new RoofPropRenderer(world.scene, heightAt, catalog, roadAt);
+  // Archetype kit: the parts that make a warehouse, a factory, a green works
+  // and a shopfront read as different things rather than as boxes of different
+  // heights — docks and doors, a monitor roof, a roof array, a canopy and a sign.
+  const buildingKit = new BuildingKitRenderer(world.scene, heightAt, catalog, roadAt);
   const parkedCars = new ParkedCarRenderer(world.scene, heightAt, catalog, roadAt, (x, z) =>
     inBounds(x, z)
       ? ((clientGrid.roadTier[z * clientGrid.size + x] ?? 0) as RoadTier)
@@ -344,6 +349,18 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         lines: useCityStore.getState().transitLines,
         ridership: useCityStore.getState().transitRidership,
       }),
+      // Which archetype parts the kit actually built. A silhouette claim is
+      // exactly the kind a screenshot cannot settle on its own.
+      readKit: (): Record<string, number> => ({
+        loadingDock: buildingKit.instanceCount('loadingDock'),
+        rollUpDoors: buildingKit.instanceCount('rollUpDoors'),
+        monitorRoof: buildingKit.instanceCount('monitorRoof'),
+        roofArray: buildingKit.instanceCount('roofArray'),
+        canopy: buildingKit.instanceCount('canopy'),
+        signageBand: buildingKit.instanceCount('signageBand'),
+      }),
+      /** Ids the kit holds parts for, to reconcile against the known buildings. */
+      readKitIds: (): number[] => buildingKit.trackedIds(),
       // Where a building's cars actually stand. A parked car and a moving one
       // look alike in a shot, so a screenshot cannot tell whether the kerb rule
       // is being honoured; this can.
@@ -807,6 +824,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       instancer.apply(snap.buildings);
       massing.apply(snap.buildings);
       roofProps.apply(snap.buildings);
+      buildingKit.apply(snap.buildings);
       houseRoofs.apply(snap.buildings);
       parkedCars.apply(snap.buildings);
       landmarks.apply(snap.buildings);

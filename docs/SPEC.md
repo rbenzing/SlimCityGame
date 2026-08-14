@@ -1731,11 +1731,24 @@ changes is that the leftover is now claimed, surfaced and used.
   into the carriageway, because that is what fits between a moving lane and a
   kerb; they get no apron and no painted bays, since the road is already paved.
 - **An archetype is an assembly of parts, not a box with a different colour.**
-  A category and level pick the parts: a warehouse gets a long low slab, roll-up
-  doors and a loading dock; a factory gets a monitor roof, stacks and silos; a
-  green works gets clean massing and a roof array and NO stack, which is the
-  whole point of it; a shop gets an awning and a signage band; a home keeps its
-  pitched roof. Parts are shared, so an archetype is a recipe over one kit.
+  A category and level pick the parts: a **warehouse** gets a loading dock and a
+  bank of roll-up doors; a **factory** gets a monitor roof over its stacks and
+  silos; a **green works** gets a roof array and NO stack, which is the whole
+  point of it; a **storefront** gets a canopy and a signage band, a **retail
+  block** the band alone; a **house** keeps its pitched roof and an
+  **apartment** stays flat-topped. Parts are shared, so an archetype is a recipe
+  over one kit, and a part is one box — a whole assembly is under a hundred
+  triangles.
+- **Clean industry is read from what it emits, not from its name or level.** The
+  green works is the industrial building whose pollution figure is zero, and the
+  smokestack is gated on the same figure. The silhouette and the simulation
+  therefore cannot disagree: a stack on the skyline always means pollution in
+  the air, and a player can read the difference from a distance. `ind-3 Green
+  Works` is the top of the ladder — more jobs than the factory, none of the
+  smoke — so it is something to grow into rather than a reskin.
+- **Frontage parts need a frontage.** A dock, a canopy and a sign hang on the
+  road-facing wall and are skipped entirely when a building fronts no street;
+  roof parts need no frontage and appear regardless.
 - **The palette is calibrated and we are outside it.** The reference caps albedo
   brightness so lighting has headroom; the brightest material in the chart is
   snow at 140/142/144. Several of ours are far past it — a silo at 216/212/200,

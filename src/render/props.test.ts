@@ -6,6 +6,7 @@ import {
   computeRoofPropCount,
   computeSiloClusterPlacements,
   hasAntenna,
+  hasSmokestack,
   MIN_SILO_FOOTPRINT_TILES,
   MIN_SMOKESTACK_LEVEL,
   PropKind,
@@ -473,12 +474,14 @@ describe('RoofPropRenderer', () => {
 
   it('industrial level >= MIN_SMOKESTACK_LEVEL gets exactly 1 smokestack + a warning light at its tip; level 1 gets none', () => {
     const scene = new THREE.Scene();
+    // A stack means emissions, so a fixture that wants one has to emit.
     const tall = entry({
       id: 'ind-tall',
       category: 'ind',
       level: MIN_SMOKESTACK_LEVEL,
       footprint: { w: 2, d: 2 },
       height: 14,
+      pollution: 90,
     });
     const short = entry({
       id: 'ind-short',
@@ -486,6 +489,7 @@ describe('RoofPropRenderer', () => {
       level: 1,
       footprint: { w: 2, d: 2 },
       height: 9,
+      pollution: 60,
     });
     const renderer = new RoofPropRenderer(scene, flatHeightAt, [tall, short]);
     renderer.apply(
@@ -780,5 +784,40 @@ describe('RoofPropRenderer frontage setback (optional roadAt)', () => {
       withoutRoad.getMatrix('ac', slotsB[i]!, mB);
       expect(mA.elements).toEqual(mB.elements);
     });
+  });
+});
+
+describe('a stack means emissions', () => {
+  it('gives clean industry no smokestack, however big it grows', () => {
+    const green = entry({
+      id: 'ind-green',
+      category: 'ind',
+      level: 3,
+      footprint: { w: 3, d: 4 },
+      height: 15,
+      pollution: 0,
+    });
+    expect(hasSmokestack(green)).toBe(false);
+
+    const scene = new THREE.Scene();
+    const renderer = new RoofPropRenderer(scene, flatHeightAt, [green]);
+    renderer.apply(deltaAdd(building({ id: 1, catalogId: 'ind-green', level: 3, x: 0, z: 0 })));
+    expect(renderer.slotsFor(1, 'smokestack')).toHaveLength(0);
+  });
+
+  it('gives a polluting factory one, so the skyline and the air agree', () => {
+    const dirty = entry({
+      id: 'ind-dirty',
+      category: 'ind',
+      level: 2,
+      footprint: { w: 3, d: 3 },
+      height: 13,
+      pollution: 90,
+    });
+    expect(hasSmokestack(dirty)).toBe(true);
+  });
+
+  it('never puts a stack on anything that is not industry', () => {
+    expect(hasSmokestack(entry({ category: 'com', level: 3, pollution: 50 }))).toBe(false);
   });
 });
