@@ -24,6 +24,8 @@ import * as THREE from 'three';
 import { PIER_SPACING_TILES, TILE_METERS, tileToWorld } from '../shared/constants';
 import { RoadTier } from '../shared/types';
 import { carriagewayHalfWidthMeters, curbWidthMeters, ROAD_Y_OFFSET } from './roadsmesh';
+import { carriagewayHalfWidthOf, kerbWidthOf } from '../shared/roadprofile';
+import type { RoadProfile } from '../shared/types';
 import { setInstanceCount } from './groundquad';
 
 /** A deck tile as the renderer needs it: where it is, how high, how wide. */
@@ -31,6 +33,8 @@ export interface BridgeDeckTile {
   x: number;
   z: number;
   tier: RoadTier;
+  /** The tile's own cross-section when it carries a composed one. */
+  profile?: RoadProfile;
   mask: number; // neighbor bitmask, +N=1 +E=2 +S=4 +W=8
   /** Deck world height (terrain + elevation), in metres. */
   deckY: number;
@@ -185,8 +189,15 @@ export function runsAlongZ(mask: number): boolean {
  * carries — a motorway's curb is half a metre, so its span hugs the
  * carriageway rather than fanning out into empty tarmac either side.
  */
-export function structureHalfWidth(tier: RoadTier, style: BridgeStyle): number {
-  return carriagewayHalfWidthMeters(tier) + curbWidthMeters(tier) + STYLES[style].overhang;
+export function structureHalfWidth(
+  tier: RoadTier,
+  style: BridgeStyle,
+  /** The deck's own cross-section when it carries a composed one; the span is built to it. */
+  profile?: RoadProfile,
+): number {
+  const half = profile ? carriagewayHalfWidthOf(profile) : carriagewayHalfWidthMeters(tier);
+  const kerb = profile ? kerbWidthOf(profile) : curbWidthMeters(tier);
+  return half + kerb + STYLES[style].overhang;
 }
 
 interface StyleGroup {
@@ -341,7 +352,7 @@ export class BridgeRenderer {
       group.forEach((tile) => {
         const wx = tileToWorld(tile.x);
         const wz = tileToWorld(tile.z);
-        const half = structureHalfWidth(tile.tier, style);
+        const half = structureHalfWidth(tile.tier, style, tile.profile);
         const alongZ = runsAlongZ(tile.mask);
         const deckTop = tile.deckY + ROAD_Y_OFFSET;
         const span = TILE_SPAN;

@@ -241,10 +241,16 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // and a shopfront read as different things rather than as boxes of different
   // heights — docks and doors, a monitor roof, a roof array, a canopy and a sign.
   const buildingKit = new BuildingKitRenderer(world.scene, heightAt, catalog, roadAt);
-  const parkedCars = new ParkedCarRenderer(world.scene, heightAt, catalog, roadAt, (x, z) =>
-    inBounds(x, z)
-      ? ((clientGrid.roadTier[z * clientGrid.size + x] ?? 0) as RoadTier)
-      : RoadTier.None,
+  const parkedCars = new ParkedCarRenderer(
+    world.scene,
+    heightAt,
+    catalog,
+    roadAt,
+    (x, z) =>
+      inBounds(x, z)
+        ? ((clientGrid.roadTier[z * clientGrid.size + x] ?? 0) as RoadTier)
+        : RoadTier.None,
+    (x, z) => clientGrid.profileAt(x, z),
   );
   // Residential house kit: pitched roofs on every detached/row home, plus a
   // garage + street-facing driveway on the larger detached lots (roadAt orients
@@ -337,6 +343,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       readGrid: (): {
         size: number;
         roadTier: number[];
+        roadProfile: number[];
         roadElevation: number[];
         buildingId: number[];
         zone: number[];
@@ -345,6 +352,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       } => ({
         size: clientGrid.size,
         roadTier: Array.from(clientGrid.roadTier),
+        // The profile id per tile: a harness can tell a composed road from
+        // the preset it stands nearest to, which a screenshot cannot.
+        roadProfile: Array.from(clientGrid.roadProfile),
         // Deck height per tile: lets a screenshot check confirm a span actually
         // rose before it reads anything into the picture of it.
         roadElevation: Array.from(clientGrid.roadElevation),
@@ -514,6 +524,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           walkers,
         };
       },
+      // Where every lamp post stands, in world metres. A pole in the
+      // carriageway and one on the kerb are a metre apart in a screenshot, so
+      // a harness measures them against the road's real edge instead.
+      readLampPoles: (): { x: number; z: number }[] =>
+        Array.from({ length: lamps.lampCount() }, (_, slot) => {
+          const pole = lamps.polePosition(slot);
+          return { x: pole.x, z: pole.z };
+        }),
       // What the transit renderer actually built. A transit vehicle and a
       // traffic-spawned one look alike in a screenshot, so a shot cannot tell
       // whether a line's own vehicles are on the road; this can.

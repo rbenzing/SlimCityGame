@@ -2233,10 +2233,17 @@ scaled by one constant into the units the sim already uses.
    reuses for an identical shape, so the same composition never gets two ids
    and undo removes the whole edit. A composition the tile cannot hold is
    refused at the preview with its reason and lays nothing. Edits reset when
-   the player picks a different road. Still to come in wave 1: piece-driven
-   markings, the class drawer with posted speed and lane count, a median
-   picker, replace-in-place over an existing run, and the kerb furniture
-   measuring from the profile's own edge rather than the preset's.
+   the player picks a different road. Every piece of kerb furniture — lamps,
+   meters, boxes, signs, the manholes inside the carriageway, kerbside car
+   rows and their aprons, and a bridge's deck — now measures from the tile's
+   OWN cross-section, so a lamp beside a two-lane with parking lanes stands
+   at the 6 m kerb and not in the parking lane where the preset's kerb was;
+   `tools/profile-shots.mjs` lays a preset, a parked and a bare two-lane in
+   the running game, reads back the profile id on every tile and the
+   distance of every lamp from its centreline, and shoots them. Still to
+   come in wave 1: piece-driven markings (a parking lane is wider asphalt
+   until it gets its bay ticks), the class drawer with posted speed and lane
+   count, a median picker, and replace-in-place over an existing run.
 2. **Stored direction** — `roadFlow`, drag direction, asymmetric profiles,
    directional edge cost, one-way pathfinding off geometry inference.
 3. **Junction control** — node control records, the v/c warrant default, the

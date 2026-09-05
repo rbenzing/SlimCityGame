@@ -9,6 +9,7 @@ import { TILE_METERS } from '../shared/constants';
 import { RoadTier, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingInstance, MapData } from '../shared/types';
 import { ClientGridMirror } from './clientgrid';
+import { presetProfileForTier } from '../shared/roadprofile';
 
 const SIZE = 32;
 
@@ -124,13 +125,33 @@ describe('ClientGridMirror', () => {
     expect(mirror.roadTier[4 * SIZE + 3]).toBe(RoadTier.TwoLane);
     expect(mirror.roadTier[4 * SIZE + 4]).toBe(RoadTier.Avenue);
     expect(mirror.roadTiles()).toEqual([
-      { x: 3, z: 4, tier: RoadTier.TwoLane, elevated: false },
-      { x: 4, z: 4, tier: RoadTier.Avenue, elevated: false },
+      {
+        x: 3,
+        z: 4,
+        tier: RoadTier.TwoLane,
+        elevated: false,
+        profile: presetProfileForTier(RoadTier.TwoLane),
+      },
+      {
+        x: 4,
+        z: 4,
+        tier: RoadTier.Avenue,
+        elevated: false,
+        profile: presetProfileForTier(RoadTier.Avenue),
+      },
     ]);
 
     mirror.applyRoadDeltas([{ x: 3, z: 4, tier: RoadTier.None, mask: 0, elevation: 0, profile: 0 }]);
     expect(mirror.roadTier[4 * SIZE + 3]).toBe(RoadTier.None);
-    expect(mirror.roadTiles()).toEqual([{ x: 4, z: 4, tier: RoadTier.Avenue, elevated: false }]);
+    expect(mirror.roadTiles()).toEqual([
+      {
+        x: 4,
+        z: 4,
+        tier: RoadTier.Avenue,
+        elevated: false,
+        profile: presetProfileForTier(RoadTier.Avenue),
+      },
+    ]);
   });
 
   it('tracks deck heights and reports the elevated tiles as bridge structure', () => {

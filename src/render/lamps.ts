@@ -24,6 +24,8 @@ import * as THREE from 'three';
 import { RoadTier, TilePoint } from '../shared/types';
 import { LAMP_SPACING_TILES, tileToWorld } from '../shared/constants';
 import { carriagewayHalfWidthMeters, curbWidthMeters, ROAD_Y_OFFSET } from './roadsmesh';
+import { carriagewayHalfWidthOf, kerbWidthOf } from '../shared/roadprofile';
+import type { RoadProfile } from '../shared/types';
 import { setInstanceCount } from './groundquad';
 
 const POLE_HEIGHT = 5.5;
@@ -164,8 +166,12 @@ export function lampGlowFactor(dayT: number): number {
 
 export type LampAxis = 'x' | 'z';
 
-/** A road tile a lamp may sit on; `tier` is optional (undefined = eligible). */
-export type LampRoadTile = TilePoint & { tier?: RoadTier };
+/**
+ * A road tile a lamp may sit on; `tier` is optional (undefined = eligible), and
+ * `profile` is the tile's own cross-section when it carries a composed one —
+ * the pole stands at ITS kerb, not the preset's.
+ */
+export type LampRoadTile = TilePoint & { tier?: RoadTier; profile?: RoadProfile };
 
 /**
  * Whether a road tier gets street lamps. Unpaved gravel/dirt roads do not, and
@@ -193,7 +199,8 @@ export interface LampPlacement {
  * motorway's columns stand anyway — and on a bridge it puts the column on the
  * deck's kerb instead of stranding it out in the middle of the span.
  */
-function lampLateralOffset(tier: RoadTier | undefined): number {
+function lampLateralOffset(tier: RoadTier | undefined, profile?: RoadProfile): number {
+  if (profile) return carriagewayHalfWidthOf(profile) + kerbWidthOf(profile) * 0.5;
   const t = tier ?? RoadTier.TwoLane;
   return carriagewayHalfWidthMeters(t) + curbWidthMeters(t) * 0.5;
 }
@@ -256,7 +263,7 @@ export function computeLampPlacements(
       z: tile.z,
       axis,
       side,
-      lateralOffset: lampLateralOffset(tile.tier),
+      lateralOffset: lampLateralOffset(tile.tier, tile.profile),
     });
   }
   return placements;

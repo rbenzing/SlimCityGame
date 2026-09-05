@@ -42,6 +42,8 @@ import {
   ZoneType,
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import type { RoadProfile } from '../shared/types';
+import { SIDEWALK_WIDTH_M } from './roadsmesh';
 import { sizeForKind, variantScaleForKind } from './vehicles';
 
 const COM_PITCH = BAY_PITCH_TILES.com;
@@ -205,6 +207,34 @@ describe('findRoadFacingEdge', () => {
 // ---------------------------------------------------------------------------
 // Pure functions: apron reach to the sidewalk + curb cut
 // ---------------------------------------------------------------------------
+
+describe('kerb rows measure from the street’s own cross-section', () => {
+  const parked: RoadProfile = {
+    class: 'local',
+    pieces: [
+      { kind: 'sidewalk', width: 1.875 },
+      { kind: 'parking', width: 2.25 },
+      { kind: 'travel', width: 3.75, flow: 'back' },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+      { kind: 'parking', width: 2.25 },
+      { kind: 'sidewalk', width: 1.875 },
+    ],
+  };
+
+  it('a wider carriageway leaves less verge, so the kerb row sits nearer the lot', () => {
+    const tier = RoadTier.TwoLane;
+    expect(vergeDepthMeters(tier, parked)).toBeLessThan(vergeDepthMeters(tier));
+    expect(vergeDepthMeters(tier, parked)).toBeCloseTo(8 - 6 - SIDEWALK_WIDTH_M, 6);
+    expect(sidewalkDepthMeters(tier, parked)).toBeCloseTo(SIDEWALK_WIDTH_M, 6);
+    expect(roadsideDepthTiles(tier, parked)).toBeLessThan(roadsideDepthTiles(tier));
+  });
+
+  it('without a profile the depths are the tier’s, exactly as before', () => {
+    const tier = RoadTier.TwoLane;
+    expect(vergeDepthMeters(tier, undefined)).toBe(vergeDepthMeters(tier));
+    expect(roadsideDepthTiles(tier, undefined)).toBe(roadsideDepthTiles(tier));
+  });
+});
 
 describe('vergeDepthMeters / sidewalkDepthMeters', () => {
   it('leaves a grass verge on a narrow street and none on a wide one', () => {

@@ -9,9 +9,38 @@ import {
   RoadFurnitureRenderer,
 } from './roadfurniture';
 import { RoadTier } from '../shared/types';
+import type { RoadProfile } from '../shared/types';
 import { carriagewayHalfWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
 
 const flatHeightAt = (): number => 0;
+
+describe('kerb props stand at the tile’s own edge', () => {
+  it('a meter on a two-lane with parking lanes sits at the 12 m carriageway’s kerb, not the preset’s', () => {
+    const parked: RoadProfile = {
+      class: 'local',
+      pieces: [
+        { kind: 'sidewalk', width: 1.875 },
+        { kind: 'parking', width: 2.25 },
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'parking', width: 2.25 },
+        { kind: 'sidewalk', width: 1.875 },
+      ],
+    };
+    const run = (profile?: RoadProfile): FurnitureRoadTile[] =>
+      Array.from({ length: 40 }, (_, i) => ({ x: i, z: 10, tier: RoadTier.TwoLane, profile }));
+    const preset = computeMeterPlacements(run());
+    const composed = computeMeterPlacements(run(parked));
+    expect(preset.length).toBeGreaterThan(0);
+    expect(composed.length).toBe(preset.length);
+    for (const m of preset) expect(m.lateralOffset).toBeCloseTo(3.75 + SIDEWALK_WIDTH_M, 6);
+    for (const m of composed) expect(m.lateralOffset).toBeCloseTo(6 + SIDEWALK_WIDTH_M, 6);
+    // A manhole stays inside the carriageway it belongs to, whichever width that is.
+    for (const h of computeManholePlacements(run(parked))) {
+      expect(Math.abs(h.lateral)).toBeLessThan(6);
+    }
+  });
+});
 
 /** Builds a straight run of same-tier tiles, horizontal (fixed z) or vertical (fixed x). */
 function strip(

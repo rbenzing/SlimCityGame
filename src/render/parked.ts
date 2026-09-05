@@ -26,7 +26,9 @@ import {
   ZoneType,
 } from '../shared/types';
 import roadsData from '../data/roads.json';
+import type { RoadProfile } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { carriagewayHalfWidthOf } from '../shared/roadprofile';
 import { carriagewayHalfWidthMeters, ROAD_Y_OFFSET, SIDEWALK_WIDTH_M } from './roadsmesh';
 import {
   sizeForKind,
@@ -192,13 +194,15 @@ export const CURB_CUT_WIDTH_M = 7;
  * carriageway half-width and the sidewalk are taken out — 0 on wide tiers
  * whose sidewalk already reaches the tile boundary.
  */
-export function vergeDepthMeters(tier: RoadTier): number {
-  return Math.max(0, TILE_METERS / 2 - carriagewayHalfWidthMeters(tier) - SIDEWALK_WIDTH_M);
+export function vergeDepthMeters(tier: RoadTier, profile?: RoadProfile): number {
+  const half = profile ? carriagewayHalfWidthOf(profile) : carriagewayHalfWidthMeters(tier);
+  return Math.max(0, TILE_METERS / 2 - half - SIDEWALK_WIDTH_M);
 }
 
 /** Depth of the sidewalk band the curb cut crosses, clamped to what fits inside the road tile. */
-export function sidewalkDepthMeters(tier: RoadTier): number {
-  const toCarriageway = Math.max(0, TILE_METERS / 2 - carriagewayHalfWidthMeters(tier));
+export function sidewalkDepthMeters(tier: RoadTier, profile?: RoadProfile): number {
+  const half = profile ? carriagewayHalfWidthOf(profile) : carriagewayHalfWidthMeters(tier);
+  const toCarriageway = Math.max(0, TILE_METERS / 2 - half);
   return Math.min(SIDEWALK_WIDTH_M, toCarriageway);
 }
 
@@ -511,9 +515,10 @@ export const ROADSIDE_END_MARGIN_TILES = 0.25;
  * edge, in tiles: across the verge, across the sidewalk, then half a car into
  * the carriageway. Positive is toward the street.
  */
-export function roadsideDepthTiles(tier: RoadTier): number {
+export function roadsideDepthTiles(tier: RoadTier, profile?: RoadProfile): number {
   return (
-    (vergeDepthMeters(tier) + sidewalkDepthMeters(tier) + ROADSIDE_CAR_HALF_WIDTH_M) / TILE_METERS
+    (vergeDepthMeters(tier, profile) + sidewalkDepthMeters(tier, profile) + ROADSIDE_CAR_HALF_WIDTH_M) /
+      TILE_METERS
   );
 }
 
@@ -567,6 +572,8 @@ export function computeRoadsideStallPlacements(
   tier: RoadTier,
   count: number,
   tileAllows?: (tileX: number, tileZ: number) => boolean,
+  /** The street's own cross-section when it carries a composed one; the row sits at ITS kerb. */
+  profile?: RoadProfile,
 ): StallPlacement[] {
   if (count <= 0) return [];
 
@@ -574,7 +581,7 @@ export function computeRoadsideStallPlacements(
   const pitchM = ROADSIDE_PITCH_TILES * TILE_METERS;
   const start = bayRowStart(edge.edgeTiles, count, ROADSIDE_PITCH_TILES);
   const baseYaw = EDGE_BASE_YAW[edge.side] + Math.PI / 2;
-  const depth = roadsideDepthTiles(tier);
+  const depth = roadsideDepthTiles(tier, profile);
 
   const placements: StallPlacement[] = [];
   for (let i = 0; i < count; i++) {
@@ -654,6 +661,7 @@ export class ParkedCarRenderer {
   private readonly stripeMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
 
   private readonly roadTierAt: (x: number, z: number) => RoadTier;
+  private readonly roadProfileAt: (x: number, z: number) => RoadProfile | null;
 
   private readonly pools = new Map<number, VehicleKitPool>();
   private readonly buildingSlots = new Map<number, LotRecord>();
@@ -668,11 +676,14 @@ export class ParkedCarRenderer {
     catalog: BuildingCatalogEntry[],
     roadAt: (x: number, z: number) => boolean,
     roadTierAt: (x: number, z: number) => RoadTier = () => RoadTier.TwoLane,
+    /** The street's own cross-section where it carries a composed one; kerb rows sit at ITS edge. */
+    roadProfileAt: (x: number, z: number) => RoadProfile | null = () => null,
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
     this.roadAt = roadAt;
     this.roadTierAt = roadTierAt;
+    this.roadProfileAt = roadProfileAt;
     this.catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
   }
 
@@ -899,6 +910,7 @@ export class ParkedCarRenderer {
       tier,
       count,
       (tileX, tileZ) => kerbTileAllowsParking(tileX, tileZ, this.roadAt, this.roadTierAt),
+      this.roadProfileAt(edge.roadTileX, edge.roadTileZ) ?? undefined,
     );
     if (placements.length === 0) return;
 
@@ -973,7 +985,8 @@ export class ParkedCarRenderer {
     // frontage and out across the grass verge to meet the sidewalk, so the lot
     // reads as one paved forecourt rather than a strip under the cars.
     const tier = this.roadTierAt(edge.roadTileX, edge.roadTileZ);
-    const vergeTiles = vergeDepthMeters(tier) / TILE_METERS;
+    const streetProfile = this.roadProfileAt(edge.roadTileX, edge.roadTileZ) ?? undefined;
+    const vergeTiles = vergeDepthMeters(tier, streetProfile) / TILE_METERS;
     pushFrameQuad(
       positions,
       colors,
@@ -989,7 +1002,7 @@ export class ParkedCarRenderer {
 
     // Curb cut: the driveway carries the same grey across the sidewalk to the
     // carriageway, so the street shows where vehicles enter the lot.
-    const sidewalkTiles = sidewalkDepthMeters(tier) / TILE_METERS;
+    const sidewalkTiles = sidewalkDepthMeters(tier, streetProfile) / TILE_METERS;
     if (sidewalkTiles > 0) {
       const cutCenter = edgeLenM / 2;
       const cutHalf = Math.min(CURB_CUT_WIDTH_M, edgeLenM) / 2;

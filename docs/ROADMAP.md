@@ -11,7 +11,7 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 
 > **Delivery status (2026-08-13):** the M0–M7 core spine plus bus transit, service
 > dispatch, districts & policies, stats charts + photo mode, and eight playtest-feedback
-> rounds are shipped and gate-green (2,818 tests / 107 files). Delivered on top of the
+> rounds are shipped and gate-green (2,823 tests / 107 files). Delivered on top of the
 > original milestones: the city-builder UI shell + night cycle, full building/street/vehicle/tree
 > visual language, full terraforming + animated water + sky, the airport landmark,
 > code-split bundle, plus the playtest refinements captured in SPEC.md (utility
@@ -39,9 +39,10 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > geometry; render and pathfinding read them; the grid stores the profile as
 > the road's identity with the tier derived, saves at v6, the worker accepts
 > composed profiles, the mesh draws a composed tile at its own width and kerbs,
-> and the road tool's Profile row lets the player add parking and bike lanes
-> per kerb and drop footways, laid as a stored profile). Still to build in
-> wave 1: piece-driven markings, the class drawer, a median picker and
+> the road tool's Profile row lets the player add parking and bike lanes per
+> kerb and drop footways, laid as a stored profile, and every piece of kerb
+> furniture measures from the tile's own edge). Still to build in wave 1:
+> piece-driven markings, the class drawer, a median picker and
 > replace-in-place; then waves 2–6. Specified in full: classes, lane-piece
 > profiles with a width budget, stored flow direction, per-junction control
 > (none/yield/stop/all-way/signal/roundabout) with warrant defaults,

@@ -81,7 +81,16 @@ import * as THREE from 'three';
 import { RoadTileDelta, RoadTier } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import { TILE_METERS, CHUNK_TILES, CHUNKS_PER_SIDE } from '../shared/constants';
-import { carriagewayWidth, hasKerbs, isPaved, presetProfileForTier } from '../shared/roadprofile';
+import {
+  carriagewayHalfWidthOf,
+  carriagewayWidth,
+  FOOTWAY_WIDTH_M,
+  hasKerbs,
+  isPaved,
+  kerbWidthOf,
+  PRESET_LANE_WIDTH_M,
+  presetProfileForTier,
+} from '../shared/roadprofile';
 
 /** The road plate rides this far above the terrain — anything standing ON a road must add it. */
 export const ROAD_Y_OFFSET = 0.15;
@@ -174,8 +183,8 @@ export function dashSegments(lo: number, hi: number): Array<[number, number]> {
  * two sidewalks leave of the 16m tile is a grass verge (narrow local streets
  * get a wide verge; 4-lane arterials fill the tile and the sidewalk clamps).
  */
-export const LANE_WIDTH_M = 3.75;
-export const SIDEWALK_WIDTH_M = 0.5 * LANE_WIDTH_M; // 1.875m
+export const LANE_WIDTH_M = PRESET_LANE_WIDTH_M;
+export const SIDEWALK_WIDTH_M = FOOTWAY_WIDTH_M;
 /** Half-carriageway as a fraction of TILE_METERS, from a tier's lane count. */
 const laneFraction = (lanes: number): number => (lanes * LANE_WIDTH_M) / (2 * TILE_METERS);
 
@@ -249,7 +258,7 @@ interface QuadSpec {
 
 /** Carriageway half-width (meters) for a tier — the road-edge distance from the centerline, e.g. for placing curbside props. */
 export function carriagewayHalfWidthMeters(tier: RoadTier): number {
-  return TILE_METERS * tierSpec(tier).halfWidthFraction;
+  return carriagewayHalfWidthOf(presetProfileForTier(tier));
 }
 
 /**
@@ -266,8 +275,7 @@ export function carriagewayHalfWidthMeters(tier: RoadTier): number {
  * marooned out in the middle of the empty strip.
  */
 export function curbWidthMeters(tier: RoadTier): number {
-  if (!tierSpec(tier).hasCurbs) return 0;
-  return Math.max(0, Math.min(SIDEWALK_WIDTH_M, TILE_METERS / 2 - carriagewayHalfWidthMeters(tier)));
+  return kerbWidthOf(presetProfileForTier(tier));
 }
 
 /**

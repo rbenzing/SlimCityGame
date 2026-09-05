@@ -13,6 +13,8 @@ import * as THREE from 'three';
 import { RoadTier, TilePoint } from '../shared/types';
 import { TILE_METERS, tileToWorld } from '../shared/constants';
 import { carriagewayHalfWidthMeters, curbWidthMeters } from './roadsmesh';
+import { carriagewayHalfWidthOf, kerbWidthOf } from '../shared/roadprofile';
+import type { RoadProfile } from '../shared/types';
 
 // --- Manhole -----------------------------------------------------------------
 const MANHOLE_RADIUS = 0.5;
@@ -136,7 +138,21 @@ export type FurnitureSide = 1 | -1;
  * A road tile furniture may sit on; `tier` is optional (undefined -> TwoLane),
  * `elevated` marks a tile up on a bridge deck (undefined -> on the ground).
  */
-export type FurnitureRoadTile = TilePoint & { tier?: RoadTier; elevated?: boolean };
+export type FurnitureRoadTile = TilePoint & {
+  tier?: RoadTier;
+  elevated?: boolean;
+  /** The tile's own cross-section when it carries a composed one; kerb props stand at ITS edge. */
+  profile?: RoadProfile;
+};
+
+/** Carriageway half-width and kerb width for a tile: its own profile's, else its tier's preset. */
+function edgeOf(tile: { tier?: RoadTier; profile?: RoadProfile }): { half: number; kerb: number } {
+  if (tile.profile) {
+    return { half: carriagewayHalfWidthOf(tile.profile), kerb: kerbWidthOf(tile.profile) };
+  }
+  const t = tile.tier ?? RoadTier.TwoLane;
+  return { half: carriagewayHalfWidthMeters(t), kerb: curbWidthMeters(t) };
+}
 
 /** A curbside sidewalk edge: the world axis to offset along and its sign. */
 interface SideChoice {
@@ -214,9 +230,9 @@ export interface SignPlacement {
  * metre, not a footway, so its signage stands there rather than a metre and a
  * half out in the grass — or, on a bridge, out over the parapet.
  */
-function curbsideLateralOffset(tier: RoadTier | undefined): number {
-  const t = tier ?? RoadTier.TwoLane;
-  return carriagewayHalfWidthMeters(t) + curbWidthMeters(t);
+function curbsideLateralOffset(tile: { tier?: RoadTier; profile?: RoadProfile }): number {
+  const { half, kerb } = edgeOf(tile);
+  return half + kerb;
 }
 
 /**
@@ -425,7 +441,7 @@ export function computeManholePlacements(
     if (hashTile(tile.x, tile.z, HASH_MANHOLE_SELECT) >= MANHOLE_SELECT_FRACTION) continue;
 
     const lo = MANHOLE_MIN_OFFSET;
-    const hi = carriagewayHalfWidthMeters(tile.tier ?? RoadTier.TwoLane) - MANHOLE_EDGE_MARGIN;
+    const hi = edgeOf(tile).half - MANHOLE_EDGE_MARGIN;
     if (hi <= lo) continue; // carriageway too narrow to seat a cover clear of both edges
 
     const mag = lo + hashTile(tile.x, tile.z, HASH_MANHOLE_MAG) * (hi - lo);
@@ -463,7 +479,7 @@ export function computeBoxPlacements(roadTiles: readonly FurnitureRoadTile[]): B
       z: tile.z,
       axis: pick.axis,
       side: pick.side,
-      lateralOffset: curbsideLateralOffset(tile.tier),
+      lateralOffset: curbsideLateralOffset(tile),
     });
   }
   return out;
@@ -483,7 +499,7 @@ export function computeMeterPlacements(roadTiles: readonly FurnitureRoadTile[]):
 
     const curbAxis = lateralAxis(tileSet, tile.x, tile.z);
     const side: FurnitureSide = hashTile(tile.x, tile.z, HASH_METER_SIDE) < 0.5 ? -1 : 1;
-    const lateralOffset = curbsideLateralOffset(tile.tier);
+    const lateralOffset = curbsideLateralOffset(tile);
     for (const along of [METER_ALONG, -METER_ALONG]) {
       out.push({ x: tile.x, z: tile.z, curbAxis, side, lateralOffset, along });
     }
@@ -575,12 +591,8 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
       const invLen = 1 / Math.hypot(cornerX, cornerZ);
       const dirX = -cornerX * invLen;
       const dirZ = -cornerZ * invLen;
-      const bendTier = tile.tier ?? RoadTier.TwoLane;
-      const radius =
-        half +
-        carriagewayHalfWidthMeters(bendTier) +
-        curbWidthMeters(bendTier) +
-        BEND_SIGN_CURVE_MARGIN;
+      const bendEdge = edgeOf(tile);
+      const radius = half + bendEdge.half + bendEdge.kerb + BEND_SIGN_CURVE_MARGIN;
       out.push({
         x: tile.x,
         z: tile.z,
@@ -622,7 +634,7 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
       z: tile.z,
       axis: pick.axis,
       side: pick.side,
-      lateralOffset: curbsideLateralOffset(tile.tier),
+      lateralOffset: curbsideLateralOffset(tile),
       type,
     });
   }

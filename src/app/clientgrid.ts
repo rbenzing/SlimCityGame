@@ -270,13 +270,23 @@ export class ClientGridMirror {
    * on a deck — the two things a tier-aware, deck-aware consumer (lamps, road
    * furniture, ground cover) needs to decide what belongs on it.
    */
-  roadTiles(): (TilePoint & { tier: RoadTier; elevated: boolean })[] {
-    const tiles: (TilePoint & { tier: RoadTier; elevated: boolean })[] = [];
+  roadTiles(): (TilePoint & { tier: RoadTier; elevated: boolean; profile: RoadProfile })[] {
+    const tiles: (TilePoint & { tier: RoadTier; elevated: boolean; profile: RoadProfile })[] = [];
     for (let z = 0; z < this.size; z++) {
       for (let x = 0; x < this.size; x++) {
         const i = this.idx(x, z);
         const tier = this.roadTier[i] as RoadTier;
-        if (tier !== RoadTier.None) tiles.push({ x, z, tier, elevated: (this.roadElevation[i] ?? 0) > 0 });
+        if (tier === RoadTier.None) continue;
+        tiles.push({
+          x,
+          z,
+          tier,
+          elevated: (this.roadElevation[i] ?? 0) > 0,
+          // The tile's own cross-section, so kerb furniture stands at its
+          // real edge; a custom id the table no longer holds falls back to the
+          // preset the tier names rather than to nothing.
+          profile: this.profileById(this.roadProfile[i] ?? 0) ?? presetProfileForTier(tier),
+        });
       }
     }
     return tiles;
@@ -299,6 +309,7 @@ export class ClientGridMirror {
           x,
           z,
           tier,
+          profile: this.profileById(this.roadProfile[i] ?? 0) ?? presetProfileForTier(tier),
           mask: this.roadMask[i] ?? 0,
           deckY: this.deckHeightAt(x, z),
           groundY: this.height[i] ?? 0,

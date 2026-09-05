@@ -102,6 +102,26 @@ describe('bridgeStyleFor', () => {
 /** Every buildable tier — bridging is not a privilege of the big roads. */
 const ALL_TIERS = Object.values(RoadTier).filter((t) => t !== RoadTier.None) as RoadTier[];
 
+describe('structureHalfWidth for a composed deck', () => {
+  it('builds the span to the deck’s own cross-section when it carries one', () => {
+    const wide = {
+      class: 'urban' as const,
+      kerbs: true,
+      pieces: [
+        { kind: 'travel' as const, width: 3.5, flow: 'back' as const },
+        { kind: 'travel' as const, width: 3.5, flow: 'back' as const },
+        { kind: 'travel' as const, width: 3.5, flow: 'fwd' as const },
+        { kind: 'travel' as const, width: 3.5, flow: 'fwd' as const },
+      ],
+    };
+    const preset = structureHalfWidth(RoadTier.TwoLane, 'beam');
+    const composed = structureHalfWidth(RoadTier.TwoLane, 'beam', wide);
+    expect(composed).toBeGreaterThan(preset);
+    // 14 m carriageway, half a metre of kerb (16 − 14 leaves 1 m a side), the style's overhang.
+    expect(composed - preset).toBeCloseTo(7 + 1 - (3.75 + 1.875), 6);
+  });
+});
+
 describe('structureHalfWidth', () => {
   it('oversails the carriageway of every tier, so no road overhangs its own bridge', () => {
     expect(ALL_TIERS.length).toBeGreaterThan(8); // guards against an empty sweep

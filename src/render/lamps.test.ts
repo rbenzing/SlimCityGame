@@ -10,6 +10,7 @@ import {
   type LampRoadTile,
 } from './lamps';
 import { RoadTier, TilePoint } from '../shared/types';
+import type { RoadProfile } from '../shared/types';
 import { LAMP_SPACING_TILES, TILE_METERS } from '../shared/constants';
 import { carriagewayHalfWidthMeters, curbWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
 
@@ -43,6 +44,33 @@ describe('computeLampPlacements (pure)', () => {
     const tiles = [...strip(4, 0, 8, 'ew'), ...strip(4, 0, 8, 'ns')];
     const placements = computeLampPlacements(tiles);
     expect(placements.some((p) => p.x === 4 && p.z === 4)).toBe(false);
+  });
+
+  it('stands a pole at the kerb of the tile’s OWN cross-section, not its preset’s', () => {
+    // A two-lane with a parking lane at each kerb is 12 m of carriageway; a
+    // pole placed for the 7.5 m preset would stand in the parking lane.
+    const parked: RoadProfile = {
+      class: 'local',
+      pieces: [
+        { kind: 'sidewalk', width: 1.875 },
+        { kind: 'parking', width: 2.25 },
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'parking', width: 2.25 },
+        { kind: 'sidewalk', width: 1.875 },
+      ],
+    };
+    const tier = RoadTier.TwoLane;
+    const preset = computeLampPlacements(strip(4, 0, 8, 'ew').map((t) => ({ ...t, tier })));
+    const composed = computeLampPlacements(
+      strip(4, 0, 8, 'ew').map((t) => ({ ...t, tier, profile: parked })),
+    );
+    expect(composed.length).toBe(preset.length);
+    for (const p of composed) {
+      expect(p.lateralOffset).toBeGreaterThan(6); // clear of the 12 m carriageway
+      expect(p.lateralOffset).toBeLessThan(6 + SIDEWALK_WIDTH_M);
+    }
+    for (const p of preset) expect(p.lateralOffset).toBeLessThan(6);
   });
 
   it('stands a motorway column on its kerb, not out in the middle of the deck', () => {

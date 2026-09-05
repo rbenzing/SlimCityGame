@@ -186,6 +186,27 @@ export function carriagewayWidth(profile: RoadProfile): number {
   return profile.pieces.reduce((w, p) => (CARRIAGEWAY_KINDS.has(p.kind) ? w + p.width : w), 0);
 }
 
+/** The lane width every preset was drawn with; a footway is half of it. */
+export const PRESET_LANE_WIDTH_M = 3.75;
+export const FOOTWAY_WIDTH_M = 0.5 * PRESET_LANE_WIDTH_M; // 1.875 m
+
+/** Metres from the centreline to the carriageway edge — what everything beside a road measures from. */
+export function carriagewayHalfWidthOf(profile: RoadProfile): number {
+  return carriagewayWidth(profile) / 2;
+}
+
+/**
+ * Width of the kerb strip a profile draws outside its carriageway: a full
+ * footway where the tile has room for one, clamped to whatever is left where it
+ * does not, and nothing at all where the profile has no kerbs. A motorway is
+ * 15 m of carriageway in a 16 m tile, so it gets half a metre of kerb, not a
+ * pavement — its shoulders are inside the paved width already.
+ */
+export function kerbWidthOf(profile: RoadProfile): number {
+  if (!hasKerbs(profile)) return 0;
+  return Math.max(0, Math.min(FOOTWAY_WIDTH_M, TILE_METERS / 2 - carriagewayHalfWidthOf(profile)));
+}
+
 /** Kerb to kerb including footways, metres — what the tile has to hold. */
 export function profileWidth(profile: RoadProfile): number {
   return profile.pieces.reduce((w, p) => w + p.width, 0);
