@@ -6,26 +6,39 @@
  * RoadNetwork.findPath.
  */
 
-import roadsData from '../data/roads.json';
 import { isStreetTier, RoadTier } from '../shared/types';
-import type { GraphEdge, GraphNode, PathResult, RoadSpec, TilePoint } from '../shared/types';
+import type { GraphEdge, GraphNode, PathResult, TilePoint } from '../shared/types';
+import { profileCapacity, profileSpeed, ROAD_PRESETS } from '../shared/roadprofile';
 
-const ROAD_SPECS: readonly RoadSpec[] = (roadsData as { specs: RoadSpec[] }).specs;
-const MAX_ROAD_SPEED: number = ROAD_SPECS.reduce((max, s) => Math.max(max, s.speed), 1);
+interface EdgeRates {
+  /** m/s along the edge — the tier's posted speed over 3.6. */
+  speed: number;
+  /** Σ lane-piece capacity, the volume at which the edge is saturated. */
+  capacity: number;
+}
 
-function specForTier(tier: RoadTier): RoadSpec {
-  const found = ROAD_SPECS.find((s) => s.tier === tier);
-  // Defensive fallback only: every tier that can ever label a built edge
-  // (TwoLane/Avenue/Highway) has a catalog entry today. This never masks a
-  // real bug — it just keeps routing from throwing on unexpected data.
-  return found ?? ROAD_SPECS[0]!;
+// Speed and capacity are DERIVED from each tier's preset cross-section, once,
+// so the per-edge cost is a map lookup rather than a catalogue scan.
+const RATES_BY_TIER: ReadonlyMap<RoadTier, EdgeRates> = new Map(
+  ROAD_PRESETS.filter((s) => s.profile).map((s) => [
+    s.tier,
+    { speed: profileSpeed(s.profile!), capacity: profileCapacity(s.profile!) },
+  ]),
+);
+const MAX_ROAD_SPEED: number = Math.max(1, ...[...RATES_BY_TIER.values()].map((r) => r.speed));
+
+function ratesForTier(tier: RoadTier): EdgeRates {
+  // Defensive fallback only: every tier that can label a built edge has a
+  // preset. This never masks a real bug — it just keeps routing from throwing
+  // on unexpected data.
+  return RATES_BY_TIER.get(tier) ?? RATES_BY_TIER.get(RoadTier.TwoLane)!;
 }
 
 /** length / speed, scaled up as volume approaches (or exceeds) capacity. */
 function edgeCost(edge: GraphEdge): number {
-  const spec = specForTier(edge.tier);
-  const congestion = Math.min(1, edge.volume / spec.capacity);
-  return (edge.length / spec.speed) * (1 + 2 * congestion);
+  const rates = ratesForTier(edge.tier);
+  const congestion = Math.min(1, edge.volume / rates.capacity);
+  return (edge.length / rates.speed) * (1 + 2 * congestion);
 }
 
 /**
