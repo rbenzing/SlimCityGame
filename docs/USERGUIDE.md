@@ -35,7 +35,11 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
 
 - **Roads** — a hierarchy from gravel up through two-lane, avenue, one-way,
   four-lane, and highway. Wider roads carry more traffic; most roads carry power
-  and water along their length (highways carry power only). Roads snap to the
+  and water along their length (highways carry power only). Every road's
+  options row has a **Profile** group: add a parking lane or a bike lane to
+  either kerb, or drop the footways, and the width readout shows whether the
+  result still fits the 16 m tile — a composition that does not is refused
+  at the preview. Roads snap to the
   grid, round their corners and dead-ends, and bank smoothly up slopes (the ground
   is graded under them automatically).
 - **Zoning** — residential, commercial, and industrial. Denser residential

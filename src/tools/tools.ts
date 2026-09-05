@@ -30,6 +30,16 @@ import type {
   ZoneType,
 } from '../shared/types';
 import { RoadTier as RoadTierValue, ZoneType as ZoneTypeValue } from '../shared/types';
+import type { RoadProfile } from '../shared/types';
+import {
+  composeProfile,
+  isLayable,
+  NO_EDITS,
+  presetProfileForTier,
+  profilesEqual,
+  tierForProfile,
+  type ProfileEdits,
+} from '../shared/roadprofile';
 
 /**
  * The onPreview payload: every CursorChip field (cost/lengthMeters/
@@ -82,6 +92,12 @@ export interface ToolEnv {
    * brush preview is always valid.
    */
   hasStructure?(tile: TilePoint): boolean;
+  /**
+   * The id to lay a composed cross-section under — an existing custom id with
+   * this exact shape, or the next free one. Optional: an env that omits it
+   * lays every road as its preset, edits or not.
+   */
+  profileIdFor?(profile: RoadProfile): number;
 }
 
 export const ZONE_TOOL_TO_TYPE: Record<string, ZoneType> = {
@@ -367,6 +383,7 @@ export class ToolManager {
    * ground and only bridge where the drag crosses water.
    */
   private roadElevation = 0;
+  private profileEdits: ProfileEdits = NO_EDITS;
   /** Pending bus-line stops accumulated by successive clicks. */
   private transitStops: TilePoint[] = [];
   /** Index into TRANSIT_LINE_PALETTE for the next committed line's color. */
@@ -412,6 +429,32 @@ export class ToolManager {
   setRoadElevation(metres: number): void {
     this.roadElevation = Math.max(0, Math.min(BRIDGE_MAX_ELEVATION, Math.round(metres)));
     if (this.hoverTile) this.emitPreview(this.hoverTile);
+  }
+
+  /** The player's edits to the road's cross-section (from the tool-options panel). */
+  setProfileEdits(edits: ProfileEdits): void {
+    this.profileEdits = edits;
+    if (this.hoverTile) this.emitPreview(this.hoverTile);
+  }
+
+  /**
+   * What a road tool lays once the profile edits are applied to its preset:
+   * the preset itself when the edits change nothing, else the composed
+   * profile under its nearest tier, and whether that composition may be laid.
+   */
+  private roadBuild(presetTier: RoadTier): {
+    tier: RoadTier;
+    spec: RoadSpec;
+    profile: RoadProfile | null;
+    layable: boolean;
+  } {
+    const base = presetProfileForTier(presetTier);
+    const composed = composeProfile(base, this.profileEdits);
+    if (profilesEqual(composed, base)) {
+      return { tier: presetTier, spec: this.env.roadSpec(presetTier), profile: null, layable: true };
+    }
+    const tier = tierForProfile(composed);
+    return { tier, spec: this.env.roadSpec(tier), profile: composed, layable: isLayable(composed) };
   }
 
   /** Live tool-behavior flags from the tool-options panel. */
@@ -642,16 +685,21 @@ export class ToolManager {
       const { valid, invalidReason } = this.evaluate(tiles, 0, 0, true);
       this.env.onPreview({ tiles, valid, cost: 0, label: 'Bulldoze', invalidReason });
     } else if (tool in ROAD_TOOL_TO_TIER) {
-      const tier = ROAD_TOOL_TO_TIER[tool] as RoadTier;
-      const spec = this.env.roadSpec(tier);
+      const build = this.roadBuild(ROAD_TOOL_TO_TIER[tool] as RoadTier);
       const tiles = this.roadPath(start, current);
-      const cost = tiles.length * spec.costPerTile;
-      const { valid, invalidReason } = this.evaluate(tiles, cost, spec.unlockMilestone, true);
+      const cost = tiles.length * build.spec.costPerTile;
+      const evaluated = this.evaluate(tiles, cost, build.spec.unlockMilestone, true);
+      // A composition the tile cannot hold is refused here, with the reason,
+      // rather than laid as something else.
+      const { valid, invalidReason } =
+        build.profile && !build.layable
+          ? { valid: false, invalidReason: 'Too wide for the tile' }
+          : evaluated;
       this.env.onPreview({
         tiles,
         valid,
         cost,
-        label: spec.name,
+        label: build.spec.name,
         lengthMeters: tiles.length * TILE_METERS,
         invalidReason,
       });
@@ -761,16 +809,34 @@ export class ToolManager {
     } else if (tool === 'bulldoze') {
       this.env.send('Bulldoze', [{ kind: 'bulldoze', tiles: rectTiles(start, end) }]);
     } else if (tool in ROAD_TOOL_TO_TIER) {
-      const tier = ROAD_TOOL_TO_TIER[tool] as RoadTier;
-      const spec = this.env.roadSpec(tier);
-      this.env.send(spec.name, [
-        {
-          kind: 'buildRoad',
-          tier,
-          tiles: this.roadPath(start, end),
-          elevation: this.roadElevation,
-        },
-      ]);
+      const build = this.roadBuild(ROAD_TOOL_TO_TIER[tool] as RoadTier);
+      const tiles = this.roadPath(start, end);
+      const profileId = build.profile ? this.env.profileIdFor?.(build.profile) : undefined;
+      if (build.profile && !build.layable) {
+        // The preview already said why; laying nothing is the whole answer.
+      } else if (build.profile && profileId !== undefined) {
+        // Define and lay in one batch, so undo treats them as one edit and a
+        // definition the worker refuses takes the road down with it.
+        this.env.send(build.spec.name, [
+          { kind: 'defineRoadProfile', id: profileId, profile: build.profile },
+          {
+            kind: 'buildRoad',
+            tier: build.tier,
+            tiles,
+            elevation: this.roadElevation,
+            profile: profileId,
+          },
+        ]);
+      } else {
+        this.env.send(build.spec.name, [
+          {
+            kind: 'buildRoad',
+            tier: build.tier,
+            tiles,
+            elevation: this.roadElevation,
+          },
+        ]);
+      }
     } else if (tool in ZONE_TOOL_TO_TYPE) {
       const zone = ZONE_TOOL_TO_TYPE[tool] as ZoneType;
       const label = ZONE_TOOL_TO_LABEL[tool] ?? 'Zone';

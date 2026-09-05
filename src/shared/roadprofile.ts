@@ -11,6 +11,7 @@
 import roadsData from '../data/roads.json';
 import type {
   LanePiece,
+  LanePieceKind,
   RoadClassId,
   RoadClassSpec,
   RoadProfile,
@@ -203,6 +204,144 @@ export function hasKerbs(profile: RoadProfile): boolean {
 /** Whether the surface takes paint: gravel and ballast do not. */
 export function isPaved(profile: RoadProfile): boolean {
   return roadClass(profile.class).surface === 'paved';
+}
+
+// ---------------------------------------------------------------------------
+// Composition: the edits a player makes to a preset, and the profile they
+// produce. Edits are absolute for the sides they name and `null` where the
+// preset is left as it is, so "no edits" composes back to the preset exactly.
+// ---------------------------------------------------------------------------
+
+export type SideChoice = 'none' | 'left' | 'right' | 'both';
+
+export interface ProfileEdits {
+  /** Which kerbs get a parking lane. null = as the preset has. */
+  parking: SideChoice | null;
+  /** Which kerbs get a painted bike lane. null = as the preset has. */
+  bike: SideChoice | null;
+  /** Footways on both sides, or none. null = as the preset has. */
+  footways: boolean | null;
+}
+
+export const NO_EDITS: ProfileEdits = { parking: null, bike: null, footways: null };
+
+/** Real-world default widths, metres, for a piece a player adds. */
+export const DEFAULT_PIECE_WIDTHS: Readonly<Record<LanePieceKind, number>> = {
+  travel: 3.5,
+  centreTurn: 3.5,
+  parking: 2.25,
+  bike: 1.6,
+  bus: 3.5,
+  tram: 3.5,
+  rail: 5.6,
+  median: 1.8,
+  barrier: 0.6,
+  shoulder: 1.5,
+  sidewalk: 1.9,
+  verge: 0,
+};
+
+/** Pieces that make up the road proper; everything outside them is an edge. */
+const CORE_KINDS: ReadonlySet<LanePieceKind> = new Set([
+  'travel',
+  'centreTurn',
+  'median',
+  'barrier',
+  'shoulder',
+  'bus',
+  'tram',
+  'rail',
+]);
+
+function hasSide(choice: SideChoice, side: 'left' | 'right'): boolean {
+  return choice === 'both' || choice === side;
+}
+
+/** Edits with every field decided — what a profile's edges actually hold. */
+export interface ResolvedEdits {
+  parking: SideChoice;
+  bike: SideChoice;
+  footways: boolean;
+}
+
+/** What a profile's edges already hold, read the way the edits are written. */
+export function editsOf(profile: RoadProfile): ResolvedEdits {
+  const first = profile.pieces.findIndex((p) => CORE_KINDS.has(p.kind));
+  const last = profile.pieces.length - 1 - [...profile.pieces].reverse().findIndex((p) => CORE_KINDS.has(p.kind));
+  const left = first > 0 ? profile.pieces.slice(0, first) : [];
+  const right = first >= 0 ? profile.pieces.slice(last + 1) : [];
+  const choice = (kind: LanePieceKind): SideChoice => {
+    const l = left.some((p) => p.kind === kind);
+    const r = right.some((p) => p.kind === kind);
+    return l && r ? 'both' : l ? 'left' : r ? 'right' : 'none';
+  };
+  return {
+    parking: choice('parking'),
+    bike: choice('bike'),
+    footways: profile.pieces.some((p) => p.kind === 'sidewalk'),
+  };
+}
+
+/**
+ * Applies edits to a base profile. The core of the road — its travel lanes,
+ * median, reserved lanes — is untouched; the edges are rebuilt from the kerb
+ * inward as footway, bike lane, parking lane, in the order a parking-protected
+ * bike lane puts them. Left is the `back` side and right the `fwd` side, the
+ * way every preset lays its pieces. Widths come from the base where it has the
+ * piece and from the real-world defaults where it does not.
+ */
+export function composeProfile(base: RoadProfile, edits: ProfileEdits): RoadProfile {
+  const current = editsOf(base);
+  const parking = edits.parking ?? current.parking;
+  const bike = edits.bike ?? current.bike;
+  const footways = edits.footways ?? current.footways;
+
+  const first = base.pieces.findIndex((p) => CORE_KINDS.has(p.kind));
+  const lastFromEnd = [...base.pieces].reverse().findIndex((p) => CORE_KINDS.has(p.kind));
+  const core = first < 0 ? [...base.pieces] : base.pieces.slice(first, base.pieces.length - lastFromEnd);
+  // A piece the base already has keeps its width, so recomposing a preset with
+  // no changes gives the preset back; a piece the player adds gets the default.
+  const widthOf = (kind: LanePieceKind): number =>
+    base.pieces.find((p) => p.kind === kind)?.width ?? DEFAULT_PIECE_WIDTHS[kind];
+
+  const edge = (side: 'left' | 'right'): LanePiece[] => {
+    const flow = side === 'left' ? 'back' : 'fwd';
+    const out: LanePiece[] = [];
+    if (footways) out.push({ kind: 'sidewalk', width: widthOf('sidewalk') });
+    if (hasSide(bike, side)) out.push({ kind: 'bike', width: widthOf('bike'), flow });
+    if (hasSide(parking, side)) out.push({ kind: 'parking', width: widthOf('parking') });
+    return out;
+  };
+
+  const pieces = [...edge('left'), ...core.map((p) => ({ ...p })), ...edge('right').reverse()];
+  const composed: RoadProfile = { class: base.class, pieces };
+  if (base.postedKmh !== undefined) composed.postedKmh = base.postedKmh;
+  // A kerb the preset declared explicitly stays explicit; a preset that relied
+  // on its footways for kerbs keeps kerbs only while it keeps footways.
+  if (base.kerbs !== undefined) composed.kerbs = base.kerbs;
+  return composed;
+}
+
+/** Structural equality, ignoring piece object identity. */
+export function profilesEqual(a: RoadProfile, b: RoadProfile): boolean {
+  if (a.class !== b.class) return false;
+  if ((a.postedKmh ?? null) !== (b.postedKmh ?? null)) return false;
+  if ((a.kerbs ?? null) !== (b.kerbs ?? null)) return false;
+  if (a.pieces.length !== b.pieces.length) return false;
+  return a.pieces.every((p, i) => {
+    const q = b.pieces[i]!;
+    return (
+      p.kind === q.kind &&
+      Math.abs(p.width - q.width) < 1e-9 &&
+      (p.flow ?? null) === (q.flow ?? null) &&
+      (p.tram ?? false) === (q.tram ?? false)
+    );
+  });
+}
+
+/** Whether a composed profile may be laid: it fits the tile and keeps its class's rules. */
+export function isLayable(profile: RoadProfile): boolean {
+  return fitsTile(profile) && admitsAllPieces(profile) && withinLaneRange(profile);
 }
 
 /** Every piece the profile holds is one its class admits. */

@@ -28,6 +28,7 @@ import type {
   TransitLine,
 } from '../shared/types';
 import { DEFAULT_BRUSH_SETTINGS } from '../tools/tools';
+import { NO_EDITS, type ProfileEdits } from '../shared/roadprofile';
 import type { StatsSample } from './statshistory';
 import type { CityIssue } from './advisor';
 import { type GameSettings, loadSettings, saveSettings } from '../app/session';
@@ -119,6 +120,12 @@ export interface CityStoreState {
    * bridges only where a drag crosses water; above zero raises a viaduct.
    */
   roadElevation: number;
+  /**
+   * The player's edits to the selected road's cross-section — parking, bike
+   * lanes, footways per side. `null` fields leave the preset as it is, so the
+   * default composes back to the preset exactly.
+   */
+  roadProfileEdits: ProfileEdits;
   /** Population as of the last monthly rollover — feeds the status-strip trend arrow. */
   previousMonthPopulation: number;
   /** Funds as of the last monthly rollover — feeds the status-strip trend arrow. */
@@ -184,6 +191,8 @@ export interface CityStoreState {
   setToolMode: (mode: ToolMode) => void;
   /** Sets the road tool's deck height, clamped to 0..BRIDGE_MAX_ELEVATION metres. */
   setRoadElevation: (metres: number) => void;
+  /** Merges a partial patch into the road profile edits (the Profile row's controls). */
+  setRoadProfileEdits: (edits: Partial<ProfileEdits>) => void;
   setSelectionInfo: (info: SelectionInfo | null) => void;
   /** Merges a partial patch into brushSettings (the Brush radius / Strength sliders). */
   setBrushSettings: (settings: Partial<BrushSettings>) => void;
@@ -229,6 +238,7 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   toolFlags: createInitialToolFlags(),
   toolMode: 'lpath',
   roadElevation: 0,
+  roadProfileEdits: NO_EDITS,
   previousMonthPopulation: createInitialStats().population,
   previousMonthFunds: createInitialStats().funds,
   selectionInfo: null,
@@ -270,6 +280,8 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
     set((state) => ({
       selectedTool: tool,
       roadElevation: tool.startsWith('road.') ? state.roadElevation : 0,
+      // Edits are about THIS road; a fresh road starts as its preset.
+      roadProfileEdits: tool === state.selectedTool ? state.roadProfileEdits : NO_EDITS,
     })),
   setOverlay: (overlay) => set({ overlay }),
   setSpeed: (speed) => {
@@ -298,6 +310,8 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
     })),
   setRoadElevation: (metres) =>
     set({ roadElevation: Math.max(0, Math.min(BRIDGE_MAX_ELEVATION, Math.round(metres))) }),
+  setRoadProfileEdits: (edits) =>
+    set((state) => ({ roadProfileEdits: { ...state.roadProfileEdits, ...edits } })),
   setSelectionInfo: (info) => set({ selectionInfo: info }),
   setBrushSettings: (settings) =>
     set((state) => ({ brushSettings: { ...state.brushSettings, ...settings } })),

@@ -16,16 +16,23 @@ import {
   admitsAllPieces,
   CAPACITY_PER_VEH_PER_HOUR,
   carriagewayWidth,
+  composeProfile,
+  editsOf,
   FIRST_CUSTOM_PROFILE_ID,
   fitsTile,
   hasKerbs,
+  isLayable,
   isPaved,
   isPresetProfileId,
   laneCapacity,
   laneCount,
+  NO_EDITS,
+  presetProfileForTier,
   profileCapacity,
   profileIdForTier,
+  profilesEqual,
   profileSpeed,
+  profileWidth,
   ROAD_CLASSES,
   ROAD_PRESETS,
   roadClass,
@@ -37,11 +44,7 @@ import {
 import type { RoadClassId, RoadProfile, RoadSpec } from './types';
 import { RoadTier } from './types';
 
-function presetProfile(tier: RoadTier): RoadProfile {
-  const spec = ROAD_PRESETS.find((s) => s.tier === tier);
-  if (!spec?.profile) throw new Error(`tier ${tier} has no preset profile`);
-  return spec.profile;
-}
+const presetProfile = (tier: RoadTier): RoadProfile => presetProfileForTier(tier);
 
 describe('units — the sim already speaks m/s and seconds', () => {
   it('converts posted km/h to the speeds roads.json has always carried', () => {
@@ -213,6 +216,86 @@ describe('profile ids and the tier a profile is nearest to', () => {
         pieces: [{ kind: 'travel', width: 3.5, flow: 'both', tram: true }],
       }),
     ).toBe(RoadTier.Tram);
+  });
+});
+
+describe('composing a profile from a preset and the player’s edits', () => {
+  const twoLane = () => presetProfileForTier(RoadTier.TwoLane);
+
+  it('no edits composes back to the preset exactly', () => {
+    for (const spec of ROAD_PRESETS) {
+      expect(profilesEqual(composeProfile(spec.profile!, NO_EDITS), spec.profile!)).toBe(true);
+    }
+  });
+
+  it('adds a parking lane inside each footway and the width adds up', () => {
+    const p = composeProfile(twoLane(), { ...NO_EDITS, parking: 'both' });
+    expect(p.pieces.map((x) => x.kind)).toEqual([
+      'sidewalk',
+      'parking',
+      'travel',
+      'travel',
+      'parking',
+      'sidewalk',
+    ]);
+    expect(profileWidth(p)).toBeCloseTo(7.5 + 2 * 2.25 + 2 * 1.875, 6);
+    expect(isLayable(p)).toBe(true);
+    expect(tierForProfile(p)).toBe(RoadTier.TwoLane);
+  });
+
+  it('puts a bike lane between the footway and the parking lane, on the side asked for', () => {
+    const p = composeProfile(twoLane(), { ...NO_EDITS, parking: 'left', bike: 'right' });
+    expect(p.pieces.map((x) => x.kind)).toEqual([
+      'sidewalk',
+      'parking',
+      'travel',
+      'travel',
+      'bike',
+      'sidewalk',
+    ]);
+    expect(p.pieces.find((x) => x.kind === 'bike')?.flow).toBe('fwd');
+    expect(tierForProfile(p)).toBe(RoadTier.BikeLane);
+  });
+
+  it('refuses what the tile cannot hold: parking and bike lanes on both sides of a two-lane', () => {
+    const p = composeProfile(twoLane(), { ...NO_EDITS, parking: 'both', bike: 'both' });
+    expect(profileWidth(p)).toBeGreaterThan(16);
+    expect(isLayable(p)).toBe(false);
+  });
+
+  it('turning footways off drops the kerbs a two-lane got from them', () => {
+    const p = composeProfile(twoLane(), { ...NO_EDITS, footways: false });
+    expect(p.pieces.map((x) => x.kind)).toEqual(['travel', 'travel']);
+    expect(hasKerbs(p)).toBe(false);
+  });
+
+  it('cannot add footways to an avenue whose carriageway already fills the tile', () => {
+    const p = composeProfile(presetProfileForTier(RoadTier.Avenue), { ...NO_EDITS, footways: true });
+    expect(isLayable(p)).toBe(false);
+  });
+
+  it('stripping the bike lanes from the bike-lane preset gives the two-lane preset', () => {
+    const p = composeProfile(presetProfileForTier(RoadTier.BikeLane), { ...NO_EDITS, bike: 'none' });
+    expect(profilesEqual(p, twoLane())).toBe(true);
+  });
+
+  it('reads a preset’s edges back the way edits are written', () => {
+    expect(editsOf(presetProfileForTier(RoadTier.BikeLane))).toEqual({
+      parking: 'none',
+      bike: 'both',
+      footways: true,
+    });
+    expect(editsOf(presetProfileForTier(RoadTier.Highway))).toEqual({
+      parking: 'none',
+      bike: 'none',
+      footways: false,
+    });
+  });
+
+  it('keeps the core untouched: a bus preset’s reserved lanes survive an edge edit', () => {
+    const p = composeProfile(presetProfileForTier(RoadTier.BusLane), { ...NO_EDITS, footways: true });
+    expect(p.pieces.filter((x) => x.kind === 'bus')).toHaveLength(2);
+    expect(p.kerbs).toBe(true);
   });
 });
 

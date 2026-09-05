@@ -20,6 +20,7 @@ export function resetCityStore(): void {
     canRedo: false,
     bound: null,
     toolFlags: { angleLock: false, straightMode: false },
+    roadProfileEdits: { parking: null, bike: null, footways: null },
     toolMode: 'lpath',
     roadElevation: 0,
     previousMonthPopulation: createInitialStats().population,

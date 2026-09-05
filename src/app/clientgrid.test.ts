@@ -69,6 +69,25 @@ describe('ClientGridMirror — road profiles', () => {
     expect(mirror.profileAt(4, 4)).toBeNull();
   });
 
+  it('reuses the id of an identical custom shape and otherwise proposes the next free one', () => {
+    const mirror = new ClientGridMirror(makeMap());
+    const shape = {
+      class: 'local' as const,
+      pieces: [
+        { kind: 'sidewalk' as const, width: 1.9 },
+        { kind: 'travel' as const, width: 3.5, flow: 'back' as const },
+        { kind: 'travel' as const, width: 3.5, flow: 'fwd' as const },
+        { kind: 'sidewalk' as const, width: 1.9 },
+      ],
+    };
+    mirror.applyRoadProfiles([{ id: 12, profile: shape }]);
+    // A structurally equal copy resolves to the existing id.
+    expect(mirror.profileIdFor({ ...shape, pieces: shape.pieces.map((p) => ({ ...p })) })).toBe(12);
+    // A different width is a different profile.
+    const wider = { ...shape, pieces: shape.pieces.map((p) => ({ ...p, width: p.width + 0.5 })) };
+    expect(mirror.profileIdFor(wider)).toBe(13);
+  });
+
   it('proposes the lowest free custom id', () => {
     const mirror = new ClientGridMirror(makeMap());
     expect(mirror.nextCustomProfileId()).toBe(12);

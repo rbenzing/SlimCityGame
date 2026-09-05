@@ -2223,10 +2223,20 @@ scaled by one constant into the units the sim already uses.
    the road mesh draws a tile carrying a composed profile at THAT profile's
    carriageway width, kerbs and paving — its markings, shade and decorations
    still come from the nearest preset tier until the markings are read from
-   the pieces. Still to come in wave 1: those piece-driven markings, the class
-   drawer, replace-in-place, and the profile editor that gives the player a
-   way to compose one; and the kerb furniture measuring from the profile's
-   own edge rather than the preset's.
+   the pieces. The first cut of the profile editor is in the road tool's
+   options row: a **Profile** group offering, for whatever pieces the road's
+   class admits, a parking lane per kerb, a bike lane per kerb, and footways
+   on or off, with the composed width read out against the 16 m tile and
+   marked when it does not fit. The edits compose onto the selected road's
+   preset — no edits IS the preset, byte for byte — and a drag lays a
+   composed road as one batch of define-and-build, under an id the mirror
+   reuses for an identical shape, so the same composition never gets two ids
+   and undo removes the whole edit. A composition the tile cannot hold is
+   refused at the preview with its reason and lays nothing. Edits reset when
+   the player picks a different road. Still to come in wave 1: piece-driven
+   markings, the class drawer with posted speed and lane count, a median
+   picker, replace-in-place over an existing run, and the kerb furniture
+   measuring from the profile's own edge rather than the preset's.
 2. **Stored direction** — `roadFlow`, drag direction, asymmetric profiles,
    directional edge cost, one-way pathfinding off geometry inference.
 3. **Junction control** — node control records, the v/c warrant default, the

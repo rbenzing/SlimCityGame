@@ -310,6 +310,71 @@ describe('road preview cost + commit', () => {
     expect(previews.at(-1)).toBeNull();
   });
 
+  it('lays a composed profile as define + build in one batch, under the id the env resolves', () => {
+    const { env, previews, sent } = makeEnv();
+    env.profileIdFor = () => 12;
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    tm.setProfileEdits({ parking: 'both', bike: null, footways: null });
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(2, 0, 0);
+    expect(previews.at(-1)?.valid).toBe(true);
+    expect(previews.at(-1)?.cost).toBe(3 * 20); // priced as its nearest preset
+    tm.pointerUp(2, 0, 0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.label).toBe('Two-Lane Road');
+    const [define, build] = sent[0]!.commands;
+    expect(define).toMatchObject({ kind: 'defineRoadProfile', id: 12 });
+    expect(build).toMatchObject({
+      kind: 'buildRoad',
+      tier: RoadTier.TwoLane,
+      profile: 12,
+      elevation: 0,
+    });
+    if (define?.kind !== 'defineRoadProfile') throw new Error('expected a definition first');
+    expect(define.profile.pieces.map((p) => p.kind)).toEqual([
+      'sidewalk',
+      'parking',
+      'travel',
+      'travel',
+      'parking',
+      'sidewalk',
+    ]);
+  });
+
+  it('refuses a composition the tile cannot hold, and lays nothing', () => {
+    const { env, previews, sent } = makeEnv();
+    env.profileIdFor = () => 12;
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    tm.setProfileEdits({ parking: 'both', bike: 'both', footways: null });
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(2, 0, 0);
+    expect(previews.at(-1)?.valid).toBe(false);
+    expect(previews.at(-1)?.invalidReason).toBe('Too wide for the tile');
+    tm.pointerUp(2, 0, 0);
+    expect(sent).toEqual([]);
+  });
+
+  it('edits that change nothing lay the plain preset, and so does an env with no profile ids', () => {
+    const { env, sent } = makeEnv();
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    tm.setProfileEdits({ parking: 'none', bike: 'none', footways: true }); // exactly the two-lane
+    tm.pointerDown(0, 0, 0);
+    tm.pointerUp(1, 0, 0);
+    expect(sent[0]?.commands).toHaveLength(1);
+    expect(sent[0]?.commands[0]).toMatchObject({ kind: 'buildRoad', tier: RoadTier.TwoLane });
+    expect(sent[0]?.commands[0]).not.toHaveProperty('profile');
+
+    tm.setProfileEdits({ parking: 'both', bike: null, footways: null });
+    tm.pointerDown(0, 2, 0);
+    tm.pointerUp(1, 2, 0);
+    // No profileIdFor on this env: the edit cannot be stored, so the preset is laid.
+    expect(sent[1]?.commands).toHaveLength(1);
+    expect(sent[1]?.commands[0]).toMatchObject({ kind: 'buildRoad', tier: RoadTier.TwoLane });
+  });
+
   it.each([
     ['road.avenue' as const, RoadTier.Avenue, 45],
     ['road.highway' as const, RoadTier.Highway, 90],

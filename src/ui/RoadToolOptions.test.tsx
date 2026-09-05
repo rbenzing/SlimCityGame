@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { BRIDGE_MAX_ELEVATION, ROAD_ELEVATION_STEP_M } from '../shared/constants';
+import { composeProfile, presetProfileForTier, profileWidth } from '../shared/roadprofile';
+import { RoadTier } from '../shared/types';
 import { useCityStore } from './store';
 import { resetCityStore } from './test-helpers';
 import { RoadToolOptions } from './RoadToolOptions';
@@ -13,6 +15,85 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+});
+
+describe('RoadToolOptions — the Profile row', () => {
+  it('offers parking, bike and footways on a two-lane and reads its width against the tile', () => {
+    useCityStore.getState().setTool('road.two');
+    render(<RoadToolOptions />);
+    expect(screen.getByRole('group', { name: 'Parking lanes' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Bike lanes' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Profile width')).toHaveTextContent('11.3 / 16 m');
+
+    const parking = screen.getByRole('group', { name: 'Parking lanes' });
+    fireEvent.click(within(parking).getByRole('button', { name: 'Both' }));
+    expect(useCityStore.getState().roadProfileEdits.parking).toBe('both');
+    expect(within(parking).getByRole('button', { name: 'Both' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByLabelText('Profile width')).toHaveTextContent('15.8 / 16 m');
+  });
+
+  it('marks a composition the tile cannot hold', () => {
+    useCityStore.getState().setTool('road.two');
+    render(<RoadToolOptions />);
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Parking lanes' })).getByRole('button', {
+        name: 'Both',
+      }),
+    );
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Bike lanes' })).getByRole('button', {
+        name: 'Both',
+      }),
+    );
+    const width = screen.getByLabelText('Profile width');
+    expect(width).toHaveAttribute('title', 'Too wide for the tile');
+    // 7.5 m of lanes + two footways + two parking lanes + two bike lanes, past the 16 m tile.
+    const expected = profileWidth(
+      composeProfile(presetProfileForTier(RoadTier.TwoLane), {
+        parking: 'both',
+        bike: 'both',
+        footways: null,
+      }),
+    );
+    expect(expected).toBeGreaterThan(16);
+    expect(width).toHaveTextContent(`${expected.toFixed(1)} / 16 m`);
+  });
+
+  it('toggles footways, and drops the kerbs with them', () => {
+    useCityStore.getState().setTool('road.two');
+    render(<RoadToolOptions />);
+    const footways = screen.getByRole('button', { name: 'On' });
+    fireEvent.click(footways);
+    expect(useCityStore.getState().roadProfileEdits.footways).toBe(false);
+    expect(screen.getByRole('button', { name: 'Off' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Profile width')).toHaveTextContent('7.5 / 16 m');
+  });
+
+  it('never asks a motorway or a railway about parking, bike lanes or footways', () => {
+    useCityStore.getState().setTool('road.highway');
+    const { unmount } = render(<RoadToolOptions />);
+    expect(screen.queryByRole('group', { name: 'Parking lanes' })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Bike lanes' })).toBeNull();
+    expect(screen.queryByLabelText('Profile width')).toBeNull();
+    unmount();
+    useCityStore.getState().setTool('road.rail');
+    render(<RoadToolOptions />);
+    expect(screen.queryByLabelText('Profile width')).toBeNull();
+  });
+
+  it('starts every road fresh: switching tools puts the edits back to the preset', () => {
+    useCityStore.getState().setTool('road.two');
+    useCityStore.getState().setRoadProfileEdits({ parking: 'both' });
+    useCityStore.getState().setTool('road.four');
+    expect(useCityStore.getState().roadProfileEdits).toEqual({
+      parking: null,
+      bike: null,
+      footways: null,
+    });
+  });
 });
 
 describe('RoadToolOptions', () => {

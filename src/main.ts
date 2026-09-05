@@ -736,6 +736,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       if (!spec) throw new Error(`No road spec for tier ${tier}`);
       return spec;
     },
+    profileIdFor: (profile) => clientGrid.profileIdFor(profile),
     entry: (catalogId: string) => catalogById.get(catalogId),
     onPreview: (preview) => {
       store
@@ -1188,6 +1189,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     }
     if (state.roadElevation !== prev.roadElevation) {
       toolManager.setRoadElevation(state.roadElevation); // viaduct height stepper
+    }
+    if (state.roadProfileEdits !== prev.roadProfileEdits) {
+      toolManager.setProfileEdits(state.roadProfileEdits); // the Profile row's parking/bike/footway choices
     }
     if (state.brushSettings !== prev.brushSettings) {
       toolManager.setBrush(state.brushSettings); // Brush radius / Strength rows

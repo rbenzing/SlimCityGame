@@ -14,6 +14,7 @@ import {
   FIRST_CUSTOM_PROFILE_ID,
   isPresetProfileId,
   presetProfileForTier,
+  profilesEqual,
 } from '../shared/roadprofile';
 import { runsAlongZ, type BridgeDeckTile } from '../render/bridges';
 import type {
@@ -81,6 +82,18 @@ export class ClientGridMirror {
     let id = FIRST_CUSTOM_PROFILE_ID;
     while (this.customProfiles.has(id)) id += 1;
     return id;
+  }
+
+  /**
+   * The id to lay a composed profile under: the custom id that already holds
+   * this exact shape, so the same composition never gets two ids, else the
+   * next free one for the worker to define.
+   */
+  profileIdFor(profile: RoadProfile): number {
+    for (const [id, existing] of this.customProfiles) {
+      if (profilesEqual(existing, profile)) return id;
+    }
+    return this.nextCustomProfileId();
   }
 
   private idx(x: number, z: number): number {
