@@ -2204,9 +2204,13 @@ scaled by one constant into the units the sim already uses.
    eleven preset profiles live in `roads.json`, `src/shared/roadprofile.ts`
    derives speed, capacity, carriageway width, kerbs and paving from a
    profile, and a test proves every preset reproduces its catalogue speed,
-   capacity and the carriageway the render already draws. The render, sim
-   and grid still key off the tier; the next steps point them at the profile
-   one consumer at a time, each behind the same zero-change test.
+   capacity and the carriageway the render already draws. The render reads
+   its carriageway width, kerbs and paint from the preset profile, and
+   pathfinding reads speed and saturation volume from it, each behind a test
+   that pins the figures the tier always had. The tier is still what the grid
+   stores and the tool lays: the profile layer, the per-save profile table
+   and the editor land together, because a stored profile without a way to
+   compose one would be a second copy of the tier.
 2. **Stored direction** — `roadFlow`, drag direction, asymmetric profiles,
    directional edge cost, one-way pathfinding off geometry inference.
 3. **Junction control** — node control records, the v/c warrant default, the
