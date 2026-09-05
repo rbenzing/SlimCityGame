@@ -34,6 +34,13 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > shopfront silhouettes, and one junction rule shared by every piece of kerb
 > furniture, per SPEC §28). Versioning + deploy are
 > automated (release-please + Conventional Commits → GitHub Pages; see the repo README).
+> **Specified, not yet built:** road composition — classes, lane-piece
+> profiles with a width budget, stored flow direction, per-junction control
+> (none/yield/stop/all-way/signal/roundabout) with warrant defaults,
+> player-set approach lanes and tapers, ramps with automatic merge lanes,
+> interchange stamps, and two-tile six/eight-lane corridors, in six
+> independently shippable waves, per SPEC §29 (research 2026-09-05; four open
+> decisions listed there await the user before wave 1).
 > Deferred/optional next: AI raster map packs, facade-atlas stage 2, screen-space
 > AO/reflections, and the [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper
 > industry, more transit modes).

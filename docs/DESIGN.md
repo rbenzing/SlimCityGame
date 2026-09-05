@@ -33,9 +33,17 @@ visual/systems spec, see [SPEC.md](SPEC.md).
   What stays deferred is a signal that actually cycles and holds traffic.)
 - Weather, seasons, flooding; climate variation.
 - Supply chains, imports/exports; deeper industry.
-- Tunnels and roundabouts. (Bridges + elevated roads have since shipped — a
-  deck-height layer over the existing 1-tile road model, per SPEC §25; road-over-road
-  overpasses stay deferred, since one tile carries one road tier.)
+- Tunnels. (Bridges + elevated roads have since shipped — a deck-height layer
+  over the existing 1-tile road model, per SPEC §25. Roundabouts are no longer
+  deferred: SPEC §29 makes them a junction CONTROL rather than a road, on one
+  tile or a 2×2 block. Road-over-road crossings arrive with §29's ramps as
+  bridges over the highway; what stays deferred is a third deck level, so
+  stacks and turbines are out.)
+- Free-form road geometry (curves off the tile grid), signal-phase design,
+  reversible and contraflow lanes, per-lane speed limits. (SPEC §29 gives the
+  player lanes, junction control, ramps and interchange stamps ON the tile
+  grid; the grid is the decision that keeps that tractable, and a two-tile
+  corridor is as wide as it goes.)
 - Terrain painting; a procedural map generator complementing curated maps.
   (Dynamic water _flow_ simulation stays deferred — a perf tar pit; the derived
   sea-level model already covers seas/lakes/canals.)

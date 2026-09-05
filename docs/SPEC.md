@@ -1845,3 +1845,342 @@ the street axis every walker actually walks. A fixture proves the rule; only the
 real city proves the inputs the rule is fed, and only a street that BENDS can
 fail the way these did. The audit asserts it found cars, driveways and walkers
 at all, so a city that grew nothing reports nothing proven rather than green.
+
+## 29. Road composition — lanes, junction control, ramps and furniture the player chooses (user request 2026-09-05)
+
+**Why:** a road today is a TIER — one of eleven named things picked from a
+drawer, each with its lane count, its markings, its lamps and its kerb rules
+baked in. That is the right shape for a first road network and the wrong shape
+for the one the user is asking for. A player who wants a four-lane street with
+a turn lane at the junction, no kerb parking, and a stop sign instead of a
+signal cannot get there by choosing harder: every one of those is a different
+axis, and a tier collapses them into one. Meanwhile the sim's capacity is a
+per-tier scalar, its junctions have no control at all (a signal head is a prop;
+traffic never waits), a one-way's direction is inferred from its geometry
+rather than stored, and a motorway "ramp" is whatever the two-lane tile beside
+the highway happens to be. The reference city simulator ships roughly forty
+road assets across the same axes and STILL never let its players pick a turn
+lane or place a yield sign — those stayed automatic and unpredictable for two
+years, and the community's most-installed mods are the ones that add them. That
+is the gap this section builds into, and it is why the design below puts lane
+arrangement and junction control in the player's hands from the start rather
+than treating them as polish.
+
+**A road is a class, a cross-section, and a set of junctions — not a tier.**
+This is the hinge. Everything a player can choose lives on one of three
+objects, and nothing is decided by which drawer card they clicked:
+
+1. The **class** says what the road is FOR — dirt, rural, local street, urban
+   street, collector, arterial, one-way, divided, highway, ramp, alley — and
+   fixes the things a class really does fix: speed, whether it is zonable,
+   whether it carries utilities, which lane pieces it may hold, what its
+   default markings and control look like, what it unlocks at.
+2. The **profile** is the cross-section: an ordered list of LANE PIECES from
+   one kerb to the other — travel lanes with a direction, a centre turn lane, a
+   median, a parking lane, a bike lane, a bus lane, a tram lane, a shoulder, a
+   sidewalk, a verge — each with a width. Every tier that exists today is a
+   preset profile, so nothing the player has built changes shape.
+3. The **junction** is where two or more profiles meet: it owns the traffic
+   control (none, yield, stop, all-way stop, signal, roundabout), the turn
+   restrictions per approach, the crosswalks per approach, and the APPROACH
+   LANES — how the last stretch of each incoming profile is split into
+   through/left/right/shared lanes.
+
+Markings, furniture and sim capacity are all DERIVED from those three; none is
+authored separately. A dashed centre line means "two-way, passing allowed" and
+nothing else; a turn arrow means an approach lane exists with that movement;
+capacity is lanes × a per-class per-lane figure. The section that follows is
+organised by what the player touches, and each bullet says which of the three
+objects it lives on.
+
+- **Classes and their ceilings (class).** Each class fixes a speed, a per-lane
+  capacity, a lane-count range, and which pieces it admits, taken from the
+  functional hierarchy real road agencies use rather than invented:
+
+  | class | lanes | speed | per-lane cap | admits | zonable | utilities | default control | default centre line |
+  |---|---|---|---|---|---|---|---|---|
+  | dirt | 1–2 | 8 | 100 | travel only | yes | water+power | none | none |
+  | rural | 2 | 16 | 300 | travel, shoulder | yes | water+power | none / yield | none under 3,000 ADT, dashed above |
+  | alley | 1–2 | 10 | 150 | travel, parking | yes | water+power | none | none |
+  | local street | 2–3 | 14 | 300 | travel, parking, bike, sidewalk, verge, centre-turn | yes | water+power | none / yield / stop | dashed |
+  | urban street | 2–4 | 16 | 400 | + bus, tram, median | yes | water+power | stop / signal | dashed; double solid with median |
+  | collector | 2–5 | 18 | 450 | + centre-turn | yes | water+power | signal | dashed or double solid |
+  | arterial | 4–6 | 20 | 500 | + median (raised), no parking | yes | water+power | signal | double solid |
+  | divided | 4–8 | 22 | 550 | median mandatory, no parking | yes | water+power | signal | median, edge lines |
+  | one-way | 1–5 | 16–20 | 450 | travel (one dir), parking, bike, bus | yes | water+power | as parent width | none (lane lines only) |
+  | highway | 2–8 | 28 | 700 | travel, shoulder, median/barrier | no | power only | never — grade-separated | double solid + edge lines; barrier when divided |
+  | ramp | 1–2 | 20 | 500 | travel (one dir), shoulder | no | power only | merge / diverge / terminal | edge lines, gore chevrons |
+
+  Speeds are tile-metres per tick in the existing convention (`roads.json`
+  today: two-lane 14, avenue 18, highway 28). Per-lane capacity follows the
+  real-world shape — a signalised street lane moves a fraction of what a
+  free-flowing motorway lane does — and is what makes a six-lane arterial
+  worth its width against three two-lane streets. Existing tier capacities
+  are reproduced by their preset profiles (two-lane = 2 × 300 = 600).
+- **Lane count is a width budget, and the tile is the budget (profile).** A
+  tile is 16 m. A travel lane is 3.5 m (down from 3.75 today; the widest
+  vehicle is 2.5 m and real urban lanes are 3.0–3.6), a parking lane 2.25 m, a
+  bike lane 1.6 m, a bus lane 3.5 m, a raised median 1.8 m, a sidewalk 1.9 m, a
+  shoulder 1.5 m. The profile editor shows the running total against the tile
+  and refuses to exceed it; what is left over is verge. Within one tile that
+  is: 2 travel + 2 parking + 2 sidewalk = 15.3 m (a local street); 4 travel +
+  2 sidewalk = 17.8 m — which does NOT fit, so a four-lane urban street gives
+  up its footways to half-width kerbs, exactly what the avenue does today; 3
+  travel + centre turn + 2 bike + kerbs fits. **Six and eight lanes do not fit
+  a tile and are not made to.** They are TWO-TILE CORRIDORS: a road two tiles
+  wide whose tiles each know which half they are, laid by the same drag with
+  the profile's width deciding how many tiles it claims — the way the
+  reference's large roads span four and five cells. A six-lane divided (6 ×
+  3.5 + 1.8 median + 2 kerbs ≈ 27 m) and an eight-lane divided (≈ 34 m, no
+  footways, shoulders inside) both fit two tiles. This is the largest
+  structural change in the section and it is sequenced LAST (wave 6), because
+  everything before it is worth having on one-tile roads and nothing before it
+  depends on it.
+- **Direction is stored, not guessed (profile).** Every road tile gains a flow
+  direction (two bits: which of its mask arms is "forward"), set by the drag
+  and flippable by the replace tool. One-way pathfinding stops inferring flow
+  from tile geometry, and asymmetric profiles — three lanes as 2+1, five as
+  3+2 — become possible, because "2+1" is meaningless until the tile knows
+  which way is which. The graph edge carries lanes-per-direction rather than
+  a single tier, and the traffic sim's edge cost uses the directional lane
+  count for the direction actually travelled.
+- **Junction control is a choice with a sensible default (junction).** Every
+  graph node carries a control: `none`, `yield` (minor approaches give way),
+  `stop` (minor approaches stop), `allWayStop`, `signal`, `roundabout`. The
+  default is a WARRANT, not a constant, and it uses the two numbers the sim
+  already has — the class of each approach and the volume its edge has been
+  carrying: two locals or anything dirt/rural/alley meet with no control;
+  a local meeting a collector or wider gets a stop on the local; two
+  collectors or anything arterial gets a signal; a highway never gets a
+  node control because it never meets anything at grade (it meets ramps, see
+  below). Volume nudges the default up one step when the minor approaches
+  exceed a threshold for a sustained period, mirroring the stop-sign and
+  signal warrants engineers actually apply, and the advisor says so. The
+  player overrides any node from a junction inspector, and an override is
+  sticky — the warrant never fights a choice. **Control has teeth**: a node's
+  control adds a per-movement delay to the path cost (none 0, yield small,
+  stop moderate, signal proportional to the number of phases, roundabout
+  small but rising steeply with volume), so a city of all-way stops on its
+  arterials is slower and the traffic lens shows it. The signal head, the
+  stop and give-way boards that already exist in the furniture kit are now
+  PLACED BY the control rather than by the tier, and a cycling signal (red /
+  green per approach, cosmetic vehicles waiting at the stop line) becomes the
+  visible pulse of a `signal` node.
+- **Roundabouts are a control, not a road (junction).** Choosing `roundabout`
+  on a node with 3–4 approaches converts the node's tile (small, one tile —
+  the local/urban case) or a 2×2 block (large, for collector/arterial) into a
+  circulating carriageway with a planted or paved island, yield markings on
+  every approach, and no signals. It is the one control that changes
+  geometry, and it is bounded by what a tile can hold: a two-tile-corridor
+  roundabout is deferred with wave 6. DESIGN.md's "roundabouts deferred"
+  guard is retired by this bullet.
+- **Approach lanes are the player's, with an automatic starting point
+  (junction).** For each approach of a node, the last N tiles of the profile
+  (N = 2 for locals, 3 for collectors, 4 for arterials — the storage length a
+  turn lane needs, at tile scale) are the APPROACH ZONE, and each travel lane
+  in it has a movement set: through, left, right, or any combination. The
+  default is derived — a two-lane approach gets `left|through` and
+  `through|right`; a three-lane gets a dedicated left; a four-lane gets
+  dedicated left and right — and the player edits the set per lane from the
+  junction inspector. A profile may also GAIN a lane inside its approach zone
+  (a dedicated turn pocket carved out of the verge or the parking lane, where
+  the width budget allows), which is how a two-lane street earns a left-turn
+  lane at one junction without becoming a three-lane street. Turn arrows are
+  painted from the movement set and nothing else; a lane with no movement
+  toward a leg is not a legal path to that leg, and the pathfinder's node
+  transition cost reflects how many lanes serve a movement. Turn RESTRICTIONS
+  (no left, no right, no straight, no U) are the degenerate case — a movement
+  removed from every lane — and are exposed as the same control.
+- **Lane changes happen along a segment, and are drawn (profile).** Where two
+  profiles of different lane counts meet on a straight run (a four-lane
+  narrowing to two, a highway gaining a lane for a merge), the graph puts a
+  node there today and the render stops the markings dead. Instead the
+  wider profile's extra lane ends in a TAPER over the last two tiles: the
+  lane line bends to the kerb, a merge arrow points into the surviving lane,
+  and on highways a chevron-hatched gore fills the wedge. Which side drops
+  is a per-transition choice (left, right, or centre for a divided road) and
+  defaults to the side the replace tool was dragged from, the way the
+  reference decides expand-left/right by cursor side. The sim treats the
+  taper as a short edge at the narrower capacity, which is what makes a hard
+  4→1 drop a visible chokepoint on the traffic lens rather than a free
+  merge.
+- **Highways meet the world through ramps, never at grade (junction).** A
+  `ramp` is a class: one or two lanes, one-way, unzonable, with the motorway's
+  rules and a lower speed. A ramp tile touching a highway run forms a
+  **merge** node (ramp joins in the flow direction) or a **diverge** node
+  (ramp leaves) — the two junction kinds a highway is allowed, and both are
+  two-approach nodes with no control. A merge needs an ACCELERATION LANE: the
+  highway carries one more lane for the K tiles downstream of the merge (K =
+  3 for 20 → 28 speed, from the real-world 35–55 m lane at tile scale), then
+  tapers per the bullet above; a diverge mirrors it with a deceleration lane
+  upstream. The tool lays that lane automatically when a ramp is connected —
+  the player draws the ramp, the highway grows the lane, and the gore is
+  painted — which is the one place this system does more than the reference,
+  where the player had to swap in a wider highway by hand. A ramp's other
+  end is a **terminal**: an ordinary node on a surface road, which takes an
+  ordinary control (a signal or a stop on the ramp, by warrant) and ordinary
+  approach lanes. Elevation is the existing §25 layer: a ramp climbs or falls
+  at the existing stepped grade, and a ramp crossing a highway is a bridge
+  over it exactly as a road crossing water is.
+- **Interchanges are stamps of the above, not assets (tool).** A diamond, a
+  trumpet, a parclo, a roundabout interchange and a cloverleaf are each a
+  TEMPLATE: a list of relative tiles, classes, profiles, elevations and ramp
+  nodes that the tool lays as one placement with one cost, ghosted and
+  rotatable like a landmark plop. Because they are made only of pieces the
+  player could draw by hand, every part of a placed interchange is editable
+  afterwards with the same tools — retune a signal, drop a loop, widen a
+  ramp — which is the property that makes them worth shipping as templates
+  instead of as models. Footprints at tile scale: diamond 6×6 (one bridge,
+  two terminals), trumpet 8×8, parclo 8×8, roundabout interchange 8×8 (one
+  bridge, one large roundabout under it), cloverleaf 12×12. Stack, turbine,
+  SPUI and DDI are deferred: a stack needs three deck levels the elevation
+  layer does not carry, and the other three are signal-phase designs whose
+  value does not survive a cosmetic signal.
+- **Furniture is a toggle on the profile, gated by class (profile).** Each
+  profile carries: `lamps` (default on for local/urban/collector/arterial/
+  divided/one-way; off for dirt, rural, alley, highway, ramp; togglable
+  everywhere except dirt), `sidewalks` (a lane piece, so "none" is a real
+  choice on rural and alley; mandatory on zonable urban classes), `kerbs`
+  (implied by sidewalks or a raised median), `verge` (grass by default; a
+  tree row where the profile has ≥ 2 m spare per side), `median` (a lane
+  piece: painted / raised grass / raised with trees / concrete barrier — the
+  barrier is the only median a highway admits), `parking` (a lane piece per
+  side; SPEC §28's kerbside rule reads it instead of the tier — a profile
+  with no parking lane parks nobody), `bike` (a painted lane piece per side;
+  it displaces the parking lane, as the reference's does), `bus` and `tram`
+  (a lane piece each; SPEC §27's tram tier becomes "a profile with a tram
+  lane"), `soundBarrier` (highway/divided only), `crosswalks` (per approach,
+  on the junction). Every existing furniture rule that keys off a tier —
+  lamps skipping gravel and rail, the kerb-tile parking vet, the junction
+  guard for signs — keys off the profile's pieces instead, with no change in
+  behaviour for the eleven presets.
+- **Markings say exactly what the profile and the junction say (render).** A
+  marking is never authored; it is read: centre line from the class and the
+  presence of a median (none / dashed / double solid), lane lines between
+  same-direction travel lanes (dashed), edge lines on arterial and above and
+  on every highway, turn arrows from approach-lane movement sets, merge
+  arrows and gore chevrons from tapers, bus-lane and bike-lane fills from
+  their pieces, parking-bay ticks from a parking lane, stop lines and yield
+  triangles from the node control, zebra bars from the crosswalk toggle,
+  roundabout yield markings from the roundabout control. Dirt has none;
+  rural has none until it earns a centre line (the class default above).
+  Colour follows the calibrated palette (§28) — one white and one yellow,
+  with a per-city theme choosing whether the centre line is yellow (North
+  American convention) or white (European), set at city start and never
+  changed, which is how the reference does it and avoids repainting a city.
+- **The tool: draw a class, then refine what you drew.** The drawer's road
+  category shows CLASSES, not tiers; picking one lays its default profile.
+  The existing tool options panel (§5) grows a **profile editor** — lane
+  pieces as a horizontal strip with the width budget under it, per-side
+  toggles for parking/bike/lamps/sidewalk, a median picker — and its edits
+  apply to the next drag. A **replace** mode drags a new profile over an
+  existing run in place, keeping alignment, buildings and elevation; if the
+  new profile is wider than the old one's tile allows, the drag refuses with
+  the §6.16 red ghost rather than demolishing. Clicking a node opens the
+  **junction inspector**: control picker, per-approach lane movement grid,
+  crosswalk toggles, turn restrictions. Clicking a ramp node shows its merge
+  length. All of it is command-driven through the existing worker queue and
+  undoable, and none of it needs a new panel type — the profile editor is
+  tool options, the inspector is the existing info panel (§7) pointed at a
+  node.
+- **Progression mirrors the real ladder.** At start: dirt, rural, local
+  street, alley. Milestone 1: urban street, one-way, parking/bike/lamp
+  toggles, stop and yield control. Milestone 2: collector, signal control,
+  approach-lane editing, median pieces, bus and tram lanes (with their
+  transit epics). Milestone 3: arterial, divided, roundabout, highway, ramp,
+  the diamond and trumpet stamps. Milestone 4: two-tile corridors (six and
+  eight lanes), parclo/cloverleaf/roundabout-interchange stamps, sound
+  barriers. The existing tier unlocks map onto this with no regression.
+- **Save compatibility.** The grid's `roadTier` byte becomes a `roadProfile`
+  index into a per-save profile table (the eleven presets pre-populate it, so
+  a v5 save loads with every road looking as it did); a `roadFlow` byte (2
+  bits direction, 2 bits corridor half, 4 bits approach-zone marker) is
+  added; nodes gain a control record keyed by tile. Serialization bumps one
+  version; older saves deserialize with presets and warrant-derived control.
+- **Deferred, deliberately.** Signal phase design (SPUI, DDI, protected
+  lefts as a player setting) — a signal here is a delay cost and a cosmetic
+  cycle, not a phase plan. Three-level stacks and turbines — the elevation
+  layer carries one deck. Reversible and contraflow lanes. Per-lane speed
+  limits. Curved and free-form geometry — the road stays on the tile grid,
+  which is the decision that keeps everything above tractable; a two-tile
+  corridor is as wide as this design goes. Tunnels remain deferred per
+  DESIGN.md. Authored road textures — markings stay geometry on the palette.
+
+**Waves (each shippable alone, in this order):**
+
+1. **Profiles and classes** — the profile table, class specs, lane pieces,
+   width budget, the eleven presets, replace-in-place, the profile editor;
+   markings and furniture re-derived from pieces with a zero-behaviour-change
+   test over every preset. No sim change beyond lanes × per-lane capacity
+   reproducing today's numbers.
+2. **Stored direction** — `roadFlow`, drag direction, asymmetric profiles,
+   directional edge cost, one-way pathfinding off geometry inference.
+3. **Junction control** — node control records, the warrant default, the
+   inspector, per-movement delay cost, control-placed furniture, cycling
+   signal heads, roundabouts on one tile and 2×2.
+4. **Approach lanes and tapers** — movement sets, turn pockets, arrows, turn
+   restrictions, lane-drop tapers with merge arrows and gore chevrons, taper
+   edges in the sim.
+5. **Ramps and interchange stamps** — the ramp class, merge/diverge/terminal
+   nodes, automatic acceleration/deceleration lanes, diamond and trumpet,
+   then parclo, cloverleaf and roundabout interchange.
+6. **Two-tile corridors** — six- and eight-lane divided, corridor halves in
+   `roadFlow`, the large roundabout, sound barriers.
+
+**Owners:** `src/data/roads.json` (becomes classes + lane pieces + preset
+profiles), `src/shared/types.ts` (`RoadClass`, `LanePiece`, `RoadProfile`,
+`JunctionControl`, `ApproachLanes`; `roadProfile` + `roadFlow` layers;
+commands `setProfile`, `replaceRoad`, `setJunctionControl`,
+`setApproachLanes`, `setCrosswalk`, `placeInterchange`), `src/world/grid.ts`
+(layers + save version), `src/world/roads.ts` + `src/world/pathfind.ts`
+(directional lanes, node control cost, taper edges, merge/diverge nodes),
+`src/sim/traffic.ts` (per-lane capacity, movement-aware node cost),
+`src/sim/worker.entry.ts` (commands + undo inverses), `src/render/roadsmesh.ts`
+(profile-driven geometry: pieces, medians, tapers, gores, roundabout
+carriageway), `src/render/roadfurniture.ts` + `src/render/lamps.ts` +
+`src/render/parked.ts` (read pieces and control, not tiers),
+`src/render/signage.ts` (new — arrows, chevrons, yield triangles, cycling
+heads split out of roadfurniture), `src/world/interchanges.ts` (new —
+templates), `src/tools/tools.ts` (class tool, replace mode, stamp placement),
+`src/ui/RoadToolOptions.tsx` (profile editor), `src/ui/JunctionPanel.tsx`
+(new — the inspector), `src/ui/categories.ts` (classes in the drawer),
+`src/sim/advisor.ts` (warrant nudges).
+
+**Acceptance:** every one of the eleven existing tiers loads from a v5 save
+and renders pixel-identically as its preset profile; a player can lay a
+two-lane local street, add a parking lane on one side and a bike lane on the
+other, drop its lamps, and see each change in the markings and furniture
+without redrawing; a four-lane collector meeting a local defaults to a stop on
+the local and the player can make it a signal, a roundabout, or nothing; a
+signalised approach can be given a dedicated left-turn lane and the arrow,
+the stop line and the pathfinder all agree it exists; a highway with a ramp
+gains an acceleration lane and a painted gore automatically and the traffic
+lens shows the merge; a diamond interchange places as one stamp and every
+piece of it is editable afterwards; a six-lane divided claims two tiles and
+its kerb furniture, lots and pedestrians all measure from its real edge; no
+marking ever disagrees with the profile or control that produced it.
+
+**Verification:** the preset zero-change claim is a test over every tier —
+profile-derived geometry against the tier-derived geometry it replaces, vertex
+for vertex. The width budget is a table test over every class × piece
+combination the editor admits. Warrant defaults are a table test over class
+pairs and volumes. Movement sets versus reachable paths is a pathfinder test:
+a lane with no left movement yields no path that turns left from it. Ramps,
+tapers and interchanges are checked in the RUNNING game the way §28's kerb
+audit is — a harness lays a highway with a ramp and a diamond, then reads
+back from the live grid the lane count on every tile downstream of the merge
+and the control on every terminal node, because only the real placement
+proves the tool laid what the spec says. Markings remain a screenshot review,
+because "reads as a real road" is a claim about the eye.
+
+**Open decisions (put to the user before wave 1):**
+1. Lane width 3.5 m (recommended — keeps the vehicle kit, fits 4 lanes + kerbs
+   in a tile) versus 3.25 m (fits 4 lanes + footways, but a bus fills the lane).
+2. Six and eight lanes as two-tile corridors (recommended, wave 6) versus
+   narrowing lanes further to force them into one tile (rejected here: eight
+   lanes in 16 m is 2 m lanes).
+3. Signals as delay cost + cosmetic cycle (recommended) versus a phase
+   simulation that holds vehicles — the latter is a traffic-sim epic of its
+   own and the cosmetic vehicles are statistical today.
+4. Theme choice (yellow/white centre lines) at city start versus a global
+   setting — recommended at city start, since repainting a city is the cost.
