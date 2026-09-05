@@ -513,6 +513,87 @@ export interface BuildingCatalogEntry {
   requiresAdjacent?: 'rail';
 }
 
+// ---------------------------------------------------------------------------
+// Road composition: a road is a CLASS (what it is for), a PROFILE (its
+// cross-section as an ordered list of lane pieces) and its junctions. Every
+// tier in roads.json is a preset profile; the scalar fields on RoadSpec are the
+// contract the profile must reproduce, so nothing built so far changes shape.
+// ---------------------------------------------------------------------------
+
+/** Functional class — the real road hierarchy, plus the two rail carriers. */
+export type RoadClassId =
+  | 'dirt'
+  | 'alley'
+  | 'rural'
+  | 'local'
+  | 'urban'
+  | 'collector'
+  | 'arterial'
+  | 'divided'
+  | 'oneWay'
+  | 'highway'
+  | 'ramp'
+  | 'rail';
+
+/** What a lane piece is. `travel` carries cars; the transit pieces carry people. */
+export type LanePieceKind =
+  | 'travel'
+  | 'centreTurn'
+  | 'parking'
+  | 'bike'
+  | 'bus'
+  | 'tram'
+  | 'rail'
+  | 'median'
+  | 'barrier'
+  | 'shoulder'
+  | 'sidewalk'
+  | 'verge';
+
+/** Which way a piece flows, relative to the tile's stored flow direction. */
+export type LaneFlow = 'fwd' | 'back' | 'both';
+
+export interface LanePiece {
+  kind: LanePieceKind;
+  /** Metres across the tile. */
+  width: number;
+  /** Travel/bus/bike/tram pieces only; omitted means `both` for a shared piece. */
+  flow?: LaneFlow;
+  /** A travel lane with tram rails embedded in it, so cars and trams share the piece. */
+  tram?: boolean;
+}
+
+export interface RoadProfile {
+  class: RoadClassId;
+  /** Posted speed, km/h, within the class's range. Omitted = the class default. */
+  postedKmh?: number;
+  /** Kerb to kerb, in order. Sidewalks and verges are pieces too; what is left of the tile is verge. */
+  pieces: LanePiece[];
+  /** Raised kerbs on the unconnected sides. Omitted = true when the profile has a sidewalk piece. */
+  kerbs?: boolean;
+}
+
+export interface RoadClassSpec {
+  id: RoadClassId;
+  name: string;
+  /** Posted speed range and default, km/h. The sim speed is km/h ÷ 3.6. */
+  postedKmh: { min: number; max: number; default: number };
+  /**
+   * Per-lane throughput before the calibration constant: either a share of
+   * the 1,900 veh/h/lane saturation flow (signalised or interrupted flow) or a
+   * free-flow figure in veh/h (motorway, ramp, unpaved).
+   */
+  laneFlow: { greenRatio: number } | { vehPerHour: number };
+  zonable: boolean;
+  /** Carries water/sewage along the road graph (every class but highway and ramp). */
+  carriesWater: boolean;
+  surface: 'paved' | 'gravel' | 'ballast';
+  /** Lane pieces the class admits. */
+  admits: LanePieceKind[];
+  /** Travel-lane range, both directions summed. */
+  lanes: { min: number; max: number };
+}
+
 export interface RoadSpec {
   tier: RoadTier;
   name: string;
@@ -521,6 +602,8 @@ export interface RoadSpec {
   speed: number; // m/s along edges
   capacity: number; // vehicles/day before congestion
   unlockMilestone: number;
+  /** The cross-section this tier is a preset of. Its derived speed, capacity and width must reproduce the scalars above. */
+  profile?: RoadProfile;
   // -- additive road fields (all optional; omission = default) --
   /** Noise-field emission multiplier by tier: gravel 2×, highway 3×. Default 1. */
   noiseMult?: number;

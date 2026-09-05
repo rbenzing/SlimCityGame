@@ -1,0 +1,240 @@
+import { describe, expect, it } from 'vitest';
+import {
+  ALLEY_HALF_WIDTH_FRACTION,
+  AVENUE_HALF_WIDTH_FRACTION,
+  BIKE_LANE_HALF_WIDTH_FRACTION,
+  BUS_LANE_HALF_WIDTH_FRACTION,
+  FOUR_LANE_HALF_WIDTH_FRACTION,
+  GRAVEL_HALF_WIDTH_FRACTION,
+  HIGHWAY_HALF_WIDTH_FRACTION,
+  RAIL_HALF_WIDTH_FRACTION,
+  TRAM_HALF_WIDTH_FRACTION,
+  TWO_LANE_HALF_WIDTH_FRACTION,
+} from '../render/roadsmesh';
+import { TILE_METERS } from './constants';
+import {
+  admitsAllPieces,
+  CAPACITY_PER_VEH_PER_HOUR,
+  carriagewayWidth,
+  fitsTile,
+  hasKerbs,
+  isPaved,
+  laneCapacity,
+  laneCount,
+  profileCapacity,
+  profileSpeed,
+  ROAD_CLASSES,
+  ROAD_PRESETS,
+  roadClass,
+  SATURATION_FLOW_VEH_PER_HOUR,
+  speedFromKmh,
+  withinLaneRange,
+} from './roadprofile';
+import type { RoadClassId, RoadProfile, RoadSpec } from './types';
+import { RoadTier } from './types';
+
+function presetProfile(tier: RoadTier): RoadProfile {
+  const spec = ROAD_PRESETS.find((s) => s.tier === tier);
+  if (!spec?.profile) throw new Error(`tier ${tier} has no preset profile`);
+  return spec.profile;
+}
+
+describe('units — the sim already speaks m/s and seconds', () => {
+  it('converts posted km/h to the speeds roads.json has always carried', () => {
+    expect(speedFromKmh(50)).toBe(14);
+    expect(speedFromKmh(65)).toBe(18);
+    expect(speedFromKmh(100)).toBe(28);
+    expect(speedFromKmh(30)).toBe(8);
+  });
+
+  it('calibrates capacity so two local lanes at 700 veh/h are the two-lane 600', () => {
+    expect(CAPACITY_PER_VEH_PER_HOUR).toBeCloseTo(3 / 7, 10);
+    expect(SATURATION_FLOW_VEH_PER_HOUR).toBe(1900);
+    expect(2 * Math.round(1900 * 0.37) * CAPACITY_PER_VEH_PER_HOUR).toBeCloseTo(600, -1);
+  });
+});
+
+describe('per-lane capacity by class (HCM saturation flow × green ratio × k)', () => {
+  const expected: Record<RoadClassId, number> = {
+    dirt: 100,
+    alley: 175,
+    rural: 400,
+    local: 300,
+    urban: 300,
+    collector: 350,
+    arterial: 400,
+    divided: 450,
+    oneWay: 550,
+    highway: 1000,
+    ramp: 850,
+    rail: 0,
+  };
+  for (const [id, cap] of Object.entries(expected) as [RoadClassId, number][]) {
+    it(`${id} lane = ${cap}`, () => {
+      expect(laneCapacity(id)).toBe(cap);
+    });
+  }
+
+  it('keeps the motorway-to-local ratio the HCM gives (≈ 3.3 : 1)', () => {
+    expect(laneCapacity('highway') / laneCapacity('local')).toBeCloseTo(3.33, 1);
+  });
+});
+
+describe('class table sanity', () => {
+  it('names twelve classes, each with a coherent speed range and lane range', () => {
+    expect(ROAD_CLASSES).toHaveLength(12);
+    for (const cls of ROAD_CLASSES) {
+      expect(cls.postedKmh.min).toBeLessThanOrEqual(cls.postedKmh.default);
+      expect(cls.postedKmh.default).toBeLessThanOrEqual(cls.postedKmh.max);
+      expect(cls.lanes.min).toBeLessThanOrEqual(cls.lanes.max);
+      if (cls.id !== 'rail') expect(cls.admits).toContain('travel');
+    }
+  });
+
+  it('only highway and ramp refuse water and zoning; only dirt is gravel, only rail ballast', () => {
+    const dry = ROAD_CLASSES.filter((c) => !c.carriesWater).map((c) => c.id);
+    expect(dry.sort()).toEqual(['highway', 'ramp']);
+    const unzonable = ROAD_CLASSES.filter((c) => !c.zonable).map((c) => c.id);
+    expect(unzonable.sort()).toEqual(['highway', 'rail', 'ramp']);
+    expect(ROAD_CLASSES.filter((c) => c.surface === 'gravel').map((c) => c.id)).toEqual(['dirt']);
+    expect(ROAD_CLASSES.filter((c) => c.surface === 'ballast').map((c) => c.id)).toEqual(['rail']);
+  });
+
+  it('a highway never admits a footway, and a ramp is one-directional travel only', () => {
+    expect(roadClass('highway').admits).not.toContain('sidewalk');
+    expect(roadClass('highway').admits).not.toContain('parking');
+    expect(roadClass('ramp').admits).toEqual(['travel', 'shoulder']);
+  });
+});
+
+describe('the eleven presets reproduce their tier scalars from the formula', () => {
+  it('every spec carries a profile', () => {
+    expect(ROAD_PRESETS).toHaveLength(11);
+    for (const spec of ROAD_PRESETS) expect(spec.profile).toBeDefined();
+  });
+
+  for (const spec of ROAD_PRESETS as RoadSpec[]) {
+    const p = spec.profile!;
+    describe(spec.name, () => {
+      it('Σ piece capacity equals the catalogue capacity', () => {
+        expect(profileCapacity(p)).toBe(spec.capacity);
+      });
+      it('class (or posted) speed equals the catalogue speed', () => {
+        expect(profileSpeed(p)).toBe(spec.speed);
+      });
+      it('fits the tile, holds only admitted pieces, and sits in its class lane range', () => {
+        expect(fitsTile(p)).toBe(true);
+        expect(admitsAllPieces(p)).toBe(true);
+        expect(withinLaneRange(p)).toBe(true);
+      });
+      it('agrees with the spec on water and one-way', () => {
+        expect(roadClass(p.class).carriesWater).toBe(spec.carriesWater ?? true);
+        const oneWay = p.pieces
+          .filter((x) => x.kind === 'travel')
+          .every((x) => x.flow === 'fwd');
+        expect(oneWay && p.pieces.some((x) => x.kind === 'travel')).toBe(spec.oneWay === true);
+      });
+    });
+  }
+});
+
+describe('preset carriageways match the widths the render already draws', () => {
+  const widths: [RoadTier, number][] = [
+    [RoadTier.TwoLane, TWO_LANE_HALF_WIDTH_FRACTION],
+    [RoadTier.Avenue, AVENUE_HALF_WIDTH_FRACTION],
+    [RoadTier.Highway, HIGHWAY_HALF_WIDTH_FRACTION],
+    [RoadTier.Gravel, GRAVEL_HALF_WIDTH_FRACTION],
+    [RoadTier.Alley, ALLEY_HALF_WIDTH_FRACTION],
+    [RoadTier.OneWay, TWO_LANE_HALF_WIDTH_FRACTION],
+    [RoadTier.FourLane, FOUR_LANE_HALF_WIDTH_FRACTION],
+    [RoadTier.BusLane, BUS_LANE_HALF_WIDTH_FRACTION],
+    [RoadTier.BikeLane, BIKE_LANE_HALF_WIDTH_FRACTION],
+    [RoadTier.Tram, TRAM_HALF_WIDTH_FRACTION],
+    [RoadTier.RailTrack, RAIL_HALF_WIDTH_FRACTION],
+  ];
+  for (const [tier, halfFraction] of widths) {
+    it(`tier ${tier} carriageway = ${halfFraction * 2 * TILE_METERS} m`, () => {
+      expect(carriagewayWidth(presetProfile(tier))).toBeCloseTo(halfFraction * 2 * TILE_METERS, 6);
+    });
+  }
+
+  it('kerbs and paving follow the render: footways or an explicit kerb, gravel and ballast unpainted', () => {
+    expect(hasKerbs(presetProfile(RoadTier.TwoLane))).toBe(true);
+    expect(hasKerbs(presetProfile(RoadTier.Highway))).toBe(true);
+    expect(hasKerbs(presetProfile(RoadTier.Avenue))).toBe(true);
+    expect(hasKerbs(presetProfile(RoadTier.Gravel))).toBe(false);
+    expect(hasKerbs(presetProfile(RoadTier.Alley))).toBe(false);
+    expect(hasKerbs(presetProfile(RoadTier.RailTrack))).toBe(false);
+    expect(isPaved(presetProfile(RoadTier.Gravel))).toBe(false);
+    expect(isPaved(presetProfile(RoadTier.RailTrack))).toBe(false);
+    expect(isPaved(presetProfile(RoadTier.Alley))).toBe(true);
+  });
+});
+
+describe('composition rules the editor will enforce', () => {
+  it('counts reserved bus and tram lanes as lanes, and a shared lane for both directions', () => {
+    expect(laneCount(presetProfile(RoadTier.BusLane))).toBe(4);
+    expect(laneCount(presetProfile(RoadTier.Alley))).toBe(2);
+    expect(laneCount(presetProfile(RoadTier.Tram))).toBe(2);
+  });
+
+  it('a four-lane street with footways does not fit one tile, and gives up the footways', () => {
+    const withFootways: RoadProfile = {
+      class: 'urban',
+      pieces: [
+        { kind: 'sidewalk', width: 1.9 },
+        { kind: 'travel', width: 3.5, flow: 'back' },
+        { kind: 'travel', width: 3.5, flow: 'back' },
+        { kind: 'travel', width: 3.5, flow: 'fwd' },
+        { kind: 'travel', width: 3.5, flow: 'fwd' },
+        { kind: 'sidewalk', width: 1.9 },
+      ],
+    };
+    expect(fitsTile(withFootways)).toBe(false);
+    expect(fitsTile({ ...withFootways, pieces: withFootways.pieces.slice(1, -1) })).toBe(true);
+  });
+
+  it('a local street with a centre turn lane and two bike lanes fits', () => {
+    const p: RoadProfile = {
+      class: 'local',
+      pieces: [
+        { kind: 'sidewalk', width: 1.9 },
+        { kind: 'bike', width: 1.6, flow: 'back' },
+        { kind: 'travel', width: 3.5, flow: 'back' },
+        { kind: 'centreTurn', width: 3.5 },
+        { kind: 'travel', width: 3.5, flow: 'fwd' },
+        { kind: 'bike', width: 1.6, flow: 'fwd' },
+      ],
+    };
+    expect(fitsTile(p)).toBe(true);
+    expect(admitsAllPieces(p)).toBe(true);
+    expect(withinLaneRange(p)).toBe(true);
+    expect(profileCapacity(p)).toBe(2 * 300 + 2 * 75);
+  });
+
+  it('refuses a piece the class does not admit and a lane count outside the class', () => {
+    const parkedHighway: RoadProfile = {
+      class: 'highway',
+      pieces: [
+        { kind: 'parking', width: 2.25 },
+        { kind: 'travel', width: 3.5, flow: 'fwd' },
+        { kind: 'travel', width: 3.5, flow: 'back' },
+      ],
+    };
+    expect(admitsAllPieces(parkedHighway)).toBe(false);
+    const sixLaneLocal: RoadProfile = {
+      class: 'local',
+      pieces: Array.from({ length: 6 }, (_, i) => ({
+        kind: 'travel' as const,
+        width: 2.5,
+        flow: i < 3 ? ('back' as const) : ('fwd' as const),
+      })),
+    };
+    expect(withinLaneRange(sixLaneLocal)).toBe(false);
+  });
+
+  it('clamps a posted speed to the class range', () => {
+    expect(profileSpeed({ class: 'local', postedKmh: 90, pieces: [] })).toBe(speedFromKmh(50));
+    expect(profileSpeed({ class: 'highway', postedKmh: 30, pieces: [] })).toBe(speedFromKmh(90));
+  });
+});

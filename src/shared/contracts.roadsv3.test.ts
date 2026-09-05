@@ -17,7 +17,19 @@ import { MILESTONES } from './constants';
 import roadsData from '../data/roads.json';
 
 const specs = (roadsData as { specs: RoadSpec[] }).specs;
-const byTier = (tier: RoadTier): RoadSpec | undefined => specs.find((s) => s.tier === tier);
+/**
+ * The scalar contract of a tier — every field except the cross-section
+ * profile it is a preset of. The profile has its own contract (roadprofile
+ * test) which asserts it reproduces these scalars; here they are pinned
+ * exactly, so a preset cannot drift from what it claims to reproduce.
+ */
+const byTier = (tier: RoadTier): Omit<RoadSpec, 'profile'> | undefined => {
+  const spec = specs.find((s) => s.tier === tier);
+  if (!spec) return undefined;
+  const scalars: Partial<RoadSpec> = { ...spec };
+  delete scalars.profile;
+  return scalars as Omit<RoadSpec, 'profile'>;
+};
 
 describe('RoadTier v3 members (UI-SPEC §6.7 Roads v3)', () => {
   it('keeps the existing members and their exact values — additive only', () => {

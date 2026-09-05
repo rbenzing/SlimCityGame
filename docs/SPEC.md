@@ -1910,7 +1910,8 @@ else is derived:
   Highway Capacity Manual's base saturation flow for an urban lane, and g/C the
   share of time a lane actually moves, which is what separates a signalised
   arterial from a free-flowing motorway. A motorway lane has no g/C and uses
-  the HCM basic-freeway figure of 2,300 veh/h/lane instead. Unpaved and alley
+  the HCM basic-freeway figure of 2,350 veh/h/lane (free-flow 65 mph, the
+  nearest to 100 km/h) instead. Unpaved and alley
   lanes use observed rural figures rather than S. Transit and bike pieces carry
   PEOPLE, so their figure is a car-equivalent of their passenger throughput at
   the sim's trip granularity. The table below gives g/C per class and the game
@@ -1969,11 +1970,17 @@ else is derived:
   | arterial | 4–6 | 65 → 18 | 0.49 | 400 | + raised median, no parking | yes | water+power | signal | double solid |
   | divided | 4–8 | 80 → 22 | 0.55 | 450 | median mandatory, no parking | yes | water+power | signal | median, edge lines |
   | one-way | 1–5 | 58 → 16 | 0.67 | 550 | travel (one dir), parking, bike, bus | yes | water+power | as parent width | none (lane lines only) |
-  | highway | 2–8 | 100 → 28 | (freeway 2,300) | 1000 | travel, shoulder, barrier | no | power only | never — grade-separated | double solid + edge lines; barrier when divided |
+  | highway | 2–8 | 100 → 28 | (freeway 2,350) | 1000 | travel, shoulder, barrier | no | power only | never — grade-separated | double solid + edge lines; barrier when divided |
   | ramp | 1–2 | 60 → 17 | (ramp 2,000) | 850 | travel (one dir), shoulder | no | power only | merge / diverge / terminal | edge lines, gore chevrons |
 
-  Transit and bike pieces: a **bus lane** 800 (60 buses/h × 50 riders ÷ 1.5
-  riders per car-trip ≈ 2,000 car-equivalents/h), a **tram lane** 650 per
+  Per-lane figures round to the nearest 25 so they read as catalogue numbers.
+  A class fixes a posted-speed RANGE and a default; a profile may post any
+  speed within the range, as a real street does within its class (the tram
+  preset posts 58 km/h on an urban street whose default is 60). Bus and tram
+  lanes count as lanes for the class's lane range — they are lanes with a
+  different occupant. Transit and bike pieces: a **bus lane** 700 (50 buses/h
+  × 48 riders ÷ 1.5 riders per car-trip ≈ 1,600 car-equivalents/h), a **tram
+  lane** 650 per
   track (30 trams/h × 150 riders), a **bike lane** 75 (a 1.6 m lane's share
   of commute trips at the sim's granularity, not its physical 1,500 bikes/h).
   Highway lanes are 700 veh/h/lane better than a local's because they never
@@ -1986,8 +1993,10 @@ else is derived:
   lane 1.6 m (1.5–1.8), a bus lane 3.5 m, a raised median 1.8 m (minimum 1.2;
   4.9 m to hold a turn lane, which a one-tile road cannot), a sidewalk 1.9 m
   (1.8–2.4), a shoulder 1.5 m, a concrete barrier 0.6 m. **The eleven presets
-  keep their 3.75 m lanes as their piece width**, so their geometry is
-  unchanged byte for byte; only newly composed profiles default to 3.5. The
+  keep the piece widths that reproduce their current carriageways** — 3.75 m
+  lanes on most, 3.3 m on the avenue whose median sits inside its 15 m — so
+  their geometry is unchanged byte for byte; only newly composed profiles
+  default to 3.5. The
   profile editor shows the running total against the tile and refuses to
   exceed it; what is left is verge. Within one tile: 2 travel + 2 parking + 2
   sidewalk = 15.3 m (a local street); 4 travel + 2 sidewalk = 17.8 m does NOT
@@ -2191,6 +2200,13 @@ scaled by one constant into the units the sim already uses.
    markings and furniture re-derived from pieces with a zero-behaviour-change
    test over every preset. Capacity becomes Σ pieces, reproducing today's
    numbers exactly.
+   *Status (2026-09-05):* the data model is in — twelve classes and the
+   eleven preset profiles live in `roads.json`, `src/shared/roadprofile.ts`
+   derives speed, capacity, carriageway width, kerbs and paving from a
+   profile, and a test proves every preset reproduces its catalogue speed,
+   capacity and the carriageway the render already draws. The render, sim
+   and grid still key off the tier; the next steps point them at the profile
+   one consumer at a time, each behind the same zero-change test.
 2. **Stored direction** — `roadFlow`, drag direction, asymmetric profiles,
    directional edge cost, one-way pathfinding off geometry inference.
 3. **Junction control** — node control records, the v/c warrant default, the
@@ -2228,8 +2244,9 @@ templates), `src/tools/tools.ts` (class tool, replace mode, stamp placement),
 and renders byte-identically as its preset profile, and its capacity is
 reproduced by the formula — two-lane 2 × 300 = 600, avenue 4 × 400 = 1,600,
 highway 4 × 1,000 = 4,000, gravel 2 × 100 = 200, alley 2 × 175 = 350, one-way
-2 × 550 = 1,100, four-lane 4 × 300 = 1,200, bus lane 2 × 300 + 2 × 800 =
-2,200, bike lane 2 × 300 + 2 × 75 = 750, tram 2 × 300 + 2 × 650 = 1,900; a
+2 × 550 = 1,100, four-lane 4 × 300 = 1,200, bus lane 2 × 400 + 2 × 700 =
+2,200 (an arterial with reserved kerb lanes), bike lane 2 × 300 + 2 × 75 =
+750, tram 2 × 300 + 2 × 650 = 1,900; a
 player can lay a two-lane local street, add a parking lane on one side and a
 bike lane on the other, drop its lamps, and see each change in the markings
 and furniture without redrawing; a four-lane collector meeting a local
