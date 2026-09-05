@@ -79,6 +79,7 @@
  */
 import * as THREE from 'three';
 import { RoadTileDelta, RoadTier } from '../shared/types';
+import type { RoadProfile } from '../shared/types';
 import { TILE_METERS, CHUNK_TILES, CHUNKS_PER_SIDE } from '../shared/constants';
 import { carriagewayWidth, hasKerbs, isPaved, presetProfileForTier } from '../shared/roadprofile';
 
@@ -302,20 +303,25 @@ function tierBaseColor(tier: RoadTier): readonly [number, number, number] {
 }
 
 /**
- * The geometry a tier draws, read from its preset cross-section: the paved
- * width between the kerbs, whether it has kerbs at all, and whether its
- * surface takes paint. Rail is ballast and gravel is gravel, so neither is
- * painted and neither gets a crosswalk.
+ * The geometry a road draws, read from its cross-section: the paved width
+ * between the kerbs, whether it has kerbs at all, and whether its surface
+ * takes paint. Rail is ballast and gravel is gravel, so neither is painted and
+ * neither gets a crosswalk. The shade comes from the tier — a composed
+ * profile's nearest preset — because a shade is a palette choice, not a
+ * property of the pieces.
  */
-function tierSpec(tier: RoadTier): QuadSpec {
-  const color = tierBaseColor(tier);
-  const profile = presetProfileForTier(tier);
+function quadSpecFor(tier: RoadTier, profile: RoadProfile): QuadSpec {
   return {
     halfWidthFraction: carriagewayWidth(profile) / (2 * TILE_METERS),
-    color,
+    color: tierBaseColor(tier),
     hasCurbs: hasKerbs(profile),
     paved: isPaved(profile),
   };
+}
+
+/** A tier's geometry — that of its preset profile. */
+function tierSpec(tier: RoadTier): QuadSpec {
+  return quadSpecFor(tier, presetProfileForTier(tier));
 }
 
 /**
@@ -2349,6 +2355,8 @@ export function roadTileVertices(
   mask: number,
   hAt: (x: number, z: number) => number,
   neighbors: NeighborTiers = NO_NEIGHBORS,
+  /** The tile's own cross-section. Omitted = the tier's preset, which is what every tile carried before profiles. */
+  profile?: RoadProfile,
 ): { positions: number[]; colors: number[] } {
   if (!Number.isInteger(mask) || mask < 0 || mask > 15) {
     throw new RangeError(`roadTileVertices: mask ${mask} out of the 4-bit range 0..15`);
@@ -2358,7 +2366,7 @@ export function roadTileVertices(
   const colors: number[] = [];
   if (tier === RoadTier.None) return { positions, colors };
 
-  const spec = tierSpec(tier);
+  const spec = profile ? quadSpecFor(tier, profile) : tierSpec(tier);
   const centerX = (x + 0.5) * TILE_METERS;
   const centerZ = (z + 0.5) * TILE_METERS;
   const coreHalf = TILE_METERS * spec.halfWidthFraction;
@@ -2927,10 +2935,21 @@ export class RoadMeshRenderer {
   });
   private treeTrunkMesh: THREE.InstancedMesh | null = null;
   private treeCanopyMesh: THREE.InstancedMesh | null = null;
+  /**
+   * Resolves a profile id to its cross-section, so a composed road draws its
+   * own width and kerbs. Without one every tile draws as its tier's preset —
+   * which is what every tile is until a player composes something.
+   */
+  private readonly profileFor: (id: number) => RoadProfile | null;
 
-  constructor(scene: THREE.Scene, heightAt: (x: number, z: number) => number) {
+  constructor(
+    scene: THREE.Scene,
+    heightAt: (x: number, z: number) => number,
+    profileFor: (id: number) => RoadProfile | null = () => null,
+  ) {
     this.scene = scene;
     this.heightAt = heightAt;
+    this.profileFor = profileFor;
     this.treeTrunkGeometry.translate(0, MEDIAN_TREE_TRUNK_HEIGHT / 2, 0);
     this.treeCanopyGeometry.translate(
       0,
@@ -3045,6 +3064,7 @@ export class RoadMeshRenderer {
         tile.mask,
         this.heightAt,
         neighbors,
+        this.profileFor(tile.profile) ?? undefined,
       );
       for (const n of vertices.positions) positions.push(n);
       for (const n of vertices.colors) colors.push(n);

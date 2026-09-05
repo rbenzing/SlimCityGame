@@ -2219,10 +2219,14 @@ scaled by one constant into the units the sim already uses.
    differs, and undo puts back the exact profile that was there. Saves bump
    to version 6; older saves load with every road as the preset its tier
    names, and the worker now accepts any older save rather than only the
-   current version. The mirror resolves any tile to its cross-section. Still
-   to come in wave 1: the render drawing a composed profile's own pieces
-   rather than its nearest preset's, the class drawer, replace-in-place, and
-   the profile editor that gives the player a way to compose one.
+   current version. The mirror resolves any tile to its cross-section, and
+   the road mesh draws a tile carrying a composed profile at THAT profile's
+   carriageway width, kerbs and paving — its markings, shade and decorations
+   still come from the nearest preset tier until the markings are read from
+   the pieces. Still to come in wave 1: those piece-driven markings, the class
+   drawer, replace-in-place, and the profile editor that gives the player a
+   way to compose one; and the kerb furniture measuring from the profile's
+   own edge rather than the preset's.
 2. **Stored direction** — `roadFlow`, drag direction, asymmetric profiles,
    directional edge cost, one-way pathfinding off geometry inference.
 3. **Junction control** — node control records, the v/c warrant default, the

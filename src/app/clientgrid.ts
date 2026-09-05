@@ -63,13 +63,17 @@ export class ClientGridMirror {
     for (const entry of table) this.customProfiles.set(entry.id, entry.profile);
   }
 
-  /** The cross-section a tile carries: its preset's, its custom profile, or null off-road. */
-  profileAt(x: number, z: number): RoadProfile | null {
-    if (!this.inBounds(x, z)) return null;
-    const id = this.roadProfile[this.idx(x, z)] ?? 0;
+  /** The cross-section behind a profile id: a preset's, a custom one from the table, or null. */
+  profileById(id: number): RoadProfile | null {
     if (id === 0) return null;
     if (isPresetProfileId(id)) return presetProfileForTier(id as RoadTier);
     return this.customProfiles.get(id) ?? null;
+  }
+
+  /** The cross-section a tile carries: its preset's, its custom profile, or null off-road. */
+  profileAt(x: number, z: number): RoadProfile | null {
+    if (!this.inBounds(x, z)) return null;
+    return this.profileById(this.roadProfile[this.idx(x, z)] ?? 0);
   }
 
   /** The lowest id not yet holding a custom profile — what a new definition should claim. */

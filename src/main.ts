@@ -196,7 +196,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     utilityKits.kitIds(),
     roadAt,
   );
-  const roadsMesh = new RoadMeshRenderer(world.scene, roadSurfaceAt);
+  const roadsMesh = new RoadMeshRenderer(world.scene, roadSurfaceAt, (id) =>
+    clientGrid.profileById(id),
+  );
   const bridges = new BridgeRenderer(world.scene, roadSurfaceAt);
   const vehicles = new VehicleRenderer(world.scene, roadSurfaceAt);
   // Bus transit (stop posts + route ribbon + cosmetic buses), service vehicles

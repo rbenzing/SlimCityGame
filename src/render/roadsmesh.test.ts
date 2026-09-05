@@ -38,6 +38,8 @@ import {
   SIDEWALK_WIDTH_M,
 } from './roadsmesh';
 import { RoadTileDelta, RoadTier } from '../shared/types';
+import type { RoadProfile } from '../shared/types';
+import { presetProfileForTier } from '../shared/roadprofile';
 import { CHUNK_TILES, TILE_METERS } from '../shared/constants';
 
 const flatHeightAt = (): number => 0;
@@ -189,6 +191,45 @@ describe('roadTileVertices — transit lane variants (Bus Lane / Bike Lane)', ()
       const junction = roadTileVertices(3, 3, tier, N | E | S | W, flatHeightAt);
       expect(countWhere(junction.colors, isMarkingWhite) > 0).toBe(paved);
     }
+  });
+
+  it('draws a composed profile at its own width, and a preset passed explicitly exactly as before', () => {
+    const extent = (v: { positions: number[] }, centreX: number): number => {
+      let max = 0;
+      for (let i = 0; i < v.positions.length; i += 3) {
+        max = Math.max(max, Math.abs(v.positions[i]! - centreX));
+      }
+      return max;
+    };
+    const centreX = (3 + 0.5) * TILE_METERS;
+    const preset = roadTileVertices(3, 3, RoadTier.TwoLane, N | S, flatHeightAt);
+    const explicit = roadTileVertices(
+      3,
+      3,
+      RoadTier.TwoLane,
+      N | S,
+      flatHeightAt,
+      undefined,
+      presetProfileForTier(RoadTier.TwoLane),
+    );
+    expect(explicit.positions).toEqual(preset.positions);
+    expect(explicit.colors).toEqual(preset.colors);
+
+    // Three 3.5 m lanes with footways: 10.5 m of carriageway plus a full kerb
+    // each side, on a tile whose nearest preset is the 7.5 m two-lane.
+    const threeLane: RoadProfile = {
+      class: 'local',
+      pieces: [
+        { kind: 'sidewalk', width: 1.9 },
+        { kind: 'travel', width: 3.5, flow: 'back' },
+        { kind: 'centreTurn', width: 3.5 },
+        { kind: 'travel', width: 3.5, flow: 'fwd' },
+        { kind: 'sidewalk', width: 1.9 },
+      ],
+    };
+    const custom = roadTileVertices(3, 3, RoadTier.TwoLane, N | S, flatHeightAt, undefined, threeLane);
+    expect(extent(custom, centreX)).toBeCloseTo(10.5 / 2 + SIDEWALK_WIDTH_M, 3);
+    expect(extent(preset, centreX)).toBeCloseTo(7.5 / 2 + SIDEWALK_WIDTH_M, 3);
   });
 
   it('carriageways match their documented lane widths', () => {
@@ -1770,6 +1811,40 @@ function makeDelta(x: number, z: number, tier: RoadTier, mask = 0): RoadTileDelt
 }
 
 describe('RoadMeshRenderer', () => {
+  it('draws a tile carrying a composed profile at that profile, and a preset tile as before', () => {
+    const wide: RoadProfile = {
+      class: 'urban',
+      kerbs: true,
+      pieces: [
+        { kind: 'travel', width: 3.5, flow: 'back' },
+        { kind: 'travel', width: 3.5, flow: 'back' },
+        { kind: 'travel', width: 3.5, flow: 'fwd' },
+        { kind: 'travel', width: 3.5, flow: 'fwd' },
+      ],
+    };
+    const extentOf = (scene: THREE.Scene, centreX: number): number => {
+      const mesh = scene.children[0] as THREE.Mesh;
+      const pos = mesh.geometry.getAttribute('position');
+      let max = 0;
+      for (let i = 0; i < pos.count; i++) max = Math.max(max, Math.abs(pos.getX(i) - centreX));
+      return max;
+    };
+    const centreX = (2 + 0.5) * TILE_METERS;
+
+    // Without a resolver the tile draws as its tier's preset.
+    const plain = new THREE.Scene();
+    new RoadMeshRenderer(plain, flatHeightAt).apply([
+      { ...makeDelta(2, 2, RoadTier.TwoLane, N | S), profile: 12 },
+    ]);
+    // With one, the same delta draws the composed 14 m carriageway.
+    const composed = new THREE.Scene();
+    new RoadMeshRenderer(composed, flatHeightAt, (id) => (id === 12 ? wide : null)).apply([
+      { ...makeDelta(2, 2, RoadTier.TwoLane, N | S), profile: 12 },
+    ]);
+    expect(extentOf(plain, centreX)).toBeCloseTo(7.5 / 2 + SIDEWALK_WIDTH_M, 3);
+    expect(extentOf(composed, centreX)).toBeCloseTo(14 / 2 + Math.min(SIDEWALK_WIDTH_M, 8 - 7), 3);
+  });
+
   it('builds one merged mesh for a chunk containing the changed tiles', () => {
     const scene = new THREE.Scene();
     const renderer = new RoadMeshRenderer(scene, flatHeightAt);
