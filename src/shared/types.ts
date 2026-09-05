@@ -119,8 +119,17 @@ export interface GridState {
   water: Uint8Array; // 1 = water tile (unbuildable)
   trees: Uint8Array; // 0..255 tree density (cosmetic + clearable)
   zone: Uint8Array; // ZoneType
-  roadTier: Uint8Array; // RoadTier
+  roadTier: Uint8Array; // RoadTier — derived from roadProfile; kept for every consumer that reads a tier
   roadMask: Uint8Array; // 4-bit neighbor bitmask: +N=1 +E=2 +S=4 +W=8
+  /**
+   * Road composition: the profile a road tile carries. 0 = no road; 1..11 are
+   * the preset profiles and equal the tier; ids from FIRST_CUSTOM_PROFILE_ID
+   * up index the save's own table of player-composed profiles. This is the
+   * authoritative road identity; `roadTier` is the nearest preset, derived.
+   * ADDITIVE layer: serialized LAST in the grid save (SAVE_VERSION 6); older
+   * saves load with it derived from `roadTier`.
+   */
+  roadProfile: Uint16Array;
   buildingId: Uint32Array; // 0 = none, else building instance id occupying tile
   power: Uint8Array; // 1 = powered
   watered: Uint8Array; // 1 = water service reaches tile
@@ -191,7 +200,16 @@ export type Command =
       tiles: TilePoint[]; // contiguous path
       elevation?: number;
       elevations?: number[];
+      /** Profile id to lay. Omitted = the tier's preset. A custom id must already be defined. */
+      profile?: number;
     }
+  /**
+   * Registers a player-composed cross-section under an id the client chose
+   * from its mirror's next free slot. Idempotent for an identical redefinition;
+   * rejected when the id is a preset, already holds a different profile, or the
+   * profile breaks its class's width, piece or lane rules.
+   */
+  | { kind: 'defineRoadProfile'; id: number; profile: RoadProfile }
   | { kind: 'bulldoze'; tiles: TilePoint[] } // clears road/building/zone/trees
   | { kind: 'paintZone'; zone: ZoneType; tiles: TilePoint[] }
   | { kind: 'placeBuilding'; catalogId: string; x: number; z: number; rotation: 0 | 1 | 2 | 3 }
@@ -323,6 +341,8 @@ export interface RoadTileDelta {
   tier: RoadTier;
   mask: number; // neighbor bitmask, see GridState.roadMask
   elevation: number; // deck height in metres above terrain, 0 = at grade
+  /** The profile id the tile carries (see GridState.roadProfile); 0 when the road was removed. */
+  profile: number;
 }
 
 export interface ZonePatch {
@@ -364,6 +384,13 @@ export type VehicleKind = (typeof VehicleKind)[keyof typeof VehicleKind];
 export interface SimSnapshot {
   stats: CityStats;
   roads?: RoadTileDelta[];
+  /**
+   * Road composition: the worker's authoritative table of player-composed
+   * profiles (presets are catalogue data and never sent). Full table whenever
+   * it changes and once after init/load, so the mirror can resolve any
+   * profile id a road delta carries.
+   */
+  roadProfiles?: { id: number; profile: RoadProfile }[];
   buildings?: BuildingDelta;
   zones?: ZonePatch[];
   vehicles?: Float32Array; // MAX_VEHICLES * VEHICLE_STRIDE
@@ -765,7 +792,7 @@ export interface ReversibleEdit {
  * serializeGrid always writes the current version. No earlier layer's byte
  * layout or order changed, so every v1..v5 field round-trips unchanged.
  */
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 export interface SaveHeader {
   version: number;

@@ -20,6 +20,7 @@ function makeGrid(size: number): GridState {
     district: new Uint8Array(n),
     landfill: new Uint8Array(n),
     roadElevation: new Float32Array(n),
+    roadProfile: new Uint16Array(n),
   };
 }
 
@@ -112,12 +113,47 @@ describe('applyRoad', () => {
 
     expect(deltas.length).toBe(3);
     const byX = new Map(deltas.map((d) => [d.x, d]));
-    expect(byX.get(2)).toEqual({ x: 2, z: 5, tier: RoadTier.TwoLane, mask: 2, elevation: 0 }); // E only
-    expect(byX.get(3)).toEqual({ x: 3, z: 5, tier: RoadTier.TwoLane, mask: 8 | 2, elevation: 0 }); // W|E
-    expect(byX.get(4)).toEqual({ x: 4, z: 5, tier: RoadTier.TwoLane, mask: 8, elevation: 0 }); // W only
+    const two = RoadTier.TwoLane;
+    expect(byX.get(2)).toEqual({ x: 2, z: 5, tier: two, mask: 2, elevation: 0, profile: two }); // E only
+    expect(byX.get(3)).toEqual({ x: 3, z: 5, tier: two, mask: 8 | 2, elevation: 0, profile: two }); // W|E
+    expect(byX.get(4)).toEqual({ x: 4, z: 5, tier: two, mask: 8, elevation: 0, profile: two }); // W only
 
     expect(g.roadTier[idx(size, 3, 5)]).toBe(RoadTier.TwoLane);
     expect(g.roadMask[idx(size, 3, 5)]).toBe(8 | 2);
+  });
+
+  it('lays a composed profile under its nearest tier, and replaces a same-tier road only when the profile differs', () => {
+    const size = 10;
+    const g = makeGrid(size);
+    const tile = [{ x: 5, z: 5 }];
+    const i = idx(size, 5, 5);
+
+    // A composed local street: preset tier 1 as its nearest, id 12 as itself.
+    const laid = applyRoad(g, tile, RoadTier.TwoLane, undefined, 12);
+    expect(laid).toHaveLength(1);
+    expect(laid[0]!.profile).toBe(12);
+    expect(g.roadProfile[i]).toBe(12);
+    expect(g.roadTier[i]).toBe(RoadTier.TwoLane);
+
+    // The same profile again is a no-op, not a rebuild.
+    expect(applyRoad(g, tile, RoadTier.TwoLane, undefined, 12)).toHaveLength(0);
+
+    // A different composition of the same tier replaces it.
+    const swapped = applyRoad(g, tile, RoadTier.TwoLane, undefined, 13);
+    expect(swapped).toHaveLength(1);
+    expect(g.roadProfile[i]).toBe(13);
+
+    // A higher tier lands with its own profile...
+    expect(applyRoad(g, tile, RoadTier.Avenue, undefined, 15)).toHaveLength(1);
+    expect(g.roadProfile[i]).toBe(15);
+    expect(g.roadTier[i]).toBe(RoadTier.Avenue);
+    // ...and dropping back to a lower tier is still refused, profile and all.
+    expect(applyRoad(g, tile, RoadTier.TwoLane, undefined, 14)).toHaveLength(0);
+    expect(g.roadProfile[i]).toBe(15);
+
+    // A preset lands as its own tier id.
+    applyRoad(g, [{ x: 6, z: 5 }], RoadTier.Avenue);
+    expect(g.roadProfile[idx(size, 6, 5)]).toBe(RoadTier.Avenue);
   });
 
   it('rejects a downgrade on a per-tile basis, leaving the higher tier intact', () => {
@@ -169,14 +205,17 @@ describe('applyRoad', () => {
     const size = 10;
     const g = makeGrid(size);
     const first = applyRoad(g, [{ x: 5, z: 5 }], RoadTier.TwoLane);
-    expect(first).toEqual([{ x: 5, z: 5, tier: RoadTier.TwoLane, mask: 0, elevation: 0 }]);
+    expect(first).toEqual([
+      { x: 5, z: 5, tier: RoadTier.TwoLane, mask: 0, elevation: 0, profile: RoadTier.TwoLane },
+    ]);
 
     const second = applyRoad(g, [{ x: 6, z: 5 }], RoadTier.TwoLane);
     const byXZ = new Map(second.map((d) => [`${d.x},${d.z}`, d]));
 
     expect(second.length).toBe(2);
-    expect(byXZ.get('6,5')).toEqual({ x: 6, z: 5, tier: RoadTier.TwoLane, mask: 8, elevation: 0 }); // W
-    expect(byXZ.get('5,5')).toEqual({ x: 5, z: 5, tier: RoadTier.TwoLane, mask: 2, elevation: 0 }); // E, updated though untouched
+    const two = RoadTier.TwoLane;
+    expect(byXZ.get('6,5')).toEqual({ x: 6, z: 5, tier: two, mask: 8, elevation: 0, profile: two }); // W
+    expect(byXZ.get('5,5')).toEqual({ x: 5, z: 5, tier: two, mask: 2, elevation: 0, profile: two }); // E, updated though untouched
   });
 
   it('ignores out-of-bounds tiles', () => {
@@ -210,9 +249,10 @@ describe('removeRoad', () => {
     const deltas = removeRoad(g, [{ x: 3, z: 5 }]);
     const byXZ = new Map(deltas.map((d) => [`${d.x},${d.z}`, d]));
 
-    expect(byXZ.get('3,5')).toEqual({ x: 3, z: 5, tier: RoadTier.None, mask: 0, elevation: 0 });
-    expect(byXZ.get('2,5')).toEqual({ x: 2, z: 5, tier: RoadTier.TwoLane, mask: 0, elevation: 0 }); // lost its E neighbor
-    expect(byXZ.get('4,5')).toEqual({ x: 4, z: 5, tier: RoadTier.TwoLane, mask: 0, elevation: 0 }); // lost its W neighbor
+    const two = RoadTier.TwoLane;
+    expect(byXZ.get('3,5')).toEqual({ x: 3, z: 5, tier: RoadTier.None, mask: 0, elevation: 0, profile: 0 });
+    expect(byXZ.get('2,5')).toEqual({ x: 2, z: 5, tier: two, mask: 0, elevation: 0, profile: two }); // lost its E neighbor
+    expect(byXZ.get('4,5')).toEqual({ x: 4, z: 5, tier: two, mask: 0, elevation: 0, profile: two }); // lost its W neighbor
 
     expect(g.roadTier[idx(size, 3, 5)]).toBe(RoadTier.None);
     expect(g.roadMask[idx(size, 3, 5)]).toBe(0);

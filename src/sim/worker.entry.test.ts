@@ -16,6 +16,8 @@ import type {
   GridState,
   MainToWorker,
   MapData,
+  RoadProfile,
+  RoadTileDelta,
   SimSnapshot,
   TilePoint,
   WorkerToMain,
@@ -826,6 +828,130 @@ describe('landmark noise emission (UI-SPEC §6.10 airport)', () => {
     h.sim.handleMessage({ type: 'requestField', field: FieldId.Noise });
     const afterBulldoze = latestNoiseField(h)![tileIndex(100, 100)]!;
     expect(afterBulldoze).toBeLessThan(withAirport / 4);
+  });
+});
+
+describe('road composition — profiles the worker stores, lays and saves', () => {
+  const customLocal: RoadProfile = {
+    class: 'local',
+    pieces: [
+      { kind: 'sidewalk', width: 1.9 },
+      { kind: 'parking', width: 2.25 },
+      { kind: 'travel', width: 3.5, flow: 'back' },
+      { kind: 'travel', width: 3.5, flow: 'fwd' },
+      { kind: 'sidewalk', width: 1.9 },
+    ],
+  };
+
+  /** Sends one batch and steps the sim so it is processed and acked. */
+  function run(h: Harness, seq: number, commands: Command[]): CommandAck {
+    send(h, seq, commands);
+    h.ticks(2);
+    const ack = h.ackFor(seq);
+    if (!ack) throw new Error(`no ack for batch ${seq}`);
+    return ack;
+  }
+  /** The most recent snapshot that carried the profile table (it only travels when it changes). */
+  function lastTable(h: Harness): SimSnapshot['roadProfiles'] {
+    for (let i = h.messages.length - 1; i >= 0; i--) {
+      const m = h.messages[i]!;
+      if (m.type === 'snapshot' && m.snap.roadProfiles !== undefined) return m.snap.roadProfiles;
+    }
+    return undefined;
+  }
+  /** Every road delta the worker has sent for a row, newest first per tile. */
+  function rowDeltas(h: Harness, z: number, x0: number, x1: number) {
+    const byX = new Map<number, RoadTileDelta>();
+    for (const m of h.messages) {
+      if (m.type !== 'snapshot' || !m.snap.roads) continue;
+      for (const d of m.snap.roads) if (d.z === z && d.x >= x0 && d.x < x1) byX.set(d.x, d);
+    }
+    return [...byX.values()].sort((a, b) => a.x - b.x);
+  }
+
+  it('defines a composed profile, lays it under its nearest tier, and the delta names it', () => {
+    const h = initialized();
+    expect(run(h, 1, [{ kind: 'defineRoadProfile', id: 12, profile: customLocal }]).ok).toBe(true);
+    expect(
+      run(h, 2, [
+        { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 10, 3), profile: 12 },
+      ]).ok,
+    ).toBe(true);
+    expect(lastTable(h)).toEqual([{ id: 12, profile: customLocal }]);
+    const laid = rowDeltas(h, 10, 10, 13);
+    expect(laid).toHaveLength(3);
+    for (const d of laid) {
+      expect(d.profile).toBe(12);
+      expect(d.tier).toBe(RoadTier.TwoLane);
+    }
+  });
+
+  it('refuses a preset id, a taken id with a different shape, and a profile that breaks its class', () => {
+    const h = initialized();
+    expect(run(h, 1, [{ kind: 'defineRoadProfile', id: 3, profile: customLocal }]).ok).toBe(false);
+    expect(run(h, 2, [{ kind: 'defineRoadProfile', id: 12, profile: customLocal }]).ok).toBe(true);
+    // Idempotent for the same shape.
+    expect(run(h, 3, [{ kind: 'defineRoadProfile', id: 12, profile: customLocal }]).ok).toBe(true);
+    // A different shape under a taken id would silently re-shape every road laid with it.
+    const other: RoadProfile = { ...customLocal, pieces: customLocal.pieces.slice(2, 4) };
+    expect(run(h, 4, [{ kind: 'defineRoadProfile', id: 12, profile: other }]).ok).toBe(false);
+    // Parking on a motorway is not a thing the class admits.
+    const parkedHighway: RoadProfile = {
+      class: 'highway',
+      pieces: [
+        { kind: 'parking', width: 2.25 },
+        { kind: 'travel', width: 3.5, flow: 'fwd' },
+        { kind: 'travel', width: 3.5, flow: 'back' },
+      ],
+    };
+    expect(run(h, 5, [{ kind: 'defineRoadProfile', id: 13, profile: parkedHighway }]).ok).toBe(false);
+    // Laying an id nothing defined is refused rather than guessed at.
+    expect(
+      run(h, 6, [
+        { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 10, 2), profile: 99 },
+      ]).ok,
+    ).toBe(false);
+  });
+
+  it('replaces a same-tier preset with a composed profile, and undo puts the preset back', () => {
+    const h = initialized();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 10, 3) }]);
+    run(h, 2, [{ kind: 'defineRoadProfile', id: 12, profile: customLocal }]);
+    const ack = run(h, 3, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 10, 3), profile: 12 },
+    ]);
+    expect(ack.ok).toBe(true);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const g = latestSaveGrid(h);
+    for (let x = 10; x < 13; x++) expect(g.roadProfile[10 * MAP_SIZE + x]).toBe(12);
+
+    // The inverse re-lays the preset under its own id.
+    run(h, 4, ack.inverse);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const back = latestSaveGrid(h);
+    for (let x = 10; x < 13; x++) {
+      expect(back.roadProfile[10 * MAP_SIZE + x]).toBe(RoadTier.TwoLane);
+      expect(back.roadTier[10 * MAP_SIZE + x]).toBe(RoadTier.TwoLane);
+    }
+  });
+
+  it('saves the profile table and a load brings it back with the roads that use it', () => {
+    const h = initialized();
+    run(h, 1, [{ kind: 'defineRoadProfile', id: 12, profile: customLocal }]);
+    run(h, 2, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 10, 3), profile: 12 },
+    ]);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const saves = h.messages.filter(
+      (m): m is Extract<WorkerToMain, { type: 'save' }> => m.type === 'save',
+    );
+    const data = saves[saves.length - 1]!.data;
+
+    const fresh = initialized();
+    fresh.sim.handleMessage({ type: 'loadSave', data });
+    fresh.ticks(1);
+    expect(lastTable(fresh)).toEqual([{ id: 12, profile: customLocal }]);
+    expect(rowDeltas(fresh, 10, 10, 13).map((d) => d.profile)).toEqual([12, 12, 12]);
   });
 });
 

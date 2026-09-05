@@ -84,6 +84,8 @@ function fillDeterministic(g: GridState): void {
     // Fractional on purpose: a deck height is whatever it takes to sit level
     // over uneven ground, not a whole number of metres.
     g.roadElevation[i] = i % 3 === 0 ? 0 : (i % 11) + 0.25;
+    // Past a byte on purpose: a composed profile id has to survive as two bytes.
+    g.roadProfile[i] = i % 4 === 0 ? 0 : 300 + (i % 7);
     for (let f = 0; f < g.fields.length; f++) {
       const layer = g.fields[f];
       if (layer) layer[i] = (i + f * 13) % 256;
@@ -161,7 +163,7 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g); // current version: district + landfill + elevation
 
-    const v1 = cur.slice(0, cur.byteLength - 6 * n); // drop all three trailing layers
+    const v1 = cur.slice(0, cur.byteLength - 8 * n); // drop all three trailing layers + the u16 profile tail
     new DataView(v1).setUint32(0, 1, true); // stamp version 1
 
     const back = deserializeGrid(v1);
@@ -191,7 +193,7 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g);
 
-    const v2 = cur.slice(0, cur.byteLength - 5 * n); // drop landfill + elevation
+    const v2 = cur.slice(0, cur.byteLength - 7 * n); // drop landfill + elevation + the u16 profile tail
     new DataView(v2).setUint32(0, 2, true); // stamp version 2
 
     const back = deserializeGrid(v2);
@@ -211,7 +213,7 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g);
 
-    const v3 = cur.slice(0, cur.byteLength - 4 * n); // drop the trailing elevation floats
+    const v3 = cur.slice(0, cur.byteLength - 6 * n); // drop the elevation floats + the u16 profile tail
     new DataView(v3).setUint32(0, 3, true); // stamp version 3
 
     const back = deserializeGrid(v3);
@@ -231,7 +233,7 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g);
 
-    const body = cur.slice(0, cur.byteLength - 4 * n); // everything before the float tail
+    const body = cur.slice(0, cur.byteLength - 6 * n); // everything before the float tail and the u16 profile tail
     const v4 = new ArrayBuffer(body.byteLength + n);
     const bytes = new Uint8Array(v4);
     bytes.set(new Uint8Array(body));
@@ -244,6 +246,30 @@ describe('serializeGrid / deserializeGrid', () => {
     expect(back.roadElevation).toBeInstanceOf(Float32Array);
     expect(Array.from(back.roadElevation)).toEqual(wholeMetres);
     expect(Array.from(back.landfill)).toEqual(Array.from(g.landfill)); // untouched
+  });
+
+  it('migrates a v5 buffer (no profile layer) — every road is the preset its tier names', () => {
+    const size = 5;
+    const n = size * size;
+    const g = createGrid(size);
+    fillDeterministic(g);
+    const cur = serializeGrid(g);
+
+    const v5 = cur.slice(0, cur.byteLength - 2 * n); // everything before the u16 tail
+    new DataView(v5).setUint32(0, 5, true);
+
+    const back = deserializeGrid(v5);
+    expect(back.roadProfile).toBeInstanceOf(Uint16Array);
+    expect(Array.from(back.roadProfile)).toEqual(Array.from(g.roadTier));
+    expect(Array.from(back.roadElevation)).toEqual(Array.from(g.roadElevation)); // untouched
+  });
+
+  it('round-trips a profile id past a byte', () => {
+    const g = createGrid(3);
+    g.roadTier[4] = 1;
+    g.roadProfile[4] = 40_000;
+    const back = deserializeGrid(serializeGrid(g));
+    expect(back.roadProfile[4]).toBe(40_000);
   });
 
   it('rejects a buffer whose length does not match its declared size', () => {

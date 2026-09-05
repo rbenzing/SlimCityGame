@@ -16,18 +16,22 @@ import {
   admitsAllPieces,
   CAPACITY_PER_VEH_PER_HOUR,
   carriagewayWidth,
+  FIRST_CUSTOM_PROFILE_ID,
   fitsTile,
   hasKerbs,
   isPaved,
+  isPresetProfileId,
   laneCapacity,
   laneCount,
   profileCapacity,
+  profileIdForTier,
   profileSpeed,
   ROAD_CLASSES,
   ROAD_PRESETS,
   roadClass,
   SATURATION_FLOW_VEH_PER_HOUR,
   speedFromKmh,
+  tierForProfile,
   withinLaneRange,
 } from './roadprofile';
 import type { RoadClassId, RoadProfile, RoadSpec } from './types';
@@ -168,6 +172,47 @@ describe('preset carriageways match the widths the render already draws', () => 
     expect(isPaved(presetProfile(RoadTier.Gravel))).toBe(false);
     expect(isPaved(presetProfile(RoadTier.RailTrack))).toBe(false);
     expect(isPaved(presetProfile(RoadTier.Alley))).toBe(true);
+  });
+});
+
+describe('profile ids and the tier a profile is nearest to', () => {
+  it('presets are ids 1..11 and equal their tier; custom ids start at 12', () => {
+    expect(FIRST_CUSTOM_PROFILE_ID).toBe(12);
+    for (const spec of ROAD_PRESETS) {
+      expect(isPresetProfileId(spec.tier)).toBe(true);
+      expect(profileIdForTier(spec.tier)).toBe(spec.tier);
+    }
+    expect(isPresetProfileId(0)).toBe(false);
+    expect(isPresetProfileId(12)).toBe(false);
+  });
+
+  it('every preset profile maps back to its own tier', () => {
+    for (const spec of ROAD_PRESETS) expect(tierForProfile(spec.profile!)).toBe(spec.tier);
+  });
+
+  it('a composed profile lands on the preset that shares its role, transit lanes first', () => {
+    const lanes = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        kind: 'travel' as const,
+        width: 3.5,
+        flow: i < n / 2 ? ('back' as const) : ('fwd' as const),
+      }));
+    expect(tierForProfile({ class: 'collector', pieces: lanes(4) })).toBe(RoadTier.FourLane);
+    expect(tierForProfile({ class: 'divided', pieces: lanes(4) })).toBe(RoadTier.Avenue);
+    expect(tierForProfile({ class: 'rural', pieces: lanes(2) })).toBe(RoadTier.TwoLane);
+    expect(tierForProfile({ class: 'ramp', pieces: lanes(1) })).toBe(RoadTier.OneWay);
+    expect(
+      tierForProfile({
+        class: 'collector',
+        pieces: [...lanes(2), { kind: 'bus', width: 3.5, flow: 'fwd' }],
+      }),
+    ).toBe(RoadTier.BusLane);
+    expect(
+      tierForProfile({
+        class: 'local',
+        pieces: [{ kind: 'travel', width: 3.5, flow: 'both', tram: true }],
+      }),
+    ).toBe(RoadTier.Tram);
   });
 });
 

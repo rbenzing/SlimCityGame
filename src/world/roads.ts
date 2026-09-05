@@ -113,6 +113,7 @@ export function applyRoad(
   tiles: TilePoint[],
   tier: RoadTier,
   elevations?: readonly number[],
+  profile: number = tier,
 ): RoadTileDelta[] {
   const changedIdx = new Set<number>();
 
@@ -122,12 +123,18 @@ export function applyRoad(
     const idx = indexOf(g.size, t.x, t.z);
     const current = tierAtIdx(g, idx);
     g.zone[idx] = ZoneType.None; // a road tile, new or pre-existing, never carries a zone
-    if (tier > current) {
+    // The profile is the road's identity and the tier its nearest preset. A
+    // higher tier always lands; the same tier lands only when it brings a
+    // different profile — a re-composed street replaces the one under it, but
+    // re-dragging the same road over itself changes nothing.
+    const sameTierNewProfile = tier === current && current !== RoadTier.None && g.roadProfile[idx] !== profile;
+    if (tier > current || sameTierNewProfile) {
       g.roadTier[idx] = tier;
+      g.roadProfile[idx] = profile;
       changedIdx.add(idx);
     }
-    // tier <= current: rejected per-tile (never a silent downgrade); the
-    // tile keeps whatever (>=) tier it already had.
+    // tier < current: rejected per-tile (never a silent downgrade); the
+    // tile keeps whatever (>) tier it already had.
 
     // Elevation follows the drag rather than the tier, so re-dragging a span
     // re-profiles it; a tile that ends up carrying no road keeps none.
@@ -161,7 +168,14 @@ export function applyRoad(
     const oldMask = g.roadMask[idx] ?? 0;
     if (changedIdx.has(idx) || newMask !== oldMask) {
       g.roadMask[idx] = newMask;
-      deltas.push({ x, z, tier: tierNow, mask: newMask, elevation: g.roadElevation[idx] ?? 0 });
+      deltas.push({
+        x,
+        z,
+        tier: tierNow,
+        mask: newMask,
+        elevation: g.roadElevation[idx] ?? 0,
+        profile: g.roadProfile[idx] ?? tierNow,
+      });
     }
   }
   return deltas;
@@ -181,10 +195,11 @@ export function removeRoad(g: GridState, tiles: TilePoint[]): RoadTileDelta[] {
     const idx = indexOf(g.size, t.x, t.z);
     if (tierAtIdx(g, idx) === RoadTier.None) continue;
     g.roadTier[idx] = RoadTier.None;
+    g.roadProfile[idx] = 0;
     g.roadMask[idx] = 0;
     g.roadElevation[idx] = 0; // the deck goes with the road
     removedIdx.add(idx);
-    deltaMap.set(idx, { x: t.x, z: t.z, tier: RoadTier.None, mask: 0, elevation: 0 });
+    deltaMap.set(idx, { x: t.x, z: t.z, tier: RoadTier.None, mask: 0, elevation: 0, profile: 0 });
   }
 
   const neighborCandidates = new Set<number>();
@@ -209,7 +224,14 @@ export function removeRoad(g: GridState, tiles: TilePoint[]): RoadTileDelta[] {
     const oldMask = g.roadMask[idx] ?? 0;
     if (newMask !== oldMask) {
       g.roadMask[idx] = newMask;
-      deltaMap.set(idx, { x, z, tier: tierNow, mask: newMask, elevation: g.roadElevation[idx] ?? 0 });
+      deltaMap.set(idx, {
+        x,
+        z,
+        tier: tierNow,
+        mask: newMask,
+        elevation: g.roadElevation[idx] ?? 0,
+        profile: g.roadProfile[idx] ?? tierNow,
+      });
     }
   }
 

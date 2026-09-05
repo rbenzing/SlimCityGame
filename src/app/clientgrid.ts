@@ -10,12 +10,18 @@
  */
 import { TILE_METERS, worldToTile } from '../shared/constants';
 import { RoadTier } from '../shared/types';
+import {
+  FIRST_CUSTOM_PROFILE_ID,
+  isPresetProfileId,
+  presetProfileForTier,
+} from '../shared/roadprofile';
 import { runsAlongZ, type BridgeDeckTile } from '../render/bridges';
 import type {
   BuildingCatalogEntry,
   BuildingDelta,
   BuildingInstance,
   MapData,
+  RoadProfile,
   RoadTileDelta,
   TilePoint,
   ZonePatch,
@@ -29,10 +35,14 @@ export class ClientGridMirror {
   readonly roadTier: Uint8Array;
   readonly roadMask: Uint8Array;
   readonly roadElevation: Float32Array;
+  /** Profile id per road tile (see GridState.roadProfile); presets equal their tier. */
+  readonly roadProfile: Uint16Array;
   readonly buildingId: Uint32Array;
 
   /** building id -> the tile indices its footprint was stamped onto. */
   private readonly footprints = new Map<number, number[]>();
+  /** The worker's table of player-composed profiles, by id. Presets are catalogue data. */
+  private readonly customProfiles = new Map<number, RoadProfile>();
 
   constructor(map: MapData) {
     this.size = map.size;
@@ -43,7 +53,30 @@ export class ClientGridMirror {
     this.roadTier = new Uint8Array(n);
     this.roadMask = new Uint8Array(n);
     this.roadElevation = new Float32Array(n);
+    this.roadProfile = new Uint16Array(n);
     this.buildingId = new Uint32Array(n);
+  }
+
+  /** Replaces the mirror's custom-profile table with the worker's full table. */
+  applyRoadProfiles(table: readonly { id: number; profile: RoadProfile }[]): void {
+    this.customProfiles.clear();
+    for (const entry of table) this.customProfiles.set(entry.id, entry.profile);
+  }
+
+  /** The cross-section a tile carries: its preset's, its custom profile, or null off-road. */
+  profileAt(x: number, z: number): RoadProfile | null {
+    if (!this.inBounds(x, z)) return null;
+    const id = this.roadProfile[this.idx(x, z)] ?? 0;
+    if (id === 0) return null;
+    if (isPresetProfileId(id)) return presetProfileForTier(id as RoadTier);
+    return this.customProfiles.get(id) ?? null;
+  }
+
+  /** The lowest id not yet holding a custom profile — what a new definition should claim. */
+  nextCustomProfileId(): number {
+    let id = FIRST_CUSTOM_PROFILE_ID;
+    while (this.customProfiles.has(id)) id += 1;
+    return id;
   }
 
   private idx(x: number, z: number): number {
@@ -72,6 +105,7 @@ export class ClientGridMirror {
       const i = this.idx(d.x, d.z);
       if ((this.roadElevation[i] ?? 0) !== d.elevation) raised.push({ x: d.x, z: d.z });
       this.roadTier[i] = d.tier;
+      this.roadProfile[i] = d.profile;
       this.roadMask[i] = d.mask;
       this.roadElevation[i] = d.elevation;
     }

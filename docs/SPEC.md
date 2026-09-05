@@ -2207,10 +2207,22 @@ scaled by one constant into the units the sim already uses.
    capacity and the carriageway the render already draws. The render reads
    its carriageway width, kerbs and paint from the preset profile, and
    pathfinding reads speed and saturation volume from it, each behind a test
-   that pins the figures the tier always had. The tier is still what the grid
-   stores and the tool lays: the profile layer, the per-save profile table
-   and the editor land together, because a stored profile without a way to
-   compose one would be a second copy of the tier.
+   that pins the figures the tier always had. The grid now stores the PROFILE
+   as the road's identity — a two-byte id per tile, presets equal to their
+   tier, composed profiles from 12 up in a per-save table — and the tier is
+   derived from it as the nearest preset, so every consumer that still reads
+   a tier keeps working at preset fidelity. The worker accepts a
+   `defineRoadProfile` command (validated against the class's width, piece
+   and lane rules; idempotent for a same-shape redefinition; refused for a
+   preset id or a taken id with a different shape) and a `buildRoad` that
+   names a profile; a same-tier road is replaced only when the profile
+   differs, and undo puts back the exact profile that was there. Saves bump
+   to version 6; older saves load with every road as the preset its tier
+   names, and the worker now accepts any older save rather than only the
+   current version. The mirror resolves any tile to its cross-section. Still
+   to come in wave 1: the render drawing a composed profile's own pieces
+   rather than its nearest preset's, the class drawer, replace-in-place, and
+   the profile editor that gives the player a way to compose one.
 2. **Stored direction** — `roadFlow`, drag direction, asymmetric profiles,
    directional edge cost, one-way pathfinding off geometry inference.
 3. **Junction control** — node control records, the v/c warrant default, the

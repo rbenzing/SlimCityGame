@@ -940,6 +940,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // geometry keeps stale heights (buried edges / floating caps).
       roadsMesh.invalidateHeights(snap.heightPatches);
     }
+    // The profile table lands before the road deltas that refer into it.
+    if (snap.roadProfiles) clientGrid.applyRoadProfiles(snap.roadProfiles);
     if (snap.roads) {
       // The mirror goes first. The road mesh samples roadSurfaceAt, which reads
       // deck heights back out of the mirror — meshing before those land lays

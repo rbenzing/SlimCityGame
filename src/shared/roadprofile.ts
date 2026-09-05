@@ -48,6 +48,51 @@ export const TRANSIT_PIECE_CAPACITY: Readonly<Record<'bus' | 'tram' | 'bike' | '
   rail: 3000,
 };
 
+/**
+ * Profile ids: 0 is no road, 1..11 are the presets and equal their tier, and
+ * player-composed profiles start here, in the save's own table.
+ */
+export const FIRST_CUSTOM_PROFILE_ID = 12;
+
+export function isPresetProfileId(id: number): boolean {
+  return id >= 1 && id < FIRST_CUSTOM_PROFILE_ID;
+}
+
+/** A preset's profile id is its tier. */
+export function profileIdForTier(tier: RoadTier): number {
+  return tier;
+}
+
+/**
+ * The nearest preset tier for a profile — what every consumer that still
+ * reads a tier (lamps, kerb parking, water conduction, the render's shade)
+ * sees when the tile carries a composed profile. Reserved transit lanes win
+ * over the class, since a street with a tram down it is a tram street first;
+ * otherwise the class maps to the preset that shares its role. Every preset
+ * maps back to its own tier.
+ */
+export function tierForProfile(profile: RoadProfile): RoadTier {
+  if (profile.class === 'rail') return 11 as RoadTier;
+  if (profile.pieces.some((p) => p.kind === 'tram' || p.tram)) return 10 as RoadTier;
+  if (profile.pieces.some((p) => p.kind === 'bus')) return 8 as RoadTier;
+  if (profile.pieces.some((p) => p.kind === 'bike')) return 9 as RoadTier;
+  const byClass: Record<RoadClassId, number> = {
+    dirt: 4,
+    alley: 5,
+    rural: 1,
+    local: 1,
+    urban: 7,
+    collector: 7,
+    arterial: 2,
+    divided: 2,
+    oneWay: 6,
+    highway: 3,
+    ramp: 6,
+    rail: 11,
+  };
+  return byClass[profile.class] as RoadTier;
+}
+
 /** The preset profile a tier is shorthand for. Every tier has one. */
 export function presetProfileForTier(tier: RoadTier): RoadProfile {
   const spec = ROAD_PRESETS.find((s) => s.tier === tier);

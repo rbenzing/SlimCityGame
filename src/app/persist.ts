@@ -12,7 +12,13 @@
  *     saveNow()/loadLatest() worker bridges.
  */
 import { TICKS_PER_MONTH } from '../shared/constants';
-import type { CityStats, MainToWorker, SaveHeader, TransitLine } from '../shared/types';
+import type {
+  CityStats,
+  MainToWorker,
+  RoadProfile,
+  SaveHeader,
+  TransitLine,
+} from '../shared/types';
 import type { SerializedBuildingRegistry } from '../sim/buildings';
 import type { GarbageSaveState } from '../sim/garbage';
 
@@ -32,6 +38,12 @@ export interface SaveMeta {
    * since loading used to discard them outright.
    */
   transitLines?: TransitLine[];
+  /**
+   * Road composition: the player-composed profiles this save's roads refer
+   * to by id (presets are catalogue data). Absent in saves written before
+   * profiles existed, which load with none — every road in them is a preset.
+   */
+  roadProfiles?: { id: number; profile: RoadProfile }[];
 }
 
 export interface SavePayload {

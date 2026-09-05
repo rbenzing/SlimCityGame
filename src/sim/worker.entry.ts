@@ -53,6 +53,7 @@ import type {
   Incident,
   MainToWorker,
   MapData,
+  RoadProfile,
   RoadSpec,
   RoadTileDelta,
   ServiceKind,
@@ -64,6 +65,14 @@ import type {
 } from '../shared/types';
 import catalogData from '../data/catalog.json';
 import roadsData from '../data/roads.json';
+import {
+  admitsAllPieces,
+  FIRST_CUSTOM_PROFILE_ID,
+  fitsTile,
+  isPresetProfileId,
+  tierForProfile,
+  withinLaneRange,
+} from '../shared/roadprofile';
 import { createRng } from '../core/rng';
 import { FixedTimestep } from '../core/loop';
 import type { CommandBatch } from '../core/commands';
@@ -372,6 +381,11 @@ class SimWorld implements WorkerSim {
   /** Building id the render thread is holding selected, or null. */
   private selectedId: number | null = null;
 
+  // --- road composition: the save's table of player-composed profiles -------
+  private customRoadProfiles = new Map<number, RoadProfile>();
+  /** The full table goes out in the next snapshot when set. */
+  private roadProfilesChanged = true;
+
   // --- deltas accumulated between snapshots --------------------------------
   private readonly pendingRoadDeltas = new Map<number, RoadTileDelta>();
   private buildingsAdded: BuildingInstance[] = [];
@@ -517,7 +531,9 @@ class SimWorld implements WorkerSim {
 
   private load(data: ArrayBuffer): void {
     const payload = decodeSave(data);
-    if (payload.header.version !== SAVE_VERSION) {
+    // Older saves are migrated layer by layer in deserializeGrid; only a save
+    // from a NEWER build is refused, since it may carry what this one cannot read.
+    if (payload.header.version > SAVE_VERSION || payload.header.version < 1) {
       throw new Error(`loadSave: unsupported save version ${payload.header.version}`);
     }
     const grid = deserializeGrid(payload.grid);
@@ -528,6 +544,10 @@ class SimWorld implements WorkerSim {
     const previousIds = this.registry.all().map((b) => b.id);
 
     this.grid = grid;
+    this.customRoadProfiles = new Map(
+      (payload.meta.roadProfiles ?? []).map((entry) => [entry.id, entry.profile]),
+    );
+    this.roadProfilesChanged = true;
     this.registry = BuildingRegistry.deserialize(CATALOG, payload.meta.registry);
     this.stats = cloneStats(payload.meta.stats);
     this.seed = payload.header.seed;
@@ -561,6 +581,7 @@ class SimWorld implements WorkerSim {
             tier,
             mask: this.grid.roadMask[idx] ?? 0,
             elevation: this.grid.roadElevation[idx] ?? 0,
+            profile: this.grid.roadProfile[idx] || tier,
           });
         }
       }
@@ -926,6 +947,12 @@ class SimWorld implements WorkerSim {
       snap.garbage = garbage;
     }
 
+    // The profile table travels with (and is applied before) the road deltas
+    // that refer into it.
+    if (this.roadProfilesChanged) {
+      snap.roadProfiles = this.roadProfileTable();
+      this.roadProfilesChanged = false;
+    }
     if (this.pendingRoadDeltas.size > 0) {
       snap.roads = Array.from(this.pendingRoadDeltas.values());
       this.pendingRoadDeltas.clear();
@@ -1117,9 +1144,50 @@ class SimWorld implements WorkerSim {
         stats: cloneStats(this.stats),
         garbage: this.garbage.serializeState(),
         transitLines: this.transit.getLines().map((l) => ({ ...l, stops: [...l.stops] })),
+        roadProfiles: this.roadProfileTable(),
       },
     });
     this.post({ type: 'save', data }, [data]);
+  }
+
+  // -------------------------------------------------------------------------
+  // Road composition
+  // -------------------------------------------------------------------------
+
+  private roadProfileTable(): { id: number; profile: RoadProfile }[] {
+    return Array.from(this.customRoadProfiles, ([id, profile]) => ({
+      id,
+      profile: { ...profile, pieces: profile.pieces.map((p) => ({ ...p })) },
+    }));
+  }
+
+  /**
+   * The tier a profile id stands nearest to — its own for a preset, the derived
+   * one for a composed profile — or null for an id nothing has defined.
+   */
+  private tierForProfileId(id: number): RoadTier | null {
+    if (isPresetProfileId(id)) return id as RoadTier;
+    const custom = this.customRoadProfiles.get(id);
+    return custom ? tierForProfile(custom) : null;
+  }
+
+  private cmdDefineRoadProfile(id: number, profile: RoadProfile): CommandResult {
+    const rejected = { ok: false, cost: 0, inverse: [], reason: 'invalid' as const };
+    if (!Number.isInteger(id) || id < FIRST_CUSTOM_PROFILE_ID || id > 0xffff) return rejected;
+    if (!fitsTile(profile) || !admitsAllPieces(profile) || !withinLaneRange(profile)) return rejected;
+    const existing = this.customRoadProfiles.get(id);
+    if (existing) {
+      // Idempotent for the same definition; a different one under a taken id
+      // would silently re-shape every road already laid with it.
+      const same = JSON.stringify(existing) === JSON.stringify(profile);
+      return same ? { ok: true, cost: 0, inverse: [] } : rejected;
+    }
+    this.customRoadProfiles.set(id, {
+      ...profile,
+      pieces: profile.pieces.map((p) => ({ ...p })),
+    });
+    this.roadProfilesChanged = true;
+    return { ok: true, cost: 0, inverse: [] };
   }
 
   // -------------------------------------------------------------------------
@@ -1163,7 +1231,10 @@ class SimWorld implements WorkerSim {
           command.tiles,
           command.elevation,
           command.elevations,
+          command.profile,
         );
+      case 'defineRoadProfile':
+        return this.cmdDefineRoadProfile(command.id, command.profile);
       case 'bulldoze':
         return this.cmdBulldoze(command.tiles);
       case 'paintZone':
@@ -1358,11 +1429,18 @@ class SimWorld implements WorkerSim {
   }
 
   private cmdBuildRoad(
-    tier: RoadTier,
+    requestedTier: RoadTier,
     tiles: TilePoint[],
     elevation = 0,
     exact?: number[],
+    requestedProfile?: number,
   ): CommandResult {
+    // The profile is the road's identity; the tier is its nearest preset and
+    // is derived from it, so a composed profile cannot be laid under a tier it
+    // is not. A preset's id is its tier.
+    const profileId = requestedProfile ?? requestedTier;
+    const tier = this.tierForProfileId(profileId);
+    if (tier === null) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
     const spec = this.roadSpecByTier.get(tier);
     if (!spec) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
     if (!this.sandbox && spec.unlockMilestone > this.stats.milestoneLevel) {
@@ -1373,12 +1451,19 @@ class SimWorld implements WorkerSim {
     const valid: TilePoint[] = [];
     const validElevations: number[] = [];
     const created: TilePoint[] = [];
-    const upgradedByPrevTier = new Map<number, TilePoint[]>();
+    // Replaced roads, keyed by the profile they carried, so undo puts back the
+    // road that was there and not merely one of the same tier.
+    const upgradedByPrevProfile = new Map<number, { tier: RoadTier; tiles: TilePoint[] }>();
     // Deck heights as they stood before this command, so undo can put them back
     // exactly rather than re-solving against a grid that may have moved on.
     const priorElevationByTile = new Map<number, number>();
-    const reprofiled: TilePoint[] = [];
-    const reprofiledElevations: number[] = [];
+    // Tiles this command only re-profiles keep their road; grouped by the
+    // profile they keep, so the inverse re-lays exactly that road at the old
+    // deck height.
+    const reprofiledByProfile = new Map<
+      number,
+      { tier: RoadTier; tiles: TilePoint[]; elevations: number[] }
+    >();
     let changedCount = 0;
     let bridgeCost = 0;
 
@@ -1409,25 +1494,36 @@ class SimWorld implements WorkerSim {
       valid.push(t);
       validElevations.push(deck);
       const priorDeck = g.roadElevation[idx] ?? 0;
+      const prevProfile = g.roadProfile[idx] || current;
+      // A road is replaced by a higher tier, or by a different composition of
+      // the same tier. The same road again only ever re-profiles its deck.
+      const replaces =
+        current < tier || (current === tier && current !== 0 && prevProfile !== profileId);
       if (deck !== priorDeck) {
         bridgeCost += deck * BRIDGE_COST_PER_METER_TILE;
-        // A tile whose tier is unchanged but whose deck moved still changed —
+        // A tile whose road is unchanged but whose deck moved still changed —
         // count it so a pure re-profile is not mistaken for a no-op.
-        if (current >= tier) {
+        if (!replaces) {
           changedCount += 1;
-          reprofiled.push(t);
-          reprofiledElevations.push(priorDeck);
+          const group = reprofiledByProfile.get(prevProfile) ?? {
+            tier: current,
+            tiles: [],
+            elevations: [],
+          };
+          group.tiles.push(t);
+          group.elevations.push(priorDeck);
+          reprofiledByProfile.set(prevProfile, group);
         }
       }
-      if (current < tier) {
+      if (replaces) {
         changedCount += 1;
         priorElevationByTile.set(idx, priorDeck);
         if (current === 0) {
           created.push(t);
         } else {
-          const list = upgradedByPrevTier.get(current) ?? [];
-          list.push(t);
-          upgradedByPrevTier.set(current, list);
+          const group = upgradedByPrevProfile.get(prevProfile) ?? { tier: current, tiles: [] };
+          group.tiles.push(t);
+          upgradedByPrevProfile.set(prevProfile, group);
         }
       }
     }
@@ -1445,7 +1541,7 @@ class SimWorld implements WorkerSim {
     if (!this.unlimitedMoney && this.stats.funds < cost)
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
 
-    const deltas = applyRoad(g, valid, tier, validElevations);
+    const deltas = applyRoad(g, valid, tier, validElevations, profileId);
     for (const d of deltas) this.pendingRoadDeltas.set(tileIndex(d.x, d.z), d);
     this.landfillAreasCache = null; // street layout feeds the landfill entrances
     this.invalidateAround(valid);
@@ -1453,24 +1549,29 @@ class SimWorld implements WorkerSim {
     this.stats.funds -= cost;
 
     const inverse: Command[] = [];
-    const rebuilt = [...created, ...Array.from(upgradedByPrevTier.values()).flat()];
+    const rebuilt = [
+      ...created,
+      ...Array.from(upgradedByPrevProfile.values(), (group) => group.tiles).flat(),
+    ];
     if (rebuilt.length > 0) inverse.push({ kind: 'bulldoze', tiles: rebuilt });
-    for (const [prevTier, prevTiles] of upgradedByPrevTier) {
+    for (const [prevProfile, group] of upgradedByPrevProfile) {
       inverse.push({
         kind: 'buildRoad',
-        tier: prevTier as RoadTier,
-        tiles: prevTiles,
-        elevations: prevTiles.map((t) => priorElevationByTile.get(tileIndex(t.x, t.z)) ?? 0),
+        tier: group.tier,
+        tiles: group.tiles,
+        elevations: group.tiles.map((t) => priorElevationByTile.get(tileIndex(t.x, t.z)) ?? 0),
+        profile: prevProfile,
       });
     }
-    // Tiles this command only re-profiled keep their tier on undo; restoring
+    // Tiles this command only re-profiled keep their road on undo; restoring
     // their old deck is the entire reversal.
-    if (reprofiled.length > 0) {
+    for (const [prevProfile, group] of reprofiledByProfile) {
       inverse.push({
         kind: 'buildRoad',
-        tier,
-        tiles: reprofiled,
-        elevations: reprofiledElevations,
+        tier: group.tier,
+        tiles: group.tiles,
+        elevations: group.elevations,
+        profile: prevProfile,
       });
     }
     // Auto-flatten: the newly built/upgraded tiles + a 1-tile apron. Elevated
@@ -1488,7 +1589,9 @@ class SimWorld implements WorkerSim {
 
     // Capture pre-state for the inverse before anything mutates.
     const zonesByType = new Map<number, TilePoint[]>();
-    const roadsByTier = new Map<number, TilePoint[]>();
+    // Keyed by profile id, so undo puts back the road that was there — a
+    // composed street, not merely a road of the same tier.
+    const roadsByProfile = new Map<number, { tier: RoadTier; tiles: TilePoint[] }>();
     for (const t of inBoundsTiles) {
       const idx = tileIndex(t.x, t.z);
       const zone = g.zone[idx] ?? 0;
@@ -1497,11 +1600,12 @@ class SimWorld implements WorkerSim {
         list.push(t);
         zonesByType.set(zone, list);
       }
-      const tier = g.roadTier[idx] ?? 0;
+      const tier = (g.roadTier[idx] ?? 0) as RoadTier;
       if (tier !== 0) {
-        const list = roadsByTier.get(tier) ?? [];
-        list.push(t);
-        roadsByTier.set(tier, list);
+        const profileId = g.roadProfile[idx] || tier;
+        const group = roadsByProfile.get(profileId) ?? { tier, tiles: [] };
+        group.tiles.push(t);
+        roadsByProfile.set(profileId, group);
       }
     }
 
@@ -1511,7 +1615,7 @@ class SimWorld implements WorkerSim {
     const roadDeltas = removeRoad(g, inBoundsTiles);
     this.landfillAreasCache = null; // street layout feeds the landfill entrances
     for (const d of roadDeltas) this.pendingRoadDeltas.set(tileIndex(d.x, d.z), d);
-    for (const [tier, roadTiles] of roadsByTier) {
+    for (const { tier, tiles: roadTiles } of roadsByProfile.values()) {
       const spec = this.roadSpecByTier.get(tier);
       if (spec) refund += spec.costPerTile * roadTiles.length * BULLDOZE_REFUND_RATE;
     }
@@ -1519,8 +1623,8 @@ class SimWorld implements WorkerSim {
     // Then zones/trees/buildings via clearTiles + registry removal.
     const cleared = clearTiles(g, inBoundsTiles);
     const inverse: Command[] = [];
-    for (const [tier, roadTiles] of roadsByTier) {
-      inverse.push({ kind: 'buildRoad', tier: tier as RoadTier, tiles: roadTiles });
+    for (const [profileId, { tier, tiles: roadTiles }] of roadsByProfile) {
+      inverse.push({ kind: 'buildRoad', tier, tiles: roadTiles, profile: profileId });
     }
     for (const [zone, zoneTiles] of zonesByType) {
       inverse.push({ kind: 'paintZone', zone: zone as ZoneType, tiles: zoneTiles });

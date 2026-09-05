@@ -20,6 +20,7 @@ function makeGrid(): GridState {
     district: new Uint8Array(MAP_TILES),
     landfill: new Uint8Array(MAP_TILES),
     roadElevation: new Float32Array(MAP_TILES),
+    roadProfile: new Uint16Array(MAP_TILES),
   };
 }
 
