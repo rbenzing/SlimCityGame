@@ -9,7 +9,14 @@
  * per vehicle per hour, chosen so the two-lane preset keeps its 600.
  */
 import roadsData from '../data/roads.json';
-import type { LanePiece, RoadClassId, RoadClassSpec, RoadProfile, RoadSpec } from './types';
+import type {
+  LanePiece,
+  RoadClassId,
+  RoadClassSpec,
+  RoadProfile,
+  RoadSpec,
+  RoadTier,
+} from './types';
 import { TILE_METERS } from './constants';
 
 const data = roadsData as { classes: RoadClassSpec[]; specs: RoadSpec[] };
@@ -40,6 +47,13 @@ export const TRANSIT_PIECE_CAPACITY: Readonly<Record<'bus' | 'tram' | 'bike' | '
   bike: 75,
   rail: 3000,
 };
+
+/** The preset profile a tier is shorthand for. Every tier has one. */
+export function presetProfileForTier(tier: RoadTier): RoadProfile {
+  const spec = ROAD_PRESETS.find((s) => s.tier === tier);
+  if (!spec?.profile) throw new RangeError(`roadprofile: no preset profile for tier ${tier}`);
+  return spec.profile;
+}
 
 export function roadClass(id: RoadClassId): RoadClassSpec {
   const found = ROAD_CLASSES.find((c) => c.id === id);

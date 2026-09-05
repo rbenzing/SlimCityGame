@@ -80,6 +80,7 @@
 import * as THREE from 'three';
 import { RoadTileDelta, RoadTier } from '../shared/types';
 import { TILE_METERS, CHUNK_TILES, CHUNKS_PER_SIDE } from '../shared/constants';
+import { carriagewayWidth, hasKerbs, isPaved, presetProfileForTier } from '../shared/roadprofile';
 
 /** The road plate rides this far above the terrain — anything standing ON a road must add it. */
 export const ROAD_Y_OFFSET = 0.15;
@@ -268,90 +269,53 @@ export function curbWidthMeters(tier: RoadTier): number {
   return Math.max(0, Math.min(SIDEWALK_WIDTH_M, TILE_METERS / 2 - carriagewayHalfWidthMeters(tier)));
 }
 
-function tierSpec(tier: RoadTier): QuadSpec {
+/**
+ * Base asphalt shade per tier. The shade is a palette decision, not a
+ * property of the cross-section, so it stays keyed by tier while the geometry
+ * flags come from the tier's preset profile.
+ */
+function tierBaseColor(tier: RoadTier): readonly [number, number, number] {
   switch (tier) {
     case RoadTier.TwoLane:
-      return {
-        halfWidthFraction: TWO_LANE_HALF_WIDTH_FRACTION,
-        color: [0.5, 0.5, 0.51],
-        hasCurbs: true,
-        paved: true,
-      };
+      return [0.5, 0.5, 0.51];
     case RoadTier.Avenue:
-      return {
-        halfWidthFraction: AVENUE_HALF_WIDTH_FRACTION,
-        color: [0.58, 0.58, 0.59],
-        hasCurbs: true,
-        paved: true,
-      };
+      return [0.58, 0.58, 0.59];
     case RoadTier.Highway:
-      return {
-        halfWidthFraction: HIGHWAY_HALF_WIDTH_FRACTION,
-        color: [0.4, 0.4, 0.41],
-        hasCurbs: true,
-        paved: true,
-      };
+      return [0.4, 0.4, 0.41];
     case RoadTier.Gravel:
-      return {
-        halfWidthFraction: GRAVEL_HALF_WIDTH_FRACTION,
-        color: GRAVEL_BASE_COLOR,
-        hasCurbs: false,
-        paved: false,
-      };
+      return GRAVEL_BASE_COLOR;
     case RoadTier.Alley:
-      return {
-        halfWidthFraction: ALLEY_HALF_WIDTH_FRACTION,
-        color: ALLEY_COLOR,
-        hasCurbs: false,
-        paved: true,
-      };
+      return ALLEY_COLOR;
     case RoadTier.OneWay:
-      return {
-        halfWidthFraction: TWO_LANE_HALF_WIDTH_FRACTION,
-        color: ONE_WAY_COLOR,
-        hasCurbs: true,
-        paved: true,
-      };
+      return ONE_WAY_COLOR;
     case RoadTier.FourLane:
-      return {
-        halfWidthFraction: FOUR_LANE_HALF_WIDTH_FRACTION,
-        color: FOUR_LANE_COLOR,
-        hasCurbs: true,
-        paved: true,
-      };
+      return FOUR_LANE_COLOR;
     case RoadTier.BusLane:
-      return {
-        halfWidthFraction: BUS_LANE_HALF_WIDTH_FRACTION,
-        color: TRANSIT_LANE_COLOR,
-        hasCurbs: true,
-        paved: true,
-      };
     case RoadTier.BikeLane:
-      return {
-        halfWidthFraction: BIKE_LANE_HALF_WIDTH_FRACTION,
-        color: TRANSIT_LANE_COLOR,
-        hasCurbs: true,
-        paved: true,
-      };
     case RoadTier.Tram:
-      return {
-        halfWidthFraction: TRAM_HALF_WIDTH_FRACTION,
-        color: TRANSIT_LANE_COLOR,
-        hasCurbs: true,
-        paved: true,
-      };
+      return TRANSIT_LANE_COLOR;
     case RoadTier.RailTrack:
-      // Dedicated rail: ballast bed, no curbs/sidewalks, and unpaved so it gets
-      // no lane markings or junction crosswalks — just the embedded rails.
-      return {
-        halfWidthFraction: RAIL_HALF_WIDTH_FRACTION,
-        color: RAIL_BALLAST_COLOR,
-        hasCurbs: false,
-        paved: false,
-      };
+      return RAIL_BALLAST_COLOR;
     default:
       throw new RangeError(`roadTileVertices: no quad spec for tier ${tier}`);
   }
+}
+
+/**
+ * The geometry a tier draws, read from its preset cross-section: the paved
+ * width between the kerbs, whether it has kerbs at all, and whether its
+ * surface takes paint. Rail is ballast and gravel is gravel, so neither is
+ * painted and neither gets a crosswalk.
+ */
+function tierSpec(tier: RoadTier): QuadSpec {
+  const color = tierBaseColor(tier);
+  const profile = presetProfileForTier(tier);
+  return {
+    halfWidthFraction: carriagewayWidth(profile) / (2 * TILE_METERS),
+    color,
+    hasCurbs: hasKerbs(profile),
+    paved: isPaved(profile),
+  };
 }
 
 /**

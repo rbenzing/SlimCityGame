@@ -23,6 +23,14 @@ import {
   CURB_Y_OFFSET,
   TWO_LANE_HALF_WIDTH_FRACTION,
   HIGHWAY_HALF_WIDTH_FRACTION,
+  AVENUE_HALF_WIDTH_FRACTION,
+  GRAVEL_HALF_WIDTH_FRACTION,
+  ALLEY_HALF_WIDTH_FRACTION,
+  FOUR_LANE_HALF_WIDTH_FRACTION,
+  BUS_LANE_HALF_WIDTH_FRACTION,
+  BIKE_LANE_HALF_WIDTH_FRACTION,
+  TRAM_HALF_WIDTH_FRACTION,
+  RAIL_HALF_WIDTH_FRACTION,
   carriagewayHalfWidthMeters,
   curbWidthMeters,
   isLaneGlyphTile,
@@ -154,6 +162,33 @@ describe('roadTileVertices — transit lane variants (Bus Lane / Bike Lane)', ()
   it('draws no curb at all where the tier has none', () => {
     for (const tier of [RoadTier.Gravel, RoadTier.Alley, RoadTier.RailTrack])
       expect(curbWidthMeters(tier)).toBe(0);
+  });
+
+  it('every tier draws exactly the carriageway, kerb and paint it always has, now read from its preset profile', () => {
+    // The geometry flags come from the cross-section; these are the values the
+    // hand-written per-tier table used to hold, so a preset that drifted from
+    // its tier would show up here as a changed road.
+    const expected: [RoadTier, number, boolean, boolean][] = [
+      [RoadTier.TwoLane, TWO_LANE_HALF_WIDTH_FRACTION, true, true],
+      [RoadTier.Avenue, AVENUE_HALF_WIDTH_FRACTION, true, true],
+      [RoadTier.Highway, HIGHWAY_HALF_WIDTH_FRACTION, true, true],
+      [RoadTier.Gravel, GRAVEL_HALF_WIDTH_FRACTION, false, false],
+      [RoadTier.Alley, ALLEY_HALF_WIDTH_FRACTION, false, true],
+      [RoadTier.OneWay, TWO_LANE_HALF_WIDTH_FRACTION, true, true],
+      [RoadTier.FourLane, FOUR_LANE_HALF_WIDTH_FRACTION, true, true],
+      [RoadTier.BusLane, BUS_LANE_HALF_WIDTH_FRACTION, true, true],
+      [RoadTier.BikeLane, BIKE_LANE_HALF_WIDTH_FRACTION, true, true],
+      [RoadTier.Tram, TRAM_HALF_WIDTH_FRACTION, true, true],
+      [RoadTier.RailTrack, RAIL_HALF_WIDTH_FRACTION, false, false],
+    ];
+    for (const [tier, halfFraction, kerbs, paved] of expected) {
+      expect(carriagewayHalfWidthMeters(tier)).toBeCloseTo(TILE_METERS * halfFraction, 6);
+      expect(curbWidthMeters(tier) > 0).toBe(kerbs);
+      // Paint is the observable of `paved`: every paved tier marks its junction
+      // arms (stop line, crosswalk), and an unpaved one paints nothing at all.
+      const junction = roadTileVertices(3, 3, tier, N | E | S | W, flatHeightAt);
+      expect(countWhere(junction.colors, isMarkingWhite) > 0).toBe(paved);
+    }
   });
 
   it('carriageways match their documented lane widths', () => {
