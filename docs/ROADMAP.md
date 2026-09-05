@@ -39,8 +39,9 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > (none/yield/stop/all-way/signal/roundabout) with warrant defaults,
 > player-set approach lanes and tapers, ramps with automatic merge lanes,
 > interchange stamps, and two-tile six/eight-lane corridors, in six
-> independently shippable waves, per SPEC §29 (research 2026-09-05; four open
-> decisions listed there await the user before wave 1).
+> independently shippable waves, per SPEC §29 (research 2026-09-05; the four
+> design decisions are locked and every figure is derived from HCM/AASHTO
+> formulas scaled into the sim's own units, which are already m/s and seconds).
 > Deferred/optional next: AI raster map packs, facade-atlas stage 2, screen-space
 > AO/reflections, and the [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper
 > industry, more transit modes).
