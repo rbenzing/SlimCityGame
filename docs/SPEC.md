@@ -2240,10 +2240,22 @@ scaled by one constant into the units the sim already uses.
    at the 6 m kerb and not in the parking lane where the preset's kerb was;
    `tools/profile-shots.mjs` lays a preset, a parked and a bare two-lane in
    the running game, reads back the profile id on every tile and the
-   distance of every lamp from its centreline, and shoots them. Still to
-   come in wave 1: piece-driven markings (a parking lane is wider asphalt
-   until it gets its bay ticks), the class drawer with posted speed and lane
-   count, a median picker, and replace-in-place over an existing run.
+   distance of every lamp from its centreline, and shoots them. Markings are
+   now READ from the cross-section: `src/render/roadmarkings.ts` lays the
+   carriageway pieces across the tile and reports the lines between them — a
+   dashed centre between one lane a side, a double solid between two or more
+   (the no-passing rule), dashed lane lines between same-way lanes and
+   beside a bus lane, motorway edge lines half a metre in, a bus or bike band
+   per reserved piece, and for a parking lane a solid line along its inner
+   edge with a bay tick every 6 m pitched by world coordinate so bays run
+   across tile seams. Per-class styles are a small table (dirt and alley
+   paint nothing, a one-way paints lane lines and no centre, a motorway
+   paints edges and carries the divider). Every preset paints exactly what it
+   always did, pinned by test; the avenue preset's inner lanes are 2.85 m so
+   its lane lines fall at ±3.75 beside its 1.8 m median, as drawn. Motorway
+   lane lines wait for the two-tile motorway. Still to come in wave 1: the
+   class drawer with posted speed and lane count, a median picker, and
+   replace-in-place over an existing run.
 2. **Stored direction** — `roadFlow`, drag direction, asymmetric profiles,
    directional edge cost, one-way pathfinding off geometry inference.
 3. **Junction control** — node control records, the v/c warrant default, the

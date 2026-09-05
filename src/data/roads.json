@@ -165,11 +165,11 @@
         "class": "arterial",
         "kerbs": true,
         "pieces": [
-          { "kind": "travel", "width": 3.3, "flow": "back" },
-          { "kind": "travel", "width": 3.3, "flow": "back" },
+          { "kind": "travel", "width": 3.75, "flow": "back" },
+          { "kind": "travel", "width": 2.85, "flow": "back" },
           { "kind": "median", "width": 1.8 },
-          { "kind": "travel", "width": 3.3, "flow": "fwd" },
-          { "kind": "travel", "width": 3.3, "flow": "fwd" }
+          { "kind": "travel", "width": 2.85, "flow": "fwd" },
+          { "kind": "travel", "width": 3.75, "flow": "fwd" }
         ]
       }
     },

@@ -91,6 +91,7 @@ import {
   PRESET_LANE_WIDTH_M,
   presetProfileForTier,
 } from '../shared/roadprofile';
+import { centrePair, markingPlan, type MarkingPlan } from './roadmarkings';
 
 /** The road plate rides this far above the terrain — anything standing ON a road must add it. */
 export const ROAD_Y_OFFSET = 0.15;
@@ -134,12 +135,6 @@ const MARKING_COLOR: readonly [number, number, number] = [0.95, 0.95, 0.96];
  * True-ratio paint width (~0.15m).
  */
 const PAINT_HALF_WIDTH_M = 0.075;
-/** The two parallel lines of a "double solid" center marking (avenue). */
-const CENTER_LINE_OFFSET = 0.22;
-/** Avenue's dashed lane-divider lines sit partway between center and curb. */
-const LANE_LINE_OFFSET_FRACTION = 0.5;
-/** Highway's solid edge lines sit just inside the pavement edge. */
-const EDGE_LINE_MARGIN = 0.5;
 
 /**
  * True-ratio dash metrics (centerline dashes ~3m painted / ~4.5m gap). Phase
@@ -241,9 +236,6 @@ const RAIL_BALLAST_COLOR: readonly [number, number, number] = [0.34, 0.33, 0.31]
 const BUS_LANE_PAINT_COLOR: readonly [number, number, number] = [0.6, 0.24, 0.18];
 /** Painted bike-lane surface (deep green). */
 const BIKE_LANE_PAINT_COLOR: readonly [number, number, number] = [0.13, 0.42, 0.22];
-/** Bus-lane band = the full curbside lane; bike-lane band = a narrow edge strip. */
-const BUS_LANE_BAND_WIDTH_M = LANE_WIDTH_M;
-const BIKE_LANE_BAND_WIDTH_M = 1.6;
 /** Colored lane fill sits above the asphalt plate but below the white lane paint, so markings/glyphs read on top. */
 const LANE_TINT_Y_OFFSET = ROAD_Y_OFFSET + 0.003;
 
@@ -327,10 +319,6 @@ function quadSpecFor(tier: RoadTier, profile: RoadProfile): QuadSpec {
   };
 }
 
-/** A tier's geometry — that of its preset profile. */
-function tierSpec(tier: RoadTier): QuadSpec {
-  return quadSpecFor(tier, presetProfileForTier(tier));
-}
 
 /**
  * Deterministic per-tile jitter on Gravel's dusty tan base color — same
@@ -598,72 +586,30 @@ function pushDashedLine(
  * lines; highway carries ONLY solid edge lines (its center is
  * the physical highway divider barrier, not painted).
  */
+/**
+ * Paints a straight run's lines from its marking plan. The centre pair around
+ * a raised median is left out where the median itself is drawn; every other
+ * line is painted exactly where the cross-section puts it.
+ */
 function emitAxisMarkings(
   positions: number[],
   colors: number[],
-  tier: RoadTier,
+  plan: MarkingPlan,
   centerX: number,
   centerZ: number,
-  coreHalf: number,
   vertical: boolean,
   lo: number,
   hi: number,
   suppressCenterPair: boolean,
   hAt: (x: number, z: number) => number,
 ): void {
-  const solid = (offset: number): void =>
+  const pair = suppressCenterPair ? centrePair(plan) : null;
+  for (const offset of plan.solid) {
+    if (pair && (offset === pair[0] || offset === pair[1])) continue;
     pushSolidLine(positions, colors, vertical, centerX, centerZ, offset, lo, hi, hAt);
-  const dashed = (offset: number): void =>
+  }
+  for (const offset of plan.dashed) {
     pushDashedLine(positions, colors, vertical, centerX, centerZ, offset, lo, hi, hAt);
-
-  switch (tier) {
-    // Bike Lane shares the two-lane white marking set (single dashed
-    // centerline); its green edge lanes are painted separately.
-    case RoadTier.TwoLane:
-    case RoadTier.BikeLane:
-      dashed(0);
-      break;
-    case RoadTier.Avenue:
-      if (!suppressCenterPair) {
-        solid(CENTER_LINE_OFFSET);
-        solid(-CENTER_LINE_OFFSET);
-      }
-      {
-        const laneOffset = coreHalf * LANE_LINE_OFFSET_FRACTION;
-        dashed(laneOffset);
-        dashed(-laneOffset);
-      }
-      break;
-    case RoadTier.Highway: {
-      const edgeOffset = coreHalf - EDGE_LINE_MARGIN;
-      solid(edgeOffset);
-      solid(-edgeOffset);
-      break;
-    }
-    case RoadTier.OneWay:
-      // Two-lane look: same single dashed centerline.
-      dashed(0);
-      break;
-    // Bus Lane shares the four-lane white marking set (solid double center +
-    // dashed lane dividers); the divider falls exactly at the bus-lane band's
-    // inner edge, so it reads as the line separating the bus lane from traffic.
-    case RoadTier.FourLane:
-    case RoadTier.BusLane:
-      // Avenue-style dashed lane dividers + solid double center, but NEVER a
-      // median (medianEligible/suppressCenterPair is only ever true for
-      // Avenue itself, so Four-Lane always keeps its center pair).
-      solid(CENTER_LINE_OFFSET);
-      solid(-CENTER_LINE_OFFSET);
-      {
-        const laneOffset = coreHalf * LANE_LINE_OFFSET_FRACTION;
-        dashed(laneOffset);
-        dashed(-laneOffset);
-      }
-      break;
-    // RoadTier.Alley falls through to default: no centerline, even though
-    // it's otherwise a paved tier with junction arm markings.
-    default:
-      break;
   }
 }
 
@@ -1044,65 +990,70 @@ function emitBicycleGlyph(
  * green) between along-offsets [lo, hi]; the glyph sits centered in each band,
  * repeating every LANE_GLYPH_PERIOD_TILES tiles by global coordinate.
  */
+/** Parking bays are ticked off every this many metres along the kerb. */
+export const PARKING_BAY_PITCH_M = 6;
+const PARKING_TICK_HALF_LENGTH_M = 0.075;
+
+/**
+ * Fills and ticks every reserved or parking lane in the plan: a terracotta
+ * band with a diamond for a bus lane, a green band with a bicycle for a bike
+ * lane, and for a parking lane a solid line along its inner edge with a tick
+ * across it at every bay — the bays are pitched by GLOBAL coordinate so they
+ * run continuously across tile seams.
+ */
 function emitColoredLaneBands(
   positions: number[],
   colors: number[],
-  tier: RoadTier,
+  plan: MarkingPlan,
   x: number,
   z: number,
   centerX: number,
   centerZ: number,
-  coreHalf: number,
   vertical: boolean,
   lo: number,
   hi: number,
   hAt: (x: number, z: number) => number,
 ): void {
-  const isBus = tier === RoadTier.BusLane;
-  const bandWidth = isBus ? BUS_LANE_BAND_WIDTH_M : BIKE_LANE_BAND_WIDTH_M;
-  if (bandWidth <= 0 || coreHalf <= bandWidth * 0.5) return;
-  const paint = isBus ? BUS_LANE_PAINT_COLOR : BIKE_LANE_PAINT_COLOR;
-  const bandCenter = coreHalf - bandWidth / 2;
-
-  const rect = (a0: number, a1: number, c0: number, c1: number): void => {
-    if (vertical)
-      pushLocalRect(
-        positions,
-        colors,
-        centerX,
-        centerZ,
-        c0,
-        c1,
-        a0,
-        a1,
-        LANE_TINT_Y_OFFSET,
-        paint,
-        hAt,
-      );
-    else
-      pushLocalRect(
-        positions,
-        colors,
-        centerX,
-        centerZ,
-        a0,
-        a1,
-        c0,
-        c1,
-        LANE_TINT_Y_OFFSET,
-        paint,
-        hAt,
-      );
+  const rect = (
+    a0: number,
+    a1: number,
+    c0: number,
+    c1: number,
+    color: readonly [number, number, number],
+    y: number,
+  ): void => {
+    if (vertical) pushLocalRect(positions, colors, centerX, centerZ, c0, c1, a0, a1, y, color, hAt);
+    else pushLocalRect(positions, colors, centerX, centerZ, a0, a1, c0, c1, y, color, hAt);
   };
 
   const glyphHere = vertical ? isLaneGlyphTile(z) : isLaneGlyphTile(x);
-  for (const side of [1, -1] as const) {
-    const cInner = side * (coreHalf - bandWidth);
-    const cOuter = side * coreHalf;
-    rect(lo, hi, Math.min(cInner, cOuter), Math.max(cInner, cOuter));
+  const origin = vertical ? centerZ : centerX;
+  for (const band of plan.bands) {
+    const across = (band.from + band.to) / 2;
+    if (band.kind === 'parking') {
+      // The line between the parking lane and the moving lane is the edge
+      // nearer the centre; the ticks cross the lane from it to the kerb.
+      const inner = Math.abs(band.from) < Math.abs(band.to) ? band.from : band.to;
+      pushSolidLine(positions, colors, vertical, centerX, centerZ, inner, lo, hi, hAt);
+      const first = Math.ceil((origin + lo) / PARKING_BAY_PITCH_M) * PARKING_BAY_PITCH_M;
+      for (let w = first; w <= origin + hi; w += PARKING_BAY_PITCH_M) {
+        const along = w - origin;
+        rect(
+          along - PARKING_TICK_HALF_LENGTH_M,
+          along + PARKING_TICK_HALF_LENGTH_M,
+          band.from,
+          band.to,
+          MARKING_COLOR,
+          MARK_Y_OFFSET,
+        );
+      }
+      continue;
+    }
+    const paint = band.kind === 'bus' ? BUS_LANE_PAINT_COLOR : BIKE_LANE_PAINT_COLOR;
+    rect(lo, hi, band.from, band.to, paint, LANE_TINT_Y_OFFSET);
     if (glyphHere) {
-      const across = side * bandCenter;
-      if (isBus) emitTransitDiamond(positions, colors, centerX, centerZ, vertical, across, hAt);
+      if (band.kind === 'bus')
+        emitTransitDiamond(positions, colors, centerX, centerZ, vertical, across, hAt);
       else emitBicycleGlyph(positions, colors, centerX, centerZ, vertical, across, hAt);
     }
   }
@@ -1651,7 +1602,7 @@ function emitCurvedTurn(
 function emitCurvedMarkings(
   positions: number[],
   colors: number[],
-  tier: RoadTier,
+  plan: MarkingPlan,
   centerX: number,
   centerZ: number,
   coreHalf: number,
@@ -1706,31 +1657,10 @@ function emitCurvedMarkings(
     }
   };
 
-  switch (tier) {
-    case RoadTier.TwoLane:
-    case RoadTier.OneWay:
-    case RoadTier.BikeLane:
-      arcLine(0, true);
-      break;
-    case RoadTier.Avenue:
-    case RoadTier.FourLane:
-    case RoadTier.BusLane: {
-      arcLine(CENTER_LINE_OFFSET, false);
-      arcLine(-CENTER_LINE_OFFSET, false);
-      const laneOffset = coreHalf * LANE_LINE_OFFSET_FRACTION;
-      arcLine(laneOffset, true);
-      arcLine(-laneOffset, true);
-      break;
-    }
-    case RoadTier.Highway: {
-      const edgeOffset = coreHalf - EDGE_LINE_MARGIN;
-      arcLine(edgeOffset, false);
-      arcLine(-edgeOffset, false);
-      break;
-    }
-    default:
-      break;
-  }
+  // The plan's offsets are signed across the carriageway; on a curve the
+  // "across" direction is radial, so a positive offset is a larger radius.
+  for (const o of plan.solid) arcLine(o, false);
+  for (const o of plan.dashed) arcLine(o, true);
 }
 
 /**
@@ -1879,7 +1809,7 @@ function emitEndCapCurb(
 function emitEndCapMarkings(
   positions: number[],
   colors: number[],
-  tier: RoadTier,
+  plan: MarkingPlan,
   centerX: number,
   centerZ: number,
   coreHalf: number,
@@ -1922,21 +1852,22 @@ function emitEndCapMarkings(
       }
     }
   };
-  switch (tier) {
-    case RoadTier.Highway:
-      arc(coreHalf - EDGE_LINE_MARGIN, false);
-      break;
-    case RoadTier.Avenue:
-    case RoadTier.FourLane:
-    case RoadTier.BusLane:
-      arc(CENTER_LINE_OFFSET, false);
-      arc(coreHalf * LANE_LINE_OFFSET_FRACTION, true);
-      break;
-    default:
-      // TwoLane / OneWay / BikeLane: a single centerline at offset 0 — nothing
-      // to wrap. Gravel / Alley: unpainted.
-      break;
-  }
+  // Each line wraps the cap once at its own radius; the pair of a double
+  // centre and the two sides of a lane line meet as one ribbon around the
+  // half-circle, so each distinct positive offset is drawn once. A line at the
+  // centre has no radius to wrap.
+  const seen = new Set<number>();
+  const wrap = (offsets: readonly number[], dashed: boolean): void => {
+    for (const o of offsets) {
+      const r = Math.abs(o);
+      const key = Math.round(r * 1e6);
+      if (r <= PAINT_HALF_WIDTH_M || seen.has(key)) continue;
+      seen.add(key);
+      arc(r, dashed);
+    }
+  };
+  wrap(plan.solid, false);
+  wrap(plan.dashed, true);
 }
 
 /** How far back into the paved tile the paved→gravel transition band reaches. */
@@ -2181,16 +2112,19 @@ function isCollinearMask(mask: number): boolean {
  * stay robust to any future mask shape.)
  */
 export function isAvenueMedianEligible(tier: RoadTier, mask: number): boolean {
-  const popcount =
-    (mask & NORTH ? 1 : 0) + (mask & EAST ? 1 : 0) + (mask & SOUTH ? 1 : 0) + (mask & WEST ? 1 : 0);
-  return tier === RoadTier.Avenue && popcount >= 1 && popcount <= 2 && isCollinearMask(mask);
+  return tier === RoadTier.Avenue && isStraightRunMask(mask);
 }
 
 /** Straight (non-corner, non-junction) highway run eligible for the divider barrier — see isAvenueMedianEligible for the popcount >= 1 rationale. */
 export function isHighwayDividerEligible(tier: RoadTier, mask: number): boolean {
+  return tier === RoadTier.Highway && isStraightRunMask(mask);
+}
+
+/** A connected, straight, non-junction tile: one or two collinear arms. */
+function isStraightRunMask(mask: number): boolean {
   const popcount =
     (mask & NORTH ? 1 : 0) + (mask & EAST ? 1 : 0) + (mask & SOUTH ? 1 : 0) + (mask & WEST ? 1 : 0);
-  return tier === RoadTier.Highway && popcount >= 1 && popcount <= 2 && isCollinearMask(mask);
+  return popcount >= 1 && popcount <= 2 && isCollinearMask(mask);
 }
 
 /**
@@ -2374,7 +2308,10 @@ export function roadTileVertices(
   const colors: number[] = [];
   if (tier === RoadTier.None) return { positions, colors };
 
-  const spec = profile ? quadSpecFor(tier, profile) : tierSpec(tier);
+  const crossSection = profile ?? presetProfileForTier(tier);
+  const spec = quadSpecFor(tier, crossSection);
+  // Every line and band this tile paints, read from its cross-section.
+  const plan = markingPlan(crossSection);
   const centerX = (x + 0.5) * TILE_METERS;
   const centerZ = (z + 0.5) * TILE_METERS;
   const coreHalf = TILE_METERS * spec.halfWidthFraction;
@@ -2417,7 +2354,7 @@ export function roadTileVertices(
     emitCurvedMarkings(
       positions,
       colors,
-      tier,
+      plan,
       centerX,
       centerZ,
       coreHalf,
@@ -2613,8 +2550,10 @@ export function roadTileVertices(
     }
   } // end !isTurn (straight/junction rectangular geometry)
 
-  const medianEligible = isAvenueMedianEligible(tier, mask);
-  const dividerEligible = isHighwayDividerEligible(tier, mask);
+  // A raised median and a motorway divider run down straight tiles only, and
+  // break at corners and junctions so turn paths stay clear.
+  const medianEligible = plan.hasMedian && isStraightRunMask(mask);
+  const dividerEligible = plan.barrier && isStraightRunMask(mask);
   const hasVertical = hasN || hasS;
   const hasHorizontal = hasE || hasW;
 
@@ -2649,66 +2588,16 @@ export function roadTileVertices(
       if (hasVertical) {
         const zLo = hasN ? -TILE_HALF : -coreHalf;
         const zHi = hasS ? TILE_HALF : coreHalf;
-        emitAxisMarkings(
-          positions,
-          colors,
-          tier,
-          centerX,
-          centerZ,
-          coreHalf,
-          true,
-          zLo,
-          zHi,
-          medianEligible,
-          hAt,
-        );
-        if (tier === RoadTier.BusLane || tier === RoadTier.BikeLane)
-          emitColoredLaneBands(
-            positions,
-            colors,
-            tier,
-            x,
-            z,
-            centerX,
-            centerZ,
-            coreHalf,
-            true,
-            zLo,
-            zHi,
-            hAt,
-          );
+        emitAxisMarkings(positions, colors, plan, centerX, centerZ, true, zLo, zHi, medianEligible, hAt);
+        if (plan.bands.length > 0)
+          emitColoredLaneBands(positions, colors, plan, x, z, centerX, centerZ, true, zLo, zHi, hAt);
       }
       if (hasHorizontal) {
         const xLo = hasW ? -TILE_HALF : -coreHalf;
         const xHi = hasE ? TILE_HALF : coreHalf;
-        emitAxisMarkings(
-          positions,
-          colors,
-          tier,
-          centerX,
-          centerZ,
-          coreHalf,
-          false,
-          xLo,
-          xHi,
-          medianEligible,
-          hAt,
-        );
-        if (tier === RoadTier.BusLane || tier === RoadTier.BikeLane)
-          emitColoredLaneBands(
-            positions,
-            colors,
-            tier,
-            x,
-            z,
-            centerX,
-            centerZ,
-            coreHalf,
-            false,
-            xLo,
-            xHi,
-            hAt,
-          );
+        emitAxisMarkings(positions, colors, plan, centerX, centerZ, false, xLo, xHi, medianEligible, hAt);
+        if (plan.bands.length > 0)
+          emitColoredLaneBands(positions, colors, plan, x, z, centerX, centerZ, false, xLo, xHi, hAt);
       }
 
       // One-Way direction arrows: every ARROW_PERIOD_TILES-th tile by GLOBAL
@@ -2838,7 +2727,7 @@ export function roadTileVertices(
       emitEndCapMarkings(
         positions,
         colors,
-        tier,
+        plan,
         centerX,
         centerZ,
         coreHalf,
