@@ -126,6 +126,11 @@ version. Nobody edits the version by hand.
   generated `CHANGELOG.md`. Merging it tags `vX.Y.Z`, cuts a **GitHub Release**,
   and the workflow deploys the built SPA to **GitHub Pages** at
   [rbenzing.github.io/SlimCityGame](https://rbenzing.github.io/SlimCityGame/).
+- The build's URL prefix comes from the `BASE_PATH` environment variable and
+  defaults to `/`. The Pages workflow sets `BASE_PATH=/SlimCityGame/`; a
+  root-hosted deploy such as **Netlify** leaves it unset. `netlify.toml` carries
+  the Netlify build command, publish directory (`dist`), and Node version, so
+  connecting the repo needs no dashboard settings.
 
 See **[CONTRIBUTING.md](./CONTRIBUTING.md)** for the commit conventions and the
 full release flow.

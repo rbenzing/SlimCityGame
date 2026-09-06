@@ -1,0 +1,9 @@
+# Netlify serves the site at the domain root, so BASE_PATH stays unset and the
+# build resolves assets from '/'. GitHub Pages sets its own sub-path in the
+# release workflow.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"

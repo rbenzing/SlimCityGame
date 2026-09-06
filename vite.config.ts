@@ -4,10 +4,11 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { songsManifestPlugin } from './tools/vite-songs-manifest';
 
-// GitHub Pages serves this project site under /CitySim/, so the production
-// build needs that base for correct asset URLs. Dev + Playwright stay at '/'.
-export default defineConfig(({ mode }) => ({
-  base: mode === 'production' ? '/CitySim/' : '/',
+// The deploy target decides where the site lives: GitHub Pages serves it under
+// /SlimCityGame/ and sets BASE_PATH in its workflow; Netlify and any other
+// root-hosted deploy leave it unset and get '/'. Dev + Playwright stay at '/'.
+export default defineConfig(() => ({
+  base: process.env.BASE_PATH ?? '/',
   plugins: [react(), tailwindcss(), songsManifestPlugin()],
   build: {
     target: 'esnext',
