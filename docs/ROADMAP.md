@@ -153,6 +153,20 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > Related but separate: the dynamic world lighting epic above is about what a
 > light source DOES; this is what it is and where it stands.
 >
+> **Queued next — power reaches a street before its lamps do (requested
+> 2026-09-06):** every road in the city conducts electricity today and every
+> road that may carry a lamp carries one, so the power network has no shape a
+> player can see and the lights are on before the first generator is built.
+> Three rules instead: a road conducts power only if it is built to (dirt and
+> gravel do not — `carriesPower` is the twin of the existing `carriesWater`);
+> a lamp needs a live street, so coverage is legible off the night city and a
+> brownout takes the lights; and a placeable power line is how supply reaches
+> what a road cannot. The line carries a build cost and a monthly upkeep
+> through the economy path roads already use, which is the mechanic rather
+> than a detail — reaching further has to show up in the ledger. Specified in
+> SPEC §30, including the one open gameplay decision: whether existing saves
+> are grandfathered or let the change bite.
+>
 > Deferred/optional next: AI raster map packs, facade-atlas stage 2, screen-space
 > AO/reflections, and the [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper
 > industry, more transit modes).

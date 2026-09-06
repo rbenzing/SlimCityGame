@@ -2777,3 +2777,83 @@ then reads back from the live grid the lane count on every tile downstream
 of the merge and the control on every terminal node, because only the real
 placement proves the tool laid what the spec says. Markings remain a
 screenshot review, because "reads as a real road" is a claim about the eye.
+
+---
+
+## 30. Power reaches a street before its lamps do — conducting roads, power lines, and their cost (user request 2026-09-06)
+
+**Why.** Every drivable road in the city conducts electricity, a dirt track
+through a field as readily as a boulevard, and every road that may carry a
+lamp carries one whether or not the city can generate a watt. So the power
+network has no shape a player can see or plan: it is wherever the roads are,
+which is everywhere, and the lights are on before the first generator is
+built. Nothing the player does about power is legible on the ground.
+
+**What it should be instead.** Three rules, each small on its own and each
+paying for the next.
+
+**A road conducts power only if it is built to.** A sealed street carries the
+cable; an unsealed one — dirt, gravel, the back alley — does not. This is not
+a new mechanism: `carriesWater` is already a per-road opt-out that the
+utility walk consults, and `carriesPower` is its twin. The consequence is the
+one that matters: a rural lot on a gravel lane is now genuinely off-grid, and
+reaching it is a decision rather than a side effect of having built a road to
+it at all.
+
+**A lamp needs a live street.** Street lighting stops being a property of the
+road's class and becomes a property of the road's *supply*: no power on the
+tile, no lamp on it. The pole is absent rather than dark, because a street
+lighting up as the supply reaches it is the clearest report the network can
+give — the player reads coverage off the city at night without opening a
+lens, and the first thing a brownout does is take the lights, which is what
+a brownout does.
+
+**A power line is how supply reaches what a road cannot.** A placeable
+network of its own, conducting between its own tiles and into any road or
+footprint it meets, so the off-grid lot on the gravel lane, the pumping
+station across the valley and the district a motorway separates all have a
+way to be fed that is not "build a street to it". It is the only genuinely
+new system here, and it is what makes the other two rules a choice rather
+than a restriction.
+
+**It costs money, and the cost is the mechanic.** The utility owns the
+network and the city pays for it — a build cost per tile and a *monthly*
+upkeep per tile, both through the same economy path a road already uses
+(`costPerTile`, `upkeepPerTile`, the monthly expense pass). A sprawling rural
+grid is therefore a standing drain on the budget rather than a purchase that
+disappears from view, and the trade the player is making — reach further, or
+concentrate and stay solvent — is a trade the ledger actually shows them. A
+line is also the cheapest thing that reaches, which is the point: it should
+always be cheaper to string a line than to lay a road, or the road remains
+the answer to every question and none of this changes anything.
+
+**The decision this forces, which belongs to the player and not to us.**
+Every rule above is retroactive. A city built before them has lights it did
+not pay to supply and lots fed by tracks that no longer conduct, so on load
+it either goes partly dark and partly unpowered, or it is grandfathered. The
+honest options are to migrate saves by treating every currently-powered tile
+as though a line already reached it, or to let the change bite and present it
+as what it is. This is a gameplay decision, recorded here unresolved.
+
+**Related but distinct.** §22 is what a lamp looks like at night, and the
+queued roadway-light-pole and dynamic-lighting epics are what a lamp is and
+what a light source does. This section is about whether the lamp is there at
+all, and who paid for the cable.
+
+**Acceptance:** a dirt road conducts nothing and the zone beside it stays
+unpowered until a line reaches it; a street with no supply has no lamps and
+gains them when supply arrives; a power line placed between a generator and a
+distant lot powers it; the line's build cost lands the month it is built and
+its upkeep every month after, both visible in the budget; a brownout takes
+the lights of the streets it takes the supply from.
+
+**Verification:** the conduction rules are table tests over every road spec,
+because "which roads carry power" is data and a data mistake is silent. The
+lamp gate is tested at the placement layer — a tile with supply and one
+without, same road — rather than by screenshot, since presence is countable.
+The line's economy is a test of the monthly pass with a known tile count, so
+a line that quietly costs nothing fails. The whole of it is then checked in
+the running game the way §28 and §29 are: a harness builds a generator, a
+gravel lane and a lot, confirms the lot is dark, strings a line, and confirms
+it is not — because only the real placement proves the network conducts what
+the spec says it does.
