@@ -840,6 +840,14 @@ export interface GraphEdge {
   classId?: RoadClassId;
   /** Travel lanes on the run, both directions summed. */
   lanes?: number;
+  /**
+   * Whether the run's cross-section can find the width for a turn pocket on
+   * the half that approaches each end — `pocketAtoB` for the traffic arriving
+   * at node b. Whether it actually has one there is the junction's business:
+   * a pocket is only warranted where the control holds the traffic.
+   */
+  pocketAtoB?: boolean;
+  pocketBtoA?: boolean;
 }
 
 export interface PathResult {

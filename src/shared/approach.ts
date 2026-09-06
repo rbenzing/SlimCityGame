@@ -13,6 +13,7 @@
  */
 import { RoadFlow } from './types';
 import type { RoadClassId } from './types';
+import type { JunctionControl } from './types';
 
 /** What a driver does at a junction, as bits so a lane can offer several. */
 export const Movement = {
@@ -120,15 +121,35 @@ export function permits(lanes: readonly MovementSet[], movement: Movement): bool
   return lanesServing(movement, lanes) > 0;
 }
 
+/** How many movements one lane offers: one is a lane of its own, three is a queue. */
+function breadthOf(set: MovementSet): number {
+  return MOVEMENTS.reduce((n, m) => n + ((set & m) !== 0 ? 1 : 0), 0);
+}
+
 /**
  * How the junction's delay divides between the lanes serving a movement: the
- * queue for a turn two lanes offer is half as long as the queue for one. A
- * movement no lane offers is not a path at all, so it has no delay to share
+ * queue for a turn two lanes offer is half as long as the queue for one, and a
+ * turn made from a lane SHARED with the traffic going straight queues behind
+ * that traffic too, so it gets only its share of the lane. That is the whole
+ * point of a turn pocket, and the only way the delay can show it.
+ *
+ * The shares are measured against an approach whose every lane does
+ * everything, which reads as its own lane count and is exactly what a
+ * single-lane approach has always cost. So a lane of one's own is worth more
+ * than a lane shared three ways, and no road got slower for the reading.
+ *
+ * A movement no lane offers is not a path at all, so it has no delay to share
  * and the caller should already have refused it; it reads as one lane here
  * rather than dividing by nothing.
  */
 export function movementDelayShare(movement: Movement, lanes: readonly MovementSet[]): number {
-  return Math.max(1, lanesServing(movement, lanes));
+  const breadth = breadthOf(lanes.reduce((all, set) => all | set, 0));
+  if (breadth === 0) return 1;
+  const service = lanes.reduce(
+    (sum, set) => sum + ((set & movement) !== 0 ? 1 / breadthOf(set) : 0),
+    0,
+  );
+  return service > 0 ? service * breadth : 1;
 }
 
 /**
@@ -202,6 +223,36 @@ export function withArmAllowed(
 /** Whether a driver arriving on `arm` may make `movement`. */
 export function movementAllowed(packed: PackedTurns, arm: RoadFlow, movement: Movement): boolean {
   return (armAllowed(packed, arm) & movement) !== 0;
+}
+
+/**
+ * Whether an arm earns a TURN POCKET — the lane it gains for the last few
+ * tiles before the junction. The junction has to hold its traffic for one to
+ * be worth building: a signal, a stop or a give-way queues drivers, an
+ * uncontrolled crossroads has no queue to take anybody out of. The arm has to
+ * both turn left and go through as well: a pocket is the lane beside the
+ * centreline, so an arm that may not turn left has nothing to put in one, and
+ * an arm that may not go through is already all turn lane. A roundabout's
+ * approach flares are geometry a single tile cannot hold, and wait for the
+ * two-tile corridor.
+ */
+export function pocketWarranted(
+  control: JunctionControl | null | undefined,
+  allowed: MovementSet,
+): boolean {
+  if (!control || control === 'none' || control === 'roundabout') return false;
+  return (allowed & Movement.Through) !== 0 && (allowed & Movement.Left) !== 0;
+}
+
+/**
+ * What each lane offers on an approach that carries a turn pocket: the pocket
+ * is a lane for turning left and nothing else, which is what it was built for,
+ * and the lanes behind it divide the rest between them the way they always
+ * would — the kerbside one taking the right turn with the through movement.
+ */
+export function pocketLaneMovements(lanes: number, allowed: MovementSet): MovementSet[] {
+  const behind = defaultLaneMovements(lanes).slice(1);
+  return [Movement.Left as MovementSet, ...behind].map((set) => set & allowed);
 }
 
 /**

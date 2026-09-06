@@ -23,6 +23,8 @@ import {
   movementAllowed,
   movementBetween,
   movementDelayShare,
+  pocketLaneMovements,
+  pocketWarranted,
 } from '../shared/approach';
 import type { JunctionApproach } from '../shared/junction';
 
@@ -92,6 +94,8 @@ export type EdgeLookup = (id: number) => GraphEdge | undefined;
 export interface JunctionArm {
   edgeId: number;
   approach: JunctionApproach;
+  /** Whether this arm's cross-section can find the width for a turn pocket. */
+  canPocket: boolean;
 }
 
 /**
@@ -119,6 +123,9 @@ export function armsAt(node: GraphNode, edgeById: EdgeLookup): JunctionArm[] {
         lanes: lanesIn ?? Math.max(1, Math.round(total / 2)),
         vc: approachSaturation(edge, fromNodeId),
       },
+      // The pocket belongs to the half of the road arriving here, which is the
+      // one the traffic coming from the far end of the run is on.
+      canPocket: (fromNodeId === edge.a ? edge.pocketAtoB : edge.pocketBtoA) === true,
     });
   }
   return arms;
@@ -140,8 +147,9 @@ export function junctionDelay(
   // with no control has no queue to wait in.
   if (!arriving || !control || control === 'none') return 0;
   const arms = armsAt(node, edgeById);
-  const mine = arms.find((a) => a.edgeId === arriving.id)?.approach;
-  if (!mine) return 0;
+  const arm = arms.find((a) => a.edgeId === arriving.id);
+  const mine = arm?.approach;
+  if (!arm || !mine) return 0;
   const approaches = arms.map((a) => a.approach);
   const delay = controlDelaySeconds(control, approachGivesWay(control, mine, approaches), {
     vc: mine.vc,
@@ -151,7 +159,14 @@ export function junctionDelay(
   // queue for one, so a wide approach is quicker for the movement it widened.
   const movement = movementBetween(headingInto(arriving, node.id), headingOutOf(leaving, node.id));
   if (movement === null) return delay;
-  const lanes = laneMovementsFor(mine.lanes, armAllowed(node.turns ?? 0, armOf(arriving, node.id)));
+  const allowed = armAllowed(node.turns ?? 0, armOf(arriving, node.id));
+  // The approach zone's turn pocket is a lane the arm has HERE — the left turn
+  // waits in it instead of holding up the traffic going straight, and both
+  // movements are quicker for it.
+  const pocket = arm.canPocket && pocketWarranted(control, allowed);
+  const lanes = pocket
+    ? pocketLaneMovements(mine.lanes + 1, allowed)
+    : laneMovementsFor(mine.lanes, allowed);
   return delay / movementDelayShare(movement, lanes);
 }
 

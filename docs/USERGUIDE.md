@@ -85,6 +85,14 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   traffic stops using it, so you can send through traffic round a corner
   instead of past a school. An arm always keeps its last turn; a driver who
   arrives has to be able to leave.
+  Where a junction holds its traffic, an approach that can find the width also
+  grows a **turn pocket** for the last few tiles: a lane of its own for the
+  drivers waiting to turn left, so they stop holding up everyone going
+  straight. It comes out of the verge, then the kerbside parking, then the
+  width of the lanes themselves, and a road with none of that to spare simply
+  does not get one — which is why a plain street earns a pocket at a signal
+  and a four-lane road filling its tile does not. Nothing to switch on: give
+  the junction a control it needs and the pocket appears with it.
   Roads snap to the
   grid, round their corners and dead-ends, and bank smoothly up slopes (the ground
   is graded under them automatically).

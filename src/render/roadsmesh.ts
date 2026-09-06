@@ -101,8 +101,15 @@ import {
   roadClass,
 } from '../shared/roadprofile';
 import { armGivesWay } from '../shared/junction';
-import { armAllowed, laneMovementsFor, Movement } from '../shared/approach';
+import {
+  approachZoneTiles,
+  laneMovementsFor,
+  Movement,
+  pocketLaneMovements,
+} from '../shared/approach';
 import type { MovementSet } from '../shared/approach';
+import { approachAhead, approachAxis, pocketedCrossSection } from '../shared/approachzone';
+import type { ApproachAhead, ApproachSurroundings } from '../shared/approachzone';
 import {
   centrePair,
   markingPlan,
@@ -726,27 +733,6 @@ const APPROACH_STEPS: ReadonlyArray<readonly [number, number]> = APPROACH_DIRS.m
   dz,
 ]);
 
-/** The junction a tile approaches: which way it lies, and what this arm may do there. */
-interface ApproachAhead {
-  toward: RoadFlow;
-  allowed: MovementSet;
-}
-
-/** The cardinal facing the other way — the arm a junction sees this tile on. */
-function oppositeFlow(flow: RoadFlow): RoadFlow {
-  switch (flow) {
-    case RoadFlow.North:
-      return RoadFlow.South;
-    case RoadFlow.South:
-      return RoadFlow.North;
-    case RoadFlow.East:
-      return RoadFlow.West;
-    case RoadFlow.West:
-      return RoadFlow.East;
-    default:
-      return RoadFlow.None;
-  }
-}
 /** How far back from the head a turning hook leaves the stem. */
 const LANE_ARROW_HOOK_DROP_M = 0.9;
 /** How far across the lane a turning hook reaches before its own head. */
@@ -2803,7 +2789,10 @@ export function roadTileVertices(
   const colors: number[] = [];
   if (tier === RoadTier.None) return { positions, colors };
 
-  const crossSection = profile ?? presetProfileForTier(tier);
+  // The cross-section this tile carries, which inside a junction's approach
+  // zone is its own plus the turn pocket: a lane the road has here and nowhere
+  // else, and one the asphalt has to be wide enough to hold.
+  const crossSection = pocketedCrossSection(profile ?? presetProfileForTier(tier), approach, flow);
   const spec = quadSpecFor(tier, crossSection);
   // Every line and band this tile paints, read from its cross-section.
   const plan = markingPlan(crossSection);
@@ -3180,26 +3169,26 @@ export function roadTileVertices(
       // the approach is allowed to do, painted from its movement set. A
       // single-lane approach does everything and is left unmarked, which is also
       // what MUTCD 3D.06 ¶01 says of one at a circular intersection.
-      if (approach !== undefined && plan.solid.length + plan.dashed.length > 0) {
+      if (approach?.distance === 0 && plan.solid.length + plan.dashed.length > 0) {
         const approachToward = approach.toward;
-        const vertical = approachToward === RoadFlow.North || approachToward === RoadFlow.South;
-        const ahead: 1 | -1 =
-          approachToward === RoadFlow.South || approachToward === RoadFlow.East ? 1 : -1;
-        // Facing the way the traffic goes, this is the across direction on the
-        // driver's LEFT — the side the leftmost lane sits on, and the side a
-        // left turn hooks toward.
-        const leftSign = vertical ? ahead : -ahead;
+        const { vertical, ahead, leftSign } = approachAxis(approachToward);
         const lanes = travelLanes(crossSection);
         const oneWay = lanes.every((l) => l.flow === lanes[0]?.flow);
         // On a two-way road the approaching lanes are the ones on the driver's
         // RIGHT of the centreline. On a one-way every lane approaches, or none
         // does — which is what the road's own stored direction decides.
         const runsToward = flow === RoadFlow.None || flow === approachToward;
+        // A turn pocket makes the cross-section lopsided, and the centreline
+        // is no longer the middle of the road: which half a lane belongs to is
+        // then what it FLOWS, read off the half that the road without its
+        // pocket had on the driver's right.
+        const onTheRight = (l: { centre: number }): boolean => l.centre * leftSign < 0;
+        const towardUs = travelLanes(profile ?? crossSection).find(onTheRight)?.flow;
         const approaching = oneWay
           ? runsToward
             ? lanes
             : []
-          : lanes.filter((l) => l.centre * leftSign < 0);
+          : lanes.filter((l) => (towardUs ? l.flow === towardUs : onTheRight(l)));
         if (approaching.length >= 2) {
           // Ordered from the driver's left, which is the order the movement sets
           // come in: the dedicated left first, the dedicated right last.
@@ -3208,8 +3197,11 @@ export function roadTileVertices(
           );
           // Painted from what the arm is ALLOWED to do: a banned turn leaves
           // the lane that offered it with no arrow, which is how a driver
-          // reads a restriction off the ground.
-          const movements = laneMovementsFor(ordered.length, approach.allowed);
+          // reads a restriction off the ground. Where the approach carries a
+          // pocket, the lane against the centreline is the left turn's alone.
+          const movements = approach.pocket
+            ? pocketLaneMovements(ordered.length, approach.allowed)
+            : laneMovementsFor(ordered.length, approach.allowed);
           const shift = ahead * (TILE_HALF - LANE_ARROW_SETBACK_M);
           for (let i = 0; i < ordered.length; i++) {
             emitLaneUseArrow(
@@ -3693,38 +3685,46 @@ export class RoadMeshRenderer {
     return chunk?.tiles.get(localTileKeyOf(x, z))?.tier ?? RoadTier.None;
   }
 
-  /**
-   * The direction of the junction this tile is the last approach to, or
-   * undefined when it is not one. A tile is an approach when it is a straight
-   * run — a corner has no lane to arrow — with exactly one neighbour that has
-   * three arms or more of its own.
-   */
-  private approachToward(x: number, z: number): ApproachAhead | undefined {
-    const degreeAt = (ax: number, az: number): number => {
-      let n = 0;
-      for (const [dx, dz] of APPROACH_STEPS)
-        if (this.tierAt(ax + dx, az + dz) !== RoadTier.None) n++;
-      return n;
+  /** The road network as the approach-zone walk asks about it. */
+  private get surroundings(): ApproachSurroundings {
+    return {
+      hasRoad: (x, z) => this.tierAt(x, z) !== RoadTier.None,
+      controlAt: (x, z) => this.junctionControls.get(tileIndex(x, z)),
+      turnsAt: (x, z) => this.junctionTurns.get(tileIndex(x, z)) ?? 0,
     };
-    if (degreeAt(x, z) !== 2) return undefined; // a junction, a corner or an end
-    let found: ApproachAhead | undefined;
-    for (const [dx, dz, toward] of APPROACH_DIRS) {
-      if (this.tierAt(x + dx, z + dz) === RoadTier.None) continue;
-      if (degreeAt(x + dx, z + dz) < 3) continue;
-      if (found !== undefined) return undefined; // between two junctions: neither is the approach
-      // The arm this tile IS, seen from the junction, is the way back to here.
-      const packed = this.junctionTurns.get(tileIndex(x + dx, z + dz)) ?? 0;
-      found = { toward, allowed: armAllowed(packed, oppositeFlow(toward)) };
-    }
-    return found;
   }
 
-  /** The carriageway half-width of the road at (x,z) from its own cross-section, or 0 off-road. */
-  private halfAt(x: number, z: number): number {
+  /** The cross-section a tile carries, or null off-road. */
+  private profileAt(x: number, z: number): RoadProfile | null {
     const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
-    if (!tile) return 0;
-    const profile = this.profileFor(tile.profile) ?? presetProfileForTier(tile.tier);
-    return carriagewayHalfWidthOf(profile);
+    if (!tile) return null;
+    return this.profileFor(tile.profile) ?? presetProfileForTier(tile.tier);
+  }
+
+  /**
+   * The junction this tile approaches and how close it is to it, or undefined
+   * when it approaches none. How far back the zone reaches is the road's own
+   * class's, since that is what decides how long a queue it has to store.
+   */
+  private approachToward(x: number, z: number): ApproachAhead | undefined {
+    const profile = this.profileAt(x, z);
+    if (!profile) return undefined;
+    return approachAhead(x, z, approachZoneTiles(profile.class), this.surroundings);
+  }
+
+  /**
+   * The carriageway half-width of the road at (x,z), read from the
+   * cross-section that tile actually paints — a turn pocket widens the asphalt
+   * for the tiles that carry it, and the seam with the tile next door has to
+   * meet the same edge.
+   */
+  private halfAt(x: number, z: number): number {
+    const profile = this.profileAt(x, z);
+    if (!profile) return 0;
+    const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
+    return carriagewayHalfWidthOf(
+      pocketedCrossSection(profile, this.approachToward(x, z), tile?.flow ?? RoadFlow.None),
+    );
   }
 
   private rebuildChunk(key: number): void {

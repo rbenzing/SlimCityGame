@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { FIELD_COUNT, RoadFlow, RoadTier } from '../shared/types';
 import { Movement, withArmAllowed } from '../shared/approach';
-import type { GridState, TilePoint } from '../shared/types';
+import type { GraphEdge, GridState, TilePoint } from '../shared/types';
 import { applyRoad, RoadNetwork } from './roads';
+import { armsAt, junctionDelay } from './pathfind';
 
 function makeGrid(size: number): GridState {
   const n = size * size;
@@ -223,5 +224,77 @@ describe('a banned turn is not a path', () => {
     expect(path).not.toBeNull();
     // No edge is walked twice, which is what a U-turn at the middle would do.
     expect(new Set(path!.edges).size).toBe(path!.edges.length);
+  });
+});
+
+describe('a turn pocket is a lane the approach has at the junction and nowhere else', () => {
+  const SIZE = 13;
+  const MID = Math.floor(SIZE / 2);
+
+  /**
+   * The delay off the south arm of a crossroads whose side road is `minor`,
+   * for each way out of it. Driving on the right, a driver coming up from the
+   * south turns LEFT to the west and right to the east.
+   */
+  function delaysFromTheSouth(
+    across: RoadTier,
+    minor: RoadTier,
+  ): { left: number; through: number; right: number } {
+    const net = crossroads(across, minor, SIZE);
+    const edges = net.getEdges();
+    const node = net.getNodes().find((n) => n.x === MID && n.z === MID)!;
+    const byId = (id: number): GraphEdge | undefined => edges.find((e) => e.id === id);
+    const arm = (dx: number, dz: number): GraphEdge =>
+      edges.find(
+        (e) =>
+          node.edges.includes(e.id) && e.tiles.some((t) => t.x === MID + dx && t.z === MID + dz),
+      )!;
+    const from = arm(0, 1);
+    return {
+      left: junctionDelay(node, from, arm(-1, 0), byId),
+      through: junctionDelay(node, from, arm(0, -1), byId),
+      right: junctionDelay(node, from, arm(1, 0), byId),
+    };
+  }
+
+  it('shortens the left turn it was built for, where the road can find the width', () => {
+    // Both side roads are local streets with one lane each way, and both give
+    // way to the four-lane road. The only difference is that the plain street
+    // has verge to spare for a pocket and the one with bike lanes down it has
+    // not — its width belongs to somebody else.
+    const pocketed = delaysFromTheSouth(RoadTier.FourLane, RoadTier.TwoLane);
+    const plain = delaysFromTheSouth(RoadTier.FourLane, RoadTier.BikeLane);
+    expect(plain.left).toBeGreaterThan(0);
+    // The turn goes from sharing the street's one lane three ways to a lane of
+    // its own: three times the service, a third of the wait.
+    expect(plain.left / pocketed.left).toBeCloseTo(3, 6);
+    // And the traffic going straight is quicker for it too, since the drivers
+    // waiting to turn are no longer sitting in front of it.
+    expect(pocketed.through).toBeLessThan(plain.through);
+  });
+
+  it('serves the left turn better than the right, which stays on the kerbside lane', () => {
+    const { left, right } = delaysFromTheSouth(RoadTier.FourLane, RoadTier.TwoLane);
+    expect(left).toBeLessThan(right);
+  });
+
+  it('is only cut where the junction holds the traffic', () => {
+    // Two plain streets crossing are uncontrolled, so nobody queues and there
+    // is nothing for a pocket to take out of the way.
+    const net = crossroads(RoadTier.TwoLane, RoadTier.TwoLane, SIZE);
+    expect(net.getNodes().find((n) => n.x === MID && n.z === MID)?.control).toBe('none');
+    const quiet = delaysFromTheSouth(RoadTier.TwoLane, RoadTier.TwoLane);
+    expect(quiet).toEqual({ left: 0, through: 0, right: 0 });
+  });
+
+  it('reads the width off the run, so a road with none carries no pocket', () => {
+    const net = crossroads(RoadTier.FourLane, RoadTier.TwoLane, SIZE);
+    const node = net.getNodes().find((n) => n.x === MID && n.z === MID)!;
+    const edges = net.getEdges();
+    const arms = armsAt(node, (id) => edges.find((e) => e.id === id));
+    // The four-lane road fills its tile; the two-lane street has verge to give.
+    const canPocket = arms.map((a) => a.canPocket);
+    expect(canPocket).toContain(true);
+    expect(canPocket).toContain(false);
   });
 });

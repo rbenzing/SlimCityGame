@@ -46,7 +46,9 @@ import {
   SATURATION_FLOW_VEH_PER_HOUR,
   speedFromKmh,
   tierForProfile,
+  TURN_POCKET_MIN_WIDTH_M,
   withinLaneRange,
+  withTurnPocket,
 } from './roadprofile';
 import type { RoadClassId, RoadProfile, RoadSpec } from './types';
 import { RoadTier } from './types';
@@ -697,5 +699,110 @@ describe('lane widths and the lane counts a road is offered, to US standards', (
     // six-lane road needs the two-tile corridor.
     expect(profileWidth(at(6))).toBeGreaterThan(TILE_METERS);
     expect(fitsTile(at(6))).toBe(false);
+  });
+});
+
+describe('turn pockets', () => {
+  const travel = (p: RoadProfile): number[] =>
+    p.pieces.filter((q) => q.kind === 'travel').map((q) => q.width);
+
+  it('lets a two-lane street earn a left-turn lane out of its verge', () => {
+    const street = presetProfileForTier(RoadTier.TwoLane);
+    const pocketed = withTurnPocket(street, 1);
+    expect(pocketed).not.toBeNull();
+    // The lane it gains sits against the centreline, between the two it had.
+    expect(pocketed!.pieces.map((p) => p.kind)).toEqual([
+      'sidewalk',
+      'travel',
+      'travel',
+      'travel',
+      'sidewalk',
+    ]);
+    expect(pocketed!.pieces[2]).toMatchObject({ flow: 'fwd', width: laneWidthFor('local') });
+    // Nothing else moved: both footways and both running lanes are as they
+    // were, and the tile still holds the result.
+    expect(travel(pocketed!)).toEqual([3.75, laneWidthFor('local'), 3.75]);
+    expect(profileWidth(pocketed!)).toBeCloseTo(profileWidth(street) + laneWidthFor('local'), 6);
+    expect(fitsTile(pocketed!)).toBe(true);
+  });
+
+  it('gives the pocket to whichever half is the one approaching', () => {
+    const street = presetProfileForTier(RoadTier.TwoLane);
+    expect(withTurnPocket(street, -1)!.pieces[2]).toMatchObject({ flow: 'back' });
+    expect(withTurnPocket(street, 1)!.pieces[2]).toMatchObject({ flow: 'fwd' });
+  });
+
+  it('takes the kerbside parking, then the width of the lane beside it, when the verge is short', () => {
+    const parked = composeProfile(presetProfileForTier(RoadTier.TwoLane), {
+      ...NO_EDITS,
+      parking: 'both',
+    });
+    expect(TILE_METERS - profileWidth(parked)).toBeLessThan(TURN_POCKET_MIN_WIDTH_M);
+    const pocketed = withTurnPocket(parked, 1)!;
+    // The parking bay on the approaching side is gone; the one on the other
+    // side is not, since the pocket is not on that side of the road.
+    expect(pocketed.pieces.filter((p) => p.kind === 'parking')).toHaveLength(1);
+    expect(travel(pocketed)).toHaveLength(3);
+    expect(profileWidth(pocketed)).toBeLessThanOrEqual(TILE_METERS + 1e-9);
+    for (const width of travel(pocketed))
+      expect(width).toBeGreaterThanOrEqual(TURN_POCKET_MIN_WIDTH_M - 1e-9);
+  });
+
+  it("cuts an avenue's turn bay out of the median, which is where one has always gone", () => {
+    const avenue = presetProfileForTier(RoadTier.Avenue);
+    const pocketed = withTurnPocket(avenue, 1)!;
+    expect(pocketed.pieces.some((p) => p.kind === 'median')).toBe(false);
+    expect(travel(pocketed)).toHaveLength(5);
+    expect(profileWidth(pocketed)).toBeLessThanOrEqual(TILE_METERS + 1e-9);
+    // The bay is a full lane, and the width the median could not cover came
+    // off the widest lane beside it — never off one already at the minimum.
+    expect(pocketed.pieces[2]).toMatchObject({ kind: 'travel', flow: 'fwd' });
+    expect(pocketed.pieces[2]!.width).toBeGreaterThanOrEqual(TURN_POCKET_MIN_WIDTH_M - 1e-9);
+    expect(Math.min(...travel(pocketed))).toBeGreaterThanOrEqual(Math.min(...travel(avenue)));
+    expect(pocketed.pieces[4]!.width).toBeLessThan(avenue.pieces[4]!.width);
+    // The half going the other way never noticed.
+    expect(pocketed.pieces.slice(0, 2)).toEqual(avenue.pieces.slice(0, 2));
+  });
+
+  it('refuses where the width simply is not there', () => {
+    // Four 12 ft lanes leave a metre of a 16 m tile; a lane is three.
+    expect(withTurnPocket(presetProfileForTier(RoadTier.FourLane), 1)).toBeNull();
+    expect(withTurnPocket(presetProfileForTier(RoadTier.Highway), 1)).toBeNull();
+  });
+
+  it('never takes a reserved lane for it', () => {
+    // The bus and bike presets have width beside the traffic lanes, but it
+    // belongs to somebody else.
+    expect(withTurnPocket(presetProfileForTier(RoadTier.BusLane), 1)).toBeNull();
+    expect(withTurnPocket(presetProfileForTier(RoadTier.BikeLane), 1)).toBeNull();
+  });
+
+  it('has nothing to add to a road that turns from a lane of its own already', () => {
+    const withTurnLane = composeProfile(presetProfileForTier(RoadTier.TwoLane), {
+      ...NO_EDITS,
+      middle: 'turn',
+    });
+    expect(withTurnPocket(withTurnLane, 1)).toBeNull();
+    expect(withTurnPocket(withTurnLane, -1)).toBeNull();
+  });
+
+  it("puts a one-way's pocket against the left kerb, which is what a left turn goes from", () => {
+    const oneWay = presetProfileForTier(RoadTier.OneWay);
+    // Every lane approaches, so the side the caller names says nothing.
+    for (const side of [1, -1] as const) {
+      const pocketed = withTurnPocket(oneWay, side)!;
+      expect(pocketed.pieces.map((p) => p.kind)).toEqual([
+        'sidewalk',
+        'travel',
+        'travel',
+        'travel',
+        'sidewalk',
+      ]);
+      expect(pocketed.pieces[1]).toMatchObject({ flow: 'fwd', width: laneWidthFor('oneWay') });
+    }
+  });
+
+  it('has no pocket to offer a railway', () => {
+    expect(withTurnPocket(presetProfileForTier(RoadTier.RailTrack), 1)).toBeNull();
   });
 });

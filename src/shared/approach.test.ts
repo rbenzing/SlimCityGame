@@ -14,6 +14,8 @@ import {
   MOVEMENTS,
   laneMovementsFor,
   permits,
+  pocketLaneMovements,
+  pocketWarranted,
   withArmAllowed,
 } from './approach';
 import { RoadFlow } from './types';
@@ -112,13 +114,36 @@ describe('a movement no lane offers is a movement nobody makes', () => {
     expect(lanesServing(Movement.Left, noLeft)).toBe(0);
   });
 
-  it('divides a movement’s delay by the lanes serving it', () => {
-    const lanes = defaultLaneMovements(4);
-    expect(movementDelayShare(Movement.Through, lanes)).toBe(2);
-    expect(movementDelayShare(Movement.Left, lanes)).toBe(1);
+  it('divides a movement’s delay by the service its lanes give it', () => {
+    // An approach whose one lane does everything is the yardstick: it reads as
+    // the single lane it is, which is what it has always cost.
+    const single = defaultLaneMovements(1);
+    expect(movementDelayShare(Movement.Through, single)).toBe(1);
+    expect(movementDelayShare(Movement.Left, single)).toBe(1);
+
+    // Four lanes: two of them do nothing but go straight, and one does nothing
+    // but turn left, so both are worth more than a lane shared three ways.
+    const four = defaultLaneMovements(4);
+    expect(movementDelayShare(Movement.Through, four)).toBe(6);
+    expect(movementDelayShare(Movement.Left, four)).toBe(3);
     // A banned movement has no queue to share; it reads as one rather than
     // dividing by nothing, since the caller should already have refused it.
-    expect(movementDelayShare(Movement.UTurn, lanes)).toBe(1);
+    expect(movementDelayShare(Movement.UTurn, four)).toBe(1);
+  });
+
+  it('is worth more to a movement that has a lane to itself than one it shares', () => {
+    // The same two lanes, the left turn sharing one of them and then given one.
+    const shared = defaultLaneMovements(2);
+    const pocketed = pocketLaneMovements(2, DEFAULT_ALLOWED);
+    expect(movementDelayShare(Movement.Left, pocketed)).toBeGreaterThan(
+      movementDelayShare(Movement.Left, shared),
+    );
+    // And every wider approach serves the through movement better than a
+    // narrower one, which is what makes a wide road worth building.
+    const service = [1, 2, 3, 4].map((n) =>
+      movementDelayShare(Movement.Through, defaultLaneMovements(n)),
+    );
+    expect([...service].sort((a, b) => a - b)).toEqual(service);
   });
 });
 
@@ -227,5 +252,48 @@ describe('turn restrictions pack one nibble per arm', () => {
 
   it('leaves the lane sets alone when nothing is banned', () => {
     expect(laneMovementsFor(4, DEFAULT_ALLOWED)).toEqual(defaultLaneMovements(4));
+  });
+});
+
+describe('the turn pocket an approach earns', () => {
+  it('is warranted only where the junction holds the traffic and the arm turns left', () => {
+    expect(pocketWarranted('signal', DEFAULT_ALLOWED)).toBe(true);
+    expect(pocketWarranted('stop', DEFAULT_ALLOWED)).toBe(true);
+    expect(pocketWarranted('yield', DEFAULT_ALLOWED)).toBe(true);
+    expect(pocketWarranted('allWayStop', DEFAULT_ALLOWED)).toBe(true);
+    // Nothing to queue for, and nowhere to put an approach flare.
+    expect(pocketWarranted('none', DEFAULT_ALLOWED)).toBe(false);
+    expect(pocketWarranted(null, DEFAULT_ALLOWED)).toBe(false);
+    expect(pocketWarranted('roundabout', DEFAULT_ALLOWED)).toBe(false);
+    // A pocket is the left turn's lane; an arm that cannot turn left, or that
+    // cannot go through, has nothing to separate.
+    expect(pocketWarranted('signal', Movement.Through | Movement.Right)).toBe(false);
+    expect(pocketWarranted('signal', Movement.Left)).toBe(false);
+  });
+
+  it('gives the pocket to the left turn alone, and leaves the rest as they were', () => {
+    // One running lane and a pocket: the pocket turns left, the lane it was
+    // carved beside keeps everything else.
+    expect(pocketLaneMovements(2, DEFAULT_ALLOWED)).toEqual([
+      Movement.Left,
+      Movement.Through | Movement.Right,
+    ]);
+    expect(pocketLaneMovements(3, DEFAULT_ALLOWED)).toEqual([
+      Movement.Left,
+      Movement.Through,
+      Movement.Through | Movement.Right,
+    ]);
+    expect(pocketLaneMovements(4, DEFAULT_ALLOWED)).toEqual([
+      Movement.Left,
+      Movement.Through,
+      Movement.Through,
+      Movement.Right,
+    ]);
+  });
+
+  it('still answers to a restriction: a banned turn is in no lane, pocket or not', () => {
+    const noRight = pocketLaneMovements(2, Movement.Left | Movement.Through);
+    expect(lanesServing(Movement.Right, noRight)).toBe(0);
+    expect(lanesServing(Movement.Left, noRight)).toBe(1);
   });
 });

@@ -34,6 +34,7 @@ import type {
   WorkerToMain,
 } from './shared/types';
 import { RoadFlow, RoadTier, isStreetTier } from './shared/types';
+import { carriagewayWidth } from './shared/roadprofile';
 import catalogData from './data/catalog.json';
 import roadsData from './data/roads.json';
 import { CommandQueue } from './core/commands';
@@ -551,6 +552,32 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
             control: t.control!,
             turns: clientGrid.junctionAt(t.x, t.z)?.turns ?? 0,
           })),
+      // The junction a tile approaches and what its cross-section is there —
+      // a turn pocket is a lane the road has for a few tiles and nowhere else,
+      // and a screenshot cannot say how many lanes wide a stretch of asphalt
+      // is or which junction it belongs to.
+      readApproach: (
+        x: number,
+        z: number,
+      ): {
+        toward: number;
+        distance: number;
+        pocket: boolean;
+        lanes: number;
+        width: number;
+      } | null => {
+        const own = clientGrid.profileAt(x, z);
+        const ahead = clientGrid.approachAt(x, z);
+        const drawn = clientGrid.drawnProfileAt(x, z);
+        if (!own || !ahead || !drawn) return null;
+        return {
+          toward: ahead.toward,
+          distance: ahead.distance,
+          pocket: drawn !== own,
+          lanes: drawn.pieces.filter((p) => p.kind === 'travel').length,
+          width: carriagewayWidth(drawn),
+        };
+      },
       readSigns: (): { x: number; z: number; type: string }[] =>
         computeSignPlacements(latestRoadTiles).map((s) => ({ x: s.x, z: s.z, type: s.type })),
       // What each signal head is showing. A lit lens is a few pixels across in

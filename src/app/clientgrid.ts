@@ -9,7 +9,10 @@
  * ({size, roadTier, water, zone, buildingId, height}).
  */
 import { TILE_METERS, worldToTile } from '../shared/constants';
-import { RoadTier } from '../shared/types';
+import { RoadFlow, RoadTier } from '../shared/types';
+import { approachZoneTiles } from '../shared/approach';
+import { approachAhead, pocketedCrossSection } from '../shared/approachzone';
+import type { ApproachAhead, ApproachSurroundings } from '../shared/approachzone';
 import {
   FIRST_CUSTOM_PROFILE_ID,
   isPresetProfileId,
@@ -93,10 +96,48 @@ export class ClientGridMirror {
       next.size === this.junctionControls.size &&
       [...next].every(([i, j]) => {
         const was = this.junctionControls.get(i);
-        return was?.control === j.control && was.auto === j.auto;
+        // The turns count as much as the control: banning a movement can take
+        // an approach's turn pocket away, and the kerb props stand at its edge.
+        return was?.control === j.control && was.auto === j.auto && was.turns === j.turns;
       });
     this.junctionControls = next;
     return !same;
+  }
+
+  /**
+   * The junction this tile approaches and how close it is to it, or undefined
+   * when it approaches none. How far back the zone reaches is the road's own
+   * class's, since that is what decides how long a queue it has to store.
+   */
+  approachAt(x: number, z: number): ApproachAhead | undefined {
+    const own = this.profileAt(x, z);
+    if (!own) return undefined;
+    return approachAhead(x, z, approachZoneTiles(own.class), this.surroundings);
+  }
+
+  /**
+   * The cross-section a tile actually carries: its own, plus the turn pocket
+   * where it stands in a junction's approach zone. Everything measured off the
+   * road reads this one, so the paint, the asphalt and the kerb agree.
+   */
+  drawnProfileAt(x: number, z: number): RoadProfile | null {
+    const own = this.profileAt(x, z);
+    if (!own) return null;
+    return pocketedCrossSection(
+      own,
+      this.approachAt(x, z),
+      this.roadFlow[this.idx(x, z)] ?? RoadFlow.None,
+    );
+  }
+
+  /** The road network as the approach-zone walk asks about it. */
+  private get surroundings(): ApproachSurroundings {
+    return {
+      hasRoad: (x, z) =>
+        this.inBounds(x, z) && (this.roadTier[this.idx(x, z)] ?? RoadTier.None) !== RoadTier.None,
+      controlAt: (x, z) => this.junctionAt(x, z)?.control,
+      turnsAt: (x, z) => this.junctionAt(x, z)?.turns ?? 0,
+    };
   }
 
   /** The junction at this tile: who gives way, and whose choice that is. */
@@ -329,15 +370,17 @@ export class ClientGridMirror {
         const i = this.idx(x, z);
         const tier = this.roadTier[i] as RoadTier;
         if (tier === RoadTier.None) continue;
+        // The tile's own cross-section, so kerb furniture stands at its real
+        // edge; a custom id the table no longer holds falls back to the preset
+        // the tier names rather than to nothing. Inside a junction's approach
+        // zone that section is the one with the turn pocket in it, which is
+        // wider than the road behind — and is where the kerb has moved to.
         const tile = {
           x,
           z,
           tier,
           elevated: (this.roadElevation[i] ?? 0) > 0,
-          // The tile's own cross-section, so kerb furniture stands at its
-          // real edge; a custom id the table no longer holds falls back to the
-          // preset the tier names rather than to nothing.
-          profile: this.profileById(this.roadProfile[i] ?? 0) ?? presetProfileForTier(tier),
+          profile: this.drawnProfileAt(x, z) ?? presetProfileForTier(tier),
         };
         const junction = this.junctionControls.get(i);
         tiles.push(junction ? { ...tile, control: junction.control } : tile);

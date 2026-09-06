@@ -7,7 +7,12 @@
 
 import { armsAt, findPath as runAstar, nearestNode as findNearestNode } from './pathfind';
 import { flowForStep, RoadFlow, RoadTier, ZoneType, isStreetTier } from '../shared/types';
-import { isPresetProfileId, presetProfileForTier, rankForTier } from '../shared/roadprofile';
+import {
+  canGainTurnPocket,
+  isPresetProfileId,
+  presetProfileForTier,
+  rankForTier,
+} from '../shared/roadprofile';
 import { controlFromCode, warrantedControl } from '../shared/junction';
 import type {
   GraphEdge,
@@ -349,7 +354,12 @@ function runFacts(
   runTiles: readonly TilePoint[],
   forwardAtoB: boolean | null,
   profileFor: ProfileResolver,
-): { classId: RoadClassId; lanes: number; split: { atoB: number; btoA: number } | null } | null {
+): {
+  classId: RoadClassId;
+  lanes: number;
+  split: { atoB: number; btoA: number } | null;
+  pocket: { atoB: boolean; btoA: boolean };
+} | null {
   const mid = runTiles[Math.floor(runTiles.length / 2)];
   if (!mid) return null;
   const profile = profileFor(g.roadProfile[indexOf(g.size, mid.x, mid.z)] ?? 0);
@@ -358,10 +368,18 @@ function runFacts(
   const fwd = travel.filter((p) => p.flow === 'fwd').length;
   const back = travel.filter((p) => p.flow === 'back').length;
   const symmetric = fwd === back || forwardAtoB === null;
+  // A driver's own half of the road is the one their direction's lanes are
+  // laid on: the `fwd` side going the way the road was drawn, the `back` side
+  // coming the other way. That is the half a turn pocket would be cut into.
+  const towardB: -1 | 1 = forwardAtoB === false ? -1 : 1;
   return {
     classId: profile.class,
     lanes: travel.length,
     split: symmetric ? null : forwardAtoB ? { atoB: fwd, btoA: back } : { atoB: back, btoA: fwd },
+    pocket: {
+      atoB: canGainTurnPocket(profile, towardB),
+      btoA: canGainTurnPocket(profile, -towardB as -1 | 1),
+    },
   };
 }
 
@@ -463,6 +481,8 @@ function buildGraph(
           edge.lanesAtoB = facts.split.atoB;
           edge.lanesBtoA = facts.split.btoA;
         }
+        if (facts.pocket.atoB) edge.pocketAtoB = true;
+        if (facts.pocket.btoA) edge.pocketBtoA = true;
       }
       edges.push(edge);
       nodes[startId]!.edges.push(edgeId);

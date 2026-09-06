@@ -867,6 +867,7 @@ describe('roadTileVertices — lane-use arrows on the last tile before a junctio
     mask = N | S,
     flow: RoadFlow = RoadFlow.None,
     allowed: number = DEFAULT_ALLOWED,
+    zone: { distance: number; pocket: boolean } = { distance: 0, pocket: false },
   ): { positions: number[]; colors: number[] } =>
     roadTileVertices(
       4,
@@ -879,7 +880,7 @@ describe('roadTileVertices — lane-use arrows on the last tile before a junctio
       undefined,
       flow,
       undefined,
-      { toward, allowed },
+      { toward, allowed, ...zone },
     );
 
   const plain = (tier: RoadTier, mask = N | S): { positions: number[]; colors: number[] } =>
@@ -895,6 +896,61 @@ describe('roadTileVertices — lane-use arrows on the last tile before a junctio
     const arrowed = approach(RoadTier.FourLane, RoadFlow.South);
     expect(countWhere(arrowed.colors, isMarkingWhite)).toBeGreaterThan(
       countWhere(plain(RoadTier.FourLane).colors, isMarkingWhite),
+    );
+  });
+
+  it('gives a two-lane street a lane it does not have, and an arrow to go in it', () => {
+    const pocket = { distance: 0, pocket: true };
+    const street = approach(RoadTier.TwoLane, RoadFlow.South);
+    const pocketed = approach(
+      RoadTier.TwoLane,
+      RoadFlow.South,
+      N | S,
+      RoadFlow.None,
+      DEFAULT_ALLOWED,
+      pocket,
+    );
+    // One lane each way paints no lane-use arrow at all; with the pocket there
+    // are two lanes to tell apart, so there is something to say.
+    expect(countWhere(pocketed.colors, isMarkingWhite)).toBeGreaterThan(
+      countWhere(street.colors, isMarkingWhite),
+    );
+    // And the asphalt is wider for the lane it gained, so the paint is on road.
+    const spread = (v: { positions: number[] }): number =>
+      Math.max(...toTriples(v.positions).map((p) => Math.abs(p[0]! - 4.5 * TILE_METERS)));
+    expect(spread(pocketed)).toBeGreaterThan(spread(street));
+  });
+
+  it('carries the pocket down the whole approach zone, and the arrows only at its head', () => {
+    const atHead = approach(
+      RoadTier.TwoLane,
+      RoadFlow.South,
+      N | S,
+      RoadFlow.None,
+      DEFAULT_ALLOWED,
+      {
+        distance: 0,
+        pocket: true,
+      },
+    );
+    const behind = approach(
+      RoadTier.TwoLane,
+      RoadFlow.South,
+      N | S,
+      RoadFlow.None,
+      DEFAULT_ALLOWED,
+      {
+        distance: 1,
+        pocket: true,
+      },
+    );
+    const spread = (v: { positions: number[] }): number =>
+      Math.max(...toTriples(v.positions).map((p) => Math.abs(p[0]! - 4.5 * TILE_METERS)));
+    // The same widened cross-section a tile further back...
+    expect(spread(behind)).toBeCloseTo(spread(atHead), 6);
+    // ...but the arrows belong on the tile the driver reads them from.
+    expect(countWhere(behind.colors, isMarkingWhite)).toBeLessThan(
+      countWhere(atHead.colors, isMarkingWhite),
     );
   });
 

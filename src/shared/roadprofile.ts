@@ -244,6 +244,135 @@ export function isPaved(profile: RoadProfile): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Turn pockets: the lane an approach gains for the last few tiles before a
+// junction, so the drivers waiting to turn are not the drivers going straight.
+// ---------------------------------------------------------------------------
+
+/**
+ * The narrowest a turn pocket is worth building, and the narrowest a through
+ * lane may be squeezed to make room for one: 10 ft, which every US standard
+ * allows a lane in a constrained setting. A class whose running lanes are
+ * already narrower than that builds its pocket at its own lane width instead.
+ */
+export const TURN_POCKET_MIN_WIDTH_M = 3.05;
+
+/**
+ * Pieces a turn pocket may be carved out of: the kerbside parking or shoulder
+ * on its own half, and the median, which belongs to both halves and is where a
+ * divided road's turn bay has always been cut. A reserved lane — bus, tram,
+ * bike — is somebody else's road and is never taken.
+ */
+const POCKET_SOURCE_KINDS: ReadonlySet<LanePieceKind> = new Set(['parking', 'shoulder', 'median']);
+
+/**
+ * Where each carriageway piece sits across the tile, measured from the
+ * centreline, or null for a piece outside the kerbs. Sidewalks and verges only
+ * ever sit at the ends, so skipping them leaves the running offset intact.
+ */
+function pieceCentres(profile: RoadProfile): (number | null)[] {
+  let offset = -carriagewayHalfWidthOf(profile);
+  return profile.pieces.map((piece) => {
+    if (!CARRIAGEWAY_KINDS.has(piece.kind)) return null;
+    const centre = offset + piece.width / 2;
+    offset += piece.width;
+    return centre;
+  });
+}
+
+/**
+ * The same cross-section with a turn pocket added on the half that approaches
+ * a junction — `approachSide` being the sign of that half's offsets, so +1 is
+ * the half laid after the centreline and -1 the half before it. On a one-way
+ * every lane approaches and the pocket goes against the left kerb, which is
+ * the lane a left turn is made from.
+ *
+ * The width comes, in this order, from the verge the tile has not spent, from
+ * the kerbside parking or shoulder on that half, and last from the through
+ * lanes themselves, which a constrained retrofit narrows rather than widening
+ * the road. Null when none of that is enough: a pocket narrower than
+ * `TURN_POCKET_MIN_WIDTH_M` is not a lane, and a road with no travel lane on
+ * the approaching half has nothing to add one beside.
+ */
+export function withTurnPocket(profile: RoadProfile, approachSide: -1 | 1): RoadProfile | null {
+  // A road with a two-way left-turn lane down the middle already turns from a
+  // lane of its own, everywhere, so it has nothing to gain here.
+  if (profile.pieces.some((p) => p.kind === 'centreTurn')) return null;
+  const target = laneWidthFor(profile.class);
+  const minimum = Math.min(target, TURN_POCKET_MIN_WIDTH_M);
+  const oneWay = isOneWayProfile(profile);
+  const side = oneWay ? -1 : approachSide;
+  const centres = pieceCentres(profile);
+
+  const approaching = profile.pieces
+    .map((piece, index) => ({ piece, index, centre: centres[index] ?? 0 }))
+    .filter((e) => e.piece.kind === 'travel' && (oneWay || e.centre * side > 0));
+  if (approaching.length === 0) return null;
+
+  // A one-way's pocket sits outside its leftmost lane; a two-way's sits beside
+  // the centreline, which is the innermost lane of the approaching half.
+  const beside = oneWay
+    ? approaching.reduce((a, b) => (b.centre < a.centre ? b : a))
+    : approaching.reduce((a, b) => (Math.abs(b.centre) < Math.abs(a.centre) ? b : a));
+  const insertBefore = oneWay || side === 1 ? beside.index : beside.index + 1;
+
+  // What the pocket may be carved out of: the outermost parking bay or
+  // shoulder on its own side of the road.
+  const sources = profile.pieces
+    .map((piece, index) => ({ piece, index, centre: centres[index] ?? 0 }))
+    .filter(
+      (e) =>
+        POCKET_SOURCE_KINDS.has(e.piece.kind) && (e.piece.kind === 'median' || e.centre * side > 0),
+    );
+  const source =
+    sources.length === 0
+      ? null
+      : sources.reduce((a, b) => (Math.abs(b.centre) > Math.abs(a.centre) ? b : a));
+
+  const slack = Math.max(0, TILE_METERS - profileWidth(profile));
+  let width = Math.min(target, slack);
+  let takeSource = false;
+  if (width < minimum && source) {
+    takeSource = true;
+    width = Math.min(target, slack + source.piece.width);
+  }
+
+  // Last resort: the lanes beside the pocket give up what is left of it.
+  const narrowed = new Map<number, number>();
+  if (width < minimum) {
+    const shortfall = minimum - width;
+    const headroom = approaching.map((e) => ({ index: e.index, room: e.piece.width - minimum }));
+    const available = headroom.reduce((sum, h) => sum + Math.max(0, h.room), 0);
+    if (available + 1e-9 < shortfall) return null;
+    for (const h of headroom) {
+      if (h.room <= 0) continue;
+      const piece = profile.pieces[h.index]!;
+      narrowed.set(h.index, piece.width - (shortfall * h.room) / available);
+    }
+    width = minimum;
+  }
+
+  const pocket: LanePiece = { kind: 'travel', width };
+  if (beside.piece.flow) pocket.flow = beside.piece.flow;
+
+  const pieces: LanePiece[] = [];
+  profile.pieces.forEach((piece, index) => {
+    if (index === insertBefore) pieces.push(pocket);
+    if (takeSource && index === source?.index) return;
+    const squeezed = narrowed.get(index);
+    pieces.push(squeezed === undefined ? { ...piece } : { ...piece, width: squeezed });
+  });
+  if (insertBefore >= profile.pieces.length) pieces.push(pocket);
+
+  const pocketed: RoadProfile = { ...profile, pieces };
+  return fitsTile(pocketed) ? pocketed : null;
+}
+
+/** Whether this cross-section can find the width for a turn pocket on that half. */
+export function canGainTurnPocket(profile: RoadProfile, approachSide: -1 | 1): boolean {
+  return withTurnPocket(profile, approachSide) !== null;
+}
+
+// ---------------------------------------------------------------------------
 // Composition: the edits a player makes to a preset, and the profile they
 // produce. Edits are absolute for the sides they name and `null` where the
 // preset is left as it is, so "no edits" composes back to the preset exactly.
@@ -400,7 +529,7 @@ function lanesBackOf(profile: RoadProfile): number {
 }
 
 /** Whether every travel lane runs the same way, so the road has no two sides to separate. */
-function isOneWayProfile(profile: RoadProfile): boolean {
+export function isOneWayProfile(profile: RoadProfile): boolean {
   const travel = profile.pieces.filter((p) => p.kind === 'travel');
   return travel.length > 0 && travel.every((p) => p.flow === 'fwd');
 }

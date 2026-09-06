@@ -2517,9 +2517,34 @@ scaled by one constant into the units the sim already uses.
    junction pays nothing at it, which is right — they did not queue. One
    consequence falls out for free: with the U-turn off by default, the router
    will no longer double back at a junction.
+   TURN POCKETS are the lane an approach has at the junction and nowhere
+   else. They are WARRANTED rather than stored: an arm gains one where the
+   junction holds its traffic — a signal, a stop or a give-way, never an
+   uncontrolled crossroads and not yet a roundabout, whose approach flares
+   need more than a tile — and where the arm both turns left and goes
+   through, since a pocket is the lane beside the centreline. The width comes
+   out of the verge the tile has not spent, then out of the kerbside parking
+   or shoulder on that half, and last out of the through lanes themselves,
+   narrowed no further than the 10 ft every standard allows a lane; where
+   none of that is enough there is no pocket, which is why a four-lane road
+   filling its tile never gets one. A divided road's bay is cut out of the
+   median, where one has always been cut. The approach zone is as long as the
+   class says (2 tiles local, 3 collector, 4–5 arterial), the pocket runs its
+   whole length, and the arrows stay on the tile the driver reads them from.
+   One cross-section derivation feeds the paint, the asphalt under it and the
+   kerb the furniture stands at, so they widen together or not at all.
+   The delay a movement pays is now divided by the SERVICE its lanes give it
+   rather than by a count of them: a lane shared three ways gives each
+   movement a third of itself, and a lane of one's own gives all of it. The
+   shares are measured against an approach whose every lane does everything,
+   so a single-lane approach costs exactly what it always did and nothing got
+   slower for the reading. Without that a pocket could not show at all — it
+   never changes how many lanes serve a turn, only whether the turn has one
+   to itself.
    *Still to come in the wave:* per-LANE movement sets — the restriction is
-   per ARM today, which is what a player actually reaches for — turn pockets,
-   and lane-drop tapers with their merge arrows and gore chevrons.
+   per ARM today, which is what a player actually reaches for — and lane-drop
+   tapers with their merge arrows and gore chevrons, which are also what will
+   draw a pocket's own opening taper rather than the lane simply beginning.
 5. **Ramps and interchange stamps** — the ramp class, merge/diverge/terminal
    nodes, automatic acceleration/deceleration lanes, diamond and trumpet,
    then parclo, cloverleaf and roundabout interchange.
