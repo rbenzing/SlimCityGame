@@ -13,6 +13,8 @@ import { carriagewayHalfWidthOf } from '../shared/roadprofile';
 export const CENTRE_PAIR_OFFSET_M = 0.22;
 /** How far inside the carriageway edge a motorway's edge line is painted. */
 export const EDGE_LINE_MARGIN_M = 0.5;
+/** How far inside a turn lane its broken line sits from the solid one beside it. */
+export const TURN_LANE_INNER_OFFSET_M = 0.3;
 /** A bike lane's paint is at most this wide; a wider piece keeps a buffer to the kerb. */
 export const BIKE_PAINT_MAX_WIDTH_M = 1.6;
 
@@ -44,6 +46,12 @@ export interface MarkingPlan {
   dashed: MarkingLine[];
   /** Reserved and parking lanes to fill or tick. */
   bands: MarkingBand[];
+  /**
+   * Where a two-way left-turn lane sits, if the profile has one: the lane
+   * traffic turns from in either direction, which is marked with opposing
+   * turn arrows rather than travelled along.
+   */
+  turnLane: { from: number; to: number } | null;
   /** The profile carries a raised median piece at the centre. */
   hasMedian: boolean;
   /** The profile is a motorway, whose straight runs carry a concrete divider. */
@@ -156,9 +164,14 @@ export function markingPlan(profile: RoadProfile): MarkingPlan {
       (isTravel(piece) && next.kind === 'centreTurn');
 
     if (turnEdge) {
-      // A two-way turn lane is bounded by a solid yellow line each side: the
-      // lane serves both directions, so both sides face opposing traffic.
-      if (style.centre !== 'none') solid.push(yellow(boundary));
+      // A two-way turn lane is bounded on each side by a solid yellow line
+      // toward the through lane and a broken yellow one toward the turn lane:
+      // traffic may cross into it to turn but never travel along it.
+      if (style.centre !== 'none') {
+        const inward = piece.kind === 'centreTurn' ? -1 : 1;
+        solid.push(yellow(boundary));
+        dashed.push(yellow(boundary + inward * TURN_LANE_INNER_OFFSET_M));
+      }
     } else if (opposing) {
       // Rails down both centre lanes mark them already; paint nothing under them.
       if (piece.tram && next.tram) continue;
@@ -191,7 +204,27 @@ export function markingPlan(profile: RoadProfile): MarkingPlan {
       }
       return inner ?? side * (half - EDGE_LINE_MARGIN_M);
     };
-    solid.push(white(shoulderInside(-1)), white(shoulderInside(1)));
+    // The left edge of a one-way carriageway is YELLOW — a divided road, a
+    // one-way street or a ramp, where the left edge faces the median or the
+    // opposing carriageway rather than the roadside. Everywhere else both
+    // edges are white.
+    const leftIsYellow =
+      profile.class === 'oneWay' || profile.class === 'divided' || profile.class === 'ramp';
+    solid.push(
+      leftIsYellow ? yellow(shoulderInside(-1)) : white(shoulderInside(-1)),
+      white(shoulderInside(1)),
+    );
+  }
+
+  // The turn lane's extent across the carriageway, for the arrows painted in it.
+  let turnLane: { from: number; to: number } | null = null;
+  {
+    let edge = -half;
+    for (const piece of pieces) {
+      const from = edge;
+      edge += piece.width;
+      if (piece.kind === 'centreTurn') turnLane = { from, to: edge };
+    }
   }
 
   const hasMedian = pieces.some((p) => p.kind === 'median');
@@ -208,6 +241,7 @@ export function markingPlan(profile: RoadProfile): MarkingPlan {
     solid: solid.sort((a, b) => a.at - b.at),
     dashed: dashed.sort((a, b) => a.at - b.at),
     bands,
+    turnLane,
     hasMedian,
     barrier: profile.class === 'highway',
   };

@@ -138,12 +138,14 @@ describe('markingPlan for composed profiles', () => {
         { kind: 'travel', width: 3.5, flow: 'fwd' },
       ],
     });
-    // Traffic may enter the turn lane but never travel along it, so both its
-    // boundaries are solid yellow — the lane faces opposing traffic on each
-    // side. The white edge lines sit outside them.
+    // Each side of a turn lane carries a solid yellow line toward the through
+    // lane and a broken yellow one toward the turn lane: traffic may cross
+    // into it to turn but never travel along it. The white edge lines sit
+    // outside them.
     close(p.solid, [-4.75, -1.75, 1.75, 4.75]);
     expect(p.solid.filter((l) => l.color === 'yellow').map((l) => l.at)).toEqual([-1.75, 1.75]);
-    expect(p.dashed).toEqual([]);
+    close(p.dashed, [-1.45, 1.45]);
+    expect(p.dashed.every((l) => l.color === 'yellow')).toBe(true);
     expect(centrePair(p)).toBeNull();
   });
 

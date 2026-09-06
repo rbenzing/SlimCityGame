@@ -2104,6 +2104,14 @@ else is derived:
   shoulder to pull over on, are therefore two-tile corridors — wave 6 — and
   until then the preview says the road is too wide rather than laying one that
   overhangs its neighbours.
+- **Turn lanes are marked and arrowed (profile).** A two-way left-turn lane
+  carries, on each side, a solid line toward the through lane and a broken one
+  toward the turn lane: traffic may cross into it to turn but never travel
+  along it. Both are yellow, since the lane faces opposing traffic on each
+  side. White turn arrows are painted in it, one pointing each way, on the
+  same periodic tiles as a one-way street's direction arrows. The lane counts
+  toward the road's width and toward its class lane range, and carries no
+  through capacity of its own, which is what a turn lane is.
 - **Markings are painted the way a driver reads them (profile).** Yellow
   separates traffic going OPPOSITE ways: the dashed centre of a two-lane, the
   double solid of a multi-lane undivided road, and both edges of a two-way

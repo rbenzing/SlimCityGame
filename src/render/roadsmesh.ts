@@ -635,6 +635,66 @@ const ARROW_HALF_LENGTH_M = 3;
 const ARROW_HEAD_LENGTH_M = 1.2;
 const ARROW_STEM_HALF_WIDTH_M = 0.15;
 const ARROW_HEAD_HALF_WIDTH_M = 0.6;
+/** Half the length of a turn-lane arrow along the lane. */
+const TURN_ARROW_HALF_LENGTH_M = 2.4;
+/** How far the turn arrow's hook reaches across the lane before its head. */
+const TURN_ARROW_HOOK_M = 1.4;
+
+/**
+ * Emits one two-way left-turn arrow inside a turn lane: a stem along the
+ * travel axis, a hook bending across toward the side the driver turns, and a
+ * head at the end of the hook. A turn lane carries one pointing each way,
+ * because traffic enters it from both directions to turn across.
+ *
+ * `ahead` is +1 when the arrow points toward the high coordinate on the travel
+ * axis, and `across` is +1 when the turn is toward the high coordinate on the
+ * other axis — a driver heading one way turns across the opposing traffic, so
+ * the two are the opposite of each other on the two arrows.
+ */
+function emitTurnArrow(
+  positions: number[],
+  colors: number[],
+  vertical: boolean,
+  centerX: number,
+  centerZ: number,
+  laneCentre: number,
+  ahead: 1 | -1,
+  across: 1 | -1,
+  hAt: (x: number, z: number) => number,
+): void {
+  const stemHalf = ARROW_STEM_HALF_WIDTH_M;
+  const stemFrom = -TURN_ARROW_HALF_LENGTH_M;
+  const stemTo = TURN_ARROW_HALF_LENGTH_M - TURN_ARROW_HOOK_M;
+  const hookTo = TURN_ARROW_HOOK_M;
+  const rect = (alongLo: number, alongHi: number, acrossLo: number, acrossHi: number): void => {
+    const a0 = ahead * alongLo;
+    const a1 = ahead * alongHi;
+    const c0 = laneCentre + across * acrossLo;
+    const c1 = laneCentre + across * acrossHi;
+    pushLocalRect(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      vertical ? Math.min(c0, c1) : Math.min(a0, a1),
+      vertical ? Math.max(c0, c1) : Math.max(a0, a1),
+      vertical ? Math.min(a0, a1) : Math.min(c0, c1),
+      vertical ? Math.max(a0, a1) : Math.max(c0, c1),
+      MARK_Y_OFFSET,
+      MARKING_COLOR,
+      hAt,
+    );
+  };
+  // Stem along the lane, then the hook bending across, then the head.
+  rect(stemFrom, stemTo, -stemHalf, stemHalf);
+  rect(stemTo - stemHalf, stemTo + stemHalf, -stemHalf, hookTo - ARROW_HEAD_LENGTH_M);
+  rect(
+    stemTo - ARROW_HEAD_HALF_WIDTH_M,
+    stemTo + ARROW_HEAD_HALF_WIDTH_M,
+    hookTo - ARROW_HEAD_LENGTH_M,
+    hookTo,
+  );
+}
 
 /**
  * Emits one direction arrow (stem + two head-wing quads) centered on the
@@ -1154,8 +1214,11 @@ const CROSSWALK_BAR_WIDTH_M = 0.45;
 const CROSSWALK_BAR_GAP_M = 0.6;
 /** Along-travel-axis stop-line thickness (~0.4m). */
 const STOP_LINE_THICKNESS_M = 0.4;
-/** Along-travel-axis gap between the crosswalk's far edge and the stop line (~1m before the junction box). */
-const STOP_LINE_GAP_M = 1.0;
+/**
+ * Gap between the crossing's far edge and the stop bar. The US rule is that a
+ * stop line stands at least 4 ft in advance of the nearest crosswalk line.
+ */
+const STOP_LINE_GAP_M = 1.2;
 /** How far inside the tile edge the crosswalk's outer bar starts. */
 const CROSSWALK_EDGE_SETBACK_M = 0.4;
 
@@ -2809,6 +2872,19 @@ export function roadTileVertices(
             xHi,
             hAt,
           );
+      }
+
+      // Two-way left-turn arrows: a pair pointing opposite ways down the turn
+      // lane, on the same periodic tiles as the one-way arrows, so the lane
+      // reads as one traffic enters from both directions to turn across.
+      if (plan.turnLane) {
+        const laneCentre = (plan.turnLane.from + plan.turnLane.to) / 2;
+        const paint = (vertical: boolean): void => {
+          emitTurnArrow(positions, colors, vertical, centerX, centerZ, laneCentre, 1, -1, hAt);
+          emitTurnArrow(positions, colors, vertical, centerX, centerZ, laneCentre, -1, 1, hAt);
+        };
+        if (hasVertical && isArrowTile(z)) paint(true);
+        if (hasHorizontal && isArrowTile(x)) paint(false);
       }
 
       // One-Way direction arrows: every ARROW_PERIOD_TILES-th tile by GLOBAL

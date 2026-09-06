@@ -1675,8 +1675,10 @@ describe('roadTileVertices — One-Way (tier 6, UI-SPEC §6.7 Roads v3)', () => 
     // z=1 is not a multiple of ARROW_PERIOD_TILES (3), so no arrow interferes.
     expect(isArrowTile(1)).toBe(false);
     const { colors } = roadTileVertices(0, 1, RoadTier.OneWay, N | S, flatHeightAt);
-    // Its lane line plus the two white edge lines every paved road carries.
-    expect(countWhere(colors, isMarkingWhite)).toBe(dashCountForZ(1) * 6 + 2 * 6);
+    // Its lane line plus the RIGHT edge line; a one-way street's left edge is
+    // yellow, since it faces the opposing carriageway rather than the roadside.
+    expect(countWhere(colors, isMarkingWhite)).toBe(dashCountForZ(1) * 6 + 1 * 6);
+    expect(countWhere(colors, isMarkingYellow)).toBe(1 * 6);
   });
 
   it('is still a "paved tier" — a T-junction gets stop-line + crosswalk arm markings', () => {
@@ -1703,7 +1705,7 @@ describe('roadTileVertices — One-Way (tier 6, UI-SPEC §6.7 Roads v3)', () => 
         const { colors } = roadTileVertices(0, z, RoadTier.OneWay, N | S, flatHeightAt);
         const expectedDash = dashCountForZ(z) * 6;
         const expectedArrow = isArrowTile(z) ? 3 * 6 : 0;
-        expect(countWhere(colors, isMarkingWhite)).toBe(expectedDash + expectedArrow + 2 * 6);
+        expect(countWhere(colors, isMarkingWhite)).toBe(expectedDash + expectedArrow + 1 * 6);
       }
     });
 
@@ -1712,7 +1714,7 @@ describe('roadTileVertices — One-Way (tier 6, UI-SPEC §6.7 Roads v3)', () => 
         const { colors } = roadTileVertices(x, 0, RoadTier.OneWay, E | W, flatHeightAt);
         const expectedDash = dashCountForX(x) * 6;
         const expectedArrow = isArrowTile(x) ? 3 * 6 : 0;
-        expect(countWhere(colors, isMarkingWhite)).toBe(expectedDash + expectedArrow + 2 * 6);
+        expect(countWhere(colors, isMarkingWhite)).toBe(expectedDash + expectedArrow + 1 * 6);
       }
     });
 
