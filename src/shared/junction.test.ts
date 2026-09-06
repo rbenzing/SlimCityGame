@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ALL_WAY_MAJOR_VC,
   ALL_WAY_MINOR_VC,
+  SIGNAL_AMBER_S,
   SIGNAL_CYCLE_S,
   SIGNAL_CYCLE_WITH_LEFT_S,
   SIGNAL_MINOR_VC,
@@ -11,6 +12,7 @@ import {
   controlDelaySeconds,
   controlName,
   restrictiveness,
+  signalAspect,
   stricterOf,
   warrantedControl,
 } from './junction';
@@ -78,7 +80,12 @@ describe('warrantedControl steps up when the traffic warrants it', () => {
     const busy = YIELD_COMBINED_VC / 4 + 0.001;
     expect(warrantedControl(legs('local'))).toBe('none');
     expect(
-      warrantedControl([arm('local', busy), arm('local', busy), arm('local', busy), arm('local', busy)]),
+      warrantedControl([
+        arm('local', busy),
+        arm('local', busy),
+        arm('local', busy),
+        arm('local', busy),
+      ]),
     ).toBe('yield');
   });
 
@@ -119,9 +126,9 @@ describe('warrantedControl steps up when the traffic warrants it', () => {
   });
 
   it('never steps a motorway junction up, however busy it gets', () => {
-    expect(warrantedControl([arm('highway', 0.9, 4), arm('urban', 0.9, 2), arm('urban', 0.9, 2)])).toBe(
-      'none',
-    );
+    expect(
+      warrantedControl([arm('highway', 0.9, 4), arm('urban', 0.9, 2), arm('urban', 0.9, 2)]),
+    ).toBe('none');
   });
 });
 
@@ -209,8 +216,12 @@ describe('controlDelaySeconds costs what the manual costs', () => {
     expect(half).toBeCloseTo(4 + 10 * 0.125, 6);
     expect(full).toBeCloseTo(14, 6);
     // At half capacity it beats a four-way stop; at capacity it does not.
-    expect(half).toBeLessThan(controlDelaySeconds('allWayStop', true, { vc: 0.5, greenShare: 0.5 }));
-    expect(full).toBeGreaterThan(controlDelaySeconds('allWayStop', true, { vc: 0, greenShare: 0.5 }));
+    expect(half).toBeLessThan(
+      controlDelaySeconds('allWayStop', true, { vc: 0.5, greenShare: 0.5 }),
+    );
+    expect(full).toBeGreaterThan(
+      controlDelaySeconds('allWayStop', true, { vc: 0, greenShare: 0.5 }),
+    );
   });
 
   it("a signal is Webster's uniform delay on the arm's own green", () => {
@@ -249,5 +260,38 @@ describe('controlDelaySeconds costs what the manual costs', () => {
       expect(Number.isFinite(d), c).toBe(true);
       expect(d, c).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('signalAspect cycles the two phases the delay formula assumes', () => {
+  it('gives the north-south movement the first half of the cycle', () => {
+    expect(signalAspect(true, 0)).toBe('green');
+    expect(signalAspect(false, 0)).toBe('red');
+    expect(signalAspect(true, SIGNAL_CYCLE_S / 2)).toBe('red');
+    expect(signalAspect(false, SIGNAL_CYCLE_S / 2)).toBe('green');
+  });
+
+  it('ends each green with an amber, and never shows two greens at once', () => {
+    const half = SIGNAL_CYCLE_S / 2;
+    expect(signalAspect(true, half - SIGNAL_AMBER_S)).toBe('amber');
+    expect(signalAspect(true, half - SIGNAL_AMBER_S - 0.1)).toBe('green');
+    expect(signalAspect(false, SIGNAL_CYCLE_S - 1)).toBe('amber');
+    for (let t = 0; t < SIGNAL_CYCLE_S; t += 0.5) {
+      const both = signalAspect(true, t) !== 'red' && signalAspect(false, t) !== 'red';
+      expect(both, `t=${t}`).toBe(false);
+    }
+  });
+
+  it('repeats, and reads a negative or huge clock the same as any other', () => {
+    for (const t of [7, 7.5, 31]) {
+      expect(signalAspect(true, t + SIGNAL_CYCLE_S * 3)).toBe(signalAspect(true, t));
+      expect(signalAspect(true, t - SIGNAL_CYCLE_S * 3)).toBe(signalAspect(true, t));
+    }
+  });
+
+  it('stretches to a longer cycle rather than running the same clock faster', () => {
+    // A three-phase junction holds its green longer, not more often.
+    expect(signalAspect(true, 40, SIGNAL_CYCLE_WITH_LEFT_S)).toBe('green');
+    expect(signalAspect(true, 40)).toBe('red'); // past halfway on the 60 s cycle
   });
 });

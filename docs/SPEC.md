@@ -2445,6 +2445,15 @@ scaled by one constant into the units the sim already uses.
    junction itself. Only a junction of three arms or more takes one: a dead
    end, a bend and a tile mid-run have nobody to give way to, and the command
    refuses them.
+   A signalised junction then PULSES. The three lenses on a head are dark glass
+   baked into it; the one that is lit is a separate instanced disc laid over
+   its lens, so the thing that changes every few seconds is the only thing
+   redrawn. The cycle is the two-phase one the delay formula already assumes —
+   the north-south movement for the first half, the east-west for the second,
+   each ending in a three-second amber — and it runs on the clock the TRAFFIC
+   runs on, so a paused city holds its lights and a fast-forwarded one cycles
+   them as fast as it moves the cars past them. Every signal in the city shares
+   the clock, which is what a coordinated arterial does anyway.
 4. **Approach lanes and tapers** — movement sets, turn pockets, arrows, turn
    restrictions, lane-drop tapers with merge arrows and gore chevrons, taper
    edges in the sim.

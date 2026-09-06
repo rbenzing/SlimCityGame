@@ -155,9 +155,29 @@ for (const c of CASES) {
   }
 }
 
+// The signal heads cycle. Opposing arms share an aspect, the greens alternate,
+// and a paused city holds its lights — the pulse of a signal node, on the same
+// clock the cars are on.
+await call(() => window.__slimcity.setSpeed(4));
+const aspectRuns = [];
+for (let i = 0; i < 8; i++) {
+  await page.waitForTimeout(2500);
+  aspectRuns.push(await call(() => window.__slimcity.readSignalAspects()));
+}
+const distinct = new Set(aspectRuns.map((a) => JSON.stringify(a)));
+console.log('signal aspects seen:', [...distinct].join(' '));
+if (aspectRuns[0].length === 0) failures.push('no signal heads to cycle');
+if (distinct.size < 2) failures.push('the signal heads never changed aspect');
+if (aspectRuns.some((a) => a.filter((x) => x === 'green').length > a.length / 2))
+  failures.push('more than one phase was green at once');
+await call(() => window.__slimcity.setSpeed(0));
+const held = JSON.stringify(await call(() => window.__slimcity.readSignalAspects()));
+await page.waitForTimeout(2500);
+if (JSON.stringify(await call(() => window.__slimcity.readSignalAspects())) !== held)
+  failures.push('the lights kept cycling while the city was paused');
+
 if (pageErrors.length > 0) failures.push(`page errors: ${pageErrors.join(' | ')}`);
 
-await call(() => window.__slimcity.setSpeed(0));
 await call(() => window.__slimcity.setDayT(0.5));
 const shot = async (name, tx, tz, d, yaw, pitch) => {
   await cam(tx, tz, d, yaw, pitch);

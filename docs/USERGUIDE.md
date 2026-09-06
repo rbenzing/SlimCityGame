@@ -127,7 +127,11 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   signalised, a stop board on every arm of a four-way stop, a stop or give-way
   on the arms that give way with nothing facing the road that runs through, and
   nothing at all where the junction is uncontrolled. Two quiet streets crossing
-  are unsigned, which is how they are in life. Highways are signed as highways:
+  are unsigned, which is how they are in life. **The signals run.** One
+  direction gets the green, ambers, and hands it to the other, on a real
+  sixty-second cycle — so at 1× you can sit and watch a junction change, and at
+  4× it changes four times as fast. Pause the city and the lights hold where
+  they are. Highways are signed as highways:
   cantilevered exit boards where a road leaves, and overhead gantries along the
   run. While you drag a one-way or a highway, translucent arrows show which way
   traffic will run, so you can catch a road laid backwards before you build it.

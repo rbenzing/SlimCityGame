@@ -157,7 +157,11 @@ function volumeWarrant(approaches: readonly JunctionApproach[]): JunctionControl
   if (majorVc >= ALL_WAY_MAJOR_VC && minorVc >= ALL_WAY_MINOR_VC) {
     control = stricterOf(control, 'allWayStop');
   }
-  if (majorVc >= ALL_WAY_MAJOR_VC && minorVc >= SIGNAL_MINOR_VC && majorLanes >= SIGNAL_MAJOR_LANES) {
+  if (
+    majorVc >= ALL_WAY_MAJOR_VC &&
+    minorVc >= SIGNAL_MINOR_VC &&
+    majorLanes >= SIGNAL_MAJOR_LANES
+  ) {
     control = stricterOf(control, 'signal');
   }
   return control;
@@ -213,6 +217,31 @@ export function armGivesWay(armRank: number, armRanks: readonly number[]): boole
 /** A two-phase signal cycle; a third phase for a dedicated left makes it 90. */
 export const SIGNAL_CYCLE_S = 60;
 export const SIGNAL_CYCLE_WITH_LEFT_S = 90;
+/** How long the amber that ends each green runs for. */
+export const SIGNAL_AMBER_S = 3;
+
+/** What a signal head is showing. */
+export type SignalAspect = 'red' | 'amber' | 'green';
+
+/**
+ * The aspect an approach shows at `seconds` into the cycle. Two phases: the
+ * north-south movement runs for the first half and the east-west for the
+ * second, each ending in amber — the two-phase junction the delay formula
+ * already assumes, made visible. Every signalised junction in the city runs
+ * the same clock, which is what a coordinated arterial does anyway.
+ */
+export function signalAspect(
+  runsNorthSouth: boolean,
+  seconds: number,
+  cycleSeconds: number = SIGNAL_CYCLE_S,
+): SignalAspect {
+  const half = cycleSeconds / 2;
+  const t = ((seconds % cycleSeconds) + cycleSeconds) % cycleSeconds;
+  const mine = runsNorthSouth ? t < half : t >= half;
+  if (!mine) return 'red';
+  const into = runsNorthSouth ? t : t - half;
+  return into >= half - SIGNAL_AMBER_S ? 'amber' : 'green';
+}
 
 export interface DelayInputs {
   /** Volume over capacity on the arm the driver arrives on. */

@@ -10,6 +10,7 @@ import {
   MAP_SIZE,
   ROAD_ELEVATION_STEP_M,
   SNAPSHOT_HZ,
+  SPEED_MULTIPLIERS,
   TILE_METERS,
   VISUAL_DAY_TICKS,
   inBounds,
@@ -546,6 +547,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           .map((t) => ({ x: t.x, z: t.z, control: t.control! })),
       readSigns: (): { x: number; z: number; type: string }[] =>
         computeSignPlacements(latestRoadTiles).map((s) => ({ x: s.x, z: s.z, type: s.type })),
+      // What each signal head is showing. A lit lens is a few pixels across in
+      // a screenshot, so a check that the cycle really runs reads it here.
+      readSignalAspects: (): string[] => roadFurniture.signalAspects(),
       // What the transit renderer actually built. A transit vehicle and a
       // traffic-spawned one look alike in a screenshot, so a shot cannot tell
       // whether a line's own vehicles are on the road; this can.
@@ -1417,6 +1421,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
 
   // --- frame loop -------------------------------------------------------------------------
   let visualSeconds = 0; // elapsed visual time for the outline pulse / pin bob
+  let signalSeconds = 0; // elapsed TRAFFIC time, which is what the signal cycle runs on
   handle.start((dtMs) => {
     rig.update(dtMs);
     // Shadow sweep: keep the limited-span sun shadow frustum centred on the
@@ -1431,6 +1436,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     vehicles.update(vehicleAlpha);
     serviceVehicles.update(vehicleAlpha); // same interpolation alpha as VehicleRenderer
     transitRenderer.update(dtMs / 1000); // buses run on real elapsed seconds
+
+    // Signals run on the clock the TRAFFIC runs on, not the frame clock: a
+    // paused city holds its lights, and a fast-forwarded one cycles them as
+    // fast as it moves the cars past them.
+    signalSeconds += (dtMs / 1000) * SPEED_MULTIPLIERS[store.getState().speed];
+    roadFurniture.setSignalPhase(signalSeconds);
 
     visualSeconds += dtMs / 1000;
     selectionOutline.update(visualSeconds);

@@ -11,6 +11,7 @@ import {
 import { RoadTier } from '../shared/types';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 import { carriagewayHalfWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
+import { SIGNAL_CYCLE_S } from '../shared/junction';
 
 const flatHeightAt = (): number => 0;
 
@@ -64,6 +65,26 @@ function representativeGrid(): FurnitureRoadTile[] {
   for (const z of [0, 4, 8]) tiles.push(...strip(z, 0, 19, 'ew', RoadTier.TwoLane));
   return tiles;
 }
+
+/**
+ * A plus with arms of length two — the distance-1 tiles are the approaches —
+ * under whatever control the sim has put on the middle of it.
+ */
+const controlledPlus = (
+  control: JunctionControl | undefined,
+  tier: RoadTier = RoadTier.TwoLane,
+  armTier: RoadTier = tier,
+): FurnitureRoadTile[] => [
+  { x: 0, z: 0, tier, control },
+  { x: 1, z: 0, tier },
+  { x: 2, z: 0, tier },
+  { x: -1, z: 0, tier },
+  { x: -2, z: 0, tier },
+  { x: 0, z: 1, tier: armTier },
+  { x: 0, z: 2, tier: armTier },
+  { x: 0, z: -1, tier: armTier },
+  { x: 0, z: -2, tier: armTier },
+];
 
 const PAVED_TIERS = [
   RoadTier.TwoLane,
@@ -150,26 +171,6 @@ describe('road-furniture placement (pure)', () => {
     expect(signs.some((s) => s.x === 6)).toBe(false); // middle run earns nothing
   });
 
-  /**
-   * A plus with arms of length two — the distance-1 tiles are the approaches —
-   * under whatever control the sim has put on the middle of it.
-   */
-  const controlledPlus = (
-    control: JunctionControl | undefined,
-    tier: RoadTier = RoadTier.TwoLane,
-    armTier: RoadTier = tier,
-  ): FurnitureRoadTile[] => [
-    { x: 0, z: 0, tier, control },
-    { x: 1, z: 0, tier },
-    { x: 2, z: 0, tier },
-    { x: -1, z: 0, tier },
-    { x: -2, z: 0, tier },
-    { x: 0, z: 1, tier: armTier },
-    { x: 0, z: 2, tier: armTier },
-    { x: 0, z: -1, tier: armTier },
-    { x: 0, z: -2, tier: armTier },
-  ];
-
   const APPROACHES = [
     [1, 0],
     [-1, 0],
@@ -177,7 +178,8 @@ describe('road-furniture placement (pure)', () => {
     [0, -1],
   ] as const;
 
-  const signAt = (signs: readonly { x: number; z: number; type: string }[]) =>
+  const signAt =
+    (signs: readonly { x: number; z: number; type: string }[]) =>
     (x: number, z: number): string | undefined =>
       signs.find((s) => s.x === x && s.z === z)?.type;
 
@@ -387,8 +389,7 @@ describe('road-furniture placement (pure)', () => {
 
   describe('up on a bridge deck', () => {
     /** The same run, once on the ground and once carried on a deck. */
-    const grounded = (tier = RoadTier.TwoLane): FurnitureRoadTile[] =>
-      strip(0, 0, 39, 'ew', tier);
+    const grounded = (tier = RoadTier.TwoLane): FurnitureRoadTile[] => strip(0, 0, 39, 'ew', tier);
     const onDeck = (tier = RoadTier.TwoLane): FurnitureRoadTile[] =>
       grounded(tier).map((t) => ({ ...t, elevated: true }));
 
@@ -517,6 +518,50 @@ describe('RoadFurnitureRenderer', () => {
     const counts = renderer.furnitureCounts();
     const total = counts.manholes + counts.boxes + counts.meters + counts.signs;
     expect(meshes.reduce((sum, m) => sum + m.count, 0)).toBe(total);
+  });
+
+  it('lights one lens per signal head, and cycles which one', () => {
+    const scene = new THREE.Scene();
+    const renderer = new RoadFurnitureRenderer(scene, flatHeightAt);
+    // A signalised crossroads: an east-west bar with a north-south stem,
+    // controlled by signals, so all four approaches carry a head.
+    renderer.rebuild(controlledPlus('signal', RoadTier.Avenue));
+
+    const lamps = scene.children.find(
+      (c): c is THREE.InstancedMesh =>
+        c instanceof THREE.InstancedMesh && c.userData.furnitureKind === 'signalLamp',
+    );
+    expect(lamps).toBeDefined();
+    expect(lamps!.count).toBe(4);
+
+    // At the top of the cycle the north-south pair runs and the east-west pair
+    // waits; half a cycle later they have swapped. Nobody ever sees two greens.
+    renderer.setSignalPhase(0);
+    const start = renderer.signalAspects();
+    expect(start.filter((a) => a === 'green')).toHaveLength(2);
+    expect(start.filter((a) => a === 'red')).toHaveLength(2);
+
+    renderer.setSignalPhase(SIGNAL_CYCLE_S / 2);
+    const halfway = renderer.signalAspects();
+    expect(halfway).not.toEqual(start);
+    expect(halfway.filter((a) => a === 'green')).toHaveLength(2);
+    for (let i = 0; i < start.length; i++) {
+      expect(halfway[i]).not.toBe(start[i]);
+    }
+
+    // A full cycle round is where it started.
+    renderer.setSignalPhase(SIGNAL_CYCLE_S);
+    expect(renderer.signalAspects()).toEqual(start);
+  });
+
+  it('has no lamp layer at all where no junction is signalised', () => {
+    const scene = new THREE.Scene();
+    const renderer = new RoadFurnitureRenderer(scene, flatHeightAt);
+    renderer.rebuild(representativeGrid());
+    expect(
+      scene.children.some((c) => (c as THREE.Object3D).userData.furnitureKind === 'signalLamp'),
+    ).toBe(false);
+    expect(renderer.signalAspects()).toEqual([]);
   });
 
   it('manholes receive but do not cast shadows; boxes cast shadows', () => {

@@ -14,7 +14,8 @@ import { RoadTier, TilePoint } from '../shared/types';
 import { TILE_METERS, tileToWorld } from '../shared/constants';
 import { carriagewayHalfWidthMeters, curbWidthMeters } from './roadsmesh';
 import { carriagewayHalfWidthOf, kerbWidthOf, rankForTier } from '../shared/roadprofile';
-import { armGivesWay } from '../shared/junction';
+import { armGivesWay, signalAspect } from '../shared/junction';
+import type { SignalAspect } from '../shared/junction';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 
 // --- Manhole -----------------------------------------------------------------
@@ -71,6 +72,8 @@ const SIGNAL_HOUSING_COLOR = 0x2f3338;
 const SIGNAL_RED = 0xd6402f;
 const SIGNAL_AMBER = 0xe8a33a;
 const SIGNAL_GREEN = 0x46b360;
+/** Red, amber and green UNLIT: dark glass, so a head reads as a signal with nothing burning. */
+const SIGNAL_LENS_DARK = [0x4a2620, 0x4d3a1f, 0x1f4a2c] as const;
 
 // --- Motorway signage --------------------------------------------------------
 const HIGHWAY_GREEN = 0x1d6b45; // the standard motorway board green
@@ -201,15 +204,7 @@ export interface MeterPlacement {
 
 /** The standard sign a road tile's role earns; see {@link classifySign}. */
 export type SignType =
-  | 'stop'
-  | 'giveway'
-  | 'bend'
-  | 'oneway'
-  | 'speed'
-  | 'nothrough'
-  | 'signal'
-  | 'exit'
-  | 'gantry';
+  'stop' | 'giveway' | 'bend' | 'oneway' | 'speed' | 'nothrough' | 'signal' | 'exit' | 'gantry';
 
 export interface SignPlacement {
   x: number;
@@ -1017,17 +1012,60 @@ function buildTrafficSignal(): THREE.BufferGeometry {
   ];
 
   // Red on top, amber, green — stacked down the face, standing just proud of
-  // the housing so they are not z-fighting with it.
+  // the housing so they are not z-fighting with it. These are the UNLIT
+  // lenses: dark glass of each colour, so a head reads as a signal from any
+  // angle. Exactly one of them is lit at a time, and the lit one is a separate
+  // instanced disc laid over it (see SignalLampRenderer) because which one it
+  // is changes every few seconds and the head geometry never does.
   const lensZ = SIGNAL_HEAD_DEPTH / 2 + 0.01;
-  const lensColors = [SIGNAL_RED, SIGNAL_AMBER, SIGNAL_GREEN];
-  for (let i = 0; i < lensColors.length; i++) {
+  for (let i = 0; i < SIGNAL_LENS_DARK.length; i++) {
     const lens = new THREE.CylinderGeometry(SIGNAL_LENS_RADIUS, SIGNAL_LENS_RADIUS, 0.02, 10);
     lens.rotateX(Math.PI / 2); // face ±z, like the sign boards
     lens.translate(headX, headY + SIGNAL_LENS_SPACING * (1 - i), lensZ);
-    parts.push({ geometry: lens, color: lensColors[i]! });
+    parts.push({ geometry: lens, color: SIGNAL_LENS_DARK[i]! });
   }
 
   return mergeColoredGeometries(parts);
+}
+
+/**
+ * Where a lit lens sits relative to the signal's own origin — the same stack
+ * `buildTrafficSignal` lays out, so the lamp lands exactly on its dark lens.
+ */
+export function signalLensOffset(aspect: SignalAspect): { x: number; y: number; z: number } {
+  const row = aspect === 'red' ? 0 : aspect === 'amber' ? 1 : 2;
+  return {
+    x: SIGNAL_ARM_LENGTH,
+    y:
+      SIGNAL_MAST_HEIGHT -
+      SIGNAL_ARM_THICKNESS -
+      SIGNAL_HEAD_HEIGHT / 2 +
+      SIGNAL_LENS_SPACING * (1 - row),
+    z: SIGNAL_HEAD_DEPTH / 2 + 0.02, // just proud of the dark lens it covers
+  };
+}
+
+/** The colour a lit lens burns, by aspect. */
+export function signalLampColor(aspect: SignalAspect): number {
+  return aspect === 'red' ? SIGNAL_RED : aspect === 'amber' ? SIGNAL_AMBER : SIGNAL_GREEN;
+}
+
+/** The lit lens itself: a disc a shade larger than the dark one it covers. */
+function buildSignalLampGeometry(): THREE.BufferGeometry {
+  const lens = new THREE.CircleGeometry(SIGNAL_LENS_RADIUS * 1.05, 12);
+  const count = lens.getAttribute('position').count;
+  // Coloured per instance, but the material reads vertex colours like every
+  // other furniture layer, so the attribute has to be there to be multiplied.
+  lens.setAttribute('color', new THREE.Float32BufferAttribute(new Array(count * 3).fill(1), 3));
+  return lens;
+}
+
+/**
+ * Which way the road an approach faces runs. The curb offset is across the
+ * road, so a curb along x means the carriageway runs north-south.
+ */
+function runsNorthSouth(sign: SignPlacement): boolean {
+  return sign.axis === 'x';
 }
 
 /** A lattice truss between two points along local X: two chords and diagonals. */
@@ -1073,12 +1111,7 @@ function trussSection(
 function buildExitSign(): THREE.BufferGeometry {
   const parts: { geometry: THREE.BufferGeometry; color: number }[] = [];
 
-  const post = new THREE.CylinderGeometry(
-    EXIT_POST_RADIUS,
-    EXIT_POST_RADIUS,
-    EXIT_POST_HEIGHT,
-    12,
-  );
+  const post = new THREE.CylinderGeometry(EXIT_POST_RADIUS, EXIT_POST_RADIUS, EXIT_POST_HEIGHT, 12);
   post.translate(0, EXIT_POST_HEIGHT / 2, 0);
   parts.push({ geometry: post, color: GANTRY_STEEL });
 
@@ -1098,11 +1131,7 @@ function buildExitSign(): THREE.BufferGeometry {
     [0.2, 0.66],
     [-0.16, 0.5],
   ] as const) {
-    const legend = new THREE.BoxGeometry(
-      EXIT_BOARD_WIDTH * width,
-      EXIT_BOARD_HEIGHT * 0.14,
-      0.02,
-    );
+    const legend = new THREE.BoxGeometry(EXIT_BOARD_WIDTH * width, EXIT_BOARD_HEIGHT * 0.14, 0.02);
     legend.translate(panelX - EXIT_BOARD_WIDTH * 0.08, panelY + EXIT_BOARD_HEIGHT * row, 0.05);
     parts.push({ geometry: legend, color: SIGN_WHITE });
   }
@@ -1234,6 +1263,8 @@ const _quat = new THREE.Quaternion();
 const _identityQuat = new THREE.Quaternion();
 const _scale = new THREE.Vector3(1, 1, 1);
 const _yAxis = new THREE.Vector3(0, 1, 0);
+const _lampBase = new THREE.Vector3();
+const _lampColor = new THREE.Color();
 
 export interface FurnitureCounts {
   manholes: number;
@@ -1263,10 +1294,25 @@ export class RoadFurnitureRenderer {
   private meterMesh: THREE.InstancedMesh | null = null;
   private signMeshes: THREE.InstancedMesh[] = [];
 
+  /**
+   * The one lit lens on each signal head. A separate instanced disc rather
+   * than part of the head, because which lens burns changes every few seconds
+   * and the head itself never does. Unlit — a MeshBasicMaterial — so a signal
+   * still reads at night, when the whole street is dimmed toward the lamp
+   * pools.
+   */
+  private readonly lampGeometry = buildSignalLampGeometry();
+  private readonly lampMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
+  private lampMesh: THREE.InstancedMesh | null = null;
+
   private manholes: ManholePlacement[] = [];
   private boxes: BoxPlacement[] = [];
   private meters: MeterPlacement[] = [];
   private signs: SignPlacement[] = [];
+  /** The signal heads, in the order their lamps are instanced. */
+  private signalHeads: SignPlacement[] = [];
+  /** Seconds into the signal cycle, as last set. */
+  private signalSeconds = 0;
 
   constructor(scene: THREE.Scene, heightAt: (x: number, z: number) => number) {
     this.scene = scene;
@@ -1346,6 +1392,72 @@ export class RoadFurnitureRenderer {
       this.signMeshes.push(mesh);
       this.scene.add(mesh);
     }
+
+    this.signalHeads = this.signs.filter((s) => s.type === 'signal');
+    if (this.signalHeads.length) {
+      const mesh = new THREE.InstancedMesh(
+        this.lampGeometry,
+        this.lampMaterial,
+        this.signalHeads.length,
+      );
+      mesh.count = this.signalHeads.length;
+      mesh.userData.furnitureKind = 'signalLamp';
+      this.lampMesh = mesh;
+      this.scene.add(mesh);
+      this.writeSignalLamps();
+    }
+  }
+
+  /**
+   * Advances the signal cycle. `seconds` is time as the TRAFFIC sees it, so a
+   * paused city holds its lights and a fast-forwarded one cycles them faster —
+   * the same clock the cars on the road are running on.
+   */
+  setSignalPhase(seconds: number): void {
+    if (seconds === this.signalSeconds) return;
+    this.signalSeconds = seconds;
+    this.writeSignalLamps();
+  }
+
+  /** The aspect each head is showing right now, in instance order. */
+  signalAspects(): SignalAspect[] {
+    return this.signalHeads.map((s) => signalAspect(runsNorthSouth(s), this.signalSeconds));
+  }
+
+  private writeSignalLamps(): void {
+    const mesh = this.lampMesh;
+    if (!mesh) return;
+    for (let i = 0; i < this.signalHeads.length; i++) {
+      const sign = this.signalHeads[i]!;
+      const aspect = signalAspect(runsNorthSouth(sign), this.signalSeconds);
+      this.writeSignalLamp(mesh, i, sign, aspect);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }
+
+  private writeSignalLamp(
+    mesh: THREE.InstancedMesh,
+    slot: number,
+    p: SignPlacement,
+    aspect: SignalAspect,
+  ): void {
+    // The head hangs off the signal's own transform, so the lamp rides the
+    // same one and is then offset into the head in the signal's local frame.
+    const off = p.lateralOffset * p.side;
+    const wx = p.axis === 'x' ? tileToWorld(p.x) + off : tileToWorld(p.x);
+    const wz = p.axis === 'z' ? tileToWorld(p.z) + off : tileToWorld(p.z);
+    const yaw = signalYaw(p.axis, p.side);
+    _quat.setFromAxisAngle(_yAxis, yaw);
+    const local = signalLensOffset(aspect);
+    _position
+      .set(local.x, local.y, local.z)
+      .applyQuaternion(_quat)
+      .add(_lampBase.set(wx, this.heightAt(wx, wz), wz));
+    _matrix.compose(_position, _quat, _scale);
+    mesh.setMatrixAt(slot, _matrix);
+    _lampColor.setHex(signalLampColor(aspect));
+    mesh.setColorAt(slot, _lampColor);
   }
 
   /** Instance counts for each prop layer from the last rebuild(). */
@@ -1426,10 +1538,13 @@ export class RoadFurnitureRenderer {
     for (const mesh of [this.manholeMesh, this.boxMesh, this.meterMesh])
       if (mesh) this.scene.remove(mesh);
     for (const mesh of this.signMeshes) this.scene.remove(mesh);
+    if (this.lampMesh) this.scene.remove(this.lampMesh);
     this.manholeMesh = null;
     this.boxMesh = null;
     this.meterMesh = null;
     this.signMeshes = [];
+    this.lampMesh = null;
+    this.signalHeads = [];
   }
 
   /** Removes every layer from the scene and frees the shared geometries/materials. */
@@ -1443,5 +1558,7 @@ export class RoadFurnitureRenderer {
     this.boxMaterial.dispose();
     this.meterMaterial.dispose();
     this.signMaterial.dispose();
+    this.lampGeometry.dispose();
+    this.lampMaterial.dispose();
   }
 }

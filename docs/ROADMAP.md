@@ -72,7 +72,9 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > now unsigned and unpainted the way they are in life; and the warrant is a
 > default the player overrides from a junction inspector — click a junction,
 > pick a control off the ladder, and it sticks, saved with the city at version
-> 8. Next: cycling signal heads, roundabouts, then waves 4–6.
+> 8. Signalised junctions now pulse — one direction green, an amber, then the
+> other — on the same clock the traffic runs on, so a paused city holds its
+> lights. Next: roundabouts, then waves 4–6.
 > Specified in full: classes, lane-piece
 > profiles with a width budget, stored flow direction, per-junction control
 > (none/yield/stop/all-way/signal/roundabout) with warrant defaults,
