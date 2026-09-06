@@ -155,6 +155,28 @@ for (const c of CASES) {
   }
 }
 
+// A roundabout is the one control that changes the geometry: the quiet
+// crossroads becomes an island with a yield line across every entry.
+const [rx, rz] = CASES[0].at;
+await cmd('Junction control', [
+  { kind: 'setJunctionControl', x: X + rx, z: Z + rz, control: 'roundabout' },
+]);
+await page.waitForTimeout(1500);
+const roundabout = await call(() => window.__slimcity.readJunctions());
+const roundSigns = await call(() => window.__slimcity.readSigns());
+const atRoundabout = roundabout.find((j) => j.x === X + rx && j.z === Z + rz)?.control;
+if (atRoundabout !== 'roundabout') failures.push(`roundabout: control is ${atRoundabout}`);
+for (const [dx, dz] of [
+  [0, -1],
+  [0, 1],
+  [-1, 0],
+  [1, 0],
+]) {
+  const board = roundSigns.find((sg) => sg.x === X + rx + dx && sg.z === Z + rz + dz)?.type;
+  if (board !== 'giveway')
+    failures.push(`roundabout: the ${dx},${dz} entry carries ${board}, not a give-way`);
+}
+
 // The signal heads cycle. Opposing arms share an aspect, the greens alternate,
 // and a paused city holds its lights — the pulse of a signal node, on the same
 // clock the cars are on.
@@ -189,6 +211,7 @@ for (const c of CASES) {
   const [cx, cz] = c.at;
   await shot(c.name.replace(/[^a-z0-9]+/gi, '-'), X + cx, Z + cz, 70, 0.6, 0.75);
 }
+await shot('roundabout', X + rx, Z + rz, 55, 0.5, 0.95);
 await shot('all-four', X + 3, Z + 12, 260, 0.6, 1.05);
 
 console.log(failures.length === 0 ? 'PASS' : 'FAIL');

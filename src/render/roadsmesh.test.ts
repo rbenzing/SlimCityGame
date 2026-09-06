@@ -691,6 +691,63 @@ describe('roadTileVertices — intersection suppression / proper intersections (
     expect(countWhere(controlled.colors, isMarkingWhite)).toBeGreaterThan(0);
   });
 
+  it('a roundabout puts an island in the box instead of crossings', () => {
+    const round = controlledJunction(0, 0, RoadTier.TwoLane, N | E | S | W, 'roundabout');
+    const stopped = controlledJunction(0, 0, RoadTier.TwoLane, N | E | S | W, 'allWayStop');
+    // The island is planted, which nothing else on a plain street tile is.
+    expect(countWhere(round.colors, isMedianGrass)).toBeGreaterThan(0);
+    expect(countWhere(stopped.colors, isMedianGrass)).toBe(0);
+    // Still painted — the apron and a yield line across every entry — but not
+    // with a crossing, so it is not simply the junction treatment plus a disc.
+    expect(countWhere(round.colors, isMarkingWhite)).toBeGreaterThan(0);
+    expect(countWhere(round.colors, isMarkingWhite)).not.toBe(
+      countWhere(stopped.colors, isMarkingWhite),
+    );
+  });
+
+  it('yields on every entry of a roundabout, and only on the entries there are', () => {
+    const three = controlledJunction(0, 0, RoadTier.TwoLane, N | E | S, 'roundabout');
+    const four = controlledJunction(0, 0, RoadTier.TwoLane, N | E | S | W, 'roundabout');
+    // One more arm is one more row of triangles; the island is the same either way.
+    expect(countWhere(four.colors, isMarkingWhite)).toBeGreaterThan(
+      countWhere(three.colors, isMarkingWhite),
+    );
+    expect(countWhere(four.colors, isMedianGrass)).toBe(countWhere(three.colors, isMedianGrass));
+  });
+
+  it('runs no centre line through a roundabout, whatever joins it', () => {
+    // A two-lane crossed only by gravel would otherwise keep its markings
+    // across the box, the way a main road runs past a farm track.
+    const neighbors = {
+      n: RoadTier.Gravel,
+      e: RoadTier.Gravel,
+      s: RoadTier.Gravel,
+      w: RoadTier.Gravel,
+    };
+    const through = roadTileVertices(
+      0,
+      0,
+      RoadTier.TwoLane,
+      N | E | S | W,
+      flatHeightAt,
+      neighbors,
+    );
+    const round = roadTileVertices(
+      0,
+      0,
+      RoadTier.TwoLane,
+      N | E | S | W,
+      flatHeightAt,
+      neighbors,
+      undefined,
+      undefined,
+      undefined,
+      'roundabout',
+    );
+    expect(countWhere(through.colors, isMarkingYellow)).toBeGreaterThan(0);
+    expect(countWhere(round.colors, isMarkingYellow)).toBe(0);
+  });
+
   it('a give-way gets its crossing but no stop bar, which is what a give-way means', () => {
     const yielded = controlledJunction(0, 0, RoadTier.TwoLane, N | E | S | W, 'yield');
     const stopped = controlledJunction(0, 0, RoadTier.TwoLane, N | E | S | W, 'allWayStop');

@@ -116,16 +116,17 @@ describe('JunctionPanel', () => {
     );
   });
 
-  it('offers the ladder least restrictive first, and never offers a roundabout yet', () => {
+  it('offers the ladder least restrictive first, then the roundabout off the end of it', () => {
     useCityStore
       .getState()
       .setSelectedJunction({ x: 0, z: 0, control: 'none', warranted: 'none', auto: true });
     render(<JunctionPanel />);
-    const labels = ['Uncontrolled', 'Give way', 'Stop', 'All-way stop', 'Signals'];
-    for (const label of labels) {
-      expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
-    }
-    expect(screen.queryByRole('button', { name: 'Roundabout' })).not.toBeInTheDocument();
+    const labels = ['Uncontrolled', 'Give way', 'Stop', 'All-way stop', 'Signals', 'Roundabout'];
+    const rendered = screen
+      .getAllByRole('button')
+      .map((b) => b.textContent ?? '')
+      .filter((t) => labels.includes(t));
+    expect(rendered).toEqual(labels);
   });
 
   it('closes on the X', () => {

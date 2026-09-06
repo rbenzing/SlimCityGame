@@ -81,7 +81,13 @@ import * as THREE from 'three';
 import { RoadFlow, RoadTileDelta, RoadTier } from '../shared/types';
 import type { JunctionControl } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
-import { TILE_METERS, CHUNK_TILES, CHUNKS_PER_SIDE, MAP_SIZE, tileIndex } from '../shared/constants';
+import {
+  TILE_METERS,
+  CHUNK_TILES,
+  CHUNKS_PER_SIDE,
+  MAP_SIZE,
+  tileIndex,
+} from '../shared/constants';
 import {
   carriagewayHalfWidthOf,
   carriagewayWidth,
@@ -2422,6 +2428,129 @@ function emitAvenueMedian(
   );
 }
 
+// --- Mini roundabout ---------------------------------------------------------
+// One tile is 16 m, which by inscribed-circle diameter is a MINI roundabout —
+// the real range is 13 to 25 m. A mini's central island is small and ringed by
+// a paved APRON that a long vehicle tracks over rather than a kerb it would
+// ground out on, which is exactly the shape that fits a tile. A bigger
+// roundabout is a 2x2 block and waits for the corridors of wave 6.
+
+/** Radius of the raised island at the centre of a mini roundabout. */
+const ROUNDABOUT_ISLAND_RADIUS_M = 2.1;
+/** The painted apron round it, which a long vehicle may track over. */
+const ROUNDABOUT_APRON_WIDTH_M = 1;
+/** Segments round the circle — enough that a 3 m island reads as round. */
+const ROUNDABOUT_SEGMENTS = 24;
+/** How far in from the tile edge the yield line stands. */
+const ROUNDABOUT_YIELD_SETBACK_M = 0.5;
+/** A yield triangle's base. MUTCD 3B.19: 12 to 24 inches, height 1.5x the base. */
+const YIELD_TRIANGLE_BASE_M = 0.5;
+const YIELD_TRIANGLE_HEIGHT_M = 0.75;
+/** The gap between them: 3 to 12 inches. */
+const YIELD_TRIANGLE_GAP_M = 0.2;
+
+/**
+ * The central island of a mini roundabout: a planted centre inside a kerb
+ * ring, the same two materials an avenue's median is built from, surrounded by
+ * the painted apron.
+ */
+function emitRoundaboutIsland(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  hAt: (x: number, z: number) => number,
+): void {
+  const r = ROUNDABOUT_ISLAND_RADIUS_M;
+  // The apron reads as carriageway a driver may use, so it is paint, not kerb.
+  pushRing(
+    positions,
+    colors,
+    centerX,
+    centerZ,
+    0,
+    0,
+    r,
+    r + ROUNDABOUT_APRON_WIDTH_M,
+    ROUNDABOUT_SEGMENTS,
+    MARK_Y_OFFSET,
+    MARKING_COLOR,
+    hAt,
+  );
+  pushRing(
+    positions,
+    colors,
+    centerX,
+    centerZ,
+    0,
+    0,
+    r - MEDIAN_CONCRETE_EDGE_M,
+    r,
+    ROUNDABOUT_SEGMENTS,
+    MEDIAN_Y_OFFSET,
+    MEDIAN_CONCRETE_COLOR,
+    hAt,
+  );
+  const inner = r - MEDIAN_CONCRETE_EDGE_M;
+  const rim: [number, number][] = [];
+  for (let i = 0; i <= ROUNDABOUT_SEGMENTS; i++) {
+    const a = (i / ROUNDABOUT_SEGMENTS) * Math.PI * 2;
+    rim.push([inner * Math.cos(a), inner * Math.sin(a)]);
+  }
+  pushFan(
+    positions,
+    colors,
+    centerX,
+    centerZ,
+    [0, 0],
+    rim,
+    MEDIAN_Y_OFFSET,
+    MEDIAN_GRASS_COLOR,
+    hAt,
+  );
+}
+
+/**
+ * A yield line across one approach: a row of solid white triangles pointing at
+ * the driver arriving on it (MUTCD 3B.19 ¶10). `baseAt` and `apexAt` are the
+ * signed offsets along the approach axis of the row's base and its points, so
+ * the apexes face outward, toward the tile edge the traffic comes from.
+ */
+function emitYieldLine(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  vertical: boolean,
+  baseAt: number,
+  apexAt: number,
+  coreHalf: number,
+  hAt: (x: number, z: number) => number,
+): void {
+  const pitch = YIELD_TRIANGLE_BASE_M + YIELD_TRIANGLE_GAP_M;
+  const count = Math.max(1, Math.floor((2 * coreHalf) / pitch));
+  const used = count * pitch - YIELD_TRIANGLE_GAP_M;
+  // Across the carriageway, laid symmetrically about its centreline.
+  const at = (across: number, along: number): [number, number] =>
+    vertical ? [across, along] : [along, across];
+  for (let i = 0; i < count; i++) {
+    const left = -used / 2 + i * pitch;
+    const right = left + YIELD_TRIANGLE_BASE_M;
+    pushGroundTri(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      at(left, baseAt),
+      at(right, baseAt),
+      at((left + right) / 2, apexAt),
+      MARK_Y_OFFSET,
+      MARKING_COLOR,
+      hAt,
+    );
+  }
+}
+
 function emitHighwayDivider(
   positions: number[],
   colors: number[],
@@ -2560,7 +2689,9 @@ export function roadTileVertices(
       // supplies no neighbours gets the plain junction it always got.
       ([has, n]) => !has || (n !== RoadTier.None && rankForTier(n) < ownRankHere),
     );
-  const breaksMarkings = isJunction && !joinedByLesserOnly;
+  // A roundabout always breaks them: there is an island where the centre line
+  // would run, and no road runs THROUGH a roundabout.
+  const breaksMarkings = isJunction && (!joinedByLesserOnly || control === 'roundabout');
   const isTurn = connections === 2 && !isCollinearMask(mask);
 
   // A TURN tile (exactly 2 adjacent connections) is a curved quarter-annulus
@@ -2947,7 +3078,10 @@ export function roadTileVertices(
       // CONTROL that decides whether one is painted, not the shape of the
       // junction. An uncontrolled crossroads gets no paint at all; an approach
       // that only gives way gets its crossing but no bar.
-      const painted = control !== undefined && control !== 'none';
+      // A roundabout is not painted like a junction at all: no crossings on
+      // the box and no stop bars, an island in the middle and a yield line
+      // across every entry.
+      const painted = control !== undefined && control !== 'none' && control !== 'roundabout';
       const stopsFor = control === 'stop' || control === 'allWayStop' || control === 'signal';
       const arm = (vertical: boolean, at: (d: number) => number, stops: boolean): void =>
         emitJunctionArmMarkings(
@@ -2977,6 +3111,31 @@ export function roadTileVertices(
           // holds only the arms below the road that runs through.
           arm(vertical, at, stopsFor);
         }
+      }
+
+      if (control === 'roundabout') {
+        emitRoundaboutIsland(positions, colors, centerX, centerZ, hAt);
+        // Every entry yields, which is the one place a give-way may face all
+        // of them (MUTCD 2B.10 ¶06). The triangles point at the driver, so
+        // they sit toward the tile edge the approach arrives from.
+        const yieldArm = (vertical: boolean, sign: 1 | -1): void => {
+          const edge = sign * TILE_HALF;
+          emitYieldLine(
+            positions,
+            colors,
+            centerX,
+            centerZ,
+            vertical,
+            edge - sign * (ROUNDABOUT_YIELD_SETBACK_M + YIELD_TRIANGLE_HEIGHT_M),
+            edge - sign * ROUNDABOUT_YIELD_SETBACK_M,
+            coreHalf,
+            hAt,
+          );
+        };
+        if (hasN) yieldArm(true, -1);
+        if (hasS) yieldArm(true, 1);
+        if (hasE) yieldArm(false, 1);
+        if (hasW) yieldArm(false, -1);
       }
     }
   }

@@ -71,7 +71,11 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   off the ladder — nothing, give way, stop, all-way stop, signals — and it
   sticks, saved with the city, until you hand the junction back to Automatic.
   The Automatic row always says what the city would choose if you did, so you
-  can see what you are overriding. Roads snap to the
+  can see what you are overriding. **Roundabout** is on the list too, and it
+  is the one that rebuilds the junction: an island with a planted centre, a
+  painted apron a lorry can track over, and a line of give-way triangles
+  across every entry. It is quick until it fills up, and then it is not.
+  Roads snap to the
   grid, round their corners and dead-ends, and bank smoothly up slopes (the ground
   is graded under them automatically).
 - **Zoning** — residential, commercial, and industrial. Denser residential

@@ -2398,7 +2398,10 @@ scaled by one constant into the units the sim already uses.
 3. **Junction control** — node control records, the v/c warrant default, the
    inspector, per-movement delay cost, control-placed furniture, cycling
    signal heads, mini and compact roundabouts.
-   *Status (2026-09-05):* every graph node now carries a control, and it is
+   *Status (2026-09-06) — the wave is complete but for the compact roundabout,
+   which is a 2×2 block and waits for the corridors of wave 6, and the
+   per-MOVEMENT delay, which waits for the movement sets of wave 4; the delay
+   is per APPROACH today.* Every graph node now carries a control, and it is
    WARRANTED rather than authored. `src/shared/junction.ts` is the model: a
    ladder from no control through give-way, minor-road stop and all-way stop
    to a signal, climbed by two independent readings that resolve to the more
@@ -2454,6 +2457,19 @@ scaled by one constant into the units the sim already uses.
    runs on, so a paused city holds its lights and a fast-forwarded one cycles
    them as fast as it moves the cars past them. Every signal in the city shares
    the clock, which is what a coordinated arterial does anyway.
+   Choosing a roundabout is the one control that changes the geometry. One tile
+   is 16 m, which by inscribed-circle diameter is a MINI roundabout — the real
+   range is 13 to 25 m — so the island is small and ringed by a painted apron a
+   long vehicle tracks over rather than a kerb it would ground out on. The
+   crossings and stop bars go; a yield line of solid white triangles pointing
+   at the approaching driver goes across every entry (MUTCD 3B.19 ¶10), a
+   give-way board stands at each one, which is the single place a give-way may
+   face every approach (2B.10 ¶06), and no centre line runs through, because
+   there is an island where it would go and no road runs THROUGH a roundabout.
+   The 2×2 compact roundabout and the two-lane one are still deferred; the
+   two-lane one waits for the corridors of wave 6, and so does the white edge
+   line round the outer circulatory roadway, which MUTCD 3D.03 puts in the
+   arcs between the arms and never across an exit.
 4. **Approach lanes and tapers** — movement sets, turn pockets, arrows, turn
    restrictions, lane-drop tapers with merge arrows and gore chevrons, taper
    edges in the sim.

@@ -16,8 +16,10 @@ import { useCityStore } from './store';
 import { CARD_RADIUS, LABEL, PANEL_ROUNDED } from './theme';
 
 /**
- * The controls the player may pick, least restrictive first — the order a
- * traffic engineer climbs, so the list reads as a ladder rather than a menu.
+ * The controls the player may pick: the ladder least restrictive first — the
+ * order a traffic engineer climbs — and then the roundabout, which is not on
+ * the ladder at all. It changes the shape of the junction rather than only who
+ * waits at it, which is why it is a choice and never a default.
  * Each carries the one line that says what it costs a driver.
  */
 const CHOICES: ReadonlyArray<{ control: JunctionControl; hint: string }> = [
@@ -31,6 +33,10 @@ const CHOICES: ReadonlyArray<{ control: JunctionControl; hint: string }> = [
   {
     control: 'signal',
     hint: 'Signals hold each arm in turn. Slow when quiet, quickest when busy.',
+  },
+  {
+    control: 'roundabout',
+    hint: 'An island, and every entry gives way. Quick until it fills, then suddenly not.',
   },
 ];
 

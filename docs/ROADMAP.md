@@ -74,7 +74,9 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > pick a control off the ladder, and it sticks, saved with the city at version
 > 8. Signalised junctions now pulse — one direction green, an amber, then the
 > other — on the same clock the traffic runs on, so a paused city holds its
-> lights. Next: roundabouts, then waves 4–6.
+> lights; and a junction can be made a mini roundabout, the one control that
+> rebuilds the junction rather than only deciding who waits at it. That
+> completes wave 3. Next: waves 4–6.
 > Specified in full: classes, lane-piece
 > profiles with a width budget, stored flow direction, per-junction control
 > (none/yield/stop/all-way/signal/roundabout) with warrant defaults,
