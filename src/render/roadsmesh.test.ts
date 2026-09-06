@@ -2581,3 +2581,101 @@ describe('roadTileVertices — the taper where a road drops a lane', () => {
     );
   });
 });
+
+describe('a run that changes width carries its footway across the seam', () => {
+  const CENTRE_X = 4.5 * TILE_METERS;
+  const CENTRE_Z = 4.5 * TILE_METERS;
+
+  /** A four-lane straight run whose SOUTH neighbour is the narrower street. */
+  const seam = (): { positions: number[]; colors: number[] } =>
+    roadTileVertices(
+      4,
+      4,
+      RoadTier.FourLane,
+      N | S,
+      flatHeightAt,
+      { n: RoadTier.FourLane, e: RoadTier.None, s: RoadTier.TwoLane, w: RoadTier.None },
+      undefined,
+    );
+
+  /**
+   * How far the footway reaches from the centreline at a given distance along
+   * the run — the outermost kerb-coloured vertex on the row, which is the edge
+   * a player sees against the grass.
+   */
+  const footwayReach = (
+    v: { positions: number[]; colors: number[] },
+    z: number,
+    tolerance = 0.05,
+  ): number => {
+    let reach = 0;
+    const triples = toTriples(v.colors);
+    for (let i = 0; i < triples.length; i++) {
+      if (!isSidewalk(triples[i]!)) continue;
+      if (Math.abs(v.positions[i * 3 + 2]! - z) > tolerance) continue;
+      reach = Math.max(reach, Math.abs(v.positions[i * 3]! - CENTRE_X));
+    }
+    return reach;
+  };
+
+  it('meets the narrower neighbour at exactly the width that neighbour lays', () => {
+    const v = seam();
+    const wide = carriagewayHalfWidthMeters(RoadTier.FourLane);
+    const narrow = carriagewayHalfWidthMeters(RoadTier.TwoLane);
+    expect(footwayReach(v, CENTRE_Z - TILE_METERS / 2)).toBeGreaterThan(
+      footwayReach(v, CENTRE_Z + TILE_METERS / 2),
+    );
+    // At the far end the tile is its own road; at the shared boundary it is
+    // the road it runs into, kerb strip and all — so nothing steps.
+    expect(footwayReach(v, CENTRE_Z - TILE_METERS / 2)).toBeCloseTo(
+      wide + curbWidthMeters(RoadTier.FourLane),
+      4,
+    );
+    expect(footwayReach(v, CENTRE_Z + TILE_METERS / 2)).toBeCloseTo(
+      narrow + curbWidthMeters(RoadTier.TwoLane),
+      4,
+    );
+  });
+
+  it('bends the asphalt with the kerb rather than leaving it under the footway', () => {
+    const v = seam();
+    const wide = carriagewayHalfWidthMeters(RoadTier.FourLane);
+    const narrow = carriagewayHalfWidthMeters(RoadTier.TwoLane);
+    const asphaltReach = (z: number): number => {
+      let reach = 0;
+      const triples = toTriples(v.colors);
+      for (let i = 0; i < triples.length; i++) {
+        if (isSidewalk(triples[i]!) || isPaint(triples[i]!)) continue;
+        if (Math.abs(v.positions[i * 3 + 2]! - z) > 0.05) continue;
+        reach = Math.max(reach, Math.abs(v.positions[i * 3]! - CENTRE_X));
+      }
+      return reach;
+    };
+    expect(asphaltReach(CENTRE_Z - TILE_METERS / 2)).toBeCloseTo(wide, 4);
+    expect(asphaltReach(CENTRE_Z + TILE_METERS / 2)).toBeCloseTo(narrow, 4);
+  });
+
+  it('leaves a run of constant width squared off, as it always was', () => {
+    const straight = roadTileVertices(4, 4, RoadTier.FourLane, N | S, flatHeightAt, {
+      n: RoadTier.FourLane,
+      e: RoadTier.None,
+      s: RoadTier.FourLane,
+      w: RoadTier.None,
+    });
+    const reach =
+      carriagewayHalfWidthMeters(RoadTier.FourLane) + curbWidthMeters(RoadTier.FourLane);
+    expect(footwayReach(straight, CENTRE_Z - TILE_METERS / 2)).toBeCloseTo(reach, 4);
+    expect(footwayReach(straight, CENTRE_Z + TILE_METERS / 2)).toBeCloseTo(reach, 4);
+  });
+
+  it('never bends toward a WIDER neighbour: the taper belongs to the wide side', () => {
+    const widening = roadTileVertices(4, 4, RoadTier.TwoLane, N | S, flatHeightAt, {
+      n: RoadTier.TwoLane,
+      e: RoadTier.None,
+      s: RoadTier.FourLane,
+      w: RoadTier.None,
+    });
+    const reach = carriagewayHalfWidthMeters(RoadTier.TwoLane) + curbWidthMeters(RoadTier.TwoLane);
+    expect(footwayReach(widening, CENTRE_Z + TILE_METERS / 2)).toBeCloseTo(reach, 4);
+  });
+});

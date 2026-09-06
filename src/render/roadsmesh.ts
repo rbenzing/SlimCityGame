@@ -2127,68 +2127,105 @@ function pushFlatTri(
 }
 
 /**
- * Width transition where a straight kerbed tile meets a NARROWER paved
- * neighbour: on each flank a wedge of footway, at kerb height, runs from this
- * tile's carriageway edge at `depth` metres back to the neighbour's edge at
- * the shared tile boundary, so the kerb line bends in over the run instead of
- * stepping at the seam. The asphalt beneath keeps its full width; the wedge
- * simply covers what the narrower road does not use. Sliced along the run on
- * the shared lattice so it follows the terrain like every other plate.
+ * One quad between two cross-sections of a run, sliced ACROSS onto cells the
+ * size of the terrain lattice's. Two triangles spanning a whole carriageway
+ * sample the ground at four corners, so a slope bulges through them; the
+ * slicing is what keeps a bending plate lying on the terrain the way a
+ * straight one does.
  */
-function emitWidthSeam(
+function pushRunSlice(
   positions: number[],
   colors: number[],
   centerX: number,
   centerZ: number,
-  coreHalf: number,
-  neighbourHalf: number,
-  edgeSign: 1 | -1,
-  vertical: boolean,
-  depth: number,
+  left0: readonly [number, number],
+  right0: readonly [number, number],
+  left1: readonly [number, number],
+  right1: readonly [number, number],
+  yOffset: number,
+  color: readonly [number, number, number],
   hAt: (x: number, z: number) => number,
 ): void {
-  const edge = edgeSign * TILE_HALF;
-  const inner = edge - edgeSign * depth;
+  const lerp2 = (
+    p: readonly [number, number],
+    q: readonly [number, number],
+    t: number,
+  ): [number, number] => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+  const span = Math.max(
+    Math.hypot(right0[0] - left0[0], right0[1] - left0[1]),
+    Math.hypot(right1[0] - left1[0], right1[1] - left1[1]),
+  );
+  if (span <= 1e-9) return;
+  const slices = Math.max(1, Math.ceil(span / ROAD_QUAD_MAX_CELL_M));
+  for (let k = 0; k < slices; k++) {
+    const t0 = k / slices;
+    const t1 = (k + 1) / slices;
+    const a0 = lerp2(left0, right0, t0);
+    const a1 = lerp2(left0, right0, t1);
+    const b0 = lerp2(left1, right1, t0);
+    const b1 = lerp2(left1, right1, t1);
+    pushFlatTri(positions, colors, centerX, centerZ, a0, b0, b1, yOffset, color, hAt);
+    pushFlatTri(positions, colors, centerX, centerZ, a0, b1, a1, yOffset, color, hAt);
+  }
+}
+
+/**
+ * A straight run whose carriageway changes width across the tile, laid in one
+ * piece: the asphalt AND the footway strip beside it follow the same bending
+ * kerb line, so the road narrows into its neighbour instead of stepping at the
+ * tile boundary. `halfAt` gives the carriageway's half-width at a distance
+ * along the run from the tile centre; the strip is the same one a straight
+ * tile lays, measured from wherever the kerb has reached, which at the tile
+ * boundary is exactly the strip the neighbour lays there — so the two footways
+ * meet rather than overlap or leave a step.
+ *
+ * Sliced along the run on the shared lattice, like every other plate.
+ */
+function emitTaperedRun(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  halfAt: (along: number) => number,
+  vertical: boolean,
+  plateColor: readonly [number, number, number],
+  hasCurbs: boolean,
+  hAt: (x: number, z: number) => number,
+): void {
   const pt = (along: number, cross: number): [number, number] =>
     vertical ? [cross, along] : [along, cross];
-  // The carriageway edge this wedge covers down to, at a given distance along.
-  const insideAt = (along: number): number => {
-    const t = 1 - Math.abs(edge - along) / depth;
-    return coreHalf - (coreHalf - neighbourHalf) * t;
-  };
+  const bandAt = (half: number): number => Math.min(SIDEWALK_WIDTH_M, TILE_HALF - half);
   const centreAlong = vertical ? centerZ : centerX;
-  const breaks = latticeBreaks(
-    centreAlong + Math.min(inner, edge),
-    centreAlong + Math.max(inner, edge),
-  );
-  for (const side of [-1, 1] as const) {
-    for (let k = 0; k < breaks.length - 1; k++) {
-      const a0 = breaks[k]! - centreAlong;
-      const a1 = breaks[k + 1]! - centreAlong;
-      const outer0 = pt(a0, side * coreHalf);
-      const outer1 = pt(a1, side * coreHalf);
-      const inner0 = pt(a0, side * insideAt(a0));
-      const inner1 = pt(a1, side * insideAt(a1));
-      pushFlatTri(
+  const breaks = latticeBreaks(centreAlong - TILE_HALF, centreAlong + TILE_HALF);
+  for (let k = 0; k < breaks.length - 1; k++) {
+    const a0 = breaks[k]! - centreAlong;
+    const a1 = breaks[k + 1]! - centreAlong;
+    const h0 = halfAt(a0);
+    const h1 = halfAt(a1);
+    pushRunSlice(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      pt(a0, -h0),
+      pt(a0, h0),
+      pt(a1, -h1),
+      pt(a1, h1),
+      ROAD_Y_OFFSET,
+      plateColor,
+      hAt,
+    );
+    if (!hasCurbs) continue;
+    for (const side of [-1, 1] as const) {
+      pushRunSlice(
         positions,
         colors,
         centerX,
         centerZ,
-        outer0,
-        outer1,
-        inner1,
-        CURB_Y_OFFSET,
-        SIDEWALK_COLOR,
-        hAt,
-      );
-      pushFlatTri(
-        positions,
-        colors,
-        centerX,
-        centerZ,
-        outer0,
-        inner1,
-        inner0,
+        pt(a0, side * h0),
+        pt(a0, side * (h0 + bandAt(h0))),
+        pt(a1, side * h1),
+        pt(a1, side * (h1 + bandAt(h1))),
         CURB_Y_OFFSET,
         SIDEWALK_COLOR,
         hAt,
@@ -2849,6 +2886,43 @@ export function roadTileVertices(
   const breaksMarkings = isJunction && (!joinedByLesserOnly || control === 'roundabout');
   const isTurn = connections === 2 && !isCollinearMask(mask);
 
+  // Wide -> narrow transition: on a straight through-run, a kerbed paved tile
+  // whose paved neighbour is narrower bends its kerb in to meet it over the
+  // whole tile (half the tile when both ends narrow, so the two bends share the
+  // centre). The narrower side draws nothing; the gravel neighbour keeps its
+  // tan seam instead; junction throats keep their flare.
+  const narrowsInto: Array<[number, 1 | -1, boolean]> =
+    spec.paved && spec.hasCurbs && connections === 2 && isCollinearMask(mask)
+      ? (
+          [
+            [hasN, neighbors.n, neighborHalves.n, -1, true],
+            [hasS, neighbors.s, neighborHalves.s, 1, true],
+            [hasE, neighbors.e, neighborHalves.e, 1, false],
+            [hasW, neighbors.w, neighborHalves.w, -1, false],
+          ] as Array<[boolean, RoadTier, number, 1 | -1, boolean]>
+        )
+          .filter(
+            ([has, nTier, nHalf]) =>
+              has &&
+              nTier !== RoadTier.None &&
+              nTier !== RoadTier.Gravel &&
+              nHalf > 0 &&
+              nHalf < coreHalf - 1e-6,
+          )
+          .map(([, , nHalf, edgeSign, vertical]) => [nHalf, edgeSign, vertical])
+      : [];
+  // The carriageway's half-width at a distance along the run: this tile's own,
+  // bending to the neighbour's over the depth the transition has.
+  const seamDepth = narrowsInto.length === 2 ? TILE_HALF : TILE_METERS;
+  const seamHalfAt = (along: number): number => {
+    let half = coreHalf;
+    for (const [nHalf, edgeSign] of narrowsInto) {
+      const t = 1 - Math.abs(edgeSign * TILE_HALF - along) / seamDepth;
+      if (t > 0) half = Math.min(half, coreHalf - (coreHalf - nHalf) * t);
+    }
+    return half;
+  };
+
   // A TURN tile (exactly 2 adjacent connections) is a curved quarter-annulus
   // road; every other shape (straight run, dead end, junction) is the
   // rectangular core + extensions + corner-fills + straight sidewalks below.
@@ -2884,7 +2958,22 @@ export function roadTileVertices(
     );
   }
 
-  if (!isTurn) {
+  if (!isTurn && narrowsInto.length > 0) {
+    // A run that changes width across the tile lays its plate and its kerb
+    // strip along the bending edge together, in place of the squared-off
+    // rectangles a constant-width run is made of.
+    emitTaperedRun(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      seamHalfAt,
+      narrowsInto[0]![2],
+      plateColor,
+      spec.hasCurbs,
+      hAt,
+    );
+  } else if (!isTurn) {
     // Core plate: always present, tier-colored.
     pushLocalRect(
       positions,
@@ -3486,43 +3575,6 @@ export function roadTileVertices(
     if (hasS && neighbors.s === RoadTier.Gravel) seam(1, true);
     if (hasE && neighbors.e === RoadTier.Gravel) seam(1, false);
     if (hasW && neighbors.w === RoadTier.Gravel) seam(-1, false);
-  }
-
-  // Wide -> narrow transition: on a straight through-run, a kerbed paved tile
-  // whose paved neighbour is narrower bends its kerb in to meet it over the
-  // whole tile (half the tile when both ends narrow, so the two wedges share
-  // the centre). The narrower side draws nothing; the gravel neighbour keeps
-  // its tan seam above instead; junction throats keep their flare.
-  if (spec.paved && spec.hasCurbs && connections === 2 && isCollinearMask(mask)) {
-    const sides: Array<[boolean, RoadTier, number, 1 | -1, boolean]> = [
-      [hasN, neighbors.n, neighborHalves.n, -1, true],
-      [hasS, neighbors.s, neighborHalves.s, 1, true],
-      [hasE, neighbors.e, neighborHalves.e, 1, false],
-      [hasW, neighbors.w, neighborHalves.w, -1, false],
-    ];
-    const narrowing = sides.filter(
-      ([has, nTier, nHalf]) =>
-        has &&
-        nTier !== RoadTier.None &&
-        nTier !== RoadTier.Gravel &&
-        nHalf > 0 &&
-        nHalf < coreHalf - 1e-6,
-    );
-    const depth = narrowing.length === 2 ? TILE_HALF : TILE_METERS;
-    for (const [, , nHalf, edgeSign, vertical] of narrowing) {
-      emitWidthSeam(
-        positions,
-        colors,
-        centerX,
-        centerZ,
-        coreHalf,
-        nHalf,
-        edgeSign,
-        vertical,
-        depth,
-        hAt,
-      );
-    }
   }
 
   return { positions, colors };
