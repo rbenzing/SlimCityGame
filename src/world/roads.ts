@@ -156,7 +156,14 @@ export function applyRoad(
     // motorway and must still never cut one.
     const outranks =
       current === RoadTier.None || rankForTier(tier) > rankForTier(current as RoadTier);
-    if (replace ? differs : outranks || sameTierNewProfile) {
+    const laid = replace ? differs : outranks || sameTierNewProfile;
+    // Which tiles this drag OWNS: the ones it laid, and the ones that already
+    // carry exactly the road being drawn, since re-dragging a span is how its
+    // height and its direction are changed. A tile that REFUSED the road is
+    // not the drag's to re-profile — a street drawn across a motorway must not
+    // lift the motorway onto a viaduct on its way past.
+    const owned = laid || (tier === current && g.roadProfile[idx] === profile);
+    if (laid) {
       g.roadTier[idx] = tier;
       g.roadProfile[idx] = profile;
       changedIdx.add(idx);
@@ -166,7 +173,7 @@ export function applyRoad(
 
     // Elevation follows the drag rather than the tier, so re-dragging a span
     // re-profiles it; a tile that ends up carrying no road keeps none.
-    if (elevations && tierAtIdx(g, idx) !== RoadTier.None) {
+    if (elevations && owned && tierAtIdx(g, idx) !== RoadTier.None) {
       const next = elevations[i] ?? 0;
       if ((g.roadElevation[idx] ?? 0) !== next) {
         g.roadElevation[idx] = next;
@@ -176,7 +183,7 @@ export function applyRoad(
 
     // Direction follows the drag too, which is how a one-way street is turned
     // round: draw it back the other way.
-    if (flows && tierAtIdx(g, idx) !== RoadTier.None) {
+    if (flows && owned && tierAtIdx(g, idx) !== RoadTier.None) {
       const next = flows[i] ?? RoadFlow.None;
       if ((g.roadFlow[idx] ?? RoadFlow.None) !== next) {
         g.roadFlow[idx] = next;

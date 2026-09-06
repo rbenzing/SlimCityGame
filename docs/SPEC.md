@@ -2613,8 +2613,9 @@ scaled by one constant into the units the sim already uses.
    lane drops, once for ramps — would be building it wrong.
 5. **Ramps and interchange stamps** — the ramp class, merge/diverge/terminal
    nodes, the neutral area and its chevrons, automatic acceleration and
-   deceleration lanes, diamond and trumpet, then parclo, cloverleaf and
-   roundabout interchange.
+   deceleration lanes. The stamps themselves — diamond, trumpet, parclo,
+   cloverleaf, roundabout interchange — wait on a second road layer, since one
+   road cannot cross over another on a one-road tile.
    The RAMP is a road the player draws: one lane, one way, a narrow left
    shoulder and a wide right one instead of kerbs, unlocked with the motorway
    it serves and carrying no water main, because nobody digs up a slip road
@@ -2669,6 +2670,31 @@ scaled by one constant into the units the sim already uses.
    direction. Each bar is clipped exactly at the tile edge and the next tile
    draws the rest of it, rather than being squashed into a smear along the
    boundary or stepped into a staircase.
+   The INTERCHANGE STAMPS are BLOCKED, and the block is the tile model rather
+   than the work. A grid tile holds one `roadTier` byte, one `roadProfile` and
+   one `roadElevation`: one road, at one height. Two roads cannot occupy a tile
+   at different heights, so a road cannot cross over another — and grade
+   separation between two roads is the whole of what a diamond, a trumpet, a
+   parclo or a cloverleaf IS. Everything else the stamps need already exists:
+   `buildRoad` takes per-tile elevations and flows, and a batch of them is one
+   undo step, so a stamp is a template emitting ordinary road commands rather
+   than a command of its own. What it cannot emit is the crossing at the middle
+   of it.
+   Two ways out, both real work and neither in this wave: a SECOND ROAD LAYER
+   (a lower deck per tile, with its own tier, profile and mask), or building
+   the crossing out of the two-tile corridor model wave 6 introduces, where a
+   carriageway already spans more than one tile. The layer is the honest answer
+   and the larger one. Until then a player builds an interchange by hand, at
+   grade, which is a roundabout or a signalised crossroads — and those both
+   work.
+   Trying it turned up a defect worth having found: a drag applied its
+   ELEVATION and its DIRECTION to every tile it passed over that carried a
+   road, including the tiles that had REFUSED it. A street drawn across a
+   motorway could not replace the motorway's tile — a lesser road never does —
+   but it lifted that tile onto a 6 m viaduct on its way past, putting a hump
+   in the middle of the motorway. A drag now owns only the tiles it laid and
+   the ones already carrying exactly the road being drawn, which is what keeps
+   re-dragging a span as the way to change its height.
    Reaching the terminal needed one correction to the GRAPH. A tile that
    outranks a neighbour becomes a node so that a run carries a single tier —
    but where that neighbour is already a JUNCTION, the junction is the

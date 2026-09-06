@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FIELD_COUNT, isRailTier, RoadFlow, RoadTier, ZoneType } from '../shared/types';
-import type { GridState, RoadProfile } from '../shared/types';
+import type { GridState, RoadProfile, TilePoint } from '../shared/types';
 import { applyRoad, computeMask, removeRoad, RoadNetwork } from './roads';
 
 function makeGrid(size: number): GridState {
@@ -30,6 +30,11 @@ function makeGrid(size: number): GridState {
 function idx(size: number, x: number, z: number): number {
   return z * size + x;
 }
+
+const row = (z: number, from: number, to: number): TilePoint[] =>
+  Array.from({ length: to - from + 1 }, (_, i) => ({ x: from + i, z }));
+const column = (x: number, from: number, to: number): TilePoint[] =>
+  Array.from({ length: to - from + 1 }, (_, i) => ({ x, z: from + i }));
 
 describe('computeMask', () => {
   it('is 0 for an isolated tile with no road neighbors', () => {
@@ -930,5 +935,60 @@ describe('a road only replaces one below it in the hierarchy', () => {
 
     applyRoad(g, [{ x: 3, z: 3 }], RoadTier.Gravel, undefined, RoadTier.Gravel, true);
     expect(g.roadTier[idx(size, 3, 3)]).toBe(RoadTier.Gravel);
+  });
+});
+
+describe('a drag only re-profiles the tiles it owns', () => {
+  it('does not lift a motorway onto a viaduct when a street is drawn across it', () => {
+    const g = makeGrid(12);
+    applyRoad(g, column(5, 0, 11), RoadTier.Highway);
+    const crossing = idx(12, 5, 6);
+    // A street drawn east-west across it. The motorway tile refuses the street
+    // — a lesser road never replaces a greater one — so it must also refuse
+    // the height the drag was carrying.
+    const tiles = row(6, 2, 8);
+    applyRoad(
+      g,
+      tiles,
+      RoadTier.TwoLane,
+      tiles.map(() => 6),
+    );
+    expect(g.roadTier[crossing]).toBe(RoadTier.Highway);
+    expect(g.roadElevation[crossing]).toBe(0);
+    // The street's own tiles took the height they were given.
+    expect(g.roadTier[idx(12, 3, 6)]).toBe(RoadTier.TwoLane);
+    expect(g.roadElevation[idx(12, 3, 6)]).toBe(6);
+  });
+
+  it('does not turn a road round when another road is drawn over it and refused', () => {
+    const g = makeGrid(12);
+    applyRoad(g, column(5, 0, 11), RoadTier.Highway, undefined, RoadTier.Highway, false, [
+      ...column(5, 0, 11).map(() => RoadFlow.South),
+    ]);
+    const crossing = idx(12, 5, 6);
+    const tiles = row(6, 2, 8);
+    applyRoad(
+      g,
+      tiles,
+      RoadTier.TwoLane,
+      undefined,
+      RoadTier.TwoLane,
+      false,
+      tiles.map(() => RoadFlow.East),
+    );
+    expect(g.roadFlow[crossing]).toBe(RoadFlow.South);
+  });
+
+  it('still lets a road re-drag its own span to a new height', () => {
+    const g = makeGrid(12);
+    const tiles = row(6, 2, 8);
+    applyRoad(g, tiles, RoadTier.TwoLane);
+    applyRoad(
+      g,
+      tiles,
+      RoadTier.TwoLane,
+      tiles.map(() => 4),
+    );
+    expect(g.roadElevation[idx(12, 5, 6)]).toBe(4);
   });
 });
