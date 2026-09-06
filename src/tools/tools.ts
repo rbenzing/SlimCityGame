@@ -155,6 +155,8 @@ export const ROAD_TOOL_TO_TIER: Record<string, RoadTier> = {
   'road.tram': RoadTierValue.Tram,
   // Rail track (roads epic R4).
   'road.rail': RoadTierValue.RailTrack,
+  // The slip road a motorway is reached by (roads epic wave 5).
+  'road.ramp': RoadTierValue.Ramp,
 };
 
 /** The 'terraform' Command's mode field (shared/types.ts), named locally for readability. */

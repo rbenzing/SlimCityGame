@@ -70,6 +70,7 @@ import type {
 import catalogData from '../data/catalog.json';
 import roadsData from '../data/roads.json';
 import {
+  adoptCustomProfiles,
   admitsAllPieces,
   FIRST_CUSTOM_PROFILE_ID,
   fitsTile,
@@ -565,8 +566,9 @@ class SimWorld implements WorkerSim {
     const previousIds = this.registry.all().map((b) => b.id);
 
     this.grid = grid;
-    this.customRoadProfiles = new Map(
-      (payload.meta.roadProfiles ?? []).map((entry) => [entry.id, entry.profile]),
+    this.customRoadProfiles = adoptCustomProfiles(
+      payload.meta.roadProfiles ?? [],
+      this.grid.roadProfile,
     );
     this.roadProfilesChanged = true;
     this.registry = BuildingRegistry.deserialize(CATALOG, payload.meta.registry);

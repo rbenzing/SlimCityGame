@@ -13,6 +13,7 @@ import {
 } from '../render/roadsmesh';
 import { TILE_METERS } from './constants';
 import {
+  adoptCustomProfiles,
   admitsAllPieces,
   canJoin,
   CAPACITY_PER_VEH_PER_HOUR,
@@ -124,9 +125,9 @@ describe('class table sanity', () => {
   });
 });
 
-describe('the eleven presets reproduce their tier scalars from the formula', () => {
+describe('the twelve presets reproduce their tier scalars from the formula', () => {
   it('every spec carries a profile', () => {
-    expect(ROAD_PRESETS).toHaveLength(11);
+    expect(ROAD_PRESETS).toHaveLength(12);
     for (const spec of ROAD_PRESETS) expect(spec.profile).toBeDefined();
   });
 
@@ -187,14 +188,67 @@ describe('preset carriageways match the widths the render already draws', () => 
 });
 
 describe('profile ids and the tier a profile is nearest to', () => {
-  it('presets are ids 1..11 and equal their tier; custom ids start at 12', () => {
-    expect(FIRST_CUSTOM_PROFILE_ID).toBe(12);
+  it('presets are ids 1..12 and equal their tier; custom ids start after them', () => {
+    expect(FIRST_CUSTOM_PROFILE_ID).toBe(13);
     for (const spec of ROAD_PRESETS) {
       expect(isPresetProfileId(spec.tier)).toBe(true);
       expect(profileIdForTier(spec.tier)).toBe(spec.tier);
     }
     expect(isPresetProfileId(0)).toBe(false);
-    expect(isPresetProfileId(12)).toBe(false);
+    expect(isPresetProfileId(FIRST_CUSTOM_PROFILE_ID)).toBe(false);
+  });
+
+  describe('a save written before the catalogue grew keeps the roads it drew', () => {
+    const shape = (width: number): RoadProfile => ({
+      class: 'local',
+      pieces: [{ kind: 'travel', width, flow: 'both' }],
+    });
+
+    it('moves a custom profile off an id a preset has since claimed, tiles and all', () => {
+      // The Ramp took id 12, which this save had already given to a profile
+      // the player composed. Read as the preset it now is, every road drawn
+      // with it would change shape.
+      const tiles = new Uint16Array([0, RoadTier.TwoLane, 12, 12, 20]);
+      const table = adoptCustomProfiles(
+        [
+          { id: 12, profile: shape(3.1) },
+          { id: 20, profile: shape(3.9) },
+        ],
+        tiles,
+      );
+      const moved = [...table.keys()].find((id) => id !== 20)!;
+      expect(moved).toBeGreaterThanOrEqual(FIRST_CUSTOM_PROFILE_ID);
+      expect(table.get(moved)).toEqual(shape(3.1));
+      expect([...tiles]).toEqual([0, RoadTier.TwoLane, moved, moved, 20]);
+      // The id it moves to is free: nothing else in the table wanted it.
+      expect(moved).not.toBe(20);
+    });
+
+    it('leaves a table already clear of preset ids exactly as it is', () => {
+      const tiles = new Uint16Array([RoadTier.Ramp, 20, 21]);
+      const table = adoptCustomProfiles(
+        [
+          { id: 20, profile: shape(3.2) },
+          { id: 21, profile: shape(3.3) },
+        ],
+        tiles,
+      );
+      expect([...table.keys()].sort((a, b) => a - b)).toEqual([20, 21]);
+      // A tile carrying the new preset is a ramp, not a custom id to move.
+      expect([...tiles]).toEqual([RoadTier.Ramp, 20, 21]);
+    });
+
+    it('is idempotent: adopting an adopted table changes nothing', () => {
+      const tiles = new Uint16Array([12, 12]);
+      const once = adoptCustomProfiles([{ id: 12, profile: shape(3.1) }], tiles);
+      const snapshot = [...tiles];
+      const twice = adoptCustomProfiles(
+        [...once].map(([id, profile]) => ({ id, profile })),
+        tiles,
+      );
+      expect([...twice.keys()]).toEqual([...once.keys()]);
+      expect([...tiles]).toEqual(snapshot);
+    });
   });
 
   it('every preset profile maps back to its own tier', () => {
@@ -211,7 +265,7 @@ describe('profile ids and the tier a profile is nearest to', () => {
     expect(tierForProfile({ class: 'collector', pieces: lanes(4) })).toBe(RoadTier.FourLane);
     expect(tierForProfile({ class: 'divided', pieces: lanes(4) })).toBe(RoadTier.Avenue);
     expect(tierForProfile({ class: 'rural', pieces: lanes(2) })).toBe(RoadTier.TwoLane);
-    expect(tierForProfile({ class: 'ramp', pieces: lanes(1) })).toBe(RoadTier.OneWay);
+    expect(tierForProfile({ class: 'ramp', pieces: lanes(1) })).toBe(RoadTier.Ramp);
     expect(
       tierForProfile({
         class: 'collector',

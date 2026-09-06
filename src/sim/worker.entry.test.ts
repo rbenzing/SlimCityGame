@@ -22,6 +22,7 @@ import type {
   TilePoint,
   WorkerToMain,
 } from '../shared/types';
+import { FIRST_CUSTOM_PROFILE_ID } from '../shared/roadprofile';
 import catalogData from '../data/catalog.json';
 import roadsData from '../data/roads.json';
 import type { RoadSpec } from '../shared/types';
@@ -832,6 +833,8 @@ describe('landmark noise emission (UI-SPEC §6.10 airport)', () => {
 });
 
 describe('road composition — profiles the worker stores, lays and saves', () => {
+  /** The first id a composed profile may claim: everything below it is a preset. */
+  const CUSTOM_ID = FIRST_CUSTOM_PROFILE_ID;
   const customLocal: RoadProfile = {
     class: 'local',
     pieces: [
@@ -871,17 +874,24 @@ describe('road composition — profiles the worker stores, lays and saves', () =
 
   it('defines a composed profile, lays it under its nearest tier, and the delta names it', () => {
     const h = initialized();
-    expect(run(h, 1, [{ kind: 'defineRoadProfile', id: 12, profile: customLocal }]).ok).toBe(true);
+    expect(run(h, 1, [{ kind: 'defineRoadProfile', id: CUSTOM_ID, profile: customLocal }]).ok).toBe(
+      true,
+    );
     expect(
       run(h, 2, [
-        { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 10, 3), profile: 12 },
+        {
+          kind: 'buildRoad',
+          tier: RoadTier.TwoLane,
+          tiles: roadRow(10, 10, 3),
+          profile: CUSTOM_ID,
+        },
       ]).ok,
     ).toBe(true);
-    expect(lastTable(h)).toEqual([{ id: 12, profile: customLocal }]);
+    expect(lastTable(h)).toEqual([{ id: CUSTOM_ID, profile: customLocal }]);
     const laid = rowDeltas(h, 10, 10, 13);
     expect(laid).toHaveLength(3);
     for (const d of laid) {
-      expect(d.profile).toBe(12);
+      expect(d.profile).toBe(CUSTOM_ID);
       expect(d.tier).toBe(RoadTier.TwoLane);
     }
   });
@@ -889,12 +899,18 @@ describe('road composition — profiles the worker stores, lays and saves', () =
   it('refuses a preset id, a taken id with a different shape, and a profile that breaks its class', () => {
     const h = initialized();
     expect(run(h, 1, [{ kind: 'defineRoadProfile', id: 3, profile: customLocal }]).ok).toBe(false);
-    expect(run(h, 2, [{ kind: 'defineRoadProfile', id: 12, profile: customLocal }]).ok).toBe(true);
+    expect(run(h, 2, [{ kind: 'defineRoadProfile', id: CUSTOM_ID, profile: customLocal }]).ok).toBe(
+      true,
+    );
     // Idempotent for the same shape.
-    expect(run(h, 3, [{ kind: 'defineRoadProfile', id: 12, profile: customLocal }]).ok).toBe(true);
+    expect(run(h, 3, [{ kind: 'defineRoadProfile', id: CUSTOM_ID, profile: customLocal }]).ok).toBe(
+      true,
+    );
     // A different shape under a taken id would silently re-shape every road laid with it.
     const other: RoadProfile = { ...customLocal, pieces: customLocal.pieces.slice(2, 4) };
-    expect(run(h, 4, [{ kind: 'defineRoadProfile', id: 12, profile: other }]).ok).toBe(false);
+    expect(run(h, 4, [{ kind: 'defineRoadProfile', id: CUSTOM_ID, profile: other }]).ok).toBe(
+      false,
+    );
     // Parking on a motorway is not a thing the class admits.
     const parkedHighway: RoadProfile = {
       class: 'highway',
@@ -904,9 +920,9 @@ describe('road composition — profiles the worker stores, lays and saves', () =
         { kind: 'travel', width: 3.5, flow: 'back' },
       ],
     };
-    expect(run(h, 5, [{ kind: 'defineRoadProfile', id: 13, profile: parkedHighway }]).ok).toBe(
-      false,
-    );
+    expect(
+      run(h, 5, [{ kind: 'defineRoadProfile', id: CUSTOM_ID + 1, profile: parkedHighway }]).ok,
+    ).toBe(false);
     // Laying an id nothing defined is refused rather than guessed at.
     expect(
       run(h, 6, [
@@ -918,14 +934,14 @@ describe('road composition — profiles the worker stores, lays and saves', () =
   it('replaces a same-tier preset with a composed profile, and undo puts the preset back', () => {
     const h = initialized();
     run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 10, 3) }]);
-    run(h, 2, [{ kind: 'defineRoadProfile', id: 12, profile: customLocal }]);
+    run(h, 2, [{ kind: 'defineRoadProfile', id: CUSTOM_ID, profile: customLocal }]);
     const ack = run(h, 3, [
-      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 10, 3), profile: 12 },
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 10, 3), profile: CUSTOM_ID },
     ]);
     expect(ack.ok).toBe(true);
     h.sim.handleMessage({ type: 'requestSave' });
     const g = latestSaveGrid(h);
-    for (let x = 10; x < 13; x++) expect(g.roadProfile[10 * MAP_SIZE + x]).toBe(12);
+    for (let x = 10; x < 13; x++) expect(g.roadProfile[10 * MAP_SIZE + x]).toBe(CUSTOM_ID);
 
     // The inverse re-lays the preset under its own id.
     run(h, 4, ack.inverse);
@@ -939,9 +955,9 @@ describe('road composition — profiles the worker stores, lays and saves', () =
 
   it('saves the profile table and a load brings it back with the roads that use it', () => {
     const h = initialized();
-    run(h, 1, [{ kind: 'defineRoadProfile', id: 12, profile: customLocal }]);
+    run(h, 1, [{ kind: 'defineRoadProfile', id: CUSTOM_ID, profile: customLocal }]);
     run(h, 2, [
-      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 10, 3), profile: 12 },
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 10, 3), profile: CUSTOM_ID },
     ]);
     h.sim.handleMessage({ type: 'requestSave' });
     const saves = h.messages.filter(
@@ -952,8 +968,12 @@ describe('road composition — profiles the worker stores, lays and saves', () =
     const fresh = initialized();
     fresh.sim.handleMessage({ type: 'loadSave', data });
     fresh.ticks(1);
-    expect(lastTable(fresh)).toEqual([{ id: 12, profile: customLocal }]);
-    expect(rowDeltas(fresh, 10, 10, 13).map((d) => d.profile)).toEqual([12, 12, 12]);
+    expect(lastTable(fresh)).toEqual([{ id: CUSTOM_ID, profile: customLocal }]);
+    expect(rowDeltas(fresh, 10, 10, 13).map((d) => d.profile)).toEqual([
+      CUSTOM_ID,
+      CUSTOM_ID,
+      CUSTOM_ID,
+    ]);
   });
 
   it('replace mode lays a lesser road over a greater one, and undo puts the greater one back', () => {

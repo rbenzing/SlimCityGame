@@ -140,6 +140,9 @@ export function bridgeStyleFor(tier: RoadTier): BridgeStyle {
   switch (tier) {
     case RoadTier.RailTrack:
       return 'truss';
+    // A slip road flies over on the same box girder the motorway it serves
+    // does, because that is the structure it is usually part of.
+    case RoadTier.Ramp:
     case RoadTier.Highway:
     case RoadTier.Avenue:
       return 'box';
@@ -359,12 +362,14 @@ export class BridgeRenderer {
 
         /** Deck top at a world point, from the shared smooth profile. */
         const topAt = (c: Corner): number => this.deckHeightAt(c[0], c[1]) + ROAD_Y_OFFSET;
-        const topsOf = (corners: readonly [Corner, Corner, Corner, Corner]): [
-          number,
-          number,
-          number,
-          number,
-        ] => [topAt(corners[0]), topAt(corners[1]), topAt(corners[2]), topAt(corners[3])];
+        const topsOf = (
+          corners: readonly [Corner, Corner, Corner, Corner],
+        ): [number, number, number, number] => [
+          topAt(corners[0]),
+          topAt(corners[1]),
+          topAt(corners[2]),
+          topAt(corners[3]),
+        ];
 
         // Girder: the slab under the whole road width, following the deck.
         const girderCorners = footprintCorners(wx, wz, half, alongZ, span);

@@ -54,6 +54,9 @@ export const RoadTier = {
   Tram: 10,
   // Roads epic R4 — dedicated heavy-rail line (ballast bed; not drivable by cars).
   RailTrack: 11,
+  // Roads epic wave 5 — the slip road a motorway is reached by: one lane, one
+  // way, shoulders instead of kerbs.
+  Ramp: 12,
 } as const;
 export type RoadTier = (typeof RoadTier)[keyof typeof RoadTier];
 
@@ -916,6 +919,8 @@ export type ToolId =
   | 'road.tram'
   // Roads epic R4 — dedicated rail track.
   | 'road.rail'
+  // Roads epic wave 5 — the slip road onto a motorway.
+  | 'road.ramp'
   | 'zone.resLow'
   | 'zone.resHigh'
   | 'zone.comLow'

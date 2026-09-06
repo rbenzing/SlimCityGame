@@ -51,13 +51,52 @@ export const TRANSIT_PIECE_CAPACITY: Readonly<Record<'bus' | 'tram' | 'bike' | '
 };
 
 /**
- * Profile ids: 0 is no road, 1..11 are the presets and equal their tier, and
+ * Profile ids: 0 is no road, 1..12 are the presets and equal their tier, and
  * player-composed profiles start here, in the save's own table.
+ *
+ * The boundary MOVES UP each time the catalogue gains a tier, which is why
+ * `adoptCustomProfiles` exists: a save written before the tier existed may
+ * already have given the id to a profile the player composed.
  */
-export const FIRST_CUSTOM_PROFILE_ID = 12;
+export const FIRST_CUSTOM_PROFILE_ID = 13;
 
 export function isPresetProfileId(id: number): boolean {
   return id >= 1 && id < FIRST_CUSTOM_PROFILE_ID;
+}
+
+/**
+ * A save's custom-profile table, with any id a preset has since claimed moved
+ * out of the way, and the tiles referring to it moved with it.
+ *
+ * A preset's id is its tier number, so every new road tier takes the next id
+ * off the top of the range — an id an older save may already have handed to a
+ * player-composed profile. Left alone, that profile would be read as the new
+ * preset and every road drawn with it would silently change shape. Moving it
+ * costs a load-time pass over the tiles and keeps the map the player drew.
+ *
+ * `tiles` is rewritten in place. Idempotent: a table already clear of preset
+ * ids is returned unchanged and the tiles are not touched.
+ */
+export function adoptCustomProfiles(
+  table: readonly { id: number; profile: RoadProfile }[],
+  tiles: Uint16Array,
+): Map<number, RoadProfile> {
+  const taken = new Set(table.map((e) => e.id));
+  let next = FIRST_CUSTOM_PROFILE_ID;
+  const moved = new Map<number, number>();
+  for (const entry of table) {
+    if (entry.id >= FIRST_CUSTOM_PROFILE_ID) continue;
+    while (taken.has(next)) next += 1;
+    taken.add(next);
+    moved.set(entry.id, next);
+  }
+  if (moved.size > 0) {
+    for (let i = 0; i < tiles.length; i++) {
+      const to = moved.get(tiles[i]!);
+      if (to !== undefined) tiles[i] = to;
+    }
+  }
+  return new Map(table.map((e) => [moved.get(e.id) ?? e.id, e.profile]));
 }
 
 /** A preset's profile id is its tier. */
@@ -89,7 +128,7 @@ export function tierForProfile(profile: RoadProfile): RoadTier {
     divided: 2,
     oneWay: 6,
     highway: 3,
-    ramp: 6,
+    ramp: 12,
     rail: 11,
   };
   return byClass[profile.class] as RoadTier;

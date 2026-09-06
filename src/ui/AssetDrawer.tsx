@@ -53,6 +53,9 @@ function roadHeightClass(id: ToolId): string {
     case 'road.four':
     case 'road.bus':
       return 'h-6';
+    // A ramp is one lane wide: the thinnest paved strip on the row.
+    case 'road.ramp':
+      return 'h-3';
     default:
       return 'h-4'; // road.oneway / road.bike: two-lane look
   }

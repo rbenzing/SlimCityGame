@@ -52,7 +52,17 @@
       "zonable": true,
       "carriesWater": true,
       "surface": "paved",
-      "admits": ["travel", "centreTurn", "parking", "bike", "bus", "tram", "median", "sidewalk", "verge"],
+      "admits": [
+        "travel",
+        "centreTurn",
+        "parking",
+        "bike",
+        "bus",
+        "tram",
+        "median",
+        "sidewalk",
+        "verge"
+      ],
       "lanes": { "min": 2, "max": 4 }
     },
     {
@@ -63,7 +73,17 @@
       "zonable": true,
       "carriesWater": true,
       "surface": "paved",
-      "admits": ["travel", "centreTurn", "parking", "bike", "bus", "tram", "median", "sidewalk", "verge"],
+      "admits": [
+        "travel",
+        "centreTurn",
+        "parking",
+        "bike",
+        "bus",
+        "tram",
+        "median",
+        "sidewalk",
+        "verge"
+      ],
       "lanes": { "min": 2, "max": 5 }
     },
     {
@@ -335,6 +355,27 @@
       "profile": {
         "class": "rail",
         "pieces": [{ "kind": "rail", "width": 5.625 }]
+      }
+    },
+    {
+      "tier": 12,
+      "name": "Ramp",
+      "costPerTile": 70,
+      "upkeepPerTile": 1.4,
+      "speed": 17,
+      "capacity": 850,
+      "unlockMilestone": 3,
+      "carriesWater": false,
+      "noiseMult": 3,
+      "oneWay": true,
+      "profile": {
+        "class": "ramp",
+        "kerbs": false,
+        "pieces": [
+          { "kind": "shoulder", "width": 1.2 },
+          { "kind": "travel", "width": 4.2, "flow": "fwd" },
+          { "kind": "shoulder", "width": 2.4 }
+        ]
       }
     }
   ]

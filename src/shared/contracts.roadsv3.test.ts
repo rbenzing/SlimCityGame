@@ -128,12 +128,27 @@ describe('RoadSpec v3 optional fields (UI-SPEC §6.7 Roads v3)', () => {
 });
 
 describe('roads.json catalog v3 (UI-SPEC §6.7 Roads v3)', () => {
-  it('holds exactly eleven specs with unique tiers 1..11', () => {
-    expect(specs).toHaveLength(11);
-    expect(new Set(specs.map((s) => s.tier)).size).toBe(11);
+  it('holds exactly twelve specs with unique tiers 1..12', () => {
+    expect(specs).toHaveLength(12);
+    expect(new Set(specs.map((s) => s.tier)).size).toBe(12);
     expect([...specs.map((s) => s.tier)].sort((a, b) => a - b)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
     ]);
+  });
+
+  it('Ramp (tier 12): the slip road onto a motorway — one way, M3, motorway noise', () => {
+    expect(byTier(RoadTier.Ramp)).toEqual({
+      tier: 12,
+      name: 'Ramp',
+      costPerTile: 70,
+      upkeepPerTile: 1.4,
+      speed: 17,
+      capacity: 850,
+      unlockMilestone: 3,
+      carriesWater: false,
+      noiseMult: 3,
+      oneWay: true,
+    });
   });
 
   it('Rail Track (tier 11): dedicated heavy rail, unlock M4, paved + bidirectional spec fields', () => {
@@ -232,12 +247,15 @@ describe('roads.json catalog v3 (UI-SPEC §6.7 Roads v3)', () => {
     expect(highway?.surface).toBeUndefined(); // paved by default
   });
 
-  it('every non-highway spec carries water implicitly (no carriesWater: false)', () => {
+  it('carries water everywhere but the motorway network', () => {
+    // A main under a road is a main a crew reaches from the street. Nobody
+    // digs up a motorway or its slip road for one.
     for (const spec of specs) {
-      if (spec.tier !== RoadTier.Highway) {
+      if (spec.tier !== RoadTier.Highway && spec.tier !== RoadTier.Ramp) {
         expect(spec.carriesWater).not.toBe(false);
       }
     }
+    expect(byTier(RoadTier.Ramp)?.carriesWater).toBe(false);
   });
 
   it('Gravel Road: ¢8/tile, 0.15 upkeep, speed 8, capacity 200, M0, 2× noise, gravel surface', () => {
@@ -302,8 +320,11 @@ describe('roads.json catalog v3 (UI-SPEC §6.7 Roads v3)', () => {
     expect(fourLane!.capacity).toBeLessThan(avenue.capacity);
   });
 
-  it('only One-Way is directed; only Gravel is unpaved', () => {
-    expect(specs.filter((s) => s.oneWay === true).map((s) => s.tier)).toEqual([RoadTier.OneWay]);
+  it('only the one-way street and the ramp are directed; only Gravel is unpaved', () => {
+    expect(specs.filter((s) => s.oneWay === true).map((s) => s.tier)).toEqual([
+      RoadTier.OneWay,
+      RoadTier.Ramp,
+    ]);
     expect(specs.filter((s) => s.surface === 'gravel').map((s) => s.tier)).toEqual([
       RoadTier.Gravel,
     ]);

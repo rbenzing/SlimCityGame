@@ -9,7 +9,7 @@ import { TILE_METERS } from '../shared/constants';
 import { RoadTier, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingInstance, MapData } from '../shared/types';
 import { ClientGridMirror } from './clientgrid';
-import { presetProfileForTier } from '../shared/roadprofile';
+import { FIRST_CUSTOM_PROFILE_ID, presetProfileForTier } from '../shared/roadprofile';
 
 const SIZE = 32;
 
@@ -56,7 +56,7 @@ describe('ClientGridMirror — road profiles', () => {
       class: 'local' as const,
       pieces: [{ kind: 'travel' as const, width: 3.5, flow: 'both' as const }],
     };
-    mirror.applyRoadProfiles([{ id: 12, profile: custom }]);
+    mirror.applyRoadProfiles([{ id: FIRST_CUSTOM_PROFILE_ID, profile: custom }]);
     mirror.applyRoadDeltas([
       {
         x: 3,
@@ -67,7 +67,15 @@ describe('ClientGridMirror — road profiles', () => {
         profile: RoadTier.Avenue,
         flow: 0,
       },
-      { x: 4, z: 4, tier: RoadTier.TwoLane, mask: 0, elevation: 0, profile: 12, flow: 0 },
+      {
+        x: 4,
+        z: 4,
+        tier: RoadTier.TwoLane,
+        mask: 0,
+        elevation: 0,
+        profile: FIRST_CUSTOM_PROFILE_ID,
+        flow: 0,
+      },
     ]);
     expect(mirror.profileAt(3, 4)?.class).toBe('arterial');
     expect(mirror.profileAt(4, 4)).toEqual(custom);
@@ -89,23 +97,25 @@ describe('ClientGridMirror — road profiles', () => {
         { kind: 'sidewalk' as const, width: 1.9 },
       ],
     };
-    mirror.applyRoadProfiles([{ id: 12, profile: shape }]);
+    mirror.applyRoadProfiles([{ id: FIRST_CUSTOM_PROFILE_ID, profile: shape }]);
     // A structurally equal copy resolves to the existing id.
-    expect(mirror.profileIdFor({ ...shape, pieces: shape.pieces.map((p) => ({ ...p })) })).toBe(12);
+    expect(mirror.profileIdFor({ ...shape, pieces: shape.pieces.map((p) => ({ ...p })) })).toBe(
+      FIRST_CUSTOM_PROFILE_ID,
+    );
     // A different width is a different profile.
     const wider = { ...shape, pieces: shape.pieces.map((p) => ({ ...p, width: p.width + 0.5 })) };
-    expect(mirror.profileIdFor(wider)).toBe(13);
+    expect(mirror.profileIdFor(wider)).toBe(FIRST_CUSTOM_PROFILE_ID + 1);
   });
 
   it('proposes the lowest free custom id', () => {
     const mirror = new ClientGridMirror(makeMap());
-    expect(mirror.nextCustomProfileId()).toBe(12);
+    expect(mirror.nextCustomProfileId()).toBe(FIRST_CUSTOM_PROFILE_ID);
     const p = { class: 'local' as const, pieces: [] };
     mirror.applyRoadProfiles([
-      { id: 12, profile: p },
-      { id: 14, profile: p },
+      { id: FIRST_CUSTOM_PROFILE_ID, profile: p },
+      { id: FIRST_CUSTOM_PROFILE_ID + 2, profile: p },
     ]);
-    expect(mirror.nextCustomProfileId()).toBe(13);
+    expect(mirror.nextCustomProfileId()).toBe(FIRST_CUSTOM_PROFILE_ID + 1);
   });
 });
 

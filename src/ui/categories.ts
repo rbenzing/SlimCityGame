@@ -86,6 +86,8 @@ function roadToolId(tier: RoadTier): ToolId | null {
       return 'road.tram';
     case RoadTierValue.RailTrack:
       return 'road.rail';
+    case RoadTierValue.Ramp:
+      return 'road.ramp';
     default:
       return null;
   }
@@ -242,7 +244,9 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
     {
       id: 'highway',
       label: 'Highway',
-      cards: [...roadCard(RoadTierValue.Highway)],
+      // The ramp sits beside the motorway it serves: on its own it is a slip
+      // road to nowhere, and it is the only way onto one.
+      cards: [...roadCard(RoadTierValue.Highway), ...roadCard(RoadTierValue.Ramp)],
     },
     {
       id: 'transit',
