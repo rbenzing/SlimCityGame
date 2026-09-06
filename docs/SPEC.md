@@ -2398,6 +2398,28 @@ scaled by one constant into the units the sim already uses.
 3. **Junction control** — node control records, the v/c warrant default, the
    inspector, per-movement delay cost, control-placed furniture, cycling
    signal heads, mini and compact roundabouts.
+   *Status (2026-09-05):* every graph node now carries a control, and it is
+   WARRANTED rather than authored. `src/shared/junction.ts` is the model: a
+   ladder from no control through give-way, minor-road stop and all-way stop
+   to a signal, climbed by two independent readings that resolve to the more
+   restrictive of the two. The first reads the classes that meet — two locals,
+   or anything unpaved or rural, meet on sight lines; a lesser road running
+   onto a bigger one stops; two collectors, or any junction an arterial
+   touches, is signalised; two equal town streets have no minor road to stop,
+   so all of them do. The second reads what the arms have been carrying, as
+   the share of their own capacity the MUTCD's vehicle-per-hour thresholds
+   work out to. A junction of fewer than three arms is a bend, and nothing
+   that touches a motorway, a slip road or a railway takes a control at all.
+   The graph edge carries the class and lane count of its run so the warrant
+   can read them, and `RoadNetwork` works the controls out afresh whenever the
+   graph is rebuilt and once a game day when the volumes settle — so a control
+   only a busy junction warrants appears as the city fills and goes away again
+   when it empties. The delay has teeth: A* pays the control's delay on
+   ARRIVAL, on the arm it enters by, from the Highway Capacity Manual's forms
+   — the quadratic in v/c below a signal, Webster's uniform delay at one — so
+   crossing a signalised avenue costs more than crossing a quiet street, the
+   road that runs through pays nothing at a give-way or a minor-road stop, and
+   a slow junction reroutes traffic the way it does in life.
 4. **Approach lanes and tapers** — movement sets, turn pockets, arrows, turn
    restrictions, lane-drop tapers with merge arrows and gore chevrons, taper
    edges in the sim.

@@ -718,11 +718,26 @@ export interface RoadSpec {
 // Implemented in src/world/roads.ts
 // ---------------------------------------------------------------------------
 
+/**
+ * Who has right of way where roads meet, least restrictive first. The first
+ * five are the ladder a traffic engineer climbs — no control, then yield on
+ * the minor road, then stop on the minor road, then stop on every approach,
+ * then a signal. A roundabout is not on that ladder: it is a change of
+ * geometry, chosen rather than warranted.
+ */
+export type JunctionControl = 'none' | 'yield' | 'stop' | 'allWayStop' | 'signal' | 'roundabout';
+
 export interface GraphNode {
   id: number;
   x: number;
   z: number;
   edges: number[]; // edge ids
+  /**
+   * Who gives way here. Derived from the approaches and what they carry, and
+   * recomputed when either changes; absent on a graph whose controls have not
+   * been worked out yet, which costs and signs exactly what it always did.
+   */
+  control?: JunctionControl;
 }
 
 export interface GraphEdge {
@@ -748,6 +763,14 @@ export interface GraphEdge {
    */
   lanesAtoB?: number;
   lanesBtoA?: number;
+  /**
+   * The functional class of the run. What the junction warrant reads to decide
+   * which road at a node is the minor one. Absent on a graph built before the
+   * run's cross-section could be resolved, which reads as the tier's preset.
+   */
+  classId?: RoadClassId;
+  /** Travel lanes on the run, both directions summed. */
+  lanes?: number;
 }
 
 export interface PathResult {

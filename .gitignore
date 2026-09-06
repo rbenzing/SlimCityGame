@@ -19,3 +19,7 @@ tools/shots-*/*.txt
 
 # Playwright MCP session artifacts
 .playwright-mcp/
+
+# Reference standards kept locally, not in the repo: the MUTCD alone is 31 MB
+# and a git blob is forever. Drop the PDFs in docs/Road Guides/ to consult them.
+docs/Road Guides/*.pdf

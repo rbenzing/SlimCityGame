@@ -8,7 +8,16 @@
 
 import { isStreetTier, RoadTier } from '../shared/types';
 import type { GraphEdge, GraphNode, PathResult, TilePoint } from '../shared/types';
-import { profileCapacity, profileSpeed, ROAD_PRESETS } from '../shared/roadprofile';
+import {
+  greenShareFor,
+  laneCount,
+  presetProfileForTier,
+  profileCapacity,
+  profileSpeed,
+  ROAD_PRESETS,
+} from '../shared/roadprofile';
+import { approachGivesWay, controlDelaySeconds } from '../shared/junction';
+import type { JunctionApproach } from '../shared/junction';
 
 interface EdgeRates {
   /** m/s along the edge — the tier's posted speed over 3.6. */
@@ -52,12 +61,78 @@ function directionShare(edge: GraphEdge, fromNodeId: number): number {
   return travelled / ((atoB + btoA) / 2);
 }
 
+/**
+ * How full the direction of `edge` leaving `fromNodeId` is: volume over the
+ * capacity serving that direction, capped at one. It is what scales the edge's
+ * own cost, and it is what the junction warrant reads off each arm.
+ */
+export function approachSaturation(edge: GraphEdge, fromNodeId: number): number {
+  const rates = ratesForTier(edge.tier);
+  const capacity = rates.capacity * directionShare(edge, fromNodeId);
+  return capacity > 0 ? Math.min(1, edge.volume / capacity) : 1;
+}
+
 /** length / speed, scaled up as volume approaches (or exceeds) the capacity serving this direction. */
 function edgeCost(edge: GraphEdge, fromNodeId: number): number {
   const rates = ratesForTier(edge.tier);
-  const capacity = rates.capacity * directionShare(edge, fromNodeId);
-  const congestion = capacity > 0 ? Math.min(1, edge.volume / capacity) : 1;
-  return (edge.length / rates.speed) * (1 + 2 * congestion);
+  return (edge.length / rates.speed) * (1 + 2 * approachSaturation(edge, fromNodeId));
+}
+
+/** How an edge id resolves to its edge; the graph's own map, passed as a function. */
+export type EdgeLookup = (id: number) => GraphEdge | undefined;
+
+/** One arm of a junction, and the edge it arrives on. */
+export interface JunctionArm {
+  edgeId: number;
+  approach: JunctionApproach;
+}
+
+/**
+ * The arms of a junction as the warrant reads them: what class each road is,
+ * how many lanes it brings IN to the node, and how full those lanes are. An
+ * edge whose cross-section was never resolved reads as the preset its tier
+ * names, which is what every road read as before a profile could say
+ * otherwise.
+ */
+export function armsAt(node: GraphNode, edgeById: EdgeLookup): JunctionArm[] {
+  const arms: JunctionArm[] = [];
+  for (const edgeId of node.edges) {
+    const edge = edgeById(edgeId);
+    if (!edge) continue;
+    // Traffic on this arm arrives from the FAR end of the run, so that end is
+    // the direction its lanes and its volume are read in.
+    const fromNodeId = edge.a === node.id ? edge.b : edge.a;
+    const preset = presetProfileForTier(edge.tier);
+    const lanesIn = fromNodeId === edge.a ? edge.lanesAtoB : edge.lanesBtoA;
+    const total = edge.lanes ?? laneCount(preset);
+    arms.push({
+      edgeId,
+      approach: {
+        classId: edge.classId ?? preset.class,
+        lanes: lanesIn ?? Math.max(1, Math.round(total / 2)),
+        vc: approachSaturation(edge, fromNodeId),
+      },
+    });
+  }
+  return arms;
+}
+
+/**
+ * Seconds a driver loses arriving at `node` along `arriving`. A node whose
+ * control has not been worked out costs nothing, which is exactly what every
+ * junction cost before one did.
+ */
+export function junctionDelay(node: GraphNode, arriving: GraphEdge, edgeById: EdgeLookup): number {
+  const control = node.control;
+  if (!control || control === 'none') return 0;
+  const arms = armsAt(node, edgeById);
+  const mine = arms.find((a) => a.edgeId === arriving.id)?.approach;
+  if (!mine) return 0;
+  const approaches = arms.map((a) => a.approach);
+  return controlDelaySeconds(control, approachGivesWay(control, mine, approaches), {
+    vc: mine.vc,
+    greenShare: greenShareFor(mine.classId),
+  });
 }
 
 /**
@@ -258,12 +333,18 @@ export function findPath(
       const otherId: number = edge.a === currentId ? edge.b : edge.a;
       if (otherId === currentId || closed.has(otherId)) continue;
 
+      // The junction is paid for on ARRIVAL, on the arm it is entered from, so
+      // a slow control reroutes traffic the way it does in life. Delays are
+      // never negative, so the heuristic stays admissible by ignoring them.
+      const otherNode = nodeById.get(otherId);
+      const delay = otherNode ? junctionDelay(otherNode, edge, (id) => edgeById.get(id)) : 0;
       const tentative =
-        currentG + edgeCost(edge, currentId) * (edgeCostMultiplier ? edgeCostMultiplier(edge) : 1);
+        currentG +
+        edgeCost(edge, currentId) * (edgeCostMultiplier ? edgeCostMultiplier(edge) : 1) +
+        delay;
       if (tentative < (gScore.get(otherId) ?? Infinity)) {
         gScore.set(otherId, tentative);
         cameFrom.set(otherId, { prevNode: currentId, edgeId });
-        const otherNode = nodeById.get(otherId);
         if (otherNode) open.push(otherId, tentative + heuristic(otherNode));
       }
     }

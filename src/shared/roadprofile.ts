@@ -125,6 +125,17 @@ export function profileSpeed(profile: RoadProfile): number {
  * time the lane moves, or the free-flow figure, times the calibration
  * constant, to the nearest catalogue step.
  */
+/**
+ * The share of a signal cycle a lane of this class actually moves for — what
+ * separates a signalised arterial from a free-flowing motorway, and the g/C
+ * that a signal's delay is worked out on. A class quoted as free flow never
+ * meets a signal; it reads as half the cycle so the formula stays defined.
+ */
+export function greenShareFor(classId: RoadClassId): number {
+  const flow = roadClass(classId).laneFlow;
+  return 'greenRatio' in flow ? flow.greenRatio : 0.5;
+}
+
 export function laneCapacity(classId: RoadClassId): number {
   const flow = roadClass(classId).laneFlow;
   const vehPerHour =
@@ -623,6 +634,15 @@ const CLASS_RANK: Readonly<Record<RoadClassId, number>> = {
   highway: 10,
   rail: 11,
 };
+
+/**
+ * A class's place in the hierarchy on its own, without the transit bonus the
+ * profile rank adds. This is the FUNCTIONAL CLASSIFICATION a traffic engineer
+ * reads when deciding which road at a junction is the minor one.
+ */
+export function classRank(id: RoadClassId): number {
+  return CLASS_RANK[id];
+}
 
 /**
  * A profile's place in the hierarchy. A road carrying a reserved bus or tram

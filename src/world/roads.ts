@@ -5,14 +5,16 @@
  * no three.js, no DOM.
  */
 
-import { findPath as runAstar, nearestNode as findNearestNode } from './pathfind';
+import { armsAt, findPath as runAstar, nearestNode as findNearestNode } from './pathfind';
 import { flowForStep, RoadFlow, RoadTier, ZoneType, isStreetTier } from '../shared/types';
 import { isPresetProfileId, presetProfileForTier, rankForTier } from '../shared/roadprofile';
+import { warrantedControl } from '../shared/junction';
 import type {
   GraphEdge,
   GraphNode,
   GridState,
   PathResult,
+  RoadClassId,
   RoadNetworkApi,
   RoadProfile,
   RoadTileDelta,
@@ -329,22 +331,23 @@ function storedRunDirection(g: GridState, runTiles: readonly TilePoint[]): boole
 export type ProfileResolver = (id: number) => RoadProfile | null;
 
 /**
- * How a run's lanes divide between the two directions of the walk from node a
- * to node b, or null when the run is the same both ways — which is every road
- * whose profile says nothing else, and which costs what it always cost.
+ * What a run's own cross-section says about it: the class it belongs to, how
+ * many travel lanes it has, and how those lanes divide between the two
+ * directions of the walk from node a to node b.
  *
- * The profile's own `back` and `fwd` are relative to the direction the road
- * was drawn in, so the stored direction is what turns them into a-to-b and
- * b-to-a. A run that never recorded one cannot be told apart, so it is left
- * symmetric rather than guessed at.
+ * The split is null when the run is the same both ways — which is every road
+ * whose profile says nothing else, and which costs what it always cost. The
+ * profile's own `back` and `fwd` are relative to the direction the road was
+ * drawn in, so the stored direction is what turns them into a-to-b and b-to-a.
+ * A run that never recorded one cannot be told apart, so it is left symmetric
+ * rather than guessed at.
  */
-function runLaneSplit(
+function runFacts(
   g: GridState,
   runTiles: readonly TilePoint[],
   forwardAtoB: boolean | null,
   profileFor: ProfileResolver,
-): { atoB: number; btoA: number } | null {
-  if (forwardAtoB === null) return null;
+): { classId: RoadClassId; lanes: number; split: { atoB: number; btoA: number } | null } | null {
   const mid = runTiles[Math.floor(runTiles.length / 2)];
   if (!mid) return null;
   const profile = profileFor(g.roadProfile[indexOf(g.size, mid.x, mid.z)] ?? 0);
@@ -352,8 +355,12 @@ function runLaneSplit(
   const travel = profile.pieces.filter((p) => p.kind === 'travel');
   const fwd = travel.filter((p) => p.flow === 'fwd').length;
   const back = travel.filter((p) => p.flow === 'back').length;
-  if (fwd === back) return null; // the same both ways: nothing to say
-  return forwardAtoB ? { atoB: fwd, btoA: back } : { atoB: back, btoA: fwd };
+  const symmetric = fwd === back || forwardAtoB === null;
+  return {
+    classId: profile.class,
+    lanes: travel.length,
+    split: symmetric ? null : forwardAtoB ? { atoB: fwd, btoA: back } : { atoB: back, btoA: fwd },
+  };
 }
 
 function buildGraph(
@@ -446,10 +453,14 @@ function buildGraph(
       };
       const stored = storedRunDirection(g, runTiles);
       if (stored !== null) edge.forwardAtoB = stored;
-      const split = runLaneSplit(g, runTiles, stored, profileFor);
-      if (split) {
-        edge.lanesAtoB = split.atoB;
-        edge.lanesBtoA = split.btoA;
+      const facts = runFacts(g, runTiles, stored, profileFor);
+      if (facts) {
+        edge.classId = facts.classId;
+        edge.lanes = facts.lanes;
+        if (facts.split) {
+          edge.lanesAtoB = facts.split.atoB;
+          edge.lanesBtoA = facts.split.btoA;
+        }
       }
       edges.push(edge);
       nodes[startId]!.edges.push(edgeId);
@@ -527,6 +538,23 @@ export class RoadNetwork implements RoadNetworkApi {
     this.edges = built.edges;
     this.tileEdge = null;
     this.dirty = false;
+    this.refreshControls();
+  }
+
+  /**
+   * Works out who gives way at every junction, from the classes that meet
+   * there and what those arms have been carrying. Called whenever either can
+   * have changed: when the graph is rebuilt, and once a game day when the
+   * volumes decay — which is what makes a control that only a busy junction
+   * warrants appear as the city fills, and go away again when it empties.
+   */
+  private refreshControls(): void {
+    const byId = new Map<number, GraphEdge>();
+    for (const edge of this.edges) byId.set(edge.id, edge);
+    const lookup = (id: number): GraphEdge | undefined => byId.get(id);
+    for (const node of this.nodes) {
+      node.control = warrantedControl(armsAt(node, lookup).map((arm) => arm.approach));
+    }
   }
 
   /**
@@ -545,6 +573,7 @@ export class RoadNetwork implements RoadNetworkApi {
     this.edges = built.edges;
     this.tileEdge = null;
     this.dirty = false;
+    this.refreshControls();
   }
 
   /** The edge whose run covers this tile, or null if the tile is off-network. */
@@ -621,6 +650,7 @@ export class RoadNetwork implements RoadNetworkApi {
     for (const edge of this.edges) {
       edge.volume *= factor;
     }
+    this.refreshControls();
   }
 
   getEdges(): readonly GraphEdge[] {

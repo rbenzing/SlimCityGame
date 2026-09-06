@@ -56,7 +56,16 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   leaves nowhere to cross — both of which the preview turns down and tells you
   why. Where roads meet, the bigger one runs through: it keeps its markings
   across the junction and the side street gets the stop bar and the crossing.
-  Two equal roads crossing both stop. Roads snap to the
+  Two equal roads crossing both stop. Underneath that, every junction decides
+  who gives way, and it decides the way a traffic engineer would: two quiet
+  streets, or anything unpaved, meet on sight lines; a smaller road running
+  onto a bigger one gives way and then stops as the bigger one gets busy; two
+  equal town streets stop all round; an avenue signalises everything it
+  touches. Traffic is never stopped on a motorway. The decision is not
+  cosmetic — crossing a signal costs a driver real seconds, and drivers reroute
+  around a slow junction — and it follows the city: a crossroads that needs
+  nothing today earns a give-way, then a stop, as the blocks around it fill,
+  and loses them again if the traffic goes away. Roads snap to the
   grid, round their corners and dead-ends, and bank smoothly up slopes (the ground
   is graded under them automatically).
 - **Zoning** — residential, commercial, and industrial. Denser residential

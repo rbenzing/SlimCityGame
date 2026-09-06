@@ -61,7 +61,15 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > road cannot be drawn through one bigger than it, junctions where the major
 > road runs through and the side street stops, crossings at their real size,
 > US lane widths and a static lane-count choice per road family, and yellow
-> centre lines with white lane and edge lines. Next: waves 3–6.
+> centre lines with white lane and edge lines. Wave 3 has begun with the thing
+> the rest of it hangs off: every junction now works out who gives way, from
+> the classes that meet there and what those arms have been carrying, climbing
+> a ladder from nothing through give-way, a stop on the minor road and a stop
+> on every arm to a signal — and the seconds it costs are paid in the path
+> cost, so crossing a signalised avenue really is slower than crossing a quiet
+> street and a slow junction reroutes traffic. Next: the junction inspector and
+> a sticky player override, signs and signals placed by the control rather than
+> the tier, cycling signal heads, roundabouts, then waves 4–6.
 > Specified in full: classes, lane-piece
 > profiles with a width budget, stored flow direction, per-junction control
 > (none/yield/stop/all-way/signal/roundabout) with warrant defaults,
