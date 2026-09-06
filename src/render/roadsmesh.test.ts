@@ -2538,3 +2538,46 @@ describe('roadTileVertices — a one-way street points the way it was drawn', ()
     expect(north.tip - north.tail).toBeCloseTo(south.tip - south.tail, 6);
   });
 });
+
+describe('roadTileVertices — the taper where a road drops a lane', () => {
+  const wide = presetProfileForTier(RoadTier.FourLane);
+  /** A four-lane tile partway through closing 7.5 m of carriageway over seven tiles. */
+  const closing = (remaining: number): { positions: number[]; colors: number[] } =>
+    roadTileVertices(
+      4,
+      4,
+      RoadTier.FourLane,
+      N | S,
+      flatHeightAt,
+      undefined,
+      wide,
+      undefined,
+      RoadFlow.None,
+      undefined,
+      undefined,
+      { toward: RoadFlow.South, remaining, length: 7, closed: 7.5 },
+    );
+  const spread = (v: { positions: number[] }): number =>
+    Math.max(...toTriples(v.positions).map((p) => Math.abs(p[0]! - 4.5 * TILE_METERS)));
+
+  it('narrows the road tile by tile down the taper', () => {
+    const head = spread(closing(6));
+    const middle = spread(closing(3));
+    const foot = spread(closing(0));
+    expect(head).toBeGreaterThan(middle);
+    expect(middle).toBeGreaterThan(foot);
+  });
+
+  it('paints the merge arrow at the head of the taper and nowhere else along it', () => {
+    const plain = countWhere(
+      roadTileVertices(4, 4, RoadTier.FourLane, N | S, flatHeightAt, undefined, wide).colors,
+      isMarkingWhite,
+    );
+    // The head carries the arrow the lane that is running out needs; the tiles
+    // behind it are just a narrowing road.
+    expect(countWhere(closing(6).colors, isMarkingWhite)).toBeGreaterThan(plain);
+    expect(countWhere(closing(5).colors, isMarkingWhite)).toBeLessThan(
+      countWhere(closing(6).colors, isMarkingWhite),
+    );
+  });
+});

@@ -3,7 +3,7 @@ import { FIELD_COUNT, RoadFlow, RoadTier } from '../shared/types';
 import { Movement, withArmAllowed } from '../shared/approach';
 import type { GraphEdge, GridState, TilePoint } from '../shared/types';
 import { applyRoad, RoadNetwork } from './roads';
-import { armsAt, junctionDelay } from './pathfind';
+import { approachSaturation, armsAt, capacityForTier, junctionDelay } from './pathfind';
 
 function makeGrid(size: number): GridState {
   const n = size * size;
@@ -296,5 +296,54 @@ describe('a turn pocket is a lane the approach has at the junction and nowhere e
     const canPocket = arms.map((a) => a.canPocket);
     expect(canPocket).toContain(true);
     expect(canPocket).toContain(false);
+  });
+});
+
+describe('a lane drop is a bottleneck the traffic can feel', () => {
+  const SIZE = 13;
+
+  /** A four-lane road running north-south that becomes a two-lane street. */
+  function narrowingRun(): RoadNetwork {
+    const g = makeGrid(SIZE);
+    applyRoad(g, column(6, 0, 6), RoadTier.FourLane);
+    applyRoad(g, column(6, 7, SIZE - 1), RoadTier.TwoLane);
+    const net = new RoadNetwork();
+    net.rebuild(g);
+    return net;
+  }
+
+  it('tells the wide run what it drops into, and only at the end that drops', () => {
+    const edges = narrowingRun().getEdges();
+    const wide = edges.find((e) => e.tier === RoadTier.FourLane)!;
+    const narrow = edges.find((e) => e.tier === RoadTier.TwoLane)!;
+    // The four-lane road learns the street's capacity at the end that meets it.
+    const drop = wide.narrowsAtA ?? wide.narrowsAtB;
+    expect(drop).toBe(capacityForTier(RoadTier.TwoLane));
+    expect(wide.narrowsAtA === undefined || wide.narrowsAtB === undefined).toBe(true);
+    // The street learns nothing: a road widening ahead never held anyone up.
+    expect(narrow.narrowsAtA).toBeUndefined();
+    expect(narrow.narrowsAtB).toBeUndefined();
+  });
+
+  it('queues the traffic heading into the drop, and not the traffic leaving it', () => {
+    const net = narrowingRun();
+    const wide = net.getEdges().find((e) => e.tier === RoadTier.FourLane)!;
+    // Enough traffic to fill the street but not the four-lane road.
+    wide.volume = capacityForTier(RoadTier.TwoLane);
+    const into = wide.narrowsAtB !== undefined ? wide.a : wide.b;
+    const away = into === wide.a ? wide.b : wide.a;
+    expect(approachSaturation(wide, into)).toBe(1);
+    expect(approachSaturation(wide, away)).toBeLessThan(1);
+  });
+
+  it('leaves a road that drops into nothing exactly as it was', () => {
+    const g = makeGrid(SIZE);
+    applyRoad(g, column(6, 0, SIZE - 1), RoadTier.FourLane);
+    const net = new RoadNetwork();
+    net.rebuild(g);
+    const edge = net.getEdges()[0]!;
+    edge.volume = capacityForTier(RoadTier.TwoLane);
+    expect(edge.narrowsAtA).toBeUndefined();
+    expect(approachSaturation(edge, edge.a)).toBeLessThan(1);
   });
 });

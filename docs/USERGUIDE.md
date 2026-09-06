@@ -96,6 +96,16 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   does not get one — which is why a plain street earns a pocket at a signal
   and a four-lane road filling its tile does not. Nothing to switch on: give
   the junction a control it needs and the pocket appears with it.
+  Where a wide road runs into a narrower one, the extra lanes **close over a
+  taper** instead of stopping dead: a four-lane road meeting a two-lane street
+  spends seven tiles closing its kerbside lanes, and a motorway spends far
+  more, because a lane closed at speed needs the room. The lane that is
+  running out carries a merge arrow bending into the one beside it. The drop
+  is a real bottleneck too — traffic heading into it queues for the narrow
+  road rather than the wide one it is still on, so a four-lane road that ends
+  in a village street backs up on the traffic lens exactly where it should.
+  Traffic going the other way is unaffected: a road widening ahead of you
+  never held anybody up.
   Roads snap to the
   grid, round their corners and dead-ends, and bank smoothly up slopes (the ground
   is graded under them automatically).

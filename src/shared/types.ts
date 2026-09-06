@@ -848,6 +848,15 @@ export interface GraphEdge {
    */
   pocketAtoB?: boolean;
   pocketBtoA?: boolean;
+  /**
+   * The capacity of the narrower road this run drops into at each end, when it
+   * drops into one — `narrowsAtB` for the traffic heading toward node b. A
+   * pipe is only as wide as its narrowest part, so this caps what the run can
+   * carry in that direction and makes a hard four-to-one drop a chokepoint
+   * rather than a free merge. Absent at an end where the road does not narrow.
+   */
+  narrowsAtA?: number;
+  narrowsAtB?: number;
 }
 
 export interface PathResult {

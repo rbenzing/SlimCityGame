@@ -3232,6 +3232,45 @@ export function roadTileVertices(
         }
       }
 
+      // The merge arrow at the head of a taper: the lane that is about to run
+      // out carries one arrow bending into the lane beside it, which is how a
+      // driver is told to move over before the lane does it for them. Only the
+      // half driving TOWARD the drop is losing anything — the other half is
+      // gaining a lane, and nobody needs telling about that.
+      if (narrowing && narrowing.remaining === narrowing.length - 1 && plan.solid.length > 0) {
+        const { vertical, ahead, leftSign } = approachAxis(narrowing.toward);
+        const lanes = travelLanes(crossSection);
+        const oneWay = lanes.length > 0 && lanes.every((l) => l.flow === lanes[0]?.flow);
+        const onTheRight = (l: { centre: number }): boolean => l.centre * leftSign < 0;
+        const towardUs = travelLanes(own).find(onTheRight)?.flow;
+        const runsToward = flow === RoadFlow.None || flow === narrowing.toward;
+        const closing = oneWay
+          ? runsToward
+            ? lanes
+            : []
+          : lanes.filter((l) => (towardUs ? l.flow === towardUs : onTheRight(l)));
+        // The kerbside lane is the one that closes, and the lane it merges
+        // into is on the driver's left.
+        const outermost = closing.reduce<{ centre: number } | undefined>(
+          (far, l) => (!far || Math.abs(l.centre) > Math.abs(far.centre) ? l : far),
+          undefined,
+        );
+        if (outermost && closing.length >= 2) {
+          const shift = ahead * (TILE_HALF - LANE_ARROW_SETBACK_M);
+          emitLaneUseArrow(
+            positions,
+            colors,
+            vertical,
+            vertical ? centerX : centerX + shift,
+            vertical ? centerZ + shift : centerZ,
+            outermost.centre,
+            ahead,
+            Movement.Left,
+            hAt,
+          );
+        }
+      }
+
       // One-Way direction arrows: every ARROW_PERIOD_TILES-th tile by GLOBAL
       // coordinate along the flow axis, pointing the way the road was drawn.
       // A road laid before its direction was stored points low->high, which is

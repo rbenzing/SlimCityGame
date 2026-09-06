@@ -77,8 +77,18 @@ function directionShare(edge: GraphEdge, fromNodeId: number): number {
  */
 export function approachSaturation(edge: GraphEdge, fromNodeId: number): number {
   const rates = ratesForTier(edge.tier);
-  const capacity = rates.capacity * directionShare(edge, fromNodeId);
+  const mine = rates.capacity * directionShare(edge, fromNodeId);
+  // A run that drops lanes ahead can only deliver what the road it drops into
+  // takes: the taper is the narrow part of the pipe, and traffic heading into
+  // it queues for the narrow road rather than the wide one it is still on.
+  const ahead = fromNodeId === edge.a ? edge.narrowsAtB : edge.narrowsAtA;
+  const capacity = Math.min(mine, ahead ?? Number.POSITIVE_INFINITY);
   return capacity > 0 ? Math.min(1, edge.volume / capacity) : 1;
+}
+
+/** The capacity a run of this tier carries, both directions summed. */
+export function capacityForTier(tier: RoadTier): number {
+  return ratesForTier(tier).capacity;
 }
 
 /** length / speed, scaled up as volume approaches (or exceeds) the capacity serving this direction. */

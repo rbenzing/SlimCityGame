@@ -2543,10 +2543,29 @@ scaled by one constant into the units the sim already uses.
    slower for the reading. Without that a pocket could not show at all — it
    never changes how many lanes serve a turn, only whether the turn has one
    to itself.
+   LANE DROPS close over a TAPER rather than at a tile boundary. The length is
+   the standard ratio applied to the width actually being dropped — 1:50 on a
+   motorway, 1:15 on a street — so a four-lane road running into a two-lane
+   one closes 7.5 m of carriageway over seven tiles, and two motorway lanes
+   would close over 350 m, which is where the game's own bound of twelve tiles
+   comes in. The lanes that close are the kerbside ones, taken a side at a
+   time so a two-way road closes evenly; everything that is not a travel lane
+   is the road's own and is untouched. A widening is not a taper — a road
+   gains its lane at the join, because there is nothing to close. The tile at
+   the head carries a merge arrow in the lane that is running out, bending
+   into the lane beside it, and only the half driving toward the drop gets
+   one. The sim reads the drop as what it is: a run that narrows ahead is
+   capped at the capacity of the road it narrows into, for the direction
+   heading that way and that direction only, so a hard four-to-one drop is a
+   chokepoint on the traffic lens and a free merge in the other direction.
    *Still to come in the wave:* per-LANE movement sets — the restriction is
-   per ARM today, which is what a player actually reaches for — and lane-drop
-   tapers with their merge arrows and gore chevrons, which are also what will
-   draw a pocket's own opening taper rather than the lane simply beginning.
+   per ARM today, which is what a player actually reaches for; the motorway's
+   chevron-hatched gore, which needs the taper variant that keeps the pavement
+   and closes only the lane, since a wedge that is no longer paved has nothing
+   to hatch; the pocket's own opening taper, which the lane-drop taper is the
+   machinery for; and the kerb strip's blend — the footway's outer edge still
+   steps tile by tile where the carriageway bends, which a taper makes plain
+   and a turn pocket's two ends already did.
 5. **Ramps and interchange stamps** — the ramp class, merge/diverge/terminal
    nodes, automatic acceleration/deceleration lanes, diamond and trumpet,
    then parclo, cloverleaf and roundabout interchange.

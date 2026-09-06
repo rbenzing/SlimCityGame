@@ -5,7 +5,12 @@
  * no three.js, no DOM.
  */
 
-import { armsAt, findPath as runAstar, nearestNode as findNearestNode } from './pathfind';
+import {
+  armsAt,
+  capacityForTier,
+  findPath as runAstar,
+  nearestNode as findNearestNode,
+} from './pathfind';
 import { flowForStep, RoadFlow, RoadTier, ZoneType, isStreetTier } from '../shared/types';
 import {
   canGainTurnPocket,
@@ -383,6 +388,36 @@ function runFacts(
   };
 }
 
+/**
+ * Records, on each run, the narrower road it drops into at either end.
+ *
+ * A node with exactly two edges is a straight-through boundary between two
+ * kinds of road — the graph puts one there so an edge can carry a single tier
+ * — which is exactly where a lane drop happens. The wide side learns what it
+ * drops into, so the traffic heading that way queues for the road it is going
+ * to rather than the one it is on; the narrow side learns nothing, since a
+ * road widening ahead of you never held anybody up.
+ */
+function markLaneDrops(nodes: readonly GraphNode[], edges: readonly GraphEdge[]): void {
+  for (const node of nodes) {
+    if (node.edges.length !== 2) continue;
+    const first = edges[node.edges[0]!];
+    const second = edges[node.edges[1]!];
+    if (!first || !second) continue;
+    const pair: [GraphEdge, GraphEdge][] = [
+      [first, second],
+      [second, first],
+    ];
+    for (const [edge, other] of pair) {
+      const mine = capacityForTier(edge.tier);
+      const theirs = capacityForTier(other.tier);
+      if (theirs >= mine) continue;
+      if (node.id === edge.b) edge.narrowsAtB = theirs;
+      else edge.narrowsAtA = theirs;
+    }
+  }
+}
+
 function buildGraph(
   g: GridState,
   inNetwork: NetworkTiers,
@@ -490,6 +525,7 @@ function buildGraph(
     }
   }
 
+  markLaneDrops(nodes, edges);
   return { nodes, edges };
 }
 

@@ -117,6 +117,7 @@ const shot = async (name, tx, tz, d, yaw, pitch) => {
   console.log('shot', name);
 };
 await shot('taper-down', X + CX, Z + 9, 90, 0.0, 1.15);
+await shot('taper-head', X + CX, Z + 5, 34, 0.0, 1.2);
 await shot('taper-along', X + CX, Z + 8, 120, 0.5, 0.7);
 
 console.log(failures.length === 0 ? 'PASS' : 'FAIL');
