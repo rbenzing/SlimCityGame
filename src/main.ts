@@ -563,17 +563,24 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         toward: number;
         distance: number;
         pocket: boolean;
+        taper: { remaining: number; length: number; closed: number } | null;
         lanes: number;
         width: number;
       } | null => {
         const own = clientGrid.profileAt(x, z);
-        const ahead = clientGrid.approachAt(x, z);
         const drawn = clientGrid.drawnProfileAt(x, z);
-        if (!own || !ahead || !drawn) return null;
+        if (!own || !drawn) return null;
+        const ahead = clientGrid.approachAt(x, z);
+        const taper = clientGrid.narrowingAt(x, z);
         return {
-          toward: ahead.toward,
-          distance: ahead.distance,
-          pocket: drawn !== own,
+          // A tile that approaches no junction still carries a cross-section,
+          // and a taper is the reason it might differ from the road's own.
+          toward: ahead?.toward ?? taper?.toward ?? 0,
+          distance: ahead?.distance ?? -1,
+          pocket: !taper && drawn !== own,
+          taper: taper
+            ? { remaining: taper.remaining, length: taper.length, closed: taper.closed }
+            : null,
           lanes: drawn.pieces.filter((p) => p.kind === 'travel').length,
           width: carriagewayWidth(drawn),
         };

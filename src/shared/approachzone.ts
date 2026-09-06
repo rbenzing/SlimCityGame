@@ -14,6 +14,8 @@
 import { armAllowed, pocketWarranted } from './approach';
 import type { MovementSet, PackedTurns } from './approach';
 import { isOneWayProfile, withTurnPocket } from './roadprofile';
+import { closedAt, dropWidth, TAPER_MAX_TILES, taperedCrossSection, taperTilesFor } from './taper';
+import type { TaperStep } from './taper';
 import type { JunctionControl, RoadProfile } from './types';
 import { RoadFlow } from './types';
 
@@ -25,6 +27,8 @@ export interface ApproachSurroundings {
   controlAt(x: number, z: number): JunctionControl | undefined;
   /** A junction tile's per-arm turn restrictions, zero where it has none. */
   turnsAt(x: number, z: number): PackedTurns;
+  /** The cross-section the tile's own profile names, or null off-road. */
+  profileAt(x: number, z: number): RoadProfile | null;
 }
 
 /** The junction a tile approaches, and what this arm of it may do. */
@@ -165,4 +169,67 @@ export function pocketedCrossSection(
   }
   const { leftSign } = approachAxis(approach.toward);
   return withTurnPocket(profile, -leftSign as 1 | -1) ?? profile;
+}
+
+/**
+ * The cross-section a tile draws, all of it: its own profile, the turn pocket
+ * it may have gained for the junction ahead, and the lanes it may be closing
+ * for the narrower road ahead. A lane that is on its way out has no width to
+ * lend a pocket, so a taper takes precedence over one.
+ */
+export function drawnCrossSection(
+  profile: RoadProfile,
+  approach: ApproachAhead | undefined,
+  narrowing: TaperStep | undefined,
+  flow: number,
+): RoadProfile {
+  if (narrowing) return taperedCrossSection(profile, closedAt(narrowing));
+  return pocketedCrossSection(profile, approach, flow);
+}
+
+/**
+ * The lane drop this tile is running into, or undefined when the road ahead is
+ * no narrower than it is. A drop does not happen at the tile boundary: the
+ * lanes close over a taper of the length the class's own ratio gives, and this
+ * says how far through that closing the tile stands.
+ *
+ * The walk is the same straight run the approach zone uses — a taper cannot
+ * turn a corner, and a road that ends is not a road that narrows. Where a wide
+ * stretch narrows at both ends, the nearer one claims the tile, since that is
+ * the drop its lanes are closing for.
+ */
+export function narrowingAhead(
+  x: number,
+  z: number,
+  world: ApproachSurroundings,
+): (TaperStep & { toward: RoadFlow }) | undefined {
+  const mine = world.profileAt(x, z);
+  if (!mine || roadDegree(x, z, world) !== 2) return undefined;
+
+  let best: (TaperStep & { toward: RoadFlow }) | undefined;
+  for (const [dx, dz, toward] of STEPS) {
+    if (!world.hasRoad(x + dx, z + dz)) continue;
+    if (!world.hasRoad(x - dx, z - dz)) continue; // a corner, not a run
+    for (let step = 1; step <= TAPER_MAX_TILES; step++) {
+      const tx = x + dx * step;
+      const tz = z + dz * step;
+      const theirs = world.profileAt(tx, tz);
+      if (!theirs) break;
+      const drop = dropWidth(mine, theirs);
+      if (drop > 1e-6) {
+        const length = taperTilesFor(mine.class, drop);
+        const remaining = step - 1;
+        // Only the tiles within the taper's own length are closing; the road
+        // further back is simply the wide road it is.
+        if (remaining < length && (!best || remaining < best.remaining)) {
+          best = { toward, remaining, length, closed: drop };
+        }
+        break;
+      }
+      // A tile that is no narrower carries the run on, so long as the run
+      // itself carries on straight.
+      if (roadDegree(tx, tz, world) !== 2 || !world.hasRoad(tx + dx, tz + dz)) break;
+    }
+  }
+  return best;
 }

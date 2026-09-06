@@ -108,7 +108,13 @@ import {
   pocketLaneMovements,
 } from '../shared/approach';
 import type { MovementSet } from '../shared/approach';
-import { approachAhead, approachAxis, pocketedCrossSection } from '../shared/approachzone';
+import {
+  approachAhead,
+  approachAxis,
+  drawnCrossSection,
+  narrowingAhead,
+} from '../shared/approachzone';
+import type { TaperStep } from '../shared/taper';
 import type { ApproachAhead, ApproachSurroundings } from '../shared/approachzone';
 import {
   centrePair,
@@ -2780,6 +2786,12 @@ export function roadTileVertices(
    * can see the whole network; it is what puts lane-use arrows on the ground.
    */
   approach?: ApproachAhead,
+  /**
+   * The lane drop this tile is closing for, when the road ahead of it is
+   * narrower. Set only by a caller that can see the whole run; it is what
+   * turns a step in the road's width into a taper.
+   */
+  narrowing?: TaperStep & { toward: RoadFlow },
 ): { positions: number[]; colors: number[] } {
   if (!Number.isInteger(mask) || mask < 0 || mask > 15) {
     throw new RangeError(`roadTileVertices: mask ${mask} out of the 4-bit range 0..15`);
@@ -2789,10 +2801,11 @@ export function roadTileVertices(
   const colors: number[] = [];
   if (tier === RoadTier.None) return { positions, colors };
 
-  // The cross-section this tile carries, which inside a junction's approach
-  // zone is its own plus the turn pocket: a lane the road has here and nowhere
-  // else, and one the asphalt has to be wide enough to hold.
-  const crossSection = pocketedCrossSection(profile ?? presetProfileForTier(tier), approach, flow);
+  // The cross-section this tile carries: its own, plus the turn pocket it may
+  // have gained for the junction ahead, less the lanes it may be closing for a
+  // narrower road ahead. The asphalt has to be exactly as wide as the paint.
+  const own = profile ?? presetProfileForTier(tier);
+  const crossSection = drawnCrossSection(own, approach, narrowing, flow);
   const spec = quadSpecFor(tier, crossSection);
   // Every line and band this tile paints, read from its cross-section.
   const plan = markingPlan(crossSection);
@@ -3183,7 +3196,7 @@ export function roadTileVertices(
         // then what it FLOWS, read off the half that the road without its
         // pocket had on the driver's right.
         const onTheRight = (l: { centre: number }): boolean => l.centre * leftSign < 0;
-        const towardUs = travelLanes(profile ?? crossSection).find(onTheRight)?.flow;
+        const towardUs = travelLanes(own).find(onTheRight)?.flow;
         const approaching = oneWay
           ? runsToward
             ? lanes
@@ -3691,6 +3704,7 @@ export class RoadMeshRenderer {
       hasRoad: (x, z) => this.tierAt(x, z) !== RoadTier.None,
       controlAt: (x, z) => this.junctionControls.get(tileIndex(x, z)),
       turnsAt: (x, z) => this.junctionTurns.get(tileIndex(x, z)) ?? 0,
+      profileAt: (x, z) => this.profileAt(x, z),
     };
   }
 
@@ -3712,18 +3726,28 @@ export class RoadMeshRenderer {
     return approachAhead(x, z, approachZoneTiles(profile.class), this.surroundings);
   }
 
+  /** The lane drop the tile at (x,z) is closing for, when the road ahead narrows. */
+  private narrowingAt(x: number, z: number): (TaperStep & { toward: RoadFlow }) | undefined {
+    return narrowingAhead(x, z, this.surroundings);
+  }
+
   /**
    * The carriageway half-width of the road at (x,z), read from the
    * cross-section that tile actually paints — a turn pocket widens the asphalt
-   * for the tiles that carry it, and the seam with the tile next door has to
-   * meet the same edge.
+   * for the tiles that carry it and a taper narrows it, and the seam with the
+   * tile next door has to meet the same edge.
    */
   private halfAt(x: number, z: number): number {
     const profile = this.profileAt(x, z);
     if (!profile) return 0;
     const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
     return carriagewayHalfWidthOf(
-      pocketedCrossSection(profile, this.approachToward(x, z), tile?.flow ?? RoadFlow.None),
+      drawnCrossSection(
+        profile,
+        this.approachToward(x, z),
+        this.narrowingAt(x, z),
+        tile?.flow ?? RoadFlow.None,
+      ),
     );
   }
 
@@ -3764,6 +3788,7 @@ export class RoadMeshRenderer {
         tile.flow,
         this.junctionControls.get(tileIndex(tile.x, tile.z)),
         this.approachToward(tile.x, tile.z),
+        this.narrowingAt(tile.x, tile.z),
       );
       for (const n of vertices.positions) positions.push(n);
       for (const n of vertices.colors) colors.push(n);

@@ -11,7 +11,7 @@
 import { TILE_METERS, worldToTile } from '../shared/constants';
 import { RoadFlow, RoadTier } from '../shared/types';
 import { approachZoneTiles } from '../shared/approach';
-import { approachAhead, pocketedCrossSection } from '../shared/approachzone';
+import { approachAhead, drawnCrossSection, narrowingAhead } from '../shared/approachzone';
 import type { ApproachAhead, ApproachSurroundings } from '../shared/approachzone';
 import {
   FIRST_CUSTOM_PROFILE_ID,
@@ -117,17 +117,24 @@ export class ClientGridMirror {
 
   /**
    * The cross-section a tile actually carries: its own, plus the turn pocket
-   * where it stands in a junction's approach zone. Everything measured off the
-   * road reads this one, so the paint, the asphalt and the kerb agree.
+   * where it stands in a junction's approach zone, less the lanes it is
+   * closing where the road ahead is narrower. Everything measured off the road
+   * reads this one, so the paint, the asphalt and the kerb agree.
    */
   drawnProfileAt(x: number, z: number): RoadProfile | null {
     const own = this.profileAt(x, z);
     if (!own) return null;
-    return pocketedCrossSection(
+    return drawnCrossSection(
       own,
       this.approachAt(x, z),
+      this.narrowingAt(x, z),
       this.roadFlow[this.idx(x, z)] ?? RoadFlow.None,
     );
+  }
+
+  /** The lane drop this tile is closing for, when the road ahead of it narrows. */
+  narrowingAt(x: number, z: number): ReturnType<typeof narrowingAhead> {
+    return narrowingAhead(x, z, this.surroundings);
   }
 
   /** The road network as the approach-zone walk asks about it. */
@@ -137,6 +144,7 @@ export class ClientGridMirror {
         this.inBounds(x, z) && (this.roadTier[this.idx(x, z)] ?? RoadTier.None) !== RoadTier.None,
       controlAt: (x, z) => this.junctionAt(x, z)?.control,
       turnsAt: (x, z) => this.junctionAt(x, z)?.turns ?? 0,
+      profileAt: (x, z) => this.profileAt(x, z),
     };
   }
 
