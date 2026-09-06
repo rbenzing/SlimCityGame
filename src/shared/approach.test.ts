@@ -1,14 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
   approachZoneTiles,
+  armAllowed,
+  armIsRestricted,
+  DEFAULT_ALLOWED,
   defaultLaneMovements,
   lanesServing,
   Movement,
   movementBetween,
   movementDelayShare,
+  movementAllowed,
   movementName,
   MOVEMENTS,
+  laneMovementsFor,
   permits,
+  withArmAllowed,
 } from './approach';
 import { RoadFlow } from './types';
 import type { RoadClassId } from './types';
@@ -155,5 +161,71 @@ describe('the movement vocabulary', () => {
       expect(all & m).toBe(0); // no two movements share a bit
       all |= m;
     }
+  });
+});
+
+describe('turn restrictions pack one nibble per arm', () => {
+  const ARMS = [RoadFlow.North, RoadFlow.East, RoadFlow.South, RoadFlow.West] as const;
+
+  it('reads an untouched junction as allowing every turn but the U', () => {
+    for (const arm of ARMS) {
+      expect(armAllowed(0, arm)).toBe(DEFAULT_ALLOWED);
+      expect(armIsRestricted(0, arm)).toBe(false);
+      expect(movementAllowed(0, arm, Movement.Left)).toBe(true);
+      expect(movementAllowed(0, arm, Movement.UTurn)).toBe(false);
+    }
+  });
+
+  it('sets one arm without disturbing the others', () => {
+    let packed = 0;
+    packed = withArmAllowed(packed, RoadFlow.East, Movement.Through | Movement.Right);
+    expect(armAllowed(packed, RoadFlow.East)).toBe(Movement.Through | Movement.Right);
+    expect(movementAllowed(packed, RoadFlow.East, Movement.Left)).toBe(false);
+    for (const arm of ARMS) {
+      if (arm === RoadFlow.East) continue;
+      expect(armAllowed(packed, arm), String(arm)).toBe(DEFAULT_ALLOWED);
+    }
+  });
+
+  it('holds all four arms at once, each saying something different', () => {
+    let packed = 0;
+    const wanted = [
+      [RoadFlow.North, Movement.Through],
+      [RoadFlow.East, Movement.Left | Movement.Through],
+      [RoadFlow.South, Movement.Right],
+      [RoadFlow.West, Movement.Left | Movement.Through | Movement.Right | Movement.UTurn],
+    ] as const;
+    for (const [arm, allowed] of wanted) packed = withArmAllowed(packed, arm, allowed);
+    for (const [arm, allowed] of wanted) expect(armAllowed(packed, arm), String(arm)).toBe(allowed);
+    // And it still fits the sixteen bits a save gives it.
+    expect(packed).toBeLessThanOrEqual(0xffff);
+    expect(packed).toBeGreaterThanOrEqual(0);
+  });
+
+  it('hands an arm back to the default with a null', () => {
+    const packed = withArmAllowed(0, RoadFlow.South, Movement.Right);
+    expect(armIsRestricted(packed, RoadFlow.South)).toBe(true);
+    const back = withArmAllowed(packed, RoadFlow.South, null);
+    expect(armIsRestricted(back, RoadFlow.South)).toBe(false);
+    expect(armAllowed(back, RoadFlow.South)).toBe(DEFAULT_ALLOWED);
+    expect(back).toBe(0);
+  });
+
+  it('ignores an arm that is not a cardinal, rather than corrupting a nibble', () => {
+    expect(withArmAllowed(0, RoadFlow.None, Movement.Left)).toBe(0);
+    expect(armAllowed(0xffff, RoadFlow.None)).toBe(DEFAULT_ALLOWED);
+  });
+
+  it('takes a banned movement out of every lane that offered it', () => {
+    const noLeft = laneMovementsFor(3, Movement.Through | Movement.Right);
+    expect(lanesServing(Movement.Left, noLeft)).toBe(0);
+    expect(lanesServing(Movement.Through, noLeft)).toBe(2);
+    // The lane that only had a left is left with nothing, and so carries no
+    // arrow at all — which is what a banned turn looks like on the ground.
+    expect(noLeft[0]).toBe(0);
+  });
+
+  it('leaves the lane sets alone when nothing is banned', () => {
+    expect(laneMovementsFor(4, DEFAULT_ALLOWED)).toEqual(defaultLaneMovements(4));
   });
 });

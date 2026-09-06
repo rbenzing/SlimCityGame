@@ -227,6 +227,7 @@ export function removeRoad(g: GridState, tiles: TilePoint[]): RoadTileDelta[] {
     g.roadProfile[idx] = 0;
     g.roadFlow[idx] = RoadFlow.None; // the direction goes with the road
     g.junctionControl[idx] = 0; // and so does whatever the player set here
+    g.junctionTurns[idx] = 0;
     g.roadMask[idx] = 0;
     g.roadElevation[idx] = 0; // the deck goes with the road
     removedIdx.add(idx);
@@ -565,6 +566,7 @@ export class RoadNetwork implements RoadNetworkApi {
       // handing the junction back to it would mean.
       node.warranted = warrantedControl(armsAt(node, lookup).map((arm) => arm.approach));
       node.control = override ?? node.warranted;
+      node.turns = grid ? (grid.junctionTurns[indexOf(grid.size, node.x, node.z)] ?? 0) : 0;
     }
   }
 

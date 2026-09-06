@@ -101,7 +101,7 @@ import {
   roadClass,
 } from '../shared/roadprofile';
 import { armGivesWay } from '../shared/junction';
-import { defaultLaneMovements, Movement } from '../shared/approach';
+import { armAllowed, laneMovementsFor, Movement } from '../shared/approach';
 import type { MovementSet } from '../shared/approach';
 import {
   centrePair,
@@ -725,6 +725,28 @@ const APPROACH_STEPS: ReadonlyArray<readonly [number, number]> = APPROACH_DIRS.m
   dx,
   dz,
 ]);
+
+/** The junction a tile approaches: which way it lies, and what this arm may do there. */
+interface ApproachAhead {
+  toward: RoadFlow;
+  allowed: MovementSet;
+}
+
+/** The cardinal facing the other way — the arm a junction sees this tile on. */
+function oppositeFlow(flow: RoadFlow): RoadFlow {
+  switch (flow) {
+    case RoadFlow.North:
+      return RoadFlow.South;
+    case RoadFlow.South:
+      return RoadFlow.North;
+    case RoadFlow.East:
+      return RoadFlow.West;
+    case RoadFlow.West:
+      return RoadFlow.East;
+    default:
+      return RoadFlow.None;
+  }
+}
 /** How far back from the head a turning hook leaves the stem. */
 const LANE_ARROW_HOOK_DROP_M = 0.9;
 /** How far across the lane a turning hook reaches before its own head. */
@@ -811,11 +833,7 @@ function emitLaneUseArrow(
   // the hooks when it does not — a turn-only lane has no shaft past them.
   rect(tail, through ? headBase : hookAlong + stemHalf, -stemHalf, stemHalf);
   if (through) {
-    head(
-      at(headBase, -ARROW_HEAD_HALF_WIDTH_M),
-      at(headBase, ARROW_HEAD_HALF_WIDTH_M),
-      at(tip, 0),
-    );
+    head(at(headBase, -ARROW_HEAD_HALF_WIDTH_M), at(headBase, ARROW_HEAD_HALF_WIDTH_M), at(tip, 0));
   }
   for (const [bit, sign] of [
     [Movement.Left, leftSign],
@@ -2775,7 +2793,7 @@ export function roadTileVertices(
    * in. Set only on the tile immediately before one, and only by a caller that
    * can see the whole network; it is what puts lane-use arrows on the ground.
    */
-  approachToward?: RoadFlow,
+  approach?: ApproachAhead,
 ): { positions: number[]; colors: number[] } {
   if (!Number.isInteger(mask) || mask < 0 || mask > 15) {
     throw new RangeError(`roadTileVertices: mask ${mask} out of the 4-bit range 0..15`);
@@ -3162,7 +3180,8 @@ export function roadTileVertices(
       // the approach is allowed to do, painted from its movement set. A
       // single-lane approach does everything and is left unmarked, which is also
       // what MUTCD 3D.06 ¶01 says of one at a circular intersection.
-      if (approachToward !== undefined && plan.solid.length + plan.dashed.length > 0) {
+      if (approach !== undefined && plan.solid.length + plan.dashed.length > 0) {
+        const approachToward = approach.toward;
         const vertical = approachToward === RoadFlow.North || approachToward === RoadFlow.South;
         const ahead: 1 | -1 =
           approachToward === RoadFlow.South || approachToward === RoadFlow.East ? 1 : -1;
@@ -3187,7 +3206,10 @@ export function roadTileVertices(
           const ordered = [...approaching].sort(
             (a, b) => b.centre * leftSign - a.centre * leftSign,
           );
-          const movements = defaultLaneMovements(ordered.length);
+          // Painted from what the arm is ALLOWED to do: a banned turn leaves
+          // the lane that offered it with no arrow, which is how a driver
+          // reads a restriction off the ground.
+          const movements = laneMovementsFor(ordered.length, approach.allowed);
           const shift = ahead * (TILE_HALF - LANE_ARROW_SETBACK_M);
           for (let i = 0; i < ordered.length; i++) {
             emitLaneUseArrow(
@@ -3590,23 +3612,33 @@ export class RoadMeshRenderer {
    * through the junction grew — so nothing else would trigger the rebuild.
    */
   setJunctionControls(
-    junctions: readonly { x: number; z: number; control: JunctionControl }[],
+    junctions: readonly { x: number; z: number; control: JunctionControl; turns?: number }[],
   ): void {
     const next = new Map<number, JunctionControl>();
-    for (const j of junctions) next.set(tileIndex(j.x, j.z), j.control);
+    const nextTurns = new Map<number, number>();
+    for (const j of junctions) {
+      next.set(tileIndex(j.x, j.z), j.control);
+      if (j.turns) nextTurns.set(tileIndex(j.x, j.z), j.turns);
+    }
 
     const dirty = new Set<number>();
-    const moved = (x: number, z: number): void => {
-      const key = chunkKeyOf(x, z);
+    const moved = (i: number): void => {
+      const key = chunkKeyOf(i % MAP_SIZE, Math.floor(i / MAP_SIZE));
       if (this.chunks.get(key)?.tiles.size) dirty.add(key);
+      // A restriction is painted on the tile BEFORE the junction, which can
+      // sit in a different chunk from the junction itself.
+      for (const [dx, dz] of APPROACH_STEPS) {
+        const near = chunkKeyOf((i % MAP_SIZE) + dx, Math.floor(i / MAP_SIZE) + dz);
+        if (this.chunks.get(near)?.tiles.size) dirty.add(near);
+      }
     };
     for (const [i, control] of next) {
-      if (this.junctionControls.get(i) !== control) moved(i % MAP_SIZE, Math.floor(i / MAP_SIZE));
+      if (this.junctionControls.get(i) !== control) moved(i);
+      if ((this.junctionTurns.get(i) ?? 0) !== (nextTurns.get(i) ?? 0)) moved(i);
     }
-    for (const i of this.junctionControls.keys()) {
-      if (!next.has(i)) moved(i % MAP_SIZE, Math.floor(i / MAP_SIZE));
-    }
+    for (const i of this.junctionControls.keys()) if (!next.has(i)) moved(i);
     this.junctionControls = next;
+    this.junctionTurns = nextTurns;
 
     for (const key of dirty) this.rebuildChunk(key);
     if (dirty.size > 0) this.rebuildMedianTrees();
@@ -3652,6 +3684,8 @@ export class RoadMeshRenderer {
 
   /** Who gives way at each junction tile, by tile index. Absent = the sim controls it with nothing. */
   private junctionControls: ReadonlyMap<number, JunctionControl> = new Map();
+  /** Turn restrictions at each junction tile, packed a nibble per arm. */
+  private junctionTurns: ReadonlyMap<number, number> = new Map();
 
   /** The road tier at tile (x,z) across all chunks, or None — for neighbor-aware seam treatment. */
   private tierAt(x: number, z: number): RoadTier {
@@ -3665,7 +3699,7 @@ export class RoadMeshRenderer {
    * run — a corner has no lane to arrow — with exactly one neighbour that has
    * three arms or more of its own.
    */
-  private approachToward(x: number, z: number): RoadFlow | undefined {
+  private approachToward(x: number, z: number): ApproachAhead | undefined {
     const degreeAt = (ax: number, az: number): number => {
       let n = 0;
       for (const [dx, dz] of APPROACH_STEPS)
@@ -3673,12 +3707,14 @@ export class RoadMeshRenderer {
       return n;
     };
     if (degreeAt(x, z) !== 2) return undefined; // a junction, a corner or an end
-    let found: RoadFlow | undefined;
+    let found: ApproachAhead | undefined;
     for (const [dx, dz, toward] of APPROACH_DIRS) {
       if (this.tierAt(x + dx, z + dz) === RoadTier.None) continue;
       if (degreeAt(x + dx, z + dz) < 3) continue;
       if (found !== undefined) return undefined; // between two junctions: neither is the approach
-      found = toward;
+      // The arm this tile IS, seen from the junction, is the way back to here.
+      const packed = this.junctionTurns.get(tileIndex(x + dx, z + dz)) ?? 0;
+      found = { toward, allowed: armAllowed(packed, oppositeFlow(toward)) };
     }
     return found;
   }

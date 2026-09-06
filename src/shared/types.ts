@@ -189,6 +189,15 @@ export interface GridState {
    * saves load with every junction on its warrant.
    */
   junctionControl: Uint8Array;
+  /**
+   * Turn restrictions at each junction, one NIBBLE per arm — north, east,
+   * south, west — each the set of movements that arm allows (see
+   * src/shared/approach.ts). Zero is no restriction, so an untouched junction
+   * stores zero and every arm allows what its lanes offer.
+   * ADDITIVE layer: serialized LAST in the grid save (SAVE_VERSION 9); older
+   * saves load with nothing restricted.
+   */
+  junctionTurns: Uint16Array;
   buildingId: Uint32Array; // 0 = none, else building instance id occupying tile
   power: Uint8Array; // 1 = powered
   watered: Uint8Array; // 1 = water service reaches tile
@@ -288,6 +297,14 @@ export type Command =
    * of the street network.
    */
   | { kind: 'setJunctionControl'; x: number; z: number; control: JunctionControl | null }
+  /**
+   * Restricts what the arm lying in `arm` may do at the junction at (x, z):
+   * `allowed` is a set of Movement bits, or null to hand the arm back to what
+   * its lanes offer. Rejected for a tile that is not a junction, for an arm
+   * that has no road on it, and for a restriction that would leave the arm
+   * nothing to do.
+   */
+  | { kind: 'setJunctionTurns'; x: number; z: number; arm: RoadFlow; allowed: number | null }
   | { kind: 'bulldoze'; tiles: TilePoint[] } // clears road/building/zone/trees
   | { kind: 'paintZone'; zone: ZoneType; tiles: TilePoint[] }
   | { kind: 'placeBuilding'; catalogId: string; x: number; z: number; rotation: 0 | 1 | 2 | 3 }
@@ -542,6 +559,8 @@ export interface SimSnapshot {
     control: JunctionControl;
     warranted: JunctionControl;
     auto: boolean;
+    /** Turn restrictions, packed one nibble per arm (src/shared/approach.ts). */
+    turns: number;
   }[];
 }
 
@@ -783,6 +802,11 @@ export interface GraphNode {
    * without having to work the warrant out a second time.
    */
   warranted?: JunctionControl;
+  /**
+   * Turn restrictions here, packed one nibble per arm (see
+   * src/shared/approach.ts). Zero, or absent, restricts nothing.
+   */
+  turns?: number;
 }
 
 export interface GraphEdge {
@@ -946,7 +970,7 @@ export interface ReversibleEdit {
  * earlier layer's byte layout or order changed, so every v1..v7 field
  * round-trips unchanged.
  */
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 9;
 
 export interface SaveHeader {
   version: number;

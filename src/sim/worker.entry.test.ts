@@ -1874,7 +1874,7 @@ describe('junction control — the sim tells the render who gives way', () => {
     // Two quiet streets crossing meet on sight lines. The junction is still
     // reported — the inspector has to have something to open on.
     expect(lastJunctions(h)).toEqual([
-      { x: 14, z: 20, control: 'none', warranted: 'none', auto: true },
+      { x: 14, z: 20, control: 'none', warranted: 'none', auto: true, turns: 0 },
     ]);
   });
 
@@ -1883,7 +1883,7 @@ describe('junction control — the sim tells the render who gives way', () => {
     run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.FourLane, tiles: roadRow(10, 20, 9) }]);
     run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(14, 16, 9) }]);
     expect(lastJunctions(h)).toEqual([
-      { x: 14, z: 20, control: 'stop', warranted: 'stop', auto: true },
+      { x: 14, z: 20, control: 'stop', warranted: 'stop', auto: true, turns: 0 },
     ]);
   });
 
@@ -1892,7 +1892,7 @@ describe('junction control — the sim tells the render who gives way', () => {
     run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Avenue, tiles: roadRow(10, 20, 9) }]);
     run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(14, 16, 9) }]);
     expect(lastJunctions(h)).toEqual([
-      { x: 14, z: 20, control: 'signal', warranted: 'signal', auto: true },
+      { x: 14, z: 20, control: 'signal', warranted: 'signal', auto: true, turns: 0 },
     ]);
 
     // The warrant says signal; the player says a four-way stop, and the
@@ -1901,14 +1901,14 @@ describe('junction control — the sim tells the render who gives way', () => {
     expect(ack.ok).toBe(true);
     h.ticks(4);
     expect(lastJunctions(h)).toEqual([
-      { x: 14, z: 20, control: 'allWayStop', warranted: 'signal', auto: false },
+      { x: 14, z: 20, control: 'allWayStop', warranted: 'signal', auto: false, turns: 0 },
     ]);
 
     // And undo hands it back to the warrant.
     run(h, 4, ack.inverse);
     h.ticks(4);
     expect(lastJunctions(h)).toEqual([
-      { x: 14, z: 20, control: 'signal', warranted: 'signal', auto: true },
+      { x: 14, z: 20, control: 'signal', warranted: 'signal', auto: true, turns: 0 },
     ]);
   });
 
@@ -1919,7 +1919,7 @@ describe('junction control — the sim tells the render who gives way', () => {
     run(h, 3, [{ kind: 'setJunctionControl', x: 14, z: 20, control: 'none' }]);
     h.ticks(4);
     expect(lastJunctions(h)).toEqual([
-      { x: 14, z: 20, control: 'none', warranted: 'signal', auto: false },
+      { x: 14, z: 20, control: 'none', warranted: 'signal', auto: false, turns: 0 },
     ]);
 
     h.sim.handleMessage({ type: 'requestSave' });
@@ -1932,7 +1932,7 @@ describe('junction control — the sim tells the render who gives way', () => {
     fresh.ticks(4);
     // A signal the warrant would put back stays off, because the player said so.
     expect(lastJunctions(fresh)).toEqual([
-      { x: 14, z: 20, control: 'none', warranted: 'signal', auto: false },
+      { x: 14, z: 20, control: 'none', warranted: 'signal', auto: false, turns: 0 },
     ]);
   });
 
@@ -1967,7 +1967,7 @@ describe('junction control — the sim tells the render who gives way', () => {
     run(h, 3, [{ kind: 'setJunctionControl', x: 14, z: 20, control: 'allWayStop' }]);
     h.ticks(4);
     expect(lastJunctions(h)).toEqual([
-      { x: 14, z: 20, control: 'allWayStop', warranted: 'signal', auto: false },
+      { x: 14, z: 20, control: 'allWayStop', warranted: 'signal', auto: false, turns: 0 },
     ]);
 
     const ack = run(h, 4, [{ kind: 'bulldoze', tiles: [{ x: 14, z: 20 }] }]);
@@ -1975,7 +1975,7 @@ describe('junction control — the sim tells the render who gives way', () => {
     run(h, 5, ack.inverse);
     h.ticks(4);
     expect(lastJunctions(h)).toEqual([
-      { x: 14, z: 20, control: 'allWayStop', warranted: 'signal', auto: false },
+      { x: 14, z: 20, control: 'allWayStop', warranted: 'signal', auto: false, turns: 0 },
     ]);
   });
 
@@ -1984,7 +1984,7 @@ describe('junction control — the sim tells the render who gives way', () => {
     run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Avenue, tiles: roadRow(10, 20, 9) }]);
     run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(14, 16, 9) }]);
     expect(lastJunctions(h)).toEqual([
-      { x: 14, z: 20, control: 'signal', warranted: 'signal', auto: true },
+      { x: 14, z: 20, control: 'signal', warranted: 'signal', auto: true, turns: 0 },
     ]);
 
     const sent = h.messages.filter(
@@ -1994,5 +1994,90 @@ describe('junction control — the sim tells the render who gives way', () => {
     expect(
       h.messages.filter((m) => m.type === 'snapshot' && m.snap.junctions !== undefined).length,
     ).toBe(sent);
+  });
+});
+
+describe('turn restrictions — the player says what an arm may do', () => {
+  function run(h: Harness, seq: number, commands: Command[]): CommandAck {
+    send(h, seq, commands);
+    h.ticks(2);
+    const ack = h.ackFor(seq);
+    if (!ack) throw new Error(`no ack for batch ${seq}`);
+    return ack;
+  }
+  function sandboxed(): Harness {
+    const h = initialized();
+    run(h, 0, [{ kind: 'setSandbox', on: true }]);
+    return h;
+  }
+  const column = (x: number, z0: number, count: number): TilePoint[] =>
+    Array.from({ length: count }, (_, i) => ({ x, z: z0 + i }));
+  function lastJunctions(h: Harness): SimSnapshot['junctions'] {
+    for (let i = h.messages.length - 1; i >= 0; i--) {
+      const m = h.messages[i]!;
+      if (m.type === 'snapshot' && m.snap.junctions !== undefined) return m.snap.junctions;
+    }
+    return undefined;
+  }
+  /** A crossroads at (14, 20) with four arms. */
+  function crossroads(): Harness {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 20, 9) }]);
+    run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(14, 16, 9) }]);
+    return h;
+  }
+
+  it('takes a turn away from one arm and gives it back on undo', () => {
+    const h = crossroads();
+    expect(lastJunctions(h)?.[0]?.turns).toBe(0);
+
+    const ack = run(h, 3, [
+      { kind: 'setJunctionTurns', x: 14, z: 20, arm: RoadFlow.West, allowed: 6 }, // through | right
+    ]);
+    expect(ack.ok).toBe(true);
+    h.ticks(4);
+    expect(lastJunctions(h)?.[0]?.turns).not.toBe(0);
+
+    run(h, 4, ack.inverse);
+    h.ticks(4);
+    expect(lastJunctions(h)?.[0]?.turns).toBe(0);
+  });
+
+  it('saves what the player restricted, and a load brings it back', () => {
+    const h = crossroads();
+    run(h, 3, [{ kind: 'setJunctionTurns', x: 14, z: 20, arm: RoadFlow.North, allowed: 2 }]);
+    h.ticks(4);
+    const set = lastJunctions(h)?.[0]?.turns;
+    expect(set).not.toBe(0);
+
+    h.sim.handleMessage({ type: 'requestSave' });
+    const saves = h.messages.filter(
+      (m): m is Extract<WorkerToMain, { type: 'save' }> => m.type === 'save',
+    );
+    const fresh = sandboxed();
+    fresh.sim.handleMessage({ type: 'loadSave', data: saves[saves.length - 1]!.data });
+    fresh.ticks(4);
+    expect(lastJunctions(fresh)?.[0]?.turns).toBe(set);
+  });
+
+  it('refuses an arm with no road on it, and one that would leave nothing', () => {
+    const h = crossroads();
+    // The junction has four arms, so every cardinal is real; a T would not.
+    const t = sandboxed();
+    run(t, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 30, 9) }]);
+    run(t, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(14, 30, 5) }]);
+    expect(
+      run(t, 3, [{ kind: 'setJunctionTurns', x: 14, z: 30, arm: RoadFlow.North, allowed: 2 }]).ok,
+    ).toBe(false); // nothing north of the bar
+    expect(
+      run(h, 3, [{ kind: 'setJunctionTurns', x: 14, z: 20, arm: RoadFlow.West, allowed: 0 }]).ok,
+    ).toBe(false); // an arm has to keep something
+  });
+
+  it('refuses a tile that is not a junction', () => {
+    const h = crossroads();
+    expect(
+      run(h, 3, [{ kind: 'setJunctionTurns', x: 12, z: 20, arm: RoadFlow.West, allowed: 2 }]).ok,
+    ).toBe(false);
   });
 });

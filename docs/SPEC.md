@@ -2498,9 +2498,27 @@ scaled by one constant into the units the sim already uses.
    the road's own stored direction decides. A single-lane approach is left
    unmarked, since it does everything anyway, which is also what MUTCD 3D.06
    ¶01 says of one at a circular intersection.
-   *Still to come in the wave:* the player's own movement sets (storage, a
-   command and the inspector rows), turn pockets, the routing gate that makes
-   a restricted movement an illegal path rather than only an unpainted one,
+   Turn RESTRICTIONS are the player's, and they are the degenerate case the
+   section always said they were: a movement taken out of every lane. They are
+   stored per junction, one NIBBLE per arm — north, east, south, west — in the
+   `junctionTurns` layer at save version 9, zero meaning the arm allows what
+   its lanes offer. An arm cannot be left with nothing, an arm with no road on
+   it cannot be restricted, and only a junction of three arms or more takes
+   one; the inspector shows a row per arm the junction actually has, with the
+   turn it is down to its last one greyed rather than removable.
+   And a restriction is a real refusal, not just unpainted paint. The router
+   now searches over (node, ARRIVING EDGE) rather than node alone, because a
+   turn is only legal or illegal once you know which way the driver came in —
+   settling a node by its cheapest predecessor would prune a route a costlier
+   one allows. The same state makes the junction's delay exact: it is paid on
+   DEPARTURE, when both the arm entered by and the movement being made are
+   known, and divided by the lanes serving that movement, so a wide approach
+   is quicker for the movement it widened. A driver setting off from a
+   junction pays nothing at it, which is right — they did not queue. One
+   consequence falls out for free: with the U-turn off by default, the router
+   will no longer double back at a junction.
+   *Still to come in the wave:* per-LANE movement sets — the restriction is
+   per ARM today, which is what a player actually reaches for — turn pockets,
    and lane-drop tapers with their merge arrows and gore chevrons.
 5. **Ramps and interchange stamps** — the ramp class, merge/diverge/terminal
    nodes, automatic acceleration/deceleration lanes, diamond and trumpet,

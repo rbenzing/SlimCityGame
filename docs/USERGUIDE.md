@@ -79,7 +79,12 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   stretch before a junction is painted with **lane arrows** — which lane may
   turn and which runs straight on. A two-lane approach shares the turns; a
   wider one gets a lane for turning left, then one for turning right, which is
-  the order a real junction spends its width in.
+  the order a real junction spends its width in. The junction panel lists a
+  row per arm with **the turns it allows** — left, straight, right — and
+  switching one off is a real ban: the arrow for it stops being painted and
+  traffic stops using it, so you can send through traffic round a corner
+  instead of past a school. An arm always keeps its last turn; a driver who
+  arrives has to be able to leave.
   Roads snap to the
   grid, round their corners and dead-ends, and bank smoothly up slopes (the ground
   is graded under them automatically).

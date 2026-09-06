@@ -177,6 +177,20 @@ for (const [dx, dz] of [
     failures.push(`roundabout: the ${dx},${dz} entry carries ${board}, not a give-way`);
 }
 
+// A turn taken away is a turn the arrows stop showing and the router stops
+// using. The four-lane crossroads has two lanes an approach, so it carries
+// lane-use arrows to lose.
+const [tx, tz] = CASES[3].at;
+await cmd('Turn restriction', [
+  { kind: 'setJunctionTurns', x: X + tx, z: Z + tz, arm: 3 /* south */, allowed: 2 | 4 },
+]);
+await page.waitForTimeout(1500);
+const restricted = (await call(() => window.__slimcity.readJunctions())).find(
+  (j) => j.x === X + tx && j.z === Z + tz,
+);
+console.log('restricted junction:', JSON.stringify(restricted));
+if (!restricted || restricted.turns === 0) failures.push('the turn restriction did not land');
+
 // The signal heads cycle. Opposing arms share an aspect, the greens alternate,
 // and a paused city holds its lights — the pulse of a signal node, on the same
 // clock the cars are on.

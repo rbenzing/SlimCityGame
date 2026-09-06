@@ -41,6 +41,7 @@ import { RoadFlow, RoadTileDelta, RoadTier } from '../shared/types';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 import { presetProfileForTier } from '../shared/roadprofile';
 import { CHUNK_TILES, TILE_METERS } from '../shared/constants';
+import { DEFAULT_ALLOWED, Movement } from '../shared/approach';
 
 const flatHeightAt = (): number => 0;
 
@@ -865,6 +866,7 @@ describe('roadTileVertices — lane-use arrows on the last tile before a junctio
     toward: RoadFlow,
     mask = N | S,
     flow: RoadFlow = RoadFlow.None,
+    allowed: number = DEFAULT_ALLOWED,
   ): { positions: number[]; colors: number[] } =>
     roadTileVertices(
       4,
@@ -877,7 +879,7 @@ describe('roadTileVertices — lane-use arrows on the last tile before a junctio
       undefined,
       flow,
       undefined,
-      toward,
+      { toward, allowed },
     );
 
   const plain = (tier: RoadTier, mask = N | S): { positions: number[]; colors: number[] } =>
@@ -931,6 +933,32 @@ describe('roadTileVertices — lane-use arrows on the last tile before a junctio
     };
     expect(sideOf(RoadFlow.South)).toBeLessThan(0);
     expect(sideOf(RoadFlow.North)).toBeGreaterThan(0);
+  });
+
+  it('takes an arrow away when the turn it showed is banned', () => {
+    const free = approach(RoadTier.FourLane, RoadFlow.South);
+    const noLeft = approach(
+      RoadTier.FourLane,
+      RoadFlow.South,
+      N | S,
+      RoadFlow.None,
+      Movement.Through | Movement.Right,
+    );
+    expect(countWhere(noLeft.colors, isMarkingWhite)).toBeLessThan(
+      countWhere(free.colors, isMarkingWhite),
+    );
+    // Banning everything but the left leaves less paint again: the through
+    // heads and the right hook both go.
+    const leftOnly = approach(
+      RoadTier.FourLane,
+      RoadFlow.South,
+      N | S,
+      RoadFlow.None,
+      Movement.Left,
+    );
+    expect(countWhere(leftOnly.colors, isMarkingWhite)).toBeLessThan(
+      countWhere(noLeft.colors, isMarkingWhite),
+    );
   });
 
   it('paints nothing on a road that paints nothing', () => {

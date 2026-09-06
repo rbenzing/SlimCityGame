@@ -21,6 +21,7 @@ import type {
   District,
   JunctionControl,
   LensId,
+  RoadFlow,
   Policy,
   SelectionInfo,
   SimSpeed,
@@ -83,6 +84,10 @@ export interface SelectedJunction {
   /** What the warrant makes of it, so "Automatic" can say what it would mean. */
   warranted: JunctionControl;
   auto: boolean;
+  /** Turn restrictions, packed one nibble per arm (src/shared/approach.ts). */
+  turns: number;
+  /** The cardinals that actually carry a road here, so the panel lists only real arms. */
+  arms: RoadFlow[];
 }
 
 export function createInitialToolFlags(): ToolFlags {

@@ -33,7 +33,7 @@ import type {
   ToolId,
   WorkerToMain,
 } from './shared/types';
-import { RoadTier, isStreetTier } from './shared/types';
+import { RoadFlow, RoadTier, isStreetTier } from './shared/types';
 import catalogData from './data/catalog.json';
 import roadsData from './data/roads.json';
 import { CommandQueue } from './core/commands';
@@ -93,6 +93,7 @@ import {
 } from './tools/tools';
 import { UndoStack } from './tools/undo';
 import { useCityStore } from './ui/store';
+import type { SelectedJunction } from './ui/store';
 import { mountUi } from './ui/App';
 import { AutoSaver, getSaveById, loadLatest, saveNow, storeSave } from './app/persist';
 import { CursorChipStack } from './app/cursorchip';
@@ -541,10 +542,15 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // Who gives way where, and the boards that follow from it. A screenshot
       // shows a post beside a road but not which board it is or why, so a
       // check that the right junction got the right control reads it here.
-      readJunctions: (): { x: number; z: number; control: string }[] =>
+      readJunctions: (): { x: number; z: number; control: string; turns: number }[] =>
         latestRoadTiles
           .filter((t) => t.control !== undefined)
-          .map((t) => ({ x: t.x, z: t.z, control: t.control! })),
+          .map((t) => ({
+            x: t.x,
+            z: t.z,
+            control: t.control!,
+            turns: clientGrid.junctionAt(t.x, t.z)?.turns ?? 0,
+          })),
       readSigns: (): { x: number; z: number; type: string }[] =>
         computeSignPlacements(latestRoadTiles).map((s) => ({ x: s.x, z: s.z, type: s.type })),
       // What each signal head is showing. A lit lens is a few pixels across in
@@ -991,10 +997,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // refused the change, or the warrant may have moved it while the panel
       // was open. A junction that has gone — bulldozed — closes the panel.
       const open = store.getState().selectedJunction;
-      if (open) {
-        const now = clientGrid.junctionAt(open.x, open.z);
-        store.getState().setSelectedJunction(now ? { ...now } : null);
-      }
+      if (open) store.getState().setSelectedJunction(selectedJunctionAt(open.x, open.z));
     }
     if (snap.roads) {
       // The mirror goes first. The road mesh samples roadSurfaceAt, which reads
@@ -1180,6 +1183,29 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     },
   });
 
+  /**
+   * The junction at a tile as the inspector needs it: what the sim says about
+   * it, plus which cardinals actually carry a road, so the panel lists the arms
+   * that exist rather than four of them.
+   */
+  const selectedJunctionAt = (x: number, z: number): SelectedJunction | null => {
+    const junction = clientGrid.junctionAt(x, z);
+    if (!junction) return null;
+    const arms = (
+      [
+        [0, -1, RoadFlow.North],
+        [1, 0, RoadFlow.East],
+        [0, 1, RoadFlow.South],
+        [-1, 0, RoadFlow.West],
+      ] as const
+    )
+      .filter(([dx, dz]) =>
+        isStreetTier(clientGrid.roadTier[(z + dz) * clientGrid.size + (x + dx)] ?? 0),
+      )
+      .map(([, , flow]) => flow);
+    return { ...junction, arms };
+  };
+
   const requestField = (field: FieldId): void => {
     const msg: MainToWorker = { type: 'requestField', field };
     worker.postMessage(msg);
@@ -1305,8 +1331,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       return;
     }
     const tile = screenToTile(x, y);
-    const junction = tile ? clientGrid.junctionAt(tile.x, tile.z) : undefined;
-    store.getState().setSelectedJunction(junction ? { ...junction } : null);
+    store.getState().setSelectedJunction(tile ? selectedJunctionAt(tile.x, tile.z) : null);
   });
 
   // --- keyboard -------------------------------------------------------------------------

@@ -80,9 +80,12 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > than just a lane, the default widens the way a real approach widens — a third
 > lane buys a dedicated left, a fourth a dedicated right — and the last tile
 > before a junction is painted with a lane-use arrow per approaching lane,
-> read off the movement set and nothing else. Next in the wave: the player's
-> own movement sets and turn restrictions, turn pockets, and lane-drop tapers.
-> Then waves 5–6.
+> read off the movement set and nothing else. Turn restrictions are the
+> player's: a row per arm in the junction panel, saved with the city at version
+> 9, and a real refusal rather than only unpainted paint — the router now
+> searches over the node AND the edge that reached it, because a turn is only
+> legal once you know which way the driver came in. Next in the wave: per-lane
+> movement sets, turn pockets, and lane-drop tapers. Then waves 5–6.
 > Specified in full: classes, lane-piece
 > profiles with a width budget, stored flow direction, per-junction control
 > (none/yield/stop/all-way/signal/roundabout) with warrant defaults,

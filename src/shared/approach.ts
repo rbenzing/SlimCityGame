@@ -157,3 +157,59 @@ const APPROACH_ZONE_BY_CLASS: Readonly<Record<RoadClassId, number>> = {
 export function approachZoneTiles(classId: RoadClassId): number {
   return APPROACH_ZONE_BY_CLASS[classId];
 }
+
+/**
+ * What an approach allows when nobody has restricted it: everything the
+ * default lane sets between them offer, which is every turn but the U.
+ */
+export const DEFAULT_ALLOWED: MovementSet = Movement.Left | Movement.Through | Movement.Right;
+
+/**
+ * A junction's turn restrictions, packed as one NIBBLE per arm — north, east,
+ * south, west, in the order the cardinals climb — each the set of movements
+ * that arm allows. A zero nibble is no restriction, so an untouched junction
+ * packs to zero; banning every movement is not a restriction anyone can mean,
+ * which is what leaves zero free to say "as it comes".
+ */
+export type PackedTurns = number;
+
+/** What the arm lying in `arm` allows. */
+export function armAllowed(packed: PackedTurns, arm: RoadFlow): MovementSet {
+  const slot = headingIndex(arm);
+  if (slot === null) return DEFAULT_ALLOWED;
+  const nibble = (packed >> (slot * 4)) & 0xf;
+  return nibble === 0 ? DEFAULT_ALLOWED : nibble;
+}
+
+/** Whether the arm lying in `arm` has been restricted at all. */
+export function armIsRestricted(packed: PackedTurns, arm: RoadFlow): boolean {
+  const slot = headingIndex(arm);
+  return slot !== null && ((packed >> (slot * 4)) & 0xf) !== 0;
+}
+
+/** The same junction with one arm set, or handed back to the default by a null. */
+export function withArmAllowed(
+  packed: PackedTurns,
+  arm: RoadFlow,
+  allowed: MovementSet | null,
+): PackedTurns {
+  const slot = headingIndex(arm);
+  if (slot === null) return packed;
+  const cleared = packed & ~(0xf << (slot * 4));
+  return cleared | (((allowed ?? 0) & 0xf) << (slot * 4));
+}
+
+/** Whether a driver arriving on `arm` may make `movement`. */
+export function movementAllowed(packed: PackedTurns, arm: RoadFlow, movement: Movement): boolean {
+  return (armAllowed(packed, arm) & movement) !== 0;
+}
+
+/**
+ * The lane sets an approach actually offers: the derived defaults with every
+ * restricted movement taken out of every lane. A lane left with nothing is
+ * still a lane — it simply carries no arrow, which is what a lane that may
+ * only go straight on a straight-banned approach would look like.
+ */
+export function laneMovementsFor(lanes: number, allowed: MovementSet): MovementSet[] {
+  return defaultLaneMovements(lanes).map((set) => set & allowed);
+}

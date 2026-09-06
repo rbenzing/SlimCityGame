@@ -10,6 +10,8 @@
  */
 import type { JSX } from 'react';
 import { controlName } from '../shared/junction';
+import { armAllowed, Movement, movementName, withArmAllowed } from '../shared/approach';
+import { RoadFlow } from '../shared/types';
 import type { Command, JunctionControl } from '../shared/types';
 import { Icon } from './icons';
 import { useCityStore } from './store';
@@ -40,6 +42,21 @@ const CHOICES: ReadonlyArray<{ control: JunctionControl; hint: string }> = [
   },
 ];
 
+/** The turns a player may take away. A U-turn is a separate matter and is not offered. */
+const TURNS: readonly Movement[] = [Movement.Left, Movement.Through, Movement.Right];
+const TURN_MASK = Movement.Left | Movement.Through | Movement.Right;
+const TURN_GLYPHS: Readonly<Record<number, string>> = {
+  [Movement.Left]: '←',
+  [Movement.Through]: '↑',
+  [Movement.Right]: '→',
+};
+const ARM_NAMES: Readonly<Record<number, string>> = {
+  [RoadFlow.North]: 'From the north',
+  [RoadFlow.East]: 'From the east',
+  [RoadFlow.South]: 'From the south',
+  [RoadFlow.West]: 'From the west',
+};
+
 export function JunctionPanel(): JSX.Element | null {
   const junction = useCityStore((s) => s.selectedJunction);
   const setSelectedJunction = useCityStore((s) => s.setSelectedJunction);
@@ -57,6 +74,15 @@ export function JunctionPanel(): JSX.Element | null {
       control: control ?? junction.warranted,
       auto: control === null,
     });
+  };
+
+  const sendTurns = (arm: RoadFlow, allowed: number): void => {
+    const next = allowed & TURN_MASK;
+    if (next === 0) return; // an arm has to keep something
+    bound?.sendCommands('Turn restriction', [
+      { kind: 'setJunctionTurns', x: junction.x, z: junction.z, arm, allowed: next },
+    ]);
+    setSelectedJunction({ ...junction, turns: withArmAllowed(junction.turns, arm, next) });
   };
 
   const chosen = CHOICES.find((c) => !junction.auto && c.control === junction.control);
@@ -128,6 +154,45 @@ export function JunctionPanel(): JSX.Element | null {
             })}
           </div>
         </div>
+
+        {junction.arms.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <span className={LABEL}>Turns allowed</span>
+            {junction.arms.map((arm) => {
+              const allowed = armAllowed(junction.turns, arm);
+              return (
+                <div key={arm} className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-white/60">{ARM_NAMES[arm]}</span>
+                  <div className="flex gap-1">
+                    {TURNS.map((movement) => {
+                      const on = (allowed & movement) !== 0;
+                      // The last turn an arm has cannot be taken away: a driver
+                      // who arrives has to be able to leave.
+                      const last = on && (allowed & ~movement & TURN_MASK) === 0;
+                      return (
+                        <button
+                          key={movement}
+                          type="button"
+                          aria-pressed={on}
+                          aria-label={`${ARM_NAMES[arm]}: ${movementName(movement)}`}
+                          disabled={last}
+                          onClick={() => sendTurns(arm, allowed ^ movement)}
+                          className={`${CARD_RADIUS} px-2 py-1 text-xs transition-colors ${
+                            on
+                              ? 'bg-white/20 text-white'
+                              : 'bg-white/5 text-white/40 hover:bg-white/10'
+                          } ${last ? 'cursor-default opacity-60' : ''}`}
+                        >
+                          {TURN_GLYPHS[movement]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <p className="text-xs text-white/55">
           {chosen

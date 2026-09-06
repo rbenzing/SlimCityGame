@@ -6,7 +6,7 @@
  * RoadNetwork.findPath.
  */
 
-import { isStreetTier, RoadTier } from '../shared/types';
+import { flowForStep, isStreetTier, RoadFlow, RoadTier } from '../shared/types';
 import type { GraphEdge, GraphNode, PathResult, TilePoint } from '../shared/types';
 import {
   greenShareFor,
@@ -17,6 +17,13 @@ import {
   ROAD_PRESETS,
 } from '../shared/roadprofile';
 import { approachGivesWay, controlDelaySeconds } from '../shared/junction';
+import {
+  armAllowed,
+  laneMovementsFor,
+  movementAllowed,
+  movementBetween,
+  movementDelayShare,
+} from '../shared/approach';
 import type { JunctionApproach } from '../shared/junction';
 
 interface EdgeRates {
@@ -122,17 +129,73 @@ export function armsAt(node: GraphNode, edgeById: EdgeLookup): JunctionArm[] {
  * control has not been worked out costs nothing, which is exactly what every
  * junction cost before one did.
  */
-export function junctionDelay(node: GraphNode, arriving: GraphEdge, edgeById: EdgeLookup): number {
+export function junctionDelay(
+  node: GraphNode,
+  arriving: GraphEdge | null,
+  leaving: GraphEdge,
+  edgeById: EdgeLookup,
+): number {
   const control = node.control;
-  if (!control || control === 'none') return 0;
+  // A driver setting off from a junction did not queue at it, and a junction
+  // with no control has no queue to wait in.
+  if (!arriving || !control || control === 'none') return 0;
   const arms = armsAt(node, edgeById);
   const mine = arms.find((a) => a.edgeId === arriving.id)?.approach;
   if (!mine) return 0;
   const approaches = arms.map((a) => a.approach);
-  return controlDelaySeconds(control, approachGivesWay(control, mine, approaches), {
+  const delay = controlDelaySeconds(control, approachGivesWay(control, mine, approaches), {
     vc: mine.vc,
     greenShare: greenShareFor(mine.classId),
   });
+  // Per MOVEMENT: the queue for a turn two lanes offer is half as long as the
+  // queue for one, so a wide approach is quicker for the movement it widened.
+  const movement = movementBetween(headingInto(arriving, node.id), headingOutOf(leaving, node.id));
+  if (movement === null) return delay;
+  const lanes = laneMovementsFor(mine.lanes, armAllowed(node.turns ?? 0, armOf(arriving, node.id)));
+  return delay / movementDelayShare(movement, lanes);
+}
+
+/** The direction the arm carrying `edge` lies in, seen from `nodeId`. */
+function armOf(edge: GraphEdge, nodeId: number): RoadFlow {
+  return headingOutOf(edge, nodeId);
+}
+
+/** Which way a driver is heading as they ARRIVE at `nodeId` along `edge`. */
+function headingInto(edge: GraphEdge, nodeId: number): RoadFlow {
+  const tiles = edge.tiles;
+  const n = tiles.length;
+  if (n < 2) return RoadFlow.None;
+  const [from, to] = nodeId === edge.b ? [tiles[n - 2]!, tiles[n - 1]!] : [tiles[1]!, tiles[0]!];
+  return flowForStep(to.x - from.x, to.z - from.z);
+}
+
+/**
+ * Which way a driver is heading as they LEAVE `nodeId` along `edge` — which is
+ * also the direction the arm carrying that edge lies in.
+ */
+function headingOutOf(edge: GraphEdge, nodeId: number): RoadFlow {
+  const tiles = edge.tiles;
+  const n = tiles.length;
+  if (n < 2) return RoadFlow.None;
+  const [from, to] = nodeId === edge.a ? [tiles[0]!, tiles[1]!] : [tiles[n - 1]!, tiles[n - 2]!];
+  return flowForStep(to.x - from.x, to.z - from.z);
+}
+
+/**
+ * Whether a driver who arrived at `node` along `arriving` may leave along
+ * `leaving`. A junction nobody has restricted allows every turn but the U —
+ * which is what makes doubling back at one a thing the router will not do. A
+ * run whose geometry names no cardinal has no turn to judge, so it is allowed.
+ */
+export function turnAllowed(
+  node: GraphNode,
+  arriving: GraphEdge | null,
+  leaving: GraphEdge,
+): boolean {
+  if (!arriving) return true; // setting off: there is no turn yet
+  const movement = movementBetween(headingInto(arriving, node.id), headingOutOf(leaving, node.id));
+  if (movement === null) return true;
+  return movementAllowed(node.turns ?? 0, armOf(arriving, node.id), movement);
 }
 
 /**
@@ -309,59 +372,85 @@ export function findPath(
   const heuristic = (n: GraphNode): number =>
     (Math.abs(n.x - endNode.x) + Math.abs(n.z - endNode.z)) / MAX_ROAD_SPEED;
 
-  const gScore = new Map<number, number>([[startId, 0]]);
-  const cameFrom = new Map<number, { prevNode: number; edgeId: number }>();
+  // The search state is not a node but a node AND THE EDGE THAT REACHED IT: a
+  // turn is only legal or illegal once you know which way the driver came in,
+  // and a junction's delay only divides by the lanes serving a movement once
+  // you know which movement it is. Keyed as edgeId*2 plus which end it was
+  // reached at, with -1 for the start, where nobody has arrived from anywhere.
+  const START = -1;
+  const keyOf = (edge: GraphEdge, atNodeId: number): number =>
+    edge.id * 2 + (atNodeId === edge.b ? 1 : 0);
+  const edgeOfState = (key: number): GraphEdge | null =>
+    key === START ? null : (edgeById.get(key >> 1) ?? null);
+  const nodeOfState = (key: number): number => {
+    if (key === START) return startId;
+    const edge = edgeById.get(key >> 1);
+    if (!edge) return startId;
+    return (key & 1) === 1 ? edge.b : edge.a;
+  };
+
+  const gScore = new Map<number, number>([[START, 0]]);
+  const cameFrom = new Map<number, number>();
   const closed = new Set<number>();
   const open = new MinHeap<number>();
-  open.push(startId, heuristic(startNode));
+  open.push(START, heuristic(startNode));
 
+  let endState: number | null = null;
   while (open.size > 0) {
-    const currentId = open.pop();
-    if (currentId === undefined) break;
-    if (currentId === endId) break;
-    if (closed.has(currentId)) continue;
-    closed.add(currentId);
+    const currentKey = open.pop();
+    if (currentKey === undefined) break;
+    if (closed.has(currentKey)) continue;
+    closed.add(currentKey);
 
+    const currentId = nodeOfState(currentKey);
+    if (currentId === endId) {
+      endState = currentKey; // a consistent heuristic settles the best one first
+      break;
+    }
     const current = nodeById.get(currentId);
     if (!current) continue;
-    const currentG = gScore.get(currentId) ?? Infinity;
+    const arriving = edgeOfState(currentKey);
+    const currentG = gScore.get(currentKey) ?? Infinity;
 
     for (const edgeId of current.edges) {
       const edge = edgeById.get(edgeId);
       if (!edge) continue;
       if (!edgeTraversable(edge, currentId, inNetwork)) continue; // wrong network, or one-way against the flow
       const otherId: number = edge.a === currentId ? edge.b : edge.a;
-      if (otherId === currentId || closed.has(otherId)) continue;
+      if (otherId === currentId) continue;
+      if (!turnAllowed(current, arriving, edge)) continue; // a banned turn is not a path
+      const nextKey = keyOf(edge, otherId);
+      if (closed.has(nextKey)) continue;
 
-      // The junction is paid for on ARRIVAL, on the arm it is entered from, so
-      // a slow control reroutes traffic the way it does in life. Delays are
-      // never negative, so the heuristic stays admissible by ignoring them.
-      const otherNode = nodeById.get(otherId);
-      const delay = otherNode ? junctionDelay(otherNode, edge, (id) => edgeById.get(id)) : 0;
+      // The junction is paid for on DEPARTURE, which is the moment both the
+      // arm it was entered by and the movement being made are known. Delays
+      // are never negative, so the heuristic stays admissible by ignoring them.
+      const delay = junctionDelay(current, arriving, edge, (id) => edgeById.get(id));
       const tentative =
         currentG +
         edgeCost(edge, currentId) * (edgeCostMultiplier ? edgeCostMultiplier(edge) : 1) +
         delay;
-      if (tentative < (gScore.get(otherId) ?? Infinity)) {
-        gScore.set(otherId, tentative);
-        cameFrom.set(otherId, { prevNode: currentId, edgeId });
-        if (otherNode) open.push(otherId, tentative + heuristic(otherNode));
+      if (tentative < (gScore.get(nextKey) ?? Infinity)) {
+        gScore.set(nextKey, tentative);
+        cameFrom.set(nextKey, currentKey);
+        const otherNode = nodeById.get(otherId);
+        if (otherNode) open.push(nextKey, tentative + heuristic(otherNode));
       }
     }
   }
 
-  const finalCost = gScore.get(endId);
-  if (finalCost === undefined || !cameFrom.has(endId)) return null;
+  if (endState === null) return null;
+  const finalCost = gScore.get(endState);
+  if (finalCost === undefined) return null;
 
-  const nodePath: number[] = [endId];
+  const nodePath: number[] = [];
   const edgePath: number[] = [];
-  let cursor = endId;
-  while (cursor !== startId) {
-    const step = cameFrom.get(cursor);
-    if (!step) return null; // defensive: unreachable given the checks above
-    edgePath.push(step.edgeId);
-    cursor = step.prevNode;
-    nodePath.push(cursor);
+  for (let cursor: number | undefined = endState; cursor !== undefined;) {
+    nodePath.push(nodeOfState(cursor));
+    const edge = edgeOfState(cursor);
+    if (edge) edgePath.push(edge.id);
+    cursor = cursor === START ? undefined : cameFrom.get(cursor);
+    if (cursor === undefined && edge) return null; // defensive: a broken chain
   }
   nodePath.reverse();
   edgePath.reverse();

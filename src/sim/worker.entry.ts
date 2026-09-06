@@ -39,6 +39,7 @@ import {
   isRailTier,
   isTramTier,
   isStreetTier,
+  stepForFlow,
   ZoneType,
   MAX_VEHICLES,
   VEHICLE_STRIDE,
@@ -78,6 +79,7 @@ import {
   withinLaneRange,
 } from '../shared/roadprofile';
 import { codeForControl, controlFromCode } from '../shared/junction';
+import { armAllowed, armIsRestricted, withArmAllowed } from '../shared/approach';
 
 /** One junction as the render thread and the inspector read it. */
 type JunctionSnapshot = NonNullable<SimSnapshot['junctions']>[number];
@@ -918,6 +920,7 @@ class SimWorld implements WorkerSim {
         z: node.z,
         control: node.control ?? 'none',
         warranted: node.warranted ?? 'none',
+        turns: node.turns ?? 0,
         auto: (this.grid.junctionControl[tileIndex(node.x, node.z)] ?? 0) === 0,
       });
     }
@@ -930,6 +933,7 @@ class SimWorld implements WorkerSim {
           was.z === j.z &&
           was.control === j.control &&
           was.warranted === j.warranted &&
+          was.turns === j.turns &&
           was.auto === j.auto
         );
       });
@@ -1282,6 +1286,53 @@ class SimWorld implements WorkerSim {
     };
   }
 
+  /**
+   * Restricts what one arm of a junction may do, or hands it back to what its
+   * lanes offer with a null. An arm cannot be left with nothing — a driver who
+   * arrives has to be able to leave — and only an arm that actually carries a
+   * road can be restricted.
+   */
+  private cmdSetJunctionTurns(
+    x: number,
+    z: number,
+    arm: RoadFlow,
+    allowed: number | null,
+  ): CommandResult {
+    const rejected = { ok: false, cost: 0, inverse: [], reason: 'invalid' as const };
+    if (!inBounds(x, z)) return rejected;
+    const node = this.network.getNodes().find((n) => n.x === x && n.z === z);
+    if (!node || node.edges.length < 3) return rejected;
+    const step = stepForFlow(arm);
+    if (step.dx === 0 && step.dz === 0) return rejected;
+    if (!inBounds(x + step.dx, z + step.dz)) return rejected;
+    if (!isStreetTier(this.grid.roadTier[tileIndex(x + step.dx, z + step.dz)] ?? 0))
+      return rejected;
+    if (allowed !== null && (allowed & 0xf) === 0) return rejected;
+
+    const i = tileIndex(x, z);
+    const was = this.grid.junctionTurns[i] ?? 0;
+    const next = withArmAllowed(was, arm, allowed);
+    if (next === was) return { ok: true, cost: 0, inverse: [] };
+
+    this.grid.junctionTurns[i] = next;
+    // Restrictions are read by the router and painted on the approach, so the
+    // graph has to work them out again before anything asks.
+    this.network.invalidateRegion(x, z, x, z);
+    return {
+      ok: true,
+      cost: 0,
+      inverse: [
+        {
+          kind: 'setJunctionTurns',
+          x,
+          z,
+          arm,
+          allowed: armIsRestricted(was, arm) ? armAllowed(was, arm) : null,
+        },
+      ],
+    };
+  }
+
   // -------------------------------------------------------------------------
   // Commands
   // -------------------------------------------------------------------------
@@ -1331,6 +1382,8 @@ class SimWorld implements WorkerSim {
         return this.cmdDefineRoadProfile(command.id, command.profile);
       case 'setJunctionControl':
         return this.cmdSetJunctionControl(command.x, command.z, command.control);
+      case 'setJunctionTurns':
+        return this.cmdSetJunctionTurns(command.x, command.z, command.arm, command.allowed);
       case 'bulldoze':
         return this.cmdBulldoze(command.tiles);
       case 'paintZone':

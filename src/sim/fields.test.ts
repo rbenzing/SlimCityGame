@@ -23,6 +23,7 @@ function makeGrid(): GridState {
     roadProfile: new Uint16Array(MAP_TILES),
     roadFlow: new Uint8Array(MAP_TILES),
     junctionControl: new Uint8Array(MAP_TILES),
+    junctionTurns: new Uint16Array(MAP_TILES),
   };
 }
 

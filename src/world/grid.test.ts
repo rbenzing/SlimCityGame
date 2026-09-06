@@ -163,7 +163,7 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g); // current version: district + landfill + elevation
 
-    const v1 = cur.slice(0, cur.byteLength - 10 * n); // drop all three trailing layers, the u16 profile tail, the flow byte and the junction-control byte
+    const v1 = cur.slice(0, cur.byteLength - 12 * n); // drop all three trailing layers, the u16 profile tail, the flow byte and the junction-control byte
     new DataView(v1).setUint32(0, 1, true); // stamp version 1
 
     const back = deserializeGrid(v1);
@@ -193,7 +193,7 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g);
 
-    const v2 = cur.slice(0, cur.byteLength - 9 * n); // drop landfill + elevation + the u16 profile tail + the flow and junction-control bytes
+    const v2 = cur.slice(0, cur.byteLength - 11 * n); // drop landfill + elevation + the u16 profile tail + the flow and junction-control bytes
     new DataView(v2).setUint32(0, 2, true); // stamp version 2
 
     const back = deserializeGrid(v2);
@@ -213,7 +213,7 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g);
 
-    const v3 = cur.slice(0, cur.byteLength - 8 * n); // drop the elevation floats + the u16 profile tail + the flow and junction-control bytes
+    const v3 = cur.slice(0, cur.byteLength - 10 * n); // drop the elevation floats + the u16 profile tail + the flow and junction-control bytes
     new DataView(v3).setUint32(0, 3, true); // stamp version 3
 
     const back = deserializeGrid(v3);
@@ -233,7 +233,7 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g);
 
-    const body = cur.slice(0, cur.byteLength - 8 * n); // everything before the float tail, the u16 profile tail and the flow and junction-control bytes
+    const body = cur.slice(0, cur.byteLength - 10 * n); // everything before the float tail, the u16 profile tail and the flow and junction-control bytes
     const v4 = new ArrayBuffer(body.byteLength + n);
     const bytes = new Uint8Array(v4);
     bytes.set(new Uint8Array(body));
@@ -255,7 +255,7 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g);
 
-    const v5 = cur.slice(0, cur.byteLength - 4 * n); // everything before the u16 profile tail and the flow and junction-control bytes
+    const v5 = cur.slice(0, cur.byteLength - 6 * n); // everything before the u16 profile tail and the flow and junction-control bytes
     new DataView(v5).setUint32(0, 5, true);
 
     const back = deserializeGrid(v5);
@@ -633,7 +633,7 @@ describe('the flow layer survives a save (v7)', () => {
     fillDeterministic(g);
     g.roadFlow.fill(2);
     const cur = serializeGrid(g);
-    const v6 = cur.slice(0, cur.byteLength - 2 * n); // drop the trailing flow and junction-control bytes
+    const v6 = cur.slice(0, cur.byteLength - 4 * n); // drop the trailing flow and junction-control bytes and the u16 turn tail
     new DataView(v6).setUint32(0, 6, true);
 
     const back = deserializeGrid(v6);
@@ -642,6 +642,33 @@ describe('the flow layer survives a save (v7)', () => {
     // Everything before it is untouched.
     expect(Array.from(back.roadProfile)).toEqual(Array.from(g.roadProfile));
     expect(Array.from(back.roadTier)).toEqual(Array.from(g.roadTier));
+  });
+
+  it('round-trips the turn restrictions the player set', () => {
+    const size = 5;
+    const g = createGrid(size);
+    fillDeterministic(g);
+    g.junctionTurns[3] = 0x1234;
+    g.junctionTurns[9] = 0xffff;
+    const back = deserializeGrid(serializeGrid(g));
+    expect(Array.from(back.junctionTurns)).toEqual(Array.from(g.junctionTurns));
+  });
+
+  it('migrates a v8 buffer (no turn layer) — nothing is restricted', () => {
+    const size = 5;
+    const n = size * size;
+    const g = createGrid(size);
+    fillDeterministic(g);
+    g.junctionTurns.fill(0x0f0f);
+    const cur = serializeGrid(g);
+    const v8 = cur.slice(0, cur.byteLength - 2 * n); // drop the trailing u16 turn tail
+    new DataView(v8).setUint32(0, 8, true);
+
+    const back = deserializeGrid(v8);
+    expect(back.junctionTurns.length).toBe(n);
+    expect(back.junctionTurns.every((v) => v === 0)).toBe(true);
+    // The control byte just before it still lands where it should.
+    expect(Array.from(back.junctionControl)).toEqual(Array.from(g.junctionControl));
   });
 
   it('round-trips the junction controls the player set', () => {
@@ -661,7 +688,7 @@ describe('the flow layer survives a save (v7)', () => {
     fillDeterministic(g);
     g.junctionControl.fill(4);
     const cur = serializeGrid(g);
-    const v7 = cur.slice(0, cur.byteLength - n); // drop the trailing junction-control byte
+    const v7 = cur.slice(0, cur.byteLength - 3 * n); // drop the trailing junction-control byte and the u16 turn tail
     new DataView(v7).setUint32(0, 7, true);
 
     const back = deserializeGrid(v7);

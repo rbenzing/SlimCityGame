@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { FIELD_COUNT, RoadTier } from '../shared/types';
+import { FIELD_COUNT, RoadFlow, RoadTier } from '../shared/types';
+import { Movement, withArmAllowed } from '../shared/approach';
 import type { GridState, TilePoint } from '../shared/types';
 import { applyRoad, RoadNetwork } from './roads';
 
@@ -23,6 +24,7 @@ function makeGrid(size: number): GridState {
     roadProfile: new Uint16Array(n),
     roadFlow: new Uint8Array(n),
     junctionControl: new Uint8Array(n),
+    junctionTurns: new Uint16Array(n),
   };
 }
 
@@ -164,5 +166,62 @@ describe('a control has teeth', () => {
     const from = { x: 0, z: mid };
     const to = { x: size - 1, z: mid };
     expect(busy.findPath(from, to)!.cost).toBeGreaterThan(quiet.findPath(from, to)!.cost);
+  });
+});
+
+describe('a banned turn is not a path', () => {
+  const size = 13;
+  const mid = 6;
+
+  /** A crossroads of two-lane streets, with the middle reachable four ways. */
+  function grid(): GridState {
+    const g = makeGrid(size);
+    applyRoad(g, row(mid, 0, size - 1), RoadTier.TwoLane);
+    applyRoad(g, column(mid, 0, size - 1), RoadTier.TwoLane);
+    return g;
+  }
+
+  it('routes a left turn until the left turn is taken away', () => {
+    const g = grid();
+    const net = new RoadNetwork();
+    net.rebuild(g);
+    // Arriving from the west heading east, turning north is a left.
+    const from = { x: 0, z: mid };
+    const to = { x: mid, z: 0 };
+    expect(net.findPath(from, to)).not.toBeNull();
+
+    // Ban the left from the arm lying to the WEST of the junction.
+    g.junctionTurns[mid * size + mid] = withArmAllowed(
+      0,
+      RoadFlow.West,
+      Movement.Through | Movement.Right,
+    );
+    const banned = new RoadNetwork();
+    banned.rebuild(g);
+    // The only way there was through that junction, so there is now no way.
+    expect(banned.findPath(from, to)).toBeNull();
+    // And the movements that are still allowed still route.
+    expect(banned.findPath(from, { x: size - 1, z: mid })).not.toBeNull();
+    expect(banned.findPath(from, { x: mid, z: size - 1 })).not.toBeNull();
+  });
+
+  it('leaves the other arms alone when one is restricted', () => {
+    const g = grid();
+    g.junctionTurns[mid * size + mid] = withArmAllowed(0, RoadFlow.West, Movement.Through);
+    const net = new RoadNetwork();
+    net.rebuild(g);
+    // From the east, every turn is still open.
+    expect(net.findPath({ x: size - 1, z: mid }, { x: mid, z: 0 })).not.toBeNull();
+    expect(net.findPath({ x: size - 1, z: mid }, { x: mid, z: size - 1 })).not.toBeNull();
+  });
+
+  it('never doubles back at a junction, since a U-turn is not offered', () => {
+    const g = grid();
+    const net = new RoadNetwork();
+    net.rebuild(g);
+    const path = net.findPath({ x: 0, z: mid }, { x: size - 1, z: mid });
+    expect(path).not.toBeNull();
+    // No edge is walked twice, which is what a U-turn at the middle would do.
+    expect(new Set(path!.edges).size).toBe(path!.edges.length);
   });
 });
