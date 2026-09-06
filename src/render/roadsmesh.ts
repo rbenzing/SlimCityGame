@@ -78,7 +78,7 @@
  * only this per-tile cosmetic paint/geometry curves.
  */
 import * as THREE from 'three';
-import { RoadTileDelta, RoadTier } from '../shared/types';
+import { RoadFlow, RoadTileDelta, RoadTier } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import { TILE_METERS, CHUNK_TILES, CHUNKS_PER_SIDE } from '../shared/constants';
 import {
@@ -646,6 +646,8 @@ function emitDirectionArrow(
   vertical: boolean,
   centerX: number,
   centerZ: number,
+  /** Point the other way: toward the low coordinate on the travel axis. */
+  reversed: boolean,
   hAt: (x: number, z: number) => number,
 ): void {
   const headBase = ARROW_HALF_LENGTH_M - ARROW_HEAD_LENGTH_M;
@@ -657,7 +659,11 @@ function emitDirectionArrow(
     [headBase, tip, ARROW_STEM_HALF_WIDTH_M, ARROW_HEAD_HALF_WIDTH_M], // head wing, + side
     [headBase, tip, -ARROW_HEAD_HALF_WIDTH_M, -ARROW_STEM_HALF_WIDTH_M], // head wing, - side
   ];
-  for (const [alongLo, alongHi, acrossLo, acrossHi] of rects) {
+  for (const [rawLo, rawHi, acrossLo, acrossHi] of rects) {
+    // Reversing mirrors the arrow along its travel axis, so the same three
+    // rectangles point the other way.
+    const alongLo = reversed ? -rawHi : rawLo;
+    const alongHi = reversed ? -rawLo : rawHi;
     if (vertical) {
       pushLocalRect(
         positions,
@@ -2415,6 +2421,8 @@ export function roadTileVertices(
   /** The tile's own cross-section. Omitted = the tier's preset, which is what every tile carried before profiles. */
   profile?: RoadProfile,
   neighborHalves: NeighborHalves = presetHalves(neighbors),
+  /** Which way the tile was drawn; RoadFlow.None reads as the low-to-high default. */
+  flow: number = RoadFlow.None,
 ): { positions: number[]; colors: number[] } {
   if (!Number.isInteger(mask) || mask < 0 || mask > 15) {
     throw new RangeError(`roadTileVertices: mask ${mask} out of the 4-bit range 0..15`);
@@ -2763,12 +2771,30 @@ export function roadTileVertices(
       }
 
       // One-Way direction arrows: every ARROW_PERIOD_TILES-th tile by GLOBAL
-      // coordinate along the flow axis, always pointing low->high on that axis.
+      // coordinate along the flow axis, pointing the way the road was drawn.
+      // A road laid before its direction was stored points low->high, which is
+      // the way it has always been drawn and the way it is still routed.
       if (tier === RoadTier.OneWay) {
         if (hasVertical && isArrowTile(z))
-          emitDirectionArrow(positions, colors, true, centerX, centerZ, hAt);
+          emitDirectionArrow(
+            positions,
+            colors,
+            true,
+            centerX,
+            centerZ,
+            flow === RoadFlow.North,
+            hAt,
+          );
         if (hasHorizontal && isArrowTile(x))
-          emitDirectionArrow(positions, colors, false, centerX, centerZ, hAt);
+          emitDirectionArrow(
+            positions,
+            colors,
+            false,
+            centerX,
+            centerZ,
+            flow === RoadFlow.West,
+            hAt,
+          );
       }
     }
 
@@ -3175,6 +3201,7 @@ export class RoadMeshRenderer {
           s: this.halfAt(tile.x, tile.z + 1),
           w: this.halfAt(tile.x - 1, tile.z),
         },
+        tile.flow,
       );
       for (const n of vertices.positions) positions.push(n);
       for (const n of vertices.colors) colors.push(n);

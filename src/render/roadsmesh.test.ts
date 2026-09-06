@@ -37,7 +37,7 @@ import {
   LANE_GLYPH_PERIOD_TILES,
   SIDEWALK_WIDTH_M,
 } from './roadsmesh';
-import { RoadTileDelta, RoadTier } from '../shared/types';
+import { RoadFlow, RoadTileDelta, RoadTier } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import { presetProfileForTier } from '../shared/roadprofile';
 import { CHUNK_TILES, TILE_METERS } from '../shared/constants';
@@ -1815,7 +1815,7 @@ describe('roadTileVertices — v3 tiers share the v1/v2 unknown-tier guard', () 
 });
 
 function makeDelta(x: number, z: number, tier: RoadTier, mask = 0): RoadTileDelta {
-  return { x, z, tier, mask, elevation: 0, profile: tier };
+  return { x, z, tier, mask, elevation: 0, profile: tier, flow: RoadFlow.None };
 }
 
 describe('RoadMeshRenderer', () => {
@@ -2146,5 +2146,85 @@ describe('roadTileVertices — width transitions on a straight run', () => {
       .filter(([x]) => Math.abs(x - TILE_METERS) < 1e-6)
       .map(([, z]) => Math.abs(z - cz));
     expect(Math.min(...atEast)).toBeCloseTo(6, 6);
+  });
+});
+
+describe('roadTileVertices — a one-way street points the way it was drawn', () => {
+  /** The along-axis extent of the arrow paint on a vertical (N/S) one-way tile. */
+  function arrowSpan(flow: number): { tip: number; tail: number } {
+    const { positions, colors } = roadTileVertices(
+      0,
+      0,
+      RoadTier.OneWay,
+      N | S,
+      flatHeightAt,
+      undefined,
+      undefined,
+      undefined,
+      flow,
+    );
+    // Arrow paint is white, like the lane lines; the arrow is the only paint
+    // on a one-way tile that is not the centre line, so take the widest span.
+    let lo = Infinity;
+    let hi = -Infinity;
+    toTriples(colors).forEach((c, i) => {
+      if (!isMarkingWhite(c)) return;
+      const x = positions[i * 3]!;
+      // The centre line runs down x = 8; the arrow head is wider than it.
+      if (Math.abs(x - 8) < 0.3) return;
+      const z = positions[i * 3 + 2]!;
+      if (z < lo) lo = z;
+      if (z > hi) hi = z;
+    });
+    return { tip: hi, tail: lo };
+  }
+
+  it('points south by default, and north when the drag went north', () => {
+    // The arrow head is the wide end. Sample the paint either side of the tile
+    // centre (z = 8) to see which end of the arrow is the head.
+    const headEnd = (flow: number): number => {
+      const { positions, colors } = roadTileVertices(
+        0,
+        0,
+        RoadTier.OneWay,
+        N | S,
+        flatHeightAt,
+        undefined,
+        undefined,
+        undefined,
+        flow,
+      );
+      let widestZ = 0;
+      let widest = 0;
+      const byZ = new Map<number, { lo: number; hi: number }>();
+      toTriples(colors).forEach((c, i) => {
+        if (!isMarkingWhite(c)) return;
+        const x = positions[i * 3]!;
+        const z = Math.round(positions[i * 3 + 2]! * 100) / 100;
+        const span = byZ.get(z) ?? { lo: Infinity, hi: -Infinity };
+        span.lo = Math.min(span.lo, x);
+        span.hi = Math.max(span.hi, x);
+        byZ.set(z, span);
+      });
+      for (const [z, span] of byZ) {
+        const width = span.hi - span.lo;
+        if (width > widest) {
+          widest = width;
+          widestZ = z;
+        }
+      }
+      return widestZ;
+    };
+    // Tile (0,0) spans z 0..16 with its centre at 8: a southward arrow puts
+    // its widest paint past the centre, a northward one before it.
+    expect(headEnd(RoadFlow.South)).toBeGreaterThan(8);
+    expect(headEnd(RoadFlow.None)).toBeGreaterThan(8); // the low->high default
+    expect(headEnd(RoadFlow.North)).toBeLessThan(8);
+  });
+
+  it('paints the same amount of arrow whichever way it points', () => {
+    const south = arrowSpan(RoadFlow.South);
+    const north = arrowSpan(RoadFlow.North);
+    expect(north.tip - north.tail).toBeCloseTo(south.tip - south.tail, 6);
   });
 });

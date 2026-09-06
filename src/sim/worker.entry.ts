@@ -33,6 +33,8 @@ import {
   SAVE_VERSION,
   BuildingState,
   FieldId,
+  flowForStep,
+  RoadFlow,
   RoadTier,
   isRailTier,
   isTramTier,
@@ -582,6 +584,7 @@ class SimWorld implements WorkerSim {
             mask: this.grid.roadMask[idx] ?? 0,
             elevation: this.grid.roadElevation[idx] ?? 0,
             profile: this.grid.roadProfile[idx] || tier,
+            flow: this.grid.roadFlow[idx] ?? RoadFlow.None,
           });
         }
       }
@@ -1234,6 +1237,7 @@ class SimWorld implements WorkerSim {
           command.elevations,
           command.profile,
           command.replace,
+          command.flows,
         );
       case 'defineRoadProfile':
         return this.cmdDefineRoadProfile(command.id, command.profile);
@@ -1437,6 +1441,7 @@ class SimWorld implements WorkerSim {
     exact?: number[],
     requestedProfile?: number,
     replace = false,
+    exactFlows?: number[],
   ): CommandResult {
     // The profile is the road's identity; the tier is its nearest preset and
     // is derived from it, so a composed profile cannot be laid under a tier it
@@ -1453,6 +1458,7 @@ class SimWorld implements WorkerSim {
     const g = this.grid;
     const valid: TilePoint[] = [];
     const validElevations: number[] = [];
+    const validFlows: number[] = [];
     const created: TilePoint[] = [];
     // Replaced roads, keyed by the profile they carried, so undo puts back the
     // road that was there and not merely one of the same tier.
@@ -1460,13 +1466,24 @@ class SimWorld implements WorkerSim {
     // Deck heights as they stood before this command, so undo can put them back
     // exactly rather than re-solving against a grid that may have moved on.
     const priorElevationByTile = new Map<number, number>();
+    // Directions as they stood before this command, for the same reason.
+    const priorFlowByTile = new Map<number, number>();
     // Tiles this command only re-profiles keep their road; grouped by the
     // profile they keep, so the inverse re-lays exactly that road at the old
     // deck height.
     const reprofiledByProfile = new Map<
       number,
-      { tier: RoadTier; tiles: TilePoint[]; elevations: number[] }
+      { tier: RoadTier; tiles: TilePoint[]; elevations: number[]; flows: number[] }
     >();
+    // A road runs the way it was drawn: each tile points at the next one along
+    // the drag, and the tile the drag ended on keeps the heading it arrived
+    // with. An undo supplies the directions that were there instead.
+    const dragFlows = tiles.map((t, i) => {
+      const next = tiles[i + 1];
+      if (next) return flowForStep(next.x - t.x, next.z - t.z);
+      const prev = tiles[i - 1];
+      return prev ? flowForStep(t.x - prev.x, t.z - prev.z) : RoadFlow.None;
+    });
     let changedCount = 0;
     let bridgeCost = 0;
 
@@ -1496,7 +1513,10 @@ class SimWorld implements WorkerSim {
       if (current === 0 && !buildable) continue;
       valid.push(t);
       validElevations.push(deck);
+      const flow = exactFlows?.[i] ?? dragFlows[i] ?? RoadFlow.None;
+      validFlows.push(flow);
       const priorDeck = g.roadElevation[idx] ?? 0;
+      const priorFlow = g.roadFlow[idx] ?? RoadFlow.None;
       const prevProfile = g.roadProfile[idx] || current;
       // A road is replaced by a higher tier, or by a different composition of
       // the same tier. The same road again only ever re-profiles its deck.
@@ -1506,25 +1526,27 @@ class SimWorld implements WorkerSim {
       const replaces = replace
         ? current !== tier || prevProfile !== profileId
         : current < tier || (current === tier && current !== 0 && prevProfile !== profileId);
-      if (deck !== priorDeck) {
-        bridgeCost += deck * BRIDGE_COST_PER_METER_TILE;
-        // A tile whose road is unchanged but whose deck moved still changed —
-        // count it so a pure re-profile is not mistaken for a no-op.
-        if (!replaces) {
-          changedCount += 1;
-          const group = reprofiledByProfile.get(prevProfile) ?? {
-            tier: current,
-            tiles: [],
-            elevations: [],
-          };
-          group.tiles.push(t);
-          group.elevations.push(priorDeck);
-          reprofiledByProfile.set(prevProfile, group);
-        }
+      if (deck !== priorDeck) bridgeCost += deck * BRIDGE_COST_PER_METER_TILE;
+      // A tile whose road is unchanged but whose deck moved, or which now runs
+      // the other way, still changed — count it so a pure re-drag is not
+      // mistaken for a no-op, and remember what to put back.
+      if (!replaces && current !== 0 && (deck !== priorDeck || flow !== priorFlow)) {
+        changedCount += 1;
+        const group = reprofiledByProfile.get(prevProfile) ?? {
+          tier: current,
+          tiles: [],
+          elevations: [],
+          flows: [],
+        };
+        group.tiles.push(t);
+        group.elevations.push(priorDeck);
+        group.flows.push(priorFlow);
+        reprofiledByProfile.set(prevProfile, group);
       }
       if (replaces) {
         changedCount += 1;
         priorElevationByTile.set(idx, priorDeck);
+        priorFlowByTile.set(idx, priorFlow);
         if (current === 0) {
           created.push(t);
         } else {
@@ -1548,7 +1570,7 @@ class SimWorld implements WorkerSim {
     if (!this.unlimitedMoney && this.stats.funds < cost)
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
 
-    const deltas = applyRoad(g, valid, tier, validElevations, profileId, replace);
+    const deltas = applyRoad(g, valid, tier, validElevations, profileId, replace, validFlows);
     for (const d of deltas) this.pendingRoadDeltas.set(tileIndex(d.x, d.z), d);
     this.landfillAreasCache = null; // street layout feeds the landfill entrances
     this.invalidateAround(valid);
@@ -1567,6 +1589,7 @@ class SimWorld implements WorkerSim {
         tier: group.tier,
         tiles: group.tiles,
         elevations: group.tiles.map((t) => priorElevationByTile.get(tileIndex(t.x, t.z)) ?? 0),
+        flows: group.tiles.map((t) => priorFlowByTile.get(tileIndex(t.x, t.z)) ?? RoadFlow.None),
         profile: prevProfile,
       });
     }
@@ -1578,6 +1601,7 @@ class SimWorld implements WorkerSim {
         tier: group.tier,
         tiles: group.tiles,
         elevations: group.elevations,
+        flows: group.flows,
         profile: prevProfile,
       });
     }

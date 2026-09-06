@@ -2188,10 +2188,12 @@ else is derived:
   barriers. The existing tier unlocks map onto this with no regression.
 - **Save compatibility.** The grid's `roadTier` byte becomes a `roadProfile`
   index into a per-save profile table (the eleven presets pre-populate it, so
-  a v5 save loads with every road looking as it did); a `roadFlow` byte (2
-  bits direction, 2 bits corridor half, 4 bits approach-zone marker) is
-  added; nodes gain a control record keyed by tile. Serialization bumps one
-  version; older saves deserialize with presets and warrant-derived control.
+  a v5 save loads with every road looking as it did); a `roadFlow` byte (3
+  bits direction — the four cardinals and "never recorded" — with the rest
+  reserved for the corridor half and approach-zone marker) is added; nodes
+  gain a control record keyed by tile. Serialization bumps one version per
+  layer; older saves deserialize with presets, no stored direction, and
+  warrant-derived control.
 - **Deferred, deliberately.** Signal phase design (SPUI, DDI, protected
   lefts as a player setting) — a signal here is Webster's delay and a
   cosmetic cycle, not a phase plan. Three-level stacks and turbines — the
@@ -2309,6 +2311,23 @@ scaled by one constant into the units the sim already uses.
    wave 1.
 2. **Stored direction** — `roadFlow`, drag direction, asymmetric profiles,
    directional edge cost, one-way pathfinding off geometry inference.
+   *Status (2026-09-05):* the direction is stored and read. Every road tile
+   carries a `roadFlow` byte naming the cardinal its drag went in, saved at
+   version 7; a save from before it loads with none, and every reader falls
+   back to the geometry it used before. The worker reads the direction off
+   the drag — each tile points at the next one along it, the tile the drag
+   ended on keeps the heading it arrived with — so drawing a one-way street
+   back the other way turns it round rather than rebuilding it, and undo puts
+   back the directions that were there, the way it already put back the deck
+   heights. The graph carries what its run recorded, so one-way routing no
+   longer guesses from the shape of the tiles: a street drawn east to west
+   routes east to west even though its tiles ascend in x. The arrows painted
+   on a one-way street point the way it was drawn.
+   `tools/oneway-shots.mjs` lays two identical one-way columns drawn opposite
+   ways in the running game, reads back what each stored, turns one round and
+   shoots them. Still to come in wave 2: asymmetric profiles (three lanes as
+   2+1) and a directional edge cost that reads the lane count for the
+   direction actually travelled.
 3. **Junction control** — node control records, the v/c warrant default, the
    inspector, per-movement delay cost, control-placed furniture, cycling
    signal heads, mini and compact roundabouts.

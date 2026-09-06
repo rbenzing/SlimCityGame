@@ -328,3 +328,42 @@ describe('findPath', () => {
     }
   });
 });
+
+describe('a one-way run flows the way it was drawn', () => {
+  const tiles = straightRun(0, 0, 1, 0, 6); // (0,0)..(5,0), increasing x
+  const nodes: GraphNode[] = [
+    { id: 0, x: 0, z: 0, edges: [0] },
+    { id: 1, x: 5, z: 0, edges: [0] },
+  ];
+  const edge = (forwardAtoB?: boolean): GraphEdge[] => [
+    {
+      id: 0,
+      a: 0,
+      b: 1,
+      tier: RoadTier.OneWay,
+      tiles,
+      length: tiles.length,
+      volume: 0,
+      ...(forwardAtoB === undefined ? {} : { forwardAtoB }),
+    },
+  ];
+
+  it('routes against the geometry when the run says it was drawn that way', () => {
+    // Drawn east to west: the tiles ascend in x, but the drag did not.
+    const edges = edge(false);
+    expect(findPath(nodes, edges, { x: 5, z: 0 }, { x: 0, z: 0 })).not.toBeNull();
+    expect(findPath(nodes, edges, { x: 0, z: 0 }, { x: 5, z: 0 })).toBeNull();
+  });
+
+  it('routes with the geometry when the run says it was drawn that way', () => {
+    const edges = edge(true);
+    expect(findPath(nodes, edges, { x: 0, z: 0 }, { x: 5, z: 0 })).not.toBeNull();
+    expect(findPath(nodes, edges, { x: 5, z: 0 }, { x: 0, z: 0 })).toBeNull();
+  });
+
+  it('falls back to the geometry for a road laid before the direction was stored', () => {
+    const edges = edge(undefined);
+    expect(findPath(nodes, edges, { x: 0, z: 0 }, { x: 5, z: 0 })).not.toBeNull();
+    expect(findPath(nodes, edges, { x: 5, z: 0 }, { x: 0, z: 0 })).toBeNull();
+  });
+});

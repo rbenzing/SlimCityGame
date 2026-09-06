@@ -58,6 +58,46 @@ export const RoadTier = {
 export type RoadTier = (typeof RoadTier)[keyof typeof RoadTier];
 
 /**
+ * Which way a road tile runs — the cardinal its drag went in. Stored per tile
+ * so a one-way street flows the way it was drawn rather than the way its
+ * geometry happens to read, and so a profile can say which of its lanes are
+ * which. None means no drag ever said.
+ */
+export const RoadFlow = {
+  None: 0,
+  North: 1,
+  East: 2,
+  South: 3,
+  West: 4,
+} as const;
+export type RoadFlow = (typeof RoadFlow)[keyof typeof RoadFlow];
+
+/** The flow that points from a tile to the orthogonal neighbour one step away, or None. */
+export function flowForStep(dx: number, dz: number): RoadFlow {
+  if (dx === 0 && dz === -1) return RoadFlow.North;
+  if (dx === 1 && dz === 0) return RoadFlow.East;
+  if (dx === 0 && dz === 1) return RoadFlow.South;
+  if (dx === -1 && dz === 0) return RoadFlow.West;
+  return RoadFlow.None;
+}
+
+/** The step a flow points along: {dx, dz}, or a zero step for None. */
+export function stepForFlow(flow: number): { dx: number; dz: number } {
+  switch (flow) {
+    case RoadFlow.North:
+      return { dx: 0, dz: -1 };
+    case RoadFlow.East:
+      return { dx: 1, dz: 0 };
+    case RoadFlow.South:
+      return { dx: 0, dz: 1 };
+    case RoadFlow.West:
+      return { dx: -1, dz: 0 };
+    default:
+      return { dx: 0, dz: 0 };
+  }
+}
+
+/**
  * True for road tiers that behave as a functional STREET — carrying vehicle
  * traffic + road-graph utilities (power/water) + providing road frontage for
  * zoning/growth/service coverage. RailTrack (a dedicated rail line) sits on the
@@ -130,6 +170,16 @@ export interface GridState {
    * saves load with it derived from `roadTier`.
    */
   roadProfile: Uint16Array;
+  /**
+   * Which way each road tile runs: the cardinal its drag went in, as a
+   * RoadFlow value in the low three bits. RoadFlow.None means no drag ever
+   * said, and every reader falls back to what it did before there was a
+   * stored direction. The upper bits are reserved for the corridor half and
+   * approach-zone marker of later waves.
+   * ADDITIVE layer: serialized LAST in the grid save (SAVE_VERSION 7); older
+   * saves load with it unset.
+   */
+  roadFlow: Uint8Array;
   buildingId: Uint32Array; // 0 = none, else building instance id occupying tile
   power: Uint8Array; // 1 = powered
   watered: Uint8Array; // 1 = water service reaches tile
@@ -207,6 +257,13 @@ export type Command =
        * ground, a lesser road, or the same road differently composed.
        */
       replace?: boolean;
+      /**
+       * Exact per-tile flow directions (RoadFlow values), parallel to `tiles`.
+       * Omitted — the ordinary case — the direction is read off the drag
+       * itself. An undo sends the directions that were there before, the way
+       * it sends the deck heights that were there before.
+       */
+      flows?: number[];
     }
   /**
    * Registers a player-composed cross-section under an id the client chose
@@ -348,6 +405,8 @@ export interface RoadTileDelta {
   elevation: number; // deck height in metres above terrain, 0 = at grade
   /** The profile id the tile carries (see GridState.roadProfile); 0 when the road was removed. */
   profile: number;
+  /** Which way the tile runs (see GridState.roadFlow); RoadFlow.None when unset. */
+  flow: number;
 }
 
 export interface ZonePatch {
@@ -674,6 +733,13 @@ export interface GraphEdge {
   tiles: TilePoint[]; // the road tiles this edge covers, in order a->b
   length: number; // tiles
   volume: number; // vehicles assigned this cycle (traffic writes, decays)
+  /**
+   * Which way the run says it was drawn: true when its stored flow points from
+   * node a to node b, false when it points the other way. Absent when no tile
+   * of the run recorded a direction, which is what a road laid before there
+   * was one looks like — its reader falls back to the geometry it always used.
+   */
+  forwardAtoB?: boolean;
 }
 
 export interface PathResult {
@@ -797,7 +863,7 @@ export interface ReversibleEdit {
  * serializeGrid always writes the current version. No earlier layer's byte
  * layout or order changed, so every v1..v5 field round-trips unchanged.
  */
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 export interface SaveHeader {
   version: number;

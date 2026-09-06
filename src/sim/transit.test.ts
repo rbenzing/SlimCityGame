@@ -81,6 +81,7 @@ function makeGrid(n: number): GridState {
     landfill: new Uint8Array(n * n),
     roadElevation: new Float32Array(n * n),
     roadProfile: new Uint16Array(n * n),
+    roadFlow: new Uint8Array(n * n),
   };
 }
 

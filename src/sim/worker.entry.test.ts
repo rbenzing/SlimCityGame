@@ -8,7 +8,7 @@ import {
   TICK_MS,
   tileIndex,
 } from '../shared/constants';
-import { FieldId, RoadTier, SAVE_VERSION, ZoneType } from '../shared/types';
+import { FieldId, RoadFlow, RoadTier, SAVE_VERSION, ZoneType } from '../shared/types';
 import type {
   BuildingCatalogEntry,
   Command,
@@ -1762,5 +1762,81 @@ describe('bridges — crossing water', () => {
     expect(Math.max(...heights)).toBe(10);
     expect(heights[0]).toBe(0); // ramps down at both ends
     expect(heights[heights.length - 1]).toBe(0);
+  });
+});
+
+describe('road direction — a road runs the way it was drawn', () => {
+  function run(h: Harness, seq: number, commands: Command[]): CommandAck {
+    send(h, seq, commands);
+    h.ticks(2);
+    const ack = h.ackFor(seq);
+    if (!ack) throw new Error(`no ack for batch ${seq}`);
+    return ack;
+  }
+  function rowDeltas(h: Harness, z: number, x0: number, x1: number): RoadTileDelta[] {
+    const byX = new Map<number, RoadTileDelta>();
+    for (const m of h.messages) {
+      if (m.type !== 'snapshot' || !m.snap.roads) continue;
+      for (const d of m.snap.roads) if (d.z === z && d.x >= x0 && d.x < x1) byX.set(d.x, d);
+    }
+    return [...byX.values()].sort((a, b) => a.x - b.x);
+  }
+  /** A one-way street is milestone-locked at the start, so these build in the sandbox. */
+  function sandboxed(): Harness {
+    const h = initialized();
+    run(h, 0, [{ kind: 'setSandbox', on: true }]);
+    return h;
+  }
+  const column = (x: number, z0: number, count: number): TilePoint[] =>
+    Array.from({ length: count }, (_, i) => ({ x, z: z0 + i }));
+
+  it('points every tile at the next one along the drag, and the last tile the way it arrived', () => {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.OneWay, tiles: column(10, 10, 4) }]);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const g = latestSaveGrid(h);
+    for (let z = 10; z < 14; z++) expect(g.roadFlow[z * MAP_SIZE + 10]).toBe(RoadFlow.South);
+  });
+
+  it('turns a one-way street round when it is drawn back the other way', () => {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.OneWay, tiles: column(12, 10, 4) }]);
+    const ack = run(h, 2, [
+      { kind: 'buildRoad', tier: RoadTier.OneWay, tiles: column(12, 10, 4).reverse() },
+    ]);
+    expect(ack.ok).toBe(true);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const turned = latestSaveGrid(h);
+    for (let z = 10; z < 14; z++) expect(turned.roadFlow[z * MAP_SIZE + 12]).toBe(RoadFlow.North);
+
+    // Undo puts back the direction that was there, not the one the tiles read.
+    run(h, 3, ack.inverse);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const back = latestSaveGrid(h);
+    for (let z = 10; z < 14; z++) expect(back.roadFlow[z * MAP_SIZE + 12]).toBe(RoadFlow.South);
+  });
+
+  it('takes the direction with the road when the road is bulldozed', () => {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.OneWay, tiles: column(14, 10, 3) }]);
+    run(h, 2, [{ kind: 'bulldoze', tiles: column(14, 10, 3) }]);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const g = latestSaveGrid(h);
+    for (let z = 10; z < 13; z++) expect(g.roadFlow[z * MAP_SIZE + 14]).toBe(RoadFlow.None);
+  });
+
+  it('saves the direction and a load brings it back', () => {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.OneWay, tiles: column(16, 10, 3) }]);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const saves = h.messages.filter(
+      (m): m is Extract<WorkerToMain, { type: 'save' }> => m.type === 'save',
+    );
+    const data = saves[saves.length - 1]!.data;
+
+    const fresh = sandboxed();
+    fresh.sim.handleMessage({ type: 'loadSave', data });
+    fresh.ticks(1);
+    expect(rowDeltas(fresh, 10, 16, 17).map((d) => d.flow)).toEqual([RoadFlow.South]);
   });
 });

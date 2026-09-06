@@ -58,8 +58,16 @@ describe('ClientGridMirror — road profiles', () => {
     };
     mirror.applyRoadProfiles([{ id: 12, profile: custom }]);
     mirror.applyRoadDeltas([
-      { x: 3, z: 4, tier: RoadTier.Avenue, mask: 0, elevation: 0, profile: RoadTier.Avenue },
-      { x: 4, z: 4, tier: RoadTier.TwoLane, mask: 0, elevation: 0, profile: 12 },
+      {
+        x: 3,
+        z: 4,
+        tier: RoadTier.Avenue,
+        mask: 0,
+        elevation: 0,
+        profile: RoadTier.Avenue,
+        flow: 0,
+      },
+      { x: 4, z: 4, tier: RoadTier.TwoLane, mask: 0, elevation: 0, profile: 12, flow: 0 },
     ]);
     expect(mirror.profileAt(3, 4)?.class).toBe('arterial');
     expect(mirror.profileAt(4, 4)).toEqual(custom);
@@ -119,8 +127,24 @@ describe('ClientGridMirror', () => {
 
   it('applies road deltas, including removals (tier None)', () => {
     mirror.applyRoadDeltas([
-      { x: 3, z: 4, tier: RoadTier.TwoLane, mask: 0, elevation: 0, profile: RoadTier.TwoLane },
-      { x: 4, z: 4, tier: RoadTier.Avenue, mask: 0, elevation: 0, profile: RoadTier.Avenue },
+      {
+        x: 3,
+        z: 4,
+        tier: RoadTier.TwoLane,
+        mask: 0,
+        elevation: 0,
+        profile: RoadTier.TwoLane,
+        flow: 0,
+      },
+      {
+        x: 4,
+        z: 4,
+        tier: RoadTier.Avenue,
+        mask: 0,
+        elevation: 0,
+        profile: RoadTier.Avenue,
+        flow: 0,
+      },
     ]);
     expect(mirror.roadTier[4 * SIZE + 3]).toBe(RoadTier.TwoLane);
     expect(mirror.roadTier[4 * SIZE + 4]).toBe(RoadTier.Avenue);
@@ -141,7 +165,9 @@ describe('ClientGridMirror', () => {
       },
     ]);
 
-    mirror.applyRoadDeltas([{ x: 3, z: 4, tier: RoadTier.None, mask: 0, elevation: 0, profile: 0 }]);
+    mirror.applyRoadDeltas([
+      { x: 3, z: 4, tier: RoadTier.None, mask: 0, elevation: 0, profile: 0, flow: 0 },
+    ]);
     expect(mirror.roadTier[4 * SIZE + 3]).toBe(RoadTier.None);
     expect(mirror.roadTiles()).toEqual([
       {
@@ -156,8 +182,24 @@ describe('ClientGridMirror', () => {
 
   it('tracks deck heights and reports the elevated tiles as bridge structure', () => {
     mirror.applyRoadDeltas([
-      { x: 6, z: 6, tier: RoadTier.TwoLane, mask: 1 | 4, elevation: 0, profile: RoadTier.TwoLane },
-      { x: 6, z: 7, tier: RoadTier.TwoLane, mask: 1 | 4, elevation: 9, profile: RoadTier.TwoLane },
+      {
+        x: 6,
+        z: 6,
+        tier: RoadTier.TwoLane,
+        mask: 1 | 4,
+        elevation: 0,
+        profile: RoadTier.TwoLane,
+        flow: 0,
+      },
+      {
+        x: 6,
+        z: 7,
+        tier: RoadTier.TwoLane,
+        mask: 1 | 4,
+        elevation: 9,
+        profile: RoadTier.TwoLane,
+        flow: 0,
+      },
     ]);
 
     // The road surface rides the deck; the ground under it is untouched.
@@ -176,8 +218,24 @@ describe('ClientGridMirror', () => {
 
   it('tags road tiles with whether they are up on a deck', () => {
     mirror.applyRoadDeltas([
-      { x: 6, z: 6, tier: RoadTier.TwoLane, mask: 1 | 4, elevation: 0, profile: RoadTier.TwoLane },
-      { x: 6, z: 7, tier: RoadTier.TwoLane, mask: 1 | 4, elevation: 9, profile: RoadTier.TwoLane },
+      {
+        x: 6,
+        z: 6,
+        tier: RoadTier.TwoLane,
+        mask: 1 | 4,
+        elevation: 0,
+        profile: RoadTier.TwoLane,
+        flow: 0,
+      },
+      {
+        x: 6,
+        z: 7,
+        tier: RoadTier.TwoLane,
+        mask: 1 | 4,
+        elevation: 9,
+        profile: RoadTier.TwoLane,
+        flow: 0,
+      },
     ]);
     const byTile = new Map(mirror.roadTiles().map((t) => [`${t.x},${t.z}`, t.elevated]));
     expect(byTile.get('6,6')).toBe(false);
@@ -187,19 +245,47 @@ describe('ClientGridMirror', () => {
   it('reports which tiles changed height, so their baked geometry can be rebuilt', () => {
     // Raising a road moves the surface everything else was drawn against.
     const raised = mirror.applyRoadDeltas([
-      { x: 6, z: 6, tier: RoadTier.TwoLane, mask: 1 | 4, elevation: 0, profile: RoadTier.TwoLane },
-      { x: 6, z: 7, tier: RoadTier.TwoLane, mask: 1 | 4, elevation: 9, profile: RoadTier.TwoLane },
+      {
+        x: 6,
+        z: 6,
+        tier: RoadTier.TwoLane,
+        mask: 1 | 4,
+        elevation: 0,
+        profile: RoadTier.TwoLane,
+        flow: 0,
+      },
+      {
+        x: 6,
+        z: 7,
+        tier: RoadTier.TwoLane,
+        mask: 1 | 4,
+        elevation: 9,
+        profile: RoadTier.TwoLane,
+        flow: 0,
+      },
     ]);
     expect(raised).toEqual([{ x: 6, z: 7 }]);
 
     // Re-sending the same deltas moves nothing, so nothing needs rebuilding.
     expect(
-      mirror.applyRoadDeltas([{ x: 6, z: 7, tier: RoadTier.TwoLane, mask: 1 | 4, elevation: 9, profile: RoadTier.TwoLane }]),
+      mirror.applyRoadDeltas([
+        {
+          x: 6,
+          z: 7,
+          tier: RoadTier.TwoLane,
+          mask: 1 | 4,
+          elevation: 9,
+          profile: RoadTier.TwoLane,
+          flow: 0,
+        },
+      ]),
     ).toEqual([]);
 
     // And dropping back to the ground is a height change in its own right.
     expect(
-      mirror.applyRoadDeltas([{ x: 6, z: 7, tier: RoadTier.None, mask: 0, elevation: 0, profile: 0 }]),
+      mirror.applyRoadDeltas([
+        { x: 6, z: 7, tier: RoadTier.None, mask: 0, elevation: 0, profile: 0, flow: 0 },
+      ]),
     ).toEqual([{ x: 6, z: 7 }]);
   });
 
@@ -223,6 +309,7 @@ describe('ClientGridMirror', () => {
           mask: 1 | 4,
           elevation: 16, // -7 + 16 = 9m deck
           profile: RoadTier.TwoLane,
+          flow: 0,
         })),
       );
     }
@@ -260,6 +347,7 @@ describe('ClientGridMirror', () => {
           mask: 1 | 4,
           elevation: 2 * k,
           profile: RoadTier.TwoLane,
+          flow: 0,
         })),
       );
 
@@ -273,10 +361,22 @@ describe('ClientGridMirror', () => {
   });
 
   it('drops the deck when the road is bulldozed', () => {
-    mirror.applyRoadDeltas([{ x: 8, z: 8, tier: RoadTier.TwoLane, mask: 0, elevation: 12, profile: RoadTier.TwoLane }]);
+    mirror.applyRoadDeltas([
+      {
+        x: 8,
+        z: 8,
+        tier: RoadTier.TwoLane,
+        mask: 0,
+        elevation: 12,
+        profile: RoadTier.TwoLane,
+        flow: 0,
+      },
+    ]);
     expect(mirror.deckTiles()).toHaveLength(1);
 
-    mirror.applyRoadDeltas([{ x: 8, z: 8, tier: RoadTier.None, mask: 0, elevation: 0, profile: 0 }]);
+    mirror.applyRoadDeltas([
+      { x: 8, z: 8, tier: RoadTier.None, mask: 0, elevation: 0, profile: 0, flow: 0 },
+    ]);
     expect(mirror.deckTiles()).toEqual([]);
     expect(mirror.nearElevated(8, 8)).toBe(false);
   });
@@ -373,7 +473,17 @@ describe('ClientGridMirror', () => {
       expect(mirror.isFreeForPlop([{ x: -1, z: 0 }])).toBe(false);
       expect(mirror.isFreeForPlop([{ x: SIZE, z: 0 }])).toBe(false);
       expect(mirror.isFreeForPlop([{ x: 5, z: 5 }])).toBe(false); // water
-      mirror.applyRoadDeltas([{ x: 6, z: 6, tier: RoadTier.TwoLane, mask: 0, elevation: 0, profile: RoadTier.TwoLane }]);
+      mirror.applyRoadDeltas([
+        {
+          x: 6,
+          z: 6,
+          tier: RoadTier.TwoLane,
+          mask: 0,
+          elevation: 0,
+          profile: RoadTier.TwoLane,
+          flow: 0,
+        },
+      ]);
       expect(mirror.isFreeForPlop([{ x: 6, z: 6 }])).toBe(false); // road
       mirror.applyBuildingDelta(
         { added: [instance(1, 20, 20, 0)], removed: [], updated: [] },

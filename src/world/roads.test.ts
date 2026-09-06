@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FIELD_COUNT, isRailTier, RoadTier, ZoneType } from '../shared/types';
+import { FIELD_COUNT, isRailTier, RoadFlow, RoadTier, ZoneType } from '../shared/types';
 import type { GridState } from '../shared/types';
 import { applyRoad, computeMask, removeRoad, RoadNetwork } from './roads';
 
@@ -21,6 +21,7 @@ function makeGrid(size: number): GridState {
     landfill: new Uint8Array(n),
     roadElevation: new Float32Array(n),
     roadProfile: new Uint16Array(n),
+    roadFlow: new Uint8Array(n),
   };
 }
 
@@ -114,9 +115,33 @@ describe('applyRoad', () => {
     expect(deltas.length).toBe(3);
     const byX = new Map(deltas.map((d) => [d.x, d]));
     const two = RoadTier.TwoLane;
-    expect(byX.get(2)).toEqual({ x: 2, z: 5, tier: two, mask: 2, elevation: 0, profile: two }); // E only
-    expect(byX.get(3)).toEqual({ x: 3, z: 5, tier: two, mask: 8 | 2, elevation: 0, profile: two }); // W|E
-    expect(byX.get(4)).toEqual({ x: 4, z: 5, tier: two, mask: 8, elevation: 0, profile: two }); // W only
+    expect(byX.get(2)).toEqual({
+      x: 2,
+      z: 5,
+      tier: two,
+      mask: 2,
+      elevation: 0,
+      profile: two,
+      flow: RoadFlow.None,
+    }); // E only
+    expect(byX.get(3)).toEqual({
+      x: 3,
+      z: 5,
+      tier: two,
+      mask: 8 | 2,
+      elevation: 0,
+      profile: two,
+      flow: RoadFlow.None,
+    }); // W|E
+    expect(byX.get(4)).toEqual({
+      x: 4,
+      z: 5,
+      tier: two,
+      mask: 8,
+      elevation: 0,
+      profile: two,
+      flow: RoadFlow.None,
+    }); // W only
 
     expect(g.roadTier[idx(size, 3, 5)]).toBe(RoadTier.TwoLane);
     expect(g.roadMask[idx(size, 3, 5)]).toBe(8 | 2);
@@ -206,7 +231,15 @@ describe('applyRoad', () => {
     const g = makeGrid(size);
     const first = applyRoad(g, [{ x: 5, z: 5 }], RoadTier.TwoLane);
     expect(first).toEqual([
-      { x: 5, z: 5, tier: RoadTier.TwoLane, mask: 0, elevation: 0, profile: RoadTier.TwoLane },
+      {
+        x: 5,
+        z: 5,
+        tier: RoadTier.TwoLane,
+        mask: 0,
+        elevation: 0,
+        profile: RoadTier.TwoLane,
+        flow: RoadFlow.None,
+      },
     ]);
 
     const second = applyRoad(g, [{ x: 6, z: 5 }], RoadTier.TwoLane);
@@ -214,8 +247,24 @@ describe('applyRoad', () => {
 
     expect(second.length).toBe(2);
     const two = RoadTier.TwoLane;
-    expect(byXZ.get('6,5')).toEqual({ x: 6, z: 5, tier: two, mask: 8, elevation: 0, profile: two }); // W
-    expect(byXZ.get('5,5')).toEqual({ x: 5, z: 5, tier: two, mask: 2, elevation: 0, profile: two }); // E, updated though untouched
+    expect(byXZ.get('6,5')).toEqual({
+      x: 6,
+      z: 5,
+      tier: two,
+      mask: 8,
+      elevation: 0,
+      profile: two,
+      flow: RoadFlow.None,
+    }); // W
+    expect(byXZ.get('5,5')).toEqual({
+      x: 5,
+      z: 5,
+      tier: two,
+      mask: 2,
+      elevation: 0,
+      profile: two,
+      flow: RoadFlow.None,
+    }); // E, updated though untouched
   });
 
   it('ignores out-of-bounds tiles', () => {
@@ -257,9 +306,26 @@ describe('removeRoad', () => {
       mask: 0,
       elevation: 0,
       profile: 0,
+      flow: RoadFlow.None,
     });
-    expect(byXZ.get('2,5')).toEqual({ x: 2, z: 5, tier: two, mask: 0, elevation: 0, profile: two }); // lost its E neighbor
-    expect(byXZ.get('4,5')).toEqual({ x: 4, z: 5, tier: two, mask: 0, elevation: 0, profile: two }); // lost its W neighbor
+    expect(byXZ.get('2,5')).toEqual({
+      x: 2,
+      z: 5,
+      tier: two,
+      mask: 0,
+      elevation: 0,
+      profile: two,
+      flow: RoadFlow.None,
+    }); // lost its E neighbor
+    expect(byXZ.get('4,5')).toEqual({
+      x: 4,
+      z: 5,
+      tier: two,
+      mask: 0,
+      elevation: 0,
+      profile: two,
+      flow: RoadFlow.None,
+    }); // lost its W neighbor
 
     expect(g.roadTier[idx(size, 3, 5)]).toBe(RoadTier.None);
     expect(g.roadMask[idx(size, 3, 5)]).toBe(0);
@@ -684,5 +750,97 @@ describe('applyRoad — replace mode', () => {
     const g = makeGrid(8);
     applyRoad(g, [{ x: 3, z: 3 }], RoadTier.TwoLane, undefined, RoadTier.TwoLane, true);
     expect(g.roadTier[idx(8, 3, 3)]).toBe(RoadTier.TwoLane);
+  });
+});
+
+describe('stored flow direction', () => {
+  it('records which way the drag went, and points the last tile the way it arrived', () => {
+    const size = 10;
+    const g = makeGrid(size);
+    const tiles = [
+      { x: 2, z: 5 },
+      { x: 3, z: 5 },
+      { x: 4, z: 5 },
+    ];
+    const flows = [RoadFlow.East, RoadFlow.East, RoadFlow.East];
+    const deltas = applyRoad(g, tiles, RoadTier.OneWay, undefined, RoadTier.OneWay, false, flows);
+    for (const t of tiles) expect(g.roadFlow[idx(size, t.x, t.z)]).toBe(RoadFlow.East);
+    expect(deltas.every((d) => d.flow === RoadFlow.East)).toBe(true);
+  });
+
+  it('turns a road round when it is drawn back the other way', () => {
+    const size = 10;
+    const g = makeGrid(size);
+    const tiles = [
+      { x: 2, z: 5 },
+      { x: 3, z: 5 },
+    ];
+    applyRoad(g, tiles, RoadTier.OneWay, undefined, RoadTier.OneWay, false, [
+      RoadFlow.East,
+      RoadFlow.East,
+    ]);
+    const back = applyRoad(g, tiles, RoadTier.OneWay, undefined, RoadTier.OneWay, false, [
+      RoadFlow.West,
+      RoadFlow.West,
+    ]);
+    expect(back).toHaveLength(2); // a turned-round road really changed
+    expect(g.roadFlow[idx(size, 2, 5)]).toBe(RoadFlow.West);
+  });
+
+  it('forgets the direction when the road is taken away', () => {
+    const size = 10;
+    const g = makeGrid(size);
+    applyRoad(g, [{ x: 5, z: 5 }], RoadTier.OneWay, undefined, RoadTier.OneWay, false, [
+      RoadFlow.South,
+    ]);
+    removeRoad(g, [{ x: 5, z: 5 }]);
+    expect(g.roadFlow[idx(size, 5, 5)]).toBe(RoadFlow.None);
+  });
+});
+
+describe('the graph carries the direction its tiles were drawn in', () => {
+  /** A straight one-way run from (2,5) to (6,5), with junction stubs at each end. */
+  function runGrid(flow: number): GridState {
+    const size = 12;
+    const g = makeGrid(size);
+    const tiles = Array.from({ length: 5 }, (_, i) => ({ x: 2 + i, z: 5 }));
+    applyRoad(
+      g,
+      tiles,
+      RoadTier.OneWay,
+      undefined,
+      RoadTier.OneWay,
+      false,
+      flow === RoadFlow.None ? undefined : tiles.map(() => flow),
+    );
+    // Stubs so each end of the run is a node rather than a dead end.
+    applyRoad(g, [{ x: 2, z: 4 }], RoadTier.TwoLane);
+    applyRoad(g, [{ x: 6, z: 4 }], RoadTier.TwoLane);
+    return g;
+  }
+
+  it('says the run points from a to b, or from b to a, according to what it stored', () => {
+    for (const [flow, expectEast] of [
+      [RoadFlow.East, true],
+      [RoadFlow.West, false],
+    ] as const) {
+      const net = new RoadNetwork();
+      net.rebuild(runGrid(flow));
+      const edge = net.getEdges().find((e) => e.tiles.length === 5);
+      expect(edge, `flow ${flow}`).toBeDefined();
+      const nodes = net.getNodes();
+      const a = nodes.find((n) => n.id === edge!.a)!;
+      const b = nodes.find((n) => n.id === edge!.b)!;
+      // forwardAtoB is relative to the walk, so read it against the endpoints.
+      const pointsEast = edge!.forwardAtoB === b.x > a.x;
+      expect(pointsEast, `flow ${flow}`).toBe(expectEast);
+    }
+  });
+
+  it('says nothing about a road laid before the direction was stored', () => {
+    const net = new RoadNetwork();
+    net.rebuild(runGrid(RoadFlow.None));
+    const edge = net.getEdges().find((e) => e.tiles.length === 5);
+    expect(edge?.forwardAtoB).toBeUndefined();
   });
 });

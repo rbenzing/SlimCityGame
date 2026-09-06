@@ -344,6 +344,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         size: number;
         roadTier: number[];
         roadProfile: number[];
+        roadFlow: number[];
         roadElevation: number[];
         buildingId: number[];
         zone: number[];
@@ -355,6 +356,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         // The profile id per tile: a harness can tell a composed road from
         // the preset it stands nearest to, which a screenshot cannot.
         roadProfile: Array.from(clientGrid.roadProfile),
+        // Which way each road runs: a harness can tell a one-way drawn north
+        // from one drawn south, which the tier alone never said.
+        roadFlow: Array.from(clientGrid.roadFlow),
         // Deck height per tile: lets a screenshot check confirm a span actually
         // rose before it reads anything into the picture of it.
         roadElevation: Array.from(clientGrid.roadElevation),

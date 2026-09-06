@@ -6,7 +6,7 @@
  */
 
 import { findPath as runAstar, nearestNode as findNearestNode } from './pathfind';
-import { RoadTier, ZoneType, isStreetTier } from '../shared/types';
+import { flowForStep, RoadFlow, RoadTier, ZoneType, isStreetTier } from '../shared/types';
 import type {
   GraphEdge,
   GraphNode,
@@ -106,8 +106,9 @@ function computeNetworkMask(g: GridState, x: number, z: number, inNetwork: Netwo
  * existing tier, per-tile, with no error, unless `replace` is set, when the
  * drag lands whatever it draws), de-zones every one of those tiles, and
  * recomputes the neighbor mask for every tile whose tier changed plus its
- * orthogonal neighbors. Returns every tile whose tier or mask actually
- * changed.
+ * orthogonal neighbors.  and  are per-tile and follow the
+ * drag rather than the tier, so re-dragging a span turns it round or re-decks
+ * it. Returns every tile whose tier, mask, deck or direction actually changed.
  */
 export function applyRoad(
   g: GridState,
@@ -116,6 +117,7 @@ export function applyRoad(
   elevations?: readonly number[],
   profile: number = tier,
   replace = false,
+  flows?: readonly number[],
 ): RoadTileDelta[] {
   const changedIdx = new Set<number>();
 
@@ -152,6 +154,16 @@ export function applyRoad(
         changedIdx.add(idx);
       }
     }
+
+    // Direction follows the drag too, which is how a one-way street is turned
+    // round: draw it back the other way.
+    if (flows && tierAtIdx(g, idx) !== RoadTier.None) {
+      const next = flows[i] ?? RoadFlow.None;
+      if ((g.roadFlow[idx] ?? RoadFlow.None) !== next) {
+        g.roadFlow[idx] = next;
+        changedIdx.add(idx);
+      }
+    }
   }
 
   const candidates = new Set<number>(changedIdx);
@@ -182,6 +194,7 @@ export function applyRoad(
         mask: newMask,
         elevation: g.roadElevation[idx] ?? 0,
         profile: g.roadProfile[idx] ?? tierNow,
+        flow: g.roadFlow[idx] ?? RoadFlow.None,
       });
     }
   }
@@ -203,10 +216,19 @@ export function removeRoad(g: GridState, tiles: TilePoint[]): RoadTileDelta[] {
     if (tierAtIdx(g, idx) === RoadTier.None) continue;
     g.roadTier[idx] = RoadTier.None;
     g.roadProfile[idx] = 0;
+    g.roadFlow[idx] = RoadFlow.None; // the direction goes with the road
     g.roadMask[idx] = 0;
     g.roadElevation[idx] = 0; // the deck goes with the road
     removedIdx.add(idx);
-    deltaMap.set(idx, { x: t.x, z: t.z, tier: RoadTier.None, mask: 0, elevation: 0, profile: 0 });
+    deltaMap.set(idx, {
+      x: t.x,
+      z: t.z,
+      tier: RoadTier.None,
+      mask: 0,
+      elevation: 0,
+      profile: 0,
+      flow: RoadFlow.None,
+    });
   }
 
   const neighborCandidates = new Set<number>();
@@ -237,6 +259,7 @@ export function removeRoad(g: GridState, tiles: TilePoint[]): RoadTileDelta[] {
         tier: tierNow,
         mask: newMask,
         elevation: g.roadElevation[idx] ?? 0,
+        flow: g.roadFlow[idx] ?? RoadFlow.None,
         profile: g.roadProfile[idx] ?? tierNow,
       });
     }
@@ -269,6 +292,30 @@ function isNodeTile(g: GridState, x: number, z: number, tier: RoadTier, mask: nu
 interface BuiltGraph {
   nodes: GraphNode[];
   edges: GraphEdge[];
+}
+
+/**
+ * Which way a run's tiles say they were drawn, relative to the walk from node
+ * a to node b: true when the stored flow points along that walk, false when it
+ * points against it, and null when no tile of the run ever recorded one — a
+ * road laid before the direction was stored, which leaves its reader to fall
+ * back to the geometry it always used.
+ *
+ * The first tile that has an answer gives it. A run is one street between two
+ * nodes, so its tiles were laid by one drag and agree; a run stitched together
+ * from two drags is decided by the end the walk started from.
+ */
+function storedRunDirection(g: GridState, runTiles: readonly TilePoint[]): boolean | null {
+  for (let i = 0; i < runTiles.length - 1; i++) {
+    const here = runTiles[i]!;
+    const next = runTiles[i + 1]!;
+    const stored = g.roadFlow[indexOf(g.size, here.x, here.z)] ?? RoadFlow.None;
+    if (stored === RoadFlow.None) continue;
+    const along = flowForStep(next.x - here.x, next.z - here.z);
+    if (along === RoadFlow.None) continue; // defensive: a non-orthogonal step
+    return stored === along;
+  }
+  return null;
 }
 
 function buildGraph(g: GridState, inNetwork: NetworkTiers): BuiltGraph {
@@ -346,7 +393,7 @@ function buildGraph(g: GridState, inNetwork: NetworkTiers): BuiltGraph {
       if (endId === undefined) break; // malformed run terminated without reaching a node
 
       const edgeId = edges.length;
-      edges.push({
+      const edge: GraphEdge = {
         id: edgeId,
         a: startId,
         b: endId,
@@ -354,7 +401,10 @@ function buildGraph(g: GridState, inNetwork: NetworkTiers): BuiltGraph {
         tiles: runTiles,
         length: runTiles.length,
         volume: 0,
-      });
+      };
+      const stored = storedRunDirection(g, runTiles);
+      if (stored !== null) edge.forwardAtoB = stored;
+      edges.push(edge);
       nodes[startId]!.edges.push(edgeId);
       nodes[endId]!.edges.push(edgeId);
     }

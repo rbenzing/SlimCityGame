@@ -44,7 +44,8 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   composition that does not is refused at the preview. A road normally
   refuses to become a smaller one, so a stray drag can never flatten an
   avenue; turn on **Replace** when you mean to rebuild a road as something
-  else. Roads of different sizes join freely, and a wide road
+  else. A one-way street runs the way you drew it, arrows and all — to turn
+  one round, draw it again from the other end. Roads of different sizes join freely, and a wide road
   meeting a narrower one tapers its kerb in over the last tile; the only
   refusals are a highway or a ramp running straight onto a gravel road or an
   alley, which the preview turns down and tells you why. Roads snap to the

@@ -38,6 +38,8 @@ export class ClientGridMirror {
   readonly roadElevation: Float32Array;
   /** Profile id per road tile (see GridState.roadProfile); presets equal their tier. */
   readonly roadProfile: Uint16Array;
+  /** Which way each road tile runs (see GridState.roadFlow); 0 when never recorded. */
+  readonly roadFlow: Uint8Array;
   readonly buildingId: Uint32Array;
 
   /** building id -> the tile indices its footprint was stamped onto. */
@@ -55,6 +57,7 @@ export class ClientGridMirror {
     this.roadMask = new Uint8Array(n);
     this.roadElevation = new Float32Array(n);
     this.roadProfile = new Uint16Array(n);
+    this.roadFlow = new Uint8Array(n);
     this.buildingId = new Uint32Array(n);
   }
 
@@ -123,6 +126,7 @@ export class ClientGridMirror {
       if ((this.roadElevation[i] ?? 0) !== d.elevation) raised.push({ x: d.x, z: d.z });
       this.roadTier[i] = d.tier;
       this.roadProfile[i] = d.profile;
+      this.roadFlow[i] = d.flow;
       this.roadMask[i] = d.mask;
       this.roadElevation[i] = d.elevation;
     }
