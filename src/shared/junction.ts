@@ -49,11 +49,17 @@ export interface JunctionApproach {
 }
 
 /**
- * Classes that never take a node control. A motorway and its slip roads are
- * grade-separated — they meet other roads at an interchange, not at a junction
- * — and rail has its own network and its own crossings.
+ * Classes that never take a node control, because nothing meets them at grade.
+ * A motorway is reached by a slip road and left by one; rail has its own
+ * network and its own crossings. Traffic is never stopped on either.
+ *
+ * A RAMP is deliberately not on this list. Where it meets the motorway it
+ * serves, the motorway arm keeps the whole junction uncontrolled anyway — that
+ * end is a merge. Its other end is a ramp TERMINAL on the surface network, and
+ * a terminal is the busiest junction an interchange has: it is what the
+ * interchange is signalised at.
  */
-const UNCONTROLLED_CLASSES: ReadonlySet<RoadClassId> = new Set(['highway', 'ramp', 'rail']);
+const UNCONTROLLED_CLASSES: ReadonlySet<RoadClassId> = new Set(['highway', 'rail']);
 
 /**
  * The widest class that meets other roads with nothing at all: an unpaved
@@ -286,6 +292,36 @@ export function controlDelaySeconds(
       return (0.5 * c * (1 - g) * (1 - g)) / (1 - x * g);
     }
   }
+}
+
+/**
+ * Seconds a merging driver loses on an empty motorway: the time it takes to
+ * come up the slip road and match the speed of the traffic already on it.
+ * Small, but not nothing — a merge is never free.
+ */
+export const MERGE_BASE_S = 2;
+
+/**
+ * How much worse a full motorway makes it. Merging is finding a gap, and gaps
+ * run out faster than capacity does, so the cost climbs steeply rather than
+ * linearly: at half full it is a couple of seconds more, at capacity it is the
+ * queue up the slip road that every motorway has at rush hour.
+ */
+export const MERGE_SATURATED_S = 22;
+
+/**
+ * What a driver loses joining a motorway from a slip road, given how full the
+ * motorway they are joining is. Nobody stops them and nothing holds them, so
+ * this is not a control delay — it is the cost of finding a gap, and it is
+ * paid by the traffic coming UP the ramp and by nobody else. A driver already
+ * on the motorway pays nothing: that is what grade separation buys.
+ *
+ * Leaving one costs nothing at all. A diverge is a decision, not a negotiation
+ * — whatever it costs is paid at the terminal further down the ramp.
+ */
+export function mergeDelaySeconds(motorwayVc: number): number {
+  const x = Math.max(0, Math.min(1, motorwayVc));
+  return MERGE_BASE_S + MERGE_SATURATED_S * x * x * x;
 }
 
 /**

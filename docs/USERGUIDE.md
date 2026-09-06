@@ -66,7 +66,15 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   streets, or anything unpaved, meet on sight lines; a smaller road running
   onto a bigger one gives way and then stops as the bigger one gets busy; two
   equal town streets stop all round; an avenue signalises everything it
-  touches. Traffic is never stopped on a motorway. The decision is not
+  touches. Traffic is never stopped on a motorway — you reach one by **ramp**,
+  the one-lane one-way slip road that unlocks alongside it. Draw one from the
+  motorway down to a street and its two ends behave quite differently: at the
+  motorway there is no stop line and no signal, because that end is a merge —
+  nobody holds you, but joining still costs you the time to find a gap, and on
+  a busy motorway that is most of your journey. At the street end it is a
+  proper junction, signalised like any other place a big road meets a small
+  one. Coming the other way is free: leaving a motorway costs nothing, and
+  neither does staying on it. The decision is not
   cosmetic — crossing a signal costs a driver real seconds, and drivers reroute
   around a slow junction — and it follows the city: a crossroads that needs
   nothing today earns a give-way, then a stop, as the blocks around it fill,

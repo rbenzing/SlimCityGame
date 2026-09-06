@@ -2615,6 +2615,34 @@ scaled by one constant into the units the sim already uses.
    nodes, the neutral area and its chevrons, automatic acceleration and
    deceleration lanes, diamond and trumpet, then parclo, cloverleaf and
    roundabout interchange.
+   The RAMP is a road the player draws: one lane, one way, a narrow left
+   shoulder and a wide right one instead of kerbs, unlocked with the motorway
+   it serves and carrying no water main, because nobody digs up a slip road
+   for one. A preset's profile id is its tier, so the twelfth tier claims id
+   12 — an id an older save may already have given to a composed profile — and
+   a load moves such a profile to a free id and moves its tiles with it rather
+   than reading it as the new preset.
+   Its TWO ENDS are not the same kind of place. Where it meets the motorway,
+   the motorway arm keeps the junction uncontrolled: traffic is never stopped
+   on a motorway, and that end is a MERGE. Nobody holds the driver coming up
+   the slip road, but they still have to find a gap, so it is the one movement
+   at a grade-separated node that is not free — a couple of seconds on an empty
+   motorway, climbing as the cube of how full it is, since gaps run out faster
+   than capacity does. It is paid by the traffic coming up the ramp and by
+   nobody else: running through is free, which is what grade separation buys,
+   and DIVERGING is free too, a decision rather than a negotiation. The other
+   end is a ramp TERMINAL on the surface network, which is a real junction and
+   the busiest one an interchange has — it is what an interchange is
+   signalised at, so the ramp is no longer excused from control the way a
+   motorway is.
+   Reaching that terminal needed one correction to the GRAPH. A tile that
+   outranks a neighbour becomes a node so that a run carries a single tier —
+   but where that neighbour is already a JUNCTION, the junction is the
+   boundary, and a second node a tile away leaves a one-tile run that is
+   nothing but the seam. A run with no body has no road to be: the slip road's
+   last tile read as the street it was arriving at, and the terminal was
+   warranted as though no slip road reached it. A dead end or a bend is not a
+   junction and still takes the boundary node.
 6. **Two-tile corridors** — six- and eight-lane divided, the honest motorway,
    corridor halves in `roadFlow`, the two-lane roundabout, sound barriers.
 

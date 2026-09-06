@@ -299,13 +299,32 @@ export function removeRoad(g: GridState, tiles: TilePoint[]): RoadTileDelta[] {
  * tier is strictly higher than at least one neighbor's tier. That second
  * rule places exactly one node at each straight-through tier boundary (on
  * the higher-tier side), so edges can carry a single tier each.
+ *
+ * A boundary against a JUNCTION needs no node of its own — the junction is the
+ * boundary. Adding a second one a tile away leaves a one-tile run between them
+ * that is nothing but the seam, and a run with no body has no road to be: a
+ * slip road reaching a street one tile short of the junction would read as the
+ * street, and the junction would be warranted as though no slip road arrived
+ * at it. A dead end or a bend is not a junction and the boundary still stands
+ * on the greater road's side of it.
  */
-function isNodeTile(g: GridState, x: number, z: number, tier: RoadTier, mask: number): boolean {
+function isNodeTile(
+  g: GridState,
+  x: number,
+  z: number,
+  tier: RoadTier,
+  mask: number,
+  inNetwork: NetworkTiers,
+): boolean {
   const deg = popcount(mask);
   if (deg !== 2) return true;
   for (const d of DIRS) {
     if ((mask & d.bit) === 0) continue;
-    if (tierAt(g, x + d.dx, z + d.dz) < tier) return true;
+    const nx = x + d.dx;
+    const nz = z + d.dz;
+    if (tierAt(g, nx, nz) >= tier) continue;
+    if (popcount(computeNetworkMask(g, nx, nz, inNetwork)) >= 3) continue;
+    return true;
   }
   return false;
 }
@@ -437,7 +456,7 @@ function buildGraph(
       // train off the road.
       if (!inNetwork(tier)) continue;
       const mask = computeNetworkMask(g, x, z, inNetwork);
-      if (isNodeTile(g, x, z, tier, mask)) {
+      if (isNodeTile(g, x, z, tier, mask, inNetwork)) {
         nodeIdOf.set(idx, nodeTileIdx.length);
         nodeTileIdx.push(idx);
       }

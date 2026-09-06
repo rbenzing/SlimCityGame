@@ -7,7 +7,7 @@
  */
 
 import { flowForStep, isStreetTier, RoadFlow, RoadTier } from '../shared/types';
-import type { GraphEdge, GraphNode, PathResult, TilePoint } from '../shared/types';
+import type { GraphEdge, GraphNode, PathResult, RoadClassId, TilePoint } from '../shared/types';
 import {
   greenShareFor,
   laneCount,
@@ -16,7 +16,7 @@ import {
   profileSpeed,
   ROAD_PRESETS,
 } from '../shared/roadprofile';
-import { approachGivesWay, controlDelaySeconds } from '../shared/junction';
+import { approachGivesWay, controlDelaySeconds, mergeDelaySeconds } from '../shared/junction';
 import {
   armAllowed,
   laneMovementsFor,
@@ -153,9 +153,16 @@ export function junctionDelay(
   edgeById: EdgeLookup,
 ): number {
   const control = node.control;
-  // A driver setting off from a junction did not queue at it, and a junction
-  // with no control has no queue to wait in.
-  if (!arriving || !control || control === 'none') return 0;
+  // A driver setting off from a junction did not queue at it.
+  if (!arriving) return 0;
+  // Coming up a slip road onto a motorway is a MERGE, not a junction. Nobody
+  // stops the driver and no control is warranted where a motorway is an arm,
+  // but they still have to find a gap in the traffic already there — so this
+  // is the one movement at a grade-separated node that is not free.
+  const merging = mergeDelay(node, arriving, leaving);
+  if (merging !== null) return merging;
+  // A junction with no control has no queue to wait in.
+  if (!control || control === 'none') return 0;
   const arms = armsAt(node, edgeById);
   const arm = arms.find((a) => a.edgeId === arriving.id);
   const mine = arm?.approach;
@@ -178,6 +185,26 @@ export function junctionDelay(
     ? pocketLaneMovements(mine.lanes + 1, allowed)
     : laneMovementsFor(mine.lanes, allowed);
   return delay / movementDelayShare(movement, lanes);
+}
+
+/** The class a run carries: its own cross-section's, or the preset its tier names. */
+function classOf(edge: GraphEdge): RoadClassId {
+  return edge.classId ?? presetProfileForTier(edge.tier).class;
+}
+
+/**
+ * What a driver loses merging onto a motorway off a slip road, or null when
+ * the movement they are making is not that.
+ *
+ * Only the traffic coming UP the ramp pays. A driver already on the motorway
+ * is not merging; one leaving it down a ramp is diverging, which costs nothing
+ * here — whatever that costs is paid at the terminal further down the ramp.
+ * The cost is read off how full the motorway they are joining is, in the
+ * direction they are joining it.
+ */
+function mergeDelay(node: GraphNode, arriving: GraphEdge, leaving: GraphEdge): number | null {
+  if (classOf(arriving) !== 'ramp' || classOf(leaving) !== 'highway') return null;
+  return mergeDelaySeconds(approachSaturation(leaving, node.id));
 }
 
 /** The direction the arm carrying `edge` lies in, seen from `nodeId`. */

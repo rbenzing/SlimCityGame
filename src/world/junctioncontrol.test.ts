@@ -4,6 +4,7 @@ import { Movement, withArmAllowed } from '../shared/approach';
 import type { GraphEdge, GridState, TilePoint } from '../shared/types';
 import { applyRoad, RoadNetwork } from './roads';
 import { approachSaturation, armsAt, capacityForTier, junctionDelay } from './pathfind';
+import { MERGE_BASE_S, mergeDelaySeconds } from '../shared/junction';
 
 function makeGrid(size: number): GridState {
   const n = size * size;
@@ -345,5 +346,78 @@ describe('a lane drop is a bottleneck the traffic can feel', () => {
     edge.volume = capacityForTier(RoadTier.TwoLane);
     expect(edge.narrowsAtA).toBeUndefined();
     expect(approachSaturation(edge, edge.a)).toBeLessThan(1);
+  });
+});
+
+describe('a slip road meets a motorway at a merge, not a junction', () => {
+  const SIZE = 15;
+  const MID = Math.floor(SIZE / 2);
+
+  /** A motorway running east-west with a ramp coming up to it from the south. */
+  function interchange(): RoadNetwork {
+    const g = makeGrid(SIZE);
+    applyRoad(g, row(MID, 0, SIZE - 1), RoadTier.Highway);
+    applyRoad(g, column(MID, MID, SIZE - 1), RoadTier.Ramp);
+    const net = new RoadNetwork();
+    net.rebuild(g);
+    return net;
+  }
+
+  /** Every way out of the merge node, for a driver arriving from the south. */
+  function fromTheRamp(net: RoadNetwork): { east: number; west: number } {
+    const edges = net.getEdges();
+    const node = net.getNodes().find((n) => n.x === MID && n.z === MID)!;
+    const byId = (id: number): GraphEdge | undefined => edges.find((e) => e.id === id);
+    const arm = (dx: number, dz: number): GraphEdge =>
+      edges.find(
+        (e) =>
+          node.edges.includes(e.id) && e.tiles.some((t) => t.x === MID + dx && t.z === MID + dz),
+      )!;
+    const ramp = arm(0, 1);
+    return {
+      east: junctionDelay(node, ramp, arm(1, 0), byId),
+      west: junctionDelay(node, ramp, arm(-1, 0), byId),
+    };
+  }
+
+  it('holds nobody: traffic is never stopped on a motorway', () => {
+    expect(controlAtCentre(interchange(), SIZE)).toBe('none');
+  });
+
+  it('still costs the driver coming up it something — a merge is finding a gap', () => {
+    const merge = fromTheRamp(interchange());
+    expect(merge.east).toBeGreaterThan(0);
+    expect(merge.west).toBeGreaterThan(0);
+    // An empty motorway is the cheapest merge there is: the time to come up
+    // the slip road and match the speed of what is already there.
+    expect(merge.east).toBeCloseTo(MERGE_BASE_S, 6);
+  });
+
+  it('charges nothing to the traffic already on the motorway, or to one leaving it', () => {
+    const net = interchange();
+    const edges = net.getEdges();
+    const node = net.getNodes().find((n) => n.x === MID && n.z === MID)!;
+    const byId = (id: number): GraphEdge | undefined => edges.find((e) => e.id === id);
+    const arm = (dx: number, dz: number): GraphEdge =>
+      edges.find(
+        (e) =>
+          node.edges.includes(e.id) && e.tiles.some((t) => t.x === MID + dx && t.z === MID + dz),
+      )!;
+    // Running through: grade separation is exactly the thing that makes this free.
+    expect(junctionDelay(node, arm(-1, 0), arm(1, 0), byId)).toBe(0);
+    // Diverging off it is a decision, not a negotiation.
+    expect(junctionDelay(node, arm(-1, 0), arm(0, 1), byId)).toBe(0);
+  });
+
+  it('gets dearer the fuller the motorway is, and steeply', () => {
+    const empty = mergeDelaySeconds(0);
+    const half = mergeDelaySeconds(0.5);
+    const full = mergeDelaySeconds(1);
+    expect(empty).toBeCloseTo(MERGE_BASE_S, 6);
+    expect(half).toBeGreaterThan(empty);
+    expect(full).toBeGreaterThan(half);
+    // Gaps run out faster than capacity does: the second half of the motorway
+    // filling up costs far more than the first half did.
+    expect(full - half).toBeGreaterThan(half - empty);
   });
 });

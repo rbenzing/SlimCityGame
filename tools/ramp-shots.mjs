@@ -125,6 +125,25 @@ const flow = g.roadFlow ? g.roadFlow[idx(X + 9, Z + 9)] & 7 : null;
 console.log('stored flow:', flow);
 if (flow !== 3) failures.push(`the ramp runs ${flow}, wanted 3 (south, the way it was drawn)`);
 
+// The two ends of a slip road are not the same kind of place. Where it meets
+// the motorway nothing holds anybody — that end is a merge. Where it meets the
+// street it is a ramp TERMINAL, and a terminal is what an interchange is
+// signalised at.
+const controlAt = (x, z) =>
+  call(
+    ([cx, cz]) => (window.__slimcity.readJunctions() ?? []).find((j) => j.x === cx && j.z === cz),
+    [x, z],
+  );
+const atMotorway = await controlAt(X + 9, Z + 4);
+const atStreet = await controlAt(X + 9, Z + 14);
+console.log('motorway end:', JSON.stringify(atMotorway), 'street end:', JSON.stringify(atStreet));
+if (atMotorway && atMotorway.control !== 'none')
+  failures.push(
+    `the motorway end is controlled (${atMotorway.control}); traffic is never stopped on a motorway`,
+  );
+if (!atStreet || atStreet.control === 'none')
+  failures.push('the ramp terminal on the street takes no control at all');
+
 if (pageErrors.length > 0) failures.push(`page errors: ${pageErrors.join(' | ')}`);
 
 const shot = async (name, tx, tz, d, yaw, pitch) => {

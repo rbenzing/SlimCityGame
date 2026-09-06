@@ -68,10 +68,20 @@ describe('warrantedControl reads the classes that meet', () => {
     expect(warrantedControl(legs('oneWay'))).toBe('allWayStop');
   });
 
-  it('nothing that touches a motorway, a slip road or a railway takes a control', () => {
-    for (const c of ['highway', 'ramp', 'rail'] as const) {
+  it('nothing that touches a motorway or a railway takes a control', () => {
+    for (const c of ['highway', 'rail'] as const) {
       expect(warrantedControl([arm(c), arm('arterial'), arm('arterial')]), c).toBe('none');
     }
+  });
+
+  it('a slip road is uncontrolled where it meets the motorway and signalised where it leaves it', () => {
+    // At the motorway end the motorway arm keeps the whole thing uncontrolled:
+    // that end is a merge, and traffic is never stopped on a motorway.
+    expect(warrantedControl([arm('ramp'), arm('highway'), arm('highway')])).toBe('none');
+    // The other end is a ramp TERMINAL on the surface network — the busiest
+    // junction an interchange has, and what the interchange is signalised at.
+    expect(warrantedControl([arm('ramp'), arm('arterial'), arm('arterial')])).toBe('signal');
+    expect(warrantedControl([arm('ramp'), arm('local'), arm('local')])).toBe('signal');
   });
 });
 
