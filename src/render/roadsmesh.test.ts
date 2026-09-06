@@ -388,15 +388,71 @@ describe('roadTileVertices — asphalt base plate', () => {
     }
   });
 
-  it('an isolated tile (mask 0, no connections) gets the core plate plus all 4 sidewalk/shoulder curbs, and no median/divider (not a "run")', () => {
+  it('a lone tile (mask 0, no connections) is a road with two ends, not a square boxed in on all four sides', () => {
     for (const tier of [RoadTier.TwoLane, RoadTier.Avenue, RoadTier.Highway]) {
       const { positions, colors } = roadTileVertices(1, 1, tier, 0, flatHeightAt);
-      // core (1 quad) + 4 curb quads, no extensions/corners (nothing connects),
-      // no markings (no travel axis to align them with), no median/divider
-      // (popcount 0 is disconnected, not a "straight run" — see isAvenueMedianEligible).
-      expect(vertexCount(positions)).toBe(5 * 6);
+      const pos = toTriples(positions);
+      const col = toTriples(colors);
+      // Two caps' worth of asphalt fan, where a dead end has one and a
+      // through-run none: a lone tile dead-ends at both of its ends.
+      const fan = pos.filter((pt) => Math.abs((pt[1] as number) - CAP_Y_OFFSET) < 1e-6).length;
+      expect(fan).toBe(2 * END_CAP_SEGMENTS * 3);
+      // Curb: a ring round each cap plus the TWO straight flanks that run
+      // alongside the road. The four flanks it used to emit boxed the tile in
+      // on every side and read as a hash, not a street.
+      const ring = pos.filter(
+        (pt, i) =>
+          isSidewalk(col[i] as number[]) && Math.abs((pt[1] as number) - CURB_Y_OFFSET) < 1e-6,
+      ).length;
+      expect(ring).toBe(2 * END_CAP_SEGMENTS * 6 + 2 * 6);
       expect(colors.length).toBe(positions.length);
     }
+  });
+
+  it('a lone tile lies along the direction it was drawn in, and east-west when it recorded none', () => {
+    const spread = (flow: RoadFlow): { x: number; z: number } => {
+      const { positions } = roadTileVertices(
+        1,
+        1,
+        RoadTier.TwoLane,
+        0,
+        flatHeightAt,
+        undefined,
+        undefined,
+        undefined,
+        flow,
+      );
+      const pts = toTriples(positions);
+      const xs = pts.map((p) => p[0] as number);
+      const zs = pts.map((p) => p[2] as number);
+      return {
+        x: Math.max(...xs) - Math.min(...xs),
+        z: Math.max(...zs) - Math.min(...zs),
+      };
+    };
+    // Drawn north or south, the road runs up the tile; drawn east or west — or
+    // never drawn anywhere, which is what a single click records — it runs
+    // across it. Either way it is longer along its own axis than across it.
+    for (const flow of [RoadFlow.North, RoadFlow.South]) {
+      const s = spread(flow);
+      expect(s.z).toBeGreaterThan(s.x);
+    }
+    for (const flow of [RoadFlow.East, RoadFlow.West, RoadFlow.None]) {
+      const s = spread(flow);
+      expect(s.x).toBeGreaterThan(s.z);
+    }
+  });
+
+  it('a lone tile wide enough to fill its tile keeps its rounded ends inside it, rather than paving two neighbours', () => {
+    // A four-lane carriageway is 15m of a 16m tile, so a turnaround bulb of its
+    // own half-width at BOTH ends would reach ~15m either side of centre. The
+    // bulge is held to the strip of tile left over instead.
+    const { positions } = roadTileVertices(0, 0, RoadTier.FourLane, 0, flatHeightAt);
+    const centre = TILE_METERS / 2; // tile (0,0)'s own centre in world metres
+    const xs = toTriples(positions).map((p) => Math.abs((p[0] as number) - centre));
+    // The asphalt stays inside the tile; only the kerb band wraps past it, by
+    // exactly the width the straight run already spends there.
+    expect(Math.max(...xs)).toBeLessThanOrEqual(TILE_METERS / 2 + SIDEWALK_WIDTH_M + 1e-6);
   });
 
   it('colors the core plate a uniform tier-shade grey even at a full 4-way junction (its arms carry white stop-line/crosswalk markings, but the box interior itself never does)', () => {
@@ -514,11 +570,12 @@ describe('roadTileVertices — carriageway ratios (UI-SPEC §6.7 Roads v2)', () 
     expect(shoulderEachSide).toBeLessThan((TILE_METERS - coreSpanMeters(RoadTier.TwoLane)) / 2);
   });
 
-  it('sidewalk/shoulder curb width fills exactly the gap between carriageway edge and tile boundary, per tier', () => {
-    // Tile (0,0) spans world X in [0, 16]; the East curb strip's inner (west)
-    // edge should land exactly at the tier's core half-width from center (8).
+  it('the kerb strip starts at the carriageway edge and runs one sidewalk wide, per tier', () => {
+    // A road running north-south, so its kerbs lie east and west of the
+    // carriageway and can be measured straight across X. Tile (0,0) spans
+    // world X in [0, 16], so its centre is 8.
     for (const tier of [RoadTier.TwoLane, RoadTier.Avenue, RoadTier.Highway]) {
-      const { positions, colors } = roadTileVertices(0, 0, tier, 0, flatHeightAt);
+      const { positions, colors } = roadTileVertices(0, 0, tier, N | S, flatHeightAt);
       const posTriples = toTriples(positions);
       const colorTriples = toTriples(colors);
       const curbXs: number[] = [];
@@ -527,11 +584,12 @@ describe('roadTileVertices — carriageway ratios (UI-SPEC §6.7 Roads v2)', () 
           curbXs.push((posTriples[i] as number[])[0] as number);
       }
       expect(curbXs.length).toBeGreaterThan(0);
-      expect(Math.max(...curbXs)).toBeCloseTo(TILE_METERS, 6); // curb always reaches the outer tile edge
       const coreHalf = coreSpanMeters(tier) / 2;
-      const expectedInnerEdge = 8 + coreHalf; // tile center (8) + carriageway half-width
       const eastCurbXs = curbXs.filter((wx) => wx > 8);
-      expect(Math.min(...eastCurbXs)).toBeCloseTo(expectedInnerEdge, 6);
+      // Inner edge exactly at the carriageway edge, outer edge one kerb band
+      // beyond it — the tile's leftover verge stays grass.
+      expect(Math.min(...eastCurbXs)).toBeCloseTo(8 + coreHalf, 6);
+      expect(Math.max(...eastCurbXs)).toBeCloseTo(8 + coreHalf + curbWidthMeters(tier), 6);
     }
   });
 });
@@ -1168,10 +1226,23 @@ describe('roadTileVertices — vertex count sanity per tile kind', () => {
     }
   });
 
-  it('isolated tile (mask 0): core + 4 curbs, no markings, no median/divider — 30 vertices, for every tier', () => {
-    for (const tier of [RoadTier.TwoLane, RoadTier.Avenue, RoadTier.Highway]) {
-      const { positions } = roadTileVertices(0, 0, tier, 0, flatHeightAt);
-      expect(vertexCount(positions)).toBe(30);
+  it('lone tile (mask 0): core plate + 2 flank kerbs + a rounded end and its kerb ring at each end', () => {
+    // Both ends of a lone tile are dead ends, so it carries two of everything
+    // a dangling stub carries at its one.
+    const bothEnds = 2 * (END_CAP_SEGMENTS * 3 + END_CAP_SEGMENTS * 6);
+    const { positions, colors } = roadTileVertices(0, 0, RoadTier.TwoLane, 0, flatHeightAt);
+    const paint = countWhere(colors, isPaint);
+    expect(vertexCount(positions) - paint).toBe(3 * 6 + bothEnds);
+  });
+
+  it('a lone tile of a divided road still carries its median — it is a run one tile long, not a bare patch', () => {
+    for (const tier of [RoadTier.Avenue, RoadTier.Highway]) {
+      const lone = roadTileVertices(0, 0, tier, 0, flatHeightAt);
+      const run = roadTileVertices(0, 0, tier, E | W, flatHeightAt);
+      // The same divider geometry a straight run of this road lays down.
+      const band = countWhere(run.colors, isConcreteBand);
+      expect(band).toBeGreaterThan(0);
+      expect(countWhere(lone.colors, isConcreteBand)).toBe(band);
     }
   });
 
@@ -1201,15 +1272,23 @@ describe('roadTileVertices — terrain-conforming tessellation on slopes', () =>
   // Rises 0.2 m per tile in x — well above the flatness epsilon, so plate
   // quads must subdivide to hug the slope instead of spanning it flat.
   const slopedHeightAt = (x: number): number => x * 0.2;
+  /**
+   * A flat two-lane straight run: the core plate and its two flank kerbs, plus
+   * the dashes of the centre line. Hard-coded so a plate that silently starts
+   * subdividing flat ground fails here.
+   */
+  const FLAT_STRAIGHT_RUN_VERTS = 18 + 7 * 6;
 
   it('emits the same vertex count as before on flat terrain (no needless subdivision)', () => {
-    const flat = roadTileVertices(0, 0, RoadTier.TwoLane, 0, flatHeightAt);
-    expect(vertexCount(flat.positions)).toBe(30);
+    // A straight run: the plain rectangular case, with none of a lone tile's
+    // or a junction's extra geometry to hide a subdivision in.
+    const flat = roadTileVertices(0, 0, RoadTier.TwoLane, N | S, flatHeightAt);
+    expect(vertexCount(flat.positions)).toBe(FLAT_STRAIGHT_RUN_VERTS);
   });
 
   it('emits more vertices on a slope (quads split into sub-cells)', () => {
-    const sloped = roadTileVertices(0, 0, RoadTier.TwoLane, 0, slopedHeightAt);
-    expect(vertexCount(sloped.positions)).toBeGreaterThan(30);
+    const sloped = roadTileVertices(0, 0, RoadTier.TwoLane, N | S, slopedHeightAt);
+    expect(vertexCount(sloped.positions)).toBeGreaterThan(FLAT_STRAIGHT_RUN_VERTS);
   });
 
   it('every plate vertex sits on (never below) its own terrain height', () => {
@@ -1275,11 +1354,20 @@ describe('roadTileVertices — cosmetic corner rounding (UI-SPEC §6.18 #5 "Roun
     }
   });
 
-  it('a disconnected tile (popcount 0), a straight run (popcount 2, collinear), and any junction (popcount >= 3) get NO fillet/cap', () => {
-    for (const mask of [0, N | S, E | W, N | E | S, N | E | S | W]) {
+  it('a straight run (popcount 2, collinear) and any junction (popcount >= 3) get NO fillet/cap', () => {
+    for (const mask of [N | S, E | W, N | E | S, N | E | S | W]) {
       const { positions } = roadTileVertices(3, 3, RoadTier.TwoLane, mask, flatHeightAt);
       expect(toTriples(positions).some((p) => isAtFilletHeight(p[1] as number))).toBe(false);
     }
+  });
+
+  it('a lone tile (popcount 0) gets a cap at BOTH ends — it dead-ends in both directions', () => {
+    const { positions } = roadTileVertices(3, 3, RoadTier.TwoLane, 0, flatHeightAt);
+    const fan = toTriples(positions).filter((p) => isAtFilletHeight(p[1] as number)).length;
+    const dangling = toTriples(
+      roadTileVertices(3, 3, RoadTier.TwoLane, N, flatHeightAt).positions,
+    ).filter((p) => isAtFilletHeight(p[1] as number)).length;
+    expect(fan).toBe(2 * dangling);
   });
 
   it('the end cap bulges outward past the core edge, away from the single connection', () => {
@@ -1514,7 +1602,9 @@ describe('roadTileVertices — road-end-cap-v2: curb ring hugs the rounded dead-
   it('sidewalk vertex counts: straights/isolated are flat curb quads; junctions add a curved curb-return per rounded corner', () => {
     const curbReturn = JUNCTION_CORNER_SEGMENTS * 6; // one rounded corner's curved sidewalk band
     const expected: Array<[number, number]> = [
-      [0, 4 * 6], // isolated: 4 flat curb quads
+      // A lone tile: the same 2 flat flank quads a straight run has, plus a
+      // curved ring wrapping each of its two rounded ends.
+      [0, 2 * 6 + 2 * END_CAP_SEGMENTS * 6],
       [N | S, 2 * 6], // straight run: 2 flat curb quads
       [E | W, 2 * 6], // straight run: 2 flat curb quads
       [N | E | S, 1 * 6 + 2 * curbReturn], // T: flat W curb + 2 rounded corner-returns (NE, SE)
@@ -1757,10 +1847,10 @@ describe('roadTileVertices — sidewalks/shoulders (§6.7)', () => {
     expect(Math.max(...xs)).toBeCloseTo(8 + coreHalf + sidewalk, 5);
   });
 
-  it('an isolated tile (mask 0) gets 4 straight curbs; a full intersection (mask 15) gets a curved curb-return at each of its 4 rounded corners', () => {
-    const isolated = roadTileVertices(0, 0, RoadTier.TwoLane, 0, flatHeightAt);
+  it('a lone tile (mask 0) gets 2 straight flank curbs and a ring round each end; a full intersection (mask 15) gets a curved curb-return at each of its 4 rounded corners', () => {
+    const lone = roadTileVertices(0, 0, RoadTier.TwoLane, 0, flatHeightAt);
     const junction = roadTileVertices(0, 0, RoadTier.TwoLane, N | E | S | W, flatHeightAt);
-    expect(countWhere(isolated.colors, isSidewalk)).toBe(4 * 6);
+    expect(countWhere(lone.colors, isSidewalk)).toBe(2 * 6 + 2 * END_CAP_SEGMENTS * 6);
     expect(countWhere(junction.colors, isSidewalk)).toBe(4 * JUNCTION_CORNER_SEGMENTS * 6);
   });
 
@@ -1864,9 +1954,9 @@ describe('roadTileVertices — Gravel (tier 4, UI-SPEC §6.7 Roads v3)', () => {
     expect(Math.abs(b - 0.42)).toBeLessThanOrEqual(0.05 + 1e-9);
   });
 
-  it('has NO curbs — an isolated tile emits only the core plate (6 vertices), no sidewalk quads', () => {
+  it('has NO curbs — a lone tile is bare plate and rounded ends, with no sidewalk quads at all', () => {
     const { positions, colors } = roadTileVertices(0, 0, RoadTier.Gravel, 0, flatHeightAt);
-    expect(vertexCount(positions)).toBe(6);
+    expect(vertexCount(positions)).toBe(6 + 2 * END_CAP_SEGMENTS * 3);
     expect(countWhere(colors, isSidewalk)).toBe(0);
   });
 
@@ -1915,9 +2005,9 @@ describe('roadTileVertices — Alley (tier 5, UI-SPEC §6.7 Roads v3)', () => {
     for (const c of core) expect(isGravelTan(c)).toBe(false);
   });
 
-  it('has NO sidewalk curbs — an isolated tile emits only the core plate', () => {
+  it('has NO sidewalk curbs — a lone tile is bare plate and rounded ends', () => {
     const { positions, colors } = roadTileVertices(0, 0, RoadTier.Alley, 0, flatHeightAt);
-    expect(vertexCount(positions)).toBe(6);
+    expect(vertexCount(positions)).toBe(6 + 2 * END_CAP_SEGMENTS * 3);
     expect(countWhere(colors, isSidewalk)).toBe(0);
   });
 

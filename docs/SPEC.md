@@ -2593,6 +2593,21 @@ scaled by one constant into the units the sim already uses.
    one piece of kerbside furniture that is not scattered, because where it
    stands is part of what it means — and standing it at the stop line is also
    what stops it sharing a slot with the lamp at the tile's centre.
+   A LONE TILE — one tile of road with no neighbour at all, which is what a
+   single click of the road tool leaves — is a road, not a square of asphalt.
+   It has no neighbour to say which way it runs, so it runs the way it was
+   drawn, and a tile that recorded no direction lies east-west; it is then a
+   dead end at BOTH ends, and it carries the same paint, kerbs, track and
+   median down its axis that the same road carries anywhere else. Drawing the
+   cross-section along both axes at once, as it once did, made the carriageway
+   a square and the two footways a hash of four bars boxing the tile in.
+   A rounded end needs ground to turn around in. A dead end's bulb is the
+   carriageway's own half-width — a true half-circle, which on a wide road
+   rounds out past the tile edge into the open ground the end faces, the way a
+   real cul-de-sac does. A lone tile caps both ends, so a full bulb at each
+   would push its asphalt metres into two neighbours at once; there the bulge
+   is held to the strip of tile left beyond the carriageway, and a road that
+   already fills its tile ends in a shallow arc instead.
    Two width rules follow from the same principle, that the tile is 16 m and
    saying otherwise later is worse than saying so now. A road is offered only
    the lane counts a tile can hold: six lanes of an arterial is a real road at

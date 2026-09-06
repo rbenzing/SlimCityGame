@@ -143,7 +143,9 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   never held anybody up.
   Roads snap to the
   grid, round their corners and dead-ends, and bank smoothly up slopes (the ground
-  is graded under them automatically).
+  is graded under them automatically). A single tile on its own is a road too —
+  a short stub, rounded at both ends, lying the way you dragged it (east-west if
+  you just clicked), with the same lines and kerbs it would carry anywhere else.
 - **Zoning** — residential, commercial, and industrial. Denser residential
   variants (row / medium / mixed-use / high) unlock as you pass milestones. Zoned
   tiles only develop if they have road access, power, and water.

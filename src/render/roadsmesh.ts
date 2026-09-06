@@ -2004,21 +2004,33 @@ function emitCurvedMarkings(
  * the open ground the dead-end faces — exactly like a real cul-de-sac, and the
  * same reason emitEndCapCurb lets its sidewalk wrap past the edge too.
  */
+/**
+ * How far a rounded end bulges past the carriageway it caps.
+ *
+ * A dead end's is the carriageway's own half-width — a true half-circle, which
+ * on a wide road rounds out past the tile edge into the open ground the end
+ * faces, the way a real cul-de-sac does. A lone tile caps BOTH ends, so a full
+ * bulb at each would push its asphalt metres into two neighbours at once; there
+ * the bulge is held to the strip of tile left beyond the carriageway, and a
+ * road already filling its tile ends in a shallow arc.
+ */
+export function capDepthFor(coreHalf: number, bothEnds: boolean): number {
+  return bothEnds ? Math.min(coreHalf, TILE_HALF - coreHalf) : coreHalf;
+}
+
 function emitEndCap(
   positions: number[],
   colors: number[],
   centerX: number,
   centerZ: number,
   coreHalf: number,
+  /** How far the bulb reaches past the carriageway edge; see capDepthFor. */
+  alongDepth: number,
   vertical: boolean,
   outwardSign: 1 | -1,
   color: readonly [number, number, number],
   hAt: (x: number, z: number) => number,
 ): void {
-  // Full half-CIRCLE turnaround: bulge outward by the carriageway half-width
-  // (coreHalf) so the end reads as a rounded cul-de-sac like the curved corners,
-  // at every tier — wide carriageways round out past the tile edge.
-  const alongDepth = coreHalf;
   if (coreHalf <= 0) return;
   const edgeAlong = outwardSign * coreHalf;
   const apex: [number, number] = vertical ? [0, edgeAlong] : [edgeAlong, 0];
@@ -2068,6 +2080,8 @@ function emitEndCapCurb(
   centerX: number,
   centerZ: number,
   coreHalf: number,
+  /** The bulb's own reach, so the band follows it rather than a circle. */
+  alongDepth: number,
   armDepth: number,
   vertical: boolean,
   outwardSign: 1 | -1,
@@ -2087,8 +2101,11 @@ function emitEndCapCurb(
   if (curbBand <= 0) return;
   const pivotAlong = outwardSign * coreHalf; // bulb center along the road axis
   // Local [x, z] of a point `r` out from the bulb center at sweep angle `a`.
+  // The band keeps its width along the road as well as across it, so it tracks
+  // the bulb whether that is a half-circle or the shallower arc a lone tile's
+  // ends take.
   const point = (r: number, a: number): [number, number] => {
-    const along = pivotAlong + outwardSign * r * Math.cos(a);
+    const along = pivotAlong + outwardSign * (alongDepth + (r - capRadius)) * Math.cos(a);
     const cross = r * Math.sin(a);
     return vertical ? [cross, along] : [along, cross];
   };
@@ -2103,10 +2120,9 @@ function emitEndCapCurb(
       pushVertex(positions, colors, wx, hAt(wx, wz) + CURB_Y_OFFSET, wz, color);
     }
   };
-  // A constant-width band — NOT clamped to the tile edge. A dead end's bulb
-  // faces open ground (no road neighbor), so letting the wrap round the tip
-  // past the tile boundary keeps the curb a smooth half-circle instead of a
-  // flat cut where it would otherwise hit the edge.
+  // A constant-width band. It rounds the tip past the tile boundary into the
+  // open ground the end faces, by exactly the sidewalk width the straight run
+  // already spends there, rather than being cut flat at the edge.
   const rOut = capRadius + curbBand;
   for (let i = 0; i < END_CAP_SEGMENTS; i++) {
     const a0 = -Math.PI / 2 + (Math.PI * i) / END_CAP_SEGMENTS;
@@ -2137,14 +2153,19 @@ function emitEndCapMarkings(
   centerX: number,
   centerZ: number,
   coreHalf: number,
+  /** The bulb's own reach, so the paint stays on the asphalt that carries it. */
+  alongDepth: number,
   vertical: boolean,
   outwardSign: 1 | -1,
   hAt: (x: number, z: number) => number,
 ): void {
   if (coreHalf <= 0) return;
   const pivotAlong = outwardSign * coreHalf;
+  // Paint follows the asphalt: every arc is squashed along the road by the
+  // same ratio the cap itself is.
+  const squash = alongDepth / coreHalf;
   const point = (r: number, a: number): [number, number] => {
-    const along = pivotAlong + outwardSign * r * Math.cos(a);
+    const along = pivotAlong + outwardSign * r * squash * Math.cos(a);
     const cross = r * Math.sin(a);
     return vertical ? [cross, along] : [along, cross];
   };
@@ -3020,6 +3041,20 @@ export function roadTileVertices(
   const breaksMarkings = isJunction && (!joinedByLesserOnly || control === 'roundabout');
   const isTurn = connections === 2 && !isCollinearMask(mask);
 
+  // A lone tile has no neighbour to say which way it runs, so it runs the way
+  // it was drawn; one that recorded no direction — a single click, which has
+  // none to record — lies east-west. Either way it is a road with two ends
+  // rather than a square of asphalt, so every rule below that shapes the end a
+  // dead end faces shapes both of a lone tile's.
+  const alone = connections === 0;
+  const aloneVertical = flow === RoadFlow.North || flow === RoadFlow.South;
+  // The sides carrying a rounded turnaround: the one a dead end faces away
+  // from its road, or both ends of a lone tile's axis.
+  const capN = alone ? aloneVertical : connections === 1 && hasS;
+  const capS = alone ? aloneVertical : connections === 1 && hasN;
+  const capE = alone ? !aloneVertical : connections === 1 && hasW;
+  const capW = alone ? !aloneVertical : connections === 1 && hasE;
+
   // Wide -> narrow transition: on a straight through-run, a kerbed paved tile
   // whose paved neighbour is narrower bends its kerb in to meet it over the
   // whole tile (half the tile when both ends narrow, so the two bends share the
@@ -3216,20 +3251,17 @@ export function roadTileVertices(
     // Gravel/Alley (`hasCurbs: false`) get no curb geometry at all.
     if (spec.hasCurbs) {
       const curbWidth = Math.min(SIDEWALK_WIDTH_M, armDepth);
-      // At a dead end the rounded cap fills the tile end; the straight sidewalk on
-      // the BULB-FACING side (opposite the single connection) would lay a square
-      // strip across the round cap, so it's suppressed — the curved cap curb
-      // (emitEndCapCurb) wraps that side instead. The two flank sidewalks stay.
-      const deadEnd = connections === 1;
-      // At a dead end the flank sidewalks (the two sides parallel to the road)
-      // stop at the bulb base (core edge) rather than running to the tile edge,
-      // so they don't overhang past the rounded end — the curved cap curb wraps
-      // that region instead. Clip the bulb-side extent (opposite the connection).
-      const flankZLo = deadEnd && hasS ? -coreHalf : -TILE_HALF;
-      const flankZHi = deadEnd && hasN ? coreHalf : TILE_HALF;
-      const flankXLo = deadEnd && hasE ? -coreHalf : -TILE_HALF;
-      const flankXHi = deadEnd && hasW ? coreHalf : TILE_HALF;
-      if (!hasN && !(deadEnd && hasS)) {
+      // The rounded cap fills the tile end it covers; a straight sidewalk laid
+      // across that end would sit as a square strip over the round cap, so
+      // every capped side is suppressed here — emitEndCapCurb wraps it instead.
+      // The flank sidewalks (the sides parallel to the road) stay, but stop at
+      // the bulb base rather than running to the tile edge, so they don't
+      // overhang the rounded end.
+      const flankZLo = capN ? -coreHalf : -TILE_HALF;
+      const flankZHi = capS ? coreHalf : TILE_HALF;
+      const flankXLo = capW ? -coreHalf : -TILE_HALF;
+      const flankXHi = capE ? coreHalf : TILE_HALF;
+      if (!hasN && !capN) {
         pushLocalRect(
           positions,
           colors,
@@ -3244,7 +3276,7 @@ export function roadTileVertices(
           hAt,
         );
       }
-      if (!hasS && !(deadEnd && hasN)) {
+      if (!hasS && !capS) {
         pushLocalRect(
           positions,
           colors,
@@ -3259,7 +3291,7 @@ export function roadTileVertices(
           hAt,
         );
       }
-      if (!hasE && !(deadEnd && hasW)) {
+      if (!hasE && !capE) {
         pushLocalRect(
           positions,
           colors,
@@ -3274,7 +3306,7 @@ export function roadTileVertices(
           hAt,
         );
       }
-      if (!hasW && !(deadEnd && hasE)) {
+      if (!hasW && !capW) {
         pushLocalRect(
           positions,
           colors,
@@ -3294,10 +3326,14 @@ export function roadTileVertices(
 
   // A raised median and a motorway divider run down straight tiles only, and
   // break at corners and junctions so turn paths stay clear.
-  const medianEligible = plan.hasMedian && isStraightRunMask(mask);
-  const dividerEligible = plan.barrier && isStraightRunMask(mask);
-  const hasVertical = hasN || hasS;
-  const hasHorizontal = hasE || hasW;
+  // A lone tile is a straight run one tile long, so it carries the same paint,
+  // track and median down its axis that the same road carries anywhere else —
+  // the alternative is a stub whose only markings are the ones wrapped round
+  // its ends.
+  const medianEligible = plan.hasMedian && (alone || isStraightRunMask(mask));
+  const dividerEligible = plan.barrier && (alone || isStraightRunMask(mask));
+  const hasVertical = hasN || hasS || (alone && aloneVertical);
+  const hasHorizontal = hasE || hasW || (alone && !aloneVertical);
 
   // Paint: Gravel is unpaved (`paved: false`) and gets none of axis markings
   // / one-way arrows / junction arm markings — gravel junctions stay
@@ -3679,7 +3715,7 @@ export function roadTileVertices(
   // stop at the core edge on a dead end" rule as the lane markings, so it
   // never overruns into a sidewalk/shoulder curb quad.
   if (medianEligible || dividerEligible) {
-    const vertical = !(hasE || hasW);
+    const vertical = hasVertical;
     const lo = vertical ? (hasN ? -TILE_HALF : -coreHalf) : hasW ? -TILE_HALF : -coreHalf;
     const hi = vertical ? (hasS ? TILE_HALF : coreHalf) : hasE ? TILE_HALF : coreHalf;
     if (medianEligible)
@@ -3687,16 +3723,19 @@ export function roadTileVertices(
     else emitHighwayDivider(positions, colors, centerX, centerZ, vertical, { lo, hi }, hAt);
   }
 
-  // Rounded roads: a small fillet fan at a turn tile's
-  // single convex elbow corner, or a half-disc cap on a dangling stub's dead
-  // end. Never fires for an isolated tile (popcount 0), a straight run
-  // (popcount 2, collinear), or any junction (popcount >= 3) — the
-  // core/extension/corner-fill scheme never produces a stray 90° corner in
-  // those cases (verified by construction: a 3+-connection box always covers
-  // the full tile except a clean straight curb cut on its one missing side).
-  if (connections === 1) {
-    const vertical = hasN || hasS;
-    const outwardSign: 1 | -1 = hasN ? 1 : hasS ? -1 : hasE ? -1 : 1;
+  // Rounded roads: a half-disc cap on a dangling stub's dead end, and one on
+  // each end of a lone tile, which is a stub facing both ways at once. Never
+  // fires for a straight run (popcount 2, collinear) or any junction
+  // (popcount >= 3) — the core/extension/corner-fill scheme never produces a
+  // stray 90° corner in those cases (a 3+-connection box always covers the
+  // full tile except a clean straight curb cut on its one missing side).
+  const endCaps: Array<[boolean, 1 | -1]> = [];
+  if (capN) endCaps.push([true, -1]);
+  if (capS) endCaps.push([true, 1]);
+  if (capW) endCaps.push([false, -1]);
+  if (capE) endCaps.push([false, 1]);
+  const capReach = capDepthFor(coreHalf, alone);
+  for (const [vertical, outwardSign] of endCaps) {
     // Half-circle asphalt cap, then the curb ring last (tests rely on the curb
     // ring being the final quads emitted).
     emitEndCap(
@@ -3705,6 +3744,7 @@ export function roadTileVertices(
       centerX,
       centerZ,
       coreHalf,
+      capReach,
       vertical,
       outwardSign,
       plateColor,
@@ -3721,6 +3761,7 @@ export function roadTileVertices(
         centerX,
         centerZ,
         coreHalf,
+        capReach,
         armDepth,
         vertical,
         outwardSign,
@@ -3738,6 +3779,7 @@ export function roadTileVertices(
         centerX,
         centerZ,
         coreHalf,
+        capReach,
         vertical,
         outwardSign,
         hAt,
