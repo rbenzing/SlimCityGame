@@ -445,11 +445,14 @@ export function laneWidthFor(classId: RoadClassId): number {
 }
 
 /**
- * The lane counts a road of each class is offered, total across both
+ * The lane counts a road of each class is BUILT IN, total across both
  * directions. A road is picked from this list rather than dialled a lane at a
  * time: a four-lane arterial is a kind of road, not a three-lane with one
- * added. A motorway goes to eight, a town street to six, a neighbourhood
- * street to four, and a farm track is two and stays two.
+ * added. The counts are the steps; how far they may go is the class's own
+ * lane range in the catalogue, which `laneOptionsFor` holds them inside — a
+ * count the class does not allow is a count the tool must never offer, since
+ * offering one and then refusing it is how a player is told the tile is too
+ * narrow for a road that fits it perfectly well.
  */
 const LANE_OPTIONS_BY_CLASS: Readonly<Record<RoadClassId, readonly number[]>> = {
   dirt: [2],
@@ -468,7 +471,8 @@ const LANE_OPTIONS_BY_CLASS: Readonly<Record<RoadClassId, readonly number[]>> = 
 
 /** The lane counts this class offers, total across both directions. */
 export function laneOptionsFor(classId: RoadClassId): readonly number[] {
-  return LANE_OPTIONS_BY_CLASS[classId];
+  const { min, max } = roadClass(classId).lanes;
+  return LANE_OPTIONS_BY_CLASS[classId].filter((n) => n >= min && n <= max);
 }
 
 /** Real-world default widths, metres, for a piece a player adds. */
@@ -703,7 +707,25 @@ export function profilesEqual(a: RoadProfile, b: RoadProfile): boolean {
 
 /** Whether a composed profile may be laid: it fits the tile and keeps its class's rules. */
 export function isLayable(profile: RoadProfile): boolean {
-  return fitsTile(profile) && admitsAllPieces(profile) && withinLaneRange(profile);
+  return layRefusal(profile) === null;
+}
+
+/**
+ * Why a composed profile may not be laid, said the way the tool says it, or
+ * null when it may. The reasons are different things and read as different
+ * things: a road can be too wide for the tile, or perfectly narrow and still
+ * not the kind of road its class is.
+ */
+export function layRefusal(profile: RoadProfile): string | null {
+  if (!fitsTile(profile)) return 'Too wide for the tile';
+  const cls = roadClass(profile.class);
+  const name = cls.name.toLowerCase();
+  if (!admitsAllPieces(profile)) return `A ${name} doesn't carry that`;
+  if (!withinLaneRange(profile)) {
+    const { min, max } = cls.lanes;
+    return min === max ? `A ${name} runs ${min} lanes` : `A ${name} runs ${min} to ${max} lanes`;
+  }
+  return null;
 }
 
 /** Every piece the profile holds is one its class admits. */

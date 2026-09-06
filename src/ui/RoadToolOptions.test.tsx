@@ -92,27 +92,25 @@ describe('RoadToolOptions — the Profile row', () => {
     expect(screen.queryByRole('group', { name: 'Between the directions' })).toBeNull();
   });
 
-  it('counts a two-lane street’s lanes each way, and offers it no more than its class allows', () => {
+  it('offers a two-lane street no lane count at all, since a local street is two lanes', () => {
     useCityStore.getState().setTool('road.two');
     render(<RoadToolOptions />);
-    // A local street is built as a two-lane or a four-lane.
+    // A local street runs two lanes and a turn lane between them; four lanes
+    // is a town street, which is a different kind of road. A control with one
+    // possible answer is not shown, rather than offered and then refused.
+    expect(screen.queryByRole('group', { name: 'Lanes' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Profile width')).toHaveAttribute('title', 'Fits the tile');
+  });
+
+  it('offers a four-lane street the lane counts its class is built in, and lays the one picked', () => {
+    useCityStore.getState().setTool('road.four'); // a town street: two or four
+    render(<RoadToolOptions />);
     const lanes = screen.getByRole('group', { name: 'Lanes' });
     expect(
       within(lanes)
         .getAllByRole('button')
         .map((b) => b.textContent),
     ).toEqual(['2', '4']);
-  });
-
-  it('offers a four-lane street the lane counts its class is built in, and lays the one picked', () => {
-    useCityStore.getState().setTool('road.four'); // an urban street: 2, 4 or 6
-    render(<RoadToolOptions />);
-    const lanes = screen.getByRole('group', { name: 'Lanes' });
-    expect(
-      within(lanes)
-        .getAllByRole('button')
-        .map((b) => b.textContent),
-    ).toEqual(['2', '4', '6']);
     expect(within(lanes).getByRole('button', { name: '4' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -125,11 +123,12 @@ describe('RoadToolOptions — the Profile row', () => {
   });
 
   it('says plainly when the road picked is too wide for a tile', () => {
-    useCityStore.getState().setTool('road.four');
+    useCityStore.getState().setTool('road.highway');
     render(<RoadToolOptions />);
     const lanes = screen.getByRole('group', { name: 'Lanes' });
-    fireEvent.click(within(lanes).getByRole('button', { name: '6' }));
-    // Six 11 ft lanes are 20.1 m; the tile is 16 m across.
+    fireEvent.click(within(lanes).getByRole('button', { name: '8' }));
+    // Eight 12 ft lanes are 28.8 m; the tile is 16 m across, and the honest
+    // eight-lane motorway is a two-tile corridor.
     expect(screen.getByLabelText('Profile width')).toHaveAttribute(
       'title',
       'Too wide for the tile',

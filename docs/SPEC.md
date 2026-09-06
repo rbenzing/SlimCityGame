@@ -2097,8 +2097,10 @@ else is derived:
   local street, a one-way and an alley; 9 ft on a farm track. The player does
   not choose a lane at a time — a four-lane arterial is a kind of road, not a
   three-lane with one added — so each class offers the lane counts it is built
-  in, total across both directions: a motorway 2/4/6/8, a town street 2/4/6, a
-  neighbourhood street 2/4, a farm track 2 and only 2. **What a 16 m tile
+  in, total across both directions — held inside its own lane range, so a
+  count the class refuses is a count the tool never offers: a motorway
+  2/4/6/8, a town street 2/4, an arterial 4/6, a neighbourhood street 2 with
+  a turn lane between them, a farm track 2 and only 2. **What a 16 m tile
   holds:** four 11 ft lanes are 13.4 m and fit with a kerb either side; six are
   20.1 m and do not. Six- and eight-lane roads, and a motorway with a 10 ft
   shoulder to pull over on, are therefore two-tile corridors — wave 6 — and

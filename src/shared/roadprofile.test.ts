@@ -30,6 +30,7 @@ import {
   laneCapacity,
   laneCount,
   laneWidthFor,
+  layRefusal,
   laneOptionsFor,
   NO_EDITS,
   presetProfileForTier,
@@ -678,15 +679,46 @@ describe('lane widths and the lane counts a road is offered, to US standards', (
     expect(laneWidthFor('dirt')).toBeLessThan(laneWidthFor('local'));
   });
 
-  it('offers a motorway up to eight lanes, a town street six, a local street four, a track two', () => {
+  it('offers a motorway up to eight lanes, a town street four, a local street and a track two', () => {
     expect(laneOptionsFor('highway')).toEqual([2, 4, 6, 8]);
-    expect(laneOptionsFor('urban')).toEqual([2, 4, 6]);
-    expect(laneOptionsFor('collector')).toEqual([2, 4, 6]);
-    expect(laneOptionsFor('arterial')).toEqual([2, 4, 6]);
-    expect(laneOptionsFor('local')).toEqual([2, 4]);
-    expect(laneOptionsFor('rural')).toEqual([2, 4]);
+    expect(laneOptionsFor('divided')).toEqual([4, 6]);
+    expect(laneOptionsFor('arterial')).toEqual([4, 6]);
+    expect(laneOptionsFor('urban')).toEqual([2, 4]);
+    expect(laneOptionsFor('collector')).toEqual([2, 4]);
+    expect(laneOptionsFor('local')).toEqual([2]);
+    expect(laneOptionsFor('rural')).toEqual([2]);
     expect(laneOptionsFor('dirt')).toEqual([2]);
     expect(laneOptionsFor('alley')).toEqual([2]);
+  });
+
+  it('never offers a count the class itself refuses, since offering one is a promise', () => {
+    // The steps a road is built in are one table and what a class may run is
+    // another; a count in the first that the second refuses is a road the tool
+    // offers and then will not lay.
+    for (const cls of ROAD_CLASSES) {
+      const { min, max } = cls.lanes;
+      for (const n of laneOptionsFor(cls.id)) {
+        expect(n, `${cls.id} offers ${n}`).toBeGreaterThanOrEqual(min);
+        expect(n, `${cls.id} offers ${n}`).toBeLessThanOrEqual(max);
+      }
+    }
+  });
+
+  it('says which rule refused a road, since too wide and too many are not the same thing', () => {
+    const street = presetProfileForTier(RoadTier.TwoLane);
+    expect(layRefusal(street)).toBeNull();
+    // Four 10 ft lanes and two footways are 15.95 m, which the tile holds
+    // perfectly well — a local street is simply not that kind of road.
+    const four = composeProfile(street, { ...NO_EDITS, lanes: 2, lanesBack: 2 });
+    expect(profileWidth(four)).toBeLessThan(TILE_METERS);
+    expect(layRefusal(four)).toBe('A local street runs 2 to 3 lanes');
+    // And a road that really is too wide says so.
+    const wide = composeProfile(presetProfileForTier(RoadTier.Highway), {
+      ...NO_EDITS,
+      lanes: 4,
+      lanesBack: 4,
+    });
+    expect(layRefusal(wide)).toBe('Too wide for the tile');
   });
 
   it('is honest about what a 16 m tile holds: four lanes fit, six do not', () => {

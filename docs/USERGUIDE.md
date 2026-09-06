@@ -37,14 +37,17 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   four-lane, and highway. Wider roads carry more traffic; most roads carry power
   and water along their length (highways carry power only). Every road's
   options row sits on its own line under the tabs: pick how many lanes the
-  road runs — a motorway comes in 2, 4, 6 or 8, a town street 2, 4 or 6, a
-  neighbourhood street 2 or 4, a dirt track only 2 — put a median or a
-  two-way turn lane down the middle, post a speed inside the range its class
-  allows, add a parking lane or a bike lane to either kerb, or drop the
-  footways. Each control offers only what that road allows, and the width
-  readout shows whether the result still fits the 16 m tile — a composition
-  that does not is refused at the preview, which is what a six- or eight-lane
-  road does until two-tile corridors arrive. Roads are grouped by family:
+  road runs — a motorway comes in 2, 4, 6 or 8, a town street 2 or 4, an
+  arterial 4 or 6 — put a median or a two-way turn lane down the middle, post
+  a speed inside the range its class allows, add a parking lane or a bike lane
+  to either kerb, or drop the footways. A neighbourhood street runs two lanes
+  and is offered no count at all, since two is what it is; the third lane it
+  can have is the turn lane down the middle. Each control offers only what
+  that road allows — a count a road is never built in is never on the row —
+  and the width readout shows whether the result still fits the 16 m tile,
+  saying which rule refused it when it does not: too wide for the tile, or
+  more lanes than that kind of road runs. A six- or eight-lane road is the
+  first case, and stays refused until two-tile corridors arrive. Roads are grouped by family:
   Small, Medium, Highway and Transit. A road normally
   refuses to become a smaller one, so a stray drag can never flatten an
   avenue; turn on **Replace** when you mean to rebuild a road as something

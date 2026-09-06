@@ -10,7 +10,7 @@ import { BRIDGE_MAX_ELEVATION, ROAD_ELEVATION_STEP_M, TILE_METERS } from '../sha
 import {
   composeProfile,
   editsOf,
-  isLayable,
+  layRefusal,
   laneOptionsFor,
   presetProfileForTier,
   profileWidth,
@@ -83,7 +83,8 @@ function ProfileGroup(): JSX.Element | null {
   const composed = composeProfile(base, edits);
   const current = editsOf(composed);
   const width = profileWidth(composed);
-  const fits = isLayable(composed);
+  const refusal = layRefusal(composed);
+  const fits = refusal === null;
 
   const oneWay = base.pieces
     .filter((p) => p.kind === 'travel')
@@ -225,7 +226,7 @@ function ProfileGroup(): JSX.Element | null {
       <Group label="Width">
         <span
           aria-label="Profile width"
-          title={fits ? 'Fits the tile' : 'Too wide for the tile'}
+          title={refusal ?? 'Fits the tile'}
           className={`text-xs tabular-nums ${fits ? 'text-white/70' : 'font-semibold text-red-400'}`}
         >
           {width.toFixed(1)} / {TILE_METERS} m
