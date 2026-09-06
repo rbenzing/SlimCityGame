@@ -2558,17 +2558,32 @@ scaled by one constant into the units the sim already uses.
    capped at the capacity of the road it narrows into, for the direction
    heading that way and that direction only, so a hard four-to-one drop is a
    chokepoint on the traffic lens and a free merge in the other direction.
-   *Still to come in the wave:* per-LANE movement sets — the restriction is
-   per ARM today, which is what a player actually reaches for; the motorway's
-   chevron-hatched gore, which needs the taper variant that keeps the pavement
-   and closes only the lane, since a wedge that is no longer paved has nothing
-   to hatch; the pocket's own opening taper, which the lane-drop taper is the
-   machinery for; and the kerb strip's blend — the footway's outer edge still
-   steps tile by tile where the carriageway bends, which a taper makes plain
-   and a turn pocket's two ends already did.
+   The BAY OPENS over a taper of its own rather than beginning at full width:
+   the class's ratio opens one lane width, capped so the tile at the stop line
+   always holds full-width storage, and the rest of the zone is that storage.
+   What the road gives up for the bay does not taper with it — the parking
+   stops before the taper starts and the through lanes shift over along the
+   whole bay — so the source and the lane squeeze are settled once, by the bay
+   at full width, and only the bay's own width grows. The full bay is what
+   decides whether the road may have one at all, so a half-open tile is never
+   the tile that refuses.
+   A tile whose carriageway CHANGES WIDTH lays its plate and its kerb strip as
+   slices along the same bending edge. The strip is the one a straight tile
+   lays, measured from wherever the kerb has reached, which at the tile
+   boundary is exactly the strip the neighbour lays there — so the two
+   footways meet rather than step. Constant-width runs, turns, dead ends and
+   junction throats keep the rectangles they were always made of.
+   *Deferred out of the wave, deliberately:* per-LANE movement sets, since the
+   restriction is per ARM today and an arm is what a player actually reaches
+   for — the model earns its keep only alongside the multi-lane approaches of
+   wave 6. The motorway's chevron-hatched gore moves into wave 5: it needs a
+   taper that keeps the pavement and closes the lane by paint alone, which is
+   the same NEUTRAL AREA a ramp's nose needs, and building it twice — once for
+   lane drops, once for ramps — would be building it wrong.
 5. **Ramps and interchange stamps** — the ramp class, merge/diverge/terminal
-   nodes, automatic acceleration/deceleration lanes, diamond and trumpet,
-   then parclo, cloverleaf and roundabout interchange.
+   nodes, the neutral area and its chevrons, automatic acceleration and
+   deceleration lanes, diamond and trumpet, then parclo, cloverleaf and
+   roundabout interchange.
 6. **Two-tile corridors** — six- and eight-lane divided, the honest motorway,
    corridor halves in `roadFlow`, the two-lane roundabout, sound barriers.
 

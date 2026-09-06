@@ -52,8 +52,9 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   refuses to become a smaller one, so a stray drag can never flatten an
   avenue; turn on **Replace** when you mean to rebuild a road as something
   else. A one-way street runs the way you drew it, arrows and all — to turn
-  one round, draw it again from the other end. Roads of different sizes join freely, and a wide road
-  meeting a narrower one tapers its kerb in over the last tile; the only
+  one round, draw it again from the other end. Roads of different sizes join freely, and wherever a
+  carriageway changes width the pavement beside it bends with the kerb, so the
+  footway runs into its neighbour's instead of stepping; the only
   refusals are a highway or a ramp running straight onto a gravel road or an
   alley, and drawing a road THROUGH one bigger than it — an avenue's median
   leaves nowhere to cross — both of which the preview turns down and tells you
@@ -94,8 +95,11 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   straight. It comes out of the verge, then the kerbside parking, then the
   width of the lanes themselves, and a road with none of that to spare simply
   does not get one — which is why a plain street earns a pocket at a signal
-  and a four-lane road filling its tile does not. Nothing to switch on: give
-  the junction a control it needs and the pocket appears with it.
+  and a four-lane road filling its tile does not. The pocket opens the way one
+  is built rather than appearing at full width: the road widens into it over a
+  tile or two and then holds that width up to the stop line, so there is
+  always somewhere to queue. Nothing to switch on: give the junction a control
+  it needs and the pocket appears with it.
   Where a wide road runs into a narrower one, the extra lanes **close over a
   taper** instead of stopping dead: a four-lane road meeting a two-lane street
   spends seven tiles closing its kerbside lanes, and a motorway spends far

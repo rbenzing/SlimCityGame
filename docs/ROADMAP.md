@@ -95,11 +95,15 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > street, far more on a motorway — the lane that is running out carries a merge
 > arrow bending into the one beside it, and the sim caps the run at the
 > capacity of the road it narrows into for the direction heading that way, so a
-> hard drop is a chokepoint rather than a free merge. Wave 4 is complete but
-> for four named leftovers, each written into SPEC §29: per-lane movement sets
-> (the restriction is per arm), the motorway's gore chevrons, the turn pocket's
-> own opening taper, and the kerb strip's blend where a carriageway changes
-> width. Then waves 5–6.
+> hard drop is a chokepoint rather than a free merge. The bay then learned to
+> open over a taper of its own instead of beginning at full width, and a tile
+> whose carriageway changes width now lays its plate and its kerb strip along
+> the same bending edge, so the footway meets its neighbour's rather than
+> stepping a tile at a time down every taper. That is wave 4, less two things
+> deliberately left: per-lane movement sets, which earn their keep only
+> alongside wave 6's multi-lane approaches, and the motorway's gore chevrons,
+> which move into wave 5 because the neutral area they need is the one a ramp's
+> nose needs. Then waves 5–6.
 > Specified in full: classes, lane-piece
 > profiles with a width budget, stored flow direction, per-junction control
 > (none/yield/stop/all-way/signal/roundabout) with warrant defaults,
