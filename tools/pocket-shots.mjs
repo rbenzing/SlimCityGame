@@ -166,9 +166,15 @@ console.log('down the zone:', JSON.stringify(zone));
 if (!zone[0]?.pocket || !zone[1]?.pocket)
   failures.push('the pocket does not run the two tiles a local approach stores');
 if (zone[2]?.pocket) failures.push('the pocket runs past the end of the approach zone');
-const [head, behind] = zone;
-if (head && behind && Math.abs(head.width - behind.width) > 1e-6)
-  failures.push('the widened carriageway is not the same width down the zone');
+// The bay opens over a taper rather than starting at full width: the tile at
+// the stop line has the whole of it, the one behind is still opening, and the
+// road behind the zone is the road.
+const [head, behind, past] = zone;
+if (head && head.openness !== 1) failures.push('the bay is not full against the junction');
+if (behind && !(behind.openness < 1 && behind.openness > 0))
+  failures.push(`the bay does not open over a taper (openness ${behind?.openness})`);
+if (head && behind && !(behind.width < head.width && behind.width > (past?.width ?? Infinity)))
+  failures.push('the carriageway does not widen down the zone into the bay');
 
 // Hand the junction back to nothing and the pocket goes with it: the lane is
 // the control's, not the road's.

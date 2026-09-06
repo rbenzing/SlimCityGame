@@ -880,7 +880,7 @@ describe('roadTileVertices — lane-use arrows on the last tile before a junctio
       undefined,
       flow,
       undefined,
-      { toward, allowed, ...zone },
+      { toward, allowed, openness: 1, ...zone },
     );
 
   const plain = (tier: RoadTier, mask = N | S): { positions: number[]; colors: number[] } =>

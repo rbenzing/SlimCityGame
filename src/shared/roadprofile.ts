@@ -292,11 +292,24 @@ function pieceCentres(profile: RoadProfile): (number | null)[] {
  * the road. Null when none of that is enough: a pocket narrower than
  * `TURN_POCKET_MIN_WIDTH_M` is not a lane, and a road with no travel lane on
  * the approaching half has nothing to add one beside.
+ *
+ * `openness` is how far open the bay is on this tile, 0 to 1. A turn bay does
+ * not appear at full width out of nothing — it opens over a taper. What the
+ * road gives up for it does not taper with it: the parking stops before the
+ * taper starts and the through lanes shift over along the whole bay, so only
+ * the bay's own width grows. The full bay decides whether the road can have
+ * one at all, and a partly open tile is never the one that refuses.
  */
-export function withTurnPocket(profile: RoadProfile, approachSide: -1 | 1): RoadProfile | null {
+export function withTurnPocket(
+  profile: RoadProfile,
+  approachSide: -1 | 1,
+  openness = 1,
+): RoadProfile | null {
   // A road with a two-way left-turn lane down the middle already turns from a
   // lane of its own, everywhere, so it has nothing to gain here.
   if (profile.pieces.some((p) => p.kind === 'centreTurn')) return null;
+  const open = Math.min(1, Math.max(0, openness));
+  if (open <= 0) return profile;
   const target = laneWidthFor(profile.class);
   const minimum = Math.min(target, TURN_POCKET_MIN_WIDTH_M);
   const oneWay = isOneWayProfile(profile);
@@ -351,7 +364,11 @@ export function withTurnPocket(profile: RoadProfile, approachSide: -1 | 1): Road
     width = minimum;
   }
 
-  const pocket: LanePiece = { kind: 'travel', width };
+  // Everything above is settled by the bay at full width — whether the road
+  // can have one, what the parking gives up, how far the lanes shift over. All
+  // that changes along the opening taper is the bay itself, which grows out of
+  // the lane beside it.
+  const pocket: LanePiece = { kind: 'travel', width: width * open };
   if (beside.piece.flow) pocket.flow = beside.piece.flow;
 
   const pieces: LanePiece[] = [];

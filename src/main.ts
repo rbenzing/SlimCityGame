@@ -563,6 +563,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         toward: number;
         distance: number;
         pocket: boolean;
+        openness: number;
         taper: { remaining: number; length: number; closed: number } | null;
         lanes: number;
         width: number;
@@ -578,6 +579,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           toward: ahead?.toward ?? taper?.toward ?? 0,
           distance: ahead?.distance ?? -1,
           pocket: !taper && drawn !== own,
+          openness: ahead?.openness ?? 1,
           taper: taper
             ? { remaining: taper.remaining, length: taper.length, closed: taper.closed }
             : null,

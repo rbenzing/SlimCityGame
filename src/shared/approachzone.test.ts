@@ -80,6 +80,23 @@ describe('the approach zone', () => {
     expect(approachAhead(2, 1, 1, w)).toBeUndefined();
   });
 
+  it('opens the bay as the junction nears, and holds it full against the stop line', () => {
+    const w = world(LONG_ARM, { '2,3': { control: 'signal' } });
+    const at = (z: number): number => approachAhead(2, z, 3, w)!.openness;
+    // The tile at the stop line has the whole bay; the one behind it is still
+    // opening, and never more open than the one in front.
+    expect(at(2)).toBe(1);
+    expect(at(1)).toBeLessThan(1);
+    expect(at(1)).toBeGreaterThan(0);
+    // A tile carrying no bay is not half of one.
+    expect(approachAhead(2, 1, 3, world(LONG_ARM))!.openness).toBe(1);
+  });
+
+  it('holds the bay full where the zone leaves no room for a taper', () => {
+    const w = world(CROSSROADS, { '2,2': { control: 'signal' } });
+    expect(approachAhead(2, 1, 1, w)!.openness).toBe(1);
+  });
+
   it('carries no pocket for a class with no approach zone at all', () => {
     const w = world(CROSSROADS, { '2,2': { control: 'signal' } });
     expect(approachAhead(2, 1, 0, w)).toMatchObject({ distance: 0, pocket: false });

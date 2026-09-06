@@ -758,6 +758,36 @@ describe('turn pockets', () => {
     expect(fitsTile(pocketed!)).toBe(true);
   });
 
+  it('opens the bay over a taper rather than starting it at full width', () => {
+    const street = presetProfileForTier(RoadTier.TwoLane);
+    const full = withTurnPocket(street, 1)!;
+    const half = withTurnPocket(street, 1, 0.5)!;
+    expect(half.pieces[2]!.width).toBeCloseTo(full.pieces[2]!.width / 2, 6);
+    // Only the bay grows. The lanes it opens beside are the same lanes.
+    expect(travel(half).filter((_, i) => i !== 1)).toEqual(travel(full).filter((_, i) => i !== 1));
+    expect(profileWidth(half)).toBeLessThan(profileWidth(full));
+    expect(profileWidth(half)).toBeGreaterThan(profileWidth(street));
+    // A bay that has not begun to open is simply the road.
+    expect(withTurnPocket(street, 1, 0)).toEqual(street);
+  });
+
+  it('takes the parking for the whole bay, not a sliver of it per tile', () => {
+    // The parking stops before the taper starts: a half-open tile has given up
+    // exactly what the tile against the junction has.
+    const parked = composeProfile(presetProfileForTier(RoadTier.TwoLane), {
+      ...NO_EDITS,
+      parking: 'both',
+    });
+    const kerbs = (p: RoadProfile): number[] =>
+      p.pieces.filter((q) => q.kind === 'parking').map((q) => q.width);
+    expect(kerbs(withTurnPocket(parked, 1, 0.25)!)).toEqual(kerbs(withTurnPocket(parked, 1)!));
+  });
+
+  it('refuses a bay the full width cannot have, however little of it is open', () => {
+    // The taper never rescues a road that has no room for the bay at all.
+    expect(withTurnPocket(presetProfileForTier(RoadTier.FourLane), 1, 0.25)).toBeNull();
+  });
+
   it('gives the pocket to whichever half is the one approaching', () => {
     const street = presetProfileForTier(RoadTier.TwoLane);
     expect(withTurnPocket(street, -1)!.pieces[2]).toMatchObject({ flow: 'back' });

@@ -14,9 +14,16 @@
 import { armAllowed, pocketWarranted } from './approach';
 import type { MovementSet, PackedTurns } from './approach';
 import { isOneWayProfile, withTurnPocket } from './roadprofile';
-import { closedAt, dropWidth, TAPER_MAX_TILES, taperedCrossSection, taperTilesFor } from './taper';
+import {
+  closedAt,
+  dropWidth,
+  laneTaperTiles,
+  TAPER_MAX_TILES,
+  taperedCrossSection,
+  taperTilesFor,
+} from './taper';
 import type { TaperStep } from './taper';
-import type { JunctionControl, RoadProfile } from './types';
+import type { JunctionControl, RoadClassId, RoadProfile } from './types';
 import { RoadFlow } from './types';
 
 /** What the walk needs to know about the tiles around it. */
@@ -41,6 +48,22 @@ export interface ApproachAhead {
   allowed: MovementSet;
   /** Whether the approach carries its turn pocket on this tile. */
   pocket: boolean;
+  /** How far open that pocket is here, 0 to 1: full against the junction. */
+  openness: number;
+}
+
+/**
+ * How far open a turn bay is on a tile `distance` tiles short of the junction,
+ * given a zone of `zone` tiles. A bay is a taper and then storage: the taper
+ * takes the class's own ratio to open one lane width, and what is left of the
+ * zone is held at full width, since a queue standing in a wedge is a queue
+ * standing half in the through lane. A zone with no room for both is all
+ * taper but for the tile against the junction.
+ */
+function pocketOpenness(classId: RoadClassId, zone: number, distance: number): number {
+  const taper = Math.min(laneTaperTiles(classId), Math.max(0, zone - 1));
+  if (taper <= 0) return 1;
+  return Math.min(1, (zone - distance) / (taper + 1));
 }
 
 /** The four cardinals as steps, in the order `RoadFlow` numbers them. */
@@ -122,11 +145,15 @@ export function approachAhead(
   if (!best || tied) return undefined;
 
   const allowed = armAllowed(world.turnsAt(best.jx, best.jz), oppositeFlow(best.toward));
+  const pocket =
+    best.distance < zone && pocketWarranted(world.controlAt(best.jx, best.jz), allowed);
+  const mine = world.profileAt(x, z);
   return {
     toward: best.toward,
     distance: best.distance,
     allowed,
-    pocket: best.distance < zone && pocketWarranted(world.controlAt(best.jx, best.jz), allowed),
+    pocket,
+    openness: pocket && mine ? pocketOpenness(mine.class, zone, best.distance) : 1,
   };
 }
 
@@ -168,7 +195,7 @@ export function pocketedCrossSection(
     return profile;
   }
   const { leftSign } = approachAxis(approach.toward);
-  return withTurnPocket(profile, -leftSign as 1 | -1) ?? profile;
+  return withTurnPocket(profile, -leftSign as 1 | -1, approach.openness) ?? profile;
 }
 
 /**
