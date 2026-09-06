@@ -18,6 +18,7 @@ import {
   closedAt,
   dropWidth,
   laneTaperTiles,
+  pavedCrossSection,
   TAPER_MAX_TILES,
   taperedCrossSection,
   taperTilesFor,
@@ -199,12 +200,32 @@ export function pocketedCrossSection(
 }
 
 /**
- * The cross-section a tile draws, all of it: its own profile, the turn pocket
- * it may have gained for the junction ahead, and the lanes it may be closing
- * for the narrower road ahead. A lane that is on its way out has no width to
- * lend a pocket, so a taper takes precedence over one.
+ * The cross-section a tile's PAVEMENT is laid to: its own profile, the turn
+ * pocket it may have gained for the junction ahead, and the lanes it may be
+ * closing for the narrower road ahead. A lane that is on its way out has no
+ * width to lend a pocket, so a taper takes precedence over one.
+ *
+ * A motorway's lane closes by paint rather than by tarmac, so on one of those
+ * this is the road at full width all the way down the taper — see
+ * `paintedCrossSection` for what the lines are laid to instead, and the strip
+ * between the two is the neutral area.
  */
 export function drawnCrossSection(
+  profile: RoadProfile,
+  approach: ApproachAhead | undefined,
+  narrowing: TaperStep | undefined,
+  flow: number,
+): RoadProfile {
+  if (narrowing) return pavedCrossSection(profile, closedAt(narrowing));
+  return pocketedCrossSection(profile, approach, flow);
+}
+
+/**
+ * The cross-section a tile's PAINT is laid to. Down a taper it is always the
+ * narrowing one, whatever the pavement is doing: the lane line is what closes
+ * the lane, and on a motorway it is the only thing that does.
+ */
+export function paintedCrossSection(
   profile: RoadProfile,
   approach: ApproachAhead | undefined,
   narrowing: TaperStep | undefined,

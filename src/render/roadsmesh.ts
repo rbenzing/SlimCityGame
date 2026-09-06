@@ -114,7 +114,9 @@ import {
   approachAxis,
   drawnCrossSection,
   narrowingAhead,
+  paintedCrossSection,
 } from '../shared/approachzone';
+import { paintsGore } from '../shared/taper';
 import type { TaperStep } from '../shared/taper';
 import type { ApproachAhead, ApproachSurroundings } from '../shared/approachzone';
 import {
@@ -757,6 +759,101 @@ const LANE_ARROW_HOOK_REACH_M = 1.3;
  * coordinate on the axis. Left and right are read from that: facing along +Z
  * — south, since z grows southward — a driver's left hand points at +X.
  */
+/** Along-run spacing of the bars that hatch a neutral area, and their width. */
+const NEUTRAL_BAR_WIDTH_M = 0.45;
+const NEUTRAL_BAR_PERIOD_M = 3;
+
+/**
+ * The hatching that fills a NEUTRAL AREA — the strip a closing lane leaves on
+ * a road that keeps its pavement through the taper. Diagonal bars at 45°,
+ * sloping AWAY from the traffic beside them in the direction that traffic
+ * travels, which is what tells a driver it is somewhere not to be rather than
+ * a lane they could still be using (MUTCD 3B.24).
+ *
+ * `inner` and `outer` are the strip's edges as signed offsets from the
+ * centreline — inner against the running lane, outer against the pavement's
+ * own edge — and `ahead` is the sign along the run that traffic beside it
+ * goes in. Bars are clipped to the tile, since the next tile hatches its own.
+ */
+function emitNeutralArea(
+  positions: number[],
+  colors: number[],
+  vertical: boolean,
+  centerX: number,
+  centerZ: number,
+  inner: number,
+  outer: number,
+  ahead: 1 | -1,
+  hAt: (x: number, z: number) => number,
+): void {
+  const width = Math.abs(outer - inner);
+  if (width < NEUTRAL_BAR_WIDTH_M) return;
+  const pt = (along: number, cross: number): [number, number] =>
+    vertical ? [cross, along] : [along, cross];
+  // A 45° bar runs as far along the road as it does across the strip. Each is
+  // cut off exactly at the tile edge — the next tile draws the rest of it —
+  // rather than being squashed into a smear along the boundary or stepped into
+  // a staircase.
+  const slant = ahead * width;
+  const first = -TILE_HALF - Math.abs(slant) - NEUTRAL_BAR_WIDTH_M;
+  for (let s = first; s < TILE_HALF; s += NEUTRAL_BAR_PERIOD_M) {
+    const bar: Array<[number, number]> = [
+      [s, inner],
+      [s + NEUTRAL_BAR_WIDTH_M, inner],
+      [s + NEUTRAL_BAR_WIDTH_M + slant, outer],
+      [s + slant, outer],
+    ];
+    const clipped = clipToAlong(bar, -TILE_HALF, TILE_HALF);
+    for (let i = 1; i + 1 < clipped.length; i++) {
+      pushFlatTri(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        pt(clipped[0]![0], clipped[0]![1]),
+        pt(clipped[i]![0], clipped[i]![1]),
+        pt(clipped[i + 1]![0], clipped[i + 1]![1]),
+        MARK_Y_OFFSET,
+        MARKING_COLOR,
+        hAt,
+      );
+    }
+  }
+}
+
+/**
+ * A convex polygon of (along, cross) points cut down to `lo <= along <= hi`,
+ * by the usual two half-plane passes. Empty when nothing of it is left.
+ */
+function clipToAlong(
+  poly: ReadonlyArray<readonly [number, number]>,
+  lo: number,
+  hi: number,
+): Array<[number, number]> {
+  const pass = (
+    pts: ReadonlyArray<readonly [number, number]>,
+    bound: number,
+    keepAbove: boolean,
+  ): Array<[number, number]> => {
+    const inside = (a: number): boolean => (keepAbove ? a >= bound : a <= bound);
+    const out: Array<[number, number]> = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i]!;
+      const b = pts[(i + 1) % pts.length]!;
+      const ain = inside(a[0]);
+      if (ain) out.push([a[0], a[1]]);
+      if (ain !== inside(b[0])) {
+        const span = b[0] - a[0];
+        const t = Math.abs(span) < 1e-9 ? 0 : (bound - a[0]) / span;
+        out.push([bound, a[1] + (b[1] - a[1]) * t]);
+      }
+    }
+    return out;
+  };
+  const low = pass(poly, lo, true);
+  return low.length === 0 ? [] : pass(low, hi, false);
+}
+
 function emitLaneUseArrow(
   positions: number[],
   colors: number[],
@@ -2867,12 +2964,15 @@ export function roadTileVertices(
 
   // The cross-section this tile carries: its own, plus the turn pocket it may
   // have gained for the junction ahead, less the lanes it may be closing for a
-  // narrower road ahead. The asphalt has to be exactly as wide as the paint.
+  // narrower road ahead.
   const own = profile ?? presetProfileForTier(tier);
   const crossSection = drawnCrossSection(own, approach, narrowing, flow);
   const spec = quadSpecFor(tier, crossSection);
-  // Every line and band this tile paints, read from its cross-section.
-  const plan = markingPlan(crossSection);
+  // What the PAINT is laid to, which is the same thing everywhere but down a
+  // motorway's taper: there the tarmac runs on at full width and only the
+  // lines close the lane, leaving the neutral area between the two.
+  const painted = paintedCrossSection(own, approach, narrowing, flow);
+  const plan = markingPlan(painted);
   const centerX = (x + 0.5) * TILE_METERS;
   const centerZ = (z + 0.5) * TILE_METERS;
   const coreHalf = TILE_METERS * spec.halfWidthFraction;
@@ -3382,6 +3482,36 @@ export function roadTileVertices(
             outermost.centre,
             ahead,
             Movement.Left,
+            hAt,
+          );
+        }
+      }
+
+      // The neutral area. A motorway does not unpave a lane to close it — the
+      // tarmac is the recovery a driver who misses the taper needs — so the
+      // edge line moves in and the strip it leaves behind is hatched. Both
+      // halves of a two-way road lose their kerbside lane, so both get one,
+      // each sloping the way its own traffic goes.
+      if (narrowing && paintsGore(own.class)) {
+        const { vertical, ahead, leftSign } = approachAxis(narrowing.toward);
+        const paintedHalf = carriagewayWidth(painted) / 2;
+        const lanes = travelLanes(painted);
+        const oneWay = lanes.length > 0 && lanes.every((l) => l.flow === lanes[0]?.flow);
+        const runsToward = flow === RoadFlow.None || flow === narrowing.toward;
+        for (const side of [-1, 1] as const) {
+          // The strip belongs to the traffic beside it. Heading for the drop,
+          // the driver's kerb is the side opposite their left; on a two-way
+          // road the other kerb is the other direction's.
+          const towardDrop = oneWay ? runsToward : side === -leftSign;
+          emitNeutralArea(
+            positions,
+            colors,
+            vertical,
+            centerX,
+            centerZ,
+            side * paintedHalf,
+            side * coreHalf,
+            (towardDrop ? ahead : -ahead) as 1 | -1,
             hAt,
           );
         }

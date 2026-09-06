@@ -6,6 +6,7 @@ import {
   dropWidth,
   laneTaperTiles,
   paintsGore,
+  pavedCrossSection,
   TAPER_MAX_TILES,
   taperedCrossSection,
   taperTilesFor,
@@ -111,5 +112,44 @@ describe('the gore in the wedge a closing lane leaves', () => {
   it('is never painted on a surface that takes no paint', () => {
     const unpaved: RoadClassId[] = ['dirt', 'rail'];
     for (const id of unpaved) expect(paintsGore(id), id).toBe(false);
+  });
+});
+
+describe('the neutral area: what the pavement does while the paint closes a lane', () => {
+  const motorway = presetProfileForTier(RoadTier.Highway);
+  const street = presetProfileForTier(RoadTier.FourLane);
+
+  it('leaves a motorway’s tarmac exactly where it was, however far the taper has run', () => {
+    // The pavement is the recovery a driver who missed the taper needs, so it
+    // does not go anywhere. Only the paint moves.
+    for (const closed of [0.5, 3, 7.5]) {
+      expect(carriagewayWidth(pavedCrossSection(motorway, closed))).toBeCloseTo(
+        carriagewayWidth(motorway),
+        9,
+      );
+    }
+  });
+
+  it('narrows a street’s tarmac with its lane, because a street simply narrows', () => {
+    expect(carriagewayWidth(pavedCrossSection(street, 3))).toBeCloseTo(
+      carriagewayWidth(street) - 3,
+      9,
+    );
+  });
+
+  it('closes the lane in the paint either way — that is what shuts it', () => {
+    for (const profile of [motorway, street]) {
+      expect(carriagewayWidth(taperedCrossSection(profile, 3))).toBeCloseTo(
+        carriagewayWidth(profile) - 3,
+        9,
+      );
+    }
+  });
+
+  it('leaves a strip to hatch on the motorway and none on the street', () => {
+    const strip = (p: typeof motorway): number =>
+      carriagewayWidth(pavedCrossSection(p, 3)) - carriagewayWidth(taperedCrossSection(p, 3));
+    expect(strip(motorway)).toBeCloseTo(3, 9);
+    expect(strip(street)).toBeCloseTo(0, 9);
   });
 });

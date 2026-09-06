@@ -2635,7 +2635,23 @@ scaled by one constant into the units the sim already uses.
    the busiest one an interchange has — it is what an interchange is
    signalised at, so the ramp is no longer excused from control the way a
    motorway is.
-   Reaching that terminal needed one correction to the GRAPH. A tile that
+   The NEUTRAL AREA is what a road that keeps its pavement leaves behind when
+   a lane closes. A street narrows: the lane goes and the tarmac goes with it.
+   A motorway does not, because the tarmac is the recovery a driver who missed
+   the taper needs — so the pavement runs on at full width, the edge line moves
+   inward alone, and the strip between them is hatched. Which roads do it is
+   the class's own taper ratio: at 1:30 or flatter — a divided road, a
+   motorway, a slip road — a lane is closed by paint. A tile therefore has TWO
+   cross-sections: the one its pavement is laid to and the one its paint is
+   laid to, the same thing everywhere but down one of these tapers. The
+   furniture reads the pavement, since that is where the kerb is.
+   The hatching is diagonal bars at 45°, sloping away from the traffic beside
+   them in the direction that traffic goes (MUTCD 3B.24), so both halves of a
+   two-way road lean the same way on a map and each leans correctly for its own
+   direction. Each bar is clipped exactly at the tile edge and the next tile
+   draws the rest of it, rather than being squashed into a smear along the
+   boundary or stepped into a staircase.
+   Reaching the terminal needed one correction to the GRAPH. A tile that
    outranks a neighbour becomes a node so that a run carries a single tier —
    but where that neighbour is already a JUNCTION, the junction is the
    boundary, and a second node a tile away leaves a one-tile run that is

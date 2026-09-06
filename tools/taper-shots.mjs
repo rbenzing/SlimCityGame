@@ -13,6 +13,7 @@ const out = process.argv[3] ?? 'tools/shots-tapers';
 mkdirSync(out, { recursive: true });
 
 const TWO_LANE = 1;
+const HIGHWAY = 3;
 const FOUR_LANE = 7;
 
 const b = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
@@ -119,6 +120,34 @@ const shot = async (name, tx, tz, d, yaw, pitch) => {
 await shot('taper-down', X + CX, Z + 9, 90, 0.0, 1.15);
 await shot('taper-head', X + CX, Z + 5, 34, 0.0, 1.2);
 await shot('taper-along', X + CX, Z + 8, 120, 0.5, 0.7);
+
+// A MOTORWAY lane drop is a different animal: the tarmac stays where it is and
+// only the paint closes the lane, leaving a hatched neutral area. A street
+// narrows; a motorway leaves the driver who missed the taper somewhere to go.
+const MX = 20;
+await cmd('motorway', [{ kind: 'buildRoad', tier: HIGHWAY, tiles: col(MX, 0, 11) }]);
+await cmd('street', [{ kind: 'buildRoad', tier: TWO_LANE, tiles: col(MX, 12, 20) }]);
+await page.waitForTimeout(2500);
+
+const gore = [];
+for (let z = 2; z <= 13; z++) gore.push({ z, ...(await approach(X + MX, Z + z)) });
+console.log(
+  'down the motorway:',
+  JSON.stringify(gore.map((g) => ({ z: g.z, lanes: g.lanes, w: g.width, t: g.taper?.remaining }))),
+);
+// The drop is real — 15 m of motorway into a 7.5 m street — and every tile of
+// the taper still keeps all 15 m of pavement. What narrows is the paint, and
+// the read-back reports the pavement.
+const paved = gore.filter((g) => g.z <= 11);
+if (!paved.some((g) => g.taper))
+  failures.push('the motorway is not tapering at all, so there is no gore to paint');
+if (!paved.every((g) => Math.abs(g.width - 15) < 1e-6))
+  failures.push(`the motorway unpaved its taper: ${JSON.stringify(paved.map((g) => g.width))}`);
+if (Math.abs((gore.find((g) => g.z === 13)?.width ?? 0) - 7.5) > 1e-6)
+  failures.push('the street it drops into is not the narrow road the drop was measured against');
+
+await shot('gore-down', X + MX, Z + 8, 90, 0.0, 1.15);
+await shot('gore-close', X + MX, Z + 9, 34, 0.0, 1.2);
 
 console.log(failures.length === 0 ? 'PASS' : 'FAIL');
 for (const f of failures) console.log(' -', f);

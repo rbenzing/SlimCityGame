@@ -152,11 +152,26 @@ export function closedAt(step: TaperStep): number {
 }
 
 /**
- * Whether this class paints a chevron-hatched gore in the wedge a closing lane
- * leaves. A motorway does, and so does its ramp: at speed the hatching is what
- * tells a driver the lane is ending rather than the road bending. A street
- * makes do with the lane line and the arrow.
+ * Whether this class closes a lane by PAINT, leaving the pavement where it is.
+ * A motorway does, and so does its ramp and a divided road: at speed the
+ * tarmac has to stay — it is the recovery a driver who misses the taper needs
+ * — so the lane is taken away by moving the edge line inward and hatching what
+ * is left. A street simply narrows, and makes do with the lane line and the
+ * arrow.
  */
 export function paintsGore(classId: RoadClassId): boolean {
   return roadClass(classId).surface === 'paved' && TAPER_RATIO_BY_CLASS[classId] >= 30;
+}
+
+/**
+ * The cross-section the PAVEMENT is laid to partway through a taper — as
+ * opposed to the one the paint is laid to, which is always the tapered one.
+ *
+ * On a street they are the same: the lane closes and the tarmac closes with
+ * it. On a motorway the pavement runs on at full width and only the paint
+ * moves, which leaves the NEUTRAL AREA between them — the wedge a driver reads
+ * as somewhere not to be, rather than as the road bending away.
+ */
+export function pavedCrossSection(wide: RoadProfile, closed: number): RoadProfile {
+  return paintsGore(wide.class) ? wide : taperedCrossSection(wide, closed);
 }

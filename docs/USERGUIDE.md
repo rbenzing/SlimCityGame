@@ -125,7 +125,12 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   taper** instead of stopping dead: a four-lane road meeting a two-lane street
   spends seven tiles closing its kerbside lanes, and a motorway spends far
   more, because a lane closed at speed needs the room. The lane that is
-  running out carries a merge arrow bending into the one beside it. The drop
+  running out carries a merge arrow bending into the one beside it. A
+  **motorway closes its lane differently**: the tarmac stays where it is, so
+  there is still somewhere to go if you miss the taper, and the lane is shut by
+  moving the line in and hatching the strip it leaves — the diagonal bars you
+  see beside a motorway lane drop, sloping away from the traffic they are
+  keeping out. The drop
   is a real bottleneck too — traffic heading into it queues for the narrow
   road rather than the wide one it is still on, so a four-lane road that ends
   in a village street backs up on the traffic lens exactly where it should.

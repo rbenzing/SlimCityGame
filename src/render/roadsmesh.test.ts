@@ -2683,3 +2683,51 @@ describe('a run that changes width carries its footway across the seam', () => {
     expect(footwayReach(widening, CENTRE_Z + TILE_METERS / 2)).toBeCloseTo(reach, 4);
   });
 });
+
+describe('a motorway closes its lane with paint and keeps the tarmac', () => {
+  const motorway = presetProfileForTier(RoadTier.Highway);
+
+  /** A motorway tile `remaining` tiles short of a drop of 7.5 m over 12. */
+  const closing = (remaining: number): { positions: number[]; colors: number[] } =>
+    roadTileVertices(
+      4,
+      4,
+      RoadTier.Highway,
+      N | S,
+      flatHeightAt,
+      undefined,
+      motorway,
+      undefined,
+      RoadFlow.None,
+      undefined,
+      undefined,
+      { toward: RoadFlow.South, remaining, length: 12, closed: 7.5 },
+    );
+  const plain = roadTileVertices(4, 4, RoadTier.Highway, N | S, flatHeightAt, undefined, motorway);
+  /** How far the tarmac reaches from the centreline — paint and kerb excluded. */
+  const asphaltReach = (v: { positions: number[]; colors: number[] }): number => {
+    const triples = toTriples(v.colors);
+    let reach = 0;
+    for (let i = 0; i < triples.length; i++) {
+      if (isSidewalk(triples[i]!) || isPaint(triples[i]!)) continue;
+      reach = Math.max(reach, Math.abs(v.positions[i * 3]! - 4.5 * TILE_METERS));
+    }
+    return reach;
+  };
+
+  it('lays the same width of tarmac at every point of the taper', () => {
+    // The pavement is the recovery a driver who missed the taper needs. A
+    // street narrows; a motorway does not give the tarmac up.
+    const full = asphaltReach(plain);
+    for (const remaining of [11, 6, 0]) {
+      expect(asphaltReach(closing(remaining))).toBeCloseTo(full, 4);
+    }
+  });
+
+  it('hatches the strip the lane leaves, and hatches more of it further along', () => {
+    const white = (v: { colors: number[] }): number => countWhere(v.colors, isMarkingWhite);
+    // A tile with no drop ahead has no strip and no hatching.
+    expect(white(closing(11))).toBeGreaterThan(white(plain));
+    expect(white(closing(0))).toBeGreaterThan(white(closing(11)));
+  });
+});
