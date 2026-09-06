@@ -2325,9 +2325,19 @@ scaled by one constant into the units the sim already uses.
    on a one-way street point the way it was drawn.
    `tools/oneway-shots.mjs` lays two identical one-way columns drawn opposite
    ways in the running game, reads back what each stored, turns one round and
-   shoots them. Still to come in wave 2: asymmetric profiles (three lanes as
-   2+1) and a directional edge cost that reads the lane count for the
-   direction actually travelled.
+   shoots them. On top of it, a profile may now be ASYMMETRIC: the road tool
+   steps each direction on its own, so a three-lane road is two lanes one way
+   and one the other, bounded so the two together stay inside the class's
+   lane range, and a centre turn lane or median still sits between them. The
+   graph reads how a run divides — the profile says back and forward relative
+   to the drag, and the stored direction turns that into the two ends of the
+   edge — and the edge cost scales the capacity it compares volume against by
+   the share of lanes serving the direction being travelled. A road that is
+   the same both ways scales by one, so every road that existed before costs
+   exactly what it always cost; a two-and-one road congests on its short side
+   first. Volume itself stays a whole-road figure, since that is what the
+   traffic system assigns, so a per-direction volume waits for the traffic
+   system to have one. That completes wave 2.
 3. **Junction control** — node control records, the v/c warrant default, the
    inspector, per-movement delay cost, control-placed furniture, cycling
    signal heads, mini and compact roundabouts.

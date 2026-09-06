@@ -367,3 +367,48 @@ describe('a one-way run flows the way it was drawn', () => {
     expect(findPath(nodes, edges, { x: 5, z: 0 }, { x: 0, z: 0 })).toBeNull();
   });
 });
+
+describe('an asymmetric road costs more against its narrow side', () => {
+  const tiles = straightRun(0, 0, 1, 0, 6);
+  const nodes: GraphNode[] = [
+    { id: 0, x: 0, z: 0, edges: [0] },
+    { id: 1, x: 5, z: 0, edges: [0] },
+  ];
+  const edge = (over: Partial<GraphEdge>): GraphEdge[] => [
+    {
+      id: 0,
+      a: 0,
+      b: 1,
+      tier: RoadTier.TwoLane,
+      tiles,
+      length: tiles.length,
+      volume: 0,
+      ...over,
+    },
+  ];
+
+  it('costs the same both ways when the road is the same both ways', () => {
+    const edges = edge({ volume: 400 });
+    const there = findPath(nodes, edges, { x: 0, z: 0 }, { x: 5, z: 0 })!.cost;
+    const back = findPath(nodes, edges, { x: 5, z: 0 }, { x: 0, z: 0 })!.cost;
+    expect(back).toBeCloseTo(there, 9);
+  });
+
+  it('costs more against the side with fewer lanes, and less with the wider one', () => {
+    const even = findPath(nodes, edge({ volume: 400 }), { x: 0, z: 0 }, { x: 5, z: 0 })!.cost;
+    const split = edge({ volume: 400, lanesAtoB: 2, lanesBtoA: 1 });
+    const wide = findPath(nodes, split, { x: 0, z: 0 }, { x: 5, z: 0 })!.cost;
+    const narrow = findPath(nodes, split, { x: 5, z: 0 }, { x: 0, z: 0 })!.cost;
+    expect(narrow).toBeGreaterThan(even);
+    expect(wide).toBeLessThan(even);
+  });
+
+  it('leaves an empty road costing the same whichever way it is split', () => {
+    // Congestion is what the split scales, so with no traffic there is nothing
+    // to scale: an empty 2+1 costs its free-flow time both ways.
+    const empty = edge({ volume: 0, lanesAtoB: 2, lanesBtoA: 1 });
+    const there = findPath(nodes, empty, { x: 0, z: 0 }, { x: 5, z: 0 })!.cost;
+    const back = findPath(nodes, empty, { x: 5, z: 0 }, { x: 0, z: 0 })!.cost;
+    expect(back).toBeCloseTo(there, 9);
+  });
+});

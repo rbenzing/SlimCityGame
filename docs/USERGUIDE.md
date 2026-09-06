@@ -36,7 +36,9 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
 - **Roads** — a hierarchy from gravel up through two-lane, avenue, one-way,
   four-lane, and highway. Wider roads carry more traffic; most roads carry power
   and water along their length (highways carry power only). Every road's
-  options row has a **Profile** group: set how many lanes it runs each way,
+  options row has a **Profile** group: set how many lanes it runs each way —
+  each direction steps on its own, so a road can run two lanes one way and one
+  the other —
   put a median or a two-way turn lane down the middle, post a speed inside
   the range its class allows, add a parking lane or a bike lane to either
   kerb, or drop the footways. Each control offers only what that road allows,

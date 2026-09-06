@@ -34,10 +34,29 @@ function ratesForTier(tier: RoadTier): EdgeRates {
   return RATES_BY_TIER.get(tier) ?? RATES_BY_TIER.get(RoadTier.TwoLane)!;
 }
 
-/** length / speed, scaled up as volume approaches (or exceeds) capacity. */
-function edgeCost(edge: GraphEdge): number {
+/**
+ * How much of an edge's capacity serves the direction being travelled, as a
+ * multiple of an even split. A road that is the same both ways gives 1, which
+ * is what every road gave before a profile could say otherwise; a road with
+ * two lanes one way and one the other gives 4/3 to the wider side and 2/3 to
+ * the narrower, so the short side congests first.
+ *
+ * Volume stays a whole-road figure, since that is what the traffic system
+ * assigns; this scales the capacity it is compared against, and nothing else.
+ */
+function directionShare(edge: GraphEdge, fromNodeId: number): number {
+  const atoB = edge.lanesAtoB;
+  const btoA = edge.lanesBtoA;
+  if (atoB === undefined || btoA === undefined || atoB + btoA === 0) return 1;
+  const travelled = fromNodeId === edge.a ? atoB : btoA;
+  return travelled / ((atoB + btoA) / 2);
+}
+
+/** length / speed, scaled up as volume approaches (or exceeds) the capacity serving this direction. */
+function edgeCost(edge: GraphEdge, fromNodeId: number): number {
   const rates = ratesForTier(edge.tier);
-  const congestion = Math.min(1, edge.volume / rates.capacity);
+  const capacity = rates.capacity * directionShare(edge, fromNodeId);
+  const congestion = capacity > 0 ? Math.min(1, edge.volume / capacity) : 1;
   return (edge.length / rates.speed) * (1 + 2 * congestion);
 }
 
@@ -240,7 +259,7 @@ export function findPath(
       if (otherId === currentId || closed.has(otherId)) continue;
 
       const tentative =
-        currentG + edgeCost(edge) * (edgeCostMultiplier ? edgeCostMultiplier(edge) : 1);
+        currentG + edgeCost(edge, currentId) * (edgeCostMultiplier ? edgeCostMultiplier(edge) : 1);
       if (tentative < (gScore.get(otherId) ?? Infinity)) {
         gScore.set(otherId, tentative);
         cameFrom.set(otherId, { prevNode: currentId, edgeId });

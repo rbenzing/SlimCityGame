@@ -410,6 +410,14 @@ class SimWorld implements WorkerSim {
     this.traffic = new TrafficSystem(rng.fork(2), this.network);
     this.transit = new TransitSystem(this.network, this.railNetwork, this.tramNetwork);
     this.dispatch = new DispatchSystem(CATALOG, rng.fork(3));
+    // The save's own table of composed cross-sections, so the graph can read
+    // how a run's lanes divide between its two directions. Presets resolve
+    // without it; only a player-composed profile needs the table.
+    const resolveProfile = (id: number): RoadProfile | null =>
+      this.customRoadProfiles.get(id) ?? null;
+    this.network.setProfileResolver(resolveProfile);
+    this.railNetwork.setProfileResolver(resolveProfile);
+    this.tramNetwork.setProfileResolver(resolveProfile);
     // noHeavyTraffic policy: bump pathfind cost on a district's roads so
     // through-traffic routes around it. With no policy set the multiplier is
     // 1, so routing (and every existing traffic/network test) is unchanged.

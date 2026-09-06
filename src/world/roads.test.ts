@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FIELD_COUNT, isRailTier, RoadFlow, RoadTier, ZoneType } from '../shared/types';
-import type { GridState } from '../shared/types';
+import type { GridState, RoadProfile } from '../shared/types';
 import { applyRoad, computeMask, removeRoad, RoadNetwork } from './roads';
 
 function makeGrid(size: number): GridState {
@@ -842,5 +842,58 @@ describe('the graph carries the direction its tiles were drawn in', () => {
     net.rebuild(runGrid(RoadFlow.None));
     const edge = net.getEdges().find((e) => e.tiles.length === 5);
     expect(edge?.forwardAtoB).toBeUndefined();
+  });
+});
+
+describe('the graph reads how a run divides between its directions', () => {
+  /** A straight run of one profile from (2,5) to (6,5), drawn eastward, with stubs at each end. */
+  function splitGrid(profileId: number, pieces: RoadProfile['pieces']): RoadNetwork {
+    const size = 12;
+    const g = makeGrid(size);
+    const tiles = Array.from({ length: 5 }, (_, i) => ({ x: 2 + i, z: 5 }));
+    applyRoad(
+      g,
+      tiles,
+      RoadTier.FourLane,
+      undefined,
+      profileId,
+      false,
+      tiles.map(() => RoadFlow.East),
+    );
+    applyRoad(g, [{ x: 2, z: 4 }], RoadTier.TwoLane);
+    applyRoad(g, [{ x: 6, z: 4 }], RoadTier.TwoLane);
+    const net = new RoadNetwork();
+    net.setProfileResolver((id) => (id === profileId ? { class: 'urban', pieces } : null));
+    net.rebuild(g);
+    return net;
+  }
+
+  const runEdge = (net: RoadNetwork) => net.getEdges().find((e) => e.tiles.length === 5);
+
+  it('says nothing when the run is the same both ways', () => {
+    const net = splitGrid(12, [
+      { kind: 'travel', width: 3.5, flow: 'back' },
+      { kind: 'travel', width: 3.5, flow: 'fwd' },
+    ]);
+    const edge = runEdge(net)!;
+    expect(edge.lanesAtoB).toBeUndefined();
+    expect(edge.lanesBtoA).toBeUndefined();
+  });
+
+  it('divides the lanes the way the profile does, oriented by the way the run was drawn', () => {
+    const net = splitGrid(13, [
+      { kind: 'travel', width: 3.5, flow: 'back' },
+      { kind: 'travel', width: 3.5, flow: 'fwd' },
+      { kind: 'travel', width: 3.5, flow: 'fwd' },
+    ]);
+    const edge = runEdge(net)!;
+    const nodes = net.getNodes();
+    const a = nodes.find((n) => n.id === edge.a)!;
+    const b = nodes.find((n) => n.id === edge.b)!;
+    // The run was drawn east, so its two forward lanes run toward the higher x.
+    const eastward = b.x > a.x ? edge.lanesAtoB : edge.lanesBtoA;
+    const westward = b.x > a.x ? edge.lanesBtoA : edge.lanesAtoB;
+    expect(eastward).toBe(2);
+    expect(westward).toBe(1);
   });
 });

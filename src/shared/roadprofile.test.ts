@@ -293,6 +293,7 @@ describe('composing a profile from a preset and the player’s edits', () => {
       bike: 'both',
       footways: true,
       lanes: 1,
+      lanesBack: 1,
       middle: 'none',
       postedKmh: 50,
     });
@@ -301,6 +302,7 @@ describe('composing a profile from a preset and the player’s edits', () => {
       bike: 'none',
       footways: false,
       lanes: 2,
+      lanesBack: 2,
       middle: 'none',
       postedKmh: 100,
     });
@@ -555,5 +557,61 @@ describe('the class drawer: lanes, what separates them, and the posted speed', (
     const wide = composeProfile(base, edits({ lanes: 2, footways: true }));
     expect(isLayable(wide)).toBe(false);
     expect(isLayable(composeProfile(base, edits({ lanes: 2, footways: false })))).toBe(true);
+  });
+});
+
+describe('asymmetric profiles: a road need not be the same both ways', () => {
+  const edits = (over: Partial<typeof NO_EDITS>) => ({ ...NO_EDITS, ...over });
+
+  it('lays two lanes one way and one the other, in that order across the tile', () => {
+    const p = composeProfile(
+      presetProfileForTier(RoadTier.FourLane),
+      edits({ lanes: 1, lanesBack: 2 }),
+    );
+    expect(p.pieces.map((x) => x.flow)).toEqual(['back', 'back', 'fwd']);
+    expect(laneCount(p)).toBe(3);
+    expect(isLayable(p)).toBe(true); // urban allows 2..4
+  });
+
+  it('reads an asymmetric profile back the way it was written', () => {
+    const p = composeProfile(
+      presetProfileForTier(RoadTier.FourLane),
+      edits({ lanes: 2, lanesBack: 1 }),
+    );
+    expect(editsOf(p)).toMatchObject({ lanes: 2, lanesBack: 1 });
+  });
+
+  it('keeps a road symmetric when only the one count is given', () => {
+    const p = composeProfile(presetProfileForTier(RoadTier.FourLane), edits({ lanes: 1 }));
+    expect(editsOf(p)).toMatchObject({ lanes: 1, lanesBack: 1 });
+  });
+
+  it('reports a preset as the same both ways, and a one-way road as all one way', () => {
+    expect(editsOf(presetProfileForTier(RoadTier.Avenue))).toMatchObject({
+      lanes: 2,
+      lanesBack: 2,
+    });
+    expect(editsOf(presetProfileForTier(RoadTier.OneWay))).toMatchObject({
+      lanes: 2,
+      lanesBack: 2, // no lane runs back, so there is nothing else to report
+    });
+  });
+
+  it('puts the middle between the two directions however they are split', () => {
+    const p = composeProfile(
+      presetProfileForTier(RoadTier.FourLane),
+      edits({ lanes: 1, lanesBack: 2, middle: 'median' }),
+    );
+    expect(p.pieces.map((x) => x.kind)).toEqual(['travel', 'travel', 'median', 'travel']);
+  });
+
+  it('refuses a split the class has no room for', () => {
+    // Urban tops out at four lanes; three each way is eight.
+    const tooMany = composeProfile(
+      presetProfileForTier(RoadTier.FourLane),
+      edits({ lanes: 3, lanesBack: 3 }),
+    );
+    expect(withinLaneRange(tooMany)).toBe(false);
+    expect(isLayable(tooMany)).toBe(false);
   });
 });

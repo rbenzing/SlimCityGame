@@ -7,12 +7,14 @@
 
 import { findPath as runAstar, nearestNode as findNearestNode } from './pathfind';
 import { flowForStep, RoadFlow, RoadTier, ZoneType, isStreetTier } from '../shared/types';
+import { isPresetProfileId, presetProfileForTier } from '../shared/roadprofile';
 import type {
   GraphEdge,
   GraphNode,
   GridState,
   PathResult,
   RoadNetworkApi,
+  RoadProfile,
   RoadTileDelta,
   TilePoint,
 } from '../shared/types';
@@ -106,7 +108,7 @@ function computeNetworkMask(g: GridState, x: number, z: number, inNetwork: Netwo
  * existing tier, per-tile, with no error, unless `replace` is set, when the
  * drag lands whatever it draws), de-zones every one of those tiles, and
  * recomputes the neighbor mask for every tile whose tier changed plus its
- * orthogonal neighbors.  and  are per-tile and follow the
+ * orthogonal neighbors. The elevations and flows are per-tile and follow the
  * drag rather than the tier, so re-dragging a span turns it round or re-decks
  * it. Returns every tile whose tier, mask, deck or direction actually changed.
  */
@@ -318,7 +320,42 @@ function storedRunDirection(g: GridState, runTiles: readonly TilePoint[]): boole
   return null;
 }
 
-function buildGraph(g: GridState, inNetwork: NetworkTiers): BuiltGraph {
+/** Resolves a stored profile id to the cross-section it names, or null. */
+export type ProfileResolver = (id: number) => RoadProfile | null;
+
+/**
+ * How a run's lanes divide between the two directions of the walk from node a
+ * to node b, or null when the run is the same both ways — which is every road
+ * whose profile says nothing else, and which costs what it always cost.
+ *
+ * The profile's own `back` and `fwd` are relative to the direction the road
+ * was drawn in, so the stored direction is what turns them into a-to-b and
+ * b-to-a. A run that never recorded one cannot be told apart, so it is left
+ * symmetric rather than guessed at.
+ */
+function runLaneSplit(
+  g: GridState,
+  runTiles: readonly TilePoint[],
+  forwardAtoB: boolean | null,
+  profileFor: ProfileResolver,
+): { atoB: number; btoA: number } | null {
+  if (forwardAtoB === null) return null;
+  const mid = runTiles[Math.floor(runTiles.length / 2)];
+  if (!mid) return null;
+  const profile = profileFor(g.roadProfile[indexOf(g.size, mid.x, mid.z)] ?? 0);
+  if (!profile) return null;
+  const travel = profile.pieces.filter((p) => p.kind === 'travel');
+  const fwd = travel.filter((p) => p.flow === 'fwd').length;
+  const back = travel.filter((p) => p.flow === 'back').length;
+  if (fwd === back) return null; // the same both ways: nothing to say
+  return forwardAtoB ? { atoB: fwd, btoA: back } : { atoB: back, btoA: fwd };
+}
+
+function buildGraph(
+  g: GridState,
+  inNetwork: NetworkTiers,
+  profileFor: ProfileResolver,
+): BuiltGraph {
   const size = g.size;
   const nodeIdOf = new Map<number, number>(); // tile idx -> node id
   const nodeTileIdx: number[] = [];
@@ -404,6 +441,11 @@ function buildGraph(g: GridState, inNetwork: NetworkTiers): BuiltGraph {
       };
       const stored = storedRunDirection(g, runTiles);
       if (stored !== null) edge.forwardAtoB = stored;
+      const split = runLaneSplit(g, runTiles, stored, profileFor);
+      if (split) {
+        edge.lanesAtoB = split.atoB;
+        edge.lanesBtoA = split.btoA;
+      }
       edges.push(edge);
       nodes[startId]!.edges.push(edgeId);
       nodes[endId]!.edges.push(edgeId);
@@ -428,6 +470,14 @@ export class RoadNetwork implements RoadNetworkApi {
    * default routing is unchanged.
    */
   private edgeCostHook: ((edge: GraphEdge) => number) | null = null;
+  private profileFor: ProfileResolver | null = null;
+
+  /** A stored profile id as a cross-section: the injected table, else the preset its tier names. */
+  private resolveProfile(id: number): RoadProfile | null {
+    const injected = this.profileFor?.(id);
+    if (injected) return injected;
+    return isPresetProfileId(id) ? presetProfileForTier(id as RoadTier) : null;
+  }
 
   /**
    * Which tiers this network is built from. Defaults to the drivable streets,
@@ -454,9 +504,20 @@ export class RoadNetwork implements RoadNetworkApi {
     this.edgeCostHook = hook;
   }
 
+  /**
+   * How a stored profile id becomes a cross-section. A preset resolves from
+   * the catalogue; a player-composed one lives in the save's own table, which
+   * only the worker holds, so it injects this. Without it every road is read
+   * as the preset its tier names, which is what every road was.
+   */
+  setProfileResolver(resolve: ProfileResolver | null): void {
+    this.profileFor = resolve;
+    this.dirty = true;
+  }
+
   rebuild(grid: GridState): void {
     this.grid = grid;
-    const built = buildGraph(grid, this.inNetwork);
+    const built = buildGraph(grid, this.inNetwork, (id) => this.resolveProfile(id));
     this.nodes = built.nodes;
     this.edges = built.edges;
     this.tileEdge = null;
@@ -474,7 +535,7 @@ export class RoadNetwork implements RoadNetworkApi {
 
   private ensureFresh(): void {
     if (!this.dirty || !this.grid) return;
-    const built = buildGraph(this.grid, this.inNetwork);
+    const built = buildGraph(this.grid, this.inNetwork, (id) => this.resolveProfile(id));
     this.nodes = built.nodes;
     this.edges = built.edges;
     this.tileEdge = null;

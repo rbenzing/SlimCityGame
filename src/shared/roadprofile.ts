@@ -251,10 +251,16 @@ export interface ProfileEdits {
   /** Footways on both sides, or none. null = as the preset has. */
   footways: boolean | null;
   /**
-   * Travel lanes each way — on a one-way road, the lanes it has at all.
+   * Travel lanes running forward — on a one-way road, the lanes it has at all.
    * null = as the preset has.
    */
   lanes: number | null;
+  /**
+   * Travel lanes running back, when the road is not the same both ways: a
+   * three-lane road is two one way and one the other, which is only sayable
+   * now the tile knows which way is which. null = the same as forward.
+   */
+  lanesBack: number | null;
   /** What separates the directions. null = as the preset has. */
   middle: MiddleChoice | null;
   /** Posted speed in km/h, clamped to the class range. null = as the preset has. */
@@ -266,6 +272,7 @@ export const NO_EDITS: ProfileEdits = {
   bike: null,
   footways: null,
   lanes: null,
+  lanesBack: null,
   middle: null,
   postedKmh: null,
 };
@@ -308,15 +315,23 @@ export interface ResolvedEdits {
   bike: SideChoice;
   footways: boolean;
   lanes: number;
+  lanesBack: number;
   middle: MiddleChoice;
   postedKmh: number;
 }
 
-/** The travel lanes a profile carries each way; on a one-way road, all of them. */
+/** The travel lanes a profile carries forward; on a one-way road, all of them. */
 function lanesEachWay(profile: RoadProfile): number {
   const travel = profile.pieces.filter((p) => p.kind === 'travel');
   const forward = travel.filter((p) => p.flow === 'fwd').length;
   return forward > 0 ? forward : travel.length;
+}
+
+/** The travel lanes a profile carries back; the same as forward where it says nothing else. */
+function lanesBackOf(profile: RoadProfile): number {
+  const travel = profile.pieces.filter((p) => p.kind === 'travel');
+  const back = travel.filter((p) => p.flow === 'back').length;
+  return back > 0 ? back : lanesEachWay(profile);
 }
 
 /** Whether every travel lane runs the same way, so the road has no two sides to separate. */
@@ -344,6 +359,7 @@ export function editsOf(profile: RoadProfile): ResolvedEdits {
     bike: choice('bike'),
     footways: profile.pieces.some((p) => p.kind === 'sidewalk'),
     lanes: lanesEachWay(profile),
+    lanesBack: lanesBackOf(profile),
     middle: profile.pieces.some((p) => p.kind === 'median')
       ? 'median'
       : profile.pieces.some((p) => p.kind === 'centreTurn')
@@ -375,6 +391,7 @@ export function lanesEachWayRange(
 function rebuildCore(
   core: readonly LanePiece[],
   lanes: number,
+  lanesBack: number,
   middle: MiddleChoice,
   oneWay: boolean,
   widthOf: (kind: LanePieceKind) => number,
@@ -390,15 +407,18 @@ function rebuildCore(
     flow,
     ...(tram ? { tram: true } : {}),
   });
-  const run = (flow: LaneFlow): LanePiece[] => Array.from({ length: lanes }, () => lane(flow));
-  if (oneWay) return [...before, ...run('fwd'), ...after].map((p) => ({ ...p }));
+  const run = (flow: LaneFlow, count: number): LanePiece[] =>
+    Array.from({ length: count }, () => lane(flow));
+  if (oneWay) return [...before, ...run('fwd', lanes), ...after].map((p) => ({ ...p }));
   const separator: LanePiece[] =
     middle === 'median'
       ? [{ kind: 'median', width: widthOf('median') }]
       : middle === 'turn'
         ? [{ kind: 'centreTurn', width: widthOf('centreTurn') }]
         : [];
-  return [...before, ...run('back'), ...separator, ...run('fwd'), ...after].map((p) => ({ ...p }));
+  return [...before, ...run('back', lanesBack), ...separator, ...run('fwd', lanes), ...after].map(
+    (p) => ({ ...p }),
+  );
 }
 
 /**
@@ -416,6 +436,7 @@ export function composeProfile(base: RoadProfile, edits: ProfileEdits): RoadProf
   const bike = edits.bike ?? current.bike;
   const footways = edits.footways ?? current.footways;
   const lanes = edits.lanes ?? current.lanes;
+  const lanesBack = edits.lanesBack ?? edits.lanes ?? current.lanesBack;
   const middle = edits.middle ?? current.middle;
 
   const first = base.pieces.findIndex((p) => CORE_KINDS.has(p.kind));
@@ -428,9 +449,9 @@ export function composeProfile(base: RoadProfile, edits: ProfileEdits): RoadProf
     base.pieces.find((p) => p.kind === kind)?.width ?? DEFAULT_PIECE_WIDTHS[kind];
 
   const core =
-    lanes === current.lanes && middle === current.middle
+    lanes === current.lanes && lanesBack === current.lanesBack && middle === current.middle
       ? baseCore
-      : rebuildCore(baseCore, lanes, middle, isOneWayProfile(base), widthOf);
+      : rebuildCore(baseCore, lanes, lanesBack, middle, isOneWayProfile(base), widthOf);
 
   const edge = (side: 'left' | 'right'): LanePiece[] => {
     const flow = side === 'left' ? 'back' : 'fwd';

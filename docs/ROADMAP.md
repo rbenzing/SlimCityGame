@@ -11,7 +11,7 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 
 > **Delivery status (2026-08-13):** the M0–M7 core spine plus bus transit, service
 > dispatch, districts & policies, stats charts + photo mode, and eight playtest-feedback
-> rounds are shipped and gate-green (2,890 tests / 108 files). Delivered on top of the
+> rounds are shipped and gate-green (2,902 tests / 108 files). Delivered on top of the
 > original milestones: the city-builder UI shell + night cycle, full building/street/vehicle/tree
 > visual language, full terraforming + animated water + sky, the airport landmark,
 > code-split bundle, plus the playtest refinements captured in SPEC.md (utility
@@ -52,8 +52,10 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > drag while a stray drag still cannot flatten one). Wave 2 stores the
 > direction a road was drawn in: a one-way street routes and points its arrows
 > the way it was drawn rather than the way its tiles happen to ascend, drawing
-> it back the other way turns it round, and saves carry it at version 7. Still
-> in wave 2: asymmetric profiles and a directional edge cost; then waves 3–6.
+> it back the other way turns it round, and saves carry it at version 7. On top
+> of it a road may run two lanes one way and one the other, and the edge cost
+> compares traffic against the lanes serving the direction being travelled, so
+> a two-and-one road congests on its short side first. Next: waves 3–6.
 > Specified in full: classes, lane-piece
 > profiles with a width budget, stored flow direction, per-junction control
 > (none/yield/stop/all-way/signal/roundabout) with warrant defaults,

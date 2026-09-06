@@ -740,6 +740,14 @@ export interface GraphEdge {
    * was one looks like — its reader falls back to the geometry it always used.
    */
   forwardAtoB?: boolean;
+  /**
+   * Travel lanes serving each direction of the run — `lanesAtoB` those going
+   * from node a to node b. Absent when the run is the same both ways, which
+   * every road was until a profile could say otherwise, and which costs the
+   * edge exactly what it always cost.
+   */
+  lanesAtoB?: number;
+  lanesBtoA?: number;
 }
 
 export interface PathResult {
