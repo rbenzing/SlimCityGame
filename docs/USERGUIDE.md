@@ -100,6 +100,19 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   tile or two and then holds that width up to the stop line, so there is
   always somewhere to queue. Nothing to switch on: give the junction a control
   it needs and the pocket appears with it.
+  A junction paints itself the way one is painted. **Crossings** go where
+  somebody can actually walk: the people using a crossing are travelling the
+  other way, so an arm is crossed only where the roads across from it have
+  footways — an avenue built without one sends nobody over the street it
+  meets, and gets no zebra. The **stop line** comes before the crossing, which
+  is the order you meet them in, and it is as wide as the road it is painted
+  across rather than as wide as the junction. Under signals or an all-way
+  stop every approach gets one, the main road included; under a give-way only
+  the roads that give way do. **Signals and stop signs** stand on your right
+  at the stop line, facing you — one per approach, never sharing a spot with
+  a lamp post. And the **lane counts** the road tool offers are only the ones
+  that fit: a tile is 16 m, so six lanes of an arterial is a road for a later
+  wave rather than an option that turns itself down.
   Where a wide road runs into a narrower one, the extra lanes **close over a
   taper** instead of stopping dead: a four-lane road meeting a two-lane street
   spends seven tiles closing its kerbside lanes, and a motorway spends far

@@ -632,6 +632,20 @@ function effectiveSign(tileSet: RoadTileIndex, tile: FurnitureRoadTile): SignTyp
 /** How far past the curve's outer sidewalk edge the bend sign stands. */
 const BEND_SIGN_CURVE_MARGIN = 0.5;
 
+/**
+ * The boards a junction's CONTROL puts on an approach. Unlike the rest of the
+ * kerbside furniture they are not decoration to be scattered: a driver has to
+ * see them from the seat, so where they stand is part of what they mean.
+ */
+const CONTROL_SIGNS: ReadonlySet<SignType> = new Set<SignType>(['signal', 'stop', 'giveway']);
+
+/**
+ * How far back from the junction the control board stands — level with the
+ * stop line the driver is being told to stop at, rather than out at the middle
+ * of the tile where the instruction arrives a car length early.
+ */
+const CONTROL_SIGN_SETBACK_M = 1.0;
+
 /** One typed sign per curbed tile whose road-tile role earns it. */
 export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): SignPlacement[] {
   const tileSet = buildTileSet(roadTiles);
@@ -681,6 +695,38 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
         side: 1,
         lateralOffset: 0,
         type,
+      });
+      continue;
+    }
+
+    const junction = CONTROL_SIGNS.has(type)
+      ? busiestNeighbour(tileSet, tile.x, tile.z)
+      : undefined;
+    if (junction && neighborCount(tileSet, junction.x, junction.z) >= 3) {
+      // A control board stands on the DRIVER'S RIGHT at the stop line, facing
+      // the traffic it holds — not on whichever kerb a hash landed on. Which
+      // way the driver is going is the direction the junction lies in; their
+      // right is that turned a quarter clockwise.
+      const towardX = Math.sign(junction.x - tile.x);
+      const towardZ = Math.sign(junction.z - tile.z);
+      const rightX = -towardZ;
+      const rightZ = towardX;
+      const axis: FurnitureAxis = rightX !== 0 ? 'x' : 'z';
+      const side: FurnitureSide = (rightX !== 0 ? rightX : rightZ) > 0 ? 1 : -1;
+      const lateral = curbsideLateralOffset(tile);
+      const along = TILE_METERS / 2 - CONTROL_SIGN_SETBACK_M;
+      out.push({
+        x: tile.x,
+        z: tile.z,
+        axis,
+        side,
+        lateralOffset: lateral,
+        type,
+        worldOffsetX: rightX * lateral + towardX * along,
+        worldOffsetZ: rightZ * lateral + towardZ * along,
+        // A signal's mast arm reaches out over the road it holds; a flat board
+        // reads from either side and only has to lie along the run.
+        yaw: isCantilevered(type) ? signalYaw(axis, side) : axis === 'x' ? 0 : Math.PI / 2,
       });
       continue;
     }

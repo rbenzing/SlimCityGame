@@ -122,17 +122,21 @@ describe('RoadToolOptions — the Profile row', () => {
     expect(screen.getByLabelText('Profile width')).toHaveTextContent('6.7 / 16 m');
   });
 
-  it('says plainly when the road picked is too wide for a tile', () => {
+  it('never offers a lane count it will then refuse for width', () => {
+    // Eight 12 ft lanes are 28.8 m and six are 21.6 m; the tile is 16 m
+    // across. Those are two-tile corridors, and holding one out only to turn
+    // it down is the tool telling the player off for taking what it offered.
     useCityStore.getState().setTool('road.highway');
     render(<RoadToolOptions />);
     const lanes = screen.getByRole('group', { name: 'Lanes' });
-    fireEvent.click(within(lanes).getByRole('button', { name: '8' }));
-    // Eight 12 ft lanes are 28.8 m; the tile is 16 m across, and the honest
-    // eight-lane motorway is a two-tile corridor.
-    expect(screen.getByLabelText('Profile width')).toHaveAttribute(
-      'title',
-      'Too wide for the tile',
-    );
+    const offered = within(lanes)
+      .getAllByRole('button')
+      .map((b) => b.textContent);
+    expect(offered).toEqual(['2', '4']);
+    for (const count of offered) {
+      fireEvent.click(within(lanes).getByRole('button', { name: count! }));
+      expect(screen.getByLabelText('Profile width')).toHaveAttribute('title', 'Fits the tile');
+    }
   });
 
   it('counts a one-way road’s lanes the one way they run', () => {

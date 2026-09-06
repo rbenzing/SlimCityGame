@@ -92,6 +92,7 @@ import {
   carriagewayHalfWidthOf,
   carriagewayWidth,
   FOOTWAY_WIDTH_M,
+  hasFootway,
   hasKerbs,
   isPaved,
   kerbWidthOf,
@@ -1366,8 +1367,8 @@ const STOP_LINE_THICKNESS_M = 0.4;
  * stop line stands at least 4 ft in advance of the nearest crosswalk line.
  */
 const STOP_LINE_GAP_M = 1.2;
-/** How far inside the tile edge the crosswalk's outer bar starts. */
-const CROSSWALK_EDGE_SETBACK_M = 0.4;
+/** How far inside the tile edge the first thing a driver meets is painted. */
+const ARM_EDGE_SETBACK_M = 0.4;
 
 export interface JunctionArmLayout {
   /** Distance from the tile edge to the crosswalk's outer bar. */
@@ -1388,10 +1389,15 @@ export interface JunctionArmLayout {
  * ground too.
  */
 export function junctionArmLayout(_armDepth?: number): JunctionArmLayout {
-  const crosswalkStart = CROSSWALK_EDGE_SETBACK_M;
-  const crosswalkEnd = crosswalkStart + CROSSWALK_BAR_LENGTH_M;
-  const stopLineStart = crosswalkEnd + STOP_LINE_GAP_M;
+  // In the order a DRIVER meets them, measured inward from the tile edge: the
+  // stop line first, then the gap, then the crossing, then the junction. A
+  // stop line stands in advance of the nearest crosswalk line, which is the
+  // whole point of it — stopping past the crossing is stopping on the people
+  // using it.
+  const stopLineStart = ARM_EDGE_SETBACK_M;
   const stopLineEnd = stopLineStart + STOP_LINE_THICKNESS_M;
+  const crosswalkStart = stopLineEnd + STOP_LINE_GAP_M;
+  const crosswalkEnd = crosswalkStart + CROSSWALK_BAR_LENGTH_M;
   return { crosswalkStart, crosswalkEnd, stopLineStart, stopLineEnd };
 }
 
@@ -2791,12 +2797,33 @@ export interface NeighborHalves {
   e: number;
   s: number;
   w: number;
+  /**
+   * Whether each neighbour carries a real FOOTWAY — somewhere to walk, not
+   * merely a raised kerb. It decides who has a crossing: the people using the
+   * crossing over one arm are walking along the arms across from it, and a
+   * road nobody can walk beside sends nobody over the road it meets. Omitted,
+   * each side is read from its tier's preset.
+   */
+  footways?: { n: boolean; e: boolean; s: boolean; w: boolean };
 }
 
 function presetHalves(neighbors: NeighborTiers): NeighborHalves {
   const half = (tier: RoadTier): number =>
     tier === RoadTier.None ? 0 : carriagewayHalfWidthMeters(tier);
-  return { n: half(neighbors.n), e: half(neighbors.e), s: half(neighbors.s), w: half(neighbors.w) };
+  const walkable = (tier: RoadTier): boolean =>
+    tier !== RoadTier.None && hasFootway(presetProfileForTier(tier));
+  return {
+    n: half(neighbors.n),
+    e: half(neighbors.e),
+    s: half(neighbors.s),
+    w: half(neighbors.w),
+    footways: {
+      n: walkable(neighbors.n),
+      e: walkable(neighbors.e),
+      s: walkable(neighbors.s),
+      w: walkable(neighbors.w),
+    },
+  };
 }
 
 export function roadTileVertices(
@@ -3420,33 +3447,65 @@ export function roadTileVertices(
       // across every entry.
       const painted = control !== undefined && control !== 'none' && control !== 'roundabout';
       const stopsFor = control === 'stop' || control === 'allWayStop' || control === 'signal';
-      const arm = (vertical: boolean, at: (d: number) => number, stops: boolean): void =>
+      // A signal and an all-way stop hold EVERY approach, the road running
+      // through included: it stops on red like everything else, and a stop
+      // line is where it stops. Only a give-way or a minor-road stop leaves
+      // the through road unpainted.
+      const holdsEveryArm = control === 'signal' || control === 'allWayStop';
+      // Who walks over a crossing on this arm: the people going the other way,
+      // on the footways of the arms ACROSS from it. A road with a raised kerb
+      // but no footway — a motorway, an avenue built without one — has nobody
+      // to send over the road it meets, so its arms get no crossing.
+      const ownFootway = hasFootway(crossSection);
+      const walkable = neighborHalves.footways;
+      // An arm whose road is not named is unknown, not absent: a caller that
+      // supplies no neighbours gets this tile's own road on every arm.
+      const armWalkable = (has: boolean, tier: RoadTier, footway: boolean | undefined): boolean =>
+        has && (tier === RoadTier.None || footway === undefined ? ownFootway : footway);
+      const crossedOnFoot = (vertical: boolean): boolean =>
+        vertical
+          ? armWalkable(hasE, neighbors.e, walkable?.e) ||
+            armWalkable(hasW, neighbors.w, walkable?.w)
+          : armWalkable(hasN, neighbors.n, walkable?.n) ||
+            armWalkable(hasS, neighbors.s, walkable?.s);
+      // An arm's paint is as wide as THAT ARM's carriageway, not as wide as
+      // the junction: a stop line across a side street is the width of the
+      // side street, and painting it the width of the avenue it meets makes a
+      // box round the junction instead of a bar across a road. Never wider
+      // than the junction itself, which is as far as the asphalt goes.
+      const armHalf = (neighbourHalf: number): number =>
+        neighbourHalf > 0 ? Math.min(coreHalf, neighbourHalf) : coreHalf;
+      const arm = (
+        vertical: boolean,
+        at: (d: number) => number,
+        stops: boolean,
+        half: number,
+      ): void =>
         emitJunctionArmMarkings(
           positions,
           colors,
           vertical,
           centerX,
           centerZ,
-          coreHalf,
+          half,
           at,
           hAt,
-          spec.hasCurbs,
+          crossedOnFoot(vertical),
           stops,
         );
       // Measured inward from the TILE edge, which is where the approach
       // actually reaches the junction, rather than outward from the box.
       if (painted) {
-        const armAt: [boolean, RoadTier, boolean, (d: number) => number][] = [
-          [hasN, neighbors.n, true, (d) => -TILE_HALF + d],
-          [hasS, neighbors.s, true, (d) => TILE_HALF - d],
-          [hasE, neighbors.e, false, (d) => TILE_HALF - d],
-          [hasW, neighbors.w, false, (d) => -TILE_HALF + d],
+        const armAt: [boolean, RoadTier, number, boolean, (d: number) => number][] = [
+          [hasN, neighbors.n, neighborHalves.n, true, (d) => -TILE_HALF + d],
+          [hasS, neighbors.s, neighborHalves.s, true, (d) => TILE_HALF - d],
+          [hasE, neighbors.e, neighborHalves.e, false, (d) => TILE_HALF - d],
+          [hasW, neighbors.w, neighborHalves.w, false, (d) => -TILE_HALF + d],
         ];
-        for (const [has, neighborTier, vertical, at] of armAt) {
-          if (!has || !armStops(neighborTier)) continue;
-          // A signal holds every approach; a give-way or a minor-road stop
-          // holds only the arms below the road that runs through.
-          arm(vertical, at, stopsFor);
+        for (const [has, neighborTier, neighbourHalf, vertical, at] of armAt) {
+          if (!has) continue;
+          if (!holdsEveryArm && !armStops(neighborTier)) continue;
+          arm(vertical, at, stopsFor, armHalf(neighbourHalf));
         }
       }
 
@@ -3822,6 +3881,12 @@ export class RoadMeshRenderer {
     return narrowingAhead(x, z, this.surroundings);
   }
 
+  /** Whether the road at (x,z) is one a pedestrian can walk beside. */
+  private walkableAt(x: number, z: number): boolean {
+    const profile = this.profileAt(x, z);
+    return profile !== null && hasFootway(profile);
+  }
+
   /**
    * The carriageway half-width of the road at (x,z), read from the
    * cross-section that tile actually paints — a turn pocket widens the asphalt
@@ -3875,6 +3940,12 @@ export class RoadMeshRenderer {
           e: this.halfAt(tile.x + 1, tile.z),
           s: this.halfAt(tile.x, tile.z + 1),
           w: this.halfAt(tile.x - 1, tile.z),
+          footways: {
+            n: this.walkableAt(tile.x, tile.z - 1),
+            e: this.walkableAt(tile.x + 1, tile.z),
+            s: this.walkableAt(tile.x, tile.z + 1),
+            w: this.walkableAt(tile.x - 1, tile.z),
+          },
         },
         tile.flow,
         this.junctionControls.get(tileIndex(tile.x, tile.z)),

@@ -23,6 +23,8 @@ import {
   FIRST_CUSTOM_PROFILE_ID,
   fitsTile,
   hasKerbs,
+  KERB_RESERVE_M,
+  kerbWidthOf,
   isLayable,
   isPaved,
   isPresetProfileId,
@@ -733,10 +735,18 @@ describe('lane widths and the lane counts a road is offered, to US standards', (
     expect(laneWidthFor('dirt')).toBeLessThan(laneWidthFor('local'));
   });
 
-  it('offers a motorway up to eight lanes, a town street four, a local street and a track two', () => {
-    expect(laneOptionsFor('highway')).toEqual([2, 4, 6, 8]);
-    expect(laneOptionsFor('divided')).toEqual([4, 6]);
-    expect(laneOptionsFor('arterial')).toEqual([4, 6]);
+  it('offers only the lane counts a tile can actually hold', () => {
+    // The catalogue lets an arterial run to six and a motorway to eight, and
+    // both are real roads — but six 12 ft lanes are 21.6 m of carriageway on a
+    // 16 m tile. Those are two-tile corridors, and until there are two-tile
+    // corridors the tool must not hold out what it will then refuse.
+    for (const id of ['highway', 'divided', 'arterial', 'urban', 'collector', 'local'] as const) {
+      for (const n of laneOptionsFor(id))
+        expect(n * laneWidthFor(id)).toBeLessThanOrEqual(TILE_METERS + 1e-6);
+    }
+    expect(laneOptionsFor('highway')).toEqual([2, 4]);
+    expect(laneOptionsFor('divided')).toEqual([4]);
+    expect(laneOptionsFor('arterial')).toEqual([4]);
     expect(laneOptionsFor('urban')).toEqual([2, 4]);
     expect(laneOptionsFor('collector')).toEqual([2, 4]);
     expect(laneOptionsFor('local')).toEqual([2]);
@@ -864,26 +874,52 @@ describe('turn pockets', () => {
       expect(width).toBeGreaterThanOrEqual(TURN_POCKET_MIN_WIDTH_M - 1e-9);
   });
 
-  it("cuts an avenue's turn bay out of the median, which is where one has always gone", () => {
-    const avenue = presetProfileForTier(RoadTier.Avenue);
-    const pocketed = withTurnPocket(avenue, 1)!;
+  it('cuts a divided road’s turn bay out of the median, which is where one has always gone', () => {
+    const divided: RoadProfile = {
+      class: 'divided',
+      kerbs: true,
+      pieces: [
+        { kind: 'travel', width: 2.95, flow: 'back' },
+        { kind: 'travel', width: 2.95, flow: 'back' },
+        { kind: 'median', width: 1.8 },
+        { kind: 'travel', width: 2.95, flow: 'fwd' },
+        { kind: 'travel', width: 2.95, flow: 'fwd' },
+      ],
+    };
+    const pocketed = withTurnPocket(divided, 1)!;
     expect(pocketed.pieces.some((p) => p.kind === 'median')).toBe(false);
     expect(travel(pocketed)).toHaveLength(5);
-    expect(profileWidth(pocketed)).toBeLessThanOrEqual(TILE_METERS + 1e-9);
-    // The bay is a full lane, and the width the median could not cover came
-    // off the widest lane beside it — never off one already at the minimum.
+    // The bay sits against the centreline on the approaching half, and the
+    // road still leaves its kerbs somewhere to stand.
     expect(pocketed.pieces[2]).toMatchObject({ kind: 'travel', flow: 'fwd' });
     expect(pocketed.pieces[2]!.width).toBeGreaterThanOrEqual(TURN_POCKET_MIN_WIDTH_M - 1e-9);
-    expect(Math.min(...travel(pocketed))).toBeGreaterThanOrEqual(Math.min(...travel(avenue)));
-    expect(pocketed.pieces[4]!.width).toBeLessThan(avenue.pieces[4]!.width);
+    expect(profileWidth(pocketed)).toBeLessThanOrEqual(TILE_METERS - 2 * KERB_RESERVE_M + 1e-9);
     // The half going the other way never noticed.
-    expect(pocketed.pieces.slice(0, 2)).toEqual(avenue.pieces.slice(0, 2));
+    expect(pocketed.pieces.slice(0, 2)).toEqual(divided.pieces.slice(0, 2));
+  });
+
+  it('leaves every road somewhere to stand its kerb, whatever the bay costs', () => {
+    // A carriageway laid edge to edge has nowhere for the kerb, the lamp or
+    // the signal the bay exists to queue at — so the bay never spends the last
+    // of the tile.
+    for (const tier of [RoadTier.TwoLane, RoadTier.Avenue, RoadTier.FourLane] as const) {
+      const preset = presetProfileForTier(tier);
+      const pocketed = withTurnPocket(preset, 1);
+      if (!pocketed || !hasKerbs(pocketed) || pocketed.pieces.some((p) => p.kind === 'sidewalk'))
+        continue;
+      expect(kerbWidthOf(pocketed)).toBeGreaterThanOrEqual(KERB_RESERVE_M - 1e-9);
+    }
   });
 
   it('refuses where the width simply is not there', () => {
     // Four 12 ft lanes leave a metre of a 16 m tile; a lane is three.
     expect(withTurnPocket(presetProfileForTier(RoadTier.FourLane), 1)).toBeNull();
     expect(withTurnPocket(presetProfileForTier(RoadTier.Highway), 1)).toBeNull();
+    // The avenue is the near miss: 15 m of carriageway in a 16 m tile, with a
+    // 1.8 m median to give and inner lanes already under the 10 ft floor. Even
+    // spending the median it cannot find a bay AND keep a kerb, so it gets
+    // neither — the six-lane divided road that can is a two-tile corridor.
+    expect(withTurnPocket(presetProfileForTier(RoadTier.Avenue), 1)).toBeNull();
   });
 
   it('never takes a reserved lane for it', () => {

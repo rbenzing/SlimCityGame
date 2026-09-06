@@ -2573,6 +2573,37 @@ scaled by one constant into the units the sim already uses.
    boundary is exactly the strip the neighbour lays there — so the two
    footways meet rather than step. Constant-width runs, turns, dead ends and
    junction throats keep the rectangles they were always made of.
+   What a JUNCTION reads like on the ground was corrected the first time
+   anybody looked at one closely, and each correction is a rule rather than a
+   nudge. A CROSSING belongs to the people who walk it, not to the road it is
+   painted across: they are travelling the other way, on the footways of the
+   arms across from it, so an arm is crossed only where a road on the
+   perpendicular axis has a real footway. A raised kerb is not a footway — an
+   avenue or a motorway built without one sends nobody over the road it meets.
+   A STOP LINE and the crossing beyond it are laid in the order a driver meets
+   them: the bar first, a metre and a fifth of gap, then the zebra, since a
+   stop line stands in advance of the nearest crosswalk line and stopping past
+   the crossing is stopping on the people using it. Each arm's paint is as
+   wide as THAT ARM, not as wide as the junction, or a side street's stop bar
+   is painted the width of the avenue and the four bars close into a box. A
+   signal and an all-way stop hold EVERY approach, the road running through
+   included — only a give-way or a minor-road stop leaves it unpainted.
+   And the board that holds an approach stands where a driver can read it:
+   on their RIGHT, at the stop line, facing the traffic it holds. It is the
+   one piece of kerbside furniture that is not scattered, because where it
+   stands is part of what it means — and standing it at the stop line is also
+   what stops it sharing a slot with the lamp at the tile's centre.
+   Two width rules follow from the same principle, that the tile is 16 m and
+   saying otherwise later is worse than saying so now. A road is offered only
+   the lane counts a tile can hold: six lanes of an arterial is a real road at
+   21.6 m, and offering it and then refusing it for width is the tool telling
+   the player off for taking what it held out. And a turn bay leaves the KERB
+   RESERVE — half a metre each side, the narrowest kerb the game draws — so a
+   carriageway is never laid edge to edge with nowhere to stand the signal the
+   bay exists to queue at. The avenue is the near miss: 15 m of carriageway,
+   a 1.8 m median to give and inner lanes already under the 10 ft floor, so it
+   gets no bay, and the six-lane divided road that would is a two-tile
+   corridor.
    *Deferred out of the wave, deliberately:* per-LANE movement sets, since the
    restriction is per ARM today and an arm is what a player actually reaches
    for — the model earns its keep only alongside the multi-lane approaches of

@@ -262,6 +262,18 @@ export function kerbWidthOf(profile: RoadProfile): number {
   return Math.max(0, Math.min(FOOTWAY_WIDTH_M, TILE_METERS / 2 - carriagewayHalfWidthOf(profile)));
 }
 
+/**
+ * The strip a kerbed road keeps outside its carriageway however it spends the
+ * rest of the tile: somewhere for the kerb itself, and for the lamp column and
+ * the signal mast that stand behind it. It is the motorway's own half a metre,
+ * which is the narrowest kerb the game draws.
+ *
+ * A carriageway laid edge to edge across the tile has nowhere to put any of
+ * them — the paving beside it flares out into the verge looking for room, and
+ * the furniture stands in the road.
+ */
+export const KERB_RESERVE_M = 0.5;
+
 /** Kerb to kerb including footways, metres — what the tile has to hold. */
 export function profileWidth(profile: RoadProfile): number {
   return profile.pieces.reduce((w, p) => w + p.width, 0);
@@ -275,6 +287,15 @@ export function fitsTile(profile: RoadProfile): boolean {
 /** Raised kerbs on the unconnected sides: explicit, else wherever there is a footway. */
 export function hasKerbs(profile: RoadProfile): boolean {
   return profile.kerbs ?? profile.pieces.some((p) => p.kind === 'sidewalk');
+}
+
+/**
+ * Somewhere to WALK beside the road — a footway, not merely the raised kerb a
+ * motorway has. It is the difference between a road a pedestrian may use and
+ * one they may not, which is what decides where a crossing belongs.
+ */
+export function hasFootway(profile: RoadProfile): boolean {
+  return profile.pieces.some((p) => p.kind === 'sidewalk');
 }
 
 /** Whether the surface takes paint: gravel and ballast do not. */
@@ -380,7 +401,12 @@ export function withTurnPocket(
       ? null
       : sources.reduce((a, b) => (Math.abs(b.centre) > Math.abs(a.centre) ? b : a));
 
-  const slack = Math.max(0, TILE_METERS - profileWidth(profile));
+  // A road whose footways are pieces of its own has already paid for its kerbs;
+  // one that draws them out of the leftover has not, and the bay may not spend
+  // the last of it. A carriageway filling the tile has nowhere to stand a
+  // signal, which is the one thing the bay is there for.
+  const reserve = hasKerbs(profile) && !hasFootway(profile) ? 2 * KERB_RESERVE_M : 0;
+  const slack = Math.max(0, TILE_METERS - profileWidth(profile) - reserve);
   let width = Math.min(target, slack);
   let takeSource = false;
   if (width < minimum && source) {
@@ -420,7 +446,10 @@ export function withTurnPocket(
   if (insertBefore >= profile.pieces.length) pieces.push(pocket);
 
   const pocketed: RoadProfile = { ...profile, pieces };
-  return fitsTile(pocketed) ? pocketed : null;
+  // The same reserve the width came out of, applied to the answer: taking the
+  // bay out of the parking or the lanes must not put the carriageway back
+  // against the tile edge either.
+  return profileWidth(pocketed) <= TILE_METERS - reserve + 1e-6 ? pocketed : null;
 }
 
 /** Whether this cross-section can find the width for a turn pocket on that half. */
@@ -525,10 +554,26 @@ const LANE_OPTIONS_BY_CLASS: Readonly<Record<RoadClassId, readonly number[]>> = 
   rail: [],
 };
 
-/** The lane counts this class offers, total across both directions. */
+/**
+ * The lane counts this class offers, total across both directions: the ones
+ * its own catalogue range allows AND the ones a tile can hold. Six lanes of an
+ * arterial is a real road, but at 3.6 m a lane it is 21.6 m of carriageway on
+ * a 16 m tile — a road that needs two of them, which is a corridor and not
+ * this. Offering a count that can never be laid, then refusing it for width,
+ * is the tool telling the player off for taking what it held out.
+ *
+ * The travel lanes alone decide it. What a player adds on top — parking, a
+ * bike lane, a footway — can still overrun the tile, and being told so is
+ * fair: that is a choice, and it can be taken back.
+ */
 export function laneOptionsFor(classId: RoadClassId): readonly number[] {
   const { min, max } = roadClass(classId).lanes;
-  return LANE_OPTIONS_BY_CLASS[classId].filter((n) => n >= min && n <= max);
+  const lane = laneWidthFor(classId);
+  const inRange = LANE_OPTIONS_BY_CLASS[classId].filter((n) => n >= min && n <= max);
+  const fits = inRange.filter((n) => n * lane <= TILE_METERS + 1e-6);
+  // A class whose very smallest road overruns the tile still offers it, so the
+  // drawer is never empty and the width chip explains itself.
+  return fits.length > 0 ? fits : inRange.slice(0, 1);
 }
 
 /** Real-world default widths, metres, for a piece a player adds. */

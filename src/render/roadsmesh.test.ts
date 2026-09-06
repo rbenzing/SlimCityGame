@@ -767,12 +767,16 @@ describe('roadTileVertices — intersection suppression / proper intersections (
 });
 
 describe('junctionArmLayout — a crosswalk and a stop line at their real size', () => {
-  it('measures inward from the tile edge: crosswalk first, then a gap, then the stop line', () => {
+  it('lays them in the order a driver meets them: stop line, gap, then the crossing', () => {
     const layout = junctionArmLayout();
-    expect(layout.crosswalkStart).toBeGreaterThan(0);
-    expect(layout.crosswalkEnd - layout.crosswalkStart).toBeCloseTo(2.4, 9);
-    expect(layout.stopLineStart).toBeGreaterThan(layout.crosswalkEnd);
+    // Measured inward from the tile edge, which is the direction traffic
+    // arrives in. A stop line stands in advance of the nearest crosswalk
+    // line — stopping past the crossing is stopping on the people using it.
+    expect(layout.stopLineStart).toBeGreaterThan(0);
     expect(layout.stopLineEnd - layout.stopLineStart).toBeCloseTo(0.4, 9);
+    expect(layout.crosswalkStart).toBeGreaterThan(layout.stopLineEnd);
+    expect(layout.crosswalkStart - layout.stopLineEnd).toBeCloseTo(1.2, 9);
+    expect(layout.crosswalkEnd - layout.crosswalkStart).toBeCloseTo(2.4, 9);
   });
 
   it('keeps its real size whatever the road, since squeezing it is what made a crossing read as a dashed ring', () => {
