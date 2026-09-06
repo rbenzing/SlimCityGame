@@ -19,6 +19,7 @@ import type {
   CityStats,
   Command,
   District,
+  JunctionControl,
   LensId,
   Policy,
   SelectionInfo,
@@ -70,6 +71,20 @@ export interface BoundActions {
  */
 export type ToolMode = 'straight' | 'lpath';
 
+/**
+ * The junction the inspector has open: where it is, who gives way there, and
+ * whether that is the control the warrant worked out (`auto`) or the one the
+ * player set.
+ */
+export interface SelectedJunction {
+  x: number;
+  z: number;
+  control: JunctionControl;
+  /** What the warrant makes of it, so "Automatic" can say what it would mean. */
+  warranted: JunctionControl;
+  auto: boolean;
+}
+
 export function createInitialToolFlags(): ToolFlags {
   return { angleLock: false, straightMode: false, replaceRoad: false };
 }
@@ -107,6 +122,13 @@ export interface CityStoreState {
   notifications: CityNotification[];
   preview: PreviewInfo | null;
   selectedBuilding: BuildingInstance | null;
+  /**
+   * The junction the player has open in the inspector: where it is, who gives
+   * way there, and whether that is the warrant's answer or theirs. Cleared by
+   * clicking off it, and refreshed from every snapshot so a control the
+   * warrant changes under the open panel is what the panel shows.
+   */
+  selectedJunction: SelectedJunction | null;
   canUndo: boolean;
   canRedo: boolean;
   bound: BoundActions | null;
@@ -182,6 +204,7 @@ export interface CityStoreState {
   pushNotification: (note: CityNotification) => void;
   dismissNotification: (id: number) => void;
   setSelectedBuilding: (building: BuildingInstance | null) => void;
+  setSelectedJunction: (junction: SelectedJunction | null) => void;
   setUndoState: (canUndo: boolean, canRedo: boolean) => void;
   setPreview: (preview: PreviewInfo | null) => void;
   bindActions: (actions: BoundActions) => void;
@@ -232,6 +255,7 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   notifications: [],
   preview: null,
   selectedBuilding: null,
+  selectedJunction: null,
   canUndo: false,
   canRedo: false,
   bound: null,
@@ -299,6 +323,7 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   dismissNotification: (id) =>
     set((state) => ({ notifications: state.notifications.filter((n) => n.id !== id) })),
   setSelectedBuilding: (building) => set({ selectedBuilding: building }),
+  setSelectedJunction: (junction) => set({ selectedJunction: junction }),
   setUndoState: (canUndo, canRedo) => set({ canUndo, canRedo }),
   setPreview: (preview) => set({ preview }),
   bindActions: (actions) => set({ bound: actions }),

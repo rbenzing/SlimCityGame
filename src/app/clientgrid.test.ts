@@ -518,28 +518,52 @@ describe('ClientGridMirror — junction control', () => {
   });
 
   it('knows nothing until the worker says, and then reports what it said', () => {
-    expect(mirror.junctionControlAt(4, 4)).toBeUndefined();
-    expect(mirror.applyJunctions([{ x: 4, z: 4, control: 'signal' }])).toBe(true);
-    expect(mirror.junctionControlAt(4, 4)).toBe('signal');
-    expect(mirror.junctionControlAt(4, 5)).toBeUndefined();
+    expect(mirror.junctionAt(4, 4)?.control).toBeUndefined();
+    expect(
+      mirror.applyJunctions([{ x: 4, z: 4, control: 'signal', warranted: 'signal', auto: true }]),
+    ).toBe(true);
+    expect(mirror.junctionAt(4, 4)?.control).toBe('signal');
+    expect(mirror.junctionAt(4, 5)?.control).toBeUndefined();
   });
 
   it('reports whether the answer actually moved, since no tile changes when it does', () => {
-    mirror.applyJunctions([{ x: 4, z: 4, control: 'stop' }]);
-    expect(mirror.applyJunctions([{ x: 4, z: 4, control: 'stop' }])).toBe(false);
-    expect(mirror.applyJunctions([{ x: 4, z: 4, control: 'allWayStop' }])).toBe(true);
+    mirror.applyJunctions([{ x: 4, z: 4, control: 'stop', warranted: 'stop', auto: true }]);
+    expect(
+      mirror.applyJunctions([{ x: 4, z: 4, control: 'stop', warranted: 'stop', auto: true }]),
+    ).toBe(false);
+    expect(
+      mirror.applyJunctions([
+        { x: 4, z: 4, control: 'allWayStop', warranted: 'allWayStop', auto: true },
+      ]),
+    ).toBe(true);
     expect(mirror.applyJunctions([])).toBe(true);
-    expect(mirror.junctionControlAt(4, 4)).toBeUndefined();
+    expect(mirror.junctionAt(4, 4)?.control).toBeUndefined();
   });
 
   it('drops a junction outside the map rather than indexing off the end', () => {
-    expect(mirror.applyJunctions([{ x: -1, z: 0, control: 'stop' }])).toBe(false);
-    expect(mirror.applyJunctions([{ x: SIZE, z: 0, control: 'stop' }])).toBe(false);
+    const off = (x: number) => [
+      { x, z: 0, control: 'stop' as const, warranted: 'stop' as const, auto: true },
+    ];
+    expect(mirror.applyJunctions(off(-1))).toBe(false);
+    expect(mirror.applyJunctions(off(SIZE))).toBe(false);
+  });
+
+  it('reports a junction the player set apart from one on its warrant', () => {
+    mirror.applyJunctions([{ x: 4, z: 4, control: 'stop', warranted: 'stop', auto: false }]);
+    expect(mirror.junctionAt(4, 4)?.auto).toBe(false);
+    // The same control, now the warrant's, is a change the render has to see:
+    // the inspector reads it differently even though the road looks the same.
+    expect(
+      mirror.applyJunctions([{ x: 4, z: 4, control: 'stop', warranted: 'stop', auto: true }]),
+    ).toBe(true);
+    expect(mirror.junctionAt(4, 4)?.auto).toBe(true);
   });
 
   it('hands the control to the road tile that carries it, and to no other', () => {
     mirror.applyRoadDeltas([road(4, 4), road(4, 5)]);
-    mirror.applyJunctions([{ x: 4, z: 4, control: 'allWayStop' }]);
+    mirror.applyJunctions([
+      { x: 4, z: 4, control: 'allWayStop', warranted: 'allWayStop', auto: true },
+    ]);
     const tiles = mirror.roadTiles();
     expect(tiles.find((t) => t.x === 4 && t.z === 4)?.control).toBe('allWayStop');
     expect(tiles.find((t) => t.x === 4 && t.z === 5)?.control).toBeUndefined();

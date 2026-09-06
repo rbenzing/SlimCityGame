@@ -67,9 +67,12 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > a ladder from nothing through give-way, a stop on the minor road and a stop
 > on every arm to a signal — and the seconds it costs are paid in the path
 > cost, so crossing a signalised avenue really is slower than crossing a quiet
-> street and a slow junction reroutes traffic. Next: the junction inspector and
-> a sticky player override, signs and signals placed by the control rather than
-> the tier, cycling signal heads, roundabouts, then waves 4–6.
+> street and a slow junction reroutes traffic. The signs and the paint follow
+> that control rather than the road's tier, so two quiet streets crossing are
+> now unsigned and unpainted the way they are in life; and the warrant is a
+> default the player overrides from a junction inspector — click a junction,
+> pick a control off the ladder, and it sticks, saved with the city at version
+> 8. Next: cycling signal heads, roundabouts, then waves 4–6.
 > Specified in full: classes, lane-piece
 > profiles with a width budget, stored flow direction, per-junction control
 > (none/yield/stop/all-way/signal/roundabout) with warrant defaults,

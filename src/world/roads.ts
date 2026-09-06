@@ -8,7 +8,7 @@
 import { armsAt, findPath as runAstar, nearestNode as findNearestNode } from './pathfind';
 import { flowForStep, RoadFlow, RoadTier, ZoneType, isStreetTier } from '../shared/types';
 import { isPresetProfileId, presetProfileForTier, rankForTier } from '../shared/roadprofile';
-import { warrantedControl } from '../shared/junction';
+import { controlFromCode, warrantedControl } from '../shared/junction';
 import type {
   GraphEdge,
   GraphNode,
@@ -226,6 +226,7 @@ export function removeRoad(g: GridState, tiles: TilePoint[]): RoadTileDelta[] {
     g.roadTier[idx] = RoadTier.None;
     g.roadProfile[idx] = 0;
     g.roadFlow[idx] = RoadFlow.None; // the direction goes with the road
+    g.junctionControl[idx] = 0; // and so does whatever the player set here
     g.roadMask[idx] = 0;
     g.roadElevation[idx] = 0; // the deck goes with the road
     removedIdx.add(idx);
@@ -547,13 +548,23 @@ export class RoadNetwork implements RoadNetworkApi {
    * have changed: when the graph is rebuilt, and once a game day when the
    * volumes decay — which is what makes a control that only a busy junction
    * warrants appear as the city fills, and go away again when it empties.
+   *
+   * A junction the player has set keeps what they set. The warrant never
+   * argues with a choice, so it is not even worked out for that node.
    */
   private refreshControls(): void {
     const byId = new Map<number, GraphEdge>();
     for (const edge of this.edges) byId.set(edge.id, edge);
     const lookup = (id: number): GraphEdge | undefined => byId.get(id);
+    const grid = this.grid;
     for (const node of this.nodes) {
-      node.control = warrantedControl(armsAt(node, lookup).map((arm) => arm.approach));
+      const override = grid
+        ? controlFromCode(grid.junctionControl[indexOf(grid.size, node.x, node.z)] ?? 0)
+        : null;
+      // The warrant is worked out either way, so the inspector can say what
+      // handing the junction back to it would mean.
+      node.warranted = warrantedControl(armsAt(node, lookup).map((arm) => arm.approach));
+      node.control = override ?? node.warranted;
     }
   }
 

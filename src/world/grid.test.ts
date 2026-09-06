@@ -163,7 +163,7 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g); // current version: district + landfill + elevation
 
-    const v1 = cur.slice(0, cur.byteLength - 9 * n); // drop all three trailing layers, the u16 profile tail and the flow byte
+    const v1 = cur.slice(0, cur.byteLength - 10 * n); // drop all three trailing layers, the u16 profile tail, the flow byte and the junction-control byte
     new DataView(v1).setUint32(0, 1, true); // stamp version 1
 
     const back = deserializeGrid(v1);
@@ -193,7 +193,7 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g);
 
-    const v2 = cur.slice(0, cur.byteLength - 8 * n); // drop landfill + elevation + the u16 profile tail + the flow byte
+    const v2 = cur.slice(0, cur.byteLength - 9 * n); // drop landfill + elevation + the u16 profile tail + the flow and junction-control bytes
     new DataView(v2).setUint32(0, 2, true); // stamp version 2
 
     const back = deserializeGrid(v2);
@@ -213,7 +213,7 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g);
 
-    const v3 = cur.slice(0, cur.byteLength - 7 * n); // drop the elevation floats + the u16 profile tail + the flow byte
+    const v3 = cur.slice(0, cur.byteLength - 8 * n); // drop the elevation floats + the u16 profile tail + the flow and junction-control bytes
     new DataView(v3).setUint32(0, 3, true); // stamp version 3
 
     const back = deserializeGrid(v3);
@@ -233,7 +233,7 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g);
 
-    const body = cur.slice(0, cur.byteLength - 7 * n); // everything before the float tail, the u16 profile tail and the flow byte
+    const body = cur.slice(0, cur.byteLength - 8 * n); // everything before the float tail, the u16 profile tail and the flow and junction-control bytes
     const v4 = new ArrayBuffer(body.byteLength + n);
     const bytes = new Uint8Array(v4);
     bytes.set(new Uint8Array(body));
@@ -255,7 +255,7 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g);
 
-    const v5 = cur.slice(0, cur.byteLength - 3 * n); // everything before the u16 profile tail and the flow byte
+    const v5 = cur.slice(0, cur.byteLength - 4 * n); // everything before the u16 profile tail and the flow and junction-control bytes
     new DataView(v5).setUint32(0, 5, true);
 
     const back = deserializeGrid(v5);
@@ -633,7 +633,7 @@ describe('the flow layer survives a save (v7)', () => {
     fillDeterministic(g);
     g.roadFlow.fill(2);
     const cur = serializeGrid(g);
-    const v6 = cur.slice(0, cur.byteLength - n); // drop the trailing flow byte
+    const v6 = cur.slice(0, cur.byteLength - 2 * n); // drop the trailing flow and junction-control bytes
     new DataView(v6).setUint32(0, 6, true);
 
     const back = deserializeGrid(v6);
@@ -642,5 +642,33 @@ describe('the flow layer survives a save (v7)', () => {
     // Everything before it is untouched.
     expect(Array.from(back.roadProfile)).toEqual(Array.from(g.roadProfile));
     expect(Array.from(back.roadTier)).toEqual(Array.from(g.roadTier));
+  });
+
+  it('round-trips the junction controls the player set', () => {
+    const size = 5;
+    const g = createGrid(size);
+    fillDeterministic(g);
+    g.junctionControl[3] = 5;
+    g.junctionControl[11] = 2;
+    const back = deserializeGrid(serializeGrid(g));
+    expect(Array.from(back.junctionControl)).toEqual(Array.from(g.junctionControl));
+  });
+
+  it('migrates a v7 buffer (no junction-control layer) — every junction loads on its warrant', () => {
+    const size = 5;
+    const n = size * size;
+    const g = createGrid(size);
+    fillDeterministic(g);
+    g.junctionControl.fill(4);
+    const cur = serializeGrid(g);
+    const v7 = cur.slice(0, cur.byteLength - n); // drop the trailing junction-control byte
+    new DataView(v7).setUint32(0, 7, true);
+
+    const back = deserializeGrid(v7);
+    expect(back.junctionControl.length).toBe(n);
+    expect(back.junctionControl.every((v) => v === 0)).toBe(true);
+    // The flow layer just before it still lands where it should.
+    expect(Array.from(back.roadFlow)).toEqual(Array.from(g.roadFlow));
+    expect(Array.from(back.roadProfile)).toEqual(Array.from(g.roadProfile));
   });
 });

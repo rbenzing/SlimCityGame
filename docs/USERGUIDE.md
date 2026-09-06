@@ -66,7 +66,12 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   cosmetic — crossing a signal costs a driver real seconds, and drivers reroute
   around a slow junction — and it follows the city: a crossroads that needs
   nothing today earns a give-way, then a stop, as the blocks around it fill,
-  and loses them again if the traffic goes away. Roads snap to the
+  and loses them again if the traffic goes away. **Click any junction** and a
+  panel tells you who gives way there and lets you change it: pick a control
+  off the ladder — nothing, give way, stop, all-way stop, signals — and it
+  sticks, saved with the city, until you hand the junction back to Automatic.
+  The Automatic row always says what the city would choose if you did, so you
+  can see what you are overriding. Roads snap to the
   grid, round their corners and dead-ends, and bank smoothly up slopes (the ground
   is graded under them automatically).
 - **Zoning** — residential, commercial, and industrial. Denser residential

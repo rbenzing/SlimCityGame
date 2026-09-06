@@ -66,6 +66,7 @@ export function createGrid(size?: number): GridState {
     roadElevation: new Float32Array(n),
     roadProfile: new Uint16Array(n),
     roadFlow: new Uint8Array(n),
+    junctionControl: new Uint8Array(n),
   };
 }
 
@@ -78,22 +79,38 @@ export function createGrid(size?: number): GridState {
 // ---------------------------------------------------------------------------
 
 const HEADER_BYTES = 8; // uint32 version + uint32 size
-// SAVE_VERSION 7 layout: 4 (height) + 4 (buildingId) + 4 (roadElevation) + 2
-// (roadProfile) + 19 single-byte layers (7 flat: water/trees/zone/roadTier/
-// roadMask/power/watered) + 9 fields + 1 district + 1 landfill + 1 roadFlow.
-const BYTES_PER_TILE = 33;
-// v6 is this layout without the trailing roadFlow layer, which loads unset;
-// v5 drops the roadProfile layer too, deriving it from roadTier on load; v4 is
-// v5 with roadElevation still one byte per tile;
+// SAVE_VERSION 8 layout: 4 (height) + 4 (buildingId) + 4 (roadElevation) + 2
+// (roadProfile) + 20 single-byte layers (7 flat: water/trees/zone/roadTier/
+// roadMask/power/watered) + 9 fields + 1 district + 1 landfill + 1 roadFlow +
+// 1 junctionControl.
+const BYTES_PER_TILE = 34;
+// v7 is this layout without the trailing junctionControl layer, which loads
+// unset so every junction takes the control its warrant works out; v6 drops
+// roadFlow too; v5 drops the roadProfile layer, deriving it from roadTier on
+// load; v4 is v5 with roadElevation still one byte per tile;
 // each version before that drops one trailing layer — v3 district + landfill
 // but no elevation, v2 district only, v1 none of them. deserializeGrid accepts
 // all of them, widening v4's byte and defaulting every absent trailing layer.
+const BYTES_PER_TILE_V7 = 33;
 const BYTES_PER_TILE_V6 = 32;
 const BYTES_PER_TILE_V5 = 30;
 const BYTES_PER_TILE_V4 = 27;
 const BYTES_PER_TILE_V3 = 26;
 const BYTES_PER_TILE_V2 = 25;
 const BYTES_PER_TILE_V1 = 24;
+
+/** How wide a tile is in each save version, indexed by version number. */
+const BYTES_PER_TILE_BY_VERSION: readonly number[] = [
+  0,
+  BYTES_PER_TILE_V1,
+  BYTES_PER_TILE_V2,
+  BYTES_PER_TILE_V3,
+  BYTES_PER_TILE_V4,
+  BYTES_PER_TILE_V5,
+  BYTES_PER_TILE_V6,
+  BYTES_PER_TILE_V7,
+  BYTES_PER_TILE,
+];
 
 function bufferBytesFor(size: number, bytesPerTile: number = BYTES_PER_TILE): number {
   return HEADER_BYTES + size * size * bytesPerTile;
@@ -161,6 +178,10 @@ export function serializeGrid(g: GridState): ArrayBuffer {
   offset += n * 2;
   // roadFlow (v7): one byte per tile — which way each road runs.
   bytes.set(g.roadFlow, offset);
+  offset += n;
+  // junctionControl (v8): one byte per tile — the player's override, 0 where
+  // they have left the junction on the control its warrant works out.
+  bytes.set(g.junctionControl, offset);
 
   return buffer;
 }
@@ -185,22 +206,11 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
   const elevationIsByte = version === 4;
   const hasRoadProfile = version >= 6;
   const hasRoadFlow = version >= 7;
+  const hasJunctionControl = version >= 8;
 
   const size = view.getUint32(4, true);
   const n = size * size;
-  const bytesPerTile = hasRoadFlow
-    ? BYTES_PER_TILE
-    : hasRoadProfile
-      ? BYTES_PER_TILE_V6
-      : elevationIsByte
-        ? BYTES_PER_TILE_V4
-        : hasRoadElevation
-          ? BYTES_PER_TILE_V5
-          : hasLandfill
-            ? BYTES_PER_TILE_V3
-            : hasDistrict
-              ? BYTES_PER_TILE_V2
-              : BYTES_PER_TILE_V1;
+  const bytesPerTile = BYTES_PER_TILE_BY_VERSION[version] ?? BYTES_PER_TILE;
   const expectedBytes = bufferBytesFor(size, bytesPerTile);
   if (buf.byteLength !== expectedBytes) {
     throw new Error(
@@ -275,6 +285,12 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
   // were drawn, so they load unset and every reader falls back to the geometry
   // it read before there was a stored direction.
   const roadFlow = hasRoadFlow ? bytes.slice(offset, offset + n) : new Uint8Array(n);
+  if (hasRoadFlow) offset += n;
+  // Junction control layer (v8+). An older buffer never overrode a junction,
+  // so every one of them loads on the control its warrant works out.
+  const junctionControl = hasJunctionControl
+    ? bytes.slice(offset, offset + n)
+    : new Uint8Array(n);
 
   return {
     size,
@@ -293,6 +309,7 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
     roadElevation,
     roadProfile,
     roadFlow,
+    junctionControl,
   };
 }
 
@@ -488,6 +505,7 @@ export function clearTiles(g: GridState, tiles: TilePoint[]): ClearTilesResult {
       g.roadTier[i] = RoadTier.None;
       g.roadProfile[i] = 0;
       g.roadFlow[i] = RoadFlow.None;
+      g.junctionControl[i] = 0;
       g.roadMask[i] = 0;
     }
 

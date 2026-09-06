@@ -259,6 +259,31 @@ export function controlDelaySeconds(
   }
 }
 
+/**
+ * How a player's override is stored: one byte per tile, 0 meaning they have
+ * not overridden anything and the warrant decides. The order is fixed, since
+ * a save holds these numbers.
+ */
+const CONTROL_BY_CODE: readonly JunctionControl[] = [
+  'none',
+  'yield',
+  'stop',
+  'allWayStop',
+  'signal',
+  'roundabout',
+];
+
+/** The byte a stored override holds; 0 for no override. */
+export function codeForControl(control: JunctionControl | null): number {
+  if (control === null) return 0;
+  return CONTROL_BY_CODE.indexOf(control) + 1;
+}
+
+/** The override a stored byte names, or null when the warrant decides. */
+export function controlFromCode(code: number): JunctionControl | null {
+  return CONTROL_BY_CODE[code - 1] ?? null;
+}
+
 /** How a control reads in the advisor and the junction inspector. */
 const CONTROL_NAMES: Readonly<Record<JunctionControl, string>> = {
   none: 'Uncontrolled',

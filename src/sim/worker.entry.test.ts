@@ -1867,27 +1867,125 @@ describe('junction control — the sim tells the render who gives way', () => {
     return undefined;
   }
 
-  it('says nothing at all while every junction is uncontrolled', () => {
+  it('reports the crossing of two quiet streets as controlled by nothing', () => {
     const h = sandboxed();
     run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 20, 9) }]);
     run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(14, 16, 9) }]);
-    // Two quiet streets crossing meet on sight lines, so the list stays empty
-    // — and an empty list is never sent twice.
-    expect(lastJunctions(h) ?? []).toEqual([]);
+    // Two quiet streets crossing meet on sight lines. The junction is still
+    // reported — the inspector has to have something to open on.
+    expect(lastJunctions(h)).toEqual([
+      { x: 14, z: 20, control: 'none', warranted: 'none', auto: true },
+    ]);
   });
 
   it('reports the crossing where a side street runs onto a four-lane road', () => {
     const h = sandboxed();
     run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.FourLane, tiles: roadRow(10, 20, 9) }]);
     run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(14, 16, 9) }]);
-    expect(lastJunctions(h)).toEqual([{ x: 14, z: 20, control: 'stop' }]);
+    expect(lastJunctions(h)).toEqual([
+      { x: 14, z: 20, control: 'stop', warranted: 'stop', auto: true },
+    ]);
+  });
+
+  it('takes the control the player sets, and keeps it against the warrant', () => {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Avenue, tiles: roadRow(10, 20, 9) }]);
+    run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(14, 16, 9) }]);
+    expect(lastJunctions(h)).toEqual([
+      { x: 14, z: 20, control: 'signal', warranted: 'signal', auto: true },
+    ]);
+
+    // The warrant says signal; the player says a four-way stop, and the
+    // warrant does not argue with it.
+    const ack = run(h, 3, [{ kind: 'setJunctionControl', x: 14, z: 20, control: 'allWayStop' }]);
+    expect(ack.ok).toBe(true);
+    h.ticks(4);
+    expect(lastJunctions(h)).toEqual([
+      { x: 14, z: 20, control: 'allWayStop', warranted: 'signal', auto: false },
+    ]);
+
+    // And undo hands it back to the warrant.
+    run(h, 4, ack.inverse);
+    h.ticks(4);
+    expect(lastJunctions(h)).toEqual([
+      { x: 14, z: 20, control: 'signal', warranted: 'signal', auto: true },
+    ]);
+  });
+
+  it('lets the player take a control away entirely, and saves what they chose', () => {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Avenue, tiles: roadRow(10, 20, 9) }]);
+    run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(14, 16, 9) }]);
+    run(h, 3, [{ kind: 'setJunctionControl', x: 14, z: 20, control: 'none' }]);
+    h.ticks(4);
+    expect(lastJunctions(h)).toEqual([
+      { x: 14, z: 20, control: 'none', warranted: 'signal', auto: false },
+    ]);
+
+    h.sim.handleMessage({ type: 'requestSave' });
+    const saves = h.messages.filter(
+      (m): m is Extract<WorkerToMain, { type: 'save' }> => m.type === 'save',
+    );
+    const data = saves[saves.length - 1]!.data;
+    const fresh = sandboxed();
+    fresh.sim.handleMessage({ type: 'loadSave', data });
+    fresh.ticks(4);
+    // A signal the warrant would put back stays off, because the player said so.
+    expect(lastJunctions(fresh)).toEqual([
+      { x: 14, z: 20, control: 'none', warranted: 'signal', auto: false },
+    ]);
+  });
+
+  it('refuses a tile that is not a junction, since there is nobody to give way to', () => {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 20, 9) }]);
+    // Mid-run, a dead end, and bare ground.
+    for (const [seq, x, z] of [
+      [2, 14, 20],
+      [3, 10, 20],
+      [4, 30, 30],
+    ] as const) {
+      const ack = run(h, seq, [{ kind: 'setJunctionControl', x, z, control: 'stop' }]);
+      expect(ack.ok, `${x},${z}`).toBe(false);
+    }
+  });
+
+  it('setting a junction to what it already carries costs nothing and undoes nothing', () => {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Avenue, tiles: roadRow(10, 20, 9) }]);
+    run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(14, 16, 9) }]);
+    run(h, 3, [{ kind: 'setJunctionControl', x: 14, z: 20, control: 'stop' }]);
+    const again = run(h, 4, [{ kind: 'setJunctionControl', x: 14, z: 20, control: 'stop' }]);
+    expect(again.ok).toBe(true);
+    expect(again.inverse).toEqual([]);
+  });
+
+  it('a bulldozed junction comes back with what the player set on it', () => {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Avenue, tiles: roadRow(10, 20, 9) }]);
+    run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(14, 16, 9) }]);
+    run(h, 3, [{ kind: 'setJunctionControl', x: 14, z: 20, control: 'allWayStop' }]);
+    h.ticks(4);
+    expect(lastJunctions(h)).toEqual([
+      { x: 14, z: 20, control: 'allWayStop', warranted: 'signal', auto: false },
+    ]);
+
+    const ack = run(h, 4, [{ kind: 'bulldoze', tiles: [{ x: 14, z: 20 }] }]);
+    expect(ack.ok).toBe(true);
+    run(h, 5, ack.inverse);
+    h.ticks(4);
+    expect(lastJunctions(h)).toEqual([
+      { x: 14, z: 20, control: 'allWayStop', warranted: 'signal', auto: false },
+    ]);
   });
 
   it('signalises where an avenue crosses, and stops sending once it settles', () => {
     const h = sandboxed();
     run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Avenue, tiles: roadRow(10, 20, 9) }]);
     run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(14, 16, 9) }]);
-    expect(lastJunctions(h)).toEqual([{ x: 14, z: 20, control: 'signal' }]);
+    expect(lastJunctions(h)).toEqual([
+      { x: 14, z: 20, control: 'signal', warranted: 'signal', auto: true },
+    ]);
 
     const sent = h.messages.filter(
       (m) => m.type === 'snapshot' && m.snap.junctions !== undefined,

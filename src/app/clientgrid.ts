@@ -23,11 +23,15 @@ import type {
   BuildingInstance,
   JunctionControl,
   MapData,
+  SimSnapshot,
   RoadProfile,
   RoadTileDelta,
   TilePoint,
   ZonePatch,
 } from '../shared/types';
+
+/** One junction as the sim reports it: who gives way, and whose choice that is. */
+type JunctionSnapshot = NonNullable<SimSnapshot['junctions']>[number];
 
 export class ClientGridMirror {
   readonly size: number;
@@ -48,11 +52,11 @@ export class ClientGridMirror {
   /** The worker's table of player-composed profiles, by id. Presets are catalogue data. */
   private readonly customProfiles = new Map<number, RoadProfile>();
   /**
-   * Tile index -> who gives way at that junction, for the junctions that
-   * control their traffic. The sim works it out — the warrant reads volumes
-   * the render thread never sees — and this is where the answer lands.
+   * Tile index -> the junction there: who gives way, and whether that is the
+   * player's choice or the warrant's. The sim works it out — the warrant reads
+   * volumes the render thread never sees — and this is where the answer lands.
    */
-  private junctionControls = new Map<number, JunctionControl>();
+  private junctionControls = new Map<number, JunctionSnapshot>();
 
   constructor(map: MapData) {
     this.size = map.size;
@@ -80,20 +84,23 @@ export class ClientGridMirror {
    * of it has no other way to know, since a control changes without any tile
    * changing.
    */
-  applyJunctions(junctions: readonly { x: number; z: number; control: JunctionControl }[]): boolean {
-    const next = new Map<number, JunctionControl>();
+  applyJunctions(junctions: readonly JunctionSnapshot[]): boolean {
+    const next = new Map<number, JunctionSnapshot>();
     for (const j of junctions) {
-      if (this.inBounds(j.x, j.z)) next.set(this.idx(j.x, j.z), j.control);
+      if (this.inBounds(j.x, j.z)) next.set(this.idx(j.x, j.z), j);
     }
     const same =
       next.size === this.junctionControls.size &&
-      [...next].every(([i, c]) => this.junctionControls.get(i) === c);
+      [...next].every(([i, j]) => {
+        const was = this.junctionControls.get(i);
+        return was?.control === j.control && was.auto === j.auto;
+      });
     this.junctionControls = next;
     return !same;
   }
 
-  /** Who gives way at this tile, when it is a junction that controls its traffic. */
-  junctionControlAt(x: number, z: number): JunctionControl | undefined {
+  /** The junction at this tile: who gives way, and whose choice that is. */
+  junctionAt(x: number, z: number): JunctionSnapshot | undefined {
     if (!this.inBounds(x, z)) return undefined;
     return this.junctionControls.get(this.idx(x, z));
   }
@@ -332,8 +339,8 @@ export class ClientGridMirror {
           // preset the tier names rather than to nothing.
           profile: this.profileById(this.roadProfile[i] ?? 0) ?? presetProfileForTier(tier),
         };
-        const control = this.junctionControls.get(i);
-        tiles.push(control ? { ...tile, control } : tile);
+        const junction = this.junctionControls.get(i);
+        tiles.push(junction ? { ...tile, control: junction.control } : tile);
       }
     }
     return tiles;

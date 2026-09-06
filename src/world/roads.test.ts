@@ -22,6 +22,7 @@ function makeGrid(size: number): GridState {
     roadElevation: new Float32Array(n),
     roadProfile: new Uint16Array(n),
     roadFlow: new Uint8Array(n),
+    junctionControl: new Uint8Array(n),
   };
 }
 

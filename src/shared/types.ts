@@ -180,6 +180,15 @@ export interface GridState {
    * saves load with it unset.
    */
   roadFlow: Uint8Array;
+  /**
+   * The player's junction control at each tile, when they have overridden the
+   * one the warrant works out: 0 means they have not, and the warrant decides.
+   * An override is STICKY — the warrant never argues with a choice — so it has
+   * to be stored, which is what this layer is for.
+   * ADDITIVE layer: serialized LAST in the grid save (SAVE_VERSION 8); older
+   * saves load with every junction on its warrant.
+   */
+  junctionControl: Uint8Array;
   buildingId: Uint32Array; // 0 = none, else building instance id occupying tile
   power: Uint8Array; // 1 = powered
   watered: Uint8Array; // 1 = water service reaches tile
@@ -272,6 +281,13 @@ export type Command =
    * profile breaks its class's width, piece or lane rules.
    */
   | { kind: 'defineRoadProfile'; id: number; profile: RoadProfile }
+  /**
+   * Sets who gives way at a junction, overriding the control its warrant works
+   * out. `control: null` hands it back to the warrant. Sticky: once set, the
+   * warrant never argues with it. Rejected for a tile that is not a junction
+   * of the street network.
+   */
+  | { kind: 'setJunctionControl'; x: number; z: number; control: JunctionControl | null }
   | { kind: 'bulldoze'; tiles: TilePoint[] } // clears road/building/zone/trees
   | { kind: 'paintZone'; zone: ZoneType; tiles: TilePoint[] }
   | { kind: 'placeBuilding'; catalogId: string; x: number; z: number; rotation: 0 | 1 | 2 | 3 }
@@ -505,15 +521,28 @@ export interface SimSnapshot {
     incinerators?: { id: number; fill: number; capacity: number }[];
   };
   /**
-   * Who gives way at each junction of the street network. The sim is the only
-   * thing that knows — the warrant reads traffic the render thread has never
-   * seen — so the render draws what it is told rather than working out a second
-   * answer that would disagree. The whole list travels whenever any of it
-   * changes; junctions with no control are left out, so an empty array means
-   * every junction is uncontrolled and is NOT the same as the field's absence,
-   * which means nothing has changed since the last snapshot.
+   * Who gives way at each junction of the street network — every tile where
+   * three or more arms meet, including the ones controlled by nothing. The sim
+   * is the only thing that knows — the warrant reads traffic the render thread
+   * has never seen — so the render draws what it is told rather than working
+   * out a second answer that would disagree, and the junction inspector has
+   * something to open on. `auto` is true where the player has not overridden
+   * the control, in which case `control` is the one the warrant worked out.
+   *
+   * `warranted` is what the warrant makes of the junction either way, so the
+   * inspector can say what handing it back would mean.
+   *
+   * The whole list travels whenever any of it changes, so an empty array means
+   * the street network has no junctions at all and is NOT the same as the
+   * field's absence, which means nothing has changed since the last snapshot.
    */
-  junctions?: { x: number; z: number; control: JunctionControl }[];
+  junctions?: {
+    x: number;
+    z: number;
+    control: JunctionControl;
+    warranted: JunctionControl;
+    auto: boolean;
+  }[];
 }
 
 export interface CityNotification {
@@ -743,11 +772,17 @@ export interface GraphNode {
   z: number;
   edges: number[]; // edge ids
   /**
-   * Who gives way here. Derived from the approaches and what they carry, and
-   * recomputed when either changes; absent on a graph whose controls have not
-   * been worked out yet, which costs and signs exactly what it always did.
+   * Who gives way here: the player's choice where they made one, else the
+   * warrant's. Absent on a graph whose controls have not been worked out yet,
+   * which costs and signs exactly what it always did.
    */
   control?: JunctionControl;
+  /**
+   * What the warrant makes of this junction, whether or not the player has
+   * overridden it — so the inspector can say what "automatic" would mean here
+   * without having to work the warrant out a second time.
+   */
+  warranted?: JunctionControl;
 }
 
 export interface GraphEdge {
@@ -895,16 +930,23 @@ export interface ReversibleEdit {
  * trailing GridState.landfill layer (MAP_SIZE² bytes, per-tile landfill
  * membership 0/1) after it; version 4 a trailing GridState.roadElevation layer
  * after that; version 5 widened that layer from one byte per tile to a float,
- * so a deck can hold a height its terrain does not divide into.
+ * so a deck can hold a height its terrain does not divide into; version 6 the
+ * two-byte GridState.roadProfile layer; version 7 the GridState.roadFlow byte;
+ * version 8 the GridState.junctionControl byte, the control a player set at a
+ * junction.
  *
  * Migration: src/world/grid.ts deserializeGrid still accepts every older
  * buffer, defaulting each absent trailing layer to all-zero — so a pre-v4 save
- * loads with every road at grade — and widens a v4 elevation byte into the
- * float layer, so saved bridges keep the height they were built at.
- * serializeGrid always writes the current version. No earlier layer's byte
- * layout or order changed, so every v1..v5 field round-trips unchanged.
+ * loads with every road at grade, a pre-v7 one with no road recording which
+ * way it was drawn, and a pre-v8 one with every junction on the control its
+ * warrant works out — and widens a v4 elevation byte into the float layer, so
+ * saved bridges keep the height they were built at. A pre-v6 save has no
+ * profile layer, so every road loads as the preset its tier names, which is
+ * what every road was. serializeGrid always writes the current version. No
+ * earlier layer's byte layout or order changed, so every v1..v7 field
+ * round-trips unchanged.
  */
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 
 export interface SaveHeader {
   version: number;

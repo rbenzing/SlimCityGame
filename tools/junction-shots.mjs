@@ -103,7 +103,7 @@ const col = (x, from, to) =>
 
 // Four crossroads, six tiles apart, each a different pair of roads.
 const CASES = [
-  { name: 'two-lane x two-lane', at: [3, 3], across: TWO_LANE, down: TWO_LANE, want: undefined },
+  { name: 'two-lane x two-lane', at: [3, 3], across: TWO_LANE, down: TWO_LANE, want: 'none' },
   { name: 'four-lane x two-lane', at: [3, 9], across: FOUR_LANE, down: TWO_LANE, want: 'stop' },
   { name: 'avenue x two-lane', at: [3, 15], across: AVENUE, down: TWO_LANE, want: 'signal' },
   { name: 'four-lane x four-lane', at: [3, 21], across: FOUR_LANE, down: FOUR_LANE, want: 'allWayStop' },
@@ -138,7 +138,9 @@ for (const c of CASES) {
     if (got.some((v) => v !== want))
       failures.push(`${c.name}: ${label} boards ${JSON.stringify(got)} are not all ${want}`);
   };
-  if (c.want === undefined) {
+  if (c.want === 'none') {
+    // Reported as a junction — the inspector opens on it — but signed with
+    // nothing, because nothing controls it.
     expect('across', across, undefined);
     expect('down', down, undefined);
   } else if (c.want === 'stop') {

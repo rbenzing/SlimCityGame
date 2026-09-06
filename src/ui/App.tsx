@@ -15,6 +15,7 @@ import { AssetDrawer } from './AssetDrawer';
 import type { DockCategory } from './categories';
 import { CornerButtons } from './CornerButtons';
 import { InfoPanel } from './InfoPanel';
+import { JunctionPanel } from './JunctionPanel';
 import { InfoviewGrid } from './InfoviewGrid';
 import { MainDock } from './MainDock';
 import { MenuScreen } from './MenuScreen';
@@ -108,6 +109,7 @@ export default function App() {
           )}
 
           <InfoPanel />
+          <JunctionPanel />
           <Toasts />
           <DistrictPanel />
           <TransitLinesPanel />

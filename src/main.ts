@@ -981,7 +981,17 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // Who gives way lands before the road deltas too, so that when a drag
     // changes both, the signs are rebuilt once against the new answer.
     const controlsMoved = snap.junctions ? clientGrid.applyJunctions(snap.junctions) : false;
-    if (snap.junctions) roadsMesh.setJunctionControls(snap.junctions);
+    if (snap.junctions) {
+      roadsMesh.setJunctionControls(snap.junctions);
+      // An open inspector shows the junction as it IS: the worker may have
+      // refused the change, or the warrant may have moved it while the panel
+      // was open. A junction that has gone — bulldozed — closes the panel.
+      const open = store.getState().selectedJunction;
+      if (open) {
+        const now = clientGrid.junctionAt(open.x, open.z);
+        store.getState().setSelectedJunction(now ? { ...now } : null);
+      }
+    }
     if (snap.roads) {
       // The mirror goes first. The road mesh samples roadSurfaceAt, which reads
       // deck heights back out of the mirror — meshing before those land lays
@@ -1283,6 +1293,16 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     raycaster.setFromCamera(ndc, camera);
     const id = idPicker.pickBuilding(raycaster, instancer);
     store.getState().setSelectedBuilding(id !== null ? (knownBuildings.get(id) ?? null) : null);
+    // Nothing built under the cursor: the ground might still be a junction,
+    // which has its own inspector. A building always wins the click, since it
+    // is the thing standing there.
+    if (id !== null) {
+      store.getState().setSelectedJunction(null);
+      return;
+    }
+    const tile = screenToTile(x, y);
+    const junction = tile ? clientGrid.junctionAt(tile.x, tile.z) : undefined;
+    store.getState().setSelectedJunction(junction ? { ...junction } : null);
   });
 
   // --- keyboard -------------------------------------------------------------------------

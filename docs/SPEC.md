@@ -2435,6 +2435,16 @@ scaled by one constant into the units the sim already uses.
    crossing without one, and an uncontrolled junction is an open box with no
    paint at all. Which arm gives way is one rule in one place, `armGivesWay`,
    read off the hierarchy ranks, so the boards and the bars cannot disagree.
+   The warrant is a DEFAULT, and the player overrides it from a junction
+   inspector: click a junction and the panel names who gives way there, offers
+   the ladder least restrictive first, and says what handing it back to the
+   warrant would mean. An override is sticky — the warrant is still worked out,
+   so the panel can say what automatic would do, but it never argues with a
+   choice — and it is stored per tile in the `junctionControl` layer at save
+   version 8, so it survives a save, an undo, and a bulldoze-then-undo of the
+   junction itself. Only a junction of three arms or more takes one: a dead
+   end, a bend and a tile mid-run have nobody to give way to, and the command
+   refuses them.
 4. **Approach lanes and tapers** — movement sets, turn pockets, arrows, turn
    restrictions, lane-drop tapers with merge arrows and gore chevrons, taper
    edges in the sim.

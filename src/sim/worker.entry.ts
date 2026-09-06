@@ -77,6 +77,11 @@ import {
   tierForProfile,
   withinLaneRange,
 } from '../shared/roadprofile';
+import { codeForControl, controlFromCode } from '../shared/junction';
+
+/** One junction as the render thread and the inspector read it. */
+type JunctionSnapshot = NonNullable<SimSnapshot['junctions']>[number];
+
 import { createRng } from '../core/rng';
 import { FixedTimestep } from '../core/loop';
 import type { CommandBatch } from '../core/commands';
@@ -318,8 +323,8 @@ class SimWorld implements WorkerSim {
   private readonly services = new ServiceSim(CATALOG);
   private readonly economy = new EconomySystem(CATALOG, ROAD_SPECS);
   private readonly network = new RoadNetwork();
-  /** The controlled junctions as last sent, so an unchanged set travels no further. */
-  private lastJunctions: { x: number; z: number; control: JunctionControl }[] = [];
+  /** The junctions as last sent, so an unchanged set travels no further. */
+  private lastJunctions: JunctionSnapshot[] = [];
   /**
    * The train network — the same implementation over the rail tiles instead of
    * the drivable ones. Kept in step with the road one: every rebuild and
@@ -899,24 +904,34 @@ class SimWorld implements WorkerSim {
   // -------------------------------------------------------------------------
 
   /**
-   * Every street junction that controls its traffic, or null when the set has
-   * not moved since the last snapshot — which is nearly always, since a
-   * control only changes when a road is laid or the traffic through it shifts
-   * a whole rung. Uncontrolled junctions are left out, so the list stays the
-   * size of the junctions that have something to say.
+   * Every street junction — three arms or more — and who gives way there, or
+   * null when the set has not moved since the last snapshot, which is nearly
+   * always: a control only changes when a road is laid, the player sets one,
+   * or the traffic through it shifts a whole rung.
    */
-  private controlledJunctions(): { x: number; z: number; control: JunctionControl }[] | null {
-    const out: { x: number; z: number; control: JunctionControl }[] = [];
+  private controlledJunctions(): JunctionSnapshot[] | null {
+    const out: JunctionSnapshot[] = [];
     for (const node of this.network.getNodes()) {
-      const control = node.control;
-      if (!control || control === 'none') continue;
-      out.push({ x: node.x, z: node.z, control });
+      if (node.edges.length < 3) continue; // a dead end or a bend gives way to nobody
+      out.push({
+        x: node.x,
+        z: node.z,
+        control: node.control ?? 'none',
+        warranted: node.warranted ?? 'none',
+        auto: (this.grid.junctionControl[tileIndex(node.x, node.z)] ?? 0) === 0,
+      });
     }
     const unchanged =
       out.length === this.lastJunctions.length &&
       out.every((j, i) => {
         const was = this.lastJunctions[i]!;
-        return was.x === j.x && was.z === j.z && was.control === j.control;
+        return (
+          was.x === j.x &&
+          was.z === j.z &&
+          was.control === j.control &&
+          was.warranted === j.warranted &&
+          was.auto === j.auto
+        );
       });
     if (unchanged) return null;
     this.lastJunctions = out;
@@ -1233,6 +1248,40 @@ class SimWorld implements WorkerSim {
     return { ok: true, cost: 0, inverse: [] };
   }
 
+  /**
+   * Sets who gives way at a junction, or hands it back to the warrant with a
+   * null. Only a junction of the street network can be set — a mid-run tile,
+   * a dead end or a bend has nobody to give way to — and setting a junction to
+   * what it already carries is a no-op rather than an undo step.
+   */
+  private cmdSetJunctionControl(
+    x: number,
+    z: number,
+    control: JunctionControl | null,
+  ): CommandResult {
+    const rejected = { ok: false, cost: 0, inverse: [], reason: 'invalid' as const };
+    if (!inBounds(x, z)) return rejected;
+    // Three arms or more. A dead end is a graph node too, but it has nothing
+    // to give way to, and neither has a bend or a tile in the middle of a run.
+    const node = this.network.getNodes().find((n) => n.x === x && n.z === z);
+    if (!node || node.edges.length < 3) return rejected;
+
+    const i = tileIndex(x, z);
+    const was = this.grid.junctionControl[i] ?? 0;
+    const code = codeForControl(control);
+    if (code === was) return { ok: true, cost: 0, inverse: [] };
+
+    this.grid.junctionControl[i] = code;
+    // The control is what the path cost and the signs read, so the graph has
+    // to work them out again before anything asks.
+    this.network.invalidateRegion(x, z, x, z);
+    return {
+      ok: true,
+      cost: 0,
+      inverse: [{ kind: 'setJunctionControl', x, z, control: controlFromCode(was) }],
+    };
+  }
+
   // -------------------------------------------------------------------------
   // Commands
   // -------------------------------------------------------------------------
@@ -1280,6 +1329,8 @@ class SimWorld implements WorkerSim {
         );
       case 'defineRoadProfile':
         return this.cmdDefineRoadProfile(command.id, command.profile);
+      case 'setJunctionControl':
+        return this.cmdSetJunctionControl(command.x, command.z, command.control);
       case 'bulldoze':
         return this.cmdBulldoze(command.tiles);
       case 'paintZone':
@@ -1662,8 +1713,13 @@ class SimWorld implements WorkerSim {
     // Keyed by profile id, so undo puts back the road that was there — a
     // composed street, not merely a road of the same tier.
     const roadsByProfile = new Map<number, { tier: RoadTier; tiles: TilePoint[] }>();
+    // A junction the player set keeps its setting through an undo: the road
+    // comes back, so what they decided about it comes back with it.
+    const setJunctions: { x: number; z: number; control: JunctionControl | null }[] = [];
     for (const t of inBoundsTiles) {
       const idx = tileIndex(t.x, t.z);
+      const control = controlFromCode(g.junctionControl[idx] ?? 0);
+      if (control !== null) setJunctions.push({ x: t.x, z: t.z, control });
       const zone = g.zone[idx] ?? 0;
       if (zone !== ZoneType.None) {
         const list = zonesByType.get(zone) ?? [];
@@ -1696,6 +1752,8 @@ class SimWorld implements WorkerSim {
     for (const [profileId, { tier, tiles: roadTiles }] of roadsByProfile) {
       inverse.push({ kind: 'buildRoad', tier, tiles: roadTiles, profile: profileId });
     }
+    // After the roads, so the tile is a junction again by the time this lands.
+    for (const j of setJunctions) inverse.push({ kind: 'setJunctionControl', ...j });
     for (const [zone, zoneTiles] of zonesByType) {
       inverse.push({ kind: 'paintZone', zone: zone as ZoneType, tiles: zoneTiles });
     }
