@@ -11,7 +11,12 @@
 import { TILE_METERS, worldToTile } from '../shared/constants';
 import { RoadFlow, RoadTier } from '../shared/types';
 import { approachZoneTiles } from '../shared/approach';
-import { approachAhead, drawnCrossSection, narrowingAhead } from '../shared/approachzone';
+import {
+  approachAhead,
+  auxiliaryLaneAt,
+  drawnCrossSection,
+  narrowingAhead,
+} from '../shared/approachzone';
 import type { ApproachAhead, ApproachSurroundings } from '../shared/approachzone';
 import {
   FIRST_CUSTOM_PROFILE_ID,
@@ -129,7 +134,13 @@ export class ClientGridMirror {
       this.approachAt(x, z),
       this.narrowingAt(x, z),
       this.roadFlow[this.idx(x, z)] ?? RoadFlow.None,
+      this.auxiliaryAt(x, z),
     );
+  }
+
+  /** The auxiliary lane this tile carries beside a slip road, if any. */
+  auxiliaryAt(x: number, z: number): ReturnType<typeof auxiliaryLaneAt> {
+    return auxiliaryLaneAt(x, z, this.surroundings);
   }
 
   /** The lane drop this tile is closing for, when the road ahead of it narrows. */
@@ -145,6 +156,10 @@ export class ClientGridMirror {
       controlAt: (x, z) => this.junctionAt(x, z)?.control,
       turnsAt: (x, z) => this.junctionAt(x, z)?.turns ?? 0,
       profileAt: (x, z) => this.profileAt(x, z),
+      flowAt: (x, z) =>
+        this.inBounds(x, z)
+          ? (((this.roadFlow[this.idx(x, z)] ?? 0) & 7) as RoadFlow)
+          : RoadFlow.None,
     };
   }
 

@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_ALLOWED, Movement, withArmAllowed } from './approach';
-import { approachAhead, narrowingAhead, oppositeFlow, roadDegree } from './approachzone';
+import {
+  approachAhead,
+  AUXILIARY_ZONE_TILES,
+  auxiliaryLaneAt,
+  narrowingAhead,
+  oppositeFlow,
+  roadDegree,
+} from './approachzone';
 import { presetProfileForTier } from './roadprofile';
 import { taperTilesFor } from './taper';
 import type { ApproachSurroundings } from './approachzone';
-import type { JunctionControl } from './types';
+import type { JunctionControl, RoadProfile } from './types';
 import { RoadFlow, RoadTier } from './types';
 
 /**
@@ -26,6 +33,7 @@ function world(
     turnsAt: (x, z) => junctions[`${x},${z}`]?.turns ?? 0,
     // '#' is a four-lane road and 'n' the two-lane street it narrows into;
     // everything the walk asks about width it asks through here.
+    flowAt: () => RoadFlow.None,
     profileAt: (x, z) => {
       const c = at(x, z);
       if (c === '#') return presetProfileForTier(RoadTier.FourLane);
@@ -272,5 +280,93 @@ describe('the lane drop a tile is running into', () => {
       toward: RoadFlow.South,
       remaining: 0,
     });
+  });
+});
+
+describe('the auxiliary lane a motorway grows beside a slip road', () => {
+  const SLIM_MOTORWAY: RoadProfile = {
+    class: 'highway',
+    kerbs: true,
+    pieces: [
+      { kind: 'travel', width: 3.75, flow: 'back' },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+    ],
+  };
+  const RAMP: RoadProfile = {
+    class: 'ramp',
+    kerbs: false,
+    pieces: [
+      { kind: 'shoulder', width: 1.2 },
+      { kind: 'travel', width: 4.2, flow: 'fwd' },
+      { kind: 'shoulder', width: 2.4 },
+    ],
+  };
+
+  /**
+   * A motorway running north-south at x=2 with a slip road leaving eastward
+   * from (2,4) to a street at x=6. `rampFlow` is the way the slip road was
+   * drawn: East leaves the motorway, West joins it.
+   */
+  function interchange(rampFlow: RoadFlow): ApproachSurroundings {
+    const motorway = new Set<string>();
+    for (let z = 0; z <= 16; z++) motorway.add(`2,${z}`);
+    const ramp = new Set<string>();
+    for (let x = 3; x <= 5; x++) ramp.add(`${x},4`);
+    const street = new Set<string>();
+    for (let z = 2; z <= 7; z++) street.add(`6,${z}`);
+    const has = (x: number, z: number): boolean =>
+      motorway.has(`${x},${z}`) || ramp.has(`${x},${z}`) || street.has(`${x},${z}`);
+    return {
+      hasRoad: has,
+      controlAt: () => undefined,
+      turnsAt: () => 0,
+      flowAt: (x, z) => (ramp.has(`${x},${z}`) ? rampFlow : RoadFlow.None),
+      profileAt: (x, z) => {
+        if (motorway.has(`${x},${z}`)) return SLIM_MOTORWAY;
+        if (ramp.has(`${x},${z}`)) return RAMP;
+        if (street.has(`${x},${z}`)) return presetProfileForTier(RoadTier.TwoLane);
+        return null;
+      },
+    };
+  }
+
+  it('runs UP to a turn-off, on the kerb of the direction that takes it', () => {
+    const w = interchange(RoadFlow.East);
+    // The slip road leaves eastward, so it is the northbound driver's — their
+    // right-hand kerb is the east one — and they approach from the south.
+    const near = auxiliaryLaneAt(2, 5, w);
+    expect(near).toBeDefined();
+    expect(near!.merging).toBe(false);
+    expect(near!.side).toBe(1);
+    expect(near!.openness).toBe(1);
+    // It opens from nothing at the back of the zone to full at the turn-off.
+    expect(auxiliaryLaneAt(2, 8, w)!.openness).toBeLessThan(near!.openness);
+    // Southbound traffic, north of the junction, is taking nothing and gets
+    // nothing: the turn-off is not theirs.
+    expect(auxiliaryLaneAt(2, 3, w)).toBeUndefined();
+  });
+
+  it('runs ON from a join, for the traffic that came up the slip road', () => {
+    const w = interchange(RoadFlow.West);
+    // Drawn westward, the slip road runs INTO the motorway. Traffic joining it
+    // is heading north, and its lane to get up to speed in lies beyond the
+    // join — north of it.
+    const beyond = auxiliaryLaneAt(2, 3, w);
+    expect(beyond).toBeDefined();
+    expect(beyond!.merging).toBe(true);
+    expect(beyond!.side).toBe(1);
+    expect(auxiliaryLaneAt(2, 5, w)).toBeUndefined();
+  });
+
+  it('says nothing where the slip road never recorded which way it runs', () => {
+    const w = interchange(RoadFlow.None);
+    expect(auxiliaryLaneAt(2, 5, w)).toBeUndefined();
+    expect(auxiliaryLaneAt(2, 3, w)).toBeUndefined();
+  });
+
+  it('reaches back only as far as the zone, and no further', () => {
+    const w = interchange(RoadFlow.East);
+    expect(auxiliaryLaneAt(2, 4 + AUXILIARY_ZONE_TILES, w)).toBeDefined();
+    expect(auxiliaryLaneAt(2, 4 + AUXILIARY_ZONE_TILES + 1, w)).toBeUndefined();
   });
 });

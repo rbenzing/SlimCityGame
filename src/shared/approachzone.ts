@@ -13,7 +13,7 @@
  */
 import { armAllowed, pocketWarranted } from './approach';
 import type { MovementSet, PackedTurns } from './approach';
-import { isOneWayProfile, withTurnPocket } from './roadprofile';
+import { isOneWayProfile, withAuxiliaryLane, withTurnPocket } from './roadprofile';
 import {
   closedAt,
   dropWidth,
@@ -37,6 +37,12 @@ export interface ApproachSurroundings {
   turnsAt(x: number, z: number): PackedTurns;
   /** The cross-section the tile's own profile names, or null off-road. */
   profileAt(x: number, z: number): RoadProfile | null;
+  /**
+   * Which way the tile was drawn, or `RoadFlow.None` where nothing said. A
+   * one-way road's direction is the whole of its meaning, which is how a slip
+   * road is told from the motorway it joins.
+   */
+  flowAt(x: number, z: number): RoadFlow;
 }
 
 /** The junction a tile approaches, and what this arm of it may do. */
@@ -215,9 +221,20 @@ export function drawnCrossSection(
   approach: ApproachAhead | undefined,
   narrowing: TaperStep | undefined,
   flow: number,
+  auxiliary?: AuxiliaryLane,
 ): RoadProfile {
-  if (narrowing) return pavedCrossSection(profile, closedAt(narrowing));
-  return pocketedCrossSection(profile, approach, flow);
+  const base = withAuxiliary(profile, auxiliary);
+  if (narrowing) return pavedCrossSection(base, closedAt(narrowing));
+  return pocketedCrossSection(base, approach, flow);
+}
+
+/**
+ * The road plus the auxiliary lane it carries beside a slip road, or the road
+ * itself where it carries none or cannot find the width for one.
+ */
+function withAuxiliary(profile: RoadProfile, auxiliary: AuxiliaryLane | undefined): RoadProfile {
+  if (!auxiliary) return profile;
+  return withAuxiliaryLane(profile, auxiliary.side, auxiliary.openness) ?? profile;
 }
 
 /**
@@ -230,9 +247,11 @@ export function paintedCrossSection(
   approach: ApproachAhead | undefined,
   narrowing: TaperStep | undefined,
   flow: number,
+  auxiliary?: AuxiliaryLane,
 ): RoadProfile {
-  if (narrowing) return taperedCrossSection(profile, closedAt(narrowing));
-  return pocketedCrossSection(profile, approach, flow);
+  const base = withAuxiliary(profile, auxiliary);
+  if (narrowing) return taperedCrossSection(base, closedAt(narrowing));
+  return pocketedCrossSection(base, approach, flow);
 }
 
 /**
@@ -280,4 +299,112 @@ export function narrowingAhead(
     }
   }
   return best;
+}
+
+/**
+ * How many tiles of auxiliary lane a motorway grows beside a slip road. AASHTO
+ * wants 180 m or more to get up to motorway speed, which is eleven of these
+ * tiles; the game's own bound on a taper is twelve, and this stays inside it so
+ * an interchange never swallows the run between two of them.
+ */
+export const AUXILIARY_ZONE_TILES = 8;
+
+/** The auxiliary lane a motorway tile carries beside a slip road. */
+export interface AuxiliaryLane {
+  /** Which side of the carriageway it stands on. */
+  side: -1 | 1;
+  /** How far open it is here, 0 to 1: full against the junction. */
+  openness: number;
+  /** Whether it is the lane traffic joins on, rather than the one it leaves by. */
+  merging: boolean;
+}
+
+/**
+ * The auxiliary lane this tile carries, or undefined where it carries none.
+ *
+ * A slip road joining a motorway leaves the driver going far slower than the
+ * traffic they are joining, so the motorway grows a lane beside the slip road
+ * for them to get up to speed in — and, where the slip road LEAVES, one to slow
+ * down in before taking it. Which of the two it is comes off the slip road's
+ * own stored direction, and where it lies follows from that: an acceleration
+ * lane runs downstream of the junction and a deceleration lane runs up to it,
+ * both on the side the slip road is on.
+ *
+ * The lane opens from nothing at the far end of the zone to full width against
+ * the junction — a driver joins at the wide end, which is the end nearest the
+ * traffic they are joining.
+ */
+export function auxiliaryLaneAt(
+  x: number,
+  z: number,
+  world: ApproachSurroundings,
+): AuxiliaryLane | undefined {
+  const mine = world.profileAt(x, z);
+  if (!mine || roadDegree(x, z, world) !== 2) return undefined;
+
+  for (const [dx, dz, toward] of STEPS) {
+    if (!world.hasRoad(x + dx, z + dz)) continue;
+    if (!world.hasRoad(x - dx, z - dz)) continue; // a corner, not a run
+    for (let step = 1; step <= AUXILIARY_ZONE_TILES; step++) {
+      const jx = x + dx * step;
+      const jz = z + dz * step;
+      if (!world.hasRoad(jx, jz)) break;
+      const degree = roadDegree(jx, jz, world);
+      if (degree >= 3) {
+        const ramp = rampArmAt(jx, jz, toward, world);
+        // A slip road that never recorded a direction cannot say whether it is
+        // joined or left by, and an auxiliary lane is one or the other.
+        if (!ramp || ramp.flow === RoadFlow.None) return undefined;
+        const { leftSign } = approachAxis(toward);
+        const side = (ramp.onTheLeft ? leftSign : -leftSign) as -1 | 1;
+        // Both lanes stand on the slip road's own side of the road, which is
+        // also the kerb of the direction it serves. So whether this tile is on
+        // the near side of the junction or the far side follows from whether
+        // the way it is walking IS that direction: walking toward the junction
+        // its driver's kerb is -leftSign.
+        const servesThisWay = side === -leftSign;
+        // The slip road is LEFT by when its own direction points away from the
+        // junction, and joined from when it points into it.
+        const leaving = ramp.flow === ramp.arm;
+        // A lane to slow down in runs up to the turn-off; a lane to speed up in
+        // runs on beyond the join. Anything else is the other direction's.
+        if (leaving !== servesThisWay) return undefined;
+        return {
+          side,
+          openness: Math.min(1, (AUXILIARY_ZONE_TILES - (step - 1)) / AUXILIARY_ZONE_TILES),
+          merging: !leaving,
+        };
+      }
+      if (degree !== 2 || !world.hasRoad(jx + dx, jz + dz)) break;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The slip road arm of a junction, seen by traffic heading `toward` it: which
+ * side of the road it leaves on, which cardinal it lies in, and which way it
+ * runs. Undefined where no arm of the junction is one.
+ */
+function rampArmAt(
+  jx: number,
+  jz: number,
+  toward: RoadFlow,
+  world: ApproachSurroundings,
+): { onTheLeft: boolean; arm: RoadFlow; flow: RoadFlow } | undefined {
+  const { leftSign, vertical } = approachAxis(toward);
+  for (const [dx, dz, arm] of STEPS) {
+    if (arm === toward || arm === oppositeFlow(toward)) continue;
+    const profile = world.profileAt(jx + dx, jz + dz);
+    if (!profile || profile.class !== 'ramp') continue;
+    // The arm lies on the driver's left when its own cross-offset shares the
+    // sign of that side.
+    const across = vertical ? dx : dz;
+    return {
+      onTheLeft: across * leftSign > 0,
+      arm,
+      flow: world.flowAt(jx + dx, jz + dz),
+    };
+  }
+  return undefined;
 }

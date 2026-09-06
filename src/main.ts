@@ -564,6 +564,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         distance: number;
         pocket: boolean;
         openness: number;
+        auxiliary: { side: number; openness: number; merging: boolean } | null;
         taper: { remaining: number; length: number; closed: number } | null;
         lanes: number;
         width: number;
@@ -580,6 +581,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           distance: ahead?.distance ?? -1,
           pocket: !taper && drawn !== own,
           openness: ahead?.openness ?? 1,
+          auxiliary: clientGrid.auxiliaryAt(x, z) ?? null,
           taper: taper
             ? { remaining: taper.remaining, length: taper.length, closed: taper.closed }
             : null,

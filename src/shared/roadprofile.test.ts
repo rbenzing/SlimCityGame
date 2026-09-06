@@ -22,6 +22,7 @@ import {
   editsOf,
   FIRST_CUSTOM_PROFILE_ID,
   fitsTile,
+  canGainAuxiliaryLane,
   hasKerbs,
   KERB_RESERVE_M,
   kerbWidthOf,
@@ -52,6 +53,7 @@ import {
   tierForProfile,
   TURN_POCKET_MIN_WIDTH_M,
   withinLaneRange,
+  withAuxiliaryLane,
   withTurnPocket,
 } from './roadprofile';
 import type { RoadClassId, RoadProfile, RoadSpec } from './types';
@@ -956,5 +958,50 @@ describe('turn pockets', () => {
 
   it('has no pocket to offer a railway', () => {
     expect(withTurnPocket(presetProfileForTier(RoadTier.RailTrack), 1)).toBeNull();
+  });
+});
+
+describe('the auxiliary lane a motorway grows beside a slip road', () => {
+  const slimMotorway: RoadProfile = {
+    class: 'highway',
+    kerbs: true,
+    pieces: [
+      { kind: 'travel', width: 3.75, flow: 'back' },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+    ],
+  };
+
+  it('adds a lane against the kerb on the side asked for, carrying that side’s traffic', () => {
+    const right = withAuxiliaryLane(slimMotorway, 1)!;
+    expect(right.pieces.map((p) => p.kind)).toEqual(['travel', 'travel', 'travel']);
+    // Outside everything the road already carries on that side, and going the
+    // way the lane it stands beside goes.
+    expect(right.pieces[2]).toMatchObject({ flow: 'fwd' });
+    expect(carriagewayWidth(right)).toBeCloseTo(
+      carriagewayWidth(slimMotorway) + laneWidthFor('highway'),
+      6,
+    );
+    const left = withAuxiliaryLane(slimMotorway, -1)!;
+    expect(left.pieces[0]).toMatchObject({ kind: 'travel', flow: 'back' });
+  });
+
+  it('opens over a taper, like every other lane a road gains for one junction', () => {
+    const half = withAuxiliaryLane(slimMotorway, 1, 0.5)!;
+    const full = withAuxiliaryLane(slimMotorway, 1)!;
+    expect(half.pieces[2]!.width).toBeCloseTo(full.pieces[2]!.width / 2, 6);
+    expect(withAuxiliaryLane(slimMotorway, 1, 0)).toEqual(slimMotorway);
+  });
+
+  it('refuses the four-lane motorway, which fills its tile already', () => {
+    // 15 m of carriageway and half a metre of kerb each side is the whole 16 m.
+    // A motorway with an auxiliary lane is a road for two tiles.
+    expect(withAuxiliaryLane(presetProfileForTier(RoadTier.Highway), 1)).toBeNull();
+    expect(canGainAuxiliaryLane(presetProfileForTier(RoadTier.Highway), -1)).toBe(false);
+    expect(canGainAuxiliaryLane(slimMotorway, 1)).toBe(true);
+  });
+
+  it('leaves the road somewhere to stand its kerb, as a turn bay does', () => {
+    const widened = withAuxiliaryLane(slimMotorway, 1)!;
+    expect(profileWidth(widened)).toBeLessThanOrEqual(TILE_METERS - 2 * KERB_RESERVE_M + 1e-9);
   });
 });

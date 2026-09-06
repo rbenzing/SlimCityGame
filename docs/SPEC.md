@@ -2635,6 +2635,24 @@ scaled by one constant into the units the sim already uses.
    the busiest one an interchange has — it is what an interchange is
    signalised at, so the ramp is no longer excused from control the way a
    motorway is.
+   The AUXILIARY LANE is the lane a motorway grows beside a slip road: one to
+   get up to speed in where traffic joins, one to slow down in where it leaves.
+   Both stand against the kerb on the slip road's own side, which is also the
+   kerb of the direction it serves — so which of the two a tile carries follows
+   from whether the way it is walking IS that direction, and needs no second
+   rule. A lane to slow down in runs UP to the turn-off; a lane to get up to
+   speed in runs ON from the join. Either way it opens from nothing at the far
+   end of the zone to full width against the junction, since that is the end a
+   driver joins at, and the zone is eight tiles — AASHTO's 180 m, inside the
+   game's own bound on a taper so an interchange never swallows the run between
+   two of them. A slip road that never recorded a direction gets neither: it
+   cannot say which it is.
+   The width comes from the verge and never from the kerb reserve, so most
+   motorways never see one. Four 12 ft lanes and their kerbs fill a 16 m tile
+   exactly and an auxiliary lane is another twelve feet — the motorway that can
+   have one is the two-lane motorway, and the four-lane one with a real
+   auxiliary lane is a two-tile corridor, which is wave 6. That is the same
+   answer the avenue's turn bay got and for the same reason.
    The NEUTRAL AREA is what a road that keeps its pavement leaves behind when
    a lane closes. A street narrows: the lane goes and the tarmac goes with it.
    A motorway does not, because the tarmac is the recovery a driver who missed

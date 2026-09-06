@@ -457,6 +457,69 @@ export function canGainTurnPocket(profile: RoadProfile, approachSide: -1 | 1): b
   return withTurnPocket(profile, approachSide) !== null;
 }
 
+/**
+ * The same cross-section with an AUXILIARY LANE added against the kerb on one
+ * side — the lane a motorway grows beside a slip road, so that a driver
+ * joining has somewhere to get up to speed and one leaving has somewhere to
+ * slow down without doing it in the running lane.
+ *
+ * It goes OUTSIDE everything the road already carries on that side, because
+ * that is where the slip road arrives; the width comes from the verge the tile
+ * has not spent, and never from the kerb reserve, since the lane still needs a
+ * kerb outside it. `openness` is how far open it is, 0 to 1, the same taper a
+ * turn bay opens over.
+ *
+ * Null where the width is not there — which is most motorways in a 16 m tile.
+ * Four 12 ft lanes and their kerbs fill it exactly, and an auxiliary lane is
+ * another twelve feet: that is a road for two tiles, not one.
+ */
+export function withAuxiliaryLane(
+  profile: RoadProfile,
+  side: -1 | 1,
+  openness = 1,
+): RoadProfile | null {
+  const open = Math.min(1, Math.max(0, openness));
+  if (open <= 0) return profile;
+  const target = laneWidthFor(profile.class);
+  const minimum = Math.min(target, TURN_POCKET_MIN_WIDTH_M);
+  const reserve = hasFootway(profile) ? 0 : 2 * KERB_RESERVE_M;
+  const slack = Math.max(0, TILE_METERS - profileWidth(profile) - reserve);
+  if (slack + 1e-9 < minimum) return null;
+  const width = Math.min(target, slack);
+
+  const flows = profile.pieces.filter((p) => p.kind === 'travel').map((p) => p.flow);
+  const lane: LanePiece = { kind: 'travel', width: width * open };
+  // It carries the traffic of the half it is added to, which is the half whose
+  // kerb it stands against.
+  const beside = side > 0 ? flows[flows.length - 1] : flows[0];
+  if (beside) lane.flow = beside;
+
+  // Outside every carriageway piece on that side, but inside the footway, if
+  // the road has one — a lane does not go behind the pavement.
+  const pieces = [...profile.pieces];
+  const at =
+    side > 0
+      ? lastIndexWhere(pieces, (p) => CARRIAGEWAY_KINDS.has(p.kind)) + 1
+      : firstIndexWhere(pieces, (p) => CARRIAGEWAY_KINDS.has(p.kind));
+  pieces.splice(Math.max(0, at), 0, lane);
+  return { ...profile, pieces };
+}
+
+/** Whether this cross-section can find the width for an auxiliary lane. */
+export function canGainAuxiliaryLane(profile: RoadProfile, side: -1 | 1): boolean {
+  return withAuxiliaryLane(profile, side) !== null;
+}
+
+function firstIndexWhere(pieces: readonly LanePiece[], p: (x: LanePiece) => boolean): number {
+  const i = pieces.findIndex(p);
+  return i < 0 ? 0 : i;
+}
+
+function lastIndexWhere(pieces: readonly LanePiece[], p: (x: LanePiece) => boolean): number {
+  for (let i = pieces.length - 1; i >= 0; i--) if (p(pieces[i]!)) return i;
+  return pieces.length - 1;
+}
+
 // ---------------------------------------------------------------------------
 // Composition: the edits a player makes to a preset, and the profile they
 // produce. Edits are absolute for the sides they name and `null` where the

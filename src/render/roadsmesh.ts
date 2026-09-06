@@ -112,13 +112,14 @@ import type { MovementSet } from '../shared/approach';
 import {
   approachAhead,
   approachAxis,
+  auxiliaryLaneAt,
   drawnCrossSection,
   narrowingAhead,
   paintedCrossSection,
 } from '../shared/approachzone';
 import { paintsGore } from '../shared/taper';
 import type { TaperStep } from '../shared/taper';
-import type { ApproachAhead, ApproachSurroundings } from '../shared/approachzone';
+import type { ApproachAhead, ApproachSurroundings, AuxiliaryLane } from '../shared/approachzone';
 import {
   centrePair,
   markingPlan,
@@ -2953,6 +2954,12 @@ export function roadTileVertices(
    * turns a step in the road's width into a taper.
    */
   narrowing?: TaperStep & { toward: RoadFlow },
+  /**
+   * The auxiliary lane this tile carries beside a slip road — the lane a
+   * motorway grows for traffic joining it or leaving it. Set only by a caller
+   * that can see the interchange.
+   */
+  auxiliary?: AuxiliaryLane,
 ): { positions: number[]; colors: number[] } {
   if (!Number.isInteger(mask) || mask < 0 || mask > 15) {
     throw new RangeError(`roadTileVertices: mask ${mask} out of the 4-bit range 0..15`);
@@ -2966,12 +2973,12 @@ export function roadTileVertices(
   // have gained for the junction ahead, less the lanes it may be closing for a
   // narrower road ahead.
   const own = profile ?? presetProfileForTier(tier);
-  const crossSection = drawnCrossSection(own, approach, narrowing, flow);
+  const crossSection = drawnCrossSection(own, approach, narrowing, flow, auxiliary);
   const spec = quadSpecFor(tier, crossSection);
   // What the PAINT is laid to, which is the same thing everywhere but down a
   // motorway's taper: there the tarmac runs on at full width and only the
   // lines close the lane, leaving the neutral area between the two.
-  const painted = paintedCrossSection(own, approach, narrowing, flow);
+  const painted = paintedCrossSection(own, approach, narrowing, flow, auxiliary);
   const plan = markingPlan(painted);
   const centerX = (x + 0.5) * TILE_METERS;
   const centerZ = (z + 0.5) * TILE_METERS;
@@ -3985,6 +3992,7 @@ export class RoadMeshRenderer {
       controlAt: (x, z) => this.junctionControls.get(tileIndex(x, z)),
       turnsAt: (x, z) => this.junctionTurns.get(tileIndex(x, z)) ?? 0,
       profileAt: (x, z) => this.profileAt(x, z),
+      flowAt: (x, z) => this.flowAt(x, z),
     };
   }
 
@@ -4011,6 +4019,17 @@ export class RoadMeshRenderer {
     return narrowingAhead(x, z, this.surroundings);
   }
 
+  /** The auxiliary lane the tile at (x,z) carries beside a slip road, if any. */
+  private auxiliaryAt(x: number, z: number): AuxiliaryLane | undefined {
+    return auxiliaryLaneAt(x, z, this.surroundings);
+  }
+
+  /** Which way the tile at (x,z) was drawn, or None where nothing said. */
+  private flowAt(x: number, z: number): RoadFlow {
+    const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
+    return ((tile?.flow ?? RoadFlow.None) & 7) as RoadFlow;
+  }
+
   /** Whether the road at (x,z) is one a pedestrian can walk beside. */
   private walkableAt(x: number, z: number): boolean {
     const profile = this.profileAt(x, z);
@@ -4033,6 +4052,7 @@ export class RoadMeshRenderer {
         this.approachToward(x, z),
         this.narrowingAt(x, z),
         tile?.flow ?? RoadFlow.None,
+        this.auxiliaryAt(x, z),
       ),
     );
   }
@@ -4081,6 +4101,7 @@ export class RoadMeshRenderer {
         this.junctionControls.get(tileIndex(tile.x, tile.z)),
         this.approachToward(tile.x, tile.z),
         this.narrowingAt(tile.x, tile.z),
+        this.auxiliaryAt(tile.x, tile.z),
       );
       for (const n of vertices.positions) positions.push(n);
       for (const n of vertices.colors) colors.push(n);
