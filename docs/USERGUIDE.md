@@ -75,6 +75,11 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   is the one that rebuilds the junction: an island with a planted centre, a
   painted apron a lorry can track over, and a line of give-way triangles
   across every entry. It is quick until it fills up, and then it is not.
+  On a road wide enough to have more than one lane in each direction, the last
+  stretch before a junction is painted with **lane arrows** — which lane may
+  turn and which runs straight on. A two-lane approach shares the turns; a
+  wider one gets a lane for turning left, then one for turning right, which is
+  the order a real junction spends its width in.
   Roads snap to the
   grid, round their corners and dead-ends, and bank smoothly up slopes (the ground
   is graded under them automatically).

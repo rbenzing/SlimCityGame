@@ -101,7 +101,15 @@ import {
   roadClass,
 } from '../shared/roadprofile';
 import { armGivesWay } from '../shared/junction';
-import { centrePair, markingPlan, type MarkingLine, type MarkingPlan } from './roadmarkings';
+import { defaultLaneMovements, Movement } from '../shared/approach';
+import type { MovementSet } from '../shared/approach';
+import {
+  centrePair,
+  markingPlan,
+  travelLanes,
+  type MarkingLine,
+  type MarkingPlan,
+} from './roadmarkings';
 
 /** The road plate rides this far above the terrain — anything standing ON a road must add it. */
 export const ROAD_Y_OFFSET = 0.15;
@@ -702,6 +710,127 @@ function emitTurnArrow(
     hookTo - ARROW_HEAD_LENGTH_M,
     hookTo,
   );
+}
+
+/** How far in from the tile edge a lane-use arrow's centre sits. */
+const LANE_ARROW_SETBACK_M = 4;
+/** The four orthogonal steps, and the direction each one lies in. */
+const APPROACH_DIRS: ReadonlyArray<readonly [number, number, RoadFlow]> = [
+  [0, -1, RoadFlow.North],
+  [1, 0, RoadFlow.East],
+  [0, 1, RoadFlow.South],
+  [-1, 0, RoadFlow.West],
+];
+const APPROACH_STEPS: ReadonlyArray<readonly [number, number]> = APPROACH_DIRS.map(([dx, dz]) => [
+  dx,
+  dz,
+]);
+/** How far back from the head a turning hook leaves the stem. */
+const LANE_ARROW_HOOK_DROP_M = 0.9;
+/** How far across the lane a turning hook reaches before its own head. */
+const LANE_ARROW_HOOK_REACH_M = 1.3;
+
+/**
+ * A LANE-USE arrow: what one lane of an approach is allowed to do, painted
+ * from its movement set and nothing else. A lane that runs through gets a
+ * stem and a head; every turn it offers gets a hook branching off the stem
+ * toward that side with a head of its own. A lane with a movement taken away
+ * therefore looks restricted, because the arrow that would have said so is
+ * simply not painted.
+ *
+ * `ahead` is +1 when the traffic in this lane travels toward the high
+ * coordinate on the axis. Left and right are read from that: facing along +Z
+ * — south, since z grows southward — a driver's left hand points at +X.
+ */
+function emitLaneUseArrow(
+  positions: number[],
+  colors: number[],
+  vertical: boolean,
+  centerX: number,
+  centerZ: number,
+  laneCentre: number,
+  ahead: 1 | -1,
+  movements: MovementSet,
+  hAt: (x: number, z: number) => number,
+): void {
+  const stemHalf = ARROW_STEM_HALF_WIDTH_M;
+  const tip = ARROW_HALF_LENGTH_M;
+  const headBase = tip - ARROW_HEAD_LENGTH_M;
+  const tail = -ARROW_HALF_LENGTH_M;
+  const hookAlong = headBase - LANE_ARROW_HOOK_DROP_M;
+  const leftSign = vertical ? ahead : -ahead;
+
+  /** A rectangle in lane-local coordinates: along the lane, and across it. */
+  const rect = (alongLo: number, alongHi: number, acrossLo: number, acrossHi: number): void => {
+    const a0 = ahead * alongLo;
+    const a1 = ahead * alongHi;
+    const c0 = laneCentre + acrossLo;
+    const c1 = laneCentre + acrossHi;
+    pushLocalRect(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      vertical ? Math.min(c0, c1) : Math.min(a0, a1),
+      vertical ? Math.max(c0, c1) : Math.max(a0, a1),
+      vertical ? Math.min(a0, a1) : Math.min(c0, c1),
+      vertical ? Math.max(a0, a1) : Math.max(c0, c1),
+      MARK_Y_OFFSET,
+      MARKING_COLOR,
+      hAt,
+    );
+  };
+
+  /** A point in lane-local coordinates, as the local [x, z] the tile emits in. */
+  const at = (along: number, across: number): [number, number] => {
+    const a = ahead * along;
+    const c = laneCentre + across;
+    return vertical ? [c, a] : [a, c];
+  };
+  /** A solid arrowhead. Rectangles cannot make one, and a bar does not read as an arrow. */
+  const head = (
+    baseA: readonly [number, number],
+    baseB: readonly [number, number],
+    apex: readonly [number, number],
+  ): void =>
+    pushGroundTri(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      baseA,
+      baseB,
+      apex,
+      MARK_Y_OFFSET,
+      MARKING_COLOR,
+      hAt,
+    );
+
+  const through = (movements & Movement.Through) !== 0;
+  // The stem runs to the head when the lane goes through, and only as far as
+  // the hooks when it does not — a turn-only lane has no shaft past them.
+  rect(tail, through ? headBase : hookAlong + stemHalf, -stemHalf, stemHalf);
+  if (through) {
+    head(
+      at(headBase, -ARROW_HEAD_HALF_WIDTH_M),
+      at(headBase, ARROW_HEAD_HALF_WIDTH_M),
+      at(tip, 0),
+    );
+  }
+  for (const [bit, sign] of [
+    [Movement.Left, leftSign],
+    [Movement.Right, -leftSign],
+  ] as const) {
+    if ((movements & bit) === 0) continue;
+    const outer = sign * LANE_ARROW_HOOK_REACH_M;
+    const neck = sign * (LANE_ARROW_HOOK_REACH_M - ARROW_HEAD_LENGTH_M);
+    rect(hookAlong - stemHalf, hookAlong + stemHalf, Math.min(0, neck), Math.max(0, neck));
+    head(
+      at(hookAlong - ARROW_HEAD_HALF_WIDTH_M, neck),
+      at(hookAlong + ARROW_HEAD_HALF_WIDTH_M, neck),
+      at(hookAlong, outer),
+    );
+  }
 }
 
 /**
@@ -2641,6 +2770,12 @@ export function roadTileVertices(
    * neither belongs at a junction nothing controls.
    */
   control?: JunctionControl,
+  /**
+   * The junction this tile is the last approach to, as the direction it lies
+   * in. Set only on the tile immediately before one, and only by a caller that
+   * can see the whole network; it is what puts lane-use arrows on the ground.
+   */
+  approachToward?: RoadFlow,
 ): { positions: number[]; colors: number[] } {
   if (!Number.isInteger(mask) || mask < 0 || mask > 15) {
     throw new RangeError(`roadTileVertices: mask ${mask} out of the 4-bit range 0..15`);
@@ -3021,6 +3156,53 @@ export function roadTileVertices(
         };
         if (hasVertical && isArrowTile(z)) paint(true);
         if (hasHorizontal && isArrowTile(x)) paint(false);
+      }
+
+      // Lane-use arrows on the last tile before a junction: what each lane of
+      // the approach is allowed to do, painted from its movement set. A
+      // single-lane approach does everything and is left unmarked, which is also
+      // what MUTCD 3D.06 ¶01 says of one at a circular intersection.
+      if (approachToward !== undefined && plan.solid.length + plan.dashed.length > 0) {
+        const vertical = approachToward === RoadFlow.North || approachToward === RoadFlow.South;
+        const ahead: 1 | -1 =
+          approachToward === RoadFlow.South || approachToward === RoadFlow.East ? 1 : -1;
+        // Facing the way the traffic goes, this is the across direction on the
+        // driver's LEFT — the side the leftmost lane sits on, and the side a
+        // left turn hooks toward.
+        const leftSign = vertical ? ahead : -ahead;
+        const lanes = travelLanes(crossSection);
+        const oneWay = lanes.every((l) => l.flow === lanes[0]?.flow);
+        // On a two-way road the approaching lanes are the ones on the driver's
+        // RIGHT of the centreline. On a one-way every lane approaches, or none
+        // does — which is what the road's own stored direction decides.
+        const runsToward = flow === RoadFlow.None || flow === approachToward;
+        const approaching = oneWay
+          ? runsToward
+            ? lanes
+            : []
+          : lanes.filter((l) => l.centre * leftSign < 0);
+        if (approaching.length >= 2) {
+          // Ordered from the driver's left, which is the order the movement sets
+          // come in: the dedicated left first, the dedicated right last.
+          const ordered = [...approaching].sort(
+            (a, b) => b.centre * leftSign - a.centre * leftSign,
+          );
+          const movements = defaultLaneMovements(ordered.length);
+          const shift = ahead * (TILE_HALF - LANE_ARROW_SETBACK_M);
+          for (let i = 0; i < ordered.length; i++) {
+            emitLaneUseArrow(
+              positions,
+              colors,
+              vertical,
+              vertical ? centerX : centerX + shift,
+              vertical ? centerZ + shift : centerZ,
+              ordered[i]!.centre,
+              ahead,
+              movements[i] ?? Movement.Through,
+              hAt,
+            );
+          }
+        }
       }
 
       // One-Way direction arrows: every ARROW_PERIOD_TILES-th tile by GLOBAL
@@ -3477,6 +3659,30 @@ export class RoadMeshRenderer {
     return chunk?.tiles.get(localTileKeyOf(x, z))?.tier ?? RoadTier.None;
   }
 
+  /**
+   * The direction of the junction this tile is the last approach to, or
+   * undefined when it is not one. A tile is an approach when it is a straight
+   * run — a corner has no lane to arrow — with exactly one neighbour that has
+   * three arms or more of its own.
+   */
+  private approachToward(x: number, z: number): RoadFlow | undefined {
+    const degreeAt = (ax: number, az: number): number => {
+      let n = 0;
+      for (const [dx, dz] of APPROACH_STEPS)
+        if (this.tierAt(ax + dx, az + dz) !== RoadTier.None) n++;
+      return n;
+    };
+    if (degreeAt(x, z) !== 2) return undefined; // a junction, a corner or an end
+    let found: RoadFlow | undefined;
+    for (const [dx, dz, toward] of APPROACH_DIRS) {
+      if (this.tierAt(x + dx, z + dz) === RoadTier.None) continue;
+      if (degreeAt(x + dx, z + dz) < 3) continue;
+      if (found !== undefined) return undefined; // between two junctions: neither is the approach
+      found = toward;
+    }
+    return found;
+  }
+
   /** The carriageway half-width of the road at (x,z) from its own cross-section, or 0 off-road. */
   private halfAt(x: number, z: number): number {
     const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
@@ -3521,6 +3727,7 @@ export class RoadMeshRenderer {
         },
         tile.flow,
         this.junctionControls.get(tileIndex(tile.x, tile.z)),
+        this.approachToward(tile.x, tile.z),
       );
       for (const n of vertices.positions) positions.push(n);
       for (const n of vertices.colors) colors.push(n);

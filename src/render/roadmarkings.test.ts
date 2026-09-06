@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { presetProfileForTier } from '../shared/roadprofile';
 import { RoadTier } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
-import { CENTRE_PAIR_OFFSET_M, centrePair, markingPlan } from './roadmarkings';
+import { CENTRE_PAIR_OFFSET_M, centrePair, markingPlan, travelLanes } from './roadmarkings';
 
 const close = (xs: readonly { at: number }[] | number[], ys: number[]): void => {
   expect(xs.length).toBe(ys.length);
@@ -186,5 +186,56 @@ describe('markingPlan for composed profiles', () => {
     });
     const band = p.bands[0]!;
     expect(band.to - band.from).toBeCloseTo(1.6, 6);
+  });
+});
+
+describe('travelLanes finds where each lane actually is', () => {
+  it('splits a two-lane street either side of its centreline', () => {
+    const lanes = travelLanes(presetProfileForTier(RoadTier.TwoLane));
+    expect(lanes.map((l) => l.flow)).toEqual(['back', 'fwd']);
+    close(
+      lanes.map((l) => l.centre),
+      [-1.875, 1.875],
+    );
+  });
+
+  it('places all four lanes of a four-lane road, inner pair either side of the centre', () => {
+    const lanes = travelLanes(presetProfileForTier(RoadTier.FourLane));
+    expect(lanes).toHaveLength(4);
+    // Symmetric about the centreline, and each centre inside the carriageway.
+    const centres = lanes.map((l) => l.centre);
+    close(centres, centres.map((c) => -c).reverse());
+    expect(centres[0]).toBeLessThan(0);
+    expect(centres[3]).toBeGreaterThan(0);
+  });
+
+  it('measures a lane from the pieces beside it, not from an even split', () => {
+    // A kerbside parking lane pushes the travel lanes inward; the arrow has to
+    // land on the lane, not where an even split would put it.
+    const lanes = travelLanes({
+      class: 'local',
+      pieces: [
+        { kind: 'sidewalk', width: 1.875 },
+        { kind: 'parking', width: 2.25 },
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'parking', width: 2.25 },
+        { kind: 'sidewalk', width: 1.875 },
+      ],
+    });
+    close(
+      lanes.map((l) => l.centre),
+      [-1.875, 1.875],
+    );
+  });
+
+  it('counts a bus or bike lane as neither: they are not travel lanes', () => {
+    const lanes = travelLanes(presetProfileForTier(RoadTier.BusLane));
+    expect(lanes.every((l) => l.flow === 'fwd' || l.flow === 'back')).toBe(true);
+    expect(lanes.length).toBeLessThan(presetProfileForTier(RoadTier.BusLane).pieces.length);
+  });
+
+  it('has no lanes on a railway', () => {
+    expect(travelLanes(presetProfileForTier(RoadTier.RailTrack))).toEqual([]);
   });
 });

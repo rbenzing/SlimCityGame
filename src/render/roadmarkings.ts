@@ -108,6 +108,31 @@ const CARRIAGEWAY_KINDS: ReadonlySet<LanePiece['kind']> = new Set([
 const isTravel = (p: LanePiece): boolean => p.kind === 'travel';
 const flowOf = (p: LanePiece): 'fwd' | 'back' | 'both' => p.flow ?? 'both';
 
+/** One travel lane of a cross-section: where its centre is, and which way it runs. */
+export interface TravelLane {
+  /** Signed offset of the lane's centre from the centreline, metres. */
+  centre: number;
+  /** Which way it runs, relative to the tile's own stored direction. */
+  flow: 'fwd' | 'back' | 'both';
+}
+
+/**
+ * The travel lanes a profile has, in order across the tile. Anything painted
+ * PER LANE — a lane-use arrow above all — has to know where the lane actually
+ * is, and the cross-section is the only thing that knows.
+ */
+export function travelLanes(profile: RoadProfile): TravelLane[] {
+  const pieces = profile.pieces.filter((p) => CARRIAGEWAY_KINDS.has(p.kind));
+  let offset = -carriagewayHalfWidthOf(profile);
+  const lanes: TravelLane[] = [];
+  for (const piece of pieces) {
+    const from = offset;
+    offset += piece.width;
+    if (isTravel(piece)) lanes.push({ centre: (from + offset) / 2, flow: flowOf(piece) });
+  }
+  return lanes;
+}
+
 /** Lays the carriageway pieces across the tile and reads the lines between them. */
 export function markingPlan(profile: RoadProfile): MarkingPlan {
   const style = CLASS_MARKINGS[profile.class];

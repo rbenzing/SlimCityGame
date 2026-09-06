@@ -858,6 +858,99 @@ describe('roadTileVertices — proper intersections: stop-line + crosswalk bars 
   });
 });
 
+describe('roadTileVertices — lane-use arrows on the last tile before a junction', () => {
+  /** A straight run tile told which way the junction it approaches lies. */
+  const approach = (
+    tier: RoadTier,
+    toward: RoadFlow,
+    mask = N | S,
+    flow: RoadFlow = RoadFlow.None,
+  ): { positions: number[]; colors: number[] } =>
+    roadTileVertices(
+      4,
+      4,
+      tier,
+      mask,
+      flatHeightAt,
+      undefined,
+      undefined,
+      undefined,
+      flow,
+      undefined,
+      toward,
+    );
+
+  const plain = (tier: RoadTier, mask = N | S): { positions: number[]; colors: number[] } =>
+    roadTileVertices(4, 4, tier, mask, flatHeightAt);
+
+  it('paints nothing on a single-lane approach, which does everything anyway', () => {
+    // A two-lane street has one lane each way, so no lane needs telling apart.
+    const painted = countWhere(approach(RoadTier.TwoLane, RoadFlow.South).colors, isMarkingWhite);
+    expect(painted).toBe(countWhere(plain(RoadTier.TwoLane).colors, isMarkingWhite));
+  });
+
+  it('paints an arrow per lane on a four-lane approach', () => {
+    const arrowed = approach(RoadTier.FourLane, RoadFlow.South);
+    expect(countWhere(arrowed.colors, isMarkingWhite)).toBeGreaterThan(
+      countWhere(plain(RoadTier.FourLane).colors, isMarkingWhite),
+    );
+  });
+
+  it('arrows only the half of the carriageway that is driving toward the junction', () => {
+    // Right-hand traffic: heading south (+Z), the approaching lanes are the
+    // ones west of the centreline, so every arrow vertex is at negative x.
+    const centreX = 4.5 * TILE_METERS;
+    const arrowed = approach(RoadTier.FourLane, RoadFlow.South);
+    const posTriples = toTriples(arrowed.positions);
+    const colorTriples = toTriples(arrowed.colors);
+    // The arrow paint is whatever white the plain tile does not have; look at
+    // where the extra white sits by sign of x, on both halves.
+    let west = 0;
+    let east = 0;
+    for (let i = 0; i < posTriples.length; i++) {
+      if (!isMarkingWhite(colorTriples[i] as number[])) continue;
+      const dx = (posTriples[i] as number[])[0]! - centreX;
+      if (dx < -0.2) west++;
+      else if (dx > 0.2) east++;
+    }
+    // A plain four-lane paints symmetrically, so the asymmetry IS the arrows.
+    expect(west).toBeGreaterThan(east);
+  });
+
+  it('arrows the other half when the junction is the other way', () => {
+    const centreX = 4.5 * TILE_METERS;
+    const sideOf = (toward: RoadFlow): number => {
+      const v = approach(RoadTier.FourLane, toward);
+      const pos = toTriples(v.positions);
+      const col = toTriples(v.colors);
+      let sum = 0;
+      for (let i = 0; i < pos.length; i++) {
+        if (isMarkingWhite(col[i] as number[])) sum += (pos[i] as number[])[0]! - centreX;
+      }
+      return sum;
+    };
+    expect(sideOf(RoadFlow.South)).toBeLessThan(0);
+    expect(sideOf(RoadFlow.North)).toBeGreaterThan(0);
+  });
+
+  it('paints nothing on a road that paints nothing', () => {
+    for (const tier of [RoadTier.Gravel, RoadTier.Alley]) {
+      expect(
+        countWhere(approach(tier, RoadFlow.South).colors, isMarkingWhite),
+        `tier ${tier}`,
+      ).toBe(countWhere(plain(tier).colors, isMarkingWhite));
+    }
+  });
+
+  it('arrows a one-way street only where it runs toward the junction', () => {
+    const toward = approach(RoadTier.OneWay, RoadFlow.South, N | S, RoadFlow.South);
+    const away = approach(RoadTier.OneWay, RoadFlow.South, N | S, RoadFlow.North);
+    expect(countWhere(toward.colors, isMarkingWhite)).toBeGreaterThan(
+      countWhere(away.colors, isMarkingWhite),
+    );
+  });
+});
+
 describe('isAvenueMedianEligible / isHighwayDividerEligible (UI-SPEC §6.7 Roads v2)', () => {
   it('is false for every tier other than the one it names', () => {
     expect(isAvenueMedianEligible(RoadTier.TwoLane, N | S)).toBe(false);

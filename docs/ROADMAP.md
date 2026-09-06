@@ -76,7 +76,13 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > other — on the same clock the traffic runs on, so a paused city holds its
 > lights; and a junction can be made a mini roundabout, the one control that
 > rebuilds the junction rather than only deciding who waits at it. That
-> completes wave 3. Next: waves 4–6.
+> completes wave 3. Wave 4 has begun: a lane is now a SET of movements rather
+> than just a lane, the default widens the way a real approach widens — a third
+> lane buys a dedicated left, a fourth a dedicated right — and the last tile
+> before a junction is painted with a lane-use arrow per approaching lane,
+> read off the movement set and nothing else. Next in the wave: the player's
+> own movement sets and turn restrictions, turn pockets, and lane-drop tapers.
+> Then waves 5–6.
 > Specified in full: classes, lane-piece
 > profiles with a width budget, stored flow direction, per-junction control
 > (none/yield/stop/all-way/signal/roundabout) with warrant defaults,

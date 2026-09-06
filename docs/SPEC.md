@@ -2473,6 +2473,35 @@ scaled by one constant into the units the sim already uses.
 4. **Approach lanes and tapers** — movement sets, turn pockets, arrows, turn
    restrictions, lane-drop tapers with merge arrows and gore chevrons, taper
    edges in the sim.
+   *Status (2026-09-06):* the movement model is in and the arrows are painted
+   from it. `src/shared/approach.ts` holds it: a lane is a SET of movements —
+   left, through, right, and the U-turn no lane offers unasked — and the
+   default widens the way a real approach widens. One lane does everything.
+   Two share the turns. A third buys a dedicated left, which is the first
+   thing a widened approach spends a lane on; a fourth buys a dedicated right,
+   and everything between them runs through. The turn between two headings is
+   the difference between two cardinals, so there are no angle-wrap cases.
+   A movement's delay divides by the lanes serving it, and a movement no lane
+   offers is a movement nobody makes — which is what a turn restriction is.
+   The approach zone is as long as the queue it has to hold, from the storage
+   lengths above: two tiles on a local street, three on a collector, four on
+   an arterial, five on a divided road or a motorway.
+   The render paints it. `travelLanes` reads the lane centres off the
+   cross-section — an arrow has to land on the lane, not where an even split
+   would put it — and the tile immediately before a junction paints a lane-use
+   arrow per approaching lane: a stem and a solid head where the lane runs
+   through, and a hooked head toward every side it may turn. A lane with a
+   movement taken away therefore LOOKS restricted, because the arrow that
+   would have said so is simply not painted. Which lanes approach is read off
+   right-hand traffic — the ones on the driver's right of the centreline —
+   except on a one-way street, where every lane approaches or none does and
+   the road's own stored direction decides. A single-lane approach is left
+   unmarked, since it does everything anyway, which is also what MUTCD 3D.06
+   ¶01 says of one at a circular intersection.
+   *Still to come in the wave:* the player's own movement sets (storage, a
+   command and the inspector rows), turn pockets, the routing gate that makes
+   a restricted movement an illegal path rather than only an unpainted one,
+   and lane-drop tapers with their merge arrows and gore chevrons.
 5. **Ramps and interchange stamps** — the ramp class, merge/diverge/terminal
    nodes, automatic acceleration/deceleration lanes, diamond and trumpet,
    then parclo, cloverleaf and roundabout interchange.
