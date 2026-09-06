@@ -170,7 +170,21 @@ interface SaveRecord {
   data: ArrayBuffer;
 }
 
+/**
+ * Whether this browser will store anything at all. A private window, a
+ * blocked site-data setting or an embedded webview can leave `indexedDB`
+ * undefined — the game still runs there, it just cannot remember.
+ */
+export function storageAvailable(): boolean {
+  return typeof indexedDB !== 'undefined' && indexedDB !== null;
+}
+
 function openDb(): Promise<IDBDatabase> {
+  // Reaching for a missing `indexedDB` throws a ReferenceError from inside the
+  // executor, which is a confusing way to be told the browser has no storage.
+  if (!storageAvailable()) {
+    return Promise.reject(new Error('This browser has nowhere to store a saved city'));
+  }
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
@@ -265,8 +279,14 @@ export function sortSaveHeadersNewestFirst<T extends { savedAt: number }>(header
   return [...headers].sort((a, b) => b.savedAt - a.savedAt);
 }
 
-/** Every stored save's header (with its slot id), newest first. */
+/**
+ * Every stored save's header (with its slot id), newest first — and an empty
+ * list where the browser has no storage at all. Asking what has been saved is
+ * not an operation that should fail: the answer there is "nothing", and a menu
+ * that cannot offer a saved city should still open.
+ */
 export async function listSaves(): Promise<SaveHeaderWithId[]> {
+  if (!storageAvailable()) return [];
   const db = await openDb();
   try {
     const tx = db.transaction(SAVES_STORE, 'readonly');

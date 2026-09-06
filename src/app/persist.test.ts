@@ -4,9 +4,12 @@ import { SAVE_VERSION, type MainToWorker, type SaveHeader } from '../shared/type
 import {
   AutoSaver,
   decodeSave,
+  deleteSave,
   encodeSave,
+  listSaves,
   postLoadSaveMessage,
   sortSaveHeadersNewestFirst,
+  storageAvailable,
   stampSavedAt,
   type SaveHeaderWithId,
   type SaveMeta,
@@ -239,5 +242,25 @@ describe('postLoadSaveMessage', () => {
 
     expect(found).toBe(false);
     expect(posted).toHaveLength(0);
+  });
+});
+
+describe('a browser with nowhere to store a city', () => {
+  // vitest runs this file under `environment: 'node'`, so there is no
+  // `indexedDB` global — which is the same situation as a private window, a
+  // blocked site-data setting, or an embedded webview.
+  it('says so plainly rather than throwing a ReferenceError', () => {
+    expect(storageAvailable()).toBe(false);
+  });
+
+  it('answers "nothing saved" instead of failing, so the menu still opens', async () => {
+    // Asking what has been saved is not an operation that should fail. The
+    // menu used to leave this rejection unhandled, which took the whole test
+    // run's exit code with it.
+    await expect(listSaves()).resolves.toEqual([]);
+  });
+
+  it('still refuses a SAVE out loud, because the player asked for that one', async () => {
+    await expect(deleteSave(1)).rejects.toThrow(/nowhere to store/);
   });
 });

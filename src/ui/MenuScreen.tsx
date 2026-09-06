@@ -54,9 +54,15 @@ export function MenuScreen(): JSX.Element | null {
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    void listSaves().then((headers) => {
-      if (!cancelled) setSaves(headers.map(toSaveRow));
-    });
+    // A storage failure — a corrupt database, a quota refusal — leaves the
+    // menu with no saves to offer rather than with an unhandled rejection.
+    void listSaves()
+      .then((headers) => {
+        if (!cancelled) setSaves(headers.map(toSaveRow));
+      })
+      .catch(() => {
+        if (!cancelled) setSaves([]);
+      });
     return () => {
       cancelled = true;
     };
@@ -109,8 +115,15 @@ export function MenuScreen(): JSX.Element | null {
         saves={saves}
         onLoad={(id) => startLoadGame(Number(id))}
         onDelete={async (id) => {
-          await deleteSave(Number(id));
-          setSaves(await listSaves().then((headers) => headers.map(toSaveRow)));
+          try {
+            await deleteSave(Number(id));
+          } finally {
+            setSaves(
+              await listSaves()
+                .then((headers) => headers.map(toSaveRow))
+                .catch(() => []),
+            );
+          }
         }}
         onBack={() => setSub('main')}
       />
