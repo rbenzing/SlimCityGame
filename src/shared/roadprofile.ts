@@ -539,6 +539,45 @@ function refuses(a: RoadClassId, b: RoadClassId): boolean {
   return (NEVER_MEETS[a] ?? []).includes(b);
 }
 
+/**
+ * Where each class sits in the road hierarchy. A road only ever replaces one
+ * BELOW it, so a farm track never cuts a motorway and a bike lane never wipes
+ * an arterial. The order is the real one — surface first, then how much
+ * traffic the road is built to carry — and it is deliberately not the order
+ * the tier numbers happen to be in, which is the order they were added in.
+ */
+const CLASS_RANK: Readonly<Record<RoadClassId, number>> = {
+  dirt: 0,
+  alley: 1,
+  rural: 2,
+  local: 3,
+  oneWay: 4,
+  urban: 5,
+  collector: 6,
+  arterial: 7,
+  divided: 8,
+  ramp: 9,
+  highway: 10,
+  rail: 11,
+};
+
+/**
+ * A profile's place in the hierarchy. A road carrying a reserved bus or tram
+ * lane outranks the same road without one, so a stray drag cannot quietly wipe
+ * a transit line it crosses.
+ */
+export function roadRank(profile: RoadProfile): number {
+  const transit = profile.pieces.some(
+    (p) => p.kind === 'bus' || p.kind === 'tram' || p.tram === true,
+  );
+  return CLASS_RANK[profile.class] * 2 + (transit ? 1 : 0);
+}
+
+/** The hierarchy rank of a tier, which is the rank of the preset it names. */
+export function rankForTier(tier: RoadTier): number {
+  return roadRank(presetProfileForTier(tier));
+}
+
 /** Whether a road of class `a` may touch a road of class `b`, in either order. */
 export function canJoin(a: RoadClassId, b: RoadClassId): boolean {
   return !refuses(a, b) && !refuses(b, a);

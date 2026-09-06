@@ -72,6 +72,7 @@ import {
   FIRST_CUSTOM_PROFILE_ID,
   fitsTile,
   isPresetProfileId,
+  rankForTier,
   tierForProfile,
   withinLaneRange,
 } from '../shared/roadprofile';
@@ -1526,14 +1527,14 @@ class SimWorld implements WorkerSim {
       const priorDeck = g.roadElevation[idx] ?? 0;
       const priorFlow = g.roadFlow[idx] ?? RoadFlow.None;
       const prevProfile = g.roadProfile[idx] || current;
-      // A road is replaced by a higher tier, or by a different composition of
-      // the same tier. The same road again only ever re-profiles its deck.
-      // Replace mode lands whatever the drag draws, a smaller road included;
-      // otherwise a road is replaced only by a higher tier or a different
-      // composition of the same one.
+      // A road is replaced by one ABOVE it in the hierarchy, or by a different
+      // composition of the same road; the same road again only ever re-profiles
+      // its deck. Replace mode lands whatever the drag draws, lesser included.
+      const outranks =
+        (current as RoadTier) === RoadTier.None || rankForTier(tier) > rankForTier(current);
       const replaces = replace
         ? current !== tier || prevProfile !== profileId
-        : current < tier || (current === tier && current !== 0 && prevProfile !== profileId);
+        : outranks || (current === tier && current !== 0 && prevProfile !== profileId);
       if (deck !== priorDeck) bridgeCost += deck * BRIDGE_COST_PER_METER_TILE;
       // A tile whose road is unchanged but whose deck moved, or which now runs
       // the other way, still changed — count it so a pure re-drag is not

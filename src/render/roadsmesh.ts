@@ -90,6 +90,8 @@ import {
   kerbWidthOf,
   PRESET_LANE_WIDTH_M,
   presetProfileForTier,
+  rankForTier,
+  roadClass,
 } from '../shared/roadprofile';
 import { centrePair, markingPlan, type MarkingPlan } from './roadmarkings';
 
@@ -203,19 +205,12 @@ export const RAIL_HALF_WIDTH_FRACTION = laneFraction(1.5);
 
 /** Gravel's dusty tan base color family, before per-tile jitter. */
 const GRAVEL_BASE_COLOR: readonly [number, number, number] = [0.62, 0.55, 0.42];
-/** Alley: dark asphalt, distinctly darker than every other paved tier. */
-const ALLEY_COLOR: readonly [number, number, number] = [0.33, 0.33, 0.34];
-/** One-Way reuses the two-lane look. */
-const ONE_WAY_COLOR: readonly [number, number, number] = [0.5, 0.5, 0.51];
 /**
- * Four-Lane: an avenue-family shade, distinguishable from avenue's own and
- * kept clear of the mid-grey band `isConcreteBand`-style tests use to detect
- * the median/divider raised bands (0.45..0.58) — plain asphalt must never
- * look like a physical concrete band.
+ * Asphalt: one shade for every paved road, quiet street to motorway. It sits
+ * clear of the mid-grey band (0.45..0.58) that reads as a physical concrete
+ * median or divider, so plain carriageway never looks like a raised band.
  */
-const FOUR_LANE_COLOR: readonly [number, number, number] = [0.6, 0.6, 0.61];
-/** Bus/Bike lanes reuse a mid asphalt base — the colored lane band is the differentiator, not the base shade. */
-const TRANSIT_LANE_COLOR: readonly [number, number, number] = [0.5, 0.5, 0.51];
+const ASPHALT_COLOR: readonly [number, number, number] = [0.42, 0.42, 0.43];
 /** Tram rail: bright steel, distinctly lighter/metallic against asphalt (but below marking white). */
 const TRAM_RAIL_COLOR: readonly [number, number, number] = [0.7, 0.71, 0.74];
 /** Tram sleeper (cross-tie): dark creosote timber. */
@@ -271,49 +266,37 @@ export function curbWidthMeters(tier: RoadTier): number {
 }
 
 /**
- * Base asphalt shade per tier. The shade is a palette decision, not a
- * property of the cross-section, so it stays keyed by tier while the geometry
- * flags come from the tier's preset profile.
+ * The shade a surface is: one asphalt for every paved road, the gravel tan
+ * for a dirt track, ballast for a railway. What tells one paved road from
+ * another is its width and its markings, not its colour.
  */
-function tierBaseColor(tier: RoadTier): readonly [number, number, number] {
-  switch (tier) {
-    case RoadTier.TwoLane:
-      return [0.5, 0.5, 0.51];
-    case RoadTier.Avenue:
-      return [0.58, 0.58, 0.59];
-    case RoadTier.Highway:
-      return [0.4, 0.4, 0.41];
-    case RoadTier.Gravel:
+function surfaceColor(profile: RoadProfile): readonly [number, number, number] {
+  switch (roadClass(profile.class).surface) {
+    case 'gravel':
       return GRAVEL_BASE_COLOR;
-    case RoadTier.Alley:
-      return ALLEY_COLOR;
-    case RoadTier.OneWay:
-      return ONE_WAY_COLOR;
-    case RoadTier.FourLane:
-      return FOUR_LANE_COLOR;
-    case RoadTier.BusLane:
-    case RoadTier.BikeLane:
-    case RoadTier.Tram:
-      return TRANSIT_LANE_COLOR;
-    case RoadTier.RailTrack:
+    case 'ballast':
       return RAIL_BALLAST_COLOR;
     default:
-      throw new RangeError(`roadTileVertices: no quad spec for tier ${tier}`);
+      return ASPHALT_COLOR;
   }
 }
-
 /**
  * The geometry a road draws, read from its cross-section: the paved width
  * between the kerbs, whether it has kerbs at all, and whether its surface
  * takes paint. Rail is ballast and gravel is gravel, so neither is painted and
- * neither gets a crosswalk. The shade comes from the tier — a composed
- * profile's nearest preset — because a shade is a palette choice, not a
- * property of the pieces.
+ * neither gets a crosswalk.
+ *
+ * The shade comes from the SURFACE, not the road: asphalt is asphalt, whether
+ * it is a quiet street or a motorway. Tinting each road type a different grey
+ * put a visible colour step at every place two of them met, and turned every
+ * crossing into a patch of the winner's shade; what tells a motorway from a
+ * side street is its width and its markings, which is what the cross-section
+ * already carries.
  */
-function quadSpecFor(tier: RoadTier, profile: RoadProfile): QuadSpec {
+function quadSpecFor(_tier: RoadTier, profile: RoadProfile): QuadSpec {
   return {
     halfWidthFraction: carriagewayWidth(profile) / (2 * TILE_METERS),
-    color: tierBaseColor(tier),
+    color: surfaceColor(profile),
     hasCurbs: hasKerbs(profile),
     paved: isPaved(profile),
   };
@@ -2803,54 +2786,29 @@ export function roadTileVertices(
     // are NOT junctions by this gate and keep their plain suppression/marking
     // behavior above.
     if (isJunction) {
-      if (hasN)
+      // Which arms stop. A minor road meeting a bigger one gives way to it:
+      // the side street gets the stop line and the crosswalk, and the road
+      // running through gets neither, the way a real junction reads. Where
+      // the two roads rank equally, every arm stops — an all-way junction.
+      const ownRank = rankForTier(tier);
+      const armStops = (neighborTier: RoadTier): boolean =>
+        neighborTier === RoadTier.None || rankForTier(neighborTier) <= ownRank;
+      const arm = (vertical: boolean, at: (d: number) => number): void =>
         emitJunctionArmMarkings(
           positions,
           colors,
-          true,
+          vertical,
           centerX,
           centerZ,
           coreHalf,
           armDepth,
-          (d) => -coreHalf - d,
+          at,
           hAt,
         );
-      if (hasS)
-        emitJunctionArmMarkings(
-          positions,
-          colors,
-          true,
-          centerX,
-          centerZ,
-          coreHalf,
-          armDepth,
-          (d) => coreHalf + d,
-          hAt,
-        );
-      if (hasE)
-        emitJunctionArmMarkings(
-          positions,
-          colors,
-          false,
-          centerX,
-          centerZ,
-          coreHalf,
-          armDepth,
-          (d) => coreHalf + d,
-          hAt,
-        );
-      if (hasW)
-        emitJunctionArmMarkings(
-          positions,
-          colors,
-          false,
-          centerX,
-          centerZ,
-          coreHalf,
-          armDepth,
-          (d) => -coreHalf - d,
-          hAt,
-        );
+      if (hasN && armStops(neighbors.n)) arm(true, (d) => -coreHalf - d);
+      if (hasS && armStops(neighbors.s)) arm(true, (d) => coreHalf + d);
+      if (hasE && armStops(neighbors.e)) arm(false, (d) => coreHalf + d);
+      if (hasW && armStops(neighbors.w)) arm(false, (d) => -coreHalf - d);
     }
   }
 

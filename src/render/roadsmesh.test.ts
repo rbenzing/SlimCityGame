@@ -376,14 +376,28 @@ describe('roadTileVertices — asphalt base plate', () => {
     expect(r0).toBeLessThan(0.75);
   });
 
-  it('orders tier brightness highway (darkest) < two-lane < avenue (lightest)', () => {
-    const two = avg(roadTileVertices(0, 0, RoadTier.TwoLane, 0, flatHeightAt).colors.slice(0, 3));
-    const avenue = avg(roadTileVertices(0, 0, RoadTier.Avenue, 0, flatHeightAt).colors.slice(0, 3));
-    const highwayMain = avg(
-      roadTileVertices(0, 0, RoadTier.Highway, 0, flatHeightAt).colors.slice(0, 3),
-    );
-    expect(highwayMain).toBeLessThan(two);
-    expect(two).toBeLessThan(avenue);
+  it('paves every road the same asphalt, so no two of them meet in a colour step', () => {
+    // A quiet street and a motorway are the same material. Tinting each road
+    // type its own grey put a visible seam wherever two met, and turned every
+    // crossing into a patch of whichever one won the tile.
+    const shade = (tier: RoadTier): number =>
+      avg(roadTileVertices(0, 0, tier, 0, flatHeightAt).colors.slice(0, 3));
+    const paved = [
+      RoadTier.TwoLane,
+      RoadTier.Avenue,
+      RoadTier.Highway,
+      RoadTier.Alley,
+      RoadTier.OneWay,
+      RoadTier.FourLane,
+      RoadTier.BusLane,
+      RoadTier.BikeLane,
+      RoadTier.Tram,
+    ];
+    const first = shade(RoadTier.TwoLane);
+    for (const tier of paved) expect(shade(tier), `tier ${tier}`).toBeCloseTo(first, 9);
+    // The surfaces that really are a different material still differ.
+    expect(shade(RoadTier.Gravel)).not.toBeCloseTo(first, 2);
+    expect(shade(RoadTier.RailTrack)).not.toBeCloseTo(first, 2);
   });
 
   it('asphalt (any tier) is darker than the sidewalk curb color', () => {

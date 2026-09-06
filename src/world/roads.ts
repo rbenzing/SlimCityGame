@@ -7,7 +7,7 @@
 
 import { findPath as runAstar, nearestNode as findNearestNode } from './pathfind';
 import { flowForStep, RoadFlow, RoadTier, ZoneType, isStreetTier } from '../shared/types';
-import { isPresetProfileId, presetProfileForTier } from '../shared/roadprofile';
+import { isPresetProfileId, presetProfileForTier, rankForTier } from '../shared/roadprofile';
 import type {
   GraphEdge,
   GraphNode,
@@ -139,7 +139,12 @@ export function applyRoad(
     // smaller road included: rebuilding an avenue as a quiet street is a real
     // thing to want, and it is the drag that says so rather than the tier.
     const differs = tier !== current || g.roadProfile[idx] !== profile;
-    if (replace ? differs : tier > current || sameTierNewProfile) {
+    // A road replaces one BELOW it in the hierarchy, which is not the order
+    // the tier numbers are in: a gravel track has a higher tier number than a
+    // motorway and must still never cut one.
+    const outranks =
+      current === RoadTier.None || rankForTier(tier) > rankForTier(current as RoadTier);
+    if (replace ? differs : outranks || sameTierNewProfile) {
       g.roadTier[idx] = tier;
       g.roadProfile[idx] = profile;
       changedIdx.add(idx);

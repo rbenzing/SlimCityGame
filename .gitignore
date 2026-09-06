@@ -16,3 +16,6 @@ tools/shots-*/*.jpg
 tools/shots-*/*.jpeg
 tools/shots-*/*.log
 tools/shots-*/*.txt
+
+# Playwright MCP session artifacts
+.playwright-mcp/

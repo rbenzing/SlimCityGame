@@ -897,3 +897,36 @@ describe('the graph reads how a run divides between its directions', () => {
     expect(westward).toBe(1);
   });
 });
+
+describe('a road only replaces one below it in the hierarchy', () => {
+  it('refuses to let a gravel track cut a motorway, though its tier number is higher', () => {
+    const size = 10;
+    const g = makeGrid(size);
+    applyRoad(g, [{ x: 5, z: 5 }], RoadTier.Highway);
+    applyRoad(g, [{ x: 5, z: 5 }], RoadTier.Gravel);
+    expect(g.roadTier[idx(size, 5, 5)]).toBe(RoadTier.Highway);
+  });
+
+  it('refuses an alley over an avenue, and a bike lane over a motorway', () => {
+    const size = 10;
+    const g = makeGrid(size);
+    applyRoad(g, [{ x: 1, z: 1 }], RoadTier.Avenue);
+    applyRoad(g, [{ x: 1, z: 1 }], RoadTier.Alley);
+    expect(g.roadTier[idx(size, 1, 1)]).toBe(RoadTier.Avenue);
+
+    applyRoad(g, [{ x: 2, z: 2 }], RoadTier.Highway);
+    applyRoad(g, [{ x: 2, z: 2 }], RoadTier.BikeLane);
+    expect(g.roadTier[idx(size, 2, 2)]).toBe(RoadTier.Highway);
+  });
+
+  it('still upgrades a lesser road, and still yields to Replace mode', () => {
+    const size = 10;
+    const g = makeGrid(size);
+    applyRoad(g, [{ x: 3, z: 3 }], RoadTier.Gravel);
+    applyRoad(g, [{ x: 3, z: 3 }], RoadTier.TwoLane);
+    expect(g.roadTier[idx(size, 3, 3)]).toBe(RoadTier.TwoLane);
+
+    applyRoad(g, [{ x: 3, z: 3 }], RoadTier.Gravel, undefined, RoadTier.Gravel, true);
+    expect(g.roadTier[idx(size, 3, 3)]).toBe(RoadTier.Gravel);
+  });
+});

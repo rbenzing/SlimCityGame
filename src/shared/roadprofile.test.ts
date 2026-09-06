@@ -35,6 +35,8 @@ import {
   profileCapacity,
   profileIdForTier,
   profilesEqual,
+  rankForTier,
+  roadRank,
   profileSpeed,
   profileWidth,
   ROAD_CLASSES,
@@ -613,5 +615,47 @@ describe('asymmetric profiles: a road need not be the same both ways', () => {
     );
     expect(withinLaneRange(tooMany)).toBe(false);
     expect(isLayable(tooMany)).toBe(false);
+  });
+});
+
+describe('the road hierarchy: which road replaces which', () => {
+  const rank = (tier: RoadTier): number => rankForTier(tier);
+
+  it('never lets a farm track cut a motorway, whatever the tier numbers say', () => {
+    // Gravel's tier number is higher than the motorway's — it was added later.
+    expect(RoadTier.Gravel).toBeGreaterThan(RoadTier.Highway);
+    expect(rank(RoadTier.Gravel)).toBeLessThan(rank(RoadTier.Highway));
+  });
+
+  it('ranks the roads the way a road network does', () => {
+    const order = [
+      RoadTier.Gravel,
+      RoadTier.Alley,
+      RoadTier.TwoLane,
+      RoadTier.OneWay,
+      RoadTier.FourLane,
+      RoadTier.Avenue,
+      RoadTier.Highway,
+    ];
+    for (let i = 1; i < order.length; i++) {
+      expect(rank(order[i]!), `${order[i - 1]} then ${order[i]}`).toBeGreaterThan(
+        rank(order[i - 1]!),
+      );
+    }
+  });
+
+  it('puts a road carrying a transit lane above the same road without one', () => {
+    // A bus lane is an arterial; an avenue is an arterial without the bus lane.
+    expect(rank(RoadTier.BusLane)).toBeGreaterThan(rank(RoadTier.Avenue));
+    // A tram street is an urban street with rails down it.
+    expect(rank(RoadTier.Tram)).toBeGreaterThan(rank(RoadTier.FourLane));
+    expect(
+      roadRank({ class: 'urban', pieces: [{ kind: 'travel', width: 3.3, flow: 'fwd' }] }),
+    ).toBe(rank(RoadTier.FourLane));
+  });
+
+  it('leaves a bike lane a local street, so it never wipes an arterial', () => {
+    expect(rank(RoadTier.BikeLane)).toBeLessThan(rank(RoadTier.Avenue));
+    expect(rank(RoadTier.BikeLane)).toBeLessThan(rank(RoadTier.Highway));
   });
 });
