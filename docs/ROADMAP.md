@@ -84,8 +84,13 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > player's: a row per arm in the junction panel, saved with the city at version
 > 9, and a real refusal rather than only unpainted paint — the router now
 > searches over the node AND the edge that reached it, because a turn is only
-> legal once you know which way the driver came in. Next in the wave: per-lane
-> movement sets, turn pockets, and lane-drop tapers. Then waves 5–6.
+> legal once you know which way the driver came in. Turn pockets followed: the
+> lane an approach has at the junction and nowhere else, warranted by the
+> control rather than stored, carved out of the verge, the kerbside parking or
+> the width of the lanes themselves, and worth real seconds now that a
+> movement's delay divides by the service its lanes give it rather than a count
+> of them. Next in the wave: per-lane movement sets and lane-drop tapers with
+> their merge arrows and gore chevrons. Then waves 5–6.
 > Specified in full: classes, lane-piece
 > profiles with a width budget, stored flow direction, per-junction control
 > (none/yield/stop/all-way/signal/roundabout) with warrant defaults,
@@ -94,6 +99,23 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > independently shippable waves, per SPEC §29 (research 2026-09-05; the four
 > design decisions are locked and every figure is derived from HCM/AASHTO
 > formulas scaled into the sim's own units, which are already m/s and seconds).
+> **Queued next — dynamic world lighting (requested 2026-09-06):** every light
+> source in the world lights what is around it in real time, rather than being
+> an emissive surface that only looks lit. In scope: street and highway lamps,
+> parking-lot and stadium/industrial floods, building exteriors and lit windows,
+> vehicle headlights, tail and brake lights and indicators, emergency beacons,
+> traffic signal heads, neon and illuminated signage, and decorative strings.
+> Each source carries its own intensity, colour and temperature, range,
+> direction, beam angle, falloff and whether it casts; the light has to reach
+> terrain, buildings, vehicles, props and road surfaces, respond to what blocks
+> it, and follow the moving vehicle, the weather and the time of day, with soft
+> shadows, a specular response, some ambient bounce, and volumetrics where they
+> earn their cost. The hard part is not any one of those — it is the budget: a
+> night city has thousands of would-be lights and a browser has a handful of
+> real ones, so this epic is as much about which lights are real, which are
+> pooled, and which are baked as it is about the look. To be specified in
+> SPEC before any of it is built.
+>
 > Deferred/optional next: AI raster map packs, facade-atlas stage 2, screen-space
 > AO/reflections, and the [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper
 > industry, more transit modes).
