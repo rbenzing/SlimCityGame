@@ -787,7 +787,7 @@ describe('road tool mode/flags (UI-SPEC §5)', () => {
   it('angleLock (90° lock) restricts the road drag to a single, straight, dominant-axis leg', () => {
     const { env, previews } = makeEnv();
     const tm = new ToolManager(env);
-    tm.setFlags({ angleLock: true, straightMode: false });
+    tm.setFlags({ angleLock: true, straightMode: false, replaceRoad: false });
     tm.setTool('road.two');
     tm.pointerDown(0, 0, 0);
     tm.pointerMove(3, 2, 0);
@@ -802,7 +802,7 @@ describe('road tool mode/flags (UI-SPEC §5)', () => {
   it('straightMode also restricts the road drag to a single axis-locked leg', () => {
     const { env, previews } = makeEnv();
     const tm = new ToolManager(env);
-    tm.setFlags({ angleLock: false, straightMode: true });
+    tm.setFlags({ angleLock: false, straightMode: true, replaceRoad: false });
     tm.setTool('road.two');
     tm.pointerDown(0, 0, 0);
     tm.pointerMove(2, 3, 0);
@@ -817,7 +817,7 @@ describe('road tool mode/flags (UI-SPEC §5)', () => {
   it('commits the flag-restricted path, not the full L-path', () => {
     const { env, sent } = makeEnv();
     const tm = new ToolManager(env);
-    tm.setFlags({ angleLock: true, straightMode: false });
+    tm.setFlags({ angleLock: true, straightMode: false, replaceRoad: false });
     tm.setTool('road.two');
     tm.pointerDown(0, 0, 0);
     tm.pointerUp(3, 2, 0);
@@ -835,7 +835,7 @@ describe('road tool mode/flags (UI-SPEC §5)', () => {
   it('does not affect zone/plop/bulldoze tools', () => {
     const { env, previews } = makeEnv();
     const tm = new ToolManager(env);
-    tm.setFlags({ angleLock: true, straightMode: true });
+    tm.setFlags({ angleLock: true, straightMode: true, replaceRoad: false });
     tm.setTool('zone.resLow');
     tm.pointerDown(1, 1, 0);
     tm.pointerMove(3, 3, 0);
@@ -851,7 +851,7 @@ describe('road tool mode/flags (UI-SPEC §5)', () => {
     tm.pointerMove(3, 2, 0);
     expect(previews.at(-1)?.tiles).toHaveLength(6); // full L-path (existing default behavior)
 
-    tm.setFlags({ angleLock: true, straightMode: false });
+    tm.setFlags({ angleLock: true, straightMode: false, replaceRoad: false });
     expect(previews.at(-1)?.tiles).toEqual([
       { x: 0, z: 0 },
       { x: 1, z: 0 },
@@ -864,7 +864,7 @@ describe('road tool mode/flags (UI-SPEC §5)', () => {
     const { env, previews } = makeEnv();
     const tm = new ToolManager(env);
     const countBefore = previews.length;
-    tm.setFlags({ angleLock: true, straightMode: true });
+    tm.setFlags({ angleLock: true, straightMode: true, replaceRoad: false });
     expect(previews).toHaveLength(countBefore);
   });
 });
@@ -1691,5 +1691,34 @@ describe('transit line tools', () => {
     tm.setTool('transit.rail');
     tm.pointerDown(0, 0, 0);
     expect(previews.at(-1)?.label).toContain('Rail line');
+  });
+});
+
+describe('ToolManager — replace mode', () => {
+  it('asks the worker to replace what is there only while the flag is set', () => {
+    const { env, sent } = makeEnv();
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    tm.pointerDown(0, 0, 0);
+    tm.pointerUp(2, 0, 0);
+    expect(sent[0]?.commands[0]).not.toHaveProperty('replace');
+
+    tm.setFlags({ angleLock: false, straightMode: false, replaceRoad: true });
+    tm.pointerDown(0, 2, 0);
+    tm.pointerUp(2, 2, 0);
+    expect(sent[1]?.commands[0]).toMatchObject({ kind: 'buildRoad', replace: true });
+  });
+
+  it('carries the flag on a composed profile too, alongside its definition', () => {
+    const { env, sent } = makeEnv();
+    env.profileIdFor = () => 12;
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    tm.setFlags({ angleLock: false, straightMode: false, replaceRoad: true });
+    tm.setProfileEdits({ ...NO_EDITS, parking: 'both' });
+    tm.pointerDown(0, 0, 0);
+    tm.pointerUp(2, 0, 0);
+    expect(sent[0]?.commands[0]).toMatchObject({ kind: 'defineRoadProfile', id: 12 });
+    expect(sent[0]?.commands[1]).toMatchObject({ kind: 'buildRoad', profile: 12, replace: true });
   });
 });

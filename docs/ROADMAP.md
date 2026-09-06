@@ -11,7 +11,7 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 
 > **Delivery status (2026-08-13):** the M0–M7 core spine plus bus transit, service
 > dispatch, districts & policies, stats charts + photo mode, and eight playtest-feedback
-> rounds are shipped and gate-green (2,866 tests / 108 files). Delivered on top of the
+> rounds are shipped and gate-green (2,874 tests / 108 files). Delivered on top of the
 > original milestones: the city-builder UI shell + night cycle, full building/street/vehicle/tree
 > visual language, full terraforming + animated water + sky, the airport landmark,
 > code-split bundle, plus the playtest refinements captured in SPEC.md (utility
@@ -34,7 +34,7 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > shopfront silhouettes, and one junction rule shared by every piece of kerb
 > furniture, per SPEC §28). Versioning + deploy are
 > automated (release-please + Conventional Commits → GitHub Pages; see the repo README).
-> **In progress — road composition (SPEC §29):** wave 1's data model is in
+> **In progress — road composition (SPEC §29):** wave 1 is complete
 > (twelve classes, eleven preset profiles, derivations for speed, capacity and
 > geometry; render and pathfinding read them; the grid stores the profile as
 > the road's identity with the tier derived, saves at v6, the worker accepts
@@ -47,8 +47,9 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > farm track or an alley, and a wide run meeting a narrower one bends its kerb
 > in over the tile instead of stepping at the seam; the options row carries the
 > class drawer — lanes each way, a median or turn lane down the middle, and the
-> posted speed inside the class range). Still to build in wave 1:
-> replace-in-place; then waves 2–6.
+> posted speed inside the class range; and a Replace chip lays a road over
+> whatever is already there, so rebuilding an avenue as a quiet street is one
+> drag while a stray drag still cannot flatten one). Next: waves 2–6.
 > Specified in full: classes, lane-piece
 > profiles with a width budget, stored flow direction, per-junction control
 > (none/yield/stop/all-way/signal/roundabout) with warrant defaults,

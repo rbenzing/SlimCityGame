@@ -1174,7 +1174,8 @@ class SimWorld implements WorkerSim {
   private cmdDefineRoadProfile(id: number, profile: RoadProfile): CommandResult {
     const rejected = { ok: false, cost: 0, inverse: [], reason: 'invalid' as const };
     if (!Number.isInteger(id) || id < FIRST_CUSTOM_PROFILE_ID || id > 0xffff) return rejected;
-    if (!fitsTile(profile) || !admitsAllPieces(profile) || !withinLaneRange(profile)) return rejected;
+    if (!fitsTile(profile) || !admitsAllPieces(profile) || !withinLaneRange(profile))
+      return rejected;
     const existing = this.customRoadProfiles.get(id);
     if (existing) {
       // Idempotent for the same definition; a different one under a taken id
@@ -1232,6 +1233,7 @@ class SimWorld implements WorkerSim {
           command.elevation,
           command.elevations,
           command.profile,
+          command.replace,
         );
       case 'defineRoadProfile':
         return this.cmdDefineRoadProfile(command.id, command.profile);
@@ -1434,6 +1436,7 @@ class SimWorld implements WorkerSim {
     elevation = 0,
     exact?: number[],
     requestedProfile?: number,
+    replace = false,
   ): CommandResult {
     // The profile is the road's identity; the tier is its nearest preset and
     // is derived from it, so a composed profile cannot be laid under a tier it
@@ -1497,8 +1500,12 @@ class SimWorld implements WorkerSim {
       const prevProfile = g.roadProfile[idx] || current;
       // A road is replaced by a higher tier, or by a different composition of
       // the same tier. The same road again only ever re-profiles its deck.
-      const replaces =
-        current < tier || (current === tier && current !== 0 && prevProfile !== profileId);
+      // Replace mode lands whatever the drag draws, a smaller road included;
+      // otherwise a road is replaced only by a higher tier or a different
+      // composition of the same one.
+      const replaces = replace
+        ? current !== tier || prevProfile !== profileId
+        : current < tier || (current === tier && current !== 0 && prevProfile !== profileId);
       if (deck !== priorDeck) {
         bridgeCost += deck * BRIDGE_COST_PER_METER_TILE;
         // A tile whose road is unchanged but whose deck moved still changed —
@@ -1541,7 +1548,7 @@ class SimWorld implements WorkerSim {
     if (!this.unlimitedMoney && this.stats.funds < cost)
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
 
-    const deltas = applyRoad(g, valid, tier, validElevations, profileId);
+    const deltas = applyRoad(g, valid, tier, validElevations, profileId, replace);
     for (const d of deltas) this.pendingRoadDeltas.set(tileIndex(d.x, d.z), d);
     this.landfillAreasCache = null; // street layout feeds the landfill entrances
     this.invalidateAround(valid);

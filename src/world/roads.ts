@@ -103,10 +103,11 @@ function computeNetworkMask(g: GridState, x: number, z: number, inNetwork: Netwo
 /**
  * Sets `tier` on every in-bounds tile in `tiles` (upgrades only — a tile
  * already carrying a strictly higher tier rejects the request and keeps its
- * existing tier, per-tile, with no error), de-zones every one of those
- * tiles, and recomputes the neighbor mask for every tile whose tier changed
- * plus its orthogonal neighbors. Returns every tile whose tier or mask
- * actually changed.
+ * existing tier, per-tile, with no error, unless `replace` is set, when the
+ * drag lands whatever it draws), de-zones every one of those tiles, and
+ * recomputes the neighbor mask for every tile whose tier changed plus its
+ * orthogonal neighbors. Returns every tile whose tier or mask actually
+ * changed.
  */
 export function applyRoad(
   g: GridState,
@@ -114,6 +115,7 @@ export function applyRoad(
   tier: RoadTier,
   elevations?: readonly number[],
   profile: number = tier,
+  replace = false,
 ): RoadTileDelta[] {
   const changedIdx = new Set<number>();
 
@@ -127,8 +129,13 @@ export function applyRoad(
     // higher tier always lands; the same tier lands only when it brings a
     // different profile — a re-composed street replaces the one under it, but
     // re-dragging the same road over itself changes nothing.
-    const sameTierNewProfile = tier === current && current !== RoadTier.None && g.roadProfile[idx] !== profile;
-    if (tier > current || sameTierNewProfile) {
+    const sameTierNewProfile =
+      tier === current && current !== RoadTier.None && g.roadProfile[idx] !== profile;
+    // Replace mode lays whatever the player drew over whatever was there, a
+    // smaller road included: rebuilding an avenue as a quiet street is a real
+    // thing to want, and it is the drag that says so rather than the tier.
+    const differs = tier !== current || g.roadProfile[idx] !== profile;
+    if (replace ? differs : tier > current || sameTierNewProfile) {
       g.roadTier[idx] = tier;
       g.roadProfile[idx] = profile;
       changedIdx.add(idx);

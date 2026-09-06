@@ -147,8 +147,8 @@ describe('selection worker protocol', () => {
 
 describe('ToolFlags (UI-SPEC §5)', () => {
   it('exposes exactly the two real ToolManager flags', () => {
-    const flags: ToolFlags = { angleLock: false, straightMode: true };
-    expect(flags).toEqual({ angleLock: false, straightMode: true });
+    const flags: ToolFlags = { angleLock: false, straightMode: true, replaceRoad: false };
+    expect(flags).toEqual({ angleLock: false, straightMode: true, replaceRoad: false });
     // Both flags are required booleans — a partial object is not a ToolFlags.
     // @ts-expect-error straightMode missing
     const partial: ToolFlags = { angleLock: true };

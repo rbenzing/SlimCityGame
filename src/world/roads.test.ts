@@ -250,7 +250,14 @@ describe('removeRoad', () => {
     const byXZ = new Map(deltas.map((d) => [`${d.x},${d.z}`, d]));
 
     const two = RoadTier.TwoLane;
-    expect(byXZ.get('3,5')).toEqual({ x: 3, z: 5, tier: RoadTier.None, mask: 0, elevation: 0, profile: 0 });
+    expect(byXZ.get('3,5')).toEqual({
+      x: 3,
+      z: 5,
+      tier: RoadTier.None,
+      mask: 0,
+      elevation: 0,
+      profile: 0,
+    });
     expect(byXZ.get('2,5')).toEqual({ x: 2, z: 5, tier: two, mask: 0, elevation: 0, profile: two }); // lost its E neighbor
     expect(byXZ.get('4,5')).toEqual({ x: 4, z: 5, tier: two, mask: 0, elevation: 0, profile: two }); // lost its W neighbor
 
@@ -346,8 +353,7 @@ describe('RoadNetwork — the rail network off the same implementation', () => {
 
     const along = rail.findPath({ x: 2, z: RAIL_Z }, { x: 10, z: RAIL_Z });
     expect(along).not.toBeNull();
-    for (const p of along!.points)
-      expect(g.roadTier[idx(SIZE, p.x, p.z)]).toBe(RoadTier.RailTrack);
+    for (const p of along!.points) expect(g.roadTier[idx(SIZE, p.x, p.z)]).toBe(RoadTier.RailTrack);
 
     // The street is a different network: unreachable from the track.
     expect(rail.findPath({ x: 2, z: RAIL_Z }, { x: 10, z: STREET_Z })).toBeNull();
@@ -647,5 +653,36 @@ describe('RoadNetwork — snapping a point that stands mid-run', () => {
     const road = new RoadNetwork();
     road.rebuild(g);
     expect(road.nearestNode(17, ROW)).toBeNull();
+  });
+});
+
+describe('applyRoad — replace mode', () => {
+  it('lays a smaller road over a bigger one only when the drag says to replace', () => {
+    const g = makeGrid(8);
+    const tiles = [{ x: 1, z: 1 }];
+    applyRoad(g, tiles, RoadTier.Avenue);
+    expect(g.roadTier[idx(8, 1, 1)]).toBe(RoadTier.Avenue);
+
+    applyRoad(g, tiles, RoadTier.TwoLane);
+    expect(g.roadTier[idx(8, 1, 1)]).toBe(RoadTier.Avenue); // refused, as always
+
+    const deltas = applyRoad(g, tiles, RoadTier.TwoLane, undefined, RoadTier.TwoLane, true);
+    expect(g.roadTier[idx(8, 1, 1)]).toBe(RoadTier.TwoLane);
+    expect(g.roadProfile[1 * 8 + 1]).toBe(RoadTier.TwoLane);
+    expect(deltas.some((d) => d.x === 1 && d.z === 1 && d.tier === RoadTier.TwoLane)).toBe(true);
+  });
+
+  it('still changes nothing when the road it replaces is the road it lays', () => {
+    const g = makeGrid(8);
+    const tiles = [{ x: 2, z: 2 }];
+    applyRoad(g, tiles, RoadTier.TwoLane);
+    const deltas = applyRoad(g, tiles, RoadTier.TwoLane, undefined, RoadTier.TwoLane, true);
+    expect(deltas).toEqual([]);
+  });
+
+  it('builds on bare ground in replace mode just as it always did', () => {
+    const g = makeGrid(8);
+    applyRoad(g, [{ x: 3, z: 3 }], RoadTier.TwoLane, undefined, RoadTier.TwoLane, true);
+    expect(g.roadTier[idx(8, 3, 3)]).toBe(RoadTier.TwoLane);
   });
 });

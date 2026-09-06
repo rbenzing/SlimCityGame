@@ -17,6 +17,7 @@ mkdirSync(out, { recursive: true });
 
 const FOUR_LANE = 7;
 const TWO_LANE = 1;
+const AVENUE = 2;
 
 // What composeProfile builds from each preset once the drawer is touched: a
 // rebuilt core is laid at the class-default 3.5 m lane rather than the
@@ -137,6 +138,15 @@ await cmd('Four-Lane Road', [
   { kind: 'defineRoadProfile', id: 14, profile: NARROW_FOUR },
   { kind: 'buildRoad', tier: FOUR_LANE, tiles: row(Z + 6), profile: 14 },
 ]);
+// Replace mode: an avenue rebuilt in place as a quiet two-lane street. The
+// plain drag is refused first, the way it always has been.
+await cmd('Avenue', [{ kind: 'buildRoad', tier: AVENUE, tiles: row(Z + 9) }]);
+await cmd('Two-Lane Road', [{ kind: 'buildRoad', tier: TWO_LANE, tiles: row(Z + 9) }]);
+await page.waitForTimeout(600);
+const beforeReplace = (await readGrid()).roadTier[idx(X + 4, Z + 9)];
+await cmd('Two-Lane Road', [
+  { kind: 'buildRoad', tier: TWO_LANE, tiles: row(Z + 9), replace: true },
+]);
 await page.waitForTimeout(1500);
 
 const g = await readGrid();
@@ -152,6 +162,12 @@ const expectId = (name, got, want) => {
 expectId('median four-lane', report.median, 12);
 expectId('turn-lane street', report.turn, 13);
 expectId('narrowed four-lane', report.narrow, 14);
+if (beforeReplace !== AVENUE)
+  failures.push('a plain two-lane drag flattened the avenue without being asked to');
+for (const t of row(Z + 9)) {
+  if (g.roadTier[idx(t.x, t.z)] !== TWO_LANE)
+    failures.push(`replace left tile ${t.x - X} as tier ${g.roadTier[idx(t.x, t.z)]}`);
+}
 if (pageErrors.length > 0) failures.push(`page errors: ${pageErrors.join(' | ')}`);
 
 await call(() => window.__slimcity.setSpeed(0));
@@ -165,6 +181,7 @@ const shot = async (name, tx, tz, d, yaw, pitch) => {
 await shot('three-rows', X + 8, Z + 3, 150, 0.0, 1.2);
 await shot('median-close', X + 8, Z, 26, 0.0, 1.5);
 await shot('turn-lane-close', X + 8, Z + 3, 34, 0.0, 0.9);
+await shot('replaced-close', X + 8, Z + 9, 34, 0.0, 0.9);
 
 console.log(failures.length === 0 ? 'PASS' : 'FAIL:\n - ' + failures.join('\n - '));
 console.log('done ->', out);

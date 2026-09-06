@@ -904,7 +904,9 @@ describe('road composition — profiles the worker stores, lays and saves', () =
         { kind: 'travel', width: 3.5, flow: 'back' },
       ],
     };
-    expect(run(h, 5, [{ kind: 'defineRoadProfile', id: 13, profile: parkedHighway }]).ok).toBe(false);
+    expect(run(h, 5, [{ kind: 'defineRoadProfile', id: 13, profile: parkedHighway }]).ok).toBe(
+      false,
+    );
     // Laying an id nothing defined is refused rather than guessed at.
     expect(
       run(h, 6, [
@@ -952,6 +954,50 @@ describe('road composition — profiles the worker stores, lays and saves', () =
     fresh.ticks(1);
     expect(lastTable(fresh)).toEqual([{ id: 12, profile: customLocal }]);
     expect(rowDeltas(fresh, 10, 10, 13).map((d) => d.profile)).toEqual([12, 12, 12]);
+  });
+
+  it('replace mode lays a lesser road over a greater one, and undo puts the greater one back', () => {
+    const h = initialized();
+    run(h, 0, [{ kind: 'setSandbox', on: true }]); // an avenue is milestone-locked at the start
+    expect(
+      run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Avenue, tiles: roadRow(10, 10, 3) }]).ok,
+    ).toBe(true);
+    // Without the flag an avenue stands its ground, as it always has.
+    run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 10, 3) }]);
+    expect(rowDeltas(h, 10, 10, 13).map((d) => d.tier)).toEqual([
+      RoadTier.Avenue,
+      RoadTier.Avenue,
+      RoadTier.Avenue,
+    ]);
+
+    const ack = run(h, 3, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 10, 3), replace: true },
+    ]);
+    expect(ack.ok).toBe(true);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const g = latestSaveGrid(h);
+    for (let x = 10; x < 13; x++) {
+      expect(g.roadTier[10 * MAP_SIZE + x]).toBe(RoadTier.TwoLane);
+      expect(g.roadProfile[10 * MAP_SIZE + x]).toBe(RoadTier.TwoLane);
+    }
+
+    run(h, 4, ack.inverse);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const back = latestSaveGrid(h);
+    for (let x = 10; x < 13; x++) {
+      expect(back.roadTier[10 * MAP_SIZE + x]).toBe(RoadTier.Avenue);
+      expect(back.roadProfile[10 * MAP_SIZE + x]).toBe(RoadTier.Avenue);
+    }
+  });
+
+  it('replace mode charges for the road it lays and still refuses a road with no money', () => {
+    const h = initialized();
+    run(h, 0, [{ kind: 'setSandbox', on: true }]);
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Avenue, tiles: roadRow(20, 20, 3) }]);
+    const ack = run(h, 2, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(20, 20, 3), replace: true },
+    ]);
+    expect(ack.cost).toBeGreaterThan(0);
   });
 });
 

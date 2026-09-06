@@ -71,7 +71,7 @@ export interface BoundActions {
 export type ToolMode = 'straight' | 'lpath';
 
 export function createInitialToolFlags(): ToolFlags {
-  return { angleLock: false, straightMode: false };
+  return { angleLock: false, straightMode: false, replaceRoad: false };
 }
 
 /** A sane, zeroed CityStats for the moment before the first worker snapshot arrives. */

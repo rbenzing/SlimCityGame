@@ -308,3 +308,19 @@ describe('elevation does not leak between tools', () => {
     expect(useCityStore.getState().roadElevation).toBe(6);
   });
 });
+
+describe('RoadToolOptions — replace mode', () => {
+  it('is off until asked for, and flips the contract flag the tool reads', () => {
+    useCityStore.getState().setTool('road.two');
+    render(<RoadToolOptions />);
+    const chip = screen.getByRole('button', { name: 'Replace' });
+    expect(chip).toHaveAttribute('aria-pressed', 'false');
+    expect(useCityStore.getState().toolFlags.replaceRoad).toBe(false);
+    fireEvent.click(chip);
+    expect(useCityStore.getState().toolFlags.replaceRoad).toBe(true);
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
+    expect(chip).toHaveAttribute('title', 'A drag lays this road over whatever is already there');
+    fireEvent.click(chip);
+    expect(useCityStore.getState().toolFlags.replaceRoad).toBe(false);
+  });
+});

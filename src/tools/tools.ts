@@ -370,7 +370,7 @@ export class ToolManager {
   private hoverTile: TilePoint | null = null;
   private dragStart: TilePoint | null = null;
   private armed = false;
-  private flags: ToolFlags = { angleLock: false, straightMode: false };
+  private flags: ToolFlags = { angleLock: false, straightMode: false, replaceRoad: false };
   private zoneMode: ZoneMode = 'rect';
   /** Zone brush mode: the deduped, drag-ordered path of tiles painted so far. */
   private brushTiles: TilePoint[] = [];
@@ -872,6 +872,7 @@ export class ToolManager {
             tiles,
             elevation: this.roadElevation,
             profile: profileId,
+            ...(this.flags.replaceRoad ? { replace: true } : {}),
           },
         ]);
       } else {
@@ -881,6 +882,7 @@ export class ToolManager {
             tier: build.tier,
             tiles,
             elevation: this.roadElevation,
+            ...(this.flags.replaceRoad ? { replace: true } : {}),
           },
         ]);
       }

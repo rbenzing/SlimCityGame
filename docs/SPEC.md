@@ -2298,8 +2298,15 @@ scaled by one constant into the units the sim already uses.
    painted the way one is: a solid line each side, since traffic may enter it
    to turn but never travel along it. `tools/drawer-shots.mjs` lays a
    four-lane with a median, a street with a turn lane and a four-lane
-   narrowed to one lane each way in the running game and shoots them. Still
-   to come in wave 1: replace-in-place over an existing run.
+   narrowed to one lane each way in the running game and shoots them.
+   Finally, a **Replace** chip on the options row lets a drag lay its road
+   over whatever is already there. Without it a road still refuses to become
+   a smaller one, which is what stops a stray drag from flattening an avenue;
+   with it, rebuilding an avenue as a quiet street is one drag, the cost is
+   the road being laid, and undo puts back the exact road and deck that were
+   there. A composition too wide for the tile is still refused at the
+   preview, so replace never demolishes without building. That completes
+   wave 1.
 2. **Stored direction** — `roadFlow`, drag direction, asymmetric profiles,
    directional edge cost, one-way pathfinding off geometry inference.
 3. **Junction control** — node control records, the v/c warrant default, the

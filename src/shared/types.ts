@@ -202,6 +202,11 @@ export type Command =
       elevations?: number[];
       /** Profile id to lay. Omitted = the tier's preset. A custom id must already be defined. */
       profile?: number;
+      /**
+       * Lay this road over whatever is there, rather than only over bare
+       * ground, a lesser road, or the same road differently composed.
+       */
+      replace?: boolean;
     }
   /**
    * Registers a player-composed cross-section under an id the client chose
@@ -851,6 +856,11 @@ export interface ToolFlags {
   angleLock: boolean;
   /** `Straight` tool mode — direct single-axis segment instead of L-path. */
   straightMode: boolean;
+  /**
+   * `Replace` road mode — a drag lays its road over an existing run whatever
+   * that run is, instead of refusing to put a smaller road over a bigger one.
+   */
+  replaceRoad: boolean;
 }
 
 /**

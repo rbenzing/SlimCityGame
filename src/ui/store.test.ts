@@ -44,7 +44,7 @@ describe('useCityStore initial state', () => {
   it('defaults the wave-2 tool-options/trend/selection fields sanely', () => {
     const s = useCityStore.getState();
     expect(s.toolMode).toBe('lpath');
-    expect(s.toolFlags).toEqual({ angleLock: false, straightMode: false });
+    expect(s.toolFlags).toEqual({ angleLock: false, straightMode: false, replaceRoad: false });
     expect(s.previousMonthPopulation).toBe(0);
     expect(s.previousMonthFunds).toBe(START_FUNDS);
     expect(s.selectionInfo).toBeNull();
@@ -126,7 +126,11 @@ describe('setTool / setOverlay', () => {
 describe('tool flags + mode (UI-SPEC §5)', () => {
   it('setToolFlags merges a partial patch, leaving other flags untouched', () => {
     useCityStore.getState().setToolFlags({ angleLock: true });
-    expect(useCityStore.getState().toolFlags).toEqual({ angleLock: true, straightMode: false });
+    expect(useCityStore.getState().toolFlags).toEqual({
+      angleLock: true,
+      straightMode: false,
+      replaceRoad: false,
+    });
   });
 
   it('setToolMode updates toolMode and mirrors the straightMode contract flag', () => {
@@ -142,11 +146,19 @@ describe('tool flags + mode (UI-SPEC §5)', () => {
   it('setToolMode and setToolFlags are independent of one another', () => {
     useCityStore.getState().setToolFlags({ angleLock: true });
     useCityStore.getState().setToolMode('straight');
-    expect(useCityStore.getState().toolFlags).toEqual({ angleLock: true, straightMode: true });
+    expect(useCityStore.getState().toolFlags).toEqual({
+      angleLock: true,
+      straightMode: true,
+      replaceRoad: false,
+    });
 
     useCityStore.getState().setToolFlags({ angleLock: false });
     expect(useCityStore.getState().toolMode).toBe('straight');
-    expect(useCityStore.getState().toolFlags).toEqual({ angleLock: false, straightMode: true });
+    expect(useCityStore.getState().toolFlags).toEqual({
+      angleLock: false,
+      straightMode: true,
+      replaceRoad: false,
+    });
   });
 });
 

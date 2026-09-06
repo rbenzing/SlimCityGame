@@ -20,7 +20,7 @@ export function resetCityStore(): void {
     canUndo: false,
     canRedo: false,
     bound: null,
-    toolFlags: { angleLock: false, straightMode: false },
+    toolFlags: { angleLock: false, straightMode: false, replaceRoad: false },
     roadProfileEdits: NO_EDITS,
     toolMode: 'lpath',
     roadElevation: 0,

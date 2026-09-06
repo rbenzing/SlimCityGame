@@ -308,6 +308,22 @@ export function RoadToolOptions(): JSX.Element {
         </button>
       </Group>
 
+      <Group label="Existing">
+        <button
+          type="button"
+          aria-pressed={toolFlags.replaceRoad}
+          title={
+            toolFlags.replaceRoad
+              ? 'A drag lays this road over whatever is already there'
+              : 'A drag leaves a bigger road where it finds one'
+          }
+          onClick={() => setToolFlags({ replaceRoad: !toolFlags.replaceRoad })}
+          className={`${CHIP} ${toolFlags.replaceRoad ? CHIP_ON : CHIP_OFF}`}
+        >
+          Replace
+        </button>
+      </Group>
+
       <ProfileGroup />
     </div>
   );
