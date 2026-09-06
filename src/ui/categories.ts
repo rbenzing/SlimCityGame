@@ -220,12 +220,13 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
     { id: 'dezone', label: 'De-zone', cards: [ZONE_CARDS.dezone] },
   ],
   roads: [
-    // The small/large split follows carriageway class, each
-    // tab in cost order — gravel/alley/two-lane/one-way are all narrow
-    // (two-lane-or-less footprints), four-lane joins the multi-lane tab.
+    // Grouped by the family a road belongs to, which is also the family that
+    // decides how many lanes it is offered: a track is two lanes and stays
+    // two, a neighbourhood street goes to four, a town street to six, and a
+    // motorway to eight.
     {
       id: 'small',
-      label: 'Small Roads',
+      label: 'Small',
       cards: [
         ...roadCard(RoadTierValue.Gravel),
         ...roadCard(RoadTierValue.Alley),
@@ -234,19 +235,18 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
       ],
     },
     {
-      id: 'large',
-      label: 'Large Roads',
-      cards: [
-        ...roadCard(RoadTierValue.FourLane),
-        ...roadCard(RoadTierValue.Avenue),
-        ...roadCard(RoadTierValue.Highway),
-      ],
+      id: 'medium',
+      label: 'Medium',
+      cards: [...roadCard(RoadTierValue.FourLane), ...roadCard(RoadTierValue.Avenue)],
     },
-    // Transit lane variants (roads epic) — bus/bike lanes, later joined by
-    // trams/trains. Cheaper bike lane first, then the bus lane.
+    {
+      id: 'highway',
+      label: 'Highway',
+      cards: [...roadCard(RoadTierValue.Highway)],
+    },
     {
       id: 'transit',
-      label: 'Transit Lanes',
+      label: 'Transit',
       cards: [
         ...roadCard(RoadTierValue.BikeLane),
         ...roadCard(RoadTierValue.BusLane),

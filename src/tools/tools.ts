@@ -36,6 +36,8 @@ import {
   isLayable,
   joinRefusal,
   NO_EDITS,
+  roadRank,
+  withArticle,
   presetProfileForTier,
   profilesEqual,
   tierForProfile,
@@ -478,6 +480,24 @@ export class ToolManager {
   private meetRefusal(tiles: TilePoint[], profile: RoadProfile): string | null {
     const at = this.env.roadProfileAt;
     if (!at) return null;
+    // A road cannot be drawn THROUGH one it does not outrank: an avenue's
+    // raised median leaves nowhere to cross, and a motorway has no gap in it
+    // at all. Laying the tiles either side and skipping the middle would leave
+    // two stubs pretending to be a road, so the whole run is refused instead —
+    // unless the player asked to replace what is there.
+    if (!this.flags.replaceRoad) {
+      const mine = roadRank(profile);
+      // Named the way the player picked them, not by the class underneath.
+      const nameOf = (p: RoadProfile): string => this.env.roadSpec(tierForProfile(p)).name;
+      for (const t of tiles) {
+        const existing = at(t);
+        if (!existing || roadRank(existing) <= mine) continue;
+        const mineName = withArticle(nameOf(profile));
+        return `${mineName[0]!.toUpperCase()}${mineName.slice(1)} can't cross ${withArticle(
+          nameOf(existing),
+        )}`;
+      }
+    }
     const inRun = new Set(tiles.map((t) => `${t.x},${t.z}`));
     for (const t of tiles) {
       for (const [dx, dz] of [

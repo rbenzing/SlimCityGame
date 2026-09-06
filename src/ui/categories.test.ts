@@ -66,22 +66,23 @@ describe('subTabsFor', () => {
     expect(byId('zone.industrial')?.unlockMilestone).toBe(0);
   });
 
-  it('splits Roads into Small / Large / Transit Lanes (empty Maintenance dropped)', () => {
-    // Gravel/alley/one-way with the two-lane under Small; four-lane with
-    // avenue/highway under Large; the roads-epic bus/bike lanes under Transit.
+  it('groups Roads by the family a road belongs to (empty Maintenance dropped)', () => {
+    // The grouping matches the lane counts each family is offered: a track or
+    // a neighbourhood street tops out at four lanes, a town street at six, a
+    // motorway at eight.
     const tabs = subTabsFor('roads');
-    expect(tabs.map((t) => t.label)).toEqual(['Small Roads', 'Large Roads', 'Transit Lanes']);
+    expect(tabs.map((t) => t.label)).toEqual(['Small', 'Medium', 'Highway', 'Transit']);
     expect(tabs.find((t) => t.id === 'small')?.cards.map((c) => c.id)).toEqual([
       'road.gravel',
       'road.alley',
       'road.two',
       'road.oneway',
     ]);
-    expect(tabs.find((t) => t.id === 'large')?.cards.map((c) => c.id)).toEqual([
+    expect(tabs.find((t) => t.id === 'medium')?.cards.map((c) => c.id)).toEqual([
       'road.four',
       'road.avenue',
-      'road.highway',
     ]);
+    expect(tabs.find((t) => t.id === 'highway')?.cards.map((c) => c.id)).toEqual(['road.highway']);
     expect(tabs.find((t) => t.id === 'transit')?.cards.map((c) => c.id)).toEqual([
       'road.bike',
       'road.bus',

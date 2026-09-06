@@ -88,49 +88,63 @@ describe('RoadToolOptions — the Profile row', () => {
     expect(screen.queryByRole('group', { name: 'Parking lanes' })).toBeNull();
     expect(screen.queryByRole('group', { name: 'Bike lanes' })).toBeNull();
     // A railway has no road lanes to count and nothing to put between them.
-    expect(screen.queryByLabelText('Lanes each way')).toBeNull();
-    expect(screen.queryByLabelText('Lanes running forward')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Lanes' })).toBeNull();
     expect(screen.queryByRole('group', { name: 'Between the directions' })).toBeNull();
   });
 
   it('counts a two-lane street’s lanes each way, and offers it no more than its class allows', () => {
     useCityStore.getState().setTool('road.two');
     render(<RoadToolOptions />);
-    // A local street is one lane each way by definition; a wider street is a
-    // different road, so the count is read out but never stepped.
-    expect(screen.queryByLabelText('Lanes running forward')).toBeNull();
-    expect(screen.queryByLabelText('Lanes each way')).toBeNull();
+    // A local street is built as a two-lane or a four-lane.
+    const lanes = screen.getByRole('group', { name: 'Lanes' });
+    expect(
+      within(lanes)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['2', '4']);
   });
 
-  it('steps each direction on its own, so a four-lane street can run two one way and one the other', () => {
+  it('offers a four-lane street the lane counts its class is built in, and lays the one picked', () => {
+    useCityStore.getState().setTool('road.four'); // an urban street: 2, 4 or 6
+    render(<RoadToolOptions />);
+    const lanes = screen.getByRole('group', { name: 'Lanes' });
+    expect(
+      within(lanes)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['2', '4', '6']);
+    expect(within(lanes).getByRole('button', { name: '4' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    fireEvent.click(within(lanes).getByRole('button', { name: '2' }));
+    expect(useCityStore.getState().roadProfileEdits).toMatchObject({ lanes: 1, lanesBack: 1 });
+    // Two 11 ft lanes: 6.7 m of carriageway between the kerbs.
+    expect(screen.getByLabelText('Profile width')).toHaveTextContent('6.7 / 16 m');
+  });
+
+  it('says plainly when the road picked is too wide for a tile', () => {
     useCityStore.getState().setTool('road.four');
     render(<RoadToolOptions />);
-    expect(screen.getByLabelText('Lanes running back')).toHaveTextContent('2');
-    expect(screen.getByLabelText('Lanes running forward')).toHaveTextContent('2');
-
-    fireEvent.click(screen.getByRole('button', { name: 'One lane fewer' }));
-    expect(useCityStore.getState().roadProfileEdits).toMatchObject({ lanes: 1, lanesBack: 2 });
-    expect(screen.getByLabelText('Lanes running forward')).toHaveTextContent('1');
-    // Three lanes at the class-default 3.5 m.
-    expect(screen.getByLabelText('Profile width')).toHaveTextContent('10.5 / 16 m');
-    expect(screen.getByRole('button', { name: 'One lane fewer' })).toBeDisabled();
-
-    fireEvent.click(screen.getByRole('button', { name: 'One lane fewer running back' }));
-    expect(useCityStore.getState().roadProfileEdits).toMatchObject({ lanes: 1, lanesBack: 1 });
-    expect(screen.getByLabelText('Profile width')).toHaveTextContent('7.0 / 16 m');
-  });
-
-  it('will not step a side past what the class allows in total', () => {
-    useCityStore.getState().setTool('road.four'); // urban: 2..4 lanes
-    render(<RoadToolOptions />);
-    expect(screen.getByRole('button', { name: 'One lane more' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'One lane more running back' })).toBeDisabled();
+    const lanes = screen.getByRole('group', { name: 'Lanes' });
+    fireEvent.click(within(lanes).getByRole('button', { name: '6' }));
+    // Six 11 ft lanes are 20.1 m; the tile is 16 m across.
+    expect(screen.getByLabelText('Profile width')).toHaveAttribute(
+      'title',
+      'Too wide for the tile',
+    );
   });
 
   it('counts a one-way road’s lanes the one way they run', () => {
     useCityStore.getState().setTool('road.oneway');
     render(<RoadToolOptions />);
-    expect(screen.getByLabelText('Lanes each way')).toHaveTextContent('2');
+    const lanes = screen.getByRole('group', { name: 'Lanes' });
+    expect(within(lanes).getByRole('button', { name: '2' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(lanes.textContent).toContain('one way');
     expect(screen.queryByRole('group', { name: 'Between the directions' })).toBeNull();
   });
 
@@ -144,9 +158,9 @@ describe('RoadToolOptions — the Profile row', () => {
     );
     fireEvent.click(within(middle).getByRole('button', { name: 'Median' }));
     expect(useCityStore.getState().roadProfileEdits.middle).toBe('median');
-    // Four lanes rebuilt at the class-default 3.5 m plus a 1.8 m median: it
-    // still fits the tile, where four 3.75 m lanes plus a median would not.
-    expect(screen.getByLabelText('Profile width')).toHaveTextContent('15.8 / 16 m');
+    // Four 11 ft lanes plus a 6 ft median: 15.2 m, which still fits the tile
+    // where four of the preset's wider lanes plus a median would not.
+    expect(screen.getByLabelText('Profile width')).toHaveTextContent('15.2 / 16 m');
     expect(screen.getByLabelText('Profile width')).toHaveAttribute('title', 'Fits the tile');
     unmount();
 

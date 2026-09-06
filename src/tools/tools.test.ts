@@ -1722,3 +1722,51 @@ describe('ToolManager — replace mode', () => {
     expect(sent[0]?.commands[1]).toMatchObject({ kind: 'buildRoad', profile: 12, replace: true });
   });
 });
+
+describe('ToolManager — a road cannot be drawn through one it does not outrank', () => {
+  const withAvenueAtZ5 = (): ReturnType<typeof makeEnv> => {
+    const made = makeEnv();
+    made.env.roadProfileAt = (t) =>
+      t.z === 5 && t.x >= 0 && t.x < 10 ? presetProfileForTier(RoadTier.Avenue) : null;
+    return made;
+  };
+
+  it('refuses a gravel road drawn across an avenue, and says why', () => {
+    const { env, previews, sent } = withAvenueAtZ5();
+    const tm = new ToolManager(env);
+    tm.setTool('road.gravel');
+    tm.pointerDown(3, 0, 0);
+    tm.pointerMove(3, 9, 0); // straight through the avenue at (3,5)
+    expect(previews.at(-1)?.valid).toBe(false);
+    expect(previews.at(-1)?.invalidReason).toBe("A gravel road can't cross an avenue");
+    tm.pointerUp(3, 9, 0);
+    expect(sent).toEqual([]);
+  });
+
+  it('lets the same road stop at the avenue rather than crossing it', () => {
+    const { env, previews, sent } = withAvenueAtZ5();
+    const tm = new ToolManager(env);
+    tm.setTool('road.gravel');
+    tm.pointerDown(3, 0, 0);
+    tm.pointerMove(3, 4, 0);
+    expect(previews.at(-1)?.valid).toBe(true);
+    tm.pointerUp(3, 4, 0);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('still lets a bigger road cross, and lets Replace mode through', () => {
+    const { env, previews } = withAvenueAtZ5();
+    const tm = new ToolManager(env);
+    tm.setTool('road.highway');
+    tm.pointerDown(3, 0, 0);
+    tm.pointerMove(3, 9, 0);
+    expect(previews.at(-1)?.valid).toBe(true);
+    tm.cancel();
+
+    tm.setTool('road.gravel');
+    tm.setFlags({ angleLock: false, straightMode: false, replaceRoad: true });
+    tm.pointerDown(6, 0, 0);
+    tm.pointerMove(6, 9, 0);
+    expect(previews.at(-1)?.valid).toBe(true);
+  });
+});

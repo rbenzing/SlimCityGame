@@ -93,7 +93,7 @@ import {
   rankForTier,
   roadClass,
 } from '../shared/roadprofile';
-import { centrePair, markingPlan, type MarkingPlan } from './roadmarkings';
+import { centrePair, markingPlan, type MarkingLine, type MarkingPlan } from './roadmarkings';
 
 /** The road plate rides this far above the terrain — anything standing ON a road must add it. */
 export const ROAD_Y_OFFSET = 0.15;
@@ -463,6 +463,18 @@ function pushLocalRect(
   pushQuad(positions, colors, cx, cz, halfX, halfZ, yOffset, color, hAt);
 }
 
+/**
+ * Yellow: what separates traffic going opposite ways on a US road. White does
+ * everything else — lane lines between traffic going the same way, and the
+ * edge line that says where the running surface ends.
+ */
+const YELLOW_MARKING_COLOR: readonly [number, number, number] = [0.92, 0.76, 0.16];
+
+/** The paint a planned line asks for. */
+function paintOf(line: MarkingLine): readonly [number, number, number] {
+  return line.color === 'yellow' ? YELLOW_MARKING_COLOR : MARKING_COLOR;
+}
+
 /** A single marking line segment running along Z (vertical travel), offset `offset` in X. */
 function pushVerticalLine(
   positions: number[],
@@ -473,6 +485,7 @@ function pushVerticalLine(
   zLo: number,
   zHi: number,
   hAt: (x: number, z: number) => number,
+  paint: readonly [number, number, number] = MARKING_COLOR,
 ): void {
   pushLocalRect(
     positions,
@@ -484,7 +497,7 @@ function pushVerticalLine(
     zLo,
     zHi,
     MARK_Y_OFFSET,
-    MARKING_COLOR,
+    paint,
     hAt,
   );
 }
@@ -499,6 +512,7 @@ function pushHorizontalLine(
   xLo: number,
   xHi: number,
   hAt: (x: number, z: number) => number,
+  paint: readonly [number, number, number] = MARKING_COLOR,
 ): void {
   pushLocalRect(
     positions,
@@ -510,7 +524,7 @@ function pushHorizontalLine(
     offset - PAINT_HALF_WIDTH_M,
     offset + PAINT_HALF_WIDTH_M,
     MARK_Y_OFFSET,
-    MARKING_COLOR,
+    paint,
     hAt,
   );
 }
@@ -529,9 +543,10 @@ function pushSolidLine(
   lo: number,
   hi: number,
   hAt: (x: number, z: number) => number,
+  paint: readonly [number, number, number] = MARKING_COLOR,
 ): void {
-  if (vertical) pushVerticalLine(positions, colors, centerX, centerZ, offset, lo, hi, hAt);
-  else pushHorizontalLine(positions, colors, centerX, centerZ, offset, lo, hi, hAt);
+  if (vertical) pushVerticalLine(positions, colors, centerX, centerZ, offset, lo, hi, hAt, paint);
+  else pushHorizontalLine(positions, colors, centerX, centerZ, offset, lo, hi, hAt, paint);
 }
 
 /**
@@ -549,14 +564,16 @@ function pushDashedLine(
   lo: number,
   hi: number,
   hAt: (x: number, z: number) => number,
+  paint: readonly [number, number, number] = MARKING_COLOR,
 ): void {
   const origin = vertical ? centerZ : centerX;
   for (const [segLo, segHi] of dashSegments(origin + lo, origin + hi)) {
     const localLo = segLo - origin;
     const localHi = segHi - origin;
     if (vertical)
-      pushVerticalLine(positions, colors, centerX, centerZ, offset, localLo, localHi, hAt);
-    else pushHorizontalLine(positions, colors, centerX, centerZ, offset, localLo, localHi, hAt);
+      pushVerticalLine(positions, colors, centerX, centerZ, offset, localLo, localHi, hAt, paint);
+    else
+      pushHorizontalLine(positions, colors, centerX, centerZ, offset, localLo, localHi, hAt, paint);
   }
 }
 
@@ -586,12 +603,14 @@ function emitAxisMarkings(
   hAt: (x: number, z: number) => number,
 ): void {
   const pair = suppressCenterPair ? centrePair(plan) : null;
-  for (const offset of plan.solid) {
-    if (pair && (offset === pair[0] || offset === pair[1])) continue;
-    pushSolidLine(positions, colors, vertical, centerX, centerZ, offset, lo, hi, hAt);
+  for (const line of plan.solid) {
+    if (pair && (line === pair[0] || line === pair[1])) continue;
+    const paint = paintOf(line);
+    pushSolidLine(positions, colors, vertical, centerX, centerZ, line.at, lo, hi, hAt, paint);
   }
-  for (const offset of plan.dashed) {
-    pushDashedLine(positions, colors, vertical, centerX, centerZ, offset, lo, hi, hAt);
+  for (const line of plan.dashed) {
+    const paint = paintOf(line);
+    pushDashedLine(positions, colors, vertical, centerX, centerZ, line.at, lo, hi, hAt, paint);
   }
 }
 
@@ -1137,11 +1156,11 @@ const CROSSWALK_BAR_GAP_M = 0.6;
 const STOP_LINE_THICKNESS_M = 0.4;
 /** Along-travel-axis gap between the crosswalk's far edge and the stop line (~1m before the junction box). */
 const STOP_LINE_GAP_M = 1.0;
-const JUNCTION_ARM_TARGET_DEPTH_M =
-  CROSSWALK_BAR_LENGTH_M + STOP_LINE_GAP_M + STOP_LINE_THICKNESS_M;
+/** How far inside the tile edge the crosswalk's outer bar starts. */
+const CROSSWALK_EDGE_SETBACK_M = 0.4;
 
 export interface JunctionArmLayout {
-  /** Always 0 — the crosswalk starts flush with the box edge. */
+  /** Distance from the tile edge to the crosswalk's outer bar. */
   crosswalkStart: number;
   crosswalkEnd: number;
   stopLineStart: number;
@@ -1149,21 +1168,21 @@ export interface JunctionArmLayout {
 }
 
 /**
- * Pure layout for one junction arm given its available depth (distance from
- * the box edge to the tile's outer edge). Scales the spec's target depths
- * down proportionally when `armDepth` is short of the ideal
- * JUNCTION_ARM_TARGET_DEPTH_M, so the crosswalk + gap + stop line always fit
- * exactly within [0, armDepth] with no overlap. Returns an all-zero layout
- * for a non-positive armDepth.
+ * Pure layout for one junction arm, measured INWARD from the tile's outer
+ * edge: the crosswalk first, then the gap, then the stop line a driver halts
+ * behind. The measurements are the real ones and never shrink — squeezing
+ * them into whatever depth was left between the box and the tile edge is what
+ * turned a wide road's crossing into a dashed ring hugging the box instead of
+ * a crosswalk. On a road wide enough that its carriageway fills the tile the
+ * crosswalk simply lies inside the junction, which is where it lies on the
+ * ground too.
  */
-export function junctionArmLayout(armDepth: number): JunctionArmLayout {
-  if (armDepth <= 0)
-    return { crosswalkStart: 0, crosswalkEnd: 0, stopLineStart: 0, stopLineEnd: 0 };
-  const scale = Math.min(1, armDepth / JUNCTION_ARM_TARGET_DEPTH_M);
-  const crosswalkEnd = CROSSWALK_BAR_LENGTH_M * scale;
-  const stopLineStart = crosswalkEnd + STOP_LINE_GAP_M * scale;
-  const stopLineEnd = stopLineStart + STOP_LINE_THICKNESS_M * scale;
-  return { crosswalkStart: 0, crosswalkEnd, stopLineStart, stopLineEnd };
+export function junctionArmLayout(_armDepth?: number): JunctionArmLayout {
+  const crosswalkStart = CROSSWALK_EDGE_SETBACK_M;
+  const crosswalkEnd = crosswalkStart + CROSSWALK_BAR_LENGTH_M;
+  const stopLineStart = crosswalkEnd + STOP_LINE_GAP_M;
+  const stopLineEnd = stopLineStart + STOP_LINE_THICKNESS_M;
+  return { crosswalkStart, crosswalkEnd, stopLineStart, stopLineEnd };
 }
 
 /**
@@ -1199,11 +1218,12 @@ function emitJunctionArmMarkings(
   centerX: number,
   centerZ: number,
   coreHalf: number,
-  armDepth: number,
   dAt: (d: number) => number,
   hAt: (x: number, z: number) => number,
+  /** Whether the road has footways: no footway, no crossing to paint. */
+  hasFootways: boolean,
 ): void {
-  const layout = junctionArmLayout(armDepth);
+  const layout = junctionArmLayout();
 
   // Stop line: one bar spanning the full carriageway width.
   const stopLo = Math.min(dAt(layout.stopLineStart), dAt(layout.stopLineEnd));
@@ -1238,7 +1258,9 @@ function emitJunctionArmMarkings(
     );
 
   // Zebra crosswalk: bars spaced across the carriageway, each spanning
-  // [crosswalkStart, crosswalkEnd] along the travel axis.
+  // [crosswalkStart, crosswalkEnd] along the travel axis. A road with no
+  // footway has nobody to cross, so it paints none.
+  if (!hasFootways) return;
   const crossLo = Math.min(dAt(layout.crosswalkStart), dAt(layout.crosswalkEnd));
   const crossHi = Math.max(dAt(layout.crosswalkStart), dAt(layout.crosswalkEnd));
   if (crossHi <= crossLo) return;
@@ -1616,18 +1638,21 @@ function emitCurvedMarkings(
     p0: readonly [number, number],
     p1: readonly [number, number],
     p2: readonly [number, number],
+    paint: readonly [number, number, number] = MARKING_COLOR,
   ): void => {
     const cross = (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p1[1] - p0[1]) * (p2[0] - p0[0]);
     const tri = cross > 0 ? [p0, p2, p1] : [p0, p1, p2];
     for (const p of tri) {
       const wx = centerX + p[0];
       const wz = centerZ + p[1];
-      pushVertex(positions, colors, wx, hAt(wx, wz) + MARK_Y_OFFSET, wz, MARKING_COLOR);
+      pushVertex(positions, colors, wx, hAt(wx, wz) + MARK_Y_OFFSET, wz, paint);
     }
   };
   const STEP_M = 0.6; // sub-segment length so each painted arc stays smooth
   /** One marking line at radial offset `o` from the centerline, solid or dashed. */
-  const arcLine = (o: number, dashed: boolean): void => {
+  const arcLine = (line: MarkingLine, dashed: boolean): void => {
+    const o = line.at;
+    const paint = paintOf(line);
     const r = rMid + o;
     if (r <= PAINT_HALF_WIDTH_M) return;
     const rA = r - PAINT_HALF_WIDTH_M;
@@ -1639,16 +1664,16 @@ function emitCurvedMarkings(
       for (let k = 0; k < steps; k++) {
         const ta = (s0 + ((s1 - s0) * k) / steps) / r;
         const tb = (s0 + ((s1 - s0) * (k + 1)) / steps) / r;
-        pushTriUp(at(rA, ta), at(rB, ta), at(rA, tb));
-        pushTriUp(at(rA, tb), at(rB, ta), at(rB, tb));
+        pushTriUp(at(rA, ta), at(rB, ta), at(rA, tb), paint);
+        pushTriUp(at(rA, tb), at(rB, ta), at(rB, tb), paint);
       }
     }
   };
 
   // The plan's offsets are signed across the carriageway; on a curve the
   // "across" direction is radial, so a positive offset is a larger radius.
-  for (const o of plan.solid) arcLine(o, false);
-  for (const o of plan.dashed) arcLine(o, true);
+  for (const line of plan.solid) arcLine(line, false);
+  for (const line of plan.dashed) arcLine(line, true);
 }
 
 /**
@@ -1812,19 +1837,28 @@ function emitEndCapMarkings(
     const cross = r * Math.sin(a);
     return vertical ? [cross, along] : [along, cross];
   };
-  const pushTriUp = (p0: [number, number], p1: [number, number], p2: [number, number]): void => {
+  const pushTriUp = (
+    p0: [number, number],
+    p1: [number, number],
+    p2: [number, number],
+    paint: readonly [number, number, number] = MARKING_COLOR,
+  ): void => {
     const cr = (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p1[1] - p0[1]) * (p2[0] - p0[0]);
     const tri = cr > 0 ? [p0, p2, p1] : [p0, p1, p2];
     for (const p of tri) {
       const wx = centerX + p[0];
       const wz = centerZ + p[1];
-      pushVertex(positions, colors, wx, hAt(wx, wz) + MARK_Y_OFFSET, wz, MARKING_COLOR);
+      pushVertex(positions, colors, wx, hAt(wx, wz) + MARK_Y_OFFSET, wz, paint);
     }
   };
   const STEP_M = 0.6;
   // One marking ribbon arc at radius r (a ±r straight pair joined around the
   // half-circle), solid or dashed by arc length.
-  const arc = (r: number, dashed: boolean): void => {
+  const arc = (
+    r: number,
+    dashed: boolean,
+    paint: readonly [number, number, number] = MARKING_COLOR,
+  ): void => {
     if (r <= PAINT_HALF_WIDTH_M) return;
     const rA = r - PAINT_HALF_WIDTH_M;
     const rB = r + PAINT_HALF_WIDTH_M;
@@ -1835,8 +1869,8 @@ function emitEndCapMarkings(
       for (let k = 0; k < steps; k++) {
         const aa = -Math.PI / 2 + (s0 + ((s1 - s0) * k) / steps) / r;
         const ab = -Math.PI / 2 + (s0 + ((s1 - s0) * (k + 1)) / steps) / r;
-        pushTriUp(point(rA, aa), point(rB, aa), point(rA, ab));
-        pushTriUp(point(rA, ab), point(rB, aa), point(rB, ab));
+        pushTriUp(point(rA, aa), point(rB, aa), point(rA, ab), paint);
+        pushTriUp(point(rA, ab), point(rB, aa), point(rB, ab), paint);
       }
     }
   };
@@ -1845,13 +1879,13 @@ function emitEndCapMarkings(
   // half-circle, so each distinct positive offset is drawn once. A line at the
   // centre has no radius to wrap.
   const seen = new Set<number>();
-  const wrap = (offsets: readonly number[], dashed: boolean): void => {
-    for (const o of offsets) {
-      const r = Math.abs(o);
+  const wrap = (lines: readonly MarkingLine[], dashed: boolean): void => {
+    for (const line of lines) {
+      const r = Math.abs(line.at);
       const key = Math.round(r * 1e6);
       if (r <= PAINT_HALF_WIDTH_M || seen.has(key)) continue;
       seen.add(key);
-      arc(r, dashed);
+      arc(r, dashed, paintOf(line));
     }
   };
   wrap(plan.solid, false);
@@ -2158,7 +2192,11 @@ function emitRoundedCornerFill(
   // i.e. flush with the straight sidewalks of the roads running into the
   // junction (seamless), not a few pixels off.
   const grassNub = hasCurbs ? Math.max(0, armDepth - sidewalk) : 0;
-  const roadStart = hasCurbs ? grassNub + sidewalk : 0;
+  // The carriageway sweeps round the corner at the same radius either way. A
+  // road with no footway simply has grass where the footway would be, rather
+  // than asphalt filling the corner square — which is what made a junction of
+  // two kerbless roads read as a box rather than a junction.
+  const roadStart = hasCurbs ? grassNub + sidewalk : armDepth;
   // Carriageway: from roadStart out to the arm/core edge.
   band(
     () => roadStart,
@@ -2435,6 +2473,26 @@ export function roadTileVertices(
 
   const connections = (hasN ? 1 : 0) + (hasE ? 1 : 0) + (hasS ? 1 : 0) + (hasW ? 1 : 0);
   const isJunction = connections >= 3;
+  // A junction with nothing but LESSER roads joining it is a side turning, not
+  // a crossing: the road running through keeps its markings, the way a main
+  // road's centre line runs unbroken past a farm track. A junction where any
+  // arm ranks alongside it is a real intersection, and its markings stop.
+  const ownRankHere = rankForTier(tier);
+  const joinedByLesserOnly =
+    isJunction &&
+    (
+      [
+        [hasN, neighbors.n],
+        [hasE, neighbors.e],
+        [hasS, neighbors.s],
+        [hasW, neighbors.w],
+      ] as Array<[boolean, RoadTier]>
+    ).every(
+      // An arm whose road is not named is unknown, not lesser: a caller that
+      // supplies no neighbours gets the plain junction it always got.
+      ([has, n]) => !has || (n !== RoadTier.None && rankForTier(n) < ownRankHere),
+    );
+  const breaksMarkings = isJunction && !joinedByLesserOnly;
   const isTurn = connections === 2 && !isCollinearMask(mask);
 
   // A TURN tile (exactly 2 adjacent connections) is a curved quarter-annulus
@@ -2687,11 +2745,11 @@ export function roadTileVertices(
   }
 
   if (spec.paved) {
-    // Lane markings: suppressed at junctions (mask popcount >= 3, per-arm
-    // stop-lines + crosswalks instead) and at TURNS (the curved carriageway
-    // carries no straight lane lines — they'd cut across the arc). Straight
-    // runs and dead ends get their axis markings here.
-    if (!isJunction && !isTurn) {
+    // Lane markings: suppressed where a junction really is a crossing (per-arm
+    // stop lines and crosswalks instead) and at TURNS (the curved carriageway
+    // carries no straight lane lines — they'd cut across the arc). A straight
+    // run, a dead end, and a road passing a lesser turning keep their markings.
+    if (!breaksMarkings && !isTurn) {
       if (hasVertical) {
         const zLo = hasN ? -TILE_HALF : -coreHalf;
         const zHi = hasS ? TILE_HALF : coreHalf;
@@ -2789,10 +2847,22 @@ export function roadTileVertices(
       // Which arms stop. A minor road meeting a bigger one gives way to it:
       // the side street gets the stop line and the crosswalk, and the road
       // running through gets neither, the way a real junction reads. Where
-      // the two roads rank equally, every arm stops — an all-way junction.
-      const ownRank = rankForTier(tier);
+      // every arm ranks the same — two equal roads crossing — they all stop,
+      // which is the all-way junction.
+      const armRanks = (
+        [
+          [hasN, neighbors.n],
+          [hasE, neighbors.e],
+          [hasS, neighbors.s],
+          [hasW, neighbors.w],
+        ] as Array<[boolean, RoadTier]>
+      )
+        .filter(([has, n]) => has && n !== RoadTier.None)
+        .map(([, n]) => rankForTier(n));
+      const topRank = armRanks.length > 0 ? Math.max(...armRanks) : rankForTier(tier);
+      const allEqual = armRanks.every((r) => r === topRank);
       const armStops = (neighborTier: RoadTier): boolean =>
-        neighborTier === RoadTier.None || rankForTier(neighborTier) <= ownRank;
+        allEqual || neighborTier === RoadTier.None || rankForTier(neighborTier) < topRank;
       const arm = (vertical: boolean, at: (d: number) => number): void =>
         emitJunctionArmMarkings(
           positions,
@@ -2801,14 +2871,16 @@ export function roadTileVertices(
           centerX,
           centerZ,
           coreHalf,
-          armDepth,
           at,
           hAt,
+          spec.hasCurbs,
         );
-      if (hasN && armStops(neighbors.n)) arm(true, (d) => -coreHalf - d);
-      if (hasS && armStops(neighbors.s)) arm(true, (d) => coreHalf + d);
-      if (hasE && armStops(neighbors.e)) arm(false, (d) => coreHalf + d);
-      if (hasW && armStops(neighbors.w)) arm(false, (d) => -coreHalf - d);
+      // Measured inward from the TILE edge, which is where the approach
+      // actually reaches the junction, rather than outward from the box.
+      if (hasN && armStops(neighbors.n)) arm(true, (d) => -TILE_HALF + d);
+      if (hasS && armStops(neighbors.s)) arm(true, (d) => TILE_HALF - d);
+      if (hasE && armStops(neighbors.e)) arm(false, (d) => TILE_HALF - d);
+      if (hasW && armStops(neighbors.w)) arm(false, (d) => -TILE_HALF + d);
     }
   }
 

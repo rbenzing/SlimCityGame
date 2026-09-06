@@ -218,13 +218,6 @@ export function AssetDrawer({ category, onClose }: AssetDrawerProps): JSX.Elemen
         ) : (
           <div />
         )}
-        {/* Road options ride here rather than in a panel of their own: they are
-            this drawer's state, and there is room beside the close button. */}
-        {category === 'roads' && (
-          <div className="ml-auto mr-3">
-            <RoadToolOptions />
-          </div>
-        )}
         <button
           type="button"
           aria-label="Close asset drawer"
@@ -234,6 +227,15 @@ export function AssetDrawer({ category, onClose }: AssetDrawerProps): JSX.Elemen
           <Icon name="close" className="h-4 w-4" />
         </button>
       </div>
+
+      {/* Road options sit on their own line, right-aligned under the tabs,
+          rather than squeezed in beside them: there are enough of them that
+          sharing a line with the sub-tabs left the row wrapping into a jumble. */}
+      {category === 'roads' && (
+        <div className="mt-1.5 flex justify-end border-b border-white/10 pb-1.5">
+          <RoadToolOptions />
+        </div>
+      )}
 
       <div className="mt-2 flex flex-wrap gap-2 overflow-y-auto">
         {cards.map((card) => {

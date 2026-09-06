@@ -25,11 +25,23 @@ export interface MarkingBand {
   to: number;
 }
 
+/** A painted line: where it sits, and what colour it is painted. */
+export interface MarkingLine {
+  /** Signed offset from the centreline, metres. */
+  at: number;
+  /**
+   * Yellow separates traffic going OPPOSITE ways, white separates traffic
+   * going the same way and marks the edge of the carriageway — the US
+   * convention, and the one a driver reads without thinking.
+   */
+  color: 'white' | 'yellow';
+}
+
 export interface MarkingPlan {
-  /** Signed offsets of solid white lines. */
-  solid: number[];
-  /** Signed offsets of dashed white lines. */
-  dashed: number[];
+  /** Solid lines, each with its colour. */
+  solid: MarkingLine[];
+  /** Dashed lines, each with its colour. */
+  dashed: MarkingLine[];
   /** Reserved and parking lanes to fill or tick. */
   bands: MarkingBand[];
   /** The profile carries a raised median piece at the centre. */
@@ -54,17 +66,21 @@ interface ClassMarkings {
  * motorway whose lanes have room for them.
  */
 const CLASS_MARKINGS: Readonly<Record<RoadClassId, ClassMarkings>> = {
+  // An unpaved track and a service alley carry no paint at all.
   dirt: { centre: 'none', laneLines: false, edgeLines: false },
   alley: { centre: 'none', laneLines: false, edgeLines: false },
-  rural: { centre: 'auto', laneLines: true, edgeLines: false },
-  local: { centre: 'auto', laneLines: true, edgeLines: false },
-  urban: { centre: 'auto', laneLines: true, edgeLines: false },
-  collector: { centre: 'auto', laneLines: true, edgeLines: false },
-  arterial: { centre: 'double', laneLines: true, edgeLines: false },
-  divided: { centre: 'double', laneLines: true, edgeLines: false },
-  oneWay: { centre: 'none', laneLines: true, edgeLines: false },
-  highway: { centre: 'none', laneLines: false, edgeLines: true },
-  ramp: { centre: 'none', laneLines: false, edgeLines: true },
+  // A rural road runs between shoulders, so its edge line is what tells a
+  // driver where the surface ends; a town street's kerb does that job, but
+  // the line still marks the gutter a driver should not sit in.
+  rural: { centre: 'auto', laneLines: true, edgeLines: true },
+  local: { centre: 'auto', laneLines: true, edgeLines: true },
+  urban: { centre: 'auto', laneLines: true, edgeLines: true },
+  collector: { centre: 'auto', laneLines: true, edgeLines: true },
+  arterial: { centre: 'double', laneLines: true, edgeLines: true },
+  divided: { centre: 'double', laneLines: true, edgeLines: true },
+  oneWay: { centre: 'none', laneLines: true, edgeLines: true },
+  highway: { centre: 'none', laneLines: true, edgeLines: true },
+  ramp: { centre: 'none', laneLines: true, edgeLines: true },
   rail: { centre: 'none', laneLines: false, edgeLines: false },
 };
 
@@ -90,8 +106,10 @@ export function markingPlan(profile: RoadProfile): MarkingPlan {
   const pieces = profile.pieces.filter((p) => CARRIAGEWAY_KINDS.has(p.kind));
   const half = carriagewayHalfWidthOf(profile);
 
-  const solid: number[] = [];
-  const dashed: number[] = [];
+  const solid: MarkingLine[] = [];
+  const dashed: MarkingLine[] = [];
+  const white = (at: number): MarkingLine => ({ at, color: 'white' });
+  const yellow = (at: number): MarkingLine => ({ at, color: 'yellow' });
   const bands: MarkingBand[] = [];
 
   // Opposing travel lanes per side decide the auto centre style.
@@ -138,20 +156,42 @@ export function markingPlan(profile: RoadProfile): MarkingPlan {
       (isTravel(piece) && next.kind === 'centreTurn');
 
     if (turnEdge) {
-      if (style.centre !== 'none') solid.push(boundary);
+      // A two-way turn lane is bounded by a solid yellow line each side: the
+      // lane serves both directions, so both sides face opposing traffic.
+      if (style.centre !== 'none') solid.push(yellow(boundary));
     } else if (opposing) {
       // Rails down both centre lanes mark them already; paint nothing under them.
       if (piece.tram && next.tram) continue;
-      if (centre === 'dashed') dashed.push(boundary);
+      if (centre === 'dashed') dashed.push(yellow(boundary));
       if (centre === 'double')
-        solid.push(boundary - CENTRE_PAIR_OFFSET_M, boundary + CENTRE_PAIR_OFFSET_M);
+        solid.push(
+          yellow(boundary - CENTRE_PAIR_OFFSET_M),
+          yellow(boundary + CENTRE_PAIR_OFFSET_M),
+        );
     } else if ((sameWay || travelToBus) && style.laneLines) {
-      dashed.push(boundary);
+      dashed.push(white(boundary));
     }
   }
 
+  // Edge lines: a solid white line down each side of the carriageway, marking
+  // where the running surface ends and the shoulder, gutter or kerb begins.
+  // Every paved road carries them; on a road with a shoulder the line is the
+  // shoulder's inside edge, which is what tells a driver where it is safe to
+  // pull over.
   if (style.edgeLines && half > EDGE_LINE_MARGIN_M) {
-    solid.push(-(half - EDGE_LINE_MARGIN_M), half - EDGE_LINE_MARGIN_M);
+    const shoulderInside = (side: -1 | 1): number => {
+      let edge = -half;
+      let inner: number | null = null;
+      for (const piece of pieces) {
+        const from = edge;
+        edge += piece.width;
+        if (piece.kind !== 'shoulder') continue;
+        if (side < 0 && from < 0) inner = edge;
+        if (side > 0 && edge > 0) inner ??= from;
+      }
+      return inner ?? side * (half - EDGE_LINE_MARGIN_M);
+    };
+    solid.push(white(shoulderInside(-1)), white(shoulderInside(1)));
   }
 
   const hasMedian = pieces.some((p) => p.kind === 'median');
@@ -161,12 +201,12 @@ export function markingPlan(profile: RoadProfile): MarkingPlan {
     const medianIndex = pieces.findIndex((p) => p.kind === 'median');
     const before = pieces.slice(0, medianIndex).reduce((w, p) => w + p.width, -half);
     const centreAt = before + pieces[medianIndex]!.width / 2;
-    solid.push(centreAt - CENTRE_PAIR_OFFSET_M, centreAt + CENTRE_PAIR_OFFSET_M);
+    solid.push(yellow(centreAt - CENTRE_PAIR_OFFSET_M), yellow(centreAt + CENTRE_PAIR_OFFSET_M));
   }
 
   return {
-    solid: solid.sort((a, b) => a - b),
-    dashed: dashed.sort((a, b) => a - b),
+    solid: solid.sort((a, b) => a.at - b.at),
+    dashed: dashed.sort((a, b) => a.at - b.at),
     bands,
     hasMedian,
     barrier: profile.class === 'highway',
@@ -174,8 +214,8 @@ export function markingPlan(profile: RoadProfile): MarkingPlan {
 }
 
 /** The pair of solid lines painted around the centre, or none. */
-export function centrePair(plan: MarkingPlan): [number, number] | null {
-  const lo = plan.solid.find((o) => Math.abs(o + CENTRE_PAIR_OFFSET_M) < 1e-6);
-  const hi = plan.solid.find((o) => Math.abs(o - CENTRE_PAIR_OFFSET_M) < 1e-6);
+export function centrePair(plan: MarkingPlan): [MarkingLine, MarkingLine] | null {
+  const lo = plan.solid.find((l) => Math.abs(l.at + CENTRE_PAIR_OFFSET_M) < 1e-6);
+  const hi = plan.solid.find((l) => Math.abs(l.at - CENTRE_PAIR_OFFSET_M) < 1e-6);
   return lo !== undefined && hi !== undefined ? [lo, hi] : null;
 }

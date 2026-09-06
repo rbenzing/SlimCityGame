@@ -57,14 +57,10 @@ describe('AssetDrawer', () => {
       expect(screen.queryByText('Residential (Low)')).not.toBeInTheDocument();
     });
 
-    it('Roads renders Small / Large / Transit Lanes, dropping the empty Maintenance sub-tab', () => {
+    it('Roads groups by the family a road belongs to, dropping the empty Maintenance sub-tab', () => {
       render(<AssetDrawer category="roads" onClose={vi.fn()} />);
       const tabs = screen.getAllByRole('tab');
-      expect(tabs.map((t) => t.textContent)).toEqual([
-        'Small Roads',
-        'Large Roads',
-        'Transit Lanes',
-      ]);
+      expect(tabs.map((t) => t.textContent)).toEqual(['Small', 'Medium', 'Highway', 'Transit']);
       expect(screen.queryByRole('tab', { name: /maintenance/i })).not.toBeInTheDocument();
     });
 
@@ -107,7 +103,7 @@ describe('AssetDrawer', () => {
   describe('locked cards', () => {
     it('locks a card whose unlockMilestone exceeds the current milestone level, with a tooltip and no tool change', () => {
       render(<AssetDrawer category="roads" onClose={vi.fn()} />);
-      fireEvent.click(screen.getByRole('tab', { name: 'Large Roads' }));
+      fireEvent.click(screen.getByRole('tab', { name: 'Medium' }));
       const avenue = screen.getByRole('button', { name: /Avenue/ });
       expect(avenue).toBeDisabled();
       expect(avenue).toHaveAttribute('title', 'Unlocks at Small Town');
@@ -118,7 +114,7 @@ describe('AssetDrawer', () => {
     it('unlocks once the milestone level is high enough, and selecting it sets the tool', () => {
       useCityStore.setState((s) => ({ stats: { ...s.stats, milestoneLevel: 1 } }));
       render(<AssetDrawer category="roads" onClose={vi.fn()} />);
-      fireEvent.click(screen.getByRole('tab', { name: 'Large Roads' }));
+      fireEvent.click(screen.getByRole('tab', { name: 'Medium' }));
       const avenue = screen.getByRole('button', { name: /Avenue/ });
       expect(avenue).not.toBeDisabled();
       fireEvent.click(avenue);
@@ -155,10 +151,10 @@ describe('AssetDrawer', () => {
     expect(useCityStore.getState().selectedTool).toBe('road.oneway');
   });
 
-  it('the §6.7 Four-Lane Road card sits under Large Roads and selects road.four once unlocked', () => {
+  it('the §6.7 Four-Lane Road card sits under Medium and selects road.four once unlocked', () => {
     useCityStore.setState((s) => ({ stats: { ...s.stats, milestoneLevel: 1 } }));
     render(<AssetDrawer category="roads" onClose={vi.fn()} />);
-    fireEvent.click(screen.getByRole('tab', { name: 'Large Roads' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Medium' }));
     const four = screen.getByRole('button', { name: /Four-Lane Road/ });
     expect(four).not.toBeDisabled();
     fireEvent.click(four);
@@ -220,13 +216,7 @@ describe('AssetDrawer', () => {
     );
 
     rerender(<AssetDrawer category="roads" onClose={vi.fn()} />);
-    expect(screen.getByRole('tab', { name: 'Small Roads' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    expect(screen.getByRole('tab', { name: 'Large Roads' })).toHaveAttribute(
-      'aria-selected',
-      'false',
-    );
+    expect(screen.getByRole('tab', { name: 'Small' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Medium' })).toHaveAttribute('aria-selected', 'false');
   });
 });

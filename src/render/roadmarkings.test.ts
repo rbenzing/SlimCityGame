@@ -4,51 +4,61 @@ import { RoadTier } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import { CENTRE_PAIR_OFFSET_M, centrePair, markingPlan } from './roadmarkings';
 
-const close = (xs: number[], ys: number[]): void => {
+const close = (xs: readonly { at: number }[] | number[], ys: number[]): void => {
   expect(xs.length).toBe(ys.length);
-  xs.forEach((x, i) => expect(x).toBeCloseTo(ys[i]!, 6));
+  xs.forEach((x, i) => expect(typeof x === 'number' ? x : x.at).toBeCloseTo(ys[i]!, 6));
 };
 
-describe('markingPlan reproduces what every preset has always painted', () => {
-  it('two-lane: one dashed centre line, nothing else', () => {
+describe('markingPlan paints every preset the way a US road is painted', () => {
+  /** Every line at an offset, as a colour, so a test can name what it expects. */
+  const lineAt = (lines: readonly { at: number; color: string }[], at: number): string | null =>
+    lines.find((l) => Math.abs(l.at - at) < 1e-6)?.color ?? null;
+
+  it('two-lane: a yellow dashed centre between the directions, white edge lines at the gutter', () => {
     const p = markingPlan(presetProfileForTier(RoadTier.TwoLane));
     close(p.dashed, [0]);
-    expect(p.solid).toEqual([]);
-    expect(p.bands).toEqual([]);
-    expect(p.hasMedian).toBe(false);
+    expect(lineAt(p.dashed, 0)).toBe('yellow');
+    close(p.solid, [-3.25, 3.25]); // half a metre inside the 3.75 m half-width
+    expect(p.solid.every((l) => l.color === 'white')).toBe(true);
   });
 
-  it('one-way: the line between its two same-way lanes, dashed, at the centre', () => {
+  it('one-way: a white lane line between its two same-way lanes, and white edges', () => {
     const p = markingPlan(presetProfileForTier(RoadTier.OneWay));
-    close(p.dashed, [0]);
-    expect(p.solid).toEqual([]);
+    expect(lineAt(p.dashed, 0)).toBe('white');
+    close(p.solid, [-3.25, 3.25]);
   });
 
-  it('four-lane: a double solid centre and dashed lane lines at ±3.75', () => {
+  it('four-lane: a yellow double centre, white lane lines, white edges', () => {
     const p = markingPlan(presetProfileForTier(RoadTier.FourLane));
     close(p.dashed, [-3.75, 3.75]);
-    close(p.solid, [-CENTRE_PAIR_OFFSET_M, CENTRE_PAIR_OFFSET_M]);
+    expect(p.dashed.every((l) => l.color === 'white')).toBe(true);
+    expect(lineAt(p.solid, -CENTRE_PAIR_OFFSET_M)).toBe('yellow');
+    expect(lineAt(p.solid, CENTRE_PAIR_OFFSET_M)).toBe('yellow');
+    expect(lineAt(p.solid, -7)).toBe('white');
+    expect(lineAt(p.solid, 7)).toBe('white');
     expect(centrePair(p)).not.toBeNull();
   });
 
-  it('avenue: dashed lane lines at ±3.75, a median, and the centre pair the mesh paints only where the median breaks', () => {
+  it('avenue: the same, with a median the mesh draws where the centre pair would go', () => {
     const p = markingPlan(presetProfileForTier(RoadTier.Avenue));
     close(p.dashed, [-3.75, 3.75]);
-    close(p.solid, [-CENTRE_PAIR_OFFSET_M, CENTRE_PAIR_OFFSET_M]);
+    expect(lineAt(p.solid, CENTRE_PAIR_OFFSET_M)).toBe('yellow');
     expect(p.hasMedian).toBe(true);
   });
 
-  it('highway: solid edge lines half a metre in, no centre, no lane lines, a divider', () => {
+  it('highway: white lane lines and white edges, no yellow — every lane runs one way', () => {
     const p = markingPlan(presetProfileForTier(RoadTier.Highway));
-    close(p.solid, [-7, 7]);
-    expect(p.dashed).toEqual([]);
+    expect(p.solid.every((l) => l.color === 'white')).toBe(true);
+    expect(p.dashed.every((l) => l.color === 'white')).toBe(true);
+    expect(lineAt(p.solid, -7)).toBe('white');
+    expect(lineAt(p.solid, 7)).toBe('white');
     expect(p.barrier).toBe(true);
   });
 
-  it('bus lane: the four-lane white set plus terracotta bands on the kerb lanes', () => {
+  it('bus lane: the four-lane set plus a band on each kerb lane', () => {
     const p = markingPlan(presetProfileForTier(RoadTier.BusLane));
     close(p.dashed, [-3.75, 3.75]);
-    close(p.solid, [-CENTRE_PAIR_OFFSET_M, CENTRE_PAIR_OFFSET_M]);
+    expect(lineAt(p.solid, CENTRE_PAIR_OFFSET_M)).toBe('yellow');
     expect(p.bands.map((b) => b.kind)).toEqual(['bus', 'bus']);
     close(
       p.bands.flatMap((b) => [b.from, b.to]),
@@ -56,9 +66,9 @@ describe('markingPlan reproduces what every preset has always painted', () => {
     );
   });
 
-  it('bike lane: a dashed centre and 1.6 m of green at each kerb of the 1.875 m lane', () => {
+  it('bike lane: a yellow centre and 1.6 m of green at each kerb of the 1.875 m lane', () => {
     const p = markingPlan(presetProfileForTier(RoadTier.BikeLane));
-    close(p.dashed, [0]);
+    expect(lineAt(p.dashed, 0)).toBe('yellow');
     expect(p.bands.map((b) => b.kind)).toEqual(['bike', 'bike']);
     close(
       p.bands.flatMap((b) => [b.from, b.to]),
@@ -66,12 +76,35 @@ describe('markingPlan reproduces what every preset has always painted', () => {
     );
   });
 
-  it('tram, alley, gravel and rail paint no lines down the run', () => {
-    for (const tier of [RoadTier.Tram, RoadTier.Alley, RoadTier.Gravel, RoadTier.RailTrack]) {
+  it('an alley, a farm track and a railway carry no paint at all', () => {
+    for (const tier of [RoadTier.Alley, RoadTier.Gravel, RoadTier.RailTrack]) {
       const p = markingPlan(presetProfileForTier(tier));
-      expect(p.solid).toEqual([]);
-      expect(p.dashed).toEqual([]);
+      expect(p.solid, `tier ${tier}`).toEqual([]);
+      expect(p.dashed, `tier ${tier}`).toEqual([]);
     }
+  });
+
+  it('a tram street keeps its rails unpainted but still marks its edges', () => {
+    const p = markingPlan(presetProfileForTier(RoadTier.Tram));
+    expect(p.dashed).toEqual([]); // the rails are the centre
+    close(p.solid, [-3.25, 3.25]);
+  });
+
+  it('puts the edge line at the inside of a shoulder, which is where it is safe to pull over', () => {
+    const p = markingPlan({
+      class: 'highway',
+      pieces: [
+        { kind: 'shoulder', width: 3 },
+        { kind: 'travel', width: 3.6, flow: 'fwd' },
+        { kind: 'travel', width: 3.6, flow: 'fwd' },
+        { kind: 'shoulder', width: 3 },
+      ],
+    });
+    // Half-width 6.6: the lines sit at the shoulder edges, not half a metre in.
+    close(
+      p.solid.map((l) => l.at),
+      [-3.6, 3.6],
+    );
   });
 });
 
@@ -105,9 +138,11 @@ describe('markingPlan for composed profiles', () => {
         { kind: 'travel', width: 3.5, flow: 'fwd' },
       ],
     });
-    // Traffic may enter the turn lane but never travel along it, so neither
-    // boundary is a passing line.
-    close(p.solid, [-1.75, 1.75]);
+    // Traffic may enter the turn lane but never travel along it, so both its
+    // boundaries are solid yellow — the lane faces opposing traffic on each
+    // side. The white edge lines sit outside them.
+    close(p.solid, [-4.75, -1.75, 1.75, 4.75]);
+    expect(p.solid.filter((l) => l.color === 'yellow').map((l) => l.at)).toEqual([-1.75, 1.75]);
     expect(p.dashed).toEqual([]);
     expect(centrePair(p)).toBeNull();
   });

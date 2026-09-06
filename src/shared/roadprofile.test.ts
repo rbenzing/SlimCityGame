@@ -24,12 +24,13 @@ import {
   hasKerbs,
   isLayable,
   isPaved,
-  DEFAULT_PIECE_WIDTHS,
   isPresetProfileId,
   joinRefusal,
   lanesEachWayRange,
   laneCapacity,
   laneCount,
+  laneWidthFor,
+  laneOptionsFor,
   NO_EDITS,
   presetProfileForTier,
   profileCapacity,
@@ -465,11 +466,12 @@ describe('the class drawer: lanes, what separates them, and the posted speed', (
     }
   });
 
-  it('rebuilds both directions at the class-default lane width when the count changes', () => {
+  it('rebuilds both directions at the lane width its class is built to', () => {
     const p = composeProfile(presetProfileForTier(RoadTier.FourLane), edits({ lanes: 1 }));
     expect(p.pieces.map((x) => x.kind)).toEqual(['travel', 'travel']);
     expect(p.pieces.map((x) => x.flow)).toEqual(['back', 'fwd']);
-    for (const piece of p.pieces) expect(piece.width).toBeCloseTo(DEFAULT_PIECE_WIDTHS.travel, 6);
+    // An urban street is built to 11 ft lanes.
+    for (const piece of p.pieces) expect(piece.width).toBeCloseTo(laneWidthFor('urban'), 6);
     expect(laneCount(p)).toBe(2);
   });
 
@@ -657,5 +659,43 @@ describe('the road hierarchy: which road replaces which', () => {
   it('leaves a bike lane a local street, so it never wipes an arterial', () => {
     expect(rank(RoadTier.BikeLane)).toBeLessThan(rank(RoadTier.Avenue));
     expect(rank(RoadTier.BikeLane)).toBeLessThan(rank(RoadTier.Highway));
+  });
+});
+
+describe('lane widths and the lane counts a road is offered, to US standards', () => {
+  it('builds each class to the lane width its kind of road uses', () => {
+    // 12 ft on an arterial, a divided road and a motorway; 11 ft on a town
+    // street and a collector; 10 ft on a local street and a one-way.
+    expect(laneWidthFor('arterial')).toBeCloseTo(3.6, 6);
+    expect(laneWidthFor('divided')).toBeCloseTo(3.6, 6);
+    expect(laneWidthFor('highway')).toBeCloseTo(3.6, 6);
+    expect(laneWidthFor('urban')).toBeCloseTo(3.35, 6);
+    expect(laneWidthFor('collector')).toBeCloseTo(3.35, 6);
+    expect(laneWidthFor('local')).toBeCloseTo(3.05, 6);
+    expect(laneWidthFor('oneWay')).toBeCloseTo(3.05, 6);
+    expect(laneWidthFor('dirt')).toBeLessThan(laneWidthFor('local'));
+  });
+
+  it('offers a motorway up to eight lanes, a town street six, a local street four, a track two', () => {
+    expect(laneOptionsFor('highway')).toEqual([2, 4, 6, 8]);
+    expect(laneOptionsFor('urban')).toEqual([2, 4, 6]);
+    expect(laneOptionsFor('collector')).toEqual([2, 4, 6]);
+    expect(laneOptionsFor('arterial')).toEqual([2, 4, 6]);
+    expect(laneOptionsFor('local')).toEqual([2, 4]);
+    expect(laneOptionsFor('rural')).toEqual([2, 4]);
+    expect(laneOptionsFor('dirt')).toEqual([2]);
+    expect(laneOptionsFor('alley')).toEqual([2]);
+  });
+
+  it('is honest about what a 16 m tile holds: four lanes fit, six do not', () => {
+    const urban = presetProfileForTier(RoadTier.FourLane);
+    const at = (total: number): RoadProfile =>
+      composeProfile(urban, { ...NO_EDITS, lanes: total / 2, lanesBack: total / 2 });
+    expect(fitsTile(at(2))).toBe(true);
+    expect(fitsTile(at(4))).toBe(true);
+    // Six 11 ft lanes are 20.1 m of carriageway; the tile is 16 m across, so a
+    // six-lane road needs the two-tile corridor.
+    expect(profileWidth(at(6))).toBeGreaterThan(TILE_METERS);
+    expect(fitsTile(at(6))).toBe(false);
   });
 });

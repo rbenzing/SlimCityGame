@@ -277,10 +277,64 @@ export const NO_EDITS: ProfileEdits = {
   postedKmh: null,
 };
 
+/**
+ * Travel-lane width by class, metres, from the US standards a road of that
+ * kind is built to: 12 ft on an arterial, a divided road, a motorway and its
+ * ramps; 11 ft on an urban street, a collector and a rural road; 10 ft on a
+ * local street, a one-way and an alley; 9 ft on a farm track. A turn lane is
+ * the class's own lane width, since it is a lane.
+ */
+const LANE_WIDTH_BY_CLASS: Readonly<Record<RoadClassId, number>> = {
+  dirt: 2.75,
+  alley: 3.05,
+  rural: 3.35,
+  local: 3.05,
+  urban: 3.35,
+  collector: 3.35,
+  arterial: 3.6,
+  divided: 3.6,
+  oneWay: 3.05,
+  highway: 3.6,
+  ramp: 3.6,
+  rail: 5.6,
+};
+
+/** The width a travel lane of this class is built to, in metres. */
+export function laneWidthFor(classId: RoadClassId): number {
+  return LANE_WIDTH_BY_CLASS[classId];
+}
+
+/**
+ * The lane counts a road of each class is offered, total across both
+ * directions. A road is picked from this list rather than dialled a lane at a
+ * time: a four-lane arterial is a kind of road, not a three-lane with one
+ * added. A motorway goes to eight, a town street to six, a neighbourhood
+ * street to four, and a farm track is two and stays two.
+ */
+const LANE_OPTIONS_BY_CLASS: Readonly<Record<RoadClassId, readonly number[]>> = {
+  dirt: [2],
+  alley: [2],
+  rural: [2, 4],
+  local: [2, 4],
+  oneWay: [1, 2, 3],
+  urban: [2, 4, 6],
+  collector: [2, 4, 6],
+  arterial: [2, 4, 6],
+  divided: [4, 6],
+  highway: [2, 4, 6, 8],
+  ramp: [1, 2],
+  rail: [],
+};
+
+/** The lane counts this class offers, total across both directions. */
+export function laneOptionsFor(classId: RoadClassId): readonly number[] {
+  return LANE_OPTIONS_BY_CLASS[classId];
+}
+
 /** Real-world default widths, metres, for a piece a player adds. */
 export const DEFAULT_PIECE_WIDTHS: Readonly<Record<LanePieceKind, number>> = {
   travel: 3.5,
-  centreTurn: 3.5,
+  centreTurn: 3.6,
   parking: 2.25,
   bike: 1.6,
   bus: 3.5,
@@ -395,6 +449,7 @@ function rebuildCore(
   middle: MiddleChoice,
   oneWay: boolean,
   widthOf: (kind: LanePieceKind) => number,
+  laneWidth: number,
 ): LanePiece[] {
   const first = core.findIndex((p) => p.kind === 'travel');
   const last = core.length - 1 - [...core].reverse().findIndex((p) => p.kind === 'travel');
@@ -403,7 +458,7 @@ function rebuildCore(
   const tram = core.some((p) => p.kind === 'travel' && p.tram === true);
   const lane = (flow: LaneFlow): LanePiece => ({
     kind: 'travel',
-    width: DEFAULT_PIECE_WIDTHS.travel,
+    width: laneWidth,
     flow,
     ...(tram ? { tram: true } : {}),
   });
@@ -451,7 +506,15 @@ export function composeProfile(base: RoadProfile, edits: ProfileEdits): RoadProf
   const core =
     lanes === current.lanes && lanesBack === current.lanesBack && middle === current.middle
       ? baseCore
-      : rebuildCore(baseCore, lanes, lanesBack, middle, isOneWayProfile(base), widthOf);
+      : rebuildCore(
+          baseCore,
+          lanes,
+          lanesBack,
+          middle,
+          isOneWayProfile(base),
+          widthOf,
+          laneWidthFor(base.class),
+        );
 
   const edge = (side: 'left' | 'right'): LanePiece[] => {
     const flow = side === 'left' ? 'back' : 'fwd';

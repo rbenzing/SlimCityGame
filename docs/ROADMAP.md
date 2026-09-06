@@ -11,7 +11,7 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 
 > **Delivery status (2026-08-13):** the M0–M7 core spine plus bus transit, service
 > dispatch, districts & policies, stats charts + photo mode, and eight playtest-feedback
-> rounds are shipped and gate-green (2,902 tests / 108 files). Delivered on top of the
+> rounds are shipped and gate-green (2,914 tests / 108 files). Delivered on top of the
 > original milestones: the city-builder UI shell + night cycle, full building/street/vehicle/tree
 > visual language, full terraforming + animated water + sky, the airport landmark,
 > code-split bundle, plus the playtest refinements captured in SPEC.md (utility
@@ -55,7 +55,13 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > it back the other way turns it round, and saves carry it at version 7. On top
 > of it a road may run two lanes one way and one the other, and the edge cost
 > compares traffic against the lanes serving the direction being travelled, so
-> a two-and-one road congests on its short side first. Next: waves 3–6.
+> a two-and-one road congests on its short side first. On top of the waves, a
+> pass over how roads MEET: one asphalt for every paved road so no two of them
+> step in colour, a real hierarchy so a farm track never cuts a motorway and a
+> road cannot be drawn through one bigger than it, junctions where the major
+> road runs through and the side street stops, crossings at their real size,
+> US lane widths and a static lane-count choice per road family, and yellow
+> centre lines with white lane and edge lines. Next: waves 3–6.
 > Specified in full: classes, lane-piece
 > profiles with a width budget, stored flow direction, per-junction control
 > (none/yield/stop/all-way/signal/roundabout) with warrant defaults,

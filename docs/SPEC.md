@@ -2065,6 +2065,55 @@ else is derived:
   delay divides by the number of lanes serving it. Turn RESTRICTIONS (no left,
   no right, no straight, no U) are the degenerate case — a movement removed
   from every lane — and are exposed as the same control.
+- **Every paved road is the same asphalt (profile).** A road type is told
+  apart by its width and its markings, not by its shade. Tinting each type its
+  own grey put a visible colour step wherever two of them met and turned every
+  crossing into a patch of whichever road won the tile. Only a genuinely
+  different surface differs: gravel is tan, ballast is grey stone.
+- **Roads replace each other by rank, not by tier number (profile).** The
+  hierarchy is the real one — surface first, then how much traffic the road is
+  built to carry — so a farm track never cuts a motorway and a bike lane never
+  wipes an arterial, whatever order the tiers happen to be numbered in. A road
+  carrying a reserved bus or tram lane outranks the same road without one, so
+  a stray drag cannot quietly wipe a transit line. A road may not be drawn
+  THROUGH one it does not outrank: an avenue's raised median leaves nowhere to
+  cross, so the drag is refused whole rather than laid as two stubs either
+  side. Replace mode overrides all of it, because the player asked.
+- **A junction reads like a junction (junction).** The road that ranks highest
+  at a node runs THROUGH it: its markings carry across the box and its arms
+  paint nothing. Every arm below that rank stops, with a stop bar and — where
+  the road has footways — a ladder crosswalk. Where every arm ranks the same,
+  they all stop, which is the all-way junction. The crossing markings are the
+  real size, measured inward from the tile edge; scaling them into whatever
+  depth was left between the box and the tile edge is what turned a wide
+  road's crossing into a dashed ring hugging the box. A road with no footway
+  paints no crossing, since there is nobody on foot to cross, and its corners
+  still sweep round at the kerb-return radius with grass where the footway
+  would be, rather than filling the corner square.
+- **Lane widths and lane counts are US standards, and a road is picked rather
+  than dialled (profile/tool).** A travel lane is built to the width its kind
+  of road uses: 12 ft on an arterial, a divided road, a motorway and its
+  ramps; 11 ft on a town street, a collector and a rural road; 10 ft on a
+  local street, a one-way and an alley; 9 ft on a farm track. The player does
+  not choose a lane at a time — a four-lane arterial is a kind of road, not a
+  three-lane with one added — so each class offers the lane counts it is built
+  in, total across both directions: a motorway 2/4/6/8, a town street 2/4/6, a
+  neighbourhood street 2/4, a farm track 2 and only 2. **What a 16 m tile
+  holds:** four 11 ft lanes are 13.4 m and fit with a kerb either side; six are
+  20.1 m and do not. Six- and eight-lane roads, and a motorway with a 10 ft
+  shoulder to pull over on, are therefore two-tile corridors — wave 6 — and
+  until then the preview says the road is too wide rather than laying one that
+  overhangs its neighbours.
+- **Markings are painted the way a driver reads them (profile).** Yellow
+  separates traffic going OPPOSITE ways: the dashed centre of a two-lane, the
+  double solid of a multi-lane undivided road, and both edges of a two-way
+  turn lane, which faces opposing traffic on each side. White does everything
+  else: the lane lines between traffic going the same way, and the EDGE LINE
+  down each side of the carriageway that says where the running surface ends
+  and the shoulder, gutter or kerb begins. Every paved road carries edge lines;
+  on a road with a shoulder the line sits at the shoulder's inside edge, which
+  is what tells a driver where it is safe to pull over. An unpaved track, a
+  service alley and a railway carry no paint at all.
 - **Roads meet each other by rule, and a step in width is a transition
   (profile).** A city is built out of roads meeting other roads, so the
   default is that any two classes join and the join is DRAWN: where a kerbed

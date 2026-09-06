@@ -36,21 +36,27 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
 - **Roads** — a hierarchy from gravel up through two-lane, avenue, one-way,
   four-lane, and highway. Wider roads carry more traffic; most roads carry power
   and water along their length (highways carry power only). Every road's
-  options row has a **Profile** group: set how many lanes it runs each way —
-  each direction steps on its own, so a road can run two lanes one way and one
-  the other —
-  put a median or a two-way turn lane down the middle, post a speed inside
-  the range its class allows, add a parking lane or a bike lane to either
-  kerb, or drop the footways. Each control offers only what that road allows,
-  and the width readout shows whether the result still fits the 16 m tile — a
-  composition that does not is refused at the preview. A road normally
+  options row sits on its own line under the tabs: pick how many lanes the
+  road runs — a motorway comes in 2, 4, 6 or 8, a town street 2, 4 or 6, a
+  neighbourhood street 2 or 4, a dirt track only 2 — put a median or a
+  two-way turn lane down the middle, post a speed inside the range its class
+  allows, add a parking lane or a bike lane to either kerb, or drop the
+  footways. Each control offers only what that road allows, and the width
+  readout shows whether the result still fits the 16 m tile — a composition
+  that does not is refused at the preview, which is what a six- or eight-lane
+  road does until two-tile corridors arrive. Roads are grouped by family:
+  Small, Medium, Highway and Transit. A road normally
   refuses to become a smaller one, so a stray drag can never flatten an
   avenue; turn on **Replace** when you mean to rebuild a road as something
   else. A one-way street runs the way you drew it, arrows and all — to turn
   one round, draw it again from the other end. Roads of different sizes join freely, and a wide road
   meeting a narrower one tapers its kerb in over the last tile; the only
   refusals are a highway or a ramp running straight onto a gravel road or an
-  alley, which the preview turns down and tells you why. Roads snap to the
+  alley, and drawing a road THROUGH one bigger than it — an avenue's median
+  leaves nowhere to cross — both of which the preview turns down and tells you
+  why. Where roads meet, the bigger one runs through: it keeps its markings
+  across the junction and the side street gets the stop bar and the crossing.
+  Two equal roads crossing both stop. Roads snap to the
   grid, round their corners and dead-ends, and bank smoothly up slopes (the ground
   is graded under them automatically).
 - **Zoning** — residential, commercial, and industrial. Denser residential

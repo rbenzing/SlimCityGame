@@ -11,7 +11,7 @@ import {
   composeProfile,
   editsOf,
   isLayable,
-  lanesEachWayRange,
+  laneOptionsFor,
   presetProfileForTier,
   profileWidth,
   roadClass,
@@ -88,8 +88,8 @@ function ProfileGroup(): JSX.Element | null {
   const oneWay = base.pieces
     .filter((p) => p.kind === 'travel')
     .every((p) => p.flow === 'fwd' && base.pieces.some((q) => q.kind === 'travel'));
-  const laneRange = lanesEachWayRange(base.class, oneWay);
-  const offersLanes = current.lanes > 0 && laneRange.max > laneRange.min;
+  const laneOptions = laneOptionsFor(base.class);
+  const offersLanes = laneOptions.length > 1;
   const middleChoices = MIDDLE_CHOICES.filter(
     (choice) => choice.piece === null || admits.has(choice.piece),
   );
@@ -106,22 +106,19 @@ function ProfileGroup(): JSX.Element | null {
     return null;
   }
 
-  // Each direction may hold a lane the other does not, as long as the two
-  // together stay inside the class's range: a three-lane road is two one way
-  // and one the other.
-  const classLanes = cls.lanes;
-  const sideMax = (other: number): number => Math.max(1, classLanes.max - other);
-  const setLanes = (n: number): void => {
+  // A road is PICKED from the lane counts its class is built in, rather than
+  // dialled a lane at a time: a four-lane arterial is a kind of road, not a
+  // three-lane with one added. The count is the total across both directions,
+  // split evenly, which is how every road on the list is built.
+  const totalLanes = oneWay ? current.lanes : current.lanes + current.lanesBack;
+  const setTotalLanes = (total: number): void => {
     if (oneWay) {
-      setEdits({ lanes: Math.min(laneRange.max, Math.max(laneRange.min, n)), lanesBack: null });
+      setEdits({ lanes: total, lanesBack: null });
       return;
     }
-    const fwd = Math.min(sideMax(current.lanesBack), Math.max(1, n));
-    setEdits({ lanes: fwd, lanesBack: current.lanesBack });
+    const half = Math.max(1, Math.round(total / 2));
+    setEdits({ lanes: half, lanesBack: half });
   };
-  const setLanesBack = (n: number): void =>
-    setEdits({ lanes: current.lanes, lanesBack: Math.min(sideMax(current.lanes), Math.max(1, n)) });
-  const totalLanes = oneWay ? current.lanes : current.lanes + current.lanesBack;
   const setSpeed = (kmh: number): void =>
     setEdits({ postedKmh: Math.min(cls.postedKmh.max, Math.max(cls.postedKmh.min, kmh)) });
 
@@ -147,61 +144,19 @@ function ProfileGroup(): JSX.Element | null {
     <>
       {offersLanes ? (
         <Group label="Lanes">
-          <div className="flex items-center gap-1">
-            {oneWay ? null : (
-              <>
-                <button
-                  type="button"
-                  aria-label="One lane fewer running back"
-                  disabled={current.lanesBack <= 1}
-                  onClick={() => setLanesBack(current.lanesBack - 1)}
-                  className={CHIP_STEP}
-                >
-                  −
-                </button>
-                <span
-                  aria-label="Lanes running back"
-                  className="min-w-4 text-center text-xs tabular-nums text-white/70"
-                >
-                  {current.lanesBack}
-                </span>
-                <button
-                  type="button"
-                  aria-label="One lane more running back"
-                  disabled={totalLanes >= classLanes.max}
-                  onClick={() => setLanesBack(current.lanesBack + 1)}
-                  className={CHIP_STEP}
-                >
-                  +
-                </button>
-                <span className="px-1 text-xs text-white/45">⇄</span>
-              </>
-            )}
-            <button
-              type="button"
-              aria-label="One lane fewer"
-              disabled={oneWay ? current.lanes <= laneRange.min : current.lanes <= 1}
-              onClick={() => setLanes(current.lanes - 1)}
-              className={CHIP_STEP}
-            >
-              −
-            </button>
-            <span
-              aria-label={oneWay ? 'Lanes each way' : 'Lanes running forward'}
-              className="min-w-4 text-center text-xs tabular-nums text-white/70"
-            >
-              {current.lanes}
-            </span>
-            <button
-              type="button"
-              aria-label="One lane more"
-              disabled={oneWay ? current.lanes >= laneRange.max : totalLanes >= classLanes.max}
-              onClick={() => setLanes(current.lanes + 1)}
-              className={CHIP_STEP}
-            >
-              +
-            </button>
-            {oneWay ? <span className="pl-1 text-xs text-white/45">one way</span> : null}
+          <div className="flex gap-1" role="group" aria-label="Lanes">
+            {laneOptions.map((n) => (
+              <button
+                key={n}
+                type="button"
+                aria-pressed={totalLanes === n}
+                onClick={() => setTotalLanes(n)}
+                className={`${CHIP} ${totalLanes === n ? CHIP_ON : CHIP_OFF}`}
+              >
+                {n}
+              </button>
+            ))}
+            <span className="pl-1 text-[10px] text-white/45">{oneWay ? 'one way' : 'total'}</span>
           </div>
         </Group>
       ) : null}
@@ -300,7 +255,10 @@ export function RoadToolOptions(): JSX.Element {
   );
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5" aria-label="Road tool options">
+    <div
+      className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5"
+      aria-label="Road tool options"
+    >
       <Group label="Path">
         <div className="flex gap-1">
           {modeButton('straight', 'Straight')}

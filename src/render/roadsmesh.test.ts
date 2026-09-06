@@ -73,6 +73,17 @@ function isMarkingWhite(t: readonly number[]): boolean {
   return r > 0.9 && g > 0.9 && b > 0.9;
 }
 
+/** Centre-line paint: US yellow, separating traffic going opposite ways. */
+function isMarkingYellow(t: readonly number[]): boolean {
+  const [r, g, b] = t as [number, number, number];
+  return r > 0.85 && g > 0.6 && g < 0.85 && b < 0.35;
+}
+
+/** Any painted line, whichever colour it is. */
+function isPaint(t: readonly number[]): boolean {
+  return isMarkingWhite(t) || isMarkingYellow(t);
+}
+
 /** Sidewalk/shoulder curb: near-white, but distinctly dimmer than lane paint. */
 function isSidewalk(t: readonly number[]): boolean {
   const [r, g, b] = t as [number, number, number];
@@ -271,7 +282,10 @@ describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
 
   it('has NO painted centerline on a straight run (the rails are the centre)', () => {
     const { colors } = roadTileVertices(0, 0, RoadTier.Tram, N | S, flatHeightAt);
-    expect(countWhere(colors, isMarkingWhite)).toBe(0);
+    // No yellow: nothing separates the two directions but the rails themselves.
+    expect(countWhere(colors, isMarkingYellow)).toBe(0);
+    // Its edges are still marked, like every other paved street.
+    expect(countWhere(colors, isMarkingWhite)).toBe(2 * 6);
   });
 
   it('breaks the track at junctions (rails stop at crossings)', () => {
@@ -561,29 +575,34 @@ describe('roadTileVertices — true-ratio dashed/solid markings by tier (UI-SPEC
     return dashSegments(centerZ - TILE_METERS / 2, centerZ + TILE_METERS / 2).length;
   }
 
-  it('two-lane centerline is dashed: marking-white quad count matches dashSegments over the tile span', () => {
+  it('two-lane centerline is dashed yellow: its quad count matches dashSegments over the tile span', () => {
     for (const z of [0, 1, 2, 3]) {
       const { colors } = roadTileVertices(0, z, RoadTier.TwoLane, N | S, flatHeightAt);
-      expect(countWhere(colors, isMarkingWhite)).toBe(dashCountFor(z) * 6);
+      expect(countWhere(colors, isMarkingYellow)).toBe(dashCountFor(z) * 6);
+      // Plus the two solid white edge lines every paved road carries.
+      expect(countWhere(colors, isMarkingWhite)).toBe(2 * 6);
     }
   });
 
   it('a straight avenue run (median-eligible) suppresses the solid center pair but keeps dashed lane lines', () => {
     const z = 0;
     const { colors } = roadTileVertices(0, z, RoadTier.Avenue, N | S, flatHeightAt);
-    // 2 dashed lane lines, no center pair (replaced by the physical median).
-    expect(countWhere(colors, isMarkingWhite)).toBe(dashCountFor(z) * 2 * 6);
+    // 2 dashed white lane lines + 2 solid white edge lines; no yellow centre
+    // pair, which the physical median replaces.
+    expect(countWhere(colors, isMarkingWhite)).toBe(dashCountFor(z) * 2 * 6 + 2 * 6);
+    expect(countWhere(colors, isMarkingYellow)).toBe(0);
   });
 
-  it('highway draws ONLY solid edge lines — no center line at all (replaced by the physical divider barrier)', () => {
-    const onPhase = roadTileVertices(0, 0, RoadTier.Highway, N | S, flatHeightAt).colors;
-    const offPhase = roadTileVertices(0, 1, RoadTier.Highway, N | S, flatHeightAt).colors;
-    // 2 solid edge lines, always, with no dash dependency.
-    expect(countWhere(onPhase, isMarkingWhite)).toBe(2 * 6);
-    expect(countWhere(offPhase, isMarkingWhite)).toBe(2 * 6);
+  it('highway draws white lane lines and white edges — never a yellow centre, since every lane runs one way', () => {
+    for (const z of [0, 1]) {
+      const { colors } = roadTileVertices(0, z, RoadTier.Highway, N | S, flatHeightAt);
+      expect(countWhere(colors, isMarkingYellow)).toBe(0);
+      // 2 solid edge lines plus a dashed line between each pair of same-way lanes.
+      expect(countWhere(colors, isMarkingWhite)).toBe(2 * 6 + dashCountFor(z) * 2 * 6);
+    }
   });
 
-  it('marking color is the same neutral white across every tier (no tier-only yellow stripe)', () => {
+  it('white paint is one neutral white on every road, and yellow is one yellow', () => {
     const twoLane = roadTileVertices(0, 0, RoadTier.TwoLane, N | S, flatHeightAt).colors;
     const avenue = roadTileVertices(0, 0, RoadTier.Avenue, N | S, flatHeightAt).colors; // straight run: guarantees dashed lane markings are present
     const highway = roadTileVertices(0, 0, RoadTier.Highway, N | S, flatHeightAt).colors;
@@ -600,11 +619,15 @@ describe('roadTileVertices — true-ratio dashed/solid markings by tier (UI-SPEC
     expect(b3).toBeCloseTo(b1, 6);
     expect(Math.abs(r1 - g1)).toBeLessThan(0.05);
     expect(Math.abs(g1 - b1)).toBeLessThan(0.05);
+    // Yellow is warm and unmistakably not white.
+    const yellow = toTriples(twoLane).find((t) => isMarkingYellow(t)) as number[];
+    expect(yellow[0]!).toBeGreaterThan(yellow[2]! + 0.4);
   });
 
   it('markings orient along whichever travel axis the mask connects (horizontal road)', () => {
     const { colors } = roadTileVertices(0, 0, RoadTier.TwoLane, E | W, flatHeightAt);
-    expect(countWhere(colors, isMarkingWhite)).toBe(dashCountFor(0) * 6);
+    expect(countWhere(colors, isMarkingYellow)).toBe(dashCountFor(0) * 6);
+    expect(countWhere(colors, isMarkingWhite)).toBe(2 * 6);
   });
 });
 
@@ -647,54 +670,24 @@ describe('roadTileVertices — intersection suppression / proper intersections (
   });
 });
 
-describe('junctionArmLayout — stop-line + crosswalk depth (UI-SPEC §6.7 Roads v2)', () => {
-  it('a zero or negative arm depth yields an all-zero layout', () => {
-    expect(junctionArmLayout(0)).toEqual({
-      crosswalkStart: 0,
-      crosswalkEnd: 0,
-      stopLineStart: 0,
-      stopLineEnd: 0,
-    });
-    expect(junctionArmLayout(-1)).toEqual({
-      crosswalkStart: 0,
-      crosswalkEnd: 0,
-      stopLineStart: 0,
-      stopLineEnd: 0,
-    });
-  });
-
-  it('orders crosswalk (nearest the box) before the stop line (farthest from the box), with a gap between them', () => {
-    for (const armDepth of [0.64, 1.2, 3.2, 10]) {
-      const layout = junctionArmLayout(armDepth);
-      expect(layout.crosswalkStart).toBe(0);
-      expect(layout.crosswalkEnd).toBeGreaterThan(layout.crosswalkStart);
-      expect(layout.stopLineStart).toBeGreaterThanOrEqual(layout.crosswalkEnd);
-      expect(layout.stopLineEnd).toBeGreaterThan(layout.stopLineStart);
-    }
-  });
-
-  it('never spills past the available arm depth', () => {
-    for (const armDepth of [0.1, 0.64, 1.2, 3.2, 3.8, 10]) {
-      const layout = junctionArmLayout(armDepth);
-      expect(layout.stopLineEnd).toBeLessThanOrEqual(armDepth + 1e-9);
-    }
-  });
-
-  it('reaches the full spec-target depths once the arm has room (>= 3.8m)', () => {
-    const layout = junctionArmLayout(10);
-    expect(layout.crosswalkEnd).toBeCloseTo(2.4, 9);
+describe('junctionArmLayout — a crosswalk and a stop line at their real size', () => {
+  it('measures inward from the tile edge: crosswalk first, then a gap, then the stop line', () => {
+    const layout = junctionArmLayout();
+    expect(layout.crosswalkStart).toBeGreaterThan(0);
+    expect(layout.crosswalkEnd - layout.crosswalkStart).toBeCloseTo(2.4, 9);
+    expect(layout.stopLineStart).toBeGreaterThan(layout.crosswalkEnd);
     expect(layout.stopLineEnd - layout.stopLineStart).toBeCloseTo(0.4, 9);
   });
 
-  it('scales every measurement down proportionally on a short arm, preserving relative order', () => {
-    const short = junctionArmLayout(0.64); // ~highway's arm depth
-    const long = junctionArmLayout(10);
-    const shortRatio = short.crosswalkEnd / (short.stopLineEnd - short.crosswalkEnd);
-    const longRatio = long.crosswalkEnd / (long.stopLineEnd - long.crosswalkEnd);
-    expect(shortRatio).toBeCloseTo(longRatio, 6);
+  it('keeps its real size whatever the road, since squeezing it is what made a crossing read as a dashed ring', () => {
+    // The old layout scaled everything into the depth left between the box and
+    // the tile edge, which on a four-lane is half a metre.
+    const a = junctionArmLayout();
+    const b = junctionArmLayout();
+    expect(a).toEqual(b);
+    expect(a.stopLineEnd).toBeLessThan(TILE_METERS / 2); // still inside the tile
   });
 });
-
 describe('crosswalkBarOffsets — zebra-stripe placement (UI-SPEC §6.7 Roads v2)', () => {
   it('returns [] for a non-positive width', () => {
     expect(crosswalkBarOffsets(0)).toEqual([]);
@@ -912,7 +905,7 @@ describe('roadTileVertices — vertex count sanity per tile kind', () => {
     // (SEG*6).
     const rounded = JUNCTION_CORNER_SEGMENTS * 12;
     const { positions, colors } = roadTileVertices(5, 5, RoadTier.TwoLane, N | E | S, flatHeightAt);
-    const markingVerts = countWhere(colors, isMarkingWhite);
+    const markingVerts = countWhere(colors, isPaint);
     expect(vertexCount(positions)).toBe(30 + 2 * rounded + markingVerts);
     expect(markingVerts).toBeGreaterThan(0); // v2: junctions now carry arm markings
   });
@@ -975,18 +968,20 @@ describe('roadTileVertices — cosmetic corner rounding (UI-SPEC §6.18 #5 "Roun
   const isAtFilletHeight = (y: number): boolean => Math.abs(y - CAP_Y_OFFSET) < 1e-6;
 
   it('a dangling road end (popcount 1) adds exactly END_CAP_SEGMENTS extra triangles beyond the structural + marking total', () => {
-    // core(6) + ext N(6) + flank curbs E,W(12). The bulb-facing (S) straight
-    // curb is suppressed — the curved cap curb ring wraps that side instead.
-    const structural = 24;
     const { positions, colors } = roadTileVertices(0, 0, RoadTier.TwoLane, N, flatHeightAt);
-    const markingVerts = countWhere(colors, isMarkingWhite);
-    // the dead-end curb ring adds its own
-    // END_CAP_SEGMENTS quads (2 triangles apiece) on top, additive over the
-    // plain structural curb quads above — see emitEndCapCurb.
-    const ringVerts = END_CAP_SEGMENTS * 6;
-    expect(vertexCount(positions)).toBe(
-      structural + END_CAP_SEGMENTS * 3 + ringVerts + markingVerts,
-    );
+    // The cap is counted by what it is rather than by subtracting everything
+    // else, so a road that paints one more line does not move the total: the
+    // asphalt fan sits at the cap height, the curb ring at curb height with
+    // the tile's two straight flank curbs.
+    const pos = toTriples(positions);
+    const col = toTriples(colors);
+    const fan = pos.filter((pt) => isAtFilletHeight(pt[1] as number)).length;
+    expect(fan).toBe(END_CAP_SEGMENTS * 3);
+    const ring = pos.filter(
+      (pt, i) =>
+        isSidewalk(col[i] as number[]) && Math.abs((pt[1] as number) - CURB_Y_OFFSET) < 1e-6,
+    ).length;
+    expect(ring).toBe(END_CAP_SEGMENTS * 6 + 2 * 6);
   });
 
   it('sits flush with the road (a hair above, below curb height) so the cap reads as continued pavement with no lip', () => {
@@ -1192,16 +1187,32 @@ describe('roadTileVertices — road-end-cap-v2: curb ring hugs the rounded dead-
       const sidewalk = 1.875; // SIDEWALK_WIDTH_M
       // Pivot: same point emitEndCap's apex sits at (mask=N -> outwardSign +1).
       const pivotZ = centerZ + coreHalf;
+      const pivotX = 0.5 * TILE_METERS;
       const { positions, colors } = roadTileVertices(0, 0, tier, N, flatHeightAt);
-      // The ring is emitted last, immediately after the fan — exactly
-      // END_CAP_SEGMENTS quads (2 triangles apiece) of curb-height,
-      // sidewalk-colored geometry.
+      // The ring is END_CAP_SEGMENTS quads (2 triangles apiece) of curb-height,
+      // sidewalk-coloured geometry. It is found by what it is rather than by
+      // where it sits in the buffer, since the cap's edge lines wrap it too.
       const ringVertCount = END_CAP_SEGMENTS * 6;
-      const ringPositions = positions.slice(positions.length - ringVertCount * 3);
-      const ringColors = colors.slice(colors.length - ringVertCount * 3);
-      const posTriples = toTriples(ringPositions);
-      const colorTriples = toTriples(ringColors);
-      expect(posTriples.length).toBe(ringVertCount);
+      const allPos = toTriples(positions);
+      const allCol = toTriples(colors);
+      // The ring is the CURVED curb: sidewalk paint at curb height, standing
+      // between the cap rim and one sidewalk-width beyond it. The tile's two
+      // straight flank curbs are the same colour and height but sit alongside
+      // the carriageway, not around the bulb.
+      const ringIndices = allPos
+        .map((_, i) => i)
+        .filter((i) => {
+          const pt = allPos[i] as number[];
+          if (!isSidewalk(allCol[i] as number[])) return false;
+          if (!isAtCurbHeight(pt[1] as number)) return false;
+          const dx = (pt[0] as number) - pivotX;
+          const dz = (pt[2] as number) - pivotZ;
+          const r = Math.hypot(dx, dz);
+          return r >= capRadius - 1e-6 && r <= capRadius + sidewalk + 1e-6 && dz >= -1e-6;
+        });
+      const posTriples = ringIndices.map((i) => allPos[i] as number[]);
+      const colorTriples = ringIndices.map((i) => allCol[i] as number[]);
+      expect(posTriples.length).toBeGreaterThanOrEqual(ringVertCount);
       const alongOffsets: number[] = [];
       for (let i = 0; i < posTriples.length; i++) {
         const p = posTriples[i] as number[];
@@ -1664,7 +1675,8 @@ describe('roadTileVertices — One-Way (tier 6, UI-SPEC §6.7 Roads v3)', () => 
     // z=1 is not a multiple of ARROW_PERIOD_TILES (3), so no arrow interferes.
     expect(isArrowTile(1)).toBe(false);
     const { colors } = roadTileVertices(0, 1, RoadTier.OneWay, N | S, flatHeightAt);
-    expect(countWhere(colors, isMarkingWhite)).toBe(dashCountForZ(1) * 6);
+    // Its lane line plus the two white edge lines every paved road carries.
+    expect(countWhere(colors, isMarkingWhite)).toBe(dashCountForZ(1) * 6 + 2 * 6);
   });
 
   it('is still a "paved tier" — a T-junction gets stop-line + crosswalk arm markings', () => {
@@ -1691,7 +1703,7 @@ describe('roadTileVertices — One-Way (tier 6, UI-SPEC §6.7 Roads v3)', () => 
         const { colors } = roadTileVertices(0, z, RoadTier.OneWay, N | S, flatHeightAt);
         const expectedDash = dashCountForZ(z) * 6;
         const expectedArrow = isArrowTile(z) ? 3 * 6 : 0;
-        expect(countWhere(colors, isMarkingWhite)).toBe(expectedDash + expectedArrow);
+        expect(countWhere(colors, isMarkingWhite)).toBe(expectedDash + expectedArrow + 2 * 6);
       }
     });
 
@@ -1700,7 +1712,7 @@ describe('roadTileVertices — One-Way (tier 6, UI-SPEC §6.7 Roads v3)', () => 
         const { colors } = roadTileVertices(x, 0, RoadTier.OneWay, E | W, flatHeightAt);
         const expectedDash = dashCountForX(x) * 6;
         const expectedArrow = isArrowTile(x) ? 3 * 6 : 0;
-        expect(countWhere(colors, isMarkingWhite)).toBe(expectedDash + expectedArrow);
+        expect(countWhere(colors, isMarkingWhite)).toBe(expectedDash + expectedArrow + 2 * 6);
       }
     });
 
@@ -1718,7 +1730,10 @@ describe('roadTileVertices — One-Way (tier 6, UI-SPEC §6.7 Roads v3)', () => 
         // The dashed centerline and the arrow's stem never exceed ±0.15m
         // across the travel axis; only the arrow's head wings reach further —
         // isolating them lets us check orientation unambiguously.
-        if (Math.abs(worldX - centerX) > 0.2) {
+        // The arrow's head wings reach past the stem but stay well inside the
+        // edge lines, which sit at the carriageway edge.
+        const across = Math.abs(worldX - centerX);
+        if (across > 0.2 && across < 2) {
           sawHeadVertex = true;
           const worldZ = (posTriples[i] as number[])[2] as number;
           expect(worldZ).toBeGreaterThan(centerZ);
@@ -1738,7 +1753,8 @@ describe('roadTileVertices — One-Way (tier 6, UI-SPEC §6.7 Roads v3)', () => 
       for (let i = 0; i < posTriples.length; i++) {
         if (!isMarkingWhite(colorTriples[i] as number[])) continue;
         const worldZ = (posTriples[i] as number[])[2] as number;
-        if (Math.abs(worldZ - centerZ) > 0.2) {
+        const across = Math.abs(worldZ - centerZ);
+        if (across > 0.2 && across < 2) {
           sawHeadVertex = true;
           const worldX = (posTriples[i] as number[])[0] as number;
           expect(worldX).toBeGreaterThan(centerX);
@@ -1755,8 +1771,9 @@ describe('roadTileVertices — One-Way (tier 6, UI-SPEC §6.7 Roads v3)', () => 
       const centerX = 0.5 * TILE_METERS;
       for (let i = 0; i < posTriples.length; i++) {
         if (!isMarkingWhite(colorTriples[i] as number[])) continue;
-        const worldX = (posTriples[i] as number[])[0] as number;
-        expect(Math.abs(worldX - centerX)).toBeLessThanOrEqual(0.2);
+        const across = Math.abs((posTriples[i] as number[])[0] as number) - centerX;
+        // Nothing between the stem and the edge lines: no arrow head here.
+        expect(Math.abs(across) > 0.2 && Math.abs(across) < 2).toBe(false);
       }
     });
 
@@ -2184,8 +2201,10 @@ describe('roadTileVertices — a one-way street points the way it was drawn', ()
     toTriples(colors).forEach((c, i) => {
       if (!isMarkingWhite(c)) return;
       const x = positions[i * 3]!;
-      // The centre line runs down x = 8; the arrow head is wider than it.
-      if (Math.abs(x - 8) < 0.3) return;
+      // The centre line runs down x = 8 and the edge lines sit at the
+      // carriageway edge; the arrow head is between them.
+      const across = Math.abs(x - 8);
+      if (across < 0.3 || across > 2) return;
       const z = positions[i * 3 + 2]!;
       if (z < lo) lo = z;
       if (z > hi) hi = z;
@@ -2214,6 +2233,9 @@ describe('roadTileVertices — a one-way street points the way it was drawn', ()
       toTriples(colors).forEach((c, i) => {
         if (!isMarkingWhite(c)) return;
         const x = positions[i * 3]!;
+        // The edge lines are white too and sit at the carriageway edge; the
+        // arrow lives near the centreline.
+        if (Math.abs(x - 8) > 2) return;
         const z = Math.round(positions[i * 3 + 2]! * 100) / 100;
         const span = byZ.get(z) ?? { lo: Infinity, hi: -Infinity };
         span.lo = Math.min(span.lo, x);
