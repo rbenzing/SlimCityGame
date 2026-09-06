@@ -14,6 +14,7 @@ import {
 import { TILE_METERS } from './constants';
 import {
   admitsAllPieces,
+  canJoin,
   CAPACITY_PER_VEH_PER_HOUR,
   carriagewayWidth,
   composeProfile,
@@ -24,6 +25,7 @@ import {
   isLayable,
   isPaved,
   isPresetProfileId,
+  joinRefusal,
   laneCapacity,
   laneCount,
   NO_EDITS,
@@ -136,9 +138,7 @@ describe('the eleven presets reproduce their tier scalars from the formula', () 
       });
       it('agrees with the spec on water and one-way', () => {
         expect(roadClass(p.class).carriesWater).toBe(spec.carriesWater ?? true);
-        const oneWay = p.pieces
-          .filter((x) => x.kind === 'travel')
-          .every((x) => x.flow === 'fwd');
+        const oneWay = p.pieces.filter((x) => x.kind === 'travel').every((x) => x.flow === 'fwd');
         expect(oneWay && p.pieces.some((x) => x.kind === 'travel')).toBe(spec.oneWay === true);
       });
     });
@@ -270,12 +270,18 @@ describe('composing a profile from a preset and the player’s edits', () => {
   });
 
   it('cannot add footways to an avenue whose carriageway already fills the tile', () => {
-    const p = composeProfile(presetProfileForTier(RoadTier.Avenue), { ...NO_EDITS, footways: true });
+    const p = composeProfile(presetProfileForTier(RoadTier.Avenue), {
+      ...NO_EDITS,
+      footways: true,
+    });
     expect(isLayable(p)).toBe(false);
   });
 
   it('stripping the bike lanes from the bike-lane preset gives the two-lane preset', () => {
-    const p = composeProfile(presetProfileForTier(RoadTier.BikeLane), { ...NO_EDITS, bike: 'none' });
+    const p = composeProfile(presetProfileForTier(RoadTier.BikeLane), {
+      ...NO_EDITS,
+      bike: 'none',
+    });
     expect(profilesEqual(p, twoLane())).toBe(true);
   });
 
@@ -293,7 +299,10 @@ describe('composing a profile from a preset and the player’s edits', () => {
   });
 
   it('keeps the core untouched: a bus preset’s reserved lanes survive an edge edit', () => {
-    const p = composeProfile(presetProfileForTier(RoadTier.BusLane), { ...NO_EDITS, footways: true });
+    const p = composeProfile(presetProfileForTier(RoadTier.BusLane), {
+      ...NO_EDITS,
+      footways: true,
+    });
     expect(p.pieces.filter((x) => x.kind === 'bus')).toHaveLength(2);
     expect(p.kerbs).toBe(true);
   });
@@ -364,5 +373,63 @@ describe('composition rules the editor will enforce', () => {
   it('clamps a posted speed to the class range', () => {
     expect(profileSpeed({ class: 'local', postedKmh: 90, pieces: [] })).toBe(speedFromKmh(50));
     expect(profileSpeed({ class: 'highway', postedKmh: 30, pieces: [] })).toBe(speedFromKmh(90));
+  });
+});
+
+describe('which roads may meet', () => {
+  const streets: RoadClassId[] = [
+    'dirt',
+    'alley',
+    'rural',
+    'local',
+    'urban',
+    'collector',
+    'arterial',
+    'divided',
+    'oneWay',
+  ];
+
+  it('every street class meets every other street class, both ways', () => {
+    for (const a of streets) for (const b of streets) expect(canJoin(a, b)).toBe(true);
+  });
+
+  it('a motorway reaches every paved street, so it has a way into the city', () => {
+    for (const ok of [
+      'highway',
+      'ramp',
+      'rural',
+      'local',
+      'urban',
+      'collector',
+      'arterial',
+      'divided',
+      'oneWay',
+    ] as RoadClassId[]) {
+      expect(canJoin('highway', ok)).toBe(true);
+      expect(canJoin(ok, 'highway')).toBe(true);
+    }
+  });
+
+  it('neither a motorway nor a ramp runs onto a farm track or a service alley', () => {
+    for (const fast of ['highway', 'ramp'] as RoadClassId[]) {
+      for (const slow of ['dirt', 'alley'] as RoadClassId[]) {
+        expect(canJoin(fast, slow)).toBe(false);
+        expect(canJoin(slow, fast)).toBe(false);
+      }
+    }
+  });
+
+  it('rail is a separate network, so it may sit beside anything', () => {
+    for (const c of [...streets, 'highway', 'ramp'] as RoadClassId[])
+      expect(canJoin('rail', c)).toBe(true);
+  });
+
+  it('phrases the refusal from the side that carries the rule, whichever order is asked', () => {
+    const text = "A highway can't meet a dirt road";
+    expect(joinRefusal('highway', 'dirt')).toBe(text);
+    expect(joinRefusal('dirt', 'highway')).toBe(text);
+    expect(joinRefusal('ramp', 'alley')).toBe("A ramp can't meet an alley");
+    expect(joinRefusal('highway', 'local')).toBeNull();
+    expect(joinRefusal('local', 'urban')).toBeNull();
   });
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { RoadTier, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, Command, RoadSpec, TilePoint } from '../shared/types';
 import { TERRAFORM_COST_PER_METER_TILE, TILE_METERS } from '../shared/constants';
+import { presetProfileForTier } from '../shared/roadprofile';
 import {
   brushDiscTiles,
   brushRingTiles,
@@ -354,6 +355,72 @@ describe('road preview cost + commit', () => {
     expect(previews.at(-1)?.invalidReason).toBe('Too wide for the tile');
     tm.pointerUp(2, 0, 0);
     expect(sent).toEqual([]);
+  });
+
+  describe('a run may only touch roads its class may meet', () => {
+    /** An env whose only existing road is one tier along z = 5, x = 0..9. */
+    const withRoadAtZ5 = (tier: RoadTier): ReturnType<typeof makeEnv> => {
+      const made = makeEnv();
+      made.env.roadProfileAt = (t) =>
+        t.z === 5 && t.x >= 0 && t.x < 10 ? presetProfileForTier(tier) : null;
+      return made;
+    };
+
+    it('refuses a highway drawn up to a gravel road, says why, and lays nothing', () => {
+      const { env, previews, sent } = withRoadAtZ5(RoadTier.Gravel);
+      const tm = new ToolManager(env);
+      tm.setTool('road.highway');
+      tm.pointerDown(3, 0, 0);
+      tm.pointerMove(3, 4, 0); // the last tile abuts the gravel road at (3,5)
+      expect(previews.at(-1)?.valid).toBe(false);
+      expect(previews.at(-1)?.invalidReason).toBe("A highway can't meet a dirt road");
+      tm.pointerUp(3, 4, 0);
+      expect(sent).toEqual([]);
+    });
+
+    it('lets the same highway stop one tile short, and lets it meet an ordinary street', () => {
+      const { env, previews, sent } = withRoadAtZ5(RoadTier.Gravel);
+      const tm = new ToolManager(env);
+      tm.setTool('road.highway');
+      tm.pointerDown(3, 0, 0);
+      tm.pointerMove(3, 3, 0);
+      expect(previews.at(-1)?.valid).toBe(true);
+      tm.pointerUp(3, 3, 0);
+      expect(sent).toHaveLength(1);
+
+      const paved = withRoadAtZ5(RoadTier.TwoLane);
+      const tm2 = new ToolManager(paved.env);
+      tm2.setTool('road.highway');
+      tm2.pointerDown(6, 0, 0);
+      tm2.pointerMove(6, 4, 0);
+      expect(paved.previews.at(-1)?.valid).toBe(true);
+      tm2.pointerUp(6, 4, 0);
+      expect(paved.sent).toHaveLength(1);
+    });
+
+    it('does not count a road inside the run, which the run replaces', () => {
+      const { env, previews } = withRoadAtZ5(RoadTier.Gravel);
+      const tm = new ToolManager(env);
+      tm.setTool('road.highway');
+      tm.pointerDown(3, 5, 0);
+      tm.pointerMove(5, 5, 0); // laid along the gravel itself, still touching (2,5) and (6,5)
+      expect(previews.at(-1)?.valid).toBe(false);
+      tm.pointerDown(0, 5, 0);
+      tm.pointerMove(9, 5, 0); // the whole gravel road, nothing left outside the run to touch
+      expect(previews.at(-1)?.valid).toBe(true);
+    });
+
+    it('lets every ordinary street meet every other, whatever the step in width', () => {
+      const { env, previews } = withRoadAtZ5(RoadTier.TwoLane);
+      const tm = new ToolManager(env);
+      for (const tool of ['road.gravel', 'road.alley', 'road.four', 'road.avenue', 'road.oneway']) {
+        tm.setTool(tool as Parameters<typeof tm.setTool>[0]);
+        tm.pointerDown(2, 0, 0);
+        tm.pointerMove(2, 4, 0);
+        expect(previews.at(-1)?.valid, tool).toBe(true);
+        tm.cancel();
+      }
+    });
   });
 
   it('edits that change nothing lay the plain preset, and so does an env with no profile ids', () => {

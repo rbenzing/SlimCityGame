@@ -443,7 +443,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         walkers: { total: number; noFrontage: number; wrongAxis: number };
       } => {
         const isRoad = (tx: number, tz: number): boolean =>
-          inBounds(tx, tz) && (clientGrid.roadTier[tz * clientGrid.size + tx] ?? 0) !== RoadTier.None;
+          inBounds(tx, tz) &&
+          (clientGrid.roadTier[tz * clientGrid.size + tx] ?? 0) !== RoadTier.None;
         const tierOf = (tx: number, tz: number): RoadTier =>
           inBounds(tx, tz)
             ? ((clientGrid.roadTier[tz * clientGrid.size + tx] ?? 0) as RoadTier)
@@ -755,6 +756,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       return spec;
     },
     profileIdFor: (profile) => clientGrid.profileIdFor(profile),
+    roadProfileAt: (tile) => clientGrid.profileAt(tile.x, tile.z),
     entry: (catalogId: string) => catalogById.get(catalogId),
     onPreview: (preview) => {
       store

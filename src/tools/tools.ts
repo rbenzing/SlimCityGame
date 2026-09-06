@@ -34,6 +34,7 @@ import type { RoadProfile } from '../shared/types';
 import {
   composeProfile,
   isLayable,
+  joinRefusal,
   NO_EDITS,
   presetProfileForTier,
   profilesEqual,
@@ -98,6 +99,12 @@ export interface ToolEnv {
    * lays every road as its preset, edits or not.
    */
   profileIdFor?(profile: RoadProfile): number;
+  /**
+   * The cross-section an existing road tile carries, or null where there is
+   * no road. Optional: an env that omits it never refuses a run for the roads
+   * it would touch.
+   */
+  roadProfileAt?(tile: TilePoint): RoadProfile | null;
 }
 
 export const ZONE_TOOL_TO_TYPE: Record<string, ZoneType> = {
@@ -451,10 +458,43 @@ export class ToolManager {
     const base = presetProfileForTier(presetTier);
     const composed = composeProfile(base, this.profileEdits);
     if (profilesEqual(composed, base)) {
-      return { tier: presetTier, spec: this.env.roadSpec(presetTier), profile: null, layable: true };
+      return {
+        tier: presetTier,
+        spec: this.env.roadSpec(presetTier),
+        profile: null,
+        layable: true,
+      };
     }
     const tier = tierForProfile(composed);
     return { tier, spec: this.env.roadSpec(tier), profile: composed, layable: isLayable(composed) };
+  }
+
+  /**
+   * Why a run of `profile` may not be laid over `tiles`: the first existing
+   * road outside the run that touches it and that its class may not meet, or
+   * null when every neighbour is one it may. A road already inside the run is
+   * about to be replaced, so it does not count.
+   */
+  private meetRefusal(tiles: TilePoint[], profile: RoadProfile): string | null {
+    const at = this.env.roadProfileAt;
+    if (!at) return null;
+    const inRun = new Set(tiles.map((t) => `${t.x},${t.z}`));
+    for (const t of tiles) {
+      for (const [dx, dz] of [
+        [0, -1],
+        [1, 0],
+        [0, 1],
+        [-1, 0],
+      ] as const) {
+        const n = { x: t.x + dx, z: t.z + dz };
+        if (inRun.has(`${n.x},${n.z}`)) continue;
+        const other = at(n);
+        if (!other) continue;
+        const why = joinRefusal(profile.class, other.class);
+        if (why) return why;
+      }
+    }
+    return null;
   }
 
   /** Live tool-behavior flags from the tool-options panel. */
@@ -689,12 +729,16 @@ export class ToolManager {
       const tiles = this.roadPath(start, current);
       const cost = tiles.length * build.spec.costPerTile;
       const evaluated = this.evaluate(tiles, cost, build.spec.unlockMilestone, true);
-      // A composition the tile cannot hold is refused here, with the reason,
-      // rather than laid as something else.
+      // A composition the tile cannot hold, or a run touching a road its class
+      // may not meet, is refused here with the reason rather than laid as
+      // something else.
+      const meet = this.meetRefusal(tiles, build.profile ?? presetProfileForTier(build.tier));
       const { valid, invalidReason } =
         build.profile && !build.layable
           ? { valid: false, invalidReason: 'Too wide for the tile' }
-          : evaluated;
+          : meet !== null
+            ? { valid: false, invalidReason: meet }
+            : evaluated;
       this.env.onPreview({
         tiles,
         valid,
@@ -812,7 +856,10 @@ export class ToolManager {
       const build = this.roadBuild(ROAD_TOOL_TO_TIER[tool] as RoadTier);
       const tiles = this.roadPath(start, end);
       const profileId = build.profile ? this.env.profileIdFor?.(build.profile) : undefined;
-      if (build.profile && !build.layable) {
+      const refused =
+        (build.profile && !build.layable) ||
+        this.meetRefusal(tiles, build.profile ?? presetProfileForTier(build.tier)) !== null;
+      if (refused) {
         // The preview already said why; laying nothing is the whole answer.
       } else if (build.profile && profileId !== undefined) {
         // Define and lay in one batch, so undo treats them as one edit and a

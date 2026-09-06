@@ -227,7 +227,15 @@ describe('roadTileVertices — transit lane variants (Bus Lane / Bike Lane)', ()
         { kind: 'sidewalk', width: 1.9 },
       ],
     };
-    const custom = roadTileVertices(3, 3, RoadTier.TwoLane, N | S, flatHeightAt, undefined, threeLane);
+    const custom = roadTileVertices(
+      3,
+      3,
+      RoadTier.TwoLane,
+      N | S,
+      flatHeightAt,
+      undefined,
+      threeLane,
+    );
     expect(extent(custom, centreX)).toBeCloseTo(10.5 / 2 + SIDEWALK_WIDTH_M, 3);
     expect(extent(preset, centreX)).toBeCloseTo(7.5 / 2 + SIDEWALK_WIDTH_M, 3);
   });
@@ -2029,5 +2037,114 @@ describe('roadTileVertices — terrain conformance on twisted slopes', () => {
   it('a 4-way junction conforms (box, corner fills, crosswalks, stop lines)', () => {
     assertConforms(RoadTier.TwoLane, N | E | S | W, 'two-lane crossroads');
     assertConforms(RoadTier.FourLane, N | E | S | W, 'four-lane crossroads');
+  });
+});
+
+describe('roadTileVertices — width transitions on a straight run', () => {
+  const four = TILE_METERS * FOUR_LANE_HALF_WIDTH_FRACTION; // 7.5
+  const two = TILE_METERS * TWO_LANE_HALF_WIDTH_FRACTION; // 3.75
+  const cz = 8; // tile (0,0) centre z
+  const flanks = 2 * 6; // the two straight flank kerbs a four-lane run always has
+  const wedgeVerts = (colors: number[], positions: number[]): Array<[number, number]> => {
+    const out: Array<[number, number]> = [];
+    toTriples(colors).forEach((c, i) => {
+      const z = positions[i * 3 + 2]!;
+      if (isSidewalk(c) && Math.abs(z - cz) < four - 1e-6) out.push([positions[i * 3]!, z]);
+    });
+    return out;
+  };
+
+  it('a four-lane between four-lanes bends nothing; between two-lanes it bends both kerbs in', () => {
+    const same = roadTileVertices(0, 0, RoadTier.FourLane, E | W, flatHeightAt, {
+      n: RoadTier.None,
+      e: RoadTier.FourLane,
+      s: RoadTier.None,
+      w: RoadTier.FourLane,
+    });
+    expect(countWhere(same.colors, isSidewalk)).toBe(flanks);
+
+    const narrowing = roadTileVertices(0, 0, RoadTier.FourLane, E | W, flatHeightAt, {
+      n: RoadTier.None,
+      e: RoadTier.TwoLane,
+      s: RoadTier.None,
+      w: RoadTier.TwoLane,
+    });
+    const wedge = wedgeVerts(narrowing.colors, narrowing.positions);
+    expect(wedge.length).toBeGreaterThan(0);
+    // At each tile edge the wedge reaches in to the two-lane's kerb, ±3.75 from
+    // the centreline; at the tile centre (both ends narrow) it has tapered out.
+    const atEast = wedge
+      .filter(([x]) => Math.abs(x - TILE_METERS) < 1e-6)
+      .map(([, z]) => Math.abs(z - cz));
+    const atWest = wedge.filter(([x]) => Math.abs(x) < 1e-6).map(([, z]) => Math.abs(z - cz));
+    expect(Math.min(...atEast)).toBeCloseTo(two, 6);
+    expect(Math.min(...atWest)).toBeCloseTo(two, 6);
+    for (const [x, z] of wedge)
+      if (Math.abs(x - 8) < 1e-6) expect(Math.abs(z - cz)).toBeCloseTo(four, 6);
+  });
+
+  it('one narrower end tapers over the whole tile; the far edge stays at full width', () => {
+    const { positions, colors } = roadTileVertices(0, 0, RoadTier.FourLane, E | W, flatHeightAt, {
+      n: RoadTier.None,
+      e: RoadTier.TwoLane,
+      s: RoadTier.None,
+      w: RoadTier.FourLane,
+    });
+    const wedge = wedgeVerts(colors, positions);
+    const atWest = wedge.filter(([x]) => Math.abs(x) < 1e-6);
+    expect(atWest.length).toBe(0);
+    const midInset = wedge.filter(([x]) => Math.abs(x - 8) < 1e-6).map(([, z]) => Math.abs(z - cz));
+    expect(Math.min(...midInset)).toBeCloseTo((four + two) / 2, 6);
+  });
+
+  it('draws no wedge on the narrower side, toward gravel, at a junction, or on a tile without kerbs', () => {
+    const narrower = roadTileVertices(0, 0, RoadTier.TwoLane, E | W, flatHeightAt, {
+      n: RoadTier.None,
+      e: RoadTier.FourLane,
+      s: RoadTier.None,
+      w: RoadTier.FourLane,
+    });
+    expect(countWhere(narrower.colors, isSidewalk)).toBe(flanks);
+
+    const gravel = roadTileVertices(0, 0, RoadTier.FourLane, E | W, flatHeightAt, {
+      n: RoadTier.None,
+      e: RoadTier.Gravel,
+      s: RoadTier.None,
+      w: RoadTier.Gravel,
+    });
+    expect(countWhere(gravel.colors, isSidewalk)).toBe(flanks);
+
+    const junction = roadTileVertices(0, 0, RoadTier.FourLane, E | W | N, flatHeightAt, {
+      n: RoadTier.TwoLane,
+      e: RoadTier.TwoLane,
+      s: RoadTier.None,
+      w: RoadTier.TwoLane,
+    });
+    expect(wedgeVerts(junction.colors, junction.positions).length).toBe(0);
+
+    const alley = roadTileVertices(0, 0, RoadTier.Alley, E | W, flatHeightAt, {
+      n: RoadTier.None,
+      e: RoadTier.Gravel,
+      s: RoadTier.None,
+      w: RoadTier.Gravel,
+    });
+    expect(countWhere(alley.colors, isSidewalk)).toBe(0);
+  });
+
+  it('measures the neighbour from its own cross-section when told to', () => {
+    const composedNeighbour = roadTileVertices(
+      0,
+      0,
+      RoadTier.FourLane,
+      E | W,
+      flatHeightAt,
+      { n: RoadTier.None, e: RoadTier.TwoLane, s: RoadTier.None, w: RoadTier.FourLane },
+      undefined,
+      { n: 0, e: 6, s: 0, w: four }, // the two-lane carries parking lanes: 12 m of carriageway
+    );
+    const atEast = wedgeVerts(composedNeighbour.colors, composedNeighbour.positions)
+      .filter(([x]) => Math.abs(x - TILE_METERS) < 1e-6)
+      .map(([, z]) => Math.abs(z - cz));
+    expect(Math.min(...atEast)).toBeCloseTo(6, 6);
   });
 });

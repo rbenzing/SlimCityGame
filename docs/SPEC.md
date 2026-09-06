@@ -2065,6 +2065,23 @@ else is derived:
   delay divides by the number of lanes serving it. Turn RESTRICTIONS (no left,
   no right, no straight, no U) are the degenerate case — a movement removed
   from every lane — and are exposed as the same control.
+- **Roads meet each other by rule, and a step in width is a transition
+  (profile).** A city is built out of roads meeting other roads, so the
+  default is that any two classes join and the join is DRAWN: where a kerbed
+  paved run meets a narrower paved one, the wider tile bends its kerb in over
+  the tile to the narrower road's edge, so the two flow together instead of
+  stepping at the seam. A tile narrowing at BOTH ends splits the tile between
+  the two wedges. A gravel neighbour keeps the paved→dirt band it already
+  had, and a junction keeps its throat, since a wide arm meeting narrow ones
+  at a node is a flare, not a taper. The refusals are only the joins that
+  would be absurd on the ground: a motorway or a slip road running straight
+  onto a farm track or a service alley, which could carry neither its speed
+  nor its volume. The road tool is where the rule is enforced, because that is
+  where the reason can be shown: a run that would touch a road its class may
+  not meet is refused whole, with the reason on the cursor chip, and lays
+  nothing. The stricter motorway rule — that a motorway reaches the surface
+  network ONLY through a ramp — arrives with ramps in wave 5, since before
+  ramps exist it would leave a motorway with no way into the city.
 - **Lane changes happen along a segment, and are drawn (profile).** Where two
   profiles of different lane counts meet on a straight run, the graph puts a
   node there today and the render stops the markings dead. Instead the wider
@@ -2253,7 +2270,18 @@ scaled by one constant into the units the sim already uses.
    paints edges and carries the divider). Every preset paints exactly what it
    always did, pinned by test; the avenue preset's inner lanes are 2.85 m so
    its lane lines fall at ±3.75 beside its 1.8 m median, as drawn. Motorway
-   lane lines wait for the two-tile motorway. Still to come in wave 1: the
+   lane lines wait for the two-tile motorway. Roads now MEET each other by rule and the meeting is drawn: any two classes
+   join except a motorway or a slip road running onto a farm track or a
+   service alley, which the road tool refuses for the whole run with the
+   reason on the cursor chip; and where a kerbed paved run meets a narrower
+   paved one, the wider tile bends its kerb in over the tile to the narrower
+   road's edge, splitting the tile between two wedges when it narrows at both
+   ends, while a gravel neighbour keeps its paved-to-dirt band and a junction
+   keeps its throat. `tools/transition-shots.mjs` lays a four-lane
+   continuing as a two-lane, an avenue continuing as a two-lane and a
+   four-lane spliced into the middle of a two-lane in the running game, on
+   ground it picks for being level, checks every run really is one connected
+   street and shoots the seams. Still to come in wave 1: the
    class drawer with posted speed and lane count, a median picker, and
    replace-in-place over an existing run.
 2. **Stored direction** — `roadFlow`, drag direction, asymmetric profiles,

@@ -39,7 +39,10 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   options row has a **Profile** group: add a parking lane or a bike lane to
   either kerb, or drop the footways, and the width readout shows whether the
   result still fits the 16 m tile — a composition that does not is refused
-  at the preview. Roads snap to the
+  at the preview. Roads of different sizes join freely, and a wide road
+  meeting a narrower one tapers its kerb in over the last tile; the only
+  refusals are a highway or a ramp running straight onto a gravel road or an
+  alley, which the preview turns down and tells you why. Roads snap to the
   grid, round their corners and dead-ends, and bank smoothly up slopes (the ground
   is graded under them automatically).
 - **Zoning** — residential, commercial, and industrial. Denser residential

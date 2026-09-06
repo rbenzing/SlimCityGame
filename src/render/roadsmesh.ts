@@ -319,7 +319,6 @@ function quadSpecFor(tier: RoadTier, profile: RoadProfile): QuadSpec {
   };
 }
 
-
 /**
  * Deterministic per-tile jitter on Gravel's dusty tan base color — same
  * avalanche hash shape as `hasMedianTree`, just widened to a byte per channel
@@ -1870,6 +1869,104 @@ function emitEndCapMarkings(
   wrap(plan.dashed, true);
 }
 
+/**
+ * One up-facing triangle at a fixed height above the terrain, given LOCAL
+ * (metres from the tile centre) corners in any order; the winding is fixed so
+ * the single-sided road material shows it.
+ */
+function pushFlatTri(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  a: readonly [number, number],
+  b: readonly [number, number],
+  c: readonly [number, number],
+  yOffset: number,
+  color: readonly [number, number, number],
+  hAt: (x: number, z: number) => number,
+): void {
+  const cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  if (Math.abs(cross) < 1e-9) return;
+  const order = cross > 0 ? [c, b, a] : [a, b, c];
+  for (const p of order) {
+    const wx = centerX + p[0];
+    const wz = centerZ + p[1];
+    pushVertex(positions, colors, wx, hAt(wx, wz) + yOffset, wz, color);
+  }
+}
+
+/**
+ * Width transition where a straight kerbed tile meets a NARROWER paved
+ * neighbour: on each flank a wedge of footway, at kerb height, runs from this
+ * tile's carriageway edge at `depth` metres back to the neighbour's edge at
+ * the shared tile boundary, so the kerb line bends in over the run instead of
+ * stepping at the seam. The asphalt beneath keeps its full width; the wedge
+ * simply covers what the narrower road does not use. Sliced along the run on
+ * the shared lattice so it follows the terrain like every other plate.
+ */
+function emitWidthSeam(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  coreHalf: number,
+  neighbourHalf: number,
+  edgeSign: 1 | -1,
+  vertical: boolean,
+  depth: number,
+  hAt: (x: number, z: number) => number,
+): void {
+  const edge = edgeSign * TILE_HALF;
+  const inner = edge - edgeSign * depth;
+  const pt = (along: number, cross: number): [number, number] =>
+    vertical ? [cross, along] : [along, cross];
+  // The carriageway edge this wedge covers down to, at a given distance along.
+  const insideAt = (along: number): number => {
+    const t = 1 - Math.abs(edge - along) / depth;
+    return coreHalf - (coreHalf - neighbourHalf) * t;
+  };
+  const centreAlong = vertical ? centerZ : centerX;
+  const breaks = latticeBreaks(
+    centreAlong + Math.min(inner, edge),
+    centreAlong + Math.max(inner, edge),
+  );
+  for (const side of [-1, 1] as const) {
+    for (let k = 0; k < breaks.length - 1; k++) {
+      const a0 = breaks[k]! - centreAlong;
+      const a1 = breaks[k + 1]! - centreAlong;
+      const outer0 = pt(a0, side * coreHalf);
+      const outer1 = pt(a1, side * coreHalf);
+      const inner0 = pt(a0, side * insideAt(a0));
+      const inner1 = pt(a1, side * insideAt(a1));
+      pushFlatTri(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        outer0,
+        outer1,
+        inner1,
+        CURB_Y_OFFSET,
+        SIDEWALK_COLOR,
+        hAt,
+      );
+      pushFlatTri(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        outer0,
+        inner1,
+        inner0,
+        CURB_Y_OFFSET,
+        SIDEWALK_COLOR,
+        hAt,
+      );
+    }
+  }
+}
+
 /** How far back into the paved tile the paved→gravel transition band reaches. */
 export const GRAVEL_SEAM_DEPTH_M = 2.6;
 
@@ -2290,6 +2387,24 @@ const NO_NEIGHBORS: NeighborTiers = {
   w: RoadTier.None,
 };
 
+/**
+ * Per-side carriageway half-widths of the neighbouring road tiles, in metres
+ * (0 where there is no road). Optional: omitted, each side is its tier's
+ * preset width, which is exact for every tile that carries a preset.
+ */
+export interface NeighborHalves {
+  n: number;
+  e: number;
+  s: number;
+  w: number;
+}
+
+function presetHalves(neighbors: NeighborTiers): NeighborHalves {
+  const half = (tier: RoadTier): number =>
+    tier === RoadTier.None ? 0 : carriagewayHalfWidthMeters(tier);
+  return { n: half(neighbors.n), e: half(neighbors.e), s: half(neighbors.s), w: half(neighbors.w) };
+}
+
 export function roadTileVertices(
   x: number,
   z: number,
@@ -2299,6 +2414,7 @@ export function roadTileVertices(
   neighbors: NeighborTiers = NO_NEIGHBORS,
   /** The tile's own cross-section. Omitted = the tier's preset, which is what every tile carried before profiles. */
   profile?: RoadProfile,
+  neighborHalves: NeighborHalves = presetHalves(neighbors),
 ): { positions: number[]; colors: number[] } {
   if (!Number.isInteger(mask) || mask < 0 || mask > 15) {
     throw new RangeError(`roadTileVertices: mask ${mask} out of the 4-bit range 0..15`);
@@ -2588,16 +2704,62 @@ export function roadTileVertices(
       if (hasVertical) {
         const zLo = hasN ? -TILE_HALF : -coreHalf;
         const zHi = hasS ? TILE_HALF : coreHalf;
-        emitAxisMarkings(positions, colors, plan, centerX, centerZ, true, zLo, zHi, medianEligible, hAt);
+        emitAxisMarkings(
+          positions,
+          colors,
+          plan,
+          centerX,
+          centerZ,
+          true,
+          zLo,
+          zHi,
+          medianEligible,
+          hAt,
+        );
         if (plan.bands.length > 0)
-          emitColoredLaneBands(positions, colors, plan, x, z, centerX, centerZ, true, zLo, zHi, hAt);
+          emitColoredLaneBands(
+            positions,
+            colors,
+            plan,
+            x,
+            z,
+            centerX,
+            centerZ,
+            true,
+            zLo,
+            zHi,
+            hAt,
+          );
       }
       if (hasHorizontal) {
         const xLo = hasW ? -TILE_HALF : -coreHalf;
         const xHi = hasE ? TILE_HALF : coreHalf;
-        emitAxisMarkings(positions, colors, plan, centerX, centerZ, false, xLo, xHi, medianEligible, hAt);
+        emitAxisMarkings(
+          positions,
+          colors,
+          plan,
+          centerX,
+          centerZ,
+          false,
+          xLo,
+          xHi,
+          medianEligible,
+          hAt,
+        );
         if (plan.bands.length > 0)
-          emitColoredLaneBands(positions, colors, plan, x, z, centerX, centerZ, false, xLo, xHi, hAt);
+          emitColoredLaneBands(
+            positions,
+            colors,
+            plan,
+            x,
+            z,
+            centerX,
+            centerZ,
+            false,
+            xLo,
+            xHi,
+            hAt,
+          );
       }
 
       // One-Way direction arrows: every ARROW_PERIOD_TILES-th tile by GLOBAL
@@ -2764,6 +2926,43 @@ export function roadTileVertices(
     if (hasS && neighbors.s === RoadTier.Gravel) seam(1, true);
     if (hasE && neighbors.e === RoadTier.Gravel) seam(1, false);
     if (hasW && neighbors.w === RoadTier.Gravel) seam(-1, false);
+  }
+
+  // Wide -> narrow transition: on a straight through-run, a kerbed paved tile
+  // whose paved neighbour is narrower bends its kerb in to meet it over the
+  // whole tile (half the tile when both ends narrow, so the two wedges share
+  // the centre). The narrower side draws nothing; the gravel neighbour keeps
+  // its tan seam above instead; junction throats keep their flare.
+  if (spec.paved && spec.hasCurbs && connections === 2 && isCollinearMask(mask)) {
+    const sides: Array<[boolean, RoadTier, number, 1 | -1, boolean]> = [
+      [hasN, neighbors.n, neighborHalves.n, -1, true],
+      [hasS, neighbors.s, neighborHalves.s, 1, true],
+      [hasE, neighbors.e, neighborHalves.e, 1, false],
+      [hasW, neighbors.w, neighborHalves.w, -1, false],
+    ];
+    const narrowing = sides.filter(
+      ([has, nTier, nHalf]) =>
+        has &&
+        nTier !== RoadTier.None &&
+        nTier !== RoadTier.Gravel &&
+        nHalf > 0 &&
+        nHalf < coreHalf - 1e-6,
+    );
+    const depth = narrowing.length === 2 ? TILE_HALF : TILE_METERS;
+    for (const [, , nHalf, edgeSign, vertical] of narrowing) {
+      emitWidthSeam(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        coreHalf,
+        nHalf,
+        edgeSign,
+        vertical,
+        depth,
+        hAt,
+      );
+    }
   }
 
   return { positions, colors };
@@ -2934,6 +3133,14 @@ export class RoadMeshRenderer {
     return chunk?.tiles.get(localTileKeyOf(x, z))?.tier ?? RoadTier.None;
   }
 
+  /** The carriageway half-width of the road at (x,z) from its own cross-section, or 0 off-road. */
+  private halfAt(x: number, z: number): number {
+    const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
+    if (!tile) return 0;
+    const profile = this.profileFor(tile.profile) ?? presetProfileForTier(tile.tier);
+    return carriagewayHalfWidthOf(profile);
+  }
+
   private rebuildChunk(key: number): void {
     const chunk = this.chunks.get(key);
     if (!chunk) return;
@@ -2962,6 +3169,12 @@ export class RoadMeshRenderer {
         this.heightAt,
         neighbors,
         this.profileFor(tile.profile) ?? undefined,
+        {
+          n: this.halfAt(tile.x, tile.z - 1),
+          e: this.halfAt(tile.x + 1, tile.z),
+          s: this.halfAt(tile.x, tile.z + 1),
+          w: this.halfAt(tile.x - 1, tile.z),
+        },
       );
       for (const n of vertices.positions) positions.push(n);
       for (const n of vertices.colors) colors.push(n);

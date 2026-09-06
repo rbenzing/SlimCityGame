@@ -128,7 +128,9 @@ export function laneCapacity(classId: RoadClassId): number {
   const flow = roadClass(classId).laneFlow;
   const vehPerHour =
     'greenRatio' in flow ? SATURATION_FLOW_VEH_PER_HOUR * flow.greenRatio : flow.vehPerHour;
-  return Math.round((vehPerHour * CAPACITY_PER_VEH_PER_HOUR) / LANE_CAPACITY_STEP) * LANE_CAPACITY_STEP;
+  return (
+    Math.round((vehPerHour * CAPACITY_PER_VEH_PER_HOUR) / LANE_CAPACITY_STEP) * LANE_CAPACITY_STEP
+  );
 }
 
 /** Game capacity of one piece. A shared two-way travel lane counts for both directions. */
@@ -288,7 +290,10 @@ export interface ResolvedEdits {
 /** What a profile's edges already hold, read the way the edits are written. */
 export function editsOf(profile: RoadProfile): ResolvedEdits {
   const first = profile.pieces.findIndex((p) => CORE_KINDS.has(p.kind));
-  const last = profile.pieces.length - 1 - [...profile.pieces].reverse().findIndex((p) => CORE_KINDS.has(p.kind));
+  const last =
+    profile.pieces.length -
+    1 -
+    [...profile.pieces].reverse().findIndex((p) => CORE_KINDS.has(p.kind));
   const left = first > 0 ? profile.pieces.slice(0, first) : [];
   const right = first >= 0 ? profile.pieces.slice(last + 1) : [];
   const choice = (kind: LanePieceKind): SideChoice => {
@@ -319,7 +324,8 @@ export function composeProfile(base: RoadProfile, edits: ProfileEdits): RoadProf
 
   const first = base.pieces.findIndex((p) => CORE_KINDS.has(p.kind));
   const lastFromEnd = [...base.pieces].reverse().findIndex((p) => CORE_KINDS.has(p.kind));
-  const core = first < 0 ? [...base.pieces] : base.pieces.slice(first, base.pieces.length - lastFromEnd);
+  const core =
+    first < 0 ? [...base.pieces] : base.pieces.slice(first, base.pieces.length - lastFromEnd);
   // A piece the base already has keeps its width, so recomposing a preset with
   // no changes gives the preset back; a piece the player adds gets the default.
   const widthOf = (kind: LanePieceKind): number =>
@@ -376,4 +382,47 @@ export function withinLaneRange(profile: RoadProfile): boolean {
   const { min, max } = roadClass(profile.class).lanes;
   const n = laneCount(profile);
   return n >= min && n <= max;
+}
+
+/**
+ * Which classes a class refuses to touch. Every pair not listed here joins,
+ * because a city is built out of roads meeting other roads and a step in
+ * width is a transition, not an error. The refusals are the joins that would
+ * be absurd on the ground: a motorway or a slip road running straight onto a
+ * farm track or a service alley, which could carry neither its speed nor its
+ * volume. Rail is a separate network that crosses a street at grade without
+ * joining it, so it refuses nothing.
+ *
+ * The full motorway rule — that a motorway meets the surface network only
+ * through a ramp — waits for ramps to exist as something the player can draw.
+ * Enforcing it before then would leave a motorway with no way into the city.
+ */
+const NEVER_MEETS: Partial<Record<RoadClassId, readonly RoadClassId[]>> = {
+  highway: ['dirt', 'alley'],
+  ramp: ['dirt', 'alley'],
+};
+
+function refuses(a: RoadClassId, b: RoadClassId): boolean {
+  if (a === 'rail' || b === 'rail') return false;
+  return (NEVER_MEETS[a] ?? []).includes(b);
+}
+
+/** Whether a road of class `a` may touch a road of class `b`, in either order. */
+export function canJoin(a: RoadClassId, b: RoadClassId): boolean {
+  return !refuses(a, b) && !refuses(b, a);
+}
+
+function withArticle(name: string): string {
+  const lower = name.toLowerCase();
+  return `${'aeiou'.includes(lower[0] ?? '') ? 'an' : 'a'} ${lower}`;
+}
+
+/**
+ * Why a road of class `a` may not touch one of class `b`, phrased for the
+ * cursor chip from the side that carries the rule, or null when they may.
+ */
+export function joinRefusal(a: RoadClassId, b: RoadClassId): string | null {
+  if (canJoin(a, b)) return null;
+  const [ruled, other] = refuses(a, b) ? [a, b] : [b, a];
+  return `A ${roadClass(ruled).name.toLowerCase()} can't meet ${withArticle(roadClass(other).name)}`;
 }
