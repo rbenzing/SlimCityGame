@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { RoadTier, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, Command, RoadSpec, TilePoint } from '../shared/types';
 import { TERRAFORM_COST_PER_METER_TILE, TILE_METERS } from '../shared/constants';
-import { presetProfileForTier } from '../shared/roadprofile';
+import { NO_EDITS, presetProfileForTier } from '../shared/roadprofile';
 import {
   brushDiscTiles,
   brushRingTiles,
@@ -316,7 +316,7 @@ describe('road preview cost + commit', () => {
     env.profileIdFor = () => 12;
     const tm = new ToolManager(env);
     tm.setTool('road.two');
-    tm.setProfileEdits({ parking: 'both', bike: null, footways: null });
+    tm.setProfileEdits({ ...NO_EDITS, parking: 'both', bike: null, footways: null });
     tm.pointerDown(0, 0, 0);
     tm.pointerMove(2, 0, 0);
     expect(previews.at(-1)?.valid).toBe(true);
@@ -348,7 +348,7 @@ describe('road preview cost + commit', () => {
     env.profileIdFor = () => 12;
     const tm = new ToolManager(env);
     tm.setTool('road.two');
-    tm.setProfileEdits({ parking: 'both', bike: 'both', footways: null });
+    tm.setProfileEdits({ ...NO_EDITS, parking: 'both', bike: 'both', footways: null });
     tm.pointerDown(0, 0, 0);
     tm.pointerMove(2, 0, 0);
     expect(previews.at(-1)?.valid).toBe(false);
@@ -427,14 +427,14 @@ describe('road preview cost + commit', () => {
     const { env, sent } = makeEnv();
     const tm = new ToolManager(env);
     tm.setTool('road.two');
-    tm.setProfileEdits({ parking: 'none', bike: 'none', footways: true }); // exactly the two-lane
+    tm.setProfileEdits({ ...NO_EDITS, parking: 'none', bike: 'none', footways: true }); // exactly the two-lane
     tm.pointerDown(0, 0, 0);
     tm.pointerUp(1, 0, 0);
     expect(sent[0]?.commands).toHaveLength(1);
     expect(sent[0]?.commands[0]).toMatchObject({ kind: 'buildRoad', tier: RoadTier.TwoLane });
     expect(sent[0]?.commands[0]).not.toHaveProperty('profile');
 
-    tm.setProfileEdits({ parking: 'both', bike: null, footways: null });
+    tm.setProfileEdits({ ...NO_EDITS, parking: 'both', bike: null, footways: null });
     tm.pointerDown(0, 2, 0);
     tm.pointerUp(1, 2, 0);
     // No profileIdFor on this env: the edit cannot be stored, so the preset is laid.

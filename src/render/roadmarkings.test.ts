@@ -96,7 +96,7 @@ describe('markingPlan for composed profiles', () => {
     );
   });
 
-  it('a three-lane local with a centre turn lane paints no centre line, only its lane edges', () => {
+  it('a three-lane local bounds its centre turn lane with a solid line each side', () => {
     const p = markingPlan({
       class: 'local',
       pieces: [
@@ -105,8 +105,22 @@ describe('markingPlan for composed profiles', () => {
         { kind: 'travel', width: 3.5, flow: 'fwd' },
       ],
     });
-    // The turn lane is not a travel lane, so neither boundary is a centre or a lane line yet.
+    // Traffic may enter the turn lane but never travel along it, so neither
+    // boundary is a passing line.
+    close(p.solid, [-1.75, 1.75]);
     expect(p.dashed).toEqual([]);
+    expect(centrePair(p)).toBeNull();
+  });
+
+  it('a class that paints nothing paints nothing around a turn lane either', () => {
+    const p = markingPlan({
+      class: 'alley',
+      pieces: [
+        { kind: 'travel', width: 3.5, flow: 'back' },
+        { kind: 'centreTurn', width: 3.5 },
+        { kind: 'travel', width: 3.5, flow: 'fwd' },
+      ],
+    });
     expect(p.solid).toEqual([]);
   });
 

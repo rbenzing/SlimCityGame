@@ -24,8 +24,10 @@ import {
   hasKerbs,
   isLayable,
   isPaved,
+  DEFAULT_PIECE_WIDTHS,
   isPresetProfileId,
   joinRefusal,
+  lanesEachWayRange,
   laneCapacity,
   laneCount,
   NO_EDITS,
@@ -285,17 +287,31 @@ describe('composing a profile from a preset and the player’s edits', () => {
     expect(profilesEqual(p, twoLane())).toBe(true);
   });
 
-  it('reads a preset’s edges back the way edits are written', () => {
+  it('reads a preset back the way edits are written', () => {
     expect(editsOf(presetProfileForTier(RoadTier.BikeLane))).toEqual({
       parking: 'none',
       bike: 'both',
       footways: true,
+      lanes: 1,
+      middle: 'none',
+      postedKmh: 50,
     });
     expect(editsOf(presetProfileForTier(RoadTier.Highway))).toEqual({
       parking: 'none',
       bike: 'none',
       footways: false,
+      lanes: 2,
+      middle: 'none',
+      postedKmh: 100,
     });
+    expect(editsOf(presetProfileForTier(RoadTier.Avenue))).toMatchObject({
+      lanes: 2,
+      middle: 'median',
+    });
+    // A one-way road counts every lane it has, since they all run one way.
+    expect(editsOf(presetProfileForTier(RoadTier.OneWay))).toMatchObject({ lanes: 2 });
+    // A tram preset carries its own posted speed rather than the class default.
+    expect(editsOf(presetProfileForTier(RoadTier.Tram))).toMatchObject({ postedKmh: 58 });
   });
 
   it('keeps the core untouched: a bus preset’s reserved lanes survive an edge edit', () => {
@@ -431,5 +447,113 @@ describe('which roads may meet', () => {
     expect(joinRefusal('ramp', 'alley')).toBe("A ramp can't meet an alley");
     expect(joinRefusal('highway', 'local')).toBeNull();
     expect(joinRefusal('local', 'urban')).toBeNull();
+  });
+});
+
+describe('the class drawer: lanes, what separates them, and the posted speed', () => {
+  const edits = (over: Partial<typeof NO_EDITS>) => ({ ...NO_EDITS, ...over });
+
+  it('leaves the core exactly as the preset has it while the count and the middle are unchanged', () => {
+    for (const spec of ROAD_PRESETS) {
+      const base = spec.profile!;
+      const same = composeProfile(base, edits({ lanes: editsOf(base).lanes }));
+      expect(profilesEqual(same, base), spec.name).toBe(true);
+    }
+  });
+
+  it('rebuilds both directions at the class-default lane width when the count changes', () => {
+    const p = composeProfile(presetProfileForTier(RoadTier.FourLane), edits({ lanes: 1 }));
+    expect(p.pieces.map((x) => x.kind)).toEqual(['travel', 'travel']);
+    expect(p.pieces.map((x) => x.flow)).toEqual(['back', 'fwd']);
+    for (const piece of p.pieces) expect(piece.width).toBeCloseTo(DEFAULT_PIECE_WIDTHS.travel, 6);
+    expect(laneCount(p)).toBe(2);
+  });
+
+  it('keeps a one-way road one-way, and counts its lanes as the lanes it has', () => {
+    const p = composeProfile(presetProfileForTier(RoadTier.OneWay), edits({ lanes: 3 }));
+    const travel = p.pieces.filter((x) => x.kind === 'travel');
+    expect(travel).toHaveLength(3);
+    expect(travel.every((x) => x.flow === 'fwd')).toBe(true);
+    expect(laneCount(p)).toBe(3);
+  });
+
+  it('keeps a reserved bus lane at each kerb of the carriageway when the general lanes change', () => {
+    const p = composeProfile(presetProfileForTier(RoadTier.BusLane), edits({ lanes: 2 }));
+    expect(p.pieces.map((x) => x.kind)).toEqual([
+      'bus',
+      'travel',
+      'travel',
+      'travel',
+      'travel',
+      'bus',
+    ]);
+  });
+
+  it('keeps a tram running on the lanes it rebuilds', () => {
+    const p = composeProfile(presetProfileForTier(RoadTier.Tram), edits({ lanes: 2 }));
+    const travel = p.pieces.filter((x) => x.kind === 'travel');
+    expect(travel).toHaveLength(4);
+    expect(travel.every((x) => x.tram === true)).toBe(true);
+  });
+
+  it('puts a median or a turn lane between the directions, and takes it away again', () => {
+    const two = presetProfileForTier(RoadTier.FourLane);
+    const median = composeProfile(two, edits({ middle: 'median' }));
+    expect(median.pieces.map((x) => x.kind)).toEqual([
+      'travel',
+      'travel',
+      'median',
+      'travel',
+      'travel',
+    ]);
+    const turn = composeProfile(two, edits({ middle: 'turn' }));
+    expect(turn.pieces.filter((x) => x.kind === 'centreTurn')).toHaveLength(1);
+    const plain = composeProfile(presetProfileForTier(RoadTier.Avenue), edits({ middle: 'none' }));
+    expect(plain.pieces.some((x) => x.kind === 'median')).toBe(false);
+    expect(plain.pieces.filter((x) => x.kind === 'travel')).toHaveLength(4);
+  });
+
+  it('counts a centre turn lane as the third lane of a three-lane street', () => {
+    const p = composeProfile(presetProfileForTier(RoadTier.TwoLane), edits({ middle: 'turn' }));
+    expect(laneCount(p)).toBe(3);
+    expect(isLayable(p)).toBe(true); // a local street's lane range is 2..3
+  });
+
+  it('a one-way road has no two sides, so it gets no median', () => {
+    const p = composeProfile(presetProfileForTier(RoadTier.OneWay), edits({ middle: 'median' }));
+    expect(p.pieces.some((x) => x.kind === 'median')).toBe(false);
+  });
+
+  it('carries a posted speed only when it says something the class default does not', () => {
+    const base = presetProfileForTier(RoadTier.TwoLane);
+    const def = roadClass(base.class).postedKmh.default;
+    expect(composeProfile(base, edits({ postedKmh: def })).postedKmh).toBeUndefined();
+    expect(profilesEqual(composeProfile(base, edits({ postedKmh: def })), base)).toBe(true);
+    const slow = composeProfile(base, edits({ postedKmh: 30 }));
+    expect(slow.postedKmh).toBe(30);
+    expect(profileSpeed(slow)).toBe(speedFromKmh(30));
+  });
+
+  it('clamps a posted speed to the class range rather than refusing it', () => {
+    // An arterial's default sits inside its range, so both ends are visible.
+    const base = presetProfileForTier(RoadTier.Avenue);
+    const cls = roadClass(base.class);
+    expect(cls.postedKmh.default).toBeGreaterThan(cls.postedKmh.min);
+    expect(composeProfile(base, edits({ postedKmh: 5 })).postedKmh).toBe(cls.postedKmh.min);
+    expect(composeProfile(base, edits({ postedKmh: 200 })).postedKmh).toBe(cls.postedKmh.max);
+  });
+
+  it('offers the lane counts each way that keep the class in its range', () => {
+    expect(lanesEachWayRange('local', false)).toEqual({ min: 1, max: 1 });
+    expect(lanesEachWayRange('urban', false)).toEqual({ min: 1, max: 2 });
+    expect(lanesEachWayRange('divided', false)).toEqual({ min: 2, max: 4 });
+    expect(lanesEachWayRange('oneWay', true)).toEqual({ min: 1, max: 5 });
+  });
+
+  it('refuses a widening the tile cannot hold, and takes it with the footways dropped', () => {
+    const base = presetProfileForTier(RoadTier.FourLane);
+    const wide = composeProfile(base, edits({ lanes: 2, footways: true }));
+    expect(isLayable(wide)).toBe(false);
+    expect(isLayable(composeProfile(base, edits({ lanes: 2, footways: false })))).toBe(true);
   });
 });

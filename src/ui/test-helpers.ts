@@ -4,6 +4,7 @@
  * utility module.
  */
 import { DEFAULT_SETTINGS } from '../app/session';
+import { NO_EDITS } from '../shared/roadprofile';
 import { DEFAULT_BRUSH_SETTINGS } from '../tools/tools';
 import { createInitialStats, useCityStore } from './store';
 
@@ -20,7 +21,7 @@ export function resetCityStore(): void {
     canRedo: false,
     bound: null,
     toolFlags: { angleLock: false, straightMode: false },
-    roadProfileEdits: { parking: null, bike: null, footways: null },
+    roadProfileEdits: NO_EDITS,
     toolMode: 'lpath',
     roadElevation: 0,
     previousMonthPopulation: createInitialStats().population,

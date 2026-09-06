@@ -2281,9 +2281,25 @@ scaled by one constant into the units the sim already uses.
    continuing as a two-lane, an avenue continuing as a two-lane and a
    four-lane spliced into the middle of a two-lane in the running game, on
    ground it picks for being level, checks every run really is one connected
-   street and shoots the seams. Still to come in wave 1: the
-   class drawer with posted speed and lane count, a median picker, and
-   replace-in-place over an existing run.
+   street and shoots the seams. The road tool's options row now
+   carries the class drawer as well: how many lanes the road runs each way
+   (all one way where the class is one-way), what separates the directions —
+   nothing, a median, or a two-way turn lane — and the speed it is posted at,
+   in 5 km/h steps inside the class's own range. Each control offers only
+   what the class allows, so a local street is never offered four lanes, a
+   motorway is never offered a turn lane, and a control with one possible
+   answer is not shown at all. Changing the lane count or the middle rebuilds
+   the carriageway around them at the class-default 3.5 m lane, keeping a
+   reserved bus lane at its kerb and a tram on the lanes it runs on, while
+   leaving the preset's own lanes untouched for as long as the player leaves
+   the count alone; a posted speed is carried only when it says something the
+   class default does not, so setting it back gives the preset itself back. A
+   centre turn lane counts as the third lane of a three-lane street, and is
+   painted the way one is: a solid line each side, since traffic may enter it
+   to turn but never travel along it. `tools/drawer-shots.mjs` lays a
+   four-lane with a median, a street with a turn lane and a four-lane
+   narrowed to one lane each way in the running game and shoots them. Still
+   to come in wave 1: replace-in-place over an existing run.
 2. **Stored direction** — `roadFlow`, drag direction, asymmetric profiles,
    directional edge cost, one-way pathfinding off geometry inference.
 3. **Junction control** — node control records, the v/c warrant default, the

@@ -10,6 +10,7 @@
  */
 import roadsData from '../data/roads.json';
 import type {
+  LaneFlow,
   LanePiece,
   LanePieceKind,
   RoadClassId,
@@ -159,12 +160,14 @@ export function profileCapacity(profile: RoadProfile): number {
 }
 
 /**
- * Traffic lanes in the profile, both directions summed: travel lanes plus the
- * reserved bus and tram lanes, which are lanes with a different occupant. A
- * shared two-way lane counts for both directions.
+ * Traffic lanes in the profile, both directions summed: travel lanes, the
+ * reserved bus and tram lanes, which are lanes with a different occupant, and
+ * a centre turn lane, which is the third lane of a three-lane street. A shared
+ * two-way lane counts for both directions.
  */
 export function laneCount(profile: RoadProfile): number {
   return profile.pieces.reduce((n, p) => {
+    if (p.kind === 'centreTurn') return n + 1;
     if (p.kind !== 'travel' && p.kind !== 'bus' && p.kind !== 'tram') return n;
     return n + ((p.flow ?? 'both') === 'both' ? 2 : 1);
   }, 0);
@@ -237,6 +240,9 @@ export function isPaved(profile: RoadProfile): boolean {
 
 export type SideChoice = 'none' | 'left' | 'right' | 'both';
 
+/** What sits down the middle of a two-way road, between the directions. */
+export type MiddleChoice = 'none' | 'median' | 'turn';
+
 export interface ProfileEdits {
   /** Which kerbs get a parking lane. null = as the preset has. */
   parking: SideChoice | null;
@@ -244,9 +250,25 @@ export interface ProfileEdits {
   bike: SideChoice | null;
   /** Footways on both sides, or none. null = as the preset has. */
   footways: boolean | null;
+  /**
+   * Travel lanes each way — on a one-way road, the lanes it has at all.
+   * null = as the preset has.
+   */
+  lanes: number | null;
+  /** What separates the directions. null = as the preset has. */
+  middle: MiddleChoice | null;
+  /** Posted speed in km/h, clamped to the class range. null = as the preset has. */
+  postedKmh: number | null;
 }
 
-export const NO_EDITS: ProfileEdits = { parking: null, bike: null, footways: null };
+export const NO_EDITS: ProfileEdits = {
+  parking: null,
+  bike: null,
+  footways: null,
+  lanes: null,
+  middle: null,
+  postedKmh: null,
+};
 
 /** Real-world default widths, metres, for a piece a player adds. */
 export const DEFAULT_PIECE_WIDTHS: Readonly<Record<LanePieceKind, number>> = {
@@ -280,14 +302,30 @@ function hasSide(choice: SideChoice, side: 'left' | 'right'): boolean {
   return choice === 'both' || choice === side;
 }
 
-/** Edits with every field decided — what a profile's edges actually hold. */
+/** Edits with every field decided — what a profile actually holds. */
 export interface ResolvedEdits {
   parking: SideChoice;
   bike: SideChoice;
   footways: boolean;
+  lanes: number;
+  middle: MiddleChoice;
+  postedKmh: number;
 }
 
-/** What a profile's edges already hold, read the way the edits are written. */
+/** The travel lanes a profile carries each way; on a one-way road, all of them. */
+function lanesEachWay(profile: RoadProfile): number {
+  const travel = profile.pieces.filter((p) => p.kind === 'travel');
+  const forward = travel.filter((p) => p.flow === 'fwd').length;
+  return forward > 0 ? forward : travel.length;
+}
+
+/** Whether every travel lane runs the same way, so the road has no two sides to separate. */
+function isOneWayProfile(profile: RoadProfile): boolean {
+  const travel = profile.pieces.filter((p) => p.kind === 'travel');
+  return travel.length > 0 && travel.every((p) => p.flow === 'fwd');
+}
+
+/** What a profile already holds, read the way the edits are written. */
 export function editsOf(profile: RoadProfile): ResolvedEdits {
   const first = profile.pieces.findIndex((p) => CORE_KINDS.has(p.kind));
   const last =
@@ -305,31 +343,94 @@ export function editsOf(profile: RoadProfile): ResolvedEdits {
     parking: choice('parking'),
     bike: choice('bike'),
     footways: profile.pieces.some((p) => p.kind === 'sidewalk'),
+    lanes: lanesEachWay(profile),
+    middle: profile.pieces.some((p) => p.kind === 'median')
+      ? 'median'
+      : profile.pieces.some((p) => p.kind === 'centreTurn')
+        ? 'turn'
+        : 'none',
+    postedKmh: profile.postedKmh ?? roadClass(profile.class).postedKmh.default,
   };
 }
 
+/** The lane counts each way a class allows, given that its range counts both ways. */
+export function lanesEachWayRange(
+  classId: RoadClassId,
+  oneWay: boolean,
+): {
+  min: number;
+  max: number;
+} {
+  const { min, max } = roadClass(classId).lanes;
+  if (oneWay) return { min: Math.max(1, min), max };
+  return { min: Math.max(1, Math.ceil(min / 2)), max: Math.max(1, Math.floor(max / 2)) };
+}
+
 /**
- * Applies edits to a base profile. The core of the road — its travel lanes,
- * median, reserved lanes — is untouched; the edges are rebuilt from the kerb
- * inward as footway, bike lane, parking lane, in the order a parking-protected
- * bike lane puts them. Left is the `back` side and right the `fwd` side, the
- * way every preset lays its pieces. Widths come from the base where it has the
- * piece and from the real-world defaults where it does not.
+ * Rebuilds a core's travel lanes and what sits between them, keeping whatever
+ * else the core holds — a reserved bus lane, a shoulder, a barrier — in place
+ * outside the lanes. New lanes are the class-default width rather than the
+ * preset's, since a preset's widths are chosen for its own lane count.
+ */
+function rebuildCore(
+  core: readonly LanePiece[],
+  lanes: number,
+  middle: MiddleChoice,
+  oneWay: boolean,
+  widthOf: (kind: LanePieceKind) => number,
+): LanePiece[] {
+  const first = core.findIndex((p) => p.kind === 'travel');
+  const last = core.length - 1 - [...core].reverse().findIndex((p) => p.kind === 'travel');
+  const before = first < 0 ? [] : core.slice(0, first);
+  const after = first < 0 ? [] : core.slice(last + 1);
+  const tram = core.some((p) => p.kind === 'travel' && p.tram === true);
+  const lane = (flow: LaneFlow): LanePiece => ({
+    kind: 'travel',
+    width: DEFAULT_PIECE_WIDTHS.travel,
+    flow,
+    ...(tram ? { tram: true } : {}),
+  });
+  const run = (flow: LaneFlow): LanePiece[] => Array.from({ length: lanes }, () => lane(flow));
+  if (oneWay) return [...before, ...run('fwd'), ...after].map((p) => ({ ...p }));
+  const separator: LanePiece[] =
+    middle === 'median'
+      ? [{ kind: 'median', width: widthOf('median') }]
+      : middle === 'turn'
+        ? [{ kind: 'centreTurn', width: widthOf('centreTurn') }]
+        : [];
+  return [...before, ...run('back'), ...separator, ...run('fwd'), ...after].map((p) => ({ ...p }));
+}
+
+/**
+ * Applies edits to a base profile. The edges are rebuilt from the kerb inward
+ * as footway, bike lane, parking lane, in the order a parking-protected bike
+ * lane puts them; left is the `back` side and right the `fwd` side, the way
+ * every preset lays its pieces. The core keeps the preset's own lanes until
+ * the player changes their number or what separates them, at which point it is
+ * rebuilt around them. Widths come from the base where it has the piece and
+ * from the real-world defaults where it does not.
  */
 export function composeProfile(base: RoadProfile, edits: ProfileEdits): RoadProfile {
   const current = editsOf(base);
   const parking = edits.parking ?? current.parking;
   const bike = edits.bike ?? current.bike;
   const footways = edits.footways ?? current.footways;
+  const lanes = edits.lanes ?? current.lanes;
+  const middle = edits.middle ?? current.middle;
 
   const first = base.pieces.findIndex((p) => CORE_KINDS.has(p.kind));
   const lastFromEnd = [...base.pieces].reverse().findIndex((p) => CORE_KINDS.has(p.kind));
-  const core =
+  const baseCore =
     first < 0 ? [...base.pieces] : base.pieces.slice(first, base.pieces.length - lastFromEnd);
   // A piece the base already has keeps its width, so recomposing a preset with
   // no changes gives the preset back; a piece the player adds gets the default.
   const widthOf = (kind: LanePieceKind): number =>
     base.pieces.find((p) => p.kind === kind)?.width ?? DEFAULT_PIECE_WIDTHS[kind];
+
+  const core =
+    lanes === current.lanes && middle === current.middle
+      ? baseCore
+      : rebuildCore(baseCore, lanes, middle, isOneWayProfile(base), widthOf);
 
   const edge = (side: 'left' | 'right'): LanePiece[] => {
     const flow = side === 'left' ? 'back' : 'fwd';
@@ -342,7 +443,17 @@ export function composeProfile(base: RoadProfile, edits: ProfileEdits): RoadProf
 
   const pieces = [...edge('left'), ...core.map((p) => ({ ...p })), ...edge('right').reverse()];
   const composed: RoadProfile = { class: base.class, pieces };
-  if (base.postedKmh !== undefined) composed.postedKmh = base.postedKmh;
+  // A posted speed is carried only when it says something the class default
+  // does not, so setting a preset's speed back to the default gives the preset
+  // itself back rather than a custom profile that behaves identically.
+  const cls = roadClass(base.class);
+  const posted = edits.postedKmh ?? base.postedKmh ?? null;
+  if (posted !== null) {
+    const clamped = Math.min(cls.postedKmh.max, Math.max(cls.postedKmh.min, posted));
+    if (base.postedKmh !== undefined || clamped !== cls.postedKmh.default) {
+      composed.postedKmh = clamped;
+    }
+  }
   // A kerb the preset declared explicitly stays explicit; a preset that relied
   // on its footways for kerbs keeps kerbs only while it keeps footways.
   if (base.kerbs !== undefined) composed.kerbs = base.kerbs;
@@ -412,7 +523,8 @@ export function canJoin(a: RoadClassId, b: RoadClassId): boolean {
   return !refuses(a, b) && !refuses(b, a);
 }
 
-function withArticle(name: string): string {
+/** "a dirt road", "an alley" — the article a class name takes when it is read out. */
+export function withArticle(name: string): string {
   const lower = name.toLowerCase();
   return `${'aeiou'.includes(lower[0] ?? '') ? 'an' : 'a'} ${lower}`;
 }

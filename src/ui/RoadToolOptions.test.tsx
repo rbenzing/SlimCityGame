@@ -3,7 +3,12 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { BRIDGE_MAX_ELEVATION, ROAD_ELEVATION_STEP_M } from '../shared/constants';
-import { composeProfile, presetProfileForTier, profileWidth } from '../shared/roadprofile';
+import {
+  composeProfile,
+  NO_EDITS,
+  presetProfileForTier,
+  profileWidth,
+} from '../shared/roadprofile';
 import { RoadTier } from '../shared/types';
 import { useCityStore } from './store';
 import { resetCityStore } from './test-helpers';
@@ -53,9 +58,9 @@ describe('RoadToolOptions — the Profile row', () => {
     // 7.5 m of lanes + two footways + two parking lanes + two bike lanes, past the 16 m tile.
     const expected = profileWidth(
       composeProfile(presetProfileForTier(RoadTier.TwoLane), {
+        ...NO_EDITS,
         parking: 'both',
         bike: 'both',
-        footways: null,
       }),
     );
     expect(expected).toBeGreaterThan(16);
@@ -77,22 +82,88 @@ describe('RoadToolOptions — the Profile row', () => {
     const { unmount } = render(<RoadToolOptions />);
     expect(screen.queryByRole('group', { name: 'Parking lanes' })).toBeNull();
     expect(screen.queryByRole('group', { name: 'Bike lanes' })).toBeNull();
-    expect(screen.queryByLabelText('Profile width')).toBeNull();
     unmount();
     useCityStore.getState().setTool('road.rail');
     render(<RoadToolOptions />);
-    expect(screen.queryByLabelText('Profile width')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Parking lanes' })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Bike lanes' })).toBeNull();
+    // A railway has no road lanes to count and nothing to put between them.
+    expect(screen.queryByLabelText('Lanes each way')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Between the directions' })).toBeNull();
+  });
+
+  it('counts a two-lane street’s lanes each way, and offers it no more than its class allows', () => {
+    useCityStore.getState().setTool('road.two');
+    render(<RoadToolOptions />);
+    // A local street is one lane each way by definition; a wider street is a
+    // different road, so the count is read out but never stepped.
+    expect(screen.queryByLabelText('Lanes each way')).toBeNull();
+  });
+
+  it('steps a four-lane street down to one lane each way and back', () => {
+    useCityStore.getState().setTool('road.four');
+    render(<RoadToolOptions />);
+    expect(screen.getByLabelText('Lanes each way')).toHaveTextContent('2 each way');
+    fireEvent.click(screen.getByRole('button', { name: 'One lane fewer' }));
+    expect(useCityStore.getState().roadProfileEdits.lanes).toBe(1);
+    expect(screen.getByLabelText('Lanes each way')).toHaveTextContent('1 each way');
+    expect(screen.getByLabelText('Profile width')).toHaveTextContent('7.0 / 16 m');
+    expect(screen.getByRole('button', { name: 'One lane fewer' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'One lane more' }));
+    expect(useCityStore.getState().roadProfileEdits.lanes).toBe(2);
+  });
+
+  it('counts a one-way road’s lanes the one way they run', () => {
+    useCityStore.getState().setTool('road.oneway');
+    render(<RoadToolOptions />);
+    expect(screen.getByLabelText('Lanes each way')).toHaveTextContent('2 one way');
+    expect(screen.queryByRole('group', { name: 'Between the directions' })).toBeNull();
+  });
+
+  it('puts a median or a turn lane down the middle of the roads whose class admits one', () => {
+    useCityStore.getState().setTool('road.four');
+    const { unmount } = render(<RoadToolOptions />);
+    const middle = screen.getByRole('group', { name: 'Between the directions' });
+    expect(within(middle).getByRole('button', { name: 'None' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.click(within(middle).getByRole('button', { name: 'Median' }));
+    expect(useCityStore.getState().roadProfileEdits.middle).toBe('median');
+    // Four lanes rebuilt at the class-default 3.5 m plus a 1.8 m median: it
+    // still fits the tile, where four 3.75 m lanes plus a median would not.
+    expect(screen.getByLabelText('Profile width')).toHaveTextContent('15.8 / 16 m');
+    expect(screen.getByLabelText('Profile width')).toHaveAttribute('title', 'Fits the tile');
+    unmount();
+
+    // A local street takes a two-way turn lane but never a median.
+    resetCityStore();
+    useCityStore.getState().setTool('road.two');
+    render(<RoadToolOptions />);
+    const localMiddle = screen.getByRole('group', { name: 'Between the directions' });
+    expect(within(localMiddle).queryByRole('button', { name: 'Median' })).toBeNull();
+    fireEvent.click(within(localMiddle).getByRole('button', { name: 'Turn lane' }));
+    expect(useCityStore.getState().roadProfileEdits.middle).toBe('turn');
+  });
+
+  it('posts a speed inside the class range, and stops at each end of it', () => {
+    useCityStore.getState().setTool('road.avenue');
+    render(<RoadToolOptions />);
+    const posted = screen.getByLabelText('Posted speed');
+    expect(posted).toHaveTextContent('65 km/h');
+    expect(posted).toHaveAttribute('title', '60–80 km/h for an arterial');
+    fireEvent.click(screen.getByRole('button', { name: 'Post a lower speed' }));
+    expect(useCityStore.getState().roadProfileEdits.postedKmh).toBe(60);
+    expect(screen.getByRole('button', { name: 'Post a lower speed' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Post a higher speed' }));
+    expect(useCityStore.getState().roadProfileEdits.postedKmh).toBe(65);
   });
 
   it('starts every road fresh: switching tools puts the edits back to the preset', () => {
     useCityStore.getState().setTool('road.two');
-    useCityStore.getState().setRoadProfileEdits({ parking: 'both' });
+    useCityStore.getState().setRoadProfileEdits({ ...NO_EDITS, parking: 'both' });
     useCityStore.getState().setTool('road.four');
-    expect(useCityStore.getState().roadProfileEdits).toEqual({
-      parking: null,
-      bike: null,
-      footways: null,
-    });
+    expect(useCityStore.getState().roadProfileEdits).toEqual(NO_EDITS);
   });
 });
 
@@ -133,10 +204,7 @@ describe('RoadToolOptions', () => {
         'aria-pressed',
         'false',
       );
-      expect(screen.getByRole('button', { name: /90°/ })).toHaveAttribute(
-        'aria-pressed',
-        'false',
-      );
+      expect(screen.getByRole('button', { name: /90°/ })).toHaveAttribute('aria-pressed', 'false');
     });
 
     it('clicking Straight writes toolMode and the mirrored straightMode contract flag', () => {

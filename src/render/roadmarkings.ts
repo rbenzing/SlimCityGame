@@ -124,16 +124,27 @@ export function markingPlan(profile: RoadProfile): MarkingPlan {
     if (!next) continue;
     const boundary = to;
     const opposing =
-      isTravel(piece) && isTravel(next) && flowOf(piece) !== flowOf(next) && flowOf(piece) !== 'both';
+      isTravel(piece) &&
+      isTravel(next) &&
+      flowOf(piece) !== flowOf(next) &&
+      flowOf(piece) !== 'both';
     const sameWay = isTravel(piece) && isTravel(next) && flowOf(piece) === flowOf(next);
     const travelToBus =
       (isTravel(piece) && next.kind === 'bus') || (piece.kind === 'bus' && isTravel(next));
+    // A two-way turn lane is bounded by a solid line on each side: traffic may
+    // enter it to turn but never travel along it.
+    const turnEdge =
+      (piece.kind === 'centreTurn' && isTravel(next)) ||
+      (isTravel(piece) && next.kind === 'centreTurn');
 
-    if (opposing) {
+    if (turnEdge) {
+      if (style.centre !== 'none') solid.push(boundary);
+    } else if (opposing) {
       // Rails down both centre lanes mark them already; paint nothing under them.
       if (piece.tram && next.tram) continue;
       if (centre === 'dashed') dashed.push(boundary);
-      if (centre === 'double') solid.push(boundary - CENTRE_PAIR_OFFSET_M, boundary + CENTRE_PAIR_OFFSET_M);
+      if (centre === 'double')
+        solid.push(boundary - CENTRE_PAIR_OFFSET_M, boundary + CENTRE_PAIR_OFFSET_M);
     } else if ((sameWay || travelToBus) && style.laneLines) {
       dashed.push(boundary);
     }
