@@ -116,6 +116,30 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 > pooled, and which are baked as it is about the look. To be specified in
 > SPEC before any of it is built.
 >
+> **Queued next — the roadway light pole, properly modelled (requested
+> 2026-09-06):** the highway-standard cobra head, which is what a road lamp
+> actually looks like. Today's lamp is a 5.5 m dark-grey mast with a 2.8 m arm
+> bent in two straight segments and a boxy cowl hanging under its end. What it
+> should be: a galvanized steel pole at a real mounting height (9–12 m on a
+> road that warrants one, shorter on a residential street), a single smooth
+> mast arm sweeping up off the pole top and out over the carriageway, a
+> tapered cobra-head luminaire sitting ON the arm end rather than hanging
+> under it, and the raised concrete foundation the pole is bolted to, which is
+> most of why the real thing reads as heavy. No sign hardware on the pole —
+> the boards in the reference photo are a separate concern.
+> **Where it stands matters as much as what it is.** The pole belongs off the
+> roadway, on the verge behind the shoulder — the clear zone a vehicle leaving
+> the carriageway needs — with only the arm over the traffic lane. Where the
+> road has a footway it stands beside the walking route and never in it,
+> either in the verge between kerb and footway or behind the footway, leaving
+> the pedestrian through-route clear at its full width (PROWAG's 1.2 m
+> minimum, 1.5 m preferred). Kerb furniture already measures from the tile's
+> own cross-section, so the setback should be derived the same way rather than
+> being a constant — and the turn pocket that widens a cross-section inside a
+> junction's approach zone is exactly the case a constant would get wrong.
+> Related but separate: the dynamic world lighting epic above is about what a
+> light source DOES; this is what it is and where it stands.
+>
 > Deferred/optional next: AI raster map packs, facade-atlas stage 2, screen-space
 > AO/reflections, and the [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper
 > industry, more transit modes).
