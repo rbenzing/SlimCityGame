@@ -21,6 +21,7 @@ import type {
   BuildingCatalogEntry,
   BuildingDelta,
   BuildingInstance,
+  JunctionControl,
   MapData,
   RoadProfile,
   RoadTileDelta,
@@ -46,6 +47,12 @@ export class ClientGridMirror {
   private readonly footprints = new Map<number, number[]>();
   /** The worker's table of player-composed profiles, by id. Presets are catalogue data. */
   private readonly customProfiles = new Map<number, RoadProfile>();
+  /**
+   * Tile index -> who gives way at that junction, for the junctions that
+   * control their traffic. The sim works it out — the warrant reads volumes
+   * the render thread never sees — and this is where the answer lands.
+   */
+  private junctionControls = new Map<number, JunctionControl>();
 
   constructor(map: MapData) {
     this.size = map.size;
@@ -65,6 +72,30 @@ export class ClientGridMirror {
   applyRoadProfiles(table: readonly { id: number; profile: RoadProfile }[]): void {
     this.customProfiles.clear();
     for (const entry of table) this.customProfiles.set(entry.id, entry.profile);
+  }
+
+  /**
+   * Replaces the mirror's junction controls with the worker's full list, and
+   * reports whether anything moved — a caller that rebuilds signs off the back
+   * of it has no other way to know, since a control changes without any tile
+   * changing.
+   */
+  applyJunctions(junctions: readonly { x: number; z: number; control: JunctionControl }[]): boolean {
+    const next = new Map<number, JunctionControl>();
+    for (const j of junctions) {
+      if (this.inBounds(j.x, j.z)) next.set(this.idx(j.x, j.z), j.control);
+    }
+    const same =
+      next.size === this.junctionControls.size &&
+      [...next].every(([i, c]) => this.junctionControls.get(i) === c);
+    this.junctionControls = next;
+    return !same;
+  }
+
+  /** Who gives way at this tile, when it is a junction that controls its traffic. */
+  junctionControlAt(x: number, z: number): JunctionControl | undefined {
+    if (!this.inBounds(x, z)) return undefined;
+    return this.junctionControls.get(this.idx(x, z));
   }
 
   /** The cross-section behind a profile id: a preset's, a custom one from the table, or null. */
@@ -274,14 +305,24 @@ export class ClientGridMirror {
    * on a deck — the two things a tier-aware, deck-aware consumer (lamps, road
    * furniture, ground cover) needs to decide what belongs on it.
    */
-  roadTiles(): (TilePoint & { tier: RoadTier; elevated: boolean; profile: RoadProfile })[] {
-    const tiles: (TilePoint & { tier: RoadTier; elevated: boolean; profile: RoadProfile })[] = [];
+  roadTiles(): (TilePoint & {
+    tier: RoadTier;
+    elevated: boolean;
+    profile: RoadProfile;
+    control?: JunctionControl;
+  })[] {
+    const tiles: (TilePoint & {
+      tier: RoadTier;
+      elevated: boolean;
+      profile: RoadProfile;
+      control?: JunctionControl;
+    })[] = [];
     for (let z = 0; z < this.size; z++) {
       for (let x = 0; x < this.size; x++) {
         const i = this.idx(x, z);
         const tier = this.roadTier[i] as RoadTier;
         if (tier === RoadTier.None) continue;
-        tiles.push({
+        const tile = {
           x,
           z,
           tier,
@@ -290,7 +331,9 @@ export class ClientGridMirror {
           // real edge; a custom id the table no longer holds falls back to the
           // preset the tier names rather than to nothing.
           profile: this.profileById(this.roadProfile[i] ?? 0) ?? presetProfileForTier(tier),
-        });
+        };
+        const control = this.junctionControls.get(i);
+        tiles.push(control ? { ...tile, control } : tile);
       }
     }
     return tiles;

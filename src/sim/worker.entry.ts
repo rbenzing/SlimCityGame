@@ -53,6 +53,7 @@ import type {
   GraphEdge,
   GridState,
   Incident,
+  JunctionControl,
   MainToWorker,
   MapData,
   RoadProfile,
@@ -317,6 +318,8 @@ class SimWorld implements WorkerSim {
   private readonly services = new ServiceSim(CATALOG);
   private readonly economy = new EconomySystem(CATALOG, ROAD_SPECS);
   private readonly network = new RoadNetwork();
+  /** The controlled junctions as last sent, so an unchanged set travels no further. */
+  private lastJunctions: { x: number; z: number; control: JunctionControl }[] = [];
   /**
    * The train network — the same implementation over the rail tiles instead of
    * the drivable ones. Kept in step with the road one: every rebuild and
@@ -895,6 +898,31 @@ class SimWorld implements WorkerSim {
   // Snapshots & responses
   // -------------------------------------------------------------------------
 
+  /**
+   * Every street junction that controls its traffic, or null when the set has
+   * not moved since the last snapshot — which is nearly always, since a
+   * control only changes when a road is laid or the traffic through it shifts
+   * a whole rung. Uncontrolled junctions are left out, so the list stays the
+   * size of the junctions that have something to say.
+   */
+  private controlledJunctions(): { x: number; z: number; control: JunctionControl }[] | null {
+    const out: { x: number; z: number; control: JunctionControl }[] = [];
+    for (const node of this.network.getNodes()) {
+      const control = node.control;
+      if (!control || control === 'none') continue;
+      out.push({ x: node.x, z: node.z, control });
+    }
+    const unchanged =
+      out.length === this.lastJunctions.length &&
+      out.every((j, i) => {
+        const was = this.lastJunctions[i]!;
+        return was.x === j.x && was.z === j.z && was.control === j.control;
+      });
+    if (unchanged) return null;
+    this.lastJunctions = out;
+    return out.map((j) => ({ ...j }));
+  }
+
   private postSnapshot(): void {
     this.stats.happiness = this.averageHappiness();
     const vehicles = this.traffic.vehicleBuffer.slice();
@@ -999,6 +1027,8 @@ class SimWorld implements WorkerSim {
       snap.heightPatches = this.pendingHeightPatches;
       this.pendingHeightPatches = [];
     }
+    const junctions = this.controlledJunctions();
+    if (junctions) snap.junctions = junctions;
 
     const transfer: Transferable[] = [vehicles.buffer];
     if (snap.heightPatches) {

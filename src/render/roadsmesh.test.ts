@@ -38,7 +38,7 @@ import {
   SIDEWALK_WIDTH_M,
 } from './roadsmesh';
 import { RoadFlow, RoadTileDelta, RoadTier } from '../shared/types';
-import type { RoadProfile } from '../shared/types';
+import type { JunctionControl, RoadProfile } from '../shared/types';
 import { presetProfileForTier } from '../shared/roadprofile';
 import { CHUNK_TILES, TILE_METERS } from '../shared/constants';
 
@@ -54,6 +54,33 @@ const N = 1;
 const E = 2;
 const S = 4;
 const W = 8;
+
+/**
+ * A junction the sim has controlled. Crossings and stop bars follow the
+ * control, so a test about the geometry of an arm's markings has to say what
+ * the junction is controlled BY; `allWayStop` holds every arm, which is what
+ * these tests want to see painted.
+ */
+function controlledJunction(
+  x: number,
+  z: number,
+  tier: RoadTier,
+  mask: number,
+  control: JunctionControl = 'allWayStop',
+): { positions: number[]; colors: number[] } {
+  return roadTileVertices(
+    x,
+    z,
+    tier,
+    mask,
+    flatHeightAt,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    control,
+  );
+}
 
 function avg(triple: readonly number[]): number {
   return ((triple[0] ?? 0) + (triple[1] ?? 0) + (triple[2] ?? 0)) / 3;
@@ -199,7 +226,7 @@ describe('roadTileVertices — transit lane variants (Bus Lane / Bike Lane)', ()
       expect(curbWidthMeters(tier) > 0).toBe(kerbs);
       // Paint is the observable of `paved`: every paved tier marks its junction
       // arms (stop line, crosswalk), and an unpaved one paints nothing at all.
-      const junction = roadTileVertices(3, 3, tier, N | E | S | W, flatHeightAt);
+      const junction = controlledJunction(3, 3, tier, N | E | S | W);
       expect(countWhere(junction.colors, isMarkingWhite) > 0).toBe(paved);
     }
   });
@@ -638,7 +665,7 @@ describe('roadTileVertices — intersection suppression / proper intersections (
   });
 
   it('a 3-connection T-junction has clean asphalt in its box interior but white stop-line/crosswalk markings on each connected arm', () => {
-    const { positions, colors } = roadTileVertices(0, 0, RoadTier.Highway, N | E | S, flatHeightAt);
+    const { positions, colors } = controlledJunction(0, 0, RoadTier.Highway, N | E | S);
     // Junction box (core plate, first 6 vertices) stays clean tier-grey asphalt.
     const core = toTriples(colors).slice(0, 6);
     for (const c of core) expect(isMarkingWhite(c)).toBe(false);
@@ -648,17 +675,28 @@ describe('roadTileVertices — intersection suppression / proper intersections (
   });
 
   it('a full 4-way intersection has clean asphalt in its box interior but markings on all 4 arms', () => {
-    const { positions, colors } = roadTileVertices(
-      0,
-      0,
-      RoadTier.Highway,
-      N | E | S | W,
-      flatHeightAt,
-    );
+    const { positions, colors } = controlledJunction(0, 0, RoadTier.Highway, N | E | S | W);
     const core = toTriples(colors).slice(0, 6);
     for (const c of core) expect(isMarkingWhite(c)).toBe(false);
     expect(countWhere(colors, isMarkingWhite)).toBeGreaterThan(0);
     expect(vertexCount(positions)).toBeGreaterThan(0);
+  });
+
+  it('but a junction the sim controls with nothing is painted with nothing', () => {
+    // No stop line without a sign or a signal to stop for, and no crossing at
+    // a junction where two quiet streets simply meet.
+    const { colors } = roadTileVertices(0, 0, RoadTier.TwoLane, N | E | S | W, flatHeightAt);
+    const controlled = controlledJunction(0, 0, RoadTier.TwoLane, N | E | S | W);
+    expect(countWhere(colors, isMarkingWhite)).toBe(0);
+    expect(countWhere(controlled.colors, isMarkingWhite)).toBeGreaterThan(0);
+  });
+
+  it('a give-way gets its crossing but no stop bar, which is what a give-way means', () => {
+    const yielded = controlledJunction(0, 0, RoadTier.TwoLane, N | E | S | W, 'yield');
+    const stopped = controlledJunction(0, 0, RoadTier.TwoLane, N | E | S | W, 'allWayStop');
+    const painted = countWhere(yielded.colors, isMarkingWhite);
+    expect(painted).toBeGreaterThan(0);
+    expect(painted).toBeLessThan(countWhere(stopped.colors, isMarkingWhite));
   });
 
   it('a 90-degree corner (popcount 2, non-collinear) is NOT a junction and keeps its existing plain marking behavior, unchanged', () => {
@@ -725,7 +763,7 @@ describe('crosswalkBarOffsets — zebra-stripe placement (UI-SPEC §6.7 Roads v2
 
 describe('roadTileVertices — proper intersections: stop-line + crosswalk bars appear per connected arm', () => {
   it('a T-junction (N|E|S) draws markings on exactly the 3 connected arms, none within the unconnected (W) curb strip', () => {
-    const { positions, colors } = roadTileVertices(5, 5, RoadTier.TwoLane, N | E | S, flatHeightAt);
+    const { positions, colors } = controlledJunction(5, 5, RoadTier.TwoLane, N | E | S);
     const posTriples = toTriples(positions);
     const colorTriples = toTriples(colors);
     const centerX = 5.5 * TILE_METERS;
@@ -746,17 +784,17 @@ describe('roadTileVertices — proper intersections: stop-line + crosswalk bars 
   });
 
   it('a full 4-way junction on a tight (highway) tier still emits non-degenerate, non-overlapping arm markings on all 4 sides', () => {
-    const { colors } = roadTileVertices(2, 2, RoadTier.Highway, N | E | S | W, flatHeightAt);
+    const { colors } = controlledJunction(2, 2, RoadTier.Highway, N | E | S | W);
     expect(countWhere(colors, isMarkingWhite)).toBeGreaterThan(0);
   });
 
   it('a 4-way junction draws strictly more marking geometry than a 3-way T-junction (one more arm worth of stop-line + crosswalk)', () => {
     const tCount = countWhere(
-      roadTileVertices(5, 5, RoadTier.TwoLane, N | E | S, flatHeightAt).colors,
+      controlledJunction(5, 5, RoadTier.TwoLane, N | E | S).colors,
       isMarkingWhite,
     );
     const fourCount = countWhere(
-      roadTileVertices(5, 5, RoadTier.TwoLane, N | E | S | W, flatHeightAt).colors,
+      controlledJunction(5, 5, RoadTier.TwoLane, N | E | S | W).colors,
       isMarkingWhite,
     );
     expect(fourCount).toBeGreaterThan(tCount);
@@ -904,7 +942,7 @@ describe('roadTileVertices — vertex count sanity per tile kind', () => {
     // corners (NE, SE) — each a carriageway fan (SEG*3) + a curved sidewalk
     // (SEG*6).
     const rounded = JUNCTION_CORNER_SEGMENTS * 12;
-    const { positions, colors } = roadTileVertices(5, 5, RoadTier.TwoLane, N | E | S, flatHeightAt);
+    const { positions, colors } = controlledJunction(5, 5, RoadTier.TwoLane, N | E | S);
     const markingVerts = countWhere(colors, isPaint);
     expect(vertexCount(positions)).toBe(30 + 2 * rounded + markingVerts);
     expect(markingVerts).toBeGreaterThan(0); // v2: junctions now carry arm markings
@@ -914,7 +952,7 @@ describe('roadTileVertices — vertex count sanity per tile kind', () => {
     // core(6) + 4 ext(24) = 30, plus 4 ROUNDED curb-return corners (fan SEG*3 +
     // curved sidewalk SEG*6 each).
     const rounded = JUNCTION_CORNER_SEGMENTS * 12;
-    const { positions, colors } = roadTileVertices(5, 5, RoadTier.TwoLane, 15, flatHeightAt);
+    const { positions, colors } = controlledJunction(5, 5, RoadTier.TwoLane, 15);
     const markingVerts = countWhere(colors, isMarkingWhite);
     expect(vertexCount(positions)).toBe(30 + 4 * rounded + markingVerts);
     expect(markingVerts).toBeGreaterThan(0); // v2: junctions now carry arm markings on every side
@@ -1651,7 +1689,7 @@ describe('roadTileVertices — Alley (tier 5, UI-SPEC §6.7 Roads v3)', () => {
   });
 
   it('is still a "paved tier" — a T-junction gets stop-line + crosswalk arm markings', () => {
-    const { colors } = roadTileVertices(0, 0, RoadTier.Alley, N | E | S, flatHeightAt);
+    const { colors } = controlledJunction(0, 0, RoadTier.Alley, N | E | S);
     const core = toTriples(colors).slice(0, 6);
     for (const c of core) expect(isMarkingWhite(c)).toBe(false); // box interior stays clean
     expect(countWhere(colors, isMarkingWhite)).toBeGreaterThan(0); // but arms carry markings
@@ -1682,7 +1720,7 @@ describe('roadTileVertices — One-Way (tier 6, UI-SPEC §6.7 Roads v3)', () => 
   });
 
   it('is still a "paved tier" — a T-junction gets stop-line + crosswalk arm markings', () => {
-    const { colors } = roadTileVertices(1, 1, RoadTier.OneWay, N | E | S, flatHeightAt);
+    const { colors } = controlledJunction(1, 1, RoadTier.OneWay, N | E | S);
     const core = toTriples(colors).slice(0, 6);
     for (const c of core) expect(isMarkingWhite(c)).toBe(false);
     expect(countWhere(colors, isMarkingWhite)).toBeGreaterThan(0);
@@ -1819,7 +1857,7 @@ describe('roadTileVertices — Four-Lane (tier 7, UI-SPEC §6.7 Roads v3)', () =
   });
 
   it('is a "paved tier" — a T-junction gets stop-line + crosswalk arm markings, clean box interior', () => {
-    const { colors } = roadTileVertices(2, 2, RoadTier.FourLane, N | E | S, flatHeightAt);
+    const { colors } = controlledJunction(2, 2, RoadTier.FourLane, N | E | S);
     const core = toTriples(colors).slice(0, 6);
     for (const c of core) expect(isMarkingWhite(c)).toBe(false);
     expect(countWhere(colors, isMarkingWhite)).toBeGreaterThan(0);

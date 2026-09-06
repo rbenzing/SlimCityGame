@@ -9,7 +9,7 @@ import {
   RoadFurnitureRenderer,
 } from './roadfurniture';
 import { RoadTier } from '../shared/types';
-import type { RoadProfile } from '../shared/types';
+import type { JunctionControl, RoadProfile } from '../shared/types';
 import { carriagewayHalfWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
 
 const flatHeightAt = (): number => 0;
@@ -150,76 +150,84 @@ describe('road-furniture placement (pure)', () => {
     expect(signs.some((s) => s.x === 6)).toBe(false); // middle run earns nothing
   });
 
-  it("gives a 4-way crossroads its straight approaches a 'stop' sign", () => {
-    const t = RoadTier.TwoLane;
-    // A plus with arms of length two: the distance-1 tiles are the approaches.
-    const tiles: FurnitureRoadTile[] = [
-      { x: 0, z: 0, tier: t },
-      { x: 1, z: 0, tier: t },
-      { x: 2, z: 0, tier: t },
-      { x: -1, z: 0, tier: t },
-      { x: -2, z: 0, tier: t },
-      { x: 0, z: 1, tier: t },
-      { x: 0, z: 2, tier: t },
-      { x: 0, z: -1, tier: t },
-      { x: 0, z: -2, tier: t },
-    ];
-    const signs = computeSignPlacements(tiles);
-    const at = (x: number, z: number): string | undefined =>
+  /**
+   * A plus with arms of length two — the distance-1 tiles are the approaches —
+   * under whatever control the sim has put on the middle of it.
+   */
+  const controlledPlus = (
+    control: JunctionControl | undefined,
+    tier: RoadTier = RoadTier.TwoLane,
+    armTier: RoadTier = tier,
+  ): FurnitureRoadTile[] => [
+    { x: 0, z: 0, tier, control },
+    { x: 1, z: 0, tier },
+    { x: 2, z: 0, tier },
+    { x: -1, z: 0, tier },
+    { x: -2, z: 0, tier },
+    { x: 0, z: 1, tier: armTier },
+    { x: 0, z: 2, tier: armTier },
+    { x: 0, z: -1, tier: armTier },
+    { x: 0, z: -2, tier: armTier },
+  ];
+
+  const APPROACHES = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ] as const;
+
+  const signAt = (signs: readonly { x: number; z: number; type: string }[]) =>
+    (x: number, z: number): string | undefined =>
       signs.find((s) => s.x === x && s.z === z)?.type;
-    for (const [x, z] of [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-    ] as const)
-      expect(at(x, z)).toBe('stop');
+
+  it('signs nothing at a crossroads the sim has left uncontrolled', () => {
+    // Two quiet streets crossing really do meet on sight lines; a board there
+    // would be a board no highway authority put up.
+    const signs = computeSignPlacements(controlledPlus(undefined));
+    expect(signs.filter((s) => s.type === 'stop' || s.type === 'giveway')).toEqual([]);
+    expect(signs.filter((s) => s.type === 'signal')).toEqual([]);
+  });
+
+  it('puts a stop board on every approach to an all-way stop', () => {
+    const signs = computeSignPlacements(controlledPlus('allWayStop'));
+    const at = signAt(signs);
+    for (const [x, z] of APPROACHES) expect(at(x, z)).toBe('stop');
     expect(signs.some((s) => s.x === 0 && s.z === 0)).toBe(false); // the junction itself: no sign
   });
 
-  it('signalises a crossroads on the bigger tiers instead of signing it', () => {
-    const t = RoadTier.Avenue;
-    const tiles: FurnitureRoadTile[] = [
-      { x: 0, z: 0, tier: t },
-      { x: 1, z: 0, tier: t },
-      { x: 2, z: 0, tier: t },
-      { x: -1, z: 0, tier: t },
-      { x: -2, z: 0, tier: t },
-      { x: 0, z: 1, tier: t },
-      { x: 0, z: 2, tier: t },
-      { x: 0, z: -1, tier: t },
-      { x: 0, z: -2, tier: t },
-    ];
-    const signs = computeSignPlacements(tiles);
-    const at = (x: number, z: number): string | undefined =>
-      signs.find((s) => s.x === x && s.z === z)?.type;
-    for (const [x, z] of [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-    ] as const)
-      expect(at(x, z)).toBe('signal');
+  it('puts a signal head on every approach to a signalised junction', () => {
+    const signs = computeSignPlacements(controlledPlus('signal', RoadTier.Avenue));
+    const at = signAt(signs);
+    for (const [x, z] of APPROACHES) expect(at(x, z)).toBe('signal');
   });
 
-  it('leaves a two-lane crossroads on stop signs — a side street is not signalised', () => {
-    const t = RoadTier.TwoLane;
-    // Two-tile arms: the tile next to the junction has to be a through tile,
-    // or it reads as a dead-end and takes that sign instead.
-    const tiles: FurnitureRoadTile[] = [
-      { x: 0, z: 0, tier: t },
-      { x: 1, z: 0, tier: t },
-      { x: 2, z: 0, tier: t },
-      { x: -1, z: 0, tier: t },
-      { x: -2, z: 0, tier: t },
-      { x: 0, z: 1, tier: t },
-      { x: 0, z: 2, tier: t },
-      { x: 0, z: -1, tier: t },
-      { x: 0, z: -2, tier: t },
-    ];
-    const types = new Set(computeSignPlacements(tiles).map((s) => s.type));
-    expect(types.has('stop')).toBe(true);
-    expect(types.has('signal')).toBe(false);
+  it('signs only the road that gives way at a minor-road stop', () => {
+    // A two-lane side street crossing a four-lane one: the four-lane runs
+    // through and is not signed, the side street stops.
+    const signs = computeSignPlacements(
+      controlledPlus('stop', RoadTier.FourLane, RoadTier.TwoLane),
+    );
+    const at = signAt(signs);
+    expect(at(0, 1)).toBe('stop');
+    expect(at(0, -1)).toBe('stop');
+    expect(at(1, 0)).toBeUndefined();
+    expect(at(-1, 0)).toBeUndefined();
+  });
+
+  it('gives way rather than stopping where the sim only warranted a give-way', () => {
+    const signs = computeSignPlacements(
+      controlledPlus('yield', RoadTier.FourLane, RoadTier.TwoLane),
+    );
+    const at = signAt(signs);
+    expect(at(0, 1)).toBe('giveway');
+    expect(at(1, 0)).toBeUndefined();
+  });
+
+  it('gives way at every entry to a roundabout, which is the one place it may', () => {
+    const signs = computeSignPlacements(controlledPlus('roundabout'));
+    const at = signAt(signs);
+    for (const [x, z] of APPROACHES) expect(at(x, z)).toBe('giveway');
   });
 
   it('seats no parking meter across a junction, where there is no curb', () => {
@@ -229,27 +237,25 @@ describe('road-furniture placement (pure)', () => {
     expect(meters.some((m) => m.x === 4 && m.z === 4)).toBe(false);
   });
 
-  it("gives a T-junction its approaches a 'giveway' sign", () => {
+  it('signs only the stem of a T-junction where the bar runs through', () => {
     const t = RoadTier.TwoLane;
-    // An east-west bar with a stem dropping south from its center.
+    // An east-west four-lane bar with a two-lane stem dropping south from its
+    // centre: the bar runs through and the stem stops.
     const tiles: FurnitureRoadTile[] = [
-      { x: -2, z: 0, tier: t },
-      { x: -1, z: 0, tier: t },
-      { x: 0, z: 0, tier: t },
-      { x: 1, z: 0, tier: t },
-      { x: 2, z: 0, tier: t },
+      { x: -2, z: 0, tier: RoadTier.FourLane },
+      { x: -1, z: 0, tier: RoadTier.FourLane },
+      { x: 0, z: 0, tier: RoadTier.FourLane, control: 'stop' },
+      { x: 1, z: 0, tier: RoadTier.FourLane },
+      { x: 2, z: 0, tier: RoadTier.FourLane },
       { x: 0, z: 1, tier: t },
       { x: 0, z: 2, tier: t },
     ];
     const signs = computeSignPlacements(tiles);
     const at = (x: number, z: number): string | undefined =>
       signs.find((s) => s.x === x && s.z === z)?.type;
-    for (const [x, z] of [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-    ] as const)
-      expect(at(x, z)).toBe('giveway');
+    expect(at(0, 1)).toBe('stop');
+    expect(at(1, 0)).toBeUndefined();
+    expect(at(-1, 0)).toBeUndefined();
     expect(signs.some((s) => s.x === 0 && s.z === 0)).toBe(false); // the junction itself: no sign
   });
 
@@ -399,7 +405,7 @@ describe('road-furniture placement (pure)', () => {
     });
 
     it('still signs a junction on the deck, because it is still a junction', () => {
-      const deckPlus = (tier: RoadTier): FurnitureRoadTile[] =>
+      const deckPlus = (tier: RoadTier, control: JunctionControl): FurnitureRoadTile[] =>
         [
           [0, 0],
           [1, 0],
@@ -410,12 +416,18 @@ describe('road-furniture placement (pure)', () => {
           [0, 2],
           [0, -1],
           [0, -2],
-        ].map(([x, z]) => ({ x: x!, z: z!, tier, elevated: true }));
+        ].map(([x, z]) => ({
+          x: x!,
+          z: z!,
+          tier,
+          elevated: true,
+          ...(x === 0 && z === 0 ? { control } : {}),
+        }));
 
-      const boards = computeSignPlacements(deckPlus(RoadTier.TwoLane));
+      const boards = computeSignPlacements(deckPlus(RoadTier.TwoLane, 'allWayStop'));
       expect(boards.filter((s) => s.type === 'stop').length).toBe(4);
 
-      const signals = computeSignPlacements(deckPlus(RoadTier.Avenue));
+      const signals = computeSignPlacements(deckPlus(RoadTier.Avenue, 'signal'));
       expect(signals.filter((s) => s.type === 'signal').length).toBe(4);
     });
 

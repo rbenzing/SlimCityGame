@@ -500,3 +500,48 @@ describe('ClientGridMirror', () => {
     });
   });
 });
+
+describe('ClientGridMirror — junction control', () => {
+  let mirror: ClientGridMirror;
+  beforeEach(() => {
+    mirror = new ClientGridMirror(makeMap());
+  });
+
+  const road = (x: number, z: number) => ({
+    x,
+    z,
+    tier: RoadTier.TwoLane,
+    profile: RoadTier.TwoLane,
+    flow: 0,
+    mask: 0,
+    elevation: 0,
+  });
+
+  it('knows nothing until the worker says, and then reports what it said', () => {
+    expect(mirror.junctionControlAt(4, 4)).toBeUndefined();
+    expect(mirror.applyJunctions([{ x: 4, z: 4, control: 'signal' }])).toBe(true);
+    expect(mirror.junctionControlAt(4, 4)).toBe('signal');
+    expect(mirror.junctionControlAt(4, 5)).toBeUndefined();
+  });
+
+  it('reports whether the answer actually moved, since no tile changes when it does', () => {
+    mirror.applyJunctions([{ x: 4, z: 4, control: 'stop' }]);
+    expect(mirror.applyJunctions([{ x: 4, z: 4, control: 'stop' }])).toBe(false);
+    expect(mirror.applyJunctions([{ x: 4, z: 4, control: 'allWayStop' }])).toBe(true);
+    expect(mirror.applyJunctions([])).toBe(true);
+    expect(mirror.junctionControlAt(4, 4)).toBeUndefined();
+  });
+
+  it('drops a junction outside the map rather than indexing off the end', () => {
+    expect(mirror.applyJunctions([{ x: -1, z: 0, control: 'stop' }])).toBe(false);
+    expect(mirror.applyJunctions([{ x: SIZE, z: 0, control: 'stop' }])).toBe(false);
+  });
+
+  it('hands the control to the road tile that carries it, and to no other', () => {
+    mirror.applyRoadDeltas([road(4, 4), road(4, 5)]);
+    mirror.applyJunctions([{ x: 4, z: 4, control: 'allWayStop' }]);
+    const tiles = mirror.roadTiles();
+    expect(tiles.find((t) => t.x === 4 && t.z === 4)?.control).toBe('allWayStop');
+    expect(tiles.find((t) => t.x === 4 && t.z === 5)?.control).toBeUndefined();
+  });
+});

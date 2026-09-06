@@ -2420,6 +2420,21 @@ scaled by one constant into the units the sim already uses.
    crossing a signalised avenue costs more than crossing a quiet street, the
    road that runs through pays nothing at a give-way or a minor-road stop, and
    a slow junction reroutes traffic the way it does in life.
+   The signs then follow the control rather than the tier. The sim is the only
+   thing that can know — the warrant reads traffic the render thread never sees
+   — so the controlled junctions travel on the snapshot as their own channel,
+   whole list whenever any of it changes, and the mirror hands each junction
+   tile its answer. An approach draws the board its junction's control gives
+   it: a head at a signal, a stop on every arm of an all-way stop, a stop or a
+   give-way on the arms that give way and nothing on the road that runs
+   through, a give-way at every entry to a roundabout, and nothing at all where
+   the junction is uncontrolled — which is where two quiet streets crossing now
+   correctly stand, with no board a highway authority never put up. The paint
+   follows the same answer: a stop bar marks where to stop FOR something, so
+   only a stop, an all-way stop or a signal paints one, a give-way gets its
+   crossing without one, and an uncontrolled junction is an open box with no
+   paint at all. Which arm gives way is one rule in one place, `armGivesWay`,
+   read off the hierarchy ranks, so the boards and the bars cannot disagree.
 4. **Approach lanes and tapers** — movement sets, turn pockets, arrows, turn
    restrictions, lane-drop tapers with merge arrows and gore chevrons, taper
    edges in the sim.

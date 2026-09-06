@@ -79,8 +79,9 @@
  */
 import * as THREE from 'three';
 import { RoadFlow, RoadTileDelta, RoadTier } from '../shared/types';
+import type { JunctionControl } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
-import { TILE_METERS, CHUNK_TILES, CHUNKS_PER_SIDE } from '../shared/constants';
+import { TILE_METERS, CHUNK_TILES, CHUNKS_PER_SIDE, MAP_SIZE, tileIndex } from '../shared/constants';
 import {
   carriagewayHalfWidthOf,
   carriagewayWidth,
@@ -93,6 +94,7 @@ import {
   rankForTier,
   roadClass,
 } from '../shared/roadprofile';
+import { armGivesWay } from '../shared/junction';
 import { centrePair, markingPlan, type MarkingLine, type MarkingPlan } from './roadmarkings';
 
 /** The road plate rides this far above the terrain — anything standing ON a road must add it. */
@@ -1285,40 +1287,37 @@ function emitJunctionArmMarkings(
   hAt: (x: number, z: number) => number,
   /** Whether the road has footways: no footway, no crossing to paint. */
   hasFootways: boolean,
+  /**
+   * Whether this approach actually has to stop. A stop line marks where to
+   * stop for a sign or a signal; an approach that only gives way, or one at a
+   * junction nothing controls, is not painted one.
+   */
+  stops: boolean,
 ): void {
   const layout = junctionArmLayout();
 
   // Stop line: one bar spanning the full carriageway width.
-  const stopLo = Math.min(dAt(layout.stopLineStart), dAt(layout.stopLineEnd));
-  const stopHi = Math.max(dAt(layout.stopLineStart), dAt(layout.stopLineEnd));
-  if (vertical)
+  if (stops) {
+    const stopLo = Math.min(dAt(layout.stopLineStart), dAt(layout.stopLineEnd));
+    const stopHi = Math.max(dAt(layout.stopLineStart), dAt(layout.stopLineEnd));
+    const across: [number, number] = [-coreHalf, coreHalf];
+    const along: [number, number] = [stopLo, stopHi];
+    const [xLo, xHi] = vertical ? across : along;
+    const [zLo, zHi] = vertical ? along : across;
     pushLocalRect(
       positions,
       colors,
       centerX,
       centerZ,
-      -coreHalf,
-      coreHalf,
-      stopLo,
-      stopHi,
+      xLo,
+      xHi,
+      zLo,
+      zHi,
       MARK_Y_OFFSET,
       MARKING_COLOR,
       hAt,
     );
-  else
-    pushLocalRect(
-      positions,
-      colors,
-      centerX,
-      centerZ,
-      stopLo,
-      stopHi,
-      -coreHalf,
-      coreHalf,
-      MARK_Y_OFFSET,
-      MARKING_COLOR,
-      hAt,
-    );
+  }
 
   // Zebra crosswalk: bars spaced across the carriageway, each spanning
   // [crosswalkStart, crosswalkEnd] along the travel axis. A road with no
@@ -2507,6 +2506,12 @@ export function roadTileVertices(
   neighborHalves: NeighborHalves = presetHalves(neighbors),
   /** Which way the tile was drawn; RoadFlow.None reads as the low-to-high default. */
   flow: number = RoadFlow.None,
+  /**
+   * Who gives way at this tile, when the sim has controlled it. The crossing
+   * and the stop bar follow it: undefined or `none` paints neither, since
+   * neither belongs at a junction nothing controls.
+   */
+  control?: JunctionControl,
 ): { positions: number[]; colors: number[] } {
   if (!Number.isInteger(mask) || mask < 0 || mask > 15) {
     throw new RangeError(`roadTileVertices: mask ${mask} out of the 4-bit range 0..15`);
@@ -2935,11 +2940,16 @@ export function roadTileVertices(
       )
         .filter(([has, n]) => has && n !== RoadTier.None)
         .map(([, n]) => rankForTier(n));
-      const topRank = armRanks.length > 0 ? Math.max(...armRanks) : rankForTier(tier);
-      const allEqual = armRanks.every((r) => r === topRank);
+      const ranks = armRanks.length > 0 ? armRanks : [rankForTier(tier)];
       const armStops = (neighborTier: RoadTier): boolean =>
-        allEqual || neighborTier === RoadTier.None || rankForTier(neighborTier) < topRank;
-      const arm = (vertical: boolean, at: (d: number) => number): void =>
+        neighborTier === RoadTier.None || armGivesWay(rankForTier(neighborTier), ranks);
+      // A stop line marks where to stop for a sign or a signal, so it is the
+      // CONTROL that decides whether one is painted, not the shape of the
+      // junction. An uncontrolled crossroads gets no paint at all; an approach
+      // that only gives way gets its crossing but no bar.
+      const painted = control !== undefined && control !== 'none';
+      const stopsFor = control === 'stop' || control === 'allWayStop' || control === 'signal';
+      const arm = (vertical: boolean, at: (d: number) => number, stops: boolean): void =>
         emitJunctionArmMarkings(
           positions,
           colors,
@@ -2950,13 +2960,24 @@ export function roadTileVertices(
           at,
           hAt,
           spec.hasCurbs,
+          stops,
         );
       // Measured inward from the TILE edge, which is where the approach
       // actually reaches the junction, rather than outward from the box.
-      if (hasN && armStops(neighbors.n)) arm(true, (d) => -TILE_HALF + d);
-      if (hasS && armStops(neighbors.s)) arm(true, (d) => TILE_HALF - d);
-      if (hasE && armStops(neighbors.e)) arm(false, (d) => TILE_HALF - d);
-      if (hasW && armStops(neighbors.w)) arm(false, (d) => -TILE_HALF + d);
+      if (painted) {
+        const armAt: [boolean, RoadTier, boolean, (d: number) => number][] = [
+          [hasN, neighbors.n, true, (d) => -TILE_HALF + d],
+          [hasS, neighbors.s, true, (d) => TILE_HALF - d],
+          [hasE, neighbors.e, false, (d) => TILE_HALF - d],
+          [hasW, neighbors.w, false, (d) => -TILE_HALF + d],
+        ];
+        for (const [has, neighborTier, vertical, at] of armAt) {
+          if (!has || !armStops(neighborTier)) continue;
+          // A signal holds every approach; a give-way or a minor-road stop
+          // holds only the arms below the road that runs through.
+          arm(vertical, at, stopsFor);
+        }
+      }
     }
   }
 
@@ -3221,6 +3242,35 @@ export class RoadMeshRenderer {
     this.rebuildMedianTrees();
   }
 
+  /**
+   * Takes the sim's junction controls and rebuilds the chunks whose answer
+   * moved. The crossings and stop bars painted on a junction follow its
+   * control, and a control changes with no road delta behind it — the traffic
+   * through the junction grew — so nothing else would trigger the rebuild.
+   */
+  setJunctionControls(
+    junctions: readonly { x: number; z: number; control: JunctionControl }[],
+  ): void {
+    const next = new Map<number, JunctionControl>();
+    for (const j of junctions) next.set(tileIndex(j.x, j.z), j.control);
+
+    const dirty = new Set<number>();
+    const moved = (x: number, z: number): void => {
+      const key = chunkKeyOf(x, z);
+      if (this.chunks.get(key)?.tiles.size) dirty.add(key);
+    };
+    for (const [i, control] of next) {
+      if (this.junctionControls.get(i) !== control) moved(i % MAP_SIZE, Math.floor(i / MAP_SIZE));
+    }
+    for (const i of this.junctionControls.keys()) {
+      if (!next.has(i)) moved(i % MAP_SIZE, Math.floor(i / MAP_SIZE));
+    }
+    this.junctionControls = next;
+
+    for (const key of dirty) this.rebuildChunk(key);
+    if (dirty.size > 0) this.rebuildMedianTrees();
+  }
+
   /** Current median-tree instance count (test/inspection hook). */
   medianTreeCount(): number {
     return this.treeTrunkMesh ? this.treeTrunkMesh.count : 0;
@@ -3258,6 +3308,9 @@ export class RoadMeshRenderer {
     }
     if (rebuilt) this.rebuildMedianTrees();
   }
+
+  /** Who gives way at each junction tile, by tile index. Absent = the sim controls it with nothing. */
+  private junctionControls: ReadonlyMap<number, JunctionControl> = new Map();
 
   /** The road tier at tile (x,z) across all chunks, or None — for neighbor-aware seam treatment. */
   private tierAt(x: number, z: number): RoadTier {
@@ -3308,6 +3361,7 @@ export class RoadMeshRenderer {
           w: this.halfAt(tile.x - 1, tile.z),
         },
         tile.flow,
+        this.junctionControls.get(tileIndex(tile.x, tile.z)),
       );
       for (const n of vertices.positions) positions.push(n);
       for (const n of vertices.colors) colors.push(n);

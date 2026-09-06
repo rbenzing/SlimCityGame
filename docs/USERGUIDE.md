@@ -56,7 +56,8 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   leaves nowhere to cross — both of which the preview turns down and tells you
   why. Where roads meet, the bigger one runs through: it keeps its markings
   across the junction and the side street gets the stop bar and the crossing.
-  Two equal roads crossing both stop. Underneath that, every junction decides
+  Two equal roads crossing both stop, and a junction nothing controls is an
+  open box with no paint on it at all. Underneath that, every junction decides
   who gives way, and it decides the way a traffic engineer would: two quiet
   streets, or anything unpaved, meet on sight lines; a smaller road running
   onto a bigger one gives way and then stops as the bigger one gets busy; two
@@ -116,8 +117,12 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   coverage, and trash. Turn a lens on to see the city as data — the trash lens
   reddens where garbage is going uncollected.
 - **Stats panel** — line charts of population, money, and other trends over time.
-- **Roads sign themselves** — junctions get stop or give-way boards, and on
-  bigger streets traffic signals instead. Highways are signed as highways:
+- **Roads sign themselves** — a junction carries the boards its control calls
+  for and no others: a signal head on every approach where the junction is
+  signalised, a stop board on every arm of a four-way stop, a stop or give-way
+  on the arms that give way with nothing facing the road that runs through, and
+  nothing at all where the junction is uncontrolled. Two quiet streets crossing
+  are unsigned, which is how they are in life. Highways are signed as highways:
   cantilevered exit boards where a road leaves, and overhead gantries along the
   run. While you drag a one-way or a highway, translucent arrows show which way
   traffic will run, so you can catch a road laid backwards before you build it.

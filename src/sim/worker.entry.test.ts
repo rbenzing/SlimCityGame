@@ -1840,3 +1840,61 @@ describe('road direction — a road runs the way it was drawn', () => {
     expect(rowDeltas(fresh, 10, 16, 17).map((d) => d.flow)).toEqual([RoadFlow.South]);
   });
 });
+
+describe('junction control — the sim tells the render who gives way', () => {
+  function run(h: Harness, seq: number, commands: Command[]): CommandAck {
+    send(h, seq, commands);
+    h.ticks(2);
+    const ack = h.ackFor(seq);
+    if (!ack) throw new Error(`no ack for batch ${seq}`);
+    return ack;
+  }
+  /** A four-lane road is milestone-locked at the start, so these build in the sandbox. */
+  function sandboxed(): Harness {
+    const h = initialized();
+    run(h, 0, [{ kind: 'setSandbox', on: true }]);
+    return h;
+  }
+  const column = (x: number, z0: number, count: number): TilePoint[] =>
+    Array.from({ length: count }, (_, i) => ({ x, z: z0 + i }));
+
+  /** The most recent snapshot that carried junctions; it only travels when it changes. */
+  function lastJunctions(h: Harness): SimSnapshot['junctions'] {
+    for (let i = h.messages.length - 1; i >= 0; i--) {
+      const m = h.messages[i]!;
+      if (m.type === 'snapshot' && m.snap.junctions !== undefined) return m.snap.junctions;
+    }
+    return undefined;
+  }
+
+  it('says nothing at all while every junction is uncontrolled', () => {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 20, 9) }]);
+    run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(14, 16, 9) }]);
+    // Two quiet streets crossing meet on sight lines, so the list stays empty
+    // — and an empty list is never sent twice.
+    expect(lastJunctions(h) ?? []).toEqual([]);
+  });
+
+  it('reports the crossing where a side street runs onto a four-lane road', () => {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.FourLane, tiles: roadRow(10, 20, 9) }]);
+    run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(14, 16, 9) }]);
+    expect(lastJunctions(h)).toEqual([{ x: 14, z: 20, control: 'stop' }]);
+  });
+
+  it('signalises where an avenue crosses, and stops sending once it settles', () => {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Avenue, tiles: roadRow(10, 20, 9) }]);
+    run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(14, 16, 9) }]);
+    expect(lastJunctions(h)).toEqual([{ x: 14, z: 20, control: 'signal' }]);
+
+    const sent = h.messages.filter(
+      (m) => m.type === 'snapshot' && m.snap.junctions !== undefined,
+    ).length;
+    h.ticks(20);
+    expect(
+      h.messages.filter((m) => m.type === 'snapshot' && m.snap.junctions !== undefined).length,
+    ).toBe(sent);
+  });
+});

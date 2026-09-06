@@ -78,7 +78,7 @@ import { GhostRenderer, type GhostKind, type SetPreviewOptions } from './render/
 import { UtilityKitRenderer } from './render/utilitykits';
 import { ZoneGridRenderer } from './render/zonegrid';
 import { LampRenderer } from './render/lamps';
-import { RoadFurnitureRenderer } from './render/roadfurniture';
+import { computeSignPlacements, RoadFurnitureRenderer } from './render/roadfurniture';
 import { SelectionOutline } from './render/outline';
 import { MapPin } from './render/pin';
 import { CameraRig } from './render/camera';
@@ -537,6 +537,15 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           const pole = lamps.polePosition(slot);
           return { x: pole.x, z: pole.z };
         }),
+      // Who gives way where, and the boards that follow from it. A screenshot
+      // shows a post beside a road but not which board it is or why, so a
+      // check that the right junction got the right control reads it here.
+      readJunctions: (): { x: number; z: number; control: string }[] =>
+        latestRoadTiles
+          .filter((t) => t.control !== undefined)
+          .map((t) => ({ x: t.x, z: t.z, control: t.control! })),
+      readSigns: (): { x: number; z: number; type: string }[] =>
+        computeSignPlacements(latestRoadTiles).map((s) => ({ x: s.x, z: s.z, type: s.type })),
       // What the transit renderer actually built. A transit vehicle and a
       // traffic-spawned one look alike in a screenshot, so a shot cannot tell
       // whether a line's own vehicles are on the road; this can.
@@ -969,6 +978,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     }
     // The profile table lands before the road deltas that refer into it.
     if (snap.roadProfiles) clientGrid.applyRoadProfiles(snap.roadProfiles);
+    // Who gives way lands before the road deltas too, so that when a drag
+    // changes both, the signs are rebuilt once against the new answer.
+    const controlsMoved = snap.junctions ? clientGrid.applyJunctions(snap.junctions) : false;
+    if (snap.junctions) roadsMesh.setJunctionControls(snap.junctions);
     if (snap.roads) {
       // The mirror goes first. The road mesh samples roadSurfaceAt, which reads
       // deck heights back out of the mirror — meshing before those land lays
@@ -988,6 +1001,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // Ground cover follows the road only where the road touches the ground —
       // a mown band under a bridge would be a stripe of lawn across a river.
       terrain.applyRoadTiles(roadTiles.filter((t) => !t.elevated));
+    } else if (controlsMoved) {
+      // A junction can change control with no tile changing at all — the
+      // traffic through it grew. Only the signs care.
+      latestRoadTiles = clientGrid.roadTiles();
+      roadFurniture.rebuild(latestRoadTiles);
     }
     if (snap.buildings) {
       lots.apply(snap.buildings);

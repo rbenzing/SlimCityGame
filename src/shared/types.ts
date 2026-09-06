@@ -504,6 +504,16 @@ export interface SimSnapshot {
     trash?: ZonePatch[];
     incinerators?: { id: number; fill: number; capacity: number }[];
   };
+  /**
+   * Who gives way at each junction of the street network. The sim is the only
+   * thing that knows — the warrant reads traffic the render thread has never
+   * seen — so the render draws what it is told rather than working out a second
+   * answer that would disagree. The whole list travels whenever any of it
+   * changes; junctions with no control are left out, so an empty array means
+   * every junction is uncontrolled and is NOT the same as the field's absence,
+   * which means nothing has changed since the last snapshot.
+   */
+  junctions?: { x: number; z: number; control: JunctionControl }[];
 }
 
 export interface CityNotification {

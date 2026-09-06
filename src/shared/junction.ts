@@ -197,6 +197,19 @@ export function approachGivesWay(
   return true;
 }
 
+/**
+ * The same rule as `approachGivesWay`, read off the hierarchy ranks alone —
+ * what the render has to work with, since it draws a junction from the tiers
+ * around a tile and knows nothing of classes or volumes. An arm below the top
+ * rank gives way to it; where every arm ranks the same there is no road that
+ * runs through, so they all do.
+ */
+export function armGivesWay(armRank: number, armRanks: readonly number[]): boolean {
+  if (armRanks.length === 0) return true;
+  const top = Math.max(...armRanks);
+  return armRanks.every((r) => r === top) || armRank < top;
+}
+
 /** A two-phase signal cycle; a third phase for a dedicated left makes it 90. */
 export const SIGNAL_CYCLE_S = 60;
 export const SIGNAL_CYCLE_WITH_LEFT_S = 90;

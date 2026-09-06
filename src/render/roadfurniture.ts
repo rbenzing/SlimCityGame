@@ -13,8 +13,9 @@ import * as THREE from 'three';
 import { RoadTier, TilePoint } from '../shared/types';
 import { TILE_METERS, tileToWorld } from '../shared/constants';
 import { carriagewayHalfWidthMeters, curbWidthMeters } from './roadsmesh';
-import { carriagewayHalfWidthOf, kerbWidthOf } from '../shared/roadprofile';
-import type { RoadProfile } from '../shared/types';
+import { carriagewayHalfWidthOf, kerbWidthOf, rankForTier } from '../shared/roadprofile';
+import { armGivesWay } from '../shared/junction';
+import type { JunctionControl, RoadProfile } from '../shared/types';
 
 // --- Manhole -----------------------------------------------------------------
 const MANHOLE_RADIUS = 0.5;
@@ -143,6 +144,12 @@ export type FurnitureRoadTile = TilePoint & {
   elevated?: boolean;
   /** The tile's own cross-section when it carries a composed one; kerb props stand at ITS edge. */
   profile?: RoadProfile;
+  /**
+   * Who gives way here, when this tile is a junction the sim has controlled.
+   * Absent means uncontrolled, which is what every junction was before the sim
+   * worked one out.
+   */
+  control?: JunctionControl;
 };
 
 /** Carriageway half-width and kerb width for a tile: its own profile's, else its tier's preset. */
@@ -296,14 +303,27 @@ function tierHasParking(tier: RoadTier | undefined): boolean {
 }
 
 /**
- * Tiers whose junctions get a signal head rather than a board. The multi-lane
- * streets carry enough traffic to be worth signalising; a two-lane street or an
- * alley takes a stop or give-way sign. The highway takes neither — you do not
- * stop traffic on a motorway, you give it an exit.
+ * The board or head an approach carries under a given control, or null when it
+ * carries nothing: the road that runs through a give-way or a minor-road stop
+ * is not signed, and an uncontrolled junction is not signed at all. A
+ * roundabout gives way at every entry, which is the one place a YIELD may face
+ * every approach.
  */
-function tierIsSignalised(tier: RoadTier | undefined): boolean {
-  const t = tier ?? RoadTier.TwoLane;
-  return t === RoadTier.Avenue || t === RoadTier.FourLane || t === RoadTier.BusLane;
+function signForControl(control: JunctionControl, givesWay: boolean): SignType | null {
+  switch (control) {
+    case 'none':
+      return null;
+    case 'signal':
+      return 'signal';
+    case 'allWayStop':
+      return 'stop';
+    case 'roundabout':
+      return 'giveway';
+    case 'stop':
+      return givesWay ? 'stop' : null;
+    case 'yield':
+      return givesWay ? 'giveway' : null;
+  }
 }
 
 // Canonical neighbor order (N, E, S, W); each carries the outward curbside
@@ -320,14 +340,20 @@ const NEIGHBOR_DIRS: readonly {
   { dx: -1, dz: 0, axis: 'x', side: -1 },
 ];
 
-function buildTileSet(roadTiles: readonly FurnitureRoadTile[]): Set<number> {
-  const set = new Set<number>();
-  for (const tile of roadTiles) set.add(tileKey(tile.x, tile.z));
+/**
+ * Every road tile by key, so a helper can ask not just WHETHER a neighbour is
+ * road but what kind — which junction it is, and who gives way there.
+ */
+export type RoadTileIndex = ReadonlyMap<number, FurnitureRoadTile>;
+
+function buildTileSet(roadTiles: readonly FurnitureRoadTile[]): RoadTileIndex {
+  const set = new Map<number, FurnitureRoadTile>();
+  for (const tile of roadTiles) set.set(tileKey(tile.x, tile.z), tile);
   return set;
 }
 
 /** How many of the four orthogonal neighbors are road tiles. */
-function neighborCount(tileSet: Set<number>, x: number, z: number): number {
+function neighborCount(tileSet: RoadTileIndex, x: number, z: number): number {
   let count = 0;
   for (const d of NEIGHBOR_DIRS) if (tileSet.has(tileKey(x + d.dx, z + d.dz))) count++;
   return count;
@@ -341,7 +367,7 @@ interface PresentSides {
 }
 
 /** Which orthogonal neighbors are road tiles. */
-function presentSides(tileSet: Set<number>, x: number, z: number): PresentSides {
+function presentSides(tileSet: RoadTileIndex, x: number, z: number): PresentSides {
   return {
     n: tileSet.has(tileKey(x, z - 1)),
     e: tileSet.has(tileKey(x + 1, z)),
@@ -364,14 +390,14 @@ function isCollinear2(sides: PresentSides): boolean {
  * skip in-road/curbside furniture and get only the bend sign, positioned at
  * the curve's outer corner (see computeSignPlacements).
  */
-function isTurnTile(tileSet: Set<number>, x: number, z: number): boolean {
+function isTurnTile(tileSet: RoadTileIndex, x: number, z: number): boolean {
   const sides = presentSides(tileSet, x, z);
   const count = (sides.n ? 1 : 0) + (sides.e ? 1 : 0) + (sides.s ? 1 : 0) + (sides.w ? 1 : 0);
   return count === 2 && !isCollinear2(sides);
 }
 
 /** The largest neighborCount among this tile's present road-neighbors (0 if none). */
-function maxNeighborDegree(tileSet: Set<number>, x: number, z: number): number {
+function maxNeighborDegree(tileSet: RoadTileIndex, x: number, z: number): number {
   let max = 0;
   for (const d of NEIGHBOR_DIRS) {
     const nx = x + d.dx;
@@ -381,8 +407,47 @@ function maxNeighborDegree(tileSet: Set<number>, x: number, z: number): number {
   return max;
 }
 
+/** The neighbouring road tile with the most arms of its own — the junction this tile runs into. */
+function busiestNeighbour(
+  tileSet: RoadTileIndex,
+  x: number,
+  z: number,
+): FurnitureRoadTile | undefined {
+  let best: FurnitureRoadTile | undefined;
+  let bestDegree = 0;
+  for (const d of NEIGHBOR_DIRS) {
+    const neighbour = tileSet.get(tileKey(x + d.dx, z + d.dz));
+    if (!neighbour) continue;
+    const degree = neighborCount(tileSet, neighbour.x, neighbour.z);
+    if (degree > bestDegree) {
+      bestDegree = degree;
+      best = neighbour;
+    }
+  }
+  return best;
+}
+
+/**
+ * Whether the arm running from `approach` into `junction` has to give way,
+ * read off the hierarchy the same way the junction's own markings read it: an
+ * arm below the top rank gives way, and where every arm ranks the same they
+ * all do.
+ */
+function approachGivesWay(
+  tileSet: RoadTileIndex,
+  junction: FurnitureRoadTile,
+  approach: FurnitureRoadTile,
+): boolean {
+  const ranks: number[] = [];
+  for (const d of NEIGHBOR_DIRS) {
+    const arm = tileSet.get(tileKey(junction.x + d.dx, junction.z + d.dz));
+    if (arm) ranks.push(rankForTier(arm.tier ?? RoadTier.TwoLane));
+  }
+  return armGivesWay(rankForTier(approach.tier ?? RoadTier.TwoLane), ranks);
+}
+
 /** The sides whose neighbor tile is absent — the sidewalk edges. */
-function availableSidewalkSides(tileSet: Set<number>, x: number, z: number): SideChoice[] {
+function availableSidewalkSides(tileSet: RoadTileIndex, x: number, z: number): SideChoice[] {
   const out: SideChoice[] = [];
   for (const d of NEIGHBOR_DIRS)
     if (!tileSet.has(tileKey(x + d.dx, z + d.dz))) out.push({ axis: d.axis, side: d.side });
@@ -395,7 +460,7 @@ function availableSidewalkSides(tileSet: Set<number>, x: number, z: number): Sid
  * and junctions fall back to z — meaningful only for props that belong IN the
  * carriageway; anything curbside must check {@link hasCrossingRoad} first.
  */
-function lateralAxis(tileSet: Set<number>, x: number, z: number): FurnitureAxis {
+function lateralAxis(tileSet: RoadTileIndex, x: number, z: number): FurnitureAxis {
   const hasEW = tileSet.has(tileKey(x - 1, z)) || tileSet.has(tileKey(x + 1, z));
   const hasNS = tileSet.has(tileKey(x, z - 1)) || tileSet.has(tileKey(x, z + 1));
   return hasNS && !hasEW ? 'x' : 'z';
@@ -407,7 +472,7 @@ function lateralAxis(tileSet: Set<number>, x: number, z: number): FurnitureAxis 
  * carriageway lands inside the other, which is how furniture ends up standing
  * in the middle of an intersection. Nothing curbside may seat here.
  */
-export function hasCrossingRoad(tileSet: Set<number>, x: number, z: number): boolean {
+export function hasCrossingRoad(tileSet: RoadTileIndex, x: number, z: number): boolean {
   const hasEW = tileSet.has(tileKey(x - 1, z)) || tileSet.has(tileKey(x + 1, z));
   const hasNS = tileSet.has(tileKey(x, z - 1)) || tileSet.has(tileKey(x, z + 1));
   return hasEW && hasNS;
@@ -512,7 +577,7 @@ export function computeMeterPlacements(roadTiles: readonly FurnitureRoadTile[]):
  * dead-end, then junction approach, then turn, then the periodic one-way / speed
  * markers on straight runs.
  */
-function classifySign(tileSet: Set<number>, tile: FurnitureRoadTile): SignType | null {
+function classifySign(tileSet: RoadTileIndex, tile: FurnitureRoadTile): SignType | null {
   const { x, z } = tile;
   const nc = neighborCount(tileSet, x, z);
   const sides = presentSides(tileSet, x, z);
@@ -531,15 +596,17 @@ function classifySign(tileSet: Set<number>, tile: FurnitureRoadTile): SignType |
 
   if (nc === 1) return 'nothrough'; // dead-end
 
-  // Approach into a junction: a low-degree tile whose busiest neighbor is one.
-  // A road big enough to carry serious traffic gets a signal head; the smaller
-  // tiers get a board, which is the real-world split too — you do not signalise
-  // a residential side street.
+  // Approach into a junction: a low-degree tile whose busiest neighbour is one.
+  // The board is the junction's own, not a guess from this road's tier — the
+  // sim decides who gives way there, from the classes that meet and what they
+  // carry, and this only draws it. A junction the sim has said nothing about
+  // is uncontrolled and takes no board.
   if (nc <= 2) {
-    const maxDeg = maxNeighborDegree(tileSet, x, z);
-    const signalised = tierIsSignalised(tile.tier);
-    if (maxDeg >= 4) return signalised ? 'signal' : 'stop'; // crossroads approach
-    if (maxDeg >= 3) return signalised ? 'signal' : 'giveway'; // T-junction approach
+    const junction = busiestNeighbour(tileSet, x, z);
+    if (junction && neighborCount(tileSet, junction.x, junction.z) >= 3) {
+      const control = junction.control ?? 'none';
+      return signForControl(control, approachGivesWay(tileSet, junction, tile));
+    }
   }
 
   if (nc === 2 && !isCollinear2(sides)) return 'bend'; // turn tile
@@ -559,7 +626,7 @@ function classifySign(tileSet: Set<number>, tile: FurnitureRoadTile): SignType |
  * cabinet both stand at the tile centre on a chosen side at the same offset out
  * from the carriageway, so two of them on one tile occupy the same space.
  */
-function effectiveSign(tileSet: Set<number>, tile: FurnitureRoadTile): SignType | null {
+function effectiveSign(tileSet: RoadTileIndex, tile: FurnitureRoadTile): SignType | null {
   if (!tierGetsSigns(tile.tier)) return null;
   const type = classifySign(tileSet, tile);
   if (!type) return null;
