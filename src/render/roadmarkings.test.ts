@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { presetProfileForTier } from '../shared/roadprofile';
+import { corridorHalfProfile, presetProfileForTier } from '../shared/roadprofile';
 import { RoadTier } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import { CENTRE_PAIR_OFFSET_M, centrePair, markingPlan, travelLanes } from './roadmarkings';
@@ -186,6 +186,59 @@ describe('markingPlan for composed profiles', () => {
     });
     const band = p.bands[0]!;
     expect(band.to - band.from).toBeCloseTo(1.6, 6);
+  });
+});
+
+describe('a corridor half is painted as the carriageway it is', () => {
+  const SIX_LANE: RoadProfile = {
+    class: 'divided',
+    pieces: [
+      { kind: 'sidewalk', width: 1.9 },
+      { kind: 'travel', width: 3.6, flow: 'back' },
+      { kind: 'travel', width: 3.6, flow: 'back' },
+      { kind: 'travel', width: 3.6, flow: 'back' },
+      { kind: 'median', width: 2 },
+      { kind: 'travel', width: 3.6, flow: 'fwd' },
+      { kind: 'travel', width: 3.6, flow: 'fwd' },
+      { kind: 'travel', width: 3.6, flow: 'fwd' },
+      { kind: 'sidewalk', width: 1.9 },
+    ],
+  };
+  /** The colour of the edge line furthest to each side. */
+  const edges = (p: RoadProfile): { outer: string; inner: string } => {
+    const plan = markingPlan(corridorHalfProfile(p, 'left'));
+    const lo = plan.solid[0]!;
+    const hi = plan.solid[plan.solid.length - 1]!;
+    return { outer: lo.color, inner: hi.color };
+  };
+
+  it('puts the yellow edge on the side the median is on, not always on the left', () => {
+    // The near half carries the median at its RIGHT edge, so that is the edge
+    // facing opposing traffic; its left edge faces the roadside and is white.
+    const near = markingPlan(corridorHalfProfile(SIX_LANE, 'left'));
+    expect(near.solid[0]!.color).toBe('white');
+    expect(near.solid[near.solid.length - 1]!.color).toBe('yellow');
+
+    // The far half is the mirror of it.
+    const far = markingPlan(corridorHalfProfile(SIX_LANE, 'right'));
+    expect(far.solid[0]!.color).toBe('yellow');
+    expect(far.solid[far.solid.length - 1]!.color).toBe('white');
+  });
+
+  it('leaves a whole divided road painted the way it always was', () => {
+    // The median is in the MIDDLE of this one, so neither edge faces it and
+    // the left-hand convention still decides.
+    const whole = markingPlan(SIX_LANE);
+    expect(whole.solid[0]!.color).toBe('yellow');
+    expect(whole.solid[whole.solid.length - 1]!.color).toBe('white');
+  });
+
+  it('still marks each half between its own lanes', () => {
+    const near = markingPlan(corridorHalfProfile(SIX_LANE, 'left'));
+    // Three lanes running the same way: two dashed white lines between them.
+    expect(near.dashed).toHaveLength(2);
+    expect(near.dashed.every((l) => l.color === 'white')).toBe(true);
+    expect(edges(SIX_LANE).outer).toBe('white');
   });
 });
 

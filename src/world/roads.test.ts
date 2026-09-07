@@ -43,6 +43,54 @@ describe('computeMask', () => {
     expect(computeMask(g, 6, 6)).toBe(8); // W only
   });
 
+  it('does not read the other half of a corridor as an arm joining it', () => {
+    // A six-lane road laid as two carriageways side by side, running
+    // north-south: the near half in column 4, the far half in column 5. Each
+    // tile's only real neighbours are the ones ahead of and behind it.
+    const size = 10;
+    const g = makeGrid(size);
+    const SOUTH = RoadFlow.South;
+    const CORRIDOR = 0b1000;
+    const CORRIDOR_RIGHT = 0b1_0000;
+    for (let z = 4; z <= 6; z++) {
+      for (const [x, flow] of [
+        [4, SOUTH | CORRIDOR],
+        [5, SOUTH | CORRIDOR | CORRIDOR_RIGHT],
+      ] as const) {
+        const i = idx(size, x, z);
+        g.roadTier[i] = RoadTier.Avenue;
+        g.roadProfile[i] = 40;
+        g.roadFlow[i] = flow;
+      }
+    }
+    // Without this the middle of a six-lane road reads as a crossroads, and
+    // the mesh strips its lane markings for a junction that is not there.
+    expect(computeMask(g, 4, 5)).toBe(1 | 4); // N|S — a straight run, not a T
+    expect(computeMask(g, 5, 5)).toBe(1 | 4);
+    expect(computeMask(g, 4, 4)).toBe(4); // the near half's first tile: S only
+    expect(computeMask(g, 5, 6)).toBe(1); // the far half's last tile: N only
+  });
+
+  it('still reads a road that really does join a corridor', () => {
+    const size = 10;
+    const g = makeGrid(size);
+    for (let z = 4; z <= 6; z++) {
+      for (const [x, flow] of [
+        [4, RoadFlow.South | 0b1000],
+        [5, RoadFlow.South | 0b1000 | 0b1_0000],
+      ] as const) {
+        const i = idx(size, x, z);
+        g.roadTier[i] = RoadTier.Avenue;
+        g.roadProfile[i] = 40;
+        g.roadFlow[i] = flow;
+      }
+    }
+    // A plain street arriving from the west carries no corridor flag, so it is
+    // an arm and the tile it meets is a junction.
+    g.roadTier[idx(size, 3, 5)] = RoadTier.TwoLane;
+    expect(computeMask(g, 4, 5)).toBe(1 | 4 | 8); // N|S|W
+  });
+
   it('reads a T shape correctly', () => {
     const size = 10;
     const g = makeGrid(size);

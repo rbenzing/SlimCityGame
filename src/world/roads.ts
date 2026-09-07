@@ -86,13 +86,19 @@ function popcount(mask: number): number {
 // Auto-tiling mask
 // ---------------------------------------------------------------------------
 
-/** 4-bit neighbor bitmask (+N=1 +E=2 +S=4 +W=8) of orthogonal road neighbors. */
+/**
+ * 4-bit neighbor bitmask (+N=1 +E=2 +S=4 +W=8) of orthogonal road neighbors.
+ *
+ * The other half of a corridor is not a neighbour: it is the same road. Left
+ * in, each half auto-tiles into the other and every tile of a six-lane road
+ * draws as a junction — a box of bare asphalt with its lane markings broken.
+ */
 export function computeMask(g: GridState, x: number, z: number): number {
   let mask = 0;
-  if (tierAt(g, x, z - 1) !== RoadTier.None) mask |= 1;
-  if (tierAt(g, x + 1, z) !== RoadTier.None) mask |= 2;
-  if (tierAt(g, x, z + 1) !== RoadTier.None) mask |= 4;
-  if (tierAt(g, x - 1, z) !== RoadTier.None) mask |= 8;
+  if (tierAt(g, x, z - 1) !== RoadTier.None && !isCorridorPartner(g, x, z, x, z - 1)) mask |= 1;
+  if (tierAt(g, x + 1, z) !== RoadTier.None && !isCorridorPartner(g, x, z, x + 1, z)) mask |= 2;
+  if (tierAt(g, x, z + 1) !== RoadTier.None && !isCorridorPartner(g, x, z, x, z + 1)) mask |= 4;
+  if (tierAt(g, x - 1, z) !== RoadTier.None && !isCorridorPartner(g, x, z, x - 1, z)) mask |= 8;
   return mask;
 }
 

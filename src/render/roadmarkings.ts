@@ -229,15 +229,23 @@ export function markingPlan(profile: RoadProfile): MarkingPlan {
       }
       return inner ?? side * (half - EDGE_LINE_MARGIN_M);
     };
-    // The left edge of a one-way carriageway is YELLOW — a divided road, a
-    // one-way street or a ramp, where the left edge faces the median or the
-    // opposing carriageway rather than the roadside. Everywhere else both
-    // edges are white.
-    const leftIsYellow =
+    // The edge of a one-way carriageway that faces the median or the opposing
+    // traffic is YELLOW; the one facing the roadside is white.
+    //
+    // Which edge that is comes from the section itself wherever the section
+    // says: a corridor carries one half of the road on each of its two tiles,
+    // so the median sits at one EDGE of each half — the left edge of the far
+    // half and the right edge of the near one. Only a section that does not
+    // say — a whole divided road with the median in the middle of it, a
+    // one-way street, a ramp — falls back to the left-hand convention.
+    const medianAtLeft = pieces[0]?.kind === 'median';
+    const medianAtRight = pieces[pieces.length - 1]?.kind === 'median';
+    const facesMedian =
       profile.class === 'oneWay' || profile.class === 'divided' || profile.class === 'ramp';
+    const leftIsYellow = medianAtLeft || (!medianAtRight && facesMedian);
     solid.push(
       leftIsYellow ? yellow(shoulderInside(-1)) : white(shoulderInside(-1)),
-      white(shoulderInside(1)),
+      medianAtRight ? yellow(shoulderInside(1)) : white(shoulderInside(1)),
     );
   }
 

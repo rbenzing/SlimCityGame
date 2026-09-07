@@ -78,7 +78,7 @@
  * only this per-tile cosmetic paint/geometry curves.
  */
 import * as THREE from 'three';
-import { RoadFlow, RoadTileDelta, RoadTier } from '../shared/types';
+import { corridorHalfOf, flowDirection, RoadFlow, RoadTileDelta, RoadTier } from '../shared/types';
 import type { JunctionControl } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import {
@@ -91,6 +91,7 @@ import {
 import {
   carriagewayHalfWidthOf,
   carriagewayWidth,
+  corridorHalfProfile,
   FOOTWAY_WIDTH_M,
   hasFootway,
   hasKerbs,
@@ -4038,11 +4039,30 @@ export class RoadMeshRenderer {
     };
   }
 
+  /**
+   * The cross-section a tile draws for ITSELF. A corridor is two carriageways
+   * of one road laid side by side, so each of its tiles carries only its own
+   * half of the road's section — the whole one would be drawn twice, once on
+   * each tile, at twice the width the road has.
+   */
+  private ownProfileOf(tile: RoadTileDelta, whole: RoadProfile): RoadProfile {
+    return corridorHalfProfile(whole, corridorHalfOf(tile.flow));
+  }
+
+  /**
+   * The same, for a tile whose road has no cross-section of its own: the
+   * caller draws a preset from the tier instead, so there is nothing to halve.
+   */
+  private ownProfileFor(tile: RoadTileDelta): RoadProfile | undefined {
+    const whole = this.profileFor(tile.profile);
+    return whole ? this.ownProfileOf(tile, whole) : undefined;
+  }
+
   /** The cross-section a tile carries, or null off-road. */
   private profileAt(x: number, z: number): RoadProfile | null {
     const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
     if (!tile) return null;
-    return this.profileFor(tile.profile) ?? presetProfileForTier(tile.tier);
+    return this.ownProfileOf(tile, this.profileFor(tile.profile) ?? presetProfileForTier(tile.tier));
   }
 
   /**
@@ -4069,7 +4089,7 @@ export class RoadMeshRenderer {
   /** Which way the tile at (x,z) was drawn, or None where nothing said. */
   private flowAt(x: number, z: number): RoadFlow {
     const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
-    return ((tile?.flow ?? RoadFlow.None) & 7) as RoadFlow;
+    return flowDirection(tile?.flow ?? RoadFlow.None);
   }
 
   /** Whether the road at (x,z) is one a pedestrian can walk beside. */
@@ -4093,7 +4113,7 @@ export class RoadMeshRenderer {
         profile,
         this.approachToward(x, z),
         this.narrowingAt(x, z),
-        tile?.flow ?? RoadFlow.None,
+        flowDirection(tile?.flow ?? RoadFlow.None),
         this.auxiliaryAt(x, z),
       ),
     );
@@ -4126,7 +4146,7 @@ export class RoadMeshRenderer {
         tile.mask,
         this.heightAt,
         neighbors,
-        this.profileFor(tile.profile) ?? undefined,
+        this.ownProfileFor(tile),
         {
           n: this.halfAt(tile.x, tile.z - 1),
           e: this.halfAt(tile.x + 1, tile.z),
@@ -4139,7 +4159,7 @@ export class RoadMeshRenderer {
             w: this.walkableAt(tile.x - 1, tile.z),
           },
         },
-        tile.flow,
+        flowDirection(tile.flow),
         this.junctionControls.get(tileIndex(tile.x, tile.z)),
         this.approachToward(tile.x, tile.z),
         this.narrowingAt(tile.x, tile.z),

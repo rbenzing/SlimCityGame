@@ -2737,6 +2737,27 @@ scaled by one constant into the units the sim already uses.
    junction and still takes the boundary node.
 6. **Two-tile corridors** — six- and eight-lane divided, the honest motorway,
    corridor halves in `roadFlow`, the two-lane roundabout, sound barriers.
+   A CORRIDOR IS TWO CARRIAGEWAYS, not one wide road drawn across two tiles.
+   The first reading — one asymmetric cross-section split down the middle —
+   would have forced off-centre drawing through every emitter in the mesh;
+   two carriageways, each centred on its own tile, is both what a six-lane
+   divided road actually is and what the existing machinery already draws.
+   So each tile carries the whole road's profile and draws
+   `corridorHalfProfile` of it, and the median straddling the split is divided
+   between the halves so that neither ends in mid-air.
+   Two consequences, each of which was got wrong once. The other half is NOT A
+   NEIGHBOUR: it is the same road. Left in the auto-tiling mask, each half
+   auto-tiles into the other and every tile of a six-lane road reads as a
+   junction — a box of bare asphalt with its lane markings broken the length
+   of the road. Both masks exclude it, the network one so the graph gains no
+   node per tile and the render one so the paint survives; fixing only the
+   network mask leaves the road looking exactly as broken as before. And the
+   YELLOW EDGE LINE belongs on the side the median is on, which for a half is
+   an edge rather than the middle: the near half carries it at its right edge
+   and the far half at its left, so a rule that always paints the left edge
+   yellow gets one of the two halves inside out. Only a section that does not
+   say — a whole divided road, a one-way street, a ramp — falls back to the
+   left-hand convention.
 
 **Owners:** `src/data/roads.json` (becomes classes + lane pieces + preset
 profiles), `src/shared/types.ts` (`RoadClass`, `LanePiece`, `RoadProfile`,
