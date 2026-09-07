@@ -6,7 +6,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { tileCamera } from './shotcam.mjs';
+import { hooksReady, tileCamera } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -33,7 +33,10 @@ await page.goto(url, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 20000 });
 await page.waitForTimeout(4000);
 
-const call = (fn, ...a) => page.evaluate(fn, ...a);
+const call = async (fn, ...a) => {
+  await hooksReady(page);
+  return page.evaluate(fn, ...a);
+};
 const cmd = (l, c) => call(([x, y]) => window.__slimcity.cmd(x, y), [l, c]);
 const readGrid = () => call(() => window.__slimcity.readGrid());
 const stats = () => call(() => window.__slimcity.getStats());

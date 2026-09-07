@@ -16,7 +16,11 @@ import {
 } from './buildings';
 import { decodeId } from './picking';
 import { BAY_DEPTH_TILES } from './parked';
-import { MASSING_FOOTPRINT_SHRINK } from './massing';
+import {
+  DEFAULT_BODY_M_PER_TILE,
+  MASSING_FOOTPRINT_SHRINK,
+  RES_LOW_BODY_M_PER_TILE,
+} from './massing';
 import {
   BuildingCatalogEntry,
   BuildingInstance,
@@ -115,9 +119,9 @@ describe('BuildingInstancer', () => {
     expect(pos.x).toBeCloseTo((2 + 0.5) * TILE_METERS, 5);
     expect(pos.z).toBeCloseTo((3 + 0.5) * TILE_METERS, 5);
     expect(pos.y).toBeCloseTo(10 / 2, 5); // groundY(0) + height/2
-    expect(scl.x).toBeCloseTo(1 * TILE_METERS * 0.55, 5); // ResLow detached: yard fill (SPEC §16)
+    expect(scl.x).toBeCloseTo(1 * RES_LOW_BODY_M_PER_TILE, 5); // ResLow detached: a house-sized body, yard around it
     expect(scl.y).toBeCloseTo(10, 5);
-    expect(scl.z).toBeCloseTo(1 * TILE_METERS * 0.55, 5);
+    expect(scl.z).toBeCloseTo(1 * RES_LOW_BODY_M_PER_TILE, 5);
   });
 
   it('offsets by heightAt(x,z) at the footprint center', () => {
@@ -263,7 +267,7 @@ describe('BuildingInstancer', () => {
       expect(pos.x).toBeCloseTo((i + 0.5) * TILE_METERS, 5);
       expect(pos.z).toBeCloseTo(0.5 * TILE_METERS, 5);
       expect(pos.y).toBeCloseTo(5, 5);
-      expect(scl.x).toBeCloseTo(TILE_METERS * 0.55, 5); // ResLow detached: yard fill (SPEC §16)
+      expect(scl.x).toBeCloseTo(RES_LOW_BODY_M_PER_TILE, 5); // ResLow detached: a house-sized body, yard around it
       expect(scl.y).toBeCloseTo(10, 5);
       // Every id must still resolve correctly post-grow.
       expect(instancer.buildingIdAt({ catalogId: 'house', instanceIndex: i })).toBe(i + 1);
@@ -935,8 +939,8 @@ describe('plinth mode (UI-SPEC §6.15) — additive-only 4th constructor arg, de
     const mesh = instancer.getPickables().find((p) => p.catalogId === UTILITY_ENTRY.id)
       ?.mesh as THREE.InstancedMesh;
     const { scl } = decomposeAt(mesh, 0);
-    expect(scl.x).toBeCloseTo(1 * TILE_METERS * 0.85, 5);
-    expect(scl.z).toBeCloseTo(1 * TILE_METERS * 0.85, 5);
+    expect(scl.x).toBeCloseTo(1 * DEFAULT_BODY_M_PER_TILE, 5);
+    expect(scl.z).toBeCloseTo(1 * DEFAULT_BODY_M_PER_TILE, 5);
   });
 
   it('still applies the existing Constructing height-scale on top of the plinth height', () => {

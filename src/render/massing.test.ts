@@ -2,13 +2,17 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   computeSetbacks,
+  DEFAULT_BODY_M_PER_TILE,
+  footprintShrinkFor,
   frontageSetbackFor,
   InstancedSlotPool,
   massingLifecycleTint,
   MassingRenderer,
   MASSING_FOOTPRINT_SHRINK,
+  MAX_FOOTPRINT_FILL,
   MAX_SETBACK_INSET,
   MIN_SETBACK_INSET,
+  RES_LOW_BODY_M_PER_TILE,
 } from './massing';
 import { BAY_DEPTH_TILES } from './parked';
 import { deriveFacadeParams } from './facade';
@@ -17,6 +21,7 @@ import {
   BuildingDelta,
   BuildingInstance,
   BuildingState,
+  ZoneType,
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import catalogData from '../data/catalog.json';
@@ -194,11 +199,14 @@ describe('computeSetbacks', () => {
 // ---------------------------------------------------------------------------
 
 describe('frontageSetbackFor', () => {
-  // 2x2 footprint at (5,5): the shrunk body face sits 2*(1-0.85)/2 = 0.15
-  // tiles inside each footprint edge; the bay row runs BAY_DEPTH_TILES inward,
-  // so the span loses the remainder and the center shifts half of it.
+  // 2x2 footprint at (5,5): the shrunk body face sits 2*(1-fill)/2 tiles
+  // inside each footprint edge; the bay row runs BAY_DEPTH_TILES inward, so
+  // the span loses the remainder and the center shifts half of it. The margin
+  // is read from the fill rather than written down, since the fill moves with
+  // the tile to keep the body a real size.
+  const marginTiles = 1 - MASSING_FOOTPRINT_SHRINK;
   const com = entry({ category: 'com', zone: 3, footprint: { w: 2, d: 2 } });
-  const comSetbackM = (BAY_DEPTH_TILES.com - 0.15) * TILE_METERS;
+  const comSetbackM = (BAY_DEPTH_TILES.com - marginTiles) * TILE_METERS;
 
   it('is all-zero when no side is road-adjacent', () => {
     expect(frontageSetbackFor(com, 5, 5, noRoad)).toEqual({
@@ -275,13 +283,13 @@ describe('frontageSetbackFor', () => {
     const northFace = centerZ - spanZ / 2;
     expect(northFace).toBeCloseTo(5 * TILE_METERS + BAY_DEPTH_TILES.com * TILE_METERS, 9);
     // The back face never moves.
-    expect(centerZ + spanZ / 2).toBeCloseTo(7 * TILE_METERS - 0.15 * TILE_METERS, 9);
+    expect(centerZ + spanZ / 2).toBeCloseTo(7 * TILE_METERS - marginTiles * TILE_METERS, 9);
   });
 
   it('uses the deeper industrial bay depth for ind lots', () => {
     const ind = entry({ category: 'ind', zone: 5, footprint: { w: 2, d: 2 } });
     const setback = frontageSetbackFor(ind, 5, 5, roadAtTiles([[5, 4]]));
-    expect(setback.spanZM).toBeCloseTo((BAY_DEPTH_TILES.ind - 0.15) * TILE_METERS, 9);
+    expect(setback.spanZM).toBeCloseTo((BAY_DEPTH_TILES.ind - marginTiles) * TILE_METERS, 9);
     expect(setback.centerZM).toBeCloseTo(setback.spanZM / 2, 9);
   });
 
@@ -764,5 +772,51 @@ describe('InstancedSlotPool bounding-sphere invalidation', () => {
     pool.setMatrixAt(slot, new THREE.Matrix4().makeTranslation(2000, 10, 2000));
     pool.commit();
     expect(pool.getMesh().boundingSphere).toBeNull();
+  });
+});
+
+describe('a building keeps its real proportions whatever the tile measures', () => {
+  const zoned = (zone: ZoneType): BuildingCatalogEntry =>
+    ({ id: `e-${zone}`, zone, footprint: { w: 1, d: 1 }, height: 10 }) as BuildingCatalogEntry;
+
+  it('gives a body a size in metres rather than a share of the tile', () => {
+    // The fill is only ever the last step. What is fixed is the body: a home
+    // covers RES_LOW_BODY_M_PER_TILE of each lot tile, and resizing the grid
+    // moves the fill so the building itself does not move.
+    expect(footprintShrinkFor(zoned(ZoneType.ResLow)) * TILE_METERS).toBeCloseTo(
+      RES_LOW_BODY_M_PER_TILE,
+      9,
+    );
+    expect(footprintShrinkFor(zoned(ZoneType.ComLow)) * TILE_METERS).toBeCloseTo(
+      DEFAULT_BODY_M_PER_TILE,
+      9,
+    );
+  });
+
+  it('keeps a detached home the narrower of the two, so a yard survives', () => {
+    expect(RES_LOW_BODY_M_PER_TILE).toBeLessThan(DEFAULT_BODY_M_PER_TILE);
+    expect(footprintShrinkFor(zoned(ZoneType.ResLow))).toBeLessThan(
+      footprintShrinkFor(zoned(ZoneType.ComLow)),
+    );
+  });
+
+  it('never lets a body fill its lot outright, however the tile is cut', () => {
+    for (const zone of [ZoneType.ResLow, ZoneType.ComLow, ZoneType.Industrial]) {
+      const fill = footprintShrinkFor(zoned(zone));
+      expect(fill).toBeGreaterThan(0);
+      expect(fill).toBeLessThanOrEqual(MAX_FOOTPRINT_FILL);
+    }
+  });
+
+  it('stands a storey tall against a plan that is no longer stretched under it', () => {
+    // The complaint this answers: heights are real metres and never scaled, so
+    // when the plan grew with the tile every building flattened by the ratio.
+    // A 3.2 m storey against a one-tile home is the proportion to hold.
+    const home = zoned(ZoneType.ResLow);
+    const widthM = home.footprint.w * TILE_METERS * footprintShrinkFor(home);
+    expect(widthM).toBeCloseTo(RES_LOW_BODY_M_PER_TILE, 9);
+    // A one-tile detached home is a house-width object, not a hall.
+    expect(widthM).toBeGreaterThan(7);
+    expect(widthM).toBeLessThan(10);
   });
 });

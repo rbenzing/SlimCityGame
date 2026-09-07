@@ -60,10 +60,31 @@ export interface SetbackResult {
   boxes: SetbackBox[];
 }
 
+/**
+ * How much building a lot tile carries, in METRES of body per tile of
+ * footprint.
+ *
+ * A building's proportions are real: a storey is 3.2 m and the car beside it
+ * is 4.0 m, and neither cares how the grid is cut. So the body is a size, not
+ * a share of whatever the tile happens to be — expressed as a share only at
+ * the last moment, because that is what the instancer wants. Held as a
+ * fraction instead, every building silently changes shape when the tile is
+ * resized: the heights stay honest, the plans stretch under them, and a house
+ * that was a house becomes a bungalow nobody drew.
+ */
+export const RES_LOW_BODY_M_PER_TILE = 8.8;
+export const DEFAULT_BODY_M_PER_TILE = 13.6;
+/** No body fills its lot outright, so neighbouring buildings never touch. */
+export const MAX_FOOTPRINT_FILL = 0.85;
+
+/** The share of a lot tile a body covers, given what the tile now measures. */
+const fillFor = (bodyMetres: number): number =>
+  Math.min(MAX_FOOTPRINT_FILL, bodyMetres / TILE_METERS);
+
 /** Default footprint shrink so neighboring buildings don't touch — mirrors buildings.ts so the base tier lines up with BuildingInstancer's own box edges. */
-export const MASSING_FOOTPRINT_SHRINK = 0.85;
-/** Detached single-family homes fill barely over half their lot, leaving a visible yard (SPEC §16). */
-export const RES_LOW_FOOTPRINT_SHRINK = 0.55;
+export const MASSING_FOOTPRINT_SHRINK = fillFor(DEFAULT_BODY_M_PER_TILE);
+/** Detached single-family homes leave a visible yard; a bigger tile is a bigger yard, not a bigger house. */
+export const RES_LOW_FOOTPRINT_SHRINK = fillFor(RES_LOW_BODY_M_PER_TILE);
 
 /**
  * Zone-aware footprint fill: the fraction of a building's tile footprint its

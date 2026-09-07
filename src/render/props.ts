@@ -28,6 +28,7 @@ import { maxHeightOverFootprint } from './footprint';
 import {
   computeSetbacks,
   CONSTRUCTING_MASSING_HEIGHT_SCALE,
+  DEFAULT_BODY_M_PER_TILE,
   frontageSetbackFor,
   InstancedSlotPool,
   massingLifecycleTint,
@@ -71,26 +72,32 @@ export const ROOF_PROP_COUNT_MIN = 1;
 export const ROOF_PROP_COUNT_BASE_MAX = 4;
 /** Once the area-scaled base reaches ROOF_PROP_COUNT_BASE_MAX, an id-hashed 0..BONUS_MAX top-up spreads "big slabs" across 4-6. */
 export const ROOF_PROP_COUNT_BONUS_MAX = 2;
-/** A 1x1 footprint's (post-FOOTPRINT_SHRINK) roof area, in tile-equivalents — the low end of the scale. */
-export const ROOF_PROP_AREA_MIN_TILES = 1;
-/** A 3x3-or-larger low/single-tier footprint's roof area — the high end ("big slabs"). */
-export const ROOF_PROP_AREA_MAX_TILES = 9;
+/**
+ * The scale is read in SQUARE METRES of roof, because a roof is a real thing
+ * and the plant on it answers to its area, not to how the grid beneath was
+ * cut. Measured in tiles instead, the same building crosses the thresholds
+ * differently the moment the tile is resized.
+ */
+/** A one-lot roof — the low end of the scale. */
+export const ROOF_PROP_AREA_MIN_M2 = DEFAULT_BODY_M_PER_TILE * DEFAULT_BODY_M_PER_TILE;
+/** A 3x3-or-larger low/single-tier roof — the high end ("big slabs"). */
+export const ROOF_PROP_AREA_MAX_M2 = 9 * ROOF_PROP_AREA_MIN_M2;
 
-/** roofAreaTiles = box.w * box.d / TILE_METERS^2 (world meters^2 -> tile-equivalent area). */
-export function roofAreaTiles(box: SetbackBox): number {
-  return (box.w * box.d) / (TILE_METERS * TILE_METERS);
+/** The roof's own area in square metres. */
+export function roofAreaM2(box: SetbackBox): number {
+  return box.w * box.d;
 }
 
 /**
  * Count scales with roof area: 1 at/below
- * ROOF_PROP_AREA_MIN_TILES, climbing to ROOF_PROP_COUNT_BASE_MAX at/above
- * ROOF_PROP_AREA_MAX_TILES, at which point a per-building hashed bonus
+ * ROOF_PROP_AREA_MIN_M2, climbing to ROOF_PROP_COUNT_BASE_MAX at/above
+ * ROOF_PROP_AREA_MAX_M2, at which point a per-building hashed bonus
  * spreads the "big slab" case across the full 4-6 range rather than pinning
  * it at exactly 4.
  */
-export function computeRoofPropCount(areaTiles: number, buildingId: number): number {
-  const span = ROOF_PROP_AREA_MAX_TILES - ROOF_PROP_AREA_MIN_TILES;
-  const t = span <= 0 ? 1 : Math.min(1, Math.max(0, (areaTiles - ROOF_PROP_AREA_MIN_TILES) / span));
+export function computeRoofPropCount(areaM2: number, buildingId: number): number {
+  const span = ROOF_PROP_AREA_MAX_M2 - ROOF_PROP_AREA_MIN_M2;
+  const t = span <= 0 ? 1 : Math.min(1, Math.max(0, (areaM2 - ROOF_PROP_AREA_MIN_M2) / span));
   const base = Math.round(
     ROOF_PROP_COUNT_MIN + t * (ROOF_PROP_COUNT_BASE_MAX - ROOF_PROP_COUNT_MIN),
   );
@@ -529,7 +536,7 @@ export class RoofPropRenderer {
     const slots = emptySlots();
 
     // --- vent / AC boxes: count scales with top-box roof area ---
-    const count = computeRoofPropCount(roofAreaTiles(topBox), building.id);
+    const count = computeRoofPropCount(roofAreaM2(topBox), building.id);
     const kind: PropKind = floors >= MIN_FLOORS_FOR_AC ? 'ac' : 'vent';
     const size = kind === 'ac' ? AC_SIZE : VENT_SIZE;
     const color = kind === 'ac' ? AC_COLOR : VENT_COLOR;

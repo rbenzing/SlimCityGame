@@ -10,13 +10,13 @@ import {
   MIN_SILO_FOOTPRINT_TILES,
   MIN_SMOKESTACK_LEVEL,
   PropKind,
-  ROOF_PROP_AREA_MAX_TILES,
-  ROOF_PROP_AREA_MIN_TILES,
+  ROOF_PROP_AREA_MAX_M2,
+  ROOF_PROP_AREA_MIN_M2,
   ROOF_PROP_COUNT_BASE_MAX,
   ROOF_PROP_COUNT_BONUS_MAX,
   ROOF_PROP_COUNT_MIN,
   RoofPropRenderer,
-  roofAreaTiles,
+  roofAreaM2,
   rotateLocalOffset,
   SILO_CLUSTER_MAX,
   SILO_CLUSTER_MIN,
@@ -92,16 +92,16 @@ function box(overrides: Partial<SetbackBox> = {}): SetbackBox {
 }
 
 // ---------------------------------------------------------------------------
-// roofAreaTiles (pure)
+// roofAreaM2 (pure)
 // ---------------------------------------------------------------------------
 
-describe('roofAreaTiles', () => {
-  it('is 1 for a box exactly TILE_METERS on a side', () => {
-    expect(roofAreaTiles(box({ w: TILE_METERS, d: TILE_METERS }))).toBeCloseTo(1, 9);
+describe('roofAreaM2', () => {
+  it('is the roof read in square metres, whatever the tile measures', () => {
+    expect(roofAreaM2(box({ w: 12, d: 10 }))).toBeCloseTo(120, 9);
   });
 
   it('scales quadratically with a uniformly larger box', () => {
-    expect(roofAreaTiles(box({ w: TILE_METERS * 2, d: TILE_METERS * 2 }))).toBeCloseTo(4, 9);
+    expect(roofAreaM2(box({ w: 24, d: 20 }))).toBeCloseTo(4 * 120, 9);
   });
 });
 
@@ -112,7 +112,7 @@ describe('roofAreaTiles', () => {
 describe('computeRoofPropCount', () => {
   it('is exactly ROOF_PROP_COUNT_MIN at/below the minimum area, for every building id', () => {
     for (let id = 0; id < 30; id++) {
-      expect(computeRoofPropCount(ROOF_PROP_AREA_MIN_TILES, id)).toBe(ROOF_PROP_COUNT_MIN);
+      expect(computeRoofPropCount(ROOF_PROP_AREA_MIN_M2, id)).toBe(ROOF_PROP_COUNT_MIN);
       expect(computeRoofPropCount(0, id)).toBe(ROOF_PROP_COUNT_MIN);
       expect(computeRoofPropCount(-5, id)).toBe(ROOF_PROP_COUNT_MIN);
     }
@@ -120,13 +120,13 @@ describe('computeRoofPropCount', () => {
 
   it('lands in the 4-6 "big slab" range at/above the maximum area', () => {
     for (let id = 0; id < 50; id++) {
-      const count = computeRoofPropCount(ROOF_PROP_AREA_MAX_TILES, id);
+      const count = computeRoofPropCount(ROOF_PROP_AREA_MAX_M2, id);
       expect(count).toBeGreaterThanOrEqual(ROOF_PROP_COUNT_BASE_MAX);
       expect(count).toBeLessThanOrEqual(ROOF_PROP_COUNT_BASE_MAX + ROOF_PROP_COUNT_BONUS_MAX);
     }
     // Also comfortably above the threshold, in case of a non-monotonic slip.
     for (let id = 0; id < 50; id++) {
-      const count = computeRoofPropCount(ROOF_PROP_AREA_MAX_TILES * 3, id);
+      const count = computeRoofPropCount(ROOF_PROP_AREA_MAX_M2 * 3, id);
       expect(count).toBeGreaterThanOrEqual(4);
       expect(count).toBeLessThanOrEqual(6);
     }
@@ -134,7 +134,7 @@ describe('computeRoofPropCount', () => {
 
   it('varies the "big slab" count across building ids (the 4-6 spread is real, not always 4)', () => {
     const seen = new Set<number>();
-    for (let id = 0; id < 60; id++) seen.add(computeRoofPropCount(ROOF_PROP_AREA_MAX_TILES, id));
+    for (let id = 0; id < 60; id++) seen.add(computeRoofPropCount(ROOF_PROP_AREA_MAX_M2, id));
     expect(seen.size).toBeGreaterThan(1);
     for (const v of seen) {
       expect(v).toBeGreaterThanOrEqual(4);
@@ -144,11 +144,11 @@ describe('computeRoofPropCount', () => {
 
   it('increases (non-strictly) as area grows from the min to the max threshold', () => {
     const samples = [
-      ROOF_PROP_AREA_MIN_TILES,
-      ROOF_PROP_AREA_MIN_TILES + (ROOF_PROP_AREA_MAX_TILES - ROOF_PROP_AREA_MIN_TILES) * 0.25,
-      ROOF_PROP_AREA_MIN_TILES + (ROOF_PROP_AREA_MAX_TILES - ROOF_PROP_AREA_MIN_TILES) * 0.5,
-      ROOF_PROP_AREA_MIN_TILES + (ROOF_PROP_AREA_MAX_TILES - ROOF_PROP_AREA_MIN_TILES) * 0.75,
-      ROOF_PROP_AREA_MAX_TILES,
+      ROOF_PROP_AREA_MIN_M2,
+      ROOF_PROP_AREA_MIN_M2 + (ROOF_PROP_AREA_MAX_M2 - ROOF_PROP_AREA_MIN_M2) * 0.25,
+      ROOF_PROP_AREA_MIN_M2 + (ROOF_PROP_AREA_MAX_M2 - ROOF_PROP_AREA_MIN_M2) * 0.5,
+      ROOF_PROP_AREA_MIN_M2 + (ROOF_PROP_AREA_MAX_M2 - ROOF_PROP_AREA_MIN_M2) * 0.75,
+      ROOF_PROP_AREA_MAX_M2,
     ];
     const buildingId = 4242;
     const counts = samples.map((a) => computeRoofPropCount(a, buildingId));
@@ -390,7 +390,7 @@ describe('RoofPropRenderer', () => {
     renderer.apply(deltaAdd(building({ id: 3, level: 1 })));
 
     const { boxes } = computeSetbacks(e, 3);
-    const expectedCount = computeRoofPropCount(roofAreaTiles(boxes[boxes.length - 1]!), 3);
+    const expectedCount = computeRoofPropCount(roofAreaM2(boxes[boxes.length - 1]!), 3);
 
     expect(renderer.slotsFor(3, 'ac')).toHaveLength(expectedCount);
     expect(renderer.slotsFor(3, 'vent')).toHaveLength(0);

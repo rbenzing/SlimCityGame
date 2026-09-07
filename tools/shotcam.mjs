@@ -8,9 +8,20 @@
  * plausible-looking picture.
  */
 
-/** Wait for the dev hooks a harness is about to call. A harness that reaches
- * the page before the app has published them fails on the hook rather than on
- * whatever it was there to check, which is a slow thing to diagnose. */
+/**
+ * Wait for the dev hooks a harness is about to call.
+ *
+ * A harness that reaches the page before the app has published them fails on
+ * the hook rather than on whatever it was there to check — "cannot read
+ * getStats of undefined", a hundred lines from anything it was testing. A
+ * fixed sleep is not the same thing: it passes on a warm machine and fails on
+ * a cold one, which is the worse of the two failures because it looks random.
+ */
+export const hooksReady = (page) =>
+  page.waitForFunction(() => !!window.__slimcity && !!window.__slimcity.cmd, null, {
+    timeout: 20000,
+  });
+
 const ready = (page) =>
   page.waitForFunction(
     () => !!window.__slimcity && !!window.__slimcity.setCamera && !!window.__slimcity.tileMeters,
