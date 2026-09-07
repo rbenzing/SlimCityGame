@@ -129,6 +129,31 @@ await cam(X + 8, Z + 10, 45, 0.6, 0.55);
 await page.waitForTimeout(800);
 await page.screenshot({ path: `${out}/close.png` });
 
+// SPEC 30 slice 1, in the running game: a gravel lane carries no cable, so
+// nothing down it is supplied. The remedy is to run the line ALONG the lane —
+// a line shares its ground with a road, being on poles above it.
+const col = (x, a, c) => Array.from({ length: c - a + 1 }, (_, i) => ({ x: X + x, z: Z + a + i }));
+await cmd('gravel', [{ kind: 'buildRoad', tier: 4, tiles: row(20, 3, 12) }]);
+await page.waitForTimeout(3000);
+const gravel = await readGrid();
+console.log('gravel lane powered:', gravel.power?.[idx(X + 10, Z + 20)]);
+if (gravel.power?.[idx(X + 10, Z + 20)] !== 0)
+  failures.push('a gravel lane conducted power; only a sealed road has a cable in it');
+
+// Down from the supplied line at z+10, then along the lane itself.
+await cmd('Power line', [
+  { kind: 'stringPowerLine', tiles: [...col(3, 10, 20), ...row(20, 3, 12)], on: true },
+]);
+await page.waitForTimeout(3000);
+const remedied = await readGrid();
+console.log('gravel lane powered once a line runs along it:', remedied.power?.[idx(X + 10, Z + 20)]);
+if (remedied.power?.[idx(X + 10, Z + 20)] !== 1)
+  failures.push('a line run along the gravel lane did not supply it — the remedy does not work');
+
+await cam(X + 8, Z + 20, 70, 0.6, 0.8);
+await page.waitForTimeout(800);
+await page.screenshot({ path: `${out}/gravel-remedied.png` });
+
 await b.close();
 for (const e of pageErrors) failures.push(`page error: ${e}`);
 if (failures.length > 0) {

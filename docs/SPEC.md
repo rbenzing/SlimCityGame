@@ -2792,13 +2792,17 @@ built. Nothing the player does about power is legible on the ground.
 **What it should be instead.** Three rules, each small on its own and each
 paying for the next.
 
-**A road conducts power only if it is built to.** A sealed street carries the
-cable; an unsealed one — dirt, gravel, the back alley — does not. This is not
-a new mechanism: `carriesWater` is already a per-road opt-out that the
-utility walk consults, and `carriesPower` is its twin. The consequence is the
-one that matters: a rural lot on a gravel lane is now genuinely off-grid, and
-reaching it is a decision rather than a side effect of having built a road to
-it at all.
+**A road conducts power only if it is built to.** A sealed street has a cable
+laid in it; an unsealed one — the dirt track, the gravel lane — has not. The
+rule is DERIVED from the class's own `surface` rather than set by a flag
+beside it, so the two can never disagree about what a road is made of; it
+needs no new data at all. The back alley is deliberately NOT excluded: an
+alley is made up, and in the real world it is precisely where the poles run.
+A road that does not conduct is not merely unpowered — it is no bridge
+either, so power will not travel through a gravel stretch to the paved road
+on the far side. The consequence is the one that matters: a rural lot on a
+gravel lane is genuinely off-grid, and reaching it is a decision rather than
+a side effect of having built a road to it at all.
 
 **A lamp needs a live street.** Street lighting stops being a property of the
 road's class and becomes a property of the road's *supply*: no power on the

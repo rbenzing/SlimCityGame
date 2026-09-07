@@ -6,10 +6,12 @@
  * from any road tile orthogonally adjacent to a generator's footprint,
  * across connected road tiles, then every tile within 1 orthogonal step of
  * any supplied road/source tile is covered. Power conducts across every
- * road tile (including highways — street lighting). Water conducts across
- * every road tile EXCEPT ones on a spec with `carriesWater === false`
- * (highways by default): such a tile neither receives water itself nor
- * lets water propagate through it to tiles beyond.
+ * SEALED road tile (highways included — street lighting) and along a power
+ * line, which is not a road at all; an unsealed road has no cable in it and
+ * so conducts nothing. Water conducts across every road tile EXCEPT ones on
+ * a spec with `carriesWater === false` (highways by default). A tile that
+ * does not conduct neither receives the utility itself nor lets it propagate
+ * through to tiles beyond.
  *
  * When total demand exceeds total supply, consumers (sorted by ascending
  * building id) beyond the supply budget are cut first — only their own
@@ -19,20 +21,48 @@
  * filter) but fully independently.
  */
 
-import type { BuildingCatalogEntry, BuildingInstance, GridState, RoadSpec } from '../shared/types';
+import type {
+  BuildingCatalogEntry,
+  BuildingInstance,
+  GridState,
+  RoadClassSpec,
+  RoadSpec,
+} from '../shared/types';
 import { BuildingState, RoadTier, isStreetTier } from '../shared/types';
 import { MAP_SIZE, inBounds, tileIndex } from '../shared/constants';
 import roadsData from '../data/roads.json';
 
-const ROAD_SPECS = (roadsData as { specs: RoadSpec[] }).specs;
+const ROAD_DATA = roadsData as { specs: RoadSpec[]; classes: RoadClassSpec[] };
+const ROAD_SPECS = ROAD_DATA.specs;
+const SURFACE_BY_CLASS = new Map(ROAD_DATA.classes.map((c) => [c.id, c.surface]));
 
 /** RoadTier -> whether the tier's pipes carry water (default true; highways set false). */
 const CARRIES_WATER_BY_TIER = new Map<number, boolean>(
   ROAD_SPECS.map((s) => [s.tier, s.carriesWater ?? true]),
 );
 
+/**
+ * RoadTier -> whether the road is sealed. A cable is laid in a made-up road
+ * and not in a dirt track, so this is what decides whether a road conducts
+ * electricity at all. Derived from the class's own surface rather than a flag
+ * beside it, so the two can never disagree about what a road is made of.
+ */
+const IS_SEALED_BY_TIER = new Map<number, boolean>(
+  ROAD_SPECS.map((s) => {
+    const surface = s.profile ? SURFACE_BY_CLASS.get(s.profile.class) : undefined;
+    // A preset with no cross-section names no class, so nothing says it is
+    // unmade; it keeps the cable every road had before this rule existed.
+    return [s.tier, surface === undefined || surface === 'paved'];
+  }),
+);
+
 function tierCarriesWater(tier: number): boolean {
   return CARRIES_WATER_BY_TIER.get(tier) ?? true;
+}
+
+/** Whether the tier's road is made up; an unknown tier is assumed sealed. */
+export function tierIsSealed(tier: number): boolean {
+  return IS_SEALED_BY_TIER.get(tier) ?? true;
 }
 
 /**
@@ -180,12 +210,18 @@ function computeCoverage(
 }
 
 /**
- * Electricity travels along every drivable street (highways included — street
- * lighting) and along a power line, which is not a street and carries nothing
- * else. Rail is not a street and conducts nothing.
+ * Electricity travels along a SEALED street — a made-up road has a cable in
+ * it, a dirt track has not — and along a power line, which is not a street
+ * and carries nothing else. Motorways conduct (they light themselves); rail
+ * is not a street and conducts nothing.
+ *
+ * A road that does not conduct is not merely unpowered: it is no bridge
+ * either, so a lot reached only down a dirt lane needs a line run to it.
  */
 function conductsPower(g: GridState, index: number): boolean {
-  return g.powerLine[index] === 1 || isStreetTier(g.roadTier[index]!);
+  if (g.powerLine[index] === 1) return true;
+  const tier = g.roadTier[index]!;
+  return isStreetTier(tier) && tierIsSealed(tier);
 }
 
 /** Only drivable streets whose spec carries water conduct it (highways excluded by default; rail is not a street, and neither is a power line). */

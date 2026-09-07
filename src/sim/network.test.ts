@@ -100,6 +100,61 @@ const house: BuildingCatalogEntry = {
 
 const catalog = [powerPlant, waterTower, house];
 
+describe('recomputeUtilities: only a sealed road carries a cable', () => {
+  it('leaves a lot on a gravel lane unpowered, and a line is the remedy', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'power-plant', 5, 5, 1, 1);
+    for (let x = 6; x <= 14; x++) paintRoad(g, x, 5, RoadTier.Gravel);
+    placeBuilding(g, buildings, 2, 'house', 12, 6, 1, 1);
+
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.power[tileIndex(12, 6)]).toBe(0);
+
+    // The line runs beside the lane and reaches what the lane could not.
+    for (let x = 6; x <= 13; x++) g.powerLine[tileIndex(x, 5)] = 1;
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.power[tileIndex(12, 6)]).toBe(1);
+  });
+
+  it('will not conduct THROUGH a gravel stretch to the paved road beyond it', () => {
+    // Sealed, then a gravel gap, then sealed again. The far end is not merely
+    // unpowered by its own surface — nothing crosses the gap to reach it.
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'power-plant', 5, 5, 1, 1);
+    for (let x = 6; x <= 9; x++) paintRoad(g, x, 5, RoadTier.TwoLane);
+    for (let x = 10; x <= 12; x++) paintRoad(g, x, 5, RoadTier.Gravel);
+    for (let x = 13; x <= 18; x++) paintRoad(g, x, 5, RoadTier.TwoLane);
+
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.power[tileIndex(8, 5)]).toBe(1); // this side of the gap
+    expect(g.power[tileIndex(11, 5)]).toBe(0); // the gravel itself
+    expect(g.power[tileIndex(16, 5)]).toBe(0); // and everything past it
+  });
+
+  it('still carries water down a gravel lane — a cable and a pipe are not the same thing', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'water-tower', 5, 5, 1, 1);
+    for (let x = 6; x <= 14; x++) paintRoad(g, x, 5, RoadTier.Gravel);
+    placeBuilding(g, buildings, 2, 'house', 12, 6, 1, 1);
+
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.watered[tileIndex(12, 6)]).toBe(1);
+  });
+
+  it('a motorway still conducts — it lights itself', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'power-plant', 5, 5, 1, 1);
+    for (let x = 6; x <= 14; x++) paintRoad(g, x, 5, RoadTier.Highway);
+
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.power[tileIndex(12, 5)]).toBe(1);
+  });
+});
+
 describe('recomputeUtilities: power lines', () => {
   /** Strings a straight run of power line from x0..x1 inclusive at row z. */
   function stringLine(g: GridState, x0: number, x1: number, z: number): void {

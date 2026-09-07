@@ -278,6 +278,10 @@ nothing you add gets committed.
 - If a zone won't develop, check the three requirements in order: **road access,
   power, water**. The most common mistake is a utility placed a tile or two away
   from any road — move it flush against one.
+- **Gravel roads carry no electricity** — there is no cable in a dirt track.
+  Anything down a gravel lane stays dark until you run a power line to it, and
+  power won't travel *through* a gravel stretch to the paved road beyond. Water
+  still runs down one; a pipe and a cable are not the same thing.
 - **Power lines** (Electricity) reach what a road cannot: drag a run from your
   generators out to the lot, the district or the pump that a street doesn't
   connect. A line is cheaper per tile than the cheapest road, but it charges a
