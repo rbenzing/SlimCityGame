@@ -6,6 +6,8 @@ import {
   computeMeterPlacements,
   computeSignPlacements,
   FurnitureRoadTile,
+  kerbFacingYaw,
+  METER_KERB_CLEARANCE_M,
   RoadFurnitureRenderer,
 } from './roadfurniture';
 import { RoadTier } from '../shared/types';
@@ -34,8 +36,16 @@ describe('kerb props stand at the tile’s own edge', () => {
     const composed = computeMeterPlacements(run(parked));
     expect(preset.length).toBeGreaterThan(0);
     expect(composed.length).toBe(preset.length);
-    for (const m of preset) expect(m.lateralOffset).toBeCloseTo(3.75 + SIDEWALK_WIDTH_M, 6);
-    for (const m of composed) expect(m.lateralOffset).toBeCloseTo(6 + SIDEWALK_WIDTH_M, 6);
+    // A meter stands at the KERB FACE of its own carriageway — beside the bay
+    // it charges for — so what changes with the cross-section is the edge it
+    // measures from, not the small clearance behind it.
+    for (const m of preset) expect(m.lateralOffset).toBeCloseTo(3.75 + METER_KERB_CLEARANCE_M, 6);
+    for (const m of composed) expect(m.lateralOffset).toBeCloseTo(6 + METER_KERB_CLEARANCE_M, 6);
+    // And it stands ON the footway, never out at its back edge or in the road.
+    for (const m of composed) {
+      expect(m.lateralOffset).toBeGreaterThan(6);
+      expect(m.lateralOffset).toBeLessThan(6 + SIDEWALK_WIDTH_M);
+    }
     // A manhole stays inside the carriageway it belongs to, whichever width that is.
     for (const h of computeManholePlacements(run(parked))) {
       expect(Math.abs(h.lateral)).toBeLessThan(6);
@@ -629,5 +639,105 @@ describe('RoadFurnitureRenderer', () => {
 
     renderer.dispose();
     expect(scene.children.filter((c) => c instanceof THREE.InstancedMesh).length).toBe(0);
+  });
+});
+
+describe('a board faces the traffic it speaks to', () => {
+  /** The direction a board with this yaw looks, given boards are authored facing +z. */
+  const facing = (yaw: number): { x: number; z: number } => ({
+    x: Math.round(Math.sin(yaw) * 1e6) / 1e6,
+    z: Math.round(Math.cos(yaw) * 1e6) / 1e6,
+  });
+
+  it('looks back along the road, never across it', () => {
+    // The kerb a board stands on runs along one axis; whichever kerb it is,
+    // the board must look ALONG the carriageway rather than out over it.
+    for (const axis of ['x', 'z'] as const) {
+      for (const side of [1, -1] as const) {
+        const look = facing(kerbFacingYaw(axis, side));
+        // A kerb on the x axis means the road runs along z, so the board looks
+        // along z — and vice versa.
+        if (axis === 'x') {
+          expect(Math.abs(look.z)).toBeCloseTo(1, 6);
+          expect(Math.abs(look.x)).toBeCloseTo(0, 6);
+        } else {
+          expect(Math.abs(look.x)).toBeCloseTo(1, 6);
+          expect(Math.abs(look.z)).toBeCloseTo(0, 6);
+        }
+      }
+    }
+  });
+
+  it('looks the opposite way on the opposite kerb', () => {
+    // The two kerbs of a road address opposing streams, so their boards cannot
+    // face the same way.
+    for (const axis of ['x', 'z'] as const) {
+      const a = facing(kerbFacingYaw(axis, 1));
+      const b = facing(kerbFacingYaw(axis, -1));
+      expect(a.x).toBeCloseTo(-b.x, 6);
+      expect(a.z).toBeCloseTo(-b.z, 6);
+    }
+  });
+
+  it('gives every kerbside board a facing, not just the ones at a junction', () => {
+    // A dead end: the board used to take the authored +z facing whatever way
+    // the road ran, so on an east-west stub it stood edge-on to the driver.
+    const run: FurnitureRoadTile[] = [
+      { x: 1, z: 5, tier: RoadTier.TwoLane },
+      { x: 2, z: 5, tier: RoadTier.TwoLane },
+      { x: 3, z: 5, tier: RoadTier.TwoLane },
+    ];
+    const signs = computeSignPlacements(run);
+    expect(signs.length).toBeGreaterThan(0);
+    for (const s of signs) {
+      expect(s.yaw, `${s.type} at ${s.x},${s.z}`).toBeDefined();
+      // An east-west road: every board looks along x, never along z.
+      const look = facing(s.yaw!);
+      expect(Math.abs(look.x)).toBeCloseTo(1, 6);
+    }
+  });
+});
+
+describe('a parking meter needs a bay to charge for', () => {
+  const bay: RoadProfile = {
+    class: 'local',
+    pieces: [
+      { kind: 'sidewalk', width: 1.875 },
+      { kind: 'parking', width: 2.25 },
+      { kind: 'travel', width: 3.75, flow: 'back' },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+      { kind: 'sidewalk', width: 1.875 },
+    ],
+  };
+  const noBay: RoadProfile = {
+    class: 'local',
+    pieces: [
+      { kind: 'sidewalk', width: 1.875 },
+      { kind: 'travel', width: 3.75, flow: 'back' },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+      { kind: 'sidewalk', width: 1.875 },
+    ],
+  };
+  const run = (profile: RoadProfile): FurnitureRoadTile[] =>
+    Array.from({ length: 24 }, (_, i) => ({ x: i, z: 5, tier: RoadTier.TwoLane, profile }));
+
+  it('stands meters along a street that has parking', () => {
+    expect(computeMeterPlacements(run(bay)).length).toBeGreaterThan(0);
+  });
+
+  it('stands none along the same street with the parking taken out', () => {
+    // The tier still says "the sort of road that often has parking"; the tile's
+    // own cross-section says there is nowhere to park, and it is the one that
+    // decides.
+    expect(computeMeterPlacements(run(noBay))).toEqual([]);
+  });
+
+  it('falls back to the tier where a tile carries no composed profile', () => {
+    const plain: FurnitureRoadTile[] = Array.from({ length: 24 }, (_, i) => ({
+      x: i,
+      z: 5,
+      tier: RoadTier.TwoLane,
+    }));
+    expect(computeMeterPlacements(plain).length).toBeGreaterThan(0);
   });
 });

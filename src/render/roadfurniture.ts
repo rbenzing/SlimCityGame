@@ -49,6 +49,8 @@ const METER_HEAD_COLOR = 0x9a9ba0; // silver meter head
 const METER_DISPLAY_COLOR = 0x20242a; // dark display face
 const METER_PERIOD = 5; // a meter pair on every (x+z) multiple of 5
 const METER_ALONG = 3; // the pair straddles the tile center by ±3m along the run
+/** How far behind the kerb face a meter stands, so it is beside its bay and clear of the traffic. */
+export const METER_KERB_CLEARANCE_M = 0.45;
 
 // --- Traffic signs -----------------------------------------------------------
 // Standard road signs, each a recognizable shape+color on the shared pole.
@@ -238,6 +240,28 @@ function curbsideLateralOffset(tile: { tier?: RoadTier; profile?: RoadProfile })
 }
 
 /**
+ * Where a cabinet with real bulk stands: BEHIND the footway, its near face at
+ * the paving's back edge and its body out on the verge. Centring it on that
+ * edge instead left half of it overhanging the walking route, and on a road
+ * whose footway is thin, overhanging the carriageway.
+ */
+function behindFootwayOffset(
+  tile: { tier?: RoadTier; profile?: RoadProfile },
+  depth: number,
+): number {
+  return curbsideLateralOffset(tile) + depth / 2;
+}
+
+/**
+ * Where a meter stands: at the KERB FACE, beside the bay it charges for, not
+ * at the back of the footway. A driver pays at the kerb they parked against.
+ */
+function kerbFaceOffset(tile: { tier?: RoadTier; profile?: RoadProfile }): number {
+  const { half, kerb } = edgeOf(tile);
+  return half + Math.min(METER_KERB_CLEARANCE_M, kerb);
+}
+
+/**
  * A rail line is not a road. It sits on the grid and blocks building like one,
  * but nothing that belongs beside a street belongs beside a track: no lamps, no
  * meters, no boards telling a train to give way.
@@ -295,6 +319,19 @@ function tierGetsSigns(tier: RoadTier | undefined): boolean {
 function tierHasParking(tier: RoadTier | undefined): boolean {
   const t = tier ?? RoadTier.TwoLane;
   return t === RoadTier.TwoLane || t === RoadTier.FourLane || t === RoadTier.OneWay;
+}
+
+/**
+ * Whether this tile actually has somewhere to park — a `parking` piece in its
+ * own cross-section, not merely a tier that is the sort of road which often
+ * does. A meter is a charge to use a bay, so a meter with no bay beside it is
+ * meaningless; a player who turns parking off on a street should watch the
+ * meters go with it. A tile carrying no composed profile falls back to what
+ * its tier says, which is what every tile did before profiles existed.
+ */
+function hasParkingBay(tile: FurnitureRoadTile): boolean {
+  if (!tile.profile) return tierHasParking(tile.tier);
+  return tile.profile.pieces.some((p) => p.kind === 'parking');
 }
 
 /**
@@ -539,7 +576,7 @@ export function computeBoxPlacements(roadTiles: readonly FurnitureRoadTile[]): B
       z: tile.z,
       axis: pick.axis,
       side: pick.side,
-      lateralOffset: curbsideLateralOffset(tile),
+      lateralOffset: behindFootwayOffset(tile, BOX_DEPTH),
     });
   }
   return out;
@@ -550,7 +587,7 @@ export function computeMeterPlacements(roadTiles: readonly FurnitureRoadTile[]):
   const tileSet = buildTileSet(roadTiles);
   const out: MeterPlacement[] = [];
   for (const tile of roadTiles) {
-    if (!tierHasParking(tile.tier)) continue;
+    if (!hasParkingBay(tile)) continue;
     if (tile.elevated) continue; // nobody parks on a viaduct
     // No curb parking on a curve, and none across a junction — both cases have
     // road on the crossing axis where the meter would stand.
@@ -559,7 +596,7 @@ export function computeMeterPlacements(roadTiles: readonly FurnitureRoadTile[]):
 
     const curbAxis = lateralAxis(tileSet, tile.x, tile.z);
     const side: FurnitureSide = hashTile(tile.x, tile.z, HASH_METER_SIDE) < 0.5 ? -1 : 1;
-    const lateralOffset = curbsideLateralOffset(tile);
+    const lateralOffset = kerbFaceOffset(tile);
     for (const along of [METER_ALONG, -METER_ALONG]) {
       out.push({ x: tile.x, z: tile.z, curbAxis, side, lateralOffset, along });
     }
@@ -644,7 +681,24 @@ const CONTROL_SIGNS: ReadonlySet<SignType> = new Set<SignType>(['signal', 'stop'
  * stop line the driver is being told to stop at, rather than out at the middle
  * of the tile where the instruction arrives a car length early.
  */
-const CONTROL_SIGN_SETBACK_M = 1.0;
+const CONTROL_SIGN_SETBACK_M = 0.35;
+
+/**
+ * Which way a board standing on a kerb must face: back along the traffic on
+ * ITS OWN side of the road, so the driver it is addressing reads its face and
+ * not its edge.
+ *
+ * One rule serves every kerbside board. The kerb the sign stands on points
+ * outward from the carriageway; on a right-hand-drive network the traffic
+ * beside that kerb travels with the kerb on its right, so the direction it
+ * comes FROM is the kerb vector turned a quarter anticlockwise. A board is
+ * authored facing +z, so its yaw is that direction's bearing.
+ */
+export function kerbFacingYaw(axis: FurnitureAxis, side: FurnitureSide): number {
+  const kerbX = axis === 'x' ? side : 0;
+  const kerbZ = axis === 'x' ? 0 : side;
+  return Math.atan2(-kerbZ, kerbX);
+}
 
 /** One typed sign per curbed tile whose road-tile role earns it. */
 export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): SignPlacement[] {
@@ -725,14 +779,21 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
         worldOffsetX: rightX * lateral + towardX * along,
         worldOffsetZ: rightZ * lateral + towardZ * along,
         // A signal's mast arm reaches out over the road it holds; a flat board
-        // reads from either side and only has to lie along the run.
-        yaw: isCantilevered(type) ? signalYaw(axis, side) : axis === 'x' ? 0 : Math.PI / 2,
+        // faces back at the traffic it is stopping, which is the way it is
+        // read. Lying along the run showed drivers its edge.
+        yaw: isCantilevered(type) ? signalYaw(axis, side) : kerbFacingYaw(axis, side),
       });
       continue;
     }
 
+    // A board stands on a FLANK kerb — one running alongside the carriageway —
+    // never across the end of it. A dead end's bulb is a kerb too, and a sign
+    // planted on it faces across the road instead of back down it.
+    const flankAxis = lateralAxis(tileSet, tile.x, tile.z);
+    const free = availableSidewalkSides(tileSet, tile.x, tile.z);
+    const flanks = free.filter((s) => s.axis === flankAxis);
     const pick = pickSide(
-      availableSidewalkSides(tileSet, tile.x, tile.z),
+      flanks.length > 0 ? flanks : free,
       hashTile(tile.x, tile.z, HASH_SIGN_SIDE),
     );
     if (!pick) continue;
@@ -744,6 +805,10 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
       side: pick.side,
       lateralOffset: curbsideLateralOffset(tile),
       type,
+      // Every kerbside board faces the traffic it speaks to. Without this a
+      // board took the authored +z facing whatever way its road ran, so half
+      // of them stood edge-on to the drivers meant to read them.
+      yaw: kerbFacingYaw(pick.axis, pick.side),
     });
   }
   return out;
