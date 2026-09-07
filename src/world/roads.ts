@@ -11,7 +11,14 @@ import {
   findPath as runAstar,
   nearestNode as findNearestNode,
 } from './pathfind';
-import { flowForStep, RoadFlow, RoadTier, ZoneType, isStreetTier } from '../shared/types';
+import {
+  flowDirection,
+  flowForStep,
+  RoadFlow,
+  RoadTier,
+  ZoneType,
+  isStreetTier,
+} from '../shared/types';
 import {
   canGainTurnPocket,
   isPresetProfileId,
@@ -356,7 +363,9 @@ function storedRunDirection(g: GridState, runTiles: readonly TilePoint[]): boole
   for (let i = 0; i < runTiles.length - 1; i++) {
     const here = runTiles[i]!;
     const next = runTiles[i + 1]!;
-    const stored = g.roadFlow[indexOf(g.size, here.x, here.z)] ?? RoadFlow.None;
+    // The direction only: the byte also carries which half of a corridor the
+    // tile is, and comparing that against a bare RoadFlow never matches.
+    const stored = flowDirection(g.roadFlow[indexOf(g.size, here.x, here.z)] ?? RoadFlow.None);
     if (stored === RoadFlow.None) continue;
     const along = flowForStep(next.x - here.x, next.z - here.z);
     if (along === RoadFlow.None) continue; // defensive: a non-orthogonal step

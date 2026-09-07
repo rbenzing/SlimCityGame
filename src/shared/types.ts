@@ -75,6 +75,44 @@ export const RoadFlow = {
 } as const;
 export type RoadFlow = (typeof RoadFlow)[keyof typeof RoadFlow];
 
+/**
+ * The bits of a stored `roadFlow` byte that hold the direction. Everything
+ * above them says something else about the tile, so a reader that wants the
+ * direction must mask — reading the byte raw and comparing it to a RoadFlow
+ * is the mistake this constant exists to prevent.
+ */
+export const ROAD_FLOW_DIRECTION_MASK = 0b111;
+/** Set when the tile is one half of a two-tile corridor rather than a road in its own right. */
+export const CORRIDOR_BIT = 0b1000;
+/**
+ * Which half of the corridor the tile is, read across the road while facing
+ * the direction of travel: clear is the LEFT half, set is the RIGHT. The
+ * profile's pieces run left to right in that same frame, so the half decides
+ * which slice of the cross-section the tile draws.
+ */
+export const CORRIDOR_RIGHT_BIT = 0b1_0000;
+
+/** Which half of a corridor a tile is, or that it is not part of one. */
+export type CorridorHalf = 'none' | 'left' | 'right';
+
+/** The direction a stored flow byte points, ignoring everything else it carries. */
+export function flowDirection(stored: number): RoadFlow {
+  return (stored & ROAD_FLOW_DIRECTION_MASK) as RoadFlow;
+}
+
+/** Which half of a corridor a stored flow byte says the tile is. */
+export function corridorHalfOf(stored: number): CorridorHalf {
+  if ((stored & CORRIDOR_BIT) === 0) return 'none';
+  return (stored & CORRIDOR_RIGHT_BIT) === 0 ? 'left' : 'right';
+}
+
+/** A stored flow byte carrying both a direction and a corridor half. */
+export function storedFlow(direction: RoadFlow, half: CorridorHalf = 'none'): number {
+  const bits =
+    half === 'none' ? 0 : half === 'left' ? CORRIDOR_BIT : CORRIDOR_BIT | CORRIDOR_RIGHT_BIT;
+  return (direction & ROAD_FLOW_DIRECTION_MASK) | bits;
+}
+
 /** The flow that points from a tile to the orthogonal neighbour one step away, or None. */
 export function flowForStep(dx: number, dz: number): RoadFlow {
   if (dx === 0 && dz === -1) return RoadFlow.North;

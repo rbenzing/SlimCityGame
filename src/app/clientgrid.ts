@@ -9,7 +9,7 @@
  * ({size, roadTier, water, zone, buildingId, height}).
  */
 import { TILE_METERS, worldToTile } from '../shared/constants';
-import { RoadFlow, RoadTier } from '../shared/types';
+import { flowDirection, RoadFlow, RoadTier } from '../shared/types';
 import { approachZoneTiles } from '../shared/approach';
 import {
   approachAhead,
@@ -191,7 +191,7 @@ export class ClientGridMirror {
       own,
       this.approachAt(x, z),
       this.narrowingAt(x, z),
-      this.roadFlow[this.idx(x, z)] ?? RoadFlow.None,
+      flowDirection(this.roadFlow[this.idx(x, z)] ?? RoadFlow.None),
       this.auxiliaryAt(x, z),
     );
   }
@@ -215,9 +215,7 @@ export class ClientGridMirror {
       turnsAt: (x, z) => this.junctionAt(x, z)?.turns ?? 0,
       profileAt: (x, z) => this.profileAt(x, z),
       flowAt: (x, z) =>
-        this.inBounds(x, z)
-          ? (((this.roadFlow[this.idx(x, z)] ?? 0) & 7) as RoadFlow)
-          : RoadFlow.None,
+        this.inBounds(x, z) ? flowDirection(this.roadFlow[this.idx(x, z)] ?? 0) : RoadFlow.None,
     };
   }
 

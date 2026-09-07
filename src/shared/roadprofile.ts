@@ -284,6 +284,49 @@ export function fitsTile(profile: RoadProfile): boolean {
   return profileWidth(profile) <= TILE_METERS + 1e-6;
 }
 
+/**
+ * How wide a road may be at all: two tiles. Six lanes are 20.1 m and eight
+ * are 26.8 m, so neither is a road a 16 m tile can hold — they are CORRIDORS,
+ * laid as two parallel runs whose tiles each draw their own half of one
+ * cross-section. Two tiles is as wide as this design goes; the road stays on
+ * the grid, which is the decision that keeps everything else tractable.
+ */
+export const CORRIDOR_METERS = 2 * TILE_METERS;
+
+/** Whether the profile fits a two-tile corridor, which is the widest road there is. */
+export function fitsCorridor(profile: RoadProfile): boolean {
+  return profileWidth(profile) <= CORRIDOR_METERS + 1e-6;
+}
+
+/**
+ * Whether a class's roads may span two tiles at all. A class earns a corridor
+ * by NEEDING one: if its own largest road does not fit a tile, the corridor is
+ * the only way to build what the class has always claimed to run. Every other
+ * class stays on one tile, so a local street with parking down both kerbs is
+ * still too wide rather than quietly becoming a 32 m corridor with 20 m of
+ * verge either side.
+ */
+export function classAdmitsCorridor(classId: RoadClassId): boolean {
+  const { max } = roadClass(classId).lanes;
+  return max * laneWidthFor(classId) > TILE_METERS + 1e-6;
+}
+
+/**
+ * How many tiles ACROSS the road a profile needs: one for an ordinary street,
+ * two for a corridor, and zero for a cross-section that cannot be laid — too
+ * wide for two tiles, or too wide for one on a class that gets no second.
+ */
+export function tilesAcross(profile: RoadProfile): 0 | 1 | 2 {
+  if (fitsTile(profile)) return 1;
+  if (!classAdmitsCorridor(profile.class)) return 0;
+  return fitsCorridor(profile) ? 2 : 0;
+}
+
+/** Whether the profile is wide enough to need two tiles. */
+export function isCorridor(profile: RoadProfile): boolean {
+  return tilesAcross(profile) === 2;
+}
+
 /** Raised kerbs on the unconnected sides: explicit, else wherever there is a footway. */
 export function hasKerbs(profile: RoadProfile): boolean {
   return profile.kerbs ?? profile.pieces.some((p) => p.kind === 'sidewalk');
@@ -611,7 +654,7 @@ const LANE_OPTIONS_BY_CLASS: Readonly<Record<RoadClassId, readonly number[]>> = 
   urban: [2, 4, 6],
   collector: [2, 4, 6],
   arterial: [2, 4, 6],
-  divided: [4, 6],
+  divided: [4, 6, 8],
   highway: [2, 4, 6, 8],
   ramp: [1, 2],
   rail: [],
@@ -633,7 +676,11 @@ export function laneOptionsFor(classId: RoadClassId): readonly number[] {
   const { min, max } = roadClass(classId).lanes;
   const lane = laneWidthFor(classId);
   const inRange = LANE_OPTIONS_BY_CLASS[classId].filter((n) => n >= min && n <= max);
-  const fits = inRange.filter((n) => n * lane <= TILE_METERS + 1e-6);
+  // A class that gets a corridor is offered every count that fits two tiles —
+  // six and eight lanes are real offers now, not counts held out and then
+  // refused. A class that gets none is still held to its own tile.
+  const budget = classAdmitsCorridor(classId) ? CORRIDOR_METERS : TILE_METERS;
+  const fits = inRange.filter((n) => n * lane <= budget + 1e-6);
   // A class whose very smallest road overruns the tile still offers it, so the
   // drawer is never empty and the width chip explains itself.
   return fits.length > 0 ? fits : inRange.slice(0, 1);
@@ -881,7 +928,12 @@ export function isLayable(profile: RoadProfile): boolean {
  * not the kind of road its class is.
  */
 export function layRefusal(profile: RoadProfile): string | null {
-  if (!fitsTile(profile)) return 'Too wide for the tile';
+  // A big road wider than a tile is a corridor, laid across two of them. A
+  // road whose class gets no corridor is still simply too wide for its tile,
+  // and a corridor-class road wider than two tiles is too wide for anything.
+  if (tilesAcross(profile) === 0) {
+    return classAdmitsCorridor(profile.class) ? 'Too wide for a corridor' : 'Too wide for the tile';
+  }
   const cls = roadClass(profile.class);
   const name = cls.name.toLowerCase();
   if (!admitsAllPieces(profile)) return `A ${name} doesn't carry that`;

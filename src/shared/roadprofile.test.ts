@@ -22,6 +22,11 @@ import {
   editsOf,
   FIRST_CUSTOM_PROFILE_ID,
   fitsTile,
+  fitsCorridor,
+  classAdmitsCorridor,
+  CORRIDOR_METERS,
+  tilesAcross,
+  isCorridor,
   canGainAuxiliaryLane,
   hasKerbs,
   KERB_RESERVE_M,
@@ -56,7 +61,7 @@ import {
   withAuxiliaryLane,
   withTurnPocket,
 } from './roadprofile';
-import type { RoadClassId, RoadProfile, RoadSpec } from './types';
+import type { LanePiece, RoadClassId, RoadProfile, RoadSpec } from './types';
 import { RoadTier } from './types';
 
 const presetProfile = (tier: RoadTier): RoadProfile => presetProfileForTier(tier);
@@ -335,12 +340,17 @@ describe('composing a profile from a preset and the player’s edits', () => {
     expect(hasKerbs(p)).toBe(false);
   });
 
-  it('cannot add footways to an avenue whose carriageway already fills the tile', () => {
+  it('takes an avenue past its tile by making it a corridor, footways and all', () => {
+    // The avenue's carriageway already fills its tile, so footways used to be
+    // refused outright. An arterial earns a corridor, so now they simply make
+    // it a two-tile road — which is what an avenue with pavements really is.
     const p = composeProfile(presetProfileForTier(RoadTier.Avenue), {
       ...NO_EDITS,
       footways: true,
     });
-    expect(isLayable(p)).toBe(false);
+    expect(fitsTile(p)).toBe(false);
+    expect(isLayable(p)).toBe(true);
+    expect(tilesAcross(p)).toBe(2);
   });
 
   it('stripping the bike lanes from the bike-lane preset gives the two-lane preset', () => {
@@ -737,20 +747,23 @@ describe('lane widths and the lane counts a road is offered, to US standards', (
     expect(laneWidthFor('dirt')).toBeLessThan(laneWidthFor('local'));
   });
 
-  it('offers only the lane counts a tile can actually hold', () => {
-    // The catalogue lets an arterial run to six and a motorway to eight, and
-    // both are real roads — but six 12 ft lanes are 21.6 m of carriageway on a
-    // 16 m tile. Those are two-tile corridors, and until there are two-tile
-    // corridors the tool must not hold out what it will then refuse.
+  it('offers only the lane counts the road can actually be laid in', () => {
+    // A class is held to its own budget: one tile, or two where the class
+    // earns a corridor by needing one. The tool must never hold out a count it
+    // will then refuse for width.
     for (const id of ['highway', 'divided', 'arterial', 'urban', 'collector', 'local'] as const) {
+      const budget = classAdmitsCorridor(id) ? CORRIDOR_METERS : TILE_METERS;
       for (const n of laneOptionsFor(id))
-        expect(n * laneWidthFor(id)).toBeLessThanOrEqual(TILE_METERS + 1e-6);
+        expect(n * laneWidthFor(id)).toBeLessThanOrEqual(budget + 1e-6);
     }
-    expect(laneOptionsFor('highway')).toEqual([2, 4]);
-    expect(laneOptionsFor('divided')).toEqual([4]);
-    expect(laneOptionsFor('arterial')).toEqual([4]);
-    expect(laneOptionsFor('urban')).toEqual([2, 4]);
+    // The big roads reach the counts they always claimed, now that a corridor
+    // is two tiles wide.
+    expect(laneOptionsFor('highway')).toEqual([2, 4, 6, 8]);
+    expect(laneOptionsFor('divided')).toEqual([4, 6, 8]);
+    expect(laneOptionsFor('arterial')).toEqual([4, 6]);
     expect(laneOptionsFor('collector')).toEqual([2, 4]);
+    // And every class that never needed a corridor is still held to its tile.
+    expect(laneOptionsFor('urban')).toEqual([2, 4]);
     expect(laneOptionsFor('local')).toEqual([2]);
     expect(laneOptionsFor('rural')).toEqual([2]);
     expect(laneOptionsFor('dirt')).toEqual([2]);
@@ -778,13 +791,23 @@ describe('lane widths and the lane counts a road is offered, to US standards', (
     const four = composeProfile(street, { ...NO_EDITS, lanes: 2, lanesBack: 2 });
     expect(profileWidth(four)).toBeLessThan(TILE_METERS);
     expect(layRefusal(four)).toBe('A local street runs 2 to 3 lanes');
-    // And a road that really is too wide says so.
-    const wide = composeProfile(presetProfileForTier(RoadTier.Highway), {
+    // An eight-lane motorway overruns a tile, but a motorway earns a corridor
+    // and two tiles hold it — which is the whole point of wave 6.
+    const eight = composeProfile(presetProfileForTier(RoadTier.Highway), {
       ...NO_EDITS,
       lanes: 4,
       lanesBack: 4,
     });
-    expect(layRefusal(wide)).toBe('Too wide for the tile');
+    expect(fitsTile(eight)).toBe(false);
+    expect(layRefusal(eight)).toBeNull();
+    // A class with no corridor is still held to its tile, and told so in those
+    // words rather than being offered a second tile it never gets.
+    const parkedUp = composeProfile(presetProfileForTier(RoadTier.FourLane), {
+      ...NO_EDITS,
+      parking: 'both',
+      bike: 'both',
+    });
+    expect(layRefusal(parkedUp)).toBe('Too wide for the tile');
   });
 
   it('is honest about what a 16 m tile holds: four lanes fit, six do not', () => {
@@ -1003,5 +1026,72 @@ describe('the auxiliary lane a motorway grows beside a slip road', () => {
   it('leaves the road somewhere to stand its kerb, as a turn bay does', () => {
     const widened = withAuxiliaryLane(slimMotorway, 1)!;
     expect(profileWidth(widened)).toBeLessThanOrEqual(TILE_METERS - 2 * KERB_RESERVE_M + 1e-9);
+  });
+});
+
+describe('two-tile corridors — the widest road the grid holds', () => {
+  const lanes = (n: number, width: number): LanePiece[] =>
+    Array.from({ length: n }, (_, i) => ({
+      kind: 'travel' as const,
+      width,
+      flow: i < n / 2 ? ('back' as const) : ('fwd' as const),
+    }));
+
+  it('is two tiles across, and not a metre more', () => {
+    expect(CORRIDOR_METERS).toBe(2 * TILE_METERS);
+  });
+
+  it('calls a street one tile, a six-lane road two, and an impossible road none', () => {
+    // Four 3.5 m lanes plus footways: 15.8 m, still a street.
+    const street: RoadProfile = {
+      class: 'urban',
+      pieces: [
+        { kind: 'sidewalk', width: 0.9 },
+        ...lanes(4, 3.5),
+        { kind: 'sidewalk', width: 0.9 },
+      ],
+    };
+    expect(tilesAcross(street)).toBe(1);
+    expect(isCorridor(street)).toBe(false);
+
+    // Six 3.5 m lanes are 21 m: past a tile, inside a corridor.
+    const six: RoadProfile = { class: 'arterial', pieces: lanes(6, 3.5) };
+    expect(tilesAcross(six)).toBe(2);
+    expect(isCorridor(six)).toBe(true);
+
+    // Eight 3.6 m lanes with a median and generous footways overrun even two.
+    const absurd: RoadProfile = {
+      class: 'divided',
+      pieces: [
+        { kind: 'sidewalk', width: 3 },
+        ...lanes(8, 3.6),
+        { kind: 'median', width: 3 },
+        { kind: 'sidewalk', width: 3 },
+      ],
+    };
+    expect(tilesAcross(absurd)).toBe(0);
+    expect(isCorridor(absurd)).toBe(false);
+  });
+
+  it('lays a six-lane arterial that used to be refused for width', () => {
+    const six: RoadProfile = { class: 'arterial', pieces: lanes(6, 3.5) };
+    expect(fitsTile(six)).toBe(false); // it never fitted one tile
+    expect(fitsCorridor(six)).toBe(true);
+    expect(isLayable(six)).toBe(true);
+    expect(layRefusal(six)).toBeNull();
+  });
+
+  it('still refuses a road too wide for even a corridor, and says which', () => {
+    const absurd: RoadProfile = { class: 'divided', pieces: lanes(8, 5) };
+    expect(layRefusal(absurd)).toBe('Too wide for a corridor');
+  });
+
+  it('offers the six and eight lane counts the classes always claimed to run', () => {
+    // The arterial's range is 4..6 and the divided road's 4..8; before
+    // corridors the tool held them out and then refused them for width.
+    expect(laneOptionsFor('arterial')).toContain(6);
+    expect(laneOptionsFor('divided')).toContain(8);
+    // A farm track is still two lanes and only two.
+    expect(laneOptionsFor('rural')).toEqual([2]);
   });
 });

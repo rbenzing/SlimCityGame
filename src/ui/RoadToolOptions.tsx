@@ -14,6 +14,8 @@ import {
   laneOptionsFor,
   presetProfileForTier,
   profileWidth,
+  tilesAcross,
+  CORRIDOR_METERS,
   roadClass,
   withArticle,
   type MiddleChoice,
@@ -85,6 +87,12 @@ function ProfileGroup(): JSX.Element | null {
   const width = profileWidth(composed);
   const refusal = layRefusal(composed);
   const fits = refusal === null;
+  // A road that outgrows its tile is not refused any more if its class earns a
+  // corridor — it is laid across two. The readout has to say which, or a
+  // player reads a 21 m road on a 16 m tile and thinks it is broken.
+  const across = tilesAcross(composed);
+  const widthTitle = refusal ?? (across === 2 ? 'Two tiles wide — a corridor' : 'Fits the tile');
+  const budget = across === 2 ? CORRIDOR_METERS : TILE_METERS;
 
   const oneWay = base.pieces
     .filter((p) => p.kind === 'travel')
@@ -226,10 +234,10 @@ function ProfileGroup(): JSX.Element | null {
       <Group label="Width">
         <span
           aria-label="Profile width"
-          title={refusal ?? 'Fits the tile'}
+          title={widthTitle}
           className={`text-xs tabular-nums ${fits ? 'text-white/70' : 'font-semibold text-red-400'}`}
         >
-          {width.toFixed(1)} / {TILE_METERS} m
+          {width.toFixed(1)} / {budget} m
         </span>
       </Group>
     </>

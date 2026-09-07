@@ -123,20 +123,36 @@ describe('RoadToolOptions — the Profile row', () => {
   });
 
   it('never offers a lane count it will then refuse for width', () => {
-    // Eight 12 ft lanes are 28.8 m and six are 21.6 m; the tile is 16 m
-    // across. Those are two-tile corridors, and holding one out only to turn
-    // it down is the tool telling the player off for taking what it offered.
+    // Eight 12 ft lanes are 28.8 m and six are 21.6 m; a tile is 16 m across
+    // and a corridor 32. A motorway earns a corridor, so all four counts are
+    // real offers — and each says which it is rather than reading as broken.
     useCityStore.getState().setTool('road.highway');
     render(<RoadToolOptions />);
     const lanes = screen.getByRole('group', { name: 'Lanes' });
     const offered = within(lanes)
       .getAllByRole('button')
       .map((b) => b.textContent);
-    expect(offered).toEqual(['2', '4']);
+    expect(offered).toEqual(['2', '4', '6', '8']);
     for (const count of offered) {
       fireEvent.click(within(lanes).getByRole('button', { name: count! }));
-      expect(screen.getByLabelText('Profile width')).toHaveAttribute('title', 'Fits the tile');
+      const title = screen.getByLabelText('Profile width').getAttribute('title');
+      expect(['Fits the tile', 'Two tiles wide — a corridor']).toContain(title);
     }
+  });
+
+  it('says a corridor is a corridor, and a street a street', () => {
+    // A two-lane motorway is 7.2 m and sits on one tile; an eight-lane one is
+    // 28.8 m and takes two.
+    useCityStore.getState().setTool('road.highway');
+    render(<RoadToolOptions />);
+    const lanes = screen.getByRole('group', { name: 'Lanes' });
+    fireEvent.click(within(lanes).getByRole('button', { name: '2' }));
+    expect(screen.getByLabelText('Profile width')).toHaveAttribute('title', 'Fits the tile');
+    fireEvent.click(within(lanes).getByRole('button', { name: '8' }));
+    expect(screen.getByLabelText('Profile width')).toHaveAttribute(
+      'title',
+      'Two tiles wide — a corridor',
+    );
   });
 
   it('counts a one-way road’s lanes the one way they run', () => {
