@@ -22,6 +22,7 @@ import {
   GARBAGE_OFFSET,
   LANDFILL_MIN_AREA_TILES,
   LANDFILL_PAINT_COST_PER_TILE,
+  POWER_LINE_COST_PER_TILE,
   LANDFILL_TRUCKS_BASE,
   LANDFILL_TRUCKS_MAX,
   LANDFILL_TRUCKS_PER_TILES,
@@ -130,6 +131,7 @@ import {
   paintLandfill,
   type LandfillArea,
 } from '../world/landfill';
+import { canStringLine, stringPowerLine } from '../world/powerline';
 import {
   GarbageSystem,
   type GarbageBuilding,
@@ -359,6 +361,8 @@ class SimWorld implements WorkerSim {
   private readonly garbage = new GarbageSystem(MAP_SIZE);
   private readonly garbageTrucks = new GarbageTruckSystem();
   private landfillDirty: DirtyRect | null = null;
+  /** Where power line has been strung or pulled down since the last snapshot. */
+  private powerLineDirty: DirtyRect | null = null;
   /** Cached landfill areas (office/entrance + dump routes) — dropped when landfill paint or road edits change them. */
   private landfillAreasCache: LandfillArea[] | null = null;
   private garbageDirty = false;
@@ -648,6 +652,7 @@ class SimWorld implements WorkerSim {
     this.garbageTrucks.reset();
     this.landfillAreasCache = null;
     this.landfillDirty = { minX: 0, minZ: 0, maxX: MAP_SIZE - 1, maxZ: MAP_SIZE - 1 };
+    this.powerLineDirty = { minX: 0, minZ: 0, maxX: MAP_SIZE - 1, maxZ: MAP_SIZE - 1 };
     this.garbageDirty = true;
     this.recomputeUtilitiesNow();
     this.powerDirty = true;
@@ -671,6 +676,7 @@ class SimWorld implements WorkerSim {
     this.districtDirty = null;
     this.districtDefsChanged = false;
     this.landfillDirty = null;
+    this.powerLineDirty = null;
     this.garbageDirty = false;
   }
 
@@ -1008,6 +1014,13 @@ class SimWorld implements WorkerSim {
       snap.garbage = garbage;
     }
 
+    // Power lines: the region that changed, so the renderer restands only what
+    // it has to.
+    if (this.powerLineDirty) {
+      snap.powerLines = [this.powerLinePatchFor(this.powerLineDirty)];
+      this.powerLineDirty = null;
+    }
+
     // The profile table travels with (and is applied before) the road deltas
     // that refer into it.
     if (this.roadProfilesChanged) {
@@ -1126,6 +1139,19 @@ class SimWorld implements WorkerSim {
     for (let dz = 0; dz < h; dz++) {
       for (let dx = 0; dx < w; dx++) {
         data[dz * w + dx] = this.grid.landfill[tileIndex(rect.minX + dx, rect.minZ + dz)] ?? 0;
+      }
+    }
+    return { x: rect.minX, z: rect.minZ, w, h, data };
+  }
+
+  /** Power-line membership patch: same shape/loop as landfillPatchFor, reading grid.powerLine. */
+  private powerLinePatchFor(rect: DirtyRect): ZonePatch {
+    const w = rect.maxX - rect.minX + 1;
+    const h = rect.maxZ - rect.minZ + 1;
+    const data = new Uint8Array(w * h);
+    for (let dz = 0; dz < h; dz++) {
+      for (let dx = 0; dx < w; dx++) {
+        data[dz * w + dx] = this.grid.powerLine[tileIndex(rect.minX + dx, rect.minZ + dz)] ?? 0;
       }
     }
     return { x: rect.minX, z: rect.minZ, w, h, data };
@@ -1452,6 +1478,8 @@ class SimWorld implements WorkerSim {
         return this.cmdPaintDistrict(command.districtId, command.tiles);
       case 'paintLandfill':
         return this.cmdPaintLandfill(command.tiles, command.on);
+      case 'stringPowerLine':
+        return this.cmdStringPowerLine(command.tiles, command.on);
       case 'setDistrictPolicy': {
         this.policyStore.setPolicy(command.districtId, command.policy, command.on);
         return {
@@ -1567,6 +1595,40 @@ class SimWorld implements WorkerSim {
     this.landfillDirty = growRect(this.landfillDirty, applied);
     this.landfillAreasCache = null;
     return { ok: true, cost, inverse };
+  }
+
+  /**
+   * Strings or pulls down a run of power line. Only tiles that actually change
+   * are charged for and put back by the undo, so dragging back over a run you
+   * have already strung costs nothing.
+   */
+  private cmdStringPowerLine(tiles: TilePoint[], on: boolean): CommandResult {
+    const g = this.grid;
+    // Cost is quoted for the tiles that would change, which is what the tool
+    // has already shown the player on the cursor.
+    let wouldChange = 0;
+    for (const t of tiles) {
+      if (!inBounds(t.x, t.z)) continue;
+      const now = (g.powerLine[tileIndex(t.x, t.z)] ?? 0) === 1;
+      if (now !== on && (!on || canStringLine(g, t.x, t.z))) wouldChange += 1;
+    }
+    const cost = on ? wouldChange * POWER_LINE_COST_PER_TILE : 0;
+    if (on && !this.sandbox && !this.unlimitedMoney && cost > this.stats.funds) {
+      return { ok: false, cost: 0, inverse: [], reason: 'funds' };
+    }
+
+    const changed = stringPowerLine(g, tiles, on);
+    if (changed.length === 0) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+
+    this.powerLineDirty = growRect(this.powerLineDirty, changed);
+    // Supply travels along the line, so the coverage it changes has to be
+    // worked out again rather than waiting for the utility cadence.
+    this.utilitiesDirty = true;
+    return {
+      ok: true,
+      cost,
+      inverse: [{ kind: 'stringPowerLine', tiles: changed, on: !on }],
+    };
   }
 
   /** Landfill areas (office/entrance + dump route per 4-connected patch), cached between edits. */
@@ -1825,6 +1887,15 @@ class SimWorld implements WorkerSim {
         z: inst.z,
         rotation: inst.rotation,
       });
+    }
+
+    // Power line last: the bulldozer takes down the wire over the tiles it
+    // clears, and the undo strings back exactly the run that was there.
+    const pulledDown = stringPowerLine(g, inBoundsTiles, false);
+    if (pulledDown.length > 0) {
+      refund += pulledDown.length * POWER_LINE_COST_PER_TILE * BULLDOZE_REFUND_RATE;
+      this.powerLineDirty = growRect(this.powerLineDirty, pulledDown);
+      inverse.push({ kind: 'stringPowerLine', tiles: pulledDown, on: true });
     }
 
     this.invalidateAround(inBoundsTiles);

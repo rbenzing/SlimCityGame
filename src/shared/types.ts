@@ -201,6 +201,18 @@ export interface GridState {
    * saves load with nothing restricted.
    */
   junctionTurns: Uint16Array;
+  /**
+   * Power lines — 1 = a line stands on this tile. A line conducts electricity
+   * between its own tiles and into any road or footprint it touches, which is
+   * how supply reaches what a road cannot: the off-grid lot on a dirt lane,
+   * the district a motorway separates, the pump across the valley.
+   *
+   * It is a network of its own and never a road: nothing drives along it, it
+   * carries no traffic and no water, and it has no tier.
+   * ADDITIVE layer: serialized LAST in the grid save (SAVE_VERSION 10); older
+   * saves load with no lines anywhere.
+   */
+  powerLine: Uint8Array;
   buildingId: Uint32Array; // 0 = none, else building instance id occupying tile
   power: Uint8Array; // 1 = powered
   watered: Uint8Array; // 1 = water service reaches tile
@@ -348,6 +360,9 @@ export type Command =
   // Paint (on:true) or erase (on:false) landfill membership onto GridState.landfill
   // for `tiles`. Collected trash piles up on these tiles; painting more expands capacity.
   | { kind: 'paintLandfill'; tiles: TilePoint[]; on: boolean }
+  // Power: string (on) or pull down (off) a run of power line. Charged per
+  // tile that actually changes, so dragging back over a run is free.
+  | { kind: 'stringPowerLine'; tiles: TilePoint[]; on: boolean }
   // Sandbox mode: when on, every build item is placeable regardless of milestone.
   | { kind: 'setSandbox'; on: boolean }
   // Unlimited money (testing): when on, funds/cost gates are ignored so anything
@@ -540,6 +555,13 @@ export interface SimSnapshot {
     trash?: ZonePatch[];
     incinerators?: { id: number; fill: number; capacity: number }[];
   };
+  /**
+   * Power lines — ZonePatch-shaped membership regions (data bytes 0/1,
+   * row-major, exactly like SimSnapshot.zones) so the render side can stand
+   * poles and run wire between them. Full state after init/load, then only
+   * the regions that changed.
+   */
+  powerLines?: ZonePatch[];
   /**
    * Who gives way at each junction of the street network — every tile where
    * three or more arms meet, including the ones controlled by nothing. The sim
@@ -992,7 +1014,7 @@ export interface ReversibleEdit {
  * earlier layer's byte layout or order changed, so every v1..v7 field
  * round-trips unchanged.
  */
-export const SAVE_VERSION = 9;
+export const SAVE_VERSION = 10;
 
 export interface SaveHeader {
   version: number;

@@ -1,31 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { BuildingCatalogEntry, BuildingInstance, GridState } from '../shared/types';
-import { BuildingState, FIELD_COUNT, RoadTier } from '../shared/types';
-import { MAP_SIZE, tileIndex } from '../shared/constants';
+import { BuildingState, RoadTier } from '../shared/types';
+import { tileIndex } from '../shared/constants';
 import { recomputeUtilities } from './network';
+import { createGrid } from '../world/grid';
 
 function makeGrid(): GridState {
-  const n = MAP_SIZE * MAP_SIZE;
-  return {
-    size: MAP_SIZE,
-    height: new Float32Array(n),
-    water: new Uint8Array(n),
-    trees: new Uint8Array(n),
-    zone: new Uint8Array(n),
-    roadTier: new Uint8Array(n),
-    roadMask: new Uint8Array(n),
-    buildingId: new Uint32Array(n),
-    power: new Uint8Array(n),
-    watered: new Uint8Array(n),
-    fields: Array.from({ length: FIELD_COUNT }, () => new Uint8Array(n)),
-    district: new Uint8Array(n),
-    landfill: new Uint8Array(n),
-    roadElevation: new Float32Array(n),
-    roadProfile: new Uint16Array(n),
-    roadFlow: new Uint8Array(n),
-    junctionControl: new Uint8Array(n),
-    junctionTurns: new Uint16Array(n),
-  };
+  return createGrid();
 }
 
 /** Paints a straight horizontal two-lane road strip from x0..x1 inclusive at row z. */
@@ -118,6 +99,71 @@ const house: BuildingCatalogEntry = {
 };
 
 const catalog = [powerPlant, waterTower, house];
+
+describe('recomputeUtilities: power lines', () => {
+  /** Strings a straight run of power line from x0..x1 inclusive at row z. */
+  function stringLine(g: GridState, x0: number, x1: number, z: number): void {
+    for (let x = x0; x <= x1; x++) g.powerLine[tileIndex(x, z)] = 1;
+  }
+
+  it('carries supply to an island no road reaches', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'power-plant', 5, 5, 1, 1);
+    paintRoadRow(g, 6, 10, 5);
+    // An island with its own road and no way back to the plant along one.
+    paintRoadRow(g, 30, 34, 5);
+    placeBuilding(g, buildings, 2, 'house', 32, 6, 1, 1);
+
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.power[tileIndex(32, 6)]).toBe(0);
+
+    // A line bridging the gap, touching the road at each end.
+    stringLine(g, 10, 30, 5);
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.power[tileIndex(32, 6)]).toBe(1);
+  });
+
+  it('reaches a lot straight off the plant, with no road involved at all', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'power-plant', 5, 5, 1, 1);
+    stringLine(g, 6, 20, 5);
+    placeBuilding(g, buildings, 2, 'house', 15, 6, 1, 1);
+
+    recomputeUtilities(g, buildings, catalog);
+    // Supplied by the line alone: the house sits one step off it, which is the
+    // same radiating rule a supplied road tile follows.
+    expect(g.power[tileIndex(15, 6)]).toBe(1);
+  });
+
+  it('breaks where the line does — it conducts along itself, not across a gap', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'power-plant', 5, 5, 1, 1);
+    stringLine(g, 6, 12, 5);
+    stringLine(g, 14, 20, 5); // a one-tile break at x=13
+    placeBuilding(g, buildings, 2, 'house', 18, 6, 1, 1);
+
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.power[tileIndex(18, 6)]).toBe(0);
+
+    g.powerLine[tileIndex(13, 5)] = 1;
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.power[tileIndex(18, 6)]).toBe(1);
+  });
+
+  it('carries no water — it is a power line, not a pipe', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'water-tower', 5, 5, 1, 1);
+    stringLine(g, 6, 20, 5);
+    placeBuilding(g, buildings, 2, 'house', 15, 6, 1, 1);
+
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.watered[tileIndex(15, 6)]).toBe(0);
+  });
+});
 
 describe('recomputeUtilities: power propagation', () => {
   it('powers a connected strip via roads but not a disconnected island', () => {

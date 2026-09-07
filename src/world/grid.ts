@@ -68,6 +68,7 @@ export function createGrid(size?: number): GridState {
     roadFlow: new Uint8Array(n),
     junctionControl: new Uint8Array(n),
     junctionTurns: new Uint16Array(n),
+    powerLine: new Uint8Array(n),
   };
 }
 
@@ -84,7 +85,9 @@ const HEADER_BYTES = 8; // uint32 version + uint32 size
 // (roadProfile) + 20 single-byte layers (7 flat: water/trees/zone/roadTier/
 // roadMask/power/watered) + 9 fields + 1 district + 1 landfill + 1 roadFlow +
 // 1 junctionControl.
-const BYTES_PER_TILE = 36;
+const BYTES_PER_TILE = 37;
+// v9 is this layout without the trailing powerLine layer, which loads empty so
+// an older city has no lines anywhere and is supplied purely along its roads;
 // v7 is this layout without the trailing junctionControl layer, which loads
 // unset so every junction takes the control its warrant works out; v6 drops
 // roadFlow too; v5 drops the roadProfile layer, deriving it from roadTier on
@@ -92,6 +95,7 @@ const BYTES_PER_TILE = 36;
 // each version before that drops one trailing layer — v3 district + landfill
 // but no elevation, v2 district only, v1 none of them. deserializeGrid accepts
 // all of them, widening v4's byte and defaulting every absent trailing layer.
+const BYTES_PER_TILE_V9 = 36;
 const BYTES_PER_TILE_V8 = 34;
 const BYTES_PER_TILE_V7 = 33;
 const BYTES_PER_TILE_V6 = 32;
@@ -112,6 +116,7 @@ const BYTES_PER_TILE_BY_VERSION: readonly number[] = [
   BYTES_PER_TILE_V6,
   BYTES_PER_TILE_V7,
   BYTES_PER_TILE_V8,
+  BYTES_PER_TILE_V9,
   BYTES_PER_TILE,
 ];
 
@@ -191,6 +196,9 @@ export function serializeGrid(g: GridState): ArrayBuffer {
   for (let i = 0; i < n; i++) {
     view.setUint16(offset + i * 2, g.junctionTurns[i]!, true);
   }
+  offset += n * 2;
+  // powerLine (v10): one byte per tile — whether a power line stands here.
+  bytes.set(g.powerLine, offset);
 
   return buffer;
 }
@@ -217,6 +225,7 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
   const hasRoadFlow = version >= 7;
   const hasJunctionControl = version >= 8;
   const hasJunctionTurns = version >= 9;
+  const hasPowerLine = version >= 10;
 
   const size = view.getUint32(4, true);
   const n = size * size;
@@ -305,7 +314,11 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
   const junctionTurns = new Uint16Array(n);
   if (hasJunctionTurns) {
     for (let i = 0; i < n; i++) junctionTurns[i] = view.getUint16(offset + i * 2, true);
+    offset += n * 2;
   }
+  // Power-line layer (v10+). An older buffer has none, so the city loads
+  // supplied purely along the roads it already had.
+  const powerLine = hasPowerLine ? bytes.slice(offset, offset + n) : new Uint8Array(n);
 
   return {
     size,
@@ -326,6 +339,7 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
     roadFlow,
     junctionControl,
     junctionTurns,
+    powerLine,
   };
 }
 

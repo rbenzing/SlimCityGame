@@ -200,6 +200,21 @@ export const LANDFILL_PAINT_COST_PER_TILE = 40;
 export const LANDFILL_UPKEEP_PER_TILE = 3;
 /** Rendered trash-pile height (m) at a full landfill tile. */
 export const LANDFILL_MAX_PILE_METERS = 6;
+
+/**
+ * ¢ to string one tile of power line. Deliberately CHEAPER than the cheapest
+ * road (a two-lane tile is 20): a line has to be the cheapest thing that
+ * reaches, or laying a road stays the answer to every question and the network
+ * never becomes a decision.
+ */
+export const POWER_LINE_COST_PER_TILE = 12;
+/**
+ * ¢/month upkeep per tile of power line. The utility owns the wire and the
+ * city pays for it, so reaching further is a standing drain on the budget
+ * rather than a purchase that disappears from view — which is the whole trade
+ * the mechanic exists to put in front of the player.
+ */
+export const POWER_LINE_UPKEEP_PER_TILE = 0.5;
 /** Cosmetic trucks a landfill area fields: base + one per LANDFILL_TRUCKS_PER_TILES painted tiles, capped. */
 export const LANDFILL_TRUCKS_BASE = 1;
 export const LANDFILL_TRUCKS_PER_TILES = 16;

@@ -6,32 +6,19 @@ import type {
   GridState,
   RoadSpec,
 } from '../shared/types';
-import { BuildingState, FIELD_COUNT, FieldId, RoadTier } from '../shared/types';
-import { MAP_SIZE, MAX_LOAN, MILESTONES, TICKS_PER_MONTH, tileIndex } from '../shared/constants';
+import { BuildingState, FieldId, RoadTier } from '../shared/types';
+import {
+  MAX_LOAN,
+  MILESTONES,
+  POWER_LINE_UPKEEP_PER_TILE,
+  TICKS_PER_MONTH,
+  tileIndex,
+} from '../shared/constants';
 import { EconomySystem, buildingMonthlyTax } from './economy';
+import { createGrid } from '../world/grid';
 
 function makeGrid(): GridState {
-  const n = MAP_SIZE * MAP_SIZE;
-  return {
-    size: MAP_SIZE,
-    height: new Float32Array(n),
-    water: new Uint8Array(n),
-    trees: new Uint8Array(n),
-    zone: new Uint8Array(n),
-    roadTier: new Uint8Array(n),
-    roadMask: new Uint8Array(n),
-    buildingId: new Uint32Array(n),
-    power: new Uint8Array(n),
-    watered: new Uint8Array(n),
-    fields: Array.from({ length: FIELD_COUNT }, () => new Uint8Array(n)),
-    district: new Uint8Array(n),
-    landfill: new Uint8Array(n),
-    roadElevation: new Float32Array(n),
-    roadProfile: new Uint16Array(n),
-    roadFlow: new Uint8Array(n),
-    junctionControl: new Uint8Array(n),
-    junctionTurns: new Uint16Array(n),
-  };
+  return createGrid();
 }
 
 function place(
@@ -279,6 +266,31 @@ describe('EconomySystem: monthly income/expenses', () => {
     // expenses = 300 (police upkeep, funding 1) + 10*0.4 (road) + 1000*0.01 (interest) = 314
     expect(statsPatch.monthlyExpenses).toBeCloseTo(314, 6);
     expect(statsPatch.funds).toBeCloseTo(10000 + 27 - 314, 6);
+  });
+
+  it('bills the city every month for the power line it strung', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    for (let x = 0; x < 20; x++) g.powerLine[tileIndex(x, 3)] = 1;
+
+    const sys = new EconomySystem(catalog, roadSpecs);
+    const stats = makeStats({ funds: 10000 });
+    const { statsPatch } = sys.tick({ g, buildings, stats, tickNo: TICKS_PER_MONTH });
+
+    // Nothing else in this city costs anything: the whole bill is the wire.
+    expect(statsPatch.monthlyExpenses).toBeCloseTo(20 * POWER_LINE_UPKEEP_PER_TILE, 6);
+  });
+
+  it('charges nothing for a city that strung none', () => {
+    const g = makeGrid();
+    const sys = new EconomySystem(catalog, roadSpecs);
+    const { statsPatch } = sys.tick({
+      g,
+      buildings: [],
+      stats: makeStats({ funds: 10000 }),
+      tickNo: TICKS_PER_MONTH,
+    });
+    expect(statsPatch.monthlyExpenses).toBeCloseTo(0, 6);
   });
 
   it('skips the monthly cycle on tick 0 and on non-boundary ticks', () => {

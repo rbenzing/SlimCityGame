@@ -99,8 +99,15 @@ function radiate(g: GridState, sources: Iterable<number>): Uint8Array {
   return out;
 }
 
-/** Road tiles orthogonally adjacent to any of `footprintTiles` (any tier — filtering by conduction happens in the BFS). */
-function roadTilesAdjacentTo(g: GridState, footprintTiles: readonly number[]): number[] {
+/**
+ * Tiles orthogonally adjacent to any of `footprintTiles` that carry the
+ * utility's network at all — a road, or (for power) a line. Whether such a
+ * tile actually conducts is the BFS's business; this only finds the candidates.
+ */
+function networkTilesAdjacentTo(
+  footprintTiles: readonly number[],
+  carriesNetwork: (index: number) => boolean,
+): number[] {
   const seeds = new Set<number>();
   for (const idx of footprintTiles) {
     const x = idx % MAP_SIZE;
@@ -110,27 +117,31 @@ function roadTilesAdjacentTo(g: GridState, footprintTiles: readonly number[]): n
       const nz = z + ddz;
       if (!inBounds(nx, nz)) continue;
       const ni = tileIndex(nx, nz);
-      if (g.roadTier[ni]! !== RoadTier.None) seeds.add(ni);
+      if (carriesNetwork(ni)) seeds.add(ni);
     }
   }
   return [...seeds];
 }
 
 /**
- * BFS across connected road tiles starting from `seeds`, only stepping onto
- * (and stopping at) tiles for which `conducts(tier)` is true. Non-conducting
- * tiles (e.g. highways for water) are excluded entirely — they neither
- * receive the utility nor act as a bridge to tiles beyond them.
+ * BFS across connected conducting tiles starting from `seeds`, only stepping
+ * onto (and stopping at) tiles for which `conducts(index)` is true.
+ * Non-conducting tiles (a highway for water, a road for neither) are excluded
+ * entirely — they neither receive the utility nor act as a bridge to tiles
+ * beyond them.
+ *
+ * The predicate is per TILE rather than per tier because power travels two
+ * ways: along the roads built to carry it, and along a power line, which is
+ * not a road and has no tier at all.
  */
-function reachableRoadTiles(
-  g: GridState,
+function reachableNetworkTiles(
   seeds: readonly number[],
-  conducts: (tier: number) => boolean,
+  conducts: (index: number) => boolean,
 ): number[] {
   const visited = new Set<number>();
   const queue: number[] = [];
   for (const s of seeds) {
-    if (!conducts(g.roadTier[s]!)) continue;
+    if (!conducts(s)) continue;
     visited.add(s);
     queue.push(s);
   }
@@ -146,9 +157,7 @@ function reachableRoadTiles(
       if (!inBounds(nx, nz)) continue;
       const ni = tileIndex(nx, nz);
       if (visited.has(ni)) continue;
-      const tier = g.roadTier[ni]!;
-      if (tier === RoadTier.None) continue;
-      if (!conducts(tier)) continue;
+      if (!conducts(ni)) continue;
       visited.add(ni);
       queue.push(ni);
     }
@@ -156,27 +165,32 @@ function reachableRoadTiles(
   return [...visited];
 }
 
-/** Coverage grid (0/1) for a set of generator footprints: footprints + reachable (conducting) roads, radiated. */
+/** Coverage grid (0/1) for a set of generator footprints: footprints + everything the network reaches, radiated. */
 function computeCoverage(
   g: GridState,
   footprintTiles: readonly number[],
-  conducts: (tier: number) => boolean,
+  conducts: (index: number) => boolean,
 ): Uint8Array {
   if (footprintTiles.length === 0) return new Uint8Array(MAP_SIZE * MAP_SIZE);
-  const roadSeeds = roadTilesAdjacentTo(g, footprintTiles);
-  const roads = reachableRoadTiles(g, roadSeeds, conducts);
+  const seeds = networkTilesAdjacentTo(footprintTiles, conducts);
+  const reached = reachableNetworkTiles(seeds, conducts);
   const sources = new Set<number>(footprintTiles);
-  for (const r of roads) sources.add(r);
+  for (const r of reached) sources.add(r);
   return radiate(g, sources);
 }
 
-/** Every drivable street conducts power (highways included — street lighting); rail is not a street and conducts nothing. */
-function conductsPower(tier: number): boolean {
-  return isStreetTier(tier);
+/**
+ * Electricity travels along every drivable street (highways included — street
+ * lighting) and along a power line, which is not a street and carries nothing
+ * else. Rail is not a street and conducts nothing.
+ */
+function conductsPower(g: GridState, index: number): boolean {
+  return g.powerLine[index] === 1 || isStreetTier(g.roadTier[index]!);
 }
 
-/** Only drivable streets whose spec carries water conduct it (highways excluded by default; rail is not a street). */
-function conductsWater(tier: number): boolean {
+/** Only drivable streets whose spec carries water conduct it (highways excluded by default; rail is not a street, and neither is a power line). */
+function conductsWater(g: GridState, index: number): boolean {
+  const tier = g.roadTier[index]!;
   return isStreetTier(tier) && tierCarriesWater(tier);
 }
 
@@ -255,8 +269,8 @@ export function recomputeUtilities(
     }
   }
 
-  const powerCoverage = computeCoverage(g, powerFootprints, conductsPower);
-  const waterCoverage = computeCoverage(g, waterFootprints, conductsWater);
+  const powerCoverage = computeCoverage(g, powerFootprints, (i) => conductsPower(g, i));
+  const waterCoverage = computeCoverage(g, waterFootprints, (i) => conductsWater(g, i));
 
   g.power.set(powerCoverage);
   g.watered.set(waterCoverage);
