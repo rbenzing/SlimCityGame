@@ -24,8 +24,9 @@ import {
   taperTilesFor,
 } from './taper';
 import type { TaperStep } from './taper';
-import type { JunctionControl, RoadClassId, RoadProfile } from './types';
+import type { CorridorHalf, JunctionControl, RoadClassId, RoadProfile } from './types';
 import { RoadFlow } from './types';
+import { corridorPartners } from './corridor';
 
 /** What the walk needs to know about the tiles around it. */
 export interface ApproachSurroundings {
@@ -43,6 +44,10 @@ export interface ApproachSurroundings {
    * road is told from the motorway it joins.
    */
   flowAt(x: number, z: number): RoadFlow;
+  /** Which half of a corridor the tile carries, `'none'` for an ordinary road. */
+  corridorHalfAt(x: number, z: number): CorridorHalf;
+  /** The id of the cross-section the tile carries — what says two halves are one road. */
+  profileIdAt(x: number, z: number): number;
 }
 
 /** The junction a tile approaches, and what this arm of it may do. */
@@ -97,11 +102,41 @@ export function oppositeFlow(flow: RoadFlow): RoadFlow {
   }
 }
 
-/** How many roads meet on a tile: three or more of them make it a junction. */
+/**
+ * How many roads meet on a tile: three or more of them make it a junction.
+ *
+ * The other half of a corridor does not count. It touches along the whole run,
+ * so counting it would make every tile of a divided road a junction — and,
+ * because an approach has to be a straight run, would leave no tile of one
+ * able to find the junction it really arrives at.
+ */
 export function roadDegree(x: number, z: number, world: ApproachSurroundings): number {
   let n = 0;
-  for (const [dx, dz] of STEPS) if (world.hasRoad(x + dx, z + dz)) n++;
+  for (const [dx, dz] of STEPS) {
+    if (!world.hasRoad(x + dx, z + dz)) continue;
+    if (isCorridorPartner(x, z, dx, dz, world)) continue;
+    n++;
+  }
   return n;
+}
+
+/** Whether the neighbour at (dx, dz) is this tile's own other half. */
+function isCorridorPartner(
+  x: number,
+  z: number,
+  dx: number,
+  dz: number,
+  world: ApproachSurroundings,
+): boolean {
+  return corridorPartners(
+    world.corridorHalfAt(x, z),
+    world.corridorHalfAt(x + dx, z + dz),
+    world.profileIdAt(x, z),
+    world.profileIdAt(x + dx, z + dz),
+    world.flowAt(x, z),
+    dx,
+    dz,
+  );
 }
 
 /**
@@ -128,6 +163,9 @@ export function approachAhead(
   let tied = false;
   for (const [dx, dz, toward] of STEPS) {
     if (!world.hasRoad(x + dx, z + dz)) continue;
+    // Never walk sideways into your own other half: along that way lies the
+    // length of the road, not anything the road arrives at.
+    if (isCorridorPartner(x, z, dx, dz, world)) continue;
     if (!world.hasRoad(x - dx, z - dz)) continue; // a corner, not a run
     for (let step = 1; step <= reach; step++) {
       const tx = x + dx * step;
@@ -276,6 +314,9 @@ export function narrowingAhead(
   let best: (TaperStep & { toward: RoadFlow }) | undefined;
   for (const [dx, dz, toward] of STEPS) {
     if (!world.hasRoad(x + dx, z + dz)) continue;
+    // Never walk sideways into your own other half: along that way lies the
+    // length of the road, not anything the road arrives at.
+    if (isCorridorPartner(x, z, dx, dz, world)) continue;
     if (!world.hasRoad(x - dx, z - dz)) continue; // a corner, not a run
     for (let step = 1; step <= TAPER_MAX_TILES; step++) {
       const tx = x + dx * step;
@@ -344,6 +385,9 @@ export function auxiliaryLaneAt(
 
   for (const [dx, dz, toward] of STEPS) {
     if (!world.hasRoad(x + dx, z + dz)) continue;
+    // Never walk sideways into your own other half: along that way lies the
+    // length of the road, not anything the road arrives at.
+    if (isCorridorPartner(x, z, dx, dz, world)) continue;
     if (!world.hasRoad(x - dx, z - dz)) continue; // a corner, not a run
     for (let step = 1; step <= AUXILIARY_ZONE_TILES; step++) {
       const jx = x + dx * step;

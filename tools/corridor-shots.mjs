@@ -157,10 +157,74 @@ for (const [name, x] of [
   if (a.lanes !== 3) failures.push(`${name} half carries ${a.lanes} lanes, not the three it should`);
 }
 
+// --- A street crossing the corridor -----------------------------------------
+// A corridor half is a road in its own right, so it should meet a junction the
+// way a street does: a signalised crossing gives the approach a turn bay for a
+// few tiles and the tiles beyond it none. Nothing had ever run the approach
+// machinery against a corridor, so this is where a half either behaves like a
+// road or turns out to have been carried by never being asked.
+const CROSS_Z = 12;
+const TWO_LANE = 1;
+const row = (z, a, c) => Array.from({ length: c - a + 1 }, (_, i) => ({ x: X + a + i, z: Z + z }));
+await cmd('cross street', [{ kind: 'buildRoad', tier: TWO_LANE, tiles: row(CROSS_Z, 2, 20) }]);
+await page.waitForTimeout(2000);
+await cmd('signal', [
+  { kind: 'setJunctionControl', x: X + LEFT_X, z: Z + CROSS_Z, control: 'signal' },
+  { kind: 'setJunctionControl', x: X + RIGHT_X, z: Z + CROSS_Z, control: 'signal' },
+]);
+await page.waitForTimeout(2500);
+
+// Whether the crossing registered as a junction at all, before asking what the
+// approach to it looks like: an approach that reports no junction and a
+// junction that was never made are different faults with the same read-back.
+const junctions = await call(() => window.__slimcity.readJunctions());
+const onCorridor = junctions.filter((j) => Math.abs(j.z - (Z + CROSS_Z)) <= 1);
+console.log('junctions on the crossing row:', JSON.stringify(onCorridor));
+if (onCorridor.length === 0)
+  failures.push('a street laid across the corridor made no junction on either half');
+
+// A divided road's approach zone is five tiles, so the bay belongs to the five
+// tiles before the junction (distance 0 is the last of them) and to no tile
+// beyond them.
+const ZONE = 5;
+for (const [name, x] of [
+  ['left', LEFT_X],
+  ['right', RIGHT_X],
+]) {
+  const down = [];
+  for (let d = 1; d <= ZONE + 1; d++) {
+    const a = await approach(X + x, Z + CROSS_Z - d);
+    down.push({ d, lanes: a?.lanes, width: a?.width, pocket: a?.pocket, dist: a?.distance });
+  }
+  console.log(`${name} half approaching the junction:`, JSON.stringify(down));
+  const near = down[0];
+  const outside = down[ZONE];
+  if (near?.dist !== 0)
+    failures.push(`${name} half at the stop line reports distance ${near?.dist}, wanted 0`);
+  for (const t of down.slice(0, ZONE)) {
+    if (t.dist !== t.d - 1)
+      failures.push(`${name} half ${t.d} tile(s) out reports distance ${t.dist}`);
+  }
+  // Past the zone the walk stops looking, so the junction is out of reach.
+  if (outside?.dist !== -1)
+    failures.push(`${name} half still reports a junction past its zone (${outside?.dist})`);
+  // The half has to find the junction AND widen for it: a corridor tile that
+  // never counted as a straight run found neither.
+  if (!down.slice(0, ZONE).every((t) => t.pocket === true))
+    failures.push(`${name} half carries no turn bay inside the approach zone`);
+  if (outside?.pocket === true)
+    failures.push(`${name} half still claims a bay past the end of its approach zone`);
+  if (near && outside && !(near.lanes > outside.lanes))
+    failures.push(
+      `${name} half gains no lane at the junction (${outside.lanes} out, ${near.lanes} at the line)`,
+    );
+}
+
 const shots = [
   ['corridor-top', X + 10, Z + 12, 70, 0, 1.45],
   ['corridor-eye', X + 10, Z + 20, 34, 0, 0.3],
   ['corridor-oblique', X + 10, Z + 12, 60, 0.6, 0.6],
+  ['corridor-junction', X + 10, Z + CROSS_Z, 46, 0, 1.5],
 ];
 for (const [name, tx, tz, d, yaw, pitch] of shots) {
   await cam(tx, tz, d, yaw, pitch);

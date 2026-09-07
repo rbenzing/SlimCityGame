@@ -8,7 +8,7 @@
  * which half it is.
  */
 import { flowForStep, RoadFlow, storedFlow } from './types';
-import type { TilePoint } from './types';
+import type { CorridorHalf, TilePoint } from './types';
 
 export interface CorridorRuns {
   /**
@@ -69,4 +69,35 @@ export function corridorRunsFor(path: readonly TilePoint[]): CorridorRuns | null
 /** Every tile a corridor occupies, near run then far — what a preview outlines. */
 export function corridorTiles(runs: CorridorRuns): TilePoint[] {
   return [...runs.near, ...runs.far];
+}
+
+/**
+ * Whether a neighbouring tile is the OTHER HALF of the same corridor rather
+ * than a road joining it.
+ *
+ * Anything that counts a tile's neighbours has to ask this, because the two
+ * halves of a corridor touch along their whole length: counted as neighbours,
+ * every tile of a six-lane road looks like a junction. Auto-tiling draws it as
+ * a chain of crossroads; the network graph puts a node on every step; the
+ * approach walk decides no tile is a straight run and so never finds the
+ * junction the road actually arrives at.
+ *
+ * They are partners when both are halves, are OPPOSITE halves, carry the same
+ * cross-section, and lie beside each other ACROSS the way the road runs — a
+ * road running east-west has its halves stacked in z, one running north-south
+ * has them side by side in x.
+ */
+export function corridorPartners(
+  half: CorridorHalf,
+  halfThere: CorridorHalf,
+  profileId: number,
+  profileIdThere: number,
+  runs: RoadFlow,
+  dx: number,
+  dz: number,
+): boolean {
+  if (half === 'none' || halfThere === 'none' || half === halfThere) return false;
+  if (profileId !== profileIdThere) return false;
+  const alongX = runs === RoadFlow.East || runs === RoadFlow.West;
+  return alongX ? dx === 0 : dz === 0;
 }

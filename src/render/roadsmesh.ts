@@ -79,6 +79,7 @@
  */
 import * as THREE from 'three';
 import { corridorHalfOf, flowDirection, RoadFlow, RoadTileDelta, RoadTier } from '../shared/types';
+import type { CorridorHalf } from '../shared/types';
 import type { JunctionControl } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import {
@@ -4280,7 +4281,16 @@ export class RoadMeshRenderer {
       turnsAt: (x, z) => this.junctionTurns.get(tileIndex(x, z)) ?? 0,
       profileAt: (x, z) => this.profileAt(x, z),
       flowAt: (x, z) => this.flowAt(x, z),
+      corridorHalfAt: (x, z) => this.corridorHalfAt(x, z),
+      profileIdAt: (x, z) =>
+        this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z))?.profile ?? 0,
     };
+  }
+
+  /** Which half of a corridor the tile carries, `'none'` for an ordinary road. */
+  private corridorHalfAt(x: number, z: number): CorridorHalf {
+    const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
+    return corridorHalfOf(tile?.flow ?? 0);
   }
 
   /**

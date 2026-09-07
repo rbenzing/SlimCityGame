@@ -34,7 +34,7 @@ import type {
   WorkerToMain,
 } from './shared/types';
 import { RoadFlow, RoadTier, isStreetTier } from './shared/types';
-import { carriagewayWidth } from './shared/roadprofile';
+import { carriagewayWidth, profilesEqual } from './shared/roadprofile';
 import catalogData from './data/catalog.json';
 import roadsData from './data/roads.json';
 import { CommandQueue } from './core/commands';
@@ -589,8 +589,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         lanes: number;
         width: number;
       } | null => {
-        const own = clientGrid.profileAt(x, z);
+        // The tile's OWN cross-section, not the road's: on a corridor those
+        // differ, and comparing the drawn section against the whole road would
+        // call every corridor tile a turn pocket.
+        const own = clientGrid.ownProfileAt(x, z);
         const drawn = clientGrid.drawnProfileAt(x, z);
+        // Compared by shape rather than by identity: a corridor half is built
+        // fresh on every call, so two reads of an unchanged tile are two
+        // objects, and identity would report a pocket on all of them.
         if (!own || !drawn) return null;
         const ahead = clientGrid.approachAt(x, z);
         const taper = clientGrid.narrowingAt(x, z);
@@ -599,7 +605,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           // and a taper is the reason it might differ from the road's own.
           toward: ahead?.toward ?? taper?.toward ?? 0,
           distance: ahead?.distance ?? -1,
-          pocket: !taper && drawn !== own,
+          pocket: !taper && !profilesEqual(drawn, own),
           openness: ahead?.openness ?? 1,
           auxiliary: clientGrid.auxiliaryAt(x, z) ?? null,
           taper: taper

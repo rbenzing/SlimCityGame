@@ -2861,7 +2861,16 @@ scaled by one constant into the units the sim already uses.
    junction — a box of bare asphalt with its lane markings broken the length
    of the road. Both masks exclude it, the network one so the graph gains no
    node per tile and the render one so the paint survives; fixing only the
-   network mask leaves the road looking exactly as broken as before. And the
+   network mask leaves the road looking exactly as broken as before. So does
+   the APPROACH WALK, and for the opposite symptom: an approach has to be a
+   straight run, and a half whose partner counts as an arm is never one, so no
+   tile of a corridor could find the junction it arrives at. It earned a turn
+   bay it was never offered, and got no lane arrows and no widening either —
+   the machinery had simply never been asked the question, and the read-back
+   that would have shown it was comparing the whole road against the drawn
+   half and calling every corridor tile a pocket. Because the rule has now
+   been got wrong in three places, it is written once, as
+   `corridorPartners`, and the masks and the walk all ask it. And the
    YELLOW EDGE LINE belongs on the side the median is on, which for a half is
    an edge rather than the middle: the near half carries it at its right edge
    and the far half at its left, so a rule that always paints the left edge

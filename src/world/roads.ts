@@ -27,6 +27,7 @@ import {
   rankForTier,
 } from '../shared/roadprofile';
 import { controlFromCode, warrantedControl } from '../shared/junction';
+import { corridorPartners } from '../shared/corridor';
 import type {
   GraphEdge,
   GraphNode,
@@ -127,19 +128,19 @@ export type NetworkTiers = (tier: RoadTier) => boolean;
  */
 function isCorridorPartner(g: GridState, x: number, z: number, nx: number, nz: number): boolean {
   if (!inBoundsOf(g.size, nx, nz)) return false;
-  const here = g.roadFlow[indexOf(g.size, x, z)] ?? 0;
-  const there = g.roadFlow[indexOf(g.size, nx, nz)] ?? 0;
-  const halfHere = corridorHalfOf(here);
-  const halfThere = corridorHalfOf(there);
-  if (halfHere === 'none' || halfThere === 'none' || halfHere === halfThere) return false;
   const i = indexOf(g.size, x, z);
   const n = indexOf(g.size, nx, nz);
-  if ((g.roadProfile[i] ?? 0) !== (g.roadProfile[n] ?? 0)) return false;
-  // Beside each other ACROSS the run, never ahead of or behind one another.
-  const runsAlongX = flowDirection(here) === RoadFlow.East || flowDirection(here) === RoadFlow.West;
-  // A road running east-west has its halves stacked in z; one running
-  // north-south has them side by side in x.
-  return runsAlongX ? nx === x : nz === z;
+  const here = g.roadFlow[i] ?? 0;
+  const there = g.roadFlow[n] ?? 0;
+  return corridorPartners(
+    corridorHalfOf(here),
+    corridorHalfOf(there),
+    g.roadProfile[i] ?? 0,
+    g.roadProfile[n] ?? 0,
+    flowDirection(here),
+    nx - x,
+    nz - z,
+  );
 }
 
 function computeNetworkMask(g: GridState, x: number, z: number, inNetwork: NetworkTiers): number {

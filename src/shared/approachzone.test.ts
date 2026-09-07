@@ -11,7 +11,7 @@ import {
 import { presetProfileForTier } from './roadprofile';
 import { taperTilesFor } from './taper';
 import type { ApproachSurroundings } from './approachzone';
-import type { JunctionControl, RoadProfile } from './types';
+import type { CorridorHalf, JunctionControl, RoadProfile } from './types';
 import { RoadFlow, RoadTier } from './types';
 
 /**
@@ -34,6 +34,10 @@ function world(
     // '#' is a four-lane road and 'n' the two-lane street it narrows into;
     // everything the walk asks about width it asks through here.
     flowAt: () => RoadFlow.None,
+    // None of these maps draws a corridor: every tile is a road in its own
+    // right, so no neighbour is anybody's other half.
+    corridorHalfAt: () => 'none',
+    profileIdAt: (x, z) => (at(x, z) === '.' ? 0 : 1),
     profileAt: (x, z) => {
       const c = at(x, z);
       if (c === '#') return presetProfileForTier(RoadTier.FourLane);
@@ -321,6 +325,8 @@ describe('the auxiliary lane a motorway grows beside a slip road', () => {
       controlAt: () => undefined,
       turnsAt: () => 0,
       flowAt: (x, z) => (ramp.has(`${x},${z}`) ? rampFlow : RoadFlow.None),
+      corridorHalfAt: () => 'none',
+      profileIdAt: (x, z) => (has(x, z) ? 1 : 0),
       profileAt: (x, z) => {
         if (motorway.has(`${x},${z}`)) return SLIM_MOTORWAY;
         if (ramp.has(`${x},${z}`)) return RAMP;
@@ -368,5 +374,63 @@ describe('the auxiliary lane a motorway grows beside a slip road', () => {
     const w = interchange(RoadFlow.East);
     expect(auxiliaryLaneAt(2, 4 + AUXILIARY_ZONE_TILES, w)).toBeDefined();
     expect(auxiliaryLaneAt(2, 4 + AUXILIARY_ZONE_TILES + 1, w)).toBeUndefined();
+  });
+});
+
+describe('a corridor half is a road in its own right', () => {
+  // Two carriageways of one six-lane road running north-south in columns 2 and
+  // 3, crossed by a street at z = 6. Each half is flagged as its own side and
+  // both carry the same cross-section, which is what makes them one road.
+  const SIX_LANE_ID = 40;
+  const corridor = (
+    junctions: Record<string, { control?: JunctionControl; turns?: number }> = {},
+  ): ApproachSurroundings => {
+    const half = (x: number): CorridorHalf => (x === 2 ? 'left' : x === 3 ? 'right' : 'none');
+    const onCorridor = (x: number, z: number): boolean => (x === 2 || x === 3) && z >= 0 && z <= 12;
+    const onStreet = (x: number, z: number): boolean => z === 6 && x >= 0 && x <= 6;
+    const has = (x: number, z: number): boolean => onCorridor(x, z) || onStreet(x, z);
+    return {
+      hasRoad: has,
+      controlAt: (x, z) => junctions[`${x},${z}`]?.control,
+      turnsAt: (x, z) => junctions[`${x},${z}`]?.turns ?? 0,
+      flowAt: (x, z) => (onCorridor(x, z) ? RoadFlow.South : RoadFlow.None),
+      corridorHalfAt: (x, z) => (onCorridor(x, z) ? half(x) : 'none'),
+      profileIdAt: (x, z) => (onCorridor(x, z) ? SIX_LANE_ID : has(x, z) ? 1 : 0),
+      profileAt: (x, z) => (has(x, z) ? presetProfileForTier(RoadTier.TwoLane) : null),
+    };
+  };
+
+  it('does not count its other half as a road meeting it', () => {
+    const w = corridor();
+    // Away from the crossing a half has road ahead, road behind, and its
+    // partner alongside. Counting the partner would make it a T.
+    expect(roadDegree(2, 2, w)).toBe(2);
+    expect(roadDegree(3, 2, w)).toBe(2);
+  });
+
+  it('counts a street that really does meet it', () => {
+    const w = corridor();
+    // The left half at the crossing has the street arriving from the west.
+    expect(roadDegree(2, 6, w)).toBe(3);
+  });
+
+  it('finds the junction ahead of it, which a road it never saw could not', () => {
+    const w = corridor({ '2,6': { control: 'signal' }, '3,6': { control: 'signal' } });
+    for (const x of [2, 3]) {
+      const ahead = approachAhead(x, 4, 3, w);
+      expect(ahead, `half at x=${x}`).toBeDefined();
+      expect(ahead!.toward).toBe(RoadFlow.South);
+      expect(ahead!.distance).toBe(1);
+    }
+  });
+
+  it('does not mistake the length of the road for a junction to approach', () => {
+    // Nothing crosses this one, so no tile of either half approaches anything.
+    const bare: ApproachSurroundings = {
+      ...corridor(),
+      hasRoad: (x, z) => (x === 2 || x === 3) && z >= 0 && z <= 12,
+    };
+    expect(approachAhead(2, 4, 3, bare)).toBeUndefined();
+    expect(approachAhead(3, 8, 3, bare)).toBeUndefined();
   });
 });
