@@ -72,7 +72,14 @@ export interface SetbackResult {
  * resized: the heights stay honest, the plans stretch under them, and a house
  * that was a house becomes a bungalow nobody drew.
  */
-export const RES_LOW_BODY_M_PER_TILE = 8.8;
+/**
+ * A detached home is 9–14 m across the front depending on which of the three
+ * ResLow sizes grew, since the smallest of them stands on a two-tile lot: the
+ * per-tile figure is half a frontage, not a whole one. Measured against the
+ * 4.0 m car at the kerb and the 3.2 m storey, a house wider than about 14 m
+ * stops reading as a house and starts reading as a hall.
+ */
+export const RES_LOW_BODY_M_PER_TILE = 4.75;
 export const DEFAULT_BODY_M_PER_TILE = 13.6;
 /** No body fills its lot outright, so neighbouring buildings never touch. */
 export const MAX_FOOTPRINT_FILL = 0.85;

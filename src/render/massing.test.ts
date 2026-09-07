@@ -812,11 +812,16 @@ describe('a building keeps its real proportions whatever the tile measures', () 
     // The complaint this answers: heights are real metres and never scaled, so
     // when the plan grew with the tile every building flattened by the ratio.
     // A 3.2 m storey against a one-tile home is the proportion to hold.
+    // The smallest ResLow the catalogue grows stands on a two-tile lot, so a
+    // frontage is two of these. Anchored against the 4.0 m car at the kerb, a
+    // detached home is 9-14 m across the front — wider than that and it reads
+    // as a hall, whatever the roof on top says.
     const home = zoned(ZoneType.ResLow);
-    const widthM = home.footprint.w * TILE_METERS * footprintShrinkFor(home);
-    expect(widthM).toBeCloseTo(RES_LOW_BODY_M_PER_TILE, 9);
-    // A one-tile detached home is a house-width object, not a hall.
-    expect(widthM).toBeGreaterThan(7);
-    expect(widthM).toBeLessThan(10);
+    const frontageM = 2 * TILE_METERS * footprintShrinkFor(home);
+    expect(frontageM).toBeCloseTo(2 * RES_LOW_BODY_M_PER_TILE, 9);
+    expect(frontageM).toBeGreaterThanOrEqual(9);
+    expect(frontageM).toBeLessThanOrEqual(14);
+    // And it is never taller in plan than the biggest ResLow lot allows.
+    expect(3 * TILE_METERS * footprintShrinkFor(home)).toBeLessThanOrEqual(15);
   });
 });
