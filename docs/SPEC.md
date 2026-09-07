@@ -2795,6 +2795,15 @@ scaled by one constant into the units the sim already uses.
    So each tile carries the whole road's profile and draws
    `corridorHalfProfile` of it, and the median straddling the split is divided
    between the halves so that neither ends in mid-air.
+   The TOOL lays it as two runs from one drag: the drag traces the near
+   carriageway and the far one goes one tile up the cross axis, each run its
+   own contiguous path carrying the flow byte that names its half, both in one
+   batch so undo takes the whole road rather than half of it. Only a STRAIGHT
+   drag gets one — round a bend the two halves are diagonal neighbours, which
+   is not a pair anything downstream recognises, so the preview refuses it
+   before the money is spent. The preview outlines both carriageways and
+   prices both, and reports the road's length as the DRAG's, not as the two
+   runs added together.
    Two consequences, each of which was got wrong once. The other half is NOT A
    NEIGHBOUR: it is the same road. Left in the auto-tiling mask, each half
    auto-tiles into the other and every tile of a six-lane road reads as a

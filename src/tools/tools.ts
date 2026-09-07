@@ -34,16 +34,19 @@ import { RoadTier as RoadTierValue, ZoneType as ZoneTypeValue } from '../shared/
 import type { RoadProfile } from '../shared/types';
 import {
   composeProfile,
-  isLayable,
   joinRefusal,
+  layRefusal,
   NO_EDITS,
   roadRank,
   withArticle,
   presetProfileForTier,
   profilesEqual,
   tierForProfile,
+  tilesAcross,
   type ProfileEdits,
 } from '../shared/roadprofile';
+import { corridorRunsFor, corridorTiles } from '../shared/corridor';
+import type { CorridorRuns } from '../shared/corridor';
 
 /**
  * The onPreview payload: every CursorChip field (cost/lengthMeters/
@@ -473,6 +476,8 @@ export class ToolManager {
     spec: RoadSpec;
     profile: RoadProfile | null;
     layable: boolean;
+    /** Why it may not be laid, in the words the player is shown, or null. */
+    refusal: string | null;
   } {
     const base = presetProfileForTier(presetTier);
     const composed = composeProfile(base, this.profileEdits);
@@ -482,10 +487,21 @@ export class ToolManager {
         spec: this.env.roadSpec(presetTier),
         profile: null,
         layable: true,
+        refusal: null,
       };
     }
     const tier = tierForProfile(composed);
-    return { tier, spec: this.env.roadSpec(tier), profile: composed, layable: isLayable(composed) };
+    // The reason travels with the refusal. Telling a player a road is "too
+    // wide for the tile" when what is wrong is its lane count sends them to
+    // change the wrong thing.
+    const refusal = layRefusal(composed);
+    return {
+      tier,
+      spec: this.env.roadSpec(tier),
+      profile: composed,
+      layable: refusal === null,
+      refusal,
+    };
   }
 
   /**
@@ -649,6 +665,23 @@ export class ToolManager {
 
   /** Road path for the current flags: single-axis-locked when either the
    * `90° lock` snapping chip or `Straight` tool mode is on, else the L-path. */
+  /**
+   * The corridor a road build lays, when the section needs two tiles.
+   *
+   * A section wider than the tile is not drawn wider: it is laid as two
+   * carriageways side by side. The preview and the commit both read this, so
+   * what a player is shown is exactly what gets built — including the refusal,
+   * since a corridor can only be laid in a straight run and a drag round a
+   * corner has to say so before the money is spent.
+   */
+  private roadCorridor(
+    profile: RoadProfile | null,
+    tiles: TilePoint[],
+  ): { runs: CorridorRuns | null; needed: boolean } {
+    const needed = profile !== null && tilesAcross(profile) === 2;
+    return { needed, runs: needed ? corridorRunsFor(tiles) : null };
+  }
+
   private roadPath(start: TilePoint, end: TilePoint): TilePoint[] {
     return this.flags.angleLock || this.flags.straightMode
       ? straightPath(start, end)
@@ -775,7 +808,11 @@ export class ToolManager {
       this.env.onPreview({ tiles, valid, cost: 0, label: 'Bulldoze', invalidReason });
     } else if (tool in ROAD_TOOL_TO_TIER) {
       const build = this.roadBuild(ROAD_TOOL_TO_TIER[tool] as RoadTier);
-      const tiles = this.roadPath(start, current);
+      const path = this.roadPath(start, current);
+      // A section too wide for one tile is laid as two carriageways, so the
+      // preview outlines both and the cost covers both.
+      const corridor = this.roadCorridor(build.profile, path);
+      const tiles = corridor.runs ? corridorTiles(corridor.runs) : path;
       const cost = tiles.length * build.spec.costPerTile;
       const evaluated = this.evaluate(tiles, cost, build.spec.unlockMilestone, true);
       // A composition the tile cannot hold, or a run touching a road its class
@@ -783,17 +820,21 @@ export class ToolManager {
       // something else.
       const meet = this.meetRefusal(tiles, build.profile ?? presetProfileForTier(build.tier));
       const { valid, invalidReason } =
-        build.profile && !build.layable
-          ? { valid: false, invalidReason: 'Too wide for the tile' }
-          : meet !== null
-            ? { valid: false, invalidReason: meet }
-            : evaluated;
+        build.refusal !== null
+          ? { valid: false, invalidReason: build.refusal }
+          : corridor.needed && !corridor.runs
+            ? { valid: false, invalidReason: 'A corridor is laid in a straight run' }
+            : meet !== null
+              ? { valid: false, invalidReason: meet }
+              : evaluated;
       this.env.onPreview({
         tiles,
         valid,
         cost,
         label: build.spec.name,
-        lengthMeters: tiles.length * TILE_METERS,
+        // The road is as long as the drag, not as long as both its
+        // carriageways added together.
+        lengthMeters: path.length * TILE_METERS,
         invalidReason,
       });
     } else if (tool in ZONE_TOOL_TO_TYPE) {
@@ -903,13 +944,38 @@ export class ToolManager {
       this.env.send('Bulldoze', [{ kind: 'bulldoze', tiles: rectTiles(start, end) }]);
     } else if (tool in ROAD_TOOL_TO_TIER) {
       const build = this.roadBuild(ROAD_TOOL_TO_TIER[tool] as RoadTier);
-      const tiles = this.roadPath(start, end);
+      const path = this.roadPath(start, end);
+      const corridor = this.roadCorridor(build.profile, path);
+      const tiles = corridor.runs ? corridorTiles(corridor.runs) : path;
       const profileId = build.profile ? this.env.profileIdFor?.(build.profile) : undefined;
       const refused =
         (build.profile && !build.layable) ||
+        (corridor.needed && !corridor.runs) ||
         this.meetRefusal(tiles, build.profile ?? presetProfileForTier(build.tier)) !== null;
       if (refused) {
         // The preview already said why; laying nothing is the whole answer.
+      } else if (corridor.runs && build.profile && profileId !== undefined) {
+        // Two carriageways of ONE road: each run is its own contiguous path
+        // and carries the flow byte saying which half of the section it holds.
+        // One batch, so undo takes the whole road down rather than half of it.
+        const runs = corridor.runs;
+        const lay = (
+          runTiles: TilePoint[],
+          flow: number,
+        ): Extract<Command, { kind: 'buildRoad' }> => ({
+          kind: 'buildRoad',
+          tier: build.tier,
+          tiles: runTiles,
+          elevation: this.roadElevation,
+          profile: profileId,
+          flows: runTiles.map(() => flow),
+          ...(this.flags.replaceRoad ? { replace: true } : {}),
+        });
+        this.env.send(build.spec.name, [
+          { kind: 'defineRoadProfile', id: profileId, profile: build.profile },
+          lay(runs.near, runs.nearFlow),
+          lay(runs.far, runs.farFlow),
+        ]);
       } else if (build.profile && profileId !== undefined) {
         // Define and lay in one batch, so undo treats them as one edit and a
         // definition the worker refuses takes the road down with it.

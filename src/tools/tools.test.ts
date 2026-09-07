@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RoadTier, ZoneType } from '../shared/types';
+import { corridorHalfOf, flowDirection, RoadTier, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, Command, RoadSpec, TilePoint } from '../shared/types';
 import { TERRAFORM_COST_PER_METER_TILE, TILE_METERS } from '../shared/constants';
 import { NO_EDITS, presetProfileForTier } from '../shared/roadprofile';
@@ -1768,5 +1768,69 @@ describe('ToolManager — a road cannot be drawn through one it does not outrank
     tm.pointerDown(6, 0, 0);
     tm.pointerMove(6, 9, 0);
     expect(previews.at(-1)?.valid).toBe(true);
+  });
+});
+
+describe('a road too wide for its tile is laid as two carriageways', () => {
+  /** An avenue with three lanes a side: the six-lane divided road, 21.6 m. */
+  const SIX_LANE = { ...NO_EDITS, lanes: 3 } as const;
+
+  it('previews both carriageways and prices both', () => {
+    const { env, previews } = makeEnv();
+    env.profileIdFor = () => 12;
+    const tm = new ToolManager(env);
+    tm.setTool('road.avenue');
+    tm.setProfileEdits(SIX_LANE);
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(0, 4, 0); // five tiles north-south
+    const preview = previews.at(-1)!;
+    expect(preview.valid).toBe(true);
+    expect(preview.tiles).toHaveLength(10); // five a side, two sides
+    // The road is five tiles LONG even though it occupies ten.
+    expect(preview.lengthMeters).toBe(5 * 16);
+  });
+
+  it('lays two runs in one batch, each flagged as its own half', () => {
+    const { env, sent } = makeEnv();
+    env.profileIdFor = () => 12;
+    const tm = new ToolManager(env);
+    tm.setTool('road.avenue');
+    tm.setProfileEdits(SIX_LANE);
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(0, 4, 0);
+    tm.pointerUp(0, 4, 0);
+    expect(sent).toHaveLength(1);
+    const [define, near, far] = sent[0]!.commands;
+    expect(define).toMatchObject({ kind: 'defineRoadProfile', id: 12 });
+    if (near?.kind !== 'buildRoad' || far?.kind !== 'buildRoad') {
+      throw new Error('expected two buildRoad commands after the definition');
+    }
+    // Two contiguous runs one tile apart across the way they run.
+    expect(near.tiles.map((t) => `${t.x},${t.z}`)).toEqual(['0,0', '0,1', '0,2', '0,3', '0,4']);
+    expect(far.tiles.map((t) => `${t.x},${t.z}`)).toEqual(['1,0', '1,1', '1,2', '1,3', '1,4']);
+    // Same road, same direction, opposite halves — which is what stops the
+    // two of them reading as a junction the whole length of the road.
+    expect(near.profile).toBe(12);
+    expect(far.profile).toBe(12);
+    for (const f of near.flows!) expect(corridorHalfOf(f)).toBe('left');
+    for (const f of far.flows!) expect(corridorHalfOf(f)).toBe('right');
+    expect(flowDirection(near.flows![0]!)).toBe(flowDirection(far.flows![0]!));
+  });
+
+  it('refuses a corridor round a corner, and says why before the money is spent', () => {
+    // The two halves have to lie beside each other across the run. Round a
+    // bend they are diagonal neighbours, which is not a pair.
+    const { env, previews, sent } = makeEnv();
+    env.profileIdFor = () => 12;
+    const tm = new ToolManager(env);
+    tm.setTool('road.avenue');
+    tm.setProfileEdits(SIX_LANE);
+    tm.setFlags({ angleLock: false, straightMode: false, replaceRoad: false });
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(4, 4, 0); // an L, not a straight run
+    expect(previews.at(-1)?.valid).toBe(false);
+    expect(previews.at(-1)?.invalidReason).toBe('A corridor is laid in a straight run');
+    tm.pointerUp(4, 4, 0);
+    expect(sent).toHaveLength(0);
   });
 });
