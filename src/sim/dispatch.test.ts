@@ -332,6 +332,34 @@ describe('DispatchSystem: route there-and-back and resolution timing', () => {
 // No coupling into ServiceSim
 // ---------------------------------------------------------------------------
 
+/**
+ * One field array against its snapshot, element by element.
+ *
+ * `toEqual` treats a 65,536-entry field as a generic object and takes about a
+ * quarter of a second over each one — nine of them was the entire runtime of
+ * the test below, and enough, on a loaded suite, to push it past its timeout
+ * and fail for reasons that had nothing to do with dispatch. The comparison is
+ * the same and says which tile moved; only the price is different.
+ */
+function expectFieldUnchanged(actual: Uint8Array, expected: Uint8Array, field: number): void {
+  expect(actual.length).toBe(expected.length);
+  for (let i = 0; i < actual.length; i++) {
+    if (actual[i] !== expected[i]) {
+      expect.fail(`field ${field} changed at tile ${i}: ${expected[i]} became ${actual[i]}`);
+    }
+  }
+}
+
+describe('the guard the coupling test leans on', () => {
+  it('notices a single tile moving, so a passing run means something', () => {
+    const a = new Uint8Array(64);
+    const b = new Uint8Array(64);
+    expect(() => expectFieldUnchanged(a, b, 0)).not.toThrow();
+    a[37] = 1;
+    expect(() => expectFieldUnchanged(a, b, 0)).toThrow(/tile 37/);
+  });
+});
+
 describe('DispatchSystem: no coupling into ServiceSim', () => {
   it('never writes any GridState.fields array, and never mutates BuildingInstance objects', () => {
     const g = makeGrid();
@@ -354,10 +382,10 @@ describe('DispatchSystem: no coupling into ServiceSim', () => {
     for (let t = 0; t < 300; t++) sys.tick({ grid: g, buildings, network });
 
     for (let f = 0; f < FIELD_COUNT; f++) {
-      expect(g.fields[f]).toEqual(fieldsSnapshot[f]);
+      expectFieldUnchanged(g.fields[f]!, fieldsSnapshot[f]!, f);
     }
     expect(buildings).toEqual(buildingsSnapshot);
-  }, 15000); // 300 ticks + full field/building deep-equal is slow; avoid a load-related 5s-default timeout flake
+  });
 });
 
 // ---------------------------------------------------------------------------
