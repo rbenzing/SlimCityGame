@@ -116,7 +116,10 @@ const counts = await call(() => window.__slimcity.readFurnitureCounts());
 console.log('furniture:', JSON.stringify(counts));
 
 const shots = [
-  ['box', X + CROSS_X, Z + CROSS_Z, 34, 0, 1.5],
+  ['box', X + CROSS_X, Z + CROSS_Z, 44, 0, 1.5],
+  // One corner, close: a person crossing one arm and then the other walks
+  // round this, so the two footways have to join through it.
+  ['corner-nw', X + CROSS_X - 0.5, Z + CROSS_Z - 0.5, 16, 0, 1.5],
   ['approach-west', X + CROSS_X - 4, Z + CROSS_Z, 34, 0, 1.5],
   ['whole', X + CROSS_X, Z + CROSS_Z, 78, 0, 1.5],
   ['oblique', X + CROSS_X, Z + CROSS_Z, 46, 0.5, 0.7],
