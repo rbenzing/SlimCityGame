@@ -7,12 +7,13 @@ import {
   computeSignPlacements,
   FurnitureRoadTile,
   kerbFacingYaw,
+  MANHOLE_LIFT,
   METER_KERB_CLEARANCE_M,
   RoadFurnitureRenderer,
 } from './roadfurniture';
 import { RoadTier } from '../shared/types';
 import type { JunctionControl, RoadProfile } from '../shared/types';
-import { carriagewayHalfWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
+import { carriagewayHalfWidthMeters, ROAD_Y_OFFSET, SIDEWALK_WIDTH_M } from './roadsmesh';
 import { SIGNAL_CYCLE_S } from '../shared/junction';
 
 const flatHeightAt = (): number => 0;
@@ -739,5 +740,24 @@ describe('a parking meter needs a bay to charge for', () => {
       tier: RoadTier.TwoLane,
     }));
     expect(computeMeterPlacements(plain).length).toBeGreaterThan(0);
+  });
+});
+
+describe('a sewer cover sits ON the road, not under it', () => {
+  it('lifts a manhole clear of the asphalt, which is itself above the ground', () => {
+    // Kerb props are seated from the TERRAIN, and the carriageway is drawn
+    // ROAD_Y_OFFSET above it. A cover lifted only a few centimetres from the
+    // ground was buried: every one was drawn and not one could be seen.
+    expect(MANHOLE_LIFT).toBeGreaterThan(ROAD_Y_OFFSET);
+  });
+
+  it('puts a cover on every paved road, and none on a dirt one', () => {
+    const run = (tier: RoadTier): FurnitureRoadTile[] =>
+      Array.from({ length: 60 }, (_, i) => ({ x: i, z: 7, tier }));
+    for (const tier of [RoadTier.TwoLane, RoadTier.Avenue, RoadTier.Alley, RoadTier.FourLane]) {
+      expect(computeManholePlacements(run(tier)).length, `tier ${tier}`).toBeGreaterThan(0);
+    }
+    expect(computeManholePlacements(run(RoadTier.Gravel))).toEqual([]);
+    expect(computeManholePlacements(run(RoadTier.RailTrack))).toEqual([]);
   });
 });

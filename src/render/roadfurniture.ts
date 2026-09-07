@@ -12,7 +12,12 @@
 import * as THREE from 'three';
 import { RoadTier, TilePoint } from '../shared/types';
 import { TILE_METERS, tileToWorld } from '../shared/constants';
-import { carriagewayHalfWidthMeters, curbWidthMeters } from './roadsmesh';
+import {
+  carriagewayHalfWidthMeters,
+  curbWidthMeters,
+  ROAD_Y_OFFSET,
+  CURB_Y_OFFSET,
+} from './roadsmesh';
 import { carriagewayHalfWidthOf, kerbWidthOf, rankForTier } from '../shared/roadprofile';
 import { armGivesWay, signalAspect } from '../shared/junction';
 import type { SignalAspect } from '../shared/junction';
@@ -24,7 +29,12 @@ const MANHOLE_HEIGHT = 0.06; // rim thickness — stays low and flat
 const MANHOLE_SEGMENTS = 24;
 const MANHOLE_RIM_COLOR = 0x232327; // dark cast-iron rim, groove and seam
 const MANHOLE_PLATE_COLOR = 0x34343b; // lighter center plate
-const MANHOLE_LIFT = 0.03; // sits a hair proud of the road surface
+/**
+ * A hair proud of the ASPHALT, which is itself ROAD_Y_OFFSET above the ground
+ * the props are seated from. Lifting only by this put the cover 0.06 m under
+ * the carriageway: every one of them was drawn, and not one was visible.
+ */
+export const MANHOLE_LIFT = ROAD_Y_OFFSET + 0.03;
 const MANHOLE_MIN_OFFSET = 0.6; // kept off the centerline
 const MANHOLE_EDGE_MARGIN = 0.5; // kept off the carriageway edge
 const MANHOLE_SELECT_FRACTION = 1 / 6; // ~1 in 6 paved tiles
@@ -1608,7 +1618,7 @@ export class RoadFurnitureRenderer {
     const runAxis: FurnitureAxis = p.curbAxis === 'x' ? 'z' : 'x';
     const wx = cx + (p.curbAxis === 'x' ? off : 0) + (runAxis === 'x' ? p.along : 0);
     const wz = cz + (p.curbAxis === 'z' ? off : 0) + (runAxis === 'z' ? p.along : 0);
-    _position.set(wx, this.heightAt(wx, wz), wz);
+    _position.set(wx, this.heightAt(wx, wz) + CURB_Y_OFFSET, wz);
     _matrix.compose(_position, _identityQuat, _scale);
     mesh.setMatrixAt(slot, _matrix);
   }

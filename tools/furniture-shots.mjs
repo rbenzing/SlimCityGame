@@ -126,6 +126,14 @@ const failures = [];
 const all = await signs();
 console.log('signs laid:', all.length);
 
+// Every kerb prop that actually went out. A manhole cover is 1 m across on a
+// 16 m tile, so counting them is the only way to know they exist.
+const counts = await call(() => window.__slimcity.readFurnitureCounts());
+console.log('furniture:', JSON.stringify(counts));
+if (counts.manholes === 0)
+  failures.push('not one manhole cover on a city full of paved road — sewers under all but dirt');
+if (counts.meters === 0) failures.push('no meters on the street that has parking bays');
+
 // Control boards must stand close to the box they hold, not a tile back.
 const near = all.filter((s) => Math.abs(s.x - (X + 13)) <= 2 && Math.abs(s.z - (Z + 16)) <= 2);
 console.log('boards at the crossroads:', JSON.stringify(near.map((s) => `${s.type}@${s.x},${s.z}`)));
@@ -138,6 +146,10 @@ const shots = [
   ['crossroads-eye', X + 13, Z + 19, 30, 0.0, 0.25],
   ['parking-vs-none', X + 8, Z + 29, 70, 0.5, 0.6],
   ['kerb-close', X + 6, Z + 28, 22, 0.4, 0.3],
+  // Straight down on a long paved run: if a sewer cover is not legible here,
+  // it is not legible anywhere.
+  ['manholes-top', X + 12, Z + 16, 60, 0, 1.5],
+  ['manholes-close', X + 6, Z + 16, 26, 0, 1.45],
 ];
 for (const [name, tx, tz, d, yaw, pitch] of shots) {
   await cam(tx, tz, d, yaw, pitch);

@@ -609,6 +609,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // What each signal head is showing. A lit lens is a few pixels across in
       // a screenshot, so a check that the cycle really runs reads it here.
       readSignalAspects: (): string[] => roadFurniture.signalAspects(),
+      // How many of each kerb prop actually went out. A screenshot at the
+      // wrong zoom says nothing about whether a manhole cover exists.
+      readFurnitureCounts: (): Record<string, number> => ({
+        ...roadFurniture.furnitureCounts(),
+      }),
       // What the transit renderer actually built. A transit vehicle and a
       // traffic-spawned one look alike in a screenshot, so a shot cannot tell
       // whether a line's own vehicles are on the road; this can.
