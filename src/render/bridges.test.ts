@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { PIER_SPACING_TILES } from '../shared/constants';
+import { kerbWidthOf, presetProfileForTier } from '../shared/roadprofile';
 import { RoadTier } from '../shared/types';
 import {
   BridgeRenderer,
@@ -117,8 +118,14 @@ describe('structureHalfWidth for a composed deck', () => {
     const preset = structureHalfWidth(RoadTier.TwoLane, 'beam');
     const composed = structureHalfWidth(RoadTier.TwoLane, 'beam', wide);
     expect(composed).toBeGreaterThan(preset);
-    // 14 m carriageway, half a metre of kerb (16 − 14 leaves 1 m a side), the style's overhang.
-    expect(composed - preset).toBeCloseTo(7 + 1 - (3.75 + 1.875), 6);
+    // 14 m of carriageway either way. The wide deck declares a kerb without a
+    // footway, so it carries a kerb; the two-lane carries its pavement. Each
+    // deck is its own carriageway plus its own kerb, and the style's overhang
+    // is the same on both, so it cancels.
+    expect(composed - preset).toBeCloseTo(
+      7 + kerbWidthOf(wide) - (3.75 + kerbWidthOf(presetProfileForTier(RoadTier.TwoLane))),
+      6,
+    );
   });
 });
 

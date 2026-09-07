@@ -46,7 +46,12 @@ const readGrid = () => call(() => window.__slimcity.readGrid());
 const approach = (x, z) => call(([ax, az]) => window.__slimcity.readApproach(ax, az), [x, z]);
 const cam = (tx, tz, d, yaw, pitch) =>
   call(
-    ([x, z, dd, yy, pp]) => window.__slimcity.setCamera((x + 0.5) * 16, (z + 0.5) * 16, dd, yy, pp),
+    ([x, z, dd, yy, pp]) => {
+      // The app's own tile size, so a camera aimed at a tile keeps pointing at
+      // it when that size changes.
+      const T = window.__slimcity.tileMeters();
+      window.__slimcity.setCamera((x + 0.5) * T, (z + 0.5) * T, dd, yy, pp);
+    },
     [tx, tz, d, yaw, pitch],
   );
 

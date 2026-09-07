@@ -210,11 +210,11 @@ describe('the lane drop a tile is running into', () => {
     ..n..
   `;
   // 15 m of carriageway down to 7.5 m is a 7.5 m drop; a town street closes a
-  // lane at 1:15, so it takes seven 16 m tiles.
+  // lane at 1:15, so it takes 112 m — six 20 m tiles.
   const LENGTH = taperTilesFor('urban', 7.5);
 
   it('takes as long as the class’s own ratio says', () => {
-    expect(LENGTH).toBe(7);
+    expect(LENGTH).toBe(6);
   });
 
   it('closes the lanes over the taper, tile by tile, and not before it', () => {
@@ -227,9 +227,9 @@ describe('the lane drop a tile is running into', () => {
       toward: RoadFlow.South,
     });
     expect(narrowingAhead(2, 7, w)).toMatchObject({ remaining: 1 });
-    expect(narrowingAhead(2, 2, w)).toMatchObject({ remaining: 6 });
-    // Seven tiles back is the head of the taper; the eighth is just road.
-    expect(narrowingAhead(2, 1, w)).toBeUndefined();
+    expect(narrowingAhead(2, 3, w)).toMatchObject({ remaining: LENGTH - 1 });
+    // LENGTH tiles back is the head of the taper; the one past it is just road.
+    expect(narrowingAhead(2, 8 - LENGTH - 1, w)).toBeUndefined();
   });
 
   it('says nothing to the narrow road, which is not the one closing lanes', () => {

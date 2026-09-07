@@ -17,6 +17,7 @@ import { RoadTier } from '../shared/types';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 import { carriagewayHalfWidthMeters, ROAD_Y_OFFSET, SIDEWALK_WIDTH_M } from './roadsmesh';
 import { SIGNAL_CYCLE_S } from '../shared/junction';
+import { TILE_METERS } from '../shared/constants';
 
 const flatHeightAt = (): number => 0;
 
@@ -328,15 +329,16 @@ describe('road-furniture placement (pure)', () => {
     expect(sign.type).toBe('bend');
     // radius = tileHalf + carriagewayHalf + sidewalk + margin, along the
     // (+1,+1)/sqrt(2) diagonal from the NW corner (-8,-8).
-    const radius = 8 + carriagewayHalfWidthMeters(t) + SIDEWALK_WIDTH_M + 0.5;
-    const expected = -8 + radius * Math.SQRT1_2;
+    const half = TILE_METERS / 2;
+    const radius = half + carriagewayHalfWidthMeters(t) + SIDEWALK_WIDTH_M + 0.5;
+    const expected = -half + radius * Math.SQRT1_2;
     expect(sign.worldOffsetX).toBeCloseTo(expected, 5);
     expect(sign.worldOffsetZ).toBeCloseTo(expected, 5);
     // Faces back toward the corner (the oncoming curve traffic).
     expect(sign.yaw).toBeCloseTo(Math.atan2(-Math.SQRT1_2, -Math.SQRT1_2), 5);
     // Stays inside its own tile (never strands deep in a neighbor's grass).
-    expect(Math.abs(sign.worldOffsetX!)).toBeLessThan(8);
-    expect(Math.abs(sign.worldOffsetZ!)).toBeLessThan(8);
+    expect(Math.abs(sign.worldOffsetX!)).toBeLessThan(half);
+    expect(Math.abs(sign.worldOffsetZ!)).toBeLessThan(half);
   });
 
   it('keeps manholes, boxes and meters OFF turn tiles (the curve owns the tile)', () => {

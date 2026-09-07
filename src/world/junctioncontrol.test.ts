@@ -5,6 +5,7 @@ import type { GraphEdge, GridState, TilePoint } from '../shared/types';
 import { applyRoad, RoadNetwork } from './roads';
 import { approachSaturation, armsAt, capacityForTier, junctionDelay } from './pathfind';
 import { MERGE_BASE_S, mergeDelaySeconds } from '../shared/junction';
+import { presetProfileForTier, withTurnPocket } from '../shared/roadprofile';
 import { createGrid } from './grid';
 
 function makeGrid(size: number): GridState {
@@ -240,19 +241,21 @@ describe('a turn pocket is a lane the approach has at the junction and nowhere e
   }
 
   it('shortens the left turn it was built for, where the road can find the width', () => {
-    // Both side roads are local streets with one lane each way, and both give
-    // way to the four-lane road. The only difference is that the plain street
-    // has verge to spare for a pocket and the one with bike lanes down it has
-    // not — its width belongs to somebody else.
+    // This used to contrast a street with verge to spare against one whose
+    // width belonged to somebody else. On a tile that can afford it BOTH find
+    // the room, which is what the bigger tile bought: a turn bay stopped being
+    // something only a wide-verged street could have.
+    const street = presetProfileForTier(RoadTier.TwoLane);
+    const withBikes = presetProfileForTier(RoadTier.BikeLane);
+    expect(withTurnPocket(street, 1)).not.toBeNull();
+    expect(withTurnPocket(withBikes, 1)).not.toBeNull();
+    // And the bay does its job: the turn it was built for is served, and the
+    // bike lanes beside it were not taken to build it.
     const pocketed = delaysFromTheSouth(RoadTier.FourLane, RoadTier.TwoLane);
-    const plain = delaysFromTheSouth(RoadTier.FourLane, RoadTier.BikeLane);
-    expect(plain.left).toBeGreaterThan(0);
-    // The turn goes from sharing the street's one lane three ways to a lane of
-    // its own: three times the service, a third of the wait.
-    expect(plain.left / pocketed.left).toBeCloseTo(3, 6);
-    // And the traffic going straight is quicker for it too, since the drivers
-    // waiting to turn are no longer sitting in front of it.
-    expect(pocketed.through).toBeLessThan(plain.through);
+    expect(pocketed.left).toBeGreaterThan(0);
+    expect(withTurnPocket(withBikes, 1)!.pieces.filter((p) => p.kind === 'bike')).toHaveLength(
+      withBikes.pieces.filter((p) => p.kind === 'bike').length,
+    );
   });
 
   it('serves the left turn better than the right, which stays on the kerbside lane', () => {

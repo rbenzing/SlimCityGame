@@ -20,6 +20,7 @@ import {
   MAX_PEDESTRIANS,
   type PedestrianSnapshot,
 } from './pedestrians';
+import { TILE_METERS } from '../shared/constants';
 import {
   BuildingState,
   type BuildingDelta,
@@ -189,8 +190,8 @@ describe('computeWalkOffset / walkAnchorOffset (pure)', () => {
   // reads as walking down a street rather than pacing rings around a house.
   // Still bounded, so nobody wanders off across the map.
   it('ranges along the pavement but stays on it across', () => {
-    const alongBound = 16 * 1.8 + 1e-6; // max half-length
-    const acrossBound = 16 * 0.11 * 1.3 + 1e-6; // max half-width
+    const alongBound = TILE_METERS * 1.8 + 1e-6; // max half-length
+    const acrossBound = TILE_METERS * 0.11 * 1.3 + 1e-6; // max half-width
     for (const alongX of [true, false]) {
       let alongSeen = 0;
       for (let t = 0; t < 40000; t += 777) {
@@ -202,7 +203,7 @@ describe('computeWalkOffset / walkAnchorOffset (pure)', () => {
         alongSeen = Math.max(alongSeen, Math.abs(along));
       }
       // And they really do cover ground, rather than shuffling on the spot.
-      expect(alongSeen).toBeGreaterThan(16 * 0.5);
+      expect(alongSeen).toBeGreaterThan(TILE_METERS * 0.5);
     }
   });
 
@@ -243,16 +244,16 @@ describe('computeWalkOffset / walkAnchorOffset (pure)', () => {
     // A road tile two east of the building; frontage is one east (10+1, 10).
     const roadAt = (x: number, z: number): boolean => x === 12 && z === 10;
     const anchor = computeWalkAnchor(b, roadAt);
-    expect(anchor.x).toBeCloseTo((11 + 0.5) * 16, 6); // tileToWorld(11)
-    expect(anchor.z).toBeCloseTo((10 + 0.5) * 16, 6);
+    expect(anchor.x).toBeCloseTo((11 + 0.5) * TILE_METERS, 6); // tileToWorld(11)
+    expect(anchor.z).toBeCloseTo((10 + 0.5) * TILE_METERS, 6);
   });
 
   it('computeWalkAnchor falls back beside the building when no road is within search range', () => {
     const b = building(5, 10, 10);
     const anchor = computeWalkAnchor(b, () => false);
     const off = walkAnchorOffset(5);
-    expect(anchor.x).toBeCloseTo((10 + 0.5) * 16 + off.x, 6);
-    expect(anchor.z).toBeCloseTo((10 + 0.5) * 16 + off.z, 6);
+    expect(anchor.x).toBeCloseTo((10 + 0.5) * TILE_METERS + off.x, 6);
+    expect(anchor.z).toBeCloseTo((10 + 0.5) * TILE_METERS + off.z, 6);
   });
 
   it('WALK_ANCHOR_SEARCH_TILES bounds the road search', () => {
@@ -261,7 +262,7 @@ describe('computeWalkOffset / walkAnchorOffset (pure)', () => {
     const far = 10 + WALK_ANCHOR_SEARCH_TILES + 1;
     const anchor = computeWalkAnchor(b, (x, z) => x === far && z === 10);
     const off = walkAnchorOffset(5);
-    expect(anchor.x).toBeCloseTo((10 + 0.5) * 16 + off.x, 6);
+    expect(anchor.x).toBeCloseTo((10 + 0.5) * TILE_METERS + off.x, 6);
   });
 
   it('walkerTint is deterministic and in [0, 1)', () => {

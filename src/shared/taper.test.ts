@@ -16,10 +16,13 @@ import type { RoadClassId } from './types';
 
 describe('how long a lane takes to close', () => {
   it('closes a motorway lane at 1:50 and a street lane over half a block', () => {
-    // 3.6 m at 1:50 is 180 m, which is eleven 16 m tiles.
-    expect(laneTaperTiles('highway')).toBe(11);
-    // 3.05 m at 1:15 is 46 m: three tiles, the 35–50 m the standard gives.
-    expect(laneTaperTiles('local')).toBe(3);
+    // 3.6 m at 1:50 is 180 m, which is nine 20 m tiles.
+    expect(laneTaperTiles('highway')).toBe(9);
+    // 3.05 m at 1:15 is 46 m, inside the 35–50 m the standard gives: two 20 m
+    // tiles. An arterial's wider lane takes 50 m, which rounds to three.
+    expect(laneTaperTiles('local')).toBe(2);
+    // A town street's and an arterial's wider lanes take 50 and 54 m, which
+    // round to three.
     expect(laneTaperTiles('urban')).toBe(3);
     expect(laneTaperTiles('arterial')).toBe(3);
   });

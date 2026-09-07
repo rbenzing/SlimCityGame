@@ -757,8 +757,10 @@ describe('RoofPropRenderer frontage setback (optional roadAt)', () => {
       const local = computePropPlacement(topBox, 3, i);
       renderer.getMatrix('ac', slot, m);
       const { pos } = decompose(m);
-      expect(pos.x).toBeCloseTo(centerX + local.x, 5);
-      expect(pos.z).toBeCloseTo(centerZ + local.z, 5);
+      // The matrix stores float32; a bigger tile puts these further from the
+      // origin, so the last digit of a double is not there to compare.
+      expect(pos.x).toBeCloseTo(centerX + local.x, 4);
+      expect(pos.z).toBeCloseTo(centerZ + local.z, 4);
     });
   });
 

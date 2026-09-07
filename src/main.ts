@@ -346,6 +346,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // Goes through the same command path the tools use (funds/milestone/
       // canPlace all enforced).
       cmd: (label: string, commands: Command[]): void => env.send(label, commands),
+      // How much ground a tile covers. A harness aiming a camera at a tile has
+      // to turn tiles into metres, and one that hardcodes the figure points at
+      // empty grass the day the tile changes size.
+      tileMeters: (): number => TILE_METERS,
       readGrid: (): {
         size: number;
         roadTier: number[];

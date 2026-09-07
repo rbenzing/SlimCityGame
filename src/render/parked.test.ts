@@ -43,7 +43,7 @@ import {
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import type { RoadProfile } from '../shared/types';
-import { SIDEWALK_WIDTH_M } from './roadsmesh';
+import { carriagewayHalfWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
 import { sizeForKind, variantScaleForKind } from './vehicles';
 
 const COM_PITCH = BAY_PITCH_TILES.com;
@@ -224,7 +224,7 @@ describe('kerb rows measure from the street’s own cross-section', () => {
   it('a wider carriageway leaves less verge, so the kerb row sits nearer the lot', () => {
     const tier = RoadTier.TwoLane;
     expect(vergeDepthMeters(tier, parked)).toBeLessThan(vergeDepthMeters(tier));
-    expect(vergeDepthMeters(tier, parked)).toBeCloseTo(8 - 6 - SIDEWALK_WIDTH_M, 6);
+    expect(vergeDepthMeters(tier, parked)).toBeCloseTo(TILE_METERS / 2 - 6 - SIDEWALK_WIDTH_M, 6);
     expect(sidewalkDepthMeters(tier, parked)).toBeCloseTo(SIDEWALK_WIDTH_M, 6);
     expect(roadsideDepthTiles(tier, parked)).toBeLessThan(roadsideDepthTiles(tier));
   });
@@ -238,9 +238,13 @@ describe('kerb rows measure from the street’s own cross-section', () => {
 
 describe('vergeDepthMeters / sidewalkDepthMeters', () => {
   it('leaves a grass verge on a narrow street and none on a wide one', () => {
-    // A two-lane tile is mostly verge; a highway's sidewalk already reaches the edge.
-    expect(vergeDepthMeters(RoadTier.TwoLane)).toBeGreaterThan(0);
-    expect(vergeDepthMeters(RoadTier.Highway)).toBe(0);
+    // A two-lane tile is mostly verge. A motorway is the widest thing the grid
+    // lays and keeps only a kerb, so what is left beside it is verge too —
+    // grass, not somewhere to walk, which is the point of it being a kerb.
+    expect(vergeDepthMeters(RoadTier.TwoLane)).toBeGreaterThan(
+      vergeDepthMeters(RoadTier.Highway),
+    );
+    expect(sidewalkDepthMeters(RoadTier.Highway)).toBeLessThan(SIDEWALK_WIDTH_M);
   });
 
   it('never reaches past the tile boundary or into the carriageway', () => {
@@ -479,24 +483,24 @@ describe('computeStallPlacements', () => {
 
   it('seats the N row half a bay depth INWARD (south, onto the lot)', () => {
     const [p] = place(edgeOf('N', 1), 1);
-    // building's north edge line is at z=5*16=80; the vehicle sits centered in
+    // The building's north edge line is at tile 5; the vehicle sits centred in
     // its bay, half the bay depth INTO the lot (larger z), never on the road.
-    expect(p!.worldZ).toBeCloseTo(80 + halfDepthM, 6);
+    expect(p!.worldZ).toBeCloseTo(5 * TILE_METERS + halfDepthM, 6);
   });
 
   it('seats the S row half a bay depth INWARD (north, onto the lot)', () => {
     const [p] = place(edgeOf('S', 1), 1);
-    expect(p!.worldZ).toBeCloseTo(96 - halfDepthM, 6);
+    expect(p!.worldZ).toBeCloseTo(6 * TILE_METERS - halfDepthM, 6);
   });
 
   it('seats the E row half a bay depth INWARD (west, onto the lot)', () => {
     const [p] = place(edgeOf('E', 1), 1);
-    expect(p!.worldX).toBeCloseTo(96 - halfDepthM, 6);
+    expect(p!.worldX).toBeCloseTo(6 * TILE_METERS - halfDepthM, 6);
   });
 
   it('seats the W row half a bay depth INWARD (east, onto the lot)', () => {
     const [p] = place(edgeOf('W', 1), 1);
-    expect(p!.worldX).toBeCloseTo(80 + halfDepthM, 6);
+    expect(p!.worldX).toBeCloseTo(5 * TILE_METERS + halfDepthM, 6);
   });
 
   it('gives each of the four sides a distinct base yaw', () => {
@@ -654,8 +658,14 @@ describe('ParkedCarRenderer frontage apron', () => {
     );
     renderer.apply(deltaAdd(makeBuilding({ id: 1, level: 3 })));
     const { minZ } = stripeBounds(renderer, 1);
-    // A highway's sidewalk already reaches the tile boundary: no verge to pave.
-    expect(minZ).toBeCloseTo(5 * TILE_METERS - sidewalkDepthMeters(RoadTier.Highway), 3);
+    // The apron crosses the verge and the kerb cut carries it over the paved
+    // strip, so together they reach exactly the carriageway and no further.
+    // The two are measured from the same answer, which is what stops a band
+    // being left that is neither and nothing covers.
+    const roadside =
+      vergeDepthMeters(RoadTier.Highway) + sidewalkDepthMeters(RoadTier.Highway);
+    expect(roadside).toBeCloseTo(TILE_METERS / 2 - carriagewayHalfWidthMeters(RoadTier.Highway), 6);
+    expect(minZ).toBeCloseTo(5 * TILE_METERS - roadside, 3);
   });
 });
 

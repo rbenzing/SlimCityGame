@@ -130,7 +130,10 @@ describe('LANDMARK_CATALOG_IDS', () => {
 
 describe('footprintHalfExtents', () => {
   it('is half the footprint in world meters', () => {
-    expect(footprintHalfExtents({ w: 8, d: 6 })).toEqual({ halfW: 64, halfD: 48 });
+    expect(footprintHalfExtents({ w: 8, d: 6 })).toEqual({
+      halfW: 4 * TILE_METERS,
+      halfD: 3 * TILE_METERS,
+    });
   });
 });
 

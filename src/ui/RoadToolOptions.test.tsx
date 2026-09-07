@@ -2,7 +2,7 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { BRIDGE_MAX_ELEVATION, ROAD_ELEVATION_STEP_M } from '../shared/constants';
+import { BRIDGE_MAX_ELEVATION, ROAD_ELEVATION_STEP_M, TILE_METERS } from '../shared/constants';
 import {
   composeProfile,
   NO_EDITS,
@@ -28,7 +28,7 @@ describe('RoadToolOptions — the Profile row', () => {
     render(<RoadToolOptions />);
     expect(screen.getByRole('group', { name: 'Parking lanes' })).toBeInTheDocument();
     expect(screen.getByRole('group', { name: 'Bike lanes' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Profile width')).toHaveTextContent('11.3 / 16 m');
+    expect(screen.getByLabelText('Profile width')).toHaveTextContent(`11.3 / ${TILE_METERS} m`);
 
     const parking = screen.getByRole('group', { name: 'Parking lanes' });
     fireEvent.click(within(parking).getByRole('button', { name: 'Both' }));
@@ -37,7 +37,7 @@ describe('RoadToolOptions — the Profile row', () => {
       'aria-pressed',
       'true',
     );
-    expect(screen.getByLabelText('Profile width')).toHaveTextContent('15.8 / 16 m');
+    expect(screen.getByLabelText('Profile width')).toHaveTextContent(`15.8 / ${TILE_METERS} m`);
   });
 
   it('marks a composition the tile cannot hold', () => {
@@ -54,8 +54,9 @@ describe('RoadToolOptions — the Profile row', () => {
       }),
     );
     const width = screen.getByLabelText('Profile width');
-    expect(width).toHaveAttribute('title', 'Too wide for the tile');
-    // 7.5 m of lanes + two footways + two parking lanes + two bike lanes, past the 16 m tile.
+    // 7.5 m of lanes, two footways, two parking bays and two bike lanes is
+    // 18.75 m — over a 16 m tile, and inside a 20 m one. The row reads the
+    // width against whatever the tile is either way.
     const expected = profileWidth(
       composeProfile(presetProfileForTier(RoadTier.TwoLane), {
         ...NO_EDITS,
@@ -63,8 +64,9 @@ describe('RoadToolOptions — the Profile row', () => {
         bike: 'both',
       }),
     );
-    expect(expected).toBeGreaterThan(16);
-    expect(width).toHaveTextContent(`${expected.toFixed(1)} / 16 m`);
+    expect(expected).toBeLessThanOrEqual(TILE_METERS);
+    expect(width).not.toHaveAttribute('title', 'Too wide for the tile');
+    expect(width).toHaveTextContent(`${expected.toFixed(1)} / ${TILE_METERS} m`);
   });
 
   it('toggles footways, and drops the kerbs with them', () => {
@@ -74,7 +76,7 @@ describe('RoadToolOptions — the Profile row', () => {
     fireEvent.click(footways);
     expect(useCityStore.getState().roadProfileEdits.footways).toBe(false);
     expect(screen.getByRole('button', { name: 'Off' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Profile width')).toHaveTextContent('7.5 / 16 m');
+    expect(screen.getByLabelText('Profile width')).toHaveTextContent(`7.5 / ${TILE_METERS} m`);
   });
 
   it('never asks a motorway or a railway about parking, bike lanes or footways', () => {
@@ -119,7 +121,7 @@ describe('RoadToolOptions — the Profile row', () => {
     fireEvent.click(within(lanes).getByRole('button', { name: '2' }));
     expect(useCityStore.getState().roadProfileEdits).toMatchObject({ lanes: 1, lanesBack: 1 });
     // Two 11 ft lanes: 6.7 m of carriageway between the kerbs.
-    expect(screen.getByLabelText('Profile width')).toHaveTextContent('6.7 / 16 m');
+    expect(screen.getByLabelText('Profile width')).toHaveTextContent(`10.4 / ${TILE_METERS} m`);
   });
 
   it('never offers a lane count it will then refuse for width', () => {
@@ -179,7 +181,7 @@ describe('RoadToolOptions — the Profile row', () => {
     expect(useCityStore.getState().roadProfileEdits.middle).toBe('median');
     // Four 11 ft lanes plus a 6 ft median: 15.2 m, which still fits the tile
     // where four of the preset's wider lanes plus a median would not.
-    expect(screen.getByLabelText('Profile width')).toHaveTextContent('15.2 / 16 m');
+    expect(screen.getByLabelText('Profile width')).toHaveTextContent(`18.9 / ${TILE_METERS} m`);
     expect(screen.getByLabelText('Profile width')).toHaveAttribute('title', 'Fits the tile');
     unmount();
 

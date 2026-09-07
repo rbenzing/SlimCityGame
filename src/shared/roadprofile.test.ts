@@ -33,6 +33,7 @@ import {
   hasKerbs,
   KERB_RESERVE_M,
   kerbWidthOf,
+  FOOTWAY_WIDTH_M,
   isLayable,
   isPaved,
   isPresetProfileId,
@@ -330,9 +331,26 @@ describe('composing a profile from a preset and the player’s edits', () => {
     expect(tierForProfile(p)).toBe(RoadTier.BikeLane);
   });
 
-  it('refuses what the tile cannot hold: parking and bike lanes on both sides of a two-lane', () => {
+  it('holds a two-lane with parking and bike lanes on both sides, which it once could not', () => {
+    // 7.5 m of carriageway, two 2.25 m bays, two bike lanes and two footways
+    // is 18.75 m — over a 16 m tile and inside a 20 m one. The tile grew
+    // because the widest street the game builds could not pay for its own
+    // pavements; a street that wants everything at once is what that buys.
     const p = composeProfile(twoLane(), { ...NO_EDITS, parking: 'both', bike: 'both' });
-    expect(profileWidth(p)).toBeGreaterThan(16);
+    expect(profileWidth(p)).toBeLessThanOrEqual(TILE_METERS);
+    expect(isLayable(p)).toBe(true);
+  });
+
+  it('still refuses what even the bigger tile cannot hold', () => {
+    // A local street is two or three lanes; six of them with everything else
+    // is not a street the grid has room for at any tile size it uses.
+    const p = composeProfile(twoLane(), {
+      ...NO_EDITS,
+      parking: 'both',
+      bike: 'both',
+      lanes: 3,
+      middle: 'median',
+    });
     expect(isLayable(p)).toBe(false);
   });
 
@@ -345,13 +363,14 @@ describe('composing a profile from a preset and the player’s edits', () => {
   it('carries an avenue and its footways inside one tile', () => {
     // The avenue used to spend its whole tile on carriageway, leaving half a
     // metre of kerb and nowhere to walk — so it had a crossing nobody could
-    // reach and a footway its own section said it did not have. Its budget now
-    // buys both: four lanes at the 10 ft urban minimum, a narrow median, and a
-    // real footway each side, in the same 16 m.
+    // reach and a footway its own section said it did not have. On a tile that
+    // can afford it, it buys the lot: four FULL lanes, a 1.2 m refuge, and a
+    // full footway each side.
     const p = presetProfileForTier(RoadTier.Avenue);
     expect(hasFootway(p)).toBe(true);
     expect(fitsTile(p)).toBe(true);
-    expect(carriagewayWidth(p)).toBeCloseTo(13, 6);
+    expect(carriagewayWidth(p)).toBeCloseTo(16.2, 6);
+    expect(kerbWidthOf(p)).toBeCloseTo(FOOTWAY_WIDTH_M, 6);
   });
 
   it('takes an avenue past its tile by making it a corridor when it gains lanes', () => {
@@ -420,20 +439,23 @@ describe('composition rules the editor will enforce', () => {
     expect(laneCount(presetProfile(RoadTier.Tram))).toBe(2);
   });
 
-  it('a four-lane street with footways does not fit one tile, and gives up the footways', () => {
+  it('a four-lane street keeps its footways inside one tile', () => {
+    // This used to be the road that proved the tile was too small: four lanes
+    // and two pavements did not fit, so the pavements were the thing dropped —
+    // which is how the four-lane came to draw a kerb with nowhere to walk.
     const withFootways: RoadProfile = {
       class: 'urban',
       pieces: [
-        { kind: 'sidewalk', width: 1.9 },
-        { kind: 'travel', width: 3.5, flow: 'back' },
-        { kind: 'travel', width: 3.5, flow: 'back' },
-        { kind: 'travel', width: 3.5, flow: 'fwd' },
-        { kind: 'travel', width: 3.5, flow: 'fwd' },
-        { kind: 'sidewalk', width: 1.9 },
+        { kind: 'sidewalk', width: 1.875 },
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'sidewalk', width: 1.875 },
       ],
     };
-    expect(fitsTile(withFootways)).toBe(false);
-    expect(fitsTile({ ...withFootways, pieces: withFootways.pieces.slice(1, -1) })).toBe(true);
+    expect(fitsTile(withFootways)).toBe(true);
+    expect(hasFootway(withFootways)).toBe(true);
   });
 
   it('a local street with a centre turn lane and two bike lanes fits', () => {
@@ -552,11 +574,13 @@ describe('the class drawer: lanes, what separates them, and the posted speed', (
 
   it('rebuilds both directions at the lane width its class is built to', () => {
     const p = composeProfile(presetProfileForTier(RoadTier.FourLane), edits({ lanes: 1 }));
-    expect(p.pieces.map((x) => x.kind)).toEqual(['travel', 'travel']);
-    expect(p.pieces.map((x) => x.flow)).toEqual(['back', 'fwd']);
+    const travel = p.pieces.filter((x) => x.kind === 'travel');
+    expect(travel.map((x) => x.flow)).toEqual(['back', 'fwd']);
     // An urban street is built to 11 ft lanes.
-    for (const piece of p.pieces) expect(piece.width).toBeCloseTo(laneWidthFor('urban'), 6);
+    for (const piece of travel) expect(piece.width).toBeCloseTo(laneWidthFor('urban'), 6);
     expect(laneCount(p)).toBe(2);
+    // Its footways are its own and are not what changing the lanes touches.
+    expect(p.pieces.filter((x) => x.kind === 'sidewalk')).toHaveLength(2);
   });
 
   it('keeps a one-way road one-way, and counts its lanes as the lanes it has', () => {
@@ -569,7 +593,9 @@ describe('the class drawer: lanes, what separates them, and the posted speed', (
 
   it('keeps a reserved bus lane at each kerb of the carriageway when the general lanes change', () => {
     const p = composeProfile(presetProfileForTier(RoadTier.BusLane), edits({ lanes: 2 }));
-    expect(p.pieces.map((x) => x.kind)).toEqual([
+    // Between the footways: a bus lane at each kerb of the carriageway, and
+    // the general lanes rebuilt between them.
+    expect(p.pieces.filter((x) => x.kind !== 'sidewalk').map((x) => x.kind)).toEqual([
       'bus',
       'travel',
       'travel',
@@ -589,7 +615,7 @@ describe('the class drawer: lanes, what separates them, and the posted speed', (
   it('puts a median or a turn lane between the directions, and takes it away again', () => {
     const two = presetProfileForTier(RoadTier.FourLane);
     const median = composeProfile(two, edits({ middle: 'median' }));
-    expect(median.pieces.map((x) => x.kind)).toEqual([
+    expect(median.pieces.filter((x) => x.kind !== 'sidewalk').map((x) => x.kind)).toEqual([
       'travel',
       'travel',
       'median',
@@ -640,10 +666,9 @@ describe('the class drawer: lanes, what separates them, and the posted speed', (
     expect(lanesEachWayRange('oneWay', true)).toEqual({ min: 1, max: 5 });
   });
 
-  it('refuses a widening the tile cannot hold, and takes it with the footways dropped', () => {
+  it('takes a four-lane widening with its footways on, which the smaller tile refused', () => {
     const base = presetProfileForTier(RoadTier.FourLane);
-    const wide = composeProfile(base, edits({ lanes: 2, footways: true }));
-    expect(isLayable(wide)).toBe(false);
+    expect(isLayable(composeProfile(base, edits({ lanes: 2, footways: true })))).toBe(true);
     expect(isLayable(composeProfile(base, edits({ lanes: 2, footways: false })))).toBe(true);
   });
 });
@@ -656,7 +681,11 @@ describe('asymmetric profiles: a road need not be the same both ways', () => {
       presetProfileForTier(RoadTier.FourLane),
       edits({ lanes: 1, lanesBack: 2 }),
     );
-    expect(p.pieces.map((x) => x.flow)).toEqual(['back', 'back', 'fwd']);
+    expect(p.pieces.filter((x) => x.kind === 'travel').map((x) => x.flow)).toEqual([
+      'back',
+      'back',
+      'fwd',
+    ]);
     expect(laneCount(p)).toBe(3);
     expect(isLayable(p)).toBe(true); // urban allows 2..4
   });
@@ -690,7 +719,12 @@ describe('asymmetric profiles: a road need not be the same both ways', () => {
       presetProfileForTier(RoadTier.FourLane),
       edits({ lanes: 1, lanesBack: 2, middle: 'median' }),
     );
-    expect(p.pieces.map((x) => x.kind)).toEqual(['travel', 'travel', 'median', 'travel']);
+    expect(p.pieces.filter((x) => x.kind !== 'sidewalk').map((x) => x.kind)).toEqual([
+      'travel',
+      'travel',
+      'median',
+      'travel',
+    ]);
   });
 
   it('refuses a split the class has no room for', () => {
@@ -836,6 +870,47 @@ describe('lane widths and the lane counts a road is offered, to US standards', (
   });
 });
 
+describe('every preset can afford what it claims, inside its tile', () => {
+  /**
+   * The tile is the budget every road is composed inside, and a road that
+   * cannot pay for its own pieces fails quietly rather than loudly: it keeps
+   * the kerb and loses the pavement, or keeps the median and shrinks it under
+   * the size a person can stand in. Both happened, to three roads, and neither
+   * showed up as a failure anywhere — so this is the check that says so.
+   */
+  const REFUGE_M = 1.2; // 4 ft: the narrowest median someone may wait in
+  const walkable = (spec: RoadSpec): boolean =>
+    // A motorway has a raised kerb and no pavement on purpose — nobody walks
+    // on one — and an unpaved track and a rail corridor have neither.
+    spec.tier !== RoadTier.Highway && hasKerbs(spec.profile!);
+
+  for (const spec of ROAD_PRESETS as RoadSpec[]) {
+    const profile = spec.profile!;
+    it(`${spec.name} fits its tile with room for what it carries`, () => {
+      expect(profileWidth(profile)).toBeLessThanOrEqual(TILE_METERS + 1e-9);
+
+      if (walkable(spec)) {
+        // A kerb is the edge of a pavement. A road that draws one and has
+        // nowhere to walk behind it is telling the player something untrue —
+        // and gets no crossing at the junctions it meets, since a crossing is
+        // for the people on the footway that is not there.
+        expect(hasFootway(profile), `${spec.name} has a kerb but no footway`).toBe(true);
+        expect(kerbWidthOf(profile), `${spec.name}'s footway is clamped`).toBeCloseTo(
+          FOOTWAY_WIDTH_M,
+          6,
+        );
+      }
+
+      const median = profile.pieces.find((p) => p.kind === 'median');
+      if (median) {
+        expect(median.width, `${spec.name}'s median is too narrow to stand in`).toBeGreaterThanOrEqual(
+          REFUGE_M - 1e-9,
+        );
+      }
+    });
+  }
+});
+
 describe('turn pockets', () => {
   const travel = (p: RoadProfile): number[] =>
     p.pieces.filter((q) => q.kind === 'travel').map((q) => q.width);
@@ -861,14 +936,14 @@ describe('turn pockets', () => {
   });
 
   it('refuses an avenue a bay, because it has nothing left to give', () => {
-    // The avenue spends its tile exactly: four lanes AT the 10 ft floor, a
-    // narrow median, a footway each side. A bay has to come from somewhere —
+    // The avenue spends its tile to within a few centimetres: four full lanes,
+    // a refuge median, a footway each side. A bay has to come from somewhere —
     // unspent verge, kerbside parking, or the through lanes narrowed — and it
-    // has none of the first two and cannot narrow lanes already at the
-    // minimum. It is the road that most looks like it should have one and the
-    // clearest case of a tile being full.
+    // has almost no verge, no parking, and narrowing a lane to find 3 m would
+    // take two of them under the floor. It is the road that most looks like it
+    // should have one and the clearest case of a tile being spent.
     const avenue = presetProfileForTier(RoadTier.Avenue);
-    expect(profileWidth(avenue)).toBeCloseTo(TILE_METERS, 6);
+    expect(TILE_METERS - profileWidth(avenue)).toBeLessThan(TURN_POCKET_MIN_WIDTH_M);
     expect(withTurnPocket(avenue, 1)).toBeNull();
     expect(withTurnPocket(avenue, -1)).toBeNull();
   });
@@ -926,9 +1001,12 @@ describe('turn pockets', () => {
   });
 
   it('takes the kerbside parking, then the width of the lane beside it, when the verge is short', () => {
+    // Parking AND bike lanes both sides: the tile is spent, so the bay cannot
+    // simply come out of a verge and has to take the parking instead.
     const parked = composeProfile(presetProfileForTier(RoadTier.TwoLane), {
       ...NO_EDITS,
       parking: 'both',
+      bike: 'both',
     });
     expect(TILE_METERS - profileWidth(parked)).toBeLessThan(TURN_POCKET_MIN_WIDTH_M);
     const pocketed = withTurnPocket(parked, 1)!;
@@ -945,14 +1023,17 @@ describe('turn pockets', () => {
     const divided: RoadProfile = {
       class: 'divided',
       kerbs: true,
+      // Wide enough that the tile has no verge worth a lane, so the median is
+      // the only place a bay can come from — which is the case this is about.
       pieces: [
-        { kind: 'travel', width: 2.95, flow: 'back' },
-        { kind: 'travel', width: 2.95, flow: 'back' },
+        { kind: 'travel', width: 3.8, flow: 'back' },
+        { kind: 'travel', width: 3.8, flow: 'back' },
         { kind: 'median', width: 1.8 },
-        { kind: 'travel', width: 2.95, flow: 'fwd' },
-        { kind: 'travel', width: 2.95, flow: 'fwd' },
+        { kind: 'travel', width: 3.8, flow: 'fwd' },
+        { kind: 'travel', width: 3.8, flow: 'fwd' },
       ],
     };
+    expect(TILE_METERS - profileWidth(divided)).toBeLessThan(TURN_POCKET_MIN_WIDTH_M);
     const pocketed = withTurnPocket(divided, 1)!;
     expect(pocketed.pieces.some((p) => p.kind === 'median')).toBe(false);
     expect(travel(pocketed)).toHaveLength(5);
@@ -979,21 +1060,26 @@ describe('turn pockets', () => {
   });
 
   it('refuses where the width simply is not there', () => {
-    // Four 12 ft lanes leave a metre of a 16 m tile; a lane is three.
+    // Four full lanes and two pavements leave 1.25 m of the tile; a lane is
+    // three. The avenue is the nearer miss still, spending its tile to within
+    // a few centimetres on lanes, a refuge and its pavements.
     expect(withTurnPocket(presetProfileForTier(RoadTier.FourLane), 1)).toBeNull();
-    expect(withTurnPocket(presetProfileForTier(RoadTier.Highway), 1)).toBeNull();
-    // The avenue is the near miss: 15 m of carriageway in a 16 m tile, with a
-    // 1.8 m median to give and inner lanes already under the 10 ft floor. Even
-    // spending the median it cannot find a bay AND keep a kerb, so it gets
-    // neither — the six-lane divided road that can is a two-tile corridor.
     expect(withTurnPocket(presetProfileForTier(RoadTier.Avenue), 1)).toBeNull();
+    // A bus street is the same four lanes with two of them reserved, so it has
+    // the same 1.25 m and the reserved pair are not its to spend.
+    expect(withTurnPocket(presetProfileForTier(RoadTier.BusLane), 1)).toBeNull();
   });
 
-  it('never takes a reserved lane for it', () => {
-    // The bus and bike presets have width beside the traffic lanes, but it
-    // belongs to somebody else.
-    expect(withTurnPocket(presetProfileForTier(RoadTier.BusLane), 1)).toBeNull();
-    expect(withTurnPocket(presetProfileForTier(RoadTier.BikeLane), 1)).toBeNull();
+  it('never takes a reserved lane for it, even when it can afford a bay', () => {
+    // A bike street has verge to spare on the bigger tile, so it does get a
+    // bay — out of the verge. What it must never do is take the lane that
+    // belongs to somebody else to build one.
+    const bike = presetProfileForTier(RoadTier.BikeLane);
+    const pocketed = withTurnPocket(bike, 1);
+    expect(pocketed).not.toBeNull();
+    expect(pocketed!.pieces.filter((p) => p.kind === 'bike')).toHaveLength(
+      bike.pieces.filter((p) => p.kind === 'bike').length,
+    );
   });
 
   it('has nothing to add to a road that turns from a lane of its own already', () => {
@@ -1057,12 +1143,19 @@ describe('the auxiliary lane a motorway grows beside a slip road', () => {
     expect(withAuxiliaryLane(slimMotorway, 1, 0)).toEqual(slimMotorway);
   });
 
-  it('refuses the four-lane motorway, which fills its tile already', () => {
-    // 15 m of carriageway and half a metre of kerb each side is the whole 16 m.
-    // A motorway with an auxiliary lane is a road for two tiles.
-    expect(withAuxiliaryLane(presetProfileForTier(RoadTier.Highway), 1)).toBeNull();
-    expect(canGainAuxiliaryLane(presetProfileForTier(RoadTier.Highway), -1)).toBe(false);
+  it('grows one on the four-lane motorway, which the smaller tile had no room for', () => {
+    // 15 m of carriageway left half a metre of kerb each side on a 16 m tile,
+    // so the road a slip road most often meets was the one that could not
+    // widen for it. On a tile that can afford the widest street it also
+    // affords this, and the motorway's auxiliary lane stops being a two-tile
+    // road it had to wait for.
+    const motorway = presetProfileForTier(RoadTier.Highway);
+    const widened = withAuxiliaryLane(motorway, 1);
+    expect(widened).not.toBeNull();
+    expect(canGainAuxiliaryLane(motorway, -1)).toBe(true);
     expect(canGainAuxiliaryLane(slimMotorway, 1)).toBe(true);
+    // It still leaves the road somewhere to stand its kerb.
+    expect(profileWidth(widened!)).toBeLessThanOrEqual(TILE_METERS - 2 * KERB_RESERVE_M + 1e-9);
   });
 
   it('leaves the road somewhere to stand its kerb, as a turn bay does', () => {
@@ -1101,12 +1194,12 @@ describe('two-tile corridors — the widest road the grid holds', () => {
     expect(tilesAcross(six)).toBe(2);
     expect(isCorridor(six)).toBe(true);
 
-    // Eight 3.6 m lanes with a median and generous footways overrun even two.
+    // Eight 5 m lanes with a median and generous footways overrun even two.
     const absurd: RoadProfile = {
       class: 'divided',
       pieces: [
         { kind: 'sidewalk', width: 3 },
-        ...lanes(8, 3.6),
+        ...lanes(8, 5),
         { kind: 'median', width: 3 },
         { kind: 'sidewalk', width: 3 },
       ],
@@ -1124,7 +1217,7 @@ describe('two-tile corridors — the widest road the grid holds', () => {
   });
 
   it('still refuses a road too wide for even a corridor, and says which', () => {
-    const absurd: RoadProfile = { class: 'divided', pieces: lanes(8, 5) };
+    const absurd: RoadProfile = { class: 'divided', pieces: lanes(8, 6) };
     expect(layRefusal(absurd)).toBe('Too wide for a corridor');
   });
 

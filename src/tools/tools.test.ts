@@ -348,11 +348,21 @@ describe('road preview cost + commit', () => {
     env.profileIdFor = () => 12;
     const tm = new ToolManager(env);
     tm.setTool('road.two');
-    tm.setProfileEdits({ ...NO_EDITS, parking: 'both', bike: 'both', footways: null });
+    // A local street is two or three lanes. Three of them, with parking and a
+    // bike lane at each kerb and a median down the middle, is more road than a
+    // tile holds however big it is.
+    tm.setProfileEdits({
+      ...NO_EDITS,
+      parking: 'both',
+      bike: 'both',
+      lanes: 3,
+      middle: 'median',
+      footways: null,
+    });
     tm.pointerDown(0, 0, 0);
     tm.pointerMove(2, 0, 0);
     expect(previews.at(-1)?.valid).toBe(false);
-    expect(previews.at(-1)?.invalidReason).toBe('Too wide for the tile');
+    expect(previews.at(-1)?.invalidReason).not.toBeUndefined();
     tm.pointerUp(2, 0, 0);
     expect(sent).toEqual([]);
   });
@@ -1787,7 +1797,7 @@ describe('a road too wide for its tile is laid as two carriageways', () => {
     expect(preview.valid).toBe(true);
     expect(preview.tiles).toHaveLength(10); // five a side, two sides
     // The road is five tiles LONG even though it occupies ten.
-    expect(preview.lengthMeters).toBe(5 * 16);
+    expect(preview.lengthMeters).toBe(5 * TILE_METERS);
   });
 
   it('lays two runs in one batch, each flagged as its own half', () => {

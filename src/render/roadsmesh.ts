@@ -236,10 +236,10 @@ export const SIDEWALK_WIDTH_M = FOOTWAY_WIDTH_M;
 const laneFraction = (lanes: number): number => (lanes * LANE_WIDTH_M) / (2 * TILE_METERS);
 
 export const TWO_LANE_HALF_WIDTH_FRACTION = laneFraction(2); // 7.5m carriageway
-// 13 m: four lanes at the 10 ft urban minimum plus a narrow median, which is
-// what an avenue spends on carriageway once it keeps a real footway each side
-// inside the same 16 m tile.
-export const AVENUE_HALF_WIDTH_FRACTION = 13 / (2 * TILE_METERS);
+// 16.2 m: four full lanes about a 1.2 m refuge median, which is what an avenue
+// spends on carriageway once the tile can also pay for a full footway each
+// side.
+export const AVENUE_HALF_WIDTH_FRACTION = 16.2 / (2 * TILE_METERS);
 export const HIGHWAY_HALF_WIDTH_FRACTION = laneFraction(4); // 15m (4 lanes + shoulders inside)
 /** Gravel: rural ~1.5-lane. */
 export const GRAVEL_HALF_WIDTH_FRACTION = laneFraction(1.5);
@@ -2459,10 +2459,12 @@ function emitTaperedRun(
   plateColor: readonly [number, number, number],
   hasCurbs: boolean,
   hAt: (x: number, z: number) => number,
+  /** The kerb strip this road draws, from its own cross-section. */
+  kerbBand: number,
 ): void {
   const pt = (along: number, cross: number): [number, number] =>
     vertical ? [cross, along] : [along, cross];
-  const bandAt = (half: number): number => Math.min(SIDEWALK_WIDTH_M, TILE_HALF - half);
+  const bandAt = (half: number): number => Math.min(kerbBand, TILE_HALF - half);
   const centreAlong = vertical ? centerZ : centerX;
   const breaks = latticeBreaks(centreAlong - TILE_HALF, centreAlong + TILE_HALF);
   for (let k = 0; k < breaks.length - 1; k++) {
@@ -3163,6 +3165,14 @@ export function roadTileVertices(
   const centerZ = (z + 0.5) * TILE_METERS;
   const coreHalf = TILE_METERS * spec.halfWidthFraction;
   const armDepth = TILE_HALF - coreHalf;
+  /**
+   * How wide the kerb strip beside the carriageway is drawn: the road's own
+   * answer from its section, clamped to the tile it has left over. Worked out
+   * from the footway width alone, a road with room to spare is handed a
+   * pavement its section never claimed — which is how a motorway, whose kerb
+   * exists because nobody walks beside it, came to draw one.
+   */
+  const kerbBand = Math.min(kerbWidthOf(crossSection), armDepth);
 
   const hasN = (mask & NORTH) !== 0;
   const hasE = (mask & EAST) !== 0;
@@ -3261,7 +3271,7 @@ export function roadTileVertices(
       centerZ,
       coreHalf,
       armDepth,
-      Math.min(SIDEWALK_WIDTH_M, armDepth),
+      kerbBand,
       hasN,
       hasE,
       plateColor,
@@ -3299,6 +3309,7 @@ export function roadTileVertices(
       plateColor,
       spec.hasCurbs,
       hAt,
+      kerbBand,
     );
   } else if (!isTurn) {
     // Core plate: always present, tier-colored.
@@ -3408,7 +3419,7 @@ export function roadTileVertices(
     // a full sidewalk, so the width clamps to the room available (`armDepth`).
     // Gravel/Alley (`hasCurbs: false`) get no curb geometry at all.
     if (spec.hasCurbs) {
-      const curbWidth = Math.min(SIDEWALK_WIDTH_M, armDepth);
+      const curbWidth = kerbBand;
       // The rounded cap fills the tile end it covers; a straight sidewalk laid
       // across that end would sit as a square strip over the round cap, so
       // every capped side is suppressed here — emitEndCapCurb wraps it instead.

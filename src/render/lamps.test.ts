@@ -426,7 +426,7 @@ describe('LampRenderer', () => {
     // pulled back toward the centerline, i.e. housing.z > pole.z, but by less
     // than double the pole's own offset from the tile center (ARM_LENGTH is
     // 0.8x the pole offset) — still over the near lane, same side as the pole.
-    const tileCenterZ = 104; // tileToWorld(6) = (6+0.5)*16
+    const tileCenterZ = (6 + 0.5) * TILE_METERS; // tileToWorld(6)
     const poleOffsetFromCenter = tileCenterZ - polePos.z;
     expect(housingPos.z).toBeGreaterThan(polePos.z);
     expect(housingPos.z).toBeLessThan(tileCenterZ);

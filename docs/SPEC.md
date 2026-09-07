@@ -2797,13 +2797,27 @@ scaled by one constant into the units the sim already uses.
    it, and the approach is where a driver actually stops. It is painted over
    lane lines already there, so it takes a hair of lift to keep the two from
    fighting for the same depth.
-   THE AVENUE PAYS FOR ITS FOOTWAYS out of its own tile: four lanes at the
-   10 ft urban minimum and a narrow median, 13 m of carriageway, leaving 1.5 m
-   of real pavement each side inside the same 16 m. It used to spend all 16 on
-   carriageway and declare a kerb it had nowhere to stand — so it had a
-   crossing nobody could reach, and its own section said it had no footway
-   while the mesh drew a strip that looked like one. A road wanting more than
-   that is a two-tile corridor, which is what the six-lane arterial is.
+   THE TILE IS 20 m, AND IT IS 20 m BECAUSE OF THIS. At 16 m the widest street
+   the game builds could not pay for itself: 15 m of carriageway left a metre
+   for two pavements, so the four-lane and the bus lane declared a kerb with
+   nowhere to walk behind it, and the avenue could only afford a footway by
+   cutting its lanes to the 10 ft floor and its median to 0.8 m — under the 4 ft
+   a person has to stand in halfway across. At 20 m the avenue pays for the
+   lot: four FULL lanes, a 1.2 m refuge, and a full 1.875 m footway each side,
+   in 19.95 m. The four-lane and the bus lane get the pavements their kerbs
+   always implied. A road wanting more than that is a two-tile corridor.
+   Lane and vehicle sizes are real metres and do NOT scale with the tile — a
+   bus is 2.5 m wide whatever the grid is. Building footprints are given in
+   TILES and do, so a lot grows with the street it fronts. Building HEIGHTS
+   are metres and do not, so every building is squatter than it was by exactly
+   the ratio the tile grew; the catalogue's heights are the place to answer
+   that, not the tile.
+   A ROAD DRAWS THE KERB ITS SECTION CLAIMS. A section that says how wide its
+   pavement is gets that; one that only declares a kerb — a motorway, whose
+   shoulders are inside the paved width and which nobody walks beside — gets a
+   kerb, and never a full pavement merely because the tile had room for one.
+   The rule lived in four places, each clamping the footway width to whatever
+   was left; on a bigger tile they all handed the motorway a pavement.
    A MEDIAN IS DRAWN TO THE WIDTH THE SECTION GIVES IT. Drawn to a fixed one
    it is drawn over whichever of the lanes, median and footways the section
    actually spent the space on.

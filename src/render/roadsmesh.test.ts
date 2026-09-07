@@ -39,7 +39,7 @@ import {
 } from './roadsmesh';
 import { RoadFlow, RoadTileDelta, RoadTier } from '../shared/types';
 import type { JunctionControl, RoadProfile } from '../shared/types';
-import { carriagewayHalfWidthOf, presetProfileForTier } from '../shared/roadprofile';
+import { carriagewayHalfWidthOf, kerbWidthOf, presetProfileForTier } from '../shared/roadprofile';
 import { markingPlan } from './roadmarkings';
 import { CHUNK_TILES, TILE_METERS } from '../shared/constants';
 import { DEFAULT_ALLOWED, Movement } from '../shared/approach';
@@ -195,10 +195,14 @@ describe('roadTileVertices — transit lane variants (Bus Lane / Bike Lane)', ()
     // full footway. A motorway is 15m of road in a 16m tile: half a metre of
     // kerb, because its shoulders are inside the paved width already.
     expect(curbWidthMeters(RoadTier.TwoLane)).toBeCloseTo(SIDEWALK_WIDTH_M, 5);
+    // A motorway draws a KERB, not a pavement — nobody walks beside one, and
+    // its shoulders are inside the paved width already. It keeps that kerb
+    // however much tile is left over: drawing whatever fits is how a road
+    // comes to look like it has somewhere to walk when it has not.
     const kerb = curbWidthMeters(RoadTier.Highway);
     expect(kerb).toBeGreaterThan(0);
     expect(kerb).toBeLessThan(SIDEWALK_WIDTH_M);
-    expect(carriagewayHalfWidthMeters(RoadTier.Highway) + kerb).toBeCloseTo(TILE_METERS / 2, 5);
+    expect(carriagewayHalfWidthMeters(RoadTier.Highway) + kerb).toBeLessThan(TILE_METERS / 2);
   });
 
   it('draws no curb at all where the tier has none', () => {
@@ -276,7 +280,9 @@ describe('roadTileVertices — transit lane variants (Bus Lane / Bike Lane)', ()
       undefined,
       threeLane,
     );
-    expect(extent(custom, centreX)).toBeCloseTo(10.5 / 2 + SIDEWALK_WIDTH_M, 3);
+    // Its own footway width, not the standard one: a section that says how
+    // wide its pavement is gets exactly that drawn.
+    expect(extent(custom, centreX)).toBeCloseTo(10.5 / 2 + 1.9, 3);
     expect(extent(preset, centreX)).toBeCloseTo(7.5 / 2 + SIDEWALK_WIDTH_M, 3);
   });
 
@@ -557,12 +563,14 @@ describe('roadTileVertices — carriageway ratios (UI-SPEC §6.7 Roads v2)', () 
     expect(span).toBeCloseTo(7.5, 5);
   });
 
-  it('avenue carriageway is 4 lanes and a median = 13m, leaving a footway each side', () => {
+  it('avenue carriageway is 4 full lanes and a refuge median, leaving a footway each side', () => {
     const span = coreSpanMeters(RoadTier.Avenue);
-    expect(span).toBeCloseTo(13, 5);
-    // The rest of the 16 m tile is the two footways, which is what makes the
-    // avenue a road a person can walk beside and cross.
-    expect(TILE_METERS - span).toBeCloseTo(3, 5);
+    expect(span).toBeCloseTo(16.2, 5);
+    // The rest of the tile is the two footways, which is what makes the avenue
+    // a road a person can walk beside and cross. On a 16 m tile it could
+    // afford neither at full size; on this one it affords both.
+    expect(TILE_METERS - span).toBeGreaterThanOrEqual(2 * SIDEWALK_WIDTH_M);
+    expect(curbWidthMeters(RoadTier.Avenue)).toBeCloseTo(SIDEWALK_WIDTH_M, 5);
   });
 
   it('highway carriageway is near full tile width, leaving only a narrow shoulder', () => {
@@ -577,7 +585,7 @@ describe('roadTileVertices — carriageway ratios (UI-SPEC §6.7 Roads v2)', () 
   it('the kerb strip starts at the carriageway edge and runs one sidewalk wide, per tier', () => {
     // A road running north-south, so its kerbs lie east and west of the
     // carriageway and can be measured straight across X. Tile (0,0) spans
-    // world X in [0, 16], so its centre is 8.
+    // world X in [0, TILE_METERS], so its centre is half of it.
     for (const tier of [RoadTier.TwoLane, RoadTier.Avenue, RoadTier.Highway]) {
       const { positions, colors } = roadTileVertices(0, 0, tier, N | S, flatHeightAt);
       const posTriples = toTriples(positions);
@@ -589,11 +597,11 @@ describe('roadTileVertices — carriageway ratios (UI-SPEC §6.7 Roads v2)', () 
       }
       expect(curbXs.length).toBeGreaterThan(0);
       const coreHalf = coreSpanMeters(tier) / 2;
-      const eastCurbXs = curbXs.filter((wx) => wx > 8);
+      const eastCurbXs = curbXs.filter((wx) => wx > TILE_METERS / 2);
       // Inner edge exactly at the carriageway edge, outer edge one kerb band
       // beyond it — the tile's leftover verge stays grass.
-      expect(Math.min(...eastCurbXs)).toBeCloseTo(8 + coreHalf, 6);
-      expect(Math.max(...eastCurbXs)).toBeCloseTo(8 + coreHalf + curbWidthMeters(tier), 6);
+      expect(Math.min(...eastCurbXs)).toBeCloseTo(TILE_METERS / 2 + coreHalf, 6);
+      expect(Math.max(...eastCurbXs)).toBeCloseTo(TILE_METERS / 2 + coreHalf + curbWidthMeters(tier), 6);
     }
   });
 });
@@ -1888,13 +1896,13 @@ describe('roadTileVertices — sidewalks/shoulders (§6.7)', () => {
       if (isSidewalk(colorTriples[i] as number[])) {
         const zc = (triples[i] as number[])[2] as number;
         minCurbZ = Math.min(minCurbZ, zc);
-        if (zc < 8) maxCurbZonNorth = Math.max(maxCurbZonNorth, zc); // north-side curb only
+        if (zc < TILE_METERS / 2) maxCurbZonNorth = Math.max(maxCurbZonNorth, zc); // north-side curb only
       }
     }
     // Inner edge sits exactly at the carriageway edge; outer edge is one
     // sidewalk-width out; neither reaches the tile boundary (world Z 0).
-    expect(maxCurbZonNorth).toBeCloseTo(8 - coreHalf, 5);
-    expect(minCurbZ).toBeCloseTo(8 - coreHalf - sidewalk, 5);
+    expect(maxCurbZonNorth).toBeCloseTo(TILE_METERS / 2 - coreHalf, 5);
+    expect(minCurbZ).toBeCloseTo(TILE_METERS / 2 - coreHalf - sidewalk, 5);
     expect(minCurbZ).toBeGreaterThan(0); // grass verge remains
   });
 
@@ -1920,14 +1928,14 @@ describe('roadTileVertices — sidewalks/shoulders (§6.7)', () => {
       if (
         isSidewalk(col[i] as number[]) &&
         Math.abs((p[2] as number) - 0) < 1e-6 &&
-        (p[0] as number) > 8
+        (p[0] as number) > TILE_METERS / 2
       ) {
         xs.push(p[0] as number);
       }
     }
     expect(xs.length).toBeGreaterThan(0);
-    expect(Math.min(...xs)).toBeCloseTo(8 + coreHalf, 5);
-    expect(Math.max(...xs)).toBeCloseTo(8 + coreHalf + sidewalk, 5);
+    expect(Math.min(...xs)).toBeCloseTo(TILE_METERS / 2 + coreHalf, 5);
+    expect(Math.max(...xs)).toBeCloseTo(TILE_METERS / 2 + coreHalf + sidewalk, 5);
   });
 
   it('a lone tile (mask 0) gets 2 straight flank curbs and a ring round each end; a full intersection (mask 15) gets a curved curb-return at each of its 4 rounded corners', () => {
@@ -1996,8 +2004,8 @@ describe('roadTileVertices — paved→gravel transition seam', () => {
     const col = toTriples(colors);
     const tanZs = pos.filter((_, i) => isGravelTan(col[i] as number[])).map((p) => p[2] as number);
     expect(tanZs.length).toBeGreaterThan(0);
-    // Tile (0,0) spans world Z [0,16]; the south edge is Z=16. Tan verts hug it.
-    expect(Math.max(...tanZs)).toBeCloseTo(16, 5);
+    // Tile (0,0) spans world Z [0, TILE_METERS]; tan verts hug its south edge.
+    expect(Math.max(...tanZs)).toBeCloseTo(TILE_METERS, 5);
   });
 });
 
@@ -2244,13 +2252,13 @@ describe('roadTileVertices — Four-Lane (tier 7, UI-SPEC §6.7 Roads v3)', () =
     return Math.max(...xs) - Math.min(...xs);
   }
 
-  it('has a 4-lane carriageway = 15m, wider than the avenue that gave width up for footways', () => {
+  it('has a 4-lane carriageway = 15m, narrower than the avenue by the median it lacks', () => {
     const span = coreSpanMeters(RoadTier.FourLane);
     expect(span).toBeCloseTo(15, 5);
-    // The two were once the same width and told apart by their markings. The
-    // avenue has since spent 2 m of its tile on a footway each side; the
-    // four-lane still spends its whole tile on carriageway.
-    expect(span).toBeGreaterThan(coreSpanMeters(RoadTier.Avenue));
+    // The two were once the same width and told apart by their markings. Both
+    // now carry four full lanes and a footway each side; the avenue is wider
+    // by exactly the refuge median down its middle.
+    expect(coreSpanMeters(RoadTier.Avenue) - span).toBeCloseTo(1.2, 5);
   });
 
   it('draws dashed lane dividers + a solid double center pair, on EVERY straight run (no median ever suppresses it)', () => {
@@ -2335,7 +2343,8 @@ describe('RoadMeshRenderer', () => {
       { ...makeDelta(2, 2, RoadTier.TwoLane, N | S), profile: 12 },
     ]);
     expect(extentOf(plain, centreX)).toBeCloseTo(7.5 / 2 + SIDEWALK_WIDTH_M, 3);
-    expect(extentOf(composed, centreX)).toBeCloseTo(14 / 2 + Math.min(SIDEWALK_WIDTH_M, 8 - 7), 3);
+    // The composed deck declares a kerb without a footway, so it draws a kerb.
+    expect(extentOf(composed, centreX)).toBeCloseTo(14 / 2 + kerbWidthOf(wide), 3);
   });
 
   it('builds one merged mesh for a chunk containing the changed tiles', () => {
@@ -2528,7 +2537,7 @@ describe('roadTileVertices — terrain conformance on twisted slopes', () => {
 describe('roadTileVertices — width transitions on a straight run', () => {
   const four = TILE_METERS * FOUR_LANE_HALF_WIDTH_FRACTION; // 7.5
   const two = TILE_METERS * TWO_LANE_HALF_WIDTH_FRACTION; // 3.75
-  const cz = 8; // tile (0,0) centre z
+  const cz = TILE_METERS / 2; // tile (0,0) centre z
   const flanks = 2 * 6; // the two straight flank kerbs a four-lane run always has
   const wedgeVerts = (colors: number[], positions: number[]): Array<[number, number]> => {
     const out: Array<[number, number]> = [];
@@ -2565,7 +2574,7 @@ describe('roadTileVertices — width transitions on a straight run', () => {
     expect(Math.min(...atEast)).toBeCloseTo(two, 6);
     expect(Math.min(...atWest)).toBeCloseTo(two, 6);
     for (const [x, z] of wedge)
-      if (Math.abs(x - 8) < 1e-6) expect(Math.abs(z - cz)).toBeCloseTo(four, 6);
+      if (Math.abs(x - TILE_METERS / 2) < 1e-6) expect(Math.abs(z - cz)).toBeCloseTo(four, 6);
   });
 
   it('one narrower end tapers over the whole tile; the far edge stays at full width', () => {
@@ -2578,7 +2587,7 @@ describe('roadTileVertices — width transitions on a straight run', () => {
     const wedge = wedgeVerts(colors, positions);
     const atWest = wedge.filter(([x]) => Math.abs(x) < 1e-6);
     expect(atWest.length).toBe(0);
-    const midInset = wedge.filter(([x]) => Math.abs(x - 8) < 1e-6).map(([, z]) => Math.abs(z - cz));
+    const midInset = wedge.filter(([x]) => Math.abs(x - TILE_METERS / 2) < 1e-6).map(([, z]) => Math.abs(z - cz));
     expect(Math.min(...midInset)).toBeCloseTo((four + two) / 2, 6);
   });
 
@@ -2667,8 +2676,8 @@ describe('roadTileVertices — a one-way street points the way it was drawn', ()
   }
 
   it('points south by default, and north when the drag went north', () => {
-    // The arrow head is the wide end. Sample the paint either side of the tile
-    // centre (z = 8) to see which end of the arrow is the head.
+    // The arrow head is the wide end. Sample the paint either side of the
+    // tile's centre to see which end of the arrow is the head.
     const headEnd = (flow: number): number => {
       const { positions, colors } = roadTileVertices(
         0,
@@ -2689,7 +2698,7 @@ describe('roadTileVertices — a one-way street points the way it was drawn', ()
         const x = positions[i * 3]!;
         // The edge lines are white too and sit at the carriageway edge; the
         // arrow lives near the centreline.
-        if (Math.abs(x - 8) > 2) return;
+        if (Math.abs(x - TILE_METERS / 2) > 2) return;
         const z = Math.round(positions[i * 3 + 2]! * 100) / 100;
         const span = byZ.get(z) ?? { lo: Infinity, hi: -Infinity };
         span.lo = Math.min(span.lo, x);
@@ -2705,11 +2714,12 @@ describe('roadTileVertices — a one-way street points the way it was drawn', ()
       }
       return widestZ;
     };
-    // Tile (0,0) spans z 0..16 with its centre at 8: a southward arrow puts
-    // its widest paint past the centre, a northward one before it.
-    expect(headEnd(RoadFlow.South)).toBeGreaterThan(8);
-    expect(headEnd(RoadFlow.None)).toBeGreaterThan(8); // the low->high default
-    expect(headEnd(RoadFlow.North)).toBeLessThan(8);
+    // A southward arrow puts its widest paint past the tile's centre, a
+    // northward one before it.
+    const centre = TILE_METERS / 2;
+    expect(headEnd(RoadFlow.South)).toBeGreaterThan(centre);
+    expect(headEnd(RoadFlow.None)).toBeGreaterThan(centre); // the low->high default
+    expect(headEnd(RoadFlow.North)).toBeLessThan(centre);
   });
 
   it('paints the same amount of arrow whichever way it points', () => {

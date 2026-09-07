@@ -468,10 +468,10 @@ describe('computeFootprintEdges', () => {
     expect(outer).toHaveLength(4);
     expect(sortEdges(outer)).toEqual(
       sortEdges([
-        { cx: 8, cz: 0, alongX: true }, // north
-        { cx: 8, cz: 16, alongX: true }, // south
-        { cx: 0, cz: 8, alongX: false }, // west
-        { cx: 16, cz: 8, alongX: false }, // east
+        { cx: TILE_METERS / 2, cz: 0, alongX: true }, // north
+        { cx: TILE_METERS / 2, cz: TILE_METERS, alongX: true }, // south
+        { cx: 0, cz: TILE_METERS / 2, alongX: false }, // west
+        { cx: TILE_METERS, cz: TILE_METERS / 2, alongX: false }, // east
       ]),
     );
   });
@@ -480,10 +480,10 @@ describe('computeFootprintEdges', () => {
     const { outer } = computeFootprintEdges([{ x: 3, z: 4 }]);
     expect(sortEdges(outer)).toEqual(
       sortEdges([
-        { cx: 56, cz: 64, alongX: true },
-        { cx: 56, cz: 80, alongX: true },
-        { cx: 48, cz: 72, alongX: false },
-        { cx: 64, cz: 72, alongX: false },
+        { cx: 3.5 * TILE_METERS, cz: 4 * TILE_METERS, alongX: true },
+        { cx: 3.5 * TILE_METERS, cz: 5 * TILE_METERS, alongX: true },
+        { cx: 3 * TILE_METERS, cz: 4.5 * TILE_METERS, alongX: false },
+        { cx: 4 * TILE_METERS, cz: 4.5 * TILE_METERS, alongX: false },
       ]),
     );
   });
@@ -543,7 +543,11 @@ describe('computeFootprintEdges', () => {
 
     // The hole's own edges must be bordered too (e.g. tile (1,0)'s south edge,
     // which faces straight into the empty center tile).
-    expect(outer).toContainEqual({ cx: 24, cz: 16, alongX: true });
+    expect(outer).toContainEqual({
+      cx: 1.5 * TILE_METERS,
+      cz: TILE_METERS,
+      alongX: true,
+    });
   });
 
   it('invariant: every tile edge is either outer (counted once) or inner (counted once, shared by 2 tiles)', () => {
@@ -613,27 +617,27 @@ describe('volumeColorFor', () => {
 describe('volumeBoxTransform', () => {
   it('centers a 1x1 footprint at the origin tile and scales to TILE_METERS x heightMeters', () => {
     const t = volumeBoxTransform({ w: 1, d: 1, heightMeters: 10, originTile: { x: 0, z: 0 } });
-    expect(t.centerX).toBeCloseTo(8, 6);
-    expect(t.centerZ).toBeCloseTo(8, 6);
-    expect(t.scaleX).toBeCloseTo(16, 6);
+    expect(t.centerX).toBeCloseTo(TILE_METERS / 2, 6);
+    expect(t.centerZ).toBeCloseTo(TILE_METERS / 2, 6);
+    expect(t.scaleX).toBeCloseTo(TILE_METERS, 6);
     expect(t.scaleY).toBeCloseTo(10, 6);
-    expect(t.scaleZ).toBeCloseTo(16, 6);
+    expect(t.scaleZ).toBeCloseTo(TILE_METERS, 6);
   });
 
   it('centers a larger, offset footprint correctly', () => {
     const t = volumeBoxTransform({ w: 4, d: 4, heightMeters: 40, originTile: { x: 10, z: 20 } });
     expect(t.centerX).toBeCloseTo((10 + 2) * TILE_METERS, 6);
     expect(t.centerZ).toBeCloseTo((20 + 2) * TILE_METERS, 6);
-    expect(t.scaleX).toBeCloseTo(64, 6);
-    expect(t.scaleZ).toBeCloseTo(64, 6);
+    expect(t.scaleX).toBeCloseTo(4 * TILE_METERS, 6);
+    expect(t.scaleZ).toBeCloseTo(4 * TILE_METERS, 6);
   });
 
   it('handles a non-square footprint (w != d)', () => {
     const t = volumeBoxTransform({ w: 3, d: 2, heightMeters: 12, originTile: { x: 5, z: 7 } });
     expect(t.centerX).toBeCloseTo((5 + 1.5) * TILE_METERS, 6);
     expect(t.centerZ).toBeCloseTo((7 + 1) * TILE_METERS, 6);
-    expect(t.scaleX).toBeCloseTo(48, 6);
-    expect(t.scaleZ).toBeCloseTo(32, 6);
+    expect(t.scaleX).toBeCloseTo(3 * TILE_METERS, 6);
+    expect(t.scaleZ).toBeCloseTo(2 * TILE_METERS, 6);
   });
 
   it('clamps negative w/d/heightMeters to zero, never producing an inverted box', () => {

@@ -5,7 +5,21 @@
 
 // --- world dimensions -------------------------------------------------------
 export const MAP_SIZE = 256; // tiles per side
-export const TILE_METERS = 16;
+/**
+ * How much ground a tile covers. It is the budget every road is composed
+ * inside, and at 16 m it could not pay for one: an urban street 15 m wide had
+ * a metre left for two pavements, so the four-lane and the bus lane declared a
+ * kerb with nowhere to walk behind it, and the avenue could only afford a
+ * footway by cutting its lanes to the 10 ft floor and its median to 0.8 m —
+ * under the 4 ft a person has to stand in halfway across.
+ *
+ * At 20 m the widest street the game builds pays for itself: four 3.75 m
+ * lanes, a 1.2 m refuge, and a full 1.875 m footway each side, in 19.95 m.
+ * Lane and vehicle sizes are real metres and do not scale with this; building
+ * footprints are given in TILES and do, so a lot grows with the street it
+ * fronts rather than being stranded on it.
+ */
+export const TILE_METERS = 20;
 export const MAP_TILES = MAP_SIZE * MAP_SIZE;
 
 /** Flat index for tile (x, z). Callers guarantee 0 <= x,z < MAP_SIZE. */

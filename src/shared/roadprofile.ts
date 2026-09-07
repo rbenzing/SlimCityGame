@@ -252,15 +252,23 @@ export function carriagewayHalfWidthOf(profile: RoadProfile): number {
 }
 
 /**
- * Width of the kerb strip a profile draws outside its carriageway: a full
- * footway where the tile has room for one, clamped to whatever is left where it
- * does not, and nothing at all where the profile has no kerbs. A motorway is
- * 15 m of carriageway in a 16 m tile, so it gets half a metre of kerb, not a
- * pavement — its shoulders are inside the paved width already.
+ * Width of the kerb strip a profile draws outside its carriageway.
+ *
+ * A road that SAYS how wide its pavement is gets exactly that. A road that
+ * only declares a kerb — a motorway, whose shoulders are inside the paved
+ * width already and which nobody may walk beside — gets a kerb, and never a
+ * full pavement merely because the tile had room for one. Drawing whatever
+ * fits is how a road comes to look like it has somewhere to walk when its own
+ * section says it has not.
+ *
+ * Either way it is clamped to what the tile has left, and is nothing at all
+ * where the profile has no kerbs.
  */
 export function kerbWidthOf(profile: RoadProfile): number {
   if (!hasKerbs(profile)) return 0;
-  return Math.max(0, Math.min(FOOTWAY_WIDTH_M, TILE_METERS / 2 - carriagewayHalfWidthOf(profile)));
+  const footway = profile.pieces.find((p) => p.kind === 'sidewalk');
+  const asked = footway ? footway.width : KERB_RESERVE_M;
+  return Math.max(0, Math.min(asked, TILE_METERS / 2 - carriagewayHalfWidthOf(profile)));
 }
 
 /**

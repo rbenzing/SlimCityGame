@@ -236,7 +236,10 @@ describe('UTILITY_KIT_CATALOG_IDS', () => {
 
 describe('footprintHalfExtents (pure)', () => {
   it('is half the footprint in world meters', () => {
-    expect(footprintHalfExtents({ w: 4, d: 4 })).toEqual({ halfW: 32, halfD: 32 });
+    expect(footprintHalfExtents({ w: 4, d: 4 })).toEqual({
+      halfW: 2 * TILE_METERS,
+      halfD: 2 * TILE_METERS,
+    });
   });
 });
 

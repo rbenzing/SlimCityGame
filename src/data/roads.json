@@ -185,13 +185,13 @@
         "class": "arterial",
         "kerbs": true,
         "pieces": [
-          { "kind": "sidewalk", "width": 1.5 },
-          { "kind": "travel", "width": 3.05, "flow": "back" },
-          { "kind": "travel", "width": 3.05, "flow": "back" },
-          { "kind": "median", "width": 0.8 },
-          { "kind": "travel", "width": 3.05, "flow": "fwd" },
-          { "kind": "travel", "width": 3.05, "flow": "fwd" },
-          { "kind": "sidewalk", "width": 1.5 }
+          { "kind": "sidewalk", "width": 1.875 },
+          { "kind": "travel", "width": 3.75, "flow": "back" },
+          { "kind": "travel", "width": 3.75, "flow": "back" },
+          { "kind": "median", "width": 1.2 },
+          { "kind": "travel", "width": 3.75, "flow": "fwd" },
+          { "kind": "travel", "width": 3.75, "flow": "fwd" },
+          { "kind": "sidewalk", "width": 1.875 }
         ]
       }
     },
@@ -281,10 +281,12 @@
         "class": "urban",
         "kerbs": true,
         "pieces": [
+          { "kind": "sidewalk", "width": 1.875 },
           { "kind": "travel", "width": 3.75, "flow": "back" },
           { "kind": "travel", "width": 3.75, "flow": "back" },
           { "kind": "travel", "width": 3.75, "flow": "fwd" },
-          { "kind": "travel", "width": 3.75, "flow": "fwd" }
+          { "kind": "travel", "width": 3.75, "flow": "fwd" },
+          { "kind": "sidewalk", "width": 1.875 }
         ]
       }
     },
@@ -300,10 +302,12 @@
         "class": "arterial",
         "kerbs": true,
         "pieces": [
+          { "kind": "sidewalk", "width": 1.875 },
           { "kind": "bus", "width": 3.75, "flow": "back" },
           { "kind": "travel", "width": 3.75, "flow": "back" },
           { "kind": "travel", "width": 3.75, "flow": "fwd" },
-          { "kind": "bus", "width": 3.75, "flow": "fwd" }
+          { "kind": "bus", "width": 3.75, "flow": "fwd" },
+          { "kind": "sidewalk", "width": 1.875 }
         ]
       }
     },

@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { encodeId, decodeId, buildIdColorArray, IdPicker, MAX_ENCODABLE_ID } from './picking';
 import { BuildingInstancer } from './buildings';
 import { BuildingCatalogEntry, BuildingInstance, BuildingState, ZoneType } from '../shared/types';
+import { TILE_METERS } from '../shared/constants';
 
 const flatHeightAt = (): number => 0;
 
@@ -125,8 +126,8 @@ describe('IdPicker.pickBuilding', () => {
     instancer.apply({ added: [instanceAt(777, 2, 3)], removed: [], updated: [] });
     const picker = new IdPicker();
 
-    const worldX = (2 + 0.5) * 16;
-    const worldZ = (3 + 0.5) * 16;
+    const worldX = (2 + 0.5) * TILE_METERS;
+    const worldZ = (3 + 0.5) * TILE_METERS;
     const result = picker.pickBuilding(downwardRayAt(worldX, worldZ), instancer);
     expect(result).toBe(777);
   });
@@ -140,8 +141,8 @@ describe('IdPicker.pickBuilding', () => {
     });
     const picker = new IdPicker();
 
-    const houseCenter = 0.5 * 16;
-    const shopCenter = 10.5 * 16;
+    const houseCenter = 0.5 * TILE_METERS;
+    const shopCenter = 10.5 * TILE_METERS;
     expect(picker.pickBuilding(downwardRayAt(houseCenter, houseCenter), instancer)).toBe(1);
     expect(picker.pickBuilding(downwardRayAt(shopCenter, shopCenter), instancer)).toBe(2);
   });
@@ -160,8 +161,8 @@ describe('IdPicker.pickBuilding', () => {
       [1, 11],
       [2, 12],
     ] as const) {
-      const worldX = (x + 0.5) * 16;
-      const worldZ = 0.5 * 16;
+      const worldX = (x + 0.5) * TILE_METERS;
+      const worldZ = 0.5 * TILE_METERS;
       const picked = picker.pickBuilding(downwardRayAt(worldX, worldZ), instancer);
       expect(picked).toBe(expectedId);
       expect(picked).toBe(instancer.buildingIdAt({ catalogId: 'house', instanceIndex: x }));

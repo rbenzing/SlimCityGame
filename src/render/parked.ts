@@ -28,8 +28,8 @@ import {
 import roadsData from '../data/roads.json';
 import type { RoadProfile } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
-import { carriagewayHalfWidthOf } from '../shared/roadprofile';
-import { carriagewayHalfWidthMeters, ROAD_Y_OFFSET, SIDEWALK_WIDTH_M } from './roadsmesh';
+import { carriagewayHalfWidthOf, kerbWidthOf } from '../shared/roadprofile';
+import { carriagewayHalfWidthMeters, curbWidthMeters, ROAD_Y_OFFSET } from './roadsmesh';
 import {
   sizeForKind,
   variantScaleForKind,
@@ -196,14 +196,19 @@ export const CURB_CUT_WIDTH_M = 7;
  */
 export function vergeDepthMeters(tier: RoadTier, profile?: RoadProfile): number {
   const half = profile ? carriagewayHalfWidthOf(profile) : carriagewayHalfWidthMeters(tier);
-  return Math.max(0, TILE_METERS / 2 - half - SIDEWALK_WIDTH_M);
+  // Whatever the paved strip does not take. Measured against a full footway
+  // instead, a road that keeps only a kerb leaves a band that is neither verge
+  // nor pavement and nothing covers.
+  const paved = sidewalkDepthMeters(tier, profile);
+  return Math.max(0, TILE_METERS / 2 - half - paved);
 }
 
 /** Depth of the sidewalk band the curb cut crosses, clamped to what fits inside the road tile. */
 export function sidewalkDepthMeters(tier: RoadTier, profile?: RoadProfile): number {
-  const half = profile ? carriagewayHalfWidthOf(profile) : carriagewayHalfWidthMeters(tier);
-  const toCarriageway = Math.max(0, TILE_METERS / 2 - half);
-  return Math.min(SIDEWALK_WIDTH_M, toCarriageway);
+  // The road's own answer for how wide the paved strip beside it is. Worked
+  // out again here it drifts from it: a motorway keeps a kerb rather than a
+  // pavement, and a tile with room to spare would otherwise hand it one.
+  return profile ? kerbWidthOf(profile) : curbWidthMeters(tier);
 }
 
 const INITIAL_CAR_CAPACITY = 64;
