@@ -134,11 +134,24 @@ if (counts.manholes === 0)
   failures.push('not one manhole cover on a city full of paved road — sewers under all but dirt');
 if (counts.meters === 0) failures.push('no meters on the street that has parking bays');
 
+// Both cabinets should turn up on a city with this much kerb — a street of
+// identical boxes is what the mix exists to avoid.
+const cabinets = await call(() => window.__slimcity.readCabinets());
+const pedestals = cabinets.filter((c) => c.kind === 'pedestal');
+console.log(
+  'cabinets:',
+  JSON.stringify({ total: cabinets.length, pedestals: pedestals.length }),
+);
+if (pedestals.length === 0) failures.push('not one round telco pedestal among the cabinets');
+if (pedestals.length === cabinets.length)
+  failures.push('every cabinet is a pedestal — the rectangular one has gone');
+
 // Control boards must stand close to the box they hold, not a tile back.
 const near = all.filter((s) => Math.abs(s.x - (X + 13)) <= 2 && Math.abs(s.z - (Z + 16)) <= 2);
 console.log('boards at the crossroads:', JSON.stringify(near.map((s) => `${s.type}@${s.x},${s.z}`)));
 if (near.length === 0) failures.push('the controlled crossroads warranted no boards at all');
 
+const PED = pedestals[0];
 const shots = [
   ['stub', X + 3, Z + 4, 26, 0.0, 0.35],
   ['stub-oblique', X + 4, Z + 4, 34, 0.9, 0.5],
@@ -150,6 +163,10 @@ const shots = [
   // it is not legible anywhere.
   ['manholes-top', X + 12, Z + 16, 60, 0, 1.5],
   ['manholes-close', X + 6, Z + 16, 26, 0, 1.45],
+  // Along a long street's verge, where the cabinets and telco pedestals stand.
+  ['cabinets', X + 12, Z + 31, 46, 0.35, 0.35],
+  ['pedestal', PED ? PED.x : X + 12, PED ? PED.z : Z + 31, 14, 0.5, 0.3],
+  ['cabinets-far', X + 20, Z + 28, 40, 0.35, 0.35],
 ];
 for (const [name, tx, tz, d, yaw, pitch] of shots) {
   await cam(tx, tz, d, yaw, pitch);

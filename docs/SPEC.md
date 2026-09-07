@@ -2608,6 +2608,23 @@ scaled by one constant into the units the sim already uses.
    would push its asphalt metres into two neighbours at once; there the bulge
    is held to the strip of tile left beyond the carriageway, and a road that
    already fills its tile ends in a shallow arc instead.
+   KERBSIDE FURNITURE follows three rules, each of which was got wrong once and
+   is written down here so it is not got wrong again. A board FACES the traffic
+   it speaks to: the kerb it stands on points out of the carriageway, and the
+   traffic beside that kerb comes from the kerb vector turned a quarter
+   anticlockwise, so that is where it looks. One rule serves every board, the
+   control board at a junction included — "a flat board reads from either side"
+   is false, and left half of them edge-on to the drivers meant to read them. A
+   board also stands on a FLANK kerb, never across the end of a dead end, where
+   no facing is right. And a prop is seated on the surface it stands on, which
+   is not the ground: the carriageway is drawn above the terrain, so a manhole
+   cover lifted from the terrain is buried under the road, and a meter seated
+   there has its feet below the paving. A cover lifts from the asphalt; a meter
+   stands on the footway at the KERB FACE, beside the bay it charges for; a
+   cabinet stands BEHIND the footway, set back half its own depth so its near
+   face lands at the paving's back edge and its body is on the verge. There are
+   two cabinets — the rectangular one and the round telco pedestal — sharing a
+   slot and a siting rule but not a shape, so a street gets a mix.
    Two width rules follow from the same principle, that the tile is 16 m and
    saying otherwise later is worse than saying so now. A road is offered only
    the lane counts a tile can hold: six lanes of an arterial is a real road at

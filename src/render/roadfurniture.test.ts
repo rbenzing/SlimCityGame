@@ -524,7 +524,9 @@ describe('RoadFurnitureRenderer', () => {
     const meshes = scene.children.filter(
       (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh,
     );
-    expect(meshes.length).toBe(4); // manhole, box, meter, sign
+    // manhole, cabinet, telco pedestal, meter, sign — the two cabinets share a
+    // slot and a siting rule but not a shape, so each takes its own layer.
+    expect(meshes.length).toBe(5);
 
     const counts = renderer.furnitureCounts();
     const total = counts.manholes + counts.boxes + counts.meters + counts.signs;
@@ -615,7 +617,7 @@ describe('RoadFurnitureRenderer', () => {
 
     renderer.rebuild(representativeGrid());
     const second = scene.children.filter((c) => c instanceof THREE.InstancedMesh);
-    expect(second.length).toBe(4);
+    expect(second.length).toBe(5);
     for (const mesh of first) expect(scene.children).not.toContain(mesh);
   });
 
@@ -759,5 +761,45 @@ describe('a sewer cover sits ON the road, not under it', () => {
     }
     expect(computeManholePlacements(run(RoadTier.Gravel))).toEqual([]);
     expect(computeManholePlacements(run(RoadTier.RailTrack))).toEqual([]);
+  });
+});
+
+describe('a street gets a mix of cabinets, not a row of identical boxes', () => {
+  const longRun = (): FurnitureRoadTile[] => {
+    const tiles: FurnitureRoadTile[] = [];
+    for (const z of [0, 4, 8, 12, 16]) tiles.push(...strip(z, 0, 39, 'ew', RoadTier.TwoLane));
+    return tiles;
+  };
+
+  it('stands both the rectangular cabinet and the round telco pedestal', () => {
+    const boxes = computeBoxPlacements(longRun());
+    expect(boxes.length).toBeGreaterThan(4);
+    const kinds = new Set(boxes.map((b) => b.kind));
+    expect(kinds).toContain('cabinet');
+    expect(kinds).toContain('pedestal');
+  });
+
+  it('picks which from the tile, so the same street always looks the same', () => {
+    const a = computeBoxPlacements(longRun());
+    const b = computeBoxPlacements([...longRun()].reverse());
+    const key = (p: { x: number; z: number; kind: string }): string => `${p.x},${p.z},${p.kind}`;
+    expect(new Set(a.map(key))).toEqual(new Set(b.map(key)));
+  });
+
+  it('stands each behind the footway on its own depth, never overhanging it', () => {
+    // Each is set back by HALF ITS OWN depth beyond the footway's back edge,
+    // so its near face lands exactly there and its body is out on the verge.
+    // The pedestal's concrete pad is a shade wider than the cabinet, so it
+    // stands a shade further out — each measured from itself, not a constant.
+    const boxes = computeBoxPlacements(longRun());
+    const backOfFootway = carriagewayHalfWidthMeters(RoadTier.TwoLane) + SIDEWALK_WIDTH_M;
+    for (const b of boxes) {
+      expect(b.lateralOffset).toBeGreaterThan(backOfFootway);
+      // …and not flung out into the middle of the verge either.
+      expect(b.lateralOffset).toBeLessThan(backOfFootway + 0.5);
+    }
+    const cabinet = boxes.find((b) => b.kind === 'cabinet')!;
+    const pedestal = boxes.find((b) => b.kind === 'pedestal')!;
+    expect(cabinet.lateralOffset).not.toBeCloseTo(pedestal.lateralOffset, 6);
   });
 });

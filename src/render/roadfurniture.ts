@@ -48,6 +48,25 @@ const BOX_DOOR_COLOR = 0x3f4a3f; // proud front door panel
 const BOX_TRIM_COLOR = 0x2c332c; // plinth, cap and door seam
 const BOX_SELECT_FRACTION = 1 / 12; // ~1 in 12 curbed tiles
 
+// --- Telco pedestal ----------------------------------------------------------
+/**
+ * The round pedestal that stands on a verge beside a great many American
+ * streets — a squat capped cylinder rather than a cabinet. It shares the
+ * cabinet's slot and its siting; only its shape and colour differ, so a street
+ * gets a mix of the two instead of a row of identical boxes.
+ */
+const PEDESTAL_RADIUS = 0.17;
+const PEDESTAL_BODY_HEIGHT = 0.72;
+const PEDESTAL_DOME_HEIGHT = 0.12;
+const PEDESTAL_PAD_RADIUS = PEDESTAL_RADIUS + 0.07;
+const PEDESTAL_PAD_HEIGHT = 0.06;
+const PEDESTAL_RADIAL_SEGMENTS = 12;
+const PEDESTAL_BODY_COLOR = 0x2f5d3a; // the green they are almost always painted
+const PEDESTAL_DOME_COLOR = 0x264d31; // the cap, a shade deeper
+const PEDESTAL_PAD_COLOR = 0x8a8a82; // the concrete pad it is bolted to
+/** Of the tiles that earn a cabinet, the share that get a pedestal instead. */
+const PEDESTAL_SHARE = 0.45;
+
 // --- Parking meter -----------------------------------------------------------
 const METER_POLE_RADIUS = 0.05;
 const METER_POLE_HEIGHT = 0.85;
@@ -123,6 +142,7 @@ const HASH_BOX_SELECT = 5;
 const HASH_BOX_SIDE = 6;
 const HASH_METER_SIDE = 7;
 const HASH_SIGN_SIDE = 8;
+const HASH_CABINET_KIND = 9;
 
 // ---------------------------------------------------------------------------
 // Deterministic hashing (never Math.random/Date.now) — a local copy of the
@@ -193,6 +213,9 @@ export interface ManholePlacement {
   rotationY: number;
 }
 
+/** Which cabinet stands here: the rectangular one, or the round telco pedestal. */
+export type CabinetKind = 'cabinet' | 'pedestal';
+
 export interface BoxPlacement {
   x: number;
   z: number;
@@ -201,6 +224,8 @@ export interface BoxPlacement {
   side: FurnitureSide;
   /** Curbside offset magnitude (carriageway edge + half a sidewalk). */
   lateralOffset: number;
+  /** Which of the two cabinets it is; they share a slot and a siting rule. */
+  kind: CabinetKind;
 }
 
 export interface MeterPlacement {
@@ -581,12 +606,18 @@ export function computeBoxPlacements(roadTiles: readonly FurnitureRoadTile[]): B
     );
     if (!pick) continue; // no free sidewalk side (fully surrounded tile)
 
+    // Which of the two cabinets, from its own hash so a street gets a mix.
+    const kind: CabinetKind =
+      hashTile(tile.x, tile.z, HASH_CABINET_KIND) < PEDESTAL_SHARE ? 'pedestal' : 'cabinet';
     out.push({
       x: tile.x,
       z: tile.z,
       axis: pick.axis,
       side: pick.side,
-      lateralOffset: behindFootwayOffset(tile, BOX_DEPTH),
+      // Each stands behind the footway on its own depth: a pedestal is round,
+      // so its depth is its diameter.
+      lateralOffset: behindFootwayOffset(tile, kind === 'pedestal' ? PEDESTAL_PAD_RADIUS * 2 : BOX_DEPTH),
+      kind,
     });
   }
   return out;
@@ -933,6 +964,46 @@ function buildBoxGeometry(): THREE.BufferGeometry {
     { geometry: cap, color: BOX_TRIM_COLOR },
   ]);
   return geometry;
+}
+
+/**
+ * A concrete pad, a round green body and a domed cap: the telco pedestal that
+ * stands on the verge of most American streets. Authored with its base at the
+ * origin so it seats the same way the cabinet does.
+ */
+function buildPedestalGeometry(): THREE.BufferGeometry {
+  const pad = new THREE.CylinderGeometry(
+    PEDESTAL_PAD_RADIUS,
+    PEDESTAL_PAD_RADIUS,
+    PEDESTAL_PAD_HEIGHT,
+    PEDESTAL_RADIAL_SEGMENTS,
+  );
+  pad.translate(0, PEDESTAL_PAD_HEIGHT / 2, 0);
+  const bodyY = PEDESTAL_PAD_HEIGHT + PEDESTAL_BODY_HEIGHT / 2;
+  const body = new THREE.CylinderGeometry(
+    PEDESTAL_RADIUS,
+    PEDESTAL_RADIUS,
+    PEDESTAL_BODY_HEIGHT,
+    PEDESTAL_RADIAL_SEGMENTS,
+  );
+  body.translate(0, bodyY, 0);
+  // A shallow dome, not a hemisphere — the real ones are barely crowned.
+  const dome = new THREE.SphereGeometry(
+    PEDESTAL_RADIUS,
+    PEDESTAL_RADIAL_SEGMENTS,
+    6,
+    0,
+    Math.PI * 2,
+    0,
+    Math.PI / 2,
+  );
+  dome.scale(1, PEDESTAL_DOME_HEIGHT / PEDESTAL_RADIUS, 1);
+  dome.translate(0, PEDESTAL_PAD_HEIGHT + PEDESTAL_BODY_HEIGHT, 0);
+  return mergeColoredGeometries([
+    { geometry: pad, color: PEDESTAL_PAD_COLOR },
+    { geometry: body, color: PEDESTAL_BODY_COLOR },
+    { geometry: dome, color: PEDESTAL_DOME_COLOR },
+  ]);
 }
 
 /** Pole, a silver meter head with a dark display face, and a tapered top cap. */
@@ -1402,6 +1473,7 @@ export class RoadFurnitureRenderer {
   private readonly manholeMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
 
   private readonly boxGeometry = buildBoxGeometry();
+  private readonly pedestalGeometry = buildPedestalGeometry();
   private readonly boxMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
 
   private readonly meterGeometry = buildMeterGeometry();
@@ -1412,6 +1484,7 @@ export class RoadFurnitureRenderer {
 
   private manholeMesh: THREE.InstancedMesh | null = null;
   private boxMesh: THREE.InstancedMesh | null = null;
+  private pedestalMesh: THREE.InstancedMesh | null = null;
   private meterMesh: THREE.InstancedMesh | null = null;
   private signMeshes: THREE.InstancedMesh[] = [];
 
@@ -1465,14 +1538,33 @@ export class RoadFurnitureRenderer {
       this.scene.add(mesh);
     }
 
-    if (this.boxes.length) {
-      const mesh = new THREE.InstancedMesh(this.boxGeometry, this.boxMaterial, this.boxes.length);
-      mesh.count = this.boxes.length;
+    // The two cabinets share a slot and a siting rule but not a shape, so each
+    // takes its own instanced mesh.
+    const cabinets = this.boxes.filter((b) => b.kind === 'cabinet');
+    const pedestals = this.boxes.filter((b) => b.kind === 'pedestal');
+    if (cabinets.length) {
+      const mesh = new THREE.InstancedMesh(this.boxGeometry, this.boxMaterial, cabinets.length);
+      mesh.count = cabinets.length;
       mesh.castShadow = true;
-      for (let i = 0; i < this.boxes.length; i++) this.writeBox(mesh, i, this.boxes[i]!);
+      for (let i = 0; i < cabinets.length; i++) this.writeBox(mesh, i, cabinets[i]!, BOX_HEIGHT / 2);
       mesh.instanceMatrix.needsUpdate = true;
       mesh.userData.furnitureKind = 'box';
       this.boxMesh = mesh;
+      this.scene.add(mesh);
+    }
+    if (pedestals.length) {
+      const mesh = new THREE.InstancedMesh(
+        this.pedestalGeometry,
+        this.boxMaterial,
+        pedestals.length,
+      );
+      mesh.count = pedestals.length;
+      mesh.castShadow = true;
+      // Authored with its base at the origin, so it seats on the ground itself.
+      for (let i = 0; i < pedestals.length; i++) this.writeBox(mesh, i, pedestals[i]!, 0);
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.userData.furnitureKind = 'pedestal';
+      this.pedestalMesh = mesh;
       this.scene.add(mesh);
     }
 
@@ -1581,6 +1673,11 @@ export class RoadFurnitureRenderer {
     mesh.setColorAt(slot, _lampColor);
   }
 
+  /** Where each cabinet stands and which kind it is, from the last rebuild(). */
+  cabinetPlacements(): readonly BoxPlacement[] {
+    return this.boxes;
+  }
+
   /** Instance counts for each prop layer from the last rebuild(). */
   furnitureCounts(): FurnitureCounts {
     return {
@@ -1602,11 +1699,16 @@ export class RoadFurnitureRenderer {
     mesh.setMatrixAt(slot, _matrix);
   }
 
-  private writeBox(mesh: THREE.InstancedMesh, slot: number, p: BoxPlacement): void {
+  private writeBox(
+    mesh: THREE.InstancedMesh,
+    slot: number,
+    p: BoxPlacement,
+    baseLift: number,
+  ): void {
     const off = p.lateralOffset * p.side;
     const wx = p.axis === 'x' ? tileToWorld(p.x) + off : tileToWorld(p.x);
     const wz = p.axis === 'z' ? tileToWorld(p.z) + off : tileToWorld(p.z);
-    _position.set(wx, this.heightAt(wx, wz) + BOX_HEIGHT / 2, wz);
+    _position.set(wx, this.heightAt(wx, wz) + baseLift, wz);
     _matrix.compose(_position, _identityQuat, _scale);
     mesh.setMatrixAt(slot, _matrix);
   }
@@ -1656,12 +1758,13 @@ export class RoadFurnitureRenderer {
   }
 
   private disposeMeshes(): void {
-    for (const mesh of [this.manholeMesh, this.boxMesh, this.meterMesh])
+    for (const mesh of [this.manholeMesh, this.boxMesh, this.pedestalMesh, this.meterMesh])
       if (mesh) this.scene.remove(mesh);
     for (const mesh of this.signMeshes) this.scene.remove(mesh);
     if (this.lampMesh) this.scene.remove(this.lampMesh);
     this.manholeMesh = null;
     this.boxMesh = null;
+    this.pedestalMesh = null;
     this.meterMesh = null;
     this.signMeshes = [];
     this.lampMesh = null;
@@ -1673,6 +1776,7 @@ export class RoadFurnitureRenderer {
     this.disposeMeshes();
     this.manholeGeometry.dispose();
     this.boxGeometry.dispose();
+    this.pedestalGeometry.dispose();
     this.meterGeometry.dispose();
     for (const geometry of Object.values(this.signGeometries)) geometry.dispose();
     this.manholeMaterial.dispose();

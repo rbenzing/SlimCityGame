@@ -609,6 +609,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // What each signal head is showing. A lit lens is a few pixels across in
       // a screenshot, so a check that the cycle really runs reads it here.
       readSignalAspects: (): string[] => roadFurniture.signalAspects(),
+      // Where each kerbside cabinet stands and which of the two it is.
+      readCabinets: (): { x: number; z: number; kind: string }[] =>
+        roadFurniture.cabinetPlacements().map((c) => ({ x: c.x, z: c.z, kind: c.kind })),
       // How many of each kerb prop actually went out. A screenshot at the
       // wrong zoom says nothing about whether a manhole cover exists.
       readFurnitureCounts: (): Record<string, number> => ({
