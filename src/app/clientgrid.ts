@@ -9,7 +9,7 @@
  * ({size, roadTier, water, zone, buildingId, height}).
  */
 import { TILE_METERS, worldToTile } from '../shared/constants';
-import { flowDirection, RoadFlow, RoadTier } from '../shared/types';
+import { corridorHalfOf, flowDirection, RoadFlow, RoadTier } from '../shared/types';
 import { approachZoneTiles } from '../shared/approach';
 import {
   approachAhead,
@@ -19,6 +19,7 @@ import {
 } from '../shared/approachzone';
 import type { ApproachAhead, ApproachSurroundings } from '../shared/approachzone';
 import {
+  corridorHalfProfile,
   FIRST_CUSTOM_PROFILE_ID,
   isPresetProfileId,
   presetProfileForTier,
@@ -184,8 +185,21 @@ export class ClientGridMirror {
    * closing where the road ahead is narrower. Everything measured off the road
    * reads this one, so the paint, the asphalt and the kerb agree.
    */
+  /**
+   * The cross-section this TILE carries, as opposed to the one the road does:
+   * on a corridor they differ, because a corridor tile carries half of a road —
+   * the carriageway on its side of the middle, centred on itself. Everything
+   * that draws a tile reads this, so the mesh, the kerb props and the lamps all
+   * treat a corridor half exactly as they treat a street.
+   */
+  ownProfileAt(x: number, z: number): RoadProfile | null {
+    const whole = this.profileAt(x, z);
+    if (!whole) return null;
+    return corridorHalfProfile(whole, corridorHalfOf(this.roadFlow[this.idx(x, z)] ?? 0));
+  }
+
   drawnProfileAt(x: number, z: number): RoadProfile | null {
-    const own = this.profileAt(x, z);
+    const own = this.ownProfileAt(x, z);
     if (!own) return null;
     return drawnCrossSection(
       own,

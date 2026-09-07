@@ -12,6 +12,7 @@ import {
   nearestNode as findNearestNode,
 } from './pathfind';
 import {
+  corridorHalfOf,
   flowDirection,
   flowForStep,
   RoadFlow,
@@ -108,12 +109,39 @@ export type NetworkTiers = (tier: RoadTier) => boolean;
  * abutting (the level-crossing look). Identical to `computeMask` on a grid of
  * one network's tiles alone.
  */
+/**
+ * Whether the tile at (nx, nz) is the OTHER HALF of the corridor (x, z)
+ * belongs to, rather than a road joining it.
+ *
+ * The two halves of a corridor lie side by side, so without this each one sees
+ * the other as an arm and every tile of a six-lane road reads as a T-junction:
+ * crossings painted the length of it and a graph node at every step. They are
+ * partners when both are flagged as corridor halves of the SAME road, are
+ * opposite halves of it, and lie beside each other across the way they run.
+ */
+function isCorridorPartner(g: GridState, x: number, z: number, nx: number, nz: number): boolean {
+  if (!inBoundsOf(g.size, nx, nz)) return false;
+  const here = g.roadFlow[indexOf(g.size, x, z)] ?? 0;
+  const there = g.roadFlow[indexOf(g.size, nx, nz)] ?? 0;
+  const halfHere = corridorHalfOf(here);
+  const halfThere = corridorHalfOf(there);
+  if (halfHere === 'none' || halfThere === 'none' || halfHere === halfThere) return false;
+  const i = indexOf(g.size, x, z);
+  const n = indexOf(g.size, nx, nz);
+  if ((g.roadProfile[i] ?? 0) !== (g.roadProfile[n] ?? 0)) return false;
+  // Beside each other ACROSS the run, never ahead of or behind one another.
+  const runsAlongX = flowDirection(here) === RoadFlow.East || flowDirection(here) === RoadFlow.West;
+  // A road running east-west has its halves stacked in z; one running
+  // north-south has them side by side in x.
+  return runsAlongX ? nx === x : nz === z;
+}
+
 function computeNetworkMask(g: GridState, x: number, z: number, inNetwork: NetworkTiers): number {
   let mask = 0;
-  if (inNetwork(tierAt(g, x, z - 1))) mask |= 1;
-  if (inNetwork(tierAt(g, x + 1, z))) mask |= 2;
-  if (inNetwork(tierAt(g, x, z + 1))) mask |= 4;
-  if (inNetwork(tierAt(g, x - 1, z))) mask |= 8;
+  if (inNetwork(tierAt(g, x, z - 1)) && !isCorridorPartner(g, x, z, x, z - 1)) mask |= 1;
+  if (inNetwork(tierAt(g, x + 1, z)) && !isCorridorPartner(g, x, z, x + 1, z)) mask |= 2;
+  if (inNetwork(tierAt(g, x, z + 1)) && !isCorridorPartner(g, x, z, x, z + 1)) mask |= 4;
+  if (inNetwork(tierAt(g, x - 1, z)) && !isCorridorPartner(g, x, z, x - 1, z)) mask |= 8;
   return mask;
 }
 

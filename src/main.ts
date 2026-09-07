@@ -255,7 +255,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       inBounds(x, z)
         ? ((clientGrid.roadTier[z * clientGrid.size + x] ?? 0) as RoadTier)
         : RoadTier.None,
-    (x, z) => clientGrid.profileAt(x, z),
+    // The tile's OWN section: on a corridor that is its half of the road.
+    (x, z) => clientGrid.ownProfileAt(x, z),
   );
   // Residential house kit: pitched roofs on every detached/row home, plus a
   // garage + street-facing driveway on the larger detached lots (roadAt orients

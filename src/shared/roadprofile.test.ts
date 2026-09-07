@@ -27,6 +27,7 @@ import {
   CORRIDOR_METERS,
   tilesAcross,
   isCorridor,
+  corridorHalfProfile,
   canGainAuxiliaryLane,
   hasKerbs,
   KERB_RESERVE_M,
@@ -1093,5 +1094,73 @@ describe('two-tile corridors — the widest road the grid holds', () => {
     expect(laneOptionsFor('divided')).toContain(8);
     // A farm track is still two lanes and only two.
     expect(laneOptionsFor('rural')).toEqual([2]);
+  });
+});
+
+describe('a corridor is two carriageways, not one wide one', () => {
+  const divided: RoadProfile = {
+    class: 'divided',
+    pieces: [
+      { kind: 'sidewalk', width: 1.9 },
+      { kind: 'travel', width: 3.6, flow: 'back' },
+      { kind: 'travel', width: 3.6, flow: 'back' },
+      { kind: 'travel', width: 3.6, flow: 'back' },
+      { kind: 'median', width: 2.0 },
+      { kind: 'travel', width: 3.6, flow: 'fwd' },
+      { kind: 'travel', width: 3.6, flow: 'fwd' },
+      { kind: 'travel', width: 3.6, flow: 'fwd' },
+      { kind: 'sidewalk', width: 1.9 },
+    ],
+  };
+
+  it('splits the road down its middle, each half half as wide', () => {
+    const whole = profileWidth(divided);
+    const left = corridorHalfProfile(divided, 'left');
+    const right = corridorHalfProfile(divided, 'right');
+    expect(profileWidth(left)).toBeCloseTo(whole / 2, 6);
+    expect(profileWidth(right)).toBeCloseTo(whole / 2, 6);
+    // And each half fits the tile it is drawn on, which is the whole point.
+    expect(fitsTile(left)).toBe(true);
+    expect(fitsTile(right)).toBe(true);
+  });
+
+  it('gives each carriageway its own share of the median, so neither ends in mid-air', () => {
+    const left = corridorHalfProfile(divided, 'left');
+    const right = corridorHalfProfile(divided, 'right');
+    const medianOf = (p: RoadProfile): number =>
+      p.pieces.filter((x) => x.kind === 'median').reduce((w, x) => w + x.width, 0);
+    expect(medianOf(left)).toBeCloseTo(1.0, 6);
+    expect(medianOf(right)).toBeCloseTo(1.0, 6);
+    // The outer kerb stays on the outside of each half, where the footway is.
+    expect(left.pieces[0]?.kind).toBe('sidewalk');
+    expect(right.pieces[right.pieces.length - 1]?.kind).toBe('sidewalk');
+  });
+
+  it('sends each direction of travel to its own tile', () => {
+    const left = corridorHalfProfile(divided, 'left');
+    const right = corridorHalfProfile(divided, 'right');
+    const flows = (p: RoadProfile): string[] =>
+      p.pieces.filter((x) => x.kind === 'travel').map((x) => x.flow ?? 'both');
+    expect(flows(left)).toEqual(['back', 'back', 'back']);
+    expect(flows(right)).toEqual(['fwd', 'fwd', 'fwd']);
+  });
+
+  it('leaves a road that is not a corridor exactly as it is', () => {
+    const street = presetProfileForTier(RoadTier.TwoLane);
+    expect(corridorHalfProfile(street, 'none')).toBe(street);
+  });
+
+  it('splits a road with no median at all, straight down the centre line', () => {
+    const six: RoadProfile = {
+      class: 'arterial',
+      pieces: Array.from({ length: 6 }, (_, i) => ({
+        kind: 'travel' as const,
+        width: 3.5,
+        flow: i < 3 ? ('back' as const) : ('fwd' as const),
+      })),
+    };
+    const left = corridorHalfProfile(six, 'left');
+    expect(profileWidth(left)).toBeCloseTo(10.5, 6);
+    expect(left.pieces).toHaveLength(3);
   });
 });

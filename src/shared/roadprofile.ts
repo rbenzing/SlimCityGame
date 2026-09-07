@@ -13,6 +13,7 @@ import type {
   LaneFlow,
   LanePiece,
   LanePieceKind,
+  CorridorHalf,
   RoadClassId,
   RoadClassSpec,
   RoadProfile,
@@ -325,6 +326,39 @@ export function tilesAcross(profile: RoadProfile): 0 | 1 | 2 {
 /** Whether the profile is wide enough to need two tiles. */
 export function isCorridor(profile: RoadProfile): boolean {
   return tilesAcross(profile) === 2;
+}
+
+/**
+ * One half of a corridor's cross-section, as a road in its own right.
+ *
+ * A six- or eight-lane divided road is not one wide carriageway: it is TWO,
+ * separated by what runs down the middle. So a corridor is split at its centre
+ * and each tile carries its own half, centred on itself — which is both what
+ * the real road is and what lets every renderer draw a corridor with the
+ * machinery it already has for an ordinary street.
+ *
+ * The piece straddling the middle — the median, nearly always — is divided
+ * between them, so each carriageway is finished on its inner edge by its own
+ * share of it rather than one tile carrying the whole median and the other
+ * ending in mid-air.
+ */
+export function corridorHalfProfile(profile: RoadProfile, half: CorridorHalf): RoadProfile {
+  if (half === 'none') return profile;
+  const middle = profileWidth(profile) / 2;
+  const left: LanePiece[] = [];
+  const right: LanePiece[] = [];
+  let at = 0;
+  for (const piece of profile.pieces) {
+    const end = at + piece.width;
+    if (end <= middle + 1e-9) left.push({ ...piece });
+    else if (at >= middle - 1e-9) right.push({ ...piece });
+    else {
+      left.push({ ...piece, width: middle - at });
+      right.push({ ...piece, width: end - middle });
+    }
+    at = end;
+  }
+  return { ...profile, pieces: half === 'left' ? left : right };
 }
 
 /** Raised kerbs on the unconnected sides: explicit, else wherever there is a footway. */

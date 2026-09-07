@@ -72,13 +72,11 @@ import catalogData from '../data/catalog.json';
 import roadsData from '../data/roads.json';
 import {
   adoptCustomProfiles,
-  admitsAllPieces,
   FIRST_CUSTOM_PROFILE_ID,
-  fitsTile,
+  layRefusal,
   isPresetProfileId,
   rankForTier,
   tierForProfile,
-  withinLaneRange,
 } from '../shared/roadprofile';
 import { codeForControl, controlFromCode } from '../shared/junction';
 import { armAllowed, armIsRestricted, withArmAllowed } from '../shared/approach';
@@ -1263,8 +1261,10 @@ class SimWorld implements WorkerSim {
   private cmdDefineRoadProfile(id: number, profile: RoadProfile): CommandResult {
     const rejected = { ok: false, cost: 0, inverse: [], reason: 'invalid' as const };
     if (!Number.isInteger(id) || id < FIRST_CUSTOM_PROFILE_ID || id > 0xffff) return rejected;
-    if (!fitsTile(profile) || !admitsAllPieces(profile) || !withinLaneRange(profile))
-      return rejected;
+    // A corridor's profile is wider than a tile on purpose — its two halves
+    // are what land on tiles — so the gate is what may be LAID, not what fits
+    // one tile.
+    if (layRefusal(profile) !== null) return rejected;
     const existing = this.customRoadProfiles.get(id);
     if (existing) {
       // Idempotent for the same definition; a different one under a taken id
