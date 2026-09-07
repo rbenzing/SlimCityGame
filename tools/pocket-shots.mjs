@@ -11,6 +11,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
+import { tileCamera } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -45,11 +46,7 @@ const call = (fn, ...a) => page.evaluate(fn, ...a);
 const cmd = (l, c) => call(([x, y]) => window.__slimcity.cmd(x, y), [l, c]);
 const readGrid = () => call(() => window.__slimcity.readGrid());
 const approach = (x, z) => call(([ax, az]) => window.__slimcity.readApproach(ax, az), [x, z]);
-const cam = (tx, tz, d, yaw, pitch) =>
-  call(
-    ([x, z, dd, yy, pp]) => window.__slimcity.setCamera((x + 0.5) * 16, (z + 0.5) * 16, dd, yy, pp),
-    [tx, tz, d, yaw, pitch],
-  );
+const cam = tileCamera(page);
 
 const g0 = await readGrid();
 const N = g0.size;
@@ -106,8 +103,8 @@ const CASES = [
     at: [4, 3],
     across: FOUR_LANE,
     down: TWO_LANE,
-    // The junction stops the side street, and a two-lane street in a 16 m tile
-    // has verge to spare: the approach gains a lane it does not have elsewhere.
+    // The junction stops the side street, and a two-lane street has verge to
+    // spare: the approach gains a lane it does not have elsewhere.
     wantPocket: true,
     wantLanes: 3,
   },

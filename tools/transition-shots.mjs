@@ -11,6 +11,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
+import { tileCamera } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -55,14 +56,7 @@ const call = (fn, ...a) => page.evaluate(fn, ...a);
 const cmd = (l, c) => call(([x, y]) => window.__slimcity.cmd(x, y), [l, c]);
 const readGrid = () => call(() => window.__slimcity.readGrid());
 const approach = (x, z) => call(([ax, az]) => window.__slimcity.readApproach(ax, az), [x, z]);
-const cam = (tx, tz, d, yaw, pitch) =>
-  call(
-    ([x, z, dd, yy, pp]) => {
-      const T = window.__slimcity.tileMeters();
-      window.__slimcity.setCamera((x + 0.5) * T, (z + 0.5) * T, dd, yy, pp);
-    },
-    [tx, tz, d, yaw, pitch],
-  );
+const cam = tileCamera(page);
 
 const g0 = await readGrid();
 const N = g0.size;

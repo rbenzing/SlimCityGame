@@ -2,7 +2,7 @@
  * slip road, so a driver joining has somewhere to get up to speed and one
  * leaving has somewhere to slow down.
  *
- * A four-lane motorway fills a 16 m tile edge to edge and cannot have one —
+ * A four-lane motorway fills the tile edge to edge and cannot have one —
  * that road is a two-tile corridor. A TWO-lane motorway has the room, so that
  * is what this lays: the feature is real, and where it does not appear the
  * reason is width rather than a bug.
@@ -11,6 +11,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
+import { tileCamera } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -46,11 +47,7 @@ const call = (fn, ...a) => page.evaluate(fn, ...a);
 const cmd = (l, c) => call(([x, y]) => window.__slimcity.cmd(x, y), [l, c]);
 const readGrid = () => call(() => window.__slimcity.readGrid());
 const approach = (x, z) => call(([ax, az]) => window.__slimcity.readApproach(ax, az), [x, z]);
-const cam = (tx, tz, d, yaw, pitch) =>
-  call(
-    ([x, z, dd, yy, pp]) => window.__slimcity.setCamera((x + 0.5) * 16, (z + 0.5) * 16, dd, yy, pp),
-    [tx, tz, d, yaw, pitch],
-  );
+const cam = tileCamera(page);
 
 const g0 = await readGrid();
 const N = g0.size;
@@ -99,7 +96,7 @@ const JZ = 12;
 
 // A two-lane motorway running south, with a slip road leaving it eastward at
 // (MX, JZ) and a street for the slip road to reach.
-// A two-lane motorway: 7.5 m of carriageway, which leaves a 16 m tile the room
+// A two-lane motorway: 7.5 m of carriageway, which leaves the tile the room
 // for an auxiliary lane. The four-lane preset does not, and that is the point.
 const SLIM_MOTORWAY = 13;
 await cmd('define', [

@@ -7,6 +7,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
+import { tileCamera, tileMeters } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -53,11 +54,8 @@ await page.waitForTimeout(4000);
 const call = (fn, ...a) => page.evaluate(fn, ...a);
 const cmd = (l, c) => call(([x, y]) => window.__slimcity.cmd(x, y), [l, c]);
 const readGrid = () => call(() => window.__slimcity.readGrid());
-const cam = (tx, tz, d, yaw, pitch) =>
-  call(
-    ([x, z, dd, yy, pp]) => window.__slimcity.setCamera((x + 0.5) * 16, (z + 0.5) * 16, dd, yy, pp),
-    [tx, tz, d, yaw, pitch],
-  );
+const cam = tileCamera(page);
+const T = await tileMeters(page);
 
 const g0 = await readGrid();
 const N = g0.size;
@@ -129,8 +127,8 @@ for (const k of ['preset', 'parked', 'bare']) {
 const poles = await call(() => window.__slimcity.readLampPoles());
 const rowPoles = (z) =>
   poles
-    .filter((p) => Math.abs(p.z - (z + 0.5) * 16) < 8 && p.x > (X + 2) * 16 && p.x < (X + 14) * 16)
-    .map((p) => Math.abs(p.z - (z + 0.5) * 16));
+    .filter((p) => Math.abs(p.z - (z + 0.5) * T) < T / 2 && p.x > (X + 2) * T && p.x < (X + 14) * T)
+    .map((p) => Math.abs(p.z - (z + 0.5) * T));
 const presetPoles = rowPoles(Z);
 const parkedPoles = rowPoles(Z + 3);
 console.log(

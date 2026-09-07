@@ -9,6 +9,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
+import { tileCamera } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -43,14 +44,7 @@ const call = (fn, ...a) => page.evaluate(fn, ...a);
 const cmd = (l, c) => call(([x, y]) => window.__slimcity.cmd(x, y), [l, c]);
 const readGrid = () => call(() => window.__slimcity.readGrid());
 const signs = () => call(() => window.__slimcity.readSigns());
-const cam = (tx, tz, d, yaw, pitch) =>
-  call(
-    ([x, z, dd, yy, pp]) => {
-      const T = window.__slimcity.tileMeters();
-      window.__slimcity.setCamera((x + 0.5) * T, (z + 0.5) * T, dd, yy, pp);
-    },
-    [tx, tz, d, yaw, pitch],
-  );
+const cam = tileCamera(page);
 
 const g0 = await readGrid();
 const N = g0.size;
@@ -130,7 +124,7 @@ const all = await signs();
 console.log('signs laid:', all.length);
 
 // Every kerb prop that actually went out. A manhole cover is 1 m across on a
-// 16 m tile, so counting them is the only way to know they exist.
+// tile many times that, so counting them is the only way to know they exist.
 const counts = await call(() => window.__slimcity.readFurnitureCounts());
 console.log('furniture:', JSON.stringify(counts));
 if (counts.manholes === 0)

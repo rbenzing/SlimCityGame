@@ -5,6 +5,7 @@
  * close-ups of both to verify roads conform after the fix. */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
+import { tileCamera } from './shotcam.mjs';
 const base = process.argv[2] ?? 'http://localhost:5174';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
 const out = process.argv[3] ?? 'tools/shots-coalplant';
@@ -38,11 +39,7 @@ const cmd = (l, c) => call(([x, y]) => window.__slimcity.cmd(x, y), [l, c]);
 const readGrid = () => call(() => window.__slimcity.readGrid());
 const stats = () => call(() => window.__slimcity.getStats());
 const setSpeed = (s) => call((x) => window.__slimcity.setSpeed(x), s);
-const cam = (tx, tz, d) =>
-  call(
-    ([x, z, dd]) => window.__slimcity.setCamera((x + 0.5) * 16, (z + 0.5) * 16, dd),
-    [tx, tz, d],
-  );
+const cam = tileCamera(page);
 
 const g = await readGrid();
 const N = g.size;

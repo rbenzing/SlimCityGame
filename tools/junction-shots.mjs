@@ -13,6 +13,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
+import { tileCamera, tileMeters } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -47,14 +48,7 @@ const call = (fn, ...a) => page.evaluate(fn, ...a);
 const cmd = (l, c) => call(([x, y]) => window.__slimcity.cmd(x, y), [l, c]);
 const readGrid = () => call(() => window.__slimcity.readGrid());
 const readSigns = () => call(() => window.__slimcity.readSigns());
-const cam = (tx, tz, d, yaw, pitch) =>
-  call(
-    ([x, z, dd, yy, pp]) => {
-      const T = window.__slimcity.tileMeters();
-      window.__slimcity.setCamera((x + 0.5) * T, (z + 0.5) * T, dd, yy, pp);
-    },
-    [tx, tz, d, yaw, pitch],
-  );
+const cam = tileCamera(page);
 
 const g0 = await readGrid();
 const N = g0.size;
@@ -116,7 +110,7 @@ for (let d = 4; d >= 1; d--) along.push({ d, ...(await approach(X + JX - d, Z + 
 console.log('avenue into the junction:', JSON.stringify(along));
 // A carriageway wider than the tile is a road spilling into the next one. The
 // figure comes from the app so this keeps meaning that when the tile changes.
-const TILE = await call(() => window.__slimcity.tileMeters());
+const TILE = await tileMeters(page);
 for (const t of along) {
   if (t.width > TILE + 1e-6)
     failures.push(`the avenue draws ${t.width} m of carriageway on a ${TILE} m tile`);

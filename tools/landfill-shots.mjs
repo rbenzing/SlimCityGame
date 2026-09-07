@@ -6,6 +6,7 @@
  * lots where the building must sit BEHIND its parking bays, not on top. */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
+import { tileCamera } from './shotcam.mjs';
 const base = process.argv[2] ?? 'http://localhost:5174';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
 const out = process.argv[3] ?? 'tools/shots-landfill';
@@ -41,11 +42,7 @@ const readGrid = () => call(() => window.__slimcity.readGrid());
 const stats = () => call(() => window.__slimcity.getStats());
 const setSpeed = (s) => call((x) => window.__slimcity.setSpeed(x), s);
 const setTool = (t) => call((x) => window.__slimcity.setTool(x), t);
-const cam = (tx, tz, d) =>
-  call(
-    ([x, z, dd]) => window.__slimcity.setCamera((x + 0.5) * 16, (z + 0.5) * 16, dd),
-    [tx, tz, d],
-  );
+const cam = tileCamera(page);
 
 const g = await readGrid();
 const N = g.size;
