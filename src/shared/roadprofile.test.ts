@@ -860,6 +860,35 @@ describe('turn pockets', () => {
     expect(fitsTile(pocketed!)).toBe(true);
   });
 
+  it('refuses an avenue a bay, because it has nothing left to give', () => {
+    // The avenue spends its tile exactly: four lanes AT the 10 ft floor, a
+    // narrow median, a footway each side. A bay has to come from somewhere —
+    // unspent verge, kerbside parking, or the through lanes narrowed — and it
+    // has none of the first two and cannot narrow lanes already at the
+    // minimum. It is the road that most looks like it should have one and the
+    // clearest case of a tile being full.
+    const avenue = presetProfileForTier(RoadTier.Avenue);
+    expect(profileWidth(avenue)).toBeCloseTo(TILE_METERS, 6);
+    expect(withTurnPocket(avenue, 1)).toBeNull();
+    expect(withTurnPocket(avenue, -1)).toBeNull();
+  });
+
+  it('gives a corridor half the bay the single tile could not, out of its own verge', () => {
+    // A six-lane arterial is two carriageways, and each sits on a tile of its
+    // own with room to spare. That spare is what buys the turn bay the avenue
+    // cannot have — which is the whole reason a big road is laid across two
+    // tiles rather than drawn wider on one.
+    const six = composeProfile(presetProfileForTier(RoadTier.Avenue), { ...NO_EDITS, lanes: 3 });
+    expect(tilesAcross(six)).toBe(2);
+    for (const half of ['left', 'right'] as const) {
+      const carriageway = corridorHalfProfile(six, half);
+      const bay = withTurnPocket(carriageway, 1);
+      expect(bay, `${half} half`).not.toBeNull();
+      expect(travel(bay!).length).toBe(travel(carriageway).length + 1);
+      expect(fitsTile(bay!)).toBe(true);
+    }
+  });
+
   it('opens the bay over a taper rather than starting it at full width', () => {
     const street = presetProfileForTier(RoadTier.TwoLane);
     const full = withTurnPocket(street, 1)!;

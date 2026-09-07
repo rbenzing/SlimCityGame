@@ -2632,10 +2632,16 @@ scaled by one constant into the units the sim already uses.
    the player off for taking what it held out. And a turn bay leaves the KERB
    RESERVE — half a metre each side, the narrowest kerb the game draws — so a
    carriageway is never laid edge to edge with nowhere to stand the signal the
-   bay exists to queue at. The avenue is the near miss: 15 m of carriageway,
-   a 1.8 m median to give and inner lanes already under the 10 ft floor, so it
-   gets no bay, and the six-lane divided road that would is a two-tile
-   corridor.
+   bay exists to queue at. The avenue is the near miss, and now for a cleaner
+   reason than it once was: since it began paying for its footways it spends
+   its tile exactly, with four lanes AT the 10 ft floor and a median already
+   down to 0.8 m. A bay comes from unspent verge, from kerbside parking, or
+   from through lanes narrowed, and the avenue has none of the first two and
+   cannot narrow lanes already at the minimum. So it gets no bay in one tile —
+   and its six-lane form, laid as a two-tile corridor, gets one on each
+   carriageway out of the verge each tile has left over. That is the whole
+   argument for a big road being two carriageways rather than one wide one,
+   arriving as a turn bay.
    *Deferred out of the wave, deliberately:* per-LANE movement sets, since the
    restriction is per ARM today and an arm is what a player actually reaches
    for — the model earns its keep only alongside the multi-lane approaches of
