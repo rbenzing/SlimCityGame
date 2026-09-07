@@ -44,7 +44,7 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   and is offered no count at all, since two is what it is; the third lane it
   can have is the turn lane down the middle. Each control offers only what
   that road allows — a count a road is never built in is never on the row —
-  and the width readout shows whether the result still fits the 16 m tile,
+  and the width readout shows whether the result still fits the 20 m tile,
   saying which rule refused it when it does not: too wide for the tile, or
   more lanes than that kind of road runs. A six- or eight-lane road is the
   first case, and stays refused until two-tile corridors arrive. Roads are grouped by family:
@@ -127,7 +127,7 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   the roads that give way do. **Signals and stop signs** stand on your right
   at the stop line, facing you — one per approach, never sharing a spot with
   a lamp post. And the **lane counts** the road tool offers are only the ones
-  that fit: a tile is 16 m, so six lanes of an arterial is a road for a later
+  that fit: a tile is 20 m, so six lanes of an arterial is a road for a later
   wave rather than an option that turns itself down.
   Where a wide road runs into a narrower one, the extra lanes **close over a
   taper** instead of stopping dead: a four-lane road meeting a two-lane street

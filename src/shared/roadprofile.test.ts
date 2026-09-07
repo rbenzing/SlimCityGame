@@ -857,13 +857,13 @@ describe('lane widths and the lane counts a road is offered, to US standards', (
     expect(layRefusal(parkedUp)).toBe('Too wide for the tile');
   });
 
-  it('is honest about what a 16 m tile holds: four lanes fit, six do not', () => {
+  it('is honest about what the tile holds: four lanes fit, six do not', () => {
     const urban = presetProfileForTier(RoadTier.FourLane);
     const at = (total: number): RoadProfile =>
       composeProfile(urban, { ...NO_EDITS, lanes: total / 2, lanesBack: total / 2 });
     expect(fitsTile(at(2))).toBe(true);
     expect(fitsTile(at(4))).toBe(true);
-    // Six 11 ft lanes are 20.1 m of carriageway; the tile is 16 m across, so a
+    // Six 11 ft lanes are 20.1 m of carriageway, over even a 20 m tile, so a
     // six-lane road needs the two-tile corridor.
     expect(profileWidth(at(6))).toBeGreaterThan(TILE_METERS);
     expect(fitsTile(at(6))).toBe(false);

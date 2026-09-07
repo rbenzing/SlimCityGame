@@ -295,7 +295,7 @@ export function fitsTile(profile: RoadProfile): boolean {
 
 /**
  * How wide a road may be at all: two tiles. Six lanes are 20.1 m and eight
- * are 26.8 m, so neither is a road a 16 m tile can hold — they are CORRIDORS,
+ * are 26.8 m, so neither is a road a 20 m tile can hold — they are CORRIDORS,
  * laid as two parallel runs whose tiles each draw their own half of one
  * cross-section. Two tiles is as wide as this design goes; the road stays on
  * the grid, which is the decision that keeps everything else tractable.
@@ -554,9 +554,9 @@ export function canGainTurnPocket(profile: RoadProfile, approachSide: -1 | 1): b
  * kerb outside it. `openness` is how far open it is, 0 to 1, the same taper a
  * turn bay opens over.
  *
- * Null where the width is not there — which is most motorways in a 16 m tile.
- * Four 12 ft lanes and their kerbs fill it exactly, and an auxiliary lane is
- * another twelve feet: that is a road for two tiles, not one.
+ * Null where the width is not there. A tile that can afford the widest street
+ * can afford this too, so the four-lane motorway — the road a slip road most
+ * often meets — grows one; a cross-section already spending the tile does not.
  */
 export function withAuxiliaryLane(
   profile: RoadProfile,
@@ -706,7 +706,7 @@ const LANE_OPTIONS_BY_CLASS: Readonly<Record<RoadClassId, readonly number[]>> = 
  * The lane counts this class offers, total across both directions: the ones
  * its own catalogue range allows AND the ones a tile can hold. Six lanes of an
  * arterial is a real road, but at 3.6 m a lane it is 21.6 m of carriageway on
- * a 16 m tile — a road that needs two of them, which is a corridor and not
+ * a 20 m tile — a road that needs two of them, which is a corridor and not
  * this. Offering a count that can never be laid, then refusing it for width,
  * is the tool telling the player off for taking what it held out.
  *

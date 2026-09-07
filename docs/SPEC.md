@@ -461,7 +461,7 @@ geometry per species, one InstancedMesh each, no textures (stage 1):
 
 **Natural scatter v2 (playtest fix, 2026-07-22 — "trees are getting placed
 per grid square")**: v1's count-per-tile + ±32%-of-tile jitter leaves the
-16 m tile lattice visible from the air; forests read as a dot grid. v2 keeps
+tile lattice visible from the air; forests read as a dot grid. v2 keeps
 the per-tile bookkeeping (clearAt must keep working tile-keyed) but breaks
 the lattice — individual-tree ("sitree-style") stand variation:
 
@@ -1007,21 +1007,26 @@ Render-only refinement round (no sim/protocol changes) from reference images.
 
 ## 16. Scale bible — one human-scaled proportion for the whole city (user request 2026-07-29)
 
-The world reads as one consistent scale, anchored on the **cosmetic car = 4.0 m long × 1.8 m wide** as the human-scale unit. `TILE_METERS = 16` is fixed (load-bearing: grid, fields, pathfinding, saves) — so "narrower roads + smaller homes" turns the leftover tile area into **yards and grass verges**, which is the intended suburban look, not wasted space. All dimensional constants across roads, vehicles, buildings, and props conform to the table below; where a file's own numbers disagree, this section wins.
+The world reads as one consistent scale, anchored on the **cosmetic car = 4.0 m long × 1.8 m wide** as the human-scale unit. `TILE_METERS = 20` is load-bearing (grid, fields, pathfinding, saves). It is 20 rather than 16 because the widest street the game builds has to fit inside one tile complete with its pavements, and at 16 m it could not: an urban street 15 m wide had a metre left for two footways, so the four-lane and the bus lane declared a kerb with nowhere to walk behind it. Lane and vehicle sizes are real metres and do **not** scale with the tile; building footprints are given in tiles and do. Whatever the carriageway does not use is footway and grass verge, which is the intended suburban look, not wasted space.
 
-**Roads** — the paved _carriageway_ is lanes only; the rest of the tile is sidewalk + grass verge. Standard lane ≈ 3.25 m. Half-width fraction = carriageway ÷ (2 × 16):
+**Roads** — a road's cross-section is composed piece by piece and lives in `src/data/roads.json`; that file is the source, and the table below is a reading of it kept here for proportion. The paved _carriageway_ is the travel lanes plus anything between them (median, turn lane, bus or bike lane); the rest of the tile is footway and verge. Standard lane 3.75 m. Half-width fraction = carriageway ÷ (2 × `TILE_METERS`):
 
-| Tier     | Lanes         | Carriageway | Half-width fraction | (was) |
-| -------- | ------------- | ----------- | ------------------- | ----- |
-| Alley    | 1             | 3.5 m       | 0.109               | 0.188 |
-| Gravel   | ~1.5          | 5.0 m       | 0.156               | 0.219 |
-| TwoLane  | 2             | 6.5 m       | 0.203               | 0.300 |
-| OneWay   | 2             | 6.5 m       | 0.203               | 0.300 |
-| FourLane | 4             | 13.0 m      | 0.406               | 0.425 |
-| Avenue   | 4 + median    | 15.0 m      | 0.469               | 0.425 |
-| Highway  | 4 + shoulders | 14.5 m      | 0.453               | 0.460 |
+| Tier      | Lanes         | Carriageway | Full section | Half-width fraction |
+| --------- | ------------- | ----------- | ------------ | ------------------- |
+| Alley     | 1             | 3.75 m      | 3.75 m       | 0.094               |
+| Gravel    | 2 narrow      | 5.63 m      | 5.63 m       | 0.141               |
+| RailTrack | —             | 5.63 m      | 5.63 m       | 0.141               |
+| Ramp      | 1 + shoulders | 7.80 m      | 7.80 m       | 0.195               |
+| TwoLane   | 2             | 7.50 m      | 11.25 m      | 0.188               |
+| OneWay    | 2             | 7.50 m      | 11.25 m      | 0.188               |
+| Tram      | 2             | 7.50 m      | 11.25 m      | 0.188               |
+| BikeLane  | 2 + cycle     | 11.25 m     | 15.00 m      | 0.281               |
+| Highway   | 4             | 15.00 m     | 15.00 m      | 0.375               |
+| FourLane  | 4             | 15.00 m     | 18.75 m      | 0.375               |
+| BusLane   | 2 + bus       | 15.00 m     | 18.75 m      | 0.375               |
+| Avenue    | 4 + median    | 16.20 m     | 19.95 m      | 0.405               |
 
-Local streets get visibly narrower (TwoLane 9.6→6.5 m); arterials stay wide — the contrast is the point. Cosmetic-vehicle lane centers re-derive from the new carriageway (lane center = ±carriageway/4), so cars still track their lanes.
+Only the tiers with kerbs carry a footway, and it is 1.875 m where present — the difference between the carriageway and the full section. The avenue is the widest thing the game builds and the reason the tile is the size it is: four 3.75 m lanes, a 1.2 m refuge and a full footway each side come to 19.95 m, which fits a 20 m tile with 5 cm to spare and would not fit anything smaller. Local streets stay visibly narrower than arterials — the contrast is the point. Cosmetic-vehicle lane centers re-derive from the carriageway, so cars track their lanes at any width.
 
 **Vehicles** (already realistic — the anchor; unchanged): car 1.8 × 1.5 × 4.0 m, truck 2.2 × 2.6 × 7.0 m, bus 2.5 × 3.0 × 10.0 m, service ≈ fire 2.4 × 2.8 × 8.2 m.
 
@@ -1896,7 +1901,7 @@ objects it lives on.
 
 **Units and formulas — the sim already speaks real units, so the numbers are
 real.** This is worth stating once because every figure below depends on it.
-A tile is 16 m. A road's `speed` is metres per second: the existing values are
+A tile is 20 m. A road's `speed` is metres per second: the existing values are
 posted speeds divided by 3.6 (two-lane 14 = 50 km/h, avenue 18 = 65 km/h,
 highway 28 = 100 km/h). An edge's path cost is `length / speed`, which is
 therefore SECONDS, scaled by `1 + 2·(v/c)` for congestion. So a junction delay
@@ -1949,8 +1954,8 @@ else is derived:
   20 s of red at 7.5 m per queued car: a local approach stores 2 cars ≈ 30 m
   → an APPROACH ZONE of **2 tiles**; a collector 4–5 cars ≈ 50 m → **3
   tiles**; an arterial 7–9 cars ≈ 70 m → **4–5 tiles**.
-- **Roundabout size** from inscribed circle diameter: one tile (16 m) is a
-  MINI roundabout (real range 13–25 m, ≤ 15,000 vpd); a 2×2 block (32 m) is a
+- **Roundabout size** from inscribed circle diameter: one tile (20 m) is a
+  MINI roundabout (real range 13–25 m, ≤ 15,000 vpd); a 2×2 block (40 m) is a
   COMPACT single-lane roundabout (real range 27–45 m, ≤ 25,000 vpd). Its
   capacity is a single lane at g/C 0.85 per entry, which is what the delay
   curve above sits on.
@@ -1987,7 +1992,7 @@ else is derived:
   stop; that ratio (3.3 : 1) is the HCM's, and it is what makes a motorway
   worth its width against three streets.
 - **Lane count is a width budget, and the tile is the budget (profile).** A
-  tile is 16 m. Lane pieces carry their own widths, and the defaults are the
+  tile is 20 m. Lane pieces carry their own widths, and the defaults are the
   real ones: a travel lane 3.5 m (urban design guidance is 3.0–3.6; the widest
   vehicle in the kit is a 2.5 m bus), a parking lane 2.25 m (2.1–2.6), a bike
   lane 1.6 m (1.5–1.8), a bus lane 3.5 m, a raised median 1.8 m (minimum 1.2;
@@ -2043,8 +2048,8 @@ else is derived:
   60 s or 90 s cycle the delay formula assumes, cosmetic vehicles holding at
   the stop line) becomes the visible pulse of a `signal` node.
 - **Roundabouts are a control, not a road (junction).** Choosing `roundabout`
-  on a node with 3–4 approaches converts the node's tile (mini, 16 m) or a
-  2×2 block (compact, 32 m) into a circulating carriageway with a planted or
+  on a node with 3–4 approaches converts the node's tile (mini, 20 m) or a
+  2×2 block (compact, 40 m) into a circulating carriageway with a planted or
   paved island, yield markings on every approach, and no signals. It is the
   one control that changes geometry, and it is bounded by what a tile can
   hold: a two-lane roundabout for a two-tile corridor is deferred with wave 6.
@@ -2100,9 +2105,9 @@ else is derived:
   in, total across both directions — held inside its own lane range, so a
   count the class refuses is a count the tool never offers: a motorway
   2/4/6/8, a town street 2/4, an arterial 4/6, a neighbourhood street 2 with
-  a turn lane between them, a farm track 2 and only 2. **What a 16 m tile
-  holds:** four 11 ft lanes are 13.4 m and fit with a kerb either side; six are
-  20.1 m and do not. Six- and eight-lane roads, and a motorway with a 10 ft
+  a turn lane between them, a farm track 2 and only 2. **What a 20 m tile
+  holds:** four 11 ft lanes are 13.4 m and fit with a footway either side; six
+  are 20.1 m and do not. Six- and eight-lane roads, and a motorway with a 10 ft
   shoulder to pull over on, are therefore two-tile corridors — wave 6 — and
   until then the preview says the road is too wide rather than laying one that
   overhangs its neighbours.
@@ -2304,7 +2309,7 @@ scaled by one constant into the units the sim already uses.
    the pieces. The first cut of the profile editor is in the road tool's
    options row: a **Profile** group offering, for whatever pieces the road's
    class admits, a parking lane per kerb, a bike lane per kerb, and footways
-   on or off, with the composed width read out against the 16 m tile and
+   on or off, with the composed width read out against the 20 m tile and
    marked when it does not fit. The edits compose onto the selected road's
    preset — no edits IS the preset, byte for byte — and a drag lays a
    composed road as one batch of define-and-build, under an id the mirror
@@ -2460,7 +2465,7 @@ scaled by one constant into the units the sim already uses.
    them as fast as it moves the cars past them. Every signal in the city shares
    the clock, which is what a coordinated arterial does anyway.
    Choosing a roundabout is the one control that changes the geometry. One tile
-   is 16 m, which by inscribed-circle diameter is a MINI roundabout — the real
+   is 20 m, which by inscribed-circle diameter is a MINI roundabout — the real
    range is 13 to 25 m — so the island is small and ringed by a painted apron a
    long vehicle tracks over rather than a kerb it would ground out on. The
    crossings and stop bars go; a yield line of solid white triangles pointing
@@ -2625,7 +2630,7 @@ scaled by one constant into the units the sim already uses.
    face lands at the paving's back edge and its body is on the verge. There are
    two cabinets — the rectangular one and the round telco pedestal — sharing a
    slot and a siting rule but not a shape, so a street gets a mix.
-   Two width rules follow from the same principle, that the tile is 16 m and
+   Two width rules follow from the same principle, that the tile is 20 m and
    saying otherwise later is worse than saying so now. A road is offered only
    the lane counts a tile can hold: six lanes of an arterial is a real road at
    21.6 m, and offering it and then refusing it for width is the tool telling
@@ -2686,12 +2691,12 @@ scaled by one constant into the units the sim already uses.
    game's own bound on a taper so an interchange never swallows the run between
    two of them. A slip road that never recorded a direction gets neither: it
    cannot say which it is.
-   The width comes from the verge and never from the kerb reserve, so most
-   motorways never see one. Four 12 ft lanes and their kerbs fill a 16 m tile
-   exactly and an auxiliary lane is another twelve feet — the motorway that can
-   have one is the two-lane motorway, and the four-lane one with a real
-   auxiliary lane is a two-tile corridor, which is wave 6. That is the same
-   answer the avenue's turn bay got and for the same reason.
+   The width comes from the verge and never from the kerb reserve, since the
+   lane still needs a kerb outside it. At 16 m four 12 ft lanes and their kerbs
+   filled the tile exactly, so the road a slip road most often meets was the one
+   that could not widen for it; a 20 m tile leaves 4 m of verge unspent, which
+   is room enough, and the four-lane motorway grows one like the two-lane. What
+   still cannot is a cross-section that has already spent the tile.
    The NEUTRAL AREA is what a road that keeps its pavement leaves behind when
    a lane closes. A street narrows: the lane goes and the tarmac goes with it.
    A motorway does not, because the tarmac is the recovery a driver who missed
@@ -2775,10 +2780,13 @@ scaled by one constant into the units the sim already uses.
    inside the running surface — not as a pair over the median's own centre,
    which is where they were: the mesh draws the planting over that centre, so
    both lines were buried and a straight avenue run carried no yellow at all.
-   MANHOLE COVERS sit on the CENTRELINE, one every seven tiles. A cover is the
-   top of a sewer, a sewer is laid down the middle of the street it serves, and
-   its accesses come at the longest interval maintenance allows — 400 ft, which
-   at a 16 m tile is a shade over seven. Scattering a cover onto an eighth of
+   MANHOLE COVERS sit on the CENTRELINE, as far apart as the standard allows.
+   A cover is the top of a sewer, a sewer is laid down the middle of the street
+   it serves, and its accesses come at the longest interval maintenance allows —
+   400 ft. The period is therefore counted from the tile rather than written
+   down, since a tile count that stops meaning 400 ft when the tile is resized
+   spaces covers further apart than any real street does: at 20 m it is six
+   tiles, at 16 m it was seven. Scattering a cover onto an eighth of
    every tile at a random offset and a random side, which is what this was, put
    them across the running lanes at a density no street has. A road with a
    raised median has no centreline to sit on: its sewer runs under one

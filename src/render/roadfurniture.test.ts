@@ -162,9 +162,15 @@ describe('road-furniture placement (pure)', () => {
     const manholes = computeManholePlacements(strip(0, 0, 40, 'ew', RoadTier.TwoLane));
     const xs = [...new Set(manholes.map((m) => m.x))].sort((a, b) => a - b);
     expect(xs.length).toBeGreaterThan(1);
-    // Seven tiles is 112 m, inside the 400 ft a maintenance standard allows
-    // between manholes and far enough apart to read as a real street.
-    for (let i = 1; i < xs.length; i++) expect(xs[i]! - xs[i - 1]!).toBe(7);
+    const gaps = xs.slice(1).map((x, i) => x - xs[i]!);
+    for (const gap of gaps) expect(gap).toBe(gaps[0]);
+    // 400 ft is the longest a maintenance standard allows between accesses, and
+    // the covers go as far apart as that permits — checked in metres, so the
+    // spacing has to stay real when the tile is resized rather than keeping a
+    // tile count that quietly stops meaning the same distance.
+    const spacing = gaps[0]! * TILE_METERS;
+    expect(spacing).toBeLessThanOrEqual(121.92);
+    expect(spacing + TILE_METERS).toBeGreaterThan(121.92);
   });
 
   it('selects the expected periodic tiles for meter pairs along a straight run', () => {

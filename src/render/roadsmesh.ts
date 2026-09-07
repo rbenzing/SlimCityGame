@@ -2882,7 +2882,7 @@ function emitAvenueMedian(
 }
 
 // --- Mini roundabout ---------------------------------------------------------
-// One tile is 16 m, which by inscribed-circle diameter is a MINI roundabout —
+// One tile is 20 m, which by inscribed-circle diameter is a MINI roundabout —
 // the real range is 13 to 25 m. A mini's central island is small and ringed by
 // a paved APRON that a long vehicle tracks over rather than a kerb it would
 // ground out on, which is exactly the shape that fits a tile. A bigger

@@ -220,7 +220,7 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 
 ### 3.3 World data model — layered tile grid
 
-Default map 256×256 tiles (16 m/tile ≈ 4×4 km). All layers are flat typed arrays:
+Default map 256×256 tiles (20 m/tile ≈ 5×5 km). All layers are flat typed arrays:
 
 | Layer                                                                                                 | Type          | Notes                                                            |
 | ----------------------------------------------------------------------------------------------------- | ------------- | ---------------------------------------------------------------- |

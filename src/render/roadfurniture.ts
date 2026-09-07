@@ -41,17 +41,22 @@ const MANHOLE_PLATE_COLOR = 0x34343b; // lighter center plate
  */
 export const MANHOLE_LIFT = ROAD_Y_OFFSET + 0.03;
 /**
+ * The longest a maintenance standard lets a sewer run between accesses: 400 ft.
+ */
+const MANHOLE_MAX_SPACING_M = 121.92;
+/**
  * How far apart covers sit ALONG a run, in tiles.
  *
  * A cover is the top of a sewer manhole, and a sewer has one where it needs
  * access — at a change of direction, a junction of pipes, and otherwise at the
- * longest interval the maintenance standard allows, which is 400 ft. At 16 m a
- * tile that is a shade over seven, so seven tiles (112 m) is the closest a
- * grid gets to a real street without breaking the rule. Scattering a cover
- * over an eighth of every tile, which is what this was, put them across the
- * running lanes at a density no street has.
+ * longest interval allowed. So the period is the most tiles that fit inside
+ * that interval, counted from the tile rather than written down: a figure
+ * written down is one that keeps its old value when the tile changes size and
+ * silently starts spacing covers further apart than any real street does.
+ * Scattering a cover over an eighth of every tile, which is what this was, put
+ * them across the running lanes at a density no street has.
  */
-const MANHOLE_PERIOD_TILES = 7;
+const MANHOLE_PERIOD_TILES = Math.max(1, Math.floor(MANHOLE_MAX_SPACING_M / TILE_METERS));
 
 // --- Utility / electrical box ------------------------------------------------
 const BOX_WIDTH = 0.62;

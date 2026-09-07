@@ -2,10 +2,9 @@
  * slip road, so a driver joining has somewhere to get up to speed and one
  * leaving has somewhere to slow down.
  *
- * A four-lane motorway fills the tile edge to edge and cannot have one —
- * that road is a two-tile corridor. A TWO-lane motorway has the room, so that
- * is what this lays: the feature is real, and where it does not appear the
- * reason is width rather than a bug.
+ * The tile affords one on the four-lane motorway as well as the two-lane, so
+ * this lays the two-lane: it is the narrower case, where the lane has the most
+ * room to open into and the taper is easiest to read.
  *
  * Usage: node tools/aux-shots.mjs [url] [outDir]
  */
