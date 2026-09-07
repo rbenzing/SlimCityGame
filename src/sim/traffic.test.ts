@@ -20,21 +20,10 @@ import {
   vehicleDensityCap,
   type Rng,
 } from './traffic';
-import {
-  FIELD_COUNT,
-  INACTIVE_VEHICLE_X,
-  MAX_VEHICLES,
-  RoadTier,
-  VEHICLE_STRIDE,
-  VehicleKind,
-  type GraphEdge,
-  type GridState,
-  type PathResult,
-  type RoadNetworkApi,
-  type TilePoint,
-} from '../shared/types';
+import { INACTIVE_VEHICLE_X, MAX_VEHICLES, RoadTier, VEHICLE_STRIDE, VehicleKind, type GraphEdge, type GridState, type PathResult, type RoadNetworkApi, type TilePoint } from '../shared/types';
 import { TICKS_PER_DAY, TICK_RATE, TILE_METERS, tileToWorld } from '../shared/constants';
 import { RoadNetwork } from '../world/roads';
+import { createGrid } from '../world/grid';
 
 // ---------------------------------------------------------------------------
 // Test doubles
@@ -735,27 +724,7 @@ describe('TrafficSystem vehicle kind mix', () => {
 // ---------------------------------------------------------------------------
 
 function makeGrid(size: number): GridState {
-  const n = size * size;
-  return {
-    size,
-    height: new Float32Array(n),
-    water: new Uint8Array(n),
-    trees: new Uint8Array(n),
-    zone: new Uint8Array(n),
-    roadTier: new Uint8Array(n),
-    roadMask: new Uint8Array(n),
-    buildingId: new Uint32Array(n),
-    power: new Uint8Array(n),
-    watered: new Uint8Array(n),
-    fields: Array.from({ length: FIELD_COUNT }, () => new Uint8Array(n)),
-    district: new Uint8Array(n),
-    landfill: new Uint8Array(n),
-    roadElevation: new Float32Array(n),
-    roadProfile: new Uint16Array(n),
-    roadFlow: new Uint8Array(n),
-    junctionControl: new Uint8Array(n),
-    junctionTurns: new Uint16Array(n),
-  };
+  return createGrid(size);
 }
 
 describe('TrafficSystem over a real one-way RoadNetwork', () => {

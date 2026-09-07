@@ -1,33 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { MAP_SIZE, tileIndex } from '../shared/constants';
-import { BuildingState, FIELD_COUNT, ZoneType } from '../shared/types';
+import { BuildingState, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, GridState } from '../shared/types';
 import { BuildingRegistry } from './buildings';
+import { createGrid } from '../world/grid';
 
 function makeGrid(): GridState {
-  const n = MAP_SIZE * MAP_SIZE;
-  const fields: Uint8Array[] = [];
-  for (let i = 0; i < FIELD_COUNT; i++) fields.push(new Uint8Array(n));
-  return {
-    size: MAP_SIZE,
-    height: new Float32Array(n),
-    water: new Uint8Array(n),
-    trees: new Uint8Array(n),
-    zone: new Uint8Array(n),
-    roadTier: new Uint8Array(n),
-    roadMask: new Uint8Array(n),
-    buildingId: new Uint32Array(n),
-    power: new Uint8Array(n),
-    watered: new Uint8Array(n),
-    fields,
-    district: new Uint8Array(n),
-    landfill: new Uint8Array(n),
-    roadElevation: new Float32Array(n),
-    roadProfile: new Uint16Array(n),
-    roadFlow: new Uint8Array(n),
-    junctionControl: new Uint8Array(n),
-    junctionTurns: new Uint16Array(n),
-  };
+  return createGrid();
 }
 
 const house: BuildingCatalogEntry = {

@@ -1,30 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { FieldSim } from './fields';
 import { FieldId, FIELD_COUNT, type GraphEdge, type GridState } from '../shared/types';
-import { MAP_SIZE, MAP_TILES, tileIndex } from '../shared/constants';
+import { MAP_SIZE, tileIndex } from '../shared/constants';
+import { createGrid } from '../world/grid';
 
 /** Hand-constructed GridState: all layers zeroed, sized by MAP_SIZE. */
 function makeGrid(): GridState {
-  return {
-    size: MAP_SIZE,
-    height: new Float32Array(MAP_TILES),
-    water: new Uint8Array(MAP_TILES),
-    trees: new Uint8Array(MAP_TILES),
-    zone: new Uint8Array(MAP_TILES),
-    roadTier: new Uint8Array(MAP_TILES),
-    roadMask: new Uint8Array(MAP_TILES),
-    buildingId: new Uint32Array(MAP_TILES),
-    power: new Uint8Array(MAP_TILES),
-    watered: new Uint8Array(MAP_TILES),
-    fields: Array.from({ length: FIELD_COUNT }, () => new Uint8Array(MAP_TILES)),
-    district: new Uint8Array(MAP_TILES),
-    landfill: new Uint8Array(MAP_TILES),
-    roadElevation: new Float32Array(MAP_TILES),
-    roadProfile: new Uint16Array(MAP_TILES),
-    roadFlow: new Uint8Array(MAP_TILES),
-    junctionControl: new Uint8Array(MAP_TILES),
-    junctionTurns: new Uint16Array(MAP_TILES),
-  };
+  return createGrid();
 }
 
 function sumField(arr: Uint8Array): number {

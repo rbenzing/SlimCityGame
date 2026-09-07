@@ -1,33 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { FIELD_COUNT, RoadFlow, RoadTier } from '../shared/types';
+import { RoadFlow, RoadTier } from '../shared/types';
 import { Movement, withArmAllowed } from '../shared/approach';
 import type { GraphEdge, GridState, TilePoint } from '../shared/types';
 import { applyRoad, RoadNetwork } from './roads';
 import { approachSaturation, armsAt, capacityForTier, junctionDelay } from './pathfind';
 import { MERGE_BASE_S, mergeDelaySeconds } from '../shared/junction';
+import { createGrid } from './grid';
 
 function makeGrid(size: number): GridState {
-  const n = size * size;
-  return {
-    size,
-    height: new Float32Array(n),
-    water: new Uint8Array(n),
-    trees: new Uint8Array(n),
-    zone: new Uint8Array(n),
-    roadTier: new Uint8Array(n),
-    roadMask: new Uint8Array(n),
-    buildingId: new Uint32Array(n),
-    power: new Uint8Array(n),
-    watered: new Uint8Array(n),
-    fields: Array.from({ length: FIELD_COUNT }, () => new Uint8Array(n)),
-    district: new Uint8Array(n),
-    landfill: new Uint8Array(n),
-    roadElevation: new Float32Array(n),
-    roadProfile: new Uint16Array(n),
-    roadFlow: new Uint8Array(n),
-    junctionControl: new Uint8Array(n),
-    junctionTurns: new Uint16Array(n),
-  };
+  return createGrid(size);
 }
 
 const row = (z: number, from: number, to: number): TilePoint[] =>

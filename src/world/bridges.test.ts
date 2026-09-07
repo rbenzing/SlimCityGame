@@ -5,32 +5,13 @@ import {
   BRIDGE_MAX_ELEVATION,
   BRIDGE_MAX_GRADE,
 } from '../shared/constants';
-import { FIELD_COUNT, RoadTier } from '../shared/types';
+import { RoadTier } from '../shared/types';
 import type { GridState, TilePoint } from '../shared/types';
 import { isElevated, solveElevationProfile } from './bridges';
+import { createGrid } from './grid';
 
 function makeGrid(size: number): GridState {
-  const n = size * size;
-  return {
-    size,
-    height: new Float32Array(n),
-    water: new Uint8Array(n),
-    trees: new Uint8Array(n),
-    zone: new Uint8Array(n),
-    roadTier: new Uint8Array(n),
-    roadMask: new Uint8Array(n),
-    buildingId: new Uint32Array(n),
-    power: new Uint8Array(n),
-    watered: new Uint8Array(n),
-    fields: Array.from({ length: FIELD_COUNT }, () => new Uint8Array(n)),
-    district: new Uint8Array(n),
-    landfill: new Uint8Array(n),
-    roadElevation: new Float32Array(n),
-    roadProfile: new Uint16Array(n),
-    roadFlow: new Uint8Array(n),
-    junctionControl: new Uint8Array(n),
-    junctionTurns: new Uint16Array(n),
-  };
+  return createGrid(size);
 }
 
 const idx = (size: number, x: number, z: number): number => z * size + x;

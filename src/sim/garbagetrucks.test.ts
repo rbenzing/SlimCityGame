@@ -6,38 +6,13 @@ import {
   type TruckTarget,
 } from './garbagetrucks';
 import type { GridState } from '../shared/types';
-import {
-  FIELD_COUNT,
-  INACTIVE_VEHICLE_X,
-  RoadTier,
-  VEHICLE_STRIDE,
-  VehicleKind,
-} from '../shared/types';
-import { MAP_SIZE, tileIndex, tileToWorld, worldToTile } from '../shared/constants';
+import { INACTIVE_VEHICLE_X, RoadTier, VEHICLE_STRIDE, VehicleKind } from '../shared/types';
+import { tileIndex, tileToWorld, worldToTile } from '../shared/constants';
 import { RoadNetwork } from '../world/roads';
+import { createGrid } from '../world/grid';
 
 function makeGrid(): GridState {
-  const n = MAP_SIZE * MAP_SIZE;
-  return {
-    size: MAP_SIZE,
-    height: new Float32Array(n),
-    water: new Uint8Array(n),
-    trees: new Uint8Array(n),
-    zone: new Uint8Array(n),
-    roadTier: new Uint8Array(n),
-    roadMask: new Uint8Array(n),
-    buildingId: new Uint32Array(n),
-    power: new Uint8Array(n),
-    watered: new Uint8Array(n),
-    fields: Array.from({ length: FIELD_COUNT }, () => new Uint8Array(n)),
-    district: new Uint8Array(n),
-    landfill: new Uint8Array(n),
-    roadElevation: new Float32Array(n),
-    roadProfile: new Uint16Array(n),
-    roadFlow: new Uint8Array(n),
-    junctionControl: new Uint8Array(n),
-    junctionTurns: new Uint16Array(n),
-  };
+  return createGrid();
 }
 
 function straightRoad(g: GridState, x0: number, z: number, tiles: number): void {

@@ -10,19 +10,9 @@ import {
   type PopulationJobsAccessor,
   type TransitRoute,
 } from './transit';
-import {
-  FIELD_COUNT,
-  isRailTier,
-  isTramTier,
-  RoadTier,
-  type GraphEdge,
-  type GridState,
-  type PathResult,
-  type RoadNetworkApi,
-  type TilePoint,
-  type TransitLine,
-} from '../shared/types';
+import { isRailTier, isTramTier, RoadTier, type GraphEdge, type GridState, type PathResult, type RoadNetworkApi, type TilePoint, type TransitLine } from '../shared/types';
 import { RoadNetwork } from '../world/roads';
+import { createGrid } from '../world/grid';
 
 // ---------------------------------------------------------------------------
 // Test doubles
@@ -65,26 +55,7 @@ function makePath(points: TilePoint[], edges: number[]): PathResult {
 }
 
 function makeGrid(n: number): GridState {
-  return {
-    size: n,
-    height: new Float32Array(n * n),
-    water: new Uint8Array(n * n),
-    trees: new Uint8Array(n * n),
-    zone: new Uint8Array(n * n),
-    roadTier: new Uint8Array(n * n),
-    roadMask: new Uint8Array(n * n),
-    buildingId: new Uint32Array(n * n),
-    power: new Uint8Array(n * n),
-    watered: new Uint8Array(n * n),
-    fields: Array.from({ length: FIELD_COUNT }, () => new Uint8Array(n * n)),
-    district: new Uint8Array(n * n),
-    landfill: new Uint8Array(n * n),
-    roadElevation: new Float32Array(n * n),
-    roadProfile: new Uint16Array(n * n),
-    roadFlow: new Uint8Array(n * n),
-    junctionControl: new Uint8Array(n * n),
-    junctionTurns: new Uint16Array(n * n),
-  };
+  return createGrid(n);
 }
 
 /** True when `a` and `b` are exactly one cardinal (N/E/S/W) tile step apart. */
