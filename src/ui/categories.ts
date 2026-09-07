@@ -7,7 +7,7 @@ import catalogData from '../data/catalog.json';
 import roadsData from '../data/roads.json';
 import type { BuildingCatalogEntry, RoadSpec, RoadTier, ToolId } from '../shared/types';
 import { RoadTier as RoadTierValue } from '../shared/types';
-import { LANDFILL_PAINT_COST_PER_TILE } from '../shared/constants';
+import { LANDFILL_PAINT_COST_PER_TILE, POWER_LINE_COST_PER_TILE } from '../shared/constants';
 import type { IconName } from './icons';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
@@ -179,6 +179,17 @@ const DISTRICT_PAINT_CARD: AssetCard = {
   unlockMilestone: 0,
 };
 
+/**
+ * Power line (strings GridState.powerLine); cost is per tile of run, shown
+ * live on the cursor chip since a drag charges only for what it changes.
+ */
+const POWER_LINE_CARD: AssetCard = {
+  id: 'power.line',
+  name: 'Power Line',
+  cost: POWER_LINE_COST_PER_TILE,
+  unlockMilestone: 0,
+};
+
 /** Landfill area brush (paints GridState.landfill); cost is per painted tile. */
 const LANDFILL_PAINT_CARD: AssetCard = {
   id: 'landfill.paint',
@@ -263,7 +274,11 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
     {
       id: 'all',
       label: 'Electricity',
-      cards: catalogCards((e) => e.category === 'utility' && e.utility?.powerMW !== undefined),
+      cards: [
+        ...catalogCards((e) => e.category === 'utility' && e.utility?.powerMW !== undefined),
+        // The wire that carries what the generators make, listed with them.
+        POWER_LINE_CARD,
+      ],
     },
   ],
   water: [

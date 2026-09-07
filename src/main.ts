@@ -80,6 +80,7 @@ import { GhostRenderer, type GhostKind, type SetPreviewOptions } from './render/
 import { UtilityKitRenderer } from './render/utilitykits';
 import { ZoneGridRenderer } from './render/zonegrid';
 import { LampRenderer } from './render/lamps';
+import { PowerLineRenderer } from './render/powerlines';
 import { computeSignPlacements, RoadFurnitureRenderer } from './render/roadfurniture';
 import { SelectionOutline } from './render/outline';
 import { MapPin } from './render/pin';
@@ -217,6 +218,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const ghosts = new GhostRenderer(world.scene, heightAt);
   const zoneGrid = new ZoneGridRenderer(world.scene, heightAt);
   const lamps = new LampRenderer(world.scene, roadSurfaceAt);
+  const powerLines = new PowerLineRenderer(world.scene, heightAt);
   const roadFurniture = new RoadFurnitureRenderer(world.scene, roadSurfaceAt);
   const selectionOutline = new SelectionOutline(world.scene);
   const mapPin = new MapPin(world.scene);
@@ -353,6 +355,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         zone: number[];
         water: number[];
         height: number[];
+        power: number[];
+        powerLine: number[];
       } => ({
         size: clientGrid.size,
         roadTier: Array.from(clientGrid.roadTier),
@@ -369,6 +373,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         zone: Array.from(clientGrid.zone),
         water: Array.from(clientGrid.water),
         height: Array.from(clientGrid.height),
+        // Which tiles the grid has actually reached, and where the wire runs:
+        // a screenshot shows poles but never says whether anything flows.
+        power: Array.from(clientGrid.power),
+        powerLine: Array.from(clientGrid.powerLine),
       }),
       // Every known building instance with its lifecycle state and problem
       // bits — tells a harness whether lots are failing to spawn, stuck
@@ -539,6 +547,13 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         Array.from({ length: lamps.lampCount() }, (_, slot) => {
           const pole = lamps.polePosition(slot);
           return { x: pole.x, z: pole.z };
+        }),
+      // Where every power-line pole stands, in world metres — so a harness
+      // can tell a run that was strung from one the sim quietly refused.
+      readPowerPoles: (): { x: number; z: number }[] =>
+        Array.from({ length: powerLines.poleCount() }, (_, slot) => {
+          const pole = powerLines.polePosition(slot);
+          return { x: pole?.x ?? 0, z: pole?.z ?? 0 };
         }),
       // Who gives way where, and the boards that follow from it. A screenshot
       // shows a post beside a road but not which board it is or why, so a
@@ -895,6 +910,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       const i = tile.z * clientGrid.size + tile.x;
       return clientGrid.roadTier[i] !== RoadTier.None || clientGrid.buildingId[i] !== 0;
     },
+    // So the cursor quotes only the tiles a power-line drag would change.
+    powerLineAt: (x, z) => clientGrid.powerLineAt(x, z),
   };
   const toolManager = new ToolManager(env);
   toolManager.setBrush(store.getState().brushSettings);
@@ -1103,6 +1120,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (snap.zones) {
       zoneGrid.applyZonePatches(snap.zones);
       clientGrid.applyZonePatches(snap.zones);
+    }
+    if (snap.powerLines) {
+      clientGrid.applyPowerLinePatches(snap.powerLines);
+      powerLines.rebuild(clientGrid.powerLineTiles());
     }
     if (snap.power) {
       overlays.setCoverage('power', snap.power);

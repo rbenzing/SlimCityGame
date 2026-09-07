@@ -2850,6 +2850,15 @@ queued roadway-light-pole and dynamic-lighting epics are what a lamp is and
 what a light source does. This section is about whether the lamp is there at
 all, and who paid for the cable.
 
+**What a line looks like.** Timber poles at every tile of the run, a crossarm
+laid ACROSS the direction it travels, and three wires slung between them —
+each span a shallow catenary rather than a straight bar, because a
+dead-straight wire is the single clearest tell that a power line is a diagram
+and not a thing in the world. The run's shape is recovered from the tile
+layer itself rather than stored: a span is drawn to the neighbour east and to
+the neighbour south, each ordered pair once, so a run of N poles yields N-1
+spans and a broken line does not reach across its own gap.
+
 **Acceptance:** a dirt road conducts nothing and the zone beside it stays
 unpowered until a line reaches it; a street with no supply has no lamps and
 gains them when supply arrives; a power line placed between a generator and a

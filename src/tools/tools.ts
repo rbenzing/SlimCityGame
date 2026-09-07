@@ -13,6 +13,7 @@ import {
   TERRAFORM_STRENGTH_MAX,
   TERRAFORM_STRENGTH_MIN,
   LANDFILL_PAINT_COST_PER_TILE,
+  POWER_LINE_COST_PER_TILE,
   BRIDGE_MAX_ELEVATION,
   TILE_METERS,
 } from '../shared/constants';
@@ -95,6 +96,12 @@ export interface ToolEnv {
    * brush preview is always valid.
    */
   hasStructure?(tile: TilePoint): boolean;
+  /**
+   * Whether a power line already stands on a tile, so the cursor quotes only
+   * the tiles a drag would actually change. Optional: an env that omits it
+   * quotes the whole run, which is what a fresh one costs anyway.
+   */
+  powerLineAt?(x: number, z: number): boolean;
   /**
    * The id to lay a composed cross-section under — an existing custom id with
    * this exact shape, or the next free one. Optional: an env that omits it
@@ -353,6 +360,14 @@ function isDistrictTool(tool: ToolId): boolean {
 /** Landfill paint tool: brush/rect paint the landfill area onto tiles. */
 function isPaintLandfillTool(tool: ToolId): boolean {
   return tool === 'landfill.paint';
+}
+
+/**
+ * Power-line tool: drags a RUN, not an area — a line goes from somewhere to
+ * somewhere, so it takes the same straight/elbow path a road drag does.
+ */
+function isPowerLineTool(tool: ToolId): boolean {
+  return tool === 'power.line';
 }
 
 /** A minimum of 2 stops makes a routable bus line (mirrors sim/transit.ts). */
@@ -741,6 +756,18 @@ export class ToolManager {
       return;
     }
 
+    if (isPowerLineTool(tool)) {
+      const startTile = this.dragStart ?? current;
+      const tiles = this.roadPath(startTile, current);
+      // Only the tiles that would actually change are quoted, so dragging back
+      // over a run already strung shows what it costs: nothing.
+      const fresh = tiles.filter((t) => !this.env.powerLineAt?.(t.x, t.z));
+      const cost = fresh.length * POWER_LINE_COST_PER_TILE;
+      const { valid, invalidReason } = this.evaluate(tiles, cost, 0, true);
+      this.env.onPreview({ tiles, valid, cost, label: 'Power line', invalidReason });
+      return;
+    }
+
     const start = this.dragStart ?? current;
     if (tool === 'bulldoze') {
       const tiles = rectTiles(start, current);
@@ -921,6 +948,12 @@ export class ToolManager {
       // Paint the landfill area over the brushed/rect tiles (sim gates to empty land).
       this.env.send('Landfill', [
         { kind: 'paintLandfill', tiles: this.zoneTiles(start, end), on: true },
+      ]);
+    } else if (isPowerLineTool(tool)) {
+      // String the run the drag traced; the sim gates each tile and charges
+      // only for the ones that change.
+      this.env.send('Power line', [
+        { kind: 'stringPowerLine', tiles: this.roadPath(start, end), on: true },
       ]);
     }
     this.env.onPreview(null);

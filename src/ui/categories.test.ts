@@ -156,7 +156,9 @@ describe('subTabsFor', () => {
       subTabsFor('electricity')[0]
         ?.cards.map((c) => c.id)
         .sort(),
-    ).toEqual(['plop.coal-plant', 'plop.wind-turbine'].sort());
+      // The power line is listed with the generators, being what carries what
+      // they make.
+    ).toEqual(['plop.coal-plant', 'plop.wind-turbine', 'power.line'].sort());
     expect(subTabsFor('water')).toHaveLength(1);
     expect(subTabsFor('water')[0]?.cards.map((c) => c.id)).toEqual(['plop.water-tower']);
     expect(subTabsFor('bulldoze')).toHaveLength(1);

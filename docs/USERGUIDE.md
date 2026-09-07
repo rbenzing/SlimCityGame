@@ -278,6 +278,12 @@ nothing you add gets committed.
 - If a zone won't develop, check the three requirements in order: **road access,
   power, water**. The most common mistake is a utility placed a tile or two away
   from any road — move it flush against one.
+- **Power lines** (Electricity) reach what a road cannot: drag a run from your
+  generators out to the lot, the district or the pump that a street doesn't
+  connect. A line is cheaper per tile than the cheapest road, but it charges a
+  small upkeep every month for as long as it stands — so a sprawling rural grid
+  is a standing bill, not a one-off. Dragging back over a run you've already
+  strung costs nothing, and the bulldozer takes the wire down with a refund.
 - Keep commercial and industrial in proportion to residential; if a demand bar is
   empty, stop zoning that type.
 - Services and parks raise happiness and land value in a radius — spread them out

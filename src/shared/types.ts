@@ -943,6 +943,8 @@ export type ToolId =
   | 'road.rail'
   // Roads epic wave 5 — the slip road onto a motorway.
   | 'road.ramp'
+  // Power: string a run of line, to reach what a road cannot.
+  | 'power.line'
   | 'zone.resLow'
   | 'zone.resHigh'
   | 'zone.comLow'

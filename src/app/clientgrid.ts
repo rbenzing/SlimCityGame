@@ -59,6 +59,8 @@ export class ClientGridMirror {
    * so this is not only the coverage lens's data, it is what stands the poles.
    */
   readonly power: Uint8Array;
+  /** Where a power line stands (see GridState.powerLine); what stands the poles. */
+  readonly powerLine: Uint8Array;
   readonly buildingId: Uint32Array;
 
   /** building id -> the tile indices its footprint was stamped onto. */
@@ -84,7 +86,38 @@ export class ClientGridMirror {
     this.roadProfile = new Uint16Array(n);
     this.roadFlow = new Uint8Array(n);
     this.power = new Uint8Array(n);
+    this.powerLine = new Uint8Array(n);
     this.buildingId = new Uint32Array(n);
+  }
+
+  /** Folds the worker's power-line rectangles in, same shape as the zone patches. */
+  applyPowerLinePatches(patches: readonly ZonePatch[]): void {
+    for (const patch of patches) {
+      for (let dz = 0; dz < patch.h; dz++) {
+        for (let dx = 0; dx < patch.w; dx++) {
+          const x = patch.x + dx;
+          const z = patch.z + dz;
+          if (!this.inBounds(x, z)) continue;
+          this.powerLine[this.idx(x, z)] = patch.data[dz * patch.w + dx] ?? 0;
+        }
+      }
+    }
+  }
+
+  /** Whether a power line stands at (x, z); false off the map. */
+  powerLineAt(x: number, z: number): boolean {
+    return this.inBounds(x, z) && this.powerLine[this.idx(x, z)] === 1;
+  }
+
+  /** Every tile carrying a line, row-major — what the renderer stands poles on. */
+  powerLineTiles(): TilePoint[] {
+    const out: TilePoint[] = [];
+    for (let z = 0; z < this.size; z++) {
+      for (let x = 0; x < this.size; x++) {
+        if (this.powerLine[this.idx(x, z)] === 1) out.push({ x, z });
+      }
+    }
+    return out;
   }
 
   /**
