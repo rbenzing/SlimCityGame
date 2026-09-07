@@ -2827,13 +2827,23 @@ line is also the cheapest thing that reaches, which is the point: it should
 always be cheaper to string a line than to lay a road, or the road remains
 the answer to every question and none of this changes anything.
 
-**The decision this forces, which belongs to the player and not to us.**
-Every rule above is retroactive. A city built before them has lights it did
-not pay to supply and lots fed by tracks that no longer conduct, so on load
-it either goes partly dark and partly unpowered, or it is grandfathered. The
-honest options are to migrate saves by treating every currently-powered tile
-as though a line already reached it, or to let the change bite and present it
-as what it is. This is a gameplay decision, recorded here unresolved.
+**The decision this forces, and the answer.** Every rule above is
+retroactive: a city built before them has lights it did not pay to supply and
+lots fed by tracks that no longer conduct. The game is not released, so the
+change BITES — no grandfathering, no migration that quietly pretends a line
+was always there. An existing city loads with the network it has actually
+earned, dark where it never paid for supply, and that is the honest state
+rather than a fiction maintained for old saves.
+
+**The order the slices ship in, which is not the order they are listed.**
+Lamps first: a street needing supply is independent of everything else, and
+until a road stops conducting it changes nothing for a city with enough
+generation — it only makes an unsupplied district and a brownout visible.
+The power line comes SECOND, and roads ceasing to conduct comes LAST, in
+that order and not the reverse: the moment dirt stops carrying power a
+player needs a way to reach the lot beside it, and shipping the problem
+before the answer leaves a city that cannot be fixed. Slices are allowed to
+break saves here; they are not allowed to leave the game unwinnable.
 
 **Related but distinct.** §22 is what a lamp looks like at night, and the
 queued roadway-light-pole and dynamic-lighting epics are what a lamp is and

@@ -133,6 +133,28 @@ describe('ClientGridMirror', () => {
     expect(Array.from(mirror.roadTier).every((v) => v === 0)).toBe(true);
     expect(Array.from(mirror.zone).every((v) => v === 0)).toBe(true);
     expect(mirror.roadTiles()).toEqual([]);
+    expect(Array.from(mirror.power).every((v) => v === 0)).toBe(true);
+  });
+
+  it('folds power coverage in, and reports which roads the supply has reached', () => {
+    mirror.applyRoadDeltas([
+      { x: 3, z: 4, tier: RoadTier.TwoLane, mask: 0, elevation: 0, profile: 0, flow: 0 },
+      { x: 6, z: 4, tier: RoadTier.TwoLane, mask: 0, elevation: 0, profile: 0, flow: 0 },
+    ]);
+    // Supply covers a 2x2 block over (3,4) and nothing near (6,4).
+    mirror.applyPowerPatches([
+      { x: 3, z: 4, w: 2, h: 2, data: Uint8Array.from([1, 1, 1, 1]) },
+    ]);
+    const powered = new Map(mirror.roadTiles().map((t) => [`${t.x},${t.z}`, t.powered]));
+    expect(powered.get('3,4')).toBe(true);
+    expect(powered.get('6,4')).toBe(false);
+
+    // A later patch is the whole truth for the tiles it covers, so supply
+    // going away takes the flag with it.
+    mirror.applyPowerPatches([
+      { x: 3, z: 4, w: 2, h: 2, data: Uint8Array.from([0, 0, 0, 0]) },
+    ]);
+    expect(mirror.roadTiles().every((t) => !t.powered)).toBe(true);
   });
 
   it('applies road deltas, including removals (tier None)', () => {
@@ -165,6 +187,7 @@ describe('ClientGridMirror', () => {
         tier: RoadTier.TwoLane,
         elevated: false,
         profile: presetProfileForTier(RoadTier.TwoLane),
+        powered: false,
       },
       {
         x: 4,
@@ -172,6 +195,7 @@ describe('ClientGridMirror', () => {
         tier: RoadTier.Avenue,
         elevated: false,
         profile: presetProfileForTier(RoadTier.Avenue),
+        powered: false,
       },
     ]);
 
@@ -186,6 +210,7 @@ describe('ClientGridMirror', () => {
         tier: RoadTier.Avenue,
         elevated: false,
         profile: presetProfileForTier(RoadTier.Avenue),
+        powered: false,
       },
     ]);
   });

@@ -171,7 +171,17 @@ export type LampAxis = 'x' | 'z';
  * `profile` is the tile's own cross-section when it carries a composed one —
  * the pole stands at ITS kerb, not the preset's.
  */
-export type LampRoadTile = TilePoint & { tier?: RoadTier; profile?: RoadProfile };
+export type LampRoadTile = TilePoint & {
+  tier?: RoadTier;
+  profile?: RoadProfile;
+  /**
+   * Whether the tile has electricity. A street with no supply carries no lamp
+   * at all — the pole goes up with the cable, not with the tarmac. Left unsaid
+   * the tile is treated as supplied, so a caller that knows nothing about the
+   * power network gets the lamps it always got.
+   */
+  powered?: boolean;
+};
 
 /**
  * Whether a road tier gets street lamps. Unpaved gravel/dirt roads do not, and
@@ -235,6 +245,11 @@ export function computeLampPlacements(
   for (const tile of roadTiles) {
     // Gravel/dirt tiles carry no lamp but stay in tileSet for neighbor orientation.
     if (!tierGetsLamp(tile.tier)) continue;
+    // Nor does a street the grid has not reached. An unsupplied street simply
+    // has no lamps, which is how a player reads coverage off the night city
+    // and how a brownout announces itself. Same as above: the tile stays in
+    // tileSet, so a dark stretch does not change how its lit neighbours face.
+    if (tile.powered === false) continue;
     if (drivewayTiles?.has(tileKey(tile.x, tile.z))) continue;
 
     const sum = tile.x + tile.z;

@@ -53,6 +53,12 @@ export class ClientGridMirror {
   readonly roadProfile: Uint16Array;
   /** Which way each road tile runs (see GridState.roadFlow); 0 when never recorded. */
   readonly roadFlow: Uint8Array;
+  /**
+   * Whether each tile has electricity (see GridState.power); 1 = supplied. The
+   * render side needs it because a street with no supply carries no lit lamp —
+   * so this is not only the coverage lens's data, it is what stands the poles.
+   */
+  readonly power: Uint8Array;
   readonly buildingId: Uint32Array;
 
   /** building id -> the tile indices its footprint was stamped onto. */
@@ -77,7 +83,26 @@ export class ClientGridMirror {
     this.roadElevation = new Float32Array(n);
     this.roadProfile = new Uint16Array(n);
     this.roadFlow = new Uint8Array(n);
+    this.power = new Uint8Array(n);
     this.buildingId = new Uint32Array(n);
+  }
+
+  /**
+   * Folds the worker's power-coverage rectangles into the mirror. Same shape
+   * as the zone patches, and sent on change rather than on a cycle, so the
+   * mirror holds the last thing the worker said until it says otherwise.
+   */
+  applyPowerPatches(patches: readonly ZonePatch[]): void {
+    for (const patch of patches) {
+      for (let dz = 0; dz < patch.h; dz++) {
+        for (let dx = 0; dx < patch.w; dx++) {
+          const x = patch.x + dx;
+          const z = patch.z + dz;
+          if (!this.inBounds(x, z)) continue;
+          this.power[this.idx(x, z)] = patch.data[dz * patch.w + dx] ?? 0;
+        }
+      }
+    }
   }
 
   /** Replaces the mirror's custom-profile table with the worker's full table. */
@@ -380,12 +405,14 @@ export class ClientGridMirror {
     tier: RoadTier;
     elevated: boolean;
     profile: RoadProfile;
+    powered: boolean;
     control?: JunctionControl;
   })[] {
     const tiles: (TilePoint & {
       tier: RoadTier;
       elevated: boolean;
       profile: RoadProfile;
+      powered: boolean;
       control?: JunctionControl;
     })[] = [];
     for (let z = 0; z < this.size; z++) {
@@ -404,6 +431,7 @@ export class ClientGridMirror {
           tier,
           elevated: (this.roadElevation[i] ?? 0) > 0,
           profile: this.drawnProfileAt(x, z) ?? presetProfileForTier(tier),
+          powered: (this.power[i] ?? 0) !== 0,
         };
         const junction = this.junctionControls.get(i);
         tiles.push(junction ? { ...tile, control: junction.control } : tile);

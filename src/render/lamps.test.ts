@@ -46,6 +46,48 @@ describe('computeLampPlacements (pure)', () => {
     expect(placements.some((p) => p.x === 4 && p.z === 4)).toBe(false);
   });
 
+  it('stands no pole on a street the grid has not reached — the pole goes up with the cable', () => {
+    const run = strip(4, 0, 8, 'ew');
+    const lit = computeLampPlacements(run.map((t) => ({ ...t, powered: true })));
+    const dark = computeLampPlacements(run.map((t) => ({ ...t, powered: false })));
+    expect(lit.length).toBeGreaterThan(0);
+    expect(dark).toEqual([]);
+  });
+
+  it('lights the supplied half of a street and leaves the rest dark', () => {
+    // Supply reaches as far as x = 4 and no further, which is what a district
+    // coming on line looks like from above.
+    const run = strip(4, 0, 8, 'ew').map((t) => ({ ...t, powered: t.x <= 4 }));
+    const placements = computeLampPlacements(run);
+    expect(placements.length).toBeGreaterThan(0);
+    expect(placements.every((p) => p.x <= 4)).toBe(true);
+  });
+
+  it('a dark stretch does not turn its lit neighbours the wrong way', () => {
+    // An unsupplied tile still counts as road for orientation, so the poles
+    // either side of it keep facing the way the run does. Were it dropped from
+    // the run entirely, a tile beside the gap would read as having no
+    // east-west neighbour and stand its pole on the wrong axis.
+    const run = strip(4, 0, 8, 'ew');
+    const lit = computeLampPlacements(run.map((t) => ({ ...t, powered: true })));
+    const gapped = computeLampPlacements(run.map((t) => ({ ...t, powered: t.x !== 3 })));
+    for (const p of gapped) {
+      const same = lit.find((q) => q.x === p.x && q.z === p.z);
+      expect(same).toBeDefined();
+      expect(p.axis).toBe(same?.axis);
+      expect(p.side).toBe(same?.side);
+    }
+  });
+
+  it('says nothing about power and gets the lamps it always got', () => {
+    // Every caller that predates the power network — and every test below —
+    // leaves `powered` unsaid, and must be unaffected.
+    const run = strip(4, 0, 8, 'ew');
+    expect(computeLampPlacements(run)).toEqual(
+      computeLampPlacements(run.map((t) => ({ ...t, powered: true }))),
+    );
+  });
+
   it('stands a pole at the kerb of the tile’s OWN cross-section, not its preset’s', () => {
     // A two-lane with a parking lane at each kerb is 12 m of carriageway; a
     // pole placed for the 7.5 m preset would stand in the parking lane.

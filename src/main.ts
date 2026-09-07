@@ -1104,7 +1104,15 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       zoneGrid.applyZonePatches(snap.zones);
       clientGrid.applyZonePatches(snap.zones);
     }
-    if (snap.power) overlays.setCoverage('power', snap.power);
+    if (snap.power) {
+      overlays.setCoverage('power', snap.power);
+      // Supply also decides which streets carry a lamp, so the mirror keeps it
+      // and the lamps are rebuilt when it moves — a district coming on line
+      // lights up without waiting for someone to touch a road.
+      clientGrid.applyPowerPatches(snap.power);
+      latestRoadTiles = clientGrid.roadTiles();
+      if (latestRoadTiles.length > 0) lamps.rebuild(latestRoadTiles, drivewayTiles);
+    }
     if (snap.watered) overlays.setCoverage('watered', snap.watered);
     if (snap.vehicles) {
       vehicles.setBuffer(snap.vehicles);
