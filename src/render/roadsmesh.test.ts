@@ -2614,7 +2614,17 @@ describe('roadTileVertices — width transitions on a straight run', () => {
       s: RoadTier.None,
       w: RoadTier.TwoLane,
     });
-    expect(wedgeVerts(junction.colors, junction.positions).length).toBe(0);
+    // A taper bends the kerb INTO the carriageway, so its paving reaches
+    // inside the junction's own square. The pavement that carries a footway
+    // round the corner lives in the arm strips outside that square and is not
+    // a wedge, so the test asks where the paving is rather than merely whether
+    // there is any.
+    const insideTheBox = toTriples(junction.colors).filter((c, i) => {
+      const x = junction.positions[i * 3]!;
+      const z = junction.positions[i * 3 + 2]!;
+      return isSidewalk(c) && Math.abs(x - cz) < four - 1e-6 && Math.abs(z - cz) < four - 1e-6;
+    });
+    expect(insideTheBox.length).toBe(0);
 
     const alley = roadTileVertices(0, 0, RoadTier.Alley, E | W, flatHeightAt, {
       n: RoadTier.None,
@@ -2623,6 +2633,58 @@ describe('roadTileVertices — width transitions on a straight run', () => {
       w: RoadTier.Gravel,
     });
     expect(countWhere(alley.colors, isSidewalk)).toBe(0);
+  });
+
+  it('carries the footway round the corner, from the crossing to the junction edge', () => {
+    // Somebody who crosses one arm has to walk round to the crossing over the
+    // next one. The arm road is narrower than the junction, so between its
+    // kerb and the paved corner there was bare asphalt to walk on.
+    const armHalf = TILE_METERS * TWO_LANE_HALF_WIDTH_FRACTION;
+    const junction = roadTileVertices(0, 0, RoadTier.FourLane, E | W | N | S, flatHeightAt, {
+      n: RoadTier.TwoLane,
+      e: RoadTier.TwoLane,
+      s: RoadTier.TwoLane,
+      w: RoadTier.TwoLane,
+    });
+    // Paving in the NORTH arm strip, out beyond the side street's own kerb:
+    // the stretch a person walks between the two crossings.
+    const linking = toTriples(junction.colors).filter((c, i) => {
+      const x = junction.positions[i * 3]!;
+      const z = junction.positions[i * 3 + 2]!;
+      const along = cz - z; // north of the tile centre
+      return (
+        isSidewalk(c) &&
+        along > four + 1e-6 && // in the arm strip, not the junction square
+        Math.abs(x - cz) > armHalf + 1e-6 && // clear of the side street itself
+        Math.abs(x - cz) < four + 1e-6 // and short of the rounded corner
+      );
+    });
+    expect(linking.length).toBeGreaterThan(0);
+  });
+
+  it('lays none of it where the arm has no footway to carry on from', () => {
+    // A crossing is for the people on a pavement. An unpaved track has none,
+    // so nothing is carried round to meet it — even though the track is
+    // narrower than the junction and the room is there.
+    const junction = roadTileVertices(0, 0, RoadTier.FourLane, E | W | N | S, flatHeightAt, {
+      n: RoadTier.Gravel,
+      e: RoadTier.Gravel,
+      s: RoadTier.Gravel,
+      w: RoadTier.Gravel,
+    });
+    const armHalf = carriagewayHalfWidthMeters(RoadTier.Gravel);
+    expect(armHalf).toBeLessThan(four); // the room really is there
+    const linking = toTriples(junction.colors).filter((c, i) => {
+      const x = junction.positions[i * 3]!;
+      const z = junction.positions[i * 3 + 2]!;
+      return (
+        isSidewalk(c) &&
+        cz - z > four + 1e-6 &&
+        Math.abs(x - cz) > armHalf + 1e-6 &&
+        Math.abs(x - cz) < four - 1e-6
+      );
+    });
+    expect(linking.length).toBe(0);
   });
 
   it('measures the neighbour from its own cross-section when told to', () => {

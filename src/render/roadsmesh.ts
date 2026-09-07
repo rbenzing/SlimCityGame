@@ -3412,6 +3412,61 @@ export function roadTileVertices(
     if (hasS && hasW) cornerFill(-1, 1);
     if (hasN && hasW) cornerFill(-1, -1);
 
+    // The footway CARRIES ON ROUND THE CORNER, through the junction.
+    //
+    // Each arm's strip of tile is paved out at the corners already, and the
+    // crossing lands on the middle of it — but the arm road is narrower than
+    // the junction, so between the two there was bare asphalt. Somebody who
+    // crossed one arm stepped off onto road, with nothing to walk along to
+    // reach the crossing over the next one. This is the pavement between the
+    // crossing and the corner: from the arm road's own kerb out to where the
+    // corner fill takes over.
+    //
+    // Only where both roads have a footway. A crossing is for the people on a
+    // pavement, and a road without one is not somewhere anybody is walking.
+    if (spec.hasCurbs && hasFootway(crossSection) && armDepth > 0) {
+      const walkableArm = (has: boolean, tier: RoadTier, footway: boolean | undefined): boolean =>
+        has && (tier === RoadTier.None || footway === undefined ? true : footway);
+      const link = (
+        vertical: boolean,
+        armHalf: number,
+        lo: number,
+        hi: number,
+      ): void => {
+        // Out from the arm road's kerb to the junction's own edge, where the
+        // rounded corner picks it up.
+        const from = Math.min(armHalf, coreHalf);
+        if (coreHalf - from <= 1e-6) return;
+        for (const side of [-1, 1] as const) {
+          const across: [number, number] = [side * from, side * coreHalf];
+          const [xLo, xHi] = vertical ? across : ([lo, hi] as [number, number]);
+          const [zLo, zHi] = vertical ? ([lo, hi] as [number, number]) : across;
+          pushLocalRect(
+            positions,
+            colors,
+            centerX,
+            centerZ,
+            Math.min(xLo, xHi),
+            Math.max(xLo, xHi),
+            Math.min(zLo, zHi),
+            Math.max(zLo, zHi),
+            CURB_Y_OFFSET,
+            SIDEWALK_COLOR,
+            hAt,
+          );
+        }
+      };
+      const half = (n: number): number => (n > 0 ? n : coreHalf);
+      if (walkableArm(hasN, neighbors.n, neighborHalves.footways?.n))
+        link(true, half(neighborHalves.n), -TILE_HALF, -coreHalf);
+      if (walkableArm(hasS, neighbors.s, neighborHalves.footways?.s))
+        link(true, half(neighborHalves.s), coreHalf, TILE_HALF);
+      if (walkableArm(hasW, neighbors.w, neighborHalves.footways?.w))
+        link(false, half(neighborHalves.w), -TILE_HALF, -coreHalf);
+      if (walkableArm(hasE, neighbors.e, neighborHalves.footways?.e))
+        link(false, half(neighborHalves.e), coreHalf, TILE_HALF);
+    }
+
     // Sidewalks/shoulders: a raised curb strip of fixed width SIDEWALK_WIDTH_M
     // (0.5× a lane) hugging the carriageway on every edge that does NOT border
     // another road tile; whatever the 16m tile has left beyond it is a grass

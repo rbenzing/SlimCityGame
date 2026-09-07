@@ -114,9 +114,12 @@ const approach = (x, z) => call(([ax, az]) => window.__slimcity.readApproach(ax,
 const along = [];
 for (let d = 4; d >= 1; d--) along.push({ d, ...(await approach(X + JX - d, Z + JZ)) });
 console.log('avenue into the junction:', JSON.stringify(along));
+// A carriageway wider than the tile is a road spilling into the next one. The
+// figure comes from the app so this keeps meaning that when the tile changes.
+const TILE = await call(() => window.__slimcity.tileMeters());
 for (const t of along) {
-  if (t.width > 16 + 1e-6)
-    failures.push(`the avenue draws ${t.width} m of carriageway on a 16 m tile`);
+  if (t.width > TILE + 1e-6)
+    failures.push(`the avenue draws ${t.width} m of carriageway on a ${TILE} m tile`);
 }
 
 // --- Who stands beside the junction, and where -------------------------------
