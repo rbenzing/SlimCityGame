@@ -236,7 +236,10 @@ export const SIDEWALK_WIDTH_M = FOOTWAY_WIDTH_M;
 const laneFraction = (lanes: number): number => (lanes * LANE_WIDTH_M) / (2 * TILE_METERS);
 
 export const TWO_LANE_HALF_WIDTH_FRACTION = laneFraction(2); // 7.5m carriageway
-export const AVENUE_HALF_WIDTH_FRACTION = laneFraction(4); // 15m (4 lanes + median inside)
+// 13 m: four lanes at the 10 ft urban minimum plus a narrow median, which is
+// what an avenue spends on carriageway once it keeps a real footway each side
+// inside the same 16 m tile.
+export const AVENUE_HALF_WIDTH_FRACTION = 13 / (2 * TILE_METERS);
 export const HIGHWAY_HALF_WIDTH_FRACTION = laneFraction(4); // 15m (4 lanes + shoulders inside)
 /** Gravel: rural ~1.5-lane. */
 export const GRAVEL_HALF_WIDTH_FRACTION = laneFraction(1.5);
@@ -1559,8 +1562,6 @@ function emitTramTrack(
 // overlapping or spilling past the tile edge.
 // ---------------------------------------------------------------------------
 
-/** Along-travel-axis zebra-stripe length (~2.4m). */
-const CROSSWALK_BAR_LENGTH_M = 2.4;
 /** Across-travel-axis single-stripe width (~0.45m). */
 const CROSSWALK_BAR_WIDTH_M = 0.45;
 /** Across-travel-axis gap between stripes (~0.6m). */
@@ -1568,15 +1569,29 @@ const CROSSWALK_BAR_GAP_M = 0.6;
 /** Along-travel-axis stop-line thickness (~0.4m). */
 const STOP_LINE_THICKNESS_M = 0.4;
 /**
+ * The shallowest a marked crossing may be, across the road it carries people
+ * over. The US minimum is 6 ft; a road whose verge is thinner than that still
+ * gets a crossing this deep rather than one nobody could stand in.
+ */
+const CROSSWALK_MIN_DEPTH_M = 1.8;
+/**
+ * The stop line is painted onto the APPROACH tile, over lane lines already
+ * drawn at MARK_Y_OFFSET, so it sits a hair above them rather than fighting
+ * for the same depth where the two cross.
+ */
+const STOP_LINE_Y_OFFSET = MARK_Y_OFFSET + 0.002;
+/**
  * Gap between the crossing's far edge and the stop bar. The US rule is that a
  * stop line stands at least 4 ft in advance of the nearest crosswalk line.
  */
 const STOP_LINE_GAP_M = 1.2;
-/** How far inside the tile edge the first thing a driver meets is painted. */
-const ARM_EDGE_SETBACK_M = 0.4;
 
 export interface JunctionArmLayout {
-  /** Distance from the tile edge to the crosswalk's outer bar. */
+  /**
+   * Distances along the approach from the junction TILE's edge, positive
+   * inward. The crossing lies inside the tile; the stop line is NEGATIVE,
+   * back down the approach, because that is where a driver has to stop.
+   */
   crosswalkStart: number;
   crosswalkEnd: number;
   stopLineStart: number;
@@ -1593,16 +1608,26 @@ export interface JunctionArmLayout {
  * crosswalk simply lies inside the junction, which is where it lies on the
  * ground too.
  */
-export function junctionArmLayout(_armDepth?: number): JunctionArmLayout {
-  // In the order a DRIVER meets them, measured inward from the tile edge: the
-  // stop line first, then the gap, then the crossing, then the junction. A
-  // stop line stands in advance of the nearest crosswalk line, which is the
-  // whole point of it — stopping past the crossing is stopping on the people
-  // using it.
-  const stopLineStart = ARM_EDGE_SETBACK_M;
-  const stopLineEnd = stopLineStart + STOP_LINE_THICKNESS_M;
-  const crosswalkStart = stopLineEnd + STOP_LINE_GAP_M;
-  const crosswalkEnd = crosswalkStart + CROSSWALK_BAR_LENGTH_M;
+export function junctionArmLayout(armDepth = TILE_HALF): JunctionArmLayout {
+  // A crossing is the FOOTWAY CARRIED ACROSS THE ROAD, so it belongs where the
+  // footway is: the strip of tile between the junction box and the tile edge,
+  // which is exactly what the crossing road spends on its own footway. Painted
+  // at a fixed setback instead — which is what this did — it lands wherever
+  // that setback happens to fall, and on a road whose carriageway nearly fills
+  // its tile it misses the footway entirely and sits out in the box.
+  //
+  // It is never narrower than the minimum a marked crossing may be, so a road
+  // with a thin verge still gets a crossing a person can use; that one reaches
+  // a little into the box, which is where a crossing at a wide junction really
+  // does lie.
+  const crosswalkStart = 0;
+  const crosswalkEnd = Math.max(armDepth, CROSSWALK_MIN_DEPTH_M);
+  // The stop line stands IN ADVANCE of the crossing — back down the approach,
+  // outside the junction tile altogether. That is the whole point of it:
+  // stopping past the crossing is stopping on the people using it, and there
+  // is no room between the tile edge and the crossing to put it.
+  const stopLineEnd = crosswalkStart - STOP_LINE_GAP_M;
+  const stopLineStart = stopLineEnd - STOP_LINE_THICKNESS_M;
   return { crosswalkStart, crosswalkEnd, stopLineStart, stopLineEnd };
 }
 
@@ -1649,10 +1674,15 @@ function emitJunctionArmMarkings(
    * junction nothing controls, is not painted one.
    */
   stops: boolean,
+  /** How much tile there is between the junction box and the tile edge. */
+  armDepth: number,
 ): void {
-  const layout = junctionArmLayout();
+  const layout = junctionArmLayout(armDepth);
 
-  // Stop line: one bar spanning the full carriageway width.
+  // Stop line: one bar spanning the full carriageway width. It is painted back
+  // down the APPROACH, past this tile's edge, because that is where a stop
+  // line stands — so it lies over the approach's own lane lines and takes a
+  // hair of lift to keep the two from fighting for the same depth.
   if (stops) {
     const stopLo = Math.min(dAt(layout.stopLineStart), dAt(layout.stopLineEnd));
     const stopHi = Math.max(dAt(layout.stopLineStart), dAt(layout.stopLineEnd));
@@ -1669,7 +1699,7 @@ function emitJunctionArmMarkings(
       xHi,
       zLo,
       zHi,
-      MARK_Y_OFFSET,
+      STOP_LINE_Y_OFFSET,
       MARKING_COLOR,
       hAt,
     );
@@ -1727,9 +1757,15 @@ function emitJunctionArmMarkings(
 // sidewalk/shoulder curb quad at a dead end.
 // ---------------------------------------------------------------------------
 
-/** Avenue median total width (raised ~1.8m center median). */
+/** What a median is drawn to when the section does not say — the old avenue's. */
 const MEDIAN_WIDTH_M = 1.8;
 const MEDIAN_HALF_WIDTH_M = MEDIAN_WIDTH_M / 2;
+
+/** Half the median a cross-section carries, or the default where it has none. */
+function medianHalfWidthOf(profile: RoadProfile): number {
+  const piece = profile.pieces.find((p) => p.kind === 'median');
+  return piece ? piece.width / 2 : MEDIAN_HALF_WIDTH_M;
+}
 /** Concrete edge tint's width on each side of the median, before the grass top. */
 const MEDIAN_CONCRETE_EDGE_M = 0.15;
 const MEDIAN_RAISE = 0.15;
@@ -2792,9 +2828,16 @@ function emitAvenueMedian(
   vertical: boolean,
   along: { lo: number; hi: number },
   hAt: (x: number, z: number) => number,
+  /**
+   * Half the median's own width, from the cross-section. A road spends its
+   * tile on lanes, median and footways together, so a median drawn to a fixed
+   * width is drawn over whichever of them the section actually gave the space
+   * to. The concrete edge is trimmed to fit a narrow one.
+   */
+  halfWidth: number = MEDIAN_HALF_WIDTH_M,
 ): void {
-  const m = MEDIAN_HALF_WIDTH_M;
-  const e = MEDIAN_CONCRETE_EDGE_M;
+  const m = halfWidth;
+  const e = Math.min(MEDIAN_CONCRETE_EDGE_M, m / 2);
   pushCenterBand(
     positions,
     colors,
@@ -3788,6 +3831,10 @@ export function roadTileVertices(
           hAt,
           crossedOnFoot(vertical),
           stops,
+          // The strip of tile between the box and the tile edge: the footway
+          // the crossing carries on runs through exactly this, so it is what
+          // decides where the crossing goes.
+          armDepth,
         );
       // Measured inward from the TILE edge, which is where the approach
       // actually reaches the junction, rather than outward from the box.
@@ -3842,7 +3889,16 @@ export function roadTileVertices(
     const lo = vertical ? (hasN ? -TILE_HALF : -coreHalf) : hasW ? -TILE_HALF : -coreHalf;
     const hi = vertical ? (hasS ? TILE_HALF : coreHalf) : hasE ? TILE_HALF : coreHalf;
     if (medianEligible)
-      emitAvenueMedian(positions, colors, centerX, centerZ, vertical, { lo, hi }, hAt);
+      emitAvenueMedian(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        vertical,
+        { lo, hi },
+        hAt,
+        medianHalfWidthOf(crossSection),
+      );
     else emitHighwayDivider(positions, colors, centerX, centerZ, vertical, { lo, hi }, hAt);
   }
 

@@ -18,6 +18,7 @@ import {
   canJoin,
   CAPACITY_PER_VEH_PER_HOUR,
   carriagewayWidth,
+  hasFootway,
   composeProfile,
   editsOf,
   FIRST_CUSTOM_PROFILE_ID,
@@ -341,13 +342,24 @@ describe('composing a profile from a preset and the player’s edits', () => {
     expect(hasKerbs(p)).toBe(false);
   });
 
-  it('takes an avenue past its tile by making it a corridor, footways and all', () => {
-    // The avenue's carriageway already fills its tile, so footways used to be
-    // refused outright. An arterial earns a corridor, so now they simply make
-    // it a two-tile road — which is what an avenue with pavements really is.
+  it('carries an avenue and its footways inside one tile', () => {
+    // The avenue used to spend its whole tile on carriageway, leaving half a
+    // metre of kerb and nowhere to walk — so it had a crossing nobody could
+    // reach and a footway its own section said it did not have. Its budget now
+    // buys both: four lanes at the 10 ft urban minimum, a narrow median, and a
+    // real footway each side, in the same 16 m.
+    const p = presetProfileForTier(RoadTier.Avenue);
+    expect(hasFootway(p)).toBe(true);
+    expect(fitsTile(p)).toBe(true);
+    expect(carriagewayWidth(p)).toBeCloseTo(13, 6);
+  });
+
+  it('takes an avenue past its tile by making it a corridor when it gains lanes', () => {
+    // An arterial earns a corridor, so a six-lane one is simply a two-tile
+    // road rather than a refusal.
     const p = composeProfile(presetProfileForTier(RoadTier.Avenue), {
       ...NO_EDITS,
-      footways: true,
+      lanes: 3,
     });
     expect(fitsTile(p)).toBe(false);
     expect(isLayable(p)).toBe(true);

@@ -116,10 +116,13 @@ Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md
   A junction paints itself the way one is painted. **Crossings** go where
   somebody can actually walk: the people using a crossing are travelling the
   other way, so an arm is crossed only where the roads across from it have
-  footways — an avenue built without one sends nobody over the street it
-  meets, and gets no zebra. The **stop line** comes before the crossing, which
-  is the order you meet them in, and it is as wide as the road it is painted
-  across rather than as wide as the junction. Under signals or an all-way
+  footways — a road built without one sends nobody over the street it meets,
+  and gets no zebra. A crossing is the footway carried over the road, so it
+  lies at the END of the approach, in the strip of tile between the junction
+  and the pavement it continues, rather than out in the middle of the box. The
+  **stop line** comes before it, back down the approach, which is the order you
+  meet them in and where you actually have to stop; it is as wide as the road
+  it is painted across rather than as wide as the junction. Under signals or an all-way
   stop every approach gets one, the main road included; under a give-way only
   the roads that give way do. **Signals and stop signs** stand on your right
   at the stop line, facing you — one per approach, never sharing a spot with

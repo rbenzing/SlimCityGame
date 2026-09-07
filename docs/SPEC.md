@@ -2778,6 +2778,29 @@ scaled by one constant into the units the sim already uses.
    raised median has no centreline to sit on: its sewer runs under one
    carriageway rather than under the planting, and rather than guess which,
    that road carries none.
+   A CROSSING IS THE FOOTWAY CARRIED OVER THE ROAD, so it belongs where the
+   footway is: the strip of tile between the junction box and the tile edge,
+   which is exactly what the crossing road spends on its own footway. Painted
+   at a fixed setback instead — which is what it was — it lands wherever that
+   setback falls, and on a road whose carriageway nearly fills its tile it
+   misses the footway entirely and sits out in the box. It is never shallower
+   than the 6 ft a marked crossing may be, so a road with a thin verge still
+   gets one a person can stand in. The STOP LINE then goes back down the
+   APPROACH, outside the junction tile: a stop line stands in advance of the
+   crossing, there is no room between the tile edge and the crossing to put
+   it, and the approach is where a driver actually stops. It is painted over
+   lane lines already there, so it takes a hair of lift to keep the two from
+   fighting for the same depth.
+   THE AVENUE PAYS FOR ITS FOOTWAYS out of its own tile: four lanes at the
+   10 ft urban minimum and a narrow median, 13 m of carriageway, leaving 1.5 m
+   of real pavement each side inside the same 16 m. It used to spend all 16 on
+   carriageway and declare a kerb it had nowhere to stand — so it had a
+   crossing nobody could reach, and its own section said it had no footway
+   while the mesh drew a strip that looked like one. A road wanting more than
+   that is a two-tile corridor, which is what the six-lane arterial is.
+   A MEDIAN IS DRAWN TO THE WIDTH THE SECTION GIVES IT. Drawn to a fixed one
+   it is drawn over whichever of the lanes, median and footways the section
+   actually spent the space on.
    A PROP DRAWN IN TWO PIECES READS ONE TRANSFORM. A signal is two instanced
    meshes — the mast with its dark head, and the single lit lens laid over it —
    and each worked out its own world position. A signal is also a CONTROL

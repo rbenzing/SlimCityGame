@@ -557,9 +557,12 @@ describe('roadTileVertices — carriageway ratios (UI-SPEC §6.7 Roads v2)', () 
     expect(span).toBeCloseTo(7.5, 5);
   });
 
-  it('avenue carriageway is 4 lanes = 15m', () => {
+  it('avenue carriageway is 4 lanes and a median = 13m, leaving a footway each side', () => {
     const span = coreSpanMeters(RoadTier.Avenue);
-    expect(span).toBeCloseTo(15, 5);
+    expect(span).toBeCloseTo(13, 5);
+    // The rest of the 16 m tile is the two footways, which is what makes the
+    // avenue a road a person can walk beside and cross.
+    expect(TILE_METERS - span).toBeCloseTo(3, 5);
   });
 
   it('highway carriageway is near full tile width, leaving only a narrow shoulder', () => {
@@ -891,15 +894,30 @@ describe('roadTileVertices — intersection suppression / proper intersections (
 
 describe('junctionArmLayout — a crosswalk and a stop line at their real size', () => {
   it('lays them in the order a driver meets them: stop line, gap, then the crossing', () => {
-    const layout = junctionArmLayout();
-    // Measured inward from the tile edge, which is the direction traffic
-    // arrives in. A stop line stands in advance of the nearest crosswalk
-    // line — stopping past the crossing is stopping on the people using it.
-    expect(layout.stopLineStart).toBeGreaterThan(0);
+    const layout = junctionArmLayout(1.5);
+    // Measured from the junction tile's edge, positive inward. A stop line
+    // stands in advance of the nearest crosswalk line — stopping past the
+    // crossing is stopping on the people using it — and there is no room for
+    // it between the tile edge and the crossing, so it goes back down the
+    // APPROACH, which is where a driver actually stops.
+    expect(layout.stopLineStart).toBeLessThan(0);
     expect(layout.stopLineEnd - layout.stopLineStart).toBeCloseTo(0.4, 9);
     expect(layout.crosswalkStart).toBeGreaterThan(layout.stopLineEnd);
     expect(layout.crosswalkStart - layout.stopLineEnd).toBeCloseTo(1.2, 9);
-    expect(layout.crosswalkEnd - layout.crosswalkStart).toBeCloseTo(2.4, 9);
+  });
+
+  it('lays the crossing over the strip the footway crosses, never narrower than a crossing may be', () => {
+    // A crossing is the footway carried over the road, so it belongs in the
+    // strip between the junction box and the tile edge — which is exactly what
+    // the crossing road spends on its own footway.
+    const roomy = junctionArmLayout(2.4);
+    expect(roomy.crosswalkStart).toBe(0);
+    expect(roomy.crosswalkEnd).toBeCloseTo(2.4, 9);
+
+    // A road that leaves almost no verge still gets a crossing a person can
+    // stand in; that one reaches a little into the box.
+    const tight = junctionArmLayout(0.5);
+    expect(tight.crosswalkEnd).toBeCloseTo(1.8, 9);
   });
 
   it('keeps its real size whatever the road, since squeezing it is what made a crossing read as a dashed ring', () => {
@@ -2226,10 +2244,13 @@ describe('roadTileVertices — Four-Lane (tier 7, UI-SPEC §6.7 Roads v3)', () =
     return Math.max(...xs) - Math.min(...xs);
   }
 
-  it('has a 4-lane carriageway = 15m (same width as an avenue; distinguished by markings, not width)', () => {
+  it('has a 4-lane carriageway = 15m, wider than the avenue that gave width up for footways', () => {
     const span = coreSpanMeters(RoadTier.FourLane);
     expect(span).toBeCloseTo(15, 5);
-    expect(span).toBeCloseTo(coreSpanMeters(RoadTier.Avenue), 5);
+    // The two were once the same width and told apart by their markings. The
+    // avenue has since spent 2 m of its tile on a footway each side; the
+    // four-lane still spends its whole tile on carriageway.
+    expect(span).toBeGreaterThan(coreSpanMeters(RoadTier.Avenue));
   });
 
   it('draws dashed lane dividers + a solid double center pair, on EVERY straight run (no median ever suppresses it)', () => {

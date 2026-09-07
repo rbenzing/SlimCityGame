@@ -50,14 +50,16 @@ describe('markingPlan paints every preset the way a US road is painted', () => {
 
   it('avenue: a yellow left edge line down each side of the median it is divided by', () => {
     const p = markingPlan(presetProfileForTier(RoadTier.Avenue));
-    close(p.dashed, [-3.75, 3.75]);
+    // Four 3.05 m lanes about a 0.8 m median: a lane line between each pair
+    // running the same way.
+    close(p.dashed, [-3.45, 3.45]);
     expect(p.hasMedian).toBe(true);
-    // The median runs from -0.9 to 0.9, so each carriageway's left edge line
+    // The median runs from -0.4 to 0.4, so each carriageway's left edge line
     // sits just inside it. Painted as a pair over the median's own centre —
     // which is what this was — both lines end up under the planting the mesh
     // draws there, and a straight avenue run carries no yellow at all.
-    expect(lineAt(p.solid, -0.9 - MEDIAN_EDGE_LINE_INSET_M)).toBe('yellow');
-    expect(lineAt(p.solid, 0.9 + MEDIAN_EDGE_LINE_INSET_M)).toBe('yellow');
+    expect(lineAt(p.solid, -0.4 - MEDIAN_EDGE_LINE_INSET_M)).toBe('yellow');
+    expect(lineAt(p.solid, 0.4 + MEDIAN_EDGE_LINE_INSET_M)).toBe('yellow');
     expect(lineAt(p.solid, CENTRE_PAIR_OFFSET_M)).toBe(null);
   });
 
