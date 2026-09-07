@@ -225,6 +225,10 @@ const shots = [
   ['corridor-eye', X + 10, Z + 20, 34, 0, 0.3],
   ['corridor-oblique', X + 10, Z + 12, 60, 0.6, 0.6],
   ['corridor-junction', X + 10, Z + CROSS_Z, 46, 0, 1.5],
+  // The approach itself, close and straight down: a multi-lane arm is where
+  // per-lane movements have anything to say, and every lane of it should be
+  // carrying its own arrow.
+  ['corridor-approach', X + LEFT_X, Z + CROSS_Z - 1, 34, 0, 1.5],
 ];
 for (const [name, tx, tz, d, yaw, pitch] of shots) {
   await cam(tx, tz, d, yaw, pitch);
