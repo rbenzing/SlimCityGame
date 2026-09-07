@@ -18,7 +18,12 @@ import {
   ROAD_Y_OFFSET,
   CURB_Y_OFFSET,
 } from './roadsmesh';
-import { carriagewayHalfWidthOf, kerbWidthOf, rankForTier } from '../shared/roadprofile';
+import {
+  carriagewayHalfWidthOf,
+  kerbWidthOf,
+  presetProfileForTier,
+  rankForTier,
+} from '../shared/roadprofile';
 import { armGivesWay, signalAspect } from '../shared/junction';
 import type { SignalAspect } from '../shared/junction';
 import type { JunctionControl, RoadProfile } from '../shared/types';
@@ -35,9 +40,18 @@ const MANHOLE_PLATE_COLOR = 0x34343b; // lighter center plate
  * the carriageway: every one of them was drawn, and not one was visible.
  */
 export const MANHOLE_LIFT = ROAD_Y_OFFSET + 0.03;
-const MANHOLE_MIN_OFFSET = 0.6; // kept off the centerline
-const MANHOLE_EDGE_MARGIN = 0.5; // kept off the carriageway edge
-const MANHOLE_SELECT_FRACTION = 1 / 6; // ~1 in 6 paved tiles
+/**
+ * How far apart covers sit ALONG a run, in tiles.
+ *
+ * A cover is the top of a sewer manhole, and a sewer has one where it needs
+ * access — at a change of direction, a junction of pipes, and otherwise at the
+ * longest interval the maintenance standard allows, which is 400 ft. At 16 m a
+ * tile that is a shade over seven, so seven tiles (112 m) is the closest a
+ * grid gets to a real street without breaking the rule. Scattering a cover
+ * over an eighth of every tile, which is what this was, put them across the
+ * running lanes at a density no street has.
+ */
+const MANHOLE_PERIOD_TILES = 7;
 
 // --- Utility / electrical box ------------------------------------------------
 const BOX_WIDTH = 0.62;
@@ -134,9 +148,6 @@ const ONEWAY_SIGN_PERIOD = 6; // a one-way marker on every (x+z) multiple of 6
 const SPEED_SIGN_PERIOD = 10; // a speed marker on every (x+z) multiple of 10
 
 // Distinct hash slots so each per-tile draw is decorrelated from the others.
-const HASH_MANHOLE_SELECT = 1;
-const HASH_MANHOLE_MAG = 2;
-const HASH_MANHOLE_SIDE = 3;
 const HASH_MANHOLE_ROT = 4;
 const HASH_BOX_SELECT = 5;
 const HASH_BOX_SIDE = 6;
@@ -463,6 +474,23 @@ function isTurnTile(tileSet: RoadTileIndex, x: number, z: number): boolean {
   return count === 2 && !isCollinear2(sides);
 }
 
+/** True for a JUNCTION tile: three or more road neighbours meet on it. */
+function isJunctionTile(tileSet: RoadTileIndex, x: number, z: number): boolean {
+  const sides = presentSides(tileSet, x, z);
+  return (sides.n ? 1 : 0) + (sides.e ? 1 : 0) + (sides.s ? 1 : 0) + (sides.w ? 1 : 0) >= 3;
+}
+
+/**
+ * Whether a raised median runs down the middle of this tile's road, leaving no
+ * centreline to seat a cover on. Every composed section puts its median at the
+ * centre; a corridor half, which carries one at an edge, is not a road any
+ * furniture is placed on yet.
+ */
+function hasCentralMedian(tile: FurnitureRoadTile): boolean {
+  const profile = tile.profile ?? presetProfileForTier(tile.tier ?? RoadTier.TwoLane);
+  return profile.pieces.some((p) => p.kind === 'median');
+}
+
 /** The largest neighborCount among this tile's present road-neighbors (0 if none). */
 function maxNeighborDegree(tileSet: RoadTileIndex, x: number, z: number): number {
   let max = 0;
@@ -560,7 +588,17 @@ function periodHits(x: number, z: number, period: number): boolean {
 // Pure placement functions (unit-testable, no THREE dependency).
 // ---------------------------------------------------------------------------
 
-/** Manhole covers in the carriageway on ~1 in 6 paved tiles, off the centerline. */
+/**
+ * Manhole covers down the CENTRELINE of a run, one every
+ * MANHOLE_PERIOD_TILES.
+ *
+ * A sewer is laid down the middle of the street it serves, so its covers sit
+ * on the centreline in a straight line the length of the road — not scattered
+ * across the running lanes, which is where a per-tile hash on a random side
+ * put them. A road with a raised MEDIAN has no centreline to sit on: its sewer
+ * runs under one carriageway rather than under the planting, and rather than
+ * guess which, that road carries none.
+ */
 export function computeManholePlacements(
   roadTiles: readonly FurnitureRoadTile[],
 ): ManholePlacement[] {
@@ -570,19 +608,15 @@ export function computeManholePlacements(
     if (!tierIsPaved(tile.tier)) continue;
     if (tile.elevated) continue; // a deck has no sewer under it to cover
     if (isTurnTile(tileSet, tile.x, tile.z)) continue; // curved carriageway: no straight-axis seat
-    if (hashTile(tile.x, tile.z, HASH_MANHOLE_SELECT) >= MANHOLE_SELECT_FRACTION) continue;
+    if (isJunctionTile(tileSet, tile.x, tile.z)) continue; // the box is busy enough
+    if (hasCentralMedian(tile)) continue;
+    if (!periodHits(tile.x, tile.z, MANHOLE_PERIOD_TILES)) continue;
 
-    const lo = MANHOLE_MIN_OFFSET;
-    const hi = edgeOf(tile).half - MANHOLE_EDGE_MARGIN;
-    if (hi <= lo) continue; // carriageway too narrow to seat a cover clear of both edges
-
-    const mag = lo + hashTile(tile.x, tile.z, HASH_MANHOLE_MAG) * (hi - lo);
-    const side: FurnitureSide = hashTile(tile.x, tile.z, HASH_MANHOLE_SIDE) < 0.5 ? -1 : 1;
     out.push({
       x: tile.x,
       z: tile.z,
       axis: lateralAxis(tileSet, tile.x, tile.z),
-      lateral: mag * side,
+      lateral: 0,
       rotationY: hashTile(tile.x, tile.z, HASH_MANHOLE_ROT) * Math.PI * 2,
     });
   }
@@ -1237,6 +1271,37 @@ export function signalLensOffset(aspect: SignalAspect): { x: number; y: number; 
   };
 }
 
+/**
+ * Where a placement stands in the world, and which way it faces.
+ *
+ * A signal is two instanced meshes — the mast with its dark head, and the one
+ * lit lens laid over it — and they have to agree to the millimetre. They each
+ * worked the transform out for themselves, and a CONTROL board, which every
+ * signal is, carries an explicit offset placing it at the stop line rather
+ * than at the kerb rule. Only the mast honoured it, so the lit lens hung in
+ * the air metres from its own head. One function, read by both.
+ */
+export function signWorldTransform(p: SignPlacement): { x: number; z: number; yaw: number } {
+  if (p.worldOffsetX !== undefined && p.worldOffsetZ !== undefined) {
+    return {
+      x: tileToWorld(p.x) + p.worldOffsetX,
+      z: tileToWorld(p.z) + p.worldOffsetZ,
+      yaw: p.yaw ?? 0,
+    };
+  }
+  // Face the board along the road toward oncoming drivers, not across it: a
+  // kerb offset along x means the road runs N-S, so a board (authored facing
+  // ±z) already faces the traffic; a z offset means an E-W road and it takes a
+  // quarter turn. A signal is not a flat board — its arm reaches out over the
+  // carriageway — so it also has to know which kerb it stands on.
+  const off = p.lateralOffset * p.side;
+  return {
+    x: p.axis === 'x' ? tileToWorld(p.x) + off : tileToWorld(p.x),
+    z: p.axis === 'z' ? tileToWorld(p.z) + off : tileToWorld(p.z),
+    yaw: isCantilevered(p.type) ? signalYaw(p.axis, p.side) : p.axis === 'x' ? 0 : Math.PI / 2,
+  };
+}
+
 /** The colour a lit lens burns, by aspect. */
 export function signalLampColor(aspect: SignalAspect): number {
   return aspect === 'red' ? SIGNAL_RED : aspect === 'amber' ? SIGNAL_AMBER : SIGNAL_GREEN;
@@ -1657,10 +1722,7 @@ export class RoadFurnitureRenderer {
   ): void {
     // The head hangs off the signal's own transform, so the lamp rides the
     // same one and is then offset into the head in the signal's local frame.
-    const off = p.lateralOffset * p.side;
-    const wx = p.axis === 'x' ? tileToWorld(p.x) + off : tileToWorld(p.x);
-    const wz = p.axis === 'z' ? tileToWorld(p.z) + off : tileToWorld(p.z);
-    const yaw = signalYaw(p.axis, p.side);
+    const { x: wx, z: wz, yaw } = signWorldTransform(p);
     _quat.setFromAxisAngle(_yAxis, yaw);
     const local = signalLensOffset(aspect);
     _position
@@ -1726,32 +1788,8 @@ export class RoadFurnitureRenderer {
   }
 
   private writeSign(mesh: THREE.InstancedMesh, slot: number, p: SignPlacement): void {
-    // Turn-tile bend signs carry an explicit world offset + facing yaw
-    // (positioned at the curve's outer corner rather than by side rule).
-    if (p.worldOffsetX !== undefined && p.worldOffsetZ !== undefined) {
-      const wx = tileToWorld(p.x) + p.worldOffsetX;
-      const wz = tileToWorld(p.z) + p.worldOffsetZ;
-      _quat.setFromAxisAngle(_yAxis, p.yaw ?? 0);
-      _position.set(wx, this.heightAt(wx, wz), wz);
-      _matrix.compose(_position, _quat, _scale);
-      mesh.setMatrixAt(slot, _matrix);
-      return;
-    }
-
-    const off = p.lateralOffset * p.side;
-    const wx = p.axis === 'x' ? tileToWorld(p.x) + off : tileToWorld(p.x);
-    const wz = p.axis === 'z' ? tileToWorld(p.z) + off : tileToWorld(p.z);
-    // Face the board along the road toward oncoming drivers (not across it): a
-    // curb offset along x means the road runs N-S, so the board (default facing
-    // ±z) already faces the traffic; a z offset means an E-W road, so quarter-turn
-    // it to face ±x.
-    // A signal is not a flat board: its arm reaches out over the carriageway, so
-    // it also has to know WHICH curb it is standing on. Its yaw turns the
-    // authored +X arm toward the tile centre — away from the side it sits on.
-    _quat.setFromAxisAngle(
-      _yAxis,
-      isCantilevered(p.type) ? signalYaw(p.axis, p.side) : p.axis === 'x' ? 0 : Math.PI / 2,
-    );
+    const { x: wx, z: wz, yaw } = signWorldTransform(p);
+    _quat.setFromAxisAngle(_yAxis, yaw);
     _position.set(wx, this.heightAt(wx, wz), wz);
     _matrix.compose(_position, _quat, _scale);
     mesh.setMatrixAt(slot, _matrix);

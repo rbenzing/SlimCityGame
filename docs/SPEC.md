@@ -2759,6 +2759,32 @@ scaled by one constant into the units the sim already uses.
    A line that does not move is still one quad. The sweep costs geometry, and
    a road that is not changing must not pay it — every marking in the city
    would multiply for nothing.
+   A seam only exists between two tiles that both paint THROUGH. A junction's
+   box is bare and a turn's paint is an arc, so neither has a through line for
+   a straight neighbour's to meet; left in, a street arriving at a crossroads
+   chases the lines of the road it is crossing and drifts off its own centre
+   on the way in, which is worse than the step the seam removes.
+   A MEDIAN makes a road divided, and the left-hand edge of a divided road's
+   roadway is marked YELLOW. The lines go at the median's two edges, just
+   inside the running surface — not as a pair over the median's own centre,
+   which is where they were: the mesh draws the planting over that centre, so
+   both lines were buried and a straight avenue run carried no yellow at all.
+   MANHOLE COVERS sit on the CENTRELINE, one every seven tiles. A cover is the
+   top of a sewer, a sewer is laid down the middle of the street it serves, and
+   its accesses come at the longest interval maintenance allows — 400 ft, which
+   at a 16 m tile is a shade over seven. Scattering a cover onto an eighth of
+   every tile at a random offset and a random side, which is what this was, put
+   them across the running lanes at a density no street has. A road with a
+   raised median has no centreline to sit on: its sewer runs under one
+   carriageway rather than under the planting, and rather than guess which,
+   that road carries none.
+   A PROP DRAWN IN TWO PIECES READS ONE TRANSFORM. A signal is two instanced
+   meshes — the mast with its dark head, and the single lit lens laid over it —
+   and each worked out its own world position. A signal is also a CONTROL
+   board, placed at the stop line by an explicit offset rather than by the kerb
+   rule, and only the mast honoured that offset: every lit lens hung in the air
+   metres from the head it belonged to. One function answers where a placement
+   stands and which way it faces, and both meshes read it.
 6. **Two-tile corridors** — six- and eight-lane divided, the honest motorway,
    corridor halves in `roadFlow`, the two-lane roundabout, sound barriers.
    A CORRIDOR IS TWO CARRIAGEWAYS, not one wide road drawn across two tiles.

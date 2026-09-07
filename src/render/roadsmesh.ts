@@ -4242,15 +4242,23 @@ export class RoadMeshRenderer {
   }
 
   /**
-   * What the road at (x,z) PAINTS, or null off-road — the neighbour's own
-   * plan, so a line can meet its opposite number half way across the seam.
-   * Read from the painted cross-section rather than the drawn one, since down
-   * a motorway's taper the tarmac and the paint part company.
+   * What the road at (x,z) PAINTS THROUGH, or null where nothing runs through
+   * it — the neighbour's own plan, so a line can meet its opposite number half
+   * way across the seam. Read from the painted cross-section rather than the
+   * drawn one, since down a motorway's taper the tarmac and the paint part
+   * company.
+   *
+   * A JUNCTION and a TURN paint no through lines: the junction's box is bare
+   * and the turn's paint is an arc, so there is nothing for a straight
+   * neighbour's line to meet. Left in, a street arriving at a crossroads would
+   * chase the lines of the road it is crossing and drift off its own centre on
+   * the way in, which is worse than the step the seam exists to remove.
    */
   private planAt(x: number, z: number): MarkingPlan | null {
     const profile = this.profileAt(x, z);
     if (!profile) return null;
     const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
+    if (!tile || !isStraightRunMask(tile.mask)) return null;
     return markingPlan(
       paintedCrossSection(
         profile,

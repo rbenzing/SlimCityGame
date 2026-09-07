@@ -10,7 +10,9 @@ import {
   MANHOLE_LIFT,
   METER_KERB_CLEARANCE_M,
   RoadFurnitureRenderer,
+  signWorldTransform,
 } from './roadfurniture';
+import { tileToWorld } from '../shared/constants';
 import { RoadTier } from '../shared/types';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 import { carriagewayHalfWidthMeters, ROAD_Y_OFFSET, SIDEWALK_WIDTH_M } from './roadsmesh';
@@ -146,18 +148,22 @@ describe('road-furniture placement (pure)', () => {
     }
   });
 
-  it('keeps every manhole inside the carriageway and off the centerline, for each paved tier', () => {
+  it('runs every manhole down the centreline, never out in a running lane', () => {
     for (const tier of PAVED_TIERS) {
       const manholes = computeManholePlacements(strip(0, 0, 40, 'ew', tier));
-      expect(manholes.length).toBeGreaterThan(0);
-      const half = carriagewayHalfWidthMeters(tier);
-      for (const m of manholes) {
-        const mag = Math.abs(m.lateral);
-        expect(mag).toBeGreaterThanOrEqual(0.6);
-        expect(mag).toBeLessThanOrEqual(half - 0.5);
-        expect(mag).toBeLessThan(half);
-      }
+      // A road with a raised median has no centreline to sit on and carries
+      // none; every other paved road gets a line of them.
+      for (const m of manholes) expect(m.lateral).toBe(0);
     }
+  });
+
+  it('spaces covers a sewer run apart, not one on every few tiles', () => {
+    const manholes = computeManholePlacements(strip(0, 0, 40, 'ew', RoadTier.TwoLane));
+    const xs = [...new Set(manholes.map((m) => m.x))].sort((a, b) => a - b);
+    expect(xs.length).toBeGreaterThan(1);
+    // Seven tiles is 112 m, inside the 400 ft a maintenance standard allows
+    // between manholes and far enough apart to read as a real street.
+    for (let i = 1; i < xs.length; i++) expect(xs[i]! - xs[i - 1]!).toBe(7);
   });
 
   it('selects the expected periodic tiles for meter pairs along a straight run', () => {
@@ -213,6 +219,27 @@ describe('road-furniture placement (pure)', () => {
     const signs = computeSignPlacements(controlledPlus('signal', RoadTier.Avenue));
     const at = signAt(signs);
     for (const [x, z] of APPROACHES) expect(at(x, z)).toBe('signal');
+  });
+
+  it('hangs each lit lens on the mast it belongs to, not beside it', () => {
+    // A signal is a control board, and a control board is placed at the STOP
+    // LINE by an explicit world offset rather than by the kerb rule. The mast
+    // honoured that offset and the lit lens worked its own position out from
+    // the kerb rule instead, so every lens hung in the air metres from its own
+    // head. Both read one transform now, and this is what says so.
+    const signals = computeSignPlacements(controlledPlus('signal', RoadTier.Avenue)).filter(
+      (s) => s.type === 'signal',
+    );
+    expect(signals.length).toBeGreaterThan(0);
+    for (const s of signals) {
+      // The offset is what made them disagree, so a signal that does not carry
+      // one would not exercise the bug at all.
+      expect(s.worldOffsetX, 'a signal stands at the stop line').toBeDefined();
+      const t = signWorldTransform(s);
+      expect(t.x).toBeCloseTo(tileToWorld(s.x) + s.worldOffsetX!, 9);
+      expect(t.z).toBeCloseTo(tileToWorld(s.z) + s.worldOffsetZ!, 9);
+      expect(t.yaw).toBeCloseTo(s.yaw!, 9);
+    }
   });
 
   it('signs only the road that gives way at a minor-road stop', () => {
@@ -753,12 +780,16 @@ describe('a sewer cover sits ON the road, not under it', () => {
     expect(MANHOLE_LIFT).toBeGreaterThan(ROAD_Y_OFFSET);
   });
 
-  it('puts a cover on every paved road, and none on a dirt one', () => {
+  it('puts a cover on every paved road that has a centreline, and none on a dirt one', () => {
     const run = (tier: RoadTier): FurnitureRoadTile[] =>
       Array.from({ length: 60 }, (_, i) => ({ x: i, z: 7, tier }));
-    for (const tier of [RoadTier.TwoLane, RoadTier.Avenue, RoadTier.Alley, RoadTier.FourLane]) {
+    for (const tier of [RoadTier.TwoLane, RoadTier.Alley, RoadTier.FourLane]) {
       expect(computeManholePlacements(run(tier)).length, `tier ${tier}`).toBeGreaterThan(0);
     }
+    // The avenue's median is where the centreline would be. Its sewer runs
+    // under one carriageway rather than under the planting, and rather than
+    // guess which, it carries no covers.
+    expect(computeManholePlacements(run(RoadTier.Avenue))).toEqual([]);
     expect(computeManholePlacements(run(RoadTier.Gravel))).toEqual([]);
     expect(computeManholePlacements(run(RoadTier.RailTrack))).toEqual([]);
   });

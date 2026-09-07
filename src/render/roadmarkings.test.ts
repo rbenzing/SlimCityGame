@@ -5,6 +5,7 @@ import type { RoadProfile } from '../shared/types';
 import {
   CENTRE_PAIR_OFFSET_M,
   centrePair,
+  MEDIAN_EDGE_LINE_INSET_M,
   markingPlan,
   seamBetween,
   seamOffsets,
@@ -47,11 +48,17 @@ describe('markingPlan paints every preset the way a US road is painted', () => {
     expect(centrePair(p)).not.toBeNull();
   });
 
-  it('avenue: the same, with a median the mesh draws where the centre pair would go', () => {
+  it('avenue: a yellow left edge line down each side of the median it is divided by', () => {
     const p = markingPlan(presetProfileForTier(RoadTier.Avenue));
     close(p.dashed, [-3.75, 3.75]);
-    expect(lineAt(p.solid, CENTRE_PAIR_OFFSET_M)).toBe('yellow');
     expect(p.hasMedian).toBe(true);
+    // The median runs from -0.9 to 0.9, so each carriageway's left edge line
+    // sits just inside it. Painted as a pair over the median's own centre —
+    // which is what this was — both lines end up under the planting the mesh
+    // draws there, and a straight avenue run carries no yellow at all.
+    expect(lineAt(p.solid, -0.9 - MEDIAN_EDGE_LINE_INSET_M)).toBe('yellow');
+    expect(lineAt(p.solid, 0.9 + MEDIAN_EDGE_LINE_INSET_M)).toBe('yellow');
+    expect(lineAt(p.solid, CENTRE_PAIR_OFFSET_M)).toBe(null);
   });
 
   it('highway: white lane lines and white edges, no yellow — every lane runs one way', () => {

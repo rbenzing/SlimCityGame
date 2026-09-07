@@ -13,6 +13,12 @@ import { carriagewayHalfWidthOf } from '../shared/roadprofile';
 export const CENTRE_PAIR_OFFSET_M = 0.22;
 /** How far inside the carriageway edge a motorway's edge line is painted. */
 export const EDGE_LINE_MARGIN_M = 0.5;
+/**
+ * How far onto the carriageway a divided road's left edge line sits from the
+ * median it runs beside — clear of the median's concrete kerb, close enough to
+ * read as that carriageway's own edge.
+ */
+export const MEDIAN_EDGE_LINE_INSET_M = 0.25;
 /** How far inside a turn lane its broken line sits from the solid one beside it. */
 export const TURN_LANE_INNER_OFFSET_M = 0.3;
 /** A bike lane's paint is at most this wide; a wider piece keeps a buffer to the kerb. */
@@ -261,13 +267,23 @@ export function markingPlan(profile: RoadProfile): MarkingPlan {
   }
 
   const hasMedian = pieces.some((p) => p.kind === 'median');
-  // A median splits the centre: the double pair around it is only painted
-  // where the raised median itself is absent, which the mesh decides per tile.
+  // A median makes this a DIVIDED road, and the left-hand edge of a divided
+  // road's roadway is marked yellow — the line that tells a driver which side
+  // of the road they are on without having to look for oncoming headlights.
+  //
+  // It goes at the median's two edges, just inside the running surface, and
+  // not as a pair over the median's own centre: there is no centre to paint,
+  // and a pair painted there is buried under the planting the moment the
+  // raised median is drawn over it, which is why a straight avenue run
+  // carried no yellow at all. Where the median is at an EDGE of the section —
+  // a corridor's half — the edge-line rule above has already painted that
+  // side, so nothing is added.
   if (hasMedian && style.centre !== 'none') {
     const medianIndex = pieces.findIndex((p) => p.kind === 'median');
-    const before = pieces.slice(0, medianIndex).reduce((w, p) => w + p.width, -half);
-    const centreAt = before + pieces[medianIndex]!.width / 2;
-    solid.push(yellow(centreAt - CENTRE_PAIR_OFFSET_M), yellow(centreAt + CENTRE_PAIR_OFFSET_M));
+    const from = pieces.slice(0, medianIndex).reduce((w, p) => w + p.width, -half);
+    const to = from + pieces[medianIndex]!.width;
+    if (from > -half + 1e-9) solid.push(yellow(from - MEDIAN_EDGE_LINE_INSET_M));
+    if (to < half - 1e-9) solid.push(yellow(to + MEDIAN_EDGE_LINE_INSET_M));
   }
 
   return {

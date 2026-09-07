@@ -732,13 +732,16 @@ describe('roadTileVertices — true-ratio dashed/solid markings by tier (UI-SPEC
     expect(narrows.positions.length).toBeGreaterThan(plain.positions.length);
   });
 
-  it('a straight avenue run (median-eligible) suppresses the solid center pair but keeps dashed lane lines', () => {
+  it('a straight avenue run carries a yellow left edge line down each side of its median', () => {
     const z = 0;
     const { colors } = roadTileVertices(0, z, RoadTier.Avenue, N | S, flatHeightAt);
-    // 2 dashed white lane lines + 2 solid white edge lines; no yellow centre
-    // pair, which the physical median replaces.
+    // 2 dashed white lane lines + 2 solid white edge lines at the kerbs.
     expect(countWhere(colors, isMarkingWhite)).toBe(dashCountFor(z) * 2 * 6 + 2 * 6);
-    expect(countWhere(colors, isMarkingYellow)).toBe(0);
+    // And two solid yellow ones beside the median: an avenue is a divided
+    // road, and the left-hand edge of a divided road is marked yellow. A pair
+    // painted over the median's own centre instead is buried the moment the
+    // mesh draws the planting, which left the avenue with no yellow at all.
+    expect(countWhere(colors, isMarkingYellow)).toBe(2 * 6);
   });
 
   it('highway draws white lane lines and white edges — never a yellow centre, since every lane runs one way', () => {
