@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { corridorHalfProfile, presetProfileForTier } from '../shared/roadprofile';
 import { RoadTier } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
-import { CENTRE_PAIR_OFFSET_M, centrePair, markingPlan, travelLanes } from './roadmarkings';
+import {
+  CENTRE_PAIR_OFFSET_M,
+  centrePair,
+  markingPlan,
+  seamBetween,
+  seamOffsets,
+  travelLanes,
+  type MarkingPlan as MarkingProfile,
+} from './roadmarkings';
 
 const close = (xs: readonly { at: number }[] | number[], ys: number[]): void => {
   expect(xs.length).toBe(ys.length);
@@ -186,6 +194,95 @@ describe('markingPlan for composed profiles', () => {
     });
     const band = p.bands[0]!;
     expect(band.to - band.from).toBeCloseTo(1.6, 6);
+  });
+});
+
+describe('a line crosses a seam where the road changes', () => {
+  const line = (at: number, color: 'white' | 'yellow' = 'white'): { at: number; color: typeof color } => ({ at, color });
+
+  it('meets its opposite number half way, so both tiles put the seam in one place', () => {
+    const here = [line(-3), line(3)];
+    const there = [line(-2), line(2)];
+    // Whichever side asks, the seam is the same place — which is what makes
+    // the line unbroken rather than a step at the boundary.
+    expect(seamOffsets(here, there, 5)).toEqual([-2.5, 2.5]);
+    expect(seamOffsets(there, here, 6)).toEqual([-2.5, 2.5]);
+  });
+
+  it('leaves a road that does not change exactly where it was', () => {
+    const same = [line(-3), line(0, 'yellow'), line(3)];
+    expect(seamOffsets(same, same, 5)).toEqual([-3, 0, 3]);
+  });
+
+  it('never drags a line across to a different colour', () => {
+    // A white lane line has no white to meet, and the yellow centre is not a
+    // candidate however close it is.
+    const here = [line(2)];
+    const there = [line(0, 'yellow')];
+    expect(seamOffsets(here, there, 4)).toEqual([4]);
+  });
+
+  it('closes a dropped lane onto the line it merges into, all the way', () => {
+    // Two lanes a side becoming one: the outer lane line has no partner and
+    // runs into the edge line rather than stopping in mid-road.
+    const here = [line(-6), line(-3), line(3), line(6)];
+    const there = [line(-3), line(3)];
+    const at = seamOffsets(here, there, 3);
+    // The inner pair carries on; the outer pair merges onto it.
+    expect(at).toEqual([-3, -3, 3, 3]);
+  });
+
+  it('converges a double centre onto the single one that replaces it', () => {
+    const doubleCentre = [line(-0.22, 'yellow'), line(0.22, 'yellow')];
+    const singleCentre = [line(0, 'yellow')];
+    const at = seamOffsets(doubleCentre, singleCentre, 3.75);
+    // One of the pair carries on AS the centre, meeting the single line half
+    // way — and the single line, asked from its own side, names that same
+    // place, so that one is unbroken. The other has no partner left and
+    // merges onto the centre. Both end within a hand's breadth of the middle,
+    // which is the point: neither wanders off across the road.
+    expect(seamOffsets(singleCentre, doubleCentre, 7.5)[0]).toBeCloseTo(-0.11, 6);
+    expect(at[0]).toBeCloseTo(-0.11, 6);
+    expect(at[1]).toBeCloseTo(0, 6);
+    for (const o of at) expect(Math.abs(o)).toBeLessThan(CENTRE_PAIR_OFFSET_M);
+  });
+
+  it('matches a solid line to a dashed one, since a style change is still one line', () => {
+    const solidCentre: MarkingProfile = {
+      solid: [line(-0.22, 'yellow'), line(0.22, 'yellow')],
+      dashed: [],
+      bands: [],
+      turnLane: null,
+      hasMedian: false,
+      barrier: false,
+    };
+    const dashedCentre: MarkingProfile = {
+      solid: [],
+      dashed: [line(0, 'yellow')],
+      bands: [],
+      turnLane: null,
+      hasMedian: false,
+      barrier: false,
+    };
+    // Matched across the two lists, the pair stays on the centre. Matched only
+    // within its own list it would find no yellow at all and set off for the
+    // kerb, which is the bug this rule exists to prevent — so what the test
+    // pins is that both lines stay in the middle of the road.
+    for (const o of seamBetween(solidCentre, dashedCentre, 3.75).solid) {
+      expect(Math.abs(o)).toBeLessThan(CENTRE_PAIR_OFFSET_M);
+    }
+  });
+
+  it('holds a line still where there is no road on the other side', () => {
+    const here: MarkingProfile = {
+      solid: [line(-3), line(3)],
+      dashed: [line(0, 'yellow')],
+      bands: [],
+      turnLane: null,
+      hasMedian: false,
+      barrier: false,
+    };
+    expect(seamBetween(here, null, 0)).toEqual({ solid: [-3, 3], dashed: [0] });
   });
 });
 

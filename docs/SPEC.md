@@ -2735,6 +2735,30 @@ scaled by one constant into the units the sim already uses.
    last tile read as the street it was arriving at, and the terminal was
    warranted as though no slip road reached it. A dead end or a bend is not a
    junction and still takes the boundary node.
+   PAINT FOLLOWS THE ROAD, and a road is read down its length rather than tile
+   by tile. A line is planned from the cross-section, and a tile that painted
+   its lines at the one offset its OWN section gives them made every change of
+   width a staircase: the plate tapered smoothly, slice by slice, while the
+   paint over it stepped once per tile and then stopped dead where the next
+   road painted something else. So a line has two offsets, one at each end of
+   the tile, and sweeps between them.
+   Where those offsets come from is the whole of it. A line MEETS ITS OPPOSITE
+   NUMBER HALF WAY: both tiles work out the same midpoint from the same two
+   plans, so neither has to know which of them is the wider road and the line
+   crosses the boundary unbroken. Opposite numbers are matched nearest-first,
+   one to one, and only within a colour — a lane line that drifted across the
+   middle of the road to meet a centre line would be worse than the step it
+   replaced — but ACROSS solid and dashed together, because a double yellow
+   centre becoming a broken one is the same centre and matching each list only
+   to its own kind sends it off to the kerb looking for a partner it never
+   had. A line with no opposite number MERGES rather than stopping: it runs
+   into the nearest line of its colour on the far side, which is the edge line
+   for a dropped lane and the surviving centre for half of a double one. It
+   closes all the way by the seam, not half way, because there is nothing on
+   the other side to agree with.
+   A line that does not move is still one quad. The sweep costs geometry, and
+   a road that is not changing must not pay it — every marking in the city
+   would multiply for nothing.
 6. **Two-tile corridors** — six- and eight-lane divided, the honest motorway,
    corridor halves in `roadFlow`, the two-lane roundabout, sound barriers.
    A CORRIDOR IS TWO CARRIAGEWAYS, not one wide road drawn across two tiles.

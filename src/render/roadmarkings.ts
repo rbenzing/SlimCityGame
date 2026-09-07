@@ -280,6 +280,102 @@ export function markingPlan(profile: RoadProfile): MarkingPlan {
   };
 }
 
+/**
+ * Where each of `here`'s lines sits at the seam with the road in `there`.
+ *
+ * A road is painted tile by tile, but a driver reads one line down its whole
+ * length, so a line has to arrive at the boundary in the same place from both
+ * sides or it steps. Every line meets its opposite number HALF WAY: both tiles
+ * work out the same midpoint from the same two plans, so the line crosses the
+ * seam unbroken without either tile knowing which of them is the wider road.
+ *
+ * A line with no opposite number is a lane the next road does not have. It
+ * CLOSES rather than stopping dead: it runs out to the edge of the carriageway
+ * it is merging into, which is the line a dropped lane actually follows.
+ *
+ * Opposite numbers are matched nearest-first and one to one, and only within a
+ * colour — a lane line and a centre line are different things and a lane line
+ * that drifted across the middle of the road to meet one would be worse than
+ * the step it replaced.
+ */
+export function seamOffsets(
+  here: readonly MarkingLine[],
+  there: readonly MarkingLine[],
+  /** Half the width of the carriageway on the far side, where a line closes to. */
+  thereHalf: number,
+): number[] {
+  const taken = new Array<boolean>(there.length).fill(false);
+  // Nearest first over ALL the pairs, so the closest match wins the line it is
+  // closest to rather than whichever line happened to be considered first.
+  const pairs: { i: number; j: number; gap: number }[] = [];
+  here.forEach((a, i) =>
+    there.forEach((b, j) => {
+      if (a.color === b.color) pairs.push({ i, j, gap: Math.abs(a.at - b.at) });
+    }),
+  );
+  pairs.sort((p, q) => p.gap - q.gap);
+  const partner = new Array<number>(here.length).fill(-1);
+  for (const { i, j } of pairs) {
+    if (partner[i] !== -1 || taken[j]) continue;
+    partner[i] = j;
+    taken[j] = true;
+  }
+  /** The nearest line of the same colour over there, whether or not it is spoken for. */
+  const nearestOfColour = (line: MarkingLine): MarkingLine | null => {
+    let best: MarkingLine | null = null;
+    for (const b of there) {
+      if (b.color !== line.color) continue;
+      if (!best || Math.abs(b.at - line.at) < Math.abs(best.at - line.at)) best = b;
+    }
+    return best;
+  };
+  return here.map((line, i) => {
+    const j = partner[i]!;
+    if (j >= 0) return (line.at + there[j]!.at) / 2;
+    // Nothing of its own to carry on into. It still MERGES rather than
+    // stopping dead: a dropped lane's line runs into the edge line beside it,
+    // and the two lines of a double centre converge on the single centre that
+    // replaces them. Either way that is the nearest line of the same colour.
+    //
+    // It closes ALL the way by the seam rather than half of it. A matched line
+    // meets its opposite number in the middle so both tiles agree on where the
+    // boundary is; this one has no opposite number, so there is nothing to
+    // agree with and stopping half way would leave the stub the merge exists
+    // to avoid.
+    const near = nearestOfColour(line);
+    if (near) return near.at;
+    // Nothing of that colour at all over there, so there is only the road's
+    // own edge left to close to; a line already on the centreline has no side
+    // to close toward and simply ends where it is.
+    if (thereHalf <= 0 || line.at === 0) return line.at;
+    return Math.sign(line.at) * thereHalf;
+  });
+}
+
+/**
+ * The seam between two tiles' whole plans.
+ *
+ * Solid and dashed are matched TOGETHER, because a line that changes style
+ * across the seam is still one line: a double yellow centre becoming a broken
+ * one is the same centre, and matching each list only to its own kind would
+ * send it off to the kerb looking for a solid partner it never had.
+ */
+export function seamBetween(
+  here: MarkingPlan,
+  there: MarkingPlan | null,
+  thereHalf: number,
+): { solid: number[]; dashed: number[] } {
+  if (!there) {
+    return { solid: here.solid.map((l) => l.at), dashed: here.dashed.map((l) => l.at) };
+  }
+  const at = seamOffsets(
+    [...here.solid, ...here.dashed],
+    [...there.solid, ...there.dashed],
+    thereHalf,
+  );
+  return { solid: at.slice(0, here.solid.length), dashed: at.slice(here.solid.length) };
+}
+
 /** The pair of solid lines painted around the centre, or none. */
 export function centrePair(plan: MarkingPlan): [MarkingLine, MarkingLine] | null {
   const lo = plan.solid.find((l) => Math.abs(l.at + CENTRE_PAIR_OFFSET_M) < 1e-6);

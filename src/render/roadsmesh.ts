@@ -124,10 +124,26 @@ import type { ApproachAhead, ApproachSurroundings, AuxiliaryLane } from '../shar
 import {
   centrePair,
   markingPlan,
+  seamBetween,
   travelLanes,
   type MarkingLine,
   type MarkingPlan,
 } from './roadmarkings';
+
+/**
+ * Where a tile's planned lines sit at ONE end of its run, parallel to the
+ * plan's own `solid` and `dashed` arrays. It is the seam value both tiles
+ * either side agree on, so neither has to know which of them is the wider.
+ */
+export interface MarkingSeam {
+  solid: number[];
+  dashed: number[];
+}
+
+/** The seam between a tile's own plan and its neighbour's, or its own where there is none. */
+function seamWith(plan: MarkingPlan, neighbour: MarkingPlan | null, half: number): MarkingSeam {
+  return seamBetween(plan, neighbour, half);
+}
 
 /** The road plate rides this far above the terrain — anything standing ON a road must add it. */
 export const ROAD_Y_OFFSET = 0.15;
@@ -509,6 +525,80 @@ function paintOf(line: MarkingLine): readonly [number, number, number] {
   return line.color === 'yellow' ? YELLOW_MARKING_COLOR : MARKING_COLOR;
 }
 
+/**
+ * One marking line segment that may DRIFT ACROSS the road as it runs: its
+ * offset is `offsetAt(along)` rather than one number, so a line whose road is
+ * changing width follows the change instead of stepping at the tile boundary.
+ *
+ * Sliced on the shared lattice like every other plate, so the paint stays on
+ * the terrain it is painted on, and each slice is a quad rather than a
+ * rectangle — a drifting line is not axis-aligned.
+ */
+function pushMarkingRun(
+  positions: number[],
+  colors: number[],
+  vertical: boolean,
+  centerX: number,
+  centerZ: number,
+  /** Where the line sits at `lo` and at `hi`. Equal — the ordinary case — it runs straight. */
+  atLo: number,
+  atHi: number,
+  lo: number,
+  hi: number,
+  hAt: (x: number, z: number) => number,
+  paint: readonly [number, number, number],
+): void {
+  if (hi <= lo) return;
+  // A line that does not drift is the rectangle it always was: one quad, no
+  // slicing. Only a road that is actually changing pays for the sweep.
+  if (Math.abs(atHi - atLo) < 1e-9) {
+    if (vertical)
+      pushVerticalLine(positions, colors, centerX, centerZ, atLo, lo, hi, hAt, paint);
+    else pushHorizontalLine(positions, colors, centerX, centerZ, atLo, lo, hi, hAt, paint);
+    return;
+  }
+  const centreAlong = vertical ? centerZ : centerX;
+  const pt = (along: number, cross: number): [number, number] =>
+    vertical ? [cross, along] : [along, cross];
+  const offsetAt = driftBetween(atLo, atHi, lo, hi);
+  const breaks = latticeBreaks(centreAlong + lo, centreAlong + hi);
+  for (let k = 0; k < breaks.length - 1; k++) {
+    const a0 = breaks[k]! - centreAlong;
+    const a1 = breaks[k + 1]! - centreAlong;
+    const o0 = offsetAt(a0);
+    const o1 = offsetAt(a1);
+    pushRunSlice(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      pt(a0, o0 - PAINT_HALF_WIDTH_M),
+      pt(a0, o0 + PAINT_HALF_WIDTH_M),
+      pt(a1, o1 - PAINT_HALF_WIDTH_M),
+      pt(a1, o1 + PAINT_HALF_WIDTH_M),
+      MARK_Y_OFFSET,
+      paint,
+      hAt,
+    );
+  }
+}
+
+/**
+ * The offset of a line at a distance along the tile, given where it sits at
+ * each end. Straight between the two, which over one tile is what a real lane
+ * transition looks like; the ends are seam values both neighbours agree on, so
+ * consecutive tiles form one unbroken line rather than a staircase.
+ */
+function driftBetween(
+  atLo: number,
+  atHi: number,
+  lo: number,
+  hi: number,
+): (along: number) => number {
+  if (hi <= lo) return () => atLo;
+  return (along) => atLo + ((atHi - atLo) * (along - lo)) / (hi - lo);
+}
+
 /** A single marking line segment running along Z (vertical travel), offset `offset` in X. */
 function pushVerticalLine(
   positions: number[],
@@ -584,34 +674,6 @@ function pushSolidLine(
 }
 
 /**
- * Emits a dashed marking line across the local [lo, hi] span: converts to a
- * GLOBAL world-meter range (so phase is seam-continuous — see dashSegments),
- * then draws one line quad per painted sub-segment.
- */
-function pushDashedLine(
-  positions: number[],
-  colors: number[],
-  vertical: boolean,
-  centerX: number,
-  centerZ: number,
-  offset: number,
-  lo: number,
-  hi: number,
-  hAt: (x: number, z: number) => number,
-  paint: readonly [number, number, number] = MARKING_COLOR,
-): void {
-  const origin = vertical ? centerZ : centerX;
-  for (const [segLo, segHi] of dashSegments(origin + lo, origin + hi)) {
-    const localLo = segLo - origin;
-    const localHi = segHi - origin;
-    if (vertical)
-      pushVerticalLine(positions, colors, centerX, centerZ, offset, localLo, localHi, hAt, paint);
-    else
-      pushHorizontalLine(positions, colors, centerX, centerZ, offset, localLo, localHi, hAt, paint);
-  }
-}
-
-/**
  * Emits the tier-specific marking set along one axis (vertical XOR
  * horizontal): two-lane's single
  * centerline is dashed; avenue's center pair is solid double (unless a
@@ -635,17 +697,61 @@ function emitAxisMarkings(
   hi: number,
   suppressCenterPair: boolean,
   hAt: (x: number, z: number) => number,
+  /**
+   * Where each line sits at the two ends of the run, when the roads either
+   * side paint them somewhere else. Omitted, every line runs straight at the
+   * offset its own cross-section gives it.
+   */
+  seam?: { lo: MarkingSeam; hi: MarkingSeam },
 ): void {
   const pair = suppressCenterPair ? centrePair(plan) : null;
-  for (const line of plan.solid) {
-    if (pair && (line === pair[0] || line === pair[1])) continue;
-    const paint = paintOf(line);
-    pushSolidLine(positions, colors, vertical, centerX, centerZ, line.at, lo, hi, hAt, paint);
-  }
-  for (const line of plan.dashed) {
-    const paint = paintOf(line);
-    pushDashedLine(positions, colors, vertical, centerX, centerZ, line.at, lo, hi, hAt, paint);
-  }
+  /** Where a line sits at each end of the run: its seam values, or its own offset. */
+  const ends = (line: MarkingLine, i: number, which: 'solid' | 'dashed'): [number, number] => [
+    seam?.lo?.[which]?.[i] ?? line.at,
+    seam?.hi?.[which]?.[i] ?? line.at,
+  ];
+  plan.solid.forEach((line, i) => {
+    if (pair && (line === pair[0] || line === pair[1])) return;
+    const [atLo, atHi] = ends(line, i, 'solid');
+    pushMarkingRun(
+      positions,
+      colors,
+      vertical,
+      centerX,
+      centerZ,
+      atLo,
+      atHi,
+      lo,
+      hi,
+      hAt,
+      paintOf(line),
+    );
+  });
+  plan.dashed.forEach((line, i) => {
+    const [atLo, atHi] = ends(line, i, 'dashed');
+    const offsetAt = driftBetween(atLo, atHi, lo, hi);
+    // The dash pattern still measures from global world-metre 0 along the run,
+    // so the phase carries over seams exactly as it did; only where the paint
+    // sits ACROSS the road has become a function of how far along it is.
+    const origin = vertical ? centerZ : centerX;
+    for (const [segLo, segHi] of dashSegments(origin + lo, origin + hi)) {
+      const a0 = segLo - origin;
+      const a1 = segHi - origin;
+      pushMarkingRun(
+        positions,
+        colors,
+        vertical,
+        centerX,
+        centerZ,
+        offsetAt(a0),
+        offsetAt(a1),
+        a0,
+        a1,
+        hAt,
+        paintOf(line),
+      );
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2925,6 +3031,14 @@ export interface NeighborHalves {
    * each side is read from its tier's preset.
    */
   footways?: { n: boolean; e: boolean; s: boolean; w: boolean };
+  /**
+   * What each neighbour PAINTS, so a line can meet its opposite number half
+   * way across the boundary instead of stopping at this tile's edge and
+   * restarting somewhere else on the other side. Omitted, every line runs at
+   * the offset this tile's own cross-section gives it, which is right for a
+   * road that does not change.
+   */
+  plans?: { n: MarkingPlan | null; e: MarkingPlan | null; s: MarkingPlan | null; w: MarkingPlan | null };
 }
 
 function presetHalves(neighbors: NeighborTiers): NeighborHalves {
@@ -3378,6 +3492,10 @@ export function roadTileVertices(
           zHi,
           medianEligible,
           hAt,
+          {
+            lo: seamWith(plan, hasN ? (neighborHalves.plans?.n ?? null) : null, neighborHalves.n),
+            hi: seamWith(plan, hasS ? (neighborHalves.plans?.s ?? null) : null, neighborHalves.s),
+          },
         );
         if (plan.bands.length > 0)
           emitColoredLaneBands(
@@ -3408,6 +3526,10 @@ export function roadTileVertices(
           xHi,
           medianEligible,
           hAt,
+          {
+            lo: seamWith(plan, hasW ? (neighborHalves.plans?.w ?? null) : null, neighborHalves.w),
+            hi: seamWith(plan, hasE ? (neighborHalves.plans?.e ?? null) : null, neighborHalves.e),
+          },
         );
         if (plan.bands.length > 0)
           emitColoredLaneBands(
@@ -4119,6 +4241,27 @@ export class RoadMeshRenderer {
     );
   }
 
+  /**
+   * What the road at (x,z) PAINTS, or null off-road — the neighbour's own
+   * plan, so a line can meet its opposite number half way across the seam.
+   * Read from the painted cross-section rather than the drawn one, since down
+   * a motorway's taper the tarmac and the paint part company.
+   */
+  private planAt(x: number, z: number): MarkingPlan | null {
+    const profile = this.profileAt(x, z);
+    if (!profile) return null;
+    const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
+    return markingPlan(
+      paintedCrossSection(
+        profile,
+        this.approachToward(x, z),
+        this.narrowingAt(x, z),
+        flowDirection(tile?.flow ?? RoadFlow.None),
+        this.auxiliaryAt(x, z),
+      ),
+    );
+  }
+
   private rebuildChunk(key: number): void {
     const chunk = this.chunks.get(key);
     if (!chunk) return;
@@ -4157,6 +4300,12 @@ export class RoadMeshRenderer {
             e: this.walkableAt(tile.x + 1, tile.z),
             s: this.walkableAt(tile.x, tile.z + 1),
             w: this.walkableAt(tile.x - 1, tile.z),
+          },
+          plans: {
+            n: this.planAt(tile.x, tile.z - 1),
+            e: this.planAt(tile.x + 1, tile.z),
+            s: this.planAt(tile.x, tile.z + 1),
+            w: this.planAt(tile.x - 1, tile.z),
           },
         },
         flowDirection(tile.flow),

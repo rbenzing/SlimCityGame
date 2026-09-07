@@ -39,7 +39,8 @@ import {
 } from './roadsmesh';
 import { RoadFlow, RoadTileDelta, RoadTier } from '../shared/types';
 import type { JunctionControl, RoadProfile } from '../shared/types';
-import { presetProfileForTier } from '../shared/roadprofile';
+import { carriagewayHalfWidthOf, presetProfileForTier } from '../shared/roadprofile';
+import { markingPlan } from './roadmarkings';
 import { CHUNK_TILES, TILE_METERS } from '../shared/constants';
 import { DEFAULT_ALLOWED, Movement } from '../shared/approach';
 
@@ -668,6 +669,67 @@ describe('roadTileVertices — true-ratio dashed/solid markings by tier (UI-SPEC
       // Plus the two solid white edge lines every paved road carries.
       expect(countWhere(colors, isMarkingWhite)).toBe(2 * 6);
     }
+  });
+
+  it('paints a road that does not change exactly where it always did, with no sweep', () => {
+    // Every neighbour is the same road, so every line meets itself at both
+    // seams and none of them drifts. The geometry has to be identical to the
+    // road drawn with no neighbour plans at all — a straight line is one quad,
+    // and a sweep that fires on an unchanging road would silently multiply
+    // every marking in the city.
+    const plain = roadTileVertices(0, 3, RoadTier.Avenue, N | S, flatHeightAt);
+    const sameBothSides = roadTileVertices(
+      0,
+      3,
+      RoadTier.Avenue,
+      N | S,
+      flatHeightAt,
+      { n: RoadTier.Avenue, e: RoadTier.None, s: RoadTier.Avenue, w: RoadTier.None },
+      presetProfileForTier(RoadTier.Avenue),
+      {
+        n: carriagewayHalfWidthOf(presetProfileForTier(RoadTier.Avenue)),
+        e: 0,
+        s: carriagewayHalfWidthOf(presetProfileForTier(RoadTier.Avenue)),
+        w: 0,
+        plans: {
+          n: markingPlan(presetProfileForTier(RoadTier.Avenue)),
+          e: null,
+          s: markingPlan(presetProfileForTier(RoadTier.Avenue)),
+          w: null,
+        },
+      },
+    );
+    expect(sameBothSides.positions.length).toBe(plain.positions.length);
+  });
+
+  it('sweeps a line across the tile when the road on the far side paints it elsewhere', () => {
+    // The neighbour is a narrower road, so this tile's lines have somewhere to
+    // go and the paint has to bend to get there — which costs geometry the
+    // unchanging road above does not pay.
+    const half = carriagewayHalfWidthOf(presetProfileForTier(RoadTier.Avenue));
+    const plain = roadTileVertices(0, 3, RoadTier.Avenue, N | S, flatHeightAt);
+    const narrows = roadTileVertices(
+      0,
+      3,
+      RoadTier.Avenue,
+      N | S,
+      flatHeightAt,
+      { n: RoadTier.Avenue, e: RoadTier.None, s: RoadTier.TwoLane, w: RoadTier.None },
+      presetProfileForTier(RoadTier.Avenue),
+      {
+        n: half,
+        e: 0,
+        s: carriagewayHalfWidthOf(presetProfileForTier(RoadTier.TwoLane)),
+        w: 0,
+        plans: {
+          n: markingPlan(presetProfileForTier(RoadTier.Avenue)),
+          e: null,
+          s: markingPlan(presetProfileForTier(RoadTier.TwoLane)),
+          w: null,
+        },
+      },
+    );
+    expect(narrows.positions.length).toBeGreaterThan(plain.positions.length);
   });
 
   it('a straight avenue run (median-eligible) suppresses the solid center pair but keeps dashed lane lines', () => {
