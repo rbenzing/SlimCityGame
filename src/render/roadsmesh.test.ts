@@ -2726,10 +2726,14 @@ describe('roadTileVertices — a one-way street points the way it was drawn', ()
     toTriples(colors).forEach((c, i) => {
       if (!isMarkingWhite(c)) return;
       const x = positions[i * 3]!;
-      // The centre line runs down x = 8 and the edge lines sit at the
-      // carriageway edge; the arrow head is between them.
-      const across = Math.abs(x - 8);
-      if (across < 0.3 || across > 2) return;
+      // The lane line runs down the tile's centre and the edge lines sit out
+      // at the carriageway edge; the arrow is between them. Measured from the
+      // tile's own centre, and stopping short of the edges, so this keeps
+      // picking out the arrow whatever the tile measures and whichever edge
+      // the yellow is on — a one-way's yellow changes sides with the way it
+      // runs, and an edge line caught in this window reads as arrow paint.
+      const across = Math.abs(x - TILE_METERS / 2);
+      if (across < 0.3 || across > 3) return;
       const z = positions[i * 3 + 2]!;
       if (z < lo) lo = z;
       if (z > hi) hi = z;

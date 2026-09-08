@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { corridorHalfProfile, presetProfileForTier } from '../shared/roadprofile';
-import { RoadTier } from '../shared/types';
+import { RoadFlow, RoadTier } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import {
   CENTRE_PAIR_OFFSET_M,
@@ -396,5 +396,47 @@ describe('travelLanes finds where each lane actually is', () => {
 
   it('has no lanes on a railway', () => {
     expect(travelLanes(presetProfileForTier(RoadTier.RailTrack))).toEqual([]);
+  });
+});
+
+describe('the yellow edge of a one-way roadway (MUTCD 3B.07)', () => {
+  const oneWay = (): RoadProfile => ({
+    class: 'oneWay',
+    pieces: [
+      { kind: 'sidewalk', width: 1.875 },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+      { kind: 'sidewalk', width: 1.875 },
+    ],
+  });
+  const edges = (flow: RoadFlow): { low: string; high: string } => {
+    const plan = markingPlan(oneWay(), flow);
+    const sorted = [...plan.solid].sort((a, b) => a.at - b.at);
+    return { low: sorted[0]!.color, high: sorted[sorted.length - 1]!.color };
+  };
+
+  // Offsets grow east and south. A driver's left is therefore the LOW offset
+  // going north or east, and the HIGH offset going south or west — so the
+  // yellow has to follow the direction the road was drawn, not the order of
+  // its pieces.
+  it('keeps the yellow on the driver’s left running north or east', () => {
+    for (const flow of [RoadFlow.North, RoadFlow.East]) {
+      expect(edges(flow).low, `flow ${flow}`).toBe('yellow');
+      expect(edges(flow).high, `flow ${flow}`).toBe('white');
+    }
+  });
+
+  it('moves it to the other edge running south or west', () => {
+    for (const flow of [RoadFlow.South, RoadFlow.West]) {
+      expect(edges(flow).high, `flow ${flow}`).toBe('yellow');
+      expect(edges(flow).low, `flow ${flow}`).toBe('white');
+    }
+  });
+
+  it('never paints both edges yellow, whichever way it runs', () => {
+    for (const flow of [RoadFlow.None, RoadFlow.North, RoadFlow.East, RoadFlow.South, RoadFlow.West]) {
+      const e = edges(flow);
+      expect([e.low, e.high].filter((c) => c === 'yellow').length, `flow ${flow}`).toBe(1);
+    }
   });
 });

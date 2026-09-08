@@ -7,6 +7,7 @@
  * list of offsets; the mesh only paints what it is handed.
  */
 import type { LanePiece, RoadClassId, RoadProfile } from '../shared/types';
+import { RoadFlow } from '../shared/types';
 import { carriagewayHalfWidthOf } from '../shared/roadprofile';
 
 /** Half the gap between the two lines of a double solid centre. */
@@ -140,7 +141,8 @@ export function travelLanes(profile: RoadProfile): TravelLane[] {
 }
 
 /** Lays the carriageway pieces across the tile and reads the lines between them. */
-export function markingPlan(profile: RoadProfile): MarkingPlan {
+/** `flow` is the stored direction, which decides which edge is the driver's left. */
+export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None): MarkingPlan {
   const style = CLASS_MARKINGS[profile.class];
   const pieces = profile.pieces.filter((p) => CARRIAGEWAY_KINDS.has(p.kind));
   const half = carriagewayHalfWidthOf(profile);
@@ -248,10 +250,19 @@ export function markingPlan(profile: RoadProfile): MarkingPlan {
     const medianAtRight = pieces[pieces.length - 1]?.kind === 'median';
     const facesMedian =
       profile.class === 'oneWay' || profile.class === 'divided' || profile.class === 'ramp';
-    const leftIsYellow = medianAtLeft || (!medianAtRight && facesMedian);
+    // Which edge the driver's LEFT is depends on which way the road RUNS, not
+    // on the order of its pieces. Offsets grow east and south, so a road drawn
+    // north or east has its driver's left at the low offsets and one drawn
+    // south or west has it at the high ones. Reading the section alone paints
+    // the yellow down the nearside of half the one-way streets in the city.
+    const runsWithOffsets = flow === RoadFlow.South || flow === RoadFlow.West;
+    const fallbackYellowLeft = facesMedian && !runsWithOffsets;
+    const fallbackYellowRight = facesMedian && runsWithOffsets;
+    const leftIsYellow = medianAtLeft || (!medianAtRight && fallbackYellowLeft);
+    const rightIsYellow = medianAtRight || (!medianAtLeft && fallbackYellowRight);
     solid.push(
       leftIsYellow ? yellow(shoulderInside(-1)) : white(shoulderInside(-1)),
-      medianAtRight ? yellow(shoulderInside(1)) : white(shoulderInside(1)),
+      rightIsYellow ? yellow(shoulderInside(1)) : white(shoulderInside(1)),
     );
   }
 

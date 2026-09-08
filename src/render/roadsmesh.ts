@@ -3170,7 +3170,7 @@ export function roadTileVertices(
   // motorway's taper: there the tarmac runs on at full width and only the
   // lines close the lane, leaving the neutral area between the two.
   const painted = paintedCrossSection(own, approach, narrowing, flow, auxiliary);
-  const plan = markingPlan(painted);
+  const plan = markingPlan(painted, flow);
   const centerX = (x + 0.5) * TILE_METERS;
   const centerZ = (z + 0.5) * TILE_METERS;
   const coreHalf = TILE_METERS * spec.halfWidthFraction;
@@ -4409,6 +4409,7 @@ export class RoadMeshRenderer {
         flowDirection(tile?.flow ?? RoadFlow.None),
         this.auxiliaryAt(x, z),
       ),
+      flowDirection(tile?.flow ?? RoadFlow.None),
     );
   }
 
