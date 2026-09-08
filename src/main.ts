@@ -615,6 +615,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           width: carriagewayWidth(drawn),
         };
       },
+      // The same question put to the MESH instead of the grid. Where the two
+      // disagree the picture follows this one, so a check that only ever asks
+      // the grid can pass while the road on screen is wrong.
+      readDrawn: (
+        x: number,
+        z: number,
+      ): { lanes: number; width: number; pocket: boolean; distance: number } | null =>
+        roadsMesh.drawnAt(x, z),
       readSigns: (): { x: number; z: number; type: string }[] =>
         computeSignPlacements(latestRoadTiles).map((s) => ({ x: s.x, z: s.z, type: s.type })),
       // What each signal head is showing. A lit lens is a few pixels across in

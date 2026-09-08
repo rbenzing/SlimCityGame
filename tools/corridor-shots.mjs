@@ -10,7 +10,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { tileCamera } from './shotcam.mjs';
+import { CAMERA_MIN_DISTANCE, closeUp, tileCamera } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -194,9 +194,28 @@ for (const [name, x] of [
   const down = [];
   for (let d = 1; d <= ZONE + 1; d++) {
     const a = await approach(X + x, Z + CROSS_Z - d);
-    down.push({ d, lanes: a?.lanes, width: a?.width, pocket: a?.pocket, dist: a?.distance });
+    const m = await call(
+      ([ax, az]) => window.__slimcity.readDrawn(ax, az),
+      [X + x, Z + CROSS_Z - d],
+    );
+    down.push({
+      d,
+      lanes: a?.lanes,
+      width: a?.width,
+      pocket: a?.pocket,
+      dist: a?.distance,
+      drawn: m && { lanes: m.lanes, width: m.width, pocket: m.pocket, dist: m.distance },
+    });
   }
   console.log(`${name} half approaching the junction:`, JSON.stringify(down));
+  // The grid says what the road means; the mesh says what is on screen. A
+  // difference between them is a bug no grid read-back can see.
+  for (const t of down) {
+    if (t.drawn && t.drawn.lanes !== t.lanes)
+      failures.push(
+        `${name} half ${t.d} out: grid says ${t.lanes} lanes, the mesh draws ${t.drawn.lanes}`,
+      );
+  }
   const near = down[0];
   const outside = down[ZONE];
   if (near?.dist !== 0)
@@ -228,7 +247,6 @@ const shots = [
   // The approach itself, close and straight down: a multi-lane arm is where
   // per-lane movements have anything to say, and every lane of it should be
   // carrying its own arrow.
-  ['corridor-approach', X + LEFT_X, Z + CROSS_Z - 1, 34, 0, 1.5],
 ];
 for (const [name, tx, tz, d, yaw, pitch] of shots) {
   await cam(tx, tz, d, yaw, pitch);
@@ -236,6 +254,16 @@ for (const [name, tx, tz, d, yaw, pitch] of shots) {
   await page.screenshot({ path: `${out}/${name}.png` });
   console.log('shot', name);
 }
+
+// The arm running into the junction, at twice the resolution: the camera will
+// not come closer than its floor, and a lane-use arrow is small enough that
+// the pixels are what decide whether it is there.
+const restore = await closeUp(page, 2);
+await cam(X + LEFT_X, Z + CROSS_Z - 1, CAMERA_MIN_DISTANCE, 0, 1.5);
+await page.waitForTimeout(900);
+await page.screenshot({ path: `${out}/corridor-approach.png` });
+console.log('shot corridor-approach');
+await restore();
 
 await b.close();
 for (const e of pageErrors) failures.push(`page error: ${e}`);

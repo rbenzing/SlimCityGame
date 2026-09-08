@@ -4402,6 +4402,38 @@ export class RoadMeshRenderer {
     );
   }
 
+  /**
+   * What the MESH believes it is drawing at a tile: the junction it approaches
+   * and the cross-section it lays.
+   *
+   * The mesh keeps its own copy of the road and its own accessors, so it can
+   * disagree with the grid the rest of the app reads — and when it does, a
+   * read-back taken from the grid reports the road that was meant rather than
+   * the one on screen. This is the second opinion.
+   */
+  drawnAt(
+    x: number,
+    z: number,
+  ): { lanes: number; width: number; pocket: boolean; distance: number } | null {
+    const own = this.profileAt(x, z);
+    if (!own) return null;
+    const approach = this.approachToward(x, z);
+    const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
+    const drawn = drawnCrossSection(
+      own,
+      approach,
+      this.narrowingAt(x, z),
+      flowDirection(tile?.flow ?? RoadFlow.None),
+      this.auxiliaryAt(x, z),
+    );
+    return {
+      lanes: drawn.pieces.filter((p) => p.kind === 'travel').length,
+      width: carriagewayWidth(drawn),
+      pocket: approach?.pocket ?? false,
+      distance: approach?.distance ?? -1,
+    };
+  }
+
   private rebuildChunk(key: number): void {
     const chunk = this.chunks.get(key);
     if (!chunk) return;

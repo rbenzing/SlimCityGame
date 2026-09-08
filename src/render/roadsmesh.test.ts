@@ -2979,3 +2979,54 @@ describe('a motorway closes its lane with paint and keeps the tarmac', () => {
     expect(white(closing(0))).toBeGreaterThan(white(closing(11)));
   });
 });
+
+describe('roadTileVertices — a corridor half arriving at a junction', () => {
+  // One carriageway of a six-lane divided road: three lanes all running the
+  // same way, finished on the inside by its share of the median. Its lanes are
+  // 'back', which is what a half on the low side of the split carries.
+  const half = (): RoadProfile => ({
+    class: 'divided',
+    pieces: [
+      { kind: 'sidewalk', width: 1.9 },
+      { kind: 'travel', width: 3.6, flow: 'back' },
+      { kind: 'travel', width: 3.6, flow: 'back' },
+      { kind: 'travel', width: 3.6, flow: 'back' },
+      { kind: 'median', width: 1.0 },
+    ],
+  });
+
+  const tile = (
+    approach?: { toward: RoadFlow; distance: number; pocket: boolean },
+  ): { positions: number[]; colors: number[] } =>
+    roadTileVertices(
+      4,
+      4,
+      RoadTier.Avenue,
+      N | S,
+      flatHeightAt,
+      undefined,
+      half(),
+      undefined,
+      RoadFlow.South,
+      undefined,
+      approach && { ...approach, allowed: DEFAULT_ALLOWED, openness: 1 },
+    );
+
+  it('paints a lane-use arrow in every lane of it', () => {
+    // Three lanes going the same way have something to tell apart, so the
+    // approach is marked. A corridor half is a road in its own right and gets
+    // what any three-lane approach gets.
+    const arrived = tile({ toward: RoadFlow.South, distance: 0, pocket: false });
+    expect(countWhere(arrived.colors, isMarkingWhite)).toBeGreaterThan(
+      countWhere(tile(undefined).colors, isMarkingWhite),
+    );
+  });
+
+  it('paints them on the tile at the stop line and nowhere further back', () => {
+    const atLine = tile({ toward: RoadFlow.South, distance: 0, pocket: false });
+    const backOne = tile({ toward: RoadFlow.South, distance: 1, pocket: false });
+    expect(countWhere(atLine.colors, isMarkingWhite)).toBeGreaterThan(
+      countWhere(backOne.colors, isMarkingWhite),
+    );
+  });
+});

@@ -37,6 +37,16 @@ const ready = (page) =>
 export function tileCamera(page) {
   return async (tx, tz, distance, yaw, pitch) => {
     await ready(page);
+    if (distance < CAMERA_MIN_DISTANCE) {
+      // The rig re-clamps its own distance every frame, so a harness asking to
+      // come closer than the player may simply gets the floor and a picture
+      // that looks like the one it asked for. Detail comes from a bigger
+      // viewport instead — see closeUp below.
+      console.log(
+        `[shotcam] distance ${distance} m is below the camera's ${CAMERA_MIN_DISTANCE} m floor; ` +
+          `the shot will be taken at ${CAMERA_MIN_DISTANCE} m`,
+      );
+    }
     return page.evaluate(
       ([x, z, d, yy, pp]) => {
         const T = window.__slimcity.tileMeters();
@@ -45,6 +55,28 @@ export function tileCamera(page) {
       [tx, tz, distance, yaw, pitch],
     );
   };
+}
+
+/**
+ * The closest the camera goes. The player's own limit, applied by the rig on
+ * every frame, so it binds the dev hook too.
+ */
+export const CAMERA_MIN_DISTANCE = 40;
+
+/**
+ * Render the next shots at `scale` times the linear resolution.
+ *
+ * The way to read fine paint is not a closer camera — there is a floor — but
+ * more pixels over the same ground. Returns a function that puts the viewport
+ * back, so a harness can take one detail shot without re-framing the rest.
+ */
+export async function closeUp(page, scale = 2) {
+  const before = page.viewportSize();
+  await page.setViewportSize({
+    width: Math.round(before.width * scale),
+    height: Math.round(before.height * scale),
+  });
+  return () => page.setViewportSize(before);
 }
 
 /** The app's tile size in metres, for harnesses that measure as well as look. */
