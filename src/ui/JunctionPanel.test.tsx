@@ -35,34 +35,30 @@ describe('JunctionPanel', () => {
   });
 
   it('names who gives way, and where', () => {
-    useCityStore
-      .getState()
-      .setSelectedJunction({
-        x: 12,
-        z: 30,
-        control: 'signal',
-        warranted: 'signal',
-        auto: true,
-        turns: 0,
-        arms: [],
-      });
+    useCityStore.getState().setSelectedJunction({
+      x: 12,
+      z: 30,
+      control: 'signal',
+      warranted: 'signal',
+      auto: true,
+      turns: 0,
+      arms: [],
+    });
     render(<JunctionPanel />);
     expect(screen.getByTestId('junction-current')).toHaveTextContent('Signals');
     expect(screen.getByText(/12, 30/)).toBeInTheDocument();
   });
 
   it('shows a junction on its warrant as Automatic, not as the control it resolved to', () => {
-    useCityStore
-      .getState()
-      .setSelectedJunction({
-        x: 1,
-        z: 1,
-        control: 'stop',
-        warranted: 'stop',
-        auto: true,
-        turns: 0,
-        arms: [],
-      });
+    useCityStore.getState().setSelectedJunction({
+      x: 1,
+      z: 1,
+      control: 'stop',
+      warranted: 'stop',
+      auto: true,
+      turns: 0,
+      arms: [],
+    });
     render(<JunctionPanel />);
     expect(screen.getByRole('button', { name: /Automatic/ })).toHaveAttribute(
       'aria-pressed',
@@ -73,17 +69,15 @@ describe('JunctionPanel', () => {
   });
 
   it('marks the chip the player actually chose', () => {
-    useCityStore
-      .getState()
-      .setSelectedJunction({
-        x: 1,
-        z: 1,
-        control: 'stop',
-        warranted: 'stop',
-        auto: false,
-        turns: 0,
-        arms: [],
-      });
+    useCityStore.getState().setSelectedJunction({
+      x: 1,
+      z: 1,
+      control: 'stop',
+      warranted: 'stop',
+      auto: false,
+      turns: 0,
+      arms: [],
+    });
     render(<JunctionPanel />);
     expect(screen.getByRole('button', { name: 'Stop' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: /Automatic/ })).toHaveAttribute(
@@ -94,17 +88,15 @@ describe('JunctionPanel', () => {
 
   it('sends the control the player picks, at the junction they picked it on', () => {
     const { sent } = bindSpy();
-    useCityStore
-      .getState()
-      .setSelectedJunction({
-        x: 4,
-        z: 9,
-        control: 'none',
-        warranted: 'none',
-        auto: true,
-        turns: 0,
-        arms: [],
-      });
+    useCityStore.getState().setSelectedJunction({
+      x: 4,
+      z: 9,
+      control: 'none',
+      warranted: 'none',
+      auto: true,
+      turns: 0,
+      arms: [],
+    });
     render(<JunctionPanel />);
 
     fireEvent.click(screen.getByRole('button', { name: 'All-way stop' }));
@@ -124,17 +116,15 @@ describe('JunctionPanel', () => {
 
   it('hands a junction back to the warrant with a null', () => {
     const { sent } = bindSpy();
-    useCityStore
-      .getState()
-      .setSelectedJunction({
-        x: 4,
-        z: 9,
-        control: 'signal',
-        warranted: 'signal',
-        auto: false,
-        turns: 0,
-        arms: [],
-      });
+    useCityStore.getState().setSelectedJunction({
+      x: 4,
+      z: 9,
+      control: 'signal',
+      warranted: 'signal',
+      auto: false,
+      turns: 0,
+      arms: [],
+    });
     render(<JunctionPanel />);
 
     fireEvent.click(screen.getByRole('button', { name: /Automatic/ }));
@@ -147,17 +137,15 @@ describe('JunctionPanel', () => {
   });
 
   it('says what handing the junction back would mean, even while it is overridden', () => {
-    useCityStore
-      .getState()
-      .setSelectedJunction({
-        x: 2,
-        z: 2,
-        control: 'none',
-        warranted: 'signal',
-        auto: false,
-        turns: 0,
-        arms: [],
-      });
+    useCityStore.getState().setSelectedJunction({
+      x: 2,
+      z: 2,
+      control: 'none',
+      warranted: 'signal',
+      auto: false,
+      turns: 0,
+      arms: [],
+    });
     render(<JunctionPanel />);
     // Not "Uncontrolled as it stands" — that is what the PLAYER set, not what
     // automatic would do.
@@ -167,17 +155,15 @@ describe('JunctionPanel', () => {
   });
 
   it('offers the ladder least restrictive first, then the roundabout off the end of it', () => {
-    useCityStore
-      .getState()
-      .setSelectedJunction({
-        x: 0,
-        z: 0,
-        control: 'none',
-        warranted: 'none',
-        auto: true,
-        turns: 0,
-        arms: [],
-      });
+    useCityStore.getState().setSelectedJunction({
+      x: 0,
+      z: 0,
+      control: 'none',
+      warranted: 'none',
+      auto: true,
+      turns: 0,
+      arms: [],
+    });
     render(<JunctionPanel />);
     const labels = ['Uncontrolled', 'Give way', 'Stop', 'All-way stop', 'Signals', 'Roundabout'];
     const rendered = screen
@@ -254,19 +240,92 @@ describe('JunctionPanel', () => {
   });
 
   it('closes on the X', () => {
-    useCityStore
-      .getState()
-      .setSelectedJunction({
-        x: 0,
-        z: 0,
-        control: 'none',
-        warranted: 'none',
-        auto: true,
-        turns: 0,
-        arms: [],
-      });
+    useCityStore.getState().setSelectedJunction({
+      x: 0,
+      z: 0,
+      control: 'none',
+      warranted: 'none',
+      auto: true,
+      turns: 0,
+      arms: [],
+    });
     render(<JunctionPanel />);
     fireEvent.click(screen.getByRole('button', { name: /close junction inspector/i }));
     expect(useCityStore.getState().selectedJunction).toBeNull();
+  });
+});
+
+describe('JunctionPanel — the lanes of an arm', () => {
+  const withLanes = (over: Record<string, unknown> = {}) =>
+    useCityStore.getState().setSelectedJunction({
+      x: 5,
+      z: 5,
+      control: 'signal',
+      warranted: 'signal',
+      auto: true,
+      turns: 0,
+      arms: [RoadFlow.North],
+      laneTurns: [0, 0, 0, 0],
+      // A three-lane approach: a dedicated left, a through, and a through-right.
+      armLaneSets: {
+        [RoadFlow.North]: [Movement.Left, Movement.Through, Movement.Through | Movement.Right],
+      },
+      ...over,
+    });
+
+  it('shows a row per lane, with the movements that lane derives', () => {
+    withLanes();
+    render(<JunctionPanel />);
+    // The dedicated left lane offers the left and nothing else.
+    expect(screen.getByLabelText('From the north, lane 1: Left').getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    expect(
+      screen.getByLabelText('From the north, lane 1: Through').getAttribute('aria-pressed'),
+    ).toBe('false');
+    // The kerbside lane takes the right turn with the through movement.
+    expect(
+      screen.getByLabelText('From the north, lane 3: Right').getAttribute('aria-pressed'),
+    ).toBe('true');
+  });
+
+  it('sends the lane the player set, and only that lane', () => {
+    const { sent } = bindSpy();
+    withLanes();
+    render(<JunctionPanel />);
+    fireEvent.click(screen.getByLabelText('From the north, lane 2: Right'));
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.commands[0]).toMatchObject({
+      kind: 'setJunctionLaneTurns',
+      x: 5,
+      z: 5,
+      arm: RoadFlow.North,
+      lane: 1,
+      allowed: Movement.Through | Movement.Right,
+    });
+  });
+
+  it('will not let a lane be left with nothing to do', () => {
+    withLanes();
+    render(<JunctionPanel />);
+    // Lane 1 offers only the left turn, so that button cannot be turned off.
+    expect(
+      (screen.getByLabelText('From the north, lane 1: Left') as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it('offers no lane row where the approach has only one lane', () => {
+    withLanes({ armLaneSets: { [RoadFlow.North]: [Movement.Left | Movement.Through] } });
+    render(<JunctionPanel />);
+    expect(screen.queryByText('Lanes')).toBeNull();
+  });
+
+  it('bars a movement the whole ARM has been told not to make', () => {
+    // The arm may not turn left, so no lane of it may either.
+    withLanes({ turns: withArmAllowed(0, RoadFlow.North, Movement.Through | Movement.Right) });
+    render(<JunctionPanel />);
+    expect(
+      (screen.getByLabelText('From the north, lane 1: Left') as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 });

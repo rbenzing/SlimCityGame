@@ -1033,7 +1033,7 @@ describe('roadTileVertices — lane-use arrows on the last tile before a junctio
       undefined,
       flow,
       undefined,
-      { toward, allowed, openness: 1, ...zone },
+      { toward, allowed, openness: 1, laneAllowed: 0, ...zone },
     );
 
   const plain = (tier: RoadTier, mask = N | S): { positions: number[]; colors: number[] } =>
@@ -3013,7 +3013,7 @@ describe('roadTileVertices — a corridor half arriving at a junction', () => {
       undefined,
       RoadFlow.South,
       undefined,
-      approach && { ...approach, allowed: DEFAULT_ALLOWED, openness: 1 },
+      approach && { ...approach, allowed: DEFAULT_ALLOWED, openness: 1, laneAllowed: 0 },
     );
 
   it('paints a lane-use arrow in every lane of it', () => {
@@ -3058,7 +3058,14 @@ describe('roadTileVertices — a corridor half that has earned a turn bay', () =
       undefined,
       RoadFlow.South,
       undefined,
-      { toward: RoadFlow.South, distance: 0, pocket, allowed: DEFAULT_ALLOWED, openness: 1 },
+      {
+        toward: RoadFlow.South,
+        distance: 0,
+        pocket,
+        allowed: DEFAULT_ALLOWED,
+        openness: 1,
+        laneAllowed: 0,
+      },
     );
 
   it('still tells its lanes apart once the bay has opened', () => {

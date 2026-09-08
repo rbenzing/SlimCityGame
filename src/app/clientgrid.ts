@@ -10,7 +10,7 @@
  */
 import { TILE_METERS, worldToTile } from '../shared/constants';
 import { corridorHalfOf, flowDirection, RoadFlow, RoadTier } from '../shared/types';
-import { approachZoneTiles } from '../shared/approach';
+import { approachZoneTiles, armSlot } from '../shared/approach';
 import {
   approachAhead,
   auxiliaryLaneAt,
@@ -233,6 +233,11 @@ export class ClientGridMirror {
       corridorHalfAt: (x, z) =>
         this.inBounds(x, z) ? corridorHalfOf(this.roadFlow[this.idx(x, z)] ?? 0) : 'none',
       profileIdAt: (x, z) => (this.inBounds(x, z) ? (this.roadProfile[this.idx(x, z)] ?? 0) : 0),
+      laneTurnsAt: (x, z, arm) => {
+        const slot = armSlot(arm);
+        if (slot === null) return 0;
+        return this.junctionAt(x, z)?.laneTurns?.[slot] ?? 0;
+      },
     };
   }
 

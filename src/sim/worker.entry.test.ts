@@ -2100,4 +2100,94 @@ describe('turn restrictions — the player says what an arm may do', () => {
       run(h, 3, [{ kind: 'setJunctionTurns', x: 12, z: 20, arm: RoadFlow.West, allowed: 2 }]).ok,
     ).toBe(false);
   });
+
+  describe('and what one LANE of an arm may do', () => {
+    /** A crossroads at (14, 20) with four arms. */
+    function laneCrossroads(): Harness {
+      const h = sandboxed();
+      run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 20, 9) }]);
+      run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(14, 16, 9) }]);
+      return h;
+    }
+    // The outer block's reader: a snapshot only carries junctions when the set
+    // has moved, so the latest one that mentions them is the current truth.
+    const junctions = lastJunctions;
+
+    it('sets one lane of one arm, and gives it back on undo', () => {
+      const h = laneCrossroads();
+      h.ticks(4);
+      expect(junctions(h)?.[0]?.laneTurns).toBeUndefined(); // nothing touched
+
+      const ack = run(h, 3, [
+        { kind: 'setJunctionLaneTurns', x: 14, z: 20, arm: RoadFlow.West, lane: 0, allowed: 1 },
+      ]);
+      expect(ack.ok).toBe(true);
+      h.ticks(4);
+      const set = junctions(h)?.[0]?.laneTurns;
+      expect(set?.some((v) => v !== 0)).toBe(true);
+
+      run(h, 4, ack.inverse);
+      h.ticks(4);
+      // Back to nothing said, which is how it is reported: no list at all.
+      expect(junctions(h)?.[0]?.laneTurns).toBeUndefined();
+    });
+
+    it('leaves every other lane and arm alone', () => {
+      const h = laneCrossroads();
+      run(h, 3, [
+        { kind: 'setJunctionLaneTurns', x: 14, z: 20, arm: RoadFlow.North, lane: 1, allowed: 4 },
+      ]);
+      h.ticks(4);
+      const lanes = junctions(h)?.[0]?.laneTurns ?? [];
+      // One arm's slot moved; the other three did not.
+      expect(lanes.filter((v) => v !== 0)).toHaveLength(1);
+    });
+
+    it('refuses a lane an arm cannot hold, and one left with nothing', () => {
+      const h = laneCrossroads();
+      expect(
+        run(h, 3, [
+          { kind: 'setJunctionLaneTurns', x: 14, z: 20, arm: RoadFlow.West, lane: 9, allowed: 1 },
+        ]).ok,
+      ).toBe(false);
+      expect(
+        run(h, 4, [
+          { kind: 'setJunctionLaneTurns', x: 14, z: 20, arm: RoadFlow.West, lane: 0, allowed: 0 },
+        ]).ok,
+      ).toBe(false);
+    });
+
+    it('refuses an arm with no road on it, and a tile that is no junction', () => {
+      const h = laneCrossroads();
+      expect(
+        run(h, 3, [
+          { kind: 'setJunctionLaneTurns', x: 14, z: 20, arm: RoadFlow.None, lane: 0, allowed: 1 },
+        ]).ok,
+      ).toBe(false);
+      expect(
+        run(h, 4, [
+          { kind: 'setJunctionLaneTurns', x: 12, z: 20, arm: RoadFlow.West, lane: 0, allowed: 1 },
+        ]).ok,
+      ).toBe(false);
+    });
+
+    it('saves what the player set on a lane, and a load brings it back', () => {
+      const h = laneCrossroads();
+      run(h, 3, [
+        { kind: 'setJunctionLaneTurns', x: 14, z: 20, arm: RoadFlow.North, lane: 0, allowed: 1 },
+      ]);
+      h.ticks(4);
+      const set = junctions(h)?.[0]?.laneTurns;
+      expect(set?.some((v) => v !== 0)).toBe(true);
+
+      h.sim.handleMessage({ type: 'requestSave' });
+      const saves = h.messages.filter(
+        (m): m is Extract<WorkerToMain, { type: 'save' }> => m.type === 'save',
+      );
+      const fresh = sandboxed();
+      fresh.sim.handleMessage({ type: 'loadSave', data: saves[saves.length - 1]!.data });
+      fresh.ticks(4);
+      expect(junctions(fresh)?.[0]?.laneTurns).toEqual(set);
+    });
+  });
 });

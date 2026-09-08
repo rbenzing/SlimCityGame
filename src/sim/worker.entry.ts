@@ -79,7 +79,15 @@ import {
   tierForProfile,
 } from '../shared/roadprofile';
 import { codeForControl, controlFromCode } from '../shared/junction';
-import { armAllowed, armIsRestricted, withArmAllowed } from '../shared/approach';
+import {
+  armAllowed,
+  armIsRestricted,
+  armSlot,
+  laneAllowed,
+  MAX_EDITABLE_LANES,
+  withArmAllowed,
+  withLaneAllowed,
+} from '../shared/approach';
 
 /** One junction as the render thread and the inspector read it. */
 type JunctionSnapshot = NonNullable<SimSnapshot['junctions']>[number];
@@ -90,6 +98,7 @@ import type { CommandBatch } from '../core/commands';
 import type { SelectionInfo } from '../shared/types';
 import {
   canPlaceFootprint,
+  ARMS_PER_TILE,
   hasAdjacentTier,
   clearTiles,
   createGrid,
@@ -917,16 +926,32 @@ class SimWorld implements WorkerSim {
    * always: a control only changes when a road is laid, the player sets one,
    * or the traffic through it shifts a whole rung.
    */
+  /**
+   * The four arms' packed lane sets at a tile, in the cardinals' own order, or
+   * undefined where nobody has touched a lane — which is nearly every junction
+   * in the city, and not worth four zeros apiece in every snapshot.
+   */
+  private laneTurnsAt(x: number, z: number): number[] | undefined {
+    const base = tileIndex(x, z) * ARMS_PER_TILE;
+    const arms = Array.from(
+      { length: ARMS_PER_TILE },
+      (_, arm) => this.grid.junctionLaneTurns[base + arm] ?? 0,
+    );
+    return arms.some((v) => v !== 0) ? arms : undefined;
+  }
+
   private controlledJunctions(): JunctionSnapshot[] | null {
     const out: JunctionSnapshot[] = [];
     for (const node of this.network.getNodes()) {
       if (node.edges.length < 3) continue; // a dead end or a bend gives way to nobody
+      const lanes = this.laneTurnsAt(node.x, node.z);
       out.push({
         x: node.x,
         z: node.z,
         control: node.control ?? 'none',
         warranted: node.warranted ?? 'none',
         turns: node.turns ?? 0,
+        ...(lanes ? { laneTurns: lanes } : {}),
         auto: (this.grid.junctionControl[tileIndex(node.x, node.z)] ?? 0) === 0,
       });
     }
@@ -940,6 +965,8 @@ class SimWorld implements WorkerSim {
           was.control === j.control &&
           was.warranted === j.warranted &&
           was.turns === j.turns &&
+          (was.laneTurns ?? []).every((v, k) => v === (j.laneTurns ?? [])[k]) &&
+          (was.laneTurns ?? []).length === (j.laneTurns ?? []).length &&
           was.auto === j.auto
         );
       });
@@ -1320,6 +1347,61 @@ class SimWorld implements WorkerSim {
    * arrives has to be able to leave — and only an arm that actually carries a
    * road can be restricted.
    */
+  /**
+   * What ONE LANE of an arm may do, or a null to hand it back to the set its
+   * approach derives.
+   *
+   * The same guards the arm takes, since a lane is a refinement of it and not
+   * a way round it: a real junction, a real arm, and never a lane left with
+   * nothing. The arm's own restriction still wins wherever the two disagree,
+   * which is applied where the sets are read rather than stored here.
+   */
+  private cmdSetJunctionLaneTurns(
+    x: number,
+    z: number,
+    arm: RoadFlow,
+    lane: number,
+    allowed: number | null,
+  ): CommandResult {
+    const rejected = { ok: false, cost: 0, inverse: [], reason: 'invalid' as const };
+    if (!inBounds(x, z)) return rejected;
+    if (!Number.isInteger(lane) || lane < 0 || lane >= MAX_EDITABLE_LANES) return rejected;
+    const node = this.network.getNodes().find((n) => n.x === x && n.z === z);
+    if (!node || node.edges.length < 3) return rejected;
+    const step = stepForFlow(arm);
+    if (step.dx === 0 && step.dz === 0) return rejected;
+    if (!inBounds(x + step.dx, z + step.dz)) return rejected;
+    if (!isStreetTier(this.grid.roadTier[tileIndex(x + step.dx, z + step.dz)] ?? 0))
+      return rejected;
+    if (allowed !== null && (allowed & 0xf) === 0) return rejected;
+
+    const slot = armSlot(arm);
+    if (slot === null) return rejected;
+    const at = tileIndex(x, z) * ARMS_PER_TILE + slot;
+    const was = this.grid.junctionLaneTurns[at] ?? 0;
+    const next = withLaneAllowed(was, lane, allowed);
+    if (next === was) return { ok: true, cost: 0, inverse: [] };
+
+    this.grid.junctionLaneTurns[at] = next;
+    // Read by the router and painted on the approach, so the graph has to work
+    // the junction out again before anything asks.
+    this.network.invalidateRegion(x, z, x, z);
+    return {
+      ok: true,
+      cost: 0,
+      inverse: [
+        {
+          kind: 'setJunctionLaneTurns',
+          x,
+          z,
+          arm,
+          lane,
+          allowed: laneAllowed(was, lane),
+        },
+      ],
+    };
+  }
+
   private cmdSetJunctionTurns(
     x: number,
     z: number,
@@ -1412,6 +1494,14 @@ class SimWorld implements WorkerSim {
         return this.cmdSetJunctionControl(command.x, command.z, command.control);
       case 'setJunctionTurns':
         return this.cmdSetJunctionTurns(command.x, command.z, command.arm, command.allowed);
+      case 'setJunctionLaneTurns':
+        return this.cmdSetJunctionLaneTurns(
+          command.x,
+          command.z,
+          command.arm,
+          command.lane,
+          command.allowed,
+        );
       case 'bulldoze':
         return this.cmdBulldoze(command.tiles);
       case 'paintZone':

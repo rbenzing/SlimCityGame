@@ -88,6 +88,18 @@ export interface SelectedJunction {
   turns: number;
   /** The cardinals that actually carry a road here, so the panel lists only real arms. */
   arms: RoadFlow[];
+  /**
+   * Per-LANE restrictions: one packed value per arm, in the cardinals' own
+   * order, four lanes at a nibble apiece. Zero is a lane on its derived set.
+   */
+  laneTurns?: number[];
+  /**
+   * What each arm's lanes offer BEFORE anything the player has said — the sets
+   * the approach derives, keyed by arm. The panel shows these as the baseline,
+   * so a lane nobody has touched reads as what it actually does. Absent for an
+   * arm whose approach the client cannot read, which shows its arm row alone.
+   */
+  armLaneSets?: Partial<Record<RoadFlow, number[]>>;
 }
 
 export function createInitialToolFlags(): ToolFlags {

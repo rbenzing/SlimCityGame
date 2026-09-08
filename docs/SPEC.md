@@ -371,13 +371,13 @@ white lane markings reused from an existing tier:
     a truss carrying right across, and two panels beneath it with lane-assignment
     down-arrows. This is the one sign type that straddles the centreline instead
     of standing at a curb, so it takes no lateral offset.
-  Both are authored reaching along +X and yawed by `signalYaw`, which every
-  cantilevered type shares: a flat board reads from either side, but an arm
-  pointed the wrong way hangs over the grass.
+    Both are authored reaching along +X and yawed by `signalYaw`, which every
+    cantilevered type shares: a flat board reads from either side, but an arm
+    pointed the wrong way hangs over the grass.
 - **Direction arrows during placement.** Dragging a road whose direction is real
   — a one-way street or a highway — draws translucent arrows along the ghost
   path pointing the way the drag ran, so the player can see which way traffic
-  will run *before* committing. They live in the preview layer and vanish with
+  will run _before_ committing. They live in the preview layer and vanish with
   the rest of the ghost when placement ends. `arrowYaw` turns each one down the
   path, following an L-path around its corner rather than holding the first
   heading.
@@ -1441,13 +1441,13 @@ land.
     thin rail; a farm track over a creek, not an engineering work.
   - **beam** (every ordinary street) — the concrete beam on round columns.
   - **box** (avenue, highway) — a deep box girder on heavy squared piers. The
-    depth *is* the silhouette; it is what a big road crossing looks like from a
+    depth _is_ the silhouette; it is what a big road crossing looks like from a
     distance.
   - **truss** (rail) — a shallow deck carried inside steel lattice sides that
     rise above it with overhead bracing, the through-truss every railway bridge
     is. It carries no parapet: the truss is the edge.
-  Piers, footings and truss members are instanced per family, so a city with a
-  footbridge and a motorway viaduct pays per family rather than per span.
+    Piers, footings and truss members are instanced per family, so a city with a
+    footbridge and a motorway viaduct pays per family rather than per span.
 - **A deck is a ribbon, so its height is sampled along the run only.** The road
   surface interpolates the deck profile in the direction the road runs and is
   constant across it — a bridge has no camber. Interpolating in both axes drags
@@ -1491,16 +1491,17 @@ land.
 (`SAVE_VERSION` 5), `src/sim/worker.entry.ts` (auto-bridge + ramp solve +
 costing in `cmdBuildRoad`, no flatten when elevated), `src/world/zonable.ts`
 (no frontage off a deck), NEW `src/render/bridges.ts` (deck, piers, parapets)
-+ edits to `src/render/roadsmesh.ts`, `vehicles.ts`, `pedestrians.ts`,
-`lamps.ts`, `roadfurniture.ts` (deck height), `src/ui/ToolOptionsPanel.tsx`
-(height stepper).
-**Acceptance:** a road dragged bank to bank across a river lands as a deck on
-piers with ramped approaches; cars and pedestrians cross on the deck; power and
-water propagate over it and a zone on the far bank grows; nothing zones off the
-bridge itself; the carriageway sits on the girder rather than under it, and a
-span crossing a dished riverbed reads level rather than bowed; a v3 save loads
-with every road at grade and a v4 save keeps its bridges; bulldozing the span
-returns the river.
+
+- edits to `src/render/roadsmesh.ts`, `vehicles.ts`, `pedestrians.ts`,
+  `lamps.ts`, `roadfurniture.ts` (deck height), `src/ui/ToolOptionsPanel.tsx`
+  (height stepper).
+  **Acceptance:** a road dragged bank to bank across a river lands as a deck on
+  piers with ramped approaches; cars and pedestrians cross on the deck; power and
+  water propagate over it and a zone on the far bank grows; nothing zones off the
+  bridge itself; the carriageway sits on the girder rather than under it, and a
+  span crossing a dished riverbed reads level rather than bowed; a v3 save loads
+  with every road at grade and a v4 save keeps its bridges; bulldozing the span
+  returns the river.
 
 **Verification:** every bridge fault found so far — the road threaded under its
 own girder, a crowned deck, a motorway span two metres too wide — passed the
@@ -1512,7 +1513,6 @@ reports the same spans as numbers — deck flatness, clearance, and where each
 pier lands — so a picture that looks wrong can be checked before it is believed.
 Both need the dev-only `__slimcity` hook, which takes an optional camera
 yaw/pitch for the low angles these faults show at.
-
 
 ---
 
@@ -1618,7 +1618,7 @@ and deliberately nothing else.
   `isStreetTier` already accepts the tram tier, so a tram tile sits in the road
   graph and the tram graph at once: cars keep driving over tram track exactly as
   they do today, and that is correct — it is a street. Trams, though, route on
-  the tram graph *only*. A tram that could route down any street would make the
+  the tram graph _only_. A tram that could route down any street would make the
   track a decoration, which is the defect this epic exists to fix. The two rail
   predicates stay disjoint from each other; only tram overlaps the streets.
 - **Relief is the bus's rule, not the station's — but it cannot be taken from
@@ -1777,7 +1777,7 @@ changes is that the leftover is now claimed, surfaced and used.
   smokestack is gated on the same figure. The silhouette and the simulation
   therefore cannot disagree: a stack on the skyline always means pollution in
   the air, and a player can read the difference from a distance. `ind-3 Green
-  Works` is the top of the ladder — more jobs than the factory, none of the
+Works` is the top of the ladder — more jobs than the factory, none of the
   smoke — so it is something to grow into rather than a reskin.
 - **Frontage parts need a frontage.** A dock, a canopy and a sign hang on the
   road-facing wall and are skipped entirely when a building fronts no street;
@@ -1850,7 +1850,6 @@ the street axis every walker actually walks. A fixture proves the rule; only the
 real city proves the inputs the rule is fed, and only a street that BENDS can
 fail the way these did. The audit asserts it found cars, driveways and walkers
 at all, so a city that grew nothing reports nothing proven rather than green.
-
 
 ## 29. Road composition — lanes, junction control, ramps and furniture the player chooses (user request 2026-09-05)
 
@@ -1964,19 +1963,19 @@ else is derived:
   per-lane green ratio, a lane-count range, and which pieces it admits, taken
   from the functional hierarchy real road agencies use:
 
-  | class | lanes | posted km/h → speed | g/C | per-lane cap | admits | zonable | utilities | default control | default centre line |
-  |---|---|---|---|---|---|---|---|---|---|
-  | dirt | 1–2 | 30 → 8 | (rural 250 veh/h) | 100 | travel only | yes | water+power | none | none |
-  | alley | 1 shared | 35 → 10 | (rural 400 veh/h) | 175 per direction | travel, parking | yes | water+power | none | none |
-  | rural | 2 | 60 → 17 | 0.50 | 400 | travel, shoulder | yes | water+power | none / yield | none under v/c 0.15, dashed above |
-  | local street | 2–3 | 50 → 14 | 0.37 | 300 | travel, parking, bike, sidewalk, verge, centre-turn | yes | water+power | none / yield / stop | dashed |
-  | urban street | 2–4 | 60 → 17 | 0.37 | 300 | + bus, tram, median | yes | water+power | stop / signal | dashed; double solid with median |
-  | collector | 2–5 | 60 → 17 | 0.43 | 350 | + centre-turn | yes | water+power | signal | dashed or double solid |
-  | arterial | 4–6 | 65 → 18 | 0.49 | 400 | + raised median, no parking | yes | water+power | signal | double solid |
-  | divided | 4–8 | 80 → 22 | 0.55 | 450 | median mandatory, no parking | yes | water+power | signal | median, edge lines |
-  | one-way | 1–5 | 58 → 16 | 0.67 | 550 | travel (one dir), parking, bike, bus | yes | water+power | as parent width | none (lane lines only) |
-  | highway | 2–8 | 100 → 28 | (freeway 2,350) | 1000 | travel, shoulder, barrier | no | power only | never — grade-separated | double solid + edge lines; barrier when divided |
-  | ramp | 1–2 | 60 → 17 | (ramp 2,000) | 850 | travel (one dir), shoulder | no | power only | merge / diverge / terminal | edge lines, gore chevrons |
+  | class        | lanes    | posted km/h → speed | g/C               | per-lane cap      | admits                                              | zonable | utilities   | default control            | default centre line                             |
+  | ------------ | -------- | ------------------- | ----------------- | ----------------- | --------------------------------------------------- | ------- | ----------- | -------------------------- | ----------------------------------------------- |
+  | dirt         | 1–2      | 30 → 8              | (rural 250 veh/h) | 100               | travel only                                         | yes     | water+power | none                       | none                                            |
+  | alley        | 1 shared | 35 → 10             | (rural 400 veh/h) | 175 per direction | travel, parking                                     | yes     | water+power | none                       | none                                            |
+  | rural        | 2        | 60 → 17             | 0.50              | 400               | travel, shoulder                                    | yes     | water+power | none / yield               | none under v/c 0.15, dashed above               |
+  | local street | 2–3      | 50 → 14             | 0.37              | 300               | travel, parking, bike, sidewalk, verge, centre-turn | yes     | water+power | none / yield / stop        | dashed                                          |
+  | urban street | 2–4      | 60 → 17             | 0.37              | 300               | + bus, tram, median                                 | yes     | water+power | stop / signal              | dashed; double solid with median                |
+  | collector    | 2–5      | 60 → 17             | 0.43              | 350               | + centre-turn                                       | yes     | water+power | signal                     | dashed or double solid                          |
+  | arterial     | 4–6      | 65 → 18             | 0.49              | 400               | + raised median, no parking                         | yes     | water+power | signal                     | double solid                                    |
+  | divided      | 4–8      | 80 → 22             | 0.55              | 450               | median mandatory, no parking                        | yes     | water+power | signal                     | median, edge lines                              |
+  | one-way      | 1–5      | 58 → 16             | 0.67              | 550               | travel (one dir), parking, bike, bus                | yes     | water+power | as parent width            | none (lane lines only)                          |
+  | highway      | 2–8      | 100 → 28            | (freeway 2,350)   | 1000              | travel, shoulder, barrier                           | no      | power only  | never — grade-separated    | double solid + edge lines; barrier when divided |
+  | ramp         | 1–2      | 60 → 17             | (ramp 2,000)      | 850               | travel (one dir), shoulder                          | no      | power only  | merge / diverge / terminal | edge lines, gore chevrons                       |
 
   Per-lane figures round to the nearest 25 so they read as catalogue numbers.
   A class fixes a posted-speed RANGE and a default; a profile may post any
@@ -1991,6 +1990,7 @@ else is derived:
   Highway lanes are 700 veh/h/lane better than a local's because they never
   stop; that ratio (3.3 : 1) is the HCM's, and it is what makes a motorway
   worth its width against three streets.
+
 - **Lane count is a width budget, and the tile is the budget (profile).** A
   tile is 20 m. Lane pieces carry their own widths, and the defaults are the
   real ones: a travel lane 3.5 m (urban design guidance is 3.0–3.6; the widest
@@ -2007,18 +2007,18 @@ else is derived:
   sidewalk = 15.3 m (a local street); 4 travel + 2 sidewalk = 17.8 m does NOT
   fit, so a four-lane urban street gives up its footways to half-metre kerbs,
   exactly what the avenue does today; 3 travel + a centre turn lane + 2 bike
-  + kerbs = 15.7 m fits. **Six and eight lanes do not fit a tile and are not
-  made to.** They are TWO-TILE CORRIDORS: a road two tiles wide whose tiles
-  each know which half they are, laid by one drag with the profile's width
-  deciding how many tiles it claims — the way the reference's large roads
-  span four and five cells. A six-lane divided (6 × 3.5 + 1.8 median + 2 × 1.9
-  footway ≈ 26.6 m) and an eight-lane divided (8 × 3.5 + 1.8 + kerbs ≈ 30.8 m,
-  no footways) both fit two tiles, and so does an honest motorway (6 × 3.5 +
-  2 × 3.0 hard shoulder + 0.6 barrier ≈ 27.6 m) — the one-tile highway is a
-  compressed one with no real shoulders, and stays so. This is the largest
-  structural change in the section and is sequenced LAST (wave 6), because
-  everything before it is worth having on one-tile roads and nothing before
-  it depends on it.
+  - kerbs = 15.7 m fits. **Six and eight lanes do not fit a tile and are not
+    made to.** They are TWO-TILE CORRIDORS: a road two tiles wide whose tiles
+    each know which half they are, laid by one drag with the profile's width
+    deciding how many tiles it claims — the way the reference's large roads
+    span four and five cells. A six-lane divided (6 × 3.5 + 1.8 median + 2 × 1.9
+    footway ≈ 26.6 m) and an eight-lane divided (8 × 3.5 + 1.8 + kerbs ≈ 30.8 m,
+    no footways) both fit two tiles, and so does an honest motorway (6 × 3.5 +
+    2 × 3.0 hard shoulder + 0.6 barrier ≈ 27.6 m) — the one-tile highway is a
+    compressed one with no real shoulders, and stays so. This is the largest
+    structural change in the section and is sequenced LAST (wave 6), because
+    everything before it is worth having on one-tile roads and nothing before
+    it depends on it.
 - **Direction is stored, not guessed (profile).** Every road tile gains a flow
   direction (two bits: which of its mask arms is "forward"), set by the drag
   and flippable by the replace tool. One-way pathfinding stops inferring flow
@@ -2061,7 +2061,13 @@ else is derived:
   right, or any combination. The default is derived — a two-lane approach
   gets `left|through` and `through|right`; a three-lane gets a dedicated left;
   a four-lane gets dedicated left and right — and the player edits the set
-  per lane from the junction inspector. A profile may also GAIN a lane inside
+  per lane from the junction inspector, which lists a row per lane under each
+  arm and shows the derived set as the baseline, so a lane nobody has touched
+  reads as what it actually does. What the player says is stored per lane —
+  four arms of four lanes, a nibble each, zero meaning "as it comes" — beside
+  the per-arm restriction rather than instead of it: the ARM is the coarse
+  control and wins, so a lane can only ever narrow what the arm already
+  allows, and a lane can never be left with nothing. A profile may also GAIN a lane inside
   its approach zone (a turn pocket carved out of the verge or the parking
   lane, where the width budget allows), which is how a two-lane street earns
   a left-turn lane at one junction without becoming a three-lane street. Turn
@@ -2283,7 +2289,7 @@ scaled by one constant into the units the sim already uses.
    markings and furniture re-derived from pieces with a zero-behaviour-change
    test over every preset. Capacity becomes Σ pieces, reproducing today's
    numbers exactly.
-   *Status (2026-09-05):* the data model is in — twelve classes and the
+   _Status (2026-09-05):_ the data model is in — twelve classes and the
    eleven preset profiles live in `roads.json`, `src/shared/roadprofile.ts`
    derives speed, capacity, carriageway width, kerbs and paving from a
    profile, and a test proves every preset reproduces its catalogue speed,
@@ -2375,7 +2381,7 @@ scaled by one constant into the units the sim already uses.
    wave 1.
 2. **Stored direction** — `roadFlow`, drag direction, asymmetric profiles,
    directional edge cost, one-way pathfinding off geometry inference.
-   *Status (2026-09-05):* the direction is stored and read. Every road tile
+   _Status (2026-09-05):_ the direction is stored and read. Every road tile
    carries a `roadFlow` byte naming the cardinal its drag went in, saved at
    version 7; a save from before it loads with none, and every reader falls
    back to the geometry it used before. The worker reads the direction off
@@ -2405,10 +2411,10 @@ scaled by one constant into the units the sim already uses.
 3. **Junction control** — node control records, the v/c warrant default, the
    inspector, per-movement delay cost, control-placed furniture, cycling
    signal heads, mini and compact roundabouts.
-   *Status (2026-09-06) — the wave is complete but for the compact roundabout,
+   _Status (2026-09-06) — the wave is complete but for the compact roundabout,
    which is a 2×2 block and waits for the corridors of wave 6, and the
    per-MOVEMENT delay, which waits for the movement sets of wave 4; the delay
-   is per APPROACH today.* Every graph node now carries a control, and it is
+   is per APPROACH today._ Every graph node now carries a control, and it is
    WARRANTED rather than authored. `src/shared/junction.ts` is the model: a
    ladder from no control through give-way, minor-road stop and all-way stop
    to a signal, climbed by two independent readings that resolve to the more
@@ -2480,7 +2486,7 @@ scaled by one constant into the units the sim already uses.
 4. **Approach lanes and tapers** — movement sets, turn pockets, arrows, turn
    restrictions, lane-drop tapers with merge arrows and gore chevrons, taper
    edges in the sim.
-   *Status (2026-09-06):* the movement model is in and the arrows are painted
+   _Status (2026-09-06):_ the movement model is in and the arrows are painted
    from it. `src/shared/approach.ts` holds it: a lane is a SET of movements —
    left, through, right, and the U-turn no lane offers unasked — and the
    default widens the way a real approach widens. One lane does everything.
@@ -2647,7 +2653,7 @@ scaled by one constant into the units the sim already uses.
    carriageway out of the verge each tile has left over. That is the whole
    argument for a big road being two carriageways rather than one wide one,
    arriving as a turn bay.
-   *Deferred out of the wave, deliberately:* per-LANE movement sets, since the
+   _Deferred out of the wave, deliberately:_ per-LANE movement sets, since the
    restriction is per ARM today and an arm is what a player actually reaches
    for — the model earns its keep only alongside the multi-lane approaches of
    wave 6. The motorway's chevron-hatched gore moves into wave 5: it needs a
@@ -2962,7 +2968,7 @@ gravel lane is genuinely off-grid, and reaching it is a decision rather than
 a side effect of having built a road to it at all.
 
 **A lamp needs a live street.** Street lighting stops being a property of the
-road's class and becomes a property of the road's *supply*: no power on the
+road's class and becomes a property of the road's _supply_: no power on the
 tile, no lamp on it. The pole is absent rather than dark, because a street
 lighting up as the supply reaches it is the clearest report the network can
 give — the player reads coverage off the city at night without opening a
@@ -2978,7 +2984,7 @@ new system here, and it is what makes the other two rules a choice rather
 than a restriction.
 
 **It costs money, and the cost is the mechanic.** The utility owns the
-network and the city pays for it — a build cost per tile and a *monthly*
+network and the city pays for it — a build cost per tile and a _monthly_
 upkeep per tile, both through the same economy path a road already uses
 (`costPerTile`, `upkeepPerTile`, the monthly expense pass). A sprawling rural
 grid is therefore a standing drain on the budget rather than a purchase that

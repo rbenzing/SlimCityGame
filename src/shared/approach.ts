@@ -52,6 +52,14 @@ export function movementName(movement: Movement): string {
  * in — so the turn between two headings is the difference between their
  * indices, with no angle-wrap cases to handle.
  */
+/**
+ * Which of the four packed slots an arm occupies — north, east, south, west,
+ * in the order the cardinals climb. Null for anything that is not a cardinal.
+ */
+export function armSlot(flow: RoadFlow): number | null {
+  return headingIndex(flow);
+}
+
 function headingIndex(flow: RoadFlow): number | null {
   switch (flow) {
     case RoadFlow.North:
@@ -109,6 +117,60 @@ export function defaultLaneMovements(lanes: number): MovementSet[] {
     ...Array.from({ length: n - 2 }, () => Movement.Through as MovementSet),
     Movement.Right,
   ];
+}
+
+/**
+ * The lanes of ONE arm, packed as a nibble each — the movements that lane
+ * allows, in the order the sets come off `defaultLaneMovements`: the driver's
+ * leftmost lane first.
+ *
+ * A zero nibble means the lane has not been touched and takes the derived
+ * default, which is the same trick the per-arm nibble plays: banning every
+ * movement in a lane is not something anyone can mean, so zero is free to say
+ * "as it comes". Four lanes is as many as one arm of a one-tile road can hold
+ * — three running lanes and the turn bay it earns.
+ */
+export type PackedLaneTurns = number;
+
+/** How many lanes of one arm carry an editable movement set. */
+export const MAX_EDITABLE_LANES = 4;
+
+/** What lane `lane` of an arm has been set to, or null where it has not been. */
+export function laneAllowed(packed: PackedLaneTurns, lane: number): MovementSet | null {
+  if (lane < 0 || lane >= MAX_EDITABLE_LANES) return null;
+  const nibble = (packed >> (lane * 4)) & 0xf;
+  return nibble === 0 ? null : nibble;
+}
+
+/** The same arm with one lane set, or handed back to the default by a null. */
+export function withLaneAllowed(
+  packed: PackedLaneTurns,
+  lane: number,
+  allowed: MovementSet | null,
+): PackedLaneTurns {
+  if (lane < 0 || lane >= MAX_EDITABLE_LANES) return packed;
+  const cleared = packed & ~(0xf << (lane * 4));
+  return cleared | (((allowed ?? 0) & 0xf) << (lane * 4));
+}
+
+/**
+ * What each lane of an approach actually offers: the derived defaults, with
+ * any lane the player has set replacing its own.
+ *
+ * An override is still held to what the ARM allows. A restriction is a
+ * movement taken off every lane, so letting one lane hand it back would make
+ * the two controls argue — and the arm is the one the player reaches for
+ * first.
+ */
+export function resolveLaneMovements(
+  derived: readonly MovementSet[],
+  packed: PackedLaneTurns,
+  armAllows: MovementSet,
+): MovementSet[] {
+  return derived.map((set, lane) => {
+    const chosen = laneAllowed(packed, lane);
+    return chosen === null ? set : chosen & armAllows;
+  });
 }
 
 /** How many lanes of an approach offer a movement. Zero means it is banned. */

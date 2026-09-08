@@ -107,9 +107,11 @@ import {
 import { armGivesWay } from '../shared/junction';
 import {
   approachZoneTiles,
+  armSlot,
   laneMovementsFor,
   Movement,
   pocketLaneMovements,
+  resolveLaneMovements,
 } from '../shared/approach';
 import type { MovementSet } from '../shared/approach';
 import {
@@ -3713,9 +3715,16 @@ export function roadTileVertices(
           // the lane that offered it with no arrow, which is how a driver
           // reads a restriction off the ground. Where the approach carries a
           // pocket, the lane against the centreline is the left turn's alone.
-          const movements = approach.pocket
-            ? pocketLaneMovements(ordered.length, approach.allowed)
-            : laneMovementsFor(ordered.length, approach.allowed);
+          // The derived sets, then whatever the player has said about a lane
+          // of their own. An arrow is painted from the movement set and
+          // nothing else, so a lane set to turn only loses its through head.
+          const movements = resolveLaneMovements(
+            approach.pocket
+              ? pocketLaneMovements(ordered.length, approach.allowed)
+              : laneMovementsFor(ordered.length, approach.allowed),
+            approach.laneAllowed,
+            approach.allowed,
+          );
           const shift = ahead * (TILE_HALF - LANE_ARROW_SETBACK_M);
           for (let i = 0; i < ordered.length; i++) {
             emitLaneUseArrow(
@@ -4202,13 +4211,21 @@ export class RoadMeshRenderer {
    * through the junction grew — so nothing else would trigger the rebuild.
    */
   setJunctionControls(
-    junctions: readonly { x: number; z: number; control: JunctionControl; turns?: number }[],
+    junctions: readonly {
+      x: number;
+      z: number;
+      control: JunctionControl;
+      turns?: number;
+      laneTurns?: readonly number[];
+    }[],
   ): void {
     const next = new Map<number, JunctionControl>();
     const nextTurns = new Map<number, number>();
+    const nextLaneTurns = new Map<number, readonly number[]>();
     for (const j of junctions) {
       next.set(tileIndex(j.x, j.z), j.control);
       if (j.turns) nextTurns.set(tileIndex(j.x, j.z), j.turns);
+      if (j.laneTurns?.some((v) => v !== 0)) nextLaneTurns.set(tileIndex(j.x, j.z), j.laneTurns);
     }
 
     const dirty = new Set<number>();
@@ -4225,10 +4242,15 @@ export class RoadMeshRenderer {
     for (const [i, control] of next) {
       if (this.junctionControls.get(i) !== control) moved(i);
       if ((this.junctionTurns.get(i) ?? 0) !== (nextTurns.get(i) ?? 0)) moved(i);
+      const wasLanes = this.junctionLaneTurns.get(i) ?? [];
+      const nowLanes = nextLaneTurns.get(i) ?? [];
+      if (wasLanes.length !== nowLanes.length || wasLanes.some((v, k) => v !== nowLanes[k]))
+        moved(i);
     }
     for (const i of this.junctionControls.keys()) if (!next.has(i)) moved(i);
     this.junctionControls = next;
     this.junctionTurns = nextTurns;
+    this.junctionLaneTurns = nextLaneTurns;
 
     for (const key of dirty) this.rebuildChunk(key);
     if (dirty.size > 0) this.rebuildMedianTrees();
@@ -4276,6 +4298,7 @@ export class RoadMeshRenderer {
   private junctionControls: ReadonlyMap<number, JunctionControl> = new Map();
   /** Turn restrictions at each junction tile, packed a nibble per arm. */
   private junctionTurns: ReadonlyMap<number, number> = new Map();
+  private junctionLaneTurns: ReadonlyMap<number, readonly number[]> = new Map();
 
   /** The road tier at tile (x,z) across all chunks, or None — for neighbor-aware seam treatment. */
   private tierAt(x: number, z: number): RoadTier {
@@ -4294,6 +4317,11 @@ export class RoadMeshRenderer {
       corridorHalfAt: (x, z) => this.corridorHalfAt(x, z),
       profileIdAt: (x, z) =>
         this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z))?.profile ?? 0,
+      laneTurnsAt: (x, z, arm) => {
+        const slot = armSlot(arm);
+        if (slot === null) return 0;
+        return this.junctionLaneTurns.get(tileIndex(x, z))?.[slot] ?? 0;
+      },
     };
   }
 

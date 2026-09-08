@@ -10,6 +10,7 @@ import {
   type GridState,
 } from '../shared/types';
 import {
+  BYTES_PER_TILE_BY_VERSION,
   canPlaceFootprint,
   clearTiles,
   createGrid,
@@ -20,6 +21,21 @@ import {
   serializeGrid,
   setZones,
 } from './grid';
+
+/**
+ * A buffer of the CURRENT save, trimmed back to what `version` held and
+ * stamped as that version.
+ *
+ * How much to trim is the difference between the two versions' tile widths,
+ * taken from the table the serializer itself uses — so adding a layer keeps
+ * these migrations honest instead of quietly testing the wrong byte count.
+ */
+function asVersion(current: ArrayBuffer, version: number, n: number): ArrayBuffer {
+  const drop = BYTES_PER_TILE_BY_VERSION[SAVE_VERSION]! - BYTES_PER_TILE_BY_VERSION[version]!;
+  const older = current.slice(0, current.byteLength - drop * n);
+  new DataView(older).setUint32(0, version, true);
+  return older;
+}
 
 describe('createGrid', () => {
   it('defaults to MAP_SIZE and allocates every layer at the right length', () => {
@@ -163,8 +179,7 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g); // current version: district + landfill + elevation
 
-    const v1 = cur.slice(0, cur.byteLength - 13 * n); // drop all three trailing layers, the u16 profile tail, the flow byte and the junction-control byte
-    new DataView(v1).setUint32(0, 1, true); // stamp version 1
+    const v1 = asVersion(cur, 1, n); // drops every layer added since v1
 
     const back = deserializeGrid(v1);
     expect(back.size).toBe(size);
@@ -193,8 +208,7 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g);
 
-    const v2 = cur.slice(0, cur.byteLength - 12 * n); // drop landfill + elevation + the u16 profile tail + the flow and junction-control bytes
-    new DataView(v2).setUint32(0, 2, true); // stamp version 2
+    const v2 = asVersion(cur, 2, n);
 
     const back = deserializeGrid(v2);
     expect(back.size).toBe(size);
@@ -213,8 +227,7 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g);
 
-    const v3 = cur.slice(0, cur.byteLength - 11 * n); // drop the elevation floats + the u16 profile tail + the flow and junction-control bytes
-    new DataView(v3).setUint32(0, 3, true); // stamp version 3
+    const v3 = asVersion(cur, 3, n);
 
     const back = deserializeGrid(v3);
     expect(back.size).toBe(size);
@@ -233,7 +246,9 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g);
 
-    const body = cur.slice(0, cur.byteLength - 11 * n); // everything before the float tail, the u16 profile tail and the flow and junction-control bytes
+    // v4 is v3 plus a BYTE of elevation per tile where v5 keeps a float, so
+    // the body is the v3 trim and the byte layer is appended by hand.
+    const body = asVersion(cur, 3, n);
     const v4 = new ArrayBuffer(body.byteLength + n);
     const bytes = new Uint8Array(v4);
     bytes.set(new Uint8Array(body));
@@ -255,7 +270,7 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     const cur = serializeGrid(g);
 
-    const v5 = cur.slice(0, cur.byteLength - 7 * n); // everything before the u16 profile tail and the flow and junction-control bytes
+    const v5 = asVersion(cur, 5, n);
     new DataView(v5).setUint32(0, 5, true);
 
     const back = deserializeGrid(v5);
@@ -633,7 +648,7 @@ describe('the flow layer survives a save (v7)', () => {
     fillDeterministic(g);
     g.roadFlow.fill(2);
     const cur = serializeGrid(g);
-    const v6 = cur.slice(0, cur.byteLength - 5 * n); // drop the trailing flow and junction-control bytes and the u16 turn tail
+    const v6 = asVersion(cur, 6, n);
     new DataView(v6).setUint32(0, 6, true);
 
     const back = deserializeGrid(v6);
@@ -661,7 +676,7 @@ describe('the flow layer survives a save (v7)', () => {
     fillDeterministic(g);
     g.junctionTurns.fill(0x0f0f);
     const cur = serializeGrid(g);
-    const v8 = cur.slice(0, cur.byteLength - 3 * n); // drop the trailing u16 turn tail
+    const v8 = asVersion(cur, 8, n);
     new DataView(v8).setUint32(0, 8, true);
 
     const back = deserializeGrid(v8);
@@ -678,7 +693,7 @@ describe('the flow layer survives a save (v7)', () => {
     fillDeterministic(g);
     g.powerLine.fill(1);
     const cur = serializeGrid(g);
-    const v9 = cur.slice(0, cur.byteLength - n); // drop the trailing power-line byte
+    const v9 = asVersion(cur, 9, n);
     new DataView(v9).setUint32(0, 9, true);
 
     const back = deserializeGrid(v9);
@@ -715,7 +730,7 @@ describe('the flow layer survives a save (v7)', () => {
     fillDeterministic(g);
     g.junctionControl.fill(4);
     const cur = serializeGrid(g);
-    const v7 = cur.slice(0, cur.byteLength - 4 * n); // drop the trailing junction-control byte and the u16 turn tail
+    const v7 = asVersion(cur, 7, n);
     new DataView(v7).setUint32(0, 7, true);
 
     const back = deserializeGrid(v7);
@@ -724,5 +739,48 @@ describe('the flow layer survives a save (v7)', () => {
     // The flow layer just before it still lands where it should.
     expect(Array.from(back.roadFlow)).toEqual(Array.from(g.roadFlow));
     expect(Array.from(back.roadProfile)).toEqual(Array.from(g.roadProfile));
+  });
+});
+
+describe('the per-lane turn layer', () => {
+  it('round-trips every arm of every tile', () => {
+    const size = 4;
+    const n = size * size;
+    const g = createGrid(size);
+    // A different set on each arm of one junction, and one lane of another.
+    g.junctionLaneTurns[5 * 4 + 0] = 0x1;
+    g.junctionLaneTurns[5 * 4 + 1] = 0x26;
+    g.junctionLaneTurns[5 * 4 + 2] = 0x0f;
+    g.junctionLaneTurns[5 * 4 + 3] = 0xf000;
+    g.junctionLaneTurns[9 * 4 + 2] = 0x0400;
+    const back = deserializeGrid(serializeGrid(g));
+    expect(back.junctionLaneTurns.length).toBe(n * 4);
+    expect(Array.from(back.junctionLaneTurns)).toEqual(Array.from(g.junctionLaneTurns));
+  });
+
+  it('loads a v10 save with every lane on its derived default', () => {
+    const size = 5;
+    const n = size * size;
+    const g = createGrid(size);
+    fillDeterministic(g);
+    g.junctionLaneTurns[3 * 4 + 1] = 0x27; // dropped with the layer
+    const v10 = asVersion(serializeGrid(g), 10, n);
+
+    const back = deserializeGrid(v10);
+    expect(back.junctionLaneTurns.length).toBe(n * 4);
+    expect(back.junctionLaneTurns.every((v) => v === 0)).toBe(true);
+    // And the layer before it still arrives intact.
+    expect(Array.from(back.junctionTurns)).toEqual(Array.from(g.junctionTurns));
+    expect(Array.from(back.powerLine)).toEqual(Array.from(g.powerLine));
+  });
+
+  it('forgets a junction’s lanes when the road under it is cleared', () => {
+    const g = createGrid(4);
+    const i = 5;
+    g.roadTier[i] = RoadTier.TwoLane;
+    g.junctionTurns[i] = 0x7;
+    for (let arm = 0; arm < 4; arm++) g.junctionLaneTurns[i * 4 + arm] = 0x12;
+    clearTiles(g, [{ x: i % 4, z: Math.floor(i / 4) }]);
+    for (let arm = 0; arm < 4; arm++) expect(g.junctionLaneTurns[i * 4 + arm]).toBe(0);
   });
 });

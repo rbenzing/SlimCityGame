@@ -12,11 +12,15 @@ import {
   movementAllowed,
   movementName,
   MOVEMENTS,
+  laneAllowed,
   laneMovementsFor,
+  MAX_EDITABLE_LANES,
   permits,
   pocketLaneMovements,
   pocketWarranted,
+  resolveLaneMovements,
   withArmAllowed,
+  withLaneAllowed,
 } from './approach';
 import { RoadFlow } from './types';
 import type { RoadClassId } from './types';
@@ -295,5 +299,62 @@ describe('the turn pocket an approach earns', () => {
     const noRight = pocketLaneMovements(2, Movement.Left | Movement.Through);
     expect(lanesServing(Movement.Right, noRight)).toBe(0);
     expect(lanesServing(Movement.Left, noRight)).toBe(1);
+  });
+});
+
+describe('per-lane movement sets', () => {
+  const L = Movement.Left, T = Movement.Through, R = Movement.Right;
+
+  it('reads a lane back as it was set, and the untouched ones as null', () => {
+    let packed = 0;
+    packed = withLaneAllowed(packed, 0, L);
+    packed = withLaneAllowed(packed, 2, T | R);
+    expect(laneAllowed(packed, 0)).toBe(L);
+    expect(laneAllowed(packed, 1)).toBeNull();
+    expect(laneAllowed(packed, 2)).toBe(T | R);
+    expect(laneAllowed(packed, 3)).toBeNull();
+  });
+
+  it('hands a lane back to the default with a null', () => {
+    const packed = withLaneAllowed(withLaneAllowed(0, 1, L), 1, null);
+    expect(laneAllowed(packed, 1)).toBeNull();
+  });
+
+  it('keeps each lane in its own nibble', () => {
+    let packed = 0;
+    for (let lane = 0; lane < MAX_EDITABLE_LANES; lane++) packed = withLaneAllowed(packed, lane, L | T);
+    for (let lane = 0; lane < MAX_EDITABLE_LANES; lane++) expect(laneAllowed(packed, lane)).toBe(L | T);
+    // Setting one lane never disturbs its neighbours.
+    packed = withLaneAllowed(packed, 1, R);
+    expect(laneAllowed(packed, 0)).toBe(L | T);
+    expect(laneAllowed(packed, 1)).toBe(R);
+    expect(laneAllowed(packed, 2)).toBe(L | T);
+  });
+
+  it('ignores a lane an arm cannot hold', () => {
+    expect(laneAllowed(withLaneAllowed(0, MAX_EDITABLE_LANES, L), MAX_EDITABLE_LANES)).toBeNull();
+    expect(withLaneAllowed(0, -1, L)).toBe(0);
+  });
+
+  it('takes the derived set for every lane nobody has touched', () => {
+    const derived = defaultLaneMovements(3);
+    expect(resolveLaneMovements(derived, 0, DEFAULT_ALLOWED)).toEqual(derived);
+  });
+
+  it('replaces only the lane that was set', () => {
+    const derived = defaultLaneMovements(3); // [L, T, T|R]
+    const packed = withLaneAllowed(0, 1, T | R);
+    expect(resolveLaneMovements(derived, packed, DEFAULT_ALLOWED)).toEqual([L, T | R, T | R]);
+  });
+
+  it('never lets a lane hand back a movement the ARM has banned', () => {
+    // The arm is the coarse control and wins: a restriction is a movement
+    // taken off every lane, so a lane cannot put it back.
+    const derived = defaultLaneMovements(2);
+    const packed = withLaneAllowed(0, 0, L | T | R);
+    const armBansLeft = T | R;
+    const resolved = resolveLaneMovements(derived, packed, armBansLeft);
+    expect(resolved[0]! & L).toBe(0);
+    expect(resolved[0]!).toBe(T | R);
   });
 });

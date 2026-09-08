@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_ALLOWED, Movement, withArmAllowed } from './approach';
+import { armSlot, DEFAULT_ALLOWED, Movement, withArmAllowed } from './approach';
 import {
   approachAhead,
   AUXILIARY_ZONE_TILES,
@@ -20,7 +20,10 @@ import { RoadFlow, RoadTier } from './types';
  */
 function world(
   map: string,
-  junctions: Record<string, { control?: JunctionControl; turns?: number }> = {},
+  junctions: Record<
+    string,
+    { control?: JunctionControl; turns?: number; laneTurns?: readonly number[] }
+  > = {},
 ): ApproachSurroundings {
   const rows = map
     .split('\n')
@@ -29,6 +32,7 @@ function world(
   const at = (x: number, z: number): string => rows[z]?.[x] ?? '.';
   return {
     hasRoad: (x, z) => at(x, z) !== '.',
+    laneTurnsAt: (x, z, arm) => junctions[`${x},${z}`]?.laneTurns?.[armSlot(arm) ?? 0] ?? 0,
     controlAt: (x, z) => junctions[`${x},${z}`]?.control,
     turnsAt: (x, z) => junctions[`${x},${z}`]?.turns ?? 0,
     // '#' is a four-lane road and 'n' the two-lane street it narrows into;
@@ -322,6 +326,7 @@ describe('the auxiliary lane a motorway grows beside a slip road', () => {
       motorway.has(`${x},${z}`) || ramp.has(`${x},${z}`) || street.has(`${x},${z}`);
     return {
       hasRoad: has,
+      laneTurnsAt: () => 0,
       controlAt: () => undefined,
       turnsAt: () => 0,
       flowAt: (x, z) => (ramp.has(`${x},${z}`) ? rampFlow : RoadFlow.None),
@@ -391,6 +396,7 @@ describe('a corridor half is a road in its own right', () => {
     const has = (x: number, z: number): boolean => onCorridor(x, z) || onStreet(x, z);
     return {
       hasRoad: has,
+      laneTurnsAt: () => 0,
       controlAt: (x, z) => junctions[`${x},${z}`]?.control,
       turnsAt: (x, z) => junctions[`${x},${z}`]?.turns ?? 0,
       flowAt: (x, z) => (onCorridor(x, z) ? RoadFlow.South : RoadFlow.None),

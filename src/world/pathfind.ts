@@ -19,12 +19,14 @@ import {
 import { approachGivesWay, controlDelaySeconds, mergeDelaySeconds } from '../shared/junction';
 import {
   armAllowed,
+  armSlot,
   laneMovementsFor,
   movementAllowed,
   movementBetween,
   movementDelayShare,
   pocketLaneMovements,
   pocketWarranted,
+  resolveLaneMovements,
 } from '../shared/approach';
 import type { JunctionApproach } from '../shared/junction';
 
@@ -177,13 +179,20 @@ export function junctionDelay(
   const movement = movementBetween(headingInto(arriving, node.id), headingOutOf(leaving, node.id));
   if (movement === null) return delay;
   const allowed = armAllowed(node.turns ?? 0, armOf(arriving, node.id));
+  /** What the player has said about the individual lanes of one arm. */
+  const laneTurnsOf = (n: GraphNode, arm: RoadFlow): number => {
+    const slot = armSlot(arm);
+    return slot === null ? 0 : (n.laneTurns?.[slot] ?? 0);
+  };
   // The approach zone's turn pocket is a lane the arm has HERE — the left turn
   // waits in it instead of holding up the traffic going straight, and both
   // movements are quicker for it.
   const pocket = arm.canPocket && pocketWarranted(control, allowed);
-  const lanes = pocket
-    ? pocketLaneMovements(mine.lanes + 1, allowed)
-    : laneMovementsFor(mine.lanes, allowed);
+  const lanes = resolveLaneMovements(
+    pocket ? pocketLaneMovements(mine.lanes + 1, allowed) : laneMovementsFor(mine.lanes, allowed),
+    laneTurnsOf(node, armOf(arriving, node.id)),
+    allowed,
+  );
   return delay / movementDelayShare(movement, lanes);
 }
 

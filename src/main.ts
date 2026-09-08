@@ -35,6 +35,7 @@ import type {
 } from './shared/types';
 import { RoadFlow, RoadTier, isStreetTier } from './shared/types';
 import { carriagewayWidth, profilesEqual } from './shared/roadprofile';
+import { laneMovementsFor, pocketLaneMovements } from './shared/approach';
 import catalogData from './data/catalog.json';
 import roadsData from './data/roads.json';
 import { CommandQueue } from './core/commands';
@@ -1296,8 +1297,29 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       .filter(([dx, dz]) =>
         isStreetTier(clientGrid.roadTier[(z + dz) * clientGrid.size + (x + dx)] ?? 0),
       )
-      .map(([, , flow]) => flow);
-    return { ...junction, arms };
+      .map(([dx, dz, flow]) => ({ dx, dz, flow }));
+    // What each arm's lanes offer before the player says anything — worked out
+    // the way the arrows on the ground are, from the tile that approaches the
+    // junction, so the panel and the paint agree about how many lanes there
+    // are and what each one is for.
+    const armLaneSets: Partial<Record<RoadFlow, number[]>> = {};
+    for (const { dx, dz, flow } of arms) {
+      const ax = x + dx;
+      const az = z + dz;
+      const drawn = clientGrid.drawnProfileAt(ax, az);
+      const ahead = clientGrid.approachAt(ax, az);
+      if (!drawn || !ahead) continue;
+      const lanes = drawn.pieces.filter((p) => p.kind === 'travel').length;
+      armLaneSets[flow] = ahead.pocket
+        ? pocketLaneMovements(lanes, ahead.allowed)
+        : laneMovementsFor(lanes, ahead.allowed);
+    }
+    return {
+      ...junction,
+      arms: arms.map((a) => a.flow),
+      laneTurns: [...(junction.laneTurns ?? [0, 0, 0, 0])],
+      armLaneSets,
+    };
   };
 
   const requestField = (field: FieldId): void => {

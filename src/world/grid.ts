@@ -68,6 +68,7 @@ export function createGrid(size?: number): GridState {
     roadFlow: new Uint8Array(n),
     junctionControl: new Uint8Array(n),
     junctionTurns: new Uint16Array(n),
+    junctionLaneTurns: new Uint16Array(n * ARMS_PER_TILE),
     powerLine: new Uint8Array(n),
   };
 }
@@ -85,7 +86,9 @@ const HEADER_BYTES = 8; // uint32 version + uint32 size
 // (roadProfile) + 20 single-byte layers (7 flat: water/trees/zone/roadTier/
 // roadMask/power/watered) + 9 fields + 1 district + 1 landfill + 1 roadFlow +
 // 1 junctionControl.
-const BYTES_PER_TILE = 37;
+const BYTES_PER_TILE = 45;
+/** Arms a junction has, and so entries the per-lane layer keeps per tile. */
+export const ARMS_PER_TILE = 4;
 // v9 is this layout without the trailing powerLine layer, which loads empty so
 // an older city has no lines anywhere and is supplied purely along its roads;
 // v7 is this layout without the trailing junctionControl layer, which loads
@@ -95,6 +98,9 @@ const BYTES_PER_TILE = 37;
 // each version before that drops one trailing layer — v3 district + landfill
 // but no elevation, v2 district only, v1 none of them. deserializeGrid accepts
 // all of them, widening v4's byte and defaulting every absent trailing layer.
+// v10 is this layout without the trailing junctionLaneTurns layer, which loads
+// zero so every lane takes the set its approach derives for it.
+const BYTES_PER_TILE_V10 = 37;
 const BYTES_PER_TILE_V9 = 36;
 const BYTES_PER_TILE_V8 = 34;
 const BYTES_PER_TILE_V7 = 33;
@@ -105,8 +111,16 @@ const BYTES_PER_TILE_V3 = 26;
 const BYTES_PER_TILE_V2 = 25;
 const BYTES_PER_TILE_V1 = 24;
 
-/** How wide a tile is in each save version, indexed by version number. */
-const BYTES_PER_TILE_BY_VERSION: readonly number[] = [
+/**
+ * How wide a tile is in each save version, indexed by version number.
+ *
+ * Exported because the migration tests synthesize an older buffer by trimming
+ * the current one, and the amount to trim is exactly the difference between
+ * two entries here. Written down a second time in the tests, it goes stale the
+ * next time a layer is added — and a stale figure there does not fail loudly,
+ * it silently stops testing the migration it names.
+ */
+export const BYTES_PER_TILE_BY_VERSION: readonly number[] = [
   0,
   BYTES_PER_TILE_V1,
   BYTES_PER_TILE_V2,
@@ -117,6 +131,7 @@ const BYTES_PER_TILE_BY_VERSION: readonly number[] = [
   BYTES_PER_TILE_V7,
   BYTES_PER_TILE_V8,
   BYTES_PER_TILE_V9,
+  BYTES_PER_TILE_V10,
   BYTES_PER_TILE,
 ];
 
@@ -199,6 +214,12 @@ export function serializeGrid(g: GridState): ArrayBuffer {
   offset += n * 2;
   // powerLine (v10): one byte per tile — whether a power line stands here.
   bytes.set(g.powerLine, offset);
+  offset += n;
+  // junctionLaneTurns (v11): eight bytes per tile — four arms of four lanes, a
+  // nibble each, zero where the lane takes its derived default.
+  for (let i = 0; i < n * ARMS_PER_TILE; i++) {
+    view.setUint16(offset + i * 2, g.junctionLaneTurns[i]!, true);
+  }
 
   return buffer;
 }
@@ -226,6 +247,7 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
   const hasJunctionControl = version >= 8;
   const hasJunctionTurns = version >= 9;
   const hasPowerLine = version >= 10;
+  const hasJunctionLaneTurns = version >= 11;
 
   const size = view.getUint32(4, true);
   const n = size * size;
@@ -319,6 +341,15 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
   // Power-line layer (v10+). An older buffer has none, so the city loads
   // supplied purely along the roads it already had.
   const powerLine = hasPowerLine ? bytes.slice(offset, offset + n) : new Uint8Array(n);
+  if (hasPowerLine) offset += n;
+  // Per-lane turn layer (v11+). An older buffer restricted no lane, so every
+  // one of them loads on the set its approach derives.
+  const junctionLaneTurns = new Uint16Array(n * ARMS_PER_TILE);
+  if (hasJunctionLaneTurns) {
+    for (let i = 0; i < n * ARMS_PER_TILE; i++) {
+      junctionLaneTurns[i] = view.getUint16(offset + i * 2, true);
+    }
+  }
 
   return {
     size,
@@ -339,6 +370,7 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
     roadFlow,
     junctionControl,
     junctionTurns,
+    junctionLaneTurns,
     powerLine,
   };
 }
@@ -537,6 +569,7 @@ export function clearTiles(g: GridState, tiles: TilePoint[]): ClearTilesResult {
       g.roadFlow[i] = RoadFlow.None;
       g.junctionControl[i] = 0;
       g.junctionTurns[i] = 0;
+      for (let arm = 0; arm < ARMS_PER_TILE; arm++) g.junctionLaneTurns[i * ARMS_PER_TILE + arm] = 0;
       g.roadMask[i] = 0;
     }
 

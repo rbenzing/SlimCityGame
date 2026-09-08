@@ -28,6 +28,7 @@ import {
 } from '../shared/roadprofile';
 import { controlFromCode, warrantedControl } from '../shared/junction';
 import { corridorPartners } from '../shared/corridor';
+import { ARMS_PER_TILE } from './grid';
 import type {
   GraphEdge,
   GraphNode,
@@ -693,6 +694,16 @@ export class RoadNetwork implements RoadNetworkApi {
       node.warranted = warrantedControl(armsAt(node, lookup).map((arm) => arm.approach));
       node.control = override ?? node.warranted;
       node.turns = grid ? (grid.junctionTurns[indexOf(grid.size, node.x, node.z)] ?? 0) : 0;
+      // The four arms' per-lane sets, so the router divides a movement's delay
+      // by the lanes that actually serve it rather than by the lanes the
+      // approach would have offered had nobody said otherwise.
+      node.laneTurns = grid
+        ? Array.from(
+            { length: ARMS_PER_TILE },
+            (_, arm) =>
+              grid.junctionLaneTurns[indexOf(grid.size, node.x, node.z) * ARMS_PER_TILE + arm] ?? 0,
+          )
+        : undefined;
     }
   }
 

@@ -12,7 +12,7 @@
  * question about cardinals and distances that either side can ask.
  */
 import { armAllowed, pocketWarranted } from './approach';
-import type { MovementSet, PackedTurns } from './approach';
+import type { MovementSet, PackedLaneTurns, PackedTurns } from './approach';
 import { isOneWayProfile, withAuxiliaryLane, withTurnPocket } from './roadprofile';
 import {
   closedAt,
@@ -48,6 +48,11 @@ export interface ApproachSurroundings {
   corridorHalfAt(x: number, z: number): CorridorHalf;
   /** The id of the cross-section the tile carries — what says two halves are one road. */
   profileIdAt(x: number, z: number): number;
+  /**
+   * The packed per-lane sets a junction holds for one of its arms, zero where
+   * every lane of that arm is on the set the approach derives for it.
+   */
+  laneTurnsAt(x: number, z: number, arm: RoadFlow): PackedLaneTurns;
 }
 
 /** The junction a tile approaches, and what this arm of it may do. */
@@ -62,6 +67,12 @@ export interface ApproachAhead {
   pocket: boolean;
   /** How far open that pocket is here, 0 to 1: full against the junction. */
   openness: number;
+  /**
+   * What the player has said about INDIVIDUAL lanes of this arm, packed a
+   * nibble each. Zero is every lane on the set the approach derives, which is
+   * what an untouched junction carries.
+   */
+  laneAllowed: PackedLaneTurns;
 }
 
 /**
@@ -189,7 +200,8 @@ export function approachAhead(
   }
   if (!best || tied) return undefined;
 
-  const allowed = armAllowed(world.turnsAt(best.jx, best.jz), oppositeFlow(best.toward));
+  const arm = oppositeFlow(best.toward);
+  const allowed = armAllowed(world.turnsAt(best.jx, best.jz), arm);
   const pocket =
     best.distance < zone && pocketWarranted(world.controlAt(best.jx, best.jz), allowed);
   const mine = world.profileAt(x, z);
@@ -199,6 +211,7 @@ export function approachAhead(
     allowed,
     pocket,
     openness: pocket && mine ? pocketOpenness(mine.class, zone, best.distance) : 1,
+    laneAllowed: world.laneTurnsAt(best.jx, best.jz, arm),
   };
 }
 

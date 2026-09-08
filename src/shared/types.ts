@@ -240,6 +240,20 @@ export interface GridState {
    */
   junctionTurns: Uint16Array;
   /**
+   * Per-LANE turn restrictions — FOUR entries per tile, one per arm in the
+   * order the cardinals climb, each packing four lanes into a nibble apiece
+   * (see src/shared/approach.ts). Zero is a lane nobody has touched, which
+   * takes the set its approach derives for it, so an untouched junction stores
+   * zero throughout.
+   *
+   * An arm restriction says what the whole approach may do; this says which
+   * LANE may do it, which is what turns a bay into a turn-only lane and a
+   * kerbside lane into a right-turn-only one.
+   * ADDITIVE layer: serialized LAST in the grid save (SAVE_VERSION 11); older
+   * saves load with every lane on its derived default.
+   */
+  junctionLaneTurns: Uint16Array;
+  /**
    * Power lines — 1 = a line stands on this tile. A line conducts electricity
    * between its own tiles and into any road or footprint it touches, which is
    * how supply reaches what a road cannot: the off-grid lot on a dirt lane,
@@ -358,6 +372,19 @@ export type Command =
    * nothing to do.
    */
   | { kind: 'setJunctionTurns'; x: number; z: number; arm: RoadFlow; allowed: number | null }
+  /**
+   * What ONE LANE of an arm may do. `lane` counts from the driver's left, the
+   * order the derived sets come in. A null hands the lane back to the set its
+   * approach derives for it.
+   */
+  | {
+      kind: 'setJunctionLaneTurns';
+      x: number;
+      z: number;
+      arm: RoadFlow;
+      lane: number;
+      allowed: number | null;
+    }
   | { kind: 'bulldoze'; tiles: TilePoint[] } // clears road/building/zone/trees
   | { kind: 'paintZone'; zone: ZoneType; tiles: TilePoint[] }
   | { kind: 'placeBuilding'; catalogId: string; x: number; z: number; rotation: 0 | 1 | 2 | 3 }
@@ -624,6 +651,12 @@ export interface SimSnapshot {
     auto: boolean;
     /** Turn restrictions, packed one nibble per arm (src/shared/approach.ts). */
     turns: number;
+    /**
+     * Per-LANE restrictions: one packed value per arm, in the cardinals' own
+     * order, each holding four lanes at a nibble apiece. Zero is a lane on the
+     * set its approach derives, and so is an absent list.
+     */
+    laneTurns?: number[];
   }[];
 }
 
@@ -870,6 +903,12 @@ export interface GraphNode {
    * src/shared/approach.ts). Zero, or absent, restricts nothing.
    */
   turns?: number;
+  /**
+   * Per-LANE turn restrictions, four arms of four lanes, each a nibble (see
+   * src/shared/approach.ts). Absent, or all zero, leaves every lane on the set
+   * the approach derives for it.
+   */
+  laneTurns?: readonly number[];
 }
 
 export interface GraphEdge {
@@ -1054,7 +1093,7 @@ export interface ReversibleEdit {
  * earlier layer's byte layout or order changed, so every v1..v7 field
  * round-trips unchanged.
  */
-export const SAVE_VERSION = 10;
+export const SAVE_VERSION = 11;
 
 export interface SaveHeader {
   version: number;
