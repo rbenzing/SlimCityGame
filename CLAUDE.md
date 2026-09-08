@@ -4,7 +4,7 @@ DO
  - write meaninging documentation
  - build and lint check at the end of every development task
  - use Ephemeral and Idempotent strategies
- - clean up scripts created to perform tasks that are not part of functional code
+ - clean up scripts created to perform tasks that are not part of the codebase
 
 DON'T
  - write comments referencing documentation

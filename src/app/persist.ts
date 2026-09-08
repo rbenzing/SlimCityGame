@@ -30,7 +30,7 @@ import type { GarbageSaveState } from '../sim/garbage';
 export interface SaveMeta {
   registry: SerializedBuildingRegistry;
   stats: CityStats;
-  /** §21 garbage fill (landfill pile + incinerator buffers). Absent in pre-Stage-A saves. */
+  /** Garbage fill: the landfill pile plus incinerator buffers. Absent in older saves. */
   garbage?: GarbageSaveState;
   /**
    * Player-built transit lines, bus and rail. Absent in saves written before

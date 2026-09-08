@@ -1,6 +1,6 @@
 /**
- * Landfill overlay: the garbage LANDFILL area drawn from the sim snapshot
- * (SlimCity SPEC §21). Layers, all fed from SimSnapshot.garbage:
+ * Landfill overlay: the garbage LANDFILL area drawn from the sim snapshot.
+ * Layers, all fed from SimSnapshot.garbage:
  *  - a flat dull brown-grey ground TINT over every DUMPING-GROUND tile (every
  *    vertex sampled through `heightAt`, the render/districts.ts
  *    pushConformingQuad pattern) so the painted footprint reads on the ground;

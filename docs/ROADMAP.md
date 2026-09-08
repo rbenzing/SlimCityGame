@@ -15,9 +15,10 @@ Two identities, one build:
   buttery RTS camera — Three.js flexing.
 
 _Design rationale and scope guards (deferred / rejected directions) live in
-[DESIGN.md](DESIGN.md). The living visual/systems spec is [SPEC.md](SPEC.md);
-the player-facing how-to-play is [USERGUIDE.md](USERGUIDE.md). This roadmap
-is the single place delivery status and dates live — SPEC and DESIGN describe
+[DESIGN.md](DESIGN.md). The specs themselves are organised by discipline —
+start at the [documentation map](README.md); the player-facing how-to-play is
+[USERGUIDE.md](USERGUIDE.md). This roadmap
+is the single place delivery status and dates live — the specs and DESIGN describe
 current behavior only and carry no dates of their own._
 
 ---
@@ -86,8 +87,8 @@ backlog (weather, deeper industry, more transit modes).
 Load-bearing architecture decisions — tooling choices, the sim/render split,
 the world data model, traffic's statistical-assignment design, and the
 rest — are recorded as numbered decision records, with their rationale, in
-[adr/](adr/README.md). This roadmap does not duplicate that list; the ADR
-index is the authoritative one.
+[engineering/adr/](engineering/adr/README.md). This roadmap does not duplicate
+that list; the ADR index is the authoritative one.
 
 ---
 
@@ -95,7 +96,8 @@ index is the authoritative one.
 
 The interface — layout regions, the asset drawer, tool-options panels,
 in-world cost/length chips, info-panel anatomy and style tokens — is
-documented in [ui/](ui/README.md).
+documented in [ux/](ux/README.md), with its visual tokens in
+[art/ui-style-guide.md](art/ui-style-guide.md).
 
 ---
 
@@ -131,7 +133,7 @@ One style bible: fixed palette, fixed prompt suffix, same model/settings; regene
 ## 6. Module structure
 
 The module map, the dependency rules between the layers, and the data flow of a
-single tick are in [architecture.md](architecture.md), which is kept against the
+single tick are in [architecture.md](engineering/architecture.md), which is kept against the
 real directory contents rather than restated here.
 
 ---
@@ -163,10 +165,11 @@ stay in IndexedDB only.
 
 ## 8. Performance budgets
 
-- 60 fps render @ 256×256 map, 10k buildings, 1k visible vehicles → InstancedMesh + frustum-culled chunks, ≤ ~300 draw calls.
-- Sim tick ≤ 10 ms at 20 Hz in worker (fields diffusion is the big cost — run staggered: not every field every tick).
-- Initial load ≤ 5 s: compressed textures, lazy map assets.
-- Memory: all grid layers for 256² ≈ a few MB — trivial; instance buffers dominate.
+The render, simulation, load and memory budgets — and, importantly, which of
+them are actually measured by a test rather than merely stated — are in
+[engineering/performance-budget.md](engineering/performance-budget.md). They
+are numbers the implementation is held to, not a plan, which is why they live
+with the engineering documentation rather than here.
 
 ---
 
@@ -183,7 +186,7 @@ stay in IndexedDB only.
 
 Three items that used to live here were decisions, not risks, and are now
 ADRs: banning per-agent traffic simulation, deferring curved/freeform
-roads, and pinning the Three.js version. See [adr/](adr/README.md).
+roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 
 ---
 
@@ -235,7 +238,7 @@ shippable waves.
   not built).** The ramp class, merge/diverge/terminal junctions and
   interchange stamps (wave 5), and six/eight-lane two-tile corridors with
   the compact roundabout and sound barriers (wave 6), are fully specified
-  in the Roads section of [SPEC.md](SPEC.md). Neither wave has a ship date.
+  in [world-sim/road-model.md](world-sim/road-model.md). Neither wave has a ship date.
 
 Design locked 2026-09-05 (research date): 3.5 m default travel lanes
 (existing presets keep their original 3.75 m), six/eight lanes as two-tile
@@ -284,7 +287,7 @@ explicitly not grandfathered: once shipped, existing saves load with only
 the supply they actually earned. Ship order is fixed — lamps first, the
 power line second, roads losing conduction last — so the game is never left
 with an unreachable lot mid-rollout. Fully specified, including acceptance
-and verification criteria, in the Utilities section of [SPEC.md](SPEC.md);
+and verification criteria, in [world-sim/utilities-model.md](world-sim/utilities-model.md);
 nothing in this section has
 shipped.
 

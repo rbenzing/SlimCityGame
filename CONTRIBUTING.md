@@ -25,29 +25,35 @@ contradict each other with no way to tell which is current.
 
 So when you add a paragraph, first decide what kind of thing it is:
 
-| The thing you are writing                     | Goes in                                |
-| --------------------------------------------- | -------------------------------------- |
-| What the product does, in the present tense   | [docs/SPEC.md](docs/SPEC.md)           |
-| That something shipped, or is next, or a date | [docs/ROADMAP.md](docs/ROADMAP.md)     |
-| Why a costly, hard-to-reverse choice was made | [docs/adr/](docs/adr/README.md)        |
-| Something we have decided not to build        | [docs/DESIGN.md](docs/DESIGN.md)       |
-| How a panel is laid out, or a style token     | [docs/ui/](docs/ui/README.md)          |
-| How something looks in the world              | [docs/art/](docs/art/README.md)        |
-| How to play                                   | [docs/USERGUIDE.md](docs/USERGUIDE.md) |
+| The thing you are writing                            | Goes in                                                             |
+| ---------------------------------------------------- | ------------------------------------------------------------------- |
+| How the simulated world behaves                      | [docs/world-sim/](docs/world-sim/README.md)                         |
+| What the game asks of the player, or a tuning number | [docs/game-design/](docs/game-design/README.md)                     |
+| How the code is structured, or a contract            | [docs/engineering/](docs/engineering/README.md)                     |
+| Why a costly, hard-to-reverse choice was made        | [docs/engineering/adr/](docs/engineering/adr/README.md)             |
+| A coding, testing or naming convention               | [docs/engineering/standards/](docs/engineering/standards/README.md) |
+| How the world is rendered                            | [docs/visual-render/](docs/visual-render/README.md)                 |
+| How an asset should look or be built                 | [docs/art/](docs/art/README.md)                                     |
+| How the interface behaves                            | [docs/ux/](docs/ux/README.md)                                       |
+| That something shipped, or is next, or a date        | [docs/ROADMAP.md](docs/ROADMAP.md)                                  |
+| Something we have decided not to build               | [docs/DESIGN.md](docs/DESIGN.md)                                    |
+| How to play                                          | [docs/USERGUIDE.md](docs/USERGUIDE.md)                              |
 
 Two habits follow from that table and are worth stating outright.
 
-**Never date the spec.** A sentence in SPEC.md describes the product as it is
-now. The moment it carries "(shipped 2026-08-11)" or "v2" it has become a
-changelog entry in the wrong file, and the next reader cannot tell which of the
-two nearby paragraphs is true. Delivery belongs to ROADMAP.md.
+**Never date a spec.** A sentence in any of the discipline folders describes the
+product as it is now. The moment it carries "(shipped 2026-08-11)" or "v2" it
+has become a changelog entry in the wrong file, and the next reader cannot tell
+which of two nearby paragraphs is true. Delivery belongs to
+[docs/ROADMAP.md](docs/ROADMAP.md), and nowhere else.
 
 **Never state a volatile number twice.** Test counts, file counts, benchmark
 figures: pick the one document that owns it, date it there, and link from
 anywhere else that wants to mention it.
 
 Decision records follow their own conventions — chiefly that an accepted record
-is never rewritten, only superseded. See [docs/adr/README.md](docs/adr/README.md)
+is never rewritten, only superseded. See
+[docs/engineering/adr/README.md](docs/engineering/adr/README.md)
 before adding one.
 
 ## Commit messages drive the version

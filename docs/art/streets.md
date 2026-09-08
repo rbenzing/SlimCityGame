@@ -4,7 +4,7 @@ What a road looks like, not how it behaves. Roads graduate from tinted quads
 to readable streets entirely through vertex-colour and geometry work on the
 existing per-chunk road mesh — no textures. Lane composition, junction
 control logic and capacity numbers are simulation facts and stay in
-[SPEC.md](../SPEC.md); the road cross-section table lives in the
+[road-model.md](../world-sim/road-model.md); the road cross-section table lives in the
 [scale bible](README.md). This file is what a modeller or shader author needs
 for the surface, the paint, the furniture and the zoning overlay.
 
@@ -127,7 +127,7 @@ an arm pointed the wrong way hangs over the grass instead of the road.
 A dead-end road's rounded cap (above) carries its ground transition with it:
 the kerb/sidewalk arc wraps the cap, and a sidewalk-to-dirt-to-grass
 transition ring conforms to that same rounded perimeter rather than stopping
-in a square. See [nature.md](nature.md) for the general road-adjacent
+in a square. See [nature.md](../visual-render/vegetation.md) for the general road-adjacent
 ground-cover rules (the "mown lawn" read near roads and parks, and the dry
 patch/canopy-shadow variation everywhere else).
 

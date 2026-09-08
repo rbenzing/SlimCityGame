@@ -181,20 +181,25 @@ deterministic — no `Math.random`, no `Date.now`; seeded RNG streams, hash-test
 ## 📚 Documentation
 
 Start at **[docs/README.md](docs/README.md)** — it maps each kind of question to
-the one document that answers it. Each fact lives in exactly one place:
+the one place that answers it. The set is organised by discipline, and each
+fact lives in exactly one place:
 
-- **[docs/SPEC.md](docs/SPEC.md)** — what the product does. Present tense,
-  normative, organised by subsystem. No dates, no delivery status.
+- **[docs/engineering/](docs/engineering/README.md)** — architecture, decision
+  records, interface contracts, the data model, budgets, and coding standards.
+- **[docs/game-design/](docs/game-design/README.md)** — the game design
+  document, the core loop, economy, progression, and every tuning constant.
+- **[docs/world-sim/](docs/world-sim/README.md)** — how the simulated world
+  behaves: the grid, roads, traffic, transit, utilities, services, the fields.
+- **[docs/visual-render/](docs/visual-render/README.md)** — the rendering
+  pipeline, lighting, terrain, water, vegetation.
+- **[docs/art/](docs/art/README.md)** — the art bible and the standards an
+  asset is built to.
+- **[docs/ux/](docs/ux/README.md)** — how the interface behaves: every surface,
+  the interaction rules, the bindings.
 - **[docs/ROADMAP.md](docs/ROADMAP.md)** — what is built and what is next. The
   only document that carries dates and delivery status.
-- **[docs/adr/](docs/adr/README.md)** — why it is built that way: one numbered
-  record per architecture decision, with what each one cost.
-- **[docs/DESIGN.md](docs/DESIGN.md)** — what we are deliberately not building:
-  the deferred backlog and rejected directions, with reasoning.
-- **[docs/ui/](docs/ui/README.md)** — the interface design system: layout
-  grammar, style tokens, and cross-cutting interaction patterns.
-- **[docs/art/](docs/art/README.md)** — the in-world art direction: the scale
-  bible, buildings, streets, nature, props and lighting.
+- **[docs/DESIGN.md](docs/DESIGN.md)** — what we are deliberately not building,
+  with reasoning.
 - **[docs/USERGUIDE.md](docs/USERGUIDE.md)** — how to play: the gameplay loop,
   tools, reading the city, and controls.
 - **[CONTRIBUTING.md](./CONTRIBUTING.md)** — quality gates, commit conventions,

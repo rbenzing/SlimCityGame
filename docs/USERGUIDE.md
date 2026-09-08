@@ -5,9 +5,8 @@ watch a city grow itself. You don't place houses — you set the conditions and 
 simulation fills them in.
 
 This guide is for playing. If you want to know how the game is built, start at
-the [documentation map](README.md) — chiefly [SPEC.md](SPEC.md) for what
-everything is, [ROADMAP.md](ROADMAP.md) for what's built and what's next, and
-[adr/](adr/README.md) for why it works this way.
+the [documentation map](README.md) — chiefly the [documentation map](README.md) for what everything is, [ROADMAP.md](ROADMAP.md) for what's built and what's next, and
+[adr/](engineering/adr/README.md) for why it works this way.
 
 ## The core loop
 

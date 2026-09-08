@@ -1,71 +1,70 @@
 # SlimCity documentation
 
-Six kinds of question, six places to look. Each fact lives in exactly one of
-them; where two would overlap, the others link here rather than repeat it.
+Seven disciplines, each with its own folder. Find your question below and the
+folder will have the rest.
 
-| I want to know…                      | Read                                     | Which is                    |
-| ------------------------------------ | ---------------------------------------- | --------------------------- |
-| How do I play?                       | [USERGUIDE.md](USERGUIDE.md)             | The player's guide          |
-| What does the product do?            | [SPEC.md](SPEC.md)                       | The normative reference     |
-| What is built, and what is next?     | [ROADMAP.md](ROADMAP.md)                 | The delivery plan           |
-| How is the system put together?      | [architecture.md](architecture.md)       | The architecture overview   |
-| How does one system work inside?     | [systems/](systems/README.md)            | System design documents     |
-| What shape crosses this boundary?    | [interfaces.md](interfaces.md)           | The interface contracts     |
-| What does the stored data look like? | [data-model.md](data-model.md)           | The data model and schema   |
-| Why is it built that way?            | [adr/](adr/README.md)                    | The decision log            |
-| How will this feature be built?      | [features/](features/README.md)          | Technical design documents  |
-| What are we deliberately not doing?  | [DESIGN.md](DESIGN.md)                   | The scope guards            |
-| How should this screen look?         | [ui/](ui/README.md)                      | The interface design system |
-| How should this model look?          | [art/](art/README.md)                    | The in-world art direction  |
-| How do I work on it?                 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | The contributor guide       |
+| I want to know…                        | Go to                                     |
+| -------------------------------------- | ----------------------------------------- |
+| How do I play?                         | [USERGUIDE.md](USERGUIDE.md)              |
+| What is built, and what is next?       | [ROADMAP.md](ROADMAP.md)                  |
+| What are we deliberately not building? | [DESIGN.md](DESIGN.md)                    |
+| How is it built, and why that way?     | [engineering/](engineering/README.md)     |
+| What does the game ask of the player?  | [game-design/](game-design/README.md)     |
+| How does the simulated world behave?   | [world-sim/](world-sim/README.md)         |
+| How is the world rendered?             | [visual-render/](visual-render/README.md) |
+| What should an asset look like?        | [art/](art/README.md)                     |
+| How does the interface behave?         | [ux/](ux/README.md)                       |
+| How do I work on it?                   | [../CONTRIBUTING.md](../CONTRIBUTING.md)  |
 
-The four technical documents divide by a single question — _how far in are you
-looking?_ [architecture.md](architecture.md) is the whole system at arm's
-length; [systems/](systems/README.md) is one subsystem's internals;
-[interfaces.md](interfaces.md) is the exact shapes that cross between them; and
-[data-model.md](data-model.md) is what survives being written to disk.
-[SPEC.md](SPEC.md) sits outside that stack entirely: it describes what a player
-can observe, and says nothing about how any of it is built.
+## The seven folders
 
-## What each one is for, and what it must never become
+**[engineering/](engineering/README.md)** — architecture, decision records,
+interface contracts, the data model, budgets, constraints, and the coding
+standards the repo holds itself to. Four documents there divide by how far in
+you are looking: `architecture.md` is the whole system at arm's length,
+`systems/` is one subsystem's internals, `interfaces.md` is the exact shapes
+crossing between them, and `data-model.md` is what survives being written to
+disk.
 
-**[SPEC.md](SPEC.md) — what the product is.** Present tense, normative, organised
-by subsystem. A reader should be able to hold a statement in SPEC.md against the
-running game and tell whether the game is wrong. It carries no dates, no history
-and no delivery status: a spec that records when each sentence was written stops
-being a description of the product and becomes a changelog with the wrong name.
+**[game-design/](game-design/README.md)** — the game design document, the core
+loop, the economy, progression, and every tuning constant gathered in one
+place.
 
-**[ROADMAP.md](ROADMAP.md) — what is done and what is next.** This is the only
-document that carries dates and delivery status, and that exclusivity is the
-point. When a thing ships, its status is updated here and its behaviour is
-described in SPEC.md; the two never both describe it.
+**[world-sim/](world-sim/README.md)** — the rules of the simulated world: the
+grid, roads, traffic, transit, utilities, services, the fields, and what runs
+each tick. The largest area, because it is the largest part of the game.
 
-**[adr/](adr/README.md) — what was decided, and what it cost.** One record per
-decision, numbered, and never rewritten once accepted — a decision that changes
-gets a new record superseding the old. That is what makes it safe to read a
-record from a year ago: you are seeing what was actually believed then.
+**[visual-render/](visual-render/README.md)** — the rendering pipeline,
+lighting, terrain, water and vegetation.
 
-**[DESIGN.md](DESIGN.md) — what we are not building.** The deferred backlog and
-the rejected directions, each with its reasoning. Treat the rejected list as
-settled, not as open questions. Once something here ships it leaves this file
-entirely — it belongs to SPEC.md and ROADMAP.md from that moment.
+**[art/](art/README.md)** — the art bible and the standards an asset is built
+to. The scale bible sits at the front, because everything else obeys it.
 
-**[ui/](ui/README.md) — the DOM overlay.** Layout grammar, style tokens, and the
-interaction patterns that cut across panels. The colour and radius values are
-owned by `src/ui/styles.css`; the docs name the authority rather than becoming a
-second copy of it.
+**[ux/](ux/README.md)** — how the interface behaves: every surface, the
+interaction rules, the bindings, accessibility.
 
-**[art/](art/README.md) — the world itself.** Massing, materials, lighting,
-vehicles, nature. The scale bible sits at the front of that folder because
-everything else obeys it.
+**[ROADMAP.md](ROADMAP.md) and [DESIGN.md](DESIGN.md)** stay at the top level
+because they cut across all six: one is the only place delivery status and
+dates live, the other the only place a deliberate non-goal lives.
 
-**[USERGUIDE.md](USERGUIDE.md) — how to play.** Written for someone who has never
-opened the game and does not care how it is built.
+## The rules that keep this working
 
-## The rule that keeps this working
+**One fact, one place.** A documentation set rots not because something is
+written down wrongly but because it is written down twice, one copy is updated,
+and the two now contradict each other with no way to tell which is current.
+When you are about to restate something, link to it instead.
 
-**One fact, one place.** The most common way a documentation set rots is not that
-a fact is written down wrongly — it is that a fact is written down twice, one
-copy is updated, and now the set contradicts itself with no way to tell which
-half is current. When you find yourself about to restate something, link to it
-instead.
+**Never date a specification.** A spec describes the product as it is now. The
+moment it carries "(shipped 2026-08-11)" or "v2" it has become a changelog in
+the wrong file, and the next reader cannot tell which of two nearby paragraphs
+is true. Delivery belongs to [ROADMAP.md](ROADMAP.md), and nowhere else.
+
+**A shipped thing leaves [DESIGN.md](DESIGN.md).** Its behaviour goes to the
+relevant spec and its delivery to the roadmap. A built feature lingering in a
+deferred list is how a scope guard turns into misinformation.
+
+**An accepted decision record is never rewritten** — it is superseded. See
+[engineering/adr/README.md](engineering/adr/README.md).
+
+`npm run lint:docs` fails on any relative link in these files that does not
+resolve, so the set cannot quietly rot the way it once did.

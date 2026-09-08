@@ -3,7 +3,7 @@
 The vehicle kit, parked cars, landmark ploppables, utility and service
 silhouettes, and the street furniture and lamp kit. Night emissive and glow
 treatments (headlights, taillights, the lamp's own light) are described fully
-in [lighting.md](lighting.md); this file covers the models themselves.
+in [lighting.md](../visual-render/lighting.md); this file covers the models themselves.
 
 ## Vehicle kit
 
@@ -79,7 +79,7 @@ Static parked cars are an occupancy signal, not decoration:
 The **airport** is a large-footprint (~8×6 tile) landmark, not a functional
 transit system: a terminal slab with rooftop monitor boxes, a control tower,
 an apron ground plate with taxiway striping, 2–3 static parked planes at jet
-bridges (props, exactly like the trees in [nature.md](nature.md) — no flight
+bridges (props, exactly like the trees in [nature.md](../visual-render/vegetation.md) — no flight
 simulation), and a row of parked cars at the entrance in the style above.
 More landmarks (a stadium, an observatory) are planned to reuse the same
 landmark-mesh path.
@@ -140,13 +140,13 @@ visible — a facility, not a data lens the player has to switch on.
   Lambert shading reads at all, and a slim pole disappears into a flat dark
   line at that colour — so the lighter charcoal still takes visible sun
   shading and reads as painted metal. Poles alternate sides of the street.
-  See [lighting.md](lighting.md) for the glow the housing itself carries at
+  See [lighting.md](../visual-render/lighting.md) for the glow the housing itself carries at
   night, the spacing between poles, and the night schedule.
 
 ## Deferred
 
 Headlight cones and their ground pools stay deferred (see
-[lighting.md](lighting.md) for the lamp's own ground pool, which is
+[lighting.md](../visual-render/lighting.md) for the lamp's own ground pool, which is
 unrelated and already ships). A taxi still reads only from the plain yellow
 civilian palette above — no separate roof sign has been built for it — and
 no aerial ladder has been built for the fire truck. [DESIGN.md](../DESIGN.md)

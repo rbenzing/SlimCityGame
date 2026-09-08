@@ -1,10 +1,15 @@
 # In-world art direction
 
-This folder is the visual bible for the 3D world SlimCity renders — buildings,
-streets, nature, props, vehicles, and the day/night cycle. For the DOM overlay
-(panels, HUD, drawers) see [ui/](../ui/README.md) instead; that is a different
-surface with its own rules. Every fact here lives in exactly one file; where a
-fact would overlap another file, that file links here rather than repeats it.
+This folder is the art bible: the visual language everything in SlimCity is
+built to — buildings, streets, props, vehicles, and the standards an asset must
+meet. How that language is actually rendered — lighting, terrain, water,
+vegetation, the pipeline — is in
+[../visual-render/](../visual-render/README.md). How the DOM overlay behaves is
+in [../ux/](../ux/README.md); its visual tokens are here, in
+[ui-style-guide.md](ui-style-guide.md).
+
+Every fact here lives in exactly one file; where a fact would overlap another
+file, that file links rather than repeats.
 
 ## The scale bible
 
@@ -60,17 +65,35 @@ smaller. Local streets stay visibly narrower than arterials — the contrast is
 the point. Cosmetic-vehicle lane centers re-derive from the carriageway, so
 cars track their lanes at any width. Deep lane composition, junction control
 and capacity numbers are simulation facts, not art direction; they stay in
-[SPEC.md](../SPEC.md).
+[../world-sim/road-model.md](../world-sim/road-model.md).
 
-## What's in this folder
+## Environmental art
 
 | File                                           | Covers                                                                                                               |
 | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | [buildings.md](buildings.md)                   | Massing, facades, windows, rooflines, archetype families, procedural houses, construction/abandoned states, lots.    |
 | [streets.md](streets.md)                       | Road surface and paint, medians and kerbs, junction and motorway signage, ground-cover transitions, the zoning grid. |
-| [nature.md](nature.md)                         | Trees, ground cover, terrain and its materials, water, sky, sun, clouds, the map-edge cross-section.                 |
 | [props-and-vehicles.md](props-and-vehicles.md) | The vehicle kit, parked cars, utility and service silhouettes, landmark ploppables, street furniture and lamps.      |
-| [lighting.md](lighting.md)                     | The day/night cycle: sky and light ramp, emissive windows, street lamps, the clock, bloom, shadows.                  |
+
+These three together are the environmental art guide. They are kept apart
+rather than fused into one file because five hundred lines under a single
+heading serves nobody.
+
+## Standards
+
+| File                                             | Covers                                                    |
+| ------------------------------------------------ | --------------------------------------------------------- |
+| [asset-guidelines.md](asset-guidelines.md)       | How an asset is actually constructed for this project     |
+| [modeling-standards.md](modeling-standards.md)   | Geometry budgets, topology, scale                         |
+| [texture-standards.md](texture-standards.md)     | Resolution, formats, palette calibration                  |
+| [naming-conventions.md](naming-conventions.md)   | File and symbol naming for assets and render modules      |
+| [prefab-standards.md](prefab-standards.md)       | There are no prefabs — what stands in for them            |
+| [animation-standards.md](animation-standards.md) | Nothing is rigged — what would need settling if it were   |
+| [ui-style-guide.md](ui-style-guide.md)           | The DOM overlay's colour, type, spacing and radius tokens |
+| [iconography.md](iconography.md)                 | Icons and symbols                                         |
+
+Rendering — lighting, terrain, water, vegetation and the pipeline itself — is
+in [../visual-render/](../visual-render/README.md).
 
 Deferred visual work (things this documentation deliberately does not describe
 as shipping) is noted at the end of the file it would otherwise belong to; the

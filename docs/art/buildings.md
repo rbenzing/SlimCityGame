@@ -2,7 +2,7 @@
 
 Massing, facades, roofs, archetypes and the lot a building stands on. The
 proportions here all read against the [scale bible](README.md). Emissive
-window behaviour at night is described in full in [lighting.md](lighting.md);
+window behaviour at night is described in full in [lighting.md](../visual-render/lighting.md);
 this file covers the window geometry and the day-side facade only.
 
 ## Facade shader
@@ -13,7 +13,7 @@ building, so windows are guaranteed to align between the two:
 - **Window grid**: floor count is height ÷ 3.2 m; bays come from the
   footprint. The grid is drawn in-shader as mullion lines with inset window
   cells. By day the cells tint glass-blue with a slight per-window
-  reflectance variation (see [lighting.md](lighting.md) for the hash that
+  reflectance variation (see [lighting.md](../visual-render/lighting.md) for the hash that
   drives it and the night emissive treatment).
 - **Wall palette by archetype family** (from the catalog colour as a base):
   glass curtain-wall (blue, window cells dominate), masonry (brick red/brown,
@@ -101,7 +101,7 @@ palette above:
   smokestack-and-silo massing below.
 - Any industrial building at level 2 or higher gets a **smokestack** (a tall
   cylinder with a warning-light emissive at night — see
-  [lighting.md](lighting.md)); a large industrial footprint (3×3 or bigger)
+  [lighting.md](../visual-render/lighting.md)); a large industrial footprint (3×3 or bigger)
   may additionally get a 3–4-silo cluster at one footprint corner,
   deterministic from the building id. Rooftop vents follow the general
   roofs-everywhere rule above.
@@ -137,7 +137,7 @@ small to hold a curve, samples the real terrain height at every corner, and
 splits each cell on the same diagonal the terrain mesh itself uses, so
 nothing laid on the ground clips through a slope or floats over a dip. (Roads
 and buildings level their own footprint on placement for the same reason —
-see [nature.md](nature.md) for that terrain-side half of the rule.)
+see [nature.md](../visual-render/vegetation.md) for that terrain-side half of the rule.)
 
 **Material palette calibration.** One module (`render/palette.ts`) is the
 single source of truth for every material colour in the world — buildings,
@@ -155,7 +155,7 @@ A building under construction renders scaled down and grey, growing to its
 full size and true colour as it completes. An Abandoned building is boarded:
 its window cells go dark and its walls desaturate, and — unlike an Active
 building — it stays fully dark at night, because a lit window is the one
-signal that a building is Active (see [lighting.md](lighting.md)). Both
+signal that a building is Active (see [lighting.md](../visual-render/lighting.md)). Both
 Constructing and Abandoned buildings park zero cars, so an idle lot is
 legible on sight (see [props-and-vehicles.md](props-and-vehicles.md)).
 
