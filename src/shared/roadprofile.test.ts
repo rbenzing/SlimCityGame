@@ -29,6 +29,8 @@ import {
   tilesAcross,
   isCorridor,
   corridorHalfProfile,
+  carriagewayHalfWidthOf,
+  medianOffsetOf,
   canGainAuxiliaryLane,
   hasKerbs,
   KERB_RESERVE_M,
@@ -1338,5 +1340,32 @@ describe('a turn bay on a corridor half', () => {
         );
       }
     }
+  });
+});
+
+describe('where the median sits across the road', () => {
+  it('is the middle of an ordinary divided road, which is what divides it', () => {
+    const avenue = presetProfileForTier(RoadTier.Avenue);
+    expect(medianOffsetOf(avenue)).toBeCloseTo(0, 9);
+  });
+
+  it('is zero for a road that has no median at all', () => {
+    expect(medianOffsetOf(presetProfileForTier(RoadTier.TwoLane))).toBe(0);
+  });
+
+  it('is the inner EDGE on one half of a corridor, not its middle', () => {
+    // A half carries its own share of the median, against the other half. Read
+    // as zero, that share is drawn down the centre of the running lanes — and
+    // whatever is planted in it goes there too.
+    const whole = presetProfileForTier(RoadTier.Avenue);
+    const left = corridorHalfProfile(whole, 'left');
+    const right = corridorHalfProfile(whole, 'right');
+    expect(medianOffsetOf(left)).toBeGreaterThan(0);
+    expect(medianOffsetOf(right)).toBeLessThan(0);
+    // Each share sits at its half's inner edge: the two face each other.
+    expect(medianOffsetOf(left)).toBeCloseTo(-medianOffsetOf(right), 9);
+    // And it is out at the edge, not near the centre of the half's carriageway.
+    const halfWidth = carriagewayHalfWidthOf(left);
+    expect(Math.abs(medianOffsetOf(left))).toBeGreaterThan(halfWidth / 2);
   });
 });

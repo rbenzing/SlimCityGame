@@ -414,6 +414,22 @@ const POCKET_SOURCE_KINDS: ReadonlySet<LanePieceKind> = new Set(['parking', 'sho
  * centreline, or null for a piece outside the kerbs. Sidewalks and verges only
  * ever sit at the ends, so skipping them leaves the running offset intact.
  */
+/**
+ * Where the median sits ACROSS the road, as an offset from the carriageway's
+ * centre; 0 when the section has none.
+ *
+ * On an ordinary divided road this is 0, because the median is what the two
+ * halves are divided by. On one HALF of a two-tile corridor it is not: that
+ * half carries only its own share of the median, at its inner edge, and a
+ * median drawn at the tile's centre instead lands down the middle of the
+ * running lanes — with whatever is planted in it.
+ */
+export function medianOffsetOf(profile: RoadProfile): number {
+  const centres = pieceCentres(profile);
+  const at = profile.pieces.findIndex((p) => p.kind === 'median');
+  return at < 0 ? 0 : (centres[at] ?? 0);
+}
+
 function pieceCentres(profile: RoadProfile): (number | null)[] {
   let offset = -carriagewayHalfWidthOf(profile);
   return profile.pieces.map((piece) => {

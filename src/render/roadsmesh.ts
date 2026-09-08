@@ -98,6 +98,7 @@ import {
   hasKerbs,
   isPaved,
   kerbWidthOf,
+  medianOffsetOf,
   PRESET_LANE_WIDTH_M,
   presetProfileForTier,
   rankForTier,
@@ -2838,17 +2839,25 @@ function emitAvenueMedian(
    * to. The concrete edge is trimmed to fit a narrow one.
    */
   halfWidth: number = MEDIAN_HALF_WIDTH_M,
+  /**
+   * Where the median sits across the road. Zero on a road divided down its own
+   * middle; on one half of a corridor the median share is at that half's inner
+   * edge, and drawing it at the tile centre puts it in the running lanes.
+   */
+  offset = 0,
 ): void {
   const m = halfWidth;
   const e = Math.min(MEDIAN_CONCRETE_EDGE_M, m / 2);
+  const lo = offset - m;
+  const hi = offset + m;
   pushCenterBand(
     positions,
     colors,
     centerX,
     centerZ,
     vertical,
-    -m,
-    -m + e,
+    lo,
+    lo + e,
     along,
     MEDIAN_Y_OFFSET,
     MEDIAN_CONCRETE_COLOR,
@@ -2860,8 +2869,8 @@ function emitAvenueMedian(
     centerX,
     centerZ,
     vertical,
-    m - e,
-    m,
+    hi - e,
+    hi,
     along,
     MEDIAN_Y_OFFSET,
     MEDIAN_CONCRETE_COLOR,
@@ -2873,8 +2882,8 @@ function emitAvenueMedian(
     centerX,
     centerZ,
     vertical,
-    -m + e,
-    m - e,
+    lo + e,
+    hi - e,
     along,
     MEDIAN_Y_OFFSET,
     MEDIAN_GRASS_COLOR,
@@ -3965,6 +3974,7 @@ export function roadTileVertices(
         { lo, hi },
         hAt,
         medianHalfWidthOf(crossSection),
+        medianOffsetOf(crossSection),
       );
     else emitHighwayDivider(positions, colors, centerX, centerZ, vertical, { lo, hi }, hAt);
   }
@@ -4545,8 +4555,15 @@ export class RoadMeshRenderer {
 
     for (let i = 0; i < treeTiles.length; i++) {
       const tile = treeTiles[i]!;
-      const centerX = (tile.x + 0.5) * TILE_METERS;
-      const centerZ = (tile.z + 0.5) * TILE_METERS;
+      // A tree stands IN the median, so it goes wherever the median went. On a
+      // corridor half that is the half's inner edge, not the tile's centre —
+      // planting it at the centre puts a tree in a running lane.
+      const profile = this.profileAt(tile.x, tile.z);
+      const across = profile ? medianOffsetOf(profile) : 0;
+      // A road running north-south is measured across X, and vice versa.
+      const vertical = (tile.mask & (NORTH | SOUTH)) !== 0;
+      const centerX = (tile.x + 0.5) * TILE_METERS + (vertical ? across : 0);
+      const centerZ = (tile.z + 0.5) * TILE_METERS + (vertical ? 0 : across);
       const groundY = this.heightAt(centerX, centerZ) + ROAD_Y_OFFSET + MEDIAN_RAISE;
       _treePosition.set(centerX, groundY, centerZ);
       _treeMatrix.compose(_treePosition, _identityQuat, _treeScale);
