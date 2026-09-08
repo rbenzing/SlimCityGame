@@ -3030,3 +3030,40 @@ describe('roadTileVertices — a corridor half arriving at a junction', () => {
     );
   });
 });
+
+describe('roadTileVertices — a corridor half that has earned a turn bay', () => {
+  const half = (): RoadProfile => ({
+    class: 'divided',
+    pieces: [
+      { kind: 'sidewalk', width: 1.9 },
+      { kind: 'travel', width: 3.6, flow: 'back' },
+      { kind: 'travel', width: 3.6, flow: 'back' },
+      { kind: 'travel', width: 3.6, flow: 'back' },
+      { kind: 'median', width: 1.0 },
+    ],
+  });
+  const tile = (pocket: boolean): { positions: number[]; colors: number[] } =>
+    roadTileVertices(
+      4,
+      4,
+      RoadTier.Avenue,
+      N | S,
+      flatHeightAt,
+      undefined,
+      half(),
+      undefined,
+      RoadFlow.South,
+      undefined,
+      { toward: RoadFlow.South, distance: 0, pocket, allowed: DEFAULT_ALLOWED, openness: 1 },
+    );
+
+  it('still tells its lanes apart once the bay has opened', () => {
+    // The bay is the whole reason the arm is worth marking: it is the lane the
+    // left turn waits in, and a driver has to be told which one it is.
+    expect(countWhere(tile(true).colors, isMarkingWhite)).toBeGreaterThan(0);
+    expect(countWhere(tile(true).colors, isMarkingWhite)).toBeGreaterThanOrEqual(
+      countWhere(tile(false).colors, isMarkingWhite),
+    );
+  });
+
+});

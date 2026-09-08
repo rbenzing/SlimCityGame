@@ -62,6 +62,7 @@ import {
   TURN_POCKET_MIN_WIDTH_M,
   withinLaneRange,
   withAuxiliaryLane,
+  isOneWayProfile,
   withTurnPocket,
 } from './roadprofile';
 import type { LanePiece, RoadClassId, RoadProfile, RoadSpec } from './types';
@@ -1296,5 +1297,46 @@ describe('a corridor is two carriageways, not one wide one', () => {
     const left = corridorHalfProfile(six, 'left');
     expect(profileWidth(left)).toBeCloseTo(10.5, 6);
     expect(left.pieces).toHaveLength(3);
+  });
+});
+
+describe('a turn bay on a corridor half', () => {
+  // One carriageway of a divided road: three lanes all running the same way,
+  // finished on the inside by its share of the median.
+  const half = (flow: 'fwd' | 'back'): RoadProfile => ({
+    class: 'divided',
+    pieces: [
+      { kind: 'sidewalk', width: 1.9 },
+      { kind: 'travel', width: 3.6, flow },
+      { kind: 'travel', width: 3.6, flow },
+      { kind: 'travel', width: 3.6, flow },
+      { kind: 'median', width: 1.0 },
+    ],
+  });
+
+  it('knows a half runs one way, whichever way that is', () => {
+    // A corridor's two halves carry opposite flows, so a test that only counts
+    // 'fwd' as one-way calls one of them two-way and lays its bay as though it
+    // had oncoming traffic to sit beside.
+    expect(isOneWayProfile(half('fwd'))).toBe(true);
+    expect(isOneWayProfile(half('back'))).toBe(true);
+  });
+
+  it('puts the bay beside the median on either half, from either side', () => {
+    // The left turn waits against the middle of the road, which for a half is
+    // its inner edge — never between its running lanes. A bay dropped on the
+    // far side of the median share leaves that share stranded BETWEEN lanes,
+    // which draws as a metre of grass down the middle of the carriageway.
+    for (const flow of ['fwd', 'back'] as const) {
+      for (const side of [-1, 1] as const) {
+        const pocketed = withTurnPocket(half(flow), side);
+        expect(pocketed, `${flow} ${side}`).not.toBeNull();
+        const kinds = pocketed!.pieces.map((p) => p.kind);
+        expect(kinds.filter((k) => k === 'travel'), `${flow} ${side}`).toHaveLength(4);
+        expect(kinds.indexOf('median'), `${flow} ${side}`).toBeGreaterThan(
+          kinds.lastIndexOf('travel'),
+        );
+      }
+    }
   });
 });

@@ -788,7 +788,12 @@ function lanesBackOf(profile: RoadProfile): number {
 /** Whether every travel lane runs the same way, so the road has no two sides to separate. */
 export function isOneWayProfile(profile: RoadProfile): boolean {
   const travel = profile.pieces.filter((p) => p.kind === 'travel');
-  return travel.length > 0 && travel.every((p) => p.flow === 'fwd');
+  // A road every lane of which runs the SAME way is one-way, whichever way
+  // that is. Counting only 'fwd' calls a road drawn the other way two-way, and
+  // a corridor's two halves carry opposite flows — so one of the two was being
+  // given a centreline it has not got and a bay sized for oncoming traffic.
+  const flow = travel[0]?.flow;
+  return travel.length > 0 && flow !== undefined && travel.every((p) => p.flow === flow);
 }
 
 /** What a profile already holds, read the way the edits are written. */
