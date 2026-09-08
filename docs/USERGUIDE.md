@@ -4,8 +4,10 @@ How to play SlimCity: lay roads, paint zones, keep the lights and water on, and
 watch a city grow itself. You don't place houses — you set the conditions and the
 simulation fills them in.
 
-Companion docs: [SPEC.md](SPEC.md) (what everything is), [ROADMAP.md](ROADMAP.md)
-(what's built and what's next), [DESIGN.md](DESIGN.md) (why it works this way).
+This guide is for playing. If you want to know how the game is built, start at
+the [documentation map](README.md) — chiefly [SPEC.md](SPEC.md) for what
+everything is, [ROADMAP.md](ROADMAP.md) for what's built and what's next, and
+[adr/](adr/README.md) for why it works this way.
 
 ## The core loop
 
@@ -283,7 +285,7 @@ nothing you add gets committed.
   from any road — move it flush against one.
 - **Gravel roads carry no electricity** — there is no cable in a dirt track.
   Anything down a gravel lane stays dark until you run a power line to it, and
-  power won't travel *through* a gravel stretch to the paved road beyond. Water
+  power won't travel _through_ a gravel stretch to the paved road beyond. Water
   still runs down one; a pipe and a cable are not the same thing.
 - **Power lines** (Electricity) reach what a road cannot: drag a run from your
   generators out to the lot, the district or the pump that a street doesn't

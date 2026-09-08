@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
+    "lint:docs": "node tools/check-doc-links.mjs",
     "format": "prettier --write ."
   },
   "license": "AGPL-3.0-or-later",

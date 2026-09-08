@@ -1,175 +1,56 @@
 # SlimCity — Design & Technical Roadmap
 
-**SlimCity** is a small-form-factor **city builder** for the browser: a familiar city-builder play grammar and UI layout at reduced scale, built on **Three.js** as a deliberate engine showcase — proof that a web engine can deliver a living, data-rich city sim. Maps and texture sets are **AI-generated raster assets** (terrain heightmaps + satellite-style colormaps, facade/ground atlases).
+**SlimCity** is a small-form-factor **city builder** for the browser: a
+familiar city-builder play grammar and UI layout at reduced scale, built on
+**Three.js** as a deliberate engine showcase — proof that a web engine can
+deliver a living, data-rich city sim. Maps and texture sets are
+**AI-generated raster assets** (terrain heightmaps + satellite-style
+colormaps, facade/ground atlases).
 
 Two identities, one build:
 
-- **The game**: paint zones, grow a city, read it through infoviews — the genre's feel, browser-sized.
-- **The demo**: instancing at scale, day/night, GPU-friendly sim fields, buttery RTS camera — Three.js flexing.
+- **The game**: paint zones, grow a city, read it through infoviews — the
+  genre's feel, browser-sized.
+- **The demo**: instancing at scale, day/night, GPU-friendly sim fields,
+  buttery RTS camera — Three.js flexing.
 
-_Design rationale and scope guards (deferred / rejected directions) live in [DESIGN.md](DESIGN.md). The living visual/systems spec is [SPEC.md](SPEC.md); the player-facing how-to-play is [USERGUIDE.md](USERGUIDE.md)._
+_Design rationale and scope guards (deferred / rejected directions) live in
+[DESIGN.md](DESIGN.md). The living visual/systems spec is [SPEC.md](SPEC.md);
+the player-facing how-to-play is [USERGUIDE.md](USERGUIDE.md). This roadmap
+is the single place delivery status and dates live — SPEC and DESIGN describe
+current behavior only and carry no dates of their own._
 
-> **Delivery status (2026-08-13):** the M0–M7 core spine plus bus transit, service
-> dispatch, districts & policies, stats charts + photo mode, and eight playtest-feedback
-> rounds are shipped and gate-green (2,914 tests / 108 files). Delivered on top of the
-> original milestones: the city-builder UI shell + night cycle, full building/street/vehicle/tree
-> visual language, full terraforming + animated water + sky, the airport landmark,
-> code-split bundle, plus the playtest refinements captured in SPEC.md (utility
-> silhouettes, placement outline, terrain skirt + camera guards, tree/water v2, roads
-> v2/v3 with road-carried utilities, traffic lanes + rounded corners, grade-preserving
-> road-on-slope, contained dead-end caps, terrain-conforming zoning grid, tone-mapped
-> night with pooled lamp lighting, the genre-standard zoning-types expansion, and the
-> **landfill/garbage sanitation epic** — paintable landfills, an incinerator facility,
-> cosmetic garbage trucks, and a trash lens, per SPEC §21; the city soundscape + UI
-> audio + user-supplied music player, per SPEC §23; the advisor panel that ranks
-> what is wrong with the city right now, per SPEC §24; bridges + elevated roads,
-> which finally let a road cross water, per SPEC §25; road signage — junction
-> signals and boards, motorway exit boards and gantries, and placement-time flow
-> arrows, per SPEC §6.7; rail transit — stations, trains and rail lines over
-> the rail tier, which until then carried nothing, per SPEC §26; and tram transit,
-> which does the same for the tram tier — street-running lines that need no
-> station and relieve the streets they run down, per SPEC §27; and building lots
-> and archetypes — a calibrated material palette, paved lots that claim the whole
-> footprint, one kerbside-parking rule, warehouse/factory/green-works and
-> shopfront silhouettes, and one junction rule shared by every piece of kerb
-> furniture, per SPEC §28). Versioning + deploy are
-> automated (release-please + Conventional Commits → GitHub Pages; see the repo README).
-> **In progress — road composition (SPEC §29):** wave 1 is complete
-> (twelve classes, eleven preset profiles, derivations for speed, capacity and
-> geometry; render and pathfinding read them; the grid stores the profile as
-> the road's identity with the tier derived, saves at v6, the worker accepts
-> composed profiles, the mesh draws a composed tile at its own width and kerbs,
-> the road tool's Profile row lets the player add parking and bike lanes per
-> kerb and drop footways, laid as a stored profile, every piece of kerb
-> furniture measures from the tile's own edge, markings are read from the
-> pieces — parking lanes get their bay ticks — and roads meet each other by
-> rule: any two classes join except a motorway or slip road running onto a
-> farm track or an alley, and a wide run meeting a narrower one bends its kerb
-> in over the tile instead of stepping at the seam; the options row carries the
-> class drawer — lanes each way, a median or turn lane down the middle, and the
-> posted speed inside the class range; and a Replace chip lays a road over
-> whatever is already there, so rebuilding an avenue as a quiet street is one
-> drag while a stray drag still cannot flatten one). Wave 2 stores the
-> direction a road was drawn in: a one-way street routes and points its arrows
-> the way it was drawn rather than the way its tiles happen to ascend, drawing
-> it back the other way turns it round, and saves carry it at version 7. On top
-> of it a road may run two lanes one way and one the other, and the edge cost
-> compares traffic against the lanes serving the direction being travelled, so
-> a two-and-one road congests on its short side first. On top of the waves, a
-> pass over how roads MEET: one asphalt for every paved road so no two of them
-> step in colour, a real hierarchy so a farm track never cuts a motorway and a
-> road cannot be drawn through one bigger than it, junctions where the major
-> road runs through and the side street stops, crossings at their real size,
-> US lane widths and a static lane-count choice per road family, and yellow
-> centre lines with white lane and edge lines. Wave 3 has begun with the thing
-> the rest of it hangs off: every junction now works out who gives way, from
-> the classes that meet there and what those arms have been carrying, climbing
-> a ladder from nothing through give-way, a stop on the minor road and a stop
-> on every arm to a signal — and the seconds it costs are paid in the path
-> cost, so crossing a signalised avenue really is slower than crossing a quiet
-> street and a slow junction reroutes traffic. The signs and the paint follow
-> that control rather than the road's tier, so two quiet streets crossing are
-> now unsigned and unpainted the way they are in life; and the warrant is a
-> default the player overrides from a junction inspector — click a junction,
-> pick a control off the ladder, and it sticks, saved with the city at version
-> 8. Signalised junctions now pulse — one direction green, an amber, then the
-> other — on the same clock the traffic runs on, so a paused city holds its
-> lights; and a junction can be made a mini roundabout, the one control that
-> rebuilds the junction rather than only deciding who waits at it. That
-> completes wave 3. Wave 4 has begun: a lane is now a SET of movements rather
-> than just a lane, the default widens the way a real approach widens — a third
-> lane buys a dedicated left, a fourth a dedicated right — and the last tile
-> before a junction is painted with a lane-use arrow per approaching lane,
-> read off the movement set and nothing else. Turn restrictions are the
-> player's: a row per arm in the junction panel, saved with the city at version
-> 9, and a real refusal rather than only unpainted paint — the router now
-> searches over the node AND the edge that reached it, because a turn is only
-> legal once you know which way the driver came in. Turn pockets followed: the
-> lane an approach has at the junction and nowhere else, warranted by the
-> control rather than stored, carved out of the verge, the kerbside parking or
-> the width of the lanes themselves, and worth real seconds now that a
-> movement's delay divides by the service its lanes give it rather than a count
-> of them. Lane-drop tapers close the wave: a wide road running into a narrow
-> one closes its kerbside lanes over the standard ratio's length rather than at
-> the tile boundary — seven tiles for a four-lane road meeting a two-lane
-> street, far more on a motorway — the lane that is running out carries a merge
-> arrow bending into the one beside it, and the sim caps the run at the
-> capacity of the road it narrows into for the direction heading that way, so a
-> hard drop is a chokepoint rather than a free merge. The bay then learned to
-> open over a taper of its own instead of beginning at full width, and a tile
-> whose carriageway changes width now lays its plate and its kerb strip along
-> the same bending edge, so the footway meets its neighbour's rather than
-> stepping a tile at a time down every taper. That is wave 4, less two things
-> deliberately left: per-lane movement sets, which earn their keep only
-> alongside wave 6's multi-lane approaches, and the motorway's gore chevrons,
-> which move into wave 5 because the neutral area they need is the one a ramp's
-> nose needs. Then waves 5–6.
-> Specified in full: classes, lane-piece
-> profiles with a width budget, stored flow direction, per-junction control
-> (none/yield/stop/all-way/signal/roundabout) with warrant defaults,
-> player-set approach lanes and tapers, ramps with automatic merge lanes,
-> interchange stamps, and two-tile six/eight-lane corridors, in six
-> independently shippable waves, per SPEC §29 (research 2026-09-05; the four
-> design decisions are locked and every figure is derived from HCM/AASHTO
-> formulas scaled into the sim's own units, which are already m/s and seconds).
-> **Queued next — dynamic world lighting (requested 2026-09-06):** every light
-> source in the world lights what is around it in real time, rather than being
-> an emissive surface that only looks lit. In scope: street and highway lamps,
-> parking-lot and stadium/industrial floods, building exteriors and lit windows,
-> vehicle headlights, tail and brake lights and indicators, emergency beacons,
-> traffic signal heads, neon and illuminated signage, and decorative strings.
-> Each source carries its own intensity, colour and temperature, range,
-> direction, beam angle, falloff and whether it casts; the light has to reach
-> terrain, buildings, vehicles, props and road surfaces, respond to what blocks
-> it, and follow the moving vehicle, the weather and the time of day, with soft
-> shadows, a specular response, some ambient bounce, and volumetrics where they
-> earn their cost. The hard part is not any one of those — it is the budget: a
-> night city has thousands of would-be lights and a browser has a handful of
-> real ones, so this epic is as much about which lights are real, which are
-> pooled, and which are baked as it is about the look. To be specified in
-> SPEC before any of it is built.
->
-> **Queued next — the roadway light pole, properly modelled (requested
-> 2026-09-06):** the highway-standard cobra head, which is what a road lamp
-> actually looks like. Today's lamp is a 5.5 m dark-grey mast with a 2.8 m arm
-> bent in two straight segments and a boxy cowl hanging under its end. What it
-> should be: a galvanized steel pole at a real mounting height (9–12 m on a
-> road that warrants one, shorter on a residential street), a single smooth
-> mast arm sweeping up off the pole top and out over the carriageway, a
-> tapered cobra-head luminaire sitting ON the arm end rather than hanging
-> under it, and the raised concrete foundation the pole is bolted to, which is
-> most of why the real thing reads as heavy. No sign hardware on the pole —
-> the boards in the reference photo are a separate concern.
-> **Where it stands matters as much as what it is.** The pole belongs off the
-> roadway, on the verge behind the shoulder — the clear zone a vehicle leaving
-> the carriageway needs — with only the arm over the traffic lane. Where the
-> road has a footway it stands beside the walking route and never in it,
-> either in the verge between kerb and footway or behind the footway, leaving
-> the pedestrian through-route clear at its full width (PROWAG's 1.2 m
-> minimum, 1.5 m preferred). Kerb furniture already measures from the tile's
-> own cross-section, so the setback should be derived the same way rather than
-> being a constant — and the turn pocket that widens a cross-section inside a
-> junction's approach zone is exactly the case a constant would get wrong.
-> Related but separate: the dynamic world lighting epic above is about what a
-> light source DOES; this is what it is and where it stands.
->
-> **Queued next — power reaches a street before its lamps do (requested
-> 2026-09-06):** every road in the city conducts electricity today and every
-> road that may carry a lamp carries one, so the power network has no shape a
-> player can see and the lights are on before the first generator is built.
-> Three rules instead: a road conducts power only if it is built to (dirt and
-> gravel do not — `carriesPower` is the twin of the existing `carriesWater`);
-> a lamp needs a live street, so coverage is legible off the night city and a
-> brownout takes the lights; and a placeable power line is how supply reaches
-> what a road cannot. The line carries a build cost and a monthly upkeep
-> through the economy path roads already use, which is the mechanic rather
-> than a detail — reaching further has to show up in the ledger. Specified in
-> SPEC §30, including the one open gameplay decision: whether existing saves
-> are grandfathered or let the change bite.
->
-> Deferred/optional next: AI raster map packs, facade-atlas stage 2, screen-space
-> AO/reflections, and the [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper
-> industry, more transit modes).
+---
+
+## Status (2026-09-08)
+
+**Test suite:** 3,279 tests passing across 117 test files, run 2026-09-08.
+This is the only test count in the documentation set. When the suite changes
+again, update the figure here and nowhere else.
+
+**Shipped:** the M0–M7 milestone spine; bus transit, service dispatch,
+districts & policies, stats charts and photo mode; eight playtest-feedback
+rounds (2026-07-22 through 2026-07-25); the landfill/garbage sanitation
+epic; city audio, UI sound and the user-supplied music player; the advisor
+panel; bridges and elevated roads; road signage; rail transit; tram
+transit; and building lots and archetypes. Versioning and deploy are
+automated (release-please + Conventional Commits → GitHub Pages; see the
+README).
+
+**In progress:** road composition — a road as a class, a
+cross-section profile and per-junction control, replacing the fixed-tier
+model. Waves 1–4 of 6 are shipped (one open gap inside wave 3); waves 5–6
+(ramps/interchange stamps, two-tile corridors) are fully specified but not
+built. Full detail in History, §10 below.
+
+**Next, in request order:** dynamic world lighting (requested 2026-09-06,
+design not yet finalized); the roadway light pole, properly modelled
+(requested 2026-09-06, specified, not built); and power-conducting roads
+(requested 2026-09-06, fully specified, not built — see History).
+
+Deferred/optional beyond that: AI raster map packs, facade-atlas stage 2,
+screen-space AO/reflections, and the [DESIGN.md](DESIGN.md) deferred
+backlog (weather, deeper industry, more transit modes).
 
 ---
 
@@ -200,131 +81,21 @@ _Design rationale and scope guards (deferred / rejected directions) live in [DES
 
 ---
 
-## 3. Load-bearing architecture decisions
+## 3. Architecture decisions
 
-### 3.1 Tooling
-
-- **Vite + TypeScript + three (latest, npm)**. ES modules, strict TS. Kill the CDN script tag.
-- TS is non-negotiable for this project's history: it's the antidote to one-giant-file AI slop. Enforced module boundaries below.
-- **Renderer: `WebGPURenderer` with automatic WebGL2 fallback** (three's node/TSL material system). This _is_ the showcase: WebGPU where available, identical code path falling back everywhere else. Stretch: move scalar-field diffusion to GPU compute (TSL compute) and benchmark it on-screen.
-- **UI shell stack: React + Zustand + TailwindCSS — for the HTML overlay only.** The 3D world stays imperative three.js; **no React Three Fiber** in the render path (the engine showcase must not pay reconciliation overhead per frame). UI reads sim state via a Zustand store fed by worker snapshots.
-- **Quality tooling: Vitest** (unit tests for every sim system), **ESLint + Prettier** (strict, from M0), **Playwright** smoke tests from M2 (boot app, build a small city via the command queue, assert no errors + fps floor). A determinism regression test — same seed + same command log ⇒ same state hash — guards the sim from M0 on.
-- Other deps: `three`, `simplex-noise` (procedural fallback terrain).
-
-### 3.2 Simulation/render split
-
-- **Fixed-timestep deterministic sim in a Web Worker** (e.g., 20 ticks/sec; 1 game day = N ticks). Render thread interpolates.
-- Game speed pause/1×/2×/4× (8× stretch) = ticks-per-frame multiplier; render FPS never couples to sim rate.
-- State lives in **typed arrays (SoA)**; worker posts compact dirty-region diffs to the render thread.
-- Determinism (seeded RNG, integer math where possible) → small saves, replayability, debuggability.
-
-### 3.3 World data model — layered tile grid
-
-Default map 256×256 tiles (20 m/tile ≈ 5×5 km). All layers are flat typed arrays:
-
-| Layer                                                                                                 | Type          | Notes                                                            |
-| ----------------------------------------------------------------------------------------------------- | ------------- | ---------------------------------------------------------------- |
-| `height`                                                                                              | Float32       | Sampled from AI heightmap; water below sea level                 |
-| `zone`                                                                                                | Uint8         | none / R / C / I × density (low/high)                            |
-| `roadId`, `buildingId`                                                                                | Uint16/Uint32 | Occupancy indices                                                |
-| `landValue`, `pollution`, `noise`, `traffic`, `crime`, `fireRisk`, `education`, `health`, `happiness` | Uint8 each    | Classic city-sim scalar fields: emit → diffuse → decay each tick |
-| `power`, `water`                                                                                      | Uint8         | Coverage flags from network propagation                          |
-
-Scalar-field diffusion (blur + decay per tick) is the classic diffusing-field trick — cheap, emergent, and it makes overlays free.
-
-### 3.4 Road network
-
-- **Grid-aligned roads first** (classic city-builder feel), drag-to-draw with live preview + cost. Curves/freeform are a v2 stretch goal — they are a geometry tar pit (intersection meshing).
-- Auto-tiling road meshes: straight / corner / T / cross / end-cap picked by neighbor bitmask.
-- Graph layer on top: **nodes at intersections, edges with length/speed/capacity**. Built incrementally on edit.
-- Road hierarchy: dirt → 2-lane → 4-lane avenue → highway (speed/capacity/cost tiers, unlocked by milestones).
-
-### 3.5 Traffic — the critical scope decision
-
-- **Statistical assignment, not per-agent simulation.** Each commuter/freight trip = A* over the graph with congestion-aware edge costs; accumulate volume per edge; congestion feeds back into pathfinding and land value/pollution.
-- **Cosmetic agents**: instanced vehicles animated along _real computed routes_, count proportional to edge volume. Looks like a modern city builder, costs like a classic city simulator.
-- Full agent simulation is the #1 way this project dies. Do not build it.
-
-### 3.6 Growth system (the heart)
-
-- **Demand model**: R demand ← jobs available, tax rate, happiness; C ← population, goods; I ← workforce, freight access. Three coupled scalar values, displayed as the RCI meter.
-- **Spawner**: every few ticks, pick zoned+powered+watered+road-adjacent lots weighted by demand & desirability → spawn building from **catalog** (footprint 1×1…4×4, level 1–5, capacity, style tags).
-- **Level up/down**: land value + services push levels up; pollution/crime/no-power push abandonment. Construction/abandoned visual states.
-- **Desirability** per zone type is a weighted read of the scalar fields (R hates pollution, I doesn't care, C wants traffic _nearby_ but not _on_ its tile — classic tuning knobs).
-
-### 3.7 Utilities & services
-
-- **Power**: plants (coal/wind/solar tiers) produce MW; distribution propagates through road-adjacent tiles + power lines for remote spans; brownouts stop growth.
-- **Water**: towers/pumps, same propagation model. Pipes/wires are implicit along roads — which is how modern city builders do it (roads carry power + water), so the simplification _is_ the authentic mechanic. Standalone lines/pipes only to bridge gaps to remote installations.
-- **Services**: police / fire / health / education / parks. Coverage = **BFS along the road network** from the building (radius-by-road, the classic city-sim way — cheap and feels correct). Funding sliders scale radius/effect.
-- Each service writes into its scalar field (crime ↓, fireRisk ↓, education ↑ …).
-
-### 3.8 Economy & progression
-
-- Monthly cycle: tax income (rate × occupancy × land value, per RCI) − service upkeep − road maintenance. Loans with interest. Bankruptcy = game over state.
-- **Milestones by population** (genre-standard): unlock road tiers, services, high density, landmarks. Gives the sandbox a spine.
-- Advisors/notifications: "demand for workers", "power shortage" — a ticker keeps the player informed (chirper-flavored, optional).
-
-### 3.9 Rendering (Three.js specifics)
-
-- **InstancedMesh everything**: buildings by archetype (box + facade-atlas first, GLTF kits later), trees, props, vehicles. Target: 10k+ buildings @ 60 fps.
-- Terrain: **chunked** (16×16-tile chunks), heightmap-displaced, splatmap material blending AI-generated albedo + grass/rock/sand tiles; chunk-level dirty rebuilds on terraform.
-- Water: flat translucent plane with animated normals at sea level.
-- Lighting: one directional (sun) w/ cascaded or camera-fitted shadow map, hemisphere ambient, **day/night cycle** (sun angle + color ramp + emissive windows at night).
-- Effects budget: fog, optional SSAO/bloom via postprocessing, LOD/imposters if needed later.
-- Picking: **GPU ID-buffer picking** — render instance ids to a small offscreen target, read one pixel; O(1) at any city size, no per-mesh raycasts. **Selection outlines** on the picked building/road via a stencil/outline pass.
-- Memory discipline: pre-allocated instance buffers, pooled vehicles/effects, no per-frame allocations in loop or worker tick; dirty-flag updates only. Enforced by a heap-growth check in the perf benchmark.
-
-### 3.10 Camera & input
-
-- Proper **RTS camera rig**: pan (edge-scroll + MMB/WASD), zoom-to-cursor (wheel, exponential), rotate (RMB drag), tilt clamp, smooth inertia, terrain-height following. This alone is 50% of "feel".
-- Tool system: every tool = state machine (hover preview → drag → commit/cancel) with ghost meshes, red/green validity tint, cost readout at cursor. ESC cancels, right-click cancels/back.
-- **Undo/redo**: every tool commit is a reversible command (build/bulldoze/zone/de-zone) on a bounded history stack — refunds on undo, Ctrl+Z/Ctrl+Y. Sim-grown changes (building spawns) are not undoable; only player edits are.
-
-### 3.11 Persistence
-
-- Save = typed arrays + entity tables, serialized to **IndexedDB** (+ export/import as file). Autosave. Deterministic sim keeps saves compact.
-- **Schema version field from day one + per-version migration functions** — cheap now, impossible to retrofit. Saves gzip-compressed via `CompressionStream`.
+Load-bearing architecture decisions — tooling choices, the sim/render split,
+the world data model, traffic's statistical-assignment design, and the
+rest — are recorded as numbered decision records, with their rationale, in
+[adr/](adr/README.md). This roadmap does not duplicate that list; the ADR
+index is the authoritative one.
 
 ---
 
-## 4. UI layout spec (the city-builder shell, browser-sized)
+## 4. Interface
 
-> **Authoritative visual spec: [SPEC.md](SPEC.md)** — derived from three city-builder
-> reference screenshots (2026-07-21): bottom dock + status strip layout, asset drawer with
-> pictogram cards, tool-options panel, in-world cost/length chips + zoning-grid visualization,
-> building info panel anatomy, and style tokens. The wireframe below is the original sketch;
-> where they disagree, SPEC.md wins.
-
-HTML/CSS overlay above the canvas (not in-canvas UI). Region-for-region mapping of a modern city-builder layout:
-
-```
-┌────────────────────────────────────────────────────────────────────┐
-│ SlimCity ▸ [milestone XP ▓▓▓░░]        ⛅ 12:41      📅 ⏸ 1× 2× 4× │
-│ 👥 12,480   💰 84,200 (+1,120)                                     │
-│ ┌─┐                                                                │
-│ │≡│ left dock: progression /                                       │
-│ │$│ economy / city info /                3D VIEWPORT               │
-│ │📊│ statistics / transport                                        │
-│ └─┘                                                                │
-│ ⓘ infoviews                                        📷 photo mode  │
-├────────────────────────────────────────────────────────────────────┤
-│ [asset card panel: thumbnails + cost of tools in active category]  │
-│ RCI▂▅▃ | zoning | roads | electricity | water | health | police |  │
-│          fire | education | parks | landscaping | 💥 bulldoze      │
-└────────────────────────────────────────────────────────────────────┘
-```
-
-- **Top-left**: city name, milestone/XP progress bar, population, funds + monthly delta — the genre's signature corner.
-- **Top-right**: clock/weather, date, pause + 1×/2×/4× speed.
-- **Bottom toolbar**: category tabs; selecting one opens the **asset card panel** above it — thumbnail cards with name + cost (the classic card drawer), not text flyouts. **RCI demand bars dock beside the zoning tab**, exactly where the genre puts them.
-- **Left dock**: slide-out panels — progression/milestones, economy (budget/taxes/loans), city information, statistics (line charts), transportation overview.
-- **Infoviews button** (bottom-left of viewport): opens the lens grid — electricity, water, air pollution, ground pollution, noise, land value, traffic, crime, fire safety, health, education, happiness. Selecting one tints the world into that heatmap and shows a legend.
-- **Info panels**: click building → occupancy, level, problem icons (no power, high rent, crime…); click road → volume/condition; click service → funding slider + coverage preview.
-- **Road tool options** (genre-standard floating widget when a road tool is active): mode toggle **straight / grid** now, **curved / parallel** in v2; snapping toggles; elevation stepper as a stretch goal.
-- **Photo mode** (📷): hides UI, free cinematic camera, optional slow sun-cycle — the demo-reel button; cheap to build and sells the showcase.
-- **Notifications**: toast stack top-center (milestone unlocked, power shortage, bankruptcy warning) + advisor messages in the left dock.
-- Keyboard: 1–9 categories, space pause, +/- speed, R rotate/mode-cycle in road tool, PgUp/PgDn density variant, Esc cancel tool, Tab cycles infoviews, **Ctrl+Z / Ctrl+Y undo/redo**.
+The interface — layout regions, the asset drawer, tool-options panels,
+in-world cost/length chips, info-panel anatomy and style tokens — is
+documented in [ui/](ui/README.md).
 
 ---
 
@@ -359,25 +130,9 @@ One style bible: fixed palette, fixed prompt suffix, same model/settings; regene
 
 ## 6. Module structure
 
-```
-src/
-  core/      loop (fixed timestep), events, input, rng, save
-  sim/       worker entry, tick pipeline, fields (diffusion), demand,
-             growth, economy, services, traffic (graph + A*), network (power/water)
-  world/     grid layers, road graph model, building catalog + registry, map loader
-  render/    scene, camera rig, terrain chunks, road mesher, building instancer,
-             vehicles, trees, overlays (heatmap), day-night, effects
-  tools/     tool state machine, road tool, zone brush, service placer,
-             bulldozer, terraform (stretch)
-  ui/        top bar, toolbar, flyouts, info panels, overlay picker,
-             notifications, map select, budget window
-  data/      building catalog JSON, road specs, balance constants
-public/
-  maps/      AI-generated map packs
-  textures/  AI-generated texture sets
-```
-
-Hard rule: `sim/` never imports `render/` or `ui/`. UI talks to sim via a command queue; sim publishes state snapshots/diffs.
+The module map, the dependency rules between the layers, and the data flow of a
+single tick are in [architecture.md](architecture.md), which is kept against the
+real directory contents rather than restated here.
 
 ---
 
@@ -398,6 +153,12 @@ Suggested order of implementation inside every milestone: data model → sim →
 
 **Quality gates (every milestone exits through all of them):** unit + determinism tests green; lint/format clean; Playwright smoke passes (M2+); fps / tick-time / heap-growth measured against §8 budgets; short gap analysis; refactor debt paid **before** the next milestone starts. A milestone that fails a gate isn't done.
 
+**M7 note (2026-08-10):** save file export/import, listed above, was
+explicitly descoped by user call. IndexedDB save/load plus autosave already
+meet the milestone's exit criteria ("ship a save, reload it, keep
+playing"), and a browser city builder is not a file-management app. Saves
+stay in IndexedDB only.
+
 ---
 
 ## 8. Performance budgets
@@ -407,11 +168,182 @@ Suggested order of implementation inside every milestone: data model → sim →
 - Initial load ≤ 5 s: compressed textures, lazy map assets.
 - Memory: all grid layers for 256² ≈ a few MB — trivial; instance buffers dominate.
 
+---
+
 ## 9. Risks & scope guards
 
-1. **Per-agent traffic sim** — banned (see 3.5). Statistical + cosmetic agents.
-2. **Curved/freeform roads** — v2 stretch. Grid roads deliver the classic city-builder feel at 10% of the geometry cost.
-3. **One-giant-file regression** — module boundaries + TS strict + `sim`/`render` firewall.
-4. **AI asset inconsistency** — style bible + curation (5.3); never generate at runtime.
-5. **Three.js churn** — pin version; r134→r17x had breaking changes (color management, lighting units); the rewrite sidesteps migration.
-6. **Scope creep before M3** — nothing "feels like a city builder" until zones grow on their own; M0–M3 is the shortest path to the magic moment. Defer everything that doesn't serve it.
+1. **One-giant-file regression** — module boundaries, TS strict, and the
+   `sim`/`render` firewall guard against it.
+2. **AI asset inconsistency** — a style bible and curation (§5.3); nothing
+   is generated at runtime.
+3. **Scope creep** — nothing "feels like a city builder" until the core
+   loop works; the discipline that got M0–M3 to the magic moment (defer
+   anything that doesn't serve the next milestone's exit criteria) applies
+   to every epic since, including the one in progress now.
+
+Three items that used to live here were decisions, not risks, and are now
+ADRs: banning per-agent traffic simulation, deferring curved/freeform
+roads, and pinning the Three.js version. See [adr/](adr/README.md).
+
+---
+
+## 10. History (newest first)
+
+### Road composition (2026-09-05 – 2026-09-06, in progress)
+
+A road becomes a **class** (what it's for — speed, zonability, what it may
+carry), a **profile** (its cross-section: an ordered, width-budgeted list
+of lane pieces), and a **junction** (control, turn restrictions, approach
+lanes) — replacing the fixed road-tier model, in six independently
+shippable waves.
+
+- **Wave 1 — profiles and classes (shipped 2026-09-05).** Twelve classes
+  and eleven preset profiles live in `roads.json`; a profile derives speed,
+  capacity, carriageway width, kerbs and paving, reproducing every existing
+  tier's numbers exactly, pinned by test. The grid stores the profile —
+  not the tier — as a road's identity (saves bump to v6; older saves still
+  load). The road tool gained a profile editor (parking and bike lanes,
+  footways on/off), a class/lane-count/median/speed drawer, and a Replace
+  mode. Roads now meet each other by rule instead of stepping in colour at
+  the seam.
+- **Wave 2 — stored direction (shipped 2026-09-05).** Flow direction is
+  stored per tile (saves bump to v7) instead of inferred from geometry, so
+  redrawing a one-way street the other way turns it round rather than
+  requiring a rebuild. Profiles can now be asymmetric (e.g. two lanes one
+  way, one the other); edge cost scales by the lane share serving the
+  direction actually travelled.
+- **Wave 3 — junction control (shipped 2026-09-06, one gap remains).**
+  Every junction now carries a control (none / yield / stop / all-way stop
+  / signal / roundabout) set by a warrant and overridable by the player
+  (saves bump to v8); a signalised junction cycles on the shared traffic
+  clock, and a one-tile mini roundabout is buildable. Still open: the 2×2
+  compact roundabout, which needs wave 6's two-tile corridors. (The other
+  gap this wave's status flagged at ship time — delay costed per approach
+  rather than per movement — was closed the same day by wave 4, below.)
+- **Wave 4 — approach lanes and tapers (shipped 2026-09-06).** Lanes carry
+  movement sets (through/left/right); turn restrictions are stored per
+  junction (saves bump to v9) and enforced by the router, which now
+  searches node-plus-arriving-edge pairs so a turn's legality depends on
+  which way the driver came in. Turn pockets and lane-drop tapers are
+  carved from the width budget, with merge arrows and a capacity cap at the
+  narrow point; a movement's delay now divides by the lanes actually
+  serving it. Deferred on purpose: per-lane (rather than per-arm) movement
+  sets, which only pay off once wave 6's multi-lane approaches exist, and
+  the motorway gore chevron, moved into wave 5 because it needs the same
+  neutral-area geometry a ramp nose needs.
+- **Waves 5–6 — ramps/interchange stamps; two-tile corridors (specified,
+  not built).** The ramp class, merge/diverge/terminal junctions and
+  interchange stamps (wave 5), and six/eight-lane two-tile corridors with
+  the compact roundabout and sound barriers (wave 6), are fully specified
+  in the Roads section of [SPEC.md](SPEC.md). Neither wave has a ship date.
+
+Design locked 2026-09-05 (research date): 3.5 m default travel lanes
+(existing presets keep their original 3.75 m), six/eight lanes as two-tile
+corridors sequenced last, signals as Webster delay plus a cosmetic cycle
+rather than a phase simulation, and the centre-line colour theme chosen
+once at city start. Every capacity, delay and taper figure in the section
+is derived from HCM/AASHTO formulas scaled by one constant into the sim's
+existing metres-and-seconds units.
+
+**Owners:** `src/data/roads.json`, `src/shared/types.ts`,
+`src/world/grid.ts`, `src/world/roads.ts`, `src/world/pathfind.ts`,
+`src/sim/traffic.ts`, `src/sim/worker.entry.ts`, `src/render/roadsmesh.ts`,
+`src/render/roadfurniture.ts`, `src/render/lamps.ts`, `src/render/parked.ts`,
+`src/render/signage.ts`, `src/world/interchanges.ts`, `src/tools/tools.ts`,
+`src/ui/RoadToolOptions.tsx`, `src/ui/JunctionPanel.tsx`,
+`src/ui/categories.ts`, `src/sim/advisor.ts`.
+
+**Acceptance:** every pre-existing tier loads from a v5 save and renders
+byte-identically as its preset profile, reproducing its catalogue capacity
+by the derivation formula; a player can compose a profile (add parking/bike
+lanes, drop lamps) without redrawing and see it in the markings and
+furniture; a collector meeting a local street defaults to a stop on the
+local and can be changed to a signal or a roundabout, with the path cost
+changing to match; a signalised approach can be given a dedicated left-turn
+lane that the arrow, the stop line and the pathfinder all agree exists; a
+highway ramp gains its acceleration lane and painted gore automatically; a
+six-lane divided road claims two tiles with its kerb furniture, lots and
+pedestrians all measuring from its real edge.
+
+**Verification:** the preset zero-change claim, the width-budget table, and
+the delay/warrant formulas are pinned by test against worked HCM figures;
+ramps, tapers and interchanges are checked by reading back the live grid in
+the running game, not only in unit tests; markings remain a screenshot
+review.
+
+### Power-conducting roads (requested 2026-09-06, not built)
+
+Every road currently conducts electricity regardless of surface, so the
+power network has no shape a player can see or plan. The specified fix: a
+road conducts only if its class is sealed to carry a cable; a street lamp
+needs a live supply, so lighting coverage reads off the night city and a
+brownout takes the lights; and a placeable power line — timber poles, a
+crossarm, three catenary wires — reaches what a road cannot, billed through
+the same build-cost/monthly-upkeep path a road already uses. The change is
+explicitly not grandfathered: once shipped, existing saves load with only
+the supply they actually earned. Ship order is fixed — lamps first, the
+power line second, roads losing conduction last — so the game is never left
+with an unreachable lot mid-rollout. Fully specified, including acceptance
+and verification criteria, in the Utilities section of [SPEC.md](SPEC.md);
+nothing in this section has
+shipped.
+
+### Audio — city soundscape and music player (shipped 2026-08-10)
+
+WebAudio-synthesized ambient bed, wildlife and UI cues (no audio assets in
+the repo), plus a player-supplied music player that reads `public/songs/`
+with shuffle/repeat/rescan. Verification at ship time: 8/8 real-browser
+checks and 58 unit tests across `audio.test.ts`, `music.test.ts`,
+`MusicPanel.test.tsx` and `songsmanifest.test.ts`. Two behaviors surfaced
+only in the real-browser check and were fixed the same day: playback
+started from the start menu now unlocks the audio engine itself, and the
+song folder is scanned on app creation rather than at game start, so the
+menu's playlist is already populated.
+
+### Roads epic R1–R4 — cosmetic transit-lane tiers (complete 2026-08-06)
+
+Four additive road tiers on the existing one-tile model, not a refactor:
+kerbside furniture (R1), painted bus- and bike-lane tiers (R2), tram track
+(R3), and dedicated rail track excluded from the drivable vehicle graph
+(R4). Later joined — not replaced — by the bus transit, rail transit and
+tram transit epics, which run real lines and stops over these tiers.
+
+### Playtest rounds — geometry and prop polish (2026-07-22 – 2026-08-05)
+
+Six numbered playtest rounds ran 2026-07-22 to 2026-07-24: speed pacing and
+the asset-drawer close button shipped the same day as reported; corner
+rounding shipped 2026-07-29 as a true curved carriageway (replacing an
+earlier fillet attempt that still read as a squared corner), with curved
+lane markings following 2026-08-05. A follow-on prop-polish pass (modeled
+bus shelters, a detailed lamp, pedestrian scatter, a rounded dead-end kerb
+with a dirt-to-grass transition) closed 2026-08-05: a real-browser review
+at that point caught and fixed two readability bugs — a lamp pole rendering
+as a flat black line in daylight, and idle pedestrians standing in the
+carriageway instead of by the shelter they belonged to. A related same-day
+fix made roads and parking aprons receive shadows; they had been drawn with
+an unlit material that ignored every light in the scene.
+
+### Residential home models (shipped 2026-07-29)
+
+A procedural house kit replaced the shared box mesh for residential zones:
+pitched roofs, an attached garage and driveway on 2×3-or-larger detached
+lots, a parked car on the driveway, and deterministic massing variety.
+Homes never street-park — that stays commercial/industrial-only behavior.
+
+### Roads v2/v3 — median avenue, real intersections, road-carried utilities (shipped 2026-07-23)
+
+True-ratio lane paint, stop lines and zebra crossings at real
+intersections, and a tree-lined median avenue with a concrete highway
+divider (round 2); then gravel, alley, one-way and four-lane tiers, road
+noise by tier, and the rule that every road except highways carries a
+power line and a water main along the road graph rather than as radius
+coverage from a utility building (round 3, catalog v3).
+
+### Early ticket maps (shipped)
+
+The wave-2 ticket map (UI restyle to the dock/status-strip layout, the
+asset drawer, world-feedback previews, selection info, status-strip data,
+the night cycle) and the wave-6 / playtest-round-1 ticket map (ghost
+outline, camera edge-scroll stop, terrain skirt, tree scatter v2, water v2,
+utility silhouette kits — 2026-07-22) both shipped and are folded into the
+milestone spine and the visual-polish rounds above.

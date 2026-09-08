@@ -101,8 +101,9 @@ npm run format     # Prettier
 
 ## ✅ Quality Gates
 
-Built test-first throughout — **2,200+ unit/integration tests across 90 files**.
-Every change exits through the same gates:
+Built test-first throughout. The suite runs in CI on every push; the current
+count is recorded, with its date, in [docs/ROADMAP.md](docs/ROADMAP.md). Every
+change exits through the same gates:
 
 - ✅ `typecheck` — strict TypeScript, no errors
 - ✅ `test` — unit + determinism (same seed + command log ⇒ same state hash)
@@ -167,7 +168,7 @@ src/
   tools/         tool state machines + undo stack
   ui/            React / Zustand / Tailwind overlay
   main.ts        render-thread boot: wires the worker, renderers, UI, persistence
-docs/            SPEC · ROADMAP · DESIGN · USERGUIDE
+docs/            SPEC · ROADMAP · DESIGN · USERGUIDE · adr/ · ui/ · art/
 tools/           reusable Playwright visual harnesses (not part of the build)
 ```
 
@@ -179,13 +180,21 @@ deterministic — no `Math.random`, no `Date.now`; seeded RNG streams, hash-test
 
 ## 📚 Documentation
 
-- **[docs/SPEC.md](docs/SPEC.md)** — the living product spec: the city-builder UI
-  shell, in-world feedback, night cycle, and the visual/systems detail for roads,
-  zoning, utilities, services, transit, districts, terraforming, and landmarks.
-- **[docs/ROADMAP.md](docs/ROADMAP.md)** — design pillars, systems, milestones,
-  and delivery status.
-- **[docs/DESIGN.md](docs/DESIGN.md)** — design rationale and scope guards: the
-  deferred backlog and deliberately-rejected directions, with reasoning.
+Start at **[docs/README.md](docs/README.md)** — it maps each kind of question to
+the one document that answers it. Each fact lives in exactly one place:
+
+- **[docs/SPEC.md](docs/SPEC.md)** — what the product does. Present tense,
+  normative, organised by subsystem. No dates, no delivery status.
+- **[docs/ROADMAP.md](docs/ROADMAP.md)** — what is built and what is next. The
+  only document that carries dates and delivery status.
+- **[docs/adr/](docs/adr/README.md)** — why it is built that way: one numbered
+  record per architecture decision, with what each one cost.
+- **[docs/DESIGN.md](docs/DESIGN.md)** — what we are deliberately not building:
+  the deferred backlog and rejected directions, with reasoning.
+- **[docs/ui/](docs/ui/README.md)** — the interface design system: layout
+  grammar, style tokens, and cross-cutting interaction patterns.
+- **[docs/art/](docs/art/README.md)** — the in-world art direction: the scale
+  bible, buildings, streets, nature, props and lighting.
 - **[docs/USERGUIDE.md](docs/USERGUIDE.md)** — how to play: the gameplay loop,
   tools, reading the city, and controls.
 - **[CONTRIBUTING.md](./CONTRIBUTING.md)** — quality gates, commit conventions,
