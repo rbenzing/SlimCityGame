@@ -271,6 +271,34 @@ of this, because the player asked for it explicitly, and — if the new
 profile is wider than the tile the old one occupied — the drag refuses
 rather than half-demolishing the run.
 
+**The kerb return.** Where two roads meet, the kerb does not turn a square
+corner: it runs straight, turns through an arc tangent to both kerb lines,
+and runs straight again, with the footway following it round at its own
+width and the verge filling the square corner outside. The radius is a
+per-class figure (`kerbReturnM` in `roads.json`), because what it decides is
+how sharply a driver has to turn and how far somebody on foot has to walk
+round — properties of the road, not of the drawing.
+
+The figures follow the design vehicle each class serves. AASHTO's minimum
+90° edge-of-pavement radii are 7.3 m for a passenger car, 12.2 m for a
+single-unit truck and 12.8 m for a 40 ft bus; urban practice deliberately
+goes tighter at minor junctions and accepts that a turning vehicle
+encroaches on the opposing lane, because a tight corner is what keeps the
+turn slow where people are crossing. So: an alley turns through 3.0 m, a
+local or one-way street or a rural lane 4.5 m, an urban street 6.0 m, a
+collector 7.5 m (a bus gets round without leaving its lane), an arterial or
+divided road 9.0 m, and a highway or ramp 12.0 m. Ballast has no kerb to
+return and takes zero.
+
+The tile caps it. A return needs its full radius clear of the carriageway on
+both roads, and a 20 m tile only leaves `10 − carriageway/2` — 6.25 m beside
+a two-lane street but 1.90 m beside an avenue. Where the class asks for more
+than that, the arc is drawn at the cap and stays tangent; a wider one would
+have to be drawn onto the approach tiles as well, which the one-tile-owns-
+its-own-geometry model does not do. So the widest roads still meet at
+corners tighter than their class would choose, and an avenue's junction box
+is very nearly square.
+
 Any two classes may otherwise join; the join itself is drawn, not stepped:
 where a wider paved kerbed run meets a narrower one, the wider tile bends
 its kerb in to the narrower road's edge so the two flow together, and a

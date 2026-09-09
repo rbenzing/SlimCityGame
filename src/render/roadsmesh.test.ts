@@ -17,6 +17,7 @@ import {
   DASH_PERIOD_M,
   TURN_ARC_SEGMENTS,
   JUNCTION_CORNER_SEGMENTS,
+  kerbReturnFor,
   END_CAP_SEGMENTS,
   CAP_Y_OFFSET,
   isPlainCenterlineTier,
@@ -39,7 +40,12 @@ import {
 } from './roadsmesh';
 import { RoadFlow, RoadTileDelta, RoadTier } from '../shared/types';
 import type { JunctionControl, RoadProfile } from '../shared/types';
-import { carriagewayHalfWidthOf, kerbWidthOf, presetProfileForTier } from '../shared/roadprofile';
+import {
+  carriagewayHalfWidthOf,
+  kerbReturnRadiusOf,
+  kerbWidthOf,
+  presetProfileForTier,
+} from '../shared/roadprofile';
 import { BIKE_PAINT_MAX_WIDTH_M, markingPlan } from './roadmarkings';
 import { CHUNK_TILES, TILE_METERS } from '../shared/constants';
 import { DEFAULT_ALLOWED, Movement } from '../shared/approach';
@@ -601,7 +607,10 @@ describe('roadTileVertices — carriageway ratios (UI-SPEC §6.7 Roads v2)', () 
       // Inner edge exactly at the carriageway edge, outer edge one kerb band
       // beyond it — the tile's leftover verge stays grass.
       expect(Math.min(...eastCurbXs)).toBeCloseTo(TILE_METERS / 2 + coreHalf, 6);
-      expect(Math.max(...eastCurbXs)).toBeCloseTo(TILE_METERS / 2 + coreHalf + curbWidthMeters(tier), 6);
+      expect(Math.max(...eastCurbXs)).toBeCloseTo(
+        TILE_METERS / 2 + coreHalf + curbWidthMeters(tier),
+        6,
+      );
     }
   });
 });
@@ -1338,10 +1347,10 @@ describe('roadTileVertices — vertex count sanity per tile kind', () => {
   });
 
   it('T-junction (mask N|E|S, popcount 3): the structural quad count matches the hand-derived total, plus non-zero marking geometry', () => {
-    // core(6) + ext N,E,S(18) + curb W(6) = 30, plus 2 ROUNDED curb-return
-    // corners (NE, SE) — each a carriageway fan (SEG*3) + a curved sidewalk
-    // (SEG*6).
-    const rounded = JUNCTION_CORNER_SEGMENTS * 12;
+    // core(6) + ext N,E,S(18) + curb W(6) = 30, plus 2 kerb-return corners
+    // (NE, SE) — each a carriageway fan (SEG*3) + a footway following the arc
+    // (SEG*6) + the straight kerb either side of the arc (2 quads, 12).
+    const rounded = JUNCTION_CORNER_SEGMENTS * 12 + 12;
     const { positions, colors } = controlledJunction(5, 5, RoadTier.TwoLane, N | E | S);
     const markingVerts = countWhere(colors, isPaint);
     expect(vertexCount(positions)).toBe(30 + 2 * rounded + markingVerts);
@@ -1349,9 +1358,9 @@ describe('roadTileVertices — vertex count sanity per tile kind', () => {
   });
 
   it('full 4-way intersection (mask 15): the structural quad count matches the hand-derived total, plus non-zero marking geometry', () => {
-    // core(6) + 4 ext(24) = 30, plus 4 ROUNDED curb-return corners (fan SEG*3 +
-    // curved sidewalk SEG*6 each).
-    const rounded = JUNCTION_CORNER_SEGMENTS * 12;
+    // core(6) + 4 ext(24) = 30, plus 4 kerb-return corners (fan SEG*3 + footway
+    // along the arc SEG*6 + the straight kerb either side of it, 2 quads = 12).
+    const rounded = JUNCTION_CORNER_SEGMENTS * 12 + 12;
     const { positions, colors } = controlledJunction(5, 5, RoadTier.TwoLane, 15);
     const markingVerts = countWhere(colors, isMarkingWhite);
     expect(vertexCount(positions)).toBe(30 + 4 * rounded + markingVerts);
@@ -1691,7 +1700,9 @@ describe('roadTileVertices — road-end-cap-v2: curb ring hugs the rounded dead-
   });
 
   it('sidewalk vertex counts: straights/isolated are flat curb quads; junctions add a curved curb-return per rounded corner', () => {
-    const curbReturn = JUNCTION_CORNER_SEGMENTS * 6; // one rounded corner's curved sidewalk band
+    // One corner: the footway following the arc, plus the straight kerb it
+    // runs into either side of it (2 quads).
+    const curbReturn = JUNCTION_CORNER_SEGMENTS * 6 + 12;
     const expected: Array<[number, number]> = [
       // A lone tile: the same 2 flat flank quads a straight run has, plus a
       // curved ring wrapping each of its two rounded ends.
@@ -1942,7 +1953,9 @@ describe('roadTileVertices — sidewalks/shoulders (§6.7)', () => {
     const lone = roadTileVertices(0, 0, RoadTier.TwoLane, 0, flatHeightAt);
     const junction = roadTileVertices(0, 0, RoadTier.TwoLane, N | E | S | W, flatHeightAt);
     expect(countWhere(lone.colors, isSidewalk)).toBe(2 * 6 + 2 * END_CAP_SEGMENTS * 6);
-    expect(countWhere(junction.colors, isSidewalk)).toBe(4 * JUNCTION_CORNER_SEGMENTS * 6);
+    // Each corner: the footway round the arc, plus the straight kerb either
+    // side of it, which a return tighter than the corner leaves room for.
+    expect(countWhere(junction.colors, isSidewalk)).toBe(4 * (JUNCTION_CORNER_SEGMENTS * 6 + 12));
   });
 
   it('curbs are raised exactly 0.08m above the road surface', () => {
@@ -2587,7 +2600,9 @@ describe('roadTileVertices — width transitions on a straight run', () => {
     const wedge = wedgeVerts(colors, positions);
     const atWest = wedge.filter(([x]) => Math.abs(x) < 1e-6);
     expect(atWest.length).toBe(0);
-    const midInset = wedge.filter(([x]) => Math.abs(x - TILE_METERS / 2) < 1e-6).map(([, z]) => Math.abs(z - cz));
+    const midInset = wedge
+      .filter(([x]) => Math.abs(x - TILE_METERS / 2) < 1e-6)
+      .map(([, z]) => Math.abs(z - cz));
     expect(Math.min(...midInset)).toBeCloseTo((four + two) / 2, 6);
   });
 
@@ -2999,9 +3014,11 @@ describe('roadTileVertices — a corridor half arriving at a junction', () => {
     ],
   });
 
-  const tile = (
-    approach?: { toward: RoadFlow; distance: number; pocket: boolean },
-  ): { positions: number[]; colors: number[] } =>
+  const tile = (approach?: {
+    toward: RoadFlow;
+    distance: number;
+    pocket: boolean;
+  }): { positions: number[]; colors: number[] } =>
     roadTileVertices(
       4,
       4,
@@ -3076,7 +3093,6 @@ describe('roadTileVertices — a corridor half that has earned a turn bay', () =
       countWhere(tile(false).colors, isMarkingWhite),
     );
   });
-
 });
 
 describe('RoadMeshRenderer.paintBandsAt', () => {
@@ -3159,4 +3175,97 @@ describe('RoadMeshRenderer.paintBandsAt', () => {
   function signature(bands: { color: string; from: number; to: number }[]): string {
     return bands.map((b) => `${b.color}@${b.from.toFixed(3)}..${b.to.toFixed(3)}`).join('|');
   }
+});
+
+describe('roadTileVertices — the kerb return is a design radius, not leftover tile', () => {
+  /**
+   * Every asphalt vertex the corner fill lays, as an offset from the tile
+   * centre. Restricted to the armpit — the square beyond BOTH carriageways —
+   * where the corner fill is the only thing that emits any: an arm's plate
+   * never reaches past its own kerb on the across axis.
+   */
+  const cornerAsphalt = (tier: RoadTier, coreHalf: number): [number, number][] => {
+    const { positions, colors } = roadTileVertices(0, 0, tier, 15, flatHeightAt);
+    const pos = toTriples(positions);
+    const col = toTriples(colors);
+    const centre = TILE_METERS / 2;
+    const out: [number, number][] = [];
+    for (let i = 0; i < col.length; i++) {
+      if (isPaint(col[i] as number[]) || isSidewalk(col[i] as number[])) continue;
+      const p = pos[i] as number[];
+      const dx = Math.abs((p[0] as number) - centre);
+      const dz = Math.abs((p[2] as number) - centre);
+      if (dx < coreHalf - 1e-6 || dz < coreHalf - 1e-6) continue;
+      out.push([dx, dz]);
+    }
+    return out;
+  };
+
+  it('turns each class through its own radius, capped by the corner there is to turn in', () => {
+    // The figures, and the cap. An avenue asks for 9 m and gets the 1.90 m its
+    // own carriageway leaves — a limit ON the figure, not the figure itself,
+    // which is the distinction the old `armDepth` radius could not make.
+    expect(kerbReturnFor(presetProfileForTier(RoadTier.Alley), 8.125)).toBeCloseTo(3.0, 6);
+    expect(kerbReturnFor(presetProfileForTier(RoadTier.TwoLane), 6.25)).toBeCloseTo(4.5, 6);
+    expect(kerbReturnFor(presetProfileForTier(RoadTier.Avenue), 1.9)).toBeCloseTo(1.9, 6);
+    // And the ordering that was inverted: an alley turns tighter than a
+    // two-lane street, which turns tighter than an arterial.
+    expect(kerbReturnRadiusOf(presetProfileForTier(RoadTier.Alley))).toBeLessThan(
+      kerbReturnRadiusOf(presetProfileForTier(RoadTier.TwoLane)),
+    );
+    expect(kerbReturnRadiusOf(presetProfileForTier(RoadTier.TwoLane))).toBeLessThan(
+      kerbReturnRadiusOf(presetProfileForTier(RoadTier.Avenue)),
+    );
+  });
+
+  it('lays the arc TANGENT to both kerb lines, centred a radius in from each', () => {
+    const named = (t: RoadTier): string =>
+      Object.entries(RoadTier).find(([, v]) => v === t)?.[0] ?? String(t);
+    // The property that says the geometry is a kerb return at all: every point
+    // of the corner's asphalt lies outside a circle of the radius, centred
+    // exactly that far in from both kerbs — and the arc itself reaches it.
+    //
+    // The old geometry centred the arc on the TILE CORNER instead, which is
+    // the same point only when the radius fills the corner. Under a real
+    // radius it puts the curve in the wrong place, and this fails.
+    for (const tier of [RoadTier.Alley, RoadTier.TwoLane, RoadTier.Avenue, RoadTier.FourLane]) {
+      const coreHalf = carriagewayHalfWidthMeters(tier);
+      const armDepth = TILE_METERS / 2 - coreHalf;
+      const r = kerbReturnFor(presetProfileForTier(tier), armDepth);
+      const cx = coreHalf + r;
+      const points = cornerAsphalt(tier, coreHalf);
+      expect(points.length, `${named(tier)} lays no corner asphalt`).toBeGreaterThan(0);
+      let onTheArc = 0;
+      for (const [dx, dz] of points) {
+        const d = Math.hypot(dx - cx, dz - cx);
+        expect(d, `${named(tier)} asphalt at (${dx},${dz}) cuts inside the return`).toBeGreaterThan(
+          r - 1e-6,
+        );
+        if (Math.abs(d - r) < 1e-6) onTheArc++;
+      }
+      expect(onTheArc, `${named(tier)} never reaches its own arc`).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps the footway flush with the straight road it runs into', () => {
+    // The straight kerb beyond the arc is what makes this true: without it the
+    // footway would stop where the curve does and leave a notch against the
+    // next tile.
+    const coreHalf = carriagewayHalfWidthMeters(RoadTier.TwoLane);
+    const { positions, colors } = roadTileVertices(0, 0, RoadTier.TwoLane, 15, flatHeightAt);
+    const pos = toTriples(positions);
+    const col = toTriples(colors);
+    const centre = TILE_METERS / 2;
+    const atEdge: number[] = [];
+    for (let i = 0; i < col.length; i++) {
+      if (!isSidewalk(col[i] as number[])) continue;
+      const p = pos[i] as number[];
+      const dx = Math.abs((p[0] as number) - centre);
+      const dz = Math.abs((p[2] as number) - centre);
+      if (Math.abs(dz - TILE_METERS / 2) < 1e-6 && dx > coreHalf - 1e-6) atEdge.push(dx);
+    }
+    expect(atEdge.length).toBeGreaterThan(0);
+    expect(Math.min(...atEdge)).toBeCloseTo(coreHalf, 6);
+    expect(Math.max(...atEdge)).toBeCloseTo(coreHalf + SIDEWALK_WIDTH_M, 6);
+  });
 });

@@ -91,6 +91,7 @@ import {
 } from '../shared/constants';
 import {
   carriagewayHalfWidthOf,
+  kerbReturnRadiusOf,
   carriagewayWidth,
   corridorHalfProfile,
   FOOTWAY_WIDTH_M,
@@ -577,8 +578,7 @@ function pushMarkingRun(
   // A line that does not drift is the rectangle it always was: one quad, no
   // slicing. Only a road that is actually changing pays for the sweep.
   if (Math.abs(atHi - atLo) < 1e-9) {
-    if (vertical)
-      pushVerticalLine(positions, colors, centerX, centerZ, atLo, lo, hi, hAt, paint);
+    if (vertical) pushVerticalLine(positions, colors, centerX, centerZ, atLo, lo, hi, hAt, paint);
     else pushHorizontalLine(positions, colors, centerX, centerZ, atLo, lo, hi, hAt, paint);
     return;
   }
@@ -2652,13 +2652,39 @@ function emitGravelSeam(
 export const JUNCTION_CORNER_SEGMENTS = 8;
 
 /**
- * A rounded curb-return at one corner of a JUNCTION, replacing the square
- * corner-fill. Concentric with the OUTER tile corner: a small grass nub in the
- * very corner, then a curved SIDEWALK band, then the carriageway filling in to
- * the arms. So the SMALL curve faces out toward the grass and the LONG curve
- * (the road edge) is on the inner/intersection side — streets meet with a
- * rounded sidewalk sweeping around the corner. (signX, signZ) select the
- * quadrant; radii measured from the tile corner inward toward the core.
+ * The radius a junction's kerbs actually turn through: the class's own figure,
+ * capped by the corner there is to turn in.
+ *
+ * The cap is a limit on the figure, not the figure itself — which is the whole
+ * distinction this replaces. The radius used to BE the corner (`armDepth`),
+ * making it a function of how much tile the carriageway left over, so the
+ * widest roads got the tightest turns.
+ */
+export function kerbReturnFor(profile: RoadProfile, armDepth: number): number {
+  return Math.max(0, Math.min(kerbReturnRadiusOf(profile), armDepth));
+}
+
+/**
+ * The kerb return at one corner of a JUNCTION, replacing the square
+ * corner-fill.
+ *
+ * A real return is an arc of a stated radius, tangent to both kerb lines: the
+ * kerb runs straight, turns through the arc, and runs straight again, and the
+ * footway follows it round at its own width with the verge filling whatever is
+ * left of the corner. The arc's centre therefore sits exactly `radius` in from
+ * each kerb line — NOT on the tile corner, which is only the same point in the
+ * one case where the radius happens to equal the whole corner.
+ *
+ * That case is what this used to assume, and it made the radius a leftover:
+ * `TILE_HALF - coreHalf`, the tile not spent on carriageway. Which runs exactly
+ * backwards, because a wide road leaves less. An alley got an 8 m sweep and an
+ * avenue a 1.9 m nick, when the vehicles are the other way round.
+ *
+ * `radius` is capped by the caller at the corner it has to fit in; at the cap
+ * the arc is centred on the tile corner and the straight lengths vanish, which
+ * is the geometry this drew before.
+ *
+ * (signX, signZ) select the quadrant.
  */
 function emitRoundedCornerFill(
   positions: number[],
@@ -2666,6 +2692,7 @@ function emitRoundedCornerFill(
   centerX: number,
   centerZ: number,
   armDepth: number,
+  radius: number,
   signX: 1 | -1,
   signZ: 1 | -1,
   plateColor: readonly [number, number, number],
@@ -2673,16 +2700,22 @@ function emitRoundedCornerFill(
   hAt: (x: number, z: number) => number,
 ): void {
   if (armDepth <= 0) return;
-  // A point `r` in from the tile corner at sweep angle `t` (toward the core).
+  const coreHalf = TILE_HALF - armDepth;
+  // Never wider than the corner it turns in: beyond that the arc's centre
+  // leaves the tile and the return would have to be drawn on the approach too.
+  const R = Math.max(0, Math.min(radius, armDepth));
+  // How far the arc's centre sits in from the tile corner. Zero at the cap.
+  const inset = armDepth - R;
+  // A point `r` from the ARC'S CENTRE at sweep angle `t`, toward the core.
   const at = (r: number, t: number): [number, number] => [
-    signX * (TILE_HALF - r * Math.cos(t)),
-    signZ * (TILE_HALF - r * Math.sin(t)),
+    signX * (TILE_HALF - inset - r * Math.cos(t)),
+    signZ * (TILE_HALF - inset - r * Math.sin(t)),
   ];
-  // Distance from the tile corner to the inner armpit edge (arm/core) at angle t.
+  // Where the arc's sweep runs out against each kerb line, as a radius at t.
   const boundary = (t: number): number => {
     const c = Math.cos(t);
     const s = Math.sin(t);
-    return Math.min(c > 1e-6 ? armDepth / c : Infinity, s > 1e-6 ? armDepth / s : Infinity);
+    return Math.min(c > 1e-6 ? R / c : Infinity, s > 1e-6 ? R / s : Infinity);
   };
   const pushTriUp = (
     p0: [number, number],
@@ -2737,33 +2770,58 @@ function emitRoundedCornerFill(
       }
     }
   };
-  const sidewalk = Math.min(SIDEWALK_WIDTH_M, armDepth);
-  // Grass nub in the very tile corner, then the sidewalk band, then the
-  // carriageway. The nub is armDepth − sidewalk so the sidewalk band lands at
-  // exactly [coreHalf, coreHalf + sidewalk] where it meets each tile edge —
-  // i.e. flush with the straight sidewalks of the roads running into the
-  // junction (seamless), not a few pixels off.
-  const grassNub = hasCurbs ? Math.max(0, armDepth - sidewalk) : 0;
-  // The carriageway sweeps round the corner at the same radius either way. A
-  // road with no footway simply has grass where the footway would be, rather
-  // than asphalt filling the corner square — which is what made a junction of
-  // two kerbless roads read as a box rather than a junction.
-  const roadStart = hasCurbs ? grassNub + sidewalk : armDepth;
-  // Carriageway: from roadStart out to the arm/core edge.
+  // Carriageway: the bite the return takes out of the square corner, from the
+  // arc in to where the two kerb lines would have met.
   band(
-    () => roadStart,
+    () => R,
     (t) => boundary(t),
     ROAD_Y_OFFSET,
     plateColor,
   );
   if (!hasCurbs) return;
-  // Curved sidewalk curb-return band (small curve toward the grass corner, long curve inner).
+  const sidewalk = Math.min(SIDEWALK_WIDTH_M, armDepth);
+  // Footway round the arc, on its outer side, at the width it has everywhere
+  // else. It stops at the arc's centre if the return is tighter than the
+  // footway is wide; the straight lengths below carry it the rest of the way.
   band(
-    () => grassNub,
-    () => grassNub + sidewalk,
+    () => Math.max(0, R - sidewalk),
+    () => R,
     CURB_Y_OFFSET,
     SIDEWALK_COLOR,
   );
+  // The straight kerb either side of the arc: from where the arc leaves the
+  // kerb line out to the tile edge, so the footway meets its opposite number
+  // on the next tile flush instead of stopping where the curve does. Both are
+  // zero-length when the return fills the corner.
+  const tangent = coreHalf + R;
+  if (TILE_HALF - tangent <= 1e-6) return;
+  // `beside` names the axis the arm RUNS along, so the strip lies across it:
+  // the arm running in z is kerbed at |x| = coreHalf and vice versa.
+  const straight = (beside: 'z' | 'x'): void => {
+    const acrossSign = beside === 'z' ? signX : signZ;
+    const alongSign = beside === 'z' ? signZ : signX;
+    const near = acrossSign * coreHalf;
+    const far = acrossSign * (coreHalf + sidewalk);
+    const from = alongSign * tangent;
+    const to = alongSign * TILE_HALF;
+    const [xLo, xHi] = beside === 'z' ? [near, far] : [from, to];
+    const [zLo, zHi] = beside === 'z' ? [from, to] : [near, far];
+    pushLocalRect(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      Math.min(xLo, xHi),
+      Math.max(xLo, xHi),
+      Math.min(zLo, zHi),
+      Math.max(zLo, zHi),
+      CURB_Y_OFFSET,
+      SIDEWALK_COLOR,
+      hAt,
+    );
+  };
+  straight('z');
+  straight('x');
 }
 
 /** True for tiers whose ONLY straight-run marking is a single dashed centerline (emitAxisMarkings' `dashed(0)` case). */
@@ -3129,7 +3187,12 @@ export interface NeighborHalves {
    * the offset this tile's own cross-section gives it, which is right for a
    * road that does not change.
    */
-  plans?: { n: MarkingPlan | null; e: MarkingPlan | null; s: MarkingPlan | null; w: MarkingPlan | null };
+  plans?: {
+    n: MarkingPlan | null;
+    e: MarkingPlan | null;
+    s: MarkingPlan | null;
+    w: MarkingPlan | null;
+  };
   /**
    * How far across each neighbour's road its lanes ARRIVING here reach, in
    * that road's own offsets. A stop line is painted across the approach and
@@ -3471,9 +3534,11 @@ export function roadTileVertices(
     }
 
     // Corner fills: only JUNCTIONS reach here (a TURN takes emitCurvedTurn
-    // above). Each is a rounded curb-return — the carriageway turns the corner
-    // with a tight radius and a curved sidewalk wraps it, grass beyond — so the
-    // sidewalks flow together instead of a hard square paved corner.
+    // above). Each is a kerb return of the class's own radius — the kerb turns
+    // the corner, the footway follows it round, and the verge fills what is
+    // left — so the footways flow together instead of a hard square corner.
+    // The tile caps it: a return needs its radius clear of the carriageway on
+    // both roads, and a wide one does not leave that much.
     const cornerFill = (signX: 1 | -1, signZ: 1 | -1): void => {
       emitRoundedCornerFill(
         positions,
@@ -3481,6 +3546,7 @@ export function roadTileVertices(
         centerX,
         centerZ,
         armDepth,
+        kerbReturnFor(own, armDepth),
         signX,
         signZ,
         plateColor,
@@ -3508,12 +3574,7 @@ export function roadTileVertices(
     if (spec.hasCurbs && hasFootway(crossSection) && armDepth > 0) {
       const walkableArm = (has: boolean, tier: RoadTier, footway: boolean | undefined): boolean =>
         has && (tier === RoadTier.None || footway === undefined ? true : footway);
-      const link = (
-        vertical: boolean,
-        armHalf: number,
-        lo: number,
-        hi: number,
-      ): void => {
+      const link = (vertical: boolean, armHalf: number, lo: number, hi: number): void => {
         // Out from the arm road's kerb to the junction's own edge, where the
         // rounded corner picks it up.
         const from = Math.min(armHalf, coreHalf);
@@ -4180,7 +4241,9 @@ function bandsFromCoverage(
   const alongLo = (b: TriBox): number => (axis === 'x' ? b.z0 : b.x0);
   const alongHi = (b: TriBox): number => (axis === 'x' ? b.z1 : b.x1);
 
-  const edges = [...new Set(boxes.flatMap((b) => [acrossLo(b), acrossHi(b)]))].sort((a, c) => a - c);
+  const edges = [...new Set(boxes.flatMap((b) => [acrossLo(b), acrossHi(b)]))].sort(
+    (a, c) => a - c,
+  );
   const needed = TILE_METERS * BAND_FULL_LENGTH_FRACTION;
   const bands: { from: number; to: number; tris: number }[] = [];
   for (let i = 0; i + 1 < edges.length; i++) {
@@ -4193,9 +4256,7 @@ function bandsFromCoverage(
       (b) => acrossLo(b) <= lo + BAND_MERGE_EPS_M && acrossHi(b) >= hi - BAND_MERGE_EPS_M,
     );
     if (spans.length === 0) continue;
-    const runs = spans
-      .map((b) => [alongLo(b), alongHi(b)] as const)
-      .sort((a, c) => a[0] - c[0]);
+    const runs = spans.map((b) => [alongLo(b), alongHi(b)] as const).sort((a, c) => a[0] - c[0]);
     let covered = 0;
     let openFrom = runs[0]![0];
     let openTo = runs[0]![1];
@@ -4496,7 +4557,10 @@ export class RoadMeshRenderer {
   private profileAt(x: number, z: number): RoadProfile | null {
     const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
     if (!tile) return null;
-    return this.ownProfileOf(tile, this.profileFor(tile.profile) ?? presetProfileForTier(tile.tier));
+    return this.ownProfileOf(
+      tile,
+      this.profileFor(tile.profile) ?? presetProfileForTier(tile.tier),
+    );
   }
 
   /**

@@ -23,9 +23,9 @@ current behavior only and carry no dates of their own._
 
 ---
 
-## Status (2026-09-08)
+## Status (2026-09-09)
 
-**Test suite:** 3,290 tests passing across 117 test files, run 2026-09-08.
+**Test suite:** 3,293 tests passing across 117 test files, run 2026-09-09.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -215,17 +215,30 @@ fixed).** An avenue crossing a two-lane road, photographed straight down at
 the closest the rig allows, then measured. None of these is caught by any
 check we have, which is the reason they survived:
 
-1. **The kerb return is inverted, and is not a kerb return.**
-   `emitRoundedCornerFill` sweeps its arc concentric with the OUTER tile
-   corner, so the kerb is concave as seen from the intersection and the
-   junction box keeps a hard square corner — the opposite of a real kerb
-   return, which cuts the box corner off with an arc tangent to both kerb
-   lines, convex toward the box, with the footway following it round. There
-   is also no radius figure behind it: the arc is whatever `armDepth`
-   happens to be, which for an avenue is `TILE_HALF - coreHalf` = 1.9 m
-   against AASHTO's 4.5–7.6 m for a local intersection. The 1.9 m is the
-   deeper problem — a correct return does not fit between a wide road's
-   kerb and the tile edge at all, which is why it has to eat into the box.
+1. **The kerb return had no radius behind it (fixed 2026-09-09).** First
+   read as an inverted arc; it was not. Centring the sweep on the tile
+   corner with radius `armDepth` is, by coincidence of those two being the
+   same distance, a correctly tangent fillet — so the shape was right and
+   the figure was wrong. The radius WAS `TILE_HALF - coreHalf`: the tile
+   left over beside the carriageway, which runs exactly opposite to need.
+   An alley turned through 8.13 m and an avenue through 1.90 m, when the
+   vehicles are the other way round. It is now a per-class figure from the
+   design vehicle each class serves (3.0 m for an alley up to 12.0 m for a
+   highway — see
+   [world-sim/road-model.md](world-sim/road-model.md)), the arc is
+   centred a radius in from each kerb rather than on the tile corner, and
+   the straight kerb either side of it keeps the footway flush with the
+   road it runs into. Pinned by a tangency test rather than a vertex count,
+   so the centre cannot drift back.
+
+   **Still capped by the tile.** A return needs its radius clear of the
+   carriageway on both roads, and 20 m leaves only 1.90 m beside an avenue.
+   Classes asking for more get the cap, so the widest junctions are still
+   tighter than they should be and an avenue's box is nearly square. Going
+   further means drawing one corner across three tiles, which the
+   one-tile-owns-its-geometry model does not do — that is the next piece of
+   work here, and it is what the original screenshot was really showing.
+
 2. **A turn pocket steps instead of tapering.** On the two-lane approach the
    carriageway goes 7.50 → 9.03 → 10.55 m in two tiles — about 1.5 m of
    width per 20 m tile, squared off at each tile edge, which is what reads
