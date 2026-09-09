@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-08)
 
-**Test suite:** 3,285 tests passing across 117 test files, run 2026-09-08.
+**Test suite:** 3,290 tests passing across 117 test files, run 2026-09-08.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -234,16 +234,16 @@ check we have, which is the reason they survived:
    centreline moves with the pocket to ∓1.25 m off the road's centre and
    flips sign across the junction, so a straight road's centreline zig-zags
    by 2.5 m through it. Same read-back blindness as the item below.
-3. **The stop line is painted across the departing lanes.**
-   `emitJunctionArmMarkings` spans it `[-coreHalf, +coreHalf]` — the whole
-   carriageway, both directions. MUTCD 3B.16 puts a stop line across the
-   APPROACH lanes only; on a two-way road it stops at the centreline. The
-   line's own figures are right (0.4 m thick, 1.2 m in advance of the
-   crossing) and the crossing does honour the 1.8 m minimum depth; it is
-   only the extent that is wrong. Fixing it needs the arm's own profile and
-   stored direction, which the junction tile does not currently receive —
-   the same information the lane-use arrows already derive for themselves,
-   and which the two should share rather than each work out.
+3. ~~**The stop line is painted across the departing lanes.**~~ **Fixed
+   2026-09-08.** It spanned `[-coreHalf, +coreHalf]`, the whole carriageway,
+   so it barred the lanes leaving the junction too. It now covers the
+   arriving lanes and stops at the centreline (MUTCD 3B.16), sharing
+   `approachingLanes` with the lane-use arrows that already worked the same
+   question out — including the case where a turn pocket has moved the
+   boundary off the centreline. The arm's arriving extent reaches the
+   junction tile through `NeighborHalves.approaches`. The line's own figures
+   were already right (0.4 m thick, 1.2 m in advance of the crossing) and
+   the crossing does honour the 1.8 m minimum depth, so neither was touched.
 4. **Smaller, same run.** A crossing is painted straight over a divided
    road's median rather than breaking at it for a refuge; and a signal's
    mast arm at the corner reaches outward over the verge instead of over
