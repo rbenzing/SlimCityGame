@@ -3,12 +3,18 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { songsManifestPlugin } from './tools/vite-songs-manifest';
+import pkg from './package.json' with { type: 'json' };
 
 // The deploy target decides where the site lives: GitHub Pages serves it under
 // /SlimCityGame/ and sets BASE_PATH in its workflow; Netlify and any other
 // root-hosted deploy leave it unset and get '/'. Dev + Playwright stay at '/'.
 export default defineConfig(() => ({
   base: process.env.BASE_PATH ?? '/',
+  // The version the menu shows, taken from package.json at build time so it is
+  // whatever release-please last stamped there — the one place the version
+  // lives. Baked in as a constant rather than imported, so the manifest itself
+  // never reaches the bundle.
+  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   plugins: [react(), tailwindcss(), songsManifestPlugin()],
   build: {
     target: 'esnext',

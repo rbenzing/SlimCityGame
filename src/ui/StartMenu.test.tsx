@@ -3,6 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { StartMenu } from './StartMenu';
+import pkg from '../../package.json' with { type: 'json' };
 
 afterEach(() => {
   cleanup();
@@ -119,5 +120,23 @@ describe('StartMenu', () => {
     expect(handlers.onSaveGame).not.toHaveBeenCalled();
     expect(handlers.onLoadGame).not.toHaveBeenCalled();
     expect(handlers.onQuit).not.toHaveBeenCalled();
+  });
+});
+
+describe('StartMenu — the build it is', () => {
+  it('shows the released version under the buttons, from the one place it is written', () => {
+    renderMenu({});
+    // Asserted against package.json rather than a literal, so a release bump
+    // never has to be chased into a test — and a stale `define` still fails.
+    const shown = screen.getByText(/^v\d+\.\d+\.\d+/);
+    expect(shown).toBeInTheDocument();
+    expect(shown.textContent).toBe(`v${pkg.version}`);
+  });
+
+  it('is a label, not another button in the run', () => {
+    renderMenu({ hasActiveGame: true, hasSaves: true });
+    for (const button of screen.getAllByRole('button')) {
+      expect(button.textContent).not.toMatch(/^v\d/);
+    }
   });
 });

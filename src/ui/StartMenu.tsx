@@ -78,6 +78,13 @@ export function StartMenu({
         <MenuButton label="Load Game" onClick={onLoadGame} disabled={!hasSaves} />
         <MenuButton label="Options" onClick={onOptions} />
         <MenuButton label="Quit" onClick={onQuit} disabled={!hasActiveGame} />
+        {/* Which build this is, under the buttons — the thing you read out
+            when reporting that something is wrong with it. Quiet enough to
+            ignore while playing, and it is a label rather than a control, so
+            it is not part of the button run above. */}
+        <p className="pt-1 text-center text-xs font-medium tracking-wide text-white/40">
+          v{__APP_VERSION__}
+        </p>
       </div>
     </div>
   );

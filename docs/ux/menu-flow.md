@@ -62,6 +62,15 @@ Resume Game is first, not last, when it appears — leaving is the most
 common reason to open the overlay over a running game, so it is the first
 thing the eye lands on.
 
+Under the buttons, centred inside the same panel, is the build: `v1.5.0`
+and so on. It is the figure somebody reads out when reporting that
+something is wrong, so it belongs where they will already be — and it is a
+label rather than a control, so it sits outside the button run and takes no
+focus. The string is `__APP_VERSION__`, which Vite substitutes from
+`package.json` at build time; that is the one place a version is written
+(see [../engineering/standards/commits.md](../engineering/standards/commits.md)),
+so the menu follows a release without anyone editing it.
+
 ## Escape and Back
 
 - Inside a sub-view (Options, Saves), that sub-view's own **Back** button

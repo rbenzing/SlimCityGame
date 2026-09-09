@@ -27,6 +27,25 @@ the change's effect, often citing the concrete standard or bug it
 addresses (MUTCD section numbers appear routinely in `roads` commits — see
 [ADR-0013](../adr/0013-traffic-figures-come-from-published-standards.md)).
 
+## A merge commit's message must NOT carry a type prefix
+
+release-please reads every commit that lands on `main`, merge commits
+included. So a merge commit whose subject or body starts with `fix:` or
+`feat:` contributes a changelog entry **of its own**, on top of the entries
+the branch's commits already supply — the same fix listed twice, once
+against the merge and once against the commit that made it.
+
+Since a squash or merge takes its message from the pull request title, this
+is really a rule about PR titles: **when a branch will be merged with a
+merge commit, its PR title should be plain prose.** The commits inside it
+are what the changelog is built from. Give a conventional-commit title only
+when the PR will be SQUASHED, where that title becomes the one commit on
+`main` and is the only thing release-please can read.
+
+This was learned the wrong way round: PRs #6 and #8 were both merged with
+merge commits carrying `fix(roads):` subjects, and the 1.5.1 changelog came
+out with four bug-fix lines for two real fixes.
+
 ## release-please owns the version — never hand-tag or hand-edit it
 
 `release-please-config.json` + `.release-please-manifest.json` drive
