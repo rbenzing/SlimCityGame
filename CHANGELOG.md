@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.5.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.5.0...slimcity-v1.5.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **roads:** a kerb turns through its class radius, not the tile left over ([b0e56c1](https://github.com/rbenzing/SlimCityGame/commit/b0e56c12d2433ae65fd0d3e39c48fd2baddb0b65))
+* **roads:** a kerb turns through its class's radius, not the tile left over ([edd4ec4](https://github.com/rbenzing/SlimCityGame/commit/edd4ec4133c2094e85025ed41e8f5544ad4ac874))
+* **roads:** a stop line stops at the centreline, not across the road (MUTCD 3B.16) ([9dc0513](https://github.com/rbenzing/SlimCityGame/commit/9dc05138d9cd6e92835bc384ce020354f7f3c561))
+* **roads:** bike-lane and bus-lane edge lines, and the stop line extent ([5f9c498](https://github.com/rbenzing/SlimCityGame/commit/5f9c498656d57de8552b4fbc51dd36fce924f9d5))
+
 ## [1.5.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.4.0...slimcity-v1.5.0) (2026-09-08)
 
 
