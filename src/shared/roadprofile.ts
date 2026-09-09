@@ -252,6 +252,18 @@ export function carriagewayHalfWidthOf(profile: RoadProfile): number {
 }
 
 /**
+ * The radius this road's kerb turns through at a junction, metres.
+ *
+ * A property of the road, from the class, so a corner is as tight or as open
+ * as the vehicles that have to get round it — not as tight as the tile happens
+ * to allow. What the tile allows still caps it, but that is a limit imposed on
+ * the figure rather than the figure itself.
+ */
+export function kerbReturnRadiusOf(profile: RoadProfile): number {
+  return roadClass(profile.class).kerbReturnM;
+}
+
+/**
  * Width of the kerb strip a profile draws outside its carriageway.
  *
  * A road that SAYS how wide its pavement is gets exactly that. A road that

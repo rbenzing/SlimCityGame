@@ -833,6 +833,15 @@ export interface RoadClassSpec {
   /** Carries water/sewage along the road graph (every class but highway and ramp). */
   carriesWater: boolean;
   surface: 'paved' | 'gravel' | 'ballast';
+  /**
+   * Radius the kerb turns through where this class meets another, metres.
+   *
+   * A design figure, not a leftover: it is what decides how sharply a driver
+   * has to turn and how far a pedestrian has to walk round the corner, so it
+   * belongs to the class rather than to whatever tile happens to be spare
+   * beside the carriageway. Zero for a class with no kerbs to return.
+   */
+  kerbReturnM: number;
   /** Lane pieces the class admits. */
   admits: LanePieceKind[];
   /** Travel-lane range, both directions summed. */

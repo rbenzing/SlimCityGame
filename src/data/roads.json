@@ -8,6 +8,7 @@
       "zonable": true,
       "carriesWater": true,
       "surface": "gravel",
+      "kerbReturnM": 4.5,
       "admits": ["travel", "verge"],
       "lanes": { "min": 1, "max": 2 }
     },
@@ -19,6 +20,7 @@
       "zonable": true,
       "carriesWater": true,
       "surface": "paved",
+      "kerbReturnM": 3.0,
       "admits": ["travel", "parking"],
       "lanes": { "min": 1, "max": 2 }
     },
@@ -30,6 +32,7 @@
       "zonable": true,
       "carriesWater": true,
       "surface": "paved",
+      "kerbReturnM": 6.0,
       "admits": ["travel", "shoulder", "verge"],
       "lanes": { "min": 2, "max": 2 }
     },
@@ -41,6 +44,7 @@
       "zonable": true,
       "carriesWater": true,
       "surface": "paved",
+      "kerbReturnM": 4.5,
       "admits": ["travel", "centreTurn", "parking", "bike", "sidewalk", "verge"],
       "lanes": { "min": 2, "max": 3 }
     },
@@ -52,6 +56,7 @@
       "zonable": true,
       "carriesWater": true,
       "surface": "paved",
+      "kerbReturnM": 6.0,
       "admits": [
         "travel",
         "centreTurn",
@@ -73,6 +78,7 @@
       "zonable": true,
       "carriesWater": true,
       "surface": "paved",
+      "kerbReturnM": 7.5,
       "admits": [
         "travel",
         "centreTurn",
@@ -94,6 +100,7 @@
       "zonable": true,
       "carriesWater": true,
       "surface": "paved",
+      "kerbReturnM": 9.0,
       "admits": ["travel", "bike", "bus", "tram", "median", "sidewalk", "verge"],
       "lanes": { "min": 4, "max": 6 }
     },
@@ -105,6 +112,7 @@
       "zonable": true,
       "carriesWater": true,
       "surface": "paved",
+      "kerbReturnM": 9.0,
       "admits": ["travel", "bus", "median", "barrier", "shoulder", "sidewalk", "verge"],
       "lanes": { "min": 4, "max": 8 }
     },
@@ -116,6 +124,7 @@
       "zonable": true,
       "carriesWater": true,
       "surface": "paved",
+      "kerbReturnM": 4.5,
       "admits": ["travel", "parking", "bike", "bus", "sidewalk", "verge"],
       "lanes": { "min": 1, "max": 5 }
     },
@@ -127,6 +136,7 @@
       "zonable": false,
       "carriesWater": false,
       "surface": "paved",
+      "kerbReturnM": 12.0,
       "admits": ["travel", "shoulder", "barrier", "median"],
       "lanes": { "min": 2, "max": 8 }
     },
@@ -138,6 +148,7 @@
       "zonable": false,
       "carriesWater": false,
       "surface": "paved",
+      "kerbReturnM": 12.0,
       "admits": ["travel", "shoulder"],
       "lanes": { "min": 1, "max": 2 }
     },
@@ -149,6 +160,7 @@
       "zonable": false,
       "carriesWater": true,
       "surface": "ballast",
+      "kerbReturnM": 0.0,
       "admits": ["rail", "verge"],
       "lanes": { "min": 0, "max": 0 }
     }
