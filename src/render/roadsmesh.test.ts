@@ -40,7 +40,7 @@ import {
 import { RoadFlow, RoadTileDelta, RoadTier } from '../shared/types';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 import { carriagewayHalfWidthOf, kerbWidthOf, presetProfileForTier } from '../shared/roadprofile';
-import { markingPlan } from './roadmarkings';
+import { BIKE_PAINT_MAX_WIDTH_M, markingPlan } from './roadmarkings';
 import { CHUNK_TILES, TILE_METERS } from '../shared/constants';
 import { DEFAULT_ALLOWED, Movement } from '../shared/approach';
 
@@ -3077,4 +3077,86 @@ describe('roadTileVertices — a corridor half that has earned a turn bay', () =
     );
   });
 
+});
+
+describe('RoadMeshRenderer.paintBandsAt', () => {
+  /** A straight north-south run, long enough that its middle tile is a plain one. */
+  const runOf = (tier: RoadTier, length = 5): RoadMeshRenderer => {
+    const renderer = new RoadMeshRenderer(new THREE.Scene(), flatHeightAt);
+    renderer.apply(
+      Array.from({ length }, (_, i) =>
+        makeDelta(0, i, tier, (i === 0 ? 0 : N) | (i === length - 1 ? 0 : S)),
+      ),
+    );
+    return renderer;
+  };
+
+  const acrossBands = (renderer: RoadMeshRenderer, x: number, z: number) =>
+    renderer
+      .paintBandsAt(x, z)
+      .filter((b) => b.axis === 'x')
+      .sort((a, b) => a.from - b.from);
+
+  it('measures the carriageway of a road with no markings at its true width', () => {
+    // An Alley is one 3.75 m lane and paints nothing, so its asphalt is the
+    // only band there is — and it is emitted as a lattice, not one rectangle.
+    const bands = acrossBands(runOf(RoadTier.Alley), 0, 2);
+    expect(bands).toHaveLength(1);
+    expect(bands[0]!.to - bands[0]!.from).toBeCloseTo(3.75, 2);
+    expect((bands[0]!.from + bands[0]!.to) / 2).toBeCloseTo(TILE_METERS / 2, 2);
+  });
+
+  it('reports a bike lane as its own band, separate from the edge line beside it', () => {
+    const bands = acrossBands(runOf(RoadTier.BikeLane), 0, 2);
+    const green = bands.filter((b) => b.color === '0.13,0.42,0.22');
+    expect(green).toHaveLength(2);
+    for (const band of green) {
+      expect(band.to - band.from).toBeCloseTo(BIKE_PAINT_MAX_WIDTH_M, 2);
+    }
+    // Symmetric about the tile centre: the two lanes are the same road.
+    const centres = green.map((b) => (b.from + b.to) / 2 - TILE_METERS / 2);
+    expect(centres[0]! + centres[1]!).toBeCloseTo(0, 2);
+  });
+
+  it('does not read a periodic stencil as part of the band it lies on', () => {
+    // The bicycle stencil is the same white as the edge line and overlaps it,
+    // so a measurement that merged whatever touched would report a wider edge
+    // line on exactly the tiles that carry a glyph.
+    const renderer = runOf(RoadTier.BikeLane, 9);
+    const glyphTile = [1, 2, 3, 4, 5, 6, 7].find((z) => isLaneGlyphTile(z));
+    const plainTile = [1, 2, 3, 4, 5, 6, 7].find((z) => !isLaneGlyphTile(z));
+    expect(glyphTile).toBeDefined();
+    expect(plainTile).toBeDefined();
+    expect(signature(acrossBands(renderer, 0, glyphTile!))).toEqual(
+      signature(acrossBands(renderer, 0, plainTile!)),
+    );
+  });
+
+  it('reports the same section for every plain tile of a straight run', () => {
+    const marked: [string, RoadTier][] = [
+      ['TwoLane', RoadTier.TwoLane],
+      ['Avenue', RoadTier.Avenue],
+      ['Highway', RoadTier.Highway],
+      ['Alley', RoadTier.Alley],
+      ['OneWay', RoadTier.OneWay],
+      ['FourLane', RoadTier.FourLane],
+      ['BusLane', RoadTier.BusLane],
+      ['BikeLane', RoadTier.BikeLane],
+      ['Tram', RoadTier.Tram],
+    ];
+    for (const [name, tier] of marked) {
+      const renderer = runOf(tier, 9);
+      const sections = [2, 3, 4, 5, 6].map((z) => signature(acrossBands(renderer, 0, z)));
+      expect(new Set(sections).size, `${name} varies along a straight run`).toBe(1);
+    }
+  });
+
+  it('has nothing to say about a tile with no road on it', () => {
+    expect(runOf(RoadTier.TwoLane).paintBandsAt(0, 40)).toEqual([]);
+  });
+
+  /** Bands as one comparable string, the way the shot harness compares two tiles. */
+  function signature(bands: { color: string; from: number; to: number }[]): string {
+    return bands.map((b) => `${b.color}@${b.from.toFixed(3)}..${b.to.toFixed(3)}`).join('|');
+  }
 });

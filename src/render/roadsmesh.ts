@@ -291,6 +291,22 @@ const BIKE_LANE_PAINT_COLOR: readonly [number, number, number] = [0.13, 0.42, 0.
 /** Colored lane fill sits above the asphalt plate but below the white lane paint, so markings/glyphs read on top. */
 const LANE_TINT_Y_OFFSET = ROAD_Y_OFFSET + 0.003;
 
+/**
+ * How close two same-coloured bands must be for `paintBandsAt` to call them
+ * one band. Adjacent triangles of one rectangle share an edge exactly, so this
+ * only has to survive float rounding — wide enough and a bike lane and the
+ * edge line beside it would be read as one wider band.
+ */
+const BAND_MERGE_EPS_M = 0.002;
+
+/**
+ * How much of a tile's length a band must reach to count as one. Short of
+ * this it is a dash, a stencil or a stop bar: a mark laid on a schedule of its
+ * own rather than a piece of the cross-section, and not something every tile
+ * owes.
+ */
+const BAND_FULL_LENGTH_FRACTION = 0.98;
+
 interface QuadSpec {
   halfWidthFraction: number;
   color: readonly [number, number, number];
@@ -4083,6 +4099,86 @@ export function roadTileVertices(
   return { positions, colors };
 }
 
+/** One triangle of the road soup, reduced to the ground it covers. */
+interface TriBox {
+  x0: number;
+  x1: number;
+  z0: number;
+  z1: number;
+}
+
+/**
+ * The continuous bands one colour lays across a tile, from the triangles that
+ * make it up.
+ *
+ * The road surface is emitted as a lattice so it can follow the ground, so no
+ * single triangle spans a tile and a band cannot be found by looking for one
+ * that does. What distinguishes a band from a mark is coverage: a band's
+ * across-position is paved from one end of the tile to the other, while a
+ * dash, a stencil or a stop bar leaves gaps. So the tile is cut into strips at
+ * every across-boundary the triangles introduce, each strip is asked how much
+ * of the tile's length its own triangles actually cover, and the strips that
+ * come back full are stitched into bands.
+ *
+ * That test is also what keeps a bicycle stencil from being read as part of
+ * the edge line it lies across: the stencil is the same white, and overlaps
+ * the line, but its strips are mostly empty along the tile.
+ */
+function bandsFromCoverage(
+  boxes: readonly TriBox[],
+  axis: 'x' | 'z',
+  alongOrigin: number,
+): { from: number; to: number; tris: number }[] {
+  const acrossLo = (b: TriBox): number => (axis === 'x' ? b.x0 : b.z0);
+  const acrossHi = (b: TriBox): number => (axis === 'x' ? b.x1 : b.z1);
+  const alongLo = (b: TriBox): number => (axis === 'x' ? b.z0 : b.x0);
+  const alongHi = (b: TriBox): number => (axis === 'x' ? b.z1 : b.x1);
+
+  const edges = [...new Set(boxes.flatMap((b) => [acrossLo(b), acrossHi(b)]))].sort((a, c) => a - c);
+  const needed = TILE_METERS * BAND_FULL_LENGTH_FRACTION;
+  const bands: { from: number; to: number; tris: number }[] = [];
+  for (let i = 0; i + 1 < edges.length; i++) {
+    const lo = edges[i]!;
+    const hi = edges[i + 1]!;
+    if (hi - lo <= BAND_MERGE_EPS_M) continue;
+    // Only triangles spanning the WHOLE strip: one that merely clips its edge
+    // belongs to the neighbouring strip and would lend it coverage it lacks.
+    const spans = boxes.filter(
+      (b) => acrossLo(b) <= lo + BAND_MERGE_EPS_M && acrossHi(b) >= hi - BAND_MERGE_EPS_M,
+    );
+    if (spans.length === 0) continue;
+    const runs = spans
+      .map((b) => [alongLo(b), alongHi(b)] as const)
+      .sort((a, c) => a[0] - c[0]);
+    let covered = 0;
+    let openFrom = runs[0]![0];
+    let openTo = runs[0]![1];
+    for (let k = 1; k < runs.length; k++) {
+      const [rFrom, rTo] = runs[k]!;
+      if (rFrom > openTo + BAND_MERGE_EPS_M) {
+        covered += openTo - openFrom;
+        openFrom = rFrom;
+        openTo = rTo;
+      } else if (rTo > openTo) {
+        openTo = rTo;
+      }
+    }
+    covered += openTo - openFrom;
+    // Coverage is clamped to the tile: a band reaching past the seam into the
+    // next tile must not be allowed to make up for a gap inside this one.
+    const inside = Math.min(covered, TILE_METERS, alongOrigin + TILE_METERS - openFrom);
+    if (inside < needed) continue;
+    const last = bands[bands.length - 1];
+    if (last && lo - last.to <= BAND_MERGE_EPS_M) {
+      last.to = hi;
+      last.tris += spans.length;
+    } else {
+      bands.push({ from: lo, to: hi, tris: spans.length });
+    }
+  }
+  return bands;
+}
+
 // ---------------------------------------------------------------------------
 // RoadMeshRenderer
 // ---------------------------------------------------------------------------
@@ -4471,6 +4567,87 @@ export class RoadMeshRenderer {
       pocket: approach?.pocket ?? false,
       distance: approach?.distance ?? -1,
     };
+  }
+
+  /**
+   * The continuous bands a tile lays, measured off the vertex buffer the GPU
+   * is handed: for each paint colour, the stretch of ground it covers ACROSS
+   * the road.
+   *
+   * `drawnAt` says how wide the cross-section believes it is; this says how
+   * wide the asphalt and the paint on it ACTUALLY came out. Those are
+   * different questions, and a band that steps in and out along a run answers
+   * the first one correctly the whole way down. Nothing here is shared with
+   * the emitters — the bands are re-derived from triangles — so a rule that
+   * lays a correct cross-section and emits crooked geometry for it still
+   * fails.
+   *
+   * Only geometry reaching the full length of the tile counts, and that is
+   * what separates a band from a mark: an edge line and a painted lane run
+   * tile to tile, while a dash, a stencil and a stop bar stop short and are
+   * laid on a schedule of their own. Without that cut, a bicycle stencil lying
+   * across its own edge line reads as an edge line that gets wider every third
+   * tile.
+   *
+   * `axis` is the axis the width is measured on: `x` for a band running
+   * north-south, `z` for one running east-west. A crossroads tile lays both,
+   * and asphalt covering the whole tile is reported on each.
+   *
+   * A triangle belongs to the tile its centroid falls in, so a band crossing a
+   * seam is counted once, on the side that holds most of it.
+   */
+  paintBandsAt(
+    x: number,
+    z: number,
+  ): { color: string; axis: 'x' | 'z'; from: number; to: number; tris: number }[] {
+    const geometry = this.chunks.get(chunkKeyOf(x, z))?.mesh?.geometry;
+    if (!geometry) return [];
+    const position = geometry.getAttribute('position');
+    const color = geometry.getAttribute('color');
+    if (!position || !color) return [];
+    const x0 = x * TILE_METERS;
+    const z0 = z * TILE_METERS;
+    const byColour = new Map<string, TriBox[]>();
+    for (let t = 0; t + 2 < position.count; t += 3) {
+      let cx = 0;
+      let cz = 0;
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      const box: TriBox = { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity };
+      for (let v = 0; v < 3; v++) {
+        const px = position.getX(t + v);
+        const pz = position.getZ(t + v);
+        cx += px;
+        cz += pz;
+        if (px < box.x0) box.x0 = px;
+        if (px > box.x1) box.x1 = px;
+        if (pz < box.z0) box.z0 = pz;
+        if (pz > box.z1) box.z1 = pz;
+        r += color.getX(t + v);
+        g += color.getY(t + v);
+        b += color.getZ(t + v);
+      }
+      if (cx / 3 < x0 || cx / 3 >= x0 + TILE_METERS || cz / 3 < z0 || cz / 3 >= z0 + TILE_METERS) {
+        continue;
+      }
+      // Averaged over the triangle: a shaded corner is the same paint as a lit
+      // one, and bucketing per vertex would split one band into several.
+      const colour = [r / 3, g / 3, b / 3].map((c) => c.toFixed(2)).join(',');
+      const boxes = byColour.get(colour) ?? [];
+      if (boxes.length === 0) byColour.set(colour, boxes);
+      boxes.push(box);
+    }
+    const out: { color: string; axis: 'x' | 'z'; from: number; to: number; tris: number }[] = [];
+    for (const [colour, boxes] of byColour) {
+      for (const axis of ['x', 'z'] as const) {
+        const along = axis === 'x' ? z0 : x0;
+        for (const band of bandsFromCoverage(boxes, axis, along)) {
+          out.push({ color: colour, axis, ...band });
+        }
+      }
+    }
+    return out.sort((a, b) => b.tris - a.tris);
   }
 
   private rebuildChunk(key: number): void {
