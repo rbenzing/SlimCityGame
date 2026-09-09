@@ -210,6 +210,45 @@ the traffic, and a kerbside bus lane had the same stray line plus only a dashed
 boundary. The edge line now goes at the inside edge of a reserved lane, where
 general traffic actually ends.
 
+**Junction geometry, four defects found by inspection (2026-09-08, not yet
+fixed).** An avenue crossing a two-lane road, photographed straight down at
+the closest the rig allows, then measured. None of these is caught by any
+check we have, which is the reason they survived:
+
+1. **The kerb return is inverted, and is not a kerb return.**
+   `emitRoundedCornerFill` sweeps its arc concentric with the OUTER tile
+   corner, so the kerb is concave as seen from the intersection and the
+   junction box keeps a hard square corner — the opposite of a real kerb
+   return, which cuts the box corner off with an arc tangent to both kerb
+   lines, convex toward the box, with the footway following it round. There
+   is also no radius figure behind it: the arc is whatever `armDepth`
+   happens to be, which for an avenue is `TILE_HALF - coreHalf` = 1.9 m
+   against AASHTO's 4.5–7.6 m for a local intersection. The 1.9 m is the
+   deeper problem — a correct return does not fit between a wide road's
+   kerb and the tile edge at all, which is why it has to eat into the box.
+2. **A turn pocket steps instead of tapering.** On the two-lane approach the
+   carriageway goes 7.50 → 9.03 → 10.55 m in two tiles — about 1.5 m of
+   width per 20 m tile, squared off at each tile edge, which is what reads
+   as a stack of misaligned slabs. `readApproach` reports `taper: null` on
+   every one of those tiles, so nothing draws a transition. The painted
+   centreline moves with the pocket to ∓1.25 m off the road's centre and
+   flips sign across the junction, so a straight road's centreline zig-zags
+   by 2.5 m through it. Same read-back blindness as the item below.
+3. **The stop line is painted across the departing lanes.**
+   `emitJunctionArmMarkings` spans it `[-coreHalf, +coreHalf]` — the whole
+   carriageway, both directions. MUTCD 3B.16 puts a stop line across the
+   APPROACH lanes only; on a two-way road it stops at the centreline. The
+   line's own figures are right (0.4 m thick, 1.2 m in advance of the
+   crossing) and the crossing does honour the 1.8 m minimum depth; it is
+   only the extent that is wrong. Fixing it needs the arm's own profile and
+   stored direction, which the junction tile does not currently receive —
+   the same information the lane-use arrows already derive for themselves,
+   and which the two should share rather than each work out.
+4. **Smaller, same run.** A crossing is painted straight over a divided
+   road's median rather than breaking at it for a refuge; and a signal's
+   mast arm at the corner reaches outward over the verge instead of over
+   the approach lanes it governs.
+
 **Still open — the approach flare is drawn but not reported.** On the upstream
 approach to a junction the geometry flares into turn pockets with arrows
 (wave 4's work, and plausibly correct for a one-way, where only one side feeds
