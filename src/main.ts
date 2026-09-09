@@ -624,6 +624,16 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         z: number,
       ): { lanes: number; width: number; pocket: boolean; distance: number } | null =>
         roadsMesh.drawnAt(x, z),
+      // The bands a tile actually lays, measured off the vertex buffer: colour
+      // by colour, the stretch each covers across the road. A band whose width
+      // steps along an otherwise uniform run is invisible to every read-back
+      // that asks the cross-section, because the cross-section is right; this
+      // reads the geometry instead.
+      readPaint: (
+        x: number,
+        z: number,
+      ): { color: string; axis: 'x' | 'z'; from: number; to: number; tris: number }[] =>
+        roadsMesh.paintBandsAt(x, z),
       readSigns: (): { x: number; z: number; type: string }[] =>
         computeSignPlacements(latestRoadTiles).map((s) => ({ x: s.x, z: s.z, type: s.type })),
       // What each signal head is showing. A lit lens is a few pixels across in

@@ -76,6 +76,44 @@ same rule stated from the testing side in
 [testing.md](testing.md#screenshots-not-read-backs); this document is the
 "how," that one is the "why."
 
+**Do not edit `src/` while a harness is running.** Vite hot-reloads the
+page, which drops `window.__slimcity` and the city built on it; the run
+dies partway through with a hook that is suddenly undefined, and the shots
+it did write are of a half-built map.
+
+### `tools/roadmatrix-shots.mjs`: the road geometry audit
+
+One harness is not per-feature-area but per-question, because the question
+is one every road type shares: **is a road the same road all the way along
+it?** It lays every laying tier in every topology a road goes down in —
+straight run, right-angle turn, tee, crossroads with itself, crossroads
+with a different class, and a deliberately raised viaduct — and measures
+what came out.
+
+What makes it different from the others is where it takes its numbers.
+`readApproach` and `readDrawn` both ask what the cross-section _is_;
+`readPaint` asks how wide the asphalt and the paint on it actually _came
+out_, by re-deriving the bands from the chunk's vertex buffer. Those are
+separate questions, and a band that steps in and out along a run answers
+the first one correctly the whole way down. Three things are then checked:
+every plain tile of a run lays an identical section; no band's edge moves
+more than `STEP_TOLERANCE_M` between neighbouring tiles, over the whole run
+_including_ the junction approaches and end caps that the first check has
+to excuse; and the grid and the mesh agree about what is being drawn.
+
+Two things it deliberately does not treat as defects. A run's own end tiles
+and the tiles within `JUNCTION_CLEARANCE` of a junction are excluded from
+the uniformity comparison, because a taper, a turn pocket and a turnaround
+are cross-sections the road is supposed to have for a few tiles and nowhere
+else — the continuity check is what still holds them to changing smoothly.
+And an overpass is _asked for_ and expected to be refused: one tile carries
+one road tier, so a road crossing over another is not representable (see
+[../../world-sim/road-model.md](../../world-sim/road-model.md)). What is
+checked there is that the refusal is total, since a deck that lands half
+its tiles and gives up at the crossing would leave a road ramping into the
+air. Those cases are laid last, after every screenshot, so their refusal
+toasts do not stack down the middle of the other shots.
+
 ## `tools/audio-check.mjs`: the audio-specific case
 
 Audio cannot be judged from a screenshot at all, and cannot be tested under

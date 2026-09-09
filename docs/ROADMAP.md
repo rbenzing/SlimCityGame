@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-08)
 
-**Test suite:** 3,279 tests passing across 117 test files, run 2026-09-08.
+**Test suite:** 3,290 tests passing across 117 test files, run 2026-09-08.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -191,6 +191,76 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Road geometry audit (2026-09-08, one open question)
+
+A player report that the bike lanes looked uneven, answered by measuring
+rather than by looking harder. Every read-back we had asked a road what its
+cross-section IS; none could say how wide the triangles emitted for it
+actually came out, so a band that steps in and out along a run answers all of
+them correctly. `readPaint` asks the second question off the vertex buffer,
+and `tools/roadmatrix-shots.mjs` puts it to every laying tier in every
+topology a road goes down in — 84 cases. See
+[engineering/standards/debugging.md](engineering/standards/debugging.md).
+
+What it found and what was fixed: the edge line was placed a fixed inset from
+the kerb, which lands half a metre INSIDE a reserved kerbside lane — so a bike
+lane had a white line splitting its own green paint and nothing between it and
+the traffic, and a kerbside bus lane had the same stray line plus only a dashed
+boundary. The edge line now goes at the inside edge of a reserved lane, where
+general traffic actually ends.
+
+**Junction geometry, four defects found by inspection (2026-09-08, not yet
+fixed).** An avenue crossing a two-lane road, photographed straight down at
+the closest the rig allows, then measured. None of these is caught by any
+check we have, which is the reason they survived:
+
+1. **The kerb return is inverted, and is not a kerb return.**
+   `emitRoundedCornerFill` sweeps its arc concentric with the OUTER tile
+   corner, so the kerb is concave as seen from the intersection and the
+   junction box keeps a hard square corner — the opposite of a real kerb
+   return, which cuts the box corner off with an arc tangent to both kerb
+   lines, convex toward the box, with the footway following it round. There
+   is also no radius figure behind it: the arc is whatever `armDepth`
+   happens to be, which for an avenue is `TILE_HALF - coreHalf` = 1.9 m
+   against AASHTO's 4.5–7.6 m for a local intersection. The 1.9 m is the
+   deeper problem — a correct return does not fit between a wide road's
+   kerb and the tile edge at all, which is why it has to eat into the box.
+2. **A turn pocket steps instead of tapering.** On the two-lane approach the
+   carriageway goes 7.50 → 9.03 → 10.55 m in two tiles — about 1.5 m of
+   width per 20 m tile, squared off at each tile edge, which is what reads
+   as a stack of misaligned slabs. `readApproach` reports `taper: null` on
+   every one of those tiles, so nothing draws a transition. The painted
+   centreline moves with the pocket to ∓1.25 m off the road's centre and
+   flips sign across the junction, so a straight road's centreline zig-zags
+   by 2.5 m through it. Same read-back blindness as the item below.
+3. ~~**The stop line is painted across the departing lanes.**~~ **Fixed
+   2026-09-08.** It spanned `[-coreHalf, +coreHalf]`, the whole carriageway,
+   so it barred the lanes leaving the junction too. It now covers the
+   arriving lanes and stops at the centreline (MUTCD 3B.16), sharing
+   `approachingLanes` with the lane-use arrows that already worked the same
+   question out — including the case where a turn pocket has moved the
+   boundary off the centreline. The arm's arriving extent reaches the
+   junction tile through `NeighborHalves.approaches`. The line's own figures
+   were already right (0.4 m thick, 1.2 m in advance of the crossing) and
+   the crossing does honour the 1.8 m minimum depth, so neither was touched.
+4. **Smaller, same run.** A crossing is painted straight over a divided
+   road's median rather than breaking at it for a refuge; and a signal's
+   mast arm at the corner reaches outward over the verge instead of over
+   the approach lanes it governs.
+
+**Still open — the approach flare is drawn but not reported.** On the upstream
+approach to a junction the geometry flares into turn pockets with arrows
+(wave 4's work, and plausibly correct for a one-way, where only one side feeds
+the junction), but both read-backs insist the section is unchanged there —
+`readApproach` and `readDrawn` report the plain section, no pocket and no
+taper. Either the flare is wrong or the read-backs are blind to it; until that
+is settled the matrix reports 17 findings on one-way, tram, ramp and
+mixed-class crossroads runs. Two smaller notes from the same run, neither
+chased: a dead end stops all its paint at the junction-box boundary, leaving an
+unpainted apron before the rounded bulb (consistent across marking types, so
+likely a design consequence), and a fresh map with no roads on it already
+submits six empty draw calls.
 
 ### Road composition (2026-09-05 – 2026-09-06, in progress)
 

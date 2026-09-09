@@ -126,6 +126,8 @@ import { paintsGore } from '../shared/taper';
 import type { TaperStep } from '../shared/taper';
 import type { ApproachAhead, ApproachSurroundings, AuxiliaryLane } from '../shared/approachzone';
 import {
+  approachingLanes,
+  approachingSpan,
   centrePair,
   markingPlan,
   seamBetween,
@@ -290,6 +292,22 @@ const BUS_LANE_PAINT_COLOR: readonly [number, number, number] = [0.6, 0.24, 0.18
 const BIKE_LANE_PAINT_COLOR: readonly [number, number, number] = [0.13, 0.42, 0.22];
 /** Colored lane fill sits above the asphalt plate but below the white lane paint, so markings/glyphs read on top. */
 const LANE_TINT_Y_OFFSET = ROAD_Y_OFFSET + 0.003;
+
+/**
+ * How close two same-coloured bands must be for `paintBandsAt` to call them
+ * one band. Adjacent triangles of one rectangle share an edge exactly, so this
+ * only has to survive float rounding — wide enough and a bike lane and the
+ * edge line beside it would be read as one wider band.
+ */
+const BAND_MERGE_EPS_M = 0.002;
+
+/**
+ * How much of a tile's length a band must reach to count as one. Short of
+ * this it is a dash, a stencil or a stop bar: a mark laid on a schedule of its
+ * own rather than a piece of the cross-section, and not something every tile
+ * owes.
+ */
+const BAND_FULL_LENGTH_FRACTION = 0.98;
 
 interface QuadSpec {
   halfWidthFraction: number;
@@ -1680,17 +1698,33 @@ function emitJunctionArmMarkings(
   stops: boolean,
   /** How much tile there is between the junction box and the tile edge. */
   armDepth: number,
+  /**
+   * How far across the road the lanes ARRIVING on this arm reach. A stop line
+   * is painted across the approach and stops at the centreline (MUTCD 3B.16);
+   * carried over the whole carriageway it also bars the traffic leaving the
+   * junction, which has nothing to stop for. Null where the arm's own section
+   * is not known, in which case the whole width is the best guess available.
+   */
+  approachAcross: { from: number; to: number } | null,
 ): void {
   const layout = junctionArmLayout(armDepth);
 
-  // Stop line: one bar spanning the full carriageway width. It is painted back
-  // down the APPROACH, past this tile's edge, because that is where a stop
-  // line stands — so it lies over the approach's own lane lines and takes a
-  // hair of lift to keep the two from fighting for the same depth.
-  if (stops) {
+  // Stop line: one bar across the arriving lanes. It is painted back down the
+  // APPROACH, past this tile's edge, because that is where a stop line stands
+  // — so it lies over the approach's own lane lines and takes a hair of lift
+  // to keep the two from fighting for the same depth.
+  // Clamped to the arm: an approach wider than the junction it meets is still
+  // only painted as far as the asphalt goes.
+  const stopAcross: [number, number] = approachAcross
+    ? [
+        Math.max(-coreHalf, Math.min(approachAcross.from, approachAcross.to)),
+        Math.min(coreHalf, Math.max(approachAcross.from, approachAcross.to)),
+      ]
+    : [-coreHalf, coreHalf];
+  if (stops && stopAcross[1] > stopAcross[0]) {
     const stopLo = Math.min(dAt(layout.stopLineStart), dAt(layout.stopLineEnd));
     const stopHi = Math.max(dAt(layout.stopLineStart), dAt(layout.stopLineEnd));
-    const across: [number, number] = [-coreHalf, coreHalf];
+    const across = stopAcross;
     const along: [number, number] = [stopLo, stopHi];
     const [xLo, xHi] = vertical ? across : along;
     const [zLo, zHi] = vertical ? along : across;
@@ -3096,13 +3130,42 @@ export interface NeighborHalves {
    * road that does not change.
    */
   plans?: { n: MarkingPlan | null; e: MarkingPlan | null; s: MarkingPlan | null; w: MarkingPlan | null };
+  /**
+   * How far across each neighbour's road its lanes ARRIVING here reach, in
+   * that road's own offsets. A stop line is painted across the approach and
+   * stops at the centreline; without this the junction has no way to tell the
+   * arriving half from the leaving one and paints a bar over both. Omitted,
+   * each side falls back to the driver's-right half of its tier's preset.
+   */
+  approaches?: {
+    n: { from: number; to: number } | null;
+    e: { from: number; to: number } | null;
+    s: { from: number; to: number } | null;
+    w: { from: number; to: number } | null;
+  };
 }
+
+/** Which way traffic runs on the neighbour in direction `d` to reach this tile. */
+const ARM_TOWARD = {
+  n: RoadFlow.South,
+  s: RoadFlow.North,
+  e: RoadFlow.West,
+  w: RoadFlow.East,
+} as const;
 
 function presetHalves(neighbors: NeighborTiers): NeighborHalves {
   const half = (tier: RoadTier): number =>
     tier === RoadTier.None ? 0 : carriagewayHalfWidthMeters(tier);
   const walkable = (tier: RoadTier): boolean =>
     tier !== RoadTier.None && hasFootway(presetProfileForTier(tier));
+  // A preset road records no direction of its own, so it runs both ways and
+  // the arriving half is the driver's right — which is what a caller supplying
+  // no neighbours should get.
+  const approach = (tier: RoadTier, toward: RoadFlow): { from: number; to: number } | null => {
+    if (tier === RoadTier.None) return null;
+    const profile = presetProfileForTier(tier);
+    return approachingSpan(profile, profile, true, approachAxis(toward).leftSign);
+  };
   return {
     n: half(neighbors.n),
     e: half(neighbors.e),
@@ -3113,6 +3176,12 @@ function presetHalves(neighbors: NeighborTiers): NeighborHalves {
       e: walkable(neighbors.e),
       s: walkable(neighbors.s),
       w: walkable(neighbors.w),
+    },
+    approaches: {
+      n: approach(neighbors.n, ARM_TOWARD.n),
+      e: approach(neighbors.e, ARM_TOWARD.e),
+      s: approach(neighbors.s, ARM_TOWARD.s),
+      w: approach(neighbors.w, ARM_TOWARD.w),
     },
   };
 }
@@ -3688,23 +3757,10 @@ export function roadTileVertices(
       if (approach?.distance === 0 && plan.solid.length + plan.dashed.length > 0) {
         const approachToward = approach.toward;
         const { vertical, ahead, leftSign } = approachAxis(approachToward);
-        const lanes = travelLanes(crossSection);
-        const oneWay = lanes.every((l) => l.flow === lanes[0]?.flow);
-        // On a two-way road the approaching lanes are the ones on the driver's
-        // RIGHT of the centreline. On a one-way every lane approaches, or none
-        // does — which is what the road's own stored direction decides.
+        // Which lanes a driver arrives in — the same question the stop line
+        // across this approach asks, answered in one place for both.
         const runsToward = flow === RoadFlow.None || flow === approachToward;
-        // A turn pocket makes the cross-section lopsided, and the centreline
-        // is no longer the middle of the road: which half a lane belongs to is
-        // then what it FLOWS, read off the half that the road without its
-        // pocket had on the driver's right.
-        const onTheRight = (l: { centre: number }): boolean => l.centre * leftSign < 0;
-        const towardUs = travelLanes(own).find(onTheRight)?.flow;
-        const approaching = oneWay
-          ? runsToward
-            ? lanes
-            : []
-          : lanes.filter((l) => (towardUs ? l.flow === towardUs : onTheRight(l)));
+        const approaching = approachingLanes(crossSection, own, runsToward, leftSign);
         if (approaching.length >= 2) {
           // Ordered from the driver's left, which is the order the movement sets
           // come in: the dedicated left first, the dedicated right last.
@@ -3899,11 +3955,15 @@ export function roadTileVertices(
       // than the junction itself, which is as far as the asphalt goes.
       const armHalf = (neighbourHalf: number): number =>
         neighbourHalf > 0 ? Math.min(coreHalf, neighbourHalf) : coreHalf;
+      // Which half of each arm is arriving here, so its stop line stops at
+      // that road's centreline instead of barring the traffic leaving.
+      const approaches = neighborHalves.approaches ?? presetHalves(neighbors).approaches!;
       const arm = (
         vertical: boolean,
         at: (d: number) => number,
         stops: boolean,
         half: number,
+        approaching: { from: number; to: number } | null,
       ): void =>
         emitJunctionArmMarkings(
           positions,
@@ -3920,20 +3980,22 @@ export function roadTileVertices(
           // the crossing carries on runs through exactly this, so it is what
           // decides where the crossing goes.
           armDepth,
+          approaching,
         );
       // Measured inward from the TILE edge, which is where the approach
       // actually reaches the junction, rather than outward from the box.
       if (painted) {
-        const armAt: [boolean, RoadTier, number, boolean, (d: number) => number][] = [
-          [hasN, neighbors.n, neighborHalves.n, true, (d) => -TILE_HALF + d],
-          [hasS, neighbors.s, neighborHalves.s, true, (d) => TILE_HALF - d],
-          [hasE, neighbors.e, neighborHalves.e, false, (d) => TILE_HALF - d],
-          [hasW, neighbors.w, neighborHalves.w, false, (d) => -TILE_HALF + d],
+        type Span = { from: number; to: number } | null;
+        const armAt: [boolean, RoadTier, number, boolean, (d: number) => number, Span][] = [
+          [hasN, neighbors.n, neighborHalves.n, true, (d) => -TILE_HALF + d, approaches.n],
+          [hasS, neighbors.s, neighborHalves.s, true, (d) => TILE_HALF - d, approaches.s],
+          [hasE, neighbors.e, neighborHalves.e, false, (d) => TILE_HALF - d, approaches.e],
+          [hasW, neighbors.w, neighborHalves.w, false, (d) => -TILE_HALF + d, approaches.w],
         ];
-        for (const [has, neighborTier, neighbourHalf, vertical, at] of armAt) {
+        for (const [has, neighborTier, neighbourHalf, vertical, at, approaching] of armAt) {
           if (!has) continue;
           if (!holdsEveryArm && !armStops(neighborTier)) continue;
-          arm(vertical, at, stopsFor, armHalf(neighbourHalf));
+          arm(vertical, at, stopsFor, armHalf(neighbourHalf), approaching);
         }
       }
 
@@ -4081,6 +4143,86 @@ export function roadTileVertices(
   }
 
   return { positions, colors };
+}
+
+/** One triangle of the road soup, reduced to the ground it covers. */
+interface TriBox {
+  x0: number;
+  x1: number;
+  z0: number;
+  z1: number;
+}
+
+/**
+ * The continuous bands one colour lays across a tile, from the triangles that
+ * make it up.
+ *
+ * The road surface is emitted as a lattice so it can follow the ground, so no
+ * single triangle spans a tile and a band cannot be found by looking for one
+ * that does. What distinguishes a band from a mark is coverage: a band's
+ * across-position is paved from one end of the tile to the other, while a
+ * dash, a stencil or a stop bar leaves gaps. So the tile is cut into strips at
+ * every across-boundary the triangles introduce, each strip is asked how much
+ * of the tile's length its own triangles actually cover, and the strips that
+ * come back full are stitched into bands.
+ *
+ * That test is also what keeps a bicycle stencil from being read as part of
+ * the edge line it lies across: the stencil is the same white, and overlaps
+ * the line, but its strips are mostly empty along the tile.
+ */
+function bandsFromCoverage(
+  boxes: readonly TriBox[],
+  axis: 'x' | 'z',
+  alongOrigin: number,
+): { from: number; to: number; tris: number }[] {
+  const acrossLo = (b: TriBox): number => (axis === 'x' ? b.x0 : b.z0);
+  const acrossHi = (b: TriBox): number => (axis === 'x' ? b.x1 : b.z1);
+  const alongLo = (b: TriBox): number => (axis === 'x' ? b.z0 : b.x0);
+  const alongHi = (b: TriBox): number => (axis === 'x' ? b.z1 : b.x1);
+
+  const edges = [...new Set(boxes.flatMap((b) => [acrossLo(b), acrossHi(b)]))].sort((a, c) => a - c);
+  const needed = TILE_METERS * BAND_FULL_LENGTH_FRACTION;
+  const bands: { from: number; to: number; tris: number }[] = [];
+  for (let i = 0; i + 1 < edges.length; i++) {
+    const lo = edges[i]!;
+    const hi = edges[i + 1]!;
+    if (hi - lo <= BAND_MERGE_EPS_M) continue;
+    // Only triangles spanning the WHOLE strip: one that merely clips its edge
+    // belongs to the neighbouring strip and would lend it coverage it lacks.
+    const spans = boxes.filter(
+      (b) => acrossLo(b) <= lo + BAND_MERGE_EPS_M && acrossHi(b) >= hi - BAND_MERGE_EPS_M,
+    );
+    if (spans.length === 0) continue;
+    const runs = spans
+      .map((b) => [alongLo(b), alongHi(b)] as const)
+      .sort((a, c) => a[0] - c[0]);
+    let covered = 0;
+    let openFrom = runs[0]![0];
+    let openTo = runs[0]![1];
+    for (let k = 1; k < runs.length; k++) {
+      const [rFrom, rTo] = runs[k]!;
+      if (rFrom > openTo + BAND_MERGE_EPS_M) {
+        covered += openTo - openFrom;
+        openFrom = rFrom;
+        openTo = rTo;
+      } else if (rTo > openTo) {
+        openTo = rTo;
+      }
+    }
+    covered += openTo - openFrom;
+    // Coverage is clamped to the tile: a band reaching past the seam into the
+    // next tile must not be allowed to make up for a gap inside this one.
+    const inside = Math.min(covered, TILE_METERS, alongOrigin + TILE_METERS - openFrom);
+    if (inside < needed) continue;
+    const last = bands[bands.length - 1];
+    if (last && lo - last.to <= BAND_MERGE_EPS_M) {
+      last.to = hi;
+      last.tris += spans.length;
+    } else {
+      bands.push({ from: lo, to: hi, tris: spans.length });
+    }
+  }
+  return bands;
 }
 
 // ---------------------------------------------------------------------------
@@ -4412,6 +4554,39 @@ export class RoadMeshRenderer {
   }
 
   /**
+   * How far across the road at (x,z) its lanes ARRIVING at a junction to
+   * `toward` reach — what a stop line across that approach spans.
+   *
+   * Read from the cross-section the tile actually draws, because a turn pocket
+   * is exactly the case that moves the boundary: it widens the approach and
+   * pushes the centreline off the middle of the road, so the half a stop line
+   * covers is no longer simply the positive offsets.
+   */
+  private approachSpanAt(
+    x: number,
+    z: number,
+    toward: RoadFlow,
+  ): { from: number; to: number } | null {
+    const own = this.profileAt(x, z);
+    if (!own) return null;
+    const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
+    const flow = flowDirection(tile?.flow ?? RoadFlow.None);
+    const drawn = drawnCrossSection(
+      own,
+      this.approachToward(x, z),
+      this.narrowingAt(x, z),
+      flow,
+      this.auxiliaryAt(x, z),
+    );
+    return approachingSpan(
+      drawn,
+      own,
+      flow === RoadFlow.None || flow === toward,
+      approachAxis(toward).leftSign,
+    );
+  }
+
+  /**
    * What the road at (x,z) PAINTS THROUGH, or null where nothing runs through
    * it — the neighbour's own plan, so a line can meet its opposite number half
    * way across the seam. Read from the painted cross-section rather than the
@@ -4473,6 +4648,87 @@ export class RoadMeshRenderer {
     };
   }
 
+  /**
+   * The continuous bands a tile lays, measured off the vertex buffer the GPU
+   * is handed: for each paint colour, the stretch of ground it covers ACROSS
+   * the road.
+   *
+   * `drawnAt` says how wide the cross-section believes it is; this says how
+   * wide the asphalt and the paint on it ACTUALLY came out. Those are
+   * different questions, and a band that steps in and out along a run answers
+   * the first one correctly the whole way down. Nothing here is shared with
+   * the emitters — the bands are re-derived from triangles — so a rule that
+   * lays a correct cross-section and emits crooked geometry for it still
+   * fails.
+   *
+   * Only geometry reaching the full length of the tile counts, and that is
+   * what separates a band from a mark: an edge line and a painted lane run
+   * tile to tile, while a dash, a stencil and a stop bar stop short and are
+   * laid on a schedule of their own. Without that cut, a bicycle stencil lying
+   * across its own edge line reads as an edge line that gets wider every third
+   * tile.
+   *
+   * `axis` is the axis the width is measured on: `x` for a band running
+   * north-south, `z` for one running east-west. A crossroads tile lays both,
+   * and asphalt covering the whole tile is reported on each.
+   *
+   * A triangle belongs to the tile its centroid falls in, so a band crossing a
+   * seam is counted once, on the side that holds most of it.
+   */
+  paintBandsAt(
+    x: number,
+    z: number,
+  ): { color: string; axis: 'x' | 'z'; from: number; to: number; tris: number }[] {
+    const geometry = this.chunks.get(chunkKeyOf(x, z))?.mesh?.geometry;
+    if (!geometry) return [];
+    const position = geometry.getAttribute('position');
+    const color = geometry.getAttribute('color');
+    if (!position || !color) return [];
+    const x0 = x * TILE_METERS;
+    const z0 = z * TILE_METERS;
+    const byColour = new Map<string, TriBox[]>();
+    for (let t = 0; t + 2 < position.count; t += 3) {
+      let cx = 0;
+      let cz = 0;
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      const box: TriBox = { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity };
+      for (let v = 0; v < 3; v++) {
+        const px = position.getX(t + v);
+        const pz = position.getZ(t + v);
+        cx += px;
+        cz += pz;
+        if (px < box.x0) box.x0 = px;
+        if (px > box.x1) box.x1 = px;
+        if (pz < box.z0) box.z0 = pz;
+        if (pz > box.z1) box.z1 = pz;
+        r += color.getX(t + v);
+        g += color.getY(t + v);
+        b += color.getZ(t + v);
+      }
+      if (cx / 3 < x0 || cx / 3 >= x0 + TILE_METERS || cz / 3 < z0 || cz / 3 >= z0 + TILE_METERS) {
+        continue;
+      }
+      // Averaged over the triangle: a shaded corner is the same paint as a lit
+      // one, and bucketing per vertex would split one band into several.
+      const colour = [r / 3, g / 3, b / 3].map((c) => c.toFixed(2)).join(',');
+      const boxes = byColour.get(colour) ?? [];
+      if (boxes.length === 0) byColour.set(colour, boxes);
+      boxes.push(box);
+    }
+    const out: { color: string; axis: 'x' | 'z'; from: number; to: number; tris: number }[] = [];
+    for (const [colour, boxes] of byColour) {
+      for (const axis of ['x', 'z'] as const) {
+        const along = axis === 'x' ? z0 : x0;
+        for (const band of bandsFromCoverage(boxes, axis, along)) {
+          out.push({ color: colour, axis, ...band });
+        }
+      }
+    }
+    return out.sort((a, b) => b.tris - a.tris);
+  }
+
   private rebuildChunk(key: number): void {
     const chunk = this.chunks.get(key);
     if (!chunk) return;
@@ -4517,6 +4773,12 @@ export class RoadMeshRenderer {
             e: this.planAt(tile.x + 1, tile.z),
             s: this.planAt(tile.x, tile.z + 1),
             w: this.planAt(tile.x - 1, tile.z),
+          },
+          approaches: {
+            n: this.approachSpanAt(tile.x, tile.z - 1, ARM_TOWARD.n),
+            e: this.approachSpanAt(tile.x + 1, tile.z, ARM_TOWARD.e),
+            s: this.approachSpanAt(tile.x, tile.z + 1, ARM_TOWARD.s),
+            w: this.approachSpanAt(tile.x - 1, tile.z, ARM_TOWARD.w),
           },
         },
         flowDirection(tile.flow),

@@ -376,6 +376,18 @@ per-tier:
   carriageway marking where the running surface ends. Every paved road
   carries edge lines; an unpaved track, a service alley and a rail line
   carry no paint at all.
+- **Where the edge line goes** is the inside edge of any reserved lane
+  running along the kerb — a shoulder, a bike lane, a bus lane — because
+  that is where general traffic actually ends. On a road with a shoulder it
+  is the line that tells a driver where it is safe to pull over; on one with
+  a bike or bus lane it is the line they are not to cross, and the reserved
+  lane's coloured fill lies outside it, unbroken. Only where the outermost
+  lane is an ordinary travel lane does the line fall back to a fixed inset
+  from the kerb. A parking lane is not treated this way: it already draws a
+  solid line along its own inner edge with the bays it ticks off, so an edge
+  line there would only lay a second line over the first. A kerbside bus
+  lane's inner edge is therefore marked once, solid, rather than dashed as a
+  boundary between two ordinary same-way lanes would be.
 - **Centre line** is derived per class: dirt, alley, one-way, highway,
   ramp and rail paint no centre line at all (a one-way or a motorway has no
   opposing traffic to separate, and dirt/alley carry no paint of any kind).
