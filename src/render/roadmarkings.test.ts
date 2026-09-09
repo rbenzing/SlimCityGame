@@ -72,15 +72,22 @@ describe('markingPlan paints every preset the way a US road is painted', () => {
     expect(p.barrier).toBe(true);
   });
 
-  it('bus lane: the four-lane set plus a band on each kerb lane', () => {
+  it('bus lane: a band on each kerb lane, bounded by a solid line rather than a dashed one', () => {
     const p = markingPlan(presetProfileForTier(RoadTier.BusLane));
-    close(p.dashed, [-3.75, 3.75]);
     expect(lineAt(p.solid, CENTRE_PAIR_OFFSET_M)).toBe('yellow');
     expect(p.bands.map((b) => b.kind)).toEqual(['bus', 'bus']);
     close(
       p.bands.flatMap((b) => [b.from, b.to]),
       [-7.5, -3.75, 3.75, 7.5],
     );
+    // A reserved lane is where general traffic ENDS, so its inner edge is the
+    // edge line — solid, and the only line there. Painting it dashed, as a
+    // boundary between two ordinary same-way lanes would be, invites the
+    // traffic in; painting a dashed line over the solid one paints it twice.
+    expect(lineAt(p.solid, -3.75)).toBe('white');
+    expect(lineAt(p.solid, 3.75)).toBe('white');
+    expect(p.dashed.map((l) => l.at)).not.toContain(-3.75);
+    expect(p.dashed.map((l) => l.at)).not.toContain(3.75);
   });
 
   it('bike lane: a yellow centre and 1.6 m of green at each kerb of the 1.875 m lane', () => {
@@ -190,6 +197,26 @@ describe('markingPlan for composed profiles', () => {
     expect(centrePair(markingPlan(lanes(2)))).not.toBeNull();
     expect(centrePair(markingPlan(lanes(1)))).toBeNull();
     close(markingPlan(lanes(1)).dashed, [0]);
+  });
+
+  it('keeps the edge line out of the bike lane, between it and the traffic', () => {
+    const profile = presetProfileForTier(RoadTier.BikeLane);
+    const p = markingPlan(profile);
+    const green = p.bands.filter((b) => b.kind === 'bike');
+    expect(green).toHaveLength(2);
+    // Half-width 5.625, bike lanes 1.875 wide: the edge lines belong at the
+    // bike lanes' inner edges (±3.75), not half a metre in from the kerb,
+    // which would bury them in the green paint they are meant to bound.
+    close(
+      p.solid.map((l) => l.at),
+      [-3.75, 3.75],
+    );
+    for (const line of p.solid) {
+      for (const band of green) {
+        const inside = line.at > Math.min(band.from, band.to) && line.at < Math.max(band.from, band.to);
+        expect(inside, `a line at ${line.at} sits inside the bike paint`).toBe(false);
+      }
+    }
   });
 
   it('a composed bike lane narrower than the paint cap is painted edge to edge', () => {

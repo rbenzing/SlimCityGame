@@ -99,6 +99,20 @@ const CLASS_MARKINGS: Readonly<Record<RoadClassId, ClassMarkings>> = {
   rail: { centre: 'none', laneLines: false, edgeLines: false },
 };
 
+/**
+ * Lanes that run along the kerb but are not general running surface, and so
+ * sit OUTSIDE the edge line rather than inside it.
+ *
+ * A parking lane is not among them: it already draws a solid line along its
+ * inner edge with the bays it ticks off, so the edge line has nothing to add
+ * there and would only lay a second line over the first.
+ */
+const RESERVED_EDGE_KINDS: ReadonlySet<LanePiece['kind']> = new Set([
+  'shoulder',
+  'bike',
+  'bus',
+]);
+
 const CARRIAGEWAY_KINDS: ReadonlySet<LanePiece['kind']> = new Set([
   'travel',
   'centreTurn',
@@ -152,6 +166,41 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
   const white = (at: number): MarkingLine => ({ at, color: 'white' });
   const yellow = (at: number): MarkingLine => ({ at, color: 'yellow' });
   const bands: MarkingBand[] = [];
+
+  // Edge lines: a solid line down each side of the carriageway, marking where
+  // the running surface ends and the shoulder, gutter or kerb begins. Every
+  // paved road carries them.
+  //
+  // Where a reserved lane runs along the kerb, the line goes at that lane's
+  // INSIDE edge, because that is where general traffic actually ends: on a
+  // road with a shoulder the line is what tells a driver where it is safe to
+  // pull over, and on one with a bike or bus lane it is the line they are not
+  // to cross. Measuring a fixed inset from the kerb instead puts the line a
+  // half-metre inside the reserved lane — down the middle of its own coloured
+  // paint, with nothing at all between it and the traffic it is there to keep
+  // out.
+  //
+  // Solved before the pieces are walked because the lane lines between them
+  // have to know: a boundary the edge line already marks must not be dashed
+  // over as well.
+  const reservedInside = (side: -1 | 1): number => {
+    let edge = -half;
+    let inner: number | null = null;
+    for (const piece of pieces) {
+      const from = edge;
+      edge += piece.width;
+      if (!RESERVED_EDGE_KINDS.has(piece.kind)) continue;
+      if (side < 0 && from < 0) inner = edge;
+      if (side > 0 && edge > 0) inner ??= from;
+    }
+    return inner ?? side * (half - EDGE_LINE_MARGIN_M);
+  };
+  const edgeLineAt: [number, number] | null =
+    style.edgeLines && half > EDGE_LINE_MARGIN_M
+      ? [reservedInside(-1), reservedInside(1)]
+      : null;
+  const isEdgeLine = (at: number): boolean =>
+    edgeLineAt !== null && edgeLineAt.some((e) => Math.abs(e - at) < 1e-9);
 
   // Opposing travel lanes per side decide the auto centre style.
   const back = pieces.filter((p) => isTravel(p) && flowOf(p) === 'back').length;
@@ -214,29 +263,14 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
           yellow(boundary - CENTRE_PAIR_OFFSET_M),
           yellow(boundary + CENTRE_PAIR_OFFSET_M),
         );
-    } else if ((sameWay || travelToBus) && style.laneLines) {
+    } else if ((sameWay || travelToBus) && style.laneLines && !isEdgeLine(boundary)) {
+      // A kerbside bus lane's inner edge is the edge line, and a solid line
+      // there says what a dashed one over the top of it cannot.
       dashed.push(white(boundary));
     }
   }
 
-  // Edge lines: a solid white line down each side of the carriageway, marking
-  // where the running surface ends and the shoulder, gutter or kerb begins.
-  // Every paved road carries them; on a road with a shoulder the line is the
-  // shoulder's inside edge, which is what tells a driver where it is safe to
-  // pull over.
-  if (style.edgeLines && half > EDGE_LINE_MARGIN_M) {
-    const shoulderInside = (side: -1 | 1): number => {
-      let edge = -half;
-      let inner: number | null = null;
-      for (const piece of pieces) {
-        const from = edge;
-        edge += piece.width;
-        if (piece.kind !== 'shoulder') continue;
-        if (side < 0 && from < 0) inner = edge;
-        if (side > 0 && edge > 0) inner ??= from;
-      }
-      return inner ?? side * (half - EDGE_LINE_MARGIN_M);
-    };
+  if (edgeLineAt !== null) {
     // The edge of a one-way carriageway that faces the median or the opposing
     // traffic is YELLOW; the one facing the roadside is white.
     //
@@ -260,9 +294,10 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
     const fallbackYellowRight = facesMedian && runsWithOffsets;
     const leftIsYellow = medianAtLeft || (!medianAtRight && fallbackYellowLeft);
     const rightIsYellow = medianAtRight || (!medianAtLeft && fallbackYellowRight);
+    const [leftAt, rightAt] = edgeLineAt;
     solid.push(
-      leftIsYellow ? yellow(shoulderInside(-1)) : white(shoulderInside(-1)),
-      rightIsYellow ? yellow(shoulderInside(1)) : white(shoulderInside(1)),
+      leftIsYellow ? yellow(leftAt) : white(leftAt),
+      rightIsYellow ? yellow(rightAt) : white(rightAt),
     );
   }
 
