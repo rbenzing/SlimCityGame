@@ -126,6 +126,8 @@ import { paintsGore } from '../shared/taper';
 import type { TaperStep } from '../shared/taper';
 import type { ApproachAhead, ApproachSurroundings, AuxiliaryLane } from '../shared/approachzone';
 import {
+  approachingLanes,
+  approachingSpan,
   centrePair,
   markingPlan,
   seamBetween,
@@ -1696,17 +1698,33 @@ function emitJunctionArmMarkings(
   stops: boolean,
   /** How much tile there is between the junction box and the tile edge. */
   armDepth: number,
+  /**
+   * How far across the road the lanes ARRIVING on this arm reach. A stop line
+   * is painted across the approach and stops at the centreline (MUTCD 3B.16);
+   * carried over the whole carriageway it also bars the traffic leaving the
+   * junction, which has nothing to stop for. Null where the arm's own section
+   * is not known, in which case the whole width is the best guess available.
+   */
+  approachAcross: { from: number; to: number } | null,
 ): void {
   const layout = junctionArmLayout(armDepth);
 
-  // Stop line: one bar spanning the full carriageway width. It is painted back
-  // down the APPROACH, past this tile's edge, because that is where a stop
-  // line stands — so it lies over the approach's own lane lines and takes a
-  // hair of lift to keep the two from fighting for the same depth.
-  if (stops) {
+  // Stop line: one bar across the arriving lanes. It is painted back down the
+  // APPROACH, past this tile's edge, because that is where a stop line stands
+  // — so it lies over the approach's own lane lines and takes a hair of lift
+  // to keep the two from fighting for the same depth.
+  // Clamped to the arm: an approach wider than the junction it meets is still
+  // only painted as far as the asphalt goes.
+  const stopAcross: [number, number] = approachAcross
+    ? [
+        Math.max(-coreHalf, Math.min(approachAcross.from, approachAcross.to)),
+        Math.min(coreHalf, Math.max(approachAcross.from, approachAcross.to)),
+      ]
+    : [-coreHalf, coreHalf];
+  if (stops && stopAcross[1] > stopAcross[0]) {
     const stopLo = Math.min(dAt(layout.stopLineStart), dAt(layout.stopLineEnd));
     const stopHi = Math.max(dAt(layout.stopLineStart), dAt(layout.stopLineEnd));
-    const across: [number, number] = [-coreHalf, coreHalf];
+    const across = stopAcross;
     const along: [number, number] = [stopLo, stopHi];
     const [xLo, xHi] = vertical ? across : along;
     const [zLo, zHi] = vertical ? along : across;
@@ -3112,13 +3130,42 @@ export interface NeighborHalves {
    * road that does not change.
    */
   plans?: { n: MarkingPlan | null; e: MarkingPlan | null; s: MarkingPlan | null; w: MarkingPlan | null };
+  /**
+   * How far across each neighbour's road its lanes ARRIVING here reach, in
+   * that road's own offsets. A stop line is painted across the approach and
+   * stops at the centreline; without this the junction has no way to tell the
+   * arriving half from the leaving one and paints a bar over both. Omitted,
+   * each side falls back to the driver's-right half of its tier's preset.
+   */
+  approaches?: {
+    n: { from: number; to: number } | null;
+    e: { from: number; to: number } | null;
+    s: { from: number; to: number } | null;
+    w: { from: number; to: number } | null;
+  };
 }
+
+/** Which way traffic runs on the neighbour in direction `d` to reach this tile. */
+const ARM_TOWARD = {
+  n: RoadFlow.South,
+  s: RoadFlow.North,
+  e: RoadFlow.West,
+  w: RoadFlow.East,
+} as const;
 
 function presetHalves(neighbors: NeighborTiers): NeighborHalves {
   const half = (tier: RoadTier): number =>
     tier === RoadTier.None ? 0 : carriagewayHalfWidthMeters(tier);
   const walkable = (tier: RoadTier): boolean =>
     tier !== RoadTier.None && hasFootway(presetProfileForTier(tier));
+  // A preset road records no direction of its own, so it runs both ways and
+  // the arriving half is the driver's right — which is what a caller supplying
+  // no neighbours should get.
+  const approach = (tier: RoadTier, toward: RoadFlow): { from: number; to: number } | null => {
+    if (tier === RoadTier.None) return null;
+    const profile = presetProfileForTier(tier);
+    return approachingSpan(profile, profile, true, approachAxis(toward).leftSign);
+  };
   return {
     n: half(neighbors.n),
     e: half(neighbors.e),
@@ -3129,6 +3176,12 @@ function presetHalves(neighbors: NeighborTiers): NeighborHalves {
       e: walkable(neighbors.e),
       s: walkable(neighbors.s),
       w: walkable(neighbors.w),
+    },
+    approaches: {
+      n: approach(neighbors.n, ARM_TOWARD.n),
+      e: approach(neighbors.e, ARM_TOWARD.e),
+      s: approach(neighbors.s, ARM_TOWARD.s),
+      w: approach(neighbors.w, ARM_TOWARD.w),
     },
   };
 }
@@ -3704,23 +3757,10 @@ export function roadTileVertices(
       if (approach?.distance === 0 && plan.solid.length + plan.dashed.length > 0) {
         const approachToward = approach.toward;
         const { vertical, ahead, leftSign } = approachAxis(approachToward);
-        const lanes = travelLanes(crossSection);
-        const oneWay = lanes.every((l) => l.flow === lanes[0]?.flow);
-        // On a two-way road the approaching lanes are the ones on the driver's
-        // RIGHT of the centreline. On a one-way every lane approaches, or none
-        // does — which is what the road's own stored direction decides.
+        // Which lanes a driver arrives in — the same question the stop line
+        // across this approach asks, answered in one place for both.
         const runsToward = flow === RoadFlow.None || flow === approachToward;
-        // A turn pocket makes the cross-section lopsided, and the centreline
-        // is no longer the middle of the road: which half a lane belongs to is
-        // then what it FLOWS, read off the half that the road without its
-        // pocket had on the driver's right.
-        const onTheRight = (l: { centre: number }): boolean => l.centre * leftSign < 0;
-        const towardUs = travelLanes(own).find(onTheRight)?.flow;
-        const approaching = oneWay
-          ? runsToward
-            ? lanes
-            : []
-          : lanes.filter((l) => (towardUs ? l.flow === towardUs : onTheRight(l)));
+        const approaching = approachingLanes(crossSection, own, runsToward, leftSign);
         if (approaching.length >= 2) {
           // Ordered from the driver's left, which is the order the movement sets
           // come in: the dedicated left first, the dedicated right last.
@@ -3915,11 +3955,15 @@ export function roadTileVertices(
       // than the junction itself, which is as far as the asphalt goes.
       const armHalf = (neighbourHalf: number): number =>
         neighbourHalf > 0 ? Math.min(coreHalf, neighbourHalf) : coreHalf;
+      // Which half of each arm is arriving here, so its stop line stops at
+      // that road's centreline instead of barring the traffic leaving.
+      const approaches = neighborHalves.approaches ?? presetHalves(neighbors).approaches!;
       const arm = (
         vertical: boolean,
         at: (d: number) => number,
         stops: boolean,
         half: number,
+        approaching: { from: number; to: number } | null,
       ): void =>
         emitJunctionArmMarkings(
           positions,
@@ -3936,20 +3980,22 @@ export function roadTileVertices(
           // the crossing carries on runs through exactly this, so it is what
           // decides where the crossing goes.
           armDepth,
+          approaching,
         );
       // Measured inward from the TILE edge, which is where the approach
       // actually reaches the junction, rather than outward from the box.
       if (painted) {
-        const armAt: [boolean, RoadTier, number, boolean, (d: number) => number][] = [
-          [hasN, neighbors.n, neighborHalves.n, true, (d) => -TILE_HALF + d],
-          [hasS, neighbors.s, neighborHalves.s, true, (d) => TILE_HALF - d],
-          [hasE, neighbors.e, neighborHalves.e, false, (d) => TILE_HALF - d],
-          [hasW, neighbors.w, neighborHalves.w, false, (d) => -TILE_HALF + d],
+        type Span = { from: number; to: number } | null;
+        const armAt: [boolean, RoadTier, number, boolean, (d: number) => number, Span][] = [
+          [hasN, neighbors.n, neighborHalves.n, true, (d) => -TILE_HALF + d, approaches.n],
+          [hasS, neighbors.s, neighborHalves.s, true, (d) => TILE_HALF - d, approaches.s],
+          [hasE, neighbors.e, neighborHalves.e, false, (d) => TILE_HALF - d, approaches.e],
+          [hasW, neighbors.w, neighborHalves.w, false, (d) => -TILE_HALF + d, approaches.w],
         ];
-        for (const [has, neighborTier, neighbourHalf, vertical, at] of armAt) {
+        for (const [has, neighborTier, neighbourHalf, vertical, at, approaching] of armAt) {
           if (!has) continue;
           if (!holdsEveryArm && !armStops(neighborTier)) continue;
-          arm(vertical, at, stopsFor, armHalf(neighbourHalf));
+          arm(vertical, at, stopsFor, armHalf(neighbourHalf), approaching);
         }
       }
 
@@ -4508,6 +4554,39 @@ export class RoadMeshRenderer {
   }
 
   /**
+   * How far across the road at (x,z) its lanes ARRIVING at a junction to
+   * `toward` reach — what a stop line across that approach spans.
+   *
+   * Read from the cross-section the tile actually draws, because a turn pocket
+   * is exactly the case that moves the boundary: it widens the approach and
+   * pushes the centreline off the middle of the road, so the half a stop line
+   * covers is no longer simply the positive offsets.
+   */
+  private approachSpanAt(
+    x: number,
+    z: number,
+    toward: RoadFlow,
+  ): { from: number; to: number } | null {
+    const own = this.profileAt(x, z);
+    if (!own) return null;
+    const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
+    const flow = flowDirection(tile?.flow ?? RoadFlow.None);
+    const drawn = drawnCrossSection(
+      own,
+      this.approachToward(x, z),
+      this.narrowingAt(x, z),
+      flow,
+      this.auxiliaryAt(x, z),
+    );
+    return approachingSpan(
+      drawn,
+      own,
+      flow === RoadFlow.None || flow === toward,
+      approachAxis(toward).leftSign,
+    );
+  }
+
+  /**
    * What the road at (x,z) PAINTS THROUGH, or null where nothing runs through
    * it — the neighbour's own plan, so a line can meet its opposite number half
    * way across the seam. Read from the painted cross-section rather than the
@@ -4694,6 +4773,12 @@ export class RoadMeshRenderer {
             e: this.planAt(tile.x + 1, tile.z),
             s: this.planAt(tile.x, tile.z + 1),
             w: this.planAt(tile.x - 1, tile.z),
+          },
+          approaches: {
+            n: this.approachSpanAt(tile.x, tile.z - 1, ARM_TOWARD.n),
+            e: this.approachSpanAt(tile.x + 1, tile.z, ARM_TOWARD.e),
+            s: this.approachSpanAt(tile.x, tile.z + 1, ARM_TOWARD.s),
+            w: this.approachSpanAt(tile.x - 1, tile.z, ARM_TOWARD.w),
           },
         },
         flowDirection(tile.flow),

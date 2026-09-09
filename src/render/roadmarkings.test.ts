@@ -3,6 +3,8 @@ import { corridorHalfProfile, presetProfileForTier } from '../shared/roadprofile
 import { RoadFlow, RoadTier } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import {
+  approachingLanes,
+  approachingSpan,
   CENTRE_PAIR_OFFSET_M,
   centrePair,
   MEDIAN_EDGE_LINE_INSET_M,
@@ -10,6 +12,7 @@ import {
   seamBetween,
   seamOffsets,
   travelLanes,
+  travelLaneSpans,
   type MarkingPlan as MarkingProfile,
 } from './roadmarkings';
 
@@ -464,6 +467,77 @@ describe('the yellow edge of a one-way roadway (MUTCD 3B.07)', () => {
     for (const flow of [RoadFlow.None, RoadFlow.North, RoadFlow.East, RoadFlow.South, RoadFlow.West]) {
       const e = edges(flow);
       expect([e.low, e.high].filter((c) => c === 'yellow').length, `flow ${flow}`).toBe(1);
+    }
+  });
+});
+
+describe('the lanes an approach arrives in (MUTCD 3B.16)', () => {
+  // A stop line goes across the approach and stops at the centreline. The
+  // driver's left is the side a left turn hooks toward; the arriving lanes are
+  // the ones on the other side of it, so their offsets carry the opposite sign.
+  const LEFT_IS_POSITIVE = 1 as const;
+  const LEFT_IS_NEGATIVE = -1 as const;
+
+  it('covers the driver-right half of a two-way road, not the whole of it', () => {
+    const p = presetProfileForTier(RoadTier.TwoLane);
+    // Carriageway 7.5 m: the arriving lane is one 3.75 m lane on one side of
+    // the centreline. Which side depends on which way the approach runs.
+    expect(approachingSpan(p, p, true, LEFT_IS_POSITIVE)).toEqual({ from: -3.75, to: 0 });
+    expect(approachingSpan(p, p, true, LEFT_IS_NEGATIVE)).toEqual({ from: 0, to: 3.75 });
+  });
+
+  it('covers a divided road up to its median and no further', () => {
+    const p = presetProfileForTier(RoadTier.Avenue);
+    // Two 3.75 m lanes each way about a 1.2 m median: the arriving pair
+    // reaches the median's edge at 0.6 m from the centre, never across it.
+    const span = approachingSpan(p, p, true, LEFT_IS_NEGATIVE)!;
+    expect(span.from).toBeCloseTo(0.6, 6);
+    expect(span.to).toBeCloseTo(8.1, 6);
+    expect(approachingLanes(p, p, true, LEFT_IS_NEGATIVE)).toHaveLength(2);
+  });
+
+  it('covers the whole of a one-way running toward the junction, and none of one running away', () => {
+    const p = presetProfileForTier(RoadTier.OneWay);
+    expect(approachingSpan(p, p, true, LEFT_IS_NEGATIVE)).toEqual({ from: -3.75, to: 3.75 });
+    // Nothing on this road ever reaches the junction, so there is nothing to
+    // stop and no stop line to paint.
+    expect(approachingSpan(p, p, false, LEFT_IS_NEGATIVE)).toBeNull();
+    expect(approachingLanes(p, p, false, LEFT_IS_NEGATIVE)).toEqual([]);
+  });
+
+  it('follows a turn pocket off the centreline instead of splitting down the middle', () => {
+    const own = presetProfileForTier(RoadTier.TwoLane);
+    // The same road with a left-turn pocket carved beside the arriving lane:
+    // three lanes, so the middle of the road is no longer the centreline. The
+    // arriving side is the one whose lanes FLOW toward us, which is what keeps
+    // the stop line off the lane leaving.
+    const pocketed: RoadProfile = {
+      class: own.class,
+      pieces: [
+        { kind: 'sidewalk', width: 1.875 },
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'sidewalk', width: 1.875 },
+      ],
+    };
+    const arriving = approachingLanes(pocketed, own, true, LEFT_IS_NEGATIVE);
+    expect(arriving.map((l) => l.flow)).toEqual(['fwd', 'fwd']);
+    const span = approachingSpan(pocketed, own, true, LEFT_IS_NEGATIVE)!;
+    // Two of the three lanes, on the far side of the one running the other way.
+    expect(span.to - span.from).toBeCloseTo(7.5, 6);
+    // And it never reaches the lane that flows away from the junction.
+    const leaving = travelLaneSpans(pocketed).find((l) => l.flow === 'back')!;
+    expect(span.from).toBeGreaterThanOrEqual(leaving.to - 1e-9);
+  });
+
+  it('agrees with travelLanes about where the lanes are', () => {
+    for (const tier of [RoadTier.TwoLane, RoadTier.Avenue, RoadTier.FourLane, RoadTier.Highway]) {
+      const p = presetProfileForTier(tier);
+      expect(travelLaneSpans(p).map((l) => l.centre)).toEqual(travelLanes(p).map((l) => l.centre));
+      for (const lane of travelLaneSpans(p)) {
+        expect((lane.from + lane.to) / 2).toBeCloseTo(lane.centre, 6);
+      }
     }
   });
 });

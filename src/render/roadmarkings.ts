@@ -137,21 +137,89 @@ export interface TravelLane {
   flow: 'fwd' | 'back' | 'both';
 }
 
+/** A travel lane with the ground it covers, not only the line down its middle. */
+export interface TravelLaneSpan extends TravelLane {
+  /** Signed offset of the lane's near edge from the centreline, metres. */
+  from: number;
+  /** Signed offset of its far edge. */
+  to: number;
+}
+
+/**
+ * The travel lanes a profile has, with the ground each covers, in order across
+ * the tile. Anything painted ACROSS a set of lanes — a stop line above all —
+ * has to know where those lanes end, which their centres alone do not say.
+ */
+export function travelLaneSpans(profile: RoadProfile): TravelLaneSpan[] {
+  const pieces = profile.pieces.filter((p) => CARRIAGEWAY_KINDS.has(p.kind));
+  let offset = -carriagewayHalfWidthOf(profile);
+  const lanes: TravelLaneSpan[] = [];
+  for (const piece of pieces) {
+    const from = offset;
+    offset += piece.width;
+    if (isTravel(piece)) {
+      lanes.push({ centre: (from + offset) / 2, flow: flowOf(piece), from, to: offset });
+    }
+  }
+  return lanes;
+}
+
 /**
  * The travel lanes a profile has, in order across the tile. Anything painted
  * PER LANE — a lane-use arrow above all — has to know where the lane actually
  * is, and the cross-section is the only thing that knows.
  */
 export function travelLanes(profile: RoadProfile): TravelLane[] {
-  const pieces = profile.pieces.filter((p) => CARRIAGEWAY_KINDS.has(p.kind));
-  let offset = -carriagewayHalfWidthOf(profile);
-  const lanes: TravelLane[] = [];
-  for (const piece of pieces) {
-    const from = offset;
-    offset += piece.width;
-    if (isTravel(piece)) lanes.push({ centre: (from + offset) / 2, flow: flowOf(piece) });
-  }
-  return lanes;
+  return travelLaneSpans(profile).map(({ centre, flow }) => ({ centre, flow }));
+}
+
+/**
+ * The lanes of an approach a driver actually arrives in — the ones a stop line
+ * is painted across and a lane-use arrow is painted in.
+ *
+ * On a two-way road they are the lanes on the driver's RIGHT of the centreline.
+ * On a one-way, every lane approaches or none does, depending on which way the
+ * road runs; `runsToward` says which, and a road that never recorded a
+ * direction is taken to run both ways.
+ *
+ * A turn pocket is why this cannot simply be "the half with the positive
+ * offsets". A pocket makes the section lopsided, so the centreline stops being
+ * the middle of the road; which half a lane belongs to is then what it FLOWS,
+ * read off the half that the road WITHOUT its pocket had on the driver's
+ * right. `own` is that unpocketed section.
+ */
+export function approachingLanes(
+  drawn: RoadProfile,
+  own: RoadProfile,
+  runsToward: boolean,
+  leftSign: 1 | -1,
+): TravelLaneSpan[] {
+  const lanes = travelLaneSpans(drawn);
+  if (lanes.length === 0) return [];
+  const oneWay = lanes.every((l) => l.flow === lanes[0]!.flow);
+  const onTheRight = (l: { centre: number }): boolean => l.centre * leftSign < 0;
+  if (oneWay) return runsToward ? lanes : [];
+  const towardUs = travelLaneSpans(own).find(onTheRight)?.flow;
+  return lanes.filter((l) => (towardUs ? l.flow === towardUs : onTheRight(l)));
+}
+
+/**
+ * How far across the road an approach reaches, kerb-side edge to centreline —
+ * the extent a stop line spans. Null where nothing approaches, which is a
+ * one-way running away from the junction and has no stop line to paint.
+ */
+export function approachingSpan(
+  drawn: RoadProfile,
+  own: RoadProfile,
+  runsToward: boolean,
+  leftSign: 1 | -1,
+): { from: number; to: number } | null {
+  const lanes = approachingLanes(drawn, own, runsToward, leftSign);
+  if (lanes.length === 0) return null;
+  return {
+    from: Math.min(...lanes.map((l) => l.from)),
+    to: Math.max(...lanes.map((l) => l.to)),
+  };
 }
 
 /** Lays the carriageway pieces across the tile and reads the lines between them. */
