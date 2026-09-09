@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-08)
 
-**Test suite:** 3,279 tests passing across 117 test files, run 2026-09-08.
+**Test suite:** 3,285 tests passing across 117 test files, run 2026-09-08.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -191,6 +191,37 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Road geometry audit (2026-09-08, one open question)
+
+A player report that the bike lanes looked uneven, answered by measuring
+rather than by looking harder. Every read-back we had asked a road what its
+cross-section IS; none could say how wide the triangles emitted for it
+actually came out, so a band that steps in and out along a run answers all of
+them correctly. `readPaint` asks the second question off the vertex buffer,
+and `tools/roadmatrix-shots.mjs` puts it to every laying tier in every
+topology a road goes down in — 84 cases. See
+[engineering/standards/debugging.md](engineering/standards/debugging.md).
+
+What it found and what was fixed: the edge line was placed a fixed inset from
+the kerb, which lands half a metre INSIDE a reserved kerbside lane — so a bike
+lane had a white line splitting its own green paint and nothing between it and
+the traffic, and a kerbside bus lane had the same stray line plus only a dashed
+boundary. The edge line now goes at the inside edge of a reserved lane, where
+general traffic actually ends.
+
+**Still open — the approach flare is drawn but not reported.** On the upstream
+approach to a junction the geometry flares into turn pockets with arrows
+(wave 4's work, and plausibly correct for a one-way, where only one side feeds
+the junction), but both read-backs insist the section is unchanged there —
+`readApproach` and `readDrawn` report the plain section, no pocket and no
+taper. Either the flare is wrong or the read-backs are blind to it; until that
+is settled the matrix reports 17 findings on one-way, tram, ramp and
+mixed-class crossroads runs. Two smaller notes from the same run, neither
+chased: a dead end stops all its paint at the junction-box boundary, leaving an
+unpainted apron before the rounded bulb (consistent across marking types, so
+likely a design consequence), and a fresh map with no roads on it already
+submits six empty draw calls.
 
 ### Road composition (2026-09-05 – 2026-09-06, in progress)
 
