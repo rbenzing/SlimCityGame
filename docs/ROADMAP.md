@@ -239,14 +239,40 @@ check we have, which is the reason they survived:
    one-tile-owns-its-geometry model does not do — that is the next piece of
    work here, and it is what the original screenshot was really showing.
 
-2. **A turn pocket steps instead of tapering.** On the two-lane approach the
-   carriageway goes 7.50 → 9.03 → 10.55 m in two tiles — about 1.5 m of
-   width per 20 m tile, squared off at each tile edge, which is what reads
-   as a stack of misaligned slabs. `readApproach` reports `taper: null` on
-   every one of those tiles, so nothing draws a transition. The painted
-   centreline moves with the pocket to ∓1.25 m off the road's centre and
-   flips sign across the junction, so a straight road's centreline zig-zags
-   by 2.5 m through it. Same read-back blindness as the item below.
+2. **The turn pocket does NOT step — that reading was wrong (measured
+   2026-09-09).** It looked like it did: the cross-section goes 7.50 → 9.03
+   → 10.55 m over two tiles and `readApproach` reports `taper: null`
+   throughout, so the conclusion was a width squared off at each tile edge.
+   The geometry says otherwise. `readPaint` only reports a width covered
+   over 98% of a tile's LENGTH, so a bending plate reports its narrow end
+   and a stepped one its full width — and each flare tile reports its
+   UPSTREAM neighbour's width plus about 2%: 7.65 where the section is 9.03,
+   9.18 where it is 10.55. That is a bend, not a step. `seamHalfAt`
+   (`roadsmesh.ts`) was already interpolating the half-width across these
+   tiles. The kerb bends with it, tracking asphalt + 3.75 m exactly at every
+   tile (7.65 + 3.75 = 11.40, 9.18 + 3.75 = 12.93). Nothing needed a taper
+   drawing; `taper: null` is a read-back that does not describe a flare, not
+   a flare that is not drawn.
+
+   What is left of the complaint splits in two, both confirmed:
+
+   - **The painted centreline jumps.** It moves with the pocket to ∓1.25 m
+     off the road's centre and flips sign across the junction, so a straight
+     road's centreline steps sideways by 2.5 m through it. Locally correct
+     for each approach — a left-turn pocket does move the centreline — but
+     the two approaches disagree, and nothing eases them into each other.
+   - **On a slope the surface reads as slabs.** Photographed straight down
+     on a 26 m drop the widths are uniform to the millimetre (asphalt
+     ±3.75 m, kerb ±5.63 m, identical over six tiles) while the shading is
+     not: the terrain-conforming lattice is flat-shaded per face, so
+     adjacent cells at slightly different slopes meet at a visible seam and
+     a straight road reads as a stack. That is normals, not geometry —
+     `computeVertexNormals` on a non-indexed soup can only give per-face
+     normals. Smoothing them across the near-planar carriageway while
+     keeping the kerb's own upstand sharp would fix it, and would change how
+     every road in the game is lit, so it wants a decision rather than a
+     patch.
+
 3. ~~**The stop line is painted across the departing lanes.**~~ **Fixed
    2026-09-08.** It spanned `[-coreHalf, +coreHalf]`, the whole carriageway,
    so it barred the lanes leaving the junction too. It now covers the
