@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.5.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.4.0...slimcity-v1.5.0) (2026-09-08)
+
+
+### Features
+
+* **roads:** a 20 m tile, so a street can afford its own pavements ([f5f03bc](https://github.com/rbenzing/SlimCityGame/commit/f5f03bcc1619a61199d8c6a815d0bc53307af43f))
+* **roads:** the avenue pays for its footways, and a crossing lands on them ([de28d01](https://github.com/rbenzing/SlimCityGame/commit/de28d01f1ac7395a8cb48071230732ae2dd0745f))
+* **roads:** the player says what each LANE of an approach may do ([2df1dde](https://github.com/rbenzing/SlimCityGame/commit/2df1dde3ed9b53a185045943b30ba010846eb8f8))
+* **roads:** the road tool lays a corridor as two carriageways ([e46e40f](https://github.com/rbenzing/SlimCityGame/commit/e46e40f664c6ee0cd007f14c92f36e06d296b608))
+
+
+### Bug Fixes
+
+* **buildings:** a detached home is house-sized, not hall-sized ([0984527](https://github.com/rbenzing/SlimCityGame/commit/0984527252be44c62c6aa39f85e8159ad9d015a6))
+* **buildings:** a plan is a size in metres, not a share of the tile ([f7ae510](https://github.com/rbenzing/SlimCityGame/commit/f7ae510676abc72f31996ea4c41bd51ba1c84462))
+* **roads:** a corridor half can find the junction it arrives at ([d49b1ad](https://github.com/rbenzing/SlimCityGame/commit/d49b1ad7ef851422878c8cd6e706ca0a0df8c596))
+* **roads:** a divided road is marked as one, and its covers sit on the centreline ([c741d1d](https://github.com/rbenzing/SlimCityGame/commit/c741d1d3d42f39190cbd07f3398a76efe5d4d28c))
+* **roads:** a one-way's yellow edge follows the way it runs (MUTCD 3B.07) ([6130345](https://github.com/rbenzing/SlimCityGame/commit/61303457a448433dd602fc607e85109519834d4f))
+* **roads:** a road runs one way whichever way it runs ([d882c85](https://github.com/rbenzing/SlimCityGame/commit/d882c85211c80349678a8735bb9fdc71a91455d5))
+* **roads:** manhole spacing is counted from the tile, not written down ([c1eab68](https://github.com/rbenzing/SlimCityGame/commit/c1eab6825645d22f7e0cd6fb2e3d32697fd30418))
+* **roads:** paint follows the road through a change of width ([4082243](https://github.com/rbenzing/SlimCityGame/commit/4082243453f7d2cf4e920851084401f62e3a9cfc))
+* **roads:** the footway carries on round the corner, through the junction ([03e6c46](https://github.com/rbenzing/SlimCityGame/commit/03e6c46996d15d079909b2ac53236303690d3b31))
+* **roads:** the median is drawn where the section puts it, trees included ([2e6e0e1](https://github.com/rbenzing/SlimCityGame/commit/2e6e0e1b5951b610dcfec554513d48438f9f7994))
+* **tools:** the shot harnesses read the tile size from the app ([7b6d2cd](https://github.com/rbenzing/SlimCityGame/commit/7b6d2cd099b98629491450bf5d5aa958f767da27))
+
 ## [1.4.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.3.0...slimcity-v1.4.0) (2026-09-07)
 
 
