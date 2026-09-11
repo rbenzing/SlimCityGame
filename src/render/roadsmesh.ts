@@ -3367,13 +3367,23 @@ export function roadTileVertices(
   const capE = alone ? !aloneVertical : connections === 1 && hasW;
   const capW = alone ? !aloneVertical : connections === 1 && hasE;
 
-  // Wide -> narrow transition: on a straight through-run, a kerbed paved tile
-  // whose paved neighbour is narrower bends its kerb in to meet it over the
-  // whole tile (half the tile when both ends narrow, so the two bends share the
-  // centre). The narrower side draws nothing; the gravel neighbour keeps its
-  // tan seam instead; junction throats keep their flare.
+  // Wide -> narrow transition: on a straight through-run, a tile whose
+  // neighbour is narrower bends its edge in to meet it over the whole tile
+  // (half the tile when both ends narrow, so the two bends share the centre).
+  // The narrower side draws nothing; junction throats keep their flare.
+  //
+  // Where the SURFACE changes the bend gives way to the paved→dirt seam band,
+  // which is that join's own treatment. That used to be written as "not a
+  // gravel neighbour", together with a gate of `spec.paved && spec.hasCurbs`
+  // on the whole thing — and between them they excluded every road that is not
+  // paved and kerbed from bending at all. A gravel road running into its own
+  // junction flare, both tiles gravel and no surface changing anywhere, was
+  // left to step: 1.38 m of shoulder appearing square in one seam, and the
+  // same on an alley and a ramp. Width is width whatever the road is made of.
+  const surfaceChanges = (nTier: RoadTier): boolean =>
+    spec.paved !== quadSpecFor(nTier, presetProfileForTier(nTier)).paved;
   const narrowsInto: Array<[number, 1 | -1, boolean]> =
-    spec.paved && spec.hasCurbs && connections === 2 && isCollinearMask(mask)
+    connections === 2 && isCollinearMask(mask)
       ? (
           [
             [hasN, neighbors.n, neighborHalves.n, -1, true],
@@ -3386,7 +3396,7 @@ export function roadTileVertices(
             ([has, nTier, nHalf]) =>
               has &&
               nTier !== RoadTier.None &&
-              nTier !== RoadTier.Gravel &&
+              !surfaceChanges(nTier) &&
               nHalf > 0 &&
               nHalf < coreHalf - 1e-6,
           )
@@ -4206,6 +4216,27 @@ export function roadTileVertices(
   return { positions, colors };
 }
 
+/**
+ * How much of each end of a tile is sampled to say where a band sits there.
+ * Short enough that a band easing across the tile reads differently at the two
+ * ends, long enough to catch a lattice cell at each.
+ */
+const BAND_END_SLICE_FRACTION = 0.15;
+
+/**
+ * A continuous band across a tile: the ground it covers overall, and where it
+ * sits at each END of the tile. `near` is the low end of the along axis and
+ * `far` the high one; equal spans mean a band running straight, differing ones
+ * a band easing across the road.
+ */
+export interface BandSpan {
+  from: number;
+  to: number;
+  tris: number;
+  near: { from: number; to: number };
+  far: { from: number; to: number };
+}
+
 /** One triangle of the road soup, reduced to the ground it covers. */
 interface TriBox {
   x0: number;
@@ -4235,7 +4266,7 @@ function bandsFromCoverage(
   boxes: readonly TriBox[],
   axis: 'x' | 'z',
   alongOrigin: number,
-): { from: number; to: number; tris: number }[] {
+): BandSpan[] {
   const acrossLo = (b: TriBox): number => (axis === 'x' ? b.x0 : b.z0);
   const acrossHi = (b: TriBox): number => (axis === 'x' ? b.x1 : b.z1);
   const alongLo = (b: TriBox): number => (axis === 'x' ? b.z0 : b.x0);
@@ -4283,7 +4314,36 @@ function bandsFromCoverage(
       bands.push({ from: lo, to: hi, tris: spans.length });
     }
   }
-  return bands;
+
+  // Where each band sits at the two ENDS of the tile, not just overall.
+  //
+  // A band that runs straight measures the same at both; one that is easing
+  // across the road — a centreline stepping aside for a turn pocket, a kerb
+  // opening into a flare — does not. Without this a caller only ever sees the
+  // band's full extent, which for a diagonal is its bounding box, and reads a
+  // smooth taper as a tile that suddenly lays its paint somewhere else.
+  const endSpan = (band: { from: number; to: number }, from: number, to: number) => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const b of boxes) {
+      if (acrossHi(b) < band.from - BAND_MERGE_EPS_M) continue;
+      if (acrossLo(b) > band.to + BAND_MERGE_EPS_M) continue;
+      if (alongHi(b) < from || alongLo(b) > to) continue;
+      if (acrossLo(b) < lo) lo = acrossLo(b);
+      if (acrossHi(b) > hi) hi = acrossHi(b);
+    }
+    return lo === Infinity ? null : { from: lo, to: hi };
+  };
+  const slice = TILE_METERS * BAND_END_SLICE_FRACTION;
+  return bands.map((band) => {
+    const near = endSpan(band, alongOrigin, alongOrigin + slice);
+    const far = endSpan(band, alongOrigin + TILE_METERS - slice, alongOrigin + TILE_METERS);
+    return {
+      ...band,
+      near: near ?? { from: band.from, to: band.to },
+      far: far ?? { from: band.from, to: band.to },
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -4739,10 +4799,7 @@ export class RoadMeshRenderer {
    * A triangle belongs to the tile its centroid falls in, so a band crossing a
    * seam is counted once, on the side that holds most of it.
    */
-  paintBandsAt(
-    x: number,
-    z: number,
-  ): { color: string; axis: 'x' | 'z'; from: number; to: number; tris: number }[] {
+  paintBandsAt(x: number, z: number): ({ color: string; axis: 'x' | 'z' } & BandSpan)[] {
     const geometry = this.chunks.get(chunkKeyOf(x, z))?.mesh?.geometry;
     if (!geometry) return [];
     const position = geometry.getAttribute('position');
@@ -4781,7 +4838,7 @@ export class RoadMeshRenderer {
       if (boxes.length === 0) byColour.set(colour, boxes);
       boxes.push(box);
     }
-    const out: { color: string; axis: 'x' | 'z'; from: number; to: number; tris: number }[] = [];
+    const out: ({ color: string; axis: 'x' | 'z' } & BandSpan)[] = [];
     for (const [colour, boxes] of byColour) {
       for (const axis of ['x', 'z'] as const) {
         const along = axis === 'x' ? z0 : x0;

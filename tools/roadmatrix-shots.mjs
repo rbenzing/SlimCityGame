@@ -354,13 +354,13 @@ for (const { kase, tag, measured, junctions } of plan) {
   // the cap is looked at rather than measured against a rule it cannot meet.
   const endTile = (t) => t.at === measured.from || t.at === measured.to;
   const junctionTile = (t) => junctions.some((j) => j.x === t.x && j.z === t.z);
-  const shifting = (t) =>
-    endTile(t) ||
-    junctionTile(t) ||
-    !t.grid ||
-    t.grid.taper !== null ||
-    t.grid.auxiliary !== null ||
-    t.grid.pocket;
+  // Only where the section is allowed to be a different thing entirely: the
+  // run's own ends, and the junction box. A tile carrying a taper, a pocket or
+  // an auxiliary lane is NOT excused any more — it used to be, and that
+  // exemption is exactly what would have hidden a flare that stepped. What
+  // makes the check safe on those tiles is comparing the ends that actually
+  // meet at the seam rather than the tiles' overall spans.
+  const shifting = (t) => endTile(t) || junctionTile(t) || !t.grid;
   for (let k = 0; k + 1 < laid.length; k++) {
     const here = laid[k];
     const next = laid[k + 1];
@@ -378,25 +378,55 @@ for (const { kase, tag, measured, junctions } of plan) {
           a.filter((x) => x.color === colour),
           c.filter((x) => x.color === colour),
         ]);
-    for (const [label, mine, theirs] of groups) {
-      if (mine.length !== theirs.length) {
+    // The road's own edges, which cannot step whatever the paint is doing.
+    // This is the physical check: asphalt and kerb are ground, and ground is
+    // continuous. Measured as the outer extent of everything the tile lays, at
+    // the two ends that meet.
+    if (a.length > 0 && c.length > 0) {
+      const edge = (bands, end) => ({
+        from: Math.min(...bands.map((x) => x[end].from)),
+        to: Math.max(...bands.map((x) => x[end].to)),
+      });
+      const leaving = edge(a, 'far');
+      const arriving = edge(c, 'near');
+      const step = Math.max(
+        Math.abs(leaving.from - arriving.from),
+        Math.abs(leaving.to - arriving.to),
+      );
+      if (step > STEP_TOLERANCE_M) {
         failures.push(
-          `${tag}: band ${label} goes from ${mine.length} to ${theirs.length} between ` +
-            `(${here.x},${here.z}) and (${next.x},${next.z})` +
+          `${tag}: the road's edge steps ${step.toFixed(2)}m across the seam between ` +
+            `(${here.x},${here.z}) leaving [${leaving.from.toFixed(2)}..${leaving.to.toFixed(2)}] and ` +
+            `(${next.x},${next.z}) arriving [${arriving.from.toFixed(2)}..${arriving.to.toFixed(2)}]` +
             ` — ${describe(here)} then ${describe(next)}`,
         );
-        continue;
       }
+    }
+    for (const [label, mine, theirs] of groups) {
+      // A mark may legitimately start or stop between one tile and the next: a
+      // centreline goes from dashed to solid where a turn lane opens, and lane
+      // markings are suppressed near a junction in favour of the stop line and
+      // crossing. So a CHANGE IN WHAT IS PAINTED is not a defect — only paint
+      // that is on both tiles and in a different place is, and the road's own
+      // edges are held to continuity above regardless.
+      if (mine.length !== theirs.length) continue;
       for (let i = 0; i < mine.length; i++) {
+        // The ENDS THAT MEET, not the tiles' overall spans. A band easing
+        // across its tile has a span wider than the band, so comparing spans
+        // reads a smooth taper as a jump — which is how a flare that was drawn
+        // correctly all along got written up as stepping 1.5 m per tile.
+        // Where the two tiles touch, a taper is continuous and a step is not.
+        const leaving = mine[i].far;
+        const arriving = theirs[i].near;
         const step = Math.max(
-          Math.abs(mine[i].from - theirs[i].from),
-          Math.abs(mine[i].to - theirs[i].to),
+          Math.abs(leaving.from - arriving.from),
+          Math.abs(leaving.to - arriving.to),
         );
         if (step > STEP_TOLERANCE_M) {
           failures.push(
-            `${tag}: band ${label} steps ${step.toFixed(2)}m sideways between ` +
-              `(${here.x},${here.z}) [${mine[i].from.toFixed(2)}..${mine[i].to.toFixed(2)}] and ` +
-              `(${next.x},${next.z}) [${theirs[i].from.toFixed(2)}..${theirs[i].to.toFixed(2)}]`,
+            `${tag}: band ${label} steps ${step.toFixed(2)}m across the seam between ` +
+              `(${here.x},${here.z}) leaving [${leaving.from.toFixed(2)}..${leaving.to.toFixed(2)}] and ` +
+              `(${next.x},${next.z}) arriving [${arriving.from.toFixed(2)}..${arriving.to.toFixed(2)}]`,
           );
         }
       }
@@ -407,8 +437,14 @@ for (const { kase, tag, measured, junctions } of plan) {
   // which cap themselves off with a turnaround — that their section should be
   // the road's own, unaltered.
   const ends = [
-    { x: measured.axis === 'x' ? measured.x : measured.from, z: measured.axis === 'x' ? measured.from : measured.z },
-    { x: measured.axis === 'x' ? measured.x : measured.to, z: measured.axis === 'x' ? measured.to : measured.z },
+    {
+      x: measured.axis === 'x' ? measured.x : measured.from,
+      z: measured.axis === 'x' ? measured.from : measured.z,
+    },
+    {
+      x: measured.axis === 'x' ? measured.x : measured.to,
+      z: measured.axis === 'x' ? measured.to : measured.z,
+    },
   ];
   const clear = laid.filter((t) =>
     [...junctions, ...ends].every(
@@ -460,7 +496,10 @@ for (const { kase, tag, measured, junctions } of plan) {
   // differ, the picture follows the mesh and every grid-only check is blind.
   for (const t of clear) {
     if (!t.grid || !t.mesh) continue;
-    if (t.grid.lanes !== t.mesh.lanes || Math.abs(t.grid.width - t.mesh.width) > WIDTH_TOLERANCE_M) {
+    if (
+      t.grid.lanes !== t.mesh.lanes ||
+      Math.abs(t.grid.width - t.mesh.width) > WIDTH_TOLERANCE_M
+    ) {
       failures.push(
         `${tag}: (${t.x},${t.z}) grid says ${t.grid.lanes} lanes/${t.grid.width.toFixed(2)}m, ` +
           `mesh draws ${t.mesh.lanes}/${t.mesh.width.toFixed(2)}m`,
@@ -473,7 +512,13 @@ for (const { kase, tag, measured, junctions } of plan) {
     ['', focus],
     // The cap, which no measurement here holds to a rule: the only way it gets
     // checked is by being looked at.
-    ['-end', { x: measured.axis === 'x' ? measured.x : measured.to, z: measured.axis === 'x' ? measured.to : measured.z }],
+    [
+      '-end',
+      {
+        x: measured.axis === 'x' ? measured.x : measured.to,
+        z: measured.axis === 'x' ? measured.to : measured.z,
+      },
+    ],
   ]) {
     await cam(at.x, at.z, 64, 0, 1.5);
     await page.waitForTimeout(600);

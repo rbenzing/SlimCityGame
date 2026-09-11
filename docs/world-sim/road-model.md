@@ -300,12 +300,15 @@ corners tighter than their class would choose, and an avenue's junction box
 is very nearly square.
 
 Any two classes may otherwise join; the join itself is drawn, not stepped:
-where a wider paved kerbed run meets a narrower one, the wider tile bends
-its kerb in to the narrower road's edge so the two flow together, and a
-tile narrowing at both ends splits between the two wedges. A gravel
-neighbour keeps its existing paved-to-dirt band, and a junction keeps its
-own throat rather than tapering, since a wide arm meeting narrow ones at a
-node is a flare, not a transition. Two classes refuse to meet only where
+where a wider run meets a narrower one, the wider tile bends its edge in to
+the narrower road's so the two flow together, and a tile narrowing at both
+ends splits between the two wedges. This holds whatever the road is made
+of — a gravel track and an alley ease into a width change exactly as a
+kerbed street does, since width is width. What is excluded is a change of
+SURFACE: a paved road meeting a gravel one keeps its paved-to-dirt band,
+which is that join's own treatment, and bending as well would draw the same
+change twice. A junction keeps its own throat rather than tapering, since a
+wide arm meeting narrow ones at a node is a flare, not a transition. Two classes refuse to meet only where
 the join would be physically absurd: a highway or a ramp running straight
 onto a dirt road or an alley, which could carry neither its speed nor its
 volume. The road tool enforces this (a refusal reads on the cursor chip),
