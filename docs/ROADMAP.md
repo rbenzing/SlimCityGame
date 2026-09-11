@@ -23,9 +23,9 @@ current behavior only and carry no dates of their own._
 
 ---
 
-## Status (2026-09-09)
+## Status (2026-09-11)
 
-**Test suite:** 3,295 tests passing across 117 test files, run 2026-09-09.
+**Test suite:** 3,299 tests passing across 117 test files, run 2026-09-11.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -256,11 +256,39 @@ check we have, which is the reason they survived:
 
    What is left of the complaint splits in two, both confirmed:
 
-   - **The painted centreline jumps.** It moves with the pocket to ∓1.25 m
-     off the road's centre and flips sign across the junction, so a straight
-     road's centreline steps sideways by 2.5 m through it. Locally correct
-     for each approach — a left-turn pocket does move the centreline — but
-     the two approaches disagree, and nothing eases them into each other.
+   - ~~**The painted centreline jumps.**~~ **Retracted 2026-09-11, and the
+     third finding lost to the same misreading.** The centreline does sit at
+     ∓1.25 m on the two approach tiles and does flip sign across the
+     junction, and both of those are correct: the carriageway widens
+     symmetrically (±3.75 → ±3.83 → ±4.59, centred on 0 throughout, so the
+     road itself never moves), each approach gains its turn lane on its own
+     left, and a real junction with left-turn lanes on both approaches does
+     shift its centreline in opposite directions either side. Photographed,
+     the line eases across the flare as a smooth diagonal with the kerbs
+     splaying either side of it. Nothing jumps.
+
+     The "jump" was `readPaint` being read as a position when it reports an
+     extent. Three findings were now raised and retracted on that one
+     mistake, so the read-back itself was changed rather than the record
+     corrected a third time: every band now reports where it sits at each
+     END of its tile, so a diagonal is visible as one. The matrix harness
+     compares the ends that MEET at a seam and no longer excuses tiles
+     carrying a taper, a pocket or an auxiliary lane — that exemption was
+     what would have hidden a flare that really did step.
+
+   - **An unkerbed road stepped into its flare (fixed 2026-09-11).** Found
+     by the tightened check on its first run, which is what it was for. The
+     bend into a width change was gated on `spec.paved && spec.hasCurbs`,
+     and paired with a filter that skipped any gravel neighbour — between
+     them they excluded every road that is not paved and kerbed. So a
+     gravel track running into its own junction flare, both tiles gravel
+     and no surface changing anywhere, put 1.38 m of shoulder out in a
+     single square seam; an alley did 1.52 m and a ramp 0.90 m. The bend now
+     applies whatever the road is made of, and what is excluded instead is a
+     change of SURFACE, where the paved-to-dirt band is already that join's
+     own treatment. Confirmed in pixels both ways: a square shoulder before,
+     a smooth taper after.
+
    - **On a slope the surface reads as slabs.** Photographed straight down
      on a 26 m drop the widths are uniform to the millimetre (asphalt
      ±3.75 m, kerb ±5.63 m, identical over six tiles) while the shading is

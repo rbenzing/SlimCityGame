@@ -38,6 +38,7 @@ import {
   LANE_GLYPH_PERIOD_TILES,
   SIDEWALK_WIDTH_M,
 } from './roadsmesh';
+import type { NeighborHalves, NeighborTiers } from './roadsmesh';
 import { RoadFlow, RoadTileDelta, RoadTier } from '../shared/types';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 import {
@@ -3267,5 +3268,143 @@ describe('roadTileVertices — the kerb return is a design radius, not leftover 
     expect(atEdge.length).toBeGreaterThan(0);
     expect(Math.min(...atEdge)).toBeCloseTo(coreHalf, 6);
     expect(Math.max(...atEdge)).toBeCloseTo(coreHalf + SIDEWALK_WIDTH_M, 6);
+  });
+});
+
+describe('RoadMeshRenderer.paintBandsAt — a band that eases is not a band that jumps', () => {
+  /**
+   * A run of `tier` whose last tile approaches a junction, so the tile before
+   * it carries the flare a turn pocket opens. Returns that flaring tile's
+   * bands, measured across the road.
+   */
+  const acrossBands = (renderer: RoadMeshRenderer, x: number, z: number) =>
+    renderer
+      .paintBandsAt(x, z)
+      .filter((b) => b.axis === 'x')
+      .sort((a, b) => a.from - b.from);
+
+  it('reports a straight band at the same place at both ends of the tile', () => {
+    const renderer = new RoadMeshRenderer(new THREE.Scene(), flatHeightAt);
+    renderer.apply(
+      Array.from({ length: 5 }, (_, i) =>
+        makeDelta(0, i, RoadTier.TwoLane, (i === 0 ? 0 : N) | (i === 4 ? 0 : S)),
+      ),
+    );
+    for (const band of acrossBands(renderer, 0, 2)) {
+      expect(band.near.from, `${band.color} near/far disagree on a straight run`).toBeCloseTo(
+        band.far.from,
+        6,
+      );
+      expect(band.near.to).toBeCloseTo(band.far.to, 6);
+    }
+  });
+
+  it('carries enough to tell a diagonal from a step, which a single span cannot', () => {
+    // The failure this exists to prevent: a band easing across the tile has a
+    // bounding span wider than the band itself, and reading that span as "the
+    // band is here" makes a smooth taper look like paint that jumped. Three
+    // findings were raised and retracted on exactly that misreading before the
+    // ends were reported at all.
+    const renderer = new RoadMeshRenderer(new THREE.Scene(), flatHeightAt);
+    // A two-lane run meeting a wider road: the narrow tile bends its kerb out
+    // to meet its neighbour over the tile, which is a diagonal by construction.
+    renderer.apply([
+      makeDelta(0, 0, RoadTier.TwoLane, S),
+      makeDelta(0, 1, RoadTier.TwoLane, N | S),
+      makeDelta(0, 2, RoadTier.TwoLane, N | S),
+    ]);
+    const straight = acrossBands(renderer, 0, 1);
+    expect(straight.length).toBeGreaterThan(0);
+    // Every band reports both ends, and they are real numbers inside the tile.
+    for (const band of straight) {
+      for (const end of [band.near, band.far]) {
+        expect(Number.isFinite(end.from)).toBe(true);
+        expect(Number.isFinite(end.to)).toBe(true);
+        expect(end.from).toBeGreaterThanOrEqual(band.from - 1e-6);
+        expect(end.to).toBeLessThanOrEqual(band.to + 1e-6);
+      }
+    }
+  });
+});
+
+describe('roadTileVertices — a road bends into a width change whatever it is made of', () => {
+  /** The carriageway's half-width at each end of a tile, off its own geometry. */
+  const halfAtEnds = (
+    tier: RoadTier,
+    x: number,
+    z: number,
+    neighborHalves: Partial<NeighborHalves>,
+    neighbors: Partial<NeighborTiers>,
+  ): { near: number; far: number } => {
+    const { positions } = roadTileVertices(
+      x,
+      z,
+      tier,
+      N | S,
+      flatHeightAt,
+      { n: tier, e: RoadTier.None, s: tier, w: RoadTier.None, ...neighbors },
+      undefined,
+      {
+        n: carriagewayHalfWidthMeters(tier),
+        e: 0,
+        s: carriagewayHalfWidthMeters(tier),
+        w: 0,
+        ...neighborHalves,
+      } as NeighborHalves,
+    );
+    const centreX = (x + 0.5) * TILE_METERS;
+    const z0 = z * TILE_METERS;
+    const slice = TILE_METERS * 0.15;
+    const widest = (from: number, to: number): number => {
+      let half = 0;
+      const p = toTriples(positions);
+      for (const v of p) {
+        const vz = v[2] as number;
+        if (vz < from || vz > to) continue;
+        half = Math.max(half, Math.abs((v[0] as number) - centreX));
+      }
+      return half;
+    };
+    return {
+      near: widest(z0, z0 + slice),
+      far: widest(z0 + TILE_METERS - slice, z0 + TILE_METERS),
+    };
+  };
+
+  it('bends an UNKERBED road into a narrower neighbour instead of stepping at the seam', () => {
+    // Gravel, alley and ramp were excluded from the bend by a gate of
+    // `spec.paved && spec.hasCurbs`, so each stepped squarely into its own
+    // junction flare — 1.38 m of shoulder appearing in a single seam on gravel.
+    // Both tiles are the same surface here, so nothing about the paved→dirt
+    // seam applies and the width simply has to ease.
+    const named = (t: RoadTier): string =>
+      Object.entries(RoadTier).find(([, v]) => v === t)?.[0] ?? String(t);
+    for (const tier of [RoadTier.Gravel, RoadTier.Alley, RoadTier.Ramp]) {
+      const own = carriagewayHalfWidthMeters(tier);
+      const narrower = own - 1.4;
+      const ends = halfAtEnds(tier, 0, 1, { n: narrower }, {});
+      expect(ends.far, `${named(tier)} lost its own width`).toBeCloseTo(own, 1);
+      expect(
+        ends.near,
+        `${named(tier)} steps at the seam instead of bending`,
+      ).toBeLessThan(own - 0.3);
+    }
+  });
+
+  it('still leaves a change of SURFACE to the seam band rather than bending into it', () => {
+    // A paved road meeting gravel is a different join: it keeps its tan
+    // transition band, and bending the kerb into it as well would draw the
+    // same change twice.
+    // The claim is that it does not bend, so the two ends measure the same —
+    // whatever that width is. (It is the road plus its footway here, which is
+    // why this asserts equality rather than a figure.)
+    const ends = halfAtEnds(
+      RoadTier.TwoLane,
+      0,
+      1,
+      { n: carriagewayHalfWidthMeters(RoadTier.Gravel) },
+      { n: RoadTier.Gravel },
+    );
+    expect(ends.near).toBeCloseTo(ends.far, 3);
   });
 });

@@ -61,6 +61,7 @@ import { LotRenderer } from './render/lots';
 import { BuildingKitRenderer } from './render/buildingkit';
 import { LandmarkRenderer } from './render/landmarks';
 import { RoadMeshRenderer } from './render/roadsmesh';
+import type { BandSpan } from './render/roadsmesh';
 import { BridgeRenderer } from './render/bridges';
 import { VehicleRenderer } from './render/vehicles';
 import {
@@ -629,10 +630,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // steps along an otherwise uniform run is invisible to every read-back
       // that asks the cross-section, because the cross-section is right; this
       // reads the geometry instead.
-      readPaint: (
-        x: number,
-        z: number,
-      ): { color: string; axis: 'x' | 'z'; from: number; to: number; tris: number }[] =>
+      readPaint: (x: number, z: number): ({ color: string; axis: 'x' | 'z' } & BandSpan)[] =>
         roadsMesh.paintBandsAt(x, z),
       readSigns: (): { x: number; z: number; type: string }[] =>
         computeSignPlacements(latestRoadTiles).map((s) => ({ x: s.x, z: s.z, type: s.type })),
