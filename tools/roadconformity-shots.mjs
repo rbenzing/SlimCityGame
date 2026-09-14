@@ -18,7 +18,7 @@ const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
 const out = process.argv[3] ?? 'tools/shots-conformity';
 mkdirSync(out, { recursive: true });
 
-const TIER = { twoLane: 1, avenue: 2, highway: 3, gravel: 4, alley: 5, oneWay: 6, fourLane: 7, ramp: 12 };
+const TIER = { twoLane: 1, avenue: 2, highway: 3, gravel: 4, alley: 5, oneWay: 6, fourLane: 7, bus: 8, bike: 9, tram: 10, rail: 11, ramp: 12 };
 
 const b = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
 const page = await b.newPage({ viewport: { width: 1400, height: 900 } });
@@ -56,9 +56,12 @@ const idx = (x, z) => z * N + x;
 // One flat, dry plot per scenario, laid out on a grid so scenarios never touch.
 const SPAN = 30;
 const STRIDE = SPAN + 6;
+// How much map to leave round the edge. Enough to stay clear of the border,
+// small enough that the search finds a plot for every scenario below.
+const MARGIN = 20;
 const candidates = [];
-for (let z = 40; z < N - SPAN - 40; z += STRIDE) {
-  for (let x = 40; x < N - SPAN - 40; x += STRIDE) {
+for (let z = MARGIN; z < N - SPAN - MARGIN; z += STRIDE) {
+  for (let x = MARGIN; x < N - SPAN - MARGIN; x += STRIDE) {
     let lo = Infinity;
     let hi = -Infinity;
     let dry = true;
@@ -77,6 +80,9 @@ candidates.sort((a, c) => a.spread - c.spread);
 
 await cmd('Sandbox', [{ kind: 'setSandbox', on: true }]);
 await cmd('Money', [{ kind: 'setUnlimitedMoney', on: true }]);
+// Pin midday. A shot taken at night is a shot nobody can read, and looking at
+// the shot is the whole point of taking it.
+await call(() => window.__slimcity.setDayT(0.5));
 await page.waitForTimeout(300);
 
 const CX = 14;
@@ -105,6 +111,21 @@ const SCENARIOS = [
   // itself round to become a service road.
   { name: 'alley-corner-twolane', major: TIER.twoLane, minor: TIER.alley, shape: 'corner' },
   { name: 'twolane-corner-twolane', major: TIER.twoLane, minor: TIER.twoLane, shape: 'corner' },
+  // The rest of the catalog against an ordinary street. A gravel track is the
+  // control for the service rule — it has no kerb either, but it IS a road, so
+  // it must still turn the corner and still bend the road that ends at it.
+  { name: 'gravel-t-twolane', major: TIER.twoLane, minor: TIER.gravel, shape: 'tee' },
+  { name: 'gravel-corner-twolane', major: TIER.twoLane, minor: TIER.gravel, shape: 'corner' },
+  { name: 'oneway-x-twolane', major: TIER.twoLane, minor: TIER.oneWay, shape: 'cross' },
+  // The reserved kerbside lanes, where the edge line and the coloured fill
+  // have their own rule, and the tier the original bike-lane report was about.
+  { name: 'bus-x-twolane', major: TIER.twoLane, minor: TIER.bus, shape: 'cross' },
+  { name: 'bike-x-twolane', major: TIER.twoLane, minor: TIER.bike, shape: 'cross' },
+  { name: 'twolane-x-bike', major: TIER.bike, minor: TIER.twoLane, shape: 'cross' },
+  // Tram runs in the carriageway; rail is a separate network that crosses a
+  // street at grade without joining it.
+  { name: 'tram-x-twolane', major: TIER.twoLane, minor: TIER.tram, shape: 'cross' },
+  { name: 'rail-x-twolane', major: TIER.twoLane, minor: TIER.rail, shape: 'cross' },
 ];
 
 // One plot per scenario, flattest first, so a scenario added above always gets
@@ -125,8 +146,31 @@ const LEGEND = {
   '0.82,0.81,0.79': '#', // footway / kerb
   '0.95,0.95,0.96': 'W', // white paint
   '0.92,0.76,0.16': 'Y', // yellow paint
-  '0.28,0.50,0.26': 'B', // bike-lane green
   '0.55,0.55,0.53': 'g', // grey paint
+  // Two different greens, which is why the earlier label was wrong: an
+  // avenue's PLANTED MEDIAN is the paler one and a bike lane's fill the
+  // darker. Calling both "bike" read a median as a lane.
+  '0.28,0.50,0.26': 'm', // planted median
+  '0.13,0.42,0.22': 'B', // bike-lane fill
+  '0.60,0.24,0.18': 'U', // bus-lane fill
+  '0.34,0.33,0.31': 'o', // rail ballast
+};
+
+/**
+ * A surface the legend does not name exactly.
+ *
+ * Gravel is tinted per tile off the terrain beneath it, so its colours cannot
+ * be enumerated — listing the ones a run happened to produce just makes the
+ * next run print a different set. Anything warm and mid-toned reads as gravel;
+ * anything else stays `?`, which is the alarm this map is supposed to raise.
+ */
+const classify = (c) => {
+  const [r, g, b] = c.split(',').map(Number);
+  // Blue lowest and barely saturated: earth, whatever the ground under it
+  // tinted it toward. Asphalt is the near-miss and is excluded because its
+  // blue is the HIGHEST channel, not the lowest.
+  const earthy = b < r && b < g && Math.max(r, g) - b < 0.28;
+  return earthy && b > 0.25 && Math.max(r, g) < 0.75 ? ',' : '?';
 };
 
 /**
@@ -156,8 +200,9 @@ const cornerMap = async (jx, jz, T, halfSpan, n) => {
       if (v === null) line += ' ';
       else if (LEGEND[v]) line += LEGEND[v];
       else {
-        unknown.add(v);
-        line += '?';
+        const guess = classify(v);
+        if (guess === '?') unknown.add(v);
+        line += guess;
       }
     }
     lines.push('    ' + line);
