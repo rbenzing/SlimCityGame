@@ -632,6 +632,19 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // reads the geometry instead.
       readPaint: (x: number, z: number): ({ color: string; axis: 'x' | 'z' } & BandSpan)[] =>
         roadsMesh.paintBandsAt(x, z),
+      // The same geometry asked point by point instead of band by band: what
+      // covers each sample of a rectangle of ground, topmost surface first,
+      // null where the terrain shows through. A kerb return is a couple of
+      // metres of corner and reaches no tile edge, so it is invisible to
+      // readPaint and has been checkable only by eye — which has been wrong
+      // about it more than once.
+      readSurface: (
+        x0: number,
+        z0: number,
+        x1: number,
+        z1: number,
+        n: number,
+      ): (string | null)[] => roadsMesh.surfaceGridAt(x0, z0, x1, z1, n),
       readSigns: (): { x: number; z: number; type: string }[] =>
         computeSignPlacements(latestRoadTiles).map((s) => ({ x: s.x, z: s.z, type: s.type })),
       // What each signal head is showing. A lit lens is a few pixels across in

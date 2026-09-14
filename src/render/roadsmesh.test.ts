@@ -2631,16 +2631,19 @@ describe('roadTileVertices — width transitions on a straight run', () => {
       w: RoadTier.TwoLane,
     });
     // A taper bends the kerb INTO the carriageway, so its paving reaches
-    // inside the junction's own square. The pavement that carries a footway
-    // round the corner lives in the arm strips outside that square and is not
-    // a wedge, so the test asks where the paving is rather than merely whether
-    // there is any.
-    const insideTheBox = toTriples(junction.colors).filter((c, i) => {
+    // inside the junction's own square, which is why the test asks where the
+    // paving is rather than merely whether there is any. It looks down the
+    // side street's own corridor: a wedge would run across the whole tile, and
+    // nothing else paves there — the kerb returns sit out in the corners
+    // beyond the arm's kerb, and the strip that carries the footway round to
+    // the crossing sits beyond it too.
+    const armHalf = TILE_METERS * TWO_LANE_HALF_WIDTH_FRACTION;
+    const inTheArmsCorridor = toTriples(junction.colors).filter((c, i) => {
       const x = junction.positions[i * 3]!;
       const z = junction.positions[i * 3 + 2]!;
-      return isSidewalk(c) && Math.abs(x - cz) < four - 1e-6 && Math.abs(z - cz) < four - 1e-6;
+      return isSidewalk(c) && Math.abs(x - cz) < armHalf - 1e-6 && Math.abs(z - cz) < four - 1e-6;
     });
-    expect(insideTheBox.length).toBe(0);
+    expect(inTheArmsCorridor.length).toBe(0);
 
     const alley = roadTileVertices(0, 0, RoadTier.Alley, E | W, flatHeightAt, {
       n: RoadTier.None,
@@ -3246,6 +3249,52 @@ describe('roadTileVertices — the kerb return is a design radius, not leftover 
       }
       expect(onTheArc, `${named(tier)} never reaches its own arc`).toBeGreaterThan(0);
     }
+  });
+
+  it('turns the corner the ARMS make, not the junction’s own square', () => {
+    // A two-lane street meeting a four-lane road is kerbed well inside the
+    // bigger road's throat, so the corner a driver turns is out at the side
+    // street's kerb, not at the junction's own half-width. Anchoring on the
+    // junction's square — which is what this did — cut an arc out of the
+    // footway at the tile's outside corner, where nobody drives, and left the
+    // two kerbs meeting at a right angle where they actually meet.
+    const coreHalf = carriagewayHalfWidthMeters(RoadTier.FourLane);
+    const armHalf = carriagewayHalfWidthMeters(RoadTier.TwoLane);
+    expect(armHalf).toBeLessThan(coreHalf); // the two corners really are different
+    const { positions, colors } = roadTileVertices(0, 0, RoadTier.FourLane, 15, flatHeightAt, {
+      n: RoadTier.TwoLane,
+      e: RoadTier.FourLane,
+      s: RoadTier.TwoLane,
+      w: RoadTier.FourLane,
+    });
+    const pos = toTriples(positions);
+    const col = toTriples(colors);
+    const centre = TILE_METERS / 2;
+    // Footway in an arm strip: past the four-lane's kerb on the along axis,
+    // which the junction's own core never reaches.
+    const inTheCorner: [number, number][] = [];
+    for (let i = 0; i < col.length; i++) {
+      if (!isSidewalk(col[i] as number[])) continue;
+      const p = pos[i] as number[];
+      const dx = Math.abs((p[0] as number) - centre);
+      const dz = Math.abs((p[2] as number) - centre);
+      if (dz < coreHalf - 1e-6) continue;
+      inTheCorner.push([dx, dz]);
+    }
+    expect(inTheCorner.length).toBeGreaterThan(0);
+    // It comes in as far as the side street's kerb and stops there: that is
+    // the line the return is tangent to. It used to stop at `coreHalf`.
+    const reach = Math.min(...inTheCorner.map(([dx]) => dx));
+    expect(reach).toBeCloseTo(armHalf, 6);
+    // And never crosses it — footway in the middle of the arm's carriageway
+    // would be pavement laid across the road somebody is driving in on.
+    expect(inTheCorner.every(([dx]) => dx > armHalf - 1e-6)).toBe(true);
+    // The tangent point sits where the arc leaves that kerb line. The four-lane
+    // has only its own 2.5 m of tile to turn in, so the arc runs the whole
+    // depth and the tangent lands on the tile edge.
+    const r = kerbReturnFor(presetProfileForTier(RoadTier.FourLane), TILE_METERS / 2 - coreHalf);
+    const atTheKerb = inTheCorner.filter(([dx]) => Math.abs(dx - armHalf) < 1e-6);
+    expect(Math.max(...atTheKerb.map(([, dz]) => dz))).toBeCloseTo(coreHalf + r, 6);
   });
 
   it('keeps the footway flush with the straight road it runs into', () => {

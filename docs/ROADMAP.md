@@ -23,9 +23,9 @@ current behavior only and carry no dates of their own._
 
 ---
 
-## Status (2026-09-11)
+## Status (2026-09-14)
 
-**Test suite:** 3,299 tests passing across 117 test files, run 2026-09-11.
+**Test suite:** 3,304 tests passing across 117 test files, run 2026-09-14.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -311,10 +311,62 @@ check we have, which is the reason they survived:
    junction tile through `NeighborHalves.approaches`. The line's own figures
    were already right (0.4 m thick, 1.2 m in advance of the crossing) and
    the crossing does honour the 1.8 m minimum depth, so neither was touched.
-4. **Smaller, same run.** A crossing is painted straight over a divided
-   road's median rather than breaking at it for a refuge; and a signal's
-   mast arm at the corner reaches outward over the verge instead of over
-   the approach lanes it governs.
+4. ~~**A crossing is painted straight over a divided road's median.**~~
+   **Retracted 2026-09-12.** Built an avenue crossing an avenue with a
+   signal forced on so every arm carries a crossing, and photographed it:
+   the median ENDS at the crossing and the bars cross clear asphalt. The
+   claim came from misreading an earlier avenue × two-lane shot. A signal's
+   mast arm at the corner may still reach outward over the verge rather than
+   over the approach lanes it governs — but that is an impression from a
+   picture and there is no read-back for signal head positions, so it is not
+   claimed. Settling it wants a `readSignals()` returning head world
+   positions and arm direction, checked against the carriageway extent.
+
+### The corner a junction actually turns (2026-09-14)
+
+A player report that markings were off at intersections, that small roads
+meeting large ones looked wrong, that footways did not connect, and that the
+rounding was on the wrong part of the corner. Measured, not eyeballed — and
+the last three turned out to be one defect.
+
+**The instrument first.** `readPaint` only sees bands running a tile's whole
+length, and a kerb return is a couple of metres of corner reaching no tile
+edge. So the one piece of geometry most often reported wrong was the one piece
+no read-back could see, leaving a screenshot at a shallow angle, which had
+been misread five times. `readSurface` samples the mesh point by point and
+reports the topmost surface over each, which draws a corner as a map.
+`tools/roadconformity-shots.mjs` prints that map for a set of mixed-class
+junctions beside the bands, the section and the resolved control.
+
+**The kerb return was anchored on the wrong corner (fixed).** It assumed both
+arms were as wide as the junction itself, so at every junction of unequal
+widths it rounded a corner that is not there: it cut an arc out of the footway
+at the tile's OUTSIDE corner, where nobody drives, and left the two kerbs
+meeting at a square right angle where they actually meet. Equal widths were
+correct throughout, which is why it survived — every test covering it used
+arms of one class. The corner is now the one the two ARMS make, tangent to
+each arm's own kerb, capped by the smaller of the two depths; an arm without a
+kerb of its own does not move it. The footway that carries a person round to
+the next crossing stops at the return rather than paving over it. Confirmed
+in the corner map before and after and in pixels: the footway now sweeps round
+into the side street instead of stopping square, and the verge rounds with it.
+
+**The motorway is limited access (built).** It met any street except a dirt
+track or an alley, so a two-lane road could take a crossroads straight through
+four lanes of motorway traffic. The rule that a motorway reaches the surface
+network only through a ramp had been deferred in the code "until ramps exist
+as something the player can draw" — they do, and at the same milestone, so the
+deferral's own precondition was met. A motorway now meets a motorway or a
+ramp and nothing else, stated as what it accepts so a class added later stays
+off it, and the refusal names the ramp instead of only saying no.
+
+**Checked and NOT defects.** A four-lane road crossing a two-lane street
+carries no crossing or stop bar on its own arms, which reads as missing paint
+and is the give-way rule working: an arm that gives way is painted, an arm
+running through is not, a signal holds every arm, and an uncontrolled
+crossroads is painted not at all. The harness prints the resolved control
+beside the map so this is read against the rule rather than called a defect
+on sight.
 
 **Still open — the approach flare is drawn but not reported.** On the upstream
 approach to a junction the geometry flares into turn pockets with arrows

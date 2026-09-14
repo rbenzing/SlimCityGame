@@ -523,21 +523,27 @@ describe('which roads may meet', () => {
     for (const a of streets) for (const b of streets) expect(canJoin(a, b)).toBe(true);
   });
 
-  it('a motorway reaches every paved street, so it has a way into the city', () => {
-    for (const ok of [
-      'highway',
-      'ramp',
-      'rural',
-      'local',
-      'urban',
-      'collector',
-      'arterial',
-      'divided',
-      'oneWay',
-    ] as RoadClassId[]) {
+  it('a motorway is limited access: it meets another motorway, or a ramp, and nothing else', () => {
+    for (const ok of ['highway', 'ramp'] as RoadClassId[]) {
       expect(canJoin('highway', ok)).toBe(true);
       expect(canJoin(ok, 'highway')).toBe(true);
     }
+    for (const street of streets) {
+      expect(canJoin('highway', street)).toBe(false);
+      expect(canJoin(street, 'highway')).toBe(false);
+    }
+  });
+
+  it('the ramp that lets a motorway in reaches every paved street', () => {
+    for (const street of streets.filter((c) => c !== 'dirt' && c !== 'alley')) {
+      expect(canJoin('ramp', street)).toBe(true);
+      expect(canJoin(street, 'ramp')).toBe(true);
+    }
+  });
+
+  it('says how to reach a motorway rather than only that you cannot', () => {
+    expect(joinRefusal('highway', 'local')).toContain('ramp');
+    expect(joinRefusal('local', 'highway')).toContain('ramp');
   });
 
   it('neither a motorway nor a ramp runs onto a farm track or a service alley', () => {
@@ -559,7 +565,6 @@ describe('which roads may meet', () => {
     expect(joinRefusal('highway', 'dirt')).toBe(text);
     expect(joinRefusal('dirt', 'highway')).toBe(text);
     expect(joinRefusal('ramp', 'alley')).toBe("A ramp can't meet an alley");
-    expect(joinRefusal('highway', 'local')).toBeNull();
     expect(joinRefusal('local', 'urban')).toBeNull();
   });
 });

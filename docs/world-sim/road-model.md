@@ -290,14 +290,23 @@ collector 7.5 m (a bus gets round without leaving its lane), an arterial or
 divided road 9.0 m, and a highway or ramp 12.0 m. Ballast has no kerb to
 return and takes zero.
 
+**Which corner is turned.** The corner is the one the two ARMS make, and an
+arm is only as wide as its own road: where a two-lane street meets an avenue,
+the kerb it is tangent to stands 3.4 m inside the avenue's throat. So the two
+lines a return joins are the arm's kerb on one axis and the junction's on the
+other, and a junction with arms of different widths has four corners of
+different depths. An arm has to have a kerb to be tangent to — a gravel track
+has none, and the junction's kerb runs past it the way it runs past a
+driveway.
+
 The tile caps it. A return needs its full radius clear of the carriageway on
-both roads, and a 20 m tile only leaves `10 − carriageway/2` — 6.25 m beside
-a two-lane street but 1.90 m beside an avenue. Where the class asks for more
-than that, the arc is drawn at the cap and stays tangent; a wider one would
-have to be drawn onto the approach tiles as well, which the one-tile-owns-
-its-own-geometry model does not do. So the widest roads still meet at
-corners tighter than their class would choose, and an avenue's junction box
-is very nearly square.
+both roads, and a 20 m tile only leaves `10 − carriageway/2` on each — 6.25 m
+beside a two-lane street but 1.90 m beside an avenue, and the corner takes the
+smaller of the two. Where the class asks for more than that, the arc is drawn
+at the cap and stays tangent; a wider one would have to be drawn onto the
+approach tiles as well, which the one-tile-owns-its-own-geometry model does
+not do. So the widest roads still meet at corners tighter than their class
+would choose, and an avenue's junction box is very nearly square.
 
 Any two classes may otherwise join; the join itself is drawn, not stepped:
 where a wider run meets a narrower one, the wider tile bends its edge in to
@@ -308,18 +317,28 @@ kerbed street does, since width is width. What is excluded is a change of
 SURFACE: a paved road meeting a gravel one keeps its paved-to-dirt band,
 which is that join's own treatment, and bending as well would draw the same
 change twice. A junction keeps its own throat rather than tapering, since a
-wide arm meeting narrow ones at a node is a flare, not a transition. Two classes refuse to meet only where
-the join would be physically absurd: a highway or a ramp running straight
-onto a dirt road or an alley, which could carry neither its speed nor its
-volume. The road tool enforces this (a refusal reads on the cursor chip),
-which is also the only place it can be enforced with the reason visible.
+wide arm meeting narrow ones at a node is a flare, not a transition.
+
+Two joins are refused. A ramp will not run straight onto a dirt road or an
+alley, which could carry neither its speed nor its volume. And a **motorway
+is limited access**: it meets another motorway, or a ramp, and nothing else.
+That is most of what makes it a motorway rather than a very wide street — a
+crossroads on one puts a standing queue across four lanes of traffic at
+speed — and it is why the ramp exists. The rule is stated as what the
+motorway accepts rather than what it refuses, so a class added later stays
+off it until somebody decides to let it on. Both unlock at the same
+milestone, so the rule can never leave a player holding a motorway with no
+way to reach it, and the refusal names the ramp rather than only saying no.
+The road tool enforces both (a refusal reads on the cursor chip), which is
+also the only place they can be enforced with the reason visible.
 
 ## Ramps and interchanges
 
 `ramp` is its own class: one or two lanes, one-way, unzonable, at the
 highway's own speed range but posted lower, admitting only a travel lane and
-a shoulder. A ramp touching a highway forms one of two junction kinds, both
-uncontrolled two-approach nodes:
+a shoulder. It is the ONLY way onto a motorway, which refuses every other
+class outright. A ramp touching a highway forms one of two junction kinds,
+both uncontrolled two-approach nodes:
 
 - A **merge**, where the ramp joins the flow. The highway grows one extra
   lane on that side — an **auxiliary lane** — that opens from nothing 8

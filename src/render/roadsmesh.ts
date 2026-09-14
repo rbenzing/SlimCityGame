@@ -2680,9 +2680,17 @@ export function kerbReturnFor(profile: RoadProfile, armDepth: number): number {
  * backwards, because a wide road leaves less. An alley got an 8 m sweep and an
  * avenue a 1.9 m nick, when the vehicles are the other way round.
  *
+ * The corner is the one the two ARMS make, which is not the junction's own
+ * square unless they happen to be as wide as it. `halfX` is where the arm
+ * running north-south is kerbed, `halfZ` where the one running east-west is;
+ * a two-lane street meeting an avenue puts those 3.4 m apart. Anchoring on the
+ * junction's width instead rounds a corner that is not there — it cuts an arc
+ * out of the footway at the tile's outside corner and leaves the kerbs
+ * meeting at a square right angle where they actually meet.
+ *
  * `radius` is capped by the caller at the corner it has to fit in; at the cap
- * the arc is centred on the tile corner and the straight lengths vanish, which
- * is the geometry this drew before.
+ * the straight lengths vanish and the arc runs from one tile edge to the
+ * other.
  *
  * (signX, signZ) select the quadrant.
  */
@@ -2691,7 +2699,8 @@ function emitRoundedCornerFill(
   colors: number[],
   centerX: number,
   centerZ: number,
-  armDepth: number,
+  halfX: number,
+  halfZ: number,
   radius: number,
   signX: 1 | -1,
   signZ: 1 | -1,
@@ -2699,17 +2708,19 @@ function emitRoundedCornerFill(
   hasCurbs: boolean,
   hAt: (x: number, z: number) => number,
 ): void {
-  if (armDepth <= 0) return;
-  const coreHalf = TILE_HALF - armDepth;
+  const depthX = TILE_HALF - halfX;
+  const depthZ = TILE_HALF - halfZ;
+  if (depthX <= 0 || depthZ <= 0) return;
   // Never wider than the corner it turns in: beyond that the arc's centre
   // leaves the tile and the return would have to be drawn on the approach too.
-  const R = Math.max(0, Math.min(radius, armDepth));
-  // How far the arc's centre sits in from the tile corner. Zero at the cap.
-  const inset = armDepth - R;
-  // A point `r` from the ARC'S CENTRE at sweep angle `t`, toward the core.
+  const R = Math.max(0, Math.min(radius, depthX, depthZ));
+  // The arc's centre: `R` clear of each kerb line, on the far side from the
+  // junction. A point `r` from it at sweep angle `t` runs back toward the core.
+  const anchorX = halfX + R;
+  const anchorZ = halfZ + R;
   const at = (r: number, t: number): [number, number] => [
-    signX * (TILE_HALF - inset - r * Math.cos(t)),
-    signZ * (TILE_HALF - inset - r * Math.sin(t)),
+    signX * (anchorX - r * Math.cos(t)),
+    signZ * (anchorZ - r * Math.sin(t)),
   ];
   // Where the arc's sweep runs out against each kerb line, as a radius at t.
   const boundary = (t: number): number => {
@@ -2779,7 +2790,7 @@ function emitRoundedCornerFill(
     plateColor,
   );
   if (!hasCurbs) return;
-  const sidewalk = Math.min(SIDEWALK_WIDTH_M, armDepth);
+  const sidewalk = Math.min(SIDEWALK_WIDTH_M, depthX, depthZ);
   // Footway round the arc, on its outer side, at the width it has everywhere
   // else. It stops at the arc's centre if the return is tighter than the
   // footway is wide; the straight lengths below carry it the rest of the way.
@@ -2791,18 +2802,20 @@ function emitRoundedCornerFill(
   );
   // The straight kerb either side of the arc: from where the arc leaves the
   // kerb line out to the tile edge, so the footway meets its opposite number
-  // on the next tile flush instead of stopping where the curve does. Both are
-  // zero-length when the return fills the corner.
-  const tangent = coreHalf + R;
-  if (TILE_HALF - tangent <= 1e-6) return;
+  // on the next tile flush instead of stopping where the curve does. Either is
+  // zero-length when the return fills that side of the corner.
+  //
   // `beside` names the axis the arm RUNS along, so the strip lies across it:
-  // the arm running in z is kerbed at |x| = coreHalf and vice versa.
+  // the arm running in z is kerbed at |x| = halfX and vice versa.
   const straight = (beside: 'z' | 'x'): void => {
     const acrossSign = beside === 'z' ? signX : signZ;
     const alongSign = beside === 'z' ? signZ : signX;
-    const near = acrossSign * coreHalf;
-    const far = acrossSign * (coreHalf + sidewalk);
-    const from = alongSign * tangent;
+    const acrossHalf = beside === 'z' ? halfX : halfZ;
+    const alongAnchor = beside === 'z' ? anchorZ : anchorX;
+    if (TILE_HALF - alongAnchor <= 1e-6) return;
+    const near = acrossSign * acrossHalf;
+    const far = acrossSign * (acrossHalf + sidewalk);
+    const from = alongSign * alongAnchor;
     const to = alongSign * TILE_HALF;
     const [xLo, xHi] = beside === 'z' ? [near, far] : [from, to];
     const [zLo, zHi] = beside === 'z' ? [from, to] : [near, far];
@@ -3549,14 +3562,42 @@ export function roadTileVertices(
     // left — so the footways flow together instead of a hard square corner.
     // The tile caps it: a return needs its radius clear of the carriageway on
     // both roads, and a wide one does not leave that much.
-    const cornerFill = (signX: 1 | -1, signZ: 1 | -1): void => {
+    //
+    // Each corner is made by two ARMS, and an arm is only as wide as its own
+    // road: a two-lane street meeting an avenue is kerbed 3.4 m inside the
+    // avenue's throat. An arm that is missing, or whose width the neighbour
+    // never reported, falls back to the junction's own half — which is the
+    // square this assumed everywhere before.
+    //
+    // An arm only moves the corner if it HAS a kerb for the return to be
+    // tangent to. A gravel track has none, so the junction's kerb turns at its
+    // own edge and the track is a gap in it, the way a driveway is.
+    const walkableArm = (has: boolean, tier: RoadTier, footway: boolean | undefined): boolean =>
+      has && (tier === RoadTier.None || footway === undefined ? true : footway);
+    const armHalf = (
+      has: boolean,
+      tier: RoadTier,
+      footway: boolean | undefined,
+      half: number,
+    ): number =>
+      walkableArm(has, tier, footway) && half > 0 ? Math.min(half, coreHalf) : coreHalf;
+    const walk = neighborHalves.footways;
+    const halfN = armHalf(hasN, neighbors.n, walk?.n, neighborHalves.n);
+    const halfS = armHalf(hasS, neighbors.s, walk?.s, neighborHalves.s);
+    const halfE = armHalf(hasE, neighbors.e, walk?.e, neighborHalves.e);
+    const halfW = armHalf(hasW, neighbors.w, walk?.w, neighborHalves.w);
+    // The radius a corner between two arms can actually turn through.
+    const cornerRadius = (halfX: number, halfZ: number): number =>
+      kerbReturnFor(own, Math.min(TILE_HALF - halfX, TILE_HALF - halfZ));
+    const cornerFill = (signX: 1 | -1, signZ: 1 | -1, halfX: number, halfZ: number): void => {
       emitRoundedCornerFill(
         positions,
         colors,
         centerX,
         centerZ,
-        armDepth,
-        kerbReturnFor(own, armDepth),
+        halfX,
+        halfZ,
+        cornerRadius(halfX, halfZ),
         signX,
         signZ,
         plateColor,
@@ -3564,10 +3605,10 @@ export function roadTileVertices(
         hAt,
       );
     };
-    if (hasN && hasE) cornerFill(1, -1);
-    if (hasS && hasE) cornerFill(1, 1);
-    if (hasS && hasW) cornerFill(-1, 1);
-    if (hasN && hasW) cornerFill(-1, -1);
+    if (hasN && hasE) cornerFill(1, -1, halfN, halfE);
+    if (hasS && hasE) cornerFill(1, 1, halfS, halfE);
+    if (hasS && hasW) cornerFill(-1, 1, halfS, halfW);
+    if (hasN && hasW) cornerFill(-1, -1, halfN, halfW);
 
     // The footway CARRIES ON ROUND THE CORNER, through the junction.
     //
@@ -3582,14 +3623,22 @@ export function roadTileVertices(
     // Only where both roads have a footway. A crossing is for the people on a
     // pavement, and a road without one is not somewhere anybody is walking.
     if (spec.hasCurbs && hasFootway(crossSection) && armDepth > 0) {
-      const walkableArm = (has: boolean, tier: RoadTier, footway: boolean | undefined): boolean =>
-        has && (tier === RoadTier.None || footway === undefined ? true : footway);
-      const link = (vertical: boolean, armHalf: number, lo: number, hi: number): void => {
+      const link = (
+        vertical: boolean,
+        armHalf: number,
+        outer: number,
+        inner: (side: -1 | 1) => number,
+      ): void => {
         // Out from the arm road's kerb to the junction's own edge, where the
-        // rounded corner picks it up.
+        // rounded corner picks it up. It stops AT the return rather than at
+        // the junction edge: past that point the corner fill owns the ground,
+        // and footway laid over it would bury the arc it just cut.
         const from = Math.min(armHalf, coreHalf);
         if (coreHalf - from <= 1e-6) return;
         for (const side of [-1, 1] as const) {
+          const lo = outer;
+          const hi = inner(side);
+          if (Math.abs(hi - lo) <= 1e-6) continue;
           const across: [number, number] = [side * from, side * coreHalf];
           const [xLo, xHi] = vertical ? across : ([lo, hi] as [number, number]);
           const [zLo, zHi] = vertical ? ([lo, hi] as [number, number]) : across;
@@ -3609,14 +3658,31 @@ export function roadTileVertices(
         }
       };
       const half = (n: number): number => (n > 0 ? n : coreHalf);
+      // How far along an arm the corner at one of its sides reaches: the
+      // return's tangent point, measured from the tile centre. A corner with
+      // no second arm has no return, and the strip runs to the junction edge
+      // as it always did.
+      const reach = (has: boolean, halfX: number, halfZ: number, along: 'x' | 'z'): number => {
+        if (!has) return coreHalf;
+        const r = cornerRadius(halfX, halfZ);
+        return (along === 'x' ? halfX : halfZ) + r;
+      };
       if (walkableArm(hasN, neighbors.n, neighborHalves.footways?.n))
-        link(true, half(neighborHalves.n), -TILE_HALF, -coreHalf);
+        link(true, half(neighborHalves.n), -TILE_HALF, (side) =>
+          side < 0 ? -reach(hasW, halfN, halfW, 'z') : -reach(hasE, halfN, halfE, 'z'),
+        );
       if (walkableArm(hasS, neighbors.s, neighborHalves.footways?.s))
-        link(true, half(neighborHalves.s), coreHalf, TILE_HALF);
+        link(true, half(neighborHalves.s), TILE_HALF, (side) =>
+          side < 0 ? reach(hasW, halfS, halfW, 'z') : reach(hasE, halfS, halfE, 'z'),
+        );
       if (walkableArm(hasW, neighbors.w, neighborHalves.footways?.w))
-        link(false, half(neighborHalves.w), -TILE_HALF, -coreHalf);
+        link(false, half(neighborHalves.w), -TILE_HALF, (side) =>
+          side < 0 ? -reach(hasN, halfN, halfW, 'x') : -reach(hasS, halfS, halfW, 'x'),
+        );
       if (walkableArm(hasE, neighbors.e, neighborHalves.footways?.e))
-        link(false, half(neighborHalves.e), coreHalf, TILE_HALF);
+        link(false, half(neighborHalves.e), TILE_HALF, (side) =>
+          side < 0 ? reach(hasN, halfN, halfE, 'x') : reach(hasS, halfS, halfE, 'x'),
+        );
     }
 
     // Sidewalks/shoulders: a raised curb strip of fixed width SIDEWALK_WIDTH_M
@@ -4770,6 +4836,130 @@ export class RoadMeshRenderer {
       pocket: approach?.pocket ?? false,
       distance: approach?.distance ?? -1,
     };
+  }
+
+  /**
+   * What the road mesh actually covers a rectangle of ground with, sampled on
+   * a regular grid: for each point, the colour of the HIGHEST road surface over
+   * it, or null where the mesh lays nothing and the terrain shows through.
+   *
+   * `paintBandsAt` answers the cross-section question — how wide each band is
+   * across a tile — and cannot see anything that does not run the tile's whole
+   * length. A kerb return is exactly that: a quarter of a corner, a couple of
+   * metres on a side. So the shape of a corner has been readable only from a
+   * screenshot, and a screenshot of a corner at a shallow angle has been wrong
+   * about it repeatedly. This maps the corner instead.
+   *
+   * Height is what separates the layers: the footway sits a kerb above the
+   * carriageway and the paint a hair above that, so the topmost triangle over
+   * a point is the one a player sees there.
+   *
+   * `n` samples per side; the returned array is row-major from (x0, z0), so
+   * `colors[row * n + col]` is the sample at
+   * `x0 + (col + 0.5) * (x1 - x0) / n`.
+   */
+  surfaceGridAt(
+    x0: number,
+    z0: number,
+    x1: number,
+    z1: number,
+    n: number,
+  ): (string | null)[] {
+    type Corner = readonly [number, number, number];
+    const tris: {
+      minX: number;
+      maxX: number;
+      minZ: number;
+      maxZ: number;
+      a: Corner;
+      b: Corner;
+      c: Corner;
+      colour: string;
+    }[] = [];
+    const tx0 = Math.floor(Math.min(x0, x1) / TILE_METERS);
+    const tx1 = Math.floor(Math.max(x0, x1) / TILE_METERS);
+    const tz0 = Math.floor(Math.min(z0, z1) / TILE_METERS);
+    const tz1 = Math.floor(Math.max(z0, z1) / TILE_METERS);
+    const seen = new Set<number>();
+    for (let tz = tz0; tz <= tz1; tz++) {
+      for (let tx = tx0; tx <= tx1; tx++) {
+        const key = chunkKeyOf(tx, tz);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const geometry = this.chunks.get(key)?.mesh?.geometry;
+        if (!geometry) continue;
+        const position = geometry.getAttribute('position');
+        const color = geometry.getAttribute('color');
+        if (!position || !color) continue;
+        const corner = (i: number): Corner => [
+          position.getX(i),
+          position.getY(i),
+          position.getZ(i),
+        ];
+        for (let t = 0; t + 2 < position.count; t += 3) {
+          const a = corner(t);
+          const b = corner(t + 1);
+          const c = corner(t + 2);
+          const minX = Math.min(a[0], b[0], c[0]);
+          const maxX = Math.max(a[0], b[0], c[0]);
+          const minZ = Math.min(a[2], b[2], c[2]);
+          const maxZ = Math.max(a[2], b[2], c[2]);
+          if (maxX < Math.min(x0, x1) || minX > Math.max(x0, x1)) continue;
+          if (maxZ < Math.min(z0, z1) || minZ > Math.max(z0, z1)) continue;
+          // Averaged over the triangle, as paintBandsAt buckets it, so a
+          // shaded corner reads as the same surface as a lit one.
+          const avg = (get: (i: number) => number): number =>
+            (get(t) + get(t + 1) + get(t + 2)) / 3;
+          tris.push({
+            minX,
+            maxX,
+            minZ,
+            maxZ,
+            a,
+            b,
+            c,
+            colour: [
+              avg((i) => color.getX(i)),
+              avg((i) => color.getY(i)),
+              avg((i) => color.getZ(i)),
+            ]
+              .map((q) => q.toFixed(2))
+              .join(','),
+          });
+        }
+      }
+    }
+
+    const out: (string | null)[] = [];
+    for (let row = 0; row < n; row++) {
+      const pz = z0 + ((row + 0.5) * (z1 - z0)) / n;
+      for (let col = 0; col < n; col++) {
+        const px = x0 + ((col + 0.5) * (x1 - x0)) / n;
+        let bestY = -Infinity;
+        let best: string | null = null;
+        for (const tri of tris) {
+          if (px < tri.minX || px > tri.maxX || pz < tri.minZ || pz > tri.maxZ) continue;
+          const [ax, ay, az] = tri.a;
+          const [bx, by, bz] = tri.b;
+          const [cx, cy, cz] = tri.c;
+          // Barycentric containment in the XZ plane; a degenerate triangle has
+          // no area to cover the point with and is skipped by the zero test.
+          const d = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+          if (Math.abs(d) < 1e-9) continue;
+          const wa = ((bz - cz) * (px - cx) + (cx - bx) * (pz - cz)) / d;
+          const wb = ((cz - az) * (px - cx) + (ax - cx) * (pz - cz)) / d;
+          const wc = 1 - wa - wb;
+          if (wa < -1e-6 || wb < -1e-6 || wc < -1e-6) continue;
+          const y = wa * ay + wb * by + wc * cy;
+          if (y > bestY) {
+            bestY = y;
+            best = tri.colour;
+          }
+        }
+        out.push(best);
+      }
+    }
+    return out;
   }
 
   /**

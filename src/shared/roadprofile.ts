@@ -1040,18 +1040,29 @@ export function withinLaneRange(profile: RoadProfile): boolean {
  * farm track or a service alley, which could carry neither its speed nor its
  * volume. Rail is a separate network that crosses a street at grade without
  * joining it, so it refuses nothing.
- *
- * The full motorway rule — that a motorway meets the surface network only
- * through a ramp — waits for ramps to exist as something the player can draw.
- * Enforcing it before then would leave a motorway with no way into the city.
  */
 const NEVER_MEETS: Partial<Record<RoadClassId, readonly RoadClassId[]>> = {
-  highway: ['dirt', 'alley'],
   ramp: ['dirt', 'alley'],
 };
 
+/**
+ * What a motorway will touch. A motorway is limited access: traffic reaches it
+ * down a slip road and nowhere else, which is most of what makes it a motorway
+ * rather than a very wide street. A crossroads on one puts a standing queue
+ * across four lanes of traffic at speed.
+ *
+ * Written as what it ACCEPTS rather than what it refuses, so a class added
+ * later stays off the motorway until somebody decides to let it on, which is
+ * the safe way round.
+ *
+ * The motorway and the slip road unlock at the same milestone, so this can
+ * never leave a player holding a motorway with no way to reach it.
+ */
+const MOTORWAY_MEETS: ReadonlySet<RoadClassId> = new Set<RoadClassId>(['highway', 'ramp']);
+
 function refuses(a: RoadClassId, b: RoadClassId): boolean {
   if (a === 'rail' || b === 'rail') return false;
+  if (a === 'highway') return !MOTORWAY_MEETS.has(b);
   return (NEVER_MEETS[a] ?? []).includes(b);
 }
 
@@ -1121,5 +1132,13 @@ export function withArticle(name: string): string {
 export function joinRefusal(a: RoadClassId, b: RoadClassId): string | null {
   if (canJoin(a, b)) return null;
   const [ruled, other] = refuses(a, b) ? [a, b] : [b, a];
+  // The motorway's refusal has somewhere to send the player, so it says so —
+  // but only where the ramp would take it. A ramp will not run onto a farm
+  // track either, and pointing at one there would be an instruction that fails.
+  if (ruled === 'highway' && canJoin('ramp', other)) {
+    return `A ${roadClass(ruled).name.toLowerCase()} meets ${withArticle(
+      roadClass(other).name,
+    )} through a ramp`;
+  }
   return `A ${roadClass(ruled).name.toLowerCase()} can't meet ${withArticle(roadClass(other).name)}`;
 }
