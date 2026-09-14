@@ -148,9 +148,20 @@ export interface MarkingSeam {
   dashed: number[];
 }
 
-/** The seam between a tile's own plan and its neighbour's, or its own where there is none. */
-function seamWith(plan: MarkingPlan, neighbour: MarkingPlan | null, half: number): MarkingSeam {
-  return seamBetween(plan, neighbour, half);
+/**
+ * The seam between a tile's own plan and its neighbour's, or its own where
+ * there is none. `ownHalf` is this tile's carriageway half-width, which is
+ * what says whose paint is in the right place at the boundary — the road
+ * bends the wider side in to the narrower, and the paint goes where the road
+ * went.
+ */
+function seamWith(
+  plan: MarkingPlan,
+  neighbour: MarkingPlan | null,
+  half: number,
+  ownHalf: number,
+): MarkingSeam {
+  return seamBetween(plan, neighbour, half, ownHalf);
 }
 
 /** The road plate rides this far above the terrain — anything standing ON a road must add it. */
@@ -197,13 +208,18 @@ const MARKING_COLOR: readonly [number, number, number] = [0.95, 0.95, 0.96];
 const PAINT_HALF_WIDTH_M = 0.075;
 
 /**
- * True-ratio dash metrics (centerline dashes ~3m painted / ~4.5m gap). Phase
- * is always anchored at GLOBAL world-meter 0 —
- * never a per-tile or per-chunk local origin — so painted segments line up
- * continuously across every tile and chunk seam (see dashSegments).
+ * A broken line's metrics, at the size one is actually painted: a 10 ft
+ * segment with a 30 ft gap, which is 3.05 m of paint every 12.2 m. The
+ * one-to-three ratio is the whole of what a driver reads a broken line by, and
+ * it is the same figure for a lane line and for a centre line, so both come
+ * from here.
+ *
+ * Phase is always anchored at GLOBAL world-meter 0 — never a per-tile or
+ * per-chunk local origin — so painted segments line up continuously across
+ * every tile and chunk seam (see dashSegments).
  */
-export const DASH_PAINT_LENGTH_M = 3;
-export const DASH_GAP_LENGTH_M = 4.5;
+export const DASH_PAINT_LENGTH_M = 3.05;
+export const DASH_GAP_LENGTH_M = 9.15;
 export const DASH_PERIOD_M = DASH_PAINT_LENGTH_M + DASH_GAP_LENGTH_M;
 
 /**
@@ -2728,6 +2744,15 @@ function emitRoundedCornerFill(
   plateColor: readonly [number, number, number],
   hasCurbs: boolean,
   hAt: (x: number, z: number) => number,
+  /**
+   * How far inside the kerb to carry the edge line round the return, or null
+   * where this corner paints none. The line is the SAME arc at a larger
+   * radius, so it holds its distance from the kerb round the whole sweep the
+   * way it does down the straight, and meets each arm's own edge line exactly
+   * where the arc runs out — a corner drawn from its own centre and radius
+   * would have to be kept in step with this one by hand.
+   */
+  edgeLineInset: number | null = null,
 ): void {
   const depthX = TILE_HALF - halfX;
   const depthZ = TILE_HALF - halfZ;
@@ -2810,6 +2835,18 @@ function emitRoundedCornerFill(
     ROAD_Y_OFFSET,
     plateColor,
   );
+  // The edge line round the return. It marks where the running surface ends,
+  // and at a corner the running surface ends along the kerb return, so this is
+  // the same line the arms carry rather than a decoration on top of it.
+  if (edgeLineInset !== null && edgeLineInset > 0 && R > 0) {
+    const centreR = R + edgeLineInset;
+    band(
+      () => centreR - PAINT_HALF_WIDTH_M,
+      () => centreR + PAINT_HALF_WIDTH_M,
+      MARK_Y_OFFSET,
+      MARKING_COLOR,
+    );
+  }
   if (!hasCurbs) return;
   const sidewalk = Math.min(SIDEWALK_WIDTH_M, depthX, depthZ);
   // Footway round the arc, on its outer side, at the width it has everywhere
@@ -3639,7 +3676,45 @@ export function roadTileVertices(
     // The radius a corner between two arms can actually turn through.
     const cornerRadius = (halfX: number, halfZ: number): number =>
       kerbReturnFor(own, Math.min(TILE_HALF - halfX, TILE_HALF - halfZ));
-    const cornerFill = (signX: 1 | -1, signZ: 1 | -1, halfX: number, halfZ: number): void => {
+    /**
+     * How far inside its kerb an arm paints its edge line, or null where it
+     * paints none — the outermost white solid line it lays.
+     */
+    const edgeInsetOf = (armPlan: MarkingPlan | null, armHalfWidth: number): number | null => {
+      if (!armPlan || armHalfWidth <= 0) return null;
+      let nearest: number | null = null;
+      for (const line of armPlan.solid) {
+        if (line.color !== 'white') continue;
+        const inset = armHalfWidth - Math.abs(line.at);
+        if (inset < 0) continue;
+        if (nearest === null || inset < nearest) nearest = inset;
+      }
+      return nearest;
+    };
+    /**
+     * The inset the return can be painted at: the one BOTH arms use. A corner
+     * whose two arms put their edge line different distances inside the kerb
+     * has no single arc that meets them both, so it is left unpainted rather
+     * than joined to one line and left hanging off the other.
+     */
+    const cornerEdgeInset = (
+      planX: MarkingPlan | null,
+      halfX: number,
+      planZ: MarkingPlan | null,
+      halfZ: number,
+    ): number | null => {
+      const a = edgeInsetOf(planX, halfX);
+      const b = edgeInsetOf(planZ, halfZ);
+      if (a === null || b === null) return null;
+      return Math.abs(a - b) < 1e-6 ? a : null;
+    };
+    const cornerFill = (
+      signX: 1 | -1,
+      signZ: 1 | -1,
+      halfX: number,
+      halfZ: number,
+      edgeInset: number | null,
+    ): void => {
       emitRoundedCornerFill(
         positions,
         colors,
@@ -3653,18 +3728,26 @@ export function roadTileVertices(
         plateColor,
         spec.hasCurbs,
         hAt,
+        edgeInset,
       );
     };
+    /** The plan the arm on each side paints: its own where it has one. */
+    const armPlan = (has: boolean, neighbour: MarkingPlan | null | undefined): MarkingPlan | null =>
+      has ? (neighbour ?? plan) : null;
+    const planN = armPlan(hasN, neighborHalves.plans?.n);
+    const planS = armPlan(hasS, neighborHalves.plans?.s);
+    const planE = armPlan(hasE, neighborHalves.plans?.e);
+    const planW = armPlan(hasW, neighborHalves.plans?.w);
     // A kerb only turns a corner where the road it meets HAS a kerb to turn
     // into. An alley or a track has none: it is an access, not a leg of the
     // network, and a street does not sweep its footway round into a service
     // road any more than it does into a driveway. The footway runs straight
     // past the mouth instead (the flank strip below crosses it) and the alley
     // climbs over it, which is what a dropped kerb is.
-    if (legN && legE) cornerFill(1, -1, halfN, halfE);
-    if (legS && legE) cornerFill(1, 1, halfS, halfE);
-    if (legS && legW) cornerFill(-1, 1, halfS, halfW);
-    if (legN && legW) cornerFill(-1, -1, halfN, halfW);
+    if (legN && legE) cornerFill(1, -1, halfN, halfE, cornerEdgeInset(planN, halfN, planE, halfE));
+    if (legS && legE) cornerFill(1, 1, halfS, halfE, cornerEdgeInset(planS, halfS, planE, halfE));
+    if (legS && legW) cornerFill(-1, 1, halfS, halfW, cornerEdgeInset(planS, halfS, planW, halfW));
+    if (legN && legW) cornerFill(-1, -1, halfN, halfW, cornerEdgeInset(planN, halfN, planW, halfW));
 
     // The footway CARRIES ON ROUND THE CORNER, through the junction.
     //
@@ -3887,8 +3970,18 @@ export function roadTileVertices(
           medianEligible,
           hAt,
           {
-            lo: seamWith(plan, hasN ? (neighborHalves.plans?.n ?? null) : null, neighborHalves.n),
-            hi: seamWith(plan, hasS ? (neighborHalves.plans?.s ?? null) : null, neighborHalves.s),
+            lo: seamWith(
+              plan,
+              hasN ? (neighborHalves.plans?.n ?? null) : null,
+              neighborHalves.n,
+              coreHalf,
+            ),
+            hi: seamWith(
+              plan,
+              hasS ? (neighborHalves.plans?.s ?? null) : null,
+              neighborHalves.s,
+              coreHalf,
+            ),
           },
         );
         if (plan.bands.length > 0)
@@ -3921,8 +4014,18 @@ export function roadTileVertices(
           medianEligible,
           hAt,
           {
-            lo: seamWith(plan, hasW ? (neighborHalves.plans?.w ?? null) : null, neighborHalves.w),
-            hi: seamWith(plan, hasE ? (neighborHalves.plans?.e ?? null) : null, neighborHalves.e),
+            lo: seamWith(
+              plan,
+              hasW ? (neighborHalves.plans?.w ?? null) : null,
+              neighborHalves.w,
+              coreHalf,
+            ),
+            hi: seamWith(
+              plan,
+              hasE ? (neighborHalves.plans?.e ?? null) : null,
+              neighborHalves.e,
+              coreHalf,
+            ),
           },
         );
         if (plan.bands.length > 0)

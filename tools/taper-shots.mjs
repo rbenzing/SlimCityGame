@@ -105,6 +105,71 @@ const mid = widths.find((w) => w.z === 8)?.width;
 if (!(wide > mid && mid > atJoin))
   failures.push(`the road does not narrow gradually: ${wide} -> ${mid} -> ${atJoin}`);
 if (!(atJoin <= 8)) failures.push(`the tile against the street is still ${atJoin} m wide`);
+
+// The edge line has to hold its distance from the kerb the whole way down. The
+// cross-section read-back cannot see this: it reports the width the tile
+// carries, and the paint and the kerb can both be at the right width while
+// sitting at different distances from each other — which is what a line that
+// wanders in and out of the kerb down a taper looks like. So the surface is
+// sampled point by point instead, at a centimetre, because a 0.15 m line is
+// invisible to anything coarser.
+const EDGE_LINE_MARGIN_M = 0.5;
+const WHITE = '0.95,0.95,0.96';
+const KERB = '0.82,0.81,0.79';
+const TILE = 20;
+const MIDX = (X + CX + 0.5) * TILE;
+
+/** The runs of one colour along a line ACROSS the road at world z. */
+const runsAcross = async (zWorld, x0, x1, n) => {
+  const row = await call(
+    ([a, b2, c, d, e]) => window.__slimcity.readSurface(a, b2, c, d, e),
+    [x0, zWorld, x1, zWorld, n],
+  );
+  const at = (i) => x0 + ((i + 0.5) * (x1 - x0)) / n;
+  const runs = [];
+  let cur = null;
+  for (let i = 0; i < n; i++) {
+    const kind = row[i] === WHITE ? 'white' : row[i] === KERB ? 'kerb' : 'other';
+    if (!cur || cur.kind !== kind) runs.push((cur = { kind, from: at(i), to: at(i) }));
+    else cur.to = at(i);
+  }
+  return runs;
+};
+
+const gaps = [];
+for (let z = 3; z <= 13; z++) {
+  const here = await approach(X + CX, Z + z);
+  const zWorld = (Z + z + 0.5) * TILE;
+  for (const side of [-1, 1]) {
+    // A two-metre window centred on where the kerb should be, so the scan is
+    // fine enough to see paint without sampling the whole road at that rate.
+    const kerbGuess = MIDX + side * (here.width / 2);
+    const [x0, x1] = [kerbGuess - 1.2, kerbGuess + 1.2];
+    const runs = await runsAcross(zWorld, x0, x1, 241);
+    const kerb = side < 0 ? runs.filter((r) => r.kind === 'kerb').pop() : runs.find((r) => r.kind === 'kerb');
+    const whites = runs.filter((r) => r.kind === 'white');
+    const line = side < 0 ? whites.pop() : whites.shift();
+    if (!kerb || !line) {
+      failures.push(`z=${z} ${side < 0 ? 'left' : 'right'}: no ${!kerb ? 'kerb' : 'edge line'} found`);
+      continue;
+    }
+    const kerbInner = side < 0 ? kerb.to : kerb.from;
+    gaps.push({ z, side, gap: Math.abs((line.from + line.to) / 2 - kerbInner) });
+  }
+}
+console.log(
+  'edge line inside the kerb:',
+  JSON.stringify(gaps.map((g) => ({ z: g.z, s: g.side, gap: +g.gap.toFixed(3) }))),
+);
+if (gaps.length < 20) failures.push(`only ${gaps.length} edge-line samples — the scan missed tiles`);
+const off = gaps.filter((g) => Math.abs(g.gap - EDGE_LINE_MARGIN_M) > 0.06);
+if (off.length > 0)
+  failures.push(
+    `the edge line does not hold its distance from the kerb down the taper: ${JSON.stringify(
+      off.map((g) => ({ z: g.z, s: g.side, gap: +g.gap.toFixed(3) })),
+    )}`,
+  );
+
 if (pageErrors.length > 0) failures.push(`page errors: ${pageErrors.join(' | ')}`);
 
 await call(() => window.__slimcity.setDayT(0.5));

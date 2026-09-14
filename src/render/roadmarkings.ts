@@ -415,9 +415,18 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
  *
  * A road is painted tile by tile, but a driver reads one line down its whole
  * length, so a line has to arrive at the boundary in the same place from both
- * sides or it steps. Every line meets its opposite number HALF WAY: both tiles
- * work out the same midpoint from the same two plans, so the line crosses the
- * seam unbroken without either tile knowing which of them is the wider road.
+ * sides or it steps.
+ *
+ * Where the two roads are the same width, a line meets its opposite number
+ * HALF WAY: both tiles work out the same midpoint from the same two plans, so
+ * the line crosses the seam unbroken without either knowing which of them it
+ * is. Where one is NARROWER, half way is the wrong place. The carriageway
+ * itself settles a width difference by bending the wider road all the way in
+ * to the narrower one, so at the boundary the road is exactly as wide as the
+ * narrower of the two — and a line that stopped half way would sit half a step
+ * inside a kerb that has already moved, which is a gap that opens and closes
+ * down every taper. So the narrower road's offsets win, which both tiles work
+ * out the same way from the same two widths.
  *
  * A line with no opposite number is a lane the next road does not have. It
  * CLOSES rather than stopping dead: it runs out to the edge of the carriageway
@@ -433,6 +442,8 @@ export function seamOffsets(
   there: readonly MarkingLine[],
   /** Half the width of the carriageway on the far side, where a line closes to. */
   thereHalf: number,
+  /** Half the width of this side's own carriageway; equal widths meet half way. */
+  hereHalf: number = thereHalf,
 ): number[] {
   const taken = new Array<boolean>(there.length).fill(false);
   // Nearest first over ALL the pairs, so the closest match wins the line it is
@@ -459,9 +470,19 @@ export function seamOffsets(
     }
     return best;
   };
+  // Which side the carriageway is as wide as at the boundary, and so which
+  // side's paint is in the right place there. Null where they are the same
+  // width and there is nothing to choose between them.
+  const WIDTH_EPS = 1e-6;
+  const narrower =
+    thereHalf < hereHalf - WIDTH_EPS ? 'there' : hereHalf < thereHalf - WIDTH_EPS ? 'here' : null;
   return here.map((line, i) => {
     const j = partner[i]!;
-    if (j >= 0) return (line.at + there[j]!.at) / 2;
+    if (j >= 0) {
+      if (narrower === 'there') return there[j]!.at;
+      if (narrower === 'here') return line.at;
+      return (line.at + there[j]!.at) / 2;
+    }
     // Nothing of its own to carry on into. It still MERGES rather than
     // stopping dead: a dropped lane's line runs into the edge line beside it,
     // and the two lines of a double centre converge on the single centre that
@@ -494,6 +515,7 @@ export function seamBetween(
   here: MarkingPlan,
   there: MarkingPlan | null,
   thereHalf: number,
+  hereHalf: number = thereHalf,
 ): { solid: number[]; dashed: number[] } {
   if (!there) {
     return { solid: here.solid.map((l) => l.at), dashed: here.dashed.map((l) => l.at) };
@@ -502,6 +524,7 @@ export function seamBetween(
     [...here.solid, ...here.dashed],
     [...there.solid, ...there.dashed],
     thereHalf,
+    hereHalf,
   );
   return { solid: at.slice(0, here.solid.length), dashed: at.slice(here.solid.length) };
 }

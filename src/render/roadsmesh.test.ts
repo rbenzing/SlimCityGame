@@ -47,7 +47,7 @@ import {
   kerbWidthOf,
   presetProfileForTier,
 } from '../shared/roadprofile';
-import { BIKE_PAINT_MAX_WIDTH_M, markingPlan } from './roadmarkings';
+import { BIKE_PAINT_MAX_WIDTH_M, EDGE_LINE_MARGIN_M, markingPlan } from './roadmarkings';
 import { CHUNK_TILES, TILE_METERS } from '../shared/constants';
 import { DEFAULT_ALLOWED, Movement } from '../shared/approach';
 
@@ -616,11 +616,14 @@ describe('roadTileVertices — carriageway ratios (UI-SPEC §6.7 Roads v2)', () 
   });
 });
 
-describe('dashSegments — true-ratio metric dash pattern (UI-SPEC §6.7 Roads v2)', () => {
-  it('uses the spec metrics: ~3m painted, ~4.5m gap, 7.5m period', () => {
-    expect(DASH_PAINT_LENGTH_M).toBe(3);
-    expect(DASH_GAP_LENGTH_M).toBe(4.5);
-    expect(DASH_PERIOD_M).toBe(7.5);
+describe('dashSegments — a broken line at the size one is painted', () => {
+  it('is a 10 ft segment in a 30 ft cycle, which is the ratio a driver reads', () => {
+    expect(DASH_PAINT_LENGTH_M).toBeCloseTo(3.05, 6); // 10 ft
+    expect(DASH_GAP_LENGTH_M).toBeCloseTo(9.15, 6); // 30 ft
+    expect(DASH_PERIOD_M).toBeCloseTo(12.2, 6);
+    // One part paint to three parts gap. Getting this wrong is what makes a
+    // road read as a model of a road rather than a road.
+    expect(DASH_GAP_LENGTH_M / DASH_PAINT_LENGTH_M).toBeCloseTo(3, 6);
   });
 
   it('returns [] for an empty or inverted range', () => {
@@ -628,16 +631,20 @@ describe('dashSegments — true-ratio metric dash pattern (UI-SPEC §6.7 Roads v
     expect(dashSegments(5, 2)).toEqual([]);
   });
 
-  it('paints exactly [0,3] within [0, 7.5) — one full period, phase anchored at global 0', () => {
-    expect(dashSegments(0, 7.499)).toEqual([[0, 3]]);
+  it('paints one segment per period, phase anchored at global 0', () => {
+    const [seg, ...rest] = dashSegments(0, DASH_PERIOD_M - 0.001);
+    expect(rest).toEqual([]);
+    expect(seg![0]).toBeCloseTo(0, 9);
+    expect(seg![1]).toBeCloseTo(DASH_PAINT_LENGTH_M, 9);
   });
 
   it('paints negative-side segments too (phase extends symmetrically through 0)', () => {
-    const segments = dashSegments(-8, 0);
+    // Far enough back to contain a whole period, whatever the period is.
+    const segments = dashSegments(-2 * DASH_PERIOD_M, 0);
     expect(segments.length).toBeGreaterThan(0);
     for (const [lo, hi] of segments) {
       expect(hi).toBeLessThanOrEqual(0);
-      expect(lo).toBeGreaterThanOrEqual(-8);
+      expect(lo).toBeGreaterThanOrEqual(-2 * DASH_PERIOD_M);
     }
   });
 
@@ -827,13 +834,62 @@ describe('roadTileVertices — intersection suppression / proper intersections (
     expect(vertexCount(positions)).toBeGreaterThan(0);
   });
 
-  it('but a junction the sim controls with nothing is painted with nothing', () => {
+  it('but a junction the sim controls with nothing carries no stop line and no crossing', () => {
     // No stop line without a sign or a signal to stop for, and no crossing at
-    // a junction where two quiet streets simply meet.
+    // a junction where two quiet streets simply meet. The white it does carry
+    // is the edge line round its kerb returns — the road's own edge, which is
+    // where the running surface ends whoever has right of way, and not a
+    // control marking. So the claim is that the CONTROL is what adds paint.
     const { colors } = roadTileVertices(0, 0, RoadTier.TwoLane, N | E | S | W, flatHeightAt);
     const controlled = controlledJunction(0, 0, RoadTier.TwoLane, N | E | S | W);
-    expect(countWhere(colors, isMarkingWhite)).toBe(0);
-    expect(countWhere(controlled.colors, isMarkingWhite)).toBeGreaterThan(0);
+    expect(countWhere(controlled.colors, isMarkingWhite)).toBeGreaterThan(
+      countWhere(colors, isMarkingWhite),
+    );
+    // And a road that paints no edge line paints nothing here either: an alley
+    // turns no kerb and carries no paint of any kind.
+    const service = roadTileVertices(0, 0, RoadTier.Alley, N | E | S | W, flatHeightAt);
+    expect(countWhere(service.colors, isMarkingWhite)).toBe(0);
+  });
+
+  it('carries the edge line round each kerb return, at its distance from the kerb', () => {
+    // An uncontrolled junction, so the only white on it is the edge line: no
+    // stop bar or crossing to confuse a radius with.
+    const { positions, colors } = roadTileVertices(
+      0,
+      0,
+      RoadTier.TwoLane,
+      N | E | S | W,
+      flatHeightAt,
+    );
+    const centre = TILE_METERS / 2;
+    const half = carriagewayHalfWidthMeters(RoadTier.TwoLane);
+    const depth = TILE_METERS / 2 - half;
+    const R = Math.min(kerbReturnFor(presetProfileForTier(RoadTier.TwoLane), depth), depth);
+    expect(R).toBeGreaterThan(0);
+    // The four arc centres: R clear of both kerb lines, on the far side from
+    // the junction — the same anchors the kerb return itself turns about.
+    const anchors: [number, number][] = [];
+    for (const sx of [-1, 1])
+      for (const sz of [-1, 1]) anchors.push([centre + sx * (half + R), centre + sz * (half + R)]);
+
+    const verts = toTriples(positions);
+    const radii = toTriples(colors)
+      .map((c, i) => (isMarkingWhite(c) ? verts[i]! : null))
+      .filter((v): v is number[] => v !== null)
+      .map((v) =>
+        Math.min(...anchors.map(([ax, az]) => Math.hypot(v[0]! - ax, v[2]! - az))),
+      );
+    expect(radii.length).toBeGreaterThan(0);
+
+    // Concentric with the kerb: every scrap of that paint is the same distance
+    // from the centre the kerb turns about, give or take the width of the line
+    // itself. A line that drifted relative to the kerb would spread here.
+    const lo = Math.min(...radii);
+    const hi = Math.max(...radii);
+    expect(hi - lo).toBeLessThanOrEqual(2 * 0.075 + 1e-6);
+    // And it is at the same distance INSIDE the kerb that the straight edge
+    // line keeps, so the arc arrives exactly on the line each arm carries.
+    expect((lo + hi) / 2).toBeCloseTo(R + EDGE_LINE_MARGIN_M, 6);
   });
 
   it('a roundabout puts an island in the box instead of crossings', () => {
@@ -1394,10 +1450,12 @@ describe('roadTileVertices — terrain-conforming tessellation on slopes', () =>
   const slopedHeightAt = (x: number): number => x * 0.2;
   /**
    * A flat two-lane straight run: the core plate and its two flank kerbs, plus
-   * the dashes of the centre line. Hard-coded so a plate that silently starts
-   * subdividing flat ground fails here.
+   * the lines painted on it. Hard-coded so a plate that silently starts
+   * subdividing flat ground fails here. How many quads the paint takes follows
+   * DASH_PERIOD_M, so a change to the broken-line metric is expected to move
+   * this figure — and nothing else is.
    */
-  const FLAT_STRAIGHT_RUN_VERTS = 18 + 7 * 6;
+  const FLAT_STRAIGHT_RUN_VERTS = 18 + 6 * 6;
 
   it('emits the same vertex count as before on flat terrain (no needless subdivision)', () => {
     // A straight run: the plain rectangular case, with none of a lone tile's

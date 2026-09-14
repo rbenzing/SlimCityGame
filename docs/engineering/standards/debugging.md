@@ -157,6 +157,25 @@ through carries neither, a signal holds every arm, and an uncontrolled
 crossroads is painted not at all — so "no crossing on this arm" is usually the
 rule working, not a defect.
 
+## `tools/taper-shots.mjs`: paint against a kerb that is moving
+
+The road audit above deliberately EXCLUDES a taper from its uniformity check,
+because a taper is a cross-section the road is supposed to have for a few tiles
+— so the stretch where the road is changing width is the one stretch nothing
+was measuring. That is where the edge line was found wandering between 0.06 m
+and 0.44 m of a kerb it should hold 0.5 m from, on a defect no read-back could
+have reported: `readApproach` gives the width the tile carries, and the paint
+and the kerb can both be at the right width while sitting at the wrong distance
+from each other.
+
+So the taper harness samples the surface across the road, tile by tile, and
+measures the gap. It scans a two-metre window at a centimetre rather than the
+whole road at ten, because a 0.15 m line is invisible to anything coarser — a
+first attempt at ten centimetres reported the line MISSING on half the tiles,
+which was the sampling and not the road. Only the street taper is held to a
+constant gap: a motorway's lane drop moves the paint inward and leaves the
+tarmac where it is on purpose, and the neutral area between them is the point.
+
 ## `tools/audio-check.mjs`: the audio-specific case
 
 Audio cannot be judged from a screenshot at all, and cannot be tested under

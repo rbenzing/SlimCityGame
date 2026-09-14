@@ -253,6 +253,30 @@ describe('a line crosses a seam where the road changes', () => {
     expect(seamOffsets(same, same, 5)).toEqual([-3, 0, 3]);
   });
 
+  it('goes where the NARROWER road puts it, because that is where the kerb is', () => {
+    // The carriageway settles a width difference by bending the wider road all
+    // the way in to the narrower one, so at the boundary the road is as wide as
+    // the narrow side and the paint belongs where the narrow side paints it.
+    const wide = [line(-4), line(4)];
+    const narrow = [line(-2), line(2)];
+    expect(seamOffsets(wide, narrow, 2.5, 4.5)).toEqual([-2, 2]);
+    // And the narrow side asking gets the same answer — its own — so the line
+    // arrives at the boundary in one place from both sides.
+    expect(seamOffsets(narrow, wide, 4.5, 2.5)).toEqual([-2, 2]);
+  });
+
+  it('does not drift the paint on a tile whose own road never changes width', () => {
+    // The tile after a taper: narrow both sides, wide only further up. Meeting
+    // the wide road half way would swing this tile's line across it while its
+    // kerb ran dead straight, which is the gap that opens and closes down an
+    // approach.
+    const narrow = [line(-3.25), line(3.25)];
+    const wide = [line(-4.02), line(4.02)];
+    const intoTheTaper = seamOffsets(narrow, wide, 4.52, 3.75);
+    const awayFromIt = seamOffsets(narrow, narrow, 3.75, 3.75);
+    expect(intoTheTaper).toEqual(awayFromIt);
+  });
+
   it('never drags a line across to a different colour', () => {
     // A white lane line has no white to meet, and the yellow centre is not a
     // candidate however close it is.

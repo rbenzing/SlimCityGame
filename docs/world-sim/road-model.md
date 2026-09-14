@@ -482,7 +482,23 @@ per-tier:
   a bike or bus lane it is the line they are not to cross, and the reserved
   lane's coloured fill lies outside it, unbroken. Only where the outermost
   lane is an ordinary travel lane does the line fall back to a fixed inset
-  from the kerb. A parking lane is not treated this way: it already draws a
+  from the kerb. That inset is held all the way down a road that is CHANGING
+  width, which is a thing the paint and the kerb have to be told the same way:
+  the carriageway settles a width difference by bending the wider tile all the
+  way in to its narrower neighbour, so a line meeting its opposite number half
+  way across the boundary — which is right between two roads of the same width
+  — would sit half a step inside a kerb that has already moved, and the gap
+  would open and close down every taper. So where one side is narrower, the
+  narrower side's offsets are what both tiles paint to.
+- **Round a junction's corners** the edge line follows the kerb return. It
+  marks where the running surface ends, and at a corner the running surface
+  ends along that arc, so it is the same line the arms carry rather than a
+  decoration on top of it — and it is drawn as the return's own arc at a
+  larger radius, which is what makes it concentric with the kerb rather than
+  merely near it. It is not a control marking: an uncontrolled junction paints
+  no stop line and no crossing, and still carries this. A corner whose two
+  arms put their edge line different distances inside the kerb is left
+  unpainted, since no single arc meets them both. A parking lane is not treated this way: it already draws a
   solid line along its own inner edge with the bays it ticks off, so an edge
   line there would only lay a second line over the first. A kerbside bus
   lane's inner edge is therefore marked once, solid, rather than dashed as a
@@ -496,6 +512,13 @@ per-tier:
   Arterial and divided roads always paint double solid (a divided road's
   median is the real separator; the double solid is what shows on the
   paved side of it).
+- **A broken line is painted at the size one is painted**: a 10 ft segment
+  with a 30 ft gap — 3.05 m of paint every 12.2 m — and a line 6 in (0.15 m)
+  wide. One part paint to three parts gap is the whole of what a driver reads
+  a broken line by, and it is the same figure for a lane line as for a centre
+  line, so both come from the one metric. The phase is anchored at global
+  world-metre 0 rather than per tile, so the pattern runs unbroken across
+  every tile and chunk seam.
 - **Turn-lane paint.** A two-way left-turn lane carries a solid line toward
   the through lane and a broken line toward the turn lane on each side —
   legal to cross into to turn, illegal to travel along — with white turn
