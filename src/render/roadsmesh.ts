@@ -2838,14 +2838,50 @@ function emitRoundedCornerFill(
   // The edge line round the return. It marks where the running surface ends,
   // and at a corner the running surface ends along the kerb return, so this is
   // the same line the arms carry rather than a decoration on top of it.
-  if (edgeLineInset !== null && edgeLineInset > 0 && R > 0) {
-    const centreR = R + edgeLineInset;
-    band(
-      () => centreR - PAINT_HALF_WIDTH_M,
-      () => centreR + PAINT_HALF_WIDTH_M,
-      MARK_Y_OFFSET,
-      MARKING_COLOR,
-    );
+  if (edgeLineInset !== null && edgeLineInset > 0) {
+    if (R > 0) {
+      const centreR = R + edgeLineInset;
+      band(
+        () => centreR - PAINT_HALF_WIDTH_M,
+        () => centreR + PAINT_HALF_WIDTH_M,
+        MARK_Y_OFFSET,
+        MARKING_COLOR,
+      );
+    }
+    // The arc only spans the turn. Between where it leaves the kerb line and
+    // the tile edge the arm runs straight, and the junction tile paints no
+    // straight markings of its own — so without this the line stops short of
+    // the boundary and starts again on the next tile, which reads as the edge
+    // line being cut at every junction. The kerb below has the same problem
+    // and the same answer; the only gap in an edge line is a crossing.
+    const stub = (beside: 'z' | 'x'): void => {
+      const acrossSign = beside === 'z' ? signX : signZ;
+      const alongSign = beside === 'z' ? signZ : signX;
+      const acrossAt = (beside === 'z' ? halfX : halfZ) - edgeLineInset;
+      const alongAnchor = beside === 'z' ? anchorZ : anchorX;
+      if (acrossAt <= 0 || TILE_HALF - alongAnchor <= 1e-6) return;
+      const near = acrossSign * (acrossAt - PAINT_HALF_WIDTH_M);
+      const far = acrossSign * (acrossAt + PAINT_HALF_WIDTH_M);
+      const from = alongSign * alongAnchor;
+      const to = alongSign * TILE_HALF;
+      const [xLo, xHi] = beside === 'z' ? [near, far] : [from, to];
+      const [zLo, zHi] = beside === 'z' ? [from, to] : [near, far];
+      pushLocalRect(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        Math.min(xLo, xHi),
+        Math.max(xLo, xHi),
+        Math.min(zLo, zHi),
+        Math.max(zLo, zHi),
+        MARK_Y_OFFSET,
+        MARKING_COLOR,
+        hAt,
+      );
+    };
+    stub('z');
+    stub('x');
   }
   if (!hasCurbs) return;
   const sidewalk = Math.min(SIDEWALK_WIDTH_M, depthX, depthZ);

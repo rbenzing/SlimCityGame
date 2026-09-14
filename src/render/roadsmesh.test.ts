@@ -873,23 +873,46 @@ describe('roadTileVertices — intersection suppression / proper intersections (
       for (const sz of [-1, 1]) anchors.push([centre + sx * (half + R), centre + sz * (half + R)]);
 
     const verts = toTriples(positions);
-    const radii = toTriples(colors)
+    const white = toTriples(colors)
       .map((c, i) => (isMarkingWhite(c) ? verts[i]! : null))
       .filter((v): v is number[] => v !== null)
-      .map((v) =>
-        Math.min(...anchors.map(([ax, az]) => Math.hypot(v[0]! - ax, v[2]! - az))),
-      );
-    expect(radii.length).toBeGreaterThan(0);
+      .map((v) => ({ dx: v[0]! - centre, dz: v[2]! - centre }));
+    expect(white.length).toBeGreaterThan(0);
 
-    // Concentric with the kerb: every scrap of that paint is the same distance
-    // from the centre the kerb turns about, give or take the width of the line
-    // itself. A line that drifted relative to the kerb would spread here.
+    // Past the point where the arc leaves the kerb line, the arm runs straight
+    // and so does its line; between those points the paint is turning.
+    const onStub = (p: { dx: number; dz: number }): boolean =>
+      Math.abs(p.dz) > half + R + 1e-6 || Math.abs(p.dx) > half + R + 1e-6;
+    const turning = white.filter((p) => !onStub(p));
+    expect(turning.length).toBeGreaterThan(0);
+
+    // Concentric with the kerb: every scrap of the paint that turns is the
+    // same distance from the centre the kerb turns about, give or take the
+    // width of the line. Paint that drifted relative to the kerb spreads here.
+    const radii = turning.map((p) =>
+      Math.min(...anchors.map(([ax, az]) => Math.hypot(p.dx + centre - ax, p.dz + centre - az))),
+    );
     const lo = Math.min(...radii);
     const hi = Math.max(...radii);
     expect(hi - lo).toBeLessThanOrEqual(2 * 0.075 + 1e-6);
-    // And it is at the same distance INSIDE the kerb that the straight edge
-    // line keeps, so the arc arrives exactly on the line each arm carries.
+    // At the same distance inside the kerb the straight line keeps, so the arc
+    // arrives exactly on the line each arm carries.
     expect((lo + hi) / 2).toBeCloseTo(R + EDGE_LINE_MARGIN_M, 6);
+
+    // And the line REACHES THE TILE EDGE on all four sides, so it meets the
+    // line coming the other way instead of stopping short. The junction paints
+    // no straight markings of its own, so without the stub past the arc the
+    // edge line is cut at every junction — which is not a gap a crossing puts
+    // there, and is what a player sees as the paint coming away from the road.
+    const edge = TILE_METERS / 2;
+    for (const reach of [
+      Math.max(...white.map((p) => p.dz)),
+      -Math.min(...white.map((p) => p.dz)),
+      Math.max(...white.map((p) => p.dx)),
+      -Math.min(...white.map((p) => p.dx)),
+    ]) {
+      expect(reach).toBeCloseTo(edge, 6);
+    }
   });
 
   it('a roundabout puts an island in the box instead of crossings', () => {
