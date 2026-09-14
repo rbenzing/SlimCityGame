@@ -24,6 +24,7 @@ import {
   movementAllowed,
   movementBetween,
   movementDelayShare,
+  movementsOffered,
   pocketLaneMovements,
   pocketWarranted,
   resolveLaneMovements,
@@ -70,6 +71,16 @@ function directionShare(edge: GraphEdge, fromNodeId: number): number {
   if (atoB === undefined || btoA === undefined || atoB + btoA === 0) return 1;
   const travelled = fromNodeId === edge.a ? atoB : btoA;
   return travelled / ((atoB + btoA) / 2);
+}
+
+/**
+ * How many travel lanes `edge` offers a driver LEAVING `fromNodeId` along it,
+ * or undefined where the run never split its lanes between the two directions.
+ * A one-way road barred in that direction offers none, which is what makes it
+ * a leg nobody can turn onto.
+ */
+function leavingLanes(edge: GraphEdge, fromNodeId: number): number | undefined {
+  return fromNodeId === edge.a ? edge.lanesAtoB : edge.lanesBtoA;
 }
 
 /**
@@ -177,9 +188,19 @@ export function junctionDelay(
   });
   // Per MOVEMENT: the queue for a turn two lanes offer is half as long as the
   // queue for one, so a wide approach is quicker for the movement it widened.
-  const movement = movementBetween(headingInto(arriving, node.id), headingOutOf(leaving, node.id));
+  const entering = headingInto(arriving, node.id);
+  const movement = movementBetween(entering, headingOutOf(leaving, node.id));
   if (movement === null) return delay;
-  const allowed = armAllowed(node.turns ?? 0, armOf(arriving, node.id));
+  // The same narrowing the geometry does, so the queue model believes in the
+  // lanes the road actually lays: a movement with no leg to land on earns no
+  // share of the approach and no bay to wait in.
+  const legs: RoadFlow[] = [];
+  for (const edgeId of node.edges) {
+    const leg = edgeById(edgeId);
+    if (leg && leavingLanes(leg, node.id) !== 0) legs.push(headingOutOf(leg, node.id));
+  }
+  const allowed =
+    armAllowed(node.turns ?? 0, armOf(arriving, node.id)) & movementsOffered(entering, legs);
   /** What the player has said about the individual lanes of one arm. */
   const laneTurnsOf = (n: GraphNode, arm: RoadFlow): number => {
     const slot = armSlot(arm);

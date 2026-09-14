@@ -24,6 +24,8 @@ function world(
     string,
     { control?: JunctionControl; turns?: number; laneTurns?: readonly number[] }
   > = {},
+  /** Tiles a direction was drawn on — everything else is two-way. */
+  flows: Record<string, RoadFlow> = {},
 ): ApproachSurroundings {
   const rows = map
     .split('\n')
@@ -37,7 +39,7 @@ function world(
     turnsAt: (x, z) => junctions[`${x},${z}`]?.turns ?? 0,
     // '#' is a four-lane road and 'n' the two-lane street it narrows into;
     // everything the walk asks about width it asks through here.
-    flowAt: () => RoadFlow.None,
+    flowAt: (x, z) => flows[`${x},${z}`] ?? RoadFlow.None,
     // None of these maps draws a corridor: every tile is a road in its own
     // right, so no neighbour is anybody's other half.
     corridorHalfAt: () => 'none',
@@ -46,6 +48,7 @@ function world(
       const c = at(x, z);
       if (c === '#') return presetProfileForTier(RoadTier.FourLane);
       if (c === 'n') return presetProfileForTier(RoadTier.TwoLane);
+      if (c === 'o') return presetProfileForTier(RoadTier.OneWay);
       return null;
     },
   };
@@ -193,6 +196,85 @@ describe('the approach zone', () => {
     expect(armed(Movement.Left)).toBe(false);
     // A pocket is the lane beside the centreline: it is the left turn's.
     expect(armed(Movement.Through | Movement.Right)).toBe(false);
+  });
+
+  /** A tee at (2,2): legs west, east and south, and open ground north of it. */
+  const TEE = `
+    .....
+    .....
+    #####
+    ..#..
+    ..#..
+    ..#..
+  `;
+
+  it('allows an arm of a tee only the turns the tee has legs for', () => {
+    const signal = { '2,2': { control: 'signal' as JunctionControl } };
+    // Arriving from the west, heading east: the left turn would be north, and
+    // there is no road north of this junction to make it onto.
+    const fromWest = approachAhead(1, 2, 3, world(TEE, signal));
+    expect(fromWest).toBeDefined();
+    expect(fromWest!.allowed & Movement.Left).toBe(0);
+    expect(fromWest!.allowed & Movement.Through).not.toBe(0);
+    expect(fromWest!.allowed & Movement.Right).not.toBe(0);
+    // And the stem, arriving from the south heading north, may only turn.
+    const fromSouth = approachAhead(2, 4, 3, world(TEE, signal));
+    expect(fromSouth).toBeDefined();
+    expect(fromSouth!.allowed & Movement.Through).toBe(0);
+    expect(fromSouth!.allowed & Movement.Left).not.toBe(0);
+    expect(fromSouth!.allowed & Movement.Right).not.toBe(0);
+  });
+
+  it('builds no turn bay for a left turn the junction has nowhere to make', () => {
+    const signal = { '2,2': { control: 'signal' as JunctionControl } };
+    // The same arm at a full crossroads earns one, which is what says the tee
+    // is being refused for its missing leg and not for something else.
+    expect(approachAhead(1, 2, 3, world(CROSSROADS, { '2,2': { control: 'signal' } }))?.pocket).toBe(
+      true,
+    );
+    expect(approachAhead(1, 2, 3, world(TEE, signal))?.pocket).toBe(false);
+  });
+
+  /** The crossroads with a ONE-WAY street for its north leg. */
+  const ONE_WAY_LEG = `
+    ..o..
+    ..o..
+    #####
+    ..#..
+    ..#..
+  `;
+
+  it('counts a one-way leg running at the junction as nowhere to turn', () => {
+    const signal = { '2,2': { control: 'signal' as JunctionControl } };
+    // The north leg is one-way SOUTHBOUND — coming at the junction — so the
+    // arm from the west has a road on its left it may not turn onto.
+    const wrongWay = approachAhead(
+      1,
+      2,
+      3,
+      world(ONE_WAY_LEG, signal, { '2,0': RoadFlow.South, '2,1': RoadFlow.South }),
+    );
+    expect(wrongWay).toBeDefined();
+    expect(wrongWay!.allowed & Movement.Left).toBe(0);
+    expect(wrongWay!.pocket).toBe(false);
+    // Turned round to run away from the junction, it is a left turn again.
+    const rightWay = approachAhead(
+      1,
+      2,
+      3,
+      world(ONE_WAY_LEG, signal, { '2,0': RoadFlow.North, '2,1': RoadFlow.North }),
+    );
+    expect(rightWay!.allowed & Movement.Left).not.toBe(0);
+    expect(rightWay!.pocket).toBe(true);
+    // A two-way leg is a leg either way round: the direction it happened to be
+    // drawn in is not a bar, which is what the world records on every tile.
+    const twoWay = approachAhead(
+      1,
+      2,
+      3,
+      world(CROSSROADS, signal, { '2,0': RoadFlow.South, '2,1': RoadFlow.South }),
+    );
+    expect(twoWay!.allowed & Movement.Left).not.toBe(0);
   });
 
   it('turns a cardinal round', () => {

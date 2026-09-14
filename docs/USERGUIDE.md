@@ -102,7 +102,10 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   switching one off is a real ban: the arrow for it stops being painted and
   traffic stops using it, so you can send through traffic round a corner
   instead of past a school. An arm always keeps its last turn; a driver who
-  arrives has to be able to leave.
+  arrives has to be able to leave. A turn with no road to land on is not
+  offered in the first place: the arm of a tee has open ground on one side and
+  gets no arrow pointing at it, and the stem of one is a left and a right with
+  no straight on. Lay the missing leg and the turn comes back on its own.
   Where a junction holds its traffic, an approach that can find the width also
   grows a **turn pocket** for the last few tiles: a lane of its own for the
   drivers waiting to turn left, so they stop holding up everyone going

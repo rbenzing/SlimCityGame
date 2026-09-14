@@ -215,6 +215,18 @@ stored narrows only what the arm's own restriction already allows — a lane
 can narrow the arm, never override it, and a lane is never left with
 nothing.
 
+Before any of that, the arm's set is narrowed by **the legs the junction
+actually has**. A turn is a movement onto another road, so where there is no
+road there is no turn: the arm of a tee has open ground on one side of it and
+offers no turn that way however little anybody has restricted it, and the stem
+of one cannot go through at all. A one-way leg running AT the junction is the
+same case — a road there, but not one a driver may take. This is geometry
+rather than restriction: nothing is stored, `armIsRestricted` still reads
+false, and the arm goes back to offering the turn the moment a leg is laid.
+Both the arrows and the pocket warrant read the narrowed set, and so does the
+router's delay model, so the queue it prices and the lanes the road lays are
+the same lanes.
+
 A **turn pocket** is what an approach gains for that zone when the
 junction's control actually holds THAT ARM and the arm both goes through and
 turns left. Holding the arm is the condition the control alone cannot express:
@@ -224,10 +236,11 @@ is not stopped by it. A street with an alley stopping at it therefore gains
 nothing — it has no queue to take a turning driver out of, and a storage bay
 for a turn nobody waits to make is just a wider road. Neither does the ALLEY,
 on its own side: a service access stores nothing, and a bay would double the
-width of a single lane for a queue one van long. (Nothing in the movement set
-stops that on its own — the default says every arm goes through and turns
-left, which is how an alley earned a storage lane at a tee it cannot even go
-through.) The pocket is
+width of a single lane for a queue one van long. (The class is what rules that
+out. The legs rule above already takes the pocket off any arm of a tee, since
+one that cannot go through has no through traffic to take a turn out of — but
+an alley crossing a street has all four legs and still stores nothing.) The
+pocket is
 the lane beside the centreline, carved from whatever the width budget has
 spare, in this order — the verge the profile has not spent, the kerbside
 parking lane or the shared median, and only as a last resort the through

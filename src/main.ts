@@ -584,6 +584,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       ): {
         toward: number;
         distance: number;
+        allowed: number;
         pocket: boolean;
         openness: number;
         auxiliary: { side: number; openness: number; merging: boolean } | null;
@@ -607,6 +608,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           // and a taper is the reason it might differ from the road's own.
           toward: ahead?.toward ?? taper?.toward ?? 0,
           distance: ahead?.distance ?? -1,
+          // The movements the arm offers, which is what every lane-use arrow
+          // on it is painted from. An arrow head is a metre of paint read at a
+          // shallow angle, and whether one of them points left is a question a
+          // screenshot has been read wrongly on; this is the same set the
+          // geometry drew from.
+          allowed: ahead?.allowed ?? 0,
           pocket: !taper && !profilesEqual(drawn, own),
           openness: ahead?.openness ?? 1,
           auxiliary: clientGrid.auxiliaryAt(x, z) ?? null,

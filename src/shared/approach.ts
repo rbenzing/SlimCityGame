@@ -98,6 +98,32 @@ export function movementBetween(entering: RoadFlow, leaving: RoadFlow): Movement
 }
 
 /**
+ * The movements a driver entering a junction heading `entering` has somewhere
+ * to make, given the legs `legs` it offers — each named by the direction a
+ * driver LEAVES on. A turn is a movement onto another road, so where there is
+ * no road there is no turn: the arm of a tee has open ground on one side of it
+ * however little anybody has restricted it, and painting an arrow at that
+ * ground, or widening the road to store a queue for it, is inventing a turning
+ * that is not there.
+ *
+ * The U-turn is never offered. The leg it takes is the one the driver came in
+ * on, which is always present, and doubling back is a thing a player asks for
+ * rather than something geometry grants.
+ *
+ * An unknown heading offers everything: a road that recorded no cardinal has
+ * no left and no right to work out, and guessing would ban both.
+ */
+export function movementsOffered(entering: RoadFlow, legs: Iterable<RoadFlow>): MovementSet {
+  if (armSlot(entering) === null) return DEFAULT_ALLOWED;
+  let offered: MovementSet = 0;
+  for (const leg of legs) {
+    const movement = movementBetween(entering, leg);
+    if (movement !== null && movement !== Movement.UTurn) offered |= movement;
+  }
+  return offered;
+}
+
+/**
  * What each lane of an approach is allowed to do when nobody has said
  * otherwise, from the centreline out. One lane does everything. Two share the
  * turns with the through movement. Three earn a dedicated left, which is the

@@ -11,6 +11,7 @@ import {
   movementDelayShare,
   movementAllowed,
   movementName,
+  movementsOffered,
   MOVEMENTS,
   laneAllowed,
   laneMovementsFor,
@@ -191,6 +192,37 @@ describe('the movement vocabulary', () => {
       expect(all & m).toBe(0); // no two movements share a bit
       all |= m;
     }
+  });
+});
+
+describe('a movement needs a leg to land on', () => {
+  const ALL = [RoadFlow.North, RoadFlow.East, RoadFlow.South, RoadFlow.West];
+
+  it('offers every turn but the U where all four legs are there', () => {
+    expect(movementsOffered(RoadFlow.North, ALL)).toBe(DEFAULT_ALLOWED);
+    expect(movementsOffered(RoadFlow.North, ALL) & Movement.UTurn).toBe(0);
+  });
+
+  it('takes the left away from the arm of a tee with nothing on its left', () => {
+    // Driving east into a junction whose legs are east, south and the one
+    // behind: there is no north leg, so there is nothing to turn left onto.
+    const legs = [RoadFlow.East, RoadFlow.South, RoadFlow.West];
+    const offered = movementsOffered(RoadFlow.East, legs);
+    expect(offered & Movement.Left).toBe(0);
+    expect(offered & Movement.Through).not.toBe(0);
+    expect(offered & Movement.Right).not.toBe(0);
+  });
+
+  it('leaves an arm that can only turn with only its turns', () => {
+    // The stem of a tee: the crossbar either side, nothing straight ahead.
+    const offered = movementsOffered(RoadFlow.South, [RoadFlow.East, RoadFlow.West]);
+    expect(offered & Movement.Through).toBe(0);
+    expect(offered & Movement.Left).not.toBe(0);
+    expect(offered & Movement.Right).not.toBe(0);
+  });
+
+  it('restricts nothing when the heading is unknown', () => {
+    expect(movementsOffered(RoadFlow.None, [RoadFlow.North])).toBe(DEFAULT_ALLOWED);
   });
 });
 
