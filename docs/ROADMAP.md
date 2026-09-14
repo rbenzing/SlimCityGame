@@ -409,6 +409,18 @@ opposite to the road: 6.25 m beside a two-lane street, 1.90 m beside an avenue.
 So the quiet street got a crossing 20 ft deep and the busy one a normal 6 ft. It
 is the footway's width now, floored at the 1.8 m minimum (MUTCD 3B.18).
 
+Shortening it exposed a second half to the same bug, caught by measuring the
+result rather than trusting the fix: the crossing is anchored at the TILE EDGE,
+the outer end of that strip, so a shorter one floated there with 4.4 m of road
+between it and the kerb it is meant to meet. It sits against the kerb line now.
+And the alley's own crossing then landed underneath the footway that had just
+been made to run across its mouth — so no crossing is painted over a service
+access at all: the pavement is the way across.
+
+The whole 84-case road matrix was re-run against this session's geometry
+changes — corner fills, flank footways, end caps, the turn gate, crossing
+depth — and reports `road matrix uniform`.
+
 **Checked and NOT defects.** A four-lane road crossing a two-lane street
 carries no crossing or stop bar on its own arms, which reads as missing paint
 and is the give-way rule working: an arm that gives way is painted, an arm

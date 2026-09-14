@@ -424,13 +424,19 @@ is derived this way from footway presence and rank; it is not (yet) an
 independent per-approach toggle a player sets from the junction inspector.
 
 A crossing is as DEEP as the footway it carries across the road, never less
-than the 1.8 m a marked crossing may be (MUTCD 3B.18), and it lies against the
-junction edge where the footway's own line falls. It is not as deep as the
-strip of tile that footway sits in: the strip is the room available and runs
-opposite to the road, leaving 6.25 m beside a two-lane street and 1.90 m
-beside an avenue — so reading the room as the figure gave the quiet street a
-crossing 20 ft deep and the busy one a normal 6 ft. Its bars are 0.45 m wide
-at 0.6 m spacing, inside the 12–24 in bar and 12–60 in gap the standard allows.
+than the 1.8 m a marked crossing may be (MUTCD 3B.18), and it lies AGAINST THE
+KERB LINE, which is where that footway runs. It is not as deep as the strip of
+tile the footway sits in: the strip is the room available and runs opposite to
+the road, leaving 6.25 m beside a two-lane street and 1.90 m beside an avenue —
+so reading the room as the figure gave the quiet street a crossing 20 ft deep
+and the busy one a normal 6 ft. Nor is it anchored at the tile edge, the outer
+end of that strip, which leaves it floating with 4.4 m of road between it and
+the kerb it is supposed to meet. Its bars are 0.45 m wide at 0.6 m spacing,
+inside the 12–24 in bar and 12–60 in gap the standard allows.
+
+No crossing is painted over a **service access**. The footway runs straight
+across an alley's mouth rather than breaking for it, so the pavement IS the way
+across; bars laid in that strip sit underneath it where nobody can see them.
 
 A deck (an elevated or bridged road tile,
 [Bridges and elevated roads](#bridges-and-elevated-roads)) inverts the

@@ -1652,8 +1652,13 @@ export function junctionArmLayout(
   // the leftover runs OPPOSITE to the road: a two-lane street leaves 6.25 m
   // and an avenue 1.90 m, so the quiet street got a crossing 20 ft deep and
   // the busy one a normal 6 ft. Same inversion the kerb return had.
-  const crosswalkStart = 0;
-  const crosswalkEnd = Math.max(Math.min(armDepth, footwayWidth), CROSSWALK_MIN_DEPTH_M);
+  // It sits against the KERB LINE, at the inner end of that strip — which is
+  // where the footway it carries across actually runs. Anchored at the tile
+  // edge instead it floats at the outer end and leaves a gap between itself
+  // and the road: 4.4 m of it beside a two-lane street.
+  const depth = Math.max(Math.min(armDepth, footwayWidth), CROSSWALK_MIN_DEPTH_M);
+  const crosswalkEnd = Math.max(armDepth, depth);
+  const crosswalkStart = crosswalkEnd - depth;
   // The stop line stands IN ADVANCE of the crossing — back down the approach,
   // outside the junction tile altogether. That is the whole point of it:
   // stopping past the crossing is stopping on the people using it, and there
@@ -4163,6 +4168,8 @@ export function roadTileVertices(
         stops: boolean,
         half: number,
         approaching: { from: number; to: number } | null,
+        /** Whether a crossing belongs on this arm at all. */
+        crossed: boolean,
       ): void =>
         emitJunctionArmMarkings(
           positions,
@@ -4173,7 +4180,7 @@ export function roadTileVertices(
           half,
           at,
           hAt,
-          crossedOnFoot(vertical),
+          crossed && crossedOnFoot(vertical),
           stops,
           // The strip of tile between the box and the tile edge: it caps how
           // far a crossing can reach. How DEEP the crossing is comes from the
@@ -4195,7 +4202,16 @@ export function roadTileVertices(
         for (const [has, neighborTier, neighbourHalf, vertical, at, approaching] of armAt) {
           if (!has) continue;
           if (!holdsEveryArm && !armStops(neighborTier)) continue;
-          arm(vertical, at, stopsFor, armHalf(neighbourHalf), approaching);
+          // A service access carries the footway straight across its mouth
+          // rather than breaking it for a crossing, so there is no crossing to
+          // paint over one: the pavement IS the way across, and bars laid in
+          // that strip sit under it where nobody can see them.
+          // An arm whose road is not named is unknown, not absent, and reads as
+          // this tile's own road — which is never a service access here.
+          const service =
+            neighborTier !== RoadTier.None &&
+            isServiceClass(presetProfileForTier(neighborTier).class);
+          arm(vertical, at, stopsFor, armHalf(neighbourHalf), approaching, !service);
         }
       }
 
