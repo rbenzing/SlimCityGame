@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.6.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.5.1...slimcity-v1.6.0) (2026-09-14)
+
+
+### Features
+
+* **ui:** the menu says which build it is ([f9dec21](https://github.com/rbenzing/SlimCityGame/commit/f9dec2146ac53b9b9b0d00e7a2e291ed0988c6cc))
+
+
+### Bug Fixes
+
+* **roads:** a road bends into a width change whatever it is made of ([199654a](https://github.com/rbenzing/SlimCityGame/commit/199654a0cc5ffbbfc5c582a2f1ec90408cfcd6b2))
+* **roads:** stand a signal's mast at the kerb so its arm reaches the lanes ([17f28d7](https://github.com/rbenzing/SlimCityGame/commit/17f28d7044d87eb60607c8082000bb322e450a33))
+* **roads:** turn the corner the arms make, and keep motorways off the street grid ([d4df54e](https://github.com/rbenzing/SlimCityGame/commit/d4df54e5ff89236750869265382e64edd12afc86))
+
 ## [1.5.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.5.0...slimcity-v1.5.1) (2026-09-09)
 
 
