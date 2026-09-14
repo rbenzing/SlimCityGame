@@ -10,6 +10,7 @@ import {
   MANHOLE_LIFT,
   METER_KERB_CLEARANCE_M,
   RoadFurnitureRenderer,
+  signalLensOffset,
   signWorldTransform,
 } from './roadfurniture';
 import { tileToWorld } from '../shared/constants';
@@ -246,6 +247,35 @@ describe('road-furniture placement (pure)', () => {
       expect(t.x).toBeCloseTo(tileToWorld(s.x) + s.worldOffsetX!, 9);
       expect(t.z).toBeCloseTo(tileToWorld(s.z) + s.worldOffsetZ!, 9);
       expect(t.yaw).toBeCloseTo(s.yaw!, 9);
+    }
+  });
+
+  it('reaches the head out over the lanes it holds, not to the kerb and no further', () => {
+    // The art spec calls it "a mast with a short arm reaching over the
+    // carriageway". The mast stood where a flat board stands — at the BACK of
+    // the footway — so the 1.9 m arm was used up crossing the paving and the
+    // head arrived at the kerb line with 3 cm to spare. It stands at the kerb
+    // face now, and the arm is spent where it is supposed to be.
+    const signals = computeSignPlacements(controlledPlus('signal', RoadTier.Avenue)).filter(
+      (s) => s.type === 'signal',
+    );
+    expect(signals.length).toBeGreaterThan(0);
+    const half = carriagewayHalfWidthMeters(RoadTier.Avenue);
+    for (const s of signals) {
+      const { x, z, yaw } = signWorldTransform(s);
+      const local = signalLensOffset('red');
+      const head = {
+        x: x + local.x * Math.cos(yaw) + local.z * Math.sin(yaw),
+        z: z - local.x * Math.sin(yaw) + local.z * Math.cos(yaw),
+      };
+      // Measured across the road the arm reaches over, from its centreline.
+      const centre = s.axis === 'x' ? tileToWorld(s.x) : tileToWorld(s.z);
+      const mast = Math.abs((s.axis === 'x' ? x : z) - centre);
+      const reach = Math.abs((s.axis === 'x' ? head.x : head.z) - centre);
+      expect(mast, 'the mast stands outside the kerb').toBeGreaterThan(half);
+      expect(reach, 'the head hangs inside it').toBeLessThan(half);
+      // And by a real margin, not by the three centimetres it used to clear.
+      expect(half - reach).toBeGreaterThan(1);
     }
   });
 

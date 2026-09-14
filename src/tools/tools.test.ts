@@ -40,6 +40,16 @@ const ROAD_SPECS: Partial<Record<RoadTier, RoadSpec>> = {
     capacity: 4000,
     unlockMilestone: 3,
   },
+  // The slip road, which is the only way a motorway reaches the street grid.
+  [RoadTier.Ramp]: {
+    tier: RoadTier.Ramp,
+    name: 'Ramp',
+    costPerTile: 70,
+    upkeepPerTile: 1.4,
+    speed: 17,
+    capacity: 850,
+    unlockMilestone: 3,
+  },
   // -- Roads catalog expansion (same numbers as roads.json) --
   [RoadTier.Gravel]: {
     tier: RoadTier.Gravel,
@@ -388,7 +398,7 @@ describe('road preview cost + commit', () => {
       expect(sent).toEqual([]);
     });
 
-    it('lets the same highway stop one tile short, and lets it meet an ordinary street', () => {
+    it('lets the same highway stop one tile short', () => {
       const { env, previews, sent } = withRoadAtZ5(RoadTier.Gravel);
       const tm = new ToolManager(env);
       tm.setTool('road.highway');
@@ -397,15 +407,29 @@ describe('road preview cost + commit', () => {
       expect(previews.at(-1)?.valid).toBe(true);
       tm.pointerUp(3, 3, 0);
       expect(sent).toHaveLength(1);
+    });
 
-      const paved = withRoadAtZ5(RoadTier.TwoLane);
-      const tm2 = new ToolManager(paved.env);
-      tm2.setTool('road.highway');
-      tm2.pointerDown(6, 0, 0);
-      tm2.pointerMove(6, 4, 0);
-      expect(paved.previews.at(-1)?.valid).toBe(true);
-      tm2.pointerUp(6, 4, 0);
-      expect(paved.sent).toHaveLength(1);
+    it('refuses a highway drawn up to an ordinary street, and says to use a ramp', () => {
+      const { env, previews, sent } = withRoadAtZ5(RoadTier.TwoLane);
+      const tm = new ToolManager(env);
+      tm.setTool('road.highway');
+      tm.pointerDown(6, 0, 0);
+      tm.pointerMove(6, 4, 0); // the last tile abuts the street at (6,5)
+      expect(previews.at(-1)?.valid).toBe(false);
+      expect(previews.at(-1)?.invalidReason).toContain('ramp');
+      tm.pointerUp(6, 4, 0);
+      expect(sent).toEqual([]);
+    });
+
+    it('lets a ramp reach that street, which is how a motorway gets to it', () => {
+      const { env, previews, sent } = withRoadAtZ5(RoadTier.TwoLane);
+      const tm = new ToolManager(env);
+      tm.setTool('road.ramp');
+      tm.pointerDown(6, 0, 0);
+      tm.pointerMove(6, 4, 0);
+      expect(previews.at(-1)?.valid).toBe(true);
+      tm.pointerUp(6, 4, 0);
+      expect(sent).toHaveLength(1);
     });
 
     it('does not count a road inside the run, which the run replaces', () => {
@@ -1767,7 +1791,9 @@ describe('ToolManager — a road cannot be drawn through one it does not outrank
   it('still lets a bigger road cross, and lets Replace mode through', () => {
     const { env, previews } = withAvenueAtZ5();
     const tm = new ToolManager(env);
-    tm.setTool('road.highway');
+    // A ramp, not a motorway: a motorway is limited access and refuses the
+    // avenue outright, so it would prove the refusal rather than the rank.
+    tm.setTool('road.ramp');
     tm.pointerDown(3, 0, 0);
     tm.pointerMove(3, 9, 0);
     expect(previews.at(-1)?.valid).toBe(true);

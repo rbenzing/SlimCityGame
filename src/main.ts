@@ -632,11 +632,35 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // reads the geometry instead.
       readPaint: (x: number, z: number): ({ color: string; axis: 'x' | 'z' } & BandSpan)[] =>
         roadsMesh.paintBandsAt(x, z),
+      // The same geometry asked point by point instead of band by band: what
+      // covers each sample of a rectangle of ground, topmost surface first,
+      // null where the terrain shows through. A kerb return is a couple of
+      // metres of corner and reaches no tile edge, so it is invisible to
+      // readPaint and has been checkable only by eye — which has been wrong
+      // about it more than once.
+      readSurface: (
+        x0: number,
+        z0: number,
+        x1: number,
+        z1: number,
+        n: number,
+      ): (string | null)[] => roadsMesh.surfaceGridAt(x0, z0, x1, z1, n),
       readSigns: (): { x: number; z: number; type: string }[] =>
         computeSignPlacements(latestRoadTiles).map((s) => ({ x: s.x, z: s.z, type: s.type })),
       // What each signal head is showing. A lit lens is a few pixels across in
       // a screenshot, so a check that the cycle really runs reads it here.
       readSignalAspects: (): string[] => roadFurniture.signalAspects(),
+      // Where each signal's mast stands and where its head hangs, in world
+      // metres. A mast arm is foreshortened to nothing in an overhead shot, so
+      // whether a head reaches out over the lanes it holds is measured here
+      // rather than guessed at from a picture.
+      readSignals: (): {
+        mast: { x: number; z: number };
+        head: { x: number; z: number };
+        axis: string;
+        side: number;
+        tile: { x: number; z: number };
+      }[] => roadFurniture.signalPlacements(),
       // Where each kerbside cabinet stands and which of the two it is.
       readCabinets: (): { x: number; z: number; kind: string }[] =>
         roadFurniture.cabinetPlacements().map((c) => ({ x: c.x, z: c.z, kind: c.kind })),

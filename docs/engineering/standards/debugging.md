@@ -114,6 +114,31 @@ its tiles and gives up at the crossing would leave a road ramping into the
 air. Those cases are laid last, after every screenshot, so their refusal
 toasts do not stack down the middle of the other shots.
 
+## `tools/roadconformity-shots.mjs`: what a corner actually looks like
+
+A second road harness asks a narrower question the first one cannot: where a
+SMALL road meets a BIG one, what do the kerb, the footway and the paint do at
+the corner? It lays a handful of mixed-class junctions — a street crossing and
+tee-ing an avenue, a street crossing a four-lane road, an alley tee-ing an
+avenue, a ramp meeting a motorway, and a street crossing its own class — and
+for each one prints the bands, the cross-section, the junction's resolved
+control, and a text map of the corner, then photographs it.
+
+The map is the part that matters. `readPaint` only sees bands that run a
+tile's whole length, and a kerb return is a couple of metres of corner that
+reaches no tile edge — so the one piece of geometry most often reported wrong
+was the one piece no read-back could see, leaving only a screenshot at a
+shallow angle, which has been misread repeatedly. `readSurface` samples the
+mesh point by point and reports the topmost surface over each, which draws the
+corner as a picture made of numbers: `#` footway, `.` asphalt, `W`/`Y` paint,
+blank where the terrain shows through.
+
+Print the junction's control before reading anything into a missing marking.
+An arm that gives way carries the crossing and the stop bar and an arm running
+through carries neither, a signal holds every arm, and an uncontrolled
+crossroads is painted not at all — so "no crossing on this arm" is usually the
+rule working, not a defect.
+
 ## `tools/audio-check.mjs`: the audio-specific case
 
 Audio cannot be judged from a screenshot at all, and cannot be tested under
