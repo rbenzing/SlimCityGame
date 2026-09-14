@@ -133,6 +133,24 @@ mesh point by point and reports the topmost surface over each, which draws the
 corner as a picture made of numbers: `#` footway, `.` asphalt, `W`/`Y` paint,
 blank where the terrain shows through.
 
+It also answers the pedestrian question mechanically, which is what "the
+sidewalks don't connect" needed. `readSurface` over the junction and a tile of
+each approach gives every footway cell; flood-filling those into patches turns
+two claims into pass/fail. **Corners:** the footway arriving on one edge of that
+square must be the same patch as the footway arriving on the next, or somebody
+walking round the corner steps into the road. **Access mouths:** the pavement on
+the side an ALLEY joins must be one patch from one edge to the other, because
+the footway runs past an access rather than breaking for it.
+
+The two are deliberately different questions. A footway severed by an ordinary
+road is correct — that is what a crossing is for — so only the access mouths
+are asked about continuity, and only corners between two arms that both carry a
+footway are asked about joining. The counts are printed so a vacuous pass ("0
+corners checked") cannot be misread as a real one. That the patch labelling
+discriminates at all is visible in the output: a crossroads reports FOUR
+patches, one island per corner, where a fill that merged everything would
+report one and every pair would trivially share.
+
 Print the junction's control before reading anything into a missing marking.
 An arm that gives way carries the crossing and the stop bar and an arm running
 through carries neither, a signal holds every arm, and an uncontrolled

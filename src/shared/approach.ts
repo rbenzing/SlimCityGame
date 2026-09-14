@@ -11,6 +11,7 @@
  *
  * Pure: bit sets, tile counts and cardinals, no grid and no graph.
  */
+import { isServiceClass } from './roadprofile';
 import { RoadFlow } from './types';
 import type { RoadClassId } from './types';
 import type { JunctionControl } from './types';
@@ -94,6 +95,32 @@ export function movementBetween(entering: RoadFlow, leaving: RoadFlow): Movement
     default:
       return Movement.Left;
   }
+}
+
+/**
+ * The movements a driver entering a junction heading `entering` has somewhere
+ * to make, given the legs `legs` it offers — each named by the direction a
+ * driver LEAVES on. A turn is a movement onto another road, so where there is
+ * no road there is no turn: the arm of a tee has open ground on one side of it
+ * however little anybody has restricted it, and painting an arrow at that
+ * ground, or widening the road to store a queue for it, is inventing a turning
+ * that is not there.
+ *
+ * The U-turn is never offered. The leg it takes is the one the driver came in
+ * on, which is always present, and doubling back is a thing a player asks for
+ * rather than something geometry grants.
+ *
+ * An unknown heading offers everything: a road that recorded no cardinal has
+ * no left and no right to work out, and guessing would ban both.
+ */
+export function movementsOffered(entering: RoadFlow, legs: Iterable<RoadFlow>): MovementSet {
+  if (armSlot(entering) === null) return DEFAULT_ALLOWED;
+  let offered: MovementSet = 0;
+  for (const leg of legs) {
+    const movement = movementBetween(entering, leg);
+    if (movement !== null && movement !== Movement.UTurn) offered |= movement;
+  }
+  return offered;
 }
 
 /**
@@ -297,12 +324,27 @@ export function movementAllowed(packed: PackedTurns, arm: RoadFlow, movement: Mo
  * an arm that may not go through is already all turn lane. A roundabout's
  * approach flares are geometry a single tile cannot hold, and wait for the
  * two-tile corridor.
+ *
+ * `heldByControl` is the condition the control alone could not express: the
+ * junction has to hold THIS arm, not merely hold somebody. A minor-road stop
+ * queues the side street and nothing else — so a street with an alley or any
+ * other lesser road stopping at it runs through unheld, with no queue to take
+ * anybody out of, and gains a storage bay for a turn nobody waits to make.
+ * That is how a two-lane street grew a third lane for the sake of an alley.
  */
 export function pocketWarranted(
   control: JunctionControl | null | undefined,
   allowed: MovementSet,
+  heldByControl: boolean,
+  armClass: RoadClassId,
 ): boolean {
   if (!control || control === 'none' || control === 'roundabout') return false;
+  if (!heldByControl) return false;
+  // A service road stores nothing. An alley is an access — a single lane to
+  // the back of a building — and a storage bay doubles its width for a queue
+  // that is one van long. Its default movement set says it goes through and
+  // turns left, like any arm, which is how it was earning one.
+  if (isServiceClass(armClass)) return false;
   return (allowed & Movement.Through) !== 0 && (allowed & Movement.Left) !== 0;
 }
 

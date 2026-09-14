@@ -1089,6 +1089,27 @@ const CLASS_RANK: Readonly<Record<RoadClassId, number>> = {
 };
 
 /**
+ * Classes that are an ACCESS rather than a leg of the traffic network.
+ *
+ * An alley exists to reach the back of a building — bins, deliveries, a fire
+ * appliance — and carries no through traffic anybody plans a route around. So
+ * a street it meets does not treat it as a leg: it takes no turn bay for it,
+ * does not sweep its footway round into it, and does not bend itself to become
+ * it. The footway runs past the mouth and the alley climbs over it, which is
+ * what a dropped kerb is.
+ *
+ * A farm track is NOT one of these. It is a poor road, but it is a road: a
+ * lane that bends into a track really does bend, and the pavement really does
+ * end there.
+ */
+const SERVICE_CLASSES: ReadonlySet<RoadClassId> = new Set<RoadClassId>(['alley']);
+
+/** Whether a class is an access rather than a leg of the network. */
+export function isServiceClass(id: RoadClassId): boolean {
+  return SERVICE_CLASSES.has(id);
+}
+
+/**
  * A class's place in the hierarchy on its own, without the transit bonus the
  * profile rank adds. This is the FUNCTIONAL CLASSIFICATION a traffic engineer
  * reads when deciding which road at a junction is the minor one.

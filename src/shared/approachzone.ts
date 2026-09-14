@@ -11,9 +11,10 @@
  * The tiles are reached through accessors rather than a grid, so this stays a
  * question about cardinals and distances that either side can ask.
  */
-import { armAllowed, pocketWarranted } from './approach';
+import { armAllowed, movementsOffered, pocketWarranted } from './approach';
 import type { MovementSet, PackedLaneTurns, PackedTurns } from './approach';
-import { isOneWayProfile, withAuxiliaryLane, withTurnPocket } from './roadprofile';
+import { isOneWayProfile, roadRank, withAuxiliaryLane, withTurnPocket } from './roadprofile';
+import { controlHoldsArm } from './junction';
 import {
   closedAt,
   dropWidth,
@@ -201,10 +202,42 @@ export function approachAhead(
   if (!best || tied) return undefined;
 
   const arm = oppositeFlow(best.toward);
-  const allowed = armAllowed(world.turnsAt(best.jx, best.jz), arm);
-  const pocket =
-    best.distance < zone && pocketWarranted(world.controlAt(best.jx, best.jz), allowed);
   const mine = world.profileAt(x, z);
+  // Whether the junction holds THIS arm. A minor-road stop holds the side
+  // street and lets the road through, and a road nobody stops has no queue to
+  // store a turn out of.
+  const armRanks: number[] = [];
+  // The legs there is anywhere to turn onto. A ONE-WAY leg running at the
+  // junction is a road a driver cannot take, so it offers no turn either —
+  // where a two-way road records the direction it was drawn in and can be
+  // taken either way regardless.
+  const legs: RoadFlow[] = [];
+  for (const [dx, dz, heading] of STEPS) {
+    const leg = world.profileAt(best.jx + dx, best.jz + dz);
+    if (!leg) continue;
+    armRanks.push(roadRank(leg));
+    const against =
+      isOneWayProfile(leg) && world.flowAt(best.jx + dx, best.jz + dz) === oppositeFlow(heading);
+    if (!against) legs.push(heading);
+  }
+  // What the player has restricted, narrowed to what the junction has to
+  // offer: an arrow and a turn bay are both claims about somewhere to go.
+  const allowed =
+    armAllowed(world.turnsAt(best.jx, best.jz), arm) & movementsOffered(best.toward, legs);
+  const pocket =
+    best.distance < zone &&
+    pocketWarranted(
+      world.controlAt(best.jx, best.jz),
+      allowed,
+      controlHoldsArm(
+        world.controlAt(best.jx, best.jz),
+        mine ? roadRank(mine) : 0,
+        armRanks,
+      ),
+      // A service access stores nothing: an alley is one lane to the back of a
+      // building, and a bay would double its width for a one-van queue.
+      mine ? mine.class : "local",
+    );
   return {
     toward: best.toward,
     distance: best.distance,

@@ -220,6 +220,24 @@ export function armGivesWay(armRank: number, armRanks: readonly number[]): boole
   return armRanks.every((r) => r === top) || armRank < top;
 }
 
+/**
+ * Whether a junction's control actually HOLDS this arm — reading the
+ * hierarchy ranks alone, the way the render has to.
+ *
+ * A signal and an all-way stop hold everybody. A minor-road stop or a give-way
+ * holds only the arms below the top rank: the road running through is not
+ * stopped by it, does not queue at it, and has nothing to store.
+ */
+export function controlHoldsArm(
+  control: JunctionControl | null | undefined,
+  armRank: number,
+  armRanks: readonly number[],
+): boolean {
+  if (!control || control === 'none' || control === 'roundabout') return false;
+  if (control === 'stop' || control === 'yield') return armGivesWay(armRank, armRanks);
+  return true;
+}
+
 /** A two-phase signal cycle; a third phase for a dedicated left makes it 90. */
 export const SIGNAL_CYCLE_S = 60;
 export const SIGNAL_CYCLE_WITH_LEFT_S = 90;

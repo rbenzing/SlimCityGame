@@ -215,9 +215,32 @@ stored narrows only what the arm's own restriction already allows — a lane
 can narrow the arm, never override it, and a lane is never left with
 nothing.
 
+Before any of that, the arm's set is narrowed by **the legs the junction
+actually has**. A turn is a movement onto another road, so where there is no
+road there is no turn: the arm of a tee has open ground on one side of it and
+offers no turn that way however little anybody has restricted it, and the stem
+of one cannot go through at all. A one-way leg running AT the junction is the
+same case — a road there, but not one a driver may take. This is geometry
+rather than restriction: nothing is stored, `armIsRestricted` still reads
+false, and the arm goes back to offering the turn the moment a leg is laid.
+Both the arrows and the pocket warrant read the narrowed set, and so does the
+router's delay model, so the queue it prices and the lanes the road lays are
+the same lanes.
+
 A **turn pocket** is what an approach gains for that zone when the
-junction's control actually queues traffic (anything but `none` or
-`roundabout`) and the arm both goes through and turns left: the pocket is
+junction's control actually holds THAT ARM and the arm both goes through and
+turns left. Holding the arm is the condition the control alone cannot express:
+a signal and an all-way stop hold everybody, but a minor-road stop or a
+give-way holds only the arms below the top rank, and the road running through
+is not stopped by it. A street with an alley stopping at it therefore gains
+nothing — it has no queue to take a turning driver out of, and a storage bay
+for a turn nobody waits to make is just a wider road. Neither does the ALLEY,
+on its own side: a service access stores nothing, and a bay would double the
+width of a single lane for a queue one van long. (The class is what rules that
+out. The legs rule above already takes the pocket off any arm of a tee, since
+one that cannot go through has no through traffic to take a turn out of — but
+an alley crossing a street has all four legs and still stores nothing.) The
+pocket is
 the lane beside the centreline, carved from whatever the width budget has
 spare, in this order — the verge the profile has not spent, the kerbside
 parking lane or the shared median, and only as a last resort the through
@@ -289,6 +312,17 @@ local or one-way street or a rural lane 4.5 m, an urban street 6.0 m, a
 collector 7.5 m (a bus gets round without leaving its lane), an arterial or
 divided road 9.0 m, and a highway or ramp 12.0 m. Ballast has no kerb to
 return and takes zero.
+
+**A service road is an access, not a leg.** An alley exists to reach the back
+of a building — bins, deliveries, a fire appliance — and carries no through
+traffic anybody routes around. A street it meets does not treat it as a leg of
+the junction: it takes no turn bay for it, does not sweep its footway round
+into it, and does not bend itself to become it. The footway runs straight past
+the mouth and the alley climbs over it, which is what a dropped kerb is; and a
+road whose only other arm is an alley has ENDED, so it runs straight to its own
+turning head with the alley as a leg off the side. A farm track is not one of
+these: it is a poor road, but it is a road, so a lane really does bend into a
+track and the pavement really does end there.
 
 **Which corner is turned.** The corner is the one the two ARMS make, and an
 arm is only as wide as its own road: where a two-lane street meets an avenue,
@@ -401,6 +435,21 @@ on foot to cross, and its kerb still sweeps round at the corner radius with
 grass filling what would be the footway). Crosswalk presence at a junction
 is derived this way from footway presence and rank; it is not (yet) an
 independent per-approach toggle a player sets from the junction inspector.
+
+A crossing is as DEEP as the footway it carries across the road, never less
+than the 1.8 m a marked crossing may be (MUTCD 3B.18), and it lies AGAINST THE
+KERB LINE, which is where that footway runs. It is not as deep as the strip of
+tile the footway sits in: the strip is the room available and runs opposite to
+the road, leaving 6.25 m beside a two-lane street and 1.90 m beside an avenue —
+so reading the room as the figure gave the quiet street a crossing 20 ft deep
+and the busy one a normal 6 ft. Nor is it anchored at the tile edge, the outer
+end of that strip, which leaves it floating with 4.4 m of road between it and
+the kerb it is supposed to meet. Its bars are 0.45 m wide at 0.6 m spacing,
+inside the 12–24 in bar and 12–60 in gap the standard allows.
+
+No crossing is painted over a **service access**. The footway runs straight
+across an alley's mouth rather than breaking for it, so the pavement IS the way
+across; bars laid in that strip sit underneath it where nobody can see them.
 
 A deck (an elevated or bridged road tile,
 [Bridges and elevated roads](#bridges-and-elevated-roads)) inverts the
