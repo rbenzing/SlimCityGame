@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.6.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.6.0...slimcity-v1.6.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **roads:** a turn needs a leg to land on ([b4e760a](https://github.com/rbenzing/SlimCityGame/commit/b4e760a0cc60c89c3783616b30ce492898796a0b))
+* **roads:** an alley is an access, not a leg of the junction ([75c3f81](https://github.com/rbenzing/SlimCityGame/commit/75c3f81679bbf6e19dfb79b31c43c3591471fde2))
+* **roads:** an alley takes no turn bay of its own either ([6185fc6](https://github.com/rbenzing/SlimCityGame/commit/6185fc64f5fc97dd0a045651ad022d6ed4975bd0))
+* **roads:** put the crossing against the kerb, and none over an alley ([4833eda](https://github.com/rbenzing/SlimCityGame/commit/4833eda31adcb5e9ea5bf8f0a32815375987b868))
+
 ## [1.6.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.5.1...slimcity-v1.6.0) (2026-09-14)
 
 
