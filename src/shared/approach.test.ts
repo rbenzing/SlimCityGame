@@ -262,18 +262,18 @@ describe('turn restrictions pack one nibble per arm', () => {
 
 describe('the turn pocket an approach earns', () => {
   it('is warranted only where the junction holds the traffic and the arm turns left', () => {
-    expect(pocketWarranted('signal', DEFAULT_ALLOWED, true)).toBe(true);
-    expect(pocketWarranted('stop', DEFAULT_ALLOWED, true)).toBe(true);
-    expect(pocketWarranted('yield', DEFAULT_ALLOWED, true)).toBe(true);
-    expect(pocketWarranted('allWayStop', DEFAULT_ALLOWED, true)).toBe(true);
+    expect(pocketWarranted('signal', DEFAULT_ALLOWED, true, 'local')).toBe(true);
+    expect(pocketWarranted('stop', DEFAULT_ALLOWED, true, 'local')).toBe(true);
+    expect(pocketWarranted('yield', DEFAULT_ALLOWED, true, 'local')).toBe(true);
+    expect(pocketWarranted('allWayStop', DEFAULT_ALLOWED, true, 'local')).toBe(true);
     // Nothing to queue for, and nowhere to put an approach flare.
-    expect(pocketWarranted('none', DEFAULT_ALLOWED, true)).toBe(false);
-    expect(pocketWarranted(null, DEFAULT_ALLOWED, true)).toBe(false);
-    expect(pocketWarranted('roundabout', DEFAULT_ALLOWED, true)).toBe(false);
+    expect(pocketWarranted('none', DEFAULT_ALLOWED, true, 'local')).toBe(false);
+    expect(pocketWarranted(null, DEFAULT_ALLOWED, true, 'local')).toBe(false);
+    expect(pocketWarranted('roundabout', DEFAULT_ALLOWED, true, 'local')).toBe(false);
     // A pocket is the left turn's lane; an arm that cannot turn left, or that
     // cannot go through, has nothing to separate.
-    expect(pocketWarranted('signal', Movement.Through | Movement.Right, true)).toBe(false);
-    expect(pocketWarranted('signal', Movement.Left, true)).toBe(false);
+    expect(pocketWarranted('signal', Movement.Through | Movement.Right, true, 'local')).toBe(false);
+    expect(pocketWarranted('signal', Movement.Left, true, 'local')).toBe(false);
   });
 
   it('is not warranted for an arm the control does not hold', () => {
@@ -281,8 +281,8 @@ describe('the turn pocket an approach earns', () => {
     // road through has no queue to take a turning driver out of, so it stores
     // nothing — which is what made a two-lane street grow a third lane for the
     // sake of an alley stopping at it.
-    expect(pocketWarranted('stop', DEFAULT_ALLOWED, false)).toBe(false);
-    expect(pocketWarranted('yield', DEFAULT_ALLOWED, false)).toBe(false);
+    expect(pocketWarranted('stop', DEFAULT_ALLOWED, false, 'local')).toBe(false);
+    expect(pocketWarranted('yield', DEFAULT_ALLOWED, false, 'local')).toBe(false);
     // A signal holds every arm, so this never takes a pocket off one.
     expect(controlHoldsArm('signal', 2, [2, 20])).toBe(true);
     expect(controlHoldsArm('allWayStop', 2, [2, 20])).toBe(true);
@@ -293,6 +293,19 @@ describe('the turn pocket an approach earns', () => {
     // stop holds them all — the all-way case by rank rather than by name.
     expect(controlHoldsArm('stop', 6, [6, 6, 6])).toBe(true);
     expect(controlHoldsArm('none', 2, [2, 20])).toBe(false);
+  });
+
+  it('is never warranted for a service access, whatever is holding it', () => {
+    // An alley is one lane to the back of a building, and a bay doubles its
+    // width for a queue one van long. Nothing in the movement set stops it:
+    // the default says every arm goes through and turns left, which is how an
+    // alley was earning a storage lane at a tee it cannot even go through.
+    expect(pocketWarranted('signal', DEFAULT_ALLOWED, true, 'alley')).toBe(false);
+    expect(pocketWarranted('stop', DEFAULT_ALLOWED, true, 'alley')).toBe(false);
+    expect(pocketWarranted('allWayStop', DEFAULT_ALLOWED, true, 'alley')).toBe(false);
+    // A farm track is a poor road, not an access, and keeps the ordinary
+    // warrant — the distinction the whole service rule turns on.
+    expect(pocketWarranted('signal', DEFAULT_ALLOWED, true, 'dirt')).toBe(true);
   });
 
   it('gives the pocket to the left turn alone, and leaves the rest as they were', () => {

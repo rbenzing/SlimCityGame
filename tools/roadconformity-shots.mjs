@@ -214,16 +214,23 @@ for (let i = 0; i < SCENARIOS.length && i < plots.length; i++) {
   // What the MAJOR road does on its way in. A turn bay carved out of a street
   // for the sake of an alley is the thing to catch here, so the approach is
   // read tile by tile back from the junction rather than only at the box.
-  for (const d of [1, 2, 3]) {
-    const a = await call(([ax, az]) => window.__slimcity.readApproach(ax, az), [jx - d, jz]);
+  const approachLine = async (label, ax, az) => {
+    const a = await call(([p, q]) => window.__slimcity.readApproach(p, q), [ax, az]);
+    const d = await drawn(ax, az);
     console.log(
-      `  W-${d} approach:`,
+      `  ${label} approach:`,
       a === null
         ? 'null'
         : `lanes ${a.lanes} width ${a.width.toFixed(2)} pocket ${a.pocket} ` +
-          `taper ${a.taper ? `${a.taper.closed}/${a.taper.length}` : 'null'} dist ${a.distance}`,
+          `open ${a.openness.toFixed(2)} ` +
+          `taper ${a.taper ? `${a.taper.closed}/${a.taper.length}` : 'null'} dist ${a.distance}` +
+          (d ? ` | mesh width ${d.width.toFixed(2)}` : ''),
     );
-  }
+  };
+  for (const d of [1, 2, 3]) await approachLine(`W-${d}`, jx - d, jz);
+  // The MINOR arm too: its own flare into the junction throat is measured here
+  // rather than read off a picture of it.
+  for (const d of [1, 2, 3]) await approachLine(`N-${d}`, jx, jz - d);
   console.log('  box paint  :', fmt(await paint(jx, jz)));
   console.log('  W-1 paint  :', fmt(await paint(jx - 1, jz)));
   console.log('  W-2 paint  :', fmt(await paint(jx - 2, jz)));

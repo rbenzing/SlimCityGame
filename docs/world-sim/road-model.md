@@ -222,7 +222,12 @@ a signal and an all-way stop hold everybody, but a minor-road stop or a
 give-way holds only the arms below the top rank, and the road running through
 is not stopped by it. A street with an alley stopping at it therefore gains
 nothing — it has no queue to take a turning driver out of, and a storage bay
-for a turn nobody waits to make is just a wider road. The pocket is
+for a turn nobody waits to make is just a wider road. Neither does the ALLEY,
+on its own side: a service access stores nothing, and a bay would double the
+width of a single lane for a queue one van long. (Nothing in the movement set
+stops that on its own — the default says every arm goes through and turns
+left, which is how an alley earned a storage lane at a tee it cannot even go
+through.) The pocket is
 the lane beside the centreline, carved from whatever the width budget has
 spare, in this order — the verge the profile has not spent, the kerbside
 parking lane or the shared median, and only as a last resort the through

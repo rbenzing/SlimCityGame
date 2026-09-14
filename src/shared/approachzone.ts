@@ -227,6 +227,9 @@ export function approachAhead(
         mine ? roadRank(mine) : 0,
         armRanks,
       ),
+      // A service access stores nothing: an alley is one lane to the back of a
+      // building, and a bay would double its width for a one-van queue.
+      mine ? mine.class : "local",
     );
   return {
     toward: best.toward,

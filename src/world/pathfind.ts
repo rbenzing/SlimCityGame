@@ -190,7 +190,7 @@ export function junctionDelay(
   // movements are quicker for it.
   // The same warrant the geometry uses, off the same give-way answer: an arm
   // the control does not hold queues for nothing and stores nothing.
-  const pocket = arm.canPocket && pocketWarranted(control, allowed, heldByControl);
+  const pocket = arm.canPocket && pocketWarranted(control, allowed, heldByControl, mine.classId);
   const lanes = resolveLaneMovements(
     pocket ? pocketLaneMovements(mine.lanes + 1, allowed) : laneMovementsFor(mine.lanes, allowed),
     laneTurnsOf(node, armOf(arriving, node.id)),

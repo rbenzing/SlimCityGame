@@ -11,6 +11,7 @@
  *
  * Pure: bit sets, tile counts and cardinals, no grid and no graph.
  */
+import { isServiceClass } from './roadprofile';
 import { RoadFlow } from './types';
 import type { RoadClassId } from './types';
 import type { JunctionControl } from './types';
@@ -309,9 +310,15 @@ export function pocketWarranted(
   control: JunctionControl | null | undefined,
   allowed: MovementSet,
   heldByControl: boolean,
+  armClass: RoadClassId,
 ): boolean {
   if (!control || control === 'none' || control === 'roundabout') return false;
   if (!heldByControl) return false;
+  // A service road stores nothing. An alley is an access — a single lane to
+  // the back of a building — and a storage bay doubles its width for a queue
+  // that is one van long. Its default movement set says it goes through and
+  // turns left, like any arm, which is how it was earning one.
+  if (isServiceClass(armClass)) return false;
   return (allowed & Movement.Through) !== 0 && (allowed & Movement.Left) !== 0;
 }
 

@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-14)
 
-**Test suite:** 3,306 tests passing across 117 test files, run 2026-09-14.
+**Test suite:** 3,307 tests passing across 117 test files, run 2026-09-14.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -386,6 +386,13 @@ the junction was already treating it as an ordinary arm.
   computed, so the sim and the geometry cannot drift apart. Verified the
   mechanic survives where it belongs: the side street still earns its bay
   approaching a signal and approaching a four-lane road.
+- **And the alley took one of its own, which is what made its mouth flare.**
+  Flagged as an 81% widening (3.75 → 6.80 m) and assumed to be a junction
+  bellmouth; measured, it was `pocket: true` on the alley arm. Nothing in the
+  movement set prevents it — the default says every arm goes through and turns
+  left, so an alley earned a storage lane at a tee it cannot even go through.
+  A service access now takes no pocket at all. The alley holds its own 3.75 m
+  into the junction at both a two-lane tee and an avenue tee.
 - **The footway swept 4.5 m round into the alley mouth.** It runs straight
   past now and the alley crosses it. A kerb return is between two kerbs and an
   alley brings none.
