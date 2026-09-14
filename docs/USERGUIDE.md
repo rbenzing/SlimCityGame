@@ -117,6 +117,13 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   tile or two and then holds that width up to the stop line, so there is
   always somewhere to queue. Nothing to switch on: give the junction a control
   it needs and the pocket appears with it.
+  Put two junctions close together and you get something else. A pocket belongs
+  to one side of the road, so a short block between two of them would widen on
+  one side at one end and the other side at the other, narrowing in the middle.
+  Instead the whole block gets a **shared turn lane** down the middle — one lane
+  both directions turn from, the same width the whole way, with no taper at
+  either end. It appears on its own wherever two junctions are within about
+  160 m, and goes away again if you move one of them further off.
   A junction paints itself the way one is painted. **Crossings** go where
   somebody can actually walk: the people using a crossing are travelling the
   other way, so an arm is crossed only where the roads across from it have

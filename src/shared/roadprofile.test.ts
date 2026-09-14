@@ -65,6 +65,7 @@ import {
   withinLaneRange,
   withAuxiliaryLane,
   isOneWayProfile,
+  withCentreTurn,
   withTurnPocket,
 } from './roadprofile';
 import type { LanePiece, RoadClassId, RoadProfile, RoadSpec } from './types';
@@ -1117,6 +1118,50 @@ describe('turn pockets', () => {
 
   it('has no pocket to offer a railway', () => {
     expect(withTurnPocket(presetProfileForTier(RoadTier.RailTrack), 1)).toBeNull();
+  });
+});
+
+describe('a turn lane shared both ways, where a bay belonging to one will not do', () => {
+  it('puts one lane at the centreline, between the two directions', () => {
+    const shared = withCentreTurn(presetProfileForTier(RoadTier.TwoLane))!;
+    expect(shared.pieces.map((p) => p.kind)).toEqual([
+      'sidewalk',
+      'travel',
+      'centreTurn',
+      'travel',
+      'sidewalk',
+    ]);
+    // Symmetrical, which is the whole point: a bay belongs to one half of the
+    // road and swaps sides between two junctions; this one does not.
+    const turn = shared.pieces.findIndex((p) => p.kind === 'centreTurn');
+    const width = (from: number, to: number): number =>
+      shared.pieces.slice(from, to).reduce((sum, p) => sum + p.width, 0);
+    expect(width(0, turn)).toBeCloseTo(width(turn + 1, shared.pieces.length), 6);
+    expect(carriagewayHalfWidthOf(shared)).toBeGreaterThan(
+      carriagewayHalfWidthOf(presetProfileForTier(RoadTier.TwoLane)),
+    );
+  });
+
+  it('leaves a road whose middle is already spoken for', () => {
+    // A median is a physical separator and a turn lane is already one of these.
+    expect(withCentreTurn(presetProfileForTier(RoadTier.Avenue))).toBeNull();
+    const already = composeProfile(presetProfileForTier(RoadTier.TwoLane), {
+      ...NO_EDITS,
+      middle: 'turn',
+    });
+    expect(withCentreTurn(already)).toBeNull();
+  });
+
+  it('has nothing to offer a road with only one direction on it', () => {
+    // Nobody to share it with: a one-way's turns come out of its own lanes.
+    expect(withCentreTurn(presetProfileForTier(RoadTier.OneWay))).toBeNull();
+    expect(withCentreTurn(presetProfileForTier(RoadTier.RailTrack))).toBeNull();
+  });
+
+  it('refuses where the tile has no width left to give it', () => {
+    // Four lanes and two footways already fill the tile; a lane too narrow to
+    // wait in is worse than no lane, so it gets none.
+    expect(withCentreTurn(presetProfileForTier(RoadTier.FourLane))).toBeNull();
   });
 });
 

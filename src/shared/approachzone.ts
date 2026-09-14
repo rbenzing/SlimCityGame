@@ -13,7 +13,13 @@
  */
 import { armAllowed, movementsOffered, pocketWarranted } from './approach';
 import type { MovementSet, PackedLaneTurns, PackedTurns } from './approach';
-import { isOneWayProfile, roadRank, withAuxiliaryLane, withTurnPocket } from './roadprofile';
+import {
+  isOneWayProfile,
+  roadRank,
+  withAuxiliaryLane,
+  withCentreTurn,
+  withTurnPocket,
+} from './roadprofile';
 import { controlHoldsArm } from './junction';
 import {
   closedAt,
@@ -88,6 +94,52 @@ function pocketOpenness(classId: RoadClassId, zone: number, distance: number): n
   const taper = Math.min(laneTaperTiles(classId), Math.max(0, zone - 1));
   if (taper <= 0) return 1;
   return Math.min(1, (zone - distance) / (taper + 1));
+}
+
+/**
+ * How long a block between two junctions may be and still be carried as one
+ * stretch. Beyond this there is a real length of ordinary road in the middle,
+ * worth returning to its own width for; inside it the road would widen,
+ * narrow and widen again over a couple of hundred metres.
+ */
+export const SHARED_TURN_LANE_MAX_TILES = 8;
+
+/**
+ * Whether a tile is inside a SHORT BLOCK — a straight run with a junction at
+ * each end, close enough together that the turn bays they each want would
+ * leave no road between them worth the name.
+ *
+ * It is a question about the RUN rather than about an approach, which is why
+ * it is asked separately: the tile halfway along belongs to neither junction
+ * more than the other, and `approachAhead` rightly declines to say which one
+ * it approaches. It still has to be the same road as its neighbours.
+ */
+export function sharedTurnLaneAt(x: number, z: number, world: ApproachSurroundings): boolean {
+  if (!world.hasRoad(x, z) || roadDegree(x, z, world) !== 2) return false;
+  /** Tiles short of the junction that way, or null where that way has none. */
+  const reach = (dx: number, dz: number): number | null => {
+    if (!world.hasRoad(x + dx, z + dz)) return null;
+    if (isCorridorPartner(x, z, dx, dz, world)) return null;
+    for (let step = 1; step <= SHARED_TURN_LANE_MAX_TILES; step++) {
+      const tx = x + dx * step;
+      const tz = z + dz * step;
+      if (!world.hasRoad(tx, tz)) return null;
+      const degree = roadDegree(tx, tz, world);
+      if (degree >= 3) return step - 1;
+      // Anything that is not a straight continuation ends the run.
+      if (degree !== 2 || !world.hasRoad(tx + dx, tz + dz)) return null;
+    }
+    return null;
+  };
+  for (const [dx, dz] of STEPS) {
+    const ahead = reach(dx, dz);
+    if (ahead === null) continue;
+    const behind = reach(-dx, -dz);
+    if (behind === null) continue;
+    // Both ends counted from this tile, plus the tile itself.
+    if (ahead + behind + 1 <= SHARED_TURN_LANE_MAX_TILES) return true;
+  }
+  return false;
 }
 
 /** The four cardinals as steps, in the order `RoadFlow` numbers them. */
@@ -280,7 +332,15 @@ export function pocketedCrossSection(
   profile: RoadProfile,
   approach: ApproachAhead | undefined,
   flow: number,
+  /** Whether the tile is in a short block, and carries a shared turn lane. */
+  sharedTurn = false,
 ): RoadProfile {
+  // A shared lane down the middle answers both junctions at once, so it takes
+  // precedence over the one-sided bay either of them would otherwise ask for.
+  if (sharedTurn) {
+    const shared = withCentreTurn(profile);
+    if (shared) return shared;
+  }
   if (!approach?.pocket) return profile;
   if (isOneWayProfile(profile) && flow !== RoadFlow.None && flow !== approach.toward) {
     return profile;
@@ -306,10 +366,11 @@ export function drawnCrossSection(
   narrowing: TaperStep | undefined,
   flow: number,
   auxiliary?: AuxiliaryLane,
+  sharedTurn?: boolean,
 ): RoadProfile {
   const base = withAuxiliary(profile, auxiliary);
   if (narrowing) return pavedCrossSection(base, closedAt(narrowing));
-  return pocketedCrossSection(base, approach, flow);
+  return pocketedCrossSection(base, approach, flow, sharedTurn);
 }
 
 /**
@@ -332,10 +393,11 @@ export function paintedCrossSection(
   narrowing: TaperStep | undefined,
   flow: number,
   auxiliary?: AuxiliaryLane,
+  sharedTurn?: boolean,
 ): RoadProfile {
   const base = withAuxiliary(profile, auxiliary);
   if (narrowing) return taperedCrossSection(base, closedAt(narrowing));
-  return pocketedCrossSection(base, approach, flow);
+  return pocketedCrossSection(base, approach, flow, sharedTurn);
 }
 
 /**

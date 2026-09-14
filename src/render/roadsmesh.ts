@@ -120,6 +120,7 @@ import {
   approachAhead,
   approachAxis,
   auxiliaryLaneAt,
+  sharedTurnLaneAt,
   drawnCrossSection,
   narrowingAhead,
   paintedCrossSection,
@@ -3392,6 +3393,14 @@ export function roadTileVertices(
    * that can see the interchange.
    */
   auxiliary?: AuxiliaryLane,
+  /**
+   * Whether the tile is in a SHORT BLOCK — a run with a junction close at each
+   * end. Both would otherwise widen it for a turn bay of their own, on
+   * opposite sides, tapering down and back up in between; one lane shared both
+   * ways serves them both and is the same road all the way along. Set only by
+   * a caller that can see both junctions.
+   */
+  sharedTurn?: boolean,
 ): { positions: number[]; colors: number[] } {
   if (!Number.isInteger(mask) || mask < 0 || mask > 15) {
     throw new RangeError(`roadTileVertices: mask ${mask} out of the 4-bit range 0..15`);
@@ -3405,12 +3414,12 @@ export function roadTileVertices(
   // have gained for the junction ahead, less the lanes it may be closing for a
   // narrower road ahead.
   const own = profile ?? presetProfileForTier(tier);
-  const crossSection = drawnCrossSection(own, approach, narrowing, flow, auxiliary);
+  const crossSection = drawnCrossSection(own, approach, narrowing, flow, auxiliary, sharedTurn);
   const spec = quadSpecFor(tier, crossSection);
   // What the PAINT is laid to, which is the same thing everywhere but down a
   // motorway's taper: there the tarmac runs on at full width and only the
   // lines close the lane, leaving the neutral area between the two.
-  const painted = paintedCrossSection(own, approach, narrowing, flow, auxiliary);
+  const painted = paintedCrossSection(own, approach, narrowing, flow, auxiliary, sharedTurn);
   const plan = markingPlan(painted, flow);
   const centerX = (x + 0.5) * TILE_METERS;
   const centerZ = (z + 0.5) * TILE_METERS;
@@ -4928,6 +4937,14 @@ export class RoadMeshRenderer {
     return auxiliaryLaneAt(x, z, this.surroundings);
   }
 
+  /**
+   * Whether the tile at (x,z) is in a short block between two junctions, and
+   * so carries a turn lane shared both ways rather than one junction's bay.
+   */
+  private sharedTurnAt(x: number, z: number): boolean {
+    return sharedTurnLaneAt(x, z, this.surroundings);
+  }
+
   /** Which way the tile at (x,z) was drawn, or None where nothing said. */
   private flowAt(x: number, z: number): RoadFlow {
     const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
@@ -4957,6 +4974,7 @@ export class RoadMeshRenderer {
         this.narrowingAt(x, z),
         flowDirection(tile?.flow ?? RoadFlow.None),
         this.auxiliaryAt(x, z),
+        this.sharedTurnAt(x, z),
       ),
     );
   }
@@ -4985,6 +5003,7 @@ export class RoadMeshRenderer {
       this.narrowingAt(x, z),
       flow,
       this.auxiliaryAt(x, z),
+      this.sharedTurnAt(x, z),
     );
     return approachingSpan(
       drawn,
@@ -5019,6 +5038,7 @@ export class RoadMeshRenderer {
         this.narrowingAt(x, z),
         flowDirection(tile?.flow ?? RoadFlow.None),
         this.auxiliaryAt(x, z),
+        this.sharedTurnAt(x, z),
       ),
       flowDirection(tile?.flow ?? RoadFlow.None),
     );
@@ -5047,6 +5067,7 @@ export class RoadMeshRenderer {
       this.narrowingAt(x, z),
       flowDirection(tile?.flow ?? RoadFlow.None),
       this.auxiliaryAt(x, z),
+      this.sharedTurnAt(x, z),
     );
     return {
       lanes: drawn.pieces.filter((p) => p.kind === 'travel').length,
@@ -5315,6 +5336,7 @@ export class RoadMeshRenderer {
         this.approachToward(tile.x, tile.z),
         this.narrowingAt(tile.x, tile.z),
         this.auxiliaryAt(tile.x, tile.z),
+        this.sharedTurnAt(tile.x, tile.z),
       );
       for (const n of vertices.positions) positions.push(n);
       for (const n of vertices.colors) colors.push(n);

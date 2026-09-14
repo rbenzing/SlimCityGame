@@ -571,6 +571,52 @@ export function canGainTurnPocket(profile: RoadProfile, approachSide: -1 | 1): b
 }
 
 /**
+ * The same cross-section with a TWO-WAY LEFT-TURN LANE down the middle — one
+ * lane at the centreline that traffic turns from in either direction.
+ *
+ * This is what a bay becomes where there is no room for a bay. A turn pocket
+ * belongs to one half of the road, so a stretch with a junction at each end
+ * would carry one bay on one side and the other on the other, tapering down
+ * and back up in between — a road that widens, narrows, and widens again on
+ * the other side over a couple of hundred metres. One lane shared both ways
+ * serves both junctions, is the same width all the way along, and is
+ * symmetrical, so nothing swaps sides.
+ *
+ * Null where the road cannot take one: a one-way has no opposing traffic to
+ * share it with, a road with a median or a turn lane already has its middle
+ * spoken for, and a road with no width to spare gets nothing rather than a
+ * lane too narrow to wait in.
+ */
+export function withCentreTurn(profile: RoadProfile): RoadProfile | null {
+  if (isOneWayProfile(profile)) return null;
+  if (profile.pieces.some((p) => p.kind === 'centreTurn' || p.kind === 'median')) return null;
+  const centres = pieceCentres(profile);
+  const travel = profile.pieces
+    .map((piece, index) => ({ piece, index, centre: centres[index] ?? 0 }))
+    .filter((e) => e.piece.kind === 'travel');
+  // It goes between the two directions, so there have to BE two directions.
+  const back = travel.filter((e) => e.centre < 0);
+  const fwd = travel.filter((e) => e.centre > 0);
+  if (back.length === 0 || fwd.length === 0) return null;
+
+  const target = DEFAULT_PIECE_WIDTHS.centreTurn;
+  const minimum = Math.min(target, TURN_POCKET_MIN_WIDTH_M);
+  const reserve = hasKerbs(profile) && !hasFootway(profile) ? 2 * KERB_RESERVE_M : 0;
+  const slack = Math.max(0, TILE_METERS - profileWidth(profile) - reserve);
+  if (slack + 1e-9 < minimum) return null;
+  const width = Math.min(target, slack);
+
+  const insertBefore = fwd.reduce((a, b) => (b.centre < a.centre ? b : a)).index;
+  const pieces: LanePiece[] = [];
+  profile.pieces.forEach((piece, index) => {
+    if (index === insertBefore) pieces.push({ kind: 'centreTurn', width });
+    pieces.push({ ...piece });
+  });
+  const turned: RoadProfile = { ...profile, pieces };
+  return profileWidth(turned) <= TILE_METERS - reserve + 1e-6 ? turned : null;
+}
+
+/**
  * The same cross-section with an AUXILIARY LANE added against the kerb on one
  * side — the lane a motorway grows beside a slip road, so that a driver
  * joining has somewhere to get up to speed and one leaving has somewhere to

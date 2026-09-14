@@ -6,7 +6,10 @@ import {
   auxiliaryLaneAt,
   narrowingAhead,
   oppositeFlow,
+  pocketedCrossSection,
   roadDegree,
+  SHARED_TURN_LANE_MAX_TILES,
+  sharedTurnLaneAt,
 } from './approachzone';
 import { presetProfileForTier } from './roadprofile';
 import { taperTilesFor } from './taper';
@@ -275,6 +278,51 @@ describe('the approach zone', () => {
       world(CROSSROADS, signal, { '2,0': RoadFlow.South, '2,1': RoadFlow.South }),
     );
     expect(twoWay!.allowed & Movement.Left).not.toBe(0);
+  });
+
+  /** Two crossroads on one street, `gap` tiles of street between them. */
+  const block = (gap: number): string => {
+    const row = (mark: (x: number) => string): string =>
+      Array.from({ length: gap + 8 }, (_, x) => mark(x)).join('');
+    const cross = [3, 3 + gap + 1];
+    const side = row((x) => (cross.includes(x) ? '#' : '.'));
+    const street = row((x) => (x >= 1 && x <= gap + 6 ? '#' : '.'));
+    return [side, side, street, side, side].join('\n');
+  };
+
+  it('carries a shared turn lane through a block short enough to need one', () => {
+    // A tile anywhere between the two junctions: every one of them, including
+    // the middle one that approaches neither more than the other.
+    for (const gap of [1, 2, 4, SHARED_TURN_LANE_MAX_TILES]) {
+      const w = world(block(gap));
+      for (let x = 4; x < 4 + gap; x++) {
+        expect({ gap, x, shared: sharedTurnLaneAt(x, 2, w) }).toEqual({ gap, x, shared: true });
+      }
+    }
+  });
+
+  it('leaves a block with a real length of road in the middle alone', () => {
+    const gap = SHARED_TURN_LANE_MAX_TILES + 1;
+    const w = world(block(gap));
+    // The tile in the middle is too far from both to be in either's way.
+    const middle = 4 + Math.floor(gap / 2);
+    expect(sharedTurnLaneAt(middle, 2, w)).toBe(false);
+  });
+
+  it('says nothing of a junction itself, or of a street with one end open', () => {
+    const w = world(block(4));
+    expect(sharedTurnLaneAt(3, 2, w)).toBe(false); // the junction tile
+    // The stretch beyond the far junction runs off the end of the map, so it
+    // has a junction one way and nothing the other.
+    expect(sharedTurnLaneAt(9, 2, w)).toBe(false);
+  });
+
+  it('is what the cross-section takes, over any bay the junction would give', () => {
+    const street = presetProfileForTier(RoadTier.TwoLane);
+    const bay = pocketedCrossSection(street, undefined, RoadFlow.None, true);
+    expect(bay.pieces.some((p) => p.kind === 'centreTurn')).toBe(true);
+    // And without it the road is the road: nothing is added for its own sake.
+    expect(pocketedCrossSection(street, undefined, RoadFlow.None, false)).toBe(street);
   });
 
   it('turns a cardinal round', () => {

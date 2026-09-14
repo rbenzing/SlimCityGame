@@ -253,6 +253,29 @@ ordinary lane-drop taper for the class, full width only against the
 junction itself, so the width the road gives up (parking, verge) shrinks
 gracefully rather than vanishing at a line.
 
+**A short block takes a shared turn lane instead of two bays.** A pocket
+belongs to ONE HALF of the road — it is the lane beside the centreline on the
+approaching side — so a stretch with a junction at each end would carry one
+bay on one side and the other bay on the other, tapering down and back up in
+between: a road that widens, narrows, and widens again on the opposite side
+over a couple of hundred metres. Where the two junctions are within
+`SHARED_TURN_LANE_MAX_TILES` (8 tiles, 160 m) of each other, the whole block
+carries a **two-way left-turn lane** instead — one lane at the centreline that
+traffic turns from in either direction. It serves both junctions, is the same
+width the whole way, and is symmetrical, so nothing swaps sides and there is
+no taper at either end. It is the same lane a player can put down the middle
+of a road from the profile editor, and it carries no through capacity, so the
+road's capacity is unchanged.
+
+Whether a tile is in such a block is a question about the RUN rather than
+about an approach, and is asked separately: the tile halfway along belongs to
+neither junction more than the other, and the approach walk rightly declines
+to say which one it approaches — but it still has to be the same road as its
+neighbours. A road that cannot take the lane keeps its bays: a one-way has no
+opposing traffic to share it with, a road with a median or a turn lane already
+has its middle spoken for, and a road with no width to spare gets nothing
+rather than a lane too narrow to wait in.
+
 Turn **restrictions** (no left, no right, no straight, no U) are the same
 mechanism in the degenerate case: a movement removed from every lane of an
 arm rather than left on some. Turn arrows are painted from the resolved

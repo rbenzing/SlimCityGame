@@ -16,6 +16,7 @@ import {
   auxiliaryLaneAt,
   drawnCrossSection,
   narrowingAhead,
+  sharedTurnLaneAt,
 } from '../shared/approachzone';
 import type { ApproachAhead, ApproachSurroundings } from '../shared/approachzone';
 import {
@@ -207,7 +208,16 @@ export class ClientGridMirror {
       this.narrowingAt(x, z),
       flowDirection(this.roadFlow[this.idx(x, z)] ?? RoadFlow.None),
       this.auxiliaryAt(x, z),
+      this.sharedTurnAt(x, z),
     );
+  }
+
+  /**
+   * Whether the tile is in a short block between two junctions, and so carries
+   * a turn lane shared both ways instead of a bay belonging to one of them.
+   */
+  sharedTurnAt(x: number, z: number): boolean {
+    return sharedTurnLaneAt(x, z, this.surroundings);
   }
 
   /** The auxiliary lane this tile carries beside a slip road, if any. */
