@@ -271,10 +271,24 @@ Whether a tile is in such a block is a question about the RUN rather than
 about an approach, and is asked separately: the tile halfway along belongs to
 neither junction more than the other, and the approach walk rightly declines
 to say which one it approaches — but it still has to be the same road as its
-neighbours. A road that cannot take the lane keeps its bays: a one-way has no
+neighbours.
+
+The width comes from the verge the profile has not spent, and then, as a last
+resort, from the through lanes themselves — every one of them, each giving up
+the same share of what it has to spare, down to the same 10 ft floor a bay
+uses. That is the difference that matters: a BAY can only ask the half of the
+road it belongs to, so a four-lane street has no room for one; a lane shared
+both ways asks all four, and there is room. A four-lane street between two
+close junctions therefore carries a turn lane where it could carry no bay at
+all. Reserved lanes are never asked — a bus lane narrowed is a bus lane that
+no longer fits a bus — so a road whose spare width is all in its bus lanes
+gets nothing rather than a lane too narrow to wait in.
+
+A road that cannot take the lane keeps whatever it had: a one-way has no
 opposing traffic to share it with, a road with a median or a turn lane already
-has its middle spoken for, and a road with no width to spare gets nothing
-rather than a lane too narrow to wait in.
+has its middle spoken for, and the lane is for streets that meet at grade —
+never a motorway or its slip roads, which have no at-grade turn to store, and
+never an unpaved track or a service alley, which carry no paint at all.
 
 Turn **restrictions** (no left, no right, no straight, no U) are the same
 mechanism in the degenerate case: a movement removed from every lane of an

@@ -571,6 +571,20 @@ export function canGainTurnPocket(profile: RoadProfile, approachSide: -1 | 1): b
 }
 
 /**
+ * Classes a shared turn lane belongs on: ordinary two-way streets, the ones
+ * that meet each other at grade and separate opposing traffic with a centre
+ * line. A motorway and its slip roads have no at-grade turns to store, and an
+ * unpaved track or a service alley carries no paint at all.
+ */
+const SHARED_TURN_CLASSES: ReadonlySet<RoadClassId> = new Set<RoadClassId>([
+  'rural',
+  'local',
+  'urban',
+  'collector',
+  'arterial',
+]);
+
+/**
  * The same cross-section with a TWO-WAY LEFT-TURN LANE down the middle — one
  * lane at the centreline that traffic turns from in either direction.
  *
@@ -588,6 +602,7 @@ export function canGainTurnPocket(profile: RoadProfile, approachSide: -1 | 1): b
  * lane too narrow to wait in.
  */
 export function withCentreTurn(profile: RoadProfile): RoadProfile | null {
+  if (!SHARED_TURN_CLASSES.has(profile.class)) return null;
   if (isOneWayProfile(profile)) return null;
   if (profile.pieces.some((p) => p.kind === 'centreTurn' || p.kind === 'median')) return null;
   const centres = pieceCentres(profile);
@@ -603,14 +618,35 @@ export function withCentreTurn(profile: RoadProfile): RoadProfile | null {
   const minimum = Math.min(target, TURN_POCKET_MIN_WIDTH_M);
   const reserve = hasKerbs(profile) && !hasFootway(profile) ? 2 * KERB_RESERVE_M : 0;
   const slack = Math.max(0, TILE_METERS - profileWidth(profile) - reserve);
-  if (slack + 1e-9 < minimum) return null;
-  const width = Math.min(target, slack);
+  let width = Math.min(target, slack);
+
+  // Last resort: the through lanes give up what is left of it, every one of
+  // them the same share of what it has to spare. A bay can only ask the half
+  // of the road it belongs to; a lane shared both ways asks ALL of them — and
+  // that is the difference between a four-lane street having room for one of
+  // these and having no room at all for the pair of bays it would otherwise
+  // want. Reserved lanes are not asked: a bus lane narrowed is a bus lane that
+  // no longer fits a bus.
+  const narrowed = new Map<number, number>();
+  if (width + 1e-9 < minimum) {
+    const shortfall = minimum - width;
+    const headroom = travel.map((e) => ({ index: e.index, room: e.piece.width - minimum }));
+    const available = headroom.reduce((sum, h) => sum + Math.max(0, h.room), 0);
+    if (available + 1e-9 < shortfall) return null;
+    for (const h of headroom) {
+      if (h.room <= 0) continue;
+      const piece = profile.pieces[h.index]!;
+      narrowed.set(h.index, piece.width - (shortfall * h.room) / available);
+    }
+    width = minimum;
+  }
 
   const insertBefore = fwd.reduce((a, b) => (b.centre < a.centre ? b : a)).index;
   const pieces: LanePiece[] = [];
   profile.pieces.forEach((piece, index) => {
     if (index === insertBefore) pieces.push({ kind: 'centreTurn', width });
-    pieces.push({ ...piece });
+    const squeezed = narrowed.get(index);
+    pieces.push(squeezed === undefined ? { ...piece } : { ...piece, width: squeezed });
   });
   const turned: RoadProfile = { ...profile, pieces };
   return profileWidth(turned) <= TILE_METERS - reserve + 1e-6 ? turned : null;

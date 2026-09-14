@@ -1158,10 +1158,36 @@ describe('a turn lane shared both ways, where a bay belonging to one will not do
     expect(withCentreTurn(presetProfileForTier(RoadTier.RailTrack))).toBeNull();
   });
 
-  it('refuses where the tile has no width left to give it', () => {
-    // Four lanes and two footways already fill the tile; a lane too narrow to
-    // wait in is worse than no lane, so it gets none.
-    expect(withCentreTurn(presetProfileForTier(RoadTier.FourLane))).toBeNull();
+  it('asks every through lane for width, which is how a four-lane road fits one', () => {
+    // Four lanes and two footways leave 1.25 m of a 20 m tile — nowhere near a
+    // lane. A BAY can only ask the half of the road it belongs to and gets
+    // refused here; a shared lane asks all four, each for the same share of
+    // what it has to spare, and there is room.
+    expect(withTurnPocket(presetProfileForTier(RoadTier.FourLane), 1)).toBeNull();
+    const shared = withCentreTurn(presetProfileForTier(RoadTier.FourLane))!;
+    expect(shared).not.toBeNull();
+    const lanes = shared.pieces.filter((p) => p.kind === 'travel');
+    expect(lanes).toHaveLength(4);
+    // Every lane gives up the same, so the road stays symmetrical, and none is
+    // squeezed below the 10 ft every US standard allows in a tight spot.
+    for (const lane of lanes) {
+      expect(lane.width).toBeCloseTo(lanes[0]!.width, 6);
+      expect(lane.width).toBeGreaterThanOrEqual(TURN_POCKET_MIN_WIDTH_M - 1e-9);
+    }
+    expect(profileWidth(shared)).toBeLessThanOrEqual(TILE_METERS + 1e-6);
+  });
+
+  it('refuses where the lanes it may ask cannot find it between them', () => {
+    // Two bus lanes and two through lanes fill the tile. A bus lane narrowed is
+    // a bus lane that no longer fits a bus, so only the two through lanes may
+    // be asked, and between them they have too little.
+    expect(withCentreTurn(presetProfileForTier(RoadTier.BusLane))).toBeNull();
+  });
+
+  it('is for streets, not for motorways or tracks', () => {
+    // A motorway has no at-grade turn to store, whatever width it has spare.
+    expect(withCentreTurn(presetProfileForTier(RoadTier.Highway))).toBeNull();
+    expect(withCentreTurn(presetProfileForTier(RoadTier.Gravel))).toBeNull();
   });
 });
 
