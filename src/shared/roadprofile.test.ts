@@ -405,6 +405,8 @@ describe('composing a profile from a preset and the player’s edits', () => {
       lanes: 1,
       lanesBack: 1,
       middle: 'none',
+      bus: 'none',
+      tram: 'none',
       postedKmh: 50,
     });
     expect(editsOf(presetProfileForTier(RoadTier.Highway))).toEqual({
@@ -414,7 +416,21 @@ describe('composing a profile from a preset and the player’s edits', () => {
       lanes: 2,
       lanesBack: 2,
       middle: 'none',
+      bus: 'none',
+      tram: 'none',
       postedKmh: 100,
+    });
+    // The two presets that are a size plus a transit variant, read back as
+    // exactly that: the bus road is four running lanes with the outer two
+    // reserved, and the tram street runs its rails in the traffic lanes.
+    expect(editsOf(presetProfileForTier(RoadTier.BusLane))).toMatchObject({
+      bus: 'both',
+      lanes: 1,
+      tram: 'none',
+    });
+    expect(editsOf(presetProfileForTier(RoadTier.Tram))).toMatchObject({
+      tram: 'mixed',
+      bus: 'none',
     });
     expect(editsOf(presetProfileForTier(RoadTier.Avenue))).toMatchObject({
       lanes: 2,
@@ -424,6 +440,103 @@ describe('composing a profile from a preset and the player’s edits', () => {
     expect(editsOf(presetProfileForTier(RoadTier.OneWay))).toMatchObject({ lanes: 2 });
     // A tram preset carries its own posted speed rather than the class default.
     expect(editsOf(presetProfileForTier(RoadTier.Tram))).toMatchObject({ postedKmh: 58 });
+  });
+
+  describe('a transit lane is a variant of a size, not a road type of its own', () => {
+    const kinds = (p: RoadProfile): string[] =>
+      p.pieces.map((q) => (q.kind === 'travel' && q.tram ? 'travel+rail' : q.kind));
+
+    it('adds a kerbside bus lane at the cost of a general lane, which is what fits', () => {
+      const small = presetProfileForTier(RoadTier.TwoLane);
+      const withBus = composeProfile(small, { ...NO_EDITS, bus: 'both' });
+      expect(kinds(withBus)).toEqual([
+        'sidewalk',
+        'bus',
+        'travel',
+        'travel',
+        'bus',
+        'sidewalk',
+      ]);
+      // Six running lanes and two footways do not fit a 20 m tile, so a bus
+      // lane always costs a general lane — which makes this the same section
+      // the standalone Bus Lane road already was.
+      expect(profileWidth(withBus)).toBeLessThanOrEqual(TILE_METERS + 1e-6);
+      expect(
+        profilesEqual(withBus, presetProfileForTier(RoadTier.BusLane)) ||
+          kinds(withBus).join() === kinds(presetProfileForTier(RoadTier.BusLane)).join(),
+      ).toBe(true);
+    });
+
+    it('runs a tram in the lane on a narrow street and in a reservation on a wide one', () => {
+      const small = presetProfileForTier(RoadTier.TwoLane);
+      const mixed = composeProfile(small, { ...NO_EDITS, tram: 'mixed' });
+      expect(kinds(mixed)).toEqual(['sidewalk', 'travel+rail', 'travel+rail', 'sidewalk']);
+      // Mixed running costs no width at all: the rails are in the lane.
+      expect(profileWidth(mixed)).toBeCloseTo(profileWidth(small), 6);
+
+      const reserved = composeProfile(small, { ...NO_EDITS, tram: 'reserved' });
+      expect(kinds(reserved)).toEqual([
+        'sidewalk',
+        'travel',
+        'tram',
+        'tram',
+        'travel',
+        'sidewalk',
+      ]);
+      expect(profileWidth(reserved)).toBeLessThanOrEqual(TILE_METERS + 1e-6);
+    });
+
+    it('costs a four-lane road two of its lanes to give a tram a reservation', () => {
+      // The trade the width forces, and the one a city actually makes: four
+      // lanes and two tracks do not both fit, so the rails take the lanes.
+      const medium = presetProfileForTier(RoadTier.FourLane);
+      const overWide = composeProfile(medium, { ...NO_EDITS, tram: 'reserved' });
+      expect(profileWidth(overWide)).toBeGreaterThan(TILE_METERS);
+      const traded = composeProfile(medium, { ...NO_EDITS, tram: 'reserved', lanes: 1 });
+      expect(kinds(traded)).toEqual([
+        'sidewalk',
+        'travel',
+        'tram',
+        'tram',
+        'travel',
+        'sidewalk',
+      ]);
+      expect(profileWidth(traded)).toBeLessThanOrEqual(TILE_METERS + 1e-6);
+    });
+
+    it('runs a motorway’s reserved lane down the MIDDLE, where an express lane goes', () => {
+      // A street's bus lane is kerbside because that is where the stops are.
+      // A motorway has no stops to pull in at, and reserving a kerbside lane
+      // would cut across every slip road, so the reserved lane is the inner
+      // one — which is where every HOV and express lane actually runs.
+      const large = presetProfileForTier(RoadTier.Highway);
+      const withBus = composeProfile(large, { ...NO_EDITS, bus: 'both' });
+      expect(kinds(withBus)).toEqual(['travel', 'travel', 'bus', 'bus', 'travel', 'travel']);
+      // Six running lanes is over the tile, so it costs a lane like everywhere
+      // else — and the player says so, rather than lanes vanishing by magic.
+      expect(profileWidth(withBus)).toBeGreaterThan(TILE_METERS);
+      const traded = composeProfile(large, { ...NO_EDITS, bus: 'both', lanes: 1 });
+      expect(kinds(traded)).toEqual(['travel', 'bus', 'bus', 'travel']);
+      expect(profileWidth(traded)).toBeLessThanOrEqual(TILE_METERS + 1e-6);
+    });
+
+    it('reads every composed variant back as the edit that made it', () => {
+      const small = presetProfileForTier(RoadTier.TwoLane);
+      for (const edit of [
+        { ...NO_EDITS, bus: 'both' as const },
+        { ...NO_EDITS, tram: 'mixed' as const },
+        { ...NO_EDITS, tram: 'reserved' as const },
+      ]) {
+        const made = composeProfile(small, edit);
+        expect(editsOf(made)).toMatchObject({
+          bus: edit.bus ?? 'none',
+          tram: edit.tram ?? 'none',
+        });
+        // And composing it again with nothing to say gives the same road back,
+        // which is what stops a variant drifting every time it is touched.
+        expect(profilesEqual(composeProfile(made, NO_EDITS), made)).toBe(true);
+      }
+    });
   });
 
   it('keeps the core untouched: a bus preset’s reserved lanes survive an edge edit', () => {

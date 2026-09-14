@@ -130,6 +130,43 @@ A profile's width against the tile decides what it can be:
   corridor-eligible class, is refused outright with a reason on the cursor
   chip ("too wide for the tile" / "too wide for a corridor").
 
+## Transit lanes are a variant of a size, not a road type
+
+A bus lane, a bike lane and a tramway are not separate kinds of road. They are
+things a road of a given size can be given, and the profile composition
+(`ProfileEdits`) is where they live — `bike` and `parking` at the kerb, `bus`
+as a running lane, and `tram` as either mixed running or a reservation. The
+presets that used to stand alone read back as exactly that: the bike road is a
+small street with a bike lane each side, the tram road is a small street with
+its rails in the traffic lanes, and the bus road is a four-lane street with its
+outer two lanes reserved.
+
+**Where a reserved lane goes depends on what the road is for.** A street's bus
+lane is kerbside, because that is where the stops are and where a bus pulls in.
+A motorway has no stops to pull in at, and a kerbside reservation there would
+cut across every slip road — so a motorway's reserved lane is the INNER one,
+which is where every HOV and express lane runs. A tramway is the same question
+answered by width: a narrow street runs the rails in the running lane and the
+trams share it with the traffic, and a wider one gives them a reservation of
+two tracks down the middle.
+
+**A reserved lane always costs a general lane**, because the tile says so. Six
+running lanes and two footways do not fit 20 m, and neither do four lanes and a
+twin-track reservation. So the width budget above is what decides every
+combination, and the trade is the player's to make by choosing the lane count —
+lanes are never dropped silently to make something fit. The measured
+consequence is that the interesting variation is smaller than it looks: a bus
+lane produces one cross-section on a street whatever size it started from,
+since the bus lanes plus the general lanes it leaves is four running lanes
+either way, and a tram reservation likewise leaves one general lane each way.
+Only the bike lane genuinely varies with size, since it is an edge strip rather
+than a running lane.
+
+Mixed running is a flag on the lanes the road already has, so it changes no
+widths; every other variant rearranges the core, and rearranging re-sizes the
+lanes to the class default, which is how a median or a reservation finds the
+room it needs.
+
 ## Stored direction and one-way roads
 
 Every road tile carries a flow byte: three bits for the cardinal the drag

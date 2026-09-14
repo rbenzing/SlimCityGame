@@ -726,6 +726,15 @@ export type SideChoice = 'none' | 'left' | 'right' | 'both';
 /** What sits down the middle of a two-way road, between the directions. */
 export type MiddleChoice = 'none' | 'median' | 'turn';
 
+/**
+ * How a road carries a tramway. A narrow street runs the rails in the running
+ * lane and the trams share it with the traffic; a wider one gives them a
+ * reservation down the middle, which is faster and is what a city builds when
+ * it has the width. The reservation is two tracks, so it costs the road two
+ * general lanes — four lanes and a reservation do not both fit on one tile.
+ */
+export type TramChoice = 'none' | 'mixed' | 'reserved';
+
 export interface ProfileEdits {
   /** Which kerbs get a parking lane. null = as the preset has. */
   parking: SideChoice | null;
@@ -746,6 +755,15 @@ export interface ProfileEdits {
   lanesBack: number | null;
   /** What separates the directions. null = as the preset has. */
   middle: MiddleChoice | null;
+  /**
+   * Which kerbs get a reserved BUS LANE. It is a running lane, not an edge
+   * strip, so it goes outside the general lanes and inside the parking — and
+   * on a tile this wide it always costs a general lane, since six running
+   * lanes and two footways do not fit. null = as the preset has.
+   */
+  bus: SideChoice | null;
+  /** How the road carries a tramway, if it does. null = as the preset has. */
+  tram: TramChoice | null;
   /** Posted speed in km/h, clamped to the class range. null = as the preset has. */
   postedKmh: number | null;
 }
@@ -757,6 +775,8 @@ export const NO_EDITS: ProfileEdits = {
   lanes: null,
   lanesBack: null,
   middle: null,
+  bus: null,
+  tram: null,
   postedKmh: null,
 };
 
@@ -878,6 +898,8 @@ export interface ResolvedEdits {
   lanes: number;
   lanesBack: number;
   middle: MiddleChoice;
+  bus: SideChoice;
+  tram: TramChoice;
   postedKmh: number;
 }
 
@@ -920,9 +942,28 @@ export function editsOf(profile: RoadProfile): ResolvedEdits {
     const r = right.some((p) => p.kind === kind);
     return l && r ? 'both' : l ? 'left' : r ? 'right' : 'none';
   };
+  // A bus lane is a RUNNING lane, so it lives in the core rather than out at
+  // the kerb with the parking: it is the outermost core piece on its side.
+  const core = first >= 0 ? profile.pieces.slice(first, last + 1) : [];
+  const busOn = (which: 'left' | 'right'): boolean =>
+    (which === 'left' ? core[0] : core[core.length - 1])?.kind === 'bus';
   return {
     parking: choice('parking'),
     bike: choice('bike'),
+    bus:
+      busOn('left') && busOn('right')
+        ? 'both'
+        : busOn('left')
+          ? 'left'
+          : busOn('right')
+            ? 'right'
+            : 'none',
+    // Rails of its own down the middle, or rails in the lane the cars use.
+    tram: profile.pieces.some((p) => p.kind === 'tram')
+      ? 'reserved'
+      : profile.pieces.some((p) => p.tram === true)
+        ? 'mixed'
+        : 'none',
     footways: profile.pieces.some((p) => p.kind === 'sidewalk'),
     lanes: lanesEachWay(profile),
     lanesBack: lanesBackOf(profile),
@@ -962,30 +1003,71 @@ function rebuildCore(
   oneWay: boolean,
   widthOf: (kind: LanePieceKind) => number,
   laneWidth: number,
+  bus: SideChoice,
+  tram: TramChoice,
+  /** Whether the road has a footway — a kerb a bus could actually stop at. */
+  footways: boolean,
 ): LanePiece[] {
   const first = core.findIndex((p) => p.kind === 'travel');
   const last = core.length - 1 - [...core].reverse().findIndex((p) => p.kind === 'travel');
-  const before = first < 0 ? [] : core.slice(0, first);
-  const after = first < 0 ? [] : core.slice(last + 1);
-  const tram = core.some((p) => p.kind === 'travel' && p.tram === true);
+  // Bus lanes and a tram reservation are rebuilt from the choice, so whatever
+  // the base had of them is dropped here rather than kept and doubled.
+  const keep = (p: LanePiece): boolean => p.kind !== 'bus' && p.kind !== 'tram';
+  const before = (first < 0 ? [] : core.slice(0, first)).filter(keep);
+  const after = (first < 0 ? [] : core.slice(last + 1)).filter(keep);
   const lane = (flow: LaneFlow): LanePiece => ({
     kind: 'travel',
     width: laneWidth,
     flow,
-    ...(tram ? { tram: true } : {}),
+    // Mixed running: the rails are IN the lane and the trams share it.
+    ...(tram === 'mixed' ? { tram: true } : {}),
   });
   const run = (flow: LaneFlow, count: number): LanePiece[] =>
     Array.from({ length: count }, () => lane(flow));
-  if (oneWay) return [...before, ...run('fwd', lanes), ...after].map((p) => ({ ...p }));
+  const busLane = (flow: LaneFlow): LanePiece[] => [{ kind: 'bus', width: widthOf('bus'), flow }];
+  // Where the reserved lane goes depends on what the road is FOR. A street's
+  // bus lane is kerbside, because that is where the stops are and where a bus
+  // pulls in. A motorway has no stops to pull in at, and its reserved lane is
+  // the inner one — which is where every HOV and express lane runs, and the
+  // only place a lane can be reserved without cutting across the slip roads.
+  const median = !footways;
+  const busLeft = !median && hasSide(bus, 'left') ? busLane(oneWay ? 'fwd' : 'back') : [];
+  const busRight = !median && hasSide(bus, 'right') ? busLane('fwd') : [];
+  const busMiddle = median
+    ? [
+        ...(hasSide(bus, 'left') ? busLane('back') : []),
+        ...(hasSide(bus, 'right') ? busLane('fwd') : []),
+      ]
+    : [];
+  if (oneWay) {
+    return [...before, ...busLeft, ...run('fwd', lanes), ...busRight, ...after].map((p) => ({
+      ...p,
+    }));
+  }
+  // A reservation is TWO tracks, one each way, and it separates the directions
+  // the way a median does — which is why it takes the middle and not a kerb.
   const separator: LanePiece[] =
-    middle === 'median'
-      ? [{ kind: 'median', width: widthOf('median') }]
-      : middle === 'turn'
-        ? [{ kind: 'centreTurn', width: widthOf('centreTurn') }]
-        : [];
-  return [...before, ...run('back', lanesBack), ...separator, ...run('fwd', lanes), ...after].map(
-    (p) => ({ ...p }),
-  );
+    tram === 'reserved'
+      ? [
+          { kind: 'tram', width: widthOf('tram'), flow: 'back' },
+          { kind: 'tram', width: widthOf('tram'), flow: 'fwd' },
+        ]
+      : busMiddle.length > 0
+        ? busMiddle
+        : middle === 'median'
+          ? [{ kind: 'median', width: widthOf('median') }]
+          : middle === 'turn'
+            ? [{ kind: 'centreTurn', width: widthOf('centreTurn') }]
+            : [];
+  return [
+    ...before,
+    ...busLeft,
+    ...run('back', lanesBack),
+    ...separator,
+    ...run('fwd', lanes),
+    ...busRight,
+    ...after,
+  ].map((p) => ({ ...p }));
 }
 
 /**
@@ -1005,6 +1087,8 @@ export function composeProfile(base: RoadProfile, edits: ProfileEdits): RoadProf
   const lanes = edits.lanes ?? current.lanes;
   const lanesBack = edits.lanesBack ?? edits.lanes ?? current.lanesBack;
   const middle = edits.middle ?? current.middle;
+  const bus = edits.bus ?? current.bus;
+  const tram = edits.tram ?? current.tram;
 
   const first = base.pieces.findIndex((p) => CORE_KINDS.has(p.kind));
   const lastFromEnd = [...base.pieces].reverse().findIndex((p) => CORE_KINDS.has(p.kind));
@@ -1015,10 +1099,29 @@ export function composeProfile(base: RoadProfile, edits: ProfileEdits): RoadProf
   const widthOf = (kind: LanePieceKind): number =>
     base.pieces.find((p) => p.kind === kind)?.width ?? DEFAULT_PIECE_WIDTHS[kind];
 
-  const core =
-    lanes === current.lanes && lanesBack === current.lanesBack && middle === current.middle
+  // Mixed running is a FLAG on the lanes the road already has — the rails go
+  // in the lane and nothing moves — so it is applied to the core rather than
+  // rebuilt from it. Rebuilding re-sizes every lane to the class default,
+  // which is how a median or a reservation finds the room it needs, and
+  // exactly what should not happen when the road has not changed shape.
+  const railsInLane = (pieces: readonly LanePiece[]): LanePiece[] =>
+    pieces.map((p) =>
+      p.kind === 'travel'
+        ? { ...p, ...(tram === 'mixed' ? { tram: true } : { tram: undefined }) }
+        : { ...p },
+    );
+  const structural =
+    lanes !== current.lanes ||
+    lanesBack !== current.lanesBack ||
+    middle !== current.middle ||
+    bus !== current.bus ||
+    (tram === 'reserved') !== (current.tram === 'reserved');
+
+  const core = !structural
+    ? tram === current.tram
       ? baseCore
-      : rebuildCore(
+      : railsInLane(baseCore)
+    : rebuildCore(
           baseCore,
           lanes,
           lanesBack,
@@ -1026,6 +1129,9 @@ export function composeProfile(base: RoadProfile, edits: ProfileEdits): RoadProf
           isOneWayProfile(base),
           widthOf,
           laneWidthFor(base.class),
+          bus,
+          tram,
+          footways,
         );
 
   const edge = (side: 'left' | 'right'): LanePiece[] => {
