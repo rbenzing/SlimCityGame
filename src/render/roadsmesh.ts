@@ -101,6 +101,7 @@ import {
   kerbWidthOf,
   medianOffsetOf,
   PRESET_LANE_WIDTH_M,
+  isServiceClass,
   presetProfileForTier,
   rankForTier,
   roadClass,
@@ -1630,7 +1631,10 @@ export interface JunctionArmLayout {
  * crosswalk simply lies inside the junction, which is where it lies on the
  * ground too.
  */
-export function junctionArmLayout(armDepth = TILE_HALF): JunctionArmLayout {
+export function junctionArmLayout(
+  armDepth = TILE_HALF,
+  footwayWidth = SIDEWALK_WIDTH_M,
+): JunctionArmLayout {
   // A crossing is the FOOTWAY CARRIED ACROSS THE ROAD, so it belongs where the
   // footway is: the strip of tile between the junction box and the tile edge,
   // which is exactly what the crossing road spends on its own footway. Painted
@@ -1642,8 +1646,14 @@ export function junctionArmLayout(armDepth = TILE_HALF): JunctionArmLayout {
   // with a thin verge still gets a crossing a person can use; that one reaches
   // a little into the box, which is where a crossing at a wide junction really
   // does lie.
+  //
+  // It is as deep as that footway and no deeper. Taking the whole strip —
+  // which is what `armDepth` is — reads the leftover tile as the figure, and
+  // the leftover runs OPPOSITE to the road: a two-lane street leaves 6.25 m
+  // and an avenue 1.90 m, so the quiet street got a crossing 20 ft deep and
+  // the busy one a normal 6 ft. Same inversion the kerb return had.
   const crosswalkStart = 0;
-  const crosswalkEnd = Math.max(armDepth, CROSSWALK_MIN_DEPTH_M);
+  const crosswalkEnd = Math.max(Math.min(armDepth, footwayWidth), CROSSWALK_MIN_DEPTH_M);
   // The stop line stands IN ADVANCE of the crossing — back down the approach,
   // outside the junction tile altogether. That is the whole point of it:
   // stopping past the crossing is stopping on the people using it, and there
@@ -1699,6 +1709,12 @@ function emitJunctionArmMarkings(
   /** How much tile there is between the junction box and the tile edge. */
   armDepth: number,
   /**
+   * The footway this crossing carries across the road, which is how deep it is
+   * drawn. Not the same thing as `armDepth`: that is the room available, and
+   * on a narrow road there is a great deal more of it than a crossing wants.
+   */
+  footwayWidth: number,
+  /**
    * How far across the road the lanes ARRIVING on this arm reach. A stop line
    * is painted across the approach and stops at the centreline (MUTCD 3B.16);
    * carried over the whole carriageway it also bars the traffic leaving the
@@ -1707,7 +1723,7 @@ function emitJunctionArmMarkings(
    */
   approachAcross: { from: number; to: number } | null,
 ): void {
-  const layout = junctionArmLayout(armDepth);
+  const layout = junctionArmLayout(armDepth, footwayWidth);
 
   // Stop line: one bar across the arriving lanes. It is painted back down the
   // APPROACH, past this tile's edge, because that is where a stop line stands
@@ -3364,7 +3380,28 @@ export function roadTileVertices(
   // A roundabout always breaks them: there is an island where the centre line
   // would run, and no road runs THROUGH a roundabout.
   const breaksMarkings = isJunction && (!joinedByLesserOnly || control === 'roundabout');
-  const isTurn = connections === 2 && !isCollinearMask(mask);
+  // What SHAPE this tile is, is decided by the arms that are legs of the
+  // network. A service access — an alley — is not one: a road does not bend
+  // itself round to become an alley, and a road that ends beside one has still
+  // ended. So a service arm still takes asphalt and still connects, but it
+  // does not turn the road and does not stop it being a dead end.
+  const serviceArm = (has: boolean, nTier: RoadTier): boolean =>
+    has && nTier !== RoadTier.None && isServiceClass(presetProfileForTier(nTier).class);
+  const serviceN = serviceArm(hasN, neighbors.n);
+  const serviceS = serviceArm(hasS, neighbors.s);
+  const serviceE = serviceArm(hasE, neighbors.e);
+  const serviceW = serviceArm(hasW, neighbors.w);
+  const legMask =
+    (serviceN ? mask & ~NORTH : mask) &
+    (serviceS ? ~SOUTH : ~0) &
+    (serviceE ? ~EAST : ~0) &
+    (serviceW ? ~WEST : ~0);
+  const legs =
+    (legMask & NORTH ? 1 : 0) +
+    (legMask & EAST ? 1 : 0) +
+    (legMask & SOUTH ? 1 : 0) +
+    (legMask & WEST ? 1 : 0);
+  const isTurn = legs === 2 && !isCollinearMask(legMask);
 
   // A lone tile has no neighbour to say which way it runs, so it runs the way
   // it was drawn; one that recorded no direction — a single click, which has
@@ -3375,10 +3412,12 @@ export function roadTileVertices(
   const aloneVertical = flow === RoadFlow.North || flow === RoadFlow.South;
   // The sides carrying a rounded turnaround: the one a dead end faces away
   // from its road, or both ends of a lone tile's axis.
-  const capN = alone ? aloneVertical : connections === 1 && hasS;
-  const capS = alone ? aloneVertical : connections === 1 && hasN;
-  const capE = alone ? !aloneVertical : connections === 1 && hasW;
-  const capW = alone ? !aloneVertical : connections === 1 && hasE;
+  // Read off the LEGS too: a road whose only other arm is an alley has ended,
+  // and a road that has ended gets its turning head.
+  const capN = alone ? aloneVertical : legs === 1 && (legMask & SOUTH) !== 0;
+  const capS = alone ? aloneVertical : legs === 1 && (legMask & NORTH) !== 0;
+  const capE = alone ? !aloneVertical : legs === 1 && (legMask & WEST) !== 0;
+  const capW = alone ? !aloneVertical : legs === 1 && (legMask & EAST) !== 0;
 
   // Wide -> narrow transition: on a straight through-run, a tile whose
   // neighbour is narrower bends its edge in to meet it over the whole tile
@@ -3586,6 +3625,12 @@ export function roadTileVertices(
     const halfS = armHalf(hasS, neighbors.s, walk?.s, neighborHalves.s);
     const halfE = armHalf(hasE, neighbors.e, walk?.e, neighborHalves.e);
     const halfW = armHalf(hasW, neighbors.w, walk?.w, neighborHalves.w);
+    // A corner is turned where the arm is a LEG. A street no more sweeps its
+    // footway round into an alley than it does into a driveway.
+    const legN = hasN && !serviceN;
+    const legS = hasS && !serviceS;
+    const legE = hasE && !serviceE;
+    const legW = hasW && !serviceW;
     // The radius a corner between two arms can actually turn through.
     const cornerRadius = (halfX: number, halfZ: number): number =>
       kerbReturnFor(own, Math.min(TILE_HALF - halfX, TILE_HALF - halfZ));
@@ -3605,10 +3650,16 @@ export function roadTileVertices(
         hAt,
       );
     };
-    if (hasN && hasE) cornerFill(1, -1, halfN, halfE);
-    if (hasS && hasE) cornerFill(1, 1, halfS, halfE);
-    if (hasS && hasW) cornerFill(-1, 1, halfS, halfW);
-    if (hasN && hasW) cornerFill(-1, -1, halfN, halfW);
+    // A kerb only turns a corner where the road it meets HAS a kerb to turn
+    // into. An alley or a track has none: it is an access, not a leg of the
+    // network, and a street does not sweep its footway round into a service
+    // road any more than it does into a driveway. The footway runs straight
+    // past the mouth instead (the flank strip below crosses it) and the alley
+    // climbs over it, which is what a dropped kerb is.
+    if (legN && legE) cornerFill(1, -1, halfN, halfE);
+    if (legS && legE) cornerFill(1, 1, halfS, halfE);
+    if (legS && legW) cornerFill(-1, 1, halfS, halfW);
+    if (legN && legW) cornerFill(-1, -1, halfN, halfW);
 
     // The footway CARRIES ON ROUND THE CORNER, through the junction.
     //
@@ -3699,11 +3750,22 @@ export function roadTileVertices(
       // The flank sidewalks (the sides parallel to the road) stay, but stop at
       // the bulb base rather than running to the tile edge, so they don't
       // overhang the rounded end.
+      // A flank strip crosses an UNKERBED arm only where that arm is a side
+      // access — the road runs past it on the other axis, so the strip lies
+      // along the carriageway the way a footway does. Where the unkerbed road
+      // is this road's own continuation, the same strip would lie ACROSS the
+      // carriageway and wall the road off.
+      const runsEW = hasE || hasW;
+      const runsNS = hasN || hasS;
+      const flankN = !hasN || (serviceN && runsEW);
+      const flankS = !hasS || (serviceS && runsEW);
+      const flankE = !hasE || (serviceE && runsNS);
+      const flankW = !hasW || (serviceW && runsNS);
       const flankZLo = capN ? -coreHalf : -TILE_HALF;
       const flankZHi = capS ? coreHalf : TILE_HALF;
       const flankXLo = capW ? -coreHalf : -TILE_HALF;
       const flankXHi = capE ? coreHalf : TILE_HALF;
-      if (!hasN && !capN) {
+      if (flankN && !capN) {
         pushLocalRect(
           positions,
           colors,
@@ -3718,7 +3780,7 @@ export function roadTileVertices(
           hAt,
         );
       }
-      if (!hasS && !capS) {
+      if (flankS && !capS) {
         pushLocalRect(
           positions,
           colors,
@@ -3733,7 +3795,7 @@ export function roadTileVertices(
           hAt,
         );
       }
-      if (!hasE && !capE) {
+      if (flankE && !capE) {
         pushLocalRect(
           positions,
           colors,
@@ -3748,7 +3810,7 @@ export function roadTileVertices(
           hAt,
         );
       }
-      if (!hasW && !capW) {
+      if (flankW && !capW) {
         pushLocalRect(
           positions,
           colors,
@@ -4113,10 +4175,11 @@ export function roadTileVertices(
           hAt,
           crossedOnFoot(vertical),
           stops,
-          // The strip of tile between the box and the tile edge: the footway
-          // the crossing carries on runs through exactly this, so it is what
-          // decides where the crossing goes.
+          // The strip of tile between the box and the tile edge: it caps how
+          // far a crossing can reach. How DEEP the crossing is comes from the
+          // footway it carries across, which is the next argument.
           armDepth,
+          kerbBand,
           approaching,
         );
       // Measured inward from the TILE edge, which is where the approach

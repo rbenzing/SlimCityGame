@@ -13,7 +13,8 @@
  */
 import { armAllowed, pocketWarranted } from './approach';
 import type { MovementSet, PackedLaneTurns, PackedTurns } from './approach';
-import { isOneWayProfile, withAuxiliaryLane, withTurnPocket } from './roadprofile';
+import { isOneWayProfile, roadRank, withAuxiliaryLane, withTurnPocket } from './roadprofile';
+import { controlHoldsArm } from './junction';
 import {
   closedAt,
   dropWidth,
@@ -202,9 +203,31 @@ export function approachAhead(
 
   const arm = oppositeFlow(best.toward);
   const allowed = armAllowed(world.turnsAt(best.jx, best.jz), arm);
-  const pocket =
-    best.distance < zone && pocketWarranted(world.controlAt(best.jx, best.jz), allowed);
   const mine = world.profileAt(x, z);
+  // Whether the junction holds THIS arm. A minor-road stop holds the side
+  // street and lets the road through, and a road nobody stops has no queue to
+  // store a turn out of.
+  const armRanks: number[] = [];
+  for (const [dx, dz] of [
+    [0, -1],
+    [1, 0],
+    [0, 1],
+    [-1, 0],
+  ] as const) {
+    const leg = world.profileAt(best.jx + dx, best.jz + dz);
+    if (leg) armRanks.push(roadRank(leg));
+  }
+  const pocket =
+    best.distance < zone &&
+    pocketWarranted(
+      world.controlAt(best.jx, best.jz),
+      allowed,
+      controlHoldsArm(
+        world.controlAt(best.jx, best.jz),
+        mine ? roadRank(mine) : 0,
+        armRanks,
+      ),
+    );
   return {
     toward: best.toward,
     distance: best.distance,

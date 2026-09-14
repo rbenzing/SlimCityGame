@@ -925,17 +925,28 @@ describe('junctionArmLayout — a crosswalk and a stop line at their real size',
   });
 
   it('lays the crossing over the strip the footway crosses, never narrower than a crossing may be', () => {
-    // A crossing is the footway carried over the road, so it belongs in the
-    // strip between the junction box and the tile edge — which is exactly what
-    // the crossing road spends on its own footway.
-    const roomy = junctionArmLayout(2.4);
+    // A crossing is the footway carried over the road, so it is as deep as
+    // that footway — NOT as deep as the strip of tile the footway happens to
+    // sit in. The strip is the room available and runs opposite to the road:
+    // a two-lane street leaves 6.25 m of it and an avenue 1.90 m, so reading
+    // the room as the figure gave the quiet street a crossing 20 ft deep and
+    // the busy one a normal 6 ft.
+    const roomy = junctionArmLayout(6.25, SIDEWALK_WIDTH_M);
     expect(roomy.crosswalkStart).toBe(0);
-    expect(roomy.crosswalkEnd).toBeCloseTo(2.4, 9);
+    expect(roomy.crosswalkEnd).toBeCloseTo(SIDEWALK_WIDTH_M, 9);
+    // The avenue, whose strip is barely a footway wide, gets the same crossing.
+    expect(junctionArmLayout(1.9, SIDEWALK_WIDTH_M).crosswalkEnd).toBeCloseTo(
+      SIDEWALK_WIDTH_M,
+      9,
+    );
 
     // A road that leaves almost no verge still gets a crossing a person can
     // stand in; that one reaches a little into the box.
     const tight = junctionArmLayout(0.5);
     expect(tight.crosswalkEnd).toBeCloseTo(1.8, 9);
+
+    // And a road carrying a wide footway carries it across at that width.
+    expect(junctionArmLayout(6.25, 3).crosswalkEnd).toBeCloseTo(3, 9);
   });
 
   it('keeps its real size whatever the road, since squeezing it is what made a crossing read as a dashed ring', () => {

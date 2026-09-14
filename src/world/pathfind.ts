@@ -170,7 +170,8 @@ export function junctionDelay(
   const mine = arm?.approach;
   if (!arm || !mine) return 0;
   const approaches = arms.map((a) => a.approach);
-  const delay = controlDelaySeconds(control, approachGivesWay(control, mine, approaches), {
+  const heldByControl = approachGivesWay(control, mine, approaches);
+  const delay = controlDelaySeconds(control, heldByControl, {
     vc: mine.vc,
     greenShare: greenShareFor(mine.classId),
   });
@@ -187,7 +188,9 @@ export function junctionDelay(
   // The approach zone's turn pocket is a lane the arm has HERE — the left turn
   // waits in it instead of holding up the traffic going straight, and both
   // movements are quicker for it.
-  const pocket = arm.canPocket && pocketWarranted(control, allowed);
+  // The same warrant the geometry uses, off the same give-way answer: an arm
+  // the control does not hold queues for nothing and stores nothing.
+  const pocket = arm.canPocket && pocketWarranted(control, allowed, heldByControl);
   const lanes = resolveLaneMovements(
     pocket ? pocketLaneMovements(mine.lanes + 1, allowed) : laneMovementsFor(mine.lanes, allowed),
     laneTurnsOf(node, armOf(arriving, node.id)),

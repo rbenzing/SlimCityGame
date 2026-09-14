@@ -297,12 +297,21 @@ export function movementAllowed(packed: PackedTurns, arm: RoadFlow, movement: Mo
  * an arm that may not go through is already all turn lane. A roundabout's
  * approach flares are geometry a single tile cannot hold, and wait for the
  * two-tile corridor.
+ *
+ * `heldByControl` is the condition the control alone could not express: the
+ * junction has to hold THIS arm, not merely hold somebody. A minor-road stop
+ * queues the side street and nothing else — so a street with an alley or any
+ * other lesser road stopping at it runs through unheld, with no queue to take
+ * anybody out of, and gains a storage bay for a turn nobody waits to make.
+ * That is how a two-lane street grew a third lane for the sake of an alley.
  */
 export function pocketWarranted(
   control: JunctionControl | null | undefined,
   allowed: MovementSet,
+  heldByControl: boolean,
 ): boolean {
   if (!control || control === 'none' || control === 'roundabout') return false;
+  if (!heldByControl) return false;
   return (allowed & Movement.Through) !== 0 && (allowed & Movement.Left) !== 0;
 }
 

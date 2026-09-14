@@ -216,8 +216,13 @@ can narrow the arm, never override it, and a lane is never left with
 nothing.
 
 A **turn pocket** is what an approach gains for that zone when the
-junction's control actually queues traffic (anything but `none` or
-`roundabout`) and the arm both goes through and turns left: the pocket is
+junction's control actually holds THAT ARM and the arm both goes through and
+turns left. Holding the arm is the condition the control alone cannot express:
+a signal and an all-way stop hold everybody, but a minor-road stop or a
+give-way holds only the arms below the top rank, and the road running through
+is not stopped by it. A street with an alley stopping at it therefore gains
+nothing — it has no queue to take a turning driver out of, and a storage bay
+for a turn nobody waits to make is just a wider road. The pocket is
 the lane beside the centreline, carved from whatever the width budget has
 spare, in this order — the verge the profile has not spent, the kerbside
 parking lane or the shared median, and only as a last resort the through
@@ -289,6 +294,17 @@ local or one-way street or a rural lane 4.5 m, an urban street 6.0 m, a
 collector 7.5 m (a bus gets round without leaving its lane), an arterial or
 divided road 9.0 m, and a highway or ramp 12.0 m. Ballast has no kerb to
 return and takes zero.
+
+**A service road is an access, not a leg.** An alley exists to reach the back
+of a building — bins, deliveries, a fire appliance — and carries no through
+traffic anybody routes around. A street it meets does not treat it as a leg of
+the junction: it takes no turn bay for it, does not sweep its footway round
+into it, and does not bend itself to become it. The footway runs straight past
+the mouth and the alley climbs over it, which is what a dropped kerb is; and a
+road whose only other arm is an alley has ENDED, so it runs straight to its own
+turning head with the alley as a leg off the side. A farm track is not one of
+these: it is a poor road, but it is a road, so a lane really does bend into a
+track and the pavement really does end there.
 
 **Which corner is turned.** The corner is the one the two ARMS make, and an
 arm is only as wide as its own road: where a two-lane street meets an avenue,
@@ -401,6 +417,15 @@ on foot to cross, and its kerb still sweeps round at the corner radius with
 grass filling what would be the footway). Crosswalk presence at a junction
 is derived this way from footway presence and rank; it is not (yet) an
 independent per-approach toggle a player sets from the junction inspector.
+
+A crossing is as DEEP as the footway it carries across the road, never less
+than the 1.8 m a marked crossing may be (MUTCD 3B.18), and it lies against the
+junction edge where the footway's own line falls. It is not as deep as the
+strip of tile that footway sits in: the strip is the room available and runs
+opposite to the road, leaving 6.25 m beside a two-lane street and 1.90 m
+beside an avenue — so reading the room as the figure gave the quiet street a
+crossing 20 ft deep and the busy one a normal 6 ft. Its bars are 0.45 m wide
+at 0.6 m spacing, inside the 12–24 in bar and 12–60 in gap the standard allows.
 
 A deck (an elevated or bridged road tile,
 [Bridges and elevated roads](#bridges-and-elevated-roads)) inverts the

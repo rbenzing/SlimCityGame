@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-14)
 
-**Test suite:** 3,305 tests passing across 117 test files, run 2026-09-14.
+**Test suite:** 3,306 tests passing across 117 test files, run 2026-09-14.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -368,6 +368,39 @@ as something the player can draw" — they do, and at the same milestone, so the
 deferral's own precondition was met. A motorway now meets a motorway or a
 ramp and nothing else, stated as what it accepts so a class added later stays
 off it, and the refusal names the ramp instead of only saying no.
+
+### An alley is an access, not a leg (2026-09-14)
+
+A player screenshot of two alleys meeting a two-lane street, with three
+complaints. All three were real, and they turned out to be one idea: **an alley
+is a service access, not a leg of the traffic network.** Everything else about
+the junction was already treating it as an ordinary arm.
+
+- **The street grew a third lane for it.** Measured: the two-lane widened
+  7.50 → 9.03 → 10.55 m over two tiles and carried a left-turn arrow, because
+  the alley stopping at it warranted a `stop` control and a pocket was
+  warranted by "the control is not `none`". But a minor-road stop holds the
+  ALLEY, not the street; the street runs through unheld, with no queue to take
+  a turning driver out of. A pocket now needs the junction to hold that arm —
+  `controlHoldsArm`, off the same give-way answer the delay model already
+  computed, so the sim and the geometry cannot drift apart. Verified the
+  mechanic survives where it belongs: the side street still earns its bay
+  approaching a signal and approaching a four-lane road.
+- **The footway swept 4.5 m round into the alley mouth.** It runs straight
+  past now and the alley crosses it. A kerb return is between two kerbs and an
+  alley brings none.
+- **A road ending at an alley bent itself 90° to become the alley.** The tile's
+  SHAPE is now read off its legs: a service arm still takes asphalt and still
+  connects, but it does not turn the road and does not stop it being a dead
+  end. The road runs straight to its own turning head with the alley as a leg
+  off the side. A street-to-street corner still curves.
+
+**The crossing was three times too deep, same inversion as the kerb return.**
+Found looking for the third complaint ("the crosswalks seem stretched"). Its
+depth was `armDepth` — the tile left over beside the carriageway, which runs
+opposite to the road: 6.25 m beside a two-lane street, 1.90 m beside an avenue.
+So the quiet street got a crossing 20 ft deep and the busy one a normal 6 ft. It
+is the footway's width now, floored at the 1.8 m minimum (MUTCD 3B.18).
 
 **Checked and NOT defects.** A four-lane road crossing a two-lane street
 carries no crossing or stop bar on its own arms, which reads as missing paint

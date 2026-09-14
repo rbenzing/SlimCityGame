@@ -74,8 +74,6 @@ for (let z = 40; z < N - SPAN - 40; z += STRIDE) {
   }
 }
 candidates.sort((a, c) => a.spread - c.spread);
-const plots = candidates.slice(0, 8);
-console.log('flattest plots:', plots.map((p) => `${p.x},${p.z} (${p.spread.toFixed(2)}m)`).join(' | '));
 
 await cmd('Sandbox', [{ kind: 'setSandbox', on: true }]);
 await cmd('Money', [{ kind: 'setUnlimitedMoney', on: true }]);
@@ -96,7 +94,29 @@ const SCENARIOS = [
   // lives and where its unit tests are; nothing to photograph.
   { name: 'ramp-t-highway', major: TIER.highway, minor: TIER.ramp, shape: 'tee' },
   { name: 'twolane-x-twolane', major: TIER.twoLane, minor: TIER.twoLane, shape: 'cross' },
+  // An alley is a service road, not a leg of the traffic network: it wants no
+  // turn bay taken out of the street it joins and no footway bent into it.
+  // The street-to-street tee beside it is the control — whatever is done for
+  // the alley must leave an ordinary side street alone.
+  { name: 'alley-t-twolane', major: TIER.twoLane, minor: TIER.alley, shape: 'tee' },
+  { name: 'twolane-t-twolane', major: TIER.twoLane, minor: TIER.twoLane, shape: 'tee' },
+  // A road that ENDS where an alley leaves it. The road should run straight to
+  // its own rounded end with the alley as a leg off it; a road does not bend
+  // itself round to become a service road.
+  { name: 'alley-corner-twolane', major: TIER.twoLane, minor: TIER.alley, shape: 'corner' },
+  { name: 'twolane-corner-twolane', major: TIER.twoLane, minor: TIER.twoLane, shape: 'corner' },
 ];
+
+// One plot per scenario, flattest first, so a scenario added above always gets
+// ground rather than being silently skipped.
+const plots = candidates.slice(0, SCENARIOS.length);
+if (plots.length < SCENARIOS.length) {
+  console.log(`WARNING: only ${plots.length} dry plots for ${SCENARIOS.length} scenarios`);
+}
+console.log(
+  'flattest plots:',
+  plots.map((p) => `${p.x},${p.z} (${p.spread.toFixed(2)}m)`).join(' | '),
+);
 
 // What each surface reads as in the corner map. Anything unlisted prints `?`
 // and is named at the end, so a new colour is noticed rather than swallowed.
@@ -159,9 +179,13 @@ for (let i = 0; i < SCENARIOS.length && i < plots.length; i++) {
   const row = (dz, a, c) => Array.from({ length: c - a + 1 }, (_, k) => ({ x: X + a + k, z: Z + dz }));
   const col = (dx, a, c) => Array.from({ length: c - a + 1 }, (_, k) => ({ x: X + dx, z: Z + a + k }));
 
-  await cmd('major', [{ kind: 'buildRoad', tier: s.major, tiles: row(CZ, 2, 26) }]);
+  // A 'corner' runs the major road NORTH-SOUTH into the box and stops there,
+  // with the minor leaving west, so the box is the road's own end beside a leg.
+  const majorTiles = s.shape === 'corner' ? col(CX, 2, CZ) : row(CZ, 2, 26);
+  await cmd('major', [{ kind: 'buildRoad', tier: s.major, tiles: majorTiles }]);
   await page.waitForTimeout(600);
-  const minorTiles = s.shape === 'cross' ? col(CX, 2, 26) : col(CX, 2, CZ);
+  const minorTiles =
+    s.shape === 'cross' ? col(CX, 2, 26) : s.shape === 'corner' ? row(CZ, 2, CX) : col(CX, 2, CZ);
   await cmd('minor', [{ kind: 'buildRoad', tier: s.minor, tiles: minorTiles }]);
   await page.waitForTimeout(2200);
 
@@ -187,6 +211,19 @@ for (let i = 0; i < SCENARIOS.length && i < plots.length; i++) {
     JSON.stringify(junctions.filter((j) => Math.abs(j.x - jx) <= 1 && Math.abs(j.z - jz) <= 1)),
   );
   console.log('  box drawn  :', JSON.stringify(await drawn(jx, jz)));
+  // What the MAJOR road does on its way in. A turn bay carved out of a street
+  // for the sake of an alley is the thing to catch here, so the approach is
+  // read tile by tile back from the junction rather than only at the box.
+  for (const d of [1, 2, 3]) {
+    const a = await call(([ax, az]) => window.__slimcity.readApproach(ax, az), [jx - d, jz]);
+    console.log(
+      `  W-${d} approach:`,
+      a === null
+        ? 'null'
+        : `lanes ${a.lanes} width ${a.width.toFixed(2)} pocket ${a.pocket} ` +
+          `taper ${a.taper ? `${a.taper.closed}/${a.taper.length}` : 'null'} dist ${a.distance}`,
+    );
+  }
   console.log('  box paint  :', fmt(await paint(jx, jz)));
   console.log('  W-1 paint  :', fmt(await paint(jx - 1, jz)));
   console.log('  W-2 paint  :', fmt(await paint(jx - 2, jz)));
