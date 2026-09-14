@@ -100,6 +100,10 @@ for the surface, the paint, the furniture and the zoning overlay.
 Junction control follows the tier. A junction approach on a multi-lane street
 (avenue, four-lane, bus lane) earns a **traffic signal** — a mast with a
 short arm reaching over the carriageway and a three-lens head hung off it.
+The mast stands at the KERB FACE, not at the back of the footway where a flat
+board goes: the arm is short, and one that has to cross the paving first
+arrives at the kerb line with nothing left and hangs its head over the kerb
+rather than over the lanes it holds.
 Smaller tiers keep boards instead: **stop** at a crossroads, **give way** at
 a T. All of it is cosmetic — the simulation models no signal phase, so a
 signal head shows its three lenses and never cycles.

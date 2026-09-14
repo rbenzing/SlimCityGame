@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-14)
 
-**Test suite:** 3,304 tests passing across 117 test files, run 2026-09-14.
+**Test suite:** 3,305 tests passing across 117 test files, run 2026-09-14.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -315,12 +315,21 @@ check we have, which is the reason they survived:
    **Retracted 2026-09-12.** Built an avenue crossing an avenue with a
    signal forced on so every arm carries a crossing, and photographed it:
    the median ENDS at the crossing and the bars cross clear asphalt. The
-   claim came from misreading an earlier avenue × two-lane shot. A signal's
-   mast arm at the corner may still reach outward over the verge rather than
-   over the approach lanes it governs — but that is an impression from a
-   picture and there is no read-back for signal head positions, so it is not
-   claimed. Settling it wants a `readSignals()` returning head world
-   positions and arm direction, checked against the carriageway extent.
+   claim came from misreading an earlier avenue × two-lane shot.
+
+   **The signal's mast arm did not reach the lanes it holds (fixed
+   2026-09-14).** The other half of the same finding, carried unclaimed for
+   three days because a mast arm is foreshortened to nothing in an overhead
+   shot and there was no read-back for a head's position. `readSignals()`
+   re-derives mast and head in world metres through the same transform the
+   renderer writes into the instance matrix, and settled it: the head hung
+   **0.03 m** inside an avenue's kerb. The arm is a short 1.9 m and the mast
+   stood where a flat BOARD stands, at the back of the footway, so the arm
+   was spent crossing the paving. The mast stands at the kerb face now — a
+   distinction the file already drew for parking meters — and the head hangs
+   1.4 m over the carriageway on both an avenue and a two-lane street.
+   Nothing about the arm or the head changed; only which side of the footway
+   the post is on.
 
 ### The corner a junction actually turns (2026-09-14)
 

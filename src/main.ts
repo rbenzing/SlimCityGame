@@ -650,6 +650,17 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // What each signal head is showing. A lit lens is a few pixels across in
       // a screenshot, so a check that the cycle really runs reads it here.
       readSignalAspects: (): string[] => roadFurniture.signalAspects(),
+      // Where each signal's mast stands and where its head hangs, in world
+      // metres. A mast arm is foreshortened to nothing in an overhead shot, so
+      // whether a head reaches out over the lanes it holds is measured here
+      // rather than guessed at from a picture.
+      readSignals: (): {
+        mast: { x: number; z: number };
+        head: { x: number; z: number };
+        axis: string;
+        side: number;
+        tile: { x: number; z: number };
+      }[] => roadFurniture.signalPlacements(),
       // Where each kerbside cabinet stands and which of the two it is.
       readCabinets: (): { x: number; z: number; kind: string }[] =>
         roadFurniture.cabinetPlacements().map((c) => ({ x: c.x, z: c.z, kind: c.kind })),

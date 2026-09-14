@@ -100,6 +100,9 @@ const METER_ALONG = 3; // the pair straddles the tile center by ±3m along the r
 /** How far behind the kerb face a meter stands, so it is beside its bay and clear of the traffic. */
 export const METER_KERB_CLEARANCE_M = 0.45;
 
+/** How far behind the kerb face a cantilevered mast's own post stands. */
+export const MAST_KERB_CLEARANCE_M = 0.5;
+
 // --- Traffic signs -----------------------------------------------------------
 // Standard road signs, each a recognizable shape+color on the shared pole.
 const SIGN_POLE_RADIUS = 0.04;
@@ -310,6 +313,21 @@ function behindFootwayOffset(
 function kerbFaceOffset(tile: { tier?: RoadTier; profile?: RoadProfile }): number {
   const { half, kerb } = edgeOf(tile);
   return half + Math.min(METER_KERB_CLEARANCE_M, kerb);
+}
+
+/**
+ * Where a cantilevered mast stands: at the KERB FACE, so its short arm spends
+ * its length out over the carriageway instead of crossing the footway to get
+ * there.
+ *
+ * At the back of the footway — where a flat board goes, since a board is read
+ * from the road and wants to be out of the way — a 1.9 m arm is used up
+ * reaching the kerb, and the head ends up hanging over the kerb line rather
+ * than over the lanes it holds. On an avenue that left 3 cm of clearance.
+ */
+function mastKerbOffset(tile: { tier?: RoadTier; profile?: RoadProfile }): number {
+  const { half, kerb } = edgeOf(tile);
+  return half + Math.min(MAST_KERB_CLEARANCE_M, kerb);
 }
 
 /**
@@ -847,7 +865,9 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
       const rightZ = towardX;
       const axis: FurnitureAxis = rightX !== 0 ? 'x' : 'z';
       const side: FurnitureSide = (rightX !== 0 ? rightX : rightZ) > 0 ? 1 : -1;
-      const lateral = curbsideLateralOffset(tile);
+      // A signal hangs its head off an arm and so stands at the kerb; a flat
+      // board is read from the road and stands back out of the way.
+      const lateral = isCantilevered(type) ? mastKerbOffset(tile) : curbsideLateralOffset(tile);
       const along = TILE_METERS / 2 - CONTROL_SIGN_SETBACK_M;
       out.push({
         x: tile.x,
@@ -1738,6 +1758,43 @@ export class RoadFurnitureRenderer {
     mesh.setMatrixAt(slot, _matrix);
     _lampColor.setHex(signalLampColor(aspect));
     mesh.setColorAt(slot, _lampColor);
+  }
+
+  /**
+   * Where each signal's mast stands and where its head actually hangs, in
+   * world metres, worked out through the same transform the renderer writes
+   * into the instance matrix.
+   *
+   * A head is a few pixels across in a screenshot and its arm is foreshortened
+   * to nothing from overhead, so whether it reaches out over the lanes it
+   * holds or stops at the kerb is not a question a picture can answer — it was
+   * guessed at from one, twice. This answers it in metres, to be compared
+   * against the carriageway the arm is supposed to reach across.
+   */
+  signalPlacements(): {
+    mast: { x: number; z: number };
+    head: { x: number; z: number };
+    axis: FurnitureAxis;
+    side: FurnitureSide;
+    tile: { x: number; z: number };
+  }[] {
+    return this.signalHeads.map((p) => {
+      const { x, z, yaw } = signWorldTransform(p);
+      // The lens rides the signal's own transform and is then offset into the
+      // head in its local frame; the aspect only moves it up and down the
+      // stack, so any of the three gives the same reach.
+      const local = signalLensOffset('red');
+      return {
+        mast: { x, z },
+        head: {
+          x: x + local.x * Math.cos(yaw) + local.z * Math.sin(yaw),
+          z: z - local.x * Math.sin(yaw) + local.z * Math.cos(yaw),
+        },
+        axis: p.axis,
+        side: p.side,
+        tile: { x: p.x, z: p.z },
+      };
+    });
   }
 
   /** Where each cabinet stands and which kind it is, from the last rebuild(). */

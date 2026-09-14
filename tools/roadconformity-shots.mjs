@@ -194,6 +194,38 @@ for (let i = 0; i < SCENARIOS.length && i < plots.length; i++) {
   console.log('  N-2 paint  :', fmt(await paint(jx, jz - 2)));
 
   const T = await call(() => window.__slimcity.tileMeters());
+
+  // A signal's arm is supposed to reach out over the lanes it holds. The head
+  // is a few pixels across and the arm is foreshortened to nothing from
+  // overhead, so it is measured against the arm road's own kerb: how far past
+  // it the head hangs, and whether it reaches the lanes that stop for it.
+  const signals = await call(() => window.__slimcity.readSignals());
+  const near = signals.filter(
+    (g) => Math.abs(g.tile.x - jx) <= 1 && Math.abs(g.tile.z - jz) <= 1,
+  );
+  if (near.length > 0) {
+    console.log('  signal heads:');
+    for (const g of near) {
+      // The kerb the mast stands on, and how far in the head reaches from it.
+      const acrossMast = g.axis === 'x' ? g.mast.x : g.mast.z;
+      const acrossHead = g.axis === 'x' ? g.head.x : g.head.z;
+      const centre = (g.axis === 'x' ? jx : jz) * T + T / 2;
+      const armTile = g.axis === 'x' ? { x: g.tile.x, z: g.tile.z } : { x: g.tile.x, z: g.tile.z };
+      const d = await drawn(armTile.x, armTile.z);
+      const half = d ? d.width / 2 : null;
+      const kerb = Math.abs(acrossMast - centre);
+      const reach = Math.abs(acrossHead - centre);
+      console.log(
+        `    tile ${g.tile.x},${g.tile.z} axis ${g.axis} side ${g.side}: ` +
+          `mast ${kerb.toFixed(2)} m from the road's centre, head ${reach.toFixed(2)} m` +
+          (half === null
+            ? ''
+            : ` — carriageway half ${half.toFixed(2)} m, so the head is ` +
+              (reach < half ? `OVER the lanes` : `${(reach - half).toFixed(2)} m OUTSIDE the kerb`)),
+      );
+    }
+  }
+
   const map = await cornerMap(jx, jz, T, 8, 64);
   console.log(`  corner map (${map.metres.toFixed(2)} m/cell, NW corner at the middle):`);
   console.log(map.text);
