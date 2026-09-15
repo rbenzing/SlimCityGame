@@ -177,6 +177,28 @@ reservation is two more lanes, so the reservation is offered from the town
 street up while the small street gets mixed running. Neither rule is asserted
 anywhere; both fall out of the lane range the class is built to.
 
+**A road's tier is its SIZE, and the reserved lane is priced on top.** Giving a
+street a bus lane does not turn it into some other road that also has one: a
+four-lane street with a bus lane and a two-lane street with a bus lane are still
+a four-lane street and a two-lane street, and each is named, priced and ranked
+as what it is. What the lane adds is a price per tile, an upkeep per tile, and
+its own unlock milestone — a city cannot lay tram track before it could have
+laid a tramway.
+
+Those figures are DERIVED rather than chosen. Each is the difference between
+the road that used to stand alone and the ordinary road of its own class,
+divided by the reserved lanes it carried: the bike road was a local street with
+a bike lane each side, the bus road an arterial with a bus lane each side, the
+tram road an urban street running rails in both its lanes. So composing what
+one of those roads was costs exactly what that road cost, which is checked
+against all three. A preset is still priced as itself, so a city built before
+is worth what it was.
+
+Speed and capacity never came from the tier — they are read from the
+cross-section — so a reserved lane has always carried its own traffic figures.
+Rank is likewise the class plus whether a reserved lane is present, which is
+why a transit street still outranks the plain street it is a variant of.
+
 **The composer holds to the same table the tool reads.** A class admits a list
 of lane pieces, and a piece outside that list is clamped away when the profile
 is composed rather than built and then refused — otherwise the Profile row

@@ -4,6 +4,7 @@ import type {
   BuildingInstance,
   CityStats,
   GridState,
+  RoadProfile,
   RoadSpec,
 } from '../shared/types';
 import { BuildingState, FieldId, RoadTier } from '../shared/types';
@@ -203,6 +204,59 @@ const roadSpecs: RoadSpec[] = [
     unlockMilestone: 3,
   },
 ];
+
+describe('EconomySystem: a reserved lane costs more to keep than the street without it', () => {
+  /** Ten tiles of street, all carrying the same composed cross-section. */
+  const laneOfRoad = (g: GridState, profileId: number): void => {
+    for (let x = 10; x < 20; x++) {
+      const i = tileIndex(x, 0);
+      g.roadTier[i] = RoadTier.TwoLane;
+      g.roadProfile[i] = profileId;
+    }
+  };
+  const withBus: RoadProfile = {
+    class: 'local',
+    kerbs: true,
+    pieces: [
+      { kind: 'sidewalk', width: 1.875 },
+      { kind: 'travel', width: 3.05, flow: 'back' },
+      { kind: 'travel', width: 3.05, flow: 'fwd' },
+      { kind: 'bus', width: 3.5, flow: 'fwd' },
+      { kind: 'sidewalk', width: 1.875 },
+    ],
+  };
+
+  const upkeepOf = (profileId: number, profileOf?: (id: number) => RoadProfile | null): number => {
+    const g = makeGrid();
+    laneOfRoad(g, profileId);
+    const sys = new EconomySystem(catalog, roadSpecs);
+    const { statsPatch } = sys.tick({
+      g,
+      buildings: [],
+      stats: makeStats({ funds: 10000 }),
+      tickNo: TICKS_PER_MONTH,
+      profileOf,
+    });
+    return statsPatch.monthlyExpenses ?? 0;
+  };
+
+  it('bills a composed bus street for the street plus the lane, not for the street alone', () => {
+    // Ten tiles of a two-lane street: 10 × 0.4 = 4. One kerbside bus lane on
+    // each of them adds 0.05 a tile — the figure derived from what the bus
+    // road used to cost — so the city pays 10 × 0.5 = 5.
+    const plain = upkeepOf(RoadTier.TwoLane);
+    const bus = upkeepOf(20, (id) => (id === 20 ? withBus : null));
+    expect(plain).toBeCloseTo(4, 6);
+    expect(bus).toBeCloseTo(5, 6);
+    expect(bus).toBeGreaterThan(plain);
+  });
+
+  it('charges the street alone when nothing can say what the road carries', () => {
+    // Every caller that passes no profile lookup — and every save written
+    // before profiles existed — bills exactly what it always did.
+    expect(upkeepOf(20)).toBeCloseTo(4, 6);
+  });
+});
 
 describe('EconomySystem: population/jobs/employed aggregation', () => {
   it('aggregates Active buildings every tick, ignoring Constructing/Abandoned', () => {

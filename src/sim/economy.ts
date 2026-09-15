@@ -15,9 +15,11 @@ import type {
   CityNotification,
   CityStats,
   GridState,
+  RoadProfile,
   RoadSpec,
 } from '../shared/types';
 import { BuildingState, FieldId, RoadTier } from '../shared/types';
+import { isPresetProfileId, roadPriceOf } from '../shared/roadprofile';
 import {
   LANDFILL_UPKEEP_PER_TILE,
   POWER_LINE_UPKEEP_PER_TILE,
@@ -47,6 +49,14 @@ export interface EconomyTickInput {
    * income so the un-policied result never shifts.
    */
   taxMultiplier?: (x: number, z: number) => number;
+  /**
+   * The cross-section a road profile id stands for, so upkeep can be charged
+   * for what a road actually carries. A reserved bus lane or a tramway costs
+   * more to keep than the street without it, and the stored tier byte — the
+   * road's SIZE — cannot tell the two apart. Omitted, every road is charged
+   * its size's upkeep, which is what happened before profiles existed.
+   */
+  profileOf?: (id: number) => RoadProfile | null;
 }
 
 export interface EconomyTickResult {
@@ -220,16 +230,30 @@ export class EconomySystem {
         buildingUpkeep += upkeep;
       }
 
-      const tileCountsByTier = new Map<number, number>();
+      // Counted by (size, cross-section) rather than by size alone, so a
+      // street with a bus lane down it is not billed as the plain street.
+      const tileCounts = new Map<string, { tier: number; profileId: number; count: number }>();
       for (let i = 0; i < MAP_TILES; i++) {
         const tier = g.roadTier[i]!;
         if (tier === RoadTier.None) continue;
-        tileCountsByTier.set(tier, (tileCountsByTier.get(tier) ?? 0) + 1);
+        const profileId = g.roadProfile[i] ?? tier;
+        const key = `${tier}:${profileId}`;
+        const seen = tileCounts.get(key);
+        if (seen) seen.count++;
+        else tileCounts.set(key, { tier, profileId, count: 1 });
       }
       let roadUpkeep = 0;
-      for (const [tier, count] of tileCountsByTier) {
+      for (const { tier, profileId, count } of tileCounts.values()) {
         const spec = this.roadSpecs.get(tier);
-        if (spec) roadUpkeep += spec.upkeepPerTile * count;
+        if (!spec) continue;
+        const profile = input.profileOf?.(profileId) ?? null;
+        // A preset is charged its own upkeep, whatever it carries: the transit
+        // roads that used to stand alone keep the price they were built at.
+        const perTile =
+          profile && !isPresetProfileId(profileId)
+            ? roadPriceOf(spec, profile).upkeepPerTile
+            : (this.roadSpecs.get(profileId)?.upkeepPerTile ?? spec.upkeepPerTile);
+        roadUpkeep += perTile * count;
       }
 
       // Landfill: monthly upkeep scales with the painted area.

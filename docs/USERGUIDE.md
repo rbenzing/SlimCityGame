@@ -48,7 +48,12 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   an avenue, or run a motorway's reserved lane up the inside where an express
   lane goes. A reserved lane is a lane, so it counts: a small street takes one
   bus lane and is refused two, and a town street trades general lanes away to
-  make room for a twin-track tram reservation. A neighbourhood street runs two lanes
+  make room for a twin-track tram reservation. **You pay for the street plus
+  the lane**, and the road stays the road it was — a two-lane street with a bus
+  lane is still a two-lane street, costing its own price and a little more,
+  rather than becoming some other road that happens to have one. A reserved
+  lane brings its own unlock too, so trams still wait for the milestone a
+  tramway always needed. A neighbourhood street runs two lanes
   and is offered no count at all, since two is what it is; the third lane it
   can have is the turn lane down the middle. Each control offers only what
   that road allows — a count a road is never built in is never on the row —

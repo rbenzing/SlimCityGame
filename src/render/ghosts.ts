@@ -186,10 +186,16 @@ export function volumeColorFor(valid: boolean): readonly [number, number, number
 export function stripeAxisIsX(tiles: readonly TilePoint[], i: number): boolean {
   const cur = tiles[i];
   if (!cur) return true;
+  // Only a tile the road actually continues into says which way this one runs.
+  // A corridor is TWO runs in one list, so the tile after the last of the
+  // first run is the first of the second — a whole row away, and no evidence
+  // of anything. Reading it as a neighbour turns every carriageway sideways.
+  const adjacent = (t: TilePoint | undefined): t is TilePoint =>
+    t !== undefined && Math.abs(t.x - cur.x) + Math.abs(t.z - cur.z) === 1;
   const prev = tiles[i - 1];
   const next = tiles[i + 1];
-  if (prev && prev.z !== cur.z) return false;
-  if (next && next.z !== cur.z) return false;
+  if (adjacent(prev) && prev.z !== cur.z) return false;
+  if (adjacent(next) && next.z !== cur.z) return false;
   return true;
 }
 
@@ -253,6 +259,92 @@ export function buildConformingTilePositions(
         const cz0 = z0 + sz * step;
         pushConformingQuad(positions, heightAt, cx0, cz0, cx0 + step, cz0 + step, yOffset);
       }
+    }
+  }
+  return new Float32Array(positions);
+}
+
+/** One terrain-conforming rectangle, subdivided so mid-rect curvature is followed too. */
+function pushConformingRect(
+  positions: number[],
+  heightAt: HeightSampler,
+  x0: number,
+  z0: number,
+  x1: number,
+  z1: number,
+  yOffset: number,
+): void {
+  if (x1 - x0 <= 1e-6 || z1 - z0 <= 1e-6) return;
+  const stepX = (x1 - x0) / GHOST_CELL_SUBDIV;
+  const stepZ = (z1 - z0) / GHOST_CELL_SUBDIV;
+  for (let sz = 0; sz < GHOST_CELL_SUBDIV; sz++) {
+    for (let sx = 0; sx < GHOST_CELL_SUBDIV; sx++) {
+      const cx0 = x0 + sx * stepX;
+      const cz0 = z0 + sz * stepZ;
+      pushConformingQuad(positions, heightAt, cx0, cz0, cx0 + stepX, cz0 + stepZ, yOffset);
+    }
+  }
+}
+
+/**
+ * Whether the tile at `i` is where an L-path turns: the tiles either side of
+ * it lie on different rows AND different columns, so the road changes axis
+ * here and the band has to cover both.
+ */
+export function isPathCorner(tiles: readonly TilePoint[], i: number): boolean {
+  const cur = tiles[i];
+  const prev = tiles[i - 1];
+  const next = tiles[i + 1];
+  if (!cur || !prev || !next) return false;
+  // Both sides have to be tiles the road runs into, or the gap between a
+  // corridor's two runs reads as a turn and gets an L-shaped band.
+  const adjacent = (t: TilePoint): boolean => Math.abs(t.x - cur.x) + Math.abs(t.z - cur.z) === 1;
+  if (!adjacent(prev) || !adjacent(next)) return false;
+  return prev.x !== next.x && prev.z !== next.z;
+}
+
+/**
+ * Merged, TERRAIN-CONFORMING positions for a road preview drawn at its REAL
+ * width: a band `widthMeters` across, running the full tile length along
+ * whichever axis the path takes, rather than a tile-sized square. What the
+ * player is choosing is a cross-section, and drawn tile-sized every road reads
+ * the same width as every other — so nothing on screen says an avenue is twice
+ * the street it is about to replace until it is already laid.
+ *
+ * The band is NOT clipped to the tile. No road the game will lay overruns one
+ * (a section too wide becomes a corridor, and each of its carriageways fits a
+ * tile of its own), so clipping would change nothing for a valid preview — but
+ * a composition too wide to lay is previewed before it is refused, and seeing
+ * it overhang is the clearest statement of why.
+ *
+ * A turn tile is covered by both axes, with the second band's overlap with the
+ * first trimmed away so the translucent quads never double up and darken the
+ * corner.
+ */
+export function buildConformingRoadBandPositions(
+  tiles: readonly TilePoint[],
+  heightAt: HeightSampler,
+  widthMeters: number,
+  yOffset: number,
+): Float32Array {
+  const positions: number[] = [];
+  const half = TILE_METERS / 2;
+  const w2 = Math.max(widthMeters, 0) / 2;
+  for (let i = 0; i < tiles.length; i++) {
+    const t = tiles[i]!;
+    const cx = (t.x + 0.5) * TILE_METERS;
+    const cz = (t.z + 0.5) * TILE_METERS;
+    const corner = isPathCorner(tiles, i);
+    const alongX = corner || stripeAxisIsX(tiles, i);
+    if (alongX) {
+      pushConformingRect(positions, heightAt, cx - half, cz - w2, cx + half, cz + w2, yOffset);
+    } else {
+      pushConformingRect(positions, heightAt, cx - w2, cz - half, cx + w2, cz + half, yOffset);
+    }
+    // The other leg of a turn, minus what the first band already covers.
+    if (corner && w2 < half) {
+      pushConformingRect(positions, heightAt, cx - w2, cz - half, cx + w2, cz - w2, yOffset);
+      pushConformingRect(positions, heightAt, cx - w2, cz + w2, cx + w2, cz + half, yOffset);
     }
   }
   return new Float32Array(positions);
@@ -413,6 +505,13 @@ export interface SetPreviewOptions {
    * For road tiers where direction is real — one-way streets and highways.
    */
   flowArrows?: boolean;
+  /**
+   * The road's real cross-section width in metres (road kind only). Given, the
+   * base layer draws a band that wide instead of filling the tile, so the
+   * player sees the road they are about to lay rather than the squares it will
+   * occupy.
+   */
+  roadWidthMeters?: number;
 }
 
 /**
@@ -631,7 +730,7 @@ export class GhostRenderer {
       return;
     }
 
-    this.writeBase(tiles, valid, kind, opts?.zone);
+    this.writeBase(tiles, valid, kind, opts?.zone, kind === 'road' ? opts?.roadWidthMeters : undefined);
     if (valid && kind === 'zone') {
       this.fillMaterial.color.setRGB(...fillColorFor(opts?.zone));
       this.writeFill(tiles);
@@ -710,14 +809,18 @@ export class GhostRenderer {
     mesh.geometry = geometry;
   }
 
-  private writeBase(tiles: TilePoint[], valid: boolean, kind: GhostKind, zone?: ZoneType): void {
+  private writeBase(
+    tiles: TilePoint[],
+    valid: boolean,
+    kind: GhostKind,
+    zone?: ZoneType,
+    roadWidthMeters?: number,
+  ): void {
     this.baseMaterial.color.setRGB(...baseColorFor(kind, valid, zone));
-    const positions = buildConformingTilePositions(
-      tiles,
-      this.heightAt,
-      TILE_METERS,
-      GHOST_Y_OFFSET,
-    );
+    const positions =
+      roadWidthMeters !== undefined && roadWidthMeters > 0
+        ? buildConformingRoadBandPositions(tiles, this.heightAt, roadWidthMeters, GHOST_Y_OFFSET)
+        : buildConformingTilePositions(tiles, this.heightAt, TILE_METERS, GHOST_Y_OFFSET);
     this.setGeometry(this.baseMesh, positions);
   }
 

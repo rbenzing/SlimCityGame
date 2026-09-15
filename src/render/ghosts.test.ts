@@ -12,6 +12,7 @@ import {
   fillColorFor,
   frameColorFor,
   hexToRgb01,
+  isPathCorner,
   stripeAxisIsX,
   VERTS_PER_GHOST_CELL,
   VERTS_PER_GHOST_EDGE,
@@ -131,6 +132,21 @@ describe('stripeAxisIsX', () => {
   it('does not throw for an out-of-range index', () => {
     expect(() => stripeAxisIsX([{ x: 0, z: 0 }], 5)).not.toThrow();
   });
+
+  it('ignores the jump between a corridor’s two runs, which is not a neighbour', () => {
+    // A corridor arrives as two parallel runs in ONE list. Where the first
+    // ends and the second begins, the neighbouring entries are a whole row
+    // apart — evidence of nothing. Counted as a neighbour, every carriageway
+    // is read as running the other way and the band is laid across the road.
+    const twoRuns = [
+      { x: 0, z: 5 },
+      { x: 1, z: 5 },
+      { x: 0, z: 6 },
+      { x: 1, z: 6 },
+    ];
+    for (let i = 0; i < twoRuns.length; i++) expect(stripeAxisIsX(twoRuns, i)).toBe(true);
+    for (let i = 0; i < twoRuns.length; i++) expect(isPathCorner(twoRuns, i)).toBe(false);
+  });
 });
 
 describe('GhostRenderer construction', () => {
@@ -192,6 +208,87 @@ describe('GhostRenderer.setPreview — road kind', () => {
     expect(stripe.count).toBe(0);
     const baseColor = colorAt(base);
     expect(baseColor.r).toBeGreaterThan(baseColor.b); // invalid orange-red
+  });
+});
+
+describe('a road ghost is drawn at the road’s real width', () => {
+  const widthAcross = (renderer: GhostRenderer, alongZ = false): number => {
+    const box = boundingBoxOf(renderer.layers().base);
+    return alongZ ? box.max.z - box.min.z : box.max.x - box.min.x;
+  };
+
+  it('draws a narrow street narrower than its tile, not filling it', () => {
+    // A two-lane street is 11.25 m on a 20 m tile. Filling the tile tells the
+    // player the road is 20 m across, which is the one thing the ghost is
+    // there to answer.
+    const scene = new THREE.Scene();
+    const renderer = new GhostRenderer(scene, flatHeightAt);
+    renderer.setPreview(straightLine(4), true, 'road', { roadWidthMeters: 11.25 });
+    // The run goes along X, so the width is measured across Z.
+    expect(widthAcross(renderer, true)).toBeCloseTo(11.25, 5);
+    // ...and it still runs the full length of every tile it covers.
+    expect(widthAcross(renderer)).toBeCloseTo(4 * TILE_METERS, 5);
+  });
+
+  it('lets a section too wide to lay overhang its tile, which is why it is refused', () => {
+    // No road the game will lay overruns a tile — a section too wide becomes a
+    // corridor whose carriageways each fit one. But a composition too wide for
+    // either is previewed before it is refused, and the overhang is the
+    // clearest statement of what is wrong with it.
+    const scene = new THREE.Scene();
+    const renderer = new GhostRenderer(scene, flatHeightAt);
+    renderer.setPreview([{ x: 2, z: 3 }], true, 'road', { roadWidthMeters: 26 });
+    expect(widthAcross(renderer, true)).toBeCloseTo(26, 5);
+    expect(widthAcross(renderer, true)).toBeGreaterThan(TILE_METERS);
+  });
+
+  it('covers both legs of a turn, without stacking two quads over the corner', () => {
+    // An L-path's corner tile carries road on both axes. Drawing one band
+    // leaves a notch; drawing two whole bands doubles the translucent quad
+    // over the overlap and the corner reads darker than the rest of the run.
+    const scene = new THREE.Scene();
+    const renderer = new GhostRenderer(scene, flatHeightAt);
+    const lPath: TilePoint[] = [
+      { x: 0, z: 0 },
+      { x: 1, z: 0 },
+      { x: 1, z: 1 },
+    ];
+    renderer.setPreview(lPath, true, 'road', { roadWidthMeters: 10 });
+    const box = boundingBoxOf(renderer.layers().base);
+    // The band reaches the far end of both legs.
+    expect(box.max.x).toBeCloseTo(2 * TILE_METERS, 5);
+    expect(box.max.z).toBeCloseTo(2 * TILE_METERS, 5);
+    // The corner is covered by its own band plus two trims, never a second
+    // full band: 2 straight tiles + 1 corner (1 band + 2 trims) = 5 rects.
+    expect(vertCount(renderer.layers().base)).toBe(5 * VERTS_PER_GHOST_CELL);
+  });
+
+  it('falls back to the tile when no width is given, as every other kind does', () => {
+    const scene = new THREE.Scene();
+    const renderer = new GhostRenderer(scene, flatHeightAt);
+    renderer.setPreview([{ x: 2, z: 3 }], true, 'road');
+    expect(widthAcross(renderer, true)).toBeCloseTo(TILE_METERS, 5);
+  });
+
+  it('ignores a width on a kind that is not a road', () => {
+    const scene = new THREE.Scene();
+    const renderer = new GhostRenderer(scene, flatHeightAt);
+    renderer.setPreview([{ x: 2, z: 3 }], true, 'zone', { roadWidthMeters: 6 });
+    expect(widthAcross(renderer, true)).toBeCloseTo(TILE_METERS, 5);
+  });
+});
+
+describe('isPathCorner', () => {
+  it('is true only where the path changes axis', () => {
+    const lPath: TilePoint[] = [
+      { x: 0, z: 0 },
+      { x: 1, z: 0 },
+      { x: 1, z: 1 },
+    ];
+    expect(isPathCorner(lPath, 0)).toBe(false); // no tile before it
+    expect(isPathCorner(lPath, 1)).toBe(true);
+    expect(isPathCorner(lPath, 2)).toBe(false); // no tile after it
+    expect(straightLine(4).every((_, i) => !isPathCorner(straightLine(4), i))).toBe(true);
   });
 });
 
