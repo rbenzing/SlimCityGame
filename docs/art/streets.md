@@ -33,13 +33,17 @@ for the surface, the paint, the furniture and the zoning overlay.
   and turns, the same as the avenue median below; the coloured band sits just
   above the asphalt and below the white paint so markings and glyphs read on
   top of it.
-- **Rails**: a tram track embeds two steel rails at a 1.5 m gauge plus
-  periodic cross-tie sleepers down the centre, sleeper phase anchored at
-  global world-metre zero so ties line up across every seam. A dedicated Rail
-  Track is not a street at all — a dark ballast bed with no kerbs, markings
-  or crosswalks, carrying the same rail-and-sleeper geometry on a narrower,
-  gravel-class corridor — and renders as a level crossing wherever it meets a
-  road.
+- **Rails**: a tramway embeds two steel rails at a 1.5 m gauge plus periodic
+  cross-tie sleepers, sleeper phase anchored at global world-metre zero so
+  ties line up across every seam. A track belongs to the LANE that carries it,
+  not to the road: mixed running lays one down each running lane it shares
+  with the traffic, and a reservation lays one down each of its two tram
+  lanes, so a twin-track reservation reads as two tracks rather than one wide
+  one. A dedicated Rail Track is not a street at all — a dark ballast bed with
+  no kerbs, markings or crosswalks, carrying the same rail-and-sleeper
+  geometry on a narrower, gravel-class corridor, and it has no lane pieces to
+  read, so its single track runs down the middle — and renders as a level
+  crossing wherever it meets a road.
 - **Intersections**: marking strips stop at any tile whose connections number
   three or more, so the junction box itself stays clean asphalt and reads as
   a real crossing. Each approach into a proper intersection gets a stop line

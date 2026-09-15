@@ -25,7 +25,7 @@ export const TURN_LANE_INNER_OFFSET_M = 0.3;
 /** A bike lane's paint is at most this wide; a wider piece keeps a buffer to the kerb. */
 export const BIKE_PAINT_MAX_WIDTH_M = 1.6;
 
-export type BandKind = 'bus' | 'bike' | 'parking';
+export type BandKind = 'bus' | 'bike' | 'parking' | 'tram';
 
 export interface MarkingBand {
   kind: BandKind;
@@ -285,6 +285,12 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
 
     if (piece.kind === 'bus') bands.push({ kind: 'bus', from, to });
     if (piece.kind === 'parking') bands.push({ kind: 'parking', from, to });
+    // A tramway's rails go down the lane that carries them, wherever that lane
+    // sits — a reservation of two tracks is two lanes and gets two, and mixed
+    // running puts a track in each running lane it shares. Carrying it as a
+    // band is what lets the rails be drawn from the profile rather than
+    // assumed to be down the middle of the road.
+    if (piece.kind === 'tram' || piece.tram === true) bands.push({ kind: 'tram', from, to });
     if (piece.kind === 'bike') {
       // Paint hugs the kerb side; anything wider than the paint is a buffer.
       const paint = Math.min(piece.width, BIKE_PAINT_MAX_WIDTH_M);

@@ -1020,11 +1020,6 @@ export type ToolId =
   | 'road.alley'
   | 'road.oneway'
   | 'road.four'
-  // Roads epic R2 — transit lane variants.
-  | 'road.bus'
-  | 'road.bike'
-  // Roads epic R3 — tram track.
-  | 'road.tram'
   // Roads epic R4 — dedicated rail track.
   | 'road.rail'
   // Roads epic wave 5 — the slip road onto a motorway.

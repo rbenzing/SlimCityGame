@@ -51,7 +51,6 @@ function roadHeightClass(id: ToolId): string {
     case 'road.rail':
       return 'h-3';
     case 'road.four':
-    case 'road.bus':
       return 'h-6';
     // A ramp is one lane wide: the thinnest paved strip on the row.
     case 'road.ramp':
@@ -80,20 +79,14 @@ function CardPictogram({ card }: { card: AssetCard }): JSX.Element {
     return <div className={`h-11 rounded-[6px] ${zoneClass(card.id)}`} aria-hidden="true" />;
   }
   if (card.id.startsWith('road.')) {
-    // Gravel is unpaved (dusty-tan strip); transit lanes read as their painted
-    // color (terracotta bus / green bike); every other road is dashed white.
+    // Gravel is unpaved (dusty-tan strip); rail is sleepers on ballast; every
+    // other road is dashed white.
     const strip =
       card.id === 'road.gravel'
         ? 'bg-[#9e8c6b]'
-        : card.id === 'road.bus'
-          ? 'bg-[#b8492f]'
-          : card.id === 'road.bike'
-            ? 'bg-[#268a44]'
-            : card.id === 'road.tram'
-              ? 'bg-[repeating-linear-gradient(0deg,#b6b8bd_0px,#b6b8bd_2px,#4a4d53_2px,#4a4d53_7px)]'
-              : card.id === 'road.rail'
-                ? 'bg-[repeating-linear-gradient(0deg,#9aa0a8_0px,#9aa0a8_2px,#39352f_2px,#39352f_9px)]'
-                : 'bg-[repeating-linear-gradient(90deg,#fff_0px,#fff_6px,transparent_6px,transparent_12px)]';
+        : card.id === 'road.rail'
+          ? 'bg-[repeating-linear-gradient(0deg,#9aa0a8_0px,#9aa0a8_2px,#39352f_2px,#39352f_9px)]'
+          : 'bg-[repeating-linear-gradient(90deg,#fff_0px,#fff_6px,transparent_6px,transparent_12px)]';
     return (
       <div
         className="flex h-11 items-center justify-center rounded-[6px] bg-[#2a2f36]"

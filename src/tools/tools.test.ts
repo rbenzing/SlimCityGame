@@ -505,9 +505,6 @@ describe('road preview cost + commit', () => {
       'road.alley',
       'road.oneway',
       'road.four',
-      'road.bus',
-      'road.bike',
-      'road.tram',
       'road.rail',
     ] as const;
 

@@ -78,12 +78,9 @@ function roadToolId(tier: RoadTier): ToolId | null {
       return 'road.oneway';
     case RoadTierValue.FourLane:
       return 'road.four';
-    case RoadTierValue.BusLane:
-      return 'road.bus';
-    case RoadTierValue.BikeLane:
-      return 'road.bike';
-    case RoadTierValue.Tram:
-      return 'road.tram';
+    // A bus lane, a bike lane and a tramway are not roads of their own — they
+    // are things a road of any size can be given, from the Profile row. Their
+    // tiers stay in the catalog so saves that hold them still load.
     case RoadTierValue.RailTrack:
       return 'road.rail';
     case RoadTierValue.Ramp:
@@ -260,14 +257,13 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
       cards: [...roadCard(RoadTierValue.Highway), ...roadCard(RoadTierValue.Ramp)],
     },
     {
-      id: 'transit',
-      label: 'Transit',
-      cards: [
-        ...roadCard(RoadTierValue.BikeLane),
-        ...roadCard(RoadTierValue.BusLane),
-        ...roadCard(RoadTierValue.Tram),
-        ...roadCard(RoadTierValue.RailTrack),
-      ],
+      id: 'rail',
+      label: 'Rail',
+      // Rail is the one transit mode that is genuinely its own network rather
+      // than a lane of a road: it sits outside the road ranking and only
+      // crosses a street at grade. Buses, bikes and trams are lanes, and are
+      // added to a road of any size from the Profile row instead.
+      cards: [...roadCard(RoadTierValue.RailTrack)],
     },
   ],
   electricity: [

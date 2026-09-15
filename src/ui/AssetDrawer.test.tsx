@@ -60,7 +60,7 @@ describe('AssetDrawer', () => {
     it('Roads groups by the family a road belongs to, dropping the empty Maintenance sub-tab', () => {
       render(<AssetDrawer category="roads" onClose={vi.fn()} />);
       const tabs = screen.getAllByRole('tab');
-      expect(tabs.map((t) => t.textContent)).toEqual(['Small', 'Medium', 'Highway', 'Transit']);
+      expect(tabs.map((t) => t.textContent)).toEqual(['Small', 'Medium', 'Highway', 'Rail']);
       expect(screen.queryByRole('tab', { name: /maintenance/i })).not.toBeInTheDocument();
     });
 

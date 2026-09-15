@@ -208,6 +208,53 @@ describe('RoadToolOptions — the Profile row', () => {
     expect(useCityStore.getState().roadProfileEdits.postedKmh).toBe(65);
   });
 
+  it('gives a small street a bus lane and a tramway, since those are lanes not road types', () => {
+    useCityStore.getState().setTool('road.two');
+    render(<RoadToolOptions />);
+    const bus = screen.getByRole('group', { name: 'Bus lanes' });
+    fireEvent.click(within(bus).getByRole('button', { name: 'Right' }));
+    expect(useCityStore.getState().roadProfileEdits.bus).toBe('right');
+    // A bus lane on one side of a two-lane street: 13.35 m inside a 20 m tile.
+    expect(screen.getByLabelText('Profile width')).toHaveTextContent(`13.3 / ${TILE_METERS} m`);
+    expect(screen.getByLabelText('Profile width')).toHaveAttribute('title', 'Fits the tile');
+
+    const tram = screen.getByRole('group', { name: 'Tramway' });
+    fireEvent.click(within(tram).getByRole('button', { name: 'Mixed' }));
+    expect(useCityStore.getState().roadProfileEdits.tram).toBe('mixed');
+  });
+
+  it('says a bus lane on both sides of a small street is a different road, rather than laying it', () => {
+    useCityStore.getState().setTool('road.two');
+    render(<RoadToolOptions />);
+    const bus = screen.getByRole('group', { name: 'Bus lanes' });
+    fireEvent.click(within(bus).getByRole('button', { name: 'Both' }));
+    // Two reserved lanes plus two general ones is four, and a local street is
+    // built for two or three — the readout says which rule it broke.
+    expect(screen.getByLabelText('Profile width')).toHaveAttribute(
+      'title',
+      'A local street runs 2 to 3 lanes',
+    );
+  });
+
+  it('never asks a track or an alley about a bus lane or a tramway', () => {
+    useCityStore.getState().setTool('road.gravel');
+    const { unmount } = render(<RoadToolOptions />);
+    expect(screen.queryByRole('group', { name: 'Bus lanes' })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Tramway' })).toBeNull();
+    unmount();
+    useCityStore.getState().setTool('road.alley');
+    render(<RoadToolOptions />);
+    expect(screen.queryByRole('group', { name: 'Bus lanes' })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Tramway' })).toBeNull();
+  });
+
+  it('offers a motorway a reserved lane but no tramway, which is not what a motorway carries', () => {
+    useCityStore.getState().setTool('road.highway');
+    render(<RoadToolOptions />);
+    expect(screen.getByRole('group', { name: 'Bus lanes' })).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Tramway' })).toBeNull();
+  });
+
   it('starts every road fresh: switching tools puts the edits back to the preset', () => {
     useCityStore.getState().setTool('road.two');
     useCityStore.getState().setRoadProfileEdits({ ...NO_EDITS, parking: 'both' });
@@ -226,10 +273,6 @@ describe('RoadToolOptions', () => {
     'road.alley',
     'road.oneway',
     'road.four',
-    // Roads-epic transit lane variants get the same options rows.
-    'road.bus',
-    'road.bike',
-    'road.tram',
     'road.rail',
   ] as const)('for road tool %s', (tool) => {
     beforeEach(() => {
