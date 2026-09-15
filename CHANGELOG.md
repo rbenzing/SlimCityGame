@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.9.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.8.0...slimcity-v1.9.0) (2026-09-15)
+
+
+### Features
+
+* **roads:** a road's tier is its size, and a reserved lane is priced on top ([8845bdd](https://github.com/rbenzing/SlimCityGame/commit/8845bdd71225b9c300c34eaefb0907e183d4a368))
+* **ux:** the road ghost is drawn at the road's own width, not the tile's ([050c53f](https://github.com/rbenzing/SlimCityGame/commit/050c53f4c1cbcb752d372e529a091efad07ec7c3))
+
 ## [1.8.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.7.0...slimcity-v1.8.0) (2026-09-15)
 
 
