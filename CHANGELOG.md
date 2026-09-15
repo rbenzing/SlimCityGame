@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.7.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.6.1...slimcity-v1.7.0) (2026-09-15)
+
+
+### Features
+
+* **roads:** a short block gets one shared turn lane, not two bays fighting ([948b863](https://github.com/rbenzing/SlimCityGame/commit/948b8639debbd1d2a2d4ecc4050e1ee90c9aee90))
+* **roads:** a transit lane is a variant of a size, not a road type of its own ([d96f3fd](https://github.com/rbenzing/SlimCityGame/commit/d96f3fd249e770f22fe47e377034f43ec916d44f))
+
+
+### Bug Fixes
+
+* **roads:** the edge line reaches the tile edge, so a junction does not cut it ([2c50aaa](https://github.com/rbenzing/SlimCityGame/commit/2c50aaaca39fdf73e05fda96f0ddc530a445b012))
+* **roads:** the paint follows the kerb, and a broken line is 10 ft in 30 ([ddc10b2](https://github.com/rbenzing/SlimCityGame/commit/ddc10b2301299682935f28a5d9612256e605bddf))
+* **roads:** the shared turn lane asks every through lane, so a four-lane fits one ([db37b74](https://github.com/rbenzing/SlimCityGame/commit/db37b74c551caa6f29480d396f04b91e505bce5d))
+
 ## [1.6.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.6.0...slimcity-v1.6.1) (2026-09-14)
 
 
