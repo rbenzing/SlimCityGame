@@ -23,6 +23,18 @@ const FOUR_LANE = 7;
 // What composeProfile builds once the new controls are touched: a small street
 // with a bus lane on one side, an avenue with a twin-track tram reservation,
 // and a four-lane traded down to two to afford a bus lane each way.
+/** The two-lane preset's own cross-section, defined as a custom profile so the
+ * priced comparison runs down the same path a composed road does. */
+const presetTwoLane = () => ({
+  class: 'local',
+  kerbs: true,
+  pieces: [
+    { kind: 'sidewalk', width: 1.875 },
+    { kind: 'travel', width: 3.75, flow: 'back' },
+    { kind: 'travel', width: 3.75, flow: 'fwd' },
+    { kind: 'sidewalk', width: 1.875 },
+  ],
+});
 const BUS_ONE_SIDE = {
   class: 'local',
   kerbs: true,
@@ -241,8 +253,37 @@ for (const [tier, z] of [
   if (got !== tier) failures.push(`a saved tier-${tier} road no longer lays (got tier ${got})`);
 }
 
+// ---------------------------------------------------------------------------
+// The price: a street with a bus lane is that street plus the lane, charged by
+// the worker — which is what actually takes the money, whatever the tool says.
+// ---------------------------------------------------------------------------
+await cmd('Money', [{ kind: 'setUnlimitedMoney', on: false }]);
+await page.waitForTimeout(400);
+const fundsNow = async () => (await call(() => window.__slimcity.getStats())).funds;
+
+const priceRun = async (label, profile, z, want) => {
+  const before = await fundsNow();
+  const tiles = row(z);
+  await cmd(label, [
+    { kind: 'defineRoadProfile', id: profile.id, profile: profile.pieces },
+    { kind: 'buildRoad', tier: TWO_LANE, tiles, profile: profile.id },
+  ]);
+  await page.waitForTimeout(900);
+  const spent = before - (await fundsNow());
+  const perTile = spent / tiles.length;
+  console.log(`${label}: spent ${spent} over ${tiles.length} tiles = ${perTile}/tile`);
+  if (Math.abs(perTile - want) > 0.001)
+    failures.push(`${label} charged ${perTile}/tile, not ${want}`);
+};
+
+// A plain two-lane street is ¢20 a tile; the same street with one kerbside bus
+// lane is ¢25 — the ¢5 the bus road charged for each lane it carried.
+await priceRun('Plain two-lane', { id: 30, pieces: presetTwoLane() }, Z + 20, 20);
+await priceRun('Two-lane + bus lane', { id: 31, pieces: BUS_ONE_SIDE }, Z + 24, 25);
+
 if (pageErrors.length > 0) failures.push(`page errors: ${pageErrors.join(' | ')}`);
 
+await cmd('Money', [{ kind: 'setUnlimitedMoney', on: true }]);
 await call(() => window.__slimcity.setSpeed(0));
 await call(() => window.__slimcity.setDayT(0.5));
 const shot = async (name, tx, tz, d, yaw, pitch) => {

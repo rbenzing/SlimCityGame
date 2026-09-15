@@ -67,6 +67,8 @@ import {
   isOneWayProfile,
   withCentreTurn,
   withTurnPocket,
+  roadPriceOf,
+  transitLanesOf,
   type ProfileEdits,
 } from './roadprofile';
 import type { LanePiece, RoadClassId, RoadProfile, RoadSpec } from './types';
@@ -268,8 +270,21 @@ describe('profile ids and the tier a profile is nearest to', () => {
     });
   });
 
-  it('every preset profile maps back to its own tier', () => {
-    for (const spec of ROAD_PRESETS) expect(tierForProfile(spec.profile!)).toBe(spec.tier);
+  it('every preset that is a SIZE maps back to its own tier', () => {
+    // The three retired presets are the exception, and deliberately: a bus
+    // road, a bike road and a tram road are not sizes, they are a size with a
+    // lane added, so each maps to the size it is a variant of. Every other
+    // preset is a road in its own right and still round-trips.
+    const variants = new Set<number>([RoadTier.BusLane, RoadTier.BikeLane, RoadTier.Tram]);
+    for (const spec of ROAD_PRESETS) {
+      if (variants.has(spec.tier)) continue;
+      expect(tierForProfile(spec.profile!), spec.name).toBe(spec.tier);
+    }
+    // And the variants land on the size they were built from, so the road a
+    // save holds is priced and named as the street it actually is.
+    expect(tierForProfile(presetProfileForTier(RoadTier.BikeLane))).toBe(RoadTier.TwoLane);
+    expect(tierForProfile(presetProfileForTier(RoadTier.BusLane))).toBe(RoadTier.Avenue);
+    expect(tierForProfile(presetProfileForTier(RoadTier.Tram))).toBe(RoadTier.FourLane);
   });
 
   it('a composed profile lands on the preset that shares its role, transit lanes first', () => {
@@ -283,18 +298,21 @@ describe('profile ids and the tier a profile is nearest to', () => {
     expect(tierForProfile({ class: 'divided', pieces: lanes(4) })).toBe(RoadTier.Avenue);
     expect(tierForProfile({ class: 'rural', pieces: lanes(2) })).toBe(RoadTier.TwoLane);
     expect(tierForProfile({ class: 'ramp', pieces: lanes(1) })).toBe(RoadTier.Ramp);
+    // A reserved lane does not change which road this is: a collector with a
+    // bus lane is still the road a collector is, and a local street running
+    // trams is still a local street. What the lane changes is the price.
     expect(
       tierForProfile({
         class: 'collector',
         pieces: [...lanes(2), { kind: 'bus', width: 3.5, flow: 'fwd' }],
       }),
-    ).toBe(RoadTier.BusLane);
+    ).toBe(RoadTier.FourLane);
     expect(
       tierForProfile({
         class: 'local',
         pieces: [{ kind: 'travel', width: 3.5, flow: 'both', tram: true }],
       }),
-    ).toBe(RoadTier.Tram);
+    ).toBe(RoadTier.TwoLane);
   });
 });
 
@@ -333,7 +351,9 @@ describe('composing a profile from a preset and the player’s edits', () => {
       'sidewalk',
     ]);
     expect(p.pieces.find((x) => x.kind === 'bike')?.flow).toBe('fwd');
-    expect(tierForProfile(p)).toBe(RoadTier.BikeLane);
+    // Still the street it started as — a bike lane is a thing it has, not a
+    // different road — and it costs that street's price plus the lane's.
+    expect(tierForProfile(p)).toBe(RoadTier.TwoLane);
   });
 
   it('holds a two-lane with parking and bike lanes on both sides, which it once could not', () => {
@@ -567,6 +587,76 @@ describe('composing a profile from a preset and the player’s edits', () => {
       }
     });
 
+    it('is the road it is a variant OF, not a road of its own', () => {
+      // A bus lane does not turn a small street into a different road. Both a
+      // two-lane street and a four-lane one keep their own size when given
+      // one — which is the whole claim "a variant of a size" makes, and the
+      // thing that decides what each of them costs.
+      const small = composeProfile(presetProfileForTier(RoadTier.TwoLane), {
+        ...NO_EDITS,
+        bus: 'right',
+      });
+      const medium = composeProfile(presetProfileForTier(RoadTier.FourLane), {
+        ...NO_EDITS,
+        bus: 'both',
+        lanes: 1,
+      });
+      expect(tierForProfile(small)).toBe(RoadTier.TwoLane);
+      expect(tierForProfile(medium)).toBe(RoadTier.FourLane);
+      expect(tierForProfile(small)).not.toBe(tierForProfile(medium));
+
+      // A railway is still a tier, because it is a class rather than a lane.
+      expect(tierForProfile(presetProfileForTier(RoadTier.RailTrack))).toBe(RoadTier.RailTrack);
+    });
+
+    it('prices a reserved lane at exactly what the road it replaces charged', () => {
+      // The surcharges are derived from the standalone roads, so composing
+      // what one of those roads WAS has to come out at what it COST. Three
+      // independent checks of one rule; a figure picked by feel fails them.
+      const specOf = (tier: RoadTier): RoadSpec => {
+        const spec = ROAD_PRESETS.find((s) => s.tier === tier);
+        if (!spec) throw new Error(`no spec for tier ${tier}`);
+        return spec;
+      };
+      const retired: [RoadTier, RoadTier][] = [
+        [RoadTier.BikeLane, RoadTier.TwoLane], // a local street with bike lanes
+        [RoadTier.BusLane, RoadTier.Avenue], // an arterial with bus lanes
+        [RoadTier.Tram, RoadTier.FourLane], // an urban street running rails
+      ];
+      for (const [was, size] of retired) {
+        const wasSpec = specOf(was);
+        const priced = roadPriceOf(specOf(size), presetProfileForTier(was));
+        expect(priced.costPerTile, `${wasSpec.name} build cost`).toBe(wasSpec.costPerTile);
+        expect(priced.upkeepPerTile, `${wasSpec.name} upkeep`).toBeCloseTo(
+          wasSpec.upkeepPerTile,
+          6,
+        );
+        expect(priced.unlockMilestone, `${wasSpec.name} milestone`).toBe(wasSpec.unlockMilestone);
+      }
+    });
+
+    it('charges the size for a road with no reserved lane at all', () => {
+      for (const tier of [RoadTier.TwoLane, RoadTier.FourLane, RoadTier.Highway]) {
+        const spec = ROAD_PRESETS.find((s) => s.tier === tier)!;
+        const priced = roadPriceOf(spec, presetProfileForTier(tier));
+        expect(priced.costPerTile).toBe(spec.costPerTile);
+        expect(priced.upkeepPerTile).toBeCloseTo(spec.upkeepPerTile, 6);
+        expect(priced.unlockMilestone).toBe(spec.unlockMilestone);
+      }
+    });
+
+    it('counts mixed running as a track in every lane it shares', () => {
+      // The rail is in the ground either way, so a street running its trams in
+      // two lanes is carrying two tracks and is charged for two.
+      const small = presetProfileForTier(RoadTier.TwoLane);
+      expect(transitLanesOf(composeProfile(small, { ...NO_EDITS, tram: 'mixed' }))).toMatchObject({
+        tram: 2,
+      });
+      expect(
+        transitLanesOf(composeProfile(small, { ...NO_EDITS, bus: 'right' })),
+      ).toMatchObject({ bus: 1 });
+    });
+
     it('keeps the retired presets loadable, so a save still holds the road it drew', () => {
       // The bus, bike and tram roads are no longer offered as road types of
       // their own, but a saved grid stores a raw tier byte per tile — so every
@@ -578,7 +668,6 @@ describe('composing a profile from a preset and the player’s edits', () => {
         const profile = presetProfileForTier(tier);
         expect(profile.pieces.length).toBeGreaterThan(0);
         expect(layRefusal(profile)).toBeNull();
-        expect(tierForProfile(profile)).toBe(tier);
       }
       // And they still read back as the composition that now makes them, which
       // is what lets a player edit an old road with the new controls.

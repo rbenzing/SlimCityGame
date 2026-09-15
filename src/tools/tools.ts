@@ -42,7 +42,9 @@ import {
   presetProfileForTier,
   profilesEqual,
   profileWidth,
+  roadPriceOf,
   tierForProfile,
+  type RoadPrice,
   tilesAcross,
   type ProfileEdits,
 } from '../shared/roadprofile';
@@ -480,6 +482,8 @@ export class ToolManager {
   private roadBuild(presetTier: RoadTier): {
     tier: RoadTier;
     spec: RoadSpec;
+    /** What it costs and what it needs, which is the size's price plus its reserved lanes'. */
+    price: RoadPrice;
     profile: RoadProfile | null;
     layable: boolean;
     /** Why it may not be laid, in the words the player is shown, or null. */
@@ -488,9 +492,17 @@ export class ToolManager {
     const base = presetProfileForTier(presetTier);
     const composed = composeProfile(base, this.profileEdits);
     if (profilesEqual(composed, base)) {
+      const spec = this.env.roadSpec(presetTier);
       return {
         tier: presetTier,
-        spec: this.env.roadSpec(presetTier),
+        spec,
+        // A preset is priced as itself, whatever it carries — the three that
+        // used to stand alone still cost what the player has always paid.
+        price: {
+          costPerTile: spec.costPerTile,
+          upkeepPerTile: spec.upkeepPerTile,
+          unlockMilestone: spec.unlockMilestone,
+        },
         profile: null,
         layable: true,
         refusal: null,
@@ -501,9 +513,11 @@ export class ToolManager {
     // wide for the tile" when what is wrong is its lane count sends them to
     // change the wrong thing.
     const refusal = layRefusal(composed);
+    const spec = this.env.roadSpec(tier);
     return {
       tier,
-      spec: this.env.roadSpec(tier),
+      spec,
+      price: roadPriceOf(spec, composed),
       profile: composed,
       layable: refusal === null,
       refusal,
@@ -819,8 +833,8 @@ export class ToolManager {
       // preview outlines both and the cost covers both.
       const corridor = this.roadCorridor(build.profile, path);
       const tiles = corridor.runs ? corridorTiles(corridor.runs) : path;
-      const cost = tiles.length * build.spec.costPerTile;
-      const evaluated = this.evaluate(tiles, cost, build.spec.unlockMilestone, true);
+      const cost = tiles.length * build.price.costPerTile;
+      const evaluated = this.evaluate(tiles, cost, build.price.unlockMilestone, true);
       // A composition the tile cannot hold, or a run touching a road its class
       // may not meet, is refused here with the reason rather than laid as
       // something else.

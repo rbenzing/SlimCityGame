@@ -1016,6 +1016,26 @@ describe('CursorChip payload (UI-SPEC §6)', () => {
     expect(previews.at(-1)?.lengthMeters).toBe(4 * TILE_METERS);
   });
 
+  it('prices a street with a bus lane as that street plus the lane', () => {
+    // A bus lane does not turn a small street into some other road that also
+    // has one. It stays the ¢20 street it is and pays ¢5 a tile for the lane —
+    // which is what the bus road charged for each of the two it carried.
+    const { env, previews } = makeEnv();
+    env.profileIdFor = () => 12;
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(3, 0, 0);
+    expect(previews.at(-1)?.cost).toBe(4 * 20);
+
+    tm.setProfileEdits({ ...NO_EDITS, bus: 'right' });
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(3, 0, 0);
+    expect(previews.at(-1)?.cost).toBe(4 * 25);
+    // And it is still a two-lane street, not the road the bus lane came from.
+    expect(previews.at(-1)?.label).toBe('Two-Lane Road');
+  });
+
   it('road previews carry the section width, so the ghost is drawn at the road’s real size', () => {
     const { env, previews } = makeEnv();
     const tm = new ToolManager(env);

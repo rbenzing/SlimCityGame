@@ -75,8 +75,11 @@ import {
   FIRST_CUSTOM_PROFILE_ID,
   layRefusal,
   isPresetProfileId,
+  presetProfileForTier,
   rankForTier,
+  roadPriceOf,
   tierForProfile,
+  type RoadPrice,
 } from '../shared/roadprofile';
 import { codeForControl, controlFromCode } from '../shared/junction';
 import {
@@ -884,6 +887,7 @@ class SimWorld implements WorkerSim {
       // (1 when the building's district has no tax policy — income unchanged).
       taxMultiplier: (x: number, z: number): number =>
         this.policyStore.taxMultiplierFor(this.grid.district[tileIndex(x, z)] ?? 0),
+      profileOf: (id: number) => this.profileForId(id),
     });
     Object.assign(this.stats, econ.statsPatch);
     for (const note of econ.notifications) {
@@ -1283,6 +1287,43 @@ class SimWorld implements WorkerSim {
     if (isPresetProfileId(id)) return id as RoadTier;
     const custom = this.customRoadProfiles.get(id);
     return custom ? tierForProfile(custom) : null;
+  }
+
+  /** The profile an id stands for: the preset itself, or the composition defined under it. */
+  private profileForId(id: number): RoadProfile | null {
+    if (isPresetProfileId(id)) {
+      try {
+        return presetProfileForTier(id as RoadTier);
+      } catch {
+        return null;
+      }
+    }
+    return this.customRoadProfiles.get(id) ?? null;
+  }
+
+  /**
+   * What a road of this profile costs and needs. A PRESET is priced as itself,
+   * whatever it carries — the three transit roads that used to stand alone
+   * still cost what they always did, so a save built before is worth what it
+   * was. A composed road is priced as its size plus its reserved lanes.
+   */
+  private roadPriceForProfileId(id: number, sizeSpec: RoadSpec): RoadPrice {
+    if (isPresetProfileId(id)) {
+      const spec = this.roadSpecByTier.get(id) ?? sizeSpec;
+      return {
+        costPerTile: spec.costPerTile,
+        upkeepPerTile: spec.upkeepPerTile,
+        unlockMilestone: spec.unlockMilestone,
+      };
+    }
+    const profile = this.profileForId(id);
+    return profile
+      ? roadPriceOf(sizeSpec, profile)
+      : {
+          costPerTile: sizeSpec.costPerTile,
+          upkeepPerTile: sizeSpec.upkeepPerTile,
+          unlockMilestone: sizeSpec.unlockMilestone,
+        };
   }
 
   private cmdDefineRoadProfile(id: number, profile: RoadProfile): CommandResult {
@@ -1748,7 +1789,11 @@ class SimWorld implements WorkerSim {
     if (tier === null) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
     const spec = this.roadSpecByTier.get(tier);
     if (!spec) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
-    if (!this.sandbox && spec.unlockMilestone > this.stats.milestoneLevel) {
+    // A road is priced as its SIZE plus whatever reserved lanes it carries, so
+    // a street given a bus lane costs that street's price and a little more —
+    // not the price of some other road that also happens to have one.
+    const price = this.roadPriceForProfileId(profileId, spec);
+    if (!this.sandbox && price.unlockMilestone > this.stats.milestoneLevel) {
       return { ok: false, cost: 0, inverse: [], reason: 'locked' };
     }
 
@@ -1863,7 +1908,7 @@ class SimWorld implements WorkerSim {
       };
     }
 
-    const cost = changedCount * spec.costPerTile + bridgeCost;
+    const cost = changedCount * price.costPerTile + bridgeCost;
     if (!this.unlimitedMoney && this.stats.funds < cost)
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
 

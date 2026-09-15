@@ -108,16 +108,18 @@ export function profileIdForTier(tier: RoadTier): number {
 /**
  * The nearest preset tier for a profile — what every consumer that still
  * reads a tier (lamps, kerb parking, water conduction, the render's shade)
- * sees when the tile carries a composed profile. Reserved transit lanes win
- * over the class, since a street with a tram down it is a tram street first;
- * otherwise the class maps to the preset that shares its role. Every preset
- * maps back to its own tier.
+ * sees when the tile carries a composed profile.
+ *
+ * A road's tier is its SIZE. A bus lane or a tramway is something a road of a
+ * given size is given, not a road of its own, so it does not change which road
+ * this is — a street with a bus lane is still that street, and a four-lane one
+ * and a two-lane one are not suddenly the same road because both carry a bus.
+ * What the lane adds is a price and a milestone, which ride on the profile;
+ * see `roadPriceOf`. Rail is the exception and stays a tier, because a railway
+ * is a class of its own rather than a lane of a street.
  */
 export function tierForProfile(profile: RoadProfile): RoadTier {
   if (profile.class === 'rail') return 11 as RoadTier;
-  if (profile.pieces.some((p) => p.kind === 'tram' || p.tram)) return 10 as RoadTier;
-  if (profile.pieces.some((p) => p.kind === 'bus')) return 8 as RoadTier;
-  if (profile.pieces.some((p) => p.kind === 'bike')) return 9 as RoadTier;
   const byClass: Record<RoadClassId, number> = {
     dirt: 4,
     alley: 5,
@@ -133,6 +135,82 @@ export function tierForProfile(profile: RoadProfile): RoadTier {
     rail: 11,
   };
   return byClass[profile.class] as RoadTier;
+}
+
+/**
+ * What one reserved lane adds to the road carrying it, per tile, on top of the
+ * price of the size itself.
+ *
+ * Each figure is DERIVED, not chosen: it is the difference between the road
+ * that used to stand alone and the ordinary road of its own class, divided by
+ * the reserved lanes it carried. The bike road was a local street with a bike
+ * lane each side (28 − 20 = 8 over two, upkeep 0.5 − 0.4, unlocking a
+ * milestone later); the bus road an arterial with a bus lane each side
+ * (55 − 45 = 10 over two); the tram road an urban street with rails in both
+ * its lanes (70 − 32 = 38 over two). So a player who composes what those roads
+ * were pays exactly what those roads cost, and `roadPriceOf` is checked
+ * against all three.
+ */
+export const TRANSIT_LANE_PRICE: Readonly<
+  Record<'bus' | 'bike' | 'tram', { cost: number; upkeep: number; unlockMilestone: number }>
+> = {
+  bus: { cost: 5, upkeep: 0.1, unlockMilestone: 2 },
+  bike: { cost: 4, upkeep: 0.05, unlockMilestone: 1 },
+  tram: { cost: 19, upkeep: 0.3, unlockMilestone: 3 },
+};
+
+/**
+ * The reserved lanes a profile carries, by kind. Mixed running counts as one
+ * track per lane it shares, because that is how much rail is in the ground.
+ */
+export function transitLanesOf(profile: RoadProfile): Record<'bus' | 'bike' | 'tram', number> {
+  let bus = 0;
+  let bike = 0;
+  let tram = 0;
+  for (const piece of profile.pieces) {
+    if (piece.kind === 'bus') bus++;
+    else if (piece.kind === 'bike') bike++;
+    else if (piece.kind === 'tram') tram++;
+    else if (piece.kind === 'travel' && piece.tram === true) tram++;
+  }
+  return { bus, bike, tram };
+}
+
+/** What a road costs to build and keep, and the milestone it needs. */
+export interface RoadPrice {
+  costPerTile: number;
+  upkeepPerTile: number;
+  unlockMilestone: number;
+}
+
+/**
+ * A road's price: the price of its size, plus what each reserved lane adds.
+ *
+ * The size is the road — a four-lane street with a bus lane is a four-lane
+ * street that costs a little more, not a different road that costs whatever
+ * that other road cost. A reserved lane also carries its own milestone, so a
+ * city cannot lay tram track before it could have laid a tramway.
+ */
+export function roadPriceOf(sizeSpec: RoadSpec, profile: RoadProfile): RoadPrice {
+  const lanes = transitLanesOf(profile);
+  let costPerTile = sizeSpec.costPerTile;
+  let upkeepPerTile = sizeSpec.upkeepPerTile;
+  let unlockMilestone = sizeSpec.unlockMilestone;
+  for (const kind of ['bus', 'bike', 'tram'] as const) {
+    const n = lanes[kind];
+    if (n === 0) continue;
+    const price = TRANSIT_LANE_PRICE[kind];
+    costPerTile += price.cost * n;
+    upkeepPerTile += price.upkeep * n;
+    unlockMilestone = Math.max(unlockMilestone, price.unlockMilestone);
+  }
+  // Money is whole and upkeep is read to one decimal; carrying the float noise
+  // would show a road costing 27.999999999999996.
+  return {
+    costPerTile: Math.round(costPerTile),
+    upkeepPerTile: Math.round(upkeepPerTile * 100) / 100,
+    unlockMilestone,
+  };
 }
 
 /** The preset profile a tier is shorthand for. Every tier has one. */
