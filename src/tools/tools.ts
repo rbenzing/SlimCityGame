@@ -41,6 +41,7 @@ import {
   withArticle,
   presetProfileForTier,
   profilesEqual,
+  profileWidth,
   tierForProfile,
   tilesAcross,
   type ProfileEdits,
@@ -56,6 +57,13 @@ export interface ToolPreview extends CursorChip {
   tiles: TilePoint[];
   valid: boolean;
   label: string;
+  /**
+   * The road's cross-section width in metres, so the ghost can be drawn at the
+   * size the road will actually be rather than at tile size. A corridor is two
+   * carriageways on two tile rows and each row carries half, which is where
+   * the split is made. Absent for every tool that is not laying a road.
+   */
+  widthMeters?: number;
 }
 
 /** Zone tool paint mode (tool-options row): brush follows the
@@ -825,6 +833,11 @@ export class ToolManager {
             : meet !== null
               ? { valid: false, invalidReason: meet }
               : evaluated;
+      // What the ghost is drawn at: the composed section's own width, halved
+      // for a corridor because each of its two tile rows carries one
+      // carriageway and corridorHalfProfile splits it exactly down the middle.
+      const previewProfile = build.profile ?? presetProfileForTier(build.tier);
+      const sectionWidth = profileWidth(previewProfile);
       this.env.onPreview({
         tiles,
         valid,
@@ -833,6 +846,7 @@ export class ToolManager {
         // The road is as long as the drag, not as long as both its
         // carriageways added together.
         lengthMeters: path.length * TILE_METERS,
+        widthMeters: corridor.runs ? sectionWidth / 2 : sectionWidth,
         invalidReason,
       });
     } else if (tool in ZONE_TOOL_TO_TYPE) {

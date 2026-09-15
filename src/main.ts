@@ -861,6 +861,24 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // Audio can only be judged in a real browser (jsdom has no WebAudio and
       // no playback), so tools/audio-check.mjs drives it through here.
       (hook as Record<string, unknown>).audio = { engine: audio, music };
+      // The placement ghost's own extent in world metres, so a screenshot
+      // script can MEASURE the road width a preview is promising rather than
+      // judge it by eye. Null whenever nothing is previewed.
+      (hook as Record<string, unknown>).ghostBounds = (): {
+        minX: number;
+        maxX: number;
+        minZ: number;
+        maxZ: number;
+      } | null => {
+        const base = ghosts.layers().base;
+        const geometry = base.geometry;
+        const position = geometry.getAttribute('position');
+        if (!position || position.count === 0) return null;
+        geometry.computeBoundingBox();
+        const box = geometry.boundingBox;
+        if (!box) return null;
+        return { minX: box.min.x, maxX: box.max.x, minZ: box.min.z, maxZ: box.max.z };
+      };
     }
   }
 
@@ -927,6 +945,13 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         if (previewTier !== undefined && isDirectionalTier(previewTier)) {
           opts = { ...opts, flowArrows: true };
         }
+        // The ghost is drawn at the road's real width, so a wider road reads
+        // as wider before it is laid rather than after — which is the only
+        // warning a player gets when replacing a street with something twice
+        // its size.
+        if (preview.widthMeters !== undefined) {
+          opts = { ...opts, roadWidthMeters: preview.widthMeters };
+        }
         if (tool.startsWith('plop.') && preview.tiles.length > 0) {
           const entry = catalogById.get(tool.slice('plop.'.length));
           if (entry) {
@@ -965,7 +990,13 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // store; geometric overlap from the client grid mirror, plop tools only
     // (roads may overlap roads to upgrade, bulldoze/zones overlap by design).
     funds: () => store.getState().stats.funds,
-    milestoneLevel: () => store.getState().stats.milestoneLevel,
+    // With everything unlocked the worker builds whatever is asked for, so a
+    // preview reading "Locked" is the preview lying about what the click will
+    // do. The sandbox setting has to reach both sides of that judgement.
+    milestoneLevel: () =>
+      store.getState().settings.sandboxUnlockAll
+        ? Number.POSITIVE_INFINITY
+        : store.getState().stats.milestoneLevel,
     canPlace: (tiles) =>
       store.getState().selectedTool.startsWith('plop.') ? clientGrid.isFreeForPlop(tiles) : true,
     // Terraform hooks: the Level tool's drag-start height sample (tile

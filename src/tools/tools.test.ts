@@ -1016,6 +1016,40 @@ describe('CursorChip payload (UI-SPEC §6)', () => {
     expect(previews.at(-1)?.lengthMeters).toBe(4 * TILE_METERS);
   });
 
+  it('road previews carry the section width, so the ghost is drawn at the road’s real size', () => {
+    const { env, previews } = makeEnv();
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(3, 0, 0);
+    // A two-lane street: two 3.75 m lanes and two 1.875 m footways.
+    expect(previews.at(-1)?.widthMeters).toBeCloseTo(11.25, 6);
+
+    // A wider road reads wider BEFORE it is laid — which is the only warning
+    // a player gets that replacing what is there will reach past it.
+    tm.setTool('road.avenue');
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(3, 0, 0);
+    const avenue = previews.at(-1)?.widthMeters ?? 0;
+    expect(avenue).toBeGreaterThan(11.25);
+  });
+
+  it('halves the width across a corridor, since each row carries one carriageway', () => {
+    const { env, previews } = makeEnv();
+    env.profileIdFor = () => 12;
+    const tm = new ToolManager(env);
+    tm.setTool('road.avenue');
+    // Six 3.6 m lanes, a 1.2 m median and two 1.875 m footways: 26.55 m, too
+    // wide for a 20 m tile, so it is laid as two carriageways on two rows —
+    // and the ghost on each row is one of them, not the pair added together.
+    tm.setProfileEdits({ ...NO_EDITS, lanes: 3 });
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(0, 4, 0);
+    const preview = previews.at(-1)!;
+    expect(preview.tiles).toHaveLength(10); // five a side, two sides
+    expect(preview.widthMeters).toBeCloseTo(26.55 / 2, 5);
+  });
+
   it('non-road previews never carry lengthMeters', () => {
     const { env, previews } = makeEnv();
     const tm = new ToolManager(env);

@@ -352,6 +352,16 @@ active:
   shows as a bright green cell fill with darker borders; de-zoning shows
   grey. The crisp outer-border treatment on top of this ghost is a
   cross-cutting rule — see [`interaction.md`](interaction.md).
+- **A road ghost is drawn at the road's own width**, not the tile's, because
+  the width is what the player is choosing and every road would otherwise
+  preview identically: a neighbourhood street reads as the 11 m it is inside
+  its 20 m tile, and an avenue nearly fills that tile. Replacing one with the
+  other is where it earns its keep — the ghost is what says beforehand that
+  the new road is twice the street it is going over. A section too wide for a
+  tile is laid as two carriageways on two rows of tiles, and the ghost shows
+  both, so the extra ground a corridor claims is visible before it is taken.
+  The tile frame is still drawn around the tiles themselves, so which tiles
+  are claimed and how much of them the road covers are both readable at once.
 - **Cursor chips**: a small DOM chip stack follows the pointer (see
   [`interaction.md`](interaction.md) for what it shows).
 - **Zoning grid visualization**: while a zone tool is active, every
