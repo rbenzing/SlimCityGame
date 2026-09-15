@@ -167,6 +167,24 @@ widths; every other variant rearranges the core, and rearranging re-sizes the
 lanes to the class default, which is how a median or a reservation finds the
 room it needs.
 
+**A reserved lane counts against the class's lane range**, which is the second
+gate and the one that decides what a SMALL street may carry. A local street is
+built for two or three lanes, so it takes a bus lane on one side and is refused
+two — two reserved plus two general is a four-lane road, which is a different
+class of street, and the refusal says so rather than laying it anyway. The same
+rule is what makes a narrow street run its tram in the lane: a twin-track
+reservation is two more lanes, so the reservation is offered from the town
+street up while the small street gets mixed running. Neither rule is asserted
+anywhere; both fall out of the lane range the class is built to.
+
+**The composer holds to the same table the tool reads.** A class admits a list
+of lane pieces, and a piece outside that list is clamped away when the profile
+is composed rather than built and then refused — otherwise the Profile row
+offers a road the game will not lay, and no amount of dialling gets the player
+out of it. So the variants a size is offered are exactly the variants it can
+be laid as, and the only refusals left are the two a player can act on: too
+wide for the tile, or more lanes than the class runs.
+
 ## Stored direction and one-way roads
 
 Every road tile carries a flow byte: three bits for the cardinal the drag

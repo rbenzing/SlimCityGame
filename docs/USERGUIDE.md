@@ -41,7 +41,14 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   road runs — a motorway comes in 2, 4, 6 or 8, a town street 2 or 4, an
   arterial 4 or 6 — put a median or a two-way turn lane down the middle, post
   a speed inside the range its class allows, add a parking lane or a bike lane
-  to either kerb, or drop the footways. A neighbourhood street runs two lanes
+  to either kerb, reserve a bus lane, run a tramway, or drop the footways.
+  **A bus lane and a tramway are options on a road, not roads of their own** —
+  there is no "Bus Lane" or "Tram Track" to pick from the list any more. Give a
+  neighbourhood street a bus lane on one side, put a tramway down the middle of
+  an avenue, or run a motorway's reserved lane up the inside where an express
+  lane goes. A reserved lane is a lane, so it counts: a small street takes one
+  bus lane and is refused two, and a town street trades general lanes away to
+  make room for a twin-track tram reservation. A neighbourhood street runs two lanes
   and is offered no count at all, since two is what it is; the third lane it
   can have is the turn lane down the middle. Each control offers only what
   that road allows — a count a road is never built in is never on the row —
@@ -177,8 +184,9 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   People walk further to a train than to a bus stop and a train carries more of
   them, so a rail line serving a busy district takes real traffic off the
   streets around its stations. Your lines are saved with the city now.
-  **Trams** sit between the two: lay tram track — it is still a street, so cars
-  keep using it — and draw a **Tram Line** along it. A tram needs no station and
+  **Trams** sit between the two: give a street a tramway from the road tool's
+  options row — it is still a street, so cars keep using it — and draw a
+  **Tram Line** along it. A tram needs no station and
   takes no land; its stops get a shelter like a bus stop's. It only runs where
   the track goes, so a break in the track breaks the line even though a car
   could drive around it, and it relieves the very streets it runs down.

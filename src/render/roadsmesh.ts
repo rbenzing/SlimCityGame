@@ -1512,6 +1512,8 @@ function emitColoredLaneBands(
       }
       continue;
     }
+    // A tram lane is not painted — it carries rails, laid with the track.
+    if (band.kind === 'tram') continue;
     const paint = band.kind === 'bus' ? BUS_LANE_PAINT_COLOR : BIKE_LANE_PAINT_COLOR;
     rect(lo, hi, band.from, band.to, paint, LANE_TINT_Y_OFFSET);
     if (glyphHere) {
@@ -1539,6 +1541,7 @@ function emitTramTrack(
   lo: number,
   hi: number,
   hAt: (x: number, z: number) => number,
+  across = 0,
 ): void {
   // rect in (along, across) space -> world, mapping the perpendicular axis.
   const rect = (
@@ -1567,15 +1570,15 @@ function emitTramTrack(
     rect(
       a - TRAM_SLEEPER_HALF_W_M,
       a + TRAM_SLEEPER_HALF_W_M,
-      -TRAM_SLEEPER_HALF_LEN_M,
-      TRAM_SLEEPER_HALF_LEN_M,
+      across - TRAM_SLEEPER_HALF_LEN_M,
+      across + TRAM_SLEEPER_HALF_LEN_M,
       TRAM_SLEEPER_Y_OFFSET,
       TRAM_SLEEPER_COLOR,
     );
   }
 
   // Two continuous rails on top.
-  for (const off of [TRAM_GAUGE_HALF_M, -TRAM_GAUGE_HALF_M]) {
+  for (const off of [across + TRAM_GAUGE_HALF_M, across - TRAM_GAUGE_HALF_M]) {
     rect(
       lo,
       hi,
@@ -3981,16 +3984,27 @@ export function roadTileVertices(
   // sleepers down the centre of a straight run. Emitted OUTSIDE the `spec.paved`
   // gate below so it also fires for RailTrack (paved: false); junctions/turns
   // break the track, matching the R2 colored bands.
-  if ((tier === RoadTier.Tram || tier === RoadTier.RailTrack) && !isJunction && !isTurn) {
-    if (hasVertical) {
-      const zLo = hasN ? -TILE_HALF : -coreHalf;
-      const zHi = hasS ? TILE_HALF : coreHalf;
-      emitTramTrack(positions, colors, centerX, centerZ, true, zLo, zHi, hAt);
-    }
-    if (hasHorizontal) {
-      const xLo = hasW ? -TILE_HALF : -coreHalf;
-      const xHi = hasE ? TILE_HALF : coreHalf;
-      emitTramTrack(positions, colors, centerX, centerZ, false, xLo, xHi, hAt);
+  // A tramway's rails follow the lanes that carry them: the plan's tram bands
+  // say where those are, so a twin-track reservation gets two tracks at its
+  // own offsets and mixed running gets one in each shared lane. A railway has
+  // no lane pieces to read — it is a track, not a street — so it keeps its
+  // single track down the tile centreline.
+  const tramAt =
+    tier === RoadTier.RailTrack
+      ? [0]
+      : plan.bands.filter((b) => b.kind === 'tram').map((b) => (b.from + b.to) / 2);
+  if (tramAt.length > 0 && !isJunction && !isTurn) {
+    for (const across of tramAt) {
+      if (hasVertical) {
+        const zLo = hasN ? -TILE_HALF : -coreHalf;
+        const zHi = hasS ? TILE_HALF : coreHalf;
+        emitTramTrack(positions, colors, centerX, centerZ, true, zLo, zHi, hAt, across);
+      }
+      if (hasHorizontal) {
+        const xLo = hasW ? -TILE_HALF : -coreHalf;
+        const xHi = hasE ? TILE_HALF : coreHalf;
+        emitTramTrack(positions, colors, centerX, centerZ, false, xLo, xHi, hAt, across);
+      }
     }
   }
 

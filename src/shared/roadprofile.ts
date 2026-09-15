@@ -1081,14 +1081,23 @@ function rebuildCore(
  */
 export function composeProfile(base: RoadProfile, edits: ProfileEdits): RoadProfile {
   const current = editsOf(base);
-  const parking = edits.parking ?? current.parking;
-  const bike = edits.bike ?? current.bike;
+  // Every piece a class does not carry is clamped away here, on the same table
+  // the tool reads to decide what to offer. The two have to agree: a road the
+  // composer builds out of pieces its class refuses is one the game will not
+  // lay, and no amount of dialling gets the player out of it.
+  const admits = new Set(roadClass(base.class).admits);
+  const forKind = <T extends string>(kind: LanePieceKind, choice: T, none: T): T =>
+    admits.has(kind) ? choice : none;
+  const parking = forKind('parking', edits.parking ?? current.parking, 'none');
+  const bike = forKind('bike', edits.bike ?? current.bike, 'none');
   const footways = edits.footways ?? current.footways;
   const lanes = edits.lanes ?? current.lanes;
   const lanesBack = edits.lanesBack ?? edits.lanes ?? current.lanesBack;
   const middle = edits.middle ?? current.middle;
-  const bus = edits.bus ?? current.bus;
-  const tram = edits.tram ?? current.tram;
+  const bus = forKind('bus', edits.bus ?? current.bus, 'none');
+  // A tramway is clamped whichever way it runs: rails down a motorway's
+  // running lane are no more a thing than a tram reservation on it.
+  const tram = forKind('tram', edits.tram ?? current.tram, 'none');
 
   const first = base.pieces.findIndex((p) => CORE_KINDS.has(p.kind));
   const lastFromEnd = [...base.pieces].reverse().findIndex((p) => CORE_KINDS.has(p.kind));

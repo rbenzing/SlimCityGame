@@ -330,6 +330,66 @@ describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
     expect(countWhere(colors, isMarkingWhite)).toBe(2 * 6);
   });
 
+  it('lays the rails down the lanes that carry them, not down the middle of the road', () => {
+    // A tramway's rails belong to a lane, so where the lane is decides where
+    // they go: a reservation of two tracks gets two, at its own offsets, and
+    // mixed running gets one in each lane it shares with the traffic. Drawing
+    // one track down the tile centreline is right only by coincidence, on the
+    // one road whose tram lanes happen to straddle it.
+    const railCentres = (profile: RoadProfile): number[] => {
+      const { positions, colors } = roadTileVertices(
+        0,
+        0,
+        RoadTier.Tram,
+        N | S,
+        flatHeightAt,
+        undefined,
+        profile,
+      );
+      // Positions are world metres; tile (0,0) is centred half a tile in.
+      const centre = TILE_METERS / 2;
+      const xs = new Set<number>();
+      for (let i = 0; i < colors.length; i += 3) {
+        if (!isRail([colors[i]!, colors[i + 1]!, colors[i + 2]!])) continue;
+        xs.add(Math.round((positions[i]! - centre) * 100) / 100);
+      }
+      // A rail is a ribbon, so its two edges straddle the rail's own line.
+      const sorted = [...xs].sort((a, b) => a - b);
+      const centres: number[] = [];
+      for (let i = 0; i + 1 < sorted.length; i += 2)
+        centres.push(Math.round(((sorted[i]! + sorted[i + 1]!) / 2) * 100) / 100);
+      return centres;
+    };
+
+    // A reservation: two 3.5 m tram lanes either side of the centreline, so
+    // their centres sit at ±1.75 and each carries a 1.5 m-gauge track — four
+    // rails in all, at ±1.0 and ±2.5.
+    const reserved: RoadProfile = {
+      class: 'arterial',
+      kerbs: true,
+      pieces: [
+        { kind: 'travel', width: 3.6, flow: 'back' },
+        { kind: 'tram', width: 3.5 },
+        { kind: 'tram', width: 3.5 },
+        { kind: 'travel', width: 3.6, flow: 'fwd' },
+      ],
+    };
+    expect(railCentres(reserved)).toEqual([-2.5, -1, 1, 2.5]);
+
+    // Mixed running on a two-lane street: a track in each 3.5 m lane, whose
+    // centres are at ±1.75 — the same four rails, and nothing on the road's
+    // own centreline, where the two directions actually meet.
+    const mixed: RoadProfile = {
+      class: 'local',
+      kerbs: true,
+      pieces: [
+        { kind: 'travel', width: 3.5, flow: 'back', tram: true },
+        { kind: 'travel', width: 3.5, flow: 'fwd', tram: true },
+      ],
+    };
+    expect(railCentres(mixed)).toEqual([-2.5, -1, 1, 2.5]);
+  });
+
   it('breaks the track at junctions (rails stop at crossings)', () => {
     const straight = roadTileVertices(0, 0, RoadTier.Tram, N | S, flatHeightAt);
     const junction = roadTileVertices(0, 0, RoadTier.Tram, N | E | S | W, flatHeightAt);

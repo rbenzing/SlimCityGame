@@ -71,7 +71,7 @@ describe('subTabsFor', () => {
     // a neighbourhood street tops out at four lanes, a town street at six, a
     // motorway at eight.
     const tabs = subTabsFor('roads');
-    expect(tabs.map((t) => t.label)).toEqual(['Small', 'Medium', 'Highway', 'Transit']);
+    expect(tabs.map((t) => t.label)).toEqual(['Small', 'Medium', 'Highway', 'Rail']);
     expect(tabs.find((t) => t.id === 'small')?.cards.map((c) => c.id)).toEqual([
       'road.gravel',
       'road.alley',
@@ -86,34 +86,20 @@ describe('subTabsFor', () => {
       'road.highway',
       'road.ramp',
     ]);
-    expect(tabs.find((t) => t.id === 'transit')?.cards.map((c) => c.id)).toEqual([
-      'road.bike',
-      'road.bus',
-      'road.tram',
-      'road.rail',
-    ]);
+    expect(tabs.find((t) => t.id === 'rail')?.cards.map((c) => c.id)).toEqual(['road.rail']);
   });
 
-  it('the roads-epic transit cards carry their roads.json costs + unlock milestones', () => {
+  it('offers no bus, bike or tram tool — those are lanes, not roads of their own', () => {
+    // They are composed onto a road of any size from the Profile row instead,
+    // so a card for each would be a second way to say the same thing.
+    const ids = subTabsFor('roads').flatMap((t) => t.cards.map((c) => c.id));
+    expect(ids).not.toContain('road.bus');
+    expect(ids).not.toContain('road.bike');
+    expect(ids).not.toContain('road.tram');
+  });
+
+  it('the rail card carries its roads.json cost + unlock milestone', () => {
     const cards = subTabsFor('roads').flatMap((t) => t.cards);
-    expect(cards.find((c) => c.id === 'road.bus')).toEqual({
-      id: 'road.bus',
-      name: 'Bus Lane',
-      cost: 55,
-      unlockMilestone: 2,
-    });
-    expect(cards.find((c) => c.id === 'road.bike')).toEqual({
-      id: 'road.bike',
-      name: 'Bike Lane',
-      cost: 28,
-      unlockMilestone: 1,
-    });
-    expect(cards.find((c) => c.id === 'road.tram')).toEqual({
-      id: 'road.tram',
-      name: 'Tram Track',
-      cost: 70,
-      unlockMilestone: 3,
-    });
     expect(cards.find((c) => c.id === 'road.rail')).toEqual({
       id: 'road.rail',
       name: 'Rail Track',

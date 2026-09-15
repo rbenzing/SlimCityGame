@@ -20,6 +20,7 @@ import {
   withArticle,
   type MiddleChoice,
   type SideChoice,
+  type TramChoice,
 } from '../shared/roadprofile';
 import { ROAD_TOOL_TO_TIER } from '../tools/tools';
 import type { ToolMode } from './store';
@@ -57,6 +58,12 @@ const MIDDLE_CHOICES: readonly {
   { value: 'turn', label: 'Turn lane', piece: 'centreTurn' },
 ];
 
+const TRAM_CHOICES: readonly { value: TramChoice; label: string; title: string }[] = [
+  { value: 'none', label: 'None', title: 'No tramway' },
+  { value: 'mixed', label: 'Mixed', title: 'Rails in the traffic lanes — trams share them' },
+  { value: 'reserved', label: 'Reserved', title: 'Two tracks of its own down the middle' },
+];
+
 /** Posted speeds move in the steps a speed limit sign is written in. */
 const SPEED_STEP_KMH = 5;
 
@@ -80,6 +87,8 @@ function ProfileGroup(): JSX.Element | null {
   const admits = new Set(cls.admits);
   const offersParking = admits.has('parking');
   const offersBike = admits.has('bike');
+  const offersBus = admits.has('bus');
+  const offersTram = admits.has('tram');
   const offersFootways = admits.has('sidewalk');
 
   const composed = composeProfile(base, edits);
@@ -107,6 +116,8 @@ function ProfileGroup(): JSX.Element | null {
   if (
     !offersParking &&
     !offersBike &&
+    !offersBus &&
+    !offersTram &&
     !offersFootways &&
     !offersLanes &&
     !offersMiddle &&
@@ -131,7 +142,11 @@ function ProfileGroup(): JSX.Element | null {
   const setSpeed = (kmh: number): void =>
     setEdits({ postedKmh: Math.min(cls.postedKmh.max, Math.max(cls.postedKmh.min, kmh)) });
 
-  const sideRow = (label: string, key: 'parking' | 'bike', value: SideChoice): JSX.Element => (
+  const sideRow = (
+    label: string,
+    key: 'parking' | 'bike' | 'bus',
+    value: SideChoice,
+  ): JSX.Element => (
     <Group label={label}>
       <div className="flex gap-1" role="group" aria-label={`${label} lanes`}>
         {SIDE_CHOICES.map((choice) => (
@@ -219,6 +234,25 @@ function ProfileGroup(): JSX.Element | null {
       ) : null}
       {offersParking ? sideRow('Parking', 'parking', current.parking ?? 'none') : null}
       {offersBike ? sideRow('Bike', 'bike', current.bike ?? 'none') : null}
+      {offersBus ? sideRow('Bus', 'bus', current.bus ?? 'none') : null}
+      {offersTram ? (
+        <Group label="Tram">
+          <div className="flex gap-1" role="group" aria-label="Tramway">
+            {TRAM_CHOICES.map((choice) => (
+              <button
+                key={choice.value}
+                type="button"
+                title={choice.title}
+                aria-pressed={current.tram === choice.value}
+                onClick={() => setEdits({ tram: choice.value })}
+                className={`${CHIP} ${current.tram === choice.value ? CHIP_ON : CHIP_OFF}`}
+              >
+                {choice.label}
+              </button>
+            ))}
+          </div>
+        </Group>
+      ) : null}
       {offersFootways ? (
         <Group label="Footways">
           <button

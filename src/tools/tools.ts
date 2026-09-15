@@ -158,11 +158,9 @@ export const ROAD_TOOL_TO_TIER: Record<string, RoadTier> = {
   'road.alley': RoadTierValue.Alley,
   'road.oneway': RoadTierValue.OneWay,
   'road.four': RoadTierValue.FourLane,
-  // Transit lane variants (roads epic R2).
-  'road.bus': RoadTierValue.BusLane,
-  'road.bike': RoadTierValue.BikeLane,
-  // Tram track (roads epic R3).
-  'road.tram': RoadTierValue.Tram,
+  // No bus, bike or tram tool: those are lanes a road of any size is given
+  // from the Profile row, not roads of their own. Their tiers still exist in
+  // the catalog, so a save holding one loads and lays the road it drew.
   // Rail track (roads epic R4).
   'road.rail': RoadTierValue.RailTrack,
   // The slip road a motorway is reached by (roads epic wave 5).

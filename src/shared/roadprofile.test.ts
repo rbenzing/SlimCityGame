@@ -67,6 +67,7 @@ import {
   isOneWayProfile,
   withCentreTurn,
   withTurnPocket,
+  type ProfileEdits,
 } from './roadprofile';
 import type { LanePiece, RoadClassId, RoadProfile, RoadSpec } from './types';
 import { RoadTier } from './types';
@@ -536,6 +537,79 @@ describe('composing a profile from a preset and the player’s edits', () => {
         // which is what stops a variant drifting every time it is touched.
         expect(profilesEqual(composeProfile(made, NO_EDITS), made)).toBe(true);
       }
+    });
+
+    it('never composes a road its own class will not carry', () => {
+      // Composition and the class table are two statements about the same
+      // road, and they have to agree: a variant the Profile row can build has
+      // to be one the game will lay. "Too wide" and "runs N lanes" are honest
+      // refusals a player acts on by trading lanes away; "doesn't carry that"
+      // means the composer built a piece the class was never told about, and
+      // no amount of dialling gets the player out of it.
+      const variants: Partial<ProfileEdits>[] = [
+        { bus: 'left' },
+        { bus: 'right' },
+        { bus: 'both' },
+        { tram: 'mixed' },
+        { tram: 'reserved' },
+        { parking: 'both' },
+        { bike: 'both' },
+      ];
+      for (const spec of ROAD_PRESETS) {
+        const base = presetProfileForTier(spec.tier);
+        for (const variant of variants) {
+          const made = composeProfile(base, { ...NO_EDITS, ...variant });
+          expect(
+            admitsAllPieces(made),
+            `${spec.name} + ${JSON.stringify(variant)} -> ${layRefusal(made)}`,
+          ).toBe(true);
+        }
+      }
+    });
+
+    it('keeps the retired presets loadable, so a save still holds the road it drew', () => {
+      // The bus, bike and tram roads are no longer offered as road types of
+      // their own, but a saved grid stores a raw tier byte per tile — so every
+      // city built before still has 8s, 9s and 10s in it, and each one has to
+      // resolve to the same road it always was.
+      for (const tier of [RoadTier.BusLane, RoadTier.BikeLane, RoadTier.Tram]) {
+        const spec = ROAD_PRESETS.find((s) => s.tier === tier);
+        expect(spec, `tier ${tier} has no catalog entry`).toBeDefined();
+        const profile = presetProfileForTier(tier);
+        expect(profile.pieces.length).toBeGreaterThan(0);
+        expect(layRefusal(profile)).toBeNull();
+        expect(tierForProfile(profile)).toBe(tier);
+      }
+      // And they still read back as the composition that now makes them, which
+      // is what lets a player edit an old road with the new controls.
+      expect(editsOf(presetProfileForTier(RoadTier.BusLane))).toMatchObject({ bus: 'both' });
+      expect(editsOf(presetProfileForTier(RoadTier.Tram))).toMatchObject({ tram: 'mixed' });
+      expect(editsOf(presetProfileForTier(RoadTier.BikeLane))).toMatchObject({ bike: 'both' });
+    });
+
+    it('lets a small street take one bus lane, and says why it cannot take two', () => {
+      // A reserved lane counts against the class's lane range like any other,
+      // so a street built for two or three lanes carries a bus lane on ONE
+      // side. Two makes it a four-lane road, which is a different class of
+      // street — and the refusal says so rather than laying it anyway.
+      const small = presetProfileForTier(RoadTier.TwoLane);
+      const oneSide = composeProfile(small, { ...NO_EDITS, bus: 'right' });
+      expect(layRefusal(oneSide)).toBeNull();
+      expect(laneCount(oneSide)).toBe(3);
+
+      const bothSides = composeProfile(small, { ...NO_EDITS, bus: 'both' });
+      expect(laneCount(bothSides)).toBe(4);
+      expect(layRefusal(bothSides)).toBe('A local street runs 2 to 3 lanes');
+    });
+
+    it('runs a small street’s tram in the lane, since a reservation makes it a bigger road', () => {
+      // Which is the rule the road guides give for a narrow street, arrived at
+      // by the width rather than asserted: the rails share the running lane.
+      const small = presetProfileForTier(RoadTier.TwoLane);
+      expect(layRefusal(composeProfile(small, { ...NO_EDITS, tram: 'mixed' }))).toBeNull();
+      expect(layRefusal(composeProfile(small, { ...NO_EDITS, tram: 'reserved' }))).toBe(
+        'A local street runs 2 to 3 lanes',
+      );
     });
   });
 

@@ -45,7 +45,7 @@
       "carriesWater": true,
       "surface": "paved",
       "kerbReturnM": 4.5,
-      "admits": ["travel", "centreTurn", "parking", "bike", "sidewalk", "verge"],
+      "admits": ["travel", "centreTurn", "parking", "bike", "bus", "tram", "sidewalk", "verge"],
       "lanes": { "min": 2, "max": 3 }
     },
     {
@@ -137,7 +137,7 @@
       "carriesWater": false,
       "surface": "paved",
       "kerbReturnM": 12.0,
-      "admits": ["travel", "shoulder", "barrier", "median"],
+      "admits": ["travel", "bus", "shoulder", "barrier", "median"],
       "lanes": { "min": 2, "max": 8 }
     },
     {
