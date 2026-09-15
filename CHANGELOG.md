@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.7.0...slimcity-v1.8.0) (2026-09-15)
+
+
+### Features
+
+* **roads:** a bus lane and a tramway are options on a road, not road… ([a54352f](https://github.com/rbenzing/SlimCityGame/commit/a54352fb5032efd4b8171fc027b80c4d20d3e993))
+* **roads:** a bus lane and a tramway are options on a road, not roads of their own ([f4b856d](https://github.com/rbenzing/SlimCityGame/commit/f4b856ddc68f3df0570bd58d6abd2f8f6aa4727f))
+
 ## [1.7.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.6.1...slimcity-v1.7.0) (2026-09-15)
 
 
