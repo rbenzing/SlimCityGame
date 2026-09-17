@@ -864,6 +864,13 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // The placement ghost's own extent in world metres, so a screenshot
       // script can MEASURE the road width a preview is promising rather than
       // judge it by eye. Null whenever nothing is previewed.
+      // The rendered ground height at any world point — the interpolated
+      // surface a player sees, not the per-tile figure the grid stores. A road
+      // deck is flat across its tile while the terrain quad under it is not,
+      // so comparing the two is the only way to measure ground standing proud
+      // of a road rather than judging it from a screenshot.
+      (hook as Record<string, unknown>).terrainHeightAt = (x: number, z: number): number =>
+        heightAt(x, z);
       (hook as Record<string, unknown>).ghostBounds = (): {
         minX: number;
         maxX: number;
