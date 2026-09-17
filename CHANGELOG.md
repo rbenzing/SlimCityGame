@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.9.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.8.0...slimcity-v1.9.0) (2026-09-17)
+
+
+### Features
+
+* **roads:** a Guide chip pulls a drag into line with the road it nearly continues ([3f0b799](https://github.com/rbenzing/SlimCityGame/commit/3f0b7992b25f6ee251a8361b12f8ebf5df8b36e0))
+* **roads:** a road's tier is its size, and a reserved lane is priced on top ([8845bdd](https://github.com/rbenzing/SlimCityGame/commit/8845bdd71225b9c300c34eaefb0907e183d4a368))
+* **roads:** Grid mode lays the street grid a drag encloses ([1404c00](https://github.com/rbenzing/SlimCityGame/commit/1404c0011c438f00467aeff5b861c8868424c7f5))
+* **ux:** the road ghost is drawn at the road's own width, not the tile's ([050c53f](https://github.com/rbenzing/SlimCityGame/commit/050c53f4c1cbcb752d372e529a091efad07ec7c3))
+
+
+### Bug Fixes
+
+* **tools:** measure the road SURFACE, not a stored height — and retract the finding ([4621ed0](https://github.com/rbenzing/SlimCityGame/commit/4621ed0492eb260fafb9f1e5ae7a3827afb754e9))
+
 ## [1.8.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.7.0...slimcity-v1.8.0) (2026-09-15)
 
 
