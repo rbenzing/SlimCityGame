@@ -18,6 +18,9 @@ import { tileCamera } from './shotcam.mjs';
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
 const out = process.argv[3] ?? 'tools/shots-roadclip';
+/** `junctions` runs only the junction sweep — no refused runs, so no toasts. */
+const only = process.argv[4] ?? 'all';
+const runs = (what) => only === 'all' || only === what;
 mkdirSync(out, { recursive: true });
 
 const TILE_M = 20;
@@ -118,7 +121,7 @@ for (const band of BANDS)
 // steepest grade is exactly where this has to be tested. So build one: a
 // staircase of raised ground climbing toward ROAD_MAX_SLOPE per tile, well
 // clear of everything else, and use it as the steep band.
-if ((sites.get('steep') ?? []).length === 0) {
+if (runs('grades') && (sites.get('steep') ?? []).length === 0) {
   const RX = 60;
   const RZ = N - 60;
   const lanes = TIERS.length * ELEVATIONS.length;
@@ -168,21 +171,20 @@ const worstIntrusion = async (tiles) =>
     ([ts, tile]) => {
       const hook = window.__slimcity;
       let worst = { m: -Infinity, at: null };
-      const SAMPLES = 9;
+      const SAMPLES = 13;
       for (const t of ts) {
-        // The tile's OWN carriageway, asked of the tile. A fixed width would
-        // put the outer samples on the verge beside a narrow road, where
-        // ground above the surface is a hillside and not a defect.
-        const section = hook.readApproach(t.x, t.z);
-        if (!section || !(section.width > 0)) continue;
-        const half = section.width / 2 - 0.5; // inside the kerb, not on it
-        if (half <= 0) continue;
+        // The whole tile is sampled and the ROAD SURFACE masks it: the reader
+        // returns null wherever no road covers a point, so only actual
+        // pavement is compared and the verge beside it — where ground above
+        // the road is a hillside, not a defect — is excluded by construction.
+        // It is also the only mask that works at a junction or a turn, where
+        // the pavement is not a band of any fixed width.
         const cx = (t.x + 0.5) * tile;
         const cz = (t.z + 0.5) * tile;
-        const x0 = cx - tile / 2 + 1;
-        const x1 = cx + tile / 2 - 1;
-        const z0 = cz - half;
-        const z1 = cz + half;
+        const x0 = cx - tile / 2;
+        const x1 = cx + tile / 2;
+        const z0 = cz - tile / 2;
+        const z1 = cz + tile / 2;
         // Both surfaces at the same points: the road as the GPU has it, and
         // the ground as it is rendered. Anything else compares a surface
         // against a number and measures how much a tile's ground varies.
@@ -206,7 +208,7 @@ const worstIntrusion = async (tiles) =>
 const findings = [];
 const tally = {};
 let worstOverall = { m: -Infinity, label: null, at: null };
-for (const band of BANDS) {
+for (const band of runs('grades') ? BANDS : []) {
   const pool = [...(sites.get(band.name) ?? [])];
   if (pool.length === 0) {
     console.log(`no ${band.name} sites; that band is untested`);
@@ -250,7 +252,7 @@ for (const band of BANDS) {
 // meet it — so it is where ground standing through a road is actually possible.
 // ---------------------------------------------------------------------------
 const shorelines = [];
-for (let z = 30; z < N - 30 && shorelines.length < 12; z += 2) {
+for (let z = 30; runs('bridges') && z < N - 30 && shorelines.length < 12; z += 2) {
   for (let x = 30; x < N - 40; x += 2) {
     // A run that starts on land, crosses water, and comes back to land.
     let wet = 0;
@@ -281,8 +283,83 @@ for (const site of shorelines) {
 console.log(`bridges built: ${bridgeLaid}`);
 if (bridgeLaid === 0) console.log('!! no bridge was built — the bridge case proves nothing');
 
-console.log('\nruns actually built, by grade band:');
-for (const band of BANDS) {
+// ---------------------------------------------------------------------------
+// Junctions, tees and turns, including mixed-class ones. Every run above is
+// straight, and a straight run is the one shape the geometry is simplest on:
+// a junction box, a kerb return and a turn's arc are all built differently and
+// none of them was covered.
+// ---------------------------------------------------------------------------
+const TOPOLOGIES = [
+  { name: 'crossroads', arms: [0, 1, 2, 3] },
+  { name: 'tee', arms: [0, 1, 2] },
+  { name: 'turn', arms: [0, 1] },
+];
+const ARM = [
+  [1, 0],
+  [0, 1],
+  [-1, 0],
+  [0, -1],
+];
+const junctionSites = [];
+for (let z = 40; z < N - 40 && junctionSites.length < 40; z += 5) {
+  for (let x = 40; x < N - 40; x += 5) {
+    let ok = true;
+    for (let dz = -7; dz <= 7 && ok; dz++)
+      for (let dx = -7; dx <= 7 && ok; dx++) {
+        const i = idx(x + dx, z + dz);
+        if (g0.water[i] || g0.roadTier[i] !== 0) ok = false;
+      }
+    if (!ok) continue;
+    if (junctionSites.some((s) => Math.abs(s.x - x) < 18 && Math.abs(s.z - z) < 18)) continue;
+    junctionSites.push({ x, z });
+  }
+}
+console.log(`\njunction sites found: ${junctionSites.length}`);
+
+let junctionsBuilt = 0;
+const pool = [...junctionSites];
+for (const topo of TOPOLOGIES) {
+  for (const main of TIERS) {
+    // Mixed-class on purpose: the crossbar is a different size from the stem,
+    // which is where a junction's geometry has the most to reconcile.
+    for (const cross of [main, TIERS[(TIERS.indexOf(main) + 2) % TIERS.length]]) {
+      const site = pool.shift();
+      if (!site) break;
+      const centre = { x: site.x, z: site.z };
+      const cmds = [];
+      topo.arms.forEach((a, n) => {
+        const [dx, dz] = ARM[a];
+        const tiles = [centre];
+        for (let i = 1; i <= 5; i++) tiles.push({ x: centre.x + dx * i, z: centre.z + dz * i });
+        const spec = n % 2 === 0 ? main : cross;
+        cmds.push({ kind: 'buildRoad', tier: spec.tier, tiles, elevation: 0, replace: true });
+      });
+      await cmd(`${topo.name} ${main.name}/${cross.name}`, cmds);
+      await page.waitForTimeout(280);
+      const g = await readGrid();
+      // Measure the junction box and the tiles immediately around it, which is
+      // where the kerb returns and the corner fills are.
+      const near = [];
+      for (let dz = -2; dz <= 2; dz++)
+        for (let dx = -2; dx <= 2; dx++) {
+          const t = { x: centre.x + dx, z: centre.z + dz };
+          if (g.roadTier[idx(t.x, t.z)] !== 0) near.push(t);
+        }
+      if (near.length === 0) continue;
+      junctionsBuilt++;
+      const worst = await worstIntrusion(near);
+      const label = `${topo.name} ${main.name}/${cross.name}`;
+      if (worst.m > INTRUSION_EPS_M)
+        findings.push({ label, m: worst.m, at: worst.at, laid: near.length });
+      if (worst.m > worstOverall.m) worstOverall = { m: worst.m, label, at: worst.at };
+    }
+  }
+}
+console.log(`junctions built: ${junctionsBuilt}`);
+if (junctionsBuilt === 0) console.log('!! no junction was built — the junction case proves nothing');
+
+if (runs('grades')) console.log('\nruns actually built, by grade band:');
+for (const band of runs('grades') ? BANDS : []) {
   const t = tally[band.name] ?? { laid: 0, refused: 0 };
   console.log(`  ${band.name}: ${t.laid} laid, ${t.refused} refused by the game`);
   if (t.laid === 0) console.log(`  !! ${band.name} proves nothing — nothing was built in it`);
@@ -298,7 +375,18 @@ if (findings.length === 0) {
 }
 
 await call(() => window.__slimcity.setSpeed(0));
+// Midday, not midnight: a dark frame hides the very thing being looked for.
 await call(() => window.__slimcity.setDayT(0.5));
+// Every refusal raises a warning toast, and a warning persists until it is
+// dismissed — so the stack covers the shot until each one is closed.
+for (let i = 0; i < 60; i++) {
+  const close = page.getByRole('button', { name: 'Dismiss notification' }).first();
+  if ((await close.count()) === 0) break;
+  await close.click({ timeout: 2000 }).catch(() => {});
+}
+await page.waitForTimeout(500);
+const leftOver = await page.getByRole('button', { name: 'Dismiss notification' }).count();
+if (leftOver > 0) console.log(`note: ${leftOver} toasts still covering the shot`);
 if (worstOverall.at) {
   await cam(worstOverall.at.x, worstOverall.at.z, 60, 0.0, 0.55);
   await page.waitForTimeout(900);
