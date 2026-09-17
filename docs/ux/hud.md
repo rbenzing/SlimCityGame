@@ -219,7 +219,8 @@ category or tool is active.
 - The roads drawer carries its own tool-options row in its header, next to
   the close button, rather than a separate floating panel: path mode
   (`Straight`, `L-path` or `Grid`), elevation (`Raise`/`Lower`, reading `Ground` or
-  a meter height, up to the bridge deck limit), a 90°-lock snap toggle, a
+  a meter height, up to the bridge deck limit), two snap toggles (a 90° lock
+  and `Guide`, which pulls a drag into line with a road it nearly continues), a
   toggle for whether a drag replaces whatever road is already there, and —
   where the selected road class admits it — its lane count, median or
   turn-lane choice, posted speed, parking/bike lane sides, and footway
@@ -379,9 +380,6 @@ A few things this system describes as intended shape are not implemented,
 and none of them are silently promoted to sound finished above. The
 backlog and its priority live in `docs/DESIGN.md`, not here:
 
-- **Road guide snapping**: a toggle that would extend a guideline from an
-  existing road while dragging a new one. Only 90°-lock snapping exists
-  today.
 - **Save file export/import**: saves stay in the browser's IndexedDB store
   only. Save/load plus autosave already meet the bar of "ship a save,
   reload it, keep playing," and a browser city builder is not a

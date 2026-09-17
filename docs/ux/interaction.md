@@ -69,6 +69,30 @@ replace flag and refusals apply, the preview shows every tile the grid will
 occupy, and the cursor chip prices the lot before it is committed. A grid is
 one undo step, because it was one gesture.
 
+## Road guide snapping
+
+A toggle beside the 90° lock. With it on, a road drag that is *nearly* in line
+with an existing road is pulled into line with it: both ends of the drag snap,
+independently on each axis, onto the row or column of a nearby road that runs
+along it. A new street started a tile off an existing one becomes its
+continuation instead of a parallel run, and a drag ending a tile past a cross
+street lands on that street's centreline instead of just short of it.
+
+**Only a real run counts as a guide.** A single road tile says nothing about
+direction, so a candidate only guides when its neighbour along the same axis is
+also road — otherwise a perpendicular road's one crossing tile would drag a new
+street sideways onto it.
+
+**The snap reaches two tiles**, which is half the zoning depth. That is the
+furthest it can pull a road without destroying ground an existing road already
+serves: at two tiles the strip between two parallel streets is a stagger nobody
+chose, and beyond it the offset is a block the player meant to leave. A snap
+that reached further would move the road somewhere it was not pointed.
+
+The toggle composes with everything else rather than replacing it: the path is
+still `Straight`, `L-path` or `Grid`, still 90°-locked if that chip is on, and
+snapping only adjusts where the drag's ends sit before the path is built.
+
 ## Cost and validity readouts
 
 A cursor-chip stack, offset from the pointer, carries the live cost of

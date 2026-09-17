@@ -344,6 +344,7 @@ export function RoadToolOptions(): JSX.Element {
       </Group>
 
       <Group label="Snap">
+        <div className="flex gap-1">
         <button
           type="button"
           aria-pressed={toolFlags.angleLock}
@@ -352,6 +353,20 @@ export function RoadToolOptions(): JSX.Element {
         >
           90°
         </button>
+        <button
+          type="button"
+          aria-pressed={toolFlags.guideSnap}
+          title={
+            toolFlags.guideSnap
+              ? 'A drag nearly in line with a road is pulled into line with it'
+              : 'A drag goes exactly where it is pointed'
+          }
+          onClick={() => setToolFlags({ guideSnap: !toolFlags.guideSnap })}
+          className={`${CHIP} ${toolFlags.guideSnap ? CHIP_ON : CHIP_OFF}`}
+        >
+          Guide
+        </button>
+        </div>
       </Group>
 
       <Group label="Existing">

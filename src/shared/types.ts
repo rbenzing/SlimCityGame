@@ -1163,6 +1163,12 @@ export interface ToolFlags {
    */
   gridMode: boolean;
   /**
+   * `Guide` snapping chip — a drag that is nearly in line with an existing
+   * road is pulled into line with it, so a new street continues one rather
+   * than running a tile off it.
+   */
+  guideSnap: boolean;
+  /**
    * `Replace` road mode — a drag lays its road over an existing run whatever
    * that run is, instead of refusing to put a smaller road over a bigger one.
    */

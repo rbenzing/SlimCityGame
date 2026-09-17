@@ -104,7 +104,13 @@ export interface SelectedJunction {
 }
 
 export function createInitialToolFlags(): ToolFlags {
-  return { angleLock: false, straightMode: false, gridMode: false, replaceRoad: false };
+  return {
+    angleLock: false,
+    straightMode: false,
+    gridMode: false,
+    guideSnap: false,
+    replaceRoad: false,
+  };
 }
 
 /** A sane, zeroed CityStats for the moment before the first worker snapshot arrives. */

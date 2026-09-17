@@ -151,11 +151,13 @@ describe('ToolFlags (UI-SPEC §5)', () => {
       angleLock: false,
       straightMode: true,
       gridMode: false,
+      guideSnap: false,
       replaceRoad: false,
     };
     expect(Object.keys(flags).sort()).toEqual([
       'angleLock',
       'gridMode',
+      'guideSnap',
       'replaceRoad',
       'straightMode',
     ]);
