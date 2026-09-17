@@ -652,6 +652,18 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         z1: number,
         n: number,
       ): (string | null)[] => roadsMesh.surfaceGridAt(x0, z0, x1, z1, n),
+      // The same sampling, reporting the ROAD SURFACE's height rather than its
+      // colour. A road's vertices take their Y from the ground under them, so
+      // it follows the terrain instead of sitting flat across a tile — which
+      // makes "is the ground above the road here" a question about two
+      // surfaces, answerable only by reading both.
+      readSurfaceHeight: (
+        x0: number,
+        z0: number,
+        x1: number,
+        z1: number,
+        n: number,
+      ): (number | null)[] => roadsMesh.surfaceHeightGridAt(x0, z0, x1, z1, n),
       readSigns: (): { x: number; z: number; type: string }[] =>
         computeSignPlacements(latestRoadTiles).map((s) => ({ x: s.x, z: s.z, type: s.type })),
       // What each signal head is showing. A lit lens is a few pixels across in

@@ -5117,6 +5117,8 @@ export class RoadMeshRenderer {
     x1: number,
     z1: number,
     n: number,
+    /** Report the surface's height instead of its colour — see surfaceHeightGridAt. */
+    heights = false,
   ): (string | null)[] {
     type Corner = readonly [number, number, number];
     const tris: {
@@ -5183,7 +5185,7 @@ export class RoadMeshRenderer {
       }
     }
 
-    const out: (string | null)[] = [];
+    const out: (string | number | null)[] = [];
     for (let row = 0; row < n; row++) {
       const pz = z0 + ((row + 0.5) * (z1 - z0)) / n;
       for (let col = 0; col < n; col++) {
@@ -5209,10 +5211,26 @@ export class RoadMeshRenderer {
             best = tri.colour;
           }
         }
-        out.push(best);
+        out.push(heights ? (bestY === -Infinity ? null : bestY) : best);
       }
     }
-    return out;
+    return out as (string | null)[];
+  }
+
+  /**
+   * The same sampling, reporting the road surface's HEIGHT instead of its
+   * colour — the Y of the topmost road triangle over each point, or null
+   * where no road covers it.
+   *
+   * A road's vertices take their Y from the ground under them, so the surface
+   * follows the terrain rather than sitting flat across a tile. That makes
+   * "is the ground above the road here" a question about two surfaces, and
+   * comparing the rendered road against a single stored height per tile
+   * answers a different one: how much the ground varies across a tile, which
+   * on any slope is not zero and is not a defect.
+   */
+  surfaceHeightGridAt(x0: number, z0: number, x1: number, z1: number, n: number): (number | null)[] {
+    return this.surfaceGridAt(x0, z0, x1, z1, n, true) as unknown as (number | null)[];
   }
 
   /**

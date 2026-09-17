@@ -122,24 +122,25 @@ if ((sites.get('steep') ?? []).length === 0) {
   const RX = 60;
   const RZ = N - 60;
   const lanes = TIERS.length * ELEVATIONS.length;
-  for (let lane = 0; lane < lanes; lane++) {
-    const z = RZ - lane * 4;
-    for (let i = 1; i <= RUN_TILES; i++) {
-      // Each step up the run raises a little more ground than the last.
-      for (let rep = 0; rep < i; rep++) {
-        await cmd('Raise', [
-          {
-            kind: 'terraform',
-            mode: 'raise',
-            center: { x: RX + i, z },
-            radius: 1,
-            strength: 1,
-          },
-        ]);
-      }
-    }
-  }
-  await page.waitForTimeout(1200);
+  // terraformSet writes exact heights. The raise brush cannot build a grade
+  // this steep — it smooths as it goes, and topped out around 1.8 m/tile,
+  // which is not the steep band and must not be reported as one.
+  const GRADE = ROAD_MAX_SLOPE - 0.5; // just inside what a road is allowed on
+  const W = RUN_TILES + 3;
+  const H = lanes * 4 + 4;
+  await call(
+    ([x, z, w, h, grade, span]) => {
+      const heights = new Float32Array(w * h);
+      for (let row = 0; row < h; row++)
+        for (let col = 0; col < w; col++)
+          heights[row * w + col] = Math.min(col, span) * grade;
+      window.__slimcity.cmd('Steep slope', [
+        { kind: 'terraformSet', x, z, w, h, heights },
+      ]);
+    },
+    [RX, RZ - lanes * 4, W, H, GRADE, RUN_TILES],
+  );
+  await page.waitForTimeout(1500);
   const gr = await readGrid();
   const made = [];
   for (let lane = 0; lane < lanes; lane++) {
@@ -166,27 +167,34 @@ const worstIntrusion = async (tiles) =>
   await call(
     ([ts, tile]) => {
       const hook = window.__slimcity;
-      const grid = hook.readGrid();
-      const size = grid.size;
-      let worst = { m: -Infinity, at: null, half: 0 };
+      let worst = { m: -Infinity, at: null };
+      const SAMPLES = 9;
       for (const t of ts) {
-        const i = t.z * size + t.x;
-        const deck = (grid.height[i] ?? 0) + (grid.roadElevation[i] ?? 0);
-        // The tile's OWN carriageway, asked of the tile. Sampling a fixed
-        // width would put the outer samples on the verge beside a narrow
-        // road, where ground standing above the deck is a hillside and not a
-        // defect — and would report every slope as clipping.
+        // The tile's OWN carriageway, asked of the tile. A fixed width would
+        // put the outer samples on the verge beside a narrow road, where
+        // ground above the surface is a hillside and not a defect.
         const section = hook.readApproach(t.x, t.z);
         if (!section || !(section.width > 0)) continue;
         const half = section.width / 2 - 0.5; // inside the kerb, not on it
         if (half <= 0) continue;
         const cx = (t.x + 0.5) * tile;
         const cz = (t.z + 0.5) * tile;
-        for (let a = -half; a <= half + 1e-9; a += half / 6) {
-          for (let c = -tile / 2 + 1; c <= tile / 2 - 1; c += tile / 8) {
-            const ground = hook.terrainHeightAt(cx + c, cz + a);
-            const d = ground - deck;
-            if (d > worst.m) worst = { m: d, at: { x: t.x, z: t.z }, half };
+        const x0 = cx - tile / 2 + 1;
+        const x1 = cx + tile / 2 - 1;
+        const z0 = cz - half;
+        const z1 = cz + half;
+        // Both surfaces at the same points: the road as the GPU has it, and
+        // the ground as it is rendered. Anything else compares a surface
+        // against a number and measures how much a tile's ground varies.
+        const road = hook.readSurfaceHeight(x0, z0, x1, z1, SAMPLES);
+        for (let row = 0; row < SAMPLES; row++) {
+          const pz = z0 + ((row + 0.5) * (z1 - z0)) / SAMPLES;
+          for (let col = 0; col < SAMPLES; col++) {
+            const px = x0 + ((col + 0.5) * (x1 - x0)) / SAMPLES;
+            const surface = road[row * SAMPLES + col];
+            if (surface === null || surface === undefined) continue; // no road here
+            const d = hook.terrainHeightAt(px, pz) - surface;
+            if (d > worst.m) worst = { m: d, at: { x: t.x, z: t.z } };
           }
         }
       }
@@ -196,6 +204,7 @@ const worstIntrusion = async (tiles) =>
   );
 
 const findings = [];
+const tally = {};
 let worstOverall = { m: -Infinity, label: null, at: null };
 for (const band of BANDS) {
   const pool = [...(sites.get(band.name) ?? [])];
@@ -217,7 +226,14 @@ for (const band of BANDS) {
       await page.waitForTimeout(260);
       const g = await readGrid();
       const laid = tiles.filter((t) => g.roadTier[idx(t.x, t.z)] !== 0);
-      if (laid.length === 0) continue; // refused: that is the game saying no
+      // A refusal is the game saying no, and counting them is what stops a
+      // band reading as clean when nothing in it was ever built.
+      tally[band.name] = tally[band.name] ?? { laid: 0, refused: 0 };
+      if (laid.length === 0) {
+        tally[band.name].refused++;
+        continue;
+      }
+      tally[band.name].laid++;
       const worst = await worstIntrusion(laid);
       const label = `${band.name} (${site.grade.toFixed(1)} m/tile) ${name} @${elevation}m`;
       if (worst.m > INTRUSION_EPS_M) {
@@ -228,6 +244,49 @@ for (const band of BANDS) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Bridges and their approaches. A deck over water is the one place the road
+// stops following the ground — it is held up while the bank climbs back to
+// meet it — so it is where ground standing through a road is actually possible.
+// ---------------------------------------------------------------------------
+const shorelines = [];
+for (let z = 30; z < N - 30 && shorelines.length < 12; z += 2) {
+  for (let x = 30; x < N - 40; x += 2) {
+    // A run that starts on land, crosses water, and comes back to land.
+    let wet = 0;
+    let dryStart = !g0.water[idx(x, z)];
+    let dryEnd = !g0.water[idx(x + 10, z)];
+    for (let i = 1; i < 10; i++) if (g0.water[idx(x + i, z)]) wet++;
+    if (!dryStart || !dryEnd || wet < 3) continue;
+    if (shorelines.some((s) => Math.abs(s.x - x) < 16 && Math.abs(s.z - z) < 10)) continue;
+    shorelines.push({ x, z, wet });
+  }
+}
+console.log(`\nshoreline crossings found: ${shorelines.length}`);
+let bridgeLaid = 0;
+for (const site of shorelines) {
+  const spec = TIERS[bridgeLaid % TIERS.length];
+  const tiles = Array.from({ length: 11 }, (_, i) => ({ x: site.x + i, z: site.z }));
+  await cmd(`${spec.name} bridge`, [{ kind: 'buildRoad', tier: spec.tier, tiles, elevation: 0 }]);
+  await page.waitForTimeout(300);
+  const g = await readGrid();
+  const laid = tiles.filter((t) => g.roadTier[idx(t.x, t.z)] !== 0);
+  if (laid.length === 0) continue;
+  bridgeLaid++;
+  const worst = await worstIntrusion(laid);
+  const label = `bridge (${site.wet} tiles of water) ${spec.name}`;
+  if (worst.m > INTRUSION_EPS_M) findings.push({ label, m: worst.m, at: worst.at, laid: laid.length });
+  if (worst.m > worstOverall.m) worstOverall = { m: worst.m, label, at: worst.at };
+}
+console.log(`bridges built: ${bridgeLaid}`);
+if (bridgeLaid === 0) console.log('!! no bridge was built — the bridge case proves nothing');
+
+console.log('\nruns actually built, by grade band:');
+for (const band of BANDS) {
+  const t = tally[band.name] ?? { laid: 0, refused: 0 };
+  console.log(`  ${band.name}: ${t.laid} laid, ${t.refused} refused by the game`);
+  if (t.laid === 0) console.log(`  !! ${band.name} proves nothing — nothing was built in it`);
+}
 console.log(`\nworst ground-above-deck anywhere: ${worstOverall.m.toFixed(2)} m`);
 console.log(`  at ${worstOverall.label} tile ${JSON.stringify(worstOverall.at)}`);
 if (findings.length === 0) {
