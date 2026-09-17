@@ -44,7 +44,13 @@ describe('useCityStore initial state', () => {
   it('defaults the wave-2 tool-options/trend/selection fields sanely', () => {
     const s = useCityStore.getState();
     expect(s.toolMode).toBe('lpath');
-    expect(s.toolFlags).toEqual({ angleLock: false, straightMode: false, replaceRoad: false });
+    expect(s.toolFlags).toEqual({
+      angleLock: false,
+      straightMode: false,
+      gridMode: false,
+      guideSnap: false,
+      replaceRoad: false,
+    });
     expect(s.previousMonthPopulation).toBe(0);
     expect(s.previousMonthFunds).toBe(START_FUNDS);
     expect(s.selectionInfo).toBeNull();
@@ -129,6 +135,8 @@ describe('tool flags + mode (UI-SPEC §5)', () => {
     expect(useCityStore.getState().toolFlags).toEqual({
       angleLock: true,
       straightMode: false,
+      gridMode: false,
+      guideSnap: false,
       replaceRoad: false,
     });
   });
@@ -149,6 +157,8 @@ describe('tool flags + mode (UI-SPEC §5)', () => {
     expect(useCityStore.getState().toolFlags).toEqual({
       angleLock: true,
       straightMode: true,
+      gridMode: false,
+      guideSnap: false,
       replaceRoad: false,
     });
 
@@ -157,7 +167,25 @@ describe('tool flags + mode (UI-SPEC §5)', () => {
     expect(useCityStore.getState().toolFlags).toEqual({
       angleLock: false,
       straightMode: true,
+      gridMode: false,
+      guideSnap: false,
       replaceRoad: false,
+    });
+  });
+
+  it('picking Grid sets gridMode and clears straightMode, since a mode is one choice', () => {
+    useCityStore.getState().setToolMode('straight');
+    useCityStore.getState().setToolMode('grid');
+    expect(useCityStore.getState().toolMode).toBe('grid');
+    expect(useCityStore.getState().toolFlags).toMatchObject({
+      straightMode: false,
+      gridMode: true,
+    });
+
+    useCityStore.getState().setToolMode('lpath');
+    expect(useCityStore.getState().toolFlags).toMatchObject({
+      straightMode: false,
+      gridMode: false,
     });
   });
 });

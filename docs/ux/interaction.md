@@ -38,6 +38,61 @@ thing is":
   its mass is judged before the player commits — road, zone, bulldoze, and
   terraform previews stay flat frames without this box.
 
+## Grid road mode
+
+The road tool's third path mode. `Straight` lays one run, `L-path` lays two
+legs; `Grid` takes the rectangle a drag encloses and lays a street grid inside
+it in one action — the four sides, plus the internal streets that divide the
+block.
+
+**The spacing is the zoning depth, not a taste.** A road puts frontage
+`ZONE_DEPTH` cells out from each of its sides (`world/zonable.ts`), so two
+parallel streets zone everything between them when the gap is twice that. The
+grid pitch is therefore `2 × ZONE_DEPTH + 1` = **9 tiles centre to centre** —
+eight tiles of block and the street itself. It is the widest spacing that
+leaves no dead ground in the middle of a block, and at 20 m tiles it is a
+180 m block, which is a city block. A tighter grid would be a choice about
+taste; this one falls out of the rule the game already enforces.
+
+Internal streets are laid only where a whole block still fits behind them. A
+rectangle narrower than the pitch gets its perimeter and nothing inside, and
+one that would put a street a tile short of the far edge stops before it —
+cutting off a sliver nothing can be built in is worse than the slightly wide
+block it would have avoided. A drag too small to enclose anything degenerates
+to the straight run it looks like. The internal streets are spaced from the
+rectangle's low edge, so growing a drag adds streets rather than shuffling the
+ones already previewed, and the grid a rectangle gets does not depend on which
+corner the drag started from.
+
+Everything else about a road drag is unchanged: the same profile, elevation,
+replace flag and refusals apply, the preview shows every tile the grid will
+occupy, and the cursor chip prices the lot before it is committed. A grid is
+one undo step, because it was one gesture.
+
+## Road guide snapping
+
+A toggle beside the 90° lock. With it on, a road drag that is *nearly* in line
+with an existing road is pulled into line with it: both ends of the drag snap,
+independently on each axis, onto the row or column of a nearby road that runs
+along it. A new street started a tile off an existing one becomes its
+continuation instead of a parallel run, and a drag ending a tile past a cross
+street lands on that street's centreline instead of just short of it.
+
+**Only a real run counts as a guide.** A single road tile says nothing about
+direction, so a candidate only guides when its neighbour along the same axis is
+also road — otherwise a perpendicular road's one crossing tile would drag a new
+street sideways onto it.
+
+**The snap reaches two tiles**, which is half the zoning depth. That is the
+furthest it can pull a road without destroying ground an existing road already
+serves: at two tiles the strip between two parallel streets is a stagger nobody
+chose, and beyond it the offset is a block the player meant to leave. A snap
+that reached further would move the road somewhere it was not pointed.
+
+The toggle composes with everything else rather than replacing it: the path is
+still `Straight`, `L-path` or `Grid`, still 90°-locked if that chip is on, and
+snapping only adjusts where the drag's ends sit before the path is built.
+
 ## Cost and validity readouts
 
 A cursor-chip stack, offset from the pointer, carries the live cost of

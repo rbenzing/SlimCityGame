@@ -652,6 +652,18 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         z1: number,
         n: number,
       ): (string | null)[] => roadsMesh.surfaceGridAt(x0, z0, x1, z1, n),
+      // The same sampling, reporting the ROAD SURFACE's height rather than its
+      // colour. A road's vertices take their Y from the ground under them, so
+      // it follows the terrain instead of sitting flat across a tile — which
+      // makes "is the ground above the road here" a question about two
+      // surfaces, answerable only by reading both.
+      readSurfaceHeight: (
+        x0: number,
+        z0: number,
+        x1: number,
+        z1: number,
+        n: number,
+      ): (number | null)[] => roadsMesh.surfaceHeightGridAt(x0, z0, x1, z1, n),
       readSigns: (): { x: number; z: number; type: string }[] =>
         computeSignPlacements(latestRoadTiles).map((s) => ({ x: s.x, z: s.z, type: s.type })),
       // What each signal head is showing. A lit lens is a few pixels across in
@@ -864,6 +876,13 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // The placement ghost's own extent in world metres, so a screenshot
       // script can MEASURE the road width a preview is promising rather than
       // judge it by eye. Null whenever nothing is previewed.
+      // The rendered ground height at any world point — the interpolated
+      // surface a player sees, not the per-tile figure the grid stores. A road
+      // deck is flat across its tile while the terrain quad under it is not,
+      // so comparing the two is the only way to measure ground standing proud
+      // of a road rather than judging it from a screenshot.
+      (hook as Record<string, unknown>).terrainHeightAt = (x: number, z: number): number =>
+        heightAt(x, z);
       (hook as Record<string, unknown>).ghostBounds = (): {
         minX: number;
         maxX: number;

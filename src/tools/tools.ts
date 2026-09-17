@@ -48,6 +48,7 @@ import {
   tilesAcross,
   type ProfileEdits,
 } from '../shared/roadprofile';
+import { ZONE_DEPTH } from '../world/zonable';
 import { corridorRunsFor, corridorTiles } from '../shared/corridor';
 import type { CorridorRuns } from '../shared/corridor';
 
@@ -232,6 +233,120 @@ export function buildLPath(start: TilePoint, end: TilePoint): TilePoint[] {
 }
 
 /**
+ * How far a road guide reaches, in tiles — half the zoning depth.
+ *
+ * It is the furthest a snap can pull a road without destroying ground an
+ * existing road already serves: inside it, the gap between two parallel
+ * streets is a stagger nobody chose; beyond it, the offset is a block the
+ * player meant to leave, and moving the road there would be moving it
+ * somewhere it was not pointed.
+ */
+export const GUIDE_SNAP_TILES = ZONE_DEPTH / 2;
+
+/**
+ * `tile` pulled into line with a nearby road, independently on each axis.
+ *
+ * A guide is a road that RUNS along the axis being snapped — a candidate only
+ * counts when its neighbour along that axis is road too. One tile on its own
+ * says nothing about direction, and taking it as a guide would let a
+ * perpendicular road's single crossing tile drag a new street sideways onto
+ * it. The nearest guide wins; a tie keeps the tile where it is, since there is
+ * no reason to prefer one side.
+ */
+export function snapToGuide(
+  tile: TilePoint,
+  isRoad: (x: number, z: number) => boolean,
+  reach = GUIDE_SNAP_TILES,
+  along = GRID_SPACING_TILES,
+): TilePoint {
+  /** A road at (x,z) that continues along X — one tile has no direction. */
+  const runsAlongX = (x: number, z: number): boolean =>
+    isRoad(x, z) && (isRoad(x - 1, z) || isRoad(x + 1, z));
+  const runsAlongZ = (x: number, z: number): boolean =>
+    isRoad(x, z) && (isRoad(x, z - 1) || isRoad(x, z + 1));
+
+  // The line a road lays down reaches PAST its own ends — continuing a street
+  // across a gap is most of what the snap is for, and a guide that stopped at
+  // the last paved tile could never do it. It reaches one block, because
+  // beyond a block away sharing a row is coincidence rather than intent.
+  const rowGuides = (z: number): boolean => {
+    for (let x = tile.x - along; x <= tile.x + along; x++) if (runsAlongX(x, z)) return true;
+    return false;
+  };
+  const columnGuides = (x: number): boolean => {
+    for (let z = tile.z - along; z <= tile.z + along; z++) if (runsAlongZ(x, z)) return true;
+    return false;
+  };
+
+  const nearest = (guides: (at: number) => boolean, from: number): number => {
+    for (let d = 1; d <= reach; d++) {
+      const lower = guides(from - d);
+      const upper = guides(from + d);
+      // Equally close both ways is no reason to prefer either, so stay put.
+      if (lower !== upper) return lower ? from - d : from + d;
+      if (lower && upper) break;
+    }
+    return from;
+  };
+  return { x: nearest(columnGuides, tile.x), z: nearest(rowGuides, tile.z) };
+}
+
+/**
+ * Street spacing for `Grid` mode, centre to centre, in tiles.
+ *
+ * Derived rather than chosen: a road puts frontage ZONE_DEPTH cells out from
+ * each of its sides, so two parallel streets zone everything between them when
+ * the gap is twice that — eight tiles of block, plus the street itself. It is
+ * the widest pitch that leaves no dead ground in the middle of a block, and at
+ * 20 m tiles it comes out a 180 m block, which is a city block.
+ */
+export const GRID_SPACING_TILES = 2 * ZONE_DEPTH + 1;
+
+/**
+ * The `Grid` tool mode: the street grid enclosed by the rectangle a drag
+ * spans — its four sides, plus the internal streets that divide the block at
+ * GRID_SPACING_TILES.
+ *
+ * Internal streets are placed from the low edge outward, so growing a drag
+ * ADDS streets rather than shuffling the ones already previewed, and a
+ * rectangle narrower than the pitch simply gets none — which is the right
+ * answer for a thin block rather than a case needing special handling. A drag
+ * with no width at all is the straight run it looks like.
+ */
+export function buildGridPath(start: TilePoint, end: TilePoint): TilePoint[] {
+  const x0 = Math.min(start.x, end.x);
+  const x1 = Math.max(start.x, end.x);
+  const z0 = Math.min(start.z, end.z);
+  const z1 = Math.max(start.z, end.z);
+  if (x0 === x1 || z0 === z1) return straightPath(start, end);
+
+  const seen = new Set<string>();
+  const tiles: TilePoint[] = [];
+  const push = (x: number, z: number): void => {
+    const key = `${x},${z}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    tiles.push({ x, z });
+  };
+  // The two edges, then a street every pitch between them — but only while a
+  // whole block still fits before the far edge. Without that an internal
+  // street can land a tile short of the perimeter and cut off a sliver nothing
+  // can be built in, which is worse than the slightly wide block it avoids.
+  const divide = (lo: number, hi: number): number[] => {
+    const out = [lo, hi];
+    for (let at = lo + GRID_SPACING_TILES; hi - at >= GRID_SPACING_TILES; at += GRID_SPACING_TILES)
+      out.push(at);
+    return out;
+  };
+  const rows = divide(z0, z1);
+  const cols = divide(x0, x1);
+
+  for (const z of rows) for (let x = x0; x <= x1; x++) push(x, z);
+  for (const x of cols) for (let z = z0; z <= z1; z++) push(x, z);
+  return tiles;
+}
+
+/**
  * The `Straight` tool mode / `90° lock` snapping chip: a direct
  * single-axis-locked segment from `start` along whichever axis dominates the
  * drag, ignoring the other axis entirely (unlike {@link buildLPath}, this
@@ -400,7 +515,13 @@ export class ToolManager {
   private hoverTile: TilePoint | null = null;
   private dragStart: TilePoint | null = null;
   private armed = false;
-  private flags: ToolFlags = { angleLock: false, straightMode: false, replaceRoad: false };
+  private flags: ToolFlags = {
+    angleLock: false,
+    straightMode: false,
+    gridMode: false,
+    guideSnap: false,
+    replaceRoad: false,
+  };
   private zoneMode: ZoneMode = 'rect';
   /** Zone brush mode: the deduped, drag-ordered path of tiles painted so far. */
   private brushTiles: TilePoint[] = [];
@@ -570,9 +691,14 @@ export class ToolManager {
     return null;
   }
 
-  /** Live tool-behavior flags from the tool-options panel. */
-  setFlags(flags: ToolFlags): void {
-    this.flags = flags;
+  /**
+   * Live tool-behavior flags from the tool-options panel, merged over what is
+   * already set — the same shape the store's own setToolFlags has always had.
+   * A caller that flips one chip says so, rather than restating every other
+   * flag and silently clearing whichever one it has not heard of yet.
+   */
+  setFlags(flags: Partial<ToolFlags>): void {
+    this.flags = { ...this.flags, ...flags };
     if (this.hoverTile) this.emitPreview(this.hoverTile);
   }
 
@@ -702,10 +828,25 @@ export class ToolManager {
     return { needed, runs: needed ? corridorRunsFor(tiles) : null };
   }
 
-  private roadPath(start: TilePoint, end: TilePoint): TilePoint[] {
+  private roadPath(rawStart: TilePoint, rawEnd: TilePoint): TilePoint[] {
+    // Guide snapping moves where the drag's ENDS sit, before any path is built
+    // from them, so it composes with every mode rather than replacing one.
+    const start = this.guided(rawStart);
+    const end = this.guided(rawEnd);
+    // Grid mode lays a rectangle's whole street grid, so it answers before the
+    // single-run modes: a 90° lock has nothing to say about a shape that is
+    // already square.
+    if (this.flags.gridMode) return buildGridPath(start, end);
     return this.flags.angleLock || this.flags.straightMode
       ? straightPath(start, end)
       : buildLPath(start, end);
+  }
+
+  /** `tile` pulled into line with a nearby road run, when guide snapping is on. */
+  private guided(tile: TilePoint): TilePoint {
+    const at = this.env.roadProfileAt;
+    if (!this.flags.guideSnap || !at) return tile;
+    return snapToGuide(tile, (x, z) => at({ x, z }) !== null);
   }
 
   /** Brush mode's accumulated path, growing (deduped) on every call while a

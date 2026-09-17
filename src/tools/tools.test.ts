@@ -6,11 +6,16 @@ import { NO_EDITS, presetProfileForTier } from '../shared/roadprofile';
 import {
   brushDiscTiles,
   brushRingTiles,
+  buildGridPath,
   DEFAULT_BRUSH_SETTINGS,
+  GRID_SPACING_TILES,
+  GUIDE_SNAP_TILES,
+  snapToGuide,
   ToolManager,
   type ToolEnv,
   type ToolPreview,
 } from './tools';
+import { ZONE_DEPTH } from '../world/zonable';
 
 const ROAD_SPECS: Partial<Record<RoadTier, RoadSpec>> = {
   [RoadTier.TwoLane]: {
@@ -1919,5 +1924,152 @@ describe('a road too wide for its tile is laid as two carriageways', () => {
     expect(previews.at(-1)?.invalidReason).toBe('A corridor is laid in a straight run');
     tm.pointerUp(4, 4, 0);
     expect(sent).toHaveLength(0);
+  });
+});
+
+describe('Grid mode lays the street grid a drag encloses', () => {
+  const at = (tiles: TilePoint[], x: number, z: number): boolean =>
+    tiles.some((t) => t.x === x && t.z === z);
+
+  it('spaces its streets at the zoning depth, so a block has no dead ground', () => {
+    // The pitch is not a taste: a road zones ZONE_DEPTH cells out from each of
+    // its sides, so two parallel streets cover everything between them when
+    // the gap is twice that. Anything wider leaves a strip in the middle of
+    // the block that can never be built on.
+    expect(GRID_SPACING_TILES).toBe(2 * ZONE_DEPTH + 1);
+  });
+
+  it('lays the four sides and nothing loose inside a block too narrow to divide', () => {
+    const tiles = buildGridPath({ x: 0, z: 0 }, { x: 4, z: 3 });
+    // Every perimeter tile, and only those: 5×4 minus the 3×2 interior.
+    expect(tiles).toHaveLength(5 * 4 - 3 * 2);
+    for (let x = 0; x <= 4; x++) {
+      expect(at(tiles, x, 0)).toBe(true);
+      expect(at(tiles, x, 3)).toBe(true);
+    }
+    for (let z = 0; z <= 3; z++) {
+      expect(at(tiles, 0, z)).toBe(true);
+      expect(at(tiles, 4, z)).toBe(true);
+    }
+    expect(at(tiles, 2, 1)).toBe(false);
+  });
+
+  it('divides a rectangle wide enough to hold an internal street', () => {
+    // Two pitches across and one down: a street at x = 9 and none at 18,
+    // because the far edge is already a street at 19.
+    const tiles = buildGridPath({ x: 0, z: 0 }, { x: 19, z: 9 });
+    for (let z = 0; z <= 9; z++) expect(at(tiles, GRID_SPACING_TILES, z)).toBe(true);
+    expect(at(tiles, 2 * GRID_SPACING_TILES, 4)).toBe(false);
+    // The interior either side of that street stays open for building.
+    expect(at(tiles, 4, 4)).toBe(false);
+    expect(at(tiles, 14, 4)).toBe(false);
+  });
+
+  it('never repeats a tile where an internal street meets the perimeter', () => {
+    const tiles = buildGridPath({ x: 0, z: 0 }, { x: 19, z: 19 });
+    const keys = new Set(tiles.map((t) => `${t.x},${t.z}`));
+    expect(keys.size).toBe(tiles.length);
+  });
+
+  it('reads the same however the rectangle was dragged', () => {
+    // A drag from the far corner back encloses the same rectangle, so it has
+    // to lay the same grid — otherwise the streets shift under the player
+    // depending on which way they happened to drag.
+    const forward = buildGridPath({ x: 2, z: 3 }, { x: 21, z: 16 });
+    const backward = buildGridPath({ x: 21, z: 16 }, { x: 2, z: 3 });
+    const sort = (t: TilePoint[]): string[] => t.map((p) => `${p.x},${p.z}`).sort();
+    expect(sort(backward)).toEqual(sort(forward));
+  });
+
+  it('is the straight run it looks like when the drag encloses nothing', () => {
+    // A drag down one row is not a rectangle; laying a "grid" there would mean
+    // laying the same line twice over.
+    const line = buildGridPath({ x: 0, z: 5 }, { x: 4, z: 5 });
+    expect(line).toEqual([
+      { x: 0, z: 5 },
+      { x: 1, z: 5 },
+      { x: 2, z: 5 },
+      { x: 3, z: 5 },
+      { x: 4, z: 5 },
+    ]);
+  });
+
+  it('previews and prices every tile of the grid as one gesture', () => {
+    const { env, previews, sent } = makeEnv();
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    tm.setFlags({ gridMode: true });
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(9, 9, 0);
+    const preview = previews.at(-1)!;
+    // A 10×10 rectangle: its perimeter, with no room for an internal street
+    // (the first would fall at 9, which is already the far edge).
+    expect(preview.tiles).toHaveLength(10 * 10 - 8 * 8);
+    expect(preview.cost).toBe(preview.tiles.length * 20);
+    tm.pointerUp(9, 9, 0);
+    // One gesture, one command batch, so one undo puts the block back.
+    expect(sent).toHaveLength(1);
+    const build = sent[0]!.commands.find((c) => c.kind === 'buildRoad');
+    expect(build).toMatchObject({ kind: 'buildRoad' });
+  });
+});
+
+describe('Road guide snapping pulls a near-miss into line', () => {
+  /** A road running along X at row z, from x0 to x1. */
+  const rowOfRoad = (z: number, x0: number, x1: number) => (x: number, zz: number) =>
+    zz === z && x >= x0 && x <= x1;
+
+  it('reaches half the zoning depth, and no further', () => {
+    // Far enough to correct a stagger nobody chose; short enough that it can
+    // never pull a road across ground an existing road already serves.
+    expect(GUIDE_SNAP_TILES).toBe(ZONE_DEPTH / 2);
+  });
+
+  it('pulls a drag onto the row of a road it nearly continues', () => {
+    const isRoad = rowOfRoad(10, 0, 20);
+    expect(snapToGuide({ x: 25, z: 12 }, isRoad)).toEqual({ x: 25, z: 10 });
+    expect(snapToGuide({ x: 25, z: 8 }, isRoad)).toEqual({ x: 25, z: 10 });
+  });
+
+  it('leaves a drag alone once the offset is a block the player meant', () => {
+    const isRoad = rowOfRoad(10, 0, 20);
+    expect(snapToGuide({ x: 25, z: 13 }, isRoad)).toEqual({ x: 25, z: 13 });
+  });
+
+  it('will not take a lone tile for a guide, since one tile has no direction', () => {
+    // A perpendicular road's single crossing tile would otherwise drag a new
+    // street sideways onto it.
+    const oneTile = (x: number, z: number): boolean => x === 25 && z === 11;
+    expect(snapToGuide({ x: 25, z: 12 }, oneTile)).toEqual({ x: 25, z: 12 });
+  });
+
+  it('snaps each axis on its own, so a drag can meet a crossing square', () => {
+    // A road running along X at z=10 and one running along Z at x=30.
+    const isRoad = (x: number, z: number): boolean =>
+      (z === 10 && x >= 0 && x <= 40) || (x === 30 && z >= 0 && z <= 40);
+    expect(snapToGuide({ x: 29, z: 11 }, isRoad)).toEqual({ x: 30, z: 10 });
+  });
+
+  it('stays put when a guide is equally close on both sides', () => {
+    const isRoad = (x: number, z: number): boolean => (z === 8 || z === 12) && x >= 0 && x <= 20;
+    expect(snapToGuide({ x: 5, z: 10 }, isRoad)).toEqual({ x: 5, z: 10 });
+  });
+
+  it('is off unless asked for: a drag goes where it is pointed', () => {
+    const { env, previews } = makeEnv();
+    env.roadProfileAt = (t) =>
+      t.z === 10 && t.x >= 0 && t.x <= 20 ? presetProfileForTier(RoadTier.TwoLane) : null;
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    tm.setFlags({ straightMode: true });
+    tm.pointerDown(25, 12, 0);
+    tm.pointerMove(30, 12, 0);
+    expect(previews.at(-1)?.tiles.every((t) => t.z === 12)).toBe(true);
+
+    tm.setFlags({ guideSnap: true });
+    tm.pointerDown(25, 12, 0);
+    tm.pointerMove(30, 12, 0);
+    // Now the run continues the road at z = 10 instead of shadowing it.
+    expect(previews.at(-1)?.tiles.every((t) => t.z === 10)).toBe(true);
   });
 });
