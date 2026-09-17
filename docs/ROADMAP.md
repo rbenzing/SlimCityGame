@@ -23,9 +23,9 @@ current behavior only and carry no dates of their own._
 
 ---
 
-## Status (2026-09-14)
+## Status (2026-09-17)
 
-**Test suite:** 3,307 tests passing across 117 test files, run 2026-09-14.
+**Test suite:** 3,343 tests passing across 117 test files, run 2026-09-17.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -38,20 +38,30 @@ transit; and building lots and archetypes. Versioning and deploy are
 automated (release-please + Conventional Commits → GitHub Pages; see the
 README).
 
-**In progress:** road composition — a road as a class, a
-cross-section profile and per-junction control, replacing the fixed-tier
-model. Waves 1–4 of 6 are shipped (one open gap inside wave 3); waves 5–6
-(ramps/interchange stamps, two-tile corridors) are fully specified but not
-built. Full detail in History, §10 below.
+**Road composition is shipped, all six waves.** A road is a class, a
+cross-section profile and per-junction control; the fixed-tier model is gone.
+Waves 5 and 6 — the slip road, and a section too wide for a tile laid as two
+carriageways — are built ([`shared/corridor.ts`](../src/shared/corridor.ts)),
+as are the pieces that finished it: a transit lane is a variant of a size
+rather than a road type, a road's tier is its size with the reserved lane
+priced on top, and the placement ghost is drawn at the road's own width. Full
+detail in History, §10 below.
 
-**Next, in request order:** dynamic world lighting (requested 2026-09-06,
-design not yet finalized); the roadway light pole, properly modelled
-(requested 2026-09-06, specified, not built); and power-conducting roads
-(requested 2026-09-06, fully specified, not built — see History).
+**Also shipped since this section last claimed otherwise:** dynamic world
+lighting (sky dome, sun, the time-of-day ramp —
+[`render/sky.ts`](../src/render/sky.ts)); the roadway light pole, properly
+modelled as a cantilever streetlight ([`render/lamps.ts`](../src/render/lamps.ts));
+and power-conducting roads ([`sim/network.ts`](../src/sim/network.ts), where
+power and water propagate across road tiles by class). All three were
+requested 2026-09-06 and were still listed here as unbuilt on 2026-09-17,
+which is the kind of drift this section exists to prevent: **check the code
+before writing "not built" here.**
 
-Deferred/optional beyond that: AI raster map packs, facade-atlas stage 2,
-screen-space AO/reflections, and the [DESIGN.md](DESIGN.md) deferred
-backlog (weather, deeper industry, more transit modes).
+**Next:** nothing is queued. The road epic is closed and the three standing
+requests are done, so the next item is whatever is asked for next. The
+[DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
+transit modes) and AI raster map packs, facade-atlas stage 2 and screen-space
+AO/reflections are the shelf to pick from.
 
 ---
 
@@ -192,7 +202,91 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 
 ## 10. History (newest first)
 
-### Road geometry audit (2026-09-08, one open question)
+### A road's tier is its size (2026-09-15)
+
+A profile carrying a bus piece derived the bus tier whatever road it was, a
+tram piece the tram tier, a bike piece the bike tier — and the tier is where
+cost, upkeep, unlock and the road's own name come from. So a ¢20 street given
+a bus lane was charged ¢55, the price of an arterial it had nothing to do
+with, and called a Bus Lane. A two-lane street and a four-lane street with the
+same lane added were the same road.
+
+The tier is the size now. Rail stays a tier, being a class rather than a lane
+of a street. What the reserved lane adds rides on the profile: a price per
+tile, an upkeep per tile, and its own unlock milestone.
+
+**The surcharges are derived, not chosen.** Each is the gap between the road
+that used to stand alone and the ordinary road of its own class, over the
+reserved lanes it carried — the bike road was a local street with a bike lane
+each side, the bus road an arterial with one each side, the tram road an urban
+street running rails in both lanes. Composing what one of those roads was
+therefore costs exactly what that road cost, which is checked against all
+three; a figure picked by feel fails it. Presets are still priced as
+themselves, so a city built before is worth what it was.
+
+Upkeep had to move too: it was summed from the stored tier byte, which is the
+size and cannot tell a street with a bus lane from one without. Speed and
+capacity were never tier-driven — the pathfinder reads them off the
+cross-section — and rank is the class plus whether a reserved lane is present,
+so both were already right. Checked through the worker, which is what takes
+the money: ¢20 a tile plain, ¢25 with one kerbside bus lane.
+
+### The ghost shows the road, not the tile (2026-09-15)
+
+Every road previewed as a full tile, so every road previewed the same width —
+and the width is the thing the player is choosing. Replacing a street with
+something nearly twice its size said nothing until it was laid. The ghost's
+base layer now draws a band at the composed section's own width: 11.25 m for a
+two-lane street, 19.95 m for an avenue over the top of it, and 33.27 m across
+a six-lane corridor's two rows, which is one row of spacing plus one
+carriageway. A `ghostBounds()` dev hook reports the ghost's extent in world
+metres so this is measured rather than judged by eye
+([`tools/ghost-shots.mjs`](../tools/ghost-shots.mjs)).
+
+**A premise checked and dropped.** The work began on the assumption that a
+wider road would overhang its tile and that seeing the overhang was the point.
+It does not: no layable road exceeds a tile, because a section too wide
+becomes a corridor whose carriageways each fit one. The value is the size
+contrast, and the corridor's second ROW of tiles is the case that really
+claims new ground.
+
+Two defects fell out of it. The axis a band runs along was inferred from the
+neighbouring entries in the tile list, but a corridor arrives as two parallel
+runs in one list — where the first ends and the second begins, the neighbours
+are a row apart and evidence of nothing; read as neighbours they turned every
+carriageway sideways. Only adjacent tiles count now, and the stripe layer
+shared the fault. Separately, the preview said "Locked" on roads the worker
+would have built: the sandbox unlock reached the drawer and the worker but not
+the judgement between them.
+
+### A transit lane is a variant of a size (2026-09-15)
+
+A bus lane, a bike lane and a tramway stopped being road types of their own.
+The road tool's Profile row offers Bus and Tram wherever the class carries
+them, the three standalone cards are gone, and the Roads tabs read Small /
+Medium / Highway / Rail — rail being the one transit mode that really is its
+own network. The retired tiers stay in the catalog because a saved grid stores
+a raw tier byte per tile.
+
+**The composer and the class table disagreed.** A bus lane on a two-lane
+street composed cleanly and fit the tile at 16.85 m, but `layRefusal` rejected
+it: the model had learned bus and tram and the class table never had. Parking
+on an arterial was the same defect. Every piece choice is clamped to what the
+class admits now, in the one place the tool reads to decide what to offer, so
+the variants a size is offered are exactly the variants it can be laid as.
+
+That leaves the lane range deciding what a small street carries, which is the
+realistic answer arrived at rather than asserted: a local street is built for
+two or three lanes, so it takes one bus lane and is refused two, and it runs
+its tram mixed because a twin-track reservation is two more lanes.
+
+**The rails were drawn per tier, down the tile centreline**, so a twin-track
+reservation drew one track in the middle of it. A tramway's rails follow the
+lanes that carry them now — a reservation gets one on each of its two lanes,
+mixed running one in each lane it shares. A railway has no lane pieces to read
+and keeps its single centred track.
+
+### Road geometry audit (2026-09-08, closed 2026-09-17)
 
 A player report that the bike lanes looked uneven, answered by measuring
 rather than by looking harder. Every read-back we had asked a road what its
@@ -429,18 +523,22 @@ crossroads is painted not at all. The harness prints the resolved control
 beside the map so this is read against the rule rather than called a defect
 on sight.
 
-**Still open — the approach flare is drawn but not reported.** On the upstream
-approach to a junction the geometry flares into turn pockets with arrows
-(wave 4's work, and plausibly correct for a one-way, where only one side feeds
-the junction), but both read-backs insist the section is unchanged there —
-`readApproach` and `readDrawn` report the plain section, no pocket and no
-taper. Either the flare is wrong or the read-backs are blind to it; until that
-is settled the matrix reports 17 findings on one-way, tram, ramp and
-mixed-class crossroads runs. Two smaller notes from the same run, neither
-chased: a dead end stops all its paint at the junction-box boundary, leaving an
-unpainted apron before the rounded bulb (consistent across marking types, so
-likely a design consequence), and a fresh map with no roads on it already
-submits six empty draw calls.
+**The approach flare reads back now (closed 2026-09-17).** It was the
+read-backs that were blind, not the flare that was wrong: `readApproach` and
+`readDrawn` reported the plain section on a tile that had visibly flared, and
+the matrix logged 17 findings on one-way, tram, ramp and mixed-class
+crossroads runs because of it. Both now report what the tile carries — a
+street approaching a four-lane road reads `pocket: true`, three lanes and
+10.55 m against the plain 7.5 m, and the openness steps 1 → 0.5 down the zone.
+The matrix run on 2026-09-17 reports uniform across all 72 scenarios with no
+findings.
+
+Two smaller notes from the original run are still unchased, and neither has
+been shown to be a defect: a dead end stops all its paint at the junction-box
+boundary, leaving an unpainted apron before the rounded bulb (consistent
+across marking types, so likely a design consequence), and a fresh map with no
+roads on it already submits six empty draw calls (an empty map submits them
+too, so they are not the roads').
 
 ### Road composition (2026-09-05 – 2026-09-06, in progress)
 
