@@ -66,11 +66,12 @@ export interface BoundActions {
 
 /**
  * Segmented "Tool Mode" control, road tools only right now:
- * `L-path` is the existing two-leg drag; `Straight` locks to a single axis.
- * Changing it also mirrors into `toolFlags.straightMode`, the shape
+ * `L-path` is the existing two-leg drag; `Straight` locks to a single axis;
+ * `Grid` lays the street grid a dragged rectangle encloses. Changing it also
+ * mirrors into `toolFlags.straightMode` / `toolFlags.gridMode`, the shape
  * ToolManager's contract (shared/types.ts `ToolFlags`) actually consumes.
  */
-export type ToolMode = 'straight' | 'lpath';
+export type ToolMode = 'straight' | 'lpath' | 'grid';
 
 /**
  * The junction the inspector has open: where it is, who gives way there, and
@@ -103,7 +104,7 @@ export interface SelectedJunction {
 }
 
 export function createInitialToolFlags(): ToolFlags {
-  return { angleLock: false, straightMode: false, replaceRoad: false };
+  return { angleLock: false, straightMode: false, gridMode: false, replaceRoad: false };
 }
 
 /** A sane, zeroed CityStats for the moment before the first worker snapshot arrives. */
@@ -348,7 +349,11 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   setToolMode: (mode) =>
     set((state) => ({
       toolMode: mode,
-      toolFlags: { ...state.toolFlags, straightMode: mode === 'straight' },
+      toolFlags: {
+        ...state.toolFlags,
+        straightMode: mode === 'straight',
+        gridMode: mode === 'grid',
+      },
     })),
   setRoadElevation: (metres) =>
     set({ roadElevation: Math.max(0, Math.min(BRIDGE_MAX_ELEVATION, Math.round(metres))) }),

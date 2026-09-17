@@ -306,6 +306,7 @@ export function RoadToolOptions(): JSX.Element {
         <div className="flex gap-1">
           {modeButton('straight', 'Straight')}
           {modeButton('lpath', 'L-path')}
+          {modeButton('grid', 'Grid')}
         </div>
       </Group>
 

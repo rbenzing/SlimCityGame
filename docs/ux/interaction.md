@@ -38,6 +38,37 @@ thing is":
   its mass is judged before the player commits — road, zone, bulldoze, and
   terraform previews stay flat frames without this box.
 
+## Grid road mode
+
+The road tool's third path mode. `Straight` lays one run, `L-path` lays two
+legs; `Grid` takes the rectangle a drag encloses and lays a street grid inside
+it in one action — the four sides, plus the internal streets that divide the
+block.
+
+**The spacing is the zoning depth, not a taste.** A road puts frontage
+`ZONE_DEPTH` cells out from each of its sides (`world/zonable.ts`), so two
+parallel streets zone everything between them when the gap is twice that. The
+grid pitch is therefore `2 × ZONE_DEPTH + 1` = **9 tiles centre to centre** —
+eight tiles of block and the street itself. It is the widest spacing that
+leaves no dead ground in the middle of a block, and at 20 m tiles it is a
+180 m block, which is a city block. A tighter grid would be a choice about
+taste; this one falls out of the rule the game already enforces.
+
+Internal streets are laid only where a whole block still fits behind them. A
+rectangle narrower than the pitch gets its perimeter and nothing inside, and
+one that would put a street a tile short of the far edge stops before it —
+cutting off a sliver nothing can be built in is worse than the slightly wide
+block it would have avoided. A drag too small to enclose anything degenerates
+to the straight run it looks like. The internal streets are spaced from the
+rectangle's low edge, so growing a drag adds streets rather than shuffling the
+ones already previewed, and the grid a rectangle gets does not depend on which
+corner the drag started from.
+
+Everything else about a road drag is unchanged: the same profile, elevation,
+replace flag and refusals apply, the preview shows every tile the grid will
+occupy, and the cursor chip prices the lot before it is committed. A grid is
+one undo step, because it was one gesture.
+
 ## Cost and validity readouts
 
 A cursor-chip stack, offset from the pointer, carries the live cost of

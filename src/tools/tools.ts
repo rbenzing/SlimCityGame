@@ -48,6 +48,7 @@ import {
   tilesAcross,
   type ProfileEdits,
 } from '../shared/roadprofile';
+import { ZONE_DEPTH } from '../world/zonable';
 import { corridorRunsFor, corridorTiles } from '../shared/corridor';
 import type { CorridorRuns } from '../shared/corridor';
 
@@ -232,6 +233,61 @@ export function buildLPath(start: TilePoint, end: TilePoint): TilePoint[] {
 }
 
 /**
+ * Street spacing for `Grid` mode, centre to centre, in tiles.
+ *
+ * Derived rather than chosen: a road puts frontage ZONE_DEPTH cells out from
+ * each of its sides, so two parallel streets zone everything between them when
+ * the gap is twice that — eight tiles of block, plus the street itself. It is
+ * the widest pitch that leaves no dead ground in the middle of a block, and at
+ * 20 m tiles it comes out a 180 m block, which is a city block.
+ */
+export const GRID_SPACING_TILES = 2 * ZONE_DEPTH + 1;
+
+/**
+ * The `Grid` tool mode: the street grid enclosed by the rectangle a drag
+ * spans — its four sides, plus the internal streets that divide the block at
+ * GRID_SPACING_TILES.
+ *
+ * Internal streets are placed from the low edge outward, so growing a drag
+ * ADDS streets rather than shuffling the ones already previewed, and a
+ * rectangle narrower than the pitch simply gets none — which is the right
+ * answer for a thin block rather than a case needing special handling. A drag
+ * with no width at all is the straight run it looks like.
+ */
+export function buildGridPath(start: TilePoint, end: TilePoint): TilePoint[] {
+  const x0 = Math.min(start.x, end.x);
+  const x1 = Math.max(start.x, end.x);
+  const z0 = Math.min(start.z, end.z);
+  const z1 = Math.max(start.z, end.z);
+  if (x0 === x1 || z0 === z1) return straightPath(start, end);
+
+  const seen = new Set<string>();
+  const tiles: TilePoint[] = [];
+  const push = (x: number, z: number): void => {
+    const key = `${x},${z}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    tiles.push({ x, z });
+  };
+  // The two edges, then a street every pitch between them — but only while a
+  // whole block still fits before the far edge. Without that an internal
+  // street can land a tile short of the perimeter and cut off a sliver nothing
+  // can be built in, which is worse than the slightly wide block it avoids.
+  const divide = (lo: number, hi: number): number[] => {
+    const out = [lo, hi];
+    for (let at = lo + GRID_SPACING_TILES; hi - at >= GRID_SPACING_TILES; at += GRID_SPACING_TILES)
+      out.push(at);
+    return out;
+  };
+  const rows = divide(z0, z1);
+  const cols = divide(x0, x1);
+
+  for (const z of rows) for (let x = x0; x <= x1; x++) push(x, z);
+  for (const x of cols) for (let z = z0; z <= z1; z++) push(x, z);
+  return tiles;
+}
+
+/**
  * The `Straight` tool mode / `90° lock` snapping chip: a direct
  * single-axis-locked segment from `start` along whichever axis dominates the
  * drag, ignoring the other axis entirely (unlike {@link buildLPath}, this
@@ -400,7 +456,12 @@ export class ToolManager {
   private hoverTile: TilePoint | null = null;
   private dragStart: TilePoint | null = null;
   private armed = false;
-  private flags: ToolFlags = { angleLock: false, straightMode: false, replaceRoad: false };
+  private flags: ToolFlags = {
+    angleLock: false,
+    straightMode: false,
+    gridMode: false,
+    replaceRoad: false,
+  };
   private zoneMode: ZoneMode = 'rect';
   /** Zone brush mode: the deduped, drag-ordered path of tiles painted so far. */
   private brushTiles: TilePoint[] = [];
@@ -570,9 +631,14 @@ export class ToolManager {
     return null;
   }
 
-  /** Live tool-behavior flags from the tool-options panel. */
-  setFlags(flags: ToolFlags): void {
-    this.flags = flags;
+  /**
+   * Live tool-behavior flags from the tool-options panel, merged over what is
+   * already set — the same shape the store's own setToolFlags has always had.
+   * A caller that flips one chip says so, rather than restating every other
+   * flag and silently clearing whichever one it has not heard of yet.
+   */
+  setFlags(flags: Partial<ToolFlags>): void {
+    this.flags = { ...this.flags, ...flags };
     if (this.hoverTile) this.emitPreview(this.hoverTile);
   }
 
@@ -703,6 +769,10 @@ export class ToolManager {
   }
 
   private roadPath(start: TilePoint, end: TilePoint): TilePoint[] {
+    // Grid mode lays a rectangle's whole street grid, so it answers before the
+    // single-run modes: a 90° lock has nothing to say about a shape that is
+    // already square.
+    if (this.flags.gridMode) return buildGridPath(start, end);
     return this.flags.angleLock || this.flags.straightMode
       ? straightPath(start, end)
       : buildLPath(start, end);

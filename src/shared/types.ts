@@ -1157,6 +1157,12 @@ export interface ToolFlags {
   /** `Straight` tool mode — direct single-axis segment instead of L-path. */
   straightMode: boolean;
   /**
+   * `Grid` tool mode — a drag lays the street grid its rectangle encloses,
+   * perimeter plus the internal streets that divide the block, instead of a
+   * single run.
+   */
+  gridMode: boolean;
+  /**
    * `Replace` road mode — a drag lays its road over an existing run whatever
    * that run is, instead of refusing to put a smaller road over a bigger one.
    */

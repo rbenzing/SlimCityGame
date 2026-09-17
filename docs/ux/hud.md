@@ -218,7 +218,7 @@ category or tool is active.
   distinction).
 - The roads drawer carries its own tool-options row in its header, next to
   the close button, rather than a separate floating panel: path mode
-  (`Straight` or `L-path`), elevation (`Raise`/`Lower`, reading `Ground` or
+  (`Straight`, `L-path` or `Grid`), elevation (`Raise`/`Lower`, reading `Ground` or
   a meter height, up to the bridge deck limit), a 90°-lock snap toggle, a
   toggle for whether a drag replaces whatever road is already there, and —
   where the selected road class admits it — its lane count, median or
@@ -379,9 +379,6 @@ A few things this system describes as intended shape are not implemented,
 and none of them are silently promoted to sound finished above. The
 backlog and its priority live in `docs/DESIGN.md`, not here:
 
-- **Grid road mode**: dragging a rectangle to lay a perimeter-plus-internal
-  street grid in one action. Today's road tool only offers `Straight` and
-  `L-path`.
 - **Road guide snapping**: a toggle that would extend a guideline from an
   existing road while dragging a new one. Only 90°-lock snapping exists
   today.
