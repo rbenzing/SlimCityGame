@@ -7,16 +7,15 @@
 Epic 2 of [municipal-services.md](municipal-services.md), written against
 [../../game-design/features/healthcare-and-death-care.md](../../game-design/features/healthcare-and-death-care.md),
 which holds every capacity, rate and price and the derivation of each. This one
-holds the shapes, the arithmetic behind the building sizes, and the risk.
+holds the shapes, the arithmetic behind the sizes, and the risk.
 
 ## What we are building, and why now
 
 A hospital above the existing clinic, a cemetery and a crematorium below both,
 and the first thing in this simulation that can reduce population. Now, because
-it consumes [service-capacity.md](service-capacity.md) hardest — a hospital
-serving a district and a clinic serving a street write the same `health` field
-and nothing distinguishes them — and because the population sink is the change
-most likely to be got wrong on paper.
+it consumes [service-capacity.md](service-capacity.md) hardest — a hospital and
+a clinic write the same `health` field — and because the population sink is the
+change most likely to be got wrong on paper.
 
 ## What it touches
 
@@ -37,16 +36,16 @@ defaulted the way the `garbage` block was: `deathCare` — per-facility intermen
 plus the backlog as a sparse list of `{ tile, count, sinceTick }` — defaults to
 empty, and `occupancy` on each `BuildingInstance` **defaults to 1.0**. **A save
 written before this epic loads after it with the new service absent rather than
-the save rejected**: the programme rule, and the first test written rather than
-the last. The backlog cannot be runtime state the way uncollected trash is —
-trash regenerates on load, a body is a historical fact.
+the save rejected**: the programme rule, and the first test written. The backlog
+cannot be runtime state the way trash is — trash regenerates on load, a body is a
+historical fact.
 
 **Worker protocol: yes, additively.** `SimSnapshot` gains an optional
-`deathCare` block (per-facility used/total plus the city's uncollected count) so
-the panel reads a gauge without a round trip. **No new `Command`** —
-`placeBuilding` and `bulldoze` already exist
-([../interfaces.md](../interfaces.md)) — and **no new `ServiceKind`**, since
-death care writes no coverage field and rides the existing `health` funding.
+`deathCare` block (per-facility used/total plus the uncollected count) so the
+panel reads a gauge without a round trip. **No new `Command`**, since
+`placeBuilding` and `bulldoze` exist ([../interfaces.md](../interfaces.md)), and
+**no new `ServiceKind`**, since death care writes no coverage field and rides
+the `health` funding.
 
 ## The design
 
@@ -83,8 +82,7 @@ come from height and livery** — 1.9 m against 2.8 m.
 Formula from [../../art/civic-massing.md](../../art/civic-massing.md): gross
 floor area = `w × d × 185 × (height ÷ 3.2)`, so tiles = gross ÷ 185 ÷ storeys,
 rounded up to a whole rectangle. Open ground inside a footprint is 215 m² per
-tile (400 − 185), and a 90° stall all-in (2.7 × 5.5 m plus half a 7.3 m aisle)
-is 24.7 m².
+tile (400 − 185); a 90° stall all-in is 24.7 m².
 
 | Building    | Occupant load    | Gross needed | Storeys → tiles | Result     | Floor    | Site vs ground |
 | ----------- | ---------------- | ------------ | --------------- | ---------- | -------- | -------------- |
@@ -103,11 +101,11 @@ Crematorium: a 215 m² chapel (100 × 1.4 m² net ÷ 0.65), a 111 m² office, a 
 foyer, and **240 m² of cremator hall, plant and body store — the one number in
 this epic with no published source**, assumed at 6 × 10 m per unit plus 120 m²
 of plant; the 626 m² total sits inside the observed 500–800 m² band for a
-single-chapel crematorium (Chingford, 568 m² GIA). Two buildings then break the
-formula deliberately: the **cemetery is sized by ground alone** — 4.05 m² of
-land per grave over the whole 400 m² tile is 98 graves per tile, so eight burial
-tiles plus a gatehouse tile is 780 plots — and the **crematorium's 6.4 m is one
-tall storey** counted as two floors, since chapel and cremator hall do not stack.
+single-chapel crematorium (Chingford, 568 m² GIA). Two then break the formula
+deliberately: the **cemetery is sized by ground alone** — 4.05 m² of land per
+grave over the whole 400 m² tile is 98 graves per tile, so eight burial tiles
+plus a gatehouse tile is 780 plots — and the **crematorium's 6.4 m is one tall
+storey** counted as two floors, since chapel and cremator hall do not stack.
 
 **The existing clinic entry disagrees, and not marginally.** `clinic` is 2×2 at
 14 m = **3,237 m²**, **7.3× the 445 m² a four-doctor practice needs**; read
@@ -115,15 +113,15 @@ back, 3,237 ÷ 13.9 = 233 occupants, which at a third staff and three staff per
 doctor is 26 doctors and a list of 52,000, above the Metropolis milestone. **At
 2×2 × 14 m the clinic could never be oversubscribed at any city size this game
 reaches, and epic 0's capacity foundation would be dead on arrival for health.**
-Correct it to **1×2, 6.4 m** — robustly, since a six-doctor practice (40
-occupants, 556 m²) lands on the same rectangle.
+Correct it to **1×2, 6.4 m** — robustly, since a six-doctor practice lands on
+the same rectangle.
 
 ### Behaviour
 
 **Deaths accrue, they are not rolled.** A fractional city counter advances each
 tick by `population × 1.25e-7`; when it passes 1, one body is emitted and 1
-subtracted — no RNG, no rounding loss, deterministic across save and reload, and
-attributed by a rotating index over Active residential instances in id order.
+subtracted — no RNG, deterministic across save and reload, attributed by a
+rotating index over Active residential instances in id order.
 
 **Collection reuses garbage's mechanism, not the dispatcher's.** A facility with
 room collects every building within its `collectionRange` road-BFS radius, in
@@ -132,7 +130,7 @@ and are cosmetic. They deliberately do **not** ride `DispatchSystem`: a funeral
 is not an incident, `Incident['kind']` should not gain a member for one, and the
 32-slot pool should not have ambulances competing with hearses. A burial
 increments interments until `plots` is reached, after which that cemetery
-collects nothing, as a full landfill already does.
+collects nothing, as a full landfill does.
 
 **The penalty applies after coverage, in the same pass.** For each tile holding
 uncollected bodies, subtract `min(255, count × 32 × (ticksUncollected ÷ 6000))`
@@ -155,8 +153,8 @@ population is the occupancy-weighted sum.
 
 ## What could go wrong
 
-**Population has never gone down, and this is where the bugs are.** Each of
-these is a real place, not a hypothetical:
+**Population has never gone down, and this is where the bugs are.** Each is a
+real place, not a hypothetical:
 
 - **`economy.ts`, the milestone ratchet** only ever climbs, so a city shrinking
   from Metropolis to Big Town keeps Metropolis unlocks: probably right, never a
@@ -164,28 +162,25 @@ these is a real place, not a hypothetical:
   to 0, so a city below its own milestone's threshold shows a flat zero —
   indistinguishable from having just arrived. The first visible bug, one line.
 - **`demand.ts`, every denominator.** The `max(200, …)`, `max(400, …)` and
-  `max(600, …)` floors are divide-by-zero guards for a city starting at zero,
-  not behaviour for one shrinking toward it: as population falls, `employed`
-  falls and the denominator with it, so residential demand _rises_ —
-  self-correcting, probably desirable, chosen by nobody.
+  `max(600, …)` floors guard divide-by-zero for a city starting at zero, not one
+  shrinking toward it: as population falls, `employed` falls and the denominator
+  with it, so residential demand _rises_ — chosen by nobody.
 - **`demand.ts`, the commercial term.** Population falling against constant jobs
   drives com demand sharply negative, lighting `LowDemand` on commercial
   buildings, which (if that flag ever gets teeth) removes jobs, which raises res
   demand — a coupled oscillation nothing has exercised. Look here first.
 - **`growth.ts`, `Problem.LowDemand`** is display-only today, since abandonment
   triggers on NoPower/NoWater/NoRoad alone. This epic lights it on many
-  buildings at once for the first time; it must stay toothless, or the
-  oscillation above becomes a demolition wave.
+  buildings at once for the first time; it must stay toothless.
 - **`economy.ts` monthly tax, `worker.entry.ts` `selectionOccupancy` and
-  `traffic.ts` `tripsForTick`** all read population or occupancy directly. Tax
-  must use the occupancy-weighted figure or the city collects rent on empty
-  flats; the inspector must read the instance; thinning traffic is an _expected_
-  effect of the sink, not a regression.
+  `traffic.ts` `tripsForTick`** read population or occupancy directly. Tax must
+  use the occupancy-weighted figure or the city collects rent on empty flats;
+  the inspector must read the instance; thinning traffic is expected, not a bug.
 - **[../../world-sim/population-model.md](../../world-sim/population-model.md)**
   states as fact that there is "no partial occupancy … no vacancy rate within a
   single building", and that population "only ever changes through the state
-  transitions above". Both become false, and stale documentation is the same
-  class of defect as stale code.
+  transitions above". Both become false, and stale docs are the same class of
+  defect as stale code.
 
 **Resizing `clinic` orphans grid stamps.** Footprints derive from the catalog at
 runtime (`footprintForRotation`) while the 2×2 stamp lives in the saved
@@ -194,8 +189,7 @@ tiles of four and leave two permanently unbuildable; the loader must re-stamp
 placed ploppables from the catalog, and that is the riskiest change here. **The
 backlog penalty could also outrun its warning** — 32 points a month is tuned so
 the gauge and notification land before the field moves, and raising the death
-rate later inverts that silently. The backlog is unbounded per tile too, so the
-save block needs a stated cap.
+rate later inverts that silently.
 
 ## Alternatives
 
@@ -207,14 +201,14 @@ and would change `CityStats`, the HUD and the save for no decision.
 `Incident['kind']`, puts funerals in the incident marker list, and makes hearses
 compete with ambulances for 32 slots; garbage collection is the same job with
 the right shape. **Reusing `VehicleKind.Car`** would run magenta hearses, since
-civilian vehicles pick a randomized colour, and `Ambulance` puts a red cross on
-a funeral.
+civilian vehicles pick a randomized colour, and `Ambulance` puts a cross on a
+funeral.
 
 **A city-level population deficit instead of per-building occupancy.** Rejected:
 a second authoritative number drifts out of sync with the building set, exactly
 the property
-[../../world-sim/population-model.md](../../world-sim/population-model.md) names
-as the current model's strength.
+[../../world-sim/population-model.md](../../world-sim/population-model.md) calls
+the current model's strength.
 
 ## How we will know it works
 
@@ -224,8 +218,8 @@ Behaviour, in the order the risk sits:
   facility holding interments, nothing uncollected. Written first.
 - A city of 10,000 run for one game year (72,000 ticks) produces 90 deaths, ±1
   for the fractional remainder, and the same run split by a save and reload
-  produces the same 90. A cemetery with 780 plots stops collecting on the 781st
-  body; a crematorium run for ten game years has collected every body offered.
+  produces the same 90. A cemetery of 780 plots stops collecting on the 781st
+  body; a crematorium run for ten game years has collected every body.
 - One uncollected body four game months old subtracts 128 from `Health` at its
   tile; the same body collected a tick earlier subtracts nothing. A clinic
   placed on a penalised tile does not erase it, in any placement order.
@@ -260,5 +254,4 @@ Behaviour, in the order the risk sits:
 - Eldercare as a building, and grave reuse beyond the demolition charge, both
   for the reasons the design document gives.
 - Giving `Problem.LowDemand` teeth, named above precisely because this epic must
-  not be the change that arms it; and reworking coverage or the road-network
-  BFS, which the programme requires be left alone.
+  not be what arms it; and reworking coverage or the road-network BFS.

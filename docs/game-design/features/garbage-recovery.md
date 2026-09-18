@@ -29,9 +29,9 @@ a real, cheap, finite, visibly-consumed option so recovery has something to be
 better than.
 
 Serves the **city as a system** pillar in [../gdd.md](../gdd.md): a recovery
-facility is the first waste building whose benefit the player can trace in three
-places at once — the pile that grows slower, the burner that runs cooler, a line
-on the budget.
+facility is the first waste building whose benefit the player traces in three
+places at once — the pile growing slower, the burner running cooler, a line on
+the budget.
 
 ## How it works, for the player
 
@@ -88,10 +88,10 @@ incoherent number.
 
 **Epic 0, service capacity.** Waste already has a capacity-like mechanic in the
 incinerator's buffer, and the two are **not** the same quantity: a buffer is a
-stock of material, epic 0's capacity is a population. They stay separate in the
-data and unify at their source — a facility's buffer _and_ its people-served
-figure both fall out of its daily throughput, so there is one dial with two
-readings. See [service-capacity.md](service-capacity.md) and its
+stock, epic 0's capacity a population. They stay separate in the data and unify
+at their source — a facility's buffer _and_ its people-served figure both fall
+out of its daily throughput, one dial with two readings. See
+[service-capacity.md](service-capacity.md) and its
 [technical plan](../../engineering/features/service-capacity.md).
 
 **The budget.** No funding slider: a sorting line that runs at half speed
@@ -119,10 +119,10 @@ terrace and 0.8 for a level-3 tower — **a 12.5× spread** in which a flat-dwel
 makes an eighth of a householder's rubbish. No published figure supports that;
 generation becomes per resident and per job.
 
-Taking the low-density house as the rung that is right, 10 units = 2.2 kg, so
-**one unit is a shade over 0.2 kg**. We settle on **0.25 kg**, which makes 4,000
-units a tonne and **9 units a resident-day**. On that reading the incinerator's
-catalog entry says:
+Taking the low-density house as the right rung, 10 units = 2.2 kg, so **one unit
+is a shade over 0.2 kg**. We settle on **0.25 kg**, making 4,000 units a tonne
+and **9 units a resident-day**. On that reading the incinerator's catalog entry
+says:
 
 | Catalog figure           | In units   | Real terms                      | Verdict                            |
 | ------------------------ | ---------- | ------------------------------- | ---------------------------------- |
@@ -225,9 +225,8 @@ order of magnitude every time. Arithmetic in the
 | Transfer Station            | 1,870 m²  | 3×4       | 9 m    | 4     |
 | Materials Recovery Facility | 3,785 m²  | 4×6       | 11 m   | 15    |
 
-The affordability override holds at the bottom: ¢3,200 at Busy Township, whose
-milestone reward alone is ¢15,000. Per tonne recovered the large facility costs
-25% less to build and 33% less to run than the small one — the ladder rule.
+Affordability holds: ¢3,200 at Busy Township, whose milestone reward is ¢15,000.
+Per recovered tonne the large facility is 25% cheaper to build, 33% to run.
 
 **Pollution** is proportional to site vehicle movements, since none of the three
 burns: 5 for the recycling centre at roughly one container pull a day, 20 for
