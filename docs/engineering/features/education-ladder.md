@@ -106,7 +106,7 @@ shrinks the catchment, and it reaches zero at `strength ÷ threshold`:
 | ---------- | -------- | --------------------- | ------------------------ |
 | Primary    | 5,000    | 20 tiles (400 m)      | 250%                     |
 | Secondary  | 15,000   | 11 tiles (240 m)      | 170%                     |
-| University | 50,000   | 20 tiles (400 m)      | 250%                     |
+| University | 50,000   | 40 tiles (800 m)      | 250%                     |
 | Library    | 15,000   | uplift halves at 200% | never — it holds no gate |
 
 The secondary school's 170% is the balance risk worth naming: its threshold is
