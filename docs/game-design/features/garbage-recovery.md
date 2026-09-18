@@ -91,7 +91,8 @@ incinerator's buffer, and the two are **not** the same quantity: a buffer is a
 stock of material, epic 0's capacity is a population. They stay separate in the
 data and unify at their source — a facility's buffer _and_ its people-served
 figure both fall out of its daily throughput, so there is one dial with two
-readings. See [service-capacity.md](service-capacity.md).
+readings. See [service-capacity.md](service-capacity.md) and its
+[technical plan](../../engineering/features/service-capacity.md).
 
 **The budget.** No funding slider: a sorting line that runs at half speed
 because the budget says so is not a thing that happens to a sorting line. The
@@ -165,8 +166,8 @@ composition. Nothing here is chosen.
 The eight sum to **32.2%** against the published national recycling-and-
 composting headline of 32.1% — the derivation checks against its own source.
 **The recovery facility takes the four dry streams** — paper, plastics, metals,
-glass — for **21.1%**, settled at **21%**; the 8.5 pp in food and yard trimmings
-is composting, a different building, out of scope.
+glass — for **21.1%**, settled at **21%**; the 8.5 pp in food and yard is
+composting, a different building, out of scope.
 
 **The recycling centre takes the same four but only what residents bring.**
 Published participation in drop-off-only programmes runs 20–30% of households
@@ -178,9 +179,9 @@ softest figure here — if those bands are wrong, this number moves.
 
 A collection round's published time budget is roughly four hours on route, two
 hauling and one at the disposal site across 4.3 round trips — 14 minutes one
-way, about 9 km. Our whole map is 5.12 km across, so the published haul says
-every facility is within reach of every round, and the existing 28-tile landfill
-and 40-tile incinerator radii are a **game** constraint, not a physical one. The
+way, about 9 km. Our map is 5.12 km across, so the published haul says every
+facility is within reach of every round, and the existing 28-tile landfill and
+40-tile incinerator radii are a **game** constraint, not a physical one. The
 three new reaches are calibrated against those two — 32, 40 and 48 tiles by
 facility size — an assumption, stated rather than dressed up.
 

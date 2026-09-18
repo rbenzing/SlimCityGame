@@ -155,9 +155,9 @@ Six Acre Standard_ (2015), which give per typology a quantity in hectares per
 
 Residents per tile is 400 m² ÷ the m² each resident is owed, and it is the whole
 reason the rungs differ: the standard asks six times as much sports ground per
-head as equipped play, so a tile of pitch serves a sixth as many people. **The ÷
-5 is arithmetic, not a fudge.** The simulation has one `park` kind, not
-five, and pooling the typologies into it overstates capacity fivefold — a city
+head as equipped play, so a tile of pitch serves a sixth as many people.
+**Dividing by five is arithmetic, not a fudge.** The simulation has one `park`
+kind, and pooling the five typologies into it overstates capacity fivefold — a city
 provided exactly to standard would hold five separate provisions and a pooled
 load of 0.2. Dividing restores 1.0: for 1,000 residents at standard, 6 tiles of
 pocket park, 8 of plaza, 15 of neighbourhood park, 20 of district park and 40 of

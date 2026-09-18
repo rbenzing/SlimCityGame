@@ -32,7 +32,7 @@ which is the other reason to do it on paper first.
 | `src/sim/economy.ts`       | The monthly recovery credit, through the existing income pass                     |
 | `src/data/catalog.json`    | Three entries; `incinerator.burnRate` re-derived                                  |
 | `src/world/grid.ts`        | `SAVE_VERSION` bump, to rescale an old landfill pile                              |
-| `src/ui/`                  | Waste panel reports diverted, forwarded and buffered                              |
+| `src/ui/`                  | Panel reports diverted, forwarded, buffered, and _no disposal in reach_           |
 
 **Save format: yes, additively, with one versioned rescale.** The facilities are
 ordinary catalog ploppables, so placement already round-trips through the
@@ -63,9 +63,9 @@ meaning unedited: `diversion` (0..1 of the collected stream recovered, default
 nothing). `final` defaults to **true**, so the incinerator means tomorrow what
 it means now; forwarding facilities set it false.
 
-`servesPeople` is the concession to epic 0, and it is **not** `bufferCapacity`
-renamed: a buffer is a stock of material, epic 0's `ServiceSpec.capacity` is a
-population, and treating a stock as a rate would be a modelling error. What
+`servesPeople` is the concession to [epic 0](service-capacity.md), and it is
+**not** `bufferCapacity` renamed: a buffer is a stock, its `ServiceSpec.capacity`
+is a population, and treating a stock as a rate is a modelling error. What
 unifies them is their _source_ — both fall out of the facility's daily
 throughput: `servesPeople` is that throughput in kg ÷ 2.2 kg a person a day, and
 `bufferCapacity` is days of storage × throughput ÷ 0.25 kg a unit. One dial, two
@@ -186,32 +186,31 @@ not a fresh traversal; the gate is
 **Rounding eats small diversions, and the credit crosses two cadences.** 7% of a
 2-unit building is zero, so remainders carry per facility in integers; and
 recovery accumulates every 10 ticks while income settles every 6,000, so the
-accumulator is cleared once at the month boundary or it double-counts.
-
-**A recovery facility with no disposal behind it is a trap** — intended, and it
-reads as a bug, so the panel must say _forwarded: 0, no disposal in reach_.
+accumulator is cleared once at the month boundary or it double-counts. And a
+recovery facility with no disposal behind it fills and stops — intended, but it
+reads as a bug, which is why the panel must say so.
 
 ## Alternatives
 
-**A recycling percentage slider.** Rejected: replacing one dial with another is
-what this epic exists not to do. (The split-body vehicle is rejected above.)
+**A recycling percentage slider**, and **diversion at source** rather than
+collection and residue. Both rejected: one dial replacing another is what this
+epic exists not to do, and diverting at source lets a facility work with nothing
+behind it, removing the ladder's bottom rung. The split body is rejected above.
 
 **Merging `bufferCapacity` into epic 0's `ServiceSpec.capacity`.** Rejected as a
 merge, adopted as a shared derivation: a stock in units and a population are
 different quantities, and deriving both from one throughput figure gives one
-source of truth without pretending they are the same number.
-
-**Diversion at source**, and **leaving `LANDFILL_CAPACITY_PER_TILE` at 600.**
-Both rejected: diverting at source lets a facility work with nothing behind it,
-removing the ladder's bottom rung; and low-density generation already matches a
-published figure, while the landfill matches none.
+source of truth without pretending they are the same number. **Leaving
+`LANDFILL_CAPACITY_PER_TILE` at 600** and scaling generation down instead is
+rejected for the same reason in reverse: low-density generation already matches
+a published figure, and the landfill matches none.
 
 ## How we will know it works
 
 - A save written before this epic loads, with no recovery facilities present,
-  the city behaving exactly as it did, and its landfill fill _fraction_
-  unchanged — the stored pile is multiplied by the rescale ratio, not reset.
-  **Written first**: it protects every existing city.
+  the city behaving as it did, and its landfill fill _fraction_ unchanged — the
+  pile is multiplied by the rescale ratio, not reset. **Written first**: it
+  protects every existing city.
 - A city with a recycling centre in reach buries 7% less than the same city
   without one, over the same number of passes; and a building reached by both a
   centre and a recovery facility is diverted once, at 21% and not at 28%.
@@ -219,21 +218,18 @@ published figure, while the landfill matches none.
   its buffer is full, then stops and trash backs up; removing it drops that
   buffer, as `drop(id)` already does.
 - A transfer station forwards to a final facility outside its own
-  `collectionRange`, distance does not reduce what arrives, and it diverts none
-  of it.
+  `collectionRange`, distance does not reduce what arrives, and it diverts none.
 - Generation is per capita: a 150-resident tower generates 37.5× a 4-resident
-  house, not 3×; and a month with 1,000,000 units recovered books ¢400 through
-  the existing income pass, once.
+  house, not 3×; and a month with 1,000,000 units recovered books ¢400 once.
 - Determinism and budget: the same city ticked twice recovers the same units in
-  the same facilities, and a profile at the performance-budget city size keeps
-  the garbage pass within budget.
+  the same facilities, and a profile at the budget city size stays within it.
 
 **This epic renders, so read-backs are not enough.** In a browser, at the
 default camera pitch:
 
 1. **The three facilities in a row**, with a 4.0 m car and a 9 m refuse vehicle
    on each apron: every bay door taller than the vehicle using it, and the
-   anchors in [../../art/README.md](../../art/README.md) holding.
+   [scale anchors](../../art/README.md) holding.
 2. **The recycling centre at street level**: roll-off containers and a hook-lift
    shed reading as a drop-off yard, not a small warehouse.
 3. **The recovery facility beside the incinerator**: a 4×6 / 11 m hall reading
@@ -248,8 +244,7 @@ default camera pitch:
 
 - **Composting and organics**, **per-material tracking** and **waste export**:
   the published 8.5 pp is in the design document for the next epic; otherwise
-  one stream, one rate, and no outside world to ship to.
+  one stream, one rate, no outside world.
 - **A payload model for the fleet**, and **reworking collection**: the BFS, the
-  building-id order and the full-buffer stop rule are unchanged.
-- **Retuning the incinerator's mass or truck count** — only `burnRate`, because
-  diversion depends on it; the building and its four trucks stay.
+  building-id order and the full-buffer stop rule are unchanged, and only
+  `burnRate` is retuned on the incinerator — its mass and trucks stay.

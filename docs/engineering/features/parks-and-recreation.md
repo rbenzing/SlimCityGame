@@ -11,13 +11,13 @@ which owns every number and its derivation; this owns how the code gets there.
 
 ## What we are building, and why now
 
-Four new park entries above the existing pocket park, a capacity for every one of
-them, a city-wide open-space provision statistic, and one change to how park
-coverage combines with itself. The player gets open space planned to a provision
-standard instead of dotted for a bonus. Now, because it is last and cannot start
-earlier: it is the first epic whose whole point is capacity, so it needs
-[service-capacity.md](service-capacity.md) finished — and epic 0 deliberately
-shipped the park entries **without** a capacity, leaving this hole to fill.
+Four new park entries above the existing pocket park, a capacity for each, a
+city-wide open-space provision statistic, and one change to how park coverage
+combines with itself. The player gets open space planned to a provision standard
+instead of dotted for a bonus. Now, because it is last and cannot start earlier:
+it is the first epic whose whole point is capacity, so it needs
+[service-capacity.md](service-capacity.md) finished — and epic 0 shipped the park
+entries **without** a capacity, leaving this hole to fill.
 
 ## What it touches
 
@@ -36,11 +36,11 @@ on: **a save written before this epic loads after it**, with the new parks absen
 — never a rejected file. One caveat, because `GridState.fields` _are_ serialized:
 a pre-epic save's `LandValue` array grew under the old additive blend. It is not
 rejected and not migrated; land value is recomputed and diffused every tick, so
-it re-settles within a few ticks — a balance correction for the release note, not
-a compatibility break. **Worker protocol: yes, additively** — one new optional
-member on `SimSnapshot`, see [../interfaces.md](../interfaces.md) and
-[../data-model.md](../data-model.md). No new commands; parks use the ploppable
-path that already exists.
+it re-settles — a balance correction for the release note, not a compatibility
+break. **Worker protocol: yes, additively** — one new optional member on
+`SimSnapshot`, see [../interfaces.md](../interfaces.md) and
+[../data-model.md](../data-model.md). No new commands; parks use the existing
+ploppable path.
 
 ## The design
 
@@ -120,9 +120,9 @@ into one `BufferGeometry` sized from the footprint, so a 25-tile district park i
 works. **2. Footprint-independent parts share one pool across all five kits.**
 Each kit today builds its own `InstancedSlotPool` per part, so five park kits
 would mean five tree and five bench pools for identical geometry. `parkTree` and
-`parkBench` do not depend on the footprint, so the epic's whole cost becomes 5
-ground pools + `parkTree` + `parkBench` + `pitchGoal` + `pavilionBlock` = **9
-draw calls, for any number of parks**.
+`parkBench` do not depend on the footprint, so the whole cost becomes 5 ground
+pools + `parkTree` + `parkBench` + `pitchGoal` + `pavilionBlock` = **9 draw
+calls, for any number of parks**.
 
 **3. Prop counts scale with perimeter, not area** — trees ring the edge and the
 paths, the middle stays open, and that is both the correct read and what keeps
@@ -164,9 +164,8 @@ that legible rather than alarming. **The scratch map for the max-reduce is the
 largest transient the service pass allocates** — one `Map` per tick rather than
 one per facility, but with ranges up to 58 tiles the union of park-covered tiles
 can be most of the map. If it shows up in a profile the answer is a reused
-`Float32Array` over tile indices, not a second pass.
-
-**The plaza may dominate downtown.** Per head it is the second-worst buy (17.1
+`Float32Array` over tile indices, not a second pass. **The plaza may dominate
+downtown.** Per head it is the second-worst buy (17.1
 against the district park's 14.6); per _tile_ it is far the best, so where land
 binds — exactly where a plaza belongs — it always wins. Intended, but the figure
 most likely to need moving. **And the number I am least happy with is
@@ -186,8 +185,7 @@ array from the other fields each time its slot comes up, so any write dies on th
 next pass. Recreation reaches happiness through the land-value term, and changing
 its weight is a coefficient change there, a tuning question for
 [../../game-design/balancing.md](../../game-design/balancing.md).
-
-**Five `ServiceKind` members, one per published typology.** Rejected: five kinds'
+**Five `ServiceKind` members, one per published typology** are rejected: five kinds'
 worth of concept, panel and coverage for the one service the city survives
 without, when the typologies already earn their keep by giving each rung its own
 capacity per tile. **A district park at the published 20 ha** is rejected on the
@@ -195,13 +193,12 @@ grid too — 500 tiles and 22 tiles of frontage against the 6-tile siting rule.
 
 ## How we will know it works
 
-The rules above, as behaviour statements. Start at the
-[documentation map](../../README.md) for where they land once shipped.
+The rules above, as behaviour statements; the
+[documentation map](../../README.md) says where they land once shipped.
 
 - Two overlapping pocket parks raise a shared tile by the same amount as one
-  does — the exploit being closed, and written first.
-- A park still _adds_: a tile at land value 200 under a strength-80 park ends
-  above 200, never at 20.
+  does — the exploit being closed, and written first. But a park still _adds_: a
+  tile at land value 200 under a strength-80 park ends above 200, never at 20.
 - `small-park` at `range: 18` reaches exactly 20 tiles of road distance once the
   2-tile radiation is counted, and nothing at 21.
 - A district park alone in a catchment of 500 residents runs at load 2 and gives
@@ -235,8 +232,7 @@ and a read-back proves none of it.
    the same ground.** Under the old blend the six dots won; under the new one the
    single park must visibly win. The design change, and it has to be seen.
 6. **A plaza between two towers at the default pitch.** It must read as a public
-   square; if it reads as a lot the player forgot to zone, the paving and the
-   planters are wrong.
+   square; if it reads as an unzoned lot, the paving and planters are wrong.
 
 ## Out of scope
 
@@ -249,6 +245,6 @@ and a read-back proves none of it.
 - **Tourism, landmarks and per-citizen leisure.** No visitors exist, and nobody
   is tracked to a park.
 - **A new scalar field, a new `ServiceKind`, or reworking coverage.** Argued
-  above; road-network BFS is untouched and only how contributions combine changes.
+  above; BFS is untouched and only how contributions combine changes.
 - **Park-specific pedestrian behaviour** beyond walker density following load;
   water features; seasonal planting beyond the existing tint.

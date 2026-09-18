@@ -26,8 +26,7 @@ most likely to be got wrong on paper.
 | `src/data/catalog.json` | `hospital`, `cemetery`, `crematorium` added; `clinic` resized                                |
 | `src/sim/deathcare.ts`  | New: death accrual, hearse collection, backlog, the health penalty                           |
 | `src/sim/services.ts`   | Coverage unchanged; the backlog penalty applies after it, in the same pass                   |
-| `src/sim/economy.ts`    | Population sum weights by `occupancy`                                                        |
-| `src/sim/growth.ts`     | Occupancy refills on the existing problems pass                                              |
+| `src/sim/economy.ts`    | Population sum weights by `occupancy`; `growth.ts` refills it on its problems pass           |
 | `src/app/persist.ts`    | `SaveMeta.deathCare`; `occupancy` on serialized instances                                    |
 | `src/ui/`               | Cemetery fill gauge in the service panel; the uncollected-dead notification                  |
 
@@ -36,11 +35,11 @@ added, so `SAVE_VERSION` stays at **11** and `BYTES_PER_TILE` at **45**
 ([../data-model.md](../data-model.md)). Two optional `SaveMeta` additions,
 defaulted the way the `garbage` block was: `deathCare` — per-facility interments
 plus the backlog as a sparse list of `{ tile, count, sinceTick }` — defaults to
-empty, and `occupancy` on each serialized `BuildingInstance` **defaults to 1.0**.
-**A save written before this epic loads after it with the new service absent
-rather than the save rejected**: the programme rule, and the first test written
-rather than the last. The backlog cannot be runtime state the way uncollected
-trash is — trash regenerates on load, a body is a historical fact.
+empty, and `occupancy` on each `BuildingInstance` **defaults to 1.0**. **A save
+written before this epic loads after it with the new service absent rather than
+the save rejected**: the programme rule, and the first test written rather than
+the last. The backlog cannot be runtime state the way uncollected trash is —
+trash regenerates on load, a body is a historical fact.
 
 **Worker protocol: yes, additively.** `SimSnapshot` gains an optional
 `deathCare` block (per-facility used/total plus the city's uncollected count) so
@@ -75,9 +74,9 @@ since the vehicle kit is one mesh per kind
 against [../performance-budget.md](../performance-budget.md). Real dimensions,
 which do not scale with the tile: an **ambulance is 6.5 × 2.1 × 2.8 m** (London
 Ambulance Service FOI, box-body Sprinter); a **hearse is 6.2 × 1.9 × 1.9 m**
-(Coleman Milne Mercedes 214, cross-checked against a Cadillac XT5 funeral coach
-at 6.32 × 1.90 × 1.86 m). They are within 0.3 m in length, so **the silhouette
-read must come from height and livery** — 1.9 m against 2.8 m.
+(Coleman Milne Mercedes 214, against a Cadillac XT5 coach at 6.32 × 1.90 ×
+1.86 m). Within 0.3 m of each other in length, so **the silhouette read must
+come from height and livery** — 1.9 m against 2.8 m.
 
 ### Deriving every footprint and height
 
@@ -99,19 +98,16 @@ admin, plus ~20 patients present. Hospital: 72 beds, staff at 3.45 FTE per
 occupied bed (the lower US quartile, because "adjusted" beds inflate the median
 for outpatient work) = 248 FTE with ~40% on days = 99, plus **42 attenders at
 once — an assumption, not a derivation**, anchored on 2,830 admissions a year ÷
-360 = 7.9 arrivals a day plus clinics and visitors. Crematorium: a 215 m² chapel
-(100 × 1.4 m² net ÷ 0.65), a 111 m² office, a 60 m² foyer, and **240 m² of
-cremator hall, plant and body store — the one number in this epic with no
-published source**, assumed at 6 × 10 m per unit including charging clearance,
-twice, plus 120 m² of plant; the 626 m² total sits inside the observed
-500–800 m² band for a single-chapel crematorium (Chingford, 568 m² GIA).
-
-**Two buildings break the formula's assumptions, deliberately.** The **cemetery
-is sized by ground alone** — 4.05 m² of land per grave over the whole 400 m²
-tile is 98 graves per tile, so eight burial tiles plus a gatehouse tile is 780
-plots, and the gatehouse fits one tile's 185 m² plate at one storey, hence
-3.2 m. The **crematorium's 6.4 m is one tall storey** the formula counts as two
-floors, since chapel and cremator hall do not stack.
+360 = 7.9 arrivals a day; its site is 3 ambulance canopy bays and 40 stalls.
+Crematorium: a 215 m² chapel (100 × 1.4 m² net ÷ 0.65), a 111 m² office, a 60 m²
+foyer, and **240 m² of cremator hall, plant and body store — the one number in
+this epic with no published source**, assumed at 6 × 10 m per unit plus 120 m²
+of plant; the 626 m² total sits inside the observed 500–800 m² band for a
+single-chapel crematorium (Chingford, 568 m² GIA). Two buildings then break the
+formula deliberately: the **cemetery is sized by ground alone** — 4.05 m² of
+land per grave over the whole 400 m² tile is 98 graves per tile, so eight burial
+tiles plus a gatehouse tile is 780 plots — and the **crematorium's 6.4 m is one
+tall storey** counted as two floors, since chapel and cremator hall do not stack.
 
 **The existing clinic entry disagrees, and not marginally.** `clinic` is 2×2 at
 14 m = **3,237 m²**, **7.3× the 445 m² a four-doctor practice needs**; read
@@ -135,7 +131,7 @@ building-id order; hearses route depot → building → depot like garbage truck
 and are cosmetic. They deliberately do **not** ride `DispatchSystem`: a funeral
 is not an incident, `Incident['kind']` should not gain a member for one, and the
 32-slot pool should not have ambulances competing with hearses. A burial
-increments a cemetery's interments until `plots` is reached, after which it
+increments interments until `plots` is reached, after which that cemetery
 collects nothing, as a full landfill already does.
 
 **The penalty applies after coverage, in the same pass.** For each tile holding
@@ -154,9 +150,8 @@ radius, since the spawn scan is untouched.
 **The rules the implementation must satisfy**, which become the tests below and
 then spec entries reachable from the [documentation map](../../README.md): an
 old save loads unchanged; deaths accrue deterministically across a save
-boundary; a full cemetery collects nothing and a crematorium never fills;
-coverage precedes the penalty; and population is the occupancy-weighted sum that
-tax, demand and milestones all read.
+boundary; a full cemetery collects nothing; coverage precedes the penalty; and
+population is the occupancy-weighted sum.
 
 ## What could go wrong
 
@@ -166,19 +161,17 @@ these is a real place, not a hypothetical:
 - **`economy.ts`, the milestone ratchet** only ever climbs, so a city shrinking
   from Metropolis to Big Town keeps Metropolis unlocks: probably right, never a
   _decision_, so pin it either way. Worse, **`computeMilestoneProgress`** clamps
-  to 0, so a city falling below its own milestone's threshold shows a flat zero
-  — indistinguishable from having just arrived, and no signal that it is going
-  backwards. The first visible bug, and one line.
+  to 0, so a city below its own milestone's threshold shows a flat zero —
+  indistinguishable from having just arrived. The first visible bug, one line.
 - **`demand.ts`, every denominator.** The `max(200, …)`, `max(400, …)` and
   `max(600, …)` floors are divide-by-zero guards for a city starting at zero,
   not behaviour for one shrinking toward it: as population falls, `employed`
-  falls and the denominator shrinks with it, so residential demand _rises_ —
+  falls and the denominator with it, so residential demand _rises_ —
   self-correcting, probably desirable, chosen by nobody.
 - **`demand.ts`, the commercial term.** Population falling against constant jobs
   drives com demand sharply negative, lighting `LowDemand` on commercial
   buildings, which (if that flag ever gets teeth) removes jobs, which raises res
-  demand — a coupled oscillation nothing has exercised. When the city pulses,
-  look here first.
+  demand — a coupled oscillation nothing has exercised. Look here first.
 - **`growth.ts`, `Problem.LowDemand`** is display-only today, since abandonment
   triggers on NoPower/NoWater/NoRoad alone. This epic lights it on many
   buildings at once for the first time; it must stay toothless, or the
@@ -186,23 +179,23 @@ these is a real place, not a hypothetical:
 - **`economy.ts` monthly tax, `worker.entry.ts` `selectionOccupancy` and
   `traffic.ts` `tripsForTick`** all read population or occupancy directly. Tax
   must use the occupancy-weighted figure or the city collects rent on empty
-  flats; the inspector must read the instance rather than assume full; thinning
-  traffic is now an _expected_ effect of the sink, not a regression.
+  flats; the inspector must read the instance; thinning traffic is an _expected_
+  effect of the sink, not a regression.
 - **[../../world-sim/population-model.md](../../world-sim/population-model.md)**
   states as fact that there is "no partial occupancy … no vacancy rate within a
   single building", and that population "only ever changes through the state
   transitions above". Both become false, and stale documentation is the same
-  class of defect as stale code, so updating it is part of this epic.
+  class of defect as stale code.
 
 **Resizing `clinic` orphans grid stamps.** Footprints derive from the catalog at
 runtime (`footprintForRotation`) while the 2×2 stamp lives in the saved
 `buildingId` layer, so shrinking the entry makes `registry.remove` clear two
-tiles of four and leave two permanently unbuildable. The loader must re-stamp
-placed ploppables from the catalog: the riskiest single change here. **And the
-backlog penalty could outrun its warning** — 32 points a month is tuned so the
-gauge and notification land before the field moves, and raising the death rate
-later inverts that silently. The backlog is also unbounded per tile, so the save
-block needs a stated cap.
+tiles of four and leave two permanently unbuildable; the loader must re-stamp
+placed ploppables from the catalog, and that is the riskiest change here. **The
+backlog penalty could also outrun its warning** — 32 points a month is tuned so
+the gauge and notification land before the field moves, and raising the death
+rate later inverts that silently. The backlog is unbounded per tile too, so the
+save block needs a stated cap.
 
 ## Alternatives
 
@@ -248,12 +241,12 @@ Behaviour, in the order the risk sits:
 **This epic renders, so these have to be looked at in a browser, not read back:**
 
 - **The ladder, in one frame.** A house, a 1×2 × 6.4 m clinic and a 2×3 × 16 m
-  hospital on one street at the default camera pitch. If clinic and hospital are
-  not obviously different buildings without labels, the ladder has failed.
+  hospital on one street at the default pitch. If clinic and hospital are not
+  obviously different buildings without labels, the ladder has failed.
 - **The cemetery as grounds.** 3×3 at 3.2 m from the default pitch, and again
   zoomed to the 1.75 m pedestrian, to confirm plot rows and a gatehouse rather
-  than a 60 m grey slab. **The crematorium's flue** in the same two shots: it
-  has to read as plant, which is how a process utility is recognised.
+  than a 60 m grey slab — with **the crematorium's flue** in both, since a
+  process utility is recognised by its plant.
 - **Hearse, ambulance and car stopped on one street** — 6.2 m, 6.5 m and 4.0 m.
   The shot checks that height and livery separate the service vehicles, since
   their lengths do not.
