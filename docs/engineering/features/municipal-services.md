@@ -39,6 +39,18 @@ held to applies unchanged — a save written before an epic loads after it, with
 the new service absent rather than the save rejected. A missing field means "the
 city never had this", never "reject the file".
 
+**Resizing an existing building is a save migration, not a catalog edit.** Four
+epics propose correcting the footprint or height of a building that already
+ships, and one of them — the clinic at 2×2 — would shrink. That is not free.
+`src/sim/buildings.ts` stamps a footprint into the saved `buildingId` layer when
+a building is placed, but clears it from a **runtime** map rebuilt from the
+catalog. Shrink the clinic and demolishing one in an old save clears two of its
+four tiles and leaves two stamped with a building that no longer exists —
+permanently unbuildable ground the player cannot clear. Any epic that resizes an
+existing entry must re-stamp ploppables from the catalog on load, and must say
+so; an epic that only changes a height is unaffected, because the stamp is the
+footprint.
+
 **Save versions are allocated in build order, and no epic owns a number.** Three
 of the nine append a grid layer, and each was planned in isolation against
 `SAVE_VERSION = 11`, so two of them name 12 and would collide. They do not

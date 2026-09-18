@@ -89,9 +89,9 @@ A body nobody comes for stays at the building where the death happened, and
 shape a clinic's coverage radiates in, with the sign reversed. The penalty grows
 with neglect rather than city size: **32 points per body per game month
 uncollected**, out of the 255 the field holds. A clinic writes 140, so one body
-left four months cancels a clinic and eight takes the tile to zero whatever is
-built nearby. Health feeds happiness and happiness feeds residential demand, so
-a district that stops burying its dead stops attracting residents.
+left four months all but cancels one, and eight takes the tile to zero whatever
+is built nearby. Health feeds happiness and happiness feeds residential demand,
+so a district that stops burying its dead stops attracting residents.
 
 The player sees it coming in four stages: **a gauge, game-years ahead** (every
 cemetery reports plots used against plots total, the way a landfill reports
