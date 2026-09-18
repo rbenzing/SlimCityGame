@@ -13,9 +13,16 @@ file, that file links rather than repeats.
 
 ## The scale bible
 
-The world reads as one consistent scale, anchored on the **cosmetic car — 4.0 m
-long × 1.8 m wide** — as the human-scale unit. Every other proportion in the
-world is read against that car.
+The world reads as one consistent scale, anchored on two things a player
+already knows the size of: the **cosmetic car — 4.0 m long × 1.8 m wide** —
+and the **pedestrian, 1.75 m to the top of the head**. Every other proportion
+in the world is read against those two, and they are read against each other:
+a person standing beside a car comes up to a little above its roof, and
+anything that breaks that is wrong however good its own numbers look.
+
+Service vehicles are sized the same way rather than borrowed from the car — a
+fire appliance is 10 m long and a garbage truck 9 m, and a fleet where they
+are all 4 m makes every street read as a toy.
 
 `TILE_METERS = 20` is load-bearing (grid, fields, pathfinding, saves). It is
 20 rather than 16 because the widest street the game builds has to fit inside
@@ -74,8 +81,9 @@ and capacity numbers are simulation facts, not art direction; they stay in
 | [buildings.md](buildings.md)                   | Massing, facades, windows, rooflines, archetype families, procedural houses, construction/abandoned states, lots.    |
 | [streets.md](streets.md)                       | Road surface and paint, medians and kerbs, junction and motorway signage, ground-cover transitions, the zoning grid. |
 | [props-and-vehicles.md](props-and-vehicles.md) | The vehicle kit, parked cars, utility and service silhouettes, landmark ploppables, street furniture and lamps.      |
+| [civic-massing.md](civic-massing.md)           | How a ploppable service or utility building gets its footprint and height from what it does.                         |
 
-These three together are the environmental art guide. They are kept apart
+These together are the environmental art guide. They are kept apart
 rather than fused into one file because five hundred lines under a single
 heading serves nobody.
 
