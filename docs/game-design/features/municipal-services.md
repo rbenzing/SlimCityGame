@@ -66,16 +66,16 @@ turns red.
 
 ### The services, and what each adds
 
-| Service | Today | After |
-| --- | --- | --- |
-| **Power** | Two generators | A thermal tier between them, and generation that can be outgrown |
-| **Water & sewage** | Water only | The other half of the loop: collection, treatment, and a river you can spoil |
-| **Healthcare** | One clinic | Clinic → hospital, plus care for the old and the dead |
-| **Education** | Elementary | Primary → secondary → tertiary, each gating the next, plus a library |
-| **Emergency** | One police, one fire | A station ladder for each, sized on response time |
-| **Garbage** | Landfill, incinerator | Recovery, so burying is the worst option rather than the only one |
-| **Transport** | Stops | Depots, so a line has somewhere its vehicles come from |
-| **Road maintenance** | — | Roads that degrade, and a depot that keeps them |
+| Service            | Today                 | After                                                                        |
+| ------------------ | --------------------- | ---------------------------------------------------------------------------- |
+| **Power**          | Two generators        | A thermal tier between them, and generation that can be outgrown             |
+| **Water & sewage** | Water only            | The other half of the loop: collection, treatment, and a river you can spoil |
+| **Healthcare**     | One clinic            | Clinic → hospital, plus care for the old and the dead                        |
+| **Education**      | Elementary            | Primary → secondary → tertiary, each gating the next, plus a library         |
+| **Emergency**      | One police, one fire  | A station ladder for each, sized on response time                            |
+| **Garbage**        | Landfill, incinerator | Recovery, so burying is the worst option rather than the only one            |
+| **Transport**      | Stops                 | Depots, so a line has somewhere its vehicles come from                       |
+| **Parks**          | A pocket park         | A recreation ladder, and leisure the city can be short of                    |
 
 Each is its own epic with its own document; this one is the frame they share.
 
@@ -89,12 +89,12 @@ genuinely new concept and every epic depends on it, which is why it is built
 first and alone.
 
 **The budget.** Funding sliders already scale a service's range. Capacity gives
-the slider a second, more legible meaning: money buys reach *and* throughput,
+the slider a second, more legible meaning: money buys reach _and_ throughput,
 and a player starving a service sees queues before they see a red field.
 
 **Demand and growth.** Education already gates what a zone can grow into.
 Adding secondary and tertiary education extends that ladder rather than
-replacing it; adding death care creates the first *downward* pressure on
+replacing it; adding death care creates the first _downward_ pressure on
 population the city has ever had.
 
 **Traffic.** Every service that dispatches vehicles — ambulances, fire engines,
@@ -120,6 +120,13 @@ planning per dwelling, hospital beds per thousand, litres per person per day for
 water, kilograms per person per day for waste. Where a standard gives a range,
 the plan says which end we took and why.
 
+**Building sizes are derived too.** How large a facility is on the ground is
+not a look — it follows from how many people are inside it and the floor area
+per person that generic building code requires, converted to our tiles by
+[../../art/civic-massing.md](../../art/civic-massing.md). A fire station is
+the size of its appliance bays; a school is the size of its classrooms. Each
+epic shows that arithmetic for each building it adds.
+
 The one rule that overrides a standard: **the small facility must be affordable
 to a city that has just unlocked it.** A derived figure that makes the first
 school unbuyable is a wrong figure for this game, and the plan says so rather
@@ -130,9 +137,11 @@ than quietly rounding it.
 - **Not a building catalogue.** The point is the systems behind the buildings.
   A plan that lists twenty facilities and gives them numbers has not designed
   anything; each epic must say what decision its buildings create.
-- **Not disaster simulation.** Fires, floods and storms as *events* are a
-  separate question from the services that respond to them, and the services
-  come first. See the note in the programme sequence.
+- **Not disaster simulation, and not road decay.** Catastrophes and wearing
+  roads are _events_, and an event is a separate question from the service
+  that answers it. A disaster station with nothing to respond to and a
+  maintenance depot for roads that never break are both buildings with no
+  behaviour, so neither is in this programme. See the note in the sequence.
 - **Not per-citizen simulation.** Capacity is an aggregate against a coverage
   field. The city does not track which child attends which school, and nothing
   in this programme requires it to.

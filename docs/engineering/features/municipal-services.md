@@ -25,14 +25,14 @@ economy and the dispatcher — which is exactly what these documents are for.
 
 The shared foundation only. Per-epic blast radius lives in each epic's document.
 
-| Module | Change |
-| --- | --- |
-| `src/shared/types.ts` | `ServiceKind` gains members; `ServiceSpec` gains capacity |
-| `src/sim/services.ts` | Coverage unchanged; load/capacity resolved alongside it |
-| `src/sim/economy.ts` | Upkeep already per-building; funding meaning widens |
-| `src/data/catalog.json` | New entries per epic |
-| `src/ui/` | Service panel reports load, not just coverage |
-| `src/app/persist.ts` | Per-epic state; see save rule below |
+| Module                  | Change                                                    |
+| ----------------------- | --------------------------------------------------------- |
+| `src/shared/types.ts`   | `ServiceKind` gains members; `ServiceSpec` gains capacity |
+| `src/sim/services.ts`   | Coverage unchanged; load/capacity resolved alongside it   |
+| `src/sim/economy.ts`    | Upkeep already per-building; funding meaning widens       |
+| `src/data/catalog.json` | New entries per epic                                      |
+| `src/ui/`               | Service panel reports load, not just coverage             |
+| `src/app/persist.ts`    | Per-epic state; see save rule below                       |
 
 **Save format: yes, additively.** Every epic adds state. The rule the road model
 held to applies unchanged — a save written before an epic loads after it, with
@@ -46,8 +46,8 @@ per-service load. Both are additive; see [../interfaces.md](../interfaces.md).
 
 ### The one shared concept: capacity
 
-Coverage answers *how well served is this tile*. It cannot answer *how many
-people are asking*, and every epic needs that second answer — a hospital that
+Coverage answers _how well served is this tile_. It cannot answer _how many
+people are asking_, and every epic needs that second answer — a hospital that
 serves a district and a clinic that serves a street both write `health`, and
 nothing today distinguishes them once the field is written.
 
@@ -56,9 +56,9 @@ So `ServiceSpec` gains a capacity, in people:
 ```ts
 export interface ServiceSpec {
   kind: ServiceKind;
-  strength: number;   // unchanged: 0..255 written into the field at the source
-  range: number;      // unchanged: road-network BFS distance in tiles
-  capacity: number;   // NEW: people this facility can serve
+  strength: number; // unchanged: 0..255 written into the field at the source
+  range: number; // unchanged: road-network BFS distance in tiles
+  capacity: number; // NEW: people this facility can serve
 }
 ```
 
@@ -94,7 +94,7 @@ own scale, and each epic's document shows its arithmetic. The method, once:
   residents, school places per thousand dwellings, litres per person per day —
   each gives people-per-facility once the facility's own size is fixed.
 
-The override, also once: if a derived figure makes the *small* facility
+The override, also once: if a derived figure makes the _small_ facility
 unaffordable at the milestone that unlocks it, the plan says so and states what
 it took instead. A standard that produces an unbuyable first school is the wrong
 standard for a 20 m-tile toy city, and hiding that in a rounded number is how
@@ -106,25 +106,42 @@ The foundation is built alone and first, because every epic consumes it and
 because it is the only change to an existing contract. After that the order is
 by **how much each closes a loop**, not by size:
 
-| # | Epic | Why here |
-| --- | --- | --- |
-| 0 | **Service capacity** | Shared foundation; nothing else starts until it lands |
-| 1 | **Water & sewage** | Closes the biggest open loop; pure system, no new UI idioms |
-| 2 | **Healthcare & death care** | Closes the birth/death loop; needs capacity most |
-| 3 | **Education ladder** | Extends existing growth gating; lowest risk |
-| 4 | **Emergency services** | Police and fire ladders; touches the dispatcher |
-| 5 | **Garbage recovery** | Closes the waste loop; existing garbage system extends |
-| 6 | **Power generation** | Smallest — a tier and a ceiling; can slot anywhere after 0 |
-| 7 | **Transport depots** | Vehicles get an origin; interacts with traffic most |
-| 8 | **Road maintenance** | Entirely new; roads must first be able to degrade |
+| #   | Epic                        | Why here                                                     |
+| --- | --------------------------- | ------------------------------------------------------------ |
+| 0   | **Service capacity**        | Shared foundation; nothing else starts until it lands        |
+| 1   | **Water & sewage**          | Closes the biggest open loop; pure system, no new UI idioms  |
+| 2   | **Healthcare & death care** | Closes the birth/death loop; needs capacity most             |
+| 3   | **Education ladder**        | Extends existing growth gating; lowest risk                  |
+| 4   | **Emergency services**      | Police and fire ladders; touches the dispatcher              |
+| 5   | **Garbage recovery**        | Closes the waste loop; existing garbage system extends       |
+| 6   | **Power generation**        | Smallest — a tier and a ceiling; can slot anywhere after 0   |
+| 7   | **Transport depots**        | Vehicles get an origin; interacts with traffic most          |
+| 8   | **Parks and recreation**    | Last because it is the one service the city survives without |
 
-**Disaster services are deliberately absent from this list.** The reference this
-programme was scoped against carries them only as paid add-on content, which we
-agreed to skip, so there is no base set to model from. They are also a different
-kind of thing: a disaster service without disasters to respond to is a building
-with no behaviour. If we want them, the honest route is to derive them from
-public emergency-management practice and to build the *events* first — and that
-is its own design question, not a line item here.
+Each epic's pair of documents is named in the table below, and every one of them
+sizes its buildings by the rule in
+[../../art/civic-massing.md](../../art/civic-massing.md) rather than by eye.
+
+| #   | Design                                                                                                             | Technical                                                    |
+| --- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| 0   | [../../game-design/features/service-capacity.md](../../game-design/features/service-capacity.md)                   | [service-capacity.md](service-capacity.md)                   |
+| 1   | [../../game-design/features/water-and-sewage.md](../../game-design/features/water-and-sewage.md)                   | [water-and-sewage.md](water-and-sewage.md)                   |
+| 2   | [../../game-design/features/healthcare-and-death-care.md](../../game-design/features/healthcare-and-death-care.md) | [healthcare-and-death-care.md](healthcare-and-death-care.md) |
+| 3   | [../../game-design/features/education-ladder.md](../../game-design/features/education-ladder.md)                   | [education-ladder.md](education-ladder.md)                   |
+| 4   | [../../game-design/features/emergency-services.md](../../game-design/features/emergency-services.md)               | [emergency-services.md](emergency-services.md)               |
+| 5   | [../../game-design/features/garbage-recovery.md](../../game-design/features/garbage-recovery.md)                   | [garbage-recovery.md](garbage-recovery.md)                   |
+| 6   | [../../game-design/features/power-generation.md](../../game-design/features/power-generation.md)                   | [power-generation.md](power-generation.md)                   |
+| 7   | [../../game-design/features/transport-depots.md](../../game-design/features/transport-depots.md)                   | [transport-depots.md](transport-depots.md)                   |
+| 8   | [../../game-design/features/parks-and-recreation.md](../../game-design/features/parks-and-recreation.md)           | [parks-and-recreation.md](parks-and-recreation.md)           |
+
+**Two categories are deliberately absent, for the same reason.** Disaster
+services and road maintenance both exist in the survey this programme was scoped
+against only as paid add-on content, which we agreed to skip, so there is no base
+set to model either from. Both are also a different kind of thing from the rest:
+a disaster service with no disasters to respond to, and a maintenance depot for
+roads that cannot degrade, are buildings with no behaviour. Either would have to
+start by building the _events_ — decay, or catastrophe — and that is its own
+design question, not a line item here.
 
 ## What could go wrong
 
