@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
+  archetypeForKind,
   buildVehicleGeometry,
   laneOffset,
   lerpVehicle,
   paletteColorForSlot,
   paletteIndexForSlot,
+  sizeForKind,
   variantIndexForSlot,
   VehicleRenderer,
   LANE_OFFSET_METERS,
@@ -13,7 +15,7 @@ import {
   VEHICLE_PALETTE,
   VEHICLE_REGION,
 } from './vehicles';
-import { ROAD_Y_OFFSET } from './roadsmesh';
+import { LANE_WIDTH_M, ROAD_Y_OFFSET } from './roadsmesh';
 import { MAX_VEHICLES, VEHICLE_STRIDE, INACTIVE_VEHICLE_X, VehicleKind } from '../shared/types';
 
 const deg = (d: number): number => (d * Math.PI) / 180;
@@ -189,6 +191,26 @@ function isHiddenAt(mesh: THREE.InstancedMesh, slot: number): boolean {
   mesh.getMatrixAt(slot, m);
   const e = m.elements;
   return e[0] === 0 && e[5] === 0 && e[10] === 0;
+}
+
+/**
+ * Z span of the cabin/window mass — the part of the silhouette that tells the
+ * kinds apart. Restricted to region===FIXED vertices ABOVE the chassis (y>0)
+ * to isolate the cabin from the wheels, which are also FIXED but sit low
+ * (near y=-0.5) under the body.
+ */
+function fixedUpperPartZExtent(geo: THREE.BufferGeometry): { minZ: number; maxZ: number } {
+  const pos = geo.getAttribute('position');
+  const region = geo.getAttribute('vehicleRegion');
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (let i = 0; i < pos.count; i++) {
+    if (region.getX(i) === VEHICLE_REGION.FIXED && pos.getY(i) > 0) {
+      minZ = Math.min(minZ, pos.getZ(i));
+      maxZ = Math.max(maxZ, pos.getZ(i));
+    }
+  }
+  return { minZ, maxZ };
 }
 
 describe('VehicleRenderer', () => {
@@ -480,23 +502,6 @@ describe('buildVehicleGeometry (§6.8 multi-part merged geometry + region mask)'
   });
 
   it('gives the bus a near-full-length window band and the truck a small, front-biased cab (distinct silhouettes, §6.8)', () => {
-    function fixedUpperPartZExtent(geo: THREE.BufferGeometry): { minZ: number; maxZ: number } {
-      const pos = geo.getAttribute('position');
-      const region = geo.getAttribute('vehicleRegion');
-      let minZ = Infinity;
-      let maxZ = -Infinity;
-      // Restrict to region===FIXED vertices ABOVE the chassis (y>0): this
-      // isolates the cabin/window mass from the wheels, which are also FIXED
-      // but sit low (near y=-0.5) under the body.
-      for (let i = 0; i < pos.count; i++) {
-        if (region.getX(i) === VEHICLE_REGION.FIXED && pos.getY(i) > 0) {
-          minZ = Math.min(minZ, pos.getZ(i));
-          maxZ = Math.max(maxZ, pos.getZ(i));
-        }
-      }
-      return { minZ, maxZ };
-    }
-
     const bus = fixedUpperPartZExtent(buildVehicleGeometry(VehicleKind.Bus));
     const truck = fixedUpperPartZExtent(buildVehicleGeometry(VehicleKind.Truck));
     const busSpan = bus.maxZ - bus.minZ;
@@ -504,6 +509,89 @@ describe('buildVehicleGeometry (§6.8 multi-part merged geometry + region mask)'
 
     expect(busSpan).toBeGreaterThan(truckSpan * 2); // bus window band runs the length; truck cab is small
     expect(truck.minZ).toBeGreaterThan(0.1); // truck cab sits toward the front, not centered/rear
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scale: the fleet against the road it drives on and the people beside it
+// ---------------------------------------------------------------------------
+
+/** The kind→body-archetype mapping this file's tests hold the renderer to. */
+const EXPECTED_ARCHETYPE: Record<number, number> = {
+  [VehicleKind.Car]: VehicleKind.Car,
+  [VehicleKind.Truck]: VehicleKind.Truck,
+  [VehicleKind.Bus]: VehicleKind.Bus,
+  [VehicleKind.Fire]: VehicleKind.Truck,
+  [VehicleKind.Police]: VehicleKind.Car,
+  [VehicleKind.Ambulance]: VehicleKind.Truck,
+  [VehicleKind.Garbage]: VehicleKind.Truck,
+};
+
+describe('sizeForKind (every kind is a real vehicle class)', () => {
+  const ALL_VEHICLE_KINDS = Object.values(VehicleKind);
+  const CAR_SIZE = sizeForKind(VehicleKind.Car);
+
+  it('gives every VehicleKind its own size instead of falling through to the car', () => {
+    expect(ALL_VEHICLE_KINDS.length).toBeGreaterThan(3);
+    for (const kind of ALL_VEHICLE_KINDS) {
+      if (kind === VehicleKind.Car) continue;
+      expect(sizeForKind(kind)).not.toEqual(CAR_SIZE);
+    }
+  });
+
+  it('makes the fire engine, ambulance and refuse truck longer than a car', () => {
+    const carLength = CAR_SIZE[2];
+    for (const kind of [VehicleKind.Fire, VehicleKind.Ambulance, VehicleKind.Garbage]) {
+      expect(sizeForKind(kind)[2]).toBeGreaterThan(carLength);
+    }
+  });
+
+  it('orders every kind physically: longer than it is wide, and lower than it is long', () => {
+    for (const kind of ALL_VEHICLE_KINDS) {
+      const [width, height, length] = sizeForKind(kind);
+      expect(length).toBeGreaterThan(width);
+      expect(height).toBeLessThan(length);
+    }
+  });
+
+  it('fits every kind inside one traffic lane', () => {
+    expect(LANE_WIDTH_M).toBe(3.75);
+    for (const kind of ALL_VEHICLE_KINDS) {
+      expect(sizeForKind(kind)[0]).toBeLessThan(LANE_WIDTH_M);
+    }
+  });
+});
+
+describe('archetypeForKind (which body a kind is drawn from)', () => {
+  it('maps every VehicleKind explicitly, so a kind added to the enum cannot silently inherit the car', () => {
+    const kinds = Object.values(VehicleKind);
+    expect(Object.keys(EXPECTED_ARCHETYPE)).toHaveLength(kinds.length);
+    for (const kind of kinds) {
+      expect(archetypeForKind(kind)).toBe(EXPECTED_ARCHETYPE[kind]);
+    }
+  });
+
+  it('actually builds the archetype body: the lorry-shaped kinds get the truck cab, the patrol car the car greenhouse', () => {
+    const truckCab = fixedUpperPartZExtent(buildVehicleGeometry(VehicleKind.Truck));
+    const carCab = fixedUpperPartZExtent(buildVehicleGeometry(VehicleKind.Car));
+    // The two archetypes really are distinguishable, or the checks below prove
+    // nothing: the truck's cab is small and front-biased, the car's is centered.
+    expect(truckCab.minZ).toBeGreaterThan(carCab.minZ);
+
+    for (const kind of [VehicleKind.Fire, VehicleKind.Ambulance, VehicleKind.Garbage]) {
+      expect(fixedUpperPartZExtent(buildVehicleGeometry(kind))).toEqual(truckCab);
+    }
+    expect(fixedUpperPartZExtent(buildVehicleGeometry(VehicleKind.Police))).toEqual(carCab);
+  });
+
+  it("draws only the civilian fleet here — the service kinds are ServiceVehicleRenderer's, and drawing them twice would stack a tinted lorry inside every fire engine", () => {
+    const scene = new THREE.Scene();
+    new VehicleRenderer(scene, flatHeightAt);
+    const drawnKinds = scene.children
+      .filter((c): c is THREE.InstancedMesh => (c as THREE.InstancedMesh).isInstancedMesh === true)
+      .map((mesh) => mesh.userData.vehicleKind as number)
+      .sort((a, b) => a - b);
+    expect(drawnKinds).toEqual([VehicleKind.Car, VehicleKind.Truck, VehicleKind.Bus]);
   });
 });
 

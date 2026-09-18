@@ -18,11 +18,18 @@ import {
   MAX_IDLE_PEDESTRIANS,
   MAX_WALKING_PEDESTRIANS,
   MAX_PEDESTRIANS,
+  PEDESTRIAN_BODY_HEIGHT,
+  PEDESTRIAN_BODY_RADIUS,
+  PEDESTRIAN_HEAD_GAP,
+  PEDESTRIAN_HEAD_RADIUS,
+  PEDESTRIAN_STATURE_METERS,
   type PedestrianSnapshot,
 } from './pedestrians';
+import { sizeForKind } from './vehicles';
 import { TILE_METERS } from '../shared/constants';
 import {
   BuildingState,
+  VehicleKind,
   type BuildingDelta,
   type BuildingInstance,
   type TilePoint,
@@ -42,6 +49,57 @@ function building(
 ): BuildingInstance {
   return { id, catalogId: 'house', x, z, rotation: 0, level: 1, state, problems: 0 };
 }
+
+// ---------------------------------------------------------------------------
+// Scale: the human anchor every other proportion in the city is read against
+// ---------------------------------------------------------------------------
+
+describe('pedestrian stature', () => {
+  it('stands 1.75 m from the ground to the top of the head', () => {
+    expect(Math.abs(PEDESTRIAN_STATURE_METERS - 1.75)).toBeLessThanOrEqual(0.01);
+  });
+
+  it('places the body capsule and head sphere so the figure really is that tall on the ground it stands on', () => {
+    const groundY = 12.5;
+    const scene = new THREE.Scene();
+    const renderer = new PedestrianRenderer(scene, () => groundY);
+    renderer.apply({ stops: [{ x: 0, z: 0 }], buildings: emptyDelta() });
+    expect(renderer.idleCount()).toBeGreaterThan(0);
+
+    const meshes = scene.children.filter(
+      (c) => c instanceof THREE.InstancedMesh,
+    ) as THREE.InstancedMesh[];
+    expect(meshes).toHaveLength(2); // body + head, in that order
+
+    const m = new THREE.Matrix4();
+    const p = new THREE.Vector3();
+    meshes[0]!.getMatrixAt(0, m);
+    p.setFromMatrixPosition(m);
+    const bodyY = p.y;
+    meshes[1]!.getMatrixAt(0, m);
+    p.setFromMatrixPosition(m);
+    const headY = p.y;
+
+    expect(headY).toBeGreaterThan(bodyY); // the head is the upper layer
+    // The capsule is centered on its own origin, so its bottom cap rests on the
+    // ground when the instance sits a radius plus half the mid-section up.
+    expect(bodyY).toBeCloseTo(groundY + PEDESTRIAN_BODY_RADIUS + PEDESTRIAN_BODY_HEIGHT / 2, 6);
+    // The sphere's center sits one head-radius below the top of the head.
+    expect(headY).toBeCloseTo(groundY + PEDESTRIAN_STATURE_METERS - PEDESTRIAN_HEAD_RADIUS, 6);
+    // ...and the gap between body and head is the one the constants declare.
+    expect(
+      headY -
+        PEDESTRIAN_HEAD_RADIUS -
+        (bodyY + PEDESTRIAN_BODY_RADIUS + PEDESTRIAN_BODY_HEIGHT / 2),
+    ).toBeCloseTo(PEDESTRIAN_HEAD_GAP, 6);
+  });
+
+  it('is shorter than a car is long and taller than a car is high, so the two anchors agree', () => {
+    const [, carHeight, carLength] = sizeForKind(VehicleKind.Car);
+    expect(PEDESTRIAN_STATURE_METERS).toBeLessThan(carLength);
+    expect(PEDESTRIAN_STATURE_METERS).toBeGreaterThan(carHeight);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Pure functions
