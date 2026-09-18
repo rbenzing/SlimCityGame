@@ -39,6 +39,16 @@ held to applies unchanged — a save written before an epic loads after it, with
 the new service absent rather than the save rejected. A missing field means "the
 city never had this", never "reject the file".
 
+**Save versions are allocated in build order, and no epic owns a number.** Three
+of the nine append a grid layer, and each was planned in isolation against
+`SAVE_VERSION = 11`, so two of them name 12 and would collide. They do not
+collide in practice, because they land one after another and each takes the next
+free number when it does: water and sewage to 12, the education ladder to 13,
+garbage recovery to 14. An epic's document naming a specific version is stating
+what it saw when it was written, not reserving it — the implementation reads the
+current constant and adds one. The other six move nothing, which is the point of
+the additive rule.
+
 **Worker protocol: yes.** New commands per epic, and the snapshot grows to carry
 per-service load. Both are additive; see [../interfaces.md](../interfaces.md).
 
