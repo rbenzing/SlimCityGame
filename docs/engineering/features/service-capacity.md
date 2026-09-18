@@ -154,23 +154,37 @@ passes for a real reason rather than because a flag was checked.
 `ServiceSim.tick` runs **one kind at a time**, in two phases. Gather: for each active
 facility of the kind, in `id` order as today — nearest road tile, BFS, radiate, collect
 the distinct building ids for `P_f`, accumulate `capacity_f / P_f` into a per-kind
-`supply` map over its coverage tiles, and blend its coverage into a per-kind coverage map
-using that kind's existing rule (`max` for education and health, additive for police,
-fire and park). Resolve: walk the blended coverage map once, scale each tile by
-`min(1, supply[t])`, and apply to the field.
+`supply` map over its coverage tiles, and keep the coverage map. Nothing is written in
+this phase. Resolve: walk the same facilities again in `id` order, scale each tile of a
+facility's own coverage by `min(1, supply[t])`, and apply it exactly as
+`applyCoverage` applies it today.
 
-Blending per kind before applying is a **behaviour-preserving** rearrangement of what
-`applyCoverage` does today facility by facility, and that is worth stating because it
-looks like a change. Subtraction and addition are monotonic and both clamp at a fixed
-bound, so clamping between facilities and clamping once at the end give the same byte;
-`max` is associative. Holding one blended map per kind rather than one map per facility
-is also strictly less memory than the alternative, which is the only new allocation this
-epic asks for.
+**Blending the kind's facilities into one map before applying it does not preserve
+behaviour, and the obvious argument that it does is wrong.** Subtraction and addition are
+monotonic and clamp at a fixed bound, so the clamping is indeed safe to defer — but
+`clamp255` also **rounds**, and rounding two facilities' contributions separately is not
+the same byte as rounding their sum: 18.75 and 17.5 land on 19 + 18 = 37 one at a time
+and on 36 together. Two `small-park` entries overlapping on one street are enough to show
+it, and a test that asserts the pre-capacity bytes for two facilities of every kind
+catches it. So the resolve phase stays per facility, at the cost of holding one coverage
+map per facility of the kind in flight rather than one per kind — the only new allocation
+this epic asks for, and the price of every existing city loading unchanged.
 
 **Funding scales capacity as well as range**, by the same `funding[kind]` factor: funding
 is money and money is staff, and upkeep already moves with it in `economy.ts`, so the
 cost is charged today. Funding zero needs no guard, because the facility is skipped
-before the traversal and nothing divides by zero.
+before the traversal.
+
+**One division does need a guard, and it is not the one you would expect.** Nobody in
+reach divides to `Infinity`, and `min(1, Infinity)` is the uncapped facility with no
+branch to forget — that is the whole point of letting the arithmetic answer. But a
+facility with capacity **zero** reaching nobody is `0 / 0`, which is `NaN`, and `NaN`
+survives `min()` to reach `clamp255`, which writes **zero**. On a max-blended kind that
+does not merely fail to help: it erases health another clinic had already supplied. So
+the share is `people > 0 ? available / people : Infinity` — nobody in reach is uncapped
+whatever the capacity says. No shipped entry carries a zero capacity, and the design
+calls one a bug; the guard is there because the failure mode is silent, and a field
+quietly zeroed is the hardest kind of wrong to find.
 
 ### What crosses the worker protocol, and what the panel shows
 
@@ -268,8 +282,14 @@ panels use. Each pins a rule above.
   loaded its other supplier is, non-overlapping facilities do not pool, the city at
   funding 1.5 carries two-thirds its load at 1.0, and a facility reaching nobody at all
   writes full strength rather than dividing by zero.
-- **Rules 8 and 9** — exactly one road BFS per active facility per tick, counted by spying
-  on `roadBfsDistances`, and identical load across ticks and a save/load round trip.
+- **Rules 8 and 9** — exactly one road BFS per active facility per tick, counted by a
+  traversal handed to `ServiceSim` in place of `roadBfsDistances` (an ES module's internal
+  call cannot be spied on from outside it), and identical load and fields across ticks.
+- **Behaviour preservation** — two overlapping facilities of every kind, at the shipped
+  strengths and ranges and with no capacity anywhere, write the fields the pre-capacity
+  pass wrote, byte for byte. Captured from that implementation and asserted as a
+  fingerprint per field; it is what "every old save plays the same" means, and it is what
+  caught the rounding above.
 - **The panel** — a snapshot carrying `serviceLoad` shows a gauge per kind, one without
   leaves the rows reading `—` rather than throwing, and the slider sends
   `setServiceFunding` with the value it shows before the worker confirms.

@@ -62,6 +62,7 @@ import type {
   RoadSpec,
   RoadTileDelta,
   ServiceKind,
+  ServiceLoad,
   SimSnapshot,
   SimSpeed,
   TilePoint,
@@ -362,6 +363,12 @@ class SimWorld implements WorkerSim {
   private transitResult: TransitTickResult = { lines: [], ridership: [] };
   /** Latest active-incident list from dispatch, attached to each snapshot. */
   private latestIncidents: Incident[] = [];
+  /**
+   * How hard each service kind is being leaned on, from the last service pass.
+   * Null until one has run, since the services tick on their own period and a
+   * snapshot before the first of them has nothing to report.
+   */
+  private serviceLoad: Record<ServiceKind, ServiceLoad> | null = null;
   /** Worker-owned authoritative district registry — id/name/color. */
   private districtDefs: District[] = [];
   private readonly districtDefById = new Map<number, District>();
@@ -547,6 +554,7 @@ class SimWorld implements WorkerSim {
     this.policyStore = new PolicyStore();
     this.transitResult = { lines: [], ridership: [] };
     this.latestIncidents = [];
+    this.serviceLoad = null;
     this.districtDefs = [];
     this.districtDefById.clear();
     this.registry = new BuildingRegistry(CATALOG);
@@ -642,6 +650,7 @@ class SimWorld implements WorkerSim {
     this.policyStore = new PolicyStore();
     this.transitResult = { lines: [], ridership: [] };
     this.latestIncidents = [];
+    this.serviceLoad = null;
     this.districtDefs = [];
     this.districtDefById.clear();
     const seenDistricts = new Set<number>();
@@ -771,7 +780,7 @@ class SimWorld implements WorkerSim {
     }
 
     if (t % SERVICE_PERIOD === SERVICE_OFFSET) {
-      this.services.tick(g, this.registry.all(), this.stats.serviceFunding);
+      this.serviceLoad = this.services.tick(g, this.registry.all(), this.stats.serviceFunding);
     }
 
     if (t % GARBAGE_PERIOD === GARBAGE_OFFSET) {
@@ -1017,6 +1026,10 @@ class SimWorld implements WorkerSim {
     if (this.latestIncidents.length > 0) {
       snap.incidents = this.latestIncidents.map((i) => ({ ...i }));
     }
+    // How hard each service is being leaned on, as the last service pass found
+    // it — the services tick on their own period, so this rides every snapshot
+    // rather than only the ones that happen to land on it.
+    if (this.serviceLoad) snap.serviceLoad = { ...this.serviceLoad };
     // District patches + defs (mirrors the zones patch convention).
     if (this.districtDirty || this.districtDefsChanged) {
       snap.districts = {

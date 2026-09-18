@@ -658,6 +658,13 @@ export interface SimSnapshot {
      */
     laneTurns?: number[];
   }[];
+  /**
+   * How hard each service kind is being leaned on (see ServiceLoad): ten
+   * numbers, cheap at the snapshot rate, and the only thing that makes a
+   * capacity readable. Optional: a mirror that does not understand it ignores
+   * it, and it is absent until the first service pass has run.
+   */
+  serviceLoad?: Record<ServiceKind, ServiceLoad>;
 }
 
 export interface CityNotification {
@@ -701,6 +708,27 @@ export interface ServiceSpec {
   kind: ServiceKind;
   strength: number; // 0..255 effect written into its field at the source
   range: number; // road-network BFS distance in tiles
+  /**
+   * People this facility can serve. Optional, and absent means UNCAPPED — not
+   * capacity zero: nobody queues for a park, and a save written before any
+   * entry carried a figure has to keep playing as it did.
+   */
+  capacity?: number;
+}
+
+/**
+ * How hard a service kind is being leaned on. `load` is the city aggregate —
+ * the people in reach of its capped facilities divided by the capacity they
+ * offer — and `worst` is the highest load over any tile that holds residents.
+ * Both, because a city can sit at 95% overall with one district at 240%: the
+ * aggregate answers "have I bought enough", the worst answers "is one district
+ * starved", and neither answers the other. Tiles supplied only by uncapped
+ * facilities are in neither figure, and a kind with no capped facility reports
+ * zero.
+ */
+export interface ServiceLoad {
+  load: number;
+  worst: number;
 }
 
 export interface UtilitySpec {
