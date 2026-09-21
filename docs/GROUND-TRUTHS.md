@@ -275,6 +275,13 @@ MUTCD citations below use 11th-edition section numbers.
   kind, because `clamp255` rounds. A building in reach counts once and in full;
   only `Active` residents count; jobs never count. —
   [service-capacity.md](engineering/features/service-capacity.md)
+- Capacity pools per tile, by proportional allocation: `supply[t]` is the sum
+  over the facilities reaching `t` of capacity ÷ that facility's reach
+  population. Facilities are never grouped into a shared pool by overlapping
+  coverage — that grouping is transitive, so one chain of stations closes into
+  a single map-wide pool and the worst district stops differing from the
+  city average exactly when a player needs the two apart. —
+  [service-capacity.md](engineering/features/service-capacity.md)
 - Education and Health coverage blend as a maximum; police and fire subtract
   half from Crime and FireRisk; a park adds a quarter into LandValue. No kind
   switches to additive stacking, and LandValue is never floored at a park
