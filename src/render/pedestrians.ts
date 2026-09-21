@@ -338,11 +338,28 @@ export interface PedestrianSnapshot {
   buildings: BuildingDelta;
 }
 
-const BODY_RADIUS = 0.18;
+// ---------------------------------------------------------------------------
+// A person's dimensions, in metres. These are the human anchor the rest of the
+// city's scale is read against: a person stands beside a 4.0 m car in front of
+// a 3.2 m storey, and if any one of those three is wrong the whole city reads
+// as the wrong size. A 0.36 m body width is wide for a real person, but a
+// simplified capsule figure needs it to read as a body rather than a post.
+// ---------------------------------------------------------------------------
+
+export const PEDESTRIAN_BODY_RADIUS = 0.18;
 /** Cylindrical mid-section length of the capsule (excludes the two hemisphere caps). */
-const BODY_HEIGHT = 0.6;
-const HEAD_RADIUS = 0.15;
-const HEAD_GAP = 0.04;
+export const PEDESTRIAN_BODY_HEIGHT = 1.12;
+/** An adult head is about 0.23 m tall. */
+export const PEDESTRIAN_HEAD_RADIUS = 0.115;
+/** The neck: a sliver of daylight between the shoulders and the head. */
+export const PEDESTRIAN_HEAD_GAP = 0.04;
+
+/** Ground to the top of the head — derived, so it can never disagree with the parts it is made of. */
+export const PEDESTRIAN_STATURE_METERS =
+  PEDESTRIAN_BODY_HEIGHT +
+  PEDESTRIAN_BODY_RADIUS * 2 +
+  PEDESTRIAN_HEAD_GAP +
+  PEDESTRIAN_HEAD_RADIUS * 2;
 
 /** Casual clothing-color variety, picked deterministically per instance. */
 const CLOTHING_PALETTE: readonly number[] = [
@@ -370,8 +387,13 @@ export class PedestrianRenderer {
   private readonly heightAt: (x: number, z: number) => number;
   private readonly roadAt: (x: number, z: number) => boolean;
 
-  private readonly bodyGeometry = new THREE.CapsuleGeometry(BODY_RADIUS, BODY_HEIGHT, 4, 8);
-  private readonly headGeometry = new THREE.SphereGeometry(HEAD_RADIUS, 8, 6);
+  private readonly bodyGeometry = new THREE.CapsuleGeometry(
+    PEDESTRIAN_BODY_RADIUS,
+    PEDESTRIAN_BODY_HEIGHT,
+    4,
+    8,
+  );
+  private readonly headGeometry = new THREE.SphereGeometry(PEDESTRIAN_HEAD_RADIUS, 8, 6);
   private readonly bodyMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
   private readonly headMaterial = new THREE.MeshLambertMaterial({ color: HEAD_COLOR });
 
@@ -560,14 +582,16 @@ export class PedestrianRenderer {
     // CapsuleGeometry is centered on Y (its hemisphere caps extend +-(height/2+radius)
     // from its own origin), so its bottom cap sits exactly at groundY when the
     // instance center is groundY + radius + height/2.
-    _position.set(x, groundY + BODY_RADIUS + BODY_HEIGHT / 2, z);
+    _position.set(x, groundY + PEDESTRIAN_BODY_RADIUS + PEDESTRIAN_BODY_HEIGHT / 2, z);
     _quaternion.setFromAxisAngle(_yAxis, heading);
     _matrix.compose(_position, _quaternion, _scale);
     this.bodyMesh!.setMatrixAt(slot, _matrix);
     _color.setHex(colorHex);
     this.bodyMesh!.setColorAt(slot, _color);
 
-    _position.set(x, groundY + BODY_HEIGHT + BODY_RADIUS * 2 + HEAD_RADIUS + HEAD_GAP, z);
+    // The sphere's center sits one head-radius below the top of the head, so
+    // the figure stands exactly PEDESTRIAN_STATURE_METERS tall.
+    _position.set(x, groundY + PEDESTRIAN_STATURE_METERS - PEDESTRIAN_HEAD_RADIUS, z);
     _matrix.compose(_position, _identityQuat, _scale);
     this.headMesh!.setMatrixAt(slot, _matrix);
   }

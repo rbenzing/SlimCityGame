@@ -292,5 +292,23 @@ describe('InfoPanel', () => {
       render(<InfoPanel />);
       expect(screen.queryByTestId('tax-row')).not.toBeInTheDocument();
     });
+
+    it('shows a selected facility its own load as a percentage', () => {
+      const station = { ...building, id: 55, catalogId: 'police-station' };
+      useCityStore.getState().setSelectedBuilding(station);
+      useCityStore
+        .getState()
+        .setSelectionInfo({ ...info, building: station, occupancy: {}, serviceLoad: 1.38 });
+      render(<InfoPanel />);
+      expect(screen.getByTestId('service-load-row')).toHaveTextContent('138%');
+    });
+
+    it('shows no load row for a facility with no reading (uncapped, or nobody in reach)', () => {
+      const station = { ...building, id: 55, catalogId: 'police-station' };
+      useCityStore.getState().setSelectedBuilding(station);
+      useCityStore.getState().setSelectionInfo({ ...info, building: station, occupancy: {} });
+      render(<InfoPanel />);
+      expect(screen.queryByTestId('service-load-row')).not.toBeInTheDocument();
+    });
   });
 });

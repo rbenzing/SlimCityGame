@@ -3,6 +3,10 @@
  * buildings on res/com/ind zoned tiles. Pure simulation logic operating on
  * GridState + BuildingRegistry -- no three.js/DOM, no Math.random/Date.now.
  *
+ * It also owns every building's `problems` bits, plopped generators included,
+ * so one cadence and one pass decide what the advisor and the info panel are
+ * told is wrong.
+ *
  * Cadence: `tick` is expected to be called once per sim tick (TICK_RATE,
  * see shared/constants). Construction countdowns advance every call; the
  * heavier scan/problems/level-up passes only run every GROWTH_INTERVAL
@@ -20,6 +24,7 @@ import type {
   Sector,
 } from '../shared/types';
 import { BuildingRegistry, footprintForRotation } from './buildings';
+import { utilityCanDeliver } from './network';
 
 /**
  * Deterministic RNG surface injected into the growth system.
@@ -98,6 +103,20 @@ function hasNearbyRoad(g: GridState, x: number, z: number, radius: number): bool
     }
   }
   return false;
+}
+
+/** Every in-bounds tile index of the w*d footprint at (x, z). */
+function footprintTiles(x: number, z: number, w: number, d: number): number[] {
+  const tiles: number[] = [];
+  for (let dz = 0; dz < d; dz++) {
+    for (let dx = 0; dx < w; dx++) {
+      const tx = x + dx;
+      const tz = z + dz;
+      if (!inBounds(tx, tz)) continue;
+      tiles.push(tileIndex(tx, tz));
+    }
+  }
+  return tiles;
 }
 
 /** True only if every tile of the w*d footprint at (x, z) is in bounds and unstamped. */
@@ -253,6 +272,7 @@ export class GrowthSystem {
 
     if (tickNo % GROWTH_INTERVAL === 0) {
       this.processProblemsAndAbandonment(g, registry, demand, removed, updated);
+      this.flagUnservedUtilities(g, registry, updated);
       this.runLevelUps(g, registry, milestoneLevel, added, removed);
       this.runSpawnScan(g, registry, demand, milestoneLevel, tickNo, added);
     }
@@ -342,6 +362,34 @@ export class GrowthSystem {
           updated.push(inst);
         }
       }
+    }
+  }
+
+  /**
+   * A generator counts towards the city's supply whether anything reaches it
+   * or not, so one that cannot deliver has to say so: otherwise the totals
+   * read healthy, no tile is served, and the city quietly stops growing with
+   * nothing on screen to contradict the player. It is the delivery that is in
+   * question, so a turbine a line reaches is connected and says nothing.
+   *
+   * Only the flag: a plopped generator never abandons, whatever the streak.
+   */
+  private flagUnservedUtilities(
+    g: GridState,
+    registry: BuildingRegistry,
+    updated: BuildingInstance[],
+  ): void {
+    for (const inst of registry.all()) {
+      if (inst.state !== BuildingState.Active) continue;
+      const entry = this.catalogIndex.get(inst.catalogId);
+      if (!entry?.utility) continue;
+
+      const { w, d } = footprintForRotation(entry, inst.rotation);
+      const delivers = utilityCanDeliver(g, entry.utility, footprintTiles(inst.x, inst.z, w, d));
+      const problems = delivers ? inst.problems & ~Problem.NoRoad : inst.problems | Problem.NoRoad;
+      if (problems === inst.problems) continue;
+      inst.problems = problems;
+      updated.push(inst);
     }
   }
 

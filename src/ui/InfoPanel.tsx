@@ -181,6 +181,13 @@ export function InfoPanel(): JSX.Element | null {
           {entry?.service && (
             <Row label="Coverage" value={`${entry.service.kind} · ${entry.service.range}m`} />
           )}
+          {info?.serviceLoad !== undefined && (
+            <Row
+              label="Load"
+              value={`${Math.round(info.serviceLoad * 100)}%`}
+              testId="service-load-row"
+            />
+          )}
           {entry?.utility?.powerMW !== undefined && (
             <Row label="Output" value={`${entry.utility.powerMW} MW`} />
           )}

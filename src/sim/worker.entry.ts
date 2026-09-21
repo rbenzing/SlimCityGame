@@ -13,6 +13,8 @@ import {
   DEFAULT_TAX_RATE,
   MAP_SIZE,
   MAX_TAX_RATE,
+  SERVICE_FUNDING_MAX,
+  SERVICE_FUNDING_MIN,
   START_FUNDS,
   SPEED_MULTIPLIERS,
   TICK_MS,
@@ -62,6 +64,7 @@ import type {
   RoadSpec,
   RoadTileDelta,
   ServiceKind,
+  ServiceLoad,
   SimSnapshot,
   SimSpeed,
   TilePoint,
@@ -179,7 +182,6 @@ const TRAFFIC_FIELD_PERIOD = 4;
 const TRAFFIC_FIELD_OFFSET = 1;
 /** Fraction of the original price returned when bulldozing roads/buildings. */
 const BULLDOZE_REFUND_RATE = 0.5;
-const MAX_SERVICE_FUNDING = 1.5;
 
 // --- Road noise --------------------------------------------------------------
 /** Assigned-traffic volume units per +1 Noise byte (before the tier multiplier). */
@@ -362,6 +364,12 @@ class SimWorld implements WorkerSim {
   private transitResult: TransitTickResult = { lines: [], ridership: [] };
   /** Latest active-incident list from dispatch, attached to each snapshot. */
   private latestIncidents: Incident[] = [];
+  /**
+   * How hard each service kind is being leaned on, from the last service pass.
+   * Null until one has run, since the services tick on their own period and a
+   * snapshot before the first of them has nothing to report.
+   */
+  private serviceLoad: Record<ServiceKind, ServiceLoad> | null = null;
   /** Worker-owned authoritative district registry — id/name/color. */
   private districtDefs: District[] = [];
   private readonly districtDefById = new Map<number, District>();
@@ -547,6 +555,7 @@ class SimWorld implements WorkerSim {
     this.policyStore = new PolicyStore();
     this.transitResult = { lines: [], ridership: [] };
     this.latestIncidents = [];
+    this.serviceLoad = null;
     this.districtDefs = [];
     this.districtDefById.clear();
     this.registry = new BuildingRegistry(CATALOG);
@@ -642,6 +651,7 @@ class SimWorld implements WorkerSim {
     this.policyStore = new PolicyStore();
     this.transitResult = { lines: [], ridership: [] };
     this.latestIncidents = [];
+    this.serviceLoad = null;
     this.districtDefs = [];
     this.districtDefById.clear();
     const seenDistricts = new Set<number>();
@@ -771,7 +781,7 @@ class SimWorld implements WorkerSim {
     }
 
     if (t % SERVICE_PERIOD === SERVICE_OFFSET) {
-      this.services.tick(g, this.registry.all(), this.stats.serviceFunding);
+      this.serviceLoad = this.services.tick(g, this.registry.all(), this.stats.serviceFunding);
     }
 
     if (t % GARBAGE_PERIOD === GARBAGE_OFFSET) {
@@ -1017,6 +1027,10 @@ class SimWorld implements WorkerSim {
     if (this.latestIncidents.length > 0) {
       snap.incidents = this.latestIncidents.map((i) => ({ ...i }));
     }
+    // How hard each service is being leaned on, as the last service pass found
+    // it — the services tick on their own period, so this rides every snapshot
+    // rather than only the ones that happen to land on it.
+    if (this.serviceLoad) snap.serviceLoad = { ...this.serviceLoad };
     // District patches + defs (mirrors the zones patch convention).
     if (this.districtDirty || this.districtDefsChanged) {
       snap.districts = {
@@ -1124,6 +1138,8 @@ class SimWorld implements WorkerSim {
     const idx = tileIndex(inst.x, inst.z);
     const happinessByte = this.grid.fields[FieldId.Happiness]?.[idx] ?? 0;
     const landValueByte = this.grid.fields[FieldId.LandValue]?.[idx] ?? 0;
+    // A capped facility's own load, worked out by the service pass this tick.
+    const facilityLoad = this.services.facilityLoad(inst.id);
     const info: SelectionInfo = {
       building: { ...inst },
       happiness: Math.round((happinessByte / 255) * 100),
@@ -1131,6 +1147,7 @@ class SimWorld implements WorkerSim {
       // The catalog upkeep charge; grown buildings (zone set) carry none.
       monthlyUpkeep: entry.zone !== undefined ? 0 : entry.upkeep,
       occupancy: selectionOccupancy(entry, inst.state),
+      ...(facilityLoad !== undefined ? { serviceLoad: facilityLoad } : {}),
     };
     this.post({ type: 'selection', info });
   }
@@ -1555,7 +1572,10 @@ class SimWorld implements WorkerSim {
         return { ok: true, cost: 0, inverse: [] };
       }
       case 'setServiceFunding': {
-        const funding = Math.max(0, Math.min(MAX_SERVICE_FUNDING, command.funding));
+        const funding = Math.max(
+          SERVICE_FUNDING_MIN,
+          Math.min(SERVICE_FUNDING_MAX, command.funding),
+        );
         this.stats.serviceFunding = {
           ...this.stats.serviceFunding,
           [command.service]: funding,

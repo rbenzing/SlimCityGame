@@ -21,6 +21,7 @@ import { MainDock } from './MainDock';
 import { MenuScreen } from './MenuScreen';
 import { CityInfoPopover, HelpPopover, MilestonePopover } from './Popovers';
 import { DistrictPanel } from './DistrictPanel';
+import { ServicesPanel } from './ServicesPanel';
 import { StatsPanel } from './StatsPanel';
 import { AdvisorPanel } from './AdvisorPanel';
 import { criticalCount } from './advisor';
@@ -113,6 +114,7 @@ export default function App() {
           <Toasts />
           <DistrictPanel />
           <TransitLinesPanel />
+          <ServicesPanel />
           <StatsPanel
             open={statsOpen}
             onClose={() => setStatsOpen(false)}

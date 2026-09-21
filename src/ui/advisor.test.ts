@@ -65,6 +65,16 @@ describe('cityIssues', () => {
     expect(issues.find((i) => i.id === 'no-water')?.count).toBe(1);
   });
 
+  it('counts a stranded generator among the cut-off buildings, like any other', () => {
+    const issues = cityIssues(
+      [building(Problem.NoRoad, { catalogId: 'water-tower' })],
+      healthyStats(),
+    );
+    const cutOff = issues.find((i) => i.id === 'no-road');
+    expect(cutOff?.count).toBe(1);
+    expect(cutOff?.focus).toEqual({ x: 10, z: 10 });
+  });
+
   it('reads every flag on a building that has several at once', () => {
     const issues = cityIssues(
       [building(Problem.NoPower | Problem.NoWater | Problem.HighCrime)],

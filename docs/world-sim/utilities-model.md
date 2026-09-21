@@ -13,6 +13,29 @@ turbine (1×1, 6 MW, no pollution, ¢3,000, ¢100/month) and a water tower (2×2
 milestone. Demand is the sum of every non-abandoned building's own catalog
 `powerUse`/`waterUse`, recomputed every tick alongside supply.
 
+Supply is a single city-wide total and **every generator counts towards it,
+connected or not**. That is deliberate — it keeps supply a property of what
+the city has built rather than of the order things were built in — but on its
+own it is a trap: a water tower set one tile clear of the road reports its
+full 400 kL while not one tile is watered, so the figures read healthy, the
+city quietly refuses to grow, and nothing on screen contradicts the player.
+
+So a generator that cannot deliver has to say so. A utility whose footprint
+touches no tile that conducts **what it produces** carries `Problem.NoRoad`
+like any other cut-off building, which puts it in the advisor's existing "cut
+off from the road network" count and on its own info panel. The supply total
+is unchanged; what changes is that the mistake is visible.
+
+Touching a road is not the test, because not every road carries everything: a
+motorway and a ramp carry no water, an unsealed lane conducts no power, and a
+power line carries electricity and nothing else. A water tower beside a
+motorway is as stranded as one in a field. So the check asks the same
+predicates the coverage walk above seeds its search from, rather than a second
+idea of "connected" that could drift away from the first — a generator making
+both power and water needs a conductor for each. A generator reached only by a
+power line strung across the valley is connected for electricity and flags
+nothing.
+
 ## Coverage: a walk along the road network
 
 Power and water do not radiate from a utility building as a plain-radius

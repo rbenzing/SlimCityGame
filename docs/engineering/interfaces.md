@@ -362,8 +362,8 @@ determinism boundary.
 
 ## 7. The simulation snapshot
 
-`SimSnapshot` (`src/shared/types.ts:564-661`) has **15 top-level fields**: one
-required (`stats`) and 14 optional channels. Two of the fourteen —
+`SimSnapshot` (`src/shared/types.ts:564-668`) has **16 top-level fields**: one
+required (`stats`) and 15 optional channels. Two of the fifteen —
 `vehicles` and `transit` — are typed optional but the worker sets them on
 _every_ snapshot regardless; the rest are genuinely conditional. `SimSnapshot`
 carries deltas only; the full state of everything arrives once, as one giant
@@ -386,6 +386,7 @@ patch/delta of each kind, immediately after `init` or `loadSave`.
 | `garbage`       | the landfill membership layer changed (`.landfill`) and/or the garbage tick ran this cadence (`.trash`, `.landfillFill`, `.incinerators` travel together)                                                                                       |
 | `powerLines`    | the power-line membership layer changed since the last snapshot                                                                                                                                                                                 |
 | `junctions`     | the computed junction list differs from what was last sent — control, warrant, turns, lane turns, or `auto` changed anywhere, or a junction appeared/disappeared; an unchanged city sends this field on _no_ snapshot at all                    |
+| `serviceLoad`   | the service pass has run at least once since `init`/`loadSave` — ten numbers, one `{ load, worst }` pair per service kind, re-sent every snapshot thereafter                                                                                    |
 
 `junctions[i].laneTurns` is itself conditional a second time: it is present
 only when at least one of that junction's four arms has a non-zero packed

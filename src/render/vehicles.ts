@@ -149,18 +149,67 @@ export function laneOffset(heading: number): { dx: number; dz: number } {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Every kind's footprint [width, height, length] in metres. Each one is a real
+// vehicle class -- a saloon, a rigid lorry, a single-deck bus, a pumping
+// appliance, a patrol car, a box-body ambulance, a rear-loader refuse truck --
+// and they must stay consistent with the 1.75 m pedestrian and the 3.2 m
+// storey. Those three are the anchors the whole city's scale is read against,
+// and every width fits inside one 3.75 m lane.
+//
+// Typed as a total Record so a kind added to VehicleKind fails to compile here
+// rather than quietly rendering as a four-metre car.
+// ---------------------------------------------------------------------------
+const KIND_SIZE: Record<VehicleKind, readonly [number, number, number]> = {
+  [VehicleKind.Car]: [1.8, 1.5, 4.0],
+  [VehicleKind.Truck]: [2.2, 2.6, 7.0],
+  [VehicleKind.Bus]: [2.5, 3.0, 10.0],
+  [VehicleKind.Fire]: [2.5, 3.3, 10.0],
+  [VehicleKind.Police]: [1.9, 1.6, 5.0],
+  [VehicleKind.Ambulance]: [2.2, 2.7, 6.2],
+  [VehicleKind.Garbage]: [2.5, 3.2, 9.0],
+};
+
+/**
+ * The kind's size in metres. `kind` arrives as a raw float out of the shared
+ * vehicle buffer, so a value that is no VehicleKind at all (a corrupt slot)
+ * falls back to a car rather than throwing inside the frame loop.
+ */
 export function sizeForKind(kind: number): readonly [number, number, number] {
-  switch (kind) {
-    case VehicleKind.Truck:
-      return [2.2, 2.6, 7.0];
-    case VehicleKind.Bus:
-      return [2.5, 3.0, 10.0];
-    case VehicleKind.Car:
-    default:
-      return [1.8, 1.5, 4.0];
-  }
+  return KIND_SIZE[kind as VehicleKind] ?? KIND_SIZE[VehicleKind.Car];
 }
 
+/**
+ * Which of the three built bodies a kind is drawn from. There are three
+ * silhouettes here -- car, lorry, bus -- and the service fleet reuses them:
+ * a fire appliance, an ambulance and a refuse truck are all lorries, a patrol
+ * car is a car. Size, not geometry, is what tells them apart in this file;
+ * ServiceVehicleRenderer owns their liveried meshes.
+ *
+ * Total Record again: a new kind must name its body here.
+ */
+const KIND_ARCHETYPE: Record<VehicleKind, VehicleKind> = {
+  [VehicleKind.Car]: VehicleKind.Car,
+  [VehicleKind.Truck]: VehicleKind.Truck,
+  [VehicleKind.Bus]: VehicleKind.Bus,
+  [VehicleKind.Fire]: VehicleKind.Truck,
+  [VehicleKind.Police]: VehicleKind.Car,
+  [VehicleKind.Ambulance]: VehicleKind.Truck,
+  [VehicleKind.Garbage]: VehicleKind.Truck,
+};
+
+/** Same corrupt-slot fallback as sizeForKind: an unknown number is drawn as a car. */
+export function archetypeForKind(kind: number): VehicleKind {
+  return KIND_ARCHETYPE[kind as VehicleKind] ?? VehicleKind.Car;
+}
+
+/**
+ * The kinds THIS renderer draws: the anonymous civilian fleet. The four
+ * service kinds ride the same shared buffer but are drawn by
+ * ServiceVehicleRenderer, which owns their liveries; adding them here would
+ * park a palette-tinted lorry inside every fire engine and spend a second
+ * MAX_VEHICLES-slot InstancedMesh per kind doing it.
+ */
 const ALL_KINDS = [VehicleKind.Car, VehicleKind.Truck, VehicleKind.Bus] as const;
 
 // ---------------------------------------------------------------------------
@@ -240,30 +289,6 @@ function hash2(a: number, b: number): number {
   return hash32(Math.imul(a + 1, 0x9e3779b1) ^ hash32(b));
 }
 
-function variantCountForKind(kind: number): number {
-  switch (kind) {
-    case VehicleKind.Car:
-      return 3; // sedan, wagon, hatch
-    case VehicleKind.Truck:
-      return 2; // box-truck, pickup
-    case VehicleKind.Bus:
-    default:
-      return 1; // one long window-band silhouette
-  }
-}
-
-/**
- * Deterministic silhouette variant index for a slot, by slot-index hash:
- * Car -> sedan/wagon/hatch, Truck -> box-truck/pickup, Bus -> its one
- * long window-band silhouette. Stable regardless of slot reuse -- only the
- * palette color re-rolls on reuse.
- */
-export function variantIndexForSlot(slot: number, kind: number): number {
-  const count = variantCountForKind(kind);
-  if (count <= 1) return 0;
-  return hash2(slot, kind) % count;
-}
-
 // Per-variant scale/section tweaks applied on top of the kind's base size
 // (sizeForKind). An InstancedMesh shares one geometry per kind, so variants
 // are expressed as instance-level scale tweaks rather than distinct meshes.
@@ -276,18 +301,48 @@ const TRUCK_VARIANT_SCALE: readonly (readonly [number, number, number])[] = [
   [1.05, 1.45, 1.15], // box-truck: tall boxy cargo body
   [1.0, 0.85, 1.0], // pickup: low profile
 ];
-const BUS_VARIANT_SCALE: readonly (readonly [number, number, number])[] = [[1.0, 1.0, 1.0]];
+/** No silhouette variance: the kind is drawn at its own size, full stop. */
+const SINGLE_VARIANT_SCALE: readonly (readonly [number, number, number])[] = [[1.0, 1.0, 1.0]];
+
+/**
+ * Variants are a CIVILIAN notion: randomised shapes so a street of anonymous
+ * background traffic doesn't read as one repeated model. A bus is one long
+ * window-band silhouette, and a service vehicle is one specific appliance --
+ * a fire engine has no hatchback version -- so both get a single entry.
+ *
+ * The table is also the variant COUNT, so the two can never drift apart.
+ */
+const KIND_VARIANT_SCALE: Record<VehicleKind, readonly (readonly [number, number, number])[]> = {
+  [VehicleKind.Car]: CAR_VARIANT_SCALE,
+  [VehicleKind.Truck]: TRUCK_VARIANT_SCALE,
+  [VehicleKind.Bus]: SINGLE_VARIANT_SCALE,
+  [VehicleKind.Fire]: SINGLE_VARIANT_SCALE,
+  [VehicleKind.Police]: SINGLE_VARIANT_SCALE,
+  [VehicleKind.Ambulance]: SINGLE_VARIANT_SCALE,
+  [VehicleKind.Garbage]: SINGLE_VARIANT_SCALE,
+};
+
+function variantTableForKind(kind: number): readonly (readonly [number, number, number])[] {
+  return KIND_VARIANT_SCALE[kind as VehicleKind] ?? CAR_VARIANT_SCALE;
+}
+
+/**
+ * Deterministic silhouette variant index for a slot, by slot-index hash:
+ * Car -> sedan/wagon/hatch, Truck -> box-truck/pickup, everything else its one
+ * silhouette. Stable regardless of slot reuse -- only the palette color
+ * re-rolls on reuse.
+ */
+export function variantIndexForSlot(slot: number, kind: number): number {
+  const count = variantTableForKind(kind).length;
+  if (count <= 1) return 0;
+  return hash2(slot, kind) % count;
+}
 
 export function variantScaleForKind(
   kind: number,
   variantIndex: number,
 ): readonly [number, number, number] {
-  const table =
-    kind === VehicleKind.Truck
-      ? TRUCK_VARIANT_SCALE
-      : kind === VehicleKind.Bus
-        ? BUS_VARIANT_SCALE
-        : CAR_VARIANT_SCALE;
+  const table = variantTableForKind(kind);
   return table[variantIndex] ?? table[0] ?? [1, 1, 1];
 }
 
@@ -366,7 +421,9 @@ interface KindLayout {
 // before. Cabin sits flush on top of the body for every kind; only the
 // cabin's shape/position differs, giving each kind a distinct silhouette
 // from the SAME shared per-kind geometry.
-const KIND_LAYOUT: Record<number, KindLayout> = {
+// Keyed by ARCHETYPE, not by kind: there are three bodies here and every kind
+// is drawn from one of them (archetypeForKind).
+const ARCHETYPE_LAYOUT: Record<number, KindLayout> = {
   [VehicleKind.Car]: {
     bodySize: [0.94, 0.56, 0.92],
     bodyCenter: [0, -0.22, 0],
@@ -388,7 +445,7 @@ const KIND_LAYOUT: Record<number, KindLayout> = {
 };
 
 function wheelSpecForKind(kind: number): { worldRadius: number; worldThickness: number } {
-  switch (kind) {
+  switch (archetypeForKind(kind)) {
     case VehicleKind.Truck:
     case VehicleKind.Bus:
       return { worldRadius: 0.42, worldThickness: 0.28 };
@@ -459,7 +516,7 @@ function buildLightParts(): THREE.BufferGeometry[] {
  * threshold). Built once per kind; instances share it via InstancedMesh.
  */
 export function buildVehicleGeometry(kind: number): THREE.BufferGeometry {
-  const layout = KIND_LAYOUT[kind] ?? KIND_LAYOUT[VehicleKind.Car];
+  const layout = ARCHETYPE_LAYOUT[archetypeForKind(kind)];
   if (!layout) throw new RangeError(`buildVehicleGeometry: no layout for kind ${kind}`);
 
   const parts: THREE.BufferGeometry[] = [

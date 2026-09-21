@@ -9,6 +9,8 @@ import { create } from 'zustand';
 import {
   BRIDGE_MAX_ELEVATION,
   DEFAULT_TAX_RATE,
+  SERVICE_FUNDING_MAX,
+  SERVICE_FUNDING_MIN,
   START_FUNDS,
   TICKS_PER_MONTH,
 } from '../shared/constants';
@@ -24,6 +26,8 @@ import type {
   RoadFlow,
   Policy,
   SelectionInfo,
+  ServiceKind,
+  ServiceLoad,
   SimSpeed,
   ToolFlags,
   ToolId,
@@ -198,6 +202,13 @@ export interface CityStoreState {
   selectedDistrict: number;
   /** Optimistic per-district enabled-policy sets (worker owns the truth; not persisted). */
   districtPolicies: Record<number, Policy[]>;
+  // --- Service capacity ----------------------------------------------------
+  /**
+   * How hard each service kind is being leaned on (from SimSnapshot.serviceLoad).
+   * Null until the first service pass has run, and for any mirror feeding this
+   * store from a snapshot that never carried the field.
+   */
+  serviceLoad: Record<ServiceKind, ServiceLoad> | null;
   // --- Stats charts + Photo mode -------------------------------------------
   /** Live stats history samples (pushed by main.ts each snapshot). */
   statsSamples: StatsSample[];
@@ -253,6 +264,14 @@ export interface CityStoreState {
   setSelectedDistrict: (id: number) => void;
   /** Toggles a policy for a district — updates local state and emits setDistrictPolicy. */
   toggleDistrictPolicy: (districtId: number, policy: Policy) => void;
+  /** Replaces the per-kind service load from a snapshot. */
+  setServiceLoad: (load: Record<ServiceKind, ServiceLoad> | null) => void;
+  /**
+   * Sets a service kind's funding — clamps to what the command accepts, emits
+   * setServiceFunding, and mirrors the new figure into the stats readout so the
+   * slider moves under the player's hand rather than on the next snapshot.
+   */
+  setServiceFunding: (service: ServiceKind, funding: number) => void;
   /** Replaces the live stats-history samples. */
   setStatsSamples: (samples: StatsSample[]) => void;
   /** Opens/closes the stats charts panel. */
@@ -296,6 +315,7 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   districts: [],
   selectedDistrict: 1,
   districtPolicies: {},
+  serviceLoad: null,
   statsSamples: [],
   statsOpen: false,
   photoMode: false,
@@ -382,6 +402,20 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
         { kind: 'setDistrictPolicy', districtId, policy, on },
       ]);
       return { districtPolicies: { ...state.districtPolicies, [districtId]: next } };
+    }),
+  setServiceLoad: (load) => set({ serviceLoad: load }),
+  setServiceFunding: (service, funding) =>
+    set((state) => {
+      const clamped = Math.max(SERVICE_FUNDING_MIN, Math.min(SERVICE_FUNDING_MAX, funding));
+      state.bound?.sendCommands('Set service funding', [
+        { kind: 'setServiceFunding', service, funding: clamped },
+      ]);
+      return {
+        stats: {
+          ...state.stats,
+          serviceFunding: { ...state.stats.serviceFunding, [service]: clamped },
+        },
+      };
     }),
   setStatsSamples: (samples) => set({ statsSamples: samples }),
   setStatsOpen: (open) => set({ statsOpen: open }),

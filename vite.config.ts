@@ -16,6 +16,17 @@ export default defineConfig(() => ({
   // never reaches the bundle.
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   plugins: [react(), tailwindcss(), songsManifestPlugin()],
+  server: {
+    watch: {
+      // Nothing under these ever reaches the bundle, but the dev server watches
+      // the whole project, so writing a markdown file or a capture script
+      // reloads the page. That costs nothing while you are editing prose — and
+      // everything to a screenshot harness, which loses `window.__slimcity`
+      // mid-run and then photographs a city that reset itself to empty. The
+      // shot still lands and still exits 0, which is the dangerous part.
+      ignored: ['**/docs/**', '**/tools/shots-*/**', '**/tools/*-shots.mjs', '**/*.md'],
+    },
+  },
   build: {
     target: 'esnext',
     rollupOptions: {

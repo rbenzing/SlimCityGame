@@ -3,11 +3,11 @@
  * liveries riding the SAME shared vehicle buffer (SimSnapshot.vehicles) as
  * cosmetic cars/trucks/buses -- distinguished only by VehicleKind.Fire/
  * Police/Ambulance/Garbage (see shared/types.ts's contract note). This file owns a
- * SEPARATE set of InstancedMeshes from render/vehicles.ts's VehicleRenderer
- * (a chokepoint file, not edited here): VehicleRenderer's ALL_KINDS list is
- * [Car, Truck, Bus] only, so it already harmlessly hides any slot whose kind
- * is Fire/Police/Ambulance (no match in its kind-routing loop) -- this
- * renderer is the one that actually draws those slots.
+ * SEPARATE set of InstancedMeshes from render/vehicles.ts's VehicleRenderer:
+ * VehicleRenderer's ALL_KINDS list is [Car, Truck, Bus] only, so it already
+ * harmlessly hides any slot whose kind is a service kind (no match in its
+ * kind-routing loop) -- this renderer is the one that actually draws those
+ * slots, and widening ALL_KINDS would draw each of them twice.
  *
  * Extends the vehicle-kit style at a scope appropriate to a fixed,
  * baked livery per kind (not the per-instance palette-tint system
@@ -15,7 +15,9 @@
  * multi-part box geometry (body + cabin/light-bar + wheels) with vertex
  * colors baked directly into the geometry per kind, reusing the same
  * lerp/lane-offset helpers as the civilian renderer for exact positioning
- * parity on shared roads.
+ * parity on shared roads. The sizes come from there too: one table of vehicle
+ * dimensions serves the whole fleet, so a fire engine and the lorry beside it
+ * are measured the same way.
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -27,7 +29,7 @@ import {
   type Incident,
 } from '../shared/types';
 import { TILE_METERS, tileToWorld } from '../shared/constants';
-import { laneOffset, lerpVehicle } from './vehicles';
+import { laneOffset, lerpVehicle, sizeForKind } from './vehicles';
 import { ROAD_Y_OFFSET } from './roadsmesh';
 
 const SERVICE_KINDS = [
@@ -80,21 +82,6 @@ function bodyColorForKind(kind: ServiceVehicleKind): readonly [number, number, n
     case VehicleKind.Ambulance:
     default:
       return AMBULANCE_WHITE;
-  }
-}
-
-/** Body footprint (w, h, d) meters -- fire truck largest, ambulance van-sized, police sedan-sized. */
-function sizeForKind(kind: ServiceVehicleKind): readonly [number, number, number] {
-  switch (kind) {
-    case VehicleKind.Fire:
-      return [2.4, 2.8, 8.2];
-    case VehicleKind.Garbage:
-      return [2.3, 2.7, 7.0];
-    case VehicleKind.Ambulance:
-      return [2.2, 2.4, 6.2];
-    case VehicleKind.Police:
-    default:
-      return [1.9, 1.6, 4.3];
   }
 }
 

@@ -8,6 +8,7 @@ folder will have the rest.
 | How do I play?                         | [USERGUIDE.md](USERGUIDE.md)              |
 | What is built, and what is next?       | [ROADMAP.md](ROADMAP.md)                  |
 | What are we deliberately not building? | [DESIGN.md](DESIGN.md)                    |
+| What must never be broken?             | [GROUND-TRUTHS.md](GROUND-TRUTHS.md)      |
 | How is it built, and why that way?     | [engineering/](engineering/README.md)     |
 | What does the game ask of the player?  | [game-design/](game-design/README.md)     |
 | How does the simulated world behave?   | [world-sim/](world-sim/README.md)         |

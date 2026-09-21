@@ -46,3 +46,28 @@ or as well. See [adr/README.md](../adr/README.md).
 ## Writing one
 
 Copy [\_template.md](_template.md) to `<feature>.md`.
+
+## The documents
+
+The municipal services programme. [municipal-services.md](municipal-services.md)
+is the frame — what the nine epics share, and the order they have to be built
+in. Each one is designed against its sibling in
+[../../game-design/features/](../../game-design/features/README.md), which comes
+first.
+
+| #   | Document                                                     | Save format           | Worker protocol |
+| --- | ------------------------------------------------------------ | --------------------- | --------------- |
+| 0   | [service-capacity.md](service-capacity.md)                   | no                    | additive        |
+| 1   | [water-and-sewage.md](water-and-sewage.md)                   | additive              | additive        |
+| 2   | [healthcare-and-death-care.md](healthcare-and-death-care.md) | additive              | additive        |
+| 3   | [education-ladder.md](education-ladder.md)                   | additive              | additive        |
+| 4   | [emergency-services.md](emergency-services.md)               | no                    | additive        |
+| 5   | [garbage-recovery.md](garbage-recovery.md)                   | additive, one rescale | additive        |
+| 6   | [power-generation.md](power-generation.md)                   | no                    | no              |
+| 7   | [transport-depots.md](transport-depots.md)                   | additive              | additive        |
+| 8   | [parks-and-recreation.md](parks-and-recreation.md)           | no                    | additive        |
+
+Only epic 5 needs a version bump, and only to rescale a unit it finds wrong —
+everything else is a field that may be absent. That is the programme's rule
+working: a save written before an epic loads after it, with the new service
+missing rather than the file rejected.

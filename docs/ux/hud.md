@@ -73,6 +73,12 @@ whenever a building is selected:
     residents ÷ 4, rounded up) and `RESIDENTS n`; commercial and industrial
     show `JOBS n`; a service building shows `COVERAGE kind + range`; a
     utility shows its `OUTPUT` in MW or kL.
+  - `LOAD n%` on a service building that has one: the people living in
+    that facility's own reach against the places it offers them, which is
+    the per-building half of what the [Services panel](#services-panel)
+    shows per kind. A facility with no capacity figure, or one nothing can
+    reach, has no load and the row simply doesn't render. `0%` is a real
+    reading and means nobody in reach depends on it.
   - `UPKEEP ¢n/mo` always; a grown (zoned) building also shows `TAX ¢n/mo`
     — occupants × tax rate × the land-value factor, the same formula the
     economy itself uses, so the number on the panel is never a
@@ -180,6 +186,45 @@ its own.
 - With no lines committed yet, the list reads "No lines yet" instead,
   regardless of whether a line tool is currently in hand.
 
+## Services panel
+
+Floating in the same left slot as the district and transit panels above,
+and opening on the same terms: while a service building is in hand — a
+police station, fire station, clinic, school or park, picked from any of
+those dock drawers — or while one of the service lenses (Crime, Fire Risk,
+Health, Education) is on. Like them it carries no close button.
+
+- **Header**: the city glyph and the "Services" label, then a caption row
+  naming the four columns — Service, Funding, Load, Worst.
+- **One row per service** — Police, Fire, Health, Education, Parks — each
+  carrying all four together, because the slider and the gauge are the two
+  answers to one question and splitting them across screens is what kept
+  funding invisible:
+  - a **funding slider**, 0 to 1.5 in steps of 0.05, with its value beside
+    it as `×1.00`. Moving it sends the change and flips the local reading
+    at once, ahead of the worker's confirmation, exactly as the district
+    policy toggles do. Funding buys range, capacity and upkeep together —
+    the upkeep charge the economy already makes.
+  - a **load gauge** as a percentage of the capacity in reach: `138%` means
+    the city's facilities of that kind are asked for 38% more than they can
+    give. Under 100% takes the positive color and is not styled as a
+    problem; over 100% takes the danger color.
+  - the **worst district** figure beside it, the highest load over any tile
+    that holds residents. A city can sit at 95% overall with one district
+    at 240% because its facilities are the wrong side of a river, which is
+    the whole reason the gauge is two numbers.
+- Either figure reads `—` only where there is **nothing to read**: an
+  uncapped kind (Parks, always), a kind with no capped facility built yet,
+  and every row before the first service pass has run or on a mirror fed by
+  a snapshot that never carried the field. The row is still there, because
+  the funding slider is.
+- A capped facility that reaches nobody reads **`0%`, not `—`**. The two are
+  different answers and the panel must not blur them: `—` says the city has
+  no facility of that kind whose load can be measured, and `0%` says it has
+  one and nobody depends on it. A clinic stranded up a lane with no houses
+  in reach is a mistake the player can fix; no clinic at all is a different
+  mistake. Reading both as `—` hides the first behind the second.
+
 ## Advisor panel
 
 Floating at the right, near the top, opened from its corner button. It is
@@ -250,11 +295,12 @@ Left to right:
   Electricity, Water, Garbage, Health, Fire, Police, Education, Parks,
   Transit, Districts, Bulldoze, Landscaping. The active category gets a
   filled accent circle, the genre's standard active-tool treatment;
-  clicking a category toggles its asset drawer. Two of them also gate a
-  companion panel of their own — the [district panel](#district-panel)
-  and the [transit lines panel](#transit-lines-panel) — once the
-  category's own paint or line tool is actually in hand, not merely while
-  its drawer is open.
+  clicking a category toggles its asset drawer. Several of them also gate
+  a companion panel of their own — the [district panel](#district-panel),
+  the [transit lines panel](#transit-lines-panel), and, from any of the
+  five service categories, the [Services panel](#services-panel) — once
+  the category's own tool is actually in hand, not merely while its drawer
+  is open.
 - **Right cluster**: an Infoviews toggle (opens the lens grid of overlay
   choices) and an overlay-off button that clears whatever infoview is
   active.
