@@ -649,6 +649,8 @@ describe('selection protocol (UI-SPEC §7)', () => {
     expect(info!.monthlyUpkeep).toBe(windTurbine.upkeep);
     expect(info!.monthlyTax).toBe(0);
     expect(info!.occupancy).toEqual({});
+    // Not a capped facility, so it carries no load figure at all.
+    expect(info!.serviceLoad).toBeUndefined();
     expect(info!.happiness).toBeGreaterThanOrEqual(0);
     expect(info!.happiness).toBeLessThanOrEqual(100);
   });

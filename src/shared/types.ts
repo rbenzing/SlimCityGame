@@ -1172,6 +1172,14 @@ export interface SelectionInfo {
     households?: { occupied: number; capacity: number };
     jobs?: number;
   };
+  /**
+   * This facility's own load — the people in its reach over the capacity it
+   * offers them. The panel's gauge is per kind; a player looking at one
+   * building wants that building's figure, and the held selection is already
+   * recomputed every snapshot, so it costs nothing when nothing is selected.
+   * Absent for anything that is not a capped facility with a reach.
+   */
+  serviceLoad?: number;
 }
 
 /**

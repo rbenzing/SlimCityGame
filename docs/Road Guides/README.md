@@ -14,9 +14,11 @@ The MUTCD splits into `part1.pdf` through `part9.pdf`; the whole document is
 `mutcd11theditionr1hl.pdf`. Either works — the split parts are quicker to
 search.
 
-What each of these decides is written down in the Roads section of
-[SPEC.md](../SPEC.md), with the figure and the clause it came from, so the code
-never has to be read against the standard to know why a number is what it is.
-The choice to derive the road model from published standards at all, and the one
-calibration constant that ties them to game units, is
-[ADR-0013](../adr/0013-traffic-figures-come-from-published-standards.md).
+What each of these decides is written down in
+[road-model.md](../world-sim/road-model.md), with the figure and the clause it
+came from, so the code never has to be read against the standard to know why a
+number is what it is. The choice to derive the road model from published
+standards at all, and the one calibration constant that ties them to game units,
+is [ADR-0013](../engineering/adr/0013-traffic-figures-come-from-published-standards.md).
+The always/never rules that fall out of these standards, alongside the rest of
+the game's invariants, are collected in [GROUND-TRUTHS.md](../GROUND-TRUTHS.md).

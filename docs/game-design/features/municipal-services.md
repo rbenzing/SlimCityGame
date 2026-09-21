@@ -90,7 +90,19 @@ first and alone.
 
 **The budget.** Funding sliders already scale a service's range. Capacity gives
 the slider a second, more legible meaning: money buys reach _and_ throughput,
-and a player starving a service sees queues before they see a red field.
+and a player starving a service sees the reach shrink before they see a red
+field.
+
+One consequence of scaling both with the same dial is worth stating, because it
+is the opposite of what it sounds like: **cutting a service's funding does not
+raise its load.** Measured on a running city, health at ×0.10 reads 3% and the
+same service at ×1.00 reads 8% — a narrower catchment holds fewer people, and
+below the point where a facility already reaches the whole city that shrinks
+demand faster than it shrinks capacity. Past that point more money does relieve
+it, and ×1.50 reads 5% again. So the gauge answers "is this facility stretched
+over the people it reaches", not "have I underfunded this" — the budget shows
+up as the size of the area served, and the load only turns when the area stops
+growing.
 
 **Demand and growth.** Education already gates what a zone can grow into.
 Adding secondary and tertiary education extends that ladder rather than

@@ -34,6 +34,7 @@ export function resetCityStore(): void {
     previousMonthFunds: createInitialStats().funds,
     selectionInfo: null,
     brushSettings: DEFAULT_BRUSH_SETTINGS,
+    serviceLoad: null,
     // Component tests assume a live game (the App chrome/HUD only renders
     // while screen === 'playing'); menu-screen behavior gets its own tests.
     screen: 'playing',

@@ -773,3 +773,65 @@ describe('ServiceSim: the capacity pass preserves the fields the old pass wrote'
     }).toEqual(PRE_CAPACITY_FIELDS);
   });
 });
+
+describe('ServiceSim: a facility keeps its own load, for the selection channel', () => {
+  it('reports the people in its own reach against the capacity it offers them', () => {
+    const cat = [...catalog, clinicWith('clinic-1000', 1000), home500];
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    roadStrip(g, 9);
+    place(g, buildings, 1, 'clinic-1000', 0, 0, 1, 1);
+    for (let i = 0; i < 3; i++) place(g, buildings, 10 + i, 'home-500', 2 + i, 2, 1, 1);
+
+    const sim = new ServiceSim(cat);
+    sim.tick(g, buildings, fullFunding(1));
+
+    // 1,500 people against 1,000 places.
+    expect(sim.facilityLoad(1)).toBeCloseTo(1.5, 10);
+  });
+
+  it('scales the facility figure by funding, as the aggregate does', () => {
+    const cat = [...catalog, clinicWith('clinic-1000', 1000), home500];
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    roadStrip(g, 9);
+    place(g, buildings, 1, 'clinic-1000', 0, 0, 1, 1);
+    for (let i = 0; i < 3; i++) place(g, buildings, 10 + i, 'home-500', 2 + i, 2, 1, 1);
+
+    const sim = new ServiceSim(cat);
+    sim.tick(g, buildings, fullFunding(1.5));
+
+    expect(sim.facilityLoad(1)).toBeCloseTo(1, 10);
+  });
+
+  it('has no reading for an uncapped facility, rather than a load of zero', () => {
+    const cat = [...catalog, clinicWith('clinic-uncapped', undefined), home500];
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    roadStrip(g, 9);
+    place(g, buildings, 1, 'clinic-uncapped', 0, 0, 1, 1);
+    place(g, buildings, 2, 'home-500', 2, 2, 1, 1);
+
+    const sim = new ServiceSim(cat);
+    sim.tick(g, buildings, fullFunding(1));
+
+    expect(sim.facilityLoad(1)).toBeUndefined();
+  });
+
+  it('forgets a facility that is gone by the next tick', () => {
+    const cat = [...catalog, clinicWith('clinic-1000', 1000), home500];
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    roadStrip(g, 9);
+    place(g, buildings, 1, 'clinic-1000', 0, 0, 1, 1);
+    place(g, buildings, 2, 'home-500', 2, 2, 1, 1);
+
+    const sim = new ServiceSim(cat);
+    sim.tick(g, buildings, fullFunding(1));
+    expect(sim.facilityLoad(1)).toBeCloseTo(0.5, 10);
+
+    g.buildingId[tileIndex(0, 0)] = 0;
+    sim.tick(g, [buildings[1]!], fullFunding(1));
+    expect(sim.facilityLoad(1)).toBeUndefined();
+  });
+});

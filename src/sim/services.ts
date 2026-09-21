@@ -203,10 +203,26 @@ function reachPopulation(
 export class ServiceSim {
   private readonly catalog: Map<string, BuildingCatalogEntry>;
   private readonly bfs: RoadBfs;
+  /**
+   * Each capped facility's own load as of the last tick, by building id. The
+   * gather phase has the two numbers already, so keeping them costs one map
+   * entry per facility and spares the selection channel a second traversal.
+   */
+  private readonly loadByFacility = new Map<number, number>();
 
   constructor(catalog: BuildingCatalogEntry[], bfs: RoadBfs = roadBfsDistances) {
     this.catalog = new Map(catalog.map((c) => [c.id, c] as const));
     this.bfs = bfs;
+  }
+
+  /**
+   * How hard one facility is being leaned on — its reach population over the
+   * capacity it offers. Undefined for an uncapped facility, one nobody can
+   * reach, and one that no longer exists: each has no load rather than a load
+   * of zero.
+   */
+  facilityLoad(id: number): number | undefined {
+    return this.loadByFacility.get(id);
   }
 
   /**
@@ -226,6 +242,7 @@ export class ServiceSim {
     funding: Record<ServiceKind, number>,
   ): Record<ServiceKind, ServiceLoad> {
     this.growFields(g);
+    this.loadByFacility.clear();
 
     const footprints = footprintsByBuildingId(g);
     const residentsById = residentsByBuildingId(buildings, this.catalog);
@@ -307,6 +324,7 @@ export class ServiceSim {
       if (capacity !== undefined) {
         cappedPopulation += people;
         cappedCapacity += available;
+        this.loadByFacility.set(b.id, people / available);
       }
     }
 

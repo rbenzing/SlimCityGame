@@ -34,7 +34,9 @@ this is the only change any of them makes to an existing contract.
 | `src/data/catalog.json`    | `capacity` on the four service entries; park entries deliberately without one        |
 | `src/sim/worker.entry.ts`  | Per-kind load onto the snapshot; per-facility load onto the held selection           |
 | `src/ui/ServicesPanel.tsx` | New — a row per `ServiceKind`: funding slider, load gauge, worst district            |
-| `src/ui/store.ts`          | Mirror `serviceLoad`; wire the panel's open state and the funding command            |
+| `src/ui/store.ts`          | Mirror `serviceLoad`; clamp and dispatch the funding command                         |
+| `src/main.ts`              | Mirror `snap.serviceLoad` into the store, beside `transit` and `districts`           |
+| `src/ui/InfoPanel.tsx`     | A `LOAD` row for a selected facility, from `SelectionInfo.serviceLoad`               |
 | `src/app/persist.ts`       | **Unchanged**; `src/sim/economy.ts` unchanged, as upkeep already scales with funding |
 
 **Save format: no.** Capacity is catalog data and catalogs ship with the build; a save
@@ -207,7 +209,12 @@ neither figure, and a kind with no capped facility reports zero, which the panel
 as `—`. The second
 channel is **per-facility, only when selected**: the worker already recomputes and pushes
 the held selection every snapshot, so a facility's own load rides `SelectionInfo` and
-costs nothing when nothing is selected. Sending every facility's load every snapshot was
+costs nothing when nothing is selected. It is a bare `serviceLoad?: number`, not a
+`ServiceLoad` — "the worst district" means nothing for one building — and the gather
+phase has already divided its reach population by its capacity, so `ServiceSim` keeps
+that figure by `id` and the selection reads it rather than traversing again. Absent
+for anything that is not a capped facility with a reach; zero is a real reading there
+and means nobody in reach depends on it. Sending every facility's load every snapshot was
 rejected — `O(facilities)` per snapshot for a number read one at a time.
 
 The panel floats in the left slot the district and transit panels use (see

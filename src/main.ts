@@ -1296,6 +1296,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       landfillRenderer.apply(snap.garbage);
       if (snap.garbage.trash) overlays.setCoverage('trash', snap.garbage.trash);
     }
+    // Service load: publish the per-kind gauges the Services panel reads. Absent
+    // until the first service pass has run, which leaves the rows unread rather
+    // than reading zero.
+    if (snap.serviceLoad) state.setServiceLoad(snap.serviceLoad);
   };
 
   worker.onmessage = (ev: MessageEvent<WorkerToMain>) => {

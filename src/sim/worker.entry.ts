@@ -13,6 +13,8 @@ import {
   DEFAULT_TAX_RATE,
   MAP_SIZE,
   MAX_TAX_RATE,
+  SERVICE_FUNDING_MAX,
+  SERVICE_FUNDING_MIN,
   START_FUNDS,
   SPEED_MULTIPLIERS,
   TICK_MS,
@@ -180,7 +182,6 @@ const TRAFFIC_FIELD_PERIOD = 4;
 const TRAFFIC_FIELD_OFFSET = 1;
 /** Fraction of the original price returned when bulldozing roads/buildings. */
 const BULLDOZE_REFUND_RATE = 0.5;
-const MAX_SERVICE_FUNDING = 1.5;
 
 // --- Road noise --------------------------------------------------------------
 /** Assigned-traffic volume units per +1 Noise byte (before the tier multiplier). */
@@ -1137,6 +1138,8 @@ class SimWorld implements WorkerSim {
     const idx = tileIndex(inst.x, inst.z);
     const happinessByte = this.grid.fields[FieldId.Happiness]?.[idx] ?? 0;
     const landValueByte = this.grid.fields[FieldId.LandValue]?.[idx] ?? 0;
+    // A capped facility's own load, worked out by the service pass this tick.
+    const facilityLoad = this.services.facilityLoad(inst.id);
     const info: SelectionInfo = {
       building: { ...inst },
       happiness: Math.round((happinessByte / 255) * 100),
@@ -1144,6 +1147,7 @@ class SimWorld implements WorkerSim {
       // The catalog upkeep charge; grown buildings (zone set) carry none.
       monthlyUpkeep: entry.zone !== undefined ? 0 : entry.upkeep,
       occupancy: selectionOccupancy(entry, inst.state),
+      ...(facilityLoad !== undefined ? { serviceLoad: facilityLoad } : {}),
     };
     this.post({ type: 'selection', info });
   }
@@ -1568,7 +1572,10 @@ class SimWorld implements WorkerSim {
         return { ok: true, cost: 0, inverse: [] };
       }
       case 'setServiceFunding': {
-        const funding = Math.max(0, Math.min(MAX_SERVICE_FUNDING, command.funding));
+        const funding = Math.max(
+          SERVICE_FUNDING_MIN,
+          Math.min(SERVICE_FUNDING_MAX, command.funding),
+        );
         this.stats.serviceFunding = {
           ...this.stats.serviceFunding,
           [command.service]: funding,

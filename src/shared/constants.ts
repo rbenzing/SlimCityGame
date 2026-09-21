@@ -75,6 +75,13 @@ export const DEFAULT_TAX_RATE = 0.09;
 export const MAX_TAX_RATE = 0.3;
 export const MAX_LOAN = 100_000;
 export const LOAN_MONTHLY_INTEREST = 0.01;
+/**
+ * Service funding range. Funding scales a facility's range, its capacity and
+ * its upkeep together, so the bound the worker clamps a setServiceFunding
+ * command to is the same bound the panel's slider offers.
+ */
+export const SERVICE_FUNDING_MIN = 0;
+export const SERVICE_FUNDING_MAX = 1.5;
 
 // --- buildability -----------------------------------------------------------
 export const MAX_BUILD_SLOPE = 4; // max height delta (m) across a tile's corners

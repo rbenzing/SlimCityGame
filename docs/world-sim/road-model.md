@@ -551,7 +551,7 @@ is derived this way from footway presence and rank; it is not (yet) an
 independent per-approach toggle a player sets from the junction inspector.
 
 A crossing is as DEEP as the footway it carries across the road, never less
-than the 1.8 m a marked crossing may be (MUTCD 3B.18), and it lies AGAINST THE
+than the 1.8 m a marked crossing may be (MUTCD 3C.03 ¶05), and it lies AGAINST THE
 KERB LINE, which is where that footway runs. It is not as deep as the strip of
 tile the footway sits in: the strip is the room available and runs opposite to
 the road, leaving 6.25 m beside a two-lane street and 1.90 m beside an avenue —
@@ -646,7 +646,7 @@ per-tier:
   which is also what MUTCD 3D.06 ¶01 says of one at a circular
   intersection.
 - **Gore hatching** is diagonal bars at 45°, sloping away from the traffic
-  beside them in the direction that traffic goes (MUTCD 3B.24), so both
+  beside them in the direction that traffic goes (MUTCD 3B.25 ¶08–09), so both
   halves of a two-way road lean the same way on a map and each leans
   correctly for its own direction. Each bar is clipped exactly at the tile
   edge and the next tile draws the rest of it, rather than being squashed
