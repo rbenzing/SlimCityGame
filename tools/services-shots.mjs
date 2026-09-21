@@ -22,11 +22,21 @@ const out = process.argv[3] ?? 'tools/shots-services';
 mkdirSync(out, { recursive: true });
 
 const TWO_LANE = 1;
-// Low density deliberately: the dense residential entries are gated behind
-// milestone 4, and a city that starts at milestone 0 grows nothing at all in a
-// high-density zone however long it is left running.
-const ZONE_RES_LOW = 1;
+// Every residential density, painted at once. Sandbox unlocks what can be
+// PLOPPED, not what a zone may grow into: growth reads milestoneLevel, which
+// comes from population alone (400, 1200, 3500, 8000...). So a high-density
+// block sits empty until the city earns it, and the way to a big city is to
+// paint the whole ladder and let each rung unlock the next.
+const ZONES = {
+  resLow: 1, // milestone 0
+  resRow: 6, // milestone 1 — 400
+  resMedium: 7, // milestone 2 — 1,200
+  mixed: 8, // milestone 3 — 3,500
+  resHigh: 2, // milestone 4 — 8,000
+};
 const FIELD_HEALTH = 7;
+/** Enough people that one school (capacity 5,000) is genuinely oversubscribed. */
+const TARGET_POP = 6000;
 
 const b = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
 const page = await b.newPage({ viewport: { width: 1440, height: 900 } });
@@ -57,12 +67,12 @@ const g = await readGrid();
 const N = g.size;
 const idx = (x, z) => z * N + x;
 let A = null;
-for (let z = 20; z < N - 45 && !A; z++)
-  for (let x = 20; x < N - 45 && !A; x++) {
+for (let z = 8; z < N - 76 && !A; z++)
+  for (let x = 8; x < N - 76 && !A; x++) {
     const h0 = g.height[idx(x, z)];
     let ok = true;
-    for (let dz = 0; dz < 34 && ok; dz++)
-      for (let dx = 0; dx < 34 && ok; dx++) {
+    for (let dz = 0; dz < 70 && ok; dz++)
+      for (let dx = 0; dx < 70 && ok; dx++) {
         const i = idx(x + dx, z + dz);
         if (g.water[i] || Math.abs(g.height[i] - h0) > 8) ok = false;
       }
@@ -88,7 +98,7 @@ const row = (z) =>
     {
       kind: 'buildRoad',
       tier: TWO_LANE,
-      tiles: Array.from({ length: 31 }, (_, i) => ({ x: X + i, z })),
+      tiles: Array.from({ length: 67 }, (_, i) => ({ x: X + i, z })),
     },
   ]);
 const col = (x) =>
@@ -96,25 +106,52 @@ const col = (x) =>
     {
       kind: 'buildRoad',
       tier: TWO_LANE,
-      tiles: Array.from({ length: 31 }, (_, i) => ({ x, z: Z + i })),
+      tiles: Array.from({ length: 67 }, (_, i) => ({ x, z: Z + i })),
     },
   ]);
-for (let i = 0; i <= 30; i += 6) await row(Z + i);
-for (let i = 0; i <= 30; i += 6) await col(X + i);
+for (let i = 0; i <= 66; i += 6) await row(Z + i);
+for (let i = 0; i <= 66; i += 6) await col(X + i);
 
-const zoneBlock = (x0, z0, w, d) =>
+const zoneBlock = (zone, x0, z0, w, d) =>
   cmd('Zone', [
     {
       kind: 'paintZone',
-      zone: ZONE_RES_LOW,
+      zone,
       tiles: Array.from({ length: w * d }, (_, i) => ({
         x: x0 + (i % w),
         z: z0 + Math.floor(i / w),
       })),
     },
   ]);
-for (let bz = 0; bz < 30; bz += 6)
-  for (let bx = 0; bx < 30; bx += 6) await zoneBlock(X + bx + 1, Z + bz + 1, 5, 5);
+// Residential alone plateaus: people arrive for jobs, so a city of nothing but
+// housing stalls at its first milestone however much of it there is. A first
+// run zoned 25 residential blocks and stopped dead at 1,016. The split below is
+// the ordinary planning ratio — roughly three parts housing to one commerce and
+// one industry — and the densities that unlock late go in the middle, so the
+// outer ring can grow from milestone 0 and pull the rest up behind it.
+const ladder = [ZONES.resLow, ZONES.resRow, ZONES.resMedium, ZONES.mixed, ZONES.resHigh];
+const ZONE_COM = 3;
+const ZONE_IND = 5;
+let block = 0;
+const counts = { res: 0, com: 0, ind: 0 };
+for (let bz = 0; bz < 66; bz += 6)
+  for (let bx = 0; bx < 66; bx += 6) {
+    const ring = Math.min(bx, bz, 60 - bx, 60 - bz) / 6;
+    let zone;
+    if (ring >= 2 && block % 3 === 1) {
+      zone = ZONE_COM;
+      counts.com += 1;
+    } else if (ring >= 2 && block % 3 === 2) {
+      zone = ZONE_IND;
+      counts.ind += 1;
+    } else {
+      zone = ladder[Math.min(ring, ladder.length - 1)];
+      counts.res += 1;
+    }
+    await zoneBlock(zone, X + bx + 1, Z + bz + 1, 5, 5);
+    block += 1;
+  }
+console.log(`zoned ${block} blocks — ${counts.res} res, ${counts.com} com, ${counts.ind} ind`);
 
 // Utilities butted against a street: set back even one tile and nothing is
 // powered, nothing grows, and the panel reads zero off an empty city.
@@ -122,8 +159,20 @@ for (let bz = 0; bz < 30; bz += 6)
 // At X+32 it does not, and a plant one tile clear of the network powers nothing
 // — which shows up only as a city that never grows.
 await cmd('Utilities', [
-  { kind: 'placeBuilding', catalogId: 'coal-plant', x: X + 31, z: Z + 1, rotation: 0 },
-  { kind: 'placeBuilding', catalogId: 'water-tower', x: X + 31, z: Z + 7, rotation: 0 },
+  ...Array.from({ length: 7 }, (_, i) => ({
+    kind: 'placeBuilding',
+    catalogId: 'coal-plant',
+    x: X + 67,
+    z: Z + 1 + i * 6,
+    rotation: 0,
+  })),
+  ...Array.from({ length: 4 }, (_, i) => ({
+    kind: 'placeBuilding',
+    catalogId: 'water-tower',
+    x: X + 67,
+    z: Z + 45 + i * 4,
+    rotation: 0,
+  })),
 ]);
 // One of each capped service, plus the park that deliberately has no capacity.
 await cmd('Services', [
@@ -147,33 +196,41 @@ const placed = await call(() => {
   return ids.size;
 });
 console.log(`buildings standing after placement: ${placed}`);
-if (placed < 7) {
-  console.log(`EXPECTED 7 PLOPPABLES, GOT ${placed} — a placement was refused, fix that first`);
+if (placed < 16) {
+  console.log(`EXPECTED 16 PLOPPABLES, GOT ${placed} — a placement was refused, fix that first`);
   await b.close();
   process.exit(1);
 }
 
 await setSpeed(4);
 let s = await stats();
-for (let i = 0; i < 150; i++) {
+let lastMilestone = -1;
+for (let i = 0; i < 360; i++) {
   await page.waitForTimeout(1000);
   s = await stats();
-  if (s.population >= 6000) break;
+  if (s.milestoneLevel !== lastMilestone) {
+    lastMilestone = s.milestoneLevel;
+    console.log(`  milestone ${lastMilestone} at pop ${s.population} (${i}s)`);
+  }
+  if (s.population >= TARGET_POP) break;
 }
-console.log(`pop ${s.population} — a panel reading zero off an empty city proves nothing`);
+const fin = await stats();
+console.log(`pop ${s.population} power ${Math.round(fin.powerDemand)}/${Math.round(fin.powerSupply)} water ${Math.round(fin.waterDemand)}/${Math.round(fin.waterSupply)}`);
 if (s.population === 0) console.log('NOTHING GREW: do not read the shots below as a pass');
+if (s.population < TARGET_POP)
+  console.log(
+    `UNDER TARGET (${s.population} < ${TARGET_POP}): no service will read over 100%, so the ` +
+      `overloaded-row styling is NOT exercised by these shots`,
+  );
 await setSpeed(0);
 await page.waitForTimeout(800);
 
-// Starve one service so the panel has an overloaded row to draw. Funding scales
-// capacity AND range together, so this is not a free way to force a red row —
-// a smaller catchment holds fewer people too — but it moves the two at
-// different rates and a dense grid tips the balance.
-await cmd('Starve health', [
-  { kind: 'setServiceFunding', service: 'health', funding: 0.1 },
-  { kind: 'setServiceFunding', service: 'education', funding: 0.15 },
-]);
-await page.waitForTimeout(4000);
+// Everything stays at ×1.00. Cutting funding was the obvious way to force an
+// overloaded row and it is the wrong one: funding scales reach and capacity
+// together, so a starved service sheds people faster than capacity and reads
+// LOWER. The only thing that overloads a facility is more people than it can
+// serve, which is why this harness grows a city instead.
+await page.waitForTimeout(2000);
 
 const load = await call(() => window.__slimcity.getStats?.() ?? null);
 console.log('funding after starve:', JSON.stringify(load?.serviceFunding));
