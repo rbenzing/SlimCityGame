@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.10.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.9.0...slimcity-v1.10.0) (2026-09-21)
+
+
+### Features
+
+* **services:** a facility serves people, not just an area ([bb95802](https://github.com/rbenzing/SlimCityGame/commit/bb95802c60b9ec493dd9e96aaa9941e8b70e1033))
+* **ui:** the Services panel, where funding becomes reachable at last ([957a355](https://github.com/rbenzing/SlimCityGame/commit/957a355eede4eb7419f245862be024adc8e6aa0a))
+
+
+### Bug Fixes
+
+* **render:** a person is 1.75 m, and one table measures the whole fleet ([4f147f8](https://github.com/rbenzing/SlimCityGame/commit/4f147f82e8888d13eba4d274372723b94eb14e7c))
+* **sim:** a generator that cannot deliver says so, and 0% stops reading as — ([9bccdf7](https://github.com/rbenzing/SlimCityGame/commit/9bccdf70427a2489daf912f61f84f0a9be37e1f2))
+
 ## [1.9.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.8.0...slimcity-v1.9.0) (2026-09-17)
 
 
