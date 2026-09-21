@@ -672,6 +672,63 @@ describe('ServiceSim: capacity', () => {
     expect(g.fields[FieldId.Health]![tileIndex(0, 2)]).toBe(140);
     expect(summary.health.load).not.toBeNaN();
   });
+
+  it('counts no capped facility for a kind that has none built', () => {
+    const cat = [...catalog, clinicWith('clinic-1000', 1000), home500];
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    roadStrip(g, 9);
+    place(g, buildings, 1, 'clinic-1000', 0, 0, 1, 1);
+    place(g, buildings, 2, 'home-500', 2, 2, 1, 1);
+
+    const summary = new ServiceSim(cat).tick(g, buildings, fullFunding(1));
+
+    expect(summary.health.capped).toBe(1);
+    expect(summary.police.capped).toBe(0);
+  });
+
+  it('counts a capped clinic nobody can reach, so its zero load is a reading and not a silence', () => {
+    const cat = [...catalog, clinicWith('clinic-1000', 1000), home500];
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    roadStrip(g, 9);
+    place(g, buildings, 1, 'clinic-1000', 0, 0, 1, 1);
+    // The houses are up a lane of their own, far outside the clinic's reach.
+    paintPath(g, straightRun(-1, 60, 1, 0, 4));
+    place(g, buildings, 2, 'home-500', 61, 61, 1, 1);
+
+    const summary = new ServiceSim(cat).tick(g, buildings, fullFunding(1));
+
+    expect(summary.health.capped).toBe(1);
+    expect(summary.health.load).toBe(0);
+  });
+
+  it('counts facilities, so two clinics read two', () => {
+    const cat = [...catalog, clinicWith('clinic-1000', 1000), home500];
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    roadStrip(g, 9);
+    place(g, buildings, 1, 'clinic-1000', 0, 0, 1, 1);
+    place(g, buildings, 2, 'clinic-1000', 6, 0, 1, 1);
+    place(g, buildings, 3, 'home-500', 2, 2, 1, 1);
+
+    const summary = new ServiceSim(cat).tick(g, buildings, fullFunding(1));
+
+    expect(summary.health.capped).toBe(2);
+  });
+
+  it('counts no capped facility for an uncapped kind, however many parks are open', () => {
+    const cat = [...catalog, home500];
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    roadStrip(g, 9);
+    place(g, buildings, 1, 'park', 0, 0, 1, 1);
+    place(g, buildings, 2, 'home-500', 2, 2, 1, 1);
+
+    const summary = new ServiceSim(cat).tick(g, buildings, fullFunding(1));
+
+    expect(summary.park.capped).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

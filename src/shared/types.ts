@@ -723,12 +723,17 @@ export interface ServiceSpec {
  * Both, because a city can sit at 95% overall with one district at 240%: the
  * aggregate answers "have I bought enough", the worst answers "is one district
  * starved", and neither answers the other. Tiles supplied only by uncapped
- * facilities are in neither figure, and a kind with no capped facility reports
- * zero.
+ * facilities are in neither figure.
+ *
+ * `capped` is how many capped facilities of the kind contributed this tick,
+ * and it is what tells a zero load from no load at all: both read `load: 0`,
+ * but a stranded clinic is a mistake to fix and no clinic is a different one,
+ * so a reader that cannot tell them apart hides the first behind the second.
  */
 export interface ServiceLoad {
   load: number;
   worst: number;
+  capped: number;
 }
 
 export interface UtilitySpec {

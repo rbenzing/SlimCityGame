@@ -36,7 +36,7 @@ function open(): void {
 function loads(
   partial: Partial<Record<ServiceKind, ServiceLoad>>,
 ): Record<ServiceKind, ServiceLoad> {
-  const zero: ServiceLoad = { load: 0, worst: 0 };
+  const zero: ServiceLoad = { load: 0, worst: 0, capped: 0 };
   return {
     police: partial.police ?? zero,
     fire: partial.fire ?? zero,
@@ -64,11 +64,11 @@ describe('ServicesPanel', () => {
     open();
     useCityStore.getState().setServiceLoad(
       loads({
-        police: { load: 1.38, worst: 1.38 },
-        fire: { load: 0.62, worst: 0.9 },
-        health: { load: 1.0, worst: 1.2 },
-        education: { load: 0.5, worst: 0.75 },
-        park: { load: 0.25, worst: 0.3 },
+        police: { load: 1.38, worst: 1.38, capped: 2 },
+        fire: { load: 0.62, worst: 0.9, capped: 1 },
+        health: { load: 1.0, worst: 1.2, capped: 3 },
+        education: { load: 0.5, worst: 0.75, capped: 1 },
+        park: { load: 0.25, worst: 0.3, capped: 1 },
       }),
     );
     render(<ServicesPanel />);
@@ -87,13 +87,44 @@ describe('ServicesPanel', () => {
 
   it('renders a kind with no capped facility as an em dash, never as 0%', () => {
     open();
-    useCityStore
-      .getState()
-      .setServiceLoad(loads({ health: { load: 1.2, worst: 1.4 }, park: { load: 0, worst: 0 } }));
+    useCityStore.getState().setServiceLoad(
+      loads({
+        health: { load: 1.2, worst: 1.4, capped: 1 },
+        park: { load: 0, worst: 0, capped: 0 },
+      }),
+    );
     render(<ServicesPanel />);
 
     expect(screen.getByTestId('service-load-park')).toHaveTextContent('—');
     expect(screen.getByTestId('service-load-park')).not.toHaveTextContent('0%');
+    expect(screen.getByTestId('service-worst-park')).toHaveTextContent('—');
+  });
+
+  it('reads a capped facility that reaches nobody as 0%, never as an em dash', () => {
+    open();
+    useCityStore.getState().setServiceLoad(loads({ health: { load: 0, worst: 0, capped: 1 } }));
+    render(<ServicesPanel />);
+
+    expect(screen.getByTestId('service-load-health')).toHaveTextContent('0%');
+    expect(screen.getByTestId('service-load-health')).not.toHaveTextContent('—');
+  });
+
+  it('does not dress that 0% as an overloaded service — nobody depends on it', () => {
+    open();
+    useCityStore.getState().setServiceLoad(loads({ health: { load: 0, worst: 0, capped: 1 } }));
+    render(<ServicesPanel />);
+
+    const gauge = screen.getByTestId('service-load-health');
+    expect(gauge).toHaveAttribute('data-over', 'false');
+    expect(gauge).not.toHaveClass('text-danger');
+  });
+
+  it('reads an uncapped kind as an em dash whatever its facilities do', () => {
+    open();
+    useCityStore.getState().setServiceLoad(loads({ park: { load: 0, worst: 0, capped: 0 } }));
+    render(<ServicesPanel />);
+
+    expect(screen.getByTestId('service-load-park')).toHaveTextContent('—');
     expect(screen.getByTestId('service-worst-park')).toHaveTextContent('—');
   });
 
@@ -108,11 +139,12 @@ describe('ServicesPanel', () => {
 
   it('marks a load over 100% differently from one under it', () => {
     open();
-    useCityStore
-      .getState()
-      .setServiceLoad(
-        loads({ police: { load: 1.38, worst: 2 }, health: { load: 0.62, worst: 0.8 } }),
-      );
+    useCityStore.getState().setServiceLoad(
+      loads({
+        police: { load: 1.38, worst: 2, capped: 1 },
+        health: { load: 0.62, worst: 0.8, capped: 1 },
+      }),
+    );
     render(<ServicesPanel />);
 
     expect(screen.getByTestId('service-load-police')).toHaveAttribute('data-over', 'true');
@@ -121,7 +153,9 @@ describe('ServicesPanel', () => {
 
   it('shows the worst district beside the aggregate, and they are different numbers', () => {
     open();
-    useCityStore.getState().setServiceLoad(loads({ education: { load: 0.95, worst: 2.4 } }));
+    useCityStore
+      .getState()
+      .setServiceLoad(loads({ education: { load: 0.95, worst: 2.4, capped: 1 } }));
     render(<ServicesPanel />);
 
     expect(screen.getByTestId('service-load-education')).toHaveTextContent('95%');

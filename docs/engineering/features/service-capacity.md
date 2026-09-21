@@ -194,7 +194,7 @@ Two channels, because the panel and the selection ask different questions. The f
 per-kind aggregate on every snapshot — ten numbers, cheap at the snapshot rate:
 
 ```ts
-serviceLoad?: Record<ServiceKind, { load: number; worst: number }>;
+serviceLoad?: Record<ServiceKind, { load: number; worst: number; capped: number }>;
 ```
 
 `load` is the city aggregate for the kind — Σ reach population ÷ Σ capacity over the
@@ -205,8 +205,15 @@ answers "is one district starved", and a city can sit at 95% overall with one di
 that second figure mean anything; under a model that pools facilities transitively the
 two numbers converge on each other as the city grows, and the district signal disappears
 exactly when it starts to matter. Tiles supplied only by uncapped facilities are in
-neither figure, and a kind with no capped facility reports zero, which the panel renders
-as `—`. The second
+neither figure.
+
+`capped` is how many capped facilities of that kind contributed, and it exists because
+without it the panel cannot tell two different answers apart. `load` comes out zero both
+when the city has **no** capped facility of a kind and when it has one that reaches
+nobody — a clinic up a lane with no houses in range — and those want opposite reactions
+from the player. So `capped === 0` reads `—` and anything else reads a real percentage,
+including `0%`. Counting rather than a boolean costs nothing and answers "how many of
+these have I built" at the same time. The second
 channel is **per-facility, only when selected**: the worker already recomputes and pushes
 the held selection every snapshot, so a facility's own load rides `SelectionInfo` and
 costs nothing when nothing is selected. It is a bare `serviceLoad?: number`, not a

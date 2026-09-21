@@ -259,6 +259,16 @@ MUTCD citations below use 11th-edition section numbers.
   id, footprint tiles only, as a hard cut, never a dim. —
   [utilities-model.md](world-sim/utilities-model.md),
   [power-generation.md](engineering/features/power-generation.md)
+- Because supply counts it anyway, a generator that cannot deliver must say
+  so: a utility whose footprint touches no tile that conducts **what it
+  produces** carries `Problem.NoRoad`. Touching a road is not enough — a
+  motorway and a ramp carry no water, an unsealed lane conducts no power, and
+  a power line carries electricity only — so the test is the same predicate
+  the coverage walk seeds from, never a second idea of "connected". Otherwise
+  the supply figures read healthy while nothing is served and the city
+  silently stops growing. —
+  [utilities-model.md](world-sim/utilities-model.md); `utilityCanDeliver` in
+  `src/sim/network.ts`, `flagUnservedUtilities` in `src/sim/growth.ts`
 - Exactly one road BFS runs per active facility per tick. Population in reach,
   collection and forwarding ride that traversal, never a second BFS or a grid
   sweep. — [service-capacity.md](engineering/features/service-capacity.md)
@@ -294,6 +304,11 @@ MUTCD citations below use 11th-edition section numbers.
 - Derived per-tick figures (service load, population in reach, provision) live
   on `SimSnapshot`, never in `CityStats` or the save. —
   [service-capacity.md](engineering/features/service-capacity.md)
+- A load reading of zero and no load reading at all are different answers and
+  are never collapsed into one. No capped facility of a kind reads `—`; a
+  capped facility that reaches nobody reads `0%`. —
+  [service-capacity.md](engineering/features/service-capacity.md),
+  [hud.md](ux/hud.md); `ServiceLoad.capped` in `src/shared/types.ts`
 - Landfill is a painted layer, not a ploppable; a connected area under
   `LANDFILL_MIN_AREA_TILES` (4) is rejected. —
   [services-model.md](world-sim/services-model.md)

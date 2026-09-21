@@ -213,11 +213,17 @@ Health, Education) is on. Like them it carries no close button.
     that holds residents. A city can sit at 95% overall with one district
     at 240% because its facilities are the wrong side of a river, which is
     the whole reason the gauge is two numbers.
-- Either figure reads `—` rather than `0%` where there is nothing to read:
-  an uncapped kind (Parks, always), a kind with no capped facility built
-  yet, and every row before the first service pass has run or on a mirror
-  fed by a snapshot that never carried the field. The row is still there,
-  because the funding slider is.
+- Either figure reads `—` only where there is **nothing to read**: an
+  uncapped kind (Parks, always), a kind with no capped facility built yet,
+  and every row before the first service pass has run or on a mirror fed by
+  a snapshot that never carried the field. The row is still there, because
+  the funding slider is.
+- A capped facility that reaches nobody reads **`0%`, not `—`**. The two are
+  different answers and the panel must not blur them: `—` says the city has
+  no facility of that kind whose load can be measured, and `0%` says it has
+  one and nobody depends on it. A clinic stranded up a lane with no houses
+  in reach is a mistake the player can fix; no clinic at all is a different
+  mistake. Reading both as `—` hides the first behind the second.
 
 ## Advisor panel
 

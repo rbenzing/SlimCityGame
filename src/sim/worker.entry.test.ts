@@ -8,7 +8,7 @@ import {
   TICK_MS,
   tileIndex,
 } from '../shared/constants';
-import { FieldId, RoadFlow, RoadTier, SAVE_VERSION, ZoneType } from '../shared/types';
+import { FieldId, Problem, RoadFlow, RoadTier, SAVE_VERSION, ZoneType } from '../shared/types';
 import type {
   BuildingCatalogEntry,
   Command,
@@ -40,6 +40,7 @@ const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings
 const roadSpecs = (roadsData as { specs: RoadSpec[] }).specs;
 const twoLaneSpec = roadSpecs.find((s) => s.tier === RoadTier.TwoLane)!;
 const windTurbine = catalog.find((e) => e.id === 'wind-turbine')!;
+const waterTowerEntry = catalog.find((e) => e.id === 'water-tower')!;
 
 /** Perfectly flat, dry, treeless map: every tile is buildable. */
 function flatMap(): MapData {
@@ -2191,5 +2192,53 @@ describe('turn restrictions — the player says what an arm may do', () => {
       fresh.ticks(4);
       expect(junctions(fresh)?.[0]?.laneTurns).toEqual(set);
     });
+  });
+});
+
+describe('a generator that cannot deliver says so', () => {
+  /** Every problems reading the snapshots ever carried for `id`, in order. */
+  function problemsSeen(h: Harness, id: number): number[] {
+    const seen: number[] = [];
+    for (const m of h.messages) {
+      if (m.type !== 'snapshot' || !m.snap.buildings) continue;
+      for (const b of [...m.snap.buildings.added, ...m.snap.buildings.updated]) {
+        if (b.id === id) seen.push(b.problems);
+      }
+    }
+    return seen;
+  }
+
+  /** The id the placement stamped, read back off the grid the worker saved. */
+  function placedId(h: Harness, x: number, z: number): number {
+    h.sim.handleMessage({ type: 'requestSave' });
+    return latestSaveGrid(h).buildingId[tileIndex(x, z)]!;
+  }
+
+  it('tells the mirror a stranded water tower is cut off, so the advisor can count it', () => {
+    const h = initialized();
+    send(h, 1, [{ kind: 'placeBuilding', catalogId: 'water-tower', x: 80, z: 90, rotation: 0 }]);
+    h.ticks(30);
+    expect(h.ackFor(1)!.ok).toBe(true);
+
+    const id = placedId(h, 80, 90);
+    const seen = problemsSeen(h, id);
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen[seen.length - 1]! & Problem.NoRoad).toBe(Problem.NoRoad);
+    // The figure it contributes is untouched: the point is that it is visible.
+    expect(h.lastSnapshot()!.stats.waterSupply).toBe(waterTowerEntry.utility!.waterKL);
+  });
+
+  it('says nothing about a tower the street reaches', () => {
+    const h = initialized();
+    send(h, 1, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(78, 90, 12) },
+      { kind: 'placeBuilding', catalogId: 'water-tower', x: 80, z: 91, rotation: 0 },
+    ]);
+    h.ticks(30);
+
+    const id = placedId(h, 80, 91);
+    for (const problems of problemsSeen(h, id)) {
+      expect(problems & Problem.NoRoad).toBe(0);
+    }
   });
 });

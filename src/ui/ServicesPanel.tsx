@@ -41,11 +41,13 @@ const SERVICE_LENSES: ReadonlySet<LensId> = new Set<LensId>([
 const FUNDING_STEP = 0.05;
 
 /**
- * Zero is "no capped facility reached anybody", which is not 0% of anything —
- * it is nothing to read, and an uncapped service never has a load at all.
+ * A kind with no capped facility has nothing to read and says so; one that has
+ * any reads a real percentage, zero included. A stranded clinic that reaches
+ * nobody is a mistake the player can fix, and reading it as an em dash hides it
+ * behind the city that simply has no clinic.
  */
-function loadText(value: number): string {
-  return value > 0 ? `${Math.round(value * 100)}%` : '—';
+function loadText(value: number, capped: number): string {
+  return capped > 0 ? `${Math.round(value * 100)}%` : '—';
 }
 
 export function ServicesPanel(): JSX.Element | null {
@@ -82,9 +84,11 @@ export function ServicesPanel(): JSX.Element | null {
             const reading = serviceLoad?.[kind];
             const load = reading?.load ?? 0;
             const worst = reading?.worst ?? 0;
+            const capped = reading?.capped ?? 0;
             // Under capacity is a fine reading, not a quiet problem; only over
-            // it takes the danger token.
-            const over = load > 1;
+            // it takes the danger token. 0% is the least leaned-on a service
+            // can be, so it reads like any other healthy figure.
+            const over = capped > 0 && load > 1;
             return (
               <div
                 key={kind}
@@ -111,17 +115,17 @@ export function ServicesPanel(): JSX.Element | null {
                   data-testid={`service-load-${kind}`}
                   data-over={over ? 'true' : 'false'}
                   className={`w-9 shrink-0 text-right ${
-                    load <= 0 ? 'text-white/60' : over ? 'text-danger' : 'text-positive'
+                    capped <= 0 ? 'text-white/60' : over ? 'text-danger' : 'text-positive'
                   }`}
                 >
-                  {loadText(load)}
+                  {loadText(load, capped)}
                 </span>
                 <span
                   data-testid={`service-worst-${kind}`}
                   aria-label={`${label} worst district load`}
                   className="w-9 shrink-0 text-right text-[11px] text-white/60"
                 >
-                  {loadText(worst)}
+                  {loadText(worst, capped)}
                 </span>
               </div>
             );

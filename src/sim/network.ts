@@ -27,6 +27,7 @@ import type {
   GridState,
   RoadClassSpec,
   RoadSpec,
+  UtilitySpec,
 } from '../shared/types';
 import { BuildingState, RoadTier, isStreetTier } from '../shared/types';
 import { MAP_SIZE, inBounds, tileIndex } from '../shared/constants';
@@ -228,6 +229,37 @@ function conductsPower(g: GridState, index: number): boolean {
 function conductsWater(g: GridState, index: number): boolean {
   const tier = g.roadTier[index]!;
   return isStreetTier(tier) && tierCarriesWater(tier);
+}
+
+/**
+ * Whether a generator's footprint touches a tile that conducts what it makes.
+ *
+ * This is the very adjacency `computeCoverage` seeds its walk from, asked of
+ * the same conduction predicates, so a generator reads as connected exactly
+ * when it has somewhere to deliver to. A second, looser idea of "connected"
+ * here would disagree with the coverage it is supposed to describe.
+ *
+ * Everything produced has to have a way out: a plant making both is stranded
+ * if either has none, and a power line is a way out for electricity alone.
+ */
+export function utilityCanDeliver(
+  g: GridState,
+  utility: UtilitySpec,
+  footprintTiles: readonly number[],
+): boolean {
+  if (
+    utility.powerMW &&
+    networkTilesAdjacentTo(footprintTiles, (i) => conductsPower(g, i)).length === 0
+  ) {
+    return false;
+  }
+  if (
+    utility.waterKL &&
+    networkTilesAdjacentTo(footprintTiles, (i) => conductsWater(g, i)).length === 0
+  ) {
+    return false;
+  }
+  return true;
 }
 
 /**

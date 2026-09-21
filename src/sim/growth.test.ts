@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { tileIndex } from '../shared/constants';
-import { BuildingState, FieldId, RoadTier, ZoneType } from '../shared/types';
+import { BuildingState, FieldId, Problem, RoadTier, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, DemandLevels, GridState } from '../shared/types';
 import { BuildingRegistry } from './buildings';
 import { GrowthSystem } from './growth';
+import { recomputeUtilities } from './network';
 import type { Rng } from './growth';
 import { createGrid } from '../world/grid';
 
@@ -658,6 +659,117 @@ describe('GrowthSystem', () => {
         placed += system.tick(g, registry, neutralDemand, 0, tick).added.length;
       }
       expect(placed).toBe(0);
+    });
+  });
+
+  describe('a generator that cannot deliver says so', () => {
+    const waterTower: BuildingCatalogEntry = {
+      id: 'water-tower',
+      name: 'Water Tower',
+      category: 'utility',
+      footprint: { w: 2, d: 2 },
+      height: 22,
+      color: 0x8fa3b0,
+      powerUse: 0,
+      waterUse: 0,
+      utility: { waterKL: 400 },
+      cost: 2500,
+      upkeep: 120,
+      unlockMilestone: 0,
+    };
+
+    const windTurbine: BuildingCatalogEntry = {
+      id: 'wind-turbine',
+      name: 'Wind Turbine',
+      category: 'utility',
+      footprint: { w: 1, d: 1 },
+      height: 40,
+      color: 0xd8d8d8,
+      powerUse: 0,
+      waterUse: 0,
+      utility: { powerMW: 6 },
+      cost: 3000,
+      upkeep: 100,
+      unlockMilestone: 0,
+    };
+
+    const utilityCatalog = [waterTower, windTurbine];
+
+    /** Places `entry` and runs one problems pass over it. */
+    function plopAndSettle(
+      g: GridState,
+      entry: BuildingCatalogEntry,
+      x: number,
+      z: number,
+    ): { id: number; problems: number; updated: number[] } {
+      const registry = new BuildingRegistry(utilityCatalog);
+      const inst = registry.place(g, entry, x, z, 0, BuildingState.Active)!;
+      const growth = new GrowthSystem(utilityCatalog, constantRng(0), alwaysTrue);
+      const delta = growth.tick(g, registry, neutralDemand, 0, 0);
+      return {
+        id: inst.id,
+        problems: registry.get(inst.id)!.problems,
+        updated: delta.updated.map((b) => b.id),
+      };
+    }
+
+    it('flags a water tower the street never reaches', () => {
+      const g = makeGrid();
+      const { id, problems, updated } = plopAndSettle(g, waterTower, 5, 5);
+
+      expect(problems & Problem.NoRoad).toBe(Problem.NoRoad);
+      // The flag has to reach the mirror, or the advisor never counts it.
+      expect(updated).toContain(id);
+    });
+
+    it('leaves the same tower alone once a street touches its footprint', () => {
+      const g = makeGrid();
+      g.roadTier[tileIndex(7, 5)] = RoadTier.TwoLane;
+      const { problems } = plopAndSettle(g, waterTower, 5, 5);
+
+      expect(problems & Problem.NoRoad).toBe(0);
+    });
+
+    it('leaves a wind turbine on a power line alone — the cable is its road', () => {
+      const g = makeGrid();
+      g.powerLine[tileIndex(6, 5)] = 1;
+      const { problems } = plopAndSettle(g, windTurbine, 5, 5);
+
+      expect(problems & Problem.NoRoad).toBe(0);
+    });
+
+    it('flags a water tower on a motorway — the tier beside it carries no water', () => {
+      // The street it touches has to be one that conducts what it makes, which
+      // is the same question coverage asks; a looser "any road will do" would
+      // call this connected and then supply nothing.
+      const g = makeGrid();
+      g.roadTier[tileIndex(7, 5)] = RoadTier.Highway;
+      const { problems } = plopAndSettle(g, waterTower, 5, 5);
+
+      expect(problems & Problem.NoRoad).toBe(Problem.NoRoad);
+    });
+
+    it('flags a water tower on a power line — a cable carries no water', () => {
+      const g = makeGrid();
+      g.powerLine[tileIndex(7, 5)] = 1;
+      const { problems } = plopAndSettle(g, waterTower, 5, 5);
+
+      expect(problems & Problem.NoRoad).toBe(Problem.NoRoad);
+    });
+
+    it('changes nothing about supply — the city still counts what it cannot deliver', () => {
+      const g = makeGrid();
+      const registry = new BuildingRegistry(utilityCatalog);
+      const inst = registry.place(g, waterTower, 5, 5, 0, BuildingState.Active)!;
+
+      const before = recomputeUtilities(g, registry.all(), utilityCatalog);
+      const growth = new GrowthSystem(utilityCatalog, constantRng(0), alwaysTrue);
+      growth.tick(g, registry, neutralDemand, 0, 0);
+      const after = recomputeUtilities(g, registry.all(), utilityCatalog);
+
+      expect(registry.get(inst.id)!.problems & Problem.NoRoad).toBe(Problem.NoRoad);
+      expect(before.waterSupply).toBe(400);
+      expect(after).toEqual(before);
     });
   });
 });

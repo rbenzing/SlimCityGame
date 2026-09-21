@@ -290,6 +290,7 @@ export class ServiceSim {
     const gathered: GatheredFacility[] = [];
     let cappedPopulation = 0;
     let cappedCapacity = 0;
+    let cappedFacilities = 0;
 
     // --- gather: reach and supply, writing nothing ---------------------------
     for (const b of facilities) {
@@ -322,6 +323,7 @@ export class ServiceSim {
       const share = people > 0 ? available / people : Infinity;
       for (const tile of coverage.keys()) supply.set(tile, (supply.get(tile) ?? 0) + share);
       if (capacity !== undefined) {
+        cappedFacilities += 1;
         cappedPopulation += people;
         cappedCapacity += available;
         this.loadByFacility.set(b.id, people / available);
@@ -358,7 +360,13 @@ export class ServiceSim {
       const tileLoad = 1 / tileSupply;
       if (tileLoad > worst) worst = tileLoad;
     }
-    return { load: cappedCapacity > 0 ? cappedPopulation / cappedCapacity : 0, worst };
+    // A kind with no capped facility and one whose facilities reach nobody
+    // both divide to zero; `capped` is how a reader tells them apart.
+    return {
+      load: cappedCapacity > 0 ? cappedPopulation / cappedCapacity : 0,
+      worst,
+      capped: cappedFacilities,
+    };
   }
 
   private growFields(g: GridState): void {
