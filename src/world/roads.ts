@@ -27,7 +27,7 @@ import {
   rankForTier,
 } from '../shared/roadprofile';
 import { controlFromCode, warrantedControl } from '../shared/junction';
-import { corridorPartners } from '../shared/corridor';
+import { corridorPartners, sideBySideCarriageways } from '../shared/corridor';
 import { ARMS_PER_TILE } from './grid';
 import type {
   GraphEdge,
@@ -162,25 +162,11 @@ function isSeparateRoad(g: GridState, x: number, z: number, nx: number, nz: numb
   return isCorridorPartner(g, x, z, nx, nz) || isSideBySideCarriageway(g, x, z, nx, nz);
 }
 
-/** Whether a step runs ACROSS the way a flow travels rather than along it. */
-function lateralToFlow(flow: RoadFlow, dx: number, dz: number): boolean {
-  const alongX = flow === RoadFlow.East || flow === RoadFlow.West;
-  return alongX ? dx === 0 : dz === 0;
-}
-
 /**
- * Whether the tile at (nx, nz) is a SEPARATE motorway carriageway lying
- * alongside (x, z), rather than a road joining it.
- *
- * A motorway is one carriageway running one way, so two of them side by side
- * are two roads, not one wide one. Counted as neighbours they read as a
- * junction the whole way along: the pair draws as an unpainted slab, and the
- * graph edge between them lets traffic drift out of one carriageway into the
- * oncoming one. A ramp is the only way on or off a motorway, so a ramp
- * alongside is an arm and is left alone.
- *
- * BOTH tiles have to read the other as beside them. A carriageway arriving at
- * right angles points AT the tile it meets, which is a junction and stays one.
+ * Whether the tile at (nx, nz) is a separate motorway carriageway lying
+ * alongside (x, z) — see {@link sideBySideCarriageways}. Left unrecognised,
+ * the pair draws as an unpainted slab and the graph edge between them lets
+ * traffic drift out of one carriageway into the oncoming one.
  */
 function isSideBySideCarriageway(
   g: GridState,
@@ -192,11 +178,14 @@ function isSideBySideCarriageway(
   if (!inBoundsOf(g.size, nx, nz)) return false;
   const i = indexOf(g.size, x, z);
   const n = indexOf(g.size, nx, nz);
-  if (g.roadTier[i] !== RoadTier.Highway || g.roadTier[n] !== RoadTier.Highway) return false;
-  const here = flowDirection(g.roadFlow[i] ?? 0);
-  const there = flowDirection(g.roadFlow[n] ?? 0);
-  if (here === RoadFlow.None || there === RoadFlow.None) return false;
-  return lateralToFlow(here, nx - x, nz - z) && lateralToFlow(there, x - nx, z - nz);
+  return sideBySideCarriageways(
+    g.roadTier[i] === RoadTier.Highway,
+    g.roadTier[n] === RoadTier.Highway,
+    g.roadFlow[i] ?? 0,
+    g.roadFlow[n] ?? 0,
+    nx - x,
+    nz - z,
+  );
 }
 
 // ---------------------------------------------------------------------------

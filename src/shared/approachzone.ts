@@ -20,7 +20,7 @@ import {
   withCentreTurn,
   withTurnPocket,
 } from './roadprofile';
-import { controlHoldsArm } from './junction';
+import { controlHoldsArm, isRampNode } from './junction';
 import {
   closedAt,
   dropWidth,
@@ -33,7 +33,7 @@ import {
 import type { TaperStep } from './taper';
 import type { CorridorHalf, JunctionControl, RoadClassId, RoadProfile } from './types';
 import { RoadFlow } from './types';
-import { corridorPartners } from './corridor';
+import { corridorPartners, sideBySideCarriageways } from './corridor';
 
 /** What the walk needs to know about the tiles around it. */
 export interface ApproachSurroundings {
@@ -119,7 +119,7 @@ export function sharedTurnLaneAt(x: number, z: number, world: ApproachSurroundin
   /** Tiles short of the junction that way, or null where that way has none. */
   const reach = (dx: number, dz: number): number | null => {
     if (!world.hasRoad(x + dx, z + dz)) return null;
-    if (isCorridorPartner(x, z, dx, dz, world)) return null;
+    if (isSeparateRoad(x, z, dx, dz, world)) return null;
     for (let step = 1; step <= SHARED_TURN_LANE_MAX_TILES; step++) {
       const tx = x + dx * step;
       const tz = z + dz * step;
@@ -169,38 +169,68 @@ export function oppositeFlow(flow: RoadFlow): RoadFlow {
 /**
  * How many roads meet on a tile: three or more of them make it a junction.
  *
- * The other half of a corridor does not count. It touches along the whole run,
- * so counting it would make every tile of a divided road a junction — and,
- * because an approach has to be a straight run, would leave no tile of one
- * able to find the junction it really arrives at.
+ * A road that lies alongside without joining does not count — the other half
+ * of a corridor, or a second motorway carriageway. Either touches along the
+ * whole run, so counting it would make every tile a junction — and, because an
+ * approach has to be a straight run, would leave no tile able to find the
+ * junction it really arrives at.
  */
 export function roadDegree(x: number, z: number, world: ApproachSurroundings): number {
   let n = 0;
   for (const [dx, dz] of STEPS) {
     if (!world.hasRoad(x + dx, z + dz)) continue;
-    if (isCorridorPartner(x, z, dx, dz, world)) continue;
+    if (isSeparateRoad(x, z, dx, dz, world)) continue;
     n++;
   }
   return n;
 }
 
-/** Whether the neighbour at (dx, dz) is this tile's own other half. */
-function isCorridorPartner(
+/**
+ * Whether the neighbour at (dx, dz) is a road of its own rather than an arm of
+ * this one: this tile's other corridor half, or a motorway carriageway lying
+ * alongside.
+ */
+function isSeparateRoad(
   x: number,
   z: number,
   dx: number,
   dz: number,
   world: ApproachSurroundings,
 ): boolean {
-  return corridorPartners(
-    world.corridorHalfAt(x, z),
-    world.corridorHalfAt(x + dx, z + dz),
-    world.profileIdAt(x, z),
-    world.profileIdAt(x + dx, z + dz),
-    world.flowAt(x, z),
-    dx,
-    dz,
+  const here = world.profileAt(x, z);
+  const there = world.profileAt(x + dx, z + dz);
+  return (
+    corridorPartners(
+      world.corridorHalfAt(x, z),
+      world.corridorHalfAt(x + dx, z + dz),
+      world.profileIdAt(x, z),
+      world.profileIdAt(x + dx, z + dz),
+      world.flowAt(x, z),
+      dx,
+      dz,
+    ) ||
+    sideBySideCarriageways(
+      here?.class === 'highway',
+      there?.class === 'highway',
+      world.flowAt(x, z),
+      world.flowAt(x + dx, z + dz),
+      dx,
+      dz,
+    )
   );
+}
+
+/**
+ * Whether a tile is a motorway a ramp joins or leaves — a merge or a diverge,
+ * which is a straight carriageway with a slip road beside it and not a junction
+ * anything approaches. See {@link isRampNode}.
+ */
+export function isRampNodeAt(x: number, z: number, world: ApproachSurroundings): boolean {
+  const arm = (dx: number, dz: number): RoadClassId | null => {
+    if (!world.hasRoad(x + dx, z + dz) || isSeparateRoad(x, z, dx, dz, world)) return null;
+    return world.profileAt(x + dx, z + dz)?.class ?? null;
+  };
+  return isRampNode(world.profileAt(x, z)?.class, [arm(0, -1), arm(1, 0), arm(0, 1), arm(-1, 0)]);
 }
 
 /**
@@ -229,13 +259,15 @@ export function approachAhead(
     if (!world.hasRoad(x + dx, z + dz)) continue;
     // Never walk sideways into your own other half: along that way lies the
     // length of the road, not anything the road arrives at.
-    if (isCorridorPartner(x, z, dx, dz, world)) continue;
+    if (isSeparateRoad(x, z, dx, dz, world)) continue;
     if (!world.hasRoad(x - dx, z - dz)) continue; // a corner, not a run
     for (let step = 1; step <= reach; step++) {
       const tx = x + dx * step;
       const tz = z + dz * step;
       if (!world.hasRoad(tx, tz)) break;
-      const degree = roadDegree(tx, tz, world);
+      // A merge or a diverge is not a junction to arrive at: the motorway runs
+      // straight through it, and a ramp reaching it ends there.
+      const degree = isRampNodeAt(tx, tz, world) ? 2 : roadDegree(tx, tz, world);
       if (degree >= 3) {
         const distance = step - 1;
         if (!best || distance < best.distance) {
@@ -424,7 +456,7 @@ export function narrowingAhead(
     if (!world.hasRoad(x + dx, z + dz)) continue;
     // Never walk sideways into your own other half: along that way lies the
     // length of the road, not anything the road arrives at.
-    if (isCorridorPartner(x, z, dx, dz, world)) continue;
+    if (isSeparateRoad(x, z, dx, dz, world)) continue;
     if (!world.hasRoad(x - dx, z - dz)) continue; // a corner, not a run
     for (let step = 1; step <= TAPER_MAX_TILES; step++) {
       const tx = x + dx * step;
@@ -489,13 +521,17 @@ export function auxiliaryLaneAt(
   world: ApproachSurroundings,
 ): AuxiliaryLane | undefined {
   const mine = world.profileAt(x, z);
-  if (!mine || roadDegree(x, z, world) !== 2) return undefined;
+  if (!mine) return undefined;
+  // The tile the slip road meets carries the lane at full width too: the lane
+  // runs across the join rather than stopping short of it and starting again.
+  if (isRampNodeAt(x, z, world)) return auxiliaryLaneOnNode(x, z, world);
+  if (roadDegree(x, z, world) !== 2) return undefined;
 
   for (const [dx, dz, toward] of STEPS) {
     if (!world.hasRoad(x + dx, z + dz)) continue;
     // Never walk sideways into your own other half: along that way lies the
     // length of the road, not anything the road arrives at.
-    if (isCorridorPartner(x, z, dx, dz, world)) continue;
+    if (isSeparateRoad(x, z, dx, dz, world)) continue;
     if (!world.hasRoad(x - dx, z - dz)) continue; // a corner, not a run
     for (let step = 1; step <= AUXILIARY_ZONE_TILES; step++) {
       const jx = x + dx * step;
@@ -531,6 +567,32 @@ export function auxiliaryLaneAt(
     }
   }
   return undefined;
+}
+
+/**
+ * The auxiliary lane on the motorway tile a slip road meets, or undefined
+ * where the slip road or the motorway never recorded which way it runs.
+ *
+ * It is the lane at its widest: on the slip road's side, open in full, and
+ * joined or left by as the slip road's own direction says. Read in the frame
+ * of the motorway's traffic — the frame the walk on either side of it reads
+ * from when it arrives here — so the lane meets itself at both seams.
+ */
+function auxiliaryLaneOnNode(
+  x: number,
+  z: number,
+  world: ApproachSurroundings,
+): AuxiliaryLane | undefined {
+  const run = world.flowAt(x, z);
+  if (run === RoadFlow.None) return undefined;
+  const ramp = rampArmAt(x, z, run, world);
+  if (!ramp || ramp.flow === RoadFlow.None) return undefined;
+  const { leftSign } = approachAxis(run);
+  return {
+    side: (ramp.onTheLeft ? leftSign : -leftSign) as -1 | 1,
+    openness: 1,
+    merging: ramp.flow !== ramp.arm,
+  };
 }
 
 /**

@@ -570,3 +570,110 @@ describe('a corridor half is a road in its own right', () => {
     expect(approachAhead(3, 8, 3, bare)).toBeUndefined();
   });
 });
+
+/**
+ * A motorway map: N/E/S/W are highway tiles drawn that way, n/e/s/w ramp tiles,
+ * and '#' a two-lane street. Rows are z and columns are x.
+ */
+function motorwayWorld(map: string): ApproachSurroundings {
+  const rows = map
+    .split('\n')
+    .map((r) => r.trim())
+    .filter((r) => r.length > 0);
+  const at = (x: number, z: number): string => rows[z]?.[x] ?? '.';
+  const DIRECTION: Record<string, RoadFlow> = {
+    n: RoadFlow.North,
+    e: RoadFlow.East,
+    s: RoadFlow.South,
+    w: RoadFlow.West,
+  };
+  return {
+    hasRoad: (x, z) => at(x, z) !== '.',
+    laneTurnsAt: () => 0,
+    controlAt: () => undefined,
+    turnsAt: () => 0,
+    flowAt: (x, z) => DIRECTION[at(x, z).toLowerCase()] ?? RoadFlow.None,
+    corridorHalfAt: () => 'none',
+    profileIdAt: (x, z) => (at(x, z) === '.' ? 0 : 1),
+    profileAt: (x, z) => {
+      const c = at(x, z);
+      if ('NESW'.includes(c)) return presetProfileForTier(RoadTier.Highway);
+      if ('nesw'.includes(c)) return presetProfileForTier(RoadTier.Ramp);
+      if (c === '#') return presetProfileForTier(RoadTier.TwoLane);
+      return null;
+    },
+  };
+}
+
+describe('two carriageways side by side are two roads to the approach walk', () => {
+  const DUAL = `
+    ..SN..
+    ..SN..
+    ..SN..
+    ..SN..
+    ..SN..
+    ..SN..
+    ..SN..
+    ..SN..
+  `;
+
+  it('counts only a carriageway’s own run as its arms', () => {
+    const w = motorwayWorld(DUAL);
+    expect(roadDegree(2, 4, w)).toBe(2);
+    expect(roadDegree(3, 4, w)).toBe(2);
+  });
+
+  it('finds no junction for either carriageway to approach', () => {
+    const w = motorwayWorld(DUAL);
+    for (let z = 0; z < 8; z++) {
+      expect(approachAhead(2, z, 5, w), `S at ${z}`).toBeUndefined();
+      expect(approachAhead(3, z, 5, w), `N at ${z}`).toBeUndefined();
+    }
+  });
+});
+
+describe('a ramp leaving a motorway is a diverge, not a junction', () => {
+  /**
+   * A southbound motorway at x = 4, and a ramp leaving it westward at z = 6 —
+   * off the right-hand side of the traffic, where an exit is — down to a
+   * street at x = 0.
+   */
+  const DIVERGE = `
+    #...S.
+    #...S.
+    #...S.
+    #...S.
+    #...S.
+    #...S.
+    #wwwS.
+    #...S.
+    #...S.
+    #...S.
+    #...S.
+    #...S.
+  `;
+
+  it('gives the motorway no junction to approach, so no arrows and no bay', () => {
+    // Nobody on the motorway stops or chooses a lane at the ramp: the ones
+    // leaving are already in the auxiliary lane, and everyone else carries on.
+    const w = motorwayWorld(DIVERGE);
+    for (let z = 0; z < 6; z++) expect(approachAhead(4, z, 5, w), `z ${z}`).toBeUndefined();
+  });
+
+  it('carries the auxiliary lane across the node, not up to it and then gone', () => {
+    const w = motorwayWorld(DIVERGE);
+    const before = auxiliaryLaneAt(4, 5, w);
+    expect(before, 'the lane runs up to the ramp').toBeDefined();
+    const node = auxiliaryLaneAt(4, 6, w);
+    expect(node, 'and across the tile the ramp leaves from').toBeDefined();
+    expect(node!.side).toBe(before!.side);
+    expect(node!.openness).toBe(1);
+  });
+
+  it('still lets the ramp approach the street at its far end, which IS a junction', () => {
+    const w = motorwayWorld(DIVERGE);
+    const terminal = approachAhead(1, 6, 5, w);
+    expect(terminal).toBeDefined();
+    expect(terminal!.toward).toBe(RoadFlow.West);
+  });
+});

@@ -7,7 +7,7 @@
  * two runs that make one road, and the stored flow byte each tile needs to say
  * which half it is.
  */
-import { flowForStep, RoadFlow, storedFlow } from './types';
+import { flowDirection, flowForStep, RoadFlow, storedFlow } from './types';
 import type { CorridorHalf, TilePoint } from './types';
 
 export interface CorridorRuns {
@@ -100,4 +100,40 @@ export function corridorPartners(
   if (profileId !== profileIdThere) return false;
   const alongX = runs === RoadFlow.East || runs === RoadFlow.West;
   return alongX ? dx === 0 : dz === 0;
+}
+
+/** Whether a step runs ACROSS the way a flow travels rather than along it. */
+function acrossFlow(flow: RoadFlow, dx: number, dz: number): boolean {
+  const alongX = flow === RoadFlow.East || flow === RoadFlow.West;
+  return alongX ? dx === 0 : dz === 0;
+}
+
+/**
+ * Whether two neighbouring tiles are SEPARATE motorway carriageways lying side
+ * by side, rather than one road joining another.
+ *
+ * A motorway is one carriageway running one way, so two of them alongside each
+ * other are two roads, not one wide one, and nothing crosses between them — the
+ * only way on or off a motorway is a ramp, so a ramp alongside is an arm.
+ * Anything that counts a tile's neighbours has to ask this, for the same reason
+ * it asks {@link corridorPartners}: counted as neighbours, a dual carriageway
+ * reads as a junction its whole length.
+ *
+ * Which way each runs is its stored flow, never its shape. BOTH have to lie
+ * across the other's flow: a carriageway arriving at right angles points AT the
+ * tile it meets, which is a junction and stays one.
+ */
+export function sideBySideCarriageways(
+  highwayHere: boolean,
+  highwayThere: boolean,
+  storedHere: number,
+  storedThere: number,
+  dx: number,
+  dz: number,
+): boolean {
+  if (!highwayHere || !highwayThere) return false;
+  const here = flowDirection(storedHere);
+  const there = flowDirection(storedThere);
+  if (here === RoadFlow.None || there === RoadFlow.None) return false;
+  return acrossFlow(here, dx, dz) && acrossFlow(there, -dx, -dz);
 }

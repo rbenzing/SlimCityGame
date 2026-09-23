@@ -72,10 +72,22 @@ MUTCD citations below use 11th-edition section numbers.
   accept-list, so a new class stays off the motorway until explicitly admitted.
   A ramp never joins dirt or alley. — [road-model.md](world-sim/road-model.md);
   `MOTORWAY_MEETS` in `src/shared/roadprofile.ts`
-- Highway and rail arms never take a junction control. A ramp's motorway end is
+- Highway and rail arms never take a junction control — not from the warrant
+  and not from a player's override, which is refused. A ramp's motorway end is
   an uncontrolled merge or diverge; its other end is an ordinary warranted
   junction. — [road-model.md](world-sim/road-model.md);
-  `UNCONTROLLED_CLASSES` in `src/shared/junction.ts`
+  `takesControl` in `src/shared/junction.ts`, `cmdSetJunctionControl` in
+  `src/sim/worker.entry.ts`
+- A merge or a diverge is not an intersection. A motorway tile running
+  straight through with only ramps beside it (a ramp node) keeps its lane and
+  edge lines, grows no junction box and no rounded corners, opens its
+  ramp-side edge line only across the ramp's mouth, carries the auxiliary lane
+  across itself, and is no junction anything approaches, so nothing is arrowed
+  on the way in. Its exit board stands once, on the tile before a ramp that
+  leaves. Decided once and asked everywhere: the mesh, the approach walk and
+  the furniture never count arms for themselves. —
+  [road-model.md](world-sim/road-model.md); `isRampNode` in
+  `src/shared/junction.ts`, `isRampNodeAt` in `src/shared/approachzone.ts`
 - The warrant ladder is none, yield, stop, all-way stop, signal, and it only
   climbs. Roundabout is never a warrant default because it changes geometry. A
   player's control override is never stepped down by a warrant, and the warrant
@@ -142,10 +154,12 @@ MUTCD citations below use 11th-edition section numbers.
   across. The only way onto or off a motorway is a ramp, so a ramp alongside
   is always an arm. A motorway in line joins; one arriving square-on is a
   junction. It is decided in the grid, never refused by the road tool, so it
-  holds however the roads were drawn. The mask and the graph read the same
-  predicate, so what is drawn and what is driven cannot disagree. —
-  [road-model.md](world-sim/road-model.md); `isSeparateRoad` and
-  `isSideBySideCarriageway` in `src/world/roads.ts`
+  holds however the roads were drawn. The mask, the graph, the approach walk
+  and the road furniture all read the one predicate, so what is drawn, what is
+  driven and what is signed cannot disagree — counted as an arm anywhere, a
+  second carriageway took every gantry off the first. —
+  [road-model.md](world-sim/road-model.md); `sideBySideCarriageways` in
+  `src/shared/corridor.ts`
 - A sign faces the traffic it serves (MUTCD §2A.17 ¶01), and its facing comes
   from the direction of approaching traffic, not from the roadway edge it
   stands on (§2A.17 ¶02). On a one-way carriageway — a motorway, a ramp, a

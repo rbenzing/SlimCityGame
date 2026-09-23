@@ -106,7 +106,7 @@ import {
   rankForTier,
   roadClass,
 } from '../shared/roadprofile';
-import { armGivesWay } from '../shared/junction';
+import { armGivesWay, isRampNode } from '../shared/junction';
 import {
   approachZoneTiles,
   armSlot,
@@ -754,6 +754,12 @@ function emitAxisMarkings(
    * offset its own cross-section gives it.
    */
   seam?: { lo: MarkingSeam; hi: MarkingSeam },
+  /**
+   * An opening in the outermost solid line on one side of the road, between
+   * two distances along the run — where a slip road leaves or joins, and the
+   * edge line has to let it through.
+   */
+  gap?: { side: 1 | -1; from: number; to: number },
 ): void {
   const pair = suppressCenterPair ? centrePair(plan) : null;
   /** Where a line sits at each end of the run: its seam values, or its own offset. */
@@ -761,22 +767,39 @@ function emitAxisMarkings(
     seam?.lo?.[which]?.[i] ?? line.at,
     seam?.hi?.[which]?.[i] ?? line.at,
   ];
+  const gapped = gap
+    ? plan.solid.reduce<MarkingLine | null>(
+        (best, line) => (best === null || line.at * gap.side > best.at * gap.side ? line : best),
+        null,
+      )
+    : null;
   plan.solid.forEach((line, i) => {
     if (pair && (line === pair[0] || line === pair[1])) return;
     const [atLo, atHi] = ends(line, i, 'solid');
-    pushMarkingRun(
-      positions,
-      colors,
-      vertical,
-      centerX,
-      centerZ,
-      atLo,
-      atHi,
-      lo,
-      hi,
-      hAt,
-      paintOf(line),
-    );
+    const spans: [number, number][] =
+      gap && line === gapped && line.at * gap.side > 0
+        ? [
+            [lo, Math.max(lo, gap.from)],
+            [Math.min(hi, gap.to), hi],
+          ]
+        : [[lo, hi]];
+    const offsetAt = driftBetween(atLo, atHi, lo, hi);
+    for (const [a0, a1] of spans) {
+      if (a1 <= a0) continue;
+      pushMarkingRun(
+        positions,
+        colors,
+        vertical,
+        centerX,
+        centerZ,
+        offsetAt(a0),
+        offsetAt(a1),
+        a0,
+        a1,
+        hAt,
+        paintOf(line),
+      );
+    }
   });
   plan.dashed.forEach((line, i) => {
     const [atLo, atHi] = ends(line, i, 'dashed');
@@ -3470,9 +3493,24 @@ export function roadTileVertices(
       // supplies no neighbours gets the plain junction it always got.
       ([has, n]) => !has || (n !== RoadTier.None && rankForTier(n) < ownRankHere),
     );
+  // A merge or a diverge is not a junction at all, whatever its arm count: the
+  // motorway runs straight through it and a ramp peels off its side. It keeps
+  // its lines, grows no corners, and paints nothing of itself across the
+  // ramp's mouth but the gap in its edge line.
+  const armClass = (has: boolean, nTier: RoadTier) =>
+    has && nTier !== RoadTier.None ? presetProfileForTier(nTier).class : null;
+  const rampNode = isRampNode(own.class, [
+    armClass(hasN, neighbors.n),
+    armClass(hasE, neighbors.e),
+    armClass(hasS, neighbors.s),
+    armClass(hasW, neighbors.w),
+  ]);
+  // The axis the motorway runs along at a ramp node; the other is the ramp's.
+  const rampNodeVertical = rampNode && hasN && hasS;
   // A roundabout always breaks them: there is an island where the centre line
   // would run, and no road runs THROUGH a roundabout.
-  const breaksMarkings = isJunction && (!joinedByLesserOnly || control === 'roundabout');
+  const breaksMarkings =
+    isJunction && !rampNode && (!joinedByLesserOnly || control === 'roundabout');
   // What SHAPE this tile is, is decided by the arms that are legs of the
   // network. A service access — an alley — is not one: a road does not bend
   // itself round to become an alley, and a road that ends beside one has still
@@ -3627,14 +3665,23 @@ export function roadTileVertices(
     );
 
     // Extensions: push the plate flush to the tile edge on every connected side.
+    // Each is as wide as the core, and the corner fills below shape a narrower
+    // arm into it — except at a merge or a diverge, which has no corners, so a
+    // ramp's extension is only as wide as the ramp.
+    const extensionHalf = (half: number): number =>
+      rampNode && half > 0 ? Math.min(half, coreHalf) : coreHalf;
+    const extN = extensionHalf(neighborHalves.n);
+    const extS = extensionHalf(neighborHalves.s);
+    const extE = extensionHalf(neighborHalves.e);
+    const extW = extensionHalf(neighborHalves.w);
     if (hasN) {
       pushLocalRect(
         positions,
         colors,
         centerX,
         centerZ,
-        -coreHalf,
-        coreHalf,
+        -extN,
+        extN,
         -TILE_HALF,
         -coreHalf,
         ROAD_Y_OFFSET,
@@ -3648,8 +3695,8 @@ export function roadTileVertices(
         colors,
         centerX,
         centerZ,
-        -coreHalf,
-        coreHalf,
+        -extS,
+        extS,
         coreHalf,
         TILE_HALF,
         ROAD_Y_OFFSET,
@@ -3665,8 +3712,8 @@ export function roadTileVertices(
         centerZ,
         coreHalf,
         TILE_HALF,
-        -coreHalf,
-        coreHalf,
+        -extE,
+        extE,
         ROAD_Y_OFFSET,
         plateColor,
         hAt,
@@ -3680,8 +3727,8 @@ export function roadTileVertices(
         centerZ,
         -TILE_HALF,
         -coreHalf,
-        -coreHalf,
-        coreHalf,
+        -extW,
+        extW,
         ROAD_Y_OFFSET,
         plateColor,
         hAt,
@@ -3712,7 +3759,11 @@ export function roadTileVertices(
       footway: boolean | undefined,
       half: number,
     ): number =>
-      walkableArm(has, tier, footway) && half > 0 ? Math.min(half, coreHalf) : coreHalf;
+      // At a merge or a diverge each arm is exactly its own road: the ramp's
+      // mouth is as wide as the ramp, not as wide as the motorway it leaves.
+      (walkableArm(has, tier, footway) || rampNode) && half > 0
+        ? Math.min(half, coreHalf)
+        : coreHalf;
     const walk = neighborHalves.footways;
     const halfN = armHalf(hasN, neighbors.n, walk?.n, neighborHalves.n);
     const halfS = armHalf(hasS, neighbors.s, walk?.s, neighborHalves.s);
@@ -3795,10 +3846,13 @@ export function roadTileVertices(
     // road any more than it does into a driveway. The footway runs straight
     // past the mouth instead (the flank strip below crosses it) and the alley
     // climbs over it, which is what a dropped kerb is.
-    if (legN && legE) cornerFill(1, -1, halfN, halfE, cornerEdgeInset(planN, halfN, planE, halfE));
-    if (legS && legE) cornerFill(1, 1, halfS, halfE, cornerEdgeInset(planS, halfS, planE, halfE));
-    if (legS && legW) cornerFill(-1, 1, halfS, halfW, cornerEdgeInset(planS, halfS, planW, halfW));
-    if (legN && legW) cornerFill(-1, -1, halfN, halfW, cornerEdgeInset(planN, halfN, planW, halfW));
+    // Nothing turns at a merge or a diverge, so there is no corner to round.
+    if (!rampNode) {
+      if (legN && legE) cornerFill(1, -1, halfN, halfE, cornerEdgeInset(planN, halfN, planE, halfE));
+      if (legS && legE) cornerFill(1, 1, halfS, halfE, cornerEdgeInset(planS, halfS, planE, halfE));
+      if (legS && legW) cornerFill(-1, 1, halfS, halfW, cornerEdgeInset(planS, halfS, planW, halfW));
+      if (legN && legW) cornerFill(-1, -1, halfN, halfW, cornerEdgeInset(planN, halfN, planW, halfW));
+    }
 
     // The footway CARRIES ON ROUND THE CORNER, through the junction.
     //
@@ -4017,7 +4071,28 @@ export function roadTileVertices(
     // carries no straight lane lines — they'd cut across the arc). A straight
     // run, a dead end, and a road passing a lesser turning keep their markings.
     if (!breaksMarkings && !isTurn) {
-      if (hasVertical) {
+      // At a merge or a diverge only the motorway's own axis is painted, and
+      // its edge line opens across the mouth of the ramp beside it.
+      const rampGap = (
+        sideSign: 1 | -1,
+        rampHalf: number,
+      ): { side: 1 | -1; from: number; to: number } => ({
+        side: sideSign,
+        from: -rampHalf,
+        to: rampHalf,
+      });
+      const verticalGap = !rampNodeVertical
+        ? undefined
+        : hasE
+          ? rampGap(1, neighborHalves.e)
+          : rampGap(-1, neighborHalves.w);
+      const horizontalGap =
+        !rampNode || rampNodeVertical
+          ? undefined
+          : hasS
+            ? rampGap(1, neighborHalves.s)
+            : rampGap(-1, neighborHalves.n);
+      if (hasVertical && (!rampNode || rampNodeVertical)) {
         const zLo = hasN ? -TILE_HALF : -coreHalf;
         const zHi = hasS ? TILE_HALF : coreHalf;
         emitAxisMarkings(
@@ -4045,6 +4120,7 @@ export function roadTileVertices(
               coreHalf,
             ),
           },
+          verticalGap,
         );
         if (plan.bands.length > 0)
           emitColoredLaneBands(
@@ -4061,7 +4137,7 @@ export function roadTileVertices(
             hAt,
           );
       }
-      if (hasHorizontal) {
+      if (hasHorizontal && (!rampNode || !rampNodeVertical)) {
         const xLo = hasW ? -TILE_HALF : -coreHalf;
         const xHi = hasE ? TILE_HALF : coreHalf;
         emitAxisMarkings(
@@ -4089,6 +4165,7 @@ export function roadTileVertices(
               coreHalf,
             ),
           },
+          horizontalGap,
         );
         if (plan.bands.length > 0)
           emitColoredLaneBands(

@@ -10,7 +10,14 @@
  * exactly as the street-lamp placer does.
  */
 import * as THREE from 'three';
-import { flowDirection, RoadFlow, RoadTier, stepForFlow, TilePoint } from '../shared/types';
+import {
+  flowDirection,
+  flowForStep,
+  RoadFlow,
+  RoadTier,
+  stepForFlow,
+  TilePoint,
+} from '../shared/types';
 import { TILE_METERS, tileToWorld } from '../shared/constants';
 import {
   carriagewayHalfWidthMeters,
@@ -27,6 +34,7 @@ import {
 } from '../shared/roadprofile';
 import { armGivesWay, signalAspect } from '../shared/junction';
 import type { SignalAspect } from '../shared/junction';
+import { sideBySideCarriageways } from '../shared/corridor';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 
 // --- Manhole -----------------------------------------------------------------
@@ -392,12 +400,18 @@ function tierIsMotorway(tier: RoadTier | undefined): boolean {
 
 /**
  * Boxes and other pavement clutter need a raised curb with a footway behind it:
- * excludes gravel and alley, which have none, and the highway, which has a
- * shoulder rather than a sidewalk.
+ * excludes gravel and alley, which have none, and the highway and its ramps,
+ * which have a shoulder rather than a sidewalk.
  */
 function tierHasCurb(tier: RoadTier | undefined): boolean {
   const t = tier ?? RoadTier.TwoLane;
-  return t !== RoadTier.Gravel && t !== RoadTier.Alley && !tierIsMotorway(t) && !tierIsRail(t);
+  return (
+    t !== RoadTier.Gravel &&
+    t !== RoadTier.Alley &&
+    t !== RoadTier.Ramp &&
+    !tierIsMotorway(t) &&
+    !tierIsRail(t)
+  );
 }
 
 /** Every tier that carries road signage of some kind — the highway included. */
@@ -475,10 +489,30 @@ function buildTileSet(roadTiles: readonly FurnitureRoadTile[]): RoadTileIndex {
   return set;
 }
 
-/** How many of the four orthogonal neighbors are road tiles. */
+/**
+ * Whether the road tile at (nx, nz) is an arm of the one at (x, z): there, and
+ * not a separate motorway carriageway lying alongside. A second carriageway is
+ * another road, so it takes up the ground beside this one without joining it.
+ */
+function joins(tileSet: RoadTileIndex, x: number, z: number, nx: number, nz: number): boolean {
+  const there = tileSet.get(tileKey(nx, nz));
+  if (!there) return false;
+  const here = tileSet.get(tileKey(x, z));
+  if (!here) return true;
+  return !sideBySideCarriageways(
+    tierIsMotorway(here.tier),
+    tierIsMotorway(there.tier),
+    here.flow ?? 0,
+    there.flow ?? 0,
+    nx - x,
+    nz - z,
+  );
+}
+
+/** How many of the four orthogonal neighbors are roads this tile joins. */
 function neighborCount(tileSet: RoadTileIndex, x: number, z: number): number {
   let count = 0;
-  for (const d of NEIGHBOR_DIRS) if (tileSet.has(tileKey(x + d.dx, z + d.dz))) count++;
+  for (const d of NEIGHBOR_DIRS) if (joins(tileSet, x, z, x + d.dx, z + d.dz)) count++;
   return count;
 }
 
@@ -489,13 +523,13 @@ interface PresentSides {
   w: boolean;
 }
 
-/** Which orthogonal neighbors are road tiles. */
+/** Which orthogonal neighbors are roads this tile joins. */
 function presentSides(tileSet: RoadTileIndex, x: number, z: number): PresentSides {
   return {
-    n: tileSet.has(tileKey(x, z - 1)),
-    e: tileSet.has(tileKey(x + 1, z)),
-    s: tileSet.has(tileKey(x, z + 1)),
-    w: tileSet.has(tileKey(x - 1, z)),
+    n: joins(tileSet, x, z, x, z - 1),
+    e: joins(tileSet, x, z, x + 1, z),
+    s: joins(tileSet, x, z, x, z + 1),
+    w: joins(tileSet, x, z, x - 1, z),
   };
 }
 
@@ -553,17 +587,6 @@ function carriesSewer(tile: FurnitureRoadTile): boolean {
   return roadClass(profileOf(tile).class).carriesWater;
 }
 
-/** The largest neighborCount among this tile's present road-neighbors (0 if none). */
-function maxNeighborDegree(tileSet: RoadTileIndex, x: number, z: number): number {
-  let max = 0;
-  for (const d of NEIGHBOR_DIRS) {
-    const nx = x + d.dx;
-    const nz = z + d.dz;
-    if (tileSet.has(tileKey(nx, nz))) max = Math.max(max, neighborCount(tileSet, nx, nz));
-  }
-  return max;
-}
-
 /** The neighbouring road tile with the most arms of its own — the junction this tile runs into. */
 function busiestNeighbour(
   tileSet: RoadTileIndex,
@@ -618,8 +641,8 @@ function availableSidewalkSides(tileSet: RoadTileIndex, x: number, z: number): S
  * carriageway; anything curbside must check {@link hasCrossingRoad} first.
  */
 function lateralAxis(tileSet: RoadTileIndex, x: number, z: number): FurnitureAxis {
-  const hasEW = tileSet.has(tileKey(x - 1, z)) || tileSet.has(tileKey(x + 1, z));
-  const hasNS = tileSet.has(tileKey(x, z - 1)) || tileSet.has(tileKey(x, z + 1));
+  const hasEW = joins(tileSet, x, z, x - 1, z) || joins(tileSet, x, z, x + 1, z);
+  const hasNS = joins(tileSet, x, z, x, z - 1) || joins(tileSet, x, z, x, z + 1);
   return hasNS && !hasEW ? 'x' : 'z';
 }
 
@@ -630,8 +653,8 @@ function lateralAxis(tileSet: RoadTileIndex, x: number, z: number): FurnitureAxi
  * in the middle of an intersection. Nothing curbside may seat here.
  */
 export function hasCrossingRoad(tileSet: RoadTileIndex, x: number, z: number): boolean {
-  const hasEW = tileSet.has(tileKey(x - 1, z)) || tileSet.has(tileKey(x + 1, z));
-  const hasNS = tileSet.has(tileKey(x, z - 1)) || tileSet.has(tileKey(x, z + 1));
+  const hasEW = joins(tileSet, x, z, x - 1, z) || joins(tileSet, x, z, x + 1, z);
+  const hasNS = joins(tileSet, x, z, x, z - 1) || joins(tileSet, x, z, x, z + 1);
   return hasEW && hasNS;
 }
 
@@ -759,7 +782,7 @@ function classifySign(tileSet: RoadTileIndex, tile: FurnitureRoadTile): SignType
   // information goes overhead on a GANTRY spanning both carriageways, which is
   // the only way to sign a road nobody is walking beside.
   if (tierIsMotorway(tile.tier)) {
-    if (nc <= 2 && maxNeighborDegree(tileSet, x, z) >= 3) return 'exit';
+    if (exitAhead(tileSet, tile)) return 'exit';
     if (straight && periodHits(x, z, GANTRY_PERIOD)) return 'gantry';
     return null;
   }
@@ -787,6 +810,30 @@ function classifySign(tileSet: RoadTileIndex, tile: FurnitureRoadTile): SignType
     return 'speed';
 
   return null;
+}
+
+/**
+ * Whether the next motorway tile along this one's flow is where a ramp LEAVES.
+ *
+ * An exit board is only worth anything before the turn-off, while a driver can
+ * still move over for it, so it goes on the one tile before the diverge. After
+ * it, or at a merge where a ramp joins, there is nothing to take. Which way the
+ * ramp was drawn is what says it leaves: pointing away from the motorway.
+ */
+function exitAhead(tileSet: RoadTileIndex, tile: FurnitureRoadTile): boolean {
+  const run = flowDirection(tile.flow ?? 0);
+  if (run === RoadFlow.None) return false;
+  const { dx, dz } = stepForFlow(run);
+  const nx = tile.x + dx;
+  const nz = tile.z + dz;
+  const next = tileSet.get(tileKey(nx, nz));
+  if (!next || !tierIsMotorway(next.tier)) return false;
+  for (const [lx, lz] of dx === 0 ? [[1, 0], [-1, 0]] : [[0, 1], [0, -1]]) {
+    const ramp = tileSet.get(tileKey(nx + lx!, nz + lz!));
+    if (ramp?.tier !== RoadTier.Ramp) continue;
+    if (flowDirection(ramp.flow ?? 0) === flowForStep(lx!, lz!)) return true;
+  }
+  return false;
 }
 
 /**

@@ -84,7 +84,8 @@ import {
   tierForProfile,
   type RoadPrice,
 } from '../shared/roadprofile';
-import { codeForControl, controlFromCode } from '../shared/junction';
+import { codeForControl, controlFromCode, takesControl } from '../shared/junction';
+import { armsAt } from '../world/pathfind';
 import {
   armAllowed,
   armIsRestricted,
@@ -1382,6 +1383,14 @@ class SimWorld implements WorkerSim {
     // to give way to, and neither has a bend or a tile in the middle of a run.
     const node = this.network.getNodes().find((n) => n.x === x && n.z === z);
     if (!node || node.edges.length < 3) return rejected;
+    // Nobody is ever held on a motorway: a junction the warrant leaves bare for
+    // that reason cannot be signalled or signed by hand instead. Handing it
+    // back to the warrant, or to none, is still allowed — neither is a control.
+    if (control !== null && control !== 'none') {
+      const edges = this.network.getEdges();
+      const classes = armsAt(node, (id) => edges[id]).map((arm) => arm.approach.classId);
+      if (!takesControl(classes)) return rejected;
+    }
 
     const i = tileIndex(x, z);
     const was = this.grid.junctionControl[i] ?? 0;

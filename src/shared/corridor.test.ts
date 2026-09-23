@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { corridorRunsFor, corridorTiles } from './corridor';
-import { corridorHalfOf, flowDirection, RoadFlow } from './types';
+import { corridorRunsFor, corridorTiles, sideBySideCarriageways } from './corridor';
+import { corridorHalfOf, flowDirection, RoadFlow, storedFlow } from './types';
 import type { TilePoint } from './types';
 
 /** A run of tiles from `from` to `to` inclusive, in either direction. */
@@ -59,5 +59,39 @@ describe('a corridor is laid as two runs, not one wide one', () => {
     const tiles = corridorTiles(runs);
     expect(tiles).toHaveLength(10);
     expect(new Set(tiles.map((t) => `${t.x},${t.z}`)).size).toBe(10);
+  });
+});
+
+describe('two motorway carriageways side by side', () => {
+  it('are separate roads when each lies across the other’s flow', () => {
+    // Southbound at x, northbound at x + 1: the step east is across both.
+    expect(sideBySideCarriageways(true, true, RoadFlow.South, RoadFlow.North, 1, 0)).toBe(true);
+    expect(sideBySideCarriageways(true, true, RoadFlow.North, RoadFlow.South, -1, 0)).toBe(true);
+    // Running the same way is still two carriageways, not a junction.
+    expect(sideBySideCarriageways(true, true, RoadFlow.East, RoadFlow.East, 0, 1)).toBe(true);
+  });
+
+  it('are a junction when one arrives square-on, pointing at the other', () => {
+    // An eastbound run with a southbound one arriving from the north: the step
+    // is across the eastbound flow but ALONG the southbound one.
+    expect(sideBySideCarriageways(true, true, RoadFlow.East, RoadFlow.South, 0, -1)).toBe(false);
+  });
+
+  it('join end on', () => {
+    expect(sideBySideCarriageways(true, true, RoadFlow.East, RoadFlow.East, 1, 0)).toBe(false);
+  });
+
+  it('leave everything but two motorways alone, a ramp included', () => {
+    expect(sideBySideCarriageways(true, false, RoadFlow.South, RoadFlow.South, 1, 0)).toBe(false);
+    expect(sideBySideCarriageways(false, true, RoadFlow.South, RoadFlow.North, 1, 0)).toBe(false);
+  });
+
+  it('say nothing where a tile does not say which way it runs', () => {
+    expect(sideBySideCarriageways(true, true, RoadFlow.None, RoadFlow.North, 1, 0)).toBe(false);
+  });
+
+  it('read the direction out of the byte, not the whole byte', () => {
+    const half = storedFlow(RoadFlow.South, 'right');
+    expect(sideBySideCarriageways(true, true, half, RoadFlow.North, 1, 0)).toBe(true);
   });
 });

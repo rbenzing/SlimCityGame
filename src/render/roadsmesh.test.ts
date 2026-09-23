@@ -3669,3 +3669,90 @@ describe('roadTileVertices — a road bends into a width change whatever it is m
     expect(ends.near).toBeCloseTo(ends.far, 3);
   });
 });
+
+describe('a ramp meeting a motorway is drawn as the motorway it is', () => {
+  // A southbound carriageway at (0,0) with a ramp leaving it westward — off
+  // the right-hand side of the traffic, which is where an exit is.
+  const centre = TILE_METERS / 2;
+  const throughHalf = carriagewayHalfWidthMeters(RoadTier.Highway);
+  const rampHalf = carriagewayHalfWidthMeters(RoadTier.Ramp);
+  const node = (w: RoadTier): { positions: number[]; colors: number[] } =>
+    roadTileVertices(
+      0,
+      0,
+      RoadTier.Highway,
+      N | S | W,
+      flatHeightAt,
+      { n: RoadTier.Highway, e: RoadTier.None, s: RoadTier.Highway, w },
+      undefined,
+      undefined,
+      RoadFlow.South,
+    );
+  /** Vertices, as offsets from the tile centre, whose colour passes `pred`. */
+  const where = (
+    geo: { positions: number[]; colors: number[] },
+    pred: (t: readonly number[]) => boolean,
+  ): { dx: number; dz: number }[] => {
+    const out: { dx: number; dz: number }[] = [];
+    for (let i = 0; i < geo.positions.length / 3; i++) {
+      const c = geo.colors.slice(i * 3, i * 3 + 3);
+      if (pred(c)) out.push({ dx: geo.positions[i * 3]! - centre, dz: geo.positions[i * 3 + 2]! - centre });
+    }
+    return out;
+  };
+  const anything = (): boolean => true;
+
+  it('keeps its lane lines and its yellow edge running through, where a junction would stop them', () => {
+    // A motorway meeting a motorway IS a junction, and its paint stops.
+    const junction = node(RoadTier.Highway);
+    expect(countWhere(junction.colors, isMarkingYellow)).toBe(0);
+    const diverge = node(RoadTier.Ramp);
+    expect(countWhere(diverge.colors, isMarkingYellow)).toBeGreaterThan(0);
+    // And it runs the whole length of the tile, edge to edge.
+    const yellow = where(diverge, isMarkingYellow);
+    expect(Math.min(...yellow.map((v) => v.dz))).toBeLessThan(-centre + 0.5);
+    expect(Math.max(...yellow.map((v) => v.dz))).toBeGreaterThan(centre - 0.5);
+  });
+
+  it('paints nothing of the motorway across the ramp’s mouth', () => {
+    // Out past the carriageway on the ramp's side there is only the ramp's own
+    // road; the motorway's lane lines turning to run along it would be wrong.
+    const beyond = where(node(RoadTier.Ramp), isPaint).filter((v) => v.dx < -throughHalf - 0.1);
+    expect(beyond).toEqual([]);
+  });
+
+  it('opens its ramp-side edge line where the ramp leaves, and only there', () => {
+    // The outermost line on the ramp's side is the edge line; across the ramp's
+    // mouth it has to break, or it is a solid line drawn across the exit. It is
+    // found where the tile actually paints it rather than where a shoulder
+    // width says it ought to be, so this asks about the gap and nothing else.
+    // A line is a long quad with vertices only at its ends, so what is asked is
+    // whether any of its TRIANGLES reaches across the middle of the mouth.
+    const geo = node(RoadTier.Ramp);
+    const paint = where(geo, isPaint);
+    const edge = Math.min(...paint.map((v) => v.dx));
+    const tris: { dx: number; dz: number }[][] = [];
+    for (let t = 0; t + 2 < geo.positions.length / 3; t += 3) {
+      const corners = [0, 1, 2].map((k) => ({
+        dx: geo.positions[(t + k) * 3]! - centre,
+        dz: geo.positions[(t + k) * 3 + 2]! - centre,
+        c: geo.colors.slice((t + k) * 3, (t + k) * 3 + 3),
+      }));
+      if (corners.every((v) => isPaint(v.c) && Math.abs(v.dx - edge) < 0.3)) tris.push(corners);
+    }
+    expect(tris.length, 'the edge line is there at all').toBeGreaterThan(0);
+    const spansMouth = tris.filter(
+      (tri) => Math.min(...tri.map((v) => v.dz)) < 0 && Math.max(...tri.map((v) => v.dz)) > 0,
+    );
+    expect(spansMouth).toEqual([]);
+  });
+
+  it('grows no rounded kerb-return corners, since nothing turns there', () => {
+    // A kerb return fills the corner between two arms with asphalt; between the
+    // carriageway and a ramp leaving it there is just the ramp's own edge.
+    const corner = where(node(RoadTier.Ramp), anything).filter(
+      (v) => v.dx < -(throughHalf + 0.1) && Math.abs(v.dz) > rampHalf + 0.1,
+    );
+    expect(corner).toEqual([]);
+  });
+});

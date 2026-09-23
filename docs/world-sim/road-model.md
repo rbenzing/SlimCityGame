@@ -556,6 +556,29 @@ costs land and nothing else. A ramp's other end is a **terminal**: an
 ordinary node on the surface network, taking an ordinary warranted control
 and ordinary approach lanes like any other junction.
 
+**A merge or a diverge is not an intersection**, whatever its arm count, and
+highways rarely have intersections at all. Nobody stops at one, nobody gives
+way, and nobody picks a lane at it: a driver leaving is already in the
+auxiliary lane before it, and a driver joining gets up to speed in the one
+after it. So the motorway tile a ramp meets — a **ramp node**: its own
+carriageway running straight through, and nothing beside it but ramps — is
+drawn as the straight carriageway it is. Its lane lines and its left edge
+line run through unbroken; it grows no junction box and no rounded corners;
+its ramp-side edge line opens across the ramp's mouth and nowhere else; the
+ramp's asphalt is as wide as the ramp; and the auxiliary lane carries across
+the tile at full width instead of stopping short of it. Nothing approaching
+it is a junction approach, so nothing is arrowed on the way in — not the
+motorway, and not the ramp's own last tile. A motorway meeting a motorway,
+or one that turns or ends where a ramp meets it, is not a ramp node.
+
+It takes no control, as nothing touching a motorway does, and a player's
+override cannot put one there: setting a signal, stop or give-way on a
+junction a motorway touches is refused, the same rule the warrant applies.
+Its exit board stands once, on the motorway tile before a ramp that leaves —
+the ramp's stored direction pointing away from the motorway — and never after
+it or where a ramp joins. `isRampNode` in `src/shared/junction.ts` decides it,
+and the render, the approach walk and the furniture all ask it.
+
 Nobody is stopped joining a highway and nothing holds them, but finding a
 gap in fast traffic is not free: a merging driver loses `2 + 22·x³` seconds,
 where `x` is the volume-to-capacity ratio of the highway lane they are

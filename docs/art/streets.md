@@ -48,7 +48,11 @@ for the surface, the paint, the furniture and the zoning overlay.
   crossing wherever it meets a road.
 - **Intersections**: marking strips stop at any tile whose connections number
   three or more, so the junction box itself stays clean asphalt and reads as
-  a real crossing. Each approach into a proper intersection gets a stop line
+  a real crossing. The one exception is a motorway tile a ramp meets — a merge
+  or a diverge — which is not an intersection: its lines run through, it has
+  no box and no rounded corners, and its edge line only opens across the
+  ramp's mouth (see [road-model.md](../world-sim/road-model.md), Ramps and
+  interchanges). Each approach into a proper intersection gets a stop line
   (a ~0.4 m bar, ~1 m before the junction box) and a zebra crosswalk (bars
   ~0.45 m wide × 2.4 m long at ~0.6 m spacing) between the stop line and the
   box.
