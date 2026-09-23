@@ -72,10 +72,22 @@ MUTCD citations below use 11th-edition section numbers.
   accept-list, so a new class stays off the motorway until explicitly admitted.
   A ramp never joins dirt or alley. — [road-model.md](world-sim/road-model.md);
   `MOTORWAY_MEETS` in `src/shared/roadprofile.ts`
-- Highway and rail arms never take a junction control. A ramp's motorway end is
+- Highway and rail arms never take a junction control — not from the warrant
+  and not from a player's override, which is refused. A ramp's motorway end is
   an uncontrolled merge or diverge; its other end is an ordinary warranted
   junction. — [road-model.md](world-sim/road-model.md);
-  `UNCONTROLLED_CLASSES` in `src/shared/junction.ts`
+  `takesControl` in `src/shared/junction.ts`, `cmdSetJunctionControl` in
+  `src/sim/worker.entry.ts`
+- A merge or a diverge is not an intersection. A motorway tile running
+  straight through with only ramps beside it (a ramp node) keeps its lane and
+  edge lines, grows no junction box and no rounded corners, opens its
+  ramp-side edge line only across the ramp's mouth, carries the auxiliary lane
+  across itself, and is no junction anything approaches, so nothing is arrowed
+  on the way in. Its exit board stands once, on the tile before a ramp that
+  leaves. Decided once and asked everywhere: the mesh, the approach walk and
+  the furniture never count arms for themselves. —
+  [road-model.md](world-sim/road-model.md); `isRampNode` in
+  `src/shared/junction.ts`, `isRampNodeAt` in `src/shared/approachzone.ts`
 - The warrant ladder is none, yield, stop, all-way stop, signal, and it only
   climbs. Roundabout is never a warrant default because it changes geometry. A
   player's control override is never stepped down by a warrant, and the warrant
@@ -122,10 +134,62 @@ MUTCD citations below use 11th-edition section numbers.
 - A reserved lane (bus, tram, bike) always costs a general lane and counts
   against the class's lane range; lanes are never dropped silently to fit. —
   [road-model.md](world-sim/road-model.md)
-- Yellow paint only ever separates opposing directions; everything else is
-  white. Every paved road carries edge lines; dirt, alley and rail carry no
-  paint; one-way, highway and ramp paint no centre line. —
+- Yellow marks the side of a line that oncoming traffic is on, adjacent or
+  not. On an undivided road that is the centre line. On a **one-way
+  carriageway — a motorway, a ramp, a one-way street, either half of a
+  divided road — the LEFT edge line is solid yellow and the right is solid
+  white** (MUTCD §3B.09 ¶02–03); lane lines between same-direction lanes are
+  broken white (§3B.06 ¶05). Every paved road carries edge lines; dirt, alley
+  and rail carry no paint; one-way, highway and ramp paint no centre line. —
   [road-model.md](world-sim/road-model.md); `src/render/roadmarkings.ts`
+- A motorway is ONE carriageway, not a road with two halves. Highway and ramp
+  are the only classes whose lane range counts a single direction, they admit
+  no median piece, and a dual carriageway is two runs laid side by side and
+  widened independently. —
+  [road-model.md](world-sim/road-model.md); `src/data/roads.json`
+- Two motorway carriageways may lie on adjacent tiles and never connect. A
+  highway tile is not an arm of a highway lying across its stored flow when
+  each lies across the other's — no mask bit, no graph edge, no junction — so
+  the pair never merges into one unpainted slab that traffic drifts sideways
+  across. The only way onto or off a motorway is a ramp, which joins it where
+  it merges or diverges (below). A motorway in line joins; one arriving
+  square-on is a junction. It is decided in the grid, never refused by the road tool, so it
+  holds however the roads were drawn. The mask, the graph, the approach walk
+  and the road furniture all read the one predicate, so what is drawn, what is
+  driven and what is signed cannot disagree — counted as an arm anywhere, a
+  second carriageway took every gantry off the first. —
+  [road-model.md](world-sim/road-model.md); `sideBySideCarriageways` in
+  `src/shared/corridor.ts`
+- A ramp meets a motorway alongside it, never head-on. It elbows round to run
+  beside the motorway the way it goes and joins at one tile: an on-ramp at its
+  END (a ramp arriving, none ahead), an off-ramp at its START (a ramp ahead,
+  none arriving) — read from stored flows, never from shape, which is how an
+  elbow beside the motorway joins nothing. Everywhere else beside it the ramp
+  is its own road. A ramp that would join across the motorway or against it is
+  refused by the road tool, with a reason saying what to do; a save that
+  already holds one keeps it connected. The join tile draws as a taper into
+  the motorway — the lane narrowing to nothing against its edge — never as a
+  corner, and the motorway's edge line opens over the downstream half at a
+  merge and the upstream half at a diverge. — [road-model.md](world-sim/road-model.md);
+  `rampJoin` and `rampJoinAround` in `src/shared/corridor.ts`, `rampMouthAt`
+  in `src/shared/approachzone.ts`, `emitRampTaper` in `src/render/roadsmesh.ts`
+- A sign faces the traffic it serves (MUTCD §2A.17 ¶01), and its facing comes
+  from the direction of approaching traffic, not from the roadway edge it
+  stands on (§2A.17 ¶02). On a one-way carriageway — a motorway, a ramp, a
+  one-way street — both kerbs carry the same stream, so every board and every
+  gantry faces back against the tile's stored flow; only a two-way road takes
+  its facing from which kerb the board is on. A cantilever (signal, exit
+  board) has its face welded to its arm, on local −Z, so it faces its drivers
+  only from their right: a signal stands on the approaching driver's right,
+  and a one-way carriageway's exit stands right of the flow or not at all.
+  The placement decides the facing and the renderer applies it, never
+  recomputing one of its own. — [streets.md](art/streets.md);
+  `CANTILEVER_FACE_Z`, `cantileverSide`, `flowFacingYaw` and
+  `signWorldTransform` in `src/render/roadfurniture.ts`
+- A manhole cover is the top of a sewer and is drawn only on a road whose
+  class carries water. A motorway and a ramp carry none, so they carry no
+  covers; the test is the water flag, never a tier list. —
+  [road-model.md](world-sim/road-model.md); `src/render/roadfurniture.ts`
 - A broken line is 3.05 m of paint and a 9.15 m gap (a 12.2 m period), 0.15 m
   wide, with its phase anchored at world metre 0 across every seam. —
   [road-model.md](world-sim/road-model.md); `src/render/roadsmesh.ts`
@@ -619,6 +683,14 @@ MUTCD citations below use 11th-edition section numbers.
   hand-edit the package version or the changelog. —
   [commits.md](engineering/standards/commits.md),
   [CONTRIBUTING.md](../CONTRIBUTING.md)
+- The version is one number in three files — `package.json`,
+  `.release-please-manifest.json`, and the newest heading in `CHANGELOG.md` —
+  and they never disagree. release-please writes all three in one commit, so a
+  disagreement means someone edited one by hand. The menu shows the version of
+  the BUILD, baked from `package.json`, which is why a feature branch behind
+  main honestly reads older than the newest release: that is correct, and
+  showing the latest release instead would make the menu lie about what is
+  running. — `src/shared/contracts.version.test.ts`, `vite.config.ts`
 - An accepted decision record is never rewritten beyond typos and links; a
   changed decision gets a new number and the old one is marked superseded.
   Numbers are never reused. — [adr/README.md](engineering/adr/README.md)

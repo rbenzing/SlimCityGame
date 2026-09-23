@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import {
+  CANTILEVER_FACE_Z,
   computeBoxPlacements,
   computeManholePlacements,
   computeMeterPlacements,
@@ -11,10 +12,12 @@ import {
   METER_KERB_CLEARANCE_M,
   RoadFurnitureRenderer,
   signalLensOffset,
+  signalYaw,
   signWorldTransform,
 } from './roadfurniture';
+import type { SignPlacement } from './roadfurniture';
 import { tileToWorld } from '../shared/constants';
-import { RoadTier } from '../shared/types';
+import { RoadFlow, RoadTier, stepForFlow, storedFlow } from '../shared/types';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 import { carriagewayHalfWidthMeters, ROAD_Y_OFFSET, SIDEWALK_WIDTH_M } from './roadsmesh';
 import { SIGNAL_CYCLE_S } from '../shared/junction';
@@ -142,6 +145,12 @@ describe('road-furniture placement (pure)', () => {
     for (const tier of [RoadTier.Gravel, RoadTier.Alley]) {
       expect(computeBoxPlacements(strip(0, 0, 20, 'ew', tier))).toEqual([]);
     }
+  });
+
+  it('places no pavement clutter on a ramp, which has a shoulder and no footway', () => {
+    const ramp = strip(0, 0, 30, 'ew', RoadTier.Ramp).map((t) => ({ ...t, flow: RoadFlow.East }));
+    expect(computeBoxPlacements(ramp)).toEqual([]);
+    expect(computeMeterPlacements(ramp)).toEqual([]);
   });
 
   it('places no signs on gravel or alley (no curb)', () => {
@@ -449,18 +458,26 @@ describe('road-furniture placement (pure)', () => {
     expect(computeMeterPlacements(tiles)).toEqual([]);
   });
 
-  it('marks where something leaves a highway as an exit', () => {
-    const t = RoadTier.Highway;
-    // A slip road dropping south off a highway running east-west.
-    const tiles: FurnitureRoadTile[] = [
-      ...strip(0, 0, 8, 'ew', t),
-      { x: 4, z: 1, tier: t },
-      { x: 4, z: 2, tier: t },
-    ];
-    const signs = computeSignPlacements(tiles);
-    expect(signs.some((s) => s.type === 'exit')).toBe(true);
-    // Never a signal or a stop board on a motorway junction.
+  /** An eastbound motorway along z = 0 with a ramp at x = 4, drawn `rampFlow`. */
+  const slip = (rampFlow: RoadFlow): FurnitureRoadTile[] => [
+    ...strip(0, 0, 8, 'ew', RoadTier.Highway).map((t) => ({ ...t, flow: RoadFlow.East })),
+    { x: 4, z: 1, tier: RoadTier.Ramp, flow: rampFlow },
+    { x: 4, z: 2, tier: RoadTier.Ramp, flow: rampFlow },
+  ];
+
+  it('signs the exit once, on the tile before a ramp that leaves', () => {
+    // A ramp drawn southward, away from the motorway, is a turn-off. Its board
+    // stands where a driver can still act on it: just before, never after.
+    const signs = computeSignPlacements(slip(RoadFlow.South));
+    const exits = signs.filter((s) => s.type === 'exit');
+    expect(exits.map((s) => [s.x, s.z])).toEqual([[3, 0]]);
+    // Never a signal or a stop board on a motorway.
     expect(signs.some((s) => s.type === 'signal' || s.type === 'stop')).toBe(false);
+  });
+
+  it('puts up no exit where a ramp joins, since nothing leaves there', () => {
+    const signs = computeSignPlacements(slip(RoadFlow.North));
+    expect(signs.filter((s) => s.type === 'exit')).toEqual([]);
   });
 
   describe('up on a bridge deck', () => {
@@ -831,6 +848,38 @@ describe('a sewer cover sits ON the road, not under it', () => {
     expect(computeManholePlacements(run(RoadTier.Gravel))).toEqual([]);
     expect(computeManholePlacements(run(RoadTier.RailTrack))).toEqual([]);
   });
+
+  it('grows no cover on a road whose class carries no water', () => {
+    const run = (tier: RoadTier): FurnitureRoadTile[] =>
+      Array.from({ length: 60 }, (_, i) => ({ x: i, z: 9, tier }));
+    // A motorway and its slip road drain off the shoulder to the verge, so
+    // there is no buried line under the running surface for a cover to top.
+    expect(computeManholePlacements(run(RoadTier.Highway))).toEqual([]);
+    expect(computeManholePlacements(run(RoadTier.Ramp))).toEqual([]);
+  });
+
+  it('reads the class’s water flag, not the tier the tile happens to carry', () => {
+    const motorway: RoadProfile = {
+      class: 'highway',
+      pieces: [
+        { kind: 'shoulder', width: 1.2 },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'shoulder', width: 3 },
+      ],
+    };
+    const street: RoadProfile = {
+      class: 'local',
+      pieces: [
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+      ],
+    };
+    const run = (profile: RoadProfile): FurnitureRoadTile[] =>
+      Array.from({ length: 60 }, (_, i) => ({ x: i, z: 11, tier: RoadTier.TwoLane, profile }));
+    expect(computeManholePlacements(run(street)).length).toBeGreaterThan(0);
+    expect(computeManholePlacements(run(motorway))).toEqual([]);
+  });
 });
 
 describe('a street gets a mix of cabinets, not a row of identical boxes', () => {
@@ -870,5 +919,280 @@ describe('a street gets a mix of cabinets, not a row of identical boxes', () => 
     const cabinet = boxes.find((b) => b.kind === 'cabinet')!;
     const pedestal = boxes.find((b) => b.kind === 'pedestal')!;
     expect(cabinet.lateralOffset).not.toBeCloseTo(pedestal.lateralOffset, 6);
+  });
+});
+
+describe('a sign faces the traffic it serves', () => {
+  /** Which way a board authored facing +z points once the renderer has turned it. */
+  const face = (p: SignPlacement): { x: number; z: number } => {
+    const { yaw } = signWorldTransform(p);
+    return { x: Math.sin(yaw), z: Math.cos(yaw) };
+  };
+
+  /** Asserts a board's face points back against the traffic the flow describes. */
+  const readsAgainst = (p: SignPlacement, flow: RoadFlow): void => {
+    const step = stepForFlow(flow);
+    const f = face(p);
+    expect(f.x).toBeCloseTo(-step.dx, 9);
+    expect(f.z).toBeCloseTo(-step.dz, 9);
+  };
+
+  it('renders a kerbside board at the facing its placement worked out', () => {
+    // The placement is where the facing is decided; the renderer's job is to
+    // apply it, not to work out a second one that ignores which kerb the board
+    // stands on.
+    for (const axis of ['x', 'z'] as const) {
+      for (const side of [1, -1] as const) {
+        const board: SignPlacement = {
+          x: 3,
+          z: 7,
+          axis,
+          side,
+          lateralOffset: 6,
+          type: 'speed',
+          yaw: kerbFacingYaw(axis, side),
+        };
+        expect(signWorldTransform(board).yaw, `${axis}${side}`).toBeCloseTo(board.yaw!, 9);
+      }
+    }
+  });
+
+  it('turns boards on opposite kerbs of a two-way road to face opposite ways', () => {
+    // Each kerb of a two-way road has its own stream running past it, so the
+    // two boards address traffic coming from opposite ends.
+    const boards = computeSignPlacements(strip(0, 0, 120, 'ew', RoadTier.Avenue)).filter(
+      (s) => s.type === 'speed',
+    );
+    const left = boards.filter((s) => s.side === -1);
+    const right = boards.filter((s) => s.side === 1);
+    expect(left.length, 'the hash lands on both kerbs').toBeGreaterThan(0);
+    expect(right.length, 'the hash lands on both kerbs').toBeGreaterThan(0);
+    const a = face(left[0]!);
+    const b = face(right[0]!);
+    expect(a.x).toBeCloseTo(-b.x, 9);
+    expect(a.z).toBeCloseTo(-b.z, 9);
+  });
+
+  it('faces every board on a one-way carriageway back along its stored flow', () => {
+    // Both kerbs of a one-way carriageway carry the SAME stream, so the kerb
+    // cannot say which way the traffic runs — only the stored flow can.
+    const flow = RoadFlow.East;
+    const tiles = strip(0, 0, 120, 'ew', RoadTier.OneWay).map((t) => ({ ...t, flow }));
+    const boards = computeSignPlacements(tiles).filter((s) => s.type === 'oneway');
+    expect(boards.length).toBeGreaterThan(1);
+    expect(new Set(boards.map((s) => s.side)).size, 'boards stand on both kerbs').toBe(2);
+    for (const b of boards) readsAgainst(b, flow);
+  });
+
+  it('takes the direction from the stored flow, never from the run’s geometry', () => {
+    // The same tiles drawn the other way: the geometry is identical and every
+    // board has to turn round, so a rule that reads the run cannot be right
+    // for both.
+    const tiles = (flow: RoadFlow): FurnitureRoadTile[] =>
+      strip(0, 0, 120, 'ew', RoadTier.OneWay).map((t) => ({ ...t, flow }));
+    for (const flow of [RoadFlow.East, RoadFlow.West] as const)
+      for (const b of computeSignPlacements(tiles(flow)).filter((s) => s.type === 'oneway'))
+        readsAgainst(b, flow);
+  });
+
+  it('reads the direction out of a corridor half’s flow byte rather than the whole byte', () => {
+    const stored = storedFlow(RoadFlow.East, 'right');
+    const tiles = strip(0, 0, 120, 'ew', RoadTier.OneWay).map((t) => ({ ...t, flow: stored }));
+    const boards = computeSignPlacements(tiles).filter((s) => s.type === 'oneway');
+    expect(boards.length).toBeGreaterThan(1);
+    for (const b of boards) readsAgainst(b, RoadFlow.East);
+  });
+
+  it('turns a highway gantry to face the traffic passing under it', () => {
+    // A motorway is one one-way carriageway, so its overhead boards are the
+    // sign a driver reads most and the one the kerb rule cannot orient.
+    for (const flow of [RoadFlow.East, RoadFlow.West] as const) {
+      const tiles = strip(0, 0, 60, 'ew', RoadTier.Highway).map((t) => ({ ...t, flow }));
+      const gantries = computeSignPlacements(tiles).filter((s) => s.type === 'gantry');
+      expect(gantries.length).toBeGreaterThan(0);
+      for (const g of gantries) {
+        readsAgainst(g, flow);
+        // And its beam still spans the road rather than lying along it.
+        const { yaw } = signWorldTransform(g);
+        expect(Math.abs(Math.sin(yaw)), 'the beam runs across an east-west road').toBeCloseTo(1, 9);
+      }
+    }
+  });
+
+  it('turns every signal head to face the traffic it holds, not the traffic leaving', () => {
+    // The mast stands on the approaching driver's right and its arm reaches
+    // over their lanes; the lenses have to look back down those lanes at them.
+    // They looked the other way, so a driver waiting at the stop line saw the
+    // back of their own head and the lit face of the one across the junction.
+    const signals = computeSignPlacements(controlledPlus('signal', RoadTier.Avenue)).filter(
+      (s) => s.type === 'signal',
+    );
+    expect(signals.length).toBeGreaterThan(0);
+    const lens = signalLensOffset('red');
+    for (const s of signals) {
+      const { yaw } = signWorldTransform(s);
+      // Where the lens sits in front of the head, in the world: a rotation of
+      // yaw sends local +Z to (sin, cos).
+      const outX = lens.z * Math.sin(yaw);
+      const outZ = lens.z * Math.cos(yaw);
+      // The way the driver it holds is travelling: toward the junction, which
+      // is the along-the-road part of the stop-line offset.
+      const towardX = s.axis === 'x' ? 0 : Math.sign(s.worldOffsetX!);
+      const towardZ = s.axis === 'x' ? Math.sign(s.worldOffsetZ!) : 0;
+      expect(outX * towardX + outZ * towardZ, 'the lenses look back at the driver').toBeLessThan(0);
+    }
+  });
+
+  it('stands a one-way carriageway’s exit on the right of the flow, facing the drivers', () => {
+    // A cantilever's face is fixed to its arm, and its arm to its kerb, so on a
+    // carriageway where both kerbs carry the same stream only ONE kerb shows
+    // the drivers its face — the right-hand one, which is where an exit is
+    // signed anyway.
+    for (const flow of [RoadFlow.East, RoadFlow.West] as const) {
+      const run = strip(5, 0, 12, 'ew', RoadTier.Highway).map((t) => ({ ...t, flow }));
+      const rampZ = flow === RoadFlow.East ? [6, 7] : [4, 3];
+      const ramp: FurnitureRoadTile[] = rampZ.map((z) => ({
+        x: 6,
+        z,
+        tier: RoadTier.Ramp,
+        flow: flow === RoadFlow.East ? RoadFlow.South : RoadFlow.North,
+      }));
+      const exits = computeSignPlacements([...run, ...ramp]).filter((s) => s.type === 'exit');
+      expect(exits.length).toBeGreaterThan(0);
+      const step = stepForFlow(flow);
+      for (const e of exits) {
+        // `+ 0` folds a negative zero into zero, which toEqual tells apart.
+        const rightX = -step.dz + 0;
+        const rightZ = step.dx + 0;
+        const standsX = e.axis === 'x' ? e.side : 0;
+        const standsZ = e.axis === 'z' ? e.side : 0;
+        expect([standsX, standsZ], 'on the right of the flow').toEqual([rightX, rightZ]);
+        const { yaw } = signWorldTransform(e);
+        const faceX = CANTILEVER_FACE_Z * Math.sin(yaw);
+        const faceZ = CANTILEVER_FACE_Z * Math.cos(yaw);
+        expect(faceX).toBeCloseTo(-step.dx, 9);
+        expect(faceZ).toBeCloseTo(-step.dz, 9);
+      }
+    }
+  });
+
+  it('lays every lens on the face of its head', () => {
+    expect(Math.sign(signalLensOffset('green').z)).toBe(CANTILEVER_FACE_Z);
+  });
+
+  it('reaches an exit cantilever out over the carriageway, whichever way the flow runs', () => {
+    // An exit is a cantilever, not a board: its arm has to reach from the kerb
+    // it stands on out over the lanes. Letting a board's facing turn it swung
+    // the arm out over the verge, which is what a flat-board rule does to a
+    // sign that is not flat.
+    for (const flow of [RoadFlow.East, RoadFlow.West] as const) {
+      const run = strip(5, 0, 12, 'ew', RoadTier.Highway).map((t) => ({ ...t, flow }));
+      const ramp: FurnitureRoadTile[] = [
+        { x: 6, z: 6, tier: RoadTier.Ramp, flow: RoadFlow.South },
+        { x: 6, z: 7, tier: RoadTier.Ramp, flow: RoadFlow.South },
+      ];
+      const exits = computeSignPlacements([...run, ...ramp]).filter((s) => s.type === 'exit');
+      expect(exits.length, 'a ramp leaving the motorway earns an exit').toBeGreaterThan(0);
+      for (const e of exits) {
+        const { yaw } = signWorldTransform(e);
+        expect(yaw).toBeCloseTo(signalYaw(e.axis, e.side), 9);
+        // A rotation of yaw sends the authored +X arm to (cos, 0, -sin): it
+        // must point back across the road, against the kerb it stands on.
+        const armAlong = e.axis === 'x' ? Math.cos(yaw) : -Math.sin(yaw);
+        expect(Math.sign(armAlong), 'the arm reaches in over the road').toBe(-e.side);
+      }
+    }
+  });
+});
+
+describe('a dual carriageway is signed as two motorways, not a junction', () => {
+  /** Southbound at x = 4 and northbound at x = 5, side by side for 60 tiles. */
+  const dual = (): FurnitureRoadTile[] => [
+    ...strip(4, 0, 60, 'ns', RoadTier.Highway).map((t) => ({ ...t, flow: RoadFlow.South })),
+    ...strip(5, 0, 60, 'ns', RoadTier.Highway).map((t) => ({ ...t, flow: RoadFlow.North })),
+  ];
+
+  it('gives each carriageway the gantries it would have on its own', () => {
+    // The carriageway alongside is another road, not an arm: counted as one,
+    // every tile read as a junction and no gantry could find a straight run.
+    const alone = computeSignPlacements(
+      strip(4, 0, 60, 'ns', RoadTier.Highway).map((t) => ({ ...t, flow: RoadFlow.South })),
+    ).filter((s) => s.type === 'gantry');
+    expect(alone.length).toBeGreaterThan(0);
+    const both = computeSignPlacements(dual()).filter((s) => s.type === 'gantry');
+    expect(both.filter((s) => s.x === 4)).toHaveLength(alone.length);
+    expect(both.filter((s) => s.x === 5).length).toBeGreaterThan(0);
+  });
+
+  it('puts up no exit where nothing leaves', () => {
+    expect(computeSignPlacements(dual()).filter((s) => s.type === 'exit')).toEqual([]);
+  });
+
+  it('faces each carriageway’s gantries against its own flow', () => {
+    for (const g of computeSignPlacements(dual()).filter((s) => s.type === 'gantry')) {
+      const flow = g.x === 4 ? RoadFlow.South : RoadFlow.North;
+      const { yaw } = signWorldTransform(g);
+      const step = stepForFlow(flow);
+      expect(Math.sin(yaw)).toBeCloseTo(-step.dx, 9);
+      expect(Math.cos(yaw)).toBeCloseTo(-step.dz, 9);
+    }
+  });
+});
+
+describe('a ramp that runs alongside the motorway before it joins', () => {
+  const motorway = (): FurnitureRoadTile[] =>
+    strip(1, 0, 40, 'ew', RoadTier.Highway).map((t) => ({ ...t, flow: RoadFlow.East }));
+  const ramp = (x: number, z: number, flow: RoadFlow): FurnitureRoadTile => ({
+    x,
+    z,
+    tier: RoadTier.Ramp,
+    flow,
+  });
+  /** An off-ramp diverging at (20,1) from (20,2), running east, elbowing south at (24,2). */
+  const offRamp = (): FurnitureRoadTile[] => [
+    ...motorway(),
+    ramp(20, 2, RoadFlow.East),
+    ramp(21, 2, RoadFlow.East),
+    ramp(22, 2, RoadFlow.East),
+    ramp(23, 2, RoadFlow.East),
+    ramp(24, 2, RoadFlow.South),
+    ramp(24, 3, RoadFlow.South),
+    ramp(24, 4, RoadFlow.South),
+  ];
+  /**
+   * An on-ramp coming up column 22, elbowing east at (22,2), merging at
+   * (26,2). Its stretch passes x = 24, where the motorway has a gantry.
+   */
+  const onRamp = (): FurnitureRoadTile[] => [
+    ...motorway(),
+    ramp(22, 4, RoadFlow.North),
+    ramp(22, 3, RoadFlow.North),
+    ramp(22, 2, RoadFlow.East),
+    ramp(23, 2, RoadFlow.East),
+    ramp(24, 2, RoadFlow.East),
+    ramp(25, 2, RoadFlow.East),
+    ramp(26, 2, RoadFlow.East),
+  ];
+
+  it('signs the exit once, on the motorway tile before the diverge', () => {
+    const exits = computeSignPlacements(offRamp()).filter((s) => s.type === 'exit');
+    expect(exits.map((s) => [s.x, s.z])).toEqual([[19, 1]]);
+  });
+
+  it('puts up no exit for a ramp that merges', () => {
+    expect(computeSignPlacements(onRamp()).filter((s) => s.type === 'exit')).toEqual([]);
+  });
+
+  it('keeps the motorway’s gantries beside the stretch, which is a plain run', () => {
+    // Counted as arms, the ramp alongside would make every motorway tile it
+    // passes a junction, and no gantry could stand on any of them.
+    const alone = computeSignPlacements(motorway()).filter((s) => s.type === 'gantry');
+    const withRamp = computeSignPlacements(onRamp()).filter(
+      (s) => s.type === 'gantry' && s.z === 1,
+    );
+    const nearRamp = (xs: readonly { x: number }[]): number[] =>
+      xs.map((s) => s.x).filter((x) => x >= 22 && x < 26);
+    expect(nearRamp(alone).length, 'there is a gantry to keep').toBeGreaterThan(0);
+    expect(nearRamp(withRamp)).toEqual(nearRamp(alone));
   });
 });

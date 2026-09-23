@@ -270,6 +270,12 @@ export class ClientGridMirror {
     return this.profileById(this.roadProfile[this.idx(x, z)] ?? 0);
   }
 
+  /** The stored flow byte of a tile: which way it was drawn, 0 off-road or where nothing said. */
+  flowAt(x: number, z: number): number {
+    if (!this.inBounds(x, z)) return 0;
+    return this.roadFlow[this.idx(x, z)] ?? 0;
+  }
+
   /** The lowest id not yet holding a custom profile — what a new definition should claim. */
   nextCustomProfileId(): number {
     let id = FIRST_CUSTOM_PROFILE_ID;
@@ -469,6 +475,7 @@ export class ClientGridMirror {
     elevated: boolean;
     profile: RoadProfile;
     powered: boolean;
+    flow?: number;
     control?: JunctionControl;
   })[] {
     const tiles: (TilePoint & {
@@ -476,6 +483,7 @@ export class ClientGridMirror {
       elevated: boolean;
       profile: RoadProfile;
       powered: boolean;
+      flow?: number;
       control?: JunctionControl;
     })[] = [];
     for (let z = 0; z < this.size; z++) {
@@ -488,6 +496,11 @@ export class ClientGridMirror {
         // the tier names rather than to nothing. Inside a junction's approach
         // zone that section is the one with the turn pocket in it, which is
         // wider than the road behind — and is where the kerb has moved to.
+        // A one-way carriageway's direction cannot be worked out from the
+        // tiles around it, so the byte itself is passed on. A tile with no
+        // flow carries none rather than a zero, so a consumer can tell a
+        // two-way road from a one-way one pointing nowhere.
+        const flow = this.roadFlow[i] ?? 0;
         const tile = {
           x,
           z,
@@ -495,6 +508,7 @@ export class ClientGridMirror {
           elevated: (this.roadElevation[i] ?? 0) > 0,
           profile: this.drawnProfileAt(x, z) ?? presetProfileForTier(tier),
           powered: (this.power[i] ?? 0) !== 0,
+          ...(flow === 0 ? {} : { flow }),
         };
         const junction = this.junctionControls.get(i);
         tiles.push(junction ? { ...tile, control: junction.control } : tile);

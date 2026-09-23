@@ -11,6 +11,7 @@ import {
   approachGivesWay,
   controlDelaySeconds,
   controlName,
+  isRampNode,
   restrictiveness,
   signalAspect,
   stricterOf,
@@ -303,5 +304,42 @@ describe('signalAspect cycles the two phases the delay formula assumes', () => {
     // A three-phase junction holds its green longer, not more often.
     expect(signalAspect(true, 40, SIGNAL_CYCLE_WITH_LEFT_S)).toBe('green');
     expect(signalAspect(true, 40)).toBe('red'); // past halfway on the 60 s cycle
+  });
+});
+
+describe('a ramp meeting a motorway is a merge or a diverge, not a junction', () => {
+  const H: RoadClassId = 'highway';
+  const R: RoadClassId = 'ramp';
+
+  it('is a ramp node where the motorway runs straight through and only ramps join it', () => {
+    // Arms in n, e, s, w order.
+    expect(isRampNode(H, [H, R, H, null])).toBe(true);
+    expect(isRampNode(H, [null, H, R, H])).toBe(true);
+    // A ramp either side, as a diamond's two slips meeting the same tile.
+    expect(isRampNode(H, [H, R, H, R])).toBe(true);
+  });
+
+  it('is not one where the motorway itself turns or ends', () => {
+    expect(isRampNode(H, [H, R, null, null])).toBe(false);
+    expect(isRampNode(H, [null, R, H, null])).toBe(false);
+  });
+
+  it('is not one where a motorway crosses a motorway, which is a real junction', () => {
+    expect(isRampNode(H, [H, H, H, H])).toBe(false);
+    expect(isRampNode(H, [H, H, H, null])).toBe(false);
+  });
+
+  it('is not one where anything but a ramp joins', () => {
+    expect(isRampNode(H, [H, 'local', H, null])).toBe(false);
+    expect(isRampNode(H, [H, R, H, 'local'])).toBe(false);
+  });
+
+  it('is only ever a motorway tile: the ramp end of the same meeting is ordinary', () => {
+    expect(isRampNode(R, [H, R, H, null])).toBe(false);
+    expect(isRampNode('local', [H, R, H, null])).toBe(false);
+  });
+
+  it('needs a ramp: a plain straight run is not a node at all', () => {
+    expect(isRampNode(H, [H, null, H, null])).toBe(false);
   });
 });

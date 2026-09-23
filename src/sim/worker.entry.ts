@@ -36,7 +36,7 @@ import {
   SAVE_VERSION,
   BuildingState,
   FieldId,
-  flowForStep,
+  flowsAlong,
   RoadFlow,
   RoadTier,
   isRailTier,
@@ -84,7 +84,8 @@ import {
   tierForProfile,
   type RoadPrice,
 } from '../shared/roadprofile';
-import { codeForControl, controlFromCode } from '../shared/junction';
+import { codeForControl, controlFromCode, takesControl } from '../shared/junction';
+import { armsAt } from '../world/pathfind';
 import {
   armAllowed,
   armIsRestricted,
@@ -1382,6 +1383,14 @@ class SimWorld implements WorkerSim {
     // to give way to, and neither has a bend or a tile in the middle of a run.
     const node = this.network.getNodes().find((n) => n.x === x && n.z === z);
     if (!node || node.edges.length < 3) return rejected;
+    // Nobody is ever held on a motorway: a junction the warrant leaves bare for
+    // that reason cannot be signalled or signed by hand instead. Handing it
+    // back to the warrant, or to none, is still allowed — neither is a control.
+    if (control !== null && control !== 'none') {
+      const edges = this.network.getEdges();
+      const classes = armsAt(node, (id) => edges[id]).map((arm) => arm.approach.classId);
+      if (!takesControl(classes)) return rejected;
+    }
 
     const i = tileIndex(x, z);
     const was = this.grid.junctionControl[i] ?? 0;
@@ -1840,12 +1849,7 @@ class SimWorld implements WorkerSim {
     // A road runs the way it was drawn: each tile points at the next one along
     // the drag, and the tile the drag ended on keeps the heading it arrived
     // with. An undo supplies the directions that were there instead.
-    const dragFlows = tiles.map((t, i) => {
-      const next = tiles[i + 1];
-      if (next) return flowForStep(next.x - t.x, next.z - t.z);
-      const prev = tiles[i - 1];
-      return prev ? flowForStep(t.x - prev.x, t.z - prev.z) : RoadFlow.None;
-    });
+    const dragFlows = flowsAlong(tiles);
     let changedCount = 0;
     let bridgeCost = 0;
 

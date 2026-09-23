@@ -137,8 +137,8 @@
       "carriesWater": false,
       "surface": "paved",
       "kerbReturnM": 12.0,
-      "admits": ["travel", "bus", "shoulder", "barrier", "median"],
-      "lanes": { "min": 2, "max": 8 }
+      "admits": ["travel", "bus", "shoulder", "barrier"],
+      "lanes": { "min": 3, "max": 6 }
     },
     {
       "id": "ramp",
@@ -210,21 +210,23 @@
     {
       "tier": 3,
       "name": "Highway",
-      "costPerTile": 90,
-      "upkeepPerTile": 1.8,
+      "costPerTile": 68,
+      "upkeepPerTile": 1.35,
       "speed": 28,
-      "capacity": 4000,
+      "capacity": 3000,
       "unlockMilestone": 3,
       "carriesWater": false,
       "noiseMult": 3,
+      "oneWay": true,
       "profile": {
         "class": "highway",
-        "kerbs": true,
+        "kerbs": false,
         "pieces": [
-          { "kind": "travel", "width": 3.75, "flow": "back" },
-          { "kind": "travel", "width": 3.75, "flow": "back" },
+          { "kind": "shoulder", "width": 1.2 },
           { "kind": "travel", "width": 3.75, "flow": "fwd" },
-          { "kind": "travel", "width": 3.75, "flow": "fwd" }
+          { "kind": "travel", "width": 3.75, "flow": "fwd" },
+          { "kind": "travel", "width": 3.75, "flow": "fwd" },
+          { "kind": "shoulder", "width": 3.0 }
         ]
       }
     },

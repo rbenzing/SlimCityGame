@@ -1973,6 +1973,24 @@ describe('junction control — the sim tells the render who gives way', () => {
     }
   });
 
+  it('refuses a control on a motorway, where nobody is ever stopped', () => {
+    // An eastbound carriageway with a ramp leaving it southward at x = 20: a
+    // diverge. Traffic on a motorway is never held, so neither a signal nor a
+    // stop board can be put where a ramp leaves it, however the player asks.
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Highway, tiles: roadRow(10, 20, 21) }]);
+    run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.Ramp, tiles: column(20, 21, 4) }]);
+    for (const [seq, control] of [
+      [3, 'signal'],
+      [4, 'stop'],
+      [5, 'yield'],
+      [6, 'allWayStop'],
+    ] as const) {
+      const ack = run(h, seq, [{ kind: 'setJunctionControl', x: 20, z: 20, control }]);
+      expect(ack.ok, control).toBe(false);
+    }
+  });
+
   it('setting a junction to what it already carries costs nothing and undoes nothing', () => {
     const h = sandboxed();
     run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Avenue, tiles: roadRow(10, 20, 9) }]);

@@ -10,7 +10,14 @@
  * exactly as the street-lamp placer does.
  */
 import * as THREE from 'three';
-import { RoadTier, TilePoint } from '../shared/types';
+import {
+  flowDirection,
+  flowForStep,
+  RoadFlow,
+  RoadTier,
+  stepForFlow,
+  TilePoint,
+} from '../shared/types';
 import { TILE_METERS, tileToWorld } from '../shared/constants';
 import {
   carriagewayHalfWidthMeters,
@@ -23,9 +30,12 @@ import {
   kerbWidthOf,
   presetProfileForTier,
   rankForTier,
+  roadClass,
 } from '../shared/roadprofile';
 import { armGivesWay, signalAspect } from '../shared/junction';
 import type { SignalAspect } from '../shared/junction';
+import { rampJoinAround, rampJoins, sideBySideCarriageways } from '../shared/corridor';
+import type { RampJoin } from '../shared/corridor';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 
 // --- Manhole -----------------------------------------------------------------
@@ -128,6 +138,21 @@ const SIGNAL_GREEN = 0x46b360;
 /** Red, amber and green UNLIT: dark glass, so a head reads as a signal with nothing burning. */
 const SIGNAL_LENS_DARK = [0x4a2620, 0x4d3a1f, 0x1f4a2c] as const;
 
+/**
+ * Which side of its arm a cantilever's face is on, in its own frame: +1 or -1
+ * along local z.
+ *
+ * A cantilever is authored reaching along +X and turned by `signalYaw`, which
+ * swings the arm in over the road from whichever kerb the mast stands on. The
+ * face is fixed to the arm, so that one turn decides both. On a right-hand
+ * network the mast stands on the approaching driver's right with the arm
+ * reaching left, and from there local -Z is the side that looks back down the
+ * lanes at them. The face on +Z was a left-hand cantilever: every signal
+ * showed its own drivers its back and the drivers across the junction its lit
+ * face.
+ */
+export const CANTILEVER_FACE_Z = -1;
+
 // --- Motorway signage --------------------------------------------------------
 const HIGHWAY_GREEN = 0x1d6b45; // the standard motorway board green
 const ADVISORY_YELLOW = 0xe0b230; // ramp advisory-speed plaque
@@ -198,6 +223,12 @@ export type FurnitureRoadTile = TilePoint & {
   elevated?: boolean;
   /** The tile's own cross-section when it carries a composed one; kerb props stand at ITS edge. */
   profile?: RoadProfile;
+  /**
+   * The tile's stored flow byte. A direction in it means one carriageway
+   * running that way, so both kerbs watch the same stream and only the byte
+   * says which way it goes; absent, or no direction in it, means two-way.
+   */
+  flow?: number;
   /**
    * Who gives way here, when this tile is a junction the sim has controlled.
    * Absent means uncontrolled, which is what every junction was before the sim
@@ -370,12 +401,18 @@ function tierIsMotorway(tier: RoadTier | undefined): boolean {
 
 /**
  * Boxes and other pavement clutter need a raised curb with a footway behind it:
- * excludes gravel and alley, which have none, and the highway, which has a
- * shoulder rather than a sidewalk.
+ * excludes gravel and alley, which have none, and the highway and its ramps,
+ * which have a shoulder rather than a sidewalk.
  */
 function tierHasCurb(tier: RoadTier | undefined): boolean {
   const t = tier ?? RoadTier.TwoLane;
-  return t !== RoadTier.Gravel && t !== RoadTier.Alley && !tierIsMotorway(t) && !tierIsRail(t);
+  return (
+    t !== RoadTier.Gravel &&
+    t !== RoadTier.Alley &&
+    t !== RoadTier.Ramp &&
+    !tierIsMotorway(t) &&
+    !tierIsRail(t)
+  );
 }
 
 /** Every tier that carries road signage of some kind — the highway included. */
@@ -453,10 +490,58 @@ function buildTileSet(roadTiles: readonly FurnitureRoadTile[]): RoadTileIndex {
   return set;
 }
 
-/** How many of the four orthogonal neighbors are road tiles. */
+/**
+ * Whether the road tile at (nx, nz) is an arm of the one at (x, z): there, and
+ * not a separate motorway carriageway lying alongside. A second carriageway is
+ * another road, so it takes up the ground beside this one without joining it.
+ */
+function joins(tileSet: RoadTileIndex, x: number, z: number, nx: number, nz: number): boolean {
+  const there = tileSet.get(tileKey(nx, nz));
+  if (!there) return false;
+  const here = tileSet.get(tileKey(x, z));
+  if (!here) return true;
+  if (
+    sideBySideCarriageways(
+      tierIsMotorway(here.tier),
+      tierIsMotorway(there.tier),
+      here.flow ?? 0,
+      there.flow ?? 0,
+      nx - x,
+      nz - z,
+    )
+  ) {
+    return false;
+  }
+  // A ramp beside the motorway is only an arm of it where it merges or diverges.
+  if (here.tier === RoadTier.Ramp && tierIsMotorway(there.tier))
+    return rampJoins(rampJoinIn(tileSet, x, z, nx, nz));
+  if (tierIsMotorway(here.tier) && there.tier === RoadTier.Ramp)
+    return rampJoins(rampJoinIn(tileSet, nx, nz, x, z));
+  return true;
+}
+
+/** How the ramp tile at (rx, rz) meets the motorway tile at (hx, hz). */
+function rampJoinIn(
+  tileSet: RoadTileIndex,
+  rx: number,
+  rz: number,
+  hx: number,
+  hz: number,
+): RampJoin {
+  return rampJoinAround(
+    (x, z) => tileSet.get(tileKey(x, z))?.tier === RoadTier.Ramp,
+    (x, z) => tileSet.get(tileKey(x, z))?.flow ?? 0,
+    rx,
+    rz,
+    hx,
+    hz,
+  );
+}
+
+/** How many of the four orthogonal neighbors are roads this tile joins. */
 function neighborCount(tileSet: RoadTileIndex, x: number, z: number): number {
   let count = 0;
-  for (const d of NEIGHBOR_DIRS) if (tileSet.has(tileKey(x + d.dx, z + d.dz))) count++;
+  for (const d of NEIGHBOR_DIRS) if (joins(tileSet, x, z, x + d.dx, z + d.dz)) count++;
   return count;
 }
 
@@ -467,13 +552,13 @@ interface PresentSides {
   w: boolean;
 }
 
-/** Which orthogonal neighbors are road tiles. */
+/** Which orthogonal neighbors are roads this tile joins. */
 function presentSides(tileSet: RoadTileIndex, x: number, z: number): PresentSides {
   return {
-    n: tileSet.has(tileKey(x, z - 1)),
-    e: tileSet.has(tileKey(x + 1, z)),
-    s: tileSet.has(tileKey(x, z + 1)),
-    w: tileSet.has(tileKey(x - 1, z)),
+    n: joins(tileSet, x, z, x, z - 1),
+    e: joins(tileSet, x, z, x + 1, z),
+    s: joins(tileSet, x, z, x, z + 1),
+    w: joins(tileSet, x, z, x - 1, z),
   };
 }
 
@@ -510,19 +595,25 @@ function isJunctionTile(tileSet: RoadTileIndex, x: number, z: number): boolean {
  * furniture is placed on yet.
  */
 function hasCentralMedian(tile: FurnitureRoadTile): boolean {
-  const profile = tile.profile ?? presetProfileForTier(tile.tier ?? RoadTier.TwoLane);
-  return profile.pieces.some((p) => p.kind === 'median');
+  return profileOf(tile).pieces.some((p) => p.kind === 'median');
 }
 
-/** The largest neighborCount among this tile's present road-neighbors (0 if none). */
-function maxNeighborDegree(tileSet: RoadTileIndex, x: number, z: number): number {
-  let max = 0;
-  for (const d of NEIGHBOR_DIRS) {
-    const nx = x + d.dx;
-    const nz = z + d.dz;
-    if (tileSet.has(tileKey(nx, nz))) max = Math.max(max, neighborCount(tileSet, nx, nz));
-  }
-  return max;
+/** The cross-section a tile carries: its own where it has one, else its tier's preset. */
+function profileOf(tile: FurnitureRoadTile): RoadProfile {
+  return tile.profile ?? presetProfileForTier(tile.tier ?? RoadTier.TwoLane);
+}
+
+/**
+ * Whether a sewer runs under this road at all — the class's own water flag.
+ *
+ * A cover is the top of a sewer, so a road with no buried line under its
+ * running surface has nothing to cover. A motorway and its slip road drain off
+ * the shoulder to the verge instead, so a cover on one is a hole in a road
+ * with nothing beneath it. Asking the class rather than listing tiers means a
+ * class that stops carrying water stops growing covers in the same change.
+ */
+function carriesSewer(tile: FurnitureRoadTile): boolean {
+  return roadClass(profileOf(tile).class).carriesWater;
 }
 
 /** The neighbouring road tile with the most arms of its own — the junction this tile runs into. */
@@ -579,8 +670,8 @@ function availableSidewalkSides(tileSet: RoadTileIndex, x: number, z: number): S
  * carriageway; anything curbside must check {@link hasCrossingRoad} first.
  */
 function lateralAxis(tileSet: RoadTileIndex, x: number, z: number): FurnitureAxis {
-  const hasEW = tileSet.has(tileKey(x - 1, z)) || tileSet.has(tileKey(x + 1, z));
-  const hasNS = tileSet.has(tileKey(x, z - 1)) || tileSet.has(tileKey(x, z + 1));
+  const hasEW = joins(tileSet, x, z, x - 1, z) || joins(tileSet, x, z, x + 1, z);
+  const hasNS = joins(tileSet, x, z, x, z - 1) || joins(tileSet, x, z, x, z + 1);
   return hasNS && !hasEW ? 'x' : 'z';
 }
 
@@ -591,8 +682,8 @@ function lateralAxis(tileSet: RoadTileIndex, x: number, z: number): FurnitureAxi
  * in the middle of an intersection. Nothing curbside may seat here.
  */
 export function hasCrossingRoad(tileSet: RoadTileIndex, x: number, z: number): boolean {
-  const hasEW = tileSet.has(tileKey(x - 1, z)) || tileSet.has(tileKey(x + 1, z));
-  const hasNS = tileSet.has(tileKey(x, z - 1)) || tileSet.has(tileKey(x, z + 1));
+  const hasEW = joins(tileSet, x, z, x - 1, z) || joins(tileSet, x, z, x + 1, z);
+  const hasNS = joins(tileSet, x, z, x, z - 1) || joins(tileSet, x, z, x, z + 1);
   return hasEW && hasNS;
 }
 
@@ -629,6 +720,7 @@ export function computeManholePlacements(
   const out: ManholePlacement[] = [];
   for (const tile of roadTiles) {
     if (!tierIsPaved(tile.tier)) continue;
+    if (!carriesSewer(tile)) continue; // no buried line here, so nothing to cover
     if (tile.elevated) continue; // a deck has no sewer under it to cover
     if (isTurnTile(tileSet, tile.x, tile.z)) continue; // curved carriageway: no straight-axis seat
     if (isJunctionTile(tileSet, tile.x, tile.z)) continue; // the box is busy enough
@@ -719,7 +811,7 @@ function classifySign(tileSet: RoadTileIndex, tile: FurnitureRoadTile): SignType
   // information goes overhead on a GANTRY spanning both carriageways, which is
   // the only way to sign a road nobody is walking beside.
   if (tierIsMotorway(tile.tier)) {
-    if (nc <= 2 && maxNeighborDegree(tileSet, x, z) >= 3) return 'exit';
+    if (exitAhead(tileSet, tile)) return 'exit';
     if (straight && periodHits(x, z, GANTRY_PERIOD)) return 'gantry';
     return null;
   }
@@ -747,6 +839,35 @@ function classifySign(tileSet: RoadTileIndex, tile: FurnitureRoadTile): SignType
     return 'speed';
 
   return null;
+}
+
+/**
+ * Whether the next motorway tile along this one's flow is where a ramp LEAVES.
+ *
+ * An exit board is only worth anything before the turn-off, while a driver can
+ * still move over for it, so it goes on the one tile before the diverge. After
+ * it, or at a merge where a ramp joins, there is nothing to take. Which way the
+ * ramp was drawn is what says it leaves: pointing away from the motorway.
+ */
+function exitAhead(tileSet: RoadTileIndex, tile: FurnitureRoadTile): boolean {
+  const run = flowDirection(tile.flow ?? 0);
+  if (run === RoadFlow.None) return false;
+  const { dx, dz } = stepForFlow(run);
+  const nx = tile.x + dx;
+  const nz = tile.z + dz;
+  const next = tileSet.get(tileKey(nx, nz));
+  if (!next || !tierIsMotorway(next.tier)) return false;
+  for (const [lx, lz] of dx === 0 ? [[1, 0], [-1, 0]] : [[0, 1], [0, -1]]) {
+    const rx = nx + lx!;
+    const rz = nz + lz!;
+    const ramp = tileSet.get(tileKey(rx, rz));
+    if (ramp?.tier !== RoadTier.Ramp) continue;
+    const join = rampJoinIn(tileSet, rx, rz, nx, nz);
+    if (join === 'diverge') return true;
+    // A head-on ramp a save still holds leaves where it points away.
+    if (join === 'headOn' && flowDirection(ramp.flow ?? 0) === flowForStep(lx!, lz!)) return true;
+  }
+  return false;
 }
 
 /**
@@ -798,6 +919,51 @@ export function kerbFacingYaw(axis: FurnitureAxis, side: FurnitureSide): number 
   return Math.atan2(-kerbZ, kerbX);
 }
 
+/**
+ * Which way a board on a ONE-WAY carriageway must face, or null where the tile
+ * does not say.
+ *
+ * The kerb rule works out the traffic from the side of the road a board stands
+ * on, which holds only while each kerb has its own stream. A one-way
+ * carriageway runs the same way past both of its kerbs, so the kerb cannot say
+ * which way that is and only the stored flow can. A board faces back against
+ * the flow, which is where the drivers reading it are coming from.
+ */
+function flowFacingYaw(tile: FurnitureRoadTile): number | null {
+  const direction = flowDirection(tile.flow ?? 0);
+  if (direction === RoadFlow.None) return null;
+  const { dx, dz } = stepForFlow(direction);
+  return Math.atan2(-dx, -dz);
+}
+
+/**
+ * The kerb a kerbside cantilever stands on, from the sides that are free, or
+ * none.
+ *
+ * A cantilever's face turns with its arm, and its arm with its kerb, so it
+ * cannot be turned to face anything: it faces the drivers it serves only from
+ * their right. On a two-way road either kerb has drivers on its right, so any
+ * free side will do. On a one-way carriageway both kerbs carry the same
+ * stream, and only the kerb to the right of the flow has them — so it is that
+ * kerb or no sign at all, since a sign showing its back is worse than none.
+ */
+function cantileverSide(tile: FurnitureRoadTile, free: readonly SideChoice[]): SideChoice | null {
+  const direction = flowDirection(tile.flow ?? 0);
+  if (direction === RoadFlow.None) return pickSide(free, hashTile(tile.x, tile.z, HASH_SIGN_SIDE));
+  const { dx, dz } = stepForFlow(direction);
+  const right: SideChoice = dz === 0 ? { axis: 'z', side: dx > 0 ? 1 : -1 } : { axis: 'x', side: dz > 0 ? -1 : 1 };
+  return free.find((s) => s.axis === right.axis && s.side === right.side) ?? null;
+}
+
+/** The facing a board on this tile takes: its carriageway's where there is one, else its kerb's. */
+function signFacingYaw(
+  tile: FurnitureRoadTile,
+  axis: FurnitureAxis,
+  side: FurnitureSide,
+): number {
+  return flowFacingYaw(tile) ?? kerbFacingYaw(axis, side);
+}
+
 /** One typed sign per curbed tile whose road-tile role earns it. */
 export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): SignPlacement[] {
   const tileSet = buildTileSet(roadTiles);
@@ -838,15 +1004,20 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
     if (type === 'gantry') {
       // The one sign that spans the road rather than standing beside it: it
       // straddles the centreline on legs outside both shoulders, so it takes no
-      // lateral offset and no side. Its authored span runs along local X and
-      // the shared yaw rule turns it to match the road's run.
+      // lateral offset and no side. Its legend is the one a motorway driver
+      // reads, and standing over the carriageway it has no kerb to take a
+      // facing from — so it turns to the flow, and falls back to the road's
+      // run only where the tile does not say which way it goes.
+      const spanAxis = lateralAxis(tileSet, tile.x, tile.z);
+      const facing = flowFacingYaw(tile);
       out.push({
         x: tile.x,
         z: tile.z,
-        axis: lateralAxis(tileSet, tile.x, tile.z),
+        axis: spanAxis,
         side: 1,
         lateralOffset: 0,
         type,
+        ...(facing === null ? {} : { yaw: facing }),
       });
       continue;
     }
@@ -892,10 +1063,9 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
     const flankAxis = lateralAxis(tileSet, tile.x, tile.z);
     const free = availableSidewalkSides(tileSet, tile.x, tile.z);
     const flanks = free.filter((s) => s.axis === flankAxis);
-    const pick = pickSide(
-      flanks.length > 0 ? flanks : free,
-      hashTile(tile.x, tile.z, HASH_SIGN_SIDE),
-    );
+    const pick = isCantilevered(type)
+      ? cantileverSide(tile, flanks.length > 0 ? flanks : free)
+      : pickSide(flanks.length > 0 ? flanks : free, hashTile(tile.x, tile.z, HASH_SIGN_SIDE));
     if (!pick) continue;
 
     out.push({
@@ -907,8 +1077,12 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
       type,
       // Every kerbside board faces the traffic it speaks to. Without this a
       // board took the authored +z facing whatever way its road ran, so half
-      // of them stood edge-on to the drivers meant to read them.
-      yaw: kerbFacingYaw(pick.axis, pick.side),
+      // of them stood edge-on to the drivers meant to read them. A cantilever
+      // is not a board: its arm has to reach from its kerb out over the
+      // carriageway, and that is decided by the kerb alone.
+      yaw: isCantilevered(type)
+        ? signalYaw(pick.axis, pick.side)
+        : signFacingYaw(tile, pick.axis, pick.side),
     });
   }
   return out;
@@ -1268,7 +1442,7 @@ function buildTrafficSignal(): THREE.BufferGeometry {
   // angle. Exactly one of them is lit at a time, and the lit one is a separate
   // instanced disc laid over it (see SignalLampRenderer) because which one it
   // is changes every few seconds and the head geometry never does.
-  const lensZ = SIGNAL_HEAD_DEPTH / 2 + 0.01;
+  const lensZ = CANTILEVER_FACE_Z * (SIGNAL_HEAD_DEPTH / 2 + 0.01);
   for (let i = 0; i < SIGNAL_LENS_DARK.length; i++) {
     const lens = new THREE.CylinderGeometry(SIGNAL_LENS_RADIUS, SIGNAL_LENS_RADIUS, 0.02, 10);
     lens.rotateX(Math.PI / 2); // face ±z, like the sign boards
@@ -1292,7 +1466,10 @@ export function signalLensOffset(aspect: SignalAspect): { x: number; y: number; 
       SIGNAL_ARM_THICKNESS -
       SIGNAL_HEAD_HEIGHT / 2 +
       SIGNAL_LENS_SPACING * (1 - row),
-    z: SIGNAL_HEAD_DEPTH / 2 + 0.02, // just proud of the dark lens it covers
+    // Proud of the dark lens it covers: that lens is a 2 cm disc whose front
+    // face stands at depth/2 + 0.02, and a lit lens laid in the same plane
+    // fought it for every pixel, leaving only its wider rim alight.
+    z: CANTILEVER_FACE_Z * (SIGNAL_HEAD_DEPTH / 2 + 0.03),
   };
 }
 
@@ -1314,16 +1491,17 @@ export function signWorldTransform(p: SignPlacement): { x: number; z: number; ya
       yaw: p.yaw ?? 0,
     };
   }
-  // Face the board along the road toward oncoming drivers, not across it: a
-  // kerb offset along x means the road runs N-S, so a board (authored facing
-  // ±z) already faces the traffic; a z offset means an E-W road and it takes a
-  // quarter turn. A signal is not a flat board — its arm reaches out over the
-  // carriageway — so it also has to know which kerb it stands on.
+  // The placement decides which way a board looks, because only it knows the
+  // traffic the board is for. Recomputing one here threw that away and left a
+  // facing that ignored which kerb the board stood on, so every board on one
+  // side of a road showed drivers its back.
   const off = p.lateralOffset * p.side;
   return {
     x: p.axis === 'x' ? tileToWorld(p.x) + off : tileToWorld(p.x),
     z: p.axis === 'z' ? tileToWorld(p.z) + off : tileToWorld(p.z),
-    yaw: isCantilevered(p.type) ? signalYaw(p.axis, p.side) : p.axis === 'x' ? 0 : Math.PI / 2,
+    yaw:
+      p.yaw ??
+      (isCantilevered(p.type) ? signalYaw(p.axis, p.side) : p.axis === 'x' ? 0 : Math.PI / 2),
   };
 }
 
@@ -1335,6 +1513,8 @@ export function signalLampColor(aspect: SignalAspect): number {
 /** The lit lens itself: a disc a shade larger than the dark one it covers. */
 function buildSignalLampGeometry(): THREE.BufferGeometry {
   const lens = new THREE.CircleGeometry(SIGNAL_LENS_RADIUS * 1.05, 12);
+  // A disc is drawn from one side only, and that side has to be the head's face.
+  if (CANTILEVER_FACE_Z < 0) lens.rotateY(Math.PI);
   const count = lens.getAttribute('position').count;
   // Coloured per instance, but the material reads vertex colours like every
   // other furniture layer, so the attribute has to be there to be multiplied.
@@ -1414,14 +1594,22 @@ function buildExitSign(): THREE.BufferGeometry {
     [-0.16, 0.5],
   ] as const) {
     const legend = new THREE.BoxGeometry(EXIT_BOARD_WIDTH * width, EXIT_BOARD_HEIGHT * 0.14, 0.02);
-    legend.translate(panelX - EXIT_BOARD_WIDTH * 0.08, panelY + EXIT_BOARD_HEIGHT * row, 0.05);
+    legend.translate(
+      panelX - EXIT_BOARD_WIDTH * 0.08,
+      panelY + EXIT_BOARD_HEIGHT * row,
+      CANTILEVER_FACE_Z * 0.05,
+    );
     parts.push({ geometry: legend, color: SIGN_WHITE });
   }
 
   // The diagonal exit arrow in the panel's bottom corner.
   const arrow = new THREE.BoxGeometry(EXIT_BOARD_WIDTH * 0.16, EXIT_BOARD_HEIGHT * 0.1, 0.02);
   arrow.rotateZ(Math.PI / 4);
-  arrow.translate(panelX + EXIT_BOARD_WIDTH * 0.33, panelY - EXIT_BOARD_HEIGHT * 0.2, 0.05);
+  arrow.translate(
+    panelX + EXIT_BOARD_WIDTH * 0.33,
+    panelY - EXIT_BOARD_HEIGHT * 0.2,
+    CANTILEVER_FACE_Z * 0.05,
+  );
   parts.push({ geometry: arrow, color: SIGN_WHITE });
 
   // Exit-number tab, riding above the panel's top edge on its outer end.
@@ -1434,7 +1622,7 @@ function buildExitSign(): THREE.BufferGeometry {
   tabLegend.translate(
     panelX - EXIT_BOARD_WIDTH * 0.3,
     panelY + EXIT_BOARD_HEIGHT / 2 + tabH / 2,
-    0.04,
+    CANTILEVER_FACE_Z * 0.04,
   );
   parts.push({ geometry: tabLegend, color: SIGN_WHITE });
 

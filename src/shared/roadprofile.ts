@@ -289,10 +289,14 @@ export function profileCapacity(profile: RoadProfile): number {
 }
 
 /**
- * Traffic lanes in the profile, both directions summed: travel lanes, the
- * reserved bus and tram lanes, which are lanes with a different occupant, and
- * a centre turn lane, which is the third lane of a three-lane street. A shared
- * two-way lane counts for both directions.
+ * Traffic lanes in the profile: travel lanes, the reserved bus and tram lanes,
+ * which are lanes with a different occupant, and a centre turn lane, which is
+ * the third lane of a three-lane street. A shared two-way lane counts for both
+ * directions.
+ *
+ * On a two-way road that is both directions summed; on a road every lane of
+ * which runs one way — a motorway, a slip road, a one-way street — it is that
+ * carriageway's own lanes, which is what those classes state their range in.
  */
 export function laneCount(profile: RoadProfile): number {
   return profile.pieces.reduce((n, p) => {
@@ -767,13 +771,15 @@ export function withAuxiliaryLane(
   const beside = side > 0 ? flows[flows.length - 1] : flows[0];
   if (beside) lane.flow = beside;
 
-  // Outside every carriageway piece on that side, but inside the footway, if
-  // the road has one — a lane does not go behind the pavement.
+  // Outside every running lane on that side, and inside everything that is not
+  // one — a lane does not go behind the pavement, and it does not go outside
+  // the hard shoulder either: a driver getting up to speed is on the road, not
+  // past the line they are meant to pull over behind.
   const pieces = [...profile.pieces];
   const at =
     side > 0
-      ? lastIndexWhere(pieces, (p) => CARRIAGEWAY_KINDS.has(p.kind)) + 1
-      : firstIndexWhere(pieces, (p) => CARRIAGEWAY_KINDS.has(p.kind));
+      ? lastIndexWhere(pieces, (p) => p.kind === 'travel') + 1
+      : firstIndexWhere(pieces, (p) => p.kind === 'travel');
   pieces.splice(Math.max(0, at), 0, lane);
   return { ...profile, pieces };
 }
@@ -886,14 +892,18 @@ export function laneWidthFor(classId: RoadClassId): number {
 }
 
 /**
- * The lane counts a road of each class is BUILT IN, total across both
- * directions. A road is picked from this list rather than dialled a lane at a
- * time: a four-lane arterial is a kind of road, not a three-lane with one
- * added. The counts are the steps; how far they may go is the class's own
- * lane range in the catalogue, which `laneOptionsFor` holds them inside — a
- * count the class does not allow is a count the tool must never offer, since
- * offering one and then refusing it is how a player is told the tile is too
- * narrow for a road that fits it perfectly well.
+ * The lane counts a road of each class is BUILT IN. A road is picked from this
+ * list rather than dialled a lane at a time: a four-lane arterial is a kind of
+ * road, not a three-lane with one added. The counts are the steps; how far
+ * they may go is the class's own lane range in the catalogue, which
+ * `laneOptionsFor` holds them inside — a count the class does not allow is a
+ * count the tool must never offer, since offering one and then refusing it is
+ * how a player is told the tile is too narrow for a road that fits it
+ * perfectly well.
+ *
+ * The counts are both directions summed, except on the classes that ARE one
+ * carriageway — a motorway and its slip road — where they are the lanes that
+ * carriageway runs, because a dual carriageway is two of them side by side.
  */
 const LANE_OPTIONS_BY_CLASS: Readonly<Record<RoadClassId, readonly number[]>> = {
   dirt: [2],
@@ -905,7 +915,9 @@ const LANE_OPTIONS_BY_CLASS: Readonly<Record<RoadClassId, readonly number[]>> = 
   collector: [2, 4, 6],
   arterial: [2, 4, 6],
   divided: [4, 6, 8],
-  highway: [2, 4, 6, 8],
+  // A motorway and its slip road are ONE carriageway, so their counts are one
+  // direction's lanes and every step in the range is a road somebody builds.
+  highway: [3, 4, 5, 6],
   ramp: [1, 2],
   rail: [],
 };
@@ -1054,7 +1066,11 @@ export function editsOf(profile: RoadProfile): ResolvedEdits {
   };
 }
 
-/** The lane counts each way a class allows, given that its range counts both ways. */
+/**
+ * The lane counts each way a class allows. `oneWay` says the road runs one
+ * way, which is also true of every road of a class whose own range already
+ * counts a single carriageway.
+ */
 export function lanesEachWayRange(
   classId: RoadClassId,
   oneWay: boolean,
@@ -1113,14 +1129,24 @@ function rebuildCore(
   const busRight = !median && hasSide(bus, 'right') ? busLane('fwd') : [];
   const busMiddle = median
     ? [
-        ...(hasSide(bus, 'left') ? busLane('back') : []),
+        ...(hasSide(bus, 'left') ? busLane(oneWay ? 'fwd' : 'back') : []),
         ...(hasSide(bus, 'right') ? busLane('fwd') : []),
       ]
     : [];
   if (oneWay) {
-    return [...before, ...busLeft, ...run('fwd', lanes), ...busRight, ...after].map((p) => ({
-      ...p,
-    }));
+    // One carriageway has one inner side, and on a motorway that is where the
+    // reservation goes — ahead of the running lanes, against the median. A
+    // one-way STREET keeps its kerbside lanes, because that is where a bus
+    // stops. Dropping the lane instead leaves the tool offering a choice that
+    // changes nothing.
+    return [
+      ...before,
+      ...busLeft,
+      ...busMiddle,
+      ...run('fwd', lanes),
+      ...busRight,
+      ...after,
+    ].map((p) => ({ ...p }));
   }
   // A reservation is TWO tracks, one each way, and it separates the directions
   // the way a median does — which is why it takes the middle and not a kerb.

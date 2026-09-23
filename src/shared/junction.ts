@@ -62,6 +62,15 @@ export interface JunctionApproach {
 const UNCONTROLLED_CLASSES: ReadonlySet<RoadClassId> = new Set(['highway', 'rail']);
 
 /**
+ * Whether a junction where these classes meet can ever take a control. The
+ * warrant and a player's override both ask, so a junction the warrant leaves
+ * bare because it touches a motorway cannot be signalled by hand instead.
+ */
+export function takesControl(classes: readonly RoadClassId[]): boolean {
+  return !classes.some((c) => UNCONTROLLED_CLASSES.has(c));
+}
+
+/**
  * The widest class that meets other roads with nothing at all: an unpaved
  * track, a service alley, a country road. Two of them cross on sight lines.
  */
@@ -183,7 +192,7 @@ function volumeWarrant(approaches: readonly JunctionApproach[]): JunctionControl
  */
 export function warrantedControl(approaches: readonly JunctionApproach[]): JunctionControl {
   if (approaches.length < 3) return 'none';
-  if (approaches.some((a) => UNCONTROLLED_CLASSES.has(a.classId))) return 'none';
+  if (!takesControl(approaches.map((a) => a.classId))) return 'none';
   return stricterOf(classWarrant(approaches), volumeWarrant(approaches));
 }
 
@@ -379,4 +388,33 @@ const CONTROL_NAMES: Readonly<Record<JunctionControl, string>> = {
 
 export function controlName(control: JunctionControl): string {
   return CONTROL_NAMES[control];
+}
+
+/**
+ * Whether a tile is a MOTORWAY a ramp joins or leaves — a merge or a diverge,
+ * which is not a junction.
+ *
+ * Nobody stops at one, nobody gives way and nobody chooses a lane at it: a
+ * driver leaving is already in the auxiliary lane before it, and a driver
+ * joining gets up to speed in the one after it. So it is drawn as the straight
+ * carriageway it is — its lines run through, it grows no junction box and no
+ * corners, and nothing approaching it is arrowed — and it takes no control.
+ *
+ * It is a motorway tile whose own carriageway runs straight through it, with
+ * every other arm a ramp. A motorway that turns or ends there, or meets
+ * another motorway, is something else; the ramp's own end tile is an ordinary
+ * ramp tile. `arms` are the classes of the roads this tile joins, north, east,
+ * south, west, with null where it joins none.
+ */
+export function isRampNode(
+  own: RoadClassId | null | undefined,
+  arms: readonly (RoadClassId | null | undefined)[],
+): boolean {
+  if (own !== 'highway') return false;
+  const [n, e, s, w] = arms;
+  const throughNS = n === 'highway' && s === 'highway';
+  const throughEW = e === 'highway' && w === 'highway';
+  if (throughNS === throughEW) return false;
+  const beside = throughNS ? [e, w] : [n, s];
+  return beside.some((c) => c === 'ramp') && beside.every((c) => c == null || c === 'ramp');
 }

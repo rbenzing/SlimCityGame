@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { corridorHalfOf, flowDirection, RoadTier, ZoneType } from '../shared/types';
+import { corridorHalfOf, flowDirection, RoadFlow, RoadTier, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, Command, RoadSpec, TilePoint } from '../shared/types';
 import { TERRAFORM_COST_PER_METER_TILE, TILE_METERS } from '../shared/constants';
 import { NO_EDITS, presetProfileForTier } from '../shared/roadprofile';
@@ -1924,6 +1924,146 @@ describe('a road too wide for its tile is laid as two carriageways', () => {
     expect(previews.at(-1)?.invalidReason).toBe('A corridor is laid in a straight run');
     tm.pointerUp(4, 4, 0);
     expect(sent).toHaveLength(0);
+  });
+});
+
+describe('a dual carriageway is two runs laid side by side', () => {
+  /** An env whose only existing road is one carriageway along z = 5, x = 0..9. */
+  const withRoadAtZ5 = (tier: RoadTier): ReturnType<typeof makeEnv> => {
+    const made = makeEnv();
+    made.env.roadProfileAt = (t) =>
+      t.z === 5 && t.x >= 0 && t.x < 10 ? presetProfileForTier(tier) : null;
+    return made;
+  };
+
+  it('lays a second carriageway on the tiles beside the first', () => {
+    const { env, previews, sent } = withRoadAtZ5(RoadTier.Highway);
+    const tm = new ToolManager(env);
+    tm.setTool('road.highway');
+    tm.pointerDown(2, 6, 0);
+    tm.pointerMove(7, 6, 0); // parallel to the carriageway at z = 5, touching it its whole length
+    expect(previews.at(-1)?.invalidReason).toBeUndefined();
+    expect(previews.at(-1)?.valid).toBe(true);
+    tm.pointerUp(7, 6, 0);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('lets a separate drag continue a carriageway end to end', () => {
+    const { env, previews, sent } = withRoadAtZ5(RoadTier.Highway);
+    const tm = new ToolManager(env);
+    tm.setTool('road.highway');
+    tm.pointerDown(10, 5, 0);
+    tm.pointerMove(14, 5, 0); // straight on from the carriageway's far end at (9,5)
+    expect(previews.at(-1)?.valid).toBe(true);
+    tm.pointerUp(14, 5, 0);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('lets a five-lane carriageway take its two tiles, which are one road', () => {
+    const { env, previews } = withRoadAtZ5(RoadTier.Highway);
+    env.profileIdFor = () => 12;
+    const tm = new ToolManager(env);
+    tm.setTool('road.highway');
+    tm.setProfileEdits({ ...NO_EDITS, lanes: 5 });
+    tm.pointerDown(2, 10, 0);
+    tm.pointerMove(2, 14, 0); // clear of the carriageway at z = 5
+    const preview = previews.at(-1)!;
+    expect(preview.tiles).toHaveLength(10); // five tiles long, two carriageway halves wide
+    expect(preview.invalidReason).toBeUndefined();
+    expect(preview.valid).toBe(true);
+  });
+
+  it('lets a ramp run alongside a motorway, which is how an interchange is built', () => {
+    const beside = (made: ReturnType<typeof makeEnv>, tool: 'road.ramp' | 'road.highway'): void => {
+      const tm = new ToolManager(made.env);
+      tm.setTool(tool);
+      tm.pointerDown(2, 6, 0);
+      tm.pointerMove(7, 6, 0);
+      expect(made.previews.at(-1)?.invalidReason, tool).toBeUndefined();
+      expect(made.previews.at(-1)?.valid, tool).toBe(true);
+    };
+    beside(withRoadAtZ5(RoadTier.Highway), 'road.ramp');
+    beside(withRoadAtZ5(RoadTier.Ramp), 'road.highway');
+  });
+});
+
+describe('a ramp meets a motorway alongside it, never head-on', () => {
+  const HEAD_ON =
+    'A ramp meets a highway alongside it: bend it to run beside the highway before it joins';
+  const AGAINST = 'A ramp joins a highway running the same way, not against it';
+
+  /**
+   * An eastbound motorway along z = 5, x = 0..11, and optionally the lead-in
+   * of a ramp already laid up column 4 from z = 9 to z = 7, drawn northward.
+   */
+  const interchange = (withLeadIn: boolean): ReturnType<typeof makeEnv> => {
+    const made = makeEnv();
+    const leadIn = (t: TilePoint): boolean => withLeadIn && t.x === 4 && t.z >= 7 && t.z <= 9;
+    made.env.roadProfileAt = (t) => {
+      if (t.z === 5 && t.x >= 0 && t.x <= 11) return presetProfileForTier(RoadTier.Highway);
+      if (leadIn(t)) return presetProfileForTier(RoadTier.Ramp);
+      return null;
+    };
+    made.env.roadFlowAt = (t) => {
+      if (t.z === 5 && t.x >= 0 && t.x <= 11) return RoadFlow.East;
+      if (leadIn(t)) return RoadFlow.North;
+      return RoadFlow.None;
+    };
+    return made;
+  };
+
+  it('refuses a ramp drawn straight into the motorway, and says what to do instead', () => {
+    const { env, previews, sent } = interchange(false);
+    const tm = new ToolManager(env);
+    tm.setTool('road.ramp');
+    tm.pointerDown(4, 9, 0);
+    tm.pointerMove(4, 6, 0); // northward, ending against the motorway
+    expect(previews.at(-1)?.valid).toBe(false);
+    expect(previews.at(-1)?.invalidReason).toBe(HEAD_ON);
+    tm.pointerUp(4, 6, 0);
+    expect(sent).toEqual([]);
+  });
+
+  it('refuses a ramp alongside that runs against the motorway', () => {
+    const { env, previews, sent } = interchange(false);
+    const tm = new ToolManager(env);
+    tm.setTool('road.ramp');
+    tm.pointerDown(8, 6, 0);
+    tm.pointerMove(2, 6, 0); // westward, beside an eastbound motorway
+    expect(previews.at(-1)?.invalidReason).toBe(AGAINST);
+    tm.pointerUp(2, 6, 0);
+    expect(sent).toEqual([]);
+  });
+
+  it('lays a ramp that elbows round to run beside the motorway and merge', () => {
+    const { env, previews, sent } = interchange(true);
+    const tm = new ToolManager(env);
+    tm.setTool('road.ramp');
+    tm.pointerDown(4, 6, 0);
+    tm.pointerMove(8, 6, 0); // from the elbow, east along the motorway
+    expect(previews.at(-1)?.invalidReason).toBeUndefined();
+    expect(previews.at(-1)?.valid).toBe(true);
+    tm.pointerUp(8, 6, 0);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('lays an off-ramp that peels off alongside and elbows away, in one drag', () => {
+    // East along the motorway from (3,6), then south away from it at x = 7.
+    // The corner tile beside the motorway turns away with a ramp both sides of
+    // it: it joins nothing, and must not read as a head-on start.
+    const { env, previews, sent } = interchange(false);
+    const tm = new ToolManager(env);
+    tm.setTool('road.ramp');
+    tm.pointerDown(3, 6, 0);
+    tm.pointerMove(7, 9, 0);
+    const preview = previews.at(-1)!;
+    expect(preview.tiles.some((t) => t.x === 7 && t.z === 6), 'the elbow is beside the motorway').toBe(
+      true,
+    );
+    expect(preview.invalidReason).toBeUndefined();
+    expect(preview.valid).toBe(true);
+    tm.pointerUp(7, 9, 0);
+    expect(sent).toHaveLength(1);
   });
 });
 

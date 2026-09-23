@@ -27,7 +27,13 @@ import {
   rankForTier,
 } from '../shared/roadprofile';
 import { controlFromCode, warrantedControl } from '../shared/junction';
-import { corridorPartners } from '../shared/corridor';
+import {
+  corridorPartners,
+  rampJoinAround,
+  rampJoins,
+  sideBySideCarriageways,
+} from '../shared/corridor';
+import type { RampJoin } from '../shared/corridor';
 import { ARMS_PER_TILE } from './grid';
 import type {
   GraphEdge,
@@ -97,10 +103,10 @@ function popcount(mask: number): number {
  */
 export function computeMask(g: GridState, x: number, z: number): number {
   let mask = 0;
-  if (tierAt(g, x, z - 1) !== RoadTier.None && !isCorridorPartner(g, x, z, x, z - 1)) mask |= 1;
-  if (tierAt(g, x + 1, z) !== RoadTier.None && !isCorridorPartner(g, x, z, x + 1, z)) mask |= 2;
-  if (tierAt(g, x, z + 1) !== RoadTier.None && !isCorridorPartner(g, x, z, x, z + 1)) mask |= 4;
-  if (tierAt(g, x - 1, z) !== RoadTier.None && !isCorridorPartner(g, x, z, x - 1, z)) mask |= 8;
+  if (tierAt(g, x, z - 1) !== RoadTier.None && !isSeparateRoad(g, x, z, x, z - 1)) mask |= 1;
+  if (tierAt(g, x + 1, z) !== RoadTier.None && !isSeparateRoad(g, x, z, x + 1, z)) mask |= 2;
+  if (tierAt(g, x, z + 1) !== RoadTier.None && !isSeparateRoad(g, x, z, x, z + 1)) mask |= 4;
+  if (tierAt(g, x - 1, z) !== RoadTier.None && !isSeparateRoad(g, x, z, x - 1, z)) mask |= 8;
   return mask;
 }
 
@@ -146,11 +152,76 @@ function isCorridorPartner(g: GridState, x: number, z: number, nx: number, nz: n
 
 function computeNetworkMask(g: GridState, x: number, z: number, inNetwork: NetworkTiers): number {
   let mask = 0;
-  if (inNetwork(tierAt(g, x, z - 1)) && !isCorridorPartner(g, x, z, x, z - 1)) mask |= 1;
-  if (inNetwork(tierAt(g, x + 1, z)) && !isCorridorPartner(g, x, z, x + 1, z)) mask |= 2;
-  if (inNetwork(tierAt(g, x, z + 1)) && !isCorridorPartner(g, x, z, x, z + 1)) mask |= 4;
-  if (inNetwork(tierAt(g, x - 1, z)) && !isCorridorPartner(g, x, z, x - 1, z)) mask |= 8;
+  if (inNetwork(tierAt(g, x, z - 1)) && !isSeparateRoad(g, x, z, x, z - 1)) mask |= 1;
+  if (inNetwork(tierAt(g, x + 1, z)) && !isSeparateRoad(g, x, z, x + 1, z)) mask |= 2;
+  if (inNetwork(tierAt(g, x, z + 1)) && !isSeparateRoad(g, x, z, x, z + 1)) mask |= 4;
+  if (inNetwork(tierAt(g, x - 1, z)) && !isSeparateRoad(g, x, z, x - 1, z)) mask |= 8;
   return mask;
+}
+
+/**
+ * Whether a neighbouring tile is a road of its OWN rather than an arm of this
+ * one: either the other half of this tile's corridor, or a motorway
+ * carriageway running alongside.
+ */
+function isSeparateRoad(g: GridState, x: number, z: number, nx: number, nz: number): boolean {
+  return (
+    isCorridorPartner(g, x, z, nx, nz) ||
+    isSideBySideCarriageway(g, x, z, nx, nz) ||
+    isRampAlongside(g, x, z, nx, nz)
+  );
+}
+
+/**
+ * Whether one of the two tiles is a ramp running beside a motorway on the other
+ * without joining it — the stretch before a merge or after a diverge, or an
+ * elbow. See {@link rampJoin}.
+ */
+function isRampAlongside(g: GridState, x: number, z: number, nx: number, nz: number): boolean {
+  if (!inBoundsOf(g.size, nx, nz)) return false;
+  const a = g.roadTier[indexOf(g.size, x, z)];
+  const b = g.roadTier[indexOf(g.size, nx, nz)];
+  if (a === RoadTier.Ramp && b === RoadTier.Highway) return !rampJoins(rampJoinAt(g, x, z, nx, nz));
+  if (a === RoadTier.Highway && b === RoadTier.Ramp) return !rampJoins(rampJoinAt(g, nx, nz, x, z));
+  return false;
+}
+
+/** How the ramp tile at (rx, rz) meets the motorway tile at (hx, hz). */
+function rampJoinAt(g: GridState, rx: number, rz: number, hx: number, hz: number): RampJoin {
+  return rampJoinAround(
+    (x, z) => inBoundsOf(g.size, x, z) && g.roadTier[indexOf(g.size, x, z)] === RoadTier.Ramp,
+    (x, z) => (inBoundsOf(g.size, x, z) ? (g.roadFlow[indexOf(g.size, x, z)] ?? 0) : 0),
+    rx,
+    rz,
+    hx,
+    hz,
+  );
+}
+
+/**
+ * Whether the tile at (nx, nz) is a separate motorway carriageway lying
+ * alongside (x, z) — see {@link sideBySideCarriageways}. Left unrecognised,
+ * the pair draws as an unpainted slab and the graph edge between them lets
+ * traffic drift out of one carriageway into the oncoming one.
+ */
+function isSideBySideCarriageway(
+  g: GridState,
+  x: number,
+  z: number,
+  nx: number,
+  nz: number,
+): boolean {
+  if (!inBoundsOf(g.size, nx, nz)) return false;
+  const i = indexOf(g.size, x, z);
+  const n = indexOf(g.size, nx, nz);
+  return sideBySideCarriageways(
+    g.roadTier[i] === RoadTier.Highway,
+    g.roadTier[n] === RoadTier.Highway,
+    g.roadFlow[i] ?? 0,
+    g.roadFlow[n] ?? 0,
+    nx - x,
+    nz - z,
+  );
 }
 
 // ---------------------------------------------------------------------------

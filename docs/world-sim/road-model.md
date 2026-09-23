@@ -51,8 +51,40 @@ graph:
 | arterial  | 4–6   | 60–80 (65) → 18             | g/C 0.49                | 400          | bike, bus, tram, median, sidewalk, verge (no parking)   | yes     | water+power |
 | divided   | 4–8   | 70–90 (80) → 22             | g/C 0.55                | 450          | travel, bus, median, barrier, shoulder, sidewalk, verge | yes     | water+power |
 | one-way   | 1–5   | 40–60 (58) → 16             | g/C 0.67                | 550          | travel (one dir), parking, bike, bus, sidewalk, verge   | yes     | water+power |
-| highway   | 2–8   | 90–120 (100) → 28           | 2,350 veh/h (free-flow) | 1,000        | travel, shoulder, barrier, median                       | no      | power only  |
+| highway   | 3–6   | 90–120 (100) → 28           | 2,350 veh/h (free-flow) | 1,000        | travel (one dir), bus, shoulder, barrier                | no      | power only  |
 | ramp      | 1–2   | 50–80 (60) → 17             | 2,000 veh/h (free-flow) | 850          | travel (one dir), shoulder                              | no      | power only  |
+
+**A motorway is one carriageway, not a road with two halves.** Every other
+class in the table counts both directions together; highway and ramp count
+one, and they are the only classes that do. A dual carriageway is two
+highway runs laid beside each other, each drawn in its own direction with
+the direction arrows, the same way a real one is built and the same way it
+is widened — a third lane is added to the side that needs it, not to both at
+once. That is why the class admits no median piece: the median is the ground
+between two carriageways, not a stripe inside one, and a highway that could
+hold a median inside a single tile would be a road pretending to be two.
+
+**Two carriageways may lie on adjacent tiles, and they do not connect.** A
+highway beside a highway is two roads, not one wide one, so neither counts
+the other as an arm: there is no mask bit between them, no graph edge, and no
+junction. Counted as neighbours they would read as a junction their whole
+length — drawn as one unpainted slab with no lane or edge lines, and joined by
+a graph edge that let traffic drift sideways out of one carriageway into the
+oncoming one. The only way onto or off a motorway is a ramp, so a ramp lying
+alongside IS an arm, and that is how an interchange is built. See
+[How roads meet: rank, replacement and transitions](#how-roads-meet-rank-replacement-and-transitions).
+
+Three lanes is the floor because a motorway with two is an expressway. Six is
+the ceiling because of the width budget: three lanes and their shoulders come
+to 15.45 m and four to 19.2 m, both inside the 20 m tile, while five reach
+22.95 m and six 26.7 m — so a five- or six-lane carriageway is a two-tile
+corridor, which is exactly the case the corridor rule already admits, and a
+seventh lane is past anything this grid can draw honestly.
+
+A motorway also has no sewer beneath it. It drains off the shoulder to the
+verge rather than to a buried line under the running surface, which is why
+the class carries no water, and why no manhole cover belongs on it — see
+[Furniture and what gates it](#furniture-and-what-gates-it).
 
 Rail is a twelfth class (5.6 m gauge-and-ballast piece, its own network, no
 lane range) — see [transit-model.md](transit-model.md). Every figure in this
@@ -99,10 +131,11 @@ highway and its ramps; 11 ft (3.35 m) on a rural road, an urban street and a
 collector; 10 ft (3.05 m) on a local street, a one-way and an alley; 9 ft
 (2.75 m) on a dirt road. A class also fixes which total lane counts it is
 built in — not dialled a lane at a time, since a four-lane arterial is a
-kind of road, not a three-lane with one added: a motorway offers 2/4/6/8, an
-urban street or a collector 2/4/6, an arterial or a divided road what its
-own range holds inside those steps, a one-way 1/2/3, a rural or local street
-2, a dirt or alley road 2 only.
+kind of road, not a three-lane with one added: an urban street or a collector
+offers 2/4/6, an arterial or a divided road what its own range holds inside
+those steps, a one-way 1/2/3, a rural or local street 2, a dirt or alley road
+2 only. A motorway offers 3/4/5/6 — every step of its range, because those
+are ONE carriageway's lanes and each is a road somebody builds.
 
 A profile's width against the tile decides what it can be:
 
@@ -477,8 +510,29 @@ motorway accepts rather than what it refuses, so a class added later stays
 off it until somebody decides to let it on. Both unlock at the same
 milestone, so the rule can never leave a player holding a motorway with no
 way to reach it, and the refusal names the ramp rather than only saying no.
+
 The road tool enforces both (a refusal reads on the cursor chip), which is
 also the only place they can be enforced with the reason visible.
+
+The case a motorway meeting a motorway leaves open is not a refusal at all:
+**a highway lying ACROSS the way another highway runs, rather than in line
+with it, is a separate carriageway and does not connect to it.** It is decided
+in the grid, not by the road tool, because it is a fact about the two roads
+and not about the drag that laid them — so it holds however the roads were
+drawn, a tile at a time or all at once, and on a saved map loaded back in.
+
+Which way a highway runs is its stored flow, never its shape. Two highway
+tiles are separate carriageways when EACH lies across the other's flow: a
+carriageway beside another points past it, while one arriving at right angles
+points AT the tile it meets. So a motorway continuing a motorway end on joins
+it, a motorway arriving square-on forms a junction, and two running alongside
+stay apart. The rule asks only about highway tiles; a ramp alongside a motorway
+joins it by its own rule (see Ramps and interchanges), and every other class
+meets its neighbours exactly as it did. A corridor's own other half is a
+separate matter, decided by `isCorridorPartner`; `isSeparateRoad` in
+`src/world/roads.ts` asks all three questions, and the auto-tiling mask and the
+network graph both read it, so what is drawn and what is driven cannot
+disagree.
 
 ## Ramps and interchanges
 
@@ -502,6 +556,75 @@ highway grows the lane and paints the gore on its own, so the merge length
 costs land and nothing else. A ramp's other end is a **terminal**: an
 ordinary node on the surface network, taking an ordinary warranted control
 and ordinary approach lanes like any other junction.
+
+### How a ramp meets a motorway: alongside, never head-on
+
+A ramp does not T into a motorway. Nobody joins traffic at motorway speed by
+turning ninety degrees into it, and nobody leaves it that way either. A real
+slip road comes off the surface road, bends round — the **elbow** — and runs
+beside the motorway in the same direction before it merges, and an exit peels
+off the same way in reverse. On this grid that is:
+
+- **The ramp joins alongside.** The ramp's tile beside the motorway runs the
+  same way as the motorway tile it joins. Which way each runs is its stored
+  flow, never its shape.
+- **It joins at one tile only.** An on-ramp joins at its END — the ramp tile
+  with a ramp arriving into it and none ahead of it along its flow. An
+  off-ramp joins at its START — the ramp tile with a ramp ahead and none
+  arriving into it. What arrives into a tile is a ramp neighbour whose own
+  flow points at it, which is how an elbow tile beside the motorway, flowing
+  away from it with a ramp on both sides, is told from a start: it joins
+  nothing.
+- **Everywhere else beside the motorway it is its own road.** Along the
+  parallel stretch a ramp tile and the motorway tile next to it are separate
+  roads, exactly as two carriageways side by side are: no mask bit, no graph
+  edge, no junction. Traffic changes road only at the join.
+- **A head-on ramp is refused, and so is one against the traffic.** A ramp
+  tile that would join a motorway while flowing across it (a T) or against it
+  (a wrong-way merge) is refused by the road tool with the reason, and the
+  reason says what to do: bend the ramp to run beside the motorway, the way
+  it is going, before it meets it. A save that already holds a head-on ramp
+  keeps it and draws it as it always did.
+- **The join tile is a taper, not a corner.** On the ramp side the join tile
+  carries the ramp's carriageway straight along its flow and fans its asphalt
+  across the verge into the motorway's auxiliary lane on the half of the tile
+  nearest the motorway's traffic — downstream at a merge, upstream at a
+  diverge — so the ramp slants into the lane rather than turning into it. On
+  the motorway side the tile is a ramp node, below, with its edge line open
+  across the taper's mouth.
+- **Merge or diverge comes from the join.** A join at a ramp's end is a
+  merge and its auxiliary lane runs on downstream; a join at its start is a
+  diverge and its auxiliary lane runs up to it. The exit board stands on the
+  motorway tile before a diverge.
+
+`rampJoin` in `src/shared/corridor.ts` decides how a ramp tile meets the
+motorway beside it, and `rampJoinAround` reads it off any map; the grid mask
+and graph, the approach walk, the furniture and the road tool's refusal all
+ask it. `rampMouthAt` tells the motorway tile which half to open, and
+`emitRampTaper` in `src/render/roadsmesh.ts` draws the ramp's side.
+
+**A merge or a diverge is not an intersection**, whatever its arm count, and
+highways rarely have intersections at all. Nobody stops at one, nobody gives
+way, and nobody picks a lane at it: a driver leaving is already in the
+auxiliary lane before it, and a driver joining gets up to speed in the one
+after it. So the motorway tile a ramp meets — a **ramp node**: its own
+carriageway running straight through, and nothing beside it but ramps — is
+drawn as the straight carriageway it is. Its lane lines and its left edge
+line run through unbroken; it grows no junction box and no rounded corners;
+its ramp-side edge line opens across the ramp's mouth and nowhere else; the
+ramp's asphalt is as wide as the ramp; and the auxiliary lane carries across
+the tile at full width instead of stopping short of it. Nothing approaching
+it is a junction approach, so nothing is arrowed on the way in — not the
+motorway, and not the ramp's own last tile. A motorway meeting a motorway,
+or one that turns or ends where a ramp meets it, is not a ramp node.
+
+It takes no control, as nothing touching a motorway does, and a player's
+override cannot put one there: setting a signal, stop or give-way on a
+junction a motorway touches is refused, the same rule the warrant applies.
+Its exit board stands once, on the motorway tile before a ramp that leaves —
+a ramp alongside that diverges there, or a head-on ramp a save holds that
+points away — and never after it or where a ramp joins. `isRampNode` in `src/shared/junction.ts` decides it,
+and the render, the approach walk and the furniture all ask it.
 
 Nobody is stopped joining a highway and nothing holds them, but finding a
 gap in fast traffic is not free: a merging driver loses `2 + 22·x³` seconds,
@@ -565,6 +688,15 @@ No crossing is painted over a **service access**. The footway runs straight
 across an alley's mouth rather than breaking for it, so the pavement IS the way
 across; bars laid in that strip sit underneath it where nobody can see them.
 
+**A manhole cover is the top of a sewer, so it exists only where a sewer
+does.** A cover is drawn on the running surface of a road whose class carries
+water, and on no other. A motorway and a ramp carry none — they drain off the
+shoulder to the verge rather than to a buried line under the carriageway — so
+a cover on one is a hole in a road with nothing beneath it, which is both
+wrong and, at motorway speed, conspicuous. The test is the class's own water
+flag rather than a list of tiers, so a class that stops carrying water stops
+growing covers in the same change.
+
 A deck (an elevated or bridged road tile,
 [Bridges and elevated roads](#bridges-and-elevated-roads)) inverts the
 kerbside rules: no verge, so no parking meters, utility cabinets, manhole
@@ -581,14 +713,26 @@ actually looks like.
 Markings are read off the profile and the junction, never authored
 per-tier:
 
-- **Colour** follows one rule: yellow separates traffic going opposite
-  ways (the dashed centre of a two-lane road, the double solid of an
-  undivided multi-lane road, both edges of a two-way turn lane, which faces
-  opposing traffic on each side); white does everything else — lane lines
-  between same-direction lanes, and the edge line down each side of the
-  carriageway marking where the running surface ends. Every paved road
-  carries edge lines; an unpaved track, a service alley and a rail line
-  carry no paint at all.
+- **Colour** follows one rule, and it is not the obvious one: yellow marks
+  the side of the line that oncoming traffic is on, whether or not that
+  traffic is adjacent. On an undivided road that is the centre — the dashed
+  centre of a two-lane road, the double solid of an undivided multi-lane
+  road, both edges of a two-way turn lane, which faces opposing traffic on
+  each side. On a **one-way carriageway it is the left edge line**, because
+  the far side of that line is where the opposing carriageway is: MUTCD
+  §3B.09 ¶03 requires a solid yellow left edge line on the roadways of
+  divided highways, on one-way streets, and on any ramp in the direction of
+  travel. The right edge line is a solid white line (§3B.09 ¶02), and lane
+  lines between same-direction lanes are broken white (§3B.06 ¶05). Every
+  paved road carries edge lines; an unpaved track, a service alley and a rail
+  line carry no paint at all.
+
+  The shorter rule "yellow separates opposing directions, everything else is
+  white" is what this model used to say, and it is wrong for exactly the
+  roads where it matters most: a motorway carriageway painted white on both
+  sides gives a driver no way to tell the median side from the shoulder side
+  at speed, which is the whole reason the standard makes the distinction.
+
 - **Where the edge line goes** is the inside edge of any reserved lane
   running along the kerb — a shoulder, a bike lane, a bus lane — because
   that is where general traffic actually ends. On a road with a shoulder it

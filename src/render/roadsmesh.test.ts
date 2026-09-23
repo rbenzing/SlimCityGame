@@ -7,7 +7,6 @@ import {
   crosswalkBarOffsets,
   junctionArmLayout,
   isAvenueMedianEligible,
-  isHighwayDividerEligible,
   hasMedianTree,
   gravelColorAt,
   isArrowTile,
@@ -197,24 +196,38 @@ describe('roadTileVertices — transit lane variants (Bus Lane / Bike Lane)', ()
     expect(a.colors).toEqual(b.colors);
   });
 
-  it('gives a wide tier the curb it has room for, not a footway it does not', () => {
+  it('gives a road that declared a kerb the kerb it declared, not a footway it did not', () => {
     // A two-lane leaves plenty of tile beyond its carriageway, so it draws a
-    // full footway. A motorway is 15m of road in a 16m tile: half a metre of
-    // kerb, because its shoulders are inside the paved width already.
+    // full footway.
     expect(curbWidthMeters(RoadTier.TwoLane)).toBeCloseTo(SIDEWALK_WIDTH_M, 5);
-    // A motorway draws a KERB, not a pavement — nobody walks beside one, and
-    // its shoulders are inside the paved width already. It keeps that kerb
-    // however much tile is left over: drawing whatever fits is how a road
-    // comes to look like it has somewhere to walk when it has not.
-    const kerb = curbWidthMeters(RoadTier.Highway);
+    // A section that declares a KERB and no footway gets a kerb, however much
+    // tile is left over: drawing whatever fits is how a road comes to look
+    // like it has somewhere to walk when its own section says it has not.
+    const kerbedNoFootway: RoadProfile = {
+      class: 'urban',
+      kerbs: true,
+      pieces: [
+        { kind: 'travel', width: 3.35, flow: 'back' },
+        { kind: 'travel', width: 3.35, flow: 'fwd' },
+      ],
+    };
+    const kerb = kerbWidthOf(kerbedNoFootway);
     expect(kerb).toBeGreaterThan(0);
     expect(kerb).toBeLessThan(SIDEWALK_WIDTH_M);
-    expect(carriagewayHalfWidthMeters(RoadTier.Highway) + kerb).toBeLessThan(TILE_METERS / 2);
+    expect(carriagewayHalfWidthOf(kerbedNoFootway) + kerb).toBeLessThan(TILE_METERS / 2);
   });
 
   it('draws no curb at all where the tier has none', () => {
-    for (const tier of [RoadTier.Gravel, RoadTier.Alley, RoadTier.RailTrack])
-      expect(curbWidthMeters(tier)).toBe(0);
+    // A motorway and its slip road are among them: nobody walks beside one,
+    // and their shoulders are inside the paved width already.
+    for (const tier of [
+      RoadTier.Gravel,
+      RoadTier.Alley,
+      RoadTier.RailTrack,
+      RoadTier.Highway,
+      RoadTier.Ramp,
+    ])
+      expect(curbWidthMeters(tier), `tier ${tier}`).toBe(0);
   });
 
   it('every tier draws exactly the carriageway, kerb and paint it always has, now read from its preset profile', () => {
@@ -224,7 +237,8 @@ describe('roadTileVertices — transit lane variants (Bus Lane / Bike Lane)', ()
     const expected: [RoadTier, number, boolean, boolean][] = [
       [RoadTier.TwoLane, TWO_LANE_HALF_WIDTH_FRACTION, true, true],
       [RoadTier.Avenue, AVENUE_HALF_WIDTH_FRACTION, true, true],
-      [RoadTier.Highway, HIGHWAY_HALF_WIDTH_FRACTION, true, true],
+      // A motorway carriageway declares no kerb: nobody walks beside one.
+      [RoadTier.Highway, HIGHWAY_HALF_WIDTH_FRACTION, false, true],
       [RoadTier.Gravel, GRAVEL_HALF_WIDTH_FRACTION, false, false],
       [RoadTier.Alley, ALLEY_HALF_WIDTH_FRACTION, false, true],
       [RoadTier.OneWay, TWO_LANE_HALF_WIDTH_FRACTION, true, true],
@@ -294,9 +308,11 @@ describe('roadTileVertices — transit lane variants (Bus Lane / Bike Lane)', ()
   });
 
   it('carriageways match their documented lane widths', () => {
-    // Bus = four-lane/highway width; Bike sits between two-lane and four-lane.
+    // Bus = four-lane width; Bike sits between two-lane and four-lane. A
+    // motorway is no longer among them: it is one carriageway of three lanes
+    // between its shoulders, not four lanes of street.
     expect(carriagewayHalfWidthMeters(RoadTier.BusLane)).toBeCloseTo(
-      carriagewayHalfWidthMeters(RoadTier.Highway),
+      carriagewayHalfWidthMeters(RoadTier.FourLane),
     );
     const two = carriagewayHalfWidthMeters(RoadTier.TwoLane);
     const bike = carriagewayHalfWidthMeters(RoadTier.BikeLane);
@@ -463,7 +479,9 @@ describe('roadTileVertices — asphalt base plate', () => {
   });
 
   it('a lone tile (mask 0, no connections) is a road with two ends, not a square boxed in on all four sides', () => {
-    for (const tier of [RoadTier.TwoLane, RoadTier.Avenue, RoadTier.Highway]) {
+    // Kerbed tiers, narrow to wide: the ring is the kerb's, and a motorway
+    // has none to count.
+    for (const tier of [RoadTier.TwoLane, RoadTier.Avenue, RoadTier.FourLane]) {
       const { positions, colors } = roadTileVertices(1, 1, tier, 0, flatHeightAt);
       const pos = toTriples(positions);
       const col = toTriples(colors);
@@ -574,8 +592,8 @@ describe('roadTileVertices — asphalt base plate', () => {
 
   it('asphalt (any tier) is darker than the sidewalk curb color', () => {
     // mask 0 emits both the core asphalt plate and all 4 curbs, so both
-    // colors are present in one call.
-    for (const tier of [RoadTier.TwoLane, RoadTier.Avenue, RoadTier.Highway]) {
+    // colors are present in one call — on a tier that draws a kerb at all.
+    for (const tier of [RoadTier.TwoLane, RoadTier.Avenue, RoadTier.FourLane]) {
       const { colors } = roadTileVertices(0, 0, tier, 0, flatHeightAt);
       const triples = toTriples(colors);
       const asphaltR = avg(triples[0] as number[]);
@@ -653,7 +671,7 @@ describe('roadTileVertices — carriageway ratios (UI-SPEC §6.7 Roads v2)', () 
     // A road running north-south, so its kerbs lie east and west of the
     // carriageway and can be measured straight across X. Tile (0,0) spans
     // world X in [0, TILE_METERS], so its centre is half of it.
-    for (const tier of [RoadTier.TwoLane, RoadTier.Avenue, RoadTier.Highway]) {
+    for (const tier of [RoadTier.TwoLane, RoadTier.Avenue, RoadTier.FourLane]) {
       const { positions, colors } = roadTileVertices(0, 0, tier, N | S, flatHeightAt);
       const posTriples = toTriples(positions);
       const colorTriples = toTriples(colors);
@@ -832,13 +850,44 @@ describe('roadTileVertices — true-ratio dashed/solid markings by tier (UI-SPEC
     expect(countWhere(colors, isMarkingYellow)).toBe(2 * 6);
   });
 
-  it('highway draws white lane lines and white edges — never a yellow centre, since every lane runs one way', () => {
+  it('highway draws a yellow left edge and a white right one — never a centre line', () => {
     for (const z of [0, 1]) {
       const { colors } = roadTileVertices(0, z, RoadTier.Highway, N | S, flatHeightAt);
-      expect(countWhere(colors, isMarkingYellow)).toBe(0);
-      // 2 solid edge lines plus a dashed line between each pair of same-way lanes.
-      expect(countWhere(colors, isMarkingWhite)).toBe(2 * 6 + dashCountFor(z) * 2 * 6);
+      // One solid yellow: the left edge of a one-way carriageway, the line
+      // that tells a driver the median side from the verge side at speed.
+      // Never a centre — a motorway has no opposing traffic to separate.
+      expect(countWhere(colors, isMarkingYellow)).toBe(6);
+      // The right edge line, plus a dashed line between each pair of lanes.
+      expect(countWhere(colors, isMarkingWhite)).toBe(6 + dashCountFor(z) * 2 * 6);
     }
+  });
+
+  it('lays the shoulders OUTSIDE the edge lines, as asphalt nobody travels', () => {
+    // A road running north-south, so the cross-section is measured across X.
+    // The hard shoulder is running surface a driver pulls over onto, not a
+    // lane: the edge line is the inside of it, and the asphalt runs on past.
+    const { positions, colors } = roadTileVertices(0, 0, RoadTier.Highway, N | S, flatHeightAt);
+    const pos = toTriples(positions);
+    const col = toTriples(colors);
+    const centreX = TILE_METERS / 2;
+    const paintXs = pos
+      .filter((_, i) => isPaint(col[i] as number[]))
+      .map((p) => (p[0] as number) - centreX);
+    const profile = presetProfileForTier(RoadTier.Highway);
+    const half = carriagewayHalfWidthOf(profile); // 7.725 m
+    // Nothing is painted out on either shoulder: the outermost paint is the
+    // edge line straddling the shoulders' inner faces, a 0.15 m line wide.
+    const leftFace = -half + 1.2;
+    const rightFace = half - 3;
+    expect(Math.min(...paintXs)).toBeGreaterThan(leftFace - 0.15);
+    expect(Math.max(...paintXs)).toBeLessThan(rightFace + 0.15);
+    // And the edge lines really are AT those faces, not half a metre inside.
+    expect(Math.min(...paintXs)).toBeLessThan(leftFace);
+    expect(Math.max(...paintXs)).toBeGreaterThan(rightFace);
+    // And the carriageway itself still reaches the full width, shoulders
+    // included, rather than stopping at the paint.
+    const asphaltXs = pos.map((p) => (p[0] as number) - centreX);
+    expect(Math.max(...asphaltXs)).toBeGreaterThanOrEqual(half - 1e-6);
   });
 
   it('white paint is one neutral white on every road, and yellow is one yellow', () => {
@@ -1356,37 +1405,31 @@ describe('roadTileVertices — lane-use arrows on the last tile before a junctio
   });
 });
 
-describe('isAvenueMedianEligible / isHighwayDividerEligible (UI-SPEC §6.7 Roads v2)', () => {
+describe('isAvenueMedianEligible (UI-SPEC §6.7 Roads v2)', () => {
   it('is false for every tier other than the one it names', () => {
     expect(isAvenueMedianEligible(RoadTier.TwoLane, N | S)).toBe(false);
     expect(isAvenueMedianEligible(RoadTier.Highway, N | S)).toBe(false);
-    expect(isHighwayDividerEligible(RoadTier.TwoLane, N | S)).toBe(false);
-    expect(isHighwayDividerEligible(RoadTier.Avenue, N | S)).toBe(false);
   });
 
   it('is true for straight collinear runs (single connection or opposite-pair)', () => {
     for (const mask of [N, E, S, W, N | S, E | W]) {
       expect(isAvenueMedianEligible(RoadTier.Avenue, mask)).toBe(true);
-      expect(isHighwayDividerEligible(RoadTier.Highway, mask)).toBe(true);
     }
   });
 
   it('is false for a disconnected tile (popcount 0 — not a "run")', () => {
     expect(isAvenueMedianEligible(RoadTier.Avenue, 0)).toBe(false);
-    expect(isHighwayDividerEligible(RoadTier.Highway, 0)).toBe(false);
   });
 
   it('is false for a 90-degree corner (popcount 2, non-collinear)', () => {
     for (const mask of [N | E, E | S, S | W, W | N]) {
       expect(isAvenueMedianEligible(RoadTier.Avenue, mask)).toBe(false);
-      expect(isHighwayDividerEligible(RoadTier.Highway, mask)).toBe(false);
     }
   });
 
   it('is false for any junction (popcount >= 3)', () => {
     for (const mask of [N | E | S, N | E | W, N | S | W, E | S | W, N | E | S | W]) {
       expect(isAvenueMedianEligible(RoadTier.Avenue, mask)).toBe(false);
-      expect(isHighwayDividerEligible(RoadTier.Highway, mask)).toBe(false);
     }
   });
 });
@@ -1421,35 +1464,46 @@ describe('roadTileVertices — avenue median (UI-SPEC §6.7 Roads v2)', () => {
   });
 });
 
-describe('roadTileVertices — highway divider (UI-SPEC §6.7 Roads v2)', () => {
-  it('a straight highway run carries a raised concrete barrier band; a corner and a junction do not', () => {
+describe('roadTileVertices — the concrete divider (UI-SPEC §6.7 Roads v2)', () => {
+  // A barrier separates two carriageways, so it is drawn where the section
+  // carries a barrier PIECE. Assumed of the motorway class instead, it lands
+  // down the centre of a road that is one carriageway — a wall through the
+  // middle lane.
+  const barriered: RoadProfile = {
+    class: 'divided',
+    pieces: [
+      { kind: 'travel', width: 3.6, flow: 'back' },
+      { kind: 'travel', width: 3.6, flow: 'back' },
+      { kind: 'barrier', width: 0.6 },
+      { kind: 'travel', width: 3.6, flow: 'fwd' },
+      { kind: 'travel', width: 3.6, flow: 'fwd' },
+    ],
+  };
+  /**
+   * Raised concrete vertices only. A corner and a junction still emit
+   * concrete-ish colours on their unconnected sides, so height is what tells
+   * the barrier from them.
+   */
+  const raisedBand = (v: { positions: number[]; colors: number[] }): number => {
+    const pos = toTriples(v.positions);
+    const col = toTriples(v.colors);
+    const roadY = (pos[0] as number[])[1] as number;
+    return pos.filter(
+      (p, i) => isConcreteBand(col[i] as number[]) && (p[1] as number) > roadY + 0.1,
+    ).length;
+  };
+
+  it('a straight run carries a raised concrete barrier band; a corner and a junction do not', () => {
+    const at = (mask: number): { positions: number[]; colors: number[] } =>
+      roadTileVertices(0, 0, RoadTier.Avenue, mask, flatHeightAt, undefined, barriered);
+    expect(raisedBand(at(N | S))).toBeGreaterThan(0);
+    expect(raisedBand(at(N | E))).toBe(0);
+    expect(raisedBand(at(N | E | S))).toBe(0);
+  });
+
+  it('a motorway carriageway carries none — there is no middle for a wall', () => {
     const straight = roadTileVertices(0, 0, RoadTier.Highway, N | S, flatHeightAt);
-    const corner = roadTileVertices(0, 0, RoadTier.Highway, N | E, flatHeightAt);
-    const junction = roadTileVertices(0, 0, RoadTier.Highway, N | E | S, flatHeightAt);
-
-    const straightBarrierCount = countWhere(straight.colors, isConcreteBand);
-    expect(straightBarrierCount).toBeGreaterThan(0);
-
-    // Corner/junction still emit concrete-ish curb colors on their non-connected
-    // sides, so isolate specifically the RAISED barrier vertices by height.
-    const posTriples = toTriples(straight.positions);
-    const colorTriples = toTriples(straight.colors);
-    const roadY = (posTriples[0] as number[])[1] as number;
-    let sawRaisedBarrier = false;
-    for (let i = 0; i < posTriples.length; i++) {
-      if (
-        isConcreteBand(colorTriples[i] as number[]) &&
-        (posTriples[i] as number[])[1]! > roadY + 0.1
-      ) {
-        sawRaisedBarrier = true;
-      }
-    }
-    expect(sawRaisedBarrier).toBe(true);
-
-    expect(isHighwayDividerEligible(RoadTier.Highway, N | E)).toBe(false);
-    expect(isHighwayDividerEligible(RoadTier.Highway, N | E | S)).toBe(false);
-    void corner;
-    void junction;
+    expect(raisedBand(straight)).toBe(0);
   });
 });
 
@@ -1495,14 +1549,12 @@ describe('roadTileVertices — vertex count sanity per tile kind', () => {
   });
 
   it('a lone tile of a divided road still carries its median — it is a run one tile long, not a bare patch', () => {
-    for (const tier of [RoadTier.Avenue, RoadTier.Highway]) {
-      const lone = roadTileVertices(0, 0, tier, 0, flatHeightAt);
-      const run = roadTileVertices(0, 0, tier, E | W, flatHeightAt);
-      // The same divider geometry a straight run of this road lays down.
-      const band = countWhere(run.colors, isConcreteBand);
-      expect(band).toBeGreaterThan(0);
-      expect(countWhere(lone.colors, isConcreteBand)).toBe(band);
-    }
+    const lone = roadTileVertices(0, 0, RoadTier.Avenue, 0, flatHeightAt);
+    const run = roadTileVertices(0, 0, RoadTier.Avenue, E | W, flatHeightAt);
+    // The same median geometry a straight run of this road lays down.
+    const band = countWhere(run.colors, isConcreteBand);
+    expect(band).toBeGreaterThan(0);
+    expect(countWhere(lone.colors, isConcreteBand)).toBe(band);
   });
 
   it('T-junction (mask N|E|S, popcount 3): the structural quad count matches the hand-derived total, plus non-zero marking geometry', () => {
@@ -3615,5 +3667,197 @@ describe('roadTileVertices — a road bends into a width change whatever it is m
       { n: RoadTier.Gravel },
     );
     expect(ends.near).toBeCloseTo(ends.far, 3);
+  });
+});
+
+describe('a ramp meeting a motorway is drawn as the motorway it is', () => {
+  // A southbound carriageway at (0,0) with a ramp leaving it westward — off
+  // the right-hand side of the traffic, which is where an exit is.
+  const centre = TILE_METERS / 2;
+  const throughHalf = carriagewayHalfWidthMeters(RoadTier.Highway);
+  const rampHalf = carriagewayHalfWidthMeters(RoadTier.Ramp);
+  const node = (w: RoadTier): { positions: number[]; colors: number[] } =>
+    roadTileVertices(
+      0,
+      0,
+      RoadTier.Highway,
+      N | S | W,
+      flatHeightAt,
+      { n: RoadTier.Highway, e: RoadTier.None, s: RoadTier.Highway, w },
+      undefined,
+      undefined,
+      RoadFlow.South,
+    );
+  /** Vertices, as offsets from the tile centre, whose colour passes `pred`. */
+  const where = (
+    geo: { positions: number[]; colors: number[] },
+    pred: (t: readonly number[]) => boolean,
+  ): { dx: number; dz: number }[] => {
+    const out: { dx: number; dz: number }[] = [];
+    for (let i = 0; i < geo.positions.length / 3; i++) {
+      const c = geo.colors.slice(i * 3, i * 3 + 3);
+      if (pred(c)) out.push({ dx: geo.positions[i * 3]! - centre, dz: geo.positions[i * 3 + 2]! - centre });
+    }
+    return out;
+  };
+  const anything = (): boolean => true;
+
+  it('keeps its lane lines and its yellow edge running through, where a junction would stop them', () => {
+    // A motorway meeting a motorway IS a junction, and its paint stops.
+    const junction = node(RoadTier.Highway);
+    expect(countWhere(junction.colors, isMarkingYellow)).toBe(0);
+    const diverge = node(RoadTier.Ramp);
+    expect(countWhere(diverge.colors, isMarkingYellow)).toBeGreaterThan(0);
+    // And it runs the whole length of the tile, edge to edge.
+    const yellow = where(diverge, isMarkingYellow);
+    expect(Math.min(...yellow.map((v) => v.dz))).toBeLessThan(-centre + 0.5);
+    expect(Math.max(...yellow.map((v) => v.dz))).toBeGreaterThan(centre - 0.5);
+  });
+
+  it('paints nothing of the motorway across the ramp’s mouth', () => {
+    // Out past the carriageway on the ramp's side there is only the ramp's own
+    // road; the motorway's lane lines turning to run along it would be wrong.
+    const beyond = where(node(RoadTier.Ramp), isPaint).filter((v) => v.dx < -throughHalf - 0.1);
+    expect(beyond).toEqual([]);
+  });
+
+  it('opens its ramp-side edge line where the ramp leaves, and only there', () => {
+    // The outermost line on the ramp's side is the edge line; across the ramp's
+    // mouth it has to break, or it is a solid line drawn across the exit. It is
+    // found where the tile actually paints it rather than where a shoulder
+    // width says it ought to be, so this asks about the gap and nothing else.
+    // A line is a long quad with vertices only at its ends, so what is asked is
+    // whether any of its TRIANGLES reaches across the middle of the mouth.
+    const geo = node(RoadTier.Ramp);
+    const paint = where(geo, isPaint);
+    const edge = Math.min(...paint.map((v) => v.dx));
+    const tris: { dx: number; dz: number }[][] = [];
+    for (let t = 0; t + 2 < geo.positions.length / 3; t += 3) {
+      const corners = [0, 1, 2].map((k) => ({
+        dx: geo.positions[(t + k) * 3]! - centre,
+        dz: geo.positions[(t + k) * 3 + 2]! - centre,
+        c: geo.colors.slice((t + k) * 3, (t + k) * 3 + 3),
+      }));
+      if (corners.every((v) => isPaint(v.c) && Math.abs(v.dx - edge) < 0.3)) tris.push(corners);
+    }
+    expect(tris.length, 'the edge line is there at all').toBeGreaterThan(0);
+    const spansMouth = tris.filter(
+      (tri) => Math.min(...tri.map((v) => v.dz)) < 0 && Math.max(...tri.map((v) => v.dz)) > 0,
+    );
+    expect(spansMouth).toEqual([]);
+  });
+
+  it('grows no rounded kerb-return corners, since nothing turns there', () => {
+    // A kerb return fills the corner between two arms with asphalt; between the
+    // carriageway and a ramp leaving it there is just the ramp's own edge.
+    const corner = where(node(RoadTier.Ramp), anything).filter(
+      (v) => v.dx < -(throughHalf + 0.1) && Math.abs(v.dz) > rampHalf + 0.1,
+    );
+    expect(corner).toEqual([]);
+  });
+});
+
+describe('a ramp alongside tapers into the motorway rather than turning into it', () => {
+  const centre = TILE_METERS / 2;
+  const half = TILE_METERS / 2;
+  type Geo = { positions: number[]; colors: number[] };
+  const corners = (geo: Geo, t: number) =>
+    [0, 1, 2].map((k) => ({
+      dx: geo.positions[(t + k) * 3]! - centre,
+      dz: geo.positions[(t + k) * 3 + 2]! - centre,
+      c: geo.colors.slice((t + k) * 3, (t + k) * 3 + 3),
+    }));
+  const triangles = (geo: Geo) => {
+    const out: ReturnType<typeof corners>[] = [];
+    for (let t = 0; t + 2 < geo.positions.length / 3; t += 3) out.push(corners(geo, t));
+    return out;
+  };
+  const vertices = (geo: Geo) => triangles(geo).flat();
+
+  describe('on the motorway tile it joins', () => {
+    // Eastbound, with the ramp to the south joining over one half of the tile.
+    const node = (opens: RoadFlow): Geo =>
+      roadTileVertices(
+        0,
+        0,
+        RoadTier.Highway,
+        E | S | W,
+        flatHeightAt,
+        { n: RoadTier.None, e: RoadTier.Highway, s: RoadTier.Ramp, w: RoadTier.Highway },
+        undefined,
+        undefined,
+        RoadFlow.East,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { arm: RoadFlow.South, opens },
+      );
+    /** The triangles of the outermost line on the ramp's side, the edge line. */
+    const edgeLine = (geo: Geo) => {
+      const paint = vertices(geo).filter((v) => isPaint(v.c));
+      const edge = Math.max(...paint.map((v) => v.dz));
+      return triangles(geo).filter((tri) =>
+        tri.every((v) => isPaint(v.c) && Math.abs(v.dz - edge) < 0.3),
+      );
+    };
+    const covers = (tris: ReturnType<typeof edgeLine>, dx: number) =>
+      tris.some((tri) => Math.min(...tri.map((v) => v.dx)) < dx && Math.max(...tri.map((v) => v.dx)) > dx);
+
+    it('opens its edge line over the downstream half at a merge', () => {
+      const line = edgeLine(node(RoadFlow.East));
+      expect(covers(line, -half / 2), 'closed upstream').toBe(true);
+      expect(covers(line, half / 2), 'open downstream').toBe(false);
+    });
+
+    it('opens it over the upstream half at a diverge', () => {
+      const line = edgeLine(node(RoadFlow.West));
+      expect(covers(line, -half / 2), 'open upstream').toBe(false);
+      expect(covers(line, half / 2), 'closed downstream').toBe(true);
+    });
+  });
+
+  describe('on the ramp tile that joins it', () => {
+    // An eastbound ramp with the motorway to the north: arriving from the west
+    // it merges, carrying on to the east it has just diverged.
+    const join = (along: number): Geo =>
+      roadTileVertices(
+        0,
+        0,
+        RoadTier.Ramp,
+        N | along,
+        flatHeightAt,
+        {
+          n: RoadTier.Highway,
+          e: along === E ? RoadTier.Ramp : RoadTier.None,
+          s: RoadTier.None,
+          w: along === W ? RoadTier.Ramp : RoadTier.None,
+        },
+        undefined,
+        undefined,
+        RoadFlow.East,
+      );
+    const plate = (geo: Geo) => vertices(geo).filter((v) => !isPaint(v.c));
+
+    it('merges by reaching the motorway over the downstream half, not by turning into it', () => {
+      const p = plate(join(W));
+      const atEdge = p.filter((v) => v.dz <= -half + 0.1);
+      expect(atEdge.some((v) => v.dx > half / 2), 'reaches the motorway downstream').toBe(true);
+      expect(atEdge.some((v) => v.dx < -0.5), 'keeps off it upstream').toBe(false);
+    });
+
+    it('narrows to nothing at the downstream edge, where the lane has merged', () => {
+      const p = plate(join(W));
+      expect(p.filter((v) => v.dx > half - 0.1 && v.dz > -half + 0.5)).toEqual([]);
+    });
+
+    it('diverges by peeling off over the upstream half', () => {
+      const p = plate(join(E));
+      const atEdge = p.filter((v) => v.dz <= -half + 0.1);
+      expect(atEdge.some((v) => v.dx < -half / 2), 'leaves the motorway upstream').toBe(true);
+      expect(atEdge.some((v) => v.dx > 0.5), 'clear of it downstream').toBe(false);
+      expect(p.filter((v) => v.dx < -half + 0.1 && v.dz > -half + 0.5)).toEqual([]);
+    });
   });
 });
