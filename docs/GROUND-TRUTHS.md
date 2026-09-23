@@ -135,13 +135,30 @@ MUTCD citations below use 11th-edition section numbers.
   no median piece, and a dual carriageway is two runs laid side by side and
   widened independently. —
   [road-model.md](world-sim/road-model.md); `src/data/roads.json`
-- Two carriageways need ground between them: a highway tile is refused where
-  another highway lies across the way the run travels rather than in line with
-  it, because strictly adjacent runs merge into one unpainted slab that traffic
-  drifts sideways across. In line, a corridor's own other half, and a ramp are
-  all untouched, and a run that does not say which way it goes (one tile, a
-  corner) refuses nothing. — [road-model.md](world-sim/road-model.md);
-  `meetRefusal` in `src/tools/tools.ts`
+- Two motorway carriageways may lie on adjacent tiles and never connect. A
+  highway tile is not an arm of a highway lying across its stored flow when
+  each lies across the other's — no mask bit, no graph edge, no junction — so
+  the pair never merges into one unpainted slab that traffic drifts sideways
+  across. The only way onto or off a motorway is a ramp, so a ramp alongside
+  is always an arm. A motorway in line joins; one arriving square-on is a
+  junction. It is decided in the grid, never refused by the road tool, so it
+  holds however the roads were drawn. The mask and the graph read the same
+  predicate, so what is drawn and what is driven cannot disagree. —
+  [road-model.md](world-sim/road-model.md); `isSeparateRoad` and
+  `isSideBySideCarriageway` in `src/world/roads.ts`
+- A sign faces the traffic it serves (MUTCD §2A.17 ¶01), and its facing comes
+  from the direction of approaching traffic, not from the roadway edge it
+  stands on (§2A.17 ¶02). On a one-way carriageway — a motorway, a ramp, a
+  one-way street — both kerbs carry the same stream, so every board and every
+  gantry faces back against the tile's stored flow; only a two-way road takes
+  its facing from which kerb the board is on. A cantilever (signal, exit
+  board) has its face welded to its arm, on local −Z, so it faces its drivers
+  only from their right: a signal stands on the approaching driver's right,
+  and a one-way carriageway's exit stands right of the flow or not at all.
+  The placement decides the facing and the renderer applies it, never
+  recomputing one of its own. — [streets.md](art/streets.md);
+  `CANTILEVER_FACE_Z`, `cantileverSide`, `flowFacingYaw` and
+  `signWorldTransform` in `src/render/roadfurniture.ts`
 - A manhole cover is the top of a sewer and is drawn only on a road whose
   class carries water. A motorway and a ramp carry none, so they carry no
   covers; the test is the water flag, never a tier list. —

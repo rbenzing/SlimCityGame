@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isRailTier, RoadFlow, RoadTier, ZoneType } from '../shared/types';
-import type { GridState, RoadProfile, TilePoint } from '../shared/types';
+import type { GraphEdge, GridState, RoadProfile, TilePoint } from '../shared/types';
 import { applyRoad, computeMask, removeRoad, RoadNetwork } from './roads';
 import { createGrid } from './grid';
 
@@ -131,6 +131,148 @@ describe('computeMask', () => {
     const g = makeGrid(5);
     g.roadTier[idx(5, 0, 0)] = RoadTier.TwoLane;
     expect(computeMask(g, 0, 0)).toBe(0);
+  });
+});
+
+describe('a motorway carriageway keeps to itself', () => {
+  const SIZE = 20;
+
+  /** Lays a run the way a drag lays one: every tile pointing the way it went. */
+  const layRun = (
+    g: GridState,
+    tiles: TilePoint[],
+    flow: RoadFlow,
+    tier: RoadTier = RoadTier.Highway,
+  ): void => {
+    applyRoad(
+      g,
+      tiles,
+      tier,
+      undefined,
+      tier,
+      false,
+      tiles.map(() => flow),
+    );
+  };
+
+  const edgeAt = (net: RoadNetwork, t: TilePoint): GraphEdge => {
+    const found = net.getEdges().find((e) => e.tiles.some((u) => u.x === t.x && u.z === t.z));
+    if (!found) throw new Error(`no graph edge covers ${t.x},${t.z}`);
+    return found;
+  };
+
+  /** Whether the graph offers any way at all to drive from one tile to the other. */
+  const reaches = (net: RoadNetwork, from: TilePoint, to: TilePoint): boolean => {
+    const start = edgeAt(net, from);
+    const target = edgeAt(net, to);
+    if (start.id === target.id) return true;
+    const nodes = net.getNodes();
+    const edges = net.getEdges();
+    const seen = new Set<number>();
+    const queue = [start.a, start.b];
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      for (const edgeId of nodes[id]!.edges) {
+        if (edgeId === target.id) return true;
+        const edge = edges[edgeId]!;
+        queue.push(edge.a, edge.b);
+      }
+    }
+    return false;
+  };
+
+  /** Two carriageways on adjacent columns, drawn against each other. */
+  const twoCarriageways = (): GridState => {
+    const g = makeGrid(SIZE);
+    layRun(g, column(4, 2, 8), RoadFlow.South);
+    layRun(g, column(5, 2, 8), RoadFlow.North);
+    return g;
+  };
+
+  it('does not read the carriageway beside it as an arm', () => {
+    const g = twoCarriageways();
+    expect(computeMask(g, 4, 5)).toBe(1 | 4); // N|S — the run, and nothing east of it
+    expect(computeMask(g, 5, 5)).toBe(1 | 4);
+    expect(computeMask(g, 4, 2)).toBe(4); // the first tile of a run: S only
+    expect(computeMask(g, 5, 8)).toBe(1);
+  });
+
+  it('leaves no way to drive from one carriageway into the other', () => {
+    const net = new RoadNetwork();
+    net.rebuild(twoCarriageways());
+    // One edge each, end to end, and no third edge across the pair.
+    expect(net.getEdges()).toHaveLength(2);
+    expect(reaches(net, { x: 4, z: 5 }, { x: 5, z: 5 })).toBe(false);
+    expect(reaches(net, { x: 4, z: 2 }, { x: 4, z: 8 })).toBe(true);
+  });
+
+  it('still lets a ramp alongside connect, which is the only way on', () => {
+    const g = makeGrid(SIZE);
+    layRun(g, column(4, 2, 8), RoadFlow.South);
+    layRun(g, column(5, 4, 6), RoadFlow.South, RoadTier.Ramp);
+    expect(computeMask(g, 4, 5)).toBe(1 | 2 | 4); // N|S|E — the ramp is an arm
+    expect(computeMask(g, 5, 5)).toBe(1 | 4 | 8);
+    const net = new RoadNetwork();
+    net.rebuild(g);
+    expect(reaches(net, { x: 4, z: 2 }, { x: 5, z: 5 })).toBe(true);
+  });
+
+  it('still joins a motorway that meets it end on', () => {
+    const g = makeGrid(SIZE);
+    layRun(g, row(3, 2, 5), RoadFlow.East);
+    layRun(g, row(3, 6, 9), RoadFlow.East); // a second drag, straight on
+    expect(computeMask(g, 5, 3)).toBe(2 | 8);
+    expect(computeMask(g, 6, 3)).toBe(2 | 8);
+    const net = new RoadNetwork();
+    net.rebuild(g);
+    expect(reaches(net, { x: 2, z: 3 }, { x: 9, z: 3 })).toBe(true);
+  });
+
+  it('still joins a motorway arriving at right angles, which is a junction', () => {
+    // The arriving run points AT the tile it meets. Only a pair that each read
+    // the other as beside them is two carriageways rather than a junction.
+    const g = makeGrid(SIZE);
+    layRun(g, row(5, 2, 8), RoadFlow.East);
+    layRun(g, column(6, 2, 4), RoadFlow.South); // stops one short of the run
+    expect(computeMask(g, 6, 5)).toBe(1 | 2 | 8); // N|E|W — a T
+    expect(computeMask(g, 6, 4)).toBe(1 | 4);
+    const net = new RoadNetwork();
+    net.rebuild(g);
+    expect(reaches(net, { x: 6, z: 2 }, { x: 2, z: 5 })).toBe(true);
+  });
+
+  it('leaves every other class alone: two one-way streets side by side still meet', () => {
+    const g = makeGrid(SIZE);
+    layRun(g, column(4, 2, 8), RoadFlow.South, RoadTier.OneWay);
+    layRun(g, column(5, 2, 8), RoadFlow.North, RoadTier.OneWay);
+    expect(computeMask(g, 4, 5)).toBe(1 | 2 | 4);
+    const net = new RoadNetwork();
+    net.rebuild(g);
+    expect(reaches(net, { x: 4, z: 5 }, { x: 5, z: 5 })).toBe(true);
+  });
+
+  it('leaves a corridor alone: its two halves are one road, not two carriageways', () => {
+    const size = SIZE;
+    const g = makeGrid(size);
+    for (let z = 4; z <= 8; z++) {
+      for (const [x, flow] of [
+        [4, RoadFlow.South | 0b1000],
+        [5, RoadFlow.South | 0b1000 | 0b1_0000],
+      ] as const) {
+        const i = idx(size, x, z);
+        g.roadTier[i] = RoadTier.Avenue;
+        g.roadProfile[i] = 40;
+        g.roadFlow[i] = flow;
+        g.roadMask[i] = computeMask(g, x, z);
+      }
+    }
+    expect(computeMask(g, 4, 6)).toBe(1 | 4);
+    const net = new RoadNetwork();
+    net.rebuild(g);
+    expect(net.getEdges()).toHaveLength(2); // one per half, end to end
+    expect(reaches(net, { x: 4, z: 6 }, { x: 5, z: 6 })).toBe(false);
   });
 });
 

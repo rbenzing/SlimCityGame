@@ -1927,9 +1927,7 @@ describe('a road too wide for its tile is laid as two carriageways', () => {
   });
 });
 
-describe('a dual carriageway is two runs with ground between them', () => {
-  const SIDE_BY_SIDE = 'A highway runs beside a highway with ground between them';
-
+describe('a dual carriageway is two runs laid side by side', () => {
   /** An env whose only existing road is one carriageway along z = 5, x = 0..9. */
   const withRoadAtZ5 = (tier: RoadTier): ReturnType<typeof makeEnv> => {
     const made = makeEnv();
@@ -1938,26 +1936,15 @@ describe('a dual carriageway is two runs with ground between them', () => {
     return made;
   };
 
-  it('refuses a second carriageway laid on the tiles beside the first, and says why', () => {
+  it('lays a second carriageway on the tiles beside the first', () => {
     const { env, previews, sent } = withRoadAtZ5(RoadTier.Highway);
     const tm = new ToolManager(env);
     tm.setTool('road.highway');
     tm.pointerDown(2, 6, 0);
     tm.pointerMove(7, 6, 0); // parallel to the carriageway at z = 5, touching it its whole length
-    expect(previews.at(-1)?.valid).toBe(false);
-    expect(previews.at(-1)?.invalidReason).toBe(SIDE_BY_SIDE);
-    tm.pointerUp(7, 6, 0);
-    expect(sent).toEqual([]);
-  });
-
-  it('lays the same second carriageway with one tile of ground between them', () => {
-    const { env, previews, sent } = withRoadAtZ5(RoadTier.Highway);
-    const tm = new ToolManager(env);
-    tm.setTool('road.highway');
-    tm.pointerDown(2, 7, 0);
-    tm.pointerMove(7, 7, 0);
+    expect(previews.at(-1)?.invalidReason).toBeUndefined();
     expect(previews.at(-1)?.valid).toBe(true);
-    tm.pointerUp(7, 7, 0);
+    tm.pointerUp(7, 6, 0);
     expect(sent).toHaveLength(1);
   });
 
@@ -1969,18 +1956,6 @@ describe('a dual carriageway is two runs with ground between them', () => {
     tm.pointerMove(14, 5, 0); // straight on from the carriageway's far end at (9,5)
     expect(previews.at(-1)?.valid).toBe(true);
     tm.pointerUp(14, 5, 0);
-    expect(sent).toHaveLength(1);
-  });
-
-  it('lets one tile be laid onto the end of a carriageway, where a run has no direction', () => {
-    // A drag of a single tile says nothing about which way its road runs, so
-    // it is read as the continuation it almost always is rather than refused.
-    const { env, previews, sent } = withRoadAtZ5(RoadTier.Highway);
-    const tm = new ToolManager(env);
-    tm.setTool('road.highway');
-    tm.pointerDown(10, 5, 0);
-    expect(previews.at(-1)?.valid).toBe(true);
-    tm.pointerUp(10, 5, 0);
     expect(sent).toHaveLength(1);
   });
 
@@ -2009,17 +1984,6 @@ describe('a dual carriageway is two runs with ground between them', () => {
     };
     beside(withRoadAtZ5(RoadTier.Highway), 'road.ramp');
     beside(withRoadAtZ5(RoadTier.Ramp), 'road.highway');
-  });
-
-  it('leaves ordinary streets alone: one still runs beside another', () => {
-    const { env, previews, sent } = withRoadAtZ5(RoadTier.TwoLane);
-    const tm = new ToolManager(env);
-    tm.setTool('road.two');
-    tm.pointerDown(2, 6, 0);
-    tm.pointerMove(7, 6, 0);
-    expect(previews.at(-1)?.valid).toBe(true);
-    tm.pointerUp(7, 6, 0);
-    expect(sent).toHaveLength(1);
   });
 });
 

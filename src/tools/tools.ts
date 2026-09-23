@@ -22,7 +22,6 @@ import type {
   BuildingCatalogEntry,
   Command,
   CursorChip,
-  RoadClassId,
   RoadSpec,
   RoadTier,
   TilePoint,
@@ -38,7 +37,6 @@ import {
   joinRefusal,
   layRefusal,
   NO_EDITS,
-  roadClass,
   roadRank,
   withArticle,
   presetProfileForTier,
@@ -346,63 +344,6 @@ export function buildGridPath(start: TilePoint, end: TilePoint): TilePoint[] {
   for (const z of rows) for (let x = x0; x <= x1; x++) push(x, z);
   for (const x of cols) for (let z = z0; z <= z1; z++) push(x, z);
   return tiles;
-}
-
-/** Which way a run travels at one of its tiles, where it says. */
-type RunAxis = 'x' | 'z' | null;
-
-/**
- * The axis the run travels at each of its tiles, read off the path itself.
- *
- * `null` is "the run does not say", and it is the honest answer in three
- * places: a drag of a single tile, a corner where the run travels both ways at
- * once, and the seam between the two halves of a corridor, whose tiles are
- * listed one run after the other rather than in one line. Anything reading
- * this treats `null` as no direction to be across, so a rule about what lies
- * beside a run never fires where the run has not said which way it goes.
- */
-function runAxes(tiles: readonly TilePoint[]): RunAxis[] {
-  const between = (a: TilePoint | undefined, b: TilePoint): RunAxis => {
-    if (!a) return null;
-    const dx = Math.abs(a.x - b.x);
-    const dz = Math.abs(a.z - b.z);
-    if (dx === 1 && dz === 0) return 'x';
-    if (dz === 1 && dx === 0) return 'z';
-    return null;
-  };
-  return tiles.map((t, i) => {
-    const behind = between(tiles[i - 1], t);
-    const ahead = between(tiles[i + 1], t);
-    if (behind !== null && ahead !== null && behind !== ahead) return null;
-    return behind ?? ahead;
-  });
-}
-
-/**
- * Why a run of class `mine` may not be laid at a tile where a road of class
- * `theirs` sits one step away at (`dx`, `dz`), across the way the run travels
- * rather than along it — or null when it may.
- *
- * A motorway is ONE carriageway. Two of them on strictly adjacent tiles are
- * not a dual carriageway: each tile counts the other as an arm, so the pair
- * draws as a junction the whole way along, unpainted, and the graph edge
- * between them lets traffic drift out of one carriageway into the oncoming
- * one. A real dual carriageway is two runs with ground between them, so that
- * is what the refusal asks for. A ramp beside a motorway is an interchange and
- * is left alone, and so is a motorway meeting a motorway end on.
- */
-function sideBySideRefusal(
-  mine: RoadClassId,
-  theirs: RoadClassId,
-  axis: RunAxis,
-  dx: number,
-  dz: number,
-): string | null {
-  if (mine !== 'highway' || theirs !== 'highway' || axis === null) return null;
-  const across = axis === 'x' ? dx === 0 : dz === 0;
-  if (!across) return null;
-  const name = roadClass('highway').name.toLowerCase();
-  return `A ${name} runs beside a ${name} with ground between them`;
 }
 
 /**
@@ -733,12 +674,7 @@ export class ToolManager {
       }
     }
     const inRun = new Set(tiles.map((t) => `${t.x},${t.z}`));
-    // A corridor's two halves are one road, and they are laid together, so the
-    // half beside a tile is already inside the run and never reaches the
-    // side-by-side rule below.
-    const axes = runAxes(tiles);
-    for (let i = 0; i < tiles.length; i++) {
-      const t = tiles[i]!;
+    for (const t of tiles) {
       for (const [dx, dz] of [
         [0, -1],
         [1, 0],
@@ -751,8 +687,6 @@ export class ToolManager {
         if (!other) continue;
         const why = joinRefusal(profile.class, other.class);
         if (why) return why;
-        const beside = sideBySideRefusal(profile.class, other.class, axes[i]!, dx, dz);
-        if (beside) return beside;
       }
     }
     return null;

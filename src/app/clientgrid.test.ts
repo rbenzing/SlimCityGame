@@ -6,7 +6,7 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import { TILE_METERS } from '../shared/constants';
-import { RoadTier, ZoneType } from '../shared/types';
+import { RoadFlow, RoadTier, storedFlow, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingInstance, MapData } from '../shared/types';
 import { ClientGridMirror } from './clientgrid';
 import { FIRST_CUSTOM_PROFILE_ID, presetProfileForTier } from '../shared/roadprofile';
@@ -602,6 +602,18 @@ describe('ClientGridMirror — junction control', () => {
       ]),
     ).toBe(true);
     expect(mirror.junctionAt(4, 4)?.auto).toBe(true);
+  });
+
+  it('hands the stored flow to the road tile that carries one, and to no other', () => {
+    // Which way a one-way carriageway runs is not something the render side can
+    // work out from the tiles around it, so the mirror has to pass the byte on.
+    mirror.applyRoadDeltas([
+      { ...road(6, 6), tier: RoadTier.OneWay, flow: storedFlow(RoadFlow.West) },
+      road(6, 7),
+    ]);
+    const tiles = mirror.roadTiles();
+    expect(tiles.find((t) => t.x === 6 && t.z === 6)?.flow).toBe(storedFlow(RoadFlow.West));
+    expect(tiles.find((t) => t.x === 6 && t.z === 7)?.flow).toBeUndefined();
   });
 
   it('hands the control to the road tile that carries it, and to no other', () => {
