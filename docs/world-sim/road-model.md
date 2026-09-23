@@ -51,8 +51,30 @@ graph:
 | arterial  | 4–6   | 60–80 (65) → 18             | g/C 0.49                | 400          | bike, bus, tram, median, sidewalk, verge (no parking)   | yes     | water+power |
 | divided   | 4–8   | 70–90 (80) → 22             | g/C 0.55                | 450          | travel, bus, median, barrier, shoulder, sidewalk, verge | yes     | water+power |
 | one-way   | 1–5   | 40–60 (58) → 16             | g/C 0.67                | 550          | travel (one dir), parking, bike, bus, sidewalk, verge   | yes     | water+power |
-| highway   | 2–8   | 90–120 (100) → 28           | 2,350 veh/h (free-flow) | 1,000        | travel, shoulder, barrier, median                       | no      | power only  |
+| highway   | 3–6   | 90–120 (100) → 28           | 2,350 veh/h (free-flow) | 1,000        | travel (one dir), bus, shoulder, barrier                | no      | power only  |
 | ramp      | 1–2   | 50–80 (60) → 17             | 2,000 veh/h (free-flow) | 850          | travel (one dir), shoulder                              | no      | power only  |
+
+**A motorway is one carriageway, not a road with two halves.** Every other
+class in the table counts both directions together; highway and ramp count
+one, and they are the only classes that do. A dual carriageway is two
+highway runs laid beside each other, each drawn in its own direction with
+the direction arrows, the same way a real one is built and the same way it
+is widened — a third lane is added to the side that needs it, not to both at
+once. That is why the class admits no median piece: the median is the ground
+between two carriageways, not a stripe inside one, and a highway that could
+hold a median inside a single tile would be a road pretending to be two.
+
+Three lanes is the floor because a motorway with two is an expressway. Six is
+the ceiling because of the width budget: three lanes and their shoulders come
+to 15.45 m and four to 19.2 m, both inside the 20 m tile, while five reach
+22.95 m and six 26.7 m — so a five- or six-lane carriageway is a two-tile
+corridor, which is exactly the case the corridor rule already admits, and a
+seventh lane is past anything this grid can draw honestly.
+
+A motorway also has no sewer beneath it. It drains off the shoulder to the
+verge rather than to a buried line under the running surface, which is why
+the class carries no water, and why no manhole cover belongs on it — see
+[Furniture and what gates it](#furniture-and-what-gates-it).
 
 Rail is a twelfth class (5.6 m gauge-and-ballast piece, its own network, no
 lane range) — see [transit-model.md](transit-model.md). Every figure in this
@@ -99,10 +121,11 @@ highway and its ramps; 11 ft (3.35 m) on a rural road, an urban street and a
 collector; 10 ft (3.05 m) on a local street, a one-way and an alley; 9 ft
 (2.75 m) on a dirt road. A class also fixes which total lane counts it is
 built in — not dialled a lane at a time, since a four-lane arterial is a
-kind of road, not a three-lane with one added: a motorway offers 2/4/6/8, an
-urban street or a collector 2/4/6, an arterial or a divided road what its
-own range holds inside those steps, a one-way 1/2/3, a rural or local street
-2, a dirt or alley road 2 only.
+kind of road, not a three-lane with one added: an urban street or a collector
+offers 2/4/6, an arterial or a divided road what its own range holds inside
+those steps, a one-way 1/2/3, a rural or local street 2, a dirt or alley road
+2 only. A motorway offers 3/4/5/6 — every step of its range, because those
+are ONE carriageway's lanes and each is a road somebody builds.
 
 A profile's width against the tile decides what it can be:
 
@@ -565,6 +588,15 @@ No crossing is painted over a **service access**. The footway runs straight
 across an alley's mouth rather than breaking for it, so the pavement IS the way
 across; bars laid in that strip sit underneath it where nobody can see them.
 
+**A manhole cover is the top of a sewer, so it exists only where a sewer
+does.** A cover is drawn on the running surface of a road whose class carries
+water, and on no other. A motorway and a ramp carry none — they drain off the
+shoulder to the verge rather than to a buried line under the carriageway — so
+a cover on one is a hole in a road with nothing beneath it, which is both
+wrong and, at motorway speed, conspicuous. The test is the class's own water
+flag rather than a list of tiers, so a class that stops carrying water stops
+growing covers in the same change.
+
 A deck (an elevated or bridged road tile,
 [Bridges and elevated roads](#bridges-and-elevated-roads)) inverts the
 kerbside rules: no verge, so no parking meters, utility cabinets, manhole
@@ -581,14 +613,26 @@ actually looks like.
 Markings are read off the profile and the junction, never authored
 per-tier:
 
-- **Colour** follows one rule: yellow separates traffic going opposite
-  ways (the dashed centre of a two-lane road, the double solid of an
-  undivided multi-lane road, both edges of a two-way turn lane, which faces
-  opposing traffic on each side); white does everything else — lane lines
-  between same-direction lanes, and the edge line down each side of the
-  carriageway marking where the running surface ends. Every paved road
-  carries edge lines; an unpaved track, a service alley and a rail line
-  carry no paint at all.
+- **Colour** follows one rule, and it is not the obvious one: yellow marks
+  the side of the line that oncoming traffic is on, whether or not that
+  traffic is adjacent. On an undivided road that is the centre — the dashed
+  centre of a two-lane road, the double solid of an undivided multi-lane
+  road, both edges of a two-way turn lane, which faces opposing traffic on
+  each side. On a **one-way carriageway it is the left edge line**, because
+  the far side of that line is where the opposing carriageway is: MUTCD
+  §3B.09 ¶03 requires a solid yellow left edge line on the roadways of
+  divided highways, on one-way streets, and on any ramp in the direction of
+  travel. The right edge line is a solid white line (§3B.09 ¶02), and lane
+  lines between same-direction lanes are broken white (§3B.06 ¶05). Every
+  paved road carries edge lines; an unpaved track, a service alley and a rail
+  line carry no paint at all.
+
+  The shorter rule "yellow separates opposing directions, everything else is
+  white" is what this model used to say, and it is wrong for exactly the
+  roads where it matters most: a motorway carriageway painted white on both
+  sides gives a driver no way to tell the median side from the shoulder side
+  at speed, which is the whole reason the standard makes the distinction.
+
 - **Where the edge line goes** is the inside edge of any reserved lane
   running along the kerb — a shoulder, a bike lane, a bus lane — because
   that is where general traffic actually ends. On a road with a shoulder it

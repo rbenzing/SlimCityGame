@@ -61,16 +61,34 @@ export interface MarkingPlan {
   turnLane: { from: number; to: number } | null;
   /** The profile carries a raised median piece at the centre. */
   hasMedian: boolean;
-  /** The profile is a motorway, whose straight runs carry a concrete divider. */
+  /**
+   * The profile carries a concrete barrier piece, which its straight runs draw
+   * as a divider. It is read off the section rather than assumed of a class: a
+   * barrier separates two carriageways, so on a road that IS one carriageway
+   * it would be a wall down the middle of a running lane.
+   */
   barrier: boolean;
 }
 
 type CentreStyle = 'none' | 'dashed' | 'double' | 'auto';
 
+/**
+ * How a class edges its carriageway.
+ *
+ * `white` is the ordinary two-way road: both edges face the roadside, so both
+ * are white. `yellowLeft` is a road whose roadway carries traffic ONE WAY —
+ * the far side of its left edge is where the opposing carriageway is, so that
+ * edge is solid yellow and the right one solid white (MUTCD §3B.09 ¶02–03).
+ * Which edge is the driver's left is not a property of the class: it depends
+ * on the direction the tile was drawn, which is why the emitter decides it and
+ * the table only says whether there is a left to find.
+ */
+type EdgeLineStyle = 'none' | 'white' | 'yellowLeft';
+
 interface ClassMarkings {
   centre: CentreStyle;
   laneLines: boolean;
-  edgeLines: boolean;
+  edgeLines: EdgeLineStyle;
 }
 
 /**
@@ -82,21 +100,24 @@ interface ClassMarkings {
  */
 const CLASS_MARKINGS: Readonly<Record<RoadClassId, ClassMarkings>> = {
   // An unpaved track and a service alley carry no paint at all.
-  dirt: { centre: 'none', laneLines: false, edgeLines: false },
-  alley: { centre: 'none', laneLines: false, edgeLines: false },
+  dirt: { centre: 'none', laneLines: false, edgeLines: 'none' },
+  alley: { centre: 'none', laneLines: false, edgeLines: 'none' },
   // A rural road runs between shoulders, so its edge line is what tells a
   // driver where the surface ends; a town street's kerb does that job, but
   // the line still marks the gutter a driver should not sit in.
-  rural: { centre: 'auto', laneLines: true, edgeLines: true },
-  local: { centre: 'auto', laneLines: true, edgeLines: true },
-  urban: { centre: 'auto', laneLines: true, edgeLines: true },
-  collector: { centre: 'auto', laneLines: true, edgeLines: true },
-  arterial: { centre: 'double', laneLines: true, edgeLines: true },
-  divided: { centre: 'double', laneLines: true, edgeLines: true },
-  oneWay: { centre: 'none', laneLines: true, edgeLines: true },
-  highway: { centre: 'none', laneLines: true, edgeLines: true },
-  ramp: { centre: 'none', laneLines: true, edgeLines: true },
-  rail: { centre: 'none', laneLines: false, edgeLines: false },
+  rural: { centre: 'auto', laneLines: true, edgeLines: 'white' },
+  local: { centre: 'auto', laneLines: true, edgeLines: 'white' },
+  urban: { centre: 'auto', laneLines: true, edgeLines: 'white' },
+  collector: { centre: 'auto', laneLines: true, edgeLines: 'white' },
+  arterial: { centre: 'double', laneLines: true, edgeLines: 'white' },
+  // Each roadway of a divided road, each one-way street, a motorway
+  // carriageway and every slip road carries traffic one way, so each has a
+  // left edge facing the opposing traffic.
+  divided: { centre: 'double', laneLines: true, edgeLines: 'yellowLeft' },
+  oneWay: { centre: 'none', laneLines: true, edgeLines: 'yellowLeft' },
+  highway: { centre: 'none', laneLines: true, edgeLines: 'yellowLeft' },
+  ramp: { centre: 'none', laneLines: true, edgeLines: 'yellowLeft' },
+  rail: { centre: 'none', laneLines: false, edgeLines: 'none' },
 };
 
 /**
@@ -264,7 +285,7 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
     return inner ?? side * (half - EDGE_LINE_MARGIN_M);
   };
   const edgeLineAt: [number, number] | null =
-    style.edgeLines && half > EDGE_LINE_MARGIN_M
+    style.edgeLines !== 'none' && half > EDGE_LINE_MARGIN_M
       ? [reservedInside(-1), reservedInside(1)]
       : null;
   const isEdgeLine = (at: number): boolean =>
@@ -356,8 +377,7 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
     // one-way street, a ramp — falls back to the left-hand convention.
     const medianAtLeft = pieces[0]?.kind === 'median';
     const medianAtRight = pieces[pieces.length - 1]?.kind === 'median';
-    const facesMedian =
-      profile.class === 'oneWay' || profile.class === 'divided' || profile.class === 'ramp';
+    const facesMedian = style.edgeLines === 'yellowLeft';
     // Which edge the driver's LEFT is depends on which way the road RUNS, not
     // on the order of its pieces. Offsets grow east and south, so a road drawn
     // north or east has its driver's left at the low offsets and one drawn
@@ -412,7 +432,7 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
     bands,
     turnLane,
     hasMedian,
-    barrier: profile.class === 'highway',
+    barrier: pieces.some((p) => p.kind === 'barrier'),
   };
 }
 

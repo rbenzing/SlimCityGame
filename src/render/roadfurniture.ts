@@ -23,6 +23,7 @@ import {
   kerbWidthOf,
   presetProfileForTier,
   rankForTier,
+  roadClass,
 } from '../shared/roadprofile';
 import { armGivesWay, signalAspect } from '../shared/junction';
 import type { SignalAspect } from '../shared/junction';
@@ -510,8 +511,25 @@ function isJunctionTile(tileSet: RoadTileIndex, x: number, z: number): boolean {
  * furniture is placed on yet.
  */
 function hasCentralMedian(tile: FurnitureRoadTile): boolean {
-  const profile = tile.profile ?? presetProfileForTier(tile.tier ?? RoadTier.TwoLane);
-  return profile.pieces.some((p) => p.kind === 'median');
+  return profileOf(tile).pieces.some((p) => p.kind === 'median');
+}
+
+/** The cross-section a tile carries: its own where it has one, else its tier's preset. */
+function profileOf(tile: FurnitureRoadTile): RoadProfile {
+  return tile.profile ?? presetProfileForTier(tile.tier ?? RoadTier.TwoLane);
+}
+
+/**
+ * Whether a sewer runs under this road at all — the class's own water flag.
+ *
+ * A cover is the top of a sewer, so a road with no buried line under its
+ * running surface has nothing to cover. A motorway and its slip road drain off
+ * the shoulder to the verge instead, so a cover on one is a hole in a road
+ * with nothing beneath it. Asking the class rather than listing tiers means a
+ * class that stops carrying water stops growing covers in the same change.
+ */
+function carriesSewer(tile: FurnitureRoadTile): boolean {
+  return roadClass(profileOf(tile).class).carriesWater;
 }
 
 /** The largest neighborCount among this tile's present road-neighbors (0 if none). */
@@ -629,6 +647,7 @@ export function computeManholePlacements(
   const out: ManholePlacement[] = [];
   for (const tile of roadTiles) {
     if (!tierIsPaved(tile.tier)) continue;
+    if (!carriesSewer(tile)) continue; // no buried line here, so nothing to cover
     if (tile.elevated) continue; // a deck has no sewer under it to cover
     if (isTurnTile(tileSet, tile.x, tile.z)) continue; // curved carriageway: no straight-axis seat
     if (isJunctionTile(tileSet, tile.x, tile.z)) continue; // the box is busy enough

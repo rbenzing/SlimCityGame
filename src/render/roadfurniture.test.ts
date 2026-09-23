@@ -831,6 +831,38 @@ describe('a sewer cover sits ON the road, not under it', () => {
     expect(computeManholePlacements(run(RoadTier.Gravel))).toEqual([]);
     expect(computeManholePlacements(run(RoadTier.RailTrack))).toEqual([]);
   });
+
+  it('grows no cover on a road whose class carries no water', () => {
+    const run = (tier: RoadTier): FurnitureRoadTile[] =>
+      Array.from({ length: 60 }, (_, i) => ({ x: i, z: 9, tier }));
+    // A motorway and its slip road drain off the shoulder to the verge, so
+    // there is no buried line under the running surface for a cover to top.
+    expect(computeManholePlacements(run(RoadTier.Highway))).toEqual([]);
+    expect(computeManholePlacements(run(RoadTier.Ramp))).toEqual([]);
+  });
+
+  it('reads the class’s water flag, not the tier the tile happens to carry', () => {
+    const motorway: RoadProfile = {
+      class: 'highway',
+      pieces: [
+        { kind: 'shoulder', width: 1.2 },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'shoulder', width: 3 },
+      ],
+    };
+    const street: RoadProfile = {
+      class: 'local',
+      pieces: [
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+      ],
+    };
+    const run = (profile: RoadProfile): FurnitureRoadTile[] =>
+      Array.from({ length: 60 }, (_, i) => ({ x: i, z: 11, tier: RoadTier.TwoLane, profile }));
+    expect(computeManholePlacements(run(street)).length).toBeGreaterThan(0);
+    expect(computeManholePlacements(run(motorway))).toEqual([]);
+  });
 });
 
 describe('a street gets a mix of cabinets, not a row of identical boxes', () => {

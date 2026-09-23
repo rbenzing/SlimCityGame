@@ -908,11 +908,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   /** Ghost tint/decoration family for the active tool. */
   /**
    * Road tiers where direction is a real property of the road rather than a
-   * drawing artifact: a one-way street, and a highway whose carriageways run
-   * opposite ways. These get flow arrows on the placement ghost.
+   * drawing artifact: a one-way street, a slip road, and a motorway
+   * carriageway, which carries traffic one way and is paired with a second run
+   * to make a dual carriageway. These get flow arrows on the placement ghost.
    */
   const isDirectionalTier = (tier: RoadTier): boolean =>
-    tier === RoadTier.Highway || roadSpecByTier.get(tier)?.oneWay === true;
+    roadSpecByTier.get(tier)?.oneWay === true;
 
   const ghostKindFor = (tool: ToolId): GhostKind => {
     if (tool === 'bulldoze') return 'bulldoze';

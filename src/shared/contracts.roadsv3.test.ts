@@ -229,12 +229,20 @@ describe('roads.json catalog v3 (UI-SPEC §6.7 Roads v3)', () => {
       capacity: 1600,
       unlockMilestone: 1,
     });
+    // Capacity, cost and upkeep have all moved, because the road itself did: it
+    // is ONE carriageway of three lanes rather than four lanes split two and
+    // two, and a dual carriageway is two runs of it. Price follows capacity at
+    // the rate the four-lane motorway was already charged — 90 for 4,000 is
+    // 0.0225 per unit, so 3,000 is 67.5 — which keeps a whole dual carriageway
+    // at 136 for 6,000 against the old 90 for 4,000, the same money for the
+    // same throughput. Charging the old 90 per carriageway would have doubled
+    // the price of a motorway without anyone deciding to.
     expect(byTier(RoadTier.Highway)).toMatchObject({
       name: 'Highway',
-      costPerTile: 90,
-      upkeepPerTile: 1.8,
+      costPerTile: 68,
+      upkeepPerTile: 1.35,
       speed: 28,
-      capacity: 4000,
+      capacity: 3000,
       unlockMilestone: 3,
     });
   });
@@ -243,7 +251,9 @@ describe('roads.json catalog v3 (UI-SPEC §6.7 Roads v3)', () => {
     const highway = byTier(RoadTier.Highway);
     expect(highway?.carriesWater).toBe(false);
     expect(highway?.noiseMult).toBe(3);
-    expect(highway?.oneWay).toBeUndefined();
+    // One carriageway carries traffic one way, so the direction it was drawn
+    // in is a real property of it and the ghost shows the arrows.
+    expect(highway?.oneWay).toBe(true);
     expect(highway?.surface).toBeUndefined(); // paved by default
   });
 
@@ -320,8 +330,11 @@ describe('roads.json catalog v3 (UI-SPEC §6.7 Roads v3)', () => {
     expect(fourLane!.capacity).toBeLessThan(avenue.capacity);
   });
 
-  it('only the one-way street and the ramp are directed; only Gravel is unpaved', () => {
+  it('the motorway, the one-way street and the ramp are directed; only Gravel is unpaved', () => {
+    // Each is ONE carriageway: the way it was drawn is the way its traffic
+    // runs, and a dual carriageway is two of them laid side by side.
     expect(specs.filter((s) => s.oneWay === true).map((s) => s.tier)).toEqual([
+      RoadTier.Highway,
       RoadTier.OneWay,
       RoadTier.Ramp,
     ]);

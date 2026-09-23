@@ -58,13 +58,15 @@ Half-width fraction = carriageway ÷ (2 × `TILE_METERS`):
 | OneWay    | 2             | 7.50 m      | 11.25 m      | 0.188               |
 | Tram      | 2             | 7.50 m      | 11.25 m      | 0.188               |
 | BikeLane  | 2 + cycle     | 11.25 m     | 15.00 m      | 0.281               |
-| Highway   | 4             | 15.00 m     | 15.00 m      | 0.375               |
 | FourLane  | 4             | 15.00 m     | 18.75 m      | 0.375               |
 | BusLane   | 2 + bus       | 15.00 m     | 18.75 m      | 0.375               |
+| Highway   | 3 + shoulders | 15.45 m     | 15.45 m      | 0.386               |
 | Avenue    | 4 + median    | 16.20 m     | 19.95 m      | 0.405               |
 
 Only the tiers with kerbs carry a footway, and it is 1.875 m where present —
-the difference between the carriageway and the full section. The avenue is
+the difference between the carriageway and the full section. The motorway and
+the ramp have neither: their shoulders are inside the paved width and nobody
+walks beside one, so the carriageway is the whole of the section. The avenue is
 the widest thing the game builds and the reason the tile is the size it is:
 four 3.75 m lanes, a 1.2 m refuge and a full footway each side come to
 19.95 m, which fits a 20 m tile with 5 cm to spare and would not fit anything

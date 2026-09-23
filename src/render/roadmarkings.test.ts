@@ -66,13 +66,14 @@ describe('markingPlan paints every preset the way a US road is painted', () => {
     expect(lineAt(p.solid, CENTRE_PAIR_OFFSET_M)).toBe(null);
   });
 
-  it('highway: white lane lines and white edges, no yellow — every lane runs one way', () => {
+  it('highway: a yellow left edge, a white right edge, white lines between the lanes', () => {
+    // Every lane runs the same way, which is exactly the case the standard
+    // paints yellow: the far side of the left edge is where the opposing
+    // carriageway is. Edged white on both sides — which is what this was — a
+    // driver has no way to tell the median side from the verge side at speed.
     const p = markingPlan(presetProfileForTier(RoadTier.Highway));
-    expect(p.solid.every((l) => l.color === 'white')).toBe(true);
     expect(p.dashed.every((l) => l.color === 'white')).toBe(true);
-    expect(lineAt(p.solid, -7)).toBe('white');
-    expect(lineAt(p.solid, 7)).toBe('white');
-    expect(p.barrier).toBe(true);
+    expect(p.solid.map((l) => l.color)).toEqual(['yellow', 'white']);
   });
 
   it('bus lane: a band on each kerb lane, bounded by a solid line rather than a dashed one', () => {
@@ -492,6 +493,86 @@ describe('the yellow edge of a one-way roadway (MUTCD 3B.07)', () => {
       const e = edges(flow);
       expect([e.low, e.high].filter((c) => c === 'yellow').length, `flow ${flow}`).toBe(1);
     }
+  });
+});
+
+describe('a motorway carriageway is edged the way a one-way roadway is (MUTCD 3B.09)', () => {
+  /** A three-lane carriageway between its two shoulders — one direction only. */
+  const carriageway = (): RoadProfile => ({
+    class: 'highway',
+    pieces: [
+      { kind: 'shoulder', width: 1.2 },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+      { kind: 'shoulder', width: 3 },
+    ],
+  });
+  const slipRoad = (): RoadProfile => presetProfileForTier(RoadTier.Ramp);
+  const edges = (profile: RoadProfile, flow: RoadFlow): { low: string; high: string } => {
+    const plan = markingPlan(profile, flow);
+    const sorted = [...plan.solid].sort((a, b) => a.at - b.at);
+    return { low: sorted[0]!.color, high: sorted[sorted.length - 1]!.color };
+  };
+
+  // Offsets grow east and south, so a driver's left is the LOW offset running
+  // north or east and the HIGH offset running south or west. A carriageway
+  // edged white on both sides gives a driver no way to tell the median side
+  // from the verge side at speed, which is the distinction the standard exists
+  // to draw.
+  it('paints the left edge yellow and the right edge white, both ways round', () => {
+    for (const profile of [carriageway(), slipRoad(), presetProfileForTier(RoadTier.Highway)]) {
+      for (const flow of [RoadFlow.North, RoadFlow.East]) {
+        expect(edges(profile, flow).low, `flow ${flow}`).toBe('yellow');
+        expect(edges(profile, flow).high, `flow ${flow}`).toBe('white');
+      }
+      for (const flow of [RoadFlow.South, RoadFlow.West]) {
+        expect(edges(profile, flow).high, `flow ${flow}`).toBe('yellow');
+        expect(edges(profile, flow).low, `flow ${flow}`).toBe('white');
+      }
+    }
+  });
+
+  it('never paints both edges yellow, and never both white', () => {
+    for (const flow of [RoadFlow.None, RoadFlow.North, RoadFlow.East, RoadFlow.South, RoadFlow.West]) {
+      const e = edges(carriageway(), flow);
+      expect([e.low, e.high].filter((c) => c === 'yellow').length, `flow ${flow}`).toBe(1);
+    }
+  });
+
+  it('keeps the lines between its same-way lanes broken white (MUTCD 3B.06)', () => {
+    const p = markingPlan(carriageway(), RoadFlow.North);
+    expect(p.dashed).toHaveLength(2);
+    expect(p.dashed.every((l) => l.color === 'white')).toBe(true);
+  });
+
+  it('runs no concrete divider down the middle of itself', () => {
+    // A barrier separates two carriageways. Down the middle of ONE it is a
+    // wall through the centre lane, which is where a class-keyed divider put
+    // it the moment the motorway stopped being two halves in a tile.
+    expect(markingPlan(carriageway()).barrier).toBe(false);
+    expect(markingPlan(presetProfileForTier(RoadTier.Highway)).barrier).toBe(false);
+    // A section that carries a barrier PIECE still gets one, wherever it is.
+    const withBarrier: RoadProfile = {
+      class: 'divided',
+      pieces: [
+        { kind: 'travel', width: 3.6, flow: 'back' },
+        { kind: 'barrier', width: 0.6 },
+        { kind: 'travel', width: 3.6, flow: 'fwd' },
+      ],
+    };
+    expect(markingPlan(withBarrier).barrier).toBe(true);
+  });
+
+  it('puts both edge lines at the shoulders’ inner edges, so the shoulder lies outside', () => {
+    // Half-width 7.725: the left shoulder ends at -6.525 and the right begins
+    // at 4.725. A line half a metre inside the kerb instead would run down the
+    // middle of the hard shoulder with nothing between it and the traffic.
+    const p = markingPlan(carriageway(), RoadFlow.North);
+    close(
+      p.solid.map((l) => l.at),
+      [-6.525, 4.725],
+    );
   });
 });
 

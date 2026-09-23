@@ -20,9 +20,11 @@ for the surface, the paint, the furniture and the zoning overlay.
   continuous across every seam.
 - **Per-tier markings**: two-lane and one-way carry a single dashed white
   centreline; avenue and four-lane carry a double-solid centre plus dashed
-  lane lines; highway carries solid edge lines just inside the pavement edge;
-  a tram track has NO painted centreline at all — its rails are the centre.
-  Alley and gravel carry no lane paint.
+  lane lines; a motorway or a ramp carries no centre at all and instead edges
+  its one carriageway in solid line at the shoulders' inner faces — yellow on
+  the driver's left, white on the right; a tram track has NO painted
+  centreline at all — its rails are the centre. Alley and gravel carry no
+  lane paint.
 - **Colour-banded transit lanes**: a bus lane's outer, kerbside lane on each
   side paints terracotta (the universal transit-lane tint) with a periodic
   white transit-diamond glyph centred in it, and the dashed lane divider
@@ -75,16 +77,22 @@ for the surface, the paint, the furniture and the zoning overlay.
   simple deterministic tree (trunk plus canopy) roughly every second tile.
   The median and its trees break at intersections and corners so turn paths
   stay clear, giving the tree-lined-boulevard read.
-- **Highway divider**: a straight highway run instead gets a low ~0.6 m
-  concrete barrier band in place of a painted median.
+- **Concrete divider**: a straight run whose cross-section carries a
+  `barrier` piece gets a low ~0.6 m concrete band in place of a painted
+  median. It is read off the section, never assumed of a class: a barrier
+  separates two carriageways, and a motorway is ONE, so a class-keyed divider
+  would wall off its own centre lane.
 - **Sidewalks**: a lighter, raised kerb strip (0.08 m) runs along every road
   edge that borders a non-road tile, vertex-coloured near-white.
-- **Kerb width is what the tile has room for, not an assumed footway.** A
-  two-lane road leaves plenty of tile beyond its carriageway and draws a full
-  footway; an avenue or a motorway is up to 16.2 m of road in a 20 m tile and
-  draws only a narrow kerb, because its shoulders are already inside the
-  paved width. `curbWidthMeters` is the one number everything standing beside
-  a road measures from — lamps, signage, and a bridge deck alike.
+- **Kerb width is what the section declares, clamped to what the tile has
+  left — not an assumed footway.** A two-lane road leaves plenty of tile
+  beyond its carriageway and draws a full footway; a section that declares a
+  kerb and no footway draws only that narrow kerb; a motorway or a ramp
+  declares neither, because its shoulders are already inside the paved width
+  and nobody walks beside one. `curbWidthMeters` is the one number everything
+  standing beside a road measures from — lamps, signage, and a bridge deck
+  alike, which is why a motorway's column stands where its hard shoulder
+  ends.
 - **Nothing curbside seats on a tile with road on both axes** — a turn, a T,
   or a crossroads. Such a tile has no kerb: the lateral offset that clears
   one carriageway lands inside the other. Lamps and parking meters skip those

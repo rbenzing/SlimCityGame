@@ -265,7 +265,15 @@ export const TWO_LANE_HALF_WIDTH_FRACTION = laneFraction(2); // 7.5m carriageway
 // spends on carriageway once the tile can also pay for a full footway each
 // side.
 export const AVENUE_HALF_WIDTH_FRACTION = 16.2 / (2 * TILE_METERS);
-export const HIGHWAY_HALF_WIDTH_FRACTION = laneFraction(4); // 15m (4 lanes + shoulders inside)
+/**
+ * Motorway: one carriageway of three lanes, between a narrow median-side
+ * shoulder and a full hard shoulder on the verge side — 15.45 m. A dual
+ * carriageway is two of these laid side by side.
+ */
+const HIGHWAY_MEDIAN_SHOULDER_M = 1.2;
+const HIGHWAY_HARD_SHOULDER_M = 3.0;
+export const HIGHWAY_HALF_WIDTH_FRACTION =
+  laneFraction(3) + (HIGHWAY_MEDIAN_SHOULDER_M + HIGHWAY_HARD_SHOULDER_M) / (2 * TILE_METERS);
 /** Gravel: rural ~1.5-lane. */
 export const GRAVEL_HALF_WIDTH_FRACTION = laneFraction(1.5);
 /** Alley: single lane. */
@@ -2958,11 +2966,6 @@ function isCollinearMask(mask: number): boolean {
  */
 export function isAvenueMedianEligible(tier: RoadTier, mask: number): boolean {
   return tier === RoadTier.Avenue && isStraightRunMask(mask);
-}
-
-/** Straight (non-corner, non-junction) highway run eligible for the divider barrier — see isAvenueMedianEligible for the popcount >= 1 rationale. */
-export function isHighwayDividerEligible(tier: RoadTier, mask: number): boolean {
-  return tier === RoadTier.Highway && isStraightRunMask(mask);
 }
 
 /** A connected, straight, non-junction tile: one or two collinear arms. */

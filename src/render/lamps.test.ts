@@ -115,10 +115,11 @@ describe('computeLampPlacements (pure)', () => {
     for (const p of preset) expect(p.lateralOffset).toBeLessThan(6);
   });
 
-  it('stands a motorway column on its kerb, not out in the middle of the deck', () => {
-    // A motorway is 15m of carriageway in a 16m tile — half a metre of kerb,
-    // not a footway. A column offset by a full sidewalk width lands beyond the
-    // road entirely, which on a bridge is the blank strip out to the parapet.
+  it('stands a motorway column at the road’s own edge, not out in the middle of the deck', () => {
+    // A motorway has no footway and no kerb — its shoulders are inside the
+    // paved width already — so its columns stand where the hard shoulder ends.
+    // A column offset by a full sidewalk width instead lands beyond the road
+    // entirely, which on a bridge is the blank strip out to the parapet.
     const tier = RoadTier.Highway;
     const road = carriagewayHalfWidthMeters(tier);
     const kerb = curbWidthMeters(tier);
@@ -127,8 +128,8 @@ describe('computeLampPlacements (pure)', () => {
     const placements = computeLampPlacements(strip(4, 0, 8, 'ew').map((t) => ({ ...t, tier })));
     expect(placements.length).toBeGreaterThan(0);
     for (const p of placements) {
-      expect(p.lateralOffset).toBeGreaterThan(road);
-      expect(p.lateralOffset).toBeLessThan(road + kerb);
+      expect(p.lateralOffset).toBeGreaterThanOrEqual(road);
+      expect(p.lateralOffset).toBeLessThan(road + SIDEWALK_WIDTH_M / 2);
     }
   });
 

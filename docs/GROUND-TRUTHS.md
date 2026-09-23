@@ -122,10 +122,23 @@ MUTCD citations below use 11th-edition section numbers.
 - A reserved lane (bus, tram, bike) always costs a general lane and counts
   against the class's lane range; lanes are never dropped silently to fit. —
   [road-model.md](world-sim/road-model.md)
-- Yellow paint only ever separates opposing directions; everything else is
-  white. Every paved road carries edge lines; dirt, alley and rail carry no
-  paint; one-way, highway and ramp paint no centre line. —
+- Yellow marks the side of a line that oncoming traffic is on, adjacent or
+  not. On an undivided road that is the centre line. On a **one-way
+  carriageway — a motorway, a ramp, a one-way street, either half of a
+  divided road — the LEFT edge line is solid yellow and the right is solid
+  white** (MUTCD §3B.09 ¶02–03); lane lines between same-direction lanes are
+  broken white (§3B.06 ¶05). Every paved road carries edge lines; dirt, alley
+  and rail carry no paint; one-way, highway and ramp paint no centre line. —
   [road-model.md](world-sim/road-model.md); `src/render/roadmarkings.ts`
+- A motorway is ONE carriageway, not a road with two halves. Highway and ramp
+  are the only classes whose lane range counts a single direction, they admit
+  no median piece, and a dual carriageway is two runs laid side by side and
+  widened independently. —
+  [road-model.md](world-sim/road-model.md); `src/data/roads.json`
+- A manhole cover is the top of a sewer and is drawn only on a road whose
+  class carries water. A motorway and a ramp carry none, so they carry no
+  covers; the test is the water flag, never a tier list. —
+  [road-model.md](world-sim/road-model.md); `src/render/roadfurniture.ts`
 - A broken line is 3.05 m of paint and a 9.15 m gap (a 12.2 m period), 0.15 m
   wide, with its phase anchored at world metre 0 across every seam. —
   [road-model.md](world-sim/road-model.md); `src/render/roadsmesh.ts`

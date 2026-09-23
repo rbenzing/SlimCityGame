@@ -38,8 +38,11 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   four-lane, and highway. Wider roads carry more traffic; most roads carry power
   and water along their length (highways carry power only). Every road's
   options row sits on its own line under the tabs: pick how many lanes the
-  road runs — a motorway comes in 2, 4, 6 or 8, a town street 2 or 4, an
-  arterial 4 or 6 — put a median or a two-way turn lane down the middle, post
+  road runs — a town street 2 or 4, an arterial 4 or 6, and a motorway 3, 4,
+  5 or 6, which are the lanes of its ONE carriageway (you build a dual
+  carriageway as two runs side by side, each drawn in its own direction, and
+  widen the side that needs it) — put a median or a two-way turn lane down
+  the middle, post
   a speed inside the range its class allows, add a parking lane or a bike lane
   to either kerb, reserve a bus lane, run a tramway, or drop the footways.
   **A bus lane and a tramway are options on a road, not roads of their own** —
@@ -90,9 +93,9 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   neither does staying on it. Where there is room, the motorway also grows an
   **extra lane** beside the slip road — one to get up to speed in where traffic
   joins, one to slow down in where it leaves — opening out of nothing over
-  about eight tiles. A four-lane motorway has no room for it: fifteen metres of
-  carriageway fills the tile, and the motorway that can spare the width is a
-  narrower one. The decision is not
+  about eight tiles. A three-lane carriageway and its shoulders are 15.45 m of
+  a 20 m tile, so there is room; a wider one spends the tile and gets none.
+  The decision is not
   cosmetic — crossing a signal costs a driver real seconds, and drivers reroute
   around a slow junction — and it follows the city: a crossroads that needs
   nothing today earns a give-way, then a stop, as the blocks around it fill,

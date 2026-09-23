@@ -195,7 +195,8 @@ describe('preset carriageways match the widths the render already draws', () => 
 
   it('kerbs and paving follow the render: footways or an explicit kerb, gravel and ballast unpainted', () => {
     expect(hasKerbs(presetProfile(RoadTier.TwoLane))).toBe(true);
-    expect(hasKerbs(presetProfile(RoadTier.Highway))).toBe(true);
+    // A motorway has a shoulder where a street has a kerb and a footway.
+    expect(hasKerbs(presetProfile(RoadTier.Highway))).toBe(false);
     expect(hasKerbs(presetProfile(RoadTier.Avenue))).toBe(true);
     expect(hasKerbs(presetProfile(RoadTier.Gravel))).toBe(false);
     expect(hasKerbs(presetProfile(RoadTier.Alley))).toBe(false);
@@ -430,12 +431,14 @@ describe('composing a profile from a preset and the player’s edits', () => {
       tram: 'none',
       postedKmh: 50,
     });
+    // One carriageway of three: every lane runs forward, so there is no
+    // opposing half for `lanesBack` to be different from.
     expect(editsOf(presetProfileForTier(RoadTier.Highway))).toEqual({
       parking: 'none',
       bike: 'none',
       footways: false,
-      lanes: 2,
-      lanesBack: 2,
+      lanes: 3,
+      lanesBack: 3,
       middle: 'none',
       bus: 'none',
       tram: 'none',
@@ -529,15 +532,27 @@ describe('composing a profile from a preset and the player’s edits', () => {
       // A street's bus lane is kerbside because that is where the stops are.
       // A motorway has no stops to pull in at, and reserving a kerbside lane
       // would cut across every slip road, so the reserved lane is the inner
-      // one — which is where every HOV and express lane actually runs.
+      // one — which is where every HOV and express lane actually runs. On ONE
+      // carriageway the inner side is the median side, inside its own
+      // shoulder; dropping the lane there instead would leave the tool
+      // offering a choice that changes nothing.
       const large = presetProfileForTier(RoadTier.Highway);
       const withBus = composeProfile(large, { ...NO_EDITS, bus: 'both' });
-      expect(kinds(withBus)).toEqual(['travel', 'travel', 'bus', 'bus', 'travel', 'travel']);
-      // Six running lanes is over the tile, so it costs a lane like everywhere
-      // else — and the player says so, rather than lanes vanishing by magic.
+      expect(kinds(withBus)).toEqual([
+        'shoulder',
+        'bus',
+        'bus',
+        'travel',
+        'travel',
+        'travel',
+        'shoulder',
+      ]);
+      // Five running lanes and two shoulders is over the tile, so it costs a
+      // lane like everywhere else — and the player says so, rather than lanes
+      // vanishing by magic.
       expect(profileWidth(withBus)).toBeGreaterThan(TILE_METERS);
       const traded = composeProfile(large, { ...NO_EDITS, bus: 'both', lanes: 1 });
-      expect(kinds(traded)).toEqual(['travel', 'bus', 'bus', 'travel']);
+      expect(kinds(traded)).toEqual(['shoulder', 'bus', 'bus', 'travel', 'shoulder']);
       expect(profileWidth(traded)).toBeLessThanOrEqual(TILE_METERS + 1e-6);
     });
 
@@ -1089,8 +1104,10 @@ describe('lane widths and the lane counts a road is offered, to US standards', (
         expect(n * laneWidthFor(id)).toBeLessThanOrEqual(budget + 1e-6);
     }
     // The big roads reach the counts they always claimed, now that a corridor
-    // is two tiles wide.
-    expect(laneOptionsFor('highway')).toEqual([2, 4, 6, 8]);
+    // is two tiles wide. A motorway's counts are ONE carriageway's lanes, so
+    // every step in its range is a road somebody builds rather than every
+    // other one.
+    expect(laneOptionsFor('highway')).toEqual([3, 4, 5, 6]);
     expect(laneOptionsFor('divided')).toEqual([4, 6, 8]);
     expect(laneOptionsFor('arterial')).toEqual([4, 6]);
     expect(laneOptionsFor('collector')).toEqual([2, 4]);
@@ -1123,15 +1140,14 @@ describe('lane widths and the lane counts a road is offered, to US standards', (
     const four = composeProfile(street, { ...NO_EDITS, lanes: 2, lanesBack: 2 });
     expect(profileWidth(four)).toBeLessThan(TILE_METERS);
     expect(layRefusal(four)).toBe('A local street runs 2 to 3 lanes');
-    // An eight-lane motorway overruns a tile, but a motorway earns a corridor
+    // A six-lane carriageway overruns a tile, but a motorway earns a corridor
     // and two tiles hold it — which is the whole point of wave 6.
-    const eight = composeProfile(presetProfileForTier(RoadTier.Highway), {
+    const six = composeProfile(presetProfileForTier(RoadTier.Highway), {
       ...NO_EDITS,
-      lanes: 4,
-      lanesBack: 4,
+      lanes: 6,
     });
-    expect(fitsTile(eight)).toBe(false);
-    expect(layRefusal(eight)).toBeNull();
+    expect(fitsTile(six)).toBe(false);
+    expect(layRefusal(six)).toBeNull();
     // A class with no corridor is still held to its tile, and told so in those
     // words rather than being offered a second tile it never gets.
     const parkedUp = composeProfile(presetProfileForTier(RoadTier.FourLane), {
@@ -1517,6 +1533,35 @@ describe('the auxiliary lane a motorway grows beside a slip road', () => {
     const widened = withAuxiliaryLane(slimMotorway, 1)!;
     expect(profileWidth(widened)).toBeLessThanOrEqual(TILE_METERS - 2 * KERB_RESERVE_M + 1e-9);
   });
+
+  it('goes inside the hard shoulder, not out past it', () => {
+    // The lane a driver gets up to speed in is road, so it belongs between the
+    // running lanes and the shoulder. Laid outside the shoulder it would sit
+    // past the edge line, on the strip a driver is meant to pull over behind.
+    const motorway = presetProfileForTier(RoadTier.Highway);
+    const kinds = (p: RoadProfile): string[] => p.pieces.map((x) => x.kind);
+    expect(kinds(withAuxiliaryLane(motorway, 1)!)).toEqual([
+      'shoulder',
+      'travel',
+      'travel',
+      'travel',
+      'travel',
+      'shoulder',
+    ]);
+    expect(kinds(withAuxiliaryLane(motorway, -1)!)).toEqual([
+      'shoulder',
+      'travel',
+      'travel',
+      'travel',
+      'travel',
+      'shoulder',
+    ]);
+    // And the edge line still lands on the shoulder's inner face, with the new
+    // lane inside it.
+    const widened = withAuxiliaryLane(motorway, 1)!;
+    expect(widened.pieces[4]).toMatchObject({ kind: 'travel' });
+    expect(widened.pieces[5]).toMatchObject({ kind: 'shoulder', width: 3 });
+  });
 });
 
 describe('two-tile corridors — the widest road the grid holds', () => {
@@ -1719,5 +1764,82 @@ describe('where the median sits across the road', () => {
     // And it is out at the edge, not near the centre of the half's carriageway.
     const halfWidth = carriagewayHalfWidthOf(left);
     expect(Math.abs(medianOffsetOf(left))).toBeGreaterThan(halfWidth / 2);
+  });
+});
+
+describe('a motorway is ONE carriageway, not a road with two halves', () => {
+  const motorway = (): RoadProfile => presetProfileForTier(RoadTier.Highway);
+  const shoulders = (p: RoadProfile): number[] =>
+    p.pieces.filter((x) => x.kind === 'shoulder').map((x) => x.width);
+
+  it('runs every travel lane the same way', () => {
+    const travel = motorway().pieces.filter((p) => p.kind === 'travel');
+    expect(travel.length).toBeGreaterThan(0);
+    expect(travel.every((p) => p.flow === 'fwd')).toBe(true);
+    expect(isOneWayProfile(motorway())).toBe(true);
+  });
+
+  it('counts its lane range in ONE direction, and admits no median', () => {
+    // A median is the ground BETWEEN two carriageways, not a stripe inside
+    // one; a highway that could hold a median in a single tile would be a road
+    // pretending to be two.
+    expect(roadClass('highway').lanes).toEqual({ min: 3, max: 6 });
+    expect(roadClass('highway').admits).not.toContain('median');
+    expect(roadClass('ramp').admits).not.toContain('median');
+  });
+
+  it('is three lanes between a narrow median-side shoulder and a wide verge-side one', () => {
+    const p = motorway();
+    expect(p.pieces.filter((x) => x.kind === 'travel')).toHaveLength(3);
+    expect(laneCount(p)).toBe(3);
+    expect(withinLaneRange(p)).toBe(true);
+    // Real widths: 3.75 m lanes, a 3.0 m hard shoulder on the verge side and
+    // 1.2 m on the median side, as a motorway is actually built.
+    expect(shoulders(p)).toEqual([1.2, 3]);
+    expect(carriagewayWidth(p)).toBeCloseTo(15.45, 6);
+    expect(fitsTile(p)).toBe(true);
+  });
+
+  it('has no kerb to walk behind — a motorway is not a street', () => {
+    expect(hasKerbs(motorway())).toBe(false);
+    expect(hasFootway(motorway())).toBe(false);
+  });
+
+  it('fits a tile up to four lanes and needs a corridor from five', () => {
+    // 3.75 m lanes between a 1.2 m and a 3.0 m shoulder: 15.45 m at three,
+    // 19.2 m at four, 22.95 at five and 26.7 at six.
+    const carriageway = (lanes: number): RoadProfile => ({
+      class: 'highway',
+      pieces: [
+        { kind: 'shoulder', width: 1.2 },
+        ...Array.from({ length: lanes }, () => ({
+          kind: 'travel' as const,
+          width: 3.75,
+          flow: 'fwd' as const,
+        })),
+        { kind: 'shoulder', width: 3 },
+      ],
+    });
+    const widths = [3, 4, 5, 6].map((n) => profileWidth(carriageway(n)));
+    expect(widths.map((w) => Math.round(w * 100) / 100)).toEqual([15.45, 19.2, 22.95, 26.7]);
+    expect([3, 4].map((n) => tilesAcross(carriageway(n)))).toEqual([1, 1]);
+    expect([5, 6].map((n) => tilesAcross(carriageway(n)))).toEqual([2, 2]);
+  });
+
+  it('offers every lane count in its range, since each is one direction now', () => {
+    expect(laneOptionsFor('highway')).toEqual([3, 4, 5, 6]);
+  });
+
+  it('never composes a median into a carriageway, whatever the player asks for', () => {
+    const composed = composeProfile(motorway(), { ...NO_EDITS, middle: 'median' });
+    expect(composed.pieces.some((p) => p.kind === 'median')).toBe(false);
+    expect(admitsAllPieces(composed)).toBe(true);
+  });
+
+  it('is priced and rated as the three lanes it actually carries', () => {
+    const spec = ROAD_PRESETS.find((s) => s.tier === RoadTier.Highway)!;
+    expect(profileCapacity(motorway())).toBe(spec.capacity);
+    expect(spec.capacity).toBe(3 * laneCapacity('highway'));
+    expect(spec.oneWay).toBe(true);
   });
 });
