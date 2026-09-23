@@ -64,6 +64,16 @@ once. That is why the class admits no median piece: the median is the ground
 between two carriageways, not a stripe inside one, and a highway that could
 hold a median inside a single tile would be a road pretending to be two.
 
+**Beside each other means with ground between them**, and the road tool
+refuses the alternative — see
+[How roads meet: rank, replacement and transitions](#how-roads-meet-rank-replacement-and-transitions).
+Two carriageways on strictly adjacent tiles are not a dual carriageway at
+all: each tile counts the other as an arm, so the pair reads as a junction
+its whole length and draws as one unpainted slab with no lane or edge lines,
+and the graph edge between the two lets traffic drift sideways out of one
+carriageway into the oncoming one. The median is the ground, so the ground
+is what the game asks for.
+
 Three lanes is the floor because a motorway with two is an expressway. Six is
 the ceiling because of the width budget: three lanes and their shoulders come
 to 15.45 m and four to 19.2 m, both inside the 20 m tile, while five reach
@@ -490,7 +500,7 @@ which is that join's own treatment, and bending as well would draw the same
 change twice. A junction keeps its own throat rather than tapering, since a
 wide arm meeting narrow ones at a node is a flare, not a transition.
 
-Two joins are refused. A ramp will not run straight onto a dirt road or an
+Three joins are refused. A ramp will not run straight onto a dirt road or an
 alley, which could carry neither its speed nor its volume. And a **motorway
 is limited access**: it meets another motorway, or a ramp, and nothing else.
 That is most of what makes it a motorway rather than a very wide street — a
@@ -500,8 +510,26 @@ motorway accepts rather than what it refuses, so a class added later stays
 off it until somebody decides to let it on. Both unlock at the same
 milestone, so the rule can never leave a player holding a motorway with no
 way to reach it, and the refusal names the ramp rather than only saying no.
-The road tool enforces both (a refusal reads on the cursor chip), which is
-also the only place they can be enforced with the reason visible.
+
+The third is the one a motorway meeting a motorway leaves open: **a highway
+tile is refused where another highway lies ACROSS the way the run travels
+rather than in line with it**, because that is a second carriageway laid
+against the first rather than a road joining it, and two carriageways need
+ground between them. What is across is read off the drag itself, tile by
+tile: the axis a run travels at a tile is the axis its own neighbours in the
+path lie on, and a neighbouring road one step off that axis is beside the
+run. So a highway continuing a highway end to end is untouched however many
+drags it took, a genuine highway junction is untouched, and a ramp beside a
+motorway — which is how an interchange is built — is untouched, since the
+rule asks both classes and the ramp is neither of them. A corridor's own
+other half is untouched too: both halves are laid by one drag and are inside
+the run, which is the same fact `isCorridorPartner` reads everywhere else.
+Where the drag does not say which way it runs — one tile on its own, or the
+corner of an L, which travels both ways at once — nothing is across it and
+nothing is refused, so a motorway can still be extended a tile at a time.
+
+The road tool enforces all three (a refusal reads on the cursor chip), which
+is also the only place they can be enforced with the reason visible.
 
 ## Ramps and interchanges
 

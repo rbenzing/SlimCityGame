@@ -135,6 +135,13 @@ MUTCD citations below use 11th-edition section numbers.
   no median piece, and a dual carriageway is two runs laid side by side and
   widened independently. —
   [road-model.md](world-sim/road-model.md); `src/data/roads.json`
+- Two carriageways need ground between them: a highway tile is refused where
+  another highway lies across the way the run travels rather than in line with
+  it, because strictly adjacent runs merge into one unpainted slab that traffic
+  drifts sideways across. In line, a corridor's own other half, and a ramp are
+  all untouched, and a run that does not say which way it goes (one tile, a
+  corner) refuses nothing. — [road-model.md](world-sim/road-model.md);
+  `meetRefusal` in `src/tools/tools.ts`
 - A manhole cover is the top of a sewer and is drawn only on a road whose
   class carries water. A motorway and a ramp carry none, so they carry no
   covers; the test is the water flag, never a tier list. —
@@ -632,6 +639,14 @@ MUTCD citations below use 11th-edition section numbers.
   hand-edit the package version or the changelog. —
   [commits.md](engineering/standards/commits.md),
   [CONTRIBUTING.md](../CONTRIBUTING.md)
+- The version is one number in three files — `package.json`,
+  `.release-please-manifest.json`, and the newest heading in `CHANGELOG.md` —
+  and they never disagree. release-please writes all three in one commit, so a
+  disagreement means someone edited one by hand. The menu shows the version of
+  the BUILD, baked from `package.json`, which is why a feature branch behind
+  main honestly reads older than the newest release: that is correct, and
+  showing the latest release instead would make the menu lie about what is
+  running. — `src/shared/contracts.version.test.ts`, `vite.config.ts`
 - An accepted decision record is never rewritten beyond typos and links; a
   changed decision gets a new number and the old one is marked superseded.
   Numbers are never reused. — [adr/README.md](engineering/adr/README.md)

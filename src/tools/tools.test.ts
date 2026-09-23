@@ -1927,6 +1927,102 @@ describe('a road too wide for its tile is laid as two carriageways', () => {
   });
 });
 
+describe('a dual carriageway is two runs with ground between them', () => {
+  const SIDE_BY_SIDE = 'A highway runs beside a highway with ground between them';
+
+  /** An env whose only existing road is one carriageway along z = 5, x = 0..9. */
+  const withRoadAtZ5 = (tier: RoadTier): ReturnType<typeof makeEnv> => {
+    const made = makeEnv();
+    made.env.roadProfileAt = (t) =>
+      t.z === 5 && t.x >= 0 && t.x < 10 ? presetProfileForTier(tier) : null;
+    return made;
+  };
+
+  it('refuses a second carriageway laid on the tiles beside the first, and says why', () => {
+    const { env, previews, sent } = withRoadAtZ5(RoadTier.Highway);
+    const tm = new ToolManager(env);
+    tm.setTool('road.highway');
+    tm.pointerDown(2, 6, 0);
+    tm.pointerMove(7, 6, 0); // parallel to the carriageway at z = 5, touching it its whole length
+    expect(previews.at(-1)?.valid).toBe(false);
+    expect(previews.at(-1)?.invalidReason).toBe(SIDE_BY_SIDE);
+    tm.pointerUp(7, 6, 0);
+    expect(sent).toEqual([]);
+  });
+
+  it('lays the same second carriageway with one tile of ground between them', () => {
+    const { env, previews, sent } = withRoadAtZ5(RoadTier.Highway);
+    const tm = new ToolManager(env);
+    tm.setTool('road.highway');
+    tm.pointerDown(2, 7, 0);
+    tm.pointerMove(7, 7, 0);
+    expect(previews.at(-1)?.valid).toBe(true);
+    tm.pointerUp(7, 7, 0);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('lets a separate drag continue a carriageway end to end', () => {
+    const { env, previews, sent } = withRoadAtZ5(RoadTier.Highway);
+    const tm = new ToolManager(env);
+    tm.setTool('road.highway');
+    tm.pointerDown(10, 5, 0);
+    tm.pointerMove(14, 5, 0); // straight on from the carriageway's far end at (9,5)
+    expect(previews.at(-1)?.valid).toBe(true);
+    tm.pointerUp(14, 5, 0);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('lets one tile be laid onto the end of a carriageway, where a run has no direction', () => {
+    // A drag of a single tile says nothing about which way its road runs, so
+    // it is read as the continuation it almost always is rather than refused.
+    const { env, previews, sent } = withRoadAtZ5(RoadTier.Highway);
+    const tm = new ToolManager(env);
+    tm.setTool('road.highway');
+    tm.pointerDown(10, 5, 0);
+    expect(previews.at(-1)?.valid).toBe(true);
+    tm.pointerUp(10, 5, 0);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('lets a five-lane carriageway take its two tiles, which are one road', () => {
+    const { env, previews } = withRoadAtZ5(RoadTier.Highway);
+    env.profileIdFor = () => 12;
+    const tm = new ToolManager(env);
+    tm.setTool('road.highway');
+    tm.setProfileEdits({ ...NO_EDITS, lanes: 5 });
+    tm.pointerDown(2, 10, 0);
+    tm.pointerMove(2, 14, 0); // clear of the carriageway at z = 5
+    const preview = previews.at(-1)!;
+    expect(preview.tiles).toHaveLength(10); // five tiles long, two carriageway halves wide
+    expect(preview.invalidReason).toBeUndefined();
+    expect(preview.valid).toBe(true);
+  });
+
+  it('lets a ramp run alongside a motorway, which is how an interchange is built', () => {
+    const beside = (made: ReturnType<typeof makeEnv>, tool: 'road.ramp' | 'road.highway'): void => {
+      const tm = new ToolManager(made.env);
+      tm.setTool(tool);
+      tm.pointerDown(2, 6, 0);
+      tm.pointerMove(7, 6, 0);
+      expect(made.previews.at(-1)?.invalidReason, tool).toBeUndefined();
+      expect(made.previews.at(-1)?.valid, tool).toBe(true);
+    };
+    beside(withRoadAtZ5(RoadTier.Highway), 'road.ramp');
+    beside(withRoadAtZ5(RoadTier.Ramp), 'road.highway');
+  });
+
+  it('leaves ordinary streets alone: one still runs beside another', () => {
+    const { env, previews, sent } = withRoadAtZ5(RoadTier.TwoLane);
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    tm.pointerDown(2, 6, 0);
+    tm.pointerMove(7, 6, 0);
+    expect(previews.at(-1)?.valid).toBe(true);
+    tm.pointerUp(7, 6, 0);
+    expect(sent).toHaveLength(1);
+  });
+});
+
 describe('Grid mode lays the street grid a drag encloses', () => {
   const at = (tiles: TilePoint[], x: number, z: number): boolean =>
     tiles.some((t) => t.x === x && t.z === z);
