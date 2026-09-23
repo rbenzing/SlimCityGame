@@ -34,7 +34,8 @@ import {
 } from '../shared/roadprofile';
 import { armGivesWay, signalAspect } from '../shared/junction';
 import type { SignalAspect } from '../shared/junction';
-import { sideBySideCarriageways } from '../shared/corridor';
+import { rampJoinAround, rampJoins, sideBySideCarriageways } from '../shared/corridor';
+import type { RampJoin } from '../shared/corridor';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 
 // --- Manhole -----------------------------------------------------------------
@@ -499,13 +500,41 @@ function joins(tileSet: RoadTileIndex, x: number, z: number, nx: number, nz: num
   if (!there) return false;
   const here = tileSet.get(tileKey(x, z));
   if (!here) return true;
-  return !sideBySideCarriageways(
-    tierIsMotorway(here.tier),
-    tierIsMotorway(there.tier),
-    here.flow ?? 0,
-    there.flow ?? 0,
-    nx - x,
-    nz - z,
+  if (
+    sideBySideCarriageways(
+      tierIsMotorway(here.tier),
+      tierIsMotorway(there.tier),
+      here.flow ?? 0,
+      there.flow ?? 0,
+      nx - x,
+      nz - z,
+    )
+  ) {
+    return false;
+  }
+  // A ramp beside the motorway is only an arm of it where it merges or diverges.
+  if (here.tier === RoadTier.Ramp && tierIsMotorway(there.tier))
+    return rampJoins(rampJoinIn(tileSet, x, z, nx, nz));
+  if (tierIsMotorway(here.tier) && there.tier === RoadTier.Ramp)
+    return rampJoins(rampJoinIn(tileSet, nx, nz, x, z));
+  return true;
+}
+
+/** How the ramp tile at (rx, rz) meets the motorway tile at (hx, hz). */
+function rampJoinIn(
+  tileSet: RoadTileIndex,
+  rx: number,
+  rz: number,
+  hx: number,
+  hz: number,
+): RampJoin {
+  return rampJoinAround(
+    (x, z) => tileSet.get(tileKey(x, z))?.tier === RoadTier.Ramp,
+    (x, z) => tileSet.get(tileKey(x, z))?.flow ?? 0,
+    rx,
+    rz,
+    hx,
+    hz,
   );
 }
 
@@ -829,9 +858,14 @@ function exitAhead(tileSet: RoadTileIndex, tile: FurnitureRoadTile): boolean {
   const next = tileSet.get(tileKey(nx, nz));
   if (!next || !tierIsMotorway(next.tier)) return false;
   for (const [lx, lz] of dx === 0 ? [[1, 0], [-1, 0]] : [[0, 1], [0, -1]]) {
-    const ramp = tileSet.get(tileKey(nx + lx!, nz + lz!));
+    const rx = nx + lx!;
+    const rz = nz + lz!;
+    const ramp = tileSet.get(tileKey(rx, rz));
     if (ramp?.tier !== RoadTier.Ramp) continue;
-    if (flowDirection(ramp.flow ?? 0) === flowForStep(lx!, lz!)) return true;
+    const join = rampJoinIn(tileSet, rx, rz, nx, nz);
+    if (join === 'diverge') return true;
+    // A head-on ramp a save still holds leaves where it points away.
+    if (join === 'headOn' && flowDirection(ramp.flow ?? 0) === flowForStep(lx!, lz!)) return true;
   }
   return false;
 }

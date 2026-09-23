@@ -7,7 +7,7 @@
  * two runs that make one road, and the stored flow byte each tile needs to say
  * which half it is.
  */
-import { flowDirection, flowForStep, RoadFlow, storedFlow } from './types';
+import { flowDirection, flowForStep, RoadFlow, stepForFlow, storedFlow } from './types';
 import type { CorridorHalf, TilePoint } from './types';
 
 export interface CorridorRuns {
@@ -114,7 +114,8 @@ function acrossFlow(flow: RoadFlow, dx: number, dz: number): boolean {
  *
  * A motorway is one carriageway running one way, so two of them alongside each
  * other are two roads, not one wide one, and nothing crosses between them — the
- * only way on or off a motorway is a ramp, so a ramp alongside is an arm.
+ * only way on or off a motorway is a ramp, which joins it where it merges or
+ * diverges ({@link rampJoin}).
  * Anything that counts a tile's neighbours has to ask this, for the same reason
  * it asks {@link corridorPartners}: counted as neighbours, a dual carriageway
  * reads as a junction its whole length.
@@ -137,3 +138,97 @@ export function sideBySideCarriageways(
   if (here === RoadFlow.None || there === RoadFlow.None) return false;
   return acrossFlow(here, dx, dz) && acrossFlow(there, -dx, -dz);
 }
+
+/**
+ * How a ramp tile meets the motorway tile beside it.
+ *
+ * - `merge` / `diverge`: it joins, at its end or its start, running the way
+ *   the motorway runs.
+ * - `none`: it is its own road here — the stretch alongside, or an elbow.
+ * - `headOn` / `wrongWay`: it would join running across the motorway or
+ *   against it. The road tool refuses both; a save that holds one keeps it.
+ * - `inline`: the ramp is not beside the motorway but carries on from its end.
+ * - `unknown`: one of them never recorded a direction, so nothing can be said.
+ */
+export type RampJoin = 'merge' | 'diverge' | 'none' | 'headOn' | 'wrongWay' | 'inline' | 'unknown';
+
+/**
+ * How a ramp tile meets a motorway tile one step (dx, dz) away from it.
+ *
+ * A ramp meets a motorway alongside it, never head-on: it bends round and runs
+ * beside the motorway the way it goes, and joins at one tile — its END when it
+ * is an on-ramp, its START when it is an off-ramp. `arriving` is whether a ramp
+ * neighbour's own flow points into this tile, and `ahead` whether a ramp lies
+ * one step along this tile's flow; between them they say where the ramp's run
+ * begins and ends without reading its shape, which is how an elbow beside the
+ * motorway, with a ramp on both sides of it, is told from a start.
+ */
+export function rampJoin(
+  storedRamp: number,
+  storedMotorway: number,
+  dx: number,
+  dz: number,
+  arriving: boolean,
+  ahead: boolean,
+): RampJoin {
+  const ramp = flowDirection(storedRamp);
+  const motorway = flowDirection(storedMotorway);
+  if (ramp === RoadFlow.None || motorway === RoadFlow.None) return 'unknown';
+  if (!acrossFlow(motorway, dx, dz)) return 'inline';
+  const end = !ahead;
+  const start = ahead && !arriving;
+  if (!end && !start) return 'none';
+  if (ramp === motorway) return end ? 'merge' : 'diverge';
+  const { dx: rx, dz: rz } = stepForFlow(ramp);
+  return acrossFlow(motorway, rx, rz) ? 'headOn' : 'wrongWay';
+}
+
+/**
+ * Whether a ramp beside a motorway is an arm of it. Everything but the stretch
+ * where it is its own road joins — a head-on ramp too, so a save that already
+ * holds one still carries traffic; it is the road tool, not the grid, that
+ * refuses to build one.
+ */
+export function rampJoins(join: RampJoin): boolean {
+  return join !== 'none';
+}
+
+/**
+ * How the ramp tile at (rx, rz) meets the motorway tile at (hx, hz), read from
+ * whatever map the caller has: `isRamp` says where a ramp lies, `flowAt` gives
+ * a tile's stored flow. Every layer that counts arms asks this, so the grid,
+ * the approach walk and the furniture agree on where a ramp joins.
+ */
+export function rampJoinAround(
+  isRamp: (x: number, z: number) => boolean,
+  flowAt: (x: number, z: number) => number,
+  rx: number,
+  rz: number,
+  hx: number,
+  hz: number,
+): RampJoin {
+  const own = flowAt(rx, rz);
+  const ahead = stepForFlow(flowDirection(own));
+  const arriving = NEIGHBOUR_STEPS.some(([dx, dz]) => {
+    const px = rx + dx;
+    const pz = rz + dz;
+    if (!isRamp(px, pz)) return false;
+    const step = stepForFlow(flowDirection(flowAt(px, pz)));
+    return px + step.dx === rx && pz + step.dz === rz;
+  });
+  return rampJoin(
+    own,
+    flowAt(hx, hz),
+    hx - rx,
+    hz - rz,
+    arriving,
+    isRamp(rx + ahead.dx, rz + ahead.dz),
+  );
+}
+
+const NEIGHBOUR_STEPS = [
+  [0, -1],
+  [1, 0],
+  [0, 1],
+  [-1, 0],
+] as const;

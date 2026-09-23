@@ -78,7 +78,14 @@
  * only this per-tile cosmetic paint/geometry curves.
  */
 import * as THREE from 'three';
-import { corridorHalfOf, flowDirection, RoadFlow, RoadTileDelta, RoadTier } from '../shared/types';
+import {
+  corridorHalfOf,
+  flowDirection,
+  RoadFlow,
+  RoadTileDelta,
+  RoadTier,
+  stepForFlow,
+} from '../shared/types';
 import type { CorridorHalf } from '../shared/types';
 import type { JunctionControl } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
@@ -124,10 +131,16 @@ import {
   drawnCrossSection,
   narrowingAhead,
   paintedCrossSection,
+  rampMouthAt,
 } from '../shared/approachzone';
 import { paintsGore } from '../shared/taper';
 import type { TaperStep } from '../shared/taper';
-import type { ApproachAhead, ApproachSurroundings, AuxiliaryLane } from '../shared/approachzone';
+import type {
+  ApproachAhead,
+  ApproachSurroundings,
+  AuxiliaryLane,
+  RampMouth,
+} from '../shared/approachzone';
 import {
   approachingLanes,
   approachingSpan,
@@ -2548,6 +2561,106 @@ function pushRunSlice(
 }
 
 /**
+ * The tile where a ramp running alongside a motorway joins it: a taper, not a
+ * corner.
+ *
+ * A driver joining a motorway does not turn into it; the ramp's lane narrows
+ * against the motorway's edge and they drift across into the auxiliary lane.
+ * So the ramp's near edge (the one toward the motorway) spreads out to the tile
+ * boundary by the middle of the tile and runs along it, while its far edge
+ * slants all the way across to meet it at the far corner, closing the lane to
+ * nothing. The ramp's near edge line runs into the motorway where the
+ * motorway's own edge line opens for it; its far edge line follows the taper
+ * to the corner. A diverge is the same shape the other way along the run.
+ *
+ * `u` runs along the ramp's flow and `c` across it toward the motorway.
+ */
+function emitRampTaper(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  along: { x: number; z: number },
+  toward: { x: number; z: number },
+  merging: boolean,
+  half: number,
+  plan: MarkingPlan,
+  plateColor: readonly [number, number, number],
+  hAt: (x: number, z: number) => number,
+): void {
+  const vertical = along.z !== 0;
+  const alongSign = vertical ? along.z : along.x;
+  const acrossSign = vertical ? toward.x : toward.z;
+  // A merge's shape; a diverge reads it mirrored along the run.
+  const mergeNear = (u: number): number =>
+    u >= 0 ? TILE_HALF : half + ((TILE_HALF - half) * (u + TILE_HALF)) / TILE_HALF;
+  const mergeFar = (u: number): number => -half + ((TILE_HALF + half) * (u + TILE_HALF)) / (2 * TILE_HALF);
+  const near = (u: number): number => mergeNear(merging ? u : -u);
+  const far = (u: number): number => mergeFar(merging ? u : -u);
+  const pt = (u: number, c: number): [number, number] => [
+    u * along.x + c * toward.x,
+    u * along.z + c * toward.z,
+  ];
+
+  // Stations on the terrain lattice, plus the middle of the tile, where the
+  // near edge reaches the boundary and changes course.
+  const centreAlong = vertical ? centerZ : centerX;
+  const stations = [
+    ...new Set([
+      ...latticeBreaks(centreAlong - TILE_HALF, centreAlong + TILE_HALF).map(
+        (w) => (w - centreAlong) * alongSign,
+      ),
+      TILE_HALF * alongSign,
+      0,
+    ]),
+  ].sort((a, b) => a - b);
+  for (let k = 0; k < stations.length - 1; k++) {
+    const u0 = stations[k]!;
+    const u1 = stations[k + 1]!;
+    pushRunSlice(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      pt(u0, far(u0)),
+      pt(u0, near(u0)),
+      pt(u1, far(u1)),
+      pt(u1, near(u1)),
+      ROAD_Y_OFFSET,
+      plateColor,
+      hAt,
+    );
+  }
+
+  // The two edge lines: the solid line nearest the motorway, and the one on
+  // the other side, each kept its own distance inside the edge it follows.
+  if (plan.solid.length === 0) return;
+  const inward = (line: MarkingLine): number => line.at * acrossSign;
+  const nearLine = plan.solid.reduce((a, b) => (inward(b) > inward(a) ? b : a));
+  const farLine = plan.solid.reduce((a, b) => (inward(b) < inward(a) ? b : a));
+  const line = (
+    which: MarkingLine,
+    edge: (u: number) => number,
+    margin: number,
+    u0: number,
+    u1: number,
+  ): void => {
+    const w0 = u0 * alongSign;
+    const w1 = u1 * alongSign;
+    const at0 = (edge(u0) - margin) * acrossSign;
+    const at1 = (edge(u1) - margin) * acrossSign;
+    const [lo, hi, atLo, atHi] = w0 <= w1 ? [w0, w1, at0, at1] : [w1, w0, at1, at0];
+    pushMarkingRun(positions, colors, vertical, centerX, centerZ, atLo, atHi, lo, hi, hAt, paintOf(which));
+  };
+  const nearMargin = half - inward(nearLine);
+  const farMargin = -half - inward(farLine);
+  // The near line meets the motorway where its edge line opens: halfway along.
+  if (merging) line(nearLine, near, nearMargin, -TILE_HALF, 0);
+  else line(nearLine, near, nearMargin, 0, TILE_HALF);
+  line(farLine, far, farMargin, -TILE_HALF, TILE_HALF);
+}
+
+/**
  * A straight run whose carriageway changes width across the tile, laid in one
  * piece: the asphalt AND the footway strip beside it follow the same bending
  * kerb line, so the road narrows into its neighbour instead of stepping at the
@@ -3430,6 +3543,12 @@ export function roadTileVertices(
    * a caller that can see both junctions.
    */
   sharedTurn?: boolean,
+  /**
+   * Where a ramp running alongside joins this motorway tile: its side, and the
+   * half of the tile it joins over. Set only by a caller that can see the
+   * ramp's run; without it a ramp's mouth is centred on the tile.
+   */
+  rampMouth?: RampMouth,
 ): { positions: number[]; colors: number[] } {
   if (!Number.isInteger(mask) || mask < 0 || mask > 15) {
     throw new RangeError(`roadTileVertices: mask ${mask} out of the 4-bit range 0..15`);
@@ -3507,6 +3626,60 @@ export function roadTileVertices(
   ]);
   // The axis the motorway runs along at a ramp node; the other is the ramp's.
   const rampNodeVertical = rampNode && hasN && hasS;
+  /**
+   * The stretch along the run a ramp's mouth takes up: the half of the tile a
+   * ramp running alongside joins over, or — for a head-on ramp — its own width
+   * centred on the tile.
+   */
+  const mouthSpan = (rampHalf: number): { from: number; to: number } => {
+    if (!rampMouth) return { from: -rampHalf, to: rampHalf };
+    const towardHigh = rampMouth.opens === RoadFlow.East || rampMouth.opens === RoadFlow.South;
+    return towardHigh ? { from: 0, to: TILE_HALF } : { from: -TILE_HALF, to: 0 };
+  };
+
+  // A ramp running alongside a motorway joins it on this tile: its own road
+  // along its flow on one side, the motorway beside it on the other. That is a
+  // taper into the motorway, not a corner turning into it.
+  const rampTaper = ((): {
+    along: { x: number; z: number };
+    toward: { x: number; z: number };
+    merging: boolean;
+  } | null => {
+    if (own.class !== 'ramp' || connections !== 2) return null;
+    const direction = flowDirection(flow);
+    if (direction === RoadFlow.None) return null;
+    const a = stepForFlow(direction);
+    const bitFor = (dx: number, dz: number): number =>
+      dz === -1 ? NORTH : dx === 1 ? EAST : dz === 1 ? SOUTH : WEST;
+    const tierFor = (dx: number, dz: number): RoadTier =>
+      dz === -1 ? neighbors.n : dx === 1 ? neighbors.e : dz === 1 ? neighbors.s : neighbors.w;
+    const ahead = (mask & bitFor(a.dx, a.dz)) !== 0;
+    const behind = (mask & bitFor(-a.dx, -a.dz)) !== 0;
+    if (ahead === behind) return null;
+    for (const side of [1, -1]) {
+      const l = { x: -a.dz * side, z: a.dx * side };
+      if ((mask & bitFor(l.x, l.z)) !== 0 && tierFor(l.x, l.z) === RoadTier.Highway) {
+        return { along: { x: a.dx, z: a.dz }, toward: l, merging: behind };
+      }
+    }
+    return null;
+  })();
+  if (rampTaper) {
+    emitRampTaper(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      rampTaper.along,
+      rampTaper.toward,
+      rampTaper.merging,
+      coreHalf,
+      plan,
+      plateColor,
+      hAt,
+    );
+    return { positions, colors };
+  }
   // A roundabout always breaks them: there is an island where the centre line
   // would run, and no road runs THROUGH a roundabout.
   const breaksMarkings =
@@ -3668,20 +3841,25 @@ export function roadTileVertices(
     // Each is as wide as the core, and the corner fills below shape a narrower
     // arm into it — except at a merge or a diverge, which has no corners, so a
     // ramp's extension is only as wide as the ramp.
-    const extensionHalf = (half: number): number =>
-      rampNode && half > 0 ? Math.min(half, coreHalf) : coreHalf;
-    const extN = extensionHalf(neighborHalves.n);
-    const extS = extensionHalf(neighborHalves.s);
-    const extE = extensionHalf(neighborHalves.e);
-    const extW = extensionHalf(neighborHalves.w);
+    // A ramp running alongside joins over one half of the tile, so its
+    // extension covers that half rather than a strip centred on the tile.
+    const extensionSpan = (arm: RoadFlow, half: number): { from: number; to: number } => {
+      if (rampNode && rampMouth?.arm === arm) return mouthSpan(half);
+      const h = rampNode && half > 0 ? Math.min(half, coreHalf) : coreHalf;
+      return { from: -h, to: h };
+    };
+    const extN = extensionSpan(RoadFlow.North, neighborHalves.n);
+    const extS = extensionSpan(RoadFlow.South, neighborHalves.s);
+    const extE = extensionSpan(RoadFlow.East, neighborHalves.e);
+    const extW = extensionSpan(RoadFlow.West, neighborHalves.w);
     if (hasN) {
       pushLocalRect(
         positions,
         colors,
         centerX,
         centerZ,
-        -extN,
-        extN,
+        extN.from,
+        extN.to,
         -TILE_HALF,
         -coreHalf,
         ROAD_Y_OFFSET,
@@ -3695,8 +3873,8 @@ export function roadTileVertices(
         colors,
         centerX,
         centerZ,
-        -extS,
-        extS,
+        extS.from,
+        extS.to,
         coreHalf,
         TILE_HALF,
         ROAD_Y_OFFSET,
@@ -3712,8 +3890,8 @@ export function roadTileVertices(
         centerZ,
         coreHalf,
         TILE_HALF,
-        -extE,
-        extE,
+        extE.from,
+        extE.to,
         ROAD_Y_OFFSET,
         plateColor,
         hAt,
@@ -3727,8 +3905,8 @@ export function roadTileVertices(
         centerZ,
         -TILE_HALF,
         -coreHalf,
-        -extW,
-        extW,
+        extW.from,
+        extW.to,
         ROAD_Y_OFFSET,
         plateColor,
         hAt,
@@ -4078,8 +4256,7 @@ export function roadTileVertices(
         rampHalf: number,
       ): { side: 1 | -1; from: number; to: number } => ({
         side: sideSign,
-        from: -rampHalf,
-        to: rampHalf,
+        ...mouthSpan(rampHalf),
       });
       const verticalGap = !rampNodeVertical
         ? undefined
@@ -5449,6 +5626,7 @@ export class RoadMeshRenderer {
         this.narrowingAt(tile.x, tile.z),
         this.auxiliaryAt(tile.x, tile.z),
         this.sharedTurnAt(tile.x, tile.z),
+        rampMouthAt(tile.x, tile.z, this.surroundings),
       );
       for (const n of vertices.positions) positions.push(n);
       for (const n of vertices.colors) colors.push(n);

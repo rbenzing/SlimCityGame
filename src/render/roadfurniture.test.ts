@@ -1138,3 +1138,61 @@ describe('a dual carriageway is signed as two motorways, not a junction', () => 
     }
   });
 });
+
+describe('a ramp that runs alongside the motorway before it joins', () => {
+  const motorway = (): FurnitureRoadTile[] =>
+    strip(1, 0, 40, 'ew', RoadTier.Highway).map((t) => ({ ...t, flow: RoadFlow.East }));
+  const ramp = (x: number, z: number, flow: RoadFlow): FurnitureRoadTile => ({
+    x,
+    z,
+    tier: RoadTier.Ramp,
+    flow,
+  });
+  /** An off-ramp diverging at (20,1) from (20,2), running east, elbowing south at (24,2). */
+  const offRamp = (): FurnitureRoadTile[] => [
+    ...motorway(),
+    ramp(20, 2, RoadFlow.East),
+    ramp(21, 2, RoadFlow.East),
+    ramp(22, 2, RoadFlow.East),
+    ramp(23, 2, RoadFlow.East),
+    ramp(24, 2, RoadFlow.South),
+    ramp(24, 3, RoadFlow.South),
+    ramp(24, 4, RoadFlow.South),
+  ];
+  /**
+   * An on-ramp coming up column 22, elbowing east at (22,2), merging at
+   * (26,2). Its stretch passes x = 24, where the motorway has a gantry.
+   */
+  const onRamp = (): FurnitureRoadTile[] => [
+    ...motorway(),
+    ramp(22, 4, RoadFlow.North),
+    ramp(22, 3, RoadFlow.North),
+    ramp(22, 2, RoadFlow.East),
+    ramp(23, 2, RoadFlow.East),
+    ramp(24, 2, RoadFlow.East),
+    ramp(25, 2, RoadFlow.East),
+    ramp(26, 2, RoadFlow.East),
+  ];
+
+  it('signs the exit once, on the motorway tile before the diverge', () => {
+    const exits = computeSignPlacements(offRamp()).filter((s) => s.type === 'exit');
+    expect(exits.map((s) => [s.x, s.z])).toEqual([[19, 1]]);
+  });
+
+  it('puts up no exit for a ramp that merges', () => {
+    expect(computeSignPlacements(onRamp()).filter((s) => s.type === 'exit')).toEqual([]);
+  });
+
+  it('keeps the motorway’s gantries beside the stretch, which is a plain run', () => {
+    // Counted as arms, the ramp alongside would make every motorway tile it
+    // passes a junction, and no gantry could stand on any of them.
+    const alone = computeSignPlacements(motorway()).filter((s) => s.type === 'gantry');
+    const withRamp = computeSignPlacements(onRamp()).filter(
+      (s) => s.type === 'gantry' && s.z === 1,
+    );
+    const nearRamp = (xs: readonly { x: number }[]): number[] =>
+      xs.map((s) => s.x).filter((x) => x >= 22 && x < 26);
+    expect(nearRamp(alone).length, 'there is a gantry to keep').toBeGreaterThan(0);
+    expect(nearRamp(withRamp)).toEqual(nearRamp(alone));
+  });
+});

@@ -151,15 +151,28 @@ MUTCD citations below use 11th-edition section numbers.
   highway tile is not an arm of a highway lying across its stored flow when
   each lies across the other's — no mask bit, no graph edge, no junction — so
   the pair never merges into one unpainted slab that traffic drifts sideways
-  across. The only way onto or off a motorway is a ramp, so a ramp alongside
-  is always an arm. A motorway in line joins; one arriving square-on is a
-  junction. It is decided in the grid, never refused by the road tool, so it
+  across. The only way onto or off a motorway is a ramp, which joins it where
+  it merges or diverges (below). A motorway in line joins; one arriving
+  square-on is a junction. It is decided in the grid, never refused by the road tool, so it
   holds however the roads were drawn. The mask, the graph, the approach walk
   and the road furniture all read the one predicate, so what is drawn, what is
   driven and what is signed cannot disagree — counted as an arm anywhere, a
   second carriageway took every gantry off the first. —
   [road-model.md](world-sim/road-model.md); `sideBySideCarriageways` in
   `src/shared/corridor.ts`
+- A ramp meets a motorway alongside it, never head-on. It elbows round to run
+  beside the motorway the way it goes and joins at one tile: an on-ramp at its
+  END (a ramp arriving, none ahead), an off-ramp at its START (a ramp ahead,
+  none arriving) — read from stored flows, never from shape, which is how an
+  elbow beside the motorway joins nothing. Everywhere else beside it the ramp
+  is its own road. A ramp that would join across the motorway or against it is
+  refused by the road tool, with a reason saying what to do; a save that
+  already holds one keeps it connected. The join tile draws as a taper into
+  the motorway — the lane narrowing to nothing against its edge — never as a
+  corner, and the motorway's edge line opens over the downstream half at a
+  merge and the upstream half at a diverge. — [road-model.md](world-sim/road-model.md);
+  `rampJoin` and `rampJoinAround` in `src/shared/corridor.ts`, `rampMouthAt`
+  in `src/shared/approachzone.ts`, `emitRampTaper` in `src/render/roadsmesh.ts`
 - A sign faces the traffic it serves (MUTCD §2A.17 ¶01), and its facing comes
   from the direction of approaching traffic, not from the roadway edge it
   stands on (§2A.17 ¶02). On a one-way carriageway — a motorway, a ramp, a

@@ -33,7 +33,8 @@ import {
 import type { TaperStep } from './taper';
 import type { CorridorHalf, JunctionControl, RoadClassId, RoadProfile } from './types';
 import { RoadFlow } from './types';
-import { corridorPartners, sideBySideCarriageways } from './corridor';
+import { corridorPartners, rampJoinAround, rampJoins, sideBySideCarriageways } from './corridor';
+import type { RampJoin } from './corridor';
 
 /** What the walk needs to know about the tiles around it. */
 export interface ApproachSurroundings {
@@ -216,7 +217,31 @@ function isSeparateRoad(
       world.flowAt(x + dx, z + dz),
       dx,
       dz,
-    )
+    ) ||
+    (here?.class === 'ramp' &&
+      there?.class === 'highway' &&
+      !rampJoins(rampJoinWith(x, z, x + dx, z + dz, world))) ||
+    (here?.class === 'highway' &&
+      there?.class === 'ramp' &&
+      !rampJoins(rampJoinWith(x + dx, z + dz, x, z, world)))
+  );
+}
+
+/** How the ramp tile at (rx, rz) meets the motorway tile at (hx, hz). */
+function rampJoinWith(
+  rx: number,
+  rz: number,
+  hx: number,
+  hz: number,
+  world: ApproachSurroundings,
+): RampJoin {
+  return rampJoinAround(
+    (x, z) => world.profileAt(x, z)?.class === 'ramp',
+    (x, z) => world.flowAt(x, z),
+    rx,
+    rz,
+    hx,
+    hz,
   );
 }
 
@@ -540,9 +565,9 @@ export function auxiliaryLaneAt(
       const degree = roadDegree(jx, jz, world);
       if (degree >= 3) {
         const ramp = rampArmAt(jx, jz, toward, world);
-        // A slip road that never recorded a direction cannot say whether it is
-        // joined or left by, and an auxiliary lane is one or the other.
-        if (!ramp || ramp.flow === RoadFlow.None) return undefined;
+        // A slip road that cannot say whether it is joined or left by gets no
+        // lane, since an auxiliary lane is one or the other.
+        if (!ramp || ramp.leaving === undefined) return undefined;
         const { leftSign } = approachAxis(toward);
         const side = (ramp.onTheLeft ? leftSign : -leftSign) as -1 | 1;
         // Both lanes stand on the slip road's own side of the road, which is
@@ -551,9 +576,7 @@ export function auxiliaryLaneAt(
         // the way it is walking IS that direction: walking toward the junction
         // its driver's kerb is -leftSign.
         const servesThisWay = side === -leftSign;
-        // The slip road is LEFT by when its own direction points away from the
-        // junction, and joined from when it points into it.
-        const leaving = ramp.flow === ramp.arm;
+        const leaving = ramp.leaving;
         // A lane to slow down in runs up to the turn-off; a lane to speed up in
         // runs on beyond the join. Anything else is the other direction's.
         if (leaving !== servesThisWay) return undefined;
@@ -565,6 +588,42 @@ export function auxiliaryLaneAt(
       }
       if (degree !== 2 || !world.hasRoad(jx + dx, jz + dz)) break;
     }
+  }
+  return undefined;
+}
+
+/**
+ * Where a ramp running alongside meets the motorway tile it joins: which side
+ * of the tile it lies on, and which half of the tile, along the run, it joins
+ * over.
+ */
+export interface RampMouth {
+  /** The way from the motorway tile to the ramp. */
+  arm: RoadFlow;
+  /** The way along the run to the half the ramp joins over. */
+  opens: RoadFlow;
+}
+
+/**
+ * The mouth of a ramp that joins this motorway tile from alongside, or
+ * undefined where no ramp does.
+ *
+ * A merging ramp narrows into the auxiliary lane over the downstream half of
+ * the tile, so that is where the motorway's edge line lets it in; a diverging
+ * ramp peels away over the upstream half. A head-on ramp a save still holds
+ * has no such half and keeps the mouth centred on the tile.
+ */
+export function rampMouthAt(x: number, z: number, world: ApproachSurroundings): RampMouth | undefined {
+  if (!isRampNodeAt(x, z, world)) return undefined;
+  const run = world.flowAt(x, z);
+  if (run === RoadFlow.None) return undefined;
+  for (const [dx, dz, arm] of STEPS) {
+    if (arm === run || arm === oppositeFlow(run)) continue;
+    if (world.profileAt(x + dx, z + dz)?.class !== 'ramp') continue;
+    if (isSeparateRoad(x, z, dx, dz, world)) continue;
+    const join = rampJoinWith(x + dx, z + dz, x, z, world);
+    if (join === 'merge') return { arm, opens: run };
+    if (join === 'diverge') return { arm, opens: oppositeFlow(run) };
   }
   return undefined;
 }
@@ -586,12 +645,12 @@ function auxiliaryLaneOnNode(
   const run = world.flowAt(x, z);
   if (run === RoadFlow.None) return undefined;
   const ramp = rampArmAt(x, z, run, world);
-  if (!ramp || ramp.flow === RoadFlow.None) return undefined;
+  if (!ramp || ramp.leaving === undefined) return undefined;
   const { leftSign } = approachAxis(run);
   return {
     side: (ramp.onTheLeft ? leftSign : -leftSign) as -1 | 1,
     openness: 1,
-    merging: ramp.flow !== ramp.arm,
+    merging: !ramp.leaving,
   };
 }
 
@@ -605,20 +664,40 @@ function rampArmAt(
   jz: number,
   toward: RoadFlow,
   world: ApproachSurroundings,
-): { onTheLeft: boolean; arm: RoadFlow; flow: RoadFlow } | undefined {
+): { onTheLeft: boolean; arm: RoadFlow; leaving: boolean | undefined } | undefined {
   const { leftSign, vertical } = approachAxis(toward);
   for (const [dx, dz, arm] of STEPS) {
     if (arm === toward || arm === oppositeFlow(toward)) continue;
     const profile = world.profileAt(jx + dx, jz + dz);
     if (!profile || profile.class !== 'ramp') continue;
+    // A ramp running alongside without joining here is not this node's arm.
+    if (isSeparateRoad(jx, jz, dx, dz, world)) continue;
     // The arm lies on the driver's left when its own cross-offset shares the
     // sign of that side.
     const across = vertical ? dx : dz;
     return {
       onTheLeft: across * leftSign > 0,
       arm,
-      flow: world.flowAt(jx + dx, jz + dz),
+      leaving: rampLeaves(rampJoinWith(jx + dx, jz + dz, jx, jz, world), world.flowAt(jx + dx, jz + dz), arm),
     };
+  }
+  return undefined;
+}
+
+/**
+ * Whether a ramp arm is LEFT by, rather than joined from, or undefined where
+ * that cannot be said. A ramp alongside says it by where it joins: at its start
+ * it is an exit, at its end an entry. A head-on ramp a save still holds says it
+ * by pointing away from the motorway or into it.
+ */
+function rampLeaves(join: RampJoin, flow: RoadFlow, arm: RoadFlow): boolean | undefined {
+  if (join === 'diverge') return true;
+  if (join === 'merge') return false;
+  // Head-on — or beside a motorway old enough to have no direction of its own:
+  // the ramp's own direction still says it, pointing out along the arm or in.
+  if (join === 'headOn' || join === 'unknown') {
+    if (flow === arm) return true;
+    if (flow === oppositeFlow(arm)) return false;
   }
   return undefined;
 }

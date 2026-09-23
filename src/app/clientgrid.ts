@@ -270,6 +270,12 @@ export class ClientGridMirror {
     return this.profileById(this.roadProfile[this.idx(x, z)] ?? 0);
   }
 
+  /** The stored flow byte of a tile: which way it was drawn, 0 off-road or where nothing said. */
+  flowAt(x: number, z: number): number {
+    if (!this.inBounds(x, z)) return 0;
+    return this.roadFlow[this.idx(x, z)] ?? 0;
+  }
+
   /** The lowest id not yet holding a custom profile — what a new definition should claim. */
   nextCustomProfileId(): number {
     let id = FIRST_CUSTOM_PROFILE_ID;

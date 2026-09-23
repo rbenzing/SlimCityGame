@@ -3756,3 +3756,108 @@ describe('a ramp meeting a motorway is drawn as the motorway it is', () => {
     expect(corner).toEqual([]);
   });
 });
+
+describe('a ramp alongside tapers into the motorway rather than turning into it', () => {
+  const centre = TILE_METERS / 2;
+  const half = TILE_METERS / 2;
+  type Geo = { positions: number[]; colors: number[] };
+  const corners = (geo: Geo, t: number) =>
+    [0, 1, 2].map((k) => ({
+      dx: geo.positions[(t + k) * 3]! - centre,
+      dz: geo.positions[(t + k) * 3 + 2]! - centre,
+      c: geo.colors.slice((t + k) * 3, (t + k) * 3 + 3),
+    }));
+  const triangles = (geo: Geo) => {
+    const out: ReturnType<typeof corners>[] = [];
+    for (let t = 0; t + 2 < geo.positions.length / 3; t += 3) out.push(corners(geo, t));
+    return out;
+  };
+  const vertices = (geo: Geo) => triangles(geo).flat();
+
+  describe('on the motorway tile it joins', () => {
+    // Eastbound, with the ramp to the south joining over one half of the tile.
+    const node = (opens: RoadFlow): Geo =>
+      roadTileVertices(
+        0,
+        0,
+        RoadTier.Highway,
+        E | S | W,
+        flatHeightAt,
+        { n: RoadTier.None, e: RoadTier.Highway, s: RoadTier.Ramp, w: RoadTier.Highway },
+        undefined,
+        undefined,
+        RoadFlow.East,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { arm: RoadFlow.South, opens },
+      );
+    /** The triangles of the outermost line on the ramp's side, the edge line. */
+    const edgeLine = (geo: Geo) => {
+      const paint = vertices(geo).filter((v) => isPaint(v.c));
+      const edge = Math.max(...paint.map((v) => v.dz));
+      return triangles(geo).filter((tri) =>
+        tri.every((v) => isPaint(v.c) && Math.abs(v.dz - edge) < 0.3),
+      );
+    };
+    const covers = (tris: ReturnType<typeof edgeLine>, dx: number) =>
+      tris.some((tri) => Math.min(...tri.map((v) => v.dx)) < dx && Math.max(...tri.map((v) => v.dx)) > dx);
+
+    it('opens its edge line over the downstream half at a merge', () => {
+      const line = edgeLine(node(RoadFlow.East));
+      expect(covers(line, -half / 2), 'closed upstream').toBe(true);
+      expect(covers(line, half / 2), 'open downstream').toBe(false);
+    });
+
+    it('opens it over the upstream half at a diverge', () => {
+      const line = edgeLine(node(RoadFlow.West));
+      expect(covers(line, -half / 2), 'open upstream').toBe(false);
+      expect(covers(line, half / 2), 'closed downstream').toBe(true);
+    });
+  });
+
+  describe('on the ramp tile that joins it', () => {
+    // An eastbound ramp with the motorway to the north: arriving from the west
+    // it merges, carrying on to the east it has just diverged.
+    const join = (along: number): Geo =>
+      roadTileVertices(
+        0,
+        0,
+        RoadTier.Ramp,
+        N | along,
+        flatHeightAt,
+        {
+          n: RoadTier.Highway,
+          e: along === E ? RoadTier.Ramp : RoadTier.None,
+          s: RoadTier.None,
+          w: along === W ? RoadTier.Ramp : RoadTier.None,
+        },
+        undefined,
+        undefined,
+        RoadFlow.East,
+      );
+    const plate = (geo: Geo) => vertices(geo).filter((v) => !isPaint(v.c));
+
+    it('merges by reaching the motorway over the downstream half, not by turning into it', () => {
+      const p = plate(join(W));
+      const atEdge = p.filter((v) => v.dz <= -half + 0.1);
+      expect(atEdge.some((v) => v.dx > half / 2), 'reaches the motorway downstream').toBe(true);
+      expect(atEdge.some((v) => v.dx < -0.5), 'keeps off it upstream').toBe(false);
+    });
+
+    it('narrows to nothing at the downstream edge, where the lane has merged', () => {
+      const p = plate(join(W));
+      expect(p.filter((v) => v.dx > half - 0.1 && v.dz > -half + 0.5)).toEqual([]);
+    });
+
+    it('diverges by peeling off over the upstream half', () => {
+      const p = plate(join(E));
+      const atEdge = p.filter((v) => v.dz <= -half + 0.1);
+      expect(atEdge.some((v) => v.dx < -half / 2), 'leaves the motorway upstream').toBe(true);
+      expect(atEdge.some((v) => v.dx > 0.5), 'clear of it downstream').toBe(false);
+      expect(p.filter((v) => v.dx < -half + 0.1 && v.dz > -half + 0.5)).toEqual([]);
+    });
+  });
+});

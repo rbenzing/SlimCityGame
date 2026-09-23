@@ -4,7 +4,9 @@ import {
   approachAhead,
   AUXILIARY_ZONE_TILES,
   auxiliaryLaneAt,
+  isRampNodeAt,
   narrowingAhead,
+  rampMouthAt,
   oppositeFlow,
   pocketedCrossSection,
   roadDegree,
@@ -675,5 +677,118 @@ describe('a ramp leaving a motorway is a diverge, not a junction', () => {
     const terminal = approachAhead(1, 6, 5, w);
     expect(terminal).toBeDefined();
     expect(terminal!.toward).toBe(RoadFlow.West);
+  });
+});
+
+describe('a ramp that runs alongside before it joins', () => {
+  /**
+   * An eastbound motorway along z = 1. The on-ramp comes up column 3 from a
+   * street, elbows east at (3,2), runs beside the motorway and ends at (6,2),
+   * where it merges into the motorway tile (6,1).
+   */
+  const ON_RAMP = `
+    ...............
+    EEEEEEEEEEEEEEE
+    ...eeee........
+    ...n...........
+    ...n...........
+    ...n...........
+    ###############
+  `;
+  /**
+   * The same motorway with an off-ramp: it starts beside the motorway at
+   * (4,2), where it diverges from (4,1), runs east and elbows south at (7,2).
+   */
+  const OFF_RAMP = `
+    ...............
+    EEEEEEEEEEEEEEE
+    ....eees.......
+    .......s.......
+    .......s.......
+    .......s.......
+    ###############
+  `;
+
+  it('is its own road along the stretch, so the motorway beside it is a plain run', () => {
+    const w = motorwayWorld(ON_RAMP);
+    for (const x of [3, 4, 5]) expect(roadDegree(x, 1, w), `x ${x}`).toBe(2);
+  });
+
+  it('makes the tile it merges into a ramp node, and nothing before it', () => {
+    const w = motorwayWorld(ON_RAMP);
+    expect(isRampNodeAt(6, 1, w)).toBe(true);
+    for (const x of [3, 4, 5]) expect(isRampNodeAt(x, 1, w), `x ${x}`).toBe(false);
+  });
+
+  it('runs the acceleration lane on from the merge, for the traffic that joined', () => {
+    const w = motorwayWorld(ON_RAMP);
+    const node = auxiliaryLaneAt(6, 1, w);
+    expect(node?.merging).toBe(true);
+    const beyond = auxiliaryLaneAt(7, 1, w);
+    expect(beyond, 'the lane runs on beyond the merge').toBeDefined();
+    expect(beyond!.merging).toBe(true);
+    expect(beyond!.side).toBe(node!.side);
+    expect(auxiliaryLaneAt(4, 1, w), 'and not back along the stretch').toBeUndefined();
+  });
+
+  it('runs the deceleration lane up to a diverge, and not beyond it', () => {
+    const w = motorwayWorld(OFF_RAMP);
+    expect(isRampNodeAt(4, 1, w)).toBe(true);
+    const node = auxiliaryLaneAt(4, 1, w);
+    expect(node?.merging).toBe(false);
+    const before = auxiliaryLaneAt(3, 1, w);
+    expect(before, 'the lane runs up to the diverge').toBeDefined();
+    expect(before!.merging).toBe(false);
+    expect(auxiliaryLaneAt(6, 1, w), 'and not on along the stretch').toBeUndefined();
+  });
+
+  it('gives the motorway no junction to approach, on or off', () => {
+    for (const map of [ON_RAMP, OFF_RAMP]) {
+      const w = motorwayWorld(map);
+      for (let x = 0; x < 12; x++) expect(approachAhead(x, 1, 5, w), `x ${x}`).toBeUndefined();
+    }
+  });
+});
+
+describe('where a ramp alongside meets the motorway tile it joins', () => {
+  const ON_RAMP = `
+    ...............
+    EEEEEEEEEEEEEEE
+    ...eeee........
+    ...n...........
+  `;
+  const OFF_RAMP = `
+    ...............
+    EEEEEEEEEEEEEEE
+    ....eees.......
+    .......s.......
+  `;
+  const HEAD_ON = `
+    ...............
+    EEEEEEEEEEEEEEE
+    ......s........
+    ......s........
+  `;
+
+  it('opens a merge over the downstream half, where the ramp has narrowed into the lane', () => {
+    expect(rampMouthAt(6, 1, motorwayWorld(ON_RAMP))).toEqual({
+      arm: RoadFlow.South,
+      opens: RoadFlow.East,
+    });
+  });
+
+  it('opens a diverge over the upstream half, where the ramp peels away', () => {
+    expect(rampMouthAt(4, 1, motorwayWorld(OFF_RAMP))).toEqual({
+      arm: RoadFlow.South,
+      opens: RoadFlow.West,
+    });
+  });
+
+  it('says nothing for a head-on ramp a save holds, which keeps its centred mouth', () => {
+    expect(rampMouthAt(6, 1, motorwayWorld(HEAD_ON))).toBeUndefined();
+  });
+
+  it('says nothing off a ramp node', () => {
+    expect(rampMouthAt(2, 1, motorwayWorld(ON_RAMP))).toBeUndefined();
   });
 });

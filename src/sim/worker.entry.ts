@@ -36,7 +36,7 @@ import {
   SAVE_VERSION,
   BuildingState,
   FieldId,
-  flowForStep,
+  flowsAlong,
   RoadFlow,
   RoadTier,
   isRailTier,
@@ -1849,12 +1849,7 @@ class SimWorld implements WorkerSim {
     // A road runs the way it was drawn: each tile points at the next one along
     // the drag, and the tile the drag ended on keeps the heading it arrived
     // with. An undo supplies the directions that were there instead.
-    const dragFlows = tiles.map((t, i) => {
-      const next = tiles[i + 1];
-      if (next) return flowForStep(next.x - t.x, next.z - t.z);
-      const prev = tiles[i - 1];
-      return prev ? flowForStep(t.x - prev.x, t.z - prev.z) : RoadFlow.None;
-    });
+    const dragFlows = flowsAlong(tiles);
     let changedCount = 0;
     let bridgeCost = 0;
 

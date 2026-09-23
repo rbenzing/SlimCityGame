@@ -30,8 +30,12 @@ import type {
   TransitMode,
   ZoneType,
 } from '../shared/types';
-import { RoadTier as RoadTierValue, ZoneType as ZoneTypeValue } from '../shared/types';
-import type { RoadProfile } from '../shared/types';
+import {
+  flowsAlong,
+  RoadTier as RoadTierValue,
+  ZoneType as ZoneTypeValue,
+} from '../shared/types';
+import type { RoadClassId, RoadProfile } from '../shared/types';
 import {
   composeProfile,
   joinRefusal,
@@ -49,7 +53,7 @@ import {
   type ProfileEdits,
 } from '../shared/roadprofile';
 import { ZONE_DEPTH } from '../world/zonable';
-import { corridorRunsFor, corridorTiles } from '../shared/corridor';
+import { corridorRunsFor, corridorTiles, rampJoinAround } from '../shared/corridor';
 import type { CorridorRuns } from '../shared/corridor';
 
 /**
@@ -128,6 +132,12 @@ export interface ToolEnv {
    * it would touch.
    */
   roadProfileAt?(tile: TilePoint): RoadProfile | null;
+  /**
+   * The stored flow byte of an existing road tile, which way it was drawn.
+   * Optional: without it a ramp's meeting with a motorway cannot be judged,
+   * and is not refused.
+   */
+  roadFlowAt?(tile: TilePoint): number;
 }
 
 export const ZONE_TOOL_TO_TYPE: Record<string, ZoneType> = {
@@ -687,6 +697,50 @@ export class ToolManager {
         if (!other) continue;
         const why = joinRefusal(profile.class, other.class);
         if (why) return why;
+      }
+    }
+    return this.rampJoinRefusal(tiles, profile);
+  }
+
+  /**
+   * Why a run may not be laid where a ramp would meet a motorway head-on or
+   * against its traffic, or null. A ramp joins a motorway alongside it, running
+   * its way, at the ramp's end or its start; read with the flows the drag will
+   * lay and the ones the roads around it already carry, which is the same rule
+   * the grid uses to decide where the two join.
+   */
+  private rampJoinRefusal(tiles: TilePoint[], profile: RoadProfile): string | null {
+    const at = this.env.roadProfileAt;
+    const flowOf = this.env.roadFlowAt;
+    if (!at || !flowOf) return null;
+    if (profile.class !== 'ramp' && profile.class !== 'highway') return null;
+    const flows = flowsAlong(tiles);
+    const planned = new Map(tiles.map((t, i) => [`${t.x},${t.z}`, flows[i]!]));
+    const classAt = (x: number, z: number): RoadClassId | null =>
+      planned.has(`${x},${z}`) ? profile.class : (at({ x, z })?.class ?? null);
+    const flowAt = (x: number, z: number): number =>
+      planned.get(`${x},${z}`) ?? flowOf({ x, z });
+    const isRamp = (x: number, z: number): boolean => classAt(x, z) === 'ramp';
+    for (const t of tiles) {
+      for (const [dx, dz] of [
+        [0, -1],
+        [1, 0],
+        [0, 1],
+        [-1, 0],
+      ] as const) {
+        const nx = t.x + dx;
+        const nz = t.z + dz;
+        if (planned.has(`${nx},${nz}`)) continue;
+        const theirs = classAt(nx, nz);
+        const join =
+          profile.class === 'ramp' && theirs === 'highway'
+            ? rampJoinAround(isRamp, flowAt, t.x, t.z, nx, nz)
+            : profile.class === 'highway' && theirs === 'ramp'
+              ? rampJoinAround(isRamp, flowAt, nx, nz, t.x, t.z)
+              : null;
+        if (join === 'headOn')
+          return 'A ramp meets a highway alongside it: bend it to run beside the highway before it joins';
+        if (join === 'wrongWay') return 'A ramp joins a highway running the same way, not against it';
       }
     }
     return null;

@@ -938,6 +938,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     },
     profileIdFor: (profile) => clientGrid.profileIdFor(profile),
     roadProfileAt: (tile) => clientGrid.profileAt(tile.x, tile.z),
+    roadFlowAt: (tile) => clientGrid.flowAt(tile.x, tile.z),
     entry: (catalogId: string) => catalogById.get(catalogId),
     onPreview: (preview) => {
       store

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { corridorRunsFor, corridorTiles, sideBySideCarriageways } from './corridor';
+import {
+  corridorRunsFor,
+  corridorTiles,
+  rampJoin,
+  rampJoins,
+  sideBySideCarriageways,
+} from './corridor';
 import { corridorHalfOf, flowDirection, RoadFlow, storedFlow } from './types';
 import type { TilePoint } from './types';
 
@@ -93,5 +99,65 @@ describe('two motorway carriageways side by side', () => {
   it('read the direction out of the byte, not the whole byte', () => {
     const half = storedFlow(RoadFlow.South, 'right');
     expect(sideBySideCarriageways(true, true, half, RoadFlow.North, 1, 0)).toBe(true);
+  });
+});
+
+describe('how a ramp meets the motorway beside it', () => {
+  // The step is from the ramp tile to the motorway tile. An eastbound
+  // motorway with the ramp one row south of it: the step is north, (0, -1).
+  const NORTH_STEP = [0, -1] as const;
+
+  it('merges at its end: a ramp arriving, none ahead, running the motorway’s way', () => {
+    expect(rampJoin(RoadFlow.East, RoadFlow.East, ...NORTH_STEP, true, false)).toBe('merge');
+  });
+
+  it('diverges at its start: a ramp ahead, none arriving, running the motorway’s way', () => {
+    expect(rampJoin(RoadFlow.East, RoadFlow.East, ...NORTH_STEP, false, true)).toBe('diverge');
+  });
+
+  it('is its own road along the stretch in between, and at an elbow beside it', () => {
+    // Arriving and continuing: the middle of the parallel run, or an elbow
+    // turning away from the motorway with a ramp on both sides of it.
+    expect(rampJoin(RoadFlow.East, RoadFlow.East, ...NORTH_STEP, true, true)).toBe('none');
+    expect(rampJoin(RoadFlow.South, RoadFlow.East, ...NORTH_STEP, true, true)).toBe('none');
+  });
+
+  it('is head-on where it would join running across the motorway', () => {
+    expect(rampJoin(RoadFlow.North, RoadFlow.East, ...NORTH_STEP, true, false)).toBe('headOn');
+    expect(rampJoin(RoadFlow.South, RoadFlow.East, ...NORTH_STEP, false, true)).toBe('headOn');
+  });
+
+  it('is the wrong way where it would join running against the motorway', () => {
+    expect(rampJoin(RoadFlow.West, RoadFlow.East, ...NORTH_STEP, true, false)).toBe('wrongWay');
+  });
+
+  it('is in line, not beside, where the ramp continues the motorway end on', () => {
+    // The motorway ends and a ramp carries on from it: an ordinary join.
+    expect(rampJoin(RoadFlow.East, RoadFlow.East, -1, 0, false, true)).toBe('inline');
+  });
+
+  it('says nothing it cannot know where either never recorded a direction', () => {
+    expect(rampJoin(RoadFlow.None, RoadFlow.East, ...NORTH_STEP, true, false)).toBe('unknown');
+    expect(rampJoin(RoadFlow.East, RoadFlow.None, ...NORTH_STEP, true, false)).toBe('unknown');
+  });
+
+  it('reads directions out of the byte, not the whole byte', () => {
+    const half = storedFlow(RoadFlow.East, 'left');
+    expect(rampJoin(half, RoadFlow.East, ...NORTH_STEP, true, false)).toBe('merge');
+  });
+});
+
+describe('whether a ramp beside a motorway joins it', () => {
+  it('joins where it merges or diverges, and where it cannot be told', () => {
+    for (const j of ['merge', 'diverge', 'inline', 'unknown'] as const) expect(rampJoins(j)).toBe(true);
+  });
+
+  it('still joins a head-on or wrong-way ramp a save already holds: only the tool refuses one', () => {
+    expect(rampJoins('headOn')).toBe(true);
+    expect(rampJoins('wrongWay')).toBe(true);
+  });
+
+  it('does not join along the stretch where it is its own road', () => {
+    expect(rampJoins('none')).toBe(false);
   });
 });

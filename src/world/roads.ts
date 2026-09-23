@@ -27,7 +27,13 @@ import {
   rankForTier,
 } from '../shared/roadprofile';
 import { controlFromCode, warrantedControl } from '../shared/junction';
-import { corridorPartners, sideBySideCarriageways } from '../shared/corridor';
+import {
+  corridorPartners,
+  rampJoinAround,
+  rampJoins,
+  sideBySideCarriageways,
+} from '../shared/corridor';
+import type { RampJoin } from '../shared/corridor';
 import { ARMS_PER_TILE } from './grid';
 import type {
   GraphEdge,
@@ -159,7 +165,37 @@ function computeNetworkMask(g: GridState, x: number, z: number, inNetwork: Netwo
  * carriageway running alongside.
  */
 function isSeparateRoad(g: GridState, x: number, z: number, nx: number, nz: number): boolean {
-  return isCorridorPartner(g, x, z, nx, nz) || isSideBySideCarriageway(g, x, z, nx, nz);
+  return (
+    isCorridorPartner(g, x, z, nx, nz) ||
+    isSideBySideCarriageway(g, x, z, nx, nz) ||
+    isRampAlongside(g, x, z, nx, nz)
+  );
+}
+
+/**
+ * Whether one of the two tiles is a ramp running beside a motorway on the other
+ * without joining it — the stretch before a merge or after a diverge, or an
+ * elbow. See {@link rampJoin}.
+ */
+function isRampAlongside(g: GridState, x: number, z: number, nx: number, nz: number): boolean {
+  if (!inBoundsOf(g.size, nx, nz)) return false;
+  const a = g.roadTier[indexOf(g.size, x, z)];
+  const b = g.roadTier[indexOf(g.size, nx, nz)];
+  if (a === RoadTier.Ramp && b === RoadTier.Highway) return !rampJoins(rampJoinAt(g, x, z, nx, nz));
+  if (a === RoadTier.Highway && b === RoadTier.Ramp) return !rampJoins(rampJoinAt(g, nx, nz, x, z));
+  return false;
+}
+
+/** How the ramp tile at (rx, rz) meets the motorway tile at (hx, hz). */
+function rampJoinAt(g: GridState, rx: number, rz: number, hx: number, hz: number): RampJoin {
+  return rampJoinAround(
+    (x, z) => inBoundsOf(g.size, x, z) && g.roadTier[indexOf(g.size, x, z)] === RoadTier.Ramp,
+    (x, z) => (inBoundsOf(g.size, x, z) ? (g.roadFlow[indexOf(g.size, x, z)] ?? 0) : 0),
+    rx,
+    rz,
+    hx,
+    hz,
+  );
 }
 
 /**

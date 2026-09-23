@@ -526,12 +526,13 @@ tiles are separate carriageways when EACH lies across the other's flow: a
 carriageway beside another points past it, while one arriving at right angles
 points AT the tile it meets. So a motorway continuing a motorway end on joins
 it, a motorway arriving square-on forms a junction, and two running alongside
-stay apart. The rule asks only about highway tiles, so a ramp alongside a
-motorway is always an arm, and every other class meets its neighbours exactly
-as it did. A corridor's own other half is a separate matter, decided by
-`isCorridorPartner`; `isSeparateRoad` in `src/world/roads.ts` asks both
-questions, and the auto-tiling mask and the network graph both read it, so
-what is drawn and what is driven cannot disagree.
+stay apart. The rule asks only about highway tiles; a ramp alongside a motorway
+joins it by its own rule (see Ramps and interchanges), and every other class
+meets its neighbours exactly as it did. A corridor's own other half is a
+separate matter, decided by `isCorridorPartner`; `isSeparateRoad` in
+`src/world/roads.ts` asks all three questions, and the auto-tiling mask and the
+network graph both read it, so what is drawn and what is driven cannot
+disagree.
 
 ## Ramps and interchanges
 
@@ -556,6 +557,52 @@ costs land and nothing else. A ramp's other end is a **terminal**: an
 ordinary node on the surface network, taking an ordinary warranted control
 and ordinary approach lanes like any other junction.
 
+### How a ramp meets a motorway: alongside, never head-on
+
+A ramp does not T into a motorway. Nobody joins traffic at motorway speed by
+turning ninety degrees into it, and nobody leaves it that way either. A real
+slip road comes off the surface road, bends round — the **elbow** — and runs
+beside the motorway in the same direction before it merges, and an exit peels
+off the same way in reverse. On this grid that is:
+
+- **The ramp joins alongside.** The ramp's tile beside the motorway runs the
+  same way as the motorway tile it joins. Which way each runs is its stored
+  flow, never its shape.
+- **It joins at one tile only.** An on-ramp joins at its END — the ramp tile
+  with a ramp arriving into it and none ahead of it along its flow. An
+  off-ramp joins at its START — the ramp tile with a ramp ahead and none
+  arriving into it. What arrives into a tile is a ramp neighbour whose own
+  flow points at it, which is how an elbow tile beside the motorway, flowing
+  away from it with a ramp on both sides, is told from a start: it joins
+  nothing.
+- **Everywhere else beside the motorway it is its own road.** Along the
+  parallel stretch a ramp tile and the motorway tile next to it are separate
+  roads, exactly as two carriageways side by side are: no mask bit, no graph
+  edge, no junction. Traffic changes road only at the join.
+- **A head-on ramp is refused, and so is one against the traffic.** A ramp
+  tile that would join a motorway while flowing across it (a T) or against it
+  (a wrong-way merge) is refused by the road tool with the reason, and the
+  reason says what to do: bend the ramp to run beside the motorway, the way
+  it is going, before it meets it. A save that already holds a head-on ramp
+  keeps it and draws it as it always did.
+- **The join tile is a taper, not a corner.** On the ramp side the join tile
+  carries the ramp's carriageway straight along its flow and fans its asphalt
+  across the verge into the motorway's auxiliary lane on the half of the tile
+  nearest the motorway's traffic — downstream at a merge, upstream at a
+  diverge — so the ramp slants into the lane rather than turning into it. On
+  the motorway side the tile is a ramp node, below, with its edge line open
+  across the taper's mouth.
+- **Merge or diverge comes from the join.** A join at a ramp's end is a
+  merge and its auxiliary lane runs on downstream; a join at its start is a
+  diverge and its auxiliary lane runs up to it. The exit board stands on the
+  motorway tile before a diverge.
+
+`rampJoin` in `src/shared/corridor.ts` decides how a ramp tile meets the
+motorway beside it, and `rampJoinAround` reads it off any map; the grid mask
+and graph, the approach walk, the furniture and the road tool's refusal all
+ask it. `rampMouthAt` tells the motorway tile which half to open, and
+`emitRampTaper` in `src/render/roadsmesh.ts` draws the ramp's side.
+
 **A merge or a diverge is not an intersection**, whatever its arm count, and
 highways rarely have intersections at all. Nobody stops at one, nobody gives
 way, and nobody picks a lane at it: a driver leaving is already in the
@@ -575,8 +622,8 @@ It takes no control, as nothing touching a motorway does, and a player's
 override cannot put one there: setting a signal, stop or give-way on a
 junction a motorway touches is refused, the same rule the warrant applies.
 Its exit board stands once, on the motorway tile before a ramp that leaves —
-the ramp's stored direction pointing away from the motorway — and never after
-it or where a ramp joins. `isRampNode` in `src/shared/junction.ts` decides it,
+a ramp alongside that diverges there, or a head-on ramp a save holds that
+points away — and never after it or where a ramp joins. `isRampNode` in `src/shared/junction.ts` decides it,
 and the render, the approach walk and the furniture all ask it.
 
 Nobody is stopped joining a highway and nothing holds them, but finding a

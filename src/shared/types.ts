@@ -122,6 +122,20 @@ export function flowForStep(dx: number, dz: number): RoadFlow {
   return RoadFlow.None;
 }
 
+/**
+ * The way each tile of a drawn path runs: every tile points at the next one
+ * along it, and the tile it ends on keeps the heading it arrived with. A road
+ * runs the way it was drawn, so this is the flow a drag lays.
+ */
+export function flowsAlong(path: readonly TilePoint[]): RoadFlow[] {
+  return path.map((t, i) => {
+    const next = path[i + 1];
+    if (next) return flowForStep(next.x - t.x, next.z - t.z);
+    const prev = path[i - 1];
+    return prev ? flowForStep(t.x - prev.x, t.z - prev.z) : RoadFlow.None;
+  });
+}
+
 /** The step a flow points along: {dx, dz}, or a zero step for None. */
 export function stepForFlow(flow: number): { dx: number; dz: number } {
   switch (flow) {
