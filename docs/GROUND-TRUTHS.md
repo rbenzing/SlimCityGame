@@ -320,6 +320,9 @@ MUTCD citations below use 11th-edition section numbers.
   [ADR-0001](engineering/adr/0001-traffic-is-statistical-assignment-with-cosmetic-agents.md)
 - Vehicles and pedestrians are cosmetic: they draw along a real route and
   simulate nothing, and a cosmetic route is computed once and never re-solved.
+  A vehicle drives the line the road network traces — grid tile centres and
+  the centre lines of roads off the grid — never a straight line between two
+  tiles that are not neighbours.
   Traffic is statistical assignment. —
   [ADR-0001](engineering/adr/0001-traffic-is-statistical-assignment-with-cosmetic-agents.md),
   [agent-behavior.md](world-sim/agent-behavior.md)

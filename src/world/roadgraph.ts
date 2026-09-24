@@ -15,7 +15,7 @@ import { flowDirection, flowForStep, isStreetTier, RoadFlow } from '../shared/ty
 import { canGainTurnPocket, isPresetProfileId, presetProfileForTier } from '../shared/roadprofile';
 import { controlFromCode, warrantedControl } from '../shared/junction';
 import { ARMS_PER_TILE } from './grid';
-import { cellTile, cellWeight, neighbours, roadCellsOf } from './roadnet';
+import { cellRoute, cellTile, cellWeight, neighbours, roadCellsOf } from './roadnet';
 import type { RoadCells } from './roadnet';
 import type { NetworkTiers, RoadKey } from './roads';
 import type {
@@ -269,12 +269,20 @@ export function buildGraph(
       // A grid tile is one tile of road; a road off the grid is as long as
       // its centre line, so a run's length is the distance a driver covers.
       const length = runKeys.reduce((sum, id) => sum + cellWeight(cells, id), 0);
+      const route: { x: number; z: number }[] = [];
+      runKeys.forEach((key, i) => {
+        for (const p of cellRoute(cells, key, runKeys[i - 1], runKeys[i + 1])) {
+          const last = route[route.length - 1];
+          if (!last || last.x !== p.x || last.z !== p.z) route.push(p);
+        }
+      });
       const edge: GraphEdge = {
         id: edgeId,
         a: startId,
         b: endId,
         tier: runTier,
         tiles: runTiles,
+        route,
         length,
         volume: 0,
       };

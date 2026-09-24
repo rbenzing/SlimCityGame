@@ -33,7 +33,13 @@ import type {
   ToolId,
   WorkerToMain,
 } from './shared/types';
-import { RoadFlow, RoadTier, isStreetTier } from './shared/types';
+import {
+  INACTIVE_VEHICLE_X,
+  RoadFlow,
+  RoadTier,
+  VEHICLE_STRIDE,
+  isStreetTier,
+} from './shared/types';
 import { carriagewayWidth, profilesEqual } from './shared/roadprofile';
 import { laneMovementsFor, pocketLaneMovements } from './shared/approach';
 import catalogData from './data/catalog.json';
@@ -424,6 +430,17 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         lines: useCityStore.getState().transitLines,
         ridership: useCityStore.getState().transitRidership,
       }),
+      // Where every live vehicle is, world metres, as the worker last sent
+      // them: lets a check count traffic on a road instead of reading it off
+      // a picture.
+      readVehicles: (): { x: number; z: number }[] => {
+        const out: { x: number; z: number }[] = [];
+        for (let i = 0; i < latestVehicles.length; i += VEHICLE_STRIDE) {
+          const x = latestVehicles[i]!;
+          if (x !== INACTIVE_VEHICLE_X) out.push({ x, z: latestVehicles[i + 1]! });
+        }
+        return out;
+      },
       // Meshes the renderer would submit an empty draw for — no vertices, or
       // an instanced mesh with a count of zero. WebGPU warns on these, and the
       // warning names no object, so this finds the culprit.
@@ -798,6 +815,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
    */
   let drivewayTiles: ReadonlySet<number> = new Set();
   let latestRoadTiles: ReturnType<typeof clientGrid.roadTiles> = [];
+  /** The vehicle buffer as the worker last sent it. */
+  let latestVehicles: Float32Array = new Float32Array(0);
   /** Every street lamp: the grid's, from its road tiles, and those along roads off the grid. */
   const rebuildLamps = (): void => {
     const free = clientGrid.roads
@@ -1307,6 +1326,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (snap.watered) overlays.setCoverage('watered', snap.watered);
     if (snap.vehicles) {
       vehicles.setBuffer(snap.vehicles);
+      latestVehicles = snap.vehicles;
       // Service vehicles share the SAME buffer (kind-filtered), no copy.
       serviceVehicles.setBuffer(snap.vehicles);
       snapshotAgeMs = 0;

@@ -414,8 +414,9 @@ internal shape `src/world/roadgraph.ts`'s `RoadNetwork` exposes to other worker
 systems (traffic, transit, dispatch, the junction warrant). Their own optional
 fields (`GraphNode.control`/`.warranted`/`.turns`/`.laneTurns`;
 `GraphEdge.forwardAtoB`/`.lanesAtoB`/`.lanesBtoA`/`.classId`/`.pocketAtoB`/
-`.pocketBtoA`/`.narrowsAtA`/`.narrowsAtB`) are each absent exactly on a graph
-built before the feature they describe existed, and never cross the
+`.pocketBtoA`/`.narrowsAtA`/`.narrowsAtB`/`.route`, and `PathResult.route`)
+are each absent exactly on a graph built before the feature they describe
+existed, and never cross the
 worker/render boundary directly — `SimSnapshot.junctions` is the projection of
 `GraphNode` that does.
 

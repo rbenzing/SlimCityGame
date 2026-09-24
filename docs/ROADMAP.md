@@ -277,8 +277,7 @@ worker and compares the two masks. Free roads are drawn
 line with kerbs, footways, medians and the markings plan, and a junction
 meshed at each node from the roads meeting there, with rounded kerb returns.
 Checked in the browser on a curve leaving a grid street, a free three-way
-junction and a curved one-way street. Not yet: lamps along free roads (4b),
-and cosmetic vehicles still stop where a route leaves the grid (4c). Where a free road meets a grid road, the junction is laid over
+junction and a curved one-way street. Where a free road meets a grid road, the junction is laid over
 the grid road's own tile, which still draws as a straight road underneath,
 so its kerbside props stand as if nothing joined it until one renderer draws
 both (stage 8).
@@ -293,6 +292,16 @@ the browser by day and at night, with a free junction that has no power left
 dark beside a lit curve. Signs and kerbside furniture along free roads moved
 to stage 6: the grid places them by each tile's role at its junction, and
 junction behaviour off the grid is what stage 6 builds.
+
+Stage 4c is built (2026-09-24): cosmetic vehicles follow free roads. Every
+graph edge carries the line a vehicle drives along it — grid tile centres and
+a free road's centre line about every 5 m, run the way the edge is driven —
+and a path joins them, so cars, service vehicles and garbage trucks all
+drive round a curve instead of stopping where a route left the grid. The
+tile-adjacency cut stays only for an injected network that gives no line.
+Checked in the browser on a small town grown along a free curve: 14 of the
+17 vehicles within 25 m of the curve were on its centre line, the rest on the
+grid street at its mouth. Stage 4 is complete.
 
 ### Overpasses (requested 2026-09-23, built 2026-09-24)
 

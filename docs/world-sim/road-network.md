@@ -249,7 +249,11 @@ that the grid could not already hold.
    - **4b, lamps along segments.** Street lamps stood along a free road
      between its junctions, at the lamp spacing, on alternate kerbs, reaching
      square across it, and only where it has power, as on the grid.
-   - **4c, vehicles following segment centre lines.**
+   - **4c, vehicles following segment centre lines.** Every graph edge
+     carries the line a vehicle drives along it, world metres: each grid
+     tile's centre and a free road's centre line about every 5 m, run the way
+     the edge is driven. A path joins its edges' lines, and cars, service
+     vehicles and garbage trucks all drive that.
 5. **The tool.** The curve and free modes, their ghost, chip and refusals,
    and motorways without `Grid`, checked in the browser.
 6. **Angled junction behaviour.** Control, stop lines, crossings, approach

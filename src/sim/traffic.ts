@@ -12,13 +12,14 @@
  * locally below. Any concrete RNG built to that shape (e.g. a future
  * src/core/rng.ts) is structurally assignable here without changes.
  */
-import type { GraphEdge, RoadNetworkApi, TilePoint } from '../shared/types';
+import type { GraphEdge, PathResult, RoadNetworkApi, TilePoint } from '../shared/types';
 import {
   INACTIVE_VEHICLE_X,
   MAX_VEHICLES,
   RoadTier,
   VEHICLE_STRIDE,
   VehicleKind,
+  pathRoute,
 } from '../shared/types';
 import {
   CLOCK_START_OFFSET_TICKS,
@@ -26,7 +27,6 @@ import {
   TICK_RATE,
   TILE_METERS,
   VISUAL_DAY_TICKS,
-  tileToWorld,
 } from '../shared/constants';
 
 /** Seeded random source, injected — see project rule: never Math.random/Date.now. */
@@ -167,16 +167,14 @@ export const MIN_HEADWAY_M = 6;
 const TURN_ARC_RADIUS_M = 6;
 
 // ---------------------------------------------------------------------------
-// On-road guarantee: a cosmetic vehicle's animation path must only
-// ever step between cardinally-adjacent road tiles, or the straight-line lerp
-// between two points (render/vehicles.ts) would visibly cut across grass/
-// water. RoadNetworkApi is an injected dependency (see the module doc
-// comment above) -- traffic.ts cannot assume every implementation upholds
-// this on its own (the real src/world/roads.ts one does, by construction:
-// PathResult.points concatenates each edge's own `tiles`, which are always a
-// straight run of cardinally-adjacent tiles because road centerlines are
-// never diagonal or curved), so it defensively truncates any spawned
-// path to its longest cardinally-adjacent prefix before animating it.
+// On-road guarantee: a cosmetic vehicle's animation path must stay on the
+// road, or the straight-line lerp between two points (render/vehicles.ts)
+// would visibly cut across grass/water. The real network gives a route built
+// from its roads' own shapes — grid tile centres and the centre lines of roads
+// off the grid — which is on the road by construction. RoadNetworkApi is an
+// injected dependency (see the module doc comment above), and one that gives
+// no route has its tile path defensively truncated to its longest
+// cardinally-adjacent prefix before it is animated.
 // ---------------------------------------------------------------------------
 
 /** True when `a` and `b` are exactly one cardinal (N/E/S/W) tile step apart. */
@@ -184,6 +182,17 @@ export function isCardinallyAdjacent(a: TilePoint, b: TilePoint): boolean {
   const dx = Math.abs(a.x - b.x);
   const dz = Math.abs(a.z - b.z);
   return (dx === 1 && dz === 0) || (dx === 0 && dz === 1);
+}
+
+/**
+ * The line a cosmetic vehicle drives along a path, world metres: the route the
+ * network built from its roads' own shapes, which is on the road by
+ * construction, curves and all. A network that gives no route has its tiles'
+ * centres driven instead, cut to their longest adjacent chain.
+ */
+export function routeOf(path: PathResult): WorldPoint[] {
+  if (path.route) return path.route;
+  return pathRoute({ ...path, points: truncateToAdjacentChain(path.points) });
 }
 
 /**
@@ -381,7 +390,7 @@ export class TrafficSystem {
 
       this.network.addVolume(path.edges, 1);
 
-      const animPoints = truncateToAdjacentChain(path.points);
+      const animPoints = routeOf(path);
       if (animPoints.length < 2) continue; // nothing to animate (degenerate, or the chain broke immediately)
 
       if (densityCap === null) {
@@ -398,7 +407,7 @@ export class TrafficSystem {
   }
 
   private spawnVehicle(
-    animPoints: readonly TilePoint[],
+    animPoints: readonly WorldPoint[],
     edgeIds: number[],
     edgeTiers: Map<number, RoadTier>,
   ): void {
@@ -407,9 +416,7 @@ export class TrafficSystem {
 
     // Round every turn into a short arc so the vehicle steers around curved
     // corners instead of cutting the chord across the inside of the turn.
-    const points: WorldPoint[] = smoothCorners(
-      animPoints.map((p) => ({ x: tileToWorld(p.x), z: tileToWorld(p.z) })),
-    );
+    const points: WorldPoint[] = smoothCorners(animPoints);
 
     const segmentLengths: number[] = [];
     for (let i = 0; i < points.length - 1; i += 1) {

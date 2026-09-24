@@ -27,8 +27,9 @@ neighbor's (`isNodeTile`). That last rule plants exactly one node at each
 straight-through tier boundary, so a whole avenue is a single edge no matter
 how many tiles long, and a tier change is where a wide run learns what it
 narrows into. An edge is the maximal straight run of tiles between two nodes;
-it carries the tile list (`GraphEdge.tiles`, ordered a→b), its tier, its
-length in tiles, its own `classId`/`lanes` read off the run's resolved
+it carries the tile list (`GraphEdge.tiles`, ordered a→b), the line a vehicle
+drives along it (`GraphEdge.route`, world metres a→b), its tier, its length in
+tiles, its own `classId`/`lanes` read off the run's resolved
 cross-section, and a mutable `volume` that the traffic system writes and
 decays. A run whose lanes split unevenly between directions (a profile with
 different forward/back lane counts) records `lanesAtoB`/`lanesBtoA`; a run
@@ -146,9 +147,12 @@ equilibrium.
 
 The same loop drives the cosmetic layer. A path that added volume also gets a
 cosmetic vehicle, if the network's live-tile-scaled `vehicleDensityCap` and a
-free pool slot allow it: `spawnVehicle` truncates the path to its longest
-cardinally-adjacent prefix (`truncateToAdjacentChain`), rounds every turn into
-a short arc (`smoothCorners`), picks a per-vehicle speed and kind, and claims
+free pool slot allow it: `spawnVehicle` drives the path's `route` — the line
+the graph built from its roads' own shapes, each grid tile's centre and a
+road off the grid's centre line about every 5 m (`cellRoute` in
+`src/world/roadnet.ts`, joined per edge in `buildGraph` and per path in
+`findPath`) — rounds every turn into a short arc (`smoothCorners`), picks a
+per-vehicle speed and kind, and claims
 a slot in the fixed `MAX_VEHICLES` = 1024 pool. `advanceVehicles` then walks
 every occupied slot each tick until it reaches the end of its captured route
 and frees the slot. Vehicle count on an edge is proportional to, not equal
@@ -182,12 +186,14 @@ cosmetic systems (garbage trucks) share the same pool's tail with.
   back to the network — it keeps driving its captured line to the end even
   if the road under it is bulldozed mid-route; nothing reroutes, removes, or
   teleports it. Only trips sampled _after_ the edit see the rebuilt graph.
-- **On-road guarantee for animation.** `truncateToAdjacentChain` drops a
-  spawned path at its first non-cardinally-adjacent seam, so even a
-  misbehaving injected `RoadNetworkApi` can never animate a vehicle in a
-  straight line across non-road terrain; the real `RoadNetwork` never
-  produces such a seam by construction, so this is defensive rather than load
-  bearing in practice.
+- **On-road guarantee for animation.** The real `RoadNetwork` gives every
+  path a `route` built from the roads' own shapes, so a vehicle stays on the
+  road by construction, round a curve off the grid as much as along a grid
+  street. An injected `RoadNetworkApi` that gives no route has its tile path
+  cut at the first non-cardinally-adjacent seam (`truncateToAdjacentChain`),
+  so it can never animate a vehicle in a straight line across non-road
+  terrain. Service vehicles and garbage trucks drive the same route
+  (`pathRoute` in `src/shared/types.ts`).
 
 ## Interactions
 

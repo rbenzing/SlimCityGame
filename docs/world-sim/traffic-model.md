@@ -60,10 +60,10 @@ tile instead of cutting the chord across the inside verge. Cruise speed is
 minimum 6 m headway behind whatever is ahead on the same road segment, a
 staggered start (up to 8 m into the first segment) so simultaneous spawns
 never appear stacked, and at most one spawn per origin tile per tick. The
-mix is 80% car, 15% truck, 5% bus. A vehicle's animated path is defensively
-truncated to its longest run of cardinally-adjacent tiles, so a route that
-somehow produced a diagonal seam gets its cosmetic animation dropped there
-rather than visibly cutting across grass or water.
+mix is 80% car, 15% truck, 5% bus. A vehicle drives the line the road network
+itself traces — each grid tile's centre and the centre line of a road off the
+grid — so it follows a curve rather than cutting across it, and never crosses
+grass or water between two tiles that are not neighbours.
 
 The cosmetic pool is a fixed set of slots reused as vehicles arrive and
 new ones spawn; because a slot can be freed and reallocated to a brand-new

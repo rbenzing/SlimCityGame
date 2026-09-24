@@ -7,6 +7,8 @@
  * never reorder them.
  */
 
+import { tileToWorld } from './constants';
+
 // ---------------------------------------------------------------------------
 // Tiles & zones
 // ---------------------------------------------------------------------------
@@ -1089,6 +1091,12 @@ export interface GraphEdge {
   b: number;
   tier: RoadTier;
   tiles: TilePoint[]; // the road tiles this edge covers, in order a->b
+  /**
+   * The line a vehicle drives along the run, world metres, a->b: each grid
+   * tile's centre, and a road off the grid's centre line. Absent on a graph
+   * that does not know its roads' shape, whose runs are its tile centres.
+   */
+  route?: { x: number; z: number }[];
   length: number; // tiles
   volume: number; // vehicles assigned this cycle (traffic writes, decays)
   /**
@@ -1141,9 +1149,23 @@ export interface GraphEdge {
 export interface PathResult {
   nodes: number[];
   edges: number[];
-  /** World-space tile centers along the whole path, for vehicle animation. */
+  /** The road tiles along the whole path, in order. */
   points: TilePoint[];
+  /**
+   * The line a vehicle drives along the whole path, world metres: its edges'
+   * routes joined. Absent when the network does not know its roads' shape;
+   * the tiles' centres are then the line.
+   */
+  route?: { x: number; z: number }[];
   cost: number;
+}
+
+/**
+ * The line a vehicle drives along a path, world metres: its route, or, from a
+ * network that does not know its roads' shape, its tiles' centres.
+ */
+export function pathRoute(path: PathResult): { x: number; z: number }[] {
+  return path.route ?? path.points.map((p) => ({ x: tileToWorld(p.x), z: tileToWorld(p.z) }));
 }
 
 /**

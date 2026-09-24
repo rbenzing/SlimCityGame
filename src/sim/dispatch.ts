@@ -39,8 +39,9 @@ import {
   INACTIVE_VEHICLE_X,
   VEHICLE_STRIDE,
   VehicleKind,
+  pathRoute,
 } from '../shared/types';
-import { TICK_RATE, TILE_METERS, tileIndex, tileToWorld } from '../shared/constants';
+import { TICK_RATE, TILE_METERS, tileIndex } from '../shared/constants';
 
 /** Seeded random source, injected -- see project rule: never Math.random/Date.now. */
 export interface Rng {
@@ -136,10 +137,7 @@ interface ActiveIncident {
 }
 
 function buildRoutedVehicle(path: PathResult): RoutedVehicle {
-  const points: WorldPoint[] = path.points.map((p) => ({
-    x: tileToWorld(p.x),
-    z: tileToWorld(p.z),
-  }));
+  const points: WorldPoint[] = pathRoute(path);
   const segmentLengths: number[] = [];
   for (let i = 0; i < points.length - 1; i++) {
     const a = points[i]!;

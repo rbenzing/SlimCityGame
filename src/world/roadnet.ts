@@ -404,7 +404,16 @@ export interface RoadCells {
   more: Map<number, number[]>;
   /** The free cells on each tile. */
   freeOnTile: Map<number, number[]>;
+  /**
+   * Per free cell: its stretch of centre line as world metres, x then z, in
+   * order toward the segment's second node, about `SHAPE_STEP_M` apart; a
+   * node's own cell holds the node's one point.
+   */
+  freeShape: Float32Array[];
 }
+
+/** How far apart the points of a free cell's shape are, metres. */
+const SHAPE_STEP_M = 5;
 
 /** A cell's linked cells, grid steps first. */
 export function neighbours(cells: RoadCells, id: number): number[] {
@@ -456,6 +465,20 @@ interface FreeCell extends RoadFacts {
   seg: number;
   seq: number;
   towardB: number;
+  shape: Float32Array;
+}
+
+/** Centre-line samples thinned to about `SHAPE_STEP_M` apart, both ends kept, as x, z pairs. */
+function thinShape(points: readonly { x: number; z: number; s: number }[]): Float32Array {
+  const kept: number[] = [];
+  let last = -Infinity;
+  points.forEach((p, i) => {
+    if (i === points.length - 1 || p.s - last >= SHAPE_STEP_M) {
+      kept.push(p.x, p.z);
+      last = p.s;
+    }
+  });
+  return Float32Array.from(kept);
 }
 
 export function buildRoadCells(net: RoadNet, size: number): RoadCells {
@@ -513,7 +536,16 @@ export function buildRoadCells(net: RoadNet, size: number): RoadCells {
     const known = nodeCells.get(slot);
     if (known !== undefined) return known;
     const id = keys + free.length;
-    free.push({ ...facts, flow: 0, tile, weight: 0, seg: -1, seq: 0, towardB: NO_CELL });
+    free.push({
+      ...facts,
+      flow: 0,
+      tile,
+      weight: 0,
+      seg: -1,
+      seq: 0,
+      towardB: NO_CELL,
+      shape: Float32Array.of(p.x / 100, p.z / 100),
+    });
     nodeCells.set(slot, id);
     return id;
   };
@@ -525,27 +557,36 @@ export function buildRoadCells(net: RoadNet, size: number): RoadCells {
     const samples = sampleCentreLine(geom);
     const total = samples[samples.length - 1]!.s;
     // Runs of samples on one tile, each with the length of centre line it covers.
-    const groups: { tile: number; length: number }[] = [];
+    type Group = { tile: number; length: number; points: typeof samples };
+    const groups: Group[] = [];
     for (let i = 0; i < samples.length; i++) {
       const p = samples[i]!;
       const tile = tileAt(p.x, p.z);
       const upTo = i + 1 < samples.length ? samples[i + 1]!.s : total;
       const last = groups[groups.length - 1];
-      if (last && last.tile === tile) last.length += upTo - p.s;
-      else groups.push({ tile, length: upTo - p.s });
+      if (last && last.tile === tile) {
+        last.length += upTo - p.s;
+        last.points.push(p);
+      } else groups.push({ tile, length: upTo - p.s, points: [p] });
     }
     const aCell = cellOfNode(net.segA[s]!, facts);
     const bCell = cellOfNode(net.segB[s]!, facts);
     // The tiles the two end nodes stand on are theirs; everything between is
-    // the segment's own, and it carries the whole length.
-    let head = 0;
-    let tail = 0;
-    if (groups.length > 1 && groups[0]!.tile === tileOfCell(aCell)) head = groups.shift()!.length;
+    // the segment's own, and it carries the whole length and the whole line.
+    let head: Group | null = null;
+    let tail: Group | null = null;
+    if (groups.length > 1 && groups[0]!.tile === tileOfCell(aCell)) head = groups.shift()!;
     if (groups.length > 1 && groups[groups.length - 1]!.tile === tileOfCell(bCell)) {
-      tail = groups.pop()!.length;
+      tail = groups.pop()!;
     }
-    groups[0]!.length += head;
-    groups[groups.length - 1]!.length += tail;
+    if (head) {
+      groups[0]!.length += head.length;
+      groups[0]!.points.unshift(...head.points);
+    }
+    if (tail) {
+      groups[groups.length - 1]!.length += tail.length;
+      groups[groups.length - 1]!.points.push(...tail.points);
+    }
     const first = keys + free.length;
     let prev = aCell;
     groups.forEach((group, seq) => {
@@ -558,6 +599,7 @@ export function buildRoadCells(net: RoadNet, size: number): RoadCells {
         seg: s,
         seq,
         towardB,
+        shape: thinShape(group.points),
       });
       link(prev, id);
       prev = id;
@@ -595,7 +637,42 @@ export function buildRoadCells(net: RoadNet, size: number): RoadCells {
     freeTowardB: Int32Array.from(free, (c) => c.towardB),
     more,
     freeOnTile,
+    freeShape: free.map((c) => c.shape),
   };
+}
+
+/**
+ * The points a route passes through crossing a cell, world metres, in the
+ * order it is driven: a grid cell's tile centre, or a free cell's stretch of
+ * centre line, run toward the segment's second node when `next` is the cell
+ * that way or `prev` is the cell behind, and the other way otherwise.
+ */
+export function cellRoute(
+  cells: RoadCells,
+  id: number,
+  prev: number | undefined,
+  next: number | undefined,
+): { x: number; z: number }[] {
+  const keys = 2 * cells.size * cells.size;
+  if (id < keys) {
+    const tile = id % (cells.size * cells.size);
+    return [
+      {
+        x: ((tile % cells.size) + 0.5) * TILE_METERS,
+        z: (Math.floor(tile / cells.size) + 0.5) * TILE_METERS,
+      },
+    ];
+  }
+  const f = id - keys;
+  const shape = cells.freeShape[f]!;
+  const out: { x: number; z: number }[] = [];
+  for (let i = 0; i < shape.length; i += 2) out.push({ x: shape[i]!, z: shape[i + 1]! });
+  const towardB = (c: number | undefined): number =>
+    c !== undefined && c >= keys ? cells.freeTowardB[c - keys]! : NO_CELL;
+  const forward =
+    (next !== undefined && cells.freeTowardB[f] === next) ||
+    (prev !== undefined && towardB(prev) === id);
+  return forward ? out : out.reverse();
 }
 
 const cellsCache = new WeakMap<RoadNet, { version: number; size: number; cells: RoadCells }>();

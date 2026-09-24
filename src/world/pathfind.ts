@@ -541,16 +541,30 @@ export function findPath(
   edgePath.reverse();
 
   const points: TilePoint[] = [];
+  const route: { x: number; z: number }[] = [];
+  let everyRoute = true;
   for (let i = 0; i < edgePath.length; i++) {
     const edgeId = edgePath[i]!;
     const edge = edgeById.get(edgeId)!;
     const fromNodeId = nodePath[i]!;
-    const ordered = edge.a === fromNodeId ? edge.tiles : [...edge.tiles].reverse();
+    const forward = edge.a === fromNodeId;
+    const ordered = forward ? edge.tiles : [...edge.tiles].reverse();
     const start = i === 0 ? 0 : 1; // skip the tile shared with the previous edge's end
     for (let k = start; k < ordered.length; k++) {
       points.push(ordered[k]!);
     }
+    if (!edge.route) {
+      everyRoute = false;
+      continue;
+    }
+    const line = forward ? edge.route : [...edge.route].reverse();
+    for (const p of line) {
+      const last = route[route.length - 1];
+      if (!last || last.x !== p.x || last.z !== p.z) route.push(p);
+    }
   }
 
-  return { nodes: nodePath, edges: edgePath, points, cost: finalCost };
+  const result: PathResult = { nodes: nodePath, edges: edgePath, points, cost: finalCost };
+  if (everyRoute && route.length > 0) result.route = route;
+  return result;
 }

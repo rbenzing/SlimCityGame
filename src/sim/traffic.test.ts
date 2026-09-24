@@ -13,6 +13,7 @@ import {
   VEHICLES_PER_ROAD_TILE,
   dayHourFromTick,
   isCardinallyAdjacent,
+  routeOf,
   rushHourActivity,
   smoothCorners,
   tripsForTick,
@@ -20,7 +21,18 @@ import {
   vehicleDensityCap,
   type Rng,
 } from './traffic';
-import { INACTIVE_VEHICLE_X, MAX_VEHICLES, RoadTier, VEHICLE_STRIDE, VehicleKind, type GraphEdge, type GridState, type PathResult, type RoadNetworkApi, type TilePoint } from '../shared/types';
+import {
+  INACTIVE_VEHICLE_X,
+  MAX_VEHICLES,
+  RoadTier,
+  VEHICLE_STRIDE,
+  VehicleKind,
+  type GraphEdge,
+  type GridState,
+  type PathResult,
+  type RoadNetworkApi,
+  type TilePoint,
+} from '../shared/types';
 import { TICKS_PER_DAY, TICK_RATE, TILE_METERS, tileToWorld } from '../shared/constants';
 import { RoadNetwork } from '../world/roadgraph';
 import { createGrid } from '../world/grid';
@@ -678,6 +690,30 @@ describe('isCardinallyAdjacent / truncateToAdjacentChain (§6.20 #3 on-road guar
   it('handles empty and single-point inputs', () => {
     expect(truncateToAdjacentChain([])).toEqual([]);
     expect(truncateToAdjacentChain([{ x: 3, z: 3 }])).toEqual([{ x: 3, z: 3 }]);
+  });
+});
+
+describe('routeOf (the line a cosmetic vehicle drives)', () => {
+  const tiles: TilePoint[] = [
+    { x: 1, z: 1 },
+    { x: 2, z: 1 },
+    { x: 7, z: 9 },
+  ];
+
+  it('drives the route the network built from its roads, curves and all', () => {
+    const route = [
+      { x: 30, z: 30 },
+      { x: 41.5, z: 33.2 },
+      { x: 150, z: 190 },
+    ];
+    expect(routeOf({ nodes: [], edges: [], points: tiles, route, cost: 1 })).toBe(route);
+  });
+
+  it('drives tile centres, cut at the first gap, from a network that gives no route', () => {
+    expect(routeOf({ nodes: [], edges: [], points: tiles, cost: 1 })).toEqual([
+      { x: tileToWorld(1), z: tileToWorld(1) },
+      { x: tileToWorld(2), z: tileToWorld(1) },
+    ]);
   });
 });
 

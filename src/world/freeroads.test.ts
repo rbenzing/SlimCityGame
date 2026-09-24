@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { RoadTier, ZoneType } from '../shared/types';
 import type { GridState, RoadTier as Tier } from '../shared/types';
-import { tileCentreCm } from '../shared/roadgeom';
+import { sampleCentreLine, tileCentreCm } from '../shared/roadgeom';
 import type { CmPoint } from '../shared/roadgeom';
 import { canPlaceFootprint, createGrid, setZones } from './grid';
 import { computeZonableMask } from './zonable';
@@ -13,6 +13,7 @@ import {
   liveSegments,
   networkFromGrid,
   reconcileRoads,
+  segmentGeom,
   syncRoadLayers,
 } from './roadnet';
 import { deriveRoadFootprint, laySegment, planSegment, removeSegmentAt } from './freeroads';
@@ -329,6 +330,71 @@ describe('roads off the grid: the graph routes along them', () => {
     const centreLine = Math.hypot(10, 15);
     expect(edges[0]!.length).toBeCloseTo(12 + centreLine, 3);
   });
+
+  it.each([false, true])(
+    'gives a route that drives the free road’s own curve, either way, without a jump (drawn backwards: %s)',
+    (backwards) => {
+      const g = world();
+      applyRoad(
+        g,
+        Array.from({ length: 6 }, (_, i) => ({ x: 5 + i, z: 10 })),
+        RoadTier.TwoLane,
+      );
+      applyRoad(
+        g,
+        Array.from({ length: 6 }, (_, i) => ({ x: 20 + i, z: 25 })),
+        RoadTier.TwoLane,
+      );
+      settle(g);
+      const [p, q] = backwards
+        ? [centre(20, 25), centre(10, 10)]
+        : [centre(10, 10), centre(20, 25)];
+      lay(g, { a: p, b: q, control: centre(20, 10) });
+      const [seg] = freeSegments(g);
+      const curve = sampleCentreLine(segmentGeom(g.roads!, seg!));
+      const street = new Set(
+        [
+          ...Array.from({ length: 6 }, (_, i) => [5 + i, 10]),
+          ...Array.from({ length: 6 }, (_, i) => [20 + i, 25]),
+        ].map(([x, z]) => `${(x! + 0.5) * 20},${(z! + 0.5) * 20}`),
+      );
+      const net = new RoadNetwork();
+      net.rebuild(g);
+      for (const [from, to] of [
+        [
+          { x: 5, z: 10 },
+          { x: 25, z: 25 },
+        ],
+        [
+          { x: 25, z: 25 },
+          { x: 5, z: 10 },
+        ],
+      ] as const) {
+        const route = net.findPath(from, to)!.route!;
+        expect(route[0]).toEqual({ x: (from.x + 0.5) * 20, z: (from.z + 0.5) * 20 });
+        expect(route.at(-1)).toEqual({ x: (to.x + 0.5) * 20, z: (to.z + 0.5) * 20 });
+        for (let i = 0; i < route.length; i++) {
+          const p = route[i]!;
+          const onCurve = curve.some((c) => Math.hypot(c.x - p.x, c.z - p.z) < 1e-3);
+          expect(onCurve || street.has(`${p.x},${p.z}`), `point ${i} at ${p.x},${p.z}`).toBe(true);
+          if (i > 0) {
+            const q = route[i - 1]!;
+            expect(Math.hypot(p.x - q.x, p.z - q.z)).toBeLessThanOrEqual(20 + 1e-6);
+          }
+        }
+        // The curve is driven closely, not cut across by a chord or two, and
+        // steadily from one end to the other, never doubling back.
+        const along = route
+          .filter((p) => !street.has(`${p.x},${p.z}`))
+          .map((p) => curve.find((c) => Math.hypot(c.x - p.x, c.z - p.z) < 1e-3)!.s);
+        expect(along.length).toBeGreaterThan(curve.at(-1)!.s / 6);
+        const rising = along[along.length - 1]! > along[0]!;
+        for (let i = 1; i < along.length; i++) {
+          expect(rising ? along[i]! > along[i - 1]! : along[i]! < along[i - 1]!).toBe(true);
+        }
+      }
+    },
+  );
 
   it('runs a one-way free road the way it was drawn, and no other', () => {
     const g = world();
