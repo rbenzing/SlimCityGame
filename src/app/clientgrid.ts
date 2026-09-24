@@ -21,6 +21,7 @@ import {
 import type { ApproachAhead, ApproachSurroundings } from '../shared/approachzone';
 import {
   corridorHalfProfile,
+  worldOrderedProfile,
   FIRST_CUSTOM_PROFILE_ID,
   isPresetProfileId,
   presetProfileForTier,
@@ -196,7 +197,8 @@ export class ClientGridMirror {
   ownProfileAt(x: number, z: number): RoadProfile | null {
     const whole = this.profileAt(x, z);
     if (!whole) return null;
-    return corridorHalfProfile(whole, corridorHalfOf(this.roadFlow[this.idx(x, z)] ?? 0));
+    const stored = this.roadFlow[this.idx(x, z)] ?? 0;
+    return corridorHalfProfile(worldOrderedProfile(whole, stored), corridorHalfOf(stored));
   }
 
   drawnProfileAt(x: number, z: number): RoadProfile | null {

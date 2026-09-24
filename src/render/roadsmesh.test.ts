@@ -3861,3 +3861,59 @@ describe('a ramp alongside tapers into the motorway rather than turning into it'
     });
   });
 });
+
+describe('a section is laid left to right in the direction the road runs', () => {
+  // Offsets grow east and south, so a driver's left is the LOW offset heading
+  // north or east and the HIGH one heading south or west. Laid low-to-high
+  // whichever way the road ran, a southbound motorway kept its yellow edge on
+  // the left but put its wide shoulder against the median and every lane line
+  // 1.8 m across the road.
+  const centre = TILE_METERS / 2;
+  const width = 1.2 + 3 * 3.75 + 3; // shoulder, three lanes, shoulder
+  const leftEdge = -width / 2 + 1.2;
+  const rightEdge = width / 2 - 3;
+  /** The offset across the road of each colour of solid paint on a motorway tile. */
+  const edgeLines = (flow: RoadFlow): { yellow: number; white: number } => {
+    const vertical = flow === RoadFlow.North || flow === RoadFlow.South;
+    const geo = roadTileVertices(0, 0, RoadTier.Highway, vertical ? N | S : E | W, flatHeightAt, undefined, undefined, undefined, flow);
+    const across = (colour: (t: readonly number[]) => boolean): number => {
+      const offs: number[] = [];
+      for (let i = 0; i < geo.positions.length / 3; i++) {
+        if (!colour(geo.colors.slice(i * 3, i * 3 + 3))) continue;
+        offs.push(geo.positions[i * 3 + (vertical ? 0 : 2)]! - centre);
+      }
+      return offs.reduce((a, b) => a + b, 0) / offs.length;
+    };
+    return { yellow: across(isMarkingYellow), white: across(isMarkingWhite) };
+  };
+
+  it('keeps the narrow shoulder on the driver’s left heading north or east', () => {
+    for (const flow of [RoadFlow.North, RoadFlow.East]) {
+      expect(edgeLines(flow).yellow, `flow ${flow}`).toBeCloseTo(leftEdge, 1);
+    }
+  });
+
+  it('keeps it on the driver’s left heading south or west too, which is the high offset', () => {
+    for (const flow of [RoadFlow.South, RoadFlow.West]) {
+      expect(edgeLines(flow).yellow, `flow ${flow}`).toBeCloseTo(-leftEdge, 1);
+    }
+  });
+
+  it('puts the wide shoulder on the driver’s right, whichever way the road runs', () => {
+    // The white edge line is the outermost white paint, on the side away from
+    // the yellow; it stands the wide shoulder's width in from the edge.
+    for (const flow of [RoadFlow.North, RoadFlow.East, RoadFlow.South, RoadFlow.West]) {
+      const vertical = flow === RoadFlow.North || flow === RoadFlow.South;
+      const geo = roadTileVertices(0, 0, RoadTier.Highway, vertical ? N | S : E | W, flatHeightAt, undefined, undefined, undefined, flow);
+      const side = -Math.sign(edgeLines(flow).yellow);
+      let edge = 0;
+      for (let i = 0; i < geo.positions.length / 3; i++) {
+        if (!isMarkingWhite(geo.colors.slice(i * 3, i * 3 + 3))) continue;
+        const off = geo.positions[i * 3 + (vertical ? 0 : 2)]! - centre;
+        if (off * side > edge * side) edge = off;
+      }
+      // The line is 0.15 m wide; its outer edge is what was found.
+      expect(Math.abs(edge), `flow ${flow}`).toBeCloseTo(Math.abs(rightEdge) + 0.075, 1);
+    }
+  });
+});

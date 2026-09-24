@@ -12,10 +12,11 @@ import type { CorridorHalf, TilePoint } from './types';
 
 export interface CorridorRuns {
   /**
-   * The run the drag traced. It carries the LEFT half of the section — the
-   * pieces at the negative offsets — because a marking at offset `o` is drawn
-   * at the tile centre plus `o`, so the half holding the negative offsets
-   * belongs on the tile at the lower coordinate across the run.
+   * The run the drag traced, at the lower coordinate across the road. It
+   * carries the half of the section at the negative offsets, because a marking
+   * at offset `o` is drawn at the tile centre plus `o`. That is the low half of
+   * the section in world order, which is the driver's left heading north or
+   * east and their right heading south or west.
    */
   near: TilePoint[];
   /** One tile across from it, carrying the other half. */

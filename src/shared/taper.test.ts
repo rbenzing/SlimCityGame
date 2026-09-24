@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { TILE_METERS } from './constants';
-import { carriagewayWidth, laneWidthFor, presetProfileForTier } from './roadprofile';
+import {
+  carriagewayWidth,
+  laneWidthFor,
+  presetProfileForTier,
+  reversedInWorld,
+  worldOrderedProfile,
+} from './roadprofile';
 import {
   closedAt,
   dropWidth,
@@ -11,8 +17,8 @@ import {
   taperedCrossSection,
   taperTilesFor,
 } from './taper';
-import { RoadTier } from './types';
-import type { RoadClassId } from './types';
+import { RoadFlow, RoadTier } from './types';
+import type { RoadClassId, RoadProfile } from './types';
 
 describe('how long a lane takes to close', () => {
   it('closes a motorway lane at 1:50 and a street lane over half a block', () => {
@@ -154,5 +160,33 @@ describe('the neutral area: what the pavement does while the paint closes a lane
       carriagewayWidth(pavedCrossSection(p, 3)) - carriagewayWidth(taperedCrossSection(p, 3));
     expect(strip(motorway)).toBeCloseTo(3, 9);
     expect(strip(street)).toBeCloseTo(0, 9);
+  });
+});
+
+describe('a lane drop closes the driver’s right-hand lane, whichever way the road runs', () => {
+  /** A four-lane carriageway, narrow shoulder on the left and wide on the right. */
+  const four = (): RoadProfile => ({
+    class: 'highway',
+    pieces: [
+      { kind: 'shoulder', width: 1.2 },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+      { kind: 'shoulder', width: 3 },
+    ],
+  });
+
+  it('closes the lane beside the wide shoulder, heading any way', () => {
+    // Partway through the drop the closing lane is the narrow one. Laid in
+    // world order, the right-hand lane is at the LOW end heading south or
+    // west, so reading the section's own right end closed the fast lane.
+    for (const flow of [RoadFlow.North, RoadFlow.East, RoadFlow.South, RoadFlow.West]) {
+      const world = worldOrderedProfile(four(), flow);
+      const out = taperedCrossSection(world, 1.75, reversedInWorld(flow));
+      const narrowed = out.pieces.findIndex((p) => p.kind === 'travel' && p.width < 3.75 - 1e-9);
+      const wideShoulder = out.pieces.findIndex((p) => p.kind === 'shoulder' && p.width === 3);
+      expect(Math.abs(narrowed - wideShoulder), `flow ${flow}`).toBe(1);
+    }
   });
 });

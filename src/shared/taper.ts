@@ -87,12 +87,21 @@ export function dropWidth(wide: RoadProfile, narrow: RoadProfile): number {
  * footways, its parking, a reserved bus lane — is the road's own and is still
  * there on the other side of the drop.
  */
-export function taperedCrossSection(wide: RoadProfile, closed: number): RoadProfile {
+export function taperedCrossSection(
+  wide: RoadProfile,
+  closed: number,
+  /**
+   * Whether the section is in world order the other way round from its
+   * direction of travel — a road heading south or west, whose driver's right
+   * is at its LOW end.
+   */
+  reversed = false,
+): RoadProfile {
   if (closed <= 0) return wide;
   const pieces = wide.pieces.map((p) => ({ ...p }));
   // Outermost first, on alternating sides, so a two-way road closes its two
   // kerbside lanes together rather than eating one side of the road.
-  const order = droppingOrder(pieces);
+  const order = droppingOrder(pieces, reversed);
   let left = closed;
   for (const index of order) {
     if (left <= 1e-9) break;
@@ -109,10 +118,13 @@ export function taperedCrossSection(wide: RoadProfile, closed: number): RoadProf
  * inward, taking the wider side first so an uneven road closes down to an even
  * one rather than into its own centreline.
  */
-function droppingOrder(pieces: readonly LanePiece[]): number[] {
+function droppingOrder(pieces: readonly LanePiece[], reversed: boolean): number[] {
   const travel = pieces
     .map((piece, index) => ({ piece, index }))
     .filter((e) => isDroppable(e.piece));
+  // Read from the driver's left to their right, whichever end of the section
+  // that is.
+  if (reversed) travel.reverse();
   const half = travel.length / 2;
   const fromLeft = travel.slice(0, Math.floor(half)).map((e) => e.index);
   const fromRight = travel
@@ -172,6 +184,6 @@ export function paintsGore(classId: RoadClassId): boolean {
  * moves, which leaves the NEUTRAL AREA between them — the wedge a driver reads
  * as somewhere not to be, rather than as the road bending away.
  */
-export function pavedCrossSection(wide: RoadProfile, closed: number): RoadProfile {
-  return paintsGore(wide.class) ? wide : taperedCrossSection(wide, closed);
+export function pavedCrossSection(wide: RoadProfile, closed: number, reversed = false): RoadProfile {
+  return paintsGore(wide.class) ? wide : taperedCrossSection(wide, closed, reversed);
 }

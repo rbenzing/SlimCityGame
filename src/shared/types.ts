@@ -85,10 +85,11 @@ export const ROAD_FLOW_DIRECTION_MASK = 0b111;
 /** Set when the tile is one half of a two-tile corridor rather than a road in its own right. */
 export const CORRIDOR_BIT = 0b1000;
 /**
- * Which half of the corridor the tile is, read across the road while facing
- * the direction of travel: clear is the LEFT half, set is the RIGHT. The
- * profile's pieces run left to right in that same frame, so the half decides
- * which slice of the cross-section the tile draws.
+ * Which half of the corridor the tile is, by the side of the road it stands on:
+ * clear is the half at the LOW offset (the tile at the lower coordinate across
+ * the road), set is the one at the high offset. It is cut from the section in
+ * WORLD order — see `worldOrderedProfile` — so the low half is the driver's
+ * left heading north or east and their right heading south or west.
  */
 export const CORRIDOR_RIGHT_BIT = 0b1_0000;
 

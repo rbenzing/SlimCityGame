@@ -53,8 +53,18 @@ MUTCD citations below use 11th-edition section numbers.
   [streets.md](art/streets.md)
 - Never compare a stored `roadFlow` byte to a `RoadFlow` value directly:
   direction is the low three bits (`ROAD_FLOW_DIRECTION_MASK`), bit 3 marks a
-  corridor half and bit 4 the right half. —
+  corridor half and bit 4 the half at the HIGH offset. —
   [road-model.md](world-sim/road-model.md); `src/shared/types.ts`
+- A section is authored left to right in the direction of travel and laid in
+  WORLD order: offsets grow east and south, so a road heading south or west
+  has its driver's left at the high offset and its section is turned round
+  before it is drawn — and before a corridor is halved, since the halves are
+  stored by the side of the road they stand on. Nothing lays a section's
+  pieces low-to-high without it; an editor working by the driver's own left or
+  right asks which way round the section is. Without it a southbound motorway
+  put its wide shoulder against the median and a two-way street drawn south
+  drove on the left. — [road-model.md](world-sim/road-model.md);
+  `worldOrderedProfile` and `reversedInWorld` in `src/shared/roadprofile.ts`
 - A one-way road flows the way it was drawn (its stored flow), never inferred
   from geometry; the geometric fallback exists only for tiles whose flow is
   `RoadFlow.None`. — [road-model.md](world-sim/road-model.md);
