@@ -32,6 +32,7 @@ import {
   carriagewayHalfWidthOf,
   medianOffsetOf,
   parkingSides,
+  rankedTogether,
   canGainAuxiliaryLane,
   hasKerbs,
   KERB_RESERVE_M,
@@ -1860,5 +1861,14 @@ describe('parkingSides', () => {
     expect(parkingSides(pieces(false, true))).toEqual({ low: false, high: true });
     expect(parkingSides(pieces(true, true))).toEqual({ low: true, high: true });
     expect(parkingSides(pieces(false, false))).toEqual({ low: false, high: false });
+  });
+});
+
+describe('rankedTogether', () => {
+  it('ranks roads against roads and rail against rail, never one against the other', () => {
+    expect(rankedTogether('local', 'highway')).toBe(true);
+    expect(rankedTogether('rail', 'rail')).toBe(true);
+    expect(rankedTogether('rail', 'local')).toBe(false);
+    expect(rankedTogether('dirt', 'rail')).toBe(false);
   });
 });

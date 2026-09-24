@@ -25,7 +25,7 @@ import {
   canGainTurnPocket,
   isPresetProfileId,
   presetProfileForTier,
-  rankForTier,
+  tierOutranks,
 } from '../shared/roadprofile';
 import { controlFromCode, warrantedControl } from '../shared/junction';
 import {
@@ -290,8 +290,7 @@ export function applyRoad(
     // A road replaces one BELOW it in the hierarchy, which is not the order
     // the tier numbers are in: a gravel track has a higher tier number than a
     // motorway and must still never cut one.
-    const outranks =
-      current === RoadTier.None || rankForTier(tier) > rankForTier(current as RoadTier);
+    const outranks = tierOutranks(tier, current as RoadTier);
     const laid = replace ? differs : outranks || sameTierNewProfile;
     // Which tiles this drag OWNS: the ones it laid, and the ones that already
     // carry exactly the road being drawn, since re-dragging a span is how its

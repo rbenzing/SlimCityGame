@@ -18,10 +18,9 @@ import type {
   RoadClassSpec,
   RoadProfile,
   RoadSpec,
-  RoadTier,
 } from './types';
 import { TILE_METERS } from './constants';
-import { flowDirection, RoadFlow } from './types';
+import { flowDirection, RoadFlow, RoadTier } from './types';
 
 const data = roadsData as { classes: RoadClassSpec[]; specs: RoadSpec[] };
 
@@ -1483,9 +1482,30 @@ export function roadRank(profile: RoadProfile): number {
   return CLASS_RANK[profile.class] * 2 + (transit ? 1 : 0);
 }
 
+/**
+ * Whether two classes are ranked against each other at all. Rail sits outside
+ * the road ranking: whichever number is higher, rail never takes a tile from a
+ * road nor a road from rail, and only replace mode lays one over the other.
+ */
+export function rankedTogether(a: RoadClassId, b: RoadClassId): boolean {
+  return (a === 'rail') === (b === 'rail');
+}
+
 /** The hierarchy rank of a tier, which is the rank of the preset it names. */
 export function rankForTier(tier: RoadTier): number {
   return roadRank(presetProfileForTier(tier));
+}
+
+/**
+ * Whether a drag of `tier` takes a tile that holds `current`: an empty tile,
+ * or a road it outranks and is ranked against at all.
+ */
+export function tierOutranks(tier: RoadTier, current: RoadTier): boolean {
+  if (current === RoadTier.None) return true;
+  if (!rankedTogether(presetProfileForTier(tier).class, presetProfileForTier(current).class)) {
+    return false;
+  }
+  return rankForTier(tier) > rankForTier(current);
 }
 
 /** Whether a road of class `a` may touch a road of class `b`, in either order. */

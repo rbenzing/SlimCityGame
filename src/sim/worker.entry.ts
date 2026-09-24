@@ -80,9 +80,9 @@ import {
   isPresetProfileId,
   joinRefusal,
   presetProfileForTier,
-  rankForTier,
   roadPriceOf,
   tierForProfile,
+  tierOutranks,
   type RoadPrice,
 } from '../shared/roadprofile';
 import { codeForControl, controlFromCode, takesControl } from '../shared/junction';
@@ -1930,8 +1930,7 @@ class SimWorld implements WorkerSim {
       // A road is replaced by one ABOVE it in the hierarchy, or by a different
       // composition of the same road; the same road again only ever re-profiles
       // its deck. Replace mode lands whatever the drag draws, lesser included.
-      const outranks =
-        (current as RoadTier) === RoadTier.None || rankForTier(tier) > rankForTier(current);
+      const outranks = tierOutranks(tier, current);
       const replaces = replace
         ? current !== tier || prevProfile !== profileId
         : outranks || (current === tier && current !== 0 && prevProfile !== profileId);

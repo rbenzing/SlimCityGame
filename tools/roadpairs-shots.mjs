@@ -15,6 +15,9 @@
  *   join     both runs survive and share the crossing tile
  *   refuse   the arm was refused whole — no tile of it landed
  *   replace  the arm took the crossing tile from the spine, breaking it
+ *   cut      both runs landed but the arm is not joined to the crossing: it
+ *            stops against the spine on either side, the way a street stops
+ *            at a railway
  *   partial  the arm landed some tiles and not others
  *
  * `partial` is the one that should never happen. A drag is refused whole or
@@ -142,7 +145,10 @@ for (let i = 0; i < pairs.length && i < plots.length; i++) {
 console.log(`laid ${laid.length} pairs`);
 
 await page.waitForTimeout(2000);
-const tiers = await call(() => Array.from(window.__slimcity.readGrid().roadTier));
+const { tiers, masks } = await call(() => {
+  const g = window.__slimcity.readGrid();
+  return { tiers: g.roadTier, masks: g.roadMask };
+});
 
 /**
  * What became of a pair, read off the grid.
@@ -177,10 +183,15 @@ function outcomeOf({ spine, arm, X, Z }) {
   if (armTiles === 0) return { code: 'refuse', ...counts };
   if (armTiles < armWanted) return { code: 'partial', ...counts };
   if (cross === arm.tier && arm.tier !== spine.tier) return { code: 'replace', ...counts };
+  // Landing beside the crossing is not joining it. The arm tile just west of
+  // the crossing is joined to it only if its mask points east (bit 2).
+  const EAST = 2;
+  const westOfCrossing = masks[(Z + MID) * N + (X + MID - 1)] ?? 0;
+  if ((westOfCrossing & EAST) === 0) return { code: 'cut', ...counts };
   return { code: 'join', ...counts };
 }
 
-const SYMBOL = { join: '=', refuse: '.', replace: 'X', partial: '!', 'no-spine': '?' };
+const SYMBOL = { join: '=', refuse: '.', replace: 'X', cut: '|', partial: '!', 'no-spine': '?' };
 const results = new Map();
 for (const entry of laid) results.set(entry.tag, { ...entry, ...outcomeOf(entry) });
 
@@ -189,7 +200,7 @@ const width = Math.max(...TIERS.map((t) => t.name.length));
 const pad = (s) => String(s).padEnd(width);
 console.log('');
 console.log(
-  'spine laid first, arm drawn across it:  = join   . refuse   X replace   ! partial   ? no spine',
+  'spine laid first, arm drawn across it:  = join   . refuse   X replace   | cut   ! partial   ? no spine',
 );
 console.log(`${pad('')}  ${TIERS.map((t) => t.name.slice(0, 4).padEnd(5)).join('')}`);
 for (const spine of TIERS) {

@@ -28,8 +28,8 @@ MUTCD citations below use 11th-edition section numbers.
 
 - A tile carries exactly one road tier. Two roads never share a tile: no
   overpass, no shared rail and street tile. A rail tile between two street tiles
-  is a break in the street, not a crossing, and drawing rail through a street
-  severs it: the track draws running straight through and the street ends
+  is a break in the street, not a crossing, and rail laid through a street in
+  replace mode severs it: the track draws running straight through and the street ends
   either side, never a crossing box. Level crossings that stop road traffic do
   not exist yet. —
   [road-model.md](world-sim/road-model.md),
@@ -74,8 +74,10 @@ MUTCD citations below use 11th-edition section numbers.
   was drawn last. — [road-model.md](world-sim/road-model.md);
   `src/world/pathfind.ts`, `storedRunDirection` in `src/world/roads.ts`
 - Roads replace by class rank (dirt, alley, rural, local, one-way, urban,
-  collector, arterial, divided, ramp, highway, then rail), never by tier number
-  or catalog order. A road with a bus or tram lane outranks the same road
+  collector, arterial, divided, ramp, highway), never by tier number or catalog
+  order. Rail sits outside the ranking: rail never takes a tile from a road nor
+  a road from rail, and only replace mode lays one over the other
+  (`tierOutranks`, `rankedTogether`). A road with a bus or tram lane outranks the same road
   without one. A drag through a road it does not outrank is refused whole; only
   replace mode overrides. — [road-model.md](world-sim/road-model.md);
   `CLASS_RANK` in `src/shared/roadprofile.ts`

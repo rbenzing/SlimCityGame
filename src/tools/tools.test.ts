@@ -1861,6 +1861,28 @@ describe('ToolManager — a road cannot be drawn through one it does not outrank
     tm.pointerMove(6, 9, 0);
     expect(previews.at(-1)?.valid).toBe(true);
   });
+
+  it('refuses rail drawn across a street, since rail sits outside the ranking', () => {
+    const { env, previews, sent } = withAvenueAtZ5();
+    const tm = new ToolManager(env);
+    tm.setTool('road.rail');
+    tm.pointerDown(3, 0, 0);
+    tm.pointerMove(3, 9, 0);
+    expect(previews.at(-1)?.valid).toBe(false);
+    expect(previews.at(-1)?.invalidReason).toMatch(/can't cross an avenue/);
+    tm.pointerUp(3, 9, 0);
+    expect(sent).toEqual([]);
+  });
+
+  it('lets Replace mode lay rail through a street', () => {
+    const { env, previews } = withAvenueAtZ5();
+    const tm = new ToolManager(env);
+    tm.setTool('road.rail');
+    tm.setFlags({ angleLock: false, straightMode: false, replaceRoad: true });
+    tm.pointerDown(3, 0, 0);
+    tm.pointerMove(3, 9, 0);
+    expect(previews.at(-1)?.valid).toBe(true);
+  });
 });
 
 describe('a road too wide for its tile is laid as two carriageways', () => {
@@ -2057,9 +2079,10 @@ describe('a ramp meets a motorway alongside it, never head-on', () => {
     tm.pointerDown(3, 6, 0);
     tm.pointerMove(7, 9, 0);
     const preview = previews.at(-1)!;
-    expect(preview.tiles.some((t) => t.x === 7 && t.z === 6), 'the elbow is beside the motorway').toBe(
-      true,
-    );
+    expect(
+      preview.tiles.some((t) => t.x === 7 && t.z === 6),
+      'the elbow is beside the motorway',
+    ).toBe(true);
     expect(preview.invalidReason).toBeUndefined();
     expect(preview.valid).toBe(true);
     tm.pointerUp(7, 9, 0);

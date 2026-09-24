@@ -30,17 +30,14 @@ import type {
   TransitMode,
   ZoneType,
 } from '../shared/types';
-import {
-  flowsAlong,
-  RoadTier as RoadTierValue,
-  ZoneType as ZoneTypeValue,
-} from '../shared/types';
+import { flowsAlong, RoadTier as RoadTierValue, ZoneType as ZoneTypeValue } from '../shared/types';
 import type { RoadClassId, RoadProfile } from '../shared/types';
 import {
   composeProfile,
   joinRefusal,
   layRefusal,
   NO_EDITS,
+  rankedTogether,
   roadRank,
   withArticle,
   presetProfileForTier,
@@ -676,7 +673,8 @@ export class ToolManager {
       const nameOf = (p: RoadProfile): string => this.env.roadSpec(tierForProfile(p)).name;
       for (const t of tiles) {
         const existing = at(t);
-        if (!existing || roadRank(existing) <= mine) continue;
+        if (!existing) continue;
+        if (rankedTogether(profile.class, existing.class) && roadRank(existing) <= mine) continue;
         const mineName = withArticle(nameOf(profile));
         return `${mineName[0]!.toUpperCase()}${mineName.slice(1)} can't cross ${withArticle(
           nameOf(existing),
@@ -718,8 +716,7 @@ export class ToolManager {
     const planned = new Map(tiles.map((t, i) => [`${t.x},${t.z}`, flows[i]!]));
     const classAt = (x: number, z: number): RoadClassId | null =>
       planned.has(`${x},${z}`) ? profile.class : (at({ x, z })?.class ?? null);
-    const flowAt = (x: number, z: number): number =>
-      planned.get(`${x},${z}`) ?? flowOf({ x, z });
+    const flowAt = (x: number, z: number): number => planned.get(`${x},${z}`) ?? flowOf({ x, z });
     const isRamp = (x: number, z: number): boolean => classAt(x, z) === 'ramp';
     for (const t of tiles) {
       for (const [dx, dz] of [
@@ -740,7 +737,8 @@ export class ToolManager {
               : null;
         if (join === 'headOn')
           return 'A ramp meets a highway alongside it: bend it to run beside the highway before it joins';
-        if (join === 'wrongWay') return 'A ramp joins a highway running the same way, not against it';
+        if (join === 'wrongWay')
+          return 'A ramp joins a highway running the same way, not against it';
       }
     }
     return null;

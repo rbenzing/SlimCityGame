@@ -456,9 +456,12 @@ surface differs — gravel is tan, ballast is grey stone. See
 
 Roads replace each other by **rank**, not by catalog order: dirt < alley <
 rural < local < one-way < urban < collector < arterial < divided < ramp <
-highway (rail sits outside the ranking and refuses nothing, since it is a
-separate network; drawn through a street it cuts it, and the track is drawn
-running straight through while the street stops either side). A road carrying a
+highway. Rail sits outside the ranking, since it is a separate network: it
+refuses no join, and neither takes a tile from the other, so rail drawn across
+a street is refused like any road that does not outrank what it crosses, and
+so is a street drawn across rail. Replace mode lays rail through a street,
+which cuts it: the track is drawn running straight through and the street
+stops either side. A road carrying a
 reserved bus or tram lane outranks the same road without one, so a stray
 drag cannot silently erase a transit line. A road may only be drawn through
 one it outranks; drawing through a road it does not outrank is refused

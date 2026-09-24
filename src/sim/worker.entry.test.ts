@@ -1946,6 +1946,20 @@ describe('which roads may touch — the world refuses, not only the tool', () =>
     expect(middle?.mask).toBe(2 | 8);
   });
 
+  it('never lets rail take a street tile, or a street take a rail tile, unless asked to replace', () => {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(40, 10, 9) }]);
+    run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.RailTrack, tiles: roadRow(36, 14, 9) }]);
+    expect(tierAt(h, 40, 14)).toBe(RoadTier.TwoLane);
+    run(h, 3, [{ kind: 'buildRoad', tier: RoadTier.RailTrack, tiles: column(50, 10, 9) }]);
+    run(h, 4, [{ kind: 'buildRoad', tier: RoadTier.Avenue, tiles: roadRow(46, 14, 9) }]);
+    expect(tierAt(h, 50, 14)).toBe(RoadTier.RailTrack);
+    run(h, 5, [
+      { kind: 'buildRoad', tier: RoadTier.RailTrack, tiles: roadRow(36, 14, 9), replace: true },
+    ]);
+    expect(tierAt(h, 40, 14)).toBe(RoadTier.RailTrack);
+  });
+
   it('refuses a dirt road against a ramp', () => {
     const h = sandboxed();
     run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Ramp, tiles: column(20, 10, 6) }]);
