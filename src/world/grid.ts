@@ -70,6 +70,10 @@ export function createGrid(size?: number): GridState {
     junctionTurns: new Uint16Array(n),
     junctionLaneTurns: new Uint16Array(n * ARMS_PER_TILE),
     powerLine: new Uint8Array(n),
+    overTier: new Uint8Array(n),
+    overProfile: new Uint16Array(n),
+    overFlow: new Uint8Array(n),
+    overElevation: new Float32Array(n),
   };
 }
 
@@ -86,7 +90,7 @@ const HEADER_BYTES = 8; // uint32 version + uint32 size
 // (roadProfile) + 20 single-byte layers (7 flat: water/trees/zone/roadTier/
 // roadMask/power/watered) + 9 fields + 1 district + 1 landfill + 1 roadFlow +
 // 1 junctionControl.
-const BYTES_PER_TILE = 45;
+const BYTES_PER_TILE = 53;
 /** Arms a junction has, and so entries the per-lane layer keeps per tile. */
 export const ARMS_PER_TILE = 4;
 // v9 is this layout without the trailing powerLine layer, which loads empty so
@@ -100,6 +104,9 @@ export const ARMS_PER_TILE = 4;
 // all of them, widening v4's byte and defaulting every absent trailing layer.
 // v10 is this layout without the trailing junctionLaneTurns layer, which loads
 // zero so every lane takes the set its approach derives for it.
+// v11 is this layout without the four trailing over-road layers (tier 1,
+// profile 2, flow 1, deck 4), which load empty: no overpasses.
+const BYTES_PER_TILE_V11 = 45;
 const BYTES_PER_TILE_V10 = 37;
 const BYTES_PER_TILE_V9 = 36;
 const BYTES_PER_TILE_V8 = 34;
@@ -132,6 +139,7 @@ export const BYTES_PER_TILE_BY_VERSION: readonly number[] = [
   BYTES_PER_TILE_V8,
   BYTES_PER_TILE_V9,
   BYTES_PER_TILE_V10,
+  BYTES_PER_TILE_V11,
   BYTES_PER_TILE,
 ];
 
@@ -220,6 +228,15 @@ export function serializeGrid(g: GridState): ArrayBuffer {
   for (let i = 0; i < n * ARMS_PER_TILE; i++) {
     view.setUint16(offset + i * 2, g.junctionLaneTurns[i]!, true);
   }
+  offset += n * ARMS_PER_TILE * 2;
+  // The road passing over a crossing tile (v12): tier, profile, flow, deck.
+  bytes.set(g.overTier, offset);
+  offset += n;
+  for (let i = 0; i < n; i++) view.setUint16(offset + i * 2, g.overProfile[i]!, true);
+  offset += n * 2;
+  bytes.set(g.overFlow, offset);
+  offset += n;
+  for (let i = 0; i < n; i++) view.setFloat32(offset + i * 4, g.overElevation[i]!, true);
 
   return buffer;
 }
@@ -248,6 +265,7 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
   const hasJunctionTurns = version >= 9;
   const hasPowerLine = version >= 10;
   const hasJunctionLaneTurns = version >= 11;
+  const hasOverRoads = version >= 12;
 
   const size = view.getUint32(4, true);
   const n = size * size;
@@ -349,6 +367,21 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
     for (let i = 0; i < n * ARMS_PER_TILE; i++) {
       junctionLaneTurns[i] = view.getUint16(offset + i * 2, true);
     }
+    offset += n * ARMS_PER_TILE * 2;
+  }
+  // Over-road layers (v12+). An older buffer has no overpasses.
+  const overTier = new Uint8Array(n);
+  const overProfile = new Uint16Array(n);
+  const overFlow = new Uint8Array(n);
+  const overElevation = new Float32Array(n);
+  if (hasOverRoads) {
+    overTier.set(bytes.subarray(offset, offset + n));
+    offset += n;
+    for (let i = 0; i < n; i++) overProfile[i] = view.getUint16(offset + i * 2, true);
+    offset += n * 2;
+    overFlow.set(bytes.subarray(offset, offset + n));
+    offset += n;
+    for (let i = 0; i < n; i++) overElevation[i] = view.getFloat32(offset + i * 4, true);
   }
 
   return {
@@ -372,6 +405,10 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
     junctionTurns,
     junctionLaneTurns,
     powerLine,
+    overTier,
+    overProfile,
+    overFlow,
+    overElevation,
   };
 }
 
@@ -569,7 +606,8 @@ export function clearTiles(g: GridState, tiles: TilePoint[]): ClearTilesResult {
       g.roadFlow[i] = RoadFlow.None;
       g.junctionControl[i] = 0;
       g.junctionTurns[i] = 0;
-      for (let arm = 0; arm < ARMS_PER_TILE; arm++) g.junctionLaneTurns[i * ARMS_PER_TILE + arm] = 0;
+      for (let arm = 0; arm < ARMS_PER_TILE; arm++)
+        g.junctionLaneTurns[i * ARMS_PER_TILE + arm] = 0;
       g.roadMask[i] = 0;
     }
 

@@ -22,7 +22,9 @@
  */
 import * as THREE from 'three';
 import { PIER_SPACING_TILES, TILE_METERS, tileToWorld } from '../shared/constants';
-import { RoadTier } from '../shared/types';
+import { bridgeStyleFor, GIRDER_DEPTH_M } from '../shared/bridgestyle';
+import type { BridgeStyle } from '../shared/bridgestyle';
+import type { RoadTier } from '../shared/types';
 import { carriagewayHalfWidthMeters, curbWidthMeters, ROAD_Y_OFFSET } from './roadsmesh';
 import { carriagewayHalfWidthOf, kerbWidthOf } from '../shared/roadprofile';
 import type { RoadProfile } from '../shared/types';
@@ -41,13 +43,6 @@ export interface BridgeDeckTile {
   /** Ground world height under the tile, in metres. */
   groundY: number;
 }
-
-/**
- * The structural families a span can be built in. Deliberately a short list of
- * clearly different silhouettes rather than one per tier — the point is that a
- * player reads what a bridge carries from across the map.
- */
-export type BridgeStyle = 'plank' | 'beam' | 'box' | 'truss';
 
 /** Everything that differs between one bridge family and the next. */
 interface StyleSpec {
@@ -73,7 +68,7 @@ const STYLES: Record<BridgeStyle, StyleSpec> = {
   // A farm track over a creek: planking on light posts, no parapet worth the
   // name, just a rail to stop you going over the side.
   plank: {
-    girderDepth: 0.3,
+    girderDepth: GIRDER_DEPTH_M.plank,
     girderColor: 0x8a7c64,
     overhang: 0.1,
     parapetHeight: 0.75,
@@ -88,7 +83,7 @@ const STYLES: Record<BridgeStyle, StyleSpec> = {
   },
   // The ordinary street bridge: a concrete beam on round columns.
   beam: {
-    girderDepth: 0.75,
+    girderDepth: GIRDER_DEPTH_M.beam,
     girderColor: 0x8a8f96,
     overhang: 0.25,
     parapetHeight: 1.0,
@@ -105,7 +100,7 @@ const STYLES: Record<BridgeStyle, StyleSpec> = {
   // the whole silhouette — this is what a big road crossing looks like from a
   // distance.
   box: {
-    girderDepth: 1.5,
+    girderDepth: GIRDER_DEPTH_M.box,
     girderColor: 0xa9aeb4,
     overhang: 0.45,
     parapetHeight: 1.15,
@@ -120,7 +115,7 @@ const STYLES: Record<BridgeStyle, StyleSpec> = {
   },
   // Railway through-truss: a shallow deck carried inside steel lattice sides.
   truss: {
-    girderDepth: 0.55,
+    girderDepth: GIRDER_DEPTH_M.truss,
     girderColor: 0x5d6a63,
     overhang: 0.2,
     parapetHeight: 0,
@@ -134,26 +129,6 @@ const STYLES: Record<BridgeStyle, StyleSpec> = {
     truss: true,
   },
 };
-
-/** Which family a road tier's spans are built in. */
-export function bridgeStyleFor(tier: RoadTier): BridgeStyle {
-  switch (tier) {
-    case RoadTier.RailTrack:
-      return 'truss';
-    // A slip road flies over on the same box girder the motorway it serves
-    // does, because that is the structure it is usually part of.
-    case RoadTier.Ramp:
-    case RoadTier.Highway:
-    case RoadTier.Avenue:
-      return 'box';
-    case RoadTier.Gravel:
-    case RoadTier.Alley:
-    case RoadTier.BikeLane:
-      return 'plank';
-    default:
-      return 'beam';
-  }
-}
 
 const PIER_RADIAL_SEGMENTS = 8;
 const FOOTING_HEIGHT = 0.5;

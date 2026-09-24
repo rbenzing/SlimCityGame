@@ -5,14 +5,13 @@ import { kerbWidthOf, presetProfileForTier } from '../shared/roadprofile';
 import { RoadTier } from '../shared/types';
 import {
   BridgeRenderer,
-  bridgeStyleFor,
   groupByStyle,
   isPierTile,
   runsAlongZ,
   structureHalfWidth,
   type BridgeDeckTile,
-  type BridgeStyle,
 } from './bridges';
+import { bridgeStyleFor } from '../shared/bridgestyle';
 import { carriagewayHalfWidthMeters, curbWidthMeters } from './roadsmesh';
 
 function deckTile(
@@ -71,32 +70,6 @@ describe('runsAlongZ', () => {
 
   it('falls back to a north-south run for an isolated tile', () => {
     expect(runsAlongZ(0)).toBe(true);
-  });
-});
-
-describe('bridgeStyleFor', () => {
-  it('gives rail a steel through-truss, the way railway bridges are built', () => {
-    expect(bridgeStyleFor(RoadTier.RailTrack)).toBe('truss');
-  });
-
-  it('gives the big roads a deep box girder', () => {
-    expect(bridgeStyleFor(RoadTier.Highway)).toBe('box');
-    expect(bridgeStyleFor(RoadTier.Avenue)).toBe('box');
-  });
-
-  it('gives tracks and lanes bare planking rather than a concrete beam', () => {
-    for (const tier of [RoadTier.Gravel, RoadTier.Alley, RoadTier.BikeLane])
-      expect(bridgeStyleFor(tier)).toBe('plank');
-  });
-
-  it('leaves ordinary streets on the concrete beam', () => {
-    for (const tier of [RoadTier.TwoLane, RoadTier.FourLane, RoadTier.OneWay, RoadTier.BusLane])
-      expect(bridgeStyleFor(tier)).toBe('beam');
-  });
-
-  it('gives every tier a span it can be built in — a tram line bridges too', () => {
-    const styles: BridgeStyle[] = ['plank', 'beam', 'box', 'truss'];
-    for (const tier of ALL_TIERS) expect(styles).toContain(bridgeStyleFor(tier));
   });
 });
 

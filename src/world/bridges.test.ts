@@ -189,3 +189,36 @@ describe('solveElevationProfile', () => {
     expect(solveElevationProfile(g, [])).toEqual({ ok: true, elevations: [], cost: 0 });
   });
 });
+
+describe('solveElevationProfile over a road it crosses', () => {
+  /** A north-south road down x = 20, and a drag east across it along z = 14. */
+  function withRoadAcross(): GridState {
+    const g = makeGrid(40);
+    for (let z = 6; z <= 22; z++) g.roadTier[idx(g.size, 20, z)] = RoadTier.Highway;
+    return g;
+  }
+
+  it('lifts a raised deck over the road below instead of joining it', () => {
+    const result = solveElevationProfile(withRoadAcross(), run(14, 12, 28), 8);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.elevations[8]).toBe(8); // x = 20, the crossing
+  });
+
+  it('still joins a road it meets at its own height', () => {
+    const result = solveElevationProfile(withRoadAcross(), run(14, 12, 28));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.elevations.every((e) => e === 0)).toBe(true);
+  });
+
+  it('still refuses a raised deck that must step onto a road it joins end-on', () => {
+    const g = makeGrid(40);
+    g.roadTier[idx(g.size, 11, 14)] = RoadTier.TwoLane; // just before the drag, in line
+    // An end tile handed to a built road has to meet it within a grade step.
+    const result = solveElevationProfile(g, run(14, 12, 28), 8);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.elevations[0]).toBeLessThanOrEqual(BRIDGE_MAX_GRADE);
+  });
+});

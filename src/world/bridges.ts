@@ -24,8 +24,7 @@ const inBoundsOf = (size: number, x: number, z: number): boolean =>
   x >= 0 && z >= 0 && x < size && z < size;
 
 export type ElevationProfile =
-  | { ok: true; elevations: number[]; cost: number }
-  | { ok: false; reason: 'grade' | 'height' };
+  { ok: true; elevations: number[]; cost: number } | { ok: false; reason: 'grade' | 'height' };
 
 /** Terrain height (metres, world Y) at a tile. */
 function groundY(g: GridState, t: TilePoint): number {
@@ -65,10 +64,23 @@ const DIRS: ReadonlyArray<readonly [number, number]> = [
  * outside the drag — tiles the new span will physically join onto, and
  * therefore has to meet at a legal step. Plain ground is not a connection: a
  * viaduct is allowed to pass over it.
+ *
+ * Nor is the road a drag crosses. Where `t` already holds a road, the tiles
+ * either side of it ACROSS the drag's line are that road running on, and a
+ * deck may pass over it rather than join it; whether it does is the crossing
+ * rule's decision, not the solver's. A deck left at that road's height meets
+ * it as it always has.
  */
-function connectionHeights(g: GridState, t: TilePoint, inDrag: ReadonlySet<number>): number[] {
+function connectionHeights(
+  g: GridState,
+  t: TilePoint,
+  inDrag: ReadonlySet<number>,
+  acrossX: boolean | null,
+): number[] {
   const heights: number[] = [];
+  const holdsRoad = (g.roadTier[indexOf(g.size, t.x, t.z)] ?? RoadTier.None) !== RoadTier.None;
   for (const [dx, dz] of DIRS) {
+    if (holdsRoad && acrossX !== null && (acrossX ? dx !== 0 : dz !== 0)) continue;
     const nx = t.x + dx;
     const nz = t.z + dz;
     if (!inBoundsOf(g.size, nx, nz)) continue;
@@ -102,7 +114,13 @@ export function solveElevationProfile(
   const inDrag = new Set(
     tiles.filter((t) => inBoundsOf(g.size, t.x, t.z)).map((t) => indexOf(g.size, t.x, t.z)),
   );
-  const joins = tiles.map((t) => connectionHeights(g, t, inDrag));
+  // Which way the drag's line lies across each tile: x when it runs along z.
+  const acrossX = tiles.map((t, i): boolean | null => {
+    const step = tiles[i + 1] ?? tiles[i - 1];
+    if (!step) return null;
+    return step.x === t.x;
+  });
+  const joins = tiles.map((t, i) => connectionHeights(g, t, inDrag, acrossX[i]!));
 
   // Everything below is solved in world Y, not in per-tile offsets, so the deck
   // comes out smooth over an uneven riverbed instead of tracking the bed. The
@@ -173,9 +191,7 @@ export function solveElevationProfile(
     return { ok: false, reason: 'grade' };
   }
 
-  const cost = Math.round(
-    elevations.reduce((sum, e) => sum + e * BRIDGE_COST_PER_METER_TILE, 0),
-  );
+  const cost = Math.round(elevations.reduce((sum, e) => sum + e * BRIDGE_COST_PER_METER_TILE, 0));
   return { ok: true, elevations, cost };
 }
 

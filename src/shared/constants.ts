@@ -119,6 +119,14 @@ export const ROAD_ELEVATION_STEP_M = 2;
 export const BRIDGE_COST_PER_METER_TILE = 6;
 /** Piers drop to the ground every Nth deck tile. */
 export const PIER_SPACING_TILES = 3;
+/**
+ * Clear height an overpass leaves over a road beneath it, deck surface to the
+ * girder's underside (m). The game's own figure: the AASHTO standard it stands
+ * in for is not held in docs/Road Guides.
+ */
+export const OVERPASS_CLEARANCE_M = 5;
+/** The same over a railway (m), standing in for AREMA, likewise not held. */
+export const OVERPASS_RAIL_CLEARANCE_M = 7;
 
 // --- milestones -------------------------------------------------------------
 export interface Milestone {
