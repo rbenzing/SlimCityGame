@@ -18,6 +18,7 @@ import {
   BRIDGE_MAX_GRADE,
   ROAD_ELEVATION_STEP_M,
   TILE_METERS,
+  tileToWorld,
 } from '../shared/constants';
 import type {
   BrushSettings,
@@ -364,25 +365,7 @@ export function snapToGuide(
   reach = GUIDE_SNAP_TILES,
   along = GRID_SPACING_TILES,
 ): TilePoint {
-  /** A road at (x,z) that continues along X — one tile has no direction. */
-  const runsAlongX = (x: number, z: number): boolean =>
-    isRoad(x, z) && (isRoad(x - 1, z) || isRoad(x + 1, z));
-  const runsAlongZ = (x: number, z: number): boolean =>
-    isRoad(x, z) && (isRoad(x, z - 1) || isRoad(x, z + 1));
-
-  // The line a road lays down reaches PAST its own ends — continuing a street
-  // across a gap is most of what the snap is for, and a guide that stopped at
-  // the last paved tile could never do it. It reaches one block, because
-  // beyond a block away sharing a row is coincidence rather than intent.
-  const rowGuides = (z: number): boolean => {
-    for (let x = tile.x - along; x <= tile.x + along; x++) if (runsAlongX(x, z)) return true;
-    return false;
-  };
-  const columnGuides = (x: number): boolean => {
-    for (let z = tile.z - along; z <= tile.z + along; z++) if (runsAlongZ(x, z)) return true;
-    return false;
-  };
-
+  const { rowGuides, columnGuides } = guideLines(tile, isRoad, along);
   const nearest = (guides: (at: number) => boolean, from: number): number => {
     for (let d = 1; d <= reach; d++) {
       const lower = guides(from - d);
@@ -394,6 +377,70 @@ export function snapToGuide(
     return from;
   };
   return { x: nearest(columnGuides, tile.x), z: nearest(rowGuides, tile.z) };
+}
+
+/**
+ * Which rows and columns near `tile` a road runs along. A guide is a road that
+ * RUNS along the axis — a candidate only counts when its neighbour along that
+ * axis is road too, since one tile on its own says nothing about direction.
+ */
+function guideLines(
+  tile: TilePoint,
+  isRoad: (x: number, z: number) => boolean,
+  along: number,
+): { rowGuides: (z: number) => boolean; columnGuides: (x: number) => boolean } {
+  const runsAlongX = (x: number, z: number): boolean =>
+    isRoad(x, z) && (isRoad(x - 1, z) || isRoad(x + 1, z));
+  const runsAlongZ = (x: number, z: number): boolean =>
+    isRoad(x, z) && (isRoad(x, z - 1) || isRoad(x, z + 1));
+  // The line a road lays down reaches PAST its own ends — continuing a street
+  // across a gap is most of what the snap is for, and a guide that stopped at
+  // the last paved tile could never do it. It reaches one block, because
+  // beyond a block away sharing a row is coincidence rather than intent.
+  return {
+    rowGuides: (z) => {
+      for (let x = tile.x - along; x <= tile.x + along; x++) if (runsAlongX(x, z)) return true;
+      return false;
+    },
+    columnGuides: (x) => {
+      for (let z = tile.z - along; z <= tile.z + along; z++) if (runsAlongZ(x, z)) return true;
+      return false;
+    },
+  };
+}
+
+/**
+ * A road end off the grid at `p` pulled into line with a nearby road,
+ * independently on each axis: onto the centre line of the nearest row or
+ * column a road runs along, within the guide's reach. Equally near two, it
+ * stays where it is, as a grid drag does.
+ */
+export function guidePoint(
+  p: CmPoint,
+  isRoad: (x: number, z: number) => boolean,
+  reach = GUIDE_SNAP_TILES,
+  along = GRID_SPACING_TILES,
+): CmPoint {
+  const tile = { x: Math.floor(p.x / 100 / TILE_METERS), z: Math.floor(p.z / 100 / TILE_METERS) };
+  const { rowGuides, columnGuides } = guideLines(tile, isRoad, along);
+  const onto = (guides: (at: number) => boolean, from: number, cm: number): number => {
+    let best: number | null = null;
+    let bestD = Infinity;
+    let tie = false;
+    for (let t = from - reach; t <= from + reach; t++) {
+      if (!guides(t)) continue;
+      const line = Math.round(tileToWorld(t) * 100);
+      const d = Math.abs(line - cm);
+      if (d > reach * TILE_METERS * 100) continue;
+      if (d < bestD) {
+        best = line;
+        bestD = d;
+        tie = false;
+      } else if (d === bestD) tie = true;
+    }
+    return best === null || tie ? cm : best;
+  };
+  return { x: onto(columnGuides, tile.x, p.x), z: onto(rowGuides, tile.z, p.z) };
 }
 
 /**
@@ -1090,9 +1137,19 @@ export class ToolManager {
     return p ? { x: Math.round(p.x * 100), z: Math.round(p.z * 100) } : null;
   }
 
-  /** Where a road end dropped at `p` lands, and whether it splits a road there. */
+  /**
+   * Where a road end dropped at `p` lands, and whether it splits a road there.
+   * One that lands on nothing is, with guide snapping on, pulled into line
+   * with a road nearby — and then lands on whatever is there.
+   */
   private snapEnd(p: CmPoint): RoadEndSnap {
-    return this.env.snapRoadEnd?.(p) ?? { at: p, splits: false };
+    const land = (q: CmPoint): RoadEndSnap => this.env.snapRoadEnd?.(q) ?? { at: q, splits: false };
+    const landed = land(p);
+    if (landed.splits || landed.at.x !== p.x || landed.at.z !== p.z) return landed;
+    const at = this.env.roadProfileAt;
+    if (!this.flags.guideSnap || !at) return landed;
+    const guided = guidePoint(p, (x, z) => at({ x, z }) !== null);
+    return guided.x === p.x && guided.z === p.z ? landed : land(guided);
   }
 
   /**

@@ -10,6 +10,7 @@ import {
   DEFAULT_BRUSH_SETTINGS,
   GRID_SPACING_TILES,
   GUIDE_SNAP_TILES,
+  guidePoint,
   offersGrid,
   snapToGuide,
   ToolManager,
@@ -2358,6 +2359,10 @@ describe('Curve mode lays a road off the grid in three clicks', () => {
     env.worldPointAt = (sx, sy) => ({ x: sx, z: sy });
     env.snapRoadEnd = (p) => snapRoadEnd(world, p);
     env.roadEndDirection = (p) => roadEndDirection(world, world.roads!, p, () => null);
+    env.roadProfileAt = (t) =>
+      t.x >= 0 && t.z >= 0 && t.x < 48 && t.z < 48 && world.roadTier[t.z * 48 + t.x]
+        ? presetProfileForTier(world.roadTier[t.z * 48 + t.x] as RoadTier)
+        : null;
     env.planFreeRoad = (ask, profile) => {
       const plan = planWithSplits(world, world.roads!, ask, ask.splits, (id) =>
         id === ask.profileId ? profile : null,
@@ -2532,6 +2537,25 @@ describe('Curve mode lays a road off the grid in three clicks', () => {
     expect(off.sent[0]!.commands.at(-1)).toMatchObject({ control: cm(230, 520) });
   });
 
+  it('pulls a curve’s start into line with a street nearby only while guide snapping is on', () => {
+    const start = (guide: boolean) => {
+      const { tm, sent, world } = curveTool();
+      applyRoad(
+        world,
+        Array.from({ length: 10 }, (_, i) => ({ x: 5 + i, z: 10 })),
+        RoadTier.TwoLane,
+      );
+      reconcileRoads(world.roads!, world);
+      tm.setFlags({ guideSnap: guide });
+      tm.pointerDown(310, 214, 0); // just past the street's end, four metres off its line
+      tm.pointerDown(420, 214, 0);
+      tm.pointerDown(460, 330, 0);
+      return (sent[0]!.commands.at(-1) as Extract<Command, { kind: 'buildSegment' }>).a;
+    };
+    expect(start(false)).toEqual(cm(310, 214));
+    expect(start(true)).toEqual(cm(310, 210));
+  });
+
   it('runs a Straight drag at any angle off the grid, and one along a row as a grid street', () => {
     const { tm, sent } = curveTool();
     tm.setFlags({ curveMode: false, straightMode: true });
@@ -2573,5 +2597,22 @@ describe('a motorway has no Grid mode', () => {
     };
     expect(lay('road.two')).toBeGreaterThan(30);
     expect(lay('road.highway')).toBe(11);
+  });
+});
+
+describe('guide snapping pulls a road end off the grid into line', () => {
+  // A street running along row 10, from tile 5 to tile 9.
+  const street = (x: number, z: number): boolean => z === 10 && x >= 5 && x <= 9;
+
+  it('moves a nearby end onto the centre line of the row a road runs along', () => {
+    // Tile (7, 11): fifteen metres below the street's centre line at z = 210 m.
+    expect(guidePoint({ x: 15000, z: 22500 }, street)).toEqual({ x: 15000, z: 21000 });
+    // Just past the street's end, in line with it: still pulled onto the line.
+    expect(guidePoint({ x: 21000, z: 21400 }, street)).toEqual({ x: 21000, z: 21000 });
+  });
+
+  it('leaves an end too far off, or with no road running near it, where it is', () => {
+    expect(guidePoint({ x: 15000, z: 27000 }, street)).toEqual({ x: 15000, z: 27000 });
+    expect(guidePoint({ x: 50000, z: 50000 }, street)).toEqual({ x: 50000, z: 50000 });
   });
 });

@@ -329,8 +329,14 @@ it still refuses exactly what the command would. A bend placed within 8 m of
 the line of the road a curve starts from is pulled onto it, so a road carries
 on round a bend without a kink. Checked in the browser: a diagonal laid off
 the grid, a straight drag ending on it splitting it into a T-junction, and a
-curve continuing the first one smoothly from its end. Not yet (5c): guide
-snapping for roads off the grid.
+curve continuing the first one smoothly from its end.
+
+Stage 5c is built (2026-09-24): with guide snapping on, a free road's end
+that lands on nothing is pulled onto the centre line of the nearest row or
+column a grid road runs along, within the same reach a grid drag's end has,
+so a road off the grid can be started or ended in line with a street. It
+finds its guides with the grid drag's own rule, shared rather than copied.
+Stage 5 is complete.
 
 ### Overpasses (requested 2026-09-23, built 2026-09-24)
 

@@ -278,7 +278,10 @@ that the grid could not already hold.
      in the same batch as the road and undone with it by `joinSegments`), and
      a curve starting on a road's end continuing its direction.
    - **5c, guide snapping off the grid.** With guide snapping on, a free
-     road's end pulled into line with a road nearby, as a grid drag's is.
+     road's end that lands on nothing is pulled, on each axis, onto the
+     centre line of the nearest row or column a grid road runs along, within
+     the grid drag's reach, and then lands on whatever is there. The rows and
+     columns that guide are found exactly as a grid drag finds them.
 6. **Angled junction behaviour.** Control, stop lines, crossings, approach
    lanes and turn pockets at junctions that are not on the grid, and the
    signs and kerbside furniture along free roads, which the grid places by
