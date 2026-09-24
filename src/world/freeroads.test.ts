@@ -367,6 +367,35 @@ describe('roads off the grid: the land reads them', () => {
     expect(mask.some((v) => v === 1)).toBe(true);
   });
 
+  it('leaves no unzoned strip between its footprint and the lots it fronts, at any angle', () => {
+    for (const tier of [RoadTier.TwoLane, RoadTier.FourLane]) {
+      for (const rise of [0, 100, 250, 400]) {
+        for (const across of [false, true]) {
+          const g = world();
+          // Along x, rising `rise` in z; or the same road turned to run along z.
+          const p = (u: number, v: number) => (across ? at(v, u) : at(u, v));
+          lay(g, { tier, a: p(100, 300), b: p(700, 300 + rise) });
+          const mask = computeZonableMask(g);
+          const line = (u: number): number => 300 + ((u - 100) * rise) / 600;
+          const idx = (u: number, v: number): number => (across ? u * SIZE + v : v * SIZE + u);
+          // Every tile row across the road away from its ends: the first tile
+          // off the footprint, either side, is a lot it fronts.
+          for (let tu = 8; tu <= 32; tu++) {
+            const tv = Math.floor(line(tu * 20 + 10) / 20);
+            for (const step of [-1, 1]) {
+              let v = tv;
+              while (g.roadFootprint[idx(tu, v)]) v += step;
+              expect(
+                mask[idx(tu, v)],
+                `tier ${tier}, rise ${rise}, across ${across}, row ${tu}, side ${step}`,
+              ).toBe(1);
+            }
+          }
+        }
+      }
+    }
+  });
+
   it('keeps buildings and zones off its footprint, and zones the lots it fronts', () => {
     const g = street();
     const covered = Array.from(g.roadFootprint).findIndex((v) => v === 1);

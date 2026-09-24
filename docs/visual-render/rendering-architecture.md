@@ -72,6 +72,16 @@ chunks' meshes, not just the one the tile sits in (see
 The road mesh (`roadsmesh.ts`) follows the same per-chunk rebuild discipline,
 so a drag across the map rebuilds only the chunks it actually crosses.
 
+Roads off the grid are drawn separately, by `freeroadmesh.ts`, from the road
+network the worker sends whenever it changes. Each free segment's
+cross-section is swept along its centre line, and each node a free segment
+meets is meshed from the roads meeting there: every road set back until its
+carriageway edge clears its neighbours' plus its kerb return, the junction
+surface filled between them, and the footway carried round each corner. It
+takes the tile renderer's colours, heights and markings plan, and is one mesh
+rebuilt whole on every change to the network or the ground, since free roads
+are few next to grid tiles.
+
 ## Picking
 
 Building selection is CPU-side, not a GPU id-buffer pass (that stays a

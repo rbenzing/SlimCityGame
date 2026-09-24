@@ -126,6 +126,7 @@ import {
 } from '../world/grid';
 import {
   createRoadNetwork,
+  encodeRoadNetwork,
   loadGrid,
   reconcileRoads,
   saveGrid,
@@ -471,6 +472,8 @@ class SimWorld implements WorkerSim {
   private customRoadProfiles = new Map<number, RoadProfile>();
   /** The full table goes out in the next snapshot when set. */
   private roadProfilesChanged = true;
+  /** The network and its version as the render thread last received them. */
+  private sentRoadNet: { net: RoadNet; version: number } | null = null;
 
   // --- deltas accumulated between snapshots --------------------------------
   private readonly pendingRoadDeltas = new Map<number, RoadTileDelta>();
@@ -1129,6 +1132,11 @@ class SimWorld implements WorkerSim {
       snap.roadProfiles = this.roadProfileTable();
       this.roadProfilesChanged = false;
     }
+    const net = this.roads;
+    if (this.sentRoadNet?.net !== net || this.sentRoadNet.version !== net.version) {
+      snap.roadNet = encodeRoadNetwork(net);
+      this.sentRoadNet = { net, version: net.version };
+    }
     if (this.pendingRoadDeltas.size > 0) {
       snap.roads = Array.from(this.pendingRoadDeltas.values(), (d) => this.withOverRoad(d));
       this.pendingRoadDeltas.clear();
@@ -1167,6 +1175,7 @@ class SimWorld implements WorkerSim {
     if (junctions) snap.junctions = junctions;
 
     const transfer: Transferable[] = [vehicles.buffer];
+    if (snap.roadNet) transfer.push(snap.roadNet.buffer);
     if (snap.heightPatches) {
       for (const patch of snap.heightPatches) transfer.push(patch.heights.buffer);
     }

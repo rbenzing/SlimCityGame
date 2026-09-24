@@ -61,6 +61,7 @@ import { LotRenderer } from './render/lots';
 import { BuildingKitRenderer } from './render/buildingkit';
 import { LandmarkRenderer } from './render/landmarks';
 import { RoadMeshRenderer } from './render/roadsmesh';
+import { FreeRoadRenderer } from './render/freeroadmesh';
 import type { BandSpan } from './render/roadsmesh';
 import { BridgeRenderer } from './render/bridges';
 import { headingAlongX, VehicleRenderer } from './render/vehicles';
@@ -218,6 +219,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     (id) => clientGrid.profileById(id),
     overSurfaceAt,
   );
+  // Roads off the grid lie on the ground, so they sit on the terrain.
+  const freeRoads = new FreeRoadRenderer(world.scene, heightAt, (id) => clientGrid.profileById(id));
   const bridges = new BridgeRenderer(world.scene, roadSurfaceAt, overSurfaceAt);
   const vehicles = new VehicleRenderer(
     world.scene,
@@ -326,6 +329,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   if (import.meta.env.DEV) {
     (window as unknown as Record<string, unknown>).__slimcity = {
       map,
+      freeRoadTriangles: (): number => freeRoads.triangleCount(),
       setDayT: (t: number | null): void => {
         devDayTOverride = t;
       },
@@ -1154,6 +1158,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     roofProps.setNightFactor(nightFactor);
     houseRoofs.setNightFactor(nightFactor);
     roadsMesh.setNightFactor(nightFactor); // dim the unlit road so lamp pools stay the bright spots
+    freeRoads.setNightFactor(nightFactor);
     lamps.setTimeOfDay(dayT); // lamps run their own dusk-to-dawn schedule, not the night ramp
     vehicles.setNightFactor(nightFactor);
     landmarks.setNightFactor(nightFactor);
@@ -1182,9 +1187,17 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // run's grading) must rebuild the affected road chunks, or their
       // geometry keeps stale heights (buried edges / floating caps).
       roadsMesh.invalidateHeights(snap.heightPatches);
+      freeRoads.rebuild(clientGrid.roads);
     }
     // The profile table lands before the road deltas that refer into it.
     if (snap.roadProfiles) clientGrid.applyRoadProfiles(snap.roadProfiles);
+    if (snap.roadNet) {
+      clientGrid.applyRoadNetwork(snap.roadNet);
+      freeRoads.rebuild(clientGrid.roads);
+      // A road off the grid fronts lots and covers tiles with no road tile
+      // changing, so the zoning grid is rebuilt here when nothing below will.
+      if (!snap.roads) zoneGrid.rebuild(clientGrid);
+    }
     // Who gives way lands before the road deltas too, so that when a drag
     // changes both, the signs are rebuilt once against the new answer.
     const controlsMoved = snap.junctions ? clientGrid.applyJunctions(snap.junctions) : false;

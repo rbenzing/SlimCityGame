@@ -6,7 +6,8 @@
  * LampRenderer.rebuild (accumulated road tiles), and the plop tool's
  * "Overlapping items" cursor-chip check — never have to round-trip the
  * worker. Structurally satisfies render/zonegrid.ts's ZoneGridSource
- * ({size, roadTier, water, zone, buildingId, height}).
+ * ({size, roadTier, water, zone, buildingId, height, roads, roadFootprint}),
+ * so the zoning grid reads the same frontage zone painting does.
  */
 import { TILE_METERS, worldToTile } from '../shared/constants';
 import { corridorHalfOf, flowDirection, RoadFlow, RoadTier } from '../shared/types';
@@ -28,6 +29,8 @@ import {
   profilesEqual,
 } from '../shared/roadprofile';
 import { runsAlongZ, type BridgeDeckTile } from '../render/bridges';
+import { deriveRoadFootprint } from '../world/freeroads';
+import { decodeRoadNetwork } from '../world/roadnet';
 import { axisOfFlow } from '../shared/overpass';
 import type {
   BuildingCatalogEntry,
@@ -36,6 +39,7 @@ import type {
   JunctionControl,
   MapData,
   OverRoadState,
+  RoadNet,
   SimSnapshot,
   RoadProfile,
   RoadTileDelta,
@@ -69,8 +73,12 @@ export class ClientGridMirror {
   /** Where a power line stands (see GridState.powerLine); what stands the poles. */
   readonly powerLine: Uint8Array;
   readonly buildingId: Uint32Array;
+  /** The worker's road network as last received; absent until the first snapshot. */
+  roads?: RoadNet;
+  /** The tiles its roads off the grid cover (see GridState.roadFootprint). */
+  readonly roadFootprint: Uint8Array;
 
-  /** building id -> the tile indices its footprint was stamped onto. */
+  /** building id ->the tile indices its footprint was stamped onto. */
   private readonly footprints = new Map<number, number[]>();
   /** The worker's table of player-composed profiles, by id. Presets are catalogue data. */
   private readonly customProfiles = new Map<number, RoadProfile>();
@@ -95,6 +103,18 @@ export class ClientGridMirror {
     this.power = new Uint8Array(n);
     this.powerLine = new Uint8Array(n);
     this.buildingId = new Uint32Array(n);
+    this.roadFootprint = new Uint8Array(n);
+  }
+
+  /**
+   * Replaces the mirror's road network with the worker's, and derives the
+   * footprint of its roads off the grid from it, as the worker does. The
+   * profile table must have landed first, since the footprint's width is read
+   * from it.
+   */
+  applyRoadNetwork(bytes: Uint8Array): void {
+    this.roads = decodeRoadNetwork(bytes);
+    deriveRoadFootprint(this, this.roads, (id) => this.profileById(id));
   }
 
   /** Folds the worker's power-line rectangles in, same shape as the zone patches. */
@@ -654,6 +674,7 @@ export class ClientGridMirror {
       const i = this.idx(t.x, t.z);
       if (this.water[i]) return false;
       if (this.roadTier[i] !== RoadTier.None) return false;
+      if (this.roadFootprint[i] !== 0) return false;
       if (this.buildingId[i] !== 0) return false;
     }
     return true;

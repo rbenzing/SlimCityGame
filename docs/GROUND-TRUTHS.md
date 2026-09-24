@@ -354,9 +354,11 @@ MUTCD citations below use 11th-edition section numbers.
 - A zoned tile develops only when it is zoned, served with power and water on
   its footprint, and within Manhattan distance 3 of a street, on the grid or
   off it. One zonability predicate decides; the zoning grid visual and the
-  `paintZone` command both defer to it and may never disagree. A road off the
-  grid fronts lots square to its centre line from its kerb, out to the zoning
-  depth, and nothing is zoned or built on its footprint. Clearing a zone is
+  `paintZone` command both defer to it and may never disagree, so the render
+  thread reads roads off the grid from the network the worker sends, never
+  from its road tiles. A road off the grid fronts lots square to its centre
+  line from its kerb, out to the zoning depth, and nothing is zoned or built on
+  its footprint. Clearing a zone is
   exempt from the frontage check so a zone can always be removed. —
   [simulation-rules.md](game-design/simulation-rules.md)
 - The player paints zones and never places a zoned building; growth runs on the

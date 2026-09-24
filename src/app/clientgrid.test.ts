@@ -5,9 +5,22 @@
  * "Overlapping items" check without asking the worker.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { TILE_METERS } from '../shared/constants';
+import { MAP_SIZE, MAP_TILES, TICK_MS, TILE_METERS } from '../shared/constants';
 import { RoadFlow, RoadTier, storedFlow, ZoneType } from '../shared/types';
-import type { BuildingCatalogEntry, BuildingInstance, MapData } from '../shared/types';
+import type {
+  BuildingCatalogEntry,
+  BuildingInstance,
+  Command,
+  CommandAck,
+  GridState,
+  MapData,
+  WorkerToMain,
+} from '../shared/types';
+import { createWorkerSim } from '../sim/worker.entry';
+import { deriveRoadFootprint } from '../world/freeroads';
+import { loadGrid } from '../world/roadnet';
+import { computeZonableMask } from '../world/zonable';
+import { decodeSave } from './persist';
 import { ClientGridMirror } from './clientgrid';
 import { FIRST_CUSTOM_PROFILE_ID, presetProfileForTier } from '../shared/roadprofile';
 
@@ -770,5 +783,93 @@ describe('ClientGridMirror — what a car on a crossing tile drives on', () => {
     const cz = (9 + 0.5) * TILE_METERS;
     expect(mirror.vehicleSurfaceAt(cx, cz, true)).toBeCloseTo(3 + 7, 6); // along x: the overpass
     expect(mirror.vehicleSurfaceAt(cx, cz, false) ?? 3).toBeCloseTo(3, 6); // along z: the motorway
+  });
+});
+
+describe('ClientGridMirror — the roads off the grid, as the worker sends them', () => {
+  const at = (x: number, z: number): { x: number; z: number } => ({ x: x * 100, z: z * 100 });
+
+  function worldAndMirror(): {
+    run: (seq: number, commands: Command[]) => CommandAck;
+    mirror: ClientGridMirror;
+    saved: () => GridState;
+  } {
+    const map: MapData = {
+      name: 'Flat',
+      size: MAP_SIZE,
+      height: new Float32Array(MAP_TILES).fill(5),
+      water: new Uint8Array(MAP_TILES),
+      trees: new Uint8Array(MAP_TILES),
+      seaLevel: 0,
+      spawn: { x: 0, z: 0 },
+    };
+    const mirror = new ClientGridMirror(map);
+    const messages: WorkerToMain[] = [];
+    const sim = createWorkerSim((msg) => {
+      messages.push(msg);
+      if (msg.type !== 'snapshot') return;
+      const snap = msg.snap;
+      if (snap.roadProfiles) mirror.applyRoadProfiles(snap.roadProfiles);
+      if (snap.roadNet) mirror.applyRoadNetwork(snap.roadNet);
+      if (snap.roads) mirror.applyRoadDeltas(snap.roads);
+      if (snap.zones) mirror.applyZonePatches(snap.zones);
+    });
+    sim.handleMessage({ type: 'init', seed: 1, map });
+    sim.handleMessage({ type: 'commands', seq: 0, commands: [{ kind: 'setSandbox', on: true }] });
+    const pump = (): void => {
+      for (let i = 0; i < 4; i++) sim.pump(TICK_MS * 4);
+    };
+    pump();
+    return {
+      mirror,
+      run: (seq, commands) => {
+        sim.handleMessage({ type: 'commands', seq, commands });
+        pump();
+        const ack = messages.find(
+          (m): m is Extract<WorkerToMain, { type: 'ack' }> => m.type === 'ack' && m.ack.seq === seq,
+        );
+        if (!ack) throw new Error(`no ack for ${seq}`);
+        return ack.ack;
+      },
+      saved: () => {
+        sim.handleMessage({ type: 'requestSave' });
+        const save = messages.filter(
+          (m): m is Extract<WorkerToMain, { type: 'save' }> => m.type === 'save',
+        );
+        const { grid } = loadGrid(decodeSave(save[save.length - 1]!.data).grid);
+        deriveRoadFootprint(grid, grid.roads!, () => null);
+        return grid;
+      },
+    };
+  }
+
+  const sum = (a: Uint8Array): number => a.reduce((n, v) => n + v, 0);
+
+  it('reads the frontage and the footprint of a free road exactly as zone painting does', () => {
+    const { run, mirror, saved } = worldAndMirror();
+    const ack = run(1, [
+      {
+        kind: 'buildSegment',
+        tier: RoadTier.TwoLane,
+        a: at(1000, 1000),
+        b: at(1200, 1200),
+        control: at(1200, 1000),
+      },
+    ]);
+    expect(ack.ok).toBe(true);
+    const world = saved();
+    expect(sum(mirror.roadFootprint)).toBeGreaterThan(0);
+    expect(mirror.roadFootprint).toEqual(world.roadFootprint);
+    const seen = computeZonableMask(mirror);
+    expect(sum(seen)).toBeGreaterThan(0);
+    expect(seen).toEqual(computeZonableMask(world));
+    // Nothing is plopped on the road itself.
+    const i = mirror.roadFootprint.indexOf(1);
+    expect(mirror.isFreeForPlop([{ x: i % MAP_SIZE, z: Math.floor(i / MAP_SIZE) }])).toBe(false);
+
+    // Undone, the road leaves the mirror too.
+    run(2, ack.inverse);
+    expect(sum(mirror.roadFootprint)).toBe(0);
+    expect(sum(computeZonableMask(mirror))).toBe(0);
   });
 });

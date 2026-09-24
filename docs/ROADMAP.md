@@ -267,6 +267,23 @@ the tool (stage 5) lets a player lay one. Cosmetic vehicles stop where a route
 leaves the grid until they follow a centre line (stage 4), and nothing draws
 free roads yet (stage 4).
 
+Stage 4a is built (2026-09-24): the worker sends the road network to the
+render thread whenever it changes, and the render thread derives the free
+roads' footprint from it the way the worker does, so the zoning grid visual
+now shows a free road's frontage exactly where `paintZone` accepts it — the
+disagreement left by 3c is closed, checked by a test that drives a real
+worker and compares the two masks. Free roads are drawn
+(`src/render/freeroadmesh.ts`): the cross-section swept along the centre
+line with kerbs, footways, medians and the markings plan, and a junction
+meshed at each node from the roads meeting there, with rounded kerb returns.
+Checked in the browser on a curve leaving a grid street, a free three-way
+junction and a curved one-way street. Not yet: lamps and kerbside furniture
+along free roads (4b), and cosmetic vehicles still stop where a route leaves
+the grid (4c). Where a free road meets a grid road, the junction is laid over
+the grid road's own tile, which still draws as a straight road underneath,
+so its kerbside props stand as if nothing joined it until one renderer draws
+both (stage 8).
+
 ### Overpasses (requested 2026-09-23, built 2026-09-24)
 
 A road could not cross another road or a railway without meeting it, because a

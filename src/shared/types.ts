@@ -695,6 +695,12 @@ export interface SimSnapshot {
    * profile id a road delta carries.
    */
   roadProfiles?: { id: number; profile: RoadProfile }[];
+  /**
+   * The whole road network, encoded as the save holds it, whenever it has
+   * changed and once after init/load: what the render thread reads the roads
+   * off the grid from. Applied after `roadProfiles` and before `roads`.
+   */
+  roadNet?: Uint8Array;
   buildings?: BuildingDelta;
   zones?: ZonePatch[];
   vehicles?: Float32Array; // MAX_VEHICLES * VEHICLE_STRIDE

@@ -388,7 +388,11 @@ export function removeSegmentAt(
 }
 
 /** Rewrites the footprint layer: every tile a free road's full cross-section covers. */
-export function deriveRoadFootprint(g: GridState, net: RoadNet, lookup: ProfileLookup): void {
+export function deriveRoadFootprint(
+  g: Pick<GridState, 'size' | 'roadFootprint'>,
+  net: RoadNet,
+  lookup: ProfileLookup,
+): void {
   g.roadFootprint.fill(0);
   for (let s = 0; s < net.segSlots; s++) {
     if (net.segLive[s] !== 1 || !isFreeSegment(net, s)) continue;

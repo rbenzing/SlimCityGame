@@ -238,11 +238,17 @@ that the grid could not already hold.
      line, and facilities and trips finding a free road beside them.
    - **3c, the land reads them.** Zoning frontage measured from a free road's
      kerb, and buildings and zones kept off its footprint.
-4. **Drawing free roads.** The render thread takes up the network's roads off
-   the grid, so its zoning grid visual reads their frontage exactly as
-   `paintZone` does; the segment sweep, the junction mesh, markings and
-   furniture along segments, and vehicles following segment centre lines.
-   Grid roads still draw through the tile renderer.
+4. **Drawing free roads**, in three parts. Grid roads still draw through the
+   tile renderer.
+   - **4a, the render thread takes up the network.** The worker sends the
+     whole network, encoded as the save holds it, whenever it changes; the
+     render thread derives the footprint from it as the worker does, so its
+     zoning grid visual reads free frontage exactly as `paintZone` does and
+     nothing is plopped on a free road. The segment sweep, the junction mesh
+     and the markings along each segment.
+   - **4b, furniture along segments.** Lamps, signs and kerbside furniture
+     stood along a free road at their offsets.
+   - **4c, vehicles following segment centre lines.**
 5. **The tool.** The curve and free modes, their ghost, chip and refusals,
    and motorways without `Grid`, checked in the browser.
 6. **Angled junction behaviour.** Control, stop lines, crossings, approach
