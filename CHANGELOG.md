@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.11.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.11.0...slimcity-v1.11.1) (2026-09-24)
+
+
+### Bug Fixes
+
+* **roads:** a one-way street past a crossing runs the way it was drawn ([570499e](https://github.com/rbenzing/SlimCityGame/commit/570499e7cdd171f8b2ab4e34fd3eb5f5cd147b4e))
+* **roads:** rail sits outside the road ranking ([47c6d2f](https://github.com/rbenzing/SlimCityGame/commit/47c6d2f7385e976d788316be96ab88a81ae5ac9a))
+* **roads:** the world refuses a head-on ramp, not only the tool ([5e725e6](https://github.com/rbenzing/SlimCityGame/commit/5e725e6cd9ec97686556202e755fb2804f29ffff))
+* **roads:** the world refuses a street on a motorway, and rail cuts a street cleanly ([c4938a8](https://github.com/rbenzing/SlimCityGame/commit/c4938a80cf89d1fc91ed6db02b50bb775c858c08))
+* **roads:** turn arrows, bends and meters face the side they belong to ([d2b961a](https://github.com/rbenzing/SlimCityGame/commit/d2b961a19cc12ade1e88482e7b928607cc5d92d1))
+
 ## [1.11.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.10.0...slimcity-v1.11.0) (2026-09-24)
 
 
