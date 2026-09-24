@@ -613,10 +613,11 @@ off the same way in reverse. On this grid that is:
   edge, no junction. Traffic changes road only at the join.
 - **A head-on ramp is refused, and so is one against the traffic.** A ramp
   tile that would join a motorway while flowing across it (a T) or against it
-  (a wrong-way merge) is refused by the road tool with the reason, and the
-  reason says what to do: bend the ramp to run beside the motorway, the way
-  it is going, before it meets it. A save that already holds a head-on ramp
-  keeps it and draws it as it always did.
+  (a wrong-way merge) is refused with the reason, by the road tool and again
+  by the world when the command arrives, and the reason says what to do: bend
+  the ramp to run beside the motorway, the way it is going, before it meets
+  it. A save that already holds a head-on ramp keeps it and draws it as it
+  always did.
 - **The join tile is a taper, not a corner.** On the ramp side the join tile
   carries the ramp's carriageway straight along its flow and fans its asphalt
   across the verge into the motorway's auxiliary lane on the half of the tile

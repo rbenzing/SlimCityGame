@@ -60,6 +60,7 @@ import type {
   JunctionControl,
   MainToWorker,
   MapData,
+  RoadClassId,
   RoadProfile,
   RoadSpec,
   RoadTileDelta,
@@ -117,6 +118,7 @@ import {
   setZones,
 } from '../world/grid';
 import { RoadNetwork, applyRoad, recomputeRoadMasks, removeRoad } from '../world/roads';
+import { rampMeetingRefusal } from '../shared/corridor';
 import { solveElevationProfile } from '../world/bridges';
 import {
   applyHeightPatch,
@@ -1318,34 +1320,48 @@ class SimWorld implements WorkerSim {
   }
 
   /**
-   * Why a road of `profileId` may not go down on `laying`, or null: one of
-   * those tiles would touch a road its class may never meet — a street against
-   * a motorway, a dirt track against a ramp. The road tool asks the same
-   * question before it sends the drag; asking it here too means no command,
-   * from whatever source, puts one there.
+   * Why a road of `profileId` may not go down on `laying` (each tile with the
+   * flow it will carry), or null: one of those tiles would touch a road its
+   * class may never meet — a street against a motorway, a dirt track against a
+   * ramp — or a ramp would meet a motorway head-on or against its traffic. The
+   * road tool asks the same questions before it sends the drag; asking them
+   * here too means no command, from whatever source, lays one.
    */
-  private joinRefusalAround(laying: ReadonlySet<number>, profileId: number): string | null {
+  private joinRefusalAround(laying: ReadonlyMap<number, number>, profileId: number): string | null {
     const mine = this.profileForId(profileId);
     if (!mine) return null;
     const g = this.grid;
-    for (const idx of laying) {
+    const tiles: TilePoint[] = [];
+    for (const idx of laying.keys()) {
       const x = idx % g.size;
       const z = (idx - x) / g.size;
+      tiles.push({ x, z });
       for (const [dx, dz] of NEIGHBOUR_STEPS) {
         const nx = x + dx;
         const nz = z + dz;
-        if (!inBounds(nx, nz)) continue;
-        const n = tileIndex(nx, nz);
-        if (laying.has(n)) continue;
-        const tier = g.roadTier[n] ?? 0;
-        if (tier === RoadTier.None) continue;
-        const other = this.profileForId(g.roadProfile[n] || tier);
+        if (!inBounds(nx, nz) || laying.has(tileIndex(nx, nz))) continue;
+        const other = this.roadClassAt(nx, nz);
         if (!other) continue;
-        const why = joinRefusal(mine.class, other.class);
+        const why = joinRefusal(mine.class, other);
         if (why) return why;
       }
     }
-    return null;
+    return rampMeetingRefusal(
+      tiles,
+      [...laying.values()],
+      mine.class,
+      (x, z) => this.roadClassAt(x, z),
+      (x, z) => (inBounds(x, z) ? (g.roadFlow[tileIndex(x, z)] ?? 0) : 0),
+    );
+  }
+
+  /** The class of the road on a tile, or null where there is none. */
+  private roadClassAt(x: number, z: number): RoadClassId | null {
+    if (!inBounds(x, z)) return null;
+    const n = tileIndex(x, z);
+    const tier = this.grid.roadTier[n] ?? 0;
+    if (tier === RoadTier.None) return null;
+    return this.profileForId(this.grid.roadProfile[n] || tier)?.class ?? null;
   }
 
   /** The profile an id stands for: the preset itself, or the composition defined under it. */
@@ -1891,8 +1907,9 @@ class SimWorld implements WorkerSim {
     // the drag, and the tile the drag ended on keeps the heading it arrived
     // with. An undo supplies the directions that were there instead.
     const dragFlows = flowsAlong(tiles);
-    // Every tile this command puts its road on, for the join check below.
-    const laying = new Set<number>();
+    // Every tile this command puts its road on, with the flow it will carry,
+    // for the join checks below.
+    const laying = new Map<number, number>();
     let changedCount = 0;
     let bridgeCost = 0;
 
@@ -1953,7 +1970,7 @@ class SimWorld implements WorkerSim {
       }
       if (replaces) {
         changedCount += 1;
-        laying.add(idx);
+        laying.set(idx, flow);
         priorElevationByTile.set(idx, priorDeck);
         priorFlowByTile.set(idx, priorFlow);
         if (current === 0) {

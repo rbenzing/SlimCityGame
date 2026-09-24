@@ -141,6 +141,9 @@ save from before loads with the layers empty, which is exactly what it held.
 - Motorways stay limited access. An overpass is not a join, so a street over a
   motorway does not break the rule that a motorway touches only a highway or a
   ramp.
+- Two motorways drawn across each other still meet at grade, as a crossroads,
+  because a motorway may meet a motorway. A player who wants them separated
+  raises one over the other with the elevation control.
 - Ramps, merges and diverges are unchanged, and are still never on a crossing
   tile.
 - Tunnels, a third level, and interchange templates stay deferred. See
@@ -159,11 +162,3 @@ in the same change that ships the second layer:
 - [road-model.md](road-model.md): the bridges section's deferral of overpasses.
 - [debugging.md](../engineering/standards/debugging.md): an overpass "is asked
   for and expected to be refused".
-
-## Open questions
-
-- **Two motorways crossing.** Today they meet at grade as a crossroads. This
-  spec leaves that alone. The alternative is to refuse the at-grade crossing
-  and offer an overpass, the way a street across a motorway is offered one.
-- **The clearance figures** are the game's choice until an AASHTO or AREMA copy
-  is held to check them against.

@@ -8,7 +8,7 @@
  * which half it is.
  */
 import { flowDirection, flowForStep, RoadFlow, stepForFlow, storedFlow } from './types';
-import type { CorridorHalf, TilePoint } from './types';
+import type { CorridorHalf, RoadClassId, TilePoint } from './types';
 
 export interface CorridorRuns {
   /**
@@ -225,6 +225,48 @@ export function rampJoinAround(
     arriving,
     isRamp(rx + ahead.dx, rz + ahead.dz),
   );
+}
+
+/**
+ * Why laying `laid` as class `laidClass`, each tile with the stored flow in
+ * `flows`, would make a ramp meet a motorway head-on or against its traffic —
+ * or null when every ramp it touches meets one alongside, the way it runs.
+ * `classAt` and `flowAt` describe the roads already there; the laid tiles
+ * override them, so the drag is judged as it will stand once it lands. The
+ * road tool and the world both ask this, so neither lays what the other refuses.
+ */
+export function rampMeetingRefusal(
+  laid: readonly TilePoint[],
+  flows: readonly number[],
+  laidClass: RoadClassId,
+  classAt: (x: number, z: number) => RoadClassId | null,
+  flowAt: (x: number, z: number) => number,
+): string | null {
+  if (laidClass !== 'ramp' && laidClass !== 'highway') return null;
+  const planned = new Map(laid.map((t, i) => [`${t.x},${t.z}`, flows[i] ?? 0]));
+  const classOf = (x: number, z: number): RoadClassId | null =>
+    planned.has(`${x},${z}`) ? laidClass : classAt(x, z);
+  const flowOf = (x: number, z: number): number => planned.get(`${x},${z}`) ?? flowAt(x, z);
+  const isRamp = (x: number, z: number): boolean => classOf(x, z) === 'ramp';
+  for (const t of laid) {
+    for (const [dx, dz] of NEIGHBOUR_STEPS) {
+      const nx = t.x + dx;
+      const nz = t.z + dz;
+      if (planned.has(`${nx},${nz}`)) continue;
+      const theirs = classOf(nx, nz);
+      const join =
+        laidClass === 'ramp' && theirs === 'highway'
+          ? rampJoinAround(isRamp, flowOf, t.x, t.z, nx, nz)
+          : laidClass === 'highway' && theirs === 'ramp'
+            ? rampJoinAround(isRamp, flowOf, nx, nz, t.x, t.z)
+            : null;
+      if (join === 'headOn') {
+        return 'A ramp meets a highway alongside it: bend it to run beside the highway before it joins';
+      }
+      if (join === 'wrongWay') return 'A ramp joins a highway running the same way, not against it';
+    }
+  }
+  return null;
 }
 
 const NEIGHBOUR_STEPS = [

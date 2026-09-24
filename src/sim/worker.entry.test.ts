@@ -1960,6 +1960,23 @@ describe('which roads may touch — the world refuses, not only the tool', () =>
     expect(tierAt(h, 40, 14)).toBe(RoadTier.RailTrack);
   });
 
+  it('refuses a ramp that runs head-on into a motorway, and one that joins against its traffic', () => {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Highway, tiles: column(20, 10, 9) }]);
+    const headOn = run(h, 2, [
+      { kind: 'buildRoad', tier: RoadTier.Ramp, tiles: roadRow(15, 14, 5) },
+    ]);
+    expect(headOn.ok).toBe(false);
+    expect(headOn.reason).toMatch(/alongside/);
+    expect(tierAt(h, 19, 14)).toBe(RoadTier.None);
+    // Beside the southbound motorway but driving north, ending where it meets it.
+    const wrongWay = run(h, 3, [
+      { kind: 'buildRoad', tier: RoadTier.Ramp, tiles: column(21, 13, 5).reverse() },
+    ]);
+    expect(wrongWay.ok).toBe(false);
+    expect(wrongWay.reason).toMatch(/same way/);
+  });
+
   it('refuses a dirt road against a ramp', () => {
     const h = sandboxed();
     run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Ramp, tiles: column(20, 10, 6) }]);

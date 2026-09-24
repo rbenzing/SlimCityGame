@@ -188,8 +188,9 @@ MUTCD citations below use 11th-edition section numbers.
   none arriving) — read from stored flows, never from shape, which is how an
   elbow beside the motorway joins nothing. Everywhere else beside it the ramp
   is its own road. A ramp that would join across the motorway or against it is
-  refused by the road tool, with a reason saying what to do; a save that
-  already holds one keeps it connected. The join tile draws as a taper into
+  refused whole, by the road tool and again by the worker, with a reason
+  saying what to do (`rampMeetingRefusal`); a save that already holds one
+  keeps it connected. The join tile draws as a taper into
   the motorway — the lane narrowing to nothing against its edge — never as a
   corner, and the motorway's edge line opens over the downstream half at a
   merge and the upstream half at a diverge. — [road-model.md](world-sim/road-model.md);
