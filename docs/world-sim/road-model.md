@@ -809,7 +809,8 @@ per-tier:
 - **Turn-lane paint.** A two-way left-turn lane carries a solid line toward
   the through lane and a broken line toward the turn lane on each side —
   legal to cross into to turn, illegal to travel along — with white turn
-  arrows painted in it pointing each way.
+  arrows painted in it pointing each way, each hooking toward the left of the
+  driver it faces, across the oncoming traffic they turn through.
   It counts toward the road's width and its class's lane range, and carries
   no through capacity, which is what a turn lane is for.
 - **Turn arrows, merge arrows, gore chevrons** all come from the approach

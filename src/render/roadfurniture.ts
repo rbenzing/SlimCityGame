@@ -28,6 +28,7 @@ import {
 import {
   carriagewayHalfWidthOf,
   kerbWidthOf,
+  parkingSides,
   presetProfileForTier,
   rankForTier,
   roadClass,
@@ -765,11 +766,29 @@ export function computeBoxPlacements(roadTiles: readonly FurnitureRoadTile[]): B
       side: pick.side,
       // Each stands behind the footway on its own depth: a pedestal is round,
       // so its depth is its diameter.
-      lateralOffset: behindFootwayOffset(tile, kind === 'pedestal' ? PEDESTAL_PAD_RADIUS * 2 : BOX_DEPTH),
+      lateralOffset: behindFootwayOffset(
+        tile,
+        kind === 'pedestal' ? PEDESTAL_PAD_RADIUS * 2 : BOX_DEPTH,
+      ),
       kind,
     });
   }
   return out;
+}
+
+/**
+ * The kerb a tile's meters stand at: the side its parking lane is on, or
+ * either, picked per tile, where both sides have one or the tile carries only
+ * its tier's preset. The profile is in world order, so its low side is the
+ * low-coordinate kerb.
+ */
+function meterSide(tile: FurnitureRoadTile): FurnitureSide {
+  const either: FurnitureSide = hashTile(tile.x, tile.z, HASH_METER_SIDE) < 0.5 ? -1 : 1;
+  if (!tile.profile) return either;
+  const { low, high } = parkingSides(tile.profile);
+  if (low && !high) return -1;
+  if (high && !low) return 1;
+  return either;
 }
 
 /** Parking meters (two per tile) on curb-parking tiers, every 5th tile along the run. */
@@ -785,7 +804,7 @@ export function computeMeterPlacements(roadTiles: readonly FurnitureRoadTile[]):
     if (!periodHits(tile.x, tile.z, METER_PERIOD)) continue;
 
     const curbAxis = lateralAxis(tileSet, tile.x, tile.z);
-    const side: FurnitureSide = hashTile(tile.x, tile.z, HASH_METER_SIDE) < 0.5 ? -1 : 1;
+    const side = meterSide(tile);
     const lateralOffset = kerbFaceOffset(tile);
     for (const along of [METER_ALONG, -METER_ALONG]) {
       out.push({ x: tile.x, z: tile.z, curbAxis, side, lateralOffset, along });
@@ -857,7 +876,15 @@ function exitAhead(tileSet: RoadTileIndex, tile: FurnitureRoadTile): boolean {
   const nz = tile.z + dz;
   const next = tileSet.get(tileKey(nx, nz));
   if (!next || !tierIsMotorway(next.tier)) return false;
-  for (const [lx, lz] of dx === 0 ? [[1, 0], [-1, 0]] : [[0, 1], [0, -1]]) {
+  for (const [lx, lz] of dx === 0
+    ? [
+        [1, 0],
+        [-1, 0],
+      ]
+    : [
+        [0, 1],
+        [0, -1],
+      ]) {
     const rx = nx + lx!;
     const rz = nz + lz!;
     const ramp = tileSet.get(tileKey(rx, rz));
@@ -951,16 +978,13 @@ function cantileverSide(tile: FurnitureRoadTile, free: readonly SideChoice[]): S
   const direction = flowDirection(tile.flow ?? 0);
   if (direction === RoadFlow.None) return pickSide(free, hashTile(tile.x, tile.z, HASH_SIGN_SIDE));
   const { dx, dz } = stepForFlow(direction);
-  const right: SideChoice = dz === 0 ? { axis: 'z', side: dx > 0 ? 1 : -1 } : { axis: 'x', side: dz > 0 ? -1 : 1 };
+  const right: SideChoice =
+    dz === 0 ? { axis: 'z', side: dx > 0 ? 1 : -1 } : { axis: 'x', side: dz > 0 ? -1 : 1 };
   return free.find((s) => s.axis === right.axis && s.side === right.side) ?? null;
 }
 
 /** The facing a board on this tile takes: its carriageway's where there is one, else its kerb's. */
-function signFacingYaw(
-  tile: FurnitureRoadTile,
-  axis: FurnitureAxis,
-  side: FurnitureSide,
-): number {
+function signFacingYaw(tile: FurnitureRoadTile, axis: FurnitureAxis, side: FurnitureSide): number {
   return flowFacingYaw(tile) ?? kerbFacingYaw(axis, side);
 }
 
@@ -1824,7 +1848,8 @@ export class RoadFurnitureRenderer {
       const mesh = new THREE.InstancedMesh(this.boxGeometry, this.boxMaterial, cabinets.length);
       mesh.count = cabinets.length;
       mesh.castShadow = true;
-      for (let i = 0; i < cabinets.length; i++) this.writeBox(mesh, i, cabinets[i]!, BOX_HEIGHT / 2);
+      for (let i = 0; i < cabinets.length; i++)
+        this.writeBox(mesh, i, cabinets[i]!, BOX_HEIGHT / 2);
       mesh.instanceMatrix.needsUpdate = true;
       mesh.userData.furnitureKind = 'box';
       this.boxMesh = mesh;

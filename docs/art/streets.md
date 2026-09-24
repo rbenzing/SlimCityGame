@@ -63,7 +63,10 @@ for the surface, the paint, the furniture and the zoning overlay.
   tile (an inner fan sector plus an outer band). A plain-centreline turn tile
   carries matching curved lane markings — the same per-tier paint rules as a
   straight run, swept as arcs at the carriageway's own radius, dash phase
-  anchored at the arc start. This is cosmetic only: the underlying road graph
+  anchored at the arc start. Every line keeps the side of the road it holds on
+  the straight arms either side, so a one-way street's yellow left edge runs
+  round the inside of a left-hand bend and the outside of a right-hand one.
+  This is cosmetic only: the underlying road graph
   stays grid-aligned.
 - **Road-end caps**: a dangling road end rounds off, and the kerb/sidewalk
   arcs around the cap at the cap's own radius rather than staying square.
@@ -109,7 +112,9 @@ for the surface, the paint, the furniture and the zoning overlay.
   seats no cabinet: the board is what the road needs to be driven, the
   cabinet is scenery and there is always another tile for it. Parking meters
   escape the clash by sitting ±3 m along the run rather than at the centre,
-  which also keeps them clear of a lamp.
+  which also keeps them clear of a lamp. A meter stands at the kerb of the
+  side that has the parking lane; only a street parked on both sides picks
+  either.
 
 ## Junction and motorway signage
 
@@ -203,6 +208,5 @@ distinct teal sitting between the residential green and the commercial blue
 
 Free-form road geometry — curves off the tile grid — stays deferred; the
 road graph itself stays grid-aligned even where the paint above draws a
-curve. Also deferred: parking-lane roads, quays, asymmetric lane counts,
-pedestrian streets, and decorative sidewalk-tree upgrades beyond the avenue
+curve. Also deferred: quays, pedestrian streets, and decorative sidewalk-tree upgrades beyond the avenue
 median above. [DESIGN.md](../DESIGN.md) owns this backlog and its reasoning.

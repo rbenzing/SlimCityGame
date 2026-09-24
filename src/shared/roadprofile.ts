@@ -556,6 +556,23 @@ export function medianOffsetOf(profile: RoadProfile): number {
   return at < 0 ? 0 : (centres[at] ?? 0);
 }
 
+/**
+ * Which sides of the carriageway carry a parking lane, in the order the
+ * profile is laid: `low` is the negative-offset side, `high` the positive.
+ */
+export function parkingSides(profile: RoadProfile): { low: boolean; high: boolean } {
+  const centres = pieceCentres(profile);
+  let low = false;
+  let high = false;
+  profile.pieces.forEach((p, i) => {
+    if (p.kind !== 'parking') return;
+    const at = centres[i] ?? 0;
+    if (at < 0) low = true;
+    else high = true;
+  });
+  return { low, high };
+}
+
 function pieceCentres(profile: RoadProfile): (number | null)[] {
   let offset = -carriagewayHalfWidthOf(profile);
   return profile.pieces.map((piece) => {
@@ -1179,14 +1196,9 @@ function rebuildCore(
     // one-way STREET keeps its kerbside lanes, because that is where a bus
     // stops. Dropping the lane instead leaves the tool offering a choice that
     // changes nothing.
-    return [
-      ...before,
-      ...busLeft,
-      ...busMiddle,
-      ...run('fwd', lanes),
-      ...busRight,
-      ...after,
-    ].map((p) => ({ ...p }));
+    return [...before, ...busLeft, ...busMiddle, ...run('fwd', lanes), ...busRight, ...after].map(
+      (p) => ({ ...p }),
+    );
   }
   // A reservation is TWO tracks, one each way, and it separates the directions
   // the way a median does — which is why it takes the middle and not a kerb.
@@ -1275,17 +1287,17 @@ export function composeProfile(base: RoadProfile, edits: ProfileEdits): RoadProf
       ? baseCore
       : railsInLane(baseCore)
     : rebuildCore(
-          baseCore,
-          lanes,
-          lanesBack,
-          middle,
-          isOneWayProfile(base),
-          widthOf,
-          laneWidthFor(base.class),
-          bus,
-          tram,
-          footways,
-        );
+        baseCore,
+        lanes,
+        lanesBack,
+        middle,
+        isOneWayProfile(base),
+        widthOf,
+        laneWidthFor(base.class),
+        bus,
+        tram,
+        footways,
+      );
 
   const edge = (side: 'left' | 'right'): LanePiece[] => {
     const flow = side === 'left' ? 'back' : 'fwd';
