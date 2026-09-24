@@ -77,36 +77,27 @@ sim state or a rendered frame. See
 city. A `Math.random()` call inside the worker or a renderer would make
 that reproduction unreliable the moment it executed.
 
-## One road tier per tile
+## At most two roads per tile, one deck height each
 
-**What it is:** a tile carries exactly one road (one class/tier value),
-never a stack of two.
+**What it is:** a tile carries the road on it, with one deck height — metres
+above that tile's terrain — and, only where one road crosses over another, the
+road passing over it, with a deck height of its own. Never more.
 
-**What enforces it:** the data layout, not a check — `GridState.roadTier`
-is a `Uint8Array` allocated one byte per tile
-([`src/world/grid.ts:58`](../../src/world/grid.ts)). A typed array has exactly
-one slot per index; there is structurally nowhere to put a second road on
-the same tile without changing the layer's shape entirely.
-
-**What breaks if violated:** this is closer to physically impossible than
-enforced — changing it would mean changing the save format's per-tile
-layer shape, which [ADR-0007](adr/0007-saves-are-versioned-typed-arrays-with-trailing-additive-layers.md)
-treats as append-only (new layers may be added; existing ones are not
-restructured).
-
-## One deck height per tile
-
-**What it is:** a tile's elevated-road/bridge deck height is a single
-scalar — metres above that tile's terrain — never a set of heights.
-
-**What enforces it:** the data layout, the same way as road tier:
-`elevation: number` is one field per tile
-([`src/shared/types.ts:290`](../../src/shared/types.ts)), not a list. Two decks
-stacked over one tile, or a tunnel beneath one, has nowhere to be stored.
+**What enforces it:** the data layout. The road on a tile has one set of
+layers (`roadTier`, `roadProfile`, `roadFlow`, `roadElevation`) and the road
+passing over it one more (`overTier`, `overProfile`, `overFlow`,
+`overElevation`), each one field per tile, not a list
+([`src/shared/types.ts`](../../src/shared/types.ts)). A third deck over one
+tile, or a tunnel beneath one, has nowhere to be stored. The second road was
+added as new layers appended to the save, never by reshaping the first, which
+is the only way
+[ADR-0007](adr/0007-saves-are-versioned-typed-arrays-with-trailing-additive-layers.md)
+lets the format grow.
 
 **What breaks if violated:** [DESIGN.md](../DESIGN.md) lists tunnels and a
-third deck level as deferred outright for exactly this reason — "one tile
-carries one road tier at one deck height."
+third deck level as deferred for exactly this reason, and
+[ADR-0015](adr/0015-a-crossing-tile-may-carry-a-second-road-passing-over.md)
+records why the second road exists only on a crossing tile.
 
 ## Map size is capped at 256² tiles (512² at most, later)
 

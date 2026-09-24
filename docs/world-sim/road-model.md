@@ -987,8 +987,16 @@ frontage — nothing zones off a bridge — and the ground beneath a deck
 remains exactly as occupied as it is under any road tile. Bulldozing a span
 clears its elevation along with the road.
 
-Deferred, deliberately: one tile still carries one road tier, so a road
-crossing over another road (an overpass) is not representable and is not
-attempted — that needs a second road layer, which this design exists to
-avoid. Tunnels, styled piers, and suspension or arch spans are likewise out;
-a bridge here is a slab on piers. See [../DESIGN.md](../DESIGN.md).
+A road crossing over another road or a railway is an overpass: an elevated
+road like any other, holding a second road on the one tile where the two
+overlap. See [overpasses.md](overpasses.md).
+
+Two road tiles join only at one level: both on the ground, or with decks
+within one grade step of each other. A deck up in the air passes beside a road
+on the ground without meeting it — which is also what keeps an overpass's
+approach, left standing when its crossing is bulldozed, from joining the road
+it used to cross.
+
+Deferred, deliberately: tunnels, a third deck level, styled piers, and
+suspension or arch spans; a bridge here is a slab on piers. See
+[../DESIGN.md](../DESIGN.md).

@@ -1,7 +1,6 @@
 # Overpasses
 
-A road that crosses another road, or a railway, without meeting it. This is
-specified and not yet built; [ROADMAP](../ROADMAP.md) carries its status. The
+A road that crosses another road, or a railway, without meeting it. The
 decision to store a second road on a tile is
 [ADR-0015](../engineering/adr/0015-a-crossing-tile-may-carry-a-second-road-passing-over.md).
 
@@ -78,14 +77,19 @@ It crosses **over** in two cases:
 1. The player has raised the drag's deck with the elevation control, and the
    solved deck clears the road it crosses.
 2. The two roads may not meet at grade, and an overpass is what the player
-   drew them for. A street drawn across a motorway is the example: today it is
-   refused; with this, the tool offers it as an overpass and the ghost shows
-   the ramps. The player confirms by building; nothing is laid silently.
+   drew them for: a street drawn across a motorway, anything a ramp may not
+   touch, a road drawn across a railway. The tool raises the deck to what the
+   road beneath needs, in the elevation control's 2 m steps, and the preview
+   names it an overpass and gives its height. The player confirms by
+   building; nothing is laid silently. The ghost itself carries no heights —
+   for an overpass or any raised road — so it does not show the ramps.
 
-Every crossing a drag makes is decided the same way, and the ghost shows it
-before anything is built: at grade, over, or refused, with the reason on the
-cursor chip. On each tile that already holds a road, the drag's solved deck
-is compared with that road's:
+The tool asks the same questions before anything is sent, with the reason on
+the cursor chip: a crossing that is not straight across is refused, and so is
+a drag too short to climb to the height before it reaches the crossing. The
+worker then decides every crossing a command makes, whatever sent it. On each
+tile that already holds a road, the drag's solved deck is compared with that
+road's:
 
 - **At the same height:** the roads meet, as they always have.
 - **Higher, where the road below runs straight across:** an overpass, if it
@@ -111,43 +115,53 @@ changes the under layer only, and the over road likewise. Rank still decides
 replacement, layer by layer.
 
 **Bulldozing** a crossing tile removes the over road first, because it is the
-one on top and the one the cursor picks. A second bulldoze removes the under
-road. Both are ordinary commands, and each returns its exact inverse, which
-puts back the layer it took with its deck height and flow.
+one on top. A second bulldoze removes the under road. Both are ordinary
+commands, and each returns its exact inverse, which puts back the layer it
+took with its deck height and flow. An approach left standing in the air
+joins nothing: roads join only at one level.
 
 ## Commands
 
-`buildRoad` and `bulldoze` gain an optional `layer: 'over'`, appended to the
-command shape. The road tool never sends it for a new drag: the worker decides
-which layer a crossing goes on, by the rules above, and the worker is the
-authority. The field exists so that an inverse can put back exactly the layer
-it removed. A command that asks for the over layer where no under road exists,
-or where the crossing rules fail, is refused.
+`buildRoad` and `bulldoze` take an optional `layer: 'over'`. The road tool
+never sends it for a new drag: the worker decides which layer a crossing goes
+on, by the rules above, and the worker is the authority. The field exists so
+that an inverse can put back exactly the layer it removed; a `buildRoad` on the
+over layer where no road lies beneath is refused.
 
-## What every system has to learn
+## How every system tells the two roads apart
 
-Each of these today assumes one road per tile, and each is a place a missed
-layer would quietly treat two roads as one:
+A road is identified by its tile and its layer — a `RoadKey`, the tile index
+for the road on a tile and the tile index plus the tile count for the road
+passing over it. Because the two roads on a crossing tile always run at right
+angles and nothing turns there, the direction of a step says which one it
+meets: along the overpass's line, the overpass; any other way, the road on the
+tile. `roadStep` in `src/world/roads.ts` is that rule, and everything below
+reads it.
 
-- **The road graph.** A node is identified by its tile. On a crossing tile the
-  over road has its own node identity, and edges on the two layers never share
-  a node. Pathfinding, the traffic assignment and cosmetic vehicles route on
-  the layer they are on.
-- **Traffic volume and congestion,** keyed by tile today, are keyed by tile and
-  layer.
-- **Masks.** The over road's mask comes from its own layer only. The under
-  road's mask ignores the over road entirely.
-- **Utilities and frontage.** The over road conducts nothing into the under
-  road at a crossing, and neither grants frontage there. Along its own length an
-  over road conducts exactly as an elevated road does today.
-- **Rendering.** The under road draws exactly as it would alone. The over road
-  draws its deck at its height with the existing deck renderer. A pier never
-  stands on a crossing tile or in the under road's carriageway: the span is
-  carried by the piers either side, and the `PIER_SPACING_TILES` rhythm
-  re-phases so that it never lands on one.
-- **Furniture.** None stands on the over road's crossing tile. The under road's
-  furniture is placed as if the overpass were not there.
-- **Picking.** A pick on a crossing tile returns the over road first.
+- **The road graph.** Nodes and runs are keyed by road, not tile. The over
+  road is never a node on its crossing tile — it runs straight through — so an
+  overpass is one run from approach to approach, and the road beneath runs on
+  untouched. A run records which of its tiles are on the over layer
+  (`GraphEdge.overTiles`) and reads its class, lanes and direction from the
+  right layer.
+- **Traffic volume and congestion** are per run, so the two roads carry their
+  own.
+- **Masks.** The road beneath never joins along the overpass's line; the
+  overpass joins only its own approaches.
+- **Utilities, coverage and frontage.** Power, water and service coverage run
+  along an overpass and never down into the road beneath. Neither road grants
+  frontage on the crossing tile.
+- **Rendering.** The road beneath draws exactly as it would alone. The
+  overpass draws as a second pass on its crossing tile, on a surface that
+  follows its own line, and the approach tiles see it as their neighbour. Its
+  girder and parapets come from its own deck, and no pier stands on a crossing
+  tile: the span rests on the piers either side.
+- **The approach walk** is told which way a road passes over a tile, so the
+  road beneath gets no junction arrows, stop lines or bays at a crossing.
+- **Vehicles.** A car on a crossing tile rides the overpass when it is driving
+  along the overpass's line, and the road beneath when driving across it.
+- **The road tool** recognises the tiles a drag crosses over from the crossed
+  road's mask, so a pair of carriageways is two crossings and not a junction.
 
 ## Saves
 
@@ -167,17 +181,3 @@ save from before loads with the layers empty, which is exactly what it held.
   tile.
 - Tunnels, a third level, and interchange templates stay deferred. See
   [../DESIGN.md](../DESIGN.md).
-
-## Truths this replaces when it ships
-
-These statements are true today and become false with this. Each is rewritten
-in the same change that ships the second layer:
-
-- [GROUND-TRUTHS.md](../GROUND-TRUTHS.md): "Two roads never share a tile: no
-  overpass", and "One deck height per tile, no tunnels, no stacked decks".
-- [constraints.md](../engineering/constraints.md): "One deck height per tile".
-- [DESIGN.md](../DESIGN.md): "One tile carries one road tier at one deck
-  height."
-- [road-model.md](road-model.md): the bridges section's deferral of overpasses.
-- [debugging.md](../engineering/standards/debugging.md): an overpass "is asked
-  for and expected to be refused".

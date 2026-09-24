@@ -26,8 +26,27 @@ The road model is derived from the published standards in
 [Road Guides](Road%20Guides/README.md) (MUTCD 11th edition, AASHTO, HCM).
 MUTCD citations below use 11th-edition section numbers.
 
-- A tile carries exactly one road tier. Two roads never share a tile: no
-  overpass, no shared rail and street tile. A rail tile between two street tiles
+- A tile carries one road — or two where one passes OVER the other, and only
+  there: the road beneath keeps the ordinary road layers, the road passing over
+  lives in the over layers, and nothing joins the two. An overpass crosses
+  straight over at right angles, clearing the road beneath by 5 m (7 m over
+  rail) to its girder's underside; it never turns, ends or has a junction on
+  its crossing tile. Rail and street never share a tile at grade. —
+  [overpasses.md](world-sim/overpasses.md); `crossingShape` and
+  `overpassRise` in `src/shared/overpass.ts`, `roadStep` in
+  `src/world/roads.ts`
+- A road is identified by its tile AND its layer (`RoadKey`); anything that
+  counts roads by tile — the graph, masks, the utility and service spreads,
+  the approach walk, the renderers — reads the two roads on a crossing tile as
+  two. A step onto a crossing tile along the line of its overpass reaches the
+  overpass; any other step reaches the road on the tile. —
+  [overpasses.md](world-sim/overpasses.md); `roadStep` in `src/world/roads.ts`
+- Two road tiles join only at one level: both on the ground, or decks within
+  one grade step (`BRIDGE_MAX_GRADE`) of each other. A deck in the air passes
+  beside a road on the ground without meeting it. —
+  [road-model.md](world-sim/road-model.md); `atOneLevel` in
+  `src/world/roads.ts`
+- A rail tile between two street tiles
   is a break in the street, not a crossing, and rail laid through a street in
   replace mode severs it: the track draws running straight through and the street ends
   either side, never a crossing box. Level crossings that stop road traffic do
@@ -240,8 +259,9 @@ MUTCD citations below use 11th-edition section numbers.
   [road-model.md](world-sim/road-model.md); `armWarrant` and
   `sharedTurnLaneAt` in `src/shared/approachzone.ts`
 - Bridges are ordinary road tiles plus an elevation layer, never a second
-  network. One deck height per tile, no tunnels, no stacked decks, and an
-  elevated tile grants no zoning frontage. —
+  network. One deck height per road on a tile — the road on it, and at a
+  crossing the road passing over it — no tunnels, no third level, and an
+  elevated tile, or an overpass, grants no zoning frontage. —
   [road-model.md](world-sim/road-model.md),
   [constraints.md](engineering/constraints.md)
 

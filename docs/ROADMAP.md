@@ -202,7 +202,7 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 
 ## 10. History (newest first)
 
-### Overpasses (requested 2026-09-23, not built)
+### Overpasses (requested 2026-09-23, built 2026-09-24)
 
 A road could not cross another road or a railway without meeting it, because a
 tile held one road. So a street could not get past a motorway at all, and two
@@ -210,11 +210,19 @@ motorways could only cross as a flat crossroads. The player asked for real
 road-over-road overpasses with height rules, and chose a true second road
 layer ([ADR-0015](engineering/adr/0015-a-crossing-tile-may-carry-a-second-road-passing-over.md)).
 The second road is stored only on the tiles where it crosses; the ramps up and
-down are ordinary bridge approaches. Fully specified, including clearances,
-what may cross what, the build and bulldoze rules, the save bump and every
-system that has to learn the layer, in
-[world-sim/overpasses.md](world-sim/overpasses.md). Nothing in this section has
-shipped.
+down are ordinary bridge approaches. Specified in
+[world-sim/overpasses.md](world-sim/overpasses.md) and built in four stages:
+the world holding the second road (SAVE_VERSION 12) with its build, refusal and
+bulldoze rules; the graph, masks and utility and service spreads keeping the
+two roads apart, with the rule that roads join only at one level; the renderer
+drawing the overpass, its girder and piers, and cars riding it; and the road
+tool offering an overpass where a street meets a motorway or a railway, raised
+to the clearance. Checked in the browser by dragging the real tool across a
+motorway.
+
+Not built: the preview ghost carries no heights, for an overpass or any raised
+road, so it does not show the ramps; and a road cannot yet be drawn under a
+bridge that is already there.
 
 ### A road's tier is its size (2026-09-15)
 
