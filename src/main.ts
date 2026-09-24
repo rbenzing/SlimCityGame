@@ -63,7 +63,7 @@ import { LandmarkRenderer } from './render/landmarks';
 import { RoadMeshRenderer } from './render/roadsmesh';
 import type { BandSpan } from './render/roadsmesh';
 import { BridgeRenderer } from './render/bridges';
-import { VehicleRenderer } from './render/vehicles';
+import { headingAlongX, VehicleRenderer } from './render/vehicles';
 import {
   TransitRenderer,
   computeShelterLayout,
@@ -219,7 +219,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     overSurfaceAt,
   );
   const bridges = new BridgeRenderer(world.scene, roadSurfaceAt, overSurfaceAt);
-  const vehicles = new VehicleRenderer(world.scene, roadSurfaceAt);
+  const vehicles = new VehicleRenderer(
+    world.scene,
+    (wx, wz, heading) =>
+      clientGrid.vehicleSurfaceAt(wx, wz, headingAlongX(heading)) ?? heightAt(wx, wz),
+  );
   // Bus transit (stop posts + route ribbon + cosmetic buses), service vehicles
   // (fire/police/ambulance from the shared buffer + incident pins), and the
   // district tint/boundary overlay. All fed from the snapshot channels.
@@ -378,6 +382,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         height: number[];
         power: number[];
         powerLine: number[];
+        overRoads: ReturnType<typeof clientGrid.overRoadTiles>;
       } => ({
         size: clientGrid.size,
         roadTier: Array.from(clientGrid.roadTier),
@@ -401,6 +406,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         // a screenshot shows poles but never says whether anything flows.
         power: Array.from(clientGrid.power),
         powerLine: Array.from(clientGrid.powerLine),
+        // The roads passing over crossing tiles: a screenshot of a deck says
+        // nothing about which road the world thinks is on top.
+        overRoads: clientGrid.overRoadTiles(),
       }),
       // Every known building instance with its lifecycle state and problem
       // bits — tells a harness whether lots are failing to spawn, stuck
@@ -950,6 +958,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     profileIdFor: (profile) => clientGrid.profileIdFor(profile),
     roadProfileAt: (tile) => clientGrid.profileAt(tile.x, tile.z),
     roadFlowAt: (tile) => clientGrid.flowAt(tile.x, tile.z),
+    roadMaskAt: (tile) =>
+      inBounds(tile.x, tile.z) ? (clientGrid.roadMask[tile.z * clientGrid.size + tile.x] ?? 0) : 0,
     entry: (catalogId: string) => catalogById.get(catalogId),
     onPreview: (preview) => {
       store

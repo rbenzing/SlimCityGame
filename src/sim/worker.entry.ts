@@ -132,7 +132,7 @@ import {
   setOverRoad,
   type OverRoad,
 } from '../world/overpass';
-import { atOneLevel, crossingShape, overpassRise } from '../shared/overpass';
+import { atOneLevel, bitToward, crossingShape, overpassRise } from '../shared/overpass';
 import { rampMeetingRefusal } from '../shared/corridor';
 import { solveElevationProfile } from '../world/bridges';
 import {
@@ -294,15 +294,6 @@ function growRect(rect: DirtyRect | null, tiles: TilePoint[]): DirtyRect | null 
     }
   }
   return next;
-}
-
-/** The neighbour-mask bit for a one-tile step: +N=1 +E=2 +S=4 +W=8, 0 for anything else. */
-function bitToward(dx: number, dz: number): number {
-  if (dx === 0 && dz === -1) return 1;
-  if (dx === 1 && dz === 0) return 2;
-  if (dx === 0 && dz === 1) return 4;
-  if (dx === -1 && dz === 0) return 8;
-  return 0;
 }
 
 /** The four orthogonal steps — the neighbours a road tile can join. */

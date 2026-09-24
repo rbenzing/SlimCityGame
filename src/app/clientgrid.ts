@@ -347,6 +347,15 @@ export class ClientGridMirror {
     return this.overRoads.get(this.idx(x, z)) ?? null;
   }
 
+  /** Every road passing over a crossing tile, with the tile it crosses. */
+  overRoadTiles(): (TilePoint & OverRoadState)[] {
+    return [...this.overRoads].map(([i, over]) => ({
+      x: i % this.size,
+      z: Math.floor(i / this.size),
+      ...over,
+    }));
+  }
+
   /** Which way the road passing over a tile runs, where one does. */
   overAxisAt(x: number, z: number): 'x' | 'z' | null {
     const over = this.overRoadAt(x, z);
@@ -365,6 +374,19 @@ export class ClientGridMirror {
       return (this.height[this.idx(x, z)] ?? 0) + over.elevation;
     }
     return this.deckHeightAt(x, z);
+  }
+
+  /**
+   * The road surface under a vehicle at a world point, driving along x when
+   * `alongX` — or null where no deck governs it and the terrain does. On a
+   * crossing tile the two roads run at right angles and nothing turns there,
+   * so the way a car is driving says which one it is on.
+   */
+  vehicleSurfaceAt(wx: number, wz: number, alongX: boolean): number | null {
+    const tx = worldToTile(wx);
+    const tz = worldToTile(wz);
+    if (this.overAxisAt(tx, tz) === (alongX ? 'x' : 'z')) return this.overSurfaceAt(wx, wz, tx, tz);
+    return this.deckSurfaceAt(wx, wz);
   }
 
   /**

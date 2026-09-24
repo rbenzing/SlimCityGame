@@ -717,3 +717,58 @@ describe('ClientGridMirror — a road passing over another', () => {
     expect(overpass().approachAt(10, 8)).toBeUndefined();
   });
 });
+
+describe('ClientGridMirror — what a car on a crossing tile drives on', () => {
+  it('rides the overpass heading along its line, and the road beneath heading across it', () => {
+    const mirror = new ClientGridMirror(makeMap());
+    mirror.applyRoadDeltas([
+      {
+        x: 10,
+        z: 8,
+        tier: RoadTier.Highway,
+        mask: 1 | 4,
+        elevation: 0,
+        profile: 3,
+        flow: RoadFlow.South,
+      },
+      {
+        x: 10,
+        z: 9,
+        tier: RoadTier.Highway,
+        mask: 1 | 4,
+        elevation: 0,
+        profile: 3,
+        flow: RoadFlow.South,
+        over: {
+          tier: RoadTier.TwoLane,
+          profile: 1,
+          flow: RoadFlow.East,
+          elevation: 7,
+          mask: 2 | 8,
+        },
+      },
+      {
+        x: 9,
+        z: 9,
+        tier: RoadTier.TwoLane,
+        mask: 2 | 8,
+        elevation: 7,
+        profile: 1,
+        flow: RoadFlow.East,
+      },
+      {
+        x: 11,
+        z: 9,
+        tier: RoadTier.TwoLane,
+        mask: 2 | 8,
+        elevation: 7,
+        profile: 1,
+        flow: RoadFlow.East,
+      },
+    ]);
+    const cx = (10 + 0.5) * TILE_METERS;
+    const cz = (9 + 0.5) * TILE_METERS;
+    expect(mirror.vehicleSurfaceAt(cx, cz, true)).toBeCloseTo(3 + 7, 6); // along x: the overpass
+    expect(mirror.vehicleSurfaceAt(cx, cz, false) ?? 3).toBeCloseTo(3, 6); // along z: the motorway
+  });
+});

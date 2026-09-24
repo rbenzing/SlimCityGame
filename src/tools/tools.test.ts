@@ -1885,6 +1885,103 @@ describe('ToolManager — a road cannot be drawn through one it does not outrank
   });
 });
 
+describe('ToolManager — a road crossing over another', () => {
+  /**
+   * Roads already down, each a north-south run over z 0..20 at the given x,
+   * joined only along its own line — a motorway pair is two such runs.
+   * `endAt` stops a run short, at that z.
+   */
+  const withRoads = (
+    runs: { x: number; tier: RoadTier; endAt?: number }[],
+  ): ReturnType<typeof makeEnv> => {
+    const made = makeEnv();
+    const runAt = (t: TilePoint) =>
+      runs.find((r) => r.x === t.x && t.z >= 0 && t.z <= (r.endAt ?? 20));
+    made.env.roadProfileAt = (t) => {
+      const run = runAt(t);
+      return run ? presetProfileForTier(run.tier) : null;
+    };
+    made.env.roadMaskAt = (t) => {
+      const run = runAt(t);
+      if (!run) return 0;
+      const north = t.z > 0 ? 1 : 0;
+      const south = t.z < (run.endAt ?? 20) ? 4 : 0;
+      return north | south;
+    };
+    return made;
+  };
+  const drag = (tm: ToolManager, from: number, to: number): void => {
+    tm.pointerDown(from, 10, 0);
+    tm.pointerMove(to, 10, 0);
+  };
+  const laid = (sent: Array<{ commands: Command[] }>) =>
+    sent.flatMap((s) => s.commands).find((c) => c.kind === 'buildRoad') as
+      Extract<Command, { kind: 'buildRoad' }> | undefined;
+
+  it('offers a street across a motorway as an overpass, raised to clear it', () => {
+    const { env, previews, sent } = withRoads([{ x: 10, tier: RoadTier.Highway }]);
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    drag(tm, 0, 20);
+    expect(previews.at(-1)?.valid).toBe(true);
+    expect(previews.at(-1)?.label).toMatch(/overpass/i);
+    tm.pointerUp(20, 10, 0);
+    // A beam girder is 0.75 m: 5.75 m to clear, in the control's 2 m steps.
+    expect(laid(sent)?.elevation).toBe(6);
+  });
+
+  it('refuses one too short to climb over before it gets there', () => {
+    const { env, previews, sent } = withRoads([{ x: 10, tier: RoadTier.Highway }]);
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    drag(tm, 8, 14);
+    expect(previews.at(-1)?.valid).toBe(false);
+    expect(previews.at(-1)?.invalidReason).toMatch(/too short/i);
+    tm.pointerUp(14, 10, 0);
+    expect(sent).toEqual([]);
+  });
+
+  it('crosses a pair of carriageways as two crossings, not a junction', () => {
+    const { env, previews } = withRoads([
+      { x: 10, tier: RoadTier.Highway },
+      { x: 11, tier: RoadTier.Highway },
+    ]);
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    drag(tm, 0, 21);
+    expect(previews.at(-1)?.valid).toBe(true);
+  });
+
+  it('refuses to cross over the end of a road', () => {
+    const { env, previews } = withRoads([{ x: 10, tier: RoadTier.Highway, endAt: 10 }]);
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    drag(tm, 0, 20);
+    expect(previews.at(-1)?.valid).toBe(false);
+    expect(previews.at(-1)?.invalidReason).toMatch(/straight over/);
+  });
+
+  it('crosses over a street when the player raises the deck, at the height asked if it clears', () => {
+    const { env, previews, sent } = withRoads([{ x: 10, tier: RoadTier.TwoLane }]);
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    tm.setRoadElevation(8);
+    drag(tm, 0, 20);
+    expect(previews.at(-1)?.valid).toBe(true);
+    tm.pointerUp(20, 10, 0);
+    expect(laid(sent)?.elevation).toBe(8);
+  });
+
+  it('still meets a street it crosses at grade, the way roads always have', () => {
+    const { env, previews } = withRoads([{ x: 10, tier: RoadTier.TwoLane }]);
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    drag(tm, 0, 20);
+    expect(previews.at(-1)?.valid).toBe(true);
+    expect(previews.at(-1)?.label ?? '').not.toMatch(/overpass/i);
+  });
+});
+
 describe('a road too wide for its tile is laid as two carriageways', () => {
   /** An avenue with three lanes a side: the six-lane divided road, 21.6 m. */
   const SIX_LANE = { ...NO_EDITS, lanes: 3 } as const;
