@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.11.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.10.0...slimcity-v1.11.0) (2026-09-24)
+
+
+### Features
+
+* **roads:** ramps meet a motorway alongside it and taper in, never head-on ([e59c974](https://github.com/rbenzing/SlimCityGame/commit/e59c9745612c336bc5fb552f8fd4cbb0212f24b4))
+
+
+### Bug Fixes
+
+* **roads:** a merge or diverge is not an intersection ([ba6280f](https://github.com/rbenzing/SlimCityGame/commit/ba6280fbc71117c501dc2024ed6671bc5009add5))
+* **roads:** a motorway is one carriageway, and its paint says which side is which ([a02ba84](https://github.com/rbenzing/SlimCityGame/commit/a02ba84df247bcb086501b785077cdac36d7062d))
+* **roads:** a road heading south or west is laid the right way round ([61b2c8e](https://github.com/rbenzing/SlimCityGame/commit/61b2c8e2674d2567662a097837c7151852265f1d))
+* **roads:** a road heading south or west is laid the right way round ([3ede2e6](https://github.com/rbenzing/SlimCityGame/commit/3ede2e6dff7f3ce76a666371a207d1787c75eb29))
+* **roads:** carriageways side by side stay apart, and signs face their drivers ([90a2c37](https://github.com/rbenzing/SlimCityGame/commit/90a2c37296483edfce90a97bbdbfa97efc9f773f))
+* **roads:** two carriageways need ground between them, and the version is one number ([6a6f661](https://github.com/rbenzing/SlimCityGame/commit/6a6f661dd2a7bd356b962075d65f36a859e1c9f5))
+
 ## [1.10.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.9.0...slimcity-v1.10.0) (2026-09-21)
 
 
