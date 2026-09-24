@@ -115,8 +115,13 @@ export const SHARED_TURN_LANE_MAX_TILES = 8;
 
 /**
  * Whether a tile is inside a SHORT BLOCK — a straight run with a junction at
- * each end, close enough together that the turn bays they each want would
+ * each end, close enough together that the turn bays they each give it would
  * leave no road between them worth the name.
+ *
+ * The shared lane stands in for those two bays, so it is only laid where both
+ * would really be built: each junction has to hold this road and give it one.
+ * A street that runs through junctions its side streets give way at earns no
+ * bay at either end, and no shared lane between them.
  *
  * It is a question about the RUN rather than about an approach, which is why
  * it is asked separately: the tile halfway along belongs to neither junction
@@ -125,8 +130,12 @@ export const SHARED_TURN_LANE_MAX_TILES = 8;
  */
 export function sharedTurnLaneAt(x: number, z: number, world: ApproachSurroundings): boolean {
   if (!world.hasRoad(x, z) || roadDegree(x, z, world) !== 2) return false;
-  /** Tiles short of the junction that way, or null where that way has none. */
-  const reach = (dx: number, dz: number): number | null => {
+  const mine = world.profileAt(x, z);
+  /**
+   * Tiles short of the junction that way, or null where that way has none or
+   * that junction would give this road no bay.
+   */
+  const reach = (dx: number, dz: number, toward: RoadFlow): number | null => {
     if (!world.hasRoad(x + dx, z + dz)) return null;
     if (isSeparateRoad(x, z, dx, dz, world)) return null;
     for (let step = 1; step <= SHARED_TURN_LANE_MAX_TILES; step++) {
@@ -134,16 +143,16 @@ export function sharedTurnLaneAt(x: number, z: number, world: ApproachSurroundin
       const tz = z + dz * step;
       if (!world.hasRoad(tx, tz)) return null;
       const degree = roadDegree(tx, tz, world);
-      if (degree >= 3) return step - 1;
+      if (degree >= 3) return armWarrant(world, tx, tz, toward, mine).pocket ? step - 1 : null;
       // Anything that is not a straight continuation ends the run.
       if (degree !== 2 || !world.hasRoad(tx + dx, tz + dz)) return null;
     }
     return null;
   };
-  for (const [dx, dz] of STEPS) {
-    const ahead = reach(dx, dz);
+  for (const [dx, dz, toward] of STEPS) {
+    const ahead = reach(dx, dz, toward);
     if (ahead === null) continue;
-    const behind = reach(-dx, -dz);
+    const behind = reach(-dx, -dz, oppositeFlow(toward));
     if (behind === null) continue;
     // Both ends counted from this tile, plus the tile itself.
     if (ahead + behind + 1 <= SHARED_TURN_LANE_MAX_TILES) return true;
@@ -322,6 +331,30 @@ export function approachAhead(
 
   const arm = oppositeFlow(best.toward);
   const mine = world.profileAt(x, z);
+  const warrant = armWarrant(world, best.jx, best.jz, best.toward, mine);
+  const pocket = best.distance < zone && warrant.pocket;
+  return {
+    toward: best.toward,
+    distance: best.distance,
+    allowed: warrant.allowed,
+    pocket,
+    openness: pocket && mine ? pocketOpenness(mine.class, zone, best.distance) : 1,
+    laneAllowed: world.laneTurnsAt(best.jx, best.jz, arm),
+  };
+}
+
+/**
+ * What the junction at (jx, jz) lets the arm arriving there heading `toward`
+ * do, and whether it gives that arm a turn bay: only where its control holds
+ * the arm, and the arm may both go through and turn left.
+ */
+function armWarrant(
+  world: ApproachSurroundings,
+  jx: number,
+  jz: number,
+  toward: RoadFlow,
+  mine: RoadProfile | null,
+): { allowed: MovementSet; pocket: boolean } {
   // Whether the junction holds THIS arm. A minor-road stop holds the side
   // street and lets the road through, and a road nobody stops has no queue to
   // store a turn out of.
@@ -332,35 +365,27 @@ export function approachAhead(
   // taken either way regardless.
   const legs: RoadFlow[] = [];
   for (const [dx, dz, heading] of STEPS) {
-    const leg = world.profileAt(best.jx + dx, best.jz + dz);
+    const leg = world.profileAt(jx + dx, jz + dz);
     if (!leg) continue;
     armRanks.push(roadRank(leg));
     const against =
-      isOneWayProfile(leg) && world.flowAt(best.jx + dx, best.jz + dz) === oppositeFlow(heading);
+      isOneWayProfile(leg) && world.flowAt(jx + dx, jz + dz) === oppositeFlow(heading);
     if (!against) legs.push(heading);
   }
   // What the player has restricted, narrowed to what the junction has to
   // offer: an arrow and a turn bay are both claims about somewhere to go.
   const allowed =
-    armAllowed(world.turnsAt(best.jx, best.jz), arm) & movementsOffered(best.toward, legs);
-  const pocket =
-    best.distance < zone &&
-    pocketWarranted(
-      world.controlAt(best.jx, best.jz),
-      allowed,
-      controlHoldsArm(world.controlAt(best.jx, best.jz), mine ? roadRank(mine) : 0, armRanks),
-      // A service access stores nothing: an alley is one lane to the back of a
-      // building, and a bay would double its width for a one-van queue.
-      mine ? mine.class : 'local',
-    );
-  return {
-    toward: best.toward,
-    distance: best.distance,
+    armAllowed(world.turnsAt(jx, jz), oppositeFlow(toward)) & movementsOffered(toward, legs);
+  const control = world.controlAt(jx, jz);
+  const pocket = pocketWarranted(
+    control,
     allowed,
-    pocket,
-    openness: pocket && mine ? pocketOpenness(mine.class, zone, best.distance) : 1,
-    laneAllowed: world.laneTurnsAt(best.jx, best.jz, arm),
-  };
+    controlHoldsArm(control, mine ? roadRank(mine) : 0, armRanks),
+    // A service access stores nothing: an alley is one lane to the back of a
+    // building, and a bay would double its width for a one-van queue.
+    mine ? mine.class : 'local',
+  );
+  return { allowed, pocket };
 }
 
 /**

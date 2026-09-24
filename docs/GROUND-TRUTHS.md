@@ -233,6 +233,12 @@ MUTCD citations below use 11th-edition section numbers.
 - An alley is an access, not a leg: no turn bay, no swept footway, no crossing
   at its mouth. A dirt track is a leg. —
   [road-model.md](world-sim/road-model.md)
+- A turn bay exists only where the junction's control holds that road. A
+  short block's shared centre turn lane stands in for two bays, so it appears
+  only where BOTH junctions would give the road one: never on a two-lane
+  street running through side streets that give way to it. —
+  [road-model.md](world-sim/road-model.md); `armWarrant` and
+  `sharedTurnLaneAt` in `src/shared/approachzone.ts`
 - Bridges are ordinary road tiles plus an elevation layer, never a second
   network. One deck height per tile, no tunnels, no stacked decks, and an
   elevated tile grants no zoning frontage. —
