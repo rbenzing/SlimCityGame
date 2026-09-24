@@ -245,9 +245,19 @@ writes no road tile, holds its footprint in the derived `roadFootprint`
 layer, meets a grid road only at a tile centre, and survives every grid
 command. Designing it turned up one rule that needed changing: kerbs near a
 junction may overlap for longer the narrower the angle between the roads, or
-no ramp could ever merge. Not yet: the graph and the spreads do not walk free
-roads (3b), zoning and buildings do not read them (3c), nothing draws them
-(stage 4), and there is no tool to lay them (stage 5).
+no ramp could ever merge.
+
+Stage 3b is built (2026-09-24): the road cells gain a cell for each tile a
+free road's centre line crosses, carrying its share of the length, and one
+for each free node. The graph walks neighbour lists instead of compass bits
+(checked identical to the old builder on grid-only worlds before the old one
+was dropped), so a route runs across a free road and its run is as long as
+its centre line; a one-way free road routes only the way it was drawn. The
+utility and service spreads walk the same cells, a power line feeds a free
+road beside it, and a facility beside a free road finds it. Not yet: zoning
+and buildings do not read free roads (3c), cosmetic vehicles stop where a
+route leaves the grid until they can follow a centre line (stage 4), nothing
+draws free roads (stage 4), and there is no tool to lay them (stage 5).
 
 ### Overpasses (requested 2026-09-23, built 2026-09-24)
 

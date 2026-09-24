@@ -12,7 +12,14 @@
  * on one row or column and owns the tiles strictly between them.
  */
 
-import { isGridSegment, isTileCentre, tileCentreCm, tileOfCm } from '../shared/roadgeom';
+import { TILE_METERS } from '../shared/constants';
+import {
+  isGridSegment,
+  isTileCentre,
+  sampleCentreLine,
+  tileCentreCm,
+  tileOfCm,
+} from '../shared/roadgeom';
 import type { CmPoint, SegmentGeom } from '../shared/roadgeom';
 import { RoadTier } from '../shared/types';
 import type { GridState, RoadNet } from '../shared/types';
@@ -365,16 +372,70 @@ export function deriveRoadLayers(g: GridState, net: RoadNet): string[] {
  * other, and never otherwise — two roads side by side that the network does
  * not join are not linked, however close they lie.
  *
- * Links are listed north, east, south, west, so a walk that visits them in
- * order visits them in the order the grid always has.
+ * A road off the grid adds cells after the RoadKeys: one for each tile its
+ * centre line passes through between its ends, carrying the length of centre
+ * line in that tile, and one for each node of its own. Where it meets a grid
+ * road, it links to that tile's RoadKey.
+ *
+ * A cell's links are listed north, east, south, west, then any links a road
+ * off the grid adds, so a walk that visits them in order visits the grid in
+ * the order it always has.
  */
 export interface RoadCells {
   size: number;
+  /** Every cell: the 2 × size² RoadKeys, then the cells of the roads off the grid. */
+  count: number;
   tier: Uint8Array;
   profile: Uint16Array;
   flow: Uint8Array;
   /** The cell each way — N, E, S, W — from a RoadKey, or -1: four entries per key. */
   next: Int32Array;
+  /** Per free cell (its id less 2 × size²): the tile it lies on. */
+  freeTile: Int32Array;
+  /** Per free cell: its length along the centre line, in tiles; 0 for a node. */
+  freeWeight: Float32Array;
+  /** Per free cell: the segment it is part of, or -1 for a node's own cell. */
+  freeSeg: Int32Array;
+  /** Per free cell: its place along its segment, counting from the segment's first node. */
+  freeSeq: Int32Array;
+  /** Per free cell of a segment: the cell next to it on the way to the segment's second node. */
+  freeTowardB: Int32Array;
+  /** The links a road off the grid adds, both ways, beyond the four grid steps. */
+  more: Map<number, number[]>;
+  /** The free cells on each tile. */
+  freeOnTile: Map<number, number[]>;
+}
+
+/** A cell's linked cells, grid steps first. */
+export function neighbours(cells: RoadCells, id: number): number[] {
+  const out: number[] = [];
+  const keys = 2 * cells.size * cells.size;
+  if (id < keys) {
+    for (let s = 0; s < 4; s++) {
+      const next = cells.next[id * 4 + s]!;
+      if (next !== NO_CELL) out.push(next);
+    }
+  }
+  const extra = cells.more.get(id);
+  if (extra) out.push(...extra);
+  return out;
+}
+
+/** The tile a cell lies on. */
+export function cellTile(cells: RoadCells, id: number): number {
+  const n = cells.size * cells.size;
+  return id < 2 * n ? id % n : cells.freeTile[id - 2 * n]!;
+}
+
+/** A cell's length in tiles: a grid cell is one tile, a free cell its centre line's share. */
+export function cellWeight(cells: RoadCells, id: number): number {
+  const keys = 2 * cells.size * cells.size;
+  return id < keys ? 1 : cells.freeWeight[id - keys]!;
+}
+
+/** The free cells on a tile. */
+export function freeCellsOn(cells: RoadCells, tile: number): readonly number[] {
+  return cells.freeOnTile.get(tile) ?? [];
 }
 
 const NO_CELL = -1;
@@ -388,22 +449,29 @@ function stepSlot(dx: number, dz: number): number {
   return -1;
 }
 
+/** A free cell before it is packed into the arrays. */
+interface FreeCell extends RoadFacts {
+  tile: number;
+  weight: number;
+  seg: number;
+  seq: number;
+  towardB: number;
+}
+
 export function buildRoadCells(net: RoadNet, size: number): RoadCells {
   const n = size * size;
-  const cells: RoadCells = {
-    size,
-    tier: new Uint8Array(2 * n),
-    profile: new Uint16Array(2 * n),
-    flow: new Uint8Array(2 * n),
-    next: new Int32Array(8 * n).fill(NO_CELL),
-  };
+  const keys = 2 * n;
+  const gridTier = new Uint8Array(keys);
+  const gridProfile = new Uint16Array(keys);
+  const gridFlow = new Uint8Array(keys);
+  const next = new Int32Array(8 * n).fill(NO_CELL);
   const { byTile, runs } = collectClaims(net, size);
   for (const list of byTile.values()) {
     for (const c of list) {
       if (c.key < 0) continue;
-      cells.tier[c.key] = c.tier;
-      cells.profile[c.key] = c.profile;
-      cells.flow[c.key] = c.flow;
+      gridTier[c.key] = c.tier;
+      gridProfile[c.key] = c.profile;
+      gridFlow[c.key] = c.flow;
     }
   }
   for (const run of runs) {
@@ -415,11 +483,119 @@ export function buildRoadCells(net: RoadNet, size: number): RoadCells {
       const bx = b.idx % size;
       const slot = stepSlot(bx - ax, (b.idx - bx) / size - (a.idx - ax) / size);
       if (slot < 0) continue;
-      cells.next[a.key * 4 + slot] = b.key;
-      cells.next[b.key * 4 + ((slot + 2) % 4)] = a.key;
+      next[a.key * 4 + slot] = b.key;
+      next[b.key * 4 + ((slot + 2) % 4)] = a.key;
     }
   }
-  return cells;
+
+  // The roads off the grid, segment by segment in slot order.
+  const free: FreeCell[] = [];
+  const more = new Map<number, number[]>();
+  const link = (p: number, q: number): void => {
+    for (const [from, to] of [
+      [p, q],
+      [q, p],
+    ] as const) {
+      const list = more.get(from);
+      if (!list) more.set(from, [to]);
+      else if (!list.includes(to)) list.push(to);
+    }
+  };
+  const tileAt = (x: number, z: number): number =>
+    Math.min(size - 1, Math.max(0, Math.floor(z / TILE_METERS))) * size +
+    Math.min(size - 1, Math.max(0, Math.floor(x / TILE_METERS)));
+  const tileOfCell = (id: number): number => (id < keys ? id % n : free[id - keys]!.tile);
+  const nodeCells = new Map<number, number>();
+  const cellOfNode = (slot: number, facts: RoadFacts): number => {
+    const p = { x: net.nodeX[slot]!, z: net.nodeZ[slot]! };
+    const tile = tileOfCm(p.z) * size + tileOfCm(p.x);
+    if (isGridNode(net, slot) && gridTier[tile] !== 0) return tile;
+    const known = nodeCells.get(slot);
+    if (known !== undefined) return known;
+    const id = keys + free.length;
+    free.push({ ...facts, flow: 0, tile, weight: 0, seg: -1, seq: 0, towardB: NO_CELL });
+    nodeCells.set(slot, id);
+    return id;
+  };
+
+  for (let s = 0; s < net.segSlots; s++) {
+    if (net.segLive[s] !== 1 || !isFreeSegment(net, s)) continue;
+    const facts = { tier: net.segTier[s]!, profile: net.segProfile[s]!, flow: net.segFlow[s]! };
+    const geom = segmentGeom(net, s);
+    const samples = sampleCentreLine(geom);
+    const total = samples[samples.length - 1]!.s;
+    // Runs of samples on one tile, each with the length of centre line it covers.
+    const groups: { tile: number; length: number }[] = [];
+    for (let i = 0; i < samples.length; i++) {
+      const p = samples[i]!;
+      const tile = tileAt(p.x, p.z);
+      const upTo = i + 1 < samples.length ? samples[i + 1]!.s : total;
+      const last = groups[groups.length - 1];
+      if (last && last.tile === tile) last.length += upTo - p.s;
+      else groups.push({ tile, length: upTo - p.s });
+    }
+    const aCell = cellOfNode(net.segA[s]!, facts);
+    const bCell = cellOfNode(net.segB[s]!, facts);
+    // The tiles the two end nodes stand on are theirs; everything between is
+    // the segment's own, and it carries the whole length.
+    let head = 0;
+    let tail = 0;
+    if (groups.length > 1 && groups[0]!.tile === tileOfCell(aCell)) head = groups.shift()!.length;
+    if (groups.length > 1 && groups[groups.length - 1]!.tile === tileOfCell(bCell)) {
+      tail = groups.pop()!.length;
+    }
+    groups[0]!.length += head;
+    groups[groups.length - 1]!.length += tail;
+    const first = keys + free.length;
+    let prev = aCell;
+    groups.forEach((group, seq) => {
+      const id = first + seq;
+      const towardB = seq + 1 < groups.length ? id + 1 : bCell;
+      free.push({
+        ...facts,
+        tile: group.tile,
+        weight: group.length / TILE_METERS,
+        seg: s,
+        seq,
+        towardB,
+      });
+      link(prev, id);
+      prev = id;
+    });
+    link(prev, bCell);
+  }
+
+  const count = keys + free.length;
+  const tier = new Uint8Array(count);
+  const profile = new Uint16Array(count);
+  const flow = new Uint8Array(count);
+  tier.set(gridTier);
+  profile.set(gridProfile);
+  flow.set(gridFlow);
+  const freeOnTile = new Map<number, number[]>();
+  free.forEach((c, i) => {
+    tier[keys + i] = c.tier;
+    profile[keys + i] = c.profile;
+    flow[keys + i] = c.flow;
+    const list = freeOnTile.get(c.tile);
+    if (list) list.push(keys + i);
+    else freeOnTile.set(c.tile, [keys + i]);
+  });
+  return {
+    size,
+    count,
+    tier,
+    profile,
+    flow,
+    next,
+    freeTile: Int32Array.from(free, (c) => c.tile),
+    freeWeight: Float32Array.from(free, (c) => c.weight),
+    freeSeg: Int32Array.from(free, (c) => c.seg),
+    freeSeq: Int32Array.from(free, (c) => c.seq),
+    freeTowardB: Int32Array.from(free, (c) => c.towardB),
+    more,
+    freeOnTile,
+  };
 }
 
 const cellsCache = new WeakMap<RoadNet, { version: number; size: number; cells: RoadCells }>();

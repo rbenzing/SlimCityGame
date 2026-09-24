@@ -4,6 +4,10 @@ import { BuildingState, RoadTier } from '../shared/types';
 import { tileIndex } from '../shared/constants';
 import { recomputeUtilities } from './network';
 import { createGrid } from '../world/grid';
+import { tileCentreCm } from '../shared/roadgeom';
+import { applyRoad } from '../world/roads';
+import { networkFromGrid, reconcileRoads } from '../world/roadnet';
+import { laySegment, planSegment } from '../world/freeroads';
 
 function makeGrid(): GridState {
   return createGrid();
@@ -521,5 +525,39 @@ describe('recomputeUtilities: a road passing over another', () => {
     const { g, buildings } = overpass();
     recomputeUtilities(g, buildings, catalog);
     expect(g.power[tileIndex(41, 58)]).toBe(0);
+  });
+});
+
+describe('recomputeUtilities along a road off the grid', () => {
+  it('carries power along a free road to a house by the street it reaches', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    applyRoad(
+      g,
+      Array.from({ length: 6 }, (_, i) => ({ x: 100 + i, z: 100 })),
+      RoadTier.TwoLane,
+    );
+    applyRoad(
+      g,
+      Array.from({ length: 6 }, (_, i) => ({ x: 115 + i, z: 115 })),
+      RoadTier.TwoLane,
+    );
+    g.roads = networkFromGrid(g);
+    const req = {
+      tier: RoadTier.TwoLane,
+      profileId: RoadTier.TwoLane,
+      a: { x: tileCentreCm(105), z: tileCentreCm(100) },
+      b: { x: tileCentreCm(115), z: tileCentreCm(115) },
+      control: null,
+      flow: 0,
+    };
+    const plan = planSegment(g, g.roads, req, () => null);
+    if (!plan.ok) throw new Error(plan.reason);
+    laySegment(g, g.roads, plan, req);
+    reconcileRoads(g.roads, g);
+    placeBuilding(g, buildings, 1, 'power-plant', 99, 100, 1, 1);
+    placeBuilding(g, buildings, 2, 'house', 120, 116, 1, 1);
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.power[tileIndex(120, 116)]).toBe(1);
   });
 });

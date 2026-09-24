@@ -15,6 +15,7 @@ import {
   syncRoadLayers,
 } from './roadnet';
 import { deriveRoadFootprint, laySegment, planSegment, removeSegmentAt } from './freeroads';
+import { RoadNetwork } from './roadgraph';
 
 const SIZE = 48;
 const noCustom = (): null => null;
@@ -292,5 +293,53 @@ describe('roads off the grid: meeting the grid', () => {
     expect(freeSegments(g)).toHaveLength(1);
     expect(liveNodes(g.roads!).every((s) => g.roads!.nodeTier[s] === 0)).toBe(true);
     expect(Array.from(g.roadTier).every((t) => t === 0)).toBe(true);
+  });
+});
+
+describe('roads off the grid: the graph routes along them', () => {
+  /** Two grid streets, joined by a free road at 45° between their ends. */
+  function joined(): GridState {
+    const g = world();
+    applyRoad(
+      g,
+      Array.from({ length: 6 }, (_, i) => ({ x: 5 + i, z: 10 })),
+      RoadTier.TwoLane,
+    );
+    applyRoad(
+      g,
+      Array.from({ length: 6 }, (_, i) => ({ x: 20 + i, z: 25 })),
+      RoadTier.TwoLane,
+    );
+    settle(g);
+    lay(g, { a: centre(10, 10), b: centre(20, 25) });
+    return g;
+  }
+
+  it('finds a route from one grid street to the other across the free road', () => {
+    const g = joined();
+    const net = new RoadNetwork();
+    net.rebuild(g);
+    const path = net.findPath({ x: 5, z: 10 }, { x: 25, z: 25 });
+    expect(path).not.toBeNull();
+    // Neither street end is a junction, so the whole way is one run: six tiles
+    // of street, the free road as long as its centre line, six more of street.
+    const edges = net.getEdges();
+    expect(edges).toHaveLength(1);
+    const centreLine = Math.hypot(10, 15);
+    expect(edges[0]!.length).toBeCloseTo(12 + centreLine, 3);
+  });
+
+  it('runs a one-way free road the way it was drawn, and no other', () => {
+    const g = world();
+    lay(g, { tier: RoadTier.OneWay, a: at(100, 100), b: at(400, 300), flow: 1 });
+    const net = new RoadNetwork();
+    net.rebuild(g);
+    const [edge] = net.getEdges();
+    expect(edge).toBeDefined();
+    const nodeA = net.getNodes()[edge!.a]!;
+    const forwardFromA = nodeA.x === 5 && nodeA.z === 5;
+    expect(edge!.forwardAtoB).toBe(forwardFromA);
+    expect(net.findPath({ x: 5, z: 5 }, { x: 20, z: 15 })).not.toBeNull();
+    expect(net.findPath({ x: 20, z: 15 }, { x: 5, z: 5 })).toBeNull();
   });
 });

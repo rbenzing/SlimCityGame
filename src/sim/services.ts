@@ -25,8 +25,7 @@ import type {
 } from '../shared/types';
 import { BuildingState, FieldId, ZoneType, isStreetTier } from '../shared/types';
 import { MAP_SIZE, MAP_TILES, inBounds, tileIndex } from '../shared/constants';
-import type { RoadKey } from '../world/roads';
-import { cellStep, roadCellsOf } from '../world/roadnet';
+import { cellTile, freeCellsOn, neighbours, roadCellsOf } from '../world/roadnet';
 
 /** Radius (orthogonal steps) searched around a building's footprint for its nearest road tile. */
 const NEAR_ROAD_RADIUS = 2;
@@ -67,8 +66,15 @@ export function footprintsByBuildingId(g: GridState): Map<number, number[]> {
   return map;
 }
 
-/** Closest road tile to any tile in `footprint`, searched within NEAR_ROAD_RADIUS; ties broken by lowest tile index. */
+/**
+ * Closest tile carrying a street — on the grid or off it — to any tile in
+ * `footprint`, searched within NEAR_ROAD_RADIUS; ties broken by lowest tile index.
+ */
 export function nearestRoadTile(g: GridState, footprint: readonly number[]): number | null {
+  const cells = roadCellsOf(g);
+  const hasStreet = (tile: number): boolean =>
+    isStreetTier(g.roadTier[tile]!) ||
+    freeCellsOn(cells, tile).some((c) => isStreetTier(cells.tier[c]!));
   let best: number | null = null;
   let bestDist = Infinity;
   for (const idx of footprint) {
@@ -81,7 +87,7 @@ export function nearestRoadTile(g: GridState, footprint: readonly number[]): num
         const nz = z + dz;
         if (!inBounds(nx, nz)) continue;
         const ni = tileIndex(nx, nz);
-        if (!isStreetTier(g.roadTier[ni]!)) continue;
+        if (!hasStreet(ni)) continue;
         const dist = Math.abs(dx) + Math.abs(dz);
         if (dist < bestDist || (dist === bestDist && (best === null || ni < best))) {
           bestDist = dist;
@@ -93,7 +99,11 @@ export function nearestRoadTile(g: GridState, footprint: readonly number[]): num
   return best;
 }
 
-/** BFS hop-distance from `start` across connected road tiles, not expanding past maxDist. */
+/**
+ * BFS hop-distance from the streets on tile `start` across connected roads,
+ * not expanding past maxDist. A road off the grid counts a hop for each tile
+ * its centre line crosses.
+ */
 export function roadBfsDistances(
   g: GridState,
   start: number,
@@ -103,17 +113,19 @@ export function roadBfsDistances(
   // roads join, so coverage runs over a road it crosses and never down into
   // it, and never jumps to a road that merely lies alongside.
   const cells = roadCellsOf(g);
-  const dist = new Map<RoadKey, number>([[start, 0]]);
-  const queue: RoadKey[] = [start];
+  const streetsOnStart = freeCellsOn(cells, start).filter((c) => isStreetTier(cells.tier[c]!));
+  const seeds = isStreetTier(cells.tier[start]!) || streetsOnStart.length === 0 ? [start] : [];
+  seeds.push(...streetsOnStart);
+  const dist = new Map<number, number>(seeds.map((s) => [s, 0]));
+  const queue: number[] = [...seeds];
   let head = 0;
   while (head < queue.length) {
     const cur = queue[head]!;
     head += 1;
     const d = dist.get(cur)!;
     if (d >= maxDist) continue;
-    for (const [ddx, ddz] of ORTHOGONAL) {
-      const next = cellStep(cells, cur, ddx, ddz);
-      if (next === null || dist.has(next)) continue;
+    for (const next of neighbours(cells, cur)) {
+      if (dist.has(next)) continue;
       if (!isStreetTier(cells.tier[next]!)) continue;
       dist.set(next, d + 1);
       queue.push(next);
@@ -122,7 +134,7 @@ export function roadBfsDistances(
   // Reported per tile, the nearer of a crossing tile's two roads.
   const byTile = new Map<number, number>();
   for (const [key, d] of dist) {
-    const tile = key % (MAP_SIZE * MAP_SIZE);
+    const tile = cellTile(cells, key);
     const known = byTile.get(tile);
     if (known === undefined || d < known) byTile.set(tile, d);
   }

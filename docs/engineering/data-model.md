@@ -282,7 +282,12 @@ cells (`roadCellsOf` in `src/world/roadnet.ts`, cached per network version),
 plus `junctionControl`/`junctionTurns` for each node's control and turn state,
 every time the network changes, including once after every load. A grid with
 no network of its own — a test that lays roads on the tiles — is read through
-the network its tiles describe.
+the network its tiles describe. The cells are the 2 × size² RoadKeys, linked
+N/E/S/W, followed by the cells of the roads off the grid: one per tile a free
+centre line crosses, with its length in tiles (`freeWeight`), its segment and
+the neighbour toward that segment's second node, and one per free node; their
+links, and a grid tile's links to them, are in `more`. A grid cell weighs one
+tile, so a graph edge's `length` is in tiles either way.
 Node and edge ids are assigned fresh on each rebuild, so they carry no
 identity across rebuilds — only the grid tiles they're derived from do. A
 separate `RoadNetwork` instance (with its own node/edge id space) exists for
