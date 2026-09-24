@@ -9,7 +9,9 @@ road access is the thing every service silently depends on.
 Police, fire, health, education and parks share one mechanism. Each active
 service building first finds the nearest road tile within 2 orthogonal steps of
 its footprint, then walks outward from it by road-network hop count (not
-straight-line distance), capped at a range scaled by that service's funding.
+straight-line distance), following only the links where the road network
+joins one road to the next ([road-network.md](road-network.md)), capped at a
+range scaled by that service's funding.
 Every road tile reached, plus every tile within 2 further orthogonal steps of
 one, receives coverage that fades linearly with hop distance:
 `strength × (1 − hopDistance / range)`.

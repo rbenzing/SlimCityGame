@@ -33,7 +33,13 @@ import type {
   ToolId,
   WorkerToMain,
 } from './shared/types';
-import { RoadFlow, RoadTier, isStreetTier } from './shared/types';
+import {
+  INACTIVE_VEHICLE_X,
+  RoadFlow,
+  RoadTier,
+  VEHICLE_STRIDE,
+  isStreetTier,
+} from './shared/types';
 import { carriagewayWidth, profilesEqual } from './shared/roadprofile';
 import { laneMovementsFor, pocketLaneMovements } from './shared/approach';
 import catalogData from './data/catalog.json';
@@ -61,6 +67,7 @@ import { LotRenderer } from './render/lots';
 import { BuildingKitRenderer } from './render/buildingkit';
 import { LandmarkRenderer } from './render/landmarks';
 import { RoadMeshRenderer } from './render/roadsmesh';
+import { FreeRoadRenderer, freeRoadLampStands } from './render/freeroadmesh';
 import type { BandSpan } from './render/roadsmesh';
 import { BridgeRenderer } from './render/bridges';
 import { headingAlongX, VehicleRenderer } from './render/vehicles';
@@ -218,6 +225,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     (id) => clientGrid.profileById(id),
     overSurfaceAt,
   );
+  // Roads off the grid lie on the ground, so they sit on the terrain.
+  const freeRoads = new FreeRoadRenderer(world.scene, heightAt, (id) => clientGrid.profileById(id));
   const bridges = new BridgeRenderer(world.scene, roadSurfaceAt, overSurfaceAt);
   const vehicles = new VehicleRenderer(
     world.scene,
@@ -326,6 +335,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   if (import.meta.env.DEV) {
     (window as unknown as Record<string, unknown>).__slimcity = {
       map,
+      freeRoadTriangles: (): number => freeRoads.triangleCount(),
       setDayT: (t: number | null): void => {
         devDayTOverride = t;
       },
@@ -420,6 +430,17 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         lines: useCityStore.getState().transitLines,
         ridership: useCityStore.getState().transitRidership,
       }),
+      // Where every live vehicle is, world metres, as the worker last sent
+      // them: lets a check count traffic on a road instead of reading it off
+      // a picture.
+      readVehicles: (): { x: number; z: number }[] => {
+        const out: { x: number; z: number }[] = [];
+        for (let i = 0; i < latestVehicles.length; i += VEHICLE_STRIDE) {
+          const x = latestVehicles[i]!;
+          if (x !== INACTIVE_VEHICLE_X) out.push({ x, z: latestVehicles[i + 1]! });
+        }
+        return out;
+      },
       // Meshes the renderer would submit an empty draw for — no vertices, or
       // an instanced mesh with a count of zero. WebGPU warns on these, and the
       // warning names no object, so this finds the culprit.
@@ -794,6 +815,19 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
    */
   let drivewayTiles: ReadonlySet<number> = new Set();
   let latestRoadTiles: ReturnType<typeof clientGrid.roadTiles> = [];
+  /** The vehicle buffer as the worker last sent it. */
+  let latestVehicles: Float32Array = new Float32Array(0);
+  /** Every street lamp: the grid's, from its road tiles, and those along roads off the grid. */
+  const rebuildLamps = (): void => {
+    const free = clientGrid.roads
+      ? freeRoadLampStands(
+          clientGrid.roads,
+          (id) => clientGrid.profileById(id),
+          (wx, wz) => clientGrid.poweredAt(worldToTile(wx), worldToTile(wz)),
+        )
+      : [];
+    lamps.rebuild(latestRoadTiles, drivewayTiles, free);
+  };
   /** Counts down to the next advisor re-rank (see ADVISOR_REFRESH_SNAPSHOTS). */
   let snapshotsSinceAdvice = 0;
   /** Latest flattened transit stop tile-points, mirrored so pedestrian
@@ -1154,6 +1188,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     roofProps.setNightFactor(nightFactor);
     houseRoofs.setNightFactor(nightFactor);
     roadsMesh.setNightFactor(nightFactor); // dim the unlit road so lamp pools stay the bright spots
+    freeRoads.setNightFactor(nightFactor);
     lamps.setTimeOfDay(dayT); // lamps run their own dusk-to-dawn schedule, not the night ramp
     vehicles.setNightFactor(nightFactor);
     landmarks.setNightFactor(nightFactor);
@@ -1182,9 +1217,21 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // run's grading) must rebuild the affected road chunks, or their
       // geometry keeps stale heights (buried edges / floating caps).
       roadsMesh.invalidateHeights(snap.heightPatches);
+      freeRoads.rebuild(clientGrid.roads);
     }
     // The profile table lands before the road deltas that refer into it.
     if (snap.roadProfiles) clientGrid.applyRoadProfiles(snap.roadProfiles);
+    if (snap.roadNet) {
+      clientGrid.applyRoadNetwork(snap.roadNet);
+      freeRoads.rebuild(clientGrid.roads);
+      // A road off the grid fronts lots and covers tiles with no road tile
+      // changing, so the zoning grid and the lamps are rebuilt here when
+      // nothing below will.
+      if (!snap.roads) {
+        zoneGrid.rebuild(clientGrid);
+        rebuildLamps();
+      }
+    }
     // Who gives way lands before the road deltas too, so that when a drag
     // changes both, the signs are rebuilt once against the new answer.
     const controlsMoved = snap.junctions ? clientGrid.applyJunctions(snap.junctions) : false;
@@ -1209,7 +1256,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       zoneGrid.rebuild(clientGrid);
       const roadTiles = clientGrid.roadTiles();
       latestRoadTiles = roadTiles;
-      lamps.rebuild(roadTiles, drivewayTiles);
+      rebuildLamps();
       roadFurniture.rebuild(roadTiles);
       bridges.rebuild(clientGrid.deckTiles());
       // Ground cover follows the road only where the road touches the ground —
@@ -1250,7 +1297,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       }
       if (!sameTileKeySet(nextDriveways, drivewayTiles)) {
         drivewayTiles = nextDriveways;
-        if (latestRoadTiles.length > 0) lamps.rebuild(latestRoadTiles, drivewayTiles);
+        rebuildLamps();
       }
 
       const selected = state.selectedBuilding;
@@ -1274,11 +1321,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // lights up without waiting for someone to touch a road.
       clientGrid.applyPowerPatches(snap.power);
       latestRoadTiles = clientGrid.roadTiles();
-      if (latestRoadTiles.length > 0) lamps.rebuild(latestRoadTiles, drivewayTiles);
+      rebuildLamps();
     }
     if (snap.watered) overlays.setCoverage('watered', snap.watered);
     if (snap.vehicles) {
       vehicles.setBuffer(snap.vehicles);
+      latestVehicles = snap.vehicles;
       // Service vehicles share the SAME buffer (kind-filtered), no copy.
       serviceVehicles.setBuffer(snap.vehicles);
       snapshotAgeMs = 0;

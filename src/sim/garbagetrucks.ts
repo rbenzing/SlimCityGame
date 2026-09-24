@@ -14,7 +14,7 @@
  * Trucks are runtime-only state (rebuilt after a load, like traffic volume).
  */
 import type { PathResult, RoadNetworkApi, TilePoint } from '../shared/types';
-import { INACTIVE_VEHICLE_X, VEHICLE_STRIDE, VehicleKind } from '../shared/types';
+import { INACTIVE_VEHICLE_X, VEHICLE_STRIDE, VehicleKind, pathRoute } from '../shared/types';
 import { TICK_RATE, TILE_METERS, tileToWorld } from '../shared/constants';
 
 /** Own small pool, overlaid onto the shared snapshot buffer just before the service-vehicle slice. */
@@ -79,8 +79,10 @@ interface ActiveTruck {
   dumpTicksRemaining: number;
 }
 
-function buildRoutedVehicle(tiles: readonly TilePoint[]): RoutedVehicle {
-  const points: WorldPoint[] = tiles.map((p) => ({ x: tileToWorld(p.x), z: tileToWorld(p.z) }));
+const tileCentres = (tiles: readonly TilePoint[]): WorldPoint[] =>
+  tiles.map((p) => ({ x: tileToWorld(p.x), z: tileToWorld(p.z) }));
+
+function buildRoutedVehicle(points: readonly WorldPoint[]): RoutedVehicle {
   const segmentLengths: number[] = [];
   for (let i = 0; i < points.length - 1; i++) {
     const a = points[i]!;
@@ -174,19 +176,21 @@ export class GarbageTruckSystem {
       this.resolve(index);
       return;
     }
-    truck.vehicle = buildRoutedVehicle(path.points);
+    truck.vehicle = buildRoutedVehicle(pathRoute(path));
     truck.phase = 'toDepot';
   }
 
   /** Depot reached with a dump route: drive off the road into the facility to the dump spot. */
   private startDumpRun(truck: ActiveTruck): void {
-    truck.vehicle = buildRoutedVehicle([truck.sourceTile, ...truck.dumpPath]);
+    truck.vehicle = buildRoutedVehicle(tileCentres([truck.sourceTile, ...truck.dumpPath]));
     truck.phase = 'toDump';
   }
 
   /** Dump dwell finished: retrace the dump route back out to the depot's source tile. */
   private startLeavingDump(truck: ActiveTruck): void {
-    truck.vehicle = buildRoutedVehicle([...truck.dumpPath].reverse().concat(truck.sourceTile));
+    truck.vehicle = buildRoutedVehicle(
+      tileCentres([...truck.dumpPath].reverse().concat(truck.sourceTile)),
+    );
     truck.phase = 'leavingDump';
   }
 
@@ -245,7 +249,7 @@ export class GarbageTruckSystem {
   private spawnTruck(depot: TruckDepot, target: TruckTarget, pathToBuilding: PathResult): void {
     const slot = this.freeSlots.pop();
     if (slot === undefined) return;
-    const vehicle = buildRoutedVehicle(pathToBuilding.points);
+    const vehicle = buildRoutedVehicle(pathRoute(pathToBuilding));
     this.active.push({
       depotId: depot.id,
       sourceTile: depot.sourceTile,

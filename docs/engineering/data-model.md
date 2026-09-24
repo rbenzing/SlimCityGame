@@ -26,6 +26,9 @@ older save loads it at its default. A `*` marks a layer whose bytes are
 written and read back like any other, but are then immediately overwritten by
 the simulation before they're ever consulted — see
 [What survives a save, and what doesn't](#what-survives-a-save-and-what-doesnt).
+A **†** marks a road layer: saved on the tiles up to v12, and from v13 derived
+from the road network saved after the tiles — see
+[The road network](#the-road-network).
 
 | Layer               | Type                                                            | Meaning                                                                                                                                  | Persisted                                                             | Default                                   |
 | ------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------- |
@@ -33,25 +36,26 @@ the simulation before they're ever consulted — see
 | `water`             | `Uint8Array`                                                    | `1` = water tile (unbuildable).                                                                                                          | v1                                                                    | `0`                                       |
 | `trees`             | `Uint8Array`                                                    | `0..255` tree density; cosmetic, clearable.                                                                                              | v1                                                                    | `0`                                       |
 | `zone`              | `Uint8Array`                                                    | `ZoneType` (below).                                                                                                                      | v1                                                                    | `0` (`None`)                              |
-| `roadTier`          | `Uint8Array`                                                    | `RoadTier` (below), the nearest preset to the tile's `roadProfile`.                                                                      | v1                                                                    | `0` (`None`)                              |
-| `roadMask`          | `Uint8Array`                                                    | 4-bit neighbor bitmask: `+N=1 +E=2 +S=4 +W=8`. Derived: loading recomputes it from the tiles around it.                                  | v1                                                                    | `0`                                       |
+| `roadTier` †        | `Uint8Array`                                                    | `RoadTier` (below), the nearest preset to the tile's `roadProfile`.                                                                      | v1                                                                    | `0` (`None`)                              |
+| `roadMask` †        | `Uint8Array`                                                    | 4-bit neighbor bitmask: `+N=1 +E=2 +S=4 +W=8`. Derived: loading recomputes it from the tiles around it.                                  | v1                                                                    | `0`                                       |
 | `buildingId`        | `Uint32Array`                                                   | `0` = none, else the `BuildingInstance.id` occupying the tile.                                                                           | v1                                                                    | `0`                                       |
 | `power` *           | `Uint8Array`                                                    | `1` = powered.                                                                                                                           | v1                                                                    | `0`                                       |
 | `watered` *         | `Uint8Array`                                                    | `1` = water service reaches the tile.                                                                                                    | v1                                                                    | `0`                                       |
 | `fields[0..8]`      | `Uint8Array` x9                                                 | The 9 scalar fields, `FieldId` order — see [Scalar fields](#the-scalar-fields).                                                          | v1                                                                    | `0`                                       |
 | `district`          | `Uint8Array`                                                    | District id, `0` (unassigned) or `1..255` — see [Districts](#districts--policies).                                                       | v2                                                                    | `0`                                       |
 | `landfill`          | `Uint8Array`                                                    | `1` = landfill area tile that collected trash piles up on.                                                                               | v3                                                                    | `0`                                       |
-| `roadElevation`     | `Float32Array`                                                  | Deck height in metres above this tile's terrain; `0` = at grade.                                                                         | v4 (v4 stored it as one byte, whole metres; widened to a float in v5) | `0`                                       |
-| `roadProfile`       | `Uint16Array`                                                   | Road composition id: `0` = no road, `1..12` a preset (equals its tier), `13+` player-composed — see [Road profiles](#road-profiles).     | v6                                                                    | derived from `roadTier`                   |
-| `roadFlow`          | `Uint8Array`                                                    | Low 3 bits: `RoadFlow` (below). Bit 3: corridor-half flag. Bit 4: which half.                                                            | v7                                                                    | `0` (`None`)                              |
+| `roadElevation` †   | `Float32Array`                                                  | Deck height in metres above this tile's terrain; `0` = at grade.                                                                         | v4 (v4 stored it as one byte, whole metres; widened to a float in v5) | `0`                                       |
+| `roadProfile` †     | `Uint16Array`                                                   | Road composition id: `0` = no road, `1..12` a preset (equals its tier), `13+` player-composed — see [Road profiles](#road-profiles).     | v6                                                                    | derived from `roadTier`                   |
+| `roadFlow` †        | `Uint8Array`                                                    | Low 3 bits: `RoadFlow` (below). Bit 3: corridor-half flag. Bit 4: which half.                                                            | v7                                                                    | `0` (`None`)                              |
 | `junctionControl`   | `Uint8Array`                                                    | Player's control override: `0` = none (the warrant decides), `1..6` a code — see [Junctions](#junctions).                                | v8                                                                    | `0`                                       |
 | `junctionTurns`     | `Uint16Array`                                                   | Turn restrictions, one nibble per arm (N/E/S/W), a `MovementSet` bitmask each.                                                           | v9                                                                    | `0` (unrestricted)                        |
 | `powerLine`         | `Uint8Array`                                                    | `1` = a power line stands on this tile.                                                                                                  | v10                                                                   | `0`                                       |
 | `junctionLaneTurns` | `Uint16Array`, length `n * ARMS_PER_TILE` (`ARMS_PER_TILE = 4`) | Per-lane turn restrictions: one packed entry per arm, four lanes at a nibble apiece.                                                     | v11                                                                   | `0` (each lane takes its derived default) |
-| `overTier`          | `Uint8Array`                                                    | The tier of the road passing over this tile's road; `0` everywhere but a crossing tile. See [overpasses.md](../world-sim/overpasses.md). | v12                                                                   | `0` (no overpass)                         |
-| `overProfile`       | `Uint16Array`                                                   | That road's profile id.                                                                                                                  | v12                                                                   | `0`                                       |
-| `overFlow`          | `Uint8Array`                                                    | That road's stored flow byte.                                                                                                            | v12                                                                   | `0`                                       |
-| `overElevation`     | `Float32Array`                                                  | That road's deck height, metres above terrain.                                                                                           | v12                                                                   | `0`                                       |
+| `overTier` †        | `Uint8Array`                                                    | The tier of the road passing over this tile's road; `0` everywhere but a crossing tile. See [overpasses.md](../world-sim/overpasses.md). | v12                                                                   | `0` (no overpass)                         |
+| `overProfile` †     | `Uint16Array`                                                   | That road's profile id.                                                                                                                  | v12                                                                   | `0`                                       |
+| `overFlow` †        | `Uint8Array`                                                    | That road's stored flow byte.                                                                                                            | v12                                                                   | `0`                                       |
+| `overElevation` †   | `Float32Array`                                                  | That road's deck height, metres above terrain.                                                                                           | v12                                                                   | `0`                                       |
+| `roadFootprint`     | `Uint8Array`                                                    | `1` where a road off the grid covers the tile, footways included. Derived from the road network (`deriveRoadFootprint`).                 | never — recomputed after every load and road command                  | `0`                                       |
 
 `ZoneType`, `RoadTier` and `RoadFlow` are plain numeric enums in
 `src/shared/types.ts`. Values are never reordered or reused once shipped —
@@ -79,8 +83,9 @@ all-way stop, `5` signal, `6` roundabout.
 
 ### What survives a save, and what doesn't
 
-Every `GridState` layer above round-trips through `serializeGrid` — there is
-no runtime-only layer inside the grid itself. But two of those layers, plus
+Every `GridState` layer above round-trips through a save — the road layers (†)
+by way of the road network they are derived from — and there is no
+runtime-only layer inside the grid itself. But two of those layers, plus
 one of the nine scalar fields, are written and read back only to be discarded
 within a tick or two of loading, because they're pure derived caches rather
 than sources of truth:
@@ -119,8 +124,11 @@ to keep the sim deterministic), plus optional `population`/`funds` for the
 load-browser's list rows (absent on saves written before that existed).
 
 **Grid** (`gridBytes`): the `serializeGrid` output — an 8-byte header
-(`u32` version, `u32` size) followed by every layer in the table above, in
-that order, each tile taking a fixed number of bytes for that version.
+(`u32` version, `u32` size) followed by every layer in the table above except
+the road layers (†), in that order, each tile taking a fixed number of bytes
+for that version; then a `u32` length and the encoded road network. The worker
+writes and reads it through `saveGrid` and `loadGrid` in
+`src/world/roadnet.ts`, which derive the road layers from the network on load.
 
 **Meta** (`SaveMeta`): everything else that isn't a grid layer —
 `registry` (the building table), `stats` (`CityStats`), and three optional
@@ -131,9 +139,9 @@ blocks defaulted on saves written before they existed: `garbage`
 
 ### Save version and per-tile width
 
-The current `SAVE_VERSION` is **12** (`src/shared/types.ts`), and the
-current per-tile width is **53 bytes** (`BYTES_PER_TILE` in
-`src/world/grid.ts`). The width for every version is exported as
+The current `SAVE_VERSION` is **13** (`src/shared/types.ts`), and the
+current per-tile width is **36 bytes** (`BYTES_PER_TILE` in
+`src/world/grid.ts`), followed by the road network. The width for every version is exported as
 `BYTES_PER_TILE_BY_VERSION` (`src/world/grid.ts`) — a single array, indexed
 by version number, that both `deserializeGrid` and the grid migration tests
 read rather than each keeping its own count. Reproduced exactly:
@@ -151,12 +159,16 @@ read rather than each keeping its own count. Reproduced exactly:
 | 9              | 36         | `junctionTurns`, a `Uint16` (+2 bytes).                                                                           |
 | 10             | 37         | `powerLine` (+1 byte).                                                                                            |
 | 11             | 45         | `junctionLaneTurns`, 4 arms x `Uint16` (+8 bytes).                                                                |
-| 12 (current)   | 53         | The over-road layers: `overTier`, `overProfile` (`Uint16`), `overFlow`, `overElevation` (`Float32`) (+8 bytes).   |
+| 12             | 53         | The over-road layers: `overTier`, `overProfile` (`Uint16`), `overFlow`, `overElevation` (`Float32`) (+8 bytes).   |
+| 13 (current)   | 36         | Drops every road layer (−17 bytes); the road network follows the tiles.                                           |
 
-Every new layer is appended as the last thing `serializeGrid` writes, in
-version order. That's the load-bearing pattern the whole format leans on: an
-older save's tile record is exactly a byte-for-byte prefix of what the
-current format writes, just missing the layers added after it was saved.
+Up to v12, every new layer was appended as the last thing the serializer
+wrote, in version order: an older save's tile record is exactly a
+byte-for-byte prefix of the v12 record, just missing the layers added after it
+was saved. `serializeGridV12` still writes that layout, and the migration tests
+trim it. v13 is the one break in the pattern: it takes the road layers out of
+the tile record, because they are derived from the road network now, and an
+older save's roads convert to a network on load.
 `deserializeGrid` reads the version out of the header, looks up its width in
 `BYTES_PER_TILE_BY_VERSION`, and for each layer added after that version
 substitutes the default from the table above instead of reading bytes that
@@ -231,13 +243,51 @@ Growth's per-building construction countdown is **not** part of
 `Constructing` is force-promoted to `Active` so nothing is left permanently
 mid-construction.
 
+### The road network
+
+The one place a road is stored: node and segment slot tables, structure of
+arrays, in `src/world/roadnet.ts`, held by the worker and saved after the
+grid's tiles. What it holds and why is
+[road-network.md](../world-sim/road-network.md). Every road layer of the grid
+(†) is derived from it by `deriveRoadLayers`. The grid commands still plan on
+tiles; after each command the worker calls `reconcileRoads`, which takes up
+what the plan laid while keeping the slot of every node still at the same
+place and deck and every segment still between the same two nodes, then
+`syncRoadLayers`, which derives the layers again and reports, with
+`console.error`, any tile that came out different. A report is a conversion
+bug. On a full 256² map of streets the two take about 20 ms, once per road
+command.
+
+Roads off the grid (`buildSegment`, `src/world/freeroads.ts`) live only in the
+network: `reconcileRoads` keeps every free segment and the nodes it ends on,
+keeps a grid tile a free road meets as a node, and turns such a node into a
+free one (tier 0) if its grid road is bulldozed. A free node carries no road of
+its own tile; a free segment's flow byte is 0 for both ways or 1 for one-way
+from its first node to its second, not a compass direction.
+
+Encoded (`encodeRoadNetwork`), little-endian: `u32` node slots, `u32` segment
+slots, then every slot, free ones included, so slots survive a save. A node is
+17 bytes — live `u8`, x and z `i32` centimetres, deck height `f32`, tier `u8`,
+profile `u16`, flow `u8`. A segment is 30 bytes — live `u8`, node slots a and b
+`i32`, tier `u8`, profile `u16`, flow `u8`, deck heights at its first and last
+tile `f32` × 2, and a curve flag `u8` with its control point `i32` × 2 in
+centimetres.
+
 ### Road, rail and tram networks
 
 `GraphNode`/`GraphEdge` (`src/shared/types.ts`), built by `RoadNetwork`
-(`src/world/roads.ts`). These are **not** persisted directly — `rebuild(grid)`
-derives the whole graph from the grid's `roadTier`/`roadProfile`/`roadFlow`
-layers (plus `junctionControl`/`junctionTurns` for each node's control and
-turn state) every time the grid changes, including once after every load.
+(`src/world/roadgraph.ts`). These are **not** persisted directly —
+`rebuild(grid)` derives the whole graph from the grid's road network, walked as
+cells (`roadCellsOf` in `src/world/roadnet.ts`, cached per network version),
+plus `junctionControl`/`junctionTurns` for each node's control and turn state,
+every time the network changes, including once after every load. A grid with
+no network of its own — a test that lays roads on the tiles — is read through
+the network its tiles describe. The cells are the 2 × size² RoadKeys, linked
+N/E/S/W, followed by the cells of the roads off the grid: one per tile a free
+centre line crosses, with its length in tiles (`freeWeight`), its segment and
+the neighbour toward that segment's second node, and one per free node; their
+links, and a grid tile's links to them, are in `more`. A grid cell weighs one
+tile, so a graph edge's `length` is in tiles either way.
 Node and edge ids are assigned fresh on each rebuild, so they carry no
 identity across rebuilds — only the grid tiles they're derived from do. A
 separate `RoadNetwork` instance (with its own node/edge id space) exists for

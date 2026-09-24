@@ -1,10 +1,10 @@
 # ADR-0005: Roads are grid-aligned; free-form curves are out
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0016
 - **Date:** 2026-09-08
 - **Deciders:** Project owner
 - **Supersedes:** none
-- **Superseded by:** none
+- **Superseded by:** [ADR-0016](0016-roads-are-a-network-of-nodes-and-segments.md)
 
 ## Context
 

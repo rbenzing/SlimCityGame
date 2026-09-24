@@ -26,8 +26,27 @@ The road model is derived from the published standards in
 [Road Guides](Road%20Guides/README.md) (MUTCD 11th edition, AASHTO, HCM).
 MUTCD citations below use 11th-edition section numbers.
 
-- A tile carries exactly one road tier. Two roads never share a tile: no
-  overpass, no shared rail and street tile. A rail tile between two street tiles
+- A tile carries one road — or two where one passes OVER the other, and only
+  there: the road beneath keeps the ordinary road layers, the road passing over
+  lives in the over layers, and nothing joins the two. An overpass crosses
+  straight over at right angles, clearing the road beneath by 5 m (7 m over
+  rail) to its girder's underside; it never turns, ends or has a junction on
+  its crossing tile. Rail and street never share a tile at grade. —
+  [overpasses.md](world-sim/overpasses.md); `crossingShape` and
+  `overpassRise` in `src/shared/overpass.ts`, `roadStep` in
+  `src/world/roads.ts`
+- A road is identified by its tile AND its layer (`RoadKey`); anything that
+  counts roads by tile — the graph, masks, the utility and service spreads,
+  the approach walk, the renderers — reads the two roads on a crossing tile as
+  two. A step onto a crossing tile along the line of its overpass reaches the
+  overpass; any other step reaches the road on the tile. —
+  [overpasses.md](world-sim/overpasses.md); `roadStep` in `src/world/roads.ts`
+- Two road tiles join only at one level: both on the ground, or decks within
+  one grade step (`BRIDGE_MAX_GRADE`) of each other. A deck in the air passes
+  beside a road on the ground without meeting it. —
+  [road-model.md](world-sim/road-model.md); `atOneLevel` in
+  `src/world/roads.ts`
+- A rail tile between two street tiles
   is a break in the street, not a crossing, and rail laid through a street in
   replace mode severs it: the track draws running straight through and the street ends
   either side, never a crossing box. Level crossings that stop road traffic do
@@ -49,10 +68,26 @@ MUTCD citations below use 11th-edition section numbers.
   furniture, crossings and capacity are derived from those three and never
   authored or stored per tier. — [road-model.md](world-sim/road-model.md),
   [ADR-0012](engineering/adr/0012-a-road-is-a-class-a-cross-section-and-junctions.md)
-- Roads are grid-aligned. Curves and corner arcs are render-only, and the graph
-  never contains a diagonal step. —
-  [ADR-0005](engineering/adr/0005-roads-are-grid-aligned-no-freeform-curves.md),
-  [streets.md](art/streets.md)
+- The road network of nodes and segments is where roads are stored: a save
+  holds the network and never the road tile layers, which are derived from it
+  on load (`deriveRoadLayers`). The grid commands still plan on tiles; after
+  every command batch the network takes up the plan (`reconcileRoads`) and the
+  layers are derived again (`syncRoadLayers`), after every command, not every
+  batch. A tile that derives differently is a conversion bug, reported with
+  `console.error`, never kept quietly. The graph never contains a diagonal
+  step, and a grid corner's arc is render-only. —
+  [ADR-0016](engineering/adr/0016-roads-are-a-network-of-nodes-and-segments.md),
+  [road-network.md](world-sim/road-network.md), [streets.md](art/streets.md)
+- A road off the grid (at an angle, curved, or ending off a tile centre)
+  writes no road tile layer. It holds the tiles its whole cross-section
+  covers in the derived `roadFootprint` layer, which nothing else is built on
+  and no grid drag enters except where the two meet; it meets a grid road
+  only at one of its tile centres, which stays a node of the grid; and it
+  obeys every geometry rule — radius by class, 30° between roads, six roads a
+  junction, 10 m long, never crossing or crowding another road but at a node,
+  on dry, unbuilt ground at a road's slope. `planSegment` in
+  `src/world/freeroads.ts` is the only place those are checked. —
+  [road-network.md](world-sim/road-network.md); `src/shared/roadgeom.ts`
 - Never compare a stored `roadFlow` byte to a `RoadFlow` value directly:
   direction is the low three bits (`ROAD_FLOW_DIRECTION_MASK`), bit 3 marks a
   corridor half and bit 4 the half at the HIGH offset. —
@@ -72,7 +107,7 @@ MUTCD citations below use 11th-edition section numbers.
   `RoadFlow.None`. A run's direction is read from its own tiles before its end
   nodes, because a node two one-ways cross holds only the flow of whichever
   was drawn last. — [road-model.md](world-sim/road-model.md);
-  `src/world/pathfind.ts`, `storedRunDirection` in `src/world/roads.ts`
+  `src/world/pathfind.ts`, `storedRunDirection` in `src/world/roadgraph.ts`
 - Roads replace by class rank (dirt, alley, rural, local, one-way, urban,
   collector, arterial, divided, ramp, highway), never by tier number or catalog
   order. Rail sits outside the ranking: rail never takes a tile from a road nor
@@ -240,8 +275,9 @@ MUTCD citations below use 11th-edition section numbers.
   [road-model.md](world-sim/road-model.md); `armWarrant` and
   `sharedTurnLaneAt` in `src/shared/approachzone.ts`
 - Bridges are ordinary road tiles plus an elevation layer, never a second
-  network. One deck height per tile, no tunnels, no stacked decks, and an
-  elevated tile grants no zoning frontage. —
+  network. One deck height per road on a tile — the road on it, and at a
+  crossing the road passing over it — no tunnels, no third level, and an
+  elevated tile, or an overpass, grants no zoning frontage. —
   [road-model.md](world-sim/road-model.md),
   [constraints.md](engineering/constraints.md)
 
@@ -284,6 +320,9 @@ MUTCD citations below use 11th-edition section numbers.
   [ADR-0001](engineering/adr/0001-traffic-is-statistical-assignment-with-cosmetic-agents.md)
 - Vehicles and pedestrians are cosmetic: they draw along a real route and
   simulate nothing, and a cosmetic route is computed once and never re-solved.
+  A vehicle drives the line the road network traces — grid tile centres and
+  the centre lines of roads off the grid — never a straight line between two
+  tiles that are not neighbours.
   Traffic is statistical assignment. —
   [ADR-0001](engineering/adr/0001-traffic-is-statistical-assignment-with-cosmetic-agents.md),
   [agent-behavior.md](world-sim/agent-behavior.md)
@@ -316,10 +355,14 @@ MUTCD citations below use 11th-edition section numbers.
   `buildingId` layer is the only spatial index. —
   [entities.md](world-sim/entities.md)
 - A zoned tile develops only when it is zoned, served with power and water on
-  its footprint, and within Manhattan distance 3 of a street. One zonability
-  predicate decides; the zoning grid visual and the `paintZone` command both
-  defer to it and may never disagree. Clearing a zone is exempt from the
-  frontage check so a zone can always be removed. —
+  its footprint, and within Manhattan distance 3 of a street, on the grid or
+  off it. One zonability predicate decides; the zoning grid visual and the
+  `paintZone` command both defer to it and may never disagree, so the render
+  thread reads roads off the grid from the network the worker sends, never
+  from its road tiles. A road off the grid fronts lots square to its centre
+  line from its kerb, out to the zoning depth, and nothing is zoned or built on
+  its footprint. Clearing a zone is
+  exempt from the frontage check so a zone can always be removed. —
   [simulation-rules.md](game-design/simulation-rules.md)
 - The player paints zones and never places a zoned building; growth runs on the
   sim clock as demand × desirability. Civic and utility buildings are plopped;
@@ -331,7 +374,10 @@ MUTCD citations below use 11th-edition section numbers.
 - Power, water and every service reach the city only along the street-tier road
   network: a breadth-first search from the road tiles orthogonally adjacent to
   the footprint, radiating one step (utilities) or two steps (services) onto
-  non-road tiles. Never a straight-line radius. —
+  non-road tiles. Never a straight-line radius. The search follows the road
+  network's links (`roadCellsOf`), so it goes only where roads join: never
+  across to a road that merely lies alongside, never between two levels. A
+  power line is not a road, and passes power to whatever stands beside it. —
   [utilities-model.md](world-sim/utilities-model.md),
   [services-model.md](world-sim/services-model.md),
   [ADR-0009](engineering/adr/0009-utilities-propagate-along-roads.md);

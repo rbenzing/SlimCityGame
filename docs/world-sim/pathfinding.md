@@ -3,7 +3,7 @@
 The routing algorithm every consumer shares — civilian traffic, transit
 lines, service dispatch, and cosmetic garbage trucks all call the same
 `findPath` (`src/world/pathfind.ts`, wrapped by `RoadNetwork.findPath` in
-`src/world/roads.ts`) through the injected `RoadNetworkApi`. This document is
+`src/world/roadgraph.ts`) through the injected `RoadNetworkApi`. This document is
 the algorithm itself: the graph it searches, the A* mechanics, and the one
 unusual design decision — search state keyed on **(node, arriving edge)**
 rather than bare node — that everything else here exists to explain. It
@@ -16,13 +16,19 @@ built.
 
 ## The graph
 
-A `RoadNetwork` does not put one node per tile. `buildGraph` walks the grid
-and places a node only at a tile that is an intersection, a dead end, an
-isolated tile, or — even with exactly two road neighbors — a tile whose own
+A `RoadNetwork` does not put one node per tile. `buildGraph` walks the road
+network ([road-network.md](road-network.md)) — one cell per road per tile,
+linked only where the network joins them — and places a node only at a road
+that is an intersection, a dead end, an isolated road, or — even with exactly
+two linked neighbors — a road whose own
 tier is strictly higher than at least one neighbor's, which plants exactly
 one node at each straight-through tier boundary. An edge is the maximal run
 of tiles between two nodes, carrying that run's tile list, tier,
-tile-length, and a mutable `volume` that traffic writes and decays. Three
+tile-length, and a mutable `volume` that traffic writes and decays. A road
+off the grid is a run of cells too, one per tile its centre line crosses, and
+counts toward the length by the distance along its centre line, so a free
+road's run is exactly as long as a driver has to go; a free node is a cell of
+its own, and a grid tile a free road meets is where the two runs join. Three
 independent graphs exist over disjoint-or-overlapping tile predicates — the
 street network, the rail network, and the tram network (a subset of the
 street tiles) — see [entities.md](entities.md) and

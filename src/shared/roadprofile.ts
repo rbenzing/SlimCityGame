@@ -306,7 +306,8 @@ export function laneCount(profile: RoadProfile): number {
   }, 0);
 }
 
-const CARRIAGEWAY_KINDS: ReadonlySet<LanePiece['kind']> = new Set([
+/** The pieces between the kerbs: everything but footways and verges. */
+export const CARRIAGEWAY_KINDS: ReadonlySet<LanePiece['kind']> = new Set([
   'travel',
   'centreTurn',
   'parking',

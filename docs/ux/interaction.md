@@ -10,8 +10,8 @@ Every row, toggle, and button that appears must be wired to real,
 currently-consumed behavior. A control that would do nothing if clicked is
 not rendered "for completeness" or "for later" — it is omitted until the
 behavior behind it exists. This is why several panels are shorter than a
-generic city-builder's: a road tool's mode row only lists `Straight` and
-`L-path` because a grid-drag mode isn't built; zone tools and Bulldoze
+generic city-builder's: a motorway's mode row leaves out `Grid`, because a
+grid of motorways is not a thing anyone builds; zone tools and Bulldoze
 render no mode row at all, because each has exactly one real mode (`Rect`);
 the corner buttons carry no gear/settings icon, because there is no
 settings system separate from the in-game Options screen. When a genuinely
@@ -69,9 +69,57 @@ replace flag and refusals apply, the preview shows every tile the grid will
 occupy, and the cursor chip prices the lot before it is committed. A grid is
 one undo step, because it was one gesture.
 
+## Curve and free road modes
+
+Two path modes lay roads off the grid, once the road network
+([road-network.md](../world-sim/road-network.md)) has reached its tool stage.
+What a free road may be — how tight a curve each class may take, how narrow an
+angle two roads may meet at — is that document; this is how the player draws
+one.
+
+**`Curve` is three clicks** rather than a drag, because a bend has a shape a
+drag cannot say:
+
+1. **Start.** The first click places the start. From then on the ghost is a
+   straight road from the start to the cursor.
+2. **Bend.** The second click places the bend: the point both ends of the
+   curve aim at. From then on the ghost is the whole curve, from the start,
+   pulled toward the bend, to the cursor. It is drawn at the road's real
+   width, so the player sees which way it bends and how much ground it takes
+   before placing it.
+3. **End.** The third click lays the curve.
+
+**A straight at any angle** is the `Straight` mode with the 90° lock off: the
+drag runs wherever the cursor goes instead of snapping to a row or column.
+
+Each click, and each end of a drag, snaps to what is already there: onto an
+existing node, onto an existing road (splitting it with a new junction), or,
+with guide snapping on, into line with a road nearby. A curve that starts on
+the end of an existing road starts in that road's direction unless the bend
+says otherwise, so a road can be continued round a bend without a kink.
+
+The cursor chip carries the cost, the length along the centre line and, for a
+curve, its tightest radius. When the road would be refused it carries the
+reason instead: too tight for its class (with the radius it needs), too
+narrow an angle where it meets another road, a crossing of two classes that
+may not meet, or ground that is taken. A refused ghost draws red and the final
+click does nothing.
+
+`Backspace` takes back the last click, so a misplaced bend is moved without
+starting again. Right-click is not used: a right-drag already turns the
+camera. Escape cancels the road in progress, the same as it cancels a drag.
+The profile, the replace flag, the elevation control and the class-join
+refusals apply as for any road. A curve is one undo step, including any road
+it split.
+
+**Which classes get which modes.** Every road class that can be laid offers
+`Straight`, `L-path` and `Curve`. Every class except the motorway (highway
+and ramp) also offers `Grid`. Picking a motorway while `Grid` is selected
+falls back to `Straight`.
+
 ## Road guide snapping
 
-A toggle beside the 90° lock. With it on, a road drag that is *nearly* in line
+A toggle beside the 90° lock. With it on, a road drag that is _nearly_ in line
 with an existing road is pulled into line with it: both ends of the drag snap,
 independently on each axis, onto the row or column of a nearby road that runs
 along it. A new street started a tile off an existing one becomes its
@@ -90,7 +138,7 @@ chose, and beyond it the offset is a block the player meant to leave. A snap
 that reached further would move the road somewhere it was not pointed.
 
 The toggle composes with everything else rather than replacing it: the path is
-still `Straight`, `L-path` or `Grid`, still 90°-locked if that chip is on, and
+still whichever path mode is selected, still 90°-locked if that chip is on, and
 snapping only adjusts where the drag's ends sit before the path is built.
 
 ## Cost and validity readouts

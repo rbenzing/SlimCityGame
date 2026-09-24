@@ -8,7 +8,11 @@ import type {
 } from '../shared/types';
 import { BuildingState, FieldId, RoadTier, ZoneType } from '../shared/types';
 import { tileIndex } from '../shared/constants';
-import { ServiceSim, roadBfsDistances } from './services';
+import { ServiceSim, nearestRoadTile, roadBfsDistances } from './services';
+import { tileCentreCm } from '../shared/roadgeom';
+import { applyRoad } from '../world/roads';
+import { networkFromGrid, reconcileRoads } from '../world/roadnet';
+import { laySegment, planSegment } from '../world/freeroads';
 import { EconomySystem } from './economy';
 import { createGrid } from '../world/grid';
 
@@ -893,11 +897,37 @@ describe('ServiceSim: a facility keeps its own load, for the selection channel',
   });
 });
 
+/** The approach decks of an overpass at 7 m crossing x = 40: tile x and its lift. */
+const RAMPS: readonly (readonly [number, number])[] = [
+  [37, 2],
+  [38, 4],
+  [39, 6],
+  [41, 6],
+  [42, 4],
+  [43, 2],
+];
+
+describe('roadBfsDistances along roads that only lie alongside', () => {
+  it('never steps across to a deck beside the street', () => {
+    const g = createGrid();
+    for (let x = 30; x <= 50; x++) {
+      g.roadTier[tileIndex(x, 40)] = RoadTier.TwoLane;
+      g.roadTier[tileIndex(x, 41)] = RoadTier.TwoLane;
+      g.roadElevation[tileIndex(x, 41)] = 8;
+    }
+    const reached = roadBfsDistances(g, tileIndex(30, 40), 40);
+    expect(reached.get(tileIndex(50, 40))).toBe(20);
+    expect(reached.has(tileIndex(40, 41))).toBe(false);
+  });
+});
+
 describe('roadBfsDistances over a road passing over another', () => {
   it('reaches along the overpass and never down into the road beneath', () => {
     const g = createGrid();
     for (let z = 20; z <= 60; z++) g.roadTier[tileIndex(40, z)] = RoadTier.TwoLane;
     for (let x = 30; x <= 50; x++) if (x !== 40) g.roadTier[tileIndex(x, 40)] = RoadTier.TwoLane;
+    // Ramps up to the deck either side: roads join only at one level.
+    for (const [x, lift] of RAMPS) g.roadElevation[tileIndex(x, 40)] = lift;
     const c = tileIndex(40, 40);
     g.overTier[c] = RoadTier.TwoLane;
     g.overFlow[c] = 2; // east
@@ -905,5 +935,40 @@ describe('roadBfsDistances over a road passing over another', () => {
     const reached = roadBfsDistances(g, tileIndex(30, 40), 40);
     expect(reached.get(tileIndex(50, 40))).toBe(20);
     expect(reached.has(tileIndex(40, 45))).toBe(false);
+  });
+});
+
+describe('roadBfsDistances along a road off the grid', () => {
+  it('reaches along a free road from one street to the next, and nowhere it does not go', () => {
+    const g = createGrid();
+    applyRoad(
+      g,
+      Array.from({ length: 6 }, (_, i) => ({ x: 100 + i, z: 100 })),
+      RoadTier.TwoLane,
+    );
+    applyRoad(
+      g,
+      Array.from({ length: 6 }, (_, i) => ({ x: 115 + i, z: 115 })),
+      RoadTier.TwoLane,
+    );
+    g.roads = networkFromGrid(g);
+    const req = {
+      tier: RoadTier.TwoLane,
+      profileId: RoadTier.TwoLane,
+      a: { x: tileCentreCm(105), z: tileCentreCm(100) },
+      b: { x: tileCentreCm(115), z: tileCentreCm(115) },
+      control: null,
+      flow: 0,
+    };
+    const plan = planSegment(g, g.roads, req, () => null);
+    if (!plan.ok) throw new Error(plan.reason);
+    laySegment(g, g.roads, plan, req);
+    reconcileRoads(g.roads, g);
+    const reached = roadBfsDistances(g, tileIndex(100, 100), 60);
+    expect(reached.has(tileIndex(120, 115))).toBe(true);
+    expect(reached.has(tileIndex(110, 107))).toBe(true);
+    expect(reached.has(tileIndex(110, 100))).toBe(false);
+    // A facility beside the free road finds it to start from.
+    expect(nearestRoadTile(g, [tileIndex(111, 106)])).not.toBeNull();
   });
 });

@@ -31,7 +31,9 @@ import type {
 } from '../shared/types';
 import { BuildingState, RoadTier, isStreetTier } from '../shared/types';
 import { MAP_SIZE, inBounds, tileIndex } from '../shared/constants';
-import { roadStep, tierOfKey, type RoadKey } from '../world/roads';
+import { roadStep } from '../world/roads';
+import { cellTile, freeCellsOn, neighbours, roadCellsOf } from '../world/roadnet';
+import type { RoadCells } from '../world/roadnet';
 import roadsData from '../data/roads.json';
 
 const ROAD_DATA = roadsData as { specs: RoadSpec[]; classes: RoadClassSpec[] };
@@ -131,81 +133,109 @@ function radiate(g: GridState, sources: Iterable<number>): Uint8Array {
   return out;
 }
 
+/** Whether a cell carries a utility: a road cell or a power-line tile, by its predicate. */
+type Conducts = (cells: RoadCells, id: number) => boolean;
+
+/** The tiles orthogonally next to `tile`. */
+function besideTile(tile: number): number[] {
+  const x = tile % MAP_SIZE;
+  const z = Math.floor(tile / MAP_SIZE);
+  const out: number[] = [];
+  for (const [ddx, ddz] of ORTHOGONAL) {
+    if (inBounds(x + ddx, z + ddz)) out.push(tileIndex(x + ddx, z + ddz));
+  }
+  return out;
+}
+
 /**
- * Tiles orthogonally adjacent to any of `footprintTiles` that carry the
- * utility's network at all — a road, or (for power) a line. Whether such a
- * tile actually conducts is the BFS's business; this only finds the candidates.
+ * The network cells orthogonally beside any of `footprintTiles` that carry
+ * the utility — a road on the grid or off it, or (for power) a line. This is
+ * where the walk starts, and nothing beside the footprint means nowhere to go.
  */
-function networkTilesAdjacentTo(
+function networkCellsAdjacentTo(
+  cells: RoadCells,
   footprintTiles: readonly number[],
-  carriesNetwork: (index: number) => boolean,
+  conducts: Conducts,
 ): number[] {
   const seeds = new Set<number>();
   for (const idx of footprintTiles) {
-    const x = idx % MAP_SIZE;
-    const z = Math.floor(idx / MAP_SIZE);
-    for (const [ddx, ddz] of ORTHOGONAL) {
-      const nx = x + ddx;
-      const nz = z + ddz;
-      if (!inBounds(nx, nz)) continue;
-      const ni = tileIndex(nx, nz);
-      if (carriesNetwork(ni)) seeds.add(ni);
+    for (const ni of besideTile(idx)) {
+      if (conducts(cells, ni)) seeds.add(ni);
+      for (const c of freeCellsOn(cells, ni)) if (conducts(cells, c)) seeds.add(c);
     }
   }
   return [...seeds];
 }
 
 /**
- * BFS across connected conducting tiles starting from `seeds`, only stepping
- * onto (and stopping at) tiles for which `conducts(index)` is true.
- * Non-conducting tiles (a highway for water, a road for neither) are excluded
- * entirely — they neither receive the utility nor act as a bridge to tiles
- * beyond them.
+ * BFS across connected conducting cells starting from `seeds`, only stepping
+ * onto (and stopping at) cells `conducts` takes. Non-conducting roads (a
+ * highway for water, a road for neither) are excluded entirely — they neither
+ * receive the utility nor act as a bridge to anything beyond them.
  *
- * The predicate is per TILE rather than per tier because power travels two
- * ways: along the roads built to carry it, and along a power line, which is
- * not a road and has no tier at all.
+ * Power travels two ways: along the roads built to carry it, where it goes
+ * only where the road network joins one road to the next — over a road it
+ * crosses and never down into it, and never across to a road that merely lies
+ * alongside — and along a power line, which is not a road and hands it on to
+ * whatever stands next to it.
  */
 function reachableNetworkTiles(
   g: GridState,
+  cells: RoadCells,
   seeds: readonly number[],
-  conducts: (key: RoadKey) => boolean,
+  conducts: Conducts,
 ): number[] {
-  const visited = new Set<RoadKey>();
-  const queue: RoadKey[] = [];
-  for (const s of seeds) {
-    if (!conducts(s)) continue;
-    visited.add(s);
-    queue.push(s);
-  }
+  const visited = new Set<number>(seeds);
+  const queue: number[] = [...seeds];
+  const n = MAP_SIZE * MAP_SIZE;
+  const keys = 2 * n;
+  const isLine = (tile: number): boolean => g.roadTier[tile] === 0 && g.powerLine[tile] === 1;
+  const onward = (cur: number): number[] => {
+    if (cells.tier[cur] === 0) {
+      // A power line: the roads and lines next to it, on the grid or off it.
+      const out: number[] = [];
+      for (const [ddx, ddz] of ORTHOGONAL) {
+        const next = roadStep(g, cur, ddx, ddz);
+        if (next !== null) out.push(next);
+      }
+      for (const tile of besideTile(cur)) out.push(...freeCellsOn(cells, tile));
+      return out;
+    }
+    const out = neighbours(cells, cur);
+    if (cur < keys) {
+      for (const [ddx, ddz] of ORTHOGONAL) {
+        const next = roadStep(g, cur, ddx, ddz);
+        if (next !== null && next < n && isLine(next)) out.push(next);
+      }
+    } else {
+      for (const tile of besideTile(cellTile(cells, cur))) if (isLine(tile)) out.push(tile);
+    }
+    return out;
+  };
   let head = 0;
   while (head < queue.length) {
     const cur = queue[head]!;
     head += 1;
-    // A step onto a crossing tile along its overpass reaches the overpass, and
-    // the road beneath it never passes anything along that line — so a supply
-    // runs over a road it crosses and never down into it.
-    for (const [ddx, ddz] of ORTHOGONAL) {
-      const next = roadStep(g, cur, ddx, ddz);
-      if (next === null || visited.has(next)) continue;
-      if (!conducts(next)) continue;
+    for (const next of onward(cur)) {
+      if (visited.has(next) || !conducts(cells, next)) continue;
       visited.add(next);
       queue.push(next);
     }
   }
   // Coverage is per tile; an overpass supplies the tile it stands over.
-  return [...visited].map((key) => key % (MAP_SIZE * MAP_SIZE));
+  return [...visited].map((id) => cellTile(cells, id));
 }
 
 /** Coverage grid (0/1) for a set of generator footprints: footprints + everything the network reaches, radiated. */
 function computeCoverage(
   g: GridState,
   footprintTiles: readonly number[],
-  conducts: (index: number) => boolean,
+  conducts: Conducts,
 ): Uint8Array {
   if (footprintTiles.length === 0) return new Uint8Array(MAP_SIZE * MAP_SIZE);
-  const seeds = networkTilesAdjacentTo(footprintTiles, conducts);
-  const reached = reachableNetworkTiles(g, seeds, conducts);
+  const cells = roadCellsOf(g);
+  const seeds = networkCellsAdjacentTo(cells, footprintTiles, conducts);
+  const reached = reachableNetworkTiles(g, cells, seeds, conducts);
   const sources = new Set<number>(footprintTiles);
   for (const r of reached) sources.add(r);
   return radiate(g, sources);
@@ -220,16 +250,16 @@ function computeCoverage(
  * A road that does not conduct is not merely unpowered: it is no bridge
  * either, so a lot reached only down a dirt lane needs a line run to it.
  */
-function conductsPower(g: GridState, key: RoadKey): boolean {
-  if (key < g.size * g.size && g.powerLine[key] === 1) return true;
-  const tier = tierOfKey(g, key);
-  return isStreetTier(tier) && tierIsSealed(tier);
+function conductsPower(g: GridState, cells: RoadCells, id: number): boolean {
+  if (id < g.size * g.size && g.powerLine[id] === 1) return true;
+  const tier = cells.tier[id] ?? 0;
+  return isStreetTier(tier) && tierIsSealed(tier as RoadTier);
 }
 
 /** Only drivable streets whose spec carries water conduct it (highways excluded by default; rail is not a street, and neither is a power line). */
-function conductsWater(g: GridState, key: RoadKey): boolean {
-  const tier = tierOfKey(g, key);
-  return isStreetTier(tier) && tierCarriesWater(tier);
+function conductsWater(cells: RoadCells, id: number): boolean {
+  const tier = cells.tier[id] ?? 0;
+  return isStreetTier(tier) && tierCarriesWater(tier as RoadTier);
 }
 
 /**
@@ -248,15 +278,14 @@ export function utilityCanDeliver(
   utility: UtilitySpec,
   footprintTiles: readonly number[],
 ): boolean {
-  if (
-    utility.powerMW &&
-    networkTilesAdjacentTo(footprintTiles, (i) => conductsPower(g, i)).length === 0
-  ) {
+  const cells = roadCellsOf(g);
+  const power: Conducts = (c, i) => conductsPower(g, c, i);
+  if (utility.powerMW && networkCellsAdjacentTo(cells, footprintTiles, power).length === 0) {
     return false;
   }
   if (
     utility.waterKL &&
-    networkTilesAdjacentTo(footprintTiles, (i) => conductsWater(g, i)).length === 0
+    networkCellsAdjacentTo(cells, footprintTiles, conductsWater).length === 0
   ) {
     return false;
   }
@@ -338,8 +367,8 @@ export function recomputeUtilities(
     }
   }
 
-  const powerCoverage = computeCoverage(g, powerFootprints, (i) => conductsPower(g, i));
-  const waterCoverage = computeCoverage(g, waterFootprints, (i) => conductsWater(g, i));
+  const powerCoverage = computeCoverage(g, powerFootprints, (c, i) => conductsPower(g, c, i));
+  const waterCoverage = computeCoverage(g, waterFootprints, conductsWater);
 
   g.power.set(powerCoverage);
   g.watered.set(waterCoverage);

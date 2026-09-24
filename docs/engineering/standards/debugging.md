@@ -106,13 +106,15 @@ and the tiles within `JUNCTION_CLEARANCE` of a junction are excluded from
 the uniformity comparison, because a taper, a turn pocket and a turnaround
 are cross-sections the road is supposed to have for a few tiles and nowhere
 else — the continuity check is what still holds them to changing smoothly.
-And an overpass is _asked for_ and expected to be refused: one tile carries
-one road tier, so a road crossing over another is not representable (see
-[../../world-sim/road-model.md](../../world-sim/road-model.md)). What is
-checked there is that the refusal is total, since a deck that lands half
-its tiles and gives up at the crossing would leave a road ramping into the
-air. Those cases are laid last, after every screenshot, so their refusal
-toasts do not stack down the middle of the other shots.
+And an overpass is _asked for_ and is either crossed over or refused whole
+(see [../../world-sim/overpasses.md](../../world-sim/overpasses.md)). What is
+checked there is that it is one or the other: crossed over means the
+crossing tile carries the deck on its over layer and the road beneath is
+still exactly the road that was there; refused means no tile of the deck
+stands in the air. A deck that lands half its tiles and gives up at the
+crossing would leave a road ramping into the air. Those cases are laid last,
+after every screenshot, so any refusal toasts do not stack down the middle of
+the other shots.
 
 ## `tools/roadconformity-shots.mjs`: what a corner actually looks like
 

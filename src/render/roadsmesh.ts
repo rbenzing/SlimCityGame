@@ -189,8 +189,14 @@ const ROAD_QUAD_MAX_CELL_M = 2;
 const ROAD_QUAD_FLAT_EPSILON_M = 0.02;
 /** Global tint the unlit road surface dims to at full night, leaving lamp pools bright. */
 const ROAD_NIGHT_DIM = 0.34;
+
+/** The multiplier the road surface's lit colour takes at a night factor in [0, 1]. */
+export function roadNightDim(nightFactor: number): number {
+  const f = Math.min(1, Math.max(0, nightFactor));
+  return 1 - f * (1 - ROAD_NIGHT_DIM);
+}
 /** Lane markings sit a hair above the road surface to avoid z-fighting. */
-const MARK_Y_OFFSET = 0.16;
+export const MARK_Y_OFFSET = 0.16;
 /** Sidewalk/shoulder curbs stand physically proud of the road surface. */
 const CURB_RAISE = 0.08;
 export const CURB_Y_OFFSET = ROAD_Y_OFFSET + CURB_RAISE;
@@ -215,14 +221,14 @@ const WEST = 8;
  * the band widen to fill, while avenue/highway's wider carriageways leave a
  * narrower band that reads as a shoulder rather than a full sidewalk.
  */
-const SIDEWALK_COLOR: readonly [number, number, number] = [0.82, 0.81, 0.79];
+export const SIDEWALK_COLOR: readonly [number, number, number] = [0.82, 0.81, 0.79];
 
 /** Lane paint: uniformly white across tiers, not tier-tinted. */
-const MARKING_COLOR: readonly [number, number, number] = [0.95, 0.95, 0.96];
+export const MARKING_COLOR: readonly [number, number, number] = [0.95, 0.95, 0.96];
 /**
  * True-ratio paint width (~0.15m).
  */
-const PAINT_HALF_WIDTH_M = 0.075;
+export const PAINT_HALF_WIDTH_M = 0.075;
 
 /**
  * A broken line's metrics, at the size one is actually painted: a 10 ft
@@ -330,9 +336,9 @@ const TRAM_RAIL_Y_OFFSET = ROAD_Y_OFFSET + 0.012;
 /** Rail Track ballast bed: dark crushed-stone grey, distinct from asphalt tiers and gravel's tan. */
 const RAIL_BALLAST_COLOR: readonly [number, number, number] = [0.34, 0.33, 0.31];
 /** Painted bus-lane surface (terracotta red — the universal transit-lane tint). */
-const BUS_LANE_PAINT_COLOR: readonly [number, number, number] = [0.6, 0.24, 0.18];
+export const BUS_LANE_PAINT_COLOR: readonly [number, number, number] = [0.6, 0.24, 0.18];
 /** Painted bike-lane surface (deep green). */
-const BIKE_LANE_PAINT_COLOR: readonly [number, number, number] = [0.13, 0.42, 0.22];
+export const BIKE_LANE_PAINT_COLOR: readonly [number, number, number] = [0.13, 0.42, 0.22];
 /** Colored lane fill sits above the asphalt plate but below the white lane paint, so markings/glyphs read on top. */
 const LANE_TINT_Y_OFFSET = ROAD_Y_OFFSET + 0.003;
 
@@ -388,7 +394,7 @@ export function curbWidthMeters(tier: RoadTier): number {
  * for a dirt track, ballast for a railway. What tells one paved road from
  * another is its width and its markings, not its colour.
  */
-function surfaceColor(profile: RoadProfile): readonly [number, number, number] {
+export function surfaceColor(profile: RoadProfile): readonly [number, number, number] {
   switch (roadClass(profile.class).surface) {
     case 'gravel':
       return GRAVEL_BASE_COLOR;
@@ -586,7 +592,7 @@ function pushLocalRect(
  * everything else — lane lines between traffic going the same way, and the
  * edge line that says where the running surface ends.
  */
-const YELLOW_MARKING_COLOR: readonly [number, number, number] = [0.92, 0.76, 0.16];
+export const YELLOW_MARKING_COLOR: readonly [number, number, number] = [0.92, 0.76, 0.16];
 
 /** The paint a planned line asks for. */
 function paintOf(line: MarkingLine): readonly [number, number, number] {
@@ -1891,17 +1897,17 @@ function medianHalfWidthOf(profile: RoadProfile): number {
 }
 /** Concrete edge tint's width on each side of the median, before the grass top. */
 const MEDIAN_CONCRETE_EDGE_M = 0.15;
-const MEDIAN_RAISE = 0.15;
+export const MEDIAN_RAISE = 0.15;
 const MEDIAN_Y_OFFSET = ROAD_Y_OFFSET + MEDIAN_RAISE;
 const MEDIAN_CONCRETE_COLOR: readonly [number, number, number] = [0.55, 0.55, 0.53];
-const MEDIAN_GRASS_COLOR: readonly [number, number, number] = [0.28, 0.5, 0.26];
+export const MEDIAN_GRASS_COLOR: readonly [number, number, number] = [0.28, 0.5, 0.26];
 
 /** Highway divider total width (low ~0.6m concrete barrier band). */
 const HIGHWAY_BARRIER_WIDTH_M = 0.6;
 const HIGHWAY_BARRIER_HALF_WIDTH_M = HIGHWAY_BARRIER_WIDTH_M / 2;
-const HIGHWAY_BARRIER_RAISE = 0.2;
+export const HIGHWAY_BARRIER_RAISE = 0.2;
 const HIGHWAY_BARRIER_Y_OFFSET = ROAD_Y_OFFSET + HIGHWAY_BARRIER_RAISE;
-const HIGHWAY_BARRIER_COLOR: readonly [number, number, number] = [0.5, 0.5, 0.5];
+export const HIGHWAY_BARRIER_COLOR: readonly [number, number, number] = [0.5, 0.5, 0.5];
 
 // ---------------------------------------------------------------------------
 // Dangling road end (popcount 1): a smooth half-CIRCLE turnaround cap. A
@@ -5062,9 +5068,7 @@ export class RoadMeshRenderer {
    * road shows its full lit color.
    */
   setNightFactor(nightFactor: number): void {
-    const f = Math.min(1, Math.max(0, nightFactor));
-    const dim = 1 - f * (1 - ROAD_NIGHT_DIM);
-    this.material.color.setScalar(dim);
+    this.material.color.setScalar(roadNightDim(nightFactor));
   }
 
   apply(deltas: RoadTileDelta[]): void {

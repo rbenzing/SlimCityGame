@@ -42,10 +42,12 @@ file is the index to what they foreclose, not a second copy of the argument.
 - **Weather, seasons, flooding, climate variation.**
 - **Supply chains, imports and exports; deeper industry.**
 - **Tunnels**, and a **third deck level** — so interchange stacks and turbines
-  are out. One tile carries one road tier at one deck height.
-- **Free-form road geometry** — curves off the tile grid
-  ([ADR-0005](engineering/adr/0005-roads-are-grid-aligned-no-freeform-curves.md)) — along
-  with signal-phase design, reversible and contraflow lanes, and per-lane speed
+  are out. A tile carries one road, or two where one passes over the other
+  ([overpasses](world-sim/overpasses.md)), and never a third.
+- **Free-form road geometry is no longer deferred:** roads at any angle,
+  curves and angled junctions are being built as a network of nodes and
+  segments ([ADR-0016](engineering/adr/0016-roads-are-a-network-of-nodes-and-segments.md),
+  [road network](world-sim/road-network.md)). Still deferred: signal-phase design, reversible and contraflow lanes, and per-lane speed
   limits.
 - **Terrain painting**, and a procedural map generator complementing the curated
   maps.

@@ -202,7 +202,108 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 
 ## 10. History (newest first)
 
-### Overpasses (requested 2026-09-23, not built)
+### Free-form roads (requested 2026-09-23, specified 2026-09-24)
+
+Every turn was a grid corner, a quarter circle inside one 20 m tile, which is
+wrong for a motorway at 100 km/h, and two roads could only meet at right
+angles. The player asked for a three-click curve tool with a ghost, used by
+motorways in place of the grid drag and offered to every road. Offered a curve
+limited to right-angle bends between grid ends, they chose fully free-form
+roads meeting at any angle. That moves the road store from per-tile layers to
+a network of nodes and segments, with the tile layers derived
+([ADR-0016](engineering/adr/0016-roads-are-a-network-of-nodes-and-segments.md),
+superseding ADR-0005). Specified in
+[world-sim/road-network.md](world-sim/road-network.md), which lists the eight
+stages it is built in, and
+[ux/interaction.md](ux/interaction.md#curve-and-free-road-modes).
+
+Stage 1 is built (2026-09-24): the network is the road store
+(`src/world/roadnet.ts`), saved in place of the road tile layers
+(SAVE_VERSION 13), with older saves converting on load. The grid commands keep
+planning on tiles; after each command batch the network takes up the plan and
+the layers are derived again, and every worker test fails if one tile ever
+derives differently. The sync costs about 20 ms per command batch on a full
+map of streets.
+
+Stage 2 is built (2026-09-24): the routing graph (`src/world/roadgraph.ts`),
+the utility spread and the service spread walk the network's cells instead of
+tile masks and tile adjacency. The graph was checked identical to the old
+tile-built one over 150 random grids in all three networks before the old
+builder was removed. The spreads changed on purpose: they used to step onto
+any adjacent street tile, so power and coverage leaked onto a deck running
+beside a street and between roads the rules never join; now they go only
+where roads join. Vehicles following segment centre lines moved to stage 4,
+where there are curves for them to follow.
+
+Stage 3a is built (2026-09-24): the world holds roads off the grid. The shared
+geometry (`src/shared/roadgeom.ts`) samples a straight or curved centre line
+and measures its length, tangents, tightest radius and footprint without any
+trigonometry, so every machine decides the same. `buildSegment` and
+`removeSegment` lay and take away one free road through `planSegment`
+(`src/world/freeroads.ts`), which checks every geometry rule; a free road
+writes no road tile, holds its footprint in the derived `roadFootprint`
+layer, meets a grid road only at a tile centre, and survives every grid
+command. Designing it turned up one rule that needed changing: kerbs near a
+junction may overlap for longer the narrower the angle between the roads, or
+no ramp could ever merge.
+
+Stage 3b is built (2026-09-24): the road cells gain a cell for each tile a
+free road's centre line crosses, carrying its share of the length, and one
+for each free node. The graph walks neighbour lists instead of compass bits
+(checked identical to the old builder on grid-only worlds before the old one
+was dropped), so a route runs across a free road and its run is as long as
+its centre line; a one-way free road routes only the way it was drawn. The
+utility and service spreads walk the same cells, a power line feeds a free
+road beside it, and a facility beside a free road finds it.
+
+Stage 3c is built (2026-09-24): a free road fronts lots square to its centre
+line from its kerb, out to the zoning depth, in the one zonability predicate;
+zones and buildings are kept off its footprint; and a lot beside a free road
+counts as having a road for growth. Not yet: the render thread has no copy of
+the network, so the zoning grid visual cannot show a free road's frontage
+while `paintZone` honours it — a disagreement the rules forbid, closed in
+stage 4 when the render thread takes up the network to draw it, and before
+the tool (stage 5) lets a player lay one. Cosmetic vehicles stop where a route
+leaves the grid until they follow a centre line (stage 4), and nothing draws
+free roads yet (stage 4).
+
+Stage 4a is built (2026-09-24): the worker sends the road network to the
+render thread whenever it changes, and the render thread derives the free
+roads' footprint from it the way the worker does, so the zoning grid visual
+now shows a free road's frontage exactly where `paintZone` accepts it — the
+disagreement left by 3c is closed, checked by a test that drives a real
+worker and compares the two masks. Free roads are drawn
+(`src/render/freeroadmesh.ts`): the cross-section swept along the centre
+line with kerbs, footways, medians and the markings plan, and a junction
+meshed at each node from the roads meeting there, with rounded kerb returns.
+Checked in the browser on a curve leaving a grid street, a free three-way
+junction and a curved one-way street. Where a free road meets a grid road, the junction is laid over
+the grid road's own tile, which still draws as a straight road underneath,
+so its kerbside props stand as if nothing joined it until one renderer draws
+both (stage 8).
+
+Stage 4b is built (2026-09-24): street lamps stand along free roads between
+their junctions, at the grid's lamp spacing, on alternate kerbs, reaching
+square across the road, and only where the road has power. Every lamp is now
+placed as a stand in world space — where the pole is and which way the arm
+reaches — so grid lamps and free-road lamps are one instanced set; the grid's
+lamps came out unchanged (all 45 lamp tests pass as they were). Checked in
+the browser by day and at night, with a free junction that has no power left
+dark beside a lit curve. Signs and kerbside furniture along free roads moved
+to stage 6: the grid places them by each tile's role at its junction, and
+junction behaviour off the grid is what stage 6 builds.
+
+Stage 4c is built (2026-09-24): cosmetic vehicles follow free roads. Every
+graph edge carries the line a vehicle drives along it — grid tile centres and
+a free road's centre line about every 5 m, run the way the edge is driven —
+and a path joins them, so cars, service vehicles and garbage trucks all
+drive round a curve instead of stopping where a route left the grid. The
+tile-adjacency cut stays only for an injected network that gives no line.
+Checked in the browser on a small town grown along a free curve: 14 of the
+17 vehicles within 25 m of the curve were on its centre line, the rest on the
+grid street at its mouth. Stage 4 is complete.
+
+### Overpasses (requested 2026-09-23, built 2026-09-24)
 
 A road could not cross another road or a railway without meeting it, because a
 tile held one road. So a street could not get past a motorway at all, and two
@@ -210,11 +311,19 @@ motorways could only cross as a flat crossroads. The player asked for real
 road-over-road overpasses with height rules, and chose a true second road
 layer ([ADR-0015](engineering/adr/0015-a-crossing-tile-may-carry-a-second-road-passing-over.md)).
 The second road is stored only on the tiles where it crosses; the ramps up and
-down are ordinary bridge approaches. Fully specified, including clearances,
-what may cross what, the build and bulldoze rules, the save bump and every
-system that has to learn the layer, in
-[world-sim/overpasses.md](world-sim/overpasses.md). Nothing in this section has
-shipped.
+down are ordinary bridge approaches. Specified in
+[world-sim/overpasses.md](world-sim/overpasses.md) and built in four stages:
+the world holding the second road (SAVE_VERSION 12) with its build, refusal and
+bulldoze rules; the graph, masks and utility and service spreads keeping the
+two roads apart, with the rule that roads join only at one level; the renderer
+drawing the overpass, its girder and piers, and cars riding it; and the road
+tool offering an overpass where a street meets a motorway or a railway, raised
+to the clearance. Checked in the browser by dragging the real tool across a
+motorway.
+
+Not built: the preview ghost carries no heights, for an overpass or any raised
+road, so it does not show the ramps; and a road cannot yet be drawn under a
+bridge that is already there.
 
 ### A road's tier is its size (2026-09-15)
 

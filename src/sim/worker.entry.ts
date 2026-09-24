@@ -29,9 +29,18 @@ import {
   LANDFILL_TRUCKS_MAX,
   LANDFILL_TRUCKS_PER_TILES,
   BRIDGE_COST_PER_METER_TILE,
+  TILE_METERS,
   inBounds,
   tileIndex,
 } from '../shared/constants';
+import { segmentLengthM } from '../shared/roadgeom';
+import {
+  deriveRoadFootprint,
+  freeJunctionTiles,
+  laySegment,
+  planSegment,
+  removeSegmentAt,
+} from '../world/freeroads';
 import {
   SAVE_VERSION,
   BuildingState,
@@ -104,27 +113,27 @@ type JunctionSnapshot = NonNullable<SimSnapshot['junctions']>[number];
 import { createRng } from '../core/rng';
 import { FixedTimestep } from '../core/loop';
 import type { CommandBatch } from '../core/commands';
-import type { SelectionInfo } from '../shared/types';
+import type { RoadNet, SelectionInfo } from '../shared/types';
 import {
   canPlaceFootprint,
   ARMS_PER_TILE,
   hasAdjacentTier,
   clearTiles,
   createGrid,
-  deserializeGrid,
   isBridgeBuildable,
   isRoadBuildable,
-  serializeGrid,
   setZones,
 } from '../world/grid';
 import {
-  RoadNetwork,
-  applyRoad,
-  computeOverMask,
-  recomputeRoadMasks,
-  remaskAround,
-  removeRoad,
-} from '../world/roads';
+  createRoadNetwork,
+  encodeRoadNetwork,
+  loadGrid,
+  reconcileRoads,
+  saveGrid,
+  syncRoadLayers,
+} from '../world/roadnet';
+import { applyRoad, computeOverMask, remaskAround, removeRoad } from '../world/roads';
+import { RoadNetwork } from '../world/roadgraph';
 import {
   clearOverRoad,
   overRoadAt,
@@ -271,6 +280,17 @@ function initialStats(): CityStats {
   };
 }
 
+/**
+ * Road tiles the network could not derive as they were. Always a bug in the
+ * conversion, never a state to keep quietly, so it is said out loud.
+ */
+function reportRoadProblems(when: string, problems: readonly string[]): void {
+  if (problems.length === 0) return;
+  console.error(
+    `road network (${when}): ${problems.length} tile(s) derived differently — ${problems.slice(0, 8).join('; ')}`,
+  );
+}
+
 function cloneStats(stats: CityStats): CityStats {
   return {
     ...stats,
@@ -361,6 +381,10 @@ class SimWorld implements WorkerSim {
   private mapName = '';
 
   private grid: GridState = createGrid(MAP_SIZE);
+  /** Where every road is stored; the grid's road layers are derived from it. */
+  private get roads(): RoadNet {
+    return (this.grid.roads ??= createRoadNetwork());
+  }
   private stats: CityStats = initialStats();
   private registry = new BuildingRegistry(CATALOG);
   private readonly fieldSim = new FieldSim();
@@ -448,9 +472,13 @@ class SimWorld implements WorkerSim {
   private customRoadProfiles = new Map<number, RoadProfile>();
   /** The full table goes out in the next snapshot when set. */
   private roadProfilesChanged = true;
+  /** The network and its version as the render thread last received them. */
+  private sentRoadNet: { net: RoadNet; version: number } | null = null;
 
   // --- deltas accumulated between snapshots --------------------------------
   private readonly pendingRoadDeltas = new Map<number, RoadTileDelta>();
+  /** Set when a command changed a road tile, so the network takes it up. */
+  private roadsEdited = false;
   private buildingsAdded: BuildingInstance[] = [];
   private buildingsUpdated: BuildingInstance[] = [];
   private buildingsRemoved: number[] = [];
@@ -565,6 +593,7 @@ class SimWorld implements WorkerSim {
     this.seed = seed;
     this.mapName = map.name;
     this.grid = createGrid(MAP_SIZE);
+    this.grid.roads = createRoadNetwork();
     this.grid.height.set(map.height);
     this.grid.water.set(map.water);
     this.grid.trees.set(map.trees);
@@ -608,7 +637,8 @@ class SimWorld implements WorkerSim {
     if (payload.header.version > SAVE_VERSION || payload.header.version < 1) {
       throw new Error(`loadSave: unsupported save version ${payload.header.version}`);
     }
-    const grid = deserializeGrid(payload.grid);
+    const { grid, problems } = loadGrid(payload.grid);
+    reportRoadProblems('load', problems);
     if (grid.size !== MAP_SIZE) {
       throw new Error(`loadSave: grid size ${grid.size} != MAP_SIZE ${MAP_SIZE}`);
     }
@@ -616,10 +646,15 @@ class SimWorld implements WorkerSim {
     const previousIds = this.registry.all().map((b) => b.id);
 
     this.grid = grid;
+    this.roadsEdited = false;
     this.customRoadProfiles = adoptCustomProfiles(
       payload.meta.roadProfiles ?? [],
       this.grid.roadProfile,
     );
+    // Adopting can renumber a very old save's profiles on its tiles, so the
+    // network takes the tiles up again before anything reads it.
+    reconcileRoads(this.roads, this.grid);
+    this.deriveFootprint();
     this.roadProfilesChanged = true;
     this.registry = BuildingRegistry.deserialize(CATALOG, payload.meta.registry);
     this.stats = cloneStats(payload.meta.stats);
@@ -634,7 +669,6 @@ class SimWorld implements WorkerSim {
       if (inst.state === BuildingState.Constructing) inst.state = BuildingState.Active;
     }
 
-    recomputeRoadMasks(this.grid);
     this.network.rebuild(this.grid);
     this.railNetwork.rebuild(this.grid);
     this.tramNetwork.rebuild(this.grid);
@@ -1098,6 +1132,11 @@ class SimWorld implements WorkerSim {
       snap.roadProfiles = this.roadProfileTable();
       this.roadProfilesChanged = false;
     }
+    const net = this.roads;
+    if (this.sentRoadNet?.net !== net || this.sentRoadNet.version !== net.version) {
+      snap.roadNet = encodeRoadNetwork(net);
+      this.sentRoadNet = { net, version: net.version };
+    }
     if (this.pendingRoadDeltas.size > 0) {
       snap.roads = Array.from(this.pendingRoadDeltas.values(), (d) => this.withOverRoad(d));
       this.pendingRoadDeltas.clear();
@@ -1136,6 +1175,7 @@ class SimWorld implements WorkerSim {
     if (junctions) snap.junctions = junctions;
 
     const transfer: Transferable[] = [vehicles.buffer];
+    if (snap.roadNet) transfer.push(snap.roadNet.buffer);
     if (snap.heightPatches) {
       for (const patch of snap.heightPatches) transfer.push(patch.heights.buffer);
     }
@@ -1301,7 +1341,7 @@ class SimWorld implements WorkerSim {
         population: this.stats.population,
         funds: this.stats.funds,
       },
-      grid: serializeGrid(this.grid),
+      grid: saveGrid(this.grid, this.roads),
       meta: {
         registry: this.registry.serialize(),
         stats: cloneStats(this.stats),
@@ -1426,6 +1466,30 @@ class SimWorld implements WorkerSim {
   }
 
   /** A road delta carrying the road passing over its tile as the grid holds it now. */
+  /** Queues a road tile for the render thread and marks the network stale. */
+  private recordRoadDelta(d: RoadTileDelta): void {
+    this.pendingRoadDeltas.set(tileIndex(d.x, d.z), d);
+    this.roadsEdited = true;
+  }
+
+  /**
+   * After a command changed road tiles: the network takes up what it laid,
+   * and the road layers are derived from the network again. They come out as
+   * the command left them; where they would not, that is reported.
+   */
+  private syncRoads(): void {
+    if (!this.roadsEdited) return;
+    this.roadsEdited = false;
+    reconcileRoads(this.roads, this.grid);
+    reportRoadProblems('command', syncRoadLayers(this.grid, this.roads));
+    this.deriveFootprint();
+  }
+
+  /** The tiles the roads off the grid cover, from the network. */
+  private deriveFootprint(): void {
+    deriveRoadFootprint(this.grid, this.roads, (id) => this.profileForId(id));
+  }
+
   private withOverRoad(d: RoadTileDelta): RoadTileDelta {
     const idx = tileIndex(d.x, d.z);
     const road = overRoadAt(this.grid, idx);
@@ -1447,7 +1511,7 @@ class SimWorld implements WorkerSim {
     for (const idx of list) {
       const tier = (g.roadTier[idx] ?? 0) as RoadTier;
       if (tier === RoadTier.None) continue;
-      this.pendingRoadDeltas.set(idx, {
+      this.recordRoadDelta({
         x: idx % MAP_SIZE,
         z: Math.floor(idx / MAP_SIZE),
         tier,
@@ -1457,9 +1521,7 @@ class SimWorld implements WorkerSim {
         flow: g.roadFlow[idx] ?? RoadFlow.None,
       });
     }
-    for (const d of remaskAround(g, list)) {
-      this.pendingRoadDeltas.set(tileIndex(d.x, d.z), d);
-    }
+    for (const d of remaskAround(g, list)) this.recordRoadDelta(d);
     this.invalidateAround(
       list.map((idx) => ({ x: idx % MAP_SIZE, z: Math.floor(idx / MAP_SIZE) })),
     );
@@ -1775,6 +1837,8 @@ class SimWorld implements WorkerSim {
           ok = false;
           reason = reason ?? result.reason;
         }
+        // Before the next command, which may read what this one laid.
+        this.syncRoads();
       }
 
       const ack: CommandAck = { seq: batch.seq, ok, cost, inverse };
@@ -1812,6 +1876,10 @@ class SimWorld implements WorkerSim {
         );
       case 'bulldoze':
         return this.cmdBulldoze(command.tiles, command.layer);
+      case 'buildSegment':
+        return this.cmdBuildSegment(command);
+      case 'removeSegment':
+        return this.cmdRemoveSegment(command.a, command.b, command.control ?? null);
       case 'paintZone':
         return this.cmdPaintZone(command.zone, command.tiles);
       case 'placeBuilding':
@@ -2078,6 +2146,15 @@ class SimWorld implements WorkerSim {
     });
 
     const g = this.grid;
+    // A road off the grid holds the tiles it covers; a grid road reaches one
+    // only at a tile centre where the two meet.
+    const junctions = freeJunctionTiles(this.roads, g.size);
+    for (const t of tiles) {
+      const idx = tileIndex(t.x, t.z);
+      if (inBounds(t.x, t.z) && g.roadFootprint[idx] === 1 && !junctions.has(idx)) {
+        return refused('It runs into a road off the grid');
+      }
+    }
     const valid: TilePoint[] = [];
     const validElevations: number[] = [];
     const validFlows: number[] = [];
@@ -2239,7 +2316,7 @@ class SimWorld implements WorkerSim {
     // recomputes already know which way each crossing tile's roads run.
     const inverse: Command[] = this.applyCrossings(crossings);
     const deltas = applyRoad(g, valid, tier, validElevations, profileId, replace, validFlows);
-    for (const d of deltas) this.pendingRoadDeltas.set(tileIndex(d.x, d.z), d);
+    for (const d of deltas) this.recordRoadDelta(d);
     this.landfillAreasCache = null; // street layout feeds the landfill entrances
     this.invalidateAround(valid);
     this.zoneDirty = growRect(this.zoneDirty, valid); // roads de-zone their tiles
@@ -2277,6 +2354,68 @@ class SimWorld implements WorkerSim {
     const grounded = rebuilt.filter((t) => (g.roadElevation[tileIndex(t.x, t.z)] ?? 0) === 0);
     this.flattenFootprint(grounded, true, inverse);
     return { ok: true, cost, inverse };
+  }
+
+  /**
+   * Lays one road off the grid. Every rule is `planSegment`'s; this prices it,
+   * lays it and hands back the command that takes exactly it away.
+   */
+  private cmdBuildSegment(command: Extract<Command, { kind: 'buildSegment' }>): CommandResult {
+    const profileId = command.profile ?? command.tier;
+    const tier = this.tierForProfileId(profileId);
+    const spec = tier === null ? undefined : this.roadSpecByTier.get(tier);
+    if (tier === null || !spec) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+    const price = this.roadPriceForProfileId(profileId, spec);
+    if (!this.sandbox && price.unlockMilestone > this.stats.milestoneLevel) {
+      return { ok: false, cost: 0, inverse: [], reason: 'locked' };
+    }
+    const req = {
+      tier,
+      profileId,
+      a: command.a,
+      b: command.b,
+      control: command.control ?? null,
+      flow: command.flow ?? 0,
+    };
+    const lookup = (id: number): RoadProfile | null => this.profileForId(id);
+    const plan = planSegment(this.grid, this.roads, req, lookup);
+    if (!plan.ok) return { ok: false, cost: 0, inverse: [], reason: plan.reason };
+    const cost = Math.round((plan.lengthM / TILE_METERS) * price.costPerTile);
+    if (!this.unlimitedMoney && this.stats.funds < cost) {
+      return { ok: false, cost: 0, inverse: [], reason: 'funds' };
+    }
+    laySegment(this.grid, this.roads, plan, req);
+    this.stats.funds -= cost;
+    this.roadsEdited = true;
+    const inverse: Command = { kind: 'removeSegment', a: command.a, b: command.b };
+    if (command.control) inverse.control = command.control;
+    return { ok: true, cost, inverse: [inverse] };
+  }
+
+  /** Takes away one road off the grid, refunding what bulldozing a road refunds. */
+  private cmdRemoveSegment(
+    a: { x: number; z: number },
+    b: { x: number; z: number },
+    control: { x: number; z: number } | null,
+  ): CommandResult {
+    const lengthM = segmentLengthM({ a, b, control });
+    const removed = removeSegmentAt(this.roads, a, b, control);
+    if (!removed) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+    const spec = this.roadSpecByTier.get(removed.tier);
+    const perTile = spec ? this.roadPriceForProfileId(removed.profileId, spec).costPerTile : 0;
+    const refund = Math.round((lengthM / TILE_METERS) * perTile * BULLDOZE_REFUND_RATE);
+    this.stats.funds += refund;
+    this.roadsEdited = true;
+    const inverse: Command = {
+      kind: 'buildSegment',
+      tier: removed.tier,
+      profile: removed.profileId,
+      a,
+      b,
+      flow: removed.flow,
+    };
+    if (control) inverse.control = control;
+    return { ok: true, cost: -refund, inverse: [inverse] };
   }
 
   private cmdBulldoze(tiles: TilePoint[], layer?: 'over'): CommandResult {
@@ -2326,7 +2465,7 @@ class SimWorld implements WorkerSim {
     // Roads first, via removeRoad, so neighbor masks are recomputed properly.
     const roadDeltas = removeRoad(g, inBoundsTiles);
     this.landfillAreasCache = null; // street layout feeds the landfill entrances
-    for (const d of roadDeltas) this.pendingRoadDeltas.set(tileIndex(d.x, d.z), d);
+    for (const d of roadDeltas) this.recordRoadDelta(d);
     for (const { tier, tiles: roadTiles } of roadsByProfile.values()) {
       const spec = this.roadSpecByTier.get(tier);
       if (spec) refund += spec.costPerTile * roadTiles.length * BULLDOZE_REFUND_RATE;

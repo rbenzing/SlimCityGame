@@ -206,7 +206,8 @@ distinct teal sitting between the residential green and the commercial blue
 
 ## Deferred
 
-Free-form road geometry — curves off the tile grid — stays deferred; the
-road graph itself stays grid-aligned even where the paint above draws a
-curve. Also deferred: quays, pedestrian streets, and decorative sidewalk-tree upgrades beyond the avenue
+A grid corner's arc is paint and kerb only, and the graph never steps
+diagonally. Free-form roads — curves and roads at any angle — are being built
+as a network of nodes and segments, and until they land nothing here draws
+one ([road-network.md](../world-sim/road-network.md)). Deferred: quays, pedestrian streets, and decorative sidewalk-tree upgrades beyond the avenue
 median above. [DESIGN.md](../DESIGN.md) owns this backlog and its reasoning.

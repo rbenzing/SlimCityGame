@@ -25,7 +25,11 @@
  * (like render/zonegrid.ts does) so this module never imports sim/grid code.
  */
 import { RoadTier, isStreetTier } from '../shared/types';
-import { MAX_BUILD_SLOPE } from '../shared/constants';
+import type { RoadNet } from '../shared/types';
+import { MAX_BUILD_SLOPE, TILE_METERS } from '../shared/constants';
+import { isGridSegment, sampleCentreLine } from '../shared/roadgeom';
+import type { SegmentGeom } from '../shared/roadgeom';
+import { presetProfileForTier, profileWidth } from '../shared/roadprofile';
 
 /** Perpendicular frontage depth: cells marched out from a road side. */
 export const ZONE_DEPTH = 4;
@@ -49,6 +53,14 @@ export interface ZonableGridSource {
    * entirely at grade, which is what every pre-bridge caller means.
    */
   roadElevation?: Float32Array;
+  /**
+   * The road network, when the source has one: its roads off the grid front
+   * lots too, measured square to the road from its kerb. A source without it
+   * has only the grid's roads.
+   */
+  roads?: RoadNet;
+  /** The tiles roads off the grid cover, which nothing is built on. */
+  roadFootprint?: Uint8Array;
 }
 
 // Orthogonal directions, index-aligned: 0=N 1=E 2=S 3=W. Even indices (N/S)
@@ -95,6 +107,7 @@ function isBuildableCell(g: ZonableGridSource, x: number, z: number): boolean {
   const i = z * size + x;
   if (g.water[i]) return false;
   if (g.roadTier[i] !== RoadTier.None) return false;
+  if (g.roadFootprint?.[i]) return false;
   if (g.buildingId[i] !== 0) return false;
 
   const h = g.height[i]!;
@@ -147,7 +160,67 @@ export function computeZonableMask(g: ZonableGridSource, depth = ZONE_DEPTH): Ui
       }
     }
   }
+  if (g.roads) markFreeFrontage(g, g.roads, mask, depth);
   return mask;
+}
+
+/** How finely the march out from a free road's kerb steps, metres. */
+const FRONTAGE_STEP_M = 5;
+
+/**
+ * The lots a road off the grid fronts: from every metre of its centre line,
+ * straight out square to it on both sides, from its kerb to `depth` tiles
+ * beyond, marking each buildable cell and stopping at the first that is not.
+ * The first tile out may be the road's own verge, which is passed over rather
+ * than stopped at. The width is its tier's preset's, which a composed
+ * profile of that tier shares closely enough to find its lots.
+ */
+function markFreeFrontage(
+  g: ZonableGridSource,
+  net: RoadNet,
+  mask: Uint8Array,
+  depth: number,
+): void {
+  const { size } = g;
+  for (let s = 0; s < net.segSlots; s++) {
+    if (net.segLive[s] !== 1 || !isStreetTier(net.segTier[s]!)) continue;
+    const a = net.segA[s]!;
+    const b = net.segB[s]!;
+    const geom: SegmentGeom = {
+      a: { x: net.nodeX[a]!, z: net.nodeZ[a]! },
+      b: { x: net.nodeX[b]!, z: net.nodeZ[b]! },
+      control: net.segCurved[s] === 1 ? { x: net.segCX[s]!, z: net.segCZ[s]! } : null,
+    };
+    if (isGridSegment(geom)) continue;
+    const half = profileWidth(presetProfileForTier(net.segTier[s] as RoadTier)) / 2;
+    const samples = sampleCentreLine(geom);
+    for (let i = 0; i < samples.length; i++) {
+      const before = samples[Math.max(0, i - 1)]!;
+      const after = samples[Math.min(samples.length - 1, i + 1)]!;
+      const tx = after.x - before.x;
+      const tz = after.z - before.z;
+      const len = Math.sqrt(tx * tx + tz * tz);
+      if (len === 0) continue;
+      const p = samples[i]!;
+      for (const side of [1, -1]) {
+        const nx = (-tz / len) * side;
+        const nz = (tx / len) * side;
+        for (
+          let d = half + FRONTAGE_STEP_M;
+          d <= half + depth * TILE_METERS;
+          d += FRONTAGE_STEP_M
+        ) {
+          const cx = Math.floor((p.x + nx * d) / TILE_METERS);
+          const cz = Math.floor((p.z + nz * d) / TILE_METERS);
+          if (cx < 0 || cz < 0 || cx >= size || cz >= size) break;
+          const i2 = cz * size + cx;
+          if (g.roadFootprint?.[i2] && d < half + TILE_METERS) continue;
+          if (!isBuildableCell(g, cx, cz)) break;
+          mask[i2] = 1;
+        }
+      }
+    }
+  }
 }
 
 /**

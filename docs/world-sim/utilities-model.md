@@ -43,7 +43,10 @@ circle. Coverage is computed identically for both: a breadth-first walk
 starts from every tile of the network (road or power line, see
 [Conducting roads and power lines](#conducting-roads-and-power-lines))
 orthogonally adjacent to a generator's footprint, crosses every connected
-tile that conducts, and then radiates one further orthogonal step onto
+tile that conducts — along a road, only where the road network joins one
+road to the next ([road-network.md](road-network.md)), so never across to a
+road that merely lies alongside or sits at another level; a power line hands
+supply to whatever stands beside it — and then radiates one further orthogonal step onto
 non-road tiles around each reached tile — which is how an off-road building
 or zoned lot picks up supply from the street beside it. A building counts as
 served if any one tile of its footprint is covered, not all of them.

@@ -7,6 +7,8 @@
  * never reorder them.
  */
 
+import { tileToWorld } from './constants';
+
 // ---------------------------------------------------------------------------
 // Tiles & zones
 // ---------------------------------------------------------------------------
@@ -204,6 +206,42 @@ export type FieldId = (typeof FieldId)[keyof typeof FieldId];
 export const FIELD_COUNT = 9;
 
 /**
+ * The road network: nodes and segments, the one place a road is stored, as
+ * growable slot tables. Built, derived from and saved by src/world/roadnet.ts.
+ */
+export interface RoadNet {
+  /** Node slots in use, live or free: the high-water mark of the tables. */
+  nodeSlots: number;
+  nodeLive: Uint8Array;
+  /** Tile centre, whole centimetres. */
+  nodeX: Int32Array;
+  nodeZ: Int32Array;
+  /** Deck height above the ground, metres; 0 on the ground. */
+  nodeHeight: Float32Array;
+  nodeTier: Uint8Array;
+  nodeProfile: Uint16Array;
+  nodeFlow: Uint8Array;
+
+  segSlots: number;
+  segLive: Uint8Array;
+  segA: Int32Array;
+  segB: Int32Array;
+  segTier: Uint8Array;
+  segProfile: Uint16Array;
+  segFlow: Uint8Array;
+  /** Deck height at the first and last tile the segment owns, metres. */
+  segH0: Float32Array;
+  segH1: Float32Array;
+  /** 1 where the centre line is a curve through the control point below. */
+  segCurved: Uint8Array;
+  segCX: Int32Array;
+  segCZ: Int32Array;
+
+  /** Bumped by every change, so what is derived from the network knows it is stale. */
+  version: number;
+}
+
+/**
  * The complete mutable world state. Lives in the sim worker; the render
  * thread keeps a read-only mirror updated from snapshots/patches.
  * Implemented in src/world/grid.ts (createGrid, serializeGrid, deserializeGrid,
@@ -293,6 +331,17 @@ export interface GridState {
   overProfile: Uint16Array;
   overFlow: Uint8Array;
   overElevation: Float32Array;
+  /**
+   * The road network the road layers above are derived from, where the grid
+   * has one: the worker's. A grid without one — a test that lays roads on the
+   * tiles directly — is read through the network its tiles describe.
+   */
+  roads?: RoadNet;
+  /**
+   * 1 where a road off the grid covers the tile, footways included: derived
+   * from the road network, never saved, and never built on.
+   */
+  roadFootprint: Uint8Array;
   buildingId: Uint32Array; // 0 = none, else building instance id occupying tile
   power: Uint8Array; // 1 = powered
   watered: Uint8Array; // 1 = water service reaches tile
@@ -425,6 +474,27 @@ export type Command =
    * nothing else on any tile.
    */
   | { kind: 'bulldoze'; tiles: TilePoint[]; layer?: 'over' }
+  /**
+   * One road off the grid: a straight line at any angle, or a curve through
+   * `control`. Points are world centimetres. `flow` is 0 for a road that runs
+   * both ways, 1 for one running from `a` to `b`. Inverse: `removeSegment`.
+   */
+  | {
+      kind: 'buildSegment';
+      tier: RoadTier;
+      profile?: number;
+      a: { x: number; z: number };
+      b: { x: number; z: number };
+      control?: { x: number; z: number };
+      flow?: number;
+    }
+  /** Takes away the road off the grid with exactly these ends and control. Inverse: `buildSegment`. */
+  | {
+      kind: 'removeSegment';
+      a: { x: number; z: number };
+      b: { x: number; z: number };
+      control?: { x: number; z: number };
+    }
   | { kind: 'paintZone'; zone: ZoneType; tiles: TilePoint[] }
   | { kind: 'placeBuilding'; catalogId: string; x: number; z: number; rotation: 0 | 1 | 2 | 3 }
   | { kind: 'setTaxRate'; sector: Sector; rate: number } // 0..0.3
@@ -627,6 +697,12 @@ export interface SimSnapshot {
    * profile id a road delta carries.
    */
   roadProfiles?: { id: number; profile: RoadProfile }[];
+  /**
+   * The whole road network, encoded as the save holds it, whenever it has
+   * changed and once after init/load: what the render thread reads the roads
+   * off the grid from. Applied after `roadProfiles` and before `roads`.
+   */
+  roadNet?: Uint8Array;
   buildings?: BuildingDelta;
   zones?: ZonePatch[];
   vehicles?: Float32Array; // MAX_VEHICLES * VEHICLE_STRIDE
@@ -1015,6 +1091,12 @@ export interface GraphEdge {
   b: number;
   tier: RoadTier;
   tiles: TilePoint[]; // the road tiles this edge covers, in order a->b
+  /**
+   * The line a vehicle drives along the run, world metres, a->b: each grid
+   * tile's centre, and a road off the grid's centre line. Absent on a graph
+   * that does not know its roads' shape, whose runs are its tile centres.
+   */
+  route?: { x: number; z: number }[];
   length: number; // tiles
   volume: number; // vehicles assigned this cycle (traffic writes, decays)
   /**
@@ -1067,9 +1149,23 @@ export interface GraphEdge {
 export interface PathResult {
   nodes: number[];
   edges: number[];
-  /** World-space tile centers along the whole path, for vehicle animation. */
+  /** The road tiles along the whole path, in order. */
   points: TilePoint[];
+  /**
+   * The line a vehicle drives along the whole path, world metres: its edges'
+   * routes joined. Absent when the network does not know its roads' shape;
+   * the tiles' centres are then the line.
+   */
+  route?: { x: number; z: number }[];
   cost: number;
+}
+
+/**
+ * The line a vehicle drives along a path, world metres: its route, or, from a
+ * network that does not know its roads' shape, its tiles' centres.
+ */
+export function pathRoute(path: PathResult): { x: number; z: number }[] {
+  return path.route ?? path.points.map((p) => ({ x: tileToWorld(p.x), z: tileToWorld(p.z) }));
 }
 
 /**
@@ -1180,7 +1276,10 @@ export interface ReversibleEdit {
  * version 8 the GridState.junctionControl byte, the control a player set at a
  * junction; version 9 GridState.junctionTurns; version 10 GridState.powerLine;
  * version 11 GridState.junctionLaneTurns; version 12 the four over-road layers
- * (overTier, overProfile, overFlow, overElevation) a crossing tile holds.
+ * (overTier, overProfile, overFlow, overElevation) a crossing tile holds;
+ * version 13 the road network (src/world/roadnet.ts), appended after the
+ * tiles, in place of every road tile layer — tier, mask, deck, profile, flow
+ * and the four over-road layers — which are derived from it on load.
  *
  * Migration: src/world/grid.ts deserializeGrid still accepts every older
  * buffer, defaulting each absent trailing layer to all-zero — so a pre-v4 save
@@ -1189,11 +1288,12 @@ export interface ReversibleEdit {
  * warrant works out — and widens a v4 elevation byte into the float layer, so
  * saved bridges keep the height they were built at. A pre-v6 save has no
  * profile layer, so every road loads as the preset its tier names, which is
- * what every road was. serializeGrid always writes the current version. No
- * earlier layer's byte layout or order changed, so every v1..v7 field
- * round-trips unchanged.
+ * what every road was. serializeGrid always writes the current version. Up to
+ * v12 no layer's byte layout or order changed, so every older buffer is the v12
+ * layout with trailing layers trimmed; v13 is the v12 layout without its road
+ * layers, and a pre-v13 save's roads convert to a network on load.
  */
-export const SAVE_VERSION = 12;
+export const SAVE_VERSION = 13;
 
 export interface SaveHeader {
   version: number;

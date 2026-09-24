@@ -12,9 +12,10 @@
  *   cross      a crossroads with itself
  *   mixCross   a crossroads with a road of a DIFFERENT class
  *   viaduct    a deliberately raised run, arching clear of the ground
- *   overpass   a raised run crossing a road at grade — which the road model
- *              defers deliberately, so what is checked is that it is REFUSED
- *              cleanly rather than half-built
+ *   overpass   a raised run crossing a road at grade — built as an overpass
+ *              where it clears the road and crosses it straight, refused
+ *              whole where it cannot; what is checked is that it is one or
+ *              the other, never a deck half-built into the air
  *
  * Every measurement comes off the vertex buffer (`readPaint`), not from the
  * emitters, so a rule that lays a correct cross-section and emits crooked
@@ -210,9 +211,8 @@ async function lay(kase, X, Z) {
       return { measured, junctions: [] };
     case 'overpass':
       // The road at grade goes down first, then the deck is asked to cross
-      // it — the case a player creates, and the one one-road-per-tile cannot
-      // represent. The deck has to join the road it meets, so the grade rule
-      // refuses the whole drag.
+      // it — the case a player creates. It crosses over on the crossing
+      // tile's over layer, or the whole drag is refused.
       await build(`${kase.name} under`, CROSSER, rowOf(X, Z, MID, RUN_FROM, RUN_TO));
       await build(`${kase.name} over`, kase.tier, spine, VIADUCT_HEIGHT_M);
       return { measured, junctions: [] };
@@ -539,18 +539,32 @@ for (const { kase, tag, X, Z } of deferredPlan) {
   console.log(`laid ${tag} at (${X},${Z})`);
 }
 await page.waitForTimeout(1500);
-const elevations = await call(() => Array.from(window.__slimcity.readGrid().roadElevation));
+const after = await call(() => {
+  const g = window.__slimcity.readGrid();
+  return {
+    elevations: Array.from(g.roadElevation),
+    tiers: Array.from(g.roadTier),
+    overRoads: g.overRoads,
+  };
+});
 for (const { tag, X, Z } of deferredPlan) {
   const raised = [];
   for (let k = RUN_FROM; k <= RUN_TO; k++) {
-    if ((elevations[(Z + k) * N + (X + MID)] ?? 0) > 0) raised.push(Z + k);
+    if ((after.elevations[(Z + k) * N + (X + MID)] ?? 0) > 0) raised.push(Z + k);
   }
-  if (raised.length > 0) {
+  const crossedOver = after.overRoads.some((o) => o.x === X + MID && o.z === Z + MID);
+  if (crossedOver) {
+    // Built: the road beneath has to be exactly the road that was there.
+    if (after.tiers[(Z + MID) * N + (X + MID)] !== CROSSER) {
+      failures.push(`${tag}: the overpass took the road beneath it`);
+    }
+  } else if (raised.length > 0) {
     failures.push(
-      `${tag}: an overpass is deferred by the road model, but ${raised.length} tiles of the ` +
-        `deck stand clear of the ground (rows ${raised.join(', ')})`,
+      `${tag}: neither crossed over nor refused — ${raised.length} tiles of the deck stand ` +
+        `in the air with no crossing (rows ${raised.join(', ')})`,
     );
   }
+  console.log(`${tag}: ${crossedOver ? 'crossed over' : 'refused'}`);
 }
 
 // Reported rather than failed: a fresh scene with no roads on it already

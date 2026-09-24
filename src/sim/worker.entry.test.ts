@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 import {
   MAP_SIZE,
   MAP_TILES,
@@ -27,7 +28,8 @@ import catalogData from '../data/catalog.json';
 import roadsData from '../data/roads.json';
 import type { RoadSpec } from '../shared/types';
 import { decodeSave, encodeSave } from '../app/persist';
-import { createGrid, deserializeGrid, serializeGrid } from '../world/grid';
+import { createGrid, serializeGridV12 } from '../world/grid';
+import { isFreeSegment, loadGrid } from '../world/roadnet';
 import { computeTerraformPatch, type TerraformCommand } from '../world/terraform';
 import {
   createWorkerSim,
@@ -121,11 +123,26 @@ function latestSaveGrid(h: Harness): GridState {
   );
   const last = saves[saves.length - 1];
   if (!last) throw new Error('latestSaveGrid: no save message found');
-  return deserializeGrid(decodeSave(last.data).grid);
+  return loadGrid(decodeSave(last.data).grid).grid;
 }
 
 const roadRow = (x0: number, z: number, len: number) =>
   Array.from({ length: len }, (_, i) => ({ x: x0 + i, z }));
+
+// Every road command below also checks the road network: after each one the
+// road layers are derived from the network again, and a tile that comes out
+// differently is reported. No test here may leave one reported.
+let consoleError: MockInstance<typeof console.error>;
+beforeEach(() => {
+  consoleError = vi.spyOn(console, 'error');
+});
+afterEach(() => {
+  const roadReports = consoleError.mock.calls.filter((args) =>
+    String(args[0]).startsWith('road network'),
+  );
+  consoleError.mockRestore();
+  expect(roadReports).toEqual([]);
+});
 
 describe('worker sim', () => {
   let h: Harness;
@@ -1933,9 +1950,11 @@ describe('which roads may touch — the world refuses, not only the tool', () =>
       (m): m is Extract<WorkerToMain, { type: 'save' }> => m.type === 'save',
     );
     const payload = decodeSave(saves[saves.length - 1]!.data);
-    const g = deserializeGrid(payload.grid);
+    // Masks are saved only by versions before the road network, so the stale
+    // one goes into a save of the last of them.
+    const g = loadGrid(payload.grid).grid;
     g.roadMask[30 * MAP_SIZE + 31] = 15; // written by rules that joined every side
-    payload.grid = serializeGrid(g);
+    payload.grid = serializeGridV12(g);
     h.messages.length = 0;
     h.sim.handleMessage({ type: 'loadSave', data: encodeSave(payload) });
     h.ticks(2);
@@ -2559,5 +2578,126 @@ describe('a generator that cannot deliver says so', () => {
     for (const problems of problemsSeen(h, id)) {
       expect(problems & Problem.NoRoad).toBe(0);
     }
+  });
+});
+
+describe('roads off the grid — the world lays them, undoes them and keeps them', () => {
+  function run(h: Harness, seq: number, commands: Command[]): CommandAck {
+    send(h, seq, commands);
+    h.ticks(2);
+    const ack = h.ackFor(seq);
+    if (!ack) throw new Error(`no ack for batch ${seq}`);
+    return ack;
+  }
+  function sandboxed(): Harness {
+    const h = initialized();
+    run(h, 0, [{ kind: 'setSandbox', on: true }]);
+    return h;
+  }
+  /** A point `x`, `z` metres into the map, in centimetres. */
+  const at = (x: number, z: number): { x: number; z: number } => ({ x: x * 100, z: z * 100 });
+  const centre = (t: number): number => (t * 20 + 10) * 100;
+
+  /** The free segments of the city as last saved: their ends and control. */
+  function savedFree(h: Harness): string[] {
+    h.sim.handleMessage({ type: 'requestSave' });
+    const net = latestSaveGrid(h).roads!;
+    const out: string[] = [];
+    for (let s = 0; s < net.segSlots; s++) {
+      if (!net.segLive[s] || !isFreeSegment(net, s)) continue;
+      const a = net.segA[s]!;
+      const b = net.segB[s]!;
+      out.push(
+        `${net.nodeX[a]},${net.nodeZ[a]}-${net.nodeX[b]},${net.nodeZ[b]}~${net.segCurved[s] ? `${net.segCX[s]},${net.segCZ[s]}` : '-'}`,
+      );
+    }
+    return out;
+  }
+
+  const curve: Command = {
+    kind: 'buildSegment',
+    tier: RoadTier.TwoLane,
+    a: at(1000, 1000),
+    b: at(1200, 1200),
+    control: at(1200, 1000),
+  };
+
+  it('lays a curve, charges for its length, and undoes it exactly', () => {
+    const h = sandboxed();
+    const ack = run(h, 1, [curve]);
+    expect(ack.ok).toBe(true);
+    expect(ack.cost).toBeGreaterThan(0);
+    expect(savedFree(h)).toEqual(['100000,100000-120000,120000~120000,100000']);
+    const undo = run(h, 2, ack.inverse);
+    expect(undo.ok).toBe(true);
+    expect(savedFree(h)).toEqual([]);
+    const redo = run(h, 3, undo.inverse);
+    expect(redo.ok).toBe(true);
+    expect(savedFree(h)).toEqual(['100000,100000-120000,120000~120000,100000']);
+  });
+
+  it('refuses what the geometry rules refuse, with the reason', () => {
+    const h = sandboxed();
+    const ack = run(h, 1, [
+      {
+        kind: 'buildSegment',
+        tier: RoadTier.TwoLane,
+        a: at(1000, 1000),
+        b: at(1030, 1030),
+        control: at(1030, 1000),
+      },
+    ]);
+    expect(ack.ok).toBe(false);
+    expect(ack.reason).toMatch(/radius/);
+  });
+
+  it('keeps a free road through a save and a load', () => {
+    const h = sandboxed();
+    run(h, 1, [curve]);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const saves = h.messages.filter(
+      (m): m is Extract<WorkerToMain, { type: 'save' }> => m.type === 'save',
+    );
+    const data = saves[saves.length - 1]!.data;
+    const fresh = sandboxed();
+    fresh.sim.handleMessage({ type: 'loadSave', data });
+    fresh.ticks(2);
+    expect(savedFree(fresh)).toEqual(['100000,100000-120000,120000~120000,100000']);
+  });
+
+  it('keeps a grid drag off a free road, except where the two meet', () => {
+    const h = sandboxed();
+    const row = Array.from({ length: 11 }, (_, i) => ({ x: 40 + i, z: 40 }));
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: row }]);
+    const leave = run(h, 2, [
+      {
+        kind: 'buildSegment',
+        tier: RoadTier.TwoLane,
+        a: { x: centre(45), z: centre(40) },
+        b: at(1060, 1000),
+      },
+    ]);
+    expect(leave.ok).toBe(true);
+    // A grid street drawn straight across the free road is refused.
+    const across = Array.from({ length: 11 }, (_, i) => ({ x: 44 + i, z: 45 }));
+    const refused = run(h, 3, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: across }]);
+    expect(refused.ok).toBe(false);
+    expect(refused.reason).toMatch(/off the grid/);
+    expect(savedFree(h)).toHaveLength(1);
+  });
+
+  it('zones the lots a free road fronts, and nothing on its footprint', () => {
+    const h = sandboxed();
+    run(h, 1, [
+      { kind: 'buildSegment', tier: RoadTier.TwoLane, a: at(1000, 1000), b: at(1600, 1100) },
+    ]);
+    // Beside the road, 30 m off its centre line at x = 1300 m, and right on it.
+    const beside = { x: Math.floor(1300 / 20), z: Math.floor((1050 - 30) / 20) };
+    const on = { x: Math.floor(1300 / 20), z: Math.floor(1050 / 20) };
+    run(h, 2, [{ kind: 'paintZone', zone: ZoneType.ResLow, tiles: [beside, on] }]);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const g = latestSaveGrid(h);
+    expect(g.zone[beside.z * MAP_SIZE + beside.x]).toBe(ZoneType.ResLow);
+    expect(g.zone[on.z * MAP_SIZE + on.x]).toBe(ZoneType.None);
   });
 });

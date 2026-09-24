@@ -19,7 +19,8 @@ GROUND TRUTHS
 - When code and a truth disagree, stop and flag it. Never silently pick one.
 - When you learn a new invariant (a bug a rule would have prevented, or a rule the user states), add it to docs/GROUND-TRUTHS.md and to the spec that decides it, in the same change.
 - The ones broken most often:
-  - A tile carries exactly one road tier. Rail and street never share a tile; a rail tile between two street tiles breaks the street, it does not cross it.
+  - A tile carries one road, or two only where one passes over the other at right angles (an overpass, on the over layers, clearing 5 m over road / 7 m over rail). The two never join; a road is identified by tile AND layer (`RoadKey`). Roads join only at one level.
+  - Rail and street never share a tile at grade; a rail tile between two street tiles breaks the street, it does not cross it.
   - A one-way road flows the way it was drawn (its stored roadFlow); never infer direction from geometry, and always mask the flow byte before comparing it.
   - Roads replace by class rank, never by tier number. A highway touches only a highway or a ramp. Highway and rail arms never take a junction control.
   - Yellow paint only separates opposing directions; everything else is white. Dirt, alley and rail carry no paint.

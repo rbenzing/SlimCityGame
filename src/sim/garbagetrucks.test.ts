@@ -8,7 +8,7 @@ import {
 import type { GridState } from '../shared/types';
 import { INACTIVE_VEHICLE_X, RoadTier, VEHICLE_STRIDE, VehicleKind } from '../shared/types';
 import { tileIndex, tileToWorld, worldToTile } from '../shared/constants';
-import { RoadNetwork } from '../world/roads';
+import { RoadNetwork } from '../world/roadgraph';
 import { createGrid } from '../world/grid';
 
 function makeGrid(): GridState {
