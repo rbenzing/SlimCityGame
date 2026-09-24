@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { isRailTier, RoadFlow, RoadTier, ZoneType } from '../shared/types';
 import type { GraphEdge, GridState, RoadProfile, TilePoint } from '../shared/types';
-import { applyRoad, computeMask, recomputeRoadMasks, removeRoad, RoadNetwork } from './roads';
+import {
+  applyRoad,
+  computeMask,
+  computeOverMask,
+  recomputeRoadMasks,
+  removeRoad,
+  roadStep,
+  RoadNetwork,
+} from './roads';
 import { createGrid } from './grid';
 
 function makeGrid(size: number): GridState {
@@ -1339,5 +1347,122 @@ describe('a ramp meets a motorway alongside it, and only at one tile', () => {
     lay(g, column(4, 6, 8), [RoadFlow.South, RoadFlow.South, RoadFlow.South], RoadTier.Ramp);
     expect(computeMask(g, 4, 5) & 4).toBe(4);
     expect(computeMask(g, 4, 6) & 1).toBe(1);
+  });
+});
+
+describe('a road passing over another on the tile they cross', () => {
+  const SIZE = 20;
+  /**
+   * A motorway down x = 10 and a local street climbing over it along z = 9:
+   * ground approaches at 0, 2, 4, 6 m each side, and the crossing tile's own
+   * road on the over layer at 7 m.
+   */
+  function overpass(): GridState {
+    const g = makeGrid(SIZE);
+    for (let z = 2; z <= 17; z++) {
+      const i = idx(SIZE, 10, z);
+      g.roadTier[i] = RoadTier.Highway;
+      g.roadProfile[i] = RoadTier.Highway;
+      g.roadFlow[i] = RoadFlow.South;
+    }
+    const decks: Record<number, number> = { 6: 0, 7: 2, 8: 4, 9: 6, 11: 6, 12: 4, 13: 2, 14: 0 };
+    for (const [x, deck] of Object.entries(decks)) {
+      const i = idx(SIZE, Number(x), 9);
+      g.roadTier[i] = RoadTier.TwoLane;
+      g.roadProfile[i] = RoadTier.TwoLane;
+      g.roadFlow[i] = RoadFlow.East;
+      g.roadElevation[i] = deck;
+    }
+    const c = idx(SIZE, 10, 9);
+    g.overTier[c] = RoadTier.TwoLane;
+    g.overProfile[c] = RoadTier.TwoLane;
+    g.overFlow[c] = RoadFlow.East;
+    g.overElevation[c] = 7;
+    recomputeRoadMasks(g);
+    return g;
+  }
+
+  it('keeps the road beneath joined only along its own line', () => {
+    expect(computeMask(overpass(), 10, 9)).toBe(1 | 4); // N|S
+  });
+
+  it('joins the approaches to the road passing over, not to the one beneath', () => {
+    const g = overpass();
+    expect(computeMask(g, 9, 9) & 2).toBe(2); // east, onto the overpass
+    expect(computeMask(g, 11, 9) & 8).toBe(8); // west, onto it from the far side
+    expect(computeOverMask(g, 10, 9)).toBe(2 | 8); // E|W
+  });
+
+  it('builds the overpass as one run through the crossing, apart from the road beneath', () => {
+    const net = new RoadNetwork();
+    net.rebuild(overpass());
+    const covers = (x: number, z: number) =>
+      net.getEdges().filter((e) => e.tiles.some((t) => t.x === x && t.z === z));
+    const street = covers(8, 9);
+    expect(street).toHaveLength(1);
+    const run = street[0]!;
+    const at = run.tiles.findIndex((t) => t.x === 10 && t.z === 9);
+    expect(at).toBeGreaterThan(0);
+    expect(run.overTiles).toEqual([at]);
+    expect(run.classId).toBe('local'); // read from the over road, not the motorway
+    const motorway = covers(10, 3);
+    expect(motorway).toHaveLength(1);
+    expect(motorway[0]!.overTiles).toBeUndefined();
+    expect(motorway[0]!.classId).toBe('highway');
+    // No node where they cross: neither road has a junction there.
+    expect(net.getNodes().some((n) => n.x === 10 && n.z === 9)).toBe(false);
+  });
+
+  it('leaves an approach stranded in the air unjoined once the crossing is gone', () => {
+    const g = overpass();
+    const c = idx(SIZE, 10, 9);
+    g.overTier[c] = 0;
+    g.overElevation[c] = 0;
+    // The last approach tile is 6 m up; the motorway beside it is on the ground.
+    expect(computeMask(g, 9, 9) & 2).toBe(0);
+  });
+
+  it('still joins a bridge span to the bank it lands on, one grade step down', () => {
+    const g = makeGrid(SIZE);
+    for (const [x, deck] of [
+      [4, 0],
+      [5, 2],
+      [6, 4],
+    ] as const) {
+      g.roadTier[idx(SIZE, x, 5)] = RoadTier.TwoLane;
+      g.roadElevation[idx(SIZE, x, 5)] = deck;
+    }
+    expect(computeMask(g, 5, 5)).toBe(2 | 8);
+  });
+
+  it('carries on over a pair of carriageways, one crossing tile after another', () => {
+    const g = overpass();
+    for (let z = 2; z <= 17; z++) {
+      const i = idx(SIZE, 11, z);
+      g.roadTier[i] = RoadTier.Highway;
+      g.roadProfile[i] = RoadTier.Highway;
+      g.roadFlow[i] = RoadFlow.North;
+      g.roadElevation[i] = 0;
+    }
+    const c2 = idx(SIZE, 11, 9);
+    g.overTier[c2] = RoadTier.TwoLane;
+    g.overProfile[c2] = RoadTier.TwoLane;
+    g.overFlow[c2] = RoadFlow.East;
+    g.overElevation[c2] = 7;
+    g.roadElevation[idx(SIZE, 12, 9)] = 6;
+    g.roadTier[idx(SIZE, 12, 9)] = RoadTier.TwoLane;
+    recomputeRoadMasks(g);
+    expect(computeOverMask(g, 10, 9)).toBe(2 | 8);
+    expect(computeOverMask(g, 11, 9)).toBe(2 | 8);
+    expect(roadStep(g, idx(SIZE, 9, 9), 1, 0)).toBe(SIZE * SIZE + idx(SIZE, 10, 9));
+    expect(roadStep(g, SIZE * SIZE + idx(SIZE, 10, 9), 1, 0)).toBe(SIZE * SIZE + c2);
+  });
+
+  it('steps from the road beneath only along its own line', () => {
+    const g = overpass();
+    const c = idx(SIZE, 10, 9);
+    expect(roadStep(g, c, 1, 0)).toBeNull();
+    expect(roadStep(g, c, 0, 1)).toBe(idx(SIZE, 10, 10));
+    expect(roadStep(g, SIZE * SIZE + c, 0, 1)).toBeNull();
   });
 });

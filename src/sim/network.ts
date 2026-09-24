@@ -31,6 +31,7 @@ import type {
 } from '../shared/types';
 import { BuildingState, RoadTier, isStreetTier } from '../shared/types';
 import { MAP_SIZE, inBounds, tileIndex } from '../shared/constants';
+import { roadStep, tierOfKey, type RoadKey } from '../world/roads';
 import roadsData from '../data/roads.json';
 
 const ROAD_DATA = roadsData as { specs: RoadSpec[]; classes: RoadClassSpec[] };
@@ -166,11 +167,12 @@ function networkTilesAdjacentTo(
  * not a road and has no tier at all.
  */
 function reachableNetworkTiles(
+  g: GridState,
   seeds: readonly number[],
-  conducts: (index: number) => boolean,
+  conducts: (key: RoadKey) => boolean,
 ): number[] {
-  const visited = new Set<number>();
-  const queue: number[] = [];
+  const visited = new Set<RoadKey>();
+  const queue: RoadKey[] = [];
   for (const s of seeds) {
     if (!conducts(s)) continue;
     visited.add(s);
@@ -180,20 +182,19 @@ function reachableNetworkTiles(
   while (head < queue.length) {
     const cur = queue[head]!;
     head += 1;
-    const x = cur % MAP_SIZE;
-    const z = Math.floor(cur / MAP_SIZE);
+    // A step onto a crossing tile along its overpass reaches the overpass, and
+    // the road beneath it never passes anything along that line — so a supply
+    // runs over a road it crosses and never down into it.
     for (const [ddx, ddz] of ORTHOGONAL) {
-      const nx = x + ddx;
-      const nz = z + ddz;
-      if (!inBounds(nx, nz)) continue;
-      const ni = tileIndex(nx, nz);
-      if (visited.has(ni)) continue;
-      if (!conducts(ni)) continue;
-      visited.add(ni);
-      queue.push(ni);
+      const next = roadStep(g, cur, ddx, ddz);
+      if (next === null || visited.has(next)) continue;
+      if (!conducts(next)) continue;
+      visited.add(next);
+      queue.push(next);
     }
   }
-  return [...visited];
+  // Coverage is per tile; an overpass supplies the tile it stands over.
+  return [...visited].map((key) => key % (MAP_SIZE * MAP_SIZE));
 }
 
 /** Coverage grid (0/1) for a set of generator footprints: footprints + everything the network reaches, radiated. */
@@ -204,7 +205,7 @@ function computeCoverage(
 ): Uint8Array {
   if (footprintTiles.length === 0) return new Uint8Array(MAP_SIZE * MAP_SIZE);
   const seeds = networkTilesAdjacentTo(footprintTiles, conducts);
-  const reached = reachableNetworkTiles(seeds, conducts);
+  const reached = reachableNetworkTiles(g, seeds, conducts);
   const sources = new Set<number>(footprintTiles);
   for (const r of reached) sources.add(r);
   return radiate(g, sources);
@@ -219,15 +220,15 @@ function computeCoverage(
  * A road that does not conduct is not merely unpowered: it is no bridge
  * either, so a lot reached only down a dirt lane needs a line run to it.
  */
-function conductsPower(g: GridState, index: number): boolean {
-  if (g.powerLine[index] === 1) return true;
-  const tier = g.roadTier[index]!;
+function conductsPower(g: GridState, key: RoadKey): boolean {
+  if (key < g.size * g.size && g.powerLine[key] === 1) return true;
+  const tier = tierOfKey(g, key);
   return isStreetTier(tier) && tierIsSealed(tier);
 }
 
 /** Only drivable streets whose spec carries water conduct it (highways excluded by default; rail is not a street, and neither is a power line). */
-function conductsWater(g: GridState, index: number): boolean {
-  const tier = g.roadTier[index]!;
+function conductsWater(g: GridState, key: RoadKey): boolean {
+  const tier = tierOfKey(g, key);
   return isStreetTier(tier) && tierCarriesWater(tier);
 }
 

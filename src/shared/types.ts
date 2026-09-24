@@ -1040,6 +1040,11 @@ export interface GraphEdge {
    */
   narrowsAtA?: number;
   narrowsAtB?: number;
+  /**
+   * Indices into `tiles` where the run is the road passing OVER a crossing
+   * tile rather than the road on it. Absent on a run that crosses nothing.
+   */
+  overTiles?: number[];
 }
 
 export interface PathResult {

@@ -5,6 +5,7 @@
  * no three.js, no DOM.
  */
 
+import { BRIDGE_MAX_GRADE } from '../shared/constants';
 import {
   armsAt,
   capacityForTier,
@@ -103,11 +104,128 @@ function popcount(mask: number): number {
  * draws as a junction — a box of bare asphalt with its lane markings broken.
  */
 export function computeMask(g: GridState, x: number, z: number): number {
+  return layerMask(g, x, z, false, anyRoad);
+}
+
+/**
+ * The mask of the road passing OVER tile (x, z), or 0 where none does. It
+ * joins only along its own line, which is the only way it can run across a
+ * crossing tile.
+ */
+export function computeOverMask(g: GridState, x: number, z: number): number {
+  return layerMask(g, x, z, true, anyRoad);
+}
+
+const anyRoad = (tier: RoadTier): boolean => tier !== RoadTier.None;
+
+/**
+ * Which way the road passing over tile `idx` runs: true along x, false along
+ * z, null where no road passes over it. Read from its stored flow, which every
+ * over road carries — it was laid by a drag, and a drag records its heading.
+ */
+function overRunsAlongX(g: GridState, idx: number): boolean | null {
+  if ((g.overTier[idx] ?? 0) === 0) return null;
+  const d = flowDirection(g.overFlow[idx] ?? RoadFlow.None);
+  if (d === RoadFlow.East || d === RoadFlow.West) return true;
+  if (d === RoadFlow.North || d === RoadFlow.South) return false;
+  return null;
+}
+
+/**
+ * A road on the grid: the tile index for the road on a tile, and the tile
+ * index plus the tile count for the road passing over a crossing tile.
+ */
+export type RoadKey = number;
+
+/**
+ * The road reached by stepping one tile (dx, dz) from road `key`, or null
+ * where the step leaves it: the road passing over a crossing runs only along
+ * its own line, and the road beneath never joins along that line. Stepping
+ * onto a crossing tile along the line of its over road reaches the over road;
+ * any other step reaches the road on the tile — which may be no road at all,
+ * for the caller to decide. The two roads on a crossing tile always run at
+ * right angles, so the direction of a step says which of them it meets.
+ */
+export function roadStep(g: GridState, key: RoadKey, dx: number, dz: number): RoadKey | null {
+  const n = g.size * g.size;
+  const over = key >= n;
+  const idx = over ? key - n : key;
+  const x = idx % g.size;
+  const z = (idx - x) / g.size;
+  const alongX = dx !== 0;
+  const axis = overRunsAlongX(g, idx);
+  if (over ? axis !== alongX : axis === alongX) return null;
+  const nx = x + dx;
+  const nz = z + dz;
+  if (!inBoundsOf(g.size, nx, nz)) return null;
+  const next = indexOf(g.size, nx, nz);
+  return overRunsAlongX(g, next) === alongX ? n + next : next;
+}
+
+/** The tier of road `key`, on whichever layer it names. */
+export function tierOfKey(g: GridState, key: RoadKey): RoadTier {
+  const n = g.size * g.size;
+  return ((key >= n ? g.overTier[key - n] : g.roadTier[key]) ?? RoadTier.None) as RoadTier;
+}
+
+/** The stored flow byte of road `key`, on whichever layer it names. */
+function flowOfKey(g: GridState, key: RoadKey): number {
+  const n = g.size * g.size;
+  return (key >= n ? g.overFlow[key - n] : g.roadFlow[key]) ?? RoadFlow.None;
+}
+
+/** The world height of road `key`'s deck surface. */
+function deckYOfKey(g: GridState, key: RoadKey): number {
+  const n = g.size * g.size;
+  const idx = key >= n ? key - n : key;
+  const lift = (key >= n ? g.overElevation[idx] : g.roadElevation[idx]) ?? 0;
+  return (g.height[idx] ?? 0) + lift;
+}
+
+/**
+ * Whether two neighbouring roads are at one level, which they must be to join:
+ * both on the ground, or decks within one grade step of each other. A deck up
+ * in the air passes beside a road on the ground without meeting it.
+ */
+function atOneLevel(g: GridState, a: RoadKey, b: RoadKey): boolean {
+  const n = g.size * g.size;
+  const liftOf = (k: RoadKey): number =>
+    (k >= n ? g.overElevation[k - n] : g.roadElevation[k]) ?? 0;
+  if (liftOf(a) === 0 && liftOf(b) === 0) return true;
+  return Math.abs(deckYOfKey(g, a) - deckYOfKey(g, b)) <= BRIDGE_MAX_GRADE;
+}
+
+/**
+ * The neighbour mask of one of the tile's roads — the road on it, or the one
+ * passing over it — counting neighbours whose tier `accepts` takes.
+ */
+function layerMask(
+  g: GridState,
+  x: number,
+  z: number,
+  over: boolean,
+  accepts: NetworkTiers,
+): number {
+  const idx = indexOf(g.size, x, z);
+  const key = over ? g.size * g.size + idx : idx;
+  const tier = tierOfKey(g, key);
+  if (tier === RoadTier.None) return 0;
   let mask = 0;
-  if (tierAt(g, x, z - 1) !== RoadTier.None && !isSeparateRoad(g, x, z, x, z - 1)) mask |= 1;
-  if (tierAt(g, x + 1, z) !== RoadTier.None && !isSeparateRoad(g, x, z, x + 1, z)) mask |= 2;
-  if (tierAt(g, x, z + 1) !== RoadTier.None && !isSeparateRoad(g, x, z, x, z + 1)) mask |= 4;
-  if (tierAt(g, x - 1, z) !== RoadTier.None && !isSeparateRoad(g, x, z, x - 1, z)) mask |= 8;
+  for (const d of DIRS) {
+    const next = roadStep(g, key, d.dx, d.dz);
+    if (next === null) continue;
+    const theirs = tierOfKey(g, next);
+    if (theirs === RoadTier.None || !accepts(theirs)) continue;
+    if (!atOneLevel(g, key, next)) continue;
+    // A step onto or off a road passing over is along its own line, where it
+    // meets nothing but its own approaches: only the rail rule applies.
+    const viaOver = over || next !== indexOf(g.size, x + d.dx, z + d.dz);
+    if (viaOver) {
+      if (isRailTier(tier) === isRailTier(theirs)) mask |= d.bit;
+      continue;
+    }
+    if (!isSeparateRoad(g, x, z, x + d.dx, z + d.dz)) mask |= d.bit;
+  }
   return mask;
 }
 
@@ -145,17 +263,15 @@ function isCorridorPartner(g: GridState, x: number, z: number, nx: number, nz: n
 }
 
 /**
- * Neighbor bitmask counting only neighbours that belong to the SAME network, so
- * a graph built from one set of tiers never links to another. Identical to
- * `computeMask` on a grid of one network's tiles alone.
+ * The mask of road `key`, counting only neighbours that belong to the SAME
+ * network, so a graph built from one set of tiers never links to another.
+ * Identical to `computeMask` on a grid of one network's tiles alone.
  */
-function computeNetworkMask(g: GridState, x: number, z: number, inNetwork: NetworkTiers): number {
-  let mask = 0;
-  if (inNetwork(tierAt(g, x, z - 1)) && !isSeparateRoad(g, x, z, x, z - 1)) mask |= 1;
-  if (inNetwork(tierAt(g, x + 1, z)) && !isSeparateRoad(g, x, z, x + 1, z)) mask |= 2;
-  if (inNetwork(tierAt(g, x, z + 1)) && !isSeparateRoad(g, x, z, x, z + 1)) mask |= 4;
-  if (inNetwork(tierAt(g, x - 1, z)) && !isSeparateRoad(g, x, z, x - 1, z)) mask |= 8;
-  return mask;
+function keyNetworkMask(g: GridState, key: RoadKey, inNetwork: NetworkTiers): number {
+  const n = g.size * g.size;
+  const idx = key >= n ? key - n : key;
+  const x = idx % g.size;
+  return layerMask(g, x, (idx - x) / g.size, key >= n, inNetwork);
 }
 
 /**
@@ -452,8 +568,7 @@ export function removeRoad(g: GridState, tiles: TilePoint[]): RoadTileDelta[] {
  */
 function isNodeTile(
   g: GridState,
-  x: number,
-  z: number,
+  key: RoadKey,
   tier: RoadTier,
   mask: number,
   inNetwork: NetworkTiers,
@@ -462,10 +577,10 @@ function isNodeTile(
   if (deg !== 2) return true;
   for (const d of DIRS) {
     if ((mask & d.bit) === 0) continue;
-    const nx = x + d.dx;
-    const nz = z + d.dz;
-    if (tierAt(g, nx, nz) >= tier) continue;
-    if (popcount(computeNetworkMask(g, nx, nz, inNetwork)) >= 3) continue;
+    const next = roadStep(g, key, d.dx, d.dz);
+    if (next === null) continue;
+    if (tierOfKey(g, next) >= tier) continue;
+    if (popcount(keyNetworkMask(g, next, inNetwork)) >= 3) continue;
     return true;
   }
   return false;
@@ -490,7 +605,11 @@ interface BuiltGraph {
  * laid by one drag and agree; a run stitched together from two drags is
  * decided by the end the walk started from.
  */
-function storedRunDirection(g: GridState, runTiles: readonly TilePoint[]): boolean | null {
+function storedRunDirection(
+  g: GridState,
+  runTiles: readonly TilePoint[],
+  runKeys: readonly RoadKey[],
+): boolean | null {
   const last = runTiles.length - 1;
   const interior = Array.from({ length: Math.max(0, last - 1) }, (_, k) => k + 1);
   for (const i of [...interior, 0]) {
@@ -498,7 +617,7 @@ function storedRunDirection(g: GridState, runTiles: readonly TilePoint[]): boole
     const next = runTiles[i + 1]!;
     // The direction only: the byte also carries which half of a corridor the
     // tile is, and comparing that against a bare RoadFlow never matches.
-    const stored = flowDirection(g.roadFlow[indexOf(g.size, here.x, here.z)] ?? RoadFlow.None);
+    const stored = flowDirection(flowOfKey(g, runKeys[i]!));
     if (stored === RoadFlow.None) continue;
     const along = flowForStep(next.x - here.x, next.z - here.z);
     if (along === RoadFlow.None) continue; // defensive: a non-orthogonal step
@@ -526,7 +645,7 @@ export type ProfileResolver = (id: number) => RoadProfile | null;
  */
 function runFacts(
   g: GridState,
-  runTiles: readonly TilePoint[],
+  runKeys: readonly RoadKey[],
   forwardAtoB: boolean | null,
   profileFor: ProfileResolver,
 ): {
@@ -535,9 +654,10 @@ function runFacts(
   split: { atoB: number; btoA: number } | null;
   pocket: { atoB: boolean; btoA: boolean };
 } | null {
-  const mid = runTiles[Math.floor(runTiles.length / 2)];
-  if (!mid) return null;
-  const profile = profileFor(g.roadProfile[indexOf(g.size, mid.x, mid.z)] ?? 0);
+  const mid = runKeys[Math.floor(runKeys.length / 2)];
+  if (mid === undefined) return null;
+  const n = g.size * g.size;
+  const profile = profileFor((mid >= n ? g.overProfile[mid - n] : g.roadProfile[mid]) ?? 0);
   if (!profile) return null;
   const travel = profile.pieces.filter((p) => p.kind === 'travel');
   const fwd = travel.filter((p) => p.flow === 'fwd').length;
@@ -594,58 +714,57 @@ function buildGraph(
   profileFor: ProfileResolver,
 ): BuiltGraph {
   const size = g.size;
-  const nodeIdOf = new Map<number, number>(); // tile idx -> node id
-  const nodeTileIdx: number[] = [];
-
-  for (let z = 0; z < size; z++) {
-    for (let x = 0; x < size; x++) {
-      const idx = indexOf(size, x, z);
-      const tier = tierAtIdx(g, idx);
-      // A graph is built from ONE network's tiles: the drivable streets for the
-      // vehicle network, the track for the train one. Everything else on the
-      // grid is invisible to it, which is what keeps a car off the rails and a
-      // train off the road.
-      if (!inNetwork(tier)) continue;
-      const mask = computeNetworkMask(g, x, z, inNetwork);
-      if (isNodeTile(g, x, z, tier, mask, inNetwork)) {
-        nodeIdOf.set(idx, nodeTileIdx.length);
-        nodeTileIdx.push(idx);
-      }
+  const tileCount = size * size;
+  // Keyed by road rather than by tile, so the road passing over a crossing
+  // tile and the road on it are two different things to the graph.
+  const nodeIdOf = new Map<RoadKey, number>();
+  const nodeKeys: RoadKey[] = [];
+  const consider = (key: RoadKey): void => {
+    const tier = tierOfKey(g, key);
+    // A graph is built from ONE network's tiles: the drivable streets for the
+    // vehicle network, the track for the train one. Everything else on the
+    // grid is invisible to it, which is what keeps a car off the rails and a
+    // train off the road.
+    if (!inNetwork(tier)) return;
+    const mask = keyNetworkMask(g, key, inNetwork);
+    if (isNodeTile(g, key, tier, mask, inNetwork)) {
+      nodeIdOf.set(key, nodeKeys.length);
+      nodeKeys.push(key);
     }
+  };
+  for (let idx = 0; idx < tileCount; idx++) consider(idx);
+  for (let idx = 0; idx < tileCount; idx++) {
+    if ((g.overTier[idx] ?? 0) !== 0) consider(tileCount + idx);
   }
 
-  const nodes: GraphNode[] = nodeTileIdx.map((tileIdx, id) => ({
-    id,
-    x: tileIdx % size,
-    z: Math.floor(tileIdx / size),
-    edges: [],
-  }));
+  const tileOf = (key: RoadKey): TilePoint => {
+    const idx = key >= tileCount ? key - tileCount : key;
+    return { x: idx % size, z: Math.floor(idx / size) };
+  };
+  const nodes: GraphNode[] = nodeKeys.map((key, id) => ({ id, ...tileOf(key), edges: [] }));
 
   const edges: GraphEdge[] = [];
   const consumedSteps = new Set<number>();
-  const stepKey = (tileIdx: number, bit: number): number => tileIdx * 16 + bit;
+  const stepKey = (key: RoadKey, bit: number): number => key * 16 + bit;
 
-  for (const startIdx of nodeTileIdx) {
-    const startId = nodeIdOf.get(startIdx)!;
-    const sx = startIdx % size;
-    const sz = Math.floor(startIdx / size);
-    const startMask = computeNetworkMask(g, sx, sz, inNetwork);
+  for (const startKey of nodeKeys) {
+    const startId = nodeIdOf.get(startKey)!;
+    const startMask = keyNetworkMask(g, startKey, inNetwork);
 
     for (const d of DIRS) {
       if ((startMask & d.bit) === 0) continue;
-      if (consumedSteps.has(stepKey(startIdx, d.bit))) continue;
-      consumedSteps.add(stepKey(startIdx, d.bit));
+      if (consumedSteps.has(stepKey(startKey, d.bit))) continue;
+      consumedSteps.add(stepKey(startKey, d.bit));
 
-      const runTiles: TilePoint[] = [{ x: sx, z: sz }];
-      let curX = sx + d.dx;
-      let curZ = sz + d.dz;
-      let curIdx = indexOf(size, curX, curZ);
+      const runKeys: RoadKey[] = [startKey];
+      let cur = roadStep(g, startKey, d.dx, d.dz);
+      if (cur === null) continue; // defensive: the mask only holds steps that lead somewhere
       let cameFromBit = OPPOSITE_BIT[d.bit]!;
-      const runTier = tierAtIdx(g, curIdx);
+      const runTier = tierOfKey(g, cur);
 
-      while (!nodeIdOf.has(curIdx)) {
-        runTiles.push({ x: curX, z: curZ });
-        const curMask = computeNetworkMask(g, curX, curZ, inNetwork);
+      while (!nodeIdOf.has(cur)) {
+        runKeys.push(cur);
+        const curMask = keyNetworkMask(g, cur, inNetwork);
         let onward: Dir | null = null;
         for (const d2 of DIRS) {
           if ((curMask & d2.bit) !== 0 && d2.bit !== cameFromBit) {
@@ -654,18 +773,19 @@ function buildGraph(
           }
         }
         if (!onward) break; // defensive: malformed run on inconsistent test data
-        consumedSteps.add(stepKey(curIdx, onward.bit));
-        curX += onward.dx;
-        curZ += onward.dz;
+        const next = roadStep(g, cur, onward.dx, onward.dz);
+        if (next === null) break;
+        consumedSteps.add(stepKey(cur, onward.bit));
         cameFromBit = OPPOSITE_BIT[onward.bit]!;
-        curIdx = indexOf(size, curX, curZ);
+        cur = next;
       }
-      runTiles.push({ x: curX, z: curZ });
-      consumedSteps.add(stepKey(curIdx, cameFromBit));
+      runKeys.push(cur);
+      consumedSteps.add(stepKey(cur, cameFromBit));
 
-      const endId = nodeIdOf.get(curIdx);
+      const endId = nodeIdOf.get(cur);
       if (endId === undefined) break; // malformed run terminated without reaching a node
 
+      const runTiles = runKeys.map(tileOf);
       const edgeId = edges.length;
       const edge: GraphEdge = {
         id: edgeId,
@@ -676,9 +796,11 @@ function buildGraph(
         length: runTiles.length,
         volume: 0,
       };
-      const stored = storedRunDirection(g, runTiles);
+      const overTiles = runKeys.flatMap((key, i) => (key >= tileCount ? [i] : []));
+      if (overTiles.length > 0) edge.overTiles = overTiles;
+      const stored = storedRunDirection(g, runTiles, runKeys);
       if (stored !== null) edge.forwardAtoB = stored;
-      const facts = runFacts(g, runTiles, stored, profileFor);
+      const facts = runFacts(g, runKeys, stored, profileFor);
       if (facts) {
         edge.classId = facts.classId;
         edge.lanes = facts.lanes;
