@@ -2685,4 +2685,19 @@ describe('roads off the grid — the world lays them, undoes them and keeps them
     expect(refused.reason).toMatch(/off the grid/);
     expect(savedFree(h)).toHaveLength(1);
   });
+
+  it('zones the lots a free road fronts, and nothing on its footprint', () => {
+    const h = sandboxed();
+    run(h, 1, [
+      { kind: 'buildSegment', tier: RoadTier.TwoLane, a: at(1000, 1000), b: at(1600, 1100) },
+    ]);
+    // Beside the road, 30 m off its centre line at x = 1300 m, and right on it.
+    const beside = { x: Math.floor(1300 / 20), z: Math.floor((1050 - 30) / 20) };
+    const on = { x: Math.floor(1300 / 20), z: Math.floor(1050 / 20) };
+    run(h, 2, [{ kind: 'paintZone', zone: ZoneType.ResLow, tiles: [beside, on] }]);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const g = latestSaveGrid(h);
+    expect(g.zone[beside.z * MAP_SIZE + beside.x]).toBe(ZoneType.ResLow);
+    expect(g.zone[on.z * MAP_SIZE + on.x]).toBe(ZoneType.None);
+  });
 });

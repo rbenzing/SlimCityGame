@@ -254,10 +254,18 @@ for each free node. The graph walks neighbour lists instead of compass bits
 was dropped), so a route runs across a free road and its run is as long as
 its centre line; a one-way free road routes only the way it was drawn. The
 utility and service spreads walk the same cells, a power line feeds a free
-road beside it, and a facility beside a free road finds it. Not yet: zoning
-and buildings do not read free roads (3c), cosmetic vehicles stop where a
-route leaves the grid until they can follow a centre line (stage 4), nothing
-draws free roads (stage 4), and there is no tool to lay them (stage 5).
+road beside it, and a facility beside a free road finds it.
+
+Stage 3c is built (2026-09-24): a free road fronts lots square to its centre
+line from its kerb, out to the zoning depth, in the one zonability predicate;
+zones and buildings are kept off its footprint; and a lot beside a free road
+counts as having a road for growth. Not yet: the render thread has no copy of
+the network, so the zoning grid visual cannot show a free road's frontage
+while `paintZone` honours it — a disagreement the rules forbid, closed in
+stage 4 when the render thread takes up the network to draw it, and before
+the tool (stage 5) lets a player lay one. Cosmetic vehicles stop where a route
+leaves the grid until they follow a centre line (stage 4), and nothing draws
+free roads yet (stage 4).
 
 ### Overpasses (requested 2026-09-23, built 2026-09-24)
 

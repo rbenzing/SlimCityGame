@@ -35,13 +35,6 @@ const CRIME_GROWTH = 2;
 const FIRE_GROWTH = 1;
 const CRIME_GROWTH_LAND_VALUE_CEILING = 90;
 
-const ORTHOGONAL: ReadonlyArray<readonly [number, number]> = [
-  [1, 0],
-  [-1, 0],
-  [0, 1],
-  [0, -1],
-];
-
 /**
  * Rounds (not truncates) before clamping to [0,255]. Coverage math routinely
  * produces values like 100*(1-55/100) === 44.999999999999996 due to binary

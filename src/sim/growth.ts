@@ -25,6 +25,7 @@ import type {
 } from '../shared/types';
 import { BuildingRegistry, footprintForRotation } from './buildings';
 import { utilityCanDeliver } from './network';
+import { freeCellsOn, roadCellsOf } from '../world/roadnet';
 
 /**
  * Deterministic RNG surface injected into the growth system.
@@ -93,13 +94,17 @@ function fieldAt(g: GridState, field: FieldId, idx: number): number {
 
 /** Any road tile within Manhattan distance `radius` of (x, z)? */
 function hasNearbyRoad(g: GridState, x: number, z: number, radius: number): boolean {
+  const cells = g.roads ? roadCellsOf(g) : null;
   for (let dz = -radius; dz <= radius; dz++) {
     const spread = radius - Math.abs(dz);
     for (let dx = -spread; dx <= spread; dx++) {
       const tx = x + dx;
       const tz = z + dz;
       if (!inBounds(tx, tz)) continue;
-      if (isStreetTier(readTile(g.roadTier, tileIndex(tx, tz)))) return true;
+      const idx = tileIndex(tx, tz);
+      if (isStreetTier(readTile(g.roadTier, idx))) return true;
+      // A road off the grid serves its lots as well as one on it.
+      if (cells && freeCellsOn(cells, idx).some((c) => isStreetTier(cells.tier[c]!))) return true;
     }
   }
   return false;

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { RoadTier } from '../shared/types';
+import { RoadTier, ZoneType } from '../shared/types';
 import type { GridState, RoadTier as Tier } from '../shared/types';
 import { tileCentreCm } from '../shared/roadgeom';
 import type { CmPoint } from '../shared/roadgeom';
-import { createGrid } from './grid';
+import { canPlaceFootprint, createGrid, setZones } from './grid';
+import { computeZonableMask } from './zonable';
 import { applyRoad, removeRoad } from './roads';
 import {
   deriveRoadLayers,
@@ -341,5 +342,42 @@ describe('roads off the grid: the graph routes along them', () => {
     expect(edge!.forwardAtoB).toBe(forwardFromA);
     expect(net.findPath({ x: 5, z: 5 }, { x: 20, z: 15 })).not.toBeNull();
     expect(net.findPath({ x: 20, z: 15 }, { x: 5, z: 5 })).toBeNull();
+  });
+});
+
+describe('roads off the grid: the land reads them', () => {
+  /** A free street running east-north-east across open ground. */
+  function street(): GridState {
+    const g = world();
+    lay(g, { a: at(100, 300), b: at(700, 400) });
+    return g;
+  }
+
+  it('fronts lots on both sides, out to the zoning depth, and none on its own footprint', () => {
+    const g = street();
+    const mask = computeZonableMask(g);
+    // Its footprint is never zonable.
+    for (let i = 0; i < mask.length; i++) if (g.roadFootprint[i]) expect(mask[i]).toBe(0);
+    // A tile just beside the road, on either side, is; one far off is not.
+    const at20 = (x: number, z: number): number => Math.floor(z / 20) * SIZE + Math.floor(x / 20);
+    const line = (x: number): number => 300 + ((x - 100) * 100) / 600;
+    expect(mask[at20(400, line(400) - 30)]).toBe(1);
+    expect(mask[at20(400, line(400) + 30)]).toBe(1);
+    expect(mask[at20(400, line(400) + 150)]).toBe(0);
+    expect(mask.some((v) => v === 1)).toBe(true);
+  });
+
+  it('keeps buildings and zones off its footprint, and zones the lots it fronts', () => {
+    const g = street();
+    const covered = Array.from(g.roadFootprint).findIndex((v) => v === 1);
+    const cx = covered % SIZE;
+    const cz = Math.floor(covered / SIZE);
+    expect(canPlaceFootprint(g, cx, cz, 1, 1)).toBe(false);
+    expect(setZones(g, [{ x: cx, z: cz }], ZoneType.ResLow)).toEqual([]);
+    const mask = computeZonableMask(g);
+    const lot = mask.findIndex((v) => v === 1);
+    expect(
+      setZones(g, [{ x: lot % SIZE, z: Math.floor(lot / SIZE) }], ZoneType.ResLow),
+    ).toHaveLength(1);
   });
 });

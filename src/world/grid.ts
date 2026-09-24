@@ -560,6 +560,7 @@ export function canPlaceFootprint(
       if (!isBuildable(g, tx, tz)) return false;
       const i = indexOf(g.size, tx, tz); // in bounds: isBuildable already confirmed it
       if (g.roadTier[i] !== RoadTier.None) return false;
+      if (g.roadFootprint[i] === 1) return false; // a road off the grid covers it
       if (g.buildingId[i] !== 0) return false;
     }
   }
@@ -622,6 +623,7 @@ export function setZones(g: GridState, tiles: TilePoint[], zone: ZoneType): Tile
 
     const i = indexOf(g.size, x, z);
     if (g.roadTier[i] !== RoadTier.None) continue;
+    if (g.roadFootprint[i] === 1 && zone !== ZoneType.None) continue;
     if (g.buildingId[i] !== 0 && zone !== ZoneType.None) continue;
     if (zone !== ZoneType.None && !isZonable(g, x, z)) continue;
 
