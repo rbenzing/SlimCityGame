@@ -60,3 +60,4 @@ in, and add the row below. Keep the table in numeric order.
 | [0012](0012-a-road-is-a-class-a-cross-section-and-junctions.md)                | A road is a class, a cross-section, and a set of junctions — not a tier                                         | Accepted | 2026-09-08 |
 | [0013](0013-traffic-figures-come-from-published-standards.md)                  | Traffic engineering figures come from published standards, tied to game units by one constant                   | Accepted | 2026-09-08 |
 | [0014](0014-genre-grammar-is-deliberate-originality-is-elsewhere.md)           | Genre grammar is adopted deliberately; originality applies to names, assets, and branding, not genre vocabulary | Accepted | 2026-09-08 |
+| [0015](0015-a-crossing-tile-may-carry-a-second-road-passing-over.md)           | A crossing tile may carry a second road, passing over the first                                                 | Accepted | 2026-09-23 |
