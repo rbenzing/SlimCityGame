@@ -202,6 +202,31 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 
 ## 10. History (newest first)
 
+### Curved roads (requested 2026-09-23, specified 2026-09-24)
+
+Every turn was a grid corner, a quarter circle inside one 20 m tile, which is
+wrong for a motorway at 100 km/h and draws a gentle bend as a staircase. The
+player asked for a three-click curve tool with a ghost, used by motorways in
+place of the grid drag and offered to every road, and chose true curved
+roads over a staircase laid on the grid
+([ADR-0016](engineering/adr/0016-a-road-may-curve-between-two-grid-ends.md),
+superseding ADR-0005). A curve is an L with its corner rounded into a
+quarter-circle arc; both ends are grid tiles, so every junction stays a grid
+junction. Specified in [world-sim/curved-roads.md](world-sim/curved-roads.md)
+and [ux/interaction.md](ux/interaction.md#curve-road-mode), to be built in
+stages:
+
+1. The world holding curves: the shared geometry (arc, chain, verge, radius),
+   the curve table and derived curve layer (SAVE_VERSION 13), `buildCurve`
+   and `bulldozeCurve` with exact inverses and every refusal, chain masks,
+   and run lengths measured along the curve.
+2. Drawing them: the swept carriageway, kerbs, footways and markings, and
+   vehicles following the arc.
+3. The tool: the `Curve` mode with its three clicks, ghost, chip and
+   `Backspace`, and motorways without `Grid`. Checked in the browser.
+4. Corridor curves, furniture and lamps along a curve, and the stated truths
+   brought up to date.
+
 ### Overpasses (requested 2026-09-23, built 2026-09-24)
 
 A road could not cross another road or a railway without meeting it, because a

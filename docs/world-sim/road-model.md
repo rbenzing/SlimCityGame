@@ -917,7 +917,10 @@ The drawer's road category shows classes, not tiers; picking one lays its
 default profile. The tool options panel grows a profile editor — lane
 pieces as a strip across the tile's width budget, with per-side toggles for
 parking, bike lanes, lamps and sidewalks and a median picker — and its
-edits apply to the next drag. A replace mode drags a new profile over an
+edits apply to the next drag. The path modes are `Straight`, `L-path`,
+`Grid` and `Curve`; a motorway has no `Grid`
+([interaction.md](../ux/interaction.md#curve-road-mode)), and a curve's own
+rules are [curved-roads.md](curved-roads.md). A replace mode drags a new profile over an
 existing run in place, keeping alignment, buildings and elevation; if the
 new profile does not fit the tile the old one occupied, the drag refuses
 rather than demolishing anything. Clicking a junction node opens the

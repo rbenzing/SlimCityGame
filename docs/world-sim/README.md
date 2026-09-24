@@ -29,15 +29,16 @@ asks of the player lives in [../game-design/](../game-design/README.md).
 
 ## Networks
 
-| Document                                 | Covers                                                                                  |
-| ---------------------------------------- | --------------------------------------------------------------------------------------- |
-| [road-model.md](road-model.md)           | Classes, profiles, junctions, ramps, markings, and the traffic-engineering formulas     |
-| [overpasses.md](overpasses.md)           | A road crossing over another road or a railway: clearance, approaches, the second layer |
-| [pathfinding.md](pathfinding.md)         | The graph, the A\* search, and the cost function                                        |
-| [traffic-model.md](traffic-model.md)     | Statistical assignment, congestion feedback, cosmetic vehicles                          |
-| [transit-model.md](transit-model.md)     | Rail, trams and buses                                                                   |
-| [utilities-model.md](utilities-model.md) | Power and water, and what carries them                                                  |
-| [services-model.md](services-model.md)   | Coverage, funding, and waste                                                            |
+| Document                                 | Covers                                                                                     |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------ |
+| [road-model.md](road-model.md)           | Classes, profiles, junctions, ramps, markings, and the traffic-engineering formulas        |
+| [overpasses.md](overpasses.md)           | A road crossing over another road or a railway: clearance, approaches, the second layer    |
+| [curved-roads.md](curved-roads.md)       | A road bending through an arc between two grid ends: radii, footprint, how systems read it |
+| [pathfinding.md](pathfinding.md)         | The graph, the A\* search, and the cost function                                           |
+| [traffic-model.md](traffic-model.md)     | Statistical assignment, congestion feedback, cosmetic vehicles                             |
+| [transit-model.md](transit-model.md)     | Rail, trams and buses                                                                      |
+| [utilities-model.md](utilities-model.md) | Power and water, and what carries them                                                     |
+| [services-model.md](services-model.md)   | Coverage, funding, and waste                                                               |
 
 ## The thing to understand first
 

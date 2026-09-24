@@ -68,10 +68,12 @@ MUTCD citations below use 11th-edition section numbers.
   furniture, crossings and capacity are derived from those three and never
   authored or stored per tier. — [road-model.md](world-sim/road-model.md),
   [ADR-0012](engineering/adr/0012-a-road-is-a-class-a-cross-section-and-junctions.md)
-- Roads are grid-aligned. Curves and corner arcs are render-only, and the graph
-  never contains a diagonal step. —
-  [ADR-0005](engineering/adr/0005-roads-are-grid-aligned-no-freeform-curves.md),
-  [streets.md](art/streets.md)
+- Every junction is a grid junction, and the graph never contains a diagonal
+  step. A curve bends through a right angle between two grid end tiles, its
+  chain tiles step from neighbour to neighbour, and nothing joins it partway
+  along; a grid corner's arc is render-only. —
+  [ADR-0016](engineering/adr/0016-a-road-may-curve-between-two-grid-ends.md),
+  [curved-roads.md](world-sim/curved-roads.md), [streets.md](art/streets.md)
 - Never compare a stored `roadFlow` byte to a `RoadFlow` value directly:
   direction is the low three bits (`ROAD_FLOW_DIRECTION_MASK`), bit 3 marks a
   corridor half and bit 4 the half at the HIGH offset. —

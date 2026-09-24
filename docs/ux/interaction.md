@@ -10,8 +10,8 @@ Every row, toggle, and button that appears must be wired to real,
 currently-consumed behavior. A control that would do nothing if clicked is
 not rendered "for completeness" or "for later" — it is omitted until the
 behavior behind it exists. This is why several panels are shorter than a
-generic city-builder's: a road tool's mode row only lists `Straight` and
-`L-path` because a grid-drag mode isn't built; zone tools and Bulldoze
+generic city-builder's: a motorway's mode row leaves out `Grid`, because a
+grid of motorways is not a thing anyone builds; zone tools and Bulldoze
 render no mode row at all, because each has exactly one real mode (`Rect`);
 the corner buttons carry no gear/settings icon, because there is no
 settings system separate from the in-game Options screen. When a genuinely
@@ -69,9 +69,52 @@ replace flag and refusals apply, the preview shows every tile the grid will
 occupy, and the cursor chip prices the lot before it is committed. A grid is
 one undo step, because it was one gesture.
 
+## Curve road mode
+
+The road tool's fourth path mode, `Curve`, lays a road that bends through a
+smooth arc. What a curve is and how tight each class may take one is
+[curved-roads.md](../world-sim/curved-roads.md); this is how the player
+draws one.
+
+It is three clicks rather than a drag, because a bend has a shape a drag
+cannot say:
+
+1. **Start.** The first click picks the start tile. From then on the ghost is
+   a straight road from the start to the cursor, locked to the start's row or
+   column, whichever the cursor is nearer.
+2. **Corner.** The second click fixes the corner at the end of that straight.
+   From then on the ghost is the whole curve: the first leg, the arc, and a
+   second leg to the cursor, which is locked to the line through the corner
+   across the first leg. The ghost is drawn at the road's real width, so the
+   player sees which way it bends and how much ground it takes before placing
+   it.
+3. **End.** The third click lays the curve.
+
+The cursor chip carries the cost, the length along the centre line and the
+radius while the ghost is up, and the reason when the curve would be refused:
+too tight for the class (with the radius it needs), or a footprint that runs
+into a road, a building or water. A refused ghost draws red and the third
+click does nothing.
+
+`Backspace` takes back the last click, so a misplaced corner is moved without
+starting again. Right-click is not used: a right-drag already turns the
+camera. Escape cancels the curve in progress, the same as it
+cancels a drag. Guide snapping applies to each click as it does to a drag's
+ends; the 90° lock does not apply, because both legs are already on the
+grid. The profile, the replace flag and the class-join refusals apply as for
+any road. The elevation control is ignored, because a curve lies on the
+ground, and the chip says so if the deck is raised.
+
+A curve is one undo step, including any start or end tile it laid.
+
+**Which classes get which modes.** Every road class that can be laid offers
+`Straight`, `L-path` and `Curve`. Every class except the motorway (highway
+and ramp) also offers `Grid`. Picking a motorway while `Grid` is selected
+falls back to `Straight`.
+
 ## Road guide snapping
 
-A toggle beside the 90° lock. With it on, a road drag that is *nearly* in line
+A toggle beside the 90° lock. With it on, a road drag that is _nearly_ in line
 with an existing road is pulled into line with it: both ends of the drag snap,
 independently on each axis, onto the row or column of a nearby road that runs
 along it. A new street started a tile off an existing one becomes its
@@ -90,7 +133,7 @@ chose, and beyond it the offset is a block the player meant to leave. A snap
 that reached further would move the road somewhere it was not pointed.
 
 The toggle composes with everything else rather than replacing it: the path is
-still `Straight`, `L-path` or `Grid`, still 90°-locked if that chip is on, and
+still whichever path mode is selected, still 90°-locked if that chip is on, and
 snapping only adjusts where the drag's ends sit before the path is built.
 
 ## Cost and validity readouts

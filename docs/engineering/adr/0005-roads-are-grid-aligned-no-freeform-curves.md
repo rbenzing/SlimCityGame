@@ -1,10 +1,10 @@
 # ADR-0005: Roads are grid-aligned; free-form curves are out
 
-- **Status:** Accepted
+- **Status:** Superseded
 - **Date:** 2026-09-08
 - **Deciders:** Project owner
 - **Supersedes:** none
-- **Superseded by:** none
+- **Superseded by:** [ADR-0016](0016-a-road-may-curve-between-two-grid-ends.md)
 
 ## Context
 

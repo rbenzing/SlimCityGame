@@ -44,9 +44,11 @@ file is the index to what they foreclose, not a second copy of the argument.
 - **Tunnels**, and a **third deck level** — so interchange stacks and turbines
   are out. A tile carries one road, or two where one passes over the other
   ([overpasses](world-sim/overpasses.md)), and never a third.
-- **Free-form road geometry** — curves off the tile grid
-  ([ADR-0005](engineering/adr/0005-roads-are-grid-aligned-no-freeform-curves.md)) — along
-  with signal-phase design, reversible and contraflow lanes, and per-lane speed
+- **Free-form road geometry** — roads at arbitrary angles, junctions off the
+  grid, and curves in the air. A curve bending through a right angle between
+  two grid ends is allowed
+  ([ADR-0016](engineering/adr/0016-a-road-may-curve-between-two-grid-ends.md),
+  [curved roads](world-sim/curved-roads.md)) — along with signal-phase design, reversible and contraflow lanes, and per-lane speed
   limits.
 - **Terrain painting**, and a procedural map generator complementing the curated
   maps.

@@ -138,23 +138,26 @@ calls this out explicitly as the model's one real weakness: a layer that
 needs to change what it means, rather than add a new one, has no built-in
 escape hatch.
 
-## Roads are grid-aligned; no free-form curves
+## Every junction is on the grid
 
-**What it is:** roads are drawn and stored on the tile grid — straight,
-corner, T, cross, end-cap pieces selected by a neighbour bitmask. No
-diagonal or curved geometry off the grid.
+**What it is:** roads are stored on the tile grid, and every junction is
+one of the straight, corner, T, cross and end-cap pieces a neighbour bitmask
+selects. A curve may bend between two grid end tiles, through a right
+angle, but it never has a junction and nothing joins it partway along. No
+road meets another at an angle.
 
-**What enforces it:** the whole road-authoring and meshing pipeline is
-built around a fixed neighbour bitmask
+**What enforces it:** the junction and meshing pipeline is built around a
+fixed neighbour bitmask
 ([`src/render/roadsmesh.ts`](../../src/render/roadsmesh.ts) and
-`src/world/roads.ts`) with no coordinate model for anything off-grid.
-Retrofitting curves would mean rebuilding that pipeline, not extending it.
+`src/world/roads.ts`). A curve's chain tiles join only each other, so they
+never present a junction to that pipeline
+([curved-roads.md](../world-sim/curved-roads.md)).
 
 **What breaks if violated:** see
-[ADR-0005](adr/0005-roads-are-grid-aligned-no-freeform-curves.md) for the
-full cost/benefit; the short version is that intersection meshing stays a
-small enumerable set of cases only because every road shares one grid with
-zoning and terrain.
+[ADR-0016](adr/0016-a-road-may-curve-between-two-grid-ends.md), and
+[ADR-0005](adr/0005-roads-are-grid-aligned-no-freeform-curves.md) before it.
+Junction meshing stays a small enumerable set of cases only because every
+junction shares one grid with zoning and terrain.
 
 ## See also
 
