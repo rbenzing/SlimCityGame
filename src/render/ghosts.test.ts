@@ -6,6 +6,7 @@ import {
   GhostRenderer,
   arrowYaw,
   baseColorFor,
+  buildBandPositions,
   buildConformingEdgePositions,
   buildConformingTilePositions,
   computeFootprintEdges,
@@ -479,8 +480,7 @@ function sortEdges(edges: readonly GhostEdgeSegment[]): GhostEdgeSegment[] {
 }
 
 describe('flow arrows on a directional road preview', () => {
-  const path = (n: number): TilePoint[] =>
-    Array.from({ length: n }, (_, i) => ({ x: i, z: 0 }));
+  const path = (n: number): TilePoint[] => Array.from({ length: n }, (_, i) => ({ x: i, z: 0 }));
 
   it('draws none unless the preview asks for them', () => {
     const scene = new THREE.Scene();
@@ -1081,5 +1081,44 @@ describe('GhostRenderer frustum-culling regression (wave 6)', () => {
     expect(base.geometry.boundingSphere).toBeNull();
     expect(border.geometry.boundingSphere).toBeNull();
     expect(inner.geometry.boundingSphere).toBeNull();
+  });
+});
+
+describe('the ghost of a road off the grid', () => {
+  // A quarter circle of radius 50 m, sampled every 5°.
+  const arc = Array.from({ length: 19 }, (_, i) => {
+    const t = (i / 18) * (Math.PI / 2);
+    return { x: 100 + 50 * Math.cos(t), z: 100 + 50 * Math.sin(t) };
+  });
+
+  it('covers the road at its width either side of the centre line, on the ground, facing up', () => {
+    const positions = buildBandPositions(arc, -6, 6, () => 3, 0.2);
+    expect(positions.length).toBe((arc.length - 1) * 6 * 3);
+    for (let i = 0; i < positions.length; i += 3) {
+      const r = Math.hypot(positions[i]! - 100, positions[i + 2]! - 100);
+      // Positions are single precision: a millimetre is what they carry here.
+      expect(r).toBeGreaterThan(44 - 1e-3);
+      expect(r).toBeLessThan(56 + 1e-3);
+      expect(positions[i + 1]).toBeCloseTo(3.2, 3);
+    }
+    for (let t = 0; t < positions.length; t += 9) {
+      const a = new THREE.Vector3(positions[t], positions[t + 1], positions[t + 2]);
+      const b = new THREE.Vector3(positions[t + 3], positions[t + 4], positions[t + 5]);
+      const c = new THREE.Vector3(positions[t + 6], positions[t + 7], positions[t + 8]);
+      const normal = b.sub(a).cross(c.sub(a));
+      expect(normal.y).toBeGreaterThan(0);
+    }
+  });
+
+  it('draws the band, its edges and the clicks, and nothing of the tile ghost', () => {
+    const scene = new THREE.Scene();
+    const ghosts = new GhostRenderer(scene, () => 0);
+    ghosts.setCurve(arc, 11.3, false, [arc[0]!]);
+    const { base, border, inner, stripe } = ghosts.layers();
+    expect(base.geometry.getAttribute('position').count).toBe((arc.length - 1) * 6);
+    expect(border.geometry.getAttribute('position').count).toBe((arc.length - 1) * 12);
+    expect(inner.geometry.getAttribute('position').count).toBe(6);
+    expect(stripe.count).toBe(0);
+    expect(ghosts.volumeBox().visible).toBe(false);
   });
 });

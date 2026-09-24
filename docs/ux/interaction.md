@@ -90,13 +90,20 @@ drag cannot say:
 3. **End.** The third click lays the curve.
 
 **A straight at any angle** is the `Straight` mode with the 90° lock off: the
-drag runs wherever the cursor goes instead of snapping to a row or column.
+drag runs wherever the cursor goes instead of snapping to a row or column. A
+drag that stays on one row or column is still a grid street, as it always
+was; only one that leaves it runs off the grid. With the lock on, every drag
+snaps to a row or column.
 
 Each click, and each end of a drag, snaps to what is already there: onto an
-existing node, onto an existing road (splitting it with a new junction), or,
-with guide snapping on, into line with a road nearby. A curve that starts on
-the end of an existing road starts in that road's direction unless the bend
-says otherwise, so a road can be continued round a bend without a kink.
+existing node within 4 m, onto an existing free road within 4 m of its centre
+line (splitting it with a new junction, in the same undo step as the new
+road), onto the centre of a grid road tile, or, with guide snapping on, into
+line with a road nearby. A curve that starts on the end of an existing road
+starts in that road's direction unless the bend says otherwise: a bend placed
+within 8 m of that road's line, ahead of its end, is pulled onto the line, so
+a road can be continued round a bend without a kink, and one placed further
+off keeps the kink the player asked for.
 
 The cursor chip carries the cost, the length along the centre line and, for a
 curve, its tightest radius. When the road would be refused it carries the
@@ -106,11 +113,14 @@ may not meet, or ground that is taken. A refused ghost draws red and the final
 click does nothing.
 
 `Backspace` takes back the last click, so a misplaced bend is moved without
-starting again. Right-click is not used: a right-drag already turns the
-camera. Escape cancels the road in progress, the same as it cancels a drag.
-The profile, the replace flag, the elevation control and the class-join
-refusals apply as for any road. A curve is one undo step, including any road
-it split.
+starting again. Right-click is not used, and leaves a curve in progress
+alone: a right-drag turns the camera, which is how a player looks round a
+bend before placing its end. Escape cancels the road in progress, the same as
+it cancels a drag. The profile and the class-join refusals apply as for any
+road. The replace flag has nothing to replace off the grid, and until roads
+off the grid can be raised a curve with the elevation set above the ground is
+refused with that reason rather than laid on the ground. A curve is one undo
+step, including any road it split.
 
 **Which classes get which modes.** Every road class that can be laid offers
 `Straight`, `L-path` and `Curve`. Every class except the motorway (highway

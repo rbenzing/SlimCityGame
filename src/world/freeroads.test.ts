@@ -16,7 +16,18 @@ import {
   segmentGeom,
   syncRoadLayers,
 } from './roadnet';
-import { deriveRoadFootprint, laySegment, planSegment, removeSegmentAt } from './freeroads';
+import {
+  deriveRoadFootprint,
+  joinSegmentsAt,
+  laySegment,
+  nearestRoadPoint,
+  planSegment,
+  planWithSplits,
+  removeSegmentAt,
+  snapRoadEnd,
+  splitRefusal,
+  splitSegment,
+} from './freeroads';
 import { RoadNetwork } from './roadgraph';
 
 const SIZE = 48;
@@ -224,6 +235,95 @@ describe('roads off the grid: what is refused', () => {
     expect(plan(g, { tier: RoadTier.Ramp, a: at(300, 150), b: turn(12), flow: 1 })).toMatchObject({
       ok: true,
     });
+  });
+});
+
+describe('where a dropped road end lands', () => {
+  it('lands on a node, else on a free road, else a grid road tile’s centre, else where dropped', () => {
+    const g = world();
+    applyRoad(
+      g,
+      Array.from({ length: 6 }, (_, i) => ({ x: 5 + i, z: 5 })),
+      RoadTier.TwoLane,
+    );
+    settle(g);
+    lay(g, { a: at(300, 300), b: at(420, 300) });
+    // Three metres from the free road's end: onto the end.
+    expect(snapRoadEnd(g, at(302, 302))).toEqual({ at: at(300, 300), splits: false });
+    // Beside it partway along: onto its centre line, which it will split.
+    expect(snapRoadEnd(g, at(350, 303))).toEqual({ at: at(350, 300), splits: true });
+    // Too far off it: nowhere near a road.
+    expect(snapRoadEnd(g, at(350, 310))).toEqual({ at: at(350, 310), splits: false });
+    // Anywhere on a grid road's tile: its centre.
+    expect(snapRoadEnd(g, at(141, 103))).toEqual({ at: centre(7, 5), splits: false });
+    // Open ground: exactly where it was dropped.
+    expect(snapRoadEnd(g, at(600, 600))).toEqual({ at: at(600, 600), splits: false });
+  });
+});
+
+describe('splitting a free road, and joining it back', () => {
+  /** The free roads of the network, as ends and control, sorted. */
+  const shapes = (g: GridState): string[] =>
+    freeSegments(g)
+      .map((s) => {
+        const geom = segmentGeom(g.roads!, s);
+        const c = geom.control ? `${geom.control.x},${geom.control.z}` : '-';
+        return `${geom.a.x},${geom.a.z}>${geom.b.x},${geom.b.z}~${c}`;
+      })
+      .sort();
+
+  it('cuts a curve in two at a point on it and joins it back exactly', () => {
+    const g = world();
+    lay(g, {
+      tier: RoadTier.OneWay,
+      a: at(100, 100),
+      b: at(400, 400),
+      control: at(400, 100),
+      flow: 1,
+    });
+    const before = shapes(g);
+    // The curve passes (325, 175) halfway along; this is a few metres off it.
+    const rp = nearestRoadPoint(g.roads!, at(328, 179), 10)!;
+    expect(rp).not.toBeNull();
+    expect(splitRefusal(g.roads!, rp)).toBeNull();
+    splitSegment(g.roads!, rp);
+    const halves = freeSegments(g);
+    expect(halves).toHaveLength(2);
+    // Both pieces keep the road, and run on the way it was drawn.
+    for (const s of halves) {
+      expect(g.roads!.segTier[s]).toBe(RoadTier.OneWay);
+      expect(g.roads!.segFlow[s]).toBe(1);
+    }
+    // The two pieces meet at the split point, and it lies on the old curve.
+    expect(liveNodes(g.roads!).filter((n) => g.roads!.nodeX[n] === rp.at.x)).toHaveLength(1);
+    expect(joinSegmentsAt(g.roads!, rp.at, at(400, 100))).toBe(true);
+    expect(shapes(g)).toEqual(before);
+  });
+
+  it('refuses a split too near a road’s end, and a join where no two pieces meet', () => {
+    const g = world();
+    lay(g, { a: at(100, 100), b: at(300, 150) });
+    const nearEnd = nearestRoadPoint(g.roads!, at(104, 101), 5)!;
+    expect(splitRefusal(g.roads!, nearEnd)).toMatch(/near the end/);
+    expect(joinSegmentsAt(g.roads!, at(100, 100), null)).toBe(false);
+  });
+
+  it('plans a road ending partway along another as though that road were split there', () => {
+    const g = world();
+    lay(g, { a: at(100, 300), b: at(500, 300) });
+    const req = {
+      tier: RoadTier.TwoLane,
+      profileId: RoadTier.TwoLane,
+      a: at(300, 100),
+      b: at(300, 300),
+      control: null,
+      flow: 0,
+    };
+    // Without the split the new road runs into the old one between its nodes.
+    expect(planSegment(g, g.roads!, req, noCustom).ok).toBe(false);
+    expect(planWithSplits(g, g.roads!, req, [at(300, 300)], noCustom).ok).toBe(true);
+    // And the plan leaves the real network as it was.
+    expect(freeSegments(g)).toHaveLength(1);
   });
 });
 

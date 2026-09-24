@@ -37,9 +37,14 @@ import { segmentLengthM } from '../shared/roadgeom';
 import {
   deriveRoadFootprint,
   freeJunctionTiles,
+  joinSegmentsAt,
   laySegment,
+  nearestRoadPoint,
   planSegment,
   removeSegmentAt,
+  SPLIT_MATCH_M,
+  splitRefusal,
+  splitSegment,
 } from '../world/freeroads';
 import {
   SAVE_VERSION,
@@ -130,6 +135,7 @@ import {
   loadGrid,
   reconcileRoads,
   saveGrid,
+  segmentGeom,
   syncRoadLayers,
 } from '../world/roadnet';
 import { applyRoad, computeOverMask, remaskAround, removeRoad } from '../world/roads';
@@ -1880,6 +1886,10 @@ class SimWorld implements WorkerSim {
         return this.cmdBuildSegment(command);
       case 'removeSegment':
         return this.cmdRemoveSegment(command.a, command.b, command.control ?? null);
+      case 'splitSegment':
+        return this.cmdSplitSegment(command.at);
+      case 'joinSegments':
+        return this.cmdJoinSegments(command.at, command.control ?? null);
       case 'paintZone':
         return this.cmdPaintZone(command.zone, command.tiles);
       case 'placeBuilding':
@@ -2390,6 +2400,32 @@ class SimWorld implements WorkerSim {
     const inverse: Command = { kind: 'removeSegment', a: command.a, b: command.b };
     if (command.control) inverse.control = command.control;
     return { ok: true, cost, inverse: [inverse] };
+  }
+
+  /** Cuts a road off the grid in two at a point on it; free, and undone by joining. */
+  private cmdSplitSegment(at: { x: number; z: number }): CommandResult {
+    const rp = nearestRoadPoint(this.roads, at, SPLIT_MATCH_M);
+    if (!rp) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+    const refusal = splitRefusal(this.roads, { ...rp, at });
+    if (refusal) return { ok: false, cost: 0, inverse: [], reason: refusal };
+    const control = segmentGeom(this.roads, rp.seg).control;
+    splitSegment(this.roads, { ...rp, at });
+    this.roadsEdited = true;
+    const inverse: Command = { kind: 'joinSegments', at };
+    if (control) inverse.control = control;
+    return { ok: true, cost: 0, inverse: [inverse] };
+  }
+
+  /** Joins two roads off the grid back into one; free, and undone by splitting. */
+  private cmdJoinSegments(
+    at: { x: number; z: number },
+    control: { x: number; z: number } | null,
+  ): CommandResult {
+    if (!joinSegmentsAt(this.roads, at, control)) {
+      return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+    }
+    this.roadsEdited = true;
+    return { ok: true, cost: 0, inverse: [{ kind: 'splitSegment', at }] };
   }
 
   /** Takes away one road off the grid, refunding what bulldozing a road refunds. */

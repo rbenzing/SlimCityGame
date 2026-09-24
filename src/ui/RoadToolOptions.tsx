@@ -2,7 +2,7 @@
  * Road tool options — path mode, elevation, and snapping — as an inline row
  * rather than a floating panel. It lives in the asset drawer's header beside
  * the close button, because it is the road panel's own state: which way the
- * next drag runs and how high it sits. Rule zero applies as it always did:
+ * next road runs and how high it sits. Rule zero applies as it always did:
  * every control here flips real, currently-consumed behavior.
  */
 import type { JSX } from 'react';
@@ -22,7 +22,7 @@ import {
   type SideChoice,
   type TramChoice,
 } from '../shared/roadprofile';
-import { ROAD_TOOL_TO_TIER } from '../tools/tools';
+import { offersGrid, ROAD_TOOL_TO_TIER } from '../tools/tools';
 import type { ToolMode } from './store';
 import { useCityStore } from './store';
 
@@ -285,13 +285,19 @@ export function RoadToolOptions(): JSX.Element {
   const setToolFlags = useCityStore((s) => s.setToolFlags);
   const roadElevation = useCityStore((s) => s.roadElevation);
   const setRoadElevation = useCityStore((s) => s.setRoadElevation);
+  const tool = useCityStore((s) => s.selectedTool);
 
-  const modeButton = (mode: ToolMode, label: string): JSX.Element => (
+  // A motorway has no `Grid`; with it selected, the motorway runs straight,
+  // so that is the chip shown pressed.
+  const grid = offersGrid(tool);
+  const shownMode: ToolMode = !grid && toolMode === 'grid' ? 'straight' : toolMode;
+  const modeButton = (mode: ToolMode, label: string, title?: string): JSX.Element => (
     <button
       type="button"
-      aria-pressed={toolMode === mode}
+      aria-pressed={shownMode === mode}
+      title={title}
       onClick={() => setToolMode(mode)}
-      className={`${CHIP} ${toolMode === mode ? CHIP_ON : CHIP_OFF}`}
+      className={`${CHIP} ${shownMode === mode ? CHIP_ON : CHIP_OFF}`}
     >
       {label}
     </button>
@@ -306,7 +312,12 @@ export function RoadToolOptions(): JSX.Element {
         <div className="flex gap-1">
           {modeButton('straight', 'Straight')}
           {modeButton('lpath', 'L-path')}
-          {modeButton('grid', 'Grid')}
+          {grid && modeButton('grid', 'Grid')}
+          {modeButton(
+            'curve',
+            'Curve',
+            'Three clicks: the start, the bend, then the end. Backspace takes back a click.',
+          )}
         </div>
       </Group>
 
@@ -345,27 +356,27 @@ export function RoadToolOptions(): JSX.Element {
 
       <Group label="Snap">
         <div className="flex gap-1">
-        <button
-          type="button"
-          aria-pressed={toolFlags.angleLock}
-          onClick={() => setToolFlags({ angleLock: !toolFlags.angleLock })}
-          className={`${CHIP} ${toolFlags.angleLock ? CHIP_ON : CHIP_OFF}`}
-        >
-          90°
-        </button>
-        <button
-          type="button"
-          aria-pressed={toolFlags.guideSnap}
-          title={
-            toolFlags.guideSnap
-              ? 'A drag nearly in line with a road is pulled into line with it'
-              : 'A drag goes exactly where it is pointed'
-          }
-          onClick={() => setToolFlags({ guideSnap: !toolFlags.guideSnap })}
-          className={`${CHIP} ${toolFlags.guideSnap ? CHIP_ON : CHIP_OFF}`}
-        >
-          Guide
-        </button>
+          <button
+            type="button"
+            aria-pressed={toolFlags.angleLock}
+            onClick={() => setToolFlags({ angleLock: !toolFlags.angleLock })}
+            className={`${CHIP} ${toolFlags.angleLock ? CHIP_ON : CHIP_OFF}`}
+          >
+            90°
+          </button>
+          <button
+            type="button"
+            aria-pressed={toolFlags.guideSnap}
+            title={
+              toolFlags.guideSnap
+                ? 'A drag nearly in line with a road is pulled into line with it'
+                : 'A drag goes exactly where it is pointed'
+            }
+            onClick={() => setToolFlags({ guideSnap: !toolFlags.guideSnap })}
+            className={`${CHIP} ${toolFlags.guideSnap ? CHIP_ON : CHIP_OFF}`}
+          >
+            Guide
+          </button>
         </div>
       </Group>
 

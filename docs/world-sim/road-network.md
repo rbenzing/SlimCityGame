@@ -172,8 +172,18 @@ This is where each system ends up. The stages below say when.
   one-way road running from the first end to the second. Each end becomes an
   existing node standing exactly there, the node at a grid road tile's centre,
   or a new node of its own. An end partway along another free segment is
-  refused: the road tool splits that segment first, with the command that
-  comes with the tool. Its inverse is `removeSegment`.
+  refused: the road tool splits that segment first, with `splitSegment`, in
+  the same batch. Its inverse is `removeSegment`.
+- `splitSegment` cuts the free segment passing through a point on its centre
+  line in two, with a node there that both pieces meet at. Each piece keeps
+  the road's tier, profile and flow, and a curve is cut where it lies (each
+  piece's control point is found by de Casteljau's construction), so the road
+  does not move. A piece shorter than the shortest segment is refused. It
+  costs nothing, and its inverse is `joinSegments`.
+- `joinSegments` joins the two free segments meeting at a node back into one
+  with a given control point, taking the node away, where exactly two of the
+  same kind meet there and run on through it. It costs nothing, and its
+  inverse is `splitSegment` at the same point.
 - `removeSegment` takes away the segment between two end points with a given
   control point, and any node at either end that no road meets any more. Its
   inverse is the `buildSegment` that puts the same segment back.
@@ -254,8 +264,24 @@ that the grid could not already hold.
      tile's centre and a free road's centre line about every 5 m, run the way
      the edge is driven. A path joins its edges' lines, and cars, service
      vehicles and garbage trucks all drive that.
-5. **The tool.** The curve and free modes, their ghost, chip and refusals,
-   and motorways without `Grid`, checked in the browser.
+5. **The tool**, in two parts, checked in the browser.
+   - **5a, the curve.** The `Curve` mode's three clicks, each end snapped onto
+     a road node within reach or to the centre of the grid road tile under
+     it; the ghost at the road's real width; the chip with cost, length and
+     tightest radius, or the refusal; Backspace and Escape; and motorways
+     without `Grid`. The preview is judged by the world's own `planSegment`,
+     run against the render thread's mirror of the grid and network, so it
+     refuses exactly what the command would.
+   - **5b, the rest of the drawing.** A straight at any angle (`Straight` with
+     the 90° lock off, leaving its row or column), an end landing partway
+     along a free road splitting it with a new junction (`splitSegment`, sent
+     in the same batch as the road and undone with it by `joinSegments`), and
+     a curve starting on a road's end continuing its direction.
+   - **5c, guide snapping off the grid.** With guide snapping on, a free
+     road's end that lands on nothing is pulled, on each axis, onto the
+     centre line of the nearest row or column a grid road runs along, within
+     the grid drag's reach, and then lands on whatever is there. The rows and
+     columns that guide are found exactly as a grid drag finds them.
 6. **Angled junction behaviour.** Control, stop lines, crossings, approach
    lanes and turn pockets at junctions that are not on the grid, and the
    signs and kerbside furniture along free roads, which the grid places by

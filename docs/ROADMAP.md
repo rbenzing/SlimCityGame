@@ -303,6 +303,41 @@ Checked in the browser on a small town grown along a free curve: 14 of the
 17 vehicles within 25 m of the curve were on its centre line, the rest on the
 grid street at its mouth. Stage 4 is complete.
 
+Stage 5a is built (2026-09-24): the road tool's `Curve` mode. Three clicks —
+the start, the bend, the end — with the start and end snapped onto a road
+node within 4 m or to the centre of the grid road tile under them; a ghost at
+the road's real width, red when refused; and a chip with the cost, the length
+along the centre line and the tightest radius, or the reason it is refused.
+The preview runs the world's own `planSegment` against the render thread's
+mirror, so it refuses exactly what `buildSegment` would. Backspace takes back
+a click, Escape drops the curve, and a right-drag turns the camera without
+losing it. A one-way road runs from the first click to the last. Motorways no
+longer offer `Grid`, and with `Grid` selected they run straight. Checked in
+the browser: a curve laid off a grid street (charged the ¢302 its chip
+quoted), a too-tight curve refused with the 40 m radius it needs, Backspace,
+Escape, and the motorway's options.
+
+Stage 5b is built (2026-09-24). `Straight` with the 90° lock off lays a road
+at any angle once the drag leaves its row or column; along one it is still a
+grid street. A road end landing within 4 m of a free road's centre line lands
+on it, and the road is split there by the new `splitSegment` command — sent
+in the same batch as the new road, so one undo takes both back; its inverse,
+`joinSegments`, puts the road back exactly as it was, and neither costs
+anything, where undoing by removing and rebuilding would have refunded and
+charged. The preview plans on a copy of the network with the split made, so
+it still refuses exactly what the command would. A bend placed within 8 m of
+the line of the road a curve starts from is pulled onto it, so a road carries
+on round a bend without a kink. Checked in the browser: a diagonal laid off
+the grid, a straight drag ending on it splitting it into a T-junction, and a
+curve continuing the first one smoothly from its end.
+
+Stage 5c is built (2026-09-24): with guide snapping on, a free road's end
+that lands on nothing is pulled onto the centre line of the nearest row or
+column a grid road runs along, within the same reach a grid drag's end has,
+so a road off the grid can be started or ended in line with a street. It
+finds its guides with the grid drag's own rule, shared rather than copied.
+Stage 5 is complete.
+
 ### Overpasses (requested 2026-09-23, built 2026-09-24)
 
 A road could not cross another road or a railway without meeting it, because a

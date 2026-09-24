@@ -17,6 +17,7 @@ import {
   isTileCentre,
   leavingDirection,
   onMap,
+  pointAt,
   sampleCentreLine,
   segmentLengthM,
   tightestRadiusM,
@@ -32,8 +33,10 @@ import type { GridState, RoadClassId, RoadNet, RoadProfile, RoadTier } from '../
 import {
   addNode,
   addSegment,
+  decodeRoadNetwork,
   dropNode,
   dropSegment,
+  encodeRoadNetwork,
   isFreeSegment,
   segmentGeom,
   segmentsAt,
@@ -41,6 +44,25 @@ import {
 
 /** Resolves a stored profile id to the cross-section it names, or null. */
 export type ProfileLookup = (id: number) => RoadProfile | null;
+
+/**
+ * The grid layers planning a road off the grid reads: the ground, what stands
+ * on it, and the grid's own roads. The world's grid has them, and so does the
+ * render thread's mirror of it, so the tool's preview plans exactly as the
+ * command will.
+ */
+export type SegmentGround = Pick<
+  GridState,
+  | 'size'
+  | 'height'
+  | 'water'
+  | 'buildingId'
+  | 'roadTier'
+  | 'roadMask'
+  | 'roadProfile'
+  | 'roadElevation'
+  | 'overTier'
+>;
 
 /** What a `buildSegment` asks for. */
 export interface SegmentRequest {
@@ -99,7 +121,7 @@ const MIN_SPREAD_SIN = 0.05;
  * Ground height at a point, metres, read between the four nearest tile
  * centres, since the terrain is one height per tile.
  */
-export function groundAt(g: GridState, x: number, z: number): number {
+export function groundAt(g: Pick<GridState, 'size' | 'height'>, x: number, z: number): number {
   const fx = x / TILE_METERS - 0.5;
   const fz = z / TILE_METERS - 0.5;
   const x0 = Math.max(0, Math.min(g.size - 1, Math.floor(fx)));
@@ -136,7 +158,7 @@ const GRID_STEPS: readonly { bit: number; dx: number; dz: number }[] = [
 ];
 
 /** The roads already leaving the place an end of the new segment lands on. */
-function armsAt(g: GridState, net: RoadNet, p: CmPoint, lookup: ProfileLookup): Arm[] {
+function armsAt(g: SegmentGround, net: RoadNet, p: CmPoint, lookup: ProfileLookup): Arm[] {
   const arms: Arm[] = [];
   const slot = nodeAt(net, p);
   if (slot >= 0) {
@@ -206,7 +228,7 @@ function armRefusal(arms: readonly Arm[], mine: Arm): string | null {
  * laid exactly as it is.
  */
 export function planSegment(
-  g: GridState,
+  g: SegmentGround,
   net: RoadNet,
   req: SegmentRequest,
   lookup: ProfileLookup,
@@ -387,6 +409,123 @@ export function removeSegmentAt(
   return null;
 }
 
+/** A point on a free road's centre line: its segment, how far along it (0..1), and where. */
+export interface RoadPoint {
+  seg: number;
+  t: number;
+  at: CmPoint;
+}
+
+const lerpCm = (p: CmPoint, q: CmPoint, t: number): CmPoint => ({
+  x: Math.round(p.x + (q.x - p.x) * t),
+  z: Math.round(p.z + (q.z - p.z) * t),
+});
+
+/**
+ * The point on a free road's centre line nearest `p`, if one lies within
+ * `reachM`: found on the metre samples, then narrowed between the samples
+ * either side, so every machine finds the same one.
+ */
+export function nearestRoadPoint(net: RoadNet, p: CmPoint, reachM: number): RoadPoint | null {
+  const pm = { x: p.x / 100, z: p.z / 100 };
+  const dist = (q: MPoint): number => Math.sqrt((q.x - pm.x) ** 2 + (q.z - pm.z) ** 2);
+  let best: { seg: number; t: number; d: number } | null = null;
+  for (let s = 0; s < net.segSlots; s++) {
+    if (net.segLive[s] !== 1 || !isFreeSegment(net, s)) continue;
+    const geom = segmentGeom(net, s);
+    const samples = sampleCentreLine(geom);
+    let k = 0;
+    for (let i = 1; i < samples.length; i++) if (dist(samples[i]!) < dist(samples[k]!)) k = i;
+    let lo = samples[Math.max(0, k - 1)]!.t;
+    let hi = samples[Math.min(samples.length - 1, k + 1)]!.t;
+    for (let i = 0; i < 40; i++) {
+      const m1 = lo + (hi - lo) / 3;
+      const m2 = hi - (hi - lo) / 3;
+      if (dist(pointAt(geom, m1)) <= dist(pointAt(geom, m2))) hi = m2;
+      else lo = m1;
+    }
+    const t = (lo + hi) / 2;
+    const d = dist(pointAt(geom, t));
+    if (d <= reachM && (best === null || d < best.d)) best = { seg: s, t, d };
+  }
+  if (!best) return null;
+  const q = pointAt(segmentGeom(net, best.seg), best.t);
+  return { seg: best.seg, t: best.t, at: { x: Math.round(q.x * 100), z: Math.round(q.z * 100) } };
+}
+
+/** Why a free road cannot be split at a point: a piece would be shorter than a road may be. */
+export function splitRefusal(net: RoadNet, rp: RoadPoint): string | null {
+  const geom = segmentGeom(net, rp.seg);
+  const [left, right] = splitGeom(geom, rp.t, rp.at);
+  if (segmentLengthM(left) < MIN_SEGMENT_M || segmentLengthM(right) < MIN_SEGMENT_M) {
+    return 'Too near the end of that road: join it at its end';
+  }
+  return null;
+}
+
+/** A centre line cut in two at `t`, meeting at `at` (de Casteljau for a curve). */
+function splitGeom(g: SegmentGeom, t: number, at: CmPoint): [SegmentGeom, SegmentGeom] {
+  if (g.control === null) {
+    return [
+      { a: g.a, b: at, control: null },
+      { a: at, b: g.b, control: null },
+    ];
+  }
+  return [
+    { a: g.a, b: at, control: lerpCm(g.a, g.control, t) },
+    { a: at, b: g.b, control: lerpCm(g.control, g.b, t) },
+  ];
+}
+
+/**
+ * Cuts a free road in two at a point on it, which becomes a node both pieces
+ * meet at. Each piece keeps the road's tier, profile, flow and the way it
+ * runs, so a one-way road still runs from its first end to its last.
+ */
+export function splitSegment(net: RoadNet, rp: RoadPoint): void {
+  const s = rp.seg;
+  const [left, right] = splitGeom(segmentGeom(net, s), rp.t, rp.at);
+  const facts = { tier: net.segTier[s]!, profile: net.segProfile[s]!, flow: net.segFlow[s]! };
+  const a = net.segA[s]!;
+  const b = net.segB[s]!;
+  dropSegment(net, s);
+  const mid = addNode(net, { x: rp.at.x, z: rp.at.z, height: 0, tier: 0, profile: 0, flow: 0 });
+  addSegment(net, { ...facts, a, b: mid, h0: 0, h1: 0, control: left.control });
+  addSegment(net, { ...facts, a: mid, b, h0: 0, h1: 0, control: right.control });
+}
+
+/**
+ * Joins the two free roads meeting at `at` back into one with control point
+ * `control`, taking the node away: the inverse of a split. Null unless
+ * exactly two free roads of the same kind meet there, running on through it.
+ */
+export function joinSegmentsAt(net: RoadNet, at: CmPoint, control: CmPoint | null): boolean {
+  const node = nodeAt(net, at);
+  if (node < 0 || net.nodeTier[node] !== 0) return false;
+  const segs = segmentsAt(net, node);
+  if (segs.length !== 2 || !segs.every((s) => isFreeSegment(net, s))) return false;
+  const inbound = segs.find((s) => net.segB[s] === node);
+  const outbound = segs.find((s) => net.segA[s] === node);
+  if (inbound === undefined || outbound === undefined || inbound === outbound) return false;
+  const same =
+    net.segTier[inbound] === net.segTier[outbound] &&
+    net.segProfile[inbound] === net.segProfile[outbound] &&
+    net.segFlow[inbound] === net.segFlow[outbound];
+  if (!same) return false;
+  const facts = {
+    tier: net.segTier[inbound]!,
+    profile: net.segProfile[inbound]!,
+    flow: net.segFlow[inbound]!,
+  };
+  const a = net.segA[inbound]!;
+  const b = net.segB[outbound]!;
+  dropSegment(net, inbound);
+  dropSegment(net, outbound);
+  dropNode(net, node);
+  addSegment(net, { ...facts, a, b, h0: 0, h1: 0, control });
+  return true;
+}
+
 /** Rewrites the footprint layer: every tile a free road's full cross-section covers. */
 export function deriveRoadFootprint(
   g: Pick<GridState, 'size' | 'roadFootprint'>,
@@ -412,6 +551,101 @@ export function freeJunctionTiles(net: RoadNet, size: number): Set<number> {
     }
   }
   return tiles;
+}
+
+/** How close to a road node a dropped road end is pulled onto it, metres. */
+export const NODE_SNAP_M = 4;
+/** How close to a free road's centre line a dropped road end lands on it, metres. */
+export const ROAD_SNAP_M = 4;
+
+/** Where a dropped road end lands, and whether it lands partway along a free road. */
+export interface RoadEnd {
+  at: CmPoint;
+  /** It lands on a free road away from its nodes, which is split there to meet it. */
+  splits: boolean;
+}
+
+/**
+ * Where a road end dropped at `p` lands: on the nearest road node within
+ * `NODE_SNAP_M`; else on the nearest free road's centre line within
+ * `ROAD_SNAP_M`, splitting it; else at the centre of the grid road tile under
+ * it, the only place a road off the grid may meet one; else at `p` itself.
+ */
+export function snapRoadEnd(
+  g: Pick<GridState, 'size' | 'roadTier'> & { roads?: RoadNet },
+  p: CmPoint,
+): RoadEnd {
+  const net = g.roads;
+  if (net) {
+    let best: CmPoint | null = null;
+    let bestD = NODE_SNAP_M * 100;
+    for (let s = 0; s < net.nodeSlots; s++) {
+      if (net.nodeLive[s] !== 1) continue;
+      const dx = net.nodeX[s]! - p.x;
+      const dz = net.nodeZ[s]! - p.z;
+      const d = Math.sqrt(dx * dx + dz * dz);
+      if (d <= bestD) {
+        bestD = d;
+        best = { x: net.nodeX[s]!, z: net.nodeZ[s]! };
+      }
+    }
+    if (best) return { at: best, splits: false };
+    const onRoad = nearestRoadPoint(net, p, ROAD_SNAP_M);
+    if (onRoad) return { at: onRoad.at, splits: true };
+  }
+  const tx = tileOfCm(p.x);
+  const tz = tileOfCm(p.z);
+  if (tx >= 0 && tz >= 0 && tx < g.size && tz < g.size && g.roadTier[tz * g.size + tx]) {
+    return { at: tileCentrePoint(tx, tz), splits: false };
+  }
+  return { at: p, splits: false };
+}
+
+/**
+ * Plans a road off the grid whose ends at `splits` land partway along free
+ * roads: on a copy of the network with those roads split there first, as the
+ * split commands sent ahead of it will leave the real one.
+ */
+export function planWithSplits(
+  g: SegmentGround,
+  net: RoadNet,
+  req: SegmentRequest,
+  splits: readonly CmPoint[],
+  lookup: ProfileLookup,
+): SegmentPlan {
+  if (splits.length === 0) return planSegment(g, net, req, lookup);
+  const copy = decodeRoadNetwork(encodeRoadNetwork(net));
+  for (const at of splits) {
+    const rp = nearestRoadPoint(copy, at, SPLIT_MATCH_M);
+    if (!rp) return { ok: false, reason: 'invalid' };
+    const refusal = splitRefusal(copy, { ...rp, at });
+    if (refusal) return { ok: false, reason: refusal };
+    splitSegment(copy, { ...rp, at });
+  }
+  return planSegment(g, copy, req, lookup);
+}
+
+/**
+ * How near a road's centre line a split point must be, metres: a point
+ * snapped onto the line, rounded to the centimetre.
+ */
+export const SPLIT_MATCH_M = 0.1;
+
+/**
+ * The way a road carries on from its end at `p`: the direction out of a node
+ * that exactly one road leaves, pointing away from that road. Null where no
+ * road ends there, or more than one meets.
+ */
+export function roadEndDirection(
+  g: SegmentGround,
+  net: RoadNet,
+  p: CmPoint,
+  lookup: ProfileLookup,
+): MPoint | null {
+  const arms = armsAt(g, net, p, lookup);
+  if (arms.length !== 1) return null;
+  const d = arms[0]!.dir;
+  return { x: -d.x, z: -d.z };
 }
 
 /** A tile's centre in world centimetres. */

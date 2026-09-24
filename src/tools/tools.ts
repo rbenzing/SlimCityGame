@@ -18,6 +18,7 @@ import {
   BRIDGE_MAX_GRADE,
   ROAD_ELEVATION_STEP_M,
   TILE_METERS,
+  tileToWorld,
 } from '../shared/constants';
 import type {
   BrushSettings,
@@ -50,7 +51,10 @@ import {
   type RoadPrice,
   tilesAcross,
   type ProfileEdits,
+  isOneWayProfile,
 } from '../shared/roadprofile';
+import { sampleCentreLine, segmentLengthM, tightestRadiusM } from '../shared/roadgeom';
+import type { CmPoint, SegmentGeom } from '../shared/roadgeom';
 import { ZONE_DEPTH } from '../world/zonable';
 import { corridorRunsFor, corridorTiles, rampMeetingRefusal } from '../shared/corridor';
 import type { CorridorRuns } from '../shared/corridor';
@@ -71,7 +75,44 @@ export interface ToolPreview extends CursorChip {
    * the split is made. Absent for every tool that is not laying a road.
    */
   widthMeters?: number;
+  /**
+   * A road off the grid being drawn: its centre line and the points clicked so
+   * far, world metres. Present only in the `Curve` mode, whose ghost is this
+   * line at `widthMeters` rather than tiles.
+   */
+  curve?: { centre: { x: number; z: number }[]; clicks: { x: number; z: number }[] };
 }
+
+/** A road off the grid, as the tool asks whether it may be laid. */
+export interface FreeRoadAsk {
+  tier: RoadTier;
+  profileId: number;
+  a: CmPoint;
+  b: CmPoint;
+  control: CmPoint | null;
+  /** 0 both ways; 1 one-way from `a` to `b`. */
+  flow: number;
+  /** Points partway along free roads where its ends land, each split there first. */
+  splits: CmPoint[];
+}
+
+/** Where a dropped road end lands, and whether it lands partway along a free road. */
+export interface RoadEndSnap {
+  at: CmPoint;
+  splits: boolean;
+}
+
+/** A road off the grid the tool is drawing: its centre line, and the roads it splits. */
+interface FreeRoad {
+  geom: SegmentGeom;
+  splits: CmPoint[];
+}
+
+/**
+ * How far from the line of the road a curve starts on its bend may be placed
+ * and still be pulled onto it, metres: near enough reads as "carry on".
+ */
+export const BEND_SNAP_M = 8;
 
 /** Zone tool paint mode (tool-options row): brush follows the
  * drag's actual path; rect fills the enclosing rectangle (existing/default). */
@@ -145,6 +186,34 @@ export interface ToolEnv {
    * is recognised and a drag meets every road at grade.
    */
   roadMaskAt?(tile: TilePoint): number;
+  /**
+   * The ground under a screen pixel, world metres, or null off the ground.
+   * Optional: without it the `Curve` mode has nowhere to put a click.
+   */
+  worldPointAt?(sx: number, sy: number): { x: number; z: number } | null;
+  /**
+   * Where a road end dropped at `p` lands: on a road node near it, partway
+   * along a free road near it (which is then split there), at the centre of
+   * the grid road tile under it, or at `p` itself. Optional: without it an end
+   * lands exactly where it was clicked.
+   */
+  snapRoadEnd?(p: CmPoint): RoadEndSnap;
+  /**
+   * The way a road carries on from its end at `p`, as a unit direction, or
+   * null where no single road ends there. Optional: without it a bend is
+   * never pulled into line with the road it continues.
+   */
+  roadEndDirection?(p: CmPoint): { x: number; z: number } | null;
+  /**
+   * Whether a road off the grid may be laid, by the world's own rules, and
+   * how long it is along its centre line. `profile` is the cross-section
+   * `ask.profileId` names, which the world may not have been told yet.
+   * Optional: without it a curve is drawn but never judged, and never laid.
+   */
+  planFreeRoad?(
+    ask: FreeRoadAsk,
+    profile: RoadProfile,
+  ): { ok: true; lengthM: number } | { ok: false; reason: string };
 }
 
 const NO_CROSSINGS: ReadonlySet<string> = new Set();
@@ -206,6 +275,14 @@ export const ROAD_TOOL_TO_TIER: Record<string, RoadTier> = {
   // The slip road a motorway is reached by (roads epic wave 5).
   'road.ramp': RoadTierValue.Ramp,
 };
+
+/**
+ * Whether a tool offers the `Grid` mode: every road but the motorway, whose
+ * carriageways and ramps a street grid has no place for.
+ */
+export function offersGrid(tool: ToolId): boolean {
+  return tool !== 'road.highway' && tool !== 'road.ramp';
+}
 
 /** The 'terraform' Command's mode field (shared/types.ts), named locally for readability. */
 type TerraformMode = Extract<Command, { kind: 'terraform' }>['mode'];
@@ -288,25 +365,7 @@ export function snapToGuide(
   reach = GUIDE_SNAP_TILES,
   along = GRID_SPACING_TILES,
 ): TilePoint {
-  /** A road at (x,z) that continues along X — one tile has no direction. */
-  const runsAlongX = (x: number, z: number): boolean =>
-    isRoad(x, z) && (isRoad(x - 1, z) || isRoad(x + 1, z));
-  const runsAlongZ = (x: number, z: number): boolean =>
-    isRoad(x, z) && (isRoad(x, z - 1) || isRoad(x, z + 1));
-
-  // The line a road lays down reaches PAST its own ends — continuing a street
-  // across a gap is most of what the snap is for, and a guide that stopped at
-  // the last paved tile could never do it. It reaches one block, because
-  // beyond a block away sharing a row is coincidence rather than intent.
-  const rowGuides = (z: number): boolean => {
-    for (let x = tile.x - along; x <= tile.x + along; x++) if (runsAlongX(x, z)) return true;
-    return false;
-  };
-  const columnGuides = (x: number): boolean => {
-    for (let z = tile.z - along; z <= tile.z + along; z++) if (runsAlongZ(x, z)) return true;
-    return false;
-  };
-
+  const { rowGuides, columnGuides } = guideLines(tile, isRoad, along);
   const nearest = (guides: (at: number) => boolean, from: number): number => {
     for (let d = 1; d <= reach; d++) {
       const lower = guides(from - d);
@@ -318,6 +377,70 @@ export function snapToGuide(
     return from;
   };
   return { x: nearest(columnGuides, tile.x), z: nearest(rowGuides, tile.z) };
+}
+
+/**
+ * Which rows and columns near `tile` a road runs along. A guide is a road that
+ * RUNS along the axis — a candidate only counts when its neighbour along that
+ * axis is road too, since one tile on its own says nothing about direction.
+ */
+function guideLines(
+  tile: TilePoint,
+  isRoad: (x: number, z: number) => boolean,
+  along: number,
+): { rowGuides: (z: number) => boolean; columnGuides: (x: number) => boolean } {
+  const runsAlongX = (x: number, z: number): boolean =>
+    isRoad(x, z) && (isRoad(x - 1, z) || isRoad(x + 1, z));
+  const runsAlongZ = (x: number, z: number): boolean =>
+    isRoad(x, z) && (isRoad(x, z - 1) || isRoad(x, z + 1));
+  // The line a road lays down reaches PAST its own ends — continuing a street
+  // across a gap is most of what the snap is for, and a guide that stopped at
+  // the last paved tile could never do it. It reaches one block, because
+  // beyond a block away sharing a row is coincidence rather than intent.
+  return {
+    rowGuides: (z) => {
+      for (let x = tile.x - along; x <= tile.x + along; x++) if (runsAlongX(x, z)) return true;
+      return false;
+    },
+    columnGuides: (x) => {
+      for (let z = tile.z - along; z <= tile.z + along; z++) if (runsAlongZ(x, z)) return true;
+      return false;
+    },
+  };
+}
+
+/**
+ * A road end off the grid at `p` pulled into line with a nearby road,
+ * independently on each axis: onto the centre line of the nearest row or
+ * column a road runs along, within the guide's reach. Equally near two, it
+ * stays where it is, as a grid drag does.
+ */
+export function guidePoint(
+  p: CmPoint,
+  isRoad: (x: number, z: number) => boolean,
+  reach = GUIDE_SNAP_TILES,
+  along = GRID_SPACING_TILES,
+): CmPoint {
+  const tile = { x: Math.floor(p.x / 100 / TILE_METERS), z: Math.floor(p.z / 100 / TILE_METERS) };
+  const { rowGuides, columnGuides } = guideLines(tile, isRoad, along);
+  const onto = (guides: (at: number) => boolean, from: number, cm: number): number => {
+    let best: number | null = null;
+    let bestD = Infinity;
+    let tie = false;
+    for (let t = from - reach; t <= from + reach; t++) {
+      if (!guides(t)) continue;
+      const line = Math.round(tileToWorld(t) * 100);
+      const d = Math.abs(line - cm);
+      if (d > reach * TILE_METERS * 100) continue;
+      if (d < bestD) {
+        best = line;
+        bestD = d;
+        tie = false;
+      } else if (d === bestD) tie = true;
+    }
+    return best === null || tie ? cm : best;
+  };
+  return { x: onto(columnGuides, tile.x, p.x), z: onto(rowGuides, tile.z, p.z) };
 }
 
 /**
@@ -575,6 +698,12 @@ export class ToolManager {
   private transitStops: TilePoint[] = [];
   /** Index into TRANSIT_LINE_PALETTE for the next committed line's color. */
   private transitColorIndex = 0;
+  /** `Curve` mode: the start, then the bend, clicked so far, world centimetres. */
+  private curveClicks: RoadEndSnap[] = [];
+  /** A `Straight` drag at any angle: where it started, as the road's end lands there. */
+  private freeDragStart: RoadEndSnap | null = null;
+  /** `Curve` mode: where the cursor is, world centimetres, or null off the ground. */
+  private curveCursor: CmPoint | null = null;
 
   constructor(env: ToolEnv) {
     this.env = env;
@@ -590,11 +719,12 @@ export class ToolManager {
    * this is set, letting the UI layer handle the later stages otherwise.
    */
   get dragActive(): boolean {
-    return this.armed && this.dragStart !== null;
+    return (this.armed && this.dragStart !== null) || this.curveClicks.length > 0;
   }
 
   setTool(t: ToolId): void {
     this._tool = t;
+    this.curveClicks = [];
     this.dragStart = null;
     this.hoverTile = null;
     this.armed = false;
@@ -839,6 +969,8 @@ export class ToolManager {
    */
   setFlags(flags: Partial<ToolFlags>): void {
     this.flags = { ...this.flags, ...flags };
+    // Leaving the curve mode leaves the curve being drawn with it.
+    if (!this.flags.curveMode) this.curveClicks = [];
     if (this.hoverTile) this.emitPreview(this.hoverTile);
   }
 
@@ -878,17 +1010,28 @@ export class ToolManager {
       }
       return false;
     }
+    // A curve is drawn over several clicks, and turning the camera between
+    // them is a right-drag, so the right button leaves a curve alone.
+    if (button === 2 && this.drawingCurve()) return false;
     if (button === 2) {
       this.cancel();
       return false;
     }
     if (button !== 0 || this._tool === 'select') return false;
+    if (this.drawingCurve()) {
+      this.curveClick(sx, sy);
+      return true;
+    }
     const tile = this.env.screenToTile(sx, sy);
     this.hoverTile = tile;
     this.dragStart = tile;
     this.armed = tile !== null;
     this.brushTiles = [];
     this.brushSeen.clear();
+    // A drag that may run at any angle remembers exactly where it started.
+    const start = this.freeStraight() ? this.cursorCm(sx, sy) : null;
+    this.freeDragStart = start ? this.snapEnd(start) : null;
+    this.curveCursor = start;
     if (tile && isTerraformTool(this._tool)) {
       this.startTerraformStroke(tile, nowTick);
     }
@@ -898,8 +1041,14 @@ export class ToolManager {
 
   pointerMove(sx: number, sy: number, button: number, nowTick = 0): boolean {
     if (this._tool === 'select') return false;
+    if (this.drawingCurve()) {
+      this.curveCursor = this.cursorCm(sx, sy);
+      this.emitCurvePreview();
+      return button === 0;
+    }
     const tile = this.env.screenToTile(sx, sy);
     this.hoverTile = tile;
+    if (this.freeDragStart) this.curveCursor = this.cursorCm(sx, sy) ?? this.curveCursor;
     if (tile) {
       if (
         this.armed &&
@@ -919,12 +1068,17 @@ export class ToolManager {
   pointerUp(sx: number, sy: number, button: number): boolean {
     if (this._tool === 'select') return false;
     if (button !== 0) return false;
+    // A curve is clicked, not dragged: releasing the button does nothing.
+    if (this.drawingCurve()) return true;
     if (this.armed && this.dragStart) {
       const end = this.env.screenToTile(sx, sy) ?? this.hoverTile ?? this.dragStart;
-      this.commit(this.dragStart, end);
+      const free = this.freeDrag(this.dragStart, end, this.cursorCm(sx, sy));
+      if (free) this.layFree(free);
+      else this.commit(this.dragStart, end);
     }
     this.armed = false;
     this.dragStart = null;
+    this.freeDragStart = null;
     this.brushTiles = [];
     this.brushSeen.clear();
     return true;
@@ -934,11 +1088,259 @@ export class ToolManager {
   cancel(): void {
     this.dragStart = null;
     this.armed = false;
+    this.curveClicks = [];
+    this.freeDragStart = null;
     this.brushTiles = [];
     this.brushSeen.clear();
     this.terraformLevelTarget = null;
     this.terraformStrokeCost = 0;
     this.env.onPreview(null);
+  }
+
+  /**
+   * Takes back the last click of a curve in progress, so a misplaced bend is
+   * moved without starting again. Returns whether there was one to take back.
+   */
+  takeBackClick(): boolean {
+    if (this.curveClicks.length === 0) return false;
+    this.curveClicks.pop();
+    this.emitCurvePreview();
+    return true;
+  }
+
+  /** Whether the road tool is in its `Curve` mode and can put a click on the ground. */
+  private drawingCurve(): boolean {
+    return (
+      this._tool in ROAD_TOOL_TO_TIER &&
+      this.flags.curveMode === true &&
+      this.env.worldPointAt !== undefined
+    );
+  }
+
+  /**
+   * Whether a road drag may run at any angle: `Straight` with the 90° lock
+   * off, where the ground under the cursor can be read.
+   */
+  private freeStraight(): boolean {
+    return (
+      this._tool in ROAD_TOOL_TO_TIER &&
+      this.flags.straightMode &&
+      !this.flags.angleLock &&
+      !this.flags.curveMode &&
+      this.env.worldPointAt !== undefined
+    );
+  }
+
+  /** The ground under a pixel, world centimetres. */
+  private cursorCm(sx: number, sy: number): CmPoint | null {
+    const p = this.env.worldPointAt?.(sx, sy);
+    return p ? { x: Math.round(p.x * 100), z: Math.round(p.z * 100) } : null;
+  }
+
+  /**
+   * Where a road end dropped at `p` lands, and whether it splits a road there.
+   * One that lands on nothing is, with guide snapping on, pulled into line
+   * with a road nearby — and then lands on whatever is there.
+   */
+  private snapEnd(p: CmPoint): RoadEndSnap {
+    const land = (q: CmPoint): RoadEndSnap => this.env.snapRoadEnd?.(q) ?? { at: q, splits: false };
+    const landed = land(p);
+    if (landed.splits || landed.at.x !== p.x || landed.at.z !== p.z) return landed;
+    const at = this.env.roadProfileAt;
+    if (!this.flags.guideSnap || !at) return landed;
+    const guided = guidePoint(p, (x, z) => at({ x, z }) !== null);
+    return guided.x === p.x && guided.z === p.z ? landed : land(guided);
+  }
+
+  /**
+   * Where a bend clicked at `p` goes: onto the line of the road the curve
+   * starts from when it is placed near that line ahead of the start, so the
+   * curve carries the road on round the bend without a kink; else exactly
+   * where it was put.
+   */
+  private bendAt(p: CmPoint): CmPoint {
+    const start = this.curveClicks[0];
+    const dir = start ? this.env.roadEndDirection?.(start.at) : null;
+    if (!start || !dir) return p;
+    const vx = (p.x - start.at.x) / 100;
+    const vz = (p.z - start.at.z) / 100;
+    const along = vx * dir.x + vz * dir.z;
+    if (along <= 0) return p;
+    const across = Math.abs(vx * dir.z - vz * dir.x);
+    if (across > BEND_SNAP_M) return p;
+    return {
+      x: Math.round(start.at.x + dir.x * along * 100),
+      z: Math.round(start.at.z + dir.z * along * 100),
+    };
+  }
+
+  /**
+   * The road a `Straight` drag at any angle lays from `startTile` to
+   * `endTile`, or null where it lays a grid road instead: a drag along one row
+   * or column is a grid street, as it always was, and only one that leaves it
+   * runs off the grid.
+   */
+  private freeDrag(
+    startTile: TilePoint,
+    endTile: TilePoint,
+    cursor: CmPoint | null,
+  ): FreeRoad | null {
+    const end = cursor ?? this.curveCursor;
+    if (!this.freeDragStart || !end) return null;
+    if (startTile.x === endTile.x || startTile.z === endTile.z) return null;
+    return this.freeRoad(this.freeDragStart, null, end);
+  }
+
+  /** A road off the grid from `start`, bent toward `control`, to where `end` lands. */
+  private freeRoad(start: RoadEndSnap, control: CmPoint | null, end: CmPoint): FreeRoad {
+    const b = this.snapEnd(end);
+    return {
+      geom: { a: start.at, b: b.at, control },
+      splits: [start, b].filter((e) => e.splits).map((e) => e.at),
+    };
+  }
+
+  /**
+   * The road a curve's clicks so far and the cursor describe: from the start
+   * straight to the cursor after one click, and pulled toward the bend after
+   * two. Null before the first click.
+   */
+  private curveRoad(cursor: CmPoint): FreeRoad | null {
+    const [start, bend] = this.curveClicks;
+    if (!start) return null;
+    return this.freeRoad(start, bend?.at ?? null, cursor);
+  }
+
+  /** What laying `road` with the road tool's section would be: the ask, and the world's answer. */
+  private judgeFree(road: FreeRoad): {
+    build: ReturnType<ToolManager['roadBuild']>;
+    section: RoadProfile;
+    ask: FreeRoadAsk;
+    plan: { ok: true; lengthM: number } | { ok: false; reason: string } | null;
+  } {
+    const build = this.roadBuild(ROAD_TOOL_TO_TIER[this._tool] as RoadTier);
+    const section = build.profile ?? presetProfileForTier(build.tier);
+    const { geom } = road;
+    const ask: FreeRoadAsk = {
+      tier: build.tier,
+      profileId: build.profile
+        ? (this.env.profileIdFor?.(build.profile) ?? build.tier)
+        : build.tier,
+      a: geom.a,
+      b: geom.b,
+      control: geom.control,
+      // A one-way road runs the way it is drawn: from the first click to the last.
+      flow: isOneWayProfile(section) ? 1 : 0,
+      splits: road.splits,
+    };
+    // A road off the grid lies on the ground until it can be raised, so a deck
+    // height the player set is refused rather than quietly dropped.
+    const plan =
+      this.roadElevation > 0
+        ? {
+            ok: false as const,
+            reason: 'A road off the grid is laid on the ground: set the elevation to 0',
+          }
+        : (this.env.planFreeRoad?.(ask, section) ?? null);
+    return { build, section, ask, plan };
+  }
+
+  private emitCurvePreview(): void {
+    const cursor = this.curveCursor;
+    const road = cursor ? this.curveRoad(cursor) : null;
+    this.previewFree(road, this.curveClicks);
+  }
+
+  /**
+   * The ghost and chip of a road off the grid: its centre line at the road's
+   * width, the points clicked so far, and what laying it would cost — or why
+   * it would be refused.
+   */
+  private previewFree(road: FreeRoad | null, clicked: readonly RoadEndSnap[]): void {
+    const clicks = clicked.map((c) => ({ x: c.at.x / 100, z: c.at.z / 100 }));
+    const geom = road?.geom;
+    if (!road || !geom || (geom.a.x === geom.b.x && geom.a.z === geom.b.z)) {
+      // Nothing to draw yet but the clicks themselves.
+      this.env.onPreview(
+        clicks.length > 0
+          ? { tiles: [], valid: true, cost: 0, label: 'Curve', curve: { centre: [], clicks } }
+          : null,
+      );
+      return;
+    }
+    const { build, section, plan } = this.judgeFree(road);
+    const lengthM = plan?.ok ? plan.lengthM : segmentLengthM(geom);
+    const cost = Math.round((lengthM / TILE_METERS) * build.price.costPerTile);
+    const judged =
+      build.refusal !== null
+        ? { valid: false, invalidReason: build.refusal }
+        : plan === null
+          ? { valid: false, invalidReason: 'Cannot be judged here' }
+          : !plan.ok
+            ? { valid: false, invalidReason: plan.reason }
+            : this.evaluate([], cost, build.price.unlockMilestone, true);
+    const radius = geom.control ? tightestRadiusM(geom) : Infinity;
+    this.env.onPreview({
+      tiles: [],
+      valid: judged.valid,
+      cost,
+      label: build.spec.name,
+      lengthMeters: lengthM,
+      ...(Number.isFinite(radius) ? { radiusMeters: radius } : {}),
+      ...(judged.invalidReason !== undefined ? { invalidReason: judged.invalidReason } : {}),
+      widthMeters: profileWidth(section),
+      curve: { centre: sampleCentreLine(geom).map((p) => ({ x: p.x, z: p.z })), clicks },
+    });
+  }
+
+  /**
+   * Lays a road off the grid, if the world would take it: the roads its ends
+   * land partway along are split first, all in one undo step. Returns whether
+   * it was sent.
+   */
+  private layFree(road: FreeRoad): boolean {
+    const { build, ask, plan } = this.judgeFree(road);
+    if (build.refusal !== null || !plan?.ok) return false;
+    const cost = Math.round((plan.lengthM / TILE_METERS) * build.price.costPerTile);
+    if (!this.evaluate([], cost, build.price.unlockMilestone, true).valid) return false;
+    const segment: Command = {
+      kind: 'buildSegment',
+      tier: ask.tier,
+      a: ask.a,
+      b: ask.b,
+      flow: ask.flow,
+    };
+    if (ask.control) segment.control = ask.control;
+    if (build.profile) segment.profile = ask.profileId;
+    this.env.send(build.spec.name, [
+      ...road.splits.map((at): Command => ({ kind: 'splitSegment', at })),
+      ...(build.profile
+        ? [{ kind: 'defineRoadProfile' as const, id: ask.profileId, profile: build.profile }]
+        : []),
+      segment,
+    ]);
+    return true;
+  }
+
+  /**
+   * One click of a curve: the start, the bend, then the end, which lays it —
+   * if the world would take it. A refused final click does nothing, so the
+   * player can move the cursor, or take back the bend, and try again.
+   */
+  private curveClick(sx: number, sy: number): void {
+    const at = this.cursorCm(sx, sy);
+    if (!at) return;
+    this.curveCursor = at;
+    if (this.curveClicks.length === 0) {
+      // The start lands on what is there.
+      this.curveClicks.push(this.snapEnd(at));
+    } else if (this.curveClicks.length === 1) {
+      // The bend goes where it is put, or onto the line of the road it continues.
+      this.curveClicks.push({ at: this.bendAt(at), splits: false });
+    } else if (this.layFree(this.curveRoad(at)!)) {
+      this.curveClicks = [];
+    }
+    this.emitCurvePreview();
   }
 
   /** Advances the ploppable's rotation a quarter turn and refreshes its preview. */
@@ -976,8 +1378,10 @@ export class ToolManager {
     // Grid mode lays a rectangle's whole street grid, so it answers before the
     // single-run modes: a 90° lock has nothing to say about a shape that is
     // already square.
-    if (this.flags.gridMode) return buildGridPath(start, end);
-    return this.flags.angleLock || this.flags.straightMode
+    // A motorway is never laid as a grid; with `Grid` selected it runs straight.
+    const grid = this.flags.gridMode && offersGrid(this._tool);
+    if (grid) return buildGridPath(start, end);
+    return this.flags.angleLock || this.flags.straightMode || this.flags.gridMode
       ? straightPath(start, end)
       : buildLPath(start, end);
   }
@@ -1108,6 +1512,13 @@ export class ToolManager {
       const { valid, invalidReason } = this.evaluate(tiles, 0, 0, true);
       this.env.onPreview({ tiles, valid, cost: 0, label: 'Bulldoze', invalidReason });
     } else if (tool in ROAD_TOOL_TO_TIER) {
+      // A drag at any angle that has left its row or column runs off the grid.
+      const free =
+        this.armed && this.dragStart ? this.freeDrag(this.dragStart, current, null) : null;
+      if (free && this.freeDragStart) {
+        this.previewFree(free, [this.freeDragStart]);
+        return;
+      }
       const build = this.roadBuild(ROAD_TOOL_TO_TIER[tool] as RoadTier);
       const path = this.roadPath(start, current);
       // A section too wide for one tile is laid as two carriageways, so the

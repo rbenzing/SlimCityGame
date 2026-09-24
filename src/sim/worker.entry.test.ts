@@ -2686,6 +2686,30 @@ describe('roads off the grid — the world lays them, undoes them and keeps them
     expect(savedFree(h)).toHaveLength(1);
   });
 
+  it('splits a free road to meet a new one, for nothing, and undoes the pair exactly', () => {
+    const h = sandboxed();
+    run(h, 1, [
+      { kind: 'buildSegment', tier: RoadTier.TwoLane, a: at(1000, 1000), b: at(1400, 1000) },
+    ]);
+    const before = savedFree(h);
+    const mid = at(1200, 1000);
+    const ack = run(h, 2, [
+      { kind: 'splitSegment', at: mid },
+      { kind: 'buildSegment', tier: RoadTier.TwoLane, a: at(1200, 800), b: mid },
+    ]);
+    expect(ack.ok).toBe(true);
+    expect(savedFree(h)).toHaveLength(3);
+    // Only the new road is paid for: 200 m of two-lane.
+    const perTile = roadSpecs.find((r) => r.tier === RoadTier.TwoLane)!.costPerTile;
+    expect(ack.cost).toBe(Math.round((200 / 20) * perTile));
+    const undo = run(h, 3, ack.inverse);
+    expect(undo.ok).toBe(true);
+    expect(savedFree(h)).toEqual(before);
+    const redo = run(h, 4, undo.inverse);
+    expect(redo.ok).toBe(true);
+    expect(savedFree(h)).toHaveLength(3);
+  });
+
   it('zones the lots a free road fronts, and nothing on its footprint', () => {
     const h = sandboxed();
     run(h, 1, [

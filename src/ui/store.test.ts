@@ -158,6 +158,7 @@ describe('tool flags + mode (UI-SPEC §5)', () => {
       angleLock: true,
       straightMode: true,
       gridMode: false,
+      curveMode: false,
       guideSnap: false,
       replaceRoad: false,
     });
@@ -168,8 +169,19 @@ describe('tool flags + mode (UI-SPEC §5)', () => {
       angleLock: false,
       straightMode: true,
       gridMode: false,
+      curveMode: false,
       guideSnap: false,
       replaceRoad: false,
+    });
+  });
+
+  it('picking Curve sets curveMode and clears the other modes, since a mode is one choice', () => {
+    useCityStore.getState().setToolMode('grid');
+    useCityStore.getState().setToolMode('curve');
+    expect(useCityStore.getState().toolFlags).toMatchObject({
+      straightMode: false,
+      gridMode: false,
+      curveMode: true,
     });
   });
 

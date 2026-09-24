@@ -690,6 +690,8 @@ describe('ClientGridMirror — a road passing over another', () => {
   it('holds the road passing over from the delta, and lets it go when a delta drops it', () => {
     const mirror = overpass();
     expect(mirror.overRoadAt(10, 9)?.elevation).toBe(7);
+    // The layer a road off the grid is planned against says the same.
+    expect(mirror.overTier[9 * mirror.size + 10]).toBe(RoadTier.TwoLane);
     mirror.applyRoadDeltas([
       {
         x: 10,
@@ -702,6 +704,7 @@ describe('ClientGridMirror — a road passing over another', () => {
       },
     ]);
     expect(mirror.overRoadAt(10, 9)).toBeNull();
+    expect(mirror.overTier[9 * mirror.size + 10]).toBe(0);
   });
 
   it('climbs an approach into the overpass rather than down to the road beneath', () => {

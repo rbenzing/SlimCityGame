@@ -487,6 +487,56 @@ function edgeQuadSize(seg: GhostEdgeSegment): { sizeX: number; sizeZ: number } {
 // Plop volume ghost
 // ---------------------------------------------------------------------------
 
+/** The side of the square marking each point a curve has been clicked at, metres. */
+const CLICK_MARK_M = 3;
+
+/**
+ * Triangles covering the band between offsets `from` and `to` (metres, to the
+ * right of the line's direction) along a polyline, each vertex set on the
+ * ground plus `lift`, wound to face up.
+ */
+export function buildBandPositions(
+  line: readonly { x: number; z: number }[],
+  from: number,
+  to: number,
+  heightAt: HeightSampler,
+  lift: number,
+): Float32Array {
+  if (line.length < 2) return new Float32Array(0);
+  const normals = line.map((_, i) => {
+    const p = line[Math.max(0, i - 1)]!;
+    const q = line[Math.min(line.length - 1, i + 1)]!;
+    const len = Math.hypot(q.x - p.x, q.z - p.z) || 1;
+    return { x: -(q.z - p.z) / len, z: (q.x - p.x) / len };
+  });
+  const out: number[] = [];
+  const v = (i: number, o: number): number[] => {
+    const x = line[i]!.x + normals[i]!.x * o;
+    const z = line[i]!.z + normals[i]!.z * o;
+    return [x, heightAt(x, z) + lift, z];
+  };
+  for (let i = 0; i < line.length - 1; i++) {
+    const a = v(i, from);
+    const b = v(i, to);
+    const c = v(i + 1, to);
+    const d = v(i + 1, from);
+    // Offsets grow to the right of travel, so a, b, c turns the way that
+    // faces up under three.js's right-handed axes.
+    out.push(...a, ...b, ...c, ...a, ...c, ...d);
+  }
+  return Float32Array.from(out);
+}
+
+function concat(...parts: Float32Array[]): Float32Array {
+  const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
+  let o = 0;
+  for (const p of parts) {
+    out.set(p, o);
+    o += p.length;
+  }
+  return out;
+}
+
 /** `setPreview`'s additive volume option: a ploppable's true
  * footprint (tiles) × height (meters), anchored at its origin (min-x/min-z) tile. */
 export interface GhostVolume {
@@ -580,10 +630,34 @@ function buildArrowGeometry(): THREE.BufferGeometry {
     new THREE.Float32BufferAttribute(
       [
         // Head: apex forward, two barbs back.
-        half, 0, 0, -half * 0.1, 0, -wing, -half * 0.1, 0, wing,
+        half,
+        0,
+        0,
+        -half * 0.1,
+        0,
+        -wing,
+        -half * 0.1,
+        0,
+        wing,
         // Tail: a narrow strip running back from the barbs.
-        -half * 0.1, 0, -tailWing, -half, 0, -tailWing, -half, 0, tailWing, -half * 0.1, 0,
-        -tailWing, -half, 0, tailWing, -half * 0.1, 0, tailWing,
+        -half * 0.1,
+        0,
+        -tailWing,
+        -half,
+        0,
+        -tailWing,
+        -half,
+        0,
+        tailWing,
+        -half * 0.1,
+        0,
+        -tailWing,
+        -half,
+        0,
+        tailWing,
+        -half * 0.1,
+        0,
+        tailWing,
       ],
       3,
     ),
@@ -730,7 +804,13 @@ export class GhostRenderer {
       return;
     }
 
-    this.writeBase(tiles, valid, kind, opts?.zone, kind === 'road' ? opts?.roadWidthMeters : undefined);
+    this.writeBase(
+      tiles,
+      valid,
+      kind,
+      opts?.zone,
+      kind === 'road' ? opts?.roadWidthMeters : undefined,
+    );
     if (valid && kind === 'zone') {
       this.fillMaterial.color.setRGB(...fillColorFor(opts?.zone));
       this.writeFill(tiles);
@@ -750,6 +830,53 @@ export class GhostRenderer {
     this.writeBorder(edges.outer, valid);
     this.writeInnerGrid(edges.inner, valid);
     this.writeVolume(valid, opts?.volume);
+  }
+
+  /**
+   * The ghost of a road off the grid: a band `widthMeters` wide along its
+   * centre line (world metres), edged like the tile ghost, with a small square
+   * at each point already clicked. Tinted by `valid` exactly as a road drag.
+   */
+  setCurve(
+    centre: readonly { x: number; z: number }[],
+    widthMeters: number,
+    valid: boolean,
+    clicks: readonly { x: number; z: number }[],
+  ): void {
+    this.clear();
+    const half = widthMeters / 2;
+    this.baseMaterial.color.setRGB(...baseColorFor('road', valid));
+    this.setGeometry(
+      this.baseMesh,
+      buildBandPositions(centre, -half, half, this.heightAt, GHOST_Y_OFFSET),
+    );
+    this.borderMaterial.color.setRGB(...frameColorFor(valid));
+    const w = BORDER_WIDTH_METERS;
+    this.setGeometry(
+      this.borderMesh,
+      concat(
+        buildBandPositions(centre, -half - w / 2, -half + w / 2, this.heightAt, BORDER_Y_OFFSET),
+        buildBandPositions(centre, half - w / 2, half + w / 2, this.heightAt, BORDER_Y_OFFSET),
+      ),
+    );
+    this.innerMaterial.color.setRGB(...frameColorFor(valid));
+    this.setGeometry(
+      this.innerMesh,
+      concat(
+        ...clicks.map((p) =>
+          buildBandPositions(
+            [
+              { x: p.x - CLICK_MARK_M / 2, z: p.z },
+              { x: p.x + CLICK_MARK_M / 2, z: p.z },
+            ],
+            -CLICK_MARK_M / 2,
+            CLICK_MARK_M / 2,
+            this.heightAt,
+            INNER_GRID_Y_OFFSET,
+          ),
+        ),
+      ),
+    );
   }
 
   /** Hides every layer (used when a tool has no active preview). */
