@@ -69,8 +69,10 @@ MUTCD citations below use 11th-edition section numbers.
   `worldOrderedProfile` and `reversedInWorld` in `src/shared/roadprofile.ts`
 - A one-way road flows the way it was drawn (its stored flow), never inferred
   from geometry; the geometric fallback exists only for tiles whose flow is
-  `RoadFlow.None`. — [road-model.md](world-sim/road-model.md);
-  `src/world/pathfind.ts`
+  `RoadFlow.None`. A run's direction is read from its own tiles before its end
+  nodes, because a node two one-ways cross holds only the flow of whichever
+  was drawn last. — [road-model.md](world-sim/road-model.md);
+  `src/world/pathfind.ts`, `storedRunDirection` in `src/world/roads.ts`
 - Roads replace by class rank (dirt, alley, rural, local, one-way, urban,
   collector, arterial, divided, ramp, highway, then rail), never by tier number
   or catalog order. A road with a bus or tram lane outranks the same road

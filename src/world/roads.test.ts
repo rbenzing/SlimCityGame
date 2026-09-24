@@ -1052,6 +1052,48 @@ describe('the graph carries the direction its tiles were drawn in', () => {
     }
   });
 
+  it('reads a run by its own tiles, not by the crossing another one-way last drew through', () => {
+    const size = 12;
+    const g = makeGrid(size);
+    const spine = column(5, 1, 10);
+    applyRoad(
+      g,
+      spine,
+      RoadTier.OneWay,
+      undefined,
+      RoadTier.OneWay,
+      false,
+      spine.map(() => RoadFlow.South),
+    );
+    const arm = row(5, 1, 10);
+    applyRoad(
+      g,
+      arm,
+      RoadTier.OneWay,
+      undefined,
+      RoadTier.OneWay,
+      false,
+      arm.map(() => RoadFlow.East),
+    );
+    expect(g.roadFlow[idx(size, 5, 5)]! & 7).toBe(RoadFlow.East); // the crossing holds one flow
+    const net = new RoadNetwork();
+    net.rebuild(g);
+    const nodes = net.getNodes();
+    const along = (pick: (t: TilePoint) => boolean) =>
+      net.getEdges().filter((e) => e.tiles.every(pick) && e.tiles.length > 2);
+    for (const edge of along((t) => t.x === 5)) {
+      const a = nodes.find((n) => n.id === edge.a)!;
+      const b = nodes.find((n) => n.id === edge.b)!;
+      expect(edge.forwardAtoB === b.z > a.z, `spine edge ${a.z}->${b.z}`).toBe(true);
+    }
+    for (const edge of along((t) => t.z === 5)) {
+      const a = nodes.find((n) => n.id === edge.a)!;
+      const b = nodes.find((n) => n.id === edge.b)!;
+      expect(edge.forwardAtoB === b.x > a.x, `arm edge ${a.x}->${b.x}`).toBe(true);
+    }
+    expect(along((t) => t.x === 5)).toHaveLength(2);
+  });
+
   it('says nothing about a road laid before the direction was stored', () => {
     const net = new RoadNetwork();
     net.rebuild(runGrid(RoadFlow.None));
@@ -1217,7 +1259,12 @@ describe('a ramp meets a motorway alongside it, and only at one tile', () => {
    */
   const onRamp = (): GridState => {
     const g = makeGrid(SIZE);
-    lay(g, row(5, 0, 15), row(5, 0, 15).map(() => RoadFlow.East), RoadTier.Highway);
+    lay(
+      g,
+      row(5, 0, 15),
+      row(5, 0, 15).map(() => RoadFlow.East),
+      RoadTier.Highway,
+    );
     lay(
       g,
       [
@@ -1273,14 +1320,22 @@ describe('a ramp meets a motorway alongside it, and only at one tile', () => {
     // Nowhere along the stretch is there a node on the motorway for the ramp
     // to cross into.
     for (const x of [4, 5, 6, 7]) {
-      expect(net.getNodes().some((n) => n.x === x && n.z === 5), `x ${x}`).toBe(false);
+      expect(
+        net.getNodes().some((n) => n.x === x && n.z === 5),
+        `x ${x}`,
+      ).toBe(false);
     }
     expect(edgeCovering(net, { x: 6, z: 6 })).toBeDefined();
   });
 
   it('keeps a head-on ramp a save already holds connected, so it still carries traffic', () => {
     const g = makeGrid(SIZE);
-    lay(g, row(5, 0, 15), row(5, 0, 15).map(() => RoadFlow.East), RoadTier.Highway);
+    lay(
+      g,
+      row(5, 0, 15),
+      row(5, 0, 15).map(() => RoadFlow.East),
+      RoadTier.Highway,
+    );
     lay(g, column(4, 6, 8), [RoadFlow.South, RoadFlow.South, RoadFlow.South], RoadTier.Ramp);
     expect(computeMask(g, 4, 5) & 4).toBe(4);
     expect(computeMask(g, 4, 6) & 1).toBe(1);

@@ -251,6 +251,11 @@ This is also what makes an asymmetric profile meaningful: a three-lane
 street as 2+1, a five-lane one-way corridor as 3+2 — "2+1" means nothing
 until the tile knows which way is which.
 
+A tile holds one flow, so where two one-way streets cross, the crossing tile
+keeps the flow of whichever was drawn through it last. The graph therefore
+reads a run's direction from the run's own tiles and falls back to its end
+nodes only when it has none, ignoring a flow that runs across the run.
+
 **A section is authored in the direction of travel and laid in world order.**
 Its pieces are listed left to right as its driver sees them. Offsets across a
 road grow east and south, so heading north or east the driver's left is the

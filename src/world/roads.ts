@@ -484,12 +484,17 @@ interface BuiltGraph {
  * road laid before the direction was stored, which leaves its reader to fall
  * back to the geometry it always used.
  *
- * The first tile that has an answer gives it. A run is one street between two
- * nodes, so its tiles were laid by one drag and agree; a run stitched together
- * from two drags is decided by the end the walk started from.
+ * The first tile that has an answer gives it, reading the run's own tiles
+ * before its ends. An end is a node, and a node where two roads cross holds
+ * the flow of whichever was drawn through it last — the crossing road's, not
+ * this one's. A run is one street between two nodes, so its own tiles were
+ * laid by one drag and agree; a run stitched together from two drags is
+ * decided by the end the walk started from.
  */
 function storedRunDirection(g: GridState, runTiles: readonly TilePoint[]): boolean | null {
-  for (let i = 0; i < runTiles.length - 1; i++) {
+  const last = runTiles.length - 1;
+  const interior = Array.from({ length: Math.max(0, last - 1) }, (_, k) => k + 1);
+  for (const i of [...interior, 0]) {
     const here = runTiles[i]!;
     const next = runTiles[i + 1]!;
     // The direction only: the byte also carries which half of a corridor the
@@ -498,7 +503,9 @@ function storedRunDirection(g: GridState, runTiles: readonly TilePoint[]): boole
     if (stored === RoadFlow.None) continue;
     const along = flowForStep(next.x - here.x, next.z - here.z);
     if (along === RoadFlow.None) continue; // defensive: a non-orthogonal step
-    return stored === along;
+    if (stored === along) return true;
+    if (stored === flowForStep(here.x - next.x, here.z - next.z)) return false;
+    // Across the step: a crossing road's flow, which says nothing about this one.
   }
   return null;
 }
