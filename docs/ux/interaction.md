@@ -69,43 +69,48 @@ replace flag and refusals apply, the preview shows every tile the grid will
 occupy, and the cursor chip prices the lot before it is committed. A grid is
 one undo step, because it was one gesture.
 
-## Curve road mode
+## Curve and free road modes
 
-The road tool's fourth path mode, `Curve`, lays a road that bends through a
-smooth arc. What a curve is and how tight each class may take one is
-[curved-roads.md](../world-sim/curved-roads.md); this is how the player
-draws one.
+Two path modes lay roads off the grid, once the road network
+([road-network.md](../world-sim/road-network.md)) has reached its tool stage.
+What a free road may be — how tight a curve each class may take, how narrow an
+angle two roads may meet at — is that document; this is how the player draws
+one.
 
-It is three clicks rather than a drag, because a bend has a shape a drag
-cannot say:
+**`Curve` is three clicks** rather than a drag, because a bend has a shape a
+drag cannot say:
 
-1. **Start.** The first click picks the start tile. From then on the ghost is
-   a straight road from the start to the cursor, locked to the start's row or
-   column, whichever the cursor is nearer.
-2. **Corner.** The second click fixes the corner at the end of that straight.
-   From then on the ghost is the whole curve: the first leg, the arc, and a
-   second leg to the cursor, which is locked to the line through the corner
-   across the first leg. The ghost is drawn at the road's real width, so the
-   player sees which way it bends and how much ground it takes before placing
-   it.
+1. **Start.** The first click places the start. From then on the ghost is a
+   straight road from the start to the cursor.
+2. **Bend.** The second click places the bend: the point both ends of the
+   curve aim at. From then on the ghost is the whole curve, from the start,
+   pulled toward the bend, to the cursor. It is drawn at the road's real
+   width, so the player sees which way it bends and how much ground it takes
+   before placing it.
 3. **End.** The third click lays the curve.
 
-The cursor chip carries the cost, the length along the centre line and the
-radius while the ghost is up, and the reason when the curve would be refused:
-too tight for the class (with the radius it needs), or a footprint that runs
-into a road, a building or water. A refused ghost draws red and the third
+**A straight at any angle** is the `Straight` mode with the 90° lock off: the
+drag runs wherever the cursor goes instead of snapping to a row or column.
+
+Each click, and each end of a drag, snaps to what is already there: onto an
+existing node, onto an existing road (splitting it with a new junction), or,
+with guide snapping on, into line with a road nearby. A curve that starts on
+the end of an existing road starts in that road's direction unless the bend
+says otherwise, so a road can be continued round a bend without a kink.
+
+The cursor chip carries the cost, the length along the centre line and, for a
+curve, its tightest radius. When the road would be refused it carries the
+reason instead: too tight for its class (with the radius it needs), too
+narrow an angle where it meets another road, a crossing of two classes that
+may not meet, or ground that is taken. A refused ghost draws red and the final
 click does nothing.
 
-`Backspace` takes back the last click, so a misplaced corner is moved without
+`Backspace` takes back the last click, so a misplaced bend is moved without
 starting again. Right-click is not used: a right-drag already turns the
-camera. Escape cancels the curve in progress, the same as it
-cancels a drag. Guide snapping applies to each click as it does to a drag's
-ends; the 90° lock does not apply, because both legs are already on the
-grid. The profile, the replace flag and the class-join refusals apply as for
-any road. The elevation control is ignored, because a curve lies on the
-ground, and the chip says so if the deck is raised.
-
-A curve is one undo step, including any start or end tile it laid.
+camera. Escape cancels the road in progress, the same as it cancels a drag.
+The profile, the replace flag, the elevation control and the class-join
+refusals apply as for any road. A curve is one undo step, including any road
+it split.
 
 **Which classes get which modes.** Every road class that can be laid offers
 `Straight`, `L-path` and `Curve`. Every class except the motorway (highway
