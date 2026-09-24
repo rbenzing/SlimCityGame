@@ -21,6 +21,7 @@ import type {
   RoadTier,
 } from './types';
 import { TILE_METERS } from './constants';
+import { flowDirection, RoadFlow } from './types';
 
 const data = roadsData as { classes: RoadClassSpec[]; specs: RoadSpec[] };
 
@@ -431,6 +432,37 @@ export function isCorridor(profile: RoadProfile): boolean {
 }
 
 /**
+ * A section in WORLD order: its pieces from the low offset to the high one, the
+ * way everything that draws a road lays them.
+ *
+ * A section is authored left to right in the direction of travel. Offsets grow
+ * east and south, so a road drawn north or east has its driver's left at the
+ * low offset and its pieces are already in world order; one drawn south or
+ * west has its left at the HIGH offset, and its pieces run the other way. Laid
+ * low-to-high without this, a southbound motorway put its wide shoulder
+ * against the median and a two-way street drawn south drove on the left.
+ *
+ * It has to come BEFORE a corridor is halved: the halves are stored by the side
+ * of the road they are on, low tile and high tile, so it is the world-ordered
+ * road that is cut in two. Each piece keeps its own flow — `fwd` is still the
+ * way the road was drawn, wherever that piece now lies.
+ */
+export function worldOrderedProfile(profile: RoadProfile, stored: number): RoadProfile {
+  if (!reversedInWorld(stored)) return profile;
+  return { ...profile, pieces: [...profile.pieces].reverse() };
+}
+
+/**
+ * Whether a road running this way has its section reversed in world order —
+ * its driver's left at the high offset, which is heading south or west. Anything
+ * that edits a world-ordered section by the driver's left or right asks this.
+ */
+export function reversedInWorld(stored: number): boolean {
+  const direction = flowDirection(stored);
+  return direction === RoadFlow.South || direction === RoadFlow.West;
+}
+
+/**
  * One half of a corridor's cross-section, as a road in its own right.
  *
  * A six- or eight-lane divided road is not one wide carriageway: it is TWO,
@@ -559,6 +591,12 @@ export function withTurnPocket(
   profile: RoadProfile,
   approachSide: -1 | 1,
   openness = 1,
+  /**
+   * Which world side a one-way road's driver has on their left, in the
+   * world-ordered section: the low side heading north or east, the high side
+   * heading south or west. A one-way's bay goes outside its left-hand lane.
+   */
+  oneWayLeft: -1 | 1 = -1,
 ): RoadProfile | null {
   // A road with a two-way left-turn lane down the middle already turns from a
   // lane of its own, everywhere, so it has nothing to gain here.
@@ -568,7 +606,7 @@ export function withTurnPocket(
   const target = laneWidthFor(profile.class);
   const minimum = Math.min(target, TURN_POCKET_MIN_WIDTH_M);
   const oneWay = isOneWayProfile(profile);
-  const side = oneWay ? -1 : approachSide;
+  const side = oneWay ? oneWayLeft : approachSide;
   const centres = pieceCentres(profile);
 
   const approaching = profile.pieces
@@ -576,12 +614,14 @@ export function withTurnPocket(
     .filter((e) => e.piece.kind === 'travel' && (oneWay || e.centre * side > 0));
   if (approaching.length === 0) return null;
 
-  // A one-way's pocket sits outside its leftmost lane; a two-way's sits beside
-  // the centreline, which is the innermost lane of the approaching half.
+  // A one-way's pocket sits outside its left-hand lane — the outermost one on
+  // its left side; a two-way's sits beside the centreline, which is the
+  // innermost lane of the approaching half. Either way it goes on the far side
+  // of that lane from where the section continues.
   const beside = oneWay
-    ? approaching.reduce((a, b) => (b.centre < a.centre ? b : a))
+    ? approaching.reduce((a, b) => (b.centre * side > a.centre * side ? b : a))
     : approaching.reduce((a, b) => (Math.abs(b.centre) < Math.abs(a.centre) ? b : a));
-  const insertBefore = oneWay || side === 1 ? beside.index : beside.index + 1;
+  const insertBefore = (oneWay ? side === -1 : side === 1) ? beside.index : beside.index + 1;
 
   // What the pocket may be carved out of: the outermost parking bay or
   // shoulder on its own side of the road.

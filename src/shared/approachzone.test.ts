@@ -13,7 +13,7 @@ import {
   SHARED_TURN_LANE_MAX_TILES,
   sharedTurnLaneAt,
 } from './approachzone';
-import { presetProfileForTier } from './roadprofile';
+import { presetProfileForTier, worldOrderedProfile } from './roadprofile';
 import { taperTilesFor } from './taper';
 import type { ApproachSurroundings } from './approachzone';
 import type { CorridorHalf, JunctionControl, RoadProfile } from './types';
@@ -790,5 +790,38 @@ describe('where a ramp alongside meets the motorway tile it joins', () => {
 
   it('says nothing off a ramp node', () => {
     expect(rampMouthAt(2, 1, motorwayWorld(ON_RAMP))).toBeUndefined();
+  });
+});
+
+describe('a one-way road’s turn bay is on the driver’s left, whichever way it runs', () => {
+  /**
+   * A one-way street with a parking lane on the driver's left, packed so tight
+   * that the bay has to be carved out of that parking lane to fit at all.
+   */
+  const tight: RoadProfile = {
+    class: 'oneWay',
+    pieces: [
+      { kind: 'sidewalk', width: 2.5 },
+      { kind: 'parking', width: 2.4 },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+      { kind: 'sidewalk', width: 2.5 },
+    ],
+  };
+
+  it('takes the bay out of the parking on its own side, heading any way', () => {
+    // Laid in world order, the driver's left is the high offset heading south
+    // or west. A bay that looked for its parking on the low side there found
+    // none, and squeezed the lanes instead of giving up the bay it was beside.
+    for (const flow of [RoadFlow.North, RoadFlow.East, RoadFlow.South, RoadFlow.West]) {
+      const out = pocketedCrossSection(
+        worldOrderedProfile(tight, flow),
+        { toward: flow, distance: 0, allowed: DEFAULT_ALLOWED, pocket: true, openness: 1, laneAllowed: 0 },
+        flow,
+      );
+      expect(out.pieces.filter((p) => p.kind === 'travel'), `flow ${flow}`).toHaveLength(4);
+      expect(out.pieces.some((p) => p.kind === 'parking'), `flow ${flow}`).toBe(false);
+    }
   });
 });

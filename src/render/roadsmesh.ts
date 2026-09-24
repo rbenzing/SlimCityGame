@@ -101,6 +101,7 @@ import {
   kerbReturnRadiusOf,
   carriagewayWidth,
   corridorHalfProfile,
+  worldOrderedProfile,
   FOOTWAY_WIDTH_M,
   hasFootway,
   hasKerbs,
@@ -3561,7 +3562,10 @@ export function roadTileVertices(
   // The cross-section this tile carries: its own, plus the turn pocket it may
   // have gained for the junction ahead, less the lanes it may be closing for a
   // narrower road ahead.
-  const own = profile ?? presetProfileForTier(tier);
+  // A caller's profile is already in world order; a preset is authored in the
+  // direction of travel and is turned round here for a road running south or
+  // west. A preset is never a corridor half, so there is nothing to halve.
+  const own = profile ?? worldOrderedProfile(presetProfileForTier(tier), flow);
   const crossSection = drawnCrossSection(own, approach, narrowing, flow, auxiliary, sharedTurn);
   const spec = quadSpecFor(tier, crossSection);
   // What the PAINT is laid to, which is the same thing everywhere but down a
@@ -5165,7 +5169,7 @@ export class RoadMeshRenderer {
    * each tile, at twice the width the road has.
    */
   private ownProfileOf(tile: RoadTileDelta, whole: RoadProfile): RoadProfile {
-    return corridorHalfProfile(whole, corridorHalfOf(tile.flow));
+    return corridorHalfProfile(worldOrderedProfile(whole, tile.flow), corridorHalfOf(tile.flow));
   }
 
   /**

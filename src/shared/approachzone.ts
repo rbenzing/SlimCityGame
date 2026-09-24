@@ -15,6 +15,7 @@ import { armAllowed, movementsOffered, pocketWarranted } from './approach';
 import type { MovementSet, PackedLaneTurns, PackedTurns } from './approach';
 import {
   isOneWayProfile,
+  reversedInWorld,
   roadRank,
   withAuxiliaryLane,
   withCentreTurn,
@@ -403,7 +404,9 @@ export function pocketedCrossSection(
     return profile;
   }
   const { leftSign } = approachAxis(approach.toward);
-  return withTurnPocket(profile, -leftSign as 1 | -1, approach.openness) ?? profile;
+  return (
+    withTurnPocket(profile, -leftSign as 1 | -1, approach.openness, leftSign as 1 | -1) ?? profile
+  );
 }
 
 /**
@@ -426,7 +429,7 @@ export function drawnCrossSection(
   sharedTurn?: boolean,
 ): RoadProfile {
   const base = withAuxiliary(profile, auxiliary);
-  if (narrowing) return pavedCrossSection(base, closedAt(narrowing));
+  if (narrowing) return pavedCrossSection(base, closedAt(narrowing), reversedInWorld(flow));
   return pocketedCrossSection(base, approach, flow, sharedTurn);
 }
 
@@ -453,7 +456,7 @@ export function paintedCrossSection(
   sharedTurn?: boolean,
 ): RoadProfile {
   const base = withAuxiliary(profile, auxiliary);
-  if (narrowing) return taperedCrossSection(base, closedAt(narrowing));
+  if (narrowing) return taperedCrossSection(base, closedAt(narrowing), reversedInWorld(flow));
   return pocketedCrossSection(base, approach, flow, sharedTurn);
 }
 
