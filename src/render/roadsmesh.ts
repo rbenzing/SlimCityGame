@@ -874,22 +874,19 @@ const TURN_ARROW_HOOK_M = 1.4;
  * head at the end of the hook. A turn lane carries one pointing each way,
  * because traffic enters it from both directions to turn across.
  *
- * `ahead` is +1 when the arrow points toward the high coordinate on the travel
- * axis, and `across` is +1 when the turn is toward the high coordinate on the
- * other axis — a driver heading one way turns across the opposing traffic, so
- * the two are the opposite of each other on the two arrows.
+ * `toward` is the way the driver reading it is heading; the hook bends to
+ * their left, across the oncoming traffic they turn through.
  */
-function emitTurnArrow(
+export function emitTurnArrow(
   positions: number[],
   colors: number[],
-  vertical: boolean,
+  toward: RoadFlow,
   centerX: number,
   centerZ: number,
   laneCentre: number,
-  ahead: 1 | -1,
-  across: 1 | -1,
   hAt: (x: number, z: number) => number,
 ): void {
+  const { vertical, ahead, leftSign: across } = approachAxis(toward);
   const stemHalf = ARROW_STEM_HALF_WIDTH_M;
   const stemFrom = -TURN_ARROW_HALF_LENGTH_M;
   const stemTo = TURN_ARROW_HALF_LENGTH_M - TURN_ARROW_HOOK_M;
@@ -2178,7 +2175,9 @@ function emitCurvedTurn(
  * on the tile-corner pivot: inner radius `armDepth = TILE_HALF - coreHalf`,
  * outer `TILE_HALF + coreHalf`, so its centerline radius is exactly rMid =
  * TILE_HALF and its radial half-width is coreHalf. A straight-tile marking at
- * perpendicular offset `o` therefore maps to an arc at radius rMid + o. Each
+ * perpendicular offset `o` therefore maps to an arc at radius rMid ± o — plus
+ * where a positive offset leads away from the pivot, so each line stays on the
+ * side of the road it holds on the straight arms either side. Each
  * marking line is a thin painted ribbon [r-PAINT, r+PAINT] swept over the 90°,
  * dashed (by arc length, same DASH metric as the straight arms) or solid.
  * Reuses emitCurvedTurn's pivot + at(r,θ) math so paint tracks the road, and
@@ -2197,6 +2196,7 @@ function emitCurvedMarkings(
   armDepth: number,
   hasN: boolean,
   hasE: boolean,
+  flow: number,
   hAt: (x: number, z: number) => number,
 ): void {
   if (coreHalf <= 0 || armDepth <= 0) return;
@@ -2205,6 +2205,13 @@ function emitCurvedMarkings(
   const pivotX = pxSign * TILE_HALF;
   const pivotZ = pzSign * TILE_HALF;
   const rMid = (armDepth + TILE_HALF + coreHalf) / 2;
+  // The plan's offsets run across the way the tile flows: along x for a road
+  // heading north or south, along z for one heading east or west. A positive
+  // offset is a larger radius only where that direction leads away from the
+  // pivot; otherwise the lines would swap sides between the arms and the bend.
+  const direction = flowDirection(flow);
+  const offsetsAlongX = direction === RoadFlow.North || direction === RoadFlow.South;
+  const outward = direction === RoadFlow.None ? 1 : offsetsAlongX ? -pxSign : -pzSign;
   if (rMid <= 0) return;
   const dirX = (t: number): number => -pxSign * Math.cos(t);
   const dirZ = (t: number): number => -pzSign * Math.sin(t);
@@ -2231,7 +2238,7 @@ function emitCurvedMarkings(
   const arcLine = (line: MarkingLine, dashed: boolean): void => {
     const o = line.at;
     const paint = paintOf(line);
-    const r = rMid + o;
+    const r = rMid + outward * o;
     if (r <= PAINT_HALF_WIDTH_M) return;
     const rA = r - PAINT_HALF_WIDTH_M;
     const rB = r + PAINT_HALF_WIDTH_M;
@@ -2248,8 +2255,7 @@ function emitCurvedMarkings(
     }
   };
 
-  // The plan's offsets are signed across the carriageway; on a curve the
-  // "across" direction is radial, so a positive offset is a larger radius.
+  // On a curve the "across" direction is radial.
   for (const line of plan.solid) arcLine(line, false);
   for (const line of plan.dashed) arcLine(line, true);
 }
@@ -2595,7 +2601,8 @@ function emitRampTaper(
   // A merge's shape; a diverge reads it mirrored along the run.
   const mergeNear = (u: number): number =>
     u >= 0 ? TILE_HALF : half + ((TILE_HALF - half) * (u + TILE_HALF)) / TILE_HALF;
-  const mergeFar = (u: number): number => -half + ((TILE_HALF + half) * (u + TILE_HALF)) / (2 * TILE_HALF);
+  const mergeFar = (u: number): number =>
+    -half + ((TILE_HALF + half) * (u + TILE_HALF)) / (2 * TILE_HALF);
   const near = (u: number): number => mergeNear(merging ? u : -u);
   const far = (u: number): number => mergeFar(merging ? u : -u);
   const pt = (u: number, c: number): [number, number] => [
@@ -2651,7 +2658,19 @@ function emitRampTaper(
     const at0 = (edge(u0) - margin) * acrossSign;
     const at1 = (edge(u1) - margin) * acrossSign;
     const [lo, hi, atLo, atHi] = w0 <= w1 ? [w0, w1, at0, at1] : [w1, w0, at1, at0];
-    pushMarkingRun(positions, colors, vertical, centerX, centerZ, atLo, atHi, lo, hi, hAt, paintOf(which));
+    pushMarkingRun(
+      positions,
+      colors,
+      vertical,
+      centerX,
+      centerZ,
+      atLo,
+      atHi,
+      lo,
+      hi,
+      hAt,
+      paintOf(which),
+    );
   };
   const nearMargin = half - inward(nearLine);
   const farMargin = -half - inward(farLine);
@@ -3805,6 +3824,7 @@ export function roadTileVertices(
       armDepth,
       hasN,
       hasE,
+      flow,
       hAt,
     );
   }
@@ -4016,8 +4036,10 @@ export function roadTileVertices(
       );
     };
     /** The plan the arm on each side paints: its own where it has one. */
-    const armPlan = (has: boolean, neighbour: MarkingPlan | null | undefined): MarkingPlan | null =>
-      has ? (neighbour ?? plan) : null;
+    const armPlan = (
+      has: boolean,
+      neighbour: MarkingPlan | null | undefined,
+    ): MarkingPlan | null => (has ? (neighbour ?? plan) : null);
     const planN = armPlan(hasN, neighborHalves.plans?.n);
     const planS = armPlan(hasS, neighborHalves.plans?.s);
     const planE = armPlan(hasE, neighborHalves.plans?.e);
@@ -4030,10 +4052,13 @@ export function roadTileVertices(
     // climbs over it, which is what a dropped kerb is.
     // Nothing turns at a merge or a diverge, so there is no corner to round.
     if (!rampNode) {
-      if (legN && legE) cornerFill(1, -1, halfN, halfE, cornerEdgeInset(planN, halfN, planE, halfE));
+      if (legN && legE)
+        cornerFill(1, -1, halfN, halfE, cornerEdgeInset(planN, halfN, planE, halfE));
       if (legS && legE) cornerFill(1, 1, halfS, halfE, cornerEdgeInset(planS, halfS, planE, halfE));
-      if (legS && legW) cornerFill(-1, 1, halfS, halfW, cornerEdgeInset(planS, halfS, planW, halfW));
-      if (legN && legW) cornerFill(-1, -1, halfN, halfW, cornerEdgeInset(planN, halfN, planW, halfW));
+      if (legS && legW)
+        cornerFill(-1, 1, halfS, halfW, cornerEdgeInset(planS, halfS, planW, halfW));
+      if (legN && legW)
+        cornerFill(-1, -1, halfN, halfW, cornerEdgeInset(planN, halfN, planW, halfW));
     }
 
     // The footway CARRIES ON ROUND THE CORNER, through the junction.
@@ -4369,12 +4394,12 @@ export function roadTileVertices(
       // reads as one traffic enters from both directions to turn across.
       if (plan.turnLane) {
         const laneCentre = (plan.turnLane.from + plan.turnLane.to) / 2;
-        const paint = (vertical: boolean): void => {
-          emitTurnArrow(positions, colors, vertical, centerX, centerZ, laneCentre, 1, -1, hAt);
-          emitTurnArrow(positions, colors, vertical, centerX, centerZ, laneCentre, -1, 1, hAt);
+        const paint = (one: RoadFlow, other: RoadFlow): void => {
+          emitTurnArrow(positions, colors, one, centerX, centerZ, laneCentre, hAt);
+          emitTurnArrow(positions, colors, other, centerX, centerZ, laneCentre, hAt);
         };
-        if (hasVertical && isArrowTile(z)) paint(true);
-        if (hasHorizontal && isArrowTile(x)) paint(false);
+        if (hasVertical && isArrowTile(z)) paint(RoadFlow.South, RoadFlow.North);
+        if (hasHorizontal && isArrowTile(x)) paint(RoadFlow.East, RoadFlow.West);
       }
 
       // Lane-use arrows on the last tile before a junction: what each lane of
@@ -5490,7 +5515,13 @@ export class RoadMeshRenderer {
    * answers a different one: how much the ground varies across a tile, which
    * on any slope is not zero and is not a defect.
    */
-  surfaceHeightGridAt(x0: number, z0: number, x1: number, z1: number, n: number): (number | null)[] {
+  surfaceHeightGridAt(
+    x0: number,
+    z0: number,
+    x1: number,
+    z1: number,
+    n: number,
+  ): (number | null)[] {
     return this.surfaceGridAt(x0, z0, x1, z1, n, true) as unknown as (number | null)[];
   }
 

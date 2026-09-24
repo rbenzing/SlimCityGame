@@ -251,6 +251,11 @@ This is also what makes an asymmetric profile meaningful: a three-lane
 street as 2+1, a five-lane one-way corridor as 3+2 — "2+1" means nothing
 until the tile knows which way is which.
 
+A tile holds one flow, so where two one-way streets cross, the crossing tile
+keeps the flow of whichever was drawn through it last. The graph therefore
+reads a run's direction from the run's own tiles and falls back to its end
+nodes only when it has none, ignoring a flow that runs across the run.
+
 **A section is authored in the direction of travel and laid in world order.**
 Its pieces are listed left to right as its driver sees them. Offsets across a
 road grow east and south, so heading north or east the driver's left is the
@@ -451,8 +456,12 @@ surface differs — gravel is tan, ballast is grey stone. See
 
 Roads replace each other by **rank**, not by catalog order: dirt < alley <
 rural < local < one-way < urban < collector < arterial < divided < ramp <
-highway (rail sits outside the ranking and refuses nothing, since it is a
-separate network that only crosses a street at grade). A road carrying a
+highway. Rail sits outside the ranking, since it is a separate network: it
+refuses no join, and neither takes a tile from the other, so rail drawn across
+a street is refused like any road that does not outrank what it crosses, and
+so is a street drawn across rail. Replace mode lays rail through a street,
+which cuts it: the track is drawn running straight through and the street
+stops either side. A road carrying a
 reserved bus or tram lane outranks the same road without one, so a stray
 drag cannot silently erase a transit line. A road may only be drawn through
 one it outranks; drawing through a road it does not outrank is refused
@@ -532,8 +541,10 @@ off it until somebody decides to let it on. Both unlock at the same
 milestone, so the rule can never leave a player holding a motorway with no
 way to reach it, and the refusal names the ramp rather than only saying no.
 
-The road tool enforces both (a refusal reads on the cursor chip), which is
-also the only place they can be enforced with the reason visible.
+The road tool refuses both before the drag is sent, with the reason on the
+cursor chip. The world refuses them again when the command arrives, whole and
+with the same sentence, so no command from any source — an undo, a replayed
+batch, a script — lays a street against a motorway.
 
 The case a motorway meeting a motorway leaves open is not a refusal at all:
 **a highway lying ACROSS the way another highway runs, rather than in line
@@ -602,10 +613,11 @@ off the same way in reverse. On this grid that is:
   edge, no junction. Traffic changes road only at the join.
 - **A head-on ramp is refused, and so is one against the traffic.** A ramp
   tile that would join a motorway while flowing across it (a T) or against it
-  (a wrong-way merge) is refused by the road tool with the reason, and the
-  reason says what to do: bend the ramp to run beside the motorway, the way
-  it is going, before it meets it. A save that already holds a head-on ramp
-  keeps it and draws it as it always did.
+  (a wrong-way merge) is refused with the reason, by the road tool and again
+  by the world when the command arrives, and the reason says what to do: bend
+  the ramp to run beside the motorway, the way it is going, before it meets
+  it. A save that already holds a head-on ramp keeps it and draws it as it
+  always did.
 - **The join tile is a taper, not a corner.** On the ramp side the join tile
   carries the ramp's carriageway straight along its flow and fans its asphalt
   across the verge into the motorway's auxiliary lane on the half of the tile
@@ -801,7 +813,8 @@ per-tier:
 - **Turn-lane paint.** A two-way left-turn lane carries a solid line toward
   the through lane and a broken line toward the turn lane on each side —
   legal to cross into to turn, illegal to travel along — with white turn
-  arrows painted in it pointing each way.
+  arrows painted in it pointing each way, each hooking toward the left of the
+  driver it faces, across the oncoming traffic they turn through.
   It counts toward the road's width and its class's lane range, and carries
   no through capacity, which is what a turn lane is for.
 - **Turn arrows, merge arrows, gore chevrons** all come from the approach

@@ -31,6 +31,8 @@ import {
   corridorHalfProfile,
   carriagewayHalfWidthOf,
   medianOffsetOf,
+  parkingSides,
+  rankedTogether,
   canGainAuxiliaryLane,
   hasKerbs,
   KERB_RESERVE_M,
@@ -1841,5 +1843,32 @@ describe('a motorway is ONE carriageway, not a road with two halves', () => {
     expect(profileCapacity(motorway())).toBe(spec.capacity);
     expect(spec.capacity).toBe(3 * laneCapacity('highway'));
     expect(spec.oneWay).toBe(true);
+  });
+});
+
+describe('parkingSides', () => {
+  it('says which side of the carriageway each parking lane is on', () => {
+    const pieces = (low: boolean, high: boolean): RoadProfile => ({
+      class: 'local',
+      pieces: [
+        ...(low ? [{ kind: 'parking' as const, width: 2.25 }] : []),
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        ...(high ? [{ kind: 'parking' as const, width: 2.25 }] : []),
+      ],
+    });
+    expect(parkingSides(pieces(true, false))).toEqual({ low: true, high: false });
+    expect(parkingSides(pieces(false, true))).toEqual({ low: false, high: true });
+    expect(parkingSides(pieces(true, true))).toEqual({ low: true, high: true });
+    expect(parkingSides(pieces(false, false))).toEqual({ low: false, high: false });
+  });
+});
+
+describe('rankedTogether', () => {
+  it('ranks roads against roads and rail against rail, never one against the other', () => {
+    expect(rankedTogether('local', 'highway')).toBe(true);
+    expect(rankedTogether('rail', 'rail')).toBe(true);
+    expect(rankedTogether('rail', 'local')).toBe(false);
+    expect(rankedTogether('dirt', 'rail')).toBe(false);
   });
 });

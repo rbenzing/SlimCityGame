@@ -116,6 +116,11 @@ function sameTileKeySet(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean
 const MAP_NAME = 'Riverton';
 const OVERLAY_REFRESH_MS = 500; // 2 Hz while an infoview lens is active
 const SNAPSHOT_INTERVAL_MS = 1000 / SNAPSHOT_HZ;
+/**
+ * Refusal reasons that are codes rather than sentences. Any other reason the
+ * worker sends is already written for the player and is shown as it is.
+ */
+const UNWORDED_REASONS: ReadonlySet<string> = new Set(['invalid', 'grade', 'height']);
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 const roadSpecs = (roadsData as { specs: RoadSpec[] }).specs;
@@ -355,6 +360,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       readGrid: (): {
         size: number;
         roadTier: number[];
+        roadMask: number[];
         roadProfile: number[];
         roadFlow: number[];
         roadElevation: number[];
@@ -367,6 +373,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       } => ({
         size: clientGrid.size,
         roadTier: Array.from(clientGrid.roadTier),
+        // Which neighbours each road tile is joined to: two roads side by side
+        // are not necessarily one road, and only the mask says which.
+        roadMask: Array.from(clientGrid.roadMask),
         // The profile id per tile: a harness can tell a composed road from
         // the preset it stands nearest to, which a screenshot cannot.
         roadProfile: Array.from(clientGrid.roadProfile),
@@ -645,13 +654,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // metres of corner and reaches no tile edge, so it is invisible to
       // readPaint and has been checkable only by eye — which has been wrong
       // about it more than once.
-      readSurface: (
-        x0: number,
-        z0: number,
-        x1: number,
-        z1: number,
-        n: number,
-      ): (string | null)[] => roadsMesh.surfaceGridAt(x0, z0, x1, z1, n),
+      readSurface: (x0: number, z0: number, x1: number, z1: number, n: number): (string | null)[] =>
+        roadsMesh.surfaceGridAt(x0, z0, x1, z1, n),
       // The same sampling, reporting the ROAD SURFACE's height rather than its
       // colour. A road's vertices take their Y from the ground under them, so
       // it follows the terrain instead of sitting flat across a tile — which
@@ -912,8 +916,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
    * carriageway, which carries traffic one way and is paired with a second run
    * to make a dual carriageway. These get flow arrows on the placement ghost.
    */
-  const isDirectionalTier = (tier: RoadTier): boolean =>
-    roadSpecByTier.get(tier)?.oneWay === true;
+  const isDirectionalTier = (tier: RoadTier): boolean => roadSpecByTier.get(tier)?.oneWay === true;
 
   const ghostKindFor = (tool: ToolId): GhostKind => {
     if (tool === 'bulldoze') return 'bulldoze';
@@ -1080,7 +1083,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
             ? 'Not enough funds.'
             : ack.reason === 'locked'
               ? 'Not unlocked at this milestone yet.'
-              : 'That cannot be built there.',
+              : ack.reason && !UNWORDED_REASONS.has(ack.reason)
+                ? ack.reason
+                : 'That cannot be built there.',
         tick: store.getState().stats.tick,
       });
     }

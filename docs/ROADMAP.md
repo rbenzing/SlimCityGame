@@ -202,6 +202,20 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 
 ## 10. History (newest first)
 
+### Overpasses (requested 2026-09-23, not built)
+
+A road could not cross another road or a railway without meeting it, because a
+tile held one road. So a street could not get past a motorway at all, and two
+motorways could only cross as a flat crossroads. The player asked for real
+road-over-road overpasses with height rules, and chose a true second road
+layer ([ADR-0015](engineering/adr/0015-a-crossing-tile-may-carry-a-second-road-passing-over.md)).
+The second road is stored only on the tiles where it crosses; the ramps up and
+down are ordinary bridge approaches. Fully specified, including clearances,
+what may cross what, the build and bulldoze rules, the save bump and every
+system that has to learn the layer, in
+[world-sim/overpasses.md](world-sim/overpasses.md). Nothing in this section has
+shipped.
+
 ### A road's tier is its size (2026-09-15)
 
 A profile carrying a bus piece derived the bus tier whatever road it was, a

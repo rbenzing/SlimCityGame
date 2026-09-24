@@ -18,13 +18,14 @@ import {
   RoadFlow,
   RoadTier,
   ZoneType,
+  isRailTier,
   isStreetTier,
 } from '../shared/types';
 import {
   canGainTurnPocket,
   isPresetProfileId,
   presetProfileForTier,
-  rankForTier,
+  tierOutranks,
 } from '../shared/roadprofile';
 import { controlFromCode, warrantedControl } from '../shared/junction';
 import {
@@ -117,13 +118,6 @@ export function computeMask(g: GridState, x: number, z: number): number {
 export type NetworkTiers = (tier: RoadTier) => boolean;
 
 /**
- * Neighbor bitmask counting only neighbours that belong to the SAME network —
- * so the vehicle graph never treats rail as connected, and the rail graph never
- * treats a street as connected, even though `computeMask` still renders the two
- * abutting (the level-crossing look). Identical to `computeMask` on a grid of
- * one network's tiles alone.
- */
-/**
  * Whether the tile at (nx, nz) is the OTHER HALF of the corridor (x, z)
  * belongs to, rather than a road joining it.
  *
@@ -150,6 +144,11 @@ function isCorridorPartner(g: GridState, x: number, z: number, nx: number, nz: n
   );
 }
 
+/**
+ * Neighbor bitmask counting only neighbours that belong to the SAME network, so
+ * a graph built from one set of tiers never links to another. Identical to
+ * `computeMask` on a grid of one network's tiles alone.
+ */
 function computeNetworkMask(g: GridState, x: number, z: number, inNetwork: NetworkTiers): number {
   let mask = 0;
   if (inNetwork(tierAt(g, x, z - 1)) && !isSeparateRoad(g, x, z, x, z - 1)) mask |= 1;
@@ -161,15 +160,38 @@ function computeNetworkMask(g: GridState, x: number, z: number, inNetwork: Netwo
 
 /**
  * Whether a neighbouring tile is a road of its OWN rather than an arm of this
- * one: either the other half of this tile's corridor, or a motorway
- * carriageway running alongside.
+ * one: the other half of this tile's corridor, a motorway carriageway running
+ * alongside, a ramp beside a motorway it does not join, or rail against
+ * anything that is not rail — track cuts a street, it does not cross it.
  */
 function isSeparateRoad(g: GridState, x: number, z: number, nx: number, nz: number): boolean {
   return (
+    isRailAgainstRoad(g, x, z, nx, nz) ||
     isCorridorPartner(g, x, z, nx, nz) ||
     isSideBySideCarriageway(g, x, z, nx, nz) ||
     isRampAlongside(g, x, z, nx, nz)
   );
+}
+
+/** Whether exactly one of the two tiles is rail. */
+function isRailAgainstRoad(g: GridState, x: number, z: number, nx: number, nz: number): boolean {
+  if (!inBoundsOf(g.size, nx, nz)) return false;
+  return isRailTier(tierAt(g, x, z)) !== isRailTier(tierAt(g, nx, nz));
+}
+
+/**
+ * Every road tile's stored mask rewritten from the rules. The mask is derived
+ * from the tiles around it, so a save carries whatever the rules said when it
+ * was written; loading one recomputes it, or a rule that has changed since
+ * would never reach that city's roads.
+ */
+export function recomputeRoadMasks(g: GridState): void {
+  for (let z = 0; z < g.size; z++) {
+    for (let x = 0; x < g.size; x++) {
+      const i = indexOf(g.size, x, z);
+      g.roadMask[i] = tierAtIdx(g, i) === RoadTier.None ? 0 : computeMask(g, x, z);
+    }
+  }
 }
 
 /**
@@ -268,8 +290,7 @@ export function applyRoad(
     // A road replaces one BELOW it in the hierarchy, which is not the order
     // the tier numbers are in: a gravel track has a higher tier number than a
     // motorway and must still never cut one.
-    const outranks =
-      current === RoadTier.None || rankForTier(tier) > rankForTier(current as RoadTier);
+    const outranks = tierOutranks(tier, current as RoadTier);
     const laid = replace ? differs : outranks || sameTierNewProfile;
     // Which tiles this drag OWNS: the ones it laid, and the ones that already
     // carry exactly the road being drawn, since re-dragging a span is how its
@@ -462,12 +483,17 @@ interface BuiltGraph {
  * road laid before the direction was stored, which leaves its reader to fall
  * back to the geometry it always used.
  *
- * The first tile that has an answer gives it. A run is one street between two
- * nodes, so its tiles were laid by one drag and agree; a run stitched together
- * from two drags is decided by the end the walk started from.
+ * The first tile that has an answer gives it, reading the run's own tiles
+ * before its ends. An end is a node, and a node where two roads cross holds
+ * the flow of whichever was drawn through it last — the crossing road's, not
+ * this one's. A run is one street between two nodes, so its own tiles were
+ * laid by one drag and agree; a run stitched together from two drags is
+ * decided by the end the walk started from.
  */
 function storedRunDirection(g: GridState, runTiles: readonly TilePoint[]): boolean | null {
-  for (let i = 0; i < runTiles.length - 1; i++) {
+  const last = runTiles.length - 1;
+  const interior = Array.from({ length: Math.max(0, last - 1) }, (_, k) => k + 1);
+  for (const i of [...interior, 0]) {
     const here = runTiles[i]!;
     const next = runTiles[i + 1]!;
     // The direction only: the byte also carries which half of a corridor the
@@ -476,7 +502,9 @@ function storedRunDirection(g: GridState, runTiles: readonly TilePoint[]): boole
     if (stored === RoadFlow.None) continue;
     const along = flowForStep(next.x - here.x, next.z - here.z);
     if (along === RoadFlow.None) continue; // defensive: a non-orthogonal step
-    return stored === along;
+    if (stored === along) return true;
+    if (stored === flowForStep(here.x - next.x, here.z - next.z)) return false;
+    // Across the step: a crossing road's flow, which says nothing about this one.
   }
   return null;
 }

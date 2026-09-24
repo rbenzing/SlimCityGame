@@ -60,6 +60,7 @@ import type {
   JunctionControl,
   MainToWorker,
   MapData,
+  RoadClassId,
   RoadProfile,
   RoadSpec,
   RoadTileDelta,
@@ -78,10 +79,11 @@ import {
   FIRST_CUSTOM_PROFILE_ID,
   layRefusal,
   isPresetProfileId,
+  joinRefusal,
   presetProfileForTier,
-  rankForTier,
   roadPriceOf,
   tierForProfile,
+  tierOutranks,
   type RoadPrice,
 } from '../shared/roadprofile';
 import { codeForControl, controlFromCode, takesControl } from '../shared/junction';
@@ -115,7 +117,8 @@ import {
   serializeGrid,
   setZones,
 } from '../world/grid';
-import { RoadNetwork, applyRoad, removeRoad } from '../world/roads';
+import { RoadNetwork, applyRoad, recomputeRoadMasks, removeRoad } from '../world/roads';
+import { rampMeetingRefusal } from '../shared/corridor';
 import { solveElevationProfile } from '../world/bridges';
 import {
   applyHeightPatch,
@@ -277,6 +280,14 @@ function growRect(rect: DirtyRect | null, tiles: TilePoint[]): DirtyRect | null 
   }
   return next;
 }
+
+/** The four orthogonal steps — the neighbours a road tile can join. */
+const NEIGHBOUR_STEPS: ReadonlyArray<readonly [number, number]> = [
+  [0, -1],
+  [1, 0],
+  [0, 1],
+  [-1, 0],
+];
 
 /** 8-neighbor (Chebyshev distance 1) ring offsets — the "1-tile apron" around a road footprint. */
 const APRON_NEIGHBOR_OFFSETS: ReadonlyArray<readonly [number, number]> = [
@@ -608,6 +619,7 @@ class SimWorld implements WorkerSim {
       if (inst.state === BuildingState.Constructing) inst.state = BuildingState.Active;
     }
 
+    recomputeRoadMasks(this.grid);
     this.network.rebuild(this.grid);
     this.railNetwork.rebuild(this.grid);
     this.tramNetwork.rebuild(this.grid);
@@ -1307,6 +1319,51 @@ class SimWorld implements WorkerSim {
     return custom ? tierForProfile(custom) : null;
   }
 
+  /**
+   * Why a road of `profileId` may not go down on `laying` (each tile with the
+   * flow it will carry), or null: one of those tiles would touch a road its
+   * class may never meet — a street against a motorway, a dirt track against a
+   * ramp — or a ramp would meet a motorway head-on or against its traffic. The
+   * road tool asks the same questions before it sends the drag; asking them
+   * here too means no command, from whatever source, lays one.
+   */
+  private joinRefusalAround(laying: ReadonlyMap<number, number>, profileId: number): string | null {
+    const mine = this.profileForId(profileId);
+    if (!mine) return null;
+    const g = this.grid;
+    const tiles: TilePoint[] = [];
+    for (const idx of laying.keys()) {
+      const x = idx % g.size;
+      const z = (idx - x) / g.size;
+      tiles.push({ x, z });
+      for (const [dx, dz] of NEIGHBOUR_STEPS) {
+        const nx = x + dx;
+        const nz = z + dz;
+        if (!inBounds(nx, nz) || laying.has(tileIndex(nx, nz))) continue;
+        const other = this.roadClassAt(nx, nz);
+        if (!other) continue;
+        const why = joinRefusal(mine.class, other);
+        if (why) return why;
+      }
+    }
+    return rampMeetingRefusal(
+      tiles,
+      [...laying.values()],
+      mine.class,
+      (x, z) => this.roadClassAt(x, z),
+      (x, z) => (inBounds(x, z) ? (g.roadFlow[tileIndex(x, z)] ?? 0) : 0),
+    );
+  }
+
+  /** The class of the road on a tile, or null where there is none. */
+  private roadClassAt(x: number, z: number): RoadClassId | null {
+    if (!inBounds(x, z)) return null;
+    const n = tileIndex(x, z);
+    const tier = this.grid.roadTier[n] ?? 0;
+    if (tier === RoadTier.None) return null;
+    return this.profileForId(this.grid.roadProfile[n] || tier)?.class ?? null;
+  }
+
   /** The profile an id stands for: the preset itself, or the composition defined under it. */
   private profileForId(id: number): RoadProfile | null {
     if (isPresetProfileId(id)) {
@@ -1850,6 +1907,9 @@ class SimWorld implements WorkerSim {
     // the drag, and the tile the drag ended on keeps the heading it arrived
     // with. An undo supplies the directions that were there instead.
     const dragFlows = flowsAlong(tiles);
+    // Every tile this command puts its road on, with the flow it will carry,
+    // for the join checks below.
+    const laying = new Map<number, number>();
     let changedCount = 0;
     let bridgeCost = 0;
 
@@ -1887,8 +1947,7 @@ class SimWorld implements WorkerSim {
       // A road is replaced by one ABOVE it in the hierarchy, or by a different
       // composition of the same road; the same road again only ever re-profiles
       // its deck. Replace mode lands whatever the drag draws, lesser included.
-      const outranks =
-        (current as RoadTier) === RoadTier.None || rankForTier(tier) > rankForTier(current);
+      const outranks = tierOutranks(tier, current);
       const replaces = replace
         ? current !== tier || prevProfile !== profileId
         : outranks || (current === tier && current !== 0 && prevProfile !== profileId);
@@ -1911,6 +1970,7 @@ class SimWorld implements WorkerSim {
       }
       if (replaces) {
         changedCount += 1;
+        laying.set(idx, flow);
         priorElevationByTile.set(idx, priorDeck);
         priorFlowByTile.set(idx, priorFlow);
         if (current === 0) {
@@ -1922,6 +1982,9 @@ class SimWorld implements WorkerSim {
         }
       }
     }
+
+    const joinRefused = this.joinRefusalAround(laying, profileId);
+    if (joinRefused) return { ok: false, cost: 0, inverse: [], reason: joinRefused };
 
     if (changedCount === 0) {
       return {

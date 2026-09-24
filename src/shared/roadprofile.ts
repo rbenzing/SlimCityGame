@@ -18,10 +18,9 @@ import type {
   RoadClassSpec,
   RoadProfile,
   RoadSpec,
-  RoadTier,
 } from './types';
 import { TILE_METERS } from './constants';
-import { flowDirection, RoadFlow } from './types';
+import { flowDirection, RoadFlow, RoadTier } from './types';
 
 const data = roadsData as { classes: RoadClassSpec[]; specs: RoadSpec[] };
 
@@ -554,6 +553,23 @@ export function medianOffsetOf(profile: RoadProfile): number {
   const centres = pieceCentres(profile);
   const at = profile.pieces.findIndex((p) => p.kind === 'median');
   return at < 0 ? 0 : (centres[at] ?? 0);
+}
+
+/**
+ * Which sides of the carriageway carry a parking lane, in the order the
+ * profile is laid: `low` is the negative-offset side, `high` the positive.
+ */
+export function parkingSides(profile: RoadProfile): { low: boolean; high: boolean } {
+  const centres = pieceCentres(profile);
+  let low = false;
+  let high = false;
+  profile.pieces.forEach((p, i) => {
+    if (p.kind !== 'parking') return;
+    const at = centres[i] ?? 0;
+    if (at < 0) low = true;
+    else high = true;
+  });
+  return { low, high };
 }
 
 function pieceCentres(profile: RoadProfile): (number | null)[] {
@@ -1179,14 +1195,9 @@ function rebuildCore(
     // one-way STREET keeps its kerbside lanes, because that is where a bus
     // stops. Dropping the lane instead leaves the tool offering a choice that
     // changes nothing.
-    return [
-      ...before,
-      ...busLeft,
-      ...busMiddle,
-      ...run('fwd', lanes),
-      ...busRight,
-      ...after,
-    ].map((p) => ({ ...p }));
+    return [...before, ...busLeft, ...busMiddle, ...run('fwd', lanes), ...busRight, ...after].map(
+      (p) => ({ ...p }),
+    );
   }
   // A reservation is TWO tracks, one each way, and it separates the directions
   // the way a median does — which is why it takes the middle and not a kerb.
@@ -1275,17 +1286,17 @@ export function composeProfile(base: RoadProfile, edits: ProfileEdits): RoadProf
       ? baseCore
       : railsInLane(baseCore)
     : rebuildCore(
-          baseCore,
-          lanes,
-          lanesBack,
-          middle,
-          isOneWayProfile(base),
-          widthOf,
-          laneWidthFor(base.class),
-          bus,
-          tram,
-          footways,
-        );
+        baseCore,
+        lanes,
+        lanesBack,
+        middle,
+        isOneWayProfile(base),
+        widthOf,
+        laneWidthFor(base.class),
+        bus,
+        tram,
+        footways,
+      );
 
   const edge = (side: 'left' | 'right'): LanePiece[] => {
     const flow = side === 'left' ? 'back' : 'fwd';
@@ -1471,9 +1482,30 @@ export function roadRank(profile: RoadProfile): number {
   return CLASS_RANK[profile.class] * 2 + (transit ? 1 : 0);
 }
 
+/**
+ * Whether two classes are ranked against each other at all. Rail sits outside
+ * the road ranking: whichever number is higher, rail never takes a tile from a
+ * road nor a road from rail, and only replace mode lays one over the other.
+ */
+export function rankedTogether(a: RoadClassId, b: RoadClassId): boolean {
+  return (a === 'rail') === (b === 'rail');
+}
+
 /** The hierarchy rank of a tier, which is the rank of the preset it names. */
 export function rankForTier(tier: RoadTier): number {
   return roadRank(presetProfileForTier(tier));
+}
+
+/**
+ * Whether a drag of `tier` takes a tile that holds `current`: an empty tile,
+ * or a road it outranks and is ranked against at all.
+ */
+export function tierOutranks(tier: RoadTier, current: RoadTier): boolean {
+  if (current === RoadTier.None) return true;
+  if (!rankedTogether(presetProfileForTier(tier).class, presetProfileForTier(current).class)) {
+    return false;
+  }
+  return rankForTier(tier) > rankForTier(current);
 }
 
 /** Whether a road of class `a` may touch a road of class `b`, in either order. */

@@ -4,6 +4,7 @@ import {
   roadTileVertices,
   RoadMeshRenderer,
   dashSegments,
+  emitTurnArrow,
   crosswalkBarOffsets,
   junctionArmLayout,
   isAvenueMedianEligible,
@@ -3915,5 +3916,65 @@ describe('a section is laid left to right in the direction the road runs', () =>
       // The line is 0.15 m wide; its outer edge is what was found.
       expect(Math.abs(edge), `flow ${flow}`).toBeCloseTo(Math.abs(rightEdge) + 0.075, 1);
     }
+  });
+});
+
+describe('a two-way turn lane arrow', () => {
+  /** Where the arrow's paint leans across the lane: the hook is the only part off-centre. */
+  const lean = (toward: RoadFlow): { x: number; z: number } => {
+    const positions: number[] = [];
+    emitTurnArrow(positions, [], toward, 0, 0, 0, () => 0);
+    const t = toTriples(positions);
+    const mean = (k: 0 | 2) => t.reduce((s, p) => s + (p as number[])[k]!, 0) / t.length;
+    return { x: mean(0), z: mean(2) };
+  };
+
+  it("hooks toward the driver's left whichever way they are heading", () => {
+    // Right-hand traffic turns left across the oncoming lanes. Heading south
+    // (+z) the driver's left is east (+x); heading east it is north (-z).
+    expect(lean(RoadFlow.South).x).toBeGreaterThan(0.1);
+    expect(lean(RoadFlow.North).x).toBeLessThan(-0.1);
+    expect(lean(RoadFlow.East).z).toBeLessThan(-0.1);
+    expect(lean(RoadFlow.West).z).toBeGreaterThan(0.1);
+  });
+});
+
+describe('a one-way street round a bend', () => {
+  /** How far the yellow left edge sits from the pivot of a north-east bend. */
+  const yellowRadius = (flow: RoadFlow): number => {
+    const { positions, colors } = roadTileVertices(
+      4,
+      4,
+      RoadTier.OneWay,
+      N | E,
+      () => 0,
+      undefined,
+      undefined,
+      undefined,
+      flow,
+    );
+    const pos = toTriples(positions);
+    const col = toTriples(colors);
+    const pivotX = 5 * TILE_METERS;
+    const pivotZ = 4 * TILE_METERS;
+    let sum = 0;
+    let n = 0;
+    for (let i = 0; i < pos.length; i++) {
+      if (!isMarkingYellow(col[i] as number[])) continue;
+      const p = pos[i] as number[];
+      sum += Math.hypot(p[0]! - pivotX, p[2]! - pivotZ);
+      n++;
+    }
+    expect(n, `flow ${flow} paints a yellow edge`).toBeGreaterThan(0);
+    return sum / n;
+  };
+
+  it("keeps the yellow edge on the driver's left through the bend", () => {
+    // Heading east out of the bend it came south into: a left turn, so the
+    // driver's left is the inside of it.
+    expect(yellowRadius(RoadFlow.East)).toBeLessThan(TILE_METERS / 2);
+    // Heading north out of the bend it came west into: a right turn, and the
+    // left edge is the outside.
+    expect(yellowRadius(RoadFlow.North)).toBeGreaterThan(TILE_METERS / 2);
   });
 });

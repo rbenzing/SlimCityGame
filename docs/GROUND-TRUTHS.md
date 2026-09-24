@@ -28,8 +28,10 @@ MUTCD citations below use 11th-edition section numbers.
 
 - A tile carries exactly one road tier. Two roads never share a tile: no
   overpass, no shared rail and street tile. A rail tile between two street tiles
-  is a break in the street, not a crossing, and drawing rail through a street
-  severs it. Level crossings that stop road traffic do not exist yet. —
+  is a break in the street, not a crossing, and rail laid through a street in
+  replace mode severs it: the track draws running straight through and the street ends
+  either side, never a crossing box. Level crossings that stop road traffic do
+  not exist yet. —
   [road-model.md](world-sim/road-model.md),
   [transit-model.md](world-sim/transit-model.md); `isStreetTier` and
   `isRailTier` in `src/shared/types.ts`, `src/world/roads.ts`
@@ -67,11 +69,15 @@ MUTCD citations below use 11th-edition section numbers.
   `worldOrderedProfile` and `reversedInWorld` in `src/shared/roadprofile.ts`
 - A one-way road flows the way it was drawn (its stored flow), never inferred
   from geometry; the geometric fallback exists only for tiles whose flow is
-  `RoadFlow.None`. — [road-model.md](world-sim/road-model.md);
-  `src/world/pathfind.ts`
+  `RoadFlow.None`. A run's direction is read from its own tiles before its end
+  nodes, because a node two one-ways cross holds only the flow of whichever
+  was drawn last. — [road-model.md](world-sim/road-model.md);
+  `src/world/pathfind.ts`, `storedRunDirection` in `src/world/roads.ts`
 - Roads replace by class rank (dirt, alley, rural, local, one-way, urban,
-  collector, arterial, divided, ramp, highway, then rail), never by tier number
-  or catalog order. A road with a bus or tram lane outranks the same road
+  collector, arterial, divided, ramp, highway), never by tier number or catalog
+  order. Rail sits outside the ranking: rail never takes a tile from a road nor
+  a road from rail, and only replace mode lays one over the other
+  (`tierOutranks`, `rankedTogether`). A road with a bus or tram lane outranks the same road
   without one. A drag through a road it does not outrank is refused whole; only
   replace mode overrides. — [road-model.md](world-sim/road-model.md);
   `CLASS_RANK` in `src/shared/roadprofile.ts`
@@ -80,8 +86,14 @@ MUTCD citations below use 11th-edition section numbers.
   [data-model.md](engineering/data-model.md)
 - A motorway (highway class) touches only a highway or a ramp. The rule is an
   accept-list, so a new class stays off the motorway until explicitly admitted.
-  A ramp never joins dirt or alley. — [road-model.md](world-sim/road-model.md);
-  `MOTORWAY_MEETS` in `src/shared/roadprofile.ts`
+  A ramp never joins dirt or alley. The worker refuses a `buildRoad` that
+  breaks either rule whole, not only the road tool. —
+  [road-model.md](world-sim/road-model.md); `MOTORWAY_MEETS` in
+  `src/shared/roadprofile.ts`, `joinRefusalAround` in `src/sim/worker.entry.ts`
+- A road tile's neighbour mask is derived, never trusted from a save: loading
+  recomputes every mask from today's rules, so a rule change reaches old
+  cities. — [data-model.md](engineering/data-model.md);
+  `recomputeRoadMasks` in `src/world/roads.ts`
 - Highway and rail arms never take a junction control — not from the warrant
   and not from a player's override, which is refused. A ramp's motorway end is
   an uncontrolled merge or diverge; its other end is an ordinary warranted
@@ -176,8 +188,9 @@ MUTCD citations below use 11th-edition section numbers.
   none arriving) — read from stored flows, never from shape, which is how an
   elbow beside the motorway joins nothing. Everywhere else beside it the ramp
   is its own road. A ramp that would join across the motorway or against it is
-  refused by the road tool, with a reason saying what to do; a save that
-  already holds one keeps it connected. The join tile draws as a taper into
+  refused whole, by the road tool and again by the worker, with a reason
+  saying what to do (`rampMeetingRefusal`); a save that already holds one
+  keeps it connected. The join tile draws as a taper into
   the motorway — the lane narrowing to nothing against its edge — never as a
   corner, and the motorway's edge line opens over the downstream half at a
   merge and the upstream half at a diverge. — [road-model.md](world-sim/road-model.md);

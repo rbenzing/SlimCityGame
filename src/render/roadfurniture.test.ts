@@ -61,6 +61,37 @@ describe('kerb props stand at the tile’s own edge', () => {
   });
 });
 
+describe('a meter stands beside the bay it charges for', () => {
+  const street = (parkLow: boolean, parkHigh: boolean): RoadProfile => ({
+    class: 'local',
+    pieces: [
+      { kind: 'sidewalk', width: 1.875 },
+      ...(parkLow ? [{ kind: 'parking' as const, width: 2.25 }] : []),
+      { kind: 'travel', width: 3.75, flow: 'back' },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+      ...(parkHigh ? [{ kind: 'parking' as const, width: 2.25 }] : []),
+      { kind: 'sidewalk', width: 1.875 },
+    ],
+  });
+  const sidesOf = (profile: RoadProfile, orientation: 'ew' | 'ns'): Set<number> => {
+    const tiles = strip(10, 0, 60, orientation, RoadTier.TwoLane).map((t) => ({ ...t, profile }));
+    const meters = computeMeterPlacements(tiles);
+    expect(meters.length).toBeGreaterThan(0);
+    return new Set(meters.map((m) => m.side));
+  };
+
+  it('on the only side that has parking', () => {
+    for (const o of ['ew', 'ns'] as const) {
+      expect(sidesOf(street(false, true), o), o).toEqual(new Set([1]));
+      expect(sidesOf(street(true, false), o), o).toEqual(new Set([-1]));
+    }
+  });
+
+  it('on either side where both have it', () => {
+    expect(sidesOf(street(true, true), 'ew')).toEqual(new Set([-1, 1]));
+  });
+});
+
 /** Builds a straight run of same-tier tiles, horizontal (fixed z) or vertical (fixed x). */
 function strip(
   fixed: number,

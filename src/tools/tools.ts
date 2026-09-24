@@ -30,17 +30,14 @@ import type {
   TransitMode,
   ZoneType,
 } from '../shared/types';
-import {
-  flowsAlong,
-  RoadTier as RoadTierValue,
-  ZoneType as ZoneTypeValue,
-} from '../shared/types';
-import type { RoadClassId, RoadProfile } from '../shared/types';
+import { flowsAlong, RoadTier as RoadTierValue, ZoneType as ZoneTypeValue } from '../shared/types';
+import type { RoadProfile } from '../shared/types';
 import {
   composeProfile,
   joinRefusal,
   layRefusal,
   NO_EDITS,
+  rankedTogether,
   roadRank,
   withArticle,
   presetProfileForTier,
@@ -53,7 +50,7 @@ import {
   type ProfileEdits,
 } from '../shared/roadprofile';
 import { ZONE_DEPTH } from '../world/zonable';
-import { corridorRunsFor, corridorTiles, rampJoinAround } from '../shared/corridor';
+import { corridorRunsFor, corridorTiles, rampMeetingRefusal } from '../shared/corridor';
 import type { CorridorRuns } from '../shared/corridor';
 
 /**
@@ -676,7 +673,8 @@ export class ToolManager {
       const nameOf = (p: RoadProfile): string => this.env.roadSpec(tierForProfile(p)).name;
       for (const t of tiles) {
         const existing = at(t);
-        if (!existing || roadRank(existing) <= mine) continue;
+        if (!existing) continue;
+        if (rankedTogether(profile.class, existing.class) && roadRank(existing) <= mine) continue;
         const mineName = withArticle(nameOf(profile));
         return `${mineName[0]!.toUpperCase()}${mineName.slice(1)} can't cross ${withArticle(
           nameOf(existing),
@@ -713,37 +711,13 @@ export class ToolManager {
     const at = this.env.roadProfileAt;
     const flowOf = this.env.roadFlowAt;
     if (!at || !flowOf) return null;
-    if (profile.class !== 'ramp' && profile.class !== 'highway') return null;
-    const flows = flowsAlong(tiles);
-    const planned = new Map(tiles.map((t, i) => [`${t.x},${t.z}`, flows[i]!]));
-    const classAt = (x: number, z: number): RoadClassId | null =>
-      planned.has(`${x},${z}`) ? profile.class : (at({ x, z })?.class ?? null);
-    const flowAt = (x: number, z: number): number =>
-      planned.get(`${x},${z}`) ?? flowOf({ x, z });
-    const isRamp = (x: number, z: number): boolean => classAt(x, z) === 'ramp';
-    for (const t of tiles) {
-      for (const [dx, dz] of [
-        [0, -1],
-        [1, 0],
-        [0, 1],
-        [-1, 0],
-      ] as const) {
-        const nx = t.x + dx;
-        const nz = t.z + dz;
-        if (planned.has(`${nx},${nz}`)) continue;
-        const theirs = classAt(nx, nz);
-        const join =
-          profile.class === 'ramp' && theirs === 'highway'
-            ? rampJoinAround(isRamp, flowAt, t.x, t.z, nx, nz)
-            : profile.class === 'highway' && theirs === 'ramp'
-              ? rampJoinAround(isRamp, flowAt, nx, nz, t.x, t.z)
-              : null;
-        if (join === 'headOn')
-          return 'A ramp meets a highway alongside it: bend it to run beside the highway before it joins';
-        if (join === 'wrongWay') return 'A ramp joins a highway running the same way, not against it';
-      }
-    }
-    return null;
+    return rampMeetingRefusal(
+      tiles,
+      flowsAlong(tiles),
+      profile.class,
+      (x, z) => at({ x, z })?.class ?? null,
+      (x, z) => flowOf({ x, z }),
+    );
   }
 
   /**
