@@ -234,9 +234,9 @@ describe('the approach zone', () => {
     const signal = { '2,2': { control: 'signal' as JunctionControl } };
     // The same arm at a full crossroads earns one, which is what says the tee
     // is being refused for its missing leg and not for something else.
-    expect(approachAhead(1, 2, 3, world(CROSSROADS, { '2,2': { control: 'signal' } }))?.pocket).toBe(
-      true,
-    );
+    expect(
+      approachAhead(1, 2, 3, world(CROSSROADS, { '2,2': { control: 'signal' } }))?.pocket,
+    ).toBe(true);
     expect(approachAhead(1, 2, 3, world(TEE, signal))?.pocket).toBe(false);
   });
 
@@ -282,30 +282,57 @@ describe('the approach zone', () => {
     expect(twoWay!.allowed & Movement.Left).not.toBe(0);
   });
 
-  /** Two crossroads on one street, `gap` tiles of street between them. */
-  const block = (gap: number): string => {
+  /**
+   * Two crossroads on one street, `gap` tiles of street between them. The
+   * street is `street` ('#' four-lane, 'n' two-lane); the roads crossing it
+   * are four-lane.
+   */
+  const block = (gap: number, street = '#'): string => {
     const row = (mark: (x: number) => string): string =>
       Array.from({ length: gap + 8 }, (_, x) => mark(x)).join('');
     const cross = [3, 3 + gap + 1];
     const side = row((x) => (cross.includes(x) ? '#' : '.'));
-    const street = row((x) => (x >= 1 && x <= gap + 6 ? '#' : '.'));
-    return [side, side, street, side, side].join('\n');
+    const main = row((x) => (cross.includes(x) ? '#' : x >= 1 && x <= gap + 6 ? street : '.'));
+    return [side, side, main, side, side].join('\n');
   };
+  /** Both of a block's junctions under `control`. */
+  const held = (gap: number, control: JunctionControl) => ({
+    '3,2': { control },
+    [`${4 + gap},2`]: { control },
+  });
 
-  it('carries a shared turn lane through a block short enough to need one', () => {
+  it('carries a shared turn lane through a short block where both junctions hold the street', () => {
     // A tile anywhere between the two junctions: every one of them, including
     // the middle one that approaches neither more than the other.
     for (const gap of [1, 2, 4, SHARED_TURN_LANE_MAX_TILES]) {
-      const w = world(block(gap));
+      const w = world(block(gap), held(gap, 'signal'));
       for (let x = 4; x < 4 + gap; x++) {
         expect({ gap, x, shared: sharedTurnLaneAt(x, 2, w) }).toEqual({ gap, x, shared: true });
       }
     }
   });
 
+  it('gives a two-lane street one where it stops for bigger roads at both ends', () => {
+    const w = world(block(4, 'n'), held(4, 'stop'));
+    expect(sharedTurnLaneAt(6, 2, w)).toBe(true);
+  });
+
+  it('lays none where nothing holds the street — it runs through both junctions', () => {
+    // Side streets that give way to it, or junctions nothing controls: no bay
+    // would be built at either end, so there is nothing for a shared lane to
+    // stand in for.
+    expect(sharedTurnLaneAt(6, 2, world(block(4, 'n')))).toBe(false);
+    expect(sharedTurnLaneAt(6, 2, world(block(4)))).toBe(false);
+  });
+
+  it('lays none where only one end holds the street', () => {
+    const w = world(block(4), { '3,2': { control: 'signal' } });
+    expect(sharedTurnLaneAt(6, 2, w)).toBe(false);
+  });
+
   it('leaves a block with a real length of road in the middle alone', () => {
     const gap = SHARED_TURN_LANE_MAX_TILES + 1;
-    const w = world(block(gap));
+    const w = world(block(gap), held(gap, 'signal'));
     // The tile in the middle is too far from both to be in either's way.
     const middle = 4 + Math.floor(gap / 2);
     expect(sharedTurnLaneAt(middle, 2, w)).toBe(false);
@@ -817,11 +844,24 @@ describe('a one-way road’s turn bay is on the driver’s left, whichever way i
     for (const flow of [RoadFlow.North, RoadFlow.East, RoadFlow.South, RoadFlow.West]) {
       const out = pocketedCrossSection(
         worldOrderedProfile(tight, flow),
-        { toward: flow, distance: 0, allowed: DEFAULT_ALLOWED, pocket: true, openness: 1, laneAllowed: 0 },
+        {
+          toward: flow,
+          distance: 0,
+          allowed: DEFAULT_ALLOWED,
+          pocket: true,
+          openness: 1,
+          laneAllowed: 0,
+        },
         flow,
       );
-      expect(out.pieces.filter((p) => p.kind === 'travel'), `flow ${flow}`).toHaveLength(4);
-      expect(out.pieces.some((p) => p.kind === 'parking'), `flow ${flow}`).toBe(false);
+      expect(
+        out.pieces.filter((p) => p.kind === 'travel'),
+        `flow ${flow}`,
+      ).toHaveLength(4);
+      expect(
+        out.pieces.some((p) => p.kind === 'parking'),
+        `flow ${flow}`,
+      ).toBe(false);
     }
   });
 });

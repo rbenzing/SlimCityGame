@@ -395,13 +395,21 @@ approaching side — so a stretch with a junction at each end would carry one
 bay on one side and the other bay on the other, tapering down and back up in
 between: a road that widens, narrows, and widens again on the opposite side
 over a couple of hundred metres. Where the two junctions are within
-`SHARED_TURN_LANE_MAX_TILES` (8 tiles, 160 m) of each other, the whole block
-carries a **two-way left-turn lane** instead — one lane at the centreline that
+`SHARED_TURN_LANE_MAX_TILES` (8 tiles, 160 m) of each other, and BOTH of them
+would give the road a bay, the whole block carries a **two-way left-turn
+lane** instead — one lane at the centreline that
 traffic turns from in either direction. It serves both junctions, is the same
 width the whole way, and is symmetrical, so nothing swaps sides and there is
 no taper at either end. It is the same lane a player can put down the middle
 of a road from the profile editor, and it carries no through capacity, so the
 road's capacity is unchanged.
+
+The lane stands in for two bays, so it is laid only where both would really be
+built: each junction's control has to hold this road, and the road has to be
+able to go through and turn left there. A two-lane street running through
+junctions its side streets give way at — or that nothing controls — earns no
+bay at either end and carries no centre lane; the same street stopping for
+bigger roads at both ends does.
 
 Whether a tile is in such a block is a question about the RUN rather than
 about an approach, and is asked separately: the tile halfway along belongs to
