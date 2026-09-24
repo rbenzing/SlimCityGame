@@ -273,6 +273,11 @@ function keyNetworkMask(g: GridState, key: RoadKey, inNetwork: NetworkTiers): nu
   return layerMask(g, x, (idx - x) / g.size, key >= n, inNetwork);
 }
 
+/** The mask of road `key` on whichever layer it names, counting every road. */
+export function roadKeyMask(g: GridState, key: RoadKey): number {
+  return keyNetworkMask(g, key, anyRoad);
+}
+
 /**
  * Whether a neighbouring tile is a road of its OWN rather than an arm of this
  * one: the other half of this tile's corridor, a motorway carriageway running

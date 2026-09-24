@@ -90,7 +90,13 @@ const HEADER_BYTES = 8; // uint32 version + uint32 size
 // (roadProfile) + 20 single-byte layers (7 flat: water/trees/zone/roadTier/
 // roadMask/power/watered) + 9 fields + 1 district + 1 landfill + 1 roadFlow +
 // 1 junctionControl.
-const BYTES_PER_TILE = 53;
+const BYTES_PER_TILE_V12 = 53;
+// v13 is v12 without its road layers — tier 1, mask 1, deck 4, profile 2,
+// flow 1, and the over road's tier 1, profile 2, flow 1, deck 4 — which are
+// derived from the road network saved after the tiles.
+const ROAD_LAYER_BYTES = 17;
+const BYTES_PER_TILE = BYTES_PER_TILE_V12 - ROAD_LAYER_BYTES;
+const U32_BYTES = 4;
 /** Arms a junction has, and so entries the per-lane layer keeps per tile. */
 export const ARMS_PER_TILE = 4;
 // v9 is this layout without the trailing powerLine layer, which loads empty so
@@ -140,6 +146,7 @@ export const BYTES_PER_TILE_BY_VERSION: readonly number[] = [
   BYTES_PER_TILE_V9,
   BYTES_PER_TILE_V10,
   BYTES_PER_TILE_V11,
+  BYTES_PER_TILE_V12,
   BYTES_PER_TILE,
 ];
 
@@ -147,13 +154,38 @@ function bufferBytesFor(size: number, bytesPerTile: number = BYTES_PER_TILE): nu
   return HEADER_BYTES + size * size * bytesPerTile;
 }
 
-export function serializeGrid(g: GridState): ArrayBuffer {
+/**
+ * The grid as a save buffer: its tiles without the road layers, then the
+ * encoded road network (`encodeRoadNetwork` in roadnet.ts), which the road
+ * layers are derived from on load.
+ */
+export function serializeGrid(g: GridState, roads: Uint8Array): ArrayBuffer {
+  const tiles = bufferBytesFor(g.size);
+  const buffer = new ArrayBuffer(tiles + U32_BYTES + roads.byteLength);
+  writeTiles(g, buffer, SAVE_VERSION, false);
+  const view = new DataView(buffer);
+  view.setUint32(tiles, roads.byteLength, true);
+  new Uint8Array(buffer).set(roads, tiles + U32_BYTES);
+  return buffer;
+}
+
+/**
+ * The grid in the last layout that stored roads on the tiles, which every
+ * older version is a trim of. The migration tests build their old buffers
+ * from it.
+ */
+export function serializeGridV12(g: GridState): ArrayBuffer {
+  const buffer = new ArrayBuffer(bufferBytesFor(g.size, BYTES_PER_TILE_V12));
+  writeTiles(g, buffer, 12, true);
+  return buffer;
+}
+
+function writeTiles(g: GridState, buffer: ArrayBuffer, version: number, roads: boolean): void {
   const n = g.size * g.size;
-  const buffer = new ArrayBuffer(bufferBytesFor(g.size));
   const view = new DataView(buffer);
   const bytes = new Uint8Array(buffer);
 
-  view.setUint32(0, SAVE_VERSION, true);
+  view.setUint32(0, version, true);
   view.setUint32(4, g.size, true);
 
   let offset = HEADER_BYTES;
@@ -169,10 +201,12 @@ export function serializeGrid(g: GridState): ArrayBuffer {
   offset += n;
   bytes.set(g.zone, offset);
   offset += n;
-  bytes.set(g.roadTier, offset);
-  offset += n;
-  bytes.set(g.roadMask, offset);
-  offset += n;
+  if (roads) {
+    bytes.set(g.roadTier, offset);
+    offset += n;
+    bytes.set(g.roadMask, offset);
+    offset += n;
+  }
 
   for (let i = 0; i < n; i++) {
     view.setUint32(offset + i * 4, g.buildingId[i]!, true);
@@ -197,19 +231,21 @@ export function serializeGrid(g: GridState): ArrayBuffer {
   offset += n;
   bytes.set(g.landfill, offset);
   offset += n;
-  for (let i = 0; i < n; i++) {
-    view.setFloat32(offset + i * 4, g.roadElevation[i]!, true);
+  if (roads) {
+    for (let i = 0; i < n; i++) {
+      view.setFloat32(offset + i * 4, g.roadElevation[i]!, true);
+    }
+    offset += n * 4;
+    // roadProfile (v6): two bytes per tile, so a save can hold thousands of
+    // composed profiles rather than a byte's worth.
+    for (let i = 0; i < n; i++) {
+      view.setUint16(offset + i * 2, g.roadProfile[i]!, true);
+    }
+    offset += n * 2;
+    // roadFlow (v7): one byte per tile — which way each road runs.
+    bytes.set(g.roadFlow, offset);
+    offset += n;
   }
-  offset += n * 4;
-  // roadProfile (v6): two bytes per tile, so a save can hold thousands of
-  // composed profiles rather than a byte's worth.
-  for (let i = 0; i < n; i++) {
-    view.setUint16(offset + i * 2, g.roadProfile[i]!, true);
-  }
-  offset += n * 2;
-  // roadFlow (v7): one byte per tile — which way each road runs.
-  bytes.set(g.roadFlow, offset);
-  offset += n;
   // junctionControl (v8): one byte per tile — the player's override, 0 where
   // they have left the junction on the control its warrant works out.
   bytes.set(g.junctionControl, offset);
@@ -229,6 +265,7 @@ export function serializeGrid(g: GridState): ArrayBuffer {
     view.setUint16(offset + i * 2, g.junctionLaneTurns[i]!, true);
   }
   offset += n * ARMS_PER_TILE * 2;
+  if (!roads) return;
   // The road passing over a crossing tile (v12): tier, profile, flow, deck.
   bytes.set(g.overTier, offset);
   offset += n;
@@ -237,8 +274,19 @@ export function serializeGrid(g: GridState): ArrayBuffer {
   bytes.set(g.overFlow, offset);
   offset += n;
   for (let i = 0; i < n; i++) view.setFloat32(offset + i * 4, g.overElevation[i]!, true);
+}
 
-  return buffer;
+/**
+ * The encoded road network a v13+ save carries after its tiles, or null for an
+ * older save, whose roads are in its tile layers.
+ */
+export function savedRoadNetwork(buf: ArrayBuffer): Uint8Array | null {
+  const view = new DataView(buf);
+  const version = view.getUint32(0, true);
+  if (version < 13) return null;
+  const tiles = bufferBytesFor(view.getUint32(4, true));
+  const length = view.getUint32(tiles, true);
+  return new Uint8Array(buf, tiles + U32_BYTES, length);
 }
 
 export function deserializeGrid(buf: ArrayBuffer): GridState {
@@ -266,12 +314,20 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
   const hasPowerLine = version >= 10;
   const hasJunctionLaneTurns = version >= 11;
   const hasOverRoads = version >= 12;
+  // From v13 the roads are the network after the tiles, and every road layer
+  // loads empty here for roadnet.ts to derive.
+  const hasRoadLayers = version <= 12;
 
   const size = view.getUint32(4, true);
   const n = size * size;
   const bytesPerTile = BYTES_PER_TILE_BY_VERSION[version] ?? BYTES_PER_TILE;
-  const expectedBytes = bufferBytesFor(size, bytesPerTile);
-  if (buf.byteLength !== expectedBytes) {
+  const tileBytes = bufferBytesFor(size, bytesPerTile);
+  const networkBytes =
+    hasRoadLayers || buf.byteLength < tileBytes + U32_BYTES
+      ? 0
+      : U32_BYTES + view.getUint32(tileBytes, true);
+  const expectedBytes = tileBytes + networkBytes;
+  if (buf.byteLength !== expectedBytes || (!hasRoadLayers && networkBytes === 0)) {
     throw new Error(
       `deserializeGrid: buffer length ${buf.byteLength} does not match expected ${expectedBytes} for size ${size}`,
     );
@@ -292,10 +348,9 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
   offset += n;
   const zone = bytes.slice(offset, offset + n);
   offset += n;
-  const roadTier = bytes.slice(offset, offset + n);
-  offset += n;
-  const roadMask = bytes.slice(offset, offset + n);
-  offset += n;
+  const roadTier = hasRoadLayers ? bytes.slice(offset, offset + n) : new Uint8Array(n);
+  const roadMask = hasRoadLayers ? bytes.slice(offset + n, offset + 2 * n) : new Uint8Array(n);
+  if (hasRoadLayers) offset += 2 * n;
 
   const buildingId = new Uint32Array(n);
   for (let i = 0; i < n; i++) {
@@ -324,27 +379,32 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
   // grade. A v4 buffer stored it as whole metres per tile; widening the byte
   // keeps the bridge, at the height it was saved at.
   const roadElevation = new Float32Array(n);
-  if (elevationIsByte) {
-    for (let i = 0; i < n; i++) roadElevation[i] = bytes[offset + i] ?? 0;
-    offset += n;
-  } else if (hasRoadElevation) {
-    for (let i = 0; i < n; i++) roadElevation[i] = view.getFloat32(offset + i * 4, true);
-    offset += n * 4;
-  }
-  // Profile layer (v6+). An older buffer's roads were all presets, whose
-  // profile id is their tier.
   const roadProfile = new Uint16Array(n);
-  if (hasRoadProfile) {
-    for (let i = 0; i < n; i++) roadProfile[i] = view.getUint16(offset + i * 2, true);
-    offset += n * 2;
-  } else {
-    for (let i = 0; i < n; i++) roadProfile[i] = roadTier[i] ?? 0;
+  let roadFlow = new Uint8Array(n);
+  if (hasRoadLayers) {
+    if (elevationIsByte) {
+      for (let i = 0; i < n; i++) roadElevation[i] = bytes[offset + i] ?? 0;
+      offset += n;
+    } else if (hasRoadElevation) {
+      for (let i = 0; i < n; i++) roadElevation[i] = view.getFloat32(offset + i * 4, true);
+      offset += n * 4;
+    }
+    // Profile layer (v6+). An older buffer's roads were all presets, whose
+    // profile id is their tier.
+    if (hasRoadProfile) {
+      for (let i = 0; i < n; i++) roadProfile[i] = view.getUint16(offset + i * 2, true);
+      offset += n * 2;
+    } else {
+      for (let i = 0; i < n; i++) roadProfile[i] = roadTier[i] ?? 0;
+    }
+    // Flow layer (v7+). An older buffer's roads never recorded which way they
+    // were drawn, so they load unset and every reader falls back to the
+    // geometry it read before there was a stored direction.
+    if (hasRoadFlow) {
+      roadFlow = bytes.slice(offset, offset + n);
+      offset += n;
+    }
   }
-  // Flow layer (v7+). An older buffer's roads never recorded which way they
-  // were drawn, so they load unset and every reader falls back to the geometry
-  // it read before there was a stored direction.
-  const roadFlow = hasRoadFlow ? bytes.slice(offset, offset + n) : new Uint8Array(n);
-  if (hasRoadFlow) offset += n;
   // Junction control layer (v8+). An older buffer never overrode a junction,
   // so every one of them loads on the control its warrant works out.
   const junctionControl = hasJunctionControl ? bytes.slice(offset, offset + n) : new Uint8Array(n);
@@ -374,7 +434,7 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
   const overProfile = new Uint16Array(n);
   const overFlow = new Uint8Array(n);
   const overElevation = new Float32Array(n);
-  if (hasOverRoads) {
+  if (hasOverRoads && hasRoadLayers) {
     overTier.set(bytes.subarray(offset, offset + n));
     offset += n;
     for (let i = 0; i < n; i++) overProfile[i] = view.getUint16(offset + i * 2, true);

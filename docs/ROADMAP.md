@@ -215,7 +215,15 @@ a network of nodes and segments, with the tile layers derived
 superseding ADR-0005). Specified in
 [world-sim/road-network.md](world-sim/road-network.md), which lists the eight
 stages it is built in, and
-[ux/interaction.md](ux/interaction.md#curve-and-free-road-modes). Not started.
+[ux/interaction.md](ux/interaction.md#curve-and-free-road-modes).
+
+Stage 1 is built (2026-09-24): the network is the road store
+(`src/world/roadnet.ts`), saved in place of the road tile layers
+(SAVE_VERSION 13), with older saves converting on load. The grid commands keep
+planning on tiles; after each command batch the network takes up the plan and
+the layers are derived again, and every worker test fails if one tile ever
+derives differently. The sync costs about 20 ms per command batch on a full
+map of streets. Stages 2 to 8 are not started.
 
 ### Overpasses (requested 2026-09-23, built 2026-09-24)
 

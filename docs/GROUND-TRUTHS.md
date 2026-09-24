@@ -68,11 +68,14 @@ MUTCD citations below use 11th-edition section numbers.
   furniture, crossings and capacity are derived from those three and never
   authored or stored per tier. — [road-model.md](world-sim/road-model.md),
   [ADR-0012](engineering/adr/0012-a-road-is-a-class-a-cross-section-and-junctions.md)
-- Roads are grid-aligned until the road network replaces the tile store:
-  corner arcs are render-only, and the graph never contains a diagonal step.
-  When the network lands, stage by stage, it is the only place a road is
-  stored and every road tile layer is derived from it; no road fact is ever
-  written to both. —
+- The road network of nodes and segments is where roads are stored: a save
+  holds the network and never the road tile layers, which are derived from it
+  on load (`deriveRoadLayers`). The grid commands still plan on tiles; after
+  every command batch the network takes up the plan (`reconcileRoads`) and the
+  layers are derived again (`syncRoadLayers`). A tile that derives differently
+  is a conversion bug, reported with `console.error`, never kept quietly.
+  Every segment is still axis-aligned: corner arcs are render-only, and the
+  graph never contains a diagonal step. —
   [ADR-0016](engineering/adr/0016-roads-are-a-network-of-nodes-and-segments.md),
   [road-network.md](world-sim/road-network.md), [streets.md](art/streets.md)
 - Never compare a stored `roadFlow` byte to a `RoadFlow` value directly:

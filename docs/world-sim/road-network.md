@@ -11,24 +11,30 @@ game does.
 ## What the network holds
 
 - A **node** is a point in world space: an x and z in whole centimetres, and a
-  height. A node exists wherever a segment ends: at a junction, at a dead end,
-  and wherever a road changes profile, height or curvature.
+  deck height above the ground, zero on the ground. A node exists wherever a
+  segment ends: at a junction, at a dead end, and wherever a road changes
+  tier, profile, flow, grade or curvature.
 - A **segment** joins two nodes. Its centre line is either straight or a
   quadratic curve with one control point, the point both end tangents aim at.
-  It carries the road's **profile**, its **flow** (two-way, or one-way in
-  either direction along the segment), and a deck height at each end, zero on
-  the ground.
+  It carries the road's **tier**, its **profile**, its **flow** (the stored
+  flow byte, as on a tile today), and its deck height at each end, zero on the
+  ground. Between its ends the deck climbs at an even grade.
+- **While a node sits on the grid, it also carries the road on its own tile:**
+  tier, profile and flow. A grid junction's surface is one road, the one last
+  drawn through it, and that is what the tile model stores. When junction
+  shapes are built from their roads (stage 6), this goes.
 - Nodes and segments are identified by slot. A slot is stable for the life of
-  what fills it and is reused only once free.
+  what fills it and is reused only once free, lowest first.
 
 Positions are whole centimetres so that the save holds integers and every
-derived figure is computed from the same numbers on every machine. A curve is
-sampled at a fixed spacing along its length, and every system that needs the
-centre line reads the same samples.
+derived figure is computed from the same numbers on every machine. A grid
+tile's centre is at 20 × _x_ + 10 m. A curve is sampled at a fixed spacing
+along its length, and every system that needs the centre line reads the same
+samples.
 
-**Everything else about a road is derived:** its tier (the nearest preset to
-its profile, as today), its class, its lanes and width, its length, which tiles
-it covers, what it grants frontage to, and its junctions' shapes.
+**Everything else about a road is derived:** its class, its lanes and width,
+its length, which tiles it covers, what it grants frontage to, and its
+junctions' shapes.
 
 ## Geometry rules
 
@@ -156,28 +162,40 @@ what else had happened since.
 
 ## Saves
 
-The network is saved: the node table, the segment table and each node's
-junction settings, appended after the grid. The road tile layers, the
-overpass layers and the per-tile junction layers are no longer saved, because
-they are derived or have moved to the node. `SAVE_VERSION` goes up by exactly
-one from whatever it is when this ships.
+The network is saved: the node table and the segment table, appended after
+the grid's tiles. The road tile layers — tier, mask, profile, flow, deck
+height — and the overpass layers are not saved, because they are derived.
+Stage 1 bumps `SAVE_VERSION` by exactly one for this. The per-tile junction
+layers stay saved until stage 6 moves junction settings to the node, which is
+the second bump.
 
 A save from before converts on load. Every run of road tiles between two
-junction, corner or end tiles becomes one segment. Each per-tile junction
-setting moves to the node on that tile. Each overpass becomes a segment at its
-deck heights. The conversion must derive exactly the tile layers the save
-held: a save that converts to anything different is a conversion bug.
+node tiles becomes one segment, where a node tile is a junction, a bend, a
+dead end, or a tile where the tier, profile, flow or grade changes. An
+overpass's crossing tile is part of its run, so each overpass is one segment
+passing over the road beneath. The conversion must derive exactly the tile
+layers the save held: a save that converts to anything different is a
+conversion bug.
+
+Where two roads share a tile, the one with the higher deck is the road passing
+over it, on the overpass layers. Nothing else in the network says which layer
+a road is on, because nothing else needs to.
 
 ## Stages
 
 Each stage leaves the game playable, and until stage 3 no road can be built
 that the grid could not already hold.
 
-1. **The network is the store.** Nodes, segments and their slots; the worker's
-   road commands edit the network; the tile layers are derived from it;
-   older saves convert. Only axis-aligned segments exist, and every derived
-   tile layer matches what the tile model produced, checked by converting and
-   re-deriving every scenario the road harnesses build.
+1. **The network is the store.** Nodes, segments and their slots, saved in
+   place of the road tile layers; older saves convert. Only axis-aligned
+   segments exist. The grid commands keep planning on tiles, because every
+   rule they enforce is written against tiles. After each command the network
+   takes up what the plan laid, keeping the slot of every node still in the
+   same place and every segment still between the same nodes, and the tile
+   layers are then derived from the network again. A derived tile that
+   differs from the plan is reported as an error, never silently kept: it is
+   a conversion bug. The check is also run by converting and re-deriving
+   every road scenario the tests build.
 2. **The graph and routing read the network.** Graph edges come from
    segments with real lengths; utilities, services and coverage spread along
    the network; vehicles follow segment centre lines.

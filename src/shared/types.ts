@@ -1180,7 +1180,10 @@ export interface ReversibleEdit {
  * version 8 the GridState.junctionControl byte, the control a player set at a
  * junction; version 9 GridState.junctionTurns; version 10 GridState.powerLine;
  * version 11 GridState.junctionLaneTurns; version 12 the four over-road layers
- * (overTier, overProfile, overFlow, overElevation) a crossing tile holds.
+ * (overTier, overProfile, overFlow, overElevation) a crossing tile holds;
+ * version 13 the road network (src/world/roadnet.ts), appended after the
+ * tiles, in place of every road tile layer — tier, mask, deck, profile, flow
+ * and the four over-road layers — which are derived from it on load.
  *
  * Migration: src/world/grid.ts deserializeGrid still accepts every older
  * buffer, defaulting each absent trailing layer to all-zero — so a pre-v4 save
@@ -1189,11 +1192,12 @@ export interface ReversibleEdit {
  * warrant works out — and widens a v4 elevation byte into the float layer, so
  * saved bridges keep the height they were built at. A pre-v6 save has no
  * profile layer, so every road loads as the preset its tier names, which is
- * what every road was. serializeGrid always writes the current version. No
- * earlier layer's byte layout or order changed, so every v1..v7 field
- * round-trips unchanged.
+ * what every road was. serializeGrid always writes the current version. Up to
+ * v12 no layer's byte layout or order changed, so every older buffer is the v12
+ * layout with trailing layers trimmed; v13 is the v12 layout without its road
+ * layers, and a pre-v13 save's roads convert to a network on load.
  */
-export const SAVE_VERSION = 12;
+export const SAVE_VERSION = 13;
 
 export interface SaveHeader {
   version: number;

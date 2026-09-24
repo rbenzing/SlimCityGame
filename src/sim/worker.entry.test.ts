@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 import {
   MAP_SIZE,
   MAP_TILES,
@@ -27,7 +28,8 @@ import catalogData from '../data/catalog.json';
 import roadsData from '../data/roads.json';
 import type { RoadSpec } from '../shared/types';
 import { decodeSave, encodeSave } from '../app/persist';
-import { createGrid, deserializeGrid, serializeGrid } from '../world/grid';
+import { createGrid, serializeGridV12 } from '../world/grid';
+import { loadGrid } from '../world/roadnet';
 import { computeTerraformPatch, type TerraformCommand } from '../world/terraform';
 import {
   createWorkerSim,
@@ -121,11 +123,26 @@ function latestSaveGrid(h: Harness): GridState {
   );
   const last = saves[saves.length - 1];
   if (!last) throw new Error('latestSaveGrid: no save message found');
-  return deserializeGrid(decodeSave(last.data).grid);
+  return loadGrid(decodeSave(last.data).grid).grid;
 }
 
 const roadRow = (x0: number, z: number, len: number) =>
   Array.from({ length: len }, (_, i) => ({ x: x0 + i, z }));
+
+// Every road command below also checks the road network: after each one the
+// road layers are derived from the network again, and a tile that comes out
+// differently is reported. No test here may leave one reported.
+let consoleError: MockInstance<typeof console.error>;
+beforeEach(() => {
+  consoleError = vi.spyOn(console, 'error');
+});
+afterEach(() => {
+  const roadReports = consoleError.mock.calls.filter((args) =>
+    String(args[0]).startsWith('road network'),
+  );
+  consoleError.mockRestore();
+  expect(roadReports).toEqual([]);
+});
 
 describe('worker sim', () => {
   let h: Harness;
@@ -1933,9 +1950,11 @@ describe('which roads may touch — the world refuses, not only the tool', () =>
       (m): m is Extract<WorkerToMain, { type: 'save' }> => m.type === 'save',
     );
     const payload = decodeSave(saves[saves.length - 1]!.data);
-    const g = deserializeGrid(payload.grid);
+    // Masks are saved only by versions before the road network, so the stale
+    // one goes into a save of the last of them.
+    const g = loadGrid(payload.grid).grid;
     g.roadMask[30 * MAP_SIZE + 31] = 15; // written by rules that joined every side
-    payload.grid = serializeGrid(g);
+    payload.grid = serializeGridV12(g);
     h.messages.length = 0;
     h.sim.handleMessage({ type: 'loadSave', data: encodeSave(payload) });
     h.ticks(2);
