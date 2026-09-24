@@ -233,7 +233,21 @@ builder was removed. The spreads changed on purpose: they used to step onto
 any adjacent street tile, so power and coverage leaked onto a deck running
 beside a street and between roads the rules never join; now they go only
 where roads join. Vehicles following segment centre lines moved to stage 4,
-where there are curves for them to follow. Stages 3 to 8 are not started.
+where there are curves for them to follow.
+
+Stage 3a is built (2026-09-24): the world holds roads off the grid. The shared
+geometry (`src/shared/roadgeom.ts`) samples a straight or curved centre line
+and measures its length, tangents, tightest radius and footprint without any
+trigonometry, so every machine decides the same. `buildSegment` and
+`removeSegment` lay and take away one free road through `planSegment`
+(`src/world/freeroads.ts`), which checks every geometry rule; a free road
+writes no road tile, holds its footprint in the derived `roadFootprint`
+layer, meets a grid road only at a tile centre, and survives every grid
+command. Designing it turned up one rule that needed changing: kerbs near a
+junction may overlap for longer the narrower the angle between the roads, or
+no ramp could ever merge. Not yet: the graph and the spreads do not walk free
+roads (3b), zoning and buildings do not read them (3c), nothing draws them
+(stage 4), and there is no tool to lay them (stage 5).
 
 ### Overpasses (requested 2026-09-23, built 2026-09-24)
 

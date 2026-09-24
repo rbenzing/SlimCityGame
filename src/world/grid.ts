@@ -74,6 +74,7 @@ export function createGrid(size?: number): GridState {
     overProfile: new Uint16Array(n),
     overFlow: new Uint8Array(n),
     overElevation: new Float32Array(n),
+    roadFootprint: new Uint8Array(n),
   };
 }
 
@@ -469,6 +470,8 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
     overProfile,
     overFlow,
     overElevation,
+    // Derived from the road network, which the caller derives it from.
+    roadFootprint: new Uint8Array(n),
   };
 }
 

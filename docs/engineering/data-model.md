@@ -55,6 +55,7 @@ from the road network saved after the tiles — see
 | `overProfile` †     | `Uint16Array`                                                   | That road's profile id.                                                                                                                  | v12                                                                   | `0`                                       |
 | `overFlow` †        | `Uint8Array`                                                    | That road's stored flow byte.                                                                                                            | v12                                                                   | `0`                                       |
 | `overElevation` †   | `Float32Array`                                                  | That road's deck height, metres above terrain.                                                                                           | v12                                                                   | `0`                                       |
+| `roadFootprint`     | `Uint8Array`                                                    | `1` where a road off the grid covers the tile, footways included. Derived from the road network (`deriveRoadFootprint`).                 | never — recomputed after every load and road command                  | `0`                                       |
 
 `ZoneType`, `RoadTier` and `RoadFlow` are plain numeric enums in
 `src/shared/types.ts`. Values are never reordered or reused once shipped —
@@ -249,21 +250,28 @@ arrays, in `src/world/roadnet.ts`, held by the worker and saved after the
 grid's tiles. What it holds and why is
 [road-network.md](../world-sim/road-network.md). Every road layer of the grid
 (†) is derived from it by `deriveRoadLayers`. The grid commands still plan on
-tiles; after each command batch the worker calls `reconcileRoads`, which takes
-up what the plan laid while keeping the slot of every node still at the same
+tiles; after each command the worker calls `reconcileRoads`, which takes up
+what the plan laid while keeping the slot of every node still at the same
 place and deck and every segment still between the same two nodes, then
 `syncRoadLayers`, which derives the layers again and reports, with
 `console.error`, any tile that came out different. A report is a conversion
-bug. On a full 256² map of streets the two take about 20 ms, once per command
-batch.
+bug. On a full 256² map of streets the two take about 20 ms, once per road
+command.
+
+Roads off the grid (`buildSegment`, `src/world/freeroads.ts`) live only in the
+network: `reconcileRoads` keeps every free segment and the nodes it ends on,
+keeps a grid tile a free road meets as a node, and turns such a node into a
+free one (tier 0) if its grid road is bulldozed. A free node carries no road of
+its own tile; a free segment's flow byte is 0 for both ways or 1 for one-way
+from its first node to its second, not a compass direction.
 
 Encoded (`encodeRoadNetwork`), little-endian: `u32` node slots, `u32` segment
 slots, then every slot, free ones included, so slots survive a save. A node is
 17 bytes — live `u8`, x and z `i32` centimetres, deck height `f32`, tier `u8`,
 profile `u16`, flow `u8`. A segment is 30 bytes — live `u8`, node slots a and b
 `i32`, tier `u8`, profile `u16`, flow `u8`, deck heights at its first and last
-tile `f32` × 2, and a curve flag `u8` with its control point `i32` × 2, which no
-road uses yet.
+tile `f32` × 2, and a curve flag `u8` with its control point `i32` × 2 in
+centimetres.
 
 ### Road, rail and tram networks
 

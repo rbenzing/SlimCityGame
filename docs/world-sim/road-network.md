@@ -66,10 +66,21 @@ junctions' shapes.
   A ramp joining or leaving a motorway is the exception, below.
 - **At most six roads** meet at one node.
 - **No overlap at one level.** Two segments that do not share a node may not
-  overlap, kerb to kerb, at the same level. A road drawn across another at
-  the same level meets it: a node is placed where they cross, splitting both
-  segments, and the crossing becomes a junction that obeys the class rules.
-  Where the classes may not meet, the crossing is refused, or passes over.
+  overlap, kerb to kerb, at the same level; near a node they share, their
+  kerbs meet, and that is the junction. A road drawn across another at the
+  same level meets it: the road tool places a node where they cross,
+  splitting both, and the crossing becomes a junction that obeys the class
+  rules. The world refuses a crossing that is not at a node, whatever sent it.
+- **A free road meets a grid road at a tile centre.** A segment that is not
+  on the grid ends on a grid road only at the centre of one of its tiles,
+  which becomes a node of both, and never crosses a grid road anywhere else.
+  Its first stretch out of that tile may overlap the grid road's tiles
+  beside it, since that is the junction.
+- **On the ground, at a road's slope.** Until free roads can be raised
+  (stage 7), a segment off the grid lies on the ground, and its centre line
+  climbs no more than `ROAD_MAX_SLOPE` over any 20 m, the slope a grid road
+  may climb between two tiles. Every tile under it must be dry and free of
+  buildings.
 - **Crossing over.** Two segments that cross at different heights do not
   meet. The upper one must clear the lower by the clearances in
   [overpasses.md](overpasses.md), at any angle: a skew crossing is no longer
@@ -107,14 +118,20 @@ with the same profile is not a junction; the road runs straight through it.
 Zoning, buildings, occupancy and terrain stay on the grid. They read these,
 derived from the network:
 
-- **Footprint.** Every tile a segment's full cross-section overlaps is
-  occupied by that road. Nothing else may be built there.
-- **Road tile layers.** For a segment that runs along a grid axis through tile
-  centres, the tile layers (tier, profile, flow, deck height, mask) are exactly
-  what the tile model stores today, byte for byte. For any other segment, the
-  tiles its centre line passes through carry its tier, profile and flow for
-  the systems that ask what road is on a tile; they carry no mask, and nothing
-  routes by them.
+- **Road tile layers** hold the roads on the grid, and only them. For a
+  segment that runs along a grid axis through tile centres, the tile layers
+  (tier, profile, flow, deck height, mask) are exactly what the tile model
+  stores today, byte for byte. A segment off the grid writes none of them:
+  two free roads meeting at an angle both pass through the tiles around their
+  junction, which one road per tile cannot hold, and a grid road beside a free
+  one would read it as a neighbour to join.
+- **Footprint.** Every tile a free segment's full cross-section overlaps,
+  footways included, is marked in a derived footprint layer (`roadFootprint`,
+  recomputed from the network and never saved). Nothing else may be built
+  there, and a grid drag may not enter one except to meet the free road at a
+  node.
+- A free node carries no road of its own tile: only a node at a grid tile
+  centre does, and only when a grid road is on that tile.
 
 ## How each system reads the network
 
@@ -148,10 +165,18 @@ This is where each system ends up. The stages below say when.
 ## Commands
 
 - `buildRoad` keeps its tile-path form for the grid modes; the worker turns
-  the path into axis-aligned segments. A segment form carries the start and
-  end points, the control point for a curve, the profile and the flow, for the
-  curve and free modes. Either form returns an exact inverse: it removes the
-  segments and nodes it created and rejoins any segment it split.
+  the path into axis-aligned segments.
+- `buildSegment` lays one segment off the grid. It carries the tier, the
+  profile, the two end points and, for a curve, the control point, all in
+  world centimetres, and a flow: 0 for a road that runs both ways, 1 for a
+  one-way road running from the first end to the second. Each end becomes an
+  existing node standing exactly there, the node at a grid road tile's centre,
+  or a new node of its own. An end partway along another free segment is
+  refused: the road tool splits that segment first, with the command that
+  comes with the tool. Its inverse is `removeSegment`.
+- `removeSegment` takes away the segment between two end points with a given
+  control point, and any node at either end that no road meets any more. Its
+  inverse is the `buildSegment` that puts the same segment back.
 - `bulldoze` removes segments, picked by tile or by segment. Its inverse puts
   back exactly what it removed, with the same slots.
 - Junction commands name the node.
@@ -201,9 +226,18 @@ that the grid could not already hold.
    road per tile, linked only where the network joins them — instead of the
    tile masks and tile adjacency. The graph comes out exactly as before; the
    spreads stop leaking to roads that merely lie alongside.
-3. **Free geometry.** Segments at any angle and curves, the geometry rules,
-   crossings that split into junctions, the tile footprint and zoning from
-   segment edges.
+3. **Free geometry**, in three parts.
+   - **3a, the world holds them.** Segments at any angle and curves, stored in
+     the network and saved; the shared geometry (sampling, length, tangents,
+     radius, footprint); `buildSegment` and `removeSegment` with every
+     refusal in the geometry rules above; the derived footprint layer; grid
+     drags kept off it; and the network keeping its free segments, and the
+     grid nodes they meet, when it takes up a grid command.
+   - **3b, the simulation reads them.** Free segments in the cells the graph
+     and the spreads walk, a free run's length measured along its centre
+     line, and facilities and trips finding a free road beside them.
+   - **3c, the land reads them.** Zoning frontage measured from a free road's
+     kerb, and buildings and zones kept off its footprint.
 4. **Drawing free roads.** The segment sweep, the junction mesh, markings and
    furniture along segments, and vehicles following segment centre lines.
    Grid roads still draw through the tile renderer.

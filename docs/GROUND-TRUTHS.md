@@ -72,12 +72,22 @@ MUTCD citations below use 11th-edition section numbers.
   holds the network and never the road tile layers, which are derived from it
   on load (`deriveRoadLayers`). The grid commands still plan on tiles; after
   every command batch the network takes up the plan (`reconcileRoads`) and the
-  layers are derived again (`syncRoadLayers`). A tile that derives differently
-  is a conversion bug, reported with `console.error`, never kept quietly.
-  Every segment is still axis-aligned: corner arcs are render-only, and the
-  graph never contains a diagonal step. —
+  layers are derived again (`syncRoadLayers`), after every command, not every
+  batch. A tile that derives differently is a conversion bug, reported with
+  `console.error`, never kept quietly. The graph never contains a diagonal
+  step, and a grid corner's arc is render-only. —
   [ADR-0016](engineering/adr/0016-roads-are-a-network-of-nodes-and-segments.md),
   [road-network.md](world-sim/road-network.md), [streets.md](art/streets.md)
+- A road off the grid (at an angle, curved, or ending off a tile centre)
+  writes no road tile layer. It holds the tiles its whole cross-section
+  covers in the derived `roadFootprint` layer, which nothing else is built on
+  and no grid drag enters except where the two meet; it meets a grid road
+  only at one of its tile centres, which stays a node of the grid; and it
+  obeys every geometry rule — radius by class, 30° between roads, six roads a
+  junction, 10 m long, never crossing or crowding another road but at a node,
+  on dry, unbuilt ground at a road's slope. `planSegment` in
+  `src/world/freeroads.ts` is the only place those are checked. —
+  [road-network.md](world-sim/road-network.md); `src/shared/roadgeom.ts`
 - Never compare a stored `roadFlow` byte to a `RoadFlow` value directly:
   direction is the low three bits (`ROAD_FLOW_DIRECTION_MASK`), bit 3 marks a
   corridor half and bit 4 the half at the HIGH offset. —

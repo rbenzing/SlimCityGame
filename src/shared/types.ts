@@ -335,6 +335,11 @@ export interface GridState {
    * tiles directly — is read through the network its tiles describe.
    */
   roads?: RoadNet;
+  /**
+   * 1 where a road off the grid covers the tile, footways included: derived
+   * from the road network, never saved, and never built on.
+   */
+  roadFootprint: Uint8Array;
   buildingId: Uint32Array; // 0 = none, else building instance id occupying tile
   power: Uint8Array; // 1 = powered
   watered: Uint8Array; // 1 = water service reaches tile
@@ -467,6 +472,27 @@ export type Command =
    * nothing else on any tile.
    */
   | { kind: 'bulldoze'; tiles: TilePoint[]; layer?: 'over' }
+  /**
+   * One road off the grid: a straight line at any angle, or a curve through
+   * `control`. Points are world centimetres. `flow` is 0 for a road that runs
+   * both ways, 1 for one running from `a` to `b`. Inverse: `removeSegment`.
+   */
+  | {
+      kind: 'buildSegment';
+      tier: RoadTier;
+      profile?: number;
+      a: { x: number; z: number };
+      b: { x: number; z: number };
+      control?: { x: number; z: number };
+      flow?: number;
+    }
+  /** Takes away the road off the grid with exactly these ends and control. Inverse: `buildSegment`. */
+  | {
+      kind: 'removeSegment';
+      a: { x: number; z: number };
+      b: { x: number; z: number };
+      control?: { x: number; z: number };
+    }
   | { kind: 'paintZone'; zone: ZoneType; tiles: TilePoint[] }
   | { kind: 'placeBuilding'; catalogId: string; x: number; z: number; rotation: 0 | 1 | 2 | 3 }
   | { kind: 'setTaxRate'; sector: Sector; rate: number } // 0..0.3

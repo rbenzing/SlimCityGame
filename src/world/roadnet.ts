@@ -12,7 +12,8 @@
  * on one row or column and owns the tiles strictly between them.
  */
 
-import { TILE_METERS } from '../shared/constants';
+import { isGridSegment, isTileCentre, tileCentreCm, tileOfCm } from '../shared/roadgeom';
+import type { CmPoint, SegmentGeom } from '../shared/roadgeom';
 import { RoadTier } from '../shared/types';
 import type { GridState, RoadNet } from '../shared/types';
 import { deserializeGrid, savedRoadNetwork, serializeGrid } from './grid';
@@ -20,7 +21,6 @@ import { recomputeRoadMasks, roadKeyMask, roadStep } from './roads';
 import type { RoadKey } from './roads';
 
 const INITIAL_SLOTS = 64;
-const CM_PER_M = 100;
 
 export function createRoadNetwork(capacity = INITIAL_SLOTS): RoadNet {
   const cap = Math.max(1, capacity);
@@ -100,6 +100,8 @@ export interface SegmentRecord extends RoadFacts {
   b: number;
   h0: number;
   h1: number;
+  /** The control point of a curve, or null for a straight segment. */
+  control?: CmPoint | null;
 }
 
 function writeNode(net: RoadNet, slot: number, n: NodeRecord): void {
@@ -124,10 +126,71 @@ function writeSegment(net: RoadNet, slot: number, s: SegmentRecord): void {
   net.segFlow[slot] = s.flow;
   net.segH0[slot] = s.h0;
   net.segH1[slot] = s.h1;
-  net.segCurved[slot] = 0;
-  net.segCX[slot] = 0;
-  net.segCZ[slot] = 0;
+  const control = s.control ?? null;
+  net.segCurved[slot] = control === null ? 0 : 1;
+  net.segCX[slot] = control?.x ?? 0;
+  net.segCZ[slot] = control?.z ?? 0;
   net.segSlots = Math.max(net.segSlots, slot + 1);
+}
+
+/** Puts a node in the lowest free slot and returns the slot. */
+export function addNode(net: RoadNet, rec: NodeRecord): number {
+  let slot = 0;
+  while (slot < net.nodeSlots && net.nodeLive[slot] === 1) slot++;
+  writeNode(net, slot, rec);
+  net.version++;
+  return slot;
+}
+
+/** Puts a segment in the lowest free slot and returns the slot. */
+export function addSegment(net: RoadNet, rec: SegmentRecord): number {
+  let slot = 0;
+  while (slot < net.segSlots && net.segLive[slot] === 1) slot++;
+  writeSegment(net, slot, rec);
+  net.version++;
+  return slot;
+}
+
+/** Frees a segment's slot. */
+export function dropSegment(net: RoadNet, s: number): void {
+  net.segLive[s] = 0;
+  net.version++;
+}
+
+/** Frees a node's slot. */
+export function dropNode(net: RoadNet, s: number): void {
+  net.nodeLive[s] = 0;
+  net.version++;
+}
+
+/** The live segments that end at node `s`. */
+export function segmentsAt(net: RoadNet, s: number): number[] {
+  const out: number[] = [];
+  for (let seg = 0; seg < net.segSlots; seg++) {
+    if (net.segLive[seg] === 1 && (net.segA[seg] === s || net.segB[seg] === s)) out.push(seg);
+  }
+  return out;
+}
+
+/** A live segment's centre line. */
+export function segmentGeom(net: RoadNet, s: number): SegmentGeom {
+  const a = net.segA[s]!;
+  const b = net.segB[s]!;
+  return {
+    a: { x: net.nodeX[a]!, z: net.nodeZ[a]! },
+    b: { x: net.nodeX[b]!, z: net.nodeZ[b]! },
+    control: net.segCurved[s] === 1 ? { x: net.segCX[s]!, z: net.segCZ[s]! } : null,
+  };
+}
+
+/** Whether a live node carries a grid road on its tile: a tile centre with a road tier. */
+export function isGridNode(net: RoadNet, s: number): boolean {
+  return net.nodeTier[s] !== 0 && isTileCentre({ x: net.nodeX[s]!, z: net.nodeZ[s]! });
+}
+
+/** Whether a live segment is off the grid: at an angle, curved, or ending off a tile centre. */
+export function isFreeSegment(net: RoadNet, s: number): boolean {
+  return !isGridSegment(segmentGeom(net, s));
 }
 
 /** Live node slots, in slot order. */
@@ -147,13 +210,6 @@ export function liveSegments(net: RoadNet): number[] {
 // ---------------------------------------------------------------------------
 // Grid positions
 // ---------------------------------------------------------------------------
-
-/** A tile's centre along one axis, in whole centimetres. */
-export const tileCentreCm = (t: number): number => (t * TILE_METERS + TILE_METERS / 2) * CM_PER_M;
-
-/** The tile whose centre is at `cm` along one axis. */
-const tileOfCm = (cm: number): number =>
-  Math.round((cm / CM_PER_M - TILE_METERS / 2) / TILE_METERS);
 
 /**
  * The deck height of the `j`th of `count` tiles a segment owns: an even grade
@@ -200,9 +256,12 @@ function collectClaims(net: RoadNet, size: number): Claims {
     return c;
   };
 
+  // Only the grid writes tiles: a node carries the road on its own tile only
+  // at a tile centre with a grid road on it, and only a grid segment owns the
+  // tiles along it.
   const nodeClaims: (Claim | null)[] = [];
   for (let s = 0; s < net.nodeSlots; s++) {
-    if (net.nodeLive[s] !== 1) continue;
+    if (net.nodeLive[s] !== 1 || !isGridNode(net, s)) continue;
     nodeClaims[s] = claim(
       tileOfCm(net.nodeX[s]!),
       tileOfCm(net.nodeZ[s]!),
@@ -212,7 +271,7 @@ function collectClaims(net: RoadNet, size: number): Claims {
   }
   const runs: Claim[][] = [];
   for (let s = 0; s < net.segSlots; s++) {
-    if (net.segLive[s] !== 1) continue;
+    if (net.segLive[s] !== 1 || isFreeSegment(net, s)) continue;
     const a = net.segA[s]!;
     const b = net.segB[s]!;
     const ax = tileOfCm(net.nodeX[a]!);
@@ -440,7 +499,7 @@ interface Canonical {
  * straight runs of identical road climbing at an even grade, and each becomes
  * one segment.
  */
-function canonicalFromGrid(g: GridState): Canonical {
+function canonicalFromGrid(g: GridState, pinned: ReadonlySet<RoadKey> = new Set()): Canonical {
   const n = g.size * g.size;
   const keys: RoadKey[] = [];
   for (let i = 0; i < n; i++) if ((g.roadTier[i] ?? 0) !== RoadTier.None) keys.push(i);
@@ -468,7 +527,7 @@ function canonicalFromGrid(g: GridState): Canonical {
   };
 
   const nodeKeys = new Set<RoadKey>();
-  for (const k of keys) if (!isBody(k)) nodeKeys.add(k);
+  for (const k of keys) if (!isBody(k) || pinned.has(k)) nodeKeys.add(k);
 
   const out: Canonical = { nodes: new Map(), segments: [] };
   const recordOf = (key: RoadKey): NodeRecord => {
@@ -583,7 +642,25 @@ export function networkFromGrid(g: GridState): RoadNet {
  * takes the lowest free slot.
  */
 export function reconcileRoads(net: RoadNet, g: GridState): RoadNet {
-  const canon = canonicalFromGrid(g);
+  // The tiles hold only the grid's roads, so the free segments stay exactly as
+  // they are, and so do the nodes they end on. Where one ends at the centre of
+  // a grid road's tile, that tile is kept a node of the grid, whatever else
+  // the grid would make of it, so the two still meet there.
+  const freeSegs = new Set<number>();
+  const freeEnds = new Set<number>();
+  const pinned = new Set<RoadKey>();
+  for (let s = 0; s < net.segSlots; s++) {
+    if (net.segLive[s] !== 1 || !isFreeSegment(net, s)) continue;
+    freeSegs.add(s);
+    for (const end of [net.segA[s]!, net.segB[s]!]) {
+      freeEnds.add(end);
+      const p = { x: net.nodeX[end]!, z: net.nodeZ[end]! };
+      if (!isTileCentre(p)) continue;
+      const idx = tileOfCm(p.z) * g.size + tileOfCm(p.x);
+      if ((g.roadTier[idx] ?? 0) !== RoadTier.None) pinned.add(idx);
+    }
+  }
+  const canon = canonicalFromGrid(g, pinned);
 
   const nodeAt = new Map<string, number>();
   const placeKey = (x: number, z: number, height: number): string => `${x},${z},${height}`;
@@ -594,7 +671,8 @@ export function reconcileRoads(net: RoadNet, g: GridState): RoadNet {
   const oldSegments = new Map<string, number>();
   const pairKey = (a: number, b: number): string => (a < b ? `${a}:${b}` : `${b}:${a}`);
   for (let s = 0; s < net.segSlots; s++) {
-    if (net.segLive[s] === 1) oldSegments.set(pairKey(net.segA[s]!, net.segB[s]!), s);
+    if (net.segLive[s] === 1 && !freeSegs.has(s))
+      oldSegments.set(pairKey(net.segA[s]!, net.segB[s]!), s);
   }
 
   const slotOfKey = new Map<RoadKey, number>();
@@ -609,6 +687,15 @@ export function reconcileRoads(net: RoadNet, g: GridState): RoadNet {
     } else {
       newNodes.push([key, rec]);
     }
+  }
+  // A free end the grid no longer has a road under is a free node now: it
+  // carries no road of its own tile.
+  for (const end of freeEnds) {
+    if (keptNodes.has(end)) continue;
+    keptNodes.add(end);
+    net.nodeTier[end] = 0;
+    net.nodeProfile[end] = 0;
+    net.nodeFlow[end] = 0;
   }
   for (let s = 0; s < net.nodeSlots; s++) if (!keptNodes.has(s)) net.nodeLive[s] = 0;
   let freeNode = 0;
@@ -630,7 +717,9 @@ export function reconcileRoads(net: RoadNet, g: GridState): RoadNet {
       newSegs.push(rec);
     }
   }
-  for (let s = 0; s < net.segSlots; s++) if (!keptSegs.has(s)) net.segLive[s] = 0;
+  for (let s = 0; s < net.segSlots; s++) {
+    if (!keptSegs.has(s) && !freeSegs.has(s)) net.segLive[s] = 0;
+  }
   let freeSeg = 0;
   for (const rec of newSegs) {
     while (freeSeg < net.segSlots && net.segLive[freeSeg] === 1) freeSeg++;

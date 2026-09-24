@@ -29,9 +29,18 @@ import {
   LANDFILL_TRUCKS_MAX,
   LANDFILL_TRUCKS_PER_TILES,
   BRIDGE_COST_PER_METER_TILE,
+  TILE_METERS,
   inBounds,
   tileIndex,
 } from '../shared/constants';
+import { segmentLengthM } from '../shared/roadgeom';
+import {
+  deriveRoadFootprint,
+  freeJunctionTiles,
+  laySegment,
+  planSegment,
+  removeSegmentAt,
+} from '../world/freeroads';
 import {
   SAVE_VERSION,
   BuildingState,
@@ -639,6 +648,10 @@ class SimWorld implements WorkerSim {
       payload.meta.roadProfiles ?? [],
       this.grid.roadProfile,
     );
+    // Adopting can renumber a very old save's profiles on its tiles, so the
+    // network takes the tiles up again before anything reads it.
+    reconcileRoads(this.roads, this.grid);
+    this.deriveFootprint();
     this.roadProfilesChanged = true;
     this.registry = BuildingRegistry.deserialize(CATALOG, payload.meta.registry);
     this.stats = cloneStats(payload.meta.stats);
@@ -1460,6 +1473,12 @@ class SimWorld implements WorkerSim {
     this.roadsEdited = false;
     reconcileRoads(this.roads, this.grid);
     reportRoadProblems('command', syncRoadLayers(this.grid, this.roads));
+    this.deriveFootprint();
+  }
+
+  /** The tiles the roads off the grid cover, from the network. */
+  private deriveFootprint(): void {
+    deriveRoadFootprint(this.grid, this.roads, (id) => this.profileForId(id));
   }
 
   private withOverRoad(d: RoadTileDelta): RoadTileDelta {
@@ -1848,6 +1867,10 @@ class SimWorld implements WorkerSim {
         );
       case 'bulldoze':
         return this.cmdBulldoze(command.tiles, command.layer);
+      case 'buildSegment':
+        return this.cmdBuildSegment(command);
+      case 'removeSegment':
+        return this.cmdRemoveSegment(command.a, command.b, command.control ?? null);
       case 'paintZone':
         return this.cmdPaintZone(command.zone, command.tiles);
       case 'placeBuilding':
@@ -2114,6 +2137,15 @@ class SimWorld implements WorkerSim {
     });
 
     const g = this.grid;
+    // A road off the grid holds the tiles it covers; a grid road reaches one
+    // only at a tile centre where the two meet.
+    const junctions = freeJunctionTiles(this.roads, g.size);
+    for (const t of tiles) {
+      const idx = tileIndex(t.x, t.z);
+      if (inBounds(t.x, t.z) && g.roadFootprint[idx] === 1 && !junctions.has(idx)) {
+        return refused('It runs into a road off the grid');
+      }
+    }
     const valid: TilePoint[] = [];
     const validElevations: number[] = [];
     const validFlows: number[] = [];
@@ -2313,6 +2345,68 @@ class SimWorld implements WorkerSim {
     const grounded = rebuilt.filter((t) => (g.roadElevation[tileIndex(t.x, t.z)] ?? 0) === 0);
     this.flattenFootprint(grounded, true, inverse);
     return { ok: true, cost, inverse };
+  }
+
+  /**
+   * Lays one road off the grid. Every rule is `planSegment`'s; this prices it,
+   * lays it and hands back the command that takes exactly it away.
+   */
+  private cmdBuildSegment(command: Extract<Command, { kind: 'buildSegment' }>): CommandResult {
+    const profileId = command.profile ?? command.tier;
+    const tier = this.tierForProfileId(profileId);
+    const spec = tier === null ? undefined : this.roadSpecByTier.get(tier);
+    if (tier === null || !spec) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+    const price = this.roadPriceForProfileId(profileId, spec);
+    if (!this.sandbox && price.unlockMilestone > this.stats.milestoneLevel) {
+      return { ok: false, cost: 0, inverse: [], reason: 'locked' };
+    }
+    const req = {
+      tier,
+      profileId,
+      a: command.a,
+      b: command.b,
+      control: command.control ?? null,
+      flow: command.flow ?? 0,
+    };
+    const lookup = (id: number): RoadProfile | null => this.profileForId(id);
+    const plan = planSegment(this.grid, this.roads, req, lookup);
+    if (!plan.ok) return { ok: false, cost: 0, inverse: [], reason: plan.reason };
+    const cost = Math.round((plan.lengthM / TILE_METERS) * price.costPerTile);
+    if (!this.unlimitedMoney && this.stats.funds < cost) {
+      return { ok: false, cost: 0, inverse: [], reason: 'funds' };
+    }
+    laySegment(this.grid, this.roads, plan, req);
+    this.stats.funds -= cost;
+    this.roadsEdited = true;
+    const inverse: Command = { kind: 'removeSegment', a: command.a, b: command.b };
+    if (command.control) inverse.control = command.control;
+    return { ok: true, cost, inverse: [inverse] };
+  }
+
+  /** Takes away one road off the grid, refunding what bulldozing a road refunds. */
+  private cmdRemoveSegment(
+    a: { x: number; z: number },
+    b: { x: number; z: number },
+    control: { x: number; z: number } | null,
+  ): CommandResult {
+    const lengthM = segmentLengthM({ a, b, control });
+    const removed = removeSegmentAt(this.roads, a, b, control);
+    if (!removed) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+    const spec = this.roadSpecByTier.get(removed.tier);
+    const perTile = spec ? this.roadPriceForProfileId(removed.profileId, spec).costPerTile : 0;
+    const refund = Math.round((lengthM / TILE_METERS) * perTile * BULLDOZE_REFUND_RATE);
+    this.stats.funds += refund;
+    this.roadsEdited = true;
+    const inverse: Command = {
+      kind: 'buildSegment',
+      tier: removed.tier,
+      profile: removed.profileId,
+      a,
+      b,
+      flow: removed.flow,
+    };
+    if (control) inverse.control = control;
+    return { ok: true, cost: -refund, inverse: [inverse] };
   }
 
   private cmdBulldoze(tiles: TilePoint[], layer?: 'over'): CommandResult {

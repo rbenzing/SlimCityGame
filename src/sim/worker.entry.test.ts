@@ -29,7 +29,7 @@ import roadsData from '../data/roads.json';
 import type { RoadSpec } from '../shared/types';
 import { decodeSave, encodeSave } from '../app/persist';
 import { createGrid, serializeGridV12 } from '../world/grid';
-import { loadGrid } from '../world/roadnet';
+import { isFreeSegment, loadGrid } from '../world/roadnet';
 import { computeTerraformPatch, type TerraformCommand } from '../world/terraform';
 import {
   createWorkerSim,
@@ -2578,5 +2578,111 @@ describe('a generator that cannot deliver says so', () => {
     for (const problems of problemsSeen(h, id)) {
       expect(problems & Problem.NoRoad).toBe(0);
     }
+  });
+});
+
+describe('roads off the grid — the world lays them, undoes them and keeps them', () => {
+  function run(h: Harness, seq: number, commands: Command[]): CommandAck {
+    send(h, seq, commands);
+    h.ticks(2);
+    const ack = h.ackFor(seq);
+    if (!ack) throw new Error(`no ack for batch ${seq}`);
+    return ack;
+  }
+  function sandboxed(): Harness {
+    const h = initialized();
+    run(h, 0, [{ kind: 'setSandbox', on: true }]);
+    return h;
+  }
+  /** A point `x`, `z` metres into the map, in centimetres. */
+  const at = (x: number, z: number): { x: number; z: number } => ({ x: x * 100, z: z * 100 });
+  const centre = (t: number): number => (t * 20 + 10) * 100;
+
+  /** The free segments of the city as last saved: their ends and control. */
+  function savedFree(h: Harness): string[] {
+    h.sim.handleMessage({ type: 'requestSave' });
+    const net = latestSaveGrid(h).roads!;
+    const out: string[] = [];
+    for (let s = 0; s < net.segSlots; s++) {
+      if (!net.segLive[s] || !isFreeSegment(net, s)) continue;
+      const a = net.segA[s]!;
+      const b = net.segB[s]!;
+      out.push(
+        `${net.nodeX[a]},${net.nodeZ[a]}-${net.nodeX[b]},${net.nodeZ[b]}~${net.segCurved[s] ? `${net.segCX[s]},${net.segCZ[s]}` : '-'}`,
+      );
+    }
+    return out;
+  }
+
+  const curve: Command = {
+    kind: 'buildSegment',
+    tier: RoadTier.TwoLane,
+    a: at(1000, 1000),
+    b: at(1200, 1200),
+    control: at(1200, 1000),
+  };
+
+  it('lays a curve, charges for its length, and undoes it exactly', () => {
+    const h = sandboxed();
+    const ack = run(h, 1, [curve]);
+    expect(ack.ok).toBe(true);
+    expect(ack.cost).toBeGreaterThan(0);
+    expect(savedFree(h)).toEqual(['100000,100000-120000,120000~120000,100000']);
+    const undo = run(h, 2, ack.inverse);
+    expect(undo.ok).toBe(true);
+    expect(savedFree(h)).toEqual([]);
+    const redo = run(h, 3, undo.inverse);
+    expect(redo.ok).toBe(true);
+    expect(savedFree(h)).toEqual(['100000,100000-120000,120000~120000,100000']);
+  });
+
+  it('refuses what the geometry rules refuse, with the reason', () => {
+    const h = sandboxed();
+    const ack = run(h, 1, [
+      {
+        kind: 'buildSegment',
+        tier: RoadTier.TwoLane,
+        a: at(1000, 1000),
+        b: at(1030, 1030),
+        control: at(1030, 1000),
+      },
+    ]);
+    expect(ack.ok).toBe(false);
+    expect(ack.reason).toMatch(/radius/);
+  });
+
+  it('keeps a free road through a save and a load', () => {
+    const h = sandboxed();
+    run(h, 1, [curve]);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const saves = h.messages.filter(
+      (m): m is Extract<WorkerToMain, { type: 'save' }> => m.type === 'save',
+    );
+    const data = saves[saves.length - 1]!.data;
+    const fresh = sandboxed();
+    fresh.sim.handleMessage({ type: 'loadSave', data });
+    fresh.ticks(2);
+    expect(savedFree(fresh)).toEqual(['100000,100000-120000,120000~120000,100000']);
+  });
+
+  it('keeps a grid drag off a free road, except where the two meet', () => {
+    const h = sandboxed();
+    const row = Array.from({ length: 11 }, (_, i) => ({ x: 40 + i, z: 40 }));
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: row }]);
+    const leave = run(h, 2, [
+      {
+        kind: 'buildSegment',
+        tier: RoadTier.TwoLane,
+        a: { x: centre(45), z: centre(40) },
+        b: at(1060, 1000),
+      },
+    ]);
+    expect(leave.ok).toBe(true);
+    // A grid street drawn straight across the free road is refused.
+    const across = Array.from({ length: 11 }, (_, i) => ({ x: 44 + i, z: 45 }));
+    const refused = run(h, 3, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: across }]);
+    expect(refused.ok).toBe(false);
+    expect(refused.reason).toMatch(/off the grid/);
+    expect(savedFree(h)).toHaveLength(1);
   });
 });
