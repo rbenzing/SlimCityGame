@@ -90,13 +90,20 @@ drag cannot say:
 3. **End.** The third click lays the curve.
 
 **A straight at any angle** is the `Straight` mode with the 90° lock off: the
-drag runs wherever the cursor goes instead of snapping to a row or column.
+drag runs wherever the cursor goes instead of snapping to a row or column. A
+drag that stays on one row or column is still a grid street, as it always
+was; only one that leaves it runs off the grid. With the lock on, every drag
+snaps to a row or column.
 
 Each click, and each end of a drag, snaps to what is already there: onto an
-existing node, onto an existing road (splitting it with a new junction), or,
-with guide snapping on, into line with a road nearby. A curve that starts on
-the end of an existing road starts in that road's direction unless the bend
-says otherwise, so a road can be continued round a bend without a kink.
+existing node within 4 m, onto an existing free road within 4 m of its centre
+line (splitting it with a new junction, in the same undo step as the new
+road), onto the centre of a grid road tile, or, with guide snapping on, into
+line with a road nearby. A curve that starts on the end of an existing road
+starts in that road's direction unless the bend says otherwise: a bend placed
+within 8 m of that road's line, ahead of its end, is pulled onto the line, so
+a road can be continued round a bend without a kink, and one placed further
+off keeps the kink the player asked for.
 
 The cursor chip carries the cost, the length along the centre line and, for a
 curve, its tightest radius. When the road would be refused it carries the

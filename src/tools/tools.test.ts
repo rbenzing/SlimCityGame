@@ -19,7 +19,13 @@ import {
 import type { ToolId } from '../shared/types';
 import { ZONE_DEPTH } from '../world/zonable';
 import { createGrid } from '../world/grid';
-import { planSegment, snapRoadEnd } from '../world/freeroads';
+import {
+  laySegment,
+  planSegment,
+  planWithSplits,
+  roadEndDirection,
+  snapRoadEnd,
+} from '../world/freeroads';
 import { networkFromGrid, reconcileRoads } from '../world/roadnet';
 import { applyRoad } from '../world/roads';
 
@@ -2351,8 +2357,9 @@ describe('Curve mode lays a road off the grid in three clicks', () => {
     const { env, previews, sent } = makeEnv();
     env.worldPointAt = (sx, sy) => ({ x: sx, z: sy });
     env.snapRoadEnd = (p) => snapRoadEnd(world, p);
+    env.roadEndDirection = (p) => roadEndDirection(world, world.roads!, p, () => null);
     env.planFreeRoad = (ask, profile) => {
-      const plan = planSegment(world, world.roads!, ask, (id) =>
+      const plan = planWithSplits(world, world.roads!, ask, ask.splits, (id) =>
         id === ask.profileId ? profile : null,
       );
       return plan.ok ? { ok: true, lengthM: plan.lengthM } : plan;
@@ -2473,6 +2480,77 @@ describe('Curve mode lays a road off the grid in three clicks', () => {
     expect(previews.at(-1)!.invalidReason).toMatch(/on the ground/);
     tm.pointerDown(500, 500, 0);
     expect(sent).toHaveLength(0);
+  });
+
+  /** Lays a free two-lane road in the tool's world directly, as a save would hold it. */
+  function layRoad(
+    world: ReturnType<typeof createGrid>,
+    a: { x: number; z: number },
+    b: { x: number; z: number },
+  ): void {
+    const req = {
+      tier: RoadTier.TwoLane,
+      profileId: RoadTier.TwoLane,
+      a,
+      b,
+      control: null,
+      flow: 0,
+    };
+    const plan = planSegment(world, world.roads!, req, () => null);
+    if (!plan.ok) throw new Error(plan.reason);
+    laySegment(world, world.roads!, plan, req);
+  }
+
+  it('ends a road partway along a free road by splitting it there, in the same undo step', () => {
+    const { tm, sent, world } = curveTool();
+    layRoad(world, cm(200, 600), cm(700, 600));
+    tm.pointerDown(300, 300, 0);
+    tm.pointerDown(450, 400, 0);
+    tm.pointerDown(452, 602, 0); // two metres off the road's line: onto it
+    expect(sent).toHaveLength(1);
+    const [split, build] = sent[0]!.commands;
+    expect(split).toEqual({ kind: 'splitSegment', at: cm(452, 600) });
+    expect(build).toMatchObject({ kind: 'buildSegment', b: cm(452, 600) });
+  });
+
+  it('pulls a bend near the line of the road it starts from onto it, and leaves one far off alone', () => {
+    const { tm, sent, world } = curveTool();
+    layRoad(world, cm(200, 200), cm(200, 400));
+    tm.pointerDown(201, 401, 0); // onto the road's end
+    tm.pointerDown(203, 520, 0); // three metres off its line: onto it
+    tm.pointerDown(360, 600, 0);
+    expect(sent[0]!.commands.at(-1)).toMatchObject({
+      a: cm(200, 400),
+      control: cm(200, 520),
+    });
+
+    const off = curveTool();
+    layRoad(off.world, cm(200, 200), cm(200, 400));
+    off.tm.pointerDown(201, 401, 0);
+    off.tm.pointerDown(230, 520, 0); // thirty metres off: a kink the player asked for
+    off.tm.pointerDown(360, 600, 0);
+    expect(off.sent[0]!.commands.at(-1)).toMatchObject({ control: cm(230, 520) });
+  });
+
+  it('runs a Straight drag at any angle off the grid, and one along a row as a grid street', () => {
+    const { tm, sent } = curveTool();
+    tm.setFlags({ curveMode: false, straightMode: true });
+    tm.pointerDown(250, 300, 0);
+    tm.pointerMove(400, 520, 0);
+    tm.pointerUp(400, 520, 0);
+    expect(sent[0]!.commands).toEqual([
+      { kind: 'buildSegment', tier: RoadTier.TwoLane, a: cm(250, 300), b: cm(400, 520), flow: 0 },
+    ]);
+    tm.pointerDown(5, 7, 0);
+    tm.pointerMove(12, 7, 0);
+    tm.pointerUp(12, 7, 0);
+    expect(sent[1]!.commands[0]!.kind).toBe('buildRoad');
+    // With the 90° lock on, the drag snaps to a row or column as it always has.
+    tm.setFlags({ angleLock: true });
+    tm.pointerDown(5, 7, 0);
+    tm.pointerMove(12, 9, 0);
+    tm.pointerUp(12, 9, 0);
+    expect(sent[2]!.commands[0]!.kind).toBe('buildRoad');
   });
 });
 

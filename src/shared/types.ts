@@ -495,6 +495,17 @@ export type Command =
       b: { x: number; z: number };
       control?: { x: number; z: number };
     }
+  /**
+   * Cuts the road off the grid passing through `at` (world centimetres, on its
+   * centre line) in two, with a node where they meet, so another road can meet
+   * it there. Costs nothing. Inverse: `joinSegments`.
+   */
+  | { kind: 'splitSegment'; at: { x: number; z: number } }
+  /**
+   * Joins the two roads off the grid meeting at `at` back into one, with
+   * `control` as its bend. Costs nothing. Inverse: `splitSegment`.
+   */
+  | { kind: 'joinSegments'; at: { x: number; z: number }; control?: { x: number; z: number } }
   | { kind: 'paintZone'; zone: ZoneType; tiles: TilePoint[] }
   | { kind: 'placeBuilding'; catalogId: string; x: number; z: number; rotation: 0 | 1 | 2 | 3 }
   | { kind: 'setTaxRate'; sector: Sector; rate: number } // 0..0.3

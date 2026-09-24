@@ -46,7 +46,7 @@ import catalogData from './data/catalog.json';
 import roadsData from './data/roads.json';
 import { CommandQueue } from './core/commands';
 import { generateProceduralMap } from './world/maps';
-import { planSegment, snapRoadEnd } from './world/freeroads';
+import { planWithSplits, roadEndDirection, snapRoadEnd } from './world/freeroads';
 import { createRenderer, createWorldScene, timeOfDayColors } from './render/scene';
 import { createBloomPipeline, type BloomPipeline } from './render/bloom';
 import { CloudLayer } from './render/clouds';
@@ -997,11 +997,15 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       inBounds(tile.x, tile.z) ? (clientGrid.roadMask[tile.z * clientGrid.size + tile.x] ?? 0) : 0,
     worldPointAt: groundPointAt,
     snapRoadEnd: (p) => snapRoadEnd(clientGrid, p),
+    roadEndDirection: (p) =>
+      clientGrid.roads
+        ? roadEndDirection(clientGrid, clientGrid.roads, p, (id) => clientGrid.profileById(id))
+        : null,
     // The world's own rules, run against the mirror of it, so the preview
     // refuses exactly what the command would.
     planFreeRoad: (ask, profile) => {
       if (!clientGrid.roads) return { ok: false, reason: 'The roads are still loading' };
-      const plan = planSegment(clientGrid, clientGrid.roads, ask, (id) =>
+      const plan = planWithSplits(clientGrid, clientGrid.roads, ask, ask.splits, (id) =>
         id === ask.profileId ? profile : clientGrid.profileById(id),
       );
       return plan.ok ? { ok: true, lengthM: plan.lengthM } : plan;

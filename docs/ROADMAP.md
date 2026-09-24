@@ -315,9 +315,22 @@ losing it. A one-way road runs from the first click to the last. Motorways no
 longer offer `Grid`, and with `Grid` selected they run straight. Checked in
 the browser: a curve laid off a grid street (charged the ¢302 its chip
 quoted), a too-tight curve refused with the 40 m radius it needs, Backspace,
-Escape, and the motorway's options. Not yet (5b): a straight at any angle,
-splitting an existing road where a click lands on it, and continuing a road's
-direction from its end.
+Escape, and the motorway's options.
+
+Stage 5b is built (2026-09-24). `Straight` with the 90° lock off lays a road
+at any angle once the drag leaves its row or column; along one it is still a
+grid street. A road end landing within 4 m of a free road's centre line lands
+on it, and the road is split there by the new `splitSegment` command — sent
+in the same batch as the new road, so one undo takes both back; its inverse,
+`joinSegments`, puts the road back exactly as it was, and neither costs
+anything, where undoing by removing and rebuilding would have refunded and
+charged. The preview plans on a copy of the network with the split made, so
+it still refuses exactly what the command would. A bend placed within 8 m of
+the line of the road a curve starts from is pulled onto it, so a road carries
+on round a bend without a kink. Checked in the browser: a diagonal laid off
+the grid, a straight drag ending on it splitting it into a T-junction, and a
+curve continuing the first one smoothly from its end. Not yet (5c): guide
+snapping for roads off the grid.
 
 ### Overpasses (requested 2026-09-23, built 2026-09-24)
 
