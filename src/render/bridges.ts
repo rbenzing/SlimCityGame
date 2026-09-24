@@ -21,7 +21,7 @@
  * timber footbridge and a motorway viaduct pays for two, not for every span.
  */
 import * as THREE from 'three';
-import { PIER_SPACING_TILES, TILE_METERS, tileToWorld } from '../shared/constants';
+import { PIER_SPACING_TILES, TILE_METERS, tileToWorld, worldToTile } from '../shared/constants';
 import { bridgeStyleFor, GIRDER_DEPTH_M } from '../shared/bridgestyle';
 import type { BridgeStyle } from '../shared/bridgestyle';
 import type { RoadTier } from '../shared/types';
@@ -42,6 +42,11 @@ export interface BridgeDeckTile {
   deckY: number;
   /** Ground world height under the tile, in metres. */
   groundY: number;
+  /**
+   * The road passing over a crossing tile, spanning the road beneath it: it
+   * rests on the piers either side, and no pier stands in the road below.
+   */
+  crossing?: boolean;
 }
 
 /** Everything that differs between one bridge family and the next. */
@@ -277,14 +282,26 @@ export class BridgeRenderer {
   private readonly materials = new Map<number, THREE.MeshLambertMaterial>();
   private meshes: (THREE.InstancedMesh | THREE.Mesh)[] = [];
   private readonly deckHeightAt: (wx: number, wz: number) => number;
+  private readonly crossingDeckAt: (wx: number, wz: number, cx: number, cz: number) => number;
 
   /**
    * `deckHeightAt` must be the SAME sampler the road mesh uses, or the
    * structure and the surface it carries will disagree about where the deck is.
    */
-  constructor(scene: THREE.Scene, deckHeightAt: (wx: number, wz: number) => number) {
+  constructor(
+    scene: THREE.Scene,
+    deckHeightAt: (wx: number, wz: number) => number,
+    /**
+     * The deck of the road passing over crossing tile (cx, cz). A point on a
+     * crossing tile is on two roads at once, and the ordinary sampler answers
+     * for the one beneath. Omitted, it is the ordinary sampler.
+     */
+    crossingDeckAt: (wx: number, wz: number, cx: number, cz: number) => number = (wx, wz) =>
+      deckHeightAt(wx, wz),
+  ) {
     this.scene = scene;
     this.deckHeightAt = deckHeightAt;
+    this.crossingDeckAt = crossingDeckAt;
   }
 
   /** Replaces the whole structure from the current set of deck tiles. */
@@ -298,10 +315,14 @@ export class BridgeRenderer {
     const pos = new THREE.Vector3();
     const scale = new THREE.Vector3();
 
+    const crossings = new Set(tiles.filter((t) => t.crossing).map((t) => `${t.x},${t.z}`));
+    const crossingAt = (x: number, z: number): { x: number; z: number } | null =>
+      crossings.has(`${x},${z}`) ? { x, z } : null;
+
     for (const { style, tiles: group } of groupByStyle(tiles)) {
       const spec = STYLES[style];
       const piers = group.filter(
-        (t) => isPierTile(t.x, t.z) && t.deckY - t.groundY > FOOTING_HEIGHT,
+        (t) => !t.crossing && isPierTile(t.x, t.z) && t.deckY - t.groundY > FOOTING_HEIGHT,
       );
 
       // Girder and parapets are MERGED, deck-conforming geometry rather than
@@ -336,7 +357,19 @@ export class BridgeRenderer {
         const span = TILE_SPAN;
 
         /** Deck top at a world point, from the shared smooth profile. */
-        const topAt = (c: Corner): number => this.deckHeightAt(c[0], c[1]) + ROAD_Y_OFFSET;
+        // A span reaches a little past its tile. Where it runs onto a crossing,
+        // the corners that land in the crossing tile are on the overpass deck:
+        // the ordinary sampler would answer for the road beneath and hang the
+        // end of the girder down to it.
+        const topAt = (c: Corner): number => {
+          const tx = worldToTile(c[0]);
+          const tz = worldToTile(c[1]);
+          const onCrossing = tile.crossing ? { x: tile.x, z: tile.z } : crossingAt(tx, tz);
+          const deck = onCrossing
+            ? this.crossingDeckAt(c[0], c[1], onCrossing.x, onCrossing.z)
+            : this.deckHeightAt(c[0], c[1]);
+          return deck + ROAD_Y_OFFSET;
+        };
         const topsOf = (
           corners: readonly [Corner, Corner, Corner, Corner],
         ): [number, number, number, number] => [

@@ -562,6 +562,23 @@ export interface RoadTileDelta {
   profile: number;
   /** Which way the tile runs (see GridState.roadFlow); RoadFlow.None when unset. */
   flow: number;
+  /**
+   * The road passing over this tile, where one does; absent where none does,
+   * which is also how a lifted overpass is told to the render thread. See
+   * GridState.overTier.
+   */
+  over?: OverRoadState;
+}
+
+/** The road passing over a crossing tile, as the render thread receives it. */
+export interface OverRoadState {
+  tier: RoadTier;
+  profile: number;
+  flow: number;
+  /** Deck height in metres above terrain. */
+  elevation: number;
+  /** Its neighbour mask: it joins only along its own line. */
+  mask: number;
 }
 
 export interface ZonePatch {

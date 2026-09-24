@@ -28,12 +28,14 @@ import {
   profilesEqual,
 } from '../shared/roadprofile';
 import { runsAlongZ, type BridgeDeckTile } from '../render/bridges';
+import { axisOfFlow } from '../shared/overpass';
 import type {
   BuildingCatalogEntry,
   BuildingDelta,
   BuildingInstance,
   JunctionControl,
   MapData,
+  OverRoadState,
   SimSnapshot,
   RoadProfile,
   RoadTileDelta,
@@ -52,6 +54,8 @@ export class ClientGridMirror {
   readonly roadTier: Uint8Array;
   readonly roadMask: Uint8Array;
   readonly roadElevation: Float32Array;
+  /** The road passing over each crossing tile, keyed by tile index; empty elsewhere. */
+  private readonly overRoads = new Map<number, OverRoadState>();
   /** Profile id per road tile (see GridState.roadProfile); presets equal their tier. */
   readonly roadProfile: Uint16Array;
   /** Which way each road tile runs (see GridState.roadFlow); 0 when never recorded. */
@@ -250,6 +254,7 @@ export class ClientGridMirror {
         if (slot === null) return 0;
         return this.junctionAt(x, z)?.laneTurns?.[slot] ?? 0;
       },
+      overAxisAt: (x, z) => this.overAxisAt(x, z),
     };
   }
 
@@ -321,14 +326,63 @@ export class ClientGridMirror {
     for (const d of deltas) {
       if (!this.inBounds(d.x, d.z)) continue;
       const i = this.idx(d.x, d.z);
-      if ((this.roadElevation[i] ?? 0) !== d.elevation) raised.push({ x: d.x, z: d.z });
+      const before = this.overRoads.get(i)?.elevation;
+      if ((this.roadElevation[i] ?? 0) !== d.elevation || before !== d.over?.elevation) {
+        raised.push({ x: d.x, z: d.z });
+      }
       this.roadTier[i] = d.tier;
       this.roadProfile[i] = d.profile;
       this.roadFlow[i] = d.flow;
       this.roadMask[i] = d.mask;
       this.roadElevation[i] = d.elevation;
+      if (d.over && d.tier !== RoadTier.None) this.overRoads.set(i, d.over);
+      else this.overRoads.delete(i);
     }
     return raised;
+  }
+
+  /** The road passing over a crossing tile, or null where none does. */
+  overRoadAt(x: number, z: number): OverRoadState | null {
+    if (!this.inBounds(x, z)) return null;
+    return this.overRoads.get(this.idx(x, z)) ?? null;
+  }
+
+  /** Which way the road passing over a tile runs, where one does. */
+  overAxisAt(x: number, z: number): 'x' | 'z' | null {
+    const over = this.overRoadAt(x, z);
+    return over ? axisOfFlow(over.flow) : null;
+  }
+
+  /**
+   * The deck height of the road met by running along `axis` onto tile (x, z):
+   * the road passing over it where that one runs this way, else the tile's
+   * own road. An approach looking along its line at a crossing sees the deck
+   * it climbs onto, not the road beneath it.
+   */
+  deckHeightAlong(x: number, z: number, axis: 'x' | 'z'): number {
+    const over = this.overRoadAt(x, z);
+    if (over && axisOfFlow(over.flow) === axis) {
+      return (this.height[this.idx(x, z)] ?? 0) + over.elevation;
+    }
+    return this.deckHeightAt(x, z);
+  }
+
+  /**
+   * The surface of the road passing over crossing tile (cx, cz), at a world
+   * point: its deck interpolated along its own line, the way a deck always is.
+   */
+  overSurfaceAt(wx: number, wz: number, cx: number, cz: number): number {
+    const axis = this.overAxisAt(cx, cz) ?? 'x';
+    const f = (axis === 'x' ? wx : wz) / TILE_METERS - 0.5;
+    const i0 = Math.floor(f);
+    const s = f - i0;
+    const near =
+      axis === 'x' ? this.deckHeightAlong(i0, cz, axis) : this.deckHeightAlong(cx, i0, axis);
+    const far =
+      axis === 'x'
+        ? this.deckHeightAlong(i0 + 1, cz, axis)
+        : this.deckHeightAlong(cx, i0 + 1, axis);
+    return near * (1 - s) + far * s;
   }
 
   /**
@@ -363,14 +417,20 @@ export class ClientGridMirror {
     if (!ribbon) return null;
 
     const alongZ = runsAlongZ(this.roadMask[this.idx(ribbon.x, ribbon.z)] ?? 0);
+    const axis = alongZ ? 'z' : 'x';
     // Tile centres sit at (t + 0.5) * TILE_METERS, so shifting by half a tile
-    // puts the samples on the centre lattice the interpolation runs over.
+    // puts the samples on the centre lattice the interpolation runs over. The
+    // tile the ribbon itself stands on is its own road; the one it runs on to
+    // may be a crossing, where along this line lies the road passing over.
     const f = (alongZ ? wz : wx) / TILE_METERS - 0.5;
     const i0 = Math.floor(f);
     const s = f - i0;
-    const near = alongZ ? this.deckHeightAt(ribbon.x, i0) : this.deckHeightAt(i0, ribbon.z);
-    const far = alongZ ? this.deckHeightAt(ribbon.x, i0 + 1) : this.deckHeightAt(i0 + 1, ribbon.z);
-    return near * (1 - s) + far * s;
+    const own = alongZ ? ribbon.z : ribbon.x;
+    const deck = (t: number): number => {
+      const [x, z] = alongZ ? [ribbon.x, t] : [t, ribbon.z];
+      return t === own ? this.deckHeightAt(x, z) : this.deckHeightAlong(x, z, axis);
+    };
+    return deck(i0) * (1 - s) + deck(i0 + 1) * s;
   }
 
   /**
@@ -542,6 +602,21 @@ export class ClientGridMirror {
           groundY: this.height[i] ?? 0,
         });
       }
+    }
+    // Each road passing over a crossing is a deck of its own. It spans the
+    // road beneath, so it stands on the piers either side and never on one in
+    // the middle of that road.
+    for (const [i, over] of this.overRoads) {
+      tiles.push({
+        x: i % this.size,
+        z: Math.floor(i / this.size),
+        tier: over.tier,
+        profile: this.profileById(over.profile) ?? presetProfileForTier(over.tier),
+        mask: over.mask,
+        deckY: (this.height[i] ?? 0) + over.elevation,
+        groundY: this.height[i] ?? 0,
+        crossing: true,
+      });
     }
     return tiles;
   }

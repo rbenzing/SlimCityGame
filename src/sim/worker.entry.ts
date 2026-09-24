@@ -120,6 +120,7 @@ import {
 import {
   RoadNetwork,
   applyRoad,
+  computeOverMask,
   recomputeRoadMasks,
   remaskAround,
   removeRoad,
@@ -1107,7 +1108,7 @@ class SimWorld implements WorkerSim {
       this.roadProfilesChanged = false;
     }
     if (this.pendingRoadDeltas.size > 0) {
-      snap.roads = Array.from(this.pendingRoadDeltas.values());
+      snap.roads = Array.from(this.pendingRoadDeltas.values(), (d) => this.withOverRoad(d));
       this.pendingRoadDeltas.clear();
     }
     if (
@@ -1433,6 +1434,14 @@ class SimWorld implements WorkerSim {
     return inverse;
   }
 
+  /** A road delta carrying the road passing over its tile as the grid holds it now. */
+  private withOverRoad(d: RoadTileDelta): RoadTileDelta {
+    const idx = tileIndex(d.x, d.z);
+    const road = overRoadAt(this.grid, idx);
+    if (!road) return d;
+    return { ...d, over: { ...road, mask: computeOverMask(this.grid, d.x, d.z) } };
+  }
+
   /**
    * After a road passing over tiles is laid or lifted: who the tiles around
    * those crossings join has changed, so their masks, the graphs built from
@@ -1441,7 +1450,23 @@ class SimWorld implements WorkerSim {
   private overLayerChanged(idxs: Iterable<number>): void {
     const list = [...idxs];
     if (list.length === 0) return;
-    for (const d of remaskAround(this.grid, list)) {
+    const g = this.grid;
+    // The crossing tile itself always goes out, even where its own road's mask
+    // is unchanged: the road passing over it is what changed.
+    for (const idx of list) {
+      const tier = (g.roadTier[idx] ?? 0) as RoadTier;
+      if (tier === RoadTier.None) continue;
+      this.pendingRoadDeltas.set(idx, {
+        x: idx % MAP_SIZE,
+        z: Math.floor(idx / MAP_SIZE),
+        tier,
+        mask: g.roadMask[idx] ?? 0,
+        elevation: g.roadElevation[idx] ?? 0,
+        profile: g.roadProfile[idx] || tier,
+        flow: g.roadFlow[idx] ?? RoadFlow.None,
+      });
+    }
+    for (const d of remaskAround(g, list)) {
       this.pendingRoadDeltas.set(tileIndex(d.x, d.z), d);
     }
     this.invalidateAround(

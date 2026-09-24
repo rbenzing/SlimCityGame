@@ -5,7 +5,7 @@
  */
 import { BRIDGE_MAX_GRADE, OVERPASS_CLEARANCE_M, OVERPASS_RAIL_CLEARANCE_M } from './constants';
 import { girderDepthFor } from './bridgestyle';
-import { isRailTier } from './types';
+import { flowDirection, isRailTier, RoadFlow } from './types';
 import type { RoadTier, TilePoint } from './types';
 
 /**
@@ -61,6 +61,18 @@ export function crossingShape(
   if (!straight || !sideA || !sideB) return 'skew';
   if (roadBelowAt(prev.x, prev.z) || roadBelowAt(next.x, next.z)) return 'skew';
   return 'across';
+}
+
+/**
+ * The axis a road runs along, read from its stored flow byte: 'x' heading east
+ * or west, 'z' heading north or south, null where it recorded no heading. A
+ * road passing over a crossing always has one — a drag laid it.
+ */
+export function axisOfFlow(stored: number): 'x' | 'z' | null {
+  const d = flowDirection(stored);
+  if (d === RoadFlow.East || d === RoadFlow.West) return 'x';
+  if (d === RoadFlow.North || d === RoadFlow.South) return 'z';
+  return null;
 }
 
 /** Whether two decks are near enough in height to join: one grade step. */

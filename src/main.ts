@@ -207,10 +207,18 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     utilityKits.kitIds(),
     roadAt,
   );
-  const roadsMesh = new RoadMeshRenderer(world.scene, roadSurfaceAt, (id) =>
-    clientGrid.profileById(id),
+  // A crossing tile holds two roads; the road passing over it has a surface of
+  // its own, which the ordinary sampler — answering for the road beneath —
+  // cannot give.
+  const overSurfaceAt = (wx: number, wz: number, cx: number, cz: number): number =>
+    clientGrid.overSurfaceAt(wx, wz, cx, cz);
+  const roadsMesh = new RoadMeshRenderer(
+    world.scene,
+    roadSurfaceAt,
+    (id) => clientGrid.profileById(id),
+    overSurfaceAt,
   );
-  const bridges = new BridgeRenderer(world.scene, roadSurfaceAt);
+  const bridges = new BridgeRenderer(world.scene, roadSurfaceAt, overSurfaceAt);
   const vehicles = new VehicleRenderer(world.scene, roadSurfaceAt);
   // Bus transit (stop posts + route ribbon + cosmetic buses), service vehicles
   // (fire/police/ambulance from the shared buffer + incident pins), and the

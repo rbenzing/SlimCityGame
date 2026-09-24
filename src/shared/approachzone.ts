@@ -62,6 +62,13 @@ export interface ApproachSurroundings {
    * every lane of that arm is on the set the approach derives for it.
    */
   laneTurnsAt(x: number, z: number, arm: RoadFlow): PackedLaneTurns;
+  /**
+   * Which way a road passing OVER the tile runs, where one does. The road on
+   * the tile never joins along that line — the tiles there belong to the
+   * road above — so a crossing is not a junction. Omitted: nothing passes
+   * over anything.
+   */
+  overAxisAt?(x: number, z: number): 'x' | 'z' | null;
 }
 
 /** The junction a tile approaches, and what this arm of it may do. */
@@ -199,6 +206,8 @@ function isSeparateRoad(
   dz: number,
   world: ApproachSurroundings,
 ): boolean {
+  const over = world.overAxisAt?.(x, z) ?? null;
+  if (over !== null && over === (dx !== 0 ? 'x' : 'z')) return true;
   const here = world.profileAt(x, z);
   const there = world.profileAt(x + dx, z + dz);
   return (
@@ -339,14 +348,10 @@ export function approachAhead(
     pocketWarranted(
       world.controlAt(best.jx, best.jz),
       allowed,
-      controlHoldsArm(
-        world.controlAt(best.jx, best.jz),
-        mine ? roadRank(mine) : 0,
-        armRanks,
-      ),
+      controlHoldsArm(world.controlAt(best.jx, best.jz), mine ? roadRank(mine) : 0, armRanks),
       // A service access stores nothing: an alley is one lane to the back of a
       // building, and a bay would double its width for a one-van queue.
-      mine ? mine.class : "local",
+      mine ? mine.class : 'local',
     );
   return {
     toward: best.toward,
@@ -616,7 +621,11 @@ export interface RampMouth {
  * ramp peels away over the upstream half. A head-on ramp a save still holds
  * has no such half and keeps the mouth centred on the tile.
  */
-export function rampMouthAt(x: number, z: number, world: ApproachSurroundings): RampMouth | undefined {
+export function rampMouthAt(
+  x: number,
+  z: number,
+  world: ApproachSurroundings,
+): RampMouth | undefined {
   if (!isRampNodeAt(x, z, world)) return undefined;
   const run = world.flowAt(x, z);
   if (run === RoadFlow.None) return undefined;
@@ -681,7 +690,11 @@ function rampArmAt(
     return {
       onTheLeft: across * leftSign > 0,
       arm,
-      leaving: rampLeaves(rampJoinWith(jx + dx, jz + dz, jx, jz, world), world.flowAt(jx + dx, jz + dz), arm),
+      leaving: rampLeaves(
+        rampJoinWith(jx + dx, jz + dz, jx, jz, world),
+        world.flowAt(jx + dx, jz + dz),
+        arm,
+      ),
     };
   }
   return undefined;

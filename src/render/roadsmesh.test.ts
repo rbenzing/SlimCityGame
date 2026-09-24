@@ -3646,10 +3646,9 @@ describe('roadTileVertices — a road bends into a width change whatever it is m
       const narrower = own - 1.4;
       const ends = halfAtEnds(tier, 0, 1, { n: narrower }, {});
       expect(ends.far, `${named(tier)} lost its own width`).toBeCloseTo(own, 1);
-      expect(
-        ends.near,
-        `${named(tier)} steps at the seam instead of bending`,
-      ).toBeLessThan(own - 0.3);
+      expect(ends.near, `${named(tier)} steps at the seam instead of bending`).toBeLessThan(
+        own - 0.3,
+      );
     }
   });
 
@@ -3697,7 +3696,8 @@ describe('a ramp meeting a motorway is drawn as the motorway it is', () => {
     const out: { dx: number; dz: number }[] = [];
     for (let i = 0; i < geo.positions.length / 3; i++) {
       const c = geo.colors.slice(i * 3, i * 3 + 3);
-      if (pred(c)) out.push({ dx: geo.positions[i * 3]! - centre, dz: geo.positions[i * 3 + 2]! - centre });
+      if (pred(c))
+        out.push({ dx: geo.positions[i * 3]! - centre, dz: geo.positions[i * 3 + 2]! - centre });
     }
     return out;
   };
@@ -3804,7 +3804,9 @@ describe('a ramp alongside tapers into the motorway rather than turning into it'
       );
     };
     const covers = (tris: ReturnType<typeof edgeLine>, dx: number) =>
-      tris.some((tri) => Math.min(...tri.map((v) => v.dx)) < dx && Math.max(...tri.map((v) => v.dx)) > dx);
+      tris.some(
+        (tri) => Math.min(...tri.map((v) => v.dx)) < dx && Math.max(...tri.map((v) => v.dx)) > dx,
+      );
 
     it('opens its edge line over the downstream half at a merge', () => {
       const line = edgeLine(node(RoadFlow.East));
@@ -3844,8 +3846,14 @@ describe('a ramp alongside tapers into the motorway rather than turning into it'
     it('merges by reaching the motorway over the downstream half, not by turning into it', () => {
       const p = plate(join(W));
       const atEdge = p.filter((v) => v.dz <= -half + 0.1);
-      expect(atEdge.some((v) => v.dx > half / 2), 'reaches the motorway downstream').toBe(true);
-      expect(atEdge.some((v) => v.dx < -0.5), 'keeps off it upstream').toBe(false);
+      expect(
+        atEdge.some((v) => v.dx > half / 2),
+        'reaches the motorway downstream',
+      ).toBe(true);
+      expect(
+        atEdge.some((v) => v.dx < -0.5),
+        'keeps off it upstream',
+      ).toBe(false);
     });
 
     it('narrows to nothing at the downstream edge, where the lane has merged', () => {
@@ -3856,8 +3864,14 @@ describe('a ramp alongside tapers into the motorway rather than turning into it'
     it('diverges by peeling off over the upstream half', () => {
       const p = plate(join(E));
       const atEdge = p.filter((v) => v.dz <= -half + 0.1);
-      expect(atEdge.some((v) => v.dx < -half / 2), 'leaves the motorway upstream').toBe(true);
-      expect(atEdge.some((v) => v.dx > 0.5), 'clear of it downstream').toBe(false);
+      expect(
+        atEdge.some((v) => v.dx < -half / 2),
+        'leaves the motorway upstream',
+      ).toBe(true);
+      expect(
+        atEdge.some((v) => v.dx > 0.5),
+        'clear of it downstream',
+      ).toBe(false);
       expect(p.filter((v) => v.dx < -half + 0.1 && v.dz > -half + 0.5)).toEqual([]);
     });
   });
@@ -3876,7 +3890,17 @@ describe('a section is laid left to right in the direction the road runs', () =>
   /** The offset across the road of each colour of solid paint on a motorway tile. */
   const edgeLines = (flow: RoadFlow): { yellow: number; white: number } => {
     const vertical = flow === RoadFlow.North || flow === RoadFlow.South;
-    const geo = roadTileVertices(0, 0, RoadTier.Highway, vertical ? N | S : E | W, flatHeightAt, undefined, undefined, undefined, flow);
+    const geo = roadTileVertices(
+      0,
+      0,
+      RoadTier.Highway,
+      vertical ? N | S : E | W,
+      flatHeightAt,
+      undefined,
+      undefined,
+      undefined,
+      flow,
+    );
     const across = (colour: (t: readonly number[]) => boolean): number => {
       const offs: number[] = [];
       for (let i = 0; i < geo.positions.length / 3; i++) {
@@ -3905,7 +3929,17 @@ describe('a section is laid left to right in the direction the road runs', () =>
     // the yellow; it stands the wide shoulder's width in from the edge.
     for (const flow of [RoadFlow.North, RoadFlow.East, RoadFlow.South, RoadFlow.West]) {
       const vertical = flow === RoadFlow.North || flow === RoadFlow.South;
-      const geo = roadTileVertices(0, 0, RoadTier.Highway, vertical ? N | S : E | W, flatHeightAt, undefined, undefined, undefined, flow);
+      const geo = roadTileVertices(
+        0,
+        0,
+        RoadTier.Highway,
+        vertical ? N | S : E | W,
+        flatHeightAt,
+        undefined,
+        undefined,
+        undefined,
+        flow,
+      );
       const side = -Math.sign(edgeLines(flow).yellow);
       let edge = 0;
       for (let i = 0; i < geo.positions.length / 3; i++) {
@@ -3976,5 +4010,185 @@ describe('a one-way street round a bend', () => {
     // Heading north out of the bend it came west into: a right turn, and the
     // left edge is the outside.
     expect(yellowRadius(RoadFlow.North)).toBeGreaterThan(TILE_METERS / 2);
+  });
+});
+
+describe('RoadMeshRenderer — a road passing over another', () => {
+  /** Road vertices standing inside tile (x, z), as [y, ...] heights. */
+  const heightsIn = (scene: THREE.Scene, x: number, z: number): number[] => {
+    const out: number[] = [];
+    for (const child of scene.children) {
+      if (!(child instanceof THREE.Mesh)) continue;
+      const pos = child.geometry.getAttribute('position');
+      for (let i = 0; i < pos.count; i++) {
+        const wx = pos.getX(i) / TILE_METERS;
+        const wz = pos.getZ(i) / TILE_METERS;
+        if (wx > x + 0.1 && wx < x + 0.9 && wz > z + 0.1 && wz < z + 0.9) out.push(pos.getY(i));
+      }
+    }
+    return out;
+  };
+  /** A motorway down x = 5 and a street crossing over it at (5, 5). */
+  const deltas = (withOver: boolean): RoadTileDelta[] => {
+    const out: RoadTileDelta[] = [];
+    for (let z = 2; z <= 8; z++)
+      out.push({ ...makeDelta(5, z, RoadTier.Highway, N | S), flow: RoadFlow.South });
+    for (const x of [4, 6]) {
+      out.push({ ...makeDelta(x, 5, RoadTier.TwoLane, E | W), flow: RoadFlow.East, elevation: 6 });
+    }
+    if (withOver) {
+      const c = out.findIndex((d) => d.x === 5 && d.z === 5);
+      out[c] = {
+        ...out[c]!,
+        over: {
+          tier: RoadTier.TwoLane,
+          profile: RoadTier.TwoLane,
+          flow: RoadFlow.East,
+          elevation: 7,
+          mask: E | W,
+        },
+      };
+    }
+    return out;
+  };
+  const OVER_DECK = 7;
+  const render = (withOver: boolean): THREE.Scene => {
+    const scene = new THREE.Scene();
+    new RoadMeshRenderer(
+      scene,
+      flatHeightAt,
+      () => null,
+      () => OVER_DECK,
+    ).apply(deltas(withOver));
+    return scene;
+  };
+
+  it('draws the road passing over at its own deck, above the road on the tile', () => {
+    const ys = heightsIn(render(true), 5, 5);
+    expect(ys.some((y) => y > OVER_DECK - 0.5)).toBe(true); // the overpass
+    expect(ys.some((y) => y < 0.5)).toBe(true); // and the motorway beneath it
+  });
+
+  it('draws nothing up there on a tile nothing passes over', () => {
+    expect(heightsIn(render(false), 5, 5).every((y) => y < 0.5)).toBe(true);
+  });
+});
+
+describe('RoadMeshRenderer — the road beneath an overpass', () => {
+  it('paints no junction arrows on a road approaching the tile an overpass crosses', () => {
+    const white = (withOver: boolean): number => {
+      const scene = new THREE.Scene();
+      const deltas: RoadTileDelta[] = [];
+      for (let z = 0; z <= 10; z++)
+        deltas.push({ ...makeDelta(5, z, RoadTier.FourLane, N | S), flow: RoadFlow.None });
+      for (const x of [4, 6])
+        deltas.push({
+          ...makeDelta(x, 5, RoadTier.TwoLane, E | W),
+          elevation: 6,
+          flow: RoadFlow.East,
+        });
+      if (withOver) {
+        const c = deltas.findIndex((d) => d.x === 5 && d.z === 5);
+        deltas[c] = {
+          ...deltas[c]!,
+          over: {
+            tier: RoadTier.TwoLane,
+            profile: RoadTier.TwoLane,
+            flow: RoadFlow.East,
+            elevation: 7,
+            mask: E | W,
+          },
+        };
+      }
+      const renderer = new RoadMeshRenderer(scene, flatHeightAt);
+      renderer.apply(deltas);
+      // The ground tile just north of the crossing is where an arrow would go.
+      let count = 0;
+      for (const child of scene.children) {
+        if (!(child instanceof THREE.Mesh)) continue;
+        const pos = child.geometry.getAttribute('position');
+        const col = child.geometry.getAttribute('color');
+        for (let i = 0; i < pos.count; i++) {
+          const tx = Math.floor(pos.getX(i) / TILE_METERS);
+          const tz = Math.floor(pos.getZ(i) / TILE_METERS);
+          if (tx === 5 && tz === 4 && isMarkingWhite([col.getX(i), col.getY(i), col.getZ(i)]))
+            count++;
+        }
+      }
+      return count;
+    };
+    // A plain straight tile of the same road, for what "no arrows" looks like.
+    const plainScene = new THREE.Scene();
+    new RoadMeshRenderer(plainScene, flatHeightAt).apply(
+      Array.from({ length: 11 }, (_, z) => ({
+        ...makeDelta(5, z, RoadTier.FourLane, N | S),
+        flow: RoadFlow.None,
+      })),
+    );
+    let plain = 0;
+    for (const child of plainScene.children) {
+      if (!(child instanceof THREE.Mesh)) continue;
+      const pos = child.geometry.getAttribute('position');
+      const col = child.geometry.getAttribute('color');
+      for (let i = 0; i < pos.count; i++) {
+        if (
+          Math.floor(pos.getX(i) / TILE_METERS) === 5 &&
+          Math.floor(pos.getZ(i) / TILE_METERS) === 4 &&
+          isMarkingWhite([col.getX(i), col.getY(i), col.getZ(i)])
+        )
+          plain++;
+      }
+    }
+    expect(white(true)).toBe(plain);
+  });
+});
+
+describe('RoadMeshRenderer — an approach meeting its overpass', () => {
+  it('never dips an approach down to the road beneath where it meets the crossing', () => {
+    const scene = new THREE.Scene();
+    // Ground and approach surfaces as the mirror answers them: the crossing
+    // tile (x = 5) is the motorway on the ground, the approaches are 6 m up.
+    const surface = (wx: number): number => (Math.floor(wx / TILE_METERS) === 5 ? 0 : 6);
+    const deltas: RoadTileDelta[] = [];
+    for (let z = 2; z <= 8; z++)
+      deltas.push({ ...makeDelta(5, z, RoadTier.Highway, N | S), flow: RoadFlow.South });
+    for (const x of [3, 4, 6, 7])
+      deltas.push({
+        ...makeDelta(x, 5, RoadTier.TwoLane, E | W),
+        elevation: 6,
+        flow: RoadFlow.East,
+      });
+    const c = deltas.findIndex((d) => d.x === 5 && d.z === 5);
+    deltas[c] = {
+      ...deltas[c]!,
+      over: {
+        tier: RoadTier.TwoLane,
+        profile: RoadTier.TwoLane,
+        flow: RoadFlow.East,
+        elevation: 6,
+        mask: E | W,
+      },
+    };
+    new RoadMeshRenderer(
+      scene,
+      (wx) => surface(wx),
+      () => null,
+      () => 6,
+    ).apply(deltas);
+    // Anything drawn within the overpass's own width, between the approaches,
+    // stands at deck height: nothing up there reaches the ground.
+    for (const child of scene.children) {
+      if (!(child instanceof THREE.Mesh)) continue;
+      const pos = child.geometry.getAttribute('position');
+      for (let i = 0; i < pos.count; i++) {
+        const tx = pos.getX(i) / TILE_METERS;
+        const tz = pos.getZ(i) / TILE_METERS;
+        // The approaches, and the strips of the crossing tile either side of
+        // the motorway (which runs x 5.11 to 5.89 and is rightly on the ground).
+        const onOverpassLine =
+          Math.abs(tz - 5.5) < 0.15 && ((tx > 4.2 && tx < 5.08) || (tx > 5.92 && tx < 6.8));
+        if (onOverpassLine) expect(pos.getY(i), `at x ${tx.toFixed(2)}`).toBeGreaterThan(3);
+      }
+    }
   });
 });

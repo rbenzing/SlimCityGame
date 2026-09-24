@@ -234,9 +234,9 @@ describe('the approach zone', () => {
     const signal = { '2,2': { control: 'signal' as JunctionControl } };
     // The same arm at a full crossroads earns one, which is what says the tee
     // is being refused for its missing leg and not for something else.
-    expect(approachAhead(1, 2, 3, world(CROSSROADS, { '2,2': { control: 'signal' } }))?.pocket).toBe(
-      true,
-    );
+    expect(
+      approachAhead(1, 2, 3, world(CROSSROADS, { '2,2': { control: 'signal' } }))?.pocket,
+    ).toBe(true);
     expect(approachAhead(1, 2, 3, world(TEE, signal))?.pocket).toBe(false);
   });
 
@@ -817,11 +817,40 @@ describe('a one-way road’s turn bay is on the driver’s left, whichever way i
     for (const flow of [RoadFlow.North, RoadFlow.East, RoadFlow.South, RoadFlow.West]) {
       const out = pocketedCrossSection(
         worldOrderedProfile(tight, flow),
-        { toward: flow, distance: 0, allowed: DEFAULT_ALLOWED, pocket: true, openness: 1, laneAllowed: 0 },
+        {
+          toward: flow,
+          distance: 0,
+          allowed: DEFAULT_ALLOWED,
+          pocket: true,
+          openness: 1,
+          laneAllowed: 0,
+        },
         flow,
       );
-      expect(out.pieces.filter((p) => p.kind === 'travel'), `flow ${flow}`).toHaveLength(4);
-      expect(out.pieces.some((p) => p.kind === 'parking'), `flow ${flow}`).toBe(false);
+      expect(
+        out.pieces.filter((p) => p.kind === 'travel'),
+        `flow ${flow}`,
+      ).toHaveLength(4);
+      expect(
+        out.pieces.some((p) => p.kind === 'parking'),
+        `flow ${flow}`,
+      ).toBe(false);
     }
+  });
+});
+
+describe('a crossing tile, where a road passes over', () => {
+  /** The crossroads, but the east-west road passes OVER the north-south one at (2,2). */
+  const overpass = (): ApproachSurroundings => ({
+    ...world(CROSSROADS, { '2,2': { control: 'signal' } }),
+    overAxisAt: (x, z) => (x === 2 && z === 2 ? 'x' : null),
+  });
+
+  it('is no junction: the road beneath runs straight on through it', () => {
+    expect(roadDegree(2, 2, overpass())).toBe(2);
+  });
+
+  it('gives the road beneath no approach to a junction there, and no bay', () => {
+    expect(approachAhead(2, 1, 3, overpass())).toBeUndefined();
   });
 });

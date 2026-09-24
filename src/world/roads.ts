@@ -6,6 +6,7 @@
  */
 
 import { BRIDGE_MAX_GRADE } from '../shared/constants';
+import { axisOfFlow } from '../shared/overpass';
 import {
   armsAt,
   capacityForTier,
@@ -125,10 +126,8 @@ const anyRoad = (tier: RoadTier): boolean => tier !== RoadTier.None;
  */
 function overRunsAlongX(g: GridState, idx: number): boolean | null {
   if ((g.overTier[idx] ?? 0) === 0) return null;
-  const d = flowDirection(g.overFlow[idx] ?? RoadFlow.None);
-  if (d === RoadFlow.East || d === RoadFlow.West) return true;
-  if (d === RoadFlow.North || d === RoadFlow.South) return false;
-  return null;
+  const axis = axisOfFlow(g.overFlow[idx] ?? RoadFlow.None);
+  return axis === null ? null : axis === 'x';
 }
 
 /**

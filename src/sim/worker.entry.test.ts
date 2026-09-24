@@ -2136,6 +2136,23 @@ describe('overpasses — a road passing over another on the tile they cross', ()
     expect(g.roadMask[at(20, 14)]).toBe(1 | 4);
   });
 
+  it('tells the render thread about the road passing over, and when it goes', () => {
+    const h = withMotorway();
+    const latest = (): RoadTileDelta | undefined =>
+      h.messages
+        .flatMap((m) => (m.type === 'snapshot' && m.snap.roads ? m.snap.roads : []))
+        .filter((d) => d.x === 20 && d.z === 14)
+        .pop();
+    run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: across, elevation: 8 }]);
+    const laid = latest();
+    expect(laid?.tier).toBe(RoadTier.Highway);
+    expect(laid?.over).toMatchObject({ tier: RoadTier.TwoLane, mask: 2 | 8 });
+    expect(laid?.over?.elevation).toBeGreaterThanOrEqual(5.75);
+    run(h, 3, [{ kind: 'bulldoze', tiles: [{ x: 20, z: 14 }] }]);
+    expect(latest()?.over).toBeUndefined();
+    expect(latest()?.tier).toBe(RoadTier.Highway);
+  });
+
   it('refuses a road drawn under an existing viaduct, for now', () => {
     const h = initialized();
     run(h, 0, [{ kind: 'setSandbox', on: true }]);
