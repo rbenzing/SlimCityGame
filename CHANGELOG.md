@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.12.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.11.2...slimcity-v1.12.0) (2026-09-24)
+
+
+### Features
+
+* **roads:** free-form roads, stage 1 — the network is the road store ([74683ae](https://github.com/rbenzing/SlimCityGame/commit/74683aef189e071322a5727fdf2cd5b6eef6f349))
+* **roads:** free-form roads, stage 2 — the graph and the spreads walk the network ([62d44ee](https://github.com/rbenzing/SlimCityGame/commit/62d44ee670edf7e5c2f6bdb754e0c72487cced4d))
+* **roads:** free-form roads, stage 3a — the world holds roads off the grid ([7e21388](https://github.com/rbenzing/SlimCityGame/commit/7e21388d9c19389962ae3a7d86175144346cdf0a))
+* **roads:** free-form roads, stage 3b — the simulation reads roads off the grid ([e1cbab0](https://github.com/rbenzing/SlimCityGame/commit/e1cbab0a068c783900aa664530cf9ef63cf4bf31))
+* **roads:** free-form roads, stage 3c — the land reads roads off the grid ([a10eed5](https://github.com/rbenzing/SlimCityGame/commit/a10eed518248aeacceba2fb23401ff6bfa6e0e17))
+* **roads:** free-form roads, stage 4a — the render thread draws roads off the grid ([7be0316](https://github.com/rbenzing/SlimCityGame/commit/7be0316be7f0eafba50133bea509253955f07b0f))
+* **roads:** free-form roads, stage 4b — lamps along roads off the grid ([e515e8c](https://github.com/rbenzing/SlimCityGame/commit/e515e8c0bf90c90c6075a1c75240b071f2e2ee79))
+* **roads:** free-form roads, stage 4c — vehicles follow roads off the grid ([97ec0bd](https://github.com/rbenzing/SlimCityGame/commit/97ec0bd59787a2e0a2aeb40df7c1d53f6b9eff3e))
+* **roads:** free-form roads, stages 1–4, and the end of overpasses ([0024cf0](https://github.com/rbenzing/SlimCityGame/commit/0024cf0d8f4eebba5bda359df16a2ede2d63bb26))
+
 ## [1.11.2](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.11.1...slimcity-v1.11.2) (2026-09-24)
 
 
