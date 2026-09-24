@@ -71,11 +71,12 @@ export interface BoundActions {
 /**
  * Segmented "Tool Mode" control, road tools only right now:
  * `L-path` is the existing two-leg drag; `Straight` locks to a single axis;
- * `Grid` lays the street grid a dragged rectangle encloses. Changing it also
- * mirrors into `toolFlags.straightMode` / `toolFlags.gridMode`, the shape
- * ToolManager's contract (shared/types.ts `ToolFlags`) actually consumes.
+ * `Grid` lays the street grid a dragged rectangle encloses; `Curve` lays a road
+ * off the grid in three clicks. Changing it also mirrors into
+ * `toolFlags.straightMode` / `gridMode` / `curveMode`, the shape ToolManager's
+ * contract (shared/types.ts `ToolFlags`) actually consumes.
  */
-export type ToolMode = 'straight' | 'lpath' | 'grid';
+export type ToolMode = 'straight' | 'lpath' | 'grid' | 'curve';
 
 /**
  * The junction the inspector has open: where it is, who gives way there, and
@@ -379,6 +380,7 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
         ...state.toolFlags,
         straightMode: mode === 'straight',
         gridMode: mode === 'grid',
+        curveMode: mode === 'curve',
       },
     })),
   setRoadElevation: (metres) =>

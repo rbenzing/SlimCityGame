@@ -16,7 +16,13 @@ import {
   segmentGeom,
   syncRoadLayers,
 } from './roadnet';
-import { deriveRoadFootprint, laySegment, planSegment, removeSegmentAt } from './freeroads';
+import {
+  deriveRoadFootprint,
+  laySegment,
+  planSegment,
+  removeSegmentAt,
+  snapRoadEnd,
+} from './freeroads';
 import { RoadNetwork } from './roadgraph';
 
 const SIZE = 48;
@@ -224,6 +230,27 @@ describe('roads off the grid: what is refused', () => {
     expect(plan(g, { tier: RoadTier.Ramp, a: at(300, 150), b: turn(12), flow: 1 })).toMatchObject({
       ok: true,
     });
+  });
+});
+
+describe('where a dropped road end lands', () => {
+  it('lands on a road node within reach, else a grid road tile’s centre, else where it was dropped', () => {
+    const g = world();
+    applyRoad(
+      g,
+      Array.from({ length: 6 }, (_, i) => ({ x: 5 + i, z: 5 })),
+      RoadTier.TwoLane,
+    );
+    settle(g);
+    lay(g, { a: at(300, 300), b: at(420, 360) });
+    // Three metres from the free road's end: onto it.
+    expect(snapRoadEnd(g, at(302, 302))).toEqual(at(300, 300));
+    // Six metres off: not onto it.
+    expect(snapRoadEnd(g, at(306, 300))).toEqual(at(306, 300));
+    // Anywhere on a grid road's tile: its centre.
+    expect(snapRoadEnd(g, at(141, 103))).toEqual(centre(7, 5));
+    // Open ground: exactly where it was dropped.
+    expect(snapRoadEnd(g, at(600, 600))).toEqual(at(600, 600));
   });
 });
 

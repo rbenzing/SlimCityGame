@@ -35,8 +35,8 @@ eventually cannot be trusted at all, because a visible button stops
 implying a working feature.
 
 This is why the interface is shorter than a genre veteran might expect in
-places — a road tool offers only `Straight` and `L-path` because a
-grid-drag mode does not exist; the corner buttons carry no gear/settings
+places — a motorway offers no `Grid` mode because a street grid has no
+place for its carriageways; the corner buttons carry no gear/settings
 icon because there is no settings system apart from the in-game Options
 screen. Shorter-but-true beats complete-but-fake.
 

@@ -58,6 +58,8 @@ export class ClientGridMirror {
   readonly roadTier: Uint8Array;
   readonly roadMask: Uint8Array;
   readonly roadElevation: Float32Array;
+  /** The tier of the road passing over each crossing tile, 0 elsewhere (see GridState.overTier). */
+  readonly overTier: Uint8Array;
   /** The road passing over each crossing tile, keyed by tile index; empty elsewhere. */
   private readonly overRoads = new Map<number, OverRoadState>();
   /** Profile id per road tile (see GridState.roadProfile); presets equal their tier. */
@@ -103,6 +105,7 @@ export class ClientGridMirror {
     this.roadTier = new Uint8Array(n);
     this.roadMask = new Uint8Array(n);
     this.roadElevation = new Float32Array(n);
+    this.overTier = new Uint8Array(n);
     this.roadProfile = new Uint16Array(n);
     this.roadFlow = new Uint8Array(n);
     this.power = new Uint8Array(n);
@@ -360,6 +363,7 @@ export class ClientGridMirror {
       this.roadFlow[i] = d.flow;
       this.roadMask[i] = d.mask;
       this.roadElevation[i] = d.elevation;
+      this.overTier[i] = d.over && d.tier !== RoadTier.None ? d.over.tier : 0;
       if (d.over && d.tier !== RoadTier.None) this.overRoads.set(i, d.over);
       else this.overRoads.delete(i);
     }

@@ -2,7 +2,8 @@
  * DOM cursor-chip stack: a small absolutely-positioned element
  * that follows the pointer, offset {@link CHIP_POINTER_OFFSET_X}px to the
  * right of the cursor. Renders the CursorChip contract from shared/types —
- * live cost (`¢202`), an optional road length line (`137 m`), and an orange
+ * live cost (`¢202`), an optional road length line (`137 m`, and for a curve
+ * `137 m · radius 84 m`), and an orange
  * invalid-reason line ("Overlapping items" | "Insufficient funds" | "Locked")
  * beneath the cost. Pure DOM, no React — it updates on every pointer move,
  * far hotter than the store/React render path.
@@ -25,6 +26,11 @@ export function formatChipCost(cost: number): string {
 /** `137 m` — rounded road path length (tiles × TILE_METERS, computed upstream). */
 export function formatChipLength(meters: number): string {
   return `${Math.round(meters)} m`;
+}
+
+/** `radius 84 m` — a curve's tightest radius, rounded. */
+export function formatChipRadius(meters: number): string {
+  return `radius ${Math.round(meters)} m`;
 }
 
 export class CursorChipStack {
@@ -81,7 +87,10 @@ export class CursorChipStack {
     this.costLine.textContent = formatChipCost(chip.cost);
 
     if (chip.lengthMeters !== undefined) {
-      this.lengthLine.textContent = formatChipLength(chip.lengthMeters);
+      this.lengthLine.textContent =
+        chip.radiusMeters !== undefined
+          ? `${formatChipLength(chip.lengthMeters)} · ${formatChipRadius(chip.radiusMeters)}`
+          : formatChipLength(chip.lengthMeters);
       this.lengthLine.style.display = '';
     } else {
       this.lengthLine.style.display = 'none';

@@ -22,6 +22,34 @@ afterEach(() => {
   cleanup();
 });
 
+describe('RoadToolOptions — the Path row', () => {
+  it('offers Curve to every road, and sets the curve mode the tool reads', () => {
+    useCityStore.getState().setTool('road.two');
+    render(<RoadToolOptions />);
+    fireEvent.click(screen.getByRole('button', { name: 'Curve' }));
+    expect(useCityStore.getState().toolMode).toBe('curve');
+    expect(useCityStore.getState().toolFlags.curveMode).toBe(true);
+    expect(useCityStore.getState().toolFlags.gridMode).toBe(false);
+    expect(screen.getByRole('button', { name: 'Curve' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('offers no Grid to a motorway, which runs straight while Grid is selected', () => {
+    useCityStore.getState().setTool('road.two');
+    useCityStore.getState().setToolMode('grid');
+    const { unmount } = render(<RoadToolOptions />);
+    expect(screen.getByRole('button', { name: 'Grid' })).toHaveAttribute('aria-pressed', 'true');
+    unmount();
+    useCityStore.getState().setTool('road.highway');
+    render(<RoadToolOptions />);
+    expect(screen.queryByRole('button', { name: 'Grid' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Straight' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: 'Curve' })).toBeInTheDocument();
+  });
+});
+
 describe('RoadToolOptions — the Profile row', () => {
   it('offers parking, bike and footways on a two-lane and reads its width against the tile', () => {
     useCityStore.getState().setTool('road.two');

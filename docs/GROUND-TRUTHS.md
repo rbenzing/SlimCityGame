@@ -710,6 +710,11 @@ MUTCD citations below use 11th-edition section numbers.
 - A tool preview reads back before commit: invalid tint plus a cursor-chip
   reason ("Insufficient funds", "Locked", "Overlapping items"), never a red tint
   alone. — [ux-design.md](ux/ux-design.md), [interaction.md](ux/interaction.md)
+- A road off the grid is previewed by the same `planSegment` its command runs,
+  against the render thread's mirror of the grid and the road network, so the
+  ghost and the command never disagree about what may be laid. A motorway
+  offers no `Grid` mode. — [road-network.md](world-sim/road-network.md),
+  [interaction.md](ux/interaction.md)
 - Disabled (nothing to do now, about 30% opacity) and gated by milestone (40%
   opacity, lock, tooltip naming the milestone) are distinct treatments and are
   never merged. — [interaction.md](ux/interaction.md),

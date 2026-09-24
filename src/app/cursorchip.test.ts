@@ -10,6 +10,7 @@ import {
   CursorChipStack,
   formatChipCost,
   formatChipLength,
+  formatChipRadius,
 } from './cursorchip';
 
 describe('formatChipCost / formatChipLength', () => {
@@ -22,6 +23,10 @@ describe('formatChipCost / formatChipLength', () => {
   it('formats length as rounded meters', () => {
     expect(formatChipLength(137)).toBe('137 m');
     expect(formatChipLength(136.6)).toBe('137 m');
+  });
+
+  it('formats a curve’s tightest radius as rounded meters', () => {
+    expect(formatChipRadius(84.4)).toBe('radius 84 m');
   });
 });
 
@@ -58,6 +63,12 @@ describe('CursorChipStack', () => {
 
     stack.setChip({ cost: 500 });
     expect((root().querySelector('[data-chip-length]') as HTMLElement).style.display).toBe('none');
+  });
+
+  it('adds a curve’s tightest radius to its length line', () => {
+    stack.setChip({ cost: 500, lengthMeters: 302, radiusMeters: 152.4 });
+    const length = root().querySelector('[data-chip-length]') as HTMLElement;
+    expect(length.textContent).toBe('302 m · radius 152 m');
   });
 
   it('shows the invalid reason line in orange beneath the cost', () => {

@@ -303,6 +303,22 @@ Checked in the browser on a small town grown along a free curve: 14 of the
 17 vehicles within 25 m of the curve were on its centre line, the rest on the
 grid street at its mouth. Stage 4 is complete.
 
+Stage 5a is built (2026-09-24): the road tool's `Curve` mode. Three clicks —
+the start, the bend, the end — with the start and end snapped onto a road
+node within 4 m or to the centre of the grid road tile under them; a ghost at
+the road's real width, red when refused; and a chip with the cost, the length
+along the centre line and the tightest radius, or the reason it is refused.
+The preview runs the world's own `planSegment` against the render thread's
+mirror, so it refuses exactly what `buildSegment` would. Backspace takes back
+a click, Escape drops the curve, and a right-drag turns the camera without
+losing it. A one-way road runs from the first click to the last. Motorways no
+longer offer `Grid`, and with `Grid` selected they run straight. Checked in
+the browser: a curve laid off a grid street (charged the ¢302 its chip
+quoted), a too-tight curve refused with the 40 m radius it needs, Backspace,
+Escape, and the motorway's options. Not yet (5b): a straight at any angle,
+splitting an existing road where a click lands on it, and continuing a road's
+direction from its end.
+
 ### Overpasses (requested 2026-09-23, built 2026-09-24)
 
 A road could not cross another road or a railway without meeting it, because a

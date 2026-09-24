@@ -1367,6 +1367,12 @@ export interface ToolFlags {
    */
   gridMode: boolean;
   /**
+   * `Curve` tool mode — a road off the grid laid in three clicks: its start,
+   * the bend both ends aim at, and its end. Optional so a flag set written
+   * before it existed reads as off.
+   */
+  curveMode?: boolean;
+  /**
    * `Guide` snapping chip — a drag that is nearly in line with an existing
    * road is pulled into line with it, so a new street continues one rather
    * than running a tile off it.
@@ -1387,8 +1393,10 @@ export interface ToolFlags {
 export interface CursorChip {
   /** Live cost of the previewed edit, ¢. */
   cost: number;
-  /** Road tools only: path tiles × TILE_METERS. */
+  /** Road tools only: path tiles × TILE_METERS, or a curve's centre-line length. */
   lengthMeters?: number;
+  /** A curve's tightest radius along its centre line, metres. */
+  radiusMeters?: number;
   /**
    * Orange line beneath the cost when the preview is invalid, e.g.
    * "Overlapping items" | "Insufficient funds" | "Locked".

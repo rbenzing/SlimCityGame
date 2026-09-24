@@ -254,8 +254,18 @@ that the grid could not already hold.
      tile's centre and a free road's centre line about every 5 m, run the way
      the edge is driven. A path joins its edges' lines, and cars, service
      vehicles and garbage trucks all drive that.
-5. **The tool.** The curve and free modes, their ghost, chip and refusals,
-   and motorways without `Grid`, checked in the browser.
+5. **The tool**, in two parts, checked in the browser.
+   - **5a, the curve.** The `Curve` mode's three clicks, each end snapped onto
+     a road node within reach or to the centre of the grid road tile under
+     it; the ghost at the road's real width; the chip with cost, length and
+     tightest radius, or the refusal; Backspace and Escape; and motorways
+     without `Grid`. The preview is judged by the world's own `planSegment`,
+     run against the render thread's mirror of the grid and network, so it
+     refuses exactly what the command would.
+   - **5b, the rest of the drawing.** A straight at any angle, a click on an
+     existing road splitting it with a new junction (the command that comes
+     with the tool), a curve starting on a road's end continuing its
+     direction, and guide snapping for free roads.
 6. **Angled junction behaviour.** Control, stop lines, crossings, approach
    lanes and turn pockets at junctions that are not on the grid, and the
    signs and kerbside furniture along free roads, which the grid places by

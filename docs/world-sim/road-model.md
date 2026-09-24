@@ -917,9 +917,9 @@ The drawer's road category shows classes, not tiers; picking one lays its
 default profile. The tool options panel grows a profile editor — lane
 pieces as a strip across the tile's width budget, with per-side toggles for
 parking, bike lanes, lamps and sidewalks and a median picker — and its
-edits apply to the next drag. The path modes are `Straight`, `L-path` and
-`Grid`; the curve and free modes, and motorways without `Grid`, come with the
-road network ([road-network.md](road-network.md),
+edits apply to the next drag. The path modes are `Straight`, `L-path`, `Grid`
+(not for a motorway) and `Curve`, which lays a road off the grid
+([road-network.md](road-network.md),
 [interaction.md](../ux/interaction.md#curve-and-free-road-modes)). A replace
 mode drags a new profile over an
 existing run in place, keeping alignment, buildings and elevation; if the

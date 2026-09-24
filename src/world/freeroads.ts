@@ -42,6 +42,25 @@ import {
 /** Resolves a stored profile id to the cross-section it names, or null. */
 export type ProfileLookup = (id: number) => RoadProfile | null;
 
+/**
+ * The grid layers planning a road off the grid reads: the ground, what stands
+ * on it, and the grid's own roads. The world's grid has them, and so does the
+ * render thread's mirror of it, so the tool's preview plans exactly as the
+ * command will.
+ */
+export type SegmentGround = Pick<
+  GridState,
+  | 'size'
+  | 'height'
+  | 'water'
+  | 'buildingId'
+  | 'roadTier'
+  | 'roadMask'
+  | 'roadProfile'
+  | 'roadElevation'
+  | 'overTier'
+>;
+
 /** What a `buildSegment` asks for. */
 export interface SegmentRequest {
   tier: RoadTier;
@@ -99,7 +118,7 @@ const MIN_SPREAD_SIN = 0.05;
  * Ground height at a point, metres, read between the four nearest tile
  * centres, since the terrain is one height per tile.
  */
-export function groundAt(g: GridState, x: number, z: number): number {
+export function groundAt(g: Pick<GridState, 'size' | 'height'>, x: number, z: number): number {
   const fx = x / TILE_METERS - 0.5;
   const fz = z / TILE_METERS - 0.5;
   const x0 = Math.max(0, Math.min(g.size - 1, Math.floor(fx)));
@@ -136,7 +155,7 @@ const GRID_STEPS: readonly { bit: number; dx: number; dz: number }[] = [
 ];
 
 /** The roads already leaving the place an end of the new segment lands on. */
-function armsAt(g: GridState, net: RoadNet, p: CmPoint, lookup: ProfileLookup): Arm[] {
+function armsAt(g: SegmentGround, net: RoadNet, p: CmPoint, lookup: ProfileLookup): Arm[] {
   const arms: Arm[] = [];
   const slot = nodeAt(net, p);
   if (slot >= 0) {
@@ -206,7 +225,7 @@ function armRefusal(arms: readonly Arm[], mine: Arm): string | null {
  * laid exactly as it is.
  */
 export function planSegment(
-  g: GridState,
+  g: SegmentGround,
   net: RoadNet,
   req: SegmentRequest,
   lookup: ProfileLookup,
@@ -412,6 +431,42 @@ export function freeJunctionTiles(net: RoadNet, size: number): Set<number> {
     }
   }
   return tiles;
+}
+
+/** How close to a road node a dropped road end is pulled onto it, metres. */
+export const NODE_SNAP_M = 4;
+
+/**
+ * Where a road end dropped at `p` lands: on the nearest road node within
+ * `NODE_SNAP_M`, else at the centre of the grid road tile under it, which is
+ * the only place a road off the grid may meet one, else at `p` itself.
+ */
+export function snapRoadEnd(
+  g: Pick<GridState, 'size' | 'roadTier'> & { roads?: RoadNet },
+  p: CmPoint,
+): CmPoint {
+  const net = g.roads;
+  if (net) {
+    let best: CmPoint | null = null;
+    let bestD = NODE_SNAP_M * 100;
+    for (let s = 0; s < net.nodeSlots; s++) {
+      if (net.nodeLive[s] !== 1) continue;
+      const dx = net.nodeX[s]! - p.x;
+      const dz = net.nodeZ[s]! - p.z;
+      const d = Math.sqrt(dx * dx + dz * dz);
+      if (d <= bestD) {
+        bestD = d;
+        best = { x: net.nodeX[s]!, z: net.nodeZ[s]! };
+      }
+    }
+    if (best) return best;
+  }
+  const tx = tileOfCm(p.x);
+  const tz = tileOfCm(p.z);
+  if (tx >= 0 && tz >= 0 && tx < g.size && tz < g.size && g.roadTier[tz * g.size + tx]) {
+    return tileCentrePoint(tx, tz);
+  }
+  return p;
 }
 
 /** A tile's centre in world centimetres. */

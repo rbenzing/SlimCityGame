@@ -106,11 +106,14 @@ may not meet, or ground that is taken. A refused ghost draws red and the final
 click does nothing.
 
 `Backspace` takes back the last click, so a misplaced bend is moved without
-starting again. Right-click is not used: a right-drag already turns the
-camera. Escape cancels the road in progress, the same as it cancels a drag.
-The profile, the replace flag, the elevation control and the class-join
-refusals apply as for any road. A curve is one undo step, including any road
-it split.
+starting again. Right-click is not used, and leaves a curve in progress
+alone: a right-drag turns the camera, which is how a player looks round a
+bend before placing its end. Escape cancels the road in progress, the same as
+it cancels a drag. The profile and the class-join refusals apply as for any
+road. The replace flag has nothing to replace off the grid, and until roads
+off the grid can be raised a curve with the elevation set above the ground is
+refused with that reason rather than laid on the ground. A curve is one undo
+step, including any road it split.
 
 **Which classes get which modes.** Every road class that can be laid offers
 `Straight`, `L-path` and `Curve`. Every class except the motorway (highway

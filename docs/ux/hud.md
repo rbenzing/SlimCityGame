@@ -263,7 +263,7 @@ category or tool is active.
   distinction).
 - The roads drawer carries its own tool-options row in its header, next to
   the close button, rather than a separate floating panel: path mode
-  (`Straight`, `L-path` or `Grid`), elevation (`Raise`/`Lower`, reading `Ground` or
+  (`Straight`, `L-path`, `Grid` — not offered for a motorway — or `Curve`), elevation (`Raise`/`Lower`, reading `Ground` or
   a meter height, up to the bridge deck limit), two snap toggles (a 90° lock
   and `Guide`, which pulls a drag into line with a road it nearly continues), a
   toggle for whether a drag replaces whatever road is already there, and —
