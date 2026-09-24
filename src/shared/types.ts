@@ -280,6 +280,19 @@ export interface GridState {
    * saves load with no lines anywhere.
    */
   powerLine: Uint8Array;
+  /**
+   * The road passing OVER this tile's road, where one does: its tier, profile
+   * id, stored flow byte and deck height in metres above terrain. Zero
+   * everywhere but a crossing tile, which is the only place a tile holds two
+   * roads. The road at ground level keeps the ordinary road layers; nothing
+   * joins the two. See docs/world-sim/overpasses.md.
+   * ADDITIVE layers: serialized LAST in the grid save (SAVE_VERSION 12); older
+   * saves load with no overpasses.
+   */
+  overTier: Uint8Array;
+  overProfile: Uint16Array;
+  overFlow: Uint8Array;
+  overElevation: Float32Array;
   buildingId: Uint32Array; // 0 = none, else building instance id occupying tile
   power: Uint8Array; // 1 = powered
   watered: Uint8Array; // 1 = water service reaches tile
@@ -364,6 +377,12 @@ export type Command =
        * it sends the deck heights that were there before.
        */
       flows?: number[];
+      /**
+       * Lay every tile on the over layer of a crossing, exactly as given. Only
+       * an undo sends it, to put back an overpass it took away; an ordinary
+       * drag leaves the worker to decide which tiles cross over.
+       */
+      layer?: 'over';
     }
   /**
    * Registers a player-composed cross-section under an id the client chose
@@ -400,7 +419,12 @@ export type Command =
       lane: number;
       allowed: number | null;
     }
-  | { kind: 'bulldoze'; tiles: TilePoint[] } // clears road/building/zone/trees
+  /**
+   * Clears road/building/zone/trees. On a crossing tile it takes only the road
+   * passing over, the one on top; `layer: 'over'` asks for exactly that and
+   * nothing else on any tile.
+   */
+  | { kind: 'bulldoze'; tiles: TilePoint[]; layer?: 'over' }
   | { kind: 'paintZone'; zone: ZoneType; tiles: TilePoint[] }
   | { kind: 'placeBuilding'; catalogId: string; x: number; z: number; rotation: 0 | 1 | 2 | 3 }
   | { kind: 'setTaxRate'; sector: Sector; rate: number } // 0..0.3
@@ -538,6 +562,23 @@ export interface RoadTileDelta {
   profile: number;
   /** Which way the tile runs (see GridState.roadFlow); RoadFlow.None when unset. */
   flow: number;
+  /**
+   * The road passing over this tile, where one does; absent where none does,
+   * which is also how a lifted overpass is told to the render thread. See
+   * GridState.overTier.
+   */
+  over?: OverRoadState;
+}
+
+/** The road passing over a crossing tile, as the render thread receives it. */
+export interface OverRoadState {
+  tier: RoadTier;
+  profile: number;
+  flow: number;
+  /** Deck height in metres above terrain. */
+  elevation: number;
+  /** Its neighbour mask: it joins only along its own line. */
+  mask: number;
 }
 
 export interface ZonePatch {
@@ -1016,6 +1057,11 @@ export interface GraphEdge {
    */
   narrowsAtA?: number;
   narrowsAtB?: number;
+  /**
+   * Indices into `tiles` where the run is the road passing OVER a crossing
+   * tile rather than the road on it. Absent on a run that crosses nothing.
+   */
+  overTiles?: number[];
 }
 
 export interface PathResult {
@@ -1132,7 +1178,9 @@ export interface ReversibleEdit {
  * so a deck can hold a height its terrain does not divide into; version 6 the
  * two-byte GridState.roadProfile layer; version 7 the GridState.roadFlow byte;
  * version 8 the GridState.junctionControl byte, the control a player set at a
- * junction.
+ * junction; version 9 GridState.junctionTurns; version 10 GridState.powerLine;
+ * version 11 GridState.junctionLaneTurns; version 12 the four over-road layers
+ * (overTier, overProfile, overFlow, overElevation) a crossing tile holds.
  *
  * Migration: src/world/grid.ts deserializeGrid still accepts every older
  * buffer, defaulting each absent trailing layer to all-zero — so a pre-v4 save
@@ -1145,7 +1193,7 @@ export interface ReversibleEdit {
  * earlier layer's byte layout or order changed, so every v1..v7 field
  * round-trips unchanged.
  */
-export const SAVE_VERSION = 11;
+export const SAVE_VERSION = 12;
 
 export interface SaveHeader {
   version: number;

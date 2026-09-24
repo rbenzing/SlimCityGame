@@ -141,6 +141,14 @@ export function lerpVehicle(
 
 export const LANE_OFFSET_METERS = 1.875; // half a 3.75m lane (roadsmesh LANE_WIDTH_M / 2)
 
+/**
+ * Whether a vehicle facing `heading` drives along x rather than z. Heading 0
+ * faces +z, the convention `laneOffset` is written against.
+ */
+export function headingAlongX(heading: number): boolean {
+  return Math.abs(Math.sin(heading)) > Math.abs(Math.cos(heading));
+}
+
 /** Perpendicular "drive on the right" world-space (x, z) offset for a vehicle facing `heading`. */
 export function laneOffset(heading: number): { dx: number; dz: number } {
   return {
@@ -706,7 +714,11 @@ export class VehicleKitPool {
 }
 
 export class VehicleRenderer {
-  private readonly heightAt: (x: number, z: number) => number;
+  /**
+   * The road surface under a vehicle. It is given the heading too: on a tile
+   * two roads cross, the way a car is driving says which of them it is on.
+   */
+  private readonly heightAt: (x: number, z: number, heading: number) => number;
   private readonly nightFactorUniform = uniform(0);
   private readonly meshes: THREE.InstancedMesh[] = [];
   private prevBuffer: Float32Array | null = null;
@@ -714,7 +726,7 @@ export class VehicleRenderer {
   /** Bumped per-slot only on an observed inactive->active transition (palette re-roll). */
   private readonly slotGeneration = new Uint32Array(MAX_VEHICLES);
 
-  constructor(scene: THREE.Scene, heightAt: (x: number, z: number) => number) {
+  constructor(scene: THREE.Scene, heightAt: (x: number, z: number, heading: number) => number) {
     this.heightAt = heightAt;
 
     // Shared emissive graph for all 3 kinds: warm headlight / red taillight,
@@ -847,7 +859,7 @@ export class VehicleRenderer {
 
       // Vehicles ride ON the road plate (terrain + ROAD_Y_OFFSET), not on the
       // bare terrain under it — otherwise wheels sink into the asphalt.
-      const groundY = this.heightAt(renderX, renderZ) + ROAD_Y_OFFSET;
+      const groundY = this.heightAt(renderX, renderZ, heading) + ROAD_Y_OFFSET;
       _position.set(renderX, groundY + sy / 2, renderZ);
       _quaternion.setFromAxisAngle(_yAxis, heading);
       _scale.set(sx, sy, sz);

@@ -459,3 +459,34 @@ describe('recomputeUtilities: water', () => {
     expect(g.power[tileIndex(12, 6)]).toBe(0); // no power producer in this scenario
   });
 });
+
+describe('recomputeUtilities: a road passing over another', () => {
+  /** A street overpass along z = 40, crossing a street running down x = 40. */
+  function overpass(): { g: GridState; buildings: BuildingInstance[] } {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    for (let z = 20; z <= 60; z++) paintRoad(g, 40, z);
+    for (let x = 30; x <= 50; x++) if (x !== 40) paintRoad(g, x, 40);
+    const c = tileIndex(40, 40);
+    g.overTier[c] = RoadTier.TwoLane;
+    g.overProfile[c] = RoadTier.TwoLane;
+    g.overFlow[c] = 2; // east
+    g.overElevation[c] = 7;
+    placeBuilding(g, buildings, 1, 'power-plant', 29, 40, 1, 1);
+    placeBuilding(g, buildings, 2, 'house', 50, 41, 1, 1); // beside the overpass's far end
+    placeBuilding(g, buildings, 3, 'house', 41, 58, 1, 1); // beside the street beneath
+    return { g, buildings };
+  }
+
+  it('carries power along the overpass, across the crossing to its far end', () => {
+    const { g, buildings } = overpass();
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.power[tileIndex(50, 41)]).toBe(1);
+  });
+
+  it('carries nothing down into the road beneath', () => {
+    const { g, buildings } = overpass();
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.power[tileIndex(41, 58)]).toBe(0);
+  });
+});

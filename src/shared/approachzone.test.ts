@@ -865,3 +865,19 @@ describe('a one-way road’s turn bay is on the driver’s left, whichever way i
     }
   });
 });
+
+describe('a crossing tile, where a road passes over', () => {
+  /** The crossroads, but the east-west road passes OVER the north-south one at (2,2). */
+  const overpass = (): ApproachSurroundings => ({
+    ...world(CROSSROADS, { '2,2': { control: 'signal' } }),
+    overAxisAt: (x, z) => (x === 2 && z === 2 ? 'x' : null),
+  });
+
+  it('is no junction: the road beneath runs straight on through it', () => {
+    expect(roadDegree(2, 2, overpass())).toBe(2);
+  });
+
+  it('gives the road beneath no approach to a junction there, and no bay', () => {
+    expect(approachAhead(2, 1, 3, overpass())).toBeUndefined();
+  });
+});

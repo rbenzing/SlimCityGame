@@ -62,6 +62,13 @@ export interface ApproachSurroundings {
    * every lane of that arm is on the set the approach derives for it.
    */
   laneTurnsAt(x: number, z: number, arm: RoadFlow): PackedLaneTurns;
+  /**
+   * Which way a road passing OVER the tile runs, where one does. The road on
+   * the tile never joins along that line — the tiles there belong to the
+   * road above — so a crossing is not a junction. Omitted: nothing passes
+   * over anything.
+   */
+  overAxisAt?(x: number, z: number): 'x' | 'z' | null;
 }
 
 /** The junction a tile approaches, and what this arm of it may do. */
@@ -208,6 +215,8 @@ function isSeparateRoad(
   dz: number,
   world: ApproachSurroundings,
 ): boolean {
+  const over = world.overAxisAt?.(x, z) ?? null;
+  if (over !== null && over === (dx !== 0 ? 'x' : 'z')) return true;
   const here = world.profileAt(x, z);
   const there = world.profileAt(x + dx, z + dz);
   return (

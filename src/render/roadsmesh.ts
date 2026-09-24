@@ -87,7 +87,7 @@ import {
   stepForFlow,
 } from '../shared/types';
 import type { CorridorHalf } from '../shared/types';
-import type { JunctionControl } from '../shared/types';
+import type { JunctionControl, TilePoint } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import {
   TILE_METERS,
@@ -95,6 +95,7 @@ import {
   CHUNKS_PER_SIDE,
   MAP_SIZE,
   tileIndex,
+  worldToTile,
 } from '../shared/constants';
 import {
   carriagewayHalfWidthOf,
@@ -135,6 +136,7 @@ import {
   rampMouthAt,
 } from '../shared/approachzone';
 import { paintsGore } from '../shared/taper';
+import { axisOfFlow } from '../shared/overpass';
 import type { TaperStep } from '../shared/taper';
 import type {
   ApproachAhead,
@@ -4948,6 +4950,24 @@ interface ChunkEntry {
   mesh: THREE.Mesh | null;
 }
 
+/**
+ * The road passing over a crossing tile, shaped like a tile of its own so the
+ * same drawing reads it; null where nothing passes over the tile.
+ */
+function overTileOf(tile: RoadTileDelta): RoadTileDelta | null {
+  const over = tile.over;
+  if (!over) return null;
+  return {
+    x: tile.x,
+    z: tile.z,
+    tier: over.tier,
+    mask: over.mask,
+    elevation: over.elevation,
+    profile: over.profile,
+    flow: over.flow,
+  };
+}
+
 function chunkKeyOf(x: number, z: number): number {
   const cx = Math.floor(x / CHUNK_TILES);
   const cz = Math.floor(z / CHUNK_TILES);
@@ -4976,6 +4996,7 @@ const _treeScale = new THREE.Vector3(1, 1, 1);
 export class RoadMeshRenderer {
   private readonly scene: THREE.Scene;
   private readonly heightAt: (x: number, z: number) => number;
+  private readonly overHeightAt: (wx: number, wz: number, cx: number, cz: number) => number;
   // Lit (Lambert) so the pavement receives cast shadows from cars, lamps and
   // buildings and shades with the sun; road faces are flat +Y, so daylight
   // reads nearly as uniform as the old unlit fill but now grounds its traffic.
@@ -5013,10 +5034,18 @@ export class RoadMeshRenderer {
     scene: THREE.Scene,
     heightAt: (x: number, z: number) => number,
     profileFor: (id: number) => RoadProfile | null = () => null,
+    /**
+     * The surface of the road passing over crossing tile (cx, cz) at a world
+     * point. Omitted, it reads the ordinary road surface, which is what a city
+     * with no overpasses has everywhere.
+     */
+    overHeightAt: (wx: number, wz: number, cx: number, cz: number) => number = (wx, wz) =>
+      heightAt(wx, wz),
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
     this.profileFor = profileFor;
+    this.overHeightAt = overHeightAt;
     this.treeTrunkGeometry.translate(0, MEDIAN_TREE_TRUNK_HEIGHT / 2, 0);
     this.treeCanopyGeometry.translate(
       0,
@@ -5178,6 +5207,10 @@ export class RoadMeshRenderer {
         if (slot === null) return 0;
         return this.junctionLaneTurns.get(tileIndex(x, z))?.[slot] ?? 0;
       },
+      overAxisAt: (x, z) => {
+        const over = this.groundAt(x, z)?.over;
+        return over ? axisOfFlow(over.flow) : null;
+      },
     };
   }
 
@@ -5252,6 +5285,135 @@ export class RoadMeshRenderer {
   }
 
   /** Whether the road at (x,z) is one a pedestrian can walk beside. */
+  /**
+   * The road met by running along `axis` onto tile (x, z): the road passing
+   * over it where that one runs this way — an approach looking along its line
+   * at a crossing sees the road it climbs onto — else the tile's own road.
+   */
+  private roadAlong(x: number, z: number, axis: 'x' | 'z'): RoadTileDelta | undefined {
+    const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
+    const over = tile ? overTileOf(tile) : null;
+    return over && axisOfFlow(over.flow) === axis ? over : tile;
+  }
+
+  private tierAlong(x: number, z: number, axis: 'x' | 'z'): RoadTier {
+    return this.roadAlong(x, z, axis)?.tier ?? RoadTier.None;
+  }
+
+  /** `halfAt`, but for the road met along `axis`. */
+  private halfAlong(x: number, z: number, axis: 'x' | 'z'): number {
+    const road = this.roadAlong(x, z, axis);
+    if (!road || road === this.groundAt(x, z)) return this.halfAt(x, z);
+    return carriagewayHalfWidthOf(this.overProfileOf(road));
+  }
+
+  /** `walkableAt`, but for the road met along `axis`. */
+  private walkableAlong(x: number, z: number, axis: 'x' | 'z'): boolean {
+    const road = this.roadAlong(x, z, axis);
+    if (!road || road === this.groundAt(x, z)) return this.walkableAt(x, z);
+    return hasFootway(this.overProfileOf(road));
+  }
+
+  /** `planAt`, but for the road met along `axis`. */
+  private planAlong(x: number, z: number, axis: 'x' | 'z'): MarkingPlan | null {
+    const road = this.roadAlong(x, z, axis);
+    if (!road || road === this.groundAt(x, z)) return this.planAt(x, z);
+    if (!isStraightRunMask(road.mask)) return null;
+    return markingPlan(this.overProfileOf(road), flowDirection(road.flow));
+  }
+
+  /**
+   * The surface a tile's own road is drawn on. A road's geometry reaches a
+   * little past its tile, and where it runs onto a crossing along the line of
+   * the road passing over, the points that land in the crossing tile are on
+   * that deck — asked of the ordinary sampler, they would read the road
+   * beneath and drag the approach's edge down to it.
+   */
+  private heightFor(tile: RoadTileDelta): (wx: number, wz: number) => number {
+    const crossings: TilePoint[] = [];
+    for (const [dx, dz, axis] of [
+      [0, -1, 'z'],
+      [1, 0, 'x'],
+      [0, 1, 'z'],
+      [-1, 0, 'x'],
+    ] as const) {
+      const over = this.groundAt(tile.x + dx, tile.z + dz)?.over;
+      if (over && axisOfFlow(over.flow) === axis)
+        crossings.push({ x: tile.x + dx, z: tile.z + dz });
+    }
+    if (crossings.length === 0) return this.heightAt;
+    return (wx, wz) => {
+      const tx = worldToTile(wx);
+      const tz = worldToTile(wz);
+      const crossing = crossings.find((c) => c.x === tx && c.z === tz);
+      return crossing ? this.overHeightAt(wx, wz, crossing.x, crossing.z) : this.heightAt(wx, wz);
+    };
+  }
+
+  private groundAt(x: number, z: number): RoadTileDelta | undefined {
+    return this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
+  }
+
+  /** The cross-section of a road passing over a crossing, laid in world order. */
+  private overProfileOf(over: RoadTileDelta): RoadProfile {
+    return (
+      this.ownProfileFor(over) ?? worldOrderedProfile(presetProfileForTier(over.tier), over.flow)
+    );
+  }
+
+  /**
+   * The road passing over a crossing tile, drawn at its own deck. It runs
+   * straight along its line and meets only the approaches either side, so
+   * that is all it is told about; nothing on it is a junction.
+   */
+  private overpassVertices(over: RoadTileDelta): { positions: number[]; colors: number[] } {
+    const alongX = axisOfFlow(over.flow) === 'x';
+    const { x, z } = over;
+    const on = (along: boolean): boolean => along === alongX;
+    const tier = (tx: number, tz: number, along: boolean): RoadTier =>
+      on(along) ? this.tierAlong(tx, tz, alongX ? 'x' : 'z') : RoadTier.None;
+    const half = (tx: number, tz: number, along: boolean): number =>
+      on(along) ? this.halfAlong(tx, tz, alongX ? 'x' : 'z') : 0;
+    const walk = (tx: number, tz: number, along: boolean): boolean =>
+      on(along) ? this.walkableAlong(tx, tz, alongX ? 'x' : 'z') : false;
+    const plan = (tx: number, tz: number, along: boolean): MarkingPlan | null =>
+      on(along) ? this.planAlong(tx, tz, alongX ? 'x' : 'z') : null;
+    return roadTileVertices(
+      x,
+      z,
+      over.tier,
+      over.mask,
+      (wx, wz) => this.overHeightAt(wx, wz, x, z),
+      {
+        n: tier(x, z - 1, false),
+        e: tier(x + 1, z, true),
+        s: tier(x, z + 1, false),
+        w: tier(x - 1, z, true),
+      },
+      this.overProfileOf(over),
+      {
+        n: half(x, z - 1, false),
+        e: half(x + 1, z, true),
+        s: half(x, z + 1, false),
+        w: half(x - 1, z, true),
+        footways: {
+          n: walk(x, z - 1, false),
+          e: walk(x + 1, z, true),
+          s: walk(x, z + 1, false),
+          w: walk(x - 1, z, true),
+        },
+        plans: {
+          n: plan(x, z - 1, false),
+          e: plan(x + 1, z, true),
+          s: plan(x, z + 1, false),
+          w: plan(x - 1, z, true),
+        },
+        approaches: { n: null, e: null, s: null, w: null },
+      },
+      flowDirection(over.flow),
+    );
+  }
+
   private walkableAt(x: number, z: number): boolean {
     const profile = this.profileAt(x, z);
     return profile !== null && hasFootway(profile);
@@ -5618,35 +5780,35 @@ export class RoadMeshRenderer {
     const colors: number[] = [];
     for (const tile of chunk.tiles.values()) {
       const neighbors: NeighborTiers = {
-        n: this.tierAt(tile.x, tile.z - 1),
-        e: this.tierAt(tile.x + 1, tile.z),
-        s: this.tierAt(tile.x, tile.z + 1),
-        w: this.tierAt(tile.x - 1, tile.z),
+        n: this.tierAlong(tile.x, tile.z - 1, 'z'),
+        e: this.tierAlong(tile.x + 1, tile.z, 'x'),
+        s: this.tierAlong(tile.x, tile.z + 1, 'z'),
+        w: this.tierAlong(tile.x - 1, tile.z, 'x'),
       };
       const vertices = roadTileVertices(
         tile.x,
         tile.z,
         tile.tier,
         tile.mask,
-        this.heightAt,
+        this.heightFor(tile),
         neighbors,
         this.ownProfileFor(tile),
         {
-          n: this.halfAt(tile.x, tile.z - 1),
-          e: this.halfAt(tile.x + 1, tile.z),
-          s: this.halfAt(tile.x, tile.z + 1),
-          w: this.halfAt(tile.x - 1, tile.z),
+          n: this.halfAlong(tile.x, tile.z - 1, 'z'),
+          e: this.halfAlong(tile.x + 1, tile.z, 'x'),
+          s: this.halfAlong(tile.x, tile.z + 1, 'z'),
+          w: this.halfAlong(tile.x - 1, tile.z, 'x'),
           footways: {
-            n: this.walkableAt(tile.x, tile.z - 1),
-            e: this.walkableAt(tile.x + 1, tile.z),
-            s: this.walkableAt(tile.x, tile.z + 1),
-            w: this.walkableAt(tile.x - 1, tile.z),
+            n: this.walkableAlong(tile.x, tile.z - 1, 'z'),
+            e: this.walkableAlong(tile.x + 1, tile.z, 'x'),
+            s: this.walkableAlong(tile.x, tile.z + 1, 'z'),
+            w: this.walkableAlong(tile.x - 1, tile.z, 'x'),
           },
           plans: {
-            n: this.planAt(tile.x, tile.z - 1),
-            e: this.planAt(tile.x + 1, tile.z),
-            s: this.planAt(tile.x, tile.z + 1),
-            w: this.planAt(tile.x - 1, tile.z),
+            n: this.planAlong(tile.x, tile.z - 1, 'z'),
+            e: this.planAlong(tile.x + 1, tile.z, 'x'),
+            s: this.planAlong(tile.x, tile.z + 1, 'z'),
+            w: this.planAlong(tile.x - 1, tile.z, 'x'),
           },
           approaches: {
             n: this.approachSpanAt(tile.x, tile.z - 1, ARM_TOWARD.n),
@@ -5665,6 +5827,12 @@ export class RoadMeshRenderer {
       );
       for (const n of vertices.positions) positions.push(n);
       for (const n of vertices.colors) colors.push(n);
+      const over = overTileOf(tile);
+      if (over) {
+        const drawn = this.overpassVertices(over);
+        for (const n of drawn.positions) positions.push(n);
+        for (const n of drawn.colors) colors.push(n);
+      }
     }
 
     const geometry = new THREE.BufferGeometry();

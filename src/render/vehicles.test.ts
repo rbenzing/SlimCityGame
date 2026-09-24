@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import {
   archetypeForKind,
   buildVehicleGeometry,
+  headingAlongX,
   laneOffset,
   lerpVehicle,
   paletteColorForSlot,
@@ -611,5 +612,15 @@ describe('VehicleRenderer frustum culling (wave 6)', () => {
     );
     expect(meshes.length).toBeGreaterThan(0);
     for (const mesh of meshes) expect(mesh.frustumCulled).toBe(false);
+  });
+});
+
+describe('headingAlongX', () => {
+  it('reads which axis a car is driving along from its heading', () => {
+    // Heading 0 drives toward +z (the lane offset is perpendicular to it).
+    expect(headingAlongX(0)).toBe(false);
+    expect(headingAlongX(Math.PI)).toBe(false);
+    expect(headingAlongX(Math.PI / 2)).toBe(true);
+    expect(headingAlongX(-Math.PI / 2)).toBe(true);
   });
 });

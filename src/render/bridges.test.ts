@@ -5,14 +5,13 @@ import { kerbWidthOf, presetProfileForTier } from '../shared/roadprofile';
 import { RoadTier } from '../shared/types';
 import {
   BridgeRenderer,
-  bridgeStyleFor,
   groupByStyle,
   isPierTile,
   runsAlongZ,
   structureHalfWidth,
   type BridgeDeckTile,
-  type BridgeStyle,
 } from './bridges';
+import { bridgeStyleFor } from '../shared/bridgestyle';
 import { carriagewayHalfWidthMeters, curbWidthMeters } from './roadsmesh';
 
 function deckTile(
@@ -71,32 +70,6 @@ describe('runsAlongZ', () => {
 
   it('falls back to a north-south run for an isolated tile', () => {
     expect(runsAlongZ(0)).toBe(true);
-  });
-});
-
-describe('bridgeStyleFor', () => {
-  it('gives rail a steel through-truss, the way railway bridges are built', () => {
-    expect(bridgeStyleFor(RoadTier.RailTrack)).toBe('truss');
-  });
-
-  it('gives the big roads a deep box girder', () => {
-    expect(bridgeStyleFor(RoadTier.Highway)).toBe('box');
-    expect(bridgeStyleFor(RoadTier.Avenue)).toBe('box');
-  });
-
-  it('gives tracks and lanes bare planking rather than a concrete beam', () => {
-    for (const tier of [RoadTier.Gravel, RoadTier.Alley, RoadTier.BikeLane])
-      expect(bridgeStyleFor(tier)).toBe('plank');
-  });
-
-  it('leaves ordinary streets on the concrete beam', () => {
-    for (const tier of [RoadTier.TwoLane, RoadTier.FourLane, RoadTier.OneWay, RoadTier.BusLane])
-      expect(bridgeStyleFor(tier)).toBe('beam');
-  });
-
-  it('gives every tier a span it can be built in — a tram line bridges too', () => {
-    const styles: BridgeStyle[] = ['plank', 'beam', 'box', 'truss'];
-    for (const tier of ALL_TIERS) expect(styles).toContain(bridgeStyleFor(tier));
   });
 });
 
@@ -287,6 +260,31 @@ describe('BridgeRenderer', () => {
     renderer.dispose();
   });
 
+  it('stands no pier in the road an overpass spans', () => {
+    const scene = new THREE.Scene();
+    const renderer = new BridgeRenderer(scene, flatDeckAt);
+    // (0,0) is on the pier cadence, so an ordinary deck there takes one.
+    expect(isPierTile(0, 0)).toBe(true);
+    renderer.rebuild([{ ...deckTile(0, 0), crossing: true }]);
+    expect(instancedIn(scene)).toHaveLength(0);
+    expect(mergedIn(scene)).toHaveLength(2); // still a girder and its parapets
+    renderer.dispose();
+  });
+
+  it('hangs an overpass girder off the overpass deck, not the road beneath it', () => {
+    const scene = new THREE.Scene();
+    const renderer = new BridgeRenderer(
+      scene,
+      () => 0,
+      () => 20,
+    );
+    renderer.rebuild([{ ...deckTile(0, 0, RoadTier.TwoLane, 20), crossing: true }]);
+    for (const mesh of mergedIn(scene)) {
+      expect(Math.min(...vertexYs(mesh))).toBeGreaterThan(15);
+    }
+    renderer.dispose();
+  });
+
   it('replaces the structure on rebuild rather than stacking it up', () => {
     const scene = new THREE.Scene();
     const renderer = new BridgeRenderer(scene, flatDeckAt);
@@ -304,5 +302,28 @@ describe('BridgeRenderer', () => {
     expect(scene.children.length).toBeGreaterThan(0);
     renderer.dispose();
     expect(scene.children).toHaveLength(0);
+  });
+});
+
+describe('BridgeRenderer — an approach meeting its overpass', () => {
+  it('keeps the approach girder at deck height where it reaches into the crossing tile', () => {
+    const scene = new THREE.Scene();
+    // The crossing is (1,0); the ordinary sampler answers for the road beneath
+    // it (the ground), the crossing sampler for the overpass deck.
+    const ground = (wx: number): number => (Math.floor(wx / 20) === 1 ? 0 : 8);
+    const renderer = new BridgeRenderer(
+      scene,
+      (wx) => ground(wx),
+      () => 8,
+    );
+    renderer.rebuild([
+      { ...deckTile(0, 0), mask: 2 | 8 },
+      { ...deckTile(1, 0), mask: 2 | 8, crossing: true },
+      { ...deckTile(2, 0), mask: 2 | 8 },
+    ]);
+    for (const mesh of mergedIn(scene)) {
+      expect(Math.min(...vertexYs(mesh))).toBeGreaterThan(5);
+    }
+    renderer.dispose();
   });
 });

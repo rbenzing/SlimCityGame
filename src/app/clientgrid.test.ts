@@ -142,18 +142,14 @@ describe('ClientGridMirror', () => {
       { x: 6, z: 4, tier: RoadTier.TwoLane, mask: 0, elevation: 0, profile: 0, flow: 0 },
     ]);
     // Supply covers a 2x2 block over (3,4) and nothing near (6,4).
-    mirror.applyPowerPatches([
-      { x: 3, z: 4, w: 2, h: 2, data: Uint8Array.from([1, 1, 1, 1]) },
-    ]);
+    mirror.applyPowerPatches([{ x: 3, z: 4, w: 2, h: 2, data: Uint8Array.from([1, 1, 1, 1]) }]);
     const powered = new Map(mirror.roadTiles().map((t) => [`${t.x},${t.z}`, t.powered]));
     expect(powered.get('3,4')).toBe(true);
     expect(powered.get('6,4')).toBe(false);
 
     // A later patch is the whole truth for the tiles it covers, so supply
     // going away takes the flag with it.
-    mirror.applyPowerPatches([
-      { x: 3, z: 4, w: 2, h: 2, data: Uint8Array.from([0, 0, 0, 0]) },
-    ]);
+    mirror.applyPowerPatches([{ x: 3, z: 4, w: 2, h: 2, data: Uint8Array.from([0, 0, 0, 0]) }]);
     expect(mirror.roadTiles().every((t) => !t.powered)).toBe(true);
   });
 
@@ -624,5 +620,155 @@ describe('ClientGridMirror — junction control', () => {
     const tiles = mirror.roadTiles();
     expect(tiles.find((t) => t.x === 4 && t.z === 4)?.control).toBe('allWayStop');
     expect(tiles.find((t) => t.x === 4 && t.z === 5)?.control).toBeUndefined();
+  });
+});
+
+describe('ClientGridMirror — a road passing over another', () => {
+  /**
+   * A motorway down x = 10 and a street overpass along z = 9: approaches at
+   * 2, 4 and 6 m, the crossing's own road on the over layer at 7 m. The map's
+   * ground is 3 m everywhere.
+   */
+  function overpass(): ClientGridMirror {
+    const mirror = new ClientGridMirror(makeMap());
+    const deltas = [];
+    for (let z = 2; z <= 17; z++) {
+      deltas.push({
+        x: 10,
+        z,
+        tier: RoadTier.Highway,
+        mask: 1 | 4,
+        elevation: 0,
+        profile: 3,
+        flow: RoadFlow.South,
+      });
+    }
+    const decks: [number, number][] = [
+      [6, 0],
+      [7, 2],
+      [8, 4],
+      [9, 6],
+      [11, 6],
+      [12, 4],
+      [13, 2],
+      [14, 0],
+    ];
+    for (const [x, elevation] of decks) {
+      deltas.push({
+        x,
+        z: 9,
+        tier: RoadTier.TwoLane,
+        mask: 2 | 8,
+        elevation,
+        profile: 1,
+        flow: RoadFlow.East,
+      });
+    }
+    const c = deltas.findIndex((d) => d.x === 10 && d.z === 9);
+    deltas[c] = {
+      ...deltas[c]!,
+      over: { tier: RoadTier.TwoLane, profile: 1, flow: RoadFlow.East, elevation: 7, mask: 2 | 8 },
+    };
+    mirror.applyRoadDeltas(deltas);
+    return mirror;
+  }
+  const centre = (t: number): number => (t + 0.5) * TILE_METERS;
+
+  it('holds the road passing over from the delta, and lets it go when a delta drops it', () => {
+    const mirror = overpass();
+    expect(mirror.overRoadAt(10, 9)?.elevation).toBe(7);
+    mirror.applyRoadDeltas([
+      {
+        x: 10,
+        z: 9,
+        tier: RoadTier.Highway,
+        mask: 1 | 4,
+        elevation: 0,
+        profile: 3,
+        flow: RoadFlow.South,
+      },
+    ]);
+    expect(mirror.overRoadAt(10, 9)).toBeNull();
+  });
+
+  it('climbs an approach into the overpass rather than down to the road beneath', () => {
+    const mirror = overpass();
+    // Three quarters of the way across the last approach, toward the crossing.
+    const y = mirror.deckSurfaceAt(centre(9) + 0.5 * TILE_METERS * 0.5, centre(9));
+    expect(y).toBeGreaterThan(3 + 6);
+  });
+
+  it('gives the road passing over its own surface through the crossing', () => {
+    const mirror = overpass();
+    expect(mirror.overSurfaceAt(centre(10), centre(9), 10, 9)).toBeCloseTo(3 + 7, 6);
+    // And the road beneath keeps the ground there.
+    expect(mirror.deckSurfaceAt(centre(10), centre(9)) ?? 3).toBeCloseTo(3, 6);
+  });
+
+  it('lists the crossing as a deck of its own, which no pier stands under', () => {
+    const decks = overpass().deckTiles();
+    const crossing = decks.filter((d) => d.x === 10 && d.z === 9);
+    expect(crossing).toHaveLength(1);
+    expect(crossing[0]).toMatchObject({ tier: RoadTier.TwoLane, mask: 2 | 8, crossing: true });
+    expect(crossing[0]!.deckY).toBeCloseTo(10, 6);
+  });
+
+  it('tells the approach walk the road beneath is no junction', () => {
+    expect(overpass().approachAt(10, 8)).toBeUndefined();
+  });
+});
+
+describe('ClientGridMirror — what a car on a crossing tile drives on', () => {
+  it('rides the overpass heading along its line, and the road beneath heading across it', () => {
+    const mirror = new ClientGridMirror(makeMap());
+    mirror.applyRoadDeltas([
+      {
+        x: 10,
+        z: 8,
+        tier: RoadTier.Highway,
+        mask: 1 | 4,
+        elevation: 0,
+        profile: 3,
+        flow: RoadFlow.South,
+      },
+      {
+        x: 10,
+        z: 9,
+        tier: RoadTier.Highway,
+        mask: 1 | 4,
+        elevation: 0,
+        profile: 3,
+        flow: RoadFlow.South,
+        over: {
+          tier: RoadTier.TwoLane,
+          profile: 1,
+          flow: RoadFlow.East,
+          elevation: 7,
+          mask: 2 | 8,
+        },
+      },
+      {
+        x: 9,
+        z: 9,
+        tier: RoadTier.TwoLane,
+        mask: 2 | 8,
+        elevation: 7,
+        profile: 1,
+        flow: RoadFlow.East,
+      },
+      {
+        x: 11,
+        z: 9,
+        tier: RoadTier.TwoLane,
+        mask: 2 | 8,
+        elevation: 7,
+        profile: 1,
+        flow: RoadFlow.East,
+      },
+    ]);
+    const cx = (10 + 0.5) * TILE_METERS;
+    const cz = (9 + 0.5) * TILE_METERS;
+    expect(mirror.vehicleSurfaceAt(cx, cz, true)).toBeCloseTo(3 + 7, 6); // along x: the overpass
+    expect(mirror.vehicleSurfaceAt(cx, cz, false) ?? 3).toBeCloseTo(3, 6); // along z: the motorway
   });
 });

@@ -892,3 +892,18 @@ describe('ServiceSim: a facility keeps its own load, for the selection channel',
     expect(sim.facilityLoad(1)).toBeUndefined();
   });
 });
+
+describe('roadBfsDistances over a road passing over another', () => {
+  it('reaches along the overpass and never down into the road beneath', () => {
+    const g = createGrid();
+    for (let z = 20; z <= 60; z++) g.roadTier[tileIndex(40, z)] = RoadTier.TwoLane;
+    for (let x = 30; x <= 50; x++) if (x !== 40) g.roadTier[tileIndex(x, 40)] = RoadTier.TwoLane;
+    const c = tileIndex(40, 40);
+    g.overTier[c] = RoadTier.TwoLane;
+    g.overFlow[c] = 2; // east
+    g.overElevation[c] = 7;
+    const reached = roadBfsDistances(g, tileIndex(30, 40), 40);
+    expect(reached.get(tileIndex(50, 40))).toBe(20);
+    expect(reached.has(tileIndex(40, 45))).toBe(false);
+  });
+});

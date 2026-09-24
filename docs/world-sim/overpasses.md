@@ -84,7 +84,26 @@ It crosses **over** in two cases:
 
 Every crossing a drag makes is decided the same way, and the ghost shows it
 before anything is built: at grade, over, or refused, with the reason on the
-cursor chip.
+cursor chip. On each tile that already holds a road, the drag's solved deck
+is compared with that road's:
+
+- **At the same height:** the roads meet, as they always have.
+- **Higher, where the road below runs straight across:** an overpass, if it
+  clears; refused with the height it needs if it does not.
+- **Higher, but not cleanly across:** refused. The drag turns or ends on the
+  tile, the road below ends there, or a road below joins it along the drag's
+  line.
+- **Lower than the road it crosses:** refused. A road cannot yet be drawn
+  under a bridge that is already there; the lower road is built first and the
+  upper one crosses over it.
+
+The deck solver does not treat the road being crossed as something the deck
+must join, so a raised deck is free to pass over it. A drag that ends on a
+road still has to come down and meet it there, which is why an overpass never
+ends on the road it crosses.
+
+A road below cannot be re-laid up into an overpass: a ground-level deck that
+would leave the road above less than its clearance is refused.
 
 A drag **along** a road, onto its crossing tile, only ever touches the road
 that runs that way. Replacing or re-profiling the under road at a crossing

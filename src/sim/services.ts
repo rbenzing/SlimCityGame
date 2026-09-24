@@ -25,6 +25,7 @@ import type {
 } from '../shared/types';
 import { BuildingState, FieldId, ZoneType, isStreetTier } from '../shared/types';
 import { MAP_SIZE, MAP_TILES, inBounds, tileIndex } from '../shared/constants';
+import { roadStep, tierOfKey, type RoadKey } from '../world/roads';
 
 /** Radius (orthogonal steps) searched around a building's footprint for its nearest road tile. */
 const NEAR_ROAD_RADIUS = 2;
@@ -97,28 +98,33 @@ export function roadBfsDistances(
   start: number,
   maxDist: number,
 ): Map<number, number> {
-  const dist = new Map<number, number>([[start, 0]]);
-  const queue = [start];
+  // Walked by road rather than by tile: a step onto a crossing tile along its
+  // overpass reaches the overpass, and the road beneath passes nothing along
+  // that line, so coverage runs over a road it crosses and never down into it.
+  const dist = new Map<RoadKey, number>([[start, 0]]);
+  const queue: RoadKey[] = [start];
   let head = 0;
   while (head < queue.length) {
     const cur = queue[head]!;
     head += 1;
     const d = dist.get(cur)!;
     if (d >= maxDist) continue;
-    const x = cur % MAP_SIZE;
-    const z = Math.floor(cur / MAP_SIZE);
     for (const [ddx, ddz] of ORTHOGONAL) {
-      const nx = x + ddx;
-      const nz = z + ddz;
-      if (!inBounds(nx, nz)) continue;
-      const ni = tileIndex(nx, nz);
-      if (dist.has(ni)) continue;
-      if (!isStreetTier(g.roadTier[ni]!)) continue;
-      dist.set(ni, d + 1);
-      queue.push(ni);
+      const next = roadStep(g, cur, ddx, ddz);
+      if (next === null || dist.has(next)) continue;
+      if (!isStreetTier(tierOfKey(g, next))) continue;
+      dist.set(next, d + 1);
+      queue.push(next);
     }
   }
-  return dist;
+  // Reported per tile, the nearer of a crossing tile's two roads.
+  const byTile = new Map<number, number>();
+  for (const [key, d] of dist) {
+    const tile = key % (MAP_SIZE * MAP_SIZE);
+    const known = byTile.get(tile);
+    if (known === undefined || d < known) byTile.set(tile, d);
+  }
+  return byTile;
 }
 
 /** Per-tile coverage: max over reached road tiles within COVERAGE_RADIATE_RANGE of strength*(1 - dist/range). */

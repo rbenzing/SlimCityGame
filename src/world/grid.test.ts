@@ -784,3 +784,35 @@ describe('the per-lane turn layer', () => {
     for (let arm = 0; arm < 4; arm++) expect(g.junctionLaneTurns[i * 4 + arm]).toBe(0);
   });
 });
+
+describe('the over-road layers', () => {
+  it('round-trips the road passing over a crossing tile', () => {
+    const size = 4;
+    const g = createGrid(size);
+    g.overTier[6] = RoadTier.Highway;
+    g.overProfile[6] = 900;
+    g.overFlow[6] = 2;
+    g.overElevation[6] = 6.5;
+    const back = deserializeGrid(serializeGrid(g));
+    expect(back.overTier[6]).toBe(RoadTier.Highway);
+    expect(back.overProfile[6]).toBe(900);
+    expect(back.overFlow[6]).toBe(2);
+    expect(back.overElevation[6]).toBeCloseTo(6.5, 6);
+    expect(back.overTier.length).toBe(size * size);
+  });
+
+  it('loads a v11 save with no overpasses and every earlier layer intact', () => {
+    const size = 5;
+    const n = size * size;
+    const g = createGrid(size);
+    fillDeterministic(g);
+    g.overTier[3] = RoadTier.TwoLane; // dropped with the layers
+    g.overElevation[3] = 8;
+    const v11 = asVersion(serializeGrid(g), 11, n);
+
+    const back = deserializeGrid(v11);
+    expect(back.overTier.every((v) => v === 0)).toBe(true);
+    expect(back.overElevation.every((v) => v === 0)).toBe(true);
+    expect(Array.from(back.junctionLaneTurns)).toEqual(Array.from(g.junctionLaneTurns));
+  });
+});
