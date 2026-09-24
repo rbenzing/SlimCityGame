@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.13.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.12.0...slimcity-v1.13.0) (2026-09-24)
+
+
+### Features
+
+* **roads:** free-form roads, stage 5 — the curve tool ([5730bc3](https://github.com/rbenzing/SlimCityGame/commit/5730bc3a8a6c0e36b63d86052943bbe5cd42f100))
+* **roads:** free-form roads, stage 5a — the curve tool ([2537766](https://github.com/rbenzing/SlimCityGame/commit/253776683cc7753558eed136c5d9da06766f0377))
+* **roads:** free-form roads, stage 5b — straights at any angle, splitting, carrying on ([a2f2b4a](https://github.com/rbenzing/SlimCityGame/commit/a2f2b4a0ae9c7953fcefcc076d3c41cdd48ddd72))
+* **roads:** free-form roads, stage 5c — guide snapping off the grid ([dec70ae](https://github.com/rbenzing/SlimCityGame/commit/dec70ae9fc3603f09991f19feefda901edbf98b7))
+
 ## [1.12.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.11.2...slimcity-v1.12.0) (2026-09-24)
 
 
