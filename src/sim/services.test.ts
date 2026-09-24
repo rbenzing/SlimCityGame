@@ -893,11 +893,37 @@ describe('ServiceSim: a facility keeps its own load, for the selection channel',
   });
 });
 
+/** The approach decks of an overpass at 7 m crossing x = 40: tile x and its lift. */
+const RAMPS: readonly (readonly [number, number])[] = [
+  [37, 2],
+  [38, 4],
+  [39, 6],
+  [41, 6],
+  [42, 4],
+  [43, 2],
+];
+
+describe('roadBfsDistances along roads that only lie alongside', () => {
+  it('never steps across to a deck beside the street', () => {
+    const g = createGrid();
+    for (let x = 30; x <= 50; x++) {
+      g.roadTier[tileIndex(x, 40)] = RoadTier.TwoLane;
+      g.roadTier[tileIndex(x, 41)] = RoadTier.TwoLane;
+      g.roadElevation[tileIndex(x, 41)] = 8;
+    }
+    const reached = roadBfsDistances(g, tileIndex(30, 40), 40);
+    expect(reached.get(tileIndex(50, 40))).toBe(20);
+    expect(reached.has(tileIndex(40, 41))).toBe(false);
+  });
+});
+
 describe('roadBfsDistances over a road passing over another', () => {
   it('reaches along the overpass and never down into the road beneath', () => {
     const g = createGrid();
     for (let z = 20; z <= 60; z++) g.roadTier[tileIndex(40, z)] = RoadTier.TwoLane;
     for (let x = 30; x <= 50; x++) if (x !== 40) g.roadTier[tileIndex(x, 40)] = RoadTier.TwoLane;
+    // Ramps up to the deck either side: roads join only at one level.
+    for (const [x, lift] of RAMPS) g.roadElevation[tileIndex(x, 40)] = lift;
     const c = tileIndex(40, 40);
     g.overTier[c] = RoadTier.TwoLane;
     g.overFlow[c] = 2; // east

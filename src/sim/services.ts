@@ -25,7 +25,8 @@ import type {
 } from '../shared/types';
 import { BuildingState, FieldId, ZoneType, isStreetTier } from '../shared/types';
 import { MAP_SIZE, MAP_TILES, inBounds, tileIndex } from '../shared/constants';
-import { roadStep, tierOfKey, type RoadKey } from '../world/roads';
+import type { RoadKey } from '../world/roads';
+import { cellStep, roadCellsOf } from '../world/roadnet';
 
 /** Radius (orthogonal steps) searched around a building's footprint for its nearest road tile. */
 const NEAR_ROAD_RADIUS = 2;
@@ -98,9 +99,10 @@ export function roadBfsDistances(
   start: number,
   maxDist: number,
 ): Map<number, number> {
-  // Walked by road rather than by tile: a step onto a crossing tile along its
-  // overpass reaches the overpass, and the road beneath passes nothing along
-  // that line, so coverage runs over a road it crosses and never down into it.
+  // Walked along the road network rather than tile to tile: it goes only where
+  // roads join, so coverage runs over a road it crosses and never down into
+  // it, and never jumps to a road that merely lies alongside.
+  const cells = roadCellsOf(g);
   const dist = new Map<RoadKey, number>([[start, 0]]);
   const queue: RoadKey[] = [start];
   let head = 0;
@@ -110,9 +112,9 @@ export function roadBfsDistances(
     const d = dist.get(cur)!;
     if (d >= maxDist) continue;
     for (const [ddx, ddz] of ORTHOGONAL) {
-      const next = roadStep(g, cur, ddx, ddz);
+      const next = cellStep(cells, cur, ddx, ddz);
       if (next === null || dist.has(next)) continue;
-      if (!isStreetTier(tierOfKey(g, next))) continue;
+      if (!isStreetTier(cells.tier[next]!)) continue;
       dist.set(next, d + 1);
       queue.push(next);
     }

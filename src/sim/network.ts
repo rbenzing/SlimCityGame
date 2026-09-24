@@ -32,6 +32,7 @@ import type {
 import { BuildingState, RoadTier, isStreetTier } from '../shared/types';
 import { MAP_SIZE, inBounds, tileIndex } from '../shared/constants';
 import { roadStep, tierOfKey, type RoadKey } from '../world/roads';
+import { cellStep, roadCellsOf } from '../world/roadnet';
 import roadsData from '../data/roads.json';
 
 const ROAD_DATA = roadsData as { specs: RoadSpec[]; classes: RoadClassSpec[] };
@@ -178,15 +179,28 @@ function reachableNetworkTiles(
     visited.add(s);
     queue.push(s);
   }
+  const cells = roadCellsOf(g);
+  const n = MAP_SIZE * MAP_SIZE;
+  // A power line beside `key`, one step (dx, dz) away: a line is not a road,
+  // so it meets whatever stands next to it.
+  const lineBeside = (key: RoadKey, dx: number, dz: number): RoadKey | null => {
+    const next = roadStep(g, key, dx, dz);
+    return next !== null && next < n && g.roadTier[next] === 0 && g.powerLine[next] === 1
+      ? next
+      : null;
+  };
   let head = 0;
   while (head < queue.length) {
     const cur = queue[head]!;
     head += 1;
-    // A step onto a crossing tile along its overpass reaches the overpass, and
-    // the road beneath it never passes anything along that line — so a supply
-    // runs over a road it crosses and never down into it.
+    // Along a road the supply goes where the network joins — over a road it
+    // crosses and never down into it, and never across to a road that merely
+    // lies alongside. A power line hands it on to whatever is next to it.
+    const onRoad = cells.tier[cur] !== 0;
     for (const [ddx, ddz] of ORTHOGONAL) {
-      const next = roadStep(g, cur, ddx, ddz);
+      const next = onRoad
+        ? (cellStep(cells, cur, ddx, ddz) ?? lineBeside(cur, ddx, ddz))
+        : roadStep(g, cur, ddx, ddz);
       if (next === null || visited.has(next)) continue;
       if (!conducts(next)) continue;
       visited.add(next);

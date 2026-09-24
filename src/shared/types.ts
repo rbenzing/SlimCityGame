@@ -204,6 +204,42 @@ export type FieldId = (typeof FieldId)[keyof typeof FieldId];
 export const FIELD_COUNT = 9;
 
 /**
+ * The road network: nodes and segments, the one place a road is stored, as
+ * growable slot tables. Built, derived from and saved by src/world/roadnet.ts.
+ */
+export interface RoadNet {
+  /** Node slots in use, live or free: the high-water mark of the tables. */
+  nodeSlots: number;
+  nodeLive: Uint8Array;
+  /** Tile centre, whole centimetres. */
+  nodeX: Int32Array;
+  nodeZ: Int32Array;
+  /** Deck height above the ground, metres; 0 on the ground. */
+  nodeHeight: Float32Array;
+  nodeTier: Uint8Array;
+  nodeProfile: Uint16Array;
+  nodeFlow: Uint8Array;
+
+  segSlots: number;
+  segLive: Uint8Array;
+  segA: Int32Array;
+  segB: Int32Array;
+  segTier: Uint8Array;
+  segProfile: Uint16Array;
+  segFlow: Uint8Array;
+  /** Deck height at the first and last tile the segment owns, metres. */
+  segH0: Float32Array;
+  segH1: Float32Array;
+  /** 1 where the centre line is a curve through the control point below. */
+  segCurved: Uint8Array;
+  segCX: Int32Array;
+  segCZ: Int32Array;
+
+  /** Bumped by every change, so what is derived from the network knows it is stale. */
+  version: number;
+}
+
+/**
  * The complete mutable world state. Lives in the sim worker; the render
  * thread keeps a read-only mirror updated from snapshots/patches.
  * Implemented in src/world/grid.ts (createGrid, serializeGrid, deserializeGrid,
@@ -293,6 +329,12 @@ export interface GridState {
   overProfile: Uint16Array;
   overFlow: Uint8Array;
   overElevation: Float32Array;
+  /**
+   * The road network the road layers above are derived from, where the grid
+   * has one: the worker's. A grid without one — a test that lays roads on the
+   * tiles directly — is read through the network its tiles describe.
+   */
+  roads?: RoadNet;
   buildingId: Uint32Array; // 0 = none, else building instance id occupying tile
   power: Uint8Array; // 1 = powered
   watered: Uint8Array; // 1 = water service reaches tile

@@ -135,8 +135,9 @@ for the road on a tile and the tile index plus the tile count for the road
 passing over it. Because the two roads on a crossing tile always run at right
 angles and nothing turns there, the direction of a step says which one it
 meets: along the overpass's line, the overpass; any other way, the road on the
-tile. `roadStep` in `src/world/roads.ts` is that rule, and everything below
-reads it.
+tile. `roadStep` in `src/world/roads.ts` is that rule on the tiles, and the
+road network's cells (`roadCellsOf`), which the graph and the spreads walk,
+link the two roads the same way.
 
 - **The road graph.** Nodes and runs are keyed by road, not tile. The over
   road is never a node on its crossing tile — it runs straight through — so an

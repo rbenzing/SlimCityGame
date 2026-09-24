@@ -460,6 +460,28 @@ describe('recomputeUtilities: water', () => {
   });
 });
 
+describe('recomputeUtilities: a road that only lies alongside', () => {
+  it('carries nothing across to a deck running beside the street, since the two never join', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    paintRoadRow(g, 30, 50, 40);
+    // A deck 8 m up, alongside the street for its whole length, then away north.
+    for (let x = 30; x <= 50; x++) {
+      paintRoad(g, x, 41);
+      g.roadElevation[tileIndex(x, 41)] = 8;
+    }
+    for (let z = 42; z <= 70; z++) {
+      paintRoad(g, 50, z);
+      g.roadElevation[tileIndex(50, z)] = 8;
+    }
+    placeBuilding(g, buildings, 1, 'power-plant', 29, 40, 1, 1);
+    placeBuilding(g, buildings, 2, 'house', 51, 70, 1, 1); // only the deck comes near it
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.power[tileIndex(35, 40)]).toBe(1);
+    expect(g.power[tileIndex(51, 70)]).toBe(0);
+  });
+});
+
 describe('recomputeUtilities: a road passing over another', () => {
   /** A street overpass along z = 40, crossing a street running down x = 40. */
   function overpass(): { g: GridState; buildings: BuildingInstance[] } {
@@ -467,6 +489,17 @@ describe('recomputeUtilities: a road passing over another', () => {
     const buildings: BuildingInstance[] = [];
     for (let z = 20; z <= 60; z++) paintRoad(g, 40, z);
     for (let x = 30; x <= 50; x++) if (x !== 40) paintRoad(g, x, 40);
+    // Ramps up to the deck either side: roads join only at one level.
+    for (const [x, lift] of [
+      [37, 2],
+      [38, 4],
+      [39, 6],
+      [41, 6],
+      [42, 4],
+      [43, 2],
+    ] as const) {
+      g.roadElevation[tileIndex(x, 40)] = lift;
+    }
     const c = tileIndex(40, 40);
     g.overTier[c] = RoadTier.TwoLane;
     g.overProfile[c] = RoadTier.TwoLane;

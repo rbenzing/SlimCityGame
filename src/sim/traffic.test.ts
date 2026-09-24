@@ -22,7 +22,7 @@ import {
 } from './traffic';
 import { INACTIVE_VEHICLE_X, MAX_VEHICLES, RoadTier, VEHICLE_STRIDE, VehicleKind, type GraphEdge, type GridState, type PathResult, type RoadNetworkApi, type TilePoint } from '../shared/types';
 import { TICKS_PER_DAY, TICK_RATE, TILE_METERS, tileToWorld } from '../shared/constants';
-import { RoadNetwork } from '../world/roads';
+import { RoadNetwork } from '../world/roadgraph';
 import { createGrid } from '../world/grid';
 
 // ---------------------------------------------------------------------------

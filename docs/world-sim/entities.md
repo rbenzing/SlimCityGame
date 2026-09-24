@@ -39,8 +39,9 @@ promotes an in-progress `Constructing` building straight to `Active` on load.
 A road is not stored as an object at all. `GridState.roadTier` /
 `roadProfile` / `roadFlow` / `roadElevation` are per-tile grid layers (see
 [../engineering/data-model.md](../engineering/data-model.md)); the routable
-graph — `GraphNode`/`GraphEdge` — is derived from those layers by
-`RoadNetwork.rebuild`/`ensureFresh` (`src/world/roads.ts`) and rebuilt
+graph — `GraphNode`/`GraphEdge` — is derived from the road network those
+layers come from, by `RoadNetwork.rebuild`/`ensureFresh`
+(`src/world/roadgraph.ts`), and rebuilt
 wholesale after any edit anywhere on the map. Node and edge ids are assigned
 fresh on every rebuild and carry no identity across one — only the grid
 tiles a node or edge sits on do. Three independent `RoadNetwork` instances

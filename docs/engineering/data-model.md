@@ -268,10 +268,13 @@ road uses yet.
 ### Road, rail and tram networks
 
 `GraphNode`/`GraphEdge` (`src/shared/types.ts`), built by `RoadNetwork`
-(`src/world/roads.ts`). These are **not** persisted directly — `rebuild(grid)`
-derives the whole graph from the grid's `roadTier`/`roadProfile`/`roadFlow`
-layers (plus `junctionControl`/`junctionTurns` for each node's control and
-turn state) every time the grid changes, including once after every load.
+(`src/world/roadgraph.ts`). These are **not** persisted directly —
+`rebuild(grid)` derives the whole graph from the grid's road network, walked as
+cells (`roadCellsOf` in `src/world/roadnet.ts`, cached per network version),
+plus `junctionControl`/`junctionTurns` for each node's control and turn state,
+every time the network changes, including once after every load. A grid with
+no network of its own — a test that lays roads on the tiles — is read through
+the network its tiles describe.
 Node and edge ids are assigned fresh on each rebuild, so they carry no
 identity across rebuilds — only the grid tiles they're derived from do. A
 separate `RoadNetwork` instance (with its own node/edge id space) exists for

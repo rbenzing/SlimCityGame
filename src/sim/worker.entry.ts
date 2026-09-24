@@ -104,7 +104,7 @@ type JunctionSnapshot = NonNullable<SimSnapshot['junctions']>[number];
 import { createRng } from '../core/rng';
 import { FixedTimestep } from '../core/loop';
 import type { CommandBatch } from '../core/commands';
-import type { SelectionInfo } from '../shared/types';
+import type { RoadNet, SelectionInfo } from '../shared/types';
 import {
   canPlaceFootprint,
   ARMS_PER_TILE,
@@ -122,8 +122,8 @@ import {
   saveGrid,
   syncRoadLayers,
 } from '../world/roadnet';
-import type { RoadNetwork as RoadNodeNetwork } from '../world/roadnet';
-import { RoadNetwork, applyRoad, computeOverMask, remaskAround, removeRoad } from '../world/roads';
+import { applyRoad, computeOverMask, remaskAround, removeRoad } from '../world/roads';
+import { RoadNetwork } from '../world/roadgraph';
 import {
   clearOverRoad,
   overRoadAt,
@@ -372,7 +372,9 @@ class SimWorld implements WorkerSim {
 
   private grid: GridState = createGrid(MAP_SIZE);
   /** Where every road is stored; the grid's road layers are derived from it. */
-  private roads: RoadNodeNetwork = createRoadNetwork();
+  private get roads(): RoadNet {
+    return (this.grid.roads ??= createRoadNetwork());
+  }
   private stats: CityStats = initialStats();
   private registry = new BuildingRegistry(CATALOG);
   private readonly fieldSim = new FieldSim();
@@ -579,7 +581,7 @@ class SimWorld implements WorkerSim {
     this.seed = seed;
     this.mapName = map.name;
     this.grid = createGrid(MAP_SIZE);
-    this.roads = createRoadNetwork();
+    this.grid.roads = createRoadNetwork();
     this.grid.height.set(map.height);
     this.grid.water.set(map.water);
     this.grid.trees.set(map.trees);
@@ -623,7 +625,7 @@ class SimWorld implements WorkerSim {
     if (payload.header.version > SAVE_VERSION || payload.header.version < 1) {
       throw new Error(`loadSave: unsupported save version ${payload.header.version}`);
     }
-    const { grid, roads, problems } = loadGrid(payload.grid);
+    const { grid, problems } = loadGrid(payload.grid);
     reportRoadProblems('load', problems);
     if (grid.size !== MAP_SIZE) {
       throw new Error(`loadSave: grid size ${grid.size} != MAP_SIZE ${MAP_SIZE}`);
@@ -632,7 +634,6 @@ class SimWorld implements WorkerSim {
     const previousIds = this.registry.all().map((b) => b.id);
 
     this.grid = grid;
-    this.roads = roads;
     this.roadsEdited = false;
     this.customRoadProfiles = adoptCustomProfiles(
       payload.meta.roadProfiles ?? [],
@@ -1808,8 +1809,9 @@ class SimWorld implements WorkerSim {
           ok = false;
           reason = reason ?? result.reason;
         }
+        // Before the next command, which may read what this one laid.
+        this.syncRoads();
       }
-      this.syncRoads();
 
       const ack: CommandAck = { seq: batch.seq, ok, cost, inverse };
       if (!ok && reason !== undefined) ack.reason = reason;

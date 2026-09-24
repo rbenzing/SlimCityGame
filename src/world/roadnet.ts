@@ -14,45 +14,15 @@
 
 import { TILE_METERS } from '../shared/constants';
 import { RoadTier } from '../shared/types';
-import type { GridState } from '../shared/types';
+import type { GridState, RoadNet } from '../shared/types';
 import { deserializeGrid, savedRoadNetwork, serializeGrid } from './grid';
 import { recomputeRoadMasks, roadKeyMask, roadStep } from './roads';
 import type { RoadKey } from './roads';
 
-/** Growable slot tables, structure-of-arrays like the rest of the world state. */
-export interface RoadNetwork {
-  /** Node slots in use, live or free: the high-water mark of the tables. */
-  nodeSlots: number;
-  nodeLive: Uint8Array;
-  /** Tile centre, whole centimetres. */
-  nodeX: Int32Array;
-  nodeZ: Int32Array;
-  /** Deck height above the ground, metres; 0 on the ground. */
-  nodeHeight: Float32Array;
-  nodeTier: Uint8Array;
-  nodeProfile: Uint16Array;
-  nodeFlow: Uint8Array;
-
-  segSlots: number;
-  segLive: Uint8Array;
-  segA: Int32Array;
-  segB: Int32Array;
-  segTier: Uint8Array;
-  segProfile: Uint16Array;
-  segFlow: Uint8Array;
-  /** Deck height at the first and last tile the segment owns, metres. */
-  segH0: Float32Array;
-  segH1: Float32Array;
-  /** 1 where the centre line is a curve through the control point below. */
-  segCurved: Uint8Array;
-  segCX: Int32Array;
-  segCZ: Int32Array;
-}
-
 const INITIAL_SLOTS = 64;
 const CM_PER_M = 100;
 
-export function createRoadNetwork(capacity = INITIAL_SLOTS): RoadNetwork {
+export function createRoadNetwork(capacity = INITIAL_SLOTS): RoadNet {
   const cap = Math.max(1, capacity);
   return {
     nodeSlots: 0,
@@ -75,6 +45,7 @@ export function createRoadNetwork(capacity = INITIAL_SLOTS): RoadNetwork {
     segCurved: new Uint8Array(cap),
     segCX: new Int32Array(cap),
     segCZ: new Int32Array(cap),
+    version: 0,
   };
 }
 
@@ -87,7 +58,7 @@ function grown<T extends Typed>(a: T, cap: number): T {
   return next;
 }
 
-function ensureNodeCapacity(net: RoadNetwork, cap: number): void {
+function ensureNodeCapacity(net: RoadNet, cap: number): void {
   net.nodeLive = grown(net.nodeLive, cap);
   net.nodeX = grown(net.nodeX, cap);
   net.nodeZ = grown(net.nodeZ, cap);
@@ -97,7 +68,7 @@ function ensureNodeCapacity(net: RoadNetwork, cap: number): void {
   net.nodeFlow = grown(net.nodeFlow, cap);
 }
 
-function ensureSegCapacity(net: RoadNetwork, cap: number): void {
+function ensureSegCapacity(net: RoadNet, cap: number): void {
   net.segLive = grown(net.segLive, cap);
   net.segA = grown(net.segA, cap);
   net.segB = grown(net.segB, cap);
@@ -131,7 +102,7 @@ export interface SegmentRecord extends RoadFacts {
   h1: number;
 }
 
-function writeNode(net: RoadNetwork, slot: number, n: NodeRecord): void {
+function writeNode(net: RoadNet, slot: number, n: NodeRecord): void {
   ensureNodeCapacity(net, slot + 1);
   net.nodeLive[slot] = 1;
   net.nodeX[slot] = n.x;
@@ -143,7 +114,7 @@ function writeNode(net: RoadNetwork, slot: number, n: NodeRecord): void {
   net.nodeSlots = Math.max(net.nodeSlots, slot + 1);
 }
 
-function writeSegment(net: RoadNetwork, slot: number, s: SegmentRecord): void {
+function writeSegment(net: RoadNet, slot: number, s: SegmentRecord): void {
   ensureSegCapacity(net, slot + 1);
   net.segLive[slot] = 1;
   net.segA[slot] = s.a;
@@ -160,14 +131,14 @@ function writeSegment(net: RoadNetwork, slot: number, s: SegmentRecord): void {
 }
 
 /** Live node slots, in slot order. */
-export function liveNodes(net: RoadNetwork): number[] {
+export function liveNodes(net: RoadNet): number[] {
   const out: number[] = [];
   for (let s = 0; s < net.nodeSlots; s++) if (net.nodeLive[s] === 1) out.push(s);
   return out;
 }
 
 /** Live segment slots, in slot order. */
-export function liveSegments(net: RoadNetwork): number[] {
+export function liveSegments(net: RoadNet): number[] {
   const out: number[] = [];
   for (let s = 0; s < net.segSlots; s++) if (net.segLive[s] === 1) out.push(s);
   return out;
@@ -197,37 +168,49 @@ export function segmentTileHeight(h0: number, h1: number, j: number, count: numb
 // Deriving the tile layers
 // ---------------------------------------------------------------------------
 
+/** One road's hold on one tile: a node's own tile, or a tile a segment owns. */
 interface Claim extends RoadFacts {
   height: number;
+  idx: number;
+  /** The RoadKey the claim resolves to once the tile's layers are settled; -1 until then, or if they cannot be. */
+  key: RoadKey;
+}
+
+interface Claims {
+  byTile: Map<number, Claim[]>;
+  /** Each live segment's claims in order: its first node, its own tiles, its second node. */
+  runs: Claim[][];
+  /** Tiles that hold more than two roads, or two at one height. */
+  problems: string[];
 }
 
 /**
- * Rewrites every road tile layer of `g` from `net`: the road on each tile, the
- * road passing over a crossing (the higher of two decks), and the masks.
- * Returns a description of every tile the network could not say one thing
- * about — more than two roads, or two at one height — which is a bug in
- * whatever built the network, never a state to keep quietly.
+ * Every tile the network holds a road on, and which layer each road is on:
+ * where two roads share a tile, the higher deck is the one passing over.
  */
-export function deriveRoadLayers(g: GridState, net: RoadNetwork): string[] {
-  const size = g.size;
-  const claims = new Map<number, Claim[]>();
-  const claim = (x: number, z: number, c: Claim): void => {
-    if (x < 0 || z < 0 || x >= size || z >= size) return;
+function collectClaims(net: RoadNet, size: number): Claims {
+  const byTile = new Map<number, Claim[]>();
+  const claim = (x: number, z: number, facts: RoadFacts, height: number): Claim | null => {
+    if (x < 0 || z < 0 || x >= size || z >= size) return null;
     const idx = z * size + x;
-    const list = claims.get(idx);
+    const c: Claim = { ...facts, height, idx, key: -1 };
+    const list = byTile.get(idx);
     if (list) list.push(c);
-    else claims.set(idx, [c]);
+    else byTile.set(idx, [c]);
+    return c;
   };
 
+  const nodeClaims: (Claim | null)[] = [];
   for (let s = 0; s < net.nodeSlots; s++) {
     if (net.nodeLive[s] !== 1) continue;
-    claim(tileOfCm(net.nodeX[s]!), tileOfCm(net.nodeZ[s]!), {
-      tier: net.nodeTier[s]!,
-      profile: net.nodeProfile[s]!,
-      flow: net.nodeFlow[s]!,
-      height: net.nodeHeight[s]!,
-    });
+    nodeClaims[s] = claim(
+      tileOfCm(net.nodeX[s]!),
+      tileOfCm(net.nodeZ[s]!),
+      { tier: net.nodeTier[s]!, profile: net.nodeProfile[s]!, flow: net.nodeFlow[s]! },
+      net.nodeHeight[s]!,
+    );
   }
+  const runs: Claim[][] = [];
   for (let s = 0; s < net.segSlots; s++) {
     if (net.segLive[s] !== 1) continue;
     const a = net.segA[s]!;
@@ -239,15 +222,49 @@ export function deriveRoadLayers(g: GridState, net: RoadNetwork): string[] {
     const dx = Math.sign(bx - ax);
     const dz = Math.sign(bz - az);
     const count = Math.max(Math.abs(bx - ax), Math.abs(bz - az)) - 1;
+    const facts = { tier: net.segTier[s]!, profile: net.segProfile[s]!, flow: net.segFlow[s]! };
+    const run: (Claim | null)[] = [nodeClaims[a] ?? null];
     for (let j = 0; j < count; j++) {
-      claim(ax + dx * (j + 1), az + dz * (j + 1), {
-        tier: net.segTier[s]!,
-        profile: net.segProfile[s]!,
-        flow: net.segFlow[s]!,
-        height: segmentTileHeight(net.segH0[s]!, net.segH1[s]!, j, count),
-      });
+      const h = segmentTileHeight(net.segH0[s]!, net.segH1[s]!, j, count);
+      run.push(claim(ax + dx * (j + 1), az + dz * (j + 1), facts, h));
+    }
+    run.push(nodeClaims[b] ?? null);
+    runs.push(run.filter((c): c is Claim => c !== null));
+  }
+
+  const n = size * size;
+  const problems: string[] = [];
+  for (const [idx, list] of byTile) {
+    const x = idx % size;
+    const z = (idx - x) / size;
+    if (list.length > 2) {
+      problems.push(`tile (${x}, ${z}) holds ${list.length} roads`);
+      continue;
+    }
+    const [under, over] = list;
+    if (over === undefined) {
+      under!.key = idx;
+    } else if (over.height === under!.height) {
+      problems.push(`tile (${x}, ${z}) holds two roads at one height`);
+    } else {
+      const [low, high] = over.height < under!.height ? [over, under!] : [under!, over];
+      low.key = idx;
+      high.key = n + idx;
     }
   }
+  return { byTile, runs, problems };
+}
+
+/**
+ * Rewrites every road tile layer of `g` from `net`: the road on each tile, the
+ * road passing over a crossing (the higher of two decks), and the masks.
+ * Returns a description of every tile the network could not say one thing
+ * about — more than two roads, or two at one height — which is a bug in
+ * whatever built the network, never a state to keep quietly.
+ */
+export function deriveRoadLayers(g: GridState, net: RoadNet): string[] {
+  const { byTile, problems } = collectClaims(net, g.size);
+  const n = g.size * g.size;
 
   g.roadTier.fill(0);
   g.roadProfile.fill(0);
@@ -259,37 +276,116 @@ export function deriveRoadLayers(g: GridState, net: RoadNetwork): string[] {
   g.overFlow.fill(0);
   g.overElevation.fill(0);
 
-  const problems: string[] = [];
-  for (const [idx, list] of claims) {
-    const x = idx % size;
-    const z = (idx - x) / size;
-    if (list.length > 2) {
-      problems.push(`tile (${x}, ${z}) holds ${list.length} roads`);
-      continue;
-    }
-    const [first, second] = list;
-    let under = first!;
-    let over = second;
-    if (over !== undefined) {
-      if (over.height === under.height) {
-        problems.push(`tile (${x}, ${z}) holds two roads at one height`);
-        continue;
+  for (const list of byTile.values()) {
+    for (const c of list) {
+      if (c.key === c.idx) {
+        g.roadTier[c.idx] = c.tier;
+        g.roadProfile[c.idx] = c.profile;
+        g.roadFlow[c.idx] = c.flow;
+        g.roadElevation[c.idx] = c.height;
+      } else if (c.key === n + c.idx) {
+        g.overTier[c.idx] = c.tier;
+        g.overProfile[c.idx] = c.profile;
+        g.overFlow[c.idx] = c.flow;
+        g.overElevation[c.idx] = c.height;
       }
-      if (over.height < under.height) [under, over] = [over, under];
-    }
-    g.roadTier[idx] = under.tier;
-    g.roadProfile[idx] = under.profile;
-    g.roadFlow[idx] = under.flow;
-    g.roadElevation[idx] = under.height;
-    if (over !== undefined) {
-      g.overTier[idx] = over.tier;
-      g.overProfile[idx] = over.profile;
-      g.overFlow[idx] = over.flow;
-      g.overElevation[idx] = over.height;
     }
   }
   recomputeRoadMasks(g);
   return problems;
+}
+
+// ---------------------------------------------------------------------------
+// Road cells: the network's connectivity, for everything that walks roads
+// ---------------------------------------------------------------------------
+
+/**
+ * The network as a graph of cells, which is what the road graph, the utility
+ * spread and the service spread walk. A cell is one road on one tile, named by
+ * its RoadKey; two cells are linked when the network runs from one to the
+ * other, and never otherwise — two roads side by side that the network does
+ * not join are not linked, however close they lie.
+ *
+ * Links are listed north, east, south, west, so a walk that visits them in
+ * order visits them in the order the grid always has.
+ */
+export interface RoadCells {
+  size: number;
+  tier: Uint8Array;
+  profile: Uint16Array;
+  flow: Uint8Array;
+  /** The cell each way — N, E, S, W — from a RoadKey, or -1: four entries per key. */
+  next: Int32Array;
+}
+
+const NO_CELL = -1;
+
+/** The direction slot, N E S W, of a one-tile step, or -1. */
+function stepSlot(dx: number, dz: number): number {
+  if (dx === 0 && dz === -1) return 0;
+  if (dx === 1 && dz === 0) return 1;
+  if (dx === 0 && dz === 1) return 2;
+  if (dx === -1 && dz === 0) return 3;
+  return -1;
+}
+
+export function buildRoadCells(net: RoadNet, size: number): RoadCells {
+  const n = size * size;
+  const cells: RoadCells = {
+    size,
+    tier: new Uint8Array(2 * n),
+    profile: new Uint16Array(2 * n),
+    flow: new Uint8Array(2 * n),
+    next: new Int32Array(8 * n).fill(NO_CELL),
+  };
+  const { byTile, runs } = collectClaims(net, size);
+  for (const list of byTile.values()) {
+    for (const c of list) {
+      if (c.key < 0) continue;
+      cells.tier[c.key] = c.tier;
+      cells.profile[c.key] = c.profile;
+      cells.flow[c.key] = c.flow;
+    }
+  }
+  for (const run of runs) {
+    for (let i = 0; i + 1 < run.length; i++) {
+      const a = run[i]!;
+      const b = run[i + 1]!;
+      if (a.key < 0 || b.key < 0) continue;
+      const ax = a.idx % size;
+      const bx = b.idx % size;
+      const slot = stepSlot(bx - ax, (b.idx - bx) / size - (a.idx - ax) / size);
+      if (slot < 0) continue;
+      cells.next[a.key * 4 + slot] = b.key;
+      cells.next[b.key * 4 + ((slot + 2) % 4)] = a.key;
+    }
+  }
+  return cells;
+}
+
+const cellsCache = new WeakMap<RoadNet, { version: number; size: number; cells: RoadCells }>();
+
+/**
+ * The cells of the grid's road network: its own network where it has one,
+ * rebuilt only when the network has changed, and otherwise the network its
+ * tiles describe, worked out afresh because nothing says when tiles change.
+ */
+export function roadCellsOf(g: GridState): RoadCells {
+  const net = g.roads;
+  if (!net) return buildRoadCells(networkFromGrid(g), g.size);
+  const cached = cellsCache.get(net);
+  if (cached && cached.version === net.version && cached.size === g.size) return cached.cells;
+  const cells = buildRoadCells(net, g.size);
+  cellsCache.set(net, { version: net.version, size: g.size, cells });
+  return cells;
+}
+
+/** The cell one step (dx, dz) from road `key` along the network, or null. */
+export function cellStep(cells: RoadCells, key: RoadKey, dx: number, dz: number): RoadKey | null {
+  const slot = stepSlot(dx, dz);
+  if (slot < 0) return null;
+  const next = cells.next[key * 4 + slot]!;
+  return next === NO_CELL ? null : next;
 }
 
 // ---------------------------------------------------------------------------
@@ -307,7 +403,7 @@ const STEPS: readonly { dx: number; dz: number; bit: number; back: number }[] = 
   { dx: -1, dz: 0, bit: 8, back: 2 },
 ];
 
-function factsOfKey(g: GridState, key: RoadKey): Claim {
+function factsOfKey(g: GridState, key: RoadKey): RoadFacts & { height: number } {
   const n = g.size * g.size;
   if (key >= n) {
     const i = key - n;
@@ -476,7 +572,7 @@ function canonicalFromGrid(g: GridState): Canonical {
 }
 
 /** The network the tile layers of `g` describe, in fresh slots. */
-export function networkFromGrid(g: GridState): RoadNetwork {
+export function networkFromGrid(g: GridState): RoadNet {
   return reconcileRoads(createRoadNetwork(), g);
 }
 
@@ -486,7 +582,7 @@ export function networkFromGrid(g: GridState): RoadNetwork {
  * slot; so does a segment still between the same two nodes. Everything new
  * takes the lowest free slot.
  */
-export function reconcileRoads(net: RoadNetwork, g: GridState): RoadNetwork {
+export function reconcileRoads(net: RoadNet, g: GridState): RoadNet {
   const canon = canonicalFromGrid(g);
 
   const nodeAt = new Map<string, number>();
@@ -540,6 +636,7 @@ export function reconcileRoads(net: RoadNetwork, g: GridState): RoadNetwork {
     while (freeSeg < net.segSlots && net.segLive[freeSeg] === 1) freeSeg++;
     writeSegment(net, freeSeg, rec);
   }
+  net.version++;
   return net;
 }
 
@@ -552,7 +649,7 @@ const SEG_BYTES = 30; // live 1, a 4, b 4, tier 1, profile 2, flow 1, h0 4, h1 4
 const COUNTS_BYTES = 8;
 
 /** The network as bytes, every slot included so that slots survive a save. */
-export function encodeRoadNetwork(net: RoadNetwork): Uint8Array {
+export function encodeRoadNetwork(net: RoadNet): Uint8Array {
   const buf = new ArrayBuffer(COUNTS_BYTES + net.nodeSlots * NODE_BYTES + net.segSlots * SEG_BYTES);
   const view = new DataView(buf);
   view.setUint32(0, net.nodeSlots, true);
@@ -585,7 +682,7 @@ export function encodeRoadNetwork(net: RoadNetwork): Uint8Array {
   return new Uint8Array(buf);
 }
 
-export function decodeRoadNetwork(bytes: Uint8Array): RoadNetwork {
+export function decodeRoadNetwork(bytes: Uint8Array): RoadNet {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (bytes.byteLength < COUNTS_BYTES) throw new Error('decodeRoadNetwork: truncated counts');
   const nodeSlots = view.getUint32(0, true);
@@ -630,13 +727,13 @@ export function decodeRoadNetwork(bytes: Uint8Array): RoadNetwork {
 // ---------------------------------------------------------------------------
 
 /** The grid and its road network as one save buffer. */
-export function saveGrid(g: GridState, net: RoadNetwork): ArrayBuffer {
+export function saveGrid(g: GridState, net: RoadNet): ArrayBuffer {
   return serializeGrid(g, encodeRoadNetwork(net));
 }
 
 export interface LoadedGrid {
   grid: GridState;
-  roads: RoadNetwork;
+  roads: RoadNet;
   /** Tiles the roads could not be derived onto; empty unless something is wrong. */
   problems: string[];
 }
@@ -651,10 +748,12 @@ export function loadGrid(buf: ArrayBuffer): LoadedGrid {
   const saved = savedRoadNetwork(buf);
   if (saved !== null) {
     const roads = decodeRoadNetwork(saved);
+    grid.roads = roads;
     return { grid, roads, problems: deriveRoadLayers(grid, roads) };
   }
   recomputeRoadMasks(grid);
   const roads = networkFromGrid(grid);
+  grid.roads = roads;
   return { grid, roads, problems: syncRoadLayers(grid, roads) };
 }
 
@@ -676,7 +775,7 @@ const ROAD_LAYER_NAMES = [
  * its other road layers is not compared: nothing reads it, and the derived
  * layers clear it.
  */
-export function syncRoadLayers(g: GridState, net: RoadNetwork): string[] {
+export function syncRoadLayers(g: GridState, net: RoadNet): string[] {
   const before = ROAD_LAYER_NAMES.map((name) => g[name].slice());
   const problems = deriveRoadLayers(g, net);
   const n = g.size * g.size;

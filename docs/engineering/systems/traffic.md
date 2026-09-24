@@ -17,9 +17,11 @@ that picks a junction's control).
 
 ## The model
 
-The road graph is not one node per tile. `buildGraph` in `roads.ts` walks the
-grid and places a node only where a tile is an intersection, a dead end, an
-isolated tile (its neighbor mask has other than exactly two bits set), or —
+The road graph is not one node per tile. `buildGraph` in `roadgraph.ts` walks
+the road network's cells (`roadCellsOf` in `roadnet.ts`: one cell per road per
+tile, linked only where the network joins them) and places a node only where
+a road is an intersection, a dead end, an isolated road (it has other than
+exactly two links), or —
 even with exactly two neighbors — where its tier is strictly higher than a
 neighbor's (`isNodeTile`). That last rule plants exactly one node at each
 straight-through tier boundary, so a whole avenue is a single edge no matter
@@ -172,7 +174,9 @@ cosmetic systems (garbage trucks) share the same pool's tail with.
 - **Graph changes under in-flight routes.** `RoadNetwork.invalidateRegion`
   only sets a dirty flag; despite taking region bounds, the next query
   (`findPath`/`getEdges`/`getNodes`/`addVolume`) rebuilds the **entire** graph
-  from the grid (`ensureFresh` → `buildGraph`), reassigning every node and
+  from the road network (`ensureFresh` → `buildGraph`), which it also does
+  whenever the network's version has moved on since the last build,
+  reassigning every node and
   edge id. A cosmetic vehicle already animating holds its own captured
   `points`/`segmentLengths` from the tick it spawned and has no reference
   back to the network — it keeps driving its captured line to the end even
@@ -219,7 +223,7 @@ edge). Per tick, at most `tripsForTick` searches run — bounded at 10 by
 roughly 200 path searches a second, independent of city size.
 
 The expensive edge is a graph rebuild, not a search: `buildGraph` walks every
-road tile once per rebuild (mask computation, node/edge detection, then
+road cell once per rebuild (link counting, node/edge detection, then
 `markLaneDrops` over every node), and it is triggered lazily by the next
 query after _any_ road edit anywhere on the map — `invalidateRegion`'s bounds
 are accepted but not used to scope the rebuild. A single-tile edit costs

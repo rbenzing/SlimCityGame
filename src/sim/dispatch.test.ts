@@ -16,7 +16,7 @@ import {
   VehicleKind,
 } from '../shared/types';
 import { TICK_RATE, tileIndex } from '../shared/constants';
-import { RoadNetwork } from '../world/roads';
+import { RoadNetwork } from '../world/roadgraph';
 import { createGrid } from '../world/grid';
 
 // ---------------------------------------------------------------------------

@@ -223,7 +223,17 @@ Stage 1 is built (2026-09-24): the network is the road store
 planning on tiles; after each command batch the network takes up the plan and
 the layers are derived again, and every worker test fails if one tile ever
 derives differently. The sync costs about 20 ms per command batch on a full
-map of streets. Stages 2 to 8 are not started.
+map of streets.
+
+Stage 2 is built (2026-09-24): the routing graph (`src/world/roadgraph.ts`),
+the utility spread and the service spread walk the network's cells instead of
+tile masks and tile adjacency. The graph was checked identical to the old
+tile-built one over 150 random grids in all three networks before the old
+builder was removed. The spreads changed on purpose: they used to step onto
+any adjacent street tile, so power and coverage leaked onto a deck running
+beside a street and between roads the rules never join; now they go only
+where roads join. Vehicles following segment centre lines moved to stage 4,
+where there are curves for them to follow. Stages 3 to 8 are not started.
 
 ### Overpasses (requested 2026-09-23, built 2026-09-24)
 

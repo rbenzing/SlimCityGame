@@ -97,7 +97,7 @@ MUTCD citations below use 11th-edition section numbers.
   `RoadFlow.None`. A run's direction is read from its own tiles before its end
   nodes, because a node two one-ways cross holds only the flow of whichever
   was drawn last. — [road-model.md](world-sim/road-model.md);
-  `src/world/pathfind.ts`, `storedRunDirection` in `src/world/roads.ts`
+  `src/world/pathfind.ts`, `storedRunDirection` in `src/world/roadgraph.ts`
 - Roads replace by class rank (dirt, alley, rural, local, one-way, urban,
   collector, arterial, divided, ramp, highway), never by tier number or catalog
   order. Rail sits outside the ranking: rail never takes a tile from a road nor
@@ -357,7 +357,10 @@ MUTCD citations below use 11th-edition section numbers.
 - Power, water and every service reach the city only along the street-tier road
   network: a breadth-first search from the road tiles orthogonally adjacent to
   the footprint, radiating one step (utilities) or two steps (services) onto
-  non-road tiles. Never a straight-line radius. —
+  non-road tiles. Never a straight-line radius. The search follows the road
+  network's links (`roadCellsOf`), so it goes only where roads join: never
+  across to a road that merely lies alongside, never between two levels. A
+  power line is not a road, and passes power to whatever stands beside it. —
   [utilities-model.md](world-sim/utilities-model.md),
   [services-model.md](world-sim/services-model.md),
   [ADR-0009](engineering/adr/0009-utilities-propagate-along-roads.md);

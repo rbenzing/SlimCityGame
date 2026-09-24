@@ -8,8 +8,8 @@ import {
   recomputeRoadMasks,
   removeRoad,
   roadStep,
-  RoadNetwork,
 } from './roads';
+import { RoadNetwork } from './roadgraph';
 import { createGrid } from './grid';
 
 function makeGrid(size: number): GridState {

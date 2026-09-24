@@ -11,7 +11,7 @@ import {
   type TransitRoute,
 } from './transit';
 import { isRailTier, isTramTier, RoadTier, type GraphEdge, type GridState, type PathResult, type RoadNetworkApi, type TilePoint, type TransitLine } from '../shared/types';
-import { RoadNetwork } from '../world/roads';
+import { RoadNetwork } from '../world/roadgraph';
 import { createGrid } from '../world/grid';
 
 // ---------------------------------------------------------------------------

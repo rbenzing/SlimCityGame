@@ -196,14 +196,17 @@ that the grid could not already hold.
    differs from the plan is reported as an error, never silently kept: it is
    a conversion bug. The check is also run by converting and re-deriving
    every road scenario the tests build.
-2. **The graph and routing read the network.** Graph edges come from
-   segments with real lengths; utilities, services and coverage spread along
-   the network; vehicles follow segment centre lines.
+2. **The graph and the spreads read the network.** The routing graph, the
+   utility spread and the service spread walk the network's cells — one per
+   road per tile, linked only where the network joins them — instead of the
+   tile masks and tile adjacency. The graph comes out exactly as before; the
+   spreads stop leaking to roads that merely lie alongside.
 3. **Free geometry.** Segments at any angle and curves, the geometry rules,
    crossings that split into junctions, the tile footprint and zoning from
    segment edges.
 4. **Drawing free roads.** The segment sweep, the junction mesh, markings and
-   furniture along segments. Grid roads still draw through the tile renderer.
+   furniture along segments, and vehicles following segment centre lines.
+   Grid roads still draw through the tile renderer.
 5. **The tool.** The curve and free modes, their ghost, chip and refusals,
    and motorways without `Grid`, checked in the browser.
 6. **Angled junction behaviour.** Control, stop lines, crossings, approach

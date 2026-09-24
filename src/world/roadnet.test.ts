@@ -4,8 +4,10 @@ import { RoadFlow, RoadTier } from '../shared/types';
 import type { GridState, TilePoint } from '../shared/types';
 import { createGrid, savedRoadNetwork, serializeGridV12 } from './grid';
 import { setOverRoad } from './overpass';
-import { applyRoad, recomputeRoadMasks } from './roads';
+import { applyRoad, recomputeRoadMasks, roadKeyMask } from './roads';
 import {
+  buildRoadCells,
+  cellStep,
   decodeRoadNetwork,
   deriveRoadLayers,
   encodeRoadNetwork,
@@ -16,6 +18,7 @@ import {
   reconcileRoads,
   saveGrid,
 } from './roadnet';
+import type { RoadCells } from './roadnet';
 
 const row = (z: number, from: number, to: number): TilePoint[] =>
   Array.from({ length: Math.abs(to - from) + 1 }, (_, i) => ({
@@ -61,6 +64,32 @@ function expectRoundTrip(g: GridState): void {
   back.height.set(g.height);
   expect(deriveRoadLayers(back, net)).toEqual([]);
   expect(roadLayers(back)).toEqual(before);
+  expectCellsJoinAsMasks(g, buildRoadCells(net, g.size));
+}
+
+/**
+ * The cells link every road to exactly the neighbours the joining rules give
+ * its mask — the network's connectivity and the tiles' say the same thing.
+ */
+function expectCellsJoinAsMasks(g: GridState, cells: RoadCells): void {
+  const n = g.size * g.size;
+  const steps = [
+    [0, -1, 1],
+    [1, 0, 2],
+    [0, 1, 4],
+    [-1, 0, 8],
+  ] as const;
+  const mismatches: string[] = [];
+  for (let key = 0; key < 2 * n; key++) {
+    const tier = key < n ? g.roadTier[key] : g.overTier[key - n];
+    expect(cells.tier[key]).toBe(tier);
+    if (!tier) continue;
+    let linked = 0;
+    for (const [dx, dz, bit] of steps) if (cellStep(cells, key, dx, dz) !== null) linked |= bit;
+    const mask = roadKeyMask(g, key);
+    if (linked !== mask) mismatches.push(`key ${key}: cells ${linked}, mask ${mask}`);
+  }
+  expect(mismatches).toEqual([]);
 }
 
 describe('road network: the tile layers convert and derive back exactly', () => {
