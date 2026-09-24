@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.2](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.11.1...slimcity-v1.11.2) (2026-09-24)
+
+
+### Bug Fixes
+
+* **roads:** a short block gets a shared turn lane only where both end… ([2138c05](https://github.com/rbenzing/SlimCityGame/commit/2138c05aafa79a462edb672358bf3a6901507757))
+
 ## [1.11.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.11.0...slimcity-v1.11.1) (2026-09-24)
 
 
