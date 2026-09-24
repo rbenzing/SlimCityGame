@@ -14,7 +14,8 @@ import {
   segmentGeom,
   syncRoadLayers,
 } from '../world/roadnet';
-import { freeRoadSoup } from './freeroadmesh';
+import { freeRoadLampStands, freeRoadSoup } from './freeroadmesh';
+import { lampLateralOffset } from './lamps';
 import {
   CURB_Y_OFFSET,
   MARK_Y_OFFSET,
@@ -213,6 +214,52 @@ describe('freeRoadSoup', () => {
     for (const t of triangles(g)) {
       const onGridRoad = Math.abs(t.centroid.z - mouth.z) < OUTER;
       if (onGridRoad) expect(Math.abs(t.centroid.x - mouth.x)).toBeLessThan(40);
+    }
+  });
+});
+
+describe('freeRoadLampStands', () => {
+  const powered = (): boolean => true;
+
+  it('stands lamps along a free road at its kerbs, alternating, each reaching across it', () => {
+    const g = world();
+    lay(g, { a: at(200, 200), b: at(500, 500), control: at(500, 200) });
+    const [seg] = freeSegs(g);
+    const stands = freeRoadLampStands(g.roads!, noCustom, powered);
+    expect(stands.length).toBeGreaterThanOrEqual(8);
+    const offset = lampLateralOffset(RoadTier.TwoLane, twoLane);
+    const sides = stands.map((s) => {
+      const { d, side } = offsetFrom(g, seg!, s);
+      expect(d).toBeCloseTo(offset, 1);
+      // Reaching the pole's own offset across lands back on the centre line.
+      const back = { x: s.x + s.reachX * offset, z: s.z + s.reachZ * offset };
+      expect(offsetFrom(g, seg!, back).d).toBeLessThan(0.2);
+      return side;
+    });
+    for (let k = 1; k < sides.length; k++) expect(sides[k]).toBe(-sides[k - 1]!);
+  });
+
+  it('stands none where the road has no power, and none on gravel', () => {
+    const g = world();
+    lay(g, { a: at(200, 200), b: at(500, 260) });
+    expect(freeRoadLampStands(g.roads!, noCustom, () => false)).toEqual([]);
+    const gravel = world();
+    lay(gravel, { tier: RoadTier.Gravel, a: at(200, 200), b: at(500, 260) });
+    expect(freeRoadLampStands(gravel.roads!, noCustom, powered)).toEqual([]);
+  });
+
+  it('keeps lamps out of a junction', () => {
+    const g = world();
+    const hub = at(400, 400);
+    lay(g, { a: hub, b: at(300, 300) });
+    lay(g, { a: hub, b: at(560, 360) });
+    lay(g, { a: hub, b: at(380, 600) });
+    const stands = freeRoadLampStands(g.roads!, noCustom, powered);
+    expect(stands.length).toBeGreaterThan(0);
+    for (const s of stands) {
+      // Every lamp stands beside exactly one road, clear of the others.
+      const near = freeSegs(g).filter((seg) => offsetFrom(g, seg, s).d < HALF);
+      expect(near).toEqual([]);
     }
   });
 });

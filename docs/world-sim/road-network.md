@@ -246,13 +246,16 @@ that the grid could not already hold.
      zoning grid visual reads free frontage exactly as `paintZone` does and
      nothing is plopped on a free road. The segment sweep, the junction mesh
      and the markings along each segment.
-   - **4b, furniture along segments.** Lamps, signs and kerbside furniture
-     stood along a free road at their offsets.
+   - **4b, lamps along segments.** Street lamps stood along a free road
+     between its junctions, at the lamp spacing, on alternate kerbs, reaching
+     square across it, and only where it has power, as on the grid.
    - **4c, vehicles following segment centre lines.**
 5. **The tool.** The curve and free modes, their ghost, chip and refusals,
    and motorways without `Grid`, checked in the browser.
 6. **Angled junction behaviour.** Control, stop lines, crossings, approach
-   lanes and turn pockets at junctions that are not on the grid.
+   lanes and turn pockets at junctions that are not on the grid, and the
+   signs and kerbside furniture along free roads, which the grid places by
+   each tile's role at its junction.
 7. **Free roads in the air.** Bridges, overpasses at any angle and climbing
    ramps on free segments.
 8. **One renderer.** Grid roads draw through the network path, and the tile

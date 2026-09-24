@@ -61,7 +61,7 @@ import { LotRenderer } from './render/lots';
 import { BuildingKitRenderer } from './render/buildingkit';
 import { LandmarkRenderer } from './render/landmarks';
 import { RoadMeshRenderer } from './render/roadsmesh';
-import { FreeRoadRenderer } from './render/freeroadmesh';
+import { FreeRoadRenderer, freeRoadLampStands } from './render/freeroadmesh';
 import type { BandSpan } from './render/roadsmesh';
 import { BridgeRenderer } from './render/bridges';
 import { headingAlongX, VehicleRenderer } from './render/vehicles';
@@ -798,6 +798,17 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
    */
   let drivewayTiles: ReadonlySet<number> = new Set();
   let latestRoadTiles: ReturnType<typeof clientGrid.roadTiles> = [];
+  /** Every street lamp: the grid's, from its road tiles, and those along roads off the grid. */
+  const rebuildLamps = (): void => {
+    const free = clientGrid.roads
+      ? freeRoadLampStands(
+          clientGrid.roads,
+          (id) => clientGrid.profileById(id),
+          (wx, wz) => clientGrid.poweredAt(worldToTile(wx), worldToTile(wz)),
+        )
+      : [];
+    lamps.rebuild(latestRoadTiles, drivewayTiles, free);
+  };
   /** Counts down to the next advisor re-rank (see ADVISOR_REFRESH_SNAPSHOTS). */
   let snapshotsSinceAdvice = 0;
   /** Latest flattened transit stop tile-points, mirrored so pedestrian
@@ -1195,8 +1206,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       clientGrid.applyRoadNetwork(snap.roadNet);
       freeRoads.rebuild(clientGrid.roads);
       // A road off the grid fronts lots and covers tiles with no road tile
-      // changing, so the zoning grid is rebuilt here when nothing below will.
-      if (!snap.roads) zoneGrid.rebuild(clientGrid);
+      // changing, so the zoning grid and the lamps are rebuilt here when
+      // nothing below will.
+      if (!snap.roads) {
+        zoneGrid.rebuild(clientGrid);
+        rebuildLamps();
+      }
     }
     // Who gives way lands before the road deltas too, so that when a drag
     // changes both, the signs are rebuilt once against the new answer.
@@ -1222,7 +1237,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       zoneGrid.rebuild(clientGrid);
       const roadTiles = clientGrid.roadTiles();
       latestRoadTiles = roadTiles;
-      lamps.rebuild(roadTiles, drivewayTiles);
+      rebuildLamps();
       roadFurniture.rebuild(roadTiles);
       bridges.rebuild(clientGrid.deckTiles());
       // Ground cover follows the road only where the road touches the ground —
@@ -1263,7 +1278,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       }
       if (!sameTileKeySet(nextDriveways, drivewayTiles)) {
         drivewayTiles = nextDriveways;
-        if (latestRoadTiles.length > 0) lamps.rebuild(latestRoadTiles, drivewayTiles);
+        rebuildLamps();
       }
 
       const selected = state.selectedBuilding;
@@ -1287,7 +1302,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // lights up without waiting for someone to touch a road.
       clientGrid.applyPowerPatches(snap.power);
       latestRoadTiles = clientGrid.roadTiles();
-      if (latestRoadTiles.length > 0) lamps.rebuild(latestRoadTiles, drivewayTiles);
+      rebuildLamps();
     }
     if (snap.watered) overlays.setCoverage('watered', snap.watered);
     if (snap.vehicles) {

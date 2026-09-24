@@ -209,7 +209,7 @@ export interface LampPlacement {
  * motorway's columns stand anyway — and on a bridge it puts the column on the
  * deck's kerb instead of stranding it out in the middle of the span.
  */
-function lampLateralOffset(tier: RoadTier | undefined, profile?: RoadProfile): number {
+export function lampLateralOffset(tier: RoadTier | undefined, profile?: RoadProfile): number {
   if (profile) return carriagewayHalfWidthOf(profile) + kerbWidthOf(profile) * 0.5;
   const t = tier ?? RoadTier.TwoLane;
   return carriagewayHalfWidthMeters(t) + curbWidthMeters(t) * 0.5;
@@ -370,29 +370,53 @@ function buildHousingGeometry(): THREE.BufferGeometry {
   return mergeGeometries([cap, cowl]);
 }
 
-/** World XZ of the pole for a placement — curbside, offset along the placement's axis. */
-function poleWorldXZ(placement: LampPlacement): { x: number; z: number } {
+/**
+ * Where a lamp stands, in world metres, and the unit direction its arm
+ * reaches in: from the pole toward the centre line of the road it lights. A
+ * grid road's lamp reaches along a world axis; a road off the grid's reaches
+ * square to its centre line, whichever way that runs.
+ */
+export interface LampStand {
+  x: number;
+  z: number;
+  reachX: number;
+  reachZ: number;
+}
+
+/** The stand a grid lamp placement describes: curbside, offset along its axis. */
+export function standOf(placement: LampPlacement): LampStand {
   const tileCenterX = tileToWorld(placement.x);
   const tileCenterZ = tileToWorld(placement.z);
   const offset = placement.lateralOffset * placement.side;
+  // The arm reaches back toward the centre line, opposite the pole's offset.
+  const reach = -placement.side;
+  return placement.axis === 'x'
+    ? { x: tileCenterX + offset, z: tileCenterZ, reachX: reach, reachZ: 0 }
+    : { x: tileCenterX, z: tileCenterZ + offset, reachX: 0, reachZ: reach };
+}
+
+/** World XZ of the luminaire — the arm end, out over the near lane. */
+function housingWorldXZ(stand: LampStand): { x: number; z: number } {
   return {
-    x: placement.axis === 'x' ? tileCenterX + offset : tileCenterX,
-    z: placement.axis === 'z' ? tileCenterZ + offset : tileCenterZ,
+    x: stand.x + stand.reachX * ARM_LENGTH_METERS,
+    z: stand.z + stand.reachZ * ARM_LENGTH_METERS,
   };
 }
 
 /**
- * World XZ of the luminaire — the arm end, out over the near lane. The arm
- * reaches back toward the road centerline, i.e. opposite the pole's own
- * lateral offset.
+ * The yaw that turns the arm, which reaches along local +X, to reach along a
+ * stand's direction: a turn about +Y by θ takes +X to (cos θ, −sin θ).
  */
-function housingWorldXZ(placement: LampPlacement): { x: number; z: number } {
-  const pole = poleWorldXZ(placement);
-  const armOffset = ARM_LENGTH_METERS * -placement.side;
-  return {
-    x: placement.axis === 'x' ? pole.x + armOffset : pole.x,
-    z: placement.axis === 'z' ? pole.z + armOffset : pole.z,
-  };
+const armYawOf = (stand: LampStand): number => Math.atan2(-stand.reachZ, stand.reachX);
+
+/**
+ * The housing's yaw. Its cowl is four-fold symmetric, so only the line it
+ * tilts along matters and not which way along it: a yaw folded into [0, π).
+ */
+function housingYawOf(stand: LampStand): number {
+  let yaw = armYawOf(stand);
+  if (yaw < 0) yaw += Math.PI;
+  return yaw >= Math.PI - 1e-9 ? yaw - Math.PI : yaw;
 }
 
 /** Vertices in one pool disc: the core, plus a ring of segments per falloff step. */
@@ -408,23 +432,31 @@ export const POOL_VERTICES_PER_LAMP = 1 + POOL_RINGS.length * POOL_SEGMENTS;
  * one flat disc at a single Y slices straight through it.
  */
 function buildPoolGeometry(
-  placements: readonly LampPlacement[],
+  stands: readonly LampStand[],
   heightAt: (x: number, z: number) => number,
 ): THREE.BufferGeometry {
   const positions: number[] = [];
   const colors: number[] = [];
   const indices: number[] = [];
 
-  placements.forEach((placement, lamp) => {
-    const { x: centerX, z: centerZ } = housingWorldXZ(placement);
+  stands.forEach((stand, lamp) => {
+    const { x: centerX, z: centerZ } = housingWorldXZ(stand);
     const base = lamp * POOL_VERTICES_PER_LAMP;
-    // `axis` is the LATERAL axis the pole is offset along, so the roadway runs
-    // along the other one — that is the direction the pool stretches down.
-    // The two bases below are a 90° ROTATION of each other, not a coordinate
-    // swap: swapping mirrors the plane, which reverses triangle winding and
-    // gets one road direction's pools back-face culled into invisibility.
-    const [alongX, alongZ, acrossX, acrossZ] =
-      placement.axis === 'x' ? [0, 1, -1, 0] : [1, 0, 0, 1];
+    // The arm reaches ACROSS the road, so the roadway runs square to it — that
+    // is the direction the pool stretches down. `across` is always `along`
+    // turned a quarter, never a coordinate swap: swapping mirrors the plane,
+    // which reverses triangle winding and gets one road direction's pools
+    // back-face culled into invisibility.
+    // Of the two ways along the road, the one toward +z (or +x, running east
+    // to west) is taken, so a pool is laid the same whichever kerb it is on.
+    let alongX = -stand.reachZ;
+    let alongZ = stand.reachX;
+    if (alongZ < 0 || (alongZ === 0 && alongX < 0)) {
+      alongX = -alongX;
+      alongZ = -alongZ;
+    }
+    const acrossX = -alongZ;
+    const acrossZ = alongX;
 
     positions.push(centerX, heightAt(centerX, centerZ) + POOL_Y_OFFSET, centerZ);
     colors.push(1, 1, 1);
@@ -471,25 +503,17 @@ const _scale = new THREE.Vector3(1, 1, 1);
 const _upAxis = new THREE.Vector3(0, 1, 0);
 
 // The arm bracket geometry only reaches along local +X (mount at origin), so
-// each (axis, direction-sign) combination needs its own yaw to actually face
-// the road: axis 'x' just flips +X/-X; axis 'z' turns +X into +Z or -Z.
-const _armYawXPos = new THREE.Quaternion(); // armDirSign +1: local +X -> world +X
-const _armYawXNeg = new THREE.Quaternion().setFromAxisAngle(_upAxis, Math.PI); // armDirSign -1: -> world -X
-const _armYawZPos = new THREE.Quaternion().setFromAxisAngle(_upAxis, -Math.PI / 2); // armDirSign +1: -> world +Z
-const _armYawZNeg = new THREE.Quaternion().setFromAxisAngle(_upAxis, Math.PI / 2); // armDirSign -1: -> world -Z
+// each lamp turns it about +Y to reach the way its stand faces.
+const _armYaw = new THREE.Quaternion();
 
 // Downward pitch (about the housing's own local "across" axis, local Z)
-// applied before yaw, so the cowl reads as angled toward the road regardless
-// of which offset axis the lamp uses. The cowl is 4-fold symmetric about its
-// own vertical axis, so — unlike the arm — direction *sign* doesn't need
-// separate handling here, only the offset axis does.
+// applied before yaw, so the cowl reads as angled toward the road whichever
+// way the lamp faces.
 const _housingPitch = new THREE.Quaternion().setFromAxisAngle(
   new THREE.Vector3(0, 0, 1),
   HOUSING_TILT_RAD,
 );
-const _yawToZ = new THREE.Quaternion().setFromAxisAngle(_upAxis, Math.PI / 2);
-const _housingQuatAxisX = _housingPitch.clone();
-const _housingQuatAxisZ = _yawToZ.clone().multiply(_housingPitch);
+const _housingQuat = new THREE.Quaternion();
 
 export class LampRenderer {
   private readonly scene: THREE.Scene;
@@ -544,19 +568,27 @@ export class LampRenderer {
   private lensMesh: THREE.InstancedMesh | null = null;
   /** Not instanced: each disc carries its own terrain-sampled vertex heights. */
   private poolMesh: THREE.Mesh | null = null;
-  private placements: LampPlacement[] = [];
+  private stands: LampStand[] = [];
 
   constructor(scene: THREE.Scene, heightAt: (x: number, z: number) => number) {
     this.scene = scene;
     this.heightAt = heightAt;
   }
 
-  /** Full rebuild from the current road tile set (roads change relatively rarely). */
-  rebuild(roadTiles: readonly LampRoadTile[], drivewayTiles?: ReadonlySet<number>): void {
+  /**
+   * Full rebuild from the current road tile set (roads change relatively
+   * rarely), plus the lamps standing along roads off the grid, which have no
+   * tiles to be placed from.
+   */
+  rebuild(
+    roadTiles: readonly LampRoadTile[],
+    drivewayTiles?: ReadonlySet<number>,
+    freeStands: readonly LampStand[] = [],
+  ): void {
     this.disposeMeshes();
-    this.placements = computeLampPlacements(roadTiles, drivewayTiles);
+    this.stands = [...computeLampPlacements(roadTiles, drivewayTiles).map(standOf), ...freeStands];
 
-    const count = this.placements.length;
+    const count = this.stands.length;
     if (count === 0) return;
 
     this.poleMesh = new THREE.InstancedMesh(this.poleGeometry, this.poleMaterial, count);
@@ -564,7 +596,7 @@ export class LampRenderer {
     this.housingMesh = new THREE.InstancedMesh(this.housingGeometry, this.housingMaterial, count);
     this.lensMesh = new THREE.InstancedMesh(this.lensGeometry, this.lensMaterial, count);
     this.poolMesh = new THREE.Mesh(
-      buildPoolGeometry(this.placements, this.heightAt),
+      buildPoolGeometry(this.stands, this.heightAt),
       this.poolMaterial,
     );
     setInstanceCount(this.poleMesh, count);
@@ -578,7 +610,7 @@ export class LampRenderer {
     this.armMesh.castShadow = true;
     this.housingMesh.castShadow = true;
 
-    for (let i = 0; i < count; i++) this.writeLamp(i, this.placements[i]!);
+    for (let i = 0; i < count; i++) this.writeLamp(i, this.stands[i]!);
 
     this.poleMesh.instanceMatrix.needsUpdate = true;
     this.armMesh.instanceMatrix.needsUpdate = true;
@@ -601,7 +633,7 @@ export class LampRenderer {
 
   /** Number of lamps placed by the last rebuild(); every layer matches this 1:1. */
   lampCount(): number {
-    return this.placements.length;
+    return this.stands.length;
   }
 
   poleInstanceCount(): number {
@@ -732,32 +764,16 @@ export class LampRenderer {
     return new THREE.Vector3().setFromMatrixPosition(matrix);
   }
 
-  private writeLamp(slot: number, placement: LampPlacement): void {
-    const tileCenterX = tileToWorld(placement.x);
-    const tileCenterZ = tileToWorld(placement.z);
-
-    // Pole: curbside placement from axis/side, at the tier-aware sidewalk offset.
-    const poleOffset = placement.lateralOffset * placement.side;
-    const poleX = placement.axis === 'x' ? tileCenterX + poleOffset : tileCenterX;
-    const poleZ = placement.axis === 'z' ? tileCenterZ + poleOffset : tileCenterZ;
+  private writeLamp(slot: number, stand: LampStand): void {
+    const { x: poleX, z: poleZ } = stand;
     const groundY = this.heightAt(poleX, poleZ);
 
-    // The arm/housing reach from the pole top toward the road centerline,
-    // i.e. in the direction opposite the pole's lateral-offset sign.
-    const armDirSign = -placement.side;
-    const armOffset = ARM_LENGTH_METERS * armDirSign;
-    const housingX = placement.axis === 'x' ? poleX + armOffset : poleX;
-    const housingZ = placement.axis === 'z' ? poleZ + armOffset : poleZ;
-
-    const armYaw =
-      placement.axis === 'x'
-        ? armDirSign === 1
-          ? _armYawXPos
-          : _armYawXNeg
-        : armDirSign === 1
-          ? _armYawZPos
-          : _armYawZNeg;
-    const housingQuat = placement.axis === 'z' ? _housingQuatAxisZ : _housingQuatAxisX;
+    // The arm/housing reach from the pole top toward the road centerline.
+    const { x: housingX, z: housingZ } = housingWorldXZ(stand);
+    const armYaw = _armYaw.setFromAxisAngle(_upAxis, armYawOf(stand));
+    const housingQuat = _housingQuat
+      .setFromAxisAngle(_upAxis, housingYawOf(stand))
+      .multiply(_housingPitch);
 
     _position.set(poleX, groundY + POLE_HEIGHT / 2, poleZ);
     _matrix.compose(_position, _identityQuat, _scale);

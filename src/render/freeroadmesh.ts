@@ -13,6 +13,7 @@
  */
 
 import * as THREE from 'three';
+import { LAMP_SPACING_TILES, TILE_METERS } from '../shared/constants';
 import { leavingDirection, sampleCentreLine } from '../shared/roadgeom';
 import type { MPoint } from '../shared/roadgeom';
 import {
@@ -27,6 +28,8 @@ import {
 import { RoadFlow } from '../shared/types';
 import type { RoadNet, RoadProfile, RoadTier } from '../shared/types';
 import { isFreeSegment, isGridNode, segmentGeom, segmentsAt } from '../world/roadnet';
+import { lampLateralOffset, tierGetsLamp } from './lamps';
+import type { LampStand } from './lamps';
 import { markingPlan } from './roadmarkings';
 import {
   BIKE_LANE_PAINT_COLOR,
@@ -416,7 +419,27 @@ function drawSegment(
  */
 export function freeRoadSoup(net: RoadNet, lookup: ProfileFor, surfaceAt: SurfaceAt): RoadSoup {
   const soup = new Soup(surfaceAt);
+  const { junctions, spans } = layout(net, lookup);
+  for (const j of junctions) drawJunction(soup, net, j.node, j.arms, j.color);
+  for (const span of spans) drawSegment(soup, net, span.seg, span.profile, span.from, span.to);
+  return soup;
+}
+
+/** A free segment between the junctions at its ends: metres along it from `from` to `to`. */
+interface Span {
+  seg: number;
+  profile: RoadProfile;
+  from: number;
+  to: number;
+}
+
+/** Where every free road runs between junctions, and every junction a free road meets. */
+function layout(
+  net: RoadNet,
+  lookup: ProfileFor,
+): { junctions: { node: number; arms: Arm[]; color: Rgb }[]; spans: Span[] } {
   const setbackAt = new Map<string, number>();
+  const junctions: { node: number; arms: Arm[]; color: Rgb }[] = [];
   for (let node = 0; node < net.nodeSlots; node++) {
     if (net.nodeLive[node] !== 1) continue;
     const { arms, segs } = armsAt(net, node, lookup);
@@ -424,16 +447,54 @@ export function freeRoadSoup(net: RoadNet, lookup: ProfileFor, surfaceAt: Surfac
     arms.forEach((arm, k) => setbackAt.set(`${segs[k]}:${node}`, arm.setback));
     if (arms.length < 2) continue;
     const free = segs.find((s) => isFreeSegment(net, s))!;
-    drawJunction(soup, net, node, arms, surfaceColor(profileOf(net.segProfile[free]!, lookup)));
+    junctions.push({ node, arms, color: surfaceColor(profileOf(net.segProfile[free]!, lookup)) });
   }
+  const spans: Span[] = [];
   for (let seg = 0; seg < net.segSlots; seg++) {
     if (net.segLive[seg] !== 1 || !isFreeSegment(net, seg)) continue;
     const length = sampleCentreLine(segmentGeom(net, seg)).at(-1)!.s;
-    const from = setbackAt.get(`${seg}:${net.segA[seg]}`) ?? 0;
-    const to = length - (setbackAt.get(`${seg}:${net.segB[seg]}`) ?? 0);
-    drawSegment(soup, net, seg, profileOf(net.segProfile[seg]!, lookup), from, to);
+    spans.push({
+      seg,
+      profile: profileOf(net.segProfile[seg]!, lookup),
+      from: setbackAt.get(`${seg}:${net.segA[seg]}`) ?? 0,
+      to: length - (setbackAt.get(`${seg}:${net.segB[seg]}`) ?? 0),
+    });
   }
-  return soup;
+  return { junctions, spans };
+}
+
+/**
+ * The street lamps along every road off the grid: one every lamp spacing
+ * between its junctions, first a half spacing in, on alternate kerbs, each
+ * reaching square across the road — and only where the road has power, as on
+ * the grid.
+ */
+export function freeRoadLampStands(
+  net: RoadNet,
+  lookup: ProfileFor,
+  powered: (x: number, z: number) => boolean,
+): LampStand[] {
+  const spacing = LAMP_SPACING_TILES * TILE_METERS;
+  const out: LampStand[] = [];
+  for (const span of layout(net, lookup).spans) {
+    const tier = net.segTier[span.seg] as RoadTier;
+    if (!tierGetsLamp(tier) || !isPaved(span.profile)) continue;
+    const offset = lampLateralOffset(tier, span.profile);
+    const samples = sampleCentreLine(segmentGeom(net, span.seg));
+    const first = span.from + Math.min(spacing, span.to - span.from) / 2;
+    for (let s = first, k = 0; s <= span.to; s += spacing, k++) {
+      const st = stations(samples, s, s)[0];
+      if (!st || !powered(st.x, st.z)) continue;
+      const side = k % 2 === 0 ? 1 : -1;
+      out.push({
+        x: st.x + st.nx * offset * side,
+        z: st.z + st.nz * offset * side,
+        reachX: -st.nx * side,
+        reachZ: -st.nz * side,
+      });
+    }
+  }
+  return out;
 }
 
 /** Draws the roads off the grid, rebuilt whole whenever the network or the ground changes. */

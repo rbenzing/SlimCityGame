@@ -80,7 +80,10 @@ carriageway edge clears its neighbours' plus its kerb return, the junction
 surface filled between them, and the footway carried round each corner. It
 takes the tile renderer's colours, heights and markings plan, and is one mesh
 rebuilt whole on every change to the network or the ground, since free roads
-are few next to grid tiles.
+are few next to grid tiles. Street lamps are placed as stands in world space
+(the pole, and the direction its arm reaches), so the lamps along free roads,
+placed between their junctions from the same layout, join the grid's lamps in
+one instanced set.
 
 ## Picking
 

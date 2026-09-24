@@ -277,12 +277,22 @@ worker and compares the two masks. Free roads are drawn
 line with kerbs, footways, medians and the markings plan, and a junction
 meshed at each node from the roads meeting there, with rounded kerb returns.
 Checked in the browser on a curve leaving a grid street, a free three-way
-junction and a curved one-way street. Not yet: lamps and kerbside furniture
-along free roads (4b), and cosmetic vehicles still stop where a route leaves
-the grid (4c). Where a free road meets a grid road, the junction is laid over
+junction and a curved one-way street. Not yet: lamps along free roads (4b),
+and cosmetic vehicles still stop where a route leaves the grid (4c). Where a free road meets a grid road, the junction is laid over
 the grid road's own tile, which still draws as a straight road underneath,
 so its kerbside props stand as if nothing joined it until one renderer draws
 both (stage 8).
+
+Stage 4b is built (2026-09-24): street lamps stand along free roads between
+their junctions, at the grid's lamp spacing, on alternate kerbs, reaching
+square across the road, and only where the road has power. Every lamp is now
+placed as a stand in world space — where the pole is and which way the arm
+reaches — so grid lamps and free-road lamps are one instanced set; the grid's
+lamps came out unchanged (all 45 lamp tests pass as they were). Checked in
+the browser by day and at night, with a free junction that has no power left
+dark beside a lit curve. Signs and kerbside furniture along free roads moved
+to stage 6: the grid places them by each tile's role at its junction, and
+junction behaviour off the grid is what stage 6 builds.
 
 ### Overpasses (requested 2026-09-23, built 2026-09-24)
 

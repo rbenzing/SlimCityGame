@@ -70,6 +70,11 @@ export class ClientGridMirror {
    * so this is not only the coverage lens's data, it is what stands the poles.
    */
   readonly power: Uint8Array;
+  /** Whether tile (x, z) has electricity; false off the map. */
+  poweredAt(x: number, z: number): boolean {
+    return this.inBounds(x, z) && this.power[this.idx(x, z)] === 1;
+  }
+
   /** Where a power line stands (see GridState.powerLine); what stands the poles. */
   readonly powerLine: Uint8Array;
   readonly buildingId: Uint32Array;
