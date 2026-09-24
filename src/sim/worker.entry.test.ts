@@ -2108,6 +2108,34 @@ describe('overpasses — a road passing over another on the tile they cross', ()
     expect(grid(h).roadElevation[at(20, 14)]).toBe(0);
   });
 
+  it('crosses a pair of carriageways, one crossing tile after the other', () => {
+    const h = initialized();
+    run(h, 0, [{ kind: 'setSandbox', on: true }]);
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Highway, tiles: column(20, 6, 17) }]);
+    run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.Highway, tiles: column(21, 6, 17).reverse() }]);
+    const ack = run(h, 3, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(12, 14, 18), elevation: 8 },
+    ]);
+    expect(ack.ok).toBe(true);
+    const g = grid(h);
+    expect(g.overTier[at(20, 14)]).toBe(RoadTier.TwoLane);
+    expect(g.overTier[at(21, 14)]).toBe(RoadTier.TwoLane);
+    expect(g.roadTier[at(21, 14)]).toBe(RoadTier.Highway);
+  });
+
+  it('keeps the masks honest as a crossing is laid and taken away', () => {
+    const h = withMotorway();
+    run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: across, elevation: 8 }]);
+    let g = grid(h);
+    expect(g.roadMask[at(20, 14)]).toBe(1 | 4); // the motorway runs on, joined to nothing across
+    expect((g.roadMask[at(19, 14)] ?? 0) & 2).toBe(2); // the approach joins the overpass
+    run(h, 3, [{ kind: 'bulldoze', tiles: [{ x: 20, z: 14 }] }]);
+    g = grid(h);
+    // Left in the air beside the motorway, the approach joins nothing there.
+    expect((g.roadMask[at(19, 14)] ?? 0) & 2).toBe(0);
+    expect(g.roadMask[at(20, 14)]).toBe(1 | 4);
+  });
+
   it('refuses a road drawn under an existing viaduct, for now', () => {
     const h = initialized();
     run(h, 0, [{ kind: 'setSandbox', on: true }]);

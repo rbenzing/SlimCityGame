@@ -311,6 +311,45 @@ export function recomputeRoadMasks(g: GridState): void {
 }
 
 /**
+ * Recomputes the stored mask of every road tile in `idxs` and of each one's
+ * four neighbours, and returns a delta for every tile whose mask changed. What
+ * a road passing over a crossing changes is who the tiles around it join, so
+ * laying or lifting one has to be followed by this.
+ */
+export function remaskAround(g: GridState, idxs: Iterable<number>): RoadTileDelta[] {
+  const candidates = new Set<number>();
+  for (const idx of idxs) {
+    candidates.add(idx);
+    const x = idx % g.size;
+    const z = (idx - x) / g.size;
+    for (const d of DIRS) {
+      if (inBoundsOf(g.size, x + d.dx, z + d.dz))
+        candidates.add(indexOf(g.size, x + d.dx, z + d.dz));
+    }
+  }
+  const deltas: RoadTileDelta[] = [];
+  for (const idx of candidates) {
+    const tier = tierAtIdx(g, idx);
+    if (tier === RoadTier.None) continue;
+    const x = idx % g.size;
+    const z = (idx - x) / g.size;
+    const mask = computeMask(g, x, z);
+    if (mask === (g.roadMask[idx] ?? 0)) continue;
+    g.roadMask[idx] = mask;
+    deltas.push({
+      x,
+      z,
+      tier,
+      mask,
+      elevation: g.roadElevation[idx] ?? 0,
+      profile: g.roadProfile[idx] ?? tier,
+      flow: g.roadFlow[idx] ?? RoadFlow.None,
+    });
+  }
+  return deltas;
+}
+
+/**
  * Whether one of the two tiles is a ramp running beside a motorway on the other
  * without joining it — the stretch before a merge or after a diverge, or an
  * elbow. See {@link rampJoin}.

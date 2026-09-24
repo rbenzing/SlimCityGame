@@ -117,7 +117,13 @@ import {
   serializeGrid,
   setZones,
 } from '../world/grid';
-import { RoadNetwork, applyRoad, recomputeRoadMasks, removeRoad } from '../world/roads';
+import {
+  RoadNetwork,
+  applyRoad,
+  recomputeRoadMasks,
+  remaskAround,
+  removeRoad,
+} from '../world/roads';
 import {
   clearOverRoad,
   overRoadAt,
@@ -287,6 +293,15 @@ function growRect(rect: DirtyRect | null, tiles: TilePoint[]): DirtyRect | null 
     }
   }
   return next;
+}
+
+/** The neighbour-mask bit for a one-tile step: +N=1 +E=2 +S=4 +W=8, 0 for anything else. */
+function bitToward(dx: number, dz: number): number {
+  if (dx === 0 && dz === -1) return 1;
+  if (dx === 1 && dz === 0) return 2;
+  if (dx === 0 && dz === 1) return 4;
+  if (dx === -1 && dz === 0) return 8;
+  return 0;
 }
 
 /** The four orthogonal steps — the neighbours a road tile can join. */
@@ -1409,12 +1424,30 @@ class SimWorld implements WorkerSim {
       }
       setOverRoad(g, idx, road);
     }
+    this.overLayerChanged(crossings.keys());
     const inverse: Command[] = [];
     if (created.length > 0) inverse.push({ kind: 'bulldoze', tiles: created, layer: 'over' });
     for (const [profile, group] of replaced) {
       inverse.push({ kind: 'buildRoad', ...group, profile, layer: 'over' });
     }
     return inverse;
+  }
+
+  /**
+   * After a road passing over tiles is laid or lifted: who the tiles around
+   * those crossings join has changed, so their masks, the graphs built from
+   * them and the utility spread are all out of date.
+   */
+  private overLayerChanged(idxs: Iterable<number>): void {
+    const list = [...idxs];
+    if (list.length === 0) return;
+    for (const d of remaskAround(this.grid, list)) {
+      this.pendingRoadDeltas.set(tileIndex(d.x, d.z), d);
+    }
+    this.invalidateAround(
+      list.map((idx) => ({ x: idx % MAP_SIZE, z: Math.floor(idx / MAP_SIZE) })),
+    );
+    this.utilitiesDirty = true;
   }
 
   /**
@@ -1481,6 +1514,7 @@ class SimWorld implements WorkerSim {
       const spec = this.roadSpecByTier.get(road.tier);
       if (spec) refund += spec.costPerTile * BULLDOZE_REFUND_RATE;
     }
+    this.overLayerChanged(tiles.map((t) => tileIndex(t.x, t.z)));
     const inverse: Command[] = [];
     for (const [profile, group] of byProfile) {
       inverse.push({ kind: 'buildRoad', ...group, profile, layer: 'over' });
@@ -2090,7 +2124,14 @@ class SimWorld implements WorkerSim {
       // A deck at the road's own height meets it, the way roads always have.
       if (current !== 0) {
         const below = g.roadElevation[idx] ?? 0;
-        const shape = crossingShape(tiles, i, (x, z) => this.roadAtLevel(x, z, below));
+        // A road below counts only where the road on this tile is joined to
+        // it: a second carriageway alongside is its own road, not a junction.
+        const joined = g.roadMask[idx] ?? 0;
+        const shape = crossingShape(
+          tiles,
+          i,
+          (x, z) => this.roadAtLevel(x, z, below) && (joined & bitToward(x - t.x, z - t.z)) !== 0,
+        );
         if (shape !== 'along' && deck < below) {
           return refused(
             'A road cannot pass under a bridge yet: build the lower road first, then cross over it',
@@ -2178,14 +2219,15 @@ class SimWorld implements WorkerSim {
     if (!this.unlimitedMoney && this.stats.funds < cost)
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
 
+    // The roads passing over go down first, so the masks the ground road
+    // recomputes already know which way each crossing tile's roads run.
+    const inverse: Command[] = this.applyCrossings(crossings);
     const deltas = applyRoad(g, valid, tier, validElevations, profileId, replace, validFlows);
     for (const d of deltas) this.pendingRoadDeltas.set(tileIndex(d.x, d.z), d);
     this.landfillAreasCache = null; // street layout feeds the landfill entrances
     this.invalidateAround(valid);
     this.zoneDirty = growRect(this.zoneDirty, valid); // roads de-zone their tiles
     this.stats.funds -= cost;
-
-    const inverse: Command[] = this.applyCrossings(crossings);
     const rebuilt = [
       ...created,
       ...Array.from(upgradedByPrevProfile.values(), (group) => group.tiles).flat(),
