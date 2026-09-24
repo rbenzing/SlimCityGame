@@ -452,7 +452,8 @@ surface differs — gravel is tan, ballast is grey stone. See
 Roads replace each other by **rank**, not by catalog order: dirt < alley <
 rural < local < one-way < urban < collector < arterial < divided < ramp <
 highway (rail sits outside the ranking and refuses nothing, since it is a
-separate network that only crosses a street at grade). A road carrying a
+separate network; drawn through a street it cuts it, and the track is drawn
+running straight through while the street stops either side). A road carrying a
 reserved bus or tram lane outranks the same road without one, so a stray
 drag cannot silently erase a transit line. A road may only be drawn through
 one it outranks; drawing through a road it does not outrank is refused
@@ -532,8 +533,10 @@ off it until somebody decides to let it on. Both unlock at the same
 milestone, so the rule can never leave a player holding a motorway with no
 way to reach it, and the refusal names the ramp rather than only saying no.
 
-The road tool enforces both (a refusal reads on the cursor chip), which is
-also the only place they can be enforced with the reason visible.
+The road tool refuses both before the drag is sent, with the reason on the
+cursor chip. The world refuses them again when the command arrives, whole and
+with the same sentence, so no command from any source — an undo, a replayed
+batch, a script — lays a street against a motorway.
 
 The case a motorway meeting a motorway leaves open is not a refusal at all:
 **a highway lying ACROSS the way another highway runs, rather than in line

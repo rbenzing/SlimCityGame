@@ -27,7 +27,7 @@ import catalogData from '../data/catalog.json';
 import roadsData from '../data/roads.json';
 import type { RoadSpec } from '../shared/types';
 import { decodeSave, encodeSave } from '../app/persist';
-import { createGrid, deserializeGrid } from '../world/grid';
+import { createGrid, deserializeGrid, serializeGrid } from '../world/grid';
 import { computeTerraformPatch, type TerraformCommand } from '../world/terraform';
 import {
   createWorkerSim,
@@ -1861,6 +1861,99 @@ describe('road direction — a road runs the way it was drawn', () => {
     fresh.sim.handleMessage({ type: 'loadSave', data });
     fresh.ticks(1);
     expect(rowDeltas(fresh, 10, 16, 17).map((d) => d.flow)).toEqual([RoadFlow.South]);
+  });
+});
+
+describe('which roads may touch — the world refuses, not only the tool', () => {
+  function run(h: Harness, seq: number, commands: Command[]): CommandAck {
+    send(h, seq, commands);
+    h.ticks(2);
+    const ack = h.ackFor(seq);
+    if (!ack) throw new Error(`no ack for batch ${seq}`);
+    return ack;
+  }
+  function sandboxed(): Harness {
+    const h = initialized();
+    run(h, 0, [{ kind: 'setSandbox', on: true }]);
+    return h;
+  }
+  const column = (x: number, z0: number, count: number): TilePoint[] =>
+    Array.from({ length: count }, (_, i) => ({ x, z: z0 + i }));
+  function tierAt(h: Harness, x: number, z: number): number {
+    h.sim.handleMessage({ type: 'requestSave' });
+    return latestSaveGrid(h).roadTier[z * MAP_SIZE + x] ?? 0;
+  }
+
+  it('refuses a street drawn across a motorway whole, and says a ramp is the way on', () => {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Highway, tiles: column(20, 10, 9) }]);
+    const ack = run(h, 2, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(16, 14, 9) },
+    ]);
+    expect(ack.ok).toBe(false);
+    expect(ack.reason).toMatch(/ramp/);
+    expect(tierAt(h, 19, 14)).toBe(RoadTier.None);
+    expect(tierAt(h, 21, 14)).toBe(RoadTier.None);
+    expect(tierAt(h, 20, 14)).toBe(RoadTier.Highway);
+  });
+
+  it('refuses a street that only ends against a motorway', () => {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Highway, tiles: column(20, 10, 9) }]);
+    const ack = run(h, 2, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(15, 14, 5) },
+    ]);
+    expect(ack.ok).toBe(false);
+    expect(tierAt(h, 19, 14)).toBe(RoadTier.None);
+  });
+
+  it('lays a street that stops one tile short of the motorway', () => {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Highway, tiles: column(20, 10, 9) }]);
+    const ack = run(h, 2, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(14, 14, 5) },
+    ]);
+    expect(ack.ok).toBe(true);
+    expect(tierAt(h, 18, 14)).toBe(RoadTier.TwoLane);
+  });
+
+  it('lays a ramp against a motorway', () => {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Highway, tiles: column(20, 10, 9) }]);
+    const ack = run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.Ramp, tiles: column(21, 8, 5) }]);
+    expect(ack.ok).toBe(true);
+    expect(tierAt(h, 21, 11)).toBe(RoadTier.Ramp);
+  });
+
+  it('draws a loaded city by the rules of today, not the masks its save was written with', () => {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(30, 30, 3) }]);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const saves = h.messages.filter(
+      (m): m is Extract<WorkerToMain, { type: 'save' }> => m.type === 'save',
+    );
+    const payload = decodeSave(saves[saves.length - 1]!.data);
+    const g = deserializeGrid(payload.grid);
+    g.roadMask[30 * MAP_SIZE + 31] = 15; // written by rules that joined every side
+    payload.grid = serializeGrid(g);
+    h.messages.length = 0;
+    h.sim.handleMessage({ type: 'loadSave', data: encodeSave(payload) });
+    h.ticks(2);
+    const deltas = h.messages.flatMap((m) =>
+      m.type === 'snapshot' && m.snap.roads ? m.snap.roads : [],
+    );
+    const middle = deltas.filter((d) => d.x === 31 && d.z === 30).pop();
+    expect(middle?.mask).toBe(2 | 8);
+  });
+
+  it('refuses a dirt road against a ramp', () => {
+    const h = sandboxed();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Ramp, tiles: column(20, 10, 6) }]);
+    const ack = run(h, 2, [
+      { kind: 'buildRoad', tier: RoadTier.Gravel, tiles: roadRow(15, 12, 5) },
+    ]);
+    expect(ack.ok).toBe(false);
+    expect(tierAt(h, 19, 12)).toBe(RoadTier.None);
   });
 });
 

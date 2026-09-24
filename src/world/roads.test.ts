@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { isRailTier, RoadFlow, RoadTier, ZoneType } from '../shared/types';
 import type { GraphEdge, GridState, RoadProfile, TilePoint } from '../shared/types';
-import { applyRoad, computeMask, removeRoad, RoadNetwork } from './roads';
+import { applyRoad, computeMask, recomputeRoadMasks, removeRoad, RoadNetwork } from './roads';
 import { createGrid } from './grid';
 
 function makeGrid(size: number): GridState {
@@ -131,6 +131,39 @@ describe('computeMask', () => {
     const g = makeGrid(5);
     g.roadTier[idx(5, 0, 0)] = RoadTier.TwoLane;
     expect(computeMask(g, 0, 0)).toBe(0);
+  });
+
+  it('runs rail straight through a street it cuts, and ends the street at it', () => {
+    const size = 10;
+    const g = makeGrid(size);
+    for (let x = 2; x <= 8; x++) g.roadTier[idx(size, x, 5)] = RoadTier.RailTrack;
+    for (const z of [3, 4, 6, 7]) g.roadTier[idx(size, 5, z)] = RoadTier.TwoLane;
+    expect(computeMask(g, 5, 5)).toBe(2 | 8); // E|W — track, not a crossroads
+    expect(computeMask(g, 5, 4)).toBe(1); // N only — the street stops at the rail
+    expect(computeMask(g, 5, 6)).toBe(4); // S only
+  });
+
+  it('still joins tram track to the street it meets, because tram track is a street', () => {
+    const size = 10;
+    const g = makeGrid(size);
+    for (let x = 2; x <= 8; x++) g.roadTier[idx(size, x, 5)] = RoadTier.Tram;
+    for (const z of [4, 6]) g.roadTier[idx(size, 5, z)] = RoadTier.TwoLane;
+    expect(computeMask(g, 5, 5)).toBe(1 | 2 | 4 | 8);
+  });
+});
+
+describe('recomputeRoadMasks', () => {
+  it('rewrites every stored mask from the rules, whatever the save held', () => {
+    const size = 10;
+    const g = makeGrid(size);
+    for (let x = 2; x <= 8; x++) g.roadTier[idx(size, x, 5)] = RoadTier.RailTrack;
+    for (const z of [4, 6]) g.roadTier[idx(size, 5, z)] = RoadTier.TwoLane;
+    g.roadMask.fill(15);
+    recomputeRoadMasks(g);
+    expect(g.roadMask[idx(size, 5, 5)]).toBe(2 | 8);
+    expect(g.roadMask[idx(size, 5, 4)]).toBe(0);
+    expect(g.roadMask[idx(size, 2, 5)]).toBe(2);
+    expect(g.roadMask[idx(size, 0, 0)]).toBe(0); // no road, no mask
   });
 });
 

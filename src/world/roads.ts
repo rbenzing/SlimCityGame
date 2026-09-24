@@ -18,6 +18,7 @@ import {
   RoadFlow,
   RoadTier,
   ZoneType,
+  isRailTier,
   isStreetTier,
 } from '../shared/types';
 import {
@@ -117,13 +118,6 @@ export function computeMask(g: GridState, x: number, z: number): number {
 export type NetworkTiers = (tier: RoadTier) => boolean;
 
 /**
- * Neighbor bitmask counting only neighbours that belong to the SAME network —
- * so the vehicle graph never treats rail as connected, and the rail graph never
- * treats a street as connected, even though `computeMask` still renders the two
- * abutting (the level-crossing look). Identical to `computeMask` on a grid of
- * one network's tiles alone.
- */
-/**
  * Whether the tile at (nx, nz) is the OTHER HALF of the corridor (x, z)
  * belongs to, rather than a road joining it.
  *
@@ -150,6 +144,11 @@ function isCorridorPartner(g: GridState, x: number, z: number, nx: number, nz: n
   );
 }
 
+/**
+ * Neighbor bitmask counting only neighbours that belong to the SAME network, so
+ * a graph built from one set of tiers never links to another. Identical to
+ * `computeMask` on a grid of one network's tiles alone.
+ */
 function computeNetworkMask(g: GridState, x: number, z: number, inNetwork: NetworkTiers): number {
   let mask = 0;
   if (inNetwork(tierAt(g, x, z - 1)) && !isSeparateRoad(g, x, z, x, z - 1)) mask |= 1;
@@ -161,15 +160,38 @@ function computeNetworkMask(g: GridState, x: number, z: number, inNetwork: Netwo
 
 /**
  * Whether a neighbouring tile is a road of its OWN rather than an arm of this
- * one: either the other half of this tile's corridor, or a motorway
- * carriageway running alongside.
+ * one: the other half of this tile's corridor, a motorway carriageway running
+ * alongside, a ramp beside a motorway it does not join, or rail against
+ * anything that is not rail — track cuts a street, it does not cross it.
  */
 function isSeparateRoad(g: GridState, x: number, z: number, nx: number, nz: number): boolean {
   return (
+    isRailAgainstRoad(g, x, z, nx, nz) ||
     isCorridorPartner(g, x, z, nx, nz) ||
     isSideBySideCarriageway(g, x, z, nx, nz) ||
     isRampAlongside(g, x, z, nx, nz)
   );
+}
+
+/** Whether exactly one of the two tiles is rail. */
+function isRailAgainstRoad(g: GridState, x: number, z: number, nx: number, nz: number): boolean {
+  if (!inBoundsOf(g.size, nx, nz)) return false;
+  return isRailTier(tierAt(g, x, z)) !== isRailTier(tierAt(g, nx, nz));
+}
+
+/**
+ * Every road tile's stored mask rewritten from the rules. The mask is derived
+ * from the tiles around it, so a save carries whatever the rules said when it
+ * was written; loading one recomputes it, or a rule that has changed since
+ * would never reach that city's roads.
+ */
+export function recomputeRoadMasks(g: GridState): void {
+  for (let z = 0; z < g.size; z++) {
+    for (let x = 0; x < g.size; x++) {
+      const i = indexOf(g.size, x, z);
+      g.roadMask[i] = tierAtIdx(g, i) === RoadTier.None ? 0 : computeMask(g, x, z);
+    }
+  }
 }
 
 /**

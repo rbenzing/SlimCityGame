@@ -116,6 +116,11 @@ function sameTileKeySet(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean
 const MAP_NAME = 'Riverton';
 const OVERLAY_REFRESH_MS = 500; // 2 Hz while an infoview lens is active
 const SNAPSHOT_INTERVAL_MS = 1000 / SNAPSHOT_HZ;
+/**
+ * Refusal reasons that are codes rather than sentences. Any other reason the
+ * worker sends is already written for the player and is shown as it is.
+ */
+const UNWORDED_REASONS: ReadonlySet<string> = new Set(['invalid', 'grade', 'height']);
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 const roadSpecs = (roadsData as { specs: RoadSpec[] }).specs;
@@ -1080,7 +1085,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
             ? 'Not enough funds.'
             : ack.reason === 'locked'
               ? 'Not unlocked at this milestone yet.'
-              : 'That cannot be built there.',
+              : ack.reason && !UNWORDED_REASONS.has(ack.reason)
+                ? ack.reason
+                : 'That cannot be built there.',
         tick: store.getState().stats.tick,
       });
     }

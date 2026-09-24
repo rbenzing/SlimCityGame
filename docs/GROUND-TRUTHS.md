@@ -29,7 +29,9 @@ MUTCD citations below use 11th-edition section numbers.
 - A tile carries exactly one road tier. Two roads never share a tile: no
   overpass, no shared rail and street tile. A rail tile between two street tiles
   is a break in the street, not a crossing, and drawing rail through a street
-  severs it. Level crossings that stop road traffic do not exist yet. —
+  severs it: the track draws running straight through and the street ends
+  either side, never a crossing box. Level crossings that stop road traffic do
+  not exist yet. —
   [road-model.md](world-sim/road-model.md),
   [transit-model.md](world-sim/transit-model.md); `isStreetTier` and
   `isRailTier` in `src/shared/types.ts`, `src/world/roads.ts`
@@ -80,8 +82,14 @@ MUTCD citations below use 11th-edition section numbers.
   [data-model.md](engineering/data-model.md)
 - A motorway (highway class) touches only a highway or a ramp. The rule is an
   accept-list, so a new class stays off the motorway until explicitly admitted.
-  A ramp never joins dirt or alley. — [road-model.md](world-sim/road-model.md);
-  `MOTORWAY_MEETS` in `src/shared/roadprofile.ts`
+  A ramp never joins dirt or alley. The worker refuses a `buildRoad` that
+  breaks either rule whole, not only the road tool. —
+  [road-model.md](world-sim/road-model.md); `MOTORWAY_MEETS` in
+  `src/shared/roadprofile.ts`, `joinRefusalAround` in `src/sim/worker.entry.ts`
+- A road tile's neighbour mask is derived, never trusted from a save: loading
+  recomputes every mask from today's rules, so a rule change reaches old
+  cities. — [data-model.md](engineering/data-model.md);
+  `recomputeRoadMasks` in `src/world/roads.ts`
 - Highway and rail arms never take a junction control — not from the warrant
   and not from a player's override, which is refused. A ramp's motorway end is
   an uncontrolled merge or diverge; its other end is an ordinary warranted

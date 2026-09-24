@@ -78,6 +78,7 @@ import {
   FIRST_CUSTOM_PROFILE_ID,
   layRefusal,
   isPresetProfileId,
+  joinRefusal,
   presetProfileForTier,
   rankForTier,
   roadPriceOf,
@@ -115,7 +116,7 @@ import {
   serializeGrid,
   setZones,
 } from '../world/grid';
-import { RoadNetwork, applyRoad, removeRoad } from '../world/roads';
+import { RoadNetwork, applyRoad, recomputeRoadMasks, removeRoad } from '../world/roads';
 import { solveElevationProfile } from '../world/bridges';
 import {
   applyHeightPatch,
@@ -277,6 +278,14 @@ function growRect(rect: DirtyRect | null, tiles: TilePoint[]): DirtyRect | null 
   }
   return next;
 }
+
+/** The four orthogonal steps — the neighbours a road tile can join. */
+const NEIGHBOUR_STEPS: ReadonlyArray<readonly [number, number]> = [
+  [0, -1],
+  [1, 0],
+  [0, 1],
+  [-1, 0],
+];
 
 /** 8-neighbor (Chebyshev distance 1) ring offsets — the "1-tile apron" around a road footprint. */
 const APRON_NEIGHBOR_OFFSETS: ReadonlyArray<readonly [number, number]> = [
@@ -608,6 +617,7 @@ class SimWorld implements WorkerSim {
       if (inst.state === BuildingState.Constructing) inst.state = BuildingState.Active;
     }
 
+    recomputeRoadMasks(this.grid);
     this.network.rebuild(this.grid);
     this.railNetwork.rebuild(this.grid);
     this.tramNetwork.rebuild(this.grid);
@@ -1307,6 +1317,37 @@ class SimWorld implements WorkerSim {
     return custom ? tierForProfile(custom) : null;
   }
 
+  /**
+   * Why a road of `profileId` may not go down on `laying`, or null: one of
+   * those tiles would touch a road its class may never meet — a street against
+   * a motorway, a dirt track against a ramp. The road tool asks the same
+   * question before it sends the drag; asking it here too means no command,
+   * from whatever source, puts one there.
+   */
+  private joinRefusalAround(laying: ReadonlySet<number>, profileId: number): string | null {
+    const mine = this.profileForId(profileId);
+    if (!mine) return null;
+    const g = this.grid;
+    for (const idx of laying) {
+      const x = idx % g.size;
+      const z = (idx - x) / g.size;
+      for (const [dx, dz] of NEIGHBOUR_STEPS) {
+        const nx = x + dx;
+        const nz = z + dz;
+        if (!inBounds(nx, nz)) continue;
+        const n = tileIndex(nx, nz);
+        if (laying.has(n)) continue;
+        const tier = g.roadTier[n] ?? 0;
+        if (tier === RoadTier.None) continue;
+        const other = this.profileForId(g.roadProfile[n] || tier);
+        if (!other) continue;
+        const why = joinRefusal(mine.class, other.class);
+        if (why) return why;
+      }
+    }
+    return null;
+  }
+
   /** The profile an id stands for: the preset itself, or the composition defined under it. */
   private profileForId(id: number): RoadProfile | null {
     if (isPresetProfileId(id)) {
@@ -1850,6 +1891,8 @@ class SimWorld implements WorkerSim {
     // the drag, and the tile the drag ended on keeps the heading it arrived
     // with. An undo supplies the directions that were there instead.
     const dragFlows = flowsAlong(tiles);
+    // Every tile this command puts its road on, for the join check below.
+    const laying = new Set<number>();
     let changedCount = 0;
     let bridgeCost = 0;
 
@@ -1911,6 +1954,7 @@ class SimWorld implements WorkerSim {
       }
       if (replaces) {
         changedCount += 1;
+        laying.add(idx);
         priorElevationByTile.set(idx, priorDeck);
         priorFlowByTile.set(idx, priorFlow);
         if (current === 0) {
@@ -1922,6 +1966,9 @@ class SimWorld implements WorkerSim {
         }
       }
     }
+
+    const joinRefused = this.joinRefusalAround(laying, profileId);
+    if (joinRefused) return { ok: false, cost: 0, inverse: [], reason: joinRefused };
 
     if (changedCount === 0) {
       return {
