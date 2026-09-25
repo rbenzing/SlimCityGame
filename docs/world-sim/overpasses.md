@@ -120,6 +120,16 @@ commands, and each returns its exact inverse, which puts back the layer it
 took with its deck height and flow. An approach left standing in the air
 joins nothing: roads join only at one level.
 
+**One level** is both on the ground, or decks no more than one grade step
+(`BRIDGE_MAX_GRADE`) apart, give or take a millimetre. The millimetre is
+there because a deck's height is read back as its tile's ground plus its
+lift, both single-precision floats, and an approach laid at exactly the
+steepest grade can come back a few millionths of a metre steeper. Without it
+a bridge's own ramp could fail to join its deck, and the span would be drawn
+cut off from the road it carries. Every judgement of one level — the masks,
+the bridge solver and the tool — goes through `atOneLevel` in
+`src/shared/overpass.ts`.
+
 ## Commands
 
 `buildRoad` and `bulldoze` take an optional `layer: 'over'`. The road tool

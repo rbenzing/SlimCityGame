@@ -5,8 +5,7 @@
  * three.js, no DOM.
  */
 
-import { BRIDGE_MAX_GRADE } from '../shared/constants';
-import { axisOfFlow } from '../shared/overpass';
+import { atOneLevel as decksAtOneLevel, axisOfFlow } from '../shared/overpass';
 import {
   corridorHalfOf,
   flowDirection,
@@ -152,7 +151,7 @@ function atOneLevel(g: GridState, a: RoadKey, b: RoadKey): boolean {
   const liftOf = (k: RoadKey): number =>
     (k >= n ? g.overElevation[k - n] : g.roadElevation[k]) ?? 0;
   if (liftOf(a) === 0 && liftOf(b) === 0) return true;
-  return Math.abs(deckYOfKey(g, a) - deckYOfKey(g, b)) <= BRIDGE_MAX_GRADE;
+  return decksAtOneLevel(deckYOfKey(g, a), deckYOfKey(g, b));
 }
 
 /**

@@ -338,6 +338,16 @@ so a road off the grid can be started or ended in line with a street. It
 finds its guides with the grid drag's own rule, shared rather than copied.
 Stage 5 is complete.
 
+Fixed (2026-09-25): a bridge could be drawn cut off from its own road, its
+deck capped as a dead end and a stretch of ramp standing alone between two
+caps. The bridge solver lays ramps at exactly the steepest grade, 2 m a tile,
+but a deck is read back as ground plus lift in single-precision floats, and a
+step could come back a few millionths of a metre over 2 m — failing the
+one-level test by which roads join. The test now allows a millimetre, and the
+three places that judged it (the masks, the bridge solver, the tool) share
+one predicate. Every road type that bridges was checked across the same river
+in the browser, with every tile joined.
+
 ### Overpasses (requested 2026-09-23, built 2026-09-24)
 
 A road could not cross another road or a railway without meeting it, because a

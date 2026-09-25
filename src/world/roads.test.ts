@@ -25,6 +25,42 @@ const row = (z: number, from: number, to: number): TilePoint[] =>
 const column = (x: number, from: number, to: number): TilePoint[] =>
   Array.from({ length: to - from + 1 }, (_, i) => ({ x, z: from + i }));
 
+describe('a bridge ramp at the steepest grade', () => {
+  it('joins two decks one grade step apart, even when single precision makes it a hair steeper', () => {
+    // A ramp from a deck at 5 m down to one at 3 m, as the bridge solver lays
+    // it: each tile's lift is its deck less its ground, stored as a float, and
+    // the deck is read back as ground plus lift. Find ground heights for which
+    // that reads back as more than 2 m apart, as it did on a real river bank.
+    const f = Math.fround;
+    let pair: [number, number] | null = null;
+    for (let k = 0; k < 1000 && !pair; k++) {
+      const high = f(-0.9 + k * 0.0137);
+      const low = f(0.1 + k * 0.0071);
+      const step = high + f(5 - high) - (low + f(3 - low));
+      if (step > 2) pair = [high, low];
+    }
+    expect(pair).not.toBeNull();
+    const [highGround, lowGround] = pair!;
+
+    const g = makeGrid(10);
+    for (const x of [3, 4]) g.roadTier[idx(10, x, 5)] = RoadTier.TwoLane;
+    g.height[idx(10, 3, 5)] = highGround;
+    g.roadElevation[idx(10, 3, 5)] = 5 - highGround;
+    g.height[idx(10, 4, 5)] = lowGround;
+    g.roadElevation[idx(10, 4, 5)] = 3 - lowGround;
+    expect(computeMask(g, 3, 5) & 2).toBe(2);
+    expect(computeMask(g, 4, 5) & 8).toBe(8);
+  });
+
+  it('keeps a deck a real step higher apart from the road beside it', () => {
+    const g = makeGrid(10);
+    for (const x of [3, 4]) g.roadTier[idx(10, x, 5)] = RoadTier.TwoLane;
+    g.roadElevation[idx(10, 3, 5)] = 5;
+    g.roadElevation[idx(10, 4, 5)] = 2.9;
+    expect(computeMask(g, 3, 5)).toBe(0);
+  });
+});
+
 describe('computeMask', () => {
   it('is 0 for an isolated tile with no road neighbors', () => {
     const g = makeGrid(10);

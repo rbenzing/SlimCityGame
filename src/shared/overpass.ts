@@ -84,7 +84,15 @@ export function bitToward(dx: number, dz: number): number {
   return 0;
 }
 
+/**
+ * How far over one grade step two decks may differ and still join, metres. A
+ * deck's height is its tile's ground plus its lift, both stored as single
+ * precision floats, so a ramp laid at exactly the steepest grade can come back
+ * a few millionths of a metre steeper — and read as two roads that never meet.
+ */
+const GRADE_TOLERANCE_M = 0.001;
+
 /** Whether two decks are near enough in height to join: one grade step. */
 export function atOneLevel(deckA: number, deckB: number): boolean {
-  return Math.abs(deckA - deckB) <= BRIDGE_MAX_GRADE;
+  return Math.abs(deckA - deckB) <= BRIDGE_MAX_GRADE + GRADE_TOLERANCE_M;
 }

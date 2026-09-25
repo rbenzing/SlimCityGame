@@ -42,10 +42,13 @@ MUTCD citations below use 11th-edition section numbers.
   overpass; any other step reaches the road on the tile. —
   [overpasses.md](world-sim/overpasses.md); `roadStep` in `src/world/roads.ts`
 - Two road tiles join only at one level: both on the ground, or decks within
-  one grade step (`BRIDGE_MAX_GRADE`) of each other. A deck in the air passes
-  beside a road on the ground without meeting it. —
-  [road-model.md](world-sim/road-model.md); `atOneLevel` in
-  `src/world/roads.ts`
+  one grade step (`BRIDGE_MAX_GRADE`) of each other, give or take a
+  millimetre of float rounding, so a ramp laid at exactly the steepest grade
+  still joins. A deck in the air passes beside a road on the ground without
+  meeting it. One predicate judges it everywhere. —
+  [road-model.md](world-sim/road-model.md),
+  [overpasses.md](world-sim/overpasses.md); `atOneLevel` in
+  `src/shared/overpass.ts`
 - A rail tile between two street tiles
   is a break in the street, not a crossing, and rail laid through a street in
   replace mode severs it: the track draws running straight through and the street ends
