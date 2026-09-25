@@ -13,6 +13,7 @@ import {
   BRIDGE_MAX_GRADE,
   SEA_LEVEL,
 } from '../shared/constants';
+import { atOneLevel } from '../shared/overpass';
 import type { GridState, TilePoint } from '../shared/types';
 import { RoadTier } from '../shared/types';
 
@@ -165,7 +166,7 @@ export function solveElevationProfile(
   // span joins onto are already built and cannot be raised to suit it.
   for (let i = 0; i < n; i++) {
     for (const joined of joins[i]!) {
-      if (Math.abs(deckY[i]! - joined) > BRIDGE_MAX_GRADE) return { ok: false, reason: 'grade' };
+      if (!atOneLevel(deckY[i]!, joined)) return { ok: false, reason: 'grade' };
     }
   }
 
