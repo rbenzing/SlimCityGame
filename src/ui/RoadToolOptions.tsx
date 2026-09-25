@@ -1,11 +1,13 @@
 /**
- * Road tool options — path mode, elevation, and snapping — as an inline row
- * rather than a floating panel. It lives in the asset drawer's header beside
- * the close button, because it is the road panel's own state: which way the
- * next road runs and how high it sits. Rule zero applies as it always did:
- * every control here flips real, currently-consumed behavior.
+ * Road tool options: how the next drag runs and what the selected road is
+ * built of, laid out as panels beside the road cards in the roads drawer.
+ * They exist only while a road is selected, since every one of them is about
+ * that road. Rule zero applies as it always did: every control here flips
+ * real, currently-consumed behavior, and a choice that would compose a road
+ * the tool refuses is shown disabled with the reason rather than offered and
+ * then refused.
  */
-import type { JSX } from 'react';
+import type { JSX, ReactNode } from 'react';
 import { BRIDGE_MAX_ELEVATION, ROAD_ELEVATION_STEP_M, TILE_METERS } from '../shared/constants';
 import {
   composeProfile,
@@ -19,9 +21,11 @@ import {
   roadClass,
   withArticle,
   type MiddleChoice,
+  type ProfileEdits,
   type SideChoice,
   type TramChoice,
 } from '../shared/roadprofile';
+import type { RoadTier } from '../shared/types';
 import { offersGrid, ROAD_TOOL_TO_TIER } from '../tools/tools';
 import type { ToolMode } from './store';
 import { useCityStore } from './store';
@@ -29,15 +33,64 @@ import { useCityStore } from './store';
 const CHIP = 'rounded-md px-2 py-1 text-xs font-medium transition-colors';
 const CHIP_ON = 'bg-accent text-white';
 const CHIP_OFF = 'bg-white/10 text-white/80 hover:bg-white/20';
-const CHIP_STEP = `${CHIP} ${CHIP_OFF} disabled:opacity-40 disabled:hover:bg-white/10`;
+const CHIP_DISABLED = 'disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-white/10';
+const CHIP_STEP = `${CHIP} ${CHIP_OFF} ${CHIP_DISABLED}`;
 
-/** A labelled cluster, so the row reads as groups rather than a wall of chips. */
-function Group({ label, children }: { label: string; children: JSX.Element }): JSX.Element {
+/** A titled panel in the same card treatment as the road cards beside it. */
+function Section({ title, children }: { title: string; children: ReactNode }): JSX.Element {
   return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-[10px] uppercase tracking-wide text-white/45">{label}</span>
+    <section
+      aria-label={title}
+      className="flex flex-col gap-1.5 rounded-[6px] border border-transparent bg-white/5 p-2"
+    >
+      <h3 className="text-[10px] font-semibold uppercase tracking-wide text-white/60">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+/** One labelled line inside a panel; the labels share a column so the chips line up. */
+function Row({ label, children }: { label: string; children: ReactNode }): JSX.Element {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-16 shrink-0 text-[10px] uppercase tracking-wide text-white/45">
+        {label}
+      </span>
       {children}
     </div>
+  );
+}
+
+/**
+ * A segmented choice. `refusal` is why picking it would compose a road the
+ * tool will not lay; the pressed choice is never disabled, since pressing it
+ * again changes nothing.
+ */
+function Choice({
+  pressed,
+  refusal = null,
+  title,
+  onClick,
+  children,
+}: {
+  pressed: boolean;
+  refusal?: string | null;
+  title?: string;
+  onClick: () => void;
+  children: ReactNode;
+}): JSX.Element {
+  const disabled = !pressed && refusal !== null;
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      disabled={disabled}
+      title={disabled ? (refusal ?? undefined) : title}
+      onClick={onClick}
+      className={`${CHIP} ${pressed ? CHIP_ON : CHIP_OFF} ${CHIP_DISABLED}`}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -67,218 +120,8 @@ const TRAM_CHOICES: readonly { value: TramChoice; label: string; title: string }
 /** Posted speeds move in the steps a speed limit sign is written in. */
 const SPEED_STEP_KMH = 5;
 
-/**
- * The Profile row: what the selected road's cross-section holds — how many
- * lanes each way, what separates them, what sits at its kerbs, how fast it is
- * posted — and the width that adds up to against the tile. Only what the
- * road's class admits is offered, so a motorway is never asked about parking
- * and a local street is never offered four lanes. Every control composes a
- * real profile the next drag lays.
- */
-function ProfileGroup(): JSX.Element | null {
-  const tool = useCityStore((s) => s.selectedTool);
-  const edits = useCityStore((s) => s.roadProfileEdits);
-  const setEdits = useCityStore((s) => s.setRoadProfileEdits);
-  const tier = ROAD_TOOL_TO_TIER[tool];
-  if (tier === undefined) return null;
-
-  const base = presetProfileForTier(tier);
-  const cls = roadClass(base.class);
-  const admits = new Set(cls.admits);
-  const offersParking = admits.has('parking');
-  const offersBike = admits.has('bike');
-  const offersBus = admits.has('bus');
-  const offersTram = admits.has('tram');
-  const offersFootways = admits.has('sidewalk');
-
-  const composed = composeProfile(base, edits);
-  const current = editsOf(composed);
-  const width = profileWidth(composed);
-  const refusal = layRefusal(composed);
-  const fits = refusal === null;
-  // A road that outgrows its tile is not refused any more if its class earns a
-  // corridor — it is laid across two. The readout has to say which, or a
-  // player reads a 21 m road on a 16 m tile and thinks it is broken.
-  const across = tilesAcross(composed);
-  const widthTitle = refusal ?? (across === 2 ? 'Two tiles wide — a corridor' : 'Fits the tile');
-  const budget = across === 2 ? CORRIDOR_METERS : TILE_METERS;
-
-  const oneWay = base.pieces
-    .filter((p) => p.kind === 'travel')
-    .every((p) => p.flow === 'fwd' && base.pieces.some((q) => q.kind === 'travel'));
-  const laneOptions = laneOptionsFor(base.class);
-  const offersLanes = laneOptions.length > 1;
-  const middleChoices = MIDDLE_CHOICES.filter(
-    (choice) => choice.piece === null || admits.has(choice.piece),
-  );
-  const offersMiddle = !oneWay && current.lanes > 0 && middleChoices.length > 1;
-  const offersSpeed = cls.postedKmh.max > cls.postedKmh.min;
-  if (
-    !offersParking &&
-    !offersBike &&
-    !offersBus &&
-    !offersTram &&
-    !offersFootways &&
-    !offersLanes &&
-    !offersMiddle &&
-    !offersSpeed
-  ) {
-    return null;
-  }
-
-  // A road is PICKED from the lane counts its class is built in, rather than
-  // dialled a lane at a time: a four-lane arterial is a kind of road, not a
-  // three-lane with one added. The count is the total across both directions,
-  // split evenly, which is how every road on the list is built.
-  const totalLanes = oneWay ? current.lanes : current.lanes + current.lanesBack;
-  const setTotalLanes = (total: number): void => {
-    if (oneWay) {
-      setEdits({ lanes: total, lanesBack: null });
-      return;
-    }
-    const half = Math.max(1, Math.round(total / 2));
-    setEdits({ lanes: half, lanesBack: half });
-  };
-  const setSpeed = (kmh: number): void =>
-    setEdits({ postedKmh: Math.min(cls.postedKmh.max, Math.max(cls.postedKmh.min, kmh)) });
-
-  const sideRow = (
-    label: string,
-    key: 'parking' | 'bike' | 'bus',
-    value: SideChoice,
-  ): JSX.Element => (
-    <Group label={label}>
-      <div className="flex gap-1" role="group" aria-label={`${label} lanes`}>
-        {SIDE_CHOICES.map((choice) => (
-          <button
-            key={choice.value}
-            type="button"
-            aria-pressed={value === choice.value}
-            onClick={() => setEdits({ [key]: choice.value })}
-            className={`${CHIP} ${value === choice.value ? CHIP_ON : CHIP_OFF}`}
-          >
-            {choice.label}
-          </button>
-        ))}
-      </div>
-    </Group>
-  );
-
-  return (
-    <>
-      {offersLanes ? (
-        <Group label="Lanes">
-          <div className="flex gap-1" role="group" aria-label="Lanes">
-            {laneOptions.map((n) => (
-              <button
-                key={n}
-                type="button"
-                aria-pressed={totalLanes === n}
-                onClick={() => setTotalLanes(n)}
-                className={`${CHIP} ${totalLanes === n ? CHIP_ON : CHIP_OFF}`}
-              >
-                {n}
-              </button>
-            ))}
-            <span className="pl-1 text-[10px] text-white/45">{oneWay ? 'one way' : 'total'}</span>
-          </div>
-        </Group>
-      ) : null}
-      {offersMiddle ? (
-        <Group label="Middle">
-          <div className="flex gap-1" role="group" aria-label="Between the directions">
-            {middleChoices.map((choice) => (
-              <button
-                key={choice.value}
-                type="button"
-                aria-pressed={current.middle === choice.value}
-                onClick={() => setEdits({ middle: choice.value })}
-                className={`${CHIP} ${current.middle === choice.value ? CHIP_ON : CHIP_OFF}`}
-              >
-                {choice.label}
-              </button>
-            ))}
-          </div>
-        </Group>
-      ) : null}
-      {offersSpeed ? (
-        <Group label="Speed">
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              aria-label="Post a lower speed"
-              disabled={current.postedKmh <= cls.postedKmh.min}
-              onClick={() => setSpeed(current.postedKmh - SPEED_STEP_KMH)}
-              className={CHIP_STEP}
-            >
-              −
-            </button>
-            <span
-              aria-label="Posted speed"
-              title={`${cls.postedKmh.min}–${cls.postedKmh.max} km/h for ${withArticle(cls.name)}`}
-              className="min-w-14 text-center text-xs tabular-nums text-white/70"
-            >
-              {current.postedKmh} km/h
-            </span>
-            <button
-              type="button"
-              aria-label="Post a higher speed"
-              disabled={current.postedKmh >= cls.postedKmh.max}
-              onClick={() => setSpeed(current.postedKmh + SPEED_STEP_KMH)}
-              className={CHIP_STEP}
-            >
-              +
-            </button>
-          </div>
-        </Group>
-      ) : null}
-      {offersParking ? sideRow('Parking', 'parking', current.parking ?? 'none') : null}
-      {offersBike ? sideRow('Bike', 'bike', current.bike ?? 'none') : null}
-      {offersBus ? sideRow('Bus', 'bus', current.bus ?? 'none') : null}
-      {offersTram ? (
-        <Group label="Tram">
-          <div className="flex gap-1" role="group" aria-label="Tramway">
-            {TRAM_CHOICES.map((choice) => (
-              <button
-                key={choice.value}
-                type="button"
-                title={choice.title}
-                aria-pressed={current.tram === choice.value}
-                onClick={() => setEdits({ tram: choice.value })}
-                className={`${CHIP} ${current.tram === choice.value ? CHIP_ON : CHIP_OFF}`}
-              >
-                {choice.label}
-              </button>
-            ))}
-          </div>
-        </Group>
-      ) : null}
-      {offersFootways ? (
-        <Group label="Footways">
-          <button
-            type="button"
-            aria-pressed={current.footways === true}
-            onClick={() => setEdits({ footways: !current.footways })}
-            className={`${CHIP} ${current.footways ? CHIP_ON : CHIP_OFF}`}
-          >
-            {current.footways ? 'On' : 'Off'}
-          </button>
-        </Group>
-      ) : null}
-      <Group label="Width">
-        <span
-          aria-label="Profile width"
-          title={widthTitle}
-          className={`text-xs tabular-nums ${fits ? 'text-white/70' : 'font-semibold text-red-400'}`}
-        >
-          {width.toFixed(1)} / {budget} m
-        </span>
-      </Group>
-    </>
-  );
-}
-
-export function RoadToolOptions(): JSX.Element {
+/** How a path is drawn, where it snaps, how high it runs and what it does to roads in its way. */
+function DrawingSection(): JSX.Element {
   const toolMode = useCityStore((s) => s.toolMode);
   const setToolMode = useCityStore((s) => s.setToolMode);
   const toolFlags = useCityStore((s) => s.toolFlags);
@@ -292,23 +135,14 @@ export function RoadToolOptions(): JSX.Element {
   const grid = offersGrid(tool);
   const shownMode: ToolMode = !grid && toolMode === 'grid' ? 'straight' : toolMode;
   const modeButton = (mode: ToolMode, label: string, title?: string): JSX.Element => (
-    <button
-      type="button"
-      aria-pressed={shownMode === mode}
-      title={title}
-      onClick={() => setToolMode(mode)}
-      className={`${CHIP} ${shownMode === mode ? CHIP_ON : CHIP_OFF}`}
-    >
+    <Choice pressed={shownMode === mode} title={title} onClick={() => setToolMode(mode)}>
       {label}
-    </button>
+    </Choice>
   );
 
   return (
-    <div
-      className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5"
-      aria-label="Road tool options"
-    >
-      <Group label="Path">
+    <Section title="Drawing">
+      <Row label="Path">
         <div className="flex gap-1">
           {modeButton('straight', 'Straight')}
           {modeButton('lpath', 'L-path')}
@@ -319,9 +153,29 @@ export function RoadToolOptions(): JSX.Element {
             'Three clicks: the start, the bend, then the end. Backspace takes back a click.',
           )}
         </div>
-      </Group>
-
-      <Group label="Elevation">
+      </Row>
+      <Row label="Snap">
+        <div className="flex gap-1">
+          <Choice
+            pressed={toolFlags.angleLock}
+            onClick={() => setToolFlags({ angleLock: !toolFlags.angleLock })}
+          >
+            90°
+          </Choice>
+          <Choice
+            pressed={toolFlags.guideSnap}
+            title={
+              toolFlags.guideSnap
+                ? 'A drag nearly in line with a road is pulled into line with it'
+                : 'A drag goes exactly where it is pointed'
+            }
+            onClick={() => setToolFlags({ guideSnap: !toolFlags.guideSnap })}
+          >
+            Guide
+          </Choice>
+        </div>
+      </Row>
+      <Row label="Elevation">
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -352,51 +206,239 @@ export function RoadToolOptions(): JSX.Element {
             Raise
           </button>
         </div>
-      </Group>
-
-      <Group label="Snap">
-        <div className="flex gap-1">
-          <button
-            type="button"
-            aria-pressed={toolFlags.angleLock}
-            onClick={() => setToolFlags({ angleLock: !toolFlags.angleLock })}
-            className={`${CHIP} ${toolFlags.angleLock ? CHIP_ON : CHIP_OFF}`}
-          >
-            90°
-          </button>
-          <button
-            type="button"
-            aria-pressed={toolFlags.guideSnap}
-            title={
-              toolFlags.guideSnap
-                ? 'A drag nearly in line with a road is pulled into line with it'
-                : 'A drag goes exactly where it is pointed'
-            }
-            onClick={() => setToolFlags({ guideSnap: !toolFlags.guideSnap })}
-            className={`${CHIP} ${toolFlags.guideSnap ? CHIP_ON : CHIP_OFF}`}
-          >
-            Guide
-          </button>
-        </div>
-      </Group>
-
-      <Group label="Existing">
-        <button
-          type="button"
-          aria-pressed={toolFlags.replaceRoad}
+      </Row>
+      <Row label="Existing">
+        <Choice
+          pressed={toolFlags.replaceRoad}
           title={
             toolFlags.replaceRoad
               ? 'A drag lays this road over whatever is already there'
               : 'A drag leaves a bigger road where it finds one'
           }
           onClick={() => setToolFlags({ replaceRoad: !toolFlags.replaceRoad })}
-          className={`${CHIP} ${toolFlags.replaceRoad ? CHIP_ON : CHIP_OFF}`}
         >
           Replace
-        </button>
-      </Group>
+        </Choice>
+      </Row>
+    </Section>
+  );
+}
 
-      <ProfileGroup />
+/**
+ * What the selected road's cross-section holds — how many lanes each way,
+ * what separates them, how fast it is posted, what sits at its kerbs, what
+ * transit it carries — and the width that adds up to against the tile. Only
+ * what the road's class admits is offered, so a motorway is never asked about
+ * parking and a local street is never offered four lanes; and of what is
+ * offered, a choice that would break the class's rules or overrun the width
+ * is disabled with the reason. Every control composes a real profile the next
+ * drag lays.
+ */
+function ProfileSections({ tier }: { tier: RoadTier }): JSX.Element {
+  const edits = useCityStore((s) => s.roadProfileEdits);
+  const setEdits = useCityStore((s) => s.setRoadProfileEdits);
+
+  const base = presetProfileForTier(tier);
+  const cls = roadClass(base.class);
+  const admits = new Set(cls.admits);
+  const offersParking = admits.has('parking');
+  const offersBike = admits.has('bike');
+  const offersBus = admits.has('bus');
+  const offersTram = admits.has('tram');
+  const offersFootways = admits.has('sidewalk');
+
+  const composed = composeProfile(base, edits);
+  const current = editsOf(composed);
+  const width = profileWidth(composed);
+  const refusal = layRefusal(composed);
+  const fits = refusal === null;
+  // A road that outgrows its tile is not refused if its class earns a
+  // corridor — it is laid across two. The readout has to say which, or a
+  // player reads a 21 m road on a 16 m tile and thinks it is broken.
+  const across = tilesAcross(composed);
+  const widthTitle = refusal ?? (across === 2 ? 'Two tiles wide — a corridor' : 'Fits the tile');
+  const budget = across === 2 ? CORRIDOR_METERS : TILE_METERS;
+
+  /** Why this change would leave a road the tool will not lay, or null when it may. */
+  const refusalOf = (change: Partial<ProfileEdits>): string | null =>
+    layRefusal(composeProfile(base, { ...edits, ...change }));
+
+  const oneWay = base.pieces
+    .filter((p) => p.kind === 'travel')
+    .every((p) => p.flow === 'fwd' && base.pieces.some((q) => q.kind === 'travel'));
+  const laneOptions = laneOptionsFor(base.class);
+  const offersLanes = laneOptions.length > 1;
+  const middleChoices = MIDDLE_CHOICES.filter(
+    (choice) => choice.piece === null || admits.has(choice.piece),
+  );
+  const offersMiddle = !oneWay && current.lanes > 0 && middleChoices.length > 1;
+  const offersSpeed = cls.postedKmh.max > cls.postedKmh.min;
+
+  // A road is PICKED from the lane counts its class is built in, rather than
+  // dialled a lane at a time: a four-lane arterial is a kind of road, not a
+  // three-lane with one added. The count is the total across both directions,
+  // split evenly, which is how every road on the list is built.
+  const totalLanes = oneWay ? current.lanes : current.lanes + current.lanesBack;
+  const lanesEdit = (total: number): Partial<ProfileEdits> => {
+    if (oneWay) return { lanes: total, lanesBack: null };
+    const half = Math.max(1, Math.round(total / 2));
+    return { lanes: half, lanesBack: half };
+  };
+  const setSpeed = (kmh: number): void =>
+    setEdits({ postedKmh: Math.min(cls.postedKmh.max, Math.max(cls.postedKmh.min, kmh)) });
+
+  const sideRow = (
+    label: string,
+    key: 'parking' | 'bike' | 'bus',
+    value: SideChoice,
+  ): JSX.Element => (
+    <Row label={label}>
+      <div className="flex gap-1" role="group" aria-label={`${label} lanes`}>
+        {SIDE_CHOICES.map((choice) => (
+          <Choice
+            key={choice.value}
+            pressed={value === choice.value}
+            refusal={refusalOf({ [key]: choice.value })}
+            onClick={() => setEdits({ [key]: choice.value })}
+          >
+            {choice.label}
+          </Choice>
+        ))}
+      </div>
+    </Row>
+  );
+
+  const offersKerbside = offersParking || offersBike || offersFootways;
+  const offersTransit = offersBus || offersTram;
+
+  return (
+    <>
+      <Section title="Carriageway">
+        {offersLanes ? (
+          <Row label="Lanes">
+            <div className="flex items-center gap-1" role="group" aria-label="Lanes">
+              {laneOptions.map((n) => (
+                <Choice
+                  key={n}
+                  pressed={totalLanes === n}
+                  refusal={refusalOf(lanesEdit(n))}
+                  onClick={() => setEdits(lanesEdit(n))}
+                >
+                  {n}
+                </Choice>
+              ))}
+              <span className="pl-1 text-[10px] text-white/45">{oneWay ? 'one way' : 'total'}</span>
+            </div>
+          </Row>
+        ) : null}
+        {offersMiddle ? (
+          <Row label="Middle">
+            <div className="flex gap-1" role="group" aria-label="Between the directions">
+              {middleChoices.map((choice) => (
+                <Choice
+                  key={choice.value}
+                  pressed={current.middle === choice.value}
+                  refusal={refusalOf({ middle: choice.value })}
+                  onClick={() => setEdits({ middle: choice.value })}
+                >
+                  {choice.label}
+                </Choice>
+              ))}
+            </div>
+          </Row>
+        ) : null}
+        {offersSpeed ? (
+          <Row label="Speed">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                aria-label="Post a lower speed"
+                disabled={current.postedKmh <= cls.postedKmh.min}
+                onClick={() => setSpeed(current.postedKmh - SPEED_STEP_KMH)}
+                className={CHIP_STEP}
+              >
+                −
+              </button>
+              <span
+                aria-label="Posted speed"
+                title={`${cls.postedKmh.min}–${cls.postedKmh.max} km/h for ${withArticle(cls.name)}`}
+                className="min-w-14 text-center text-xs tabular-nums text-white/70"
+              >
+                {current.postedKmh} km/h
+              </span>
+              <button
+                type="button"
+                aria-label="Post a higher speed"
+                disabled={current.postedKmh >= cls.postedKmh.max}
+                onClick={() => setSpeed(current.postedKmh + SPEED_STEP_KMH)}
+                className={CHIP_STEP}
+              >
+                +
+              </button>
+            </div>
+          </Row>
+        ) : null}
+        <Row label="Width">
+          <span
+            aria-label="Profile width"
+            title={widthTitle}
+            className={`text-xs tabular-nums ${fits ? 'text-white/70' : 'font-semibold text-red-400'}`}
+          >
+            {width.toFixed(1)} / {budget} m
+          </span>
+        </Row>
+      </Section>
+      {offersKerbside ? (
+        <Section title="Kerbside">
+          {offersParking ? sideRow('Parking', 'parking', current.parking) : null}
+          {offersBike ? sideRow('Bike', 'bike', current.bike) : null}
+          {offersFootways ? (
+            <Row label="Footways">
+              <Choice
+                pressed={current.footways}
+                refusal={refusalOf({ footways: !current.footways })}
+                onClick={() => setEdits({ footways: !current.footways })}
+              >
+                {current.footways ? 'On' : 'Off'}
+              </Choice>
+            </Row>
+          ) : null}
+        </Section>
+      ) : null}
+      {offersTransit ? (
+        <Section title="Transit">
+          {offersBus ? sideRow('Bus', 'bus', current.bus) : null}
+          {offersTram ? (
+            <Row label="Tram">
+              <div className="flex gap-1" role="group" aria-label="Tramway">
+                {TRAM_CHOICES.map((choice) => (
+                  <Choice
+                    key={choice.value}
+                    title={choice.title}
+                    pressed={current.tram === choice.value}
+                    refusal={refusalOf({ tram: choice.value })}
+                    onClick={() => setEdits({ tram: choice.value })}
+                  >
+                    {choice.label}
+                  </Choice>
+                ))}
+              </div>
+            </Row>
+          ) : null}
+        </Section>
+      ) : null}
+    </>
+  );
+}
+
+export function RoadToolOptions(): JSX.Element | null {
+  const tool = useCityStore((s) => s.selectedTool);
+  const tier = ROAD_TOOL_TO_TIER[tool];
+  if (tier === undefined) return null;
+  return (
+    <div className="flex flex-wrap items-start gap-2" aria-label="Road tool options">
+      <DrawingSection />
+      <ProfileSections tier={tier} />
     </div>
   );
 }

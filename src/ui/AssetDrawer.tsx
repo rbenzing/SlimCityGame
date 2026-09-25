@@ -166,19 +166,33 @@ export function AssetDrawer({ category, onClose }: AssetDrawerProps): JSX.Elemen
   const sandboxUnlockAll = useCityStore((s) => s.settings.sandboxUnlockAll);
 
   const groups = category ? subTabsFor(category) : [];
+  // A drawer opens on the sub-tab holding the selected tool, so the card that
+  // is in use is always the one in view.
+  const openingTab = (groups.find((g) => g.cards.some((c) => c.id === selectedTool)) ?? groups[0])
+    ?.id;
 
   // Reset the sub-tab selection when the category changes. Adjusting state
   // during render (React's documented pattern for "reset state when a prop
   // changes") rather than in a useEffect avoids an extra commit + the
   // set-state-in-effect cascading-render lint rule.
   const [prevCategory, setPrevCategory] = useState(category);
-  const [activeSubTab, setActiveSubTab] = useState<string | null>(groups[0]?.id ?? null);
+  const [activeSubTab, setActiveSubTab] = useState<string | null>(openingTab ?? null);
   if (category !== prevCategory) {
     setPrevCategory(category);
-    setActiveSubTab(groups[0]?.id ?? null);
+    setActiveSubTab(openingTab ?? null);
   }
 
   if (!category) return null;
+
+  // A tool whose card is on another sub-tab is put down: left selected, its
+  // options stay on screen for a road the player can no longer see or pick.
+  const selectSubTab = (id: string): void => {
+    setActiveSubTab(id);
+    const tab = groups.find((g) => g.id === id);
+    if (selectedTool !== 'select' && !tab?.cards.some((c) => c.id === selectedTool)) {
+      setTool('select');
+    }
+  };
 
   const showTabs = groups.length > 1;
   const cards: AssetCard[] = showTabs
@@ -187,7 +201,10 @@ export function AssetDrawer({ category, onClose }: AssetDrawerProps): JSX.Elemen
 
   return (
     <div
-      className={`pointer-events-auto fixed bottom-24 left-2 right-2 z-10 flex max-h-64 flex-col p-3 text-white ${PANEL_ROUNDED}`}
+      className={`pointer-events-auto fixed bottom-24 left-2 right-2 z-10 flex ${
+        // The road panels wrap under the cards on a narrow screen and need the room.
+        category === 'roads' ? 'max-h-[26rem]' : 'max-h-64'
+      } flex-col p-3 text-white ${PANEL_ROUNDED}`}
       role="region"
       aria-label="Asset drawer"
     >
@@ -200,7 +217,7 @@ export function AssetDrawer({ category, onClose }: AssetDrawerProps): JSX.Elemen
                 type="button"
                 role="tab"
                 aria-selected={activeSubTab === g.id}
-                onClick={() => setActiveSubTab(g.id)}
+                onClick={() => selectSubTab(g.id)}
                 className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                   activeSubTab === g.id
                     ? 'bg-accent text-white'
@@ -224,48 +241,44 @@ export function AssetDrawer({ category, onClose }: AssetDrawerProps): JSX.Elemen
         </button>
       </div>
 
-      {/* Road options sit on their own line, right-aligned under the tabs,
-          rather than squeezed in beside them: there are enough of them that
-          sharing a line with the sub-tabs left the row wrapping into a jumble. */}
-      {category === 'roads' && (
-        <div className="mt-1.5 flex justify-end border-b border-white/10 pb-1.5">
-          <RoadToolOptions />
+      <div className="mt-2 flex flex-wrap items-start gap-x-4 gap-y-2 overflow-y-auto">
+        <div className="flex flex-wrap gap-2">
+          {cards.map((card) => {
+            const locked = !sandboxUnlockAll && card.unlockMilestone > milestoneLevel;
+            const active = selectedTool === card.id;
+            return (
+              <button
+                key={card.id}
+                type="button"
+                disabled={locked}
+                aria-pressed={active}
+                title={
+                  locked
+                    ? `Unlocks at ${MILESTONES[card.unlockMilestone]?.name ?? 'a later milestone'}`
+                    : undefined
+                }
+                onClick={() => setTool(card.id)}
+                className={`relative flex w-24 flex-col gap-1 rounded-[6px] border p-1.5 text-left text-[11px] transition-colors ${
+                  active
+                    ? 'border-accent bg-accent/25'
+                    : 'border-transparent bg-white/5 hover:bg-white/10'
+                } ${locked ? 'cursor-not-allowed opacity-40' : ''}`}
+              >
+                <CardPictogram card={card} />
+                <span className="truncate font-medium">{card.name}</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-white/60">
+                    {card.cost > 0 ? `¢${card.cost.toLocaleString('en-US')}` : ''}
+                  </span>
+                  {locked && <Icon name="lock" className="h-3 w-3 text-white/70" />}
+                </div>
+              </button>
+            );
+          })}
         </div>
-      )}
-
-      <div className="mt-2 flex flex-wrap gap-2 overflow-y-auto">
-        {cards.map((card) => {
-          const locked = !sandboxUnlockAll && card.unlockMilestone > milestoneLevel;
-          const active = selectedTool === card.id;
-          return (
-            <button
-              key={card.id}
-              type="button"
-              disabled={locked}
-              aria-pressed={active}
-              title={
-                locked
-                  ? `Unlocks at ${MILESTONES[card.unlockMilestone]?.name ?? 'a later milestone'}`
-                  : undefined
-              }
-              onClick={() => setTool(card.id)}
-              className={`relative flex w-24 flex-col gap-1 rounded-[6px] border p-1.5 text-left text-[11px] transition-colors ${
-                active
-                  ? 'border-accent bg-accent/25'
-                  : 'border-transparent bg-white/5 hover:bg-white/10'
-              } ${locked ? 'cursor-not-allowed opacity-40' : ''}`}
-            >
-              <CardPictogram card={card} />
-              <span className="truncate font-medium">{card.name}</span>
-              <div className="flex items-center justify-between">
-                <span className="text-white/60">
-                  {card.cost > 0 ? `¢${card.cost.toLocaleString('en-US')}` : ''}
-                </span>
-                {locked && <Icon name="lock" className="h-3 w-3 text-white/70" />}
-              </div>
-            </button>
-          );
-        })}
+        {/* The selected road's options sit beside its card, in the same card
+            treatment, so what is being built and how it is built read as one. */}
+        {category === 'roads' && <RoadToolOptions />}
       </div>
     </div>
   );

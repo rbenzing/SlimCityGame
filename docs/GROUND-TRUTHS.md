@@ -718,6 +718,12 @@ MUTCD citations below use 11th-edition section numbers.
   ghost and the command never disagree about what may be laid. A motorway
   offers no `Grid` mode. — [road-network.md](world-sim/road-network.md),
   [interaction.md](ux/interaction.md)
+- A road option that would compose a road the tool refuses is disabled with
+  the refusal as its tooltip, never offered and then refused; the choice
+  already made is never disabled. A selected tool's card is always on the
+  drawer's visible sub-tab: opening another sub-tab puts the tool down. —
+  [hud.md](ux/hud.md), [road-model.md](world-sim/road-model.md); `layRefusal`
+  in `src/shared/roadprofile.ts`, `src/ui/RoadToolOptions.tsx`
 - Disabled (nothing to do now, about 30% opacity) and gated by milestone (40%
   opacity, lock, tooltip naming the milestone) are distinct treatments and are
   never merged. — [interaction.md](ux/interaction.md),

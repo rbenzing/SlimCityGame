@@ -207,6 +207,44 @@ describe('AssetDrawer', () => {
     expect(useCityStore.getState().selectedTool).toBe('bulldoze');
   });
 
+  describe('the roads drawer keeps the selected road in view', () => {
+    it('shows no road options until a road is picked', () => {
+      render(<AssetDrawer category="roads" onClose={vi.fn()} />);
+      expect(screen.queryByLabelText('Road tool options')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: /Two-Lane Road/ }));
+      expect(screen.getByLabelText('Road tool options')).toBeInTheDocument();
+    });
+
+    it('puts the road down, and its options away, when another sub-tab is opened', () => {
+      useCityStore.getState().setTool('road.two');
+      render(<AssetDrawer category="roads" onClose={vi.fn()} />);
+      expect(screen.getByLabelText('Road tool options')).toBeInTheDocument();
+      for (const tab of ['Medium', 'Highway', 'Rail']) {
+        useCityStore.getState().setTool('road.two');
+        fireEvent.click(screen.getByRole('tab', { name: 'Small' }));
+        fireEvent.click(screen.getByRole('tab', { name: tab }));
+        expect(useCityStore.getState().selectedTool).toBe('select');
+        expect(screen.queryByLabelText('Road tool options')).toBeNull();
+        expect(screen.queryByRole('button', { name: /Two-Lane Road/ })).toBeNull();
+      }
+    });
+
+    it('keeps the road when its own sub-tab is clicked again', () => {
+      useCityStore.getState().setTool('road.two');
+      render(<AssetDrawer category="roads" onClose={vi.fn()} />);
+      fireEvent.click(screen.getByRole('tab', { name: 'Small' }));
+      expect(useCityStore.getState().selectedTool).toBe('road.two');
+      expect(screen.getByLabelText('Road tool options')).toBeInTheDocument();
+    });
+
+    it('opens on the sub-tab holding the selected road', () => {
+      useCityStore.getState().setTool('road.highway');
+      render(<AssetDrawer category="roads" onClose={vi.fn()} />);
+      expect(screen.getByRole('tab', { name: 'Highway' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByRole('button', { name: /Highway/, pressed: true })).toBeInTheDocument();
+    });
+  });
+
   it('resets to the first sub-tab when the category changes', () => {
     const { rerender } = render(<AssetDrawer category="zoning" onClose={vi.fn()} />);
     fireEvent.click(screen.getByRole('tab', { name: 'Industrial' }));
