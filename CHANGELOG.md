@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.14.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.13.0...slimcity-v1.14.0) (2026-09-25)
+
+
+### Features
+
+* **ui:** road tool options as panels beside the cards ([26bd231](https://github.com/rbenzing/SlimCityGame/commit/26bd2314ca24a327a9bdf277f54c8cd696e692aa))
+* **ui:** road tool options as panels beside the cards ([77aec6e](https://github.com/rbenzing/SlimCityGame/commit/77aec6e9b7c3e6e1e4dcabd9fae7cb58dccb063b))
+
+
+### Bug Fixes
+
+* **roads:** a bridge ramp at the steepest grade joins its deck ([d274dbe](https://github.com/rbenzing/SlimCityGame/commit/d274dbed58270ed3bf5e7c5f1fcb1bf694513fa6))
+* **roads:** a bridge ramp at the steepest grade joins its deck ([6bdd636](https://github.com/rbenzing/SlimCityGame/commit/6bdd636cfd9c86ae35d84b32f225af9a629de35a))
+
 ## [1.13.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.12.0...slimcity-v1.13.0) (2026-09-24)
 
 
