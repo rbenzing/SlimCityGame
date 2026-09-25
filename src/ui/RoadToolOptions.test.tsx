@@ -1,15 +1,17 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { BRIDGE_MAX_ELEVATION, ROAD_ELEVATION_STEP_M, TILE_METERS } from '../shared/constants';
 import {
   composeProfile,
+  layRefusal,
   NO_EDITS,
   presetProfileForTier,
   profileWidth,
 } from '../shared/roadprofile';
 import { RoadTier } from '../shared/types';
+import { ROAD_TOOL_TO_TIER } from '../tools/tools';
 import { useCityStore } from './store';
 import { resetCityStore } from './test-helpers';
 import { RoadToolOptions } from './RoadToolOptions';
@@ -252,17 +254,18 @@ describe('RoadToolOptions — the Profile row', () => {
     expect(useCityStore.getState().roadProfileEdits.tram).toBe('mixed');
   });
 
-  it('says a bus lane on both sides of a small street is a different road, rather than laying it', () => {
+  it('will not offer a bus lane on both sides of a small street, and says why', () => {
     useCityStore.getState().setTool('road.two');
     render(<RoadToolOptions />);
-    const bus = screen.getByRole('group', { name: 'Bus lanes' });
-    fireEvent.click(within(bus).getByRole('button', { name: 'Both' }));
+    const both = within(screen.getByRole('group', { name: 'Bus lanes' })).getByRole('button', {
+      name: 'Both',
+    });
     // Two reserved lanes plus two general ones is four, and a local street is
-    // built for two or three — the readout says which rule it broke.
-    expect(screen.getByLabelText('Profile width')).toHaveAttribute(
-      'title',
-      'A local street runs 2 to 3 lanes',
-    );
+    // built for two or three — the chip says which rule it would break.
+    expect(both).toBeDisabled();
+    expect(both).toHaveAttribute('title', 'A local street runs 2 to 3 lanes');
+    fireEvent.click(both);
+    expect(useCityStore.getState().roadProfileEdits).toEqual(NO_EDITS);
   });
 
   it('never asks a track or an alley about a bus lane or a tramway', () => {
@@ -289,6 +292,161 @@ describe('RoadToolOptions — the Profile row', () => {
     useCityStore.getState().setRoadProfileEdits({ ...NO_EDITS, parking: 'both' });
     useCityStore.getState().setTool('road.four');
     expect(useCityStore.getState().roadProfileEdits).toEqual(NO_EDITS);
+  });
+});
+
+const ROAD_TOOLS = [
+  'road.gravel',
+  'road.alley',
+  'road.two',
+  'road.oneway',
+  'road.four',
+  'road.avenue',
+  'road.highway',
+  'road.ramp',
+  'road.rail',
+] as const;
+
+/** The composition the store's edits lay for the selected road. */
+function composedNow(): ReturnType<typeof composeProfile> {
+  const { selectedTool, roadProfileEdits } = useCityStore.getState();
+  return composeProfile(presetProfileForTier(ROAD_TOOL_TO_TIER[selectedTool]!), roadProfileEdits);
+}
+
+/** Every choice chip in the profile panels, in the order a player reads them. */
+function profileChips(): HTMLButtonElement[] {
+  return ['Carriageway', 'Kerbside', 'Transit'].flatMap((title) => {
+    const section = screen.queryByRole('region', { name: title });
+    return section
+      ? within(section)
+          .queryAllByRole<HTMLButtonElement>('button')
+          .filter((b) => b.hasAttribute('aria-pressed'))
+      : [];
+  });
+}
+
+describe('RoadToolOptions — layout', () => {
+  it('shows nothing while no road is selected, since every option is about the road', () => {
+    const { container } = render(<RoadToolOptions />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('groups a street’s options into drawing, carriageway, kerbside and transit panels', () => {
+    useCityStore.getState().setTool('road.two');
+    render(<RoadToolOptions />);
+    expect(screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'))).toEqual([
+      'Drawing',
+      'Carriageway',
+      'Kerbside',
+      'Transit',
+    ]);
+    const drawing = screen.getByRole('region', { name: 'Drawing' });
+    expect(within(drawing).getByRole('button', { name: 'L-path' })).toBeInTheDocument();
+    expect(within(drawing).getByRole('button', { name: 'Replace' })).toBeInTheDocument();
+    const kerbside = screen.getByRole('region', { name: 'Kerbside' });
+    expect(within(kerbside).getByRole('group', { name: 'Parking lanes' })).toBeInTheDocument();
+    const transit = screen.getByRole('region', { name: 'Transit' });
+    expect(within(transit).getByRole('group', { name: 'Tramway' })).toBeInTheDocument();
+  });
+
+  it('gives a motorway no kerbside panel and a railway neither kerbside nor transit', () => {
+    useCityStore.getState().setTool('road.highway');
+    const { unmount } = render(<RoadToolOptions />);
+    expect(screen.queryByRole('region', { name: 'Kerbside' })).toBeNull();
+    expect(screen.getByRole('region', { name: 'Transit' })).toBeInTheDocument();
+    unmount();
+    useCityStore.getState().setTool('road.rail');
+    render(<RoadToolOptions />);
+    expect(screen.queryByRole('region', { name: 'Kerbside' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Transit' })).toBeNull();
+    expect(screen.getByLabelText('Profile width')).toBeInTheDocument();
+  });
+});
+
+describe('RoadToolOptions — what one choice allows of another', () => {
+  it('never offers a tram reservation on a two-lane street, which it cannot hold', () => {
+    useCityStore.getState().setTool('road.two');
+    render(<RoadToolOptions />);
+    const tram = screen.getByRole('group', { name: 'Tramway' });
+    const reserved = within(tram).getByRole('button', { name: 'Reserved' });
+    // Two tracks down the middle count as two more lanes on a street built
+    // for two or three.
+    expect(reserved).toBeDisabled();
+    expect(reserved).toHaveAttribute('title', 'A local street runs 2 to 3 lanes');
+    expect(within(tram).getByRole('button', { name: 'Mixed' })).toBeEnabled();
+  });
+
+  it('closes a choice the width can no longer hold, and reopens it when room is made', () => {
+    useCityStore.getState().setTool('road.two');
+    render(<RoadToolOptions />);
+    const parking = screen.getByRole('group', { name: 'Parking lanes' });
+    const bike = screen.getByRole('group', { name: 'Bike lanes' });
+    const busRight = (): HTMLElement =>
+      within(screen.getByRole('group', { name: 'Bus lanes' })).getByRole('button', {
+        name: 'Right',
+      });
+    expect(busRight()).toBeEnabled();
+
+    fireEvent.click(within(parking).getByRole('button', { name: 'Both' }));
+    fireEvent.click(within(bike).getByRole('button', { name: 'Both' }));
+    expect(busRight()).toBeDisabled();
+    expect(busRight()).toHaveAttribute('title', 'Too wide for the tile');
+
+    fireEvent.click(within(parking).getByRole('button', { name: 'None' }));
+    expect(busRight()).toBeEnabled();
+    fireEvent.click(busRight());
+    expect(useCityStore.getState().roadProfileEdits.bus).toBe('right');
+  });
+
+  it('never disables the choice already made', () => {
+    useCityStore.getState().setTool('road.two');
+    render(<RoadToolOptions />);
+    for (const chip of profileChips()) {
+      if (chip.getAttribute('aria-pressed') === 'true') expect(chip).toBeEnabled();
+    }
+  });
+
+  describe.each(ROAD_TOOLS)('for road tool %s', (tool) => {
+    beforeEach(() => {
+      useCityStore.getState().setTool(tool);
+    });
+
+    it('starts as a road the tool will lay', () => {
+      render(<RoadToolOptions />);
+      expect(layRefusal(composedNow())).toBeNull();
+    });
+
+    it('disables a choice exactly when picking it would compose a road the tool refuses', () => {
+      render(<RoadToolOptions />);
+      for (const chip of profileChips()) {
+        if (chip.getAttribute('aria-pressed') === 'true') continue;
+        const before = useCityStore.getState().roadProfileEdits;
+        fireEvent.click(chip);
+        const after = useCityStore.getState().roadProfileEdits;
+        if (chip.disabled) {
+          expect(chip.title).not.toBe('');
+          expect(after).toEqual(before);
+        } else {
+          expect(layRefusal(composedNow())).toBeNull();
+        }
+        // Back to the preset, so each chip is judged one step from it.
+        act(() => useCityStore.getState().setRoadProfileEdits(NO_EDITS));
+      }
+    });
+
+    it('cannot be clicked into a road it will not lay, however the choices are combined', () => {
+      render(<RoadToolOptions />);
+      // Two passes over every chip in reading order, each click taken from
+      // wherever the last left the road: every enabled choice keeps it layable.
+      for (let pass = 0; pass < 2; pass++) {
+        for (const chip of profileChips()) {
+          if (chip.disabled) continue;
+          fireEvent.click(chip);
+          expect(layRefusal(composedNow())).toBeNull();
+          expect(screen.getByLabelText('Profile width')).not.toHaveClass('text-red-400');
+        }
+      }
+    });
   });
 });
 

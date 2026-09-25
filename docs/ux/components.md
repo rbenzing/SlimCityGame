@@ -62,16 +62,21 @@ thing in every drawer category renders through it.
 
 Two distinct things share the name "chip" here, and neither is a card:
 
-- **Toggle chips** — the `CHIP` / `CHIP_ON` / `CHIP_OFF` / `CHIP_STEP`
-  class constants local to `RoadToolOptions.tsx`: a small rounded-`md`
-  pill, accent-filled when on (`CHIP_ON`), translucent white when off
-  (`CHIP_OFF`), used for every segmented choice in the road tool's own
-  options row (`Path`, lane count, `Middle`, `Snap`, `Replace`,
-  parking/bike side) and for the sub-tab row in the asset drawer's own
-  header treatment. `CHIP_STEP` is the same shape for a step +/− control
-  (posted speed, road elevation) rather than an on/off toggle. Reach for
-  these for any small inline choice that lives inside another panel's own
-  header or options row, not as a standalone floating panel.
+- **Toggle chips** — the `CHIP` / `CHIP_ON` / `CHIP_OFF` / `CHIP_STEP` /
+  `CHIP_DISABLED` class constants local to `RoadToolOptions.tsx`: a small
+  rounded-`md` pill, accent-filled when on (`CHIP_ON`), translucent white
+  when off (`CHIP_OFF`), dimmed to 30% and unclickable when disabled
+  (`CHIP_DISABLED`), used for every segmented choice in the road tool's
+  option panels (`Path`, lane count, `Middle`, `Snap`, `Replace`,
+  parking/bike/bus side, tramway) and for the sub-tab row in the asset
+  drawer's own header treatment. `CHIP_STEP` is the same shape for a step
+  +/− control (posted speed, road elevation) rather than an on/off toggle.
+  Reach for these for any small inline choice that lives inside another
+  panel, not as a standalone floating panel.
+- **Option panels** — the road tool's `Section` in `RoadToolOptions.tsx`:
+  a titled `bg-white/5` rounded-`[6px]` panel, the card treatment, holding
+  labelled rows of chips whose labels share one column. They sit beside the
+  cards in the roads drawer.
 - **Cursor chips** — the small stack that follows the pointer while a tool
   is active (`src/app/cursorchip.ts`, rendered outside React entirely,
   alongside the viewport input in `main.ts`), carrying the live cost and,

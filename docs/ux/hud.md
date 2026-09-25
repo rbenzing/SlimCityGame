@@ -261,17 +261,31 @@ category or tool is active.
   at 40% opacity with a lock icon and a tooltip naming the milestone that
   unlocks it (see [`interaction.md`](interaction.md) for the disabled-vs-gated
   distinction).
-- The roads drawer carries its own tool-options row in its header, next to
-  the close button, rather than a separate floating panel: path mode
-  (`Straight`, `L-path`, `Grid` — not offered for a motorway — or `Curve`), elevation (`Raise`/`Lower`, reading `Ground` or
-  a meter height, up to the bridge deck limit), two snap toggles (a 90° lock
-  and `Guide`, which pulls a drag into line with a road it nearly continues), a
-  toggle for whether a drag replaces whatever road is already there, and —
-  where the selected road class admits it — its lane count, median or
-  turn-lane choice, posted speed, parking/bike lane sides, and footway
-  toggle. This lives in the drawer's own header because it is the drawer's
-  own state (which way the next drag runs, how high, how it's built), not
-  a separate concern.
+- A selected card is always on the sub-tab in view. The drawer opens on the
+  sub-tab holding the selected tool, and opening a sub-tab that does not hold
+  it puts the tool down (back to select), so no card is left selected out of
+  sight with its options still on screen.
+- The roads drawer shows its tool options beside the cards, and only while a
+  road is selected, as panels in the same card treatment rather than a
+  separate floating panel:
+  - **Drawing** — path mode (`Straight`, `L-path`, `Grid` — not offered
+    for a motorway — or `Curve`), two snap
+    toggles (a 90° lock and `Guide`, which pulls a drag into line with a
+    road it nearly continues), elevation (`Raise`/`Lower`, reading `Ground`
+    or a meter height, up to the bridge deck limit), and whether a drag
+    replaces whatever road is already there.
+  - **Carriageway** — lane count, median or turn lane, posted speed, and
+    the width the section adds up to against the tile (or the two-tile
+    corridor).
+  - **Kerbside** — parking and bike lane sides, and the footway toggle.
+  - **Transit** — bus lane sides and the tramway.
+
+  A panel or row appears only where the selected road's class admits what it
+  sets. Of what is offered, a choice that would compose a road the tool
+  refuses — more lanes than the class runs, or wider than the tile or
+  corridor — is disabled, with the reason as its tooltip, and opens again as
+  soon as another choice makes room for it. The choice already made is never
+  disabled.
 
 **Tool options panel** — a small floating panel to the left of the drawer,
 rendered only for terraform tools (brush radius, strength, and — for the

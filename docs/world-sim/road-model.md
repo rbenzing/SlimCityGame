@@ -238,7 +238,10 @@ is composed rather than built and then refused — otherwise the Profile row
 offers a road the game will not lay, and no amount of dialling gets the player
 out of it. So the variants a size is offered are exactly the variants it can
 be laid as, and the only refusals left are the two a player can act on: too
-wide for the tile, or more lanes than the class runs.
+wide for the tile, or more lanes than the class runs. The Profile row asks
+`layRefusal` of every choice before it is picked, and a choice that would be
+refused is disabled with that reason, so no sequence of clicks composes a
+road the tool will not lay.
 
 ## Stored direction and one-way roads
 
