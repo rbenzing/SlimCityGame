@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.15.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.14.0...slimcity-v1.15.0) (2026-09-28)
+
+
+### Features
+
+* **roads:** a grid drag from a curve's end brings that end onto the tile centre ([86c4568](https://github.com/rbenzing/SlimCityGame/commit/86c45689ee4cb3e6c69d497cf9d90cffe9aa1245))
+* **roads:** a road laid with snapping off stays a road of its own ([f20a6c8](https://github.com/rbenzing/SlimCityGame/commit/f20a6c814cf184197d44946457c9fee1fba7a75a))
+* **roads:** a Roads snap toggle, and drags that carry on from road ends ([bca1125](https://github.com/rbenzing/SlimCityGame/commit/bca11258132a4bf2f8fa293a6f3d709a3ab94731))
+* **roads:** snapping to roads — a Roads toggle, road-end snapping, roads laid apart ([79469fe](https://github.com/rbenzing/SlimCityGame/commit/79469fee1a61a98312920a47343cc42a0234d171))
+
+
+### Bug Fixes
+
+* **roads:** a free road's dead end rounds off, and a junction stays on its tile ([9e42486](https://github.com/rbenzing/SlimCityGame/commit/9e42486d45f8f3d9837544597bbb530c0070bd3a))
+* **roads:** a grid drag into a road off the grid is refused in the preview ([068f24c](https://github.com/rbenzing/SlimCityGame/commit/068f24c58092d1731972ce13206974392967b434))
+* **roads:** a grid tile a free road meets is drawn once, by its junction ([c518ead](https://github.com/rbenzing/SlimCityGame/commit/c518eadf526149ed55a3675a4a99cb3d1b842a69))
+* **trees:** no tree stands on a road, a curve or a building, loaded or live ([61b080a](https://github.com/rbenzing/SlimCityGame/commit/61b080a6ac6240cb3ac0c7ddd81934049a666f6c))
+
 ## [1.14.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.13.0...slimcity-v1.14.0) (2026-09-25)
 
 
