@@ -602,6 +602,20 @@ describe('build while paused (playtest bugfix, 2026-07-23)', () => {
     expect(snap.stats.powerSupply).toBeGreaterThan(0);
   });
 
+  it('sends a building placed and bulldozed before the snapshot as a removal only, never also as an addition', () => {
+    send(h, 4, [
+      { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 60, rotation: 0 },
+      { kind: 'bulldoze', tiles: [{ x: 60, z: 60 }] },
+    ]);
+    h.sim.pump(TICK_MS);
+
+    const buildings = h.lastSnapshot()!.buildings!;
+    expect(buildings.removed.length).toBe(1);
+    const [id] = buildings.removed;
+    expect(buildings.added.some((b) => b.id === id)).toBe(false);
+    expect(buildings.updated.some((b) => b.id === id)).toBe(false);
+  });
+
   it('resumes normal ticking at speed 1 with no double-application of the paused batch', () => {
     const tiles = roadRow(110, 110, 4);
     send(h, 3, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles }]);

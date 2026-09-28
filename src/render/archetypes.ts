@@ -49,9 +49,13 @@ export function isCleanIndustry(entry: BuildingCatalogEntry): boolean {
   return entry.category === 'ind' && (entry.pollution ?? 0) === 0;
 }
 
-/** A house keeps a pitched roof; anything denser is flat-topped. */
-function isHouseZone(zone: number | undefined): boolean {
-  return zone === ZoneType.ResLow || zone === ZoneType.ResMediumRow;
+/**
+ * A home rather than a block: a detached house or a row of attached ones. A
+ * home keeps a pitched roof and a lot laid out from its street; anything
+ * denser is flat-topped.
+ */
+export function isHouseEntry(entry: BuildingCatalogEntry): boolean {
+  return entry.zone === ZoneType.ResLow || entry.zone === ZoneType.ResMediumRow;
 }
 
 export function archetypeFor(entry: BuildingCatalogEntry): BuildingArchetype {
@@ -63,7 +67,7 @@ export function archetypeFor(entry: BuildingCatalogEntry): BuildingArchetype {
     return (entry.level ?? 1) >= 2 ? 'retailBlock' : 'storefront';
   }
   if (entry.category === 'res') {
-    return isHouseZone(entry.zone) ? 'house' : 'apartment';
+    return isHouseEntry(entry) ? 'house' : 'apartment';
   }
   return 'plain';
 }

@@ -26,7 +26,7 @@ import {
 } from './massing';
 import { TILE_METERS } from '../shared/constants';
 import { maxHeightOverFootprint } from './footprint';
-import { findRoadFacingEdge, type Side } from './parked';
+import { findRoadFacingEdge, type Side } from './frontage';
 import { materialHex } from './palette';
 import { partsFor, type BuildingPart } from './archetypes';
 

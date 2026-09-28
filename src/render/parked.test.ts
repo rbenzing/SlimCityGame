@@ -12,14 +12,14 @@ import {
   computeStallPlacements,
   CURB_CUT_WIDTH_M,
   roadsideDepthTiles,
-  findRoadFacingEdge,
   frontageInsetTiles,
   hasOwnLotParking,
   IND_NIGHT_OCCUPANCY,
+  kerbAllowance,
+  kerbSideFacing,
   kerbTileAllowsParking,
   lotOccupancy,
   ParkedCarRenderer,
-  sidewalkDepthMeters,
   stallColorIndex,
   stallKind,
   stallOccupancyThreshold,
@@ -28,10 +28,14 @@ import {
   stallYawJitter,
   tierAllowsRoadsideParking,
   usesRoadsideParking,
-  vergeDepthMeters,
   YAW_JITTER_MAX,
-  type RoadFacingEdge,
 } from './parked';
+import {
+  findRoadFacingEdge,
+  sidewalkDepthMeters,
+  vergeDepthMeters,
+  type RoadFacingEdge,
+} from './frontage';
 import {
   BuildingCatalogEntry,
   BuildingDelta,
@@ -767,10 +771,14 @@ describe('ParkedCarRenderer', () => {
     expect(renderer.carInstanceCount()).toBeGreaterThanOrEqual(2);
   });
 
-  it('gives a RESIDENTIAL building no bay row or apron — a home parks at the kerb, not on a forecourt', () => {
+  it('gives an apartment block no bay row or apron — it parks at the kerb, not on a forecourt', () => {
     const scene = new THREE.Scene();
-    const home = makeCatalogEntry({ category: 'res', zone: 1, footprint: { w: 2, d: 2 } });
-    const renderer = new ParkedCarRenderer(scene, flatHeightAt, [home], roadAtTiles([[5, 4]]), () =>
+    const flats = makeCatalogEntry({
+      category: 'res',
+      zone: ZoneType.ResMedium,
+      footprint: { w: 2, d: 2 },
+    });
+    const renderer = new ParkedCarRenderer(scene, flatHeightAt, [flats], roadAtTiles([[5, 4]]), () =>
       RoadTier.TwoLane,
     );
 
@@ -778,8 +786,71 @@ describe('ParkedCarRenderer', () => {
 
     // No apron, no painted bays: the kerb is already paved.
     expect(renderer.hasStripeMesh(1)).toBe(false);
-    // But the small home does line the kerb, which is the whole point of it.
+    // But the block does line the kerb, which is the whole point of it.
     expect(renderer.stallSlotsFor(1).length).toBeGreaterThan(0);
+  });
+
+  it('keeps every home off the kerb, even the smallest — a home parks on its own drive', () => {
+    const scene = new THREE.Scene();
+    const small = makeCatalogEntry({ category: 'res', zone: ZoneType.ResLow, footprint: { w: 2, d: 2 } });
+    const row = makeCatalogEntry({
+      id: 'row',
+      category: 'res',
+      zone: ZoneType.ResMediumRow,
+      footprint: { w: 1, d: 2 },
+    });
+    const renderer = new ParkedCarRenderer(
+      scene,
+      flatHeightAt,
+      [small, row],
+      roadAtTiles([[5, 4]]),
+      () => RoadTier.TwoLane,
+    );
+
+    renderer.apply(deltaAdd(makeBuilding({ id: 1, level: 1 })));
+    renderer.apply(deltaAdd(makeBuilding({ id: 2, catalogId: 'row', level: 1 })));
+    expect(renderer.stallSlotsFor(1)).toHaveLength(0);
+    expect(renderer.stallSlotsFor(2)).toHaveLength(0);
+  });
+
+  it('empties a kerb with no painted lane overnight, and keeps residents beside a painted one', () => {
+    const scene = new THREE.Scene();
+    const flats = makeCatalogEntry({
+      category: 'res',
+      zone: ZoneType.ResMedium,
+      footprint: { w: 2, d: 2 },
+    });
+    const laned: RoadProfile = {
+      class: 'local',
+      pieces: [
+        { kind: 'sidewalk', width: 1.875 },
+        { kind: 'parking', width: 2.25 },
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'parking', width: 2.25 },
+        { kind: 'sidewalk', width: 1.875 },
+      ],
+    };
+    const plain = new ParkedCarRenderer(scene, flatHeightAt, [flats], roadAtTiles([[5, 4]]), () =>
+      RoadTier.TwoLane,
+    );
+    const painted = new ParkedCarRenderer(
+      scene,
+      flatHeightAt,
+      [flats],
+      roadAtTiles([[5, 4]]),
+      () => RoadTier.TwoLane,
+      () => laned,
+    );
+    plain.apply(deltaAdd(makeBuilding({ id: 1, level: 2 })));
+    painted.apply(deltaAdd(makeBuilding({ id: 1, level: 2 })));
+    expect(plain.stallSlotsFor(1).length).toBeGreaterThan(0);
+    expect(painted.stallSlotsFor(1).length).toBeGreaterThan(0);
+
+    plain.setDayFraction(3 / 24);
+    painted.setDayFraction(3 / 24);
+    expect(plain.occupiedStallCount(1)).toBe(0);
+    expect(painted.occupiedStallCount(1)).toBeGreaterThan(0);
   });
 
   it('keeps a home with a garage off the kerb — it already parks on its own drive', () => {
@@ -1210,28 +1281,85 @@ describe('hasOwnLotParking', () => {
     }
   });
 
-  it('counts a house with a garage and driveway', () => {
-    const entry = makeCatalogEntry({
-      category: 'res',
-      zone: ZoneType.ResLow,
-      footprint: { w: 2, d: 3 },
-    });
-    expect(hasOwnLotParking(entry, 4, 6, roadSouthOf(4, 6, 2, 3))).toBe(true);
+  it('counts every home, detached or in a row, whatever its size — each has its drive', () => {
+    for (const [zone, footprint] of [
+      [ZoneType.ResLow, { w: 2, d: 2 }],
+      [ZoneType.ResLow, { w: 2, d: 3 }],
+      [ZoneType.ResMediumRow, { w: 1, d: 4 }],
+    ] as const) {
+      const entry = makeCatalogEntry({ category: 'res', zone, footprint });
+      const roadAt = roadSouthOf(4, 6, footprint.w, footprint.d);
+      expect(hasOwnLotParking(entry, 4, 6, roadAt), `zone ${zone}`).toBe(true);
+    }
   });
 
-  it('does not count a small home or a row house, which have nowhere of their own', () => {
-    const small = makeCatalogEntry({
+  it('does not count an apartment block, which has nowhere of its own', () => {
+    const flats = makeCatalogEntry({
       category: 'res',
-      zone: ZoneType.ResLow,
+      zone: ZoneType.ResMedium,
       footprint: { w: 2, d: 2 },
     });
-    const row = makeCatalogEntry({
-      category: 'res',
-      zone: ZoneType.ResMediumRow,
-      footprint: { w: 1, d: 4 },
-    });
-    expect(hasOwnLotParking(small, 4, 6, roadSouthOf(4, 6, 2, 2))).toBe(false);
-    expect(hasOwnLotParking(row, 4, 6, roadSouthOf(4, 6, 1, 4))).toBe(false);
+    expect(hasOwnLotParking(flats, 4, 6, roadSouthOf(4, 6, 2, 2))).toBe(false);
+  });
+});
+
+describe('kerbAllowance', () => {
+  const laned = (side: 'low' | 'high' | 'both'): RoadProfile => ({
+    class: 'local',
+    pieces: [
+      { kind: 'sidewalk', width: 1.875 },
+      ...(side !== 'high' ? [{ kind: 'parking' as const, width: 2.25 }] : []),
+      { kind: 'travel', width: 3.75, flow: 'back' },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+      ...(side !== 'low' ? [{ kind: 'parking' as const, width: 2.25 }] : []),
+      { kind: 'sidewalk', width: 1.875 },
+    ],
+  });
+
+  it('allows any hour beside a painted parking lane, on that side only', () => {
+    expect(kerbAllowance(RoadTier.TwoLane, laned('low'), 'low')).toBe('anyHour');
+    expect(kerbAllowance(RoadTier.TwoLane, laned('low'), 'high')).toBe('daytime');
+    expect(kerbAllowance(RoadTier.TwoLane, laned('both'), 'high')).toBe('anyHour');
+  });
+
+  it('allows only daytime stays where the tier allows parking but no lane is painted', () => {
+    expect(kerbAllowance(RoadTier.TwoLane, null, 'low')).toBe('daytime');
+    expect(kerbAllowance(RoadTier.Gravel, null, 'high')).toBe('daytime');
+  });
+
+  it('allows nothing where the tier forbids parking and no lane is painted', () => {
+    expect(kerbAllowance(RoadTier.Avenue, null, 'low')).toBe('none');
+  });
+
+  it('lets a painted lane allow parking even on a tier whose flag does not', () => {
+    expect(kerbAllowance(RoadTier.Avenue, laned('both'), 'low')).toBe('anyHour');
+  });
+
+  it('faces the kerb on the lot’s own side of the street', () => {
+    // A lot whose north edge meets the road lies on the road's high-z side.
+    expect(kerbSideFacing('N')).toBe('high');
+    expect(kerbSideFacing('S')).toBe('low');
+    expect(kerbSideFacing('E')).toBe('low');
+    expect(kerbSideFacing('W')).toBe('high');
+  });
+});
+
+describe('kerbside rhythms', () => {
+  it('keeps residents’ cars home overnight and most of them away by day', () => {
+    expect(lotOccupancy('residents', 3 / 24)).toBeCloseTo(0.9, 6);
+    expect(lotOccupancy('residents', 13 / 24)).toBeCloseTo(0.4, 6);
+    expect(lotOccupancy('residents', 8 / 24)).toBeGreaterThan(0.4);
+    expect(lotOccupancy('residents', 8 / 24)).toBeLessThan(0.9);
+  });
+
+  it('allows short stays by day only: none before 08:00 or from 19:00, at most half between', () => {
+    for (const hour of [0, 3, 7.9, 19, 22]) {
+      expect(lotOccupancy('shortStay', hour / 24), `hour ${hour}`).toBeCloseTo(0, 9);
+    }
+    for (let hour = 8; hour < 19; hour += 0.5) {
+      expect(lotOccupancy('shortStay', hour / 24), `hour ${hour}`).toBeLessThanOrEqual(0.5);
+    }
+    expect(lotOccupancy('shortStay', 13 / 24)).toBeCloseTo(0.5, 6);
   });
 });
 
@@ -1244,12 +1372,17 @@ describe('usesRoadsideParking', () => {
 
   const smallHome = makeCatalogEntry({
     category: 'res',
-    zone: ZoneType.ResLow,
+    zone: ZoneType.ResMedium,
     footprint: { w: 2, d: 2 },
   });
 
   it('lets a building with nowhere of its own use a street that allows it', () => {
     expect(usesRoadsideParking(smallHome, 4, 6, roadSouth, tierIs(RoadTier.TwoLane))).toBe(true);
+  });
+
+  it('keeps a home off the kerb, the smallest included', () => {
+    const cottage = makeCatalogEntry({ category: 'res', zone: ZoneType.ResLow, footprint: { w: 2, d: 2 } });
+    expect(usesRoadsideParking(cottage, 4, 6, roadSouth, tierIs(RoadTier.TwoLane))).toBe(false);
   });
 
   // The rule the user asked for: a lot with its own parking does not also line
@@ -1312,6 +1445,12 @@ describe('kerbside placement', () => {
     expect(depthM).toBeGreaterThan(vergeDepthMeters(tier) + sidewalkDepthMeters(tier));
   });
 
+  it('stands in the middle of a painted parking lane rather than half a car out', () => {
+    const tier = RoadTier.TwoLane;
+    const kerbM = vergeDepthMeters(tier) + sidewalkDepthMeters(tier);
+    expect(roadsideDepthTiles(tier, undefined, 1.125) * TILE_METERS).toBeCloseTo(kerbM + 1.125, 6);
+  });
+
   it('places nothing for a count of zero', () => {
     expect(computeRoadsideStallPlacements(4, 6, 2, 2, edge, RoadTier.TwoLane, 0)).toEqual([]);
   });
@@ -1319,7 +1458,7 @@ describe('kerbside placement', () => {
 
 describe('a kerbside car never leaves the tarmac', () => {
   const edge: RoadFacingEdge = { side: 'S', edgeTiles: 4, roadTileX: 4, roadTileZ: 8 };
-  const allTiers = (): RoadTier => RoadTier.TwoLane;
+  const allTiers = (): boolean => true;
 
   it('refuses a junction tile, which has no kerb at all', () => {
     // Road on both axes through (4,8): a turn, a T or a crossroads.
@@ -1336,9 +1475,9 @@ describe('a kerbside car never leaves the tarmac', () => {
     expect(kerbTileAllowsParking(4, 8, () => false, allTiers)).toBe(false);
   });
 
-  it('refuses a street whose tier forbids parking', () => {
+  it('refuses a kerb the street does not let anyone park at', () => {
     const roadAt = (_x: number, z: number): boolean => z === 8;
-    expect(kerbTileAllowsParking(4, 8, roadAt, () => RoadTier.Highway)).toBe(false);
+    expect(kerbTileAllowsParking(4, 8, roadAt, () => false)).toBe(false);
   });
 
   // The defect: a frontage is a straight line of tiles, but the street it faces

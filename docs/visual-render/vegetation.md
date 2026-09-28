@@ -51,6 +51,11 @@ curve, for a building the simulation grew, and for a city just loaded, whose
 trees are regrown from the map before its roads arrive. A committed bulldoze
 also clears the trees on every tile it covers, bare ground included.
 
+This is the rule for the wild trees grown from the map. A home's own yard
+trees are not part of it: they belong to the house kit, are planted by the
+home's own seed clear of its house, drive and yard furniture, and go when the
+home does (see [buildings.md](../art/buildings.md#residential-lots)).
+
 ## Ground cover
 
 All vertex-colour work on the existing terrain chunks — no new geometry:

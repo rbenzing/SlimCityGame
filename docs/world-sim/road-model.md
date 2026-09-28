@@ -732,17 +732,15 @@ fill, bus-lane fill, dashed-versus-double centre, edge lines) reads the
 piece directly, so a composed profile gets the correct furniture with no
 per-class special case.
 
-Two rules have not yet migrated off the road's tier and still read the
-tile's tier directly rather than its profile: **lamps** are placed on every
-tier except gravel and rail (not on a piece toggle), and **kerbside
-parking** eligibility is a separate per-tier flag on the catalog entry
-(set for the two-lane road, the gravel road, the alley and the one-way
-road) rather than a read of the profile's own parking piece. Both give the
-correct answer for all eleven catalog presets, since each preset's tier
-and its profile agree by construction, but a composed profile that adds a
-parking lane to a tier the flag does not cover will not yet get roadside
-parking from it, and a composed profile with no parking piece on a tier the
-flag does cover will still get one.
+**Lamps** have not yet migrated off the road's tier: they are placed on
+every tier except gravel and rail, not on a piece toggle. **Kerbside
+parking** reads both. A kerb beside the profile's own parking piece takes
+cars at any hour, overnight included, whatever the tier; a kerb with no
+parking piece beside it takes only short daytime stays, and only on a tier
+whose catalog entry sets the per-tier flag (the two-lane road, the gravel
+road, the alley and the one-way road); everything else takes none. No
+preset paints a parking lane, so on the presets the flag alone decides, and
+only by day.
 
 A junction places its own furniture by control rather than by tier: the
 road ranked highest at a node runs through with no stop marking; every arm

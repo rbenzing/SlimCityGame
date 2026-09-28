@@ -1,22 +1,22 @@
 /**
  * House kit for the residential HOUSE archetypes (detached single-family =
  * ResLow, attached rows = ResMediumRow). The base BuildingInstancer still draws
- * each body box with its facade shader; this layers the details that make a
- * home read as a home instead of a flat-topped office box:
- *   - a pitched GABLE ROOF capping every detached/row home;
- *   - for larger detached lots (2x3+), an attached GARAGE box on the road-
- *     facing side plus a DRIVEWAY strip running out to the street;
- *   - smaller 2x2 homes get the roof but no garage/driveway.
- * Apartments, towers, and mixed-use (ResMedium/ResHigh/Mixed) keep their flat
- * roofs. Anything below 2x2 never zones a home in the first place (catalog).
+ * each body box with its facade shader; this stands up everything else that
+ * makes a home read as a home, on the lot plan houselot.ts lays out from the
+ * street the home fronts:
+ *   - a pitched GABLE ROOF over the body;
+ *   - what each drive ends at — a carport, an attached or detached garage, a
+ *     garage door in a row's facade — and the resident's car on the drive;
+ *   - a front door on the street-facing wall;
+ *   - the yard: fence, above-ground pool, trampoline, grill, bushes and trees.
+ * The drive, path, patio and lawn are ground surfaces and belong to lots.ts.
  *
- * Mirrors massing.ts / props.ts: InstancedSlotPools, a per-building slot map,
- * fed the same BuildingDelta stream, night-tinted through the same
- * MeshStandardNodeMaterial colorNode mix (one shared night uniform across all
- * three kit pools). All geometry/placement is a PURE function of (entry,
- * buildingId[, roadAt]) — no Math.random, no Date.now — so a home's kit is
- * deterministic across reloads. `roadAt` (optional) orients the garage +
- * driveway toward the nearest street; without it, garage/driveway are skipped.
+ * Every repeated part is an InstancedSlotPool, fed the same BuildingDelta
+ * stream as the other building renderers. The roof, garage, carport and doors
+ * share the body's night tint (one uniform, the same colorNode mix as the
+ * massing tiers); the yard parts, the fence and the cars are lit like any
+ * other prop. Everything is a pure function of (entry, building, streets) — no
+ * Math.random, no Date.now — so a home's kit is the same on every load.
  */
 import * as THREE from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
@@ -27,24 +27,41 @@ import {
   BuildingInstance,
   BuildingState,
   VehicleKind,
-  ZoneType,
 } from '../shared/types';
-import { TILE_METERS, tileToWorld } from '../shared/constants';
 import { maxHeightOverFootprint } from './footprint';
 import {
   CONSTRUCTING_MASSING_HEIGHT_SCALE,
-  footprintShrinkFor,
   InstancedSlotPool,
   massingLifecycleTint,
 } from './massing';
+import { isHouseEntry } from './archetypes';
 import {
   sizeForKind,
   variantScaleForKind,
   VehicleKitPool,
   VEHICLE_PALETTE_HEX,
 } from './vehicles';
-import { materialHex } from './palette';
-import { pushConformingQuad } from './groundquad';
+import { materialHex, rgb255ToHex, SATURATED } from './palette';
+import { NO_STREETS, type StreetLookup } from './frontage';
+import {
+  CARPORT_DEPTH_M,
+  CARPORT_WIDTH_M,
+  DOOR_WIDTH_M,
+  POOL_RADIUS_M,
+  TRAMPOLINE_RADIUS_M,
+  inwardYaw,
+  lotToWorld,
+  planHouseLot,
+  type HouseLotPlan,
+  type LotRect,
+} from './houselot';
+import { DRIVE_Y_OFFSET } from './lots';
+import {
+  buildBroadleafGeometry,
+  buildShrubGeometry,
+  mergeGeometryParts,
+  paintVertexColor,
+} from './trees';
 
 // Same avalanche hash every render/*.ts keeps a local copy of.
 function hash1(n: number): number {
@@ -57,10 +74,10 @@ function hash1(n: number): number {
 
 const HASH_SLOT_ROOF_PITCH = 71;
 const HASH_SLOT_ROOF_COLOR = 72;
-const HASH_SLOT_GARAGE_SIDE = 73;
+const HASH_SLOT_CAR_COLOR = 73;
 const HASH_SLOT_CAR_VARIANT = 74;
 
-const INITIAL_ROOF_CAPACITY = 64;
+const INITIAL_KIT_CAPACITY = 64;
 /**
  * Night tint the kit multiplies toward at full night. Matches the BODY's tint
  * (buildings.ts NIGHT_BODY_TINT, relative luminance ~0.377 — above the 0.3
@@ -95,42 +112,32 @@ const ROOF_PALETTE: readonly number[] = [
 ];
 /** Garage wall — plaster, distinct from the roof. */
 const GARAGE_WALL_COLOR = materialHex('whitePlaster');
-/** Driveway — plain concrete. */
-const DRIVEWAY_COLOR = materialHex('cleanConcrete');
+const CARPORT_COLOR = materialHex('brightWood');
+const FRONT_DOOR_COLOR = materialHex('darkWood');
+const GARAGE_DOOR_COLOR = materialHex('metalPlates');
+const FENCE_COLOR: Readonly<Record<HouseLotPlan['yard']['fenceColour'], number>> = {
+  // The palest of each: a fence is a thin board seen mostly edge-on or in its
+  // own shade, and a mid tone read as a black line round every garden.
+  wood: materialHex('brightestWood'),
+  white: materialHex('whiteBrick'),
+};
 
-/**
- * Whether a home has a garage + driveway. Lives with the parking rules rather
- * than here, because "does this building park on its own land" is one question
- * whichever building is asking it, and the kerb needs the same answer.
- */
-import { hasGarage } from './parked';
-export { hasGarage };
+export const GARAGE_HEIGHT_M = 2.6;
+export const DOOR_HEIGHT_M = 2.1;
+/** A door or a garage door stands this far proud of the wall it is set in. */
+const PANEL_DEPTH_M = 0.06;
+export const FENCE_HEIGHT_M = 1.6;
+const FENCE_THICKNESS_M = 0.08;
+/** A long fence run is cut into panels no longer than this, each seated on the ground under it. */
+const FENCE_PANEL_MAX_M = 2.5;
+const CARPORT_HEIGHT_M = 2.4;
+const POOL_HEIGHT_M = 1.2;
+const TRAMPOLINE_MAT_HEIGHT_M = 0.9;
+/** The broadleaf kit's canopy is a mature tree at scale 1; a yard tree is scaled from that. */
+const YARD_TREE_SCALE = 0.8;
 
-const GARAGE_WIDTH_METERS = 4.2;
-const GARAGE_DEPTH_METERS = 5.5;
-const GARAGE_HEIGHT_METERS = 2.6;
-/** Driveway slab rides above the terrain overlays but below the road plate (0.15). */
-const DRIVEWAY_Y_OFFSET = 0.1;
-/**
- * Max conforming sub-quad size for the driveway slab: subdivided so the slab
- * follows the in-tile terrain curve instead of letting ground bulge through a
- * single flat quad (matches parked.ts / roadsmesh.ts's ~2 m cell target).
- */
-const DRIVEWAY_CONFORM_CELL_M = 2;
-/** How far out (tiles) to look for the street a garage faces. */
-export const GARAGE_ROAD_SEARCH_TILES = 3;
-
-// Resident's car, parked ON the driveway (homes never street-park — see
-// parked.ts, which skips residential). A real vehicle-kit Car model
-// (render/vehicles.ts), deterministic sedan/wagon/hatch variant per home.
-const CAR_LENGTH_METERS = sizeForKind(VehicleKind.Car)[2];
 /** A resident's car is painted from the same list as every other car. */
 const CAR_PALETTE: readonly number[] = VEHICLE_PALETTE_HEX;
-
-/** Zones whose buildings get a pitched roof (detached homes + attached rows). */
-export function isRoofedEntry(entry: BuildingCatalogEntry): boolean {
-  return entry.zone === ZoneType.ResLow || entry.zone === ZoneType.ResMediumRow;
-}
 
 /** Ridge runs along the LONGER footprint axis (a 1xN row house ridges down the row, not across it). Pure. */
 export function roofRidgeAlongZ(entry: BuildingCatalogEntry): boolean {
@@ -148,34 +155,6 @@ export function computeRoofRise(baseW: number, baseD: number, buildingId: number
 export function roofColorHex(buildingId: number): number {
   const i = Math.floor(hash1(buildingId + HASH_SLOT_ROOF_COLOR) * ROOF_PALETTE.length);
   return ROOF_PALETTE[Math.min(ROOF_PALETTE.length - 1, i)]!;
-}
-
-/**
- * Nearest street the house fronts onto, as a unit tile direction from the
- * footprint center + the road tile hit (ring search out to
- * GARAGE_ROAD_SEARCH_TILES, deterministic N→E→S→W). null when no road is in
- * range (garage/driveway are then skipped). Pure given `roadAt`.
- */
-export function nearestRoadFrontage(
-  building: BuildingInstance,
-  entry: BuildingCatalogEntry,
-  roadAt: (x: number, z: number) => boolean,
-): { fdx: number; fdz: number; roadX: number; roadZ: number } | null {
-  const cx = building.x + Math.floor(entry.footprint.w / 2);
-  const cz = building.z + Math.floor(entry.footprint.d / 2);
-  for (let r = 1; r <= GARAGE_ROAD_SEARCH_TILES; r += 1) {
-    const candidates: ReadonlyArray<readonly [number, number]> = [
-      [cx, cz - r],
-      [cx + r, cz],
-      [cx, cz + r],
-      [cx - r, cz],
-    ];
-    for (const [rx, rz] of candidates) {
-      if (roadAt(rx, rz))
-        return { fdx: Math.sign(rx - cx), fdz: Math.sign(rz - cz), roadX: rx, roadZ: rz };
-    }
-  }
-  return null;
 }
 
 /**
@@ -206,76 +185,152 @@ export function buildGableRoofGeometry(): THREE.BufferGeometry {
   return geometry;
 }
 
-/** Base-anchored unit box (origin at the base center) for the garage. */
-function buildGarageGeometry(): THREE.BoxGeometry {
+/** Base-anchored unit box (origin at the base center): garages, doors, fence panels. */
+function buildUnitBoxGeometry(): THREE.BoxGeometry {
   const geometry = new THREE.BoxGeometry(1, 1, 1);
   geometry.translate(0, 0.5, 0);
   return geometry;
 }
 
+/** A carport in metres, base-anchored: four posts and a flat roof, its width along local X. */
+export function buildCarportGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const post = 0.12;
+  const hx = CARPORT_WIDTH_M / 2 - 0.15;
+  const hz = CARPORT_DEPTH_M / 2 - 0.15;
+  for (const [x, z] of [
+    [-hx, -hz],
+    [hx, -hz],
+    [-hx, hz],
+    [hx, hz],
+  ] as const) {
+    const p = new THREE.BoxGeometry(post, CARPORT_HEIGHT_M, post);
+    p.translate(x, CARPORT_HEIGHT_M / 2, z);
+    parts.push(paintVertexColor(p, 0xffffff));
+  }
+  const roof = new THREE.BoxGeometry(CARPORT_WIDTH_M, 0.12, CARPORT_DEPTH_M);
+  roof.translate(0, CARPORT_HEIGHT_M, 0);
+  parts.push(paintVertexColor(roof, 0xffffff));
+  return mergeGeometryParts(parts);
+}
+
 /**
- * Terrain-conforming driveway slab — the shared ground-quad builder, so the
- * slab rides a constant offset above the rendered ground instead of a flat
- * single-sample plane the terrain can bulge through.
+ * An above-ground pool, base-anchored: a round wall, and the water inside its
+ * rim. The water is a disc laid just over the wall's closed top, a hand's width
+ * in from its edge, so the rim reads as a ring round it from above.
  */
-function buildConformingDrivewayGeometry(
-  x0: number,
-  z0: number,
-  x1: number,
-  z1: number,
-  heightAt: (x: number, z: number) => number,
-  color: THREE.Color,
-): THREE.BufferGeometry {
-  const positions: number[] = [];
-  const colors: number[] = [];
-  pushConformingQuad(
-    positions,
-    colors,
-    x0,
-    z0,
-    x1,
-    z1,
-    DRIVEWAY_Y_OFFSET,
-    [color.r, color.g, color.b],
-    heightAt,
-    DRIVEWAY_CONFORM_CELL_M,
+export function buildPoolGeometry(): THREE.BufferGeometry {
+  const wall = new THREE.CylinderGeometry(POOL_RADIUS_M, POOL_RADIUS_M, POOL_HEIGHT_M, 20);
+  wall.translate(0, POOL_HEIGHT_M / 2, 0);
+  const water = new THREE.CylinderGeometry(POOL_RADIUS_M - 0.15, POOL_RADIUS_M - 0.15, 0.02, 20);
+  water.translate(0, POOL_HEIGHT_M + 0.01, 0);
+  return mergeGeometryParts([
+    paintVertexColor(wall, materialHex('bluePlaster')),
+    paintVertexColor(water, rgb255ToHex(SATURATED.cyan)),
+  ]);
+}
+
+/** A round trampoline, base-anchored: six legs, a frame ring and the mat. */
+export function buildTrampolineGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const frame = materialHex('metalPlates');
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const leg = new THREE.CylinderGeometry(0.04, 0.04, TRAMPOLINE_MAT_HEIGHT_M, 5);
+    leg.translate(
+      Math.cos(a) * (TRAMPOLINE_RADIUS_M - 0.1),
+      TRAMPOLINE_MAT_HEIGHT_M / 2,
+      Math.sin(a) * (TRAMPOLINE_RADIUS_M - 0.1),
+    );
+    parts.push(paintVertexColor(leg, frame));
+  }
+  const ring = new THREE.CylinderGeometry(TRAMPOLINE_RADIUS_M, TRAMPOLINE_RADIUS_M, 0.08, 20, 1, true);
+  ring.translate(0, TRAMPOLINE_MAT_HEIGHT_M, 0);
+  parts.push(paintVertexColor(ring, frame));
+  const mat = new THREE.CylinderGeometry(
+    TRAMPOLINE_RADIUS_M - 0.15,
+    TRAMPOLINE_RADIUS_M - 0.15,
+    0.02,
+    20,
   );
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geometry.computeVertexNormals();
-  return geometry;
+  mat.translate(0, TRAMPOLINE_MAT_HEIGHT_M - 0.02, 0);
+  parts.push(paintVertexColor(mat, materialHex('coal')));
+  return mergeGeometryParts(parts);
+}
+
+/** A kettle-style grill on four legs, base-anchored: 0.6 × 0.5 m, 1 m to the top of its lid. */
+export function buildGrillGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const legColour = materialHex('metalPlates');
+  for (const [x, z] of [
+    [-0.25, -0.2],
+    [0.25, -0.2],
+    [-0.25, 0.2],
+    [0.25, 0.2],
+  ] as const) {
+    const leg = new THREE.BoxGeometry(0.04, 0.6, 0.04);
+    leg.translate(x, 0.3, z);
+    parts.push(paintVertexColor(leg, legColour));
+  }
+  const body = new THREE.BoxGeometry(0.6, 0.25, 0.5);
+  body.translate(0, 0.72, 0);
+  parts.push(paintVertexColor(body, materialHex('darkBitumen')));
+  const lid = new THREE.BoxGeometry(0.58, 0.15, 0.48);
+  lid.translate(0, 0.92, 0);
+  parts.push(paintVertexColor(lid, materialHex('coal')));
+  return mergeGeometryParts(parts);
 }
 
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
 const _quaternion = new THREE.Quaternion();
-const _identityQuat = new THREE.Quaternion();
 const _scale = new THREE.Vector3();
 const _color = new THREE.Color();
 const _yAxis = new THREE.Vector3(0, 1, 0);
 
+/** The parts of the kit, one pool each. */
+export type HousePart =
+  | 'roof'
+  | 'garage'
+  | 'carport'
+  | 'door'
+  | 'fence'
+  | 'pool'
+  | 'trampoline'
+  | 'grill'
+  | 'bush'
+  | 'tree';
+
+interface OwnedSlot {
+  part: HousePart;
+  slot: number;
+}
+
 interface HouseSlots {
-  roof: number;
-  garage: number | null;
-  /** Whether this building owns a conforming driveway mesh (see drivewayMeshes). */
-  driveway: boolean;
-  car: number | null;
+  parts: OwnedSlot[];
+  cars: number[];
+}
+
+/** A frame rectangle as a world-space, axis-aligned box: its centre and its X and Z extents. */
+function worldBox(plan: HouseLotPlan, r: LotRect): { x: number; z: number; sx: number; sz: number } {
+  const a = lotToWorld(plan.frame, r.u0, r.v0);
+  const b = lotToWorld(plan.frame, r.u1, r.v1);
+  return {
+    x: (a.x + b.x) / 2,
+    z: (a.z + b.z) / 2,
+    sx: Math.abs(a.x - b.x),
+    sz: Math.abs(a.z - b.z),
+  };
 }
 
 export class HouseRoofRenderer {
-  private readonly scene: THREE.Scene;
   private readonly heightAt: (x: number, z: number) => number;
   private readonly roadAt: (x: number, z: number) => boolean;
+  private readonly street: StreetLookup;
   private readonly catalogById: Map<string, BuildingCatalogEntry>;
   private readonly nightFactorUniform = uniform(0);
-  private readonly roofPool: InstancedSlotPool;
-  private readonly garagePool: InstancedSlotPool;
+  private readonly pools: Record<HousePart, InstancedSlotPool>;
   private readonly carPool: VehicleKitPool;
-  // Driveways are per-building terrain-conforming meshes (not instanced
-  // planes): a flat instance can't follow a slope, so ground bulged through.
-  private readonly drivewayMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
-  private readonly drivewayMeshes = new Map<number, THREE.Mesh>();
   private readonly buildingSlots = new Map<number, HouseSlots>();
 
   constructor(
@@ -283,29 +338,41 @@ export class HouseRoofRenderer {
     heightAt: (x: number, z: number) => number,
     catalog: BuildingCatalogEntry[],
     roadAt: (x: number, z: number) => boolean = () => false,
+    street: StreetLookup = NO_STREETS,
   ) {
-    this.scene = scene;
     this.heightAt = heightAt;
     this.roadAt = roadAt;
+    this.street = street;
     this.catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
-    // One shared night uniform drives both kit pools' colorNode mix, so a
-    // house's roof and garage darken together with the body.
-    this.roofPool = new InstancedSlotPool(
-      scene,
-      buildGableRoofGeometry(),
-      this.kitMaterial(),
-      INITIAL_ROOF_CAPACITY,
-    );
-    this.garagePool = new InstancedSlotPool(
-      scene,
-      buildGarageGeometry(),
-      this.kitMaterial(),
-      INITIAL_ROOF_CAPACITY,
-    );
+    // The structure shares one night uniform, so a house's roof, garage and
+    // doors darken together with the body.
+    const kit = (geometry: THREE.BufferGeometry): InstancedSlotPool =>
+      new InstancedSlotPool(scene, geometry, this.kitMaterial(), INITIAL_KIT_CAPACITY);
+    // Yard parts carry their colours in the geometry and are lit like trees.
+    const yardMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    const yard = (geometry: THREE.BufferGeometry): InstancedSlotPool =>
+      new InstancedSlotPool(scene, geometry, yardMaterial, INITIAL_KIT_CAPACITY);
+    this.pools = {
+      roof: kit(buildGableRoofGeometry()),
+      garage: kit(buildUnitBoxGeometry()),
+      carport: kit(buildCarportGeometry()),
+      door: kit(buildUnitBoxGeometry()),
+      fence: new InstancedSlotPool(
+        scene,
+        buildUnitBoxGeometry(),
+        new THREE.MeshLambertMaterial(),
+        INITIAL_KIT_CAPACITY,
+      ),
+      pool: yard(buildPoolGeometry()),
+      trampoline: yard(buildTrampolineGeometry()),
+      grill: yard(buildGrillGeometry()),
+      bush: yard(buildShrubGeometry()),
+      tree: yard(buildBroadleafGeometry()),
+    };
     // Cars are real vehicle-kit models, lit naturally (they darken with the
     // scene at night, like the lot-parked cars in parked.ts) — body-only
     // palette tint, lights off.
-    this.carPool = new VehicleKitPool(scene, VehicleKind.Car, INITIAL_ROOF_CAPACITY);
+    this.carPool = new VehicleKitPool(scene, VehicleKind.Car, INITIAL_KIT_CAPACITY);
   }
 
   private kitMaterial(): MeshStandardNodeMaterial {
@@ -319,12 +386,11 @@ export class HouseRoofRenderer {
     for (const id of delta.removed) this.freeBuilding(id);
     for (const building of delta.added) this.applyOne(building);
     for (const building of delta.updated) this.applyOne(building);
-    this.roofPool.commit();
-    this.garagePool.commit();
+    for (const pool of Object.values(this.pools)) pool.commit();
     this.carPool.finalize();
   }
 
-  /** 0 (day) .. 1 (night) — mixes the whole kit toward the same tint as the body. */
+  /** 0 (day) .. 1 (night) — mixes the structure toward the same tint as the body. */
   setNightFactor(nightFactor: number): void {
     this.nightFactorUniform.value = Math.min(1, Math.max(0, nightFactor));
   }
@@ -333,59 +399,33 @@ export class HouseRoofRenderer {
     return this.nightFactorUniform.value;
   }
 
-  /** Roof slot index a building owns, or null if it has no pitched roof. For tests/introspection. */
-  roofSlotFor(buildingId: number): number | null {
-    return this.buildingSlots.get(buildingId)?.roof ?? null;
+  /** Slots a building owns in one part's pool. For tests/introspection. */
+  slotsFor(buildingId: number, part: HousePart): number[] {
+    return (this.buildingSlots.get(buildingId)?.parts ?? [])
+      .filter((p) => p.part === part)
+      .map((p) => p.slot);
   }
 
-  /** Garage slot index a building owns, or null if it has no garage. For tests/introspection. */
-  garageSlotFor(buildingId: number): number | null {
-    return this.buildingSlots.get(buildingId)?.garage ?? null;
+  /** How many instances one part's pool holds. For tests/introspection. */
+  partCount(part: HousePart): number {
+    return this.pools[part].instanceCount();
   }
 
-  /** Whether a building owns a driveway slab. For tests/introspection. */
-  hasDriveway(buildingId: number): boolean {
-    return this.buildingSlots.get(buildingId)?.driveway ?? false;
+  getPartMatrix(part: HousePart, slot: number, out: THREE.Matrix4): void {
+    this.pools[part].getMatrixAt(slot, out);
   }
 
-  /** Vertex count of a building's conforming driveway slab (0 if it has none). */
-  drivewayVertexCountFor(buildingId: number): number {
-    const mesh = this.drivewayMeshes.get(buildingId);
-    const pos = mesh?.geometry.getAttribute('position');
-    return pos ? pos.count : 0;
-  }
-
-  getMatrix(slot: number, out: THREE.Matrix4): void {
-    this.roofPool.getMatrixAt(slot, out);
-  }
-
-  getColor(slot: number, out: THREE.Color): void {
-    this.roofPool.getColorAt(slot, out);
-  }
-
-  getGarageMatrix(slot: number, out: THREE.Matrix4): void {
-    this.garagePool.getMatrixAt(slot, out);
-  }
-
-  instanceCount(): number {
-    return this.roofPool.instanceCount();
-  }
-
-  garageCount(): number {
-    return this.garagePool.instanceCount();
-  }
-
-  drivewayCount(): number {
-    return this.drivewayMeshes.size;
+  getPartColor(part: HousePart, slot: number, out: THREE.Color): void {
+    this.pools[part].getColorAt(slot, out);
   }
 
   carCount(): number {
     return this.carPool.usedSlots();
   }
 
-  /** Driveway car slot a building owns, or null. For tests/introspection. */
-  carSlotFor(buildingId: number): number | null {
-    return this.buildingSlots.get(buildingId)?.car ?? null;
+  /** Car slots a building owns, one per drive while it is Active. For tests/introspection. */
+  carSlotsFor(buildingId: number): number[] {
+    return this.buildingSlots.get(buildingId)?.cars ?? [];
   }
 
   getCarMatrix(slot: number, out: THREE.Matrix4): void {
@@ -393,18 +433,10 @@ export class HouseRoofRenderer {
   }
 
   private freeBuilding(buildingId: number): void {
-    const drivewayMesh = this.drivewayMeshes.get(buildingId);
-    if (drivewayMesh) {
-      this.scene.remove(drivewayMesh);
-      drivewayMesh.geometry.dispose();
-      this.drivewayMeshes.delete(buildingId);
-    }
-
     const slots = this.buildingSlots.get(buildingId);
     if (!slots) return;
-    this.roofPool.free(slots.roof);
-    if (slots.garage !== null) this.garagePool.free(slots.garage);
-    if (slots.car !== null) this.carPool.free(slots.car);
+    for (const { part, slot } of slots.parts) this.pools[part].free(slot);
+    for (const slot of slots.cars) this.carPool.free(slot);
     this.buildingSlots.delete(buildingId);
   }
 
@@ -412,177 +444,156 @@ export class HouseRoofRenderer {
     this.freeBuilding(building.id);
 
     const entry = this.catalogById.get(building.catalogId);
-    if (!entry || !isRoofedEntry(entry)) return;
+    if (!entry || !isHouseEntry(entry)) return;
+    const plan = planHouseLot(building, entry, this.roadAt, this.street);
+    if (!plan) return;
 
+    const slots: HouseSlots = { parts: [], cars: [] };
+    this.buildingSlots.set(building.id, slots);
+    const tint = massingLifecycleTint(building.state);
     const heightScale =
       building.state === BuildingState.Constructing ? CONSTRUCTING_MASSING_HEIGHT_SCALE : 1;
-    const tint = massingLifecycleTint(building.state);
-
-    // Full body box (what BuildingInstancer draws) — a house is a single mass,
-    // so its roof spans the whole footprint. Base dims mirror the footprint
-    // shrink so the kit sits flush.
-    const shrink = footprintShrinkFor(entry);
-    const baseW = entry.footprint.w * TILE_METERS * shrink;
-    const baseD = entry.footprint.d * TILE_METERS * shrink;
-    const centerX = (building.x + entry.footprint.w / 2) * TILE_METERS;
-    const centerZ = (building.z + entry.footprint.d / 2) * TILE_METERS;
-    // Match BuildingInstancer's footprint-max base so the roof sits flush on
-    // the body on sloped lots (centre-only sampling floats/sinks the roof).
-    const groundY = maxHeightOverFootprint(
+    // The body's own base: the highest ground under the footprint, which is
+    // where BuildingInstancer seats it.
+    const bodyGround = maxHeightOverFootprint(
       this.heightAt,
       building.x,
       building.z,
       entry.footprint.w,
       entry.footprint.d,
     );
-    const eavesY = groundY + entry.height * heightScale; // body box top = ground + full height
-    const rise = computeRoofRise(baseW, baseD, building.id) * heightScale;
+
+    const put = (
+      part: HousePart,
+      x: number,
+      y: number,
+      z: number,
+      yaw: number,
+      sx: number,
+      sy: number,
+      sz: number,
+      hex: number,
+      tinted: boolean,
+    ): void => {
+      const pool = this.pools[part];
+      const slot = pool.allocate();
+      _position.set(x, y, z);
+      _quaternion.setFromAxisAngle(_yAxis, yaw);
+      _scale.set(sx, sy, sz);
+      _matrix.compose(_position, _quaternion, _scale);
+      pool.setMatrixAt(slot, _matrix);
+      _color.setHex(hex);
+      if (tinted) {
+        _color.r *= tint[0];
+        _color.g *= tint[1];
+        _color.b *= tint[2];
+      }
+      pool.setColorAt(slot, _color);
+      slots.parts.push({ part, slot });
+    };
 
     // --- roof ---------------------------------------------------------------
-    const ridgeAlongZ = roofRidgeAlongZ(entry);
-    const roofQuarter = building.rotation + (ridgeAlongZ ? 1 : 0);
-    const roofSlot = this.roofPool.allocate();
-    _position.set(centerX, eavesY, centerZ);
-    _quaternion.setFromAxisAngle(_yAxis, roofQuarter * (Math.PI / 2));
-    _scale.set(ridgeAlongZ ? baseD : baseW, rise, ridgeAlongZ ? baseW : baseD);
-    _matrix.compose(_position, _quaternion, _scale);
-    this.roofPool.setMatrixAt(roofSlot, _matrix);
-    this.setTintedColor(this.roofPool, roofSlot, roofColorHex(building.id), tint);
-
-    const slots: HouseSlots = { roof: roofSlot, garage: null, driveway: false, car: null };
-
-    // --- garage + driveway (larger detached lots facing a street) -----------
-    const frontage = hasGarage(entry) ? nearestRoadFrontage(building, entry, this.roadAt) : null;
-    if (frontage) {
-      this.placeGarageAndDriveway(building, entry, frontage, centerX, centerZ, tint, slots);
-    }
-
-    this.buildingSlots.set(building.id, slots);
-  }
-
-  /**
-   * Attached garage tucked to one seeded side of the house's road-facing edge,
-   * with a driveway strip running from its door out to the street. `frontDir`
-   * is axis-aligned (the ring search only hits N/E/S/W), so both kits stay
-   * axis-aligned — the garage's depth runs along the front direction and the
-   * driveway spans from the garage door to the road tile's near edge.
-   */
-  private placeGarageAndDriveway(
-    building: BuildingInstance,
-    entry: BuildingCatalogEntry,
-    frontage: { fdx: number; fdz: number; roadX: number; roadZ: number },
-    centerX: number,
-    centerZ: number,
-    tint: readonly [number, number, number],
-    slots: HouseSlots,
-  ): void {
-    const { fdx, fdz } = frontage;
-    const alongX = fdx !== 0; // front direction runs along world X
-    const houseHalfAlongFront =
-      (alongX ? entry.footprint.w : entry.footprint.d) *
-      TILE_METERS *
-      0.5 *
-      footprintShrinkFor(entry);
-    const lateralLotHalf = (alongX ? entry.footprint.d : entry.footprint.w) * TILE_METERS * 0.5;
-
-    const garageW = Math.min(GARAGE_WIDTH_METERS, 2 * lateralLotHalf - 2);
-    const garageDepth = GARAGE_DEPTH_METERS;
-    const side = hash1(building.id + HASH_SLOT_GARAGE_SIDE) < 0.5 ? 1 : -1;
-
-    // Garage sits just ahead of the house front face, offset to one lateral side.
-    const frontFace = houseHalfAlongFront; // distance from center to house front along the front axis
-    const garageAlong = frontFace + garageDepth * 0.5 - 0.4; // slight overlap into the house
-    const lateralOffset = Math.max(0, lateralLotHalf - garageW * 0.5 - 1) * side;
-
-    const gx = centerX + (alongX ? fdx * garageAlong : lateralOffset);
-    const gz = centerZ + (alongX ? lateralOffset : fdz * garageAlong);
-    const gGround = this.heightAt(gx, gz);
-
-    const garageSlot = this.garagePool.allocate();
-    _position.set(gx, gGround, gz);
-    // Box is base-anchored; depth runs along the front axis, width laterally.
-    _scale.set(
-      alongX ? garageDepth : garageW,
-      GARAGE_HEIGHT_METERS,
-      alongX ? garageW : garageDepth,
+    const body = worldBox(plan, plan.body);
+    const eavesY = bodyGround + entry.height * heightScale;
+    const rise = computeRoofRise(body.sx, body.sz, building.id) * heightScale;
+    const ridgeAlongZ = body.sz > body.sx;
+    put(
+      'roof',
+      body.x,
+      eavesY,
+      body.z,
+      ridgeAlongZ ? Math.PI / 2 : 0,
+      ridgeAlongZ ? body.sz : body.sx,
+      rise,
+      ridgeAlongZ ? body.sx : body.sz,
+      roofColorHex(building.id),
+      true,
     );
-    _matrix.compose(_position, _identityQuat, _scale);
-    this.garagePool.setMatrixAt(garageSlot, _matrix);
-    this.setTintedColor(this.garagePool, garageSlot, GARAGE_WALL_COLOR, tint);
-    slots.garage = garageSlot;
 
-    // Driveway: from the garage door out to the near edge of the road tile.
-    const garageDoorAlong = garageAlong + garageDepth * 0.5;
-    const roadCenterAlong = alongX
-      ? tileToWorld(frontage.roadX) - centerX
-      : tileToWorld(frontage.roadZ) - centerZ;
-    const roadNearEdgeAlong = roadCenterAlong - Math.sign(roadCenterAlong) * (TILE_METERS * 0.5);
-    const driveLength = Math.abs(roadNearEdgeAlong) - garageDoorAlong;
-    if (driveLength > 0.5) {
-      const driveMidAlong = garageDoorAlong + driveLength * 0.5;
-      const dxw = centerX + (alongX ? fdx * driveMidAlong : lateralOffset);
-      const dzw = centerZ + (alongX ? lateralOffset : fdz * driveMidAlong);
-      const halfX = (alongX ? driveLength : garageW) / 2;
-      const halfZ = (alongX ? garageW : driveLength) / 2;
-      _color.setHex(DRIVEWAY_COLOR);
-      _color.r *= tint[0];
-      _color.g *= tint[1];
-      _color.b *= tint[2];
-      const drivewayMesh = new THREE.Mesh(
-        buildConformingDrivewayGeometry(
-          dxw - halfX,
-          dzw - halfZ,
-          dxw + halfX,
-          dzw + halfZ,
-          this.heightAt,
-          _color,
-        ),
-        this.drivewayMaterial,
-      );
-      drivewayMesh.receiveShadow = true;
-      this.scene.add(drivewayMesh);
-      this.drivewayMeshes.set(building.id, drivewayMesh);
-      slots.driveway = true;
-
-      // The resident's car, parked ON the driveway slab near the garage door,
-      // nose (+Z on the kit geometry) pulled in toward the garage. (Active
-      // homes only — a constructing/abandoned home shows no car.)
-      if (building.state === BuildingState.Active && driveLength >= CAR_LENGTH_METERS * 0.6) {
-        const carAlong = garageDoorAlong + Math.min(CAR_LENGTH_METERS * 0.6, driveLength * 0.5);
-        const cxw = centerX + (alongX ? fdx * carAlong : lateralOffset);
-        const czw = centerZ + (alongX ? lateralOffset : fdz * carAlong);
-        const carSlot = this.carPool.allocate();
-
-        const size = sizeForKind(VehicleKind.Car);
-        const variantIdx = Math.floor(hash1(building.id + HASH_SLOT_CAR_VARIANT) * 3);
-        const variant = variantScaleForKind(VehicleKind.Car, variantIdx);
-        const sy = size[1] * variant[1];
-
-        // Kit geometry is a unit cube with its base at y=-0.5: scale sets real
-        // meters and the center rides at the driveway surface + half height.
-        _position.set(cxw, this.heightAt(cxw, czw) + DRIVEWAY_Y_OFFSET + sy / 2, czw);
-        _quaternion.setFromAxisAngle(_yAxis, Math.atan2(-fdx, -fdz)); // nose toward the garage
-        _scale.set(size[0] * variant[0], sy, size[2] * variant[2]);
-        _matrix.compose(_position, _quaternion, _scale);
-        this.carPool.mesh.setMatrixAt(carSlot, _matrix);
-        const ci = Math.floor(hash1(building.id + HASH_SLOT_GARAGE_SIDE * 2) * CAR_PALETTE.length);
-        _color.setHex(CAR_PALETTE[Math.min(CAR_PALETTE.length - 1, ci)]!);
-        this.carPool.mesh.setColorAt(carSlot, _color);
-        slots.car = carSlot;
+    // --- doors, and what each drive ends at ---------------------------------
+    for (const door of plan.doors) {
+      const b = worldBox(plan, {
+        u0: door.u - DOOR_WIDTH_M / 2,
+        u1: door.u + DOOR_WIDTH_M / 2,
+        v0: door.v - PANEL_DEPTH_M,
+        v1: door.v,
+      });
+      put('door', b.x, bodyGround, b.z, 0, b.sx, DOOR_HEIGHT_M, b.sz, FRONT_DOOR_COLOR, true);
+    }
+    const carportYaw = plan.frame.alongX ? 0 : Math.PI / 2;
+    for (const drive of plan.drives) {
+      let doorGround = bodyGround;
+      if (drive.coverRect && (drive.cover === 'garage' || drive.cover === 'detachedGarage')) {
+        const g = worldBox(plan, drive.coverRect);
+        doorGround = this.heightAt(g.x, g.z);
+        put('garage', g.x, doorGround, g.z, 0, g.sx, GARAGE_HEIGHT_M, g.sz, GARAGE_WALL_COLOR, true);
+      } else if (drive.coverRect && drive.cover === 'carport') {
+        const c = worldBox(plan, drive.coverRect);
+        put('carport', c.x, this.heightAt(c.x, c.z), c.z, carportYaw, 1, 1, 1, CARPORT_COLOR, true);
+      }
+      if (drive.garageDoor) {
+        const d = drive.garageDoor;
+        const b = worldBox(plan, { u0: d.u0, u1: d.u1, v0: d.v - PANEL_DEPTH_M, v1: d.v });
+        put('door', b.x, doorGround, b.z, 0, b.sx, DOOR_HEIGHT_M, b.sz, GARAGE_DOOR_COLOR, true);
       }
     }
-  }
 
-  private setTintedColor(
-    pool: InstancedSlotPool,
-    slot: number,
-    hex: number,
-    tint: readonly [number, number, number],
-  ): void {
-    _color.setHex(hex);
-    _color.r *= tint[0];
-    _color.g *= tint[1];
-    _color.b *= tint[2];
-    pool.setColorAt(slot, _color);
+    // --- the resident's car, one per drive ----------------------------------
+    if (building.state === BuildingState.Active) {
+      const size = sizeForKind(VehicleKind.Car);
+      plan.drives.forEach((drive, i) => {
+        const at = lotToWorld(plan.frame, drive.car.u, drive.car.v);
+        const seed = building.id * 7 + i;
+        const variant = variantScaleForKind(
+          VehicleKind.Car,
+          Math.floor(hash1(seed + HASH_SLOT_CAR_VARIANT) * 3),
+        );
+        const sy = size[1] * variant[1];
+        const slot = this.carPool.allocate();
+        // Kit geometry is a unit cube with its base at y=-0.5: scale sets real
+        // meters and the center rides at the drive surface + half height.
+        _position.set(at.x, this.heightAt(at.x, at.z) + DRIVE_Y_OFFSET + sy / 2, at.z);
+        _quaternion.setFromAxisAngle(_yAxis, inwardYaw(plan.frame));
+        _scale.set(size[0] * variant[0], sy, size[2] * variant[2]);
+        _matrix.compose(_position, _quaternion, _scale);
+        this.carPool.mesh.setMatrixAt(slot, _matrix);
+        const ci = Math.floor(hash1(seed + HASH_SLOT_CAR_COLOR) * CAR_PALETTE.length);
+        _color.setHex(CAR_PALETTE[Math.min(CAR_PALETTE.length - 1, ci)]!);
+        this.carPool.mesh.setColorAt(slot, _color);
+        slots.cars.push(slot);
+      });
+    }
+
+    // --- the yard -----------------------------------------------------------
+    // Nobody lives in a home still going up; an abandoned one keeps what
+    // stands in the ground and loses what its family took with them.
+    if (building.state === BuildingState.Constructing) return;
+    const { yard } = plan;
+    const fenceHex = FENCE_COLOR[yard.fenceColour];
+    for (const run of yard.fence) {
+      const alongU = run.v0 === run.v1;
+      const length = alongU ? run.u1 - run.u0 : run.v1 - run.v0;
+      const panels = Math.max(1, Math.ceil(length / FENCE_PANEL_MAX_M));
+      for (let p = 0; p < panels; p++) {
+        const a = (alongU ? run.u0 : run.v0) + (p / panels) * length;
+        const b = (alongU ? run.u0 : run.v0) + ((p + 1) / panels) * length;
+        const t = FENCE_THICKNESS_M / 2;
+        const rect = alongU
+          ? { u0: a, u1: b, v0: run.v0 - t, v1: run.v0 + t }
+          : { u0: run.u0 - t, u1: run.u0 + t, v0: a, v1: b };
+        const f = worldBox(plan, rect);
+        put('fence', f.x, this.heightAt(f.x, f.z), f.z, 0, f.sx, FENCE_HEIGHT_M, f.sz, fenceHex, false);
+      }
+    }
+    const stand = (part: HousePart, u: number, v: number, scale: number, lift = 0): void => {
+      const at = lotToWorld(plan.frame, u, v);
+      put(part, at.x, this.heightAt(at.x, at.z) + lift, at.z, 0, scale, scale, scale, 0xffffff, false);
+    };
+    for (const bush of yard.bushes) stand('bush', bush.u, bush.v, bush.scale);
+    for (const tree of yard.trees) stand('tree', tree.u, tree.v, tree.scale * YARD_TREE_SCALE);
+    if (building.state !== BuildingState.Active) return;
+    if (yard.pool) stand('pool', yard.pool.u, yard.pool.v, 1);
+    if (yard.trampoline) stand('trampoline', yard.trampoline.u, yard.trampoline.v, 1);
+    for (const grill of yard.grills) stand('grill', grill.u, grill.v, 1, DRIVE_Y_OFFSET);
   }
 }

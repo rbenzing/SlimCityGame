@@ -29,8 +29,11 @@ null)` to pin lighting for a screenshot instead of waiting on the sim
   one: `readGrid()` (per-tile road/zone/water/height/power arrays),
   `readTransit()` (lines + ridership), `readBuildings`, `readKit`/`readKitIds`
   (which archetype kit parts actually built — "a silhouette claim is
-  exactly the kind a screenshot cannot settle on its own"), `readParking`
-  (stall occupancy — "a parked car and a moving one look alike in a shot"),
+  exactly the kind a screenshot cannot settle on its own"), `readHouseKit`,
+  `readHousePlan` and `readHouseCars` (what a home's lot holds and where —
+  a trampoline too small to pick out, or a car tucked behind the house),
+  `readParking` (stall occupancy — "a parked car and a moving one look alike
+  in a shot"),
   `readJunctions`, `readApproach`, `readLampPoles`, `readPowerPoles`,
   `readCabinets`, `readFurnitureCounts`, `readKerbAudit`, `readDrawn`, and
   `readEmptyDraws()` — meshes that would submit a zero-vertex or

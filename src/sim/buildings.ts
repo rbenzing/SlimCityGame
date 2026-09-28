@@ -8,6 +8,7 @@ import { BuildingState } from '../shared/types';
 import type {
   BuildingCatalogEntry,
   BuildingCategory,
+  BuildingDelta,
   BuildingInstance,
   GridState,
 } from '../shared/types';
@@ -24,6 +25,43 @@ export function footprintForRotation(
 ): Footprint {
   const { w, d } = entry.footprint;
   return rotation % 2 === 1 ? { w: d, d: w } : { w, d };
+}
+
+/**
+ * The building changes since the last snapshot as one delta the render thread
+ * can apply in any order: every id in exactly one list, carrying the building
+ * as it stands now.
+ *
+ * The changes arrive as a log, and a log can name one building twice — a home
+ * updated when its construction finished and removed when it levelled up, both
+ * before the next snapshot. Sent as logged, a renderer that applied the
+ * removals first put the removed home straight back from its update, and its
+ * roof stood on beside the bigger house that replaced it.
+ *
+ * A building no longer standing is removed and nothing else. One removed and
+ * standing again under the same id — only a load does that — is an update: the
+ * render thread still holds that id and has to redraw it.
+ */
+export function settleBuildingDelta(
+  added: readonly BuildingInstance[],
+  updated: readonly BuildingInstance[],
+  removed: readonly number[],
+  standing: (id: number) => BuildingInstance | undefined,
+): BuildingDelta {
+  const gone = new Set(removed);
+  const delta: BuildingDelta = { added: [], updated: [], removed: [] };
+  const sent = new Set<number>();
+  const send = (id: number, isNew: boolean): void => {
+    if (sent.has(id)) return;
+    const now = standing(id);
+    if (!now) return;
+    sent.add(id);
+    (isNew && !gone.has(id) ? delta.added : delta.updated).push({ ...now });
+  };
+  for (const b of added) send(b.id, true);
+  for (const b of updated) send(b.id, false);
+  for (const id of gone) if (!sent.has(id)) delta.removed.push(id);
+  return delta;
 }
 
 /** Safe read of a possibly-out-of-range typed array slot (noUncheckedIndexedAccess). */

@@ -34,9 +34,8 @@ import {
   massingLifecycleTint,
   SetbackBox,
 } from './massing';
-import { isRoofedEntry } from './houses';
 import { materialHex } from './palette';
-import { isCleanIndustry } from './archetypes';
+import { isCleanIndustry, isHouseEntry } from './archetypes';
 
 // ---------------------------------------------------------------------------
 // Deterministic hashing (never Math.random/Date.now) — each render/*.ts file
@@ -507,7 +506,7 @@ export class RoofPropRenderer {
     if (entry.category !== 'res' && entry.category !== 'com' && entry.category !== 'ind') return;
     // Detached/row homes get a pitched roof (houses.ts) instead of a flat roof
     // with vents/AC/antennas — rooftop clutter would poke through the pitch.
-    if (isRoofedEntry(entry)) return;
+    if (isHouseEntry(entry)) return;
 
     // Same frontage setback as the body renderers so com/ind rooftop clutter
     // stays on the set-back roof instead of floating over the parking bays.

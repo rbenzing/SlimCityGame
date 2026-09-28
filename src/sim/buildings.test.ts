@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MAP_SIZE, tileIndex } from '../shared/constants';
 import { BuildingState, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, GridState } from '../shared/types';
-import { BuildingRegistry } from './buildings';
+import { BuildingRegistry, settleBuildingDelta } from './buildings';
 import { createGrid } from '../world/grid';
 
 function makeGrid(): GridState {
@@ -216,5 +216,78 @@ describe('BuildingRegistry', () => {
     const registry = new BuildingRegistry(catalog);
     const inst = registry.place(g, park, 0, 0, 0);
     expect(inst!.state).toBe(BuildingState.Active);
+  });
+});
+
+describe('settleBuildingDelta', () => {
+  function standingIn(registry: BuildingRegistry) {
+    return (id: number) => registry.get(id);
+  }
+
+  it('sends a building updated and then removed in one window as removed only', () => {
+    const g = makeGrid();
+    const registry = new BuildingRegistry(catalog);
+    const home = registry.place(g, house, 5, 5, 0, BuildingState.Constructing)!;
+    home.state = BuildingState.Active;
+    const updated = [home];
+    registry.remove(g, home.id);
+
+    const delta = settleBuildingDelta([], updated, [home.id], standingIn(registry));
+    expect(delta).toEqual({ added: [], updated: [], removed: [home.id] });
+  });
+
+  it('drops a building added and removed again before the snapshot from the added list', () => {
+    const g = makeGrid();
+    const registry = new BuildingRegistry(catalog);
+    const home = registry.place(g, house, 5, 5, 0)!;
+    registry.remove(g, home.id);
+
+    const delta = settleBuildingDelta([home], [], [home.id], standingIn(registry));
+    expect(delta.added).toEqual([]);
+    expect(delta.updated).toEqual([]);
+  });
+
+  it('sends a building added and then updated once, in added, as it stands now', () => {
+    const g = makeGrid();
+    const registry = new BuildingRegistry(catalog);
+    const home = registry.place(g, house, 5, 5, 0, BuildingState.Constructing)!;
+    const added = [{ ...home }];
+    home.state = BuildingState.Active;
+
+    const delta = settleBuildingDelta(added, [home, home], [], standingIn(registry));
+    expect(delta.updated).toEqual([]);
+    expect(delta.added).toEqual([{ ...home, state: BuildingState.Active }]);
+  });
+
+  it('sends an id removed and standing again (a load) as an update, never also as a removal', () => {
+    const g = makeGrid();
+    const before = new BuildingRegistry(catalog);
+    const old = before.place(g, shop, 10, 10, 0)!;
+    const after = new BuildingRegistry(catalog);
+    const loaded = after.place(makeGrid(), house, 40, 40, 0)!;
+    expect(loaded.id).toBe(old.id);
+
+    const delta = settleBuildingDelta(after.all(), [], [old.id], standingIn(after));
+    expect(delta).toEqual({ added: [], updated: [{ ...loaded }], removed: [] });
+  });
+
+  it('keeps unrelated additions, updates and removals where they were', () => {
+    const g = makeGrid();
+    const registry = new BuildingRegistry(catalog);
+    const a = registry.place(g, house, 1, 1, 0)!;
+    const b = registry.place(g, house, 3, 3, 0)!;
+    const c = registry.place(g, house, 5, 5, 0)!;
+    registry.remove(g, c.id);
+
+    const delta = settleBuildingDelta([a], [b], [c.id], standingIn(registry));
+    expect(delta).toEqual({ added: [{ ...a }], updated: [{ ...b }], removed: [c.id] });
+  });
+
+  it('never hands out the registry’s own objects', () => {
+    const g = makeGrid();
+    const registry = new BuildingRegistry(catalog);
+    const a = registry.place(g, house, 1, 1, 0)!;
+    const delta = settleBuildingDelta([a], [], [], standingIn(registry));
+    expect(delta.added[0]).not.toBe(a);
   });
 });

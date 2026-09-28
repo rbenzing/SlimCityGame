@@ -61,18 +61,27 @@ Static parked cars are an occupancy signal, not decoration:
   standing on a near-white stall-line strip quad — the parking-lot read.
   Industrial lots park box trucks instead of cars, at a scaled-up
   ~2.4×2.4×7 m, using the same parked-vehicle silhouette; commercial lots
-  park cars. Homes never street-park — see the garage/driveway kit in
-  [buildings.md](buildings.md).
+  park cars. Homes never street-park: a home that fronts a street parks on
+  its own drive — see [Residential lots](buildings.md#residential-lots).
 - **Orientation**: a stall is parallel street parking — the car's long axis
   runs along the road, not perpendicular to it — the standard read for a car
   actually parked at a kerb or in a row.
 - **A car stands on its own lot, or at the kerb, never both.** Where a
   building's own frontage doesn't serve its parking (no bay row, no garage),
-  its cars park at the kerb instead: past the verge and the sidewalk and half
-  a car into the carriageway, parallel, with no apron and no painted bay,
-  since the road itself is already paved. Kerbside cars, like the lamps and
-  signs in [streets.md](streets.md), never stand on a tile with road on both
-  axes.
+  its cars park at the kerb instead: past the verge and the sidewalk,
+  parallel, with no apron and no painted bay, since the road itself is
+  already paved. Kerbside cars, like the lamps and signs in
+  [streets.md](streets.md), never stand on a tile with road on both axes.
+- **The street decides when a kerb may be parked at.** Where the street
+  paints a parking lane on the kerb's side, cars stand in the middle of that
+  lane at any hour, and the homes that use it keep theirs there overnight:
+  about nine in ten spaces taken from 19:00 to 07:00, about four in ten by
+  day. Where the street's tier allows parking but it paints no lane — every
+  preset street that allows parking — a kerb takes only short daytime stays,
+  half a car into the carriageway: none before 08:00 or after 19:00, and at
+  most half the spaces between. Every other road takes no kerbside car at
+  all. The kerb is for the buildings with nowhere of their own, which leaves
+  apartments; a home fronting a street has its drive.
 
 ## Landmark ploppables
 

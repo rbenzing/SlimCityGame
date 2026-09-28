@@ -23,13 +23,23 @@ import {
   RoadSpec,
   RoadTier,
   VehicleKind,
-  ZoneType,
 } from '../shared/types';
 import roadsData from '../data/roads.json';
 import type { RoadProfile } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
-import { carriagewayHalfWidthOf, kerbWidthOf } from '../shared/roadprofile';
-import { carriagewayHalfWidthMeters, curbWidthMeters, ROAD_Y_OFFSET } from './roadsmesh';
+import { ROAD_Y_OFFSET } from './roadsmesh';
+import { parkingLaneOffset } from '../shared/roadprofile';
+import { isHouseEntry } from './archetypes';
+import {
+  edgeFrameFor,
+  findRoadFacingEdge,
+  frameToWorld,
+  sidewalkDepthMeters,
+  vergeDepthMeters,
+  type EdgeFrame,
+  type RoadFacingEdge,
+  type Side,
+} from './frontage';
 import {
   sizeForKind,
   variantScaleForKind,
@@ -77,15 +87,7 @@ export const BAY_END_MARGIN_TILES = 0.06;
 const ROAD_SPECS: readonly RoadSpec[] = (roadsData as { specs: RoadSpec[] }).specs;
 
 /**
- * A detached home is big enough for a garage + driveway once its lot is 2x3
- * (area >= 6 tiles); a 2x2 home stays garage-less, as does a row house.
- */
-export function hasGarage(entry: BuildingCatalogEntry): boolean {
-  return entry.zone === ZoneType.ResLow && entry.footprint.w * entry.footprint.d >= 6;
-}
-
-/**
- * Whether cars may park along this tier's kerb. Data, not a rule derived from
+ * Whether this tier's kerb may be stopped at. Data, not a rule derived from
  * speed: a through-route, a reserved bus or bike lane, tram rails and a railway
  * all have better uses for their edge than storage, so a tier earns kerbside
  * parking by declaring it (roads.json) rather than by omission.
@@ -95,8 +97,35 @@ export function tierAllowsRoadsideParking(tier: RoadTier): boolean {
 }
 
 /**
- * The road tile a building's driveway crosses — the mouth of its car park or
- * the end of its drive — or null when it has neither.
+ * When a kerb may be parked at. Beside a painted parking lane, at any hour —
+ * that is what the lane is for. Where the tier allows parking but paints no
+ * lane, only for short stays by day, since nothing on the street says a car
+ * may be left there overnight. Anywhere else, never.
+ */
+export type KerbAllowance = 'anyHour' | 'daytime' | 'none';
+
+/** The side of the street a kerb is on, in world order: `low` is the low-coordinate kerb. */
+export type KerbSide = 'low' | 'high';
+
+export function kerbAllowance(
+  tier: RoadTier,
+  profile: RoadProfile | null,
+  side: KerbSide,
+): KerbAllowance {
+  if (profile && parkingLaneOffset(profile, side) !== null) return 'anyHour';
+  return tierAllowsRoadsideParking(tier) ? 'daytime' : 'none';
+}
+
+/** Which kerb of the street across an edge a lot faces: the lot lies on that kerb's side. */
+export function kerbSideFacing(side: Side): KerbSide {
+  // The road is north of a lot on its N edge, so the lot is the road's
+  // high-z side; on its E edge the road is east, so the lot is its low-x side.
+  return side === 'N' || side === 'W' ? 'high' : 'low';
+}
+
+/**
+ * The road tile a commercial or industrial lot's car park opens onto, or null
+ * when it has no car park. A home's drives are its own plan's (houselot.ts).
  *
  * Anything that stands on the kerb has to keep off this tile: it is the one
  * stretch of frontage cars drive over, so a lamp post planted in it sits in the
@@ -108,6 +137,7 @@ export function curbCutTileFor(
   z: number,
   roadAt: (tileX: number, tileZ: number) => boolean,
 ): { x: number; z: number } | null {
+  if (entry.category !== 'com' && entry.category !== 'ind') return null;
   if (!hasOwnLotParking(entry, x, z, roadAt)) return null;
   const edge = findRoadFacingEdge(x, z, entry.footprint.w, entry.footprint.d, roadAt);
   return edge ? { x: edge.roadTileX, z: edge.roadTileZ } : null;
@@ -118,12 +148,14 @@ const PARKING_CATEGORIES: ReadonlySet<string> = new Set(['res', 'com', 'ind']);
 
 /**
  * Whether a building parks its cars ON ITS OWN LOT — a commercial or industrial
- * bay row, or a house's garage and driveway.
+ * bay row, or a home's drive.
  *
  * This is the half of the rule the street cares about: a lot with its own
  * parking does not ALSO line the kerb outside it. Somewhere to put the car is
  * somewhere to put the car, and a building that has it does not need the
  * street's, which is what leaves kerb space for the buildings that have none.
+ * A home never parks at the kerb: one that fronts a street has its drive, and
+ * one that fronts none has no kerb to use.
  */
 export function hasOwnLotParking(
   entry: BuildingCatalogEntry,
@@ -135,30 +167,43 @@ export function hasOwnLotParking(
     const edge = findRoadFacingEdge(x, z, entry.footprint.w, entry.footprint.d, roadAt);
     return edge !== null && frontageInsetTiles(entry.category, edge) > 0;
   }
-  // A house with a garage has a driveway to stand on; a small home or a row
-  // house has neither, and is exactly who the kerb is for.
-  return hasGarage(entry);
+  return isHouseEntry(entry);
 }
 
 /**
- * Whether this building may line the kerb of the street it fronts: the street
- * has to allow parking, and the building has to have nowhere of its own.
+ * When this building's cars may line the kerb of the street it fronts:
+ * never, when it has somewhere of its own or nobody to park; otherwise
+ * whatever the street allows at its kerb on the building's side.
  */
+export function roadsideAllowance(
+  entry: BuildingCatalogEntry,
+  x: number,
+  z: number,
+  roadAt: (tileX: number, tileZ: number) => boolean,
+  roadTierAt: (tileX: number, tileZ: number) => RoadTier,
+  roadProfileAt: (tileX: number, tileZ: number) => RoadProfile | null = () => null,
+): KerbAllowance {
+  // Only buildings whose people own cars. A water tower, a park or a civic
+  // plinth has nobody to park, and lining the kerb outside one would read as
+  // abandoned vehicles rather than as a working street.
+  if (!PARKING_CATEGORIES.has(entry.category)) return 'none';
+  if (hasOwnLotParking(entry, x, z, roadAt)) return 'none';
+  const edge = findRoadFacingEdge(x, z, entry.footprint.w, entry.footprint.d, roadAt);
+  if (!edge) return 'none';
+  const { roadTileX: rx, roadTileZ: rz } = edge;
+  return kerbAllowance(roadTierAt(rx, rz), roadProfileAt(rx, rz), kerbSideFacing(edge.side));
+}
+
+/** Whether this building's cars may line the kerb at all, at some hour. */
 export function usesRoadsideParking(
   entry: BuildingCatalogEntry,
   x: number,
   z: number,
   roadAt: (tileX: number, tileZ: number) => boolean,
   roadTierAt: (tileX: number, tileZ: number) => RoadTier,
+  roadProfileAt: (tileX: number, tileZ: number) => RoadProfile | null = () => null,
 ): boolean {
-  // Only buildings whose people own cars. A water tower, a park or a civic
-  // plinth has nobody to park, and lining the kerb outside one would read as
-  // abandoned vehicles rather than as a working street.
-  if (!PARKING_CATEGORIES.has(entry.category)) return false;
-  if (hasOwnLotParking(entry, x, z, roadAt)) return false;
-  const edge = findRoadFacingEdge(x, z, entry.footprint.w, entry.footprint.d, roadAt);
-  if (!edge) return false;
-  return tierAllowsRoadsideParking(roadTierAt(edge.roadTileX, edge.roadTileZ));
+  return roadsideAllowance(entry, x, z, roadAt, roadTierAt, roadProfileAt) !== 'none';
 }
 
 /** Max absolute per-car yaw jitter, radians — parked cars sit nearly straight in their bays. */
@@ -183,33 +228,9 @@ const STRIPE_LINE_HALF_WIDTH_M = 0.06;
 /** Sidewalk slabs sit this far above the road plate; the curb cut must clear them. */
 const SIDEWALK_TOP_ABOVE_ROAD_M = 0.08;
 /** The driveway crossing rides just over the sidewalk it interrupts. */
-const CURB_CUT_Y_OFFSET = ROAD_Y_OFFSET + SIDEWALK_TOP_ABOVE_ROAD_M + 0.01;
+export const CURB_CUT_Y_OFFSET = ROAD_Y_OFFSET + SIDEWALK_TOP_ABOVE_ROAD_M + 0.01;
 /** Width of the lot's driveway entrance, in meters — two cars wide. */
 export const CURB_CUT_WIDTH_M = 7;
-
-/**
- * Grass verge between a building's footprint edge and the near edge of the
- * adjacent street's sidewalk. The road tile is TILE_METERS wide and centered
- * on the carriageway, so the verge is whatever is left over once the
- * carriageway half-width and the sidewalk are taken out — 0 on wide tiers
- * whose sidewalk already reaches the tile boundary.
- */
-export function vergeDepthMeters(tier: RoadTier, profile?: RoadProfile): number {
-  const half = profile ? carriagewayHalfWidthOf(profile) : carriagewayHalfWidthMeters(tier);
-  // Whatever the paved strip does not take. Measured against a full footway
-  // instead, a road that keeps only a kerb leaves a band that is neither verge
-  // nor pavement and nothing covers.
-  const paved = sidewalkDepthMeters(tier, profile);
-  return Math.max(0, TILE_METERS / 2 - half - paved);
-}
-
-/** Depth of the sidewalk band the curb cut crosses, clamped to what fits inside the road tile. */
-export function sidewalkDepthMeters(tier: RoadTier, profile?: RoadProfile): number {
-  // The road's own answer for how wide the paved strip beside it is. Worked
-  // out again here it drifts from it: a motorway keeps a kerb rather than a
-  // pavement, and a tile with room to spare would otherwise hand it one.
-  return profile ? kerbWidthOf(profile) : curbWidthMeters(tier);
-}
 
 const INITIAL_CAR_CAPACITY = 64;
 
@@ -255,71 +276,6 @@ export function stallVariantIndex(buildingId: number, stallIndex: number, kind: 
 }
 
 // ---------------------------------------------------------------------------
-// Road-facing edge selection (pure, testable without THREE/a scene)
-// ---------------------------------------------------------------------------
-
-export type Side = 'N' | 'E' | 'S' | 'W';
-
-export interface RoadFacingEdge {
-  side: Side;
-  /** Length of the selected edge, in tiles (w for N/S, d for E/W). */
-  edgeTiles: number;
-  /** First road tile found along that side — the street the lot's driveway meets. */
-  roadTileX: number;
-  roadTileZ: number;
-}
-
-/** Index of the first road tile in the strip, or -1 when the strip has none. */
-function firstRoadInStrip(
-  startX: number,
-  startZ: number,
-  length: number,
-  axis: 'x' | 'z',
-  roadAt: (x: number, z: number) => boolean,
-): number {
-  for (let i = 0; i < length; i++) {
-    const tx = axis === 'x' ? startX + i : startX;
-    const tz = axis === 'z' ? startZ + i : startZ;
-    if (roadAt(tx, tz)) return i;
-  }
-  return -1;
-}
-
-/**
- * Finds the building's road-facing footprint edge: the side
- * whose immediately-adjacent tile strip contains at least one road tile,
- * tie-broken N>E>S>W when more than one side qualifies (e.g. corner lots).
- * Returns null when no side is road-adjacent — callers park zero cars.
- */
-export function findRoadFacingEdge(
-  x: number,
-  z: number,
-  w: number,
-  d: number,
-  roadAt: (x: number, z: number) => boolean,
-): RoadFacingEdge | null {
-  if (w < 1 || d < 1) return null;
-
-  const north = firstRoadInStrip(x, z - 1, w, 'x', roadAt);
-  if (north >= 0) {
-    return { side: 'N', edgeTiles: w, roadTileX: x + north, roadTileZ: z - 1 };
-  }
-  const east = firstRoadInStrip(x + w, z, d, 'z', roadAt);
-  if (east >= 0) {
-    return { side: 'E', edgeTiles: d, roadTileX: x + w, roadTileZ: z + east };
-  }
-  const south = firstRoadInStrip(x, z + d, w, 'x', roadAt);
-  if (south >= 0) {
-    return { side: 'S', edgeTiles: w, roadTileX: x + south, roadTileZ: z + d };
-  }
-  const west = firstRoadInStrip(x - 1, z, d, 'z', roadAt);
-  if (west >= 0) {
-    return { side: 'W', edgeTiles: d, roadTileX: x - 1, roadTileZ: z + west };
-  }
-  return null;
-}
-
-// ---------------------------------------------------------------------------
 // Lot occupancy over the day (pure)
 // ---------------------------------------------------------------------------
 
@@ -333,13 +289,41 @@ function ramp(v: number, from: number, to: number): number {
 export const IND_NIGHT_OCCUPANCY = 0.15;
 
 /**
- * How full a lot is at a given time of day, 0..1, where `dayFraction` is the
- * day's progress (0 = midnight, 0.5 = midday) — the same clock the sky uses.
- * Commercial lots fill for trading hours and empty overnight; industrial lots
- * fill earlier for the day shift and keep a few late-shift vehicles all night.
+ * How a row of spaces fills over the day: a car park's trade or shift, or the
+ * kerb's rule — the residents who leave their cars beside a painted lane
+ * overnight, or the short daytime stays a street without one allows.
  */
-export function lotOccupancy(category: LotCategory, dayFraction: number): number {
+export type OccupancyRhythm = LotCategory | 'residents' | 'shortStay';
+
+/** Residents' cars home overnight, beside a painted parking lane. */
+export const RESIDENT_NIGHT_OCCUPANCY = 0.9;
+/** Residents' cars still there by day, the rest out at work. */
+export const RESIDENT_DAY_OCCUPANCY = 0.4;
+/** The most of a kerb short daytime stays fill at once. */
+export const SHORT_STAY_OCCUPANCY = 0.5;
+
+/**
+ * How full a row of spaces is at a given time of day, 0..1, where
+ * `dayFraction` is the day's progress (0 = midnight, 0.5 = midday) — the same
+ * clock the sky uses. Commercial lots fill for trading hours and empty
+ * overnight; industrial lots fill earlier for the day shift and keep a few
+ * late-shift vehicles all night; residents' kerbs are fullest overnight; and
+ * short stays happen by day only, never overnight.
+ */
+export function lotOccupancy(category: OccupancyRhythm, dayFraction: number): number {
   const hour = (((dayFraction % 1) + 1) % 1) * 24;
+  if (category === 'residents') {
+    if (hour < 7 || hour >= 19) return RESIDENT_NIGHT_OCCUPANCY;
+    const spread = RESIDENT_NIGHT_OCCUPANCY - RESIDENT_DAY_OCCUPANCY;
+    if (hour < 9) return RESIDENT_NIGHT_OCCUPANCY - spread * ramp(hour, 7, 9);
+    if (hour <= 17) return RESIDENT_DAY_OCCUPANCY;
+    return RESIDENT_DAY_OCCUPANCY + spread * ramp(hour, 17, 19);
+  }
+  if (category === 'shortStay') {
+    if (hour < 8 || hour >= 19) return 0;
+    const busy = hour < 10 ? ramp(hour, 8, 10) : hour <= 17 ? 1 : 1 - ramp(hour, 17, 19);
+    return SHORT_STAY_OCCUPANCY * busy;
+  }
   if (category === 'com') {
     // Shut overnight; customers arrive from 08:00, peak trade 11:00-19:00, gone by 21:00.
     if (hour < 8 || hour >= 21) return 0;
@@ -362,7 +346,7 @@ export function stallOccupancyThreshold(buildingId: number, stallIndex: number):
 
 /** Whether a stall is parked-in at the given time of day. */
 export function stallOccupied(
-  category: LotCategory,
+  category: OccupancyRhythm,
   buildingId: number,
   stallIndex: number,
   dayFraction: number,
@@ -403,51 +387,6 @@ export interface StallPlacement {
   baseYaw: number;
   /** Bay center's along-edge coordinate, meters from the edge start. */
   along: number;
-}
-
-/**
- * A side's local coordinate frame: `edgeStart` is the along-edge world
- * origin, `buildingLine` is the perpendicular world coordinate of the
- * building's own footprint edge, and `outwardSign`/`alongX` describe how
- * (along, depthTiles) map onto world (x, z). depthTiles = 0 sits exactly on
- * the building's edge line; positive depthTiles moves outward, toward the
- * road side.
- */
-interface EdgeFrame {
-  edgeStart: number;
-  buildingLine: number;
-  outwardSign: 1 | -1;
-  alongX: boolean;
-}
-
-function edgeFrameFor(side: Side, x: number, z: number, w: number, d: number): EdgeFrame {
-  const westX = x * TILE_METERS;
-  const eastX = (x + w) * TILE_METERS;
-  const northZ = z * TILE_METERS;
-  const southZ = (z + d) * TILE_METERS;
-  switch (side) {
-    case 'N':
-      return { edgeStart: westX, buildingLine: northZ, outwardSign: -1, alongX: true };
-    case 'S':
-      return { edgeStart: westX, buildingLine: southZ, outwardSign: 1, alongX: true };
-    case 'E':
-      return { edgeStart: northZ, buildingLine: eastX, outwardSign: 1, alongX: false };
-    case 'W':
-      return { edgeStart: northZ, buildingLine: westX, outwardSign: -1, alongX: false };
-    default:
-      throw new RangeError(`edgeFrameFor: unknown side ${side as string}`);
-  }
-}
-
-function frameToWorld(
-  frame: EdgeFrame,
-  along: number,
-  depthTiles: number,
-): { x: number; z: number } {
-  const perp = frame.buildingLine + frame.outwardSign * depthTiles * TILE_METERS;
-  return frame.alongX
-    ? { x: frame.edgeStart + along, z: perp }
-    : { x: perp, z: frame.edgeStart + along };
 }
 
 /**
@@ -517,13 +456,19 @@ export const ROADSIDE_END_MARGIN_TILES = 0.25;
 
 /**
  * How far a kerbside car's centre sits OUTWARD from the building's footprint
- * edge, in tiles: across the verge, across the sidewalk, then half a car into
- * the carriageway. Positive is toward the street.
+ * edge, in tiles: across the verge, across the sidewalk, then into the
+ * carriageway — to the middle of the parking lane where `laneOffsetM` gives
+ * one, and half a car otherwise. Positive is toward the street.
  */
-export function roadsideDepthTiles(tier: RoadTier, profile?: RoadProfile): number {
+export function roadsideDepthTiles(
+  tier: RoadTier,
+  profile?: RoadProfile,
+  laneOffsetM?: number,
+): number {
+  const intoCarriageway = laneOffsetM ?? ROADSIDE_CAR_HALF_WIDTH_M;
   return (
-    (vergeDepthMeters(tier, profile) + sidewalkDepthMeters(tier, profile) + ROADSIDE_CAR_HALF_WIDTH_M) /
-      TILE_METERS
+    (vergeDepthMeters(tier, profile) + sidewalkDepthMeters(tier, profile) + intoCarriageway) /
+    TILE_METERS
   );
 }
 
@@ -536,8 +481,8 @@ export function computeRoadsideStallCount(edgeTiles: number): number {
 
 /**
  * Whether a car may stand at the kerb of THIS tile: there has to be a road
- * here, its tier has to allow parking, and it must not be a tile the road
- * crosses on both axes.
+ * here, its kerb has to be parkable (`parkable` — the street's rule for the
+ * kerb in question), and it must not be a tile the road crosses on both axes.
  *
  * A turn, a T or a crossroads has no kerb — the lateral offset that clears one
  * carriageway lands inside the other — which is the same rule that keeps lamps
@@ -550,10 +495,10 @@ export function kerbTileAllowsParking(
   tileX: number,
   tileZ: number,
   roadAt: (x: number, z: number) => boolean,
-  roadTierAt: (x: number, z: number) => RoadTier,
+  parkable: (x: number, z: number) => boolean,
 ): boolean {
   if (!roadAt(tileX, tileZ)) return false;
-  if (!tierAllowsRoadsideParking(roadTierAt(tileX, tileZ))) return false;
+  if (!parkable(tileX, tileZ)) return false;
   const hasEW = roadAt(tileX - 1, tileZ) || roadAt(tileX + 1, tileZ);
   const hasNS = roadAt(tileX, tileZ - 1) || roadAt(tileX, tileZ + 1);
   return !(hasEW && hasNS);
@@ -579,6 +524,8 @@ export function computeRoadsideStallPlacements(
   tileAllows?: (tileX: number, tileZ: number) => boolean,
   /** The street's own cross-section when it carries a composed one; the row sits at ITS kerb. */
   profile?: RoadProfile,
+  /** How far in from the carriageway's edge the parking lane's middle is, where one is painted. */
+  laneOffsetM?: number,
 ): StallPlacement[] {
   if (count <= 0) return [];
 
@@ -586,7 +533,7 @@ export function computeRoadsideStallPlacements(
   const pitchM = ROADSIDE_PITCH_TILES * TILE_METERS;
   const start = bayRowStart(edge.edgeTiles, count, ROADSIDE_PITCH_TILES);
   const baseYaw = EDGE_BASE_YAW[edge.side] + Math.PI / 2;
-  const depth = roadsideDepthTiles(tier, profile);
+  const depth = roadsideDepthTiles(tier, profile, laneOffsetM);
 
   const placements: StallPlacement[] = [];
   for (let i = 0; i < count; i++) {
@@ -647,7 +594,7 @@ interface Stall {
 }
 
 interface LotRecord {
-  category: LotCategory;
+  category: OccupancyRhythm;
   stalls: Stall[];
 }
 
@@ -891,7 +838,15 @@ export class ParkedCarRenderer {
    * and the road is already paved.
    */
   private applyRoadside(building: BuildingInstance, entry: BuildingCatalogEntry): void {
-    if (!usesRoadsideParking(entry, building.x, building.z, this.roadAt, this.roadTierAt)) return;
+    const allowance = roadsideAllowance(
+      entry,
+      building.x,
+      building.z,
+      this.roadAt,
+      this.roadTierAt,
+      this.roadProfileAt,
+    );
+    if (allowance === 'none') return;
 
     const edge = findRoadFacingEdge(
       building.x,
@@ -903,9 +858,15 @@ export class ParkedCarRenderer {
     if (!edge) return;
 
     const tier = this.roadTierAt(edge.roadTileX, edge.roadTileZ);
+    const profile = this.roadProfileAt(edge.roadTileX, edge.roadTileZ);
+    const side = kerbSideFacing(edge.side);
     const count = computeRoadsideStallCount(edge.edgeTiles);
     if (count <= 0) return;
 
+    // Every car in the row keeps the rule the row was placed under: a kerb
+    // further along that paints no lane does not take an overnight car.
+    const parkable = (tx: number, tz: number): boolean =>
+      kerbAllowance(this.roadTierAt(tx, tz), this.roadProfileAt(tx, tz), side) === allowance;
     const placements = computeRoadsideStallPlacements(
       building.x,
       building.z,
@@ -914,8 +875,9 @@ export class ParkedCarRenderer {
       edge,
       tier,
       count,
-      (tileX, tileZ) => kerbTileAllowsParking(tileX, tileZ, this.roadAt, this.roadTierAt),
-      this.roadProfileAt(edge.roadTileX, edge.roadTileZ) ?? undefined,
+      (tileX, tileZ) => kerbTileAllowsParking(tileX, tileZ, this.roadAt, parkable),
+      profile ?? undefined,
+      profile ? (parkingLaneOffset(profile, side) ?? undefined) : undefined,
     );
     if (placements.length === 0) return;
 
@@ -949,7 +911,10 @@ export class ParkedCarRenderer {
       touchedPools.add(pool);
     }
 
-    const lot: LotRecord = { category: 'com', stalls };
+    const lot: LotRecord = {
+      category: allowance === 'anyHour' ? 'residents' : 'shortStay',
+      stalls,
+    };
     this.buildingSlots.set(building.id, lot);
     this.applyOccupancy(building.id, lot);
     for (const pool of touchedPools) pool.finalize();

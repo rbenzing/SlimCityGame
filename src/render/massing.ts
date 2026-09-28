@@ -38,7 +38,9 @@ import {
 import { TILE_METERS } from '../shared/constants';
 import { deriveFacadeParams } from './facade';
 import { maxHeightOverFootprint } from './footprint';
-import { findRoadFacingEdge, frontageInsetTiles } from './parked';
+import { findRoadFacingEdge, findStreetFacingEdge, NO_STREETS, type StreetLookup } from './frontage';
+import { frontageInsetTiles } from './parked';
+import { isHouseEntry } from './archetypes';
 
 // ---------------------------------------------------------------------------
 // computeSetbacks (pure)
@@ -105,6 +107,13 @@ export function footprintShrinkFor(entry: BuildingCatalogEntry): number {
 }
 
 /**
+ * How far a home's front wall stands behind the sidewalk (behind the
+ * carriageway, on a road with no sidewalk): a front yard the longest car, 4.6
+ * m, stands in without blocking the footway.
+ */
+export const HOUSE_FRONT_YARD_M = 5.5;
+
+/**
  * World-meter body adjustments that clear the frontage parking-bay row
  * (parked.ts): span reductions along the frontage axis plus the matching
  * center shift away from the road. All zero when the building gets no bays.
@@ -131,14 +140,18 @@ const ZERO_FRONTAGE_SETBACK: FrontageSetback = { spanXM: 0, spanZM: 0, centerXM:
  * with the center shifted half that away from the road — the road-side face
  * lands exactly where the bay row ends (flush, no overlap, no gap) while the
  * other three faces stay put. Zero for buildings parked.ts gives no bays
- * (non-com/ind categories, or no road-facing edge). Pure.
+ * (non-com/ind categories, or no road-facing edge).
+ *
+ * A home is moved rather than cut: see houseFrontShift. Pure.
  */
 export function frontageSetbackFor(
   entry: BuildingCatalogEntry,
   x: number,
   z: number,
   roadAt: (tileX: number, tileZ: number) => boolean,
+  street: StreetLookup = NO_STREETS,
 ): FrontageSetback {
+  if (isHouseEntry(entry)) return houseFrontShift(entry, x, z, street);
   if (entry.category !== 'com' && entry.category !== 'ind') return ZERO_FRONTAGE_SETBACK;
 
   const edge = findRoadFacingEdge(x, z, entry.footprint.w, entry.footprint.d, roadAt);
@@ -157,6 +170,41 @@ export function frontageSetbackFor(
       return { spanXM: setbackM, spanZM: 0, centerXM: -setbackM / 2, centerZM: 0 };
     default: // 'W'
       return { spanXM: setbackM, spanZM: 0, centerXM: setbackM / 2, centerZM: 0 };
+  }
+}
+
+/**
+ * A home slides toward the street it fronts, whole, until its front wall
+ * stands HOUSE_FRONT_YARD_M behind the sidewalk. The verge counts toward that
+ * yard, since the home's lawn runs across it; where the verge alone is deeper,
+ * the wall stops at the lot's edge, and it never passes the lot's back either.
+ * A home fronting no street stays centred. Pure.
+ */
+function houseFrontShift(
+  entry: BuildingCatalogEntry,
+  x: number,
+  z: number,
+  street: StreetLookup,
+): FrontageSetback {
+  const edge = findStreetFacingEdge(x, z, entry.footprint.w, entry.footprint.d, street);
+  const vergeM = edge ? street(edge.roadTileX, edge.roadTileZ)?.vergeM : undefined;
+  if (!edge || vergeM === undefined) return ZERO_FRONTAGE_SETBACK;
+
+  const lotDepthM =
+    (edge.side === 'N' || edge.side === 'S' ? entry.footprint.d : entry.footprint.w) * TILE_METERS;
+  const bodyDepthM = lotDepthM * footprintShrinkFor(entry);
+  const centredFrontM = (lotDepthM - bodyDepthM) / 2;
+  const frontM = Math.min(lotDepthM - bodyDepthM, Math.max(0, HOUSE_FRONT_YARD_M - vergeM));
+  const towardStreetM = centredFrontM - frontM;
+  switch (edge.side) {
+    case 'N':
+      return { spanXM: 0, spanZM: 0, centerXM: 0, centerZM: -towardStreetM };
+    case 'S':
+      return { spanXM: 0, spanZM: 0, centerXM: 0, centerZM: towardStreetM };
+    case 'E':
+      return { spanXM: 0, spanZM: 0, centerXM: towardStreetM, centerZM: 0 };
+    default: // 'W'
+      return { spanXM: 0, spanZM: 0, centerXM: -towardStreetM, centerZM: 0 };
   }
 }
 /** "10-20% setbacks". */
@@ -390,6 +438,8 @@ export class MassingRenderer {
   private readonly heightAt: (x: number, z: number) => number;
   /** Answers "is this grid tile a road" for the frontage parking setback; the default never finds one. */
   private readonly roadAt: (x: number, z: number) => boolean;
+  /** The streets a home's front yard is measured from, so the tiers follow the body. */
+  private readonly street: StreetLookup;
   private readonly catalogById: Map<string, BuildingCatalogEntry>;
   private readonly geometry = new THREE.BoxGeometry(1, 1, 1);
   private readonly material: MeshStandardNodeMaterial;
@@ -404,9 +454,11 @@ export class MassingRenderer {
     heightAt: (x: number, z: number) => number,
     catalog: BuildingCatalogEntry[],
     roadAt?: (x: number, z: number) => boolean,
+    street: StreetLookup = NO_STREETS,
   ) {
     this.heightAt = heightAt;
     this.roadAt = roadAt ?? ((): boolean => false);
+    this.street = street;
     this.catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
     this.material = this.createMaterial();
     this.pool = new InstancedSlotPool(
@@ -470,7 +522,7 @@ export class MassingRenderer {
     const entry = this.catalogById.get(building.catalogId);
     if (!entry) return;
 
-    const frontage = frontageSetbackFor(entry, building.x, building.z, this.roadAt);
+    const frontage = frontageSetbackFor(entry, building.x, building.z, this.roadAt, this.street);
     const { boxes } = computeSetbacks(entry, building.id, frontage);
     if (boxes.length <= 1) return; // level 1 / ploppables: nothing beyond the base BuildingInstancer already draws
 

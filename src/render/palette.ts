@@ -64,6 +64,11 @@ export const MATERIALS = {
 
   darkVegetation: [27, 34, 22],
   brightVegetation: [46, 53, 33],
+  // Not a chart swatch: the chart's vegetation is foliage, and a garden laid in
+  // it read as a dark rectangle against the grass around it. A mown lawn is the
+  // terrain's fresh grass (82/148/66) at seven tenths — still grass, and still
+  // plainly somebody's.
+  mownLawn: [57, 104, 46],
 
   brightestWood: [110, 96, 75],
   brightWood: [86, 67, 57],

@@ -573,6 +573,27 @@ export function parkingSides(profile: RoadProfile): { low: boolean; high: boolea
   return { low, high };
 }
 
+/**
+ * How far in from the carriageway's edge on one side the centre of that
+ * side's parking lane lies, in metres, or null when that side has none. The
+ * lane nearest the kerb wins; a bike lane laid between it and the kerb is
+ * counted in, so a car parked there stands in the parking lane, not on the
+ * bike lane.
+ */
+export function parkingLaneOffset(profile: RoadProfile, side: 'low' | 'high'): number | null {
+  const half = carriagewayHalfWidthOf(profile);
+  const centres = pieceCentres(profile);
+  let best: number | null = null;
+  profile.pieces.forEach((p, i) => {
+    const at = centres[i];
+    if (p.kind !== 'parking' || at === null || at === undefined) return;
+    if (side === 'low' ? at >= 0 : at < 0) return;
+    const fromEdge = side === 'low' ? at + half : half - at;
+    if (best === null || fromEdge < best) best = fromEdge;
+  });
+  return best;
+}
+
 function pieceCentres(profile: RoadProfile): (number | null)[] {
   let offset = -carriagewayHalfWidthOf(profile);
   return profile.pieces.map((piece) => {

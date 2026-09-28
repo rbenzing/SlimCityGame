@@ -202,6 +202,38 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 
 ## 10. History (newest first)
 
+### Homes that face their street (requested, specified and built 2026-09-28)
+
+The player reported five things about houses: a roof piece hanging off the
+side of a house, houses standing apart from the sidewalk, garages with no way
+through to the road, homes that read as boxes on a dark rectangle rather than
+as houses with yards, and cars parked in the street at night where it shows
+no parking. Asked, they chose a short front yard (the lawn to the sidewalk,
+the house about 5 m back), a kerb that takes cars at any hour only beside a
+painted parking lane and short daytime stays where the street allows parking
+but paints none, and drives and yards for row houses as well as detached
+homes. The layout is [Residential lots](art/buildings.md#residential-lots)
+and the kerb rule
+[Parked cars and lot life](art/props-and-vehicles.md#parked-cars-and-lot-life).
+
+The roof is fixed (2026-09-28): it was the previous level's roof, left
+standing when a home that had just finished building levelled up before the
+next snapshot, because the delta named it both updated and removed. The
+worker now settles each snapshot's building delta so an id is in one list
+only.
+
+The rest is built (2026-09-28). One pure planner (`planHouseLot`) lays a
+home's lot out from its street, and the lot renderer and the house kit both
+stand on it: the house 5.5 m behind the sidewalk, its lawn across the verge,
+a drive through a curb cut to a spot, a carport or a garage, a car on it, a
+front door and path, and a yard of fence, patio, grill, pool, trampoline,
+bushes and trees; a row along its street is one home per frontage tile. The
+lawn is a lighter, measured green (`mownLawn`), since the chart's foliage
+green read as the dark rectangle the player described. The kerb reads the
+street's parking lane for overnight parking and its tier for short daytime
+stays, and no home parks there any more. Checked in the browser on placed
+and grown homes and on a street with and without a painted parking lane.
+
 ### Snapping to roads (requested, specified and built 2026-09-28)
 
 The player asked for snapping between curved and grid roads both ways, a
