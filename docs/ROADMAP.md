@@ -202,7 +202,7 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 
 ## 10. History (newest first)
 
-### Snapping to roads (requested and specified 2026-09-28, in progress)
+### Snapping to roads (requested, specified and built 2026-09-28)
 
 The player asked for snapping between curved and grid roads both ways, a
 toggle for it on every road type, roads that never connect when it is off,
@@ -241,6 +241,14 @@ itself, and `Curve` mode marks where its first click would land. Off, nothing
 snaps and every grid road is sent with `join: false`. A grid drag started on
 a curve's end off a tile centre is still shown refused; moving that end is
 stage 4.
+
+Stage 4 is built (2026-09-28): a grid drag started or stopped on a curve's
+end off its tile centre sends `moveSegmentEnd` ahead of the grid road, which
+lays the curve again with that end on the tile centre, free, undone by the
+move back. The world plans the moved road with its old self taken away
+(`moveRoadEnd`), and the preview judges the grid run against the world as the
+moves leave it (`gridRunRefusalAfter`), so a move a rule forbids is refused
+before release with that rule's reason.
 
 ### Free-form roads (requested 2026-09-23, specified 2026-09-24)
 

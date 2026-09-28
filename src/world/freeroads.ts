@@ -344,7 +344,7 @@ export function planSegment(
 
 /** Lays a planned segment and returns its slot. */
 export function laySegment(
-  g: GridState,
+  g: Pick<GridState, 'roadTier' | 'roadProfile' | 'roadFlow'>,
   net: RoadNet,
   plan: SegmentPlan & { ok: true },
   req: SegmentRequest,
@@ -584,6 +584,85 @@ export function gridRunRefusal(
     if (!junctions.has(idx)) return RUNS_INTO_FREE_ROAD;
   }
   return null;
+}
+
+/** A road off the grid's end moved from one point to another: see `moveRoadEnd`. */
+export interface EndMove {
+  from: CmPoint;
+  to: CmPoint;
+}
+
+/** How far a road's end may be moved on each axis, centimetres: half a tile. */
+const END_MOVE_REACH_CM = (TILE_METERS / 2) * 100;
+
+/**
+ * Moves the end of the one road off the grid ending at `move.from` to
+ * `move.to`, in place, by laying that road again with the end moved: the same
+ * tier, profile, flow and control, planned as `buildSegment` plans a road but
+ * with its old self taken away, which it would otherwise crowd. The end must
+ * be a node no other road meets and no grid road stands on, and the move at
+ * most half a tile on each axis. Refused, with nothing changed, for the reason
+ * the plan gives.
+ */
+export function moveRoadEnd(
+  g: SegmentGround & Pick<GridState, 'roadFlow'>,
+  net: RoadNet,
+  move: EndMove,
+  lookup: ProfileLookup,
+): { ok: true } | { ok: false; reason: string } {
+  const refuse = (reason: string): { ok: false; reason: string } => ({ ok: false, reason });
+  const { from, to } = move;
+  if (from.x === to.x && from.z === to.z) return refuse('invalid');
+  if (Math.abs(to.x - from.x) > END_MOVE_REACH_CM || Math.abs(to.z - from.z) > END_MOVE_REACH_CM) {
+    return refuse('invalid');
+  }
+  const node = nodeAt(net, from);
+  if (node < 0 || net.nodeTier[node] !== 0) return refuse('invalid');
+  const segs = segmentsAt(net, node);
+  if (segs.length !== 1 || !isFreeSegment(net, segs[0]!)) return refuse('invalid');
+  const s = segs[0]!;
+  const old = segmentGeom(net, s);
+  const req: SegmentRequest = {
+    tier: net.segTier[s] as RoadTier,
+    profileId: net.segProfile[s]!,
+    a: net.segA[s] === node ? to : old.a,
+    b: net.segB[s] === node ? to : old.b,
+    control: old.control,
+    flow: net.segFlow[s]!,
+  };
+  const without = decodeRoadNetwork(encodeRoadNetwork(net));
+  removeSegmentAt(without, old.a, old.b, old.control);
+  const plan = planSegment(g, without, req, lookup);
+  if (!plan.ok) return refuse(plan.reason);
+  // The same removal leaves the network exactly as the plan saw it.
+  removeSegmentAt(net, old.a, old.b, old.control);
+  laySegment(g, net, plan, req);
+  return { ok: true };
+}
+
+/**
+ * Why a grid road may not be laid over `tiles` once `moves` have brought the
+ * ends of roads off the grid onto tile centres — `gridRunRefusal` against the
+ * world as the moves leave it — or why one of the moves is refused. The road
+ * tool asks this of its preview. The world makes the moves first and then
+ * asks `gridRunRefusal` itself, and comes to the same answer.
+ */
+export function gridRunRefusalAfter(
+  g: SegmentGround & Pick<GridState, 'roadFlow' | 'roadFootprint'>,
+  net: RoadNet,
+  tiles: readonly TilePoint[],
+  moves: readonly EndMove[],
+  lookup: ProfileLookup,
+): string | null {
+  if (moves.length === 0) return gridRunRefusal(g, net, tiles);
+  const moved = decodeRoadNetwork(encodeRoadNetwork(net));
+  for (const move of moves) {
+    const done = moveRoadEnd(g, moved, move, lookup);
+    if (!done.ok) return done.reason;
+  }
+  const ground = { size: g.size, roadFootprint: new Uint8Array(g.size * g.size) };
+  deriveRoadFootprint(ground, moved, lookup);
+  return gridRunRefusal(ground, moved, tiles);
 }
 
 /** How close to a road node a dropped road end is pulled onto it, metres. */

@@ -205,6 +205,14 @@ This is where each system ends up. The stages below say when.
 - `removeSegment` takes away the segment between two end points with a given
   control point, and any node at either end that no road meets any more. Its
   inverse is the `buildSegment` that puts the same segment back.
+- `moveSegmentEnd` moves the end of the one free segment ending at a point —
+  a node no other road meets and no grid road stands on — to a point at most
+  half a tile away on each axis, laying that segment again with the end moved
+  and the same tier, profile, flow and control. It is planned exactly as a
+  `buildSegment` would be with the segment's old self taken away, and refused
+  with that plan's reason. It costs nothing, and its inverse moves the end
+  back. The road tool sends it ahead of a grid drag started or ended on a
+  curve's end, to bring that end onto the tile centre the drag meets it at.
 - `bulldoze` removes segments, picked by tile or by segment. Its inverse puts
   back exactly what it removed, with the same slots.
 - Junction commands name the node.

@@ -254,8 +254,12 @@ MUTCD citations below use 11th-edition section numbers.
   `src/world/freeroads.ts`
 - With snapping to roads on, a grid drag starting or ending on a road off
   the grid's end moves that end onto its tile's centre in the same undo step,
-  or is refused with the reason in the preview. (Specified 2026-09-28, not
-  built.) — [interaction.md](ux/interaction.md#snapping-to-roads)
+  or is refused with the reason in the preview. The move is its own command
+  (`moveSegmentEnd`, free, its inverse the move back), sent ahead of the grid
+  road; the world plans it with the road's old self taken away, and the
+  preview judges the grid road against the world as the move leaves it, with
+  the same function. — [interaction.md](ux/interaction.md#snapping-to-roads);
+  `moveRoadEnd` and `gridRunRefusalAfter` in `src/world/freeroads.ts`
 - A grid drag into ground a road off the grid holds, anywhere but a tile
   centre where the two meet, is refused in the preview with the world's own
   sentence, never shown valid and refused after release. One predicate

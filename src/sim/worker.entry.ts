@@ -39,6 +39,7 @@ import {
   gridRunRefusal,
   joinSegmentsAt,
   laySegment,
+  moveRoadEnd,
   nearestRoadPoint,
   planSegment,
   removeSegmentAt,
@@ -1923,6 +1924,8 @@ class SimWorld implements WorkerSim {
         return this.cmdSplitSegment(command.at);
       case 'joinSegments':
         return this.cmdJoinSegments(command.at, command.control ?? null);
+      case 'moveSegmentEnd':
+        return this.cmdMoveSegmentEnd(command.from, command.to);
       case 'paintZone':
         return this.cmdPaintZone(command.zone, command.tiles);
       case 'placeBuilding':
@@ -2484,6 +2487,17 @@ class SimWorld implements WorkerSim {
     }
     this.roadsEdited = true;
     return { ok: true, cost: 0, inverse: [{ kind: 'splitSegment', at }] };
+  }
+
+  /** Moves the end of a road off the grid a short way, as `moveRoadEnd` plans it; free, and undone by moving it back. */
+  private cmdMoveSegmentEnd(
+    from: { x: number; z: number },
+    to: { x: number; z: number },
+  ): CommandResult {
+    const moved = moveRoadEnd(this.grid, this.roads, { from, to }, (id) => this.profileForId(id));
+    if (!moved.ok) return { ok: false, cost: 0, inverse: [], reason: moved.reason };
+    this.roadsEdited = true;
+    return { ok: true, cost: 0, inverse: [{ kind: 'moveSegmentEnd', from: to, to: from }] };
   }
 
   /** Takes away one road off the grid, refunding what bulldozing a road refunds. */

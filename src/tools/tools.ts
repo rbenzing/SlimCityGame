@@ -53,7 +53,15 @@ import {
   type ProfileEdits,
   isOneWayProfile,
 } from '../shared/roadprofile';
-import { sampleCentreLine, segmentLengthM, tightestRadiusM, tileOfCm } from '../shared/roadgeom';
+import {
+  isTileCentre,
+  sampleCentreLine,
+  segmentLengthM,
+  tightestRadiusM,
+  tileCentreCm,
+  tileOfCm,
+} from '../shared/roadgeom';
+import type { EndMove } from '../world/freeroads';
 import type { CmPoint, SegmentGeom } from '../shared/roadgeom';
 import { ZONE_DEPTH } from '../world/zonable';
 import { corridorRunsFor, corridorTiles, rampMeetingRefusal } from '../shared/corridor';
@@ -222,11 +230,13 @@ export interface ToolEnv {
   ): { ok: true; lengthM: number } | { ok: false; reason: string };
   /**
    * Why a grid run may not be laid over `tiles` by the world's own rule for
-   * the ground roads off the grid hold, or null. Optional: without it a grid
-   * drag is never refused for running into a road off the grid, and the world
-   * refuses it after release instead.
+   * the ground roads off the grid hold, once `moves` have brought the ends of
+   * roads off the grid it starts or stops on onto their tile centres — or why
+   * a move is refused — or null. Optional: without it a grid drag is never
+   * refused for running into a road off the grid, and the world refuses it
+   * after release instead.
    */
-  gridRunRefusal?(tiles: readonly TilePoint[]): string | null;
+  gridRunRefusal?(tiles: readonly TilePoint[], moves: readonly EndMove[]): string | null;
 }
 
 const NO_CROSSINGS: ReadonlySet<string> = new Set();
@@ -678,7 +688,11 @@ export class ToolManager {
   private _tool: ToolId = 'select';
   private rotation: 0 | 1 | 2 | 3 = 0;
   private hoverTile: TilePoint | null = null;
+  /** The road end the hover tile was snapped to, when it was. */
+  private hoverEnd: CmPoint | null = null;
   private dragStart: TilePoint | null = null;
+  /** The road end the drag started on, when it started on one. */
+  private dragStartEnd: CmPoint | null = null;
   private armed = false;
   private flags: ToolFlags = {
     angleLock: false,
@@ -740,7 +754,9 @@ export class ToolManager {
     this._tool = t;
     this.curveClicks = [];
     this.dragStart = null;
+    this.dragStartEnd = null;
     this.hoverTile = null;
+    this.hoverEnd = null;
     this.armed = false;
     this.brushTiles = [];
     this.brushSeen.clear();
@@ -829,10 +845,11 @@ export class ToolManager {
     tiles: TilePoint[],
     profile: RoadProfile,
     crossings: ReadonlySet<string> = NO_CROSSINGS,
+    moves: readonly EndMove[] = [],
   ): string | null {
     // Asked first and of every tile, as the world asks it: ground a road off
     // the grid holds is not the grid road's to take, over or under.
-    const intoFree = this.env.gridRunRefusal?.(tiles) ?? null;
+    const intoFree = this.env.gridRunRefusal?.(tiles, moves) ?? null;
     if (intoFree !== null) return intoFree;
     const at = this.env.roadProfileAt;
     if (!at) return null;
@@ -1040,9 +1057,11 @@ export class ToolManager {
       this.curveClick(sx, sy);
       return true;
     }
-    const tile = this.dragTileAt(sx, sy);
+    const { tile, end } = this.dragAt(sx, sy);
     this.hoverTile = tile;
+    this.hoverEnd = end;
     this.dragStart = tile;
+    this.dragStartEnd = end;
     this.armed = tile !== null;
     this.brushTiles = [];
     this.brushSeen.clear();
@@ -1064,8 +1083,9 @@ export class ToolManager {
       this.emitCurvePreview();
       return button === 0;
     }
-    const tile = this.dragTileAt(sx, sy);
+    const { tile, end } = this.dragAt(sx, sy);
     this.hoverTile = tile;
+    this.hoverEnd = end;
     if (this.freeDragStart) this.curveCursor = this.cursorCm(sx, sy) ?? this.curveCursor;
     if (tile) {
       if (
@@ -1089,13 +1109,16 @@ export class ToolManager {
     // A curve is clicked, not dragged: releasing the button does nothing.
     if (this.drawingCurve()) return true;
     if (this.armed && this.dragStart) {
-      const end = this.dragTileAt(sx, sy) ?? this.hoverTile ?? this.dragStart;
+      const at = this.dragAt(sx, sy);
+      if (at.tile) this.hoverEnd = at.end;
+      const end = at.tile ?? this.hoverTile ?? this.dragStart;
       const free = this.freeDrag(this.dragStart, end, this.cursorCm(sx, sy));
       if (free) this.layFree(free);
       else this.commit(this.dragStart, end);
     }
     this.armed = false;
     this.dragStart = null;
+    this.dragStartEnd = null;
     this.freeDragStart = null;
     this.brushTiles = [];
     this.brushSeen.clear();
@@ -1105,6 +1128,7 @@ export class ToolManager {
   /** Aborts any in-progress drag/hover gesture and clears the preview. */
   cancel(): void {
     this.dragStart = null;
+    this.dragStartEnd = null;
     this.armed = false;
     this.curveClicks = [];
     this.freeDragStart = null;
@@ -1160,12 +1184,31 @@ export class ToolManager {
    * road with snapping to roads on, the tile of a road end within half a tile
    * of the cursor, so the drag carries on from that end.
    */
-  private dragTileAt(sx: number, sy: number): TilePoint | null {
+  private dragAt(sx: number, sy: number): { tile: TilePoint | null; end: CmPoint | null } {
     const tile = this.env.screenToTile(sx, sy);
-    if (!(this._tool in ROAD_TOOL_TO_TIER) || !this.flags.roadSnap) return tile;
+    if (!(this._tool in ROAD_TOOL_TO_TIER) || !this.flags.roadSnap) return { tile, end: null };
     const p = this.cursorCm(sx, sy);
     const end = p ? (this.env.roadEndNear?.(p) ?? null) : null;
-    return end ? { x: tileOfCm(end.x), z: tileOfCm(end.z) } : tile;
+    return end ? { tile: { x: tileOfCm(end.x), z: tileOfCm(end.z) }, end } : { tile, end: null };
+  }
+
+  /**
+   * The ends of roads off the grid a grid run over `tiles` moves onto the
+   * centre of the tile they lie on: the road end the drag started on and the
+   * one it stops on, where either is off its tile centre and its tile is one
+   * the run lays.
+   */
+  private endMoves(tiles: readonly TilePoint[]): EndMove[] {
+    const starts = this.dragStart ? this.dragStartEnd : this.hoverEnd;
+    const moves: EndMove[] = [];
+    for (const end of [starts, this.hoverEnd]) {
+      if (!end || isTileCentre(end)) continue;
+      const to = { x: tileCentreCm(tileOfCm(end.x)), z: tileCentreCm(tileOfCm(end.z)) };
+      const onRun = tiles.some((t) => t.x === tileOfCm(end.x) && t.z === tileOfCm(end.z));
+      const seen = moves.some((m) => m.from.x === end.x && m.from.z === end.z);
+      if (onRun && !seen) moves.push({ from: end, to });
+    }
+    return moves;
   }
 
   /**
@@ -1573,7 +1616,8 @@ export class ToolManager {
       // A corridor is two runs side by side; only a single run crosses over.
       const overpass = corridor.runs ? null : this.overpassPlan(tiles, section);
       const meet =
-        overpass?.refusal ?? this.meetRefusal(tiles, section, overpass?.crossings ?? NO_CROSSINGS);
+        overpass?.refusal ??
+        this.meetRefusal(tiles, section, overpass?.crossings ?? NO_CROSSINGS, this.endMoves(tiles));
       const { valid, invalidReason } =
         build.refusal !== null
           ? { valid: false, invalidReason: build.refusal }
@@ -1717,11 +1761,19 @@ export class ToolManager {
       // The deck height to send: what the player asked for, raised as far as
       // any road the run crosses over needs.
       const elevation = overpass?.elevation ?? this.roadElevation;
+      const moves = this.endMoves(tiles);
       const refused =
         (build.profile && !build.layable) ||
         (corridor.needed && !corridor.runs) ||
         (overpass?.refusal ?? null) !== null ||
-        this.meetRefusal(tiles, section, overpass?.crossings ?? NO_CROSSINGS) !== null;
+        this.meetRefusal(tiles, section, overpass?.crossings ?? NO_CROSSINGS, moves) !== null;
+      // The curve ends the run meets move onto their tile centres first, so the
+      // grid road finds them there.
+      const moveEnds = moves.map((m): Command => ({
+        kind: 'moveSegmentEnd',
+        from: m.from,
+        to: m.to,
+      }));
       // How the road meets the roads beside it: joined, or laid as its own.
       const options = {
         ...(this.flags.replaceRoad ? { replace: true } : {}),
@@ -1747,6 +1799,7 @@ export class ToolManager {
           ...options,
         });
         this.env.send(build.spec.name, [
+          ...moveEnds,
           { kind: 'defineRoadProfile', id: profileId, profile: build.profile },
           lay(runs.near, runs.nearFlow),
           lay(runs.far, runs.farFlow),
@@ -1755,6 +1808,7 @@ export class ToolManager {
         // Define and lay in one batch, so undo treats them as one edit and a
         // definition the worker refuses takes the road down with it.
         this.env.send(build.spec.name, [
+          ...moveEnds,
           { kind: 'defineRoadProfile', id: profileId, profile: build.profile },
           {
             kind: 'buildRoad',
@@ -1767,6 +1821,7 @@ export class ToolManager {
         ]);
       } else {
         this.env.send(build.spec.name, [
+          ...moveEnds,
           { kind: 'buildRoad', tier: build.tier, tiles, elevation, ...options },
         ]);
       }

@@ -153,9 +153,13 @@ another, this decides whether it joins one, and the two are toggled apart.
   (`Straight`, `L-path` or `Grid`) starting or ending on a road off the grid's
   end node, where that node is not on a tile centre, moves the node onto the
   centre of the tile it lies on — at most half a tile on each axis — by laying
-  the free road again with that end moved, in the same batch and the same undo
-  step as the grid road. If the moved road would break a geometry rule, the
-  drag is refused with that rule's reason, in the preview.
+  the free road again with that end moved (`moveSegmentEnd`), in the same
+  batch and the same undo step as the grid road, ahead of it. The move costs
+  nothing: it is the same road, a few metres longer or shorter, and undoing it
+  moves the end back. The grid road is then judged against the world as the
+  move leaves it, so the tile centre it meets the curve at is one it may take.
+  If the moved road would break a geometry rule, the drag is refused with that
+  rule's reason, in the preview.
 - A road off the grid snaps as described under
   [Curve and free road modes](#curve-and-free-road-modes), and a grid road
   joins the grid roads it touches, as it always has.
@@ -180,10 +184,7 @@ a road off the grid anywhere but at a tile centre it meets is shown refused,
 with the world's own reason, rather than shown valid and refused after
 release.
 
-**Status** (2026-09-28): built but for moving a curve's end, which is
-specified, not built. Until it is, a grid drag started on the end of a road
-off the grid that is not on a tile centre is shown refused, since it runs into
-that road.
+**Status** (2026-09-28): built.
 
 ## Road guide snapping
 

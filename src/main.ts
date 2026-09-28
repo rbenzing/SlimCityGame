@@ -47,7 +47,7 @@ import roadsData from './data/roads.json';
 import { CommandQueue } from './core/commands';
 import { generateProceduralMap } from './world/maps';
 import {
-  gridRunRefusal,
+  gridRunRefusalAfter,
   nearestRoadEnd,
   planWithSplits,
   roadEndDirection,
@@ -1032,9 +1032,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       return plan.ok ? { ok: true, lengthM: plan.lengthM } : plan;
     },
     // The world's own rule for the ground roads off the grid hold, against the
-    // mirror, so a grid drag into one is refused before release, not after.
-    gridRunRefusal: (tiles) =>
-      clientGrid.roads ? gridRunRefusal(clientGrid, clientGrid.roads, tiles) : null,
+    // mirror as the drag's curve-end moves would leave it, so a grid drag into
+    // one is refused before release, not after.
+    gridRunRefusal: (tiles, moves) =>
+      clientGrid.roads
+        ? gridRunRefusalAfter(clientGrid, clientGrid.roads, tiles, moves, (id) =>
+            clientGrid.profileById(id),
+          )
+        : null,
     entry: (catalogId: string) => catalogById.get(catalogId),
     onPreview: (preview) => {
       store

@@ -527,6 +527,18 @@ export type Command =
    * `control` as its bend. Costs nothing. Inverse: `splitSegment`.
    */
   | { kind: 'joinSegments'; at: { x: number; z: number }; control?: { x: number; z: number } }
+  /**
+   * Moves the end of the one road off the grid ending at `from` — a node no
+   * other road meets — to `to`, at most half a tile away on each axis, laying
+   * the road again with that end moved. What a grid drag started or ended on
+   * a curve's end does to meet it at the tile centre. Costs nothing. Inverse:
+   * the same move back.
+   */
+  | {
+      kind: 'moveSegmentEnd';
+      from: { x: number; z: number };
+      to: { x: number; z: number };
+    }
   | { kind: 'paintZone'; zone: ZoneType; tiles: TilePoint[] }
   | { kind: 'placeBuilding'; catalogId: string; x: number; z: number; rotation: 0 | 1 | 2 | 3 }
   | { kind: 'setTaxRate'; sector: Sector; rate: number } // 0..0.3

@@ -29,7 +29,7 @@ import roadsData from '../data/roads.json';
 import type { RoadSpec } from '../shared/types';
 import { decodeSave, encodeSave } from '../app/persist';
 import { createGrid, serializeGridV12 } from '../world/grid';
-import { cellStep, isFreeSegment, loadGrid, roadCellsOf } from '../world/roadnet';
+import { cellStep, isFreeSegment, loadGrid, neighbours, roadCellsOf } from '../world/roadnet';
 import { RUNS_INTO_FREE_ROAD } from '../world/freeroads';
 import { computeTerraformPatch, type TerraformCommand } from '../world/terraform';
 import {
@@ -2635,6 +2635,47 @@ describe('roads off the grid — the world lays them, undoes them and keeps them
     const redo = run(h, 3, undo.inverse);
     expect(redo.ok).toBe(true);
     expect(savedFree(h)).toEqual(['100000,100000-120000,120000~120000,100000']);
+  });
+
+  it('moves a curve’s end onto the tile centre a grid road meets it at, in one undo step', () => {
+    const h = sandboxed();
+    run(h, 1, [curve]);
+    // The curve starts on the corner of tile (50, 50); a street runs north
+    // from that tile once the start is brought to its centre.
+    const column = Array.from({ length: 6 }, (_, i) => ({ x: 50, z: 50 - i }));
+    const ack = run(h, 2, [
+      { kind: 'moveSegmentEnd', from: at(1000, 1000), to: at(1010, 1010) },
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column },
+    ]);
+    expect(ack.ok).toBe(true);
+    expect(savedFree(h)).toEqual(['101000,101000-120000,120000~120000,100000']);
+    const g = latestSaveGrid(h);
+    expect(g.roadTier[50 * MAP_SIZE + 50]).toBe(RoadTier.TwoLane);
+    // The street and the curve meet there: the street's tile links to the curve.
+    const cells = roadCellsOf(g);
+    const firstFree = 2 * MAP_SIZE * MAP_SIZE;
+    expect(neighbours(cells, 50 * MAP_SIZE + 50).some((c) => c >= firstFree)).toBe(true);
+
+    const undo = run(h, 3, ack.inverse);
+    expect(undo.ok).toBe(true);
+    expect(savedFree(h)).toEqual(['100000,100000-120000,120000~120000,100000']);
+    expect(latestSaveGrid(h).roadTier[50 * MAP_SIZE + 50]).toBe(RoadTier.None);
+    expect(run(h, 4, undo.inverse).ok).toBe(true);
+    expect(savedFree(h)).toEqual(['101000,101000-120000,120000~120000,100000']);
+  });
+
+  it('moves a curve’s end for nothing, and only an end no other road meets', () => {
+    const h = sandboxed();
+    run(h, 1, [curve]);
+    const moved = run(h, 2, [{ kind: 'moveSegmentEnd', from: at(1000, 1000), to: at(1010, 1010) }]);
+    expect(moved).toMatchObject({ ok: true, cost: 0 });
+    expect(moved.inverse).toEqual([
+      { kind: 'moveSegmentEnd', from: at(1010, 1010), to: at(1000, 1000) },
+    ]);
+    const nowhere = run(h, 3, [
+      { kind: 'moveSegmentEnd', from: at(1100, 1100), to: at(1110, 1110) },
+    ]);
+    expect(nowhere).toMatchObject({ ok: false, reason: 'invalid' });
   });
 
   it('refuses a grid road run into a free road away from where the two meet, whole', () => {
