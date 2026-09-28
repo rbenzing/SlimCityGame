@@ -581,6 +581,13 @@ MUTCD citations below use 11th-edition section numbers.
   and `transit` excepted), and `roadProfiles` is always sent before `roads`. —
   [ADR-0002](engineering/adr/0002-sim-runs-deterministic-fixed-timestep-in-a-worker.md),
   [interfaces.md](engineering/interfaces.md)
+- A snapshot's `buildings` delta names each id in exactly one of `added`,
+  `updated` and `removed`, carrying the building as it stands now, so no
+  renderer depends on the order it applies them in. Sent as logged, a home
+  updated and then levelled up in one window arrived both updated and removed,
+  and every renderer that applied removals first put the old home's roof back
+  beside the new house. — [interfaces.md](engineering/interfaces.md);
+  `settleBuildingDelta` in `src/sim/buildings.ts`
 - Only `src/main.ts` imports from every directory and spawns the worker. A UI
   panel reaches the render thread only through a method on `BoundActions` in
   `src/ui/store.ts`, bound in `main.ts`. —

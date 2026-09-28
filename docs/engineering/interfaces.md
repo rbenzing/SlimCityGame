@@ -393,6 +393,16 @@ patch/delta of each kind, immediately after `init` or `loadSave`.
 | `junctions`     | the computed junction list differs from what was last sent — control, warrant, turns, lane turns, or `auto` changed anywhere, or a junction appeared/disappeared; an unchanged city sends this field on _no_ snapshot at all                    |
 | `serviceLoad`   | the service pass has run at least once since `init`/`loadSave` — ten numbers, one `{ load, worst }` pair per service kind, re-sent every snapshot thereafter                                                                                    |
 
+`buildings` names each id in exactly one of `added`, `updated` and `removed`,
+and `added` and `updated` carry the building as it stands when the snapshot
+is sent, so the three lists can be applied in any order. The worker logs the
+changes as they happen, and one window can log a building twice — a home
+updated when its construction finishes and removed when it levels up — so
+`settleBuildingDelta` settles the log before sending: a building no longer
+standing is sent as removed only, one added and removed again before the
+snapshot is not sent as added, and an id removed and standing again (only a
+`loadSave` reuses an id) is sent as updated.
+
 `junctions[i].laneTurns` is itself conditional a second time: it is present
 only when at least one of that junction's four arms has a non-zero packed
 lane value — "nearly every junction in the city," per the worker's own

@@ -169,7 +169,7 @@ import {
   type TerraformSetCommand,
 } from '../world/terraform';
 import { FieldSim } from './fields';
-import { BuildingRegistry, footprintForRotation } from './buildings';
+import { BuildingRegistry, footprintForRotation, settleBuildingDelta } from './buildings';
 import { computeDemand } from './demand';
 import { GrowthSystem } from './growth';
 import { ServiceSim, nearestRoadTile } from './services';
@@ -1160,11 +1160,12 @@ class SimWorld implements WorkerSim {
       this.buildingsUpdated.length > 0 ||
       this.buildingsRemoved.length > 0
     ) {
-      snap.buildings = {
-        added: this.buildingsAdded.map((b) => ({ ...b })),
-        updated: this.buildingsUpdated.map((b) => ({ ...b })),
-        removed: [...this.buildingsRemoved],
-      };
+      snap.buildings = settleBuildingDelta(
+        this.buildingsAdded,
+        this.buildingsUpdated,
+        this.buildingsRemoved,
+        (id) => this.registry.get(id),
+      );
       this.buildingsAdded = [];
       this.buildingsUpdated = [];
       this.buildingsRemoved = [];
