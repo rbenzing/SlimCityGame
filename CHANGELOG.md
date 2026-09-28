@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.16.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.15.0...slimcity-v1.16.0) (2026-09-28)
+
+
+### Features
+
+* **homes:** homes face their street, with drives, garages and yards ([8234560](https://github.com/rbenzing/SlimCityGame/commit/82345605c6ee5987539e2bfc4f2b703e8327cd3b))
+* **homes:** homes face their street, with drives, garages and yards ([b9270d9](https://github.com/rbenzing/SlimCityGame/commit/b9270d94691987907e6a70d4db9d0a8faccd2255))
+
+
+### Bug Fixes
+
+* **buildings:** a home that levels up no longer leaves its old roof behind ([2574d17](https://github.com/rbenzing/SlimCityGame/commit/2574d17f616a51d2714d0920d1ccaf1888cff5f6))
+
 ## [1.15.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.14.0...slimcity-v1.15.0) (2026-09-28)
 
 
