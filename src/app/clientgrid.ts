@@ -682,11 +682,30 @@ export class ClientGridMirror {
       if (!this.inBounds(t.x, t.z)) return false;
       const i = this.idx(t.x, t.z);
       if (this.water[i]) return false;
-      if (this.roadTier[i] !== RoadTier.None) return false;
-      if (this.roadFootprint[i] !== 0) return false;
-      if (this.buildingId[i] !== 0) return false;
+      if (this.isOccupied(i)) return false;
     }
     return true;
+  }
+
+  /**
+   * Every tile something stands on: a road on the grid, the ground a road off
+   * the grid covers, or a building. Nothing grows there — the cosmetic trees
+   * are kept off exactly these, however the road or building got there.
+   */
+  occupiedTiles(): TilePoint[] {
+    const tiles: TilePoint[] = [];
+    for (let z = 0; z < this.size; z++) {
+      for (let x = 0; x < this.size; x++) {
+        if (this.isOccupied(this.idx(x, z))) tiles.push({ x, z });
+      }
+    }
+    return tiles;
+  }
+
+  private isOccupied(i: number): boolean {
+    return (
+      this.roadTier[i] !== RoadTier.None || this.roadFootprint[i] !== 0 || this.buildingId[i] !== 0
+    );
   }
 
   private stampFootprint(inst: BuildingInstance, entry: BuildingCatalogEntry | undefined): void {

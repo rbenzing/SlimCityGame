@@ -96,13 +96,7 @@ import { SelectionOutline } from './render/outline';
 import { MapPin } from './render/pin';
 import { CameraRig } from './render/camera';
 import { IdPicker } from './render/picking';
-import {
-  ToolManager,
-  footprintTiles,
-  ROAD_TOOL_TO_TIER,
-  ZONE_TOOL_TO_TYPE,
-  type ToolEnv,
-} from './tools/tools';
+import { ToolManager, ROAD_TOOL_TO_TIER, ZONE_TOOL_TO_TYPE, type ToolEnv } from './tools/tools';
 import { UndoStack } from './tools/undo';
 import { useCityStore } from './ui/store';
 import type { SelectedJunction } from './ui/store';
@@ -1144,19 +1138,23 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const toolManager = new ToolManager(env);
   toolManager.setBrush(store.getState().brushSettings);
 
-  /** Committed edits also trim cosmetic trees locally (the sim owns g.trees). */
+  /**
+   * A committed bulldoze clears the cosmetic trees on every tile it covers,
+   * bare ground included (the sim owns g.trees). Trees under roads and
+   * buildings are kept off by `keepTreesOffOccupied`, from the mirror.
+   */
   const clearTreesFor = (commands: Command[]): void => {
     for (const command of commands) {
-      if (command.kind === 'bulldoze' || command.kind === 'buildRoad') {
-        trees.clearAt(command.tiles);
-      } else if (command.kind === 'placeBuilding') {
-        const entry = catalogById.get(command.catalogId);
-        if (entry) {
-          trees.clearAt(footprintTiles({ x: command.x, z: command.z }, entry, command.rotation));
-        }
-      }
+      if (command.kind === 'bulldoze') trees.clearAt(command.tiles);
     }
   };
+  /**
+   * No tree stands where a road, a road off the grid or a building does. Read
+   * from the mirror rather than from the commands that put them there, so it
+   * holds for a curve, for a building the sim grew, and for a city just
+   * loaded, whose trees are regrown from the map it was founded on.
+   */
+  const keepTreesOffOccupied = (): void => trees.clearAt(clientGrid.occupiedTiles());
 
   // --- worker messages -----------------------------------------------------------
   const onAck = (ack: CommandAck): void => {
@@ -1361,6 +1359,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         if (current !== selected) state.setSelectedBuilding(current);
       }
     }
+    if (snap.roads || snap.roadNet || snap.buildings) keepTreesOffOccupied();
     if (snap.zones) {
       zoneGrid.applyZonePatches(snap.zones);
       clientGrid.applyZonePatches(snap.zones);

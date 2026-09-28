@@ -543,6 +543,33 @@ describe('ClientGridMirror', () => {
       ).toBe(false);
     });
   });
+
+  describe('occupiedTiles', () => {
+    it('is every road and building tile, row by row, and never bare ground or water', () => {
+      expect(mirror.occupiedTiles()).toEqual([]);
+      mirror.applyRoadDeltas([
+        {
+          x: 6,
+          z: 6,
+          tier: RoadTier.TwoLane,
+          mask: 0,
+          elevation: 0,
+          profile: RoadTier.TwoLane,
+          flow: 0,
+        },
+      ]);
+      mirror.applyBuildingDelta(
+        { added: [instance(1, 20, 20, 0)], removed: [], updated: [] },
+        entryFor,
+      );
+      const occupied = mirror.occupiedTiles();
+      expect(occupied[0]).toEqual({ x: 6, z: 6 });
+      expect(occupied).toContainEqual({ x: 20, z: 20 });
+      expect(occupied).not.toContainEqual({ x: 5, z: 5 }); // water
+      expect(occupied).not.toContainEqual({ x: 1, z: 1 });
+      for (const t of occupied) expect(mirror.isFreeForPlop([t])).toBe(false);
+    });
+  });
 });
 
 describe('ClientGridMirror — junction control', () => {
@@ -874,5 +901,25 @@ describe('ClientGridMirror — the roads off the grid, as the worker sends them'
     run(2, ack.inverse);
     expect(sum(mirror.roadFootprint)).toBe(0);
     expect(sum(computeZonableMask(mirror))).toBe(0);
+  });
+
+  it('counts every tile a free road covers as occupied, and none once it is gone', () => {
+    const { run, mirror } = worldAndMirror();
+    const ack = run(1, [
+      {
+        kind: 'buildSegment',
+        tier: RoadTier.TwoLane,
+        a: at(1000, 1000),
+        b: at(1200, 1200),
+        control: at(1200, 1000),
+      },
+    ]);
+    expect(ack.ok).toBe(true);
+    const occupied = new Set(mirror.occupiedTiles().map((t) => t.z * MAP_SIZE + t.x));
+    const covered = [...mirror.roadFootprint.keys()].filter((i) => mirror.roadFootprint[i] === 1);
+    expect(covered.length).toBeGreaterThan(0);
+    for (const i of covered) expect(occupied.has(i)).toBe(true);
+    run(2, ack.inverse);
+    expect(mirror.occupiedTiles()).toEqual([]);
   });
 });

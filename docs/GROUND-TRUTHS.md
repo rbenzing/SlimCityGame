@@ -673,6 +673,13 @@ MUTCD citations below use 11th-edition section numbers.
   samples real terrain height per vertex and splits on the terrain's own
   diagonal. — [buildings.md](art/buildings.md),
   [lighting.md](visual-render/lighting.md), [streets.md](art/streets.md)
+- No tree stands on a tile holding a grid road, a road off the grid's
+  footprint, or a building. It is read from the mirror whenever roads, the
+  network or buildings change, never from the commands that laid them:
+  trimmed by command, a curve kept every tree it was laid through and a
+  loaded city regrew a tree on every road. —
+  [vegetation.md](visual-render/vegetation.md); `occupiedTiles` in
+  `src/app/clientgrid.ts`
 - Nothing kerbside stands on a tile with road on both axes (manholes excepted);
   one prop per kerbside slot; everything beside a road measures from
   `curbWidthMeters`. A road-facing kit part is skipped when a building fronts
