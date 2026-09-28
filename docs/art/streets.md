@@ -70,6 +70,11 @@ for the surface, the paint, the furniture and the zoning overlay.
   stays grid-aligned.
 - **Road-end caps**: a dangling road end rounds off, and the kerb/sidewalk
   arcs around the cap at the cap's own radius rather than staying square.
+  A road off the grid rounds its dead end the same way — a half-disc as wide
+  as its carriageway, the footway wrapped round it, each line wrapped at its
+  own radius in its own side's colour — but inside its own length, so the
+  footway's tip is the point the road was drawn to, and a road too short for
+  a true half-circle at each end flattens its caps along itself.
 - **Direction arrows**: a placed one-way road shows pavement direction arrows
   roughly every third tile. While a one-way road or a highway is being
   dragged into place, translucent arrows along the ghost path also show the

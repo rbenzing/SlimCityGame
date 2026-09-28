@@ -160,8 +160,9 @@ This is where each system ends up. The stages below say when.
   square to it. Each junction is meshed from its shape, meeting each road where
   its centre line actually is at the set-back, which on a curve has already
   turned from its heading at the node, and each road's edge lines turn round
-  the kerb returns. Markings, kerbs, footways and furniture follow the segment
-  at their offsets.
+  the kerb returns. A dead end rounds off inside the road's own length, as
+  [streets.md](../art/streets.md) describes. Markings, kerbs, footways and
+  furniture follow the segment at their offsets.
 - **Where a free road meets the grid,** the grid tile the two share is drawn
   once, whole, by the free-road junction: every grid road meeting it is
   carried from the junction to the tile's edge in its own cross-section and

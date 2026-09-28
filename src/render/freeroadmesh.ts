@@ -43,6 +43,7 @@ import {
   BIKE_LANE_PAINT_COLOR,
   BUS_LANE_PAINT_COLOR,
   CURB_Y_OFFSET,
+  END_CAP_SEGMENTS,
   HIGHWAY_BARRIER_COLOR,
   HIGHWAY_BARRIER_RAISE,
   MARKING_COLOR,
@@ -136,7 +137,7 @@ interface Station extends MPoint {
 
 /** The centre line between `from` and `to` metres along it, with its normals, turned round when `flip`. */
 function stations(
-  samples: ReturnType<typeof sampleCentreLine>,
+  samples: readonly { x: number; z: number; s: number }[],
   from: number,
   to: number,
   flip = false,
@@ -164,12 +165,13 @@ function stations(
   for (let i = 0; i < samples.length - 1; i++) {
     const s0 = samples[i]!.s;
     const s1 = samples[i + 1]!.s;
-    // A stretch starting exactly on a sample starts in the stretch after it,
-    // or its first cell is laid from that sample to itself.
-    if (s1 <= from || s0 > to) continue;
+    if (s1 < from || s0 > to) continue;
     if (out.length === 0) out.push(lerp(i, Math.max(from, s0)));
-    if (s1 < to) out.push(at(i + 1));
-    else {
+    if (s1 < to) {
+      // A stretch starting exactly on a sample has laid that sample already,
+      // and laying it twice leaves a cell from the sample to itself.
+      if (s1 > out[out.length - 1]!.s) out.push(at(i + 1));
+    } else {
       out.push(lerp(i, to));
       break;
     }
@@ -280,8 +282,9 @@ function pointAlong(
   atA: boolean,
 ): { end: MPoint; endDir: MPoint } {
   const length = samples.at(-1)!.s;
-  const st = stations(samples, atA ? s : length - s, atA ? s : length - s)[0];
-  if (!st) return { end: { x: samples[0]!.x, z: samples[0]!.z }, endDir: { x: 1, z: 0 } };
+  // Anywhere on the line has a station, its two ends included.
+  const t = Math.min(length, Math.max(0, atA ? s : length - s));
+  const st = stations(samples, t, t)[0]!;
   // The normal is the forward heading turned a quarter toward increasing angle.
   const forward = { x: st.nz, z: -st.nx };
   return {
@@ -499,6 +502,8 @@ function drawSegment(
   from: number,
   to: number,
 ): void {
+  // A grid road whose junction reaches its tile's edge has nothing left to draw.
+  if (to - from < 1e-6) return;
   const { profile, plan } = lay;
   const samples = sampleCentreLine(segmentGeom(net, seg));
   const st = stations(samples, from, to, lay.flip);
@@ -558,9 +563,10 @@ function drawSegment(
  */
 export function freeRoadSoup(net: RoadNet, lookup: ProfileFor, surfaceAt: SurfaceAt): RoadSoup {
   const soup = new Soup(surfaceAt);
-  const { junctions, spans } = layout(net, lookup);
+  const { junctions, spans, caps } = layout(net, lookup);
   for (const j of junctions) drawJunction(soup, net, j.node, j.arms, j.color);
   for (const span of spans) drawSegment(soup, net, span.seg, span.lay, span.from, span.to);
+  for (const cap of caps) drawCap(soup, net, cap);
   return soup;
 }
 
@@ -592,16 +598,25 @@ function layout(
   junctions: { node: number; arms: Arm[]; color: Rgb }[];
   spans: Span[];
   gridTiles: TilePoint[];
+  caps: Cap[];
 } {
   const setbackAt = new Map<string, number>();
   const junctions: { node: number; arms: Arm[]; color: Rgb }[] = [];
   const spans: Span[] = [];
   const gridTiles: TilePoint[] = [];
+  const caps: Cap[] = [];
   for (let node = 0; node < net.nodeSlots; node++) {
     if (net.nodeLive[node] !== 1) continue;
     const { arms, segs } = armsAt(net, node, lookup);
     if (!segs.some((s) => isFreeSegment(net, s))) continue;
     arms.forEach((arm, k) => setbackAt.set(`${segs[k]}:${node}`, arm.setback));
+    // A lone grid tile a free road leaves is still the tile renderer's, and
+    // ends the way a grid road does; a free road ending on open ground rounds.
+    if (arms.length === 1 && !isGridNode(net, node)) {
+      const cap = capAt(net, segs[0]!, node, lookup);
+      setbackAt.set(`${segs[0]}:${node}`, cap.pivot);
+      caps.push(cap);
+    }
     if (arms.length < 2) continue;
     const free = segs.find((s) => isFreeSegment(net, s))!;
     junctions.push({ node, arms, color: surfaceColor(profileOf(net.segProfile[free]!, lookup)) });
@@ -633,7 +648,119 @@ function layout(
       to: length - (setbackAt.get(`${seg}:${net.segB[seg]}`) ?? 0),
     });
   }
-  return { junctions, spans, gridTiles };
+  return { junctions, spans, gridTiles, caps };
+}
+
+/**
+ * A free road's rounded dead end: the grid's cap — a half-disc as wide as the
+ * carriageway, the kerb and footway wrapped round it, the lines wrapped at
+ * their own radii — laid inside the road's own length, so its footway's tip
+ * is the node the road ends at and nothing reaches past the ground its
+ * footprint holds.
+ */
+interface Cap {
+  seg: number;
+  lay: Lay;
+  atA: boolean;
+  /** Metres from the node to where the swept road stops and the cap begins. */
+  pivot: number;
+  /** How far the carriageway's rounded end reaches from the pivot toward the node. */
+  depth: number;
+}
+
+function capAt(net: RoadNet, seg: number, node: number, lookup: ProfileFor): Cap {
+  const lay = layOf(net, seg, lookup);
+  const length = sampleCentreLine(segmentGeom(net, seg)).at(-1)!.s;
+  const half = carriagewayHalfWidthOf(lay.profile);
+  const kerb = hasKerbs(lay.profile) ? kerbWidthOf(lay.profile) : 0;
+  // A true half-circle where the road is long enough, flattened along the road
+  // where it is not, so a short road capped at both ends keeps a straight
+  // between its two rounded ends.
+  const depth = Math.max(0, Math.min(half, length / 2 - kerb));
+  return { seg, lay, atA: net.segA[seg] === node, pivot: depth + kerb, depth };
+}
+
+function drawCap(soup: Soup, net: RoadNet, cap: Cap): void {
+  const { profile, plan } = cap.lay;
+  const half = carriagewayHalfWidthOf(profile);
+  if (half <= 0) return;
+  const samples = sampleCentreLine(segmentGeom(net, cap.seg));
+  const { end, endDir } = pointAlong(samples, cap.pivot, cap.atA);
+  // Toward the node, and across the road a quarter turn from the way it leaves it.
+  const back = { x: -endDir.x, z: -endDir.z };
+  const across = turn(endDir);
+  const squash = half > 0 ? cap.depth / half : 0;
+  /** A point `r` out across the road and `r·squash` back toward the node, at sweep angle `a`. */
+  const ring = (r: number, along: number, a: number): MPoint => ({
+    x: end.x + back.x * along * Math.cos(a) + across.x * r * Math.sin(a),
+    z: end.z + back.z * along * Math.cos(a) + across.z * r * Math.sin(a),
+  });
+  const angles = Array.from(
+    { length: END_CAP_SEGMENTS + 1 },
+    (_, i) => -Math.PI / 2 + (Math.PI * i) / END_CAP_SEGMENTS,
+  );
+
+  const hub = soup.vertex(end.x, end.z, ROAD_Y_OFFSET);
+  const rim = angles.map((a) => ring(half, cap.depth, a));
+  const surface = surfaceColor(profile);
+  for (let i = 0; i < rim.length - 1; i++) {
+    soup.tri(
+      hub,
+      soup.vertex(rim[i]!.x, rim[i]!.z, ROAD_Y_OFFSET),
+      soup.vertex(rim[i + 1]!.x, rim[i + 1]!.z, ROAD_Y_OFFSET),
+      surface,
+    );
+  }
+
+  if (hasKerbs(profile)) {
+    const kerb = kerbWidthOf(profile);
+    const outer = angles.map((a) => ring(half + kerb, cap.depth + kerb, a));
+    for (let i = 0; i < rim.length - 1; i++) {
+      soup.quad(
+        soup.vertex(rim[i]!.x, rim[i]!.z, CURB_Y_OFFSET),
+        soup.vertex(outer[i]!.x, outer[i]!.z, CURB_Y_OFFSET),
+        soup.vertex(outer[i + 1]!.x, outer[i + 1]!.z, CURB_Y_OFFSET),
+        soup.vertex(rim[i + 1]!.x, rim[i + 1]!.z, CURB_Y_OFFSET),
+        SIDEWALK_COLOR,
+      );
+    }
+    soup.wall(
+      lineStations(rim),
+      0,
+      ROAD_Y_OFFSET,
+      CURB_Y_OFFSET,
+      shade(SIDEWALK_COLOR, KERB_FACE_SHADE),
+    );
+  }
+
+  if (!isPaved(profile)) return;
+  // Each line runs round its own half of the end, from its side of the road
+  // to the tip, so the two sides meet there in the colours they carry. The
+  // side a quarter turn from the road as it leaves holds its high offsets
+  // when it leaves the way its stations run.
+  const high = cap.atA !== cap.lay.flip;
+  const wrap = (line: MarkingLine, dashed: boolean): void => {
+    const r = Math.abs(line.at);
+    if (r <= PAINT_HALF_WIDTH_M) return;
+    const ahead = line.at > 0 === high;
+    const quarter = angles.filter((a) => (ahead ? a >= 0 : a <= 0));
+    const path = quarter.map((a) => ring(r, r * squash, a));
+    const run = lineStations(ahead ? path : [...path].reverse());
+    const length = run.at(-1)!.s;
+    const color = line.color === 'yellow' ? YELLOW_MARKING_COLOR : MARKING_COLOR;
+    const pieces = dashed ? dashSegments(0, length) : [[0, length] as [number, number]];
+    for (const [lo, hi] of pieces) {
+      soup.ribbon(
+        stations(run, lo, hi),
+        -PAINT_HALF_WIDTH_M,
+        PAINT_HALF_WIDTH_M,
+        MARK_Y_OFFSET,
+        color,
+      );
+    }
+  };
+  for (const line of plan.solid) wrap(line, false);
+  for (const line of plan.dashed) wrap(line, true);
 }
 
 /**
