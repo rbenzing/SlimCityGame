@@ -661,6 +661,31 @@ describe('two carriageways side by side are two roads to the approach walk', () 
   });
 });
 
+describe('a road held apart is a road of its own to the approach walk', () => {
+  /** A street ending against the side of another at (2, 2). */
+  const TEE = `
+    ..#..
+    ..#..
+    #####
+  `;
+  /** The same, with the end of the stem held apart from the street it ends against. */
+  const apart = (): ApproachSurroundings => ({
+    ...world(TEE),
+    apartAt: (x, z) => (x === 2 && z === 2 ? 1 : x === 2 && z === 1 ? 4 : 0),
+  });
+
+  it('counts the street it ends against as no arm, so the street runs straight on past it', () => {
+    expect(roadDegree(2, 2, world(TEE))).toBe(3);
+    expect(roadDegree(2, 2, apart())).toBe(2);
+    expect(roadDegree(2, 1, apart())).toBe(1);
+  });
+
+  it('finds no junction for the street to approach there', () => {
+    expect(approachAhead(1, 2, 3, world(TEE))).toMatchObject({ toward: RoadFlow.East });
+    expect(approachAhead(1, 2, 3, apart())).toBeUndefined();
+  });
+});
+
 describe('a ramp leaving a motorway is a diverge, not a junction', () => {
   /**
    * A southbound motorway at x = 4, and a ramp leaving it westward at z = 6 —

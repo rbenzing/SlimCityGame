@@ -91,6 +91,15 @@ MUTCD citations below use 11th-edition section numbers.
   on dry, unbuilt ground at a road's slope. `planSegment` in
   `src/world/freeroads.ts` is the only place those are checked. —
   [road-network.md](world-sim/road-network.md); `src/shared/roadgeom.ts`
+- A grid tile where a road off the grid meets is drawn by one renderer only:
+  the free-road junction, whole, with each grid road carried to the tile's
+  edge. The tile renderer draws none of its road, and no furniture or lamp the
+  tile's own role earned stands on it. Drawn twice, the tile's old corner or
+  straight showed through the junction — its kerb across the new road's
+  mouth, its corner sign standing in the carriageway. —
+  [road-network.md](world-sim/road-network.md); `freeJunctionTiles` in
+  `src/render/freeroadmesh.ts`, `setFreeJunctionTiles` in
+  `src/render/roadsmesh.ts`
 - Never compare a stored `roadFlow` byte to a `RoadFlow` value directly:
   direction is the low three bits (`ROAD_FLOW_DIRECTION_MASK`), bit 3 marks a
   corridor half and bit 4 the half at the HIGH offset. —
@@ -220,6 +229,43 @@ MUTCD citations below use 11th-edition section numbers.
   second carriageway took every gantry off the first. —
   [road-model.md](world-sim/road-model.md); `sideBySideCarriageways` in
   `src/shared/corridor.ts`
+- Two neighbouring grid road tiles are joined exactly when the network links
+  them. A road laid with snapping off (`buildRoad` with `join: false`) joins
+  nothing it only lies beside or ends against, and still joins where it
+  crosses or overlaps a road on the same level; laid with it on, it joins
+  everything its tiles touch, a road held apart before included. The
+  held-apart arms are a derived layer (`roadSeparate`), recomputed from the
+  network and never saved, holding only arms the other rules would join;
+  `isSeparateRoad`, the approach walk and the road furniture read it, so
+  every system keeps the two roads apart. An undo puts back exactly what was
+  held apart: a command that lays over or takes away a road hands the arms
+  back in its inverse (`apart`). —
+  [road-model.md](world-sim/road-model.md),
+  [interaction.md](ux/interaction.md#snapping-to-roads); `settleArms` in
+  `src/world/roads.ts`, `separateUnlinked` in `src/world/roadnet.ts`
+- The road tool's `Roads` snap toggle, on by default, is the only thing that
+  decides whether a new road snaps and joins. On, a road end within half a
+  tile of the cursor takes the drag — a node at most one road leaves, never a
+  junction — ahead of every other snap, for grid drags and roads off the grid
+  alike. Off, nothing snaps (no node, road end, centre line or tile centre, no
+  bend pulled into line, no split) and every `buildRoad` is sent with
+  `join: false`. Guide snapping is its own toggle and works either way. —
+  [interaction.md](ux/interaction.md#snapping-to-roads); `nearestRoadEnd` in
+  `src/world/freeroads.ts`
+- With snapping to roads on, a grid drag starting or ending on a road off
+  the grid's end moves that end onto its tile's centre in the same undo step,
+  or is refused with the reason in the preview. The move is its own command
+  (`moveSegmentEnd`, free, its inverse the move back), sent ahead of the grid
+  road; the world plans it with the road's old self taken away, and the
+  preview judges the grid road against the world as the move leaves it, with
+  the same function. — [interaction.md](ux/interaction.md#snapping-to-roads);
+  `moveRoadEnd` and `gridRunRefusalAfter` in `src/world/freeroads.ts`
+- A grid drag into ground a road off the grid holds, anywhere but a tile
+  centre where the two meet, is refused in the preview with the world's own
+  sentence, never shown valid and refused after release. One predicate
+  decides it for the world's `buildRoad` and for the tool's preview against
+  the mirror. — [interaction.md](ux/interaction.md#snapping-to-roads);
+  `gridRunRefusal` in `src/world/freeroads.ts`
 - A ramp meets a motorway alongside it, never head-on. It elbows round to run
   beside the motorway the way it goes and joins at one tile: an on-ramp at its
   END (a ramp arriving, none ahead), an off-ramp at its START (a ramp ahead,
@@ -664,6 +710,13 @@ MUTCD citations below use 11th-edition section numbers.
   samples real terrain height per vertex and splits on the terrain's own
   diagonal. — [buildings.md](art/buildings.md),
   [lighting.md](visual-render/lighting.md), [streets.md](art/streets.md)
+- No tree stands on a tile holding a grid road, a road off the grid's
+  footprint, or a building. It is read from the mirror whenever roads, the
+  network or buildings change, never from the commands that laid them:
+  trimmed by command, a curve kept every tree it was laid through and a
+  loaded city regrew a tree on every road. —
+  [vegetation.md](visual-render/vegetation.md); `occupiedTiles` in
+  `src/app/clientgrid.ts`
 - Nothing kerbside stands on a tile with road on both axes (manholes excepted);
   one prop per kerbside slot; everything beside a road measures from
   `curbWidthMeters`. A road-facing kit part is skipped when a building fronts

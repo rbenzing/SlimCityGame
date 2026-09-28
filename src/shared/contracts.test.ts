@@ -152,6 +152,7 @@ describe('ToolFlags (UI-SPEC §5)', () => {
       straightMode: true,
       gridMode: false,
       guideSnap: false,
+      roadSnap: true,
       replaceRoad: false,
     };
     expect(Object.keys(flags).sort()).toEqual([
@@ -159,6 +160,7 @@ describe('ToolFlags (UI-SPEC §5)', () => {
       'gridMode',
       'guideSnap',
       'replaceRoad',
+      'roadSnap',
       'straightMode',
     ]);
     // Every flag is a required boolean — a partial object is not a ToolFlags,

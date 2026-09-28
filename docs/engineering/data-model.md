@@ -56,6 +56,7 @@ from the road network saved after the tiles — see
 | `overFlow` †        | `Uint8Array`                                                    | That road's stored flow byte.                                                                                                            | v12                                                                   | `0`                                       |
 | `overElevation` †   | `Float32Array`                                                  | That road's deck height, metres above terrain.                                                                                           | v12                                                                   | `0`                                       |
 | `roadFootprint`     | `Uint8Array`                                                    | `1` where a road off the grid covers the tile, footways included. Derived from the road network (`deriveRoadFootprint`).                 | never — recomputed after every load and road command                  | `0`                                       |
+| `roadSeparate`      | `Uint8Array`                                                    | Arms of this tile's road held apart from the road beside it, as mask bits. Derived from the network (`deriveRoadLayers`).                | never — recomputed after every load and road command                  | `0`                                       |
 
 `ZoneType`, `RoadTier` and `RoadFlow` are plain numeric enums in
 `src/shared/types.ts`. Values are never reordered or reused once shipped —

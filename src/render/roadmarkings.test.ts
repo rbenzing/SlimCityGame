@@ -104,6 +104,17 @@ describe('markingPlan paints every preset the way a US road is painted', () => {
     );
   });
 
+  it('names its two edge lines, low offset first, and none on a road painting none', () => {
+    const two = markingPlan(presetProfileForTier(RoadTier.TwoLane));
+    expect(two.edges).toEqual([
+      { at: -3.25, color: 'white' },
+      { at: 3.25, color: 'white' },
+    ]);
+    const highway = markingPlan(presetProfileForTier(RoadTier.Highway));
+    expect(highway.edges?.map((l) => l.color)).toEqual(['yellow', 'white']);
+    expect(markingPlan(presetProfileForTier(RoadTier.Alley)).edges).toBeNull();
+  });
+
   it('an alley, a farm track and a railway carry no paint at all', () => {
     for (const tier of [RoadTier.Alley, RoadTier.Gravel, RoadTier.RailTrack]) {
       const p = markingPlan(presetProfileForTier(tier));
@@ -217,7 +228,8 @@ describe('markingPlan for composed profiles', () => {
     );
     for (const line of p.solid) {
       for (const band of green) {
-        const inside = line.at > Math.min(band.from, band.to) && line.at < Math.max(band.from, band.to);
+        const inside =
+          line.at > Math.min(band.from, band.to) && line.at < Math.max(band.from, band.to);
         expect(inside, `a line at ${line.at} sits inside the bike paint`).toBe(false);
       }
     }
@@ -238,7 +250,10 @@ describe('markingPlan for composed profiles', () => {
 });
 
 describe('a line crosses a seam where the road changes', () => {
-  const line = (at: number, color: 'white' | 'yellow' = 'white'): { at: number; color: typeof color } => ({ at, color });
+  const line = (
+    at: number,
+    color: 'white' | 'yellow' = 'white',
+  ): { at: number; color: typeof color } => ({ at, color });
 
   it('meets its opposite number half way, so both tiles put the seam in one place', () => {
     const here = [line(-3), line(3)];
@@ -319,6 +334,7 @@ describe('a line crosses a seam where the road changes', () => {
       turnLane: null,
       hasMedian: false,
       barrier: false,
+      edges: null,
     };
     const dashedCentre: MarkingProfile = {
       solid: [],
@@ -327,6 +343,7 @@ describe('a line crosses a seam where the road changes', () => {
       turnLane: null,
       hasMedian: false,
       barrier: false,
+      edges: null,
     };
     // Matched across the two lists, the pair stays on the centre. Matched only
     // within its own list it would find no yellow at all and set off for the
@@ -345,6 +362,7 @@ describe('a line crosses a seam where the road changes', () => {
       turnLane: null,
       hasMedian: false,
       barrier: false,
+      edges: [line(-3), line(3)],
     };
     expect(seamBetween(here, null, 0)).toEqual({ solid: [-3, 3], dashed: [0] });
   });
@@ -489,7 +507,13 @@ describe('the yellow edge of a one-way roadway (MUTCD 3B.07)', () => {
   });
 
   it('never paints both edges yellow, whichever way it runs', () => {
-    for (const flow of [RoadFlow.None, RoadFlow.North, RoadFlow.East, RoadFlow.South, RoadFlow.West]) {
+    for (const flow of [
+      RoadFlow.None,
+      RoadFlow.North,
+      RoadFlow.East,
+      RoadFlow.South,
+      RoadFlow.West,
+    ]) {
       const e = edges(flow);
       expect([e.low, e.high].filter((c) => c === 'yellow').length, `flow ${flow}`).toBe(1);
     }
@@ -534,7 +558,13 @@ describe('a motorway carriageway is edged the way a one-way roadway is (MUTCD 3B
   });
 
   it('never paints both edges yellow, and never both white', () => {
-    for (const flow of [RoadFlow.None, RoadFlow.North, RoadFlow.East, RoadFlow.South, RoadFlow.West]) {
+    for (const flow of [
+      RoadFlow.None,
+      RoadFlow.North,
+      RoadFlow.East,
+      RoadFlow.South,
+      RoadFlow.West,
+    ]) {
       const e = edges(carriageway(), flow);
       expect([e.low, e.high].filter((c) => c === 'yellow').length, `flow ${flow}`).toBe(1);
     }

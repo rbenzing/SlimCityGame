@@ -77,7 +77,10 @@ network the worker sends whenever it changes. Each free segment's
 cross-section is swept along its centre line, and each node a free segment
 meets is meshed from the roads meeting there: every road set back until its
 carriageway edge clears its neighbours' plus its kerb return, the junction
-surface filled between them, and the footway carried round each corner. It
+surface filled between them, and the footway and the edge lines carried
+round each corner. A grid tile a free road meets is drawn here whole, each
+grid road on it carried to the tile's edge, and `RoadMeshRenderer` is told
+to leave it out (`setFreeJunctionTiles`), so the two never draw one tile. It
 takes the tile renderer's colours, heights and markings plan, and is one mesh
 rebuilt whole on every change to the network or the ground, since free roads
 are few next to grid tiles. Street lamps are placed as stands in world space

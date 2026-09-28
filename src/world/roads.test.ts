@@ -3,11 +3,14 @@ import { isRailTier, RoadFlow, RoadTier, ZoneType } from '../shared/types';
 import type { GraphEdge, GridState, RoadProfile, TilePoint } from '../shared/types';
 import {
   applyRoad,
+  armsApartOn,
   computeMask,
   computeOverMask,
+  holdArmsApart,
   recomputeRoadMasks,
   removeRoad,
   roadStep,
+  settleArms,
 } from './roads';
 import { RoadNetwork } from './roadgraph';
 import { createGrid } from './grid';
@@ -24,6 +27,98 @@ const row = (z: number, from: number, to: number): TilePoint[] =>
   Array.from({ length: to - from + 1 }, (_, i) => ({ x: from + i, z }));
 const column = (x: number, from: number, to: number): TilePoint[] =>
   Array.from({ length: to - from + 1 }, (_, i) => ({ x, z: from + i }));
+
+describe('a road laid as its own road', () => {
+  const SIZE = 16;
+  const keys = (tiles: readonly TilePoint[]): number[] => tiles.map((t) => idx(SIZE, t.x, t.z));
+  const masks = (g: GridState, tiles: readonly TilePoint[]): number[] =>
+    tiles.map((t) => g.roadMask[idx(SIZE, t.x, t.z)] ?? 0);
+  /** Lays `tiles` as one drag, its arms decided first, as the worker does. */
+  function lay(
+    g: GridState,
+    tiles: TilePoint[],
+    join: boolean,
+    tier: RoadTier = RoadTier.TwoLane,
+  ): void {
+    settleArms(g, keys(tiles), new Set(keys(tiles)), join);
+    applyRoad(g, tiles, tier);
+  }
+  /** A street on row 5, and a second laid on row 6 beside it. */
+  function sideBySide(join: boolean): GridState {
+    const g = makeGrid(SIZE);
+    applyRoad(g, row(5, 2, 10), RoadTier.TwoLane);
+    lay(g, row(6, 2, 10), join);
+    expect(g.roadMask[idx(SIZE, 6, 6)]! & 1).toBe(join ? 1 : 0);
+    return g;
+  }
+
+  it('stays a street of its own on the row beside another, where joining would merge them', () => {
+    const apart = sideBySide(false);
+    expect(masks(apart, row(5, 3, 9))).toEqual(Array<number>(7).fill(2 | 8));
+    expect(masks(apart, row(6, 3, 9))).toEqual(Array<number>(7).fill(2 | 8));
+    // Held apart on both tiles of every arm between them, and nowhere else.
+    for (let x = 2; x <= 10; x++) {
+      expect(apart.roadSeparate[idx(SIZE, x, 5)]).toBe(4);
+      expect(apart.roadSeparate[idx(SIZE, x, 6)]).toBe(1);
+    }
+    expect(Array.from(apart.roadSeparate).filter((a) => a !== 0)).toHaveLength(18);
+
+    const joined = sideBySide(true);
+    expect(masks(joined, row(5, 3, 9))).toEqual(Array<number>(7).fill(2 | 4 | 8));
+    expect(Array.from(joined.roadSeparate).every((a) => a === 0)).toBe(true);
+  });
+
+  it('stays a dead end where it ends a tile short of another road in line with it', () => {
+    const g = makeGrid(SIZE);
+    applyRoad(g, row(5, 2, 5), RoadTier.TwoLane);
+    lay(g, row(5, 6, 9), false);
+    expect(g.roadMask[idx(SIZE, 5, 5)]).toBe(8);
+    expect(g.roadMask[idx(SIZE, 6, 5)]).toBe(2);
+  });
+
+  it('still joins the road it crosses, so a crossing is a junction however it was drawn', () => {
+    const g = makeGrid(SIZE);
+    applyRoad(g, row(5, 2, 10), RoadTier.TwoLane);
+    lay(g, column(6, 2, 9), false);
+    expect(g.roadMask[idx(SIZE, 6, 5)]).toBe(1 | 2 | 4 | 8);
+    expect(g.roadMask[idx(SIZE, 5, 5)]).toBe(2 | 8);
+    expect(g.roadMask[idx(SIZE, 6, 4)]).toBe(1 | 4);
+    expect(Array.from(g.roadSeparate).every((a) => a === 0)).toBe(true);
+  });
+
+  it('joins up again where a road is laid over it with joining on', () => {
+    const g = sideBySide(false);
+    lay(g, row(6, 2, 10), true, RoadTier.Avenue);
+    expect(masks(g, row(6, 3, 9))).toEqual(Array<number>(7).fill(1 | 2 | 8));
+    expect(Array.from(g.roadSeparate).every((a) => a === 0)).toBe(true);
+  });
+
+  it('keeps what it was held apart from when laid over again with joining off', () => {
+    const g = sideBySide(false);
+    lay(g, row(6, 2, 10), false, RoadTier.Avenue);
+    expect(masks(g, row(6, 3, 9))).toEqual(Array<number>(7).fill(2 | 8));
+    expect(masks(g, row(5, 3, 9))).toEqual(Array<number>(7).fill(2 | 8));
+  });
+
+  it('leaves nothing held apart once one of the two roads is taken away', () => {
+    const g = sideBySide(false);
+    removeRoad(g, row(6, 2, 10));
+    expect(Array.from(g.roadSeparate).every((a) => a === 0)).toBe(true);
+    expect(masks(g, row(5, 3, 9))).toEqual(Array<number>(7).fill(2 | 8));
+  });
+
+  it('holds exactly what it is told apart, as an undo puts it back', () => {
+    const before = sideBySide(false);
+    const g = sideBySide(false);
+    const apart = armsApartOn(g, row(6, 2, 10));
+    expect(apart).toHaveLength(9);
+    removeRoad(g, row(6, 2, 10));
+    holdArmsApart(g, keys(row(6, 2, 10)), apart);
+    applyRoad(g, row(6, 2, 10), RoadTier.TwoLane);
+    expect(Array.from(g.roadSeparate)).toEqual(Array.from(before.roadSeparate));
+    expect(Array.from(g.roadMask)).toEqual(Array.from(before.roadMask));
+  });
+});
 
 describe('a bridge ramp at the steepest grade', () => {
   it('joins two decks one grade step apart, even when single precision makes it a hair steeper', () => {

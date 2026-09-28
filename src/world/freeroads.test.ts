@@ -8,6 +8,7 @@ import { computeZonableMask } from './zonable';
 import { applyRoad, removeRoad } from './roads';
 import {
   deriveRoadLayers,
+  encodeRoadNetwork,
   isFreeSegment,
   liveNodes,
   liveSegments,
@@ -18,12 +19,17 @@ import {
 } from './roadnet';
 import {
   deriveRoadFootprint,
+  gridRunRefusal,
+  gridRunRefusalAfter,
   joinSegmentsAt,
   laySegment,
+  moveRoadEnd,
+  nearestRoadEnd,
   nearestRoadPoint,
   planSegment,
   planWithSplits,
   removeSegmentAt,
+  RUNS_INTO_FREE_ROAD,
   snapRoadEnd,
   splitRefusal,
   splitSegment,
@@ -259,6 +265,121 @@ describe('where a dropped road end lands', () => {
     // Open ground: exactly where it was dropped.
     expect(snapRoadEnd(g, at(600, 600))).toEqual({ at: at(600, 600), splits: false });
   });
+
+  it('lands on a road end within half a tile, ahead of the road it would otherwise split', () => {
+    const g = world();
+    lay(g, { a: at(300, 300), b: at(420, 300) });
+    // On the centre line eight metres short of the end: the end takes it.
+    expect(snapRoadEnd(g, at(308, 300))).toEqual({ at: at(300, 300), splits: false });
+    // Past half a tile from it: onto the centre line, splitting it.
+    expect(snapRoadEnd(g, at(311, 300))).toEqual({ at: at(311, 300), splits: true });
+  });
+});
+
+describe('moving a road end onto a tile centre', () => {
+  /** The one free road's ends and control, as metres, and its tier, profile and flow. */
+  const onlyFree = (g: GridState) => {
+    const [s] = freeSegments(g);
+    const geom = segmentGeom(g.roads!, s!);
+    return {
+      a: geom.a,
+      b: geom.b,
+      control: geom.control,
+      facts: [g.roads!.segTier[s!], g.roads!.segProfile[s!], g.roads!.segFlow[s!]],
+    };
+  };
+
+  it('lays the road again with that end moved, and everything else as it was', () => {
+    const g = world();
+    lay(g, {
+      a: at(304, 303),
+      b: at(420, 330),
+      control: at(360, 280),
+      tier: RoadTier.OneWay,
+      flow: 1,
+    });
+    const before = onlyFree(g);
+    expect(moveRoadEnd(g, g.roads!, { from: at(304, 303), to: centre(15, 15) }, noCustom)).toEqual({
+      ok: true,
+    });
+    settle(g);
+    expect(freeSegments(g)).toHaveLength(1);
+    expect(onlyFree(g)).toEqual({ ...before, a: centre(15, 15) });
+    // The old end is gone with it.
+    expect(liveNodes(g.roads!).some((n) => g.roads!.nodeX[n] === 30400)).toBe(false);
+  });
+
+  it('refuses a move that would break a rule, with that rule, and changes nothing', () => {
+    const g = world();
+    // A road ending 16 m short of another: kerb to kerb they clear; moved to
+    // its tile's centre it would stop 10 m short, closer than their widths.
+    lay(g, { a: at(300, 404), b: at(404, 404) });
+    lay(g, { a: at(420, 300), b: at(420, 500) });
+    const saved = encodeRoadNetwork(g.roads!);
+    expect(moveRoadEnd(g, g.roads!, { from: at(404, 404), to: centre(20, 20) }, noCustom)).toEqual({
+      ok: false,
+      reason: 'Too close to another road',
+    });
+    expect(encodeRoadNetwork(g.roads!)).toEqual(saved);
+  });
+
+  it('moves only an end no other road meets, and only half a tile each way', () => {
+    const g = world();
+    lay(g, { a: at(300, 304), b: at(400, 330) });
+    lay(g, { a: at(400, 330), b: at(460, 420) });
+    const move = (from: CmPoint, to: CmPoint) => moveRoadEnd(g, g.roads!, { from, to }, noCustom);
+    expect(move(at(400, 330), centre(20, 16))).toEqual({ ok: false, reason: 'invalid' });
+    expect(move(at(300, 304), at(300, 316))).toEqual({ ok: false, reason: 'invalid' });
+    expect(move(at(300, 304), at(310, 310))).toEqual({ ok: true });
+  });
+
+  it('lets a grid run onto the tile a curve ends on once the end is moved to its centre', () => {
+    const g = world();
+    lay(g, { a: at(304, 303), b: at(420, 390) });
+    const run = Array.from({ length: 6 }, (_, i) => ({ x: 15, z: 15 - i }));
+    const move = { from: at(304, 303), to: centre(15, 15) };
+    expect(gridRunRefusalAfter(g, g.roads!, run, [], noCustom)).toBe(RUNS_INTO_FREE_ROAD);
+    expect(gridRunRefusalAfter(g, g.roads!, run, [move], noCustom)).toBeNull();
+    // Judged against a copy: the world itself is untouched.
+    expect(onlyFree(g).a).toEqual(at(304, 303));
+  });
+});
+
+describe('a road end', () => {
+  /** A street along row 5 from x = 5 to 10, and a side street down to it from (7, 1). */
+  function tee(): GridState {
+    const g = world();
+    applyRoad(
+      g,
+      Array.from({ length: 6 }, (_, i) => ({ x: 5 + i, z: 5 })),
+      RoadTier.TwoLane,
+    );
+    applyRoad(
+      g,
+      Array.from({ length: 4 }, (_, i) => ({ x: 7, z: 1 + i })),
+      RoadTier.TwoLane,
+    );
+    settle(g);
+    return g;
+  }
+
+  it('is the end tile of a grid road, found from anywhere within half a tile of its centre', () => {
+    const g = tee();
+    expect(nearestRoadEnd(g.roads!, at(106, 107))).toEqual(centre(5, 5));
+    expect(nearestRoadEnd(g.roads!, at(151, 36))).toEqual(centre(7, 1));
+    expect(nearestRoadEnd(g.roads!, at(122, 110))).toBeNull();
+  });
+
+  it('is the end node of a road off the grid', () => {
+    const g = world();
+    lay(g, { a: at(300, 300), b: at(420, 330) });
+    expect(nearestRoadEnd(g.roads!, at(425, 334))).toEqual(at(420, 330));
+  });
+
+  it('is never a junction, however near it the cursor is', () => {
+    const g = tee();
+    expect(nearestRoadEnd(g.roads!, centre(7, 5))).toBeNull();
+  });
 });
 
 describe('splitting a free road, and joining it back', () => {
@@ -383,6 +504,36 @@ describe('roads off the grid: meeting the grid', () => {
     const through = plan(g, { a: at(300, 300), b: at(320, 500) });
     expect(r).toMatchObject({ ok: true });
     expect(through).toMatchObject({ ok: false, reason: expect.stringMatching(/grid/) });
+  });
+
+  it('lets a grid run onto a free road’s ground only at the tile centre where they meet', () => {
+    const g = meeting();
+    const junction = 20 * SIZE + 20;
+    const covered = [...g.roadFootprint.keys()].filter(
+      (i) => g.roadFootprint[i] === 1 && i !== junction,
+    );
+    expect(g.roadFootprint[junction]).toBe(1);
+    expect(covered.length).toBeGreaterThan(0);
+    const tileOf = (i: number) => ({ x: i % SIZE, z: Math.floor(i / SIZE) });
+    // The tile centre the free road meets the street at is the grid's to enter…
+    expect(
+      gridRunRefusal(g, g.roads!, [
+        { x: 19, z: 20 },
+        { x: 20, z: 20 },
+      ]),
+    ).toBeNull();
+    // …and every other tile the free road covers is not, wherever in the run.
+    for (const i of covered) {
+      expect(gridRunRefusal(g, g.roads!, [{ x: 0, z: 0 }, tileOf(i)])).toBe(RUNS_INTO_FREE_ROAD);
+    }
+    // Ground it does not cover, and tiles off the map, say nothing.
+    expect(
+      gridRunRefusal(g, g.roads!, [
+        { x: 2, z: 2 },
+        { x: -1, z: 3 },
+        { x: SIZE, z: 0 },
+      ]),
+    ).toBeNull();
   });
 
   it('keeps the free road when the grid road it met is bulldozed', () => {

@@ -577,6 +577,42 @@ separate matter, decided by `isCorridorPartner`; `isSeparateRoad` in
 network graph both read it, so what is drawn and what is driven cannot
 disagree.
 
+**A road laid as its own road does not join the roads beside it.** With the
+road tool's snapping to roads off ([interaction.md](../ux/interaction.md#snapping-to-roads)),
+`buildRoad` is sent with `join: false`. What it decides is the arms of the
+tiles the command lays or lays again — the arms between one of those tiles and
+a road tile outside the drag. An arm that was joined before the command joins
+as before — the road it crosses, the road whose tile it overlaps — so a
+crossing is still a junction; one that was not stays unjoined. Joining along
+the drag itself is never affected. Sent with `join` left out, the same arms
+all join, as a road's always have, one held apart before included: laying a
+road again with snapping on is how a road laid apart is joined up. The arms of
+a tile the command leaves as it was are not touched.
+
+The fact is stored where roads are stored, in the network, as the absence of a
+link: two neighbouring grid road tiles are joined exactly when the network
+links them. The per-tile arms that are held apart are a derived layer
+(`roadSeparate`, recomputed from the network on load and after every command,
+never saved), and `isSeparateRoad` reads it alongside its other rules, so the
+mask, the graph, the utility and service spreads, the approach walk and the
+road furniture keep the two apart as they do two carriageways. It holds only
+arms the rules would otherwise join; where a rule already keeps two roads
+apart, the rule is the reason. A save from before carries a link wherever its
+tiles joined, so nothing it holds comes apart.
+
+An undo puts back exactly the arms that were held apart. A command that lays a
+road over one, or takes one away, hands back with the road the arms of its
+tiles that were held apart (`apart`, which only an undo sends); given them,
+`buildRoad` holds exactly those apart and joins the rest.
+
+The refusals are unchanged. A road laid apart is refused beside a road its
+class may never meet — a street beside a motorway — as it would be when
+joined.
+
+**Status: built** (2026-09-28): `buildRoad` takes `join` and `apart`, saves
+keep what is held apart, and the road tool's `Roads` snap toggle sends
+`join: false` when it is off.
+
 ## Ramps and interchanges
 
 `ramp` is its own class: one or two lanes, one-way, unzonable, at the

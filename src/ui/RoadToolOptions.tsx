@@ -70,12 +70,15 @@ function Choice({
   pressed,
   refusal = null,
   title,
+  label,
   onClick,
   children,
 }: {
   pressed: boolean;
   refusal?: string | null;
   title?: string;
+  /** The name it is announced by, where its text alone would not tell it apart. */
+  label?: string;
   onClick: () => void;
   children: ReactNode;
 }): JSX.Element {
@@ -83,6 +86,7 @@ function Choice({
   return (
     <button
       type="button"
+      aria-label={label}
       aria-pressed={pressed}
       disabled={disabled}
       title={disabled ? (refusal ?? undefined) : title}
@@ -172,6 +176,18 @@ function DrawingSection(): JSX.Element {
             onClick={() => setToolFlags({ guideSnap: !toolFlags.guideSnap })}
           >
             Guide
+          </Choice>
+          <Choice
+            pressed={toolFlags.roadSnap}
+            label="Snap to roads"
+            title={
+              toolFlags.roadSnap
+                ? 'A drag snaps onto the roads it reaches and joins them'
+                : 'A drag is laid as a road of its own: it snaps to nothing and joins only a road it crosses'
+            }
+            onClick={() => setToolFlags({ roadSnap: !toolFlags.roadSnap })}
+          >
+            Roads
           </Choice>
         </div>
       </Row>

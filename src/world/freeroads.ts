@@ -29,7 +29,14 @@ import {
 } from '../shared/roadgeom';
 import type { CmPoint, MPoint, SegmentGeom } from '../shared/roadgeom';
 import { joinRefusal, presetProfileForTier, profileWidth } from '../shared/roadprofile';
-import type { GridState, RoadClassId, RoadNet, RoadProfile, RoadTier } from '../shared/types';
+import type {
+  GridState,
+  RoadClassId,
+  RoadNet,
+  RoadProfile,
+  RoadTier,
+  TilePoint,
+} from '../shared/types';
 import {
   addNode,
   addSegment,
@@ -337,7 +344,7 @@ export function planSegment(
 
 /** Lays a planned segment and returns its slot. */
 export function laySegment(
-  g: GridState,
+  g: Pick<GridState, 'roadTier' | 'roadProfile' | 'roadFlow'>,
   net: RoadNet,
   plan: SegmentPlan & { ok: true },
   req: SegmentRequest,
@@ -553,6 +560,111 @@ export function freeJunctionTiles(net: RoadNet, size: number): Set<number> {
   return tiles;
 }
 
+/** Why a grid run may not be laid where a road off the grid covers the ground. */
+export const RUNS_INTO_FREE_ROAD = 'It runs into a road off the grid';
+
+/**
+ * Why a grid road may not be laid over `tiles`: one of them is ground a road
+ * off the grid covers, other than a tile centre where the two meet — or null.
+ * The world asks this of every `buildRoad`, and the road tool asks it of its
+ * preview against the mirror of the world, so the preview refuses exactly
+ * what the command would.
+ */
+export function gridRunRefusal(
+  g: Pick<GridState, 'size' | 'roadFootprint'>,
+  net: RoadNet,
+  tiles: readonly TilePoint[],
+): string | null {
+  let junctions: Set<number> | null = null;
+  for (const t of tiles) {
+    if (t.x < 0 || t.z < 0 || t.x >= g.size || t.z >= g.size) continue;
+    const idx = t.z * g.size + t.x;
+    if (g.roadFootprint[idx] !== 1) continue;
+    junctions ??= freeJunctionTiles(net, g.size);
+    if (!junctions.has(idx)) return RUNS_INTO_FREE_ROAD;
+  }
+  return null;
+}
+
+/** A road off the grid's end moved from one point to another: see `moveRoadEnd`. */
+export interface EndMove {
+  from: CmPoint;
+  to: CmPoint;
+}
+
+/** How far a road's end may be moved on each axis, centimetres: half a tile. */
+const END_MOVE_REACH_CM = (TILE_METERS / 2) * 100;
+
+/**
+ * Moves the end of the one road off the grid ending at `move.from` to
+ * `move.to`, in place, by laying that road again with the end moved: the same
+ * tier, profile, flow and control, planned as `buildSegment` plans a road but
+ * with its old self taken away, which it would otherwise crowd. The end must
+ * be a node no other road meets and no grid road stands on, and the move at
+ * most half a tile on each axis. Refused, with nothing changed, for the reason
+ * the plan gives.
+ */
+export function moveRoadEnd(
+  g: SegmentGround & Pick<GridState, 'roadFlow'>,
+  net: RoadNet,
+  move: EndMove,
+  lookup: ProfileLookup,
+): { ok: true } | { ok: false; reason: string } {
+  const refuse = (reason: string): { ok: false; reason: string } => ({ ok: false, reason });
+  const { from, to } = move;
+  if (from.x === to.x && from.z === to.z) return refuse('invalid');
+  if (Math.abs(to.x - from.x) > END_MOVE_REACH_CM || Math.abs(to.z - from.z) > END_MOVE_REACH_CM) {
+    return refuse('invalid');
+  }
+  const node = nodeAt(net, from);
+  if (node < 0 || net.nodeTier[node] !== 0) return refuse('invalid');
+  const segs = segmentsAt(net, node);
+  if (segs.length !== 1 || !isFreeSegment(net, segs[0]!)) return refuse('invalid');
+  const s = segs[0]!;
+  const old = segmentGeom(net, s);
+  const req: SegmentRequest = {
+    tier: net.segTier[s] as RoadTier,
+    profileId: net.segProfile[s]!,
+    a: net.segA[s] === node ? to : old.a,
+    b: net.segB[s] === node ? to : old.b,
+    control: old.control,
+    flow: net.segFlow[s]!,
+  };
+  const without = decodeRoadNetwork(encodeRoadNetwork(net));
+  removeSegmentAt(without, old.a, old.b, old.control);
+  const plan = planSegment(g, without, req, lookup);
+  if (!plan.ok) return refuse(plan.reason);
+  // The same removal leaves the network exactly as the plan saw it.
+  removeSegmentAt(net, old.a, old.b, old.control);
+  laySegment(g, net, plan, req);
+  return { ok: true };
+}
+
+/**
+ * Why a grid road may not be laid over `tiles` once `moves` have brought the
+ * ends of roads off the grid onto tile centres — `gridRunRefusal` against the
+ * world as the moves leave it — or why one of the moves is refused. The road
+ * tool asks this of its preview. The world makes the moves first and then
+ * asks `gridRunRefusal` itself, and comes to the same answer.
+ */
+export function gridRunRefusalAfter(
+  g: SegmentGround & Pick<GridState, 'roadFlow' | 'roadFootprint'>,
+  net: RoadNet,
+  tiles: readonly TilePoint[],
+  moves: readonly EndMove[],
+  lookup: ProfileLookup,
+): string | null {
+  if (moves.length === 0) return gridRunRefusal(g, net, tiles);
+  const moved = decodeRoadNetwork(encodeRoadNetwork(net));
+  for (const move of moves) {
+    const done = moveRoadEnd(g, moved, move, lookup);
+    if (!done.ok) return done.reason;
+  }
+  const ground = { size: g.size, roadFootprint: new Uint8Array(g.size * g.size) };
+  deriveRoadFootprint(ground, moved, lookup);
+  return gridRunRefusal(ground, moved, tiles);
+}
+
 /** How close to a road node a dropped road end is pulled onto it, metres. */
 export const NODE_SNAP_M = 4;
 /** How close to a free road's centre line a dropped road end lands on it, metres. */
@@ -565,11 +677,39 @@ export interface RoadEnd {
   splits: boolean;
 }
 
+/** How near a road end a dropped end or a drag lands on it, metres: half a tile. */
+export const ROAD_END_SNAP_M = TILE_METERS / 2;
+
 /**
- * Where a road end dropped at `p` lands: on the nearest road node within
- * `NODE_SNAP_M`; else on the nearest free road's centre line within
- * `ROAD_SNAP_M`, splitting it; else at the centre of the grid road tile under
- * it, the only place a road off the grid may meet one; else at `p` itself.
+ * The road end nearest `p` within `ROAD_END_SNAP_M`, or null. A road end is a
+ * node that at most one road leaves — the end tile of a grid road, or the end
+ * node of a road off the grid — so a junction is never one.
+ */
+export function nearestRoadEnd(net: RoadNet, p: CmPoint): CmPoint | null {
+  const roads = new Uint16Array(net.nodeSlots);
+  for (let s = 0; s < net.segSlots; s++) {
+    if (net.segLive[s] !== 1) continue;
+    for (const n of [net.segA[s]!, net.segB[s]!]) roads[n] = (roads[n] ?? 0) + 1;
+  }
+  let best: CmPoint | null = null;
+  let bestD = ROAD_END_SNAP_M * 100;
+  for (let n = 0; n < net.nodeSlots; n++) {
+    if (net.nodeLive[n] !== 1 || (roads[n] ?? 0) > 1) continue;
+    const d = Math.hypot(net.nodeX[n]! - p.x, net.nodeZ[n]! - p.z);
+    if (d <= bestD) {
+      bestD = d;
+      best = { x: net.nodeX[n]!, z: net.nodeZ[n]! };
+    }
+  }
+  return best;
+}
+
+/**
+ * Where a road end dropped at `p` lands: on the nearest road end within
+ * `ROAD_END_SNAP_M`; else on the nearest road node within `NODE_SNAP_M`; else
+ * on the nearest free road's centre line within `ROAD_SNAP_M`, splitting it;
+ * else at the centre of the grid road tile under it, the only place a road off
+ * the grid may meet one; else at `p` itself.
  */
 export function snapRoadEnd(
   g: Pick<GridState, 'size' | 'roadTier'> & { roads?: RoadNet },
@@ -577,6 +717,8 @@ export function snapRoadEnd(
 ): RoadEnd {
   const net = g.roads;
   if (net) {
+    const end = nearestRoadEnd(net, p);
+    if (end) return { at: end, splits: false };
     let best: CmPoint | null = null;
     let bestD = NODE_SNAP_M * 100;
     for (let s = 0; s < net.nodeSlots; s++) {

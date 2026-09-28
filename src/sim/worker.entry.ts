@@ -36,9 +36,10 @@ import {
 import { segmentLengthM } from '../shared/roadgeom';
 import {
   deriveRoadFootprint,
-  freeJunctionTiles,
+  gridRunRefusal,
   joinSegmentsAt,
   laySegment,
+  moveRoadEnd,
   nearestRoadPoint,
   planSegment,
   removeSegmentAt,
@@ -82,6 +83,7 @@ import type {
   ServiceLoad,
   SimSnapshot,
   SimSpeed,
+  TileArms,
   TilePoint,
   WorkerToMain,
   ZonePatch,
@@ -138,7 +140,15 @@ import {
   segmentGeom,
   syncRoadLayers,
 } from '../world/roadnet';
-import { applyRoad, computeOverMask, remaskAround, removeRoad } from '../world/roads';
+import {
+  applyRoad,
+  armsApartOn,
+  computeOverMask,
+  holdArmsApart,
+  remaskAround,
+  removeRoad,
+  settleArms,
+} from '../world/roads';
 import { RoadNetwork } from '../world/roadgraph';
 import {
   clearOverRoad,
@@ -295,6 +305,11 @@ function reportRoadProblems(when: string, problems: readonly string[]): void {
   console.error(
     `road network (${when}): ${problems.length} tile(s) derived differently — ${problems.slice(0, 8).join('; ')}`,
   );
+}
+
+/** An undo's `apart`: the arms it puts back held apart, left out where none were. */
+function heldApart(apart: readonly TileArms[] | undefined): { apart?: TileArms[] } {
+  return apart && apart.length > 0 ? { apart: [...apart] } : {};
 }
 
 function cloneStats(stats: CityStats): CityStats {
@@ -687,17 +702,8 @@ class SimWorld implements WorkerSim {
     for (let z = 0; z < MAP_SIZE; z++) {
       for (let x = 0; x < MAP_SIZE; x++) {
         const idx = tileIndex(x, z);
-        const tier = (this.grid.roadTier[idx] ?? 0) as RoadTier;
-        if (tier !== 0) {
-          this.pendingRoadDeltas.set(idx, {
-            x,
-            z,
-            tier,
-            mask: this.grid.roadMask[idx] ?? 0,
-            elevation: this.grid.roadElevation[idx] ?? 0,
-            profile: this.grid.roadProfile[idx] || tier,
-            flow: this.grid.roadFlow[idx] ?? RoadFlow.None,
-          });
+        if ((this.grid.roadTier[idx] ?? 0) !== 0) {
+          this.pendingRoadDeltas.set(idx, this.roadDeltaOf(idx));
         }
       }
     }
@@ -1144,7 +1150,9 @@ class SimWorld implements WorkerSim {
       this.sentRoadNet = { net, version: net.version };
     }
     if (this.pendingRoadDeltas.size > 0) {
-      snap.roads = Array.from(this.pendingRoadDeltas.values(), (d) => this.withOverRoad(d));
+      snap.roads = Array.from(this.pendingRoadDeltas.values(), (d) =>
+        this.withOverRoad(this.withArmsApart(d)),
+      );
       this.pendingRoadDeltas.clear();
     }
     if (
@@ -1489,6 +1497,40 @@ class SimWorld implements WorkerSim {
     reconcileRoads(this.roads, this.grid);
     reportRoadProblems('command', syncRoadLayers(this.grid, this.roads));
     this.deriveFootprint();
+    // Deriving the layers again drops what is held apart between a road and
+    // one no longer beside it, which no delta of the command's carried.
+    const apart = this.grid.roadSeparate;
+    for (let i = 0; i < apart.length; i++) {
+      if (apart[i] !== this.reportedApart[i] && !this.pendingRoadDeltas.has(i)) {
+        this.pendingRoadDeltas.set(i, this.roadDeltaOf(i));
+      }
+    }
+  }
+
+  /** The arms held apart on each tile as the render thread was last told them. */
+  private readonly reportedApart = new Uint8Array(MAP_SIZE * MAP_SIZE);
+
+  /** A road delta carrying the arms of its tile held apart as the grid holds them now. */
+  private withArmsApart(d: RoadTileDelta): RoadTileDelta {
+    const idx = tileIndex(d.x, d.z);
+    const apart = this.grid.roadSeparate[idx] ?? 0;
+    this.reportedApart[idx] = apart;
+    return apart === 0 ? d : { ...d, apart };
+  }
+
+  /** The road on tile `idx` as the grid holds it now, as the render thread is told it. */
+  private roadDeltaOf(idx: number): RoadTileDelta {
+    const g = this.grid;
+    const tier = (g.roadTier[idx] ?? 0) as RoadTier;
+    return {
+      x: idx % MAP_SIZE,
+      z: Math.floor(idx / MAP_SIZE),
+      tier,
+      mask: g.roadMask[idx] ?? 0,
+      elevation: g.roadElevation[idx] ?? 0,
+      profile: tier === RoadTier.None ? 0 : g.roadProfile[idx] || tier,
+      flow: g.roadFlow[idx] ?? RoadFlow.None,
+    };
   }
 
   /** The tiles the roads off the grid cover, from the network. */
@@ -1515,17 +1557,8 @@ class SimWorld implements WorkerSim {
     // The crossing tile itself always goes out, even where its own road's mask
     // is unchanged: the road passing over it is what changed.
     for (const idx of list) {
-      const tier = (g.roadTier[idx] ?? 0) as RoadTier;
-      if (tier === RoadTier.None) continue;
-      this.recordRoadDelta({
-        x: idx % MAP_SIZE,
-        z: Math.floor(idx / MAP_SIZE),
-        tier,
-        mask: g.roadMask[idx] ?? 0,
-        elevation: g.roadElevation[idx] ?? 0,
-        profile: g.roadProfile[idx] || tier,
-        flow: g.roadFlow[idx] ?? RoadFlow.None,
-      });
+      if ((g.roadTier[idx] ?? 0) === RoadTier.None) continue;
+      this.recordRoadDelta(this.roadDeltaOf(idx));
     }
     for (const d of remaskAround(g, list)) this.recordRoadDelta(d);
     this.invalidateAround(
@@ -1865,6 +1898,7 @@ class SimWorld implements WorkerSim {
           command.replace,
           command.flows,
           command.layer,
+          { join: command.join, apart: command.apart },
         );
       case 'defineRoadProfile':
         return this.cmdDefineRoadProfile(command.id, command.profile);
@@ -1890,6 +1924,8 @@ class SimWorld implements WorkerSim {
         return this.cmdSplitSegment(command.at);
       case 'joinSegments':
         return this.cmdJoinSegments(command.at, command.control ?? null);
+      case 'moveSegmentEnd':
+        return this.cmdMoveSegmentEnd(command.from, command.to);
       case 'paintZone':
         return this.cmdPaintZone(command.zone, command.tiles);
       case 'placeBuilding':
@@ -2129,6 +2165,7 @@ class SimWorld implements WorkerSim {
     replace = false,
     exactFlows?: number[],
     layer?: 'over',
+    arms: { join?: boolean; apart?: TileArms[] } = {},
   ): CommandResult {
     // The profile is the road's identity; the tier is its nearest preset and
     // is derived from it, so a composed profile cannot be laid under a tier it
@@ -2158,20 +2195,18 @@ class SimWorld implements WorkerSim {
     const g = this.grid;
     // A road off the grid holds the tiles it covers; a grid road reaches one
     // only at a tile centre where the two meet.
-    const junctions = freeJunctionTiles(this.roads, g.size);
-    for (const t of tiles) {
-      const idx = tileIndex(t.x, t.z);
-      if (inBounds(t.x, t.z) && g.roadFootprint[idx] === 1 && !junctions.has(idx)) {
-        return refused('It runs into a road off the grid');
-      }
-    }
+    const intoFree = gridRunRefusal(g, this.roads, tiles);
+    if (intoFree !== null) return refused(intoFree);
     const valid: TilePoint[] = [];
     const validElevations: number[] = [];
     const validFlows: number[] = [];
     const created: TilePoint[] = [];
     // Replaced roads, keyed by the profile they carried, so undo puts back the
     // road that was there and not merely one of the same tier.
-    const upgradedByPrevProfile = new Map<number, { tier: RoadTier; tiles: TilePoint[] }>();
+    const upgradedByPrevProfile = new Map<
+      number,
+      { tier: RoadTier; tiles: TilePoint[]; apart?: TileArms[] }
+    >();
     // Deck heights as they stood before this command, so undo can put them back
     // exactly rather than re-solving against a grid that may have moved on.
     const priorElevationByTile = new Map<number, number>();
@@ -2182,7 +2217,13 @@ class SimWorld implements WorkerSim {
     // deck height.
     const reprofiledByProfile = new Map<
       number,
-      { tier: RoadTier; tiles: TilePoint[]; elevations: number[]; flows: number[] }
+      {
+        tier: RoadTier;
+        tiles: TilePoint[];
+        elevations: number[];
+        flows: number[];
+        apart?: TileArms[];
+      }
     >();
     // A road runs the way it was drawn: each tile points at the next one along
     // the drag, and the tile the drag ended on keeps the heading it arrived
@@ -2322,6 +2363,24 @@ class SimWorld implements WorkerSim {
     if (!this.unlimitedMoney && this.stats.funds < cost)
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
 
+    // What this command lays decides the arms of those tiles, and what was
+    // held apart there before is what its undo puts back.
+    for (const group of [...upgradedByPrevProfile.values(), ...reprofiledByProfile.values()]) {
+      group.apart = armsApartOn(g, group.tiles);
+    }
+    const laid = [
+      ...laying.keys(),
+      ...[...reprofiledByProfile.values()].flatMap((group) =>
+        group.tiles.map((t) => tileIndex(t.x, t.z)),
+      ),
+    ];
+    if (arms.apart) {
+      holdArmsApart(g, laid, arms.apart);
+    } else {
+      const drag = new Set([...valid.map((t) => tileIndex(t.x, t.z)), ...crossings.keys()]);
+      settleArms(g, laid, drag, arms.join ?? true);
+    }
+
     // The roads passing over go down first, so the masks the ground road
     // recomputes already know which way each crossing tile's roads run.
     const inverse: Command[] = this.applyCrossings(crossings);
@@ -2344,10 +2403,11 @@ class SimWorld implements WorkerSim {
         elevations: group.tiles.map((t) => priorElevationByTile.get(tileIndex(t.x, t.z)) ?? 0),
         flows: group.tiles.map((t) => priorFlowByTile.get(tileIndex(t.x, t.z)) ?? RoadFlow.None),
         profile: prevProfile,
+        ...heldApart(group.apart),
       });
     }
     // Tiles this command only re-profiled keep their road on undo; restoring
-    // their old deck is the entire reversal.
+    // their old deck and what they were joined to is the entire reversal.
     for (const [prevProfile, group] of reprofiledByProfile) {
       inverse.push({
         kind: 'buildRoad',
@@ -2356,6 +2416,7 @@ class SimWorld implements WorkerSim {
         elevations: group.elevations,
         flows: group.flows,
         profile: prevProfile,
+        ...heldApart(group.apart),
       });
     }
     // Auto-flatten: the newly built/upgraded tiles + a 1-tile apron. Elevated
@@ -2428,6 +2489,17 @@ class SimWorld implements WorkerSim {
     return { ok: true, cost: 0, inverse: [{ kind: 'splitSegment', at }] };
   }
 
+  /** Moves the end of a road off the grid a short way, as `moveRoadEnd` plans it; free, and undone by moving it back. */
+  private cmdMoveSegmentEnd(
+    from: { x: number; z: number },
+    to: { x: number; z: number },
+  ): CommandResult {
+    const moved = moveRoadEnd(this.grid, this.roads, { from, to }, (id) => this.profileForId(id));
+    if (!moved.ok) return { ok: false, cost: 0, inverse: [], reason: moved.reason };
+    this.roadsEdited = true;
+    return { ok: true, cost: 0, inverse: [{ kind: 'moveSegmentEnd', from: to, to: from }] };
+  }
+
   /** Takes away one road off the grid, refunding what bulldozing a road refunds. */
   private cmdRemoveSegment(
     a: { x: number; z: number },
@@ -2473,7 +2545,10 @@ class SimWorld implements WorkerSim {
     const zonesByType = new Map<number, TilePoint[]>();
     // Keyed by profile id, so undo puts back the road that was there — a
     // composed street, not merely a road of the same tier.
-    const roadsByProfile = new Map<number, { tier: RoadTier; tiles: TilePoint[] }>();
+    const roadsByProfile = new Map<
+      number,
+      { tier: RoadTier; tiles: TilePoint[]; apart?: TileArms[] }
+    >();
     // A junction the player set keeps its setting through an undo: the road
     // comes back, so what they decided about it comes back with it.
     const setJunctions: { x: number; z: number; control: JunctionControl | null }[] = [];
@@ -2498,6 +2573,9 @@ class SimWorld implements WorkerSim {
 
     let refund = 0;
 
+    // What was held apart goes back with the road.
+    for (const group of roadsByProfile.values()) group.apart = armsApartOn(g, group.tiles);
+
     // Roads first, via removeRoad, so neighbor masks are recomputed properly.
     const roadDeltas = removeRoad(g, inBoundsTiles);
     this.landfillAreasCache = null; // street layout feeds the landfill entrances
@@ -2510,8 +2588,14 @@ class SimWorld implements WorkerSim {
     // Then zones/trees/buildings via clearTiles + registry removal.
     const cleared = clearTiles(g, inBoundsTiles);
     const inverse: Command[] = [];
-    for (const [profileId, { tier, tiles: roadTiles }] of roadsByProfile) {
-      inverse.push({ kind: 'buildRoad', tier, tiles: roadTiles, profile: profileId });
+    for (const [profileId, { tier, tiles: roadTiles, apart }] of roadsByProfile) {
+      inverse.push({
+        kind: 'buildRoad',
+        tier,
+        tiles: roadTiles,
+        profile: profileId,
+        ...heldApart(apart),
+      });
     }
     // After the roads, so the tile is a junction again by the time this lands.
     for (const j of setJunctions) inverse.push({ kind: 'setJunctionControl', ...j });

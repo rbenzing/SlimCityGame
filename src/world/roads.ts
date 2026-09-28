@@ -5,7 +5,7 @@
  * three.js, no DOM.
  */
 
-import { atOneLevel as decksAtOneLevel, axisOfFlow } from '../shared/overpass';
+import { atOneLevel as decksAtOneLevel, axisOfFlow, bitToward } from '../shared/overpass';
 import {
   corridorHalfOf,
   flowDirection,
@@ -22,7 +22,7 @@ import {
   sideBySideCarriageways,
 } from '../shared/corridor';
 import type { RampJoin } from '../shared/corridor';
-import type { GridState, RoadTileDelta, TilePoint } from '../shared/types';
+import type { GridState, RoadTileDelta, TileArms, TilePoint } from '../shared/types';
 
 // ---------------------------------------------------------------------------
 // Indexing — parameterized by the grid's own `size` (GridState.size), not a
@@ -241,16 +241,99 @@ export function roadKeyMask(g: GridState, key: RoadKey): number {
 /**
  * Whether a neighbouring tile is a road of its OWN rather than an arm of this
  * one: the other half of this tile's corridor, a motorway carriageway running
- * alongside, a ramp beside a motorway it does not join, or rail against
- * anything that is not rail — track cuts a street, it does not cross it.
+ * alongside, a ramp beside a motorway it does not join, rail against anything
+ * that is not rail — track cuts a street, it does not cross it — or a road
+ * held apart from it because it was laid as a road of its own.
  */
 function isSeparateRoad(g: GridState, x: number, z: number, nx: number, nz: number): boolean {
   return (
     isRailAgainstRoad(g, x, z, nx, nz) ||
     isCorridorPartner(g, x, z, nx, nz) ||
     isSideBySideCarriageway(g, x, z, nx, nz) ||
-    isRampAlongside(g, x, z, nx, nz)
+    isRampAlongside(g, x, z, nx, nz) ||
+    isHeldApart(g, x, z, nx, nz)
   );
+}
+
+/** Whether the arm toward (nx, nz) is held apart (see GridState.roadSeparate). */
+function isHeldApart(g: GridState, x: number, z: number, nx: number, nz: number): boolean {
+  if (!inBoundsOf(g.size, nx, nz)) return false;
+  return ((g.roadSeparate[indexOf(g.size, x, z)] ?? 0) & bitToward(nx - x, nz - z)) !== 0;
+}
+
+/** Holds the arm of tile `idx` one step `d` apart, or joins it, on both of its tiles. */
+function setArmApart(g: GridState, idx: number, d: Dir, apart: boolean): void {
+  const x = idx % g.size;
+  const z = (idx - x) / g.size;
+  if (!inBoundsOf(g.size, x + d.dx, z + d.dz)) return;
+  const next = indexOf(g.size, x + d.dx, z + d.dz);
+  const back = bitToward(-d.dx, -d.dz);
+  if (apart) {
+    g.roadSeparate[idx] = (g.roadSeparate[idx] ?? 0) | d.bit;
+    g.roadSeparate[next] = (g.roadSeparate[next] ?? 0) | back;
+  } else {
+    g.roadSeparate[idx] = (g.roadSeparate[idx] ?? 0) & ~d.bit;
+    g.roadSeparate[next] = (g.roadSeparate[next] ?? 0) & ~back;
+  }
+}
+
+/**
+ * Decides the arms of the tiles a drag lays, before it lays them: every arm
+ * between a tile in `laid` and its neighbours. An arm to another tile of the
+ * `drag` joins. Joining (`join`), so does every other one, an arm held apart
+ * before included. Not joining, each stays as joined as it was — the road the
+ * drag crosses or overlaps was joined already — and one to a road it was not
+ * joined to is held apart.
+ */
+export function settleArms(
+  g: GridState,
+  laid: Iterable<number>,
+  drag: ReadonlySet<number>,
+  join: boolean,
+): void {
+  for (const idx of laid) {
+    const x = idx % g.size;
+    const z = (idx - x) / g.size;
+    for (const d of DIRS) {
+      if (!inBoundsOf(g.size, x + d.dx, z + d.dz)) continue;
+      const next = indexOf(g.size, x + d.dx, z + d.dz);
+      const apart =
+        !join &&
+        !drag.has(next) &&
+        tierAtIdx(g, next) !== RoadTier.None &&
+        ((g.roadMask[idx] ?? 0) & d.bit) === 0;
+      setArmApart(g, idx, d, apart);
+    }
+  }
+}
+
+/** Holds exactly the arms `apart` names apart on the tiles in `laid`, and joins their others. */
+export function holdArmsApart(
+  g: GridState,
+  laid: Iterable<number>,
+  apart: readonly TileArms[],
+): void {
+  const named = new Map<number, number>();
+  for (const a of apart) {
+    if (!inBoundsOf(g.size, a.x, a.z)) continue;
+    const idx = indexOf(g.size, a.x, a.z);
+    named.set(idx, (named.get(idx) ?? 0) | a.arms);
+  }
+  for (const idx of laid) {
+    const arms = named.get(idx) ?? 0;
+    for (const d of DIRS) setArmApart(g, idx, d, (arms & d.bit) !== 0);
+  }
+}
+
+/** The arms held apart on each of `tiles` that has any, for an undo to put back. */
+export function armsApartOn(g: GridState, tiles: readonly TilePoint[]): TileArms[] {
+  const out: TileArms[] = [];
+  for (const t of tiles) {
+    if (!inBoundsOf(g.size, t.x, t.z)) continue;
+    const arms = g.roadSeparate[indexOf(g.size, t.x, t.z)] ?? 0;
+    if (arms !== 0) out.push({ x: t.x, z: t.z, arms });
+  }
+  return out;
 }
 
 /** Whether exactly one of the two tiles is rail. */
@@ -501,6 +584,7 @@ export function removeRoad(g: GridState, tiles: TilePoint[]): RoadTileDelta[] {
     g.junctionTurns[idx] = 0;
     g.roadMask[idx] = 0;
     g.roadElevation[idx] = 0; // the deck goes with the road
+    for (const d of DIRS) setArmApart(g, idx, d, false); // and nothing is held apart from it
     removedIdx.add(idx);
     deltaMap.set(idx, {
       x: t.x,

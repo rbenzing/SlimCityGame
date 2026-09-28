@@ -95,8 +95,9 @@ drag that stays on one row or column is still a grid street, as it always
 was; only one that leaves it runs off the grid. With the lock on, every drag
 snaps to a row or column.
 
-Each click, and each end of a drag, snaps to what is already there: onto an
-existing node within 4 m, onto an existing free road within 4 m of its centre
+With snapping to roads on (see [Snapping to roads](#snapping-to-roads)), each
+click, and each end of a drag, snaps to what is already there: onto a road
+end within 10 m, onto an existing node within 4 m, onto an existing free road within 4 m of its centre
 line (splitting it with a new junction, in the same undo step as the new
 road), onto the centre of a grid road tile, or, with guide snapping on, into
 line with a road nearby. A curve that starts on the end of an existing road
@@ -126,6 +127,64 @@ step, including any road it split.
 `Straight`, `L-path` and `Curve`. Every class except the motorway (highway
 and ramp) also offers `Grid`. Picking a motorway while `Grid` is selected
 falls back to `Straight`.
+
+## Snapping to roads
+
+A `Roads` toggle in the road tool's Snap row, on by default, decides whether a
+new road connects to the roads it reaches. It applies to every road type and
+every path mode — `Straight`, `L-path`, `Grid` and `Curve` — on and off the
+grid alike. It is not guide snapping: guide snapping lines a road up with
+another, this decides whether it joins one, and the two are toggled apart.
+
+**On, a road carries on from the roads it reaches.**
+
+- **The reticle finds road ends.** Before a drag starts, and at each end of
+  it, a road end within half a tile (10 m) of the cursor — the end tile of a
+  grid road, or the end node of a road off the grid — takes the reticle, and
+  the ghost's first tile sits on it. A road end is a node of the network that
+  at most one road leaves, so a junction is never one. A grid drag starts and
+  stops on the tile the end is on; a road off the grid starts and stops on the
+  end itself, ahead of every other snap below. In `Curve` mode, before the
+  first click, a mark shows where the start would land. The drag then carries
+  on from that end in whichever path mode is selected, laying the road card
+  that is selected: a continuation is a new drag that starts where the old
+  road stops, not a copy of the old road.
+- **A curve's end moves onto the grid to meet a grid drag.** A grid drag
+  (`Straight`, `L-path` or `Grid`) starting or ending on a road off the grid's
+  end node, where that node is not on a tile centre, moves the node onto the
+  centre of the tile it lies on — at most half a tile on each axis — by laying
+  the free road again with that end moved (`moveSegmentEnd`), in the same
+  batch and the same undo step as the grid road, ahead of it. The move costs
+  nothing: it is the same road, a few metres longer or shorter, and undoing it
+  moves the end back. The grid road is then judged against the world as the
+  move leaves it, so the tile centre it meets the curve at is one it may take.
+  If the moved road would break a geometry rule, the drag is refused with that
+  rule's reason, in the preview.
+- A road off the grid snaps as described under
+  [Curve and free road modes](#curve-and-free-road-modes), and a grid road
+  joins the grid roads it touches, as it always has.
+
+**Off, a road is laid as its own road.** Nothing snaps: no end moves onto a
+node, a road end, a road's centre line or a tile centre, no bend is pulled
+onto the line of the road it starts beside, and no free road is split or
+moved. Guide snapping still lines a drag up when it is on, since it is its own
+toggle; the end it moves lands on nothing. A grid road is sent with
+`join: false`. The road joins nothing it merely lies beside or ends against —
+a street laid on the row next to another stays two streets, and one ending a
+tile short of another road's end stays two dead ends. Where it crosses or
+overlaps another road on the same level it still joins there: a crossing is a
+junction however it was drawn, and a crossing refused when on is refused when
+off. The separation is a fact of the world, not of the drag: it survives a
+save and a load, and traffic, utilities, services and the renderers all treat
+the two as separate roads (see
+[How roads meet](../world-sim/road-model.md#how-roads-meet-rank-replacement-and-transitions)).
+
+**The preview says what the commit will do.** A grid drag that would run into
+a road off the grid anywhere but at a tile centre it meets is shown refused,
+with the world's own reason, rather than shown valid and refused after
+release.
+
+**Status** (2026-09-28): built.
 
 ## Road guide snapping
 

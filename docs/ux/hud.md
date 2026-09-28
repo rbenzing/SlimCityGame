@@ -269,9 +269,12 @@ category or tool is active.
   road is selected, as panels in the same card treatment rather than a
   separate floating panel:
   - **Drawing** — path mode (`Straight`, `L-path`, `Grid` — not offered
-    for a motorway — or `Curve`), two snap
-    toggles (a 90° lock and `Guide`, which pulls a drag into line with a
-    road it nearly continues), elevation (`Raise`/`Lower`, reading `Ground`
+    for a motorway — or `Curve`), three snap
+    toggles (a 90° lock; `Guide`, which pulls a drag into line with a
+    road it nearly continues; and `Roads`, on by default, which snaps a drag
+    onto the roads it reaches and joins it to them, or with it off lays the
+    road as a road of its own — see
+    [Snapping to roads](interaction.md#snapping-to-roads)), elevation (`Raise`/`Lower`, reading `Ground`
     or a meter height, up to the bridge deck limit), and whether a drag
     replaces whatever road is already there.
   - **Carriageway** — lane count, median or turn lane, posted speed, and

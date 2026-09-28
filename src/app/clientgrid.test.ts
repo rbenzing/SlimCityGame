@@ -543,6 +543,33 @@ describe('ClientGridMirror', () => {
       ).toBe(false);
     });
   });
+
+  describe('occupiedTiles', () => {
+    it('is every road and building tile, row by row, and never bare ground or water', () => {
+      expect(mirror.occupiedTiles()).toEqual([]);
+      mirror.applyRoadDeltas([
+        {
+          x: 6,
+          z: 6,
+          tier: RoadTier.TwoLane,
+          mask: 0,
+          elevation: 0,
+          profile: RoadTier.TwoLane,
+          flow: 0,
+        },
+      ]);
+      mirror.applyBuildingDelta(
+        { added: [instance(1, 20, 20, 0)], removed: [], updated: [] },
+        entryFor,
+      );
+      const occupied = mirror.occupiedTiles();
+      expect(occupied[0]).toEqual({ x: 6, z: 6 });
+      expect(occupied).toContainEqual({ x: 20, z: 20 });
+      expect(occupied).not.toContainEqual({ x: 5, z: 5 }); // water
+      expect(occupied).not.toContainEqual({ x: 1, z: 1 });
+      for (const t of occupied) expect(mirror.isFreeForPlop([t])).toBe(false);
+    });
+  });
 });
 
 describe('ClientGridMirror — junction control', () => {
@@ -623,6 +650,32 @@ describe('ClientGridMirror — junction control', () => {
     const tiles = mirror.roadTiles();
     expect(tiles.find((t) => t.x === 6 && t.z === 6)?.flow).toBe(storedFlow(RoadFlow.West));
     expect(tiles.find((t) => t.x === 6 && t.z === 7)?.flow).toBeUndefined();
+  });
+
+  it('hands the arms held apart to the road tile, and forgets them when the worker says none', () => {
+    mirror.applyRoadDeltas([
+      { ...road(6, 6), apart: 4 },
+      { ...road(6, 7), apart: 1 },
+    ]);
+    const apartAt = (x: number, z: number): number | undefined =>
+      mirror.roadTiles().find((t) => t.x === x && t.z === z)?.apart;
+    expect(apartAt(6, 6)).toBe(4);
+    expect(apartAt(6, 7)).toBe(1);
+    mirror.applyRoadDeltas([road(6, 6), road(6, 7)]);
+    expect(apartAt(6, 6)).toBeUndefined();
+    expect(apartAt(6, 7)).toBeUndefined();
+  });
+
+  it('keeps a street held apart out of the junction the approach walk looks for', () => {
+    // A street along z = 10, and a stem ending against it from the north at (5, 10).
+    const street = Array.from({ length: 9 }, (_, i) => road(1 + i, 10));
+    mirror.applyRoadDeltas([...street, road(5, 7), road(5, 8), road(5, 9)]);
+    expect(mirror.approachAt(4, 10)).toMatchObject({ toward: RoadFlow.East });
+    mirror.applyRoadDeltas([
+      { ...road(5, 10), apart: 1 },
+      { ...road(5, 9), apart: 4 },
+    ]);
+    expect(mirror.approachAt(4, 10)).toBeUndefined();
   });
 
   it('hands the control to the road tile that carries it, and to no other', () => {
@@ -874,5 +927,25 @@ describe('ClientGridMirror — the roads off the grid, as the worker sends them'
     run(2, ack.inverse);
     expect(sum(mirror.roadFootprint)).toBe(0);
     expect(sum(computeZonableMask(mirror))).toBe(0);
+  });
+
+  it('counts every tile a free road covers as occupied, and none once it is gone', () => {
+    const { run, mirror } = worldAndMirror();
+    const ack = run(1, [
+      {
+        kind: 'buildSegment',
+        tier: RoadTier.TwoLane,
+        a: at(1000, 1000),
+        b: at(1200, 1200),
+        control: at(1200, 1000),
+      },
+    ]);
+    expect(ack.ok).toBe(true);
+    const occupied = new Set(mirror.occupiedTiles().map((t) => t.z * MAP_SIZE + t.x));
+    const covered = [...mirror.roadFootprint.keys()].filter((i) => mirror.roadFootprint[i] === 1);
+    expect(covered.length).toBeGreaterThan(0);
+    for (const i of covered) expect(occupied.has(i)).toBe(true);
+    run(2, ack.inverse);
+    expect(mirror.occupiedTiles()).toEqual([]);
   });
 });

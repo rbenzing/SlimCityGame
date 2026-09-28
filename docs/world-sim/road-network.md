@@ -132,6 +132,12 @@ derived from the network:
   node.
 - A free node carries no road of its own tile: only a node at a grid tile
   centre does, and only when a grid road is on that tile.
+- **Arms held apart.** Two neighbouring grid road tiles that the joining rules
+  would join but the network does not link — a road laid with snapping off
+  beside another — are held apart in a derived layer (`roadSeparate`,
+  recomputed from the network and never saved), which the masks and every
+  reader of joins respect. See
+  [road-model.md](road-model.md#how-roads-meet-rank-replacement-and-transitions).
 
 ## How each system reads the network
 
@@ -157,8 +163,20 @@ This is where each system ends up. The stages below say when.
   road layer on a crossing tile becomes a derived view of two segments at
   different heights.
 - **Rendering.** Each segment's cross-section is swept along its centre line,
-  square to it. Each junction is meshed from its shape. Markings, kerbs,
-  footways and furniture follow the segment at their offsets.
+  square to it. Each junction is meshed from its shape, meeting each road where
+  its centre line actually is at the set-back, which on a curve has already
+  turned from its heading at the node, and each road's edge lines turn round
+  the kerb returns. A dead end rounds off inside the road's own length, as
+  [streets.md](../art/streets.md) describes. Markings, kerbs, footways and
+  furniture follow the segment at their offsets.
+- **Where a free road meets the grid,** the grid tile the two share is drawn
+  once, whole, by the free-road junction: every grid road meeting it is
+  carried from the junction to the tile's edge in its own cross-section and
+  paint, its dashes kept in the tiles' world phase, and the tile renderer
+  draws nothing of that tile's road. Nothing the tile's own role earned — a
+  corner's sign, a straight's kerbside props, its lamp — stands on it, since
+  that role no longer says where its kerbs are; signs at such a junction come
+  with stage 6.
 - **Picking.** The road under the cursor is the nearest segment within its
   own half-width.
 
@@ -187,6 +205,14 @@ This is where each system ends up. The stages below say when.
 - `removeSegment` takes away the segment between two end points with a given
   control point, and any node at either end that no road meets any more. Its
   inverse is the `buildSegment` that puts the same segment back.
+- `moveSegmentEnd` moves the end of the one free segment ending at a point —
+  a node no other road meets and no grid road stands on — to a point at most
+  half a tile away on each axis, laying that segment again with the end moved
+  and the same tier, profile, flow and control. It is planned exactly as a
+  `buildSegment` would be with the segment's old self taken away, and refused
+  with that plan's reason. It costs nothing, and its inverse moves the end
+  back. The road tool sends it ahead of a grid drag started or ended on a
+  curve's end, to bring that end onto the tile centre the drag meets it at.
 - `bulldoze` removes segments, picked by tile or by segment. Its inverse puts
   back exactly what it removed, with the same slots.
 - Junction commands name the node.

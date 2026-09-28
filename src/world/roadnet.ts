@@ -1,9 +1,9 @@
 /**
  * The road network: nodes and segments, the one place a road is stored.
  *
- * Every road tile layer — tier, profile, flow, deck height, mask, and the
- * layers of a road passing over a crossing — is derived from the network by
- * `deriveRoadLayers`. The grid commands still plan on tiles, so after each one
+ * Every road tile layer — tier, profile, flow, deck height, mask, the layers
+ * of a road passing over a crossing, and the arms held apart — is derived from
+ * the network by `deriveRoadLayers`. The grid commands still plan on tiles, so after each one
  * `reconcileRoads` takes up what the plan laid, keeping the slot of every node
  * and segment that is still where it was, and the tiles are derived again.
  *
@@ -323,15 +323,17 @@ function collectClaims(net: RoadNet, size: number): Claims {
 
 /**
  * Rewrites every road tile layer of `g` from `net`: the road on each tile, the
- * road passing over a crossing (the higher of two decks), and the masks.
+ * road passing over a crossing (the higher of two decks), the arms held apart
+ * and the masks.
  * Returns a description of every tile the network could not say one thing
  * about — more than two roads, or two at one height — which is a bug in
  * whatever built the network, never a state to keep quietly.
  */
 export function deriveRoadLayers(g: GridState, net: RoadNet): string[] {
-  const { byTile, problems } = collectClaims(net, g.size);
+  const { byTile, runs, problems } = collectClaims(net, g.size);
   const n = g.size * g.size;
 
+  g.roadSeparate.fill(0);
   g.roadTier.fill(0);
   g.roadProfile.fill(0);
   g.roadFlow.fill(0);
@@ -358,7 +360,47 @@ export function deriveRoadLayers(g: GridState, net: RoadNet): string[] {
     }
   }
   recomputeRoadMasks(g);
+  separateUnlinked(g, runs);
   return problems;
+}
+
+/**
+ * Holds apart every arm between two grid roads on the ground that the joining
+ * rules would join and the network does not link — a road laid as a road of
+ * its own beside another. Takes the masks as the rules make them and leaves
+ * them as the network has them.
+ */
+function separateUnlinked(g: GridState, runs: readonly Claim[][]): void {
+  const n = g.size * g.size;
+  const linked = new Uint8Array(n);
+  for (const run of runs) {
+    for (let i = 0; i + 1 < run.length; i++) {
+      const a = run[i]!;
+      const b = run[i + 1]!;
+      if (a.key !== a.idx || b.key !== b.idx) continue;
+      const ax = a.idx % g.size;
+      const bx = b.idx % g.size;
+      const slot = stepSlot(bx - ax, (b.idx - bx) / g.size - (a.idx - ax) / g.size);
+      if (slot < 0) continue;
+      linked[a.idx] = (linked[a.idx] ?? 0) | (1 << slot);
+      linked[b.idx] = (linked[b.idx] ?? 0) | (1 << ((slot + 2) % 4));
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    const unlinked = (g.roadMask[i] ?? 0) & ~(linked[i] ?? 0);
+    if (unlinked === 0) continue;
+    const x = i % g.size;
+    const z = (i - x) / g.size;
+    let held = 0;
+    for (const s of STEPS) {
+      if ((unlinked & s.bit) === 0) continue;
+      // Only an arm from road to road on the ground: a step onto a road
+      // passing over a crossing is that road's own approach.
+      if (roadStep(g, i, s.dx, s.dz) === (z + s.dz) * g.size + x + s.dx) held |= s.bit;
+    }
+    g.roadSeparate[i] = held;
+    g.roadMask[i] = (g.roadMask[i] ?? 0) & ~held;
+  }
 }
 
 // ---------------------------------------------------------------------------

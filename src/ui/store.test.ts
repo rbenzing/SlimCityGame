@@ -49,6 +49,7 @@ describe('useCityStore initial state', () => {
       straightMode: false,
       gridMode: false,
       guideSnap: false,
+      roadSnap: true,
       replaceRoad: false,
     });
     expect(s.previousMonthPopulation).toBe(0);
@@ -137,6 +138,7 @@ describe('tool flags + mode (UI-SPEC §5)', () => {
       straightMode: false,
       gridMode: false,
       guideSnap: false,
+      roadSnap: true,
       replaceRoad: false,
     });
   });
@@ -160,6 +162,7 @@ describe('tool flags + mode (UI-SPEC §5)', () => {
       gridMode: false,
       curveMode: false,
       guideSnap: false,
+      roadSnap: true,
       replaceRoad: false,
     });
 
@@ -171,6 +174,7 @@ describe('tool flags + mode (UI-SPEC §5)', () => {
       gridMode: false,
       curveMode: false,
       guideSnap: false,
+      roadSnap: true,
       replaceRoad: false,
     });
   });

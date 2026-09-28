@@ -46,7 +46,13 @@ import catalogData from './data/catalog.json';
 import roadsData from './data/roads.json';
 import { CommandQueue } from './core/commands';
 import { generateProceduralMap } from './world/maps';
-import { planWithSplits, roadEndDirection, snapRoadEnd } from './world/freeroads';
+import {
+  gridRunRefusalAfter,
+  nearestRoadEnd,
+  planWithSplits,
+  roadEndDirection,
+  snapRoadEnd,
+} from './world/freeroads';
 import { createRenderer, createWorldScene, timeOfDayColors } from './render/scene';
 import { createBloomPipeline, type BloomPipeline } from './render/bloom';
 import { CloudLayer } from './render/clouds';
@@ -96,13 +102,7 @@ import { SelectionOutline } from './render/outline';
 import { MapPin } from './render/pin';
 import { CameraRig } from './render/camera';
 import { IdPicker } from './render/picking';
-import {
-  ToolManager,
-  footprintTiles,
-  ROAD_TOOL_TO_TIER,
-  ZONE_TOOL_TO_TYPE,
-  type ToolEnv,
-} from './tools/tools';
+import { ToolManager, ROAD_TOOL_TO_TIER, ZONE_TOOL_TO_TYPE, type ToolEnv } from './tools/tools';
 import { UndoStack } from './tools/undo';
 import { useCityStore } from './ui/store';
 import type { SelectedJunction } from './ui/store';
@@ -827,7 +827,27 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           (wx, wz) => clientGrid.poweredAt(worldToTile(wx), worldToTile(wz)),
         )
       : [];
-    lamps.rebuild(latestRoadTiles, drivewayTiles, free);
+    const keepOff =
+      freeJunctionTiles.size > 0
+        ? new Set([...drivewayTiles, ...freeJunctionTiles])
+        : drivewayTiles;
+    lamps.rebuild(latestRoadTiles, keepOff, free);
+  };
+  /**
+   * Grid tiles where a road off the grid meets, keyed as the lamps key tiles.
+   * The free-road renderer draws the whole junction there, so the tile
+   * renderer leaves the tile's own road undrawn and nothing kerbside stands
+   * on it by the tile's old shape.
+   */
+  let freeJunctionTiles: ReadonlySet<number> = new Set();
+  const syncFreeJunctions = (): void => {
+    const tiles = freeRoads.gridJunctionTiles();
+    const next = new Set(tiles.map((t) => t.x * 100_000 + t.z));
+    if (sameTileKeySet(next, freeJunctionTiles)) return;
+    freeJunctionTiles = next;
+    roadsMesh.setFreeJunctionTiles(tiles);
+    roadFurniture.rebuild(latestRoadTiles, freeJunctionTiles);
+    rebuildLamps();
   };
   /** Counts down to the next advisor re-rank (see ADVISOR_REFRESH_SNAPSHOTS). */
   let snapshotsSinceAdvice = 0;
@@ -997,6 +1017,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       inBounds(tile.x, tile.z) ? (clientGrid.roadMask[tile.z * clientGrid.size + tile.x] ?? 0) : 0,
     worldPointAt: groundPointAt,
     snapRoadEnd: (p) => snapRoadEnd(clientGrid, p),
+    roadEndNear: (p) => (clientGrid.roads ? nearestRoadEnd(clientGrid.roads, p) : null),
     roadEndDirection: (p) =>
       clientGrid.roads
         ? roadEndDirection(clientGrid, clientGrid.roads, p, (id) => clientGrid.profileById(id))
@@ -1010,6 +1031,15 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       );
       return plan.ok ? { ok: true, lengthM: plan.lengthM } : plan;
     },
+    // The world's own rule for the ground roads off the grid hold, against the
+    // mirror as the drag's curve-end moves would leave it, so a grid drag into
+    // one is refused before release, not after.
+    gridRunRefusal: (tiles, moves) =>
+      clientGrid.roads
+        ? gridRunRefusalAfter(clientGrid, clientGrid.roads, tiles, moves, (id) =>
+            clientGrid.profileById(id),
+          )
+        : null,
     entry: (catalogId: string) => catalogById.get(catalogId),
     onPreview: (preview) => {
       store
@@ -1124,19 +1154,23 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const toolManager = new ToolManager(env);
   toolManager.setBrush(store.getState().brushSettings);
 
-  /** Committed edits also trim cosmetic trees locally (the sim owns g.trees). */
+  /**
+   * A committed bulldoze clears the cosmetic trees on every tile it covers,
+   * bare ground included (the sim owns g.trees). Trees under roads and
+   * buildings are kept off by `keepTreesOffOccupied`, from the mirror.
+   */
   const clearTreesFor = (commands: Command[]): void => {
     for (const command of commands) {
-      if (command.kind === 'bulldoze' || command.kind === 'buildRoad') {
-        trees.clearAt(command.tiles);
-      } else if (command.kind === 'placeBuilding') {
-        const entry = catalogById.get(command.catalogId);
-        if (entry) {
-          trees.clearAt(footprintTiles({ x: command.x, z: command.z }, entry, command.rotation));
-        }
-      }
+      if (command.kind === 'bulldoze') trees.clearAt(command.tiles);
     }
   };
+  /**
+   * No tree stands where a road, a road off the grid or a building does. Read
+   * from the mirror rather than from the commands that put them there, so it
+   * holds for a curve, for a building the sim grew, and for a city just
+   * loaded, whose trees are regrown from the map it was founded on.
+   */
+  const keepTreesOffOccupied = (): void => trees.clearAt(clientGrid.occupiedTiles());
 
   // --- worker messages -----------------------------------------------------------
   const onAck = (ack: CommandAck): void => {
@@ -1258,6 +1292,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (snap.roadNet) {
       clientGrid.applyRoadNetwork(snap.roadNet);
       freeRoads.rebuild(clientGrid.roads);
+      syncFreeJunctions();
       // A road off the grid fronts lots and covers tiles with no road tile
       // changing, so the zoning grid and the lamps are rebuilt here when
       // nothing below will.
@@ -1291,7 +1326,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       const roadTiles = clientGrid.roadTiles();
       latestRoadTiles = roadTiles;
       rebuildLamps();
-      roadFurniture.rebuild(roadTiles);
+      roadFurniture.rebuild(roadTiles, freeJunctionTiles);
       bridges.rebuild(clientGrid.deckTiles());
       // Ground cover follows the road only where the road touches the ground —
       // a mown band under a bridge would be a stripe of lawn across a river.
@@ -1300,7 +1335,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // A junction can change control with no tile changing at all — the
       // traffic through it grew. Only the signs care.
       latestRoadTiles = clientGrid.roadTiles();
-      roadFurniture.rebuild(latestRoadTiles);
+      roadFurniture.rebuild(latestRoadTiles, freeJunctionTiles);
     }
     if (snap.buildings) {
       lots.apply(snap.buildings);
@@ -1340,6 +1375,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         if (current !== selected) state.setSelectedBuilding(current);
       }
     }
+    if (snap.roads || snap.roadNet || snap.buildings) keepTreesOffOccupied();
     if (snap.zones) {
       zoneGrid.applyZonePatches(snap.zones);
       clientGrid.applyZonePatches(snap.zones);

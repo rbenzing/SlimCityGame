@@ -68,6 +68,11 @@ export interface MarkingPlan {
    * it would be a wall down the middle of a running lane.
    */
   barrier: boolean;
+  /**
+   * The two edge lines, low offset first, also listed among `solid`; null on a
+   * road that paints none. A junction turns them round its kerb returns.
+   */
+  edges: readonly [MarkingLine, MarkingLine] | null;
 }
 
 type CentreStyle = 'none' | 'dashed' | 'double' | 'auto';
@@ -128,11 +133,7 @@ const CLASS_MARKINGS: Readonly<Record<RoadClassId, ClassMarkings>> = {
  * inner edge with the bays it ticks off, so the edge line has nothing to add
  * there and would only lay a second line over the first.
  */
-const RESERVED_EDGE_KINDS: ReadonlySet<LanePiece['kind']> = new Set([
-  'shoulder',
-  'bike',
-  'bus',
-]);
+const RESERVED_EDGE_KINDS: ReadonlySet<LanePiece['kind']> = new Set(['shoulder', 'bike', 'bus']);
 
 const CARRIAGEWAY_KINDS: ReadonlySet<LanePiece['kind']> = new Set([
   'travel',
@@ -365,6 +366,7 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
     }
   }
 
+  let edges: readonly [MarkingLine, MarkingLine] | null = null;
   if (edgeLineAt !== null) {
     // The edge of a one-way carriageway that faces the median or the opposing
     // traffic is YELLOW; the one facing the roadside is white.
@@ -389,10 +391,11 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
     const leftIsYellow = medianAtLeft || (!medianAtRight && fallbackYellowLeft);
     const rightIsYellow = medianAtRight || (!medianAtLeft && fallbackYellowRight);
     const [leftAt, rightAt] = edgeLineAt;
-    solid.push(
+    edges = [
       leftIsYellow ? yellow(leftAt) : white(leftAt),
       rightIsYellow ? yellow(rightAt) : white(rightAt),
-    );
+    ];
+    solid.push(...edges);
   }
 
   // The turn lane's extent across the carriageway, for the arrows painted in it.
@@ -433,6 +436,7 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
     turnLane,
     hasMedian,
     barrier: pieces.some((p) => p.kind === 'barrier'),
+    edges,
   };
 }
 

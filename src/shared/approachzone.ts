@@ -36,6 +36,7 @@ import type { CorridorHalf, JunctionControl, RoadClassId, RoadProfile } from './
 import { RoadFlow } from './types';
 import { corridorPartners, rampJoinAround, rampJoins, sideBySideCarriageways } from './corridor';
 import type { RampJoin } from './corridor';
+import { bitToward } from './overpass';
 
 /** What the walk needs to know about the tiles around it. */
 export interface ApproachSurroundings {
@@ -69,6 +70,11 @@ export interface ApproachSurroundings {
    * over anything.
    */
   overAxisAt?(x: number, z: number): 'x' | 'z' | null;
+  /**
+   * The arms of the tile's road held apart from the roads beside it, as mask
+   * bits (see GridState.roadSeparate). Omitted: nothing is held apart.
+   */
+  apartAt?(x: number, z: number): number;
 }
 
 /** The junction a tile approaches, and what this arm of it may do. */
@@ -205,8 +211,8 @@ export function roadDegree(x: number, z: number, world: ApproachSurroundings): n
 
 /**
  * Whether the neighbour at (dx, dz) is a road of its own rather than an arm of
- * this one: this tile's other corridor half, or a motorway carriageway lying
- * alongside.
+ * this one: this tile's other corridor half, a motorway carriageway lying
+ * alongside, or a road held apart from it.
  */
 function isSeparateRoad(
   x: number,
@@ -217,6 +223,7 @@ function isSeparateRoad(
 ): boolean {
   const over = world.overAxisAt?.(x, z) ?? null;
   if (over !== null && over === (dx !== 0 ? 'x' : 'z')) return true;
+  if (((world.apartAt?.(x, z) ?? 0) & bitToward(dx, dz)) !== 0) return true;
   const here = world.profileAt(x, z);
   const there = world.profileAt(x + dx, z + dz);
   return (

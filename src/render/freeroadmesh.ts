@@ -6,10 +6,16 @@
  * at the same heights and with the same markings plan, so the two read as one
  * road system.
  *
- * Offsets across a road are measured from its centre line, positive to the
- * right of the direction it was drawn in, first end to second: the frame a
- * tile road drawn north is laid in, which is the frame the markings plan
- * returns its offsets in.
+ * Where a road off the grid meets a grid road, the whole grid tile is this
+ * renderer's: the tile renderer draws nothing of it, and each grid road
+ * meeting there is carried from the junction to the tile's edge, where the
+ * tile beside it takes over.
+ *
+ * Offsets across a road off the grid are measured from its centre line,
+ * positive to the right of the direction it was drawn in, first end to
+ * second: the frame a tile road drawn north is laid in, which is the frame
+ * the markings plan returns its offsets in. A grid road is laid in world
+ * order, as the tile renderer lays it, with offsets growing east and south.
  */
 
 import * as THREE from 'three';
@@ -24,17 +30,20 @@ import {
   kerbReturnRadiusOf,
   kerbWidthOf,
   presetProfileForTier,
+  worldOrderedProfile,
 } from '../shared/roadprofile';
 import { RoadFlow } from '../shared/types';
-import type { RoadNet, RoadProfile, RoadTier } from '../shared/types';
+import type { RoadNet, RoadProfile, RoadTier, TilePoint } from '../shared/types';
 import { isFreeSegment, isGridNode, segmentGeom, segmentsAt } from '../world/roadnet';
 import { lampLateralOffset, tierGetsLamp } from './lamps';
 import type { LampStand } from './lamps';
 import { markingPlan } from './roadmarkings';
+import type { MarkingLine, MarkingPlan } from './roadmarkings';
 import {
   BIKE_LANE_PAINT_COLOR,
   BUS_LANE_PAINT_COLOR,
   CURB_Y_OFFSET,
+  END_CAP_SEGMENTS,
   HIGHWAY_BARRIER_COLOR,
   HIGHWAY_BARRIER_RAISE,
   MARKING_COLOR,
@@ -64,12 +73,6 @@ export interface RoadSoup {
 const MAX_CELL_ACROSS_M = 2;
 /** Coloured bands sit between the surface and the paint on it. */
 const BAND_Y_OFFSET = MARK_Y_OFFSET - 0.004;
-/**
- * Where a road off the grid meets a grid road, its junction is laid just over
- * the grid road's kerb, so the grid road's footway does not run across the
- * mouth of the road joining it.
- */
-const GRID_MOUTH_Y_OFFSET = CURB_Y_OFFSET + 0.01;
 /** The kerb face is a shade darker than the footway it holds up. */
 const KERB_FACE_SHADE = 0.8;
 /** Below this sine two roads leaving a node count as one running straight on. */
@@ -82,6 +85,49 @@ const CORNER_STEPS = 8;
 const profileOf = (id: number, lookup: ProfileFor): RoadProfile =>
   lookup(id) ?? presetProfileForTier(id as RoadTier);
 
+/** How a segment is laid: its section and its paint, in the frame its stations are laid in. */
+interface Lay {
+  profile: RoadProfile;
+  plan: MarkingPlan;
+  /** The stations' normals point to the high offsets instead of right of first end to second. */
+  flip: boolean;
+  /**
+   * For a grid road, the world metre along its axis at its first end and which
+   * way along it the road runs, so its dashes keep the tiles' phase; null off
+   * the grid.
+   */
+  axis: { origin: number; sign: 1 | -1 } | null;
+}
+
+function layOf(net: RoadNet, seg: number, lookup: ProfileFor): Lay {
+  const raw = profileOf(net.segProfile[seg]!, lookup);
+  if (isFreeSegment(net, seg)) {
+    const oneWay = (net.segFlow[seg] ?? 0) === 1;
+    return {
+      profile: raw,
+      plan: markingPlan(raw, oneWay ? RoadFlow.North : RoadFlow.None),
+      flip: false,
+      axis: null,
+    };
+  }
+  const flow = net.segFlow[seg]!;
+  const profile = worldOrderedProfile(raw, flow);
+  const a = net.segA[seg]!;
+  const b = net.segB[seg]!;
+  const dx = net.nodeX[b]! - net.nodeX[a]!;
+  const dz = net.nodeZ[b]! - net.nodeZ[a]!;
+  const alongX = Math.abs(dx) >= Math.abs(dz);
+  const sign = (alongX ? dx : dz) >= 0 ? 1 : -1;
+  return {
+    profile,
+    plan: markingPlan(profile, flow),
+    // Right of a road heading east is south and right of one heading north is
+    // east, the high offsets; heading west or south, right is the low side.
+    flip: alongX ? sign < 0 : sign > 0,
+    axis: { origin: (alongX ? net.nodeX[a]! : net.nodeZ[a]!) / 100, sign },
+  };
+}
+
 /** A point on a road's centre line, with the unit normal to its right. */
 interface Station extends MPoint {
   s: number;
@@ -89,12 +135,14 @@ interface Station extends MPoint {
   nz: number;
 }
 
-/** The centre line between `from` and `to` metres along it, with its normals. */
+/** The centre line between `from` and `to` metres along it, with its normals, turned round when `flip`. */
 function stations(
-  samples: ReturnType<typeof sampleCentreLine>,
+  samples: readonly { x: number; z: number; s: number }[],
   from: number,
   to: number,
+  flip = false,
 ): Station[] {
+  const side = flip ? -1 : 1;
   const at = (i: number): Station => {
     const p = samples[i]!;
     const before = samples[Math.max(0, i - 1)]!;
@@ -102,7 +150,7 @@ function stations(
     const tx = after.x - before.x;
     const tz = after.z - before.z;
     const len = Math.sqrt(tx * tx + tz * tz) || 1;
-    return { x: p.x, z: p.z, s: p.s, nx: -tz / len, nz: tx / len };
+    return { x: p.x, z: p.z, s: p.s, nx: (-tz / len) * side, nz: (tx / len) * side };
   };
   const lerp = (i: number, s: number): Station => {
     const p = at(i);
@@ -119,8 +167,11 @@ function stations(
     const s1 = samples[i + 1]!.s;
     if (s1 < from || s0 > to) continue;
     if (out.length === 0) out.push(lerp(i, Math.max(from, s0)));
-    if (s1 < to) out.push(at(i + 1));
-    else {
+    if (s1 < to) {
+      // A stretch starting exactly on a sample has laid that sample already,
+      // and laying it twice leaves a cell from the sample to itself.
+      if (s1 > out[out.length - 1]!.s) out.push(at(i + 1));
+    } else {
       out.push(lerp(i, to));
       break;
     }
@@ -212,7 +263,41 @@ interface Arm {
   /** The most setback it has room for. */
   maxSetback: number;
   angle: number;
+  /** The edge line on the side a quarter turn toward increasing angle, and on the other side. */
+  edgeAhead: MarkingLine | null;
+  edgeBehind: MarkingLine | null;
+  /**
+   * Where the junction ends on the road's centre line, and the way the road
+   * heads there, away from the node. A curve has already turned by then, and
+   * the junction's edge has to meet the road where the road actually is.
+   */
+  end: MPoint;
+  endDir: MPoint;
 }
+
+/** The point `s` metres along a centre line, and the heading there, away from the node at its first or second end. */
+function pointAlong(
+  samples: ReturnType<typeof sampleCentreLine>,
+  s: number,
+  atA: boolean,
+): { end: MPoint; endDir: MPoint } {
+  const length = samples.at(-1)!.s;
+  // Anywhere on the line has a station, its two ends included.
+  const t = Math.min(length, Math.max(0, atA ? s : length - s));
+  const st = stations(samples, t, t)[0]!;
+  // The normal is the forward heading turned a quarter toward increasing angle.
+  const forward = { x: st.nz, z: -st.nx };
+  return {
+    end: { x: st.x, z: st.z },
+    endDir: atA ? forward : { x: -forward.x, z: -forward.z },
+  };
+}
+
+/**
+ * The most setback a grid road has at a junction a road off the grid meets:
+ * the edge of the junction's tile, where the tile beside it is drawn.
+ */
+const GRID_ARM_REACH = TILE_METERS / 2;
 
 /** The unit normal a quarter turn from `d`, toward increasing angle. */
 const turn = (d: MPoint): MPoint => ({ x: -d.z, z: d.x });
@@ -234,19 +319,30 @@ function setbackBetween(i: Arm, j: Arm): number {
 /** The roads leaving a node, in order of angle, with their setbacks solved. */
 function armsAt(net: RoadNet, node: number, lookup: ProfileFor): { arms: Arm[]; segs: number[] } {
   const segs = segmentsAt(net, node);
-  const arms = segs.map((seg): Arm => {
+  const centre = { x: net.nodeX[node]! / 100, z: net.nodeZ[node]! / 100 };
+  const samplesOf = segs.map((seg) => sampleCentreLine(segmentGeom(net, seg)));
+  const arms = segs.map((seg, k): Arm => {
     const geom = segmentGeom(net, seg);
-    const dir = leavingDirection(geom, net.segA[seg] === node ? 'a' : 'b');
-    const profile = profileOf(net.segProfile[seg]!, lookup);
-    const length = sampleCentreLine(geom).at(-1)!.s;
+    const atA = net.segA[seg] === node;
+    const dir = leavingDirection(geom, atA ? 'a' : 'b');
+    const lay = layOf(net, seg, lookup);
+    const length = samplesOf[k]!.at(-1)!.s;
+    // The side a quarter turn from the road as it leaves is its high-offset
+    // side when it leaves the way its stations run.
+    const high = atA !== lay.flip;
+    const edges = isPaved(lay.profile) ? lay.plan.edges : null;
     return {
       dir,
-      half: carriagewayHalfWidthOf(profile),
-      kerb: kerbWidthOf(profile),
-      kerbReturn: hasKerbs(profile) ? kerbReturnRadiusOf(profile) : 0,
+      half: carriagewayHalfWidthOf(lay.profile),
+      kerb: kerbWidthOf(lay.profile),
+      kerbReturn: hasKerbs(lay.profile) ? kerbReturnRadiusOf(lay.profile) : 0,
       setback: 0,
-      maxSetback: length * MAX_SETBACK_SHARE,
+      maxSetback: isFreeSegment(net, seg) ? length * MAX_SETBACK_SHARE : GRID_ARM_REACH,
       angle: Math.atan2(dir.z, dir.x),
+      edgeAhead: edges ? edges[high ? 1 : 0] : null,
+      edgeBehind: edges ? edges[high ? 0 : 1] : null,
+      end: centre,
+      endDir: dir,
     };
   });
   const order = arms.map((_, k) => k).sort((p, q) => arms[p]!.angle - arms[q]!.angle);
@@ -262,6 +358,10 @@ function armsAt(net: RoadNet, node: number, lookup: ProfileFor): { arms: Arm[]; 
       );
     }
   }
+  order.forEach((k, n) => {
+    const arm = sorted[n]!;
+    Object.assign(arm, pointAlong(samplesOf[k]!, arm.setback, net.segA[segs[k]!] === node));
+  });
   return { arms: sorted, segs: order.map((k) => segs[k]!) };
 }
 
@@ -275,25 +375,20 @@ function crossing(p: MPoint, u: MPoint, q: MPoint, v: MPoint): MPoint | null {
 
 /**
  * The line a kerb takes from arm `i` round to the next arm `j` counter to the
- * clock, at `out` metres beyond each carriageway edge: a curve through the
- * point where the two edges would cross, or straight across where the gap
- * between them opens wider than a straight road.
+ * clock, at `out` metres beyond each carriageway edge (`outJ` beyond `j`'s,
+ * where the two differ): a curve through the point where the two edges would
+ * cross, or straight across where the gap between them opens wider than a
+ * straight road.
  */
-function cornerLine(centre: MPoint, i: Arm, j: Arm, out: number): MPoint[] {
-  const ni = turn(i.dir);
-  const nj = turn(j.dir);
+function cornerLine(i: Arm, j: Arm, out: number, outJ = out): MPoint[] {
+  const ni = turn(i.endDir);
+  const nj = turn(j.endDir);
   const oi = i.half + out;
-  const oj = j.half + out;
-  const p = {
-    x: centre.x + i.dir.x * i.setback + ni.x * oi,
-    z: centre.z + i.dir.z * i.setback + ni.z * oi,
-  };
-  const q = {
-    x: centre.x + j.dir.x * j.setback - nj.x * oj,
-    z: centre.z + j.dir.z * j.setback - nj.z * oj,
-  };
+  const oj = j.half + outJ;
+  const p = { x: i.end.x + ni.x * oi, z: i.end.z + ni.z * oi };
+  const q = { x: j.end.x - nj.x * oj, z: j.end.z - nj.z * oj };
   const reflex = i.dir.x * j.dir.z - i.dir.z * j.dir.x <= 0;
-  const control = reflex ? null : crossing(p, i.dir, q, j.dir);
+  const control = reflex ? null : crossing(p, i.endDir, q, j.endDir);
   const c = control ?? { x: (p.x + q.x) / 2, z: (p.z + q.z) / 2 };
   const out2: MPoint[] = [];
   for (let k = 0; k <= CORNER_STEPS; k++) {
@@ -307,7 +402,41 @@ function cornerLine(centre: MPoint, i: Arm, j: Arm, out: number): MPoint[] {
   return out2;
 }
 
-/** The junction at a node: its surface, and the footway round each corner. */
+/** The stations along a line through `points`, each with the normal to its right. */
+function lineStations(points: readonly MPoint[]): Station[] {
+  let s = 0;
+  return points.map((p, k) => {
+    if (k > 0) s += Math.hypot(p.x - points[k - 1]!.x, p.z - points[k - 1]!.z);
+    const before = points[Math.max(0, k - 1)]!;
+    const after = points[Math.min(points.length - 1, k + 1)]!;
+    const tx = after.x - before.x;
+    const tz = after.z - before.z;
+    const len = Math.sqrt(tx * tx + tz * tz) || 1;
+    return { x: p.x, z: p.z, s, nx: -tz / len, nz: tx / len };
+  });
+}
+
+/**
+ * The edge line round the kerb return from arm `i` to arm `j`, carried on from
+ * each road's own edge line where they are the same paint. Where one road
+ * paints none, or the two differ, the corner is left bare rather than painted
+ * in a colour one of them does not use.
+ */
+function drawCornerEdge(soup: Soup, i: Arm, j: Arm): void {
+  const from = i.edgeAhead;
+  const to = j.edgeBehind;
+  if (!from || !to || from.color !== to.color) return;
+  const line = cornerLine(i, j, Math.abs(from.at) - i.half, Math.abs(to.at) - j.half);
+  soup.ribbon(
+    lineStations(line),
+    -PAINT_HALF_WIDTH_M,
+    PAINT_HALF_WIDTH_M,
+    MARK_Y_OFFSET,
+    from.color === 'yellow' ? YELLOW_MARKING_COLOR : MARKING_COLOR,
+  );
+}
+
+/** The junction at a node: its surface, the footway round each corner, and the edge lines turning it. */
 function drawJunction(
   soup: Soup,
   net: RoadNet,
@@ -316,20 +445,18 @@ function drawJunction(
   color: Rgb,
 ): void {
   const centre = { x: net.nodeX[node]! / 100, z: net.nodeZ[node]! / 100 };
-  const lift = isGridNode(net, node) ? GRID_MOUTH_Y_OFFSET : ROAD_Y_OFFSET;
+  const lift = ROAD_Y_OFFSET;
   const outline: MPoint[] = [];
   for (let k = 0; k < arms.length; k++) {
     const i = arms[k]!;
     const j = arms[(k + 1) % arms.length]!;
-    const ni = turn(i.dir);
-    outline.push({
-      x: centre.x + i.dir.x * i.setback - ni.x * i.half,
-      z: centre.z + i.dir.z * i.setback - ni.z * i.half,
-    });
-    outline.push(...cornerLine(centre, i, j, 0));
+    const ni = turn(i.endDir);
+    outline.push({ x: i.end.x - ni.x * i.half, z: i.end.z - ni.z * i.half });
+    outline.push(...cornerLine(i, j, 0));
+    drawCornerEdge(soup, i, j);
     if (i.kerb > 0 && j.kerb > 0) {
-      const inner = cornerLine(centre, i, j, 0);
-      const outer = cornerLine(centre, i, j, Math.min(i.kerb, j.kerb));
+      const inner = cornerLine(i, j, 0);
+      const outer = cornerLine(i, j, Math.min(i.kerb, j.kerb));
       for (let c = 0; c < inner.length - 1; c++) {
         soup.quad(
           soup.vertex(inner[c]!.x, inner[c]!.z, CURB_Y_OFFSET),
@@ -351,16 +478,35 @@ function drawJunction(
 
 const shade = (c: Rgb, f: number): Rgb => [c[0] * f, c[1] * f, c[2] * f];
 
-/** One segment's cross-section swept along it between its junctions. */
+/**
+ * Metre ranges along a segment that carry a dash. A grid road measures its
+ * pattern from world metre 0 along its axis, as the tiles beside it do; a road
+ * off the grid measures it along itself.
+ */
+function dashRuns(lay: Lay, from: number, to: number): Array<[number, number]> {
+  const axis = lay.axis;
+  if (!axis) return dashSegments(from, to);
+  const w0 = axis.origin + axis.sign * from;
+  const w1 = axis.origin + axis.sign * to;
+  return dashSegments(Math.min(w0, w1), Math.max(w0, w1)).map(([lo, hi]) =>
+    axis.sign > 0 ? [lo - axis.origin, hi - axis.origin] : [axis.origin - hi, axis.origin - lo],
+  );
+}
+
+/** One segment's cross-section swept along it between `from` and `to` metres. */
 function drawSegment(
   soup: Soup,
   net: RoadNet,
   seg: number,
-  profile: RoadProfile,
+  lay: Lay,
   from: number,
   to: number,
 ): void {
-  const st = stations(sampleCentreLine(segmentGeom(net, seg)), from, to);
+  // A grid road whose junction reaches its tile's edge has nothing left to draw.
+  if (to - from < 1e-6) return;
+  const { profile, plan } = lay;
+  const samples = sampleCentreLine(segmentGeom(net, seg));
+  const st = stations(samples, from, to, lay.flip);
   if (st.length < 2) return;
   const half = carriagewayHalfWidthOf(profile);
   const surface = surfaceColor(profile);
@@ -388,8 +534,6 @@ function drawSegment(
   }
 
   if (!isPaved(profile)) return;
-  const oneWay = (net.segFlow[seg] ?? 0) === 1;
-  const plan = markingPlan(profile, oneWay ? RoadFlow.North : RoadFlow.None);
   for (const band of plan.bands) {
     if (band.kind === 'bus')
       soup.ribbon(st, band.from, band.to, BAND_Y_OFFSET, BUS_LANE_PAINT_COLOR);
@@ -405,9 +549,8 @@ function drawSegment(
       line.color === 'yellow' ? YELLOW_MARKING_COLOR : MARKING_COLOR,
     );
   for (const line of plan.solid) paint(line, st);
-  const samples = sampleCentreLine(segmentGeom(net, seg));
-  for (const [lo, hi] of dashSegments(from, to)) {
-    const run = stations(samples, lo, hi);
+  for (const [lo, hi] of dashRuns(lay, from, to)) {
+    const run = stations(samples, lo, hi, lay.flip);
     for (const line of plan.dashed) paint(line, run);
   }
 }
@@ -415,52 +558,209 @@ function drawSegment(
 /**
  * Every road off the grid, as triangles: each free segment between the
  * junctions at its ends, and each node a free segment meets, meshed from all
- * the roads meeting there.
+ * the roads meeting there, with each grid road meeting it carried to the edge
+ * of the junction's tile.
  */
 export function freeRoadSoup(net: RoadNet, lookup: ProfileFor, surfaceAt: SurfaceAt): RoadSoup {
   const soup = new Soup(surfaceAt);
-  const { junctions, spans } = layout(net, lookup);
+  const { junctions, spans, caps } = layout(net, lookup);
   for (const j of junctions) drawJunction(soup, net, j.node, j.arms, j.color);
-  for (const span of spans) drawSegment(soup, net, span.seg, span.profile, span.from, span.to);
+  for (const span of spans) drawSegment(soup, net, span.seg, span.lay, span.from, span.to);
+  for (const cap of caps) drawCap(soup, net, cap);
   return soup;
 }
 
-/** A free segment between the junctions at its ends: metres along it from `from` to `to`. */
+/**
+ * The grid tiles a junction with a road off the grid is drawn over, whole,
+ * by this renderer rather than by the tiles: every grid node where a free
+ * road meets another road.
+ */
+export function freeJunctionTiles(net: RoadNet, lookup: ProfileFor): TilePoint[] {
+  return layout(net, lookup).gridTiles;
+}
+
+/** A stretch of one segment drawn here: metres along it from `from` to `to`. */
 interface Span {
   seg: number;
-  profile: RoadProfile;
+  lay: Lay;
   from: number;
   to: number;
 }
 
-/** Where every free road runs between junctions, and every junction a free road meets. */
+/**
+ * Where every free road runs between junctions, every junction a free road
+ * meets, and the stretch of each grid road inside the tile of one.
+ */
 function layout(
   net: RoadNet,
   lookup: ProfileFor,
-): { junctions: { node: number; arms: Arm[]; color: Rgb }[]; spans: Span[] } {
+): {
+  junctions: { node: number; arms: Arm[]; color: Rgb }[];
+  spans: Span[];
+  gridTiles: TilePoint[];
+  caps: Cap[];
+} {
   const setbackAt = new Map<string, number>();
   const junctions: { node: number; arms: Arm[]; color: Rgb }[] = [];
+  const spans: Span[] = [];
+  const gridTiles: TilePoint[] = [];
+  const caps: Cap[] = [];
   for (let node = 0; node < net.nodeSlots; node++) {
     if (net.nodeLive[node] !== 1) continue;
     const { arms, segs } = armsAt(net, node, lookup);
     if (!segs.some((s) => isFreeSegment(net, s))) continue;
     arms.forEach((arm, k) => setbackAt.set(`${segs[k]}:${node}`, arm.setback));
+    // A lone grid tile a free road leaves is still the tile renderer's, and
+    // ends the way a grid road does; a free road ending on open ground rounds.
+    if (arms.length === 1 && !isGridNode(net, node)) {
+      const cap = capAt(net, segs[0]!, node, lookup);
+      setbackAt.set(`${segs[0]}:${node}`, cap.pivot);
+      caps.push(cap);
+    }
     if (arms.length < 2) continue;
     const free = segs.find((s) => isFreeSegment(net, s))!;
     junctions.push({ node, arms, color: surfaceColor(profileOf(net.segProfile[free]!, lookup)) });
+    if (!isGridNode(net, node)) continue;
+    gridTiles.push({
+      x: Math.floor(net.nodeX[node]! / 100 / TILE_METERS),
+      z: Math.floor(net.nodeZ[node]! / 100 / TILE_METERS),
+    });
+    segs.forEach((seg, k) => {
+      if (isFreeSegment(net, seg)) return;
+      const length = sampleCentreLine(segmentGeom(net, seg)).at(-1)!.s;
+      const setback = arms[k]!.setback;
+      const atA = net.segA[seg] === node;
+      spans.push({
+        seg,
+        lay: layOf(net, seg, lookup),
+        from: atA ? setback : length - GRID_ARM_REACH,
+        to: atA ? GRID_ARM_REACH : length - setback,
+      });
+    });
   }
-  const spans: Span[] = [];
   for (let seg = 0; seg < net.segSlots; seg++) {
     if (net.segLive[seg] !== 1 || !isFreeSegment(net, seg)) continue;
     const length = sampleCentreLine(segmentGeom(net, seg)).at(-1)!.s;
     spans.push({
       seg,
-      profile: profileOf(net.segProfile[seg]!, lookup),
+      lay: layOf(net, seg, lookup),
       from: setbackAt.get(`${seg}:${net.segA[seg]}`) ?? 0,
       to: length - (setbackAt.get(`${seg}:${net.segB[seg]}`) ?? 0),
     });
   }
-  return { junctions, spans };
+  return { junctions, spans, gridTiles, caps };
+}
+
+/**
+ * A free road's rounded dead end: the grid's cap — a half-disc as wide as the
+ * carriageway, the kerb and footway wrapped round it, the lines wrapped at
+ * their own radii — laid inside the road's own length, so its footway's tip
+ * is the node the road ends at and nothing reaches past the ground its
+ * footprint holds.
+ */
+interface Cap {
+  seg: number;
+  lay: Lay;
+  atA: boolean;
+  /** Metres from the node to where the swept road stops and the cap begins. */
+  pivot: number;
+  /** How far the carriageway's rounded end reaches from the pivot toward the node. */
+  depth: number;
+}
+
+function capAt(net: RoadNet, seg: number, node: number, lookup: ProfileFor): Cap {
+  const lay = layOf(net, seg, lookup);
+  const length = sampleCentreLine(segmentGeom(net, seg)).at(-1)!.s;
+  const half = carriagewayHalfWidthOf(lay.profile);
+  const kerb = hasKerbs(lay.profile) ? kerbWidthOf(lay.profile) : 0;
+  // A true half-circle where the road is long enough, flattened along the road
+  // where it is not, so a short road capped at both ends keeps a straight
+  // between its two rounded ends.
+  const depth = Math.max(0, Math.min(half, length / 2 - kerb));
+  return { seg, lay, atA: net.segA[seg] === node, pivot: depth + kerb, depth };
+}
+
+function drawCap(soup: Soup, net: RoadNet, cap: Cap): void {
+  const { profile, plan } = cap.lay;
+  const half = carriagewayHalfWidthOf(profile);
+  if (half <= 0) return;
+  const samples = sampleCentreLine(segmentGeom(net, cap.seg));
+  const { end, endDir } = pointAlong(samples, cap.pivot, cap.atA);
+  // Toward the node, and across the road a quarter turn from the way it leaves it.
+  const back = { x: -endDir.x, z: -endDir.z };
+  const across = turn(endDir);
+  const squash = half > 0 ? cap.depth / half : 0;
+  /** A point `r` out across the road and `r·squash` back toward the node, at sweep angle `a`. */
+  const ring = (r: number, along: number, a: number): MPoint => ({
+    x: end.x + back.x * along * Math.cos(a) + across.x * r * Math.sin(a),
+    z: end.z + back.z * along * Math.cos(a) + across.z * r * Math.sin(a),
+  });
+  const angles = Array.from(
+    { length: END_CAP_SEGMENTS + 1 },
+    (_, i) => -Math.PI / 2 + (Math.PI * i) / END_CAP_SEGMENTS,
+  );
+
+  const hub = soup.vertex(end.x, end.z, ROAD_Y_OFFSET);
+  const rim = angles.map((a) => ring(half, cap.depth, a));
+  const surface = surfaceColor(profile);
+  for (let i = 0; i < rim.length - 1; i++) {
+    soup.tri(
+      hub,
+      soup.vertex(rim[i]!.x, rim[i]!.z, ROAD_Y_OFFSET),
+      soup.vertex(rim[i + 1]!.x, rim[i + 1]!.z, ROAD_Y_OFFSET),
+      surface,
+    );
+  }
+
+  if (hasKerbs(profile)) {
+    const kerb = kerbWidthOf(profile);
+    const outer = angles.map((a) => ring(half + kerb, cap.depth + kerb, a));
+    for (let i = 0; i < rim.length - 1; i++) {
+      soup.quad(
+        soup.vertex(rim[i]!.x, rim[i]!.z, CURB_Y_OFFSET),
+        soup.vertex(outer[i]!.x, outer[i]!.z, CURB_Y_OFFSET),
+        soup.vertex(outer[i + 1]!.x, outer[i + 1]!.z, CURB_Y_OFFSET),
+        soup.vertex(rim[i + 1]!.x, rim[i + 1]!.z, CURB_Y_OFFSET),
+        SIDEWALK_COLOR,
+      );
+    }
+    soup.wall(
+      lineStations(rim),
+      0,
+      ROAD_Y_OFFSET,
+      CURB_Y_OFFSET,
+      shade(SIDEWALK_COLOR, KERB_FACE_SHADE),
+    );
+  }
+
+  if (!isPaved(profile)) return;
+  // Each line runs round its own half of the end, from its side of the road
+  // to the tip, so the two sides meet there in the colours they carry. The
+  // side a quarter turn from the road as it leaves holds its high offsets
+  // when it leaves the way its stations run.
+  const high = cap.atA !== cap.lay.flip;
+  const wrap = (line: MarkingLine, dashed: boolean): void => {
+    const r = Math.abs(line.at);
+    if (r <= PAINT_HALF_WIDTH_M) return;
+    const ahead = line.at > 0 === high;
+    const quarter = angles.filter((a) => (ahead ? a >= 0 : a <= 0));
+    const path = quarter.map((a) => ring(r, r * squash, a));
+    const run = lineStations(ahead ? path : [...path].reverse());
+    const length = run.at(-1)!.s;
+    const color = line.color === 'yellow' ? YELLOW_MARKING_COLOR : MARKING_COLOR;
+    const pieces = dashed ? dashSegments(0, length) : [[0, length] as [number, number]];
+    for (const [lo, hi] of pieces) {
+      soup.ribbon(
+        stations(run, lo, hi),
+        -PAINT_HALF_WIDTH_M,
+        PAINT_HALF_WIDTH_M,
+        MARK_Y_OFFSET,
+        color,
+      );
+    }
+  };
+  for (const line of plan.solid) wrap(line, false);
+  for (const line of plan.dashed) wrap(line, true);
 }
 
 /**
@@ -477,9 +777,11 @@ export function freeRoadLampStands(
   const spacing = LAMP_SPACING_TILES * TILE_METERS;
   const out: LampStand[] = [];
   for (const span of layout(net, lookup).spans) {
+    // A grid road's lamps are the tiles' own, whichever renderer draws it.
+    if (!isFreeSegment(net, span.seg)) continue;
     const tier = net.segTier[span.seg] as RoadTier;
-    if (!tierGetsLamp(tier) || !isPaved(span.profile)) continue;
-    const offset = lampLateralOffset(tier, span.profile);
+    if (!tierGetsLamp(tier) || !isPaved(span.lay.profile)) continue;
+    const offset = lampLateralOffset(tier, span.lay.profile);
     const samples = sampleCentreLine(segmentGeom(net, span.seg));
     const first = span.from + Math.min(spacing, span.to - span.from) / 2;
     for (let s = first, k = 0; s <= span.to; s += spacing, k++) {
@@ -506,6 +808,7 @@ export class FreeRoadRenderer {
     side: THREE.DoubleSide,
   });
   private mesh: THREE.Mesh | null = null;
+  private junctionTiles: TilePoint[] = [];
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -519,6 +822,7 @@ export class FreeRoadRenderer {
       this.mesh.geometry.dispose();
       this.mesh = null;
     }
+    this.junctionTiles = net ? freeJunctionTiles(net, this.profileFor) : [];
     if (!net) return;
     const soup = freeRoadSoup(net, this.profileFor, this.surfaceAt);
     if (soup.positions.length === 0) return;
@@ -533,6 +837,11 @@ export class FreeRoadRenderer {
 
   setNightFactor(nightFactor: number): void {
     this.material.color.setScalar(roadNightDim(nightFactor));
+  }
+
+  /** The grid tiles the last rebuild drew a junction over, which the tile renderer leaves to it. */
+  gridJunctionTiles(): readonly TilePoint[] {
+    return this.junctionTiles;
   }
 
   /** Triangles currently drawn — for tests and read-backs. */

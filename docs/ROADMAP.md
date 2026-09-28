@@ -202,6 +202,54 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 
 ## 10. History (newest first)
 
+### Snapping to roads (requested, specified and built 2026-09-28)
+
+The player asked for snapping between curved and grid roads both ways, a
+toggle for it on every road type, roads that never connect when it is off,
+and a drag from a road's end that carries on from it in the selected path
+mode. Asked, they chose: off means never joined and kept that way through a
+save, while a real crossing still becomes a junction; a grid drag from a
+curve's end moves the curve's end onto the tile centre in the same undo step;
+and a continuation lays the road card selected. The behaviour is
+[interaction.md](ux/interaction.md#snapping-to-roads) and the world rule
+[road-model.md](world-sim/road-model.md#how-roads-meet-rank-replacement-and-transitions).
+Four stages: the preview refusing a grid drag into a curve; roads laid apart
+in the world; the toggle with end snapping and carrying on; moving a curve's
+end.
+
+Stage 1 is built (2026-09-28): a grid drag into ground a road off the grid
+holds is refused in the preview with the world's own sentence
+(`gridRunRefusal`, shared by the world's `buildRoad` and the tool's preview
+against the mirror), where before the ghost read valid and the world refused
+it after release. The world's refusal had no test until now. Checked in the
+browser: a street dragged across a curve draws red with the reason, lays
+nothing, and one stopping short lays.
+
+Stage 2 is built (2026-09-28): `buildRoad` takes `join: false`, which keeps a
+road apart from the roads it only lies beside or ends against and still joins
+the one it crosses. What is held apart is the absence of a link in the
+network, so it survives a save and a load, and a derived layer
+(`roadSeparate`) carries it to the masks, the graph, the utility and service
+spreads, the approach walk and the road furniture. An undo puts it back
+exactly. Nothing in the road tool sends `join: false` yet; that is stage 3.
+
+Stage 3 is built (2026-09-28): a `Roads` chip in the road tool's Snap row, on
+by default. On, a road end within half a tile of the cursor — a node at most
+one road leaves (`nearestRoadEnd`) — takes the drag ahead of every other snap:
+a grid drag starts and stops on the end's tile, a road off the grid on the end
+itself, and `Curve` mode marks where its first click would land. Off, nothing
+snaps and every grid road is sent with `join: false`. A grid drag started on
+a curve's end off a tile centre is still shown refused; moving that end is
+stage 4.
+
+Stage 4 is built (2026-09-28): a grid drag started or stopped on a curve's
+end off its tile centre sends `moveSegmentEnd` ahead of the grid road, which
+lays the curve again with that end on the tile centre, free, undone by the
+move back. The world plans the moved road with its old self taken away
+(`moveRoadEnd`), and the preview judges the grid run against the world as the
+moves leave it (`gridRunRefusalAfter`), so a move a rule forbids is refused
+before release with that rule's reason.
+
 ### Free-form roads (requested 2026-09-23, specified 2026-09-24)
 
 Every turn was a grid corner, a quarter circle inside one 20 m tile, which is
@@ -277,10 +325,15 @@ worker and compares the two masks. Free roads are drawn
 line with kerbs, footways, medians and the markings plan, and a junction
 meshed at each node from the roads meeting there, with rounded kerb returns.
 Checked in the browser on a curve leaving a grid street, a free three-way
-junction and a curved one-way street. Where a free road meets a grid road, the junction is laid over
-the grid road's own tile, which still draws as a straight road underneath,
-so its kerbside props stand as if nothing joined it until one renderer draws
-both (stage 8).
+junction and a curved one-way street. Where a free road meets a grid road,
+the free-road junction draws that grid tile whole (2026-09-25): each grid
+road meeting it is carried to the tile's edge in its own section and paint,
+the edge lines turn round every kerb return, the junction meets a curve
+where the curve actually is, and the tile renderer draws nothing of the tile
+and stands no furniture or lamp on it. Before, the tile's old corner or
+straight drew underneath, its kerb across the new road's mouth and its sign
+in the carriageway. Checked in the browser on a curve leaving a grid corner
+and on one leaving a straight grid street at an angle.
 
 Stage 4b is built (2026-09-24): street lamps stand along free roads between
 their junctions, at the grid's lamp spacing, on alternate kerbs, reaching

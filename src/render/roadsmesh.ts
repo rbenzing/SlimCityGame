@@ -5183,6 +5183,24 @@ export class RoadMeshRenderer {
     if (rebuilt) this.rebuildMedianTrees();
   }
 
+  /**
+   * Grid tiles where a road off the grid meets, by tile index. The free-road
+   * renderer draws the whole junction there from every road meeting it, so
+   * this one draws nothing of the tile's own road but what passes over it.
+   */
+  private freeJunctions: ReadonlySet<number> = new Set();
+
+  /** Takes the grid tiles a free-road junction draws, and rebuilds the chunks whose answer moved. */
+  setFreeJunctionTiles(tiles: readonly { x: number; z: number }[]): void {
+    const next = new Set(tiles.map((t) => tileIndex(t.x, t.z)));
+    const dirty = new Set<number>();
+    const chunkOf = (i: number): number => chunkKeyOf(i % MAP_SIZE, Math.floor(i / MAP_SIZE));
+    for (const i of next) if (!this.freeJunctions.has(i)) dirty.add(chunkOf(i));
+    for (const i of this.freeJunctions) if (!next.has(i)) dirty.add(chunkOf(i));
+    this.freeJunctions = next;
+    for (const key of dirty) this.rebuildChunk(key);
+  }
+
   /** Who gives way at each junction tile, by tile index. Absent = the sim controls it with nothing. */
   private junctionControls: ReadonlyMap<number, JunctionControl> = new Map();
   /** Turn restrictions at each junction tile, packed a nibble per arm. */
@@ -5215,6 +5233,7 @@ export class RoadMeshRenderer {
         const over = this.groundAt(x, z)?.over;
         return over ? axisOfFlow(over.flow) : null;
       },
+      apartAt: (x, z) => this.groundAt(x, z)?.apart ?? 0,
     };
   }
 
@@ -5783,6 +5802,15 @@ export class RoadMeshRenderer {
     const positions: number[] = [];
     const colors: number[] = [];
     for (const tile of chunk.tiles.values()) {
+      if (this.freeJunctions.has(tileIndex(tile.x, tile.z))) {
+        const over = overTileOf(tile);
+        if (over) {
+          const drawn = this.overpassVertices(over);
+          for (const n of drawn.positions) positions.push(n);
+          for (const n of drawn.colors) colors.push(n);
+        }
+        continue;
+      }
       const neighbors: NeighborTiers = {
         n: this.tierAlong(tile.x, tile.z - 1, 'z'),
         e: this.tierAlong(tile.x + 1, tile.z, 'x'),

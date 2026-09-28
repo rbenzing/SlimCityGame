@@ -39,6 +39,18 @@ only (pines stay green year-round), winter desaturated. Leaf-drop geometry is
 deferred — winter is a tint, not a change of silhouette, and is described here
 as exactly that.
 
+### Where a tree may stand
+
+Trees are grown from the map the city was founded on, so a road or a building
+has to take them away. No tree stands on a tile that holds a grid road, the
+ground a road off the grid covers (its footprint, every tile any part of its
+cross-section overlaps), or a building. That is read from the render thread's
+mirror of the grid whenever its roads, its road network or its buildings
+change — never from the commands that put them there — so it holds for a
+curve, for a building the simulation grew, and for a city just loaded, whose
+trees are regrown from the map before its roads arrive. A committed bulldoze
+also clears the trees on every tile it covers, bare ground included.
+
 ## Ground cover
 
 All vertex-colour work on the existing terrain chunks — no new geometry:

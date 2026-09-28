@@ -36,6 +36,7 @@ import {
 import { armGivesWay, signalAspect } from '../shared/junction';
 import type { SignalAspect } from '../shared/junction';
 import { rampJoinAround, rampJoins, sideBySideCarriageways } from '../shared/corridor';
+import { bitToward } from '../shared/overpass';
 import type { RampJoin } from '../shared/corridor';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 
@@ -236,6 +237,8 @@ export type FurnitureRoadTile = TilePoint & {
    * worked one out.
    */
   control?: JunctionControl;
+  /** The arms of the tile held apart from the roads beside it, as mask bits; absent where none are. */
+  apart?: number;
 };
 
 /** Carriageway half-width and kerb width for a tile: its own profile's, else its tier's preset. */
@@ -493,14 +496,16 @@ function buildTileSet(roadTiles: readonly FurnitureRoadTile[]): RoadTileIndex {
 
 /**
  * Whether the road tile at (nx, nz) is an arm of the one at (x, z): there, and
- * not a separate motorway carriageway lying alongside. A second carriageway is
- * another road, so it takes up the ground beside this one without joining it.
+ * neither a separate motorway carriageway lying alongside nor a road held
+ * apart from this one. Either is another road, so it takes up the ground
+ * beside this one without joining it.
  */
 function joins(tileSet: RoadTileIndex, x: number, z: number, nx: number, nz: number): boolean {
   const there = tileSet.get(tileKey(nx, nz));
   if (!there) return false;
   const here = tileSet.get(tileKey(x, z));
   if (!here) return true;
+  if (((here.apart ?? 0) & bitToward(nx - x, nz - z)) !== 0) return false;
   if (
     sideBySideCarriageways(
       tierIsMotorway(here.tier),
@@ -1815,14 +1820,23 @@ export class RoadFurnitureRenderer {
     this.heightAt = heightAt;
   }
 
-  /** Full rebuild from the current road tile set (roads change relatively rarely). */
-  rebuild(roadTiles: readonly FurnitureRoadTile[]): void {
+  /**
+   * Full rebuild from the current road tile set (roads change relatively
+   * rarely). `keepOff` holds tiles, keyed x·100 000 + z, where a road off the
+   * grid meets: the tile's own role — a corner, a straight — no longer says
+   * where its kerbs are, so nothing it earned is stood there.
+   */
+  rebuild(roadTiles: readonly FurnitureRoadTile[], keepOff?: ReadonlySet<number>): void {
     this.disposeMeshes();
 
-    this.manholes = computeManholePlacements(roadTiles);
-    this.boxes = computeBoxPlacements(roadTiles);
-    this.meters = computeMeterPlacements(roadTiles);
-    this.signs = computeSignPlacements(roadTiles);
+    const allowed = <T extends { x: number; z: number }>(placements: T[]): T[] =>
+      keepOff && keepOff.size > 0
+        ? placements.filter((p) => !keepOff.has(p.x * 100_000 + p.z))
+        : placements;
+    this.manholes = allowed(computeManholePlacements(roadTiles));
+    this.boxes = allowed(computeBoxPlacements(roadTiles));
+    this.meters = allowed(computeMeterPlacements(roadTiles));
+    this.signs = allowed(computeSignPlacements(roadTiles));
 
     if (this.manholes.length) {
       const mesh = new THREE.InstancedMesh(

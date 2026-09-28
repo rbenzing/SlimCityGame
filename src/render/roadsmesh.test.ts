@@ -2538,6 +2538,39 @@ function makeDelta(x: number, z: number, tier: RoadTier, mask = 0): RoadTileDelt
   return { x, z, tier, mask, elevation: 0, profile: tier, flow: RoadFlow.None };
 }
 
+describe('RoadMeshRenderer — tiles a free-road junction draws', () => {
+  const vertexCount = (scene: THREE.Scene): number =>
+    scene.children
+      .filter((c): c is THREE.Mesh => c instanceof THREE.Mesh)
+      .reduce((n, m) => n + m.geometry.getAttribute('position').count, 0);
+
+  it('draws nothing of a tile a free road meets, and draws it again once the free road is gone', () => {
+    const scene = new THREE.Scene();
+    const renderer = new RoadMeshRenderer(scene, () => 0);
+    renderer.apply([
+      makeDelta(3, 3, RoadTier.TwoLane, E),
+      makeDelta(4, 3, RoadTier.TwoLane, E | W),
+      makeDelta(5, 3, RoadTier.TwoLane, W),
+    ]);
+    const whole = vertexCount(scene);
+    const alone = new THREE.Scene();
+    new RoadMeshRenderer(alone, () => 0).apply([
+      makeDelta(3, 3, RoadTier.TwoLane, E),
+      makeDelta(5, 3, RoadTier.TwoLane, W),
+    ]);
+
+    renderer.setFreeJunctionTiles([{ x: 4, z: 3 }]);
+    const without = vertexCount(scene);
+    expect(without).toBeLessThan(whole);
+    // Only the junction tile is left out: the tiles beside it draw exactly as
+    // they did, running on to its edge, where the junction takes over.
+    expect(without).toBe(vertexCount(alone));
+
+    renderer.setFreeJunctionTiles([]);
+    expect(vertexCount(scene)).toBe(whole);
+  });
+});
+
 describe('RoadMeshRenderer', () => {
   it('draws a tile carrying a composed profile at that profile, and a preset tile as before', () => {
     const wide: RoadProfile = {

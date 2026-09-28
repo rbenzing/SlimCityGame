@@ -29,7 +29,8 @@ import roadsData from '../data/roads.json';
 import type { RoadSpec } from '../shared/types';
 import { decodeSave, encodeSave } from '../app/persist';
 import { createGrid, serializeGridV12 } from '../world/grid';
-import { isFreeSegment, loadGrid } from '../world/roadnet';
+import { cellStep, isFreeSegment, loadGrid, neighbours, roadCellsOf } from '../world/roadnet';
+import { RUNS_INTO_FREE_ROAD } from '../world/freeroads';
 import { computeTerraformPatch, type TerraformCommand } from '../world/terraform';
 import {
   createWorkerSim,
@@ -2636,6 +2637,59 @@ describe('roads off the grid — the world lays them, undoes them and keeps them
     expect(savedFree(h)).toEqual(['100000,100000-120000,120000~120000,100000']);
   });
 
+  it('moves a curve’s end onto the tile centre a grid road meets it at, in one undo step', () => {
+    const h = sandboxed();
+    run(h, 1, [curve]);
+    // The curve starts on the corner of tile (50, 50); a street runs north
+    // from that tile once the start is brought to its centre.
+    const column = Array.from({ length: 6 }, (_, i) => ({ x: 50, z: 50 - i }));
+    const ack = run(h, 2, [
+      { kind: 'moveSegmentEnd', from: at(1000, 1000), to: at(1010, 1010) },
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column },
+    ]);
+    expect(ack.ok).toBe(true);
+    expect(savedFree(h)).toEqual(['101000,101000-120000,120000~120000,100000']);
+    const g = latestSaveGrid(h);
+    expect(g.roadTier[50 * MAP_SIZE + 50]).toBe(RoadTier.TwoLane);
+    // The street and the curve meet there: the street's tile links to the curve.
+    const cells = roadCellsOf(g);
+    const firstFree = 2 * MAP_SIZE * MAP_SIZE;
+    expect(neighbours(cells, 50 * MAP_SIZE + 50).some((c) => c >= firstFree)).toBe(true);
+
+    const undo = run(h, 3, ack.inverse);
+    expect(undo.ok).toBe(true);
+    expect(savedFree(h)).toEqual(['100000,100000-120000,120000~120000,100000']);
+    expect(latestSaveGrid(h).roadTier[50 * MAP_SIZE + 50]).toBe(RoadTier.None);
+    expect(run(h, 4, undo.inverse).ok).toBe(true);
+    expect(savedFree(h)).toEqual(['101000,101000-120000,120000~120000,100000']);
+  });
+
+  it('moves a curve’s end for nothing, and only an end no other road meets', () => {
+    const h = sandboxed();
+    run(h, 1, [curve]);
+    const moved = run(h, 2, [{ kind: 'moveSegmentEnd', from: at(1000, 1000), to: at(1010, 1010) }]);
+    expect(moved).toMatchObject({ ok: true, cost: 0 });
+    expect(moved.inverse).toEqual([
+      { kind: 'moveSegmentEnd', from: at(1010, 1010), to: at(1000, 1000) },
+    ]);
+    const nowhere = run(h, 3, [
+      { kind: 'moveSegmentEnd', from: at(1100, 1100), to: at(1110, 1110) },
+    ]);
+    expect(nowhere).toMatchObject({ ok: false, reason: 'invalid' });
+  });
+
+  it('refuses a grid road run into a free road away from where the two meet, whole', () => {
+    const h = sandboxed();
+    run(h, 1, [curve]);
+    // The curve passes (1150, 1050) m, on tile (57, 52); a street down column
+    // 57 runs straight into it.
+    const column = Array.from({ length: 16 }, (_, i) => ({ x: 57, z: 45 + i }));
+    const ack = run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column }]);
+    expect(ack).toMatchObject({ ok: false, cost: 0, reason: RUNS_INTO_FREE_ROAD });
+    h.sim.handleMessage({ type: 'requestSave' });
+    expect(Array.from(latestSaveGrid(h).roadTier).every((t) => t === 0)).toBe(true);
+  });
+
   it('refuses what the geometry rules refuse, with the reason', () => {
     const h = sandboxed();
     const ack = run(h, 1, [
@@ -2723,5 +2777,133 @@ describe('roads off the grid — the world lays them, undoes them and keeps them
     const g = latestSaveGrid(h);
     expect(g.zone[beside.z * MAP_SIZE + beside.x]).toBe(ZoneType.ResLow);
     expect(g.zone[on.z * MAP_SIZE + on.x]).toBe(ZoneType.None);
+  });
+});
+
+describe('buildRoad: a road laid as its own road', () => {
+  function run(h: Harness, seq: number, commands: Command[]): CommandAck {
+    send(h, seq, commands);
+    h.ticks(2);
+    const ack = h.ackFor(seq);
+    if (!ack) throw new Error(`no ack for batch ${seq}`);
+    return ack;
+  }
+  function sandboxed(): Harness {
+    const h = initialized();
+    run(h, 0, [{ kind: 'setSandbox', on: true }]);
+    return h;
+  }
+  /** The city as a save holds it, its road layers derived from its network. */
+  function grid(h: Harness): GridState {
+    h.sim.handleMessage({ type: 'requestSave' });
+    return latestSaveGrid(h);
+  }
+  const at = (x: number, z: number): number => z * MAP_SIZE + x;
+  const rowMasks = (g: GridState, z: number, x0: number, len: number): number[] =>
+    Array.from({ length: len }, (_, i) => g.roadMask[at(x0 + i, z)] ?? 0);
+  const street = (tiles: TilePoint[], join?: boolean): Command => ({
+    kind: 'buildRoad',
+    tier: RoadTier.TwoLane,
+    tiles,
+    ...(join === undefined ? {} : { join }),
+  });
+  /** A street along z = 20, and a second laid beside it along z = 21 with snapping off. */
+  function sideBySide(): Harness {
+    const h = sandboxed();
+    run(h, 1, [street(roadRow(10, 20, 9))]);
+    expect(run(h, 2, [street(roadRow(10, 21, 9), false)]).ok).toBe(true);
+    expect(grid(h).roadSeparate[at(14, 21)]).toBe(1);
+    return h;
+  }
+
+  it('keeps it apart from the street beside it, in the tiles, the network and a reload', () => {
+    const h = sideBySide();
+    const g = grid(h);
+    expect(rowMasks(g, 20, 11, 7)).toEqual(Array<number>(7).fill(2 | 8));
+    expect(rowMasks(g, 21, 11, 7)).toEqual(Array<number>(7).fill(2 | 8));
+    expect(g.roadSeparate[at(14, 20)]).toBe(4);
+    expect(g.roadSeparate[at(14, 21)]).toBe(1);
+    expect(cellStep(roadCellsOf(g), at(14, 20), 0, 1)).toBeNull();
+
+    const saves = h.messages.filter(
+      (m): m is Extract<WorkerToMain, { type: 'save' }> => m.type === 'save',
+    );
+    const fresh = sandboxed();
+    fresh.sim.handleMessage({ type: 'loadSave', data: saves[saves.length - 1]!.data });
+    fresh.ticks(2);
+    const reloaded = grid(fresh);
+    expect(Array.from(reloaded.roadMask)).toEqual(Array.from(g.roadMask));
+    expect(Array.from(reloaded.roadSeparate)).toEqual(Array.from(g.roadSeparate));
+  });
+
+  /** The newest road delta the worker has sent for each tile. */
+  function newestDeltas(h: Harness): Map<number, RoadTileDelta> {
+    const newest = new Map<number, RoadTileDelta>();
+    for (const m of h.messages) {
+      if (m.type !== 'snapshot' || !m.snap.roads) continue;
+      for (const d of m.snap.roads) newest.set(at(d.x, d.z), d);
+    }
+    return newest;
+  }
+
+  it('tells the render thread which arms are held apart, and when they no longer are', () => {
+    const h = sideBySide();
+    expect(newestDeltas(h).get(at(14, 20))).toMatchObject({ mask: 2 | 8, apart: 4 });
+    expect(newestDeltas(h).get(at(14, 21))).toMatchObject({ mask: 2 | 8, apart: 1 });
+    // Taking the second street away leaves the first's mask as it was, so only
+    // what is held apart has changed on it.
+    run(h, 3, [{ kind: 'bulldoze', tiles: roadRow(10, 21, 9) }]);
+    const after = newestDeltas(h).get(at(14, 20));
+    expect(after).toMatchObject({ mask: 2 | 8 });
+    expect(after?.apart).toBeUndefined();
+  });
+
+  it('joins the street beside it when joining is left on', () => {
+    const h = sandboxed();
+    run(h, 1, [street(roadRow(10, 20, 9))]);
+    run(h, 2, [street(roadRow(10, 21, 9))]);
+    const g = grid(h);
+    expect(rowMasks(g, 20, 11, 7)).toEqual(Array<number>(7).fill(2 | 4 | 8));
+    expect(Array.from(g.roadSeparate).every((a) => a === 0)).toBe(true);
+  });
+
+  it('still joins a street it crosses, so the crossing is a junction', () => {
+    const h = sandboxed();
+    run(h, 1, [street(roadRow(10, 20, 9))]);
+    const column = Array.from({ length: 9 }, (_, i) => ({ x: 14, z: 16 + i }));
+    expect(run(h, 2, [street(column, false)]).ok).toBe(true);
+    const g = grid(h);
+    expect(g.roadMask[at(14, 20)]).toBe(1 | 2 | 4 | 8);
+    expect(Array.from(g.roadSeparate).every((a) => a === 0)).toBe(true);
+  });
+
+  it('comes back apart when a bulldoze of it is undone, and goes again on redo', () => {
+    const h = sideBySide();
+    const before = grid(h);
+    const dozed = run(h, 3, [{ kind: 'bulldoze', tiles: roadRow(10, 21, 9) }]);
+    expect(dozed.ok).toBe(true);
+    const undo = run(h, 4, dozed.inverse);
+    expect(undo.ok).toBe(true);
+    const after = grid(h);
+    expect(Array.from(after.roadMask)).toEqual(Array.from(before.roadMask));
+    expect(Array.from(after.roadSeparate)).toEqual(Array.from(before.roadSeparate));
+    expect(run(h, 5, undo.inverse).ok).toBe(true);
+    expect(rowMasks(grid(h), 20, 11, 7)).toEqual(Array<number>(7).fill(2 | 8));
+    expect(grid(h).roadTier[at(14, 21)]).toBe(RoadTier.None);
+  });
+
+  it('joins up when laid over with joining on, and comes apart again on undo', () => {
+    const h = sideBySide();
+    const before = grid(h);
+    const over = run(h, 3, [
+      { kind: 'buildRoad', tier: RoadTier.Avenue, tiles: roadRow(10, 21, 9) },
+    ]);
+    expect(over.ok).toBe(true);
+    expect(rowMasks(grid(h), 21, 11, 7)).toEqual(Array<number>(7).fill(1 | 2 | 8));
+    const undo = run(h, 4, over.inverse);
+    expect(undo.ok).toBe(true);
+    const after = grid(h);
+    expect(Array.from(after.roadMask)).toEqual(Array.from(before.roadMask));
+    expect(Array.from(after.roadSeparate)).toEqual(Array.from(before.roadSeparate));
   });
 });

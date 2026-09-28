@@ -342,6 +342,13 @@ export interface GridState {
    * from the road network, never saved, and never built on.
    */
   roadFootprint: Uint8Array;
+  /**
+   * The arms of each tile's road held apart from a road beside it that the
+   * joining rules would otherwise join, as mask bits (+N=1 +E=2 +S=4 +W=8),
+   * set on both tiles: a road laid with snapping off. Derived from the road
+   * network, where the arm is a link it does not have; never saved.
+   */
+  roadSeparate: Uint8Array;
   buildingId: Uint32Array; // 0 = none, else building instance id occupying tile
   power: Uint8Array; // 1 = powered
   watered: Uint8Array; // 1 = water service reaches tile
@@ -432,6 +439,20 @@ export type Command =
        * drag leaves the worker to decide which tiles cross over.
        */
       layer?: 'over';
+      /**
+       * Whether the road joins the roads it lies beside or ends against.
+       * Omitted, it joins them, as a road always has. False — the road tool
+       * with snapping to roads off — every arm between a tile it lays and a
+       * road outside the drag stays as joined as it was before, so a road it
+       * only lies beside or ends against stays a road of its own.
+       */
+      join?: boolean;
+      /**
+       * Exactly which arms of the tiles it lays are held apart; every other
+       * arm of those tiles joins. Only an undo sends it, to put back what a
+       * command it reverses held apart.
+       */
+      apart?: TileArms[];
     }
   /**
    * Registers a player-composed cross-section under an id the client chose
@@ -506,6 +527,18 @@ export type Command =
    * `control` as its bend. Costs nothing. Inverse: `splitSegment`.
    */
   | { kind: 'joinSegments'; at: { x: number; z: number }; control?: { x: number; z: number } }
+  /**
+   * Moves the end of the one road off the grid ending at `from` — a node no
+   * other road meets — to `to`, at most half a tile away on each axis, laying
+   * the road again with that end moved. What a grid drag started or ended on
+   * a curve's end does to meet it at the tile centre. Costs nothing. Inverse:
+   * the same move back.
+   */
+  | {
+      kind: 'moveSegmentEnd';
+      from: { x: number; z: number };
+      to: { x: number; z: number };
+    }
   | { kind: 'paintZone'; zone: ZoneType; tiles: TilePoint[] }
   | { kind: 'placeBuilding'; catalogId: string; x: number; z: number; rotation: 0 | 1 | 2 | 3 }
   | { kind: 'setTaxRate'; sector: Sector; rate: number } // 0..0.3
@@ -649,6 +682,13 @@ export interface RoadTileDelta {
    * GridState.overTier.
    */
   over?: OverRoadState;
+  /** The arms of the tile held apart (see GridState.roadSeparate); absent where none are. */
+  apart?: number;
+}
+
+/** A tile and the arms of its road held apart, as mask bits (see GridState.roadSeparate). */
+export interface TileArms extends TilePoint {
+  arms: number;
 }
 
 /** The road passing over a crossing tile, as the render thread receives it. */
@@ -1389,6 +1429,12 @@ export interface ToolFlags {
    * than running a tile off it.
    */
   guideSnap: boolean;
+  /**
+   * `Roads` snapping chip — a new road snaps onto the roads it reaches and
+   * joins them. Off, nothing snaps and a grid road is laid as a road of its
+   * own, joining nothing it only lies beside or ends against.
+   */
+  roadSnap: boolean;
   /**
    * `Replace` road mode — a drag lays its road over an existing run whatever
    * that run is, instead of refusing to put a smaller road over a bigger one.

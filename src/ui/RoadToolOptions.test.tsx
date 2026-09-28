@@ -519,6 +519,20 @@ describe('RoadToolOptions', () => {
       expect(useCityStore.getState().toolFlags.angleLock).toBe(false);
       expect(chip).toHaveAttribute('aria-pressed', 'false');
     });
+
+    it('snaps to roads until the Roads chip is turned off, and says what each way does', () => {
+      render(<RoadToolOptions />);
+      const chip = screen.getByRole('button', { name: 'Snap to roads' });
+      expect(chip).toHaveTextContent('Roads');
+      expect(chip).toHaveAttribute('aria-pressed', 'true');
+      expect(chip).toHaveAttribute('title', expect.stringMatching(/joins them/));
+      fireEvent.click(chip);
+      expect(useCityStore.getState().toolFlags.roadSnap).toBe(false);
+      expect(chip).toHaveAttribute('aria-pressed', 'false');
+      expect(chip).toHaveAttribute('title', expect.stringMatching(/road of its own/));
+      fireEvent.click(chip);
+      expect(useCityStore.getState().toolFlags.roadSnap).toBe(true);
+    });
   });
 
   describe('elevation', () => {
