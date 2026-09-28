@@ -30,6 +30,7 @@ import type { RoadSpec } from '../shared/types';
 import { decodeSave, encodeSave } from '../app/persist';
 import { createGrid, serializeGridV12 } from '../world/grid';
 import { isFreeSegment, loadGrid } from '../world/roadnet';
+import { RUNS_INTO_FREE_ROAD } from '../world/freeroads';
 import { computeTerraformPatch, type TerraformCommand } from '../world/terraform';
 import {
   createWorkerSim,
@@ -2634,6 +2635,18 @@ describe('roads off the grid — the world lays them, undoes them and keeps them
     const redo = run(h, 3, undo.inverse);
     expect(redo.ok).toBe(true);
     expect(savedFree(h)).toEqual(['100000,100000-120000,120000~120000,100000']);
+  });
+
+  it('refuses a grid road run into a free road away from where the two meet, whole', () => {
+    const h = sandboxed();
+    run(h, 1, [curve]);
+    // The curve passes (1150, 1050) m, on tile (57, 52); a street down column
+    // 57 runs straight into it.
+    const column = Array.from({ length: 16 }, (_, i) => ({ x: 57, z: 45 + i }));
+    const ack = run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column }]);
+    expect(ack).toMatchObject({ ok: false, cost: 0, reason: RUNS_INTO_FREE_ROAD });
+    h.sim.handleMessage({ type: 'requestSave' });
+    expect(Array.from(latestSaveGrid(h).roadTier).every((t) => t === 0)).toBe(true);
   });
 
   it('refuses what the geometry rules refuse, with the reason', () => {

@@ -29,7 +29,14 @@ import {
 } from '../shared/roadgeom';
 import type { CmPoint, MPoint, SegmentGeom } from '../shared/roadgeom';
 import { joinRefusal, presetProfileForTier, profileWidth } from '../shared/roadprofile';
-import type { GridState, RoadClassId, RoadNet, RoadProfile, RoadTier } from '../shared/types';
+import type {
+  GridState,
+  RoadClassId,
+  RoadNet,
+  RoadProfile,
+  RoadTier,
+  TilePoint,
+} from '../shared/types';
 import {
   addNode,
   addSegment,
@@ -551,6 +558,32 @@ export function freeJunctionTiles(net: RoadNet, size: number): Set<number> {
     }
   }
   return tiles;
+}
+
+/** Why a grid run may not be laid where a road off the grid covers the ground. */
+export const RUNS_INTO_FREE_ROAD = 'It runs into a road off the grid';
+
+/**
+ * Why a grid road may not be laid over `tiles`: one of them is ground a road
+ * off the grid covers, other than a tile centre where the two meet — or null.
+ * The world asks this of every `buildRoad`, and the road tool asks it of its
+ * preview against the mirror of the world, so the preview refuses exactly
+ * what the command would.
+ */
+export function gridRunRefusal(
+  g: Pick<GridState, 'size' | 'roadFootprint'>,
+  net: RoadNet,
+  tiles: readonly TilePoint[],
+): string | null {
+  let junctions: Set<number> | null = null;
+  for (const t of tiles) {
+    if (t.x < 0 || t.z < 0 || t.x >= g.size || t.z >= g.size) continue;
+    const idx = t.z * g.size + t.x;
+    if (g.roadFootprint[idx] !== 1) continue;
+    junctions ??= freeJunctionTiles(net, g.size);
+    if (!junctions.has(idx)) return RUNS_INTO_FREE_ROAD;
+  }
+  return null;
 }
 
 /** How close to a road node a dropped road end is pulled onto it, metres. */

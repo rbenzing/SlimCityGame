@@ -18,12 +18,14 @@ import {
 } from './roadnet';
 import {
   deriveRoadFootprint,
+  gridRunRefusal,
   joinSegmentsAt,
   laySegment,
   nearestRoadPoint,
   planSegment,
   planWithSplits,
   removeSegmentAt,
+  RUNS_INTO_FREE_ROAD,
   snapRoadEnd,
   splitRefusal,
   splitSegment,
@@ -383,6 +385,36 @@ describe('roads off the grid: meeting the grid', () => {
     const through = plan(g, { a: at(300, 300), b: at(320, 500) });
     expect(r).toMatchObject({ ok: true });
     expect(through).toMatchObject({ ok: false, reason: expect.stringMatching(/grid/) });
+  });
+
+  it('lets a grid run onto a free road’s ground only at the tile centre where they meet', () => {
+    const g = meeting();
+    const junction = 20 * SIZE + 20;
+    const covered = [...g.roadFootprint.keys()].filter(
+      (i) => g.roadFootprint[i] === 1 && i !== junction,
+    );
+    expect(g.roadFootprint[junction]).toBe(1);
+    expect(covered.length).toBeGreaterThan(0);
+    const tileOf = (i: number) => ({ x: i % SIZE, z: Math.floor(i / SIZE) });
+    // The tile centre the free road meets the street at is the grid's to enter…
+    expect(
+      gridRunRefusal(g, g.roads!, [
+        { x: 19, z: 20 },
+        { x: 20, z: 20 },
+      ]),
+    ).toBeNull();
+    // …and every other tile the free road covers is not, wherever in the run.
+    for (const i of covered) {
+      expect(gridRunRefusal(g, g.roads!, [{ x: 0, z: 0 }, tileOf(i)])).toBe(RUNS_INTO_FREE_ROAD);
+    }
+    // Ground it does not cover, and tiles off the map, say nothing.
+    expect(
+      gridRunRefusal(g, g.roads!, [
+        { x: 2, z: 2 },
+        { x: -1, z: 3 },
+        { x: SIZE, z: 0 },
+      ]),
+    ).toBeNull();
   });
 
   it('keeps the free road when the grid road it met is bulldozed', () => {

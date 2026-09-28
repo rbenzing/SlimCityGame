@@ -36,7 +36,7 @@ import {
 import { segmentLengthM } from '../shared/roadgeom';
 import {
   deriveRoadFootprint,
-  freeJunctionTiles,
+  gridRunRefusal,
   joinSegmentsAt,
   laySegment,
   nearestRoadPoint,
@@ -2158,13 +2158,8 @@ class SimWorld implements WorkerSim {
     const g = this.grid;
     // A road off the grid holds the tiles it covers; a grid road reaches one
     // only at a tile centre where the two meet.
-    const junctions = freeJunctionTiles(this.roads, g.size);
-    for (const t of tiles) {
-      const idx = tileIndex(t.x, t.z);
-      if (inBounds(t.x, t.z) && g.roadFootprint[idx] === 1 && !junctions.has(idx)) {
-        return refused('It runs into a road off the grid');
-      }
-    }
+    const intoFree = gridRunRefusal(g, this.roads, tiles);
+    if (intoFree !== null) return refused(intoFree);
     const valid: TilePoint[] = [];
     const validElevations: number[] = [];
     const validFlows: number[] = [];

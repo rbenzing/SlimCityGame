@@ -240,9 +240,14 @@ MUTCD citations below use 11th-edition section numbers.
   [interaction.md](ux/interaction.md#snapping-to-roads)
 - With snapping to roads on, a grid drag starting or ending on a road off
   the grid's end moves that end onto its tile's centre in the same undo step,
-  or is refused with the reason in the preview; the preview never shows valid
-  a drag the world will refuse. (Specified 2026-09-28, not built.) —
-  [interaction.md](ux/interaction.md#snapping-to-roads)
+  or is refused with the reason in the preview. (Specified 2026-09-28, not
+  built.) — [interaction.md](ux/interaction.md#snapping-to-roads)
+- A grid drag into ground a road off the grid holds, anywhere but a tile
+  centre where the two meet, is refused in the preview with the world's own
+  sentence, never shown valid and refused after release. One predicate
+  decides it for the world's `buildRoad` and for the tool's preview against
+  the mirror. — [interaction.md](ux/interaction.md#snapping-to-roads);
+  `gridRunRefusal` in `src/world/freeroads.ts`
 - A ramp meets a motorway alongside it, never head-on. It elbows round to run
   beside the motorway the way it goes and joins at one tile: an on-ramp at its
   END (a ramp arriving, none ahead), an off-ramp at its START (a ramp ahead,

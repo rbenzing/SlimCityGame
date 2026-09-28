@@ -46,7 +46,7 @@ import catalogData from './data/catalog.json';
 import roadsData from './data/roads.json';
 import { CommandQueue } from './core/commands';
 import { generateProceduralMap } from './world/maps';
-import { planWithSplits, roadEndDirection, snapRoadEnd } from './world/freeroads';
+import { gridRunRefusal, planWithSplits, roadEndDirection, snapRoadEnd } from './world/freeroads';
 import { createRenderer, createWorldScene, timeOfDayColors } from './render/scene';
 import { createBloomPipeline, type BloomPipeline } from './render/bloom';
 import { CloudLayer } from './render/clouds';
@@ -1024,6 +1024,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       );
       return plan.ok ? { ok: true, lengthM: plan.lengthM } : plan;
     },
+    // The world's own rule for the ground roads off the grid hold, against the
+    // mirror, so a grid drag into one is refused before release, not after.
+    gridRunRefusal: (tiles) =>
+      clientGrid.roads ? gridRunRefusal(clientGrid, clientGrid.roads, tiles) : null,
     entry: (catalogId: string) => catalogById.get(catalogId),
     onPreview: (preview) => {
       store

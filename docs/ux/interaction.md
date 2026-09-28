@@ -173,6 +173,11 @@ a road off the grid anywhere but at a tile centre it meets is shown refused,
 with the world's own reason, rather than shown valid and refused after
 release.
 
+**Status** (2026-09-28): the preview's refusal is built. The `Roads` toggle,
+road-end snapping for grid drags, carrying on from an end, moving a curve's
+end and roads laid apart are specified, not built; until they are, free
+roads snap as described above and grid roads join whatever they touch.
+
 ## Road guide snapping
 
 A toggle beside the 90° lock. With it on, a road drag that is _nearly_ in line

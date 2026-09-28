@@ -1826,6 +1826,44 @@ describe('ToolManager — replace mode', () => {
   });
 });
 
+describe('ToolManager — a grid drag into a road off the grid is refused before release', () => {
+  const REASON = 'It runs into a road off the grid';
+  /** A road off the grid covering tile (3, 5), and every tile the world was asked about. */
+  const withCurveAt3x5 = (): ReturnType<typeof makeEnv> & { asked: string[][] } => {
+    const made = makeEnv();
+    const asked: string[][] = [];
+    made.env.gridRunRefusal = (tiles) => {
+      asked.push(tiles.map((t) => `${t.x},${t.z}`));
+      return tiles.some((t) => t.x === 3 && t.z === 5) ? REASON : null;
+    };
+    return { ...made, asked };
+  };
+
+  it('shows the drag refused, with the world’s own reason, and lays nothing on release', () => {
+    const { env, previews, sent, asked } = withCurveAt3x5();
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    tm.pointerDown(3, 0, 0);
+    tm.pointerMove(3, 9, 0);
+    expect(previews.at(-1)).toMatchObject({ valid: false, invalidReason: REASON });
+    // The world is asked about the whole run the command would carry.
+    expect(asked.at(-1)).toHaveLength(10);
+    tm.pointerUp(3, 9, 0);
+    expect(sent).toEqual([]);
+  });
+
+  it('lets a drag that stops short of the road off the grid through', () => {
+    const { env, previews, sent } = withCurveAt3x5();
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    tm.pointerDown(3, 0, 0);
+    tm.pointerMove(3, 4, 0);
+    expect(previews.at(-1)?.valid).toBe(true);
+    tm.pointerUp(3, 4, 0);
+    expect(sent).toHaveLength(1);
+  });
+});
+
 describe('ToolManager — a road cannot be drawn through one it does not outrank', () => {
   const withAvenueAtZ5 = (): ReturnType<typeof makeEnv> => {
     const made = makeEnv();

@@ -202,6 +202,29 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 
 ## 10. History (newest first)
 
+### Snapping to roads (requested and specified 2026-09-28, in progress)
+
+The player asked for snapping between curved and grid roads both ways, a
+toggle for it on every road type, roads that never connect when it is off,
+and a drag from a road's end that carries on from it in the selected path
+mode. Asked, they chose: off means never joined and kept that way through a
+save, while a real crossing still becomes a junction; a grid drag from a
+curve's end moves the curve's end onto the tile centre in the same undo step;
+and a continuation lays the road card selected. The behaviour is
+[interaction.md](ux/interaction.md#snapping-to-roads) and the world rule
+[road-model.md](world-sim/road-model.md#how-roads-meet-rank-replacement-and-transitions).
+Four stages: the preview refusing a grid drag into a curve; roads laid apart
+in the world; the toggle with end snapping and carrying on; moving a curve's
+end.
+
+Stage 1 is built (2026-09-28): a grid drag into ground a road off the grid
+holds is refused in the preview with the world's own sentence
+(`gridRunRefusal`, shared by the world's `buildRoad` and the tool's preview
+against the mirror), where before the ghost read valid and the world refused
+it after release. The world's refusal had no test until now. Checked in the
+browser: a street dragged across a curve draws red with the reason, lays
+nothing, and one stopping short lays.
+
 ### Free-form roads (requested 2026-09-23, specified 2026-09-24)
 
 Every turn was a grid corner, a quarter circle inside one 20 m tile, which is

@@ -214,6 +214,13 @@ export interface ToolEnv {
     ask: FreeRoadAsk,
     profile: RoadProfile,
   ): { ok: true; lengthM: number } | { ok: false; reason: string };
+  /**
+   * Why a grid run may not be laid over `tiles` by the world's own rule for
+   * the ground roads off the grid hold, or null. Optional: without it a grid
+   * drag is never refused for running into a road off the grid, and the world
+   * refuses it after release instead.
+   */
+  gridRunRefusal?(tiles: readonly TilePoint[]): string | null;
 }
 
 const NO_CROSSINGS: ReadonlySet<string> = new Set();
@@ -816,6 +823,10 @@ export class ToolManager {
     profile: RoadProfile,
     crossings: ReadonlySet<string> = NO_CROSSINGS,
   ): string | null {
+    // Asked first and of every tile, as the world asks it: ground a road off
+    // the grid holds is not the grid road's to take, over or under.
+    const intoFree = this.env.gridRunRefusal?.(tiles) ?? null;
+    if (intoFree !== null) return intoFree;
     const at = this.env.roadProfileAt;
     if (!at) return null;
     // A tile the run passes OVER keeps the road beneath it and never meets
