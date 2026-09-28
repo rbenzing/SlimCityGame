@@ -21,6 +21,7 @@ import {
   gridRunRefusal,
   joinSegmentsAt,
   laySegment,
+  nearestRoadEnd,
   nearestRoadPoint,
   planSegment,
   planWithSplits,
@@ -260,6 +261,52 @@ describe('where a dropped road end lands', () => {
     expect(snapRoadEnd(g, at(141, 103))).toEqual({ at: centre(7, 5), splits: false });
     // Open ground: exactly where it was dropped.
     expect(snapRoadEnd(g, at(600, 600))).toEqual({ at: at(600, 600), splits: false });
+  });
+
+  it('lands on a road end within half a tile, ahead of the road it would otherwise split', () => {
+    const g = world();
+    lay(g, { a: at(300, 300), b: at(420, 300) });
+    // On the centre line eight metres short of the end: the end takes it.
+    expect(snapRoadEnd(g, at(308, 300))).toEqual({ at: at(300, 300), splits: false });
+    // Past half a tile from it: onto the centre line, splitting it.
+    expect(snapRoadEnd(g, at(311, 300))).toEqual({ at: at(311, 300), splits: true });
+  });
+});
+
+describe('a road end', () => {
+  /** A street along row 5 from x = 5 to 10, and a side street down to it from (7, 1). */
+  function tee(): GridState {
+    const g = world();
+    applyRoad(
+      g,
+      Array.from({ length: 6 }, (_, i) => ({ x: 5 + i, z: 5 })),
+      RoadTier.TwoLane,
+    );
+    applyRoad(
+      g,
+      Array.from({ length: 4 }, (_, i) => ({ x: 7, z: 1 + i })),
+      RoadTier.TwoLane,
+    );
+    settle(g);
+    return g;
+  }
+
+  it('is the end tile of a grid road, found from anywhere within half a tile of its centre', () => {
+    const g = tee();
+    expect(nearestRoadEnd(g.roads!, at(106, 107))).toEqual(centre(5, 5));
+    expect(nearestRoadEnd(g.roads!, at(151, 36))).toEqual(centre(7, 1));
+    expect(nearestRoadEnd(g.roads!, at(122, 110))).toBeNull();
+  });
+
+  it('is the end node of a road off the grid', () => {
+    const g = world();
+    lay(g, { a: at(300, 300), b: at(420, 330) });
+    expect(nearestRoadEnd(g.roads!, at(425, 334))).toEqual(at(420, 330));
+  });
+
+  it('is never a junction, however near it the cursor is', () => {
+    const g = tee();
+    expect(nearestRoadEnd(g.roads!, centre(7, 5))).toBeNull();
   });
 });
 

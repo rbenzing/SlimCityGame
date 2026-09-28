@@ -233,6 +233,15 @@ network, so it survives a save and a load, and a derived layer
 spreads, the approach walk and the road furniture. An undo puts it back
 exactly. Nothing in the road tool sends `join: false` yet; that is stage 3.
 
+Stage 3 is built (2026-09-28): a `Roads` chip in the road tool's Snap row, on
+by default. On, a road end within half a tile of the cursor — a node at most
+one road leaves (`nearestRoadEnd`) — takes the drag ahead of every other snap:
+a grid drag starts and stops on the end's tile, a road off the grid on the end
+itself, and `Curve` mode marks where its first click would land. Off, nothing
+snaps and every grid road is sent with `join: false`. A grid drag started on
+a curve's end off a tile centre is still shown refused; moving that end is
+stage 4.
+
 ### Free-form roads (requested 2026-09-23, specified 2026-09-24)
 
 Every turn was a grid corner, a quarter circle inside one 20 m tile, which is

@@ -1418,6 +1418,12 @@ export interface ToolFlags {
    */
   guideSnap: boolean;
   /**
+   * `Roads` snapping chip — a new road snaps onto the roads it reaches and
+   * joins them. Off, nothing snaps and a grid road is laid as a road of its
+   * own, joining nothing it only lies beside or ends against.
+   */
+  roadSnap: boolean;
+  /**
    * `Replace` road mode — a drag lays its road over an existing run whatever
    * that run is, instead of refusing to put a smaller road over a bigger one.
    */

@@ -46,7 +46,13 @@ import catalogData from './data/catalog.json';
 import roadsData from './data/roads.json';
 import { CommandQueue } from './core/commands';
 import { generateProceduralMap } from './world/maps';
-import { gridRunRefusal, planWithSplits, roadEndDirection, snapRoadEnd } from './world/freeroads';
+import {
+  gridRunRefusal,
+  nearestRoadEnd,
+  planWithSplits,
+  roadEndDirection,
+  snapRoadEnd,
+} from './world/freeroads';
 import { createRenderer, createWorldScene, timeOfDayColors } from './render/scene';
 import { createBloomPipeline, type BloomPipeline } from './render/bloom';
 import { CloudLayer } from './render/clouds';
@@ -1011,6 +1017,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       inBounds(tile.x, tile.z) ? (clientGrid.roadMask[tile.z * clientGrid.size + tile.x] ?? 0) : 0,
     worldPointAt: groundPointAt,
     snapRoadEnd: (p) => snapRoadEnd(clientGrid, p),
+    roadEndNear: (p) => (clientGrid.roads ? nearestRoadEnd(clientGrid.roads, p) : null),
     roadEndDirection: (p) =>
       clientGrid.roads
         ? roadEndDirection(clientGrid, clientGrid.roads, p, (id) => clientGrid.profileById(id))

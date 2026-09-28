@@ -598,11 +598,39 @@ export interface RoadEnd {
   splits: boolean;
 }
 
+/** How near a road end a dropped end or a drag lands on it, metres: half a tile. */
+export const ROAD_END_SNAP_M = TILE_METERS / 2;
+
 /**
- * Where a road end dropped at `p` lands: on the nearest road node within
- * `NODE_SNAP_M`; else on the nearest free road's centre line within
- * `ROAD_SNAP_M`, splitting it; else at the centre of the grid road tile under
- * it, the only place a road off the grid may meet one; else at `p` itself.
+ * The road end nearest `p` within `ROAD_END_SNAP_M`, or null. A road end is a
+ * node that at most one road leaves — the end tile of a grid road, or the end
+ * node of a road off the grid — so a junction is never one.
+ */
+export function nearestRoadEnd(net: RoadNet, p: CmPoint): CmPoint | null {
+  const roads = new Uint16Array(net.nodeSlots);
+  for (let s = 0; s < net.segSlots; s++) {
+    if (net.segLive[s] !== 1) continue;
+    for (const n of [net.segA[s]!, net.segB[s]!]) roads[n] = (roads[n] ?? 0) + 1;
+  }
+  let best: CmPoint | null = null;
+  let bestD = ROAD_END_SNAP_M * 100;
+  for (let n = 0; n < net.nodeSlots; n++) {
+    if (net.nodeLive[n] !== 1 || (roads[n] ?? 0) > 1) continue;
+    const d = Math.hypot(net.nodeX[n]! - p.x, net.nodeZ[n]! - p.z);
+    if (d <= bestD) {
+      bestD = d;
+      best = { x: net.nodeX[n]!, z: net.nodeZ[n]! };
+    }
+  }
+  return best;
+}
+
+/**
+ * Where a road end dropped at `p` lands: on the nearest road end within
+ * `ROAD_END_SNAP_M`; else on the nearest road node within `NODE_SNAP_M`; else
+ * on the nearest free road's centre line within `ROAD_SNAP_M`, splitting it;
+ * else at the centre of the grid road tile under it, the only place a road off
+ * the grid may meet one; else at `p` itself.
  */
 export function snapRoadEnd(
   g: Pick<GridState, 'size' | 'roadTier'> & { roads?: RoadNet },
@@ -610,6 +638,8 @@ export function snapRoadEnd(
 ): RoadEnd {
   const net = g.roads;
   if (net) {
+    const end = nearestRoadEnd(net, p);
+    if (end) return { at: end, splits: false };
     let best: CmPoint | null = null;
     let bestD = NODE_SNAP_M * 100;
     for (let s = 0; s < net.nodeSlots; s++) {

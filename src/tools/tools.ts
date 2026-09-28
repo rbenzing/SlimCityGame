@@ -53,7 +53,7 @@ import {
   type ProfileEdits,
   isOneWayProfile,
 } from '../shared/roadprofile';
-import { sampleCentreLine, segmentLengthM, tightestRadiusM } from '../shared/roadgeom';
+import { sampleCentreLine, segmentLengthM, tightestRadiusM, tileOfCm } from '../shared/roadgeom';
 import type { CmPoint, SegmentGeom } from '../shared/roadgeom';
 import { ZONE_DEPTH } from '../world/zonable';
 import { corridorRunsFor, corridorTiles, rampMeetingRefusal } from '../shared/corridor';
@@ -198,6 +198,12 @@ export interface ToolEnv {
    * lands exactly where it was clicked.
    */
   snapRoadEnd?(p: CmPoint): RoadEndSnap;
+  /**
+   * The road end within half a tile of `p` — the end tile of a grid road or
+   * the end node of a road off the grid — or null. Optional: without it a grid
+   * drag starts and stops on the tile under the cursor.
+   */
+  roadEndNear?(p: CmPoint): CmPoint | null;
   /**
    * The way a road carries on from its end at `p`, as a unit direction, or
    * null where no single road ends there. Optional: without it a bend is
@@ -679,6 +685,7 @@ export class ToolManager {
     straightMode: false,
     gridMode: false,
     guideSnap: false,
+    roadSnap: true,
     replaceRoad: false,
   };
   private zoneMode: ZoneMode = 'rect';
@@ -1033,7 +1040,7 @@ export class ToolManager {
       this.curveClick(sx, sy);
       return true;
     }
-    const tile = this.env.screenToTile(sx, sy);
+    const tile = this.dragTileAt(sx, sy);
     this.hoverTile = tile;
     this.dragStart = tile;
     this.armed = tile !== null;
@@ -1057,7 +1064,7 @@ export class ToolManager {
       this.emitCurvePreview();
       return button === 0;
     }
-    const tile = this.env.screenToTile(sx, sy);
+    const tile = this.dragTileAt(sx, sy);
     this.hoverTile = tile;
     if (this.freeDragStart) this.curveCursor = this.cursorCm(sx, sy) ?? this.curveCursor;
     if (tile) {
@@ -1082,7 +1089,7 @@ export class ToolManager {
     // A curve is clicked, not dragged: releasing the button does nothing.
     if (this.drawingCurve()) return true;
     if (this.armed && this.dragStart) {
-      const end = this.env.screenToTile(sx, sy) ?? this.hoverTile ?? this.dragStart;
+      const end = this.dragTileAt(sx, sy) ?? this.hoverTile ?? this.dragStart;
       const free = this.freeDrag(this.dragStart, end, this.cursorCm(sx, sy));
       if (free) this.layFree(free);
       else this.commit(this.dragStart, end);
@@ -1149,12 +1156,27 @@ export class ToolManager {
   }
 
   /**
+   * The tile a drag starts or stops on at a pixel: the one under it, or, for a
+   * road with snapping to roads on, the tile of a road end within half a tile
+   * of the cursor, so the drag carries on from that end.
+   */
+  private dragTileAt(sx: number, sy: number): TilePoint | null {
+    const tile = this.env.screenToTile(sx, sy);
+    if (!(this._tool in ROAD_TOOL_TO_TIER) || !this.flags.roadSnap) return tile;
+    const p = this.cursorCm(sx, sy);
+    const end = p ? (this.env.roadEndNear?.(p) ?? null) : null;
+    return end ? { x: tileOfCm(end.x), z: tileOfCm(end.z) } : tile;
+  }
+
+  /**
    * Where a road end dropped at `p` lands, and whether it splits a road there.
    * One that lands on nothing is, with guide snapping on, pulled into line
-   * with a road nearby — and then lands on whatever is there.
+   * with a road nearby — and then lands on whatever is there. With snapping to
+   * roads off it lands on nothing, guided or not.
    */
   private snapEnd(p: CmPoint): RoadEndSnap {
-    const land = (q: CmPoint): RoadEndSnap => this.env.snapRoadEnd?.(q) ?? { at: q, splits: false };
+    const land = (q: CmPoint): RoadEndSnap =>
+      (this.flags.roadSnap ? this.env.snapRoadEnd?.(q) : undefined) ?? { at: q, splits: false };
     const landed = land(p);
     if (landed.splits || landed.at.x !== p.x || landed.at.z !== p.z) return landed;
     const at = this.env.roadProfileAt;
@@ -1166,10 +1188,11 @@ export class ToolManager {
   /**
    * Where a bend clicked at `p` goes: onto the line of the road the curve
    * starts from when it is placed near that line ahead of the start, so the
-   * curve carries the road on round the bend without a kink; else exactly
-   * where it was put.
+   * curve carries the road on round the bend without a kink; else, or with
+   * snapping to roads off, exactly where it was put.
    */
   private bendAt(p: CmPoint): CmPoint {
+    if (!this.flags.roadSnap) return p;
     const start = this.curveClicks[0];
     const dir = start ? this.env.roadEndDirection?.(start.at) : null;
     if (!start || !dir) return p;
@@ -1258,6 +1281,11 @@ export class ToolManager {
 
   private emitCurvePreview(): void {
     const cursor = this.curveCursor;
+    // Before the first click, the mark is where that click would land.
+    if (this.curveClicks.length === 0) {
+      this.previewFree(null, cursor ? [this.snapEnd(cursor)] : []);
+      return;
+    }
     const road = cursor ? this.curveRoad(cursor) : null;
     this.previewFree(road, this.curveClicks);
   }
@@ -1694,6 +1722,11 @@ export class ToolManager {
         (corridor.needed && !corridor.runs) ||
         (overpass?.refusal ?? null) !== null ||
         this.meetRefusal(tiles, section, overpass?.crossings ?? NO_CROSSINGS) !== null;
+      // How the road meets the roads beside it: joined, or laid as its own.
+      const options = {
+        ...(this.flags.replaceRoad ? { replace: true } : {}),
+        ...(this.flags.roadSnap ? {} : { join: false }),
+      };
       if (refused) {
         // The preview already said why; laying nothing is the whole answer.
       } else if (corridor.runs && build.profile && profileId !== undefined) {
@@ -1711,7 +1744,7 @@ export class ToolManager {
           elevation: this.roadElevation,
           profile: profileId,
           flows: runTiles.map(() => flow),
-          ...(this.flags.replaceRoad ? { replace: true } : {}),
+          ...options,
         });
         this.env.send(build.spec.name, [
           { kind: 'defineRoadProfile', id: profileId, profile: build.profile },
@@ -1729,18 +1762,12 @@ export class ToolManager {
             tiles,
             elevation,
             profile: profileId,
-            ...(this.flags.replaceRoad ? { replace: true } : {}),
+            ...options,
           },
         ]);
       } else {
         this.env.send(build.spec.name, [
-          {
-            kind: 'buildRoad',
-            tier: build.tier,
-            tiles,
-            elevation,
-            ...(this.flags.replaceRoad ? { replace: true } : {}),
-          },
+          { kind: 'buildRoad', tier: build.tier, tiles, elevation, ...options },
         ]);
       }
     } else if (tool in ZONE_TOOL_TO_TYPE) {

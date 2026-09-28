@@ -114,6 +114,7 @@ export function createInitialToolFlags(): ToolFlags {
     straightMode: false,
     gridMode: false,
     guideSnap: false,
+    roadSnap: true,
     replaceRoad: false,
   };
 }

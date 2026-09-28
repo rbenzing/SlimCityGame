@@ -243,6 +243,15 @@ MUTCD citations below use 11th-edition section numbers.
   [road-model.md](world-sim/road-model.md),
   [interaction.md](ux/interaction.md#snapping-to-roads); `settleArms` in
   `src/world/roads.ts`, `separateUnlinked` in `src/world/roadnet.ts`
+- The road tool's `Roads` snap toggle, on by default, is the only thing that
+  decides whether a new road snaps and joins. On, a road end within half a
+  tile of the cursor takes the drag — a node at most one road leaves, never a
+  junction — ahead of every other snap, for grid drags and roads off the grid
+  alike. Off, nothing snaps (no node, road end, centre line or tile centre, no
+  bend pulled into line, no split) and every `buildRoad` is sent with
+  `join: false`. Guide snapping is its own toggle and works either way. —
+  [interaction.md](ux/interaction.md#snapping-to-roads); `nearestRoadEnd` in
+  `src/world/freeroads.ts`
 - With snapping to roads on, a grid drag starting or ending on a road off
   the grid's end moves that end onto its tile's centre in the same undo step,
   or is refused with the reason in the preview. (Specified 2026-09-28, not

@@ -22,6 +22,7 @@ import { ZONE_DEPTH } from '../world/zonable';
 import { createGrid } from '../world/grid';
 import {
   laySegment,
+  nearestRoadEnd,
   planSegment,
   planWithSplits,
   roadEndDirection,
@@ -2385,6 +2386,25 @@ describe('Road guide snapping pulls a near-miss into line', () => {
   });
 });
 
+/** Lays a free two-lane road in a tool's world directly, as a save would hold it. */
+function layRoad(
+  world: ReturnType<typeof createGrid>,
+  a: { x: number; z: number },
+  b: { x: number; z: number },
+): void {
+  const req = {
+    tier: RoadTier.TwoLane,
+    profileId: RoadTier.TwoLane,
+    a,
+    b,
+    control: null,
+    flow: 0,
+  };
+  const plan = planSegment(world, world.roads!, req, () => null);
+  if (!plan.ok) throw new Error(plan.reason);
+  laySegment(world, world.roads!, plan, req);
+}
+
 describe('Curve mode lays a road off the grid in three clicks', () => {
   /**
    * A tool whose screen pixels are world metres, judging curves by the world's
@@ -2525,25 +2545,6 @@ describe('Curve mode lays a road off the grid in three clicks', () => {
     expect(sent).toHaveLength(0);
   });
 
-  /** Lays a free two-lane road in the tool's world directly, as a save would hold it. */
-  function layRoad(
-    world: ReturnType<typeof createGrid>,
-    a: { x: number; z: number },
-    b: { x: number; z: number },
-  ): void {
-    const req = {
-      tier: RoadTier.TwoLane,
-      profileId: RoadTier.TwoLane,
-      a,
-      b,
-      control: null,
-      flow: 0,
-    };
-    const plan = planSegment(world, world.roads!, req, () => null);
-    if (!plan.ok) throw new Error(plan.reason);
-    laySegment(world, world.roads!, plan, req);
-  }
-
   it('ends a road partway along a free road by splitting it there, in the same undo step', () => {
     const { tm, sent, world } = curveTool();
     layRoad(world, cm(200, 600), cm(700, 600));
@@ -2613,6 +2614,117 @@ describe('Curve mode lays a road off the grid in three clicks', () => {
     tm.pointerMove(12, 9, 0);
     tm.pointerUp(12, 9, 0);
     expect(sent[2]!.commands[0]!.kind).toBe('buildRoad');
+  });
+});
+
+describe('Snapping to roads', () => {
+  /**
+   * A tool whose screen pixels are world metres over tiles of the real size,
+   * snapping and judging by the world's own rules on an empty 48-tile world.
+   */
+  function snapTool() {
+    const world = createGrid(48);
+    world.roads = networkFromGrid(world);
+    const { env, previews, sent } = makeEnv();
+    env.screenToTile = (sx, sy) => ({
+      x: Math.floor(sx / TILE_METERS),
+      z: Math.floor(sy / TILE_METERS),
+    });
+    env.worldPointAt = (sx, sy) => ({ x: sx, z: sy });
+    env.snapRoadEnd = (p) => snapRoadEnd(world, p);
+    env.roadEndNear = (p) => nearestRoadEnd(world.roads!, p);
+    env.roadEndDirection = (p) => roadEndDirection(world, world.roads!, p, () => null);
+    env.planFreeRoad = (ask, profile) => {
+      const plan = planWithSplits(world, world.roads!, ask, ask.splits, (id) =>
+        id === ask.profileId ? profile : null,
+      );
+      return plan.ok ? { ok: true, lengthM: plan.lengthM } : plan;
+    };
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    return { tm, previews, sent, world };
+  }
+  const cm = (x: number, z: number) => ({ x: x * 100, z: z * 100 });
+  const roadsLaid = (sent: ReturnType<typeof makeEnv>['sent']) =>
+    sent
+      .flatMap((s) => s.commands)
+      .filter((c): c is Extract<Command, { kind: 'buildRoad' }> => c.kind === 'buildRoad');
+
+  it('starts a grid drag on the tile a road end near the cursor is on, and carries on from it', () => {
+    const { tm, previews, sent, world } = snapTool();
+    layRoad(world, cm(400, 400), cm(560, 520));
+    // Five metres from the road's end, on the tile beside the one it ends on.
+    tm.pointerMove(396, 397, 0);
+    expect(previews.at(-1)!.tiles).toEqual([{ x: 20, z: 20 }]);
+    tm.pointerDown(396, 397, 0);
+    tm.pointerMove(396, 700, 0);
+    expect(previews.at(-1)!.tiles[0]).toEqual({ x: 20, z: 20 });
+    tm.pointerUp(396, 700, 0);
+    const [road] = roadsLaid(sent);
+    expect(road!.tiles[0]).toEqual({ x: 20, z: 20 });
+    expect('join' in road!).toBe(false);
+  });
+
+  it('with snapping to roads off, starts where the cursor is and lays a road of its own', () => {
+    const { tm, previews, sent, world } = snapTool();
+    layRoad(world, cm(400, 400), cm(560, 520));
+    tm.setFlags({ roadSnap: false });
+    tm.pointerMove(396, 397, 0);
+    expect(previews.at(-1)!.tiles).toEqual([{ x: 19, z: 19 }]);
+    tm.pointerDown(396, 397, 0);
+    tm.pointerMove(396, 700, 0);
+    tm.pointerUp(396, 700, 0);
+    const [road] = roadsLaid(sent);
+    expect(road).toMatchObject({ join: false });
+    expect(road!.tiles[0]).toEqual({ x: 19, z: 19 });
+  });
+
+  it('lays both carriageways of a corridor as a road of its own with snapping to roads off', () => {
+    const { env, sent } = makeEnv();
+    env.profileIdFor = () => 12;
+    const tm = new ToolManager(env);
+    tm.setTool('road.avenue');
+    tm.setProfileEdits({ ...NO_EDITS, lanes: 3 });
+    tm.setFlags({ roadSnap: false });
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(0, 4, 0);
+    tm.pointerUp(0, 4, 0);
+    const laid = roadsLaid(sent);
+    expect(laid).toHaveLength(2);
+    for (const road of laid) expect(road).toMatchObject({ join: false });
+  });
+
+  it('starts a curve on a road end within half a tile, rather than splitting the road short of it', () => {
+    const { tm, previews, sent, world } = snapTool();
+    tm.setFlags({ curveMode: true });
+    layRoad(world, cm(200, 600), cm(700, 600));
+    // Before the click, the mark is already where it will land.
+    tm.pointerMove(208, 601, 0);
+    expect(previews.at(-1)!.curve!.clicks).toEqual([{ x: 200, z: 600 }]);
+    tm.pointerDown(208, 601, 0);
+    tm.pointerDown(100, 602, 0);
+    tm.pointerDown(100, 800, 0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.commands.map((c) => c.kind)).toEqual(['buildSegment']);
+    expect(sent[0]!.commands[0]).toMatchObject({ a: cm(200, 600), control: cm(100, 600) });
+  });
+
+  it('with snapping to roads off, lands a curve’s clicks exactly where they are made', () => {
+    const { tm, previews, world } = snapTool();
+    tm.setFlags({ curveMode: true, roadSnap: false });
+    layRoad(world, cm(200, 200), cm(200, 400));
+    tm.pointerMove(206, 404, 0);
+    expect(previews.at(-1)!.curve!.clicks).toEqual([{ x: 206, z: 404 }]);
+    // Started exactly on the road's end, the bend is still left where it is put.
+    tm.pointerDown(200, 400, 0);
+    tm.pointerDown(203, 520, 0);
+    expect(previews.at(-1)!.curve!.clicks).toEqual([
+      { x: 200, z: 400 },
+      { x: 203, z: 520 },
+    ]);
+    // An end dropped beside a road stays beside it, splitting nothing.
+    tm.pointerMove(202, 602, 0);
+    expect(previews.at(-1)!.curve!.centre.at(-1)).toEqual({ x: 202, z: 602 });
   });
 });
 
