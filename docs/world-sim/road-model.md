@@ -577,6 +577,25 @@ separate matter, decided by `isCorridorPartner`; `isSeparateRoad` in
 network graph both read it, so what is drawn and what is driven cannot
 disagree.
 
+**A road laid as its own road does not join the roads beside it.** With the
+road tool's snapping to roads off ([interaction.md](../ux/interaction.md#snapping-to-roads)),
+`buildRoad` is sent with `join: false`. Every arm between one of its tiles and
+a road tile outside the drag that was not joined before the command stays
+unjoined; an arm that was already joined — the road it crosses, the road whose
+tile it overlaps — joins as before, so a crossing is still a junction. Joining
+along the drag itself is never affected. The fact is stored where roads are
+stored, in the network, as the absence of a link: two neighbouring grid road
+tiles are joined exactly when the network links them. The per-tile arms that
+are held apart are a derived layer (`roadSeparate`, recomputed from the
+network on load and after every command, never saved), and `isSeparateRoad`
+reads it alongside its three rules, so the mask, the graph, the utility and
+service spreads, the approach walk and the renderers keep the two apart as
+they do two carriageways. A save from before carries a link wherever its
+tiles joined, so nothing it holds comes apart.
+
+**Status: specified, not built** (2026-09-28). The road tool offers no
+`Roads` snap toggle yet and `buildRoad` has no `join` field.
+
 ## Ramps and interchanges
 
 `ramp` is its own class: one or two lanes, one-way, unzonable, at the

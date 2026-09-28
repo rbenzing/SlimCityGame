@@ -229,6 +229,20 @@ MUTCD citations below use 11th-edition section numbers.
   second carriageway took every gantry off the first. —
   [road-model.md](world-sim/road-model.md); `sideBySideCarriageways` in
   `src/shared/corridor.ts`
+- Two neighbouring grid road tiles are joined exactly when the network links
+  them. A road laid with snapping off (`buildRoad` with `join: false`) joins
+  nothing it only lies beside or ends against, and still joins where it
+  crosses or overlaps a road on the same level. The held-apart arms are a
+  derived layer, recomputed from the network and never saved, and
+  `isSeparateRoad` reads them, so every system keeps the two roads apart.
+  (Specified 2026-09-28, not built.) —
+  [road-model.md](world-sim/road-model.md),
+  [interaction.md](ux/interaction.md#snapping-to-roads)
+- With snapping to roads on, a grid drag starting or ending on a road off
+  the grid's end moves that end onto its tile's centre in the same undo step,
+  or is refused with the reason in the preview; the preview never shows valid
+  a drag the world will refuse. (Specified 2026-09-28, not built.) —
+  [interaction.md](ux/interaction.md#snapping-to-roads)
 - A ramp meets a motorway alongside it, never head-on. It elbows round to run
   beside the motorway the way it goes and joins at one tile: an on-ramp at its
   END (a ramp arriving, none ahead), an off-ramp at its START (a ramp ahead,
