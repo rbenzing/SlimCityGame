@@ -132,6 +132,12 @@ derived from the network:
   node.
 - A free node carries no road of its own tile: only a node at a grid tile
   centre does, and only when a grid road is on that tile.
+- **Arms held apart.** Two neighbouring grid road tiles that the joining rules
+  would join but the network does not link — a road laid with snapping off
+  beside another — are held apart in a derived layer (`roadSeparate`,
+  recomputed from the network and never saved), which the masks and every
+  reader of joins respect. See
+  [road-model.md](road-model.md#how-roads-meet-rank-replacement-and-transitions).
 
 ## How each system reads the network
 

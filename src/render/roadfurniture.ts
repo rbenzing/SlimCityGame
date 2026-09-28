@@ -36,6 +36,7 @@ import {
 import { armGivesWay, signalAspect } from '../shared/junction';
 import type { SignalAspect } from '../shared/junction';
 import { rampJoinAround, rampJoins, sideBySideCarriageways } from '../shared/corridor';
+import { bitToward } from '../shared/overpass';
 import type { RampJoin } from '../shared/corridor';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 
@@ -236,6 +237,8 @@ export type FurnitureRoadTile = TilePoint & {
    * worked one out.
    */
   control?: JunctionControl;
+  /** The arms of the tile held apart from the roads beside it, as mask bits; absent where none are. */
+  apart?: number;
 };
 
 /** Carriageway half-width and kerb width for a tile: its own profile's, else its tier's preset. */
@@ -493,14 +496,16 @@ function buildTileSet(roadTiles: readonly FurnitureRoadTile[]): RoadTileIndex {
 
 /**
  * Whether the road tile at (nx, nz) is an arm of the one at (x, z): there, and
- * not a separate motorway carriageway lying alongside. A second carriageway is
- * another road, so it takes up the ground beside this one without joining it.
+ * neither a separate motorway carriageway lying alongside nor a road held
+ * apart from this one. Either is another road, so it takes up the ground
+ * beside this one without joining it.
  */
 function joins(tileSet: RoadTileIndex, x: number, z: number, nx: number, nz: number): boolean {
   const there = tileSet.get(tileKey(nx, nz));
   if (!there) return false;
   const here = tileSet.get(tileKey(x, z));
   if (!here) return true;
+  if (((here.apart ?? 0) & bitToward(nx - x, nz - z)) !== 0) return false;
   if (
     sideBySideCarriageways(
       tierIsMotorway(here.tier),

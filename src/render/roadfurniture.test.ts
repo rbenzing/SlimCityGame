@@ -227,6 +227,21 @@ describe('road-furniture placement (pure)', () => {
     expect(alongs).toEqual([3, -3]);
   });
 
+  it('signs a street held apart from the one it ends against as the dead end it is', () => {
+    // A stem running south from the side of a street at (0, 0).
+    const street = strip(0, -3, 3, 'ew', RoadTier.TwoLane);
+    const stem = strip(0, 1, 3, 'ns', RoadTier.TwoLane);
+    const deadEndAt = (tiles: FurnitureRoadTile[], z: number): boolean =>
+      computeSignPlacements(tiles).some((s) => s.x === 0 && s.z === z && s.type === 'nothrough');
+    expect(deadEndAt([...street, ...stem], 1)).toBe(false);
+    const apart = [
+      ...street.map((t) => (t.x === 0 ? { ...t, apart: 4 } : t)),
+      ...stem.map((t) => (t.z === 1 ? { ...t, apart: 1 } : t)),
+    ];
+    expect(deadEndAt(apart, 1)).toBe(true);
+    expect(deadEndAt(apart, 3)).toBe(true);
+  });
+
   it("marks a dead-end tile (exactly one road neighbor) 'nothrough' and nothing else", () => {
     // (5,5)-(6,5)-(7,5): the two endpoints are dead ends, the middle is a plain run.
     const signs = computeSignPlacements(strip(5, 5, 7, 'ew', RoadTier.TwoLane));

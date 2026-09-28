@@ -652,6 +652,32 @@ describe('ClientGridMirror — junction control', () => {
     expect(tiles.find((t) => t.x === 6 && t.z === 7)?.flow).toBeUndefined();
   });
 
+  it('hands the arms held apart to the road tile, and forgets them when the worker says none', () => {
+    mirror.applyRoadDeltas([
+      { ...road(6, 6), apart: 4 },
+      { ...road(6, 7), apart: 1 },
+    ]);
+    const apartAt = (x: number, z: number): number | undefined =>
+      mirror.roadTiles().find((t) => t.x === x && t.z === z)?.apart;
+    expect(apartAt(6, 6)).toBe(4);
+    expect(apartAt(6, 7)).toBe(1);
+    mirror.applyRoadDeltas([road(6, 6), road(6, 7)]);
+    expect(apartAt(6, 6)).toBeUndefined();
+    expect(apartAt(6, 7)).toBeUndefined();
+  });
+
+  it('keeps a street held apart out of the junction the approach walk looks for', () => {
+    // A street along z = 10, and a stem ending against it from the north at (5, 10).
+    const street = Array.from({ length: 9 }, (_, i) => road(1 + i, 10));
+    mirror.applyRoadDeltas([...street, road(5, 7), road(5, 8), road(5, 9)]);
+    expect(mirror.approachAt(4, 10)).toMatchObject({ toward: RoadFlow.East });
+    mirror.applyRoadDeltas([
+      { ...road(5, 10), apart: 1 },
+      { ...road(5, 9), apart: 4 },
+    ]);
+    expect(mirror.approachAt(4, 10)).toBeUndefined();
+  });
+
   it('hands the control to the road tile that carries it, and to no other', () => {
     mirror.applyRoadDeltas([road(4, 4), road(4, 5)]);
     mirror.applyJunctions([

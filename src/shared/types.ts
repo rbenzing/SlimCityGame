@@ -342,6 +342,13 @@ export interface GridState {
    * from the road network, never saved, and never built on.
    */
   roadFootprint: Uint8Array;
+  /**
+   * The arms of each tile's road held apart from a road beside it that the
+   * joining rules would otherwise join, as mask bits (+N=1 +E=2 +S=4 +W=8),
+   * set on both tiles: a road laid with snapping off. Derived from the road
+   * network, where the arm is a link it does not have; never saved.
+   */
+  roadSeparate: Uint8Array;
   buildingId: Uint32Array; // 0 = none, else building instance id occupying tile
   power: Uint8Array; // 1 = powered
   watered: Uint8Array; // 1 = water service reaches tile
@@ -432,6 +439,20 @@ export type Command =
        * drag leaves the worker to decide which tiles cross over.
        */
       layer?: 'over';
+      /**
+       * Whether the road joins the roads it lies beside or ends against.
+       * Omitted, it joins them, as a road always has. False — the road tool
+       * with snapping to roads off — every arm between a tile it lays and a
+       * road outside the drag stays as joined as it was before, so a road it
+       * only lies beside or ends against stays a road of its own.
+       */
+      join?: boolean;
+      /**
+       * Exactly which arms of the tiles it lays are held apart; every other
+       * arm of those tiles joins. Only an undo sends it, to put back what a
+       * command it reverses held apart.
+       */
+      apart?: TileArms[];
     }
   /**
    * Registers a player-composed cross-section under an id the client chose
@@ -649,6 +670,13 @@ export interface RoadTileDelta {
    * GridState.overTier.
    */
   over?: OverRoadState;
+  /** The arms of the tile held apart (see GridState.roadSeparate); absent where none are. */
+  apart?: number;
+}
+
+/** A tile and the arms of its road held apart, as mask bits (see GridState.roadSeparate). */
+export interface TileArms extends TilePoint {
+  arms: number;
 }
 
 /** The road passing over a crossing tile, as the render thread receives it. */

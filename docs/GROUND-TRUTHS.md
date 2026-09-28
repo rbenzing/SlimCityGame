@@ -232,12 +232,17 @@ MUTCD citations below use 11th-edition section numbers.
 - Two neighbouring grid road tiles are joined exactly when the network links
   them. A road laid with snapping off (`buildRoad` with `join: false`) joins
   nothing it only lies beside or ends against, and still joins where it
-  crosses or overlaps a road on the same level. The held-apart arms are a
-  derived layer, recomputed from the network and never saved, and
-  `isSeparateRoad` reads them, so every system keeps the two roads apart.
-  (Specified 2026-09-28, not built.) —
+  crosses or overlaps a road on the same level; laid with it on, it joins
+  everything its tiles touch, a road held apart before included. The
+  held-apart arms are a derived layer (`roadSeparate`), recomputed from the
+  network and never saved, holding only arms the other rules would join;
+  `isSeparateRoad`, the approach walk and the road furniture read it, so
+  every system keeps the two roads apart. An undo puts back exactly what was
+  held apart: a command that lays over or takes away a road hands the arms
+  back in its inverse (`apart`). —
   [road-model.md](world-sim/road-model.md),
-  [interaction.md](ux/interaction.md#snapping-to-roads)
+  [interaction.md](ux/interaction.md#snapping-to-roads); `settleArms` in
+  `src/world/roads.ts`, `separateUnlinked` in `src/world/roadnet.ts`
 - With snapping to roads on, a grid drag starting or ending on a road off
   the grid's end moves that end onto its tile's centre in the same undo step,
   or is refused with the reason in the preview. (Specified 2026-09-28, not

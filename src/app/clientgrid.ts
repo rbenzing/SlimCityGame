@@ -84,6 +84,8 @@ export class ClientGridMirror {
   roads?: RoadNet;
   /** The tiles its roads off the grid cover (see GridState.roadFootprint). */
   readonly roadFootprint: Uint8Array;
+  /** The arms of each road held apart from the road beside it (see GridState.roadSeparate). */
+  readonly roadSeparate: Uint8Array;
 
   /** building id ->the tile indices its footprint was stamped onto. */
   private readonly footprints = new Map<number, number[]>();
@@ -112,6 +114,7 @@ export class ClientGridMirror {
     this.powerLine = new Uint8Array(n);
     this.buildingId = new Uint32Array(n);
     this.roadFootprint = new Uint8Array(n);
+    this.roadSeparate = new Uint8Array(n);
   }
 
   /**
@@ -283,6 +286,7 @@ export class ClientGridMirror {
         return this.junctionAt(x, z)?.laneTurns?.[slot] ?? 0;
       },
       overAxisAt: (x, z) => this.overAxisAt(x, z),
+      apartAt: (x, z) => (this.inBounds(x, z) ? (this.roadSeparate[this.idx(x, z)] ?? 0) : 0),
     };
   }
 
@@ -362,6 +366,7 @@ export class ClientGridMirror {
       this.roadProfile[i] = d.profile;
       this.roadFlow[i] = d.flow;
       this.roadMask[i] = d.mask;
+      this.roadSeparate[i] = d.apart ?? 0;
       this.roadElevation[i] = d.elevation;
       this.overTier[i] = d.over && d.tier !== RoadTier.None ? d.over.tier : 0;
       if (d.over && d.tier !== RoadTier.None) this.overRoads.set(i, d.over);
@@ -590,6 +595,7 @@ export class ClientGridMirror {
     powered: boolean;
     flow?: number;
     control?: JunctionControl;
+    apart?: number;
   })[] {
     const tiles: (TilePoint & {
       tier: RoadTier;
@@ -598,6 +604,7 @@ export class ClientGridMirror {
       powered: boolean;
       flow?: number;
       control?: JunctionControl;
+      apart?: number;
     })[] = [];
     for (let z = 0; z < this.size; z++) {
       for (let x = 0; x < this.size; x++) {
@@ -614,6 +621,7 @@ export class ClientGridMirror {
         // flow carries none rather than a zero, so a consumer can tell a
         // two-way road from a one-way one pointing nowhere.
         const flow = this.roadFlow[i] ?? 0;
+        const apart = this.roadSeparate[i] ?? 0;
         const tile = {
           x,
           z,
@@ -622,6 +630,7 @@ export class ClientGridMirror {
           profile: this.drawnProfileAt(x, z) ?? presetProfileForTier(tier),
           powered: (this.power[i] ?? 0) !== 0,
           ...(flow === 0 ? {} : { flow }),
+          ...(apart === 0 ? {} : { apart }),
         };
         const junction = this.junctionControls.get(i);
         tiles.push(junction ? { ...tile, control: junction.control } : tile);

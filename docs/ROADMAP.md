@@ -225,6 +225,14 @@ it after release. The world's refusal had no test until now. Checked in the
 browser: a street dragged across a curve draws red with the reason, lays
 nothing, and one stopping short lays.
 
+Stage 2 is built (2026-09-28): `buildRoad` takes `join: false`, which keeps a
+road apart from the roads it only lies beside or ends against and still joins
+the one it crosses. What is held apart is the absence of a link in the
+network, so it survives a save and a load, and a derived layer
+(`roadSeparate`) carries it to the masks, the graph, the utility and service
+spreads, the approach walk and the road furniture. An undo puts it back
+exactly. Nothing in the road tool sends `join: false` yet; that is stage 3.
+
 ### Free-form roads (requested 2026-09-23, specified 2026-09-24)
 
 Every turn was a grid corner, a quarter circle inside one 20 m tile, which is

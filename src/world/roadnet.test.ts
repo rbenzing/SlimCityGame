@@ -4,7 +4,7 @@ import { RoadFlow, RoadTier } from '../shared/types';
 import type { GridState, TilePoint } from '../shared/types';
 import { createGrid, savedRoadNetwork, serializeGridV12 } from './grid';
 import { setOverRoad } from './overpass';
-import { applyRoad, recomputeRoadMasks, roadKeyMask } from './roads';
+import { applyRoad, recomputeRoadMasks, roadKeyMask, settleArms } from './roads';
 import {
   buildRoadCells,
   cellStep,
@@ -271,6 +271,80 @@ describe('road network: saves', () => {
   it('refuses a save whose network is cut short', () => {
     const buf = saveGrid(city(), networkFromGrid(city()));
     expect(() => loadGrid(buf.slice(0, buf.byteLength - 1))).toThrow();
+  });
+});
+
+describe('road network: roads laid apart', () => {
+  const SIZE = 16;
+  /** Lays `tiles` as one drag, its arms decided first, as the worker does. */
+  function lay(g: GridState, tiles: TilePoint[], join: boolean): void {
+    const keys = tiles.map((t) => t.z * g.size + t.x);
+    settleArms(g, keys, new Set(keys), join);
+    applyRoad(g, tiles, RoadTier.TwoLane);
+  }
+  /** A street on row 5, a second laid apart on row 6 beside it, and one ending against its end. */
+  function apartCity(): GridState {
+    const g = createGrid(SIZE);
+    applyRoad(g, row(5, 2, 10), RoadTier.TwoLane);
+    lay(g, row(6, 2, 10), false);
+    lay(g, row(5, 11, 14), false);
+    expect(g.roadSeparate[5 * SIZE + 6]).toBe(4);
+    expect(g.roadSeparate[5 * SIZE + 10]).toBe(2 | 4);
+    return g;
+  }
+
+  it('keeps two roads laid apart as roads the network does not link', () => {
+    const g = apartCity();
+    const net = networkFromGrid(g);
+    expect(liveSegments(net)).toHaveLength(3);
+    const cells = buildRoadCells(net, SIZE);
+    for (let x = 2; x <= 10; x++) expect(cellStep(cells, 5 * SIZE + x, 0, 1)).toBeNull();
+    expect(cellStep(cells, 5 * SIZE + 10, 1, 0)).toBeNull();
+    expectCellsJoinAsMasks(g, cells);
+  });
+
+  it('derives what is held apart back from the network, and so keeps it through a save', () => {
+    const g = apartCity();
+    const net = networkFromGrid(g);
+    const back = createGrid(SIZE);
+    expect(deriveRoadLayers(back, net)).toEqual([]);
+    expect(roadLayers(back)).toEqual(roadLayers(g));
+    expect(Array.from(back.roadSeparate)).toEqual(Array.from(g.roadSeparate));
+
+    const loaded = loadGrid(saveGrid(g, net));
+    expect(loaded.problems).toEqual([]);
+    expect(roadLayers(loaded.grid)).toEqual(roadLayers(g));
+    expect(Array.from(loaded.grid.roadSeparate)).toEqual(Array.from(g.roadSeparate));
+  });
+
+  it('holds nothing apart that a joining rule keeps apart already', () => {
+    // Two motorway carriageways side by side, running opposite ways: the
+    // carriageway rule keeps them apart, so nothing else has to.
+    const g = createGrid(SIZE);
+    applyRoad(g, row(5, 2, 10), RoadTier.Highway, undefined, RoadTier.Highway, false, [
+      ...Array<number>(9).fill(RoadFlow.East),
+    ]);
+    const west = row(6, 10, 2);
+    const keys = west.map((t) => t.z * SIZE + t.x);
+    settleArms(g, keys, new Set(keys), false);
+    applyRoad(g, west, RoadTier.Highway, undefined, RoadTier.Highway, false, [
+      ...Array<number>(9).fill(RoadFlow.West),
+    ]);
+    const back = createGrid(SIZE);
+    expect(deriveRoadLayers(back, networkFromGrid(g))).toEqual([]);
+    expect(roadLayers(back)).toEqual(roadLayers(g));
+    expect(Array.from(back.roadSeparate).every((a) => a === 0)).toBe(true);
+  });
+
+  it('holds nothing apart in a save from before the network, which joins as its tiles did', () => {
+    const g = createGrid(SIZE);
+    applyRoad(g, row(5, 2, 10), RoadTier.TwoLane);
+    applyRoad(g, row(6, 2, 10), RoadTier.TwoLane);
+    recomputeRoadMasks(g);
+    const loaded = loadGrid(serializeGridV12(g));
+    expect(loaded.problems).toEqual([]);
+    expect(roadLayers(loaded.grid)).toEqual(roadLayers(g));
+    expect(Array.from(loaded.grid.roadSeparate).every((a) => a === 0)).toBe(true);
   });
 });
 

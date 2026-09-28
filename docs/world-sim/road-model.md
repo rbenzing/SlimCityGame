@@ -579,22 +579,39 @@ disagree.
 
 **A road laid as its own road does not join the roads beside it.** With the
 road tool's snapping to roads off ([interaction.md](../ux/interaction.md#snapping-to-roads)),
-`buildRoad` is sent with `join: false`. Every arm between one of its tiles and
-a road tile outside the drag that was not joined before the command stays
-unjoined; an arm that was already joined — the road it crosses, the road whose
-tile it overlaps — joins as before, so a crossing is still a junction. Joining
-along the drag itself is never affected. The fact is stored where roads are
-stored, in the network, as the absence of a link: two neighbouring grid road
-tiles are joined exactly when the network links them. The per-tile arms that
-are held apart are a derived layer (`roadSeparate`, recomputed from the
-network on load and after every command, never saved), and `isSeparateRoad`
-reads it alongside its three rules, so the mask, the graph, the utility and
-service spreads, the approach walk and the renderers keep the two apart as
-they do two carriageways. A save from before carries a link wherever its
+`buildRoad` is sent with `join: false`. What it decides is the arms of the
+tiles the command lays or lays again — the arms between one of those tiles and
+a road tile outside the drag. An arm that was joined before the command joins
+as before — the road it crosses, the road whose tile it overlaps — so a
+crossing is still a junction; one that was not stays unjoined. Joining along
+the drag itself is never affected. Sent with `join` left out, the same arms
+all join, as a road's always have, one held apart before included: laying a
+road again with snapping on is how a road laid apart is joined up. The arms of
+a tile the command leaves as it was are not touched.
+
+The fact is stored where roads are stored, in the network, as the absence of a
+link: two neighbouring grid road tiles are joined exactly when the network
+links them. The per-tile arms that are held apart are a derived layer
+(`roadSeparate`, recomputed from the network on load and after every command,
+never saved), and `isSeparateRoad` reads it alongside its other rules, so the
+mask, the graph, the utility and service spreads, the approach walk and the
+road furniture keep the two apart as they do two carriageways. It holds only
+arms the rules would otherwise join; where a rule already keeps two roads
+apart, the rule is the reason. A save from before carries a link wherever its
 tiles joined, so nothing it holds comes apart.
 
-**Status: specified, not built** (2026-09-28). The road tool offers no
-`Roads` snap toggle yet and `buildRoad` has no `join` field.
+An undo puts back exactly the arms that were held apart. A command that lays a
+road over one, or takes one away, hands back with the road the arms of its
+tiles that were held apart (`apart`, which only an undo sends); given them,
+`buildRoad` holds exactly those apart and joins the rest.
+
+The refusals are unchanged. A road laid apart is refused beside a road its
+class may never meet — a street beside a motorway — as it would be when
+joined.
+
+**Status: built in the world** (2026-09-28): `buildRoad` takes `join` and
+`apart`, and saves keep what is held apart. The road tool offers no `Roads`
+snap toggle yet, so nothing the player does sends `join: false`.
 
 ## Ramps and interchanges
 

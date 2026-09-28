@@ -5233,6 +5233,7 @@ export class RoadMeshRenderer {
         const over = this.groundAt(x, z)?.over;
         return over ? axisOfFlow(over.flow) : null;
       },
+      apartAt: (x, z) => this.groundAt(x, z)?.apart ?? 0,
     };
   }
 

@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { BuildingCatalogEntry, BuildingInstance, GridState } from '../shared/types';
+import type { BuildingCatalogEntry, BuildingInstance, GridState, TilePoint } from '../shared/types';
 import { BuildingState, RoadTier } from '../shared/types';
 import { tileIndex } from '../shared/constants';
 import { recomputeUtilities } from './network';
 import { createGrid } from '../world/grid';
 import { tileCentreCm } from '../shared/roadgeom';
-import { applyRoad } from '../world/roads';
+import { applyRoad, settleArms } from '../world/roads';
 import { networkFromGrid, reconcileRoads } from '../world/roadnet';
 import { laySegment, planSegment } from '../world/freeroads';
 
@@ -19,6 +19,10 @@ function paintRoadRow(g: GridState, x0: number, x1: number, z: number): void {
     g.roadTier[tileIndex(x, z)] = RoadTier.TwoLane;
   }
 }
+
+/** A straight run of tiles along row z from x0..x1 inclusive. */
+const roadRow = (x0: number, x1: number, z: number): TilePoint[] =>
+  Array.from({ length: x1 - x0 + 1 }, (_, i) => ({ x: x0 + i, z }));
 
 /** Paints a single road tile at the given tier (default two-lane). */
 function paintRoad(g: GridState, x: number, z: number, tier: RoadTier = RoadTier.TwoLane): void {
@@ -483,6 +487,38 @@ describe('recomputeUtilities: a road that only lies alongside', () => {
     recomputeUtilities(g, buildings, catalog);
     expect(g.power[tileIndex(35, 40)]).toBe(1);
     expect(g.power[tileIndex(51, 70)]).toBe(0);
+  });
+});
+
+describe('recomputeUtilities: a road laid as its own road', () => {
+  /** A street along z = 40 from the plant, and a second beside it that turns away north to a house. */
+  function besideTheStreet(join: boolean): { g: GridState; buildings: BuildingInstance[] } {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    applyRoad(g, roadRow(30, 50, 40), RoadTier.TwoLane);
+    const second = [
+      ...roadRow(30, 50, 41),
+      ...Array.from({ length: 29 }, (_, i) => ({ x: 50, z: 42 + i })),
+    ];
+    const keys = second.map((t) => tileIndex(t.x, t.z));
+    settleArms(g, keys, new Set(keys), join);
+    applyRoad(g, second, RoadTier.TwoLane);
+    placeBuilding(g, buildings, 1, 'power-plant', 29, 40, 1, 1);
+    placeBuilding(g, buildings, 2, 'house', 51, 70, 1, 1);
+    return { g, buildings };
+  }
+
+  it('carries nothing across to a street held apart beside the one that is powered', () => {
+    const { g, buildings } = besideTheStreet(false);
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.power[tileIndex(35, 40)]).toBe(1);
+    expect(g.power[tileIndex(51, 70)]).toBe(0);
+  });
+
+  it('carries it on when the two are joined', () => {
+    const { g, buildings } = besideTheStreet(true);
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.power[tileIndex(51, 70)]).toBe(1);
   });
 });
 
