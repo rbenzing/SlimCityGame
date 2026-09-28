@@ -144,26 +144,33 @@ building returns to Active as soon as its blocker is gone; otherwise, after
 
 ## Lots and archetypes
 
-A zoned building's mass does not fill its footprint tile: the body is
-inset from the footprint's edge so that neighbouring buildings never share
-a wall — by 15% of the edge for most buildings, and 55% for a detached
-house. The lot, not the building, claims the rest of the tile: a lot pad
-reserves the building's whole footprint, sitting under the inset body and
-surfacing whatever remainder the building implies — paved yard, parking, or
-planting. Adjacent lots' pads meet edge to edge with no gap between them,
-stopping short of the road at the verge the parking apron already respects.
+A zoned building's mass does not fill its footprint tile: the body is a
+size in metres per lot tile — 4.75 m for a detached house, 13.6 m for
+everything else, and never more than 85% of the tile — so that neighbouring
+buildings never share a wall. The lot, not the building, claims the rest of
+the tile: a lot pad reserves the building's whole footprint, sitting under
+the body and surfacing whatever remainder the building implies — paved yard,
+parking, or planting. Adjacent lots' pads meet edge to edge with no gap
+between them, stopping short of the road at the verge the parking apron
+already respects; a home's lawn instead runs across the verge to the
+sidewalk, and the house stands at the front of its lot with its drive and
+yard laid out from the street (see
+[buildings.md](../art/buildings.md#residential-lots)).
 
 Whether a lot's kerb may be used for parking is decided by two independent
-rules that compose. The road decides whether its kerb is parkable at all: a
-tier declares this itself in its data — today the two-lane, gravel, alley,
-and one-way tiers do, and no others, since a through-route, a reserved bus
-or bike lane, tram rails, or a railway all have a better use for their edge.
-The building decides whether it needs the kerb at all: one with its own bay
-row, or a house with a garage and a drive, does not use it; a small home or
-a row house too tight for bays does. Utilities, parks, and civic buildings
-never park at the kerb, having nobody to park. A kerbside car sits parallel,
-past the verge and sidewalk and half a car into the carriageway, with no
-apron or painted bay of its own, since the road surface is already there.
+rules that compose. The road decides whether and when its kerb is parkable: a
+kerb on the side where the street paints a parking lane takes cars at any
+hour; a street whose tier declares kerbside parking in its data but paints
+no lane — today the two-lane, gravel, alley and one-way presets — takes only
+short daytime stays, never overnight; every other road takes none, since a
+through-route, a reserved bus or bike lane, tram rails, or a railway all have
+a better use for their edge. The building decides whether it needs the kerb
+at all: one with its own bay row, or a home with a drive, does not use it;
+apartments do. Utilities, parks, and civic buildings never park at the kerb,
+having nobody to park. A kerbside car sits parallel, in the middle of the
+parking lane where there is one and otherwise half a car into the
+carriageway, with no apron or painted bay of its own, since the road surface
+is already there.
 
 Every object that would stand at the kerb — a parked car, a lamp, a sign —
 is checked against the tile it would actually occupy, not the building or

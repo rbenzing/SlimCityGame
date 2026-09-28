@@ -62,23 +62,14 @@ detached and row home additionally carries the procedural house kit:
 - A **pitched roof** (gable or hip) sized to the body footprint, seeded per
   building for gable-vs-hip, orientation and roof colour. Denser residential
   (apartments) and every non-residential archetype keep a flat roof instead.
-- A **garage and driveway** on low-density homes: a small attached garage box
-  offset to one side, plus a driveway strip running to the road frontage,
-  with presence and side seeded per building.
-- A **fenced yard** on low-density and row homes: a low fence/hedge ring
-  around the yard margin — the gap between the shrunk body and the tile
-  edge — broken at the driveway, reading as a private lot.
+- **A lot laid out from its street**: the house at the front, a drive, and a
+  yard behind — see [Residential lots](#residential-lots).
 - **Massing variety**: footprint fill, eaves height, roof pitch/type, and
   wall/roof colour are all seeded per building id from a bounded variant set,
   so a residential street reads as individual homes, not clones.
 - Detached homes have a hard **2×2 minimum footprint** — nothing smaller ever
-  builds. The first low-density level is a 2×2 with no garage; the second is
-  2×3 and the third is 3×3, both with a garage. Every 2×3-or-larger detached
-  lot that fronts a street gets an attached garage, a driveway strip to the
-  road, and the resident's car parked on the driveway (see
-  [props-and-vehicles.md](props-and-vehicles.md) — homes never park at the
-  kerb or in a lot). Roof, garage and driveway all share the body's day/night
-  tint; the parked car is lit like any other vehicle.
+  builds. The low-density levels are a 2×2, a 2×3 and a 3×3; rows are 1×2,
+  1×4 and 1×6.
 
 **Commercial.** The first commercial level is a **storefront**: a canopy over
 the frontage plus a signage band above it, on top of the stage-1 ground-floor
@@ -122,7 +113,8 @@ rule — a body that filled its tile would share a wall with its neighbour —
 and the pad is what claims and paves the rest. Adjacent buildings' pads meet
 edge to edge with no grass seam, so a zoned block reads as continuous
 developed land; each pad stops short of the road at the verge the parking
-apron already respects.
+apron already respects, except a home's lawn, which runs across the verge to
+the sidewalk (see [Residential lots](#residential-lots)).
 
 A building's body is additionally pulled back from its own road-facing edge
 by exactly the parking bay row's depth (minus the shrink margin), so the
@@ -148,6 +140,81 @@ range rather than clipped per channel, so hue survives the correction —
 several existing materials had drifted well past the cap (a silo at
 216/212/200, an AC unit at 206/210/213, a garage wall at 207/199/182, an
 airport structure at 202/197/184), which is why lit roofs used to blow out.
+
+## Residential lots
+
+A detached home or a row of homes is laid out on its lot from the street it
+fronts: the first street — any road but a railway — found along the lot's
+edges, tie-broken north, east, south, west. Everything is placed in that
+edge's frame, across the frontage and in from it, in absolute metres, and
+seeded from the building id, so the same lot always comes out the same. A
+home that fronts no street keeps its body centred on its lot and has a lawn
+and a yard but no drive, no garage and no car.
+
+**Where the house stands.** The lawn runs from the back of the lot across the
+road's grass verge to the sidewalk — to the carriageway, on a road with no
+sidewalk — so no strip of wild grass separates a home from its street. The
+house's front wall stands 5.5 m behind the sidewalk: a front yard deep enough
+for the longest car (4.6 m) to stand in front of the house without blocking
+the footway. Where the verge alone is wider than that, the house stands at
+its lot's edge; it never leaves its lot. Across the frontage the house keeps
+its place, centred. Its front door faces the street — the facade's own
+entrance, on every building's north face, reads on a home that faces
+another way as a back or side door. A small path, 1.2 m of concrete, runs
+from the door to the sidewalk.
+
+**The drive.** Every home that fronts a street has a drive, dirt or concrete
+by seed, 3 m wide, running from the carriageway across the sidewalk — a curb
+cut, laid over the paving — and the verge onto the lot. A drive only crosses
+a straight stretch of street: never a junction tile, never a tile the street
+leaves on both axes. The resident's car stands on the drive, nose to the
+house, while the home is Active. Where the drive and its cover go depends on
+the home:
+
+- **A detached home**, and a row whose narrow end faces the street, runs its
+  drive down one side of the house, the side seeded, 1 m of lawn between them
+  (less where the lot is narrow; with under 3.2 m beside the house the home
+  takes a front pad instead, below). The drive ends at one of four covers, by
+  seed: an open **parking spot** beside the house; a **carport** there — a
+  flat roof 2.4 m up on four posts, 3.4 × 6 m; an **attached garage** filling
+  the lawn strip and the drive's width, 6 m deep and 2.6 m tall, set 1 m back
+  from the house front with its door to the street; or a **detached garage**
+  3 m behind the house's back wall, 4 × 6 m, its door facing down the drive.
+  The car stands just in front of the garage door, under the carport, or on
+  the spot. A cover the lot has no depth for is not chosen.
+- **A row facing the street along its length** is one home per lot tile of
+  frontage, each a share of the row's body. Each home gets its own short
+  drive to its front wall — a front pad, the car on it — and some of them, by
+  seed, an integral garage door in the facade behind the pad.
+
+**The yard.** Behind the house, each part present or not by seed:
+
+- A **fence**, 1.6 m tall, in wood or white: from the house's back corners
+  out to the side lot lines, then along the side and back lot lines, open
+  where a drive passes. Between the homes of a row it also runs from the back
+  wall to the back lot line.
+- A **patio** slab against the back wall, concrete or brick, 4 m deep and up
+  to 5 m wide, and on some patios a **grill** (0.6 × 0.5 × 1.0 m).
+- An **above-ground pool**, 4.6 m across and 1.2 m tall, water at its rim.
+- A **trampoline**, 4.3 m across, its mat 0.9 m up on six legs.
+- **Yard trees**: none, one or two by seed, and one more for every 800 m² of
+  back yard, so a big lot is not a bare lawn (see
+  [vegetation.md](../visual-render/vegetation.md#where-a-tree-may-stand) for
+  why they are the home's own, not wild ones).
+- **Bushes** along the front wall — two to four for a house, two per home
+  in a row — clear of the door paths and the drives.
+
+The pool, the trampoline and the trees each take the first free spot the seed
+offers in the back yard, clear of the drive, its cover and the patio, and a
+part with no free spot is left out. A row's yards are about 5 m deep, which
+holds a patio and a grill but not a pool or a trampoline.
+
+**Through the lifecycle.** The roof, garage and carport share the body's
+day/night tint and its construction grey; the fence, the yard parts, the
+trees and the car are lit like any other prop. A home under construction has
+its lawn, drive and cover but no yard; an Abandoned home keeps its fence,
+bushes and trees but not its pool, trampoline or grill; only an Active home
+has its car.
 
 ## Construction and abandonment
 

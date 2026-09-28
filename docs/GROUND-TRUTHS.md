@@ -717,13 +717,25 @@ MUTCD citations below use 11th-edition section numbers.
   samples real terrain height per vertex and splits on the terrain's own
   diagonal. — [buildings.md](art/buildings.md),
   [lighting.md](visual-render/lighting.md), [streets.md](art/streets.md)
-- No tree stands on a tile holding a grid road, a road off the grid's
+- No wild tree stands on a tile holding a grid road, a road off the grid's
   footprint, or a building. It is read from the mirror whenever roads, the
   network or buildings change, never from the commands that laid them:
   trimmed by command, a curve kept every tree it was laid through and a
-  loaded city regrew a tree on every road. —
+  loaded city regrew a tree on every road. A home's yard trees are its own
+  kit, planted clear of its house, drive and furniture. —
   [vegetation.md](visual-render/vegetation.md); `occupiedTiles` in
   `src/app/clientgrid.ts`
+- A home faces the street it fronts: its lawn runs across the verge to the
+  sidewalk, its front wall stands 5.5 m behind the sidewalk (never outside its
+  lot), its door faces the street, and a drive — dirt or concrete — crosses
+  the sidewalk and verge to the carriageway. Its car stands on that drive,
+  never at the kerb. A home that fronts no street has no drive and no car. —
+  [buildings.md](art/buildings.md#residential-lots)
+- A kerb takes cars at any hour only where the street paints a parking lane on
+  that side; a street whose tier allows parking but paints no lane takes short
+  daytime stays and nothing overnight; every other road takes none. —
+  [props-and-vehicles.md](art/props-and-vehicles.md#parked-cars-and-lot-life),
+  [road-model.md](world-sim/road-model.md#furniture-and-what-gates-it)
 - Nothing kerbside stands on a tile with road on both axes (manholes excepted);
   one prop per kerbside slot; everything beside a road measures from
   `curbWidthMeters`. A road-facing kit part is skipped when a building fronts

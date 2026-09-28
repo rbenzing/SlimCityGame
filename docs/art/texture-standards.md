@@ -56,6 +56,12 @@ by eye, and stays under 140 unless it has a documented reason not to —
 this is the closest thing this project has to a "texture-standards" rule,
 and it governs colour, not resolution.
 
+`mownLawn` is the one entry measured against the world rather than a
+swatch: the chart's vegetation is foliage, and a home's garden laid in it
+read as a dark rectangle against the grass around it. The lawn is the
+terrain's fresh grass (82/148/66) at seven tenths, 57/104/46 — still grass,
+and still plainly claimed ground.
+
 ## Palette calibration in practice
 
 `rgb255ToHex`/`hexToRgb255`/`rgb255ToUnit` are the only conversions

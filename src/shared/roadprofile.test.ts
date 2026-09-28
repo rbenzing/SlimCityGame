@@ -31,6 +31,7 @@ import {
   corridorHalfProfile,
   carriagewayHalfWidthOf,
   medianOffsetOf,
+  parkingLaneOffset,
   parkingSides,
   rankedTogether,
   canGainAuxiliaryLane,
@@ -1861,6 +1862,36 @@ describe('parkingSides', () => {
     expect(parkingSides(pieces(false, true))).toEqual({ low: false, high: true });
     expect(parkingSides(pieces(true, true))).toEqual({ low: true, high: true });
     expect(parkingSides(pieces(false, false))).toEqual({ low: false, high: false });
+  });
+});
+
+describe('parkingLaneOffset', () => {
+  it('is the parking lane’s middle, measured in from that side’s carriageway edge', () => {
+    const profile: RoadProfile = {
+      class: 'local',
+      pieces: [
+        { kind: 'sidewalk', width: 1.875 },
+        { kind: 'parking', width: 2.25 },
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'sidewalk', width: 1.875 },
+      ],
+    };
+    expect(parkingLaneOffset(profile, 'low')).toBeCloseTo(1.125, 6);
+    expect(parkingLaneOffset(profile, 'high')).toBeNull();
+  });
+
+  it('counts a bike lane laid between the kerb and the parking, so the car is not stood on it', () => {
+    const profile: RoadProfile = {
+      class: 'local',
+      pieces: [
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'parking', width: 2.25 },
+        { kind: 'bike', width: 1.5 },
+      ],
+    };
+    expect(parkingLaneOffset(profile, 'high')).toBeCloseTo(1.5 + 1.125, 6);
   });
 });
 

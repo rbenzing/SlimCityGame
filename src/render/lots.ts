@@ -20,16 +20,15 @@
  * Zero per-frame work: everything happens inside apply(BuildingDelta).
  */
 import * as THREE from 'three';
-import {
-  BuildingCatalogEntry,
-  BuildingDelta,
-  BuildingInstance,
-  ZoneType,
-} from '../shared/types';
+import { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { pushConformingQuad, conformingQuadVertexCount } from './groundquad';
 import { materialUnit, type MaterialName } from './palette';
 import { massingLifecycleTint } from './massing';
+import { isHouseEntry } from './archetypes';
+import { NO_STREETS, type StreetLookup } from './frontage';
+import { lotToWorld, planHouseLot, type HouseLotPlan, type LotRect } from './houselot';
+import { CURB_CUT_Y_OFFSET } from './parked';
 
 /**
  * Pads ride just above the terrain overlays and BELOW everything that sits on
@@ -37,6 +36,17 @@ import { massingLifecycleTint } from './massing';
  * surfaces stack on top of it rather than fighting it for the same plane.
  */
 export const LOT_Y_OFFSET = 0.08;
+/** A home's drive, path and patio ride over its lawn and under the road plate (0.15). */
+export const DRIVE_Y_OFFSET = 0.1;
+
+const DRIVE_SURFACE: Readonly<Record<HouseLotPlan['surface'], MaterialName>> = {
+  dirt: 'dirt',
+  concrete: 'cleanConcrete',
+};
+const PATIO_SURFACE: Readonly<Record<HouseLotPlan['yard']['patioStone'], MaterialName>> = {
+  concrete: 'stainedConcrete',
+  brick: 'redBrick',
+};
 
 /**
  * The reference caps a mesh at 65,536 vertices. A single lot pad is orders of
@@ -55,15 +65,11 @@ export function lotSurfaceFor(entry: BuildingCatalogEntry): MaterialName | null 
   if (entry.category === 'ind') return 'darkAsphalt';
   if (entry.category === 'com') return 'brightAsphalt';
   if (entry.category === 'res') {
-    return isHouseZone(entry.zone) ? 'brightVegetation' : 'stainedConcrete';
+    // Detached homes and attached rows keep a garden; denser housing is paved.
+    return isHouseEntry(entry) ? 'mownLawn' : 'stainedConcrete';
   }
   // Utilities, services, parks and landmarks bring their own ground treatment.
   return null;
-}
-
-/** Detached homes and attached rows keep a garden; denser housing is paved. */
-function isHouseZone(zone: number | undefined): boolean {
-  return zone === ZoneType.ResLow || zone === ZoneType.ResMediumRow;
 }
 
 export interface LotBounds {
@@ -98,6 +104,9 @@ export class LotRenderer {
   private readonly scene: THREE.Scene;
   private readonly heightAt: (x: number, z: number) => number;
   private readonly catalogById: Map<string, BuildingCatalogEntry>;
+  private readonly roadAt: (x: number, z: number) => boolean;
+  /** The streets a home's lawn, drive and path run out to; the default finds none. */
+  private readonly street: StreetLookup;
   private readonly material = new THREE.MeshLambertMaterial({ vertexColors: true });
   private readonly meshes = new Map<number, THREE.Mesh>();
   private visible = true;
@@ -106,10 +115,14 @@ export class LotRenderer {
     scene: THREE.Scene,
     heightAt: (x: number, z: number) => number,
     catalog: readonly BuildingCatalogEntry[],
+    roadAt: (x: number, z: number) => boolean = () => false,
+    street: StreetLookup = NO_STREETS,
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
     this.catalogById = new Map(catalog.map((e) => [e.id, e]));
+    this.roadAt = roadAt;
+    this.street = street;
   }
 
   apply(delta: BuildingDelta): void {
@@ -160,13 +173,11 @@ export class LotRenderer {
     if (surface === null) return;
 
     const bounds = lotBounds(building, entry);
-    const base = materialUnit(surface);
     const tint = massingLifecycleTint(building.state);
-    const color: readonly [number, number, number] = [
-      base[0] * tint[0],
-      base[1] * tint[1],
-      base[2] * tint[2],
-    ];
+    const tinted = (name: MaterialName): readonly [number, number, number] => {
+      const base = materialUnit(name);
+      return [base[0] * tint[0], base[1] * tint[1], base[2] * tint[2]];
+    };
 
     const positions: number[] = [];
     const colors: number[] = [];
@@ -178,9 +189,37 @@ export class LotRenderer {
       bounds.x1,
       bounds.z1,
       LOT_Y_OFFSET,
-      color,
+      tinted(surface),
       this.heightAt,
     );
+
+    const plan = planHouseLot(building, entry, this.roadAt, this.street);
+    if (plan) {
+      const lay = (rect: LotRect, y: number, name: MaterialName): void => {
+        const a = lotToWorld(plan.frame, rect.u0, rect.v0);
+        const b = lotToWorld(plan.frame, rect.u1, rect.v1);
+        pushConformingQuad(
+          positions,
+          colors,
+          Math.min(a.x, b.x),
+          Math.min(a.z, b.z),
+          Math.max(a.x, b.x),
+          Math.max(a.z, b.z),
+          y,
+          tinted(name),
+          this.heightAt,
+        );
+      };
+      for (const strip of plan.vergeLawn) lay(strip, LOT_Y_OFFSET, surface);
+      for (const path of plan.paths) lay(path, DRIVE_Y_OFFSET, 'cleanConcrete');
+      for (const patio of plan.yard.patios) lay(patio, DRIVE_Y_OFFSET, PATIO_SURFACE[plan.yard.patioStone]);
+      for (const drive of plan.drives) {
+        lay(drive.rect, DRIVE_Y_OFFSET, DRIVE_SURFACE[plan.surface]);
+        // Across the footway the drive is always paved: the kerb is dropped
+        // and the paving carried through, dirt drive or not.
+        if (drive.cut.v1 > drive.cut.v0) lay(drive.cut, CURB_CUT_Y_OFFSET, 'cleanConcrete');
+      }
+    }
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));

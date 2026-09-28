@@ -9,6 +9,7 @@ import {
   lotVertexCount,
 } from './lots';
 import { TILE_METERS } from '../shared/constants';
+import { CURB_CUT_Y_OFFSET } from './parked';
 import {
   BuildingState,
   ZoneType,
@@ -95,11 +96,9 @@ describe('lotSurfaceFor', () => {
   });
 
   it('gives a house a garden rather than paving it over', () => {
-    expect(lotSurfaceFor(entry({ category: 'res', zone: ZoneType.ResLow }))).toBe(
-      'brightVegetation',
-    );
+    expect(lotSurfaceFor(entry({ category: 'res', zone: ZoneType.ResLow }))).toBe('mownLawn');
     expect(lotSurfaceFor(entry({ category: 'res', zone: ZoneType.ResMediumRow }))).toBe(
-      'brightVegetation',
+      'mownLawn',
     );
   });
 
@@ -195,6 +194,54 @@ describe('LotRenderer', () => {
     r.dispose();
     expect(r.lotCount()).toBe(0);
     expect(scene.children).toHaveLength(0);
+  });
+
+  describe('a home beside a street', () => {
+    const home = entry({ category: 'res', zone: ZoneType.ResLow, footprint: { w: 2, d: 2 } });
+    // The street runs along row 8, just south of a 2x2 lot at (4, 6).
+    const roadAt = (_x: number, z: number): boolean => z === 8;
+    const street = (_x: number, z: number) =>
+      z === 8 ? { vergeM: 4.375, sidewalkM: 1.875 } : null;
+    const southEdge = 8 * TILE_METERS;
+
+    const zExtent = (scene: THREE.Scene): { min: number; max: number; top: number } => {
+      const position = (scene.children[0] as THREE.Mesh).geometry.getAttribute('position');
+      let min = Infinity;
+      let max = -Infinity;
+      let top = -Infinity;
+      for (let i = 0; i < position.count; i += 1) {
+        min = Math.min(min, position.getZ(i));
+        max = Math.max(max, position.getZ(i));
+        top = Math.max(top, position.getY(i));
+      }
+      return { min, max, top };
+    };
+
+    it('carries its lawn across the verge and its drive across the sidewalk', () => {
+      const scene = new THREE.Scene();
+      new LotRenderer(scene, flat, [home], roadAt, street).apply(delta({ added: [building()] }));
+      const { min, max, top } = zExtent(scene);
+      expect(min).toBeCloseTo(6 * TILE_METERS, 6);
+      // Out over the verge and then the footway, to the kerb.
+      expect(max).toBeCloseTo(southEdge + 4.375 + 1.875, 6);
+      // The curb cut rides over the sidewalk, above everything else on the lot.
+      expect(top).toBeCloseTo(CURB_CUT_Y_OFFSET, 6);
+    });
+
+    it('keeps a home that fronts no street inside its own footprint', () => {
+      const scene = new THREE.Scene();
+      new LotRenderer(scene, flat, [home]).apply(delta({ added: [building()] }));
+      const { max, top } = zExtent(scene);
+      expect(max).toBeCloseTo(southEdge, 6);
+      // Its patio may still be there; a curb cut, with no kerb to cut, is not.
+      expect(top).toBeLessThan(CURB_CUT_Y_OFFSET);
+    });
+
+    it('lays nothing beyond a shop’s own lot — its apron is the parking renderer’s', () => {
+      const scene = new THREE.Scene();
+      new LotRenderer(scene, flat, [entry()], roadAt, street).apply(delta({ added: [building()] }));
+      expect(zExtent(scene).max).toBeCloseTo(southEdge, 6);
+    });
   });
 
   it('hides and shows every pad without dropping them', () => {

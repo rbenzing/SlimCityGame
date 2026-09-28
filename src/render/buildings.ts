@@ -34,6 +34,7 @@ import {
 import { NIGHT_WINDOW_LIT_MAX, NIGHT_WINDOW_LIT_MIN, TILE_METERS } from '../shared/constants';
 import { encodeId, buildIdColorArray } from './picking';
 import { footprintShrinkFor, frontageSetbackFor } from './massing';
+import { NO_STREETS, type StreetLookup } from './frontage';
 import { maxHeightOverFootprint } from './footprint';
 import {
   ACCENT_BLUE,
@@ -399,6 +400,8 @@ export class BuildingInstancer {
   private readonly plinthIds: ReadonlySet<string>;
   /** Answers "is this grid tile a road" for the frontage parking setback (see writeInstance); the default never finds one. */
   private readonly roadAt: (x: number, z: number) => boolean;
+  /** The streets a home's front yard is measured from; the default finds none, and every home stays centred. */
+  private readonly street: StreetLookup;
 
   constructor(
     scene: THREE.Scene,
@@ -406,11 +409,13 @@ export class BuildingInstancer {
     heightAt: (x: number, z: number) => number,
     plinthIds?: Set<string>,
     roadAt?: (x: number, z: number) => boolean,
+    street: StreetLookup = NO_STREETS,
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
     this.plinthIds = plinthIds ?? new Set();
     this.roadAt = roadAt ?? ((): boolean => false);
+    this.street = street;
     for (const entry of catalog) {
       this.buckets.set(entry.id, this.createBucket(entry));
     }
@@ -859,7 +864,7 @@ export class BuildingInstancer {
     // Commercial/industrial bodies pull back from their road-facing edge so
     // the parked-car bay row (parked.ts) sits flush in front of the facade
     // instead of underneath it; every other category gets a zero setback.
-    const frontage = frontageSetbackFor(entry, instance.x, instance.z, this.roadAt);
+    const frontage = frontageSetbackFor(entry, instance.x, instance.z, this.roadAt, this.street);
     const spanX = entry.footprint.w * TILE_METERS * shrink - frontage.spanXM;
     const spanZ = entry.footprint.d * TILE_METERS * shrink - frontage.spanZM;
     const centerX = (instance.x + entry.footprint.w / 2) * TILE_METERS + frontage.centerXM;

@@ -66,10 +66,18 @@ import { RoofPropRenderer } from './render/props';
 import { HouseRoofRenderer } from './render/houses';
 import {
   curbCutTileFor,
+  kerbAllowance,
   ParkedCarRenderer,
-  tierAllowsRoadsideParking,
   usesRoadsideParking,
+  type KerbSide,
 } from './render/parked';
+import { streetLookupOf } from './render/frontage';
+import {
+  driveRoadTiles,
+  planHouseGround,
+  planHouseLot,
+  type HouseLotPlan,
+} from './render/houselot';
 import { LotRenderer } from './render/lots';
 import { BuildingKitRenderer } from './render/buildingkit';
 import { LandmarkRenderer } from './render/landmarks';
@@ -184,6 +192,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     inBounds(x, z) && clientGrid.roadTier[z * clientGrid.size + x] !== RoadTier.None;
   const streetAt = (x: number, z: number): boolean =>
     inBounds(x, z) && isStreetTier((clientGrid.roadTier[z * clientGrid.size + x] ?? 0) as RoadTier);
+  // How wide each street's verge and sidewalk are, read from the tile's own
+  // cross-section: a home's front yard is measured from the sidewalk, and its
+  // lawn and drive run out to it.
+  const street = streetLookupOf(
+    (x, z) =>
+      inBounds(x, z) ? ((clientGrid.roadTier[z * clientGrid.size + x] ?? 0) as RoadTier) : RoadTier.None,
+    (x, z) => clientGrid.ownProfileAt(x, z),
+  );
 
   /**
    * Height of the road SURFACE, as opposed to the ground: the deck where one
@@ -214,6 +230,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     heightAt,
     utilityKits.kitIds(),
     roadAt,
+    street,
   );
   // A crossing tile holds two roads; the road passing over it has a surface of
   // its own, which the ordinary sampler — answering for the road beneath —
@@ -268,8 +285,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // Lot pads go down before anything that stands on them: the building mass,
   // the parking apron, a driveway. They claim the whole footprint so a block of
   // lots meets edge to edge instead of leaving grass between properties.
-  const lots = new LotRenderer(world.scene, heightAt, catalog);
-  const massing = new MassingRenderer(world.scene, heightAt, catalog, roadAt);
+  const lots = new LotRenderer(world.scene, heightAt, catalog, roadAt, street);
+  const massing = new MassingRenderer(world.scene, heightAt, catalog, roadAt, street);
   const roofProps = new RoofPropRenderer(world.scene, heightAt, catalog, roadAt);
   // Archetype kit: the parts that make a warehouse, a factory, a green works
   // and a shopfront read as different things rather than as boxes of different
@@ -287,10 +304,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // The tile's OWN section: on a corridor that is its half of the road.
     (x, z) => clientGrid.ownProfileAt(x, z),
   );
-  // Residential house kit: pitched roofs on every detached/row home, plus a
-  // garage + street-facing driveway on the larger detached lots (roadAt orients
-  // them toward the frontage). Fed the same BuildingDelta stream.
-  const houseRoofs = new HouseRoofRenderer(world.scene, heightAt, catalog, roadAt);
+  // Residential house kit: the roof, what each drive ends at, the car, the
+  // front door and the yard, stood on the lot plan laid out from the street the
+  // home fronts. Fed the same BuildingDelta stream.
+  const houseRoofs = new HouseRoofRenderer(world.scene, heightAt, catalog, roadAt, street);
   // Cosmetic pedestrians: a few idlers at each bus-stop shelter + a sparse
   // deterministic walker scatter near Active buildings, strolling a small loop
   // on the frontage sidewalk (roadAt) near home. Fed the flattened transit stop
@@ -476,17 +493,51 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       }),
       /** Ids the kit holds parts for, to reconcile against the known buildings. */
       readKitIds: (): number[] => buildingKit.trackedIds(),
+      // What the house kit stood up, part by part, and how many cars sit on
+      // drives: a fence or a trampoline too small to pick out in a shot is
+      // still counted here.
+      readHouseKit: (): Record<string, number> => ({
+        roof: houseRoofs.partCount('roof'),
+        garage: houseRoofs.partCount('garage'),
+        carport: houseRoofs.partCount('carport'),
+        door: houseRoofs.partCount('door'),
+        fence: houseRoofs.partCount('fence'),
+        pool: houseRoofs.partCount('pool'),
+        trampoline: houseRoofs.partCount('trampoline'),
+        grill: houseRoofs.partCount('grill'),
+        bush: houseRoofs.partCount('bush'),
+        tree: houseRoofs.partCount('tree'),
+        car: houseRoofs.carCount(),
+      }),
+      // Where a home's cars stand, world metres: a car on a drive and a car
+      // tucked out of sight behind the house look the same in a street shot.
+      readHouseCars: (buildingId: number): { x: number; y: number; z: number }[] =>
+        houseRoofs.carSlotsFor(buildingId).map((slot) => {
+          const m = new THREE.Matrix4();
+          houseRoofs.getCarMatrix(slot, m);
+          return { x: m.elements[12]!, y: m.elements[13]!, z: m.elements[14]! };
+        }),
+      // A home's lot plan as the renderers read it: where its body, drives and
+      // yard parts stand, in the frontage frame.
+      readHousePlan: (buildingId: number): HouseLotPlan | null => {
+        const b = knownBuildings.get(buildingId);
+        const entry = b ? catalogById.get(b.catalogId) : undefined;
+        return b && entry ? planHouseLot(b, entry, roadAt, street) : null;
+      },
       // Where a building's cars actually stand. A parked car and a moving one
       // look alike in a shot, so a screenshot cannot tell whether the kerb rule
       // is being honoured; this can.
       readParking: (
         buildingId: number,
-      ): { stalls: number; category: string; northTier: number } | null => {
+      ): { stalls: number; occupied: number; category: string; northTier: number } | null => {
         const b = knownBuildings.get(buildingId);
         if (!b) return null;
         const entry = catalogById.get(b.catalogId);
         return {
           stalls: parkedCars.stallSlotsFor(buildingId).length,
+          // How many of them hold a car at this hour: the kerb's rule is about
+          // when, which a count of stalls cannot show.
+          occupied: parkedCars.occupiedStallCount(buildingId),
           category: entry?.category ?? '?',
           // Only the tile north of the origin — NOT the frontage the renderer
           // actually chose, which may be any of the four sides.
@@ -526,14 +577,19 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           if (!entry) continue;
           // Only kerbside cars are the street's business — a bay-row car stands
           // on its owner's lot and has no kerb rule to break.
-          if (!usesRoadsideParking(entry, building.x, building.z, roadAt, tierOf)) continue;
+          const profileOf = (tx: number, tz: number) => clientGrid.ownProfileAt(tx, tz);
+          if (!usesRoadsideParking(entry, building.x, building.z, roadAt, tierOf, profileOf)) {
+            continue;
+          }
           for (const stall of parkedCars.stallWorldPositions(building.id)) {
             const tx = worldToTile(stall.x);
             const tz = worldToTile(stall.z);
             cars.total += 1;
             let why = '';
+            const parkable = (side: KerbSide): boolean =>
+              kerbAllowance(tierOf(tx, tz), profileOf(tx, tz), side) !== 'none';
             if (!isRoad(tx, tz)) why = 'off-road';
-            else if (!tierAllowsRoadsideParking(tierOf(tx, tz))) why = 'tier';
+            else if (!parkable('low') && !parkable('high')) why = 'tier';
             else if (
               (isRoad(tx - 1, tz) || isRoad(tx + 1, tz)) &&
               (isRoad(tx, tz - 1) || isRoad(tx, tz + 1))
@@ -1363,6 +1419,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         if (!entry) continue;
         const cut = curbCutTileFor(entry, inst.x, inst.z, roadAt);
         if (cut) nextDriveways.add(cut.x * 100_000 + cut.z);
+        const home = planHouseGround(inst, entry, roadAt, street);
+        if (!home) continue;
+        for (const tile of driveRoadTiles(inst, entry, home)) {
+          nextDriveways.add(tile.x * 100_000 + tile.z);
+        }
       }
       if (!sameTileKeySet(nextDriveways, drivewayTiles)) {
         drivewayTiles = nextDriveways;

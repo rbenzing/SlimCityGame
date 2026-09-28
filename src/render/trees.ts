@@ -483,7 +483,7 @@ const POPLAR_COLOR = 0x5c8a4a;
 const SHRUB_COLOR = 0x6b7a3f;
 
 /** Paints every vertex of `geometry` the same absolute color (RGB baked in, not a multiplier). */
-function paintVertexColor(geometry: THREE.BufferGeometry, hex: number): THREE.BufferGeometry {
+export function paintVertexColor(geometry: THREE.BufferGeometry, hex: number): THREE.BufferGeometry {
   const c = new THREE.Color(hex);
   const position = geometry.getAttribute('position');
   const count = position.count;
@@ -507,7 +507,7 @@ function paintVertexColor(geometry: THREE.BufferGeometry, hex: number): THREE.Bu
  * part's .translate()/.scale() already transforms them correctly), so the
  * low-poly faceting between parts is preserved rather than smoothed over.
  */
-function mergeGeometryParts(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
+export function mergeGeometryParts(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
   let vertexCount = 0;
   let indexCount = 0;
   for (const part of parts) {
@@ -591,7 +591,7 @@ const BROADLEAF_CANOPY_BLOBS: ReadonlyArray<readonly [number, number, number, nu
 ];
 
 /** Broadleaf: 2-3 offset canopy blobs + trunk, the "default" species. */
-function buildBroadleafGeometry(): THREE.BufferGeometry {
+export function buildBroadleafGeometry(): THREE.BufferGeometry {
   const trunk = new THREE.CylinderGeometry(
     BROADLEAF_TRUNK_RADIUS_TOP,
     BROADLEAF_TRUNK_RADIUS_BOTTOM,
@@ -651,7 +651,7 @@ const SHRUB_HALF_HEIGHT = 0.5;
 const SHRUB_RADIUS = 0.75;
 
 /** Shrub: a single low, near-groundcover blob — forest edges / low density. */
-function buildShrubGeometry(): THREE.BufferGeometry {
+export function buildShrubGeometry(): THREE.BufferGeometry {
   const blob = new THREE.SphereGeometry(1, 7, 5);
   blob.scale(SHRUB_RADIUS, SHRUB_HALF_HEIGHT, SHRUB_RADIUS);
   blob.translate(0, SHRUB_HALF_HEIGHT, 0);
