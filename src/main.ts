@@ -827,7 +827,27 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           (wx, wz) => clientGrid.poweredAt(worldToTile(wx), worldToTile(wz)),
         )
       : [];
-    lamps.rebuild(latestRoadTiles, drivewayTiles, free);
+    const keepOff =
+      freeJunctionTiles.size > 0
+        ? new Set([...drivewayTiles, ...freeJunctionTiles])
+        : drivewayTiles;
+    lamps.rebuild(latestRoadTiles, keepOff, free);
+  };
+  /**
+   * Grid tiles where a road off the grid meets, keyed as the lamps key tiles.
+   * The free-road renderer draws the whole junction there, so the tile
+   * renderer leaves the tile's own road undrawn and nothing kerbside stands
+   * on it by the tile's old shape.
+   */
+  let freeJunctionTiles: ReadonlySet<number> = new Set();
+  const syncFreeJunctions = (): void => {
+    const tiles = freeRoads.gridJunctionTiles();
+    const next = new Set(tiles.map((t) => t.x * 100_000 + t.z));
+    if (sameTileKeySet(next, freeJunctionTiles)) return;
+    freeJunctionTiles = next;
+    roadsMesh.setFreeJunctionTiles(tiles);
+    roadFurniture.rebuild(latestRoadTiles, freeJunctionTiles);
+    rebuildLamps();
   };
   /** Counts down to the next advisor re-rank (see ADVISOR_REFRESH_SNAPSHOTS). */
   let snapshotsSinceAdvice = 0;
@@ -1258,6 +1278,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (snap.roadNet) {
       clientGrid.applyRoadNetwork(snap.roadNet);
       freeRoads.rebuild(clientGrid.roads);
+      syncFreeJunctions();
       // A road off the grid fronts lots and covers tiles with no road tile
       // changing, so the zoning grid and the lamps are rebuilt here when
       // nothing below will.
@@ -1291,7 +1312,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       const roadTiles = clientGrid.roadTiles();
       latestRoadTiles = roadTiles;
       rebuildLamps();
-      roadFurniture.rebuild(roadTiles);
+      roadFurniture.rebuild(roadTiles, freeJunctionTiles);
       bridges.rebuild(clientGrid.deckTiles());
       // Ground cover follows the road only where the road touches the ground —
       // a mown band under a bridge would be a stripe of lawn across a river.
@@ -1300,7 +1321,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // A junction can change control with no tile changing at all — the
       // traffic through it grew. Only the signs care.
       latestRoadTiles = clientGrid.roadTiles();
-      roadFurniture.rebuild(latestRoadTiles);
+      roadFurniture.rebuild(latestRoadTiles, freeJunctionTiles);
     }
     if (snap.buildings) {
       lots.apply(snap.buildings);

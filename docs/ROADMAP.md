@@ -277,10 +277,15 @@ worker and compares the two masks. Free roads are drawn
 line with kerbs, footways, medians and the markings plan, and a junction
 meshed at each node from the roads meeting there, with rounded kerb returns.
 Checked in the browser on a curve leaving a grid street, a free three-way
-junction and a curved one-way street. Where a free road meets a grid road, the junction is laid over
-the grid road's own tile, which still draws as a straight road underneath,
-so its kerbside props stand as if nothing joined it until one renderer draws
-both (stage 8).
+junction and a curved one-way street. Where a free road meets a grid road,
+the free-road junction draws that grid tile whole (2026-09-25): each grid
+road meeting it is carried to the tile's edge in its own section and paint,
+the edge lines turn round every kerb return, the junction meets a curve
+where the curve actually is, and the tile renderer draws nothing of the tile
+and stands no furniture or lamp on it. Before, the tile's old corner or
+straight drew underneath, its kerb across the new road's mouth and its sign
+in the carriageway. Checked in the browser on a curve leaving a grid corner
+and on one leaving a straight grid street at an angle.
 
 Stage 4b is built (2026-09-24): street lamps stand along free roads between
 their junctions, at the grid's lamp spacing, on alternate kerbs, reaching

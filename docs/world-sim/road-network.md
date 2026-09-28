@@ -157,8 +157,19 @@ This is where each system ends up. The stages below say when.
   road layer on a crossing tile becomes a derived view of two segments at
   different heights.
 - **Rendering.** Each segment's cross-section is swept along its centre line,
-  square to it. Each junction is meshed from its shape. Markings, kerbs,
-  footways and furniture follow the segment at their offsets.
+  square to it. Each junction is meshed from its shape, meeting each road where
+  its centre line actually is at the set-back, which on a curve has already
+  turned from its heading at the node, and each road's edge lines turn round
+  the kerb returns. Markings, kerbs, footways and furniture follow the segment
+  at their offsets.
+- **Where a free road meets the grid,** the grid tile the two share is drawn
+  once, whole, by the free-road junction: every grid road meeting it is
+  carried from the junction to the tile's edge in its own cross-section and
+  paint, its dashes kept in the tiles' world phase, and the tile renderer
+  draws nothing of that tile's road. Nothing the tile's own role earned — a
+  corner's sign, a straight's kerbside props, its lamp — stands on it, since
+  that role no longer says where its kerbs are; signs at such a junction come
+  with stage 6.
 - **Picking.** The road under the cursor is the nearest segment within its
   own half-width.
 

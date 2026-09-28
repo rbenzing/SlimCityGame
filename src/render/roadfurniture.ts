@@ -1815,14 +1815,23 @@ export class RoadFurnitureRenderer {
     this.heightAt = heightAt;
   }
 
-  /** Full rebuild from the current road tile set (roads change relatively rarely). */
-  rebuild(roadTiles: readonly FurnitureRoadTile[]): void {
+  /**
+   * Full rebuild from the current road tile set (roads change relatively
+   * rarely). `keepOff` holds tiles, keyed x·100 000 + z, where a road off the
+   * grid meets: the tile's own role — a corner, a straight — no longer says
+   * where its kerbs are, so nothing it earned is stood there.
+   */
+  rebuild(roadTiles: readonly FurnitureRoadTile[], keepOff?: ReadonlySet<number>): void {
     this.disposeMeshes();
 
-    this.manholes = computeManholePlacements(roadTiles);
-    this.boxes = computeBoxPlacements(roadTiles);
-    this.meters = computeMeterPlacements(roadTiles);
-    this.signs = computeSignPlacements(roadTiles);
+    const allowed = <T extends { x: number; z: number }>(placements: T[]): T[] =>
+      keepOff && keepOff.size > 0
+        ? placements.filter((p) => !keepOff.has(p.x * 100_000 + p.z))
+        : placements;
+    this.manholes = allowed(computeManholePlacements(roadTiles));
+    this.boxes = allowed(computeBoxPlacements(roadTiles));
+    this.meters = allowed(computeMeterPlacements(roadTiles));
+    this.signs = allowed(computeSignPlacements(roadTiles));
 
     if (this.manholes.length) {
       const mesh = new THREE.InstancedMesh(

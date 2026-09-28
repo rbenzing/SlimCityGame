@@ -14,10 +14,12 @@ import {
   segmentGeom,
   syncRoadLayers,
 } from '../world/roadnet';
-import { freeRoadLampStands, freeRoadSoup } from './freeroadmesh';
+import { TILE_METERS } from '../shared/constants';
+import { freeJunctionTiles, freeRoadLampStands, freeRoadSoup } from './freeroadmesh';
 import { lampLateralOffset } from './lamps';
 import {
   CURB_Y_OFFSET,
+  MARKING_COLOR,
   MARK_Y_OFFSET,
   ROAD_Y_OFFSET,
   SIDEWALK_COLOR,
@@ -201,7 +203,7 @@ describe('freeRoadSoup', () => {
     for (const t of yellow) expect(offsetFrom(g, seg!, t.centroid).side).toBe(-1);
   });
 
-  it('meets a grid road at its mouth without drawing along the grid road', () => {
+  it('draws a grid road it meets only inside the junction’s own tile, and all of it there', () => {
     const g = world();
     applyRoad(
       g,
@@ -211,10 +213,154 @@ describe('freeRoadSoup', () => {
     settle(g);
     lay(g, { a: centre(20, 20), b: at(520, 600) });
     const mouth = { x: 410, z: 410 };
-    for (const t of triangles(g)) {
-      const onGridRoad = Math.abs(t.centroid.z - mouth.z) < OUTER;
-      if (onGridRoad) expect(Math.abs(t.centroid.x - mouth.x)).toBeLessThan(40);
+    const tris = triangles(g);
+    const alongGridRoad = tris.filter(
+      (t) => Math.abs(t.centroid.z - mouth.z) < OUTER && t.centroid.z < mouth.z + HALF,
+    );
+    for (const t of alongGridRoad) {
+      expect(Math.abs(t.centroid.x - mouth.x)).toBeLessThanOrEqual(TILE_METERS / 2 + 1e-6);
     }
+    // Carried to both edges of the tile, where the tiles beside it take over.
+    const asphalt = alongGridRoad.filter((t) => Math.abs(t.y - ROAD_Y_OFFSET) < 1e-9);
+    expect(asphalt.some((t) => t.centroid.x < mouth.x - TILE_METERS / 2 + 1)).toBe(true);
+    expect(asphalt.some((t) => t.centroid.x > mouth.x + TILE_METERS / 2 - 1)).toBe(true);
+  });
+
+  it('lays the junction at road height, not over the kerb', () => {
+    const g = world();
+    applyRoad(
+      g,
+      Array.from({ length: 21 }, (_, i) => ({ x: 10 + i, z: 20 })),
+      RoadTier.TwoLane,
+    );
+    settle(g);
+    lay(g, { a: centre(20, 20), b: at(520, 600) });
+    const mouth = { x: 410, z: 410 };
+    const inJunction = triangles(g).filter(
+      (t) => Math.hypot(t.centroid.x - mouth.x, t.centroid.z - mouth.z) < HALF,
+    );
+    expect(inJunction.length).toBeGreaterThan(0);
+    for (const t of inJunction) expect(t.y).toBeLessThan(CURB_Y_OFFSET);
+  });
+
+  it('turns the edge lines round the kerb return between two grid roads a free road meets', () => {
+    // A grid corner, north and west, with a free road leaving it east.
+    const g = world();
+    applyRoad(
+      g,
+      Array.from({ length: 11 }, (_, i) => ({ x: 20, z: 10 + i })),
+      RoadTier.TwoLane,
+    );
+    applyRoad(
+      g,
+      Array.from({ length: 11 }, (_, i) => ({ x: 10 + i, z: 20 })),
+      RoadTier.TwoLane,
+    );
+    settle(g);
+    lay(g, { a: centre(20, 20), b: at(530, 370), control: at(470, 410) });
+    const white = triangles(g).filter(
+      (t) => sameColor(t.color, MARKING_COLOR) && Math.abs(t.y - MARK_Y_OFFSET) < 1e-9,
+    );
+    // The corner between the two grid roads lies up and to the left of the
+    // tile centre, clear of both roads' straight edge lines.
+    const inCorner = white.filter(
+      (t) =>
+        t.centroid.x < 410 - HALF + 0.5 &&
+        t.centroid.z < 410 - HALF + 0.5 &&
+        t.centroid.x > 400 &&
+        t.centroid.z > 400,
+    );
+    expect(inCorner.length).toBeGreaterThan(0);
+  });
+
+  it('leaves no gap between the junction and a curve leaving it', () => {
+    const g = world();
+    applyRoad(
+      g,
+      Array.from({ length: 11 }, (_, i) => ({ x: 20, z: 10 + i })),
+      RoadTier.TwoLane,
+    );
+    applyRoad(
+      g,
+      Array.from({ length: 11 }, (_, i) => ({ x: 10 + i, z: 20 })),
+      RoadTier.TwoLane,
+    );
+    settle(g);
+    lay(g, { a: centre(20, 20), b: at(530, 370), control: at(470, 410) });
+    const [seg] = freeSegs(g);
+    const all = freeRoadSoup(g.roads!, noCustom, flat).positions;
+    // Only what lies near the junction can cover the stretch out of it.
+    const q: number[] = [];
+    for (let i = 0; i < all.length; i += 9) {
+      if (Math.hypot(all[i]! - 410, all[i + 2]! - 410) < 30) q.push(...all.slice(i, i + 9));
+    }
+    const covered = (p: MPoint): boolean => {
+      for (let i = 0; i < q.length; i += 9) {
+        const ax = q[i]!;
+        const az = q[i + 2]!;
+        const bx = q[i + 3]!;
+        const bz = q[i + 5]!;
+        const cx = q[i + 6]!;
+        const cz = q[i + 8]!;
+        // A triangle with no area seen from above covers nothing.
+        if (Math.abs((bx - ax) * (cz - az) - (cx - ax) * (bz - az)) < 1e-9) continue;
+        const d1 = (p.x - bx) * (az - bz) - (ax - bx) * (p.z - bz);
+        const d2 = (p.x - cx) * (bz - cz) - (bx - cx) * (p.z - cz);
+        const d3 = (p.x - ax) * (cz - az) - (cx - ax) * (p.z - az);
+        const neg = d1 < 0 || d2 < 0 || d3 < 0;
+        const pos = d1 > 0 || d2 > 0 || d3 > 0;
+        if (!(neg && pos)) return true;
+      }
+      return false;
+    };
+    // Across the whole road, kerb to kerb, over the first stretch out of the
+    // junction, where the curve has already turned from its heading at the node.
+    const samples = sampleCentreLine(segmentGeom(g.roads!, seg!));
+    for (let s = 0.5; s < 16; s += 0.1) {
+      const k = samples.findIndex((q) => q.s > s);
+      const a = samples[k - 1]!;
+      const b = samples[k]!;
+      const f = (s - a.s) / (b.s - a.s);
+      const p = { x: a.x + (b.x - a.x) * f, z: a.z + (b.z - a.z) * f };
+      const len = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+      const nx = -(b.z - a.z) / len;
+      const nz = (b.x - a.x) / len;
+      for (let o = -OUTER + 0.1; o <= OUTER - 0.1; o += 0.25) {
+        const point = { x: p.x + nx * o, z: p.z + nz * o };
+        expect(covered(point), `s ${s.toFixed(1)} offset ${o.toFixed(2)}`).toBe(true);
+      }
+    }
+  });
+});
+
+describe('freeJunctionTiles', () => {
+  it('names the grid tile where a free road meets a grid road', () => {
+    const g = world();
+    applyRoad(
+      g,
+      Array.from({ length: 21 }, (_, i) => ({ x: 10 + i, z: 20 })),
+      RoadTier.TwoLane,
+    );
+    settle(g);
+    lay(g, { a: centre(20, 20), b: at(520, 600) });
+    expect(freeJunctionTiles(g.roads!, noCustom)).toEqual([{ x: 20, z: 20 }]);
+  });
+
+  it('names no tile for a junction of free roads alone, nor for roads all on the grid', () => {
+    const g = world();
+    const hub = at(400, 400);
+    lay(g, { a: hub, b: at(300, 300) });
+    lay(g, { a: hub, b: at(560, 360) });
+    lay(g, { a: hub, b: at(380, 600) });
+    expect(freeJunctionTiles(g.roads!, noCustom)).toEqual([]);
+    const grid = world();
+    applyRoad(
+      grid,
+      Array.from({ length: 10 }, (_, i) => ({ x: 5 + i, z: 5 })),
+      RoadTier.TwoLane,
+    );
+    settle(grid);
+    expect(freeJunctionTiles(grid.roads!, noCustom)).toEqual([]);
   });
 });
 

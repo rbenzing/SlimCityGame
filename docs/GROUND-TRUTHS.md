@@ -91,6 +91,15 @@ MUTCD citations below use 11th-edition section numbers.
   on dry, unbuilt ground at a road's slope. `planSegment` in
   `src/world/freeroads.ts` is the only place those are checked. —
   [road-network.md](world-sim/road-network.md); `src/shared/roadgeom.ts`
+- A grid tile where a road off the grid meets is drawn by one renderer only:
+  the free-road junction, whole, with each grid road carried to the tile's
+  edge. The tile renderer draws none of its road, and no furniture or lamp the
+  tile's own role earned stands on it. Drawn twice, the tile's old corner or
+  straight showed through the junction — its kerb across the new road's
+  mouth, its corner sign standing in the carriageway. —
+  [road-network.md](world-sim/road-network.md); `freeJunctionTiles` in
+  `src/render/freeroadmesh.ts`, `setFreeJunctionTiles` in
+  `src/render/roadsmesh.ts`
 - Never compare a stored `roadFlow` byte to a `RoadFlow` value directly:
   direction is the low three bits (`ROAD_FLOW_DIRECTION_MASK`), bit 3 marks a
   corridor half and bit 4 the half at the HIGH offset. —

@@ -629,6 +629,22 @@ describe('RoadFurnitureRenderer', () => {
     expect(counts.signs).toBeGreaterThan(0);
   });
 
+  it('stands nothing on a tile a road off the grid meets, and everything else as before', () => {
+    const grid = representativeGrid();
+    const signs = computeSignPlacements(grid);
+    const meters = computeMeterPlacements(grid);
+    const [first] = signs;
+    expect(first).toBeDefined();
+    const onTile = (p: { x: number; z: number }): boolean => p.x === first!.x && p.z === first!.z;
+
+    const renderer = new RoadFurnitureRenderer(new THREE.Scene(), flatHeightAt);
+    renderer.rebuild(grid, new Set([first!.x * 100_000 + first!.z]));
+    const counts = renderer.furnitureCounts();
+    expect(counts.signs).toBe(signs.filter((p) => !onTile(p)).length);
+    expect(counts.meters).toBe(meters.filter((p) => !onTile(p)).length);
+    expect(counts.manholes).toBe(computeManholePlacements(grid).filter((p) => !onTile(p)).length);
+  });
+
   it('adds one InstancedMesh per non-empty layer, sized to that layer count', () => {
     const scene = new THREE.Scene();
     const renderer = new RoadFurnitureRenderer(scene, flatHeightAt);
