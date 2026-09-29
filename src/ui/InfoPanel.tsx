@@ -47,6 +47,8 @@ function zoneDisplayName(entry: BuildingCatalogEntry | undefined): string {
       return 'High Density Commercial';
     case ZoneType.Industrial:
       return 'Industrial';
+    case ZoneType.Agriculture:
+      return 'Farm';
     default:
       break;
   }

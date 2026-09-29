@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { tileIndex } from '../shared/constants';
 import { BuildingState, FieldId, Problem, RoadTier, ZoneType } from '../shared/types';
-import type { BuildingCatalogEntry, DemandLevels, GridState } from '../shared/types';
+import type { BuildingCatalogEntry, DemandLevels, FarmKind, GridState } from '../shared/types';
+import { SoilGrade } from '../shared/soil';
 import { BuildingRegistry } from './buildings';
-import { GrowthSystem } from './growth';
+import { GrowthSystem, farmKindFor, lotGrade } from './growth';
 import { recomputeUtilities } from './network';
 import type { GrowthSupply, Rng } from './growth';
 import { createGrid } from '../world/grid';
@@ -954,5 +955,183 @@ describe('GrowthSystem: a grid too small for its city', () => {
     // Its lot is not rebuilt into the same shortage; it waits.
     expect(g.buildingId[tileIndex(20, 6)]).toBe(0);
     expect(growth.waitingFor(g, registry, supply)).toEqual({ power: 1, water: 0 });
+  });
+});
+
+describe('farms', () => {
+  const farmEntry = (
+    kind: FarmKind,
+    level: number,
+    w: number,
+    d: number,
+  ): BuildingCatalogEntry => ({
+    id: `farm-${kind}-${level}`,
+    name: `${kind} ${level}`,
+    category: 'ind',
+    zone: ZoneType.Agriculture,
+    level,
+    farm: kind,
+    footprint: { w, d },
+    height: 9,
+    color: 0x7a3a2c,
+    residents: 4,
+    jobs: level,
+    powerUse: 0.2 * level,
+    waterUse: 0,
+    cost: 0,
+    upkeep: 0,
+    unlockMilestone: 0,
+  });
+  const farmCatalog: BuildingCatalogEntry[] = [
+    farmEntry('crops', 1, 4, 5),
+    farmEntry('crops', 2, 5, 6),
+    farmEntry('orchard', 1, 4, 5),
+    farmEntry('orchard', 2, 5, 6),
+    farmEntry('pasture', 1, 4, 5),
+    farmEntry('pasture', 2, 5, 6),
+  ];
+  const wantsWork: DemandLevels = { res: 0, com: 0, ind: 0.8 };
+
+  /**
+   * Agriculture land of one grade at x 0..7, z 1..8, a dirt road along z = 0
+   * in front of it and power on the lot's first tile, (0, 1), which the first
+   * pass scans; no water anywhere.
+   */
+  function farmland(grade: SoilGrade = SoilGrade.Prime): GridState {
+    const g = makeGrid();
+    for (let x = 0; x < 8; x++) {
+      for (let z = 1; z <= 8; z++) {
+        g.zone[tileIndex(x, z)] = ZoneType.Agriculture;
+        g.soil[tileIndex(x, z)] = grade;
+      }
+      g.roadTier[tileIndex(x, 0)] = RoadTier.Gravel;
+    }
+    g.power[tileIndex(0, 1)] = 1;
+    return g;
+  }
+  const pave = (g: GridState): void => {
+    for (let x = 0; x < 8; x++) g.roadTier[tileIndex(x, 0)] = RoadTier.TwoLane;
+  };
+
+  const grow = (g: GridState, demand = wantsWork): BuildingRegistry => {
+    const registry = new BuildingRegistry(farmCatalog);
+    new GrowthSystem(farmCatalog, constantRng(0), alwaysTrue).tick(g, registry, demand, 0, 0);
+    return registry;
+  };
+
+  it('starts a farm off a dirt road with power, and no city water at all', () => {
+    const farms = grow(farmland()).all();
+    expect(farms).toHaveLength(1);
+    expect(farms[0]).toMatchObject({ catalogId: 'farm-crops-1', x: 0, z: 1 });
+  });
+
+  it.each([
+    ['row crops on very fertile land', SoilGrade.Prime, 'farm-crops-1'],
+    ['an orchard on fertile land', SoilGrade.Fertile, 'farm-orchard-1'],
+    ['pasture on somewhat fertile land', SoilGrade.Marginal, 'farm-pasture-1'],
+  ])('grows %s', (_label, grade, catalogId) => {
+    expect(grow(farmland(grade)).all()[0]?.catalogId).toBe(catalogId);
+  });
+
+  it('grows nothing on unfit land, even zoned', () => {
+    expect(grow(farmland(SoilGrade.Unfit)).all()).toHaveLength(0);
+  });
+
+  it('reads the kind from the grade at least half the lot reaches', () => {
+    const g = farmland(SoilGrade.Fertile);
+    // Half the 4×5 lot is prime, and half is as good as prime or better.
+    for (let z = 1; z <= 5; z++) {
+      for (let x = 0; x < 2; x++) g.soil[tileIndex(x, z)] = SoilGrade.Prime;
+    }
+    expect(lotGrade(g, 0, 1, 4, 5)).toBe(SoilGrade.Prime);
+    // One fewer, and the lot as a whole is only as good as fertile.
+    g.soil[tileIndex(0, 1)] = SoilGrade.Fertile;
+    expect(lotGrade(g, 0, 1, 4, 5)).toBe(SoilGrade.Fertile);
+  });
+
+  it('needs a dirt road: a paved street beside the land gives it no gate', () => {
+    const g = farmland();
+    pave(g);
+    expect(grow(g).all()).toHaveLength(0);
+  });
+
+  it('needs power, which a dirt road does not carry', () => {
+    const g = farmland();
+    g.power[tileIndex(0, 1)] = 0;
+    expect(grow(g).all()).toHaveLength(0);
+  });
+
+  it('needs its whole lot zoned Agriculture on farmable soil', () => {
+    const notZoned = farmland();
+    notZoned.zone[tileIndex(3, 5)] = ZoneType.None;
+    expect(grow(notZoned).all()).toHaveLength(0);
+
+    const rocky = farmland();
+    rocky.soil[tileIndex(3, 5)] = SoilGrade.Unfit;
+    expect(grow(rocky).all()).toHaveLength(0);
+  });
+
+  it('grows only while the town wants basic work', () => {
+    expect(grow(farmland(), { res: 1, com: 1, ind: 0 }).all()).toHaveLength(0);
+  });
+
+  it('reads a lost dirt road as no road, and never wants water', () => {
+    const g = farmland();
+    const registry = new BuildingRegistry(farmCatalog);
+    const farm = registry.place(g, farmCatalog[0]!, 0, 1, 0, BuildingState.Active)!;
+    pave(g);
+    new GrowthSystem(farmCatalog, constantRng(0.99), alwaysTrue).tick(g, registry, wantsWork, 0, 0);
+    expect(farm.problems & Problem.NoRoad).toBe(Problem.NoRoad);
+    expect(farm.problems & Problem.NoWater).toBe(0);
+  });
+
+  describe('growing larger', () => {
+    function standingFarm(
+      kind: FarmKind,
+      grade: SoilGrade,
+    ): { g: GridState; registry: BuildingRegistry } {
+      const g = farmland(grade);
+      const registry = new BuildingRegistry(farmCatalog);
+      const entry = farmCatalog.find((e) => e.farm === kind && e.level === 1)!;
+      registry.place(g, entry, 0, 1, 0, BuildingState.Active);
+      return { g, registry };
+    }
+    const levelUp = (g: GridState, registry: BuildingRegistry, demand = wantsWork): string[] => {
+      new GrowthSystem(farmCatalog, constantRng(0), alwaysTrue).tick(g, registry, demand, 0, 0);
+      return registry.all().map((b) => b.catalogId);
+    };
+
+    it('takes more land of its own grade and stays the same kind of farm', () => {
+      const { g, registry } = standingFarm('orchard', SoilGrade.Prime);
+      expect(levelUp(g, registry)).toContain('farm-orchard-2');
+    });
+
+    it('never grows onto land poorer than its kind needs', () => {
+      // A crop farm whose land has since been reshaped into rolling ground.
+      const { g, registry } = standingFarm('crops', SoilGrade.Fertile);
+      expect(levelUp(g, registry)).toEqual(['farm-crops-1']);
+    });
+
+    it('never grows onto land outside the Agriculture zone', () => {
+      const { g, registry } = standingFarm('pasture', SoilGrade.Marginal);
+      g.zone[tileIndex(4, 6)] = ZoneType.ResLow;
+      expect(levelUp(g, registry)).toEqual(['farm-pasture-1']);
+    });
+
+    it('grows only while the town wants more basic work, whatever the land value', () => {
+      const { g, registry } = standingFarm('pasture', SoilGrade.Marginal);
+      g.fields[FieldId.LandValue]!.fill(255);
+      expect(levelUp(g, registry, { res: 1, com: 1, ind: 0 })).toEqual(['farm-pasture-1']);
+      expect(levelUp(g, registry)).toEqual(['farm-pasture-2']);
+    });
+  });
+});
+
+describe('farmKindFor', () => {
+  it('reads the kind a grade of soil grows', () => {
+    expect(farmKindFor(SoilGrade.Prime)).toBe('crops');
+    expect(farmKindFor(SoilGrade.Fertile)).toBe('orchard');
+    expect(farmKindFor(SoilGrade.Marginal)).toBe('pasture');
+    expect(farmKindFor(SoilGrade.Unfit)).toBeNull();
   });
 });

@@ -16,7 +16,8 @@
  * {@link ../world/zonable.ts} (standard perpendicular-frontage marching,
  * depth 4, stopping at the first blocking cell, never off a dangling road
  * end) — this module just re-exports it applied to a `ZoneGridSource`, so the
- * grid matches world/grid.ts's zone-painting gate exactly.
+ * grid matches world/grid.ts's zone-painting gate exactly. With the
+ * Agriculture tool in hand it shows farmland instead, by the same gate.
  *
  *  - `rebuild(grid)`: recomputes the zonable-tile fill + boundary-line
  *    layers from a grid snapshot. Pure selection logic lives in
@@ -40,6 +41,7 @@ import { ZoneType, type ZonePatch } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import {
   computeZonableTiles as computeZonableTilesFrontage,
+  zonableTilesFor,
   type ZonableGridSource,
 } from '../world/zonable';
 
@@ -96,6 +98,9 @@ const RCI_IND_RGB = hexToRgb01(0xe3a44a);
 const RCI_RES_MEDIUM_ROW_RGB = hexToRgb01(0x4fae62);
 const RCI_RES_MEDIUM_RGB = hexToRgb01(0x8fd66a);
 const RCI_MIXED_RGB = hexToRgb01(0x3fc9a8);
+// Farmland — a wheat-field olive, between the industrial amber its jobs count
+// as and the green of the land it is.
+const RCI_FARM_RGB = hexToRgb01(0xa4b04a);
 
 /** RCI tint color for a painted zone, or null for ZoneType.None (unpainted —
  * not drawn on the tint layer). Pure and exported for tests. */
@@ -115,6 +120,8 @@ export function zoneTintColor(zone: ZoneType): readonly [number, number, number]
       return RCI_COM_RGB;
     case ZoneType.Industrial:
       return RCI_IND_RGB;
+    case ZoneType.Agriculture:
+      return RCI_FARM_RGB;
     default:
       return null;
   }
@@ -283,6 +290,8 @@ export class ZoneGridRenderer {
   private gridSize = 0;
   /** Cached last-known zone byte per tile (z*size+x), fed by applyZonePatches. */
   private zoneCache = new Uint8Array(0);
+  /** The zone the tool in hand paints, whose land the grid shows. */
+  private paintZone: ZoneType = ZoneType.None;
 
   constructor(scene: THREE.Scene, heightAt: HeightSampler) {
     this.heightAt = heightAt;
@@ -333,7 +342,7 @@ export class ZoneGridRenderer {
     }
     this.gridSize = grid.size;
 
-    const tiles = computeZonableTiles(grid);
+    const tiles = zonableTilesFor(grid, this.paintZone);
 
     const fillPositions: number[] = [];
     for (const tile of tiles) {
@@ -346,6 +355,17 @@ export class ZoneGridRenderer {
       pushEdgeStrip(linePositions, this.heightAt, edge);
     }
     this.setGeometry(this.lineMesh, linePositions);
+  }
+
+  /**
+   * The zone the tool in hand paints. Farmland and every other zone are
+   * reached differently, so switching between them rebuilds the grid from
+   * `grid`; switching within either keeps it.
+   */
+  setPaintZone(zone: ZoneType, grid: ZoneGridSource): void {
+    const wasFarm = this.paintZone === ZoneType.Agriculture;
+    this.paintZone = zone;
+    if (wasFarm !== (zone === ZoneType.Agriculture)) this.rebuild(grid);
   }
 
   /** Shows/hides the zonable grid (fill + lines) and the painted-zone tint layer together. */

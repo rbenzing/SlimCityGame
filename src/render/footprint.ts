@@ -13,6 +13,33 @@ import { TILE_METERS } from '../shared/constants';
  * meters; `tileX`/`tileZ` are the footprint's origin tile and `w`/`d` its size
  * in tiles.
  */
+/**
+ * Highest terrain height (world meters) under a world-metre rectangle that
+ * need not fall on tile lines — a barn standing somewhere on its lot. The
+ * surface is piecewise-linear across each tile, so its maximum over the
+ * rectangle lies on a tile corner inside it or on the rectangle's own edge;
+ * sampling both every tile line and every metre of the edge finds it.
+ */
+export function maxHeightOverRect(
+  heightAt: (x: number, z: number) => number,
+  x0: number,
+  z0: number,
+  x1: number,
+  z1: number,
+): number {
+  const lines = (a: number, b: number): number[] => {
+    const out = [a, b];
+    for (let t = Math.ceil(a / TILE_METERS) * TILE_METERS; t < b; t += TILE_METERS) out.push(t);
+    for (let t = Math.ceil(a); t < b; t += 1) out.push(t);
+    return out;
+  };
+  let max = -Infinity;
+  for (const x of lines(x0, x1)) {
+    for (const z of lines(z0, z1)) max = Math.max(max, heightAt(x, z));
+  }
+  return max;
+}
+
 export function maxHeightOverFootprint(
   heightAt: (x: number, z: number) => number,
   tileX: number,

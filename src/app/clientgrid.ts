@@ -9,7 +9,8 @@
  * ({size, roadTier, water, zone, buildingId, height, roads, roadFootprint}),
  * so the zoning grid reads the same frontage zone painting does.
  */
-import { TILE_METERS, worldToTile } from '../shared/constants';
+import { SEA_LEVEL, TILE_METERS, worldToTile } from '../shared/constants';
+import { regradeSoil, soilGrades } from '../shared/soil';
 import { corridorHalfOf, flowDirection, RoadFlow, RoadTier } from '../shared/types';
 import { approachZoneTiles, armSlot } from '../shared/approach';
 import {
@@ -86,6 +87,10 @@ export class ClientGridMirror {
   readonly roadFootprint: Uint8Array;
   /** The arms of each road held apart from the road beside it (see GridState.roadSeparate). */
   readonly roadSeparate: Uint8Array;
+  /** Each tile's SoilGrade, graded here from the mirror's own heights exactly as the worker grades its own. */
+  readonly soil: Uint8Array;
+  /** The map seed the soil's stony patches are hashed from. */
+  private readonly seed: number;
 
   /** building id ->the tile indices its footprint was stamped onto. */
   private readonly footprints = new Map<number, number[]>();
@@ -98,8 +103,9 @@ export class ClientGridMirror {
    */
   private junctionControls = new Map<number, JunctionSnapshot>();
 
-  constructor(map: MapData) {
+  constructor(map: MapData, seed = 0) {
     this.size = map.size;
+    this.seed = seed;
     const n = map.size * map.size;
     this.height = map.height.slice();
     this.water = map.water.slice();
@@ -115,6 +121,7 @@ export class ClientGridMirror {
     this.buildingId = new Uint32Array(n);
     this.roadFootprint = new Uint8Array(n);
     this.roadSeparate = new Uint8Array(n);
+    this.soil = soilGrades(this, seed);
   }
 
   /**
@@ -533,7 +540,8 @@ export class ClientGridMirror {
    * flattened terrain — notably ZoneGridRenderer.rebuild's slope-buildable
    * check, which reads this.height. Same {x,z,w,h,heights} shape as
    * terraform's HeightPatch and SimSnapshot.heightPatches; cells outside the
-   * grid are skipped rather than throwing.
+   * grid are skipped rather than throwing. Water and soil follow the new
+   * heights exactly as the worker's do.
    */
   applyHeightPatches(
     patches: readonly { x: number; z: number; w: number; h: number; heights: Float32Array }[],
@@ -547,9 +555,12 @@ export class ClientGridMirror {
           const x = patch.x + col;
           if (x < 0 || x >= this.size) continue;
           const v = patch.heights[rowBase + col];
-          if (v !== undefined) this.height[this.idx(x, z)] = v;
+          if (v === undefined) continue;
+          this.height[this.idx(x, z)] = v;
+          this.water[this.idx(x, z)] = v < SEA_LEVEL ? 1 : 0;
         }
       }
+      regradeSoil(this, this.seed, patch.x, patch.z, patch.w, patch.h);
     }
   }
 

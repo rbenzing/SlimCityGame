@@ -43,6 +43,12 @@ is the frame; the nine below are its epics, in the order they are built.
 | 7   | [transport-depots.md](transport-depots.md)                   | Somewhere a line's vehicles come from                     |
 | 8   | [parks-and-recreation.md](parks-and-recreation.md)           | Recreation as a service with a standard, not a sticker    |
 
+Outside the programme:
+
+| Document             | What it adds                                              |
+| -------------------- | --------------------------------------------------------- |
+| [farms.md](farms.md) | Farmland off dirt roads, on soil the ground itself grades |
+
 The features built before this folder existed have no design document; their
 behaviour is described in the specs and their delivery in
 [../../ROADMAP.md](../../ROADMAP.md).

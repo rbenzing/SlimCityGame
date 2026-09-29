@@ -14,12 +14,14 @@
  * covered over many passes rather than rescanned every time.
  */
 import { inBounds, tileIndex } from '../shared/constants';
-import { BuildingState, FieldId, Problem, ZoneType, isStreetTier } from '../shared/types';
+import { BuildingState, FieldId, Problem, RoadTier, ZoneType, isStreetTier } from '../shared/types';
+import { SoilGrade, isFarmable } from '../shared/soil';
 import type {
   BuildingCatalogEntry,
   BuildingDelta,
   BuildingInstance,
   DemandLevels,
+  FarmKind,
   GridState,
   GrowthWaiting,
   Sector,
@@ -74,11 +76,95 @@ function zoneSector(zone: ZoneType): Sector | null {
     case ZoneType.ComLow:
     case ZoneType.ComHigh:
       return 'com';
+    // A farm's jobs are the basic jobs a small town lives by, like a mill's.
     case ZoneType.Industrial:
+    case ZoneType.Agriculture:
       return 'ind';
     default:
       return null;
   }
+}
+
+/** The soil a farm kind needs under its land: crops the best, pasture anything farmable. */
+const FARM_GRADE: Readonly<Record<FarmKind, SoilGrade>> = {
+  crops: SoilGrade.Prime,
+  orchard: SoilGrade.Fertile,
+  pasture: SoilGrade.Marginal,
+};
+
+/** The kind of farm a lot's soil grows, or null where it grows none. */
+export function farmKindFor(grade: SoilGrade): FarmKind | null {
+  if (grade >= SoilGrade.Prime) return 'crops';
+  if (grade >= SoilGrade.Fertile) return 'orchard';
+  if (grade >= SoilGrade.Marginal) return 'pasture';
+  return null;
+}
+
+/** How likely a farm is to start on a lot, by the lot's soil, in place of land value. */
+const FARM_DESIRABILITY: Readonly<Record<SoilGrade, number>> = {
+  [SoilGrade.Unfit]: 0,
+  [SoilGrade.Marginal]: 0.6,
+  [SoilGrade.Fertile]: 0.8,
+  [SoilGrade.Prime]: 1,
+};
+
+/** The grade at least half the w×d lot at (x, z) reaches. */
+export function lotGrade(g: GridState, x: number, z: number, w: number, d: number): SoilGrade {
+  const counts = [0, 0, 0, 0];
+  const tiles = footprintTiles(x, z, w, d);
+  for (const idx of tiles) {
+    const grade = readTile(g.soil, idx);
+    counts[grade] = (counts[grade] ?? 0) + 1;
+  }
+  let reached = 0;
+  for (let grade = SoilGrade.Prime; grade > SoilGrade.Unfit; grade--) {
+    reached += counts[grade] ?? 0;
+    if (reached * 2 >= tiles.length) return grade as SoilGrade;
+  }
+  return SoilGrade.Unfit;
+}
+
+/** Every tile of the lot on the map, zoned Agriculture and on soil a farm can work. */
+function isFarmLot(g: GridState, x: number, z: number, w: number, d: number): boolean {
+  for (let dz = 0; dz < d; dz++) {
+    for (let dx = 0; dx < w; dx++) {
+      if (!inBounds(x + dx, z + dz)) return false;
+      const idx = tileIndex(x + dx, z + dz);
+      if (readTile(g.zone, idx) !== ZoneType.Agriculture) return false;
+      if (!isFarmable(readTile(g.soil, idx))) return false;
+    }
+  }
+  return true;
+}
+
+/** A dirt road — the only road a farm's gate opens onto — within `radius` of the lot. */
+function hasNearbyDirtRoad(
+  g: GridState,
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+  radius: number,
+): boolean {
+  const cells = g.roads ? roadCellsOf(g) : null;
+  for (let tz = z - radius; tz < z + d + radius; tz++) {
+    for (let tx = x - radius; tx < x + w + radius; tx++) {
+      if (!inBounds(tx, tz)) continue;
+      const out = Math.max(x - tx, 0, tx - (x + w - 1)) + Math.max(z - tz, 0, tz - (z + d - 1));
+      if (out > radius) continue;
+      const idx = tileIndex(tx, tz);
+      if (readTile(g.roadTier, idx) === RoadTier.Gravel) return true;
+      if (cells && freeCellsOn(cells, idx).some((c) => cells.tier[c] === RoadTier.Gravel)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** Whether a building needs the city's water: a farm pumps its own well. */
+function needsWater(entry: BuildingCatalogEntry): boolean {
+  return entry.waterUse > 0;
 }
 
 /** Safe read of a possibly-out-of-range typed array slot (noUncheckedIndexedAccess). */
@@ -236,16 +322,21 @@ function computeProblems(
   g: GridState,
   x: number,
   z: number,
-  sector: Sector | null,
+  entry: BuildingCatalogEntry,
   demandForSector: number,
   w = 1,
   d = 1,
 ): number {
   const idx = tileIndex(x, z);
+  const sector = entry.zone === undefined ? null : zoneSector(entry.zone);
+  const reached =
+    entry.farm !== undefined
+      ? hasNearbyDirtRoad(g, x, z, w, d, ROAD_CHECK_RADIUS)
+      : hasNearbyRoad(g, x, z, ROAD_CHECK_RADIUS);
   let problems = 0;
   if (!footprintServed(g.power, x, z, w, d)) problems |= Problem.NoPower;
-  if (!footprintServed(g.watered, x, z, w, d)) problems |= Problem.NoWater;
-  if (!hasNearbyRoad(g, x, z, ROAD_CHECK_RADIUS)) problems |= Problem.NoRoad;
+  if (needsWater(entry) && !footprintServed(g.watered, x, z, w, d)) problems |= Problem.NoWater;
+  if (!reached) problems |= Problem.NoRoad;
   if (fieldAt(g, FieldId.Crime, idx) > HIGH_CRIME) problems |= Problem.HighCrime;
   if (sector === 'res' && fieldAt(g, FieldId.Pollution, idx) > HIGH_POLLUTION)
     problems |= Problem.HighPollution;
@@ -338,7 +429,7 @@ export class GrowthSystem {
       this.forgetStaleWaits(pass);
       this.processProblemsAndAbandonment(g, registry, demand, supply, removed, updated);
       this.flagUnservedUtilities(g, registry, updated);
-      this.runLevelUps(g, registry, milestoneLevel, pass, spare, added, removed);
+      this.runLevelUps(g, registry, demand, milestoneLevel, pass, spare, added, removed);
       this.runSpawnScan(g, registry, demand, milestoneLevel, pass, spare, added);
     }
 
@@ -442,7 +533,7 @@ export class GrowthSystem {
       const demandForSector = sector ? demand[sector] : 0;
       const footprint = footprintForRotation(entry, inst.rotation);
       const newProblems =
-        computeProblems(g, inst.x, inst.z, sector, demandForSector, footprint.w, footprint.d) |
+        computeProblems(g, inst.x, inst.z, entry, demandForSector, footprint.w, footprint.d) |
         shortageOf(supply, inst.id);
       const hasBlocker = (newProblems & (Problem.NoPower | Problem.NoWater | Problem.NoRoad)) !== 0;
 
@@ -520,6 +611,7 @@ export class GrowthSystem {
   private runLevelUps(
     g: GridState,
     registry: BuildingRegistry,
+    demand: DemandLevels,
     milestoneLevel: number,
     pass: number,
     spare: Spare,
@@ -530,13 +622,25 @@ export class GrowthSystem {
       if (inst.state !== BuildingState.Active || inst.level >= 3) continue;
       const entry = this.catalogIndex.get(inst.catalogId);
       if (!entry || entry.zone === undefined) continue;
-      this.tryLevelUp(g, registry, milestoneLevel, pass, spare, inst, entry, added, removed);
+      this.tryLevelUp(
+        g,
+        registry,
+        demand,
+        milestoneLevel,
+        pass,
+        spare,
+        inst,
+        entry,
+        added,
+        removed,
+      );
     }
   }
 
   private tryLevelUp(
     g: GridState,
     registry: BuildingRegistry,
+    demand: DemandLevels,
     milestoneLevel: number,
     pass: number,
     spare: Spare,
@@ -553,9 +657,18 @@ export class GrowthSystem {
     if (!sector) return false;
 
     const targetLevel = inst.level + 1;
-    if (!meetsLevelUpRequirement(g, inst.x, inst.z, sector, targetLevel)) return false;
+    const farm = entry.farm;
+    // A farm grows by taking more land while the town wants more basic work;
+    // land value, which pushes real farms out, plays no part.
+    if (farm === undefined) {
+      if (!meetsLevelUpRequirement(g, inst.x, inst.z, sector, targetLevel)) return false;
+    } else if (demand.ind <= 0) {
+      return false;
+    }
 
-    const nextEntry = this.catalog.find((e) => e.zone === zone && e.level === targetLevel);
+    const nextEntry = this.catalog.find(
+      (e) => e.zone === zone && e.level === targetLevel && e.farm === farm,
+    );
     if (!nextEntry || nextEntry.unlockMilestone > milestoneLevel) return false;
 
     const { x, z, rotation } = inst;
@@ -567,12 +680,19 @@ export class GrowthSystem {
     clearStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
     const fits =
       this.canPlace(g, x, z, newFootprint.w, newFootprint.d) &&
-      footprintFree(g, x, z, newFootprint.w, newFootprint.d);
+      footprintFree(g, x, z, newFootprint.w, newFootprint.d) &&
+      (farm === undefined ||
+        (isFarmLot(g, x, z, newFootprint.w, newFootprint.d) &&
+          lotGrade(g, x, z, newFootprint.w, newFootprint.d) >= FARM_GRADE[farm]));
     // A bigger building draws more, and nobody builds it on a grid that
     // cannot carry the difference.
     const power = utilityUnits(nextEntry.powerUse) - utilityUnits(entry.powerUse);
     const water = utilityUnits(nextEntry.waterUse) - utilityUnits(entry.waterUse);
-    if (!fits || !this.suppliedFor(waitKey, [], pass, spare, power, water)) {
+    if (
+      !fits ||
+      !this.suppliedFor(waitKey, [], pass, spare, power, water) ||
+      (farm !== undefined && this.rng.next() >= demand.ind)
+    ) {
       writeStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
       return false;
     }
@@ -617,6 +737,10 @@ export class GrowthSystem {
 
       const x = flat % size;
       const z = Math.floor(flat / size);
+      if (zone === ZoneType.Agriculture) {
+        this.trySpawnFarm(g, registry, demand, milestoneLevel, pass, spare, added, x, z);
+        continue;
+      }
       if (!hasNearbyRoad(g, x, z, ROAD_CHECK_RADIUS)) continue;
 
       const entry = this.catalog.find(
@@ -628,28 +752,106 @@ export class GrowthSystem {
       if (!this.canPlace(g, x, z, w, d)) continue;
       // Service is judged over the whole lot, so it cannot depend on which
       // side of the building the street happens to sit (see footprintServed).
-      if (!footprintServed(g.power, x, z, w, d) || !footprintServed(g.watered, x, z, w, d)) {
+      if (
+        !footprintServed(g.power, x, z, w, d) ||
+        (needsWater(entry) && !footprintServed(g.watered, x, z, w, d))
+      ) {
         continue;
       }
 
       const demandForSector = demand[sector];
       if (demandForSector <= 0) continue;
       const desirability = desirabilityFor(g, x, z, sector);
-      const probability = demandForSector * desirability;
-      if (probability <= 0) continue;
-      // Nobody moves into a home the grid cannot light or water.
-      const power = utilityUnits(entry.powerUse);
-      const water = utilityUnits(entry.waterUse);
-      const lot = footprintTilesAt(x, z, w, d);
-      if (!this.suppliedFor(flat, lot, pass, spare, power, water)) continue;
-      if (this.rng.next() >= probability) continue;
-
-      const placed = registry.place(g, entry, x, z, 0, BuildingState.Constructing);
-      if (!placed) continue;
-      spare.power -= power;
-      spare.water -= water;
-      this.constructing.set(placed.id, CONSTRUCTION_TICKS);
-      added.push(placed);
+      this.spawnIfSupplied(
+        g,
+        registry,
+        entry,
+        x,
+        z,
+        demandForSector * desirability,
+        pass,
+        spare,
+        added,
+      );
     }
+  }
+
+  /**
+   * A farm on the lot at (x, z): every tile of it Agriculture land a farm can
+   * work, a dirt road within reach and power on it — never city water, which
+   * a farm does without. Its soil decides the kind and how likely it is.
+   */
+  private trySpawnFarm(
+    g: GridState,
+    registry: BuildingRegistry,
+    demand: DemandLevels,
+    milestoneLevel: number,
+    pass: number,
+    spare: Spare,
+    added: BuildingInstance[],
+    x: number,
+    z: number,
+  ): void {
+    if (demand.ind <= 0) return;
+    const first = this.catalog.find(
+      (e) =>
+        e.zone === ZoneType.Agriculture && e.level === 1 && e.unlockMilestone <= milestoneLevel,
+    );
+    if (!first) return;
+    const { w, d } = footprintForRotation(first, 0);
+    if (!isFarmLot(g, x, z, w, d) || !this.canPlace(g, x, z, w, d)) return;
+    if (!hasNearbyDirtRoad(g, x, z, w, d, ROAD_CHECK_RADIUS)) return;
+    if (!footprintServed(g.power, x, z, w, d)) return;
+
+    const grade = lotGrade(g, x, z, w, d);
+    const kind = farmKindFor(grade);
+    const entry = this.catalog.find(
+      (e) =>
+        e.zone === ZoneType.Agriculture &&
+        e.level === 1 &&
+        e.farm === kind &&
+        e.unlockMilestone <= milestoneLevel,
+    );
+    if (!entry) return;
+    this.spawnIfSupplied(
+      g,
+      registry,
+      entry,
+      x,
+      z,
+      demand.ind * FARM_DESIRABILITY[grade],
+      pass,
+      spare,
+      added,
+    );
+  }
+
+  /** Starts `entry` at (x, z) with `probability`, if the grid can carry what it draws. */
+  private spawnIfSupplied(
+    g: GridState,
+    registry: BuildingRegistry,
+    entry: BuildingCatalogEntry,
+    x: number,
+    z: number,
+    probability: number,
+    pass: number,
+    spare: Spare,
+    added: BuildingInstance[],
+  ): void {
+    if (probability <= 0) return;
+    const { w, d } = footprintForRotation(entry, 0);
+    // Nobody moves into a home the grid cannot light or water.
+    const power = utilityUnits(entry.powerUse);
+    const water = utilityUnits(entry.waterUse);
+    const lot = footprintTilesAt(x, z, w, d);
+    if (!this.suppliedFor(tileIndex(x, z), lot, pass, spare, power, water)) return;
+    if (this.rng.next() >= probability) return;
+
+    const placed = registry.place(g, entry, x, z, 0, BuildingState.Constructing);
+    if (!placed) return;
+    spare.power -= power;
+    spare.water -= water;
+    this.constructing.set(placed.id, CONSTRUCTION_TICKS);
+    added.push(placed);
   }
 }

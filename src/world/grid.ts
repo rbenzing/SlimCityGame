@@ -14,7 +14,7 @@ import {
   type GridState,
   type TilePoint,
 } from '../shared/types';
-import { isZonable } from './zonable';
+import { zonableMaskFor } from './zonable';
 
 // ---------------------------------------------------------------------------
 // Indexing helpers. Deliberately NOT the fixed-MAP_SIZE helpers from
@@ -76,6 +76,7 @@ export function createGrid(size?: number): GridState {
     overElevation: new Float32Array(n),
     roadFootprint: new Uint8Array(n),
     roadSeparate: new Uint8Array(n),
+    soil: new Uint8Array(n),
   };
 }
 
@@ -474,6 +475,8 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
     // Derived from the road network, which the caller derives them from.
     roadFootprint: new Uint8Array(n),
     roadSeparate: new Uint8Array(n),
+    // Derived from the terrain and the seed, which the caller grades it from.
+    soil: new Uint8Array(n),
   };
 }
 
@@ -609,15 +612,17 @@ export function hasAdjacentTier(
 /**
  * Paints `zone` onto every tile in `tiles` that is buildable, free of a
  * road, and (unless the request is a de-zone, i.e. zone === ZoneType.None)
- * free of a building AND within road frontage per isZonable
+ * free of a building AND within road frontage per computeZonableMask
  * (world/zonable.ts) — a buildable, road-free tile with no
  * qualifying road frontage cannot be painted. A de-zone is exempt from the
  * frontage requirement: a zone can always be cleared, even from a tile that
- * is no longer (or was never) reachable from a road. Returns exactly the
- * tiles that were actually applied.
+ * is no longer (or was never) reachable from a road. Agriculture is gated
+ * on farmland instead (zonableMaskFor). Returns exactly the tiles that were
+ * actually applied.
  */
 export function setZones(g: GridState, tiles: TilePoint[], zone: ZoneType): TilePoint[] {
   const applied: TilePoint[] = [];
+  const zonable = zone === ZoneType.None ? null : zonableMaskFor(g, zone);
 
   for (const t of tiles) {
     const { x, z } = t;
@@ -627,7 +632,7 @@ export function setZones(g: GridState, tiles: TilePoint[], zone: ZoneType): Tile
     if (g.roadTier[i] !== RoadTier.None) continue;
     if (g.roadFootprint[i] === 1 && zone !== ZoneType.None) continue;
     if (g.buildingId[i] !== 0 && zone !== ZoneType.None) continue;
-    if (zone !== ZoneType.None && !isZonable(g, x, z)) continue;
+    if (zonable && zonable[i] !== 1) continue;
 
     g.zone[i] = zone;
     applied.push({ x, z });

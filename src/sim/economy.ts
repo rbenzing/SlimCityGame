@@ -148,8 +148,9 @@ export class EconomySystem {
       if (!spec) continue;
       const open = b.state === BuildingState.Active;
       const tally = open ? jobs : pipeline;
+      // Whoever lives in it, whatever it is: a farm's family live on the farm.
+      if (open) population += spec.residents ?? 0;
       if (spec.category === 'res') {
-        if (open) population += spec.residents ?? 0;
         // Mixed housing: a res-category building may carry
         // commercial ground-floor jobs. Count those into commercial jobs so
         // they reach CityStats.jobs / employed / commercial tax income. Pure

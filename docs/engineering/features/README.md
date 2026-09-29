@@ -71,3 +71,11 @@ Only epic 5 needs a version bump, and only to rescale a unit it finds wrong —
 everything else is a field that may be absent. That is the programme's rule
 working: a save written before an epic loads after it, with the new service
 missing rather than the file rejected.
+
+Outside the programme:
+
+| Document             | Save format | Worker protocol |
+| -------------------- | ----------- | --------------- |
+| [farms.md](farms.md) | no          | no              |
+
+Farms add a zone and derive the soil it grows on, so neither contract moves.

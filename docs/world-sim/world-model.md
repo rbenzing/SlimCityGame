@@ -71,9 +71,46 @@ exact prior heights rather than re-running the tool.
 
 Editing terrain re-derives, for the edited region: the water mask (any tile
 whose height drops below sea level becomes water), tree clearing on newly
-submerged tiles, and buildability. Digging below sea level therefore floods
-the hole with no separate mechanism — lakes and canals are simply terrain
-dug low enough for the derived water mask to claim.
+submerged tiles, buildability and the [soil](#soil) of the region and the
+ring of tiles around it. Digging below sea level therefore floods the hole
+with no separate mechanism — lakes and canals are simply terrain dug low
+enough for the derived water mask to claim. The render thread's mirror
+re-derives its own water and soil from the same height patches, so what it
+shows and what the worker rules agree.
+
+## Soil
+
+Every tile has a soil grade for farming, derived — like water — and never
+saved. One function (`soilGradeAt` in `src/shared/soil.ts`) grades a tile
+from its height, the water beside it and the map seed. The worker, the render
+thread's mirror, the Soil lens, farmland painting and farm growth all read
+it. A save carries no soil and loads with its soil worked out again.
+
+The grades follow the USDA land capability classes, checked in order:
+
+1. **Unfit** — open water, or a tile orthogonally beside it: the wet shore,
+   which floods.
+2. **Unfit** — land below `SEA_LEVEL + SAND_BAND_METERS` (3 m): the beach.
+   The terrain draws the same band as sand.
+3. By the slope, the largest height step to an orthogonal neighbour over the
+   20 m tile, which is the measure buildability uses:
+   - over `MAX_BUILD_SLOPE` (4 m, 20%) is **Unfit** — rock, where the terrain
+     draws rock;
+   - over `FERTILE_MAX_SLOPE` (12%) is **Somewhat fertile** (`Marginal`),
+     pasture land;
+   - over `PRIME_MAX_SLOPE` (6%) is **Fertile**, orchard slopes;
+   - anything flatter is **Very fertile** (`Prime`), cropland.
+4. **Stony ground** is somewhat fertile at best, whatever its slope: the
+   shallow, stony soil of the capability "s" subclass. Stony patches are
+   smoothed value noise on a 6-tile lattice hashed from the seed, and cover
+   about one tile in six.
+
+On a generated map, about two-thirds of the land grades very fertile, a
+sixth somewhat fertile, a tenth fertile, and the rest unfit. Terraforming
+reshapes soil with the ground: a raised beach is no longer a beach, and a
+levelled hillside becomes cropland. Only a new farm or a level-up reads the
+grade, so a standing farm keeps its kind. The sources and the reasoning are
+in [farms.md](../game-design/features/farms.md).
 
 ## Water
 

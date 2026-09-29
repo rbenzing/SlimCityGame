@@ -14,7 +14,9 @@ milestone. Demand is the sum of the catalog `powerUse`/`waterUse` of every
 building the network reaches — abandoned ones included, since they keep their
 place in line (see [Brownouts](#brownouts)) — and of nothing it does not
 reach, which draws nothing. It is recomputed with supply on every utility
-pass.
+pass. A building whose catalog entry draws no water — a farm, which pumps its
+own well — needs none: it is never held back or flagged `NoWater` for the
+want of a pipe.
 
 Supply is a single city-wide total and **every generator counts towards it,
 connected or not**. That is deliberate — it keeps supply a property of what

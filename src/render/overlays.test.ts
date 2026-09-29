@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { FieldId, type ZonePatch } from '../shared/types';
 import { MAP_SIZE } from '../shared/constants';
-import { coverageColor, OverlayRenderer, rampColor } from './overlays';
+import { coverageColor, OverlayRenderer, rampColor, soilColor } from './overlays';
+import { SoilGrade } from '../shared/soil';
 
 describe('rampColor', () => {
   it('is blue-dominant at 0 and red-dominant at 255', () => {
@@ -113,6 +114,23 @@ describe('OverlayRenderer', () => {
     expect(bytes[4]).toBe(Math.round(high[0] * 255));
   });
 
+  it('paints the Soil lens one colour per grade from the soil it was handed, and repaints it when told', () => {
+    const scene = new THREE.Scene();
+    const overlay = new OverlayRenderer(scene);
+    const soil = new Uint8Array(MAP_SIZE * MAP_SIZE);
+    soil[1] = SoilGrade.Prime;
+    overlay.setSoil(soil);
+    overlay.setActive('soil');
+    expect(scene.children[0]!.visible).toBe(true);
+    const bytes = getTextureData(scene);
+    expect(bytes[0]).toBe(Math.round(soilColor(SoilGrade.Unfit)[0] * 255));
+    expect(bytes[5]).toBe(Math.round(soilColor(SoilGrade.Prime)[1] * 255));
+
+    soil[1] = SoilGrade.Marginal;
+    overlay.setSoil(soil);
+    expect(getTextureData(scene)[4]).toBe(Math.round(soilColor(SoilGrade.Marginal)[0] * 255));
+  });
+
   it('switching active field back and forth does not throw and toggles visibility correctly', () => {
     const scene = new THREE.Scene();
     const overlay = new OverlayRenderer(scene);
@@ -121,6 +139,19 @@ describe('OverlayRenderer', () => {
     overlay.setActive(null);
     overlay.setActive(FieldId.Crime);
     expect(scene.children[0]!.visible).toBe(true);
+  });
+});
+
+describe('soilColor', () => {
+  it('gives each grade its own colour, and reads anything unknown as unfit', () => {
+    const colours = [0, 1, 2, 3].map((g) => soilColor(g).join());
+    expect(new Set(colours).size).toBe(4);
+    expect(soilColor(9)).toEqual(soilColor(SoilGrade.Unfit));
+  });
+
+  it('greens as the soil improves', () => {
+    expect(soilColor(SoilGrade.Prime)[1]).toBeGreaterThan(soilColor(SoilGrade.Prime)[0]);
+    expect(soilColor(SoilGrade.Unfit)[0]).toBeGreaterThan(soilColor(SoilGrade.Unfit)[1]);
   });
 });
 

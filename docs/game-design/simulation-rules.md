@@ -8,7 +8,7 @@ loop; the tuning constants it names are gathered in
 
 ## Zone types
 
-Eight zone types exist, grouped into three demand sectors — residential,
+Nine zone types exist, grouped into three demand sectors — residential,
 commercial, and industrial — each gated behind a milestone (a city-size
 tier reached by population; milestone 0 is reached at 0 population,
 milestone 1 at 400, milestone 2 at 1,200, milestone 3 at 3,500, and
@@ -31,10 +31,15 @@ milestone 4 at 8,000):
   Milestone 4.
 - **Industrial** (`Industrial`) — one zone whose three levels unlock across
   milestones 0, 1, and 3 rather than as a single block.
+- **Agriculture** (`Agriculture`) — farmland off a dirt road, on soil that
+  can be farmed. It pulls on industrial demand, and its farms' jobs are
+  industrial jobs: a farm is the basic industry of a small town, as a mill
+  is. The soil under a lot decides whether it grows row crops, an orchard or
+  pasture. Milestone 0.
 
-`ZoneType` numbers 1–5 (the original five zones) and 6–8 (the later three)
-are stored in the tile grid, in saves, and in zone-paint patches, so they
-are never renumbered or reused.
+`ZoneType` numbers 1–5 (the original five zones), 6–8 (the next three) and 9
+(Agriculture) are stored in the tile grid, in saves, and in zone-paint
+patches, so they are never renumbered or reused.
 
 ## Frontage and zonability
 
@@ -64,6 +69,18 @@ another road, a building, out of bounds, or a slope past
 `MAX_BUILD_SLOPE`. Tiles beyond a block have no direct access from that
 frontage and are not zonable, even if they sit within the 4-tile depth. The
 zonable set is the union of every road tile's frontage marches.
+
+**Farmland** is the same march with two differences, and the same one
+predicate (`zonableMaskFor`) decides it for the grid and for painting:
+
+- Only a **dirt road** fronts it. A farm's gate opens onto a dirt road and
+  nothing else, so no paved street, lane or motorway fronts farmland — though
+  a field may run right up to one, since a road is where the march stops.
+- It runs `FARM_DEPTH` = 8 tiles deep, since fields lie further back from
+  their road than a house lot does, and it marks only tiles whose
+  [soil](../world-sim/world-model.md#soil) can be farmed. Unfit ground is left
+  unzoned but does not stop the march: a field runs on past a stony corner,
+  and only what blocks any lot stops it.
 
 Painting a zone onto a tile additionally requires the tile to be buildable
 and carry no road; painting anything other than a de-zone additionally
@@ -161,6 +178,22 @@ value (helping) net of pollution (hurting residential lots most, at weight
 single random draw against that probability decides the pass; a spawned
 building enters the Constructing state.
 
+A **farm** is chosen differently, from its land rather than its tile:
+
+- **The lot.** It is the level-1 farm lot (4×5 tiles), and every tile of it
+  must be zoned Agriculture on farmable soil.
+- **Access.** A dirt road must lie within Manhattan distance 3 of the lot:
+  of any tile of it, since a farm's gate can be anywhere along its edge.
+- **Power.** The lot must be powered. A dirt road carries no power, so a
+  farm on dirt roads needs a power line run out to it, or a paved street
+  beside its land.
+- **No water.** It needs no water at all: a building whose entry draws none
+  is never refused for want of it, and a farm pumps its own well.
+- **The kind.** The grade at least half the lot's tiles reach picks the farm:
+  very fertile grows row crops, fertile an orchard, somewhat fertile pasture.
+- **The draw.** The probability is industrial demand times the lot's soil
+  desirability — 1.0, 0.8 or 0.6 by grade — in place of land value.
+
 ## Levels, construction, and abandonment
 
 A newly spawned or newly leveled-up building spends `CONSTRUCTION_TICKS` =
@@ -179,10 +212,23 @@ draws beyond the smaller one; one that cannot is restored the same way and
 waits for supply like a lot does. A successful level-up replaces the
 building in place and re-enters Constructing.
 
+A farm levels up by taking more land, never by land value, which is what
+pushes real farms out:
+
+- The next level is the same kind of farm on a larger lot at the same corner
+  (5×6, then 6×7).
+- Every tile of the larger lot must be Agriculture on farmable soil, and the
+  lot's grade must be at least what its kind needs. A crop farm grows only
+  onto very fertile land, an orchard onto fertile land or better, and pasture
+  onto anything farmable.
+- Industrial demand must be above zero, and a random draw against it decides
+  the pass, since a bigger farm is the town adding basic jobs.
+
 Every pass also recomputes each Active or Abandoned building's problems: no
-power or no piped water reaching its footprint, no street within Manhattan
-distance 3, crime over 170, pollution over 170 (residential lots only), and
-sector demand under -0.5. An Active building carrying a power, water, or
+power or no piped water reaching its footprint (piped water only for a
+building that draws any), no street within Manhattan distance 3 (for a farm,
+no dirt road within 3 of its lot), crime over 170, pollution over 170
+(residential lots only), and sector demand under -0.5. An Active building carrying a power, water, or
 road blocker for 3 consecutive passes becomes Abandoned. An Abandoned
 building returns to Active as soon as its blocker is gone; otherwise, after
 10 consecutive still-blocked passes, it is removed and its footprint freed.

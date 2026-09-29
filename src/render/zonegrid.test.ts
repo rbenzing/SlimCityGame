@@ -1,7 +1,12 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { RoadTier, ZoneType, type ZonePatch } from '../shared/types';
-import { computeZonableTiles as computeZonableTilesFrontage, ZONE_DEPTH } from '../world/zonable';
+import {
+  computeZonableTiles as computeZonableTilesFrontage,
+  ZONE_DEPTH,
+  zonableTilesFor,
+} from '../world/zonable';
+import { SoilGrade } from '../shared/soil';
 import {
   boundaryEdges,
   computeZonableTiles,
@@ -151,7 +156,44 @@ describe('computeZonableTiles (UI-SPEC §6.19 — delegates to world/zonable.ts)
   });
 });
 
+describe('the grid for the Agriculture tool', () => {
+  it('shows farmland off a dirt road, not the frontage every other zone takes', () => {
+    const size = 24;
+    const n = size * size;
+    const g: ZoneGridSource = {
+      size,
+      roadTier: new Uint8Array(n),
+      water: new Uint8Array(n),
+      zone: new Uint8Array(n),
+      buildingId: new Uint32Array(n),
+      height: new Float32Array(n),
+      soil: new Uint8Array(n).fill(SoilGrade.Prime),
+    };
+    for (let z = 2; z < 20; z++) g.roadTier[z * size + 10] = RoadTier.Gravel;
+    const scene = new THREE.Scene();
+    const grid = new ZoneGridRenderer(scene, () => 0);
+    const fillVerts = (): number =>
+      grid.layers().fill.geometry.getAttribute('position').count / VERTS_PER_CELL;
+
+    grid.rebuild(g);
+    expect(fillVerts()).toBe(computeZonableTiles(g).length);
+    grid.setPaintZone(ZoneType.Agriculture, g);
+    expect(fillVerts()).toBe(zonableTilesFor(g, ZoneType.Agriculture).length);
+    expect(fillVerts()).toBeGreaterThan(computeZonableTiles(g).length);
+    grid.setPaintZone(ZoneType.ComLow, g);
+    expect(fillVerts()).toBe(computeZonableTiles(g).length);
+  });
+});
+
 describe('zoneTintColor (UI-SPEC §8 RCI palette)', () => {
+  it('gives farmland its own tint', () => {
+    const farm = zoneTintColor(ZoneType.Agriculture);
+    expect(farm).not.toBeNull();
+    for (const zone of [ZoneType.ResLow, ZoneType.ComLow, ZoneType.Industrial, ZoneType.Mixed]) {
+      expect(farm).not.toEqual(zoneTintColor(zone));
+    }
+  });
+
   it('maps residential (low + high) to the green-dominant RCI R color', () => {
     for (const zone of [ZoneType.ResLow, ZoneType.ResHigh]) {
       const color = zoneTintColor(zone);

@@ -175,9 +175,21 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   is graded under them automatically). A single tile on its own is a road too —
   a short stub, rounded at both ends, lying the way you dragged it (east-west if
   you just clicked), with the same lines and kerbs it would carry anywhere else.
-- **Zoning** — residential, commercial, and industrial. Denser residential
+- **Zoning** — residential, commercial, industrial and agriculture. Denser residential
   variants (row / medium / mixed-use / high) unlock as you pass milestones. Zoned
   tiles only develop if they have road access, power, and water.
+- **Agriculture** — farmland, painted like any zone, and the other way a small
+  town earns its living besides a mill. It goes only on land a **dirt road**
+  reaches, up to 8 tiles back from it, and only on soil that can be farmed:
+  turn on the **Soil** lens to see it. Very fertile flats grow row crops,
+  rolling slopes grow orchards, and poor or stony ground becomes fenced pasture
+  with cattle. Beaches, the water's edge, rock and steep slopes grow nothing.
+  A farm's gate opens only onto a dirt road, though its fields may run right
+  up to a paved one. A dirt road carries no power, so string a **power line**
+  along it out to the farms. A farm needs no water: it has its own well. Farm
+  work counts as industry on the RCI bars, so the industrial bar asks for farms
+  and workshops alike. A farm grows larger as the town wants more work, but
+  only onto land as good as its kind needs.
 - **Power & Water** — generators and water sources placed next to a road feed the
   connected network. If the city asks for more than it makes, the grid gives out
   from its far end: the buildings furthest along the wires from a plant go dark
@@ -228,8 +240,10 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
 - **Milestone badge** — the circular XP chip; click it for milestone history.
   Progress unlocks new zones, roads, and services.
 - **Infoview lenses** — overlays for land value, pollution, traffic, service
-  coverage, and trash. Turn a lens on to see the city as data — the trash lens
-  reddens where garbage is going uncollected.
+  coverage, trash and soil. Turn a lens on to see the city as data — the trash lens
+  reddens where garbage is going uncollected, and the soil lens shades the
+  ground from deep green cropland through orchard slopes and amber pasture to
+  red land nothing grows on.
 - **Stats panel** — line charts of population, money, and other trends over time.
 - **Roads sign themselves** — a junction carries the boards its control calls
   for and no others: a signal head on every approach where the junction is

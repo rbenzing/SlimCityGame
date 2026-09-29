@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { RoadTier } from '../shared/types';
+import { RoadTier, ZoneType } from '../shared/types';
 import { MAX_BUILD_SLOPE } from '../shared/constants';
+import { SoilGrade } from '../shared/soil';
 import {
+  FARM_DEPTH,
   ZONE_DEPTH,
+  computeFarmableMask,
   computeZonableMask,
+  zonableMaskFor,
   computeZonableTiles,
   isZonable,
   type ZonableGridSource,
@@ -323,5 +327,73 @@ describe('computeZonableMask', () => {
     for (const b of mask) count += b;
     expect(count).toBe(tiles.length);
     for (const t of tiles) expect(mask[idx(size, t.x, t.z)]).toBe(1);
+  });
+});
+
+describe('farmland', () => {
+  // A vertical road along x=10, z=2..17, on a 24x24 grid of prime soil.
+  const size = 24;
+  function farmland(tier: RoadTier = RoadTier.Gravel): ZonableGridSource {
+    const g = makeGrid(size);
+    g.soil = new Uint8Array(size * size).fill(SoilGrade.Prime);
+    for (let z = 2; z <= 17; z++) g.roadTier[idx(size, 10, z)] = tier;
+    return g;
+  }
+
+  it('runs FARM_DEPTH back from both sides of a dirt road', () => {
+    const mask = computeFarmableMask(farmland());
+    expect(FARM_DEPTH).toBe(8);
+    expect(mask[idx(size, 11, 9)]).toBe(1);
+    expect(mask[idx(size, 18, 9)]).toBe(1);
+    expect(mask[idx(size, 19, 9)]).toBe(0);
+    expect(mask[idx(size, 2, 9)]).toBe(1);
+    expect(mask[idx(size, 1, 9)]).toBe(0);
+  });
+
+  it.each([
+    ['a two-lane street', RoadTier.TwoLane],
+    ['an alley', RoadTier.Alley],
+    ['a motorway', RoadTier.Highway],
+  ])('is fronted by no road but a dirt one: not by %s', (_label, tier) => {
+    expect(computeFarmableMask(farmland(tier)).every((b) => b === 0)).toBe(true);
+  });
+
+  it('runs right up to a paved road, which stops it but gives it no access of its own', () => {
+    const g = farmland();
+    for (let z = 0; z < size; z++) g.roadTier[idx(size, 14, z)] = RoadTier.TwoLane;
+    const mask = computeFarmableMask(g);
+    expect(mask[idx(size, 13, 9)]).toBe(1);
+    expect(mask[idx(size, 14, 9)]).toBe(0);
+    expect(mask[idx(size, 15, 9)]).toBe(0);
+  });
+
+  it('leaves unfit ground unzoned but marches on past it', () => {
+    const g = farmland();
+    g.soil![idx(size, 12, 9)] = SoilGrade.Unfit;
+    const mask = computeFarmableMask(g);
+    expect(mask[idx(size, 12, 9)]).toBe(0);
+    expect(mask[idx(size, 13, 9)]).toBe(1);
+  });
+
+  it('takes somewhat fertile ground', () => {
+    const g = farmland();
+    g.soil![idx(size, 12, 9)] = SoilGrade.Marginal;
+    expect(computeFarmableMask(g)[idx(size, 12, 9)]).toBe(1);
+  });
+
+  it('is nowhere on a grid nobody has graded', () => {
+    const g = farmland();
+    delete g.soil;
+    expect(computeFarmableMask(g).every((b) => b === 0)).toBe(true);
+  });
+
+  it('gates Agriculture on farmland and every other zone on road frontage', () => {
+    const g = farmland();
+    expect(Array.from(zonableMaskFor(g, ZoneType.Agriculture))).toEqual(
+      Array.from(computeFarmableMask(g)),
+    );
+    expect(Array.from(zonableMaskFor(g, ZoneType.ResLow))).toEqual(
+      Array.from(computeZonableMask(g)),
+    );
   });
 });

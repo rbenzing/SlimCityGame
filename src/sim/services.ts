@@ -177,7 +177,7 @@ function residentsByBuildingId(
   for (const b of buildings) {
     if (b.state !== BuildingState.Active) continue;
     const spec = catalog.get(b.catalogId);
-    if (!spec || spec.category !== 'res') continue;
+    if (!spec) continue;
     const residents = spec.residents ?? 0;
     if (residents > 0) out.set(b.id, residents);
   }

@@ -35,7 +35,9 @@ import { NIGHT_WINDOW_LIT_MAX, NIGHT_WINDOW_LIT_MIN, TILE_METERS } from '../shar
 import { encodeId, buildIdColorArray } from './picking';
 import { footprintShrinkFor, frontageSetbackFor } from './massing';
 import { NO_STREETS, type StreetLookup } from './frontage';
-import { maxHeightOverFootprint } from './footprint';
+import { maxHeightOverFootprint, maxHeightOverRect } from './footprint';
+import { isFarmEntry } from './archetypes';
+import { BARN_EAVE_SHARE, planFarm, type FarmRect } from './farmlot';
 import {
   ACCENT_BLUE,
   ACCENT_RED,
@@ -402,6 +404,8 @@ export class BuildingInstancer {
   private readonly roadAt: (x: number, z: number) => boolean;
   /** The streets a home's front yard is measured from; the default finds none, and every home stays centred. */
   private readonly street: StreetLookup;
+  /** Where the dirt roads a farm's gate opens onto are, which decides where its barn stands. */
+  private readonly dirtAt: (x: number, z: number) => boolean;
 
   constructor(
     scene: THREE.Scene,
@@ -410,12 +414,14 @@ export class BuildingInstancer {
     plinthIds?: Set<string>,
     roadAt?: (x: number, z: number) => boolean,
     street: StreetLookup = NO_STREETS,
+    dirtAt: (x: number, z: number) => boolean = () => false,
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
     this.plinthIds = plinthIds ?? new Set();
     this.roadAt = roadAt ?? ((): boolean => false);
     this.street = street;
+    this.dirtAt = dirtAt;
     for (const entry of catalog) {
       this.buckets.set(entry.id, this.createBucket(entry));
     }
@@ -500,9 +506,11 @@ export class BuildingInstancer {
   }
 
   private createBucket(entry: BuildingCatalogEntry): Bucket {
-    const material = this.plinthIds.has(entry.id)
-      ? this.createPlinthMaterial(entry)
-      : this.createMaterial(entry);
+    // A barn is board-sided and windowless: the plain body a plinth has, in the barn's own colour.
+    const material =
+      this.plinthIds.has(entry.id) || isFarmEntry(entry)
+        ? this.createPlinthMaterial(entry)
+        : this.createMaterial(entry);
     const { mesh, windowSeed, windowActive } = this.createMesh(material, INITIAL_CAPACITY);
     this.scene.add(mesh);
     return {
@@ -718,8 +726,11 @@ export class BuildingInstancer {
     const material = new MeshStandardNodeMaterial({ roughness: 1, metalness: 0 });
     const catalogColor = new THREE.Color(entry.color);
     const { s: originalSaturation } = rgbToHsl(catalogColor.r, catalogColor.g, catalogColor.b);
-    const saturationAdjustment =
-      originalSaturation > MAX_WALL_SATURATION ? MAX_WALL_SATURATION / originalSaturation : 1;
+    // A barn's paint is a measured swatch already (the catalog gives it the
+    // palette's red plaster, weathered wood or white), and a barn muted to the
+    // town's wall saturation stops reading as a barn.
+    const ceiling = isFarmEntry(entry) ? 1 : MAX_WALL_SATURATION;
+    const saturationAdjustment = originalSaturation > ceiling ? ceiling / originalSaturation : 1;
     const desaturated = saturation(
       vec3(catalogColor.r, catalogColor.g, catalogColor.b),
       saturationAdjustment,
@@ -855,6 +866,17 @@ export class BuildingInstancer {
     const entry = bucket.entry;
     const heightScale =
       instance.state === BuildingState.Constructing ? CONSTRUCTING_HEIGHT_SCALE : 1;
+    const farm = planFarm(instance, entry, this.dirtAt);
+    if (farm) {
+      this.writeBarn(
+        bucket,
+        slot,
+        instance,
+        farm.barn,
+        entry.height * BARN_EAVE_SHARE * heightScale,
+      );
+      return;
+    }
     // Plinth-designated ids collapse to a low slab (picking/outline/bulldoze
     // keep working through this same instancer path) while utilitykits.ts
     // carries the real visual identity beside it.
@@ -885,7 +907,32 @@ export class BuildingInstancer {
     _scale.set(spanX, height, spanZ);
     _matrix.compose(_position, _quaternion, _scale);
     bucket.mesh.setMatrixAt(slot, _matrix);
+    this.writeIdentity(bucket, slot, instance);
+  }
 
+  /**
+   * A farm's body is the walls of its barn — what is picked, outlined and
+   * bulldozed — standing where the farm's plan puts it, on the highest ground
+   * under its own walls rather than under the whole lot.
+   */
+  private writeBarn(
+    bucket: Bucket,
+    slot: number,
+    instance: BuildingInstance,
+    barn: FarmRect,
+    eave: number,
+  ): void {
+    const groundY = maxHeightOverRect(this.heightAt, barn.x0, barn.z0, barn.x1, barn.z1);
+    _position.set((barn.x0 + barn.x1) / 2, groundY + eave / 2, (barn.z0 + barn.z1) / 2);
+    _quaternion.identity();
+    _scale.set(barn.x1 - barn.x0, eave, barn.z1 - barn.z0);
+    _matrix.compose(_position, _quaternion, _scale);
+    bucket.mesh.setMatrixAt(slot, _matrix);
+    this.writeIdentity(bucket, slot, instance);
+  }
+
+  /** Lifecycle tint, picking colour and window seeds for one slot. */
+  private writeIdentity(bucket: Bucket, slot: number, instance: BuildingInstance): void {
     const [tr, tg, tb] = tintFor(instance.state);
     _color.setRGB(tr, tg, tb);
     bucket.mesh.setColorAt(slot, _color);

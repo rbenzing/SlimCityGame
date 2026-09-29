@@ -39,6 +39,7 @@ export type IconName =
   | 'city'
   | 'sun'
   | 'leaf'
+  | 'soil'
   | 'transit'
   | 'districts'
   | 'camera'
@@ -264,6 +265,14 @@ const GLYPHS: Record<IconName, Glyph> = {
     <Base {...p}>
       <path d="M20 4c-9 0-16 5-16 13 0 1.5.3 2.6.7 3 5-1 12-4 15-10 1-2 1.3-4 .3-6Z" />
       <path d="M5 20c2-4 5-7 10-9" />
+    </Base>
+  ),
+  soil: (p) => (
+    <Base {...p}>
+      <path d="M3 20h18M6 17h12" />
+      <path d="M12 17v-6" />
+      <path d="M12 11c0-3 2-5.5 5.5-5.5 0 3.2-2.3 5.5-5.5 5.5Z" />
+      <path d="M12 13c0-2.6-1.8-4.5-4.5-4.5 0 2.6 1.8 4.5 4.5 4.5Z" />
     </Base>
   ),
   transit: (p) => (

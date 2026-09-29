@@ -4,10 +4,12 @@ import {
   LOT_Y_OFFSET,
   LotRenderer,
   MAX_LOT_MESH_VERTICES,
+  layFarmGround,
   lotBounds,
   lotSurfaceFor,
   lotVertexCount,
 } from './lots';
+import { planFarm, type FarmRect } from './farmlot';
 import { TILE_METERS } from '../shared/constants';
 import { CURB_CUT_Y_OFFSET } from './parked';
 import {
@@ -16,6 +18,7 @@ import {
   type BuildingCatalogEntry,
   type BuildingDelta,
   type BuildingInstance,
+  type FarmKind,
 } from '../shared/types';
 
 function entry(over: Partial<BuildingCatalogEntry> = {}): BuildingCatalogEntry {
@@ -106,6 +109,60 @@ describe('lotSurfaceFor', () => {
     expect(lotSurfaceFor(entry({ category: 'utility' }))).toBeNull();
     expect(lotSurfaceFor(entry({ category: 'park' }))).toBeNull();
     expect(lotSurfaceFor(entry({ category: 'service' }))).toBeNull();
+  });
+
+  it('never paves a farm like the industry its jobs count as', () => {
+    expect(lotSurfaceFor(entry({ category: 'ind', zone: ZoneType.Agriculture, farm: 'crops' }))).toBeNull();
+  });
+});
+
+describe('a farm’s ground', () => {
+  const farmEntry = (kind: FarmKind): BuildingCatalogEntry =>
+    entry({ category: 'ind', zone: ZoneType.Agriculture, farm: kind, level: 1, footprint: { w: 4, d: 5 } });
+  const dirtNorth = (_x: number, z: number): boolean => z === 5;
+  const laid = (kind: FarmKind, state: BuildingState): Array<{ rect: FarmRect; name: string }> => {
+    const plan = planFarm(building({ state }), farmEntry(kind), dirtNorth)!;
+    const out: Array<{ rect: FarmRect; name: string }> = [];
+    layFarmGround(plan, state, (rect, _y, name) => out.push({ rect, name }));
+    return out;
+  };
+  const area = (r: FarmRect): number => (r.x1 - r.x0) * (r.z1 - r.z0);
+
+  it('covers the whole lot at lot height, the yard and the field between them', () => {
+    const plan = planFarm(building(), farmEntry('pasture'), dirtNorth)!;
+    const heights: number[] = [];
+    let covered = 0;
+    layFarmGround(plan, BuildingState.Active, (rect, y) => {
+      heights.push(y);
+      if (y === LOT_Y_OFFSET) covered += area(rect);
+    });
+    expect(covered).toBeCloseTo(area(plan.lot), 6);
+  });
+
+  it.each([
+    ['a crop farm in bands of crop and bare furrow', 'crops' as const, ['tilledSoil']],
+    ['an orchard in mown grass', 'orchard' as const, ['mownLawn']],
+    ['a paddock in grazed pasture', 'pasture' as const, ['pasture']],
+  ])('lays %s', (_label, kind, names) => {
+    const fieldNames = new Set(laid(kind, BuildingState.Active).map((l) => l.name));
+    for (const name of names) expect(fieldNames).toContain(name);
+  });
+
+  it('breaks the field to bare soil while the farm is going up, and lets it go to grass when abandoned', () => {
+    expect(laid('crops', BuildingState.Constructing).map((l) => l.name)).toContain('tilledSoil');
+    const fallow = laid('crops', BuildingState.Abandoned).map((l) => l.name);
+    expect(fallow).toContain('brightVegetation');
+    expect(fallow).not.toContain('cropGreen');
+    expect(fallow).not.toContain('ripeGrain');
+  });
+
+  it('draws the farm’s ground on its own, and within the mesh cap at its largest', () => {
+    const scene = new THREE.Scene();
+    const big = { ...farmEntry('crops'), id: 'farm-big', level: 3, footprint: { w: 6, d: 7 } };
+    const lots = new LotRenderer(scene, flat, [big], () => false, undefined, dirtNorth);
+    lots.apply(delta({ added: [building({ catalogId: 'farm-big' })] }));
+    expect(lots.lotCount()).toBe(1);
+    expect(lots.largestMeshVertices()).toBeLessThan(MAX_LOT_MESH_VERTICES);
   });
 });
 

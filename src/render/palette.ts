@@ -69,6 +69,15 @@ export const MATERIALS = {
   // terrain's fresh grass (82/148/66) at seven tenths — still grass, and still
   // plainly somebody's.
   mownLawn: [57, 104, 46],
+  // Not chart swatches either: farm ground. Tilled soil is the chart's dirt
+  // turned over and darkened by moisture; a growing crop is the chart's bright
+  // vegetation lifted to read as a sown field against wild grass; ripe grain
+  // is its yellow plaster warmed; grazed pasture sits between lawn and rough
+  // grass.
+  tilledSoil: [52, 41, 33],
+  cropGreen: [54, 88, 34],
+  ripeGrain: [112, 96, 56],
+  pasture: [62, 94, 42],
 
   brightestWood: [110, 96, 75],
   brightWood: [86, 67, 57],

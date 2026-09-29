@@ -27,6 +27,8 @@ export type BuildingArchetype =
   | 'house'
   /** Denser housing: flat-roofed, no shopfront. */
   | 'apartment'
+  /** A farmstead: its own kit of barn, silos, fields and stock (farms.ts), no industrial parts. */
+  | 'farm'
   /** Everything the kit has nothing to say about. */
   | 'plain';
 
@@ -46,7 +48,16 @@ export type BuildingPart =
  * that emits nothing, and the player can read the difference from the air.
  */
 export function isCleanIndustry(entry: BuildingCatalogEntry): boolean {
-  return entry.category === 'ind' && (entry.pollution ?? 0) === 0;
+  return entry.category === 'ind' && !isFarmEntry(entry) && (entry.pollution ?? 0) === 0;
+}
+
+/**
+ * A farm. Its jobs count as industry, but nothing about it looks like a works:
+ * every renderer that dresses industry asks this first and leaves a farm to
+ * its own kit.
+ */
+export function isFarmEntry(entry: BuildingCatalogEntry): boolean {
+  return entry.zone === ZoneType.Agriculture;
 }
 
 /**
@@ -59,6 +70,7 @@ export function isHouseEntry(entry: BuildingCatalogEntry): boolean {
 }
 
 export function archetypeFor(entry: BuildingCatalogEntry): BuildingArchetype {
+  if (isFarmEntry(entry)) return 'farm';
   if (entry.category === 'ind') {
     if (isCleanIndustry(entry)) return 'greenWorks';
     return (entry.level ?? 1) >= 2 ? 'factory' : 'warehouse';
@@ -80,6 +92,7 @@ const PARTS: Readonly<Record<BuildingArchetype, readonly BuildingPart[]>> = {
   retailBlock: ['signageBand'],
   house: [],
   apartment: [],
+  farm: [],
   plain: [],
 };
 

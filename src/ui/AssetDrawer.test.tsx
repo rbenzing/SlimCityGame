@@ -28,15 +28,16 @@ describe('AssetDrawer', () => {
   });
 
   describe('sub-tabs render only non-empty groups', () => {
-    it('Zoning shows all five real sub-tabs, Residential active by default', () => {
-      // A Mixed-Use sub-tab sits alongside the residential zone cards
-      // (Medium Row/Medium), so Zoning has five sub-tabs.
+    it('Zoning shows all six real sub-tabs, Residential active by default', () => {
+      // Agriculture and Mixed-Use sit alongside the residential, commercial
+      // and industrial zone cards, so Zoning has six sub-tabs.
       render(<AssetDrawer category="zoning" onClose={vi.fn()} />);
       const tabs = screen.getAllByRole('tab');
       expect(tabs.map((t) => t.textContent)).toEqual([
         'Residential',
         'Commercial',
         'Industrial',
+        'Agriculture',
         'Mixed-Use',
         'De-zone',
       ]);
