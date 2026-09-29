@@ -5,7 +5,7 @@ import type { BuildingCatalogEntry, DemandLevels, GridState } from '../shared/ty
 import { BuildingRegistry } from './buildings';
 import { GrowthSystem } from './growth';
 import { recomputeUtilities } from './network';
-import type { Rng } from './growth';
+import type { GrowthSupply, Rng } from './growth';
 import { createGrid } from '../world/grid';
 
 function makeGrid(): GridState {
@@ -771,5 +771,188 @@ describe('GrowthSystem', () => {
       expect(before.waterSupply).toBe(400);
       expect(after).toEqual(before);
     });
+  });
+});
+
+/** What a utility pass left: `spare` in utility units (thousandths), and whom it cut. */
+function supplyOf(
+  power: { spare: number; cut?: number[] },
+  water: { spare: number; cut?: number[] } = { spare: Infinity },
+): GrowthSupply {
+  return {
+    power: { spare: power.spare, cut: new Set(power.cut ?? []) },
+    water: { spare: water.spare, cut: new Set(water.cut ?? []) },
+  };
+}
+
+/** The spawn scan comes back to a lot once every 32 passes of 10 ticks. */
+const SWEEP_TICKS = 32 * 10;
+
+describe('GrowthSystem: a grid too small for its city', () => {
+  const fullResDemand: DemandLevels = { res: 1, com: 0, ind: 0 };
+
+  it('flags a building the shortage cut beside NoPower, and it abandons like any unpowered one', () => {
+    const g = makeGrid();
+    const registry = new BuildingRegistry(growthCatalog);
+    const inst = registry.place(g, resL1, 3, 3, 0, BuildingState.Active)!;
+    keepServiced(g, 3, 3);
+    g.power[tileIndex(3, 3)] = 0; // what the cut leaves it
+    const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
+    const short = supplyOf({ spare: -100, cut: [inst.id] });
+
+    growth.tick(g, registry, neutralDemand, 0, 0, short);
+    const both = Problem.NoPower | Problem.PowerShortage;
+    expect(registry.get(inst.id)!.problems & both).toBe(both);
+
+    growth.tick(g, registry, neutralDemand, 0, 10, short);
+    growth.tick(g, registry, neutralDemand, 0, 20, short);
+    expect(registry.get(inst.id)!.state).toBe(BuildingState.Abandoned);
+    expect(registry.get(inst.id)!.problems & both).toBe(both);
+  });
+
+  it('builds nothing the grid cannot supply, and counts the lot as waiting until it can', () => {
+    const g = makeGrid();
+    serviceTile(g, 0, 0, ZoneType.ResLow);
+    const registry = new BuildingRegistry(growthCatalog);
+    const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
+    const full = supplyOf({ spare: 99 }); // a house draws 0.1 MW, 100 units
+    const room = supplyOf({ spare: 100 });
+
+    expect(growth.tick(g, registry, fullResDemand, 0, 0, full).added).toEqual([]);
+    expect(growth.waitingFor(g, registry, full)).toEqual({ power: 1, water: 0 });
+    // Measured against what is spare now, so more supply ends the wait at once.
+    expect(growth.waitingFor(g, registry, room)).toEqual({ power: 0, water: 0 });
+
+    expect(growth.tick(g, registry, fullResDemand, 0, SWEEP_TICKS, room).added).toHaveLength(1);
+    expect(growth.waitingFor(g, registry, full)).toEqual({ power: 0, water: 0 });
+  });
+
+  it('waits for water the same way', () => {
+    const g = makeGrid();
+    serviceTile(g, 0, 0, ZoneType.ResLow);
+    const registry = new BuildingRegistry(growthCatalog);
+    const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
+    const dry = supplyOf({ spare: Infinity }, { spare: 0 });
+
+    expect(growth.tick(g, registry, fullResDemand, 0, 0, dry).added).toEqual([]);
+    expect(growth.waitingFor(g, registry, dry)).toEqual({ power: 0, water: 1 });
+  });
+
+  it("hands a pass's spare supply out once, not to every lot that asks", () => {
+    const g = makeGrid();
+    serviceTile(g, 0, 0, ZoneType.ResLow);
+    serviceTile(g, 32, 0, ZoneType.ResLow); // the same stride of the scan
+    const registry = new BuildingRegistry(growthCatalog);
+    const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
+
+    const delta = growth.tick(g, registry, fullResDemand, 0, 0, supplyOf({ spare: 150 }));
+    expect(delta.added).toHaveLength(1);
+    expect(growth.waitingFor(g, registry, supplyOf({ spare: 50 }))).toEqual({ power: 1, water: 0 });
+  });
+
+  it('counts overlapping candidate lots as the homes that would fit, not as tiles', () => {
+    const wideHouse: BuildingCatalogEntry = { ...resL1, id: 'wide-l1', footprint: { w: 2, d: 2 } };
+    const catalog = [wideHouse];
+    const g = makeGrid();
+    // A 3×2 block: a 2×2 home could start on any of its six tiles.
+    for (let z = 0; z < 2; z++) for (let x = 0; x < 3; x++) serviceTile(g, x, z, ZoneType.ResLow);
+    const registry = new BuildingRegistry(catalog);
+    const growth = new GrowthSystem(catalog, constantRng(0), alwaysTrue);
+    const full = supplyOf({ spare: 0 });
+    for (let pass = 0; pass < 32; pass++)
+      growth.tick(g, registry, fullResDemand, 0, pass * 10, full);
+
+    expect(registry.all()).toHaveLength(0);
+    // Claimed in tile order: (0,0) takes 0..1 × 0..1, (2,0) the next two columns.
+    expect(growth.waitingFor(g, registry, full).power).toBe(2);
+  });
+
+  it('forgets a waiting lot once it is built on or unzoned', () => {
+    const g = makeGrid();
+    serviceTile(g, 0, 0, ZoneType.ResLow);
+    const registry = new BuildingRegistry(growthCatalog);
+    const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
+    const full = supplyOf({ spare: 0 });
+    growth.tick(g, registry, fullResDemand, 0, 0, full);
+    expect(growth.waitingFor(g, registry, full).power).toBe(1);
+
+    g.zone[tileIndex(0, 0)] = ZoneType.None;
+    expect(growth.waitingFor(g, registry, full).power).toBe(0);
+  });
+
+  it('levels nothing up into a shortage, and counts the building as waiting', () => {
+    const hungryL2: BuildingCatalogEntry = { ...resL2, powerUse: 0.3 };
+    const catalog = [resL1, hungryL2, resL3];
+    const g = makeGrid();
+    const registry = new BuildingRegistry(catalog);
+    const inst = registry.place(g, resL1, 5, 5, 0, BuildingState.Active)!;
+    keepServiced(g, 5, 5);
+    g.fields[FieldId.LandValue]![tileIndex(5, 5)] = 200;
+    const growth = new GrowthSystem(catalog, constantRng(0), alwaysTrue);
+    const tight = supplyOf({ spare: 199 }); // the bigger house draws 0.2 MW more
+
+    const held = growth.tick(g, registry, neutralDemand, 0, 0, tight);
+    expect(held.added).toEqual([]);
+    expect(registry.get(inst.id)!.level).toBe(1);
+    expect(g.buildingId[tileIndex(5, 5)]).toBe(inst.id);
+    expect(growth.waitingFor(g, registry, tight)).toEqual({ power: 1, water: 0 });
+
+    const grown = growth.tick(g, registry, neutralDemand, 0, 10, supplyOf({ spare: 200 }));
+    expect(grown.added).toHaveLength(1);
+    expect(grown.added[0]!.level).toBe(2);
+    expect(growth.waitingFor(g, registry, tight)).toEqual({ power: 0, water: 0 });
+  });
+
+  it('settles a short city: the far house goes dark and stays dark, and nothing flips back', () => {
+    const plant: BuildingCatalogEntry = {
+      id: 'small-plant',
+      name: 'Plant',
+      category: 'utility',
+      footprint: { w: 1, d: 1 },
+      height: 5,
+      color: 0,
+      powerUse: 0,
+      waterUse: 0,
+      utility: { powerMW: 0.35, waterKL: 100 }, // power for three houses of four
+      cost: 0,
+      upkeep: 0,
+      unlockMilestone: 0,
+    };
+    const catalog = [...growthCatalog, plant];
+    const g = makeGrid();
+    for (let x = 6; x <= 24; x++) g.roadTier[tileIndex(x, 5)] = RoadTier.TwoLane;
+    const registry = new BuildingRegistry(catalog);
+    registry.place(g, plant, 5, 5, 0, BuildingState.Active);
+    const houses = [8, 12, 16, 20].map((x) => {
+      g.zone[tileIndex(x, 6)] = ZoneType.ResLow;
+      return registry.place(g, resL1, x, 6, 0, BuildingState.Active)!.id;
+    });
+    const far = houses[3]!;
+    const growth = new GrowthSystem(catalog, constantRng(0), alwaysTrue);
+
+    // The worker's own order: the utility pass every 10 ticks, then growth.
+    const farStates: BuildingState[] = [];
+    let totals = recomputeUtilities(g, registry.all(), catalog);
+    let supply: GrowthSupply = { power: totals.power, water: totals.water };
+    for (let t = 1; t <= 500; t++) {
+      if (t % 10 === 0) {
+        totals = recomputeUtilities(g, registry.all(), catalog);
+        supply = { power: totals.power, water: totals.water };
+      }
+      growth.tick(g, registry, fullResDemand, 0, t, supply);
+      const b = registry.get(far);
+      if (t % 10 === 0 && b) farStates.push(b.state);
+    }
+
+    const darkFrom = farStates.indexOf(BuildingState.Abandoned);
+    expect(darkFrom).toBeGreaterThan(-1);
+    expect(farStates.slice(darkFrom).every((s) => s === BuildingState.Abandoned)).toBe(true);
+    expect(registry.get(far)).toBeUndefined(); // cleared, as an abandoned home is
+    for (const id of houses.slice(0, 3)) {
+      expect(registry.get(id)!.state).toBe(BuildingState.Active);
+    }
+    // Its lot is not rebuilt into the same shortage; it waits.
+    expect(g.buildingId[tileIndex(20, 6)]).toBe(0);
+    expect(growth.waitingFor(g, registry, supply)).toEqual({ power: 1, water: 0 });
   });
 });

@@ -60,14 +60,27 @@ otherwise arrive ~10×/s), because a list re-ranking faster than a player can
 read it is unreadable, not because the underlying numbers change that
 slowly.
 
-Two families of issue feed the ranking. Per-building problems are the six
-flags a building can carry — `NoRoad`, `NoPower`, `NoWater` (critical),
-`HighCrime`, `HighPollution` (warning), `LowDemand` (info) — each rolled up
-into one issue per flag: a count of every affected building (buildings still
-under construction are exempt; every Active or Abandoned building with the
-flag counts) and a focus tile taken from the lowest-id affected building, so
-the same city always points at the same place. City-wide checks read
-`CityStats` directly: power or water demand outrunning supply (critical);
+Two families of issue feed the ranking. Per-building problems are the eight
+flags a building can carry — `NoRoad`, `NoPower`, `NoWater`,
+`PowerShortage`, `WaterShortage` (critical), `HighCrime`, `HighPollution`
+(warning), `LowDemand` (info) — each rolled up into one issue per flag: a
+count of every affected building (buildings still under construction are
+exempt; every Active or Abandoned building with the flag counts) and a focus
+tile taken from the lowest-id affected building, so the same city always
+points at the same place.
+
+A grid too small for its city is a shortage, not a gap, and the two read
+differently. A building the shortage cut is counted under "at the far end of
+the grid" with how much the city asks for against what it makes — build
+another plant (or water tower) — and is left out of the "without power"
+count, whose advice is to look for a gap in the network. When nothing is
+dark but growth is waiting for supply (see
+[the spawner](simulation-rules.md#the-spawner-how-a-lot-is-chosen)), a
+warning counts the lots and buildings waiting, from the snapshot's
+`growthWaiting`. Between them the shortage is on the list for as long as it
+holds anything back.
+
+City-wide checks read `CityStats` directly:
 funds below zero (critical, "the city is in the red") or, short of that,
 monthly expenses outrunning income (warning); and, once population is
 above zero, no jobs at all (warning), unemployment above 25% of population

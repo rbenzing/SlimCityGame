@@ -99,12 +99,13 @@ reactor by its containment dome — and all three join the detail kits in
 ## What it interacts with
 
 **Brownouts, which are not brownouts.** When demand exceeds supply the
-simulation does not dim the city. It cuts consumers in ascending building-id
-order — oldest protected, newest cut — and only on their footprint tiles, so the
-streets stay lit while buildings go dark, and a building three growth passes
-without power abandons. Outgrowing generation kills the district the player just
-built, quietly, under working street lamps. This epic does not change that rule;
-it is the reason the epic exists.
+simulation does not dim the city. The grid gives out from its far end — the
+buildings furthest along the network from a generator are cut first — and only
+on their footprint tiles, so the streets stay lit while buildings go dark, and a
+building three growth passes without power abandons. Nothing new moves in while
+the grid is full, and the Advisor says how far short it is. Outgrowing
+generation still costs the player the edge of the city. This epic does not
+change that rule; it is the reason the epic exists.
 
 **The power line.** Supply is city-wide, not per-network, so any generator feeds
 any consumer the sealed roads or a strung line can reach. The nuclear station's

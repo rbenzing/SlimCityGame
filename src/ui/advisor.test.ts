@@ -146,18 +146,81 @@ describe('cityIssues', () => {
   });
 
   it('city-wide issues carry no focus tile — there is no one place to look', () => {
-    const issues = cityIssues([], healthyStats({ powerDemand: 200 }));
-    expect(issues.find((i) => i.id === 'power-deficit')?.focus).toBeUndefined();
+    const issues = cityIssues([], healthyStats(), { power: 3, water: 0 });
+    const waiting = issues.find((i) => i.id === 'power-waiting');
+    expect(waiting).toBeDefined();
+    expect(waiting?.focus).toBeUndefined();
+  });
+});
+
+describe('a grid too small for its city', () => {
+  const short = Problem.NoPower | Problem.PowerShortage;
+  const dry = Problem.NoWater | Problem.WaterShortage;
+
+  it('names the buildings the shortage darkened, with the numbers, and not as a gap', () => {
+    const issues = cityIssues(
+      [building(short), building(short), building(Problem.NoPower)],
+      healthyStats({ powerDemand: 150, powerSupply: 100 }),
+    );
+    const shortage = issues.find((i) => i.id === 'power-short');
+    expect(shortage?.severity).toBe('critical');
+    expect(shortage?.count).toBe(2);
+    expect(shortage?.detail).toContain('needs 150 MW and makes 100 MW');
+    expect(shortage?.detail).toContain('build another plant');
+    // Only the building the network does not reach is sent looking for a gap.
+    expect(issues.find((i) => i.id === 'no-power')?.count).toBe(1);
+  });
+
+  it('does the same for water', () => {
+    const issues = cityIssues(
+      [building(dry), building(Problem.NoWater)],
+      healthyStats({ waterDemand: 480, waterSupply: 400 }),
+    );
+    expect(issues.find((i) => i.id === 'water-short')?.count).toBe(1);
+    expect(issues.find((i) => i.id === 'water-short')?.detail).toContain(
+      'needs 480 kL and pumps 400 kL',
+    );
+    expect(issues.find((i) => i.id === 'no-water')?.count).toBe(1);
+  });
+
+  it('keeps naming it while the dark buildings stand abandoned', () => {
+    const issues = cityIssues(
+      [building(short, { state: BuildingState.Abandoned })],
+      healthyStats({ powerDemand: 0.4, powerSupply: 0.35 }),
+    );
+    expect(idsOf(issues)).toEqual(['power-short']);
+  });
+
+  it('reads a small grid in the fractions a turbine deals in, not rounded to nothing', () => {
+    const issues = cityIssues(
+      [building(short)],
+      healthyStats({ powerDemand: 0.4, powerSupply: 0.35 }),
+    );
+    expect(issues[0]!.detail).toContain('needs 0.4 MW and makes 0.35 MW');
+  });
+
+  it('warns while growth waits for supply though nothing is dark yet', () => {
+    const issues = cityIssues([], healthyStats(), { power: 4, water: 0 });
+    expect(idsOf(issues)).toEqual(['power-waiting']);
+    expect(issues[0]!.severity).toBe('warning');
+    expect(issues[0]!.count).toBe(4);
+    expect(issues[0]!.detail).toBe(
+      '4 new or growing buildings need more power than the grid has spare — build another plant.',
+    );
+  });
+
+  it('warns for water the same way, in the singular for one', () => {
+    const issues = cityIssues([], healthyStats(), { power: 0, water: 1 });
+    expect(idsOf(issues)).toEqual(['water-waiting']);
+    expect(issues[0]!.detail).toContain('1 new or growing building needs more water');
+  });
+
+  it('says nothing when growth is waiting for neither', () => {
+    expect(cityIssues([], healthyStats(), { power: 0, water: 0 })).toEqual([]);
   });
 });
 
 describe('city-wide checks', () => {
-  it('flags power and water deficits with the actual numbers', () => {
-    const issues = cityIssues([], healthyStats({ powerDemand: 150, waterDemand: 150 }));
-    expect(idsOf(issues)).toEqual(expect.arrayContaining(['power-deficit', 'water-deficit']));
-    expect(issues.find((i) => i.id === 'power-deficit')?.detail).toContain('150 MW of 100 MW');
-  });
-
   it('does not flag a grid that exactly meets demand', () => {
     expect(cityIssues([], healthyStats({ powerDemand: 100, powerSupply: 100 }))).toEqual([]);
   });
@@ -213,10 +276,16 @@ describe('city-wide checks', () => {
 describe('criticalCount', () => {
   it('counts only the critical issues, for the unopened badge', () => {
     const issues = cityIssues(
-      [building(Problem.NoPower), building(Problem.HighCrime), building(Problem.LowDemand)],
+      [
+        building(Problem.NoPower),
+        building(Problem.NoPower | Problem.PowerShortage),
+        building(Problem.HighCrime),
+        building(Problem.LowDemand),
+      ],
       healthyStats({ powerDemand: 500 }),
+      { power: 2, water: 0 },
     );
-    expect(criticalCount(issues)).toBe(2); // no-power + power-deficit
+    expect(criticalCount(issues)).toBe(2); // no-power + power-short; waiting is a warning
   });
 
   it('is zero for a healthy city', () => {

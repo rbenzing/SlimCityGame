@@ -74,7 +74,7 @@ building on a zoned tile, are documented in
 [../game-design/simulation-rules.md](../game-design/simulation-rules.md#demand-the-rci-model)
 and are not restated here; the salient point for the population number is
 that demand only ever influences _whether a new Active building appears_
-(or an existing one's blocker tips it toward `LowDemand`, one of six
+(or an existing one's blocker tips it toward `LowDemand`, one of eight
 problem flags growth tracks) — it has no direct effect on population
 itself. Population only ever changes through the state transitions above.
 

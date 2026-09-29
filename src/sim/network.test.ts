@@ -247,7 +247,7 @@ describe('recomputeUtilities: power propagation', () => {
     const totals = recomputeUtilities(g, buildings, catalog);
 
     expect(totals.powerSupply).toBe(10);
-    expect(totals.powerDemand).toBe(3 + 3); // the two houses only; no water-tower in this scenario
+    expect(totals.powerDemand).toBe(3); // the island's house draws nothing: the network never reaches it
     expect(g.power[tileIndex(12, 6)]).toBe(1); // connected consumer powered
     expect(g.power[tileIndex(62, 6)]).toBe(0); // disconnected island unpowered
     expect(g.power[tileIndex(5, 5)]).toBe(1); // generator's own footprint always powered
@@ -417,6 +417,112 @@ describe('recomputeUtilities: brownout', () => {
     expect(g.power[tileIndex(11, 6)]).toBe(0);
   });
 
+  it('cuts the far end of the grid first, however old the buildings there are', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    const smallPlant: BuildingCatalogEntry = {
+      ...powerPlant,
+      id: 'small-plant',
+      utility: { powerMW: 5 },
+    };
+    const localCatalog = [...catalog, smallPlant];
+
+    placeBuilding(g, buildings, 1, 'small-plant', 5, 5, 1, 1);
+    paintRoadRow(g, 6, 20, 5);
+    placeBuilding(g, buildings, 10, 'house', 18, 6, 1, 1); // the oldest, at the far end
+    placeBuilding(g, buildings, 20, 'house', 7, 6, 1, 1); // the newest, beside the plant
+
+    const totals = recomputeUtilities(g, buildings, localCatalog);
+    expect(g.power[tileIndex(7, 6)]).toBe(1);
+    expect(g.power[tileIndex(18, 6)]).toBe(0);
+    expect([...totals.power.cut]).toEqual([10]);
+  });
+
+  it('keeps an abandoned building in its place in line, so abandoning never re-powers it', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    const smallPlant: BuildingCatalogEntry = {
+      ...powerPlant,
+      id: 'small-plant',
+      utility: { powerMW: 5 },
+    };
+    const localCatalog = [...catalog, smallPlant];
+
+    placeBuilding(g, buildings, 1, 'small-plant', 5, 5, 1, 1);
+    paintRoadRow(g, 6, 20, 5);
+    placeBuilding(g, buildings, 10, 'house', 7, 6, 1, 1);
+    const far = placeBuilding(g, buildings, 20, 'house', 18, 6, 1, 1);
+
+    recomputeUtilities(g, buildings, localCatalog);
+    expect(g.power[tileIndex(18, 6)]).toBe(0);
+
+    far.state = BuildingState.Abandoned;
+    const totals = recomputeUtilities(g, buildings, localCatalog);
+    expect(g.power[tileIndex(18, 6)]).toBe(0);
+    expect(totals.power.cut.has(20)).toBe(true);
+    expect(totals.powerDemand).toBe(6); // the city still asks for its share
+
+    // An abandoned building nearer the plant keeps its share just the same.
+    const g2 = makeGrid();
+    const buildings2: BuildingInstance[] = [];
+    placeBuilding(g2, buildings2, 1, 'small-plant', 5, 5, 1, 1);
+    paintRoadRow(g2, 6, 20, 5);
+    placeBuilding(g2, buildings2, 10, 'house', 7, 6, 1, 1, BuildingState.Abandoned);
+    placeBuilding(g2, buildings2, 20, 'house', 18, 6, 1, 1);
+    recomputeUtilities(g2, buildings2, localCatalog);
+    expect(g2.power[tileIndex(7, 6)]).toBe(1);
+    expect(g2.power[tileIndex(18, 6)]).toBe(0);
+  });
+
+  it('counts in thousandths, so a grid that exactly meets its load cuts nobody', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    // 0.1 + 0.1 + 0.1 is 0.30000000000000004 in floating point.
+    const tenth: BuildingCatalogEntry = { ...house, id: 'tenth', powerUse: 0.1 };
+    const plant: BuildingCatalogEntry = {
+      ...powerPlant,
+      id: 'plant-0.3',
+      utility: { powerMW: 0.3 },
+    };
+    const localCatalog = [...catalog, tenth, plant];
+
+    placeBuilding(g, buildings, 1, 'plant-0.3', 5, 5, 1, 1);
+    paintRoadRow(g, 6, 20, 5);
+    for (const [id, x] of [
+      [10, 8],
+      [11, 10],
+      [12, 12],
+    ] as const) {
+      placeBuilding(g, buildings, id, 'tenth', x, 6, 1, 1);
+    }
+
+    const totals = recomputeUtilities(g, buildings, localCatalog);
+    expect(totals.power.cut.size).toBe(0);
+    expect(totals.power.spare).toBe(0);
+    expect(totals.powerDemand).toBe(0.3);
+  });
+
+  it('reports what the grid has spare, and how far short it is, in thousandths', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'power-plant', 5, 5, 1, 1); // 10 MW
+    paintRoadRow(g, 6, 20, 5);
+    placeBuilding(g, buildings, 10, 'house', 7, 6, 1, 1); // 3 MW
+
+    expect(recomputeUtilities(g, buildings, catalog).power.spare).toBe(7000);
+
+    for (const [id, x] of [
+      [11, 9],
+      [12, 11],
+      [13, 13],
+    ] as const) {
+      placeBuilding(g, buildings, id, 'house', x, 6, 1, 1);
+    }
+    const short = recomputeUtilities(g, buildings, catalog);
+    expect(short.power.spare).toBe(-2000);
+    expect([...short.power.cut]).toEqual([13]);
+  });
+
   it('clears only the cut building footprint, leaving coverage for others intact', () => {
     const g = makeGrid();
     const buildings: BuildingInstance[] = [];
@@ -449,7 +555,7 @@ describe('recomputeUtilities: water', () => {
 
     const totals = recomputeUtilities(g, buildings, catalog);
     expect(totals.waterSupply).toBe(0);
-    expect(totals.waterDemand).toBeCloseTo(2);
+    expect(totals.waterDemand).toBe(0); // no mains reach the house, so it draws none
     expect(g.watered[tileIndex(12, 6)]).toBe(0); // no water producer anywhere
     expect(g.power[tileIndex(12, 6)]).toBe(1); // power still works
   });

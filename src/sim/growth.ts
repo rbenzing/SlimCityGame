@@ -21,10 +21,11 @@ import type {
   BuildingInstance,
   DemandLevels,
   GridState,
+  GrowthWaiting,
   Sector,
 } from '../shared/types';
 import { BuildingRegistry, footprintForRotation } from './buildings';
-import { utilityCanDeliver } from './network';
+import { utilityCanDeliver, utilityUnits, type UtilityLine } from './network';
 import { freeCellsOn, roadCellsOf } from '../world/roadnet';
 
 /**
@@ -186,6 +187,51 @@ function footprintServed(layer: Uint8Array, x: number, z: number, w: number, d: 
   return false;
 }
 
+/** What the utility pass left for growth: whom each cut, and what each has spare. */
+export interface GrowthSupply {
+  power: UtilityLine;
+  water: UtilityLine;
+}
+
+/** A grid with room for anything and nobody cut, for callers that run no utility pass. */
+export const UNMETERED_SUPPLY: GrowthSupply = {
+  power: { cut: new Set(), spare: Infinity },
+  water: { cut: new Set(), spare: Infinity },
+};
+
+/** What a pass still has to hand out, in utility units; it counts down as the pass builds. */
+interface Spare {
+  power: number;
+  water: number;
+}
+
+/** Something growth would build or level up but for the supply: the pass it last asked in, and what it wanted, in utility units. */
+interface Waiting {
+  pass: number;
+  use: number;
+  /** The ground a new building would take; none for a level-up, which stands where it is. */
+  tiles: readonly number[];
+}
+
+/** Tile indices of a w×d footprint at (x, z), clipped to the map. */
+function footprintTilesAt(x: number, z: number, w: number, d: number): number[] {
+  const tiles: number[] = [];
+  for (let dz = 0; dz < d; dz++) {
+    for (let dx = 0; dx < w; dx++) {
+      if (inBounds(x + dx, z + dz)) tiles.push(tileIndex(x + dx, z + dz));
+    }
+  }
+  return tiles;
+}
+
+/** The shortage bits for a building the utility pass cut. */
+function shortageOf(supply: GrowthSupply, id: number): number {
+  return (
+    (supply.power.cut.has(id) ? Problem.PowerShortage : 0) |
+    (supply.water.cut.has(id) ? Problem.WaterShortage : 0)
+  );
+}
+
 function computeProblems(
   g: GridState,
   x: number,
@@ -250,6 +296,16 @@ export class GrowthSystem {
   private readonly blockerStreak = new Map<number, number>();
   /** Building id -> passes elapsed since becoming Abandoned. */
   private readonly abandonedPasses = new Map<number, number>();
+  /**
+   * Lots (by tile index) and buildings (by negated id) held back for want of
+   * power or water. Each visit forgets the wait and the supply check records
+   * it again, so a lot the scan comes back to once a sweep stays counted for
+   * exactly as long as it keeps waiting.
+   */
+  private readonly waiting = {
+    power: new Map<number, Waiting>(),
+    water: new Map<number, Waiting>(),
+  };
 
   constructor(
     catalog: BuildingCatalogEntry[],
@@ -268,6 +324,7 @@ export class GrowthSystem {
     demand: DemandLevels,
     milestoneLevel: number,
     tickNo: number,
+    supply: GrowthSupply = UNMETERED_SUPPLY,
   ): BuildingDelta {
     const added: BuildingInstance[] = [];
     const removed: number[] = [];
@@ -276,13 +333,80 @@ export class GrowthSystem {
     this.advanceConstruction(registry, updated);
 
     if (tickNo % GROWTH_INTERVAL === 0) {
-      this.processProblemsAndAbandonment(g, registry, demand, removed, updated);
+      const pass = Math.floor(tickNo / GROWTH_INTERVAL);
+      const spare: Spare = { power: supply.power.spare, water: supply.water.spare };
+      this.forgetStaleWaits(pass);
+      this.processProblemsAndAbandonment(g, registry, demand, supply, removed, updated);
       this.flagUnservedUtilities(g, registry, updated);
-      this.runLevelUps(g, registry, milestoneLevel, added, removed);
-      this.runSpawnScan(g, registry, demand, milestoneLevel, tickNo, added);
+      this.runLevelUps(g, registry, milestoneLevel, pass, spare, added, removed);
+      this.runSpawnScan(g, registry, demand, milestoneLevel, pass, spare, added);
     }
 
     return { added, removed, updated };
+  }
+
+  /**
+   * How many lots and buildings are waiting for power and for water: held
+   * back within the last sweep, still standing as they were, and still
+   * wanting more than the grid has spare now.
+   */
+  waitingFor(g: GridState, registry: BuildingRegistry, supply: GrowthSupply): GrowthWaiting {
+    const stillThere = (key: number): boolean =>
+      key < 0
+        ? registry.get(-key)?.state === BuildingState.Active
+        : readTile(g.buildingId, key) === 0 &&
+          zoneSector(readTile(g.zone, key) as ZoneType) !== null;
+    const count = (held: ReadonlyMap<number, Waiting>, spare: number): number => {
+      // Candidate lots overlap — a 2×2 home could start on any of four tiles —
+      // so a lot counts only where no lot before it has claimed the ground.
+      const claimed = new Set<number>();
+      let n = 0;
+      for (const [key, wait] of [...held].sort((a, b) => a[0] - b[0])) {
+        if (wait.use <= spare || !stillThere(key)) continue;
+        if (wait.tiles.some((t) => claimed.has(t))) continue;
+        for (const t of wait.tiles) claimed.add(t);
+        n += 1;
+      }
+      return n;
+    };
+    return {
+      power: count(this.waiting.power, supply.power.spare),
+      water: count(this.waiting.water, supply.water.spare),
+    };
+  }
+
+  /** Drops waits a sweep old, or from a later pass than this one (a load went back in time). */
+  private forgetStaleWaits(pass: number): void {
+    for (const held of [this.waiting.power, this.waiting.water]) {
+      for (const [key, wait] of held) {
+        if (pass - wait.pass >= SCAN_STRIDE || wait.pass > pass) held.delete(key);
+      }
+    }
+  }
+
+  private forgetWait(key: number): void {
+    this.waiting.power.delete(key);
+    this.waiting.water.delete(key);
+  }
+
+  /**
+   * Whether the pass has spare supply for `power` and `water` more (utility
+   * units), recording `key` — standing on `tiles` — as waiting for whichever
+   * it lacks.
+   */
+  private suppliedFor(
+    key: number,
+    tiles: readonly number[],
+    pass: number,
+    spare: Spare,
+    power: number,
+    water: number,
+  ): boolean {
+    const lacksPower = power > spare.power;
+    const lacksWater = water > spare.water;
+    if (lacksPower) this.waiting.power.set(key, { pass, use: power, tiles });
+    if (lacksWater) this.waiting.water.set(key, { pass, use: water, tiles });
+    return !lacksPower && !lacksWater;
   }
 
   private advanceConstruction(registry: BuildingRegistry, updated: BuildingInstance[]): void {
@@ -305,6 +429,7 @@ export class GrowthSystem {
     g: GridState,
     registry: BuildingRegistry,
     demand: DemandLevels,
+    supply: GrowthSupply,
     removed: number[],
     updated: BuildingInstance[],
   ): void {
@@ -316,15 +441,9 @@ export class GrowthSystem {
       const sector = zoneSector(entry.zone);
       const demandForSector = sector ? demand[sector] : 0;
       const footprint = footprintForRotation(entry, inst.rotation);
-      const newProblems = computeProblems(
-        g,
-        inst.x,
-        inst.z,
-        sector,
-        demandForSector,
-        footprint.w,
-        footprint.d,
-      );
+      const newProblems =
+        computeProblems(g, inst.x, inst.z, sector, demandForSector, footprint.w, footprint.d) |
+        shortageOf(supply, inst.id);
       const hasBlocker = (newProblems & (Problem.NoPower | Problem.NoWater | Problem.NoRoad)) !== 0;
 
       if (inst.state === BuildingState.Active) {
@@ -402,6 +521,8 @@ export class GrowthSystem {
     g: GridState,
     registry: BuildingRegistry,
     milestoneLevel: number,
+    pass: number,
+    spare: Spare,
     added: BuildingInstance[],
     removed: number[],
   ): void {
@@ -409,7 +530,7 @@ export class GrowthSystem {
       if (inst.state !== BuildingState.Active || inst.level >= 3) continue;
       const entry = this.catalogIndex.get(inst.catalogId);
       if (!entry || entry.zone === undefined) continue;
-      this.tryLevelUp(g, registry, milestoneLevel, inst, entry, added, removed);
+      this.tryLevelUp(g, registry, milestoneLevel, pass, spare, inst, entry, added, removed);
     }
   }
 
@@ -417,11 +538,15 @@ export class GrowthSystem {
     g: GridState,
     registry: BuildingRegistry,
     milestoneLevel: number,
+    pass: number,
+    spare: Spare,
     inst: BuildingInstance,
     entry: BuildingCatalogEntry,
     added: BuildingInstance[],
     removed: number[],
   ): boolean {
+    const waitKey = -inst.id;
+    this.forgetWait(waitKey);
     const zone = entry.zone;
     if (zone === undefined) return false;
     const sector = zoneSector(zone);
@@ -443,7 +568,11 @@ export class GrowthSystem {
     const fits =
       this.canPlace(g, x, z, newFootprint.w, newFootprint.d) &&
       footprintFree(g, x, z, newFootprint.w, newFootprint.d);
-    if (!fits) {
+    // A bigger building draws more, and nobody builds it on a grid that
+    // cannot carry the difference.
+    const power = utilityUnits(nextEntry.powerUse) - utilityUnits(entry.powerUse);
+    const water = utilityUnits(nextEntry.waterUse) - utilityUnits(entry.waterUse);
+    if (!fits || !this.suppliedFor(waitKey, [], pass, spare, power, water)) {
       writeStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
       return false;
     }
@@ -456,6 +585,8 @@ export class GrowthSystem {
       writeStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
       return false;
     }
+    spare.power -= power;
+    spare.water -= water;
 
     this.constructing.set(placed.id, CONSTRUCTION_TICKS);
     this.blockerStreak.delete(inst.id);
@@ -469,14 +600,16 @@ export class GrowthSystem {
     registry: BuildingRegistry,
     demand: DemandLevels,
     milestoneLevel: number,
-    tickNo: number,
+    pass: number,
+    spare: Spare,
     added: BuildingInstance[],
   ): void {
     const size = g.size;
     const totalTiles = size * size;
-    const passIndex = Math.floor(tickNo / GROWTH_INTERVAL) % SCAN_STRIDE;
+    const passIndex = pass % SCAN_STRIDE;
 
     for (let flat = passIndex; flat < totalTiles; flat += SCAN_STRIDE) {
+      this.forgetWait(flat);
       if (readTile(g.buildingId, flat) !== 0) continue;
       const zone = readTile(g.zone, flat) as ZoneType;
       const sector = zoneSector(zone);
@@ -503,10 +636,18 @@ export class GrowthSystem {
       if (demandForSector <= 0) continue;
       const desirability = desirabilityFor(g, x, z, sector);
       const probability = demandForSector * desirability;
-      if (probability <= 0 || this.rng.next() >= probability) continue;
+      if (probability <= 0) continue;
+      // Nobody moves into a home the grid cannot light or water.
+      const power = utilityUnits(entry.powerUse);
+      const water = utilityUnits(entry.waterUse);
+      const lot = footprintTilesAt(x, z, w, d);
+      if (!this.suppliedFor(flat, lot, pass, spare, power, water)) continue;
+      if (this.rng.next() >= probability) continue;
 
       const placed = registry.place(g, entry, x, z, 0, BuildingState.Constructing);
       if (!placed) continue;
+      spare.power -= power;
+      spare.water -= water;
       this.constructing.set(placed.id, CONSTRUCTION_TICKS);
       added.push(placed);
     }

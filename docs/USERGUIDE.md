@@ -179,8 +179,10 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   variants (row / medium / mixed-use / high) unlock as you pass milestones. Zoned
   tiles only develop if they have road access, power, and water.
 - **Power & Water** — generators and water sources placed next to a road feed the
-  connected network. If a district browns out or runs dry, growth stalls and
-  buildings can abandon.
+  connected network. If the city asks for more than it makes, the grid gives out
+  from its far end: the buildings furthest along the wires from a plant go dark
+  first, abandon if it lasts, and nothing new moves in until there is supply to
+  spare. The Advisor says how far short you are.
 - **Services** — fire, police, health, education, and parks. Each projects a
   coverage/effect field around it; gaps in coverage show up in the infoview
   lenses and drag down happiness.
@@ -254,7 +256,8 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   put the road tool down so it can't surprise you on the next drag.
 - **Advisor** — the warning-triangle button (top right) lists what is actually
   wrong right now, worst first: buildings cut off from a road, power, or water,
-  a utility grid running short, a budget bleeding out. A red badge counts the
+  buildings dark because the grid is too small (and by how much), growth waiting
+  on power or water, a budget bleeding out. A red badge counts the
   critical problems while the panel is closed. Click any entry and the camera
   flies to a building suffering from it. An empty list means nothing needs you.
 - **Money & happiness** — the status strip shows funds and monthly balance

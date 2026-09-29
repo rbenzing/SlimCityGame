@@ -2596,6 +2596,43 @@ describe('a generator that cannot deliver says so', () => {
   });
 });
 
+describe('a grid too small for its city — the snapshot says what growth waits for', () => {
+  it('reports nothing waiting in a city with room to grow', () => {
+    const h = initialized();
+    h.ticks(2);
+    expect(h.lastSnapshot()!.growthWaiting).toEqual({ power: 0, water: 0 });
+  });
+
+  it('counts the zoned lots a full grid holds back', () => {
+    const h = initialized();
+    send(h, 1, [
+      { kind: 'setSandbox', on: true },
+      { kind: 'setUnlimitedMoney', on: true },
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 49, 30) },
+    ]);
+    h.ticks(1);
+    send(h, 2, [
+      { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 48, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 47, rotation: 0 },
+      // 8 MW on a 6 MW grid: nothing is spare for anyone else.
+      { kind: 'placeBuilding', catalogId: 'airport', x: 70, z: 43, rotation: 0 },
+      {
+        kind: 'paintZone',
+        zone: ZoneType.ResLow,
+        tiles: [...roadRow(60, 50, 30), ...roadRow(60, 51, 30)],
+      },
+    ]);
+    h.ticks(2);
+    expect(h.ackFor(2)!.ok).toBe(true);
+
+    h.ticks(400); // longer than one sweep of the spawn scan
+    const snap = h.lastSnapshot()!;
+    expect(snap.stats.powerDemand).toBeGreaterThan(snap.stats.powerSupply);
+    expect(snap.growthWaiting!.power).toBeGreaterThan(0);
+    expect(snap.growthWaiting!.water).toBe(0);
+  });
+});
+
 describe('roads off the grid — the world lays them, undoes them and keeps them', () => {
   function run(h: Harness, seq: number, commands: Command[]): CommandAck {
     send(h, seq, commands);
