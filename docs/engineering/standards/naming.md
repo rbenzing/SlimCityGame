@@ -23,11 +23,13 @@ supporting hooks/helpers) per file: `AdvisorPanel.tsx`, `RoadToolOptions.tsx`,
 everywhere else: `store.ts`, `advisor.ts`, `categories.ts`, `format.ts`,
 `theme.ts`, `statshistory.ts`.
 
-**Tests are co-located**, `<module>.test.ts` / `<module>.test.tsx` next to
-the file they cover — never a separate `__tests__/` or `test/` directory.
-Every test file exists this way; `vite.config.ts`'s
-`test.include: ['src/**/*.test.{ts,tsx}']` is the only thing that has to
-agree with this, and it does.
+**Unit tests are co-located**, `<module>.test.ts` / `<module>.test.tsx` next
+to the file they cover — never a `__tests__/` directory. The one other place
+a test lives is `tests/interaction/`, for a test that drives the whole sim
+through the commands a player sends; it is named for what the player does
+(`roads.test.ts`, `town.test.ts`), since it covers no single module. See
+[testing.md](testing.md#where-a-test-lives) for which is which.
+`vite.config.ts`'s `test.include` lists both places.
 
 ## Exported symbols
 

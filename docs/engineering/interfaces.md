@@ -267,8 +267,9 @@ entries. See [§7](#7-the-simulation-snapshot) for when `.laneTurns` is present
 at all.
 
 `src/shared/approach.test.ts:196` and `:323` pin the nibble packing;
-`src/sim/worker.entry.test.ts:2050` and `:2116` pin the command/undo pairing
-for arm and lane restrictions respectively.
+`tests/interaction/junctions.test.ts` pins the command/undo pairing for arm
+and lane restrictions ("takes a turn away from one arm and gives it back on
+undo", "sets one lane of one arm, and gives it back on undo").
 
 ## 5. Road composition
 
@@ -440,9 +441,11 @@ worker/render boundary directly — `SimSnapshot.junctions` is the projection of
 `src/sim/worker.entry.ts` (verified by search, not merely by convention); the
 sim's only randomness source is a seeded RNG forked per system
 (`src/core/rng.ts`, `createRng(seed).fork(n)`), and its only clock is the
-fixed-timestep tick counter. `src/sim/worker.entry.test.ts:1627` and `:1646`
-pin this directly: two independently-initialized sims fed the identical
-command at the identical tick produce bit-identical terrain heights. The one
+fixed-timestep tick counter. `tests/interaction/terraform.test.ts` pins this
+directly: two independently-initialized sims fed the identical command at the
+identical tick produce bit-identical terrain heights. End to end,
+`tests/interaction/town.test.ts` builds and grows the small town twice and
+requires the two saves to match byte for byte. The one
 wall-clock value in the whole protocol, `SaveHeader.savedAt`, is deliberately
 stamped outside the worker (`src/app/persist.ts`'s `stampSavedAt`, called from
 the main thread) rather than inside it.
@@ -456,9 +459,10 @@ immediately while the game is paused (speed `0`) rather than waiting for a
 state (terrain height, in particular) returns the _literal_ prior values as
 its inverse rather than a command that would plausibly reconstruct them —
 `terraformSet`'s inverse is the exact `Float32Array` it is about to overwrite,
-not another `terraform` stroke. `src/sim/worker.entry.test.ts:1553`, `:1592`,
-and `:1184` pin exact-height undo for a road build, a building footprint
-flatten, and a terraform stroke respectively.
+not another `terraform` stroke. `tests/interaction/terraform.test.ts` pins
+exact-height undo for a road build, a building footprint flatten, and a
+terraform stroke, and `tests/interaction/town.test.ts` undoes every step of
+building the small town and requires the untouched map back, layer for layer.
 
 **Batch application is not atomic.** See [§3](#3-commands): a rejected command
 does not roll back the commands before or after it in the same batch. This is

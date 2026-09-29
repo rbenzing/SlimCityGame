@@ -21,6 +21,17 @@ src/
 Full per-directory import rules and evidence:
 [dependency-map.md](../dependency-map.md).
 
+## `tests/` — tests that drive the whole sim
+
+```
+tests/
+├── interaction/  one file per thing a player does, driving the worker sim by its commands
+└── support/      what those files share: the sim harness and the small town
+```
+
+Unit tests are not here; they sit beside their module in `src/`. Nothing in
+`src/` imports from `tests/`. See [testing.md](testing.md#where-a-test-lives).
+
 ## `docs/`
 
 ```

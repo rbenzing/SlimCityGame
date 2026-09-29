@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,068 tests passing across 131 test files, run 2026-09-29.
+**Test suite:** 4,082 tests passing across 143 test files, run 2026-09-29.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -68,6 +68,12 @@ barriers. Full detail in History, §10 below.
 - Road composition: the three pieces above.
 - Farms: a farmhouse lights no window at night, and no farm truck works the
   yard.
+- Trams: a tramway drawn across another street leaves the crossing tile as
+  that street, so the tram graph breaks there and a line through it carries
+  nobody, with nothing on screen to say why. Drawing the tramway with replace
+  on makes the crossing a tram tile and the line runs. Found by the small
+  town's regression; undecided whether a tram crossing should be a tram tile,
+  a junction both graphs share, or refused.
 
 Before writing "not built" anywhere in this document, check the code.
 
@@ -214,6 +220,33 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Interaction tests, and a small town that regresses everything (asked for and built 2026-09-29)
+
+Asked for after farms shipped: regress the game by setting up a farm and
+growing a small town with every road type, every building and garbage, a
+railway with stations and a bus line from stop to stop, and gather every
+test of that kind in one tests folder.
+
+The tests that drive the whole sim through its commands moved out of the
+3,000-line `src/sim/worker.entry.test.ts` into `tests/interaction/`, one file
+per thing a player does, sharing a harness in `tests/support/`. Only the unit
+tests of `worker.entry.ts`'s pure exports stayed behind, and the mirror and
+undo-stack tests that booted a worker sim moved too. No test was dropped: the
+131 that moved still pass.
+[testing.md](engineering/standards/testing.md#where-a-test-lives) says which
+kind of test goes where, and the ground truth that every test sits beside its
+module now covers unit tests only.
+
+`tests/interaction/town.test.ts` builds the small town from
+`tests/support/town.ts` and grows it. Among what it checks is the end-to-end
+determinism test ADR-0002 asked for: two towns from the same steps and seed
+save identically, byte for byte. It also checks that undoing every step gives
+back the untouched map. Everything the town exercised held. Building it found
+one gap, left open in Status above: a tramway drawn across another street is
+broken at the crossing. The town's tramway ends at the avenue instead.
+`tools/town-shots.mjs` photographs the same town in a browser, loaded as a
+saved game.
 
 ### Farms, and the soil they grow on (asked for and built 2026-09-29)
 

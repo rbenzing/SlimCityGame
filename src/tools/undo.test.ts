@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAP_SIZE, MAP_TILES, SPEED_MULTIPLIERS, TICK_MS } from '../shared/constants';
-import type { Command, MapData, ReversibleEdit, WorkerToMain } from '../shared/types';
-import { decodeSave } from '../app/persist';
-import { createWorkerSim } from '../sim/worker.entry';
-import { deserializeGrid } from '../world/grid';
+import type { Command, ReversibleEdit } from '../shared/types';
 import { UndoStack } from './undo';
 
 function edit(n: number): ReversibleEdit {
@@ -132,86 +128,5 @@ describe('UndoStack', () => {
     }
     expect(stack.canUndo()).toBe(false);
     expect(stack.redo()).toEqual(edit(2).forward);
-  });
-});
-
-/**
- * Terraform integration: a terraform ack's inverse is a terraformSet patch that
- * flows through the UndoStack exactly the way main.ts wires it (onAck pushes
- * {forward, inverse: ack.inverse}; undo/redo dispatch what the stack returns
- * back to the worker as silent command batches).
- */
-describe('terraform undo/redo through the UndoStack path (UI-SPEC §6.11)', () => {
-  function flatMap(): MapData {
-    return {
-      name: 'Flatland',
-      size: MAP_SIZE,
-      height: new Float32Array(MAP_TILES).fill(5),
-      water: new Uint8Array(MAP_TILES),
-      trees: new Uint8Array(MAP_TILES),
-      seaLevel: 0,
-      spawn: { x: MAP_SIZE / 2, z: MAP_SIZE / 2 },
-    };
-  }
-
-  function heightsFromLastSave(messages: WorkerToMain[]): Float32Array {
-    const saves = messages.filter(
-      (m): m is Extract<WorkerToMain, { type: 'save' }> => m.type === 'save',
-    );
-    const last = saves[saves.length - 1];
-    if (!last) throw new Error('no save message');
-    return deserializeGrid(decodeSave(last.data).grid).height;
-  }
-
-  it('undo restores heights float-exactly and redo replays the forward stroke', () => {
-    const messages: WorkerToMain[] = [];
-    const sim = createWorkerSim((m) => messages.push(m));
-    sim.handleMessage({ type: 'init', seed: 7, map: flatMap() });
-
-    const stack = new UndoStack();
-    const forward: Command[] = [
-      { kind: 'terraform', mode: 'raise', center: { x: 64, z: 64 }, radius: 4, strength: 3 },
-    ];
-    sim.handleMessage({ type: 'commands', seq: 1, commands: forward });
-    sim.pump(TICK_MS / SPEED_MULTIPLIERS[1]); // speed 1 = 0.5x pacing (round 6): feed a full tick // command batches drain on the next sim tick
-
-    const ackMsg = messages.find(
-      (m): m is Extract<WorkerToMain, { type: 'ack' }> => m.type === 'ack' && m.ack.seq === 1,
-    );
-    expect(ackMsg).toBeDefined();
-    const ack = ackMsg!.ack;
-    expect(ack.ok).toBe(true);
-    expect(ack.inverse).toHaveLength(1);
-    expect(ack.inverse[0]!.kind).toBe('terraformSet');
-
-    // main.ts onAck: the acked edit lands on the undo stack.
-    stack.push({ label: 'Raise', forward, inverse: ack.inverse, cost: ack.cost });
-    expect(stack.canUndo()).toBe(true);
-
-    // The stroke really changed the terrain.
-    sim.handleMessage({ type: 'requestSave' });
-    const raised = heightsFromLastSave(messages);
-    const center = 64 * MAP_SIZE + 64;
-    expect(raised[center]).toBeGreaterThan(5);
-
-    // Undo: dispatch the stack's inverse to the worker, silently.
-    const inverse = stack.undo();
-    expect(inverse).toBe(ack.inverse);
-    sim.handleMessage({ type: 'commands', seq: 2, commands: inverse! });
-    sim.pump(TICK_MS / SPEED_MULTIPLIERS[1]); // speed 1 = 0.5x pacing (round 6): feed a full tick
-    sim.handleMessage({ type: 'requestSave' });
-    const restored = heightsFromLastSave(messages);
-    for (let i = 0; i < restored.length; i++) {
-      if (restored[i] !== 5) throw new Error(`height not restored at ${i}: ${restored[i]}`);
-    }
-
-    // Redo hands back the original forward commands; the worker re-applies them.
-    const redo = stack.redo();
-    expect(redo).toBe(forward);
-    sim.handleMessage({ type: 'commands', seq: 3, commands: redo! });
-    sim.pump(TICK_MS / SPEED_MULTIPLIERS[1]); // speed 1 = 0.5x pacing (round 6): feed a full tick
-    sim.handleMessage({ type: 'requestSave' });
-    const reraised = heightsFromLastSave(messages);
-    expect(reraised[center]).toBe(raised[center]);
   });
 });

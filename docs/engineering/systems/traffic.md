@@ -237,7 +237,8 @@ exactly as much, at the next query, as a citywide road overhaul.
 
 No dedicated performance test or benchmark exists for either the assignment
 loop or the graph rebuild (`traffic.test.ts`, `pathfind.test.ts`, and
-`worker.entry.test.ts` carry no `performance.now`/benchmark assertions). The
+the interaction tests under `tests/interaction/` carry no
+`performance.now`/benchmark assertions). The
 only sized budget in the codebase is architectural, not traffic-specific:
 [ADR-0010](../adr/0010-map-size-is-capped.md)'s 60 fps target at 256×256
 tiles, 10k buildings, and roughly 300 draw calls — traffic's per-tick cost is

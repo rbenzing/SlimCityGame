@@ -7,7 +7,7 @@ Every change must pass the same gates CI runs (`.github/workflows/ci.yml`):
 ```bash
 npm run typecheck   # strict tsc, no errors
 npm run lint        # ESLint, zero errors
-npm test            # Vitest (unit + determinism)
+npm test            # Vitest: unit tests in src/, interaction tests in tests/
 npm run build       # production bundle succeeds
 npm run lint:docs   # every relative link in the docs resolves
 ```

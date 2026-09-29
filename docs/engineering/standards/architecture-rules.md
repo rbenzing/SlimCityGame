@@ -99,9 +99,12 @@ on success — this is what makes every commit reversible. See
 **Follow it by:** if you add a new `Command` kind, its `applyCommand` case
 must compute and return a real inverse — a command (or set of commands)
 that, applied after the forward command, restores the prior state exactly.
-There is no test that fails generically for a missing or wrong inverse;
-each system's own tests (e.g. `src/sim/worker.entry.test.ts`) are what
-would catch it, if they cover the new case.
+The one test that fails generically for a wrong inverse is the small town's
+undo in `tests/interaction/town.test.ts`, which undoes every step and requires
+the untouched map back — and it only sees a command the town's steps send.
+So a new command kind also gets a step in `tests/support/town.ts`, and its
+own interaction tests under `tests/interaction/` cover the cases the town
+does not.
 
 ## See also
 
