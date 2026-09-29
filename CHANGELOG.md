@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.18.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.17.1...slimcity-v1.18.0) (2026-09-29)
+
+
+### Features
+
+* **demand:** a small town grows like a farming or mill town ([4412cf6](https://github.com/rbenzing/SlimCityGame/commit/4412cf60db45dbad521fd36dfc492a42ca554e17))
+* motorways and ramps one-way; a small town grows like a farming or mill town ([c8fbbf3](https://github.com/rbenzing/SlimCityGame/commit/c8fbbf375eda4633645d9494a316a769f1562aba))
+* **roads:** motorways and ramps are driven only the way they flow ([9c9d6d6](https://github.com/rbenzing/SlimCityGame/commit/9c9d6d69ef4882fd51ac795b19fba748b58ae336))
+
 ## [1.17.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.17.0...slimcity-v1.17.1) (2026-09-29)
 
 
