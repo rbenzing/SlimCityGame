@@ -20,12 +20,15 @@
  *    and STOPPING at the first blocking cell (out-of-bounds / water / road /
  *    building / too-steep) — cells behind a block have no direct access.
  *  - The zonable set is the union over all roads/sides, deduped.
+ *  - Farmland is the same march from dirt roads alone, deeper, keeping only
+ *    the cells whose soil can be farmed (computeFarmableMask).
  *
  * No three.js, no DOM. The buildability (slope) check is reimplemented locally
  * (like render/zonegrid.ts does) so this module never imports sim/grid code.
  */
-import { RoadTier, isStreetTier } from '../shared/types';
+import { RoadTier, ZoneType, isStreetTier } from '../shared/types';
 import type { RoadNet } from '../shared/types';
+import { isFarmable } from '../shared/soil';
 import { MAX_BUILD_SLOPE, TILE_METERS } from '../shared/constants';
 import { isGridSegment, sampleCentreLine } from '../shared/roadgeom';
 import type { SegmentGeom } from '../shared/roadgeom';
@@ -61,7 +64,15 @@ export interface ZonableGridSource {
   roads?: RoadNet;
   /** The tiles roads off the grid cover, which nothing is built on. */
   roadFootprint?: Uint8Array;
+  /** Each tile's SoilGrade. A source without it has no farmland. */
+  soil?: Uint8Array;
 }
+
+/** How deep farmland runs back from its dirt road: fields go further back than a house lot. */
+export const FARM_DEPTH = 8;
+
+/** A dirt road is the only road a farm's gate opens onto. */
+const frontsFarmland = (tier: RoadTier): boolean => tier === RoadTier.Gravel;
 
 // Orthogonal directions, index-aligned: 0=N 1=E 2=S 3=W. Even indices (N/S)
 // run along Z, odd indices (E/W) run along X.
@@ -127,13 +138,45 @@ function isBuildableCell(g: ZonableGridSource, x: number, z: number): boolean {
  * directly rather than calling {@link isZonable} per tile. O(tiles + roads·depth).
  */
 export function computeZonableMask(g: ZonableGridSource, depth = ZONE_DEPTH): Uint8Array {
+  return marchFrontage(g, isStreetTier, () => true, depth);
+}
+
+/**
+ * The land a farm may be zoned on: the same march, from dirt roads only and
+ * FARM_DEPTH deep, marking only soil that can be farmed. Poor ground does not
+ * stop the march — a field runs on past a stony corner — only what blocks
+ * any lot does. A paved road fronts no farmland, though a field may run up to
+ * it. O(tiles + roads·depth).
+ */
+export function computeFarmableMask(g: ZonableGridSource): Uint8Array {
+  const soil = g.soil;
+  if (!soil) return new Uint8Array(g.size * g.size);
+  return marchFrontage(g, frontsFarmland, (i) => isFarmable(soil[i]!), FARM_DEPTH);
+}
+
+/** The mask that gates painting `zone`: farmland for Agriculture, road frontage for the rest. */
+export function zonableMaskFor(g: ZonableGridSource, zone: ZoneType): Uint8Array {
+  return zone === ZoneType.Agriculture ? computeFarmableMask(g) : computeZonableMask(g);
+}
+
+/**
+ * The frontage march: out from each side of every road tile `fronts`
+ * accepts, square to the road, `depth` cells or to the first cell a lot
+ * cannot stand on, marking the cells `marks` accepts.
+ */
+function marchFrontage(
+  g: ZonableGridSource,
+  fronts: (tier: RoadTier) => boolean,
+  marks: (i: number) => boolean,
+  depth: number,
+): Uint8Array {
   const { size } = g;
   const mask = new Uint8Array(size * size);
 
   for (let z = 0; z < size; z++) {
     for (let x = 0; x < size; x++) {
       // Only drivable streets provide zoning frontage — rail is not a street.
-      if (!isStreetTier(g.roadTier[z * size + x]!)) continue;
+      if (!fronts(g.roadTier[z * size + x]! as RoadTier)) continue;
       // Nor does a bridge deck: there is no way onto a lot from a road passing
       // overhead, so an elevated tile fronts nothing.
       if ((g.roadElevation?.[z * size + x] ?? 0) > 0) continue;
@@ -155,12 +198,12 @@ export function computeZonableMask(g: ZonableGridSource, depth = ZONE_DEPTH): Ui
           const cx = x + dx * k;
           const cz = z + dz * k;
           if (!isBuildableCell(g, cx, cz)) break;
-          mask[cz * size + cx] = 1;
+          if (marks(cz * size + cx)) mask[cz * size + cx] = 1;
         }
       }
     }
   }
-  if (g.roads) markFreeFrontage(g, g.roads, mask, depth);
+  if (g.roads) markFreeFrontage(g, g.roads, mask, fronts, marks, depth);
   return mask;
 }
 
@@ -179,11 +222,13 @@ function markFreeFrontage(
   g: ZonableGridSource,
   net: RoadNet,
   mask: Uint8Array,
+  fronts: (tier: RoadTier) => boolean,
+  marks: (i: number) => boolean,
   depth: number,
 ): void {
   const { size } = g;
   for (let s = 0; s < net.segSlots; s++) {
-    if (net.segLive[s] !== 1 || !isStreetTier(net.segTier[s]!)) continue;
+    if (net.segLive[s] !== 1 || !fronts(net.segTier[s]! as RoadTier)) continue;
     const a = net.segA[s]!;
     const b = net.segB[s]!;
     const geom: SegmentGeom = {
@@ -216,7 +261,7 @@ function markFreeFrontage(
           const i2 = cz * size + cx;
           if (g.roadFootprint?.[i2] && d < half + TILE_METERS) continue;
           if (!isBuildableCell(g, cx, cz)) break;
-          mask[i2] = 1;
+          if (marks(i2)) mask[i2] = 1;
         }
       }
     }
@@ -231,8 +276,18 @@ export function computeZonableTiles(
   g: ZonableGridSource,
   depth = ZONE_DEPTH,
 ): Array<{ x: number; z: number }> {
-  const { size } = g;
-  const mask = computeZonableMask(g, depth);
+  return tilesOf(computeZonableMask(g, depth), g.size);
+}
+
+/** Every tile `zone` may be painted on, row-major. */
+export function zonableTilesFor(
+  g: ZonableGridSource,
+  zone: ZoneType,
+): Array<{ x: number; z: number }> {
+  return tilesOf(zonableMaskFor(g, zone), g.size);
+}
+
+function tilesOf(mask: Uint8Array, size: number): Array<{ x: number; z: number }> {
   const tiles: Array<{ x: number; z: number }> = [];
   for (let z = 0; z < size; z++) {
     for (let x = 0; x < size; x++) {

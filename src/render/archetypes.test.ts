@@ -101,7 +101,18 @@ describe('partsFor', () => {
 
 describe('the shipped catalog', () => {
   const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
-  const industrial = catalog.filter((e) => e.category === 'ind');
+  // The Industrial zone's ladder; farms count as industry but are a zone of their own.
+  const industrial = catalog.filter((e) => e.zone === ZoneType.Industrial);
+
+  it('draws every farm as a farm, never as the works its jobs count alongside', () => {
+    const farms = catalog.filter((e) => e.zone === ZoneType.Agriculture);
+    expect(farms).toHaveLength(9);
+    for (const e of farms) {
+      expect(archetypeFor(e)).toBe('farm');
+      expect(partsFor(e)).toEqual([]);
+      expect(isCleanIndustry(e)).toBe(false);
+    }
+  });
 
   it('carries the whole industrial ladder: warehouse, factory, green works', () => {
     const found = new Set(industrial.map((e) => archetypeFor(e)));

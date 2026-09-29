@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 3,899 tests passing across 128 test files, run 2026-09-29.
+**Test suite:** 4,068 tests passing across 131 test files, run 2026-09-29.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -42,8 +42,10 @@ network of nodes and segments, curves, roads meeting at any angle; overpasses;
 snapping between grid and free roads; homes that face their street, with
 drives, garages and yards; and brownouts that cut from the far end of the grid,
 with the Advisor naming a shortage and the jobs a workforce is short of;
-motorways and ramps driven only the way they flow; and demand as economic base
-theory, a small town growing its industry before its shops.
+motorways and ramps driven only the way they flow; demand as economic base
+theory, a small town growing its industry before its shops; and farms — an
+Agriculture zone off dirt roads on soil the ground itself grades, growing row
+crops, orchards and pasture with their barns, silos, bins and herds.
 Versioning and deploy are automated (release-please + Conventional Commits →
 GitHub Pages; see the README).
 
@@ -64,9 +66,8 @@ barriers. Full detail in History, §10 below.
   raised road's ramps, and a road cannot yet be drawn under a bridge that is
   already there.
 - Road composition: the three pieces above.
-- Farms: agriculture as the face a small town's industry wears — fields,
-  barns and silos — asked for 2026-09-29 as its own feature, after the
-  small-town economy it would stand on.
+- Farms: a farmhouse lights no window at night, and no farm truck works the
+  yard.
 
 Before writing "not built" anywhere in this document, check the code.
 
@@ -214,6 +215,49 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 
 ## 10. History (newest first)
 
+### Farms, and the soil they grow on (asked for and built 2026-09-29)
+
+The player asked for agriculture painted like residential land, growing under
+industrial demand, drawn with barns, silos, penned animals, furrowed fields and
+orchards, built off dirt roads, and allowed only on land fertile enough to
+farm. They chose four things:
+
+- farms need power and no city water;
+- the soil decides the kind of farm;
+- farm jobs stay at published figures;
+- farms grow larger by soil, not land value.
+
+**Soil.** Every tile has a soil grade worked out from the ground itself:
+
+- beach sand, the water's edge, rock and slopes over 20% are unfit;
+- the other bands are the land-judging slope classes;
+- stony patches are pasture at best.
+
+It is derived and never saved, one function for worker and render alike, and
+the Soil lens shows it.
+
+**Farmland.** It is painted only where a dirt road's frontage reaches, 8 tiles
+deep. The lot's soil picks row crops, an orchard or pasture. A farm's jobs are
+industrial jobs, one to five by kind and level, from labour hours per acre and
+per cow. Its family of four counts as population.
+
+**What it looks like.** A farm is drawn from one plan:
+
+- the barn's walls are its pickable body;
+- a kit adds the gambrel roof, farmhouse, silos, bins, orchard trees, and the
+  paddock fence and grazing cattle;
+- the ground gives the field bands, the gravel yard and a fallow field once
+  abandoned.
+
+No industrial parking, stack or asphalt ever lands on a farm. See
+[the design](game-design/features/farms.md) and
+[the plan](engineering/features/farms.md) for sources and figures, and
+[Soil](world-sim/world-model.md#soil) and
+[Frontage and zonability](game-design/simulation-rules.md#frontage-and-zonability)
+for the rules. `tools/farm-shots.mjs` grows a farming district and
+photographs every kind of farm, the Soil lens, the zoning grid, night and an
+abandoned farm.
+
 ### One-way carriageways, and the small-town economy (decided and built 2026-09-29)
 
 Asked whether a ramp is strictly one-way, the player chose realism, and the
@@ -237,9 +281,8 @@ Mulligan 2008), people follow work both ways, and the workforce is half the
 population (the US labour force, BLS 2025) rather than 55%. Jobs still under
 construction count as supply, so a spurt of building does not overshoot.
 A town of homes with no industry now stops growing; a town whose shops
-outrun its industry grows industry, not shops. Farms themselves — fields,
-barns, silos as the face of small-town industry — are the next feature, left
-open in Status. See
+outrun its industry grows industry, not shops. Farms themselves were built
+the same day; see the entry above. See
 [Demand: the RCI model](game-design/simulation-rules.md#demand-the-rci-model).
 
 ### The workforce, and a docs sweep (requested and built 2026-09-29)

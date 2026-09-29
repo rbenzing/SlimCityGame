@@ -30,6 +30,8 @@ function zoneClass(id: ToolId): string {
       return 'bg-[var(--color-rci-com)]';
     case 'zone.industrial':
       return 'bg-[var(--color-rci-ind)]';
+    case 'zone.agriculture':
+      return 'bg-[var(--color-rci-farm)]';
     case 'zone.dezone':
       return 'bg-[repeating-linear-gradient(45deg,#666_0px,#666_4px,#3a3a3a_4px,#3a3a3a_8px)]';
     default:

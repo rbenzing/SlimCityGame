@@ -104,6 +104,53 @@ palette above:
   roof array instead of a stack, and pointedly no stack at all, and it sits
   above the factory in jobs offered — something to grow into, not a reskin.
 
+**Farms.** A farm counts as industry and never looks like it. Every renderer
+that dresses industry — the lot pad, the setback tiers, roof props and
+stacks, parking bays and kerb cars, the facade — asks `isFarmEntry` first and
+leaves a farm to its own plan (`src/render/farmlot.ts`) and kit
+(`src/render/farms.ts`).
+
+- **The farmstead** takes a 30 m strip along the lot's dirt-road edge,
+  where its gate is. Moving along that edge from the gate:
+  - a farmhouse, 9 × 8 m, with its walls to 4.8 m and a gable roof to 8 m;
+  - a gravel drive, one vehicle wide, from the lot line in;
+  - the barn, 11 m across (12 m on a large farm) and 14–36 m long by kind and
+    level, the dairy barn longest. Its walls are the farm's pickable body,
+    drawn by the building instancer, and they stand to 55% of the catalog
+    height under a gambrel roof: steep to 60% of its rise, shallow above.
+    The gable ends are the barn's own paint, and the pitches are metal;
+  - tower silos, 6 m across and 16 m high under a dome, beyond the barn: one
+    on a crop or pasture farm, two on a large one;
+  - grain bins behind the barn, 5.5 m across with a 4 m eave under a shallow
+    cone, joining a crop farm's silo at levels 2 and 3.
+
+  Round the buildings the yard is grass, with rolled gravel where the
+  machinery stands.
+
+- **Barn paint** comes from measured swatches, and the town's wall
+  desaturation does not apply to it:
+  - the saturated red for a crop farm;
+  - white plaster for a dairy;
+  - weathered wood for an orchard's packing barn.
+- **The field** is the rest of the lot, running away from the road:
+  - **Row crops** are drawn in bands of three 30-inch (0.76 m) rows of crop
+    and one of bare furrow, running into the field, so the rows hold still
+    at a distance. By farm id, half the crop farms stand in a growing green
+    crop and half in ripe grain.
+  - **An orchard** is mown grass with round-headed trees in rows at
+    semi-dwarf spacing, 4.9 m apart in the row and rows 6.1 m apart.
+  - **A paddock** is grazed pasture inside a post-and-rail fence: a post every
+    4 m and two rails following the ground from post to post. It carries one
+    head of cattle for every four tiles, never none. The cattle are black,
+    white or brown and 2.4 m nose to tail, and they drift across the paddock
+    at a grazing walk, clear of the fence. Their movement is a pure function
+    of the farm id and the frame clock.
+- **Construction and abandonment.** A farm going up shows its barn frame on
+  bare tilled soil and nothing else. An abandoned farm keeps its buildings,
+  darkened like any derelict building, while its field goes back to rough
+  grass and its herd is gone. The ground is land, not a building, so it is
+  never darkened; its colour alone says what state it is in.
+
 ## Lots and paved ground
 
 **The lot is the unit, not the building.** A lot pad claims a building's

@@ -7,7 +7,7 @@ import type {
   RoadProfile,
   RoadSpec,
 } from '../shared/types';
-import { BuildingState, FieldId, RoadTier } from '../shared/types';
+import { BuildingState, FieldId, RoadTier, ZoneType } from '../shared/types';
 import {
   MAX_LOAN,
   MILESTONES,
@@ -274,7 +274,34 @@ describe('EconomySystem: population/jobs/employed aggregation', () => {
 
     expect(statsPatch.population).toBe(10);
     expect(statsPatch.jobs).toBe(8);
-    expect(statsPatch.employed).toBe(5); // min(floor(10*0.55)=5, 8)
+    expect(statsPatch.employed).toBe(5); // min(floor(10*0.5)=5, 8)
+  });
+
+  it('counts a farm family as population and the farm work as industrial jobs', () => {
+    const farm: BuildingCatalogEntry = {
+      id: 'farm',
+      name: 'Homestead',
+      category: 'ind',
+      zone: ZoneType.Agriculture,
+      level: 1,
+      farm: 'crops',
+      footprint: { w: 4, d: 5 },
+      height: 9,
+      color: 0x7a3a2c,
+      residents: 4,
+      jobs: 1,
+      powerUse: 0.2,
+      waterUse: 0,
+      cost: 0,
+      upkeep: 0,
+      unlockMilestone: 0,
+    };
+    const buildings: BuildingInstance[] = [];
+    place(makeGrid(), buildings, 1, 'farm', 0, 0);
+
+    const occupancy = new EconomySystem([...catalog, farm], roadSpecs).occupancy(buildings);
+    expect(occupancy.population).toBe(4);
+    expect(occupancy.jobs).toEqual({ com: 0, ind: 1 });
   });
 
   it('counts Mixed (res-category) buildings into BOTH population and jobs (§6.21)', () => {

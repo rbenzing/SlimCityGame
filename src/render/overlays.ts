@@ -12,6 +12,8 @@
  *    active (cheap byte writes), so switching straight to a coverage lens
  *    repaints instantly from already-known data rather than waiting for the
  *    next patch.
+ *  - 'soil': setSoil() hands over the render mirror's soil grades, painted
+ *    one flat colour per grade.
  */
 
 import * as THREE from 'three';
@@ -81,6 +83,23 @@ export function coverageColor(value: number): [number, number, number] {
   return value > 0 ? [...COVERAGE_COVERED] : [...COVERAGE_UNCOVERED];
 }
 
+/**
+ * The Soil lens, one colour per SoilGrade: the same dim red as ground no
+ * service reaches for land no farm takes, then amber pasture, light green
+ * orchard slopes and deep green cropland.
+ */
+const SOIL_COLORS: ReadonlyArray<readonly [number, number, number]> = [
+  COVERAGE_UNCOVERED,
+  hexToRgb01(0xd9a441),
+  hexToRgb01(0x9fcf4a),
+  hexToRgb01(0x2f9e44),
+];
+
+/** A SoilGrade's lens colour; anything out of range reads as unfit. Pure and exported for tests. */
+export function soilColor(grade: number): [number, number, number] {
+  return [...(SOIL_COLORS[grade] ?? SOIL_COLORS[0]!)];
+}
+
 export type CoverageKind = 'power' | 'watered' | 'trash';
 
 /** Coverage kinds painted as a graded 0..255 heatmap (rampColor) rather than the two-tone on/off ramp. */
@@ -96,6 +115,8 @@ export class OverlayRenderer {
     watered: new Uint8Array(MAP_SIZE * MAP_SIZE),
     trash: new Uint8Array(MAP_SIZE * MAP_SIZE),
   };
+  /** The render mirror's live soil grades, read whenever the Soil lens paints. */
+  private soil: Uint8Array | null = null;
 
   constructor(scene: THREE.Scene) {
     const mapMeters = MAP_SIZE * TILE_METERS;
@@ -161,6 +182,31 @@ export class OverlayRenderer {
     if (lens !== null && this.isCoverageKind(lens)) {
       this.paintCoverage(lens);
     }
+    if (lens === 'soil') this.paintSoil();
+  }
+
+  /**
+   * Hands the lens the soil grades to read — the mirror's own array, which it
+   * keeps current — and repaints if the Soil lens is showing, as after a
+   * terraform reshapes the ground.
+   */
+  setSoil(grades: Uint8Array): void {
+    this.soil = grades;
+    if (this.active === 'soil') this.paintSoil();
+  }
+
+  private paintSoil(): void {
+    if (!this.soil) return;
+    const count = Math.min(this.soil.length, MAP_SIZE * MAP_SIZE);
+    for (let i = 0; i < count; i++) {
+      const [r, g, b] = soilColor(this.soil[i] ?? 0);
+      const base = i * 4;
+      this.textureData[base] = Math.round(r * 255);
+      this.textureData[base + 1] = Math.round(g * 255);
+      this.textureData[base + 2] = Math.round(b * 255);
+      this.textureData[base + 3] = 255;
+    }
+    this.texture.needsUpdate = true;
   }
 
   /** Lenses handled by a dedicated renderer rather than this DataTexture quad. */

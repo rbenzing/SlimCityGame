@@ -97,6 +97,8 @@ export const SERVICE_FUNDING_MAX = 1.5;
 // --- buildability -----------------------------------------------------------
 export const MAX_BUILD_SLOPE = 4; // max height delta (m) across a tile's corners
 export const SEA_LEVEL = 0;
+/** Land this close above sea level is beach: the ground draws it as sand, and nothing is farmed on it. */
+export const SAND_BAND_METERS = 3;
 /**
  * Road-on-slope placement: roads tolerate a steeper grade than
  * buildings/zoning (MAX_BUILD_SLOPE=4) because the footprint auto-flatten

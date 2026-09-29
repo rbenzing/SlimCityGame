@@ -1,6 +1,7 @@
 /**
  * Infoviews lens grid: opened from the main dock's ◐ toggle. The 9 FieldId
- * heatmap lenses plus the Power/Watered coverage lenses and a None entry.
+ * heatmap lenses plus the Power/Watered coverage lenses, the Soil lens and a
+ * None entry.
  * Selecting a lens sets the store's overlay; clicking the
  * active lens again turns it back off.
  */
@@ -24,6 +25,7 @@ const LENSES: ReadonlyArray<{ id: LensId; label: string; icon: IconName }> = [
   { id: 'power', label: 'Power', icon: 'electricity' },
   { id: 'watered', label: 'Water', icon: 'water' },
   { id: 'trash', label: 'Trash', icon: 'pollution' },
+  { id: 'soil', label: 'Soil', icon: 'soil' },
   // Transit / Districts overlays.
   { id: 'transit', label: 'Transit', icon: 'transit' },
   { id: 'districts', label: 'Districts', icon: 'districts' },

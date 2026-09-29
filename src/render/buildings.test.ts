@@ -15,6 +15,7 @@ import {
   windowLitFraction,
 } from './buildings';
 import { decodeId } from './picking';
+import { BARN_EAVE_SHARE, planFarm } from './farmlot';
 import { BAY_DEPTH_TILES } from './parked';
 import {
   DEFAULT_BODY_M_PER_TILE,
@@ -122,6 +123,43 @@ describe('BuildingInstancer', () => {
     expect(scl.x).toBeCloseTo(1 * RES_LOW_BODY_M_PER_TILE, 5); // ResLow detached: a house-sized body, yard around it
     expect(scl.y).toBeCloseTo(10, 5);
     expect(scl.z).toBeCloseTo(1 * RES_LOW_BODY_M_PER_TILE, 5);
+  });
+
+  it('draws a farm’s body as its barn walls, where its plan stands the barn, on the ground under it', () => {
+    const FARM: BuildingCatalogEntry = {
+      ...HOUSE,
+      id: 'farm',
+      category: 'ind',
+      zone: ZoneType.Agriculture,
+      farm: 'crops',
+      footprint: { w: 4, d: 5 },
+      height: 9,
+      residents: 4,
+      jobs: 1,
+    };
+    const dirtNorth = (_x: number, z: number): boolean => z === 9;
+    const sloped = (x: number): number => x * 0.05;
+    const instancer = new BuildingInstancer(
+      new THREE.Scene(),
+      [FARM],
+      sloped,
+      undefined,
+      undefined,
+      undefined,
+      dirtNorth,
+    );
+    const farm = instanceAt(1, 10, 10, { catalogId: 'farm' });
+    instancer.apply({ added: [farm], removed: [], updated: [] });
+    const { barn } = planFarm(farm, FARM, dirtNorth)!;
+    const mesh = instancer.getPickables()[0]!.mesh;
+    const { pos, scl } = decomposeAt(mesh, 0);
+    const eave = 9 * BARN_EAVE_SHARE;
+    expect(scl.x).toBeCloseTo(barn.x1 - barn.x0, 5);
+    expect(scl.z).toBeCloseTo(barn.z1 - barn.z0, 5);
+    expect(scl.y).toBeCloseTo(eave, 5);
+    expect(pos.x).toBeCloseTo((barn.x0 + barn.x1) / 2, 5);
+    // Seated on the uphill end of its own walls, not of the whole lot.
+    expect(pos.y - eave / 2).toBeCloseTo(sloped(barn.x1), 5);
   });
 
   it('offsets by heightAt(x,z) at the footprint center', () => {

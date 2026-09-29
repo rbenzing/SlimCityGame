@@ -57,7 +57,8 @@ const PROBLEM_RULES: {
     id: 'no-road',
     severity: 'critical',
     title: (n) => `${n} building${n === 1 ? '' : 's'} cut off from the road network`,
-    detail: () => 'Nothing reaches them — connect a road to their frontage.',
+    detail: () =>
+      'Nothing reaches them — connect a road to their frontage. A farm’s gate opens only onto a dirt road.',
   },
   {
     flag: Problem.PowerShortage,
@@ -73,7 +74,8 @@ const PROBLEM_RULES: {
     id: 'no-power',
     severity: 'critical',
     title: (n) => `${n} building${n === 1 ? '' : 's'} without power`,
-    detail: () => 'Power travels along roads from a plant — check for a gap in the network.',
+    detail: () =>
+      'Power travels along paved roads and power lines from a plant — check for a gap, or string a line out along a dirt road.',
   },
   {
     flag: Problem.WaterShortage,

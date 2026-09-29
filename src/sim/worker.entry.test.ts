@@ -20,6 +20,7 @@ import {
 } from '../shared/types';
 import type {
   BuildingCatalogEntry,
+  BuildingInstance,
   Command,
   CommandAck,
   GridState,
@@ -2704,6 +2705,64 @@ describe('a small town grows the way a farming or mill town does', () => {
     expect(jobsOf('com')).toBeLessThanOrEqual(
       (BASE_MULTIPLIER - 1) * jobsOf('ind') + COMMERCIAL_SPAN_JOBS,
     );
+  });
+});
+
+describe('a farming town', () => {
+  it('grows farms off a dirt road on a pole line, with no city water, and counts their work as industry', () => {
+    const h = initialized();
+    const rows = (x0: number, z0: number, w: number, d: number): TilePoint[] =>
+      Array.from({ length: d }, (_, dz) => roadRow(x0, z0 + dz, w)).flat();
+    send(h, 1, [
+      { kind: 'setSandbox', on: true },
+      { kind: 'setUnlimitedMoney', on: true },
+      // The town: a street with its own power and water, and homes on it.
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 40, 24) },
+      // The farms: a dirt road of their own, joined to nothing, with a line
+      // strung along it from a turbine and no water anywhere near.
+      { kind: 'buildRoad', tier: RoadTier.Gravel, tiles: roadRow(60, 60, 32) },
+    ]);
+    h.ticks(1);
+    send(h, 2, [
+      { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 39, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 38, rotation: 0 },
+      { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(60, 41, 24, 2) },
+      { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 59, rotation: 0 },
+      { kind: 'stringPowerLine', tiles: roadRow(60, 60, 32), on: true },
+      { kind: 'paintZone', zone: ZoneType.Agriculture, tiles: rows(60, 61, 32, 8) },
+    ]);
+    h.ticks(2);
+    expect(h.ackFor(2)!.ok).toBe(true);
+    // A paved street fronts no farmland: the land beside the town street refuses it.
+    send(h, 3, [{ kind: 'paintZone', zone: ZoneType.Agriculture, tiles: rows(60, 43, 24, 2) }]);
+    h.ticks(2);
+    expect(h.ackFor(3)!.ok).toBe(false);
+    h.ticks(3000);
+
+    const standing = new Map<number, BuildingInstance>();
+    for (const m of h.messages) {
+      if (m.type !== 'snapshot' || !m.snap.buildings) continue;
+      for (const b of [...m.snap.buildings.added, ...m.snap.buildings.updated])
+        standing.set(b.id, b);
+      for (const id of m.snap.buildings.removed) standing.delete(id);
+    }
+    const entryOf = (b: BuildingInstance): BuildingCatalogEntry =>
+      catalog.find((e) => e.id === b.catalogId)!;
+    const farms = [...standing.values()].filter((b) => entryOf(b).zone === ZoneType.Agriculture);
+    expect(farms.length).toBeGreaterThan(0);
+    expect(farms.some((b) => b.state === BuildingState.Active)).toBe(true);
+    // Level ground here is very fertile and its stony patches only somewhat:
+    // crop farms and pasture, and no orchard on the flat.
+    expect(farms.map((b) => entryOf(b).farm)).not.toContain('orchard');
+    // All of it south of the dirt road, with no water ever reaching it.
+    for (const b of farms) expect(b.z).toBeGreaterThan(60);
+    expect(farms.every((b) => (b.problems & Problem.NoWater) === 0)).toBe(true);
+    // Their work is the town's industry.
+    const farmJobs = farms
+      .filter((b) => b.state === BuildingState.Active)
+      .reduce((sum, b) => sum + (entryOf(b).jobs ?? 0), 0);
+    expect(h.lastSnapshot()!.stats.jobs).toBeGreaterThanOrEqual(farmJobs);
+    expect(farmJobs).toBeGreaterThan(0);
   });
 });
 

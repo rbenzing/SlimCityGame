@@ -430,8 +430,29 @@ MUTCD citations below use 11th-edition section numbers.
   from its road tiles. A road off the grid fronts lots square to its centre
   line from its kerb, out to the zoning depth, and nothing is zoned or built on
   its footprint. Clearing a zone is
-  exempt from the frontage check so a zone can always be removed. —
-  [simulation-rules.md](game-design/simulation-rules.md)
+  exempt from the frontage check so a zone can always be removed. A farm
+  departs from this twice: its lot needs a dirt road within 3 tiles, and
+  it needs no water, since a building whose entry draws none never waits
+  for it. — [simulation-rules.md](game-design/simulation-rules.md)
+- A tile's soil grade is derived from its height, the water beside it and the
+  map seed, and never saved. It is graded by one function, `soilGradeAt`,
+  for the worker, the render mirror, the Soil lens, farmland painting and
+  farm growth alike, and it is regraded wherever heights change. Beach sand
+  (under `SAND_BAND_METERS` above sea level), the water's edge, rock (over
+  `MAX_BUILD_SLOPE`) and stony ground better than pasture are never
+  cropland. The sand and the rock are the same bands the terrain draws, read
+  from the same constants, so the ground's colour and its soil cannot
+  disagree. — [world-model.md](world-sim/world-model.md#soil);
+  `src/shared/soil.ts`
+- Farmland is painted only where a dirt road's frontage reaches, up to
+  `FARM_DEPTH`, and only on soil a farm can work. A paved road fronts no
+  farmland, though a field may run up to it. A farm's jobs are industrial
+  jobs, and its residents are population. The soil under the lot decides a
+  farm's kind; a level-up keeps the kind, needs the kind's own grade and
+  industrial demand, and never reads land value. —
+  [simulation-rules.md](game-design/simulation-rules.md#frontage-and-zonability);
+  `computeFarmableMask` in `src/world/zonable.ts`, `trySpawnFarm` in
+  `src/sim/growth.ts`
 - Growth never builds into a shortage: a building spawns, or levels up, only
   when the grid has spare power and water for what it will draw, counted down
   as the pass builds. A lot or building held back only by that is waiting for
@@ -734,6 +755,13 @@ MUTCD citations below use 11th-edition section numbers.
   tiles, and it is identifiable at the default camera pitch without its label by
   the part that does its work (bay doors, entrance, plant, grounds). —
   [civic-massing.md](art/civic-massing.md)
+- A farm counts as industry and is never drawn as industry. Every renderer
+  that dresses industry — lot pad, setback tiers, roof props and stacks,
+  parking bays and kerb cars, the facade — asks `isFarmEntry` first. A farm's
+  pickable body is its barn walls, placed by the one farm plan (`planFarm`)
+  that the ground, the instancer and the kit all read, so the roof sits on the
+  barn and the silo stands in its yard. — [buildings.md](art/buildings.md);
+  `src/render/archetypes.ts`, `src/render/farmlot.ts`
 - Every surface colour resolves through `src/render/palette.ts`; no channel
   exceeds `MAX_MATERIAL_CHANNEL` (140) except snow (144), saturated accents stay
   at or below 102, and vehicle paint is the sole exemption. —

@@ -32,14 +32,18 @@ describe('subTabsFor', () => {
   // progression order, and Mixed gets its own sub-tab. ResHigh's
   // unlockMilestone is 4 (large towers arrive at Small City, not Busy
   // Township) — covered in its own describe block below.
-  it('splits Zoning into residential/commercial/industrial/mixed/de-zone, all non-empty', () => {
+  it('splits Zoning into residential/commercial/industrial/agriculture/mixed/de-zone, all non-empty', () => {
     const tabs = subTabsFor('zoning');
     expect(tabs.map((t) => t.label)).toEqual([
       'Residential',
       'Commercial',
       'Industrial',
+      'Agriculture',
       'Mixed-Use',
       'De-zone',
+    ]);
+    expect(tabs.find((t) => t.id === 'agriculture')?.cards.map((c) => c.id)).toEqual([
+      'zone.agriculture',
     ]);
     expect(tabs.every((t) => t.cards.length > 0)).toBe(true);
     expect(tabs.find((t) => t.id === 'residential')?.cards.map((c) => c.id)).toEqual([
@@ -64,6 +68,8 @@ describe('subTabsFor', () => {
     expect(byId('zone.comHigh')?.unlockMilestone).toBe(4);
     expect(byId('zone.comLow')?.unlockMilestone).toBe(0);
     expect(byId('zone.industrial')?.unlockMilestone).toBe(0);
+    // A town can be a farm town from its first day.
+    expect(byId('zone.agriculture')?.unlockMilestone).toBe(0);
   });
 
   it('groups Roads by the family a road belongs to (empty Maintenance dropped)', () => {

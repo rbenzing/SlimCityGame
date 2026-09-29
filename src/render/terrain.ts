@@ -18,6 +18,7 @@ import {
   MAP_SIZE,
   MAX_BUILD_SLOPE,
   MAX_WATER_DEPTH_VIS,
+  SAND_BAND_METERS,
   SEA_LEVEL,
   SHORELINE_BAND_METERS,
   TILE_METERS,
@@ -25,7 +26,6 @@ import {
 
 // --- pure color ramp ---------------------------------------------------------
 
-const SAND_BAND_METERS = 3; // meters above SEA_LEVEL that fade sand -> ground cover
 const GRASS_MAX_HEIGHT = 130; // meters at which elevation-driven effects (patchiness) saturate
 const ROCK_BLEND_RANGE = 3; // meters of slope beyond MAX_BUILD_SLOPE to fully saturate to rock
 const TREE_DARKEN_MAX = 0.35; // fraction darkened at full (255) tree density (canopy-shadow read)

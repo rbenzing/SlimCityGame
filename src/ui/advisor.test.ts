@@ -56,6 +56,12 @@ describe('cityIssues', () => {
     expect(cityIssues([building(0), building(0)], healthyStats())).toEqual([]);
   });
 
+  it('sends a building a dirt road leaves dark to a power line, and a farm to a dirt road', () => {
+    const issues = cityIssues([building(Problem.NoPower | Problem.NoRoad)], healthyStats());
+    expect(issues.find((i) => i.id === 'no-power')?.detail).toContain('power line');
+    expect(issues.find((i) => i.id === 'no-road')?.detail).toContain('dirt road');
+  });
+
   it('counts the buildings carrying each problem flag', () => {
     const issues = cityIssues(
       [building(Problem.NoPower), building(Problem.NoPower), building(Problem.NoWater)],

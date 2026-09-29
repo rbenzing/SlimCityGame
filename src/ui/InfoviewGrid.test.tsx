@@ -16,9 +16,9 @@ afterEach(() => {
 });
 
 describe('InfoviewGrid', () => {
-  it('renders a button per FieldId lens (9) plus Power, Watered, Trash, Transit, Districts and None (15 total), None active by default', () => {
+  it('renders a button per FieldId lens (9) plus Power, Watered, Trash, Soil, Transit, Districts and None (16 total), None active by default', () => {
     render(<InfoviewGrid />);
-    expect(screen.getAllByRole('button')).toHaveLength(15);
+    expect(screen.getAllByRole('button')).toHaveLength(16);
     expect(screen.getByRole('button', { name: /None/ })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: /Traffic/ })).toHaveAttribute(
       'aria-pressed',
@@ -52,6 +52,12 @@ describe('InfoviewGrid', () => {
     fireEvent.click(trash);
     expect(useCityStore.getState().overlay).toBe('trash');
     expect(screen.getByRole('button', { name: /^Trash$/ })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('renders a Soil lens button that sets overlay to the "soil" LensId', () => {
+    render(<InfoviewGrid />);
+    fireEvent.click(screen.getByRole('button', { name: /^Soil$/ }));
+    expect(useCityStore.getState().overlay).toBe('soil');
   });
 
   it('clicking a lens activates that overlay and highlights it', () => {

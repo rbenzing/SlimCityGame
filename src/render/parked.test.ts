@@ -673,6 +673,21 @@ describe('ParkedCarRenderer frontage apron', () => {
   });
 });
 
+describe('a farm on the road', () => {
+  it('lines no bays, paints no apron and parks nothing at the kerb, though its jobs count as industry', () => {
+    const farm = makeCatalogEntry({
+      category: 'ind',
+      zone: ZoneType.Agriculture,
+      farm: 'crops',
+      footprint: { w: 4, d: 5 },
+    });
+    const renderer = new ParkedCarRenderer(new THREE.Scene(), flatHeightAt, [farm], roadAtTiles([[5, 4]]));
+    renderer.apply(deltaAdd(makeBuilding({ id: 1, level: 1 })));
+    expect(renderer.stallSlotsFor(1)).toHaveLength(0);
+    expect(hasOwnLotParking(farm, 5, 5, roadAtTiles([[5, 4]]))).toBe(false);
+  });
+});
+
 describe('ParkedCarRenderer occupancy over the day', () => {
   function comLot(): ParkedCarRenderer {
     const scene = new THREE.Scene();

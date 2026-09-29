@@ -35,7 +35,7 @@ import {
   SetbackBox,
 } from './massing';
 import { materialHex } from './palette';
-import { isCleanIndustry, isHouseEntry } from './archetypes';
+import { isCleanIndustry, isFarmEntry, isHouseEntry } from './archetypes';
 
 // ---------------------------------------------------------------------------
 // Deterministic hashing (never Math.random/Date.now) — each render/*.ts file
@@ -189,7 +189,7 @@ export const MIN_SMOKESTACK_LEVEL = 2;
  * pollution in the air.
  */
 export function hasSmokestack(entry: BuildingCatalogEntry): boolean {
-  if (entry.category !== 'ind') return false;
+  if (entry.category !== 'ind' || isFarmEntry(entry)) return false;
   if ((entry.level ?? 1) < MIN_SMOKESTACK_LEVEL) return false;
   return !isCleanIndustry(entry);
 }
@@ -506,7 +506,8 @@ export class RoofPropRenderer {
     if (entry.category !== 'res' && entry.category !== 'com' && entry.category !== 'ind') return;
     // Detached/row homes get a pitched roof (houses.ts) instead of a flat roof
     // with vents/AC/antennas — rooftop clutter would poke through the pitch.
-    if (isHouseEntry(entry)) return;
+    // A farm's barn has a gambrel roof and its silos are its own (farms.ts).
+    if (isHouseEntry(entry) || isFarmEntry(entry)) return;
 
     // Same frontage setback as the body renderers so com/ind rooftop clutter
     // stays on the set-back roof instead of floating over the parking bays.

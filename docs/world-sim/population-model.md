@@ -19,7 +19,9 @@ adds its catalog `residents` to population and its catalog `jobs` to the
 commercial or industrial total (or, for a category-`res` entry that also
 carries a `jobs` figure — a Mixed-zone building — to commercial jobs too,
 since a mixed building's ground floor is commercial regardless of what sits
-above it). Population is never incremented or decremented as an event; it is
+above it). Residents count whatever the building's category: a farm is an
+industrial workplace with its family living on it, so its four residents
+join the population and its jobs the industrial total. Population is never incremented or decremented as an event; it is
 **re-summed wholesale** every tick, so it is always exactly the sum of every
 Active building's catalog figure at that instant — nothing about it can
 drift out of sync with the building set.

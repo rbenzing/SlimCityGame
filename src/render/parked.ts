@@ -29,7 +29,7 @@ import type { RoadProfile } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { ROAD_Y_OFFSET } from './roadsmesh';
 import { parkingLaneOffset } from '../shared/roadprofile';
-import { isHouseEntry } from './archetypes';
+import { isFarmEntry, isHouseEntry } from './archetypes';
 import {
   edgeFrameFor,
   findRoadFacingEdge,
@@ -163,6 +163,7 @@ export function hasOwnLotParking(
   z: number,
   roadAt: (tileX: number, tileZ: number) => boolean,
 ): boolean {
+  if (isFarmEntry(entry)) return false;
   if (entry.category === 'com' || entry.category === 'ind') {
     const edge = findRoadFacingEdge(x, z, entry.footprint.w, entry.footprint.d, roadAt);
     return edge !== null && frontageInsetTiles(entry.category, edge) > 0;
@@ -187,6 +188,8 @@ export function roadsideAllowance(
   // plinth has nobody to park, and lining the kerb outside one would read as
   // abandoned vehicles rather than as a working street.
   if (!PARKING_CATEGORIES.has(entry.category)) return 'none';
+  // A farm's truck stands in its own yard, never at a kerb.
+  if (isFarmEntry(entry)) return 'none';
   if (hasOwnLotParking(entry, x, z, roadAt)) return 'none';
   const edge = findRoadFacingEdge(x, z, entry.footprint.w, entry.footprint.d, roadAt);
   if (!edge) return 'none';
@@ -744,7 +747,8 @@ export class ParkedCarRenderer {
     if (building.state !== BuildingState.Active) return;
 
     const entry = this.catalogById.get(building.catalogId);
-    if (!entry) return;
+    // A farm's truck stands in its own yard, never in a painted bay or at a kerb.
+    if (!entry || isFarmEntry(entry)) return;
     // Parked-car bays + frontage apron are for COMMERCIAL and INDUSTRIAL lots
     // only. Homes park off-street (garage/driveway, render/houses.ts); utilities
     // (water tower, wind turbine, power, etc.), parks and civic plinths get no

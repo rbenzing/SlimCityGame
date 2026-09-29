@@ -40,7 +40,7 @@ import { deriveFacadeParams } from './facade';
 import { maxHeightOverFootprint } from './footprint';
 import { findRoadFacingEdge, findStreetFacingEdge, NO_STREETS, type StreetLookup } from './frontage';
 import { frontageInsetTiles } from './parked';
-import { isHouseEntry } from './archetypes';
+import { isFarmEntry, isHouseEntry } from './archetypes';
 
 // ---------------------------------------------------------------------------
 // computeSetbacks (pure)
@@ -152,6 +152,7 @@ export function frontageSetbackFor(
   street: StreetLookup = NO_STREETS,
 ): FrontageSetback {
   if (isHouseEntry(entry)) return houseFrontShift(entry, x, z, street);
+  if (isFarmEntry(entry)) return ZERO_FRONTAGE_SETBACK;
   if (entry.category !== 'com' && entry.category !== 'ind') return ZERO_FRONTAGE_SETBACK;
 
   const edge = findRoadFacingEdge(x, z, entry.footprint.w, entry.footprint.d, roadAt);
@@ -520,7 +521,8 @@ export class MassingRenderer {
     this.freeBuilding(building.id);
 
     const entry = this.catalogById.get(building.catalogId);
-    if (!entry) return;
+    // A farm's buildings are its own kit (farms.ts), never stacked tiers.
+    if (!entry || isFarmEntry(entry)) return;
 
     const frontage = frontageSetbackFor(entry, building.x, building.z, this.roadAt, this.street);
     const { boxes } = computeSetbacks(entry, building.id, frontage);

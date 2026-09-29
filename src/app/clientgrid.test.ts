@@ -22,6 +22,7 @@ import { loadGrid } from '../world/roadnet';
 import { computeZonableMask } from '../world/zonable';
 import { decodeSave } from './persist';
 import { ClientGridMirror } from './clientgrid';
+import { soilGrades } from '../shared/soil';
 import { FIRST_CUSTOM_PROFILE_ID, presetProfileForTier } from '../shared/roadprofile';
 
 const SIZE = 32;
@@ -486,6 +487,16 @@ describe('ClientGridMirror', () => {
     expect(mirror.height[11 * SIZE + 11]).toBeCloseTo(7.5, 5);
     // A tile outside the patch rect keeps its original map height (3).
     expect(mirror.height[0]).toBe(3);
+  });
+
+  it('floods, drains and regrades the soil a height patch reshapes, as the worker does', () => {
+    const seeded = new ClientGridMirror(makeMap(), 1234);
+    expect(Array.from(seeded.soil)).toEqual(Array.from(soilGrades(makeMap(), 1234)));
+
+    seeded.applyHeightPatches([{ x: 10, z: 10, w: 2, h: 1, heights: new Float32Array([-1, 12]) }]);
+    expect(seeded.water[10 * SIZE + 10]).toBe(1);
+    expect(seeded.water[10 * SIZE + 11]).toBe(0);
+    expect(Array.from(seeded.soil)).toEqual(Array.from(soilGrades(seeded, 1234)));
   });
 
   it('clips height patches to the grid bounds without throwing', () => {

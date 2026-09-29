@@ -34,6 +34,8 @@ export const ZoneType = {
   ResMediumRow: 6,
   ResMedium: 7,
   Mixed: 8,
+  /** Farmland: grows farms on fertile soil off a dirt road; its jobs are industrial. */
+  Agriculture: 9,
 } as const;
 export type ZoneType = (typeof ZoneType)[keyof typeof ZoneType];
 
@@ -349,6 +351,12 @@ export interface GridState {
    * network, where the arm is a link it does not have; never saved.
    */
   roadSeparate: Uint8Array;
+  /**
+   * Each tile's SoilGrade (src/shared/soil.ts), derived from height, water and
+   * the map seed: worked out on init, on load and after terraforming, never
+   * saved. A grid nobody has graded reads unfit everywhere.
+   */
+  soil: Uint8Array;
   buildingId: Uint32Array; // 0 = none, else building instance id occupying tile
   power: Uint8Array; // 1 = powered
   watered: Uint8Array; // 1 = water service reaches tile
@@ -957,6 +965,9 @@ export interface GarbageSpec {
 // dock category. Existing members unchanged.
 export type BuildingCategory = 'res' | 'com' | 'ind' | 'service' | 'utility' | 'park' | 'transit';
 
+/** What a farm grows, which the soil under its lot decides. */
+export type FarmKind = 'crops' | 'orchard' | 'pasture';
+
 export interface BuildingCatalogEntry {
   id: string;
   name: string;
@@ -964,6 +975,8 @@ export interface BuildingCatalogEntry {
   /** Set for zone-grown buildings; undefined for ploppables. */
   zone?: ZoneType;
   level?: number; // 1..3, for grown buildings
+  /** Set for every Agriculture entry: which kind of farm it is. */
+  farm?: FarmKind;
   footprint: { w: number; d: number }; // tiles
   height: number; // meters, for the box mesh
   color: number; // hex, flat color until stage-2 facade atlases
@@ -1293,6 +1306,7 @@ export type ToolId =
   | 'zone.resMediumRow'
   | 'zone.resMedium'
   | 'zone.mixed'
+  | 'zone.agriculture'
   // landscaping: the four real terraform brushes.
   // Slope is a stretch goal, deliberately not a ToolId yet.
   | 'terraform.raise'
@@ -1483,9 +1497,10 @@ export interface CursorChip {
  * is `LensId | null`.
  *
  * 'transit' (bus ridership overlay) and 'districts' (district tint overlay) are
- * additive — existing members unchanged.
+ * additive — existing members unchanged. 'soil' is the farming grade of the
+ * ground, which the render thread works out from its own mirror.
  */
-export type LensId = FieldId | 'power' | 'watered' | 'transit' | 'districts' | 'trash';
+export type LensId = FieldId | 'power' | 'watered' | 'transit' | 'districts' | 'trash' | 'soil';
 
 // ---------------------------------------------------------------------------
 // Landscaping & water. Additive contracts only.

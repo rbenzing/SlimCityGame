@@ -189,6 +189,7 @@ import {
   type LandfillArea,
 } from '../world/landfill';
 import { canStringLine, stringPowerLine } from '../world/powerline';
+import { regradeSoil, soilGrades } from '../shared/soil';
 import {
   GarbageSystem,
   type GarbageBuilding,
@@ -381,7 +382,10 @@ export function selectionOccupancy(
     };
   }
   if (entry.category === 'com' || entry.category === 'ind') {
-    return { jobs: state === BuildingState.Active ? (entry.jobs ?? 0) : 0 };
+    const active = state === BuildingState.Active;
+    const jobs = active ? (entry.jobs ?? 0) : 0;
+    // A farm is a workplace with its family living on it.
+    return entry.residents ? { jobs, residents: active ? entry.residents : 0 } : { jobs };
   }
   return {};
 }
@@ -629,6 +633,7 @@ class SimWorld implements WorkerSim {
     this.grid.height.set(map.height);
     this.grid.water.set(map.water);
     this.grid.trees.set(map.trees);
+    soilGrades(this.grid, seed, this.grid.soil);
 
     const rng = createRng(seed);
     this.growth = new GrowthSystem(CATALOG, rng.fork(1), canPlaceFootprint);
@@ -692,6 +697,7 @@ class SimWorld implements WorkerSim {
     this.registry = BuildingRegistry.deserialize(CATALOG, payload.meta.registry);
     this.stats = cloneStats(payload.meta.stats);
     this.seed = payload.header.seed;
+    soilGrades(this.grid, this.seed, this.grid.soil);
     this.mapName = payload.header.mapName;
     this.tickNo = payload.header.tick;
     this.pendingBatches = [];
@@ -2732,13 +2738,19 @@ class SimWorld implements WorkerSim {
    * heightPatches. The ack inverse is a terraformSet restore of the PREVIOUS
    * heights, so undo is exact to the float.
    */
+  /** Writes new heights, and the soil they reshape with them. */
+  private applyHeights(patch: HeightPatch): void {
+    applyHeightPatch(this.grid, patch);
+    regradeSoil(this.grid, this.seed, patch.x, patch.z, patch.w, patch.h);
+  }
+
   private cmdTerraform(command: TerraformCommand): CommandResult {
     const result = computeTerraformPatch(this.grid, command);
     if (!result) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
     if (!this.unlimitedMoney && this.stats.funds < result.cost)
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
 
-    applyHeightPatch(this.grid, result.patch);
+    this.applyHeights(result.patch);
     this.stats.funds -= result.cost;
     this.pendingHeightPatches.push(result.patch);
 
@@ -2768,7 +2780,7 @@ class SimWorld implements WorkerSim {
       h: command.h,
       heights: command.heights,
     };
-    applyHeightPatch(this.grid, forward);
+    this.applyHeights(forward);
     this.pendingHeightPatches.push(forward);
 
     const inverse: Command = {
@@ -2954,7 +2966,7 @@ class SimWorld implements WorkerSim {
     if (!patch) return;
 
     const prev = readHeightPatch(this.grid, patch.x, patch.z, patch.w, patch.h);
-    applyHeightPatch(this.grid, patch);
+    this.applyHeights(patch);
     this.pendingHeightPatches.push(patch);
 
     inverse.push({

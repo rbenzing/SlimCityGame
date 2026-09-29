@@ -20,12 +20,14 @@
  * Zero per-frame work: everything happens inside apply(BuildingDelta).
  */
 import * as THREE from 'three';
-import { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../shared/types';
+import { BuildingState } from '../shared/types';
+import type { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { pushConformingQuad, conformingQuadVertexCount } from './groundquad';
 import { materialUnit, type MaterialName } from './palette';
 import { massingLifecycleTint } from './massing';
-import { isHouseEntry } from './archetypes';
+import { isFarmEntry, isHouseEntry } from './archetypes';
+import { cropBands, planFarm, type FarmPlan, type FarmRect } from './farmlot';
 import { NO_STREETS, type StreetLookup } from './frontage';
 import { lotToWorld, planHouseLot, type HouseLotPlan, type LotRect } from './houselot';
 import { CURB_CUT_Y_OFFSET } from './parked';
@@ -62,6 +64,8 @@ export const MAX_LOT_MESH_VERTICES = 65536;
  * claimed ground against the wild grass around it.
  */
 export function lotSurfaceFor(entry: BuildingCatalogEntry): MaterialName | null {
+  // A farm lays its own ground: yard, drive and field (placeFarm).
+  if (isFarmEntry(entry)) return null;
   if (entry.category === 'ind') return 'darkAsphalt';
   if (entry.category === 'com') return 'brightAsphalt';
   if (entry.category === 'res') {
@@ -107,6 +111,8 @@ export class LotRenderer {
   private readonly roadAt: (x: number, z: number) => boolean;
   /** The streets a home's lawn, drive and path run out to; the default finds none. */
   private readonly street: StreetLookup;
+  /** Where the dirt roads a farm's gate opens onto are; the default finds none. */
+  private readonly dirtAt: (x: number, z: number) => boolean;
   private readonly material = new THREE.MeshLambertMaterial({ vertexColors: true });
   private readonly meshes = new Map<number, THREE.Mesh>();
   private visible = true;
@@ -117,12 +123,14 @@ export class LotRenderer {
     catalog: readonly BuildingCatalogEntry[],
     roadAt: (x: number, z: number) => boolean = () => false,
     street: StreetLookup = NO_STREETS,
+    dirtAt: (x: number, z: number) => boolean = () => false,
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
     this.catalogById = new Map(catalog.map((e) => [e.id, e]));
     this.roadAt = roadAt;
     this.street = street;
+    this.dirtAt = dirtAt;
   }
 
   apply(delta: BuildingDelta): void {
@@ -169,18 +177,29 @@ export class LotRenderer {
   private place(building: BuildingInstance): void {
     const entry = this.catalogById.get(building.catalogId);
     if (!entry) return;
-    const surface = lotSurfaceFor(entry);
-    if (surface === null) return;
-
-    const bounds = lotBounds(building, entry);
     const tint = massingLifecycleTint(building.state);
     const tinted = (name: MaterialName): readonly [number, number, number] => {
       const base = materialUnit(name);
       return [base[0] * tint[0], base[1] * tint[1], base[2] * tint[2]];
     };
-
     const positions: number[] = [];
     const colors: number[] = [];
+
+    const farm = planFarm(building, entry, this.dirtAt);
+    if (farm) {
+      // Land, not a building: a farm's ground says what state it is in by
+      // what grows on it (layFarmGround), and is never darkened like a
+      // derelict wall — a fallow field is grass, not a scorch mark.
+      const lay = (r: FarmRect, y: number, name: MaterialName): void =>
+        pushConformingQuad(positions, colors, r.x0, r.z0, r.x1, r.z1, y, materialUnit(name), this.heightAt);
+      layFarmGround(farm, building.state, lay);
+      this.addMesh(building.id, positions, colors);
+      return;
+    }
+
+    const surface = lotSurfaceFor(entry);
+    if (surface === null) return;
+    const bounds = lotBounds(building, entry);
     pushConformingQuad(
       positions,
       colors,
@@ -220,7 +239,10 @@ export class LotRenderer {
         if (drive.cut.v1 > drive.cut.v0) lay(drive.cut, CURB_CUT_Y_OFFSET, 'cleanConcrete');
       }
     }
+    this.addMesh(building.id, positions, colors);
+  }
 
+  private addMesh(id: number, positions: number[], colors: number[]): void {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
@@ -230,6 +252,34 @@ export class LotRenderer {
     mesh.receiveShadow = true;
     mesh.visible = this.visible;
     this.scene.add(mesh);
-    this.meshes.set(building.id, mesh);
+    this.meshes.set(id, mesh);
+  }
+}
+
+/**
+ * A farm's ground, laid through `lay`: grass round the farmstead, gravel
+ * where the machinery stands and down the drive, and the field. A crop
+ * field is its bands of crop and furrow; an orchard is mown grass between its
+ * trees; a paddock is grazed pasture. A field being broken is bare tilled
+ * soil, and an abandoned one has gone back to rough grass. Pure given `lay`.
+ */
+export function layFarmGround(
+  plan: FarmPlan,
+  state: BuildingState,
+  lay: (rect: FarmRect, y: number, name: MaterialName) => void,
+): void {
+  lay(plan.yard, LOT_Y_OFFSET, 'mownLawn');
+  // Farmyards are rolled gravel, pale against the grass, not the dark earth of a track.
+  lay(plan.apron, DRIVE_Y_OFFSET, 'sand');
+  lay(plan.drive, DRIVE_Y_OFFSET, 'sand');
+  if (state === BuildingState.Constructing) {
+    lay(plan.field, LOT_Y_OFFSET, 'tilledSoil');
+  } else if (state === BuildingState.Abandoned) {
+    lay(plan.field, LOT_Y_OFFSET, 'brightVegetation');
+  } else if (plan.kind === 'crops') {
+    const crop: MaterialName = plan.ripe ? 'ripeGrain' : 'cropGreen';
+    for (const band of cropBands(plan)) lay(band.rect, LOT_Y_OFFSET, band.furrow ? 'tilledSoil' : crop);
+  } else {
+    lay(plan.field, LOT_Y_OFFSET, plan.kind === 'orchard' ? 'mownLawn' : 'pasture');
   }
 }

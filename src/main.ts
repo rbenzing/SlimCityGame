@@ -39,6 +39,7 @@ import {
   RoadFlow,
   RoadTier,
   VEHICLE_STRIDE,
+  ZoneType,
   isStreetTier,
 } from './shared/types';
 import { carriagewayWidth, profilesEqual } from './shared/roadprofile';
@@ -103,6 +104,7 @@ import { StatsHistory } from './ui/statshistory';
 import { ADVISOR_REFRESH_SNAPSHOTS, cityIssues } from './ui/advisor';
 import { GhostRenderer, type GhostKind, type SetPreviewOptions } from './render/ghosts';
 import { UtilityKitRenderer } from './render/utilitykits';
+import { FarmRenderer } from './render/farms';
 import { ZoneGridRenderer } from './render/zonegrid';
 import { LampRenderer } from './render/lamps';
 import { PowerLineRenderer } from './render/powerlines';
@@ -188,11 +190,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // tile lookups over it are read by every frontage-aware renderer below
   // (parking bays, building setbacks, landfill entrances); onSnapshot updates
   // the mirror before it feeds buildings.
-  const clientGrid = new ClientGridMirror(map);
+  const clientGrid = new ClientGridMirror(map, seed);
   const roadAt = (x: number, z: number): boolean =>
     inBounds(x, z) && clientGrid.roadTier[z * clientGrid.size + x] !== RoadTier.None;
   const streetAt = (x: number, z: number): boolean =>
     inBounds(x, z) && isStreetTier((clientGrid.roadTier[z * clientGrid.size + x] ?? 0) as RoadTier);
+  // The only road a farm's gate opens onto, which decides where its farmstead stands.
+  const dirtAt = (x: number, z: number): boolean =>
+    inBounds(x, z) && clientGrid.roadTier[z * clientGrid.size + x] === RoadTier.Gravel;
   // How wide each street's verge and sidewalk are, read from the tile's own
   // cross-section: a home's front yard is measured from the sidewalk, and its
   // lawn and drive run out to it.
@@ -234,6 +239,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     utilityKits.kitIds(),
     roadAt,
     street,
+    dirtAt,
   );
   // A crossing tile holds two roads; the road passing over it has a surface of
   // its own, which the ordinary sampler — answering for the road beneath —
@@ -261,6 +267,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const serviceVehicles = new ServiceVehicleRenderer(world.scene, heightAt);
   const districtsRenderer = new DistrictsRenderer(world.scene, heightAt);
   const overlays = new OverlayRenderer(world.scene);
+  overlays.setSoil(clientGrid.soil);
   const idPicker = new IdPicker();
 
   // World feedback & selection FX.
@@ -288,7 +295,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // Lot pads go down before anything that stands on them: the building mass,
   // the parking apron, a driveway. They claim the whole footprint so a block of
   // lots meets edge to edge instead of leaving grass between properties.
-  const lots = new LotRenderer(world.scene, heightAt, catalog, roadAt, street);
+  const lots = new LotRenderer(world.scene, heightAt, catalog, roadAt, street, dirtAt);
+  // A farm's barn roof, farmhouse, silos, bins, orchard, fence and herd.
+  const farms = new FarmRenderer(world.scene, heightAt, catalog, dirtAt);
   const massing = new MassingRenderer(world.scene, heightAt, catalog, roadAt, street);
   const roofProps = new RoofPropRenderer(world.scene, heightAt, catalog, roadAt);
   // Archetype kit: the parts that make a warehouse, a factory, a green works
@@ -1019,6 +1028,17 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // of a road rather than judging it from a screenshot.
       (hook as Record<string, unknown>).terrainHeightAt = (x: number, z: number): number =>
         heightAt(x, z);
+      // What the farm kit is drawing, so a screenshot script can confirm the
+      // orchard, the herd and the silos exist before judging how they look.
+      (hook as Record<string, unknown>).farmKit = (): Record<string, number> => ({
+        crowns: farms.partCount('crown'),
+        silos: farms.partCount('silo'),
+        bins: farms.partCount('bin'),
+        barnRoofs: farms.partCount('barnRoof'),
+        herd: farms.herdSize(),
+      });
+      (hook as Record<string, unknown>).soilAt = (x: number, z: number): number =>
+        clientGrid.soil[z * clientGrid.size + x] ?? 0;
       (hook as Record<string, unknown>).ghostBounds = (): {
         minX: number;
         maxX: number;
@@ -1323,6 +1343,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     vehicles.setNightFactor(nightFactor);
     landmarks.setNightFactor(nightFactor);
     utilityKits.setNightFactor(nightFactor);
+    farms.setNightFactor(nightFactor);
 
     // Seasonal foliage tint: only touch materials when the
     // calendar month actually changes.
@@ -1342,6 +1363,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       terrain.applyHeightPatches(snap.heightPatches);
       clientGrid.applyHeightPatches(snap.heightPatches);
       zoneGrid.rebuild(clientGrid);
+      // The mirror regraded the soil the new heights reshaped.
+      overlays.setSoil(clientGrid.soil);
       // Roads sample terrain height at build time: any height change under or
       // beside an existing road (terraform, building auto-flatten, a neighbor
       // run's grading) must rebuild the affected road chunks, or their
@@ -1402,6 +1425,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (snap.buildings) {
       lots.apply(snap.buildings);
       instancer.apply(snap.buildings);
+      farms.apply(snap.buildings);
       massing.apply(snap.buildings);
       roofProps.apply(snap.buildings);
       buildingKit.apply(snap.buildings);
@@ -1676,6 +1700,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       audio.play('click');
       // Zoning grid layer while a zone tool is in hand — and for the landfill
       // brush, which paints into the same road-frontage grid.
+      zoneGrid.setPaintZone(ZONE_TOOL_TO_TYPE[state.selectedTool] ?? ZoneType.None, clientGrid);
       zoneGrid.setVisible(
         state.selectedTool.startsWith('zone.') || state.selectedTool === 'landfill.paint',
       );
@@ -1902,6 +1927,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     mapPin.update(visualSeconds);
     landmarks.update(visualSeconds * 1000); // tower-beacon pulse (elapsed visual ms)
     utilityKits.update(visualSeconds * 1000); // wind-turbine rotor spin
+    farms.update(visualSeconds * 1000); // cattle grazing
     pedestrianRenderer.update(visualSeconds * 1000); // walker walk-cycle (same accumulated-tMs clock)
 
     overlayAgeMs += dtMs;
