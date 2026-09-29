@@ -49,7 +49,8 @@ the fill fraction seen before the upgrade is the one seen after. See
 
 **Worker protocol: yes, additively.** `SimSnapshot.garbage` gains an optional
 `recovery: { id, fill, capacity, divertedLastPass }[]` and an optional
-`recoveredTotal`. `VehicleKind` gains `Recycling: 7`, and a mirror that does not
+`recoveredTotal`. `VehicleKind` gains `Recycling`, at the next free
+`VehicleKind` value when it is built (append-only), and a mirror that does not
 know the value falls back to the `Garbage` livery rather than dropping the
 vehicle. No new `Command`. See [../interfaces.md](../interfaces.md).
 

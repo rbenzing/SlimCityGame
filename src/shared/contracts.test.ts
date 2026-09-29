@@ -39,7 +39,7 @@ describe('night-cycle constants (UI-SPEC §6.5)', () => {
     expect(VISUAL_DAY_TICKS).toBeGreaterThan(TICKS_PER_DAY);
   });
 
-  it('lamps sit on every 2nd road tile — a pole every 32 m, as real streets run', () => {
+  it('lamps sit on every 2nd road tile — a pole every 40 m, as real streets run', () => {
     expect(LAMP_SPACING_TILES).toBe(2);
   });
 

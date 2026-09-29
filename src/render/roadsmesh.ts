@@ -3268,7 +3268,7 @@ function emitAvenueMedian(
 // the real range is 13 to 25 m. A mini's central island is small and ringed by
 // a paved APRON that a long vehicle tracks over rather than a kerb it would
 // ground out on, which is exactly the shape that fits a tile. A bigger
-// roundabout is a 2x2 block and waits for the corridors of wave 6.
+// roundabout would take a 2x2 block, and none is built.
 
 /** Radius of the raised island at the centre of a mini roundabout. */
 const ROUNDABOUT_ISLAND_RADIUS_M = 2.1;

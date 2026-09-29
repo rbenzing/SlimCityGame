@@ -129,7 +129,7 @@ small to hold a curve, samples the real terrain height at every corner, and
 splits each cell on the same diagonal the terrain mesh itself uses, so
 nothing laid on the ground clips through a slope or floats over a dip. (Roads
 and buildings level their own footprint on placement for the same reason —
-see [nature.md](../visual-render/vegetation.md) for that terrain-side half of the rule.)
+see [vegetation.md](../visual-render/vegetation.md) for that terrain-side half of the rule.)
 
 **Material palette calibration.** One module (`render/palette.ts`) is the
 single source of truth for every material colour in the world — buildings,

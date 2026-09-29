@@ -301,9 +301,10 @@ how full its lanes have been running:
   touching an arterial, a divided road or above always signalises.
 - Two roads of the same class, equal and at one-way or above, all stop —
   the four-way stop an American grid is full of.
-- A highway or a ramp never takes a node control at all: nothing meets a
-  highway at grade, and a ramp's motorway end is a merge or a diverge
-  (below), never a controlled junction.
+- A junction a highway or rail touches never takes a node control at all:
+  nothing meets either at grade, so a ramp's motorway end is a merge or a
+  diverge (below), never a controlled junction. A ramp's other end is a
+  terminal on the surface network and takes an ordinary warranted control.
 
 That classification default is then nudged up one rung when traffic
 sustains it, mirroring the MUTCD's absolute thresholds (500 vph major plus
@@ -331,11 +332,11 @@ arterial does in life.
 
 **Roundabout** is the one control that changes geometry rather than only
 behaviour: choosing it on a node with 3–4 approaches turns the node's own
-tile (20 m, a mini roundabout, real range 13–25 m, ≤ 15,000 vpd) or a 2×2
-block (40 m, a compact single-lane roundabout, real range 27–45 m, ≤ 25,000
-vpd) into a circulating carriageway with yield markings on every approach
-and no signal. A two-lane roundabout for a two-tile corridor is not
-buildable yet.
+tile (20 m, a mini roundabout, real range 13–25 m, ≤ 15,000 vpd) into a
+circulating carriageway with yield markings on every approach and no
+signal. A compact single-lane roundabout on a 2×2 block (40 m, real range
+27–45 m, ≤ 25,000 vpd) and a two-lane roundabout for a two-tile corridor are
+not buildable yet.
 
 ## Approach lanes, turn pockets and tapers
 

@@ -131,8 +131,10 @@ junction itself is gone (bulldozed away).
   Left/Through/Right toggles.
   - What a lane shows starts from what its real lane count derives by
     default (a dedicated left from three lanes on, a dedicated right from
-    four on — see [SPEC.md](../README.md)) and then takes on whatever the
-    player has explicitly set for that lane.
+    four on — see
+    [road-model.md](../world-sim/road-model.md#approach-lanes-turn-pockets-and-tapers))
+    and then takes on
+    whatever the player has explicitly set for that lane.
   - A lane can only ever narrow what its arm currently allows: the arm's
     own restriction always wins, so a lane can never offer a turn its arm
     has just banned.
@@ -165,7 +167,8 @@ condition holds.
   Green Energy — each a pill switch; toggling one sends the change and
   flips the local reading at once, ahead of the worker's own confirmation.
   None are enabled for a district nobody has touched yet. See
-  [SPEC.md](../README.md) for what each policy actually changes.
+  [progression.md](../game-design/progression.md#districts-and-policies) for
+  what each policy actually changes.
 
 ## Transit lines panel
 

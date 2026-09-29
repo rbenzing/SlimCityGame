@@ -30,8 +30,8 @@ to fix, and it is worse here than elsewhere because transit is the one system
 whose output the player can already watch move.
 
 It also removes a small lie. The vehicles on screen are spaced by a density knob
-rather than a schedule, and they travel at roughly 115 km/h — five times a real
-bus's operating speed. Once a line's vehicles are a fleet the city bought, the
+rather than a schedule, and they travel at 144 km/h — seven times a real bus's
+operating speed. Once a line's vehicles are a fleet the city bought, the
 vehicle on screen has to be the vehicle in the arithmetic, and that is a change
 visible the first time the player looks at a street.
 

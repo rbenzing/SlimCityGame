@@ -16,7 +16,8 @@ per-dependency module isolation). These are recorded in
 `vite.config.ts`'s own comments and are worth reading before touching the
 test config — each one fixes a specific, previously-hit failure.
 
-117 test files, 3,279 tests, as of this writing.
+The current test and test-file counts are kept in one place only, the Status
+section of [ROADMAP.md](../../ROADMAP.md).
 
 ## Test-file convention
 

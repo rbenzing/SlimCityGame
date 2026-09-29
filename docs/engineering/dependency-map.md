@@ -140,7 +140,7 @@ is a reviewer reading the diff.
 - [architecture.md](architecture.md) — the three execution contexts and one
   tick traced end to end.
 - [standards/architecture-rules.md](standards/architecture-rules.md) — the
-  firewall, the contract layer, and the one legitimate `Math.random`
-  exception (`src/app/music.ts`).
+  firewall, the contract layer, and the legitimate `Math.random`/`Date.now`
+  exceptions, all in `src/app/`.
 - [adr/0002-sim-runs-deterministic-fixed-timestep-in-a-worker.md](adr/0002-sim-runs-deterministic-fixed-timestep-in-a-worker.md)
   — why the firewall exists and what it costs to keep it convention-only.

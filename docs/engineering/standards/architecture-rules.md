@@ -62,20 +62,29 @@ hash function like the `mulberry32`/`triple32` copies used across
 `src/render/*.ts`) or from the sim's own tick/elapsed-time value, never
 from the wall clock or `Math.random()`.
 
-### The one legitimate exception: `src/app/music.ts`
+### The legitimate exceptions: `src/app/`
 
-`src/app/music.ts:174` does `this.rng = options.rng ?? Math.random` to
-shuffle the playlist. This is correct, not an oversight: `src/app/` is
-app/session-layer glue, outside both the worker's tick loop and the
-render thread's frame loop
+Three `src/app/` files use them, and each is correct, not an oversight:
+
+- `src/app/music.ts:174` does `this.rng = options.rng ?? Math.random` to
+  shuffle the playlist.
+- `src/app/audio.ts:341-373` draws the gaps, pitches and lengths of the
+  ambient animal calls from `Math.random`.
+- `src/app/persist.ts:215` stamps `savedAt = Date.now()` into the
+  worker-produced save payload.
+
+`src/app/` is app/session-layer glue, outside both the worker's tick loop
+and the render thread's frame loop
 ([dependency-map.md](../dependency-map.md#the-app-exception-persistts)
-covers where `app/` sits). A shuffled playlist order has no effect on sim
-state, on anything serialized into a save, or on a rendered frame — it is
-exactly the kind of incidental randomness the determinism rule was never
-meant to reach. Do not use this as precedent for adding `Math.random` to
-`src/sim/` or `src/render/`; the boundary that makes it safe here
-(app-layer, outside the tick/frame loops) is the reason it's fine, not the
-mere fact that some file somewhere uses it.
+covers where `app/` sits). A shuffled playlist or the timing of an animal
+call has no effect on sim state, on anything the sim serializes into a
+save, or on a rendered frame, and `savedAt` is save metadata the sim never
+reads — exactly the kind of incidental randomness and wall-clock time the
+determinism rule was never meant to reach. Do not use these as precedent
+for adding `Math.random` or `Date.now` to `src/sim/`, `src/world/`,
+`src/core/` or `src/render/`; the boundary that makes them safe (app-layer,
+outside the tick/frame loops) is the reason they're fine, not the mere fact
+that some file somewhere uses them.
 
 ## Command/inverse pairing
 

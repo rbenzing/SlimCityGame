@@ -122,7 +122,7 @@ const RIBBON_WIDTH_METERS = TILE_METERS * 0.3;
 const BUS_SIZE: readonly [number, number, number] = [2.5, 3.0, 10.0];
 
 /** Cruise speed for cosmetic transit buses along their route polyline. */
-const BUS_SPEED_MPS = TILE_METERS * 2; // 32 m/s, in the same ballpark as traffic.ts's cruise speeds
+const BUS_SPEED_MPS = TILE_METERS * 2; // 40 m/s, slower than traffic.ts's cosmetic cars (3 tiles/s and up)
 
 /** Riders "absorbed" per visible cosmetic bus -- purely a density knob, not a capacity model. */
 export const RIDERSHIP_PER_BUS = 40;

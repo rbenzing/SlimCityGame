@@ -23,9 +23,9 @@ current behavior only and carry no dates of their own._
 
 ---
 
-## Status (2026-09-17)
+## Status (2026-09-29)
 
-**Test suite:** 3,343 tests passing across 117 test files, run 2026-09-17.
+**Test suite:** 3,881 tests passing across 128 test files, run 2026-09-29.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -34,34 +34,47 @@ districts & policies, stats charts and photo mode; eight playtest-feedback
 rounds (2026-07-22 through 2026-07-25); the landfill/garbage sanitation
 epic; city audio, UI sound and the user-supplied music player; the advisor
 panel; bridges and elevated roads; road signage; rail transit; tram
-transit; and building lots and archetypes. Versioning and deploy are
-automated (release-please + Conventional Commits → GitHub Pages; see the
-README).
+transit; building lots and archetypes; dynamic world lighting
+([`render/sky.ts`](../src/render/sky.ts)) and the cantilever streetlight
+([`render/lamps.ts`](../src/render/lamps.ts)); power-conducting roads and the
+power line ([`sim/network.ts`](../src/sim/network.ts)); free-form roads — a
+network of nodes and segments, curves, roads meeting at any angle; overpasses;
+snapping between grid and free roads; homes that face their street, with
+drives, garages and yards; and brownouts that cut from the far end of the grid,
+with the Advisor naming a shortage and the jobs a workforce is short of.
+Versioning and deploy are automated (release-please + Conventional Commits →
+GitHub Pages; see the README).
 
-**Road composition is shipped, all six waves.** A road is a class, a
+**Road composition is shipped but for three pieces.** A road is a class, a
 cross-section profile and per-junction control; the fixed-tier model is gone.
-Waves 5 and 6 — the slip road, and a section too wide for a tile laid as two
-carriageways — are built ([`shared/corridor.ts`](../src/shared/corridor.ts)),
-as are the pieces that finished it: a transit lane is a variant of a size
-rather than a road type, a road's tier is its size with the reserved lane
-priced on top, and the placement ghost is drawn at the road's own width. Full
-detail in History, §10 below.
+Waves 5 and 6 — the ramp with its merge, diverge and terminal junctions, and a
+section too wide for a tile laid as two carriageways — are built
+([`shared/corridor.ts`](../src/shared/corridor.ts)), as are the pieces that
+finished it: a transit lane is a variant of a size rather than a road type, a
+road's tier is its size with the reserved lane priced on top, and the placement
+ghost is drawn at the road's own width. Not built: interchange stamps (an
+interchange is laid ramp by ramp), the 2×2 compact roundabout, and sound
+barriers. Full detail in History, §10 below.
 
-**Also shipped since this section last claimed otherwise:** dynamic world
-lighting (sky dome, sun, the time-of-day ramp —
-[`render/sky.ts`](../src/render/sky.ts)); the roadway light pole, properly
-modelled as a cantilever streetlight ([`render/lamps.ts`](../src/render/lamps.ts));
-and power-conducting roads ([`sim/network.ts`](../src/sim/network.ts), where
-power and water propagate across road tiles by class). All three were
-requested 2026-09-06 and were still listed here as unbuilt on 2026-09-17,
-which is the kind of drift this section exists to prevent: **check the code
-before writing "not built" here.**
+**Open:**
 
-**Next:** nothing is queued. The road epic is closed and the three standing
-requests are done, so the next item is whatever is asked for next. The
-[DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
-transit modes) and AI raster map packs, facade-atlas stage 2 and screen-space
-AO/reflections are the shelf to pick from.
+- Overpasses: the placement ghost carries no heights, so it does not show a
+  raised road's ramps, and a road cannot yet be drawn under a bridge that is
+  already there.
+- Road composition: the three pieces above.
+- Waiting on a decision: whether a ramp is strictly one-way (the router lets a
+  ramp be driven against its flow at three times the cost, and nothing pins
+  either reading), and whether to rebalance commercial against industrial
+  demand — in a small town commercial demand wants jobs up to about twice the
+  workforce while industrial demand stops at about half of it, so industry
+  never gets a turn.
+
+Before writing "not built" anywhere in this document, check the code.
+
+**Next:** nothing else is queued, so the next item is whatever is asked for
+next. The [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry,
+more transit modes) and AI raster map packs, facade-atlas stage 2 and
+screen-space AO/reflections are the shelf to pick from.
 
 ---
 
@@ -202,6 +215,32 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 
 ## 10. History (newest first)
 
+### The workforce, and a docs sweep (requested and built 2026-09-29)
+
+The player noticed industry was not growing, with the Advisor reporting 45%
+of residents out of work. Industry was right not to grow: only 55% of
+residents work (`EMPLOYMENT_RATE`), the town's jobs already outnumbered that
+workforce, and industrial demand falls as the workforce is absorbed. The
+Advisor was wrong: it measured unemployment against every resident, so any
+city with work read at least 45% out of work and was told to zone more
+industry, while its "employers cannot find workers" check could never fire.
+The workforce is now one constant in `src/shared/constants.ts`
+(`workforceOf`), and employment, industrial demand and the Advisor all
+measure against it: unemployment is a share of the workforce, and empty jobs
+past a quarter of the workforce say "zone more housing". Whether commercial
+demand should leave industry more room in a small town is a design question,
+left open in Status above.
+
+The same change swept the documentation against the code. Status above was
+eleven days behind; four History headings still called shipped work unbuilt,
+and road composition claimed interchange stamps, the 2×2 roundabout and sound
+barriers that were never built. Street markings and signs were described per
+tier from before the class model, a rail track as a level crossing, lamps and
+buses at a 16 m tile's figures, the determinism exception as one file where
+it is three `src/app/` files, and feature plans each claimed the same save
+version and vehicle kind. Every figure changed was read off the code first.
+Still open: whether a ramp is strictly one-way.
+
 ### Brownouts from the far end of the grid (requested, specified and built 2026-09-28)
 
 The player reported houses turning dark and back at random, and confirmed the
@@ -300,7 +339,7 @@ move back. The world plans the moved road with its old self taken away
 moves leave it (`gridRunRefusalAfter`), so a move a rule forbids is refused
 before release with that rule's reason.
 
-### Free-form roads (requested 2026-09-23, specified 2026-09-24)
+### Free-form roads (requested 2026-09-23, specified and built 2026-09-24)
 
 Every turn was a grid corner, a quarter circle inside one 20 m tile, which is
 wrong for a motorway at 100 km/h, and two roads could only meet at right
@@ -575,8 +614,8 @@ the traffic, and a kerbside bus lane had the same stray line plus only a dashed
 boundary. The edge line now goes at the inside edge of a reserved lane, where
 general traffic actually ends.
 
-**Junction geometry, four defects found by inspection (2026-09-08, not yet
-fixed).** An avenue crossing a two-lane road, photographed straight down at
+**Junction geometry, four defects found by inspection (2026-09-08; each since
+fixed or retracted).** An avenue crossing a two-lane road, photographed straight down at
 the closest the rig allows, then measured. None of these is caught by any
 check we have, which is the reason they survived:
 
@@ -811,7 +850,7 @@ across marking types, so likely a design consequence), and a fresh map with no
 roads on it already submits six empty draw calls (an empty map submits them
 too, so they are not the roads').
 
-### Road composition (2026-09-05 – 2026-09-06, in progress)
+### Road composition (2026-09-05 – 2026-09-17, shipped but for three pieces)
 
 A road becomes a **class** (what it's for — speed, zonability, what it may
 carry), a **profile** (its cross-section: an ordered, width-budgeted list
@@ -839,7 +878,7 @@ shippable waves.
   / signal / roundabout) set by a warrant and overridable by the player
   (saves bump to v8); a signalised junction cycles on the shared traffic
   clock, and a one-tile mini roundabout is buildable. Still open: the 2×2
-  compact roundabout, which needs wave 6's two-tile corridors. (The other
+  compact roundabout. (The other
   gap this wave's status flagged at ship time — delay costed per approach
   rather than per movement — was closed the same day by wave 4, below.)
 - **Wave 4 — approach lanes and tapers (shipped 2026-09-06).** Lanes carry
@@ -853,11 +892,13 @@ shippable waves.
   sets, which only pay off once wave 6's multi-lane approaches exist, and
   the motorway gore chevron, moved into wave 5 because it needs the same
   neutral-area geometry a ramp nose needs.
-- **Waves 5–6 — ramps/interchange stamps; two-tile corridors (specified,
-  not built).** The ramp class, merge/diverge/terminal junctions and
-  interchange stamps (wave 5), and six/eight-lane two-tile corridors with
-  the compact roundabout and sound barriers (wave 6), are fully specified
-  in [world-sim/road-model.md](world-sim/road-model.md). Neither wave has a ship date.
+- **Waves 5–6 — ramps; two-tile corridors (built by 2026-09-17, but for three
+  pieces).** The ramp class with its merge, diverge and terminal junctions
+  (wave 5) and a section too wide for one tile laid as two carriageways
+  (wave 6, [`shared/corridor.ts`](../src/shared/corridor.ts)) are built, as
+  specified in [world-sim/road-model.md](world-sim/road-model.md). Not built:
+  interchange stamps — an interchange is laid ramp by ramp — the 2×2 compact
+  roundabout, and sound barriers.
 
 Design locked 2026-09-05 (research date): 3.5 m default travel lanes
 (existing presets keep their original 3.75 m), six/eight lanes as two-tile
@@ -871,9 +912,8 @@ existing metres-and-seconds units.
 `src/world/grid.ts`, `src/world/roads.ts`, `src/world/pathfind.ts`,
 `src/sim/traffic.ts`, `src/sim/worker.entry.ts`, `src/render/roadsmesh.ts`,
 `src/render/roadfurniture.ts`, `src/render/lamps.ts`, `src/render/parked.ts`,
-`src/render/signage.ts`, `src/world/interchanges.ts`, `src/tools/tools.ts`,
-`src/ui/RoadToolOptions.tsx`, `src/ui/JunctionPanel.tsx`,
-`src/ui/categories.ts`, `src/sim/advisor.ts`.
+`src/tools/tools.ts`, `src/ui/RoadToolOptions.tsx`, `src/ui/JunctionPanel.tsx`,
+`src/ui/categories.ts`, `src/ui/advisor.ts`.
 
 **Acceptance:** every pre-existing tier loads from a v5 save and renders
 byte-identically as its preset profile, reproducing its catalogue capacity
@@ -893,7 +933,7 @@ ramps, tapers and interchanges are checked by reading back the live grid in
 the running game, not only in unit tests; markings remain a screenshot
 review.
 
-### Power-conducting roads (requested 2026-09-06, not built)
+### Power-conducting roads (requested 2026-09-06, built by 2026-09-17)
 
 Every road currently conducts electricity regardless of surface, so the
 power network has no shape a player can see or plan. The specified fix: a
@@ -905,10 +945,11 @@ the same build-cost/monthly-upkeep path a road already uses. The change is
 explicitly not grandfathered: once shipped, existing saves load with only
 the supply they actually earned. Ship order is fixed — lamps first, the
 power line second, roads losing conduction last — so the game is never left
-with an unreachable lot mid-rollout. Fully specified, including acceptance
-and verification criteria, in [world-sim/utilities-model.md](world-sim/utilities-model.md);
-nothing in this section has
-shipped.
+with an unreachable lot mid-rollout. Specified, including acceptance and
+verification criteria, in [world-sim/utilities-model.md](world-sim/utilities-model.md),
+and built: a lamp stands only on a powered road tile, the power
+line is placeable, and only a sealed road conducts
+([`sim/network.ts`](../src/sim/network.ts)).
 
 ### Audio — city soundscape and music player (shipped 2026-08-10)
 
