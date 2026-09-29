@@ -9,7 +9,7 @@ import {
   type ServiceKind,
 } from '../shared/types';
 
-/** A city with nothing wrong: supply covers demand, books balance, its workforce of 55 employed. */
+/** A city with nothing wrong: supply covers demand, books balance, its workforce of 50 employed. */
 function healthyStats(overrides: Partial<CityStats> = {}): CityStats {
   return {
     tick: 100,
@@ -18,7 +18,7 @@ function healthyStats(overrides: Partial<CityStats> = {}): CityStats {
     monthlyExpenses: 500,
     population: 100,
     jobs: 60,
-    employed: 55,
+    employed: 50,
     demand: { res: 0, com: 0, ind: 0 },
     happiness: 70,
     powerSupply: 100,
@@ -249,35 +249,35 @@ describe('city-wide checks', () => {
     expect(idsOf(issues)).toContain('no-jobs');
   });
 
-  // A city of 100 has a workforce of 55: employed is min(55, jobs).
+  // A city of 100 has a workforce of 50: employed is min(50, jobs).
 
   it('flags unemployment past a quarter of the workforce, with its share of the workforce', () => {
-    const issues = cityIssues([], healthyStats({ population: 100, jobs: 40, employed: 40 }));
+    const issues = cityIssues([], healthyStats({ population: 100, jobs: 35, employed: 35 }));
     const unemployment = issues.find((i) => i.id === 'unemployment');
-    expect(unemployment?.title).toBe('27% of the workforce is out of work'); // 15 of 55
+    expect(unemployment?.title).toBe('30% of the workforce is out of work'); // 15 of 50
   });
 
   it('tolerates a little unemployment without nagging', () => {
-    expect(cityIssues([], healthyStats({ population: 100, jobs: 50, employed: 50 }))).toEqual([]);
+    expect(cityIssues([], healthyStats({ population: 100, jobs: 45, employed: 45 }))).toEqual([]);
   });
 
-  it('reads a workforce with a job each as fully employed, not 45% out of work', () => {
+  it('reads a workforce with a job each as fully employed, not half out of work', () => {
     // The town that reported "45% of residents are out of work": 84 residents,
-    // 46 workers, and at least as many jobs.
-    const issues = cityIssues([], healthyStats({ population: 84, jobs: 46, employed: 46 }));
+    // 42 workers, and more jobs than that.
+    const issues = cityIssues([], healthyStats({ population: 84, jobs: 46, employed: 42 }));
     expect(issues).toEqual([]);
   });
 
   it('says employers cannot find workers once the empty jobs pass a quarter of the workforce', () => {
-    const issues = cityIssues([], healthyStats({ population: 84, jobs: 60, employed: 46 }));
+    const issues = cityIssues([], healthyStats({ population: 84, jobs: 60, employed: 42 }));
     const short = issues.find((i) => i.id === 'labour-short');
     expect(short?.severity).toBe('warning');
-    expect(short?.detail).toBe('14 jobs stand empty — zone more housing to grow the workforce.');
+    expect(short?.detail).toBe('18 jobs stand empty — zone more housing to grow the workforce.');
     expect(idsOf(issues)).not.toContain('unemployment');
   });
 
   it('tolerates a few empty jobs', () => {
-    expect(cityIssues([], healthyStats({ population: 100, jobs: 65, employed: 55 }))).toEqual([]);
+    expect(cityIssues([], healthyStats({ population: 100, jobs: 60, employed: 50 }))).toEqual([]);
   });
 
   it('reads one empty job in the singular', () => {

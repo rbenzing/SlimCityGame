@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 3,881 tests passing across 128 test files, run 2026-09-29.
+**Test suite:** 3,899 tests passing across 128 test files, run 2026-09-29.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -41,7 +41,9 @@ power line ([`sim/network.ts`](../src/sim/network.ts)); free-form roads — a
 network of nodes and segments, curves, roads meeting at any angle; overpasses;
 snapping between grid and free roads; homes that face their street, with
 drives, garages and yards; and brownouts that cut from the far end of the grid,
-with the Advisor naming a shortage and the jobs a workforce is short of.
+with the Advisor naming a shortage and the jobs a workforce is short of;
+motorways and ramps driven only the way they flow; and demand as economic base
+theory, a small town growing its industry before its shops.
 Versioning and deploy are automated (release-please + Conventional Commits →
 GitHub Pages; see the README).
 
@@ -62,12 +64,9 @@ barriers. Full detail in History, §10 below.
   raised road's ramps, and a road cannot yet be drawn under a bridge that is
   already there.
 - Road composition: the three pieces above.
-- Waiting on a decision: whether a ramp is strictly one-way (the router lets a
-  ramp be driven against its flow at three times the cost, and nothing pins
-  either reading), and whether to rebalance commercial against industrial
-  demand — in a small town commercial demand wants jobs up to about twice the
-  workforce while industrial demand stops at about half of it, so industry
-  never gets a turn.
+- Farms: agriculture as the face a small town's industry wears — fields,
+  barns and silos — asked for 2026-09-29 as its own feature, after the
+  small-town economy it would stand on.
 
 Before writing "not built" anywhere in this document, check the code.
 
@@ -215,6 +214,34 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 
 ## 10. History (newest first)
 
+### One-way carriageways, and the small-town economy (decided and built 2026-09-29)
+
+Asked whether a ramp is strictly one-way, the player chose realism, and the
+same held for the motorway: the spec had always called each motorway line one
+carriageway flowing one way, but the router drove every road type but the
+one-way street both ways, so a ramp or a motorway could be taken against its
+flow at a price. A direction a road's cross-section has no travel lane for is
+now never driven, whatever the road type — one-way street, motorway, ramp,
+corridor half or a composed one-way profile — and a road laid before flow was
+stored is gated by its type's `oneWay` as the one-way street always was. A
+city built with a single motorway line now carries traffic one way on it, as
+a real carriageway does. See
+[Stored direction and one-way roads](world-sim/road-model.md#stored-direction-and-one-way-roads).
+
+Asked to rebalance demand, the player wanted a small town to behave like a
+real farming or mill town, which needs its agriculture or industry to
+flourish. Demand is now economic base theory, built on published figures:
+industry is the basic sector, each industrial job supports 0.81 local ones
+(the 1.81 multiplier measured across nearly 200 small US communities,
+Mulligan 2008), people follow work both ways, and the workforce is half the
+population (the US labour force, BLS 2025) rather than 55%. Jobs still under
+construction count as supply, so a spurt of building does not overshoot.
+A town of homes with no industry now stops growing; a town whose shops
+outrun its industry grows industry, not shops. Farms themselves — fields,
+barns, silos as the face of small-town industry — are the next feature, left
+open in Status. See
+[Demand: the RCI model](game-design/simulation-rules.md#demand-the-rci-model).
+
 ### The workforce, and a docs sweep (requested and built 2026-09-29)
 
 The player noticed industry was not growing, with the Advisor reporting 45%
@@ -239,7 +266,7 @@ tier from before the class model, a rail track as a level crossing, lamps and
 buses at a 16 m tile's figures, the determinism exception as one file where
 it is three `src/app/` files, and feature plans each claimed the same save
 version and vehicle kind. Every figure changed was read off the code first.
-Still open: whether a ramp is strictly one-way.
+The ramp question was decided the next day; see the entry above.
 
 ### Brownouts from the far end of the grid (requested, specified and built 2026-09-28)
 

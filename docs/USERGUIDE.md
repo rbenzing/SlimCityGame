@@ -219,7 +219,12 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
 ## Reading your city
 
 - **RCI demand bars** (bottom-left) — green Residential, blue Commercial, orange
-  Industrial. Full bars mean that zone type is in demand; paint more of it.
+  Industrial. Full bars mean that zone type is in demand; paint more of it. A
+  town grows like a real one: its first homes come before any work, then it
+  needs industry — the mills and factories it lives by — and shops only follow
+  once there are wages to spend, about four shop jobs for every five industrial
+  ones. People go where the work is, so a town of homes with no industry stops
+  growing until it has some.
 - **Milestone badge** — the circular XP chip; click it for milestone history.
   Progress unlocks new zones, roads, and services.
 - **Infoview lenses** — overlays for land value, pollution, traffic, service

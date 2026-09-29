@@ -24,19 +24,17 @@ above it). Population is never incremented or decremented as an event; it is
 Active building's catalog figure at that instant — nothing about it can
 drift out of sync with the building set.
 
-Employed population is `min(floor(population × 0.55), jobs)`
-(`EMPLOYMENT_RATE = 0.55`) — a fixed employment rate applied to the current
-population, capped by however many jobs actually exist. It is not tracked
-per resident; it is a single derived number computed the same way every
-tick.
+Employed population is `min(floor(population × 0.5), jobs)`
+(`EMPLOYMENT_RATE = 0.5`, the US labour force's share of residents, BLS CPS 2025) — a fixed employment rate applied to the current population, capped by
+however many jobs actually exist. It is not tracked per resident; it is a
+single derived number computed the same way every tick.
 
-`floor(population × 0.55)` is the city's **workforce**: the residents who
+`floor(population × 0.5)` is the city's **workforce**: the residents who
 work, the rest being children, retirees and carers. Everything that talks
-about work measures against it and never against every resident —
-industrial demand's "workforce already absorbed" term, and the Advisor's
-unemployment and labour-shortage checks. So a city whose jobs outnumber its
-workforce is fully employed, not 45% out of work, and the empty jobs are
-what stop industry growing.
+about work measures against it and never against every resident — demand's
+basic jobs and residential jobs-gap, and the Advisor's unemployment and
+labour-shortage checks. So a city whose jobs outnumber its workforce is fully
+employed, not half out of work.
 
 ## Occupancy is all-or-nothing per building
 
@@ -73,9 +71,10 @@ as smooth growth on the stats panel. The three events that move it:
 
 ## Demand: what decides whether a building appears at all
 
-`computeDemand` (`src/sim/demand.ts`) is a pure function of five inputs —
-population, jobs, employed, each sector's tax rate, and city-wide
-happiness — with no randomness of its own, returning three values in
+`computeDemand` (`src/sim/demand.ts`) is a pure function of population,
+jobs by sector (commercial and industrial, from the economy pass), each
+sector's tax rate, and city-wide happiness — with no randomness of its own,
+returning three values in
 `-1..1` per sector (residential, commercial, industrial). The exact formula,
 and the spawn-probability roll that turns positive demand into an actual new
 building on a zoned tile, are documented in

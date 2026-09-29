@@ -34,33 +34,31 @@ agree everywhere they overlap.
 
 ## Demand (RCI)
 
-| Constant                                   | Value                                              | Meaning                                                              | File                      |
-| ------------------------------------------ | -------------------------------------------------- | -------------------------------------------------------------------- | ------------------------- |
-| `DEFAULT_TAX_RATE`                         | 0.09                                               | The tax rate every sector's demand term measures against.            | `src/shared/constants.ts` |
-| residential base term                      | 0.3                                                | Keeps res demand positive with no population yet.                    | `src/sim/demand.ts`       |
-| residential jobs-gap denominator           | max(200, population × 0.5)                         | Floors how sharply unfilled jobs pull demand in a small city.        | `src/sim/demand.ts`       |
-| residential happiness term                 | (happiness − 50) / 150                             | Above-50 happiness pulls demand up.                                  | `src/sim/demand.ts`       |
-| residential/commercial/industrial tax term | (rate − 0.09) × 4                                  | Above-default tax repels demand, all three sectors alike.            | `src/sim/demand.ts`       |
-| commercial base term                       | 0.15                                               | Keeps com demand positive with no population yet.                    | `src/sim/demand.ts`       |
-| commercial shopper ratio                   | population − jobs × 1.6, over max(400, population) | More shoppers than shop jobs pulls com demand up.                    | `src/sim/demand.ts`       |
-| industrial base term                       | 0.4                                                | Keeps ind demand positive with no population yet.                    | `src/sim/demand.ts`       |
-| industrial employed-absorption denominator | max(1, population × `EMPLOYMENT_RATE`)             | How fully the workforce is already absorbed.                         | `src/sim/demand.ts`       |
-| industrial outgrow-jobs denominator        | max(600, population)                               | Floors how sharply a population outgrowing jobs pulls ind demand up. | `src/sim/demand.ts`       |
+| Constant                                   | Value                                               | Meaning                                                                                                              | File                      |
+| ------------------------------------------ | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `DEFAULT_TAX_RATE`                         | 0.09                                                | The tax rate every sector's demand term measures against.                                                            | `src/shared/constants.ts` |
+| `BASE_MULTIPLIER`                          | 1.81                                                | Total jobs per basic (industrial) job; each supports 0.81 commercial ones. Mulligan 2008, ~200 small US communities. | `src/sim/demand.ts`       |
+| industrial span                            | 16 — one `ind-1`'s jobs, read from the catalog      | A town a whole small factory short of its basic jobs reads full industrial demand.                                   | `src/sim/demand.ts`       |
+| commercial span                            | 6 — one `com-low-1`'s jobs, read from the catalog   | A town a whole corner shop short of its supported local jobs reads full commercial demand.                           | `src/sim/demand.ts`       |
+| residential base term                      | 0.3                                                 | Lets a town's first households arrive before there is any work.                                                      | `src/sim/demand.ts`       |
+| residential jobs-gap                       | (jobs − workforce), over max(200, population × 0.5) | Empty jobs pull residents in; a workforce with no work turns them away.                                              | `src/sim/demand.ts`       |
+| residential happiness term                 | (happiness − 50) / 150                              | Above-50 happiness pulls demand up.                                                                                  | `src/sim/demand.ts`       |
+| residential/commercial/industrial tax term | (rate − 0.09) × 4                                   | Above-default tax repels demand, all three sectors alike.                                                            | `src/sim/demand.ts`       |
 
 ## Economy
 
-| Constant                     | Value      | Meaning                                                                         | File                      |
-| ---------------------------- | ---------- | ------------------------------------------------------------------------------- | ------------------------- |
-| `TICKS_PER_MONTH`            | 6,000      | `TICKS_PER_DAY` (200) × `DAYS_PER_MONTH` (30); the monthly settlement boundary. | `src/shared/constants.ts` |
-| `EMPLOYMENT_RATE`            | 0.55       | The workforce is floor(population × 0.55); employed = min(workforce, jobs).     | `src/shared/constants.ts` |
-| `LAND_VALUE_FACTOR_BASE`     | 0.75       | Floor of the income land-value multiplier.                                      | `src/sim/economy.ts`      |
-| `LAND_VALUE_FACTOR_SPAN`     | 0.5        | Added span on top of the base, scaled by average land value / 255.              | `src/sim/economy.ts`      |
-| `MAX_TAX_RATE`               | 0.3        | Per-sector tax rate ceiling.                                                    | `src/shared/constants.ts` |
-| `FUNDS_WARNING_THRESHOLD`    | ¢2,000     | Funds below this raise the "budget low" warning.                                | `src/sim/economy.ts`      |
-| `MAX_LOAN`                   | ¢100,000   | Outstanding loan-balance ceiling.                                               | `src/shared/constants.ts` |
-| `LOAN_MONTHLY_INTEREST`      | 0.01       | Monthly interest on the outstanding loan balance.                               | `src/shared/constants.ts` |
-| `LANDFILL_UPKEEP_PER_TILE`   | ¢3/month   | Monthly upkeep per painted landfill tile.                                       | `src/shared/constants.ts` |
-| `POWER_LINE_UPKEEP_PER_TILE` | ¢0.5/month | Monthly upkeep per power-line tile.                                             | `src/shared/constants.ts` |
+| Constant                     | Value      | Meaning                                                                                                                             | File                      |
+| ---------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `TICKS_PER_MONTH`            | 6,000      | `TICKS_PER_DAY` (200) × `DAYS_PER_MONTH` (30); the monthly settlement boundary.                                                     | `src/shared/constants.ts` |
+| `EMPLOYMENT_RATE`            | 0.5        | The workforce is floor(population × 0.5), the US labour force's 50.0% of residents (BLS CPS 2025); employed = min(workforce, jobs). | `src/shared/constants.ts` |
+| `LAND_VALUE_FACTOR_BASE`     | 0.75       | Floor of the income land-value multiplier.                                                                                          | `src/sim/economy.ts`      |
+| `LAND_VALUE_FACTOR_SPAN`     | 0.5        | Added span on top of the base, scaled by average land value / 255.                                                                  | `src/sim/economy.ts`      |
+| `MAX_TAX_RATE`               | 0.3        | Per-sector tax rate ceiling.                                                                                                        | `src/shared/constants.ts` |
+| `FUNDS_WARNING_THRESHOLD`    | ¢2,000     | Funds below this raise the "budget low" warning.                                                                                    | `src/sim/economy.ts`      |
+| `MAX_LOAN`                   | ¢100,000   | Outstanding loan-balance ceiling.                                                                                                   | `src/shared/constants.ts` |
+| `LOAN_MONTHLY_INTEREST`      | 0.01       | Monthly interest on the outstanding loan balance.                                                                                   | `src/shared/constants.ts` |
+| `LANDFILL_UPKEEP_PER_TILE`   | ¢3/month   | Monthly upkeep per painted landfill tile.                                                                                           | `src/shared/constants.ts` |
+| `POWER_LINE_UPKEEP_PER_TILE` | ¢0.5/month | Monthly upkeep per power-line tile.                                                                                                 | `src/shared/constants.ts` |
 
 ## Progression
 

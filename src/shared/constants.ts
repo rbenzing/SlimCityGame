@@ -73,8 +73,12 @@ export const tickToDate = (tick: number): GameDate => {
 export const START_FUNDS = 50_000;
 export const DEFAULT_TAX_RATE = 0.09;
 export const MAX_TAX_RATE = 0.3;
-/** The share of residents who work; the rest are children, retirees and carers. */
-export const EMPLOYMENT_RATE = 0.55;
+/**
+ * The share of residents who work, the rest being children, retirees and
+ * carers: the US labour force is 50.0% of residents (BLS Current Population
+ * Survey, 2025 annual average).
+ */
+export const EMPLOYMENT_RATE = 0.5;
 
 /** The residents who work: what employment, industrial demand and the Advisor measure against. */
 export function workforceOf(population: number): number {

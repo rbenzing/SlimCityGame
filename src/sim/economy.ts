@@ -62,6 +62,22 @@ export interface EconomyTickInput {
 export interface EconomyTickResult {
   statsPatch: Partial<CityStats>;
   notifications: CityNotification[];
+  /** This tick's occupancy — what demand weighs the town's basic and local economies by. */
+  occupancy: Occupancy;
+}
+
+/** Jobs in commercial (the local economy) and industrial (the basic one) buildings. */
+export interface JobsBySector {
+  com: number;
+  ind: number;
+}
+
+/** Who lives and works in the city's Active buildings, and the jobs still going up. */
+export interface Occupancy {
+  population: number;
+  jobs: JobsBySector;
+  /** Jobs in buildings under construction: supply a developer can already see. */
+  pipeline: JobsBySector;
 }
 
 /**
@@ -118,6 +134,33 @@ export class EconomySystem {
     this.roadSpecs = new Map<number, RoadSpec>(roadSpecs.map((r) => [r.tier, r]));
   }
 
+  /**
+   * Population and jobs by sector over the Active buildings — what the tick
+   * and demand both read — and the jobs in buildings still under construction.
+   */
+  occupancy(buildings: readonly BuildingInstance[]): Occupancy {
+    let population = 0;
+    const jobs: JobsBySector = { com: 0, ind: 0 };
+    const pipeline: JobsBySector = { com: 0, ind: 0 };
+    for (const b of buildings) {
+      if (b.state === BuildingState.Abandoned) continue;
+      const spec = this.catalog.get(b.catalogId);
+      if (!spec) continue;
+      const open = b.state === BuildingState.Active;
+      const tally = open ? jobs : pipeline;
+      if (spec.category === 'res') {
+        if (open) population += spec.residents ?? 0;
+        // Mixed housing: a res-category building may carry
+        // commercial ground-floor jobs. Count those into commercial jobs so
+        // they reach CityStats.jobs / employed / commercial tax income. Pure
+        // residential entries have no `jobs` field, so `?? 0` is a no-op there.
+        tally.com += spec.jobs ?? 0;
+      } else if (spec.category === 'com') tally.com += spec.jobs ?? 0;
+      else if (spec.category === 'ind') tally.ind += spec.jobs ?? 0;
+    }
+    return { population, jobs, pipeline };
+  }
+
   tick(input: EconomyTickInput): EconomyTickResult {
     const { g, buildings, stats, tickNo } = input;
     const notifications: CityNotification[] = [];
@@ -125,23 +168,9 @@ export class EconomySystem {
     const nextId = (): number => tickNo * 1000 + notificationSlot++;
 
     // --- 1. population / jobs / employed, every tick, Active only ---------
-    let population = 0;
-    let jobsCom = 0;
-    let jobsInd = 0;
-    for (const b of buildings) {
-      if (b.state !== BuildingState.Active) continue;
-      const spec = this.catalog.get(b.catalogId);
-      if (!spec) continue;
-      if (spec.category === 'res') {
-        population += spec.residents ?? 0;
-        // Mixed housing: a res-category building may carry
-        // commercial ground-floor jobs. Count those into commercial jobs so
-        // they reach CityStats.jobs / employed / commercial tax income. Pure
-        // residential entries have no `jobs` field, so `?? 0` is a no-op there.
-        jobsCom += spec.jobs ?? 0;
-      } else if (spec.category === 'com') jobsCom += spec.jobs ?? 0;
-      else if (spec.category === 'ind') jobsInd += spec.jobs ?? 0;
-    }
+    const occupancy = this.occupancy(buildings);
+    const { population } = occupancy;
+    const { com: jobsCom, ind: jobsInd } = occupancy.jobs;
     const jobs = jobsCom + jobsInd;
     const employed = Math.min(workforceOf(population), jobs);
 
@@ -294,7 +323,7 @@ export class EconomySystem {
 
     statsPatch.funds = funds;
 
-    return { statsPatch, notifications };
+    return { statsPatch, notifications, occupancy };
   }
 
   applyLoan(stats: CityStats, amount: number): Partial<CityStats> {
