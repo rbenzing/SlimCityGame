@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.17.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.16.0...slimcity-v1.17.0) (2026-09-29)
+
+
+### Features
+
+* **power:** a short grid goes dark from its far end, and the advisor says so ([edf4aa7](https://github.com/rbenzing/SlimCityGame/commit/edf4aa7da89e7badb386e86e16f3d0657330758a))
+* **power:** a short grid goes dark from its far end, and the advisor… ([9c70a25](https://github.com/rbenzing/SlimCityGame/commit/9c70a25604f20d2af0fb1820c5a87ca251642005))
+
 ## [1.16.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.15.0...slimcity-v1.16.0) (2026-09-28)
 
 
