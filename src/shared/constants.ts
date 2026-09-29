@@ -73,6 +73,13 @@ export const tickToDate = (tick: number): GameDate => {
 export const START_FUNDS = 50_000;
 export const DEFAULT_TAX_RATE = 0.09;
 export const MAX_TAX_RATE = 0.3;
+/** The share of residents who work; the rest are children, retirees and carers. */
+export const EMPLOYMENT_RATE = 0.55;
+
+/** The residents who work: what employment, industrial demand and the Advisor measure against. */
+export function workforceOf(population: number): number {
+  return Math.floor(population * EMPLOYMENT_RATE);
+}
 export const MAX_LOAN = 100_000;
 export const LOAN_MONTHLY_INTEREST = 0.01;
 /**
@@ -173,7 +180,7 @@ export const VISUAL_DAY_TICKS = 2400;
 export const CLOCK_START_OFFSET_TICKS = Math.round((VISUAL_DAY_TICKS * 9) / 24);
 /**
  * Street lamps are auto-placed on every Nth road tile (alternating sides,
- * deterministic from tile coords). At TILE_METERS that is a pole every 32 m,
+ * deterministic from tile coords). At TILE_METERS that is a pole every 40 m,
  * inside the real-world range for street lighting (roughly 25-45 m) and close
  * enough that neighboring light pools overlap into a continuously lit street.
  */

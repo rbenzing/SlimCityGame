@@ -47,7 +47,7 @@ road tiles as a pathfinding cost, routing through-traffic around it), and
 `greenEnergy` (×0.5 on the pollution its buildings emit). Multiple policies
 on one district compose — `lowTax` and `highTax` together multiply both.
 A district with no policy enabled behaves exactly like an unassigned tile.
-See [../ui/README.md](../ux/README.md) for the paint tool and the
+See [../ux/README.md](../ux/README.md) for the paint tool and the
 per-district policy panel.
 
 ## The Advisor: detecting and ranking problems
@@ -80,16 +80,22 @@ warning counts the lots and buildings waiting, from the snapshot's
 `growthWaiting`. Between them the shortage is on the list for as long as it
 holds anything back.
 
-City-wide checks read `CityStats` directly:
-funds below zero (critical, "the city is in the red") or, short of that,
-monthly expenses outrunning income (warning); and, once population is
-above zero, no jobs at all (warning), unemployment above 25% of population
-(warning), or every job filled with residual industrial demand — "employers
-cannot find workers" (info).
+City-wide checks read `CityStats` directly: funds below zero (critical, "the
+city is in the red") or, short of that, monthly expenses outrunning income
+(warning); and, once population is above zero, the labour market. The labour
+market is measured against the **workforce** — the share of residents who
+work (see
+[population-model.md](../world-sim/population-model.md)) — never against
+every resident, since the rest are not looking for work. No jobs at all is a
+warning ("nobody in the city is hiring"); failing that, more than a quarter of
+the workforce out of work is a warning ("zone more commercial and
+industrial"); failing that, empty jobs numbering more than a quarter of the
+workforce is a warning too — "employers cannot find workers", zone more
+housing — which is also why a city in that state grows no more industry.
 
 Issues sort by severity first (critical, then warning, then info), then by
 how many buildings are affected within a severity tier, with ties broken by
 a fixed priority order so the list never reshuffles under a player's
 cursor. An issue with a focus tile can move the camera to it. A healthy city
 returns an empty list — the Advisor does not invent problems to look busy.
-See [../ui/README.md](../ux/README.md) for the panel itself.
+See [../ux/README.md](../ux/README.md) for the panel itself.

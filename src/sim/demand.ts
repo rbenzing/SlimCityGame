@@ -5,7 +5,7 @@
  * city wants more of that zone type; negative means it's oversupplied.
  * Pure function of the current city stats — no state, no randomness.
  */
-import { DEFAULT_TAX_RATE } from '../shared/constants';
+import { DEFAULT_TAX_RATE, EMPLOYMENT_RATE } from '../shared/constants';
 import type { DemandLevels, Sector } from '../shared/types';
 
 export interface DemandInput {
@@ -32,7 +32,7 @@ const clamp = (value: number, lo: number, hi: number): number => Math.min(hi, Ma
  *   clamped to -1..1.
  *
  * ind = 0.4
- *     - employed / max(1, population * 0.55)              -- workforce already absorbed
+ *     - employed / max(1, population * EMPLOYMENT_RATE)   -- workforce already absorbed
  *     + (population - jobs) / max(600, population)         -- population outgrowing total jobs
  *     - (taxInd - DEFAULT_TAX_RATE) * 4
  *   clamped to -1..1.
@@ -60,7 +60,7 @@ export function computeDemand(input: DemandInput): DemandLevels {
 
   const ind = clamp(
     0.4 -
-      employed / Math.max(1, population * 0.55) +
+      employed / Math.max(1, population * EMPLOYMENT_RATE) +
       (population - jobs) / Math.max(600, population) -
       (taxInd - DEFAULT_TAX_RATE) * 4,
     -1,
