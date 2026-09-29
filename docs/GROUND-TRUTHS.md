@@ -899,8 +899,12 @@ MUTCD citations below use 11th-edition section numbers.
   or narrate history. Test names describe behaviour, without section
   citations. — [coding.md](engineering/standards/coding.md),
   [naming.md](engineering/standards/naming.md)
-- Tests are co-located as `<module>.test.ts(x)` beside the module, never in a
-  `__tests__` folder. — [naming.md](engineering/standards/naming.md),
+- A unit test is co-located as `<module>.test.ts(x)` beside the module, never
+  in a `__tests__` folder. A test that sends the sim commands is an
+  interaction test and lives in `tests/interaction/`, named for what the
+  player does, never beside a module. A feature a player can build adds a
+  step to the small town in `tests/support/town.ts`. —
+  [naming.md](engineering/standards/naming.md),
   [testing.md](engineering/standards/testing.md)
 - Files are lowercase run-together (`roadprofile.ts`); React components are
   `PascalCase.tsx`; only `worker.entry.ts` carries a dot suffix; constants are
