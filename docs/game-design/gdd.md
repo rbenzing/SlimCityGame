@@ -34,10 +34,11 @@ serve both:
    traffic, coverage — heatmap overlays turn the sim into information.
 4. **The city looks alive.** Vehicles moving, buildings
    constructing/upgrading/abandoning, day/night, ambient sound.
-5. **City-builder UI grammar.** Bottom toolbar with category tabs and an
-   asset-card panel, top-left city info with a milestone XP bar, top-right
-   time/weather controls, infoview lenses, demand bars docked at the zoning
-   tools.
+5. **City-builder UI grammar.** Bottom-heavy: a main dock of category tabs
+   opening an asset-card drawer, with the RCI demand bars and the milestone
+   progress ring at its left; beneath it a status strip carrying the sim
+   speed, clock, date and season; infoview lenses; and only small utility
+   buttons in the top corners.
 6. **Engine showcase.** Every system doubles as a Three.js demo — instanced
    buildings, animated vehicle fleets, heatmap overlays, day/night — smooth
    in a browser tab.

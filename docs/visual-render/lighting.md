@@ -80,7 +80,7 @@ it reading as light on a street rather than a painted shape:
   is also the lamp's single largest bright area, and so its widest bloom
   source.
 
-**Spacing**: a lamp stands every 2 tiles (32 m), alternating sides of the
+**Spacing**: a lamp stands every 2 tiles (40 m), alternating sides of the
 street for a staggered arrangement — close enough that successive pools
 light a continuous corridor down the road.
 

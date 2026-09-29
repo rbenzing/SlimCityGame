@@ -84,15 +84,20 @@ cherry-picked:
   description of the arithmetic.
 
 **No comment references a documentation section as its justification.**
-This was checked directly: `grep -rn "§" src --include="*.ts" --include="*.tsx"`
-returns 45 hits, and all but two are inside `.test.ts`/`.test.tsx`
-`describe`/`it` labels naming an old spec section the test was written
-against (a test name, not a comment making an argument) — those section
-numbers are now stale, since the specification is no longer one numbered
-file. The two real exceptions are `src/app/persist.ts:33`
-(`/** §21 garbage fill ... */`) and `src/render/landfill.ts:3`
-(`(SlimCity SPEC §21)`) — both predate the documentation split and are
-legacy, not the standard to write new code against. **Do not add a new
+This was checked directly: nearly every hit of
+`grep -rn "§" src --include="*.ts" --include="*.tsx"` is inside a
+`.test.ts`/`.test.tsx` `describe`/`it` label naming an old spec section the
+test was written against (a test name, not a comment making an argument) —
+those section numbers are now stale, since the specification is no longer
+one numbered file. The real exceptions are five comments citing an old spec
+section: `src/shared/constants.ts:212` (`// --- garbage & waste (§21) ---`),
+`src/shared/roadprofile.ts:45` (`the §26 figure carried over`),
+`src/sim/garbage.ts:2` (`Garbage & waste (§21)`), and
+`src/sim/garbagetrucks.ts:2` and `:5` (`(§21 Stage C)`,
+`the §12 service vehicles`) — legacy residue to remove, not the standard to
+write new code against. (`src/render/roadmarkings.ts:86` cites
+`MUTCD §3B.09`, a section of the external road-marking standard, not a
+project doc.) **Do not add a new
 comment that cites a doc section**; if a comment needs to explain a rule
 that lives in a doc, link the doc by name/path in prose, or better, don't
 restate the rule at all and let the code speak for itself.

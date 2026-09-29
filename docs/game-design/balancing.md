@@ -44,7 +44,7 @@ agree everywhere they overlap.
 | commercial base term                       | 0.15                                               | Keeps com demand positive with no population yet.                    | `src/sim/demand.ts`       |
 | commercial shopper ratio                   | population − jobs × 1.6, over max(400, population) | More shoppers than shop jobs pulls com demand up.                    | `src/sim/demand.ts`       |
 | industrial base term                       | 0.4                                                | Keeps ind demand positive with no population yet.                    | `src/sim/demand.ts`       |
-| industrial employed-absorption denominator | max(1, population × 0.55)                          | How fully the workforce is already absorbed.                         | `src/sim/demand.ts`       |
+| industrial employed-absorption denominator | max(1, population × `EMPLOYMENT_RATE`)             | How fully the workforce is already absorbed.                         | `src/sim/demand.ts`       |
 | industrial outgrow-jobs denominator        | max(600, population)                               | Floors how sharply a population outgrowing jobs pulls ind demand up. | `src/sim/demand.ts`       |
 
 ## Economy
@@ -52,7 +52,7 @@ agree everywhere they overlap.
 | Constant                     | Value      | Meaning                                                                         | File                      |
 | ---------------------------- | ---------- | ------------------------------------------------------------------------------- | ------------------------- |
 | `TICKS_PER_MONTH`            | 6,000      | `TICKS_PER_DAY` (200) × `DAYS_PER_MONTH` (30); the monthly settlement boundary. | `src/shared/constants.ts` |
-| `EMPLOYMENT_RATE`            | 0.55       | Employed = min(population × 0.55, jobs).                                        | `src/sim/economy.ts`      |
+| `EMPLOYMENT_RATE`            | 0.55       | The workforce is floor(population × 0.55); employed = min(workforce, jobs).     | `src/shared/constants.ts` |
 | `LAND_VALUE_FACTOR_BASE`     | 0.75       | Floor of the income land-value multiplier.                                      | `src/sim/economy.ts`      |
 | `LAND_VALUE_FACTOR_SPAN`     | 0.5        | Added span on top of the base, scaled by average land value / 255.              | `src/sim/economy.ts`      |
 | `MAX_TAX_RATE`               | 0.3        | Per-sector tax rate ceiling.                                                    | `src/shared/constants.ts` |
@@ -64,15 +64,15 @@ agree everywhere they overlap.
 
 ## Progression
 
-| Constant                       | Value                                             | Meaning                                                                                            | File                      |
-| ------------------------------ | ------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------- |
-| `MILESTONES`                   | see the table in [progression.md](progression.md) | Population thresholds and one-time rewards.                                                        | `src/shared/constants.ts` |
-| `LOW_TAX_MULT`                 | 0.7                                               | `lowTax` district tax multiplier.                                                                  | `src/sim/policy.ts`       |
-| `HIGH_TAX_MULT`                | 1.3                                               | `highTax` district tax multiplier.                                                                 | `src/sim/policy.ts`       |
-| `NO_HEAVY_TRAFFIC_MULT`        | 1.6                                               | `noHeavyTraffic` pathfind-cost multiplier on a district's roads.                                   | `src/sim/policy.ts`       |
-| `GREEN_ENERGY_POLLUTION_MULT`  | 0.5                                               | `greenEnergy` pollution-emission multiplier.                                                       | `src/sim/policy.ts`       |
-| `ADVISOR_REFRESH_SNAPSHOTS`    | 10                                                | Snapshots between Advisor re-ranks (≈ once a second, at ~10 snapshots/s).                          | `src/ui/advisor.ts`       |
-| unemployment warning threshold | 0.25                                              | Share of population unemployed before the Advisor warns. Inline literal, not an exported constant. | `src/ui/advisor.ts`       |
+| Constant                      | Value                                             | Meaning                                                                         | File                      |
+| ----------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------- |
+| `MILESTONES`                  | see the table in [progression.md](progression.md) | Population thresholds and one-time rewards.                                     | `src/shared/constants.ts` |
+| `LOW_TAX_MULT`                | 0.7                                               | `lowTax` district tax multiplier.                                               | `src/sim/policy.ts`       |
+| `HIGH_TAX_MULT`               | 1.3                                               | `highTax` district tax multiplier.                                              | `src/sim/policy.ts`       |
+| `NO_HEAVY_TRAFFIC_MULT`       | 1.6                                               | `noHeavyTraffic` pathfind-cost multiplier on a district's roads.                | `src/sim/policy.ts`       |
+| `GREEN_ENERGY_POLLUTION_MULT` | 0.5                                               | `greenEnergy` pollution-emission multiplier.                                    | `src/sim/policy.ts`       |
+| `ADVISOR_REFRESH_SNAPSHOTS`   | 10                                                | Snapshots between Advisor re-ranks (≈ once a second, at ~10 snapshots/s).       | `src/ui/advisor.ts`       |
+| `LABOUR_MARKET_SLACK`         | 0.25                                              | Share of the workforce out of work, or in empty jobs, before the Advisor warns. | `src/ui/advisor.ts`       |
 
 ## Verification note
 

@@ -18,19 +18,19 @@ a mechanism; this one extends one that has shipped.
 
 ## What it touches
 
-| Module                   | Change                                                                                                                                                          |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/shared/types.ts`    | `ServiceKind` gains `'higher-education'`; `FieldId` gains `HigherEducation = 9`, `FIELD_COUNT` 9 → 10; `Problem` gains `NeedsSchool = 64`; `SAVE_VERSION` bumps |
-| `src/sim/growth.ts`      | Two thresholds beside `RES_L3_EDUCATION`; `meetsLevelUpRequirement` picks the gate by zone; the new problem bit is set                                          |
-| `src/sim/services.ts`    | Library pass before the coverage loop; per-road-tile range uplift in `radiateWeighted`; `higher-education` case in `applyCoverage`                              |
-| `src/world/grid.ts`      | Tenth field plane in `serializeGrid`/`deserializeGrid`; `BYTES_PER_TILE_BY_VERSION` gains an entry                                                              |
-| `src/data/catalog.json`  | `school` corrected; `secondary-school`, `university`, `library` added                                                                                           |
-| `src/ui/`, `src/render/` | The Education row splits into three; the overlay draws gate contours; campus and public-counter meshes for the four buildings                                   |
+| Module                   | Change                                                                                                                                                                                         |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/shared/types.ts`    | `ServiceKind` gains `'higher-education'`; `FieldId` gains `HigherEducation = 9`, `FIELD_COUNT` 9 → 10; `Problem` gains `NeedsSchool`, the next free bit when it is built; `SAVE_VERSION` bumps |
+| `src/sim/growth.ts`      | Two thresholds beside `RES_L3_EDUCATION`; `meetsLevelUpRequirement` picks the gate by zone; the new problem bit is set                                                                         |
+| `src/sim/services.ts`    | Library pass before the coverage loop; per-road-tile range uplift in `radiateWeighted`; `higher-education` case in `applyCoverage`                                                             |
+| `src/world/grid.ts`      | Tenth field plane in `serializeGrid`/`deserializeGrid`; `BYTES_PER_TILE_BY_VERSION` gains an entry                                                                                             |
+| `src/data/catalog.json`  | `school` corrected; `secondary-school`, `university`, `library` added                                                                                                                          |
+| `src/ui/`, `src/render/` | The Education row splits into three; the overlay draws gate contours; campus and public-counter meshes for the four buildings                                                                  |
 
 **Save format: yes, additively.** Field planes are contiguous, so a tenth
-lengthens the buffer by one byte per tile: `SAVE_VERSION` bumps to 12 and
-`BYTES_PER_TILE_BY_VERSION` gains an entry, as every layer since v2 has.
-`deserializeGrid` reads nine planes at version ≤ 11, leaves the tenth
+lengthens the buffer by one byte per tile: `SAVE_VERSION` + 1 when it is built,
+and `BYTES_PER_TILE_BY_VERSION` gains an entry, as every layer since v2 has.
+`deserializeGrid` reads nine planes at any earlier version, leaves the tenth
 zero-filled, and continues into the trailing layers at the old offset. **A save
 written before this epic loads after it, with higher education absent rather
 than the save rejected** — the city never had a university, and a zero plane is
@@ -174,8 +174,8 @@ not level-down — but growth stops where it was fine, so the marker and the
 notification land in the same change as the gate.
 
 **A tenth plane in the middle of the save layout.** Field planes precede the
-trailing layers, so a tenth shifts every byte after it, and the risk is a v11
-buffer read at v12 offsets producing a plausible corrupt city rather than an
+trailing layers, so a tenth shifts every byte after it, and the risk is an older
+buffer read at the new offsets producing a plausible corrupt city rather than an
 error. The length check catches it, so `BYTES_PER_TILE_BY_VERSION` must gain its
 entry in the same commit.
 

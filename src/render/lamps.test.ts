@@ -35,7 +35,7 @@ function strip(fixed: number, from: number, to: number, orientation: 'ew' | 'ns'
 
 describe('computeLampPlacements (pure)', () => {
   it('respects the shared LAMP_SPACING_TILES constant', () => {
-    expect(LAMP_SPACING_TILES).toBe(2); // a pole every 32 m, as real streets run
+    expect(LAMP_SPACING_TILES).toBe(2); // a pole every 40 m, as real streets run
   });
 
   it('stands no pole on a crossroads — there is no curb to stand it on', () => {

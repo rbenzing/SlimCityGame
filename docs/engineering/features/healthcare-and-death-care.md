@@ -30,7 +30,7 @@ change most likely to be got wrong on paper.
 | `src/ui/`               | Cemetery fill gauge in the service panel; the uncollected-dead notification                  |
 
 **Save format: yes, additively, and the grid is untouched.** No tile layer is
-added, so `SAVE_VERSION` stays at **11** and `BYTES_PER_TILE` at **45**
+added, so `SAVE_VERSION` and `BYTES_PER_TILE` stay where they are
 ([../data-model.md](../data-model.md)). Two optional `SaveMeta` additions,
 defaulted the way the `garbage` block was: `deathCare` — per-facility interments
 plus the backlog as a sparse list of `{ tile, count, sinceTick }` — defaults to
@@ -64,8 +64,9 @@ export interface DeathCareSpec {
 ```
 
 `BuildingCatalogEntry` gains `deathCare?: DeathCareSpec`; `BuildingInstance`
-gains `occupancy: number` in 0..1; `VehicleKind` gains **`Hearse: 7`**, appended
-because values are stable and never reordered. The kind is not persisted, so it
+gains `occupancy: number` in 0..1; `VehicleKind` gains **`Hearse`**, at the next
+free `VehicleKind` value when it is built, appended because values are stable
+and never reordered. The kind is not persisted, so it
 costs nothing in the save — it costs **one more InstancedMesh, permanently**,
 since the vehicle kit is one mesh per kind
 ([../../art/props-and-vehicles.md](../../art/props-and-vehicles.md)), charged

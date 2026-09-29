@@ -25,7 +25,7 @@ everywhere else: `store.ts`, `advisor.ts`, `categories.ts`, `format.ts`,
 
 **Tests are co-located**, `<module>.test.ts` / `<module>.test.tsx` next to
 the file they cover — never a separate `__tests__/` or `test/` directory.
-117 test files exist this way; `vite.config.ts`'s
+Every test file exists this way; `vite.config.ts`'s
 `test.include: ['src/**/*.test.{ts,tsx}']` is the only thing that has to
 agree with this, and it does.
 

@@ -30,6 +30,14 @@ population, capped by however many jobs actually exist. It is not tracked
 per resident; it is a single derived number computed the same way every
 tick.
 
+`floor(population × 0.55)` is the city's **workforce**: the residents who
+work, the rest being children, retirees and carers. Everything that talks
+about work measures against it and never against every resident —
+industrial demand's "workforce already absorbed" term, and the Advisor's
+unemployment and labour-shortage checks. So a city whose jobs outnumber its
+workforce is fully employed, not 45% out of work, and the empty jobs are
+what stop industry growing.
+
 ## Occupancy is all-or-nothing per building
 
 A building's contribution to population is binary, gated by

@@ -243,8 +243,10 @@ the player:
 
 ## Keyboard and Escape
 
-`Space` pauses and resumes the simulation; `+`/`-` step the simulation
-speed. Escape is a small stack, most-local effect first:
+`Space` pauses the simulation and resumes it at the speed it was running.
+Speed has no key of its own; it is picked from the sim controls in the
+status strip ([`hud.md`](hud.md)). Escape is a small stack, most-local effect
+first:
 
 1. If a drag is in progress, Escape cancels it. This is handled at the
    tool level, before anything below sees the key.

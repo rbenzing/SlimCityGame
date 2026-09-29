@@ -58,17 +58,27 @@ sim's own tick counter or an elapsed-ms value the caller owns — never the
 wall clock.
 
 **What enforces it:** convention only, checked by grep, not by a lint rule.
-Verified today: `grep -rn "Math.random\|Date.now" src/sim src/render`
+Verified today:
+`grep -rn "Math.random\|Date.now" src/sim src/world src/core src/render`
 (excluding tests) finds **zero real calls** — every hit is a comment
 documenting the rule (e.g. `src/sim/dispatch.ts:16`,
 `src/render/clouds.ts:27`). `eslint.config.js` has no rule that would catch
 a real violation if one were added.
 
-**The one legitimate exception:** `src/app/music.ts:174` uses
-`options.rng ?? Math.random` to shuffle the playlist. This is deliberate
-and correctly placed — `src/app/` is app/session glue, outside both the
-worker and the render frame loop, so shuffling a playlist has no effect on
-sim state or a rendered frame. See
+**The legitimate exceptions, all in `src/app/`:**
+
+- `src/app/music.ts:174` uses `options.rng ?? Math.random` to shuffle the
+  playlist.
+- `src/app/audio.ts:341-373` (`scheduleWildlife`, `birdCall`,
+  `insectCall`) draws the gaps, pitches and lengths of the ambient animal
+  calls from `Math.random`.
+- `src/app/persist.ts:215` stamps `savedAt = Date.now()` into the save
+  payload the worker produced.
+
+These are deliberate and correctly placed — `src/app/` is app/session glue,
+outside both the worker and the render frame loop, so a playlist order or
+the timing of an animal call has no effect on sim state or a rendered
+frame, and `savedAt` is save metadata the sim never reads. See
 [standards/architecture-rules.md](standards/architecture-rules.md).
 
 **What breaks if violated:** save/replay determinism

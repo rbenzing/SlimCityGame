@@ -367,6 +367,11 @@ MUTCD citations below use 11th-edition section numbers.
   [population-model.md](world-sim/population-model.md),
   [agent-behavior.md](world-sim/agent-behavior.md),
   [ADR-0001](engineering/adr/0001-traffic-is-statistical-assignment-with-cosmetic-agents.md)
+- The workforce is `floor(population × EMPLOYMENT_RATE)`, one constant in
+  `src/shared/constants.ts`. Employment, industrial demand and the Advisor's
+  labour checks all measure against the workforce, never against every
+  resident. — [population-model.md](world-sim/population-model.md),
+  [progression.md](game-design/progression.md#the-advisor-detecting-and-ranking-problems)
 - Vehicles and pedestrians are cosmetic: they draw along a real route and
   simulate nothing, and a cosmetic route is computed once and never re-solved.
   A vehicle drives the line the road network traces — grid tile centres and

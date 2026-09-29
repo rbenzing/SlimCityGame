@@ -14,17 +14,21 @@ for the surface, the paint, the furniture and the zoning overlay.
   (darker than the sidewalk, lighter than a near-black), with a slight tier
   darkening — highway darkest. Gravel Road instead renders a dusty tan
   unpaved look with no paint and no kerbs.
-- **Paint is true-world scale**, not tile-scaled: line width is ~0.15 m;
-  centreline dashes are ~3 m painted with a ~4.5 m gap. Dash phase derives
-  from GLOBAL world coordinates (not the tile or chunk), so the pattern stays
-  continuous across every seam.
-- **Per-tier markings**: two-lane and one-way carry a single dashed white
-  centreline; avenue and four-lane carry a double-solid centre plus dashed
-  lane lines; a motorway or a ramp carries no centre at all and instead edges
-  its one carriageway in solid line at the shoulders' inner faces — yellow on
-  the driver's left, white on the right; a tram track has NO painted
-  centreline at all — its rails are the centre. Alley and gravel carry no
-  lane paint.
+- **Paint is true-world scale**, not tile-scaled: line width is ~0.15 m; a
+  broken line, lane line and centre line alike, is 3.05 m of paint and a
+  9.15 m gap (a 12.2 m period). Dash phase derives from GLOBAL world
+  coordinates (not the tile or chunk), so the pattern stays continuous across
+  every seam.
+- **Markings by class**, read from the cross-section: yellow separates
+  opposing traffic and every other line is white. A two-way road with one
+  lane each way carries a broken yellow centreline; one with two or more
+  lanes a side, and every arterial, a double solid yellow; lanes running the
+  same way are split by broken white lane lines, and a two-way road's edge
+  lines are solid white. A one-way street, a motorway and a ramp carry no
+  centre at all and instead edge their one carriageway in solid line, inside
+  any shoulder — yellow on the driver's left, white on the right; a tram
+  track has NO painted centreline at all — its rails are the centre. Alley
+  and gravel carry no paint.
 - **Colour-banded transit lanes**: a bus lane's outer, kerbside lane on each
   side paints terracotta (the universal transit-lane tint) with a periodic
   white transit-diamond glyph centred in it, and the dashed lane divider
@@ -44,24 +48,31 @@ for the surface, the paint, the furniture and the zoning overlay.
   one. A dedicated Rail Track is not a street at all — a dark ballast bed with
   no kerbs, markings or crosswalks, carrying the same rail-and-sleeper
   geometry on a narrower, gravel-class corridor, and it has no lane pieces to
-  read, so its single track runs down the middle — and renders as a level
-  crossing wherever it meets a road.
+  read, so its single track runs down the middle. It never crosses a street at
+  grade: laid through one in replace mode it runs straight through and the
+  street ends either side of it. There are no level crossings yet.
 - **Intersections**: marking strips stop at any tile whose connections number
   three or more, so the junction box itself stays clean asphalt and reads as
   a real crossing. The one exception is a motorway tile a ramp meets — a merge
   or a diverge — which is not an intersection: its lines run through, it has
   no box and no rounded corners, and its edge line only opens across the
   ramp's mouth (see [road-model.md](../world-sim/road-model.md), Ramps and
-  interchanges). Each approach into a proper intersection gets a stop line
-  (a ~0.4 m bar, ~1 m before the junction box) and a zebra crosswalk (bars
-  ~0.45 m wide × 2.4 m long at ~0.6 m spacing) between the stop line and the
-  box.
+  interchanges). What an approach into a proper intersection is painted
+  follows the junction's control. An approach that gives way under a stop or
+  a give-way, and every approach under an all-way stop or a signal, gets a
+  zebra crosswalk where there is a footway to carry across: bars ~0.45 m wide
+  at ~0.6 m spacing, as deep as that footway but never under 1.8 m, lying
+  against the kerb line, and never over an alley mouth. An approach that has
+  to stop also gets a stop line: a 0.4 m bar across its arriving lanes, 1.2 m
+  in advance of the crosswalk. The road running through a give-way or a
+  minor-road stop is not painted, an uncontrolled junction carries neither,
+  and a roundabout carries a yield line across every entry instead.
 - **Corner rounding**: a turn tile — exactly two adjacent connections —
   renders as a true quarter-annulus curved road: a constant-width carriageway
   swept 90° around the tile corner the two connected sides share, meeting
   each straight neighbour seamlessly. Curved sidewalks fill the rest of the
   tile (an inner fan sector plus an outer band). A plain-centreline turn tile
-  carries matching curved lane markings — the same per-tier paint rules as a
+  carries matching curved lane markings — the same per-class paint rules as a
   straight run, swept as arcs at the carriageway's own radius, dash phase
   anchored at the arc start. Every line keeps the side of the road it holds on
   the straight arms either side, so a one-way street's yellow left edge runs
@@ -123,17 +134,23 @@ for the surface, the paint, the furniture and the zoning overlay.
 
 ## Junction and motorway signage
 
-Junction control follows the tier. A junction approach on a multi-lane street
-(avenue, four-lane, bus lane) earns a **traffic signal** — a mast with a
-short arm reaching over the carriageway and a three-lens head hung off it.
+A junction is signed by its own control, which the simulation's warrant
+decides from the classes that meet and what they carry
+([road-model.md](../world-sim/road-model.md)), never by the approaching
+road's tier. A signalised junction puts a **traffic signal** on every
+approach — a mast with a short arm reaching over the carriageway and a
+three-lens head hung off it.
 The mast stands at the KERB FACE, not at the back of the footway where a flat
 board goes: the arm is short, and one that has to cross the paving first
 arrives at the kerb line with nothing left and hangs its head over the kerb
 rather than over the lanes it holds.
-Smaller tiers keep boards instead: **stop** at a crossroads, **give way** at
-a T. A signal head shows three dark lenses with exactly one lit over them,
-and the lit one cycles on the same city-wide signal clock the simulation
-uses, so what a head shows is the phase the junction is actually in.
+An all-way stop puts a **stop** board on every approach; a minor-road stop or
+a **give way** boards only the approaches that give way, and the road running
+through carries none; a roundabout gives way at every entry; an uncontrolled
+junction is not signed at all. A signal head shows three dark lenses with
+exactly one lit over them, and the lit one cycles on the same city-wide
+signal clock the simulation uses, so what a head shows is the phase the
+junction is actually in.
 
 A motorway is signed like a motorway, not like a street: it takes none of the
 street furniture above — no kerb, so no utility boxes, no parking meters, no
@@ -182,7 +199,7 @@ works one out for itself.
 A dead-end road's rounded cap (above) carries its ground transition with it:
 the kerb/sidewalk arc wraps the cap, and a sidewalk-to-dirt-to-grass
 transition ring conforms to that same rounded perimeter rather than stopping
-in a square. See [nature.md](../visual-render/vegetation.md) for the general road-adjacent
+in a square. See [vegetation.md](../visual-render/vegetation.md) for the general road-adjacent
 ground-cover rules (the "mown lawn" read near roads and parks, and the dry
 patch/canopy-shadow variation everywhere else).
 

@@ -28,9 +28,9 @@ import {
   MAX_LOAN,
   MILESTONES,
   TICKS_PER_MONTH,
+  workforceOf,
 } from '../shared/constants';
 
-const EMPLOYMENT_RATE = 0.55;
 const LAND_VALUE_FACTOR_BASE = 0.75;
 const LAND_VALUE_FACTOR_SPAN = 0.5;
 const MONTHS_PER_YEAR = 12;
@@ -143,7 +143,7 @@ export class EconomySystem {
       else if (spec.category === 'ind') jobsInd += spec.jobs ?? 0;
     }
     const jobs = jobsCom + jobsInd;
-    const employed = Math.min(Math.floor(population * EMPLOYMENT_RATE), jobs);
+    const employed = Math.min(workforceOf(population), jobs);
 
     // --- 2. milestones, every tick (independent of the month cycle) -------
     let funds = stats.funds;

@@ -19,20 +19,20 @@ prove the additive save rule before an epic needs a harder one.
 
 ## What it touches
 
-| Module                    | Change                                                                                                                                                                            |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/shared/types.ts`     | `SewageSpec`; two fields on `UtilitySpec`; `requiresAdjacent` gains `'water'`; `GridState.waterPollution`; `SimSnapshot.water`; `LensId` gains `'sewage'`; `SAVE_VERSION` 11 → 12 |
-| `src/world/grid.ts`       | Allocate, serialize and deserialize the new trailing layer                                                                                                                        |
-| `src/sim/sewage.ts`       | **New.** Generation, collection, discharge, spread, decay                                                                                                                         |
-| `src/sim/network.ts`      | Intake yield scaled by contamination; treatment restores it                                                                                                                       |
-| `src/sim/worker.entry.ts` | Schedule the pass; publish the new snapshot channel                                                                                                                               |
-| `src/data/catalog.json`   | Six new entries; economy is untouched, upkeep already being per-building                                                                                                          |
-| `src/render/`             | Water tint by contamination; six plant meshes                                                                                                                                     |
-| `src/ui/`                 | Intake gauge on the inspector; the `'sewage'` lens; two notifications                                                                                                             |
+| Module                    | Change                                                                                                                                                                                         |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/shared/types.ts`     | `SewageSpec`; two fields on `UtilitySpec`; `requiresAdjacent` gains `'water'`; `GridState.waterPollution`; `SimSnapshot.water`; `LensId` gains `'sewage'`; `SAVE_VERSION` + 1 when it is built |
+| `src/world/grid.ts`       | Allocate, serialize and deserialize the new trailing layer                                                                                                                                     |
+| `src/sim/sewage.ts`       | **New.** Generation, collection, discharge, spread, decay                                                                                                                                      |
+| `src/sim/network.ts`      | Intake yield scaled by contamination; treatment restores it                                                                                                                                    |
+| `src/sim/worker.entry.ts` | Schedule the pass; publish the new snapshot channel                                                                                                                                            |
+| `src/data/catalog.json`   | Six new entries; economy is untouched, upkeep already being per-building                                                                                                                       |
+| `src/render/`             | Water tint by contamination; six plant meshes                                                                                                                                                  |
+| `src/ui/`                 | Intake gauge on the inspector; the `'sewage'` lens; two notifications                                                                                                                          |
 
 **Save format: yes, additively.** One new trailing `GridState` layer,
-`waterPollution` (MAP_SIZE² bytes), at `SAVE_VERSION = 12` — the pattern
-`district`, `landfill` and `powerLine` already follow
+`waterPollution` (MAP_SIZE² bytes), at `SAVE_VERSION` + 1 when it is built —
+the pattern `district`, `landfill` and `powerLine` already follow
 ([../data-model.md](../data-model.md)). **A save written before this epic loads
 after it, with the new service absent rather than the save rejected**:
 `deserializeGrid` defaults the layer to all-zero, so nothing is contaminated, no
@@ -57,7 +57,7 @@ is drawn from adjacent water and scaled by that water's contamination, and
 
 ```ts
 // GridState: 0..255, meaningful only where water[i] === 1. ADDITIVE layer,
-// serialized LAST in the grid save (SAVE_VERSION 12).
+// serialized LAST in the grid save (SAVE_VERSION + 1 when it is built).
 waterPollution: Uint8Array;
 
 export interface SewageSpec {
@@ -165,7 +165,7 @@ so we take the vessel sum. And the works must read as different buildings, which
    treatment plants on the same network restore that up to their summed
    `treatsKL` and no further.
 5. Placement refuses a site with no adjacent water, and refuses a 1×1 pond.
-6. A save at version ≤ 11 loads with `waterPollution` all-zero, every
+6. A save from before the bump loads with `waterPollution` all-zero, every
    pre-existing facility behaving identically, and nothing abandoned.
 
 ## What could go wrong

@@ -163,8 +163,8 @@ the lot — two thirds of a depot is open ground.
   `isTramTier` allows a depot on a road the tram graph lacks, and the symptom —
   builds fine, supplies nothing — is hard to read off the panel.
 - **The bus speed is a visual regression risk, not a functional one.** It is
-  `TILE_METERS * 2` — 32 m/s, about 115 km/h, five and three quarter times the
-  5.56 m/s the arithmetic uses. Bringing it down is correct, and still the
+  `TILE_METERS * 2` — 40 m/s, 144 km/h, seven and a fifth times the 5.56 m/s
+  the arithmetic uses. Bringing it down is correct, and still the
   change most likely to be reported as a bug.
 - **Allocation churn, and dead-run pathing cost.** Without the hysteresis band
   `defaultFleet` flickers between two integers and the render adds and removes a

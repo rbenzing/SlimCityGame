@@ -7,6 +7,7 @@
  * and the stats block, with no three.js, store or worker anywhere near it, so
  * the entire ranking is testable directly.
  */
+import { workforceOf } from '../shared/constants';
 import {
   BuildingState,
   Problem,
@@ -34,6 +35,9 @@ export interface CityIssue {
 export const ADVISOR_REFRESH_SNAPSHOTS = 10;
 
 const SEVERITY_RANK: Record<IssueSeverity, number> = { critical: 0, warning: 1, info: 2 };
+
+/** Share of the workforce out of work, or in empty jobs, the labour market carries before it is a problem. */
+const LABOUR_MARKET_SLACK = 0.25;
 
 /**
  * One entry per problem flag. Order here is the tie-break order within a
@@ -227,9 +231,12 @@ function cityWideIssues(stats: CityStats): CityIssue[] {
   }
 
   // Only meaningful once there are people: a brand-new map has no workers and
-  // no jobs, and neither is a problem yet.
+  // no jobs, and neither is a problem yet. Both sides are measured against the
+  // workforce, since the other residents are not looking for work.
   if (stats.population > 0) {
-    const unemployed = stats.population - stats.employed;
+    const workforce = workforceOf(stats.population);
+    const unemployed = Math.max(0, workforce - stats.employed);
+    const vacancies = Math.max(0, stats.jobs - stats.employed);
     if (stats.jobs === 0) {
       issues.push({
         id: 'no-jobs',
@@ -238,20 +245,20 @@ function cityWideIssues(stats: CityStats): CityIssue[] {
         detail: 'Zone commercial or industrial so residents have somewhere to work.',
         count: 0,
       });
-    } else if (unemployed > stats.population * 0.25) {
+    } else if (unemployed > workforce * LABOUR_MARKET_SLACK) {
       issues.push({
         id: 'unemployment',
         severity: 'warning',
-        title: `${Math.round((unemployed / stats.population) * 100)}% of residents are out of work`,
+        title: `${Math.round((unemployed / workforce) * 100)}% of the workforce is out of work`,
         detail: 'Zone more commercial and industrial, or connect the jobs that exist to the roads.',
         count: 0,
       });
-    } else if (stats.employed >= stats.jobs && stats.demand.ind > 0) {
+    } else if (vacancies > workforce * LABOUR_MARKET_SLACK) {
       issues.push({
         id: 'labour-short',
-        severity: 'info',
+        severity: 'warning',
         title: 'Employers cannot find workers',
-        detail: 'Every job is taken — zone more housing to grow the workforce.',
+        detail: `${vacancies} job${vacancies === 1 ? ' stands' : 's stand'} empty — zone more housing to grow the workforce.`,
         count: 0,
       });
     }
