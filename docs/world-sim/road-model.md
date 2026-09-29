@@ -286,6 +286,17 @@ by half: a lane count of 2 one way and 1 the other gives the wider
 direction 4/3 of an even split and the narrower 2/3, so the narrow side
 congests first while the whole edge's nominal capacity is unchanged.
 
+**A direction with no lane is not a road.** The router drives a run only in a
+direction its cross-section has a travel lane for. A one-way street, a
+motorway carriageway and a ramp are all driven one way, as is either half of
+a corridor and any composed profile whose travel lanes all run the same way.
+A run whose tiles never recorded a flow cannot say which way that is, so it
+is gated by its road type instead: a type `roads.json` marks `oneWay` is
+driven the way the geometric fallback reads, and every other type both ways.
+So a single motorway line carries traffic one way only, as a real carriageway
+does, and the other direction takes whatever roads it can until the second
+carriageway is drawn beside it.
+
 ## Junctions: control, defaults and warrants
 
 Every junction node carries a control: `none`, `yield` (minor approaches

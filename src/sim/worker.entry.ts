@@ -173,7 +173,7 @@ import { BuildingRegistry, footprintForRotation, settleBuildingDelta } from './b
 import { computeDemand } from './demand';
 import { GrowthSystem, type GrowthSupply } from './growth';
 import { ServiceSim, nearestRoadTile } from './services';
-import { EconomySystem, buildingMonthlyTax } from './economy';
+import { EconomySystem, buildingMonthlyTax, type Occupancy } from './economy';
 import { recomputeUtilities } from './network';
 import { TrafficSystem } from './traffic';
 import { TransitSystem, type PopulationJobsAccessor, type TransitTickResult } from './transit';
@@ -511,6 +511,12 @@ class SimWorld implements WorkerSim {
   private powerDirty = false;
   private wateredDirty = false;
   private utilitiesDirty = false;
+  /** Jobs by sector, open and going up, as the last economy pass (or load) counted them, for demand. */
+  private occupancy: Occupancy = {
+    population: 0,
+    jobs: { com: 0, ind: 0 },
+    pipeline: { com: 0, ind: 0 },
+  };
   /** Whom the last utility pass cut and what it left spare; nothing is spare before the first. */
   private supply: GrowthSupply = {
     power: { cut: new Set(), spare: 0 },
@@ -652,6 +658,7 @@ class SimWorld implements WorkerSim {
     this.initialized = true;
 
     this.recomputeUtilitiesNow();
+    this.occupancy = this.economy.occupancy(this.registry.all());
     this.post({ type: 'ready' });
     this.postSnapshot();
   }
@@ -754,6 +761,7 @@ class SimWorld implements WorkerSim {
     this.powerLineDirty = { minX: 0, minZ: 0, maxX: MAP_SIZE - 1, maxZ: MAP_SIZE - 1 };
     this.garbageDirty = true;
     this.recomputeUtilitiesNow();
+    this.occupancy = this.economy.occupancy(this.registry.all());
     this.powerDirty = true;
     this.wateredDirty = true;
 
@@ -796,8 +804,8 @@ class SimWorld implements WorkerSim {
 
     this.stats.demand = computeDemand({
       population: this.stats.population,
-      jobs: this.stats.jobs,
-      employed: this.stats.employed,
+      jobs: this.occupancy.jobs,
+      pipeline: this.occupancy.pipeline,
       taxRates: this.stats.taxRates,
       happiness: this.stats.happiness,
     });
@@ -980,6 +988,7 @@ class SimWorld implements WorkerSim {
       profileOf: (id: number) => this.profileForId(id),
     });
     Object.assign(this.stats, econ.statsPatch);
+    this.occupancy = econ.occupancy;
     for (const note of econ.notifications) {
       this.post({ type: 'notify', note });
     }

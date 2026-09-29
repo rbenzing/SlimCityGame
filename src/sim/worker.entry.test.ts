@@ -9,7 +9,15 @@ import {
   TICK_MS,
   tileIndex,
 } from '../shared/constants';
-import { FieldId, Problem, RoadFlow, RoadTier, SAVE_VERSION, ZoneType } from '../shared/types';
+import {
+  BuildingState,
+  FieldId,
+  Problem,
+  RoadFlow,
+  RoadTier,
+  SAVE_VERSION,
+  ZoneType,
+} from '../shared/types';
 import type {
   BuildingCatalogEntry,
   Command,
@@ -31,6 +39,7 @@ import { decodeSave, encodeSave } from '../app/persist';
 import { createGrid, serializeGridV12 } from '../world/grid';
 import { cellStep, isFreeSegment, loadGrid, neighbours, roadCellsOf } from '../world/roadnet';
 import { RUNS_INTO_FREE_ROAD } from '../world/freeroads';
+import { BASE_MULTIPLIER, COMMERCIAL_SPAN_JOBS } from './demand';
 import { computeTerraformPatch, type TerraformCommand } from '../world/terraform';
 import {
   createWorkerSim,
@@ -2630,6 +2639,71 @@ describe('a grid too small for its city — the snapshot says what growth waits 
     expect(snap.stats.powerDemand).toBeGreaterThan(snap.stats.powerSupply);
     expect(snap.growthWaiting!.power).toBeGreaterThan(0);
     expect(snap.growthWaiting!.water).toBe(0);
+  });
+});
+
+describe('a small town grows the way a farming or mill town does', () => {
+  it('builds its industry before its shops, and no more shops than its industry supports', () => {
+    const h = initialized();
+    send(h, 1, [
+      { kind: 'setSandbox', on: true },
+      { kind: 'setUnlimitedMoney', on: true },
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 49, 32) },
+    ]);
+    h.ticks(1);
+    const rows = (x0: number, z0: number, w: number, d: number): TilePoint[] =>
+      Array.from({ length: d }, (_, dz) => roadRow(x0, z0 + dz, w)).flat();
+    send(h, 2, [
+      { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 48, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 61, z: 48, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 47, rotation: 0 },
+      { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(60, 50, 16, 2) },
+      { kind: 'paintZone', zone: ZoneType.Industrial, tiles: rows(76, 50, 16, 2) },
+      { kind: 'paintZone', zone: ZoneType.ComLow, tiles: rows(66, 47, 26, 2) },
+    ]);
+    h.ticks(2);
+    expect(h.ackFor(2)!.ok).toBe(true);
+    h.ticks(2000);
+
+    // Replay every snapshot's building log: what stands, and when each first stood Active.
+    const catalogIdOf = new Map<number, string>();
+    const activeAt = new Map<number, number>();
+    const firstAdded = new Map<string, number>();
+    const sectorOf = (id: number): string | undefined =>
+      catalog.find((e) => e.id === catalogIdOf.get(id))?.category;
+    for (const m of h.messages) {
+      if (m.type !== 'snapshot' || !m.snap.buildings) continue;
+      const { added, updated, removed } = m.snap.buildings;
+      for (const b of [...added, ...updated]) {
+        catalogIdOf.set(b.id, b.catalogId);
+        const sector = sectorOf(b.id)!;
+        if (!firstAdded.has(sector)) firstAdded.set(sector, m.snap.stats.tick);
+        if (b.state === BuildingState.Active && !activeAt.has(b.id)) {
+          activeAt.set(b.id, m.snap.stats.tick);
+        }
+      }
+      for (const id of removed) catalogIdOf.delete(id);
+    }
+    const firstActive = (sector: string): number =>
+      Math.min(...[...activeAt].filter(([id]) => sectorOf(id) === sector).map(([, t]) => t));
+    const jobsOf = (sector: string): number =>
+      [...catalogIdOf.keys()]
+        .filter((id) => sectorOf(id) === sector)
+        .reduce(
+          (sum, id) => sum + (catalog.find((e) => e.id === catalogIdOf.get(id))?.jobs ?? 0),
+          0,
+        );
+
+    expect(firstActive('ind')).toBeLessThan(Infinity);
+    expect(jobsOf('com')).toBeGreaterThan(0);
+    // No shop is even begun until an industrial building is open for work.
+    expect(firstAdded.get('com')!).toBeGreaterThan(firstActive('ind'));
+    // And the town's shops stay within what its industry supports — give or
+    // take the one shop that fills the last gap, a building being the least a
+    // town can grow by.
+    expect(jobsOf('com')).toBeLessThanOrEqual(
+      (BASE_MULTIPLIER - 1) * jobsOf('ind') + COMMERCIAL_SPAN_JOBS,
+    );
   });
 });
 

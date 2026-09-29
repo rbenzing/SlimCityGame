@@ -12,7 +12,8 @@ Every tick, population and jobs are re-summed from Active buildings: a
 residential building contributes its `residents` to population (and, for a
 mixed-use entry, its ground-floor `jobs` to commercial jobs too); a
 commercial or industrial building contributes its `jobs` to that sector.
-Employed is `min(population × 0.55, jobs)`.
+Employed is `min(floor(population × 0.5), jobs)` — the workforce, half the
+population, capped by the jobs there are.
 
 Income and expenses settle once every game month — every 6,000 ticks (200
 ticks/day × 30 days) — against the funds balance; population, jobs and

@@ -1191,6 +1191,30 @@ describe('the graph carries the direction its tiles were drawn in', () => {
     }
   });
 
+  it.each([
+    ['a motorway', RoadTier.Highway],
+    ['a ramp', RoadTier.Ramp],
+  ])('drives %s only the way it was laid', (_name, tier) => {
+    const size = 12;
+    const g = makeGrid(size);
+    const tiles = Array.from({ length: 5 }, (_, i) => ({ x: 2 + i, z: 5 }));
+    applyRoad(
+      g,
+      tiles,
+      tier,
+      undefined,
+      tier,
+      false,
+      tiles.map(() => RoadFlow.West),
+    );
+    const net = new RoadNetwork();
+    net.rebuild(g);
+
+    expect(net.findPath({ x: 6, z: 5 }, { x: 2, z: 5 })).not.toBeNull();
+    // Laid westward, it is no road east: there is no lane that way to drive.
+    expect(net.findPath({ x: 2, z: 5 }, { x: 6, z: 5 })).toBeNull();
+  });
+
   it('reads a run by its own tiles, not by the crossing another one-way last drew through', () => {
     const size = 12;
     const g = makeGrid(size);

@@ -48,6 +48,11 @@ const RATES_BY_TIER: ReadonlyMap<RoadTier, EdgeRates> = new Map(
 );
 const MAX_ROAD_SPEED: number = Math.max(1, ...[...RATES_BY_TIER.values()].map((r) => r.speed));
 
+/** Road types whose one carriageway flows one way — a one-way street, a motorway, a ramp. */
+const ONE_WAY_TIERS: ReadonlySet<RoadTier> = new Set(
+  ROAD_PRESETS.filter((s) => s.oneWay).map((s) => s.tier),
+);
+
 function ratesForTier(tier: RoadTier): EdgeRates {
   // Defensive fallback only: every tier that can label a built edge has a
   // preset. This never masks a real bug — it just keeps routing from throwing
@@ -305,9 +310,12 @@ function oneWayForwardIsAtoB(edge: GraphEdge): boolean {
 
 /**
  * Whether travel across `edge` starting at node `fromNodeId` is permitted.
- * Two-way tiers (every tier except RoadTier.OneWay) are always traversable
- * in both directions — zero behavior change for existing tiers. A one-way
- * edge is traversable only in its flow direction (see `oneWayForwardIsAtoB`).
+ * A direction the run's cross-section has no travel lane for is never driven:
+ * that is every one-way carriageway, whatever its type — a one-way street, a
+ * motorway, a ramp, a corridor half, a composed profile running one way. A run
+ * that never recorded which way it flows has no lanes-per-direction to read,
+ * so its type decides: a one-way type is driven the way `oneWayForwardIsAtoB`
+ * reads, and every other type both ways.
  *
  * `inNetwork` is the membership test of the network being traversed, and
  * defaults to the drivable-street one, so a caller that does not pass it
@@ -323,7 +331,9 @@ export function edgeTraversable(
   inNetwork: (tier: RoadTier) => boolean = isStreetTier,
 ): boolean {
   if (!inNetwork(edge.tier)) return false;
-  if (edge.tier !== RoadTier.OneWay) return true;
+  const lanes = leavingLanes(edge, fromNodeId);
+  if (lanes !== undefined) return lanes > 0;
+  if (!ONE_WAY_TIERS.has(edge.tier)) return true;
   return oneWayForwardIsAtoB(edge) ? fromNodeId === edge.a : fromNodeId === edge.b;
 }
 

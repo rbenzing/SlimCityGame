@@ -120,6 +120,13 @@ MUTCD citations below use 11th-edition section numbers.
   nodes, because a node two one-ways cross holds only the flow of whichever
   was drawn last. — [road-model.md](world-sim/road-model.md);
   `src/world/pathfind.ts`, `storedRunDirection` in `src/world/roadgraph.ts`
+- A one-way carriageway — a one-way street, a motorway, a ramp, either half of
+  a corridor, any profile whose travel lanes all run one way — is driven only
+  the way it flows. A direction the cross-section has no travel lane for is
+  never routed, not merely costed high; a run with no recorded flow is gated
+  by its spec's `oneWay` and the geometric fallback. —
+  [road-model.md](world-sim/road-model.md#stored-direction-and-one-way-roads);
+  `edgeTraversable` in `src/world/pathfind.ts`
 - Roads replace by class rank (dirt, alley, rural, local, one-way, urban,
   collector, arterial, divided, ramp, highway), never by tier number or catalog
   order. Rail sits outside the ranking: rail never takes a tile from a road nor
@@ -368,10 +375,17 @@ MUTCD citations below use 11th-edition section numbers.
   [agent-behavior.md](world-sim/agent-behavior.md),
   [ADR-0001](engineering/adr/0001-traffic-is-statistical-assignment-with-cosmetic-agents.md)
 - The workforce is `floor(population × EMPLOYMENT_RATE)`, one constant in
-  `src/shared/constants.ts`. Employment, industrial demand and the Advisor's
-  labour checks all measure against the workforce, never against every
-  resident. — [population-model.md](world-sim/population-model.md),
+  `src/shared/constants.ts`. Employment, demand and the Advisor's labour
+  checks all measure against the workforce, never against every resident. —
+  [population-model.md](world-sim/population-model.md),
   [progression.md](game-design/progression.md#the-advisor-detecting-and-ranking-problems)
+- Demand is economic base theory. Industry is the basic sector a town lives
+  by; commercial demand is only ever the local jobs its industrial jobs
+  support (`BASE_MULTIPLIER` 1.81, from published multipliers), so a town
+  with no industry supports no shops; and residents follow work, so a
+  workforce with no jobs turns households away. Every demand figure cites
+  its source. — [simulation-rules.md](game-design/simulation-rules.md#demand-the-rci-model);
+  `computeDemand` in `src/sim/demand.ts`
 - Vehicles and pedestrians are cosmetic: they draw along a real route and
   simulate nothing, and a cosmetic route is computed once and never re-solved.
   A vehicle drives the line the road network traces — grid tile centres and
