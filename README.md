@@ -125,8 +125,8 @@ version. Nobody edits the version by hand.
 - Every push to `main` runs the **CI** workflow (typecheck · lint · test · build).
 - release-please keeps a rolling **release PR** with the next version + a
   generated `CHANGELOG.md`. Merging it tags `vX.Y.Z`, cuts a **GitHub Release**,
-  and the workflow deploys the built SPA to **GitHub Pages** at
-  [rbenzing.github.io/SlimCityGame](https://slimcity.netlify.app/).
+  and the workflow deploys the built SPA to **GitHub Pages**. The game is
+  played at [slimcity.netlify.app](https://slimcity.netlify.app/).
 - The build's URL prefix comes from the `BASE_PATH` environment variable and
   defaults to `/`. The Pages workflow sets `BASE_PATH=/SlimCityGame/`; a
   root-hosted deploy such as **Netlify** leaves it unset. `netlify.toml` carries
