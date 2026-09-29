@@ -35,7 +35,7 @@ instanced Three.js.
 
 <div align="center">
 
-![SlimCity — a city block at night, with lit windows, street lamps and traffic](screenshots/screenshot-01.png)
+![SlimCity — a small town by day: homes on their lots along a curving street, the road tool's options open and the Advisor reporting](screenshots/screenshot-02.png)
 
 </div>
 

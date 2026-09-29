@@ -84,8 +84,8 @@ player drops their own files in via the UI, per `src/app/music.ts`).
 
 ## `screenshots/` (repository root)
 
-One tracked hero image (`screenshot-01.png`) that the root `README.md`
-embeds. Not to be confused with `tools/shots-*/`, which is harness output
+Tracked hero images for the root `README.md`, which embeds the newest
+(`screenshot-02.png`). Not to be confused with `tools/shots-*/`, which is harness output
 and gitignored — this directory holds a small number of curated,
 permanently-tracked images for the project's own README.
 
