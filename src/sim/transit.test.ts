@@ -10,8 +10,18 @@ import {
   type PopulationJobsAccessor,
   type TransitRoute,
 } from './transit';
-import { isRailTier, isTramTier, RoadTier, type GraphEdge, type GridState, type PathResult, type RoadNetworkApi, type TilePoint, type TransitLine } from '../shared/types';
-import { RoadNetwork } from '../world/roadgraph';
+import {
+  isRailTier,
+  isTramTier,
+  RoadTier,
+  type GraphEdge,
+  type GridState,
+  type PathResult,
+  type RoadNetworkApi,
+  type TilePoint,
+  type TransitLine,
+} from '../shared/types';
+import { RoadNetwork, tramShape } from '../world/roadgraph';
 import { createGrid } from '../world/grid';
 
 // ---------------------------------------------------------------------------
@@ -632,10 +642,83 @@ describe('tram lines', () => {
   function networks(g: GridState): { road: RoadNetwork; tram: RoadNetwork } {
     const road = new RoadNetwork();
     road.rebuild(g);
-    const tram = new RoadNetwork(isTramTier);
+    const tram = new RoadNetwork(isTramTier, tramShape);
     tram.rebuild(g);
     return { road, tram };
   }
+
+  describe('crossing another street', () => {
+    const CROSS_X = 7;
+
+    /** The track, with an avenue drawn north–south across it first, so the crossing tile is the avenue's. */
+    function crossedGrid(): GridState {
+      const g = tramGrid();
+      for (let z = TRAM_Z - 5; z <= TRAM_Z + 5; z++)
+        g.roadTier[z * SIZE + CROSS_X] = RoadTier.Avenue;
+      return g;
+    }
+    const ends = [
+      { x: 2, z: TRAM_Z },
+      { x: 12, z: TRAM_Z },
+    ];
+
+    it('goes straight over the junction, though the tile stays the avenue', () => {
+      const g = crossedGrid();
+      expect(g.roadTier[TRAM_Z * SIZE + CROSS_X]).toBe(RoadTier.Avenue);
+      const { road, tram } = networks(g);
+      const sys = new TransitSystem(road, null, tram);
+      const line = sys.createLine(ends, 0, 'tram');
+      const points = sys.route(line.id)?.points ?? [];
+      expect(points.some((p) => p.x === CROSS_X && p.z === TRAM_Z)).toBe(true);
+      for (const p of points) expect(p.z).toBe(TRAM_Z);
+      expect(sys.ridership(line.id, fixedAccessor(100))).toBeGreaterThan(0);
+    });
+
+    it('keeps the tram graph to one tram edge across it, and the avenue to cars', () => {
+      const { road, tram } = networks(crossedGrid());
+      expect(tram.getEdges().map((e) => e.tier)).toEqual([RoadTier.Tram]);
+      // Cars still meet the avenue at a junction there, and drive on along it.
+      const avenue = road.getEdges().filter((e) => e.tiles.every((t) => t.x === CROSS_X));
+      expect(avenue.length).toBeGreaterThan(0);
+    });
+
+    it('never turns there, onto a street with no track to turn onto', () => {
+      // A second tramway meets the crossing from the north and ends at it. The
+      // crossing still carries the east–west tramway over, but the tile has no
+      // track round the corner, so nothing links the two tramways.
+      const g = crossedGrid();
+      for (let z = TRAM_Z - 5; z < TRAM_Z; z++) g.roadTier[z * SIZE + CROSS_X] = RoadTier.Tram;
+      const { road, tram } = networks(g);
+      const sys = new TransitSystem(road, null, tram);
+      expect(sys.route(sys.createLine(ends, 0, 'tram').id)).not.toBeNull();
+      const turning = sys.createLine(
+        [
+          { x: 2, z: TRAM_Z },
+          { x: CROSS_X, z: TRAM_Z - 5 },
+        ],
+        0,
+        'tram',
+      );
+      expect(sys.route(turning.id)).toBeNull();
+    });
+
+    it('is an ordinary junction again once one tram arm is gone', () => {
+      const g = crossedGrid();
+      for (let x = CROSS_X + 1; x <= 12; x++) g.roadTier[TRAM_Z * SIZE + x] = RoadTier.None;
+      const { road, tram } = networks(g);
+      const sys = new TransitSystem(road, null, tram);
+      const line = sys.createLine(
+        [
+          { x: 2, z: TRAM_Z },
+          { x: CROSS_X, z: TRAM_Z },
+        ],
+        0,
+        'tram',
+      );
+      const points = sys.route(line.id)?.points ?? [];
+      expect(points.some((p) => p.x === CROSS_X)).toBe(false);
+    });
+  });
 
   /** Road edges lying wholly on one row. */
   function edgesOnRow(road: RoadNetwork, z: number): GraphEdge[] {

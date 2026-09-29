@@ -16,7 +16,7 @@ import { column, feedMirror, flatMap, makeHarness, rows, roadRow, send, type Har
  *   z  44      station road, homes and shops along its south side
  *   z  57      the road out to the motorway ramp, x 130–151
  *   z  70–74   a river, which the avenue and the ramp road bridge
- *   z  85      tramway, x 50–89, ending at the avenue; a street on east to x 129
+ *   z  85      tramway, x 50–129, drawn after the avenue and crossing it
  *   z 100      main street (two-lane), x 50–130, the town centre
  *   z 101–129  one-way street (x 60), alley (x 70), bus lane (x 120)
  *   z 115      bike lane, x 91–119
@@ -37,12 +37,12 @@ export const TOWN = {
   stationWest: { x: 60, z: 41 },
   stationEast: { x: 120, z: 41 },
   stationRoad: { z: 44 },
-  tram: { z: 85, x0: 50, x1: 89 },
+  tram: { z: 85, x0: 50, x1: 129 },
+  // Either side of the avenue, so the line only runs if the tram crosses it.
   tramStops: [
     { x: 55, z: 85 },
-    { x: 85, z: 85 },
+    { x: 110, z: 85 },
   ],
-  tramStreet: { z: 85, x0: 91, x1: 129 },
   main: { z: 100, x0: 50, x1: 130 },
   avenue: { x: 90, z0: 44, z1: 150 },
   oneWay: { x: 60, z0: 101, z1: 129 },
@@ -171,22 +171,12 @@ export function townSteps(): TownStep[] {
       ],
     },
     {
-      label: 'a tramway, ending at the avenue',
+      label: 'a tramway, across the avenue',
       commands: [
         {
           kind: 'buildRoad',
           tier: RoadTier.Tram,
           tiles: roadRow(t.tram.x0, t.tram.z, span(t.tram.x0, t.tram.x1)),
-        },
-      ],
-    },
-    {
-      label: 'the street on from the tramway',
-      commands: [
-        {
-          kind: 'buildRoad',
-          tier: RoadTier.TwoLane,
-          tiles: roadRow(t.tramStreet.x0, t.tramStreet.z, span(t.tramStreet.x0, t.tramStreet.x1)),
         },
       ],
     },

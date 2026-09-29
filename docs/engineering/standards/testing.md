@@ -55,6 +55,7 @@ area:
 | `noise.test.ts`     | Noise from roads and landmarks                                                           |
 | `utilities.test.ts` | A generator that cannot deliver, and a grid too small for its city                       |
 | `growth.test.ts`    | What a small town grows, including a farming town                                        |
+| `transit.test.ts`   | Transit lines as the player lays them, such as a tramway crossing another street         |
 | `mirror.test.ts`    | The main thread's grid mirror kept in step by what the worker sends                      |
 | `undo.test.ts`      | Undo and redo through the undo stack                                                     |
 | `town.test.ts`      | A whole small town built and grown, as the regression for everything together            |
@@ -92,7 +93,7 @@ could have sent:
 - garbage: a landfill painted between the railway and the station road, and
   an incinerator among the industry;
 - transit: a bus line between two bus stops, a rail line between two
-  stations, and a tram line along the tramway;
+  stations, and a tram line along a tramway that crosses the avenue;
 - the city's other levers: signals at a junction, a district with a policy,
   taxes, service funding, a loan, and a hill raised steep enough to spoil
   its soil.

@@ -67,6 +67,13 @@ MUTCD citations below use 11th-edition section numbers.
   it sits in both graphs. A tram line only ever routes over the tram graph, and
   no line mixes tram and rail track. —
   [transit-model.md](world-sim/transit-model.md); `isTramTier`
+- A tramway crosses a street straight over the junction. A street tile that is
+  not tram track, joined to tram track on two opposite sides, is a tram
+  crossing: it keeps its own road, the tram graph counts it as track along that
+  axis, and the road mesh lays the rails across it. It is derived from the
+  tiles every time, never stored, and a tram never turns at one. —
+  [transit-model.md](world-sim/transit-model.md#tram-crossings);
+  `tramCrossingAxes` in `src/shared/types.ts`
 - A road is a class, a profile (its cross-section) and its junctions. Markings,
   furniture, crossings and capacity are derived from those three and never
   authored or stored per tier. — [road-model.md](world-sim/road-model.md),

@@ -50,7 +50,11 @@ for the surface, the paint, the furniture and the zoning overlay.
   geometry on a narrower, gravel-class corridor, and it has no lane pieces to
   read, so its single track runs down the middle. It never crosses a street at
   grade: laid through one in replace mode it runs straight through and the
-  street ends either side of it. There are no level crossings yet.
+  street ends either side of it. There are no level crossings yet. A
+  tramway is different: where it crosses another street, the rails run
+  straight on across the junction box between the two tram arms, at the
+  offsets the tramway's own preset lanes give them, so the track reads as
+  unbroken over the crossing street's paving.
 - **Intersections**: marking strips stop at any tile whose connections number
   three or more, so the junction box itself stays clean asphalt and reads as
   a real crossing. The one exception is a motorway tile a ramp meets — a merge

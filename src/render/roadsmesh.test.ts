@@ -414,6 +414,43 @@ describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
     expect(countWhere(junction.colors, isRail)).toBe(0);
   });
 
+  describe('over a street the tramway crosses', () => {
+    /** An avenue junction with tram track joined east and west, unless `neighbors` says otherwise. */
+    const crossing = (mask: number, neighbors: NeighborTiers) =>
+      roadTileVertices(0, 0, RoadTier.Avenue, mask, flatHeightAt, neighbors);
+    const crossed: NeighborTiers = {
+      n: RoadTier.Avenue,
+      e: RoadTier.Tram,
+      s: RoadTier.Avenue,
+      w: RoadTier.Tram,
+    };
+
+    it('runs the rails straight across the whole junction, along the tramway', () => {
+      const { positions, colors } = crossing(N | E | S | W, crossed);
+      expect(countWhere(colors, isRail)).toBeGreaterThan(0);
+      const railXs: number[] = [];
+      const railZs: number[] = [];
+      for (let i = 0; i < colors.length; i += 3) {
+        if (!isRail([colors[i]!, colors[i + 1]!, colors[i + 2]!])) continue;
+        railXs.push(positions[i]!);
+        railZs.push(positions[i + 2]!);
+      }
+      // Kerb to kerb along x, where the tram arms are, and within the lanes across it.
+      expect(Math.min(...railXs)).toBeCloseTo(0, 5);
+      expect(Math.max(...railXs)).toBeCloseTo(TILE_METERS, 5);
+      expect(Math.max(...railZs) - Math.min(...railZs)).toBeLessThan(TILE_METERS / 2);
+    });
+
+    it('lays none where the tramway reaches the junction from one side only', () => {
+      const oneArm = { ...crossed, e: RoadTier.Avenue };
+      expect(countWhere(crossing(N | E | S | W, oneArm).colors, isRail)).toBe(0);
+    });
+
+    it('lays none where tram track lies alongside without joining the junction', () => {
+      expect(countWhere(crossing(N | S, crossed).colors, isRail)).toBe(0);
+    });
+  });
+
   it('rides a two-lane-width carriageway and is deterministic', () => {
     expect(carriagewayHalfWidthMeters(RoadTier.Tram)).toBeCloseTo(
       carriagewayHalfWidthMeters(RoadTier.TwoLane),

@@ -23,6 +23,20 @@ at once, but a tram line itself only ever routes over the tram graph — a
 tram that could route down any street would make the embedded track
 decorative, which is the one thing this design exists to avoid.
 
+**Tram crossings.** A tramway crosses another street at grade the way a real
+one does, straight over the junction. A tramway drawn across a street leaves
+the crossing tile as that street's — the street keeps its own lanes and class
+there, and a tramway never takes a tile from a road it does not outrank — so
+the crossing is recognised rather than stored: a street tile that is not
+itself tram track, joined to tram track on two opposite sides, is a **tram
+crossing** along that axis, and the tram graph counts it as track. Nothing is
+saved for it, so it comes and goes with the tramway: take one tram arm away
+and the tile is an ordinary junction again. A tram may only go straight over a
+crossing, never turn onto the street it is crossing, because the street has
+no track to turn onto. A crossing is one tile: a tramway across a road laid as
+two carriageways (two tiles side by side) still stops at it.
+(`tramCrossingAxes` in `src/shared/types.ts`.)
+
 **Ridership** is one statistical estimate for every mode: the population
 and jobs within a search radius of every stop, summed across the line,
 times a per-demand rate, times a length bonus capped at 3× the base

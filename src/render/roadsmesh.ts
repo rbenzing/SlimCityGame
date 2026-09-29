@@ -85,6 +85,7 @@ import {
   RoadTileDelta,
   RoadTier,
   stepForFlow,
+  tramCrossingAxes,
 } from '../shared/types';
 import type { CorridorHalf } from '../shared/types';
 import type { JunctionControl, TilePoint } from '../shared/types';
@@ -4276,6 +4277,49 @@ export function roadTileVertices(
         const xLo = hasW ? -TILE_HALF : -coreHalf;
         const xHi = hasE ? TILE_HALF : coreHalf;
         emitTramTrack(positions, colors, centerX, centerZ, false, xLo, xHi, hAt, across);
+      }
+    }
+  }
+  // A tramway crossing this street goes straight over the junction box, so its
+  // rails run on across the whole tile between the two tram arms, at the
+  // offsets the tramway's own preset lanes give them.
+  const tramCrossing = tramCrossingAxes(
+    tier,
+    hasN ? neighbors.n : RoadTier.None,
+    hasE ? neighbors.e : RoadTier.None,
+    hasS ? neighbors.s : RoadTier.None,
+    hasW ? neighbors.w : RoadTier.None,
+  );
+  if (tramCrossing.alongX || tramCrossing.alongZ) {
+    const railsAt = markingPlan(presetProfileForTier(RoadTier.Tram))
+      .bands.filter((b) => b.kind === 'tram')
+      .map((b) => (b.from + b.to) / 2);
+    for (const across of railsAt) {
+      if (tramCrossing.alongZ) {
+        emitTramTrack(
+          positions,
+          colors,
+          centerX,
+          centerZ,
+          true,
+          -TILE_HALF,
+          TILE_HALF,
+          hAt,
+          across,
+        );
+      }
+      if (tramCrossing.alongX) {
+        emitTramTrack(
+          positions,
+          colors,
+          centerX,
+          centerZ,
+          false,
+          -TILE_HALF,
+          TILE_HALF,
+          hAt,
+          across,
+        );
       }
     }
   }
