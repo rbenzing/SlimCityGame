@@ -13,9 +13,10 @@
  * does not conduct neither receives the utility itself nor lets it propagate
  * through to tiles beyond.
  *
- * When total demand exceeds total supply, consumers (sorted by ascending
- * building id) beyond the supply budget are cut first — only their own
- * footprint tiles lose coverage.
+ * When the buildings the network reaches ask for more than the supply, the
+ * grid gives out from its far end: buildings line up by network steps from
+ * the nearest generator, and the ones past the end of the supply lose
+ * coverage on their own footprint tiles only.
  *
  * Power and water are computed identically (module the water-conduction
  * filter) but fully independently.
@@ -82,11 +83,32 @@ const ORTHOGONAL: ReadonlyArray<readonly [number, number]> = [
   [0, -1],
 ];
 
+/**
+ * Supply and use are summed in thousandths (kW, litres) so a grid that exactly
+ * meets its load is never cut by a floating-point remainder.
+ */
+const UNITS_PER_WHOLE = 1000;
+
+/** An amount of MW or kL in the whole thousandths the utility line counts in. */
+export function utilityUnits(amount: number): number {
+  return Math.round(amount * UNITS_PER_WHOLE);
+}
+
+/** How one utility's supply fell across the buildings the network reaches. */
+export interface UtilityLine {
+  /** Buildings the network reaches that the supply ran out before. */
+  cut: ReadonlySet<number>;
+  /** Supply left once every building in line is carried, in utility units; negative when the grid is short. */
+  spare: number;
+}
+
 export interface UtilityTotals {
   powerSupply: number;
   powerDemand: number;
   waterSupply: number;
   waterDemand: number;
+  power: UtilityLine;
+  water: UtilityLine;
 }
 
 /** Building-id -> footprint tile indices, derived from the grid's occupancy layer. */
@@ -103,19 +125,26 @@ function footprintsByBuildingId(g: GridState): Map<number, number[]> {
 }
 
 /**
- * Marks every source tile itself, plus every NON-ROAD tile within
- * SERVICE_RADIUS orthogonal steps of a source. Road tiles only ever become
- * covered by being reachable in the conducting BFS themselves (`sources`
- * already IS that reachable set for roads) — the 1-tile bleed exists so
- * off-road buildings/zones pick up service from an adjacent supplied road,
- * it must not let service leak sideways onto a non-conducting road tile
- * (e.g. a highway that blocks water) just because it happens to sit next to
- * a supplied one.
+ * Reaches every source tile itself, plus every NON-ROAD tile within
+ * SERVICE_RADIUS orthogonal steps of a source, one step further out per
+ * tile. Road tiles only ever become covered by being reachable in the
+ * conducting BFS themselves (`sources` already IS that reachable set for
+ * roads) — the 1-tile bleed exists so off-road buildings/zones pick up
+ * service from an adjacent supplied road, it must not let service leak
+ * sideways onto a non-conducting road tile (e.g. a highway that blocks
+ * water) just because it happens to sit next to a supplied one.
+ *
+ * Returns each tile's steps from the nearest generator, -1 where nothing
+ * reaches.
  */
-function radiate(g: GridState, sources: Iterable<number>): Uint8Array {
-  const out = new Uint8Array(MAP_SIZE * MAP_SIZE);
-  for (const s of sources) {
-    out[s] = 1;
+function radiate(g: GridState, sources: ReadonlyMap<number, number>): Int32Array {
+  const out = new Int32Array(MAP_SIZE * MAP_SIZE).fill(-1);
+  const reach = (tile: number, steps: number): void => {
+    const held = out[tile]!;
+    if (held < 0 || steps < held) out[tile] = steps;
+  };
+  for (const [s, steps] of sources) {
+    reach(s, steps);
     const sx = s % MAP_SIZE;
     const sz = Math.floor(s / MAP_SIZE);
     for (let dz = -SERVICE_RADIUS; dz <= SERVICE_RADIUS; dz++) {
@@ -126,7 +155,7 @@ function radiate(g: GridState, sources: Iterable<number>): Uint8Array {
         if (!inBounds(x, z)) continue;
         const ni = tileIndex(x, z);
         if (g.roadTier[ni]! !== RoadTier.None) continue;
-        out[ni] = 1;
+        reach(ni, steps + Math.abs(dx) + Math.abs(dz));
       }
     }
   }
@@ -178,14 +207,17 @@ function networkCellsAdjacentTo(
  * crosses and never down into it, and never across to a road that merely lies
  * alongside — and along a power line, which is not a road and hands it on to
  * whatever stands next to it.
+ *
+ * Returns each reached tile with its steps along the network: a seed is 1,
+ * each cell beyond one more.
  */
 function reachableNetworkTiles(
   g: GridState,
   cells: RoadCells,
   seeds: readonly number[],
   conducts: Conducts,
-): number[] {
-  const visited = new Set<number>(seeds);
+): Map<number, number> {
+  const steps = new Map<number, number>(seeds.map((s) => [s, 1]));
   const queue: number[] = [...seeds];
   const n = MAP_SIZE * MAP_SIZE;
   const keys = 2 * n;
@@ -216,28 +248,39 @@ function reachableNetworkTiles(
   while (head < queue.length) {
     const cur = queue[head]!;
     head += 1;
+    const further = steps.get(cur)! + 1;
     for (const next of onward(cur)) {
-      if (visited.has(next) || !conducts(cells, next)) continue;
-      visited.add(next);
+      if (steps.has(next) || !conducts(cells, next)) continue;
+      steps.set(next, further);
       queue.push(next);
     }
   }
-  // Coverage is per tile; an overpass supplies the tile it stands over.
-  return [...visited].map((id) => cellTile(cells, id));
+  // Coverage is per tile; an overpass supplies the tile it stands over, from
+  // whichever level reaches it first.
+  const byTile = new Map<number, number>();
+  for (const [id, s] of steps) {
+    const tile = cellTile(cells, id);
+    const held = byTile.get(tile);
+    if (held === undefined || s < held) byTile.set(tile, s);
+  }
+  return byTile;
 }
 
-/** Coverage grid (0/1) for a set of generator footprints: footprints + everything the network reaches, radiated. */
-function computeCoverage(
+/**
+ * Steps from the nearest of a set of generator footprints for every tile the
+ * utility reaches, -1 elsewhere: the footprints are step 0, the network beside
+ * them step 1, and everything the network reaches radiated out from there.
+ */
+function computeReach(
   g: GridState,
   footprintTiles: readonly number[],
   conducts: Conducts,
-): Uint8Array {
-  if (footprintTiles.length === 0) return new Uint8Array(MAP_SIZE * MAP_SIZE);
+): Int32Array {
+  if (footprintTiles.length === 0) return new Int32Array(MAP_SIZE * MAP_SIZE).fill(-1);
   const cells = roadCellsOf(g);
   const seeds = networkCellsAdjacentTo(cells, footprintTiles, conducts);
-  const reached = reachableNetworkTiles(g, cells, seeds, conducts);
-  const sources = new Set<number>(footprintTiles);
-  for (const r of reached) sources.add(r);
+  const sources = reachableNetworkTiles(g, cells, seeds, conducts);
+  for (const tile of footprintTiles) sources.set(tile, 0);
   return radiate(g, sources);
 }
 
@@ -293,35 +336,55 @@ export function utilityCanDeliver(
 }
 
 /**
- * Clears bits on `target` for consumer footprints beyond the supply budget.
- * Consumers are sorted by ascending building id; each one's usage accumulates
- * against `supply` — once the running total exceeds it, that building (and,
- * by construction, every later one) loses coverage on its footprint tiles only.
+ * Writes one utility's coverage into `target` and cuts the grid from its far
+ * end. Every building the network reaches stands in one line — nearest
+ * generator first, by the steps to its nearest footprint tile, ties by
+ * ascending id — whatever its state: one under construction is about to draw
+ * its share and an abandoned one would draw it again on coming back, so
+ * abandoning never hands a building its own supply back. Each one's use
+ * accumulates against `supply`; once the running total exceeds it, that
+ * building and every later one lose coverage on their footprint tiles only.
+ * A building the network does not reach draws nothing and is not in line.
  */
-function applyBrownout(
+function cutFromTheFarEnd(
   target: Uint8Array,
+  reach: Int32Array,
   buildings: readonly BuildingInstance[],
   catalogMap: ReadonlyMap<string, BuildingCatalogEntry>,
   footprints: ReadonlyMap<number, number[]>,
   supply: number,
   usageOf: (spec: BuildingCatalogEntry) => number,
-): void {
-  const consumers = buildings
-    .filter((b) => b.state !== BuildingState.Abandoned)
-    .slice()
-    .sort((a, b) => a.id - b.id);
+): UtilityLine & { demand: number } {
+  for (let i = 0; i < reach.length; i++) target[i] = reach[i]! >= 0 ? 1 : 0;
 
-  let running = 0;
-  for (const b of consumers) {
+  const line: { id: number; steps: number; use: number; tiles: number[] }[] = [];
+  for (const b of buildings) {
     const spec = catalogMap.get(b.catalogId);
     if (!spec) continue;
-    running += usageOf(spec);
-    if (running > supply) {
-      const tiles = footprints.get(b.id);
-      if (!tiles) continue;
-      for (const t of tiles) target[t] = 0;
+    const use = utilityUnits(usageOf(spec));
+    if (use <= 0) continue;
+    const tiles = footprints.get(b.id);
+    if (!tiles) continue;
+    let steps = -1;
+    for (const t of tiles) {
+      const s = reach[t]!;
+      if (s >= 0 && (steps < 0 || s < steps)) steps = s;
     }
+    if (steps < 0) continue;
+    line.push({ id: b.id, steps, use, tiles });
   }
+  line.sort((a, b) => a.steps - b.steps || a.id - b.id);
+
+  const available = utilityUnits(supply);
+  const cut = new Set<number>();
+  let running = 0;
+  for (const entry of line) {
+    running += entry.use;
+    if (running <= available) continue;
+    cut.add(entry.id);
+    for (const t of entry.tiles) target[t] = 0;
+  }
+  return { cut, spare: available - running, demand: running / UNITS_PER_WHOLE };
 }
 
 /**
@@ -336,16 +399,6 @@ export function recomputeUtilities(
 ): UtilityTotals {
   const catalogMap = new Map(catalog.map((c) => [c.id, c] as const));
   const footprints = footprintsByBuildingId(g);
-
-  let powerDemand = 0;
-  let waterDemand = 0;
-  for (const b of buildings) {
-    if (b.state === BuildingState.Abandoned) continue;
-    const spec = catalogMap.get(b.catalogId);
-    if (!spec) continue;
-    powerDemand += spec.powerUse;
-    waterDemand += spec.waterUse;
-  }
 
   let powerSupply = 0;
   let waterSupply = 0;
@@ -367,14 +420,27 @@ export function recomputeUtilities(
     }
   }
 
-  const powerCoverage = computeCoverage(g, powerFootprints, (c, i) => conductsPower(g, c, i));
-  const waterCoverage = computeCoverage(g, waterFootprints, conductsWater);
+  const powerReach = computeReach(g, powerFootprints, (c, i) => conductsPower(g, c, i));
+  const waterReach = computeReach(g, waterFootprints, conductsWater);
 
-  g.power.set(powerCoverage);
-  g.watered.set(waterCoverage);
+  const { demand: powerDemand, ...power } = cutFromTheFarEnd(
+    g.power,
+    powerReach,
+    buildings,
+    catalogMap,
+    footprints,
+    powerSupply,
+    (s) => s.powerUse,
+  );
+  const { demand: waterDemand, ...water } = cutFromTheFarEnd(
+    g.watered,
+    waterReach,
+    buildings,
+    catalogMap,
+    footprints,
+    waterSupply,
+    (s) => s.waterUse,
+  );
 
-  applyBrownout(g.power, buildings, catalogMap, footprints, powerSupply, (s) => s.powerUse);
-  applyBrownout(g.watered, buildings, catalogMap, footprints, waterSupply, (s) => s.waterUse);
-
-  return { powerSupply, powerDemand, waterSupply, waterDemand };
+  return { powerSupply, powerDemand, waterSupply, waterDemand, power, water };
 }

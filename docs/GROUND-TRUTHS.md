@@ -413,6 +413,12 @@ MUTCD citations below use 11th-edition section numbers.
   its footprint. Clearing a zone is
   exempt from the frontage check so a zone can always be removed. —
   [simulation-rules.md](game-design/simulation-rules.md)
+- Growth never builds into a shortage: a building spawns, or levels up, only
+  when the grid has spare power and water for what it will draw, counted down
+  as the pass builds. A lot or building held back only by that is waiting for
+  supply and is counted for the Advisor. A shortage never refuses the player's
+  own tools. — [simulation-rules.md](game-design/simulation-rules.md);
+  `runSpawnScan` and `tryLevelUp` in `src/sim/growth.ts`
 - The player paints zones and never places a zoned building; growth runs on the
   sim clock as demand × desirability. Civic and utility buildings are plopped;
   zones, districts, landfill and power lines are painted. —
@@ -443,10 +449,20 @@ MUTCD citations below use 11th-edition section numbers.
   conducts neither. — [utilities-model.md](world-sim/utilities-model.md);
   `src/sim/network.ts`
 - Utility supply is one city-wide total and an unconnected generator still
-  counts. When demand exceeds supply, consumers are cut in ascending building
-  id, footprint tiles only, as a hard cut, never a dim. —
-  [utilities-model.md](world-sim/utilities-model.md),
-  [power-generation.md](engineering/features/power-generation.md)
+  counts. Demand is what the network reaches: every building it reaches,
+  abandoned ones included, and nothing it does not. When demand exceeds
+  supply the grid gives out from its far end: buildings are cut in order of
+  network steps from the nearest generator, furthest first, ties by id,
+  footprint tiles only, as a hard cut, never a dim. An abandoned building
+  keeps its place in that line, so abandoning never hands a building its own
+  supply back. Supply and use are summed in thousandths, never as floats. —
+  [utilities-model.md](world-sim/utilities-model.md#brownouts),
+  [power-generation.md](engineering/features/power-generation.md);
+  `recomputeUtilities` in `src/sim/network.ts`
+- A building a shortage cuts carries `PowerShortage` or `WaterShortage` beside
+  `NoPower` or `NoWater`. The shortage flag only says why and never abandons a
+  building on its own. —
+  [utilities-model.md](world-sim/utilities-model.md#brownouts)
 - Because supply counts it anyway, a generator that cannot deliver must say
   so: a utility whose footprint touches no tile that conducts **what it
   produces** carries `Problem.NoRoad`. Touching a road is not enough — a
@@ -460,9 +476,9 @@ MUTCD citations below use 11th-edition section numbers.
 - Exactly one road BFS runs per active facility per tick. Population in reach,
   collection and forwarding ride that traversal, never a second BFS or a grid
   sweep. — [service-capacity.md](engineering/features/service-capacity.md)
-- All per-facility iteration (coverage, collection, brownout cut, fleet
-  allocation) runs in ascending building id with id tiebreaks, so two runs
-  agree. — [services-model.md](world-sim/services-model.md),
+- All per-facility iteration (coverage, collection, fleet allocation) runs in
+  ascending building id with id tiebreaks, and the shortage cut breaks its
+  distance ties by id, so two runs agree. — [services-model.md](world-sim/services-model.md),
   [service-capacity.md](engineering/features/service-capacity.md)
 - `ServiceSpec.capacity` is optional and absent means uncapped. Nobody in reach
   means uncapped (share is `Infinity`, never `0/0`). The field multiplier is
@@ -782,6 +798,11 @@ MUTCD citations below use 11th-edition section numbers.
   count, then fixed priority so it never reshuffles under the cursor, and
   returns an empty list for a healthy city. —
   [progression.md](game-design/progression.md), [hud.md](ux/hud.md)
+- The Advisor reports a grid too small for its city as a shortage ("build
+  another plant"), never as a gap in the network, and says so for as long as
+  a building stands dark from it or growth waits on it. —
+  [progression.md](game-design/progression.md#the-advisor-detecting-and-ranking-problems);
+  `cityIssues` in `src/ui/advisor.ts`
 - A tool preview reads back before commit: invalid tint plus a cursor-chip
   reason ("Insufficient funds", "Locked", "Overlapping items"), never a red tint
   alone. — [ux-design.md](ux/ux-design.md), [interaction.md](ux/interaction.md)

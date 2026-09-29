@@ -10,8 +10,11 @@ source the network reaches out from. The starting catalog holds a coal plant
 (4×4, 60 MW, 140 pollution, ¢12,000 to build, ¢800/month upkeep), a wind
 turbine (1×1, 6 MW, no pollution, ¢3,000, ¢100/month) and a water tower (2×2,
 400 kL, ¢2,500, ¢120/month); all three are available from the first
-milestone. Demand is the sum of every non-abandoned building's own catalog
-`powerUse`/`waterUse`, recomputed every tick alongside supply.
+milestone. Demand is the sum of the catalog `powerUse`/`waterUse` of every
+building the network reaches — abandoned ones included, since they keep their
+place in line (see [Brownouts](#brownouts)) — and of nothing it does not
+reach, which draws nothing. It is recomputed with supply on every utility
+pass.
 
 Supply is a single city-wide total and **every generator counts towards it,
 connected or not**. That is deliberate — it keeps supply a property of what
@@ -86,12 +89,36 @@ for what a lit or dark pole looks like.
 
 ## Brownouts
 
-When total demand exceeds total supply for either utility, consumers are cut
-in ascending building-id order: each building's usage accumulates against the
-available supply, and the moment the running total exceeds it, that building
-— and every building after it in id order — loses coverage on its own
-footprint tiles only. The rest of the network, and every consumer already
-counted, keeps what it has.
+When the buildings the network reaches ask for more than the city supplies,
+the grid gives out from its far end. Every building the network reaches
+stands in one line, nearest first: by the number of network steps between its
+footprint and the nearest generator (the generator's own footprint is step 0,
+the network beside it step 1, and a lot beside a reached road one step
+further), then by ascending building id. Each building's use accumulates
+against the supply, and the moment the running total exceeds it, that
+building — and every building after it — loses coverage on its own footprint
+tiles only. The streets, and every building nearer the source, keep what they
+have. A building the network does not reach is not in the line: it has no
+supply to lose and takes none from anyone else.
+
+A building keeps its place in the line whatever its state. One under
+construction is about to draw its share, and an abandoned one would draw it
+again the moment it came back, so abandoning never hands a building its own
+supply back. A home past the end of the supply stays dark, abandons after
+three growth passes and is removed ten passes after that; nothing nearer the
+source is touched, and nothing flips back and forth. More supply relights the
+line from the source outward.
+
+Supply and use are counted in thousandths — kilowatts and litres — so a grid
+that exactly meets its load is never cut by a rounding error.
+
+A building the cut leaves dark carries `PowerShortage` (or `WaterShortage`)
+beside `NoPower` (or `NoWater`), so the advisor can tell a grid that is too
+small from a network with a gap in it. The shortage flag only says why; the
+`NoPower` or `NoWater` beside it is what counts towards abandonment.
 
 A building that goes three consecutive growth passes without power, water,
-or road access while Active abandons.
+or road access while Active abandons. Growth does not build into a shortage:
+a lot develops, and a building levels up, only when the grid has the spare
+supply for it (see
+[the spawner](../game-design/simulation-rules.md#the-spawner-how-a-lot-is-chosen)).

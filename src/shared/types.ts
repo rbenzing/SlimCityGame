@@ -647,6 +647,10 @@ export const Problem = {
   HighCrime: 8,
   HighPollution: 16,
   LowDemand: 32,
+  /** Beside NoPower: the network reaches it, but the supply ran out before it did. */
+  PowerShortage: 64,
+  /** Beside NoWater: the mains reach it, but the supply ran out before it did. */
+  WaterShortage: 128,
 } as const;
 
 export interface BuildingInstance {
@@ -848,6 +852,18 @@ export interface SimSnapshot {
    * it, and it is absent until the first service pass has run.
    */
   serviceLoad?: Record<ServiceKind, ServiceLoad>;
+  /**
+   * How many lots and buildings growth is holding back for want of power and
+   * of water, against what the grid has spare now — the Advisor's word that a
+   * full grid is what stops the city growing. Sent on every snapshot.
+   */
+  growthWaiting?: GrowthWaiting;
+}
+
+/** Lots and buildings growth would build or level up but for the supply. */
+export interface GrowthWaiting {
+  power: number;
+  water: number;
 }
 
 export interface CityNotification {

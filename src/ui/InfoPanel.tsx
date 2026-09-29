@@ -26,7 +26,9 @@ const STATE_LABELS: Record<BuildingStateValue, string> = {
 
 const PROBLEM_LABELS: ReadonlyArray<{ flag: number; label: string }> = [
   { flag: Problem.NoPower, label: 'No Power' },
+  { flag: Problem.PowerShortage, label: 'Power Shortage' },
   { flag: Problem.NoWater, label: 'No Water' },
+  { flag: Problem.WaterShortage, label: 'Water Shortage' },
   { flag: Problem.NoRoad, label: 'No Road' },
   { flag: Problem.HighCrime, label: 'High Crime' },
   { flag: Problem.HighPollution, label: 'High Pollution' },

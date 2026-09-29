@@ -107,8 +107,9 @@ In this order, over many minutes, so none of it is a surprise:
    delivered — `2,560 kL rated / 510 kL delivered` — one click from the symptom.
 3. **A warning fires** below 75% of rating, a critical notification below 40%.
 4. **Only then does the city suffer.** Delivered water falls below demand and
-   the existing shortage rule does what it already does: consumers cut in
-   building-id order, and after three growth passes without water, abandonment.
+   the existing shortage rule does what it already does: consumers cut from
+   the far end of the mains, and after three growth passes without water,
+   abandonment.
 
 On land the outfall has its own smell: it emits ordinary Pollution on its own
 footprint like any other dirty building, so land value falls around it and

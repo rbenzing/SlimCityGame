@@ -59,23 +59,20 @@ breadth-first walk from the road or power-line tiles orthogonally adjacent to a
 generator's footprint, across sealed street and line tiles, then one orthogonal
 step onto non-road tiles.
 
-Then `applyBrownout` runs, and it is not a brownout. It sorts consumers by
-**ascending building id**, accumulates each one's `powerUse` against the supply
-total, and the moment the running total exceeds supply it clears the power bit on
-that building's **footprint tiles only** — and on every later building's, by
-construction. So:
+Then the shortage cut runs, and it cuts from the far end of the grid (see
+[Brownouts](../../world-sim/utilities-model.md#brownouts)). So:
 
 - **It is a hard cut, not a dim.** No partial supply, no reduced effect.
-- **It is newest-first.** Building ids ascend with placement order, so the
-  district the player just built is the one that goes dark.
+- **It is furthest-first.** Buildings line up by network steps from the
+  nearest generator, so the edge of the grid is what goes dark, and it stays
+  dark: an abandoned building keeps its place in line.
 - **The streets stay lit.** Only footprint tiles are cleared, so the lamp pass —
   which reads the road tile's power bit — carries on as if nothing happened.
-- **Then it abandons.** Three growth passes without power while `Active` and the
-  building abandons, dropping its demand and re-powering the next one down.
+- **Growth waits.** Nothing spawns or levels up into a shortage, and the
+  Advisor names the shortage for as long as it holds anything back.
 
-An under-supplied city loses its newest district to a silent rolling collapse
-under working street lights. This epic does not change that rule; it gives the
-player somewhere to go before it fires.
+This epic does not change that rule; it gives the player somewhere to go before
+it fires.
 
 ### Data
 
@@ -124,9 +121,9 @@ kit geometry stays inside the footprint — the turbine's rotor already does not
 ## What could go wrong
 
 **The ceiling is a cliff, and this epic does not remove it.** A city one MW short
-of supply abandons its newest buildings while the lamps outside them burn; the
-ladder makes the cliff avoidable, not visible. The cheap mitigation is the panel,
-which already has `powerSupply` and `powerDemand` and could show headroom.
+of supply abandons the far end of its grid while the lamps outside it burn; the
+ladder makes the cliff avoidable, and the Advisor now names it for as long as it
+holds anything back.
 
 **The nuclear station may not fit any shoreline.** 8×8 contiguous buildable tiles
 touching water is a real demand on generated terrain, and if the maps do not
@@ -159,10 +156,10 @@ solar farm matching the existing coal plant needs 120 ha, or **3,000 tiles**: a
 a 20 m grid, and a dishonest one overstates its output a hundredfold.
 
 **Intermittency.** Rejected on the code rather than on taste. The cut rule does
-not dim a short city, it blacks out the newest buildings and abandons them after
+not dim a short city, it blacks out the far end of the grid and abandons it after
 three growth passes, and `VISUAL_DAY_TICKS` is 2,400 ticks — about six real
 minutes at 1× — so a day-linked output would swing supply every few minutes and
-roll abandonment across the newest district on that cycle. With no storage and no
+roll abandonment across the edge of the city on that cycle. With no storage and no
 reserve margin to plan against, intermittency here is attrition, not a decision.
 Taking it later needs, in order: a supply reserve the player can see, a storage
 building that turns surplus into headroom, and a cut rule that sheds by priority
@@ -209,9 +206,9 @@ from the [documentation map](../../README.md):
   protects every city that already exists.
 - A save naming a `catalogId` the catalog does not hold loads with that building
   contributing neither supply nor demand, without throwing.
-- Demand crossing supply still cuts by ascending building id, clears footprint
+- Demand crossing supply cuts from the far end of the grid, clears footprint
   tiles only, and leaves road tiles powered; a combined-cycle station then
-  restores exactly the buildings the cut removed, in id order.
+  restores exactly the buildings the cut removed, nearest first.
 - A combined-cycle station writes 41 into the pollution field at its own tiles;
   two overlapping stay under the 170 growth threshold and three exceed it.
 - Every new entry's footprint, height, pollution, cost and upkeep match the

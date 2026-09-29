@@ -171,7 +171,7 @@ import {
 import { FieldSim } from './fields';
 import { BuildingRegistry, footprintForRotation, settleBuildingDelta } from './buildings';
 import { computeDemand } from './demand';
-import { GrowthSystem } from './growth';
+import { GrowthSystem, type GrowthSupply } from './growth';
 import { ServiceSim, nearestRoadTile } from './services';
 import { EconomySystem, buildingMonthlyTax } from './economy';
 import { recomputeUtilities } from './network';
@@ -511,6 +511,11 @@ class SimWorld implements WorkerSim {
   private powerDirty = false;
   private wateredDirty = false;
   private utilitiesDirty = false;
+  /** Whom the last utility pass cut and what it left spare; nothing is spare before the first. */
+  private supply: GrowthSupply = {
+    power: { cut: new Set(), spare: 0 },
+    water: { cut: new Set(), spare: 0 },
+  };
 
   constructor(post: WorkerPost) {
     this.post = post;
@@ -803,6 +808,7 @@ class SimWorld implements WorkerSim {
       this.stats.demand,
       this.stats.milestoneLevel,
       t,
+      this.supply,
     );
     if (
       growthDelta.added.length > 0 ||
@@ -991,6 +997,7 @@ class SimWorld implements WorkerSim {
     this.stats.powerDemand = totals.powerDemand;
     this.stats.waterSupply = totals.waterSupply;
     this.stats.waterDemand = totals.waterDemand;
+    this.supply = { power: totals.power, water: totals.water };
     this.utilitiesDirty = false;
 
     const { power, watered } = this.grid;
@@ -1105,6 +1112,7 @@ class SimWorld implements WorkerSim {
     // it — the services tick on their own period, so this rides every snapshot
     // rather than only the ones that happen to land on it.
     if (this.serviceLoad) snap.serviceLoad = { ...this.serviceLoad };
+    snap.growthWaiting = this.growth.waitingFor(this.grid, this.registry, this.supply);
     // District patches + defs (mirrors the zones patch convention).
     if (this.districtDirty || this.districtDefsChanged) {
       snap.districts = {

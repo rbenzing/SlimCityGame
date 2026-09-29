@@ -202,6 +202,24 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 
 ## 10. History (newest first)
 
+### Brownouts from the far end of the grid (requested, specified and built 2026-09-28)
+
+The player reported houses turning dark and back at random, and confirmed the
+city was short on power: a second wind turbine stopped it. The cut had left
+abandoned buildings out of the count, so an abandoned home got its own supply
+back, came back to life, tipped the grid over again and was cut again — every
+four growth passes, for ever, with the Advisor's shortage alert blinking off
+on every fourth. Asked what a short city should do, the player chose realism:
+the homes furthest from the power source are cut first, building stays as it
+is, and zoning more land does not add demand, because people want power.
+
+Built (2026-09-28): the cut lines up every building the network reaches by
+network steps from the nearest generator and cuts from the far end, abandoned
+buildings keeping their place; growth builds and levels up only into spare
+supply; and the Advisor names a shortage as one (`PowerShortage`,
+`WaterShortage`, and a warning while growth waits) instead of blaming a gap in
+the network. See [Brownouts](world-sim/utilities-model.md#brownouts).
+
 ### Homes that face their street (requested, specified and built 2026-09-28)
 
 The player reported five things about houses: a roof piece hanging off the

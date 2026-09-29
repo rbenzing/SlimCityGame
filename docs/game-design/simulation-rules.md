@@ -111,6 +111,19 @@ must already be reached by both power and piped water — checking the whole
 footprint rather than just its origin corner, so a lot's service does not
 depend on which side of it the street happens to sit.
 
+Nobody moves into a home the grid cannot light or water. The grid must also
+have spare supply for the entry's `powerUse` and `waterUse`: supply less
+everything already in the utility line (see
+[Brownouts](../world-sim/utilities-model.md#brownouts)), less what this pass
+has already built. A candidate that clears everything but that is **waiting
+for supply**: no random draw is spent on it, and growth remembers it for one
+full sweep of the map so the Advisor can count what is still waiting against
+what the grid has spare now. Candidate lots overlap — a 2×2 home could start
+on any of four tiles — so the count claims ground in tile order and a lot
+counts only where no earlier one has claimed it: the count is the homes that
+would fit, not the tiles that could start one. Zoning more land beside a full grid therefore
+adds nothing; the player's own tools are never refused for a shortage.
+
 If a candidate clears all of that, it spawns with probability equal to the
 sector's demand multiplied by the tile's desirability: desirability is land
 value (helping) net of pollution (hurting residential lots most, at weight
@@ -131,8 +144,10 @@ the next level must also exist and be unlocked at or below the current
 milestone. The building's old footprint is cleared to test the new,
 possibly larger one in its place; if the new footprint does not fit, the
 level-up is abandoned and the old building is restored exactly as it
-stood. A successful level-up replaces the building in place and re-enters
-Constructing.
+stood. A level-up must also find spare supply for what the bigger building
+draws beyond the smaller one; one that cannot is restored the same way and
+waits for supply like a lot does. A successful level-up replaces the
+building in place and re-enters Constructing.
 
 Every pass also recomputes each Active or Abandoned building's problems: no
 power or no piped water reaching its footprint, no street within Manhattan
@@ -141,6 +156,9 @@ sector demand under -0.5. An Active building carrying a power, water, or
 road blocker for 3 consecutive passes becomes Abandoned. An Abandoned
 building returns to Active as soon as its blocker is gone; otherwise, after
 10 consecutive still-blocked passes, it is removed and its footprint freed.
+Abandoning never removes a shortage: an abandoned building keeps its place
+in the utility line, so a home past the end of the supply stays dark until
+the grid grows or the home is removed.
 
 ## Lots and archetypes
 
