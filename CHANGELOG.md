@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.17.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.17.0...slimcity-v1.17.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* **advisor:** measure the labour market against the workforce ([bf00e76](https://github.com/rbenzing/SlimCityGame/commit/bf00e76e8af564abc222259cf20beeac9c90445c))
+* **advisor:** measure the labour market against the workforce; sweep the docs against the code ([877283f](https://github.com/rbenzing/SlimCityGame/commit/877283f78221d9cec21a22f5d7244a58da5fcf3d))
+
 ## [1.17.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.16.0...slimcity-v1.17.0) (2026-09-29)
 
 
