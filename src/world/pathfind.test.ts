@@ -137,8 +137,27 @@ describe('findPath', () => {
         length: direct.length,
         volume: 0,
       },
-      { id: 1, a: 0, b: 2, tier: RoadTier.Highway, tiles: legA, length: legA.length, volume: 0 },
-      { id: 2, a: 2, b: 1, tier: RoadTier.Highway, tiles: legB, length: legB.length, volume: 0 },
+      // A motorway is one carriageway, so both legs flow the way the trip goes.
+      {
+        id: 1,
+        a: 0,
+        b: 2,
+        tier: RoadTier.Highway,
+        tiles: legA,
+        length: legA.length,
+        volume: 0,
+        forwardAtoB: true,
+      },
+      {
+        id: 2,
+        a: 2,
+        b: 1,
+        tier: RoadTier.Highway,
+        tiles: legB,
+        length: legB.length,
+        volume: 0,
+        forwardAtoB: true,
+      },
     ];
 
     const result = findPath(nodes, edges, { x: 0, z: 0 }, { x: 20, z: 0 });
@@ -290,7 +309,6 @@ describe('findPath', () => {
     for (const tier of [
       RoadTier.TwoLane,
       RoadTier.Avenue,
-      RoadTier.Highway,
       RoadTier.Gravel,
       RoadTier.Alley,
       RoadTier.FourLane,
@@ -301,6 +319,54 @@ describe('findPath', () => {
       expect(findPath(nodes, edges, { x: 0, z: 0 }, { x: 5, z: 0 })!.edges).toEqual([0]);
       expect(findPath(nodes, edges, { x: 5, z: 0 }, { x: 0, z: 0 })!.edges).toEqual([0]);
     }
+  });
+
+  describe('a one-way carriageway is driven only the way it flows', () => {
+    const tiles = straightRun(0, 0, 1, 0, 6);
+    const nodes: GraphNode[] = [
+      { id: 0, x: 0, z: 0, edges: [0] },
+      { id: 1, x: 5, z: 0, edges: [0] },
+    ];
+    const run = (edge: Partial<GraphEdge>): GraphEdge[] => [
+      { id: 0, a: 0, b: 1, tier: RoadTier.OneWay, tiles, length: tiles.length, volume: 0, ...edge },
+    ];
+    const eastbound = (edges: GraphEdge[]): boolean =>
+      findPath(nodes, edges, { x: 0, z: 0 }, { x: 5, z: 0 }) !== null;
+    const westbound = (edges: GraphEdge[]): boolean =>
+      findPath(nodes, edges, { x: 5, z: 0 }, { x: 0, z: 0 }) !== null;
+
+    it.each([
+      ['a one-way street', RoadTier.OneWay],
+      ['a motorway', RoadTier.Highway],
+      ['a ramp', RoadTier.Ramp],
+    ])('%s, by its stored flow', (_name, tier) => {
+      const edges = run({ tier, forwardAtoB: true, lanesAtoB: 3, lanesBtoA: 0 });
+      expect(eastbound(edges)).toBe(true);
+      expect(westbound(edges)).toBe(false);
+    });
+
+    it.each([
+      ['a one-way street', RoadTier.OneWay],
+      ['a motorway', RoadTier.Highway],
+      ['a ramp', RoadTier.Ramp],
+    ])('%s with no recorded flow, by the geometric fallback', (_name, tier) => {
+      const edges = run({ tier });
+      expect(eastbound(edges)).toBe(true); // lower coord to higher
+      expect(westbound(edges)).toBe(false);
+    });
+
+    it('whatever the road type, once every lane of its profile runs one way', () => {
+      // A two-lane street composed into a one-way: its type says two-way, its lanes do not.
+      const edges = run({ tier: RoadTier.TwoLane, forwardAtoB: false, lanesAtoB: 0, lanesBtoA: 2 });
+      expect(eastbound(edges)).toBe(false);
+      expect(westbound(edges)).toBe(true);
+    });
+
+    it('while an asymmetric two-way profile stays drivable both ways', () => {
+      const edges = run({ tier: RoadTier.TwoLane, forwardAtoB: true, lanesAtoB: 2, lanesBtoA: 1 });
+      expect(eastbound(edges)).toBe(true);
+      expect(westbound(edges)).toBe(true);
+    });
   });
 
   it('produces a contiguous, orthogonally-stepped point sequence across multiple edges', () => {
