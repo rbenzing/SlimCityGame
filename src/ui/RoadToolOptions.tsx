@@ -37,7 +37,7 @@ const CHIP_DISABLED = 'disabled:cursor-not-allowed disabled:opacity-30 disabled:
 const CHIP_STEP = `${CHIP} ${CHIP_OFF} ${CHIP_DISABLED}`;
 
 /** A titled panel in the same card treatment as the road cards beside it. */
-function Section({ title, children }: { title: string; children: ReactNode }): JSX.Element {
+export function Section({ title, children }: { title: string; children: ReactNode }): JSX.Element {
   return (
     <section
       aria-label={title}
@@ -50,7 +50,7 @@ function Section({ title, children }: { title: string; children: ReactNode }): J
 }
 
 /** One labelled line inside a panel; the labels share a column so the chips line up. */
-function Row({ label, children }: { label: string; children: ReactNode }): JSX.Element {
+export function Row({ label, children }: { label: string; children: ReactNode }): JSX.Element {
   return (
     <div className="flex items-center gap-2">
       <span className="w-16 shrink-0 text-[10px] uppercase tracking-wide text-white/45">
@@ -66,7 +66,7 @@ function Row({ label, children }: { label: string; children: ReactNode }): JSX.E
  * tool will not lay; the pressed choice is never disabled, since pressing it
  * again changes nothing.
  */
-function Choice({
+export function Choice({
   pressed,
   refusal = null,
   title,

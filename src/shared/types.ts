@@ -1343,6 +1343,8 @@ export type ToolId =
   | 'road.rail'
   // Roads epic wave 5 — the slip road onto a motorway.
   | 'road.ramp'
+  // A whole motorway interchange, stamped onto a motorway already laid.
+  | 'interchange'
   // Power: string a run of line, to reach what a road cannot.
   | 'power.line'
   | 'zone.resLow'

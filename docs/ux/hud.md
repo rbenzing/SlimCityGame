@@ -292,6 +292,14 @@ category or tool is active.
   corridor — is disabled, with the reason as its tooltip, and opens again as
   soon as another choice makes room for it. The choice already made is never
   disabled.
+- The **Interchange** card in the Highway tab lays a whole interchange on a
+  motorway ([interchanges](../game-design/features/interchanges.md)). It is
+  not drawn but placed, so none of a drawn road's panels apply; its own
+  **Interchange** panel picks the **form** (Diamond, Partial cloverleaf,
+  Cloverleaf) and the **crossing** road (Two-lane, Four-lane). Its card
+  carries no cost chip, since an interchange costs the roads it lays: the
+  cursor quotes that total over the motorway before the click, or says why it
+  cannot go there.
 
 **Tool options panel** — a small floating panel to the left of the drawer,
 rendered only for terraform tools (brush radius, strength, and — for the

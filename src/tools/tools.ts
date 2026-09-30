@@ -15,6 +15,7 @@ import {
   LANDFILL_PAINT_COST_PER_TILE,
   POWER_LINE_COST_PER_TILE,
   BRIDGE_MAX_ELEVATION,
+  BRIDGE_COST_PER_METER_TILE,
   BRIDGE_MAX_GRADE,
   ROAD_ELEVATION_STEP_M,
   TILE_METERS,
@@ -80,6 +81,15 @@ import {
   rampMeetingRefusal,
 } from '../shared/corridor';
 import type { CorridorRuns } from '../shared/corridor';
+import {
+  interchangeCommands,
+  interchangeLayout,
+  interchangeRefusal,
+  readInterchangeSite,
+  type InterchangeForm,
+  type InterchangeGround,
+  type InterchangeLayout,
+} from '../shared/interchange';
 import { atOneLevel, bitToward, crossingShape, overpassRise } from '../shared/overpass';
 
 /**
@@ -221,6 +231,11 @@ export interface ToolEnv {
    */
   roadProfileIdAt?(tile: TilePoint): number;
   /**
+   * The grid as an interchange is laid out on it. Optional: without it the
+   * Interchange tool previews nothing and lays nothing.
+   */
+  interchangeGround?(): InterchangeGround;
+  /**
    * The neighbour mask of an existing road tile: which sides it is joined on.
    * What tells a road running straight across a drag from a junction, and a
    * pair of carriageways from a crossroads. Optional: without it no crossing
@@ -337,6 +352,19 @@ const ZONE_TOOL_TO_LABEL: Record<string, string> = {
 
 /** Road tool id -> the tier it lays. Exported so the integration layer can ask
  * what a road preview is actually building. */
+/** What the Interchange tool lays: its form, and the road it carries over the motorway. */
+export interface InterchangeOptions {
+  form: InterchangeForm;
+  streetTier: RoadTier;
+}
+
+/** The name an interchange of each form is laid, and undone, under. */
+export const INTERCHANGE_LABEL: Readonly<Record<InterchangeForm, string>> = {
+  diamond: 'Diamond interchange',
+  parclo: 'Partial cloverleaf',
+  cloverleaf: 'Cloverleaf',
+};
+
 export const ROAD_TOOL_TO_TIER: Record<string, RoadTier> = {
   'road.two': RoadTierValue.TwoLane,
   'road.avenue': RoadTierValue.Avenue,
@@ -789,6 +817,8 @@ export class ToolManager {
   private freeDragStart: RoadEndSnap | null = null;
   /** `Curve` mode: where the cursor is, world centimetres, or null off the ground. */
   private curveCursor: CmPoint | null = null;
+  /** What the Interchange tool lays (from its options row). */
+  private interchange: InterchangeOptions = { form: 'diamond', streetTier: RoadTierValue.TwoLane };
 
   constructor(env: ToolEnv) {
     this.env = env;
@@ -839,6 +869,37 @@ export class ToolManager {
   setProfileEdits(edits: ProfileEdits): void {
     this.profileEdits = edits;
     if (this.hoverTile) this.emitPreview(this.hoverTile);
+  }
+
+  /** The interchange's form and crossing road (from its options row). */
+  setInterchange(options: InterchangeOptions): void {
+    this.interchange = options;
+    if (this.hoverTile) this.emitPreview(this.hoverTile);
+  }
+
+  /**
+   * The interchange the Interchange tool would lay centred on `at`, what it
+   * costs, and why it may not be laid. Null without a grid to lay it on.
+   */
+  private interchangePlan(
+    at: TilePoint,
+  ): { layout: InterchangeLayout | null; cost: number; refusal: string | null } | null {
+    const ground = this.env.interchangeGround?.();
+    if (!ground) return null;
+    const site = readInterchangeSite(at, ground);
+    if ('refusal' in site) return { layout: null, cost: 0, refusal: site.refusal };
+    const { form, streetTier } = this.interchange;
+    const layout = interchangeLayout(form, site, streetTier, (x, z) => ground.heightAt(x, z));
+    // What the worker charges: every tile at its road's price, and the bridge
+    // by each metre it stands up.
+    const street = this.env.roadSpec(streetTier).costPerTile;
+    const ramp = this.env.roadSpec(RoadTierValue.Ramp).costPerTile;
+    const lifted = layout.street.elevations.reduce((sum, e) => sum + e, 0);
+    const cost =
+      layout.street.tiles.length * street +
+      Math.round(lifted * BRIDGE_COST_PER_METER_TILE) +
+      layout.ramps.reduce((sum, r) => sum + r.tiles.length * ramp, 0);
+    return { layout, cost, refusal: interchangeRefusal(site, layout, ground) };
   }
 
   /**
@@ -1677,6 +1738,10 @@ export class ToolManager {
       this.env.onPreview({ tiles, valid, cost: entry.cost, label: entry.name, invalidReason });
       return;
     }
+    if (tool === 'interchange') {
+      this.emitInterchangePreview(current);
+      return;
+    }
     if (isTerraformTool(tool)) {
       this.emitTerraformPreview(current);
       return;
@@ -1909,8 +1974,59 @@ export class ToolManager {
     });
   }
 
+  /**
+   * The interchange centred on `at`, every tile of it, the street at its deck,
+   * and whether it may be laid: the site's and the layout's refusals first,
+   * then the milestone and the funds every tool is judged by.
+   */
+  private judgeInterchange(
+    at: TilePoint,
+  ): { preview: ToolPreview; layout: InterchangeLayout | null } | null {
+    const plan = this.interchangePlan(at);
+    if (!plan) return null;
+    const { layout, cost, refusal } = plan;
+    const label = INTERCHANGE_LABEL[this.interchange.form];
+    const tiles = layout ? [...layout.street.tiles, ...layout.ramps.flatMap((r) => r.tiles)] : [at];
+    // Every road it lays has to be unlocked, or the world would lay the rest.
+    const unlock = Math.max(
+      ...[RoadTierValue.Highway, RoadTierValue.Ramp, this.interchange.streetTier].map(
+        (tier) => this.env.roadSpec(tier).unlockMilestone,
+      ),
+    );
+    const judged = this.evaluate(tiles, cost, unlock, true);
+    const lifts = layout
+      ? [...layout.street.elevations, ...layout.ramps.flatMap((r) => r.tiles.map(() => 0))]
+      : null;
+    const reason = refusal ?? judged.invalidReason;
+    const preview: ToolPreview = {
+      tiles,
+      valid: refusal === null && judged.valid,
+      cost,
+      label,
+      ...(reason !== undefined ? { invalidReason: reason } : {}),
+      ...(lifts && lifts.some((l) => l > 0) ? { deckLifts: lifts } : {}),
+    };
+    return { preview, layout };
+  }
+
+  private emitInterchangePreview(at: TilePoint): void {
+    this.env.onPreview(this.judgeInterchange(at)?.preview ?? null);
+  }
+
   private commit(start: TilePoint, end: TilePoint): void {
     const tool = this._tool;
+    if (tool === 'interchange') {
+      // Asked again as it is laid, and nothing sent unless all of it can be:
+      // a batch the world refused partway would leave half an interchange.
+      const judged = this.judgeInterchange(end);
+      if (judged?.layout && judged.preview.valid) {
+        this.env.send(
+          INTERCHANGE_LABEL[this.interchange.form],
+          interchangeCommands(judged.layout, this.interchange.streetTier),
+        );
+      }
+      return;
+    }
     if (isPlopTool(tool)) {
       const catalogId = catalogIdOf(tool);
       const entry = this.env.entry(catalogId);

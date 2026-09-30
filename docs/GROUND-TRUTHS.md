@@ -325,6 +325,13 @@ MUTCD citations below use 11th-edition section numbers.
   merge and the upstream half at a diverge. — [road-model.md](world-sim/road-model.md);
   `rampJoin` and `rampJoinAround` in `src/shared/corridor.ts`, `rampMouthAt`
   in `src/shared/approachzone.ts`, `emitRampTaper` in `src/render/roadsmesh.ts`
+- An interchange is only the roads it lays, sent as one batch of ordinary
+  road commands with every height given exactly: nothing of the interchange
+  is stored. A ramp is laid at ground level, and a stamp's street is laid out
+  above sea level, so neither is left to a solver that could join it to the
+  wrong road. The tool refuses before sending anything the world would refuse
+  partway. — [interchanges](engineering/features/interchanges.md);
+  `src/shared/interchange.ts`
 - A road's edge never steps where its width changes; it bends. A lane drop
   closes over a taper that begins at full width, never part-closed, and a
   wide run shorter than its class's taper closes over the length it has, so

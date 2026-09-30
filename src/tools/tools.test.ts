@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { corridorHalfOf, flowDirection, RoadFlow, RoadTier, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, Command, RoadSpec, TilePoint } from '../shared/types';
-import { TERRAFORM_COST_PER_METER_TILE, TILE_METERS } from '../shared/constants';
+import {
+  BRIDGE_COST_PER_METER_TILE,
+  TERRAFORM_COST_PER_METER_TILE,
+  TILE_METERS,
+} from '../shared/constants';
+import {
+  interchangeLayout,
+  readInterchangeSite,
+  type InterchangeGround,
+} from '../shared/interchange';
 import { composeProfile, NO_EDITS, presetProfileForTier } from '../shared/roadprofile';
 import { corridorRunsFor } from '../shared/corridor';
 import {
@@ -2972,5 +2981,124 @@ describe('guide snapping pulls a road end off the grid into line', () => {
   it('leaves an end too far off, or with no road running near it, where it is', () => {
     expect(guidePoint({ x: 15000, z: 27000 }, street)).toEqual({ x: 15000, z: 27000 });
     expect(guidePoint({ x: 50000, z: 50000 }, street)).toEqual({ x: 50000, z: 50000 });
+  });
+});
+
+describe('the Interchange tool', () => {
+  // Two carriageways down columns 40 (southbound) and 41 (northbound).
+  const ground = (blocked: TilePoint[] = []): InterchangeGround => {
+    const flowAt = (x: number): RoadFlow =>
+      x === 40 ? RoadFlow.South : x === 41 ? RoadFlow.North : RoadFlow.None;
+    const no = new Set(blocked.map((t) => `${t.x},${t.z}`));
+    return {
+      motorwayFlowAt: (x) => flowAt(x),
+      maskAt: (x) => (flowAt(x) !== RoadFlow.None ? 0b0101 : 0),
+      roadAt: (x) => flowAt(x) !== RoadFlow.None,
+      overRoadAt: () => false,
+      buildableAt: (x, z) => !no.has(`${x},${z}`),
+      heightAt: () => 0,
+    };
+  };
+  const withMotorway = (blocked: TilePoint[] = []) => {
+    const made = makeEnv();
+    made.env.interchangeGround = () => ground(blocked);
+    const tm = new ToolManager(made.env);
+    tm.setTool('interchange');
+    return { ...made, tm };
+  };
+
+  it('previews the whole interchange on a motorway, priced as the roads it lays', () => {
+    const { tm, previews } = withMotorway();
+    tm.pointerMove(40, 50, 0);
+    const preview = previews.at(-1)!;
+    expect(preview.valid).toBe(true);
+    expect(preview.label).toBe('Diamond interchange');
+    const site = readInterchangeSite({ x: 40, z: 50 }, ground());
+    if ('refusal' in site) throw new Error(site.refusal);
+    const layout = interchangeLayout('diamond', site, RoadTier.TwoLane);
+    const rampTiles = layout.ramps.reduce((n, r) => n + r.tiles.length, 0);
+    expect(preview.tiles).toHaveLength(layout.street.tiles.length + rampTiles);
+    const lifted = layout.street.elevations.reduce((s, e) => s + e, 0);
+    expect(preview.cost).toBe(
+      layout.street.tiles.length * ROAD_SPECS[RoadTier.TwoLane]!.costPerTile +
+        lifted * BRIDGE_COST_PER_METER_TILE +
+        rampTiles * ROAD_SPECS[RoadTier.Ramp]!.costPerTile,
+    );
+    expect(preview.deckLifts).toBeDefined();
+  });
+
+  it('lays it as one batch with one undo, street first', () => {
+    const { tm, sent } = withMotorway();
+    tm.setInterchange({ form: 'cloverleaf', streetTier: RoadTier.TwoLane });
+    tm.pointerDown(40, 50, 0);
+    tm.pointerUp(40, 50, 0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.label).toBe('Cloverleaf');
+    const [street, ...ramps] = sent[0]!.commands;
+    expect(street).toMatchObject({ kind: 'buildRoad', tier: RoadTier.TwoLane });
+    expect(ramps).toHaveLength(8);
+    for (const r of ramps) expect(r).toMatchObject({ kind: 'buildRoad', tier: RoadTier.Ramp });
+  });
+
+  it('says why off a motorway, and lays nothing', () => {
+    const { tm, previews, sent } = withMotorway();
+    tm.pointerMove(10, 50, 0);
+    expect(previews.at(-1)).toMatchObject({
+      valid: false,
+      invalidReason: 'An interchange goes on a motorway',
+    });
+    tm.pointerDown(10, 50, 0);
+    tm.pointerUp(10, 50, 0);
+    expect(sent).toHaveLength(0);
+  });
+
+  it('refuses what is in the way before anything is sent', () => {
+    const { tm, previews, sent } = withMotorway([{ x: 37, z: 49 }]);
+    tm.pointerMove(40, 50, 0);
+    expect(previews.at(-1)?.invalidReason).toBe('A building, water or steep ground is in the way');
+    tm.pointerDown(40, 50, 0);
+    tm.pointerUp(40, 50, 0);
+    expect(sent).toHaveLength(0);
+  });
+
+  it('sends nothing it cannot pay for, rather than half an interchange', () => {
+    const { tm, previews, sent, env } = withMotorway();
+    env.funds = () => 10;
+    tm.pointerMove(40, 50, 0);
+    expect(previews.at(-1)?.invalidReason).toBe('Insufficient funds');
+    tm.pointerDown(40, 50, 0);
+    tm.pointerUp(40, 50, 0);
+    expect(sent).toHaveLength(0);
+  });
+});
+
+describe('the Interchange tool, before its roads are unlocked', () => {
+  it('lays nothing while any road it would lay is still locked', () => {
+    const made = makeEnv();
+    made.env.interchangeGround = () => ({
+      motorwayFlowAt: (x) =>
+        x === 40 ? RoadFlow.South : x === 41 ? RoadFlow.North : RoadFlow.None,
+      maskAt: (x) => (x === 40 || x === 41 ? 0b0101 : 0),
+      roadAt: (x) => x === 40 || x === 41,
+      overRoadAt: () => false,
+      buildableAt: () => true,
+      heightAt: () => 0,
+    });
+    // The motorway and its ramps are open; the four-lane road is not, yet.
+    const opened = ROAD_SPECS[RoadTier.Ramp]!.unlockMilestone;
+    const specOf = made.env.roadSpec;
+    made.env.roadSpec = (tier) =>
+      tier === RoadTier.FourLane
+        ? { ...ROAD_SPECS[RoadTier.TwoLane]!, tier, unlockMilestone: opened + 1 }
+        : specOf(tier);
+    made.env.milestoneLevel = () => opened;
+    const tm = new ToolManager(made.env);
+    tm.setTool('interchange');
+    tm.setInterchange({ form: 'diamond', streetTier: RoadTier.FourLane });
+    tm.pointerMove(40, 50, 0);
+    expect(made.previews.at(-1)?.invalidReason).toBe('Locked');
+    tm.pointerDown(40, 50, 0);
+    tm.pointerUp(40, 50, 0);
+    expect(made.sent).toHaveLength(0);
   });
 });

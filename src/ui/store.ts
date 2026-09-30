@@ -14,6 +14,7 @@ import {
   START_FUNDS,
   TICKS_PER_MONTH,
 } from '../shared/constants';
+import { RoadTier } from '../shared/types';
 import type {
   BrushSettings,
   BuildingInstance,
@@ -33,7 +34,7 @@ import type {
   ToolId,
   TransitLine,
 } from '../shared/types';
-import { DEFAULT_BRUSH_SETTINGS } from '../tools/tools';
+import { DEFAULT_BRUSH_SETTINGS, type InterchangeOptions } from '../tools/tools';
 import { NO_EDITS, type ProfileEdits } from '../shared/roadprofile';
 import type { StatsSample } from './statshistory';
 import type { CityIssue } from './advisor';
@@ -178,6 +179,8 @@ export interface CityStoreState {
    * default composes back to the preset exactly.
    */
   roadProfileEdits: ProfileEdits;
+  /** What the Interchange tool lays: its form and the road it carries over (its options row). */
+  interchange: InterchangeOptions;
   /** Population as of the last monthly rollover — feeds the status-strip trend arrow. */
   previousMonthPopulation: number;
   /** Funds as of the last monthly rollover — feeds the status-strip trend arrow. */
@@ -253,6 +256,8 @@ export interface CityStoreState {
   setRoadElevation: (metres: number) => void;
   /** Merges a partial patch into the road profile edits (the Profile row's controls). */
   setRoadProfileEdits: (edits: Partial<ProfileEdits>) => void;
+  /** Merges a partial patch into the Interchange tool's options. */
+  setInterchange: (options: Partial<InterchangeOptions>) => void;
   setSelectionInfo: (info: SelectionInfo | null) => void;
   /** Merges a partial patch into brushSettings (the Brush radius / Strength sliders). */
   setBrushSettings: (settings: Partial<BrushSettings>) => void;
@@ -308,6 +313,7 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   toolMode: 'lpath',
   roadElevation: 0,
   roadProfileEdits: NO_EDITS,
+  interchange: { form: 'diamond', streetTier: RoadTier.TwoLane },
   previousMonthPopulation: createInitialStats().population,
   previousMonthFunds: createInitialStats().funds,
   selectionInfo: null,
@@ -388,6 +394,8 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
     set({ roadElevation: Math.max(0, Math.min(BRIDGE_MAX_ELEVATION, Math.round(metres))) }),
   setRoadProfileEdits: (edits) =>
     set((state) => ({ roadProfileEdits: { ...state.roadProfileEdits, ...edits } })),
+  setInterchange: (options) =>
+    set((state) => ({ interchange: { ...state.interchange, ...options } })),
   setSelectionInfo: (info) => set({ selectionInfo: info }),
   setBrushSettings: (settings) =>
     set((state) => ({ brushSettings: { ...state.brushSettings, ...settings } })),

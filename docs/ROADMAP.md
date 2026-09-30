@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,232 tests passing across 144 test files, run 2026-09-30.
+**Test suite:** 4,281 tests passing across 147 test files, run 2026-09-30.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -50,20 +50,21 @@ crops, orchards and pasture with their barns, silos, bins and herds.
 Versioning and deploy are automated (release-please + Conventional Commits →
 GitHub Pages; see the README).
 
-**Road composition is shipped but for three pieces.** A road is a class, a
+**Road composition is shipped but for two pieces.** A road is a class, a
 cross-section profile and per-junction control; the fixed-tier model is gone.
 Waves 5 and 6 — the ramp with its merge, diverge and terminal junctions, and a
 section too wide for a tile laid as two carriageways — are built
 ([`shared/corridor.ts`](../src/shared/corridor.ts)), as are the pieces that
 finished it: a transit lane is a variant of a size rather than a road type, a
-road's tier is its size with the reserved lane priced on top, and the placement
-ghost is drawn at the road's own width. Not built: interchange stamps (an
-interchange is laid ramp by ramp), the 2×2 compact roundabout, and sound
-barriers. Full detail in History, §10 below.
+road's tier is its size with the reserved lane priced on top, the placement
+ghost is drawn at the road's own width, and an interchange — a diamond, a
+partial cloverleaf or a cloverleaf — is laid on a motorway in one click
+([`shared/interchange.ts`](../src/shared/interchange.ts)). Not built: the 2×2
+compact roundabout, and sound barriers. Full detail in History, §10 below.
 
 **Open:**
 
-- Road composition: the three pieces above.
+- Road composition: the two pieces above.
 - Lane drops on a two-way road: road-model.md says the outermost lane on
   each side closes, but `taperedCrossSection` closes one side's kerbside lane
   completely before the other's starts. The centre line jogs sideways partway
@@ -231,6 +232,42 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Interchanges, in one click (asked for and built 2026-09-30)
+
+The first of the road-composition pieces left unbuilt. The player chose all
+three forms and to place them on a motorway already laid
+([design](game-design/features/interchanges.md),
+[technical](engineering/features/interchanges.md)). An Interchange card in the
+Highway tab previews the whole interchange centred on the motorway tile under
+the cursor and lays it with one click, as one undo:
+
+- **Diamond:** a ramp in each quadrant, meeting the street at two junctions.
+- **Partial cloverleaf:** loops for the two left turns onto the motorway, the
+  off-ramp round each loop, and diamond on-ramps.
+- **Full cloverleaf:** a loop for every left turn and an outer ramp round
+  each.
+
+The street crosses on a bridge at its clearance, 6 m, and comes down a grade
+step a tile. Every ramp is on the ground, joining the motorway alongside it
+and meeting the street where the street is at ground level. Loops run round a
+block four tiles square, about the 130 ft radius a 25 mph loop needs. It is
+all ordinary road: no record of the interchange is kept, and neither the save
+nor the worker protocol changes.
+
+Two things were found by laying one before writing it:
+
+- A ramp left to solve its own heights climbed to meet the street's approach
+  beside its end, and joined the bridge instead of the motorway. Every piece
+  is now sent with exact heights.
+- Heights given as lifts above each tile broke the bridge into pieces on
+  uneven ground. The deck is now laid out above sea level, and where the
+  ground falls away the street comes down further out, and that side's ramps
+  with it.
+
+Checked in the browser: all three forms on ground rising and falling 11 m
+across the site, from above and at an angle, laid through the drawer's card
+and its options.
 
 ### Farm polish: the farmhouse at night, and the farm truck (2026-09-30)
 
@@ -1300,9 +1337,9 @@ shippable waves.
   pieces).** The ramp class with its merge, diverge and terminal junctions
   (wave 5) and a section too wide for one tile laid as two carriageways
   (wave 6, [`shared/corridor.ts`](../src/shared/corridor.ts)) are built, as
-  specified in [world-sim/road-model.md](world-sim/road-model.md). Not built:
-  interchange stamps — an interchange is laid ramp by ramp — the 2×2 compact
-  roundabout, and sound barriers.
+  specified in [world-sim/road-model.md](world-sim/road-model.md). Interchange
+  stamps followed on 2026-09-30 (see their entry above). Not built: the 2×2
+  compact roundabout, and sound barriers.
 
 Design locked 2026-09-05 (research date): 3.5 m default travel lanes
 (existing presets keep their original 3.75 m), six/eight lanes as two-tile

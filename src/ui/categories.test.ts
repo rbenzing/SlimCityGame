@@ -91,6 +91,7 @@ describe('subTabsFor', () => {
     expect(tabs.find((t) => t.id === 'highway')?.cards.map((c) => c.id)).toEqual([
       'road.highway',
       'road.ramp',
+      'interchange',
     ]);
     expect(tabs.find((t) => t.id === 'rail')?.cards.map((c) => c.id)).toEqual(['road.rail']);
   });
