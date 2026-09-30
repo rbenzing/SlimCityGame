@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,091 tests passing across 144 test files, run 2026-09-29.
+**Test suite:** 4,101 tests passing across 144 test files, run 2026-09-30.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -34,7 +34,8 @@ districts & policies, stats charts and photo mode; eight playtest-feedback
 rounds (2026-07-22 through 2026-07-25); the landfill/garbage sanitation
 epic; city audio, UI sound and the user-supplied music player; the advisor
 panel; bridges and elevated roads; road signage; rail transit; tram
-transit, with tramways crossing other streets at grade; building lots and archetypes; dynamic world lighting
+transit, with tramways crossing other streets at grade; six-lane roads whose
+median opens where a street crosses them; building lots and archetypes; dynamic world lighting
 ([`render/sky.ts`](../src/render/sky.ts)) and the cantilever streetlight
 ([`render/lamps.ts`](../src/render/lamps.ts)); power-conducting roads and the
 power line ([`sim/network.ts`](../src/sim/network.ts)); free-form roads — a
@@ -68,8 +69,6 @@ barriers. Full detail in History, §10 below.
 - Road composition: the three pieces above.
 - Farms: a farmhouse lights no window at night, and no farm truck works the
   yard.
-- Trams: a tramway across a road laid as two carriageways still stops at it,
-  because a tram crossing is one tile.
 
 Before writing "not built" anywhere in this document, check the code.
 
@@ -216,6 +215,47 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Median openings (found while extending tram crossings, decided and built 2026-09-30)
+
+Letting a tramway cross a road laid as two carriageways turned up a bigger
+gap. The two halves of a six-lane road never join each other along the road,
+because that is what stops it reading as a junction its whole length. So a
+street drawn across one ended in a T against each half, facing the median, and
+nothing could cross a divided road at grade — not a car, a bus or a tram. Only
+an overpass got over.
+
+Four options were weighed:
+
+- a median opening at every crossing;
+- trams only, with the median shut to traffic;
+- leave it and warn;
+- move on to the farm follow-ups.
+
+The user chose the median opening.
+
+The rule ([road-model.md](world-sim/road-model.md)): on a row where a road that
+is not a corridor half joins each half from outside, the median opens. The two
+halves join across that row as a pair of junctions side by side.
+
+- **Derived, not stored:** the opening is read off the tiles, so it opens when
+  the second street arrives and shuts when either street goes.
+- **One predicate:** the mask and the approach walk ask the same one,
+  `medianOpens` in `shared/corridor.ts`.
+- **One-sided streets:** a street meeting one half only still turns in and out
+  with the traffic.
+- **Mask refresh:** a mask can now depend on a tile two steps away (the road
+  beyond the far half), so the refresh after a command reaches two tiles.
+  The network guard in the interaction tests caught the one-tile version at
+  once.
+- **Trams:** a tram crossing may now be two tiles long, so a tramway goes over
+  both halves.
+- **Existing saves:** a crossing a save already holds stays shut until its
+  street is laid again, because a save keeps what its network linked.
+
+The small town now carries main street across a six-lane road. The user
+guide's two stale lines, which said six- and eight-lane roads were still to
+come, were corrected in the same change.
 
 ### Tram crossings (found by the small town, decided and built 2026-09-29)
 

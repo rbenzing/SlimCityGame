@@ -62,8 +62,11 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   that road allows — a count a road is never built in is never on the row —
   and the width readout shows whether the result still fits the 20 m tile,
   saying which rule refused it when it does not: too wide for the tile, or
-  more lanes than that kind of road runs. A six- or eight-lane road is the
-  first case, and stays refused until two-tile corridors arrive. Roads are grouped by family:
+  more lanes than that kind of road runs. A six- or eight-lane road is too wide
+  for one tile, so it is laid as two carriageways side by side, one each way,
+  in a straight run. Draw a street across it and the median opens there, so
+  traffic crosses straight over; a street meeting it from one side only turns
+  in and out with the traffic. Roads are grouped by family:
   Small, Medium, Highway and Transit. A road normally
   refuses to become a smaller one, so a stray drag can never flatten an
   avenue; turn on **Replace** when you mean to rebuild a road as something
@@ -153,8 +156,8 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   the roads that give way do. **Signals and stop signs** stand on your right
   at the stop line, facing you — one per approach, never sharing a spot with
   a lamp post. And the **lane counts** the road tool offers are only the ones
-  that fit: a tile is 20 m, so six lanes of an arterial is a road for a later
-  wave rather than an option that turns itself down.
+  that fit a tile of 20 m, or a pair of tiles laid as two carriageways, rather
+  than options that turn themselves down.
   Where a wide road runs into a narrower one, the extra lanes **close over a
   taper** instead of stopping dead: a four-lane road meeting a two-lane street
   spends seven tiles closing its kerbside lanes, and a motorway spends far
@@ -214,7 +217,8 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   could drive around it, and it relieves the very streets it runs down. A
   tramway drawn straight across another street crosses it: the rails run over
   the junction and the tram goes straight on, while the street keeps its own
-  lanes. A tram cannot turn onto a street that has no track.
+  lanes — a six-lane road included, whose median opens for it. A tram cannot
+  turn onto a street that has no track.
 - **Districts & Policies** — paint districts over areas, then set policies
   (e.g. tax and traffic rules) that apply within them.
 - **Landscaping** — raise / lower / level / smooth the terrain, with real water

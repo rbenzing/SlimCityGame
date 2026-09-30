@@ -27,15 +27,16 @@ decorative, which is the one thing this design exists to avoid.
 one does, straight over the junction. A tramway drawn across a street leaves
 the crossing tile as that street's — the street keeps its own lanes and class
 there, and a tramway never takes a tile from a road it does not outrank — so
-the crossing is recognised rather than stored: a street tile that is not
-itself tram track, joined to tram track on two opposite sides, is a **tram
-crossing** along that axis, and the tram graph counts it as track. Nothing is
+the crossing is recognised rather than stored: a straight run of one or two
+joined street tiles that are not themselves tram track, with tram track joined
+at both ends, is a **tram crossing** along that axis, and the tram graph counts
+every tile of it as track. Two tiles is a road laid as two carriageways: the
+median opens where the tramway crosses it
+([road-model.md](road-model.md)), so the tram goes over both halves. Nothing is
 saved for it, so it comes and goes with the tramway: take one tram arm away
-and the tile is an ordinary junction again. A tram may only go straight over a
-crossing, never turn onto the street it is crossing, because the street has
-no track to turn onto. A crossing is one tile: a tramway across a road laid as
-two carriageways (two tiles side by side) still stops at it.
-(`tramCrossingAxes` in `src/shared/types.ts`.)
+and the tiles are an ordinary junction again. A tram may only go straight over
+a crossing, never turn onto the street it is crossing, because the street has
+no track to turn onto. (`tramCrossingAxes` in `src/shared/types.ts`.)
 
 **Ridership** is one statistical estimate for every mode: the population
 and jobs within a search radius of every stop, summed across the line,

@@ -74,21 +74,24 @@ export function tiersShape(inNetwork: NetworkTiers): NetworkShape {
  * or up on a deck has no four grid sides to be crossed from.
  */
 function crossingLinks(cells: RoadCells, id: number): number[] | null {
+  const n = cells.size * cells.size;
   const own = tierOf(cells, id);
-  if (isTramTier(own) || id >= cells.size * cells.size) return null;
-  const step = (s: number): number => cells.next[id * 4 + s]!;
-  const sideTier = (s: number): RoadTier => (step(s) < 0 ? RoadTier.None : tierOf(cells, step(s)));
-  const { alongX, alongZ } = tramCrossingAxes(
-    own,
-    sideTier(0),
-    sideTier(1),
-    sideTier(2),
-    sideTier(3),
-  );
+  if (isTramTier(own) || id >= n) return null;
+  // The grid step each way, N, E, S, W, from a cell on the ground.
+  const step = (from: number, s: number): number =>
+    from < 0 || from >= n ? -1 : cells.next[from * 4 + s]!;
+  const slot = (dx: number, dz: number): number => (dz < 0 ? 0 : dx > 0 ? 1 : dz > 0 ? 2 : 3);
+  const joined = (dx: number, dz: number, steps: 1 | 2): RoadTier => {
+    const s = slot(dx, dz);
+    let at = step(id, s);
+    if (steps === 2) at = step(at, s);
+    return at < 0 ? RoadTier.None : tierOf(cells, at);
+  };
+  const { alongX, alongZ } = tramCrossingAxes(own, joined);
   if (!alongX && !alongZ) return null;
   const out: number[] = [];
-  if (alongZ) out.push(step(0), step(2));
-  if (alongX) out.push(step(1), step(3));
+  if (alongZ) out.push(step(id, 0), step(id, 2));
+  if (alongX) out.push(step(id, 1), step(id, 3));
   return out;
 }
 

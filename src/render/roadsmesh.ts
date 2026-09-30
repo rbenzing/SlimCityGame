@@ -3432,6 +3432,12 @@ export interface NeighborTiers {
   e: RoadTier;
   s: RoadTier;
   w: RoadTier;
+  /**
+   * The road one tile further on each way, where the neighbour joins onward to
+   * it — None, or left out, where it does not. Only a tram crossing two tiles
+   * long, over a road laid as two carriageways, needs to see that far.
+   */
+  beyond?: { n: RoadTier; e: RoadTier; s: RoadTier; w: RoadTier };
 }
 
 const NO_NEIGHBORS: NeighborTiers = {
@@ -4283,13 +4289,12 @@ export function roadTileVertices(
   // A tramway crossing this street goes straight over the junction box, so its
   // rails run on across the whole tile between the two tram arms, at the
   // offsets the tramway's own preset lanes give them.
-  const tramCrossing = tramCrossingAxes(
-    tier,
-    hasN ? neighbors.n : RoadTier.None,
-    hasE ? neighbors.e : RoadTier.None,
-    hasS ? neighbors.s : RoadTier.None,
-    hasW ? neighbors.w : RoadTier.None,
-  );
+  const tramCrossing = tramCrossingAxes(tier, (dx, dz, steps) => {
+    const side = dz < 0 ? 'n' : dx > 0 ? 'e' : dz > 0 ? 's' : 'w';
+    const joined = { n: hasN, e: hasE, s: hasS, w: hasW }[side];
+    if (!joined) return RoadTier.None;
+    return steps === 1 ? neighbors[side] : (neighbors.beyond?.[side] ?? RoadTier.None);
+  });
   if (tramCrossing.alongX || tramCrossing.alongZ) {
     const railsAt = markingPlan(presetProfileForTier(RoadTier.Tram))
       .bands.filter((b) => b.kind === 'tram')
@@ -5855,11 +5860,24 @@ export class RoadMeshRenderer {
         }
         continue;
       }
+      // The road beyond each neighbour, where the neighbour joins on to it.
+      const beyond = (dx: number, dz: number, bit: number, axis: 'x' | 'z'): RoadTier => {
+        const next = this.roadAlong(tile.x + dx, tile.z + dz, axis);
+        return next && (next.mask & bit) !== 0
+          ? this.tierAlong(tile.x + 2 * dx, tile.z + 2 * dz, axis)
+          : RoadTier.None;
+      };
       const neighbors: NeighborTiers = {
         n: this.tierAlong(tile.x, tile.z - 1, 'z'),
         e: this.tierAlong(tile.x + 1, tile.z, 'x'),
         s: this.tierAlong(tile.x, tile.z + 1, 'z'),
         w: this.tierAlong(tile.x - 1, tile.z, 'x'),
+        beyond: {
+          n: beyond(0, -1, NORTH, 'z'),
+          e: beyond(1, 0, EAST, 'x'),
+          s: beyond(0, 1, SOUTH, 'z'),
+          w: beyond(-1, 0, WEST, 'x'),
+        },
       };
       const vertices = roadTileVertices(
         tile.x,

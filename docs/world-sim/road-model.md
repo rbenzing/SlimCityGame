@@ -589,6 +589,26 @@ separate matter, decided by `isCorridorPartner`; `isSeparateRoad` in
 network graph both read it, so what is drawn and what is driven cannot
 disagree.
 
+**The median opens where a street crosses a corridor.** The two halves of a
+corridor never join each other along the road — that is what keeps a six-lane
+road from reading as a junction its whole length — so a street meeting it
+would otherwise end in a T against each half, facing the median, and nothing
+could cross a divided road without an overpass. On a row where a road that is
+not itself a corridor half joins each half from outside — one arriving at the
+near half, one at the far half, the two in line across the corridor — the
+median is open: the two halves join across that row, and the crossing is a
+pair of junctions side by side, one on each carriageway. A car crossing goes
+straight over both; one turning turns onto the carriageway running its way,
+crossing the first to reach the second where it must, since each half is
+driven only the way it flows. A street meeting only one half is still a T, and
+the median stays shut there: a right turn in and out, the way a median
+without a break works. The opening is read off the tiles each time the masks
+are worked out, never stored, so it opens when the second street arrives and
+shuts when either goes. A save keeps what its network linked, so a crossing a
+save already holds stays shut until the street is laid again.
+(`medianOpens` in `src/shared/corridor.ts`, asked by the mask and by the
+approach walk alike.)
+
 **A road laid as its own road does not join the roads beside it.** With the
 road tool's snapping to roads off ([interaction.md](../ux/interaction.md#snapping-to-roads)),
 `buildRoad` is sent with `join: false`. What it decides is the arms of the

@@ -103,7 +103,11 @@ for the surface, the paint, the furniture and the zoning overlay.
   median — a concrete-tinted edge with a grass-green top — planted with a
   simple deterministic tree (trunk plus canopy) roughly every second tile.
   The median and its trees break at intersections and corners so turn paths
-  stay clear, giving the tree-lined-boulevard read.
+  stay clear, giving the tree-lined-boulevard read. A road laid as two
+  carriageways keeps its median shut except where a street crosses it: there
+  both halves are junctions, joined across the median, and the median breaks
+  for the width of the crossing, so the opening reads as a gap cars drive
+  through rather than a kerb they drive over.
 - **Concrete divider**: a straight run whose cross-section carries a
   `barrier` piece gets a low ~0.6 m concrete band in place of a painted
   median. It is read off the section, never assumed of a class: a barrier

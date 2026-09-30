@@ -449,6 +449,20 @@ describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
     it('lays none where tram track lies alongside without joining the junction', () => {
       expect(countWhere(crossing(N | S, crossed).colors, isRail)).toBe(0);
     });
+
+    it('runs them over each half of a road laid as two carriageways', () => {
+      // The near half: track to the west, the far half to the east, and the
+      // track beyond it — the median open between the two.
+      const nearHalf: NeighborTiers = {
+        ...crossed,
+        e: RoadTier.Avenue,
+        beyond: { n: RoadTier.None, e: RoadTier.Tram, s: RoadTier.None, w: RoadTier.None },
+      };
+      expect(countWhere(crossing(N | E | S | W, nearHalf).colors, isRail)).toBeGreaterThan(0);
+      // With no track beyond the far half the tramway crosses nothing.
+      const shut: NeighborTiers = { ...crossed, e: RoadTier.Avenue };
+      expect(countWhere(crossing(N | E | S | W, shut).colors, isRail)).toBe(0);
+    });
   });
 
   it('rides a two-lane-width carriageway and is deterministic', () => {

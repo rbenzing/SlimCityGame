@@ -2,7 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { tileIndex } from '../../src/shared/constants';
 import { RoadTier, ZoneType } from '../../src/shared/types';
 import type { Harness } from '../support/sim';
-import { column, initialized, latestSaveGrid, roadRow, rows, run } from '../support/sim';
+import {
+  column,
+  GROWTH_TIMEOUT_MS,
+  initialized,
+  latestSaveGrid,
+  roadRow,
+  rows,
+  run,
+  sixLaneCommands,
+} from '../support/sim';
 import { guardRoadNetwork } from '../support/guard';
 
 guardRoadNetwork();
@@ -13,16 +22,25 @@ describe('a tramway crossing another street', () => {
 
   /**
    * An avenue with homes and power, and a tramway drawn across it afterwards —
-   * so the crossing tile is the avenue's — with a tram line from one side of it
-   * to the other.
+   * so the crossing tiles are the avenue's — with a tram line from one side of
+   * it to the other. `sixLane` lays the avenue as two carriageways, in columns
+   * 90 and 91.
    */
-  function crossedTown(): Harness {
+  function crossedTown(sixLane = false): Harness {
     const h = initialized();
     run(h, 1, [
       { kind: 'setSandbox', on: true },
       { kind: 'setUnlimitedMoney', on: true },
     ]);
-    run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.Avenue, tiles: column(AVENUE_X, 60, 50) }]);
+    const avenue = column(AVENUE_X, 60, 50);
+    const laid = run(
+      h,
+      2,
+      sixLane
+        ? sixLaneCommands(avenue)
+        : [{ kind: 'buildRoad', tier: RoadTier.Avenue, tiles: avenue }],
+    );
+    expect(laid.ok).toBe(true);
     const tramway = roadRow(70, TRAM_Z, 41);
     expect(run(h, 3, [{ kind: 'buildRoad', tier: RoadTier.Tram, tiles: tramway }]).ok).toBe(true);
     run(h, 4, [
@@ -31,12 +49,12 @@ describe('a tramway crossing another street', () => {
       {
         kind: 'paintZone',
         zone: ZoneType.ResLow,
-        tiles: [...rows(70, TRAM_Z + 1, 20, 3), ...rows(AVENUE_X + 1, TRAM_Z + 1, 20, 3)],
+        tiles: [...rows(70, TRAM_Z + 1, 20, 3), ...rows(AVENUE_X + 2, TRAM_Z + 1, 20, 3)],
       },
       {
         kind: 'paintZone',
         zone: ZoneType.Industrial,
-        tiles: rows(AVENUE_X + 1, TRAM_Z - 4, 20, 4),
+        tiles: rows(AVENUE_X + 2, TRAM_Z - 4, 20, 4),
       },
       {
         kind: 'createTransitLine',
@@ -57,14 +75,28 @@ describe('a tramway crossing another street', () => {
 
   const riders = (h: Harness): number => h.lastSnapshot()!.transit!.ridership[0]!;
 
-  it('runs the tram straight over the avenue, and it carries riders', () => {
-    const h = crossedTown();
-    expect(riders(h)).toBeGreaterThan(0);
-  });
+  it(
+    'runs the tram straight over the avenue, carrying riders, and leaves the crossing the avenue’s',
+    () => {
+      const h = crossedTown();
+      expect(riders(h)).toBeGreaterThan(0);
+      h.sim.handleMessage({ type: 'requestSave' });
+      expect(latestSaveGrid(h).roadTier[tileIndex(AVENUE_X, TRAM_Z)]).toBe(RoadTier.Avenue);
+    },
+    GROWTH_TIMEOUT_MS,
+  );
 
-  it('leaves the crossing the avenue’s own road', () => {
-    const h = crossedTown();
-    h.sim.handleMessage({ type: 'requestSave' });
-    expect(latestSaveGrid(h).roadTier[tileIndex(AVENUE_X, TRAM_Z)]).toBe(RoadTier.Avenue);
-  });
+  it(
+    'runs over a six-lane avenue too, through the median it opens',
+    () => {
+      const h = crossedTown(true);
+      expect(riders(h)).toBeGreaterThan(0);
+      h.sim.handleMessage({ type: 'requestSave' });
+      const g = latestSaveGrid(h);
+      for (const x of [AVENUE_X, AVENUE_X + 1]) {
+        expect(g.roadTier[tileIndex(x, TRAM_Z)]).toBe(RoadTier.Avenue);
+      }
+    },
+    GROWTH_TIMEOUT_MS,
+  );
 });

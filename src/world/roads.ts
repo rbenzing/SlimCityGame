@@ -17,6 +17,7 @@ import {
 import { tierOutranks } from '../shared/roadprofile';
 import {
   corridorPartners,
+  medianOpens,
   rampJoinAround,
   rampJoins,
   sideBySideCarriageways,
@@ -210,15 +211,32 @@ function isCorridorPartner(g: GridState, x: number, z: number, nx: number, nz: n
   const n = indexOf(g.size, nx, nz);
   const here = g.roadFlow[i] ?? 0;
   const there = g.roadFlow[n] ?? 0;
-  return corridorPartners(
-    corridorHalfOf(here),
-    corridorHalfOf(there),
-    g.roadProfile[i] ?? 0,
-    g.roadProfile[n] ?? 0,
-    flowDirection(here),
-    nx - x,
-    nz - z,
+  return (
+    corridorPartners(
+      corridorHalfOf(here),
+      corridorHalfOf(there),
+      g.roadProfile[i] ?? 0,
+      g.roadProfile[n] ?? 0,
+      flowDirection(here),
+      nx - x,
+      nz - z,
+    ) && !medianOpens(x, z, nx - x, nz - z, (tx, tz, sx, sz) => crossesInto(g, tx, tz, sx, sz))
   );
+}
+
+/**
+ * Whether a road that is not a corridor half stands at (x + sx, z + sz) and
+ * joins the road on (x, z) by every other rule — a street arriving at one half
+ * of a corridor from outside it.
+ */
+function crossesInto(g: GridState, x: number, z: number, sx: number, sz: number): boolean {
+  const ox = x + sx;
+  const oz = z + sz;
+  if (!inBoundsOf(g.size, ox, oz)) return false;
+  const o = indexOf(g.size, ox, oz);
+  if ((g.roadTier[o] ?? RoadTier.None) === RoadTier.None) return false;
+  if (corridorHalfOf(g.roadFlow[o] ?? 0) !== 'none') return false;
+  return atOneLevel(g, indexOf(g.size, x, z), o) && !isSeparateRoad(g, x, z, ox, oz);
 }
 
 /**
@@ -358,21 +376,37 @@ export function recomputeRoadMasks(g: GridState): void {
 }
 
 /**
- * Recomputes the stored mask of every road tile in `idxs` and of each one's
- * four neighbours, and returns a delta for every tile whose mask changed. What
- * a road passing over a crossing changes is who the tiles around it join, so
- * laying or lifting one has to be followed by this.
+ * Every tile whose mask a change to the road on `idx` can move, `idx` itself
+ * excluded: its four neighbours, and the tile beyond each. A mask is mostly
+ * about the neighbours, but whether a corridor's median is open depends on the
+ * road beyond its OTHER half, so a street arriving at or leaving the far half
+ * moves the near half's mask, two tiles away.
+ */
+function maskDependents(g: GridState, idx: number): number[] {
+  const x = idx % g.size;
+  const z = (idx - x) / g.size;
+  const out: number[] = [];
+  for (const d of DIRS) {
+    for (const reach of [1, 2]) {
+      const nx = x + d.dx * reach;
+      const nz = z + d.dz * reach;
+      if (inBoundsOf(g.size, nx, nz)) out.push(indexOf(g.size, nx, nz));
+    }
+  }
+  return out;
+}
+
+/**
+ * Recomputes the stored mask of every road tile in `idxs` and of every tile
+ * whose mask a change there can move, and returns a delta for every tile whose
+ * mask changed. What a road passing over a crossing changes is who the tiles
+ * around it join, so laying or lifting one has to be followed by this.
  */
 export function remaskAround(g: GridState, idxs: Iterable<number>): RoadTileDelta[] {
   const candidates = new Set<number>();
   for (const idx of idxs) {
     candidates.add(idx);
-    const x = idx % g.size;
-    const z = (idx - x) / g.size;
-    for (const d of DIRS) {
-      if (inBoundsOf(g.size, x + d.dx, z + d.dz))
-        candidates.add(indexOf(g.size, x + d.dx, z + d.dz));
-    }
+    for (const dependent of maskDependents(g, idx)) candidates.add(dependent);
   }
   const deltas: RoadTileDelta[] = [];
   for (const idx of candidates) {
@@ -531,13 +565,7 @@ export function applyRoad(
 
   const candidates = new Set<number>(changedIdx);
   for (const idx of changedIdx) {
-    const x = idx % g.size;
-    const z = Math.floor(idx / g.size);
-    for (const d of DIRS) {
-      const nx = x + d.dx;
-      const nz = z + d.dz;
-      if (inBoundsOf(g.size, nx, nz)) candidates.add(indexOf(g.size, nx, nz));
-    }
+    for (const dependent of maskDependents(g, idx)) candidates.add(dependent);
   }
 
   const deltas: RoadTileDelta[] = [];
@@ -599,14 +627,8 @@ export function removeRoad(g: GridState, tiles: TilePoint[]): RoadTileDelta[] {
 
   const neighborCandidates = new Set<number>();
   for (const idx of removedIdx) {
-    const x = idx % g.size;
-    const z = Math.floor(idx / g.size);
-    for (const d of DIRS) {
-      const nx = x + d.dx;
-      const nz = z + d.dz;
-      if (!inBoundsOf(g.size, nx, nz)) continue;
-      const nIdx = indexOf(g.size, nx, nz);
-      if (!removedIdx.has(nIdx)) neighborCandidates.add(nIdx);
+    for (const dependent of maskDependents(g, idx)) {
+      if (!removedIdx.has(dependent)) neighborCandidates.add(dependent);
     }
   }
 

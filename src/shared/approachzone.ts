@@ -34,7 +34,13 @@ import {
 import type { TaperStep } from './taper';
 import type { CorridorHalf, JunctionControl, RoadClassId, RoadProfile } from './types';
 import { RoadFlow } from './types';
-import { corridorPartners, rampJoinAround, rampJoins, sideBySideCarriageways } from './corridor';
+import {
+  corridorPartners,
+  medianOpens,
+  rampJoinAround,
+  rampJoins,
+  sideBySideCarriageways,
+} from './corridor';
 import type { RampJoin } from './corridor';
 import { bitToward } from './overpass';
 
@@ -227,7 +233,7 @@ function isSeparateRoad(
   const here = world.profileAt(x, z);
   const there = world.profileAt(x + dx, z + dz);
   return (
-    corridorPartners(
+    (corridorPartners(
       world.corridorHalfAt(x, z),
       world.corridorHalfAt(x + dx, z + dz),
       world.profileIdAt(x, z),
@@ -235,7 +241,17 @@ function isSeparateRoad(
       world.flowAt(x, z),
       dx,
       dz,
-    ) ||
+    ) &&
+      !medianOpens(
+        x,
+        z,
+        dx,
+        dz,
+        (tx, tz, sx, sz) =>
+          world.hasRoad(tx + sx, tz + sz) &&
+          world.corridorHalfAt(tx + sx, tz + sz) === 'none' &&
+          !isSeparateRoad(tx, tz, sx, sz, world),
+      )) ||
     sideBySideCarriageways(
       here?.class === 'highway',
       there?.class === 'highway',

@@ -573,10 +573,24 @@ describe('a corridor half is a road in its own right', () => {
     expect(roadDegree(3, 2, w)).toBe(2);
   });
 
-  it('counts a street that really does meet it', () => {
+  it('counts a street that really does meet it, and opens the median where it crosses', () => {
     const w = corridor();
-    // The left half at the crossing has the street arriving from the west.
-    expect(roadDegree(2, 6, w)).toBe(3);
+    // The street arrives at each half from outside, so the median is open on
+    // its row: the left half has the street west, its partner east, and the
+    // road ahead and behind.
+    expect(roadDegree(2, 6, w)).toBe(4);
+    expect(roadDegree(3, 6, w)).toBe(4);
+  });
+
+  it('keeps the median shut where a street meets one half only', () => {
+    // The same corridor, with the street stopping at the left half.
+    const w = corridor();
+    const oneSided: ApproachSurroundings = {
+      ...w,
+      hasRoad: (x, z) => w.hasRoad(x, z) && !(z === 6 && x > 3),
+    };
+    expect(roadDegree(2, 6, oneSided)).toBe(3);
+    expect(roadDegree(3, 6, oneSided)).toBe(2);
   });
 
   it('finds the junction ahead of it, which a road it never saw could not', () => {

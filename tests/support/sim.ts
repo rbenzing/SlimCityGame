@@ -24,7 +24,22 @@ import roadsData from '../../src/data/roads.json';
 import { decodeSave, encodeSave } from '../../src/app/persist';
 import type { ClientGridMirror } from '../../src/app/clientgrid';
 import { loadGrid } from '../../src/world/roadnet';
+import {
+  composeProfile,
+  FIRST_CUSTOM_PROFILE_ID,
+  NO_EDITS,
+  presetProfileForTier,
+} from '../../src/shared/roadprofile';
+import { corridorRunsFor } from '../../src/shared/corridor';
 import { createWorkerSim, type WorkerSim } from '../../src/sim/worker.entry';
+
+/**
+ * The timeout for a test that grows a town for a thousand ticks or more. It
+ * takes ten to twenty seconds on its own and longer with the rest of the suite
+ * running beside it, so the default twenty would fail it on load rather than
+ * on anything it checks.
+ */
+export const GROWTH_TIMEOUT_MS = 120_000;
 
 export const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 export const roadSpecs = (roadsData as { specs: RoadSpec[] }).specs;
@@ -249,6 +264,33 @@ export const roadRow = (x0: number, z: number, len: number): TilePoint[] =>
 
 export const column = (x: number, z0: number, count: number): TilePoint[] =>
   Array.from({ length: count }, (_, i) => ({ x, z: z0 + i }));
+
+/**
+ * The commands the road tool sends for a six-lane avenue along `path`: too wide
+ * for one tile, it is laid as two carriageways side by side, one run a half.
+ */
+export function sixLaneCommands(path: TilePoint[], profileId = FIRST_CUSTOM_PROFILE_ID): Command[] {
+  const profile = composeProfile(presetProfileForTier(RoadTier.Avenue), { ...NO_EDITS, lanes: 3 });
+  const runs = corridorRunsFor(path);
+  if (!runs) throw new Error('sixLaneCommands: a corridor is a straight run');
+  return [
+    { kind: 'defineRoadProfile', id: profileId, profile },
+    {
+      kind: 'buildRoad',
+      tier: RoadTier.Avenue,
+      tiles: runs.near,
+      profile: profileId,
+      flows: runs.near.map(() => runs.nearFlow),
+    },
+    {
+      kind: 'buildRoad',
+      tier: RoadTier.Avenue,
+      tiles: runs.far,
+      profile: profileId,
+      flows: runs.far.map(() => runs.farFlow),
+    },
+  ];
+}
 
 /** A w×d block of tiles, row by row. */
 export const rows = (x0: number, z0: number, w: number, d: number): TilePoint[] =>

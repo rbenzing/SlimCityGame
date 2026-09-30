@@ -62,11 +62,19 @@ area:
 
 `tests/support/` holds what those files share and is imported by nothing in
 `src/`: `sim.ts` (booting a sim, sending, ticking, reading acks, snapshots
-and saves back) and `town.ts` (the small town, below). The Vitest include,
+and saves back), `town.ts` (the small town, below) and `guard.ts` (the
+road-network check every file runs). The Vitest include,
 the TypeScript project and the lint script all cover `tests/` as well as
 `src/`, so an interaction test is typechecked and linted like any other code.
 
-Every interaction file calls `guardRoadNetwork()` from `tests/support/sim.ts`
+A test that grows a town for a thousand ticks or more takes ten to twenty
+seconds on its own and longer beside the rest of the suite, so it carries
+`GROWTH_TIMEOUT_MS` from `tests/support/sim.ts` as its own timeout. Without it
+the 20-second default fails it on machine load rather than on anything it
+checks. Shorter tests keep the default, so a genuinely stuck one still fails
+fast.
+
+Every interaction file calls `guardRoadNetwork()` from `tests/support/guard.ts`
 at its top. After every test it fails if the worker reported a road-network
 disagreement (a tile whose road layers, derived from the network again, came
 out differently), so no command may leave the network and its layers out of
@@ -81,7 +89,8 @@ could have sent:
 
 - every road type: a two-lane main street, an avenue, a four-lane road, a
   one-way street, an alley, a bus lane, a bike lane, a tramway, a dirt road,
-  a motorway with an on-ramp, and rail track — with bridges where the avenue,
+  a motorway with an on-ramp, rail track, and a six-lane road laid as two
+  carriageways with main street crossing it — with bridges where the avenue,
   the ramp road and the motorway cross the river;
 - power (a coal plant and a wind turbine) and water towers;
 - every zone: low- and high-density homes and shops, row housing, apartments,
