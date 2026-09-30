@@ -10,6 +10,7 @@ import type { ToolId } from '../shared/types';
 import { catalogEntryForTool, subTabsFor, type AssetCard, type DockCategory } from './categories';
 import { Icon } from './icons';
 import { RoadToolOptions } from './RoadToolOptions';
+import { InterchangeToolOptions } from './InterchangeToolOptions';
 import { useCityStore } from './store';
 import { PANEL_ROUNDED } from './theme';
 
@@ -95,6 +96,27 @@ function CardPictogram({ card }: { card: AssetCard }): JSX.Element {
         aria-hidden="true"
       >
         <div className={`w-4/5 rounded-sm ${strip} ${roadHeightClass(card.id)}`} />
+      </div>
+    );
+  }
+  if (card.id === 'interchange') {
+    // A diamond from above: the motorway down the middle, the street across it,
+    // and a slip road in each quadrant.
+    return (
+      <div
+        className="flex h-11 items-center justify-center rounded-[6px] bg-[#2a2f36]"
+        aria-hidden="true"
+      >
+        <svg viewBox="0 0 40 40" className="h-10 w-10">
+          <rect x="17" y="0" width="6" height="40" fill="#fff" />
+          <rect x="0" y="18" width="40" height="4" fill="#fff" />
+          <path
+            d="M15 4 L15 13 L8 13 L8 17 M8 23 L8 27 L15 27 L15 36 M25 36 L25 27 L32 27 L32 23 M32 17 L32 13 L25 13 L25 4"
+            fill="none"
+            stroke="#fff"
+            strokeWidth="1.5"
+          />
+        </svg>
       </div>
     );
   }
@@ -281,6 +303,7 @@ export function AssetDrawer({ category, onClose }: AssetDrawerProps): JSX.Elemen
         {/* The selected road's options sit beside its card, in the same card
             treatment, so what is being built and how it is built read as one. */}
         {category === 'roads' && <RoadToolOptions />}
+        {category === 'roads' && <InterchangeToolOptions />}
       </div>
     </div>
   );

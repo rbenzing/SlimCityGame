@@ -491,7 +491,10 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
  * isRoadBuildable (road-on-slope) can apply their own slope ceilings
  * while sharing the water + bounds + neighbor-walk logic.
  */
-function buildableWithSlope(g: GridState, x: number, z: number, maxSlope: number): boolean {
+/** What the slope rules read of a grid: the client's mirror has it as well as the world. */
+export type SlopeGround = Pick<GridState, 'size' | 'height' | 'water'>;
+
+function buildableWithSlope(g: SlopeGround, x: number, z: number, maxSlope: number): boolean {
   if (!inBoundsOf(g.size, x, z)) return false;
 
   const i = indexOf(g.size, x, z);
@@ -524,7 +527,7 @@ export function isBuildable(g: GridState, x: number, z: number): boolean {
  * auto-flatten re-levels/banks the placed tiles right after. Buildings and
  * zoning are NOT affected — they keep calling isBuildable with MAX_BUILD_SLOPE.
  */
-export function isRoadBuildable(g: GridState, x: number, z: number): boolean {
+export function isRoadBuildable(g: SlopeGround, x: number, z: number): boolean {
   return buildableWithSlope(g, x, z, ROAD_MAX_SLOPE);
 }
 

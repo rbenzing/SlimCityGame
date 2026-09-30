@@ -101,7 +101,15 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   joins, one to slow down in where it leaves — opening out of nothing over
   about eight tiles. A three-lane carriageway and its shoulders are 15.45 m of
   a 20 m tile, so there is room; a wider one spends the tile and gets none.
-  The decision is not
+  Or lay a whole **interchange** at once: the Interchange card in the Highway
+  tab, pointed at a motorway you have already laid, previews a street carried
+  over it on a bridge with every slip road it needs, and one click lays it all
+  — one undo takes it all away again. Pick the form beside the card: a
+  **diamond**, which makes every turn at two junctions on the street; a
+  **partial cloverleaf**, whose loops take the left turns onto the motorway
+  off those junctions; or a **cloverleaf**, a loop for every left turn, at the
+  price of a great deal of land. The preview says why it cannot go where it
+  cannot. The decision is not
   cosmetic — crossing a signal costs a driver real seconds, and drivers reroute
   around a slow junction — and it follows the city: a crossroads that needs
   nothing today earns a give-way, then a stop, as the blocks around it fill,

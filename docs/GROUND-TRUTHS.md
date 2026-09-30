@@ -325,6 +325,13 @@ MUTCD citations below use 11th-edition section numbers.
   merge and the upstream half at a diverge. — [road-model.md](world-sim/road-model.md);
   `rampJoin` and `rampJoinAround` in `src/shared/corridor.ts`, `rampMouthAt`
   in `src/shared/approachzone.ts`, `emitRampTaper` in `src/render/roadsmesh.ts`
+- An interchange is only the roads it lays, sent as one batch of ordinary
+  road commands with every height given exactly: nothing of the interchange
+  is stored. A ramp is laid at ground level, and a stamp's street is laid out
+  above sea level, so neither is left to a solver that could join it to the
+  wrong road. The tool refuses before sending anything the world would refuse
+  partway. — [interchanges](engineering/features/interchanges.md);
+  `src/shared/interchange.ts`
 - A two-way road's lane drop closes both directions' kerbside lanes together,
   after taking an uneven road down to even, so its centre line runs straight
   down the taper. A road whose lanes all run one way closes the driver's

@@ -40,6 +40,7 @@ import {
   RoadTier,
   VEHICLE_STRIDE,
   ZoneType,
+  flowDirection,
   isStreetTier,
 } from './shared/types';
 import { carriagewayWidth, profilesEqual } from './shared/roadprofile';
@@ -56,6 +57,7 @@ import {
   snapRoadEnd,
 } from './world/freeroads';
 import { solveElevationProfile } from './world/bridges';
+import { isRoadBuildable } from './world/grid';
 import { createRenderer, createWorldScene, timeOfDayColors } from './render/scene';
 import { createBloomPipeline, type BloomPipeline } from './render/bloom';
 import { CloudLayer } from './render/clouds';
@@ -1084,7 +1086,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
 
   const ghostKindFor = (tool: ToolId): GhostKind => {
     if (tool === 'bulldoze') return 'bulldoze';
-    if (tool.startsWith('road.')) return 'road';
+    if (tool.startsWith('road.') || tool === 'interchange') return 'road';
     if (tool.startsWith('zone.')) return 'zone';
     // District paint reads as a zone-style tint; transit stops read as a road path.
     if (tool === 'district.paint') return 'zone';
@@ -1116,6 +1118,25 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       inBounds(tile.x, tile.z)
         ? (clientGrid.roadElevation[tile.z * clientGrid.size + tile.x] ?? 0)
         : 0,
+    // The grid as an interchange is laid out on it, read off the mirror, with
+    // the world's own rule for ground a road may be laid on.
+    interchangeGround: () => {
+      const at = (x: number, z: number): number => z * clientGrid.size + x;
+      return {
+        motorwayFlowAt: (x, z) =>
+          inBounds(x, z) && clientGrid.roadTier[at(x, z)] === RoadTier.Highway
+            ? flowDirection(clientGrid.roadFlow[at(x, z)] ?? 0)
+            : RoadFlow.None,
+        maskAt: (x, z) => (inBounds(x, z) ? (clientGrid.roadMask[at(x, z)] ?? 0) : 0),
+        roadAt: (x, z) =>
+          inBounds(x, z) &&
+          (clientGrid.roadTier[at(x, z)] !== RoadTier.None || clientGrid.overTier[at(x, z)] !== 0),
+        overRoadAt: (x, z) => inBounds(x, z) && clientGrid.overTier[at(x, z)] !== 0,
+        buildableAt: (x, z) =>
+          isRoadBuildable(clientGrid, x, z) && clientGrid.buildingId[at(x, z)] === 0,
+        heightAt: (x, z) => (inBounds(x, z) ? (clientGrid.height[at(x, z)] ?? 0) : 0),
+      };
+    },
     // The worker's own deck solver, run against the mirror, so the ghost
     // stands where the road will be laid.
     deckLifts: (tiles, elevation) => {
@@ -1262,6 +1283,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   };
   const toolManager = new ToolManager(env);
   toolManager.setBrush(store.getState().brushSettings);
+  toolManager.setInterchange(store.getState().interchange);
 
   /**
    * A committed bulldoze clears the cosmetic trees on every tile it covers,
@@ -1747,6 +1769,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     }
     if (state.roadProfileEdits !== prev.roadProfileEdits) {
       toolManager.setProfileEdits(state.roadProfileEdits); // the Profile row's parking/bike/footway choices
+    }
+    if (state.interchange !== prev.interchange) {
+      toolManager.setInterchange(state.interchange); // the Interchange row's form and crossing road
     }
     if (state.brushSettings !== prev.brushSettings) {
       toolManager.setBrush(state.brushSettings); // Brush radius / Strength rows

@@ -98,6 +98,25 @@ function roadCard(tier: RoadTier): AssetCard[] {
     : [];
 }
 
+/**
+ * The Interchange tool: a whole interchange laid on a motorway, so it unlocks
+ * with the motorway. It has no price of its own, since it costs the roads it
+ * lays, and the cursor quotes that total before the click.
+ */
+function interchangeCard(): AssetCard[] {
+  const highway = roadSpecs.find((s) => s.tier === RoadTierValue.Highway);
+  return highway
+    ? [
+        {
+          id: 'interchange',
+          name: 'Interchange',
+          cost: 0,
+          unlockMilestone: highway.unlockMilestone,
+        },
+      ]
+    : [];
+}
+
 function catalogCards(predicate: (entry: BuildingCatalogEntry) => boolean): AssetCard[] {
   return catalog.filter(predicate).map((entry) => ({
     id: `plop.${entry.id}` as ToolId,
@@ -257,7 +276,11 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
       label: 'Highway',
       // The ramp sits beside the motorway it serves: on its own it is a slip
       // road to nowhere, and it is the only way onto one.
-      cards: [...roadCard(RoadTierValue.Highway), ...roadCard(RoadTierValue.Ramp)],
+      cards: [
+        ...roadCard(RoadTierValue.Highway),
+        ...roadCard(RoadTierValue.Ramp),
+        ...interchangeCard(),
+      ],
     },
     {
       id: 'rail',

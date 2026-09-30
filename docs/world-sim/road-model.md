@@ -774,6 +774,12 @@ and graph, the approach walk, the furniture and the road tool's refusal all
 ask it. `rampMouthAt` tells the motorway tile which half to open, and
 `emitRampTaper` in `src/render/roadsmesh.ts` draws the ramp's side.
 
+A whole interchange can be laid at once: a diamond, a partial cloverleaf or a
+full cloverleaf, stamped onto a motorway already there
+([interchanges](../game-design/features/interchanges.md)). It lays nothing
+these rules would not: ordinary ramps that obey them, and a street carried
+over the motorway as any overpass is.
+
 **A merge or a diverge is not an intersection**, whatever its arm count, and
 highways rarely have intersections at all. Nobody stops at one, nobody gives
 way, and nobody picks a lane at it: a driver leaving is already in the
