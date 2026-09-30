@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.22.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.21.0...slimcity-v1.22.0) (2026-09-30)
+
+
+### Features
+
+* **roads:** lay a whole interchange on a motorway in one click ([b52bd96](https://github.com/rbenzing/SlimCityGame/commit/b52bd9642126d50d44be496f6a09d99a7de41a71))
+* **roads:** lay a whole interchange on a motorway in one click ([cb08da9](https://github.com/rbenzing/SlimCityGame/commit/cb08da9a99589e62b95b90637fb37b896b6777cf))
+
+
+### Bug Fixes
+
+* **roads:** a two-way lane drop closes both sides together ([533d5c0](https://github.com/rbenzing/SlimCityGame/commit/533d5c07efda744851c9ada8c65aeb9da727d87c))
+* **roads:** a two-way lane drop closes both sides together ([e446953](https://github.com/rbenzing/SlimCityGame/commit/e446953427a5f4bd4dcf6307957bd531ee5d5f3b))
+
 ## [1.21.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.20.2...slimcity-v1.21.0) (2026-09-30)
 
 
