@@ -11,7 +11,7 @@
  * The tiles are reached through accessors rather than a grid, so this stays a
  * question about cardinals and distances that either side can ask.
  */
-import { armAllowed, movementsOffered, pocketWarranted } from './approach';
+import { armAllowed, MAX_APPROACH_ZONE_TILES, movementsOffered, pocketWarranted } from './approach';
 import type { MovementSet, PackedLaneTurns, PackedTurns } from './approach';
 import {
   isOneWayProfile,
@@ -570,6 +570,21 @@ export function narrowingAhead(
  * an interchange never swallows the run between two of them.
  */
 export const AUXILIARY_ZONE_TILES = 8;
+
+/**
+ * How far along its own run a tile's cross-section can be decided from: the
+ * longest walk any of the questions here makes — to the junction ahead, to a
+ * short block's other end, to the narrower road a lane closes for, to a slip
+ * road — plus the tile past the last step, whose joins the walk also asks. A
+ * change further away than this cannot change what the tile draws.
+ */
+export const SECTION_REACH_TILES =
+  Math.max(
+    MAX_APPROACH_ZONE_TILES,
+    SHARED_TURN_LANE_MAX_TILES,
+    TAPER_MAX_TILES,
+    AUXILIARY_ZONE_TILES,
+  ) + 1;
 
 /** The auxiliary lane a motorway tile carries beside a slip road. */
 export interface AuxiliaryLane {

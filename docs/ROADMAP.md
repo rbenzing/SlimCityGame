@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,101 tests passing across 144 test files, run 2026-09-30.
+**Test suite:** 4,118 tests passing across 144 test files, run 2026-09-30.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -67,6 +67,8 @@ barriers. Full detail in History, §10 below.
   raised road's ramps, and a road cannot yet be drawn under a bridge that is
   already there.
 - Road composition: the three pieces above.
+- Lane drops: a wide road shorter than its own taper starts the taper
+  part-closed, so its kerb steps where it leaves the junction.
 - Farms: a farmhouse lights no window at night, and no farm truck works the
   yard.
 
@@ -215,6 +217,39 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Turn-bay drawing and arrow sizes (reported and fixed 2026-09-30)
+
+The user spotted two things at a junction: one arm's turn bay opened with a
+notch in the kerb while the other arm's opened smoothly, and the turn-lane
+markings looked too big. Checked against the markings spec and the MUTCD,
+both were real, and the check found three more.
+
+- **The notch.** A turn bay only exists while the junction's control holds
+  that arm, so a signal the warrant adds later opens it. The road mesh redrew
+  only the chunks a tile away from the junction, and a bay, a lane-drop taper
+  or a short block's turn lane reaches much further. A bay crossing a chunk
+  seam was drawn open on one side and at its old width on the other. A road or
+  control change now redraws every chunk within `SECTION_REACH_TILES` along
+  both axes ([rendering-architecture.md](visual-render/rendering-architecture.md)).
+- **The arrows.** They were about twice the size the MUTCD calls for. It sends
+  the sizes to FHWA's _Standard Highway Signs_, which draws a through arrow
+  2.90 m long, a turn arrow 2.44 m and a turn-and-through arrow 3.89 m; they
+  were 6 m, 4.8 m and 6 m. Every arrow is now those sizes
+  ([road-model.md](world-sim/road-model.md#markings)). The lines themselves
+  were already right: 0.15 m, and a 0.4 m stop line.
+- **The bay's lane line** was a broken lane line. MUTCD §3B.06 ¶07 wants a
+  solid line between a through lane and a turn lane, so it is solid now.
+  Where the bay closes, the line runs into the centre line, not across the
+  through lane to the kerb.
+- **A double yellow that crossed itself.** Lines were paired across a seam by
+  nearness alone, so a centre pair pushed sideways by more than the gap
+  between its lines swapped partners and crossed. Lines now keep their order
+  across a seam.
+
+Found and not fixed: a wide road shorter than its own lane-drop taper — a
+four-lane stub of three tiles between a junction and a two-lane street —
+starts the taper part-closed, so its kerb steps at the junction's mouth.
 
 ### Median openings (found while extending tram crossings, decided and built 2026-09-30)
 

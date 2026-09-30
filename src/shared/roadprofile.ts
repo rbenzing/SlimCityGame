@@ -706,7 +706,7 @@ export function withTurnPocket(
   // can have one, what the parking gives up, how far the lanes shift over. All
   // that changes along the opening taper is the bay itself, which grows out of
   // the lane beside it.
-  const pocket: LanePiece = { kind: 'travel', width: width * open };
+  const pocket: LanePiece = { kind: 'travel', width: width * open, bay: true };
   if (beside.piece.flow) pocket.flow = beside.piece.flow;
 
   const pieces: LanePiece[] = [];

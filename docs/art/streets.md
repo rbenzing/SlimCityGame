@@ -91,7 +91,9 @@ for the surface, the paint, the furniture and the zoning overlay.
   footway's tip is the point the road was drawn to, and a road too short for
   a true half-circle at each end flattens its caps along itself.
 - **Direction arrows**: a placed one-way road shows pavement direction arrows
-  roughly every third tile. While a one-way road or a highway is being
+  roughly every third tile, each the standard 2.90 m through arrow (see
+  [road-model.md](../world-sim/road-model.md#markings) for every arrow's
+  size). While a one-way road or a highway is being
   dragged into place, translucent arrows along the ghost path also show the
   direction traffic will run, following the drag path around a corner; they
   belong to the placement preview and disappear with the rest of the ghost

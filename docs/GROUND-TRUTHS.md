@@ -323,7 +323,10 @@ MUTCD citations below use 11th-edition section numbers.
   wide, with its phase anchored at world metre 0 across every seam. —
   [road-model.md](world-sim/road-model.md); `src/render/roadsmesh.ts`
 - Turn arrows exist only where a lane's resolved movement set says the movement
-  exists, and a single-lane approach is unmarked (MUTCD 3D.06 ¶01). Gore
+  exists, and a single-lane approach is unmarked (MUTCD 3D.06 ¶01). Every
+  arrow is the _Standard Highway Signs_ size the MUTCD points to (§3B.20 ¶05):
+  a through arrow 2.90 m, a turn arrow 2.44 m, turn and through 3.89 m, stems
+  0.30 m, never wider than its lane. Gore
   hatching slants away from the adjacent traffic (MUTCD 3B.25 ¶08–09). —
   [road-model.md](world-sim/road-model.md)
 - A roundabout carries a yield line of white triangles pointing at approaching
@@ -745,9 +748,14 @@ MUTCD citations below use 11th-edition section numbers.
   (vehicles, clouds, sky, stars); default culling stays on everywhere else. —
   [rendering-architecture.md](visual-render/rendering-architecture.md)
 - `CHUNK_TILES` is 16, and a tile edit dirties every chunk sharing the edited
-  corner vertex, never just its own. —
+  corner vertex, never just its own. A road tile's drawn cross-section reads
+  its run out to `SECTION_REACH_TILES`, so a road or junction-control change
+  rebuilds every road chunk within that reach along both axes, plus the tile
+  that bends to meet it; rebuilt alone, a turn bay opened by a new signal
+  drew a notch at the chunk seam. —
   [rendering-architecture.md](visual-render/rendering-architecture.md),
-  [terrain.md](visual-render/terrain.md)
+  [terrain.md](visual-render/terrain.md); `SECTION_REACH_TILES` in
+  `src/shared/approachzone.ts`, `chunksReading` in `src/render/roadsmesh.ts`
 - There is no LOD, no particle or VFX system and no animation system; anything
   that moves is a transform written per frame. — [lod.md](visual-render/lod.md),
   [vfx.md](visual-render/vfx.md), [animation.md](visual-render/animation.md)

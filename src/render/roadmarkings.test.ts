@@ -148,6 +148,36 @@ describe('markingPlan paints every preset the way a US road is painted', () => {
 });
 
 describe('markingPlan for composed profiles', () => {
+  it('fences a turn bay off from the through lane with a solid white line (MUTCD 3B.06)', () => {
+    const p = markingPlan({
+      class: 'urban',
+      pieces: [
+        { kind: 'travel', width: 3.5, flow: 'back' },
+        { kind: 'travel', width: 3.3, flow: 'fwd', bay: true },
+        { kind: 'travel', width: 3.5, flow: 'fwd' },
+      ],
+    });
+    // The double centre, the bay's line and the two edge lines — and nothing
+    // broken, which would invite a through driver into the queue.
+    const bayLine = p.solid.find((l) => l.bayToward !== undefined);
+    expect(bayLine).toMatchObject({ color: 'white', bayToward: -1 });
+    expect(bayLine!.at).toBeCloseTo(-5.15 + 3.5 + 3.3, 6);
+    expect(p.dashed.filter((l) => l.color === 'white')).toEqual([]);
+  });
+
+  it('keeps a lane line between two ordinary lanes running the same way', () => {
+    const p = markingPlan({
+      class: 'urban',
+      pieces: [
+        { kind: 'travel', width: 3.5, flow: 'back' },
+        { kind: 'travel', width: 3.3, flow: 'fwd' },
+        { kind: 'travel', width: 3.5, flow: 'fwd' },
+      ],
+    });
+    expect(p.solid.some((l) => l.bayToward !== undefined)).toBe(false);
+    expect(p.dashed.filter((l) => l.color === 'white')).toHaveLength(1);
+  });
+
   it('a two-lane with parking lanes keeps its dashed centre and ticks its bays', () => {
     const p = markingPlan({
       class: 'local',
@@ -352,6 +382,32 @@ describe('a line crosses a seam where the road changes', () => {
     for (const o of seamBetween(solidCentre, dashedCentre, 3.75).solid) {
       expect(Math.abs(o)).toBeLessThan(CENTRE_PAIR_OFFSET_M);
     }
+  });
+
+  it('keeps a double centre that a bay pushes sideways side by side, never crossed', () => {
+    // Shifted further than the gap between its two lines: paired by nearness
+    // alone, each line took the other's partner and the two crossed.
+    const here = [line(-0.22, 'yellow'), line(0.22, 'yellow')];
+    const there = [line(0.58, 'yellow'), line(1.02, 'yellow')];
+    const at = seamOffsets(here, there, 5);
+    expect(at[0]).toBeCloseTo(0.18, 6);
+    expect(at[1]).toBeCloseTo(0.62, 6);
+  });
+
+  it("closes a turn bay's line onto the centre it opened from, not onto the kerb", () => {
+    // The last tile of a bay, meeting the street it grew out of: the bay line
+    // has no partner, and a bay closes toward the middle of the road.
+    const here = [
+      line(-4.5),
+      line(0.53, 'yellow'),
+      line(0.97, 'yellow'),
+      { ...line(2.5), bayToward: -1 as const },
+      line(4.5),
+    ];
+    const there = [line(-3.75), line(0, 'yellow'), line(3.75)];
+    const at = seamOffsets(here, there, 3.75, 4.5);
+    expect(at[3]).toBeCloseTo(at[2]!, 6);
+    expect(Math.abs(at[3]!)).toBeLessThan(CENTRE_PAIR_OFFSET_M);
   });
 
   it('holds a line still where there is no road on the other side', () => {

@@ -70,7 +70,17 @@ two chunks that meet there, editing one tile dirties both neighbouring
 chunks' meshes, not just the one the tile sits in (see
 [terrain.md](terrain.md) for why skipping the neighbour would show a seam).
 The road mesh (`roadsmesh.ts`) follows the same per-chunk rebuild discipline,
-so a drag across the map rebuilds only the chunks it actually crosses.
+but a road tile's picture is not its own business alone. The cross-section a
+tile draws is decided along its run: the junction ahead, the legs and control
+that junction has, a short block's other junction, the narrower road a lane
+closes for, a slip road beside a motorway. The tile beside it then bends its
+kerb and paint to meet it. So a changed road tile, or a changed junction
+control, rebuilds every chunk that holds a tile within `SECTION_REACH_TILES`
+along either axis of it — the longest of those walks, the lane-drop taper —
+plus one for the bend, and one tile either side of that line for the
+junction's legs. Rebuilding only the tile's own chunk left a turn bay that a
+new signal opened drawn at full width on one side of a chunk seam and at its
+old width on the other, a notch in the kerb.
 
 Roads off the grid are drawn separately, by `freeroadmesh.ts`, from the road
 network the worker sends whenever it changes. Each free segment's

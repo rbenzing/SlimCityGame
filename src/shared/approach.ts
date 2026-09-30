@@ -268,6 +268,9 @@ export function approachZoneTiles(classId: RoadClassId): number {
   return APPROACH_ZONE_BY_CLASS[classId];
 }
 
+/** The deepest approach zone any class has. */
+export const MAX_APPROACH_ZONE_TILES = Math.max(...Object.values(APPROACH_ZONE_BY_CLASS));
+
 /**
  * What an approach allows when nobody has restricted it: everything the
  * default lane sets between them offer, which is every turn but the U.

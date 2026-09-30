@@ -4,6 +4,8 @@ import {
   roadTileVertices,
   RoadMeshRenderer,
   dashSegments,
+  chunksReading,
+  emitLaneUseArrow,
   emitTurnArrow,
   crosswalkBarOffsets,
   junctionArmLayout,
@@ -46,10 +48,12 @@ import {
   kerbReturnRadiusOf,
   kerbWidthOf,
   presetProfileForTier,
+  PRESET_LANE_WIDTH_M,
 } from '../shared/roadprofile';
 import { BIKE_PAINT_MAX_WIDTH_M, EDGE_LINE_MARGIN_M, markingPlan } from './roadmarkings';
-import { CHUNK_TILES, TILE_METERS } from '../shared/constants';
+import { CHUNK_TILES, CHUNKS_PER_SIDE, TILE_METERS } from '../shared/constants';
 import { DEFAULT_ALLOWED, Movement } from '../shared/approach';
+import { SECTION_REACH_TILES } from '../shared/approachzone';
 
 const flatHeightAt = (): number => 0;
 
@@ -2460,23 +2464,22 @@ describe('roadTileVertices — One-Way (tier 6, UI-SPEC §6.7 Roads v3)', () => 
       const colorTriples = toTriples(colors);
       const centerX = 0.5 * TILE_METERS;
       const centerZ = 3.5 * TILE_METERS;
-      let sawHeadVertex = false;
+      const head: number[] = [];
       for (let i = 0; i < posTriples.length; i++) {
         if (!isMarkingWhite(colorTriples[i] as number[])) continue;
         const worldX = (posTriples[i] as number[])[0] as number;
-        // The dashed centerline and the arrow's stem never exceed ±0.15m
+        // The dashed centerline and the arrow's stem never exceed ±0.16m
         // across the travel axis; only the arrow's head wings reach further —
         // isolating them lets us check orientation unambiguously.
         // The arrow's head wings reach past the stem but stay well inside the
         // edge lines, which sit at the carriageway edge.
         const across = Math.abs(worldX - centerX);
-        if (across > 0.2 && across < 2) {
-          sawHeadVertex = true;
-          const worldZ = (posTriples[i] as number[])[2] as number;
-          expect(worldZ).toBeGreaterThan(centerZ);
-        }
+        if (across > 0.2 && across < 2) head.push((posTriples[i] as number[])[2] as number);
       }
-      expect(sawHeadVertex).toBe(true);
+      expect(head.length).toBeGreaterThan(0);
+      // A standard head is more than half its arrow, so its base crosses the
+      // arrow's middle; the head as a whole lies ahead of it.
+      expect(head.reduce((s, v) => s + v, 0) / head.length).toBeGreaterThan(centerZ);
     });
 
     it('on a horizontal run, the arrow head sits toward the low->high (+X) coordinate', () => {
@@ -2486,18 +2489,15 @@ describe('roadTileVertices — One-Way (tier 6, UI-SPEC §6.7 Roads v3)', () => 
       const colorTriples = toTriples(colors);
       const centerX = 3.5 * TILE_METERS;
       const centerZ = 0.5 * TILE_METERS;
-      let sawHeadVertex = false;
+      const head: number[] = [];
       for (let i = 0; i < posTriples.length; i++) {
         if (!isMarkingWhite(colorTriples[i] as number[])) continue;
         const worldZ = (posTriples[i] as number[])[2] as number;
         const across = Math.abs(worldZ - centerZ);
-        if (across > 0.2 && across < 2) {
-          sawHeadVertex = true;
-          const worldX = (posTriples[i] as number[])[0] as number;
-          expect(worldX).toBeGreaterThan(centerX);
-        }
+        if (across > 0.2 && across < 2) head.push((posTriples[i] as number[])[0] as number);
       }
-      expect(sawHeadVertex).toBe(true);
+      expect(head.length).toBeGreaterThan(0);
+      expect(head.reduce((s, v) => s + v, 0) / head.length).toBeGreaterThan(centerX);
     });
 
     it('no arrow (no head-wing-range vertex) on a non-arrow tile', () => {
@@ -2688,24 +2688,59 @@ describe('RoadMeshRenderer', () => {
     expect(scene.children.length).toBe(0);
   });
 
-  it('rebuilds only chunks containing changed tiles', () => {
+  it('leaves alone a chunk the changed tile cannot reach', () => {
     const scene = new THREE.Scene();
     const renderer = new RoadMeshRenderer(scene, flatHeightAt);
-    // Tile (0,0) sits in chunk (0,0); tile (CHUNK_TILES, 0) sits in the next chunk over.
-    renderer.apply([
-      makeDelta(0, 0, RoadTier.TwoLane),
-      makeDelta(CHUNK_TILES, 0, RoadTier.TwoLane),
-    ]);
+    // Three chunks apart along the row: further than any tile's cross-section
+    // is decided from.
+    const far = 3 * CHUNK_TILES;
+    renderer.apply([makeDelta(0, 0, RoadTier.TwoLane), makeDelta(far, 0, RoadTier.TwoLane)]);
     expect(scene.children.length).toBe(2);
 
     const before = new Set(scene.children);
-    // Touch only the second chunk's tile.
-    renderer.apply([makeDelta(CHUNK_TILES, 0, RoadTier.Highway)]);
+    renderer.apply([makeDelta(far, 0, RoadTier.Highway)]);
     const after = new Set(scene.children);
 
     expect(after.size).toBe(2);
     const persisted = [...before].filter((mesh) => after.has(mesh));
     expect(persisted.length).toBe(1); // the untouched chunk's mesh instance is unchanged
+  });
+
+  it('redraws the chunk next door when a tile beside the seam changes', () => {
+    const scene = new THREE.Scene();
+    const renderer = new RoadMeshRenderer(scene, flatHeightAt);
+    renderer.apply([
+      makeDelta(CHUNK_TILES - 1, 0, RoadTier.TwoLane, E | W),
+      makeDelta(CHUNK_TILES, 0, RoadTier.TwoLane, E | W),
+    ]);
+    const before = new Set(scene.children);
+    renderer.apply([makeDelta(CHUNK_TILES - 1, 0, RoadTier.FourLane, E | W)]);
+    // The four-lane tile's neighbour across the seam bends to meet it, so its
+    // chunk is drawn again too.
+    expect([...before].filter((mesh) => scene.children.includes(mesh))).toHaveLength(0);
+  });
+
+  it('redraws the whole of a turn bay when a new control earns it, across a chunk seam', () => {
+    const scene = new THREE.Scene();
+    const renderer = new RoadMeshRenderer(scene, flatHeightAt);
+    // A street across a four-lane road, the junction two tiles short of a
+    // seam, so the bay's second tile is in the next chunk.
+    const jx = 3 * CHUNK_TILES - 2;
+    const jz = 4;
+    const deltas: RoadTileDelta[] = [];
+    for (let x = jx - 6; x <= jx + 6; x++) {
+      if (x !== jx) deltas.push(makeDelta(x, jz, RoadTier.TwoLane, E | W));
+    }
+    for (let z = 0; z <= jz + 6; z++) {
+      if (z !== jz) deltas.push(makeDelta(jx, z, RoadTier.FourLane, z === 0 ? S : N | S));
+    }
+    deltas.push(makeDelta(jx, jz, RoadTier.FourLane, N | E | S | W));
+    renderer.apply(deltas);
+    const before = new Set(scene.children);
+
+    renderer.setJunctionControls([{ x: jx, z: jz, control: 'signal' }]);
+
+    expect([...before].filter((mesh) => scene.children.includes(mesh))).toHaveLength(0);
   });
 
   it('never creates a median-tree mesh for a TwoLane-only city (no scene-graph cost when no avenues exist)', () => {
@@ -3072,8 +3107,6 @@ describe('roadTileVertices — a one-way street points the way it was drawn', ()
         undefined,
         flow,
       );
-      let widestZ = 0;
-      let widest = 0;
       const byZ = new Map<number, { lo: number; hi: number }>();
       toTriples(colors).forEach((c, i) => {
         if (!isMarkingWhite(c)) return;
@@ -3087,17 +3120,15 @@ describe('roadTileVertices — a one-way street points the way it was drawn', ()
         span.hi = Math.max(span.hi, x);
         byZ.set(z, span);
       });
-      for (const [z, span] of byZ) {
-        const width = span.hi - span.lo;
-        if (width > widest) {
-          widest = width;
-          widestZ = z;
-        }
-      }
-      return widestZ;
+      // The head is the paint wider than the stem. A standard head is more
+      // than half its arrow, so its base crosses the arrow's middle; where the
+      // head lies as a whole is the end it points to.
+      const widest = Math.max(...[...byZ.values()].map((s) => s.hi - s.lo));
+      const headRows = [...byZ].filter(([, s]) => s.hi - s.lo > widest / 2).map(([z]) => z);
+      return headRows.reduce((s, z) => s + z, 0) / headRows.length;
     };
-    // A southward arrow puts its widest paint past the tile's centre, a
-    // northward one before it.
+    // A southward arrow puts its head past the tile's centre, a northward one
+    // before it.
     const centre = TILE_METERS / 2;
     expect(headEnd(RoadFlow.South)).toBeGreaterThan(centre);
     expect(headEnd(RoadFlow.None)).toBeGreaterThan(centre); // the low->high default
@@ -4034,6 +4065,119 @@ describe('a section is laid left to right in the direction the road runs', () =>
       // The line is 0.15 m wide; its outer edge is what was found.
       expect(Math.abs(edge), `flow ${flow}`).toBeCloseTo(Math.abs(rightEdge) + 0.075, 1);
     }
+  });
+});
+
+describe('which chunks a road or junction change redraws', () => {
+  const key = (tx: number, tz: number): number =>
+    Math.floor(tz / CHUNK_TILES) * CHUNKS_PER_SIDE + Math.floor(tx / CHUNK_TILES);
+
+  it('reaches a turn bay across the chunk seam two tiles from its junction', () => {
+    // The junction two tiles short of a seam: the bay's second tile is in the
+    // next chunk, which drew a notch in the kerb when it was left alone.
+    const jx = 3 * CHUNK_TILES - 2;
+    const jz = 5 * CHUNK_TILES + 4;
+    expect(chunksReading(jx, jz).has(key(jx + 2, jz))).toBe(true);
+  });
+
+  it('reaches as far along the run as a cross-section is decided from, and the tile that bends to it', () => {
+    const x = 5 * CHUNK_TILES;
+    const z = 5 * CHUNK_TILES + 8;
+    const reach = SECTION_REACH_TILES + 1;
+    const read = chunksReading(x, z);
+    expect(read.has(key(x + reach, z))).toBe(true);
+    expect(read.has(key(x - reach, z))).toBe(true);
+    expect(read.has(key(x, z + reach))).toBe(true);
+    expect(read.has(key(x, z - reach))).toBe(true);
+  });
+
+  it("takes in a junction's legs, one tile off the run", () => {
+    // A tile on the last row of its chunk: the leg beside it is in the next.
+    const x = 6 * CHUNK_TILES + 8;
+    const z = 6 * CHUNK_TILES + CHUNK_TILES - 1;
+    expect(chunksReading(x, z).has(key(x + SECTION_REACH_TILES, z + 1))).toBe(true);
+  });
+
+  it('leaves alone a chunk off both axes, which no run through the tile reaches', () => {
+    const x = 5 * CHUNK_TILES + 8;
+    const z = 5 * CHUNK_TILES + 8;
+    expect(chunksReading(x, z).has(key(x + CHUNK_TILES, z + CHUNK_TILES))).toBe(false);
+  });
+
+  it('stays on the map at its edge', () => {
+    for (const k of chunksReading(0, 0)) {
+      expect(k).toBeGreaterThanOrEqual(0);
+      expect(k).toBeLessThan(CHUNKS_PER_SIDE * CHUNKS_PER_SIDE);
+    }
+  });
+});
+
+describe('pavement arrows are the standard sizes', () => {
+  /** How far a heap of paint reaches along and across a vertical (north–south) lane. */
+  const extent = (positions: number[]): { along: number; across: number } => {
+    const t = toTriples(positions) as number[][];
+    const span = (k: 0 | 2): number =>
+      Math.max(...t.map((p) => p[k]!)) - Math.min(...t.map((p) => p[k]!));
+    return { along: span(2), across: span(0) };
+  };
+  const laneArrow = (movements: number): { along: number; across: number } => {
+    const positions: number[] = [];
+    emitLaneUseArrow(positions, [], true, 0, 0, 0, 1, movements, () => 0);
+    return extent(positions);
+  };
+
+  it('paints a through arrow 9.5 ft long', () => {
+    expect(laneArrow(Movement.Through).along).toBeCloseTo(2.9, 2);
+  });
+
+  it('paints a turn arrow 8 ft long', () => {
+    expect(laneArrow(Movement.Left).along).toBeCloseTo(2.44, 2);
+    expect(laneArrow(Movement.Right).along).toBeCloseTo(2.44, 2);
+  });
+
+  it('paints a turn-and-through arrow 12.75 ft long', () => {
+    expect(laneArrow(Movement.Left | Movement.Through).along).toBeCloseTo(3.89, 2);
+    expect(laneArrow(Movement.Left | Movement.Through | Movement.Right).along).toBeCloseTo(3.89, 2);
+  });
+
+  it('keeps every arrow inside a lane, whatever it offers', () => {
+    for (const m of [
+      Movement.Through,
+      Movement.Left,
+      Movement.Left | Movement.Right,
+      Movement.Left | Movement.Through | Movement.Right,
+    ]) {
+      expect(laneArrow(m).across, `movements ${m}`).toBeLessThan(PRESET_LANE_WIDTH_M);
+    }
+  });
+
+  it("gives a two-way turn lane's arrows a turn arrow's length", () => {
+    const positions: number[] = [];
+    emitTurnArrow(positions, [], RoadFlow.South, 0, 0, 0, () => 0);
+    expect(extent(positions).along).toBeCloseTo(2.44, 2);
+  });
+
+  it("gives a one-way street's direction arrows a through arrow's length", () => {
+    const { positions, colors } = roadTileVertices(
+      0,
+      0,
+      RoadTier.OneWay,
+      N | S,
+      flatHeightAt,
+      undefined,
+      undefined,
+      undefined,
+      RoadFlow.South,
+    );
+    // The arrow is the white paint near the centreline that is not the lane
+    // line down the middle of the tile, which is narrower than its stem.
+    const arrow = toTriples(positions).filter((p, i) => {
+      const c = toTriples(colors)[i] as number[];
+      const across = Math.abs((p as number[])[0]! - TILE_METERS / 2);
+      return isMarkingWhite(c) && across > 0.1 && across < 3;
+    }) as number[][];
+    const zs = arrow.map((p) => p[2]!);
+    expect(Math.max(...zs) - Math.min(...zs)).toBeCloseTo(2.9, 2);
   });
 });
 
