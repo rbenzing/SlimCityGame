@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.20.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.19.0...slimcity-v1.20.0) (2026-09-30)
+
+
+### Features
+
+* **roads:** the median opens where a street crosses a six-lane road ([c744b13](https://github.com/rbenzing/SlimCityGame/commit/c744b13b5e6cd411db95bc5761670be3542d572c))
+
 ## [1.19.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.18.0...slimcity-v1.19.0) (2026-09-30)
 
 
