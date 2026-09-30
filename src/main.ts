@@ -1037,6 +1037,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         bins: farms.partCount('bin'),
         barnRoofs: farms.partCount('barnRoof'),
         herd: farms.herdSize(),
+        litWindows: farms.litWindowCount(),
+        trucks: farms.truckCount(),
       });
       (hook as Record<string, unknown>).soilAt = (x: number, z: number): number =>
         clientGrid.soil[z * clientGrid.size + x] ?? 0;
@@ -1370,6 +1372,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     landmarks.setNightFactor(nightFactor);
     utilityKits.setNightFactor(nightFactor);
     farms.setNightFactor(nightFactor);
+    farms.setDayFraction(dayT); // the farm truck works sunrise to sunset
 
     // Seasonal foliage tint: only touch materials when the
     // calendar month actually changes.

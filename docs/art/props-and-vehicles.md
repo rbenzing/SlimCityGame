@@ -63,6 +63,10 @@ Static parked cars are an occupancy signal, not decoration:
   ~2.4×2.4×7 m, using the same parked-vehicle silhouette; commercial lots
   park cars. Homes never street-park: a home that fronts a street parks on
   its own drive — see [Residential lots](buildings.md#residential-lots).
+  A farm keeps a pickup in its yard, the lorry silhouette at a full-size
+  pickup's 5.31 × 2.03 × 1.91 m, which does the rounds of the yard by day and
+  parks by the farmhouse at night — see
+  [the farms spec](../engineering/features/farms.md).
 - **Orientation**: a stall is parallel street parking — the car's long axis
   runs along the road, not perpendicular to it — the standard read for a car
   actually parked at a kerb or in a row.

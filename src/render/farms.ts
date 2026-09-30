@@ -17,12 +17,22 @@
 import * as THREE from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { mix, uniform, vec3 } from 'three/tsl';
-import { BuildingState } from '../shared/types';
+import { BuildingState, VehicleKind } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../shared/types';
-import { NIGHT_BODY_TINT } from './buildings';
+import {
+  COOL_WINDOW_COLOR,
+  GLASS_TINT_PUNCHED,
+  NIGHT_BODY_TINT,
+  WARM_WINDOW_COLOR,
+  WINDOW_EMISSIVE_STRENGTH,
+  isBuildingLitEligible,
+  isWindowCool,
+  isWindowLit,
+} from './buildings';
 import { massingLifecycleTint, InstancedSlotPool } from './massing';
 import { materialUnit, type MaterialName } from './palette';
 import { maxHeightOverRect } from './footprint';
+import { VEHICLE_PALETTE_HEX, VehicleKitPool } from './vehicles';
 import {
   BARN_EAVE_SHARE,
   BIN_DIAMETER_M,
@@ -31,12 +41,17 @@ import {
   HOUSE_RIDGE_M,
   SILO_DIAMETER_M,
   SILO_HEIGHT_M,
+  TRUCK_SIZE_M,
+  WINDOW_H_M,
+  WINDOW_W_M,
   orchardTrees,
   paddockHerd,
   planFarm,
   type FarmBox,
   type FarmPlan,
   type FarmRect,
+  type FarmRound,
+  type FarmWindow,
 } from './farmlot';
 
 /** A post every 4 m, 1.3 m high, carrying rails at these heights. */
@@ -58,9 +73,25 @@ const SILO_DOME_RISE = 0.5;
 /** A barn roof and a house roof overhang their walls a little. */
 const ROOF_OVERHANG_M = 0.4;
 
+/** A window pane stands this far proud of its wall and is this thick. */
+const PANE_DEPTH_M = 0.06;
+/** The farm truck drives its yard at 15 km/h. */
+export const TRUCK_SPEED_M_PER_S = 15 / 3.6;
+/** How long it stops by the silos on each round. */
+export const TRUCK_STOP_S = 15;
+/** It works from sunrise to sunset on the game's clock, in hours. */
+export const TRUCK_WORK_FROM_H = 6;
+export const TRUCK_WORK_TO_H = 18;
+
 const INITIAL_CAPACITY = 64;
+const INITIAL_TRUCK_CAPACITY = 16;
+
+/** A farmhouse window: dark glass, or lit warm or cool. */
+type Pane = 'window' | 'windowWarm' | 'windowCool';
+const PANES: readonly Pane[] = ['window', 'windowWarm', 'windowCool'];
 
 type Part =
+  | Pane
   | 'barnRoof'
   | 'barnGable'
   | 'houseBody'
@@ -76,8 +107,11 @@ type Part =
   | 'rail'
   | 'cow';
 
-/** Each part's surface. A barn's gables take its own paint instead (placeRoof). */
-const PART_COLOUR: Readonly<Record<Exclude<Part, 'cow' | 'barnGable'>, MaterialName>> = {
+/**
+ * Each part's surface. A barn's gables take its own paint instead (placeRoof),
+ * and a window its glass or its light (placeWindows).
+ */
+const PART_COLOUR: Readonly<Record<Exclude<Part, Pane | 'cow' | 'barnGable'>, MaterialName>> = {
   barnRoof: 'metalPlates',
   houseBody: 'whitePlaster',
   houseRoof: 'slateRoof',
@@ -193,6 +227,9 @@ function cowShape(): THREE.BufferGeometry {
 }
 
 const SHAPES: Readonly<Record<Part, () => THREE.BufferGeometry>> = {
+  window: baseBox,
+  windowWarm: baseBox,
+  windowCool: baseBox,
   barnRoof: () => roofSlopes(GAMBREL),
   barnGable: () => roofGables(GAMBREL),
   houseBody: baseBox,
@@ -249,6 +286,70 @@ export function cowPose(paddock: FarmRect, farmId: number, index: number, tMs: n
 }
 
 // ---------------------------------------------------------------------------
+// The farm truck
+// ---------------------------------------------------------------------------
+
+/** A farm truck's round, measured: its points, how far along each one lies, and where it stops. */
+export interface TruckRound {
+  points: readonly FarmRound[];
+  /** Distance along the round to each point, metres. */
+  along: readonly number[];
+  length: number;
+  /** Distance along the round to the stop by the silos. */
+  stopAt: number;
+}
+
+export function measureTruckRound(points: readonly FarmRound[], stop: number): TruckRound {
+  const along = [0];
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1]!;
+    const b = points[i]!;
+    along.push(along[i - 1]! + Math.hypot(b.x - a.x, b.z - a.z));
+  }
+  return { points, along, length: along[along.length - 1]!, stopAt: along[stop] ?? 0 };
+}
+
+/** How long one round takes, seconds: the driving and the stop. */
+export function truckLapSeconds(round: TruckRound): number {
+  return round.length / TRUCK_SPEED_M_PER_S + TRUCK_STOP_S;
+}
+
+/**
+ * Where the truck is `elapsedS` seconds into a round: driving at its yard
+ * speed, standing at the stop for TRUCK_STOP_S, then on back to where it
+ * parks, where it stays once the round is done. It faces the way it drives.
+ * A pure function of its arguments.
+ */
+export function truckPose(round: TruckRound, elapsedS: number): CowPose {
+  const t = Math.max(0, elapsedS);
+  const toStop = round.stopAt / TRUCK_SPEED_M_PER_S;
+  const s =
+    t < toStop
+      ? t * TRUCK_SPEED_M_PER_S
+      : t < toStop + TRUCK_STOP_S
+        ? round.stopAt
+        : Math.min(round.length, (t - TRUCK_STOP_S) * TRUCK_SPEED_M_PER_S);
+  // The segment the distance falls in; parked at the end, it faces the way it came in.
+  let i = 1;
+  while (i < round.points.length - 1 && round.along[i]! < s) i++;
+  const a = round.points[i - 1]!;
+  const b = round.points[i]!;
+  const span = round.along[i]! - round.along[i - 1]!;
+  const f = span > 0 ? Math.min(1, Math.max(0, (s - round.along[i - 1]!) / span)) : 0;
+  return {
+    x: a.x + (b.x - a.x) * f,
+    z: a.z + (b.z - a.z) * f,
+    yaw: Math.atan2(b.x - a.x, b.z - a.z),
+  };
+}
+
+/** Whether a farm works at this hour of the game's day. */
+export function truckWorkingAt(dayFraction: number): boolean {
+  const hour = (((dayFraction % 1) + 1) % 1) * 24;
+  return hour >= TRUCK_WORK_FROM_H && hour < TRUCK_WORK_TO_H;
+}
+
+// ---------------------------------------------------------------------------
 // The renderer
 // ---------------------------------------------------------------------------
 
@@ -267,6 +368,38 @@ interface Herd {
   slots: number[];
 }
 
+/** A farmhouse's windows: where each pane stands, which pool it is in, and its slot there. */
+interface HouseLights {
+  farmId: number;
+  /** Only a lived-in house lights. */
+  lightable: boolean;
+  /** The lifecycle tint its dark glass takes. */
+  tint: readonly [number, number, number];
+  matrices: THREE.Matrix4[];
+  panes: Pane[];
+  slots: number[];
+}
+
+/** A farm's truck: its round, its slot, and when its round began, or null while it is parked. */
+interface Truck {
+  round: TruckRound;
+  slot: number;
+  lapStartMs: number | null;
+}
+
+/** The emissive material a lit pane is drawn in: its light by day too, since it is lit only at night. */
+function litPaneMaterial(
+  hex: number,
+  nightFactor: ReturnType<typeof uniform<'float'>>,
+): MeshStandardNodeMaterial {
+  const c = new THREE.Color(hex);
+  const light = vec3(c.r, c.g, c.b);
+  const material = new MeshStandardNodeMaterial({ roughness: 1, metalness: 0 });
+  material.colorNode = light;
+  material.emissiveNode = light.mul(nightFactor).mul(WINDOW_EMISSIVE_STRENGTH);
+  return material;
+}
+
 /** Takes a slot in `part`'s pool at `matrix`, painted a palette surface or a catalog colour. */
 type Put = (part: Part, colour: MaterialName | number, matrix: THREE.Matrix4) => void;
 
@@ -279,6 +412,11 @@ export class FarmRenderer {
   /** building id -> the slots it holds in each pool. */
   private readonly owned = new Map<number, Array<[Part, number]>>();
   private readonly herds = new Map<number, Herd>();
+  private readonly lights = new Map<number, HouseLights>();
+  private readonly trucks = new Map<number, Truck>();
+  private readonly truckPool: VehicleKitPool;
+  private nightFactor = 0;
+  private working = false;
 
   constructor(
     scene: THREE.Scene,
@@ -292,13 +430,23 @@ export class FarmRenderer {
     const material = new MeshStandardNodeMaterial({ roughness: 1, metalness: 0 });
     // Instance colour carries each part's surface; the night ramp darkens all of it.
     material.colorNode = mix(vec3(1, 1, 1), vec3(...NIGHT_BODY_TINT), this.nightFactorUniform);
+    const materials: Partial<Record<Part, MeshStandardNodeMaterial>> = {
+      windowWarm: litPaneMaterial(WARM_WINDOW_COLOR, this.nightFactorUniform),
+      windowCool: litPaneMaterial(COOL_WINDOW_COLOR, this.nightFactorUniform),
+    };
     const pools = {} as Record<Part, InstancedSlotPool>;
     for (const part of Object.keys(SHAPES) as Part[]) {
-      pools[part] = new InstancedSlotPool(scene, SHAPES[part](), material, INITIAL_CAPACITY);
+      pools[part] = new InstancedSlotPool(
+        scene,
+        SHAPES[part](),
+        materials[part] ?? material,
+        INITIAL_CAPACITY,
+      );
     }
     // The herd moves every frame, so its bounds are never still enough to cull by.
     pools.cow.getMesh().frustumCulled = false;
     this.pools = pools;
+    this.truckPool = new VehicleKitPool(scene, VehicleKind.Truck, INITIAL_TRUCK_CAPACITY);
   }
 
   apply(delta: BuildingDelta): void {
@@ -309,11 +457,23 @@ export class FarmRenderer {
     }
     for (const pool of Object.values(this.pools)) pool.commit();
     this.pools.cow.getMesh().frustumCulled = false;
+    this.truckPool.finalize();
+    // The trucks move every frame too.
+    this.truckPool.mesh.frustumCulled = false;
   }
 
-  /** Walks every herd to where it stands at `tMs`, the caller's visual clock. */
+  /**
+   * Walks every herd and drives every truck to where it is at `tMs`, the
+   * caller's visual clock. A parked truck starts its round when the working
+   * day has begun, and a round under way at the day's end is finished before
+   * it parks, so it never jumps.
+   */
   update(tMs: number): void {
-    if (this.herds.size === 0) return;
+    this.walkHerds(tMs);
+    this.driveTrucks(tMs);
+  }
+
+  private walkHerds(tMs: number): void {
     for (const herd of this.herds.values()) {
       herd.slots.forEach((slot, i) => {
         const pose = cowPose(herd.paddock, herd.farmId, i, tMs);
@@ -324,11 +484,77 @@ export class FarmRenderer {
         this.pools.cow.setMatrixAt(slot, _matrix);
       });
     }
-    this.pools.cow.getMesh().instanceMatrix.needsUpdate = true;
+    if (this.herds.size > 0) this.pools.cow.getMesh().instanceMatrix.needsUpdate = true;
+  }
+
+  private driveTrucks(tMs: number): void {
+    for (const truck of this.trucks.values()) {
+      if (truck.lapStartMs === null && this.working) truck.lapStartMs = tMs;
+      let elapsed = truck.lapStartMs === null ? 0 : (tMs - truck.lapStartMs) / 1000;
+      const lap = truckLapSeconds(truck.round);
+      if (truck.lapStartMs !== null && elapsed >= lap) {
+        if (this.working) {
+          const laps = Math.floor(elapsed / lap);
+          truck.lapStartMs += laps * lap * 1000;
+          elapsed -= laps * lap;
+        } else {
+          truck.lapStartMs = null;
+          elapsed = 0;
+        }
+      }
+      this.placeTruck(truck, truckPose(truck.round, elapsed));
+    }
+    if (this.trucks.size > 0) this.truckPool.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /** The time of day, 0 to 1 from midnight: what says whether the farms are working. */
+  setDayFraction(dayFraction: number): void {
+    this.working = truckWorkingAt(dayFraction);
   }
 
   setNightFactor(nightFactor: number): void {
-    this.nightFactorUniform.value = Math.min(1, Math.max(0, nightFactor));
+    const clamped = Math.min(1, Math.max(0, nightFactor));
+    this.nightFactorUniform.value = clamped;
+    if (clamped === this.nightFactor) return;
+    this.nightFactor = clamped;
+    let changed = false;
+    for (const lights of this.lights.values()) {
+      lights.panes.forEach((pane, i) => {
+        const want = this.paneFor(lights, i);
+        if (want === pane) return;
+        this.pools[pane].free(lights.slots[i]!);
+        this.setPane(lights, i, want);
+        changed = true;
+      });
+    }
+    if (changed) for (const pane of PANES) this.pools[pane].commit();
+  }
+
+  /** How many farmhouse windows are dark, lit warm and lit cool, across every farm. */
+  windowCounts(): Record<Pane, number> {
+    const counts: Record<Pane, number> = { window: 0, windowWarm: 0, windowCool: 0 };
+    for (const lights of this.lights.values()) for (const pane of lights.panes) counts[pane] += 1;
+    return counts;
+  }
+
+  /** How many farmhouse windows are lit, across every farm. */
+  litWindowCount(): number {
+    const { windowWarm, windowCool } = this.windowCounts();
+    return windowWarm + windowCool;
+  }
+
+  /** How many farm trucks there are. */
+  truckCount(): number {
+    return this.trucks.size;
+  }
+
+  /** Where the truck of farm `id` stands, for tests and the dev read-back. */
+  truckAt(id: number): { x: number; z: number } | null {
+    const truck = this.trucks.get(id);
+    if (!truck) return null;
+    this.truckPool.mesh.getMatrixAt(truck.slot, _matrix);
+    _position.setFromMatrixPosition(_matrix);
+    return { x: _position.x, z: _position.z };
   }
 
   /** Instances in one part's pool, for tests and the dev read-back. */
@@ -347,6 +573,69 @@ export class FarmRenderer {
     for (const [part, slot] of this.owned.get(id) ?? []) this.pools[part].free(slot);
     this.owned.delete(id);
     this.herds.delete(id);
+    const lights = this.lights.get(id);
+    if (lights) lights.panes.forEach((pane, i) => this.pools[pane].free(lights.slots[i]!));
+    this.lights.delete(id);
+    const truck = this.trucks.get(id);
+    if (truck) this.truckPool.free(truck.slot);
+    this.trucks.delete(id);
+  }
+
+  /** Which pool window `i` belongs in at the current night factor. */
+  private paneFor(lights: HouseLights, i: number): Pane {
+    if (!lights.lightable || !isWindowLit(lights.farmId, i, this.nightFactor)) return 'window';
+    return isWindowCool(lights.farmId, i) ? 'windowCool' : 'windowWarm';
+  }
+
+  /** Puts window `i` in `pane`'s pool: dark glass in its lifecycle tint, or a light. */
+  private setPane(lights: HouseLights, i: number, pane: Pane): void {
+    const pool = this.pools[pane];
+    const slot = pool.allocate();
+    pool.setMatrixAt(slot, lights.matrices[i]!);
+    if (pane === 'window') {
+      const [r, g, b] = GLASS_TINT_PUNCHED;
+      _color.setRGB(r * lights.tint[0], g * lights.tint[1], b * lights.tint[2]);
+    } else {
+      _color.setRGB(1, 1, 1);
+    }
+    pool.setColorAt(slot, _color);
+    lights.panes[i] = pane;
+    lights.slots[i] = slot;
+  }
+
+  /** The farmhouse's panes, each standing just proud of its wall, facing out. */
+  private placeWindows(building: BuildingInstance, house: FarmBox, windows: FarmWindow[]): void {
+    const ground = maxHeightOverRect(this.heightAt, house.x0, house.z0, house.x1, house.z1);
+    const lights: HouseLights = {
+      farmId: building.id,
+      lightable: isBuildingLitEligible(building.state),
+      tint: massingLifecycleTint(building.state),
+      matrices: windows.map((w) => {
+        _position.set(
+          w.x + (w.nx * PANE_DEPTH_M) / 2,
+          ground + w.sill,
+          w.z + (w.nz * PANE_DEPTH_M) / 2,
+        );
+        _quaternion.setFromAxisAngle(_yAxis, Math.atan2(w.nx, w.nz));
+        _scale.set(WINDOW_W_M, WINDOW_H_M, PANE_DEPTH_M);
+        return new THREE.Matrix4().compose(_position, _quaternion, _scale);
+      }),
+      panes: [],
+      slots: [],
+    };
+    windows.forEach((_, i) => this.setPane(lights, i, this.paneFor(lights, i)));
+    this.lights.set(building.id, lights);
+  }
+
+  /** Stands a truck at `pose`, its wheels on the ground. */
+  private placeTruck(truck: Truck, pose: CowPose): void {
+    const [w, h, l] = TRUCK_SIZE_M;
+    // The kit's base is at y = -0.5, so its middle rides half its height up.
+    _position.set(pose.x, this.heightAt(pose.x, pose.z) + h / 2, pose.z);
+    _quaternion.setFromAxisAngle(_yAxis, pose.yaw);
+    _scale.set(w, h, l);
+    _matrix.compose(_position, _quaternion, _scale);
+    this.truckPool.mesh.setMatrixAt(truck.slot, _matrix);
   }
 
   private place(building: BuildingInstance): void {
@@ -374,6 +663,7 @@ export class FarmRenderer {
     const eave = entry.height * BARN_EAVE_SHARE;
     this.placeRoof('barnRoof', 'barnGable', entry.color, plan.barn, eave, entry.height - eave, put);
     this.placeHouse(plan.house, put);
+    this.placeWindows(building, plan.house, plan.houseWindows);
     for (const silo of plan.silos)
       this.placeRound(
         'silo',
@@ -398,7 +688,22 @@ export class FarmRenderer {
         herd.slots.push(slots[slots.length - 1]![1]);
       }
       this.herds.set(building.id, herd);
-      this.update(0);
+      this.walkHerds(0);
+    }
+
+    // A working farm's truck, parked until its day begins.
+    if (plan.truckRoute && building.state === BuildingState.Active) {
+      const truck: Truck = {
+        round: measureTruckRound(plan.truckRoute, plan.truckStop),
+        slot: this.truckPool.allocate(),
+        lapStartMs: null,
+      };
+      _color.setHex(
+        VEHICLE_PALETTE_HEX[Math.floor(hash1(building.id * 61 + 5) * VEHICLE_PALETTE_HEX.length)]!,
+      );
+      this.truckPool.mesh.setColorAt(truck.slot, _color);
+      this.placeTruck(truck, truckPose(truck.round, 0));
+      this.trucks.set(building.id, truck);
     }
   }
 

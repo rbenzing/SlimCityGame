@@ -116,7 +116,7 @@ export const COOL_WINDOW_COLOR = 0xcfe4ff;
  * night reads as dimmer + cooler than day.
  */
 export const NIGHT_BODY_TINT: readonly [number, number, number] = [0.34, 0.38, 0.46];
-const WINDOW_EMISSIVE_STRENGTH = 2.2;
+export const WINDOW_EMISSIVE_STRENGTH = 2.2;
 
 /** Industrial ground floor: a row of wide roll-up loading doors per face. */
 const INDUSTRIAL_DOOR_BAYS = 3;
@@ -244,7 +244,7 @@ const MULLION_MARGIN_INDUSTRIAL = 0.34; // "sparse small windows"
 const MULLION_MARGIN_GROUND_FLOOR = 0.03; // storefront: taller glazing, thin frame
 
 const GLASS_TINT_CURTAIN: RGB = [0.55, 0.68, 0.8];
-const GLASS_TINT_PUNCHED: RGB = [0.22, 0.26, 0.3]; // deep-set punched glass, in shadow
+export const GLASS_TINT_PUNCHED: RGB = [0.22, 0.26, 0.3]; // deep-set punched glass, in shadow
 const GLASS_REFLECTANCE_MIN = 0.85;
 const GLASS_REFLECTANCE_MAX = 1.15;
 /** Salts a fresh draw off the existing per-window seed, decorrelated from the lit-threshold/warm-cool draws already taken from it. */

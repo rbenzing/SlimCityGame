@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,191 tests passing across 144 test files, run 2026-09-30.
+**Test suite:** 4,232 tests passing across 144 test files, run 2026-09-30.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -85,8 +85,6 @@ barriers. Full detail in History, §10 below.
 - A batch is not atomic: when the world refuses one command, the ones before
   it stay laid, and the failed batch has no undo. The road tool refuses a
   corridor before sending it, so play does not reach this through the tool.
-- Farms: a farmhouse lights no window at night, and no farm truck works the
-  yard.
 
 Before writing "not built" anywhere in this document, check the code.
 
@@ -233,6 +231,31 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Farm polish: the farmhouse at night, and the farm truck (2026-09-30)
+
+The two farm follow-ups from the Open list
+([farms](engineering/features/farms.md)).
+
+- **The farmhouse lights up at night.** It had no windows at all: the barn is
+  the farm's pickable body, on a material with no window grid, and the
+  farmhouse is part of the farm kit. It now has eight windows of the
+  commonest double-hung size, 36 × 60 inches: two in front facing the road,
+  two behind, and one at ground level and one up in the gable at each end.
+  By day they are dark glass. At night each one lights by the town's own rule,
+  `isWindowLit` keyed by the farm's id, warm or occasionally cool, more of
+  them as the night deepens. An abandoned farmhouse stays dark.
+- **A pickup works the yard.** Each working farm has one, at a full-size
+  regular-cab pickup's 5.31 × 2.03 × 1.91 m. It drives a round of its yard at
+  15 km/h: out along the drive, behind the barn and its bins, past the
+  silos, and back along the barn's front. It stops by the silos for 15 s. It
+  works sunrise to sunset on the game's clock and parks on the drive by the
+  house overnight. A round under way at sunset is finished before it parks,
+  so it never jumps. It is drawn, not simulated, and carries nothing.
+
+Checked in the browser with the farm district script, which now shoots a
+farmhouse close up by night and by day and reads back lit windows and
+trucks: 16 farms, 16 trucks, 72 windows lit at night.
 
 ### Two kerb steps: a short stub's taper, and a ramp node (2026-09-30)
 
