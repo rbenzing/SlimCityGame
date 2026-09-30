@@ -99,24 +99,66 @@ export function taperedCrossSection(
 ): RoadProfile {
   if (closed <= 0) return wide;
   const pieces = wide.pieces.map((p) => ({ ...p }));
-  // Outermost first, on alternating sides, so a two-way road closes its two
-  // kerbside lanes together rather than eating one side of the road.
-  const order = droppingOrder(pieces, reversed);
-  let left = closed;
-  for (const index of order) {
-    if (left <= 1e-9) break;
-    const piece = pieces[index]!;
-    const take = Math.min(piece.width, left);
-    piece.width -= take;
-    left -= take;
+  /** Closes up to `amount` from the lanes in `order`, first to last; returns what it could not. */
+  const close = (order: readonly number[], amount: number): number => {
+    let left = amount;
+    for (const index of order) {
+      if (left <= 1e-9) break;
+      const piece = pieces[index]!;
+      const take = Math.min(piece.width, left);
+      piece.width -= take;
+      left -= take;
+    }
+    return left;
+  };
+  const sides = directionSides(pieces, reversed);
+  if (sides) {
+    // A two-way road closes each direction's kerbside lane together, so its
+    // centre line runs straight down the taper. An uneven road first gives up
+    // the width its wider side has over the other.
+    const width = (order: readonly number[]): number =>
+      order.reduce((sum, i) => sum + pieces[i]!.width, 0);
+    const excess = width(sides.right) - width(sides.left);
+    const wider = excess > 0 ? sides.right : sides.left;
+    const evening = Math.min(closed, Math.abs(excess));
+    const rest = closed - evening + close(wider, evening);
+    // Half from each side; whatever one side has not got, the other gives.
+    const unclosed = close(sides.right, rest / 2) + close(sides.left, rest / 2);
+    close(sides.left, close(sides.right, unclosed));
+  } else {
+    close(droppingOrder(pieces, reversed), closed);
   }
   return { ...wide, pieces: pieces.filter((p) => !isDroppable(p) || p.width > 1e-9) };
 }
 
 /**
- * The order the travel lanes close in: the outermost on each side, working
- * inward, taking the wider side first so an uneven road closes down to an even
- * one rather than into its own centreline.
+ * The travel lanes of a two-way road by the direction they carry, each
+ * outermost first: the oncoming lanes on the driver's left and their own on
+ * the right. Null for a road whose lanes all run one way, or that never said
+ * which way they run.
+ */
+function directionSides(
+  pieces: readonly LanePiece[],
+  reversed: boolean,
+): { left: number[]; right: number[] } | null {
+  const travel = pieces
+    .map((piece, index) => ({ piece, index }))
+    .filter((e) => isDroppable(e.piece));
+  // Read from the driver's left to their right, whichever end of the section
+  // that is.
+  if (reversed) travel.reverse();
+  const back = travel.filter((e) => e.piece.flow === 'back');
+  const fwd = travel.filter((e) => e.piece.flow === 'fwd');
+  if (back.length === 0 || fwd.length === 0 || back.length + fwd.length !== travel.length) {
+    return null;
+  }
+  return { left: back.map((e) => e.index), right: fwd.map((e) => e.index).reverse() };
+}
+
+/**
+ * The order a road with no oncoming lanes closes its travel lanes in: the
+ * driver's right-hand lane first, then the outermost of what is left on
+ * either side in turn, working inward.
  */
 function droppingOrder(pieces: readonly LanePiece[], reversed: boolean): number[] {
   const travel = pieces

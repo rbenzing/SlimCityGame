@@ -93,6 +93,39 @@ describe('what a taper takes off the road', () => {
   it('hands back the same road when nothing closes', () => {
     expect(taperedCrossSection(four, 0)).toBe(four);
   });
+
+  it('closes both directions’ kerbside lanes together, so the centre line runs straight', () => {
+    // Travel width either side of the line between the two directions.
+    const halves = (p: RoadProfile): [number, number] => {
+      const travel = p.pieces.filter((x) => x.kind === 'travel');
+      const sum = (flow: 'fwd' | 'back'): number =>
+        travel.filter((x) => x.flow === flow).reduce((s, x) => s + x.width, 0);
+      return [sum('back'), sum('fwd')];
+    };
+    for (const closed of [0.5, 2, 3.75, 6, 7.5]) {
+      const [back, fwd] = halves(taperedCrossSection(four, closed));
+      expect(back, `closed ${closed}`).toBeCloseTo(fwd, 9);
+      expect(back + fwd).toBeCloseTo(carriagewayWidth(four) - closed, 9);
+    }
+  });
+
+  it('takes an uneven road down to an even one first, then closes both sides together', () => {
+    // Two lanes one way and three the other.
+    const lane = (flow: 'fwd' | 'back') => ({ kind: 'travel' as const, width: 3.5, flow });
+    const uneven: RoadProfile = {
+      class: 'urban',
+      pieces: [lane('back'), lane('back'), lane('fwd'), lane('fwd'), lane('fwd')],
+    };
+    const widths = (closed: number): number[] =>
+      taperedCrossSection(uneven, closed)
+        .pieces.filter((p) => p.kind === 'travel')
+        .map((p) => p.width);
+    // The first 3.5 m is the wider side's kerbside lane, and nothing else.
+    expect(widths(2)).toEqual([3.5, 3.5, 3.5, 3.5, 1.5]);
+    expect(widths(3.5)).toEqual([3.5, 3.5, 3.5, 3.5]);
+    // Past that, the two sides give up the rest between them.
+    expect(widths(5.5)).toEqual([2.5, 3.5, 3.5, 2.5]);
+  });
 });
 
 describe('where along the taper a tile stands', () => {
