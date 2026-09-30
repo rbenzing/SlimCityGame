@@ -513,10 +513,18 @@ closing at 1:50 takes 175 m, about 10 tiles; at 1:10–1:15 it takes 35–50 m,
 about 3 tiles. The outermost travel lane on each side closes first, taking
 the wider side of an uneven road down to an even one; everything else the
 road carries (footways, parking, a reserved transit lane) survives the drop
-untouched. On a motorway or a divided road the lane closes by paint alone —
-the tarmac runs on at full width and the edge line moves inward, hatched
-into a gore, so a driver who misses the merge still has pavement to recover
-on; on a street the pavement narrows with the paint.
+untouched. A taper begins at full width, never part-closed: where the wide
+road is shorter than its own taper, as a four-lane stub of three tiles between
+a junction and a two-lane street is, the lanes close over the length the stub
+has, steeper than the ratio. Started part-closed, the stub leaves the junction
+already narrower than the junction box, and its kerb steps there. The lane
+that closes carries its merge arrow at the head of the taper, placed in the
+lane as wide as it is at that point. Placed further along, the taper has
+narrowed the lane to less than the arrow. On a
+motorway or a divided road the lane closes by paint alone — the tarmac runs
+on at full width and the edge line moves inward, hatched into a gore, so a
+driver who misses the merge still has pavement to recover on; on a street the
+pavement narrows with the paint.
 
 ## How roads meet: rank, replacement and transitions
 
@@ -773,8 +781,13 @@ carriageway running straight through, and nothing beside it but ramps — is
 drawn as the straight carriageway it is. Its lane lines and its left edge
 line run through unbroken; it grows no junction box and no rounded corners;
 its ramp-side edge line opens across the ramp's mouth and nowhere else; the
-ramp's asphalt is as wide as the ramp; and the auxiliary lane carries across
-the tile at full width instead of stopping short of it. Nothing approaching
+ramp's asphalt is as wide as the ramp; and the auxiliary lane is at full
+width over the half of the tile the ramp joins over, instead of stopping short
+of it. Over the other half, the tile bends to meet the plain motorway the way
+a straight run meets a narrower one. That is past the ramp at a diverge,
+where the lane has been left, and before it at a merge, where the lane has
+not yet begun. Drawn at full width across the whole tile, as a square box,
+the node stepped out at both ends, on the far side too. Nothing approaching
 it is a junction approach, so nothing is arrowed on the way in — not the
 motorway, and not the ramp's own last tile. A motorway meeting a motorway,
 or one that turns or ends where a ramp meets it, is not a ramp node.

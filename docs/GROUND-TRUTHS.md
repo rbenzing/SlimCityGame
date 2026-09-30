@@ -325,6 +325,14 @@ MUTCD citations below use 11th-edition section numbers.
   merge and the upstream half at a diverge. — [road-model.md](world-sim/road-model.md);
   `rampJoin` and `rampJoinAround` in `src/shared/corridor.ts`, `rampMouthAt`
   in `src/shared/approachzone.ts`, `emitRampTaper` in `src/render/roadsmesh.ts`
+- A road's edge never steps where its width changes; it bends. A lane drop
+  closes over a taper that begins at full width, never part-closed, and a
+  wide run shorter than its class's taper closes over the length it has, so
+  its kerb never steps where it leaves a junction. A ramp node carries its
+  auxiliary lane in full only over the half of the tile the ramp joins over,
+  and bends to the plain motorway over the other half. —
+  [road-model.md](world-sim/road-model.md); `narrowingAhead` in
+  `src/shared/approachzone.ts`, `roadTileVertices` in `src/render/roadsmesh.ts`
 - A sign faces the traffic it serves (MUTCD §2A.17 ¶01), and its facing comes
   from the direction of approaching traffic, not from the roadway edge it
   stands on (§2A.17 ¶02). On a one-way carriageway — a motorway, a ramp, a

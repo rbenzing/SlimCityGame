@@ -3856,29 +3856,39 @@ export function roadTileVertices(
   // same on an alley and a ramp. Width is width whatever the road is made of.
   const surfaceChanges = (nTier: RoadTier): boolean =>
     spec.paved !== quadSpecFor(nTier, presetProfileForTier(nTier)).paved;
-  const narrowsInto: Array<[number, 1 | -1, boolean]> =
-    connections === 2 && isCollinearMask(mask)
-      ? (
-          [
-            [hasN, neighbors.n, neighborHalves.n, -1, true],
-            [hasS, neighbors.s, neighborHalves.s, 1, true],
-            [hasE, neighbors.e, neighborHalves.e, 1, false],
-            [hasW, neighbors.w, neighborHalves.w, -1, false],
-          ] as Array<[boolean, RoadTier, number, 1 | -1, boolean]>
-        )
-          .filter(
-            ([has, nTier, nHalf]) =>
-              has &&
-              nTier !== RoadTier.None &&
-              !surfaceChanges(nTier) &&
-              nHalf > 0 &&
-              nHalf < coreHalf - 1e-6,
-          )
-          .map(([, , nHalf, edgeSign, vertical]) => [nHalf, edgeSign, vertical])
-      : [];
+  // A merge or a diverge is the motorway running straight through with a ramp
+  // at its side, so its motorway arms bend to a narrower neighbour the way a
+  // straight run's do: the auxiliary lane it carries closes into the plain
+  // motorway past it rather than ending in a step.
+  const runArms = rampNode
+    ? rampNodeVertical
+      ? NORTH | SOUTH
+      : EAST | WEST
+    : connections === 2 && isCollinearMask(mask)
+      ? mask
+      : 0;
+  const narrowsInto: Array<[number, 1 | -1, boolean]> = (
+    [
+      [NORTH, neighbors.n, neighborHalves.n, -1, true],
+      [SOUTH, neighbors.s, neighborHalves.s, 1, true],
+      [EAST, neighbors.e, neighborHalves.e, 1, false],
+      [WEST, neighbors.w, neighborHalves.w, -1, false],
+    ] as Array<[number, RoadTier, number, 1 | -1, boolean]>
+  )
+    .filter(
+      ([bit, nTier, nHalf]) =>
+        (runArms & mask & bit) !== 0 &&
+        nTier !== RoadTier.None &&
+        !surfaceChanges(nTier) &&
+        nHalf > 0 &&
+        nHalf < coreHalf - 1e-6,
+    )
+    .map(([, , nHalf, edgeSign, vertical]) => [nHalf, edgeSign, vertical]);
   // The carriageway's half-width at a distance along the run: this tile's own,
-  // bending to the neighbour's over the depth the transition has.
-  const seamDepth = narrowsInto.length === 2 ? TILE_HALF : TILE_METERS;
+  // bending to the neighbour's over the depth the transition has. A ramp node
+  // bends over half the tile only, so the half the ramp joins over keeps the
+  // lane the ramp arrives in or leaves from at its full width.
+  const seamDepth = narrowsInto.length === 2 || rampNode ? TILE_HALF : TILE_METERS;
   const seamHalfAt = (along: number): number => {
     let half = coreHalf;
     for (const [nHalf, edgeSign] of narrowsInto) {
@@ -3924,6 +3934,9 @@ export function roadTileVertices(
     );
   }
 
+  // A merge or a diverge that changes width lays its motorway the same way, and
+  // keeps the rest of a junction tile's drawing for the ramp's arm.
+  const taperedRampNode = rampNode && narrowsInto.length > 0;
   if (!isTurn && narrowsInto.length > 0) {
     // A run that changes width across the tile lays its plate and its kerb
     // strip along the bending edge together, in place of the squared-off
@@ -3941,21 +3954,24 @@ export function roadTileVertices(
       kerbBand,
       crossSection.seam && { side: crossSection.seam.side, at: crossSection.seam.side * coreHalf },
     );
-  } else if (!isTurn) {
-    // Core plate: always present, tier-colored.
-    pushLocalRect(
-      positions,
-      colors,
-      centerX,
-      centerZ,
-      -coreHalf,
-      coreHalf,
-      -coreHalf,
-      coreHalf,
-      ROAD_Y_OFFSET,
-      plateColor,
-      hAt,
-    );
+  }
+  if (!isTurn && (narrowsInto.length === 0 || taperedRampNode)) {
+    // Core plate: always present, tier-colored, unless the run above laid it.
+    if (!taperedRampNode) {
+      pushLocalRect(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        -coreHalf,
+        coreHalf,
+        -coreHalf,
+        coreHalf,
+        ROAD_Y_OFFSET,
+        plateColor,
+        hAt,
+      );
+    }
 
     // Extensions: push the plate flush to the tile edge on every connected side.
     // Each is as wide as the core, and the corner fills below shape a narrower
@@ -3987,8 +4003,12 @@ export function roadTileVertices(
     const extE = extensionSpan(RoadFlow.East, neighborHalves.e);
     const extW = extensionSpan(RoadFlow.West, neighborHalves.w);
     // The tile's own edges, from a centre that may have moved across the road:
-    // an arm still reaches the tile it joins.
-    if (hasN) {
+    // an arm still reaches the tile it joins. Where the motorway was laid as a
+    // run, only the ramp's arm is left, and it reaches in to the middle of the
+    // tile so that no bend of the run's edge opens a gap beside it.
+    const armFrom = taperedRampNode ? 0 : coreHalf;
+    const laid = (bit: number): boolean => taperedRampNode && (runArms & bit) !== 0;
+    if (hasN && !laid(NORTH)) {
       pushLocalRect(
         positions,
         colors,
@@ -3997,13 +4017,13 @@ export function roadTileVertices(
         extN.from,
         extN.to,
         -TILE_HALF - shiftZ,
-        -coreHalf,
+        -armFrom,
         ROAD_Y_OFFSET,
         plateColor,
         hAt,
       );
     }
-    if (hasS) {
+    if (hasS && !laid(SOUTH)) {
       pushLocalRect(
         positions,
         colors,
@@ -4011,20 +4031,20 @@ export function roadTileVertices(
         centerZ,
         extS.from,
         extS.to,
-        coreHalf,
+        armFrom,
         TILE_HALF - shiftZ,
         ROAD_Y_OFFSET,
         plateColor,
         hAt,
       );
     }
-    if (hasE) {
+    if (hasE && !laid(EAST)) {
       pushLocalRect(
         positions,
         colors,
         centerX,
         centerZ,
-        coreHalf,
+        armFrom,
         TILE_HALF - shiftX,
         extE.from,
         extE.to,
@@ -4033,14 +4053,14 @@ export function roadTileVertices(
         hAt,
       );
     }
-    if (hasW) {
+    if (hasW && !laid(WEST)) {
       pushLocalRect(
         positions,
         colors,
         centerX,
         centerZ,
         -TILE_HALF - shiftX,
-        -coreHalf,
+        -armFrom,
         extW.from,
         extW.to,
         ROAD_Y_OFFSET,
@@ -4634,6 +4654,9 @@ export function roadTileVertices(
       // driver is told to move over before the lane does it for them. Only the
       // half driving TOWARD the drop is losing anything — the other half is
       // gaining a lane, and nobody needs telling about that.
+      // It stands at the tile's back edge, which is drawn at this tile's own
+      // section, so it sits in the lane as wide as it is there rather than
+      // at the front, where the lane has narrowed by another tile's closing.
       if (narrowing && narrowing.remaining === narrowing.length - 1 && plan.solid.length > 0) {
         const { vertical, ahead, leftSign } = approachAxis(narrowing.toward);
         const lanes = travelLanes(crossSection);
@@ -4653,7 +4676,7 @@ export function roadTileVertices(
           undefined,
         );
         if (outermost && closing.length >= 2) {
-          const shift = ahead * (TILE_HALF - LANE_ARROW_SETBACK_M);
+          const shift = -ahead * (TILE_HALF - LANE_ARROW_SETBACK_M);
           emitLaneUseArrow(
             positions,
             colors,
