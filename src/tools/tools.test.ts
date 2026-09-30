@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { corridorHalfOf, flowDirection, RoadFlow, RoadTier, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, Command, RoadSpec, TilePoint } from '../shared/types';
 import { TERRAFORM_COST_PER_METER_TILE, TILE_METERS } from '../shared/constants';
-import { NO_EDITS, presetProfileForTier } from '../shared/roadprofile';
+import { composeProfile, NO_EDITS, presetProfileForTier } from '../shared/roadprofile';
+import { corridorRunsFor } from '../shared/corridor';
 import {
   brushDiscTiles,
   brushRingTiles,
@@ -2169,6 +2170,84 @@ describe('a road too wide for its tile is laid as two carriageways', () => {
     expect(previews.at(-1)?.invalidReason).toBe('A corridor is laid in a straight run');
     tm.pointerUp(4, 4, 0);
     expect(sent).toHaveLength(0);
+  });
+
+  const SIX_LANE_MOTORWAY = { ...NO_EDITS, lanes: 6 } as const;
+
+  it('ghosts a motorway across two tiles as one road, each half against the edge they share', () => {
+    const { env, previews } = makeEnv();
+    env.profileIdFor = () => 12;
+    const tm = new ToolManager(env);
+    tm.setTool('road.highway');
+    tm.setProfileEdits(SIX_LANE_MOTORWAY);
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(4, 0, 0); // five tiles east, so the far half is on row 1
+    const preview = previews.at(-1)!;
+    const shifts = preview.bandShifts!;
+    expect(shifts).toHaveLength(10);
+    const near = shifts[0]!;
+    expect(near).toBeGreaterThan(0);
+    // The near band's inner edge on the shared tile edge, and the far's too.
+    expect(near + preview.widthMeters! / 2).toBeCloseTo(TILE_METERS / 2, 6);
+    for (const s of shifts.slice(0, 5)) expect(s).toBe(near);
+    for (const s of shifts.slice(5)) expect(s).toBeCloseTo(-near, 6);
+  });
+
+  it('ghosts a divided road as two carriageways, centred either side of the median', () => {
+    const { env, previews } = makeEnv();
+    env.profileIdFor = () => 12;
+    const tm = new ToolManager(env);
+    tm.setTool('road.avenue');
+    tm.setProfileEdits(SIX_LANE);
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(0, 4, 0);
+    expect(previews.at(-1)!.bandShifts).toBeUndefined();
+  });
+
+  describe('over a corridor already there', () => {
+    const ID = 12;
+    const motorway = composeProfile(presetProfileForTier(RoadTier.Highway), SIX_LANE_MOTORWAY);
+    /** An env holding a six-lane motorway laid east along rows 1 and 2. */
+    function withMotorway() {
+      const made = makeEnv();
+      const runs = corridorRunsFor(Array.from({ length: 5 }, (_, x) => ({ x, z: 1 })))!;
+      const flows = new Map<string, number>();
+      for (const t of runs.near) flows.set(`${t.x},${t.z}`, runs.nearFlow);
+      for (const t of runs.far) flows.set(`${t.x},${t.z}`, runs.farFlow);
+      const key = (t: TilePoint): string => `${t.x},${t.z}`;
+      made.env.profileIdFor = () => ID;
+      made.env.roadProfileAt = (t) => (flows.has(key(t)) ? motorway : null);
+      made.env.roadFlowAt = (t) => flows.get(key(t)) ?? 0;
+      made.env.roadProfileIdAt = (t) => (flows.has(key(t)) ? ID : 0);
+      const tm = new ToolManager(made.env);
+      tm.setTool('road.highway');
+      tm.setProfileEdits(SIX_LANE_MOTORWAY);
+      return { ...made, tm };
+    }
+
+    it('refuses one dragged a row off it, which would leave half a road behind', () => {
+      for (const z of [0, 2]) {
+        const { tm, previews, sent } = withMotorway();
+        tm.pointerDown(0, z, 0);
+        tm.pointerMove(4, z, 0);
+        expect(previews.at(-1)?.valid).toBe(false);
+        expect(previews.at(-1)?.invalidReason).toBe('That would split a corridor');
+        tm.pointerUp(4, z, 0);
+        expect(sent).toHaveLength(0);
+      }
+    });
+
+    it('lets it be drawn again over itself, or back the other way', () => {
+      for (const [from, to] of [
+        [0, 4],
+        [4, 0],
+      ] as const) {
+        const { tm, previews } = withMotorway();
+        tm.pointerDown(from, 1, 0);
+        tm.pointerMove(to, 1, 0);
+        expect(previews.at(-1)?.invalidReason).toBeUndefined();
+      }
+    });
   });
 });
 

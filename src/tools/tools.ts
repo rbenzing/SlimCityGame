@@ -33,10 +33,18 @@ import type {
   TransitMode,
   ZoneType,
 } from '../shared/types';
-import { flowsAlong, RoadTier as RoadTierValue, ZoneType as ZoneTypeValue } from '../shared/types';
+import {
+  corridorHalfOf,
+  flowsAlong,
+  RoadTier as RoadTierValue,
+  ZoneType as ZoneTypeValue,
+} from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import {
+  carriagewayShiftOf,
   composeProfile,
+  corridorHalfProfile,
+  worldOrderedProfile,
   joinRefusal,
   layRefusal,
   NO_EDITS,
@@ -64,7 +72,13 @@ import {
 import type { EndMove } from '../world/freeroads';
 import type { CmPoint, SegmentGeom } from '../shared/roadgeom';
 import { ZONE_DEPTH } from '../world/zonable';
-import { corridorRunsFor, corridorTiles, rampMeetingRefusal } from '../shared/corridor';
+import {
+  corridorPartnerTile,
+  corridorRunsFor,
+  corridorSplitRefusal,
+  corridorTiles,
+  rampMeetingRefusal,
+} from '../shared/corridor';
 import type { CorridorRuns } from '../shared/corridor';
 import { atOneLevel, bitToward, crossingShape, overpassRise } from '../shared/overpass';
 
@@ -89,6 +103,13 @@ export interface ToolPreview extends CursorChip {
    * Absent for a road that lies on the ground, and for every other tool.
    */
   deckLifts?: number[];
+  /**
+   * How far across its run each of `tiles` is drawn from the tile's centre,
+   * metres toward the higher coordinate: a corridor with nothing dividing it
+   * has each half pushed against the edge the two share. Absent where every
+   * tile is drawn centred.
+   */
+  bandShifts?: number[];
   /**
    * A road off the grid being drawn: its centre line and the points clicked so
    * far, world metres. Present only in the `Curve` mode, whose ghost is this
@@ -193,6 +214,12 @@ export interface ToolEnv {
    * and is not refused.
    */
   roadFlowAt?(tile: TilePoint): number;
+  /**
+   * The profile id an existing road tile carries, 0 where there is none: what
+   * says two corridor halves are one road. Optional: without it no drag is
+   * refused for splitting a corridor here, and the world still refuses it.
+   */
+  roadProfileIdAt?(tile: TilePoint): number;
   /**
    * The neighbour mask of an existing road tile: which sides it is joined on.
    * What tells a road running straight across a drag from a junction, and a
@@ -1050,6 +1077,40 @@ export class ToolManager {
   }
 
   /**
+   * Why laying `tiles` with `flows` would take a corridor half away from its
+   * partner, or null. A tile counts where its road would change: replaced, or
+   * the same road running another way. One the run passes over or under keeps
+   * its road, and so does one already carrying this road this way.
+   */
+  private splitRefusal(
+    tiles: readonly TilePoint[],
+    flows: readonly number[],
+    profileId: number,
+    passing: ReadonlySet<string>,
+  ): string | null {
+    const flowAt = this.env.roadFlowAt;
+    const idAt = this.env.roadProfileIdAt;
+    if (!flowAt || !idAt) return null;
+    const laid: TilePoint[] = [];
+    const laidFlows: number[] = [];
+    tiles.forEach((t, i) => {
+      const id = idAt(t);
+      if (id === 0 || passing.has(`${t.x},${t.z}`)) return;
+      if (id === profileId && flowAt(t) === flows[i]) return;
+      laid.push(t);
+      laidFlows.push(flows[i] ?? 0);
+    });
+    return corridorSplitRefusal(laid, laidFlows, (x, z) =>
+      corridorPartnerTile(
+        x,
+        z,
+        (a, b) => flowAt({ x: a, z: b }),
+        (a, b) => idAt({ x: a, z: b }),
+      ),
+    );
+  }
+
+  /**
    * Live tool-behavior flags from the tool-options panel, merged over what is
    * already set — the same shape the store's own setToolFlags has always had.
    * A caller that flips one chip says so, rather than restating every other
@@ -1505,6 +1566,30 @@ export class ToolManager {
     return { needed, runs: needed ? corridorRunsFor(tiles) : null };
   }
 
+  /** The stored flow each of a road build's tiles will carry, in the order they are laid. */
+  private roadFlows(runs: CorridorRuns | null, tiles: TilePoint[]): number[] {
+    if (!runs) return flowsAlong(tiles);
+    return [...runs.near.map(() => runs.nearFlow), ...runs.far.map(() => runs.farFlow)];
+  }
+
+  /**
+   * How far across its run each tile of a corridor is drawn from the tile's
+   * centre, metres toward the higher coordinate: each half pushed against the
+   * edge the two share where nothing divides them, as the world draws it. Null
+   * where every tile is drawn centred.
+   */
+  private bandShifts(section: RoadProfile, runs: CorridorRuns | null): number[] | null {
+    if (!runs) return null;
+    const shift = (flow: number): number =>
+      carriagewayShiftOf(
+        corridorHalfProfile(worldOrderedProfile(section, flow), corridorHalfOf(flow)),
+      );
+    const near = shift(runs.nearFlow);
+    const far = shift(runs.farFlow);
+    if (near === 0 && far === 0) return null;
+    return [...runs.near.map(() => near), ...runs.far.map(() => far)];
+  }
+
   private roadPath(rawStart: TilePoint, rawEnd: TilePoint): TilePoint[] {
     // Guide snapping moves where the drag's ENDS sit, before any path is built
     // from them, so it composes with every mode rather than replacing one.
@@ -1668,9 +1753,18 @@ export class ToolManager {
       const section = build.profile ?? presetProfileForTier(build.tier);
       // A corridor is two runs side by side; only a single run crosses over.
       const overpass = corridor.runs ? null : this.overpassPlan(tiles, section);
+      const profileId = build.profile
+        ? (this.env.profileIdFor?.(build.profile) ?? build.tier)
+        : build.tier;
       const meet =
         overpass?.refusal ??
-        this.meetRefusal(tiles, section, passingBy(overpass), this.endMoves(tiles));
+        this.meetRefusal(tiles, section, passingBy(overpass), this.endMoves(tiles)) ??
+        this.splitRefusal(
+          tiles,
+          this.roadFlows(corridor.runs, tiles),
+          profileId,
+          passingBy(overpass),
+        );
       const { valid, invalidReason } =
         build.refusal !== null
           ? { valid: false, invalidReason: build.refusal }
@@ -1690,8 +1784,10 @@ export class ToolManager {
         corridor.runs ? [corridor.runs.near, corridor.runs.far] : [tiles],
         overpass?.elevation ?? this.roadElevation,
       );
+      const bandShifts = this.bandShifts(previewProfile, corridor.runs);
       this.env.onPreview({
         ...(deckLifts ? { deckLifts } : {}),
+        ...(bandShifts ? { bandShifts } : {}),
         tiles,
         valid,
         cost,
@@ -1841,7 +1937,13 @@ export class ToolManager {
         (build.profile && !build.layable) ||
         (corridor.needed && !corridor.runs) ||
         (overpass?.refusal ?? null) !== null ||
-        this.meetRefusal(tiles, section, passingBy(overpass), moves) !== null;
+        this.meetRefusal(tiles, section, passingBy(overpass), moves) !== null ||
+        this.splitRefusal(
+          tiles,
+          this.roadFlows(corridor.runs, tiles),
+          profileId ?? build.tier,
+          passingBy(overpass),
+        ) !== null;
       // The curve ends the run meets move onto their tile centres first, so the
       // grid road finds them there.
       const moveEnds = moves.map((m): Command => ({

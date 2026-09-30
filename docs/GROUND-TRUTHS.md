@@ -268,6 +268,12 @@ MUTCD citations below use 11th-edition section numbers.
   and never stored, and the mask and the approach walk ask the same
   predicate. — [road-model.md](world-sim/road-model.md); `medianOpens` in
   `src/shared/corridor.ts`
+- A corridor's two halves are one road. A road laid over a corridor half
+  takes that half's partner with it, as its partner, or it is refused; it
+  never leaves half a road with nothing beside it. The road tool and the world
+  ask the same predicate. The ghost draws each half where it will be laid. —
+  [road-model.md](world-sim/road-model.md); `corridorSplitRefusal` in
+  `src/shared/corridor.ts`
 - Two neighbouring grid road tiles are joined exactly when the network links
   them. A road laid with snapping off (`buildRoad` with `join: false`) joins
   nothing it only lies beside or ends against, and still joins where it

@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,170 tests passing across 144 test files, run 2026-09-30.
+**Test suite:** 4,187 tests passing across 144 test files, run 2026-09-30.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -74,6 +74,12 @@ barriers. Full detail in History, §10 below.
   junction. Traffic on the far half is not held, and the crossing spans one
   half. Holding both would mean the far half joining the side street across
   the centre line in the road graph.
+- A bulldoze over one row of a corridor takes that half and leaves the other,
+  half a road with nothing beside it. A build that would do the same is
+  refused.
+- A batch is not atomic: when the world refuses one command, the ones before
+  it stay laid, and the failed batch has no undo. The road tool refuses a
+  corridor before sending it, so play does not reach this through the tool.
 - Auxiliary lanes: where one ends just past a ramp's junction tile, its edge
   steps rather than closing.
 - Farms: a farmhouse lights no window at night, and no farm truck works the
@@ -224,6 +230,28 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The corridor ghost, and a corridor laid one row off (reported and fixed 2026-09-30)
+
+The placement ghost still drew a six-lane motorway as two carriageways, each
+centred on its tile with grass between, after the road itself had become one
+([road-model.md](world-sim/road-model.md)). Each half of a corridor with
+nothing dividing it is now ghosted where it will be laid, pushed against the
+edge the two share. Its dashes and arrows move with it. The arrow at the end
+of the first run had pointed at the start of the second, a row away; it now
+points along its own run.
+
+The same drag showed a worse fault. A six-lane road drawn one row off one
+already there was laid. The row the two share became half of the new road,
+and the old road's other row was left as half a road with nothing beside it.
+A road laid over a corridor half now has to take that half's partner with
+it, as its partner, or it is refused ("That would split a corridor"). The
+road tool and the world ask the same predicate, `corridorSplitRefusal`.
+Re-laying the same corridor, turning it round, and crossing both its halves
+are unchanged.
+
+Found and not fixed (see Open): a bulldoze can still take one half, and a
+batch the world refuses partway keeps what its earlier commands laid.
 
 ### An undivided arterial drawn as one road (2026-09-30)
 

@@ -159,6 +159,15 @@ A profile's width against the tile decides what it can be:
   road tool lays both runs from one drag, ghosted and refused together if
   either half cannot fit.
 
+  The two halves are one road, and a drag never takes one away from the
+  other. A road laid over a corridor half, whether it replaces it or re-lays
+  it with another direction or another pairing, has to take that half's
+  partner with it, as its partner. Otherwise it is refused ("That would split
+  a corridor"). A corridor dragged one row off the one already there would
+  pair the row they share with a new row and leave the other old row as half
+  a road with nothing beside it. Re-laying the same corridor, turning it
+  round, or crossing both its halves is fine.
+
   **A motorway laid across two tiles is still one carriageway.** A five- or
   six-lane motorway does not fit a tile either, but nothing divides it: it is
   one road running one way, and a second motorway laid beside it is what
