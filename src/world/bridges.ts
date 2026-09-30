@@ -24,11 +24,21 @@ const indexOf = (size: number, x: number, z: number): number => z * size + x;
 const inBoundsOf = (size: number, x: number, z: number): boolean =>
   x >= 0 && z >= 0 && x < size && z < size;
 
+/**
+ * What the solver reads of a grid: the ground, the water and the roads already
+ * built. The worker's grid and the render thread's copy of it both carry it,
+ * so a preview solves the deck the command will be laid at.
+ */
+export type DeckGround = Pick<
+  GridState,
+  'size' | 'height' | 'water' | 'roadTier' | 'roadElevation'
+>;
+
 export type ElevationProfile =
   { ok: true; elevations: number[]; cost: number } | { ok: false; reason: 'grade' | 'height' };
 
 /** Terrain height (metres, world Y) at a tile. */
-function groundY(g: GridState, t: TilePoint): number {
+function groundY(g: DeckGround, t: TilePoint): number {
   if (!inBoundsOf(g.size, t.x, t.z)) return 0;
   return g.height[indexOf(g.size, t.x, t.z)] ?? 0;
 }
@@ -38,7 +48,7 @@ function groundY(g: GridState, t: TilePoint): number {
  * surface plus BRIDGE_CLEARANCE_M over water, the ground itself on dry land —
  * a deck never sinks below the terrain it crosses.
  */
-function floorY(g: GridState, t: TilePoint): number {
+function floorY(g: DeckGround, t: TilePoint): number {
   const ground = groundY(g, t);
   if (!inBoundsOf(g.size, t.x, t.z)) return ground;
   if (!g.water[indexOf(g.size, t.x, t.z)]) return ground;
@@ -73,7 +83,7 @@ const DIRS: ReadonlyArray<readonly [number, number]> = [
  * it as it always has.
  */
 function connectionHeights(
-  g: GridState,
+  g: DeckGround,
   t: TilePoint,
   inDrag: ReadonlySet<number>,
   acrossX: boolean | null,
@@ -105,7 +115,7 @@ function connectionHeights(
  * connect to — drag from further back on the bank to give the ramp room.
  */
 export function solveElevationProfile(
-  g: GridState,
+  g: DeckGround,
   tiles: readonly TilePoint[],
   manual = 0,
 ): ElevationProfile {

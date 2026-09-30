@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,134 tests passing across 144 test files, run 2026-09-30.
+**Test suite:** 4,156 tests passing across 144 test files, run 2026-09-30.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -63,9 +63,6 @@ barriers. Full detail in History, §10 below.
 
 **Open:**
 
-- Overpasses: the placement ghost carries no heights, so it does not show a
-  raised road's ramps, and a road cannot yet be drawn under a bridge that is
-  already there.
 - Road composition: the three pieces above.
 - Lane drops: a wide road shorter than its own taper starts the taper
   part-closed, so its kerb steps where it leaves the junction.
@@ -223,6 +220,34 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Overpasses: the ghost at its deck, and a road under a bridge (2026-09-30)
+
+Two gaps left open when overpasses shipped are closed
+([overpasses.md](world-sim/overpasses.md)).
+
+- **The ghost stands at the deck.** The preview lay flat on the ground even
+  for a road that would be built on a viaduct, so an overpass's ramps and
+  height showed only once it was laid. The tool now solves the deck with the
+  worker's own solver, run against the render thread's copy of the grid, and
+  the ghost's band, frame and markings stand on it: an overpass is seen
+  climbing over the road it crosses before it is built. Doing this turned up
+  one more defect. The frame straddles the run's edge, and its outer half was
+  sampling the ground, which hung white walls off the deck, so a point just
+  outside the run now takes the height of the run tile beside it.
+- **A road can be drawn under a bridge.** A drag at ground level across a
+  road already raised above it was refused, so the lower road had to be built
+  first. Now, where the road above runs straight across and clears the drag
+  by what an overpass would need, it moves onto the tile's over layer exactly
+  as it stands and the drag is laid beneath it. That includes a street under
+  a motorway viaduct, which a street may never meet. The ground under it is
+  not levelled, because that would move the deck above. Undo puts the bridge
+  back on the ground layer. The preview names the drag as passing under, and
+  refuses one that is too low to clear or not straight across.
+
+Checked in the browser: the ghost of a street drawn across a motorway stood
+6 m over it, and a street drawn under an 8 m viaduct left the viaduct on the
+over layer at 8 m, with the street at grade and no pier on the crossing tile.
 
 ### A six-lane motorway drawn as one road (reported and fixed 2026-09-30)
 
@@ -744,9 +769,8 @@ tool offering an overpass where a street meets a motorway or a railway, raised
 to the clearance. Checked in the browser by dragging the real tool across a
 motorway.
 
-Not built: the preview ghost carries no heights, for an overpass or any raised
-road, so it does not show the ramps; and a road cannot yet be drawn under a
-bridge that is already there.
+Two pieces followed on 2026-09-30: the ghost standing at the deck, and a road
+drawn under a bridge already there (see that entry above).
 
 ### A road's tier is its size (2026-09-15)
 

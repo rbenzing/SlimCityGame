@@ -81,12 +81,23 @@ It crosses **over** in two cases:
    touch, a road drawn across a railway. The tool raises the deck to what the
    road beneath needs, in the elevation control's 2 m steps, and the preview
    names it an overpass and gives its height. The player confirms by
-   building; nothing is laid silently. The ghost itself carries no heights —
-   for an overpass or any raised road — so it does not show the ramps.
+   building; nothing is laid silently.
+
+A drag passes **under** a road that is already raised above it, where that
+road runs straight across the drag and stands high enough to clear it, and the
+preview names it.
+
+The ghost is drawn at the deck the drag will be built at. The tool solves the
+deck over the drag by the same rule the worker lays it with (`solveElevationProfile`,
+run against the render thread's copy of the grid), so a raised road's ramps
+climb in the preview and an overpass is seen standing over what it crosses.
+Where the deck cannot be solved the ghost lies on the ground, and the worker's
+refusal says why.
 
 The tool asks the same questions before anything is sent, with the reason on
 the cursor chip: a crossing that is not straight across is refused, and so is
-a drag too short to climb to the height before it reaches the crossing. The
+a drag too short to climb to the height before it reaches the crossing, and so
+is a drag passing under a raised road that stands too low to clear it. The
 worker then decides every crossing a command makes, whatever sent it. On each
 tile that already holds a road, the drag's solved deck is compared with that
 road's:
@@ -97,12 +108,23 @@ road's:
 - **Higher, but not cleanly across:** refused. The drag turns or ends on the
   tile, the road below ends there, or a road below joins it along the drag's
   line.
-- **Lower than the road it crosses:** refused. A road cannot yet be drawn
-  under a bridge that is already there; the lower road is built first and the
-  upper one crosses over it.
+- **Lower, where the road above runs straight across:** the drag passes
+  under it, if the road above clears it by what an overpass would need;
+  refused with the height it needs if it does not. The road that was there
+  moves onto the tile's over layer exactly as it stands — tier, profile, flow
+  and deck height — and the drag is laid beneath it. The ground under it is
+  not levelled for the new road, because a deck's height is measured from its
+  tile's ground and levelling it would move the road above.
+- **Lower, but not cleanly across:** refused, as for an overpass.
+- **Lower, on a tile that already holds two roads:** refused. A tile holds at
+  most two.
+
+Undoing a road drawn under a bridge takes the new road away and puts the one
+above back where it was, on the tile's ordinary road layers.
 
 The deck solver does not treat the road being crossed as something the deck
-must join, so a raised deck is free to pass over it. A drag that ends on a
+must join, so a raised deck is free to pass over it, and a deck on the ground
+is free to pass under one. A drag that ends on a
 road still has to come down and meet it there, which is why an overpass never
 ends on the road it crosses.
 

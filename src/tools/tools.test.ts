@@ -2034,6 +2034,78 @@ describe('ToolManager — a road crossing over another', () => {
     expect(previews.at(-1)?.valid).toBe(true);
     expect(previews.at(-1)?.label ?? '').not.toMatch(/overpass/i);
   });
+
+  it('passes a street under a raised motorway at ground level, which it could never meet', () => {
+    const { env, previews, sent } = withRoads([{ x: 10, tier: RoadTier.Highway }]);
+    env.roadElevationAt = (t) => (t.x === 10 ? 8 : 0);
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    drag(tm, 0, 20);
+    expect(previews.at(-1)?.valid).toBe(true);
+    expect(previews.at(-1)?.label).toMatch(/passing under/);
+    tm.pointerUp(20, 10, 0);
+    // On the ground: the worker moves the motorway up onto the over layer.
+    expect(laid(sent)?.elevation).toBe(0);
+  });
+
+  it('refuses to pass under a raised road too low to clear it', () => {
+    const { env, previews, sent } = withRoads([{ x: 10, tier: RoadTier.TwoLane }]);
+    env.roadElevationAt = (t) => (t.x === 10 ? 4 : 0);
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    drag(tm, 0, 20);
+    expect(previews.at(-1)?.valid).toBe(false);
+    expect(previews.at(-1)?.invalidReason).toMatch(/clear this one by 5\.8 m/);
+    tm.pointerUp(20, 10, 0);
+    expect(sent).toEqual([]);
+  });
+
+  it('previews an overpass at the deck it will be laid at, solved at the height it sends', () => {
+    const { env, previews } = withRoads([{ x: 10, tier: RoadTier.Highway }]);
+    const asked: number[] = [];
+    env.deckLifts = (tiles, elevation) => {
+      asked.push(elevation);
+      return tiles.map((t) => Math.max(0, elevation - 2 * Math.abs(t.x - 10)));
+    };
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    drag(tm, 0, 20);
+    const preview = previews.at(-1)!;
+    expect(asked.at(-1)).toBe(6);
+    expect(preview.deckLifts).toHaveLength(preview.tiles.length);
+    const middle = preview.tiles.findIndex((t) => t.x === 10);
+    expect(preview.deckLifts![middle]).toBe(6);
+    expect(preview.deckLifts![0]).toBe(0);
+  });
+
+  it('previews a road on the ground with no deck heights at all', () => {
+    const { env, previews } = withRoads([]);
+    env.deckLifts = (tiles) => tiles.map(() => 0);
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    drag(tm, 0, 20);
+    expect(previews.at(-1)?.deckLifts).toBeUndefined();
+  });
+
+  it('previews a deck the world cannot solve on the ground', () => {
+    const { env, previews } = withRoads([]);
+    env.deckLifts = () => null;
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    tm.setRoadElevation(8);
+    drag(tm, 0, 20);
+    expect(previews.at(-1)?.deckLifts).toBeUndefined();
+  });
+
+  it('refuses to pass under the end of a raised road', () => {
+    const { env, previews } = withRoads([{ x: 10, tier: RoadTier.TwoLane, endAt: 10 }]);
+    env.roadElevationAt = (t) => (t.x === 10 ? 8 : 0);
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    drag(tm, 0, 20);
+    expect(previews.at(-1)?.valid).toBe(false);
+    expect(previews.at(-1)?.invalidReason).toMatch(/straight across/);
+  });
 });
 
 describe('a road too wide for its tile is laid as two carriageways', () => {

@@ -44,6 +44,30 @@ export function clearOverRoad(g: GridState, idx: number): void {
 }
 
 /**
+ * Moves the road on tile `idx` up onto its over layer exactly as it stands,
+ * leaving the ground layer empty for a road to be laid beneath it. What it
+ * moved is returned, or null where the tile held no road or already carried
+ * one passing over.
+ */
+export function liftToOverLayer(g: GridState, idx: number): OverRoad | null {
+  const tier = (g.roadTier[idx] ?? 0) as RoadTier;
+  if (tier === 0 || (g.overTier[idx] ?? 0) !== 0) return null;
+  const road: OverRoad = {
+    tier,
+    profile: g.roadProfile[idx] || tier,
+    flow: g.roadFlow[idx] ?? 0,
+    elevation: g.roadElevation[idx] ?? 0,
+  };
+  setOverRoad(g, idx, road);
+  g.roadTier[idx] = 0;
+  g.roadProfile[idx] = 0;
+  g.roadFlow[idx] = 0;
+  g.roadElevation[idx] = 0;
+  g.roadMask[idx] = 0;
+  return road;
+}
+
+/**
  * Whether laying `next` over a crossing that already carries `current` changes
  * it, by the same rules a road at ground level follows: nothing there yet, a
  * road it outranks, the same road differently composed, or the same road at a
