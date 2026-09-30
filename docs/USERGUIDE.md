@@ -163,8 +163,10 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   than options that turn themselves down.
   Where a wide road runs into a narrower one, the extra lanes **close over a
   taper** instead of stopping dead: a four-lane road meeting a two-lane street
-  spends seven tiles closing its kerbside lanes, and a motorway spends far
-  more, because a lane closed at speed needs the room. The lane that is
+  spends six tiles closing its kerbside lanes, and a motorway spends far
+  more, because a lane closed at speed needs the room. A shorter stretch, a
+  wide stub between a junction and a narrow street, closes over the length it
+  has, leaving the junction at its full width. The lane that is
   running out carries a merge arrow bending into the one beside it. A
   **motorway closes its lane differently**: the tarmac stays where it is, so
   there is still somewhere to go if you miss the taper, and the lane is shut by

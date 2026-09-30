@@ -3211,6 +3211,18 @@ describe('roadTileVertices — the taper where a road drops a lane', () => {
       countWhere(closing(6).colors, isMarkingWhite),
     );
   });
+
+  it('stands the merge arrow at the back of the tile, where its lane is as wide as its section', () => {
+    // White paint in each half of the tile. The lines are the same on the head
+    // and the tile behind it, wherever they lie, so what differs is the arrow.
+    const whiteIn = (v: { positions: number[]; colors: number[] }, north: boolean): number =>
+      toTriples(v.colors).filter(
+        (c, i) => isMarkingWhite(c) && v.positions[i * 3 + 2]! < 4.5 * TILE_METERS === north,
+      ).length;
+    // The drop lies south, so the back of the tile is its north half.
+    expect(whiteIn(closing(6), true)).toBeGreaterThan(whiteIn(closing(5), true));
+    expect(whiteIn(closing(6), false)).toBe(whiteIn(closing(5), false));
+  });
 });
 
 describe('a run that changes width carries its footway across the seam', () => {
@@ -4093,6 +4105,78 @@ describe('a ramp alongside tapers into the motorway rather than turning into it'
       const line = edgeLine(node(RoadFlow.West));
       expect(covers(line, -half / 2), 'open upstream').toBe(false);
       expect(covers(line, half / 2), 'closed downstream').toBe(true);
+    });
+
+    describe('carrying the auxiliary lane', () => {
+      const plain = carriagewayHalfWidthMeters(RoadTier.Highway);
+      /**
+       * The node with its auxiliary lane on the ramp's side, next to the plain
+       * motorway where the lane does not carry on: upstream of a merge,
+       * downstream of a diverge. The other side carries the lane in full.
+       */
+      const withLane = (opens: RoadFlow): Geo => {
+        const merging = opens === RoadFlow.East;
+        const full = TILE_METERS;
+        return roadTileVertices(
+          0,
+          0,
+          RoadTier.Highway,
+          E | S | W,
+          flatHeightAt,
+          { n: RoadTier.None, e: RoadTier.Highway, s: RoadTier.Ramp, w: RoadTier.Highway },
+          undefined,
+          {
+            n: 0,
+            e: merging ? full : plain,
+            s: carriagewayHalfWidthMeters(RoadTier.Ramp),
+            w: merging ? plain : full,
+          },
+          RoadFlow.East,
+          undefined,
+          undefined,
+          undefined,
+          { side: 1, openness: 1, merging },
+          undefined,
+          { arm: RoadFlow.South, opens },
+        );
+      };
+      /**
+       * How far the pavement reaches on the side away from the ramp, at `dx`
+       * along the run. Paint is left out: its lines meet the neighbour's from
+       * the plans a caller hands in, which this tile is given none of.
+       */
+      const farReach = (geo: Geo, dx: number): number => {
+        let reach = 0;
+        for (const tri of triangles(geo)) {
+          if (tri.some((v) => isPaint(v.c))) continue;
+          for (const [a, b] of [
+            [tri[0]!, tri[1]!],
+            [tri[1]!, tri[2]!],
+            [tri[2]!, tri[0]!],
+          ] as const) {
+            if ((a.dx - dx) * (b.dx - dx) > 0 || a.dx === b.dx) continue;
+            const dz = a.dz + ((b.dz - a.dz) * (dx - a.dx)) / (b.dx - a.dx);
+            reach = Math.max(reach, -dz);
+          }
+        }
+        return reach;
+      };
+
+      it('closes the lane over the half past a diverge, meeting the plain motorway', () => {
+        const geo = withLane(RoadFlow.West);
+        const open = farReach(geo, -half / 2);
+        expect(open).toBeGreaterThan(plain + 0.5);
+        expect(farReach(geo, half / 2)).toBeLessThan(open - 0.2);
+        expect(farReach(geo, half - 0.01)).toBeCloseTo(plain, 1);
+      });
+
+      it('opens it over the half before a merge, from the plain motorway', () => {
+        const geo = withLane(RoadFlow.East);
+        const open = farReach(geo, half / 2);
+        expect(open).toBeGreaterThan(plain + 0.5);
+        expect(farReach(geo, -half / 2)).toBeLessThan(open - 0.2);
+        expect(farReach(geo, -half + 0.01)).toBeCloseTo(plain, 1);
+      });
     });
   });
 

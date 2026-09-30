@@ -553,8 +553,16 @@ export function narrowingAhead(
       if (!theirs) break;
       const drop = dropWidth(mine, theirs);
       if (drop > 1e-6) {
-        const length = taperTilesFor(mine.class, drop);
         const remaining = step - 1;
+        // A taper begins at full width, on the back edge of the tile before
+        // its first, which is drawn at the whole road and narrows toward it.
+        // On a wide run shorter than the class's taper, the run's first tile
+        // is that one and the rest close, rather than the junction behind it
+        // drawing its arm already part-closed, with its kerb stepped in.
+        const length = Math.min(
+          taperTilesFor(mine.class, drop),
+          remaining + wideRunBehind(x, z, dx, dz, mine, world),
+        );
         // Only the tiles within the taper's own length are closing; the road
         // further back is simply the wide road it is.
         if (remaining < length && (!best || remaining < best.remaining)) {
@@ -568,6 +576,33 @@ export function narrowingAhead(
     }
   }
   return best;
+}
+
+/**
+ * How many tiles of the same width carry the straight run on behind (x, z),
+ * away from the step (dx, dz): where a taper has room to begin. It stops at a
+ * junction, a corner, the road's end, a road held apart, or a change of width.
+ */
+function wideRunBehind(
+  x: number,
+  z: number,
+  dx: number,
+  dz: number,
+  mine: RoadProfile,
+  world: ApproachSurroundings,
+): number {
+  let count = 0;
+  for (let k = 1; k < TAPER_MAX_TILES; k++) {
+    const tx = x - dx * k;
+    const tz = z - dz * k;
+    const theirs = world.profileAt(tx, tz);
+    if (!theirs || isSeparateRoad(tx + dx, tz + dz, -dx, -dz, world)) break;
+    if (dropWidth(mine, theirs) > 1e-6 || dropWidth(theirs, mine) > 1e-6) break;
+    const straight = world.hasRoad(tx - dx, tz - dz) && !isSeparateRoad(tx, tz, -dx, -dz, world);
+    if (roadDegree(tx, tz, world) !== 2 || !straight) break;
+    count += 1;
+  }
+  return count;
 }
 
 /**

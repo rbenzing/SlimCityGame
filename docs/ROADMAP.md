@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,187 tests passing across 144 test files, run 2026-09-30.
+**Test suite:** 4,191 tests passing across 144 test files, run 2026-09-30.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -64,8 +64,13 @@ barriers. Full detail in History, §10 below.
 **Open:**
 
 - Road composition: the three pieces above.
-- Lane drops: a wide road shorter than its own taper starts the taper
-  part-closed, so its kerb steps where it leaves the junction.
+- Lane drops on a two-way road: road-model.md says the outermost lane on
+  each side closes, but `taperedCrossSection` closes one side's kerbside lane
+  completely before the other's starts. The centre line jogs sideways partway
+  down every taper. The spec and the code disagree, and it needs a decision.
+- Two check scripts no longer build what they check. `tools/taper-shots.mjs`
+  runs a motorway into a two-lane street, and `tools/aux-shots.mjs` lays a ramp
+  head-on into a motorway, and the world now refuses both.
 - Corridor furniture: the furniture placers count a corridor's other half as
   a crossing road. So no corridor tile, divided or not, gets a lamp, a
   kerbside board, or a signal head on its own approach. The street arms of
@@ -80,8 +85,6 @@ barriers. Full detail in History, §10 below.
 - A batch is not atomic: when the world refuses one command, the ones before
   it stay laid, and the failed batch has no undo. The road tool refuses a
   corridor before sending it, so play does not reach this through the tool.
-- Auxiliary lanes: where one ends just past a ramp's junction tile, its edge
-  steps rather than closing.
 - Farms: a farmhouse lights no window at night, and no farm truck works the
   yard.
 
@@ -230,6 +233,39 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Two kerb steps: a short stub's taper, and a ramp node (2026-09-30)
+
+Both were Open items, and both were a road's edge stepping where its width
+changes ([road-model.md](world-sim/road-model.md)).
+
+- **A stub shorter than its taper.** A four-lane stub of three tiles between
+  a junction and a two-lane street started its six-tile taper part-closed. The
+  junction drew its arm at the stub's narrowed width, and the kerb stepped
+  in 2.5 m a side at the junction's mouth. A taper begins on the back edge of
+  the plain tile before its first, which narrows toward it. On a stub the
+  run's first tile is now that tile, and the lanes close over the rest. The
+  kerb leaves the junction at full width and runs straight to the street,
+  steeper than the class ratio because the stub has no more room.
+- **The merge arrow** at the head of a taper stood at the tile's front, where
+  the lane has already narrowed by another tile's closing; on a steep taper
+  that was less than the arrow's width. It now stands at the tile's back edge,
+  in the lane as wide as it is there.
+- **A ramp node with its auxiliary lane.** The motorway tile a ramp meets was
+  drawn as a square junction box at its own width, auxiliary lane included,
+  while the motorway past it was only as wide as the tiles beside it. It
+  stepped out at both ends, on the side away from the ramp too, and the lane
+  ended in a step past a diverge and began with one before a merge. The node
+  now lays its motorway the way a straight run changes width: full over the
+  half the ramp joins over, bending to the plain motorway over the other half.
+
+Checked in the browser by scanning the pavement's edge across the road, tile
+by tile, and in pictures: the stub from a signalised T, a long taper for its
+arrow, and an on-ramp and an off-ramp joining alongside.
+
+Found and not fixed (see Open): the centre line jogs down a two-way taper, where
+the spec and the code disagree on how the lanes close. Two check scripts
+build what the world now refuses.
 
 ### The corridor ghost, and a corridor laid one row off (reported and fixed 2026-09-30)
 

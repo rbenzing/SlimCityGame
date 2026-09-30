@@ -399,6 +399,26 @@ describe('the lane drop a tile is running into', () => {
     expect(narrowingAhead(2, 8 - LENGTH - 1, w)).toBeUndefined();
   });
 
+  it('fits a stub shorter than its taper, beginning at full width where it leaves the junction', () => {
+    // Three tiles of four-lane road between a junction and a two-lane street:
+    // half the six tiles the taper wants.
+    const stub = `
+      #####
+      ..#..
+      ..#..
+      ..#..
+      ..n..
+      ..n..
+    `;
+    const w = world(stub);
+    // The stub's first tile is drawn at the whole road and narrows toward the
+    // next, the way the tile before any taper does, so the junction's arm is
+    // full width and the kerb runs straight out of it.
+    expect(narrowingAhead(2, 1, w)).toBeUndefined();
+    expect(narrowingAhead(2, 2, w)).toMatchObject({ remaining: 1, length: 2, closed: 7.5 });
+    expect(narrowingAhead(2, 3, w)).toMatchObject({ remaining: 0, length: 2 });
+  });
+
   it('says nothing to the narrow road, which is not the one closing lanes', () => {
     expect(narrowingAhead(2, 9, world(NARROWS))).toBeUndefined();
   });
