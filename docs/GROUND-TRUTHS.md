@@ -67,10 +67,11 @@ MUTCD citations below use 11th-edition section numbers.
   it sits in both graphs. A tram line only ever routes over the tram graph, and
   no line mixes tram and rail track. —
   [transit-model.md](world-sim/transit-model.md); `isTramTier`
-- A tramway crosses a street straight over the junction. A street tile that is
-  not tram track, joined to tram track on two opposite sides, is a tram
-  crossing: it keeps its own road, the tram graph counts it as track along that
-  axis, and the road mesh lays the rails across it. It is derived from the
+- A tramway crosses a street straight over the junction. A straight run of one
+  or two joined street tiles that are not tram track, with tram track joined at
+  both ends, is a tram crossing: each tile keeps its own road, the tram graph
+  counts it as track along that axis, and the road mesh lays the rails across
+  it. It is derived from the
   tiles every time, never stored, and a tram never turns at one. —
   [transit-model.md](world-sim/transit-model.md#tram-crossings);
   `tramCrossingAxes` in `src/shared/types.ts`
@@ -242,6 +243,13 @@ MUTCD citations below use 11th-edition section numbers.
   driven and what is signed cannot disagree — counted as an arm anywhere, a
   second carriageway took every gantry off the first. —
   [road-model.md](world-sim/road-model.md); `sideBySideCarriageways` in
+  `src/shared/corridor.ts`
+- A corridor's two halves never join along the road, except on a row where a
+  street crosses it: a road that is not a corridor half joining each half from
+  outside, in line across it, opens the median there, and the halves join
+  across that row as two junctions side by side. It is derived from the tiles
+  and never stored, and the mask and the approach walk ask the same
+  predicate. — [road-model.md](world-sim/road-model.md); `medianOpens` in
   `src/shared/corridor.ts`
 - Two neighbouring grid road tiles are joined exactly when the network links
   them. A road laid with snapping off (`buildRoad` with `join: false`) joins

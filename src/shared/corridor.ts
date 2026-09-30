@@ -103,6 +103,32 @@ export function corridorPartners(
   return alongX ? dx === 0 : dz === 0;
 }
 
+/**
+ * Whether the median is open between a corridor half at (x, z) and its partner
+ * at (x + dx, z + dz): a street crosses the corridor on that row.
+ *
+ * The halves never join along the road, so without this a street meeting a
+ * divided road ends in a T against each half, facing the median, and nothing
+ * crosses without an overpass. The median opens where a road that is not a
+ * corridor half joins each half from OUTSIDE — one beyond the near half, one
+ * beyond the far half, the two in line across the corridor. A street meeting
+ * one half only leaves the median shut.
+ *
+ * `arrivesAt(tx, tz, sx, sz)` answers whether a road that is not a corridor half
+ * stands at (tx + sx, tz + sz) and joins (tx, tz) by every other rule; each
+ * caller answers it from its own view of the tiles, so the mask and the
+ * approach walk ask the same question.
+ */
+export function medianOpens(
+  x: number,
+  z: number,
+  dx: number,
+  dz: number,
+  arrivesAt: (tx: number, tz: number, sx: number, sz: number) => boolean,
+): boolean {
+  return arrivesAt(x, z, -dx, -dz) && arrivesAt(x + dx, z + dz, dx, dz);
+}
+
 /** Whether a step runs ACROSS the way a flow travels rather than along it. */
 function acrossFlow(flow: RoadFlow, dx: number, dz: number): boolean {
   const alongX = flow === RoadFlow.East || flow === RoadFlow.West;

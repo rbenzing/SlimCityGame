@@ -32,9 +32,11 @@ import {
   run,
   sandboxed,
   send,
+  sixLaneCommands,
   twoLaneSpec,
   type Harness,
 } from '../support/sim';
+import { RoadNetwork } from '../../src/world/roadgraph';
 import { guardRoadNetwork } from '../support/guard';
 
 guardRoadNetwork();
@@ -820,5 +822,63 @@ describe('buildRoad: a road laid as its own road', () => {
     const after = grid(h);
     expect(Array.from(after.roadMask)).toEqual(Array.from(before.roadMask));
     expect(Array.from(after.roadSeparate)).toEqual(Array.from(before.roadSeparate));
+  });
+});
+
+describe('crossing a road laid as two carriageways', () => {
+  // A six-lane avenue running south down columns 40 and 41, and a street
+  // across it on row 50.
+  const NEAR = 40;
+  const FAR = 41;
+  const ROW = 50;
+  const EAST = 2;
+  const WEST = 8;
+
+  function sixLane(): Harness {
+    const h = sandboxed();
+    expect(run(h, 1, sixLaneCommands(column(NEAR, 30, 40))).ok).toBe(true);
+    return h;
+  }
+  function grid(h: Harness): GridState {
+    h.sim.handleMessage({ type: 'requestSave' });
+    return latestSaveGrid(h);
+  }
+  const maskAt = (g: GridState, x: number): number => g.roadMask[tileIndex(x, ROW)] ?? 0;
+
+  it('opens the median where a street is drawn across both halves, and cars drive straight over', () => {
+    const h = sixLane();
+    expect(
+      run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(20, ROW, 42) }]).ok,
+    ).toBe(true);
+    const g = grid(h);
+    expect(maskAt(g, NEAR) & (EAST | WEST)).toBe(EAST | WEST);
+    expect(maskAt(g, FAR) & (EAST | WEST)).toBe(EAST | WEST);
+    // Only on the street's row: a tile along either half is still a straight run.
+    expect(g.roadMask[tileIndex(NEAR, ROW - 3)]).toBe(1 | 4);
+    const cars = new RoadNetwork();
+    cars.rebuild(g);
+    const path = cars.findPath({ x: 20, z: ROW }, { x: 61, z: ROW });
+    expect(path).not.toBeNull();
+    for (const x of [NEAR, FAR]) {
+      expect(path!.points.some((p) => p.x === x && p.z === ROW)).toBe(true);
+    }
+  });
+
+  it('keeps the median shut where a street meets one half only', () => {
+    const h = sixLane();
+    run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(20, ROW, 21) }]);
+    const g = grid(h);
+    expect(maskAt(g, NEAR) & (EAST | WEST)).toBe(WEST);
+    expect(maskAt(g, FAR) & (EAST | WEST)).toBe(0);
+  });
+
+  it('shuts the median again when the street beyond it is bulldozed, and opens it on undo', () => {
+    const h = sixLane();
+    run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(20, ROW, 42) }]);
+    const dozed = run(h, 3, [{ kind: 'bulldoze', tiles: roadRow(FAR + 1, ROW, 20) }]);
+    expect(dozed.ok).toBe(true);
+    expect(maskAt(grid(h), NEAR) & EAST).toBe(0);
+    expect(run(h, 4, dozed.inverse).ok).toBe(true);
+    expect(maskAt(grid(h), NEAR) & EAST).toBe(EAST);
   });
 });

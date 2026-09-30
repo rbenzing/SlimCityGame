@@ -228,6 +228,54 @@ describe('computeMask', () => {
     // an arm and the tile it meets is a junction.
     g.roadTier[idx(size, 3, 5)] = RoadTier.TwoLane;
     expect(computeMask(g, 4, 5)).toBe(1 | 4 | 8); // N|S|W
+    // Meeting one half only, it leaves the median shut: the far half is still
+    // a straight run, and the two halves do not join.
+    expect(computeMask(g, 5, 5)).toBe(1 | 4); // N|S
+  });
+
+  it('opens the median where a street crosses both halves, on that row only', () => {
+    const size = 10;
+    const g = makeGrid(size);
+    for (let z = 3; z <= 7; z++) {
+      for (const [x, flow] of [
+        [4, RoadFlow.South | 0b1000],
+        [5, RoadFlow.South | 0b1000 | 0b1_0000],
+      ] as const) {
+        const i = idx(size, x, z);
+        g.roadTier[i] = RoadTier.Avenue;
+        g.roadProfile[i] = 40;
+        g.roadFlow[i] = flow;
+      }
+    }
+    g.roadTier[idx(size, 3, 5)] = RoadTier.TwoLane;
+    g.roadTier[idx(size, 6, 5)] = RoadTier.TwoLane;
+    // Both halves are junctions on the street's row, joined to each other.
+    expect(computeMask(g, 4, 5)).toBe(1 | 2 | 4 | 8);
+    expect(computeMask(g, 5, 5)).toBe(1 | 2 | 4 | 8);
+    // Everywhere else the median is shut.
+    expect(computeMask(g, 4, 4)).toBe(1 | 4);
+    expect(computeMask(g, 5, 6)).toBe(1 | 4);
+  });
+
+  it('keeps the median shut where the roads either side are rail, not streets', () => {
+    const size = 10;
+    const g = makeGrid(size);
+    for (let z = 3; z <= 7; z++) {
+      for (const [x, flow] of [
+        [4, RoadFlow.South | 0b1000],
+        [5, RoadFlow.South | 0b1000 | 0b1_0000],
+      ] as const) {
+        const i = idx(size, x, z);
+        g.roadTier[i] = RoadTier.Avenue;
+        g.roadProfile[i] = 40;
+        g.roadFlow[i] = flow;
+      }
+    }
+    // Track cuts a street rather than crossing it, so it opens nothing.
+    g.roadTier[idx(size, 3, 5)] = RoadTier.RailTrack;
+    g.roadTier[idx(size, 6, 5)] = RoadTier.RailTrack;
+    expect(computeMask(g, 4, 5)).toBe(1 | 4);
+    expect(computeMask(g, 5, 5)).toBe(1 | 4);
   });
 
   it('reads a T shape correctly', () => {

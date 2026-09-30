@@ -13,6 +13,7 @@ import {
 import {
   isRailTier,
   isTramTier,
+  RoadFlow,
   RoadTier,
   type GraphEdge,
   type GridState,
@@ -700,6 +701,40 @@ describe('tram lines', () => {
         'tram',
       );
       expect(sys.route(turning.id)).toBeNull();
+    });
+
+    it('goes over a road laid as two carriageways, through the median it opens', () => {
+      // A six-lane road running south in columns 7 and 8, its halves flagged
+      // as one corridor, with the tramway drawn across both.
+      const g = tramGrid();
+      for (let z = TRAM_Z - 5; z <= TRAM_Z + 5; z++) {
+        for (const [x, flow] of [
+          [CROSS_X, RoadFlow.South | 0b1000],
+          [CROSS_X + 1, RoadFlow.South | 0b1000 | 0b1_0000],
+        ] as const) {
+          const i = z * SIZE + x;
+          g.roadTier[i] = RoadTier.Avenue;
+          g.roadProfile[i] = 40;
+          g.roadFlow[i] = flow;
+        }
+      }
+      const { road, tram } = networks(g);
+      const sys = new TransitSystem(road, null, tram);
+      const points = sys.route(sys.createLine(ends, 0, 'tram').id)?.points ?? [];
+      for (const x of [CROSS_X, CROSS_X + 1]) {
+        expect(points.some((p) => p.x === x && p.z === TRAM_Z)).toBe(true);
+      }
+      for (const p of points) expect(p.z).toBe(TRAM_Z);
+    });
+
+    it('stops at three street tiles in a row, which no crossing spans', () => {
+      const g = tramGrid();
+      for (const x of [CROSS_X, CROSS_X + 1, CROSS_X + 2]) {
+        for (let z = TRAM_Z - 5; z <= TRAM_Z + 5; z++) g.roadTier[z * SIZE + x] = RoadTier.Avenue;
+      }
+      const { road, tram } = networks(g);
+      const sys = new TransitSystem(road, null, tram);
+      expect(sys.route(sys.createLine(ends, 0, 'tram').id)).toBeNull();
     });
 
     it('is an ordinary junction again once one tram arm is gone', () => {

@@ -191,27 +191,37 @@ export function isTramTier(tier: number): boolean {
 
 /**
  * Along which axes a tramway crosses this road tile. A tramway drawn across a
- * street leaves the crossing tile as the street's, since it never takes a tile
+ * street leaves the crossing tiles as the street's, since it never takes a tile
  * from a road it does not outrank, so the crossing is read off the tiles
- * rather than stored: a street tile that is not tram track itself, joined to
- * tram track on two opposite sides, carries the tramway straight over it.
+ * rather than stored: a straight run of one or two street tiles that are not
+ * tram track themselves, with tram track joined at both ends, carries the
+ * tramway straight over. Two tiles is a road laid as two carriageways, whose
+ * median opens where the tramway crosses it.
  *
- * `n`, `e`, `s` and `w` are the tiers of the roads the tile is JOINED to on
- * each side, None where it joins nothing — a tram arm that only lies alongside
- * crosses nothing.
+ * `joined(dx, dz, steps)` is the tier of the road `steps` tiles away in that
+ * direction along a chain of JOINED roads, None where the chain breaks first —
+ * a tram arm that only lies alongside crosses nothing.
  */
 export function tramCrossingAxes(
   own: RoadTier,
-  n: RoadTier,
-  e: RoadTier,
-  s: RoadTier,
-  w: RoadTier,
+  joined: (dx: number, dz: number, steps: 1 | 2) => RoadTier,
 ): { alongX: boolean; alongZ: boolean } {
-  const crossable = own !== RoadTier.None && !isTramTier(own) && isStreetTier(own);
-  return {
-    alongX: crossable && isTramTier(e) && isTramTier(w),
-    alongZ: crossable && isTramTier(n) && isTramTier(s),
+  const crossable = (tier: RoadTier): boolean =>
+    tier !== RoadTier.None && !isTramTier(tier) && isStreetTier(tier);
+  if (!crossable(own)) return { alongX: false, alongZ: false };
+  // What lies that way: track at once, track beyond one more street tile, or neither.
+  const reach = (dx: number, dz: number): 'track' | 'street' | null => {
+    const next = joined(dx, dz, 1);
+    if (isTramTier(next)) return 'track';
+    return crossable(next) && isTramTier(joined(dx, dz, 2)) ? 'street' : null;
   };
+  // Track both ways, with at most one other street tile between: never three.
+  const along = (dx: number, dz: number): boolean => {
+    const ahead = reach(dx, dz);
+    const behind = reach(-dx, -dz);
+    return ahead !== null && behind !== null && (ahead === 'track' || behind === 'track');
+  };
+  return { alongX: along(1, 0), alongZ: along(0, 1) };
 }
 
 /**

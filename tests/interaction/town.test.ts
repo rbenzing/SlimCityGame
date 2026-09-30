@@ -8,6 +8,7 @@ import { loadGrid } from '../../src/world/roadnet';
 import {
   catalog,
   entryOf,
+  GROWTH_TIMEOUT_MS,
   latestLandfillFill,
   latestSaveData,
   latestSaveGrid,
@@ -84,7 +85,7 @@ describe('a small town, built and grown, as the regression for everything togeth
     town.h.sim.handleMessage({ type: 'requestSave' });
     grid = latestSaveGrid(town.h);
     standing = [...standingBuildings(town.h).values()];
-  }, 300_000);
+  }, GROWTH_TIMEOUT_MS);
 
   const placed = (): BuildingInstance[] => standing.filter((b) => entryOf(b).zone === undefined);
   const farms = (): BuildingInstance[] =>
@@ -113,6 +114,15 @@ describe('a small town, built and grown, as the regression for everything togeth
       .filter(([, tier]) => tier !== RoadTier.None && !laid.has(tier))
       .map(([name]) => name);
     expect(missing).toEqual([]);
+  });
+
+  it('opens the six-lane road’s median where main street crosses it, and nowhere else', () => {
+    const EAST = 2;
+    const WEST = 8;
+    for (const x of [TOWN.sixLane.x, TOWN.sixLane.x + 1]) {
+      expect(grid.roadMask[tileIndex(x, TOWN.main.z)]! & (EAST | WEST)).toBe(EAST | WEST);
+      expect(grid.roadMask[tileIndex(x, TOWN.main.z - 4)]! & (EAST | WEST)).toBe(0);
+    }
   });
 
   it('bridges the river where the avenue and the motorway cross it', () => {
@@ -261,11 +271,15 @@ describe('a small town, built and grown, as the regression for everything togeth
     expect(bytes(reload(loaded))).toEqual(bytes(loaded));
   });
 
-  it('grows the same town, byte for byte, from the same steps on the same seed', () => {
-    const again = buildTown();
-    growTown(again, COMPARE_AT);
-    expect(bytes(saveNow(again))).toEqual(bytes(atCompare));
-  }, 120_000);
+  it(
+    'grows the same town, byte for byte, from the same steps on the same seed',
+    () => {
+      const again = buildTown();
+      growTown(again, COMPARE_AT);
+      expect(bytes(saveNow(again))).toEqual(bytes(atCompare));
+    },
+    GROWTH_TIMEOUT_MS,
+  );
 
   it('undoes every step back to the untouched map', () => {
     const built = buildTown();

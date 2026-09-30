@@ -2,7 +2,17 @@ import { MAP_SIZE, tileIndex } from '../../src/shared/constants';
 import { RoadTier, ZoneType } from '../../src/shared/types';
 import type { Command, CommandAck, MapData, TilePoint } from '../../src/shared/types';
 import { ClientGridMirror } from '../../src/app/clientgrid';
-import { column, feedMirror, flatMap, makeHarness, rows, roadRow, send, type Harness } from './sim';
+import {
+  column,
+  feedMirror,
+  flatMap,
+  makeHarness,
+  rows,
+  roadRow,
+  send,
+  sixLaneCommands,
+  type Harness,
+} from './sim';
 
 /**
  * The small town every interaction regression grows: every road type, every
@@ -17,7 +27,8 @@ import { column, feedMirror, flatMap, makeHarness, rows, roadRow, send, type Har
  *   z  57      the road out to the motorway ramp, x 130–151
  *   z  70–74   a river, which the avenue and the ramp road bridge
  *   z  85      tramway, x 50–129, drawn after the avenue and crossing it
- *   z 100      main street (two-lane), x 50–130, the town centre
+ *   z 100      main street (two-lane), x 50–130, the town centre, carried on
+ *              east to x 140 across a six-lane road at x 134–135, z 88–111
  *   z 101–129  one-way street (x 60), alley (x 70), bus lane (x 120)
  *   z 115      bike lane, x 91–119
  *   z 130      four-lane road, x 50–130, industry, power and the incinerator
@@ -44,6 +55,8 @@ export const TOWN = {
     { x: 110, z: 85 },
   ],
   main: { z: 100, x0: 50, x1: 130 },
+  mainEast: { x0: 131, x1: 140 },
+  sixLane: { x: 134, z0: 88, z1: 111 },
   avenue: { x: 90, z0: 44, z1: 150 },
   oneWay: { x: 60, z0: 101, z1: 129 },
   alley: { x: 70, z0: 101, z1: 112 },
@@ -127,6 +140,22 @@ export function townSteps(): TownStep[] {
           kind: 'buildRoad',
           tier: RoadTier.FourLane,
           tiles: roadRow(t.fourLane.x0, t.fourLane.z, span(t.fourLane.x0, t.fourLane.x1)),
+        },
+      ],
+    },
+    {
+      label: 'a six-lane road, laid as two carriageways',
+      commands: sixLaneCommands(
+        column(t.sixLane.x, t.sixLane.z0, span(t.sixLane.z0, t.sixLane.z1)),
+      ),
+    },
+    {
+      label: 'main street on east, across the six-lane road',
+      commands: [
+        {
+          kind: 'buildRoad',
+          tier: RoadTier.TwoLane,
+          tiles: roadRow(t.mainEast.x0, t.main.z, span(t.mainEast.x0, t.mainEast.x1)),
         },
       ],
     },
@@ -247,7 +276,7 @@ export function townSteps(): TownStep[] {
       label: 'power and water',
       commands: [
         place('coal-plant', { x: 110, z: 131 }),
-        place('wind-turbine', { x: 131, z: 100 }),
+        place('wind-turbine', { x: 131, z: 99 }),
         place('water-tower', { x: 102, z: 101 }),
         place('water-tower', { x: 106, z: 101 }),
       ],
