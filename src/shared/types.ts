@@ -1086,6 +1086,11 @@ export interface LanePiece {
   flow?: LaneFlow;
   /** A travel lane with tram rails embedded in it, so cars and trams share the piece. */
   tram?: boolean;
+  /**
+   * The turn bay a junction's approach gains. Only ever set on a cross-section
+   * derived for drawing, never on a stored profile.
+   */
+  bay?: boolean;
 }
 
 export interface RoadProfile {

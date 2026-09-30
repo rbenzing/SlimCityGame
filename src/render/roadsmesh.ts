@@ -135,6 +135,7 @@ import {
   narrowingAhead,
   paintedCrossSection,
   rampMouthAt,
+  SECTION_REACH_TILES,
 } from '../shared/approachzone';
 import { paintsGore } from '../shared/taper';
 import { axisOfFlow } from '../shared/overpass';
@@ -868,14 +869,26 @@ export function isArrowTile(coord: number): boolean {
   return ((coord % ARROW_PERIOD_TILES) + ARROW_PERIOD_TILES) % ARROW_PERIOD_TILES === 0;
 }
 
-const ARROW_HALF_LENGTH_M = 3;
-const ARROW_HEAD_LENGTH_M = 1.2;
-const ARROW_STEM_HALF_WIDTH_M = 0.15;
-const ARROW_HEAD_HALF_WIDTH_M = 0.6;
-/** Half the length of a turn-lane arrow along the lane. */
-const TURN_ARROW_HALF_LENGTH_M = 2.4;
-/** How far the turn arrow's hook reaches across the lane before its head. */
-const TURN_ARROW_HOOK_M = 1.4;
+// Every arrow is drawn to the sizes in the Pavement Markings chapter of FHWA's
+// Standard Highway Signs, which MUTCD §3B.20 ¶05 makes them installed to.
+/** A through arrow, tail to tip: 9.5 ft. */
+const THROUGH_ARROW_LENGTH_M = 2.9;
+/** A turn arrow, tail to the far side of its hook's head: 8 ft. */
+const TURN_ARROW_LENGTH_M = 2.44;
+/** A turn-and-through arrow, tail to the through head's tip: 12.75 ft. */
+const COMBINED_ARROW_LENGTH_M = 3.89;
+/** How far behind a combined arrow's tip its turn head points off: 7.5 ft. */
+const COMBINED_HOOK_BEHIND_TIP_M = 2.29;
+/** A through head, base to tip: 5 ft. */
+const ARROW_HEAD_LENGTH_M = 1.52;
+/** Half a through head's base, 3 ft 8 in across (the SHS leaves it undimensioned; GDOT T-12B). */
+const ARROW_HEAD_HALF_WIDTH_M = 0.56;
+/** Half a stem, 12 in wide. */
+const ARROW_STEM_HALF_WIDTH_M = 0.1525;
+/** A turn head, base to tip: the 3 ft a turn arrow spends turning. */
+const TURN_HEAD_LENGTH_M = 0.91;
+/** How far across the lane a turn's head reaches from the stem, kept inside the lane. */
+const ARROW_HOOK_REACH_M = 1.3;
 
 /**
  * Emits one two-way left-turn arrow inside a turn lane: a stem along the
@@ -895,59 +908,24 @@ export function emitTurnArrow(
   laneCentre: number,
   hAt: (x: number, z: number) => number,
 ): void {
-  const { vertical, ahead, leftSign: across } = approachAxis(toward);
-  const stemHalf = ARROW_STEM_HALF_WIDTH_M;
-  const stemFrom = -TURN_ARROW_HALF_LENGTH_M;
-  const stemTo = TURN_ARROW_HALF_LENGTH_M - TURN_ARROW_HOOK_M;
-  const hookTo = TURN_ARROW_HOOK_M;
-  const rect = (alongLo: number, alongHi: number, acrossLo: number, acrossHi: number): void => {
-    const a0 = ahead * alongLo;
-    const a1 = ahead * alongHi;
-    const c0 = laneCentre + across * acrossLo;
-    const c1 = laneCentre + across * acrossHi;
-    pushLocalRect(
-      positions,
-      colors,
-      centerX,
-      centerZ,
-      vertical ? Math.min(c0, c1) : Math.min(a0, a1),
-      vertical ? Math.max(c0, c1) : Math.max(a0, a1),
-      vertical ? Math.min(a0, a1) : Math.min(c0, c1),
-      vertical ? Math.max(a0, a1) : Math.max(c0, c1),
-      MARK_Y_OFFSET,
-      MARKING_COLOR,
-      hAt,
-    );
-  };
-  // Stem along the lane, then the hook bending across, then the head.
-  rect(stemFrom, stemTo, -stemHalf, stemHalf);
-  rect(stemTo - stemHalf, stemTo + stemHalf, -stemHalf, hookTo - ARROW_HEAD_LENGTH_M);
-  rect(
-    stemTo - ARROW_HEAD_HALF_WIDTH_M,
-    stemTo + ARROW_HEAD_HALF_WIDTH_M,
-    hookTo - ARROW_HEAD_LENGTH_M,
-    hookTo,
+  // It is a left-turn arrow for the driver it faces — two of them, pointing
+  // opposite ways, are how a two-way turn lane is marked.
+  const { vertical, ahead } = approachAxis(toward);
+  emitLaneUseArrow(
+    positions,
+    colors,
+    vertical,
+    centerX,
+    centerZ,
+    laneCentre,
+    ahead,
+    Movement.Left,
+    hAt,
   );
 }
 
 /** How far in from the tile edge a lane-use arrow's centre sits. */
 const LANE_ARROW_SETBACK_M = 4;
-/** The four orthogonal steps, and the direction each one lies in. */
-const APPROACH_DIRS: ReadonlyArray<readonly [number, number, RoadFlow]> = [
-  [0, -1, RoadFlow.North],
-  [1, 0, RoadFlow.East],
-  [0, 1, RoadFlow.South],
-  [-1, 0, RoadFlow.West],
-];
-const APPROACH_STEPS: ReadonlyArray<readonly [number, number]> = APPROACH_DIRS.map(([dx, dz]) => [
-  dx,
-  dz,
-]);
-
-/** How far back from the head a turning hook leaves the stem. */
-const LANE_ARROW_HOOK_DROP_M = 0.9;
-/** How far across the lane a turning hook reaches before its own head. */
-const LANE_ARROW_HOOK_REACH_M = 1.3;
 
 /**
  * A LANE-USE arrow: what one lane of an approach is allowed to do, painted
@@ -1056,7 +1034,7 @@ function clipToAlong(
   return low.length === 0 ? [] : pass(low, hi, false);
 }
 
-function emitLaneUseArrow(
+export function emitLaneUseArrow(
   positions: number[],
   colors: number[],
   vertical: boolean,
@@ -1068,10 +1046,19 @@ function emitLaneUseArrow(
   hAt: (x: number, z: number) => number,
 ): void {
   const stemHalf = ARROW_STEM_HALF_WIDTH_M;
-  const tip = ARROW_HALF_LENGTH_M;
+  const through = (movements & Movement.Through) !== 0;
+  const turns = (movements & (Movement.Left | Movement.Right)) !== 0;
+  const length = through
+    ? turns
+      ? COMBINED_ARROW_LENGTH_M
+      : THROUGH_ARROW_LENGTH_M
+    : TURN_ARROW_LENGTH_M;
+  const tip = length / 2;
   const headBase = tip - ARROW_HEAD_LENGTH_M;
-  const tail = -ARROW_HALF_LENGTH_M;
-  const hookAlong = headBase - LANE_ARROW_HOOK_DROP_M;
+  const tail = -length / 2;
+  // A turn beside a through head points off the stem behind it; a turn-only
+  // arrow's head is the top of the arrow.
+  const hookAlong = through ? tip - COMBINED_HOOK_BEHIND_TIP_M : tip - ARROW_HEAD_HALF_WIDTH_M;
   const leftSign = vertical ? ahead : -ahead;
 
   /** A rectangle in lane-local coordinates: along the lane, and across it. */
@@ -1120,7 +1107,6 @@ function emitLaneUseArrow(
       hAt,
     );
 
-  const through = (movements & Movement.Through) !== 0;
   // The stem runs to the head when the lane goes through, and only as far as
   // the hooks when it does not — a turn-only lane has no shaft past them.
   rect(tail, through ? headBase : hookAlong + stemHalf, -stemHalf, stemHalf);
@@ -1132,8 +1118,8 @@ function emitLaneUseArrow(
     [Movement.Right, -leftSign],
   ] as const) {
     if ((movements & bit) === 0) continue;
-    const outer = sign * LANE_ARROW_HOOK_REACH_M;
-    const neck = sign * (LANE_ARROW_HOOK_REACH_M - ARROW_HEAD_LENGTH_M);
+    const outer = sign * ARROW_HOOK_REACH_M;
+    const neck = sign * (ARROW_HOOK_REACH_M - TURN_HEAD_LENGTH_M);
     rect(hookAlong - stemHalf, hookAlong + stemHalf, Math.min(0, neck), Math.max(0, neck));
     head(
       at(hookAlong - ARROW_HEAD_HALF_WIDTH_M, neck),
@@ -1159,9 +1145,9 @@ function emitDirectionArrow(
   reversed: boolean,
   hAt: (x: number, z: number) => number,
 ): void {
-  const headBase = ARROW_HALF_LENGTH_M - ARROW_HEAD_LENGTH_M;
-  const tip = ARROW_HALF_LENGTH_M;
-  const tail = -ARROW_HALF_LENGTH_M;
+  const tip = THROUGH_ARROW_LENGTH_M / 2;
+  const headBase = tip - ARROW_HEAD_LENGTH_M;
+  const tail = -tip;
   const rects: Array<[number, number, number, number]> = [
     // [alongLo, alongHi, acrossLo, acrossHi]
     [tail, headBase, -ARROW_STEM_HALF_WIDTH_M, ARROW_STEM_HALF_WIDTH_M], // stem
@@ -5029,6 +5015,29 @@ function chunkKeyOf(x: number, z: number): number {
   return cz * CHUNKS_PER_SIDE + cx;
 }
 
+/**
+ * The chunks holding a tile whose drawing can change with the road, or the
+ * junction, on tile (x, z). A tile's cross-section is decided along its own run
+ * out to `SECTION_REACH_TILES`, and the tile beside it bends its kerb and paint
+ * to meet it, which is one tile further; a junction's legs, which decide the
+ * bays its approaches earn, stand one tile off that run. So: that far along
+ * both axes, and a tile either side of each.
+ */
+export function chunksReading(x: number, z: number): Set<number> {
+  const reach = SECTION_REACH_TILES + 1;
+  const chunkOf = (t: number): number =>
+    Math.min(CHUNKS_PER_SIDE - 1, Math.max(0, Math.floor(t / CHUNK_TILES)));
+  const keys = new Set<number>();
+  const band = (x0: number, z0: number, x1: number, z1: number): void => {
+    for (let cz = chunkOf(z0); cz <= chunkOf(z1); cz++) {
+      for (let cx = chunkOf(x0); cx <= chunkOf(x1); cx++) keys.add(cz * CHUNKS_PER_SIDE + cx);
+    }
+  };
+  band(x - reach, z - 1, x + reach, z + 1);
+  band(x - 1, z - reach, x + 1, z + reach);
+  return keys;
+}
+
 function localTileKeyOf(x: number, z: number): number {
   const localX = ((x % CHUNK_TILES) + CHUNK_TILES) % CHUNK_TILES;
   const localZ = ((z % CHUNK_TILES) + CHUNK_TILES) % CHUNK_TILES;
@@ -5120,6 +5129,13 @@ export class RoadMeshRenderer {
     this.material.color.setScalar(roadNightDim(nightFactor));
   }
 
+  /** Adds to `dirty` every chunk with road in it that tile (x, z) can change the drawing of. */
+  private dirtyReaders(x: number, z: number, dirty: Set<number>): void {
+    for (const key of chunksReading(x, z)) {
+      if (this.chunks.get(key)?.tiles.size) dirty.add(key);
+    }
+  }
+
   apply(deltas: RoadTileDelta[]): void {
     const dirty = new Set<number>();
     for (const delta of deltas) {
@@ -5136,6 +5152,7 @@ export class RoadMeshRenderer {
         chunk.tiles.set(tileKey, delta);
       }
       dirty.add(key);
+      this.dirtyReaders(delta.x, delta.z, dirty);
     }
 
     for (const key of dirty) this.rebuildChunk(key);
@@ -5167,16 +5184,11 @@ export class RoadMeshRenderer {
     }
 
     const dirty = new Set<number>();
-    const moved = (i: number): void => {
-      const key = chunkKeyOf(i % MAP_SIZE, Math.floor(i / MAP_SIZE));
-      if (this.chunks.get(key)?.tiles.size) dirty.add(key);
-      // A restriction is painted on the tile BEFORE the junction, which can
-      // sit in a different chunk from the junction itself.
-      for (const [dx, dz] of APPROACH_STEPS) {
-        const near = chunkKeyOf((i % MAP_SIZE) + dx, Math.floor(i / MAP_SIZE) + dz);
-        if (this.chunks.get(near)?.tiles.size) dirty.add(near);
-      }
-    };
+    // What a control decides is painted down the approaches as well as on the
+    // junction: its restrictions on the tile before it, and the bays it earns
+    // as far back as the approach zone runs.
+    const moved = (i: number): void =>
+      this.dirtyReaders(i % MAP_SIZE, Math.floor(i / MAP_SIZE), dirty);
     for (const [i, control] of next) {
       if (this.junctionControls.get(i) !== control) moved(i);
       if ((this.junctionTurns.get(i) ?? 0) !== (nextTurns.get(i) ?? 0)) moved(i);

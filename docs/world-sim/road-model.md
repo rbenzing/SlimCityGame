@@ -887,6 +887,20 @@ per-tier:
   line, so both come from the one metric. The phase is anchored at global
   world-metre 0 rather than per tile, so the pattern runs unbroken across
   every tile and chunk seam.
+- **A turn bay is fenced by a solid line.** The line between a turn bay and
+  the through lane beside it is solid white, the normal 6 in width: MUTCD
+  §3B.06 ¶07 wants a solid line between a through lane and a mandatory turn
+  lane, because a through driver is not to drift into the queue. It runs the
+  whole of the bay, taper included, and where the bay has closed it ends on
+  the centre line the bay opened from, not on the kerb — the bay closes
+  toward the middle of the road, so that is where its line goes. The dotted
+  extension through the taper that §3B.23 ¶03 allows is not painted.
+- **A line never crosses another on its way across a seam.** The lines on each
+  side of a seam are paired in the order they lie across the road, colour by
+  colour, and the pairing that moves them least is the one drawn. So the two
+  lines of a double centre that a bay pushes sideways stay side by side: paired
+  by nearness alone, a shift wider than the gap between them paired each line
+  with the other's partner, and the two crossed.
 - **Turn-lane paint.** A two-way left-turn lane carries a solid line toward
   the through lane and a broken line toward the turn lane on each side —
   legal to cross into to turn, illegal to travel along — with white turn
@@ -900,6 +914,20 @@ per-tier:
   single-lane approach is left unmarked, since it does everything anyway —
   which is also what MUTCD 3D.06 ¶01 says of one at a circular
   intersection.
+- **An arrow is painted at the size one is painted.** The MUTCD leaves the
+  sizes to the Pavement Markings chapter of FHWA's _Standard Highway Signs_
+  (§3B.20 ¶05), which draws a through arrow 9.5 ft long (2.90 m) with a
+  5 ft (1.52 m) head, a turn arrow 8 ft (2.44 m), and a combined turn and
+  through arrow 12.75 ft (3.89 m), the turn's head leaving the stem 7.5 ft
+  (2.29 m) behind the through head's tip; every stem is 12 in (0.30 m) wide.
+  The head of a through arrow is not dimensioned there, so it takes Georgia
+  DOT's standard detail T-12B, 3 ft 8 in (1.12 m) across. A lane-use arrow,
+  a two-way turn lane's arrows and a one-way street's direction arrows are
+  all these sizes; no road in the game is slow enough for the 25% reduction
+  §3B.20 ¶11 allows below 25 mph, and the long freeway arrow is never
+  painted, because nothing arrows a motorway. An arrow stays inside its own
+  lane (§3B.20 ¶08). Drawn at twice this, an approach's arrows ran the length
+  of a car and a half and read as lane lines.
 - **Gore hatching** is diagonal bars at 45°, sloping away from the traffic
   beside them in the direction that traffic goes (MUTCD 3B.25 ¶08–09), so both
   halves of a two-way road lean the same way on a map and each leans

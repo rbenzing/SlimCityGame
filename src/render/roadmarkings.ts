@@ -44,6 +44,12 @@ export interface MarkingLine {
    * convention, and the one a driver reads without thinking.
    */
   color: 'white' | 'yellow';
+  /**
+   * On the line fencing a turn bay off from the through lane: which side of it
+   * the bay lies, toward the low offsets or the high. Where the bay closes, the
+   * line closes onto the line on the bay's far side.
+   */
+  bayToward?: -1 | 1;
 }
 
 export interface MarkingPlan {
@@ -359,6 +365,10 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
           yellow(boundary - CENTRE_PAIR_OFFSET_M),
           yellow(boundary + CENTRE_PAIR_OFFSET_M),
         );
+    } else if (sameWay && (piece.bay || next.bay) && style.laneLines && !isEdgeLine(boundary)) {
+      // A through driver is not to drift into the queue for a turn, so the bay
+      // is fenced off with a solid line rather than a lane line.
+      solid.push({ ...white(boundary), bayToward: piece.bay ? -1 : 1 });
     } else if ((sameWay || travelToBus) && style.laneLines && !isEdgeLine(boundary)) {
       // A kerbside bus lane's inner edge is the edge line, and a solid line
       // there says what a dashed one over the top of it cannot.
@@ -460,12 +470,16 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
  *
  * A line with no opposite number is a lane the next road does not have. It
  * CLOSES rather than stopping dead: it runs out to the edge of the carriageway
- * it is merging into, which is the line a dropped lane actually follows.
+ * it is merging into, which is the line a dropped lane actually follows. The
+ * line fencing a turn bay is the exception, because a bay closes toward the
+ * line it opened from rather than toward the kerb: it goes where the line on
+ * the bay's far side goes.
  *
- * Opposite numbers are matched nearest-first and one to one, and only within a
- * colour — a lane line and a centre line are different things and a lane line
- * that drifted across the middle of the road to meet one would be worse than
- * the step it replaced.
+ * Opposite numbers are matched one to one, only within a colour — a lane line
+ * and a centre line are different things and a lane line that drifted across
+ * the middle of the road to meet one would be worse than the step it replaced
+ * — and in the order they lie across the road, so no line crosses another on
+ * its way over the seam.
  */
 export function seamOffsets(
   here: readonly MarkingLine[],
@@ -475,22 +489,7 @@ export function seamOffsets(
   /** Half the width of this side's own carriageway; equal widths meet half way. */
   hereHalf: number = thereHalf,
 ): number[] {
-  const taken = new Array<boolean>(there.length).fill(false);
-  // Nearest first over ALL the pairs, so the closest match wins the line it is
-  // closest to rather than whichever line happened to be considered first.
-  const pairs: { i: number; j: number; gap: number }[] = [];
-  here.forEach((a, i) =>
-    there.forEach((b, j) => {
-      if (a.color === b.color) pairs.push({ i, j, gap: Math.abs(a.at - b.at) });
-    }),
-  );
-  pairs.sort((p, q) => p.gap - q.gap);
-  const partner = new Array<number>(here.length).fill(-1);
-  for (const { i, j } of pairs) {
-    if (partner[i] !== -1 || taken[j]) continue;
-    partner[i] = j;
-    taken[j] = true;
-  }
+  const partner = orderedPartners(here, there);
   /** The nearest line of the same colour over there, whether or not it is spoken for. */
   const nearestOfColour = (line: MarkingLine): MarkingLine | null => {
     let best: MarkingLine | null = null;
@@ -506,12 +505,18 @@ export function seamOffsets(
   const WIDTH_EPS = 1e-6;
   const narrower =
     thereHalf < hereHalf - WIDTH_EPS ? 'there' : hereHalf < thereHalf - WIDTH_EPS ? 'here' : null;
-  return here.map((line, i) => {
+  const seamAt = (i: number, closing: ReadonlySet<number>): number => {
+    const line = here[i]!;
     const j = partner[i]!;
     if (j >= 0) {
       if (narrower === 'there') return there[j]!.at;
       if (narrower === 'here') return line.at;
       return (line.at + there[j]!.at) / 2;
+    }
+    // A bay that has closed: its line goes where the line across the bay goes.
+    if (line.bayToward !== undefined) {
+      const across = nextLineToward(here, i, line.bayToward);
+      if (across >= 0 && !closing.has(across)) return seamAt(across, new Set([...closing, i]));
     }
     // Nothing of its own to carry on into. It still MERGES rather than
     // stopping dead: a dropped lane's line runs into the edge line beside it,
@@ -530,7 +535,69 @@ export function seamOffsets(
     // to close toward and simply ends where it is.
     if (thereHalf <= 0 || line.at === 0) return line.at;
     return Math.sign(line.at) * thereHalf;
+  };
+  return here.map((_, i) => seamAt(i, new Set([i])));
+}
+
+/** The line next to line `i` across the road, toward the low offsets or the high, or -1. */
+function nextLineToward(lines: readonly MarkingLine[], i: number, toward: -1 | 1): number {
+  const at = lines[i]!.at;
+  let best = -1;
+  lines.forEach((l, k) => {
+    if (k === i || (l.at - at) * toward <= 0) return;
+    if (best < 0 || Math.abs(l.at - at) < Math.abs(lines[best]!.at - at)) best = k;
   });
+  return best;
+}
+
+/**
+ * Which line over there each line here carries on into, or -1 for none: one
+ * to one, within a colour, in the order the lines lie across the road, as many
+ * pairs as the shorter side has lines, and of those pairings the one that moves
+ * the lines least in all.
+ */
+function orderedPartners(here: readonly MarkingLine[], there: readonly MarkingLine[]): number[] {
+  const partner = new Array<number>(here.length).fill(-1);
+  for (const color of ['white', 'yellow'] as const) {
+    const byOffset = (lines: readonly MarkingLine[]): number[] =>
+      lines
+        .map((_, k) => k)
+        .filter((k) => lines[k]!.color === color)
+        .sort((a, b) => lines[a]!.at - lines[b]!.at);
+    const h = byOffset(here);
+    const t = byOffset(there);
+    // Every line of the shorter side is paired, so the question is only which
+    // lines of the longer side are left over.
+    const flip = h.length > t.length;
+    const short = flip ? t : h;
+    const long = flip ? h : t;
+    const shortAt = (a: number): number => (flip ? there : here)[short[a]!]!.at;
+    const longAt = (b: number): number => (flip ? here : there)[long[b]!]!.at;
+    const n = short.length;
+    const m = long.length;
+    if (n === 0) continue;
+    // cost[a][b]: the least total shift pairing the first a of the short side
+    // with a of the first b of the long side, in order.
+    const cost: number[][] = Array.from({ length: n + 1 }, () =>
+      new Array<number>(m + 1).fill(Infinity),
+    );
+    for (let b = 0; b <= m; b++) cost[0]![b] = 0;
+    for (let a = 1; a <= n; a++) {
+      for (let b = a; b <= m; b++) {
+        const skip = cost[a]![b - 1]!;
+        const pair = cost[a - 1]![b - 1]! + Math.abs(shortAt(a - 1) - longAt(b - 1));
+        cost[a]![b] = Math.min(skip, pair);
+      }
+    }
+    for (let a = n, b = m; a > 0; b--) {
+      if (cost[a]![b] === cost[a]![b - 1]) continue;
+      const hi = flip ? long[b - 1]! : short[a - 1]!;
+      const ti = flip ? short[a - 1]! : long[b - 1]!;
+      partner[hi] = ti;
+      a--;
+    }
+  }
+  return partner;
 }
 
 /**
