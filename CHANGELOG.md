@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.20.2](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.20.1...slimcity-v1.20.2) (2026-09-30)
+
+
+### Bug Fixes
+
+* **roads:** a motorway laid across two tiles draws as one carriageway ([b8293d3](https://github.com/rbenzing/SlimCityGame/commit/b8293d3c1e9c989f3742f938a625cea471a1ab49))
+
 ## [1.20.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.20.0...slimcity-v1.20.1) (2026-09-30)
 
 
