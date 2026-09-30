@@ -157,6 +157,30 @@ The rest of the lot is the field, the orchard or the paddock.
   and the frame clock, as pedestrians do. None graze on an abandoned farm.
 - **Stocking.** Stocking is drawn and not simulated: one cow per 4 paddock
   tiles, the published 2–4 acres a cow-calf pair scaled to the compressed lot.
+- **Farmhouse windows.** The plan places the farmhouse's eight windows
+  (`FarmPlan.houseWindows`), each a thin pane standing just proud of its wall.
+  By day a pane is dark glass, the tint a town house's punched window takes.
+  At night each one lights by the town's own rule, keyed by the farm's
+  building id and the window's index: `isWindowLit` decides whether it is lit
+  as the night factor rises, and `isWindowCool` decides whether it is the
+  occasional cool one. Only an Active farm lights; an abandoned farmhouse
+  stays dark. A lit pane moves from the glass pool into a warm or a cool
+  emissive pool, since the farm kit's pools carry only a transform and a
+  colour for each instance.
+- **The farm truck.** Each Active farm has one pickup, a `VehicleKitPool`
+  truck body at the F-150's size. The plan gives its round
+  (`FarmPlan.truckRoute`). It is a loop from a parking spot on the drive by
+  the house:
+  - out along the drive to behind the barn and its bins;
+  - along behind them to the far side of the silos;
+  - back along the front of the barn to the drive.
+
+  Its corners are rounded to 4 m. The truck stops 15 s by the silos on each
+  lap. It works from 06:00 to 18:00 by the day fraction the caller sets. A lap
+  starts from the parking spot, and a lap under way at 18:00 is finished
+  before the truck parks, so it never jumps. Its position is a pure function
+  of its route and the time since its lap began (`truckPose`). Its lights are
+  off, like every kit vehicle's.
 
 The rules the implementation must satisfy, which become the tests and then the
 spec:
@@ -216,6 +240,11 @@ spec:
     level-up keeps kind and gate.
   - Occupancy counts farm residents and industrial jobs.
   - The farm plan: the gate on the dirt edge and every part inside the lot.
+  - The farmhouse windows on its walls, facing out, and the truck's round
+    inside the lot and clear of the barn, silos and bins.
+  - The truck's pose along its round, its stop at the silos, and its hours.
+  - Farmhouse windows lighting by the town's rule, and never on an abandoned
+    farm.
   - Archetype exclusions.
 - **A worker test.** A few thousand ticks of a farm town on dirt roads and a
   power line with no water tower, which grows farms whose jobs are industrial.
@@ -224,7 +253,8 @@ spec:
   - The Soil lens over a coast and a hillside.
   - The zoning grid with the Agriculture tool in hand.
   - An abandoned farm.
-  - Night.
+  - Night, with the farmhouse lit.
+  - The farm truck on its round, and parked at night.
 
 ## Out of scope
 

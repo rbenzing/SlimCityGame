@@ -33,7 +33,9 @@ A building's base wall colour also multiplies toward a dimmed, cool tint at
 night (`NIGHT_BODY_TINT`, roughly 34/38/46% of the daytime colour) — a
 shaded version of its true daytime colour, not black, so walls stay
 colour-legible after dark while the windows keep their own emissive glow
-independently of the wall tint. An Abandoned building's windows stay dark
+independently of the wall tint. A farmhouse, drawn by the farm kit rather
+than on the facade material, lights its panes by the same hash and threshold
+([../engineering/features/farms.md](../engineering/features/farms.md)). An Abandoned building's windows stay dark
 regardless of the hour — a lit window is the one signal that a building is
 Active (see [../art/buildings.md](../art/buildings.md)). The whole system runs as one TSL
 node material plus an instance-index hash, one material per archetype

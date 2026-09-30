@@ -3,9 +3,10 @@
  * pole line strung along it and Agriculture land either side — on ground
  * chosen for mixed soil, so row crops, orchards and pasture all grow. Then
  * photographs the district, each kind of farm close up, the Soil lens, the
- * zoning grid with the Agriculture tool in hand, the district at night, and a
- * farm abandoned when its dirt road is taken away. Prints what the kit drew
- * and every page error.
+ * zoning grid with the Agriculture tool in hand, the district at night, a
+ * farmhouse up close by night and by day with its truck, and a farm abandoned
+ * when its dirt road is taken away. Prints what the kit drew, lit windows and
+ * trucks included, and every page error.
  *
  * Usage: node tools/farm-shots.mjs [baseUrl]   (a dev server must be running) */
 import { chromium } from 'playwright';
@@ -181,6 +182,17 @@ await hook(() => window.__slimcity.setTool('select'));
 await hook(() => window.__slimcity.setDayT(0.96));
 await camera(X + W / 2, dirtZ, 600, Math.PI / 5, 0.9);
 await shot('night');
+console.log('kit at night', JSON.stringify(await hook(() => window.__slimcity.farmKit())));
+// A farmhouse up close after dark: its windows lit, and its truck parked by it.
+// South of the dirt road a farm's gate is on its north edge, and its house
+// stands in from the lot's north-west corner.
+const home = farms.find((b) => b.state === 1 && b.z > dirtZ);
+if (home) {
+  await camera(home.x + 0.4, home.z + 0.4, 45, Math.PI / 4, 0.5);
+  await shot('farmhouse-night');
+  await hook(() => window.__slimcity.setDayT(0.5));
+  await shot('farmhouse-day');
+}
 await hook(() => window.__slimcity.setDayT(0.5));
 
 // Take the dirt road away from the farms at the east end and let them lapse:

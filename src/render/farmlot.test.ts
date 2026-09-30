@@ -4,6 +4,9 @@ import { BuildingState, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingInstance, FarmKind } from '../shared/types';
 import {
   BIN_DIAMETER_M,
+  HOUSE_RIDGE_M,
+  TRUCK_SIZE_M,
+  WINDOW_H_M,
   CROP_BAND_ROWS,
   CROP_ROW_M,
   ORCHARD_IN_ROW_M,
@@ -163,6 +166,62 @@ describe('planFarm', () => {
         const alongX = side === 'N' || side === 'S';
         expect(plan.barn.ridgeAlongX).toBe(alongX);
         expect(plan.rowsAlongX).toBe(!alongX);
+      });
+
+      it('sets eight windows in the farmhouse walls, each facing out, two toward the road', () => {
+        const { house } = plan;
+        expect(plan.houseWindows).toHaveLength(8);
+        const onWall = (x: number, z: number): boolean =>
+          x >= house.x0 - 1e-6 &&
+          x <= house.x1 + 1e-6 &&
+          z >= house.z0 - 1e-6 &&
+          z <= house.z1 + 1e-6 &&
+          [x - house.x0, house.x1 - x, z - house.z0, house.z1 - z].some((d) => Math.abs(d) < 1e-6);
+        const road = { N: [0, -1], S: [0, 1], W: [-1, 0], E: [1, 0] }[side];
+        let towardRoad = 0;
+        for (const w of plan.houseWindows) {
+          expect(onWall(w.x, w.z)).toBe(true);
+          expect(Math.hypot(w.nx, w.nz)).toBeCloseTo(1, 9);
+          // A metre out along its facing is outside the house.
+          const ox = w.x + w.nx;
+          const oz = w.z + w.nz;
+          expect(ox > house.x0 && ox < house.x1 && oz > house.z0 && oz < house.z1).toBe(false);
+          if (w.nx === road[0] && w.nz === road[1]) towardRoad += 1;
+          expect(w.sill + WINDOW_H_M).toBeLessThan(HOUSE_RIDGE_M);
+        }
+        expect(towardRoad).toBe(2);
+      });
+
+      it('sends the truck round a closed loop inside the yard, clear of every building', () => {
+        const route = plan.truckRoute!;
+        expect(route).not.toBeNull();
+        expect(route[0]).toEqual(route[route.length - 1]);
+        const half = TRUCK_SIZE_M[0] / 2;
+        const clearOf = (x: number, z: number, r: FarmRect): number =>
+          Math.hypot(Math.max(r.x0 - x, 0, x - r.x1), Math.max(r.z0 - z, 0, z - r.z1));
+        const samples = route.flatMap((p, i) =>
+          i === 0 ? [p] : [p, { x: (p.x + route[i - 1]!.x) / 2, z: (p.z + route[i - 1]!.z) / 2 }],
+        );
+        for (const p of samples) {
+          expect(clearOf(p.x, p.z, plan.barn)).toBeGreaterThan(half);
+          expect(clearOf(p.x, p.z, plan.house)).toBeGreaterThan(half);
+          for (const s of plan.silos) {
+            expect(Math.hypot(p.x - s.x, p.z - s.z)).toBeGreaterThan(SILO_DIAMETER_M / 2 + half);
+          }
+          for (const b of plan.bins) {
+            expect(Math.hypot(p.x - b.x, p.z - b.z)).toBeGreaterThan(BIN_DIAMETER_M / 2 + half);
+          }
+          const box = { x0: p.x - half, z0: p.z - half, x1: p.x + half, z1: p.z + half };
+          expect(inside(box, plan.yard)).toBe(true);
+        }
+        // It parks on the drive, and it stops beyond the silos.
+        const park = route[0]!;
+        const { drive } = plan;
+        expect(
+          park.x >= drive.x0 && park.x <= drive.x1 && park.z >= drive.z0 && park.z <= drive.z1,
+        ).toBe(true);
+        expect(plan.truckStop).toBeGreaterThan(0);
+        expect(plan.truckStop).toBeLessThan(route.length - 1);
       });
     });
   });

@@ -137,9 +137,14 @@ work, since expanding is the town adding basic jobs.
 - **Pasture farm:** a farmhouse, a barn and a silo, and a fenced paddock with
   cattle grazing across it.
 
-A farm's drive runs from its farmstead to the dirt road. Like every grown
-building, a farm without power sits dark and says why in the info panel and
-the Advisor. After three growth passes cut off it is abandoned: its fields go
+A farm's drive runs from its farmstead to the dirt road. A working farm has a
+pickup that does the rounds of its yard through the day, out behind the barn,
+past the silos and back along the barn's front. It stops at the silos for a
+while, and parks on the drive by the house from sunset to sunrise. At night
+the farmhouse lights its windows, as every lived-in house in town does.
+
+Like every grown building, a farm without power sits dark and says why in the
+info panel and the Advisor. After three growth passes cut off it is abandoned: its fields go
 fallow and its herd is gone.
 
 ## What it interacts with
@@ -232,6 +237,18 @@ Everything else:
   - **Crop rows.** Drawn at 30 inches (0.76 m), the spacing of 86% of US corn
     ([Iowa State](https://crops.extension.iastate.edu/encyclopedia/row-spacing-corn)).
     They are banded in fours so they hold still at the default camera.
+  - **Farmhouse windows.** 36 × 60 inches (0.91 × 1.52 m), the commonest
+    double-hung window
+    ([Thompson Creek](https://www.thompsoncreek.com/blog/double-hung-window-sizes/)),
+    with sills at 0.9 m, inside the 44-inch limit for a bedroom window
+    ([Today's Homeowner](https://todayshomeowner.com/windows/guides/standard-window-sizes/)).
+    Eight windows: two in front, two behind, one in each gable end at ground
+    level, and one high in each gable for the half storey.
+  - **The farm truck.** A full-size regular-cab pickup, 5.31 × 2.03 × 1.91 m,
+    the Ford F-150 with its standard bed
+    ([dimensions.com](https://www.dimensions.com/element/ford-f150-regular-cab-standard-bed-p702-14th-gen)).
+    It drives the yard at 15 km/h, a speed for a yard with people and stock
+    in it, and works sunrise to sunset on the game's clock, 06:00 to 18:00.
 - **Access and depth.** 8 tiles of painting depth from a dirt road. A farm needs
   a dirt road within 3 tiles of its lot, the same reach every other lot has to a
   street.
@@ -241,7 +258,8 @@ Everything else:
 - Not a harvest: there is no crop yield, season, harvest or market price.
   Weather and seasons do not exist in the sim.
 - Not a supply chain: farms ship nothing to factories and nothing is trucked
-  anywhere.
+  anywhere. The farm truck is drawn, not simulated: it carries nothing and
+  never leaves its own yard.
 - Not a soil you can improve: no irrigation, fertiliser or drainage tools.
   Terraforming is the only thing that changes soil.
 - Not a ploppable: there are no farm buildings to place by hand.
