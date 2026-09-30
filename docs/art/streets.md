@@ -174,7 +174,10 @@ a motorway, you give it an exit. It gets two sign types of its own:
 - A **gantry** periodically along a straight run: legs outside both
   shoulders, a truss carrying right across, and two panels beneath it with
   lane-assignment down-arrows. This is the one sign type that straddles the
-  centreline instead of standing at a kerb, so it takes no lateral offset.
+  centreline instead of standing at a kerb, so it takes no lateral offset. It
+  is stretched across its own road, legs 1.2 m outside whatever shoulders the
+  section has; a motorway laid across two tiles gets one, over the edge the
+  two share and spanning both.
 
 Every sign faces the traffic it serves, and its facing comes from the
 direction that traffic approaches from, not from the roadway edge the sign

@@ -26,7 +26,7 @@ import { bridgeStyleFor, GIRDER_DEPTH_M } from '../shared/bridgestyle';
 import type { BridgeStyle } from '../shared/bridgestyle';
 import type { RoadTier } from '../shared/types';
 import { carriagewayHalfWidthMeters, curbWidthMeters, ROAD_Y_OFFSET } from './roadsmesh';
-import { carriagewayHalfWidthOf, kerbWidthOf } from '../shared/roadprofile';
+import { carriagewayHalfWidthOf, carriagewayShiftOf, kerbWidthOf } from '../shared/roadprofile';
 import type { RoadProfile } from '../shared/types';
 import { setInstanceCount } from './groundquad';
 
@@ -349,10 +349,14 @@ export class BridgeRenderer {
       let trussSlot = 0;
 
       group.forEach((tile) => {
-        const wx = tileToWorld(tile.x);
-        const wz = tileToWorld(tile.z);
         const half = structureHalfWidth(tile.tier, style, tile.profile);
         const alongZ = runsAlongZ(tile.mask);
+        // Half of a motorway laid across two tiles is pushed against the edge
+        // the halves share, and its deck goes with it: one deck, both tiles wide.
+        const shift = tile.profile ? carriagewayShiftOf(tile.profile) : 0;
+        const wx = tileToWorld(tile.x) + (alongZ ? shift : 0);
+        const wz = tileToWorld(tile.z) + (alongZ ? 0 : shift);
+        const seamSide = tile.profile?.seam?.side;
         const deckTop = tile.deckY + ROAD_Y_OFFSET;
         const span = TILE_SPAN;
 
@@ -379,8 +383,20 @@ export class BridgeRenderer {
           topAt(corners[3]),
         ];
 
-        // Girder: the slab under the whole road width, following the deck.
-        const girderCorners = footprintCorners(wx, wz, half, alongZ, span);
+        // Girder: the slab under the whole road width, following the deck. Along
+        // the edge where the deck carries on onto the other half it stops at the
+        // road's edge, since the other half's girder carries on from there: run
+        // on past it, the girder's top showed through that half's road.
+        const seamEdge = seamSide && tile.profile ? carriagewayHalfWidthOf(tile.profile) / half : 1;
+        const girderCorners = footprintCorners(
+          wx,
+          wz,
+          half,
+          alongZ,
+          span,
+          seamSide === -1 ? -seamEdge : -1,
+          seamSide === 1 ? seamEdge : 1,
+        );
         emitPrism(girderPositions, girderCorners, topsOf(girderCorners), spec.girderDepth);
 
         if (spec.parapetHeight > 0) {
@@ -388,10 +404,12 @@ export class BridgeRenderer {
           // deck, so its "depth" runs upward from a top placed a parapet-height
           // above the surface.
           const t = spec.parapetThickness / half;
-          for (const [from, to] of [
-            [-1, -1 + t],
-            [1 - t, 1],
+          for (const [from, to, side] of [
+            [-1, -1 + t, -1],
+            [1 - t, 1, 1],
           ] as const) {
+            // No parapet along the edge where the deck carries on onto the other half.
+            if (side === seamSide) continue;
             const corners = footprintCorners(wx, wz, half, alongZ, span, from, to);
             const tops = topsOf(corners).map((y) => y + spec.parapetHeight) as [
               number,

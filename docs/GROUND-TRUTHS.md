@@ -229,7 +229,11 @@ MUTCD citations below use 11th-edition section numbers.
 - A motorway is ONE carriageway, not a road with two halves. Highway and ramp
   are the only classes whose lane range counts a single direction, they admit
   no median piece, and a dual carriageway is two runs laid side by side and
-  widened independently. —
+  widened independently. A motorway too wide for a tile is still one
+  carriageway: its two tiles draw one unbroken road, each half pushed against
+  the edge they share, with no edge line, kerb or furniture on it — never two
+  carriageways centred on their tiles (`seam` in `corridorHalfProfile`,
+  `carriagewayShiftOf` in `src/shared/roadprofile.ts`). —
   [road-model.md](world-sim/road-model.md); `src/data/roads.json`
 - Two motorway carriageways may lie on adjacent tiles and never connect. A
   highway tile is not an arm of a highway lying across its stored flow when

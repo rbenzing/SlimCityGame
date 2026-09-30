@@ -158,6 +158,24 @@ A profile's width against the tile decides what it can be:
   two halves are one road, live in the tile's stored flow byte (below); the
   road tool lays both runs from one drag, ghosted and refused together if
   either half cannot fit.
+
+  **A motorway laid across two tiles is still one carriageway.** A five- or
+  six-lane motorway does not fit a tile either, but nothing divides it: it is
+  one road running one way, and a second motorway laid beside it is what
+  carries the other direction. So its halves are not two carriageways centred
+  on their tiles with grass between. Each half is pushed against the tile edge
+  the two share, so the asphalt runs unbroken across it: one set of shoulders
+  at the outer edges, the yellow edge line on the driver's left and the white
+  on the right, and lane lines between every pair of lanes, whichever tile
+  they fall on. The shared edge is not an edge: no edge line, no kerb and no
+  roadside furniture stand on it. Drawn centred, a six-lane motorway read as
+  two three-lane carriageways side by side, both running the same way.
+
+  The same is true of any corridor that nothing divides — an undivided
+  six-lane arterial, a five-lane one-way street — but those meet streets at
+  junctions, whose corners are built from the tile's centre, and they are
+  still drawn centred; see [../ROADMAP.md](../ROADMAP.md).
+
 - **Does not fit at all.** A class that admits no corridor and cannot fit
   one tile, or a cross-section wider than two tiles even on a
   corridor-eligible class, is refused outright with a reason on the cursor

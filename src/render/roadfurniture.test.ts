@@ -21,6 +21,13 @@ import { RoadFlow, RoadTier, stepForFlow, storedFlow } from '../shared/types';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 import { carriagewayHalfWidthMeters, ROAD_Y_OFFSET, SIDEWALK_WIDTH_M } from './roadsmesh';
 import { SIGNAL_CYCLE_S } from '../shared/junction';
+import {
+  carriagewayWidth,
+  composeProfile,
+  corridorHalfProfile,
+  NO_EDITS,
+  presetProfileForTier,
+} from '../shared/roadprofile';
 import { TILE_METERS } from '../shared/constants';
 
 const flatHeightAt = (): number => 0;
@@ -1198,6 +1205,49 @@ describe('a dual carriageway is signed as two motorways, not a junction', () => 
       expect(Math.sin(yaw)).toBeCloseTo(-step.dx, 9);
       expect(Math.cos(yaw)).toBeCloseTo(-step.dz, 9);
     }
+  });
+});
+
+describe('a motorway laid across two tiles is signed as the one road it is', () => {
+  const six = composeProfile(presetProfileForTier(RoadTier.Highway), { ...NO_EDITS, lanes: 6 });
+  /** Six lanes heading east: the near half on row 4, the far half on row 5. */
+  const corridor = (): FurnitureRoadTile[] =>
+    (['left', 'right'] as const).flatMap((half, i) =>
+      strip(4 + i, 0, 60, 'ew', RoadTier.Highway).map((t) => ({
+        ...t,
+        flow: storedFlow(RoadFlow.East, half),
+        profile: corridorHalfProfile(six, half),
+      })),
+    );
+  const gantries = () => computeSignPlacements(corridor()).filter((s) => s.type === 'gantry');
+
+  it('puts up one gantry at a time, not one over each half', () => {
+    expect(gantries().length).toBeGreaterThan(0);
+    expect(gantries().every((g) => g.z === 4)).toBe(true);
+  });
+
+  it('stands it over the edge the two halves share', () => {
+    for (const g of gantries()) {
+      expect(signWorldTransform(g).z).toBeCloseTo(5 * TILE_METERS, 6);
+    }
+  });
+
+  it('spans the whole carriageway, both tiles of it', () => {
+    for (const g of gantries()) {
+      expect(g.span).toBeGreaterThan(carriagewayWidth(six) / 2);
+    }
+  });
+
+  it('spans a composed four-lane motorway too, which is wider than the one it is modelled on', () => {
+    const four = composeProfile(presetProfileForTier(RoadTier.Highway), { ...NO_EDITS, lanes: 4 });
+    const [g] = computeSignPlacements(
+      strip(4, 0, 60, 'ew', RoadTier.Highway).map((t) => ({
+        ...t,
+        flow: RoadFlow.East,
+        profile: four,
+      })),
+    ).filter((s) => s.type === 'gantry');
+    expect(g!.span).toBeGreaterThan(carriagewayHalfWidthMeters(RoadTier.Highway) + 1.2);
   });
 });
 

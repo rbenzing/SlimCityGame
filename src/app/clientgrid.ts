@@ -667,7 +667,8 @@ export class ClientGridMirror {
           x,
           z,
           tier,
-          profile: this.profileById(this.roadProfile[i] ?? 0) ?? presetProfileForTier(tier),
+          // The tile's own share of the road: on a corridor, the half it carries.
+          profile: this.ownProfileAt(x, z) ?? presetProfileForTier(tier),
           mask: this.roadMask[i] ?? 0,
           deckY: this.deckHeightAt(x, z),
           groundY: this.height[i] ?? 0,

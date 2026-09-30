@@ -475,6 +475,13 @@ export function reversedInWorld(stored: number): boolean {
  * between them, so each carriageway is finished on its inner edge by its own
  * share of it rather than one tile carrying the whole median and the other
  * ending in mid-air.
+ *
+ * A motorway is the exception, because nothing divides it: it is one
+ * carriageway running one way, too wide for a tile. Its halves say so with a
+ * `seam` on the inner edge — the edge that runs on onto the other tile, which
+ * the drawing pushes to the tile boundary rather than leaving the half centred
+ * — and whether a lane line runs along it, which is when the middle falls
+ * between two lanes rather than across one.
  */
 export function corridorHalfProfile(profile: RoadProfile, half: CorridorHalf): RoadProfile {
   if (half === 'none') return profile;
@@ -482,6 +489,7 @@ export function corridorHalfProfile(profile: RoadProfile, half: CorridorHalf): R
   const left: LanePiece[] = [];
   const right: LanePiece[] = [];
   let at = 0;
+  let split = false;
   for (const piece of profile.pieces) {
     const end = at + piece.width;
     if (end <= middle + 1e-9) left.push({ ...piece });
@@ -489,10 +497,33 @@ export function corridorHalfProfile(profile: RoadProfile, half: CorridorHalf): R
     else {
       left.push({ ...piece, width: middle - at });
       right.push({ ...piece, width: end - middle });
+      split = true;
     }
     at = end;
   }
-  return { ...profile, pieces: half === 'left' ? left : right };
+  const pieces = half === 'left' ? left : right;
+  if (profile.class !== 'highway') return { ...profile, pieces };
+  const running = (p: LanePiece | undefined): boolean => p?.kind === 'travel' || p?.kind === 'bus';
+  return {
+    ...profile,
+    pieces,
+    seam: {
+      side: half === 'left' ? 1 : -1,
+      // Painted once, by the low half, where the middle falls between lanes.
+      laneLine: half === 'left' && !split && running(left[left.length - 1]) && running(right[0]),
+    },
+  };
+}
+
+/**
+ * How far a cross-section's carriageway sits off its tile's centre, across the
+ * road, as a world offset (east and south positive). Nothing is off centre but
+ * half of a motorway laid across two tiles, which is pushed against the edge it
+ * shares with the other half, so that the two meet there.
+ */
+export function carriagewayShiftOf(profile: RoadProfile): number {
+  if (!profile.seam) return 0;
+  return profile.seam.side * Math.max(0, TILE_METERS / 2 - carriagewayHalfWidthOf(profile));
 }
 
 /** Raised kerbs on the unconnected sides: explicit, else wherever there is a footway. */

@@ -39,9 +39,11 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   and water along their length (highways carry power only). Every road's
   options row sits on its own line under the tabs: pick how many lanes the
   road runs — a town street 2 or 4, an arterial 4 or 6, and a motorway 3, 4,
-  5 or 6, which are the lanes of its ONE carriageway (you build a dual
-  carriageway as two runs side by side, each drawn in its own direction, and
-  widen the side that needs it) — put a median or a two-way turn lane down
+  5 or 6, which are the lanes of its ONE carriageway, all running the way you
+  drag it (you build a dual carriageway as two runs side by side, each drawn in
+  its own direction, and widen the side that needs it; a five- or six-lane
+  motorway is too wide for one tile and takes two, but it is still one road,
+  drawn edge to edge across both) — put a median or a two-way turn lane down
   the middle, post
   a speed inside the range its class allows, add a parking lane or a bike lane
   to either kerb, reserve a bus lane, run a tramway, or drop the footways.
