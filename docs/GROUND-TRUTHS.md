@@ -325,6 +325,11 @@ MUTCD citations below use 11th-edition section numbers.
   merge and the upstream half at a diverge. — [road-model.md](world-sim/road-model.md);
   `rampJoin` and `rampJoinAround` in `src/shared/corridor.ts`, `rampMouthAt`
   in `src/shared/approachzone.ts`, `emitRampTaper` in `src/render/roadsmesh.ts`
+- A two-way road's lane drop closes both directions' kerbside lanes together,
+  after taking an uneven road down to even, so its centre line runs straight
+  down the taper. A road whose lanes all run one way closes the driver's
+  right-hand lane first. — [road-model.md](world-sim/road-model.md);
+  `taperedCrossSection` in `src/shared/taper.ts`
 - A road's edge never steps where its width changes; it bends. A lane drop
   closes over a taper that begins at full width, never part-closed, and a
   wide run shorter than its class's taper closes over the length it has, so
