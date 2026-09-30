@@ -882,3 +882,55 @@ describe('crossing a road laid as two carriageways', () => {
     expect(maskAt(grid(h), NEAR) & EAST).toBe(EAST);
   });
 });
+
+describe('a road laid as two carriageways is one road', () => {
+  // A six-lane avenue running south down columns 40 and 41.
+  const PATH = column(40, 30, 10);
+  const flowsOn = (g: GridState, x: number): number[] =>
+    PATH.map((t) => g.roadFlow[tileIndex(x, t.z)] ?? 0);
+  function sixLane(): { h: Harness; before: GridState } {
+    const h = sandboxed();
+    expect(run(h, 1, sixLaneCommands(PATH)).ok).toBe(true);
+    h.sim.handleMessage({ type: 'requestSave' });
+    return { h, before: latestSaveGrid(h) };
+  }
+  const after = (h: Harness): GridState => {
+    h.sim.handleMessage({ type: 'requestSave' });
+    return latestSaveGrid(h);
+  };
+
+  it('refuses a half re-laid one column off, which would leave the other on its own', () => {
+    const { h, before } = sixLane();
+    // The run the tool sends first for a corridor down columns 41 and 42.
+    const [, nearRun] = sixLaneCommands(column(41, 30, 10));
+    const result = run(h, 2, [nearRun!]);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe('That would split a corridor');
+    const g = after(h);
+    expect(flowsOn(g, 40)).toEqual(flowsOn(before, 40));
+    expect(flowsOn(g, 41)).toEqual(flowsOn(before, 41));
+  });
+
+  it('refuses a street laid over one half in replace mode', () => {
+    const { h } = sixLane();
+    const result = run(h, 2, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: PATH, replace: true },
+    ]);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe('That would split a corridor');
+  });
+
+  it('turns round when drawn back the other way, both halves together, and undoes exactly', () => {
+    const { h, before } = sixLane();
+    const turned = run(h, 2, sixLaneCommands([...PATH].reverse()));
+    expect(turned.ok).toBe(true);
+    const g = after(h);
+    for (const x of [40, 41]) {
+      for (const f of flowsOn(g, x)) expect(f & 0b111).toBe(RoadFlow.North);
+    }
+    expect(run(h, 3, turned.inverse).ok).toBe(true);
+    const undone = after(h);
+    expect(flowsOn(undone, 40)).toEqual(flowsOn(before, 40));
+    expect(flowsOn(undone, 41)).toEqual(flowsOn(before, 41));
+  });
+});

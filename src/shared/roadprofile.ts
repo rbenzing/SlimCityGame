@@ -476,12 +476,14 @@ export function reversedInWorld(stored: number): boolean {
  * share of it rather than one tile carrying the whole median and the other
  * ending in mid-air.
  *
- * A motorway is the exception, because nothing divides it: it is one
- * carriageway running one way, too wide for a tile. Its halves say so with a
- * `seam` on the inner edge — the edge that runs on onto the other tile, which
- * the drawing pushes to the tile boundary rather than leaving the half centred
- * — and whether a lane line runs along it, which is when the middle falls
- * between two lanes rather than across one.
+ * A corridor that nothing divides is the exception: a motorway, an undivided
+ * arterial, a wide one-way street. It is one carriageway, too wide for a
+ * tile, and its halves say so with a `seam` on the inner edge — the edge that
+ * runs on onto the other tile, which the drawing pushes to the tile boundary
+ * rather than leaving the half centred — and the piece lying against it on
+ * the other tile, so the line the whole road paints between the two can be
+ * painted there. A motorway is always one carriageway; any other road is one
+ * wherever no median or barrier lies at its middle.
  */
 export function corridorHalfProfile(profile: RoadProfile, half: CorridorHalf): RoadProfile {
   if (half === 'none') return profile;
@@ -502,23 +504,25 @@ export function corridorHalfProfile(profile: RoadProfile, half: CorridorHalf): R
     at = end;
   }
   const pieces = half === 'left' ? left : right;
-  if (profile.class !== 'highway') return { ...profile, pieces };
-  const running = (p: LanePiece | undefined): boolean => p?.kind === 'travel' || p?.kind === 'bus';
+  const inner = left[left.length - 1];
+  const outer = right[0];
+  const divides = (p: LanePiece | undefined): boolean =>
+    p?.kind === 'median' || p?.kind === 'barrier';
+  if (profile.class !== 'highway' && (divides(inner) || divides(outer))) {
+    return { ...profile, pieces };
+  }
+  const across = split ? null : half === 'left' ? outer : inner;
   return {
     ...profile,
     pieces,
-    seam: {
-      side: half === 'left' ? 1 : -1,
-      // Painted once, by the low half, where the middle falls between lanes.
-      laneLine: half === 'left' && !split && running(left[left.length - 1]) && running(right[0]),
-    },
+    seam: { side: half === 'left' ? 1 : -1, across: across ? { ...across } : null },
   };
 }
 
 /**
  * How far a cross-section's carriageway sits off its tile's centre, across the
  * road, as a world offset (east and south positive). Nothing is off centre but
- * half of a motorway laid across two tiles, which is pushed against the edge it
+ * half of a corridor nothing divides, which is pushed against the edge it
  * shares with the other half, so that the two meet there.
  */
 export function carriagewayShiftOf(profile: RoadProfile): number {
@@ -1125,6 +1129,17 @@ export function isOneWayProfile(profile: RoadProfile): boolean {
   // given a centreline it has not got and a bay sized for oncoming traffic.
   const flow = travel[0]?.flow;
   return travel.length > 0 && flow !== undefined && travel.every((p) => p.flow === flow);
+}
+
+/**
+ * Whether every travel lane of a section runs AGAINST the way its tile was
+ * drawn: the far half of a two-way corridor, which carries the road's `back`
+ * lanes. A one-way street's lanes run the way it was drawn, and so does the
+ * near half of a corridor.
+ */
+export function runsAgainstDrawing(profile: RoadProfile): boolean {
+  const travel = profile.pieces.filter((p) => p.kind === 'travel');
+  return travel.length > 0 && travel.every((p) => p.flow === 'back');
 }
 
 /** What a profile already holds, read the way the edits are written. */

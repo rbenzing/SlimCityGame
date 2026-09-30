@@ -375,6 +375,25 @@ export function isPathCorner(tiles: readonly TilePoint[], i: number): boolean {
 }
 
 /**
+ * Where a road preview's band is centred on the tile at `i`, world metres: the
+ * tile's centre, moved `shifts[i]` metres across the way the run goes, toward
+ * the higher coordinate. A corridor with nothing dividing it has each half
+ * pushed against the edge the two share. Pure and exported for tests.
+ */
+export function bandCentre(
+  tiles: readonly TilePoint[],
+  i: number,
+  shifts?: readonly number[],
+): { x: number; z: number } {
+  const t = tiles[i]!;
+  const x = (t.x + 0.5) * TILE_METERS;
+  const z = (t.z + 0.5) * TILE_METERS;
+  const s = shifts?.[i] ?? 0;
+  if (s === 0 || isPathCorner(tiles, i)) return { x, z };
+  return stripeAxisIsX(tiles, i) ? { x, z: z + s } : { x: x + s, z };
+}
+
+/**
  * Merged, TERRAIN-CONFORMING positions for a road preview drawn at its REAL
  * width: a band `widthMeters` across, running the full tile length along
  * whichever axis the path takes, rather than a tile-sized square. What the
@@ -397,16 +416,15 @@ export function buildConformingRoadBandPositions(
   heightAt: HeightSampler,
   widthMeters: number,
   yOffset: number,
+  shifts?: readonly number[],
 ): Float32Array {
   const positions: number[] = [];
   const half = TILE_METERS / 2;
   const w2 = Math.max(widthMeters, 0) / 2;
   for (let i = 0; i < tiles.length; i++) {
-    const t = tiles[i]!;
-    const cx = (t.x + 0.5) * TILE_METERS;
-    const cz = (t.z + 0.5) * TILE_METERS;
     const corner = isPathCorner(tiles, i);
     const alongX = corner || stripeAxisIsX(tiles, i);
+    const { x: cx, z: cz } = bandCentre(tiles, i, shifts);
     if (alongX) {
       pushConformingRect(positions, heightAt, cx - half, cz - w2, cx + half, cz + w2, yOffset);
     } else {
@@ -639,17 +657,29 @@ export interface SetPreviewOptions {
    * is drawn at the deck (see deckHeightSampler) instead of on the terrain.
    */
   deckLifts?: readonly number[];
+  /**
+   * How far across its run each tile's band is drawn from the tile's centre,
+   * metres toward the higher coordinate (road kind only). The band, its
+   * dashes and its arrows all move with it.
+   */
+  roadBandShifts?: readonly number[];
 }
 
 /**
  * Yaw that aims a +X-pointing arrow down the path at `index`. A rotation of θ
  * about Y sends local +X to (cos θ, 0, −sin θ), so the heading to the next tile
- * inverts to θ = atan2(−dz, dx). The last tile has no next tile and reuses the
- * heading into it, which keeps the final arrow from snapping to a default.
+ * inverts to θ = atan2(−dz, dx). The last tile of a run has no next tile and
+ * reuses the heading into it, which keeps the final arrow from snapping to a
+ * default. A corridor is two runs in one list, so the tile after its first run's
+ * last is a row away and is no next tile.
  */
 export function arrowYaw(tiles: readonly TilePoint[], index: number): number {
-  const from = index + 1 < tiles.length ? tiles[index]! : tiles[Math.max(0, index - 1)]!;
-  const to = index + 1 < tiles.length ? tiles[index + 1]! : tiles[index]!;
+  const cur = tiles[index]!;
+  const adjacent = (t: TilePoint | undefined): t is TilePoint =>
+    t !== undefined && Math.abs(t.x - cur.x) + Math.abs(t.z - cur.z) === 1;
+  const next = tiles[index + 1];
+  const prev = tiles[index - 1];
+  const [from, to] = adjacent(next) ? [cur, next] : adjacent(prev) ? [prev, cur] : [cur, cur];
   const dx = to.x - from.x;
   const dz = to.z - from.z;
   if (dx === 0 && dz === 0) return 0;
@@ -758,6 +788,8 @@ export class GhostRenderer {
   private readonly ground: HeightSampler;
   /** What the current preview is drawn on: the terrain, or a road's deck. */
   private heightAt: HeightSampler;
+  /** How far across its run each tile of the current road preview is drawn. */
+  private bandShifts: readonly number[] | undefined;
   private readonly quad: THREE.PlaneGeometry;
   private readonly volumeGeometry: THREE.BoxGeometry;
 
@@ -889,6 +921,7 @@ export class GhostRenderer {
       kind === 'road' && opts?.deckLifts
         ? deckHeightSampler(tiles, opts.deckLifts, this.ground)
         : this.ground;
+    this.bandShifts = kind === 'road' ? opts?.roadBandShifts : undefined;
     this.writeBase(
       tiles,
       valid,
@@ -1032,7 +1065,13 @@ export class GhostRenderer {
     this.baseMaterial.color.setRGB(...baseColorFor(kind, valid, zone));
     const positions =
       roadWidthMeters !== undefined && roadWidthMeters > 0
-        ? buildConformingRoadBandPositions(tiles, this.heightAt, roadWidthMeters, GHOST_Y_OFFSET)
+        ? buildConformingRoadBandPositions(
+            tiles,
+            this.heightAt,
+            roadWidthMeters,
+            GHOST_Y_OFFSET,
+            this.bandShifts,
+          )
         : buildConformingTilePositions(tiles, this.heightAt, TILE_METERS, GHOST_Y_OFFSET);
     this.setGeometry(this.baseMesh, positions);
   }
@@ -1115,9 +1154,7 @@ export class GhostRenderer {
 
     for (let slot = 0; slot < indices.length; slot++) {
       const pathIndex = indices[slot]!;
-      const tile = tiles[pathIndex]!;
-      const cx = (tile.x + 0.5) * TILE_METERS;
-      const cz = (tile.z + 0.5) * TILE_METERS;
+      const { x: cx, z: cz } = bandCentre(tiles, pathIndex, this.bandShifts);
       _position.set(cx, this.heightAt(cx, cz) + ARROW_Y_OFFSET, cz);
       _quat.setFromAxisAngle(_yAxis, arrowYaw(tiles, pathIndex));
       _scale.set(TILE_METERS, 1, TILE_METERS);
@@ -1138,13 +1175,12 @@ export class GhostRenderer {
   private writeStripeQuad(
     mesh: THREE.InstancedMesh,
     slot: number,
-    tile: TilePoint,
+    centre: { x: number; z: number },
     sizeX: number,
     sizeZ: number,
     yOffset: number,
   ): void {
-    const cx = (tile.x + 0.5) * TILE_METERS;
-    const cz = (tile.z + 0.5) * TILE_METERS;
+    const { x: cx, z: cz } = centre;
     _position.set(cx, this.heightAt(cx, cz) + yOffset, cz);
     _scale.set(sizeX, 1, sizeZ);
     _matrix.compose(_position, IDENTITY_QUAT, _scale);
@@ -1174,7 +1210,7 @@ export class GhostRenderer {
       this.writeStripeQuad(
         mesh,
         slot,
-        tiles[pathIndex]!,
+        bandCentre(tiles, pathIndex, this.bandShifts),
         xIsLong ? long : short,
         xIsLong ? short : long,
         STRIPE_Y_OFFSET,

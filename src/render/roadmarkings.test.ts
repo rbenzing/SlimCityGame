@@ -477,6 +477,55 @@ describe('a corridor half is painted as the carriageway it is', () => {
   });
 });
 
+describe('the line along the edge the halves of one carriageway share', () => {
+  const lanes = (n: number, flow: (i: number) => 'fwd' | 'back'): RoadProfile['pieces'] =>
+    Array.from({ length: n }, (_, i) => ({ kind: 'travel' as const, width: 3.6, flow: flow(i) }));
+  const walk = { kind: 'sidewalk' as const, width: 1.9 };
+  const at = (lines: readonly { at: number; color: string }[], x: number) =>
+    lines.filter((l) => Math.abs(l.at - x) < 1e-6).map((l) => l.color);
+
+  it('is the double yellow centre of an undivided arterial, painted once by the low half', () => {
+    const arterial: RoadProfile = {
+      class: 'arterial',
+      pieces: [walk, ...lanes(6, (i) => (i < 3 ? 'back' : 'fwd')), walk],
+    };
+    const near = markingPlan(corridorHalfProfile(arterial, 'left'), RoadFlow.North);
+    const half = (3 * 3.6) / 2;
+    expect(at(near.solid, half - CENTRE_PAIR_OFFSET_M)).toEqual(['yellow']);
+    expect(at(near.solid, half + CENTRE_PAIR_OFFSET_M)).toEqual(['yellow']);
+    // Only the outer edge is an edge; the far half paints nothing at the seam.
+    expect(near.solid.filter((l) => l.color === 'white')).toHaveLength(1);
+    const far = markingPlan(corridorHalfProfile(arterial, 'right'), RoadFlow.North);
+    expect(far.solid.filter((l) => l.color === 'yellow')).toHaveLength(0);
+    expect(far.solid.filter((l) => l.color === 'white')).toHaveLength(1);
+  });
+
+  it('is a lane line where the two lanes either side run the same way', () => {
+    const shoulder = { kind: 'shoulder' as const, width: 2 };
+    const motorway: RoadProfile = {
+      class: 'highway',
+      pieces: [shoulder, ...lanes(6, () => 'fwd'), shoulder],
+    };
+    const near = markingPlan(corridorHalfProfile(motorway, 'left'), RoadFlow.North);
+    const half = (2 + 3 * 3.6) / 2;
+    expect(at(near.dashed, half)).toEqual(['white']);
+    const far = markingPlan(corridorHalfProfile(motorway, 'right'), RoadFlow.North);
+    expect(at(far.dashed, -half)).toEqual([]);
+  });
+
+  it('is nothing where the middle of the road falls inside a lane', () => {
+    const shoulder = { kind: 'shoulder' as const, width: 2 };
+    const motorway: RoadProfile = {
+      class: 'highway',
+      pieces: [shoulder, ...lanes(5, () => 'fwd'), shoulder],
+    };
+    const near = markingPlan(corridorHalfProfile(motorway, 'left'), RoadFlow.North);
+    const half = (2 + 2.5 * 3.6) / 2;
+    expect(at(near.dashed, half)).toEqual([]);
+    expect(at(near.solid, half)).toEqual([]);
+  });
+});
+
 describe('travelLanes finds where each lane actually is', () => {
   it('splits a two-lane street either side of its centreline', () => {
     const lanes = travelLanes(presetProfileForTier(RoadTier.TwoLane));

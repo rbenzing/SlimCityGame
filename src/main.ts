@@ -1104,6 +1104,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     profileIdFor: (profile) => clientGrid.profileIdFor(profile),
     roadProfileAt: (tile) => clientGrid.profileAt(tile.x, tile.z),
     roadFlowAt: (tile) => clientGrid.flowAt(tile.x, tile.z),
+    roadProfileIdAt: (tile) =>
+      inBounds(tile.x, tile.z)
+        ? (clientGrid.roadProfile[tile.z * clientGrid.size + tile.x] ?? 0)
+        : 0,
     roadMaskAt: (tile) =>
       inBounds(tile.x, tile.z) ? (clientGrid.roadMask[tile.z * clientGrid.size + tile.x] ?? 0) : 0,
     roadElevationAt: (tile) =>
@@ -1194,6 +1198,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           opts = { ...opts, roadWidthMeters: preview.widthMeters };
         }
         if (preview.deckLifts) opts = { ...opts, deckLifts: preview.deckLifts };
+        if (preview.bandShifts) opts = { ...opts, roadBandShifts: preview.bandShifts };
         if (tool.startsWith('plop.') && preview.tiles.length > 0) {
           const entry = catalogById.get(tool.slice('plop.'.length));
           if (entry) {

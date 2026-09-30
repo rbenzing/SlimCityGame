@@ -427,6 +427,10 @@ active:
   the new road is twice the street it is going over. A section too wide for a
   tile is laid as two carriageways on two rows of tiles, and the ghost shows
   both, so the extra ground a corridor claims is visible before it is taken.
+  Each half is ghosted where it will be laid: a corridor with nothing
+  dividing it — a six-lane motorway, an undivided arterial — previews as one
+  unbroken band across the edge its halves share, and only a divided road
+  shows the median's gap between them.
   The tile frame is still drawn around the tiles themselves, so which tiles
   are claimed and how much of them the road covers are both readable at once.
 - **A road ghost stands at the road's own deck**: a raised road, a bridge or

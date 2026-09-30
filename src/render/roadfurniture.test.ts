@@ -22,6 +22,8 @@ import type { JunctionControl, RoadProfile } from '../shared/types';
 import { carriagewayHalfWidthMeters, ROAD_Y_OFFSET, SIDEWALK_WIDTH_M } from './roadsmesh';
 import { SIGNAL_CYCLE_S } from '../shared/junction';
 import {
+  carriagewayHalfWidthOf,
+  carriagewayShiftOf,
   carriagewayWidth,
   composeProfile,
   corridorHalfProfile,
@@ -1248,6 +1250,48 @@ describe('a motorway laid across two tiles is signed as the one road it is', () 
       })),
     ).filter((s) => s.type === 'gantry');
     expect(g!.span).toBeGreaterThan(carriagewayHalfWidthMeters(RoadTier.Highway) + 1.2);
+  });
+});
+
+describe('an undivided arterial laid across two tiles is furnished as the one road it is', () => {
+  const lane = (flow: 'fwd' | 'back') => ({ kind: 'travel' as const, width: 3.6, flow });
+  const walk = { kind: 'sidewalk' as const, width: 1.9 };
+  const arterial: RoadProfile = {
+    class: 'arterial',
+    pieces: [
+      walk,
+      lane('back'),
+      lane('back'),
+      lane('back'),
+      lane('fwd'),
+      lane('fwd'),
+      lane('fwd'),
+      walk,
+    ],
+  };
+  /** Six lanes along x, the near half on row 4 and the far half on row 5. */
+  const corridor = (): FurnitureRoadTile[] =>
+    (['left', 'right'] as const).flatMap((half, i) =>
+      strip(4 + i, 0, 40, 'ew', RoadTier.Avenue).map((t) => ({
+        ...t,
+        flow: storedFlow(RoadFlow.East, half),
+        profile: corridorHalfProfile(arterial, half),
+      })),
+    );
+
+  it('stands a cabinet behind its outer footway, never on the middle of the road', () => {
+    const boxes = computeBoxPlacements(corridor());
+    expect(boxes.length).toBeGreaterThan(0);
+    for (const b of boxes) {
+      const half = corridorHalfProfile(arterial, b.z === 4 ? 'left' : 'right');
+      expect(b.side).toBe(-half.seam!.side);
+      // The outer kerb, measured from the tile's centre across the road.
+      const kerb = carriagewayShiftOf(half) - half.seam!.side * carriagewayHalfWidthOf(half);
+      const across = b.side * b.lateralOffset;
+      const behind = (across - kerb) * b.side;
+      expect(behind).toBeGreaterThan(walk.width);
+      expect(behind).toBeLessThan(walk.width + 1);
+    }
   });
 });
 

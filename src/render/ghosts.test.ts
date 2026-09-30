@@ -5,8 +5,10 @@ import { TILE_METERS } from '../shared/constants';
 import {
   GhostRenderer,
   arrowYaw,
+  bandCentre,
   baseColorFor,
   buildBandPositions,
+  buildConformingRoadBandPositions,
   buildConformingEdgePositions,
   buildConformingTilePositions,
   computeFootprintEdges,
@@ -556,6 +558,65 @@ describe('arrowYaw', () => {
 
   it('is stable for a single-tile preview with no direction at all', () => {
     expect(arrowYaw([{ x: 3, z: 3 }], 0)).toBe(0);
+  });
+
+  it('points the end of a corridor’s first run along it, not at the start of the second', () => {
+    // Two runs east in one list: row 0, then row 1.
+    const corridor: TilePoint[] = [
+      ...straightLine(3),
+      ...straightLine(3).map((t) => ({ ...t, z: 1 })),
+    ];
+    expect(Math.cos(arrowYaw(corridor, 2))).toBeCloseTo(1, 6);
+  });
+});
+
+describe('a corridor ghosted as one road', () => {
+  // A motorway east along rows 0 and 1, each half pushed 3 m toward the other.
+  const near = straightLine(3);
+  const far = near.map((t) => ({ ...t, z: 1 }));
+  const tiles = [...near, ...far];
+  const shifts = [...near.map(() => 3), ...far.map(() => -3)];
+
+  it('moves each tile’s band across its run, and never along it', () => {
+    expect(bandCentre(tiles, 0, shifts)).toEqual({ x: TILE_METERS / 2, z: TILE_METERS / 2 + 3 });
+    expect(bandCentre(tiles, 3, shifts)).toEqual({
+      x: TILE_METERS / 2,
+      z: (3 * TILE_METERS) / 2 - 3,
+    });
+    expect(bandCentre(tiles, 0)).toEqual({ x: TILE_METERS / 2, z: TILE_METERS / 2 });
+  });
+
+  it('meets the two bands on the edge they share, with no gap between', () => {
+    const band = (run: TilePoint[], shift: number) =>
+      boundsOfPositions(
+        buildConformingRoadBandPositions(
+          run,
+          flatHeightAt,
+          14,
+          0,
+          run.map(() => shift),
+        ),
+      );
+    expect(band(near, 3).maxZ).toBeCloseTo(TILE_METERS, 5);
+    expect(band(far, -3).minZ).toBeCloseTo(TILE_METERS, 5);
+  });
+
+  it('draws the two halves as one unbroken band across the edge they share', () => {
+    const scene = new THREE.Scene();
+    const renderer = new GhostRenderer(scene, flatHeightAt);
+    // 14 m halves: 3 m in from each tile centre puts their inner edges on z = 20.
+    renderer.setPreview(tiles, true, 'road', {
+      roadWidthMeters: 14,
+      roadBandShifts: shifts,
+      flowArrows: true,
+    });
+    const box = boundingBoxOf(renderer.layers().base);
+    expect(box.min.z).toBeCloseTo(TILE_METERS / 2 + 3 - 7, 5);
+    expect(box.max.z).toBeCloseTo((3 * TILE_METERS) / 2 - 3 + 7, 5);
+    // The first arrow stands in its band, off the tile centre.
+    const m = new THREE.Matrix4();
+    renderer.layers().arrows.getMatrixAt(0, m);
+    expect(new THREE.Vector3().setFromMatrixPosition(m).z).toBeCloseTo(TILE_METERS / 2 + 3, 5);
   });
 });
 

@@ -159,6 +159,15 @@ A profile's width against the tile decides what it can be:
   road tool lays both runs from one drag, ghosted and refused together if
   either half cannot fit.
 
+  The two halves are one road, and a drag never takes one away from the
+  other. A road laid over a corridor half, whether it replaces it or re-lays
+  it with another direction or another pairing, has to take that half's
+  partner with it, as its partner. Otherwise it is refused ("That would split
+  a corridor"). A corridor dragged one row off the one already there would
+  pair the row they share with a new row and leave the other old row as half
+  a road with nothing beside it. Re-laying the same corridor, turning it
+  round, or crossing both its halves is fine.
+
   **A motorway laid across two tiles is still one carriageway.** A five- or
   six-lane motorway does not fit a tile either, but nothing divides it: it is
   one road running one way, and a second motorway laid beside it is what
@@ -171,10 +180,32 @@ A profile's width against the tile decides what it can be:
   roadside furniture stand on it. Drawn centred, a six-lane motorway read as
   two three-lane carriageways side by side, both running the same way.
 
-  The same is true of any corridor that nothing divides — an undivided
-  six-lane arterial, a five-lane one-way street — but those meet streets at
-  junctions, whose corners are built from the tile's centre, and they are
-  still drawn centred; see [../ROADMAP.md](../ROADMAP.md).
+  The same is true of any corridor that nothing divides: an undivided
+  six-lane arterial, or a divided road built without its median. A corridor
+  is divided only where a median or a barrier lies at its middle; otherwise
+  its halves are pushed against the edge they share, the same way. The line
+  on that edge is the one the whole road paints there: the centre line where
+  the lanes either side run opposite ways (the double solid yellow of an
+  undivided multi-lane road), a broken lane line where they run the same way,
+  and nothing where the middle falls inside a lane. The low half paints it
+  for both.
+
+  Such a road meets streets at junctions. A street joining one half from
+  outside makes a T with that half, and the other half runs straight past. A
+  street crossing it passes through both halves, which are then two junction
+  tiles side by side, drawn as one junction:
+  - Kerb returns only at the road's outer edges, and none at the shared edge.
+  - The crossing street centred on its own line.
+  - Crossings on the outer arms only.
+  - A stop line across the lanes that arrive, and no crossing, stop line or
+    kerb on the shared edge.
+    A road this wide ends square, kerbed across the whole of it, rather than
+    in a turning head on each half.
+
+  Each half carries one direction. Half of a two-way corridor may carry the
+  lanes running against the way the road was drawn (`runsAgainstDrawing`),
+  and those arrive at a junction from the other end. Its arrows, its stop
+  line and its turn bay are at that end, not at the end the drawing faces.
 
 - **Does not fit at all.** A class that admits no corridor and cannot fit
   one tile, or a cross-section wider than two tiles even on a

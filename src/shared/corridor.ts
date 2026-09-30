@@ -7,7 +7,14 @@
  * two runs that make one road, and the stored flow byte each tile needs to say
  * which half it is.
  */
-import { flowDirection, flowForStep, RoadFlow, stepForFlow, storedFlow } from './types';
+import {
+  corridorHalfOf,
+  flowDirection,
+  flowForStep,
+  RoadFlow,
+  stepForFlow,
+  storedFlow,
+} from './types';
 import type { CorridorHalf, RoadClassId, TilePoint } from './types';
 
 export interface CorridorRuns {
@@ -127,6 +134,78 @@ export function medianOpens(
   arrivesAt: (tx: number, tz: number, sx: number, sz: number) => boolean,
 ): boolean {
   return arrivesAt(x, z, -dx, -dz) && arrivesAt(x + dx, z + dz, dx, dz);
+}
+
+/**
+ * The tile a corridor half's partner lies on, or null for a tile that is not a
+ * half. The low half is the one at the lower coordinate across the road, so its
+ * partner is one tile up the cross axis and the high half's one tile down.
+ */
+export function partnerTileOf(x: number, z: number, stored: number): TilePoint | null {
+  const half = corridorHalfOf(stored);
+  const direction = flowDirection(stored);
+  if (half === 'none' || direction === RoadFlow.None) return null;
+  const s = half === 'left' ? 1 : -1;
+  const alongX = direction === RoadFlow.East || direction === RoadFlow.West;
+  return alongX ? { x, z: z + s } : { x: x + s, z };
+}
+
+/**
+ * The tile holding the partner of the corridor half on (x, z), or null where
+ * there is no half, or nothing is paired with it. `flowAt` and `profileIdAt`
+ * read the ground road of a tile, 0 where there is none or off the grid.
+ */
+export function corridorPartnerTile(
+  x: number,
+  z: number,
+  flowAt: (x: number, z: number) => number,
+  profileIdAt: (x: number, z: number) => number,
+): TilePoint | null {
+  const stored = flowAt(x, z);
+  const p = partnerTileOf(x, z, stored);
+  if (!p) return null;
+  const paired = corridorPartners(
+    corridorHalfOf(stored),
+    corridorHalfOf(flowAt(p.x, p.z)),
+    profileIdAt(x, z),
+    profileIdAt(p.x, p.z),
+    flowDirection(stored),
+    p.x - x,
+    p.z - z,
+  );
+  return paired ? p : null;
+}
+
+export const SPLITS_CORRIDOR = 'That would split a corridor';
+
+/**
+ * Why laying a road would take a corridor half away from its partner, or null.
+ *
+ * `laid` is every tile whose road this changes, replaced or re-laid running
+ * another way, with the stored flow each will carry; `pairedWith` answers
+ * {@link corridorPartnerTile} for the grid as it stands. A half may change when
+ * its partner changes with it, or when it is re-laid as a half paired with the
+ * same tile, since a corridor is laid one run per half and its other half
+ * follows. Anything else leaves the partner as half a road with nothing
+ * beside it: a corridor dragged one row off the one already there pairs the row
+ * they share with a new row, and the other old row is left on its own.
+ */
+export function corridorSplitRefusal(
+  laid: readonly TilePoint[],
+  flows: readonly number[],
+  pairedWith: (x: number, z: number) => TilePoint | null,
+): string | null {
+  const key = (t: TilePoint): string => `${t.x},${t.z}`;
+  const laying = new Set(laid.map(key));
+  for (let i = 0; i < laid.length; i++) {
+    const t = laid[i]!;
+    const partner = pairedWith(t.x, t.z);
+    if (!partner || laying.has(key(partner))) continue;
+    const next = partnerTileOf(t.x, t.z, flows[i] ?? RoadFlow.None);
+    if (next && next.x === partner.x && next.z === partner.z) continue;
+    return SPLITS_CORRIDOR;
+  }
+  return null;
 }
 
 /** Whether a step runs ACROSS the way a flow travels rather than along it. */

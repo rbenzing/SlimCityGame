@@ -159,7 +159,7 @@ import {
   type OverRoad,
 } from '../world/overpass';
 import { atOneLevel, axisOfFlow, bitToward, crossingShape, overpassRise } from '../shared/overpass';
-import { rampMeetingRefusal } from '../shared/corridor';
+import { corridorPartnerTile, corridorSplitRefusal, rampMeetingRefusal } from '../shared/corridor';
 import { solveElevationProfile } from '../world/bridges';
 import {
   applyHeightPatch,
@@ -2280,6 +2280,10 @@ class SimWorld implements WorkerSim {
     // Tiles this drag passes UNDER: the raised road already there moves up
     // onto the over layer and the drag is laid on the ground layer beneath.
     const passingUnder: TilePoint[] = [];
+    // Tiles already holding a road that this drag replaces or turns round,
+    // with the flow each will carry, so no corridor half loses its partner.
+    const rewritten: TilePoint[] = [];
+    const rewrittenFlows: number[] = [];
     let changedCount = 0;
     let bridgeCost = 0;
 
@@ -2397,6 +2401,10 @@ class SimWorld implements WorkerSim {
         group.flows.push(priorFlow);
         reprofiledByProfile.set(prevProfile, group);
       }
+      if (current !== 0 && (replaces || (prevProfile === profileId && flow !== priorFlow))) {
+        rewritten.push(t);
+        rewrittenFlows.push(flow);
+      }
       if (replaces) {
         changedCount += 1;
         laying.set(idx, flow);
@@ -2411,6 +2419,15 @@ class SimWorld implements WorkerSim {
         }
       }
     }
+
+    const groundAt =
+      (layer: Uint8Array | Uint16Array) =>
+      (x: number, z: number): number =>
+        inBounds(x, z) ? (layer[tileIndex(x, z)] ?? 0) : 0;
+    const split = corridorSplitRefusal(rewritten, rewrittenFlows, (x, z) =>
+      corridorPartnerTile(x, z, groundAt(g.roadFlow), groundAt(g.roadProfile)),
+    );
+    if (split) return refused(split);
 
     const joinRefused = this.joinRefusalAround(laying, profileId, crossings, passingUnder);
     if (joinRefused) return { ok: false, cost: 0, inverse: [], reason: joinRefused };

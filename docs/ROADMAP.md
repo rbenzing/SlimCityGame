@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,156 tests passing across 144 test files, run 2026-09-30.
+**Test suite:** 4,187 tests passing across 144 test files, run 2026-09-30.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -66,10 +66,20 @@ barriers. Full detail in History, §10 below.
 - Road composition: the three pieces above.
 - Lane drops: a wide road shorter than its own taper starts the taper
   part-closed, so its kerb steps where it leaves the junction.
-- Undivided corridors: a six-lane arterial with no median, or a five-lane
-  one-way street, is still drawn as two carriageways centred on their tiles
-  with grass between. Drawing them as one, as a motorway now is, needs their
-  junction corners built from the edge the halves share.
+- Corridor furniture: the furniture placers count a corridor's other half as
+  a crossing road. So no corridor tile, divided or not, gets a lamp, a
+  kerbside board, or a signal head on its own approach. The street arms of
+  its junctions are signed as usual.
+- A T onto an undivided corridor: only the half the street joins is a
+  junction. Traffic on the far half is not held, and the crossing spans one
+  half. Holding both would mean the far half joining the side street across
+  the centre line in the road graph.
+- A bulldoze over one row of a corridor takes that half and leaves the other,
+  half a road with nothing beside it. A build that would do the same is
+  refused.
+- A batch is not atomic: when the world refuses one command, the ones before
+  it stay laid, and the failed batch has no undo. The road tool refuses a
+  corridor before sending it, so play does not reach this through the tool.
 - Auxiliary lanes: where one ends just past a ramp's junction tile, its edge
   steps rather than closing.
 - Farms: a farmhouse lights no window at night, and no farm truck works the
@@ -220,6 +230,81 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The corridor ghost, and a corridor laid one row off (reported and fixed 2026-09-30)
+
+The placement ghost still drew a six-lane motorway as two carriageways, each
+centred on its tile with grass between, after the road itself had become one
+([road-model.md](world-sim/road-model.md)). Each half of a corridor with
+nothing dividing it is now ghosted where it will be laid, pushed against the
+edge the two share. Its dashes and arrows move with it. The arrow at the end
+of the first run had pointed at the start of the second, a row away; it now
+points along its own run.
+
+The same drag showed a worse fault. A six-lane road drawn one row off one
+already there was laid. The row the two share became half of the new road,
+and the old road's other row was left as half a road with nothing beside it.
+A road laid over a corridor half now has to take that half's partner with
+it, as its partner, or it is refused ("That would split a corridor"). The
+road tool and the world ask the same predicate, `corridorSplitRefusal`.
+Re-laying the same corridor, turning it round, and crossing both its halves
+are unchanged.
+
+Found and not fixed (see Open): a bulldoze can still take one half, and a
+batch the world refuses partway keeps what its earlier commands laid.
+
+### An undivided arterial drawn as one road (2026-09-30)
+
+A six-lane arterial built without a median was drawn as two three-lane roads,
+each centred on its tile, with grass between and no centre line. Each half
+also had a kerb and a footway along the middle of the road. It is now drawn
+the way a six-lane motorway has been since its own entry below
+([road-model.md](world-sim/road-model.md)). Any corridor with no median or
+barrier at its middle has its halves pushed against the edge they share.
+The line there is whatever the whole road paints between those two lanes:
+here the double yellow centre line, painted once.
+
+The motorway never needed junctions; this road does, and they are built from
+the shared edge. A street crossing it makes one junction across both halves:
+
+- kerb returns at the outer corners only;
+- the street's plate centred on the street;
+- crossings on the outer arms, measured from the real tile edge;
+- nothing painted or kerbed on the shared edge.
+
+A road this wide now ends square, kerbed across its whole width, instead of
+with a turning bulb on each half. The motorway's halves get the same end,
+where each had its own bulb before. The verge a lot fronts is measured from
+where the kerb now is, and so are the cabinets beside it.
+
+Looking at it turned up faults that were not about the drawing:
+
+- **Arrows, stop lines and turn bays at the wrong end.** A half carrying
+  the road's `back` lanes was treated as a one-way running the way it was
+  drawn. Its lanes run the other way, so its arrows pointed the wrong way at
+  the wrong end, its bay opened there, and the end its traffic arrives at
+  had no arrows. Divided corridors had this too. It is now decided by
+  `runsAgainstDrawing`.
+- **Stop lines across departing lanes.** A stop line across an arm where no
+  lane arrives was painted across the whole road, because "nothing arrives
+  here" and "not known" were the same null. They are now told apart, so the
+  bar crosses only the arriving half. This also fixes a one-way street
+  leaving a signalised junction.
+- **Median trees in the lanes.** They were planted on every avenue-sized
+  tile, median or not. An undivided arterial got a tree in its running lanes.
+  A tree now needs a median to stand in.
+
+The ROADMAP's other example, a five-lane one-way street, does not exist: a
+one-way street fits its widest road on one tile, so it is never a corridor.
+
+Checked in the browser:
+
+- a straight run, a crossing and a T, from above and at an angle;
+- the dead end;
+- a divided road with its median, and a six-lane motorway, for regressions.
+
+Found and not fixed: corridor furniture, and a T holding only one half (see
+Open).
 
 ### Overpasses: the ghost at its deck, and a road under a bridge (2026-09-30)
 

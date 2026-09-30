@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  corridorPartnerTile,
   corridorRunsFor,
+  corridorSplitRefusal,
   corridorTiles,
+  partnerTileOf,
+  SPLITS_CORRIDOR,
   rampJoin,
   rampJoins,
   sideBySideCarriageways,
@@ -159,5 +163,102 @@ describe('whether a ramp beside a motorway joins it', () => {
 
   it('does not join along the stretch where it is its own road', () => {
     expect(rampJoins('none')).toBe(false);
+  });
+});
+
+describe('a corridor is never split', () => {
+  const PROFILE = 300;
+  /** A grid holding one corridor laid by a drag along `path`. */
+  const gridWith = (path: TilePoint[]) => {
+    const roads = new Map<string, { flow: number; profile: number }>();
+    const runs = corridorRunsFor(path)!;
+    for (const t of runs.near)
+      roads.set(`${t.x},${t.z}`, { flow: runs.nearFlow, profile: PROFILE });
+    for (const t of runs.far) roads.set(`${t.x},${t.z}`, { flow: runs.farFlow, profile: PROFILE });
+    const at = (x: number, z: number) => roads.get(`${x},${z}`);
+    return (x: number, z: number) =>
+      corridorPartnerTile(
+        x,
+        z,
+        (a, b) => at(a, b)?.flow ?? 0,
+        (a, b) => at(a, b)?.profile ?? 0,
+      );
+  };
+  /** The tiles and flows a corridor drag along `path` lays. */
+  const laying = (path: TilePoint[]) => {
+    const runs = corridorRunsFor(path)!;
+    return {
+      tiles: corridorTiles(runs),
+      flows: [...runs.near.map(() => runs.nearFlow), ...runs.far.map(() => runs.farFlow)],
+    };
+  };
+
+  it('finds each half partnered with the tile across the road from it', () => {
+    const paired = gridWith(row(4, 2, 6));
+    expect(paired(3, 4)).toEqual({ x: 3, z: 5 });
+    expect(paired(3, 5)).toEqual({ x: 3, z: 4 });
+    expect(paired(3, 6)).toBeNull();
+    expect(partnerTileOf(3, 4, storedFlow(RoadFlow.North, 'left'))).toEqual({ x: 4, z: 4 });
+    expect(partnerTileOf(3, 4, storedFlow(RoadFlow.North))).toBeNull();
+  });
+
+  it('refuses a corridor dragged one row off the one already there', () => {
+    const paired = gridWith(row(4, 2, 6));
+    // Rows 5 and 6: row 5 would leave row 4 with nothing beside it.
+    const { tiles, flows } = laying(row(5, 2, 6));
+    const onRoad = tiles.map((t, i) => ({ t, f: flows[i]! })).filter(({ t }) => t.z === 5);
+    expect(
+      corridorSplitRefusal(
+        onRoad.map(({ t }) => t),
+        onRoad.map(({ f }) => f),
+        paired,
+      ),
+    ).toBe(SPLITS_CORRIDOR);
+  });
+
+  it('refuses it the other way too, a row below', () => {
+    const paired = gridWith(row(4, 2, 6));
+    const { tiles, flows } = laying(row(3, 2, 6));
+    const onRoad = tiles.map((t, i) => ({ t, f: flows[i]! })).filter(({ t }) => t.z === 4);
+    expect(
+      corridorSplitRefusal(
+        onRoad.map(({ t }) => t),
+        onRoad.map(({ f }) => f),
+        paired,
+      ),
+    ).toBe(SPLITS_CORRIDOR);
+  });
+
+  it('lets the same corridor be laid again, or turned round', () => {
+    const paired = gridWith(row(4, 2, 6));
+    for (const path of [row(4, 2, 6), row(4, 6, 2)]) {
+      const { tiles, flows } = laying(path);
+      expect(corridorSplitRefusal(tiles, flows, paired)).toBeNull();
+    }
+  });
+
+  it('lets one half be laid again as the same pair, since its other half follows', () => {
+    const paired = gridWith(row(4, 2, 6));
+    const runs = corridorRunsFor(row(4, 6, 2))!;
+    expect(
+      corridorSplitRefusal(
+        runs.near,
+        runs.near.map(() => runs.nearFlow),
+        paired,
+      ),
+    ).toBeNull();
+  });
+
+  it('lets a road replace both halves across the corridor, and not one alone', () => {
+    const paired = gridWith(row(4, 2, 6));
+    const street = storedFlow(RoadFlow.South);
+    expect(corridorSplitRefusal(col(3, 4, 5), [street, street], paired)).toBeNull();
+    expect(
+      corridorSplitRefusal(
+        row(4, 2, 6),
+        row(4, 2, 6).map(() => street),
+        paired,
+      ),
+    ).toBe(SPLITS_CORRIDOR);
   });
 });
