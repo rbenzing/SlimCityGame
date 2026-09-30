@@ -211,7 +211,10 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   **Tram Line** along it. A tram needs no station and
   takes no land; its stops get a shelter like a bus stop's. It only runs where
   the track goes, so a break in the track breaks the line even though a car
-  could drive around it, and it relieves the very streets it runs down.
+  could drive around it, and it relieves the very streets it runs down. A
+  tramway drawn straight across another street crosses it: the rails run over
+  the junction and the tram goes straight on, while the street keeps its own
+  lanes. A tram cannot turn onto a street that has no track.
 - **Districts & Policies** — paint districts over areas, then set policies
   (e.g. tax and traffic rules) that apply within them.
 - **Landscaping** — raise / lower / level / smooth the terrain, with real water

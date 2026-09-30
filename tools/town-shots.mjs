@@ -76,6 +76,8 @@ await camera(90, 44, 800, Math.PI / 6, 0.85);
 await shot('03-railway-and-landfill');
 await camera(70, 85, 600, -Math.PI / 5, 0.8);
 await shot('04-tramway');
+await camera(90, 85, 120, Math.PI / 4, 0.9);
+await shot('04b-tram-crossing');
 await camera(90, 72, 600, Math.PI / 3, 0.7);
 await shot('05-avenue-bridge');
 await camera(100, 130, 700, Math.PI / 5, 0.85);

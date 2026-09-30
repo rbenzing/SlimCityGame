@@ -11,7 +11,15 @@ import {
   findPath as runAstar,
   nearestNode as findNearestNode,
 } from './pathfind';
-import { flowDirection, flowForStep, isStreetTier, RoadFlow } from '../shared/types';
+import {
+  flowDirection,
+  flowForStep,
+  isStreetTier,
+  isTramTier,
+  RoadFlow,
+  RoadTier,
+  tramCrossingAxes,
+} from '../shared/types';
 import { canGainTurnPocket, isPresetProfileId, presetProfileForTier } from '../shared/roadprofile';
 import { controlFromCode, warrantedControl } from '../shared/junction';
 import { ARMS_PER_TILE } from './grid';
@@ -26,7 +34,6 @@ import type {
   RoadClassId,
   RoadNetworkApi,
   RoadProfile,
-  RoadTier,
   TilePoint,
 } from '../shared/types';
 
@@ -38,13 +45,75 @@ export type ProfileResolver = (id: number) => RoadProfile | null;
 const tierOf = (cells: RoadCells, id: number): RoadTier => cells.tier[id] as RoadTier;
 
 /**
- * The cells a cell is linked to, counting only those that belong to the SAME
- * transport network, so a graph built from one set of tiers never links to
- * another. Grid steps come first, north, east, south, west.
+ * What one transport network is made of: the tier it sees each cell as (None
+ * for a cell that is not part of it), and the cells each of its cells links
+ * to. A graph built from one network never links into another.
  */
-function networkNeighbours(cells: RoadCells, id: number, inNetwork: NetworkTiers): number[] {
-  return neighbours(cells, id).filter((next) => inNetwork(tierOf(cells, next)));
+export interface NetworkShape {
+  tier(cells: RoadCells, id: number): RoadTier;
+  /** The linked cells that belong to this network. Grid steps come first, north, east, south, west. */
+  links(cells: RoadCells, id: number): number[];
 }
+
+/** A network of whichever tiers `inNetwork` accepts, each cell seen as its own tier. */
+export function tiersShape(inNetwork: NetworkTiers): NetworkShape {
+  const tier = (cells: RoadCells, id: number): RoadTier => {
+    const own = tierOf(cells, id);
+    return own !== RoadTier.None && inNetwork(own) ? own : RoadTier.None;
+  };
+  return {
+    tier,
+    links: (cells, id) =>
+      neighbours(cells, id).filter((next) => tier(cells, next) !== RoadTier.None),
+  };
+}
+
+/**
+ * The two cells a tram crossing links along its crossing axes, or null when
+ * `id` is not a crossing. Only a road on the ground is one: a road off the grid
+ * or up on a deck has no four grid sides to be crossed from.
+ */
+function crossingLinks(cells: RoadCells, id: number): number[] | null {
+  const own = tierOf(cells, id);
+  if (isTramTier(own) || id >= cells.size * cells.size) return null;
+  const step = (s: number): number => cells.next[id * 4 + s]!;
+  const sideTier = (s: number): RoadTier => (step(s) < 0 ? RoadTier.None : tierOf(cells, step(s)));
+  const { alongX, alongZ } = tramCrossingAxes(
+    own,
+    sideTier(0),
+    sideTier(1),
+    sideTier(2),
+    sideTier(3),
+  );
+  if (!alongX && !alongZ) return null;
+  const out: number[] = [];
+  if (alongZ) out.push(step(0), step(2));
+  if (alongX) out.push(step(1), step(3));
+  return out;
+}
+
+/**
+ * The tram network: tram track, and every street tile a tramway crosses, seen
+ * as track so a run goes straight over the crossing and stays one tram edge.
+ * A crossing links only to the track on its own axis, so a tram goes straight
+ * on and never turns onto the street it crosses, which has no track to turn
+ * onto.
+ */
+export const tramShape: NetworkShape = {
+  tier: (cells, id) => {
+    const own = tierOf(cells, id);
+    if (isTramTier(own)) return own;
+    return crossingLinks(cells, id) ? RoadTier.Tram : RoadTier.None;
+  },
+  links: (cells, id) => {
+    const own = crossingLinks(cells, id);
+    if (own) return own;
+    if (!isTramTier(tierOf(cells, id))) return [];
+    return neighbours(cells, id).filter(
+      (next) => isTramTier(tierOf(cells, next)) || !!crossingLinks(cells, next)?.includes(id),
+    );
+  },
+};
 
 /**
  * A road is a node when it's an intersection/endpoint/isolated road (neighbour
@@ -65,12 +134,12 @@ function isNode(
   cells: RoadCells,
   tier: RoadTier,
   links: readonly number[],
-  inNetwork: NetworkTiers,
+  network: NetworkShape,
 ): boolean {
   if (links.length !== 2) return true;
   for (const next of links) {
-    if (tierOf(cells, next) >= tier) continue;
-    if (networkNeighbours(cells, next, inNetwork).length >= 3) continue;
+    if (network.tier(cells, next) >= tier) continue;
+    if (network.links(cells, next).length >= 3) continue;
     return true;
   }
   return false;
@@ -204,7 +273,7 @@ interface BuiltGraph {
 
 export function buildGraph(
   cells: RoadCells,
-  inNetwork: NetworkTiers,
+  network: NetworkShape,
   profileFor: ProfileResolver,
 ): BuiltGraph {
   const size = cells.size;
@@ -220,9 +289,9 @@ export function buildGraph(
   // Roads on the ground come first, then the roads passing over them, then the
   // roads off the grid.
   for (let id = 0; id < cells.count; id++) {
-    const tier = tierOf(cells, id);
-    if (tier === 0 || !inNetwork(tier)) continue;
-    if (isNode(cells, tier, networkNeighbours(cells, id, inNetwork), inNetwork)) {
+    const tier = network.tier(cells, id);
+    if (tier === RoadTier.None) continue;
+    if (isNode(cells, tier, network.links(cells, id), network)) {
       nodeIdOf.set(id, nodeKeys.length);
       nodeKeys.push(id);
     }
@@ -241,18 +310,18 @@ export function buildGraph(
   for (const startKey of nodeKeys) {
     const startId = nodeIdOf.get(startKey)!;
 
-    for (const first of networkNeighbours(cells, startKey, inNetwork)) {
+    for (const first of network.links(cells, startKey)) {
       if (consumedSteps.has(stepKey(startKey, first))) continue;
       consumedSteps.add(stepKey(startKey, first));
 
       const runKeys: number[] = [startKey];
       let prev = startKey;
       let cur = first;
-      const runTier = tierOf(cells, cur);
+      const runTier = network.tier(cells, cur);
 
       while (!nodeIdOf.has(cur)) {
         runKeys.push(cur);
-        const onward = networkNeighbours(cells, cur, inNetwork).find((next) => next !== prev);
+        const onward = network.links(cells, cur).find((next) => next !== prev);
         if (onward === undefined) break; // defensive: malformed run on inconsistent test data
         consumedSteps.add(stepKey(cur, onward));
         prev = cur;
@@ -292,7 +361,10 @@ export function buildGraph(
       if (overTiles.length > 0) edge.overTiles = overTiles;
       const stored = storedRunDirection(cells, runTiles, runKeys);
       if (stored !== null) edge.forwardAtoB = stored;
-      const facts = runFacts(cells, runKeys, stored, profileFor);
+      // The run's cross-section is read off its own roads: a crossing the network
+      // sees as its own road still carries the street it belongs to.
+      const ownKeys = runKeys.filter((key) => tierOf(cells, key) === network.tier(cells, key));
+      const facts = runFacts(cells, ownKeys.length > 0 ? ownKeys : runKeys, stored, profileFor);
       if (facts) {
         edge.classId = facts.classId;
         edge.lanes = facts.lanes;
@@ -344,6 +416,12 @@ export class RoadNetwork implements RoadNetworkApi {
    * predicates are disjoint, so the graphs never share an edge.
    */
   private readonly inNetwork: NetworkTiers;
+  /**
+   * The cells the graph is built from and how they link. Defaults to exactly
+   * the tiers `inNetwork` accepts; the tram network passes `tramShape`, which
+   * also counts the street tiles a tramway crosses.
+   */
+  private readonly shape: NetworkShape;
 
   /**
    * Tile index -> the id of the edge whose run covers it. Built lazily, only
@@ -353,8 +431,9 @@ export class RoadNetwork implements RoadNetworkApi {
    */
   private tileEdge: Map<number, number> | null = null;
 
-  constructor(inNetwork: NetworkTiers = isStreetTier) {
+  constructor(inNetwork: NetworkTiers = isStreetTier, shape: NetworkShape = tiersShape(inNetwork)) {
     this.inNetwork = inNetwork;
+    this.shape = shape;
   }
 
   /** Injects the per-edge cost multiplier; pass null to clear it. */
@@ -386,7 +465,7 @@ export class RoadNetwork implements RoadNetworkApi {
     const grid = this.grid;
     if (!grid) return;
     this.builtFrom = grid.roads?.version ?? null;
-    const built = buildGraph(roadCellsOf(grid), this.inNetwork, (id) => this.resolveProfile(id));
+    const built = buildGraph(roadCellsOf(grid), this.shape, (id) => this.resolveProfile(id));
     this.nodes = built.nodes;
     this.edges = built.edges;
     this.tileEdge = null;

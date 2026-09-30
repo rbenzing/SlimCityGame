@@ -190,6 +190,31 @@ export function isTramTier(tier: number): boolean {
 }
 
 /**
+ * Along which axes a tramway crosses this road tile. A tramway drawn across a
+ * street leaves the crossing tile as the street's, since it never takes a tile
+ * from a road it does not outrank, so the crossing is read off the tiles
+ * rather than stored: a street tile that is not tram track itself, joined to
+ * tram track on two opposite sides, carries the tramway straight over it.
+ *
+ * `n`, `e`, `s` and `w` are the tiers of the roads the tile is JOINED to on
+ * each side, None where it joins nothing — a tram arm that only lies alongside
+ * crosses nothing.
+ */
+export function tramCrossingAxes(
+  own: RoadTier,
+  n: RoadTier,
+  e: RoadTier,
+  s: RoadTier,
+  w: RoadTier,
+): { alongX: boolean; alongZ: boolean } {
+  const crossable = own !== RoadTier.None && !isTramTier(own) && isStreetTier(own);
+  return {
+    alongX: crossable && isTramTier(e) && isTramTier(w),
+    alongZ: crossable && isTramTier(n) && isTramTier(s),
+  };
+}
+
+/**
  * Scalar fields (classic diffusing scalar layers). Each is a Uint8Array of
  * MAP_SIZE² tiles, 0..255. Indexed by FieldId into GridState.fields.
  */

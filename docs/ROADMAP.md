@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,082 tests passing across 143 test files, run 2026-09-29.
+**Test suite:** 4,091 tests passing across 144 test files, run 2026-09-29.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -34,7 +34,7 @@ districts & policies, stats charts and photo mode; eight playtest-feedback
 rounds (2026-07-22 through 2026-07-25); the landfill/garbage sanitation
 epic; city audio, UI sound and the user-supplied music player; the advisor
 panel; bridges and elevated roads; road signage; rail transit; tram
-transit; building lots and archetypes; dynamic world lighting
+transit, with tramways crossing other streets at grade; building lots and archetypes; dynamic world lighting
 ([`render/sky.ts`](../src/render/sky.ts)) and the cantilever streetlight
 ([`render/lamps.ts`](../src/render/lamps.ts)); power-conducting roads and the
 power line ([`sim/network.ts`](../src/sim/network.ts)); free-form roads — a
@@ -68,12 +68,8 @@ barriers. Full detail in History, §10 below.
 - Road composition: the three pieces above.
 - Farms: a farmhouse lights no window at night, and no farm truck works the
   yard.
-- Trams: a tramway drawn across another street leaves the crossing tile as
-  that street, so the tram graph breaks there and a line through it carries
-  nobody, with nothing on screen to say why. Drawing the tramway with replace
-  on makes the crossing a tram tile and the line runs. Found by the small
-  town's regression; undecided whether a tram crossing should be a tram tile,
-  a junction both graphs share, or refused.
+- Trams: a tramway across a road laid as two carriageways still stops at it,
+  because a tram crossing is one tile.
 
 Before writing "not built" anywhere in this document, check the code.
 
@@ -220,6 +216,35 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Tram crossings (found by the small town, decided and built 2026-09-29)
+
+The small town's regression found that a tramway drawn across another street
+carried nobody. A tramway never takes a tile from a road it does not outrank,
+so the crossing tile stayed the street's. The tram graph is built from tram
+tiles alone, so it broke there, with nothing on screen to say why. Three fixes
+were weighed:
+
+- let the crossing be a shared junction;
+- let the tram take the tile, which breaks the rank rule and strips the
+  crossed street's layout;
+- refuse the drag.
+
+The user chose the shared crossing, which is how real trams cross at grade.
+
+A street tile joined to tram track on two opposite sides is now a tram
+crossing ([transit-model.md](world-sim/transit-model.md#tram-crossings)). It
+is worked out from the tiles each time and never stored, so the save format
+does not change. The tram graph counts the tile as track along that axis and
+links it only to the track on that axis, so a tram goes straight over and
+never turns there. The street keeps its own lanes, class and junction, and the
+road mesh runs the rails across the junction box. The graph builder now takes
+a network shape rather than a bare tier predicate. The road and rail networks
+are unchanged, and the tram network adds the crossings.
+
+The small town's tramway now crosses the avenue, and its line only runs
+because it does. A crossing is one tile: a tramway across a road laid as two
+carriageways still stops, which is left open in Status above.
 
 ### Interaction tests, and a small town that regresses everything (asked for and built 2026-09-29)
 

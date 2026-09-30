@@ -149,7 +149,7 @@ import {
   removeRoad,
   settleArms,
 } from '../world/roads';
-import { RoadNetwork } from '../world/roadgraph';
+import { RoadNetwork, tramShape } from '../world/roadgraph';
 import {
   clearOverRoad,
   overRoadAt,
@@ -425,11 +425,12 @@ class SimWorld implements WorkerSim {
    */
   private readonly railNetwork = new RoadNetwork(isRailTier);
   /**
-   * The tram network — the tram tiles alone. Unlike the rail one it overlaps the
-   * road network, because tram track is a street: cars route over these tiles
-   * too, and only the tram is confined to them.
+   * The tram network — the tram tiles, and the street tiles a tramway crosses.
+   * Unlike the rail one it overlaps the road network, because tram track is a
+   * street: cars route over these tiles too, and only the tram is confined to
+   * them.
    */
-  private readonly tramNetwork = new RoadNetwork(isTramTier);
+  private readonly tramNetwork = new RoadNetwork(isTramTier, tramShape);
   private growth: GrowthSystem;
   private traffic: TrafficSystem;
   // --- transit / dispatch / policies systems -------------------------------
