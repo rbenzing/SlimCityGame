@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,118 tests passing across 144 test files, run 2026-09-30.
+**Test suite:** 4,134 tests passing across 144 test files, run 2026-09-30.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -69,6 +69,12 @@ barriers. Full detail in History, §10 below.
 - Road composition: the three pieces above.
 - Lane drops: a wide road shorter than its own taper starts the taper
   part-closed, so its kerb steps where it leaves the junction.
+- Undivided corridors: a six-lane arterial with no median, or a five-lane
+  one-way street, is still drawn as two carriageways centred on their tiles
+  with grass between. Drawing them as one, as a motorway now is, needs their
+  junction corners built from the edge the halves share.
+- Auxiliary lanes: where one ends just past a ramp's junction tile, its edge
+  steps rather than closing.
 - Farms: a farmhouse lights no window at night, and no farm truck works the
   yard.
 
@@ -217,6 +223,33 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### A six-lane motorway drawn as one road (reported and fixed 2026-09-30)
+
+The user saw a six-lane motorway draw as two roads with grass between, both
+running the same way, and pointed at the distinction between a single and a
+dual carriageway. The rule was already right — a motorway is one carriageway
+running the way it was drawn, and the other direction is a second motorway laid
+beside it — and the user confirmed it stays. What was wrong was the drawing. A
+five- or six-lane motorway is too wide for a tile, so it is laid across two, and
+each tile drew its half centred on itself, the way a divided road's two
+carriageways are drawn.
+
+Now each half is pushed against the edge the two tiles share
+([road-model.md](world-sim/road-model.md)): one unbroken carriageway, one pair
+of shoulders, the yellow edge line on the driver's left and the white on the
+right, and lane lines between every pair of lanes. The shared edge has no edge
+line, kerb or furniture. The same offset reaches everything drawn beside the
+road: one gantry spans all six lanes, standing over the shared edge, where each
+half used to raise its own with its legs in the lanes; exit boards stand at the
+real edge; a viaduct is one deck with parapets only at its outer edges. A
+gantry's span is now its road's own, which also fixes a composed four-lane
+motorway's gantry standing its legs on the shoulders. Where the motorway grows
+its auxiliary lane beside a slip road, the lane opens on the outer edge only.
+
+Found and not fixed: undivided corridors of other classes are still drawn as
+two carriageways (see Open), and where an auxiliary lane ends just past a ramp's
+junction tile its edge steps rather than closing.
 
 ### Turn-bay drawing and arrow sizes (reported and fixed 2026-09-30)
 

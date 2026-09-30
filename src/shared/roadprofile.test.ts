@@ -30,6 +30,7 @@ import {
   isCorridor,
   corridorHalfProfile,
   carriagewayHalfWidthOf,
+  carriagewayShiftOf,
   medianOffsetOf,
   parkingLaneOffset,
   parkingSides,
@@ -1699,6 +1700,60 @@ describe('a corridor is two carriageways, not one wide one', () => {
     const left = corridorHalfProfile(six, 'left');
     expect(profileWidth(left)).toBeCloseTo(10.5, 6);
     expect(left.pieces).toHaveLength(3);
+  });
+});
+
+describe('a motorway laid across two tiles', () => {
+  const six = composeProfile(presetProfileForTier(RoadTier.Highway), { ...NO_EDITS, lanes: 6 });
+
+  it('is too wide for one tile, and so is laid across two', () => {
+    expect(isCorridor(six)).toBe(true);
+  });
+
+  it('marks the edge its halves share, on the inside of each', () => {
+    expect(corridorHalfProfile(six, 'left').seam?.side).toBe(1);
+    expect(corridorHalfProfile(six, 'right').seam?.side).toBe(-1);
+  });
+
+  it('pushes each half against that edge, so the two meet there', () => {
+    for (const half of ['left', 'right'] as const) {
+      const p = corridorHalfProfile(six, half);
+      const shift = carriagewayShiftOf(p);
+      // The carriageway's inner edge lands on the tile boundary, half a tile out.
+      expect(shift + p.seam!.side * carriagewayHalfWidthOf(p)).toBeCloseTo(
+        (p.seam!.side * TILE_METERS) / 2,
+        6,
+      );
+    }
+  });
+
+  it('paints no lane line along the edge where the middle falls inside a lane', () => {
+    // The shoulders differ, 1.2 m and 3 m, so the middle is not a lane boundary.
+    expect(corridorHalfProfile(six, 'left').seam?.laneLine).toBe(false);
+  });
+
+  it('paints a lane line there, once, where the middle falls between two lanes', () => {
+    const even: RoadProfile = {
+      class: 'highway',
+      pieces: [
+        { kind: 'shoulder', width: 2 },
+        ...Array.from({ length: 6 }, () => ({
+          kind: 'travel' as const,
+          width: 3.6,
+          flow: 'fwd' as const,
+        })),
+        { kind: 'shoulder', width: 2 },
+      ],
+    };
+    expect(corridorHalfProfile(even, 'left').seam?.laneLine).toBe(true);
+    expect(corridorHalfProfile(even, 'right').seam?.laneLine).toBe(false);
+  });
+
+  it('leaves a divided road as two carriageways, each on its own tile', () => {
+    const avenue = composeProfile(presetProfileForTier(RoadTier.Avenue), { ...NO_EDITS, lanes: 3 });
+    const left = corridorHalfProfile(avenue, 'left');
+    expect(left.seam).toBeUndefined();
+    expect(carriagewayShiftOf(left)).toBe(0);
   });
 });
 

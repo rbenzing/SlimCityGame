@@ -41,14 +41,19 @@ import {
   SIDEWALK_WIDTH_M,
 } from './roadsmesh';
 import type { NeighborHalves, NeighborTiers } from './roadsmesh';
-import { RoadFlow, RoadTileDelta, RoadTier } from '../shared/types';
+import { RoadFlow, RoadTileDelta, RoadTier, storedFlow } from '../shared/types';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 import {
   carriagewayHalfWidthOf,
+  carriagewayWidth,
+  composeProfile,
+  corridorHalfProfile,
   kerbReturnRadiusOf,
   kerbWidthOf,
+  NO_EDITS,
   presetProfileForTier,
   PRESET_LANE_WIDTH_M,
+  worldOrderedProfile,
 } from '../shared/roadprofile';
 import { BIKE_PAINT_MAX_WIDTH_M, EDGE_LINE_MARGIN_M, markingPlan } from './roadmarkings';
 import { CHUNK_TILES, CHUNKS_PER_SIDE, TILE_METERS } from '../shared/constants';
@@ -3328,6 +3333,60 @@ describe('a motorway closes its lane with paint and keeps the tarmac', () => {
     // A tile with no drop ahead has no strip and no hatching.
     expect(white(closing(11))).toBeGreaterThan(white(plain));
     expect(white(closing(0))).toBeGreaterThan(white(closing(11)));
+  });
+});
+
+describe('roadTileVertices — a motorway laid across two tiles draws one carriageway', () => {
+  // Six lanes heading east: the near half on row 4, the far half on row 5,
+  // the edge they share at z = 5 tiles.
+  const six = composeProfile(presetProfileForTier(RoadTier.Highway), { ...NO_EDITS, lanes: 6 });
+  const seamZ = 5 * TILE_METERS;
+  const halfTile = (z: number, half: 'left' | 'right') => {
+    const flow = storedFlow(RoadFlow.East, half);
+    return roadTileVertices(
+      4,
+      z,
+      RoadTier.Highway,
+      E | W,
+      flatHeightAt,
+      undefined,
+      corridorHalfProfile(worldOrderedProfile(six, flow), half),
+      undefined,
+      flow,
+    );
+  };
+  const near = halfTile(4, 'left');
+  const far = halfTile(5, 'right');
+  const zs = (v: { positions: number[] }) =>
+    (toTriples(v.positions) as number[][]).map((p) => p[2]!);
+  const paintZs = (v: { positions: number[]; colors: number[] }, is: (c: number[]) => boolean) =>
+    (toTriples(v.positions) as number[][])
+      .filter((_, i) => is(toTriples(v.colors)[i] as number[]))
+      .map((p) => p[2]!);
+
+  it('runs both halves right up to the edge they share, with nothing between', () => {
+    expect(Math.max(...zs(near))).toBeCloseTo(seamZ, 6);
+    expect(Math.min(...zs(far))).toBeCloseTo(seamZ, 6);
+  });
+
+  it('is as wide across the two tiles as the road is', () => {
+    expect(Math.max(...zs(far)) - Math.min(...zs(near))).toBeCloseTo(carriagewayWidth(six), 6);
+  });
+
+  it('paints no edge line along the shared edge', () => {
+    const nearSeam = (z: number) => Math.abs(z - seamZ) < 0.5;
+    for (const v of [near, far]) {
+      expect(paintZs(v, isMarkingWhite).filter(nearSeam)).toEqual([]);
+      expect(paintZs(v, isMarkingYellow).filter(nearSeam)).toEqual([]);
+    }
+  });
+
+  it("keeps the yellow on the driver's left edge and the white on the right", () => {
+    // Heading east the driver's left is north, the low z: the near half's outer edge.
+    expect(paintZs(near, isMarkingYellow).length).toBeGreaterThan(0);
+    expect(paintZs(far, isMarkingYellow)).toEqual([]);
+    // The white edge line stands inside the right shoulder, out at the far edge.
+    expect(Math.max(...paintZs(far, isMarkingWhite))).toBeGreaterThan(seamZ + 9);
   });
 });
 

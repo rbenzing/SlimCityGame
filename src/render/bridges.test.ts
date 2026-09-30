@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { PIER_SPACING_TILES } from '../shared/constants';
-import { kerbWidthOf, presetProfileForTier } from '../shared/roadprofile';
+import { PIER_SPACING_TILES, TILE_METERS } from '../shared/constants';
+import {
+  carriagewayHalfWidthOf,
+  carriagewayWidth,
+  composeProfile,
+  corridorHalfProfile,
+  kerbWidthOf,
+  NO_EDITS,
+  presetProfileForTier,
+} from '../shared/roadprofile';
 import { RoadTier } from '../shared/types';
 import {
   BridgeRenderer,
@@ -302,6 +310,45 @@ describe('BridgeRenderer', () => {
     expect(scene.children.length).toBeGreaterThan(0);
     renderer.dispose();
     expect(scene.children).toHaveLength(0);
+  });
+});
+
+describe('BridgeRenderer — a motorway laid across two tiles', () => {
+  // Six lanes heading north, over two tiles side by side: the near half at
+  // x = 4, the far half at x = 5, the edge they share at x = 5 tiles.
+  const six = composeProfile(presetProfileForTier(RoadTier.Highway), { ...NO_EDITS, lanes: 6 });
+  const seamX = 5 * TILE_METERS;
+  const decks = (): BridgeDeckTile[] =>
+    (['left', 'right'] as const).flatMap((half, i) =>
+      [0, 1, 2].map((z) => ({
+        ...deckTile(4 + i, z, RoadTier.Highway),
+        profile: corridorHalfProfile(six, half),
+      })),
+    );
+  const xs = (mesh: THREE.Mesh): number[] => {
+    const position = mesh.geometry.getAttribute('position');
+    return Array.from({ length: position.count }, (_, i) => position.getX(i));
+  };
+
+  it('lays one deck the width of the road, its halves meeting over the shared edge', () => {
+    const scene = new THREE.Scene();
+    new BridgeRenderer(scene, flatDeckAt).rebuild(decks());
+    const girder = xs(mergedIn(scene)[0]!);
+    const width = Math.max(...girder) - Math.min(...girder);
+    // The road's own width and the girder's overhang at each outer edge. Two
+    // decks centred on their tiles would leave the gap between them as well.
+    const half = corridorHalfProfile(six, 'left');
+    const style = bridgeStyleFor(RoadTier.Highway);
+    const overhang =
+      structureHalfWidth(RoadTier.Highway, style, half) - carriagewayHalfWidthOf(half);
+    expect(width).toBeCloseTo(carriagewayWidth(six) + 2 * overhang, 4);
+  });
+
+  it('stands no parapet along the shared edge', () => {
+    const scene = new THREE.Scene();
+    new BridgeRenderer(scene, flatDeckAt).rebuild(decks());
+    const parapet = xs(mergedIn(scene)[1]!);
+    expect(parapet.filter((x) => Math.abs(x - seamX) < 1)).toEqual([]);
   });
 });
 

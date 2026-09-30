@@ -27,6 +27,8 @@ import {
 } from './roadsmesh';
 import {
   carriagewayHalfWidthOf,
+  carriagewayShiftOf,
+  carriagewayWidth,
   kerbWidthOf,
   parkingSides,
   presetProfileForTier,
@@ -314,6 +316,12 @@ export interface SignPlacement {
   worldOffsetX?: number;
   worldOffsetZ?: number;
   yaw?: number;
+  /**
+   * A gantry's reach either side of where it stands, to its legs, metres: its
+   * road's own carriageway plus the clearance. Omitted, it is the three-lane
+   * motorway the gantry is modelled on.
+   */
+  span?: number;
 }
 
 /**
@@ -1039,14 +1047,23 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
       // run only where the tile does not say which way it goes.
       const spanAxis = lateralAxis(tileSet, tile.x, tile.z);
       const facing = flowFacingYaw(tile);
+      // A motorway laid across two tiles is one carriageway, so it gets one
+      // gantry, standing over the edge its two halves share and spanning both.
+      const seam = tile.profile?.seam;
+      if (seam && seam.side < 0) continue;
+      const reach = tile.profile
+        ? (seam ? carriagewayWidth(tile.profile) : carriagewayHalfWidthOf(tile.profile)) +
+          GANTRY_LEG_CLEARANCE
+        : undefined;
       out.push({
         x: tile.x,
         z: tile.z,
         axis: spanAxis,
         side: 1,
-        lateralOffset: 0,
+        lateralOffset: seam ? TILE_METERS / 2 : 0,
         type,
         ...(facing === null ? {} : { yaw: facing }),
+        ...(reach === undefined ? {} : { span: reach }),
       });
       continue;
     }
@@ -1102,7 +1119,13 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
       z: tile.z,
       axis: pick.axis,
       side: pick.side,
-      lateralOffset: curbsideLateralOffset(tile),
+      // Measured from where the carriageway is, which on half of a motorway
+      // laid across two tiles is off the tile's centre.
+      lateralOffset:
+        curbsideLateralOffset(tile) +
+        (pick.axis === flankAxis && tile.profile
+          ? pick.side * carriagewayShiftOf(tile.profile)
+          : 0),
       type,
       // Every kerbside board faces the traffic it speaks to. Without this a
       // board took the authored +z facing whatever way its road ran, so half
@@ -1671,9 +1694,14 @@ function buildExitSign(): THREE.BufferGeometry {
  * existing yaw rule turns it to span whichever way the road runs — this is the
  * one sign type that sits on the centreline rather than at a curb.
  */
+/** How far the modelled gantry reaches either side, to its legs: the three-lane motorway's. */
+function gantryModelReach(): number {
+  return carriagewayHalfWidthMeters(RoadTier.Highway) + GANTRY_LEG_CLEARANCE;
+}
+
 function buildGantrySign(): THREE.BufferGeometry {
   const parts: { geometry: THREE.BufferGeometry; color: number }[] = [];
-  const reach = carriagewayHalfWidthMeters(RoadTier.Highway) + GANTRY_LEG_CLEARANCE;
+  const reach = gantryModelReach();
 
   for (const side of [-1, 1]) {
     const leg = new THREE.CylinderGeometry(GANTRY_LEG_RADIUS, GANTRY_LEG_RADIUS, GANTRY_HEIGHT, 10);
@@ -1761,6 +1789,7 @@ const _position = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
 const _identityQuat = new THREE.Quaternion();
 const _scale = new THREE.Vector3(1, 1, 1);
+const _stretch = new THREE.Vector3(1, 1, 1);
 const _yAxis = new THREE.Vector3(0, 1, 0);
 const _lampBase = new THREE.Vector3();
 const _lampColor = new THREE.Color();
@@ -2080,7 +2109,9 @@ export class RoadFurnitureRenderer {
     const { x: wx, z: wz, yaw } = signWorldTransform(p);
     _quat.setFromAxisAngle(_yAxis, yaw);
     _position.set(wx, this.heightAt(wx, wz), wz);
-    _matrix.compose(_position, _quat, _scale);
+    // A gantry is stretched across its own road, which is only a transform.
+    const stretch = p.span === undefined ? 1 : p.span / gantryModelReach();
+    _matrix.compose(_position, _quat, _stretch.set(stretch, 1, 1));
     mesh.setMatrixAt(slot, _matrix);
   }
 

@@ -401,12 +401,20 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
     const leftIsYellow = medianAtLeft || (!medianAtRight && fallbackYellowLeft);
     const rightIsYellow = medianAtRight || (!medianAtLeft && fallbackYellowRight);
     const [leftAt, rightAt] = edgeLineAt;
-    edges = [
+    const both: [MarkingLine, MarkingLine] = [
       leftIsYellow ? yellow(leftAt) : white(leftAt),
       rightIsYellow ? yellow(rightAt) : white(rightAt),
     ];
-    solid.push(...edges);
+    if (profile.seam) {
+      // Half of one carriageway laid across two tiles: the edge it shares with
+      // the other half is not an edge, and only the outer one is painted.
+      solid.push(profile.seam.side < 0 ? both[1] : both[0]);
+    } else {
+      edges = both;
+      solid.push(...both);
+    }
   }
+  if (profile.seam?.laneLine && style.laneLines) dashed.push(white(profile.seam.side * half));
 
   // The turn lane's extent across the carriageway, for the arrows painted in it.
   let turnLane: { from: number; to: number } | null = null;

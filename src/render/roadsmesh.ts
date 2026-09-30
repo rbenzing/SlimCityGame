@@ -100,6 +100,7 @@ import {
 } from '../shared/constants';
 import {
   carriagewayHalfWidthOf,
+  carriagewayShiftOf,
   kerbReturnRadiusOf,
   carriagewayWidth,
   corridorHalfProfile,
@@ -2699,10 +2700,23 @@ function emitTaperedRun(
   hAt: (x: number, z: number) => number,
   /** The kerb strip this road draws, from its own cross-section. */
   kerbBand: number,
+  /**
+   * An edge that does not move: on half of a motorway laid across two tiles,
+   * the one it shares with the other half, at `at` across the road. The whole
+   * change in width is then taken on the other edge.
+   */
+  anchored?: { side: -1 | 1; at: number },
 ): void {
   const pt = (along: number, cross: number): [number, number] =>
     vertical ? [cross, along] : [along, cross];
   const bandAt = (half: number): number => Math.min(kerbBand, TILE_HALF - half);
+  /** Where the carriageway's two edges are across the road, with a half-width of `h`. */
+  const edges = (h: number): { lo: number; hi: number } =>
+    anchored === undefined
+      ? { lo: -h, hi: h }
+      : anchored.side > 0
+        ? { lo: anchored.at - 2 * h, hi: anchored.at }
+        : { lo: anchored.at, hi: anchored.at + 2 * h };
   const centreAlong = vertical ? centerZ : centerX;
   const breaks = latticeBreaks(centreAlong - TILE_HALF, centreAlong + TILE_HALF);
   for (let k = 0; k < breaks.length - 1; k++) {
@@ -2710,30 +2724,35 @@ function emitTaperedRun(
     const a1 = breaks[k + 1]! - centreAlong;
     const h0 = halfAt(a0);
     const h1 = halfAt(a1);
+    const e0 = edges(h0);
+    const e1 = edges(h1);
     pushRunSlice(
       positions,
       colors,
       centerX,
       centerZ,
-      pt(a0, -h0),
-      pt(a0, h0),
-      pt(a1, -h1),
-      pt(a1, h1),
+      pt(a0, e0.lo),
+      pt(a0, e0.hi),
+      pt(a1, e1.lo),
+      pt(a1, e1.hi),
       ROAD_Y_OFFSET,
       plateColor,
       hAt,
     );
     if (!hasCurbs) continue;
     for (const side of [-1, 1] as const) {
+      if (anchored?.side === side) continue;
+      const edge0 = side > 0 ? e0.hi : e0.lo;
+      const edge1 = side > 0 ? e1.hi : e1.lo;
       pushRunSlice(
         positions,
         colors,
         centerX,
         centerZ,
-        pt(a0, side * h0),
-        pt(a0, side * (h0 + bandAt(h0))),
-        pt(a1, side * h1),
-        pt(a1, side * (h1 + bandAt(h1))),
+        pt(a0, edge0),
+        pt(a0, edge0 + side * bandAt(h0)),
+        pt(a1, edge1),
+        pt(a1, edge1 + side * bandAt(h1)),
         CURB_Y_OFFSET,
         SIDEWALK_COLOR,
         hAt,
@@ -3520,6 +3539,31 @@ function presetHalves(neighbors: NeighborTiers): NeighborHalves {
   };
 }
 
+/** A plan with every line moved `by` metres across the road; the plan itself when `by` is nothing. */
+function movedAcross(plan: MarkingPlan, by: number): MarkingPlan {
+  if (Math.abs(by) < 1e-9) return plan;
+  const move = (l: MarkingLine): MarkingLine => ({ ...l, at: l.at + by });
+  return {
+    ...plan,
+    solid: plan.solid.map(move),
+    dashed: plan.dashed.map(move),
+    edges: plan.edges && [move(plan.edges[0]), move(plan.edges[1])],
+  };
+}
+
+/**
+ * How far a tile's road is moved off the tile's centre, in world x and z: its
+ * cross-section's shift across the road, turned into whichever axis is across
+ * for the way the tile runs.
+ */
+export function seamShift(section: RoadProfile, flow: number): { shiftX: number; shiftZ: number } {
+  const across = carriagewayShiftOf(section);
+  if (across === 0) return { shiftX: 0, shiftZ: 0 };
+  const direction = flowDirection(flow);
+  const northSouth = direction === RoadFlow.North || direction === RoadFlow.South;
+  return northSouth ? { shiftX: across, shiftZ: 0 } : { shiftX: 0, shiftZ: across };
+}
+
 export function roadTileVertices(
   x: number,
   z: number,
@@ -3593,9 +3637,14 @@ export function roadTileVertices(
   // lines close the lane, leaving the neutral area between the two.
   const painted = paintedCrossSection(own, approach, narrowing, flow, auxiliary, sharedTurn);
   const plan = markingPlan(painted, flow);
-  const centerX = (x + 0.5) * TILE_METERS;
-  const centerZ = (z + 0.5) * TILE_METERS;
   const coreHalf = TILE_METERS * spec.halfWidthFraction;
+  // Half of a motorway laid across two tiles is pushed against the edge it
+  // shares with the other half, so the two draw one unbroken carriageway.
+  // Everything below is laid out from the centre, so moving the centre across
+  // the road moves the whole of it.
+  const { shiftX, shiftZ } = seamShift(crossSection, flow);
+  const centerX = (x + 0.5) * TILE_METERS + shiftX;
+  const centerZ = (z + 0.5) * TILE_METERS + shiftZ;
   const armDepth = TILE_HALF - coreHalf;
   /**
    * How wide the kerb strip beside the carriageway is drawn: the road's own
@@ -3845,6 +3894,7 @@ export function roadTileVertices(
       spec.hasCurbs,
       hAt,
       kerbBand,
+      crossSection.seam && { side: crossSection.seam.side, at: crossSection.seam.side * coreHalf },
     );
   } else if (!isTurn) {
     // Core plate: always present, tier-colored.
@@ -3871,12 +3921,23 @@ export function roadTileVertices(
     const extensionSpan = (arm: RoadFlow, half: number): { from: number; to: number } => {
       if (rampNode && rampMouth?.arm === arm) return mouthSpan(half);
       const h = rampNode && half > 0 ? Math.min(half, coreHalf) : coreHalf;
+      // Half of a motorway laid across two tiles, and the tiles along it, all
+      // keep the edge they share with the other half; an arm narrower than this
+      // tile is narrower on the far side.
+      const seam = crossSection.seam;
+      if (seam) {
+        return seam.side > 0
+          ? { from: coreHalf - 2 * h, to: coreHalf }
+          : { from: -coreHalf, to: -coreHalf + 2 * h };
+      }
       return { from: -h, to: h };
     };
     const extN = extensionSpan(RoadFlow.North, neighborHalves.n);
     const extS = extensionSpan(RoadFlow.South, neighborHalves.s);
     const extE = extensionSpan(RoadFlow.East, neighborHalves.e);
     const extW = extensionSpan(RoadFlow.West, neighborHalves.w);
+    // The tile's own edges, from a centre that may have moved across the road:
+    // an arm still reaches the tile it joins.
     if (hasN) {
       pushLocalRect(
         positions,
@@ -3885,7 +3946,7 @@ export function roadTileVertices(
         centerZ,
         extN.from,
         extN.to,
-        -TILE_HALF,
+        -TILE_HALF - shiftZ,
         -coreHalf,
         ROAD_Y_OFFSET,
         plateColor,
@@ -3901,7 +3962,7 @@ export function roadTileVertices(
         extS.from,
         extS.to,
         coreHalf,
-        TILE_HALF,
+        TILE_HALF - shiftZ,
         ROAD_Y_OFFSET,
         plateColor,
         hAt,
@@ -3914,7 +3975,7 @@ export function roadTileVertices(
         centerX,
         centerZ,
         coreHalf,
-        TILE_HALF,
+        TILE_HALF - shiftX,
         extE.from,
         extE.to,
         ROAD_Y_OFFSET,
@@ -3928,7 +3989,7 @@ export function roadTileVertices(
         colors,
         centerX,
         centerZ,
-        -TILE_HALF,
+        -TILE_HALF - shiftX,
         -coreHalf,
         extW.from,
         extW.to,
@@ -5509,6 +5570,17 @@ export class RoadMeshRenderer {
    * for the tiles that carry it and a taper narrows it, and the seam with the
    * tile next door has to meet the same edge.
    */
+  /**
+   * How far the road at (x,z) sits off its tile's centre, across the road:
+   * nothing, but for half of a motorway laid across two tiles, pushed against
+   * the edge it shares with the other half by however wide it is drawn here.
+   */
+  private shiftAt(x: number, z: number): number {
+    const seam = this.profileAt(x, z)?.seam;
+    if (!seam) return 0;
+    return seam.side * Math.max(0, TILE_HALF - this.halfAt(x, z));
+  }
+
   private halfAt(x: number, z: number): number {
     const profile = this.profileAt(x, z);
     if (!profile) return 0;
@@ -5872,6 +5944,13 @@ export class RoadMeshRenderer {
         }
         continue;
       }
+      // A neighbour's lines are measured from its own road's centre. Half of a
+      // motorway laid across two tiles sits off its tile's centre, by an amount
+      // that changes with its width, so a neighbour's lines are moved to be
+      // measured from this tile's road before a seam pairs them up.
+      const ownShift = this.shiftAt(tile.x, tile.z);
+      const inFrame = (plan: MarkingPlan | null, nx: number, nz: number): MarkingPlan | null =>
+        plan && movedAcross(plan, this.shiftAt(nx, nz) - ownShift);
       // The road beyond each neighbour, where the neighbour joins on to it.
       const beyond = (dx: number, dz: number, bit: number, axis: 'x' | 'z'): RoadTier => {
         const next = this.roadAlong(tile.x + dx, tile.z + dz, axis);
@@ -5911,10 +5990,10 @@ export class RoadMeshRenderer {
             w: this.walkableAlong(tile.x - 1, tile.z, 'x'),
           },
           plans: {
-            n: this.planAlong(tile.x, tile.z - 1, 'z'),
-            e: this.planAlong(tile.x + 1, tile.z, 'x'),
-            s: this.planAlong(tile.x, tile.z + 1, 'z'),
-            w: this.planAlong(tile.x - 1, tile.z, 'x'),
+            n: inFrame(this.planAlong(tile.x, tile.z - 1, 'z'), tile.x, tile.z - 1),
+            e: inFrame(this.planAlong(tile.x + 1, tile.z, 'x'), tile.x + 1, tile.z),
+            s: inFrame(this.planAlong(tile.x, tile.z + 1, 'z'), tile.x, tile.z + 1),
+            w: inFrame(this.planAlong(tile.x - 1, tile.z, 'x'), tile.x - 1, tile.z),
           },
           approaches: {
             n: this.approachSpanAt(tile.x, tile.z - 1, ARM_TOWARD.n),
