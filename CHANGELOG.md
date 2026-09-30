@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.20.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.20.0...slimcity-v1.20.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **roads:** turn bays draw whole across chunk seams, arrows at standard size ([6815bb6](https://github.com/rbenzing/SlimCityGame/commit/6815bb62a0a82982e9da71e4e90f92ffba54914f))
+
 ## [1.20.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.19.0...slimcity-v1.20.0) (2026-09-30)
 
 
