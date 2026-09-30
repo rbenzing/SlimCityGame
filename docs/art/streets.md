@@ -105,7 +105,9 @@ for the surface, the paint, the furniture and the zoning overlay.
   median — a concrete-tinted edge with a grass-green top — planted with a
   simple deterministic tree (trunk plus canopy) roughly every second tile.
   The median and its trees break at intersections and corners so turn paths
-  stay clear, giving the tree-lined-boulevard read. A road laid as two
+  stay clear, giving the tree-lined-boulevard read. A tree is planted only
+  where the section has a median to plant it in: an avenue-sized road built
+  without one plants none, rather than one in a running lane. A road laid as two
   carriageways keeps its median shut except where a street crosses it: there
   both halves are junctions, joined across the median, and the median breaks
   for the width of the crossing, so the opening reads as a gap cars drive
@@ -116,7 +118,11 @@ for the surface, the paint, the furniture and the zoning overlay.
   separates two carriageways, and a motorway is ONE, so a class-keyed divider
   would wall off its own centre lane.
 - **Sidewalks**: a lighter, raised kerb strip (0.08 m) runs along every road
-  edge that borders a non-road tile, vertex-coloured near-white.
+  edge that borders a non-road tile, vertex-coloured near-white. Half of a
+  corridor nothing divides draws none along the edge it shares with its
+  other half, which is the middle of the road. Whatever stands at its outer
+  kerb — a cabinet, the strip of verge a lot fronts — stands where that kerb
+  is, which is off the tile's centre.
 - **Kerb width is what the section declares, clamped to what the tile has
   left — not an assumed footway.** A two-lane road leaves plenty of tile
   beyond its carriageway and draws a full footway; a section that declares a

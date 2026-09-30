@@ -236,8 +236,18 @@ MUTCD citations below use 11th-edition section numbers.
   carriageway: its two tiles draw one unbroken road, each half pushed against
   the edge they share, with no edge line, kerb or furniture on it — never two
   carriageways centred on their tiles (`seam` in `corridorHalfProfile`,
-  `carriagewayShiftOf` in `src/shared/roadprofile.ts`). —
+  `carriagewayShiftOf` in `src/shared/roadprofile.ts`). Any corridor with no
+  median or barrier at its middle is drawn the same way. No corner, kerb,
+  crossing or stop line stands on the shared edge, and nothing kerbside is
+  seated there. —
   [road-model.md](world-sim/road-model.md); `src/data/roads.json`
+- Half of a two-way corridor carries one direction. Where its lanes are the
+  road's `back` lanes, they run against the way its tile was drawn, and they
+  arrive at a junction from the other end. The arrows, the stop line and the
+  turn bay follow the lanes, never the drawn flow alone
+  (`runsAgainstDrawing` in `src/shared/roadprofile.ts`). A stop line crosses
+  only the lanes arriving; an arm on which none arrive gets no bar. —
+  [road-model.md](world-sim/road-model.md)
 - Two motorway carriageways may lie on adjacent tiles and never connect. A
   highway tile is not an arm of a highway lying across its stored flow when
   each lies across the other's — no mask bit, no graph edge, no junction — so

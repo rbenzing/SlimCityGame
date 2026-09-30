@@ -1727,12 +1727,13 @@ describe('a motorway laid across two tiles', () => {
     }
   });
 
-  it('paints no lane line along the edge where the middle falls inside a lane', () => {
+  it('names no piece across the edge where the middle falls inside a lane', () => {
     // The shoulders differ, 1.2 m and 3 m, so the middle is not a lane boundary.
-    expect(corridorHalfProfile(six, 'left').seam?.laneLine).toBe(false);
+    expect(corridorHalfProfile(six, 'left').seam?.across).toBeNull();
+    expect(corridorHalfProfile(six, 'right').seam?.across).toBeNull();
   });
 
-  it('paints a lane line there, once, where the middle falls between two lanes', () => {
+  it('names the lane across the edge where the middle falls between two lanes', () => {
     const even: RoadProfile = {
       class: 'highway',
       pieces: [
@@ -1745,8 +1746,9 @@ describe('a motorway laid across two tiles', () => {
         { kind: 'shoulder', width: 2 },
       ],
     };
-    expect(corridorHalfProfile(even, 'left').seam?.laneLine).toBe(true);
-    expect(corridorHalfProfile(even, 'right').seam?.laneLine).toBe(false);
+    const lane = { kind: 'travel', width: 3.6, flow: 'fwd' };
+    expect(corridorHalfProfile(even, 'left').seam?.across).toEqual(lane);
+    expect(corridorHalfProfile(even, 'right').seam?.across).toEqual(lane);
   });
 
   it('leaves a divided road as two carriageways, each on its own tile', () => {
@@ -1754,6 +1756,52 @@ describe('a motorway laid across two tiles', () => {
     const left = corridorHalfProfile(avenue, 'left');
     expect(left.seam).toBeUndefined();
     expect(carriagewayShiftOf(left)).toBe(0);
+  });
+});
+
+describe('a corridor nothing divides is one carriageway too', () => {
+  const lanes = (n: number, flow: (i: number) => 'fwd' | 'back'): RoadProfile['pieces'] =>
+    Array.from({ length: n }, (_, i) => ({ kind: 'travel' as const, width: 3.6, flow: flow(i) }));
+  const walk = { kind: 'sidewalk' as const, width: 1.9 };
+  const arterial: RoadProfile = {
+    class: 'arterial',
+    pieces: [walk, ...lanes(6, (i) => (i < 3 ? 'back' : 'fwd')), walk],
+  };
+
+  it('pushes both halves of an undivided arterial against the edge they share', () => {
+    const left = corridorHalfProfile(arterial, 'left');
+    const right = corridorHalfProfile(arterial, 'right');
+    expect(left.seam?.side).toBe(1);
+    expect(right.seam?.side).toBe(-1);
+    expect(carriagewayShiftOf(left)).toBeCloseTo(TILE_METERS / 2 - (3 * 3.6) / 2, 6);
+    // The lanes that meet at the middle run opposite ways, which is the centre line.
+    expect(left.seam?.across).toEqual({ kind: 'travel', width: 3.6, flow: 'fwd' });
+    expect(right.seam?.across).toEqual({ kind: 'travel', width: 3.6, flow: 'back' });
+  });
+
+  it('keeps a median or a barrier at the middle as two carriageways', () => {
+    for (const kind of ['median', 'barrier'] as const) {
+      const divided: RoadProfile = {
+        class: 'divided',
+        pieces: [
+          walk,
+          ...lanes(3, () => 'back'),
+          { kind, width: 2 },
+          ...lanes(3, () => 'fwd'),
+          walk,
+        ],
+      };
+      expect(corridorHalfProfile(divided, 'left').seam).toBeUndefined();
+      expect(corridorHalfProfile(divided, 'right').seam).toBeUndefined();
+    }
+  });
+
+  it('keeps a road with no median at its middle as one, even on the divided class', () => {
+    const plain: RoadProfile = {
+      class: 'divided',
+      pieces: [walk, ...lanes(3, () => 'back'), ...lanes(3, () => 'fwd'), walk],
+    };
+    expect(corridorHalfProfile(plain, 'left').seam?.side).toBe(1);
   });
 });
 

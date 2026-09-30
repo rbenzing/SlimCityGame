@@ -8,7 +8,7 @@
  */
 import type { LanePiece, RoadClassId, RoadProfile } from '../shared/types';
 import { RoadFlow } from '../shared/types';
-import { carriagewayHalfWidthOf } from '../shared/roadprofile';
+import { carriagewayHalfWidthOf, runsAgainstDrawing } from '../shared/roadprofile';
 
 /** Half the gap between the two lines of a double solid centre. */
 export const CENTRE_PAIR_OFFSET_M = 0.22;
@@ -207,8 +207,10 @@ export function travelLanes(profile: RoadProfile): TravelLane[] {
  *
  * On a two-way road they are the lanes on the driver's RIGHT of the centreline.
  * On a one-way, every lane approaches or none does, depending on which way the
- * road runs; `runsToward` says which, and a road that never recorded a
- * direction is taken to run both ways.
+ * road runs; `runsToward` says whether the way it was DRAWN is toward the
+ * junction, and a road that never recorded a direction is taken to run both
+ * ways. Half of a two-way corridor runs one way too, but its lanes may be the
+ * ones running against the drawing, and they approach from the other end.
  *
  * A turn pocket is why this cannot simply be "the half with the positive
  * offsets". A pocket makes the section lopsided, so the centreline stops being
@@ -226,7 +228,7 @@ export function approachingLanes(
   if (lanes.length === 0) return [];
   const oneWay = lanes.every((l) => l.flow === lanes[0]!.flow);
   const onTheRight = (l: { centre: number }): boolean => l.centre * leftSign < 0;
-  if (oneWay) return runsToward ? lanes : [];
+  if (oneWay) return runsToward !== runsAgainstDrawing(drawn) ? lanes : [];
   const towardUs = travelLaneSpans(own).find(onTheRight)?.flow;
   return lanes.filter((l) => (towardUs ? l.flow === towardUs : onTheRight(l)));
 }
@@ -330,7 +332,12 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
       );
     }
 
-    const next = pieces[i + 1];
+    // Half of a corridor nothing divides runs on across its seam into the
+    // piece on the other tile, and the low half paints the line between the
+    // two for both — whatever line the whole road paints there.
+    const next =
+      pieces[i + 1] ??
+      (profile.seam && profile.seam.side > 0 ? (profile.seam.across ?? undefined) : undefined);
     if (!next) continue;
     const boundary = to;
     const opposing =
@@ -414,7 +421,6 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
       solid.push(...both);
     }
   }
-  if (profile.seam?.laneLine && style.laneLines) dashed.push(white(profile.seam.side * half));
 
   // The turn lane's extent across the carriageway, for the arrows painted in it.
   let turnLane: { from: number; to: number } | null = null;

@@ -2776,6 +2776,29 @@ describe('RoadMeshRenderer', () => {
     expect(expectedCount).toBeGreaterThan(0); // sanity: the 20-tile run really does place some trees
   });
 
+  it('plants no median tree on an avenue-sized road built without a median', () => {
+    const undivided: RoadProfile = {
+      class: 'arterial',
+      pieces: [
+        { kind: 'sidewalk', width: 1.9 },
+        { kind: 'travel', width: 3.6, flow: 'back' },
+        { kind: 'travel', width: 3.6, flow: 'back' },
+        { kind: 'travel', width: 3.6, flow: 'fwd' },
+        { kind: 'travel', width: 3.6, flow: 'fwd' },
+        { kind: 'sidewalk', width: 1.9 },
+      ],
+    };
+    const renderer = new RoadMeshRenderer(new THREE.Scene(), flatHeightAt, (id) =>
+      id === 40 ? undivided : null,
+    );
+    const deltas: RoadTileDelta[] = [];
+    for (let z = 0; z < 20; z++) {
+      deltas.push({ ...makeDelta(0, z, RoadTier.Avenue, N | S), profile: 40 });
+    }
+    renderer.apply(deltas);
+    expect(renderer.medianTreeCount()).toBe(0);
+  });
+
   it('removing every avenue tile drops the median-tree mesh back to zero', () => {
     const scene = new THREE.Scene();
     const renderer = new RoadMeshRenderer(scene, flatHeightAt);
@@ -3336,6 +3359,74 @@ describe('a motorway closes its lane with paint and keeps the tarmac', () => {
   });
 });
 
+describe('roadTileVertices — an undivided arterial laid across two tiles draws one road', () => {
+  // Six lanes along x: the near half on row 4, whose edge with the far half is
+  // its south side at z = 5 tiles.
+  const lane = (flow: 'fwd' | 'back') => ({ kind: 'travel' as const, width: 3.6, flow });
+  const walk = { kind: 'sidewalk' as const, width: 1.9 };
+  const arterial: RoadProfile = {
+    class: 'arterial',
+    pieces: [
+      walk,
+      lane('back'),
+      lane('back'),
+      lane('back'),
+      lane('fwd'),
+      lane('fwd'),
+      lane('fwd'),
+      walk,
+    ],
+  };
+  const seamZ = 5 * TILE_METERS;
+  const centreX = 4.5 * TILE_METERS;
+  const near = (mask: number, control?: JunctionControl) => {
+    const flow = storedFlow(RoadFlow.East, 'left');
+    return roadTileVertices(
+      4,
+      4,
+      RoadTier.Avenue,
+      mask,
+      flatHeightAt,
+      undefined,
+      corridorHalfProfile(worldOrderedProfile(arterial, flow), 'left'),
+      undefined,
+      flow,
+      control,
+    );
+  };
+  const where = (v: { positions: number[]; colors: number[] }, is: (c: number[]) => boolean) =>
+    (toTriples(v.positions) as number[][]).filter((_, i) => is(toTriples(v.colors)[i] as number[]));
+
+  it('lays no kerb along the edge the halves share, and its footway on the outer one', () => {
+    const kerb = where(near(E | W), isSidewalk);
+    expect(kerb.length).toBeGreaterThan(0);
+    expect(kerb.filter((p) => p[2]! > seamZ - 1)).toEqual([]);
+  });
+
+  it('turns its corners only at the outer edge where a street crosses it', () => {
+    // The street arrives from the north and carries on across the far half.
+    const kerb = where(near(N | E | S | W), isSidewalk);
+    expect(kerb.length).toBeGreaterThan(0);
+    expect(kerb.filter((p) => p[2]! > seamZ - 1)).toEqual([]);
+  });
+
+  it('paints no crossing or stop line over the other half, which is the same road', () => {
+    const paint = where(near(N | E | S | W, 'signal'), isMarkingWhite);
+    expect(paint.length).toBeGreaterThan(0);
+    // The strip of the box against the shared edge, clear of the crossings
+    // over the arms either side.
+    const inBox = paint.filter((p) => Math.abs(p[0]! - centreX) < 3 && p[2]! > seamZ - 4);
+    expect(inBox).toEqual([]);
+  });
+
+  it('ends square, kerbed across the whole of it right up to the middle of the road', () => {
+    const kerb = where(near(W), isSidewalk);
+    const acrossEnd = kerb.filter((p) => p[0]! > centreX);
+    expect(acrossEnd.some((p) => p[2]! > seamZ - 0.5)).toBe(true);
+    expect(kerb.filter((p) => p[2]! > seamZ + 1e-6)).toEqual([]);
+  });
+});
+
 describe('roadTileVertices — a motorway laid across two tiles draws one carriageway', () => {
   // Six lanes heading east: the near half on row 4, the far half on row 5,
   // the edge they share at z = 5 tiles.
@@ -3393,7 +3484,8 @@ describe('roadTileVertices — a motorway laid across two tiles draws one carria
 describe('roadTileVertices — a corridor half arriving at a junction', () => {
   // One carriageway of a six-lane divided road: three lanes all running the
   // same way, finished on the inside by its share of the median. Its lanes are
-  // 'back', which is what a half on the low side of the split carries.
+  // 'back', which is what a half on the low side of the split carries: drawn
+  // south, they run north, and they arrive at a junction to the north.
   const half = (): RoadProfile => ({
     class: 'divided',
     pieces: [
@@ -3428,17 +3520,26 @@ describe('roadTileVertices — a corridor half arriving at a junction', () => {
     // Three lanes going the same way have something to tell apart, so the
     // approach is marked. A corridor half is a road in its own right and gets
     // what any three-lane approach gets.
-    const arrived = tile({ toward: RoadFlow.South, distance: 0, pocket: false });
+    const arrived = tile({ toward: RoadFlow.North, distance: 0, pocket: false });
     expect(countWhere(arrived.colors, isMarkingWhite)).toBeGreaterThan(
       countWhere(tile(undefined).colors, isMarkingWhite),
     );
   });
 
   it('paints them on the tile at the stop line and nowhere further back', () => {
-    const atLine = tile({ toward: RoadFlow.South, distance: 0, pocket: false });
-    const backOne = tile({ toward: RoadFlow.South, distance: 1, pocket: false });
+    const atLine = tile({ toward: RoadFlow.North, distance: 0, pocket: false });
+    const backOne = tile({ toward: RoadFlow.North, distance: 1, pocket: false });
     expect(countWhere(atLine.colors, isMarkingWhite)).toBeGreaterThan(
       countWhere(backOne.colors, isMarkingWhite),
+    );
+  });
+
+  it('paints none facing a junction its lanes are driving away from', () => {
+    // Drawn south, the junction to the south is behind these lanes: they
+    // leave it, and the other half's lanes are the ones arriving there.
+    const leaving = tile({ toward: RoadFlow.South, distance: 0, pocket: false });
+    expect(countWhere(leaving.colors, isMarkingWhite)).toBe(
+      countWhere(tile(undefined).colors, isMarkingWhite),
     );
   });
 });
@@ -3467,7 +3568,7 @@ describe('roadTileVertices — a corridor half that has earned a turn bay', () =
       RoadFlow.South,
       undefined,
       {
-        toward: RoadFlow.South,
+        toward: RoadFlow.North,
         distance: 0,
         pocket,
         allowed: DEFAULT_ALLOWED,

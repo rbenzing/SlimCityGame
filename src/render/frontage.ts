@@ -13,7 +13,7 @@
 import { isStreetTier, RoadTier } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
-import { carriagewayHalfWidthOf, kerbWidthOf } from '../shared/roadprofile';
+import { carriagewayHalfWidthOf, carriagewayShiftOf, kerbWidthOf } from '../shared/roadprofile';
 import { carriagewayHalfWidthMeters, curbWidthMeters } from './roadsmesh';
 
 /**
@@ -22,6 +22,10 @@ import { carriagewayHalfWidthMeters, curbWidthMeters } from './roadsmesh';
  * on the carriageway, so the verge is whatever is left over once the
  * carriageway half-width and the sidewalk are taken out — 0 on wide tiers
  * whose sidewalk already reaches the tile boundary.
+ *
+ * Half of a corridor nothing divides is the exception: it stands against the
+ * edge it shares with its other half, which leaves its far side — the only
+ * side a lot can front — that much more verge.
  */
 export function vergeDepthMeters(tier: RoadTier, profile?: RoadProfile): number {
   const half = profile ? carriagewayHalfWidthOf(profile) : carriagewayHalfWidthMeters(tier);
@@ -29,7 +33,8 @@ export function vergeDepthMeters(tier: RoadTier, profile?: RoadProfile): number 
   // instead, a road that keeps only a kerb leaves a band that is neither verge
   // nor pavement and nothing covers.
   const paved = sidewalkDepthMeters(tier, profile);
-  return Math.max(0, TILE_METERS / 2 - half - paved);
+  const shift = profile ? Math.abs(carriagewayShiftOf(profile)) : 0;
+  return Math.max(0, TILE_METERS / 2 + shift - half - paved);
 }
 
 /** Depth of the sidewalk band a curb cut crosses, clamped to what fits inside the road tile. */

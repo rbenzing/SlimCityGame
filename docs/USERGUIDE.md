@@ -43,8 +43,9 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   drag it (you build a dual carriageway as two runs side by side, each drawn in
   its own direction, and widen the side that needs it; a five- or six-lane
   motorway is too wide for one tile and takes two, but it is still one road,
-  drawn edge to edge across both) — put a median or a two-way turn lane down
-  the middle, post
+  drawn edge to edge across both; so is a six-lane arterial built without a
+  median, with its centre line down the middle and one junction where a street
+  crosses it) — put a median or a two-way turn lane down the middle, post
   a speed inside the range its class allows, add a parking lane or a bike lane
   to either kerb, reserve a bus lane, run a tramway, or drop the footways.
   **A bus lane and a tramway are options on a road, not roads of their own** —

@@ -701,6 +701,17 @@ export function hasCrossingRoad(tileSet: RoadTileIndex, x: number, z: number): b
   return hasEW && hasNS;
 }
 
+/**
+ * How much further out, or less far, a kerbside prop on `pick` stands because
+ * the tile's carriageway is off its centre: half of a corridor nothing divides
+ * is pushed against the edge it shares with its other half, and its kerbs go
+ * with it. Only a flank kerb moves; the end of a road is where it always was.
+ */
+function flankShift(tileSet: RoadTileIndex, tile: FurnitureRoadTile, pick: SideChoice): number {
+  if (!tile.profile || pick.axis !== lateralAxis(tileSet, tile.x, tile.z)) return 0;
+  return pick.side * carriagewayShiftOf(tile.profile);
+}
+
 /** Deterministically picks one of the available sides from a [0,1) hash. */
 function pickSide(sides: readonly SideChoice[], h: number): SideChoice | null {
   if (sides.length === 0) return null;
@@ -779,10 +790,9 @@ export function computeBoxPlacements(roadTiles: readonly FurnitureRoadTile[]): B
       side: pick.side,
       // Each stands behind the footway on its own depth: a pedestal is round,
       // so its depth is its diameter.
-      lateralOffset: behindFootwayOffset(
-        tile,
-        kind === 'pedestal' ? PEDESTAL_PAD_RADIUS * 2 : BOX_DEPTH,
-      ),
+      lateralOffset:
+        behindFootwayOffset(tile, kind === 'pedestal' ? PEDESTAL_PAD_RADIUS * 2 : BOX_DEPTH) +
+        flankShift(tileSet, tile, pick),
       kind,
     });
   }
@@ -1119,13 +1129,9 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
       z: tile.z,
       axis: pick.axis,
       side: pick.side,
-      // Measured from where the carriageway is, which on half of a motorway
-      // laid across two tiles is off the tile's centre.
-      lateralOffset:
-        curbsideLateralOffset(tile) +
-        (pick.axis === flankAxis && tile.profile
-          ? pick.side * carriagewayShiftOf(tile.profile)
-          : 0),
+      // Measured from where the carriageway is, which on half of a corridor
+      // nothing divides is off the tile's centre.
+      lateralOffset: curbsideLateralOffset(tile) + flankShift(tileSet, tile, pick),
       type,
       // Every kerbside board faces the traffic it speaks to. Without this a
       // board took the authored +z facing whatever way its road ran, so half

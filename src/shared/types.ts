@@ -1102,12 +1102,14 @@ export interface RoadProfile {
   /** Raised kerbs on the unconnected sides. Omitted = true when the profile has a sidewalk piece. */
   kerbs?: boolean;
   /**
-   * On one tile of a motorway laid across two: the edge of this half, toward
-   * the low offsets or the high, where the carriageway runs on onto the other
-   * tile, and whether a lane line runs along it. Only ever set on a
-   * cross-section derived for drawing, never on a stored profile.
+   * On one tile of a corridor that nothing divides — a motorway, or an
+   * undivided arterial or one-way street laid across two tiles: the edge of
+   * this half, toward the low offsets or the high, where the carriageway runs
+   * on onto the other tile, and the piece that lies against it on the other
+   * tile (null where the middle of the road falls inside a piece). Only ever
+   * set on a cross-section derived for drawing, never on a stored profile.
    */
-  seam?: { side: -1 | 1; laneLine: boolean };
+  seam?: { side: -1 | 1; across: LanePiece | null };
 }
 
 export interface RoadClassSpec {

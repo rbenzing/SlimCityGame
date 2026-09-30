@@ -17,6 +17,7 @@ import {
   isOneWayProfile,
   reversedInWorld,
   roadRank,
+  runsAgainstDrawing,
   withAuxiliaryLane,
   withCentreTurn,
   withTurnPocket,
@@ -453,7 +454,13 @@ export function pocketedCrossSection(
     if (shared) return shared;
   }
   if (!approach?.pocket) return profile;
-  if (isOneWayProfile(profile) && flow !== RoadFlow.None && flow !== approach.toward) {
+  // Half of a two-way corridor may carry the lanes running against the way it
+  // was drawn, which approach from the other end.
+  if (
+    isOneWayProfile(profile) &&
+    flow !== RoadFlow.None &&
+    (flow === approach.toward) === runsAgainstDrawing(profile)
+  ) {
     return profile;
   }
   const { leftSign } = approachAxis(approach.toward);
