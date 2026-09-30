@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.19.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.18.0...slimcity-v1.19.0) (2026-09-30)
+
+
+### Features
+
+* **farms:** an Agriculture zone on soil the ground itself grades ([876424b](https://github.com/rbenzing/SlimCityGame/commit/876424bfbef4944be99044aae4027201a7cefef0))
+* **trams:** a tramway crosses another street straight over the junction ([1eca637](https://github.com/rbenzing/SlimCityGame/commit/1eca63726484cc89f5b34fadbc6c10cc53545dda))
+
 ## [1.18.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.17.1...slimcity-v1.18.0) (2026-09-29)
 
 
