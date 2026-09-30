@@ -429,6 +429,10 @@ active:
   both, so the extra ground a corridor claims is visible before it is taken.
   The tile frame is still drawn around the tiles themselves, so which tiles
   are claimed and how much of them the road covers are both readable at once.
+- **A road ghost stands at the road's own deck**: a raised road, a bridge or
+  an overpass previews climbing its ramps and standing at the height it will
+  be built at, frame and all, rather than lying flat on the ground under
+  where it will go ([overpasses.md](../world-sim/overpasses.md)).
 - **Cursor chips**: a small DOM chip stack follows the pointer (see
   [`interaction.md`](interaction.md) for what it shows).
 - **Zoning grid visualization**: while a zone tool is active, every

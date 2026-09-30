@@ -10,6 +10,7 @@ import {
   buildConformingEdgePositions,
   buildConformingTilePositions,
   computeFootprintEdges,
+  deckHeightSampler,
   fillColorFor,
   frameColorFor,
   hexToRgb01,
@@ -1120,5 +1121,67 @@ describe('the ghost of a road off the grid', () => {
     expect(inner.geometry.getAttribute('position').count).toBe(6);
     expect(stripe.count).toBe(0);
     expect(ghosts.volumeBox().visible).toBe(false);
+  });
+});
+
+describe('deckHeightSampler — a road preview standing at its deck', () => {
+  const T = TILE_METERS;
+  const centre = (x: number): number => (x + 0.5) * T;
+  /** Five tiles east along z = 0, ramping 0, 2, 4, 2, 0 m off flat ground at 1 m. */
+  const ramp = (): ReturnType<typeof deckHeightSampler> =>
+    deckHeightSampler(straightLine(5), [0, 2, 4, 2, 0], () => 1);
+
+  it('stands each tile at its ground plus its lift at the centre', () => {
+    const at = ramp();
+    expect(at(centre(1), centre(0))).toBe(3);
+    expect(at(centre(2), centre(0))).toBe(5);
+  });
+
+  it('meets the next tile at one height on the edge they share, climbing smoothly', () => {
+    const at = ramp();
+    for (const edge of [1, 2, 3, 4]) {
+      const x = edge * T;
+      expect(at(x - 1e-6, centre(0))).toBeCloseTo(at(x + 1e-6, centre(0)), 4);
+    }
+    expect(at(2 * T, centre(0))).toBeCloseTo(4, 4);
+  });
+
+  it('is level across the run', () => {
+    const at = ramp();
+    expect(at(centre(2), 1)).toBe(at(centre(2), T - 1));
+  });
+
+  it('follows the ground off the lifted part of the run and off the run itself', () => {
+    const at = deckHeightSampler(straightLine(6), [0, 0, 2, 0, 0, 0], (x) => x / 100);
+    expect(at(centre(5), centre(0))).toBe(centre(5) / 100);
+    expect(at(centre(2), centre(3))).toBe(centre(2) / 100);
+  });
+
+  it('holds the frame straddling the run edge up at the deck, not down on the ground', () => {
+    const at = ramp();
+    expect(at(centre(2), -0.1)).toBe(at(centre(2), 0.1));
+    expect(at(centre(2), T + 0.1)).toBe(5);
+    expect(at(5 * T + 0.1, centre(0))).toBe(at(5 * T - 0.1, centre(0)));
+  });
+
+  it('keeps no part of a raised preview frame down on the ground', () => {
+    const renderer = new GhostRenderer(new THREE.Scene(), flatHeightAt);
+    const lifts = [2, 4, 4, 4, 2];
+    renderer.setPreview(straightLine(5), true, 'road', { roadWidthMeters: 10, deckLifts: lifts });
+    expect(boundingBoxOf(renderer.layers().border).min.y).toBeGreaterThan(1);
+  });
+
+  it('draws every layer of a road preview at the deck', () => {
+    const renderer = new GhostRenderer(new THREE.Scene(), flatHeightAt);
+    renderer.setPreview(straightLine(7), true, 'road', {
+      roadWidthMeters: 10,
+      deckLifts: [0, 2, 4, 4, 4, 2, 0],
+    });
+    const { base, border } = renderer.layers();
+    expect(boundingBoxOf(base).max.y).toBeCloseTo(4.2, 4);
+    expect(boundingBoxOf(border).max.y).toBeGreaterThan(4);
+    // Back on the terrain for the next preview that carries no deck.
+    renderer.setPreview(straightLine(5), true, 'road', { roadWidthMeters: 10 });
+    expect(boundingBoxOf(renderer.layers().base).max.y).toBeCloseTo(0.2, 4);
   });
 });

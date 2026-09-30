@@ -152,12 +152,13 @@ import {
 import { RoadNetwork, tramShape } from '../world/roadgraph';
 import {
   clearOverRoad,
+  liftToOverLayer,
   overRoadAt,
   overRoadChanges,
   setOverRoad,
   type OverRoad,
 } from '../world/overpass';
-import { atOneLevel, bitToward, crossingShape, overpassRise } from '../shared/overpass';
+import { atOneLevel, axisOfFlow, bitToward, crossingShape, overpassRise } from '../shared/overpass';
 import { rampMeetingRefusal } from '../shared/corridor';
 import { solveElevationProfile } from '../world/bridges';
 import {
@@ -1425,6 +1426,7 @@ class SimWorld implements WorkerSim {
     laying: ReadonlyMap<number, number>,
     profileId: number,
     passingOver: ReadonlyMap<number, OverRoad>,
+    passingUnder: readonly TilePoint[] = [],
   ): string | null {
     const mine = this.profileForId(profileId);
     if (!mine) return null;
@@ -1433,8 +1435,23 @@ class SimWorld implements WorkerSim {
     // road beneath it is one the drag never meets.
     const crossingAt = (x: number, z: number): OverRoad | undefined =>
       inBounds(x, z) ? passingOver.get(tileIndex(x, z)) : undefined;
+    // Nor does a drag passing under a raised road meet that road's tiles
+    // either side of the crossing: they are up in the air, running on.
+    const overhead = new Set<number>();
+    for (const t of passingUnder) {
+      const alongX = axisOfFlow(g.roadFlow[tileIndex(t.x, t.z)] ?? RoadFlow.None) === 'x';
+      const [dx, dz] = alongX ? [1, 0] : [0, 1];
+      for (const s of [1, -1]) {
+        if (inBounds(t.x + s * dx, t.z + s * dz))
+          overhead.add(tileIndex(t.x + s * dx, t.z + s * dz));
+      }
+    }
     const classNear = (x: number, z: number): RoadClassId | null =>
-      crossingAt(x, z) ? mine.class : this.roadClassAt(x, z);
+      crossingAt(x, z)
+        ? mine.class
+        : overhead.has(inBounds(x, z) ? tileIndex(x, z) : -1)
+          ? null
+          : this.roadClassAt(x, z);
     const flowNear = (x: number, z: number): number =>
       crossingAt(x, z)?.flow ?? (inBounds(x, z) ? (g.roadFlow[tileIndex(x, z)] ?? 0) : 0);
     const tiles: TilePoint[] = [];
@@ -2260,6 +2277,9 @@ class SimWorld implements WorkerSim {
     // Tiles this drag passes OVER, each with the road it will lay there. They
     // stay out of `valid`: the road at ground level is not touched.
     const crossings = new Map<number, OverRoad>();
+    // Tiles this drag passes UNDER: the raised road already there moves up
+    // onto the over layer and the drag is laid on the ground layer beneath.
+    const passingUnder: TilePoint[] = [];
     let changedCount = 0;
     let bridgeCost = 0;
 
@@ -2302,9 +2322,29 @@ class SimWorld implements WorkerSim {
           (x, z) => this.roadAtLevel(x, z, below) && (joined & bitToward(x - t.x, z - t.z)) !== 0,
         );
         if (shape !== 'along' && deck < below) {
-          return refused(
-            'A road cannot pass under a bridge yet: build the lower road first, then cross over it',
-          );
+          const needed = overpassRise(current, tier);
+          if (below - deck < needed) {
+            return refused(`The road above has to clear this one by ${needed.toFixed(1)} m`);
+          }
+          const straightAcross = 'A road passes under another straight across, at right angles';
+          if (shape === 'skew') return refused(straightAcross);
+          // Straight across, so the drag carries on either side of this tile,
+          // and the road above has to run the other way.
+          const aboveAxis = tiles[i - 1]!.z === t.z ? 'z' : 'x';
+          if (axisOfFlow(g.roadFlow[idx] ?? RoadFlow.None) !== aboveAxis) {
+            return refused(straightAcross);
+          }
+          if (overRoadAt(g, idx)) return refused('A tile holds two roads at most');
+          if (deck === 0 && !isRoadBuildable(g, t.x, t.z)) {
+            return refused('The ground under that road is too steep for another');
+          }
+          passingUnder.push(t);
+          valid.push(t);
+          validElevations.push(deck);
+          validFlows.push(flow);
+          laying.set(idx, flow);
+          changedCount += 1;
+          continue;
         }
         if (shape !== 'along' && deck > below) {
           const needed = overpassRise(tier, current);
@@ -2372,7 +2412,7 @@ class SimWorld implements WorkerSim {
       }
     }
 
-    const joinRefused = this.joinRefusalAround(laying, profileId, crossings);
+    const joinRefused = this.joinRefusalAround(laying, profileId, crossings, passingUnder);
     if (joinRefused) return { ok: false, cost: 0, inverse: [], reason: joinRefused };
 
     if (changedCount === 0) {
@@ -2390,7 +2430,38 @@ class SimWorld implements WorkerSim {
 
     // What this command lays decides the arms of those tiles, and what was
     // held apart there before is what its undo puts back.
-    for (const group of [...upgradedByPrevProfile.values(), ...reprofiledByProfile.values()]) {
+    // A raised road the drag passes under is put back on the ground layer by
+    // undo, exactly as it stands now.
+    const passedUnder = new Map<
+      number,
+      {
+        tier: RoadTier;
+        tiles: TilePoint[];
+        elevations: number[];
+        flows: number[];
+        apart?: TileArms[];
+      }
+    >();
+    for (const t of passingUnder) {
+      const idx = tileIndex(t.x, t.z);
+      const tierAbove = (g.roadTier[idx] ?? 0) as RoadTier;
+      const profileAbove = g.roadProfile[idx] || tierAbove;
+      const group = passedUnder.get(profileAbove) ?? {
+        tier: tierAbove,
+        tiles: [],
+        elevations: [],
+        flows: [],
+      };
+      group.tiles.push(t);
+      group.elevations.push(g.roadElevation[idx] ?? 0);
+      group.flows.push(g.roadFlow[idx] ?? RoadFlow.None);
+      passedUnder.set(profileAbove, group);
+    }
+    for (const group of [
+      ...upgradedByPrevProfile.values(),
+      ...reprofiledByProfile.values(),
+      ...passedUnder.values(),
+    ]) {
       group.apart = armsApartOn(g, group.tiles);
     }
     const laid = [
@@ -2409,8 +2480,12 @@ class SimWorld implements WorkerSim {
     // The roads passing over go down first, so the masks the ground road
     // recomputes already know which way each crossing tile's roads run.
     const inverse: Command[] = this.applyCrossings(crossings);
+    // The raised roads this drag passes under go up onto the over layer, as
+    // they stand, before the drag is laid in the ground layer they leave.
+    for (const t of passingUnder) liftToOverLayer(g, tileIndex(t.x, t.z));
     const deltas = applyRoad(g, valid, tier, validElevations, profileId, replace, validFlows);
     for (const d of deltas) this.recordRoadDelta(d);
+    this.overLayerChanged(passingUnder.map((t) => tileIndex(t.x, t.z)));
     this.landfillAreasCache = null; // street layout feeds the landfill entrances
     this.invalidateAround(valid);
     this.zoneDirty = growRect(this.zoneDirty, valid); // roads de-zone their tiles
@@ -2419,7 +2494,14 @@ class SimWorld implements WorkerSim {
       ...created,
       ...Array.from(upgradedByPrevProfile.values(), (group) => group.tiles).flat(),
     ];
-    if (rebuilt.length > 0) inverse.push({ kind: 'bulldoze', tiles: rebuilt });
+    // Where the drag passed under a raised road, that road is on top now, and
+    // a bulldoze takes the road on top first: it goes before the drag does.
+    if (passingUnder.length > 0) {
+      inverse.push({ kind: 'bulldoze', tiles: passingUnder, layer: 'over' });
+    }
+    if (rebuilt.length + passingUnder.length > 0) {
+      inverse.push({ kind: 'bulldoze', tiles: [...rebuilt, ...passingUnder] });
+    }
     for (const [prevProfile, group] of upgradedByPrevProfile) {
       inverse.push({
         kind: 'buildRoad',
@@ -2428,6 +2510,17 @@ class SimWorld implements WorkerSim {
         elevations: group.tiles.map((t) => priorElevationByTile.get(tileIndex(t.x, t.z)) ?? 0),
         flows: group.tiles.map((t) => priorFlowByTile.get(tileIndex(t.x, t.z)) ?? RoadFlow.None),
         profile: prevProfile,
+        ...heldApart(group.apart),
+      });
+    }
+    for (const [profileAbove, group] of passedUnder) {
+      inverse.push({
+        kind: 'buildRoad',
+        tier: group.tier,
+        tiles: group.tiles,
+        elevations: group.elevations,
+        flows: group.flows,
+        profile: profileAbove,
         ...heldApart(group.apart),
       });
     }

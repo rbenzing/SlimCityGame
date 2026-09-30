@@ -295,15 +295,120 @@ describe('overpasses — a road passing over another on the tile they cross', ()
     expect(latest()?.over).toBeUndefined();
     expect(latest()?.tier).toBe(RoadTier.Highway);
   });
+});
 
-  it('refuses a road drawn under an existing viaduct, for now', () => {
-    const h = initialized();
+describe('a road drawn under a road already raised above it', () => {
+  function grid(h: Harness): GridState {
+    h.sim.handleMessage({ type: 'requestSave' });
+    return latestSaveGrid(h);
+  }
+  const at = (x: number, z: number): number => z * MAP_SIZE + x;
+  const across = roadRow(12, 14, 17); // x 12..28, passing under x = 20 at its middle
+  /** A viaduct running south down x = 20, at its full height over z = 14. */
+  function withViaduct(tier: RoadTier = RoadTier.TwoLane, elevation = 8, map?: MapData): Harness {
+    const h = makeHarness();
+    h.sim.handleMessage({ type: 'init', seed: 1337, map: map ?? flatMap() });
     run(h, 0, [{ kind: 'setSandbox', on: true }]);
-    run(h, 1, [
-      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(20, 6, 17), elevation: 8 },
-    ]);
+    const built = run(h, 1, [{ kind: 'buildRoad', tier, tiles: column(20, 6, 17), elevation }]);
+    expect(built.ok).toBe(true);
+    return h;
+  }
+
+  it('moves the viaduct onto the over layer as it stands and lays the drag beneath', () => {
+    const h = withViaduct();
+    const before = grid(h);
+    const deck = before.roadElevation[at(20, 14)]!;
+    const flow = before.roadFlow[at(20, 14)]!;
+    expect(deck).toBe(8);
+    const ack = run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: across }]);
+    expect(ack.ok).toBe(true);
+    const g = grid(h);
+    expect(g.overTier[at(20, 14)]).toBe(RoadTier.TwoLane);
+    expect(g.overElevation[at(20, 14)]).toBe(deck);
+    expect(g.overFlow[at(20, 14)]).toBe(flow);
+    expect(g.roadTier[at(20, 14)]).toBe(RoadTier.TwoLane);
+    expect(g.roadElevation[at(20, 14)]).toBe(0);
+    expect((g.roadFlow[at(20, 14)] ?? 0) & 7).toBe(RoadFlow.East);
+    // The road beneath runs on east and west; the viaduct joins its own approaches.
+    expect(g.roadMask[at(20, 14)]).toBe(2 | 8);
+    expect((g.roadMask[at(20, 13)] ?? 0) & 4).toBe(4);
+    expect(g.roadElevation[at(20, 13)]).toBeGreaterThan(0);
+  });
+
+  it('passes under a motorway viaduct, which a street could never meet', () => {
+    const h = withViaduct(RoadTier.Highway);
+    const ack = run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: across }]);
+    expect(ack.ok).toBe(true);
+    const g = grid(h);
+    expect(g.overTier[at(20, 14)]).toBe(RoadTier.Highway);
+    expect(g.roadTier[at(20, 14)]).toBe(RoadTier.TwoLane);
+  });
+
+  it('refuses a viaduct too low to clear it, and says by how much', () => {
+    const h = withViaduct(RoadTier.TwoLane, 4);
     const ack = run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: across }]);
     expect(ack.ok).toBe(false);
-    expect(ack.reason).toMatch(/lower road first/);
+    expect(ack.reason).toMatch(/clear this one by 5\.8 m/);
+    const g = grid(h);
+    expect(g.overTier[at(20, 14)]).toBe(0);
+    expect(g.roadElevation[at(20, 14)]).toBe(4);
+    expect(g.roadTier[at(19, 14)]).toBe(RoadTier.None);
+  });
+
+  it('refuses a drag that ends under the viaduct rather than passing under it', () => {
+    const h = withViaduct();
+    const ack = run(h, 2, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(12, 14, 9) },
+    ]);
+    expect(ack.ok).toBe(false);
+    expect(ack.reason).toMatch(/straight across/);
+    const g = grid(h);
+    expect(g.overTier[at(20, 14)]).toBe(0);
+    expect(g.roadElevation[at(20, 14)]).toBe(8);
+  });
+
+  it('refuses a single tile dropped under a viaduct running across it', () => {
+    const h = makeHarness();
+    h.sim.handleMessage({ type: 'init', seed: 1337, map: flatMap() });
+    run(h, 0, [{ kind: 'setSandbox', on: true }]);
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: across, elevation: 8 }]);
+    const ack = run(h, 2, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: [{ x: 20, z: 14 }] },
+    ]);
+    // A lone tile's deck climbs toward the viaduct it lies against, to 6 m,
+    // which is no longer low enough to pass under it.
+    expect(ack.ok).toBe(false);
+    expect(ack.reason).toMatch(/clear this one by/);
+    expect(grid(h).roadElevation[at(20, 14)]).toBe(8);
+  });
+
+  it('leaves the ground under the viaduct as it was, so the deck above does not move', () => {
+    const map = flatMap();
+    map.height[at(20, 14)] = 5.5;
+    const h = withViaduct(RoadTier.TwoLane, 8, map);
+    const before = grid(h);
+    const deckY = before.height[at(20, 14)]! + before.roadElevation[at(20, 14)]!;
+    expect(run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: across }]).ok).toBe(true);
+    const g = grid(h);
+    expect(g.height[at(20, 14)]).toBe(5.5);
+    expect(g.height[at(20, 14)]! + g.overElevation[at(20, 14)]!).toBe(deckY);
+  });
+
+  it('undoes it by taking the new road away and putting the viaduct back as it stood', () => {
+    const h = withViaduct();
+    const before = grid(h);
+    const built = run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: across }]);
+    expect(built.ok).toBe(true);
+    expect(run(h, 3, built.inverse).ok).toBe(true);
+    const g = grid(h);
+    expect(g.overTier[at(20, 14)]).toBe(0);
+    expect(g.roadTier[at(20, 14)]).toBe(RoadTier.TwoLane);
+    expect(g.roadElevation[at(20, 14)]).toBe(before.roadElevation[at(20, 14)]);
+    expect(g.roadFlow[at(20, 14)]).toBe(before.roadFlow[at(20, 14)]);
+    expect(g.roadMask[at(20, 14)]).toBe(before.roadMask[at(20, 14)]);
+    for (const t of across) {
+      if (t.x === 20) continue;
+      expect(g.roadTier[at(t.x, t.z)]).toBe(RoadTier.None);
+    }
   });
 });

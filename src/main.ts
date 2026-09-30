@@ -55,6 +55,7 @@ import {
   roadEndDirection,
   snapRoadEnd,
 } from './world/freeroads';
+import { solveElevationProfile } from './world/bridges';
 import { createRenderer, createWorldScene, timeOfDayColors } from './render/scene';
 import { createBloomPipeline, type BloomPipeline } from './render/bloom';
 import { CloudLayer } from './render/clouds';
@@ -1044,6 +1045,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         maxX: number;
         minZ: number;
         maxZ: number;
+        minY: number;
+        maxY: number;
       } | null => {
         const base = ghosts.layers().base;
         const geometry = base.geometry;
@@ -1052,7 +1055,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         geometry.computeBoundingBox();
         const box = geometry.boundingBox;
         if (!box) return null;
-        return { minX: box.min.x, maxX: box.max.x, minZ: box.min.z, maxZ: box.max.z };
+        return {
+          minX: box.min.x,
+          maxX: box.max.x,
+          minZ: box.min.z,
+          maxZ: box.max.z,
+          minY: box.min.y,
+          maxY: box.max.y,
+        };
       };
     }
   }
@@ -1096,6 +1106,16 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     roadFlowAt: (tile) => clientGrid.flowAt(tile.x, tile.z),
     roadMaskAt: (tile) =>
       inBounds(tile.x, tile.z) ? (clientGrid.roadMask[tile.z * clientGrid.size + tile.x] ?? 0) : 0,
+    roadElevationAt: (tile) =>
+      inBounds(tile.x, tile.z)
+        ? (clientGrid.roadElevation[tile.z * clientGrid.size + tile.x] ?? 0)
+        : 0,
+    // The worker's own deck solver, run against the mirror, so the ghost
+    // stands where the road will be laid.
+    deckLifts: (tiles, elevation) => {
+      const deck = solveElevationProfile(clientGrid, tiles, elevation);
+      return deck.ok ? deck.elevations : null;
+    },
     worldPointAt: groundPointAt,
     snapRoadEnd: (p) => snapRoadEnd(clientGrid, p),
     roadEndNear: (p) => (clientGrid.roads ? nearestRoadEnd(clientGrid.roads, p) : null),
@@ -1173,6 +1193,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         if (preview.widthMeters !== undefined) {
           opts = { ...opts, roadWidthMeters: preview.widthMeters };
         }
+        if (preview.deckLifts) opts = { ...opts, deckLifts: preview.deckLifts };
         if (tool.startsWith('plop.') && preview.tiles.length > 0) {
           const entry = catalogById.get(tool.slice('plop.'.length));
           if (entry) {

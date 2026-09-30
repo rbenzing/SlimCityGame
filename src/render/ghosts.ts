@@ -201,6 +201,77 @@ export function stripeAxisIsX(tiles: readonly TilePoint[], i: number): boolean {
 
 type HeightSampler = (x: number, z: number) => number;
 
+/**
+ * How far outside its run a deck preview still reaches, metres: past the frame
+ * straddling the run's edge, and past the widest section previewed before it
+ * is refused, which overhangs its tile by a little over 3 m.
+ */
+const DECK_EDGE_REACH_M = 4;
+
+/**
+ * The height a road preview stands at, where tiles of it are laid off the
+ * ground: `lifts[i]` metres above the ground at the centre of `tiles[i]`.
+ * Along the run the deck slopes from each tile's centre to the height halfway
+ * to the next, so ramps climb smoothly and two tiles meet at one height on
+ * their shared edge. A tile on the ground next to one lifted slopes with it;
+ * everywhere else the preview follows `ground`. A tile where the run turns
+ * stands level. A point just outside the run — the frame straddling its
+ * edge, a band wider than its tile — belongs to the run tile beside it, or it
+ * would be pulled down to the ground and hang a wall off the deck. Pure and
+ * exported for tests.
+ */
+export function deckHeightSampler(
+  tiles: readonly TilePoint[],
+  lifts: readonly number[],
+  ground: HeightSampler,
+): HeightSampler {
+  const key = (x: number, z: number): number => x * 65536 + z;
+  const at = new Map<number, number>();
+  tiles.forEach((t, i) => at.set(key(t.x, t.z), i));
+  const deckY = tiles.map(
+    (t, i) => ground((t.x + 0.5) * TILE_METERS, (t.z + 0.5) * TILE_METERS) + (lifts[i] ?? 0),
+  );
+  const adjacent = (i: number, j: number): boolean => {
+    const a = tiles[i];
+    const b = tiles[j];
+    return a !== undefined && b !== undefined && Math.abs(a.x - b.x) + Math.abs(a.z - b.z) === 1;
+  };
+  const raised = (i: number): boolean => (lifts[i] ?? 0) > 0;
+  const onDeck = tiles.map(
+    (_, i) =>
+      raised(i) || (adjacent(i, i - 1) && raised(i - 1)) || (adjacent(i, i + 1) && raised(i + 1)),
+  );
+  const tileOf = (x: number, z: number): number | undefined =>
+    at.get(key(Math.floor(x / TILE_METERS), Math.floor(z / TILE_METERS)));
+  const runTileNear = (x: number, z: number): number | undefined => {
+    const own = tileOf(x, z);
+    if (own !== undefined) return own;
+    for (const dx of [0, -DECK_EDGE_REACH_M, DECK_EDGE_REACH_M]) {
+      for (const dz of [0, -DECK_EDGE_REACH_M, DECK_EDGE_REACH_M]) {
+        const near = tileOf(x + dx, z + dz);
+        if (near !== undefined) return near;
+      }
+    }
+    return undefined;
+  };
+  return (x, z) => {
+    const i = runTileNear(x, z);
+    if (i === undefined || !onDeck[i]) return ground(x, z);
+    if (isPathCorner(tiles, i)) return deckY[i]!;
+    const t = tiles[i]!;
+    const alongX = stripeAxisIsX(tiles, i);
+    // -0.5 at the tile's back edge along the run, +0.5 at its front edge.
+    const u = alongX ? x / TILE_METERS - (t.x + 0.5) : z / TILE_METERS - (t.z + 0.5);
+    const toward = u >= 0 ? 1 : -1;
+    const j = [i - 1, i + 1].find(
+      (n) =>
+        adjacent(i, n) && (alongX ? tiles[n]!.x - t.x === toward : tiles[n]!.z - t.z === toward),
+    );
+    const edge = j === undefined ? deckY[i]! : (deckY[i]! + deckY[j]!) / 2;
+    return deckY[i]! + (edge - deckY[i]!) * Math.min(1, Math.abs(u) * 2);
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Terrain-conforming geometry helpers (mirrors zonegrid.ts's
 // pushConformingQuad/pushConformingCell — reimplemented locally since
@@ -562,6 +633,12 @@ export interface SetPreviewOptions {
    * occupy.
    */
   roadWidthMeters?: number;
+  /**
+   * How high above its ground each tile is laid, metres (road kind only), for
+   * a road that stands off the ground somewhere along it. Given, every layer
+   * is drawn at the deck (see deckHeightSampler) instead of on the terrain.
+   */
+  deckLifts?: readonly number[];
 }
 
 /**
@@ -677,7 +754,10 @@ function emptyGeometry(): THREE.BufferGeometry {
 
 export class GhostRenderer {
   private readonly scene: THREE.Scene;
-  private readonly heightAt: HeightSampler;
+  /** The terrain. */
+  private readonly ground: HeightSampler;
+  /** What the current preview is drawn on: the terrain, or a road's deck. */
+  private heightAt: HeightSampler;
   private readonly quad: THREE.PlaneGeometry;
   private readonly volumeGeometry: THREE.BoxGeometry;
 
@@ -712,6 +792,7 @@ export class GhostRenderer {
 
   constructor(scene: THREE.Scene, heightAt: HeightSampler) {
     this.scene = scene;
+    this.ground = heightAt;
     this.heightAt = heightAt;
 
     this.quad = new THREE.PlaneGeometry(1, 1);
@@ -804,6 +885,10 @@ export class GhostRenderer {
       return;
     }
 
+    this.heightAt =
+      kind === 'road' && opts?.deckLifts
+        ? deckHeightSampler(tiles, opts.deckLifts, this.ground)
+        : this.ground;
     this.writeBase(
       tiles,
       valid,
@@ -844,6 +929,7 @@ export class GhostRenderer {
     clicks: readonly { x: number; z: number }[],
   ): void {
     this.clear();
+    this.heightAt = this.ground;
     const half = widthMeters / 2;
     this.baseMaterial.color.setRGB(...baseColorFor('road', valid));
     this.setGeometry(

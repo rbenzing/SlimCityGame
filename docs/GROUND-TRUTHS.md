@@ -31,7 +31,10 @@ MUTCD citations below use 11th-edition section numbers.
   lives in the over layers, and nothing joins the two. An overpass crosses
   straight over at right angles, clearing the road beneath by 5 m (7 m over
   rail) to its girder's underside; it never turns, ends or has a junction on
-  its crossing tile. Rail and street never share a tile at grade. —
+  its crossing tile. A road drawn under a road already raised there moves
+  the raised one onto the over layer unchanged, and the ground under it is
+  never levelled, since that would move the deck above. Rail and street never
+  share a tile at grade. —
   [overpasses.md](world-sim/overpasses.md); `crossingShape` and
   `overpassRise` in `src/shared/overpass.ts`, `roadStep` in
   `src/world/roads.ts`

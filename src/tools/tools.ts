@@ -66,7 +66,7 @@ import type { CmPoint, SegmentGeom } from '../shared/roadgeom';
 import { ZONE_DEPTH } from '../world/zonable';
 import { corridorRunsFor, corridorTiles, rampMeetingRefusal } from '../shared/corridor';
 import type { CorridorRuns } from '../shared/corridor';
-import { bitToward, crossingShape, overpassRise } from '../shared/overpass';
+import { atOneLevel, bitToward, crossingShape, overpassRise } from '../shared/overpass';
 
 /**
  * The onPreview payload: every CursorChip field (cost/lengthMeters/
@@ -83,6 +83,12 @@ export interface ToolPreview extends CursorChip {
    * the split is made. Absent for every tool that is not laying a road.
    */
   widthMeters?: number;
+  /**
+   * How high above its ground each of `tiles` would be laid, metres, where
+   * any of them would stand off it: a raised road, a bridge or an overpass.
+   * Absent for a road that lies on the ground, and for every other tool.
+   */
+  deckLifts?: number[];
   /**
    * A road off the grid being drawn: its centre line and the points clicked so
    * far, world metres. Present only in the `Curve` mode, whose ghost is this
@@ -195,6 +201,19 @@ export interface ToolEnv {
    */
   roadMaskAt?(tile: TilePoint): number;
   /**
+   * How far an existing road tile's deck stands above its ground, metres; 0
+   * on the ground. Optional: without it no road is seen raised above a drag,
+   * so none is passed under.
+   */
+  roadElevationAt?(tile: TilePoint): number;
+  /**
+   * The deck height above its ground, metres, that each tile of a run would
+   * be laid at when asked for `elevation`, solved by the world's own rule; or
+   * null where no deck can be solved. Optional: without it the ghost lies on
+   * the ground.
+   */
+  deckLifts?(tiles: TilePoint[], elevation: number): number[] | null;
+  /**
    * The ground under a screen pixel, world metres, or null off the ground.
    * Optional: without it the `Curve` mode has nowhere to put a click.
    */
@@ -245,10 +264,19 @@ const NO_CROSSINGS: ReadonlySet<string> = new Set();
 interface OverpassPlan {
   /** The drag's tiles, as "x,z", that lay the road passing over a crossing. */
   crossings: ReadonlySet<string>;
+  /** The drag's tiles, as "x,z", where it passes under a road raised above it. */
+  under: ReadonlySet<string>;
   /** The deck height to lay the drag at, metres. */
   elevation: number;
   /** Why the drag cannot cross over, or null. */
   refusal: string | null;
+}
+
+/** The drag's tiles that never meet the road already on them: the ones it passes over or under. */
+function passingBy(plan: OverpassPlan | null): ReadonlySet<string> {
+  if (!plan) return NO_CROSSINGS;
+  if (plan.under.size === 0) return plan.crossings;
+  return new Set([...plan.crossings, ...plan.under]);
 }
 
 export const ZONE_TOOL_TO_TYPE: Record<string, ZoneType> = {
@@ -910,14 +938,17 @@ export class ToolManager {
    * sends; asking here puts the answer on the cursor first.
    */
   private overpassPlan(tiles: TilePoint[], profile: RoadProfile): OverpassPlan {
+    const under = new Set<string>();
     const none: OverpassPlan = {
       crossings: NO_CROSSINGS,
+      under,
       elevation: this.roadElevation,
       refusal: null,
     };
     const at = this.env.roadProfileAt;
     const maskAt = this.env.roadMaskAt;
     if (!at || !maskAt || tiles.length < 3) return none;
+    const tier = tierForProfile(profile);
     const found: { index: number; beneath: RoadProfile }[] = [];
     let crossesOver = this.roadElevation > 0;
     let skew = false;
@@ -932,6 +963,26 @@ export class ToolManager {
         (x, z) => at({ x, z }) !== null && (joined & bitToward(x - t.x, z - t.z)) !== 0,
       );
       if (shape === 'along') continue;
+      // A road standing higher than the drag is one it passes under, if that
+      // road clears it and runs straight across.
+      const lift = this.env.roadElevationAt?.(t) ?? 0;
+      if (lift > this.roadElevation && !atOneLevel(lift, this.roadElevation)) {
+        const needed = overpassRise(tierForProfile(beneath), tier);
+        if (lift - this.roadElevation < needed) {
+          return {
+            ...none,
+            refusal: `The road above has to clear this one by ${needed.toFixed(1)} m`,
+          };
+        }
+        if (shape === 'skew') {
+          return {
+            ...none,
+            refusal: 'A road passes under another straight across, at right angles',
+          };
+        }
+        under.add(`${t.x},${t.z}`);
+        continue;
+      }
       if (
         joinRefusal(profile.class, beneath.class) !== null ||
         !rankedTogether(profile.class, beneath.class)
@@ -945,7 +996,6 @@ export class ToolManager {
     if (skew) {
       return { ...none, refusal: 'An overpass crosses straight over a road, at right angles' };
     }
-    const tier = tierForProfile(profile);
     const rise = Math.max(...found.map((f) => overpassRise(tier, tierForProfile(f.beneath))));
     const climb = Math.ceil(rise / BRIDGE_MAX_GRADE);
     if (found.some((f) => f.index < climb || tiles.length - 1 - f.index < climb)) {
@@ -956,6 +1006,7 @@ export class ToolManager {
     }
     return {
       crossings: new Set(found.map((f) => `${tiles[f.index]!.x},${tiles[f.index]!.z}`)),
+      under,
       elevation: Math.max(
         this.roadElevation,
         Math.ceil(rise / ROAD_ELEVATION_STEP_M) * ROAD_ELEVATION_STEP_M,
@@ -1619,7 +1670,7 @@ export class ToolManager {
       const overpass = corridor.runs ? null : this.overpassPlan(tiles, section);
       const meet =
         overpass?.refusal ??
-        this.meetRefusal(tiles, section, overpass?.crossings ?? NO_CROSSINGS, this.endMoves(tiles));
+        this.meetRefusal(tiles, section, passingBy(overpass), this.endMoves(tiles));
       const { valid, invalidReason } =
         build.refusal !== null
           ? { valid: false, invalidReason: build.refusal }
@@ -1633,14 +1684,23 @@ export class ToolManager {
       // carriageway and corridorHalfProfile splits it exactly down the middle.
       const previewProfile = build.profile ?? presetProfileForTier(build.tier);
       const sectionWidth = profileWidth(previewProfile);
+      // Drawn at the deck it will be laid at: the height commit sends, solved
+      // over each run as the world solves it.
+      const deckLifts = this.deckLiftsFor(
+        corridor.runs ? [corridor.runs.near, corridor.runs.far] : [tiles],
+        overpass?.elevation ?? this.roadElevation,
+      );
       this.env.onPreview({
+        ...(deckLifts ? { deckLifts } : {}),
         tiles,
         valid,
         cost,
         label:
           overpass && overpass.crossings.size > 0
             ? `${build.spec.name} overpass, ${overpass.elevation} m`
-            : build.spec.name,
+            : overpass && overpass.under.size > 0
+              ? `${build.spec.name}, passing under`
+              : build.spec.name,
         // The road is as long as the drag, not as long as both its
         // carriageways added together.
         lengthMeters: path.length * TILE_METERS,
@@ -1653,6 +1713,19 @@ export class ToolManager {
       const { valid, invalidReason } = this.evaluate(tiles, 0, 0, true);
       this.env.onPreview({ tiles, valid, cost: 0, label, invalidReason });
     }
+  }
+
+  /**
+   * How high each tile of `runs`, in order, would be laid when asked for
+   * `elevation`, or undefined where every one of them lies on the ground. A
+   * run whose deck cannot be solved lies on the ground; the command's refusal
+   * says why.
+   */
+  private deckLiftsFor(runs: TilePoint[][], elevation: number): number[] | undefined {
+    const solve = this.env.deckLifts;
+    if (!solve) return undefined;
+    const lifts = runs.flatMap((run) => solve(run, elevation) ?? run.map(() => 0));
+    return lifts.some((lift) => lift > 0) ? lifts : undefined;
   }
 
   /** Drag-start setup for a terraform stroke: samples the
@@ -1768,7 +1841,7 @@ export class ToolManager {
         (build.profile && !build.layable) ||
         (corridor.needed && !corridor.runs) ||
         (overpass?.refusal ?? null) !== null ||
-        this.meetRefusal(tiles, section, overpass?.crossings ?? NO_CROSSINGS, moves) !== null;
+        this.meetRefusal(tiles, section, passingBy(overpass), moves) !== null;
       // The curve ends the run meets move onto their tile centres first, so the
       // grid road finds them there.
       const moveEnds = moves.map((m): Command => ({
