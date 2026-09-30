@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,281 tests passing across 147 test files, run 2026-09-30.
+**Test suite:** 4,283 tests passing across 147 test files, run 2026-09-30.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -65,10 +65,6 @@ compact roundabout, and sound barriers. Full detail in History, §10 below.
 **Open:**
 
 - Road composition: the two pieces above.
-- Lane drops on a two-way road: road-model.md says the outermost lane on
-  each side closes, but `taperedCrossSection` closes one side's kerbside lane
-  completely before the other's starts. The centre line jogs sideways partway
-  down every taper. The spec and the code disagree, and it needs a decision.
 - Two check scripts no longer build what they check. `tools/taper-shots.mjs`
   runs a motorway into a two-lane street, and `tools/aux-shots.mjs` lays a ramp
   head-on into a motorway, and the world now refuses both.
@@ -268,6 +264,16 @@ Two things were found by laying one before writing it:
 Checked in the browser: all three forms on ground rising and falling 11 m
 across the site, from above and at an angle, laid through the drawer's card
 and its options.
+
+### A two-way lane drop closes both sides together (decided and built 2026-09-30)
+
+road-model.md said the outermost lane on each side closes, while
+`taperedCrossSection` closed one direction's kerbside lane completely before
+the other's began, so the centre line jogged sideways partway down every
+taper. The player chose the spec. A two-way road now closes each direction's
+kerbside lane together, after first taking an uneven road down to even, and
+its centre line runs straight. A road whose lanes all run one way still
+closes the driver's right-hand lane first.
 
 ### Farm polish: the farmhouse at night, and the farm truck (2026-09-30)
 

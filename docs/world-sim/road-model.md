@@ -511,9 +511,11 @@ by the class's own standard ratio, not by taste — 1:10 on dirt or alley,
 arterial), 1:30 on a divided road, 1:50 on a highway or a ramp. A 3.5 m lane
 closing at 1:50 takes 175 m, about 10 tiles; at 1:10–1:15 it takes 35–50 m,
 about 3 tiles. The outermost travel lane on each side closes first, taking
-the wider side of an uneven road down to an even one; everything else the
-road carries (footways, parking, a reserved transit lane) survives the drop
-untouched. A taper begins at full width, never part-closed: where the wide
+the wider side of an uneven road down to an even one, and then the two
+directions close together, so the centre line runs straight down the taper.
+A road whose lanes all run one way closes the driver's right-hand lane
+first. Everything else the road carries (footways, parking, a reserved
+transit lane) survives the drop untouched. A taper begins at full width, never part-closed: where the wide
 road is shorter than its own taper, as a four-lane stub of three tiles between
 a junction and a two-lane street is, the lanes close over the length the stub
 has, steeper than the ratio. Started part-closed, the stub leaves the junction

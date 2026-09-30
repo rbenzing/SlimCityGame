@@ -332,6 +332,11 @@ MUTCD citations below use 11th-edition section numbers.
   wrong road. The tool refuses before sending anything the world would refuse
   partway. — [interchanges](engineering/features/interchanges.md);
   `src/shared/interchange.ts`
+- A two-way road's lane drop closes both directions' kerbside lanes together,
+  after taking an uneven road down to even, so its centre line runs straight
+  down the taper. A road whose lanes all run one way closes the driver's
+  right-hand lane first. — [road-model.md](world-sim/road-model.md);
+  `taperedCrossSection` in `src/shared/taper.ts`
 - A road's edge never steps where its width changes; it bends. A lane drop
   closes over a taper that begins at full width, never part-closed, and a
   wide run shorter than its class's taper closes over the length it has, so
