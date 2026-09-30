@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.21.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.20.2...slimcity-v1.21.0) (2026-09-30)
+
+
+### Features
+
+* **roads:** an undivided arterial laid across two tiles draws as one road ([5505436](https://github.com/rbenzing/SlimCityGame/commit/55054361b6dc01bed9a8d5d086cc0211dbef0f1a))
+* **roads:** an undivided arterial laid across two tiles draws as one road ([75a7a83](https://github.com/rbenzing/SlimCityGame/commit/75a7a83773a2680639013ad62207c147aa4edbe1))
+* **roads:** the ghost stands at its deck, and a road can pass under a bridge ([537410b](https://github.com/rbenzing/SlimCityGame/commit/537410b5be133fe7fbf396f560143a919cab917b))
+* **roads:** the ghost stands at its deck, and a road can pass under a bridge ([7bcf928](https://github.com/rbenzing/SlimCityGame/commit/7bcf928ce87e7be189ba9164f307bacfb8e3281d))
+
+
+### Bug Fixes
+
+* **roads:** ghost a corridor as laid, and never split one ([647350d](https://github.com/rbenzing/SlimCityGame/commit/647350d499c292722c0b28d0c136caaebe5c3b51))
+* **roads:** no kerb step at a short stub's taper or a ramp node ([6de8720](https://github.com/rbenzing/SlimCityGame/commit/6de8720f156e6f6e966cfdb50aa31c177582ffeb))
+* **roads:** no kerb step at a short stub's taper or a ramp node ([cad748d](https://github.com/rbenzing/SlimCityGame/commit/cad748d6bf23c50303c7525e4959ac58d72ec591))
+
 ## [1.20.2](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.20.1...slimcity-v1.20.2) (2026-09-30)
 
 
