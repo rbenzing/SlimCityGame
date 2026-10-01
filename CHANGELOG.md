@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.24.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.23.1...slimcity-v1.24.0) (2026-10-01)
+
+
+### Features
+
+* **roads:** sound walls along motorways and slip roads ([04c0937](https://github.com/rbenzing/SlimCityGame/commit/04c09379613be0ec11a6ccacb7cd179850867f07))
+
 ## [1.23.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.23.0...slimcity-v1.23.1) (2026-10-01)
 
 
