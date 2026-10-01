@@ -79,8 +79,10 @@ Outside the programme:
 | [farms.md](farms.md)                 | no          | no              |
 | [interchanges.md](interchanges.md)   | no          | no              |
 | [roundabouts.md](roundabouts.md)     | no          | additive        |
+| [sound-barriers.md](sound-barriers.md) | no        | no              |
 
 Farms add a zone and derive the soil it grows on, so neither contract moves.
 An interchange is a batch of the road commands that already exist. A compact
 roundabout is the junction control already stored, on four tiles; it adds two
-commands and a snapshot channel.
+commands and a snapshot channel. A sound wall is a piece of a road's profile,
+which is saved by name and sent in the profile table already.

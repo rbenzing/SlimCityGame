@@ -5,6 +5,9 @@ import type { BuildingInstance, GridState, TransitMode } from '../../src/shared/
 import { SoilGrade, soilGrades } from '../../src/shared/soil';
 import { decodeSave } from '../../src/app/persist';
 import { loadGrid } from '../../src/world/roadnet';
+import { noiseWallsOf } from '../../src/world/noisewalls';
+import { isPresetProfileId, presetProfileForTier } from '../../src/shared/roadprofile';
+import { noiseTransmission, OPEN_EDGE } from '../../src/shared/soundwall';
 import {
   catalog,
   entryOf,
@@ -24,6 +27,7 @@ import {
   buildTown,
   growTown,
   townMap,
+  WALLED_MOTORWAY_PROFILE_ID,
   type BuiltTown,
 } from '../support/town';
 import { guardRoadNetwork } from '../support/guard';
@@ -38,7 +42,21 @@ const saveNow = (town: BuiltTown): ArrayBuffer => {
   return latestSaveData(town.h);
 };
 
-const bytes = (data: ArrayBuffer): Uint8Array => new Uint8Array(data);
+/**
+ * Where two saves first differ, or null when they are the same byte for byte.
+ * Compared by hand: `toEqual` on two 2.4 MB arrays walks them through the
+ * generic deep-equality path and takes over ten seconds, which on a slow CI
+ * runner was the whole of a test's timeout.
+ */
+function firstDifference(a: ArrayBuffer, b: ArrayBuffer): string | null {
+  const x = new Uint8Array(a);
+  const y = new Uint8Array(b);
+  const n = Math.min(x.length, y.length);
+  for (let i = 0; i < n; i++) {
+    if (x[i] !== y[i]) return `byte ${i} of ${x.length}: ${x[i]} vs ${y[i]}`;
+  }
+  return x.length === y.length ? null : `lengths ${x.length} vs ${y.length}`;
+}
 
 /** Every typed-array layer of a grid, by name. */
 function layers(g: GridState): Map<string, ArrayLike<number>> {
@@ -114,6 +132,22 @@ describe('a small town, built and grown, as the regression for everything togeth
       .filter(([, tier]) => tier !== RoadTier.None && !laid.has(tier))
       .map(([name]) => name);
     expect(missing).toEqual([]);
+  });
+
+  it('walls the motorway past the town, and the saved town still knows where its walls stand', () => {
+    const tile = tileIndex(TOWN.motorway.x, 120);
+    expect(grid.roadProfile[tile]).toBe(WALLED_MOTORWAY_PROFILE_ID);
+    const saved = new Map(
+      decodeSave(saveNow(town)).meta.roadProfiles!.map((p) => [p.id, p.profile] as const),
+    );
+    const walls = noiseWallsOf(grid, (id) =>
+      isPresetProfileId(id) ? presetProfileForTier(id as RoadTier) : (saved.get(id) ?? null),
+    )!;
+    // Drawn south, the motorway's left is to the east: both sides are walled.
+    expect(walls.east[tile]).toBe(noiseTransmission(4.5));
+    expect(walls.east[tile - 1]).toBe(noiseTransmission(4.5));
+    // North of where the wall starts, the motorway runs unwalled.
+    expect(walls.east[tileIndex(TOWN.motorway.x, 70)]).toBe(OPEN_EDGE);
   });
 
   it('opens the six-lane road’s median where main street crosses it, and nowhere else', () => {
@@ -268,7 +302,7 @@ describe('a small town, built and grown, as the regression for everything togeth
     }
     expect(after.meta).toEqual(expected);
 
-    expect(bytes(reload(loaded))).toEqual(bytes(loaded));
+    expect(firstDifference(reload(loaded), loaded)).toBeNull();
   });
 
   it(
@@ -276,7 +310,7 @@ describe('a small town, built and grown, as the regression for everything togeth
     () => {
       const again = buildTown();
       growTown(again, COMPARE_AT);
-      expect(bytes(saveNow(again))).toEqual(bytes(atCompare));
+      expect(firstDifference(saveNow(again), atCompare)).toBeNull();
     },
     GROWTH_TIMEOUT_MS,
   );

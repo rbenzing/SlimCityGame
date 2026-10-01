@@ -115,6 +115,7 @@ import { ZoneGridRenderer } from './render/zonegrid';
 import { LampRenderer } from './render/lamps';
 import { PowerLineRenderer } from './render/powerlines';
 import { computeSignPlacements, RoadFurnitureRenderer } from './render/roadfurniture';
+import { SoundWallRenderer } from './render/soundwalls';
 import { SelectionOutline } from './render/outline';
 import { MapPin } from './render/pin';
 import { CameraRig } from './render/camera';
@@ -282,6 +283,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const lamps = new LampRenderer(world.scene, roadSurfaceAt);
   const powerLines = new PowerLineRenderer(world.scene, heightAt);
   const roadFurniture = new RoadFurnitureRenderer(world.scene, roadSurfaceAt);
+  const soundWalls = new SoundWallRenderer(world.scene, roadSurfaceAt);
   const selectionOutline = new SelectionOutline(world.scene);
   const mapPin = new MapPin(world.scene);
   const cursorChip = new CursorChipStack(viewport);
@@ -511,6 +513,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       }),
       /** Ids the kit holds parts for, to reconcile against the known buildings. */
       readKitIds: (): number[] => buildingKit.trackedIds(),
+      // How many barrier bays, panels and posts the sound walls drew: a wall
+      // seen edge-on from above is a line a screenshot cannot count.
+      readSoundWalls: (): ReturnType<SoundWallRenderer['counts']> => soundWalls.counts(),
       // What the house kit stood up, part by part, and how many cars sit on
       // drives: a fence or a trampoline too small to pick out in a shot is
       // still counted here.
@@ -1485,6 +1490,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       rebuildLamps();
       roadFurniture.rebuild(roadTiles, freeJunctionTiles);
       bridges.rebuild(clientGrid.deckTiles());
+      soundWalls.rebuild(clientGrid.soundWalls());
       // Ground cover follows the road only where the road touches the ground —
       // a mown band under a bridge would be a stripe of lawn across a river.
       terrain.applyRoadTiles(roadTiles.filter((t) => !t.elevated));

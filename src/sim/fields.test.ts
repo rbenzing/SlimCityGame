@@ -428,3 +428,64 @@ describe('FieldSim.applyTraffic', () => {
     expect(() => sim.applyTraffic(g, [edge])).not.toThrow();
   });
 });
+
+describe('noise across a sound wall', () => {
+  const NOISE_PASS = 1; // Noise diffuses when tickNo % 4 === 1.
+  const at = (x: number, z: number): number => tileIndex(x, z);
+
+  /** Noise poured on (40, 40) and diffused for `passes` noise passes, with `walls` standing. */
+  function pour(walls: { east: Uint16Array; south: Uint16Array } | null, passes = 6): GridState {
+    const sim = new FieldSim();
+    sim.setNoiseWalls(walls);
+    const g = makeGrid();
+    for (let p = 0; p < passes; p++) {
+      sim.emit(g, FieldId.Noise, 40, 40, 120);
+      sim.tick(g, NOISE_PASS + 4 * p);
+    }
+    return g;
+  }
+
+  /** A wall of transmission `t` on the east edge of (40, 40). */
+  function wallEastOf40(t: number): { east: Uint16Array; south: Uint16Array } {
+    const east = new Uint16Array(MAP_SIZE * MAP_SIZE).fill(256);
+    const south = new Uint16Array(MAP_SIZE * MAP_SIZE).fill(256);
+    east[at(40, 40)] = t;
+    return { east, south };
+  }
+
+  it('is quieter behind a wall, and no quieter on the road’s side of it', () => {
+    const open = pour(null).fields[FieldId.Noise]!;
+    const walled = pour(wallEastOf40(29)).fields[FieldId.Noise]!;
+    expect(walled[at(41, 40)]!).toBeLessThan(open[at(41, 40)]!);
+    expect(walled[at(42, 40)]!).toBeLessThan(open[at(42, 40)]!);
+    expect(walled[at(39, 40)]!).toBeGreaterThanOrEqual(open[at(39, 40)]!);
+    expect(walled[at(40, 40)]!).toBeGreaterThanOrEqual(open[at(40, 40)]!);
+  });
+
+  it('cuts more the taller the wall', () => {
+    const behind = (t: number): number => pour(wallEastOf40(t)).fields[FieldId.Noise]![at(41, 40)]!;
+    expect(behind(29)).toBeLessThan(behind(48));
+    expect(behind(48)).toBeLessThan(behind(81));
+  });
+
+  it('lets nothing across an edge that passes nothing, in a single pass', () => {
+    const g = pour(wallEastOf40(0), 1).fields[FieldId.Noise]!;
+    expect(g[at(41, 40)]).toBe(0);
+    expect(g[at(39, 40)]).toBeGreaterThan(0);
+  });
+
+  it('diffuses exactly as with no walls where every edge is open', () => {
+    const none = pour(null).fields[FieldId.Noise]!;
+    const allOpen = pour(wallEastOf40(256)).fields[FieldId.Noise]!;
+    expect(Array.from(allOpen)).toEqual(Array.from(none));
+  });
+
+  it('leaves every other field to diffuse through it', () => {
+    const sim = new FieldSim();
+    sim.setNoiseWalls(wallEastOf40(0));
+    const g = makeGrid();
+    sim.emit(g, FieldId.Pollution, 40, 40, 200);
+    sim.tick(g, 0); // Pollution's slot
+    expect(g.fields[FieldId.Pollution]![at(41, 40)]).toBeGreaterThan(0);
+  });
+});

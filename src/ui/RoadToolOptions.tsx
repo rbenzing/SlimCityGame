@@ -25,6 +25,7 @@ import {
   type SideChoice,
   type TramChoice,
 } from '../shared/roadprofile';
+import { insertionLossDb, SOUND_WALL_HEIGHTS_M } from '../shared/soundwall';
 import type { RoadTier } from '../shared/types';
 import { offersGrid, ROAD_TOOL_TO_TIER } from '../tools/tools';
 import type { ToolMode } from './store';
@@ -262,6 +263,7 @@ function ProfileSections({ tier }: { tier: RoadTier }): JSX.Element {
   const offersBus = admits.has('bus');
   const offersTram = admits.has('tram');
   const offersFootways = admits.has('sidewalk');
+  const offersSoundWall = admits.has('soundWall');
 
   const composed = composeProfile(base, edits);
   const current = editsOf(composed);
@@ -436,6 +438,41 @@ function ProfileSections({ tier }: { tier: RoadTier }): JSX.Element {
                     onClick={() => setEdits({ tram: choice.value })}
                   >
                     {choice.label}
+                  </Choice>
+                ))}
+              </div>
+            </Row>
+          ) : null}
+        </Section>
+      ) : null}
+      {offersSoundWall ? (
+        <Section title="Sound wall">
+          <Row label="Sides">
+            <div className="flex gap-1" role="group" aria-label="Sound wall sides">
+              {SIDE_CHOICES.map((choice) => (
+                <Choice
+                  key={choice.value}
+                  pressed={current.soundWall === choice.value}
+                  refusal={refusalOf({ soundWall: choice.value })}
+                  onClick={() => setEdits({ soundWall: choice.value })}
+                >
+                  {choice.label}
+                </Choice>
+              ))}
+            </div>
+          </Row>
+          {current.soundWall !== 'none' ? (
+            <Row label="Height">
+              <div className="flex gap-1" role="group" aria-label="Sound wall height">
+                {SOUND_WALL_HEIGHTS_M.map((height) => (
+                  <Choice
+                    key={height}
+                    pressed={current.soundWallHeight === height}
+                    title={`Cuts the noise behind it by ${insertionLossDb(height)} dB`}
+                    refusal={refusalOf({ soundWallHeight: height })}
+                    onClick={() => setEdits({ soundWallHeight: height })}
+                  >
+                    {height} m
                   </Choice>
                 ))}
               </div>

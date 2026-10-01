@@ -292,6 +292,9 @@ category or tool is active.
     corridor).
   - **Kerbside** — parking and bike lane sides, and the footway toggle.
   - **Transit** — bus lane sides and the tramway.
+  - **Sound wall** — on a motorway or a ramp only: which sides carry a noise
+    wall, and, while one does, its height (3, 4.5 or 6 m), each height's
+    tooltip naming the noise it cuts.
 
   A panel or row appears only where the selected road's class admits what it
   sets. Of what is offered, a choice that would compose a road the tool

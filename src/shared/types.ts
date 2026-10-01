@@ -1107,7 +1107,8 @@ export type LanePieceKind =
   | 'barrier'
   | 'shoulder'
   | 'sidewalk'
-  | 'verge';
+  | 'verge'
+  | 'soundWall';
 
 /** Which way a piece flows, relative to the tile's stored flow direction. */
 export type LaneFlow = 'fwd' | 'back' | 'both';
@@ -1120,6 +1121,8 @@ export interface LanePiece {
   flow?: LaneFlow;
   /** A travel lane with tram rails embedded in it, so cars and trams share the piece. */
   tram?: boolean;
+  /** A sound wall's height, metres, from the road it stands beside. */
+  height?: number;
   /**
    * The turn bay a junction's approach gains. Only ever set on a cross-section
    * derived for drawing, never on a stored profile.

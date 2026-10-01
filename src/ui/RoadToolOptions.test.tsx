@@ -315,7 +315,7 @@ function composedNow(): ReturnType<typeof composeProfile> {
 
 /** Every choice chip in the profile panels, in the order a player reads them. */
 function profileChips(): HTMLButtonElement[] {
-  return ['Carriageway', 'Kerbside', 'Transit'].flatMap((title) => {
+  return ['Carriageway', 'Kerbside', 'Transit', 'Sound wall'].flatMap((title) => {
     const section = screen.queryByRole('region', { name: title });
     return section
       ? within(section)
@@ -360,6 +360,38 @@ describe('RoadToolOptions — layout', () => {
     expect(screen.queryByRole('region', { name: 'Kerbside' })).toBeNull();
     expect(screen.queryByRole('region', { name: 'Transit' })).toBeNull();
     expect(screen.getByLabelText('Profile width')).toBeInTheDocument();
+  });
+});
+
+describe('RoadToolOptions — the Sound wall panel', () => {
+  it('offers a wall on a motorway and a slip road, and on no street', () => {
+    for (const tool of ['road.highway', 'road.ramp'] as const) {
+      useCityStore.getState().setTool(tool);
+      const { unmount } = render(<RoadToolOptions />);
+      expect(screen.getByRole('region', { name: 'Sound wall' })).toBeInTheDocument();
+      unmount();
+    }
+    for (const tool of ['road.two', 'road.four', 'road.avenue', 'road.gravel'] as const) {
+      useCityStore.getState().setTool(tool);
+      const { unmount } = render(<RoadToolOptions />);
+      expect(screen.queryByRole('region', { name: 'Sound wall' })).toBeNull();
+      unmount();
+    }
+  });
+
+  it('asks the height only once a side has a wall, and lays the one picked', () => {
+    useCityStore.getState().setTool('road.highway');
+    render(<RoadToolOptions />);
+    expect(screen.queryByRole('group', { name: 'Sound wall height' })).toBeNull();
+    const sides = screen.getByRole('group', { name: 'Sound wall sides' });
+    fireEvent.click(within(sides).getByRole('button', { name: 'Right' }));
+    const heights = screen.getByRole('group', { name: 'Sound wall height' });
+    const six = within(heights).getByRole('button', { name: '6 m' });
+    expect(six).toHaveAttribute('title', 'Cuts the noise behind it by 9.5 dB');
+    fireEvent.click(six);
+    const walls = composedNow().pieces.filter((p) => p.kind === 'soundWall');
+    expect(walls).toEqual([{ kind: 'soundWall', width: 0.6, height: 6 }]);
+    expect(composedNow().pieces[composedNow().pieces.length - 1]!.kind).toBe('soundWall');
   });
 });
 

@@ -249,6 +249,11 @@ export function planSegment(
   if (req.a.x === req.b.x && req.a.z === req.b.z) return refuse('A road needs two ends');
   if (isGridSegment(geom))
     return refuse('A straight road along the grid is laid with the grid tools');
+  // Nothing off the grid stores which tile edges a road's side crosses, so a
+  // wall here could neither cut noise nor be drawn where it stood.
+  if (profile.pieces.some((p) => p.kind === 'soundWall')) {
+    return refuse('A sound wall goes only along a road on the grid');
+  }
   if (!onMap(geom, g.size)) return refuse('The road runs off the map');
   const lengthM = segmentLengthM(geom);
   if (lengthM < MIN_SEGMENT_M) return refuse(`A road is at least ${MIN_SEGMENT_M} m long`);

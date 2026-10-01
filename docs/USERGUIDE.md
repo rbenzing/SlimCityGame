@@ -101,6 +101,16 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   joins, one to slow down in where it leaves — opening out of nothing over
   about eight tiles. A three-lane carriageway and its shoulders are 15.45 m of
   a 20 m tile, so there is room; a wider one spends the tile and gets none.
+  A motorway is loud, and its noise drags down the land value of whatever
+  lies beside it. Give it a **sound wall**: with the Highway or the Ramp
+  selected, the Sound wall panel puts one on the left, the right or both sides
+  of the carriageway, 3, 4.5 or 6 m tall. Taller walls cut more noise (5, 7 and
+  9.5 dB, the figures US highway agencies build to) and cost more. Drag over
+  a motorway with **Replace** on to give it one. The wall opens where a slip
+  road leaves, as real walls do, and it takes the room the extra lane beside a
+  slip road would use, so a walled motorway grows none. A motorway drawn at
+  an angle or as a curve cannot carry one. Turn on the **Noise** lens to see the quiet a wall
+  leaves behind it.
   Or lay a whole **interchange** at once: the Interchange card in the Highway
   tab, pointed at a motorway you have already laid, previews a street carried
   over it on a bridge with every slip road it needs, and one click lays it all

@@ -113,6 +113,20 @@ edges are skipped outright. Decays at 0.90/tick, the fastest decay of any
 field. **Reader:** LandValue's loss term only — Noise is not itself a
 Happiness input.
 
+**Sound walls.** Noise is the one field whose diffusion a tile edge can cut.
+A motorway or ramp's sound wall stands on a tile edge
+([road-model.md](road-model.md#sound-walls)), and each edge has a
+transmission `t` out of 256, 256 where nothing stands. In the kernel a
+neighbour across an edge counts as `self + ((neighbour − self) × t >> 8)`
+instead of itself. That scales the flow between the two tiles the same from
+either side, so the blend still conserves what it moves; at `t = 0` it is the
+map edge. The transmission is `10^(−loss/10)` of a wall's insertion loss
+(5 dB plus 1.5 dB per metre above 3 m): 81, 48 and 29 for 3, 4.5 and 6 m. A
+decibel cut applies that way because the field adds up like sound energy:
+emission is proportional to a road's traffic, as acoustic energy is. The edges
+are derived from the roads by the worker whenever the road network or the
+profile table changes, and never saved (`setNoiseWalls`, `src/sim/fields.ts`).
+
 ## Traffic (`FieldId.Traffic = 3`)
 
 The one field that is not additively emitted at all: `FieldSim.applyTraffic`

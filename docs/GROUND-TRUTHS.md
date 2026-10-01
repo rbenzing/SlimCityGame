@@ -274,6 +274,16 @@ MUTCD citations below use 11th-edition section numbers.
   ask the same predicate. The ghost draws each half where it will be laid. —
   [road-model.md](world-sim/road-model.md); `corridorSplitRefusal` in
   `src/shared/corridor.ts`
+- A sound wall is a piece of a motorway's or ramp's own cross-section, never
+  a separate structure, and only those two classes admit it. Which tile edge
+  it stands on, and where across the tile, is read off the road's own section
+  in world order, never the drawn one, by one function for the noise field
+  and the renderer alike. It stands only on an edge no arm leaves by. It cuts
+  noise by its insertion loss, 5 dB plus 1.5 dB a metre above 3 m (FHWA),
+  never blocks it outright, and cuts nothing else. A wall that would overrun
+  its tile, or one on a road off the grid, is refused. —
+  [road-model.md](world-sim/road-model.md#sound-walls); `soundWallsAt` in
+  `src/shared/soundwallsites.ts`
 - Two neighbouring grid road tiles are joined exactly when the network links
   them. A road laid with snapping off (`buildRoad` with `join: false`) joins
   nothing it only lies beside or ends against, and still joins where it
