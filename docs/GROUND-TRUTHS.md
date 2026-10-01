@@ -411,6 +411,14 @@ MUTCD citations below use 11th-edition section numbers.
   anticlockwise, on the circle, and only a driver arriving on a leg pays its
   delay. — [road-model.md](world-sim/road-model.md); `roundaboutBlockOf` in
   `src/shared/roundabout.ts`
+- A roundabout entry, mini or compact, carries the HCM's single-lane entry
+  capacity, `1,380 · e^(−0.00102 · v_c)` veh/h, against the traffic
+  circulating in front of it, never a fixed share of its road's. That
+  conflicting flow is the ring traffic carrying on past the entry on a compact
+  roundabout, and is worked out from the other legs' arrivals on a mini one,
+  each car bound for each other leg alike. The delay curve reads the entry's
+  v/c against that capacity. — [road-model.md](world-sim/road-model.md);
+  `roundaboutEntryCapacity` in `src/shared/junction.ts`
 - Crosswalks are derived (footway present, arm below top rank), lie against the
   kerb line, are as deep as the footway but never under 1.8 m (MUTCD 3C.03
   ¶05), and the stop line sits at least 1.2 m in advance of the crossing (MUTCD

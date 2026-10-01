@@ -421,6 +421,47 @@ and charges the roundabout's delay only on entry. The design and its sources
 are in [the roundabout design](../game-design/features/roundabouts.md). A
 two-lane roundabout for a two-tile corridor is not buildable yet.
 
+**A roundabout entry carries what the ring in front of it leaves room for.**
+An entering driver gives way to the traffic already circulating, so the
+busier the ring is in front of the entry, the less it can take. A single-lane
+entry onto a single-lane ring has the Highway Capacity Manual's capacity
+(HCM 7th edition, Eq. 22-1; the same constants as the 6th):
+
+    c = 1,380 · e^(−0.00102 · v_c)    veh/h
+
+where `v_c` is the conflicting flow, the circulating traffic passing in front
+of the entry, in veh/h. The sim has no heavy vehicles, so a vehicle is a
+passenger car. With nothing circulating an entry takes 1,380 veh/h; at 1,000
+circulating it takes about 500, at 1,800 about 220. The entry's v/c, which
+the roundabout's delay curve reads, is the traffic arriving on that arm over
+this capacity, not over what the arm's own road carries.
+
+What counts as conflicting is what the manual counts (HCM 7th edition,
+Eq. 22-11). For an entry, that is every car from another leg that passes in
+front of it before it leaves the ring. That means the through traffic and
+the lefts from the leg upstream, and the lefts from the leg opposite. It
+never includes a car turning right off the ring before the entry. The sim
+reads it from what it has:
+
+- **A compact roundabout** has a ring of its own, so the conflicting flow is
+  the ring traffic carrying on past the entry's corner. The sim does not know
+  where each car on the ring leaves, so it takes the smaller of the ring
+  traffic arriving at the corner and leaving it. That is the most that can
+  be carrying on past.
+- **A mini roundabout** is one tile, with no ring traffic to read. The
+  conflicting flow is worked out from the traffic arriving on the other
+  legs, on the assumption that each car is bound for each other leg alike.
+  A car from the leg one place upstream passes the entry unless it turns
+  right, so two thirds of that leg's traffic conflicts at a four-leg
+  roundabout. The leg opposite contributes a third. The leg downstream
+  contributes none, since every car from it has left before reaching the
+  entry. A three-leg roundabout takes half of the leg upstream and none of
+  the other.
+
+Volumes are read in veh/h through the same constant that turns a road's
+veh/h into its game capacity (k, below), so a ring at a given v/c conflicts
+as the veh/h that v/c stands for.
+
 ## Approach lanes, turn pockets and tapers
 
 For each approach of a node, the last few tiles of the profile are its
@@ -1117,7 +1158,8 @@ capacity expressed in vehicles per hour converts by one constant:
   for a two-phase junction and 90 s once any approach has a dedicated left
   (a third phase), g/C the approach's own; `roundabout` `4 + 10x³`, the
   entry-delay curve of a single-lane roundabout — quick until it suddenly
-  is not. Delay is per movement, dividing by however many lanes serve that
+  is not — with `x` the entry's v/c against its HCM entry capacity, not
+  against its own road. Delay is per movement, dividing by however many lanes serve that
   movement, and is added to the edge cost of the approach.
 - **Warrants**, stated as v/c rather than vehicles per hour, because the
   MUTCD's absolute thresholds (500 vph major plus 150 vph minor for a
@@ -1144,7 +1186,8 @@ capacity expressed in vehicles per hour converts by one constant:
   mini roundabout (real range 13–25 m, ≤ 15,000 vpd); a 2×2 block (40 m)
   holds a compact roundabout of 36 m (NCHRP 1043's compact range 24–37 m,
   ≤ 15,000 vpd; FHWA's first guide calls 30–40 m an urban single-lane
-  roundabout), at a single lane's g/C of 0.85 per entry.
+  roundabout). Either one's entry carries the HCM's single-lane entry
+  capacity against the traffic circulating in front of it (above).
 - **Merge delay**, the one formula above that is not adapted from a
   published curve: `2 + 22·x³` seconds, where `x` is the v/c of the
   highway lane a ramp is merging into — small on an empty road, and the
