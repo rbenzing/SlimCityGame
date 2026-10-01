@@ -21,12 +21,20 @@
  * Cheap instanced geometry, not per-pixel lighting.
  */
 import * as THREE from 'three';
-import { RoadTier, TilePoint } from '../shared/types';
+import { RoadTier } from '../shared/types';
 import { LAMP_SPACING_TILES, tileToWorld } from '../shared/constants';
 import { carriagewayHalfWidthMeters, curbWidthMeters, ROAD_Y_OFFSET } from './roadsmesh';
 import { carriagewayHalfWidthOf, kerbWidthOf } from '../shared/roadprofile';
 import type { RoadProfile } from '../shared/types';
 import { setInstanceCount } from './groundquad';
+import {
+  buildTileSet,
+  flankShift,
+  hasCrossingRoad,
+  lateralAxis,
+  tileKey,
+  type FurnitureRoadTile,
+} from './roadfurniture';
 
 const POLE_HEIGHT = 5.5;
 const POLE_RADIUS_TOP = 0.12;
@@ -171,9 +179,7 @@ export type LampAxis = 'x' | 'z';
  * `profile` is the tile's own cross-section when it carries a composed one —
  * the pole stands at ITS kerb, not the preset's.
  */
-export type LampRoadTile = TilePoint & {
-  tier?: RoadTier;
-  profile?: RoadProfile;
+export type LampRoadTile = FurnitureRoadTile & {
   /**
    * Whether the tile has electricity. A street with no supply carries no lamp
    * at all — the pole goes up with the cable, not with the tarmac. Left unsaid
@@ -181,8 +187,6 @@ export type LampRoadTile = TilePoint & {
    * power network gets the lamps it always got.
    */
   powered?: boolean;
-  /** A corner of a compact roundabout, whose tile is its ring: no lamp stands in it. */
-  ring?: true;
 };
 
 /**
@@ -217,11 +221,6 @@ export function lampLateralOffset(tier: RoadTier | undefined, profile?: RoadProf
   return carriagewayHalfWidthMeters(t) + curbWidthMeters(t) * 0.5;
 }
 
-/** Wide fixed stride so (x,z) pairs never collide without needing MAP_SIZE here. */
-function tileKey(x: number, z: number): number {
-  return x * 100_000 + z;
-}
-
 /**
  * Deterministic lamp placement: a lamp sits on every tile
  * whose (x+z) is a multiple of LAMP_SPACING_TILES. That sum advances by
@@ -240,8 +239,7 @@ export function computeLampPlacements(
    */
   drivewayTiles?: ReadonlySet<number>,
 ): LampPlacement[] {
-  const tileSet = new Set<number>();
-  for (const tile of roadTiles) tileSet.add(tileKey(tile.x, tile.z));
+  const tileSet = buildTileSet(roadTiles);
 
   const placements: LampPlacement[] = [];
   for (const tile of roadTiles) {
@@ -260,29 +258,34 @@ export function computeLampPlacements(
     const mod = ((sum % LAMP_SPACING_TILES) + LAMP_SPACING_TILES) % LAMP_SPACING_TILES;
     if (mod !== 0) continue;
 
-    const n = tileSet.has(tileKey(tile.x, tile.z - 1));
-    const e = tileSet.has(tileKey(tile.x + 1, tile.z));
-    const s = tileSet.has(tileKey(tile.x, tile.z + 1));
-    const w = tileSet.has(tileKey(tile.x - 1, tile.z));
-    const hasEW = e || w;
-    const hasNS = n || s;
     // Any tile with road running through it on BOTH axes — a turn, a T, a
     // crossroads — has no curb to stand a pole on: the lateral offset that
     // clears one carriageway lands inside the other one. Such tiles carry no
     // lamp, and their straight neighbours light the junction from the approach.
-    if (hasNS && hasEW) continue;
-    // An east-west road (neighbors differ in x) gets lamps offset along z, and
-    // vice versa. An isolated tile has no run axis at all and falls back to z.
-    const axis: LampAxis = hasNS ? 'x' : 'z';
+    // A road lying beside this one without joining it, the other half of a
+    // corridor among them, runs no road through the tile.
+    if (hasCrossingRoad(tileSet, tile.x, tile.z)) continue;
+    // An east-west road gets lamps offset along z, and vice versa. An isolated
+    // tile has no run axis at all and falls back to z.
+    const axis: LampAxis = lateralAxis(tileSet, tile.x, tile.z);
 
+    // Consecutive lamps alternate kerbs, but a pole stands only on a kerb with
+    // no road beyond it: never on the edge a corridor's halves share, which is
+    // the middle of the road.
     const group = sum / LAMP_SPACING_TILES;
-    const side: 1 | -1 = group % 2 === 0 ? 1 : -1;
+    const preferred: 1 | -1 = group % 2 === 0 ? 1 : -1;
+    const free = (s: 1 | -1): boolean =>
+      !tileSet.has(tileKey(tile.x + (axis === 'x' ? s : 0), tile.z + (axis === 'z' ? s : 0)));
+    const other: 1 | -1 = preferred === 1 ? -1 : 1;
+    const side = free(preferred) ? preferred : free(other) ? other : null;
+    if (side === null) continue;
     placements.push({
       x: tile.x,
       z: tile.z,
       axis,
       side,
-      lateralOffset: lampLateralOffset(tile.tier, tile.profile),
+      lateralOffset:
+        lampLateralOffset(tile.tier, tile.profile) + flankShift(tileSet, tile, { axis, side }),
     });
   }
   return placements;

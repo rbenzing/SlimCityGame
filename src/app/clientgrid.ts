@@ -662,6 +662,7 @@ export class ClientGridMirror {
     flow?: number;
     control?: JunctionControl;
     apart?: number;
+    profileId?: number;
     ring?: true;
   })[] {
     const tiles: (TilePoint & {
@@ -672,6 +673,7 @@ export class ClientGridMirror {
       flow?: number;
       control?: JunctionControl;
       apart?: number;
+      profileId?: number;
       ring?: true;
     })[] = [];
     for (let z = 0; z < this.size; z++) {
@@ -690,6 +692,7 @@ export class ClientGridMirror {
         // two-way road from a one-way one pointing nowhere.
         const flow = this.roadFlow[i] ?? 0;
         const apart = this.roadSeparate[i] ?? 0;
+        const profileId = this.roadProfile[i] ?? 0;
         const tile = {
           x,
           z,
@@ -699,6 +702,8 @@ export class ClientGridMirror {
           powered: (this.power[i] ?? 0) !== 0,
           ...(flow === 0 ? {} : { flow }),
           ...(apart === 0 ? {} : { apart }),
+          // The id that says two corridor halves are one road.
+          ...(profileId === 0 ? {} : { profileId }),
           // A corner of a compact roundabout is its ring, which nothing stands in.
           ...(this.roundabouts.has(i) ? { ring: true as const } : {}),
         };

@@ -1332,6 +1332,91 @@ describe('an undivided arterial laid across two tiles is furnished as the one ro
       expect(behind).toBeLessThan(walk.width + 1);
     }
   });
+
+  it('signs its run from the outer kerbs, never the middle of the road', () => {
+    const signs = computeSignPlacements(corridor());
+    expect(signs.some((s) => s.type === 'speed')).toBe(true);
+    for (const s of signs) {
+      const half = corridorHalfProfile(arterial, s.z === 4 ? 'left' : 'right');
+      expect(s.axis).toBe('z');
+      expect(s.side).toBe(-half.seam!.side);
+    }
+  });
+
+  it('lays one line of sewer covers down the middle, the edge its halves share', () => {
+    const covers = computeManholePlacements(corridor());
+    expect(covers.length).toBeGreaterThan(0);
+    for (const c of covers) {
+      expect(c.z).toBe(4);
+      expect(c.axis).toBe('z');
+      expect(c.lateral).toBe(TILE_METERS / 2);
+    }
+  });
+
+  /** The corridor with a street crossing it on column 20, or meeting its near half alone. */
+  const withStreet = (crossing: boolean, control: JunctionControl): FurnitureRoadTile[] => {
+    const street = strip(20, 0, crossing ? 9 : 3, 'ns', RoadTier.TwoLane).filter(
+      (t) => t.z !== 4 && t.z !== 5,
+    );
+    const road = corridor().map((t) =>
+      t.x === 20 && (t.z === 4 || (crossing && t.z === 5)) ? { ...t, control } : t,
+    );
+    return [...road, ...street];
+  };
+  const boardAt = (signs: SignPlacement[], x: number, z: number) =>
+    signs.find((s) => s.x === x && s.z === z && s.type === 'stop');
+
+  it('stops the traffic arriving on each half where a street crosses, on its outer kerb', () => {
+    const signs = computeSignPlacements(withStreet(true, 'allWayStop'));
+    // The near half carries the lanes running west, the far half those running east.
+    const westbound = boardAt(signs, 21, 4);
+    const eastbound = boardAt(signs, 19, 5);
+    expect(westbound).toBeDefined();
+    expect(eastbound).toBeDefined();
+    expect(westbound!.worldOffsetZ!).toBeLessThan(0);
+    expect(eastbound!.worldOffsetZ!).toBeGreaterThan(0);
+    // Nobody arrives on the lanes leaving the junction, so nothing holds them.
+    expect(boardAt(signs, 19, 4)).toBeUndefined();
+    expect(boardAt(signs, 21, 5)).toBeUndefined();
+    expect(boardAt(signs, 20, 3)).toBeDefined();
+    expect(boardAt(signs, 20, 6)).toBeDefined();
+  });
+
+  it('stands a board measured from where the carriageway is, at its outer kerb', () => {
+    const signs = computeSignPlacements(withStreet(true, 'allWayStop'));
+    const near = corridorHalfProfile(arterial, 'left');
+    const board = boardAt(signs, 21, 4)!;
+    const kerb = carriagewayShiftOf(near) - near.seam!.side * carriagewayHalfWidthOf(near);
+    // Out beyond the kerb it stands at, by less than the footway is wide.
+    expect(board.worldOffsetZ!).toBeLessThan(kerb);
+    expect(board.worldOffsetZ!).toBeGreaterThan(kerb - walk.width - 1);
+  });
+
+  it('gives the far half nothing where a street meets the near half alone', () => {
+    const signs = computeSignPlacements(withStreet(false, 'allWayStop'));
+    expect(boardAt(signs, 21, 4)).toBeDefined();
+    for (const x of [19, 20, 21]) expect(boardAt(signs, x, 5)).toBeUndefined();
+  });
+});
+
+describe('a junction holds only the traffic arriving at it', () => {
+  /** A street down column 10 with a one-way arm east of it along row 10, drawn `flow`. */
+  const tee = (flow: RoadFlow): FurnitureRoadTile[] => [
+    ...strip(10, 5, 15, 'ns', RoadTier.TwoLane).map((t) =>
+      t.z === 10 ? { ...t, control: 'allWayStop' as const } : t,
+    ),
+    ...strip(10, 11, 16, 'ew', RoadTier.OneWay).map((t) => ({ ...t, flow })),
+  ];
+  const onArm = (flow: RoadFlow) =>
+    computeSignPlacements(tee(flow)).filter((s) => s.x === 11 && s.z === 10);
+
+  it('puts a stop board on a one-way street running into the junction', () => {
+    expect(onArm(RoadFlow.West).map((s) => s.type)).toEqual(['stop']);
+  });
+
+  it('puts none on a one-way street running away from it', () => {
+    expect(onArm(RoadFlow.East).filter((s) => s.type === 'stop')).toEqual([]);
+  });
 });
 
 describe('a ramp that runs alongside the motorway before it joins', () => {

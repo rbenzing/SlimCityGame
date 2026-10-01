@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,403 tests passing across 154 test files, run 2026-10-01.
+**Test suite:** 4,413 tests passing across 154 test files, run 2026-10-01.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -78,10 +78,9 @@ History, §10 below.
 - Two check scripts no longer build what they check. `tools/taper-shots.mjs`
   runs a motorway into a two-lane street, and `tools/aux-shots.mjs` lays a ramp
   head-on into a motorway, and the world now refuses both.
-- Corridor furniture: the furniture placers count a corridor's other half as
-  a crossing road. So no corridor tile, divided or not, gets a lamp, a
-  kerbside board, or a signal head on its own approach. The street arms of
-  its junctions are signed as usual.
+- Roadside parked cars beside a building skip a corridor tile:
+  `kerbTileAllowsParking` in `src/render/parked.ts` counts every road tile beside
+  it as a crossing road, the way the furniture once did.
 - A T onto an undivided corridor: only the half the street joins is a
   junction. Traffic on the far half is not held, and the crossing spans one
   half. Holding both would mean the far half joining the side street across
@@ -235,6 +234,32 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### A corridor lit and signed as the road it is (2026-10-01)
+
+The next Open item. The furniture placers and the lamps counted a corridor's
+other half as a crossing road, so no corridor tile, divided or not, carried a
+lamp, a kerbside board or a signal head on its own approach.
+
+- **One question.** Furniture asks the approach walk's own `isSeparateRoad`
+  (`src/shared/approachzone.ts`, now exported) whether a neighbour is an arm.
+  Its partial copy in `roadfurniture.ts` is gone, and the lamps ask it too
+  instead of counting every road tile beside them.
+- **The shared edge stays bare.** Lamps take only a kerb with no road beyond
+  it, and meters a corridor half's outer kerb. Both, and the control boards,
+  measure from where the carriageway is pushed to on a corridor nothing
+  divides.
+- **Sewer covers** on an undivided corridor lie on the shared edge, the
+  road's middle, one line of them; a divided one carries none.
+- **Control boards only where traffic arrives.** The junction an approach
+  serves, and who gives way there, are read from the roads that join it, so
+  the far half beside a T is not taken for an approach to it. A board stands
+  only on lanes running toward the junction, the stop line's own rule, so the
+  half running away carries none. That also took the board off a one-way
+  street leaving a junction, which had one facing traffic that never came.
+- **Not changed:** roadside parked cars beside a building still skip a
+  corridor tile. They decide on their own, by counting road tiles beside it,
+  and a corridor with a parking lane is rare.
 
 ### A corridor bulldozed whole, and a bulldoze undone the way it stood (2026-10-01)
 
