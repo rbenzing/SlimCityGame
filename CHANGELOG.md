@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.24.2](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.24.1...slimcity-v1.24.2) (2026-10-01)
+
+
+### Bug Fixes
+
+* **render:** light and sign a corridor as the road it is ([f32c5dc](https://github.com/rbenzing/SlimCityGame/commit/f32c5dc9719d218356df5bcb64b62f93143e8436))
+
 ## [1.24.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.24.0...slimcity-v1.24.1) (2026-10-01)
 
 
