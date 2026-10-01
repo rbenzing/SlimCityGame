@@ -22,8 +22,10 @@ import {
 } from '../shared/types';
 import { canGainTurnPocket, isPresetProfileId, presetProfileForTier } from '../shared/roadprofile';
 import { controlFromCode, warrantedControl } from '../shared/junction';
+import { effectiveControlCode, type RoundaboutBlock } from '../shared/roundabout';
 import { ARMS_PER_TILE } from './grid';
 import { cellRoute, cellTile, cellWeight, neighbours, roadCellsOf } from './roadnet';
+import { compactRoundaboutsIn, gridRingReader, shapeRoundabouts } from './roundabouts';
 import type { RoadCells } from './roadnet';
 import type { NetworkTiers, RoadKey } from './roads';
 import type {
@@ -395,6 +397,7 @@ export function buildGraph(
 export class RoadNetwork implements RoadNetworkApi {
   private nodes: GraphNode[] = [];
   private edges: GraphEdge[] = [];
+  private roundabouts: RoundaboutBlock[] = [];
   private grid: GridState | null = null;
   private dirty = false;
   /**
@@ -471,6 +474,8 @@ export class RoadNetwork implements RoadNetworkApi {
     const built = buildGraph(roadCellsOf(grid), this.shape, (id) => this.resolveProfile(id));
     this.nodes = built.nodes;
     this.edges = built.edges;
+    this.roundabouts = compactRoundaboutsIn(grid);
+    shapeRoundabouts(this.nodes, this.edges, this.roundabouts);
     this.tileEdge = null;
     this.dirty = false;
     this.refreshControls();
@@ -491,10 +496,9 @@ export class RoadNetwork implements RoadNetworkApi {
     for (const edge of this.edges) byId.set(edge.id, edge);
     const lookup = (id: number): GraphEdge | undefined => byId.get(id);
     const grid = this.grid;
+    const rings = grid ? gridRingReader(grid) : null;
     for (const node of this.nodes) {
-      const override = grid
-        ? controlFromCode(grid.junctionControl[indexOf(grid.size, node.x, node.z)] ?? 0)
-        : null;
+      const override = rings ? controlFromCode(effectiveControlCode(node.x, node.z, rings)) : null;
       // The warrant is worked out either way, so the inspector can say what
       // handing the junction back to it would mean.
       node.warranted = warrantedControl(armsAt(node, lookup).map((arm) => arm.approach));
@@ -618,5 +622,11 @@ export class RoadNetwork implements RoadNetworkApi {
   getNodes(): readonly GraphNode[] {
     this.ensureFresh();
     return this.nodes;
+  }
+
+  /** Every compact roundabout the graph was shaped round, by row and then column. */
+  getRoundabouts(): readonly RoundaboutBlock[] {
+    this.ensureFresh();
+    return this.roundabouts;
   }
 }

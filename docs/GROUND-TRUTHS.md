@@ -377,6 +377,16 @@ MUTCD citations below use 11th-edition section numbers.
   (MUTCD 2B.10 ¶06); it is the only junction where a yield faces every approach.
   No stop bar, crosswalk or centre line runs through it, and the edge line never
   crosses an exit (MUTCD 3D.03). — [road-model.md](world-sim/road-model.md)
+- A compact roundabout is the roundabout control stored on all four tiles of a
+  2×2 block of street tiles on the ground, joined round the square, and
+  nothing else is stored. One predicate decides it for the worker, the graph
+  and the mirror; four coded tiles no longer joined are no roundabout, and
+  read as no override. The ring is one thing: no control, turn or lane
+  restriction is set on one of its tiles alone, bulldozing any of its tiles
+  takes the whole roundabout out, and undo puts it back. It is driven only
+  anticlockwise, on the circle, and only a driver arriving on a leg pays its
+  delay. — [road-model.md](world-sim/road-model.md); `roundaboutBlockOf` in
+  `src/shared/roundabout.ts`
 - Crosswalks are derived (footway present, arm below top rank), lie against the
   kerb line, are as deep as the footway but never under 1.8 m (MUTCD 3C.03
   ¶05), and the stop line sits at least 1.2 m in advance of the crossing (MUTCD

@@ -140,6 +140,13 @@ import {
   SECTION_REACH_TILES,
 } from '../shared/approachzone';
 import { paintsGore } from '../shared/taper';
+import {
+  RING_APRON_WIDTH_M,
+  RING_OUTER_RADIUS_M,
+  RING_ROADWAY_WIDTH_M,
+  SPLITTER_WIDTH_M,
+  type RoundaboutBlock,
+} from '../shared/roundabout';
 import { axisOfFlow } from '../shared/overpass';
 import type { TaperStep } from '../shared/taper';
 import type {
@@ -3407,6 +3414,517 @@ function emitYieldLine(
   }
 }
 
+// --- Compact roundabout --------------------------------------------------------
+// A 2×2 block's ring, a quarter drawn by each of its four tiles, all centred on
+// the corner they share. Its sizes are the ones the route round it is worked
+// out from, in src/shared/roundabout.ts.
+
+/** Segments round a quarter of the ring. */
+const RING_QUARTER_SEGMENTS = 16;
+/** How far outside the ring's edge its yield line's triangles begin. */
+const RING_YIELD_SETBACK_M = 0.2;
+/** The truck apron's coloured concrete, which tells a driver it is not the carriageway. */
+const RING_APRON_COLOR: readonly [number, number, number] = [0.66, 0.6, 0.52];
+/**
+ * The curve a kerb leaving the ring takes, where the tile has room for it:
+ * FHWA's least exit radius, 15 m (50 ft).
+ */
+const RING_EXIT_RADIUS_M = 15;
+/**
+ * The kerb on a road's side toward the ring's centre meets the ring almost
+ * square, half a tile off it, and has room only for a kerb return.
+ */
+const RING_ENTRY_KERB_RADIUS_M = 3;
+/** Below this a kerb meets the ring at a corner rather than a curve. */
+const RING_KERB_FILLET_MIN_M = 0.5;
+/** The kerb return turning the corner between two roads into one corner tile. */
+const RING_CORNER_RETURN_M = 3;
+/** Segments round that return. */
+const CORNER_RETURN_SEGMENTS = 8;
+
+/** One road into a compact roundabout, as the corner tile it joins draws it. */
+export interface RingLeg {
+  /** The side of the corner tile it arrives on. */
+  side: RoadFlow;
+  /** Its carriageway's half-width, metres. */
+  half: number;
+  /** The width of its kerb strip, 0 where it has none. */
+  kerb: number;
+  /**
+   * Where across it, in world order from its centre line, the lanes coming
+   * INTO the ring run, or null where none do.
+   */
+  entering: { from: number; to: number } | null;
+  /** Whether any of its lanes carries traffic away from the ring. */
+  leaving: boolean;
+}
+
+/** What a corner tile of a compact roundabout draws: its block, and the roads into it on its sides. */
+export interface RingQuarter {
+  block: RoundaboutBlock;
+  legs: readonly RingLeg[];
+}
+
+/**
+ * One corner tile of a compact roundabout: its quarter of the ring — the
+ * circulatory roadway, the truck apron, the planted island and the footway
+ * round the outside — and each road coming into it on its sides, carried from
+ * the tile's edge to the ring. A road running both ways flares by half a
+ * splitter island each side over that stretch, the island between its two
+ * directions, and gives way at the ring's edge across its entry.
+ *
+ * Nothing is painted on the ring: a single-lane roundabout carries no lane
+ * lines, and, as on the mini roundabout, no crossing or stop bar.
+ */
+export function roundaboutQuarterVertices(
+  x: number,
+  z: number,
+  quarter: RingQuarter,
+  hAt: (x: number, z: number) => number,
+  plateColor: readonly [number, number, number],
+  kerbed: boolean,
+): { positions: number[]; colors: number[] } {
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const centerX = (x + 0.5) * TILE_METERS;
+  const centerZ = (z + 0.5) * TILE_METERS;
+  // The ring's centre, from the tile's own.
+  const rcx = (quarter.block.x + 1) * TILE_METERS - centerX;
+  const rcz = (quarter.block.z + 1) * TILE_METERS - centerZ;
+  const mid = Math.atan2(-rcz, -rcx);
+  const a0 = mid - Math.PI / 4;
+  const a1 = mid + Math.PI / 4;
+  const outer = RING_OUTER_RADIUS_M;
+  const roadway = outer - RING_ROADWAY_WIDTH_M;
+  const island = roadway - RING_APRON_WIDTH_M;
+  const onRing = (r: number, a: number): [number, number] => [
+    rcx + r * Math.cos(a),
+    rcz + r * Math.sin(a),
+  ];
+  const angleOf = (p: readonly [number, number]): number => Math.atan2(p[1] - rcz, p[0] - rcx);
+
+  /** An annular band of the quarter, between two radii and two angles. */
+  const band = (
+    rIn: number,
+    rOut: number,
+    from: number,
+    to: number,
+    yOffset: number,
+    color: readonly [number, number, number],
+  ): void => {
+    if (to - from <= 1e-6) return;
+    const rings = Math.max(1, Math.ceil((rOut - rIn) / ROAD_QUAD_MAX_CELL_M));
+    const segments = Math.max(1, Math.ceil((RING_QUARTER_SEGMENTS * (to - from)) / (Math.PI / 2)));
+    for (let i = 0; i < rings; i++) {
+      const r0 = rIn + ((rOut - rIn) * i) / rings;
+      const r1 = rIn + ((rOut - rIn) * (i + 1)) / rings;
+      for (let k = 0; k < segments; k++) {
+        const t0 = from + ((to - from) * k) / segments;
+        const t1 = from + ((to - from) * (k + 1)) / segments;
+        if (r0 > 1e-9) {
+          pushGroundTri(
+            positions,
+            colors,
+            centerX,
+            centerZ,
+            onRing(r0, t0),
+            onRing(r1, t0),
+            onRing(r0, t1),
+            yOffset,
+            color,
+            hAt,
+          );
+        }
+        pushGroundTri(
+          positions,
+          colors,
+          centerX,
+          centerZ,
+          onRing(r0, t1),
+          onRing(r1, t0),
+          onRing(r1, t1),
+          yOffset,
+          color,
+          hAt,
+        );
+      }
+    }
+  };
+
+  // Inside out: the planted island, its kerb, the apron, the roadway.
+  band(0, island - MEDIAN_CONCRETE_EDGE_M, a0, a1, MEDIAN_Y_OFFSET, MEDIAN_GRASS_COLOR);
+  band(island - MEDIAN_CONCRETE_EDGE_M, island, a0, a1, MEDIAN_Y_OFFSET, MEDIAN_CONCRETE_COLOR);
+  band(island, roadway, a0, a1, CURB_Y_OFFSET, RING_APRON_COLOR);
+  band(roadway, outer, a0, a1, ROAD_Y_OFFSET, plateColor);
+
+  const edge = TILE_HALF;
+  /** A road into the ring, laid out along its own line: `s` out from the tile's centre, `t` across. */
+  const frameOf = (leg: RingLeg) => {
+    const { dx, dz } = stepForFlow(leg.side);
+    const across = dx === 0 ? { x: 1, z: 0 } : { x: 0, z: 1 };
+    // The ring's centre along the road and across it.
+    const centreAlong = rcx * dx + rcz * dz;
+    const centreAcross = rcx * across.x + rcz * across.z;
+    const point = (s: number, t: number): [number, number] => [
+      dx * s + across.x * t,
+      dz * s + across.z * t,
+    ];
+    /** How far out along the road a line `t` across it meets a circle of radius `r` round the ring. */
+    const meets = (t: number, r: number): number =>
+      centreAlong + Math.sqrt(Math.max(0, r * r - (t - centreAcross) ** 2));
+    const twoWay = leg.entering !== null && leg.leaving;
+    const flare = twoWay ? SPLITTER_WIDTH_M / 2 : 0;
+    const flareFrom = meets(0, outer);
+    const widthAt = (s: number): number =>
+      leg.half + flare * Math.min(1, Math.max(0, (edge - s) / Math.max(1e-6, edge - flareFrom)));
+    /** Where the kerb on side `sign`, `beyond` outside it, meets a circle of radius `r`. */
+    const kerbMeets = (sign: 1 | -1, beyond: number, r: number): number => {
+      let s = meets(sign * (leg.half + flare + beyond), r);
+      for (let i = 0; i < 4; i++) s = meets(sign * (widthAt(s) + beyond), r);
+      return s;
+    };
+    return {
+      leg,
+      dx,
+      dz,
+      across,
+      centreAlong,
+      centreAcross,
+      point,
+      meets,
+      twoWay,
+      flare,
+      flareFrom,
+      widthAt,
+      kerbMeets,
+    };
+  };
+  const frames = quarter.legs.map(frameOf);
+  type Frame = (typeof frames)[number];
+  // Two roads into one corner tile meet each other before the ring does, the
+  // way two roads meet at a junction's corner: the kerbs facing each other stop
+  // where they meet, and the ground between that corner and the ring is road.
+  const facingSign = (own: Frame, other: Frame): 1 | -1 =>
+    other.dx * own.across.x + other.dz * own.across.z > 0 ? 1 : -1;
+  /** Where, out along `own`, its kerb facing `other` meets `other`'s. */
+  const cornerAlong = (own: Frame, other: Frame): number => {
+    let s = other.leg.half + other.flare;
+    for (let i = 0; i < 4; i++) s = other.widthAt(own.widthAt(s));
+    return s;
+  };
+
+  type Point = [number, number];
+  /** Triangles between two polylines of as many points each, `a[i]` across from `b[i]`. */
+  const strip = (
+    a: readonly Point[],
+    b: readonly Point[],
+    yOffset: number,
+    color: readonly [number, number, number],
+  ): void => {
+    for (let i = 0; i + 1 < a.length && i + 1 < b.length; i++) {
+      pushGroundTri(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        a[i]!,
+        b[i]!,
+        a[i + 1]!,
+        yOffset,
+        color,
+        hAt,
+      );
+      pushGroundTri(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        a[i + 1]!,
+        b[i]!,
+        b[i + 1]!,
+        yOffset,
+        color,
+        hAt,
+      );
+    }
+  };
+  /** A polyline laid out again as `count` + 1 points evenly along its length. */
+  const resample = (line: readonly Point[], count: number): Point[] => {
+    const lengths = [0];
+    for (let i = 1; i < line.length; i++) {
+      const [ax, az] = line[i - 1]!;
+      const [bx, bz] = line[i]!;
+      lengths.push(lengths[i - 1]! + Math.hypot(bx - ax, bz - az));
+    }
+    const total = lengths[lengths.length - 1]!;
+    const out: Point[] = [];
+    let j = 1;
+    for (let k = 0; k <= count; k++) {
+      const at = (total * k) / count;
+      while (j < line.length - 1 && lengths[j]! < at) j++;
+      const span = lengths[j]! - lengths[j - 1]!;
+      const u = span > 1e-9 ? (at - lengths[j - 1]!) / span : 0;
+      const [ax, az] = line[j - 1]!;
+      const [bx, bz] = line[j]!;
+      out.push([ax + (bx - ax) * u, az + (bz - az) * u]);
+    }
+    return out;
+  };
+  /** Points along a line of the road from the tile's edge in to `to`, `t` across it at each. */
+  const along = (f: Frame, to: number, t: (s: number) => number): Point[] => {
+    const steps = Math.max(1, Math.ceil(Math.abs(edge - to) / ROAD_QUAD_MAX_CELL_M));
+    return Array.from({ length: steps + 1 }, (_, k) => {
+      const s = edge + ((to - edge) * k) / steps;
+      return f.point(s, t(s));
+    });
+  };
+  /** Points round the ring's edge from one angle to another, the short way. */
+  const roundRing = (r: number, from: number, to: number): Point[] => {
+    const turn = Math.atan2(Math.sin(to - from), Math.cos(to - from));
+    const steps = Math.max(1, Math.ceil((RING_QUARTER_SEGMENTS * Math.abs(turn)) / (Math.PI / 2)));
+    return Array.from({ length: steps + 1 }, (_, k) => onRing(r, from + (turn * k) / steps));
+  };
+
+  /**
+   * The curve a kerb takes into the ring on side `sign` of a road: an arc
+   * tangent to the kerb and to the ring's edge, as large as the tile holds up
+   * to `largest`, beginning where the road is already at its full width.
+   */
+  const filletOf = (f: Frame, sign: 1 | -1, largest: number) => {
+    const ringCentre: Point = [rcx, rcz];
+    for (let r = largest; r >= RING_KERB_FILLET_MIN_M; r -= 0.5) {
+      let width = f.leg.half + f.flare;
+      let at = edge;
+      let valid = true;
+      for (let i = 0; i < 4; i++) {
+        const reach = (outer + r) ** 2 - (sign * (width + r) - f.centreAcross) ** 2;
+        if (reach <= 0) {
+          valid = false;
+          break;
+        }
+        at = f.centreAlong + Math.sqrt(reach);
+        width = f.widthAt(at);
+      }
+      if (!valid || at > edge) continue;
+      const centre = f.point(at, sign * (width + r));
+      const away = Math.hypot(centre[0] - rcx, centre[1] - rcz);
+      const meet: Point = [
+        ringCentre[0] + ((centre[0] - rcx) * outer) / away,
+        ringCentre[1] + ((centre[1] - rcz) * outer) / away,
+      ];
+      if (Math.abs(meet[0]) > edge + 1e-6 || Math.abs(meet[1]) > edge + 1e-6) continue;
+      const start = f.point(at, sign * width);
+      const from = Math.atan2(start[1] - centre[1], start[0] - centre[0]);
+      const to = Math.atan2(meet[1] - centre[1], meet[0] - centre[0]);
+      const turn = Math.atan2(Math.sin(to - from), Math.cos(to - from));
+      return { along: at, centre, radius: r, from, turn, meet };
+    }
+    return null;
+  };
+
+  // Where each road crosses the footway round the ring, which is left open.
+  const gaps: Array<[number, number]> = [];
+  for (const f of frames) {
+    const { leg, point, widthAt, kerbMeets, flareFrom } = f;
+    const other = frames.find((o) => o !== f);
+    const facing = other ? facingSign(f, other) : null;
+    const centreOnRing = point(flareFrom, 0);
+    const centreLine = along(f, flareFrom, () => 0);
+    const ends: number[] = [];
+
+    for (const sign of [1, -1] as const) {
+      if (sign === facing) {
+        // The kerb facing the other road stops where the two meet, and its
+        // footway runs on to the kerb return that turns that corner.
+        const cut = cornerAlong(f, other!);
+        const kerb = resample(
+          along(f, cut, (s) => sign * widthAt(s)),
+          centreLine.length - 1,
+        );
+        strip(centreLine, kerb, ROAD_Y_OFFSET, plateColor);
+        if (kerbed && leg.kerb > 0) {
+          const returned = cut + RING_CORNER_RETURN_M;
+          strip(
+            along(f, returned, (s) => sign * widthAt(s)),
+            along(f, returned, (s) => sign * (widthAt(s) + leg.kerb)),
+            CURB_Y_OFFSET,
+            SIDEWALK_COLOR,
+          );
+        }
+        ends.push(angleOf(centreOnRing));
+        continue;
+      }
+      // The other kerbs curve into the ring: the one away from the ring's
+      // centre wide, as an exit is, and the one toward it as tight as the
+      // offset leaves room for.
+      const awayFromCentre = sign * f.centreAcross < 0;
+      const fillet = filletOf(
+        f,
+        sign,
+        awayFromCentre ? RING_EXIT_RADIUS_M : RING_ENTRY_KERB_RADIUS_M,
+      );
+      const arc = (radius: number): Point[] => {
+        if (!fillet) return [];
+        const steps = Math.max(2, Math.ceil(Math.abs(fillet.turn) * 8));
+        return Array.from({ length: steps }, (_, k) => {
+          const a = fillet.from + (fillet.turn * (k + 1)) / steps;
+          return [
+            fillet.centre[0] + radius * Math.cos(a),
+            fillet.centre[1] + radius * Math.sin(a),
+          ] as Point;
+        });
+      };
+      const kerbEnd = fillet ? fillet.along : kerbMeets(sign, 0, outer);
+      const kerb = [...along(f, kerbEnd, (s) => sign * widthAt(s)), ...arc(fillet?.radius ?? 0)];
+      const meet = fillet ? fillet.meet : kerb[kerb.length - 1]!;
+      const inner = resample(
+        [...centreLine, ...roundRing(outer, angleOf(centreOnRing), angleOf(meet)).slice(1)],
+        kerb.length - 1,
+      );
+      strip(inner, kerb, ROAD_Y_OFFSET, plateColor);
+      if (kerbed && leg.kerb > 0) {
+        // Its footway follows it round, into the one round the ring.
+        const back = [
+          ...along(f, kerbEnd, (s) => sign * (widthAt(s) + leg.kerb)),
+          ...arc(Math.max(0, (fillet?.radius ?? 0) - leg.kerb)),
+        ];
+        strip(kerb, back, CURB_Y_OFFSET, SIDEWALK_COLOR);
+      }
+      ends.push(angleOf(meet));
+    }
+    gaps.push([Math.min(...ends), Math.max(...ends)]);
+  }
+
+  const [first, second] = frames;
+  if (first && second) {
+    // The road between the two corners' kerbs and the ring.
+    const corner = first.point(
+      cornerAlong(first, second),
+      facingSign(first, second) * first.widthAt(cornerAlong(first, second)),
+    );
+    const from = angleOf(first.point(first.flareFrom, 0));
+    const to = angleOf(second.point(second.flareFrom, 0));
+    pushFan(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      corner,
+      roundRing(outer, from, to),
+      ROAD_Y_OFFSET,
+      plateColor,
+      hAt,
+    );
+    gaps.push([Math.min(from, to), Math.max(from, to)]);
+
+    // The corner the two kerbs make is turned as a junction's is: a kerb
+    // return, the road filling the corner inside it and the footway following
+    // it round outside. It leaves each kerb where the kerb really is, flared
+    // or not, and bends through the corner between them.
+    const returnFrom = (f: Frame, o: Frame): Point => {
+      const s = cornerAlong(f, o) + RING_CORNER_RETURN_M;
+      return f.point(s, facingSign(f, o) * f.widthAt(s));
+    };
+    const startA = returnFrom(first, second);
+    const startB = returnFrom(second, first);
+    const curve: Point[] = [];
+    const normals: Point[] = [];
+    for (let k = 0; k <= CORNER_RETURN_SEGMENTS; k++) {
+      const u = k / CORNER_RETURN_SEGMENTS;
+      const w0 = (1 - u) * (1 - u);
+      const w1 = 2 * u * (1 - u);
+      const w2 = u * u;
+      curve.push([
+        w0 * startA[0] + w1 * corner[0] + w2 * startB[0],
+        w0 * startA[1] + w1 * corner[1] + w2 * startB[1],
+      ]);
+      const tx = 2 * (1 - u) * (corner[0] - startA[0]) + 2 * u * (startB[0] - corner[0]);
+      const tz = 2 * (1 - u) * (corner[1] - startA[1]) + 2 * u * (startB[1] - corner[1]);
+      const len = Math.hypot(tx, tz) || 1;
+      normals.push([-tz / len, tx / len]);
+    }
+    pushFan(positions, colors, centerX, centerZ, corner, curve, ROAD_Y_OFFSET, plateColor, hAt);
+    const kerb = Math.min(first.leg.kerb, second.leg.kerb);
+    if (kerbed && kerb > 0) {
+      // The footway lies on the side of the curve away from the corner.
+      const middle = curve[CORNER_RETURN_SEGMENTS / 2]!;
+      const n = normals[CORNER_RETURN_SEGMENTS / 2]!;
+      const away = n[0] * (middle[0] - corner[0]) + n[1] * (middle[1] - corner[1]) > 0 ? 1 : -1;
+      const back = curve.map((p, k): Point => [
+        p[0] + away * kerb * normals[k]![0],
+        p[1] + away * kerb * normals[k]![1],
+      ]);
+      strip(curve, back, CURB_Y_OFFSET, SIDEWALK_COLOR);
+    }
+  }
+
+  for (const f of frames) {
+    const { leg, point, meets, twoWay, flare } = f;
+    if (twoWay) {
+      // The splitter island: a point at the tile's edge, as wide as a refuge
+      // where it meets the ring.
+      const base = (sign: 1 | -1): [number, number] =>
+        point(meets(sign * flare, outer), sign * flare);
+      pushGroundTri(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        point(edge, 0),
+        base(1),
+        base(-1),
+        MEDIAN_Y_OFFSET,
+        MEDIAN_CONCRETE_COLOR,
+        hAt,
+      );
+    }
+
+    if (leg.entering) {
+      // The yield line: white triangles along the ring's edge across the
+      // lanes coming in, pointing out at the drivers arriving.
+      const { from, to } = leg.entering;
+      const shift = twoWay ? (from + to > 0 ? flare : -flare) : 0;
+      const lo = from + shift;
+      const hi = to + shift;
+      const ends = [lo, hi].map((t) => angleOf(point(meets(t, outer), t)));
+      const start = Math.min(...ends);
+      const stop = Math.max(...ends);
+      const inner = outer + RING_YIELD_SETBACK_M;
+      const pitch = YIELD_TRIANGLE_BASE_M + YIELD_TRIANGLE_GAP_M;
+      const count = Math.max(1, Math.floor(((stop - start) * inner) / pitch));
+      const used = count * pitch - YIELD_TRIANGLE_GAP_M;
+      const startAt = (start + stop) / 2 - used / (2 * inner);
+      for (let i = 0; i < count; i++) {
+        const left = startAt + (i * pitch) / inner;
+        const right = left + YIELD_TRIANGLE_BASE_M / inner;
+        pushGroundTri(
+          positions,
+          colors,
+          centerX,
+          centerZ,
+          onRing(inner, left),
+          onRing(inner, right),
+          onRing(inner + YIELD_TRIANGLE_HEIGHT_M, (left + right) / 2),
+          MARK_Y_OFFSET,
+          MARKING_COLOR,
+          hAt,
+        );
+      }
+    }
+  }
+
+  if (kerbed) {
+    // The footway round the ring, between the roads that cross it.
+    let from = a0;
+    for (const [lo, hi] of gaps.sort((a, b) => a[0] - b[0])) {
+      band(outer, outer + FOOTWAY_WIDTH_M, from, Math.max(from, lo), CURB_Y_OFFSET, SIDEWALK_COLOR);
+      from = Math.max(from, hi);
+    }
+    band(outer, outer + FOOTWAY_WIDTH_M, from, a1, CURB_Y_OFFSET, SIDEWALK_COLOR);
+  }
+  return { positions, colors };
+}
+
 function emitHighwayDivider(
   positions: number[],
   colors: number[],
@@ -5436,6 +5954,67 @@ export class RoadMeshRenderer {
     for (const key of dirty) this.rebuildChunk(key);
   }
 
+  /** Each compact roundabout, by the tile index of each of its four tiles. */
+  private roundabouts: ReadonlyMap<number, RoundaboutBlock> = new Map();
+
+  /**
+   * Takes the sim's compact roundabouts and redraws what their change reaches:
+   * their four tiles, and the roads into them, which read the ring ahead.
+   */
+  setRoundabouts(blocks: readonly TilePoint[]): void {
+    const next = new Map<number, RoundaboutBlock>();
+    for (const b of blocks) {
+      const block = { x: b.x, z: b.z };
+      for (const [dx, dz] of [
+        [0, 0],
+        [1, 0],
+        [0, 1],
+        [1, 1],
+      ] as const) {
+        next.set(tileIndex(block.x + dx, block.z + dz), block);
+      }
+    }
+    const dirty = new Set<number>();
+    const moved = (i: number): void =>
+      this.dirtyReaders(i % MAP_SIZE, Math.floor(i / MAP_SIZE), dirty);
+    const sameBlock = (a?: RoundaboutBlock, b?: RoundaboutBlock): boolean =>
+      a?.x === b?.x && a?.z === b?.z;
+    for (const [i, block] of next) if (!sameBlock(this.roundabouts.get(i), block)) moved(i);
+    for (const i of this.roundabouts.keys()) if (!next.has(i)) moved(i);
+    this.roundabouts = next;
+    for (const key of dirty) this.rebuildChunk(key);
+    if (dirty.size > 0) this.rebuildMedianTrees();
+  }
+
+  /** What a corner tile of a compact roundabout draws, or null for any other tile. */
+  private ringQuarterAt(tile: RoadTileDelta): RingQuarter | null {
+    const block = this.roundabouts.get(tileIndex(tile.x, tile.z));
+    if (!block) return null;
+    const legs: RingLeg[] = [];
+    for (const [bit, dx, dz, side, toward] of [
+      [NORTH, 0, -1, RoadFlow.North, RoadFlow.South],
+      [EAST, 1, 0, RoadFlow.East, RoadFlow.West],
+      [SOUTH, 0, 1, RoadFlow.South, RoadFlow.North],
+      [WEST, -1, 0, RoadFlow.West, RoadFlow.East],
+    ] as const) {
+      if ((tile.mask & bit) === 0) continue;
+      const nx = tile.x + dx;
+      const nz = tile.z + dz;
+      if (this.roundabouts.get(tileIndex(nx, nz)) === block) continue;
+      const profile = this.profileAt(nx, nz);
+      if (!profile) continue;
+      const half = carriagewayHalfWidthOf(profile);
+      legs.push({
+        side,
+        half,
+        kerb: hasKerbs(profile) ? Math.min(kerbWidthOf(profile), TILE_HALF - half) : 0,
+        entering: this.approachSpanAt(nx, nz, toward) ?? null,
+        leaving: (this.approachSpanAt(nx, nz, side) ?? null) !== null,
+      });
+    }
+    return { block, legs };
+  }
+
   /** Who gives way at each junction tile, by tile index. Absent = the sim controls it with nothing. */
   private junctionControls: ReadonlyMap<number, JunctionControl> = new Map();
   /** Turn restrictions at each junction tile, packed a nibble per arm. */
@@ -5558,8 +6137,13 @@ export class RoadMeshRenderer {
     return this.roadAlong(x, z, axis)?.tier ?? RoadTier.None;
   }
 
-  /** `halfAt`, but for the road met along `axis`. */
+  /**
+   * `halfAt`, but for the road met along `axis`. A corner of a roundabout
+   * reports none: a road into the ring keeps its own width to the ring, rather
+   * than bending to whatever road the corner's tile happens to be.
+   */
   private halfAlong(x: number, z: number, axis: 'x' | 'z'): number {
+    if (this.roundabouts.has(tileIndex(x, z))) return 0;
     const road = this.roadAlong(x, z, axis);
     if (!road || road === this.groundAt(x, z)) return this.halfAt(x, z);
     return carriagewayHalfWidthOf(this.overProfileOf(road));
@@ -6050,6 +6634,29 @@ export class RoadMeshRenderer {
           const drawn = this.overpassVertices(over);
           for (const n of drawn.positions) positions.push(n);
           for (const n of drawn.colors) colors.push(n);
+        }
+        continue;
+      }
+      // A corner of a compact roundabout draws its quarter of the ring instead
+      // of its own road.
+      const ring = this.ringQuarterAt(tile);
+      if (ring) {
+        const own = this.ownProfileFor(tile) ?? presetProfileForTier(tile.tier);
+        const drawn = roundaboutQuarterVertices(
+          tile.x,
+          tile.z,
+          ring,
+          this.heightFor(tile),
+          surfaceColor(own),
+          hasKerbs(own),
+        );
+        for (const n of drawn.positions) positions.push(n);
+        for (const n of drawn.colors) colors.push(n);
+        const over = overTileOf(tile);
+        if (over) {
+          const lifted = this.overpassVertices(over);
+          for (const n of lifted.positions) positions.push(n);
+          for (const n of lifted.colors) colors.push(n);
         }
         continue;
       }

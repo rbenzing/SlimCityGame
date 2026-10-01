@@ -371,6 +371,45 @@ describe('road-furniture placement (pure)', () => {
     for (const [x, z] of APPROACHES) expect(at(x, z)).toBe('giveway');
   });
 
+  it('stands nothing on a compact roundabout’s ring, and a give-way on every road into it', () => {
+    const t = RoadTier.TwoLane;
+    // The block from (0, 0) to (1, 1); three of its corners have a road into
+    // them, so they are junctions the sim controls, and the fourth is a bend.
+    const corner = (x: number, z: number, junction: boolean): FurnitureRoadTile => ({
+      x,
+      z,
+      tier: t,
+      ring: true,
+      ...(junction ? { control: 'roundabout' as const } : {}),
+    });
+    const tiles: FurnitureRoadTile[] = [
+      corner(0, 0, true),
+      corner(1, 0, true),
+      corner(0, 1, true),
+      corner(1, 1, false),
+      ...strip(0, -6, -1, 'ew', t),
+      ...strip(0, 2, 8, 'ew', t),
+      ...strip(0, -6, -1, 'ns', t),
+      ...strip(0, 2, 8, 'ns', t),
+    ];
+    const onRing = (p: { x: number; z: number }): boolean =>
+      p.x >= 0 && p.x <= 1 && p.z >= 0 && p.z <= 1;
+    const signs = computeSignPlacements(tiles);
+    expect(signs.filter(onRing)).toEqual([]);
+    const at = signAt(signs);
+    for (const [x, z] of [
+      [-1, 0],
+      [2, 0],
+      [0, -1],
+      [0, 2],
+    ] as const) {
+      expect(at(x, z), `${x},${z}`).toBe('giveway');
+    }
+    expect(computeManholePlacements(tiles).filter(onRing)).toEqual([]);
+    expect(computeBoxPlacements(tiles).filter(onRing)).toEqual([]);
+    expect(computeMeterPlacements(tiles).filter(onRing)).toEqual([]);
+  });
+
   it('seats no parking meter across a junction, where there is no curb', () => {
     const t = RoadTier.TwoLane;
     const tiles = [...strip(4, 0, 20, 'ew', t), ...strip(4, 0, 20, 'ns', t)];

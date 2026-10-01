@@ -58,6 +58,8 @@ import {
 } from './world/freeroads';
 import { solveElevationProfile } from './world/bridges';
 import { isRoadBuildable } from './world/grid';
+import { roundaboutGroundOf } from './world/roundabouts';
+import { ROUNDABOUT_CODE } from './shared/roundabout';
 import { createRenderer, createWorldScene, timeOfDayColors } from './render/scene';
 import { createBloomPipeline, type BloomPipeline } from './render/bloom';
 import { CloudLayer } from './render/clouds';
@@ -1087,6 +1089,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const ghostKindFor = (tool: ToolId): GhostKind => {
     if (tool === 'bulldoze') return 'bulldoze';
     if (tool.startsWith('road.') || tool === 'interchange') return 'road';
+    // A roundabout's block reads as the square of ground it takes.
+    if (tool === 'roundabout') return 'zone';
     if (tool.startsWith('zone.')) return 'zone';
     // District paint reads as a zone-style tint; transit stops read as a road path.
     if (tool === 'district.paint') return 'zone';
@@ -1137,6 +1141,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         heightAt: (x, z) => (inBounds(x, z) ? (clientGrid.height[at(x, z)] ?? 0) : 0),
       };
     },
+    // The world's own roundabout rules, over the mirror; the roundabouts it
+    // knows of are the ones the world has said stand there.
+    roundaboutGround: () =>
+      roundaboutGroundOf(
+        clientGrid,
+        (x, z) => (clientGrid.roundaboutAt(x, z) ? ROUNDABOUT_CODE : 0),
+        (id) => clientGrid.profileById(id),
+      ),
     // The worker's own deck solver, run against the mirror, so the ghost
     // stands where the road will be laid.
     deckLifts: (tiles, elevation) => {
@@ -1440,8 +1452,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // Who gives way lands before the road deltas too, so that when a drag
     // changes both, the signs are rebuilt once against the new answer.
     const controlsMoved = snap.junctions ? clientGrid.applyJunctions(snap.junctions) : false;
-    if (snap.junctions) {
-      roadsMesh.setJunctionControls(snap.junctions);
+    if (snap.roundabouts) {
+      clientGrid.applyRoundabouts(snap.roundabouts);
+      roadsMesh.setRoundabouts(snap.roundabouts);
+    }
+    if (snap.junctions || snap.roundabouts) {
+      if (snap.junctions) roadsMesh.setJunctionControls(snap.junctions);
       // An open inspector shows the junction as it IS: the worker may have
       // refused the change, or the warrant may have moved it while the panel
       // was open. A junction that has gone — bulldozed — closes the panel.
@@ -1467,11 +1483,13 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // Ground cover follows the road only where the road touches the ground —
       // a mown band under a bridge would be a stripe of lawn across a river.
       terrain.applyRoadTiles(roadTiles.filter((t) => !t.elevated));
-    } else if (controlsMoved) {
+    } else if (controlsMoved || snap.roundabouts) {
       // A junction can change control with no tile changing at all — the
-      // traffic through it grew. Only the signs care.
+      // traffic through it grew. Only the signs care, and, where a
+      // roundabout came or went, the lamps.
       latestRoadTiles = clientGrid.roadTiles();
       roadFurniture.rebuild(latestRoadTiles, freeJunctionTiles);
+      if (snap.roundabouts) rebuildLamps();
     }
     if (snap.buildings) {
       lots.apply(snap.buildings);
@@ -1664,6 +1682,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const selectedJunctionAt = (x: number, z: number): SelectedJunction | null => {
     const junction = clientGrid.junctionAt(x, z);
     if (!junction) return null;
+    const ring = clientGrid.roundaboutAt(x, z);
     const arms = (
       [
         [0, -1, RoadFlow.North],
@@ -1697,6 +1716,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       arms: arms.map((a) => a.flow),
       laneTurns: [...(junction.laneTurns ?? [0, 0, 0, 0])],
       armLaneSets,
+      ...(ring ? { roundabout: ring } : {}),
     };
   };
 

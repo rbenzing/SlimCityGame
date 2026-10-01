@@ -79,6 +79,7 @@ import type {
   RoadProfile,
   RoadSpec,
   RoadTileDelta,
+  RoundaboutJunction,
   ServiceKind,
   ServiceLoad,
   SimSnapshot,
@@ -150,6 +151,14 @@ import {
   settleArms,
 } from '../world/roads';
 import { RoadNetwork, tramShape } from '../world/roadgraph';
+import { gridRingReader, roundaboutGroundOf } from '../world/roundabouts';
+import {
+  blockTiles,
+  compactRoundaboutAt,
+  effectiveControlCode,
+  roundaboutPlan,
+  type RoundaboutBlock,
+} from '../shared/roundabout';
 import {
   clearOverRoad,
   liftToOverLayer,
@@ -419,6 +428,8 @@ class SimWorld implements WorkerSim {
   private readonly network = new RoadNetwork();
   /** The junctions as last sent, so an unchanged set travels no further. */
   private lastJunctions: JunctionSnapshot[] = [];
+  /** The roundabouts as last sent, as one key. */
+  private lastRoundabouts = '';
   /**
    * The train network — the same implementation over the rail tiles instead of
    * the drivable ones. Kept in step with the road one: every rebuild and
@@ -1054,6 +1065,7 @@ class SimWorld implements WorkerSim {
 
   private controlledJunctions(): JunctionSnapshot[] | null {
     const out: JunctionSnapshot[] = [];
+    const rings = gridRingReader(this.grid);
     for (const node of this.network.getNodes()) {
       if (node.edges.length < 3) continue; // a dead end or a bend gives way to nobody
       const lanes = this.laneTurnsAt(node.x, node.z);
@@ -1064,7 +1076,7 @@ class SimWorld implements WorkerSim {
         warranted: node.warranted ?? 'none',
         turns: node.turns ?? 0,
         ...(lanes ? { laneTurns: lanes } : {}),
-        auto: (this.grid.junctionControl[tileIndex(node.x, node.z)] ?? 0) === 0,
+        auto: effectiveControlCode(node.x, node.z, rings) === 0,
       });
     }
     const unchanged =
@@ -1085,6 +1097,15 @@ class SimWorld implements WorkerSim {
     if (unchanged) return null;
     this.lastJunctions = out;
     return out.map((j) => ({ ...j }));
+  }
+
+  /** Every compact roundabout, or null when the set has not moved since the last snapshot. */
+  private changedRoundabouts(): TilePoint[] | null {
+    const now = this.network.getRoundabouts().map((r) => ({ x: r.x, z: r.z }));
+    const key = now.map((r) => `${r.x},${r.z}`).join(';');
+    if (key === this.lastRoundabouts) return null;
+    this.lastRoundabouts = key;
+    return now;
   }
 
   private postSnapshot(): void {
@@ -1213,6 +1234,8 @@ class SimWorld implements WorkerSim {
     }
     const junctions = this.controlledJunctions();
     if (junctions) snap.junctions = junctions;
+    const roundabouts = this.changedRoundabouts();
+    if (roundabouts) snap.roundabouts = roundabouts;
 
     const transfer: Transferable[] = [vehicles.buffer];
     if (snap.roadNet) transfer.push(snap.roadNet.buffer);
@@ -1762,6 +1785,8 @@ class SimWorld implements WorkerSim {
   ): CommandResult {
     const rejected = { ok: false, cost: 0, inverse: [], reason: 'invalid' as const };
     if (!inBounds(x, z)) return rejected;
+    // A roundabout is one junction on four tiles, taken out whole or not at all.
+    if (this.ringAt(x, z)) return rejected;
     // Three arms or more. A dead end is a graph node too, but it has nothing
     // to give way to, and neither has a bend or a tile in the middle of a run.
     const node = this.network.getNodes().find((n) => n.x === x && n.z === z);
@@ -1815,6 +1840,8 @@ class SimWorld implements WorkerSim {
   ): CommandResult {
     const rejected = { ok: false, cost: 0, inverse: [], reason: 'invalid' as const };
     if (!inBounds(x, z)) return rejected;
+    // A roundabout's every entry does one thing: turn onto the ring.
+    if (this.ringAt(x, z)) return rejected;
     if (!Number.isInteger(lane) || lane < 0 || lane >= MAX_EDITABLE_LANES) return rejected;
     const node = this.network.getNodes().find((n) => n.x === x && n.z === z);
     if (!node || node.edges.length < 3) return rejected;
@@ -1860,6 +1887,8 @@ class SimWorld implements WorkerSim {
   ): CommandResult {
     const rejected = { ok: false, cost: 0, inverse: [], reason: 'invalid' as const };
     if (!inBounds(x, z)) return rejected;
+    // A roundabout's every entry does one thing: turn onto the ring.
+    if (this.ringAt(x, z)) return rejected;
     const node = this.network.getNodes().find((n) => n.x === x && n.z === z);
     if (!node || node.edges.length < 3) return rejected;
     const step = stepForFlow(arm);
@@ -1891,6 +1920,90 @@ class SimWorld implements WorkerSim {
         },
       ],
     };
+  }
+
+  /** The compact roundabout (x, z) is a corner of, or null. */
+  private ringAt(x: number, z: number): RoundaboutBlock | null {
+    return compactRoundaboutAt(x, z, gridRingReader(this.grid));
+  }
+
+  /** The grid as a roundabout's site reads it. */
+  private roundaboutGround(): ReturnType<typeof roundaboutGroundOf> {
+    const g = this.grid;
+    return roundaboutGroundOf(
+      g,
+      (x, z) => g.junctionControl[tileIndex(x, z)] ?? 0,
+      (id) => this.profileForId(id),
+    );
+  }
+
+  /** What the player has said about the junction at a tile. */
+  private junctionStateAt(t: TilePoint): RoundaboutJunction {
+    const i = tileIndex(t.x, t.z);
+    return {
+      control: controlFromCode(this.grid.junctionControl[i] ?? 0),
+      turns: this.grid.junctionTurns[i] ?? 0,
+      laneTurns: Array.from(
+        { length: ARMS_PER_TILE },
+        (_, arm) => this.grid.junctionLaneTurns[i * ARMS_PER_TILE + arm] ?? 0,
+      ),
+    };
+  }
+
+  private writeJunctionState(t: TilePoint, state: RoundaboutJunction): void {
+    const i = tileIndex(t.x, t.z);
+    this.grid.junctionControl[i] = codeForControl(state.control);
+    this.grid.junctionTurns[i] = state.turns;
+    for (let arm = 0; arm < ARMS_PER_TILE; arm++) {
+      this.grid.junctionLaneTurns[i * ARMS_PER_TILE + arm] = state.laneTurns[arm] ?? 0;
+    }
+  }
+
+  /**
+   * Makes the block whose north-west tile is (x, z) a compact roundabout: the
+   * roundabout control on all four tiles, and no turn or lane restriction left
+   * on any of them, since one set on the crossing before could ban the one
+   * turn onto the ring. Refused, with the reason, unless every tile is laid
+   * and the block is a roundabout's site.
+   */
+  private cmdBuildRoundabout(x: number, z: number): CommandResult {
+    const block = { x, z };
+    const plan = roundaboutPlan(block, this.roundaboutGround());
+    if (plan.refusal !== null || plan.toLay.length > 0) {
+      return { ok: false, cost: 0, inverse: [], reason: plan.refusal ?? 'invalid' };
+    }
+    const tiles = blockTiles(block);
+    const before = tiles.map((t) => this.junctionStateAt(t));
+    for (const t of tiles) {
+      this.writeJunctionState(t, { control: 'roundabout', turns: 0, laneTurns: [0, 0, 0, 0] });
+    }
+    this.network.invalidateRegion(x, z, x + 1, z + 1);
+    return { ok: true, cost: 0, inverse: [{ kind: 'removeRoundabout', x, z, junctions: before }] };
+  }
+
+  /**
+   * Takes out the compact roundabout whose north-west tile is (x, z), leaving
+   * its four tiles with `junctions`, one each in the block's order, or with
+   * nothing the player has said about them. Refused unless a compact
+   * roundabout stands there.
+   */
+  private cmdRemoveRoundabout(
+    x: number,
+    z: number,
+    junctions: readonly RoundaboutJunction[] | undefined,
+  ): CommandResult {
+    const rejected = { ok: false, cost: 0, inverse: [], reason: 'invalid' as const };
+    const ring = this.ringAt(x, z);
+    if (!ring || ring.x !== x || ring.z !== z) return rejected;
+    if (junctions && junctions.length !== 4) return rejected;
+    blockTiles(ring).forEach((t, i) =>
+      this.writeJunctionState(
+        t,
+        junctions?.[i] ?? { control: null, turns: 0, laneTurns: [0, 0, 0, 0] },
+      ),
+    );
+    this.network.invalidateRegion(x, z, x + 1, z + 1);
+    return { ok: true, cost: 0, inverse: [{ kind: 'buildRoundabout', x, z }] };
   }
 
   // -------------------------------------------------------------------------
@@ -1956,6 +2069,10 @@ class SimWorld implements WorkerSim {
           command.lane,
           command.allowed,
         );
+      case 'buildRoundabout':
+        return this.cmdBuildRoundabout(command.x, command.z);
+      case 'removeRoundabout':
+        return this.cmdRemoveRoundabout(command.x, command.z, command.junctions);
       case 'bulldoze':
         return this.cmdBulldoze(command.tiles, command.layer);
       case 'buildSegment':
@@ -2676,6 +2793,19 @@ class SimWorld implements WorkerSim {
       return { ok: true, cost: -lifted.refund, inverse: lifted.inverse };
     }
 
+    // A roundabout is one junction on four tiles, so taking any of its tiles
+    // takes it out whole; undo lays the road back and then the roundabout.
+    const rings = new Map<number, RoundaboutBlock>();
+    for (const t of inBoundsTiles) {
+      const ring = this.ringAt(t.x, t.z);
+      if (ring) rings.set(tileIndex(ring.x, ring.z), ring);
+    }
+    for (const ring of rings.values()) {
+      for (const t of blockTiles(ring)) {
+        this.writeJunctionState(t, { control: null, turns: 0, laneTurns: [0, 0, 0, 0] });
+      }
+    }
+
     // Capture pre-state for the inverse before anything mutates.
     const zonesByType = new Map<number, TilePoint[]>();
     // Keyed by profile id, so undo puts back the road that was there — a
@@ -2733,6 +2863,8 @@ class SimWorld implements WorkerSim {
       });
     }
     // After the roads, so the tile is a junction again by the time this lands.
+    for (const ring of rings.values())
+      inverse.push({ kind: 'buildRoundabout', x: ring.x, z: ring.z });
     for (const j of setJunctions) inverse.push({ kind: 'setJunctionControl', ...j });
     for (const [zone, zoneTiles] of zonesByType) {
       inverse.push({ kind: 'paintZone', zone: zone as ZoneType, tiles: zoneTiles });

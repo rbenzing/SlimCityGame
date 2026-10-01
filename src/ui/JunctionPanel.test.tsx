@@ -34,6 +34,30 @@ describe('JunctionPanel', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it('on a corner of a compact roundabout offers only taking the roundabout out, whole', () => {
+    const { sent } = bindSpy();
+    useCityStore.getState().setSelectedJunction({
+      x: 21,
+      z: 20,
+      control: 'roundabout',
+      warranted: 'none',
+      auto: false,
+      turns: 0,
+      arms: [RoadFlow.East, RoadFlow.South, RoadFlow.West],
+      roundabout: { x: 20, z: 20 },
+    });
+    render(<JunctionPanel />);
+    expect(screen.getByText(/Compact roundabout/)).toBeInTheDocument();
+    // No control ladder and no turns: the ring is one junction of four tiles.
+    expect(screen.queryByRole('button', { name: /Automatic/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Signals' })).toBeNull();
+    expect(screen.queryByText('Turns allowed')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Take out the roundabout' }));
+    expect(sent).toEqual([
+      { label: 'Take out roundabout', commands: [{ kind: 'removeRoundabout', x: 20, z: 20 }] },
+    ]);
+  });
+
   it('names who gives way, and where', () => {
     useCityStore.getState().setSelectedJunction({
       x: 12,

@@ -144,6 +144,12 @@ junction itself is gone (bulldozed away).
     itself would otherwise offer.
   - A lane change is sent for that one lane only; it never touches its
     neighbors or the arm's own restriction.
+- **On a corner of a compact roundabout** the panel is headed
+  `Compact roundabout · {x}, {z}`, says in a line what a roundabout does, and
+  offers one action, **Take out the roundabout**. No control, turn or lane row is
+  shown: the roundabout is one junction on four tiles, and a control set on
+  one of its corners alone would break it up. Taking it out leaves the four
+  tiles as junctions under their warrants, and undo puts it back.
 
 ## District panel
 
@@ -292,6 +298,13 @@ category or tool is active.
   corridor — is disabled, with the reason as its tooltip, and opens again as
   soon as another choice makes room for it. The choice already made is never
   disabled.
+
+- The **Roundabout** card in the Small tab lays a compact roundabout on a
+  street junction ([roundabouts](../game-design/features/roundabouts.md)).
+  Like the interchange it is placed, not drawn, and has no panel of its own:
+  hovering a junction previews the 2×2 block on the quarter of its tile the
+  pointer is nearest, with the cost of the corner tiles it lays on the cursor,
+  or the reason it cannot go there. Its card carries no cost chip.
 - The **Interchange** card in the Highway tab lays a whole interchange on a
   motorway ([interchanges](../game-design/features/interchanges.md)). It is
   not drawn but placed, so none of a drawn road's panels apply; its own

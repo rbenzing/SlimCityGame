@@ -49,6 +49,7 @@ Outside the programme:
 | -------------------- | --------------------------------------------------------- |
 | [farms.md](farms.md) | Farmland off dirt roads, on soil the ground itself grades |
 | [interchanges.md](interchanges.md) | A motorway interchange laid in one click: diamond, partial cloverleaf or cloverleaf |
+| [roundabouts.md](roundabouts.md) | A compact roundabout 36 m across, laid on a street junction in one click |
 
 The features built before this folder existed have no design document; their
 behaviour is described in the specs and their delivery in

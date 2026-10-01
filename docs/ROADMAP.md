@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,283 tests passing across 147 test files, run 2026-09-30.
+**Test suite:** 4,334 tests passing across 150 test files, run 2026-09-30.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -50,21 +50,27 @@ crops, orchards and pasture with their barns, silos, bins and herds.
 Versioning and deploy are automated (release-please + Conventional Commits →
 GitHub Pages; see the README).
 
-**Road composition is shipped but for two pieces.** A road is a class, a
+**Road composition is shipped but for one piece.** A road is a class, a
 cross-section profile and per-junction control; the fixed-tier model is gone.
 Waves 5 and 6 — the ramp with its merge, diverge and terminal junctions, and a
 section too wide for a tile laid as two carriageways — are built
 ([`shared/corridor.ts`](../src/shared/corridor.ts)), as are the pieces that
 finished it: a transit lane is a variant of a size rather than a road type, a
 road's tier is its size with the reserved lane priced on top, the placement
-ghost is drawn at the road's own width, and an interchange — a diamond, a
+ghost is drawn at the road's own width, an interchange — a diamond, a
 partial cloverleaf or a cloverleaf — is laid on a motorway in one click
-([`shared/interchange.ts`](../src/shared/interchange.ts)). Not built: the 2×2
-compact roundabout, and sound barriers. Full detail in History, §10 below.
+([`shared/interchange.ts`](../src/shared/interchange.ts)), and so is a 2×2
+compact roundabout on a street junction
+([`shared/roundabout.ts`](../src/shared/roundabout.ts)). Not built: sound
+barriers. Full detail in History, §10 below.
 
 **Open:**
 
-- Road composition: the two pieces above.
+- Road composition: sound barriers.
+- road-model.md gives a roundabout's entry a single lane's g/C of 0.85, but no
+  code reads it: a roundabout costs its entry delay and nothing caps what an
+  entry can carry, the mini roundabout and the compact one alike. The spec and
+  the code disagree, and it needs a decision.
 - Two check scripts no longer build what they check. `tools/taper-shots.mjs`
   runs a motorway into a two-lane street, and `tools/aux-shots.mjs` lays a ramp
   head-on into a motorway, and the world now refuses both.
@@ -228,6 +234,47 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### A compact roundabout, in one click (asked for and built 2026-09-30)
+
+The second road-composition piece. The player chose to stamp it on a junction
+already laid, on the quarter of the tile nearest the pointer, and to keep the
+roads where they are rather than have the stamp move them
+([design](game-design/features/roundabouts.md),
+[technical](engineering/features/roundabouts.md)). A Roundabout card in the
+Small tab lays a single-lane ring 36 m across on a 2×2 block, laying the
+corner tile the junction is missing, as one undo.
+
+- **What it is.** The roundabout control, stored on all four tiles; nothing
+  new is saved. Four coded tiles no longer joined round the square are no
+  roundabout. The ring is one junction: no control or turn is set on one of
+  its tiles alone, the inspector offers only taking it out, and bulldozing a
+  corner takes the whole of it out, which undo puts back.
+- **Traffic.** The ring is driven anticlockwise only, on the circle, as long
+  as the arc it covers; only a driver coming in pays the roundabout's delay.
+  A left turn is three-quarters of the ring, and the router drives it.
+- **On screen.** A circulatory roadway, a truck apron and a planted island; a
+  splitter island and a yield line at every entry, and a give-way board beside
+  it; every kerb curving into the ring.
+- **Refused, with the reason:** anything but a street junction; a road of
+  more than one lane each way, a motorway, a corridor or a tramway; fewer than
+  three roads in, or two on one side; a junction on a road's first tile; a
+  bridge, a road off the grid, or ground steeper than 4%.
+
+Sizes are FHWA's and NCHRP 1043's: 36 m is a compact roundabout, the ring 5.5
+m with a 3.7 m apron, entries 4.65 m behind a 1.8 m splitter, a 15 m exit
+radius where the tile holds it, and no more than 4% across. Every road comes
+in half a tile off the ring's centre; on a straight crossroads two come in
+offset to the right, which FHWA's first guide calls "almost never
+acceptable" and NCHRP 672 "not a fatal flaw" at low speed. A pinwheel the
+player lays brings all four in offset to the left.
+
+Checked in the browser, through the drawer's card: a roundabout on a
+crossroads, on a tee and on a pinwheel, from above and at an angle, and a
+small town's cars driving round one, none of them across its island. The
+first look found the far kerbs running on straight into the ring, their
+footways jogging where the ring's began, and a corner return leaving slivers
+of grass beside a flared kerb; both were fixed before anything was committed.
 
 ### Interchanges, in one click (asked for and built 2026-09-30)
 
@@ -1320,12 +1367,12 @@ shippable waves.
   requiring a rebuild. Profiles can now be asymmetric (e.g. two lanes one
   way, one the other); edge cost scales by the lane share serving the
   direction actually travelled.
-- **Wave 3 — junction control (shipped 2026-09-06, one gap remains).**
+- **Wave 3 — junction control (shipped 2026-09-06).**
   Every junction now carries a control (none / yield / stop / all-way stop
   / signal / roundabout) set by a warrant and overridable by the player
   (saves bump to v8); a signalised junction cycles on the shared traffic
-  clock, and a one-tile mini roundabout is buildable. Still open: the 2×2
-  compact roundabout. (The other
+  clock, and a one-tile mini roundabout is buildable. The 2×2 compact
+  roundabout followed on 2026-09-30 (see its entry above). (The other
   gap this wave's status flagged at ship time — delay costed per approach
   rather than per movement — was closed the same day by wave 4, below.)
 - **Wave 4 — approach lanes and tapers (shipped 2026-09-06).** Lanes carry
@@ -1344,8 +1391,8 @@ shippable waves.
   (wave 5) and a section too wide for one tile laid as two carriageways
   (wave 6, [`shared/corridor.ts`](../src/shared/corridor.ts)) are built, as
   specified in [world-sim/road-model.md](world-sim/road-model.md). Interchange
-  stamps followed on 2026-09-30 (see their entry above). Not built: the 2×2
-  compact roundabout, and sound barriers.
+  stamps and the 2×2 compact roundabout followed on 2026-09-30 (see their
+  entries above). Not built: sound barriers.
 
 Design locked 2026-09-05 (research date): 3.5 m default travel lanes
 (existing presets keep their original 3.75 m), six/eight lanes as two-tile

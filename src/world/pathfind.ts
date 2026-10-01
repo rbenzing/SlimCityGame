@@ -21,6 +21,7 @@ import {
   armAllowed,
   armSlot,
   laneMovementsFor,
+  Movement,
   movementAllowed,
   movementBetween,
   movementDelayShare,
@@ -179,6 +180,9 @@ export function junctionDelay(
   // is the one movement at a grade-separated node that is not free.
   const merging = mergeDelay(node, arriving, leaving);
   if (merging !== null) return merging;
+  // A driver already going round a roundabout is the traffic everyone coming
+  // in gives way to, and gives way to nobody.
+  if (arriving.circulating) return 0;
   // A junction with no control has no queue to wait in.
   if (!control || control === 'none') return 0;
   const arms = armsAt(node, edgeById);
@@ -285,6 +289,13 @@ export function turnAllowed(
   if (!arriving) return true; // setting off: there is no turn yet
   const movement = movementBetween(headingInto(arriving, node.id), headingOutOf(leaving, node.id));
   if (movement === null) return true;
+  // A corner of a roundabout with a road into it on both its outer sides meets
+  // both at one node. From one to the other is a quarter turn the way the ring
+  // goes, which is a right turn; the left turn is the long way round, and is
+  // driven round the ring.
+  if (node.ring && !arriving.circulating && !leaving.circulating) {
+    return movement === Movement.Right;
+  }
   return movementAllowed(node.turns ?? 0, armOf(arriving, node.id), movement);
 }
 

@@ -241,6 +241,11 @@ export type FurnitureRoadTile = TilePoint & {
   control?: JunctionControl;
   /** The arms of the tile held apart from the roads beside it, as mask bits; absent where none are. */
   apart?: number;
+  /**
+   * A corner of a compact roundabout. The tile is its quarter of the ring,
+   * which nothing stands in; the roads into it carry the ring's boards.
+   */
+  ring?: true;
 };
 
 /** Carriageway half-width and kerb width for a tile: its own profile's, else its tier's preset. */
@@ -744,6 +749,7 @@ export function computeManholePlacements(
   const tileSet = buildTileSet(roadTiles);
   const out: ManholePlacement[] = [];
   for (const tile of roadTiles) {
+    if (tile.ring) continue;
     if (!tierIsPaved(tile.tier)) continue;
     if (!carriesSewer(tile)) continue; // no buried line here, so nothing to cover
     if (tile.elevated) continue; // a deck has no sewer under it to cover
@@ -768,6 +774,7 @@ export function computeBoxPlacements(roadTiles: readonly FurnitureRoadTile[]): B
   const tileSet = buildTileSet(roadTiles);
   const out: BoxPlacement[] = [];
   for (const tile of roadTiles) {
+    if (tile.ring) continue;
     if (!tierHasCurb(tile.tier)) continue;
     if (tile.elevated) continue; // no verge on a deck to seat a cabinet on
     if (isTurnTile(tileSet, tile.x, tile.z)) continue; // the curve owns the tile; no curbside seat
@@ -819,6 +826,7 @@ export function computeMeterPlacements(roadTiles: readonly FurnitureRoadTile[]):
   const tileSet = buildTileSet(roadTiles);
   const out: MeterPlacement[] = [];
   for (const tile of roadTiles) {
+    if (tile.ring) continue;
     if (!hasParkingBay(tile)) continue;
     if (tile.elevated) continue; // nobody parks on a viaduct
     // No curb parking on a curve, and none across a junction — both cases have
@@ -1016,6 +1024,7 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
   const tileSet = buildTileSet(roadTiles);
   const out: SignPlacement[] = [];
   for (const tile of roadTiles) {
+    if (tile.ring) continue;
     const type = effectiveSign(tileSet, tile);
     if (!type) continue;
 

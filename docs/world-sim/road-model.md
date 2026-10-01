@@ -394,9 +394,19 @@ arterial does in life.
 behaviour: choosing it on a node with 3–4 approaches turns the node's own
 tile (20 m, a mini roundabout, real range 13–25 m, ≤ 15,000 vpd) into a
 circulating carriageway with yield markings on every approach and no
-signal. A compact single-lane roundabout on a 2×2 block (40 m, real range
-27–45 m, ≤ 25,000 vpd) and a two-lane roundabout for a two-tile corridor are
-not buildable yet.
+signal.
+
+A **compact roundabout** takes a 2×2 block: a single-lane ring 36 m across,
+centred on the corner the block's four tiles share. It is the roundabout
+control stored on all four tiles, and is laid by the Roundabout tool on a
+street junction, never picked in the inspector. Its ring runs anticlockwise
+round a planted island and truck apron; every road into it gives way at the
+ring's edge, behind a splitter island. Each of its three or four legs, one to
+a side, is a street of one lane each way, and arrives half a tile off the
+ring's centre. The router drives the ring the one way it goes, on the circle,
+and charges the roundabout's delay only on entry. The design and its sources
+are in [the roundabout design](../game-design/features/roundabouts.md). A
+two-lane roundabout for a two-tile corridor is not buildable yet.
 
 ## Approach lanes, turn pockets and tapers
 
@@ -1012,7 +1022,10 @@ per-tier:
   island where it would go, and no road runs _through_ a roundabout. The
   white edge line round the outer circulatory roadway, which MUTCD 3D.03
   puts in the arcs between the arms and never across an exit, arrives with
-  the two-lane roundabout; see [../ROADMAP.md](../ROADMAP.md).
+  the two-lane roundabout; see [../ROADMAP.md](../ROADMAP.md). A compact
+  roundabout's yield line follows the edge of its ring across each entry
+  (MUTCD 3D.04), each entry has a raised splitter island between it and the
+  exit beside it, and its single-lane ring carries no lines at all.
 
 ## Capacity, control delay and warrants — the formulas
 
@@ -1070,9 +1083,10 @@ capacity expressed in vehicles per hour converts by one constant:
   an approach zone of 2 tiles; a collector 4–5 cars (≈ 50 m) — 3 tiles; an
   arterial 7–9 cars (≈ 70 m) — 4–5 tiles.
 - **Roundabout size**, from inscribed circle diameter: one tile (20 m) is a
-  mini roundabout (real range 13–25 m, ≤ 15,000 vpd); a 2×2 block (40 m) is
-  a compact single-lane roundabout (real range 27–45 m, ≤ 25,000 vpd), at a
-  single lane's g/C of 0.85 per entry.
+  mini roundabout (real range 13–25 m, ≤ 15,000 vpd); a 2×2 block (40 m)
+  holds a compact roundabout of 36 m (NCHRP 1043's compact range 24–37 m,
+  ≤ 15,000 vpd; FHWA's first guide calls 30–40 m an urban single-lane
+  roundabout), at a single lane's g/C of 0.85 per entry.
 - **Merge delay**, the one formula above that is not adapted from a
   published curve: `2 + 22·x³` seconds, where `x` is the v/c of the
   highway lane a ramp is merging into — small on an empty road, and the

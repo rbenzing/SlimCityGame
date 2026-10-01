@@ -120,6 +120,22 @@ function CardPictogram({ card }: { card: AssetCard }): JSX.Element {
       </div>
     );
   }
+  if (card.id === 'roundabout') {
+    // A ring round a planted island, with a street into it on each side.
+    return (
+      <div
+        className="flex h-11 items-center justify-center rounded-[6px] bg-[#2a2f36]"
+        aria-hidden="true"
+      >
+        <svg viewBox="0 0 40 40" className="h-10 w-10">
+          <rect x="18" y="0" width="4" height="40" fill="#fff" />
+          <rect x="0" y="18" width="40" height="4" fill="#fff" />
+          <circle cx="20" cy="20" r="12" fill="#2a2f36" stroke="#fff" strokeWidth="4" />
+          <circle cx="20" cy="20" r="6" fill="#4f8a4b" />
+        </svg>
+      </div>
+    );
+  }
   if (card.id === 'transit.line' || card.id === 'transit.rail') {
     return (
       <div

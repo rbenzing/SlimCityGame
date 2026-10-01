@@ -78,6 +78,9 @@ Outside the programme:
 | ------------------------------------ | ----------- | --------------- |
 | [farms.md](farms.md)                 | no          | no              |
 | [interchanges.md](interchanges.md)   | no          | no              |
+| [roundabouts.md](roundabouts.md)     | no          | additive        |
 
 Farms add a zone and derive the soil it grows on, so neither contract moves.
-An interchange is a batch of the road commands that already exist.
+An interchange is a batch of the road commands that already exist. A compact
+roundabout is the junction control already stored, on four tiles; it adds two
+commands and a snapshot channel.
