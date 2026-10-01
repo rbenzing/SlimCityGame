@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.26.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.25.0...slimcity-v1.26.0) (2026-10-01)
+
+
+### Features
+
+* **traffic:** a roundabout entry gives way to the ring ([9378990](https://github.com/rbenzing/SlimCityGame/commit/937899032fc86d2cb0a24ad8ae58c2b1d59278ad))
+
+
+### Bug Fixes
+
+* **commands:** a batch lands whole or not at all ([4aef6a4](https://github.com/rbenzing/SlimCityGame/commit/4aef6a4d3221948c8ff89a4e5d89e4961c3d382f))
+
 ## [1.25.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.24.2...slimcity-v1.25.0) (2026-10-01)
 
 
