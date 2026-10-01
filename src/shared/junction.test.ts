@@ -12,6 +12,8 @@ import {
   controlDelaySeconds,
   controlName,
   isRampNode,
+  miniRoundaboutConflicting,
+  roundaboutEntryCapacity,
   restrictiveness,
   signalAspect,
   stricterOf,
@@ -341,5 +343,45 @@ describe('a ramp meeting a motorway is a merge or a diverge, not a junction', ()
 
   it('needs a ramp: a plain straight run is not a node at all', () => {
     expect(isRampNode(H, [H, null, H, null])).toBe(false);
+  });
+});
+
+describe('a roundabout entry takes what the ring leaves room for (HCM 7th ed., Eq. 22-1)', () => {
+  it('takes 1,380 veh/h from an empty ring', () => {
+    expect(roundaboutEntryCapacity(0)).toBeCloseTo(1380, 9);
+  });
+
+  it('takes less the more goes round in front of it, and never nothing', () => {
+    expect(roundaboutEntryCapacity(1000)).toBeCloseTo(1380 * Math.exp(-1.02), 6);
+    expect(Math.round(roundaboutEntryCapacity(1000))).toBe(498);
+    expect(Math.round(roundaboutEntryCapacity(1800))).toBe(220);
+    expect(roundaboutEntryCapacity(1e5)).toBeGreaterThan(0);
+    expect(roundaboutEntryCapacity(1200)).toBeLessThan(roundaboutEntryCapacity(1100));
+  });
+
+  it('reads no traffic as no traffic, whatever sign it arrives with', () => {
+    expect(roundaboutEntryCapacity(-50)).toBe(roundaboutEntryCapacity(0));
+  });
+});
+
+describe('what goes round in front of a mini roundabout entry', () => {
+  it('counts two thirds of the leg upstream, a third of the one opposite, none downstream', () => {
+    // Four legs in the order the ring runs; the entry is the second.
+    expect(miniRoundaboutConflicting([300, 0, 0, 0], 1)).toBeCloseTo(200, 9);
+    expect(miniRoundaboutConflicting([0, 0, 0, 300], 1)).toBeCloseTo(100, 9);
+    expect(miniRoundaboutConflicting([0, 0, 300, 0], 1)).toBe(0);
+  });
+
+  it('never counts the entry’s own traffic', () => {
+    expect(miniRoundaboutConflicting([0, 900, 0, 0], 1)).toBe(0);
+  });
+
+  it('counts half of the leg upstream on three legs, and none of the other', () => {
+    expect(miniRoundaboutConflicting([300, 0, 0], 1)).toBeCloseTo(150, 9);
+    expect(miniRoundaboutConflicting([0, 0, 300], 1)).toBe(0);
+  });
+
+  it('has nothing to give way to with one leg', () => {
+    expect(miniRoundaboutConflicting([500], 0)).toBe(0);
   });
 });

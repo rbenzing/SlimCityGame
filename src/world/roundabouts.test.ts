@@ -90,6 +90,32 @@ describe('the graph round a compact roundabout', () => {
     expect(junctionDelay(corner, leg, ringOut, byId)).toBeGreaterThan(0);
   });
 
+  it('holds a driver coming in longer the busier the ring is going past', () => {
+    const { nodes, edges } = graph(roundabout());
+    const byId = (id: number): GraphEdge | undefined => edges.find((e) => e.id === id);
+    const corner = nodes.find((n) => n.x === 10 && n.z === 10)!;
+    const at = corner.edges.map((id) => byId(id)!);
+    const ringIn = at.find(
+      (e) => e.circulating && (e.a === corner.id ? e.lanesBtoA : e.lanesAtoB) === 1,
+    )!;
+    const ringOut = at.find((e) => e.circulating && e !== ringIn)!;
+    const leg = at.find((e) => !e.circulating)!;
+    const delayWith = (into: number, outOf: number): number => {
+      for (const e of edges) e.volume = 0;
+      leg.volume = 300;
+      ringIn.volume = into;
+      ringOut.volume = outOf;
+      return junctionDelay(corner, leg, ringOut, byId);
+    };
+    const empty = delayWith(0, 0);
+    const busy = delayWith(400, 400);
+    expect(busy).toBeGreaterThan(empty);
+    // Ring traffic all leaving at this corner passes nobody coming in.
+    expect(delayWith(400, 0)).toBeCloseTo(empty, 9);
+    // Nor does traffic only joining here, which is this leg's own.
+    expect(delayWith(0, 400)).toBeCloseTo(empty, 9);
+  });
+
   it('lets a corner’s two roads into each other only the short way, a right turn', () => {
     const { nodes, edges } = graph(roundabout());
     const corner = nodes.find((n) => n.x === 10 && n.z === 10)!;
@@ -105,5 +131,51 @@ describe('the graph round a compact roundabout', () => {
     // the way the ring goes. In from the west, out to the north: the long way.
     expect(turnAllowed(corner, northLeg, westLeg)).toBe(true);
     expect(turnAllowed(corner, westLeg, northLeg)).toBe(false);
+  });
+});
+
+describe('a mini roundabout’s entry gives way to what goes round it', () => {
+  /** A crossroads at (10, 10) made a one-tile roundabout. */
+  function mini(): { node: GraphNode; edges: readonly GraphEdge[] } {
+    const g = createGrid(21);
+    applyRoad(g, row(10, 2, 18), RoadTier.TwoLane);
+    applyRoad(g, column(10, 2, 18), RoadTier.TwoLane);
+    g.junctionControl[10 * g.size + 10] = codeForControl('roundabout');
+    const { nodes, edges } = graph(g);
+    return { node: nodes.find((n) => n.x === 10 && n.z === 10)!, edges };
+  }
+  /** The arm of the crossroads lying (dx, dz) from its centre. */
+  const arm = (node: GraphNode, edges: readonly GraphEdge[], dx: number, dz: number): GraphEdge =>
+    edges.find((e) => {
+      if (e.a !== node.id && e.b !== node.id) return false;
+      const next = e.a === node.id ? e.tiles[1]! : e.tiles[e.tiles.length - 2]!;
+      return next.x - node.x === dx && next.z - node.z === dz;
+    })!;
+
+  it('is a roundabout of one tile, with no ring of its own', () => {
+    const { node, edges } = mini();
+    expect(node.control).toBe('roundabout');
+    expect(edges.some((e) => e.circulating)).toBe(false);
+  });
+
+  it('waits longer for traffic from the leg upstream, and not at all for the one downstream', () => {
+    const { node, edges } = mini();
+    const byId = (id: number): GraphEdge | undefined => edges.find((e) => e.id === id);
+    const west = arm(node, edges, -1, 0);
+    const east = arm(node, edges, 1, 0);
+    // Anticlockwise, the ring reaches the west entry from the north and runs
+    // on to the south: the north leg is upstream of it, the south downstream.
+    const north = arm(node, edges, 0, -1);
+    const south = arm(node, edges, 0, 1);
+    const delayWith = (busy: GraphEdge | null): number => {
+      for (const e of edges) e.volume = 0;
+      west.volume = 300;
+      if (busy) busy.volume = 800;
+      return junctionDelay(node, west, east, byId);
+    };
+    const quiet = delayWith(null);
+    expect(delayWith(north)).toBeGreaterThan(delayWith(east));
+    expect(delayWith(east)).toBeGreaterThan(quiet);
+    expect(delayWith(south)).toBeCloseTo(quiet, 9);
   });
 });

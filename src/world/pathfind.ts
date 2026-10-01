@@ -9,6 +9,7 @@
 import { flowForStep, isStreetTier, RoadFlow, RoadTier } from '../shared/types';
 import type { GraphEdge, GraphNode, PathResult, RoadClassId, TilePoint } from '../shared/types';
 import {
+  CAPACITY_PER_VEH_PER_HOUR,
   greenShareFor,
   laneCount,
   presetProfileForTier,
@@ -16,7 +17,13 @@ import {
   profileSpeed,
   ROAD_PRESETS,
 } from '../shared/roadprofile';
-import { approachGivesWay, controlDelaySeconds, mergeDelaySeconds } from '../shared/junction';
+import {
+  approachGivesWay,
+  controlDelaySeconds,
+  mergeDelaySeconds,
+  miniRoundaboutConflicting,
+  roundaboutEntryCapacity,
+} from '../shared/junction';
 import {
   armAllowed,
   armSlot,
@@ -192,7 +199,9 @@ export function junctionDelay(
   const approaches = arms.map((a) => a.approach);
   const heldByControl = approachGivesWay(control, mine, approaches);
   const delay = controlDelaySeconds(control, heldByControl, {
-    vc: mine.vc,
+    // A roundabout entry is as full as the gaps in the ring let it be, not as
+    // full as its own road.
+    vc: control === 'roundabout' ? roundaboutEntryVc(node, arriving, edgeById) : mine.vc,
     greenShare: greenShareFor(mine.classId),
   });
   // Per MOVEMENT: the queue for a turn two lanes offer is half as long as the
@@ -227,6 +236,68 @@ export function junctionDelay(
     allowed,
   );
   return delay / movementDelayShare(movement, lanes);
+}
+
+/**
+ * The share of `edge`'s volume arriving at `nodeId`: volume is a whole-road
+ * figure, so it is split by the lanes running in, and evenly on a run that
+ * never said how its lanes divide.
+ */
+export function arrivingVolume(edge: GraphEdge, nodeId: number): number {
+  const atoB = edge.lanesAtoB;
+  const btoA = edge.lanesBtoA;
+  if (atoB === undefined || btoA === undefined || atoB + btoA === 0) return edge.volume / 2;
+  const inbound = nodeId === edge.b ? atoB : btoA;
+  return (edge.volume * inbound) / (atoB + btoA);
+}
+
+/** The order a ring runs past its legs, anticlockwise seen from above with north up. */
+const RING_ORDER: readonly RoadFlow[] = [
+  RoadFlow.North,
+  RoadFlow.West,
+  RoadFlow.South,
+  RoadFlow.East,
+];
+
+/**
+ * The v/c of a roundabout entry: what arrives along `arriving`, over what a
+ * single-lane entry takes against the traffic circulating in front of it. On a
+ * compact roundabout that traffic is the ring's own, the most of it that can
+ * be carrying on past this corner; a mini roundabout has no ring to read, so
+ * it is worked out from what the other legs bring.
+ */
+function roundaboutEntryVc(node: GraphNode, arriving: GraphEdge, edgeById: EdgeLookup): number {
+  const vehPerHour = (volume: number): number => volume / CAPACITY_PER_VEH_PER_HOUR;
+  const edges = node.edges.flatMap((id) => {
+    const edge = edgeById(id);
+    return edge ? [edge] : [];
+  });
+  const ring = edges.filter((e) => e.circulating);
+  let conflicting: number;
+  if (ring.length > 0) {
+    let into = 0;
+    let outOf = 0;
+    for (const e of ring) {
+      if (arrivingVolume(e, node.id) > 0) into += e.volume;
+      else outOf += e.volume;
+    }
+    conflicting = Math.min(into, outOf);
+  } else {
+    const legs = edges
+      .map((e) => ({ edge: e, at: RING_ORDER.indexOf(headingOutOf(e, node.id)) }))
+      .filter((l) => l.at >= 0)
+      .sort((p, q) => p.at - q.at);
+    const entry = legs.findIndex((l) => l.edge.id === arriving.id);
+    conflicting =
+      entry < 0
+        ? 0
+        : miniRoundaboutConflicting(
+            legs.map((l) => arrivingVolume(l.edge, node.id)),
+            entry,
+          );
+  }
+  const capacity = roundaboutEntryCapacity(vehPerHour(conflicting));
+  return vehPerHour(arrivingVolume(arriving, node.id)) / capacity;
 }
 
 /** The class a run carries: its own cross-section's, or the preset its tier names. */

@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,427 tests passing across 154 test files, run 2026-10-01.
+**Test suite:** 4,437 tests passing across 154 test files, run 2026-10-01.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -71,10 +71,14 @@ History, §10 below.
 - A walled motorway draws no auxiliary lane beside its slip roads: the wall
   stands at the edge of the road's own section and takes the room the lane
   would use. The lane is drawing only, so no traffic figure changes.
-- road-model.md gives a roundabout's entry a single lane's g/C of 0.85, but no
-  code reads it: a roundabout costs its entry delay and nothing caps what an
-  entry can carry, the mini roundabout and the compact one alike. The spec and
-  the code disagree, and it needs a decision.
+- A roundabout's delay curve, `4 + 10x³`, is not the HCM's. The manual's
+  single-lane entry delay (HCM 7th edition, Eq. 22-17) is
+  `3600/c + 900T[(x − 1) + √((x − 1)² + (3600/c)x / 450T)] + 5·min(x, 1)`,
+  which costs 3–6 times as much at moderate to high v/c, about 63 s against
+  14 s at capacity. It now reads the HCM entry capacity, but the curve itself
+  is the sim's own, the same reduced kind every other control's is. Adopting
+  the manual's would make roundabouts far slower than signals and stops at
+  load, so it needs a decision with the other controls in view.
 - Two check scripts no longer build what they check. `tools/taper-shots.mjs`
   runs a motorway into a two-lane street, and `tools/aux-shots.mjs` lays a ramp
   head-on into a motorway, and the world now refuses both.
@@ -230,6 +234,31 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### A roundabout entry gives way to the ring (decided and built 2026-10-01)
+
+road-model.md gave a roundabout entry "a single lane's g/C of 0.85", which no
+code read and nothing sourced. The player chose the Highway Capacity Manual's
+entry-capacity model instead.
+
+- **The capacity.** `roundaboutEntryCapacity` (`src/shared/junction.ts`) is
+  HCM 7th edition Eq. 22-1, `1,380 · e^(−0.00102 · v_c)` veh/h for a
+  single-lane entry onto a single-lane ring, where `v_c` is the traffic
+  circulating in front of it. NCHRP 1043 follows the same model. An entry
+  takes 1,380 veh/h from an empty ring, about 500 with 1,000 going round, and
+  about 220 with 1,800.
+- **The conflicting flow**, the movements Eq. 22-11 counts. On a compact
+  roundabout it is the ring's own traffic, the smaller of what arrives at the
+  entry's corner and what leaves it, which bounds what carries on past
+  without knowing where each car leaves. A mini roundabout is one tile with
+  no ring, so `miniRoundaboutConflicting` works it out from the other legs'
+  arrivals, each car bound for each other leg alike: two thirds of the leg
+  upstream, a third of the one opposite, none of the one downstream.
+- **What it changes.** `junctionDelay` gives a roundabout entry its v/c
+  against that capacity, the arm's arriving share of its volume in veh/h
+  through k, so the delay curve now rises with the ring's traffic and not
+  only the arm's own.
+- **Open:** the delay curve itself is still the sim's, not the HCM's.
 
 ### A T onto a corridor with no median is a full junction (decided and built 2026-10-01)
 

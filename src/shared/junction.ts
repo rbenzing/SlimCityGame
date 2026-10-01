@@ -321,6 +321,45 @@ export function controlDelaySeconds(
   }
 }
 
+/** What a single-lane roundabout entry takes from an empty ring, veh/h (HCM 7th ed., Eq. 22-1). */
+export const ROUNDABOUT_ENTRY_EMPTY_VEH_H = 1380;
+/** How fast that falls with the traffic circulating in front of the entry, per veh/h. */
+export const ROUNDABOUT_ENTRY_DECAY_PER_VEH_H = 1.02e-3;
+
+/**
+ * What a single-lane roundabout entry can take, veh/h, with `conflictingVehH`
+ * circulating in front of it. An entering driver gives way to the ring, so the
+ * fewer the gaps the less gets in; the curve never reaches nothing.
+ */
+export function roundaboutEntryCapacity(conflictingVehH: number): number {
+  return (
+    ROUNDABOUT_ENTRY_EMPTY_VEH_H *
+    Math.exp(-ROUNDABOUT_ENTRY_DECAY_PER_VEH_H * Math.max(0, conflictingVehH))
+  );
+}
+
+/**
+ * The traffic circulating in front of the entry at `entry` on a mini
+ * roundabout, from what arrives on each of its legs, `arriving` listed in the
+ * order the ring runs past them. A car is taken to be bound for each other leg
+ * alike, never turning back the way it came. One from the leg `d` places
+ * upstream reaches `d` exits by the time it comes to the entry, the entry's
+ * own leg last, and passes in front of it only bound for one beyond, so it
+ * conflicts `(n − 1 − d) / (n − 1)` of the time. These are the movements the
+ * manual counts (HCM 7th ed., Eq. 22-11).
+ */
+export function miniRoundaboutConflicting(arriving: readonly number[], entry: number): number {
+  const n = arriving.length;
+  if (n < 2) return 0;
+  let conflicting = 0;
+  for (let j = 0; j < n; j++) {
+    if (j === entry) continue;
+    const upstream = (entry - j + n) % n;
+    conflicting += ((arriving[j] ?? 0) * (n - 1 - upstream)) / (n - 1);
+  }
+  return conflicting;
+}
+
 /**
  * Seconds a merging driver loses on an empty motorway: the time it takes to
  * come up the slip road and match the speed of the traffic already on it.

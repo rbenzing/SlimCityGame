@@ -147,6 +147,17 @@ After `buildGraph`, `RoadNetwork` shapes every intact block it finds:
   both ways, all of it one way round. For a two-lane street that is 600
   game-capacity units, 1,400 veh/h, which is about the HCM's single-lane
   roundabout entry capacity with nothing circulating, 1,380 pc/h.
+- **Entry capacity.** `junctionDelay` gives a roundabout entry, on either
+  kind, its own v/c before the delay curve reads it. That v/c is the traffic
+  arriving on the leg, its share of the edge's volume by the lanes running
+  in, over `roundaboutEntryCapacity(v_c)` in `src/shared/junction.ts`. Here
+  `v_c` is the conflicting flow:
+  - at a ring corner, the smaller of the volumes on the circulating edge
+    arriving there and the one leaving;
+  - at a mini roundabout's node, `miniRoundaboutConflicting`, over the other
+    legs' arrivals in the order the ring runs.
+
+  Both are in veh/h, through k = 3/7.
 
 ### The ring on screen
 

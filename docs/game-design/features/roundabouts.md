@@ -142,6 +142,15 @@ road model is.
 - **Capacity and delay.** The entry delay is the roundabout curve the mini
   roundabout already uses. A compact roundabout carries up to about 15,000
   vehicles a day (WisDOT Table 8.1, from NCHRP 1043 Exhibit 8.2).
+- **An entry is as good as the gaps in the ring.** Each entry carries the
+  Highway Capacity Manual's single-lane entry capacity, 1,380 · e^(−0.00102
+  · v_c) veh/h, where v_c is the traffic circulating in front of it (HCM 7th
+  edition, Eq. 22-1, which NCHRP 1043 follows). An entry on an empty ring
+  takes 1,380 veh/h. With 1,000 veh/h going round in front of it, it takes
+  about 500, so a roundabout whose ring is busy queues at the quiet legs
+  too. On the compact roundabout the circulating traffic is the ring's own.
+  On the mini roundabout, which is one tile, it is worked out from the other
+  legs' traffic.
 
 ## What it is not
 
