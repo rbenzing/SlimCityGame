@@ -141,10 +141,15 @@ describe('class table sanity', () => {
     expect(ROAD_CLASSES.filter((c) => c.surface === 'ballast').map((c) => c.id)).toEqual(['rail']);
   });
 
-  it('a highway never admits a footway, and a ramp is one-directional travel only', () => {
+  it('a highway never admits a footway, and a ramp is one-directional travel and its edges only', () => {
     expect(roadClass('highway').admits).not.toContain('sidewalk');
     expect(roadClass('highway').admits).not.toContain('parking');
-    expect(roadClass('ramp').admits).toEqual(['travel', 'shoulder']);
+    expect(roadClass('ramp').admits).toEqual(['travel', 'shoulder', 'soundWall']);
+  });
+
+  it('lets only a motorway and a slip road carry a sound wall', () => {
+    const walled = ROAD_CLASSES.filter((c) => c.admits.includes('soundWall')).map((c) => c.id);
+    expect(walled).toEqual(['highway', 'ramp']);
   });
 });
 
@@ -434,6 +439,8 @@ describe('composing a profile from a preset and the player’s edits', () => {
       bus: 'none',
       tram: 'none',
       postedKmh: 50,
+      soundWall: 'none',
+      soundWallHeight: 4.5,
     });
     // One carriageway of three: every lane runs forward, so there is no
     // opposing half for `lanesBack` to be different from.
@@ -447,6 +454,8 @@ describe('composing a profile from a preset and the player’s edits', () => {
       bus: 'none',
       tram: 'none',
       postedKmh: 100,
+      soundWall: 'none',
+      soundWallHeight: 4.5,
     });
     // The two presets that are a size plus a transit variant, read back as
     // exactly that: the bus road is four running lanes with the outer two
@@ -477,14 +486,7 @@ describe('composing a profile from a preset and the player’s edits', () => {
     it('adds a kerbside bus lane at the cost of a general lane, which is what fits', () => {
       const small = presetProfileForTier(RoadTier.TwoLane);
       const withBus = composeProfile(small, { ...NO_EDITS, bus: 'both' });
-      expect(kinds(withBus)).toEqual([
-        'sidewalk',
-        'bus',
-        'travel',
-        'travel',
-        'bus',
-        'sidewalk',
-      ]);
+      expect(kinds(withBus)).toEqual(['sidewalk', 'bus', 'travel', 'travel', 'bus', 'sidewalk']);
       // Six running lanes and two footways do not fit a 20 m tile, so a bus
       // lane always costs a general lane — which makes this the same section
       // the standalone Bus Lane road already was.
@@ -503,14 +505,7 @@ describe('composing a profile from a preset and the player’s edits', () => {
       expect(profileWidth(mixed)).toBeCloseTo(profileWidth(small), 6);
 
       const reserved = composeProfile(small, { ...NO_EDITS, tram: 'reserved' });
-      expect(kinds(reserved)).toEqual([
-        'sidewalk',
-        'travel',
-        'tram',
-        'tram',
-        'travel',
-        'sidewalk',
-      ]);
+      expect(kinds(reserved)).toEqual(['sidewalk', 'travel', 'tram', 'tram', 'travel', 'sidewalk']);
       expect(profileWidth(reserved)).toBeLessThanOrEqual(TILE_METERS + 1e-6);
     });
 
@@ -521,14 +516,7 @@ describe('composing a profile from a preset and the player’s edits', () => {
       const overWide = composeProfile(medium, { ...NO_EDITS, tram: 'reserved' });
       expect(profileWidth(overWide)).toBeGreaterThan(TILE_METERS);
       const traded = composeProfile(medium, { ...NO_EDITS, tram: 'reserved', lanes: 1 });
-      expect(kinds(traded)).toEqual([
-        'sidewalk',
-        'travel',
-        'tram',
-        'tram',
-        'travel',
-        'sidewalk',
-      ]);
+      expect(kinds(traded)).toEqual(['sidewalk', 'travel', 'tram', 'tram', 'travel', 'sidewalk']);
       expect(profileWidth(traded)).toBeLessThanOrEqual(TILE_METERS + 1e-6);
     });
 
@@ -671,9 +659,9 @@ describe('composing a profile from a preset and the player’s edits', () => {
       expect(transitLanesOf(composeProfile(small, { ...NO_EDITS, tram: 'mixed' }))).toMatchObject({
         tram: 2,
       });
-      expect(
-        transitLanesOf(composeProfile(small, { ...NO_EDITS, bus: 'right' })),
-      ).toMatchObject({ bus: 1 });
+      expect(transitLanesOf(composeProfile(small, { ...NO_EDITS, bus: 'right' }))).toMatchObject({
+        bus: 1,
+      });
     });
 
     it('keeps the retired presets loadable, so a save still holds the road it drew', () => {
@@ -1208,9 +1196,10 @@ describe('every preset can afford what it claims, inside its tile', () => {
 
       const median = profile.pieces.find((p) => p.kind === 'median');
       if (median) {
-        expect(median.width, `${spec.name}'s median is too narrow to stand in`).toBeGreaterThanOrEqual(
-          REFUGE_M - 1e-9,
-        );
+        expect(
+          median.width,
+          `${spec.name}'s median is too narrow to stand in`,
+        ).toBeGreaterThanOrEqual(REFUGE_M - 1e-9);
       }
     });
   }
@@ -1837,7 +1826,10 @@ describe('a turn bay on a corridor half', () => {
         const pocketed = withTurnPocket(half(flow), side);
         expect(pocketed, `${flow} ${side}`).not.toBeNull();
         const kinds = pocketed!.pieces.map((p) => p.kind);
-        expect(kinds.filter((k) => k === 'travel'), `${flow} ${side}`).toHaveLength(4);
+        expect(
+          kinds.filter((k) => k === 'travel'),
+          `${flow} ${side}`,
+        ).toHaveLength(4);
         expect(kinds.indexOf('median'), `${flow} ${side}`).toBeGreaterThan(
           kinds.lastIndexOf('travel'),
         );

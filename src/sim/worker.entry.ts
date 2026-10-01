@@ -141,6 +141,7 @@ import {
   segmentGeom,
   syncRoadLayers,
 } from '../world/roadnet';
+import { noiseWallsOf } from '../world/noisewalls';
 import {
   applyRoad,
   armsApartOn,
@@ -993,6 +994,7 @@ class SimWorld implements WorkerSim {
       this.fieldSim.applyTraffic(g, this.network.getEdges());
     }
 
+    this.refreshNoiseWalls();
     this.fieldSim.tick(g, t);
 
     const econ = this.economy.tick({
@@ -1719,6 +1721,39 @@ class SimWorld implements WorkerSim {
     if (tier === RoadTier.None) return null;
     return this.profileForId(this.grid.roadProfile[n] || tier)?.class ?? null;
   }
+
+  /**
+   * Hands the noise field the walls it has to cross, derived again whenever
+   * the road network or the profile table has moved since they were last. A
+   * profile is never redefined under its id, so the table only grows.
+   */
+  private refreshNoiseWalls(): void {
+    const net = this.roads;
+    const from = this.noiseWallsFrom;
+    if (
+      from?.net === net &&
+      from.version === net.version &&
+      from.profiles === this.customRoadProfiles &&
+      from.count === this.customRoadProfiles.size
+    ) {
+      return;
+    }
+    this.noiseWallsFrom = {
+      net,
+      version: net.version,
+      profiles: this.customRoadProfiles,
+      count: this.customRoadProfiles.size,
+    };
+    this.fieldSim.setNoiseWalls(noiseWallsOf(this.grid, (id) => this.profileForId(id)));
+  }
+
+  /** What the noise walls were last derived from. */
+  private noiseWallsFrom: {
+    net: RoadNet;
+    version: number;
+    profiles: ReadonlyMap<number, RoadProfile>;
+    count: number;
+  } | null = null;
 
   /** The profile an id stands for: the preset itself, or the composition defined under it. */
   private profileForId(id: number): RoadProfile | null {

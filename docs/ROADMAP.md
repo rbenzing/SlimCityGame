@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,345 tests passing across 150 test files, run 2026-10-01.
+**Test suite:** 4,392 tests passing across 154 test files, run 2026-10-01.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -50,7 +50,7 @@ crops, orchards and pasture with their barns, silos, bins and herds.
 Versioning and deploy are automated (release-please + Conventional Commits →
 GitHub Pages; see the README).
 
-**Road composition is shipped but for one piece.** A road is a class, a
+**Road composition is shipped.** A road is a class, a
 cross-section profile and per-junction control; the fixed-tier model is gone.
 Waves 5 and 6 — the ramp with its merge, diverge and terminal junctions, and a
 section too wide for a tile laid as two carriageways — are built
@@ -61,12 +61,16 @@ ghost is drawn at the road's own width, an interchange — a diamond, a
 partial cloverleaf or a cloverleaf — is laid on a motorway in one click
 ([`shared/interchange.ts`](../src/shared/interchange.ts)), and so is a 2×2
 compact roundabout on a street junction
-([`shared/roundabout.ts`](../src/shared/roundabout.ts)). Not built: sound
-barriers. Full detail in History, §10 below.
+([`shared/roundabout.ts`](../src/shared/roundabout.ts)), and a motorway or a
+slip road carries a sound wall that cuts the noise behind it
+([`shared/soundwall.ts`](../src/shared/soundwall.ts)). Full detail in
+History, §10 below.
 
 **Open:**
 
-- Road composition: sound barriers.
+- A walled motorway draws no auxiliary lane beside its slip roads: the wall
+  stands at the edge of the road's own section and takes the room the lane
+  would use. The lane is drawing only, so no traffic figure changes.
 - road-model.md gives a roundabout's entry a single lane's g/C of 0.85, but no
   code reads it: a roundabout costs its entry delay and nothing caps what an
   entry can carry, the mini roundabout and the compact one alike. The spec and
@@ -234,6 +238,37 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Sound walls along a motorway (asked for and built 2026-10-01)
+
+The last road-composition piece. The player chose a road option rather than
+a structure drawn apart from the road, on motorways and slip roads only, with
+the height a choice ([design](game-design/features/sound-barriers.md),
+[technical](engineering/features/sound-barriers.md)).
+
+- **What it is.** A `soundWall` piece of the road's own profile, outermost on
+  either side, 0.6 m for the safety barrier it stands on, 3, 4.5 or 6 m tall.
+  Profiles are saved by name, so nothing about the save or the worker
+  protocol changes.
+- **What it does.** Noise crossing the tile edge a wall stands on is cut by
+  its insertion loss, 5 dB plus 1.5 dB a metre above 3 m (FHWA Noise Barrier
+  Design Handbook §3.5.1): 5, 7.25 and 9.5 dB, from what 23 CFR 772 calls
+  feasible to the top of its design goal. The worker derives the walled edges
+  from the roads whenever they change, and the noise field's kernel scales
+  the flow across each one; land value, which noise drags down, recovers
+  behind it.
+- **Where it stands.** One function for the sim and the renderer, read off the
+  road's own section: on the side edges no arm leaves by, so it opens across a
+  slip road's mouth and round a corner, as real walls do. It carries on along
+  a deck. A road off the grid with a wall is refused.
+- **Price.** ¢16, ¢24 and ¢32 a side a tile, from FHWA's $48.76/ft² of wall
+  against its $3.551M a lane-mile of rural freeway, at the motorway's ¢68 a
+  tile; a corridor pays for each wall once.
+- **On screen.** A safety barrier, precast panels and steel posts every 5 m,
+  one InstancedMesh each, a bay at a time on the road's surface. A lamp column
+  stands on the barrier in front of the panels, and a gantry spans over them.
+- **The town** walls its motorway past the town, laid over it with Replace.
+- **Open:** a walled motorway draws no auxiliary lane beside its slip roads.
 
 ### Lenses the right way up, and zoned land that says why it is empty (found and fixed 2026-10-01)
 
@@ -1418,7 +1453,7 @@ shippable waves.
   (wave 6, [`shared/corridor.ts`](../src/shared/corridor.ts)) are built, as
   specified in [world-sim/road-model.md](world-sim/road-model.md). Interchange
   stamps and the 2×2 compact roundabout followed on 2026-09-30 (see their
-  entries above). Not built: sound barriers.
+  entries above), and sound walls on 2026-10-01.
 
 Design locked 2026-09-05 (research date): 3.5 m default travel lanes
 (existing presets keep their original 3.75 m), six/eight lanes as two-tile

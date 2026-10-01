@@ -30,6 +30,8 @@ import {
   profilesEqual,
 } from '../shared/roadprofile';
 import { runsAlongZ, type BridgeDeckTile } from '../render/bridges';
+import type { PlacedWall } from '../render/soundwalls';
+import { soundWallsAt, type SoundWallReader } from '../shared/soundwallsites';
 import { deriveRoadFootprint } from '../world/freeroads';
 import { decodeRoadNetwork } from '../world/roadnet';
 import { axisOfFlow } from '../shared/overpass';
@@ -266,6 +268,34 @@ export class ClientGridMirror {
     if (!whole) return null;
     const stored = this.roadFlow[this.idx(x, z)] ?? 0;
     return corridorHalfProfile(worldOrderedProfile(whole, stored), corridorHalfOf(stored));
+  }
+
+  /**
+   * Every sound wall standing, by the tile edge it stands on: the same answer
+   * the worker's noise field is given, from the same section, flow and mask.
+   */
+  soundWalls(): PlacedWall[] {
+    const walled = new Map<number, boolean>();
+    const reader: SoundWallReader = {
+      sectionAt: (x, z) => this.ownProfileAt(x, z),
+      flowAt: (x, z) => this.flowAt(x, z),
+      maskAt: (x, z) => (this.inBounds(x, z) ? (this.roadMask[this.idx(x, z)] ?? 0) : 0),
+    };
+    const walls: PlacedWall[] = [];
+    for (let i = 0; i < this.roadTier.length; i++) {
+      const id = this.roadProfile[i] ?? 0;
+      if (id === 0 || isPresetProfileId(id)) continue;
+      let carries = walled.get(id);
+      if (carries === undefined) {
+        carries = this.profileById(id)?.pieces.some((p) => p.kind === 'soundWall') ?? false;
+        walled.set(id, carries);
+      }
+      if (!carries) continue;
+      const x = i % this.size;
+      const z = Math.floor(i / this.size);
+      for (const site of soundWallsAt(x, z, reader)) walls.push({ x, z, site });
+    }
+    return walls;
   }
 
   drawnProfileAt(x: number, z: number): RoadProfile | null {

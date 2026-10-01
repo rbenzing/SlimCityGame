@@ -21,6 +21,12 @@ import type {
 } from './types';
 import { TILE_METERS } from './constants';
 import { flowDirection, RoadFlow, RoadTier } from './types';
+import {
+  DEFAULT_SOUND_WALL_HEIGHT_M,
+  SOUND_WALL_BASE_WIDTH_M,
+  SOUND_WALL_HEIGHTS_M,
+  soundWallPrice,
+} from './soundwall';
 
 const data = roadsData as { classes: RoadClassSpec[]; specs: RoadSpec[] };
 
@@ -184,7 +190,8 @@ export interface RoadPrice {
 }
 
 /**
- * A road's price: the price of its size, plus what each reserved lane adds.
+ * A road's price: the price of its size, plus what each reserved lane and
+ * each sound wall adds.
  *
  * The size is the road — a four-lane street with a bus lane is a four-lane
  * street that costs a little more, not a different road that costs whatever
@@ -203,6 +210,16 @@ export function roadPriceOf(sizeSpec: RoadSpec, profile: RoadProfile): RoadPrice
     costPerTile += price.cost * n;
     upkeepPerTile += price.upkeep * n;
     unlockMilestone = Math.max(unlockMilestone, price.unlockMilestone);
+  }
+  // A corridor is charged per tile of each of its two runs, and each wall
+  // stands on one of them, so a wall's price is shared across the tiles the
+  // road spans.
+  const spans = Math.max(1, tilesAcross(profile));
+  for (const piece of profile.pieces) {
+    if (piece.kind !== 'soundWall') continue;
+    const wall = soundWallPrice(piece.height ?? DEFAULT_SOUND_WALL_HEIGHT_M);
+    costPerTile += wall.cost / spans;
+    upkeepPerTile += wall.upkeep / spans;
   }
   // Money is whole and upkeep is read to one decimal; carrying the float noise
   // would show a road costing 27.999999999999996.
@@ -963,6 +980,10 @@ export interface ProfileEdits {
   tram: TramChoice | null;
   /** Posted speed in km/h, clamped to the class range. null = as the preset has. */
   postedKmh: number | null;
+  /** Which sides of the road get a sound wall. null = as the preset has. */
+  soundWall: SideChoice | null;
+  /** The sound wall's height, metres. null = as the preset has, or the default. */
+  soundWallHeight: number | null;
 }
 
 export const NO_EDITS: ProfileEdits = {
@@ -975,6 +996,8 @@ export const NO_EDITS: ProfileEdits = {
   bus: null,
   tram: null,
   postedKmh: null,
+  soundWall: null,
+  soundWallHeight: null,
 };
 
 /**
@@ -1075,6 +1098,7 @@ export const DEFAULT_PIECE_WIDTHS: Readonly<Record<LanePieceKind, number>> = {
   shoulder: 1.5,
   sidewalk: 1.9,
   verge: 0,
+  soundWall: SOUND_WALL_BASE_WIDTH_M,
 };
 
 /** Pieces that make up the road proper; everything outside them is an edge. */
@@ -1104,6 +1128,8 @@ export interface ResolvedEdits {
   bus: SideChoice;
   tram: TramChoice;
   postedKmh: number;
+  soundWall: SideChoice;
+  soundWallHeight: number;
 }
 
 /** The travel lanes a profile carries forward; on a one-way road, all of them. */
@@ -1187,6 +1213,9 @@ export function editsOf(profile: RoadProfile): ResolvedEdits {
         ? 'turn'
         : 'none',
     postedKmh: profile.postedKmh ?? roadClass(profile.class).postedKmh.default,
+    soundWall: choice('soundWall'),
+    soundWallHeight:
+      profile.pieces.find((p) => p.kind === 'soundWall')?.height ?? DEFAULT_SOUND_WALL_HEIGHT_M,
   };
 }
 
@@ -1321,6 +1350,8 @@ export function composeProfile(base: RoadProfile, edits: ProfileEdits): RoadProf
   // A tramway is clamped whichever way it runs: rails down a motorway's
   // running lane are no more a thing than a tram reservation on it.
   const tram = forKind('tram', edits.tram ?? current.tram, 'none');
+  const soundWall = forKind('soundWall', edits.soundWall ?? current.soundWall, 'none');
+  const soundWallHeight = edits.soundWallHeight ?? current.soundWallHeight;
 
   const first = base.pieces.findIndex((p) => CORE_KINDS.has(p.kind));
   const lastFromEnd = [...base.pieces].reverse().findIndex((p) => CORE_KINDS.has(p.kind));
@@ -1369,6 +1400,10 @@ export function composeProfile(base: RoadProfile, edits: ProfileEdits): RoadProf
   const edge = (side: 'left' | 'right'): LanePiece[] => {
     const flow = side === 'left' ? 'back' : 'fwd';
     const out: LanePiece[] = [];
+    // Outermost of all: a noise wall stands at the edge of the road's land.
+    if (hasSide(soundWall, side)) {
+      out.push({ kind: 'soundWall', width: widthOf('soundWall'), height: soundWallHeight });
+    }
     if (footways) out.push({ kind: 'sidewalk', width: widthOf('sidewalk') });
     if (hasSide(bike, side)) out.push({ kind: 'bike', width: widthOf('bike'), flow });
     if (hasSide(parking, side)) out.push({ kind: 'parking', width: widthOf('parking') });
@@ -1406,7 +1441,8 @@ export function profilesEqual(a: RoadProfile, b: RoadProfile): boolean {
       p.kind === q.kind &&
       Math.abs(p.width - q.width) < 1e-9 &&
       (p.flow ?? null) === (q.flow ?? null) &&
-      (p.tram ?? false) === (q.tram ?? false)
+      (p.tram ?? false) === (q.tram ?? false) &&
+      (p.height ?? null) === (q.height ?? null)
     );
   });
 }
@@ -1435,6 +1471,45 @@ export function layRefusal(profile: RoadProfile): string | null {
   if (!withinLaneRange(profile)) {
     const { min, max } = cls.lanes;
     return min === max ? `A ${name} runs ${min} lanes` : `A ${name} runs ${min} to ${max} lanes`;
+  }
+  return soundWallRefusal(profile);
+}
+
+/**
+ * Why a section's sound walls cannot stand where it puts them, or null. A
+ * wall is the outermost thing on its side, at one of the heights walls are
+ * built to, and it needs room: on every walled side the carriageway's
+ * half-width and the wall's base have to fit inside half a tile — on a
+ * corridor, inside the half that carries it, pushed where that half is.
+ */
+function soundWallRefusal(profile: RoadProfile): string | null {
+  const walls = profile.pieces.filter((p) => p.kind === 'soundWall');
+  if (walls.length === 0) return null;
+  const last = profile.pieces.length - 1;
+  const outermost = profile.pieces.every((p, i) => p.kind !== 'soundWall' || i === 0 || i === last);
+  if (!outermost) return 'A sound wall stands at the edge of the road';
+  const heights: readonly number[] = SOUND_WALL_HEIGHTS_M;
+  if (walls.some((w) => !heights.includes(w.height ?? Number.NaN))) {
+    return `A sound wall is ${SOUND_WALL_HEIGHTS_M.join(', ')} m tall`;
+  }
+  const halves: RoadProfile[] =
+    tilesAcross(profile) === 2
+      ? [corridorHalfProfile(profile, 'left'), corridorHalfProfile(profile, 'right')]
+      : [profile];
+  const edge = TILE_METERS / 2 + 1e-6;
+  for (const half of halves) {
+    const shift = carriagewayShiftOf(half);
+    const reach = carriagewayHalfWidthOf(half);
+    const first = half.pieces[0];
+    const end = half.pieces[half.pieces.length - 1];
+    const lowWall = first?.kind === 'soundWall' ? first.width : 0;
+    const highWall = end?.kind === 'soundWall' ? end.width : 0;
+    if (
+      (lowWall > 0 && reach + lowWall - shift > edge) ||
+      (highWall > 0 && reach + highWall + shift > edge)
+    ) {
+      return 'No room beside the carriageway for a sound wall';
+    }
   }
   return null;
 }

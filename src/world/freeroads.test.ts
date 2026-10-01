@@ -35,6 +35,7 @@ import {
   splitSegment,
 } from './freeroads';
 import { RoadNetwork } from './roadgraph';
+import { composeProfile, NO_EDITS, presetProfileForTier } from '../shared/roadprofile';
 
 const SIZE = 48;
 const noCustom = (): null => null;
@@ -158,6 +159,22 @@ describe('roads off the grid: what is refused', () => {
       control: at(300, 100),
     });
     expect(r).toMatchObject({ ok: false, reason: expect.stringMatching(/200 m radius/) });
+  });
+
+  it('refuses a motorway carrying a sound wall, which stands only along a road on the grid', () => {
+    const walled = composeProfile(presetProfileForTier(RoadTier.Highway), {
+      ...NO_EDITS,
+      soundWall: 'right',
+      soundWallHeight: 4.5,
+    });
+    const g = world();
+    const ask = request({ tier: RoadTier.Highway, a: at(100, 100), b: at(400, 300) });
+    const r = planSegment(g, g.roads!, { ...ask, profileId: 13 }, (id) =>
+      id === 13 ? walled : null,
+    );
+    expect(r).toEqual({ ok: false, reason: 'A sound wall goes only along a road on the grid' });
+    // The same road without one is fine.
+    expect(planSegment(g, g.roads!, ask, noCustom).ok).toBe(true);
   });
 
   it('refuses a road shorter than half a tile', () => {

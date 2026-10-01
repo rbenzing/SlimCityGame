@@ -37,6 +37,7 @@
 
 import { FieldId, type GraphEdge, type GridState } from '../shared/types';
 import { MAP_SIZE, MAP_TILES, inBounds, tileIndex } from '../shared/constants';
+import { OPEN_EDGE, type NoiseWalls } from '../shared/soundwall';
 
 // --- shared blend weights (numerator / 256) ---------------------------------
 const SELF_NUM = 154;
@@ -89,9 +90,16 @@ const HAPPINESS_OFFSET = 5;
 export class FieldSim {
   /** Reusable double-buffer for diffusion passes; sized once, never reallocated. */
   private readonly scratch: Uint8Array;
+  /** The sound walls noise diffuses across; null while no road carries one. */
+  private noiseWalls: NoiseWalls | null = null;
 
   constructor() {
     this.scratch = new Uint8Array(MAP_TILES);
+  }
+
+  /** Hands the field the walls noise now has to cross; null where there are none. */
+  setNoiseWalls(walls: NoiseWalls | null): void {
+    this.noiseWalls = walls;
   }
 
   /** Saturating add at the source tile. No-op if (x, z) is out of bounds. */
@@ -111,6 +119,8 @@ export class FieldSim {
       if (tickNo % sched.period !== sched.offset) continue;
       if (sched.field === FieldId.LandValue) {
         this.applyLandValueDecay(g, sched.decayNum);
+      } else if (sched.field === FieldId.Noise && this.noiseWalls) {
+        this.applyWalledDecay(g.fields[sched.field]!, sched.decayNum, this.noiseWalls);
       } else {
         this.applyPlainDecay(g.fields[sched.field]!, sched.decayNum);
       }
@@ -172,6 +182,33 @@ export class FieldSim {
         scratch[i] = clampByte((blended * decayNum) >> 8);
       }
     }
+  }
+
+  /**
+   * The kernel with walls in it. A neighbour across an edge that passes `t`
+   * of 256 counts as `self + (neighbour − self) × t / 256`, truncated toward
+   * zero, so the flow between two tiles is scaled the same from either side
+   * and the blend still conserves what it moves; at `t = 0` the edge is the
+   * map's own edge.
+   */
+  private applyWalledDecay(field: Uint8Array, decayNum: number, walls: NoiseWalls): void {
+    const scratch = this.scratch;
+    const across = (self: number, other: number, t: number): number =>
+      t >= OPEN_EDGE ? other : self + ((((other - self) * t) / OPEN_EDGE) | 0);
+    for (let z = 0; z < MAP_SIZE; z++) {
+      for (let x = 0; x < MAP_SIZE; x++) {
+        const i = tileIndex(x, z);
+        const self = field[i]!;
+        const west = x > 0 ? across(self, field[i - 1]!, walls.east[i - 1]!) : self;
+        const east = x < MAP_SIZE - 1 ? across(self, field[i + 1]!, walls.east[i]!) : self;
+        const north = z > 0 ? across(self, field[i - MAP_SIZE]!, walls.south[i - MAP_SIZE]!) : self;
+        const south = z < MAP_SIZE - 1 ? across(self, field[i + MAP_SIZE]!, walls.south[i]!) : self;
+        const neighborAvg = (west + east + north + south) >> 2;
+        const blended = (SELF_NUM * self + NEI_NUM * neighborAvg) >> 8;
+        scratch[i] = clampByte((blended * decayNum) >> 8);
+      }
+    }
+    field.set(scratch);
   }
 
   /** Plain diffuse-and-decay: run the kernel, then copy the result back. */

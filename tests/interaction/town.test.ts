@@ -5,6 +5,9 @@ import type { BuildingInstance, GridState, TransitMode } from '../../src/shared/
 import { SoilGrade, soilGrades } from '../../src/shared/soil';
 import { decodeSave } from '../../src/app/persist';
 import { loadGrid } from '../../src/world/roadnet';
+import { noiseWallsOf } from '../../src/world/noisewalls';
+import { isPresetProfileId, presetProfileForTier } from '../../src/shared/roadprofile';
+import { noiseTransmission, OPEN_EDGE } from '../../src/shared/soundwall';
 import {
   catalog,
   entryOf,
@@ -24,6 +27,7 @@ import {
   buildTown,
   growTown,
   townMap,
+  WALLED_MOTORWAY_PROFILE_ID,
   type BuiltTown,
 } from '../support/town';
 import { guardRoadNetwork } from '../support/guard';
@@ -128,6 +132,22 @@ describe('a small town, built and grown, as the regression for everything togeth
       .filter(([, tier]) => tier !== RoadTier.None && !laid.has(tier))
       .map(([name]) => name);
     expect(missing).toEqual([]);
+  });
+
+  it('walls the motorway past the town, and the saved town still knows where its walls stand', () => {
+    const tile = tileIndex(TOWN.motorway.x, 120);
+    expect(grid.roadProfile[tile]).toBe(WALLED_MOTORWAY_PROFILE_ID);
+    const saved = new Map(
+      decodeSave(saveNow(town)).meta.roadProfiles!.map((p) => [p.id, p.profile] as const),
+    );
+    const walls = noiseWallsOf(grid, (id) =>
+      isPresetProfileId(id) ? presetProfileForTier(id as RoadTier) : (saved.get(id) ?? null),
+    )!;
+    // Drawn south, the motorway's left is to the east: both sides are walled.
+    expect(walls.east[tile]).toBe(noiseTransmission(4.5));
+    expect(walls.east[tile - 1]).toBe(noiseTransmission(4.5));
+    // North of where the wall starts, the motorway runs unwalled.
+    expect(walls.east[tileIndex(TOWN.motorway.x, 70)]).toBe(OPEN_EDGE);
   });
 
   it('opens the six-lane road’s median where main street crosses it, and nowhere else', () => {

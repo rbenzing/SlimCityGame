@@ -1,5 +1,11 @@
 import { MAP_SIZE, tileIndex } from '../../src/shared/constants';
 import { RoadTier, ZoneType } from '../../src/shared/types';
+import {
+  composeProfile,
+  FIRST_CUSTOM_PROFILE_ID,
+  NO_EDITS,
+  presetProfileForTier,
+} from '../../src/shared/roadprofile';
 import type { Command, CommandAck, MapData, TilePoint } from '../../src/shared/types';
 import { ClientGridMirror } from '../../src/app/clientgrid';
 import {
@@ -13,6 +19,14 @@ import {
   sixLaneCommands,
   type Harness,
 } from './sim';
+
+/** The motorway's own section with a 4.5 m sound wall each side; the six-lane road takes the first id. */
+export const WALLED_MOTORWAY_PROFILE_ID = FIRST_CUSTOM_PROFILE_ID + 1;
+export const WALLED_MOTORWAY = composeProfile(presetProfileForTier(RoadTier.Highway), {
+  ...NO_EDITS,
+  soundWall: 'both',
+  soundWallHeight: 4.5,
+});
 
 /**
  * The small town every interaction regression grows: every road type, every
@@ -37,7 +51,8 @@ import {
  *              power line down from the avenue's end and along it, and by no
  *              road, so no water main reaches it
  *   x  90      the avenue, z 44–150, joining the rest
- *   x 150      the motorway, z 60–160, southbound, fed by a ramp at x 151
+ *   x 150      the motorway, z 60–160, southbound, fed by a ramp at x 151,
+ *              walled both sides from z 80 down past the town
  */
 export const TOWN_SEED = 1337;
 
@@ -65,6 +80,7 @@ export const TOWN = {
   fourLane: { z: 130, x0: 50, x1: 130 },
   dirt: { z: 160, x0: 50, x1: 130 },
   motorway: { x: 150, z0: 60, z1: 160 },
+  soundWall: { z0: 80 },
   ramp: { x: 151, z0: 58, z1: 62 },
   rampRoad: { z: 57, x0: 130, x1: 151 },
   busStopWest: { x: 52, z: 101 },
@@ -269,6 +285,19 @@ export function townSteps(): TownStep[] {
           kind: 'buildRoad',
           tier: RoadTier.Ramp,
           tiles: column(t.ramp.x, t.ramp.z0, span(t.ramp.z0, t.ramp.z1)),
+        },
+      ],
+    },
+    {
+      label: 'a sound wall along the motorway past the town, laid over it with Replace',
+      commands: [
+        { kind: 'defineRoadProfile', id: WALLED_MOTORWAY_PROFILE_ID, profile: WALLED_MOTORWAY },
+        {
+          kind: 'buildRoad',
+          tier: RoadTier.Highway,
+          tiles: column(t.motorway.x, t.soundWall.z0, span(t.soundWall.z0, t.motorway.z1)),
+          profile: WALLED_MOTORWAY_PROFILE_ID,
+          replace: true,
         },
       ],
     },

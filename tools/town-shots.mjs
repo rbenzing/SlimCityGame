@@ -88,6 +88,8 @@ await camera(70, 164, 700, Math.PI / 5, 0.85);
 await shot('07-farms');
 await camera(148, 60, 600, -Math.PI / 4, 0.8);
 await shot('08-motorway-ramp');
+await camera(150, 84, 160, -Math.PI / 4, 0.55);
+await shot('08b-motorway-sound-wall');
 await camera(95, 148, 600, Math.PI / 4, 0.85);
 await shot('09-airfield');
 await hook(() => window.__slimcity.setOverlay('trash'));
