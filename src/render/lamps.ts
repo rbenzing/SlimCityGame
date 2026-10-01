@@ -181,6 +181,8 @@ export type LampRoadTile = TilePoint & {
    * power network gets the lamps it always got.
    */
   powered?: boolean;
+  /** A corner of a compact roundabout, whose tile is its ring: no lamp stands in it. */
+  ring?: true;
 };
 
 /**
@@ -245,6 +247,8 @@ export function computeLampPlacements(
   for (const tile of roadTiles) {
     // Gravel/dirt tiles carry no lamp but stay in tileSet for neighbor orientation.
     if (!tierGetsLamp(tile.tier)) continue;
+    // Nor does a corner of a roundabout, where the pole would stand in the ring.
+    if (tile.ring) continue;
     // Nor does a street the grid has not reached. An unsupplied street simply
     // has no lamps, which is how a player reads coverage off the night city
     // and how a brownout announces itself. Same as above: the tile stays in

@@ -39,7 +39,14 @@ import {
   isLaneGlyphTile,
   LANE_GLYPH_PERIOD_TILES,
   SIDEWALK_WIDTH_M,
+  roundaboutQuarterVertices,
+  type RingLeg,
 } from './roadsmesh';
+import {
+  RING_APRON_WIDTH_M,
+  RING_OUTER_RADIUS_M,
+  RING_ROADWAY_WIDTH_M,
+} from '../shared/roundabout';
 import type { NeighborHalves, NeighborTiers } from './roadsmesh';
 import { RoadFlow, RoadTileDelta, RoadTier, storedFlow } from '../shared/types';
 import type { JunctionControl, RoadProfile } from '../shared/types';
@@ -4662,5 +4669,104 @@ describe('RoadMeshRenderer — an approach meeting its overpass', () => {
         if (onOverpassLine) expect(pos.getY(i), `at x ${tx.toFixed(2)}`).toBeGreaterThan(3);
       }
     }
+  });
+});
+
+describe('a compact roundabout', () => {
+  // The block whose north-west tile is (20, 20); its ring is centred on the
+  // corner the four tiles share.
+  const block = { x: 20, z: 20 };
+  const centre = { x: 21 * TILE_METERS, z: 21 * TILE_METERS };
+  const asphalt: readonly [number, number, number] = [0.3, 0.3, 0.32];
+  /** A two-lane street into the ring on `side`, its arriving half the driver's right. */
+  const street = (side: RoadFlow, entering: RingLeg['entering'], leaving = true): RingLeg => ({
+    side,
+    half: 3.75,
+    kerb: 1.875,
+    entering,
+    leaving,
+  });
+  // The north-west tile's west leg is driven east, whose right is south; its
+  // north leg is driven south, whose right is west.
+  const west = street(RoadFlow.West, { from: 0, to: 3.75 });
+  const north = street(RoadFlow.North, { from: -3.75, to: 0 });
+  const drawn = (x: number, z: number, legs: RingLeg[]) =>
+    roundaboutQuarterVertices(x, z, { block, legs }, flatHeightAt, asphalt, true);
+  const points = (
+    d: { positions: number[]; colors: number[] },
+    pred: (c: readonly number[]) => boolean,
+  ) => {
+    const pos = toTriples(d.positions);
+    return toTriples(d.colors).flatMap((c, i) => (pred(c) ? [pos[i]!] : []));
+  };
+  const radius = (p: readonly number[]): number => Math.hypot(p[0]! - centre.x, p[2]! - centre.z);
+
+  it('draws its quarter of the ring inside its own tile, island, apron and roadway', () => {
+    const d = drawn(20, 20, [west, north]);
+    for (const p of toTriples(d.positions)) {
+      expect(p[0]!).toBeGreaterThanOrEqual(20 * TILE_METERS - 1e-6);
+      expect(p[0]!).toBeLessThanOrEqual(21 * TILE_METERS + 1e-6);
+      expect(p[2]!).toBeGreaterThanOrEqual(20 * TILE_METERS - 1e-6);
+      expect(p[2]!).toBeLessThanOrEqual(21 * TILE_METERS + 1e-6);
+    }
+    const island = RING_OUTER_RADIUS_M - RING_ROADWAY_WIDTH_M - RING_APRON_WIDTH_M;
+    const grass = points(d, isMedianGrass);
+    expect(grass.length).toBeGreaterThan(0);
+    for (const p of grass) expect(radius(p)).toBeLessThanOrEqual(island + 1e-6);
+    // Nothing on the ring is painted but the yield lines, outside its edge.
+    const paint = points(d, isMarkingWhite);
+    expect(paint.length).toBeGreaterThan(0);
+    for (const p of paint) {
+      expect(radius(p)).toBeGreaterThanOrEqual(RING_OUTER_RADIUS_M);
+      expect(radius(p)).toBeLessThan(RING_OUTER_RADIUS_M + 1.5);
+    }
+  });
+
+  it('gives way across every road into it, and only those', () => {
+    const both = points(drawn(20, 20, [west, north]), isMarkingWhite).length;
+    const one = points(drawn(20, 20, [west]), isMarkingWhite).length;
+    expect(one).toBeGreaterThan(0);
+    expect(both).toBeGreaterThan(one);
+    // A corner no road comes into paints nothing, and a road only leaving the
+    // ring gives way to nothing.
+    expect(points(drawn(21, 21, []), isMarkingWhite)).toHaveLength(0);
+    expect(points(drawn(20, 20, [street(RoadFlow.West, null)]), isMarkingWhite)).toHaveLength(0);
+  });
+
+  it('puts a splitter island between a two-way road’s directions, and none on a one-way road', () => {
+    const outside = (d: { positions: number[]; colors: number[] }): number =>
+      points(d, isConcreteBand).filter((p) => radius(p) > RING_OUTER_RADIUS_M).length;
+    expect(outside(drawn(20, 20, [west]))).toBeGreaterThan(0);
+    expect(outside(drawn(20, 20, [street(RoadFlow.West, { from: -3.75, to: 3.75 }, false)]))).toBe(
+      0,
+    );
+  });
+
+  it('is drawn in place of the four junctions once the world says the block is a roundabout', () => {
+    const scene = new THREE.Scene();
+    const renderer = new RoadMeshRenderer(scene, flatHeightAt);
+    renderer.apply([
+      makeDelta(20, 20, RoadTier.TwoLane, N | E | S | W),
+      makeDelta(21, 20, RoadTier.TwoLane, E | S | W),
+      makeDelta(20, 21, RoadTier.TwoLane, N | E | S),
+      makeDelta(21, 21, RoadTier.TwoLane, N | W),
+      makeDelta(19, 20, RoadTier.TwoLane, E | W),
+      makeDelta(22, 20, RoadTier.TwoLane, E | W),
+      makeDelta(20, 19, RoadTier.TwoLane, N | S),
+      makeDelta(20, 22, RoadTier.TwoLane, N | S),
+    ]);
+    const grass = (): number =>
+      scene.children
+        .filter((c): c is THREE.Mesh => c instanceof THREE.Mesh)
+        .reduce(
+          (n, m) =>
+            n + countWhere(Array.from(m.geometry.getAttribute('color').array), isMedianGrass),
+          0,
+        );
+    expect(grass()).toBe(0);
+    renderer.setRoundabouts([block]);
+    expect(grass()).toBeGreaterThan(0);
+    renderer.setRoundabouts([]);
+    expect(grass()).toBe(0);
   });
 });

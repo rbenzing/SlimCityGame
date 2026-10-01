@@ -90,6 +90,13 @@ import {
   type InterchangeGround,
   type InterchangeLayout,
 } from '../shared/interchange';
+import {
+  blockTiles,
+  roundaboutAtJunction,
+  roundaboutCommands,
+  type RoundaboutGround,
+  type RoundaboutPlan,
+} from '../shared/roundabout';
 import { atOneLevel, bitToward, crossingShape, overpassRise } from '../shared/overpass';
 
 /**
@@ -236,6 +243,11 @@ export interface ToolEnv {
    */
   interchangeGround?(): InterchangeGround;
   /**
+   * The grid as a roundabout's site reads it. Optional: without it the
+   * Roundabout tool previews nothing and lays nothing.
+   */
+  roundaboutGround?(): RoundaboutGround;
+  /**
    * The neighbour mask of an existing road tile: which sides it is joined on.
    * What tells a road running straight across a drag from a junction, and a
    * pair of carriageways from a crossroads. Optional: without it no crossing
@@ -357,6 +369,9 @@ export interface InterchangeOptions {
   form: InterchangeForm;
   streetTier: RoadTier;
 }
+
+/** The name a compact roundabout is laid, and undone, under. */
+export const ROUNDABOUT_LABEL = 'Compact roundabout';
 
 /** The name an interchange of each form is laid, and undone, under. */
 export const INTERCHANGE_LABEL: Readonly<Record<InterchangeForm, string>> = {
@@ -775,6 +790,8 @@ export class ToolManager {
   private hoverTile: TilePoint | null = null;
   /** The road end the hover tile was snapped to, when it was. */
   private hoverEnd: CmPoint | null = null;
+  /** Where on the ground the pointer is, for a tool that asks which part of the tile it is over. */
+  private hoverPoint: CmPoint | null = null;
   private dragStart: TilePoint | null = null;
   /** The road end the drag started on, when it started on one. */
   private dragStartEnd: CmPoint | null = null;
@@ -1235,6 +1252,7 @@ export class ToolManager {
     const { tile, end } = this.dragAt(sx, sy);
     this.hoverTile = tile;
     this.hoverEnd = end;
+    this.hoverPoint = this._tool === 'roundabout' ? this.cursorCm(sx, sy) : null;
     this.dragStart = tile;
     this.dragStartEnd = end;
     this.armed = tile !== null;
@@ -1261,6 +1279,7 @@ export class ToolManager {
     const { tile, end } = this.dragAt(sx, sy);
     this.hoverTile = tile;
     this.hoverEnd = end;
+    this.hoverPoint = this._tool === 'roundabout' ? this.cursorCm(sx, sy) : null;
     if (this.freeDragStart) this.curveCursor = this.cursorCm(sx, sy) ?? this.curveCursor;
     if (tile) {
       if (
@@ -1742,6 +1761,10 @@ export class ToolManager {
       this.emitInterchangePreview(current);
       return;
     }
+    if (tool === 'roundabout') {
+      this.env.onPreview(this.judgeRoundabout(current)?.preview ?? null);
+      return;
+    }
     if (isTerraformTool(tool)) {
       this.emitTerraformPreview(current);
       return;
@@ -2013,8 +2036,59 @@ export class ToolManager {
     this.env.onPreview(this.judgeInterchange(at)?.preview ?? null);
   }
 
+  /**
+   * The compact roundabout the Roundabout tool would lay at the junction `at`,
+   * on the quarter of the tile the pointer is over, and whether it may be laid:
+   * the site's refusal first, then the milestone and the funds the road it
+   * lays is judged by. The corner tiles it lays are the junction's own road.
+   */
+  private judgeRoundabout(at: TilePoint): {
+    preview: ToolPreview;
+    plan: RoundaboutPlan;
+    tier: RoadTier;
+    profile?: number;
+  } | null {
+    const ground = this.env.roundaboutGround?.();
+    if (!ground) return null;
+    const p = this.hoverPoint;
+    const east = p ? p.x / 100 >= (at.x + 0.5) * TILE_METERS : true;
+    const south = p ? p.z / 100 >= (at.z + 0.5) * TILE_METERS : true;
+    const plan = roundaboutAtJunction(at, east, south, ground);
+    const tier = ground.roadAt(at.x, at.z)?.tier ?? RoadTierValue.TwoLane;
+    const spec = this.env.roadSpec(tier);
+    const cost = plan.toLay.length * spec.costPerTile;
+    const tiles = blockTiles(plan.block);
+    const judged = this.evaluate(
+      tiles,
+      cost,
+      plan.toLay.length > 0 ? spec.unlockMilestone : 0,
+      true,
+    );
+    const reason = plan.refusal ?? judged.invalidReason;
+    const id = this.env.roadProfileIdAt?.(at) ?? 0;
+    const preview: ToolPreview = {
+      tiles,
+      valid: plan.refusal === null && judged.valid,
+      cost,
+      label: ROUNDABOUT_LABEL,
+      ...(reason !== undefined ? { invalidReason: reason } : {}),
+    };
+    return { preview, plan, tier, ...(id !== 0 && id !== tier ? { profile: id } : {}) };
+  }
+
   private commit(start: TilePoint, end: TilePoint): void {
     const tool = this._tool;
+    if (tool === 'roundabout') {
+      // Asked again as it is laid, and nothing sent unless all of it can be.
+      const judged = this.judgeRoundabout(end);
+      if (judged?.preview.valid) {
+        this.env.send(
+          ROUNDABOUT_LABEL,
+          roundaboutCommands(judged.plan, judged.tier, judged.profile),
+        );
+      }
+      return;
+    }
     if (tool === 'interchange') {
       // Asked again as it is laid, and nothing sent unless all of it can be:
       // a batch the world refused partway would leave half an interchange.

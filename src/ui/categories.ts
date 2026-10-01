@@ -117,6 +117,18 @@ function interchangeCard(): AssetCard[] {
     : [];
 }
 
+/**
+ * The Roundabout tool: a compact roundabout laid on a street junction, so it
+ * unlocks with the streets it serves. Like the interchange it costs only the
+ * road it lays, which the cursor quotes before the click.
+ */
+function roundaboutCard(): AssetCard[] {
+  const street = roadSpecs.find((s) => s.tier === RoadTierValue.TwoLane);
+  return street
+    ? [{ id: 'roundabout', name: 'Roundabout', cost: 0, unlockMilestone: street.unlockMilestone }]
+    : [];
+}
+
 function catalogCards(predicate: (entry: BuildingCatalogEntry) => boolean): AssetCard[] {
   return catalog.filter(predicate).map((entry) => ({
     id: `plop.${entry.id}` as ToolId,
@@ -264,6 +276,8 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
         ...roadCard(RoadTierValue.Alley),
         ...roadCard(RoadTierValue.TwoLane),
         ...roadCard(RoadTierValue.OneWay),
+        // A compact roundabout takes streets of one lane each way, which are these.
+        ...roundaboutCard(),
       ],
     },
     {

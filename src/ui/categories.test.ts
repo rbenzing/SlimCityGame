@@ -83,6 +83,7 @@ describe('subTabsFor', () => {
       'road.alley',
       'road.two',
       'road.oneway',
+      'roundabout',
     ]);
     expect(tabs.find((t) => t.id === 'medium')?.cards.map((c) => c.id)).toEqual([
       'road.four',

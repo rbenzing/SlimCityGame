@@ -533,6 +533,21 @@ export type Command =
       allowed: number | null;
     }
   /**
+   * Makes the 2×2 block whose north-west tile is (x, z) a compact roundabout:
+   * the roundabout control on its four tiles, and no turn or lane restriction
+   * on any of them. Rejected unless the block is a roundabout's site
+   * (`roundaboutRefusal`). Inverse: `removeRoundabout` carrying what the four
+   * tiles held before.
+   */
+  | { kind: 'buildRoundabout'; x: number; z: number }
+  /**
+   * Takes out the compact roundabout whose north-west tile is (x, z), writing
+   * `junctions` to its four tiles (north-west, north-east, south-west,
+   * south-east), or clearing all four when it is absent. Rejected unless a
+   * compact roundabout stands there. Inverse: `buildRoundabout`.
+   */
+  | { kind: 'removeRoundabout'; x: number; z: number; junctions?: RoundaboutJunction[] }
+  /**
    * Clears road/building/zone/trees. On a crossing tile it takes only the road
    * passing over, the one on top; `layer: 'over'` asks for exactly that and
    * nothing else on any tile.
@@ -889,6 +904,11 @@ export interface SimSnapshot {
     laneTurns?: number[];
   }[];
   /**
+   * Every compact roundabout, by the north-west tile of its block. The whole
+   * list travels whenever any of it changes; absent means nothing has.
+   */
+  roundabouts?: TilePoint[];
+  /**
    * How hard each service kind is being leaned on (see ServiceLoad): ten
    * numbers, cheap at the snapshot rate, and the only thing that makes a
    * capacity readable. Optional: a mirror that does not understand it ignores
@@ -1184,6 +1204,17 @@ export interface RoadSpec {
  */
 export type JunctionControl = 'none' | 'yield' | 'stop' | 'allWayStop' | 'signal' | 'roundabout';
 
+/**
+ * What the player has said about one junction tile: its control override, or
+ * null where the warrant decides, its turn restrictions packed a nibble per
+ * arm, and its lanes', one packed value per arm in the cardinals' order.
+ */
+export interface RoundaboutJunction {
+  control: JunctionControl | null;
+  turns: number;
+  laneTurns: number[];
+}
+
 export interface GraphNode {
   id: number;
   x: number;
@@ -1212,6 +1243,8 @@ export interface GraphNode {
    * the approach derives for it.
    */
   laneTurns?: readonly number[];
+  /** A corner of a compact roundabout, where its ring meets its legs. */
+  ring?: boolean;
 }
 
 export interface GraphEdge {
@@ -1273,6 +1306,11 @@ export interface GraphEdge {
    * tile rather than the road on it. Absent on a run that crosses nothing.
    */
   overTiles?: number[];
+  /**
+   * A stretch of a compact roundabout's ring: driven one way round, on the
+   * circle, by traffic an entering driver gives way to.
+   */
+  circulating?: boolean;
 }
 
 export interface PathResult {
@@ -1345,6 +1383,8 @@ export type ToolId =
   | 'road.ramp'
   // A whole motorway interchange, stamped onto a motorway already laid.
   | 'interchange'
+  // A compact roundabout, stamped onto a street junction already laid.
+  | 'roundabout'
   // Power: string a run of line, to reach what a road cannot.
   | 'power.line'
   | 'zone.resLow'

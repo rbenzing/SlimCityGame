@@ -122,6 +122,18 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   is the one that rebuilds the junction: an island with a planted centre, a
   painted apron a lorry can track over, and a line of give-way triangles
   across every entry. It is quick until it fills up, and then it is not.
+  That one fits on a single tile. For a proper **compact roundabout**, take
+  the Roundabout card from the Small tab of the road drawer and point at a
+  junction: it previews a ring 36 m across on the two-by-two block of tiles
+  the pointer is nearest, laying the corner the junction is missing, and one
+  click lays it. Traffic goes round it one way, anticlockwise, every road into
+  it gives way at its edge behind a splitter island, and a left turn is the
+  three-quarters of the ring it really is. It takes streets of one lane each
+  way, three or four of them, one to a side, on ground no steeper than 4%.
+  The roads all come in half a tile off the ring's centre; jog each one a tile
+  before the ring, so it comes in to the left of the centre as drivers see it,
+  and you have the pinwheel the guides prefer. Click any of its tiles to take
+  it out again.
   On a road wide enough to have more than one lane in each direction, the last
   stretch before a junction is painted with **lane arrows** — which lane may
   turn and which runs straight on. A two-lane approach shares the turns; a

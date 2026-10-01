@@ -102,6 +102,8 @@ export class ClientGridMirror {
    * volumes the render thread never sees — and this is where the answer lands.
    */
   private junctionControls = new Map<number, JunctionSnapshot>();
+  /** Tile index -> the compact roundabout it is a corner of, as the world last said. */
+  private roundabouts = new Map<number, TilePoint>();
 
   constructor(map: MapData, seed = 0) {
     this.size = map.size;
@@ -210,6 +212,29 @@ export class ClientGridMirror {
       });
     this.junctionControls = next;
     return !same;
+  }
+
+  /** Replaces the mirror's compact roundabouts with the worker's full list, each by its north-west tile. */
+  applyRoundabouts(blocks: readonly TilePoint[]): void {
+    const next = new Map<number, TilePoint>();
+    for (const b of blocks) {
+      const block = { x: b.x, z: b.z };
+      for (const [dx, dz] of [
+        [0, 0],
+        [1, 0],
+        [0, 1],
+        [1, 1],
+      ] as const) {
+        if (this.inBounds(b.x + dx, b.z + dz)) next.set(this.idx(b.x + dx, b.z + dz), block);
+      }
+    }
+    this.roundabouts = next;
+  }
+
+  /** The compact roundabout (x, z) is a corner of, by its north-west tile, or null. */
+  roundaboutAt(x: number, z: number): TilePoint | null {
+    if (!this.inBounds(x, z)) return null;
+    return this.roundabouts.get(this.idx(x, z)) ?? null;
   }
 
   /**
@@ -607,6 +632,7 @@ export class ClientGridMirror {
     flow?: number;
     control?: JunctionControl;
     apart?: number;
+    ring?: true;
   })[] {
     const tiles: (TilePoint & {
       tier: RoadTier;
@@ -616,6 +642,7 @@ export class ClientGridMirror {
       flow?: number;
       control?: JunctionControl;
       apart?: number;
+      ring?: true;
     })[] = [];
     for (let z = 0; z < this.size; z++) {
       for (let x = 0; x < this.size; x++) {
@@ -642,6 +669,8 @@ export class ClientGridMirror {
           powered: (this.power[i] ?? 0) !== 0,
           ...(flow === 0 ? {} : { flow }),
           ...(apart === 0 ? {} : { apart }),
+          // A corner of a compact roundabout is its ring, which nothing stands in.
+          ...(this.roundabouts.has(i) ? { ring: true as const } : {}),
         };
         const junction = this.junctionControls.get(i);
         tiles.push(junction ? { ...tile, control: junction.control } : tile);

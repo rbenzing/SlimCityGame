@@ -42,6 +42,7 @@ import {
 } from '../world/freeroads';
 import { networkFromGrid, reconcileRoads } from '../world/roadnet';
 import { applyRoad } from '../world/roads';
+import { roundaboutGroundOf } from '../world/roundabouts';
 
 const ROAD_SPECS: Partial<Record<RoadTier, RoadSpec>> = {
   [RoadTier.TwoLane]: {
@@ -3068,6 +3069,93 @@ describe('the Interchange tool', () => {
     expect(previews.at(-1)?.invalidReason).toBe('Insufficient funds');
     tm.pointerDown(40, 50, 0);
     tm.pointerUp(40, 50, 0);
+    expect(sent).toHaveLength(0);
+  });
+});
+
+describe('the Roundabout tool', () => {
+  // A street along row 20 and one down column 20, crossing at (20, 20).
+  const crossing = () => {
+    const world = createGrid(48);
+    applyRoad(
+      world,
+      Array.from({ length: 21 }, (_, i) => ({ x: 10 + i, z: 20 })),
+      RoadTier.TwoLane,
+    );
+    applyRoad(
+      world,
+      Array.from({ length: 21 }, (_, i) => ({ x: 20, z: 10 + i })),
+      RoadTier.TwoLane,
+    );
+    return world;
+  };
+  /** The tool over `world`, with the pointer `dx`, `dz` metres into whichever tile it is over. */
+  const withRoundabout = (world = crossing(), dx = 15, dz = 15) => {
+    const made = makeEnv();
+    made.env.roundaboutGround = () =>
+      roundaboutGroundOf(
+        world,
+        () => 0,
+        () => null,
+      );
+    made.env.worldPointAt = (sx, sy) => ({ x: sx * TILE_METERS + dx, z: sy * TILE_METERS + dz });
+    const tm = new ToolManager(made.env);
+    tm.setTool('roundabout');
+    return { ...made, tm };
+  };
+
+  it('previews the block on the quarter of the junction under the pointer, priced as the road it lays', () => {
+    const { tm, previews } = withRoundabout();
+    tm.pointerMove(20, 20, 0);
+    const preview = previews.at(-1)!;
+    expect(preview).toMatchObject({ valid: true, label: 'Compact roundabout' });
+    expect(preview.tiles).toEqual([
+      { x: 20, z: 20 },
+      { x: 21, z: 20 },
+      { x: 20, z: 21 },
+      { x: 21, z: 21 },
+    ]);
+    expect(preview.cost).toBe(ROAD_SPECS[RoadTier.TwoLane]!.costPerTile);
+    const other = withRoundabout(crossing(), 5, 5);
+    other.tm.pointerMove(20, 20, 0);
+    expect(other.previews.at(-1)!.tiles[0]).toEqual({ x: 19, z: 19 });
+  });
+
+  it('lays the corner it is missing and the roundabout, as one batch', () => {
+    const { tm, sent } = withRoundabout();
+    tm.pointerMove(20, 20, 0);
+    tm.pointerDown(20, 20, 0);
+    tm.pointerUp(20, 20, 0);
+    expect(sent).toEqual([
+      {
+        label: 'Compact roundabout',
+        commands: [
+          { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: [{ x: 21, z: 21 }], elevations: [0] },
+          { kind: 'buildRoundabout', x: 20, z: 20 },
+        ],
+      },
+    ]);
+  });
+
+  it('says why off a junction, and lays nothing', () => {
+    const { tm, previews, sent } = withRoundabout();
+    tm.pointerMove(15, 20, 0);
+    expect(previews.at(-1)).toMatchObject({
+      valid: false,
+      invalidReason: 'A roundabout goes on a junction',
+    });
+    tm.pointerDown(15, 20, 0);
+    tm.pointerUp(15, 20, 0);
+    expect(sent).toHaveLength(0);
+  });
+
+  it('sends nothing it cannot pay for', () => {
+    const { tm, previews, sent, env } = withRoundabout();
+    env.funds = () => 1;
+    tm.pointerMove(20, 20, 0);
+    expect(previews.at(-1)?.invalidReason).toBe('Insufficient funds');
+    tm.pointerDown(20, 20, 0);
+    tm.pointerUp(20, 20, 0);
     expect(sent).toHaveLength(0);
   });
 });

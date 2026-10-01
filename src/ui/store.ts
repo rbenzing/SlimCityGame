@@ -107,6 +107,12 @@ export interface SelectedJunction {
    * arm whose approach the client cannot read, which shows its arm row alone.
    */
   armLaneSets?: Partial<Record<RoadFlow, number[]>>;
+  /**
+   * The compact roundabout this junction is a corner of, by its north-west
+   * tile. Its control, turns and lanes are the roundabout's, and the only
+   * thing the panel offers is taking it out.
+   */
+  roundabout?: { x: number; z: number };
 }
 
 export function createInitialToolFlags(): ToolFlags {

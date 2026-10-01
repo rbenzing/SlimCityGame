@@ -122,6 +122,54 @@ export function JunctionPanel(): JSX.Element | null {
 
   const chosen = CHOICES.find((c) => !junction.auto && c.control === junction.control);
 
+  const ring = junction.roundabout;
+  if (ring) {
+    // A corner of a compact roundabout is one junction of four tiles: its
+    // control, turns and lanes are the roundabout's, and it is taken out whole.
+    return (
+      <div className="pointer-events-none fixed left-3 top-1/3 z-10 w-80">
+        <div
+          className={`pointer-events-auto flex flex-col gap-2 p-3 text-sm text-white/92 ${PANEL_ROUNDED}`}
+          data-testid="junction-panel"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Icon name="roads" className="h-5 w-5 shrink-0 text-white/70" />
+              <div className="font-semibold">
+                Compact roundabout{' '}
+                <span className="font-normal text-white/50">
+                  · {junction.x}, {junction.z}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              aria-label="Close junction inspector"
+              onClick={() => setSelectedJunction(null)}
+              className="text-white/60 transition-colors hover:text-white"
+            >
+              <Icon name="close" className="h-4 w-4" />
+            </button>
+          </div>
+          <p className="text-xs text-white/55">
+            One lane round an island. Every road into it gives way to the traffic already on it.
+          </p>
+          <button
+            type="button"
+            onClick={() =>
+              bound?.sendCommands('Take out roundabout', [
+                { kind: 'removeRoundabout', x: ring.x, z: ring.z },
+              ])
+            }
+            className={`${CARD_RADIUS} bg-white/5 px-2 py-1.5 text-left text-white/80 transition-colors hover:bg-white/10`}
+          >
+            Take out the roundabout
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="pointer-events-none fixed left-3 top-1/3 z-10 w-80">
       <div

@@ -46,6 +46,14 @@ describe('computeLampPlacements (pure)', () => {
     expect(placements.some((p) => p.x === 4 && p.z === 4)).toBe(false);
   });
 
+  it('stands no pole on a corner of a compact roundabout, where it would stand in the ring', () => {
+    const run = strip(4, 0, 8, 'ew');
+    const lit = computeLampPlacements(run);
+    expect(lit.length).toBeGreaterThan(0);
+    const ring = computeLampPlacements(run.map((t) => ({ ...t, ring: true as const })));
+    expect(ring).toEqual([]);
+  });
+
   it('stands no pole on a street the grid has not reached — the pole goes up with the cable', () => {
     const run = strip(4, 0, 8, 'ew');
     const lit = computeLampPlacements(run.map((t) => ({ ...t, powered: true })));
