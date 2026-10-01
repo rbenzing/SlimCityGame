@@ -530,6 +530,9 @@ function surroundingsOf(tileSet: RoadTileIndex): SeparateRoadSurroundings {
     corridorHalfAt: (x, z) => corridorHalfOf(at(x, z)?.flow ?? 0),
     profileIdAt: (x, z) => at(x, z)?.profileId ?? 0,
     apartAt: (x, z) => at(x, z)?.apart ?? 0,
+    // A tile carries the half it draws, which a corridor nothing divides
+    // marks with the seam where it runs on onto the other half.
+    oneCarriagewayAt: (x, z) => at(x, z)?.profile?.seam !== undefined,
   };
   surroundings.set(tileSet, view);
   return view;

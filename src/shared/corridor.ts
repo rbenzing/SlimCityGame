@@ -121,6 +121,11 @@ export function corridorPartners(
  * beyond the far half, the two in line across the corridor. A street meeting
  * one half only leaves the median shut.
  *
+ * A corridor nothing divides (`undivided`, see `isDividedCorridor`) has no
+ * median to keep anyone from crossing it, so one road joining either half from
+ * outside opens it: a T onto it is a full junction, and the far half is held
+ * there as well.
+ *
  * `arrivesAt(tx, tz, sx, sz)` answers whether a road that is not a corridor half
  * stands at (tx + sx, tz + sz) and joins (tx, tz) by every other rule; each
  * caller answers it from its own view of the tiles, so the mask and the
@@ -132,8 +137,11 @@ export function medianOpens(
   dx: number,
   dz: number,
   arrivesAt: (tx: number, tz: number, sx: number, sz: number) => boolean,
+  undivided: boolean,
 ): boolean {
-  return arrivesAt(x, z, -dx, -dz) && arrivesAt(x + dx, z + dz, dx, dz);
+  const near = arrivesAt(x, z, -dx, -dz);
+  const far = arrivesAt(x + dx, z + dz, dx, dz);
+  return undivided ? near || far : near && far;
 }
 
 /**

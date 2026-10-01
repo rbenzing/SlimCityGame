@@ -28,8 +28,10 @@ import {
   composeProfile,
   FIRST_CUSTOM_PROFILE_ID,
   NO_EDITS,
+  oneCarriagewayIds,
   presetProfileForTier,
 } from '../../src/shared/roadprofile';
+import type { MiddleChoice } from '../../src/shared/roadprofile';
 import { corridorRunsFor } from '../../src/shared/corridor';
 import { createWorkerSim, type WorkerSim } from '../../src/sim/worker.entry';
 
@@ -203,7 +205,9 @@ export function latestSaveData(h: Harness): ArrayBuffer {
 
 /** Decodes the most recent 'save' message in the harness into a live GridState. */
 export function latestSaveGrid(h: Harness): GridState {
-  return loadGrid(decodeSave(latestSaveData(h)).grid).grid;
+  const payload = decodeSave(latestSaveData(h));
+  const table = (payload.meta.roadProfiles ?? []).map((e) => [e.id, e.profile] as const);
+  return loadGrid(payload.grid, oneCarriagewayIds(table)).grid;
 }
 
 /** Latest full-map Noise field posted by the harness, or null. */
@@ -268,9 +272,18 @@ export const column = (x: number, z0: number, count: number): TilePoint[] =>
 /**
  * The commands the road tool sends for a six-lane avenue along `path`: too wide
  * for one tile, it is laid as two carriageways side by side, one run a half.
+ * `middle` is what runs down between them: the preset's median unless said.
  */
-export function sixLaneCommands(path: TilePoint[], profileId = FIRST_CUSTOM_PROFILE_ID): Command[] {
-  const profile = composeProfile(presetProfileForTier(RoadTier.Avenue), { ...NO_EDITS, lanes: 3 });
+export function sixLaneCommands(
+  path: TilePoint[],
+  profileId = FIRST_CUSTOM_PROFILE_ID,
+  middle: MiddleChoice | null = null,
+): Command[] {
+  const profile = composeProfile(presetProfileForTier(RoadTier.Avenue), {
+    ...NO_EDITS,
+    lanes: 3,
+    middle,
+  });
   const runs = corridorRunsFor(path);
   if (!runs) throw new Error('sixLaneCommands: a corridor is a straight run');
   return [

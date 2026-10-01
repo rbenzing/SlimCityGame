@@ -93,6 +93,7 @@ import catalogData from '../data/catalog.json';
 import roadsData from '../data/roads.json';
 import {
   adoptCustomProfiles,
+  oneCarriagewayIds,
   FIRST_CUSTOM_PROFILE_ID,
   layRefusal,
   isPresetProfileId,
@@ -650,6 +651,7 @@ class SimWorld implements WorkerSim {
     this.mapName = map.name;
     this.grid = createGrid(MAP_SIZE);
     this.grid.roads = createRoadNetwork();
+    this.grid.oneCarriageway = oneCarriagewayIds(this.customRoadProfiles);
     this.grid.height.set(map.height);
     this.grid.water.set(map.water);
     this.grid.trees.set(map.trees);
@@ -695,7 +697,13 @@ class SimWorld implements WorkerSim {
     if (payload.header.version > SAVE_VERSION || payload.header.version < 1) {
       throw new Error(`loadSave: unsupported save version ${payload.header.version}`);
     }
-    const { grid, problems } = loadGrid(payload.grid);
+    // The save's own profiles say which of its corridors a street opens, and
+    // its masks are worked out from that as it loads.
+    const saved = payload.meta.roadProfiles ?? [];
+    const { grid, problems } = loadGrid(
+      payload.grid,
+      oneCarriagewayIds(saved.map((e) => [e.id, e.profile] as const)),
+    );
     reportRoadProblems('load', problems);
     if (grid.size !== MAP_SIZE) {
       throw new Error(`loadSave: grid size ${grid.size} != MAP_SIZE ${MAP_SIZE}`);
@@ -705,10 +713,8 @@ class SimWorld implements WorkerSim {
 
     this.grid = grid;
     this.roadsEdited = false;
-    this.customRoadProfiles = adoptCustomProfiles(
-      payload.meta.roadProfiles ?? [],
-      this.grid.roadProfile,
-    );
+    this.customRoadProfiles = adoptCustomProfiles(saved, this.grid.roadProfile);
+    this.grid.oneCarriageway = oneCarriagewayIds(this.customRoadProfiles);
     // Adopting can renumber a very old save's profiles on its tiles, so the
     // network takes the tiles up again before anything reads it.
     reconcileRoads(this.roads, this.grid);
@@ -1816,6 +1822,8 @@ class SimWorld implements WorkerSim {
       ...profile,
       pieces: profile.pieces.map((p) => ({ ...p })),
     });
+    // No tile carries the new id yet, so no mask has to be worked out again.
+    this.grid.oneCarriageway = oneCarriagewayIds(this.customRoadProfiles);
     this.roadProfilesChanged = true;
     return { ok: true, cost: 0, inverse: [] };
   }

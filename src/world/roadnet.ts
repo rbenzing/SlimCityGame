@@ -1126,9 +1126,13 @@ export interface LoadedGrid {
  * A save buffer's grid with its road layers derived from its road network. A
  * save from before the network existed has its roads converted from its tile
  * layers, and the derived layers are checked against the ones it held.
+ * `oneCarriageway` is the save's own `GridState.oneCarriageway`, from its
+ * profile table; without it every corridor reads as divided.
  */
-export function loadGrid(buf: ArrayBuffer): LoadedGrid {
+export function loadGrid(buf: ArrayBuffer, oneCarriageway?: ReadonlySet<number>): LoadedGrid {
   const grid = deserializeGrid(buf);
+  // Read before any mask is worked out: which corridors a street opens.
+  if (oneCarriageway) grid.oneCarriageway = oneCarriageway;
   const saved = savedRoadNetwork(buf);
   if (saved !== null) {
     const roads = decodeRoadNetwork(saved);

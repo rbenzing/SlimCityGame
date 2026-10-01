@@ -684,7 +684,25 @@ straight over both; one turning turns onto the carriageway running its way,
 crossing the first to reach the second where it must, since each half is
 driven only the way it flows. A street meeting only one half is still a T, and
 the median stays shut there: a right turn in and out, the way a median
-without a break works. The opening is read off the tiles each time the masks
+without a break works.
+
+**A T onto a corridor nothing divides is a full junction.** Where no median
+or barrier lies at a corridor's middle, nothing stops a car crossing it, so
+one street meeting either half from outside is enough: the two halves join
+across that row, and the T is two junction tiles side by side, one on each
+half. A car leaving the side street turns right onto the near half, or left
+across it onto the far half. A car on the far half turns left across the near
+half into the street. The far half is a junction, so whatever control the
+junction carries holds its traffic too. A divided corridor keeps the
+right-in, right-out T above. Whether a corridor is divided is read off its
+whole cross-section (`isDividedCorridor` in `src/shared/roadprofile.ts`),
+the same test that decides whether its halves are drawn as one carriageway.
+The world holds no profiles in the grid, so the worker hands it the ids of
+the profiles nothing divides (`GridState.oneCarriageway`, derived from the
+profile table, never saved), and a save's own table is read before its
+masks are worked out.
+
+The opening is read off the tiles each time the masks
 are worked out, never stored, so it opens when the second street arrives and
 shuts when either goes. A save keeps what its network linked, so a crossing a
 save already holds stays shut until the street is laid again.

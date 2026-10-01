@@ -69,7 +69,10 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   for one tile, so it is laid as two carriageways side by side, one each way,
   in a straight run. Draw a street across it and the median opens there, so
   traffic crosses straight over; a street meeting it from one side only turns
-  in and out with the traffic. Roads are grouped by family:
+  in and out with the traffic. Without a median nothing stops a car crossing,
+  so a street meeting it from one side is a full junction: cars turn left in
+  and out across the road, and its signal or stop signs hold both directions.
+  Roads are grouped by family:
   Small, Medium, Highway and Transit. A road normally
   refuses to become a smaller one, so a stray drag can never flatten an
   avenue; turn on **Replace** when you mean to rebuild a road as something

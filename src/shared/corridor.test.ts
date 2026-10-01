@@ -5,6 +5,7 @@ import {
   corridorRunsFor,
   corridorSplitRefusal,
   corridorTiles,
+  medianOpens,
   partnerTileOf,
   SPLITS_CORRIDOR,
   rampJoin,
@@ -346,5 +347,31 @@ describe('a bulldoze takes a corridor whole', () => {
       { x: 4, z: 4 },
     ]);
     expect(reach.ground).toEqual([]);
+  });
+});
+
+describe('where a corridor opens to a street', () => {
+  // A corridor along z in columns 4 (near) and 5 (far); a street may meet the
+  // near half from column 3, the far half from column 6.
+  const opens = (west: boolean, east: boolean, undivided: boolean): boolean =>
+    medianOpens(
+      4,
+      7,
+      1,
+      0,
+      (tx, _tz, sx) => (tx === 4 && sx === -1 ? west : tx === 5 && sx === 1 ? east : false),
+      undivided,
+    );
+
+  it('opens a divided corridor only where a street meets both halves', () => {
+    expect(opens(true, true, false)).toBe(true);
+    expect(opens(true, false, false)).toBe(false);
+    expect(opens(false, true, false)).toBe(false);
+  });
+
+  it('opens one with no median where a street meets either half', () => {
+    expect(opens(true, false, true)).toBe(true);
+    expect(opens(false, true, true)).toBe(true);
+    expect(opens(false, false, true)).toBe(false);
   });
 });

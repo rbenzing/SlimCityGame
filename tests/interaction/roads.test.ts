@@ -11,7 +11,7 @@ import type {
   TilePoint,
   WorkerToMain,
 } from '../../src/shared/types';
-import { FIRST_CUSTOM_PROFILE_ID } from '../../src/shared/roadprofile';
+import { FIRST_CUSTOM_PROFILE_ID, presetProfileForTier } from '../../src/shared/roadprofile';
 import { decodeSave, encodeSave } from '../../src/app/persist';
 import { serializeGridV12 } from '../../src/world/grid';
 import {
@@ -25,6 +25,7 @@ import { RUNS_INTO_FREE_ROAD } from '../../src/world/freeroads';
 import {
   column,
   initialized,
+  latestSaveData,
   latestSaveGrid,
   makeHarness,
   roadRow,
@@ -870,6 +871,97 @@ describe('crossing a road laid as two carriageways', () => {
     const g = grid(h);
     expect(maskAt(g, NEAR) & (EAST | WEST)).toBe(WEST);
     expect(maskAt(g, FAR) & (EAST | WEST)).toBe(0);
+  });
+
+  describe('a T onto one with no median', () => {
+    const commandsFor = (middle: 'none' | null): Command[] =>
+      sixLaneCommands(column(NEAR, 30, 40), undefined, middle);
+    const street: Command = {
+      kind: 'buildRoad',
+      tier: RoadTier.TwoLane,
+      tiles: roadRow(20, ROW, 20),
+    };
+    function undivided(): Harness {
+      const h = sandboxed();
+      expect(run(h, 1, commandsFor('none')).ok).toBe(true);
+      expect(run(h, 2, [street]).ok).toBe(true);
+      return h;
+    }
+    /** The road graph, driven the way each half's own lanes run. */
+    const carsOn = (g: GridState, middle: 'none' | null): RoadNetwork => {
+      const [define] = commandsFor(middle);
+      const profile = define!.kind === 'defineRoadProfile' ? define!.profile : null;
+      const cars = new RoadNetwork();
+      cars.setProfileResolver((id) =>
+        id === FIRST_CUSTOM_PROFILE_ID ? profile : presetProfileForTier(id as RoadTier),
+      );
+      cars.rebuild(g);
+      return cars;
+    };
+    /** Which of a tile north and south of the T on each half a car from the street can reach. */
+    const reachable = (g: GridState, middle: 'none' | null = 'none'): string[] => {
+      const cars = carsOn(g, middle);
+      return [NEAR, FAR].flatMap((x) =>
+        [ROW - 10, ROW + 10]
+          .filter((z) => cars.findPath({ x: 20, z: ROW }, { x, z }) !== null)
+          .map((z) => `${x === NEAR ? 'near' : 'far'} ${z < ROW ? 'north' : 'south'}`),
+      );
+    };
+
+    it('joins both halves across the T, so the far half is a junction too', () => {
+      const g = grid(undivided());
+      expect(maskAt(g, NEAR) & (EAST | WEST)).toBe(EAST | WEST);
+      expect(maskAt(g, FAR) & (EAST | WEST)).toBe(WEST);
+      // Only on the T's row: either side of it each half is a straight run.
+      for (const z of [ROW - 1, ROW + 1]) {
+        expect(g.roadMask[tileIndex(NEAR, z)]).toBe(1 | 4);
+        expect(g.roadMask[tileIndex(FAR, z)]).toBe(1 | 4);
+      }
+    });
+
+    it('lets a car leave the street either way, turning left across the near half', () => {
+      const ways = reachable(grid(undivided()));
+      expect(ways).toHaveLength(2);
+      expect(ways.some((w) => w.endsWith('north'))).toBe(true);
+      expect(ways.some((w) => w.endsWith('south'))).toBe(true);
+    });
+
+    it('lets one on the far half turn left into the street', () => {
+      const cars = carsOn(grid(undivided()), 'none');
+      const from = [ROW - 10, ROW + 10].map((z) => cars.findPath({ x: FAR, z }, { x: 20, z: ROW }));
+      expect(from.some((p) => p !== null)).toBe(true);
+    });
+
+    it('turns right only, in and out, on one with a median', () => {
+      const h = sixLane();
+      run(h, 2, [street]);
+      const ways = reachable(grid(h), null);
+      expect(ways).toHaveLength(1);
+      expect(ways[0]!.startsWith('near')).toBe(true);
+      const cars = carsOn(grid(h), null);
+      const from = [ROW - 10, ROW + 10].map((z) => cars.findPath({ x: FAR, z }, { x: 20, z: ROW }));
+      expect(from.every((p) => p === null)).toBe(true);
+    });
+
+    it('stays open through a save and a load', () => {
+      const h = undivided();
+      const before = grid(h);
+      h.sim.handleMessage({ type: 'requestSave' });
+      const fresh = sandboxed();
+      fresh.sim.handleMessage({ type: 'loadSave', data: latestSaveData(h) });
+      fresh.ticks(1);
+      const after = grid(fresh);
+      expect(maskAt(after, FAR)).toBe(maskAt(before, FAR));
+      expect(maskAt(after, NEAR)).toBe(maskAt(before, NEAR));
+    });
+
+    it('shuts again when the street is bulldozed, and opens on undo', () => {
+      const h = undivided();
+      const dozed = run(h, 3, [{ kind: 'bulldoze', tiles: roadRow(20, ROW, 20) }]);
+      expect(maskAt(grid(h), FAR) & WEST).toBe(0);
+      expect(run(h, 4, dozed.inverse).ok).toBe(true);
+      expect(maskAt(grid(h), FAR) & WEST).toBe(WEST);
+    });
   });
 
   it('shuts the median again when the street beyond it is bulldozed, and opens it on undo', () => {

@@ -14,6 +14,7 @@
 import { armAllowed, MAX_APPROACH_ZONE_TILES, movementsOffered, pocketWarranted } from './approach';
 import type { MovementSet, PackedLaneTurns, PackedTurns } from './approach';
 import {
+  isDividedCorridor,
   isOneWayProfile,
   reversedInWorld,
   roadRank,
@@ -82,6 +83,12 @@ export interface ApproachSurroundings {
    * bits (see GridState.roadSeparate). Omitted: nothing is held apart.
    */
   apartAt?(x: number, z: number): number;
+  /**
+   * Whether the corridor the tile is half of is one carriageway, with nothing
+   * dividing its middle. Omitted: read off `profileAt`, which is the whole
+   * cross-section the tile's profile names.
+   */
+  oneCarriagewayAt?(x: number, z: number): boolean;
 }
 
 /** The junction a tile approaches, and what this arm of it may do. */
@@ -219,7 +226,14 @@ export function roadDegree(x: number, z: number, world: ApproachSurroundings): n
 /** What {@link isSeparateRoad} reads about the tiles around it. */
 export type SeparateRoadSurroundings = Pick<
   ApproachSurroundings,
-  'hasRoad' | 'profileAt' | 'flowAt' | 'corridorHalfAt' | 'profileIdAt' | 'overAxisAt' | 'apartAt'
+  | 'hasRoad'
+  | 'profileAt'
+  | 'flowAt'
+  | 'corridorHalfAt'
+  | 'profileIdAt'
+  | 'overAxisAt'
+  | 'apartAt'
+  | 'oneCarriagewayAt'
 >;
 
 /**
@@ -259,6 +273,7 @@ export function isSeparateRoad(
           world.hasRoad(tx + sx, tz + sz) &&
           world.corridorHalfAt(tx + sx, tz + sz) === 'none' &&
           !isSeparateRoad(tx, tz, sx, sz, world),
+        world.oneCarriagewayAt?.(x, z) ?? (here !== null && !isDividedCorridor(here)),
       )) ||
     sideBySideCarriageways(
       here?.class === 'highway',
@@ -275,6 +290,36 @@ export function isSeparateRoad(
       there?.class === 'ramp' &&
       !rampJoins(rampJoinWith(x + dx, z + dz, x, z, world)))
   );
+}
+
+/** Whether the neighbour at (dx, dz) is this tile's own other corridor half. */
+function isOwnPartner(
+  x: number,
+  z: number,
+  dx: number,
+  dz: number,
+  world: SeparateRoadSurroundings,
+): boolean {
+  return corridorPartners(
+    world.corridorHalfAt(x, z),
+    world.corridorHalfAt(x + dx, z + dz),
+    world.profileIdAt(x, z),
+    world.profileIdAt(x + dx, z + dz),
+    world.flowAt(x, z),
+    dx,
+    dz,
+  );
+}
+
+/** Whether a road joins (x, z) one step further on, at (x + dx, z + dz). */
+function leadsOnward(
+  x: number,
+  z: number,
+  dx: number,
+  dz: number,
+  world: SeparateRoadSurroundings,
+): boolean {
+  return world.hasRoad(x + dx, z + dz) && !isSeparateRoad(x, z, dx, dz, world);
 }
 
 /** How the ramp tile at (rx, rz) meets the motorway tile at (hx, hz). */
@@ -397,8 +442,16 @@ function armWarrant(
   const legs: RoadFlow[] = [];
   for (const [dx, dz, heading] of STEPS) {
     const leg = world.profileAt(jx + dx, jz + dz);
-    if (!leg) continue;
+    if (!leg || !world.hasRoad(jx + dx, jz + dz)) continue;
+    // A road lying beside the junction without joining it is nowhere to go.
+    if (isSeparateRoad(jx, jz, dx, dz, world)) continue;
     armRanks.push(roadRank(leg));
+    // The junction's own other half is a way across the corridor, onto a road
+    // beyond it. Where nothing lies beyond — a T onto the far side — turning
+    // onto it only turns the car round, which is no movement to paint.
+    if (isOwnPartner(jx, jz, dx, dz, world) && !leadsOnward(jx + dx, jz + dz, dx, dz, world)) {
+      continue;
+    }
     const against =
       isOneWayProfile(leg) && world.flowAt(jx + dx, jz + dz) === oppositeFlow(heading);
     if (!against) legs.push(heading);
