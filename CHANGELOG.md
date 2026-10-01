@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.24.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.24.0...slimcity-v1.24.1) (2026-10-01)
+
+
+### Bug Fixes
+
+* **roads:** bulldoze a corridor whole, and undo a bulldoze the way it stood ([7e4a888](https://github.com/rbenzing/SlimCityGame/commit/7e4a888199e58fc41db73dc8d503d6bbbab35f8d))
+
 ## [1.24.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.23.1...slimcity-v1.24.0) (2026-10-01)
 
 
