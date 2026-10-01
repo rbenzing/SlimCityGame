@@ -185,6 +185,7 @@ describe('ClientGridMirror', () => {
         elevated: false,
         profile: presetProfileForTier(RoadTier.TwoLane),
         powered: false,
+        profileId: RoadTier.TwoLane,
       },
       {
         x: 4,
@@ -193,6 +194,7 @@ describe('ClientGridMirror', () => {
         elevated: false,
         profile: presetProfileForTier(RoadTier.Avenue),
         powered: false,
+        profileId: RoadTier.Avenue,
       },
     ]);
 
@@ -208,6 +210,7 @@ describe('ClientGridMirror', () => {
         elevated: false,
         profile: presetProfileForTier(RoadTier.Avenue),
         powered: false,
+        profileId: RoadTier.Avenue,
       },
     ]);
   });

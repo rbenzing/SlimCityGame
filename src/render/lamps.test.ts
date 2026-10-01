@@ -9,8 +9,13 @@ import {
   tierGetsLamp,
   type LampRoadTile,
 } from './lamps';
-import { RoadTier, TilePoint } from '../shared/types';
+import { RoadFlow, RoadTier, storedFlow, TilePoint } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
+import {
+  carriagewayHalfWidthOf,
+  carriagewayShiftOf,
+  corridorHalfProfile,
+} from '../shared/roadprofile';
 import { LAMP_SPACING_TILES, TILE_METERS } from '../shared/constants';
 import { carriagewayHalfWidthMeters, curbWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
 
@@ -675,5 +680,64 @@ describe('lamps keep out of a lot entrance', () => {
   it('changes nothing when no driveway is in the way', () => {
     const tiles = row(8, 0, 20);
     expect(computeLampPlacements(tiles, new Set())).toEqual(computeLampPlacements(tiles));
+  });
+});
+
+describe('a road laid across two tiles is lit from its outer kerbs', () => {
+  const lane = (flow: 'fwd' | 'back') => ({ kind: 'travel' as const, width: 3.6, flow });
+  const walk = { kind: 'sidewalk' as const, width: 1.9 };
+  const arterial: RoadProfile = {
+    class: 'arterial',
+    pieces: [
+      walk,
+      lane('back'),
+      lane('back'),
+      lane('back'),
+      lane('fwd'),
+      lane('fwd'),
+      lane('fwd'),
+      walk,
+    ],
+  };
+  /** Six lanes along x, the near half on row 4 and the far half on row 5. */
+  const corridor = (): LampRoadTile[] =>
+    (['left', 'right'] as const).flatMap((half, i) =>
+      strip(4 + i, 0, 20, 'ew').map((t) => ({
+        ...t,
+        tier: RoadTier.Avenue,
+        flow: storedFlow(RoadFlow.East, half),
+        profile: corridorHalfProfile(arterial, half),
+      })),
+    );
+
+  it('lights both halves, each from the kerb away from the other', () => {
+    const lamps = computeLampPlacements(corridor());
+    expect(lamps.some((l) => l.z === 4)).toBe(true);
+    expect(lamps.some((l) => l.z === 5)).toBe(true);
+    for (const l of lamps) {
+      expect(l.axis).toBe('z');
+      expect(l.side).toBe(l.z === 4 ? -1 : 1);
+    }
+  });
+
+  it('stands each pole at its own kerb, where the carriageway has been pushed to', () => {
+    const lamps = computeLampPlacements(corridor());
+    expect(lamps.length).toBeGreaterThan(0);
+    for (const l of lamps) {
+      const half = corridorHalfProfile(arterial, l.z === 4 ? 'left' : 'right');
+      const kerb = carriagewayShiftOf(half) - half.seam!.side * carriagewayHalfWidthOf(half);
+      const out = (l.side * l.lateralOffset - kerb) * l.side;
+      expect(out).toBeGreaterThan(0);
+      expect(out).toBeLessThan(walk.width);
+    }
+  });
+
+  it('keeps an ordinary street’s pole off a kerb with another road right beside it', () => {
+    // Two streets side by side, each holding apart the arm toward the other.
+    const street = strip(8, 0, 20, 'ew').map((t) => ({ ...t, apart: 4 }));
+    const beside = strip(9, 0, 20, 'ew').map((t) => ({ ...t, apart: 1 }));
+    const lamps = computeLampPlacements([...street, ...beside]).filter((l) => l.z === 8);
+    expect(lamps.length).toBeGreaterThan(0);
+    for (const l of lamps) expect(l.side).toBe(-1);
   });
 });

@@ -11,6 +11,7 @@
  */
 import * as THREE from 'three';
 import {
+  corridorHalfOf,
   flowDirection,
   flowForStep,
   RoadFlow,
@@ -29,17 +30,20 @@ import {
   carriagewayHalfWidthOf,
   carriagewayShiftOf,
   carriagewayWidth,
+  isOneWayProfile,
   kerbWidthOf,
   parkingSides,
   presetProfileForTier,
   rankForTier,
   roadClass,
+  runsAgainstDrawing,
 } from '../shared/roadprofile';
 import { armGivesWay, signalAspect } from '../shared/junction';
 import type { SignalAspect } from '../shared/junction';
-import { rampJoinAround, rampJoins, sideBySideCarriageways } from '../shared/corridor';
-import { bitToward } from '../shared/overpass';
+import { corridorPartnerTile, rampJoinAround } from '../shared/corridor';
 import type { RampJoin } from '../shared/corridor';
+import { isSeparateRoad } from '../shared/approachzone';
+import type { SeparateRoadSurroundings } from '../shared/approachzone';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 
 // --- Manhole -----------------------------------------------------------------
@@ -206,7 +210,7 @@ function hash1(n: number): number {
 }
 
 /** Wide fixed stride so (x,z) pairs never collide. */
-function tileKey(x: number, z: number): number {
+export function tileKey(x: number, z: number): number {
   return x * 100_000 + z;
 }
 
@@ -241,6 +245,8 @@ export type FurnitureRoadTile = TilePoint & {
   control?: JunctionControl;
   /** The arms of the tile held apart from the roads beside it, as mask bits; absent where none are. */
   apart?: number;
+  /** The id of the cross-section the tile carries, which says two corridor halves are one road. */
+  profileId?: number;
   /**
    * A corner of a compact roundabout. The tile is its quarter of the ring,
    * which nothing stands in; the roads into it carry the ring's boards.
@@ -501,42 +507,45 @@ const NEIGHBOR_DIRS: readonly {
  */
 export type RoadTileIndex = ReadonlyMap<number, FurnitureRoadTile>;
 
-function buildTileSet(roadTiles: readonly FurnitureRoadTile[]): RoadTileIndex {
+export function buildTileSet(roadTiles: readonly FurnitureRoadTile[]): RoadTileIndex {
   const set = new Map<number, FurnitureRoadTile>();
   for (const tile of roadTiles) set.set(tileKey(tile.x, tile.z), tile);
   return set;
 }
 
+const surroundings = new WeakMap<RoadTileIndex, SeparateRoadSurroundings>();
+
+/** The tile set as the approach walk reads the tiles around it. */
+function surroundingsOf(tileSet: RoadTileIndex): SeparateRoadSurroundings {
+  const known = surroundings.get(tileSet);
+  if (known) return known;
+  const at = (x: number, z: number): FurnitureRoadTile | undefined => tileSet.get(tileKey(x, z));
+  const view: SeparateRoadSurroundings = {
+    hasRoad: (x, z) => at(x, z) !== undefined,
+    profileAt: (x, z) => {
+      const tile = at(x, z);
+      return tile ? profileOf(tile) : null;
+    },
+    flowAt: (x, z) => flowDirection(at(x, z)?.flow ?? 0),
+    corridorHalfAt: (x, z) => corridorHalfOf(at(x, z)?.flow ?? 0),
+    profileIdAt: (x, z) => at(x, z)?.profileId ?? 0,
+    apartAt: (x, z) => at(x, z)?.apart ?? 0,
+  };
+  surroundings.set(tileSet, view);
+  return view;
+}
+
 /**
  * Whether the road tile at (nx, nz) is an arm of the one at (x, z): there, and
- * neither a separate motorway carriageway lying alongside nor a road held
- * apart from this one. Either is another road, so it takes up the ground
- * beside this one without joining it.
+ * not a road of its own lying beside this one — its other corridor half, a
+ * separate motorway carriageway, a ramp alongside, or a road held apart. Any of
+ * those takes up the ground beside this one without joining it. It is the
+ * approach walk's own question, so the furniture stands where the road is
+ * driven.
  */
 function joins(tileSet: RoadTileIndex, x: number, z: number, nx: number, nz: number): boolean {
-  const there = tileSet.get(tileKey(nx, nz));
-  if (!there) return false;
-  const here = tileSet.get(tileKey(x, z));
-  if (!here) return true;
-  if (((here.apart ?? 0) & bitToward(nx - x, nz - z)) !== 0) return false;
-  if (
-    sideBySideCarriageways(
-      tierIsMotorway(here.tier),
-      tierIsMotorway(there.tier),
-      here.flow ?? 0,
-      there.flow ?? 0,
-      nx - x,
-      nz - z,
-    )
-  ) {
-    return false;
-  }
-  // A ramp beside the motorway is only an arm of it where it merges or diverges.
-  if (here.tier === RoadTier.Ramp && tierIsMotorway(there.tier))
-    return rampJoins(rampJoinIn(tileSet, x, z, nx, nz));
-  if (tierIsMotorway(here.tier) && there.tier === RoadTier.Ramp)
-    return rampJoins(rampJoinIn(tileSet, nx, nz, x, z));
-  return true;
+  if (!tileSet.has(tileKey(nx, nz))) return false;
+  return !isSeparateRoad(x, z, nx - x, nz - z, surroundingsOf(tileSet));
 }
 
 /** How the ramp tile at (rx, rz) meets the motorway tile at (hx, hz). */
@@ -610,8 +619,8 @@ function isJunctionTile(tileSet: RoadTileIndex, x: number, z: number): boolean {
 /**
  * Whether a raised median runs down the middle of this tile's road, leaving no
  * centreline to seat a cover on. Every composed section puts its median at the
- * centre; a corridor half, which carries one at an edge, is not a road any
- * furniture is placed on yet.
+ * centre, and a corridor half carries its share of one at the edge it shares,
+ * which is the whole road's middle.
  */
 function hasCentralMedian(tile: FurnitureRoadTile): boolean {
   return profileOf(tile).pieces.some((p) => p.kind === 'median');
@@ -635,7 +644,11 @@ function carriesSewer(tile: FurnitureRoadTile): boolean {
   return roadClass(profileOf(tile).class).carriesWater;
 }
 
-/** The neighbouring road tile with the most arms of its own — the junction this tile runs into. */
+/**
+ * The joined neighbour with the most arms of its own — the junction this tile
+ * runs into. A road lying beside it is not one: the other half of a corridor
+ * next to a T is a straight run past it, not an approach to it.
+ */
 function busiestNeighbour(
   tileSet: RoadTileIndex,
   x: number,
@@ -644,6 +657,7 @@ function busiestNeighbour(
   let best: FurnitureRoadTile | undefined;
   let bestDegree = 0;
   for (const d of NEIGHBOR_DIRS) {
+    if (!joins(tileSet, x, z, x + d.dx, z + d.dz)) continue;
     const neighbour = tileSet.get(tileKey(x + d.dx, z + d.dz));
     if (!neighbour) continue;
     const degree = neighborCount(tileSet, neighbour.x, neighbour.z);
@@ -668,10 +682,26 @@ function approachGivesWay(
 ): boolean {
   const ranks: number[] = [];
   for (const d of NEIGHBOR_DIRS) {
-    const arm = tileSet.get(tileKey(junction.x + d.dx, junction.z + d.dz));
+    const nx = junction.x + d.dx;
+    const nz = junction.z + d.dz;
+    if (!joins(tileSet, junction.x, junction.z, nx, nz)) continue;
+    const arm = tileSet.get(tileKey(nx, nz));
     if (arm) ranks.push(rankForTier(arm.tier ?? RoadTier.TwoLane));
   }
   return armGivesWay(rankForTier(approach.tier ?? RoadTier.TwoLane), ranks);
+}
+
+/**
+ * Whether traffic on this tile runs `toward` a junction: every lane of a
+ * two-way road, and on a one-way carriageway only where its lanes run that
+ * way. Half of a two-way corridor may carry the lanes running against the way
+ * it was drawn, which is the stop line's own rule.
+ */
+function trafficArrives(tile: FurnitureRoadTile, toward: RoadFlow): boolean {
+  const flow = flowDirection(tile.flow ?? 0);
+  const profile = profileOf(tile);
+  if (flow === RoadFlow.None || !isOneWayProfile(profile)) return true;
+  return (flow === toward) !== runsAgainstDrawing(profile);
 }
 
 /** The sides whose neighbor tile is absent — the sidewalk edges. */
@@ -688,7 +718,7 @@ function availableSidewalkSides(tileSet: RoadTileIndex, x: number, z: number): S
  * and junctions fall back to z — meaningful only for props that belong IN the
  * carriageway; anything curbside must check {@link hasCrossingRoad} first.
  */
-function lateralAxis(tileSet: RoadTileIndex, x: number, z: number): FurnitureAxis {
+export function lateralAxis(tileSet: RoadTileIndex, x: number, z: number): FurnitureAxis {
   const hasEW = joins(tileSet, x, z, x - 1, z) || joins(tileSet, x, z, x + 1, z);
   const hasNS = joins(tileSet, x, z, x, z - 1) || joins(tileSet, x, z, x, z + 1);
   return hasNS && !hasEW ? 'x' : 'z';
@@ -712,9 +742,31 @@ export function hasCrossingRoad(tileSet: RoadTileIndex, x: number, z: number): b
  * is pushed against the edge it shares with its other half, and its kerbs go
  * with it. Only a flank kerb moves; the end of a road is where it always was.
  */
-function flankShift(tileSet: RoadTileIndex, tile: FurnitureRoadTile, pick: SideChoice): number {
+export function flankShift(
+  tileSet: RoadTileIndex,
+  tile: FurnitureRoadTile,
+  pick: SideChoice,
+): number {
   if (!tile.profile || pick.axis !== lateralAxis(tileSet, tile.x, tile.z)) return 0;
   return pick.side * carriagewayShiftOf(tile.profile);
+}
+
+/**
+ * The edge a corridor half shares with its other half, or null for any other
+ * road tile. It is the middle of the road, not a kerb: nothing kerbside stands
+ * on it.
+ */
+export function sharedEdgeOf(tileSet: RoadTileIndex, tile: FurnitureRoadTile): SideChoice | null {
+  const partner = corridorPartnerTile(
+    tile.x,
+    tile.z,
+    (x, z) => tileSet.get(tileKey(x, z))?.flow ?? 0,
+    surroundingsOf(tileSet).profileIdAt,
+  );
+  if (!partner) return null;
+  return partner.x !== tile.x
+    ? { axis: 'x', side: partner.x > tile.x ? 1 : -1 }
+    : { axis: 'z', side: partner.z > tile.z ? 1 : -1 };
 }
 
 /** Deterministically picks one of the available sides from a [0,1) hash. */
@@ -757,12 +809,16 @@ export function computeManholePlacements(
     if (isJunctionTile(tileSet, tile.x, tile.z)) continue; // the box is busy enough
     if (hasCentralMedian(tile)) continue;
     if (!periodHits(tile.x, tile.z, MANHOLE_PERIOD_TILES)) continue;
+    // A corridor's sewer runs under the middle of the whole road, which is the
+    // edge its halves share; the half below it lays the one line of covers.
+    const shared = sharedEdgeOf(tileSet, tile);
+    if (shared && shared.side < 0) continue;
 
     out.push({
       x: tile.x,
       z: tile.z,
-      axis: lateralAxis(tileSet, tile.x, tile.z),
-      lateral: 0,
+      axis: shared?.axis ?? lateralAxis(tileSet, tile.x, tile.z),
+      lateral: shared ? TILE_METERS / 2 : 0,
       rotationY: hashTile(tile.x, tile.z, HASH_MANHOLE_ROT) * Math.PI * 2,
     });
   }
@@ -835,8 +891,11 @@ export function computeMeterPlacements(roadTiles: readonly FurnitureRoadTile[]):
     if (!periodHits(tile.x, tile.z, METER_PERIOD)) continue;
 
     const curbAxis = lateralAxis(tileSet, tile.x, tile.z);
-    const side = meterSide(tile);
-    const lateralOffset = kerbFaceOffset(tile);
+    // Half of a corridor has one kerb: the edge it shares is the road's middle.
+    const shared = sharedEdgeOf(tileSet, tile);
+    const side = shared ? (-shared.side as FurnitureSide) : meterSide(tile);
+    const lateralOffset =
+      kerbFaceOffset(tile) + flankShift(tileSet, tile, { axis: curbAxis, side });
     for (const along of [METER_ALONG, -METER_ALONG]) {
       out.push({ x: tile.x, z: tile.z, curbAxis, side, lateralOffset, along });
     }
@@ -876,6 +935,10 @@ function classifySign(tileSet: RoadTileIndex, tile: FurnitureRoadTile): SignType
   if (nc <= 2) {
     const junction = busiestNeighbour(tileSet, x, z);
     if (junction && neighborCount(tileSet, junction.x, junction.z) >= 3) {
+      // Where nobody arrives, nobody is held: a one-way carriageway leaving
+      // the junction, the half of a corridor running away from it among them.
+      const toward = flowForStep(Math.sign(junction.x - x), Math.sign(junction.z - z));
+      if (!trafficArrives(tile, toward)) return null;
       const control = junction.control ?? 'none';
       return signForControl(control, approachGivesWay(tileSet, junction, tile));
     }
@@ -1102,8 +1165,11 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
       const axis: FurnitureAxis = rightX !== 0 ? 'x' : 'z';
       const side: FurnitureSide = (rightX !== 0 ? rightX : rightZ) > 0 ? 1 : -1;
       // A signal hangs its head off an arm and so stands at the kerb; a flat
-      // board is read from the road and stands back out of the way.
-      const lateral = isCantilevered(type) ? mastKerbOffset(tile) : curbsideLateralOffset(tile);
+      // board is read from the road and stands back out of the way. Both are
+      // measured from where the carriageway is.
+      const lateral =
+        (isCantilevered(type) ? mastKerbOffset(tile) : curbsideLateralOffset(tile)) +
+        flankShift(tileSet, tile, { axis, side });
       const along = TILE_METERS / 2 - CONTROL_SIGN_SETBACK_M;
       out.push({
         x: tile.x,

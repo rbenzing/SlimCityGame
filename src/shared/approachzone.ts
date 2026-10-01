@@ -216,17 +216,24 @@ export function roadDegree(x: number, z: number, world: ApproachSurroundings): n
   return n;
 }
 
+/** What {@link isSeparateRoad} reads about the tiles around it. */
+export type SeparateRoadSurroundings = Pick<
+  ApproachSurroundings,
+  'hasRoad' | 'profileAt' | 'flowAt' | 'corridorHalfAt' | 'profileIdAt' | 'overAxisAt' | 'apartAt'
+>;
+
 /**
  * Whether the neighbour at (dx, dz) is a road of its own rather than an arm of
  * this one: this tile's other corridor half, a motorway carriageway lying
- * alongside, or a road held apart from it.
+ * alongside, or a road held apart from it. The approach walk and the road
+ * furniture both ask it, so what is signed is what is driven.
  */
-function isSeparateRoad(
+export function isSeparateRoad(
   x: number,
   z: number,
   dx: number,
   dz: number,
-  world: ApproachSurroundings,
+  world: SeparateRoadSurroundings,
 ): boolean {
   const over = world.overAxisAt?.(x, z) ?? null;
   if (over !== null && over === (dx !== 0 ? 'x' : 'z')) return true;
@@ -276,7 +283,7 @@ function rampJoinWith(
   rz: number,
   hx: number,
   hz: number,
-  world: ApproachSurroundings,
+  world: Pick<ApproachSurroundings, 'profileAt' | 'flowAt'>,
 ): RampJoin {
   return rampJoinAround(
     (x, z) => world.profileAt(x, z)?.class === 'ramp',

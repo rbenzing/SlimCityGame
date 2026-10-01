@@ -900,6 +900,33 @@ wrong and, at motorway speed, conspicuous. The test is the class's own water
 flag rather than a list of tiers, so a class that stops carrying water stops
 growing covers in the same change.
 
+**A corridor is furnished as the road it is.** Its other half lies beside each
+half along the whole run but is not an arm of it, so the furniture asks the
+same question the mask and the approach walk ask (`isSeparateRoad` in
+`src/shared/approachzone.ts`). Counted as an arm, it made every tile of the
+road a crossing, and no corridor carried a lamp, a board or a signal head.
+
+- **The shared edge stays bare.** Nothing kerbside stands on the edge the two
+  halves share: lamps, boards, cabinets and meters take the outer kerb,
+  measured from where the carriageway is. On a corridor nothing divides, that
+  is pushed against the shared edge.
+- **Lamps** stand only on a kerb with no road beside it. A lamp tile is
+  chosen by its x + z, so the two halves are lit one tile apart, each from its
+  own outer kerb.
+- **Manhole covers.** A sewer runs under the middle of the street it serves.
+  On a corridor nothing divides, the middle is the shared edge, so the covers
+  lie there, laid by the half at the lower coordinate so the road carries one
+  line of them. A divided corridor has a median there and carries none, like
+  any road with a median.
+- **Control boards.** A stop or give-way board and a signal head stand on an
+  approach only where traffic arrives at the junction, the lanes a stop line
+  is painted across. On a corridor that is the half whose lanes run toward
+  the junction, and the board is on its driver's right, which is the outer
+  kerb. The half running away from the junction carries none, and nor does a
+  one-way street leaving one. The junction an approach tile serves, and who
+  gives way there, are read from the roads that join it, never from a
+  corridor half beside it.
+
 A deck (an elevated or bridged road tile,
 [Bridges and elevated roads](#bridges-and-elevated-roads)) inverts the
 kerbside rules: no verge, so no parking meters, utility cabinets, manhole
