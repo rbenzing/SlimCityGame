@@ -1,6 +1,8 @@
-/** Lane-drop taper check (SPEC 29, wave 4d): lay a four-lane road that becomes
- * a two-lane street, read back the cross-section tile by tile down the taper,
- * and shoot it.
+/** Lane-drop taper check: lay a four-lane road that becomes a two-lane street,
+ * read back the cross-section tile by tile down the taper, measure the edge
+ * line against the kerb, and shoot it. Then a four-lane motorway that becomes
+ * the three-lane one, whose pavement holds its width while the paint closes
+ * the lane.
  *
  * Usage: node tools/taper-shots.mjs [url] [outDir]
  */
@@ -147,8 +149,12 @@ for (let z = 3; z <= 13; z++) {
     const [x0, x1] = [kerbGuess - 1.2, kerbGuess + 1.2];
     const runs = await runsAcross(zWorld, x0, x1, 241);
     const kerb = side < 0 ? runs.filter((r) => r.kind === 'kerb').pop() : runs.find((r) => r.kind === 'kerb');
-    const whites = runs.filter((r) => r.kind === 'white');
-    const line = side < 0 ? whites.pop() : whites.shift();
+    // The edge line is the white nearest the kerb on the road's side of it. A
+    // lane line closing down the taper comes into the window too, further in.
+    const whites = kerb
+      ? runs.filter((r) => r.kind === 'white' && (side < 0 ? r.from > kerb.to : r.to < kerb.from))
+      : [];
+    const line = side < 0 ? whites.shift() : whites.pop();
     if (!kerb || !line) {
       failures.push(`z=${z} ${side < 0 ? 'left' : 'right'}: no ${!kerb ? 'kerb' : 'edge line'} found`);
       continue;
@@ -186,9 +192,19 @@ await shot('taper-along', X + CX, Z + 8, 120, 0.5, 0.7);
 // A MOTORWAY lane drop is a different animal: the tarmac stays where it is and
 // only the paint closes the lane, leaving a hatched neutral area. A street
 // narrows; a motorway leaves the driver who missed the taper somewhere to go.
+// A motorway meets only a motorway or a slip road, so this is a four-lane
+// motorway running south into the three-lane preset.
 const MX = 20;
-await cmd('motorway', [{ kind: 'buildRoad', tier: HIGHWAY, tiles: col(MX, 0, 11) }]);
-await cmd('street', [{ kind: 'buildRoad', tier: TWO_LANE, tiles: col(MX, 12, 20) }]);
+const FOUR_LANE_MOTORWAY = 13;
+const fourLane = await call(async () => {
+  const rp = await import('/src/shared/roadprofile.ts');
+  return rp.composeProfile(rp.presetProfileForTier(3), { ...rp.NO_EDITS, lanes: 4 });
+});
+await cmd('define', [{ kind: 'defineRoadProfile', id: FOUR_LANE_MOTORWAY, profile: fourLane }]);
+await cmd('motorway', [
+  { kind: 'buildRoad', tier: HIGHWAY, tiles: col(MX, 0, 11), profile: FOUR_LANE_MOTORWAY },
+]);
+await cmd('narrower', [{ kind: 'buildRoad', tier: HIGHWAY, tiles: col(MX, 12, 20) }]);
 await page.waitForTimeout(2500);
 
 const gore = [];
@@ -197,16 +213,24 @@ console.log(
   'down the motorway:',
   JSON.stringify(gore.map((g) => ({ z: g.z, lanes: g.lanes, w: g.width, t: g.taper?.remaining }))),
 );
-// The drop is real — 15 m of motorway into a 7.5 m street — and every tile of
-// the taper still keeps all 15 m of pavement. What narrows is the paint, and
-// the read-back reports the pavement.
+// The drop is real — four lanes into three — and every tile of the taper still
+// keeps all of the wide motorway's pavement. What narrows is the paint, and the
+// read-back reports the pavement.
 const paved = gore.filter((g) => g.z <= 11);
+const wideMotorway = paved[0]?.width;
+const narrowMotorway = gore.find((g) => g.z === 13)?.width;
+if (paved.some((g) => g.lanes !== 4))
+  failures.push(
+    `the wide motorway is not four lanes: ${JSON.stringify(paved.map((g) => g.lanes))}`,
+  );
 if (!paved.some((g) => g.taper))
   failures.push('the motorway is not tapering at all, so there is no gore to paint');
-if (!paved.every((g) => Math.abs(g.width - 15) < 1e-6))
+if (!paved.every((g) => Math.abs(g.width - wideMotorway) < 1e-6))
   failures.push(`the motorway unpaved its taper: ${JSON.stringify(paved.map((g) => g.width))}`);
-if (Math.abs((gore.find((g) => g.z === 13)?.width ?? 0) - 7.5) > 1e-6)
-  failures.push('the street it drops into is not the narrow road the drop was measured against');
+if (!(narrowMotorway < wideMotorway))
+  failures.push(
+    `the motorway it drops into is ${narrowMotorway} m against ${wideMotorway} m: no narrower road to drop into`,
+  );
 
 await shot('gore-down', X + MX, Z + 8, 90, 0.0, 1.15);
 await shot('gore-close', X + MX, Z + 9, 34, 0.0, 1.2);

@@ -79,9 +79,6 @@ History, §10 below.
   is the sim's own, the same reduced kind every other control's is. Adopting
   the manual's would make roundabouts far slower than signals and stops at
   load, so it needs a decision with the other controls in view.
-- Two check scripts no longer build what they check. `tools/taper-shots.mjs`
-  runs a motorway into a two-lane street, and `tools/aux-shots.mjs` lays a ramp
-  head-on into a motorway, and the world now refuses both.
 - Roadside parked cars beside a building skip a corridor tile:
   `kerbTileAllowsParking` in `src/render/parked.ts` counts every road tile beside
   it as a crossing road, the way the furniture once did.
@@ -231,6 +228,27 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Two check scripts build what they check again (2026-10-01)
+
+`tools/taper-shots.mjs` ran a motorway into a two-lane street and
+`tools/aux-shots.mjs` laid a ramp head-on into a motorway; the world refuses
+both now, so neither checked anything.
+
+- **The motorway lane drop** is a four-lane motorway running into the
+  three-lane preset, a meeting the world allows. Its pavement holds the wide
+  road's 18.6 m down the whole seven-tile taper while the paint closes the
+  lane into a hatched gore, the driver's right-hand lane first.
+- **The auxiliary lane** is on the preset motorway, beside an off-ramp laid
+  the way one diverges: alongside, running the same way, from the tile it
+  leaves at, then bending away to a street. The lane opens over eight tiles
+  upstream of the turn-off, on the driver's right, and ends where the ramp
+  leaves. Its old custom motorway ran lanes both ways, which a motorway no
+  longer admits, so it was never laid.
+- **The edge-line scan** took the first white strip in its window, which
+  caught a lane line closing down the street taper at one tile. It now takes
+  the white nearest the kerb, and the edge line holds 0.5 m from the kerb the
+  whole way down. There was no render fault.
 
 ### A batch lands whole or not at all (decided and built 2026-10-01)
 
