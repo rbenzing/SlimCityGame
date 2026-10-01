@@ -758,15 +758,25 @@ MUTCD citations below use 11th-edition section numbers.
   deck height each tile had (`flows`, `elevations`), never a direction read
   off the order its tiles were listed in: a bulldoze lists a rectangle, and
   its undo once laid one-way roads and corridor halves back running the wrong
-  way, unpaired. Settings commands return an empty inverse and are
+  way, unpaired. An inverse is never refused by a rule a player's own command
+  would face: zones go back with `restore`, since a zone can outlive the road
+  that allowed it. Settings commands return an empty inverse and are
   simply not undoable. Sim-grown changes (spawn, level-up, abandonment) never
   enter the undo stack. —
   [ADR-0008](engineering/adr/0008-every-tool-commit-is-a-reversible-command.md),
   [interfaces.md](engineering/interfaces.md); `applyCommand` in
   `src/sim/worker.entry.ts`, `src/tools/undo.ts`
-- Command batches are not atomic: `drainCommands` has no early exit, `ok` is
-  false if any command failed, and `cost` and `inverse` still accumulate the
-  successes; inverses are unshifted so undo replays in reverse. `drainCommands`
+- A command batch lands whole or not at all. At the first command the world
+  refuses, `drainCommands` stops, takes back every command of the batch that
+  landed by replaying their exact inverses newest first, and puts the funds
+  back as they stood before the batch. The ack is `ok: false` with that
+  command's reason, no cost and no inverse. A batch that lands acks the summed
+  cost and the inverses unshifted, so undo replays in reverse. An undo or redo
+  is a batch like any other: one the world refuses changes nothing, and the
+  client puts the edit back where it was in the history. A batch once kept
+  what landed before a refusal, with no undo for it. — `drainCommands` in
+  `src/sim/worker.entry.ts`, `refused` in `src/tools/undo.ts`
+- `drainCommands`
   touches no RNG, growth, fields, economy or traffic, so commands apply while
   paused; a new handler stays tick-independent. What a command builds reaches
   the next snapshot as it stands, paused or not, and only what the sim works

@@ -117,7 +117,7 @@ before any sim system runs) or immediately while the game is paused
 | `splitSegment`         | `at` (a point on a free road's centre line, world cm)                                               | 0                                                       | `joinSegments` at the same point with the road's control                              |
 | `joinSegments`         | `at`, `control?`                                                                                    | 0                                                       | `splitSegment` at the same point                                                      |
 | `moveSegmentEnd`       | `from`, `to` (world cm, at most half a tile apart on each axis)                                     | 0                                                       | `moveSegmentEnd` from `to` back to `from`                                             |
-| `paintZone`            | `zone`, `tiles`                                                                                     | 0                                                       | `paintZone` per prior zone group                                                      |
+| `paintZone`            | `zone`, `tiles`, `restore?`                                                                         | 0                                                       | `paintZone` per prior zone group, with `restore`                                      |
 | `placeBuilding`        | `catalogId`, `x`, `z`, `rotation`                                                                   | catalog `cost`                                          | `bulldoze` of the footprint, plus any auto-flatten                                    |
 | `setTaxRate`           | `sector`, `rate` (clamped `0..MAX_TAX_RATE`)                                                        | 0                                                       | `[]` (not undoable)                                                                   |
 | `setServiceFunding`    | `service`, `funding` (clamped `0..1.5`)                                                             | 0                                                       | `[]`                                                                                  |
@@ -148,24 +148,34 @@ export interface CommandAck {
 ```
 
 One `ack` answers one whole `commands` batch, not one command. A batch is
-**not atomic**: `drainCommands` (`src/sim/worker.entry.ts:1450`) applies every
-command in the batch regardless of whether an earlier one in the same batch
-failed. `ok` is `false` if _any_ command in the batch failed, and `reason`
-carries the _first_ failure's reason — but `cost` and `inverse` still
-accumulate the effects of every command that individually succeeded. A
-three-command batch where the second command is rejected commits the first
-and third and reports `ok: false`. Undo/redo, and the road-corridor tool (which
-sends a `defineRoadProfile` plus two `buildRoad` commands in one batch), both
-rely on this: a partially-successful batch still needs an inverse for the part
-that landed.
+**atomic**: it lands whole or not at all.
 
-Undo replays a batch's inverses in the reverse order of the originals: each
-command's `result.inverse` is `unshift`ed onto the accumulator
-(`src/sim/worker.entry.ts:1466`), so command _N_'s inverse ends up ahead of
+- **On a refusal**, `drainCommands` (`src/sim/worker.entry.ts`) applies the
+  commands in order and stops at the first one the world refuses. It then
+  takes back every command of the batch that had landed, by replaying their
+  inverses newest first. It also puts `funds` back as they stood before the
+  batch, since an inverse is not priced like its original: a road's is a
+  bulldoze, which refunds half. The ack is `ok: false`, with the refused
+  command's `reason`, `cost: 0` and an empty `inverse`, and the world is as it
+  was.
+- **Why atomic:** a three-command batch whose second command is refused leaves
+  nothing behind. That matters for a corridor's `defineRoadProfile` plus two
+  `buildRoad` runs, an interchange stamp's ramps, a grid drag's streets and an
+  undo's inverses. Each is one edit to the player.
+- **If a rollback fails:** an inverse is exact, so one refused while it is
+  taken back is a broken invariant. It is reported with `console.error` and
+  not hidden.
+
+A batch that lands acks `ok: true`, the summed `cost` and its inverses in the
+reverse order of the originals. Each command's `result.inverse` is
+`unshift`ed onto the accumulator, so command _N_'s inverse ends up ahead of
 command _1_'s. `src/tools/undo.ts`'s `UndoStack` stores the resulting
 `ReversibleEdit { label, forward, inverse, cost }` records client-side, capped
 at 64 entries; `undo()`/`redo()` hand back `inverse`/`forward` for the caller
-to resend as an ordinary (silent) `commands` batch.
+to resend as an ordinary (silent) `commands` batch. That batch is atomic too.
+If the world refuses it, `refused(commands)` moves the edit those commands
+belong to back where it was before the undo or redo, and the player is told
+it failed.
 
 ### Commands with real invariants
 
@@ -216,6 +226,13 @@ unless a compact roundabout stands there, and writes `junctions` back, or
 clears the four tiles when it is absent. Bulldozing any corner takes the whole
 roundabout out first, and its inverse sends `buildRoundabout` after the road is
 laid back. See the [technical design](features/roundabouts.md).
+
+**`paintZone`** paints only where a player may: a buildable, road-free tile
+with road frontage (a de-zone needs no frontage). A zone can outlive the road
+that allowed it, so an inverse that puts zones back sends `restore`, which
+skips the frontage test. Without it, undoing the de-zoning of such a tile was
+refused and the zone was lost. Only an undo sends it, from `paintZone`'s own
+inverse and from `bulldoze`'s.
 
 **`bulldoze`** never funds-gates — it only rejects when every tile is
 out-of-bounds. It refunds 50% of whatever stood there (roads, buildings, power
@@ -487,12 +504,9 @@ exact-height undo for a road build, a building footprint flatten, and a
 terraform stroke, and `tests/interaction/town.test.ts` undoes every step of
 building the small town and requires the untouched map back, layer for layer.
 
-**Batch application is not atomic.** See [§3](#3-commands): a rejected command
-does not roll back the commands before or after it in the same batch. This is
-by design (a corridor's `defineRoadProfile` + two `buildRoad` commands ride in
-one batch) and is enforced by no test beyond the ordinary command-handler
-tests — it falls out of `drainCommands`'s loop having no early exit, which is
-a convention rather than an explicitly pinned contract.
+**Batch application is atomic.** See [§3](#3-commands): a refused command
+takes back the commands before it in the same batch, and the ones after it
+never run. `tests/interaction/commands.test.ts` pins it, funds and tiles both.
 
 **Idempotency** is explicit and local to each command, not a blanket rule:
 `defineRoadProfile` acks success with no state change for an identical

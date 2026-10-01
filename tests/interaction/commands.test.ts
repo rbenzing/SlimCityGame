@@ -1,8 +1,19 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MAP_TILES, START_FUNDS, TICK_MS } from '../../src/shared/constants';
 import { FieldId, RoadTier, SAVE_VERSION, ZoneType } from '../../src/shared/types';
+import type { Command, GridState } from '../../src/shared/types';
+import { tileIndex } from '../../src/shared/constants';
 import { decodeSave, encodeSave } from '../../src/app/persist';
-import { initialized, roadRow, send, twoLaneSpec, windTurbine, type Harness } from '../support/sim';
+import {
+  initialized,
+  latestSaveGrid,
+  roadRow,
+  run,
+  send,
+  twoLaneSpec,
+  windTurbine,
+  type Harness,
+} from '../support/sim';
 import { guardRoadNetwork } from '../support/guard';
 
 guardRoadNetwork();
@@ -375,5 +386,107 @@ describe('building while paused', () => {
     const before = h.messages.length;
     h.sim.pump(TICK_MS);
     expect(h.messages.length).toBe(before);
+  });
+});
+
+describe('a batch lands whole or not at all', () => {
+  const road: Command = { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 10, 6) };
+  const refused: Command = {
+    kind: 'placeBuilding',
+    catalogId: 'no-such-thing',
+    x: 40,
+    z: 40,
+    rotation: 0,
+  };
+  const zone: Command = { kind: 'paintZone', zone: ZoneType.ResLow, tiles: [{ x: 12, z: 11 }] };
+  const grid = (h: Harness): GridState => {
+    h.sim.handleMessage({ type: 'requestSave' });
+    return latestSaveGrid(h);
+  };
+  const fundsOf = (h: Harness): number => h.lastSnapshot()!.stats.funds;
+
+  it('takes back what landed before a refusal, and charges nothing for it', () => {
+    const h = initialized();
+    h.ticks(1);
+    const funds = fundsOf(h);
+    const ack = run(h, 1, [road, refused]);
+    expect(ack.ok).toBe(false);
+    expect(ack.reason).toBe('invalid');
+    expect(ack.cost).toBe(0);
+    expect(ack.inverse).toEqual([]);
+    const g = grid(h);
+    for (const t of roadRow(10, 10, 6)) expect(g.roadTier[tileIndex(t.x, t.z)]).toBe(RoadTier.None);
+    // Exactly, though the road's own inverse is a bulldoze that refunds half.
+    expect(fundsOf(h)).toBe(funds);
+  });
+
+  it('never runs what comes after a refusal', () => {
+    const h = initialized();
+    run(h, 1, [road, refused, zone]);
+    expect(grid(h).zone[tileIndex(12, 11)]).toBe(ZoneType.None);
+  });
+
+  it('leaves the world as it was, layer for layer', () => {
+    const h = initialized();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 20, 8) }]);
+    const before = grid(h);
+    run(h, 2, [road, zone, refused]);
+    const after = grid(h);
+    for (const layer of ['roadTier', 'roadMask', 'roadFlow', 'roadProfile', 'zone'] as const) {
+      expect(Array.from(after[layer]), layer).toEqual(Array.from(before[layer]));
+    }
+  });
+
+  it('lands a batch nothing refuses whole, with one inverse that takes it all back', () => {
+    const h = initialized();
+    h.ticks(1);
+    const funds = fundsOf(h);
+    const ack = run(h, 1, [road, zone]);
+    expect(ack.ok).toBe(true);
+    expect(ack.cost).toBe(6 * twoLaneSpec.costPerTile);
+    expect(fundsOf(h)).toBe(funds - ack.cost);
+    expect(grid(h).zone[tileIndex(12, 11)]).toBe(ZoneType.ResLow);
+    expect(run(h, 2, ack.inverse).ok).toBe(true);
+    const g = grid(h);
+    expect(g.roadTier[tileIndex(10, 10)]).toBe(RoadTier.None);
+    expect(g.zone[tileIndex(12, 11)]).toBe(ZoneType.None);
+  });
+
+  it('refuses an undo whole when part of it no longer fits, and changes nothing', () => {
+    const h = initialized();
+    const built = run(h, 1, [road, zone]);
+    // Something now stands where the undo would have to clear a zone back off.
+    run(h, 2, [{ kind: 'bulldoze', tiles: roadRow(10, 10, 6) }]);
+    const before = grid(h);
+    const undo = run(h, 3, [...built.inverse, refused]);
+    expect(undo.ok).toBe(false);
+    const after = grid(h);
+    expect(Array.from(after.zone)).toEqual(Array.from(before.zone));
+    expect(Array.from(after.roadTier)).toEqual(Array.from(before.roadTier));
+  });
+});
+
+describe('a zone comes back exactly as it was', () => {
+  it('repaints a zone that outlived its road when its de-zoning is undone', () => {
+    const h = initialized();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 10, 6) }]);
+    run(h, 2, [{ kind: 'paintZone', zone: ZoneType.ResLow, tiles: [{ x: 12, z: 11 }] }]);
+    // The road goes, and the zone stays where a player could no longer paint it.
+    run(h, 3, [{ kind: 'bulldoze', tiles: roadRow(10, 10, 6) }]);
+    const dezoned = run(h, 4, [
+      { kind: 'paintZone', zone: ZoneType.None, tiles: [{ x: 12, z: 11 }] },
+    ]);
+    expect(dezoned.ok).toBe(true);
+    expect(run(h, 5, dezoned.inverse).ok).toBe(true);
+    h.sim.handleMessage({ type: 'requestSave' });
+    expect(latestSaveGrid(h).zone[tileIndex(12, 11)]).toBe(ZoneType.ResLow);
+  });
+
+  it('still refuses a player painting a zone with no road to reach it', () => {
+    const h = initialized();
+    const painted = run(h, 1, [
+      { kind: 'paintZone', zone: ZoneType.ResLow, tiles: [{ x: 12, z: 11 }] },
+    ]);
+    expect(painted.ok).toBe(false);
   });
 });

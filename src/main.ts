@@ -148,6 +148,13 @@ const SNAPSHOT_INTERVAL_MS = 1000 / SNAPSHOT_HZ;
  */
 const UNWORDED_REASONS: ReadonlySet<string> = new Set(['invalid', 'grade', 'height']);
 
+/** What the player is told when the world refuses an edit. */
+function refusalText(reason: string | undefined): string {
+  if (reason === 'funds') return 'Not enough funds.';
+  if (reason === 'locked') return 'Not unlocked at this milestone yet.';
+  return reason && !UNWORDED_REASONS.has(reason) ? reason : 'That cannot be built there.';
+}
+
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 const roadSpecs = (roadsData as { specs: RoadSpec[] }).specs;
 
@@ -885,6 +892,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const pendingEdits = new Map<number, { label: string; forward: Command[] }>();
   /** seqs of undo/redo replays: acked, but never re-recorded as new edits. */
   const silentSeqs = new Set<number>();
+  /** The undos and redos in flight, by seq: what was sent, so a refused one can be put back. */
+  const historySeqs = new Map<number, { commands: Command[]; label: 'Undo' | 'Redo' }>();
   /** Client-side mirror of building instances, for select-tool info panels. */
   const knownBuildings = new Map<number, BuildingInstance>();
   /**
@@ -974,13 +983,17 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
 
   const undo = (): void => {
     const commands = undoStack.undo();
-    if (commands && commands.length > 0) postCommands(commands, true);
+    if (commands && commands.length > 0) {
+      historySeqs.set(postCommands(commands, true), { commands, label: 'Undo' });
+    }
     syncUndoState();
   };
 
   const redo = (): void => {
     const commands = undoStack.redo();
-    if (commands && commands.length > 0) postCommands(commands, true);
+    if (commands && commands.length > 0) {
+      historySeqs.set(postCommands(commands, true), { commands, label: 'Redo' });
+    }
     syncUndoState();
   };
 
@@ -1327,6 +1340,21 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const onAck = (ack: CommandAck): void => {
     if (silentSeqs.has(ack.seq)) {
       silentSeqs.delete(ack.seq);
+      const history = historySeqs.get(ack.seq);
+      historySeqs.delete(ack.seq);
+      // A batch lands whole or not at all, so a refused undo or redo changed
+      // nothing, and the edit goes back where it was.
+      const edit = history && !ack.ok ? undoStack.refused(history.commands) : null;
+      if (history && edit) {
+        audio.play('denied');
+        store.getState().pushNotification({
+          id: -ack.seq,
+          severity: 'warning',
+          title: `${history.label} of ${edit.label} failed`,
+          body: refusalText(ack.reason),
+          tick: store.getState().stats.tick,
+        });
+      }
       syncUndoState();
       return;
     }
@@ -1349,14 +1377,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         id: -ack.seq,
         severity: 'warning',
         title: `${edit.label} failed`,
-        body:
-          ack.reason === 'funds'
-            ? 'Not enough funds.'
-            : ack.reason === 'locked'
-              ? 'Not unlocked at this milestone yet.'
-              : ack.reason && !UNWORDED_REASONS.has(ack.reason)
-                ? ack.reason
-                : 'That cannot be built there.',
+        body: refusalText(ack.reason),
         tick: store.getState().stats.tick,
       });
     }
