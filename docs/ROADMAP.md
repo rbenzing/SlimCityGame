@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,437 tests passing across 154 test files, run 2026-10-01.
+**Test suite:** 4,448 tests passing across 154 test files, run 2026-10-01.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -85,9 +85,6 @@ History, §10 below.
 - Roadside parked cars beside a building skip a corridor tile:
   `kerbTileAllowsParking` in `src/render/parked.ts` counts every road tile beside
   it as a crossing road, the way the furniture once did.
-- A batch is not atomic: when the world refuses one command, the ones before
-  it stay laid, and the failed batch has no undo. The road tool refuses a
-  corridor before sending it, so play does not reach this through the tool.
 
 Before writing "not built" anywhere in this document, check the code.
 
@@ -234,6 +231,28 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### A batch lands whole or not at all (decided and built 2026-10-01)
+
+When the world refused one command of a batch, the ones before it stayed laid
+and the ones after still ran. The client dropped the failed edit from the
+undo history, so what had landed could not be taken back. GROUND-TRUTHS and
+interfaces.md said batches were not atomic by design, and that undo and the
+corridor tool relied on it; neither did. The player chose all or nothing.
+
+- **The worker.** `drainCommands` stops at the first refusal, replays the
+  inverses of what landed newest first, and puts the funds back as they
+  stood, since a road's inverse is a bulldoze that refunds half. The ack is
+  the refusal's, with no cost and no inverse. A rollback refused on its way
+  back is a broken invariant, and is reported with `console.error`.
+- **Undo and redo** are batches like any other. One the world refuses
+  changes nothing, so the client puts the edit back where it was in the
+  history (`refused` in `src/tools/undo.ts`, which finds it by what was sent)
+  and says so, worded like any other refusal.
+- **Found on the way: a zone could not always be put back.** Undoing the
+  de-zoning of a tile whose road had since gone was refused, because zoning
+  asks for road frontage, and the zone was lost. An inverse that puts zones
+  back now sends `restore`, which asks only what the tile holds.
 
 ### A roundabout entry gives way to the ring (decided and built 2026-10-01)
 

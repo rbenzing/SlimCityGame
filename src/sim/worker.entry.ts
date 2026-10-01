@@ -2072,28 +2072,46 @@ class SimWorld implements WorkerSim {
     this.pendingBatches = [];
 
     for (const batch of batches) {
-      let ok = true;
+      // A batch is one edit to the player, so it lands whole or not at all.
+      const fundsBefore = this.stats.funds;
       let cost = 0;
-      let reason: string | undefined;
+      let refusal: CommandResult | null = null;
       const inverse: Command[] = [];
 
       for (const command of batch.commands) {
         const result = this.applyCommand(command);
-        if (result.ok) {
-          cost += result.cost;
-          // Undo replays inverses in reverse order of the originals.
-          inverse.unshift(...result.inverse);
-        } else {
-          ok = false;
-          reason = reason ?? result.reason;
-        }
         // Before the next command, which may read what this one laid.
         this.syncRoads();
+        if (!result.ok) {
+          refusal = result;
+          break;
+        }
+        cost += result.cost;
+        // Undo replays inverses in reverse order of the originals.
+        inverse.unshift(...result.inverse);
       }
 
-      const ack: CommandAck = { seq: batch.seq, ok, cost, inverse };
-      if (!ok && reason !== undefined) ack.reason = reason;
-      this.post({ type: 'ack', ack });
+      if (refusal) {
+        // What landed before the refusal comes back off, newest first. An
+        // inverse is not priced like its original — a road's is a bulldoze,
+        // which refunds half — so the funds go back as they stood.
+        for (const command of inverse) {
+          const undone = this.applyCommand(command);
+          this.syncRoads();
+          if (!undone.ok) {
+            console.error(
+              `batch ${batch.seq}: an inverse was refused taking back a refused batch (${command.kind}, ${undone.reason ?? 'no reason'})`,
+            );
+          }
+        }
+        this.stats.funds = fundsBefore;
+        const ack: CommandAck = { seq: batch.seq, ok: false, cost: 0, inverse: [] };
+        if (refusal.reason !== undefined) ack.reason = refusal.reason;
+        this.post({ type: 'ack', ack });
+        continue;
+      }
+
+      this.post({ type: 'ack', ack: { seq: batch.seq, ok: true, cost, inverse } });
     }
   }
 
@@ -2142,7 +2160,7 @@ class SimWorld implements WorkerSim {
       case 'moveSegmentEnd':
         return this.cmdMoveSegmentEnd(command.from, command.to);
       case 'paintZone':
-        return this.cmdPaintZone(command.zone, command.tiles);
+        return this.cmdPaintZone(command.zone, command.tiles, command.restore === true);
       case 'placeBuilding':
         return this.cmdPlaceBuilding(command.catalogId, command.x, command.z, command.rotation);
       case 'setTaxRate': {
@@ -2955,7 +2973,7 @@ class SimWorld implements WorkerSim {
       inverse.push({ kind: 'buildRoundabout', x: ring.x, z: ring.z });
     for (const j of setJunctions) inverse.push({ kind: 'setJunctionControl', ...j });
     for (const [zone, zoneTiles] of zonesByType) {
-      inverse.push({ kind: 'paintZone', zone: zone as ZoneType, tiles: zoneTiles });
+      inverse.push({ kind: 'paintZone', zone: zone as ZoneType, tiles: zoneTiles, restore: true });
     }
     for (const id of cleared.buildingIds) {
       const inst = this.registry.remove(g, id);
@@ -2991,7 +3009,7 @@ class SimWorld implements WorkerSim {
     return { ok: true, cost: -refund, inverse };
   }
 
-  private cmdPaintZone(zone: ZoneType, tiles: TilePoint[]): CommandResult {
+  private cmdPaintZone(zone: ZoneType, tiles: TilePoint[], restore = false): CommandResult {
     const g = this.grid;
     const prevZones = new Map<number, number>(); // tile index -> pre-paint zone
     for (const t of tiles) {
@@ -3000,7 +3018,7 @@ class SimWorld implements WorkerSim {
       prevZones.set(idx, g.zone[idx] ?? 0);
     }
 
-    const applied = setZones(g, tiles, zone);
+    const applied = setZones(g, tiles, zone, restore);
     if (applied.length === 0) {
       return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
     }
@@ -3015,7 +3033,12 @@ class SimWorld implements WorkerSim {
     }
     const inverse: Command[] = [];
     for (const [prevZone, zoneTiles] of byPrevZone) {
-      inverse.push({ kind: 'paintZone', zone: prevZone as ZoneType, tiles: zoneTiles });
+      inverse.push({
+        kind: 'paintZone',
+        zone: prevZone as ZoneType,
+        tiles: zoneTiles,
+        restore: true,
+      });
     }
 
     this.zoneDirty = growRect(this.zoneDirty, applied);

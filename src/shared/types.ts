@@ -604,7 +604,17 @@ export type Command =
       from: { x: number; z: number };
       to: { x: number; z: number };
     }
-  | { kind: 'paintZone'; zone: ZoneType; tiles: TilePoint[] }
+  | {
+      kind: 'paintZone';
+      zone: ZoneType;
+      tiles: TilePoint[];
+      /**
+       * Put these zones back exactly as a command found them, without asking
+       * whether a player could paint them now: a zone can outlive the road
+       * that let it be painted. Only an undo sends it.
+       */
+      restore?: true;
+    }
   | { kind: 'placeBuilding'; catalogId: string; x: number; z: number; rotation: 0 | 1 | 2 | 3 }
   | { kind: 'setTaxRate'; sector: Sector; rate: number } // 0..0.3
   | { kind: 'setServiceFunding'; service: ServiceKind; funding: number } // 0..1.5

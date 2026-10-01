@@ -40,6 +40,28 @@ export class UndoStack {
     return edit.forward;
   }
 
+  /**
+   * Takes back an undo or a redo the world refused, which changed nothing:
+   * the edit whose `commands` (what `undo()` or `redo()` handed out) were sent
+   * goes back to the list it left, on top. Returns it, or null when the
+   * history no longer holds it.
+   */
+  refused(commands: Command[]): ReversibleEdit | null {
+    const undone = this.redoList.findIndex((e) => e.inverse === commands);
+    if (undone >= 0) {
+      const [edit] = this.redoList.splice(undone, 1);
+      this.undoList.push(edit!);
+      return edit!;
+    }
+    const redone = this.undoList.findIndex((e) => e.forward === commands);
+    if (redone >= 0) {
+      const [edit] = this.undoList.splice(redone, 1);
+      this.redoList.push(edit!);
+      return edit!;
+    }
+    return null;
+  }
+
   canUndo(): boolean {
     return this.undoList.length > 0;
   }

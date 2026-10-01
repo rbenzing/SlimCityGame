@@ -129,4 +129,46 @@ describe('UndoStack', () => {
     expect(stack.canUndo()).toBe(false);
     expect(stack.redo()).toEqual(edit(2).forward);
   });
+
+  it('puts a refused undo back on top, ready to be tried again', () => {
+    const stack = new UndoStack();
+    const a = edit(1);
+    const b = edit(2);
+    stack.push(a);
+    stack.push(b);
+    const sent = stack.undo()!;
+    expect(stack.refused(sent)).toBe(b);
+    expect(stack.canRedo()).toBe(false);
+    expect(stack.undo()).toBe(b.inverse);
+  });
+
+  it('puts a refused redo back on the redo list', () => {
+    const stack = new UndoStack();
+    const a = edit(1);
+    stack.push(a);
+    stack.undo();
+    const sent = stack.redo()!;
+    expect(stack.refused(sent)).toBe(a);
+    expect(stack.canUndo()).toBe(false);
+    expect(stack.redo()).toBe(a.forward);
+  });
+
+  it('finds the refused edit by what was sent, even with a later undo after it', () => {
+    const stack = new UndoStack();
+    const a = edit(1);
+    const b = edit(2);
+    stack.push(a);
+    stack.push(b);
+    const first = stack.undo()!; // b, which the world refuses
+    stack.undo(); // a, which lands
+    expect(stack.refused(first)).toBe(b);
+    // b never came off, so it is the one to undo next; a waits to be redone.
+    expect(stack.undo()).toBe(b.inverse);
+    expect(stack.redo()).toBe(b.forward);
+    expect(stack.redo()).toBe(a.forward);
+  });
+
+  it('says nothing for commands the history no longer holds', () => {
+    expect(new UndoStack().refused([])).toBeNull();
+  });
 });

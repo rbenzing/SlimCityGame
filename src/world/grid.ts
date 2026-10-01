@@ -620,12 +620,21 @@ export function hasAdjacentTier(
  * qualifying road frontage cannot be painted. A de-zone is exempt from the
  * frontage requirement: a zone can always be cleared, even from a tile that
  * is no longer (or was never) reachable from a road. Agriculture is gated
- * on farmland instead (zonableMaskFor). Returns exactly the tiles that were
- * actually applied.
+ * on farmland instead (zonableMaskFor). `restore` puts back zones an undo
+ * found there, which may have outlived the frontage that allowed them, so it
+ * is exempt from the frontage requirement too. Returns exactly the tiles that
+ * were actually applied.
  */
-export function setZones(g: GridState, tiles: TilePoint[], zone: ZoneType): TilePoint[] {
+export function setZones(
+  g: GridState,
+  tiles: TilePoint[],
+  zone: ZoneType,
+  restore = false,
+): TilePoint[] {
   const applied: TilePoint[] = [];
-  const zonable = zone === ZoneType.None ? null : zonableMaskFor(g, zone);
+  // Putting back what a command took away asks only what the tile holds, not
+  // whether the zone could be painted there now.
+  const zonable = zone === ZoneType.None || restore ? null : zonableMaskFor(g, zone);
 
   for (const t of tiles) {
     const { x, z } = t;
