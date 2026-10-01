@@ -241,7 +241,8 @@ the panel that answers "what is actually wrong with the city right now" —
 distinct from toasts, which report one-off events. Each row is a severity
 dot (critical / warning / info), a title, and a one-line detail; rows with
 a known location are clickable and fly the camera to the offending
-building. An empty city shows a plain "nothing needs your attention"
+building, or to the first tile of zoned land its road leaves without power
+or water. An empty city shows a plain "nothing needs your attention"
 rather than manufacturing a problem to look busy — an advisor that invents
 work trains players to stop reading it. The ranking itself (severity, then
 how many buildings are affected, tie-broken on a stable id so the list

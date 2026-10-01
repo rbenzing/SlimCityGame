@@ -14,6 +14,7 @@ import {
   type BuildingInstance,
   type CityStats,
   type GrowthWaiting,
+  type ZonedUnserved,
 } from '../shared/types';
 
 export type IssueSeverity = 'critical' | 'warning' | 'info';
@@ -128,6 +129,7 @@ function countsAsProblem(building: BuildingInstance): boolean {
 }
 
 const NOTHING_WAITING: GrowthWaiting = { power: 0, water: 0 };
+const NOTHING_UNSERVED: ZonedUnserved = { power: 0, water: 0 };
 
 /**
  * Ranked list of what is wrong with the city. Empty when nothing is — an
@@ -137,6 +139,7 @@ export function cityIssues(
   buildings: Iterable<BuildingInstance>,
   stats: CityStats,
   waiting: GrowthWaiting = NOTHING_WAITING,
+  unserved: ZonedUnserved = NOTHING_UNSERVED,
 ): CityIssue[] {
   const counts = new Map<number, number>();
   const focus = new Map<number, BuildingInstance>();
@@ -170,7 +173,7 @@ export function cityIssues(
     });
   }
 
-  issues.push(...waitingIssues(waiting), ...cityWideIssues(stats));
+  issues.push(...waitingIssues(waiting), ...unservedIssues(unserved), ...cityWideIssues(stats));
 
   const order = new Map(PROBLEM_RULES.map((rule, index) => [rule.id, index]));
   return issues.sort((a, b) => {
@@ -205,6 +208,39 @@ function waitingIssues(waiting: GrowthWaiting): CityIssue[] {
       title: 'Growth is waiting for water',
       detail: `${lots(waiting.water)} more water than the mains have spare — add a water tower.`,
       count: waiting.water,
+    });
+  }
+  return issues;
+}
+
+/**
+ * Zoned land its own road brings no power or water. Nothing has been built
+ * there to carry a flag, so without this the lots simply never grow and
+ * nothing on screen says why.
+ */
+function unservedIssues(unserved: ZonedUnserved): CityIssue[] {
+  const issues: CityIssue[] = [];
+  const tiles = (n: number, what: string): string =>
+    `${n} zoned tile${n === 1 ? ' has' : 's have'} no ${what} from the road beside ${n === 1 ? 'it' : 'them'}`;
+  if (unserved.power > 0) {
+    issues.push({
+      id: 'zoned-no-power',
+      severity: 'warning',
+      title: tiles(unserved.power, 'power'),
+      detail:
+        'Nothing can grow there. A gravel road carries no power — string a power line along it, or join the road to a plant.',
+      count: unserved.power,
+      focus: unserved.powerAt,
+    });
+  }
+  if (unserved.water > 0) {
+    issues.push({
+      id: 'zoned-no-water',
+      severity: 'warning',
+      title: tiles(unserved.water, 'water'),
+      detail: 'Nothing can grow there until the road joins the mains of a water tower.',
+      count: unserved.water,
+      focus: unserved.waterAt,
     });
   }
   return issues;

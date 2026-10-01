@@ -226,6 +226,42 @@ describe('a grid too small for its city', () => {
   });
 });
 
+describe('zoned land its road brings no power or water', () => {
+  const none = { power: 0, water: 0 };
+
+  it('warns, counts the tiles, says why, and points at the first', () => {
+    const issues = cityIssues([], healthyStats(), none, {
+      power: 9,
+      water: 0,
+      powerAt: { x: 71, z: 51 },
+    });
+    expect(idsOf(issues)).toEqual(['zoned-no-power']);
+    expect(issues[0]).toMatchObject({
+      severity: 'warning',
+      count: 9,
+      title: '9 zoned tiles have no power from the road beside them',
+      focus: { x: 71, z: 51 },
+    });
+    expect(issues[0]!.detail).toContain('A gravel road carries no power');
+    expect(issues[0]!.detail).toContain('power line');
+  });
+
+  it('warns for water the same way, in the singular for one', () => {
+    const issues = cityIssues([], healthyStats(), none, {
+      power: 0,
+      water: 1,
+      waterAt: { x: 3, z: 4 },
+    });
+    expect(idsOf(issues)).toEqual(['zoned-no-water']);
+    expect(issues[0]!.title).toBe('1 zoned tile has no water from the road beside it');
+    expect(issues[0]!.focus).toEqual({ x: 3, z: 4 });
+  });
+
+  it('says nothing when every zoned tile beside a road is served', () => {
+    expect(cityIssues([], healthyStats(), none, none)).toEqual([]);
+  });
+});
+
 describe('city-wide checks', () => {
   it('does not flag a grid that exactly meets demand', () => {
     expect(cityIssues([], healthyStats({ powerDemand: 100, powerSupply: 100 }))).toEqual([]);

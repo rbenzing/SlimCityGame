@@ -80,6 +80,15 @@ warning counts the lots and buildings waiting, from the snapshot's
 `growthWaiting`. Between them the shortage is on the list for as long as it
 holds anything back.
 
+Zoned land can also sit empty because its own road brings it nothing. A
+gravel road carries no cable, and a street the mains never reach carries no
+water, so the lots along them can never grow, and no building stands there
+yet to carry a flag. A warning counts every empty zoned tile that stands
+beside a road yet lacks a utility its zone needs (power for every zone,
+water for every zone but farmland), from the snapshot's `zonedUnserved`, and
+points at the first such tile. Ground zoned too deep to reach the road is not
+counted: the road is not what fails it.
+
 City-wide checks read `CityStats` directly: funds below zero (critical, "the
 city is in the red") or, short of that, monthly expenses outrunning income
 (warning); and, once population is above zero, the labour market. The labour

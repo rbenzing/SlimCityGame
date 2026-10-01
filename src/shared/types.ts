@@ -921,12 +921,26 @@ export interface SimSnapshot {
    * full grid is what stops the city growing. Sent on every snapshot.
    */
   growthWaiting?: GrowthWaiting;
+  /**
+   * Empty zoned tiles the road beside them brings no power, or no water where
+   * their zone needs it — land that can never grow and has no building yet to
+   * say so. Sent on every snapshot.
+   */
+  zonedUnserved?: ZonedUnserved;
 }
 
 /** Lots and buildings growth would build or level up but for the supply. */
 export interface GrowthWaiting {
   power: number;
   water: number;
+}
+
+/** Empty zoned tiles beside a road yet without a utility, with the first of each by tile index. */
+export interface ZonedUnserved {
+  power: number;
+  water: number;
+  powerAt?: TilePoint;
+  waterAt?: TilePoint;
 }
 
 export interface CityNotification {

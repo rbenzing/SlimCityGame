@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { tileIndex } from '../../src/shared/constants';
 import { Problem, RoadTier, ZoneType } from '../../src/shared/types';
 import {
+  column,
   initialized,
   latestSaveGrid,
   roadRow,
+  run,
   send,
   waterTowerEntry,
   type Harness,
@@ -58,6 +60,38 @@ describe('a generator that cannot deliver says so', () => {
     for (const problems of problemsSeen(h, id)) {
       expect(problems & Problem.NoRoad).toBe(0);
     }
+  });
+});
+
+describe('zoning down a gravel road, which carries no power', () => {
+  /** A street with a turbine and a tower on it, a gravel road south off it, and homes zoned down the gravel. */
+  function townDownAGravelRoad(): Harness {
+    const h = initialized();
+    const ack = run(h, 1, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 49, 21) },
+      { kind: 'buildRoad', tier: RoadTier.Gravel, tiles: column(70, 50, 10) },
+      { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 48, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 47, rotation: 0 },
+      { kind: 'paintZone', zone: ZoneType.ResLow, tiles: column(71, 50, 10) },
+    ]);
+    expect(ack.ok).toBe(true);
+    h.ticks(4);
+    return h;
+  }
+
+  it('reports the zoned tiles the gravel leaves without power, and where the first is', () => {
+    const snap = townDownAGravelRoad().lastSnapshot()!;
+    // The tile on the street corner takes its power from the street.
+    expect(snap.zonedUnserved).toEqual({ power: 9, water: 0, powerAt: { x: 71, z: 51 } });
+  });
+
+  it('reports nothing once a power line runs along the gravel', () => {
+    const h = townDownAGravelRoad();
+    expect(run(h, 2, [{ kind: 'stringPowerLine', tiles: column(72, 50, 10), on: true }]).ok).toBe(
+      true,
+    );
+    h.ticks(4);
+    expect(h.lastSnapshot()!.zonedUnserved).toEqual({ power: 0, water: 0 });
   });
 });
 

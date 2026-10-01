@@ -308,9 +308,10 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
 - **Advisor** — the warning-triangle button (top right) lists what is actually
   wrong right now, worst first: buildings cut off from a road, power, or water,
   buildings dark because the grid is too small (and by how much), growth waiting
-  on power or water, a budget bleeding out. A red badge counts the
+  on power or water, zoned land whose road brings it no power or water (a
+  gravel road, say), a budget bleeding out. A red badge counts the
   critical problems while the panel is closed. Click any entry and the camera
-  flies to a building suffering from it. An empty list means nothing needs you.
+  flies to a building, or a patch of zoned land, suffering from it. An empty list means nothing needs you.
 - **Money & happiness** — the status strip shows funds and monthly balance
   (upkeep vs. income) and a city happiness face. Watch for a red monthly balance.
 

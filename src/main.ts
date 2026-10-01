@@ -26,6 +26,7 @@ import type {
   CommandAck,
   FieldId,
   GrowthWaiting,
+  ZonedUnserved,
   LensId,
   MainToWorker,
   RoadSpec,
@@ -926,6 +927,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   let snapshotsSinceAdvice = 0;
   /** What growth last said it is holding back for want of supply, for the advisor. */
   let growthWaiting: GrowthWaiting = { power: 0, water: 0 };
+  let zonedUnserved: ZonedUnserved = { power: 0, water: 0 };
   /** Latest flattened transit stop tile-points, mirrored so pedestrian
    * idlers can be re-applied on building-only deltas (PedestrianRenderer does
    * not cache stops itself — same pattern as knownBuildings above). */
@@ -1367,9 +1369,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // The advisor re-ranks on a slow cadence: iterating the building mirror is
     // cheap, but a problem list that reshuffles ten times a second is unreadable.
     if (snap.growthWaiting) growthWaiting = snap.growthWaiting;
+    if (snap.zonedUnserved) zonedUnserved = snap.zonedUnserved;
     if (++snapshotsSinceAdvice >= ADVISOR_REFRESH_SNAPSHOTS) {
       snapshotsSinceAdvice = 0;
-      state.setAdvisorIssues(cityIssues(knownBuildings.values(), snap.stats, growthWaiting));
+      state.setAdvisorIssues(
+        cityIssues(knownBuildings.values(), snap.stats, growthWaiting, zonedUnserved),
+      );
     }
 
     // Visual day/night runs on VISUAL_DAY_TICKS, decoupled

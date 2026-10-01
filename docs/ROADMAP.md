@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,334 tests passing across 150 test files, run 2026-09-30.
+**Test suite:** 4,345 tests passing across 150 test files, run 2026-10-01.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -234,6 +234,32 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Lenses the right way up, and zoned land that says why it is empty (found and fixed 2026-10-01)
+
+The player laid power and water off a dirt road and a two-way road, and
+nothing built. A play-through in the browser, every tool through the drawer
+and the pointer (now `tools/playthrough-shots.mjs`), found demand working as
+designed: residential reads +0.21 on an empty map, and homes went up along
+the paved street. It also found three real faults.
+
+- **Every infoview lens was mirrored north to south**, from the first commit.
+  The quad's stock UVs ran v against world z while the texture's first row
+  is tile row 0, so the power lens drew a powered street as dark ground and
+  lit an empty field across the map. The UVs are now set from the quad's own
+  positions, and a test puts a value on one tile and reads it back over that
+  tile.
+- **The Advisor said nothing about zoned land its road could not serve.** A
+  gravel road carries no cable, by design, so lots zoned down one never grow.
+  Nothing stood there to carry a problem flag, so the panel stayed silent.
+  The worker now counts the empty zoned tiles beside a road that brings them
+  no power, or no water where their zone draws it, in a new `zonedUnserved`
+  snapshot channel. The Advisor warns with the count and flies the camera to
+  the first tile. Ground zoned too deep to touch the road is not counted.
+- **A transit line drawn while paused stayed invisible until play resumed.**
+  The snapshot read the line list off the last tick, so the Transit Lines
+  panel said "no lines yet" over a line just drawn. It now sends the lines as
+  they stand, with each one's ridership as of the last tick.
 
 ### A compact roundabout, in one click (asked for and built 2026-09-30)
 

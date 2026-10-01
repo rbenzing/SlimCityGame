@@ -732,8 +732,11 @@ MUTCD citations below use 11th-edition section numbers.
   false if any command failed, and `cost` and `inverse` still accumulate the
   successes; inverses are unshifted so undo replays in reverse. `drainCommands`
   touches no RNG, growth, fields, economy or traffic, so commands apply while
-  paused; a new handler stays tick-independent. —
-  [interfaces.md](engineering/interfaces.md)
+  paused; a new handler stays tick-independent. What a command builds reaches
+  the next snapshot as it stands, paused or not, and only what the sim works
+  out (ridership, say) waits for a tick: a transit line drawn while paused once
+  stayed off the screen until play resumed, because its snapshot read the last
+  tick's lines. — [interfaces.md](engineering/interfaces.md)
 - Every priced command refuses with `reason: 'funds'` when cost exceeds funds
   (unless unlimited money is on). Zoning, de-zoning, bulldoze and district paint
   are always free. Every catalog entry, zone tier and tool carries an
@@ -856,6 +859,13 @@ MUTCD citations below use 11th-edition section numbers.
   samples real terrain height per vertex and splits on the terrain's own
   diagonal. — [buildings.md](art/buildings.md),
   [lighting.md](visual-render/lighting.md), [streets.md](art/streets.md)
+- A data lens paints tile (x, z) over tile (x, z): the lens texture's column x
+  and row z are that tile, so the quad's u runs with world x and its v with
+  world z, set from its own positions. Built on a rotated plane's stock UVs,
+  every lens drew its data mirrored north to south, and the power lens showed
+  a powered street as dark ground. —
+  [architecture.md](engineering/architecture.md); `OverlayRenderer` in
+  `src/render/overlays.ts`
 - No wild tree stands on a tile holding a grid road, a road off the grid's
   footprint, or a building. It is read from the mirror whenever roads, the
   network or buildings change, never from the commands that laid them:
@@ -926,6 +936,14 @@ MUTCD citations below use 11th-edition section numbers.
   a building stands dark from it or growth waits on it. —
   [progression.md](game-design/progression.md#the-advisor-detecting-and-ranking-problems);
   `cityIssues` in `src/ui/advisor.ts`
+- The Advisor reports zoned land the road it fronts brings no power or water:
+  an empty zoned tile beside a road, without a utility its zone needs. Before
+  it, a town zoned down a gravel road, which carries no cable, sat empty with
+  the Advisor silent, since no building stood there to carry a flag. Ground
+  zoned too deep to reach the road is not counted; the road is not what fails
+  it. —
+  [progression.md](game-design/progression.md#the-advisor-detecting-and-ranking-problems);
+  `zonedUnserved` in `src/sim/growth.ts`
 - A tool preview reads back before commit: invalid tint plus a cursor-chip
   reason ("Insufficient funds", "Locked", "Overlapping items"), never a red tint
   alone. — [ux-design.md](ux/ux-design.md), [interaction.md](ux/interaction.md)

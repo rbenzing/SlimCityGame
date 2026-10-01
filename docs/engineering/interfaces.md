@@ -383,9 +383,9 @@ determinism boundary.
 
 ## 7. The simulation snapshot
 
-`SimSnapshot` (`src/shared/types.ts`) has **17 top-level fields**: one
-required (`stats`) and 16 optional channels. Three of the sixteen —
-`vehicles`, `transit` and `growthWaiting` — are typed optional but the worker sets them on
+`SimSnapshot` (`src/shared/types.ts`) has **20 top-level fields**: one
+required (`stats`) and 19 optional channels. Four of the nineteen —
+`vehicles`, `transit`, `growthWaiting` and `zonedUnserved` — are typed optional but the worker sets them on
 _every_ snapshot regardless; the rest are genuinely conditional. `SimSnapshot`
 carries deltas only; the full state of everything arrives once, as one giant
 patch/delta of each kind, immediately after `init` or `loadSave`.
@@ -394,9 +394,10 @@ patch/delta of each kind, immediately after `init` or `loadSave`.
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `stats`         | always (required)                                                                                                                                                                                                                               |
 | `vehicles`      | always (typed optional, always set — the cosmetic vehicle buffer)                                                                                                                                                                               |
-| `transit`       | always (typed optional, always set — line list + ridership)                                                                                                                                                                                     |
+| `transit`       | always (typed optional, always set — the lines as they stand, paused or not, and each line's ridership as of the last tick, 0 for a line drawn since)                                                                                           |
 | `roads`         | `pendingRoadDeltas` is non-empty: any tile's tier/mask/elevation/profile/flow changed since the last snapshot, or a full resync after `init`/`loadSave`                                                                                         |
 | `roadProfiles`  | the custom-profile table changed (`defineRoadProfile`, or a load) — always the _whole_ table, and always sent before `roads` so a delta's `profile` id already resolves                                                                         |
+| `roadNet`       | the road network off the grid changed (its version moved), or once after `init`/`loadSave` — the whole network, encoded as the save holds it, applied after `roadProfiles` and before `roads`                                                   |
 | `buildings`     | any building was added, updated, or removed since the last snapshot                                                                                                                                                                             |
 | `zones`         | any tile's zone changed (`paintZone`, or de-zoning by `buildRoad`/`placeBuilding`/`bulldoze`)                                                                                                                                                   |
 | `power`         | `grid.power` bytes differ from the previous recompute (full-map patch)                                                                                                                                                                          |
@@ -410,6 +411,7 @@ patch/delta of each kind, immediately after `init` or `loadSave`.
 | `roundabouts`   | the set of compact roundabouts, each by the north-west tile of its block, differs from what was last sent; the whole list travels, and `[]` means there are none                                                                                |
 | `serviceLoad`   | the service pass has run at least once since `init`/`loadSave` — ten numbers, one `{ load, worst }` pair per service kind, re-sent every snapshot thereafter                                                                                    |
 | `growthWaiting` | always — two counts, the lots and buildings growth is holding back for want of power and of water against what the grid has spare now, for the Advisor                                                                                          |
+| `zonedUnserved` | always — two counts, the empty zoned tiles beside a road yet without power, and without water where their zone needs it, each with the first such tile, for the Advisor                                                                         |
 
 `buildings` names each id in exactly one of `added`, `updated` and `removed`,
 and `added` and `updated` carry the building as it stands when the snapshot

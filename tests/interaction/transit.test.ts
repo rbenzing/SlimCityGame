@@ -10,11 +10,44 @@ import {
   roadRow,
   rows,
   run,
+  send,
   sixLaneCommands,
 } from '../support/sim';
 import { guardRoadNetwork } from '../support/guard';
 
 guardRoadNetwork();
+
+describe('drawing a bus line while the city is paused', () => {
+  const stops = [
+    { x: 62, z: 79 },
+    { x: 76, z: 79 },
+  ];
+
+  it('shows the line at once, with no riders until the city runs, and takes it away at once', () => {
+    const h = initialized();
+    const built = run(h, 1, [
+      { kind: 'setSandbox', on: true },
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 80, 20) },
+      { kind: 'placeBuilding', catalogId: 'bus-stop', ...stops[0]!, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'bus-stop', ...stops[1]!, rotation: 0 },
+    ]);
+    expect(built.ok).toBe(true);
+    h.sim.handleMessage({ type: 'setSpeed', speed: 0 });
+
+    send(h, 2, [
+      { kind: 'createTransitLine', line: { id: 0, stops, color: 0xd23c3c, mode: 'bus' } },
+    ]);
+    h.ticks(1);
+    expect(h.ackFor(2)!.ok).toBe(true);
+    const drawn = h.lastSnapshot()!.transit!;
+    expect(drawn.lines.map((l) => l.stops)).toEqual([stops]);
+    expect(drawn.ridership).toEqual([0]);
+
+    send(h, 3, [{ kind: 'deleteTransitLine', id: drawn.lines[0]!.id }]);
+    h.ticks(1);
+    expect(h.lastSnapshot()!.transit!).toEqual({ lines: [], ridership: [] });
+  });
+});
 
 describe('a tramway crossing another street', () => {
   const AVENUE_X = 90;
