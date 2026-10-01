@@ -271,9 +271,12 @@ MUTCD citations below use 11th-edition section numbers.
 - A corridor's two halves are one road. A road laid over a corridor half
   takes that half's partner with it, as its partner, or it is refused; it
   never leaves half a road with nothing beside it. The road tool and the world
-  ask the same predicate. The ghost draws each half where it will be laid. —
-  [road-model.md](world-sim/road-model.md); `corridorSplitRefusal` in
-  `src/shared/corridor.ts`
+  ask the same predicate. The ghost draws each half where it will be laid. A
+  bulldoze over one half takes its partner too, on the layer it takes the
+  first from, and the preview outlines both; the tool and the world ask
+  `bulldozeReach` for it. —
+  [road-model.md](world-sim/road-model.md); `corridorSplitRefusal` and
+  `bulldozeReach` in `src/shared/corridor.ts`
 - A sound wall is a piece of a motorway's or ramp's own cross-section, never
   a separate structure, and only those two classes admit it. Which tile edge
   it stands on, and where across the tile, is read off the road's own section
@@ -732,7 +735,11 @@ MUTCD citations below use 11th-edition section numbers.
   [dependency-map.md](engineering/dependency-map.md)
 - Every `Command` kind has an `applyCommand` case that returns its literal, exact
   inverse (the prior values, not a re-derived approximation); undo replays that
-  inverse, refund included. Settings commands return an empty inverse and are
+  inverse, refund included. A road it puts back carries the stored flow and
+  deck height each tile had (`flows`, `elevations`), never a direction read
+  off the order its tiles were listed in: a bulldoze lists a rectangle, and
+  its undo once laid one-way roads and corridor halves back running the wrong
+  way, unpaired. Settings commands return an empty inverse and are
   simply not undoable. Sim-grown changes (spawn, level-up, abandonment) never
   enter the undo stack. —
   [ADR-0008](engineering/adr/0008-every-tool-commit-is-a-reversible-command.md),

@@ -169,6 +169,18 @@ A profile's width against the tile decides what it can be:
   a road with nothing beside it. Re-laying the same corridor, turning it
   round, or crossing both its halves is fine.
 
+  A bulldoze never takes one away from the other either. A bulldoze over
+  one row of a corridor takes the other row with it, on the layer it takes
+  the first from: on each tile a bulldoze takes the road on top, so a
+  corridor bridging another road goes with its bridged partner, and one at
+  grade with its partner at grade. The preview outlines both rows, and the
+  refund covers both. The one bulldoze refused is a row at grade whose
+  partner has a road passing over it ("That would split a corridor"). The
+  bulldoze would take that road and leave the half beneath, so the player
+  takes the bridge down first. Its undo lays the corridor back as it stood,
+  each tile with its own stored flow and deck height, both halves paired
+  again.
+
   **A motorway laid across two tiles is still one carriageway.** A five- or
   six-lane motorway does not fit a tile either, but nothing divides it: it is
   one road running one way, and a second motorway laid beside it is what

@@ -208,6 +208,62 @@ export function corridorSplitRefusal(
   return null;
 }
 
+/** One layer of roads as a bulldoze reads it: 0 where that layer has none. */
+export interface RoadLayerReader {
+  flowAt(x: number, z: number): number;
+  profileIdAt(x: number, z: number): number;
+}
+
+export interface BulldozeReach {
+  /** Tiles whose road passing over goes. */
+  over: TilePoint[];
+  /** Tiles cleared at grade: the road there, and whatever else stands on them. */
+  ground: TilePoint[];
+  /** Why the bulldoze cannot go ahead, or null. */
+  refusal: string | null;
+}
+
+/**
+ * What a bulldoze over `tiles` takes.
+ *
+ * On each tile it takes the road on top: the one passing over where there is
+ * one, otherwise everything at grade. A corridor half it takes brings its
+ * partner with it, on the same layer, so it never leaves half a road with
+ * nothing beside it. A half at grade whose partner has a road passing over it
+ * cannot be taken that way, because a bulldoze on the partner takes the road
+ * on top and leaves the half beneath, so it is refused. `overOnly` is the undo
+ * of a road laid under a raised one, which takes only what passes over.
+ */
+export function bulldozeReach(
+  tiles: readonly TilePoint[],
+  over: RoadLayerReader,
+  ground: RoadLayerReader,
+  overOnly = false,
+): BulldozeReach {
+  const key = (t: TilePoint): string => `${t.x},${t.z}`;
+  const crossed = (t: TilePoint): boolean => over.profileIdAt(t.x, t.z) !== 0;
+  const withPartners = (from: TilePoint[], layer: RoadLayerReader): TilePoint[] => {
+    const seen = new Set(from.map(key));
+    const all = [...from];
+    for (const t of from) {
+      const p = corridorPartnerTile(t.x, t.z, layer.flowAt, layer.profileIdAt);
+      if (p && !seen.has(key(p))) {
+        seen.add(key(p));
+        all.push(p);
+      }
+    }
+    return all;
+  };
+  const overTiles = withPartners(tiles.filter(crossed), over);
+  if (overOnly) return { over: overTiles, ground: [], refusal: null };
+  const groundTiles = withPartners(
+    tiles.filter((t) => !crossed(t)),
+    ground,
+  );
+  const refusal = groundTiles.some(crossed) ? SPLITS_CORRIDOR : null;
+  return { over: overTiles, ground: groundTiles, refusal };
+}
+
 /** Whether a step runs ACROSS the way a flow travels rather than along it. */
 function acrossFlow(flow: RoadFlow, dx: number, dz: number): boolean {
   const alongX = flow === RoadFlow.East || flow === RoadFlow.West;

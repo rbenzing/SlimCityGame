@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,392 tests passing across 154 test files, run 2026-10-01.
+**Test suite:** 4,403 tests passing across 154 test files, run 2026-10-01.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -86,9 +86,6 @@ History, §10 below.
   junction. Traffic on the far half is not held, and the crossing spans one
   half. Holding both would mean the far half joining the side street across
   the centre line in the road graph.
-- A bulldoze over one row of a corridor takes that half and leaves the other,
-  half a road with nothing beside it. A build that would do the same is
-  refused.
 - A batch is not atomic: when the world refuses one command, the ones before
   it stay laid, and the failed batch has no undo. The road tool refuses a
   corridor before sending it, so play does not reach this through the tool.
@@ -238,6 +235,29 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### A corridor bulldozed whole, and a bulldoze undone the way it stood (2026-10-01)
+
+The first Open item. A bulldoze over one row of a corridor took that half
+and left the other, half a road with nothing beside it.
+
+- **Both rows go.** `bulldozeReach` (`src/shared/corridor.ts`) says what a
+  bulldoze takes. On each tile it takes the road on top, and a corridor half
+  brings its partner on the same layer, so a corridor bridging another road
+  goes whole and leaves the road beneath. Only the road goes from a partner
+  brought in, never a zone or a power line beside it. The world and the
+  bulldoze preview both ask it: the outline shows both rows, and the refund
+  covers both.
+- **One refusal.** A row at grade whose partner has a road passing over it
+  is refused, because the bulldoze would take that road and leave the half
+  beneath. The tool sends nothing for it.
+- **Found on the way: an undone bulldoze laid roads back wrong.** Its inverse
+  sent no flows and no deck heights, so the world read each road's direction
+  off the bulldoze rectangle's tile order. A one-way street could come back
+  running the other way, and corridor halves came back unpaired, even with
+  both rows bulldozed. The inverse now carries each tile's own `flows` and
+  `elevations`, as every other road inverse already did. GROUND-TRUTHS says so
+  under the exact-inverse rule.
 
 ### Sound walls along a motorway (asked for and built 2026-10-01)
 
