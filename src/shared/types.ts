@@ -375,6 +375,13 @@ export interface GridState {
    */
   roads?: RoadNet;
   /**
+   * The ids of the profiles laid as a corridor nothing divides, whose halves a
+   * street joining either one opens to each other (`isDividedCorridor`). The
+   * grid holds ids and not profiles, so the worker hands it these from its
+   * profile table: derived, never saved. Absent, every corridor is divided.
+   */
+  oneCarriageway?: ReadonlySet<number>;
+  /**
    * 1 where a road off the grid covers the tile, footways included: derived
    * from the road network, never saved, and never built on.
    */

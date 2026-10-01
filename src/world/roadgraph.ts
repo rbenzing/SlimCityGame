@@ -12,6 +12,7 @@ import {
   nearestNode as findNearestNode,
 } from './pathfind';
 import {
+  corridorHalfOf,
   flowDirection,
   flowForStep,
   isStreetTier,
@@ -20,7 +21,13 @@ import {
   RoadTier,
   tramCrossingAxes,
 } from '../shared/types';
-import { canGainTurnPocket, isPresetProfileId, presetProfileForTier } from '../shared/roadprofile';
+import {
+  canGainTurnPocket,
+  corridorHalfProfile,
+  isPresetProfileId,
+  presetProfileForTier,
+  worldOrderedProfile,
+} from '../shared/roadprofile';
 import { controlFromCode, warrantedControl } from '../shared/junction';
 import { effectiveControlCode, type RoundaboutBlock } from '../shared/roundabout';
 import { ARMS_PER_TILE } from './grid';
@@ -220,8 +227,15 @@ function runFacts(
 } | null {
   const mid = runKeys[Math.floor(runKeys.length / 2)];
   if (mid === undefined) return null;
-  const profile = profileFor(cells.profile[mid] ?? 0);
-  if (!profile) return null;
+  const whole = profileFor(cells.profile[mid] ?? 0);
+  if (!whole) return null;
+  // Half of a corridor carries only its own half of the section, and so only
+  // the lanes on its side of the middle: one direction of a two-way road.
+  // Read as the whole road it would be driven both ways.
+  const stored = cells.flow[mid] ?? 0;
+  const half = corridorHalfOf(stored);
+  const profile =
+    half === 'none' ? whole : corridorHalfProfile(worldOrderedProfile(whole, stored), half);
   const travel = profile.pieces.filter((p) => p.kind === 'travel');
   const fwd = travel.filter((p) => p.flow === 'fwd').length;
   const back = travel.filter((p) => p.flow === 'back').length;

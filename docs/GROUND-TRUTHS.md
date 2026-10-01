@@ -250,7 +250,10 @@ MUTCD citations below use 11th-edition section numbers.
   turn bay follow the lanes, never the drawn flow alone
   (`runsAgainstDrawing` in `src/shared/roadprofile.ts`). A stop line crosses
   only the lanes arriving; an arm on which none arrive gets no bar, and no
-  stop board, give-way board or signal head either. —
+  stop board, give-way board or signal head either. The road graph drives a
+  half only the way its own lanes run: it reads the half's section, never the
+  whole road's, whose lanes run both ways (`runFacts` in
+  `src/world/roadgraph.ts`). —
   [road-model.md](world-sim/road-model.md)
 - Two motorway carriageways may lie on adjacent tiles and never connect. A
   highway tile is not an arm of a highway lying across its stored flow when
@@ -268,9 +271,13 @@ MUTCD citations below use 11th-edition section numbers.
 - A corridor's two halves never join along the road, except on a row where a
   street crosses it: a road that is not a corridor half joining each half from
   outside, in line across it, opens the median there, and the halves join
-  across that row as two junctions side by side. It is derived from the tiles
-  and never stored, and the mask and the approach walk ask the same
-  predicate. — [road-model.md](world-sim/road-model.md); `medianOpens` in
+  across that row as two junctions side by side. On a corridor nothing divides
+  (no median or barrier at its middle, `isDividedCorridor`), one street joining
+  either half from outside is enough, so a T onto it is a full junction and
+  holds the far half too; a divided corridor's T stays right-in, right-out. It
+  is derived from the tiles and the profile table, never stored, and the mask,
+  the approach walk and the furniture ask the same predicate. —
+  [road-model.md](world-sim/road-model.md); `medianOpens` in
   `src/shared/corridor.ts`
 - A corridor's two halves are one road. A road laid over a corridor half
   takes that half's partner with it, as its partner, or it is refused; it

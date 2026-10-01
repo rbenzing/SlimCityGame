@@ -13,7 +13,7 @@ import {
   SHARED_TURN_LANE_MAX_TILES,
   sharedTurnLaneAt,
 } from './approachzone';
-import { presetProfileForTier, worldOrderedProfile } from './roadprofile';
+import { composeProfile, NO_EDITS, presetProfileForTier, worldOrderedProfile } from './roadprofile';
 import { taperTilesFor } from './taper';
 import type { ApproachSurroundings } from './approachzone';
 import type { CorridorHalf, JunctionControl, RoadProfile } from './types';
@@ -564,11 +564,18 @@ describe('the auxiliary lane a motorway grows beside a slip road', () => {
 describe('a corridor half is a road in its own right', () => {
   // Two carriageways of one six-lane road running north-south in columns 2 and
   // 3, crossed by a street at z = 6. Each half is flagged as its own side and
-  // both carry the same cross-section, which is what makes them one road.
+  // both carry the same cross-section, which is what makes them one road: a
+  // divided six-lane avenue unless `middle` says otherwise.
   const SIX_LANE_ID = 40;
   const corridor = (
     junctions: Record<string, { control?: JunctionControl; turns?: number }> = {},
+    middle: 'none' | null = null,
   ): ApproachSurroundings => {
+    const six = composeProfile(presetProfileForTier(RoadTier.Avenue), {
+      ...NO_EDITS,
+      lanes: 3,
+      middle,
+    });
     const half = (x: number): CorridorHalf => (x === 2 ? 'left' : x === 3 ? 'right' : 'none');
     const onCorridor = (x: number, z: number): boolean => (x === 2 || x === 3) && z >= 0 && z <= 12;
     const onStreet = (x: number, z: number): boolean => z === 6 && x >= 0 && x <= 6;
@@ -581,7 +588,8 @@ describe('a corridor half is a road in its own right', () => {
       flowAt: (x, z) => (onCorridor(x, z) ? RoadFlow.South : RoadFlow.None),
       corridorHalfAt: (x, z) => (onCorridor(x, z) ? half(x) : 'none'),
       profileIdAt: (x, z) => (onCorridor(x, z) ? SIX_LANE_ID : has(x, z) ? 1 : 0),
-      profileAt: (x, z) => (has(x, z) ? presetProfileForTier(RoadTier.TwoLane) : null),
+      profileAt: (x, z) =>
+        onCorridor(x, z) ? six : has(x, z) ? presetProfileForTier(RoadTier.TwoLane) : null,
     };
   };
 
@@ -611,6 +619,45 @@ describe('a corridor half is a road in its own right', () => {
     };
     expect(roadDegree(2, 6, oneSided)).toBe(3);
     expect(roadDegree(3, 6, oneSided)).toBe(2);
+  });
+
+  it('joins both halves at a T onto a corridor with no median, which nothing keeps a car from crossing', () => {
+    const w = corridor({}, 'none');
+    const oneSided: ApproachSurroundings = {
+      ...w,
+      hasRoad: (x, z) => w.hasRoad(x, z) && !(z === 6 && x > 3),
+    };
+    // The left half meets the street and its partner; the right half its partner.
+    expect(roadDegree(2, 6, oneSided)).toBe(4);
+    expect(roadDegree(3, 6, oneSided)).toBe(3);
+    // Either side of the T each half is still a straight run.
+    expect(roadDegree(3, 5, oneSided)).toBe(2);
+  });
+
+  it('offers a left across the corridor into the street, but no turn back onto the other half', () => {
+    const w = corridor({}, 'none');
+    const tee: ApproachSurroundings = {
+      ...w,
+      hasRoad: (x, z) => w.hasRoad(x, z) && !(z === 6 && x > 3),
+    };
+    // Heading south, the left half's left is its partner, with nothing beyond.
+    const near = approachAhead(2, 4, 3, tee)!;
+    expect(near.allowed & Movement.Left).toBe(0);
+    expect(near.allowed & Movement.Right).toBe(Movement.Right);
+    // The right half's right is its partner, with the street beyond it.
+    const far = approachAhead(3, 4, 3, tee)!;
+    expect(far.allowed & Movement.Right).toBe(Movement.Right);
+    expect(far.allowed & Movement.Left).toBe(0);
+  });
+
+  it('takes a caller’s own word for whether the corridor is divided', () => {
+    const w = corridor({}, 'none');
+    const told: ApproachSurroundings = {
+      ...w,
+      hasRoad: (x, z) => w.hasRoad(x, z) && !(z === 6 && x > 3),
+      oneCarriagewayAt: () => false,
+    };
+    expect(roadDegree(3, 6, told)).toBe(2);
   });
 
   it('finds the junction ahead of it, which a road it never saw could not', () => {

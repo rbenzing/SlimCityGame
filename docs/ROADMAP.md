@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,413 tests passing across 154 test files, run 2026-10-01.
+**Test suite:** 4,427 tests passing across 154 test files, run 2026-10-01.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -81,10 +81,6 @@ History, §10 below.
 - Roadside parked cars beside a building skip a corridor tile:
   `kerbTileAllowsParking` in `src/render/parked.ts` counts every road tile beside
   it as a crossing road, the way the furniture once did.
-- A T onto an undivided corridor: only the half the street joins is a
-  junction. Traffic on the far half is not held, and the crossing spans one
-  half. Holding both would mean the far half joining the side street across
-  the centre line in the road graph.
 - A batch is not atomic: when the world refuses one command, the ones before
   it stay laid, and the failed batch has no undo. The road tool refuses a
   corridor before sending it, so play does not reach this through the tool.
@@ -234,6 +230,35 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### A T onto a corridor with no median is a full junction (decided and built 2026-10-01)
+
+The next Open item: a street meeting one half of an undivided corridor made a
+junction of that half only, so the far half's traffic was never held and
+nobody could turn left in or out. The player chose a full junction there.
+A divided corridor keeps its right-in, right-out T.
+
+- **The rule.** `medianOpens` takes whether the corridor is divided
+  (`isDividedCorridor` in `src/shared/roadprofile.ts`, the same test that
+  decides whether its halves draw as one carriageway). With nothing at its
+  middle, one street meeting either half opens it, and the T is two junction
+  tiles side by side. The far half is a junction, so its control holds it.
+- **The world reads profiles it does not hold.** The grid stores profile ids,
+  so the worker hands it the ids nothing divides (`GridState.oneCarriageway`,
+  derived, never saved), and `loadGrid` takes the save's own before any mask
+  is worked out, so a T a save holds open loads open.
+- **Found on the way: corridor halves were driven both ways.** The road graph
+  read each half with the whole road's profile, three lanes each way, so the
+  sim drove every half of a two-way corridor in both directions, against the
+  ground truth that a half carries one. A divided corridor's T let a car turn
+  out of the side street either way along the near half. `runFacts`
+  (`src/world/roadgraph.ts`) now reads the half's own section, as everything
+  that draws a half does, so a half is driven only the way its lanes run.
+- **Turns are onto roads that join.** The legs a junction offers an arm were
+  every road tile beside it, joined or not, so the far half of a T painted a
+  left arrow onto its own other half, which leads only back the way it came.
+  A leg is now an arm that joins, and a corridor's other half is one only
+  where a road carries on beyond it, as at a crossing.
 
 ### A corridor lit and signed as the road it is (2026-10-01)
 

@@ -220,7 +220,15 @@ function isCorridorPartner(g: GridState, x: number, z: number, nx: number, nz: n
       flowDirection(here),
       nx - x,
       nz - z,
-    ) && !medianOpens(x, z, nx - x, nz - z, (tx, tz, sx, sz) => crossesInto(g, tx, tz, sx, sz))
+    ) &&
+    !medianOpens(
+      x,
+      z,
+      nx - x,
+      nz - z,
+      (tx, tz, sx, sz) => crossesInto(g, tx, tz, sx, sz),
+      g.oneCarriageway?.has(g.roadProfile[i] ?? 0) ?? false,
+    )
   );
 }
 

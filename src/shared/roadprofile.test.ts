@@ -29,6 +29,8 @@ import {
   tilesAcross,
   isCorridor,
   corridorHalfProfile,
+  isDividedCorridor,
+  oneCarriagewayIds,
   carriagewayHalfWidthOf,
   carriagewayShiftOf,
   medianOffsetOf,
@@ -1639,6 +1641,49 @@ describe('a corridor is two carriageways, not one wide one', () => {
       { kind: 'sidewalk', width: 1.9 },
     ],
   };
+
+  it('is divided where a median or a barrier lies at its middle, and nowhere else', () => {
+    expect(isDividedCorridor(divided)).toBe(true);
+    const barrier: RoadProfile = {
+      ...divided,
+      pieces: divided.pieces.map((p) =>
+        p.kind === 'median' ? { kind: 'barrier' as const, width: 0.6 } : p,
+      ),
+    };
+    expect(isDividedCorridor(barrier)).toBe(true);
+    const undivided: RoadProfile = {
+      ...divided,
+      pieces: divided.pieces.filter((p) => p.kind !== 'median'),
+    };
+    expect(isDividedCorridor(undivided)).toBe(false);
+    // A median off the middle divides nothing across the corridor's two tiles.
+    const offCentre: RoadProfile = {
+      ...undivided,
+      pieces: [undivided.pieces[0]!, { kind: 'median', width: 1.0 }, ...undivided.pieces.slice(1)],
+    };
+    expect(isDividedCorridor(offCentre)).toBe(false);
+    // A motorway is one carriageway whatever lies along it.
+    expect(isDividedCorridor({ ...divided, class: 'highway' })).toBe(false);
+  });
+
+  it('agrees with the halves it is cut into: only an undivided one carries a seam', () => {
+    for (const p of [
+      divided,
+      { ...divided, pieces: divided.pieces.filter((x) => x.kind !== 'median') },
+    ]) {
+      const seamed = corridorHalfProfile(p, 'left').seam !== undefined;
+      expect(seamed).toBe(!isDividedCorridor(p));
+    }
+  });
+
+  it('lists the ids of a table whose corridor nothing divides', () => {
+    const undivided = { ...divided, pieces: divided.pieces.filter((x) => x.kind !== 'median') };
+    const ids = oneCarriagewayIds([
+      [20, divided],
+      [21, undivided],
+    ]);
+    expect([...ids]).toEqual([21]);
+  });
 
   it('splits the road down its middle, each half half as wide', () => {
     const whole = profileWidth(divided);

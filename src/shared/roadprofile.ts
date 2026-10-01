@@ -480,6 +480,37 @@ export function reversedInWorld(stored: number): boolean {
 }
 
 /**
+ * Whether a corridor laid with this WHOLE cross-section is two carriageways: a
+ * median or a barrier lies at its middle. A motorway never is, being one
+ * carriageway running one way. Nothing else divides a road, so a corridor
+ * without one is a single carriageway that cars may cross.
+ */
+export function isDividedCorridor(profile: RoadProfile): boolean {
+  if (profile.class === 'highway') return false;
+  const middle = profileWidth(profile) / 2;
+  let at = 0;
+  for (const piece of profile.pieces) {
+    const end = at + piece.width;
+    // The piece ending at the middle, starting at it, or straddling it.
+    if (end >= middle - 1e-9 && at <= middle + 1e-9) {
+      if (piece.kind === 'median' || piece.kind === 'barrier') return true;
+    }
+    if (at > middle + 1e-9) break;
+    at = end;
+  }
+  return false;
+}
+
+/** The ids in a profile table whose corridor nothing divides (`GridState.oneCarriageway`). */
+export function oneCarriagewayIds(
+  table: Iterable<readonly [number, RoadProfile]>,
+): ReadonlySet<number> {
+  const ids = new Set<number>();
+  for (const [id, profile] of table) if (!isDividedCorridor(profile)) ids.add(id);
+  return ids;
+}
+
+/**
  * One half of a corridor's cross-section, as a road in its own right.
  *
  * A six- or eight-lane divided road is not one wide carriageway: it is TWO,
@@ -521,14 +552,8 @@ export function corridorHalfProfile(profile: RoadProfile, half: CorridorHalf): R
     at = end;
   }
   const pieces = half === 'left' ? left : right;
-  const inner = left[left.length - 1];
-  const outer = right[0];
-  const divides = (p: LanePiece | undefined): boolean =>
-    p?.kind === 'median' || p?.kind === 'barrier';
-  if (profile.class !== 'highway' && (divides(inner) || divides(outer))) {
-    return { ...profile, pieces };
-  }
-  const across = split ? null : half === 'left' ? outer : inner;
+  if (isDividedCorridor(profile)) return { ...profile, pieces };
+  const across = split ? null : half === 'left' ? right[0] : left[left.length - 1];
   return {
     ...profile,
     pieces,
