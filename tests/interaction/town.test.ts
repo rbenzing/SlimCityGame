@@ -38,7 +38,21 @@ const saveNow = (town: BuiltTown): ArrayBuffer => {
   return latestSaveData(town.h);
 };
 
-const bytes = (data: ArrayBuffer): Uint8Array => new Uint8Array(data);
+/**
+ * Where two saves first differ, or null when they are the same byte for byte.
+ * Compared by hand: `toEqual` on two 2.4 MB arrays walks them through the
+ * generic deep-equality path and takes over ten seconds, which on a slow CI
+ * runner was the whole of a test's timeout.
+ */
+function firstDifference(a: ArrayBuffer, b: ArrayBuffer): string | null {
+  const x = new Uint8Array(a);
+  const y = new Uint8Array(b);
+  const n = Math.min(x.length, y.length);
+  for (let i = 0; i < n; i++) {
+    if (x[i] !== y[i]) return `byte ${i} of ${x.length}: ${x[i]} vs ${y[i]}`;
+  }
+  return x.length === y.length ? null : `lengths ${x.length} vs ${y.length}`;
+}
 
 /** Every typed-array layer of a grid, by name. */
 function layers(g: GridState): Map<string, ArrayLike<number>> {
@@ -268,7 +282,7 @@ describe('a small town, built and grown, as the regression for everything togeth
     }
     expect(after.meta).toEqual(expected);
 
-    expect(bytes(reload(loaded))).toEqual(bytes(loaded));
+    expect(firstDifference(reload(loaded), loaded)).toBeNull();
   });
 
   it(
@@ -276,7 +290,7 @@ describe('a small town, built and grown, as the regression for everything togeth
     () => {
       const again = buildTown();
       growTown(again, COMPARE_AT);
-      expect(bytes(saveNow(again))).toEqual(bytes(atCompare));
+      expect(firstDifference(saveNow(again), atCompare)).toBeNull();
     },
     GROWTH_TIMEOUT_MS,
   );
