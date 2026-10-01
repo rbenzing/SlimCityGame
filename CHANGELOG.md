@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.23.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.23.0...slimcity-v1.23.1) (2026-10-01)
+
+
+### Bug Fixes
+
+* lenses the right way up, and zoned land that says why it is empty ([ee1fd37](https://github.com/rbenzing/SlimCityGame/commit/ee1fd37a6d8e7ed2a036e8453ab9ba7b09c5cdee))
+
 ## [1.23.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.22.0...slimcity-v1.23.0) (2026-10-01)
 
 
