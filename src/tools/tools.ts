@@ -74,6 +74,7 @@ import type { EndMove } from '../world/freeroads';
 import type { CmPoint, SegmentGeom } from '../shared/roadgeom';
 import { ZONE_DEPTH } from '../world/zonable';
 import {
+  bulldozeReach,
   corridorPartnerTile,
   corridorRunsFor,
   corridorSplitRefusal,
@@ -237,6 +238,12 @@ export interface ToolEnv {
    * refused for splitting a corridor here, and the world still refuses it.
    */
   roadProfileIdAt?(tile: TilePoint): number;
+  /**
+   * The stored flow byte and profile id of the road passing over a crossing
+   * tile, or null where none does. Optional: without it the bulldoze preview
+   * reads every tile as at grade, and the world still decides what goes.
+   */
+  overRoadAt?(tile: TilePoint): { flow: number; profile: number } | null;
   /**
    * The grid as an interchange is laid out on it. Optional: without it the
    * Interchange tool previews nothing and lays nothing.
@@ -1155,6 +1162,35 @@ export class ToolManager {
   }
 
   /**
+   * Every tile a bulldoze over `rect` touches, with the corridor partners it
+   * takes beside it, and why the world would refuse it, or null.
+   */
+  private bulldozeOutline(rect: TilePoint[]): { tiles: TilePoint[]; refusal: string | null } {
+    const flowAt = this.env.roadFlowAt;
+    const idAt = this.env.roadProfileIdAt;
+    if (!flowAt || !idAt) return { tiles: rect, refusal: null };
+    const overAt = (x: number, z: number): { flow: number; profile: number } | null =>
+      this.env.overRoadAt?.({ x, z }) ?? null;
+    const reach = bulldozeReach(
+      rect,
+      {
+        flowAt: (x, z) => overAt(x, z)?.flow ?? 0,
+        profileIdAt: (x, z) => overAt(x, z)?.profile ?? 0,
+      },
+      { flowAt: (x, z) => flowAt({ x, z }), profileIdAt: (x, z) => idAt({ x, z }) },
+    );
+    const key = (t: TilePoint): string => `${t.x},${t.z}`;
+    const seen = new Set(rect.map(key));
+    const tiles = [...rect];
+    for (const t of [...reach.over, ...reach.ground]) {
+      if (seen.has(key(t))) continue;
+      seen.add(key(t));
+      tiles.push(t);
+    }
+    return { tiles, refusal: reach.refusal };
+  }
+
+  /**
    * Why laying `tiles` with `flows` would take a corridor half away from its
    * partner, or null. A tile counts where its road would change: replaced, or
    * the same road running another way. One the run passes over or under keeps
@@ -1816,8 +1852,10 @@ export class ToolManager {
 
     const start = this.dragStart ?? current;
     if (tool === 'bulldoze') {
-      const tiles = rectTiles(start, current);
-      const { valid, invalidReason } = this.evaluate(tiles, 0, 0, true);
+      const { tiles, refusal } = this.bulldozeOutline(rectTiles(start, current));
+      const evaluated = this.evaluate(tiles, 0, 0, true);
+      const valid = evaluated.valid && refusal === null;
+      const invalidReason = refusal ?? evaluated.invalidReason;
       this.env.onPreview({ tiles, valid, cost: 0, label: 'Bulldoze', invalidReason });
     } else if (tool in ROAD_TOOL_TO_TIER) {
       // A drag at any angle that has left its row or column runs off the grid.
@@ -2110,7 +2148,10 @@ export class ToolManager {
         ]);
       }
     } else if (tool === 'bulldoze') {
-      this.env.send('Bulldoze', [{ kind: 'bulldoze', tiles: rectTiles(start, end) }]);
+      const tiles = rectTiles(start, end);
+      if (this.bulldozeOutline(tiles).refusal === null) {
+        this.env.send('Bulldoze', [{ kind: 'bulldoze', tiles }]);
+      }
     } else if (tool in ROAD_TOOL_TO_TIER) {
       const build = this.roadBuild(ROAD_TOOL_TO_TIER[tool] as RoadTier);
       const path = this.roadPath(start, end);

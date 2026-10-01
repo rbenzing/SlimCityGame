@@ -1123,6 +1123,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       inBounds(tile.x, tile.z)
         ? (clientGrid.roadProfile[tile.z * clientGrid.size + tile.x] ?? 0)
         : 0,
+    overRoadAt: (tile) => clientGrid.overRoadAt(tile.x, tile.z),
     roadMaskAt: (tile) =>
       inBounds(tile.x, tile.z) ? (clientGrid.roadMask[tile.z * clientGrid.size + tile.x] ?? 0) : 0,
     roadElevationAt: (tile) =>

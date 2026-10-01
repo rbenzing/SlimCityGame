@@ -11,6 +11,7 @@ import {
   roadRow,
   run,
   send,
+  sixLaneCommands,
   twoLaneSpec,
   type Harness,
 } from '../support/sim';
@@ -170,6 +171,29 @@ describe('overpasses — a road passing over another on the tile they cross', ()
     // The approaches either side are ordinary elevated road tiles.
     expect(g.roadTier[at(19, 14)]).toBe(RoadTier.TwoLane);
     expect(g.roadElevation[at(19, 14)]).toBeGreaterThan(0);
+  });
+
+  it('bulldozes a corridor bridging the motorway whole, and leaves the motorway beneath', () => {
+    const h = withMotorway();
+    const raised = sixLaneCommands(roadRow(12, 13, 17)).map((c) =>
+      c.kind === 'buildRoad' ? { ...c, elevation: 8 } : c,
+    );
+    expect(run(h, 2, raised).ok).toBe(true);
+    const before = grid(h);
+    for (const z of [13, 14]) expect(before.overTier[at(20, z)]).toBe(RoadTier.Avenue);
+    const dozed = run(h, 3, [{ kind: 'bulldoze', tiles: [{ x: 20, z: 13 }] }]);
+    expect(dozed.ok).toBe(true);
+    const g = grid(h);
+    for (const z of [13, 14]) {
+      expect(g.overTier[at(20, z)]).toBe(0);
+      expect(g.roadTier[at(20, z)]).toBe(RoadTier.Highway);
+    }
+    expect(run(h, 4, dozed.inverse).ok).toBe(true);
+    const undone = grid(h);
+    for (const z of [13, 14]) {
+      expect(undone.overFlow[at(20, z)]).toBe(before.overFlow[at(20, z)]);
+      expect(undone.overElevation[at(20, z)]).toBe(before.overElevation[at(20, z)]);
+    }
   });
 
   it('refuses a deck that would not clear the road below, and says by how much', () => {

@@ -269,6 +269,9 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   until you expand the landfill or add another facility. Cosmetic garbage trucks
   drive out from each facility to the blocks they service.
 - **Bulldoze** — remove roads, buildings, and zoning. Player edits are undoable.
+  A road two tiles wide is one road, so bulldozing one of its rows takes the
+  other too; the outline shows both before you let go. Where a bridge passes
+  over that other row, take the bridge down first.
 
 ## Reading your city
 

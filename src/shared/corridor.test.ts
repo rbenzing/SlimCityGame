@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  bulldozeReach,
   corridorPartnerTile,
   corridorRunsFor,
   corridorSplitRefusal,
@@ -12,6 +13,7 @@ import {
 } from './corridor';
 import { corridorHalfOf, flowDirection, RoadFlow, storedFlow } from './types';
 import type { TilePoint } from './types';
+import type { RoadLayerReader } from './corridor';
 
 /** A run of tiles from `from` to `to` inclusive, in either direction. */
 const span = (from: number, to: number): number[] => {
@@ -260,5 +262,89 @@ describe('a corridor is never split', () => {
         paired,
       ),
     ).toBe(SPLITS_CORRIDOR);
+  });
+});
+
+describe('a bulldoze takes a corridor whole', () => {
+  const PROFILE = 300;
+  const NONE: RoadLayerReader = { flowAt: () => 0, profileIdAt: () => 0 };
+  /** A layer holding one corridor laid by a drag along `path`, plus any `extra` roads. */
+  const layerWith = (path: TilePoint[] | null, extra: TilePoint[] = []): RoadLayerReader => {
+    const roads = new Map<string, { flow: number; profile: number }>();
+    if (path) {
+      const runs = corridorRunsFor(path)!;
+      for (const t of runs.near)
+        roads.set(`${t.x},${t.z}`, { flow: runs.nearFlow, profile: PROFILE });
+      for (const t of runs.far)
+        roads.set(`${t.x},${t.z}`, { flow: runs.farFlow, profile: PROFILE });
+    }
+    for (const t of extra)
+      roads.set(`${t.x},${t.z}`, { flow: storedFlow(RoadFlow.South), profile: 1 });
+    return {
+      flowAt: (x, z) => roads.get(`${x},${z}`)?.flow ?? 0,
+      profileIdAt: (x, z) => roads.get(`${x},${z}`)?.profile ?? 0,
+    };
+  };
+
+  it('takes the other row of a corridor at grade with the row asked for', () => {
+    const ground = layerWith(row(4, 2, 6));
+    for (const [asked, partner] of [
+      [row(4, 2, 6), row(5, 2, 6)],
+      [row(5, 3, 4), row(4, 3, 4)],
+    ] as const) {
+      const reach = bulldozeReach(asked, NONE, ground);
+      expect(reach.refusal).toBeNull();
+      expect(reach.over).toEqual([]);
+      expect(reach.ground).toEqual([...asked, ...partner]);
+    }
+  });
+
+  it('takes each tile once when both rows are asked for', () => {
+    const ground = layerWith(row(4, 2, 6));
+    const both = [...row(4, 2, 6), ...row(5, 2, 6)];
+    expect(bulldozeReach(both, NONE, ground).ground).toEqual(both);
+  });
+
+  it('takes nothing more beside a road that is not a corridor', () => {
+    const ground = layerWith(null, col(3, 0, 9));
+    expect(bulldozeReach(col(3, 2, 4), NONE, ground).ground).toEqual(col(3, 2, 4));
+  });
+
+  it('takes a bridged corridor with its bridged partner, and leaves the road beneath', () => {
+    const over = layerWith(col(3, 4, 5));
+    const ground = layerWith(null, [...row(4, 0, 9)]);
+    const reach = bulldozeReach([{ x: 3, z: 4 }], over, ground);
+    expect(reach.refusal).toBeNull();
+    expect(reach.over).toEqual([
+      { x: 3, z: 4 },
+      { x: 4, z: 4 },
+    ]);
+    expect(reach.ground).toEqual([]);
+  });
+
+  it('refuses a row at grade whose partner has a road passing over it', () => {
+    const ground = layerWith(row(4, 2, 6));
+    const over = layerWith(null, [{ x: 3, z: 5 }]);
+    const reach = bulldozeReach([{ x: 3, z: 4 }], over, ground);
+    expect(reach.refusal).toBe(SPLITS_CORRIDOR);
+  });
+
+  it('takes only what passes over when asked for the over layer alone', () => {
+    const over = layerWith(col(3, 4, 5));
+    const ground = layerWith(row(4, 0, 9));
+    const reach = bulldozeReach(
+      [
+        { x: 3, z: 4 },
+        { x: 8, z: 4 },
+      ],
+      over,
+      ground,
+      true,
+    );
+    expect(reach.over).toEqual([
+      { x: 3, z: 4 },
+      { x: 4, z: 4 },
+    ]);
+    expect(reach.ground).toEqual([]);
   });
 });

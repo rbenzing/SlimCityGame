@@ -221,7 +221,12 @@ laid back. See the [technical design](features/roundabouts.md).
 out-of-bounds. It refunds 50% of whatever stood there (roads, buildings, power
 line), captures a player's junction-control override before clearing the road
 under it so undo restores both the road and the override together, and always
-tries to pull down any power line over the cleared tiles last.
+tries to pull down any power line over the cleared tiles last. On each tile it
+takes the road on top. A corridor half it takes brings its partner with it, on
+the same layer, and a half at grade whose partner has a road passing over it is
+refused (`bulldozeReach` in `src/shared/corridor.ts`, which the bulldoze
+preview asks too). Every road its inverse lays back carries each tile's own
+`flows` and `elevations`.
 
 **`terraform`** is a brush stroke (`raise`/`lower`/`level`/`smooth`) funds-gated
 by its computed kernel cost; its inverse is a `terraformSet` carrying the exact

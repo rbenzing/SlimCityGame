@@ -650,6 +650,52 @@ describe('bulldoze tool', () => {
       { label: expect.any(String), commands: [{ kind: 'bulldoze', tiles: preview?.tiles }] },
     ]);
   });
+
+  describe('over a corridor', () => {
+    /** An env holding a corridor laid east along rows 1 and 2, columns 0 to 4. */
+    function withCorridor() {
+      const made = makeEnv();
+      const runs = corridorRunsFor(Array.from({ length: 5 }, (_, x) => ({ x, z: 1 })))!;
+      const flows = new Map<string, number>();
+      for (const t of runs.near) flows.set(`${t.x},${t.z}`, runs.nearFlow);
+      for (const t of runs.far) flows.set(`${t.x},${t.z}`, runs.farFlow);
+      const key = (t: TilePoint): string => `${t.x},${t.z}`;
+      made.env.roadFlowAt = (t) => flows.get(key(t)) ?? 0;
+      made.env.roadProfileIdAt = (t) => (flows.has(key(t)) ? 12 : 0);
+      const tm = new ToolManager(made.env);
+      tm.setTool('bulldoze');
+      return { ...made, tm };
+    }
+
+    it('outlines the other row too, since it goes with the row dragged over', () => {
+      const { tm, previews, sent } = withCorridor();
+      tm.pointerDown(1, 1, 0);
+      tm.pointerMove(3, 1, 0);
+      const preview = previews.at(-1)!;
+      expect(preview.valid).toBe(true);
+      expect(preview.tiles).toEqual([
+        { x: 1, z: 1 },
+        { x: 2, z: 1 },
+        { x: 3, z: 1 },
+        { x: 1, z: 2 },
+        { x: 2, z: 2 },
+        { x: 3, z: 2 },
+      ]);
+      tm.pointerUp(3, 1, 0);
+      expect(sent).toHaveLength(1);
+    });
+
+    it('refuses, and sends nothing, where the other row has a road passing over it', () => {
+      const { env, tm, previews, sent } = withCorridor();
+      env.overRoadAt = (t) => (t.x === 2 && t.z === 2 ? { flow: 3, profile: 1 } : null);
+      tm.pointerDown(2, 1, 0);
+      tm.pointerMove(2, 1, 0);
+      expect(previews.at(-1)?.valid).toBe(false);
+      expect(previews.at(-1)?.invalidReason).toBe('That would split a corridor');
+      tm.pointerUp(2, 1, 0);
+      expect(sent).toHaveLength(0);
+    });
+  });
 });
 
 describe('plop tool', () => {

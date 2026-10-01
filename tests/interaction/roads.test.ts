@@ -933,4 +933,54 @@ describe('a road laid as two carriageways is one road', () => {
     expect(flowsOn(undone, 40)).toEqual(flowsOn(before, 40));
     expect(flowsOn(undone, 41)).toEqual(flowsOn(before, 41));
   });
+
+  /** Every road byte on and around the corridor, tile by tile. */
+  const roadBytes = (g: GridState): number[][] => {
+    const out: number[][] = [];
+    for (let z = 29; z <= 40; z++) {
+      for (let x = 39; x <= 42; x++) {
+        const i = tileIndex(x, z);
+        out.push([
+          g.roadTier[i]!,
+          g.roadProfile[i]!,
+          g.roadFlow[i]!,
+          g.roadMask[i]!,
+          g.roadElevation[i]!,
+        ]);
+      }
+    }
+    return out;
+  };
+
+  it('takes both halves when one is bulldozed, refunds both, and undoes exactly', () => {
+    for (const x of [40, 41]) {
+      const { h, before } = sixLane();
+      const dozed = run(h, 2, [{ kind: 'bulldoze', tiles: column(x, 30, 10) }]);
+      expect(dozed.ok).toBe(true);
+      const g = after(h);
+      for (const t of PATH) {
+        expect(g.roadTier[tileIndex(40, t.z)]).toBe(RoadTier.None);
+        expect(g.roadTier[tileIndex(41, t.z)]).toBe(RoadTier.None);
+      }
+      const whole = sixLane();
+      const both = run(whole.h, 2, [
+        { kind: 'bulldoze', tiles: [...column(40, 30, 10), ...column(41, 30, 10)] },
+      ]);
+      expect(dozed.cost).toBe(both.cost);
+      expect(run(h, 3, dozed.inverse).ok).toBe(true);
+      expect(roadBytes(after(h))).toEqual(roadBytes(before));
+    }
+  });
+
+  it('lays a one-way street back the way it was drawn when its bulldoze is undone', () => {
+    const h = sandboxed();
+    const west = roadRow(60, 70, 8).reverse();
+    expect(run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.OneWay, tiles: west }]).ok).toBe(true);
+    const flowsAt = (g: GridState): number[] => west.map((t) => g.roadFlow[tileIndex(t.x, t.z)]!);
+    const drawn = flowsAt(after(h));
+    for (const f of drawn) expect(f & 0b111).toBe(RoadFlow.West);
+    const dozed = run(h, 2, [{ kind: 'bulldoze', tiles: roadRow(60, 70, 8) }]);
+    expect(run(h, 3, dozed.inverse).ok).toBe(true);
+    expect(flowsAt(after(h))).toEqual(drawn);
+  });
 });

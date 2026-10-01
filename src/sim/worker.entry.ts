@@ -169,7 +169,13 @@ import {
   type OverRoad,
 } from '../world/overpass';
 import { atOneLevel, axisOfFlow, bitToward, crossingShape, overpassRise } from '../shared/overpass';
-import { corridorPartnerTile, corridorSplitRefusal, rampMeetingRefusal } from '../shared/corridor';
+import {
+  bulldozeReach,
+  corridorPartnerTile,
+  corridorSplitRefusal,
+  rampMeetingRefusal,
+} from '../shared/corridor';
+import type { RoadLayerReader } from '../shared/corridor';
 import { solveElevationProfile } from '../world/bridges';
 import {
   applyHeightPatch,
@@ -2825,10 +2831,24 @@ class SimWorld implements WorkerSim {
     const reachable = tiles.filter((t) => inBounds(t.x, t.z));
     // The road on top goes first: on a crossing tile a bulldoze takes the road
     // passing over and leaves the one beneath, which a second pass removes.
-    const crossing = reachable.filter((t) => overRoadAt(g, tileIndex(t.x, t.z)) !== null);
+    const layerOf = (flow: ArrayLike<number>, profile: ArrayLike<number>): RoadLayerReader => ({
+      flowAt: (x, z) => (inBounds(x, z) ? (flow[tileIndex(x, z)] ?? 0) : 0),
+      profileIdAt: (x, z) => (inBounds(x, z) ? (profile[tileIndex(x, z)] ?? 0) : 0),
+    });
+    const reach = bulldozeReach(
+      reachable,
+      layerOf(g.overFlow, g.overProfile),
+      layerOf(g.roadFlow, g.roadProfile),
+      layer === 'over',
+    );
+    if (reach.refusal) return { ok: false, cost: 0, inverse: [], reason: reach.refusal };
+    const crossing = reach.over;
     const lifted = this.removeOverRoads(crossing);
-    const crossed = new Set(crossing);
-    const inBoundsTiles = layer === 'over' ? [] : reachable.filter((t) => !crossed.has(t));
+    // Only the tiles asked for are cleared of what stands beside the road; a
+    // corridor partner brought in loses its road and nothing else.
+    const asked = new Set(reachable.map((t) => tileIndex(t.x, t.z)));
+    const inBoundsTiles = reach.ground;
+    const clearedTiles = inBoundsTiles.filter((t) => asked.has(tileIndex(t.x, t.z)));
     if (inBoundsTiles.length === 0) {
       if (crossing.length === 0) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
       this.stats.funds += lifted.refund;
@@ -2854,7 +2874,13 @@ class SimWorld implements WorkerSim {
     // composed street, not merely a road of the same tier.
     const roadsByProfile = new Map<
       number,
-      { tier: RoadTier; tiles: TilePoint[]; apart?: TileArms[] }
+      {
+        tier: RoadTier;
+        tiles: TilePoint[];
+        flows: number[];
+        elevations: number[];
+        apart?: TileArms[];
+      }
     >();
     // A junction the player set keeps its setting through an undo: the road
     // comes back, so what they decided about it comes back with it.
@@ -2872,8 +2898,15 @@ class SimWorld implements WorkerSim {
       const tier = (g.roadTier[idx] ?? 0) as RoadTier;
       if (tier !== 0) {
         const profileId = g.roadProfile[idx] || tier;
-        const group = roadsByProfile.get(profileId) ?? { tier, tiles: [] };
+        const group = roadsByProfile.get(profileId) ?? {
+          tier,
+          tiles: [],
+          flows: [],
+          elevations: [],
+        };
         group.tiles.push(t);
+        group.flows.push(g.roadFlow[idx] ?? RoadFlow.None);
+        group.elevations.push(g.roadElevation[idx] ?? 0);
         roadsByProfile.set(profileId, group);
       }
     }
@@ -2893,13 +2926,18 @@ class SimWorld implements WorkerSim {
     }
 
     // Then zones/trees/buildings via clearTiles + registry removal.
-    const cleared = clearTiles(g, inBoundsTiles);
+    const cleared = clearTiles(g, clearedTiles);
     const inverse: Command[] = [];
-    for (const [profileId, { tier, tiles: roadTiles, apart }] of roadsByProfile) {
+    for (const [
+      profileId,
+      { tier, tiles: roadTiles, flows, elevations, apart },
+    ] of roadsByProfile) {
       inverse.push({
         kind: 'buildRoad',
         tier,
         tiles: roadTiles,
+        elevations,
+        flows,
         profile: profileId,
         ...heldApart(apart),
       });
@@ -2928,7 +2966,7 @@ class SimWorld implements WorkerSim {
 
     // Power line last: the bulldozer takes down the wire over the tiles it
     // clears, and the undo strings back exactly the run that was there.
-    const pulledDown = stringPowerLine(g, inBoundsTiles, false);
+    const pulledDown = stringPowerLine(g, clearedTiles, false);
     if (pulledDown.length > 0) {
       refund += pulledDown.length * POWER_LINE_COST_PER_TILE * BULLDOZE_REFUND_RATE;
       this.powerLineDirty = growRect(this.powerLineDirty, pulledDown);
