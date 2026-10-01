@@ -144,6 +144,16 @@ checked. That is why nothing in `tests/support/` except `guard.ts` imports
 Vitest. The browser draws its own map's trees, which a save does not carry,
 so a few stand where the town's river runs.
 
+`tools/playthrough-shots.mjs` plays a new game through the interface itself,
+the way a player does. It clicks dock categories and drawer cards, drags roads
+and zones with the pointer, and places buildings with a click, never through
+the command hook. It photographs every step and reads the grid and stats back
+after each one, so a check fails when the world did not change the way the
+click promised. It runs from a starter town to services, transit, bulldoze
+with undo and redo, the terrain brushes, every lens, the corner panels, the
+speed controls and a save loaded back, and exits non-zero on any failed
+check or page error. A tool a player can reach adds a step to it.
+
 ## Determinism tests that exist
 
 - `src/core/rng.test.ts` — proves the seeded RNG (`createRng`) replays

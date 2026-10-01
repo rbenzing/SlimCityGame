@@ -148,6 +148,13 @@ export class OverlayRenderer {
     const geometry = new THREE.PlaneGeometry(mapMeters, mapMeters, 1, 1);
     geometry.rotateX(-Math.PI / 2);
     geometry.translate(mapMeters / 2, 0, mapMeters / 2);
+    // The texture's first row is tile row z = 0, so v has to run with world z.
+    // Laid flat, the plane's own UVs run v against z and mirror every lens.
+    const position = geometry.getAttribute('position');
+    const uv = geometry.getAttribute('uv');
+    for (let i = 0; i < uv.count; i++) {
+      uv.setXY(i, position.getX(i) / mapMeters, position.getZ(i) / mapMeters);
+    }
 
     const material = new THREE.MeshBasicMaterial({
       map: texture,

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { FieldId, type ZonePatch } from '../shared/types';
-import { MAP_SIZE } from '../shared/constants';
+import { MAP_SIZE, TILE_METERS } from '../shared/constants';
 import { coverageColor, OverlayRenderer, rampColor, soilColor } from './overlays';
 import { SoilGrade } from '../shared/soil';
 
@@ -55,6 +55,44 @@ describe('OverlayRenderer', () => {
     new OverlayRenderer(scene);
     expect(scene.children.length).toBe(1);
     expect(scene.children[0]!.visible).toBe(false);
+  });
+
+  it('lays each tile’s value over that tile, not over its mirror across the map', () => {
+    const scene = new THREE.Scene();
+    const overlay = new OverlayRenderer(scene);
+    overlay.setActive(FieldId.Pollution);
+    const hot = { x: 3, z: 200 };
+    const field = new Uint8Array(MAP_SIZE * MAP_SIZE);
+    field[hot.z * MAP_SIZE + hot.x] = 255;
+    overlay.setFieldData(FieldId.Pollution, field);
+
+    // The quad's UVs are affine in world x and z; read the map off its corners.
+    const mesh = scene.children[0] as THREE.Mesh;
+    const position = mesh.geometry.getAttribute('position');
+    const uv = mesh.geometry.getAttribute('uv');
+    const corners = Array.from({ length: uv.count }, (_, i) => ({
+      x: position.getX(i),
+      z: position.getZ(i),
+      u: uv.getX(i),
+      v: uv.getY(i),
+    }));
+    const lo = corners.reduce((a, c) => (c.x + c.z < a.x + a.z ? c : a));
+    const hi = corners.reduce((a, c) => (c.x + c.z > a.x + a.z ? c : a));
+    const uvAt = (wx: number, wz: number): [number, number] => [
+      lo.u + ((wx - lo.x) / (hi.x - lo.x)) * (hi.u - lo.u),
+      lo.v + ((wz - lo.z) / (hi.z - lo.z)) * (hi.v - lo.v),
+    ];
+    // A data texture's first row is v = 0, its first column u = 0.
+    const texelAt = ([u, v]: [number, number]): number =>
+      Math.floor(v * MAP_SIZE) * MAP_SIZE + Math.floor(u * MAP_SIZE);
+
+    const red = (texel: number): number => getTextureData(scene)[texel * 4]!;
+    const tileCentre = (x: number, z: number): [number, number] =>
+      uvAt((x + 0.5) * TILE_METERS, (z + 0.5) * TILE_METERS);
+    expect(red(texelAt(tileCentre(hot.x, hot.z)))).toBe(Math.round(rampColor(255)[0] * 255));
+    expect(red(texelAt(tileCentre(hot.x, MAP_SIZE - 1 - hot.z)))).toBe(
+      Math.round(rampColor(0)[0] * 255),
+    );
   });
 
   it('setActive toggles mesh visibility', () => {

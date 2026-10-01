@@ -1131,8 +1131,14 @@ class SimWorld implements WorkerSim {
 
     // Transit line list + ridership (always present so the render thread
     // can add/remove bus-stop posts, the route ribbon, and cosmetic buses).
+    // The lines are the ones standing now, so a line drawn while paused shows
+    // at once; ridership is the sim's, and waits for the next tick.
+    const riders = new Map(
+      this.transitResult.lines.map((l, i) => [l.id, this.transitResult.ridership[i] ?? 0]),
+    );
+    const lines = this.transit.getLines();
     snap.transit = {
-      lines: this.transitResult.lines.map((l) => ({
+      lines: lines.map((l) => ({
         id: l.id,
         stops: l.stops.map((s) => ({ ...s })),
         color: l.color,
@@ -1140,7 +1146,7 @@ class SimWorld implements WorkerSim {
         // rail line draws bus shelters at its stations and buses on its track.
         mode: l.mode,
       })),
-      ridership: [...this.transitResult.ridership],
+      ridership: lines.map((l) => riders.get(l.id) ?? 0),
     };
     // Active incidents (only when any are live — optional channel).
     if (this.latestIncidents.length > 0) {
@@ -1151,6 +1157,7 @@ class SimWorld implements WorkerSim {
     // rather than only the ones that happen to land on it.
     if (this.serviceLoad) snap.serviceLoad = { ...this.serviceLoad };
     snap.growthWaiting = this.growth.waitingFor(this.grid, this.registry, this.supply);
+    snap.zonedUnserved = this.growth.zonedUnserved(this.grid);
     // District patches + defs (mirrors the zones patch convention).
     if (this.districtDirty || this.districtDefsChanged) {
       snap.districts = {

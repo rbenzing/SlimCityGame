@@ -25,6 +25,7 @@ import type {
   GridState,
   GrowthWaiting,
   Sector,
+  ZonedUnserved,
 } from '../shared/types';
 import { BuildingRegistry, footprintForRotation } from './buildings';
 import { utilityCanDeliver, utilityUnits, type UtilityLine } from './network';
@@ -378,6 +379,8 @@ function desirabilityFor(g: GridState, x: number, z: number, sector: Sector): nu
 export class GrowthSystem {
   private readonly catalog: BuildingCatalogEntry[];
   private readonly catalogIndex: Map<string, BuildingCatalogEntry>;
+  /** Zones whose first building draws city water: a farm pumps its own well. */
+  private readonly waterZones: ReadonlySet<ZoneType>;
   private readonly rng: Rng;
   private readonly canPlace: (g: GridState, x: number, z: number, w: number, d: number) => boolean;
 
@@ -405,6 +408,11 @@ export class GrowthSystem {
   ) {
     this.catalog = catalog;
     this.catalogIndex = new Map(catalog.map((entry) => [entry.id, entry]));
+    this.waterZones = new Set(
+      catalog
+        .filter((e) => e.zone !== undefined && e.level === 1 && needsWater(e))
+        .map((e) => e.zone!),
+    );
     this.rng = rng;
     this.canPlace = canPlace;
   }
@@ -464,6 +472,48 @@ export class GrowthSystem {
       power: count(this.waiting.power, supply.power.spare),
       water: count(this.waiting.water, supply.water.spare),
     };
+  }
+
+  /**
+   * Empty zoned tiles standing beside a road yet without power, or without
+   * water where their zone's buildings draw it. A served road hands its
+   * utility to every tile beside it, so a tile here is one its own road fails:
+   * a gravel road carries no cable, and a street the mains never reach carries
+   * no water. Ground zoned too deep to touch the road is left out, since more
+   * supply would not grow it either.
+   */
+  zonedUnserved(g: GridState): ZonedUnserved {
+    const cells = g.roads ? roadCellsOf(g) : null;
+    const isRoad = (x: number, z: number): boolean => {
+      if (!inBounds(x, z)) return false;
+      const idx = tileIndex(x, z);
+      if (isStreetTier(readTile(g.roadTier, idx))) return true;
+      return cells !== null && freeCellsOn(cells, idx).some((c) => isStreetTier(cells.tier[c]!));
+    };
+    const out: ZonedUnserved = { power: 0, water: 0 };
+    for (let z = 0; z < g.size; z++) {
+      for (let x = 0; x < g.size; x++) {
+        const idx = tileIndex(x, z);
+        if (readTile(g.buildingId, idx) !== 0) continue;
+        const zone = readTile(g.zone, idx) as ZoneType;
+        if (zoneSector(zone) === null) continue;
+        const lacksPower = !readTile(g.power, idx);
+        const lacksWater = this.waterZones.has(zone) && !readTile(g.watered, idx);
+        if (!lacksPower && !lacksWater) continue;
+        if (!isRoad(x - 1, z) && !isRoad(x + 1, z) && !isRoad(x, z - 1) && !isRoad(x, z + 1)) {
+          continue;
+        }
+        if (lacksPower) {
+          out.power += 1;
+          out.powerAt ??= { x, z };
+        }
+        if (lacksWater) {
+          out.water += 1;
+          out.waterAt ??= { x, z };
+        }
+      }
+    }
+    return out;
   }
 
   /** Drops waits a sweep old, or from a later pass than this one (a load went back in time). */

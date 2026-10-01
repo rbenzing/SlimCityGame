@@ -789,6 +789,54 @@ function supplyOf(
 /** The spawn scan comes back to a lot once every 32 passes of 10 ticks. */
 const SWEEP_TICKS = 32 * 10;
 
+describe('GrowthSystem: zoned land its road brings nothing', () => {
+  /** A gravel road down x = 5 and homes zoned three deep along its east side, nothing served. */
+  function zonedDownGravel(): GridState {
+    const g = makeGrid();
+    for (let z = 0; z < 6; z++) {
+      g.roadTier[tileIndex(5, z)] = RoadTier.Gravel;
+      for (let x = 6; x <= 8; x++) g.zone[tileIndex(x, z)] = ZoneType.ResLow;
+    }
+    return g;
+  }
+  const growth = (): GrowthSystem => new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
+
+  it('counts only the row beside the road, not ground zoned too deep to reach it', () => {
+    const counted = growth().zonedUnserved(zonedDownGravel());
+    expect(counted).toEqual({
+      power: 6,
+      water: 6,
+      powerAt: { x: 6, z: 0 },
+      waterAt: { x: 6, z: 0 },
+    });
+  });
+
+  it('counts each utility the road fails, and leaves out what it brings', () => {
+    const g = zonedDownGravel();
+    for (let z = 0; z < 6; z++) g.watered[tileIndex(6, z)] = 1;
+    expect(growth().zonedUnserved(g)).toMatchObject({ power: 6, water: 0 });
+    for (let z = 0; z < 6; z++) g.power[tileIndex(6, z)] = 1;
+    expect(growth().zonedUnserved(g)).toEqual({ power: 0, water: 0 });
+  });
+
+  it('leaves out a tile something is already built on', () => {
+    const g = zonedDownGravel();
+    new BuildingRegistry(growthCatalog).place(g, resL1, 6, 0, 0, BuildingState.Active);
+    expect(growth().zonedUnserved(g).power).toBe(5);
+  });
+
+  it('never asks water for farmland, which draws none', () => {
+    const g = zonedDownGravel();
+    for (let z = 0; z < 6; z++) g.zone[tileIndex(6, z)] = ZoneType.Agriculture;
+    const farmCatalog: BuildingCatalogEntry[] = [
+      ...growthCatalog,
+      { ...resL1, id: 'farm', zone: ZoneType.Agriculture, waterUse: 0, farm: 'pasture' },
+    ];
+    const counted = new GrowthSystem(farmCatalog, constantRng(0), alwaysTrue).zonedUnserved(g);
+    expect(counted).toEqual({ power: 6, water: 0, powerAt: { x: 6, z: 0 } });
+  });
+});
+
 describe('GrowthSystem: a grid too small for its city', () => {
   const fullResDemand: DemandLevels = { res: 1, com: 0, ind: 0 };
 

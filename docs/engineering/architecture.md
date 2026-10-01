@@ -181,7 +181,9 @@ whether a sim tick landed:
    time (`SPEED_MULTIPLIERS[speed]`), so a paused city holds its lights and a
    4× city cycles them 4× as fast.
 6. Every ~500 ms, if an infoview lens is active, `requestField(overlay)`
-   asks the worker for a fresh scalar-field snapshot.
+   asks the worker for a fresh scalar-field snapshot. The lens is one quad
+   over the map whose texture holds a texel per tile, column x and row z,
+   so tile (x, z)'s value lies over tile (x, z).
 7. The frame renders: through the bloom pipeline
    (`src/render/bloom.ts`) if enabled, otherwise a plain
    `handle.renderer.render(world.scene, camera)`.
