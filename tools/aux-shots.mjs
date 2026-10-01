@@ -1,10 +1,11 @@
-/** Auxiliary lane check (SPEC 29, wave 5d): the lane a motorway grows beside a
- * slip road, so a driver joining has somewhere to get up to speed and one
- * leaving has somewhere to slow down.
+/** Auxiliary lane check: the lane a motorway grows beside a slip road, so a
+ * driver joining has somewhere to get up to speed and one leaving has
+ * somewhere to slow down.
  *
- * The tile affords one on the four-lane motorway as well as the two-lane, so
- * this lays the two-lane: it is the narrower case, where the lane has the most
- * room to open into and the taper is easiest to read.
+ * This lays the three-lane preset motorway running south and an off-ramp
+ * leaving it the way the world allows one to: beside it, running the same way,
+ * from the tile it diverges at, then bending away west, the southbound
+ * driver's right, to a street.
  *
  * Usage: node tools/aux-shots.mjs [url] [outDir]
  */
@@ -91,36 +92,27 @@ const row = (z, a, c) => Array.from({ length: c - a + 1 }, (_, i) => ({ x: X + a
 
 const failures = [];
 const MX = 10;
-const JZ = 12;
+const JZ = 16;
 
-// A two-lane motorway running south, with a slip road leaving it eastward at
-// (MX, JZ) and a street for the slip road to reach.
-// A two-lane motorway: 7.5 m of carriageway, which leaves the tile the room
-// for an auxiliary lane. The four-lane preset does not, and that is the point.
-const SLIM_MOTORWAY = 13;
-await cmd('define', [
+// The preset motorway running south down column MX. The off-ramp diverges at
+// (MX - 1, JZ): it runs beside the motorway, south, for four tiles, then bends
+// west to a street.
+await cmd('motorway', [{ kind: 'buildRoad', tier: HIGHWAY, tiles: col(MX, 0, 30) }]);
+await cmd('ramp', [
   {
-    kind: 'defineRoadProfile',
-    id: SLIM_MOTORWAY,
-    profile: {
-      class: 'highway',
-      kerbs: true,
-      pieces: [
-        { kind: 'travel', width: 3.75, flow: 'back' },
-        { kind: 'travel', width: 3.75, flow: 'fwd' },
-      ],
-    },
+    kind: 'buildRoad',
+    tier: RAMP,
+    tiles: [...col(MX - 1, JZ, JZ + 3), ...row(JZ + 3, MX - 6, MX - 2).reverse()],
   },
 ]);
-await cmd('motorway', [
-  { kind: 'buildRoad', tier: HIGHWAY, tiles: col(MX, 0, 20), profile: SLIM_MOTORWAY },
-]);
-await cmd('ramp', [{ kind: 'buildRoad', tier: RAMP, tiles: row(JZ, MX, MX + 7) }]);
-await cmd('street', [{ kind: 'buildRoad', tier: TWO_LANE, tiles: col(MX + 8, JZ - 4, JZ + 4) }]);
+await cmd('street', [{ kind: 'buildRoad', tier: TWO_LANE, tiles: col(MX - 7, JZ - 2, JZ + 8) }]);
 await page.waitForTimeout(2500);
 
+const g = await readGrid();
+if (g.roadTier[idx(X + MX - 1, Z + JZ)] !== RAMP) failures.push('the off-ramp was not laid');
+
 const along = [];
-for (let z = JZ - 8; z <= JZ + 8; z++) along.push({ z, ...(await approach(X + MX, Z + z)) });
+for (let z = JZ - 14; z <= JZ + 6; z++) along.push({ z, ...(await approach(X + MX, Z + z)) });
 console.log(
   'down the motorway:',
   JSON.stringify(along.map((a) => ({ z: a.z, lanes: a.lanes, w: a.width, aux: a.auxiliary }))),
@@ -129,19 +121,22 @@ console.log(
 const withAux = along.filter((a) => a.auxiliary);
 if (withAux.length === 0)
   failures.push('the motorway grew no auxiliary lane at all beside the slip road');
-// The slip road leaves eastward, and the east kerb is the northbound driver's,
-// so the lane to slow down in runs up to the turn-off from the SOUTH.
-const near = along.find((a) => a.z === JZ + 1);
-const far = along.find((a) => a.z === JZ + 7);
-if (!near?.auxiliary) failures.push('the tile beside the turn-off carries no auxiliary lane');
-if (!far?.auxiliary) failures.push('the auxiliary lane does not reach back down the zone');
-if (near && !(near.lanes > 2))
-  failures.push(`the tile beside the turn-off carries ${near.lanes} lanes, wanted more than 2`);
+// The ramp leaves the southbound motorway at JZ, so the lane to slow down in
+// runs up to the turn-off from the NORTH, upstream of it.
+const near = along.find((a) => a.z === JZ - 1);
+const far = along.find((a) => a.z === JZ - 7);
+const plain = along.find((a) => a.z === JZ - 14);
+if (!near?.auxiliary) failures.push('the tile before the turn-off carries no auxiliary lane');
+if (!far?.auxiliary) failures.push('the auxiliary lane does not reach back up the zone');
+if (near && plain && !(near.lanes > plain.lanes))
+  failures.push(
+    `the tile before the turn-off carries ${near.lanes} lanes, no more than ${plain.lanes}`,
+  );
 if (near && far && !(near.width > far.width))
   failures.push(`the lane does not open toward the turn-off: ${far.width} -> ${near.width}`);
 // And the plain motorway well away from the interchange is untouched.
-const plain = along.find((a) => a.z === JZ - 8);
-if (plain && (plain.auxiliary || Math.abs(plain.width - 7.5) > 1e-6))
+const presetWidth = along.find((a) => a.z === JZ - 13)?.width;
+if (plain && (plain.auxiliary || Math.abs(plain.width - presetWidth) > 1e-6))
   failures.push(
     `the motorway away from the interchange is ${plain.width} m with aux ${JSON.stringify(plain.auxiliary)}`,
   );
@@ -154,8 +149,8 @@ const shot = async (name, tx, tz, d, yaw, pitch) => {
   await page.screenshot({ path: `${out}/${name}.png` });
   console.log('shot', name);
 };
-await shot('aux-wide', X + MX + 2, Z + JZ + 2, 150, 0.0, 1.1);
-await shot('aux-close', X + MX, Z + JZ + 2, 55, 0.0, 1.2);
+await shot('aux-wide', X + MX - 2, Z + JZ - 2, 150, 0.0, 1.1);
+await shot('aux-close', X + MX, Z + JZ - 2, 55, 0.0, 1.2);
 
 await b.close();
 if (failures.length > 0) {
