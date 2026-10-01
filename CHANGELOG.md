@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.25.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.24.2...slimcity-v1.25.0) (2026-10-01)
+
+
+### Features
+
+* **roads:** a T onto a corridor with no median is a full junction ([b8c6b22](https://github.com/rbenzing/SlimCityGame/commit/b8c6b222bd1c2d2807b5d52324334f2d59b999e1))
+
 ## [1.24.2](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.24.1...slimcity-v1.24.2) (2026-10-01)
 
 
