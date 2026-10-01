@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.23.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.22.0...slimcity-v1.23.0) (2026-10-01)
+
+
+### Features
+
+* **roads:** lay a compact roundabout on a junction in one click ([d801ee9](https://github.com/rbenzing/SlimCityGame/commit/d801ee9b55821f69f37ef74a14b930de0a293566))
+* **roads:** lay a compact roundabout on a junction in one click ([a9873f6](https://github.com/rbenzing/SlimCityGame/commit/a9873f62af9b5e0a2e90d2f4a63582efce6ce2fa))
+
 ## [1.22.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.21.0...slimcity-v1.22.0) (2026-09-30)
 
 
