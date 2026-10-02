@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.30.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.29.0...slimcity-v1.30.0) (2026-10-02)
+
+
+### Features
+
+* **growth:** industrial kinds by business, and a Heavy Industrial zone ([9e09184](https://github.com/rbenzing/SlimCityGame/commit/9e091849801b07f680e9b7ec3c7462296a430dce))
+
 ## [1.29.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.28.0...slimcity-v1.29.0) (2026-10-02)
 
 
