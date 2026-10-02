@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.31.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.30.0...slimcity-v1.31.0) (2026-10-02)
+
+
+### Features
+
+* **water:** pipes, a pumping station and a drain, and sewage as the third utility ([1d4d27c](https://github.com/rbenzing/SlimCityGame/commit/1d4d27c223f3335caea4fbd419a16941091eaf35))
+
 ## [1.30.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.29.0...slimcity-v1.30.0) (2026-10-02)
 
 
