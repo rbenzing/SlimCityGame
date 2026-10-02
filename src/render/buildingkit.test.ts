@@ -1,6 +1,15 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { BuildingKitRenderer, computePartPlacements, DOOR_COUNT } from './buildingkit';
+import {
+  BuildingKitRenderer,
+  computePartPlacements,
+  DOOR_COUNT,
+  FUEL_CANOPY_DEPTH_M,
+  FUEL_CANOPY_FRONTAGE_FRACTION,
+  FUEL_CANOPY_GAP_M,
+  FUEL_CANOPY_HEIGHT_M,
+  FUEL_CANOPY_THICKNESS_M,
+} from './buildingkit';
 import type { SetbackBox } from './massing';
 import { BuildingState, type BuildingCatalogEntry, type BuildingInstance } from '../shared/types';
 
@@ -115,6 +124,45 @@ describe('computePartPlacements', () => {
     expect(computePartPlacements(shop, base, top, null)).toEqual([]);
     // Roof parts need no frontage, so they still appear.
     expect(partsOf(computePartPlacements(greenWorks, base, top, null))).toEqual(['roofArray']);
+  });
+
+  it('stands a filling station canopy off the kiosk over the forecourt, on four posts, with two pumps under it', () => {
+    const station = entry({ category: 'com', kind: 'fuel', footprint: { w: 2, d: 2 } });
+    const kiosk: SetbackBox = { w: 14, d: 14, h: 4.5, yOffset: 0 };
+    const placed = computePartPlacements(station, kiosk, kiosk, 'S');
+    const canopy = placed.filter((p) => p.part === 'fuelCanopy');
+    const pumps = placed.filter((p) => p.part === 'pumps');
+    expect(canopy).toHaveLength(5);
+    expect(pumps).toHaveLength(2);
+
+    const slab = canopy.find((p) => p.size[1] === FUEL_CANOPY_THICKNESS_M)!;
+    // The slab starts the gap off the wall and runs its depth out over the forecourt, up at canopy height.
+    expect(slab.offset[2] - slab.size[2] / 2).toBeCloseTo(kiosk.d / 2 + FUEL_CANOPY_GAP_M, 9);
+    expect(slab.size[2]).toBe(FUEL_CANOPY_DEPTH_M);
+    expect(slab.size[0]).toBeCloseTo(kiosk.w * FUEL_CANOPY_FRONTAGE_FRACTION, 9);
+    expect(slab.offset[1] - slab.size[1] / 2).toBeCloseTo(FUEL_CANOPY_HEIGHT_M, 9);
+    // The posts stand on the ground under the slab's corners, and the pumps under the slab.
+    for (const post of canopy.filter((p) => p !== slab)) {
+      expect(post.size[1]).toBe(FUEL_CANOPY_HEIGHT_M);
+      expect(post.offset[1] - post.size[1] / 2).toBeCloseTo(0, 9);
+      expect(Math.abs(post.offset[0])).toBeLessThan(slab.size[0] / 2);
+      expect(post.offset[2]).toBeGreaterThan(slab.offset[2] - slab.size[2] / 2);
+      expect(post.offset[2]).toBeLessThan(slab.offset[2] + slab.size[2] / 2);
+    }
+    for (const pump of pumps) {
+      expect(pump.offset[1] - pump.size[1] / 2).toBeCloseTo(0, 9);
+      expect(pump.offset[2]).toBeGreaterThan(slab.offset[2] - slab.size[2] / 2);
+      expect(pump.offset[2]).toBeLessThan(slab.offset[2] + slab.size[2] / 2);
+    }
+    expect(pumps[0]!.offset[0]).toBeCloseTo(-pumps[1]!.offset[0], 9);
+  });
+
+  it('turns the filling station onto the X axis for an east frontage', () => {
+    const station = entry({ category: 'com', kind: 'fuel', footprint: { w: 2, d: 2 } });
+    const kiosk: SetbackBox = { w: 14, d: 14, h: 4.5, yOffset: 0 };
+    for (const p of computePartPlacements(station, kiosk, kiosk, 'E')) {
+      expect(p.offset[0], p.part).toBeGreaterThan(kiosk.w / 2);
+    }
   });
 
   it('gives an archetype with no parts nothing at all', () => {

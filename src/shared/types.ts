@@ -1066,11 +1066,15 @@ export type ResidentialKind =
   | 'tower'
   | 'mixed';
 
+/** The kinds of business a commercial zone grows: shop formats, then offices and hotels. */
+export type CommercialKind =
+  'shop' | 'strip' | 'supermarket' | 'restaurant' | 'fuel' | 'office' | 'hotel';
+
 /**
  * What a zoned building IS. A lot draws one of its zone's kinds when it grows
  * and keeps it through every level-up, so each kind has its own three levels.
  */
-export type BuildingKind = FarmKind | ResidentialKind;
+export type BuildingKind = FarmKind | ResidentialKind | CommercialKind;
 
 export interface BuildingCatalogEntry {
   id: string;

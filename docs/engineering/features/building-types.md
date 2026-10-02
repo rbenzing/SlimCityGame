@@ -1,6 +1,6 @@
 # Building types — technical design
 
-- **Status:** Agreed 2026-10-01; residential kinds built 2026-10-01
+- **Status:** Agreed 2026-10-01; residential kinds built 2026-10-01; commercial kinds built 2026-10-02
 - **Date:** 2026-10-01
 - **Author:** Claude, from the player-facing design in
   [../../game-design/features/building-types.md](../../game-design/features/building-types.md)
@@ -128,6 +128,32 @@ growth supply bookkeeping, which compares them to each other.
   did for farms; a building no longer spills from one zoned tile onto the
   ground beside it. This is what makes a one-tile strip grow one-tile kinds.
 - Names in the catalog say the kind, so the inspector needs no change.
+
+### The commercial kinds
+
+- `CommercialKind` joins `BuildingKind`: `shop`, `strip`, `supermarket`,
+  `restaurant`, `fuel`, `office`, `hotel`. The catalog keeps `com-low-1` as
+  the first low-commercial entry (the shop's first level), since
+  `COMMERCIAL_SPAN_JOBS` is read from it, and keeps `com-low-2`, `com-high-1`
+  and `com-high-2` as the shop's and the office's other levels so saves load.
+- **Room.** `jobRoom(input: DemandInput): JobsBySector` in `demand.ts`
+  returns the two gaps the demand formulas already compute, in jobs. The
+  worker computes it beside `computeDemand` every tick and passes it to
+  `growth.tick` as `room`, which defaults to unlimited for callers without an
+  economy. Growth copies it per pass and counts down as it builds, as `spare`
+  does. In `runSpawnScan`, after the lot-fit filter, a `com` or `ind`
+  candidate must have `jobs <= room[sector]`, or be the candidate with the
+  fewest jobs; `tryLevelUp` requires `next.jobs - entry.jobs <= room[sector]`
+  for those sectors. Residential kinds and farms are untouched.
+- **Archetypes.** `archetypeFor` reads the kind: `storefront` for shop,
+  strip, supermarket and restaurant; `fuelStation` (parts `fuelCanopy`,
+  `pumps`) for fuel; `office` (no parts); `hotel` (canopy, signage band). A
+  commercial entry without a kind keeps the level rule.
+- **Kit.** `computePartPlacements` lays the fuel canopy as a slab 2 m off the
+  frontage wall, 10 m deep, 90% of the span, 5.2 m up, with four posts and
+  two pump islands, all against the frontage side like the dock and canopy.
+- **Bodies.** `BODY_RULES` adds `restaurant` (13.6 m per tile, cap 24 m) and
+  `fuel` (fill 0.35, cap 16 m).
 
 ### Tests
 

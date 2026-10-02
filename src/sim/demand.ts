@@ -100,3 +100,19 @@ export function computeDemand(input: DemandInput): DemandLevels {
 
   return { res, com, ind };
 }
+
+/**
+ * The jobs each business sector still has room for: the local jobs the open
+ * industry supports less those open or going up, and the basic jobs the
+ * workforce calls for less those open or going up. Negative when a sector is
+ * oversupplied. The spawner reads it so a business opens only where its jobs
+ * fit, where the demand value above only says which way the city leans.
+ */
+export function jobRoom(input: DemandInput): JobsBySector {
+  const { population, jobs: open, pipeline } = input;
+  const workforce = workforceOf(population);
+  return {
+    com: open.ind * (BASE_MULTIPLIER - 1) - open.com - pipeline.com,
+    ind: workforce / BASE_MULTIPLIER - open.ind - pipeline.ind,
+  };
+}

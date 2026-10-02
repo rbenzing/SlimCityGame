@@ -561,11 +561,16 @@ MUTCD citations below use 11th-edition section numbers.
 - A zoned building has a `kind`, drawn when its lot grows: among the zone's
   level-1 catalog entries that are unlocked and whose footprint fits the lot,
   one roll of the growth rng against their `share` weights, in catalog
-  order. The kind is kept through every level-up; a level-up looks for the
-  same zone and kind at the next level. The player never picks a kind. —
+  order. A commercial or industrial kind is a candidate only if its jobs fit
+  the sector's room — the jobs the economy still supports, counted down as
+  the pass builds — except the smallest kind that fits the lot, which always
+  is; a business levels up only with room for the jobs it adds. The kind is
+  kept through every level-up; a level-up looks for the same zone and kind at
+  the next level. The player never picks a kind. —
   [building-types.md](game-design/features/building-types.md),
   [simulation-rules.md](game-design/simulation-rules.md#the-spawner-how-a-lot-is-chosen);
-  `spawnCandidates`, `drawKind` in `src/sim/growth.ts`
+  `spawnCandidates`, `drawKind` in `src/sim/growth.ts`; `jobRoom` in
+  `src/sim/demand.ts`
 - Every zoned catalog figure is derived from a published source by the rules
   in [balancing.md](game-design/balancing.md#residential-kinds): residents are
   `round(units × household)`, a building's households are its `units`, and

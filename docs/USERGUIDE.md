@@ -222,8 +222,13 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   the lot, weighted by how common each is in real cities: low density is mostly
   detached houses, with a duplex or a fourplex where only a narrow lot is left;
   row housing is townhouses two to a lot; medium density grows multiplexes and
-  courtyard apartments; high density grows mid-rise slabs and towers. Zone
-  narrow strips if you want the small stuff and big blocks if you want towers.
+  courtyard apartments; high density grows mid-rise slabs and towers. Low
+  commercial grows corner shops, restaurants and filling stations, and once the
+  town can support them, shopping strips and supermarkets; high commercial
+  grows offices and hotels. A business only opens where the town's economy has
+  room for its jobs, so a village gets a corner shop before a shopping strip.
+  Zone narrow strips if you want the small stuff and big blocks if you want
+  towers and strips.
   Zoned tiles only develop if they have road access, power, and water. The exception
   is a low-density house off a **dirt road** with no water main beside it: it
   has its own well, so it needs only road access and power.

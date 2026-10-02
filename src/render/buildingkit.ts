@@ -40,6 +40,8 @@ const PART_COLOR: Readonly<Record<BuildingPart, number>> = {
   roofArray: materialHex('bluePlaster'), // photovoltaic dark blue
   canopy: materialHex('redPlaster'),
   signageBand: materialHex('whiteBrick'),
+  fuelCanopy: materialHex('whiteBrick'),
+  pumps: materialHex('redPlaster'),
 };
 
 // --- part dimensions, world meters -----------------------------------------
@@ -72,6 +74,18 @@ const SIGN_THICKNESS_M = 0.16;
 const SIGN_FRONTAGE_FRACTION = 0.7;
 /** The band sits just above the shopfront, i.e. above the canopy. */
 const SIGN_ABOVE_CANOPY_M = 0.5;
+
+/** A filling station's canopy stands off the kiosk over the forecourt, on posts. */
+export const FUEL_CANOPY_GAP_M = 2;
+export const FUEL_CANOPY_DEPTH_M = 10;
+export const FUEL_CANOPY_THICKNESS_M = 0.5;
+export const FUEL_CANOPY_HEIGHT_M = 5.2;
+export const FUEL_CANOPY_FRONTAGE_FRACTION = 0.9;
+const FUEL_POST_M = 0.4;
+const FUEL_POST_INSET_M = 1;
+/** Two pump islands under the canopy, behind the bay row where the cars stand. */
+export const PUMP_ISLAND_SIZE_M: readonly [number, number, number] = [1, 1.4, 3];
+const PUMP_OUT_FROM_WALL_M = 4.5;
 
 export interface PartPlacement {
   readonly part: BuildingPart;
@@ -236,6 +250,57 @@ export function computePartPlacements(
             CANOPY_HEIGHT_M + SIGN_ABOVE_CANOPY_M,
           ),
         );
+        break;
+      }
+      case 'fuelCanopy': {
+        if (!side) break;
+        const { nx, nz } = sideNormal(side);
+        const alongX = side === 'N' || side === 'S';
+        const span = facadeSpan(baseBox, side) * FUEL_CANOPY_FRONTAGE_FRACTION;
+        const centreOut = halfDepthTo(baseBox, side) + FUEL_CANOPY_GAP_M + FUEL_CANOPY_DEPTH_M / 2;
+        const slabY = FUEL_CANOPY_HEIGHT_M + FUEL_CANOPY_THICKNESS_M / 2;
+        out.push({
+          part,
+          size: alongX
+            ? [span, FUEL_CANOPY_THICKNESS_M, FUEL_CANOPY_DEPTH_M]
+            : [FUEL_CANOPY_DEPTH_M, FUEL_CANOPY_THICKNESS_M, span],
+          offset: [nx * centreOut, slabY, nz * centreOut],
+        });
+        // Four posts, inset from the canopy's corners.
+        const halfSpan = span / 2 - FUEL_POST_INSET_M;
+        const halfDepth = FUEL_CANOPY_DEPTH_M / 2 - FUEL_POST_INSET_M;
+        for (const a of [-1, 1]) {
+          for (const d of [-1, 1]) {
+            const along = a * halfSpan;
+            const outDist = centreOut + d * halfDepth;
+            out.push({
+              part,
+              size: [FUEL_POST_M, FUEL_CANOPY_HEIGHT_M, FUEL_POST_M],
+              offset: [
+                alongX ? along : nx * outDist,
+                FUEL_CANOPY_HEIGHT_M / 2,
+                alongX ? nz * outDist : along,
+              ],
+            });
+          }
+        }
+        break;
+      }
+      case 'pumps': {
+        if (!side) break;
+        const { nx, nz } = sideNormal(side);
+        const alongX = side === 'N' || side === 'S';
+        const span = facadeSpan(baseBox, side) * FUEL_CANOPY_FRONTAGE_FRACTION;
+        const outDist = halfDepthTo(baseBox, side) + PUMP_OUT_FROM_WALL_M;
+        const [w, h, len] = PUMP_ISLAND_SIZE_M;
+        for (const a of [-1, 1]) {
+          const along = (a * span) / 4;
+          out.push({
+            part,
+            size: alongX ? [len, h, w] : [w, h, len],
+            offset: [alongX ? along : nx * outDist, h / 2, alongX ? nz * outDist : along],
+          });
+        }
         break;
       }
     }

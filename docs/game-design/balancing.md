@@ -45,12 +45,28 @@ Every figure is sourced in [features/building-types.md](features/building-types.
 | homes per frontage     | 2 per tile                                                   | Townhouses 6.8 m wide, inside the type's 18–25 ft.                                               | `src/render/houselot.ts` |
 | power per home         | detached 1.4, attached 0.97, 2–4 units 0.76, 5+ units 0.70 kW | RECS 2020 annual electricity per household, over 8,760 h.                                        | `src/data/catalog.json` |
 | water per person       | 0.34 kL a day                                                | 90 US gallons, the middle of USGS's 80–100 indoor gallons a day.                                 | `src/data/catalog.json` |
-| retail floor power     | 12.6 kWh per sq ft a year                                    | CBECS 2018 median electricity for a non-mall retail building; a mixed block's ground floor.      | `src/data/catalog.json` |
+| retail floor power     | 16.7 kWh per sq ft a year                                    | CBECS 2018 mercantile electricity over its stock; a mixed block's ground floor.                  | `src/data/catalog.json` |
 | retail jobs            | net 80% of plate ÷ 17.5 m² per FTE                           | HCA Employment Density Guide, high-street retail 15–20 m² NIA per FTE.                           | `src/data/catalog.json` |
 | water per job          | 0.104 kL a day                                               | 27.5 gallons, the middle of EPA's 20–35 gallons an employee a day.                               | `src/data/catalog.json` |
 | `share`                | detached 61.1, duplex 1.6, fourplex 1.2, townhouse 1.6, multiplex 0.63, garden 0.30, midrise 0.11, tower 0.07, mixed 1 | A kind's weight in the lot draw: its ACS share of units ÷ homes per building. | `src/data/catalog.json` |
 | farm power             | the detached house's draw × 2/3/4 (crops), 2/3/5 (orchard), 3/6/15 (pasture) | A farmstead's draw, in the ratio it always had to the small house.                               | `src/data/catalog.json` |
 | farm residents         | 3                                                            | One owner household.                                                                             | `src/data/catalog.json` |
+
+## Commercial kinds
+
+Every figure is sourced in [features/building-types.md](features/building-types.md#the-commercial-kinds).
+
+| Constant             | Value                                                                                   | Meaning                                                                                       | File                    |
+| -------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------- |
+| net floor            | 80% of the plate                                                                        | Corridors, stores and plant take the rest.                                                    | `src/data/catalog.json` |
+| retail jobs          | net ÷ 17.5 m² per FTE                                                                   | HCA: shops, food stores and restaurants at 15–20 m² NIA per FTE.                              | `src/data/catalog.json` |
+| office jobs          | net ÷ 13 m² per FTE                                                                     | HCA general office.                                                                           | `src/data/catalog.json` |
+| hotel rooms and jobs | plate ÷ 52 m² a room; 1 job per 5 / 3 / 2 rooms by level                                | DOE small hotel 43,200 sq ft over 77 rooms; HCA limited-service, mid-scale, upscale staffing. | `src/data/catalog.json` |
+| power per sq ft      | retail 16.7, food service 44.2, lodging 14.4, convenience store 53.3, office 13.6 kWh/yr | CBECS 2018, by principal building activity (the first three derived from totals over stock). | `src/data/catalog.json` |
+| restaurant water     | 22.0 kL a day sit-down, 7.3 quick-service                                               | EPA WaterSense 5,800 gallons a day and a third of it.                                         | `src/data/catalog.json` |
+| hotel water          | 0.5 kL a room a day                                                                     | EPA 132 gallons per room, every room taken.                                                   | `src/data/catalog.json` |
+| body caps            | restaurant 24 m a side; filling-station kiosk 35% of the lot to 16 m                    | A fast-food box and a convenience store on a lot that is mostly car park and forecourt.       | `src/render/massing.ts` |
+| `share`              | shop 350, restaurant 286, strip 166, fuel 123, supermarket 46; office 970, hotel 107    | CBECS 2018 building counts (thousands); NACS fuel-selling stores; FMI supermarkets.           | `src/data/catalog.json` |
 
 ## Soil and farms
 
@@ -80,7 +96,8 @@ Every figure is sourced in [features/farms.md](features/farms.md).
 | `DEFAULT_TAX_RATE`                         | 0.09                                                | The tax rate every sector's demand term measures against.                                                            | `src/shared/constants.ts` |
 | `BASE_MULTIPLIER`                          | 1.81                                                | Total jobs per basic (industrial) job; each supports 0.81 commercial ones. Mulligan 2008, ~200 small US communities. | `src/sim/demand.ts`       |
 | industrial span                            | 16 — one `ind-1`'s jobs, read from the catalog      | A town a whole small factory short of its basic jobs reads full industrial demand.                                   | `src/sim/demand.ts`       |
-| commercial span                            | 6 — one `com-low-1`'s jobs, read from the catalog   | A town a whole corner shop short of its supported local jobs reads full commercial demand.                           | `src/sim/demand.ts`       |
+| commercial span                            | 8 — one `com-low-1`'s jobs, read from the catalog   | A town a whole corner shop short of its supported local jobs reads full commercial demand.                           | `src/sim/demand.ts`       |
+| job room                                   | supported − open − going up, per sector             | The jobs a sector still has room for; a business kind is a spawn candidate only within it (`jobRoom`).               | `src/sim/demand.ts`       |
 | residential base term                      | 0.3                                                 | Lets a town's first households arrive before there is any work.                                                      | `src/sim/demand.ts`       |
 | residential jobs-gap                       | (jobs − workforce), over max(200, population × 0.5) | Empty jobs pull residents in; a workforce with no work turns them away.                                              | `src/sim/demand.ts`       |
 | residential happiness term                 | (happiness − 50) / 150                              | Above-50 happiness pulls demand up.                                                                                  | `src/sim/demand.ts`       |

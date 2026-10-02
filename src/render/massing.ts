@@ -111,12 +111,18 @@ interface BodyRule {
 
 const DEFAULT_BODY_RULE: BodyRule = { perTileM: DEFAULT_BODY_M_PER_TILE };
 
-/** The duplex, fourplex and multiplex sizes are the types' own building dimensions. */
+/**
+ * The duplex, fourplex and multiplex sizes are the types' own building
+ * dimensions; a restaurant is a box on a lot that is mostly car park, and a
+ * filling station a kiosk behind its forecourt.
+ */
 const BODY_RULES: Partial<Record<BuildingKind, BodyRule>> = {
   detached: { perTileM: RES_LOW_BODY_M_PER_TILE },
   duplex: { fill: 0.6, capM: 16 },
   fourplex: { fill: 0.7, capM: 18 },
   multiplex: { perTileM: DEFAULT_BODY_M_PER_TILE, capM: 24 },
+  restaurant: { perTileM: DEFAULT_BODY_M_PER_TILE, capM: 24 },
+  fuel: { fill: 0.35, capM: 16 },
 };
 
 function bodyAxisMetres(tiles: number, rule: BodyRule): number {
@@ -151,6 +157,13 @@ export function bodyFillFor(entry: BuildingCatalogEntry): { x: number; z: number
 
 /** A tower stands on a podium this many storeys tall that fills its lot. */
 export const PODIUM_STOREYS = 2;
+
+/**
+ * The setback tiers stand inside the full-height body, so the top tier's lid
+ * stops this far under the roof: a lid exactly in the roof's plane fought it
+ * for the pixels, which read as hatching across a one-storey store's roof.
+ */
+export const TIER_LID_GAP_M = 0.02;
 
 /**
  * How far a home's front wall stands behind the sidewalk (behind the
@@ -323,7 +336,10 @@ export function computeSetbacks(
       d *= 1 - inset;
     }
     const isLast = tier === level - 1;
-    const h = isLast ? totalHeight - yOffset : tierHeight;
+    // The base tier is the body itself and reaches the roof; an upper tier's
+    // lid stops a hair under it.
+    const lidGap = isLast && tier > 0 ? TIER_LID_GAP_M : 0;
+    const h = isLast ? totalHeight - yOffset - lidGap : tierHeight;
     boxes.push({ w, d, h, yOffset });
     yOffset += h;
   }

@@ -118,10 +118,10 @@ sector's tax rate, and city-wide happiness, with no randomness:
   not. The 16 is one small factory's jobs (`ind-1`), so a town a whole
   factory short reads full demand.
 - **Commercial** = (0.81 × open industrial jobs − commercial jobs, open or
-  going up) ÷ max(6, 0.81 × open industrial jobs) − (comTax − 9%) × 4. Shops follow the basic economy: a town
+  going up) ÷ max(8, 0.81 × open industrial jobs) − (comTax − 9%) × 4. Shops follow the basic economy: a town
   with no industry supports no shops however many people live in it, and
-  shops beyond what its industry supports stand empty. The 6 is one corner
-  shop's jobs (`com-low-1`).
+  shops beyond what its industry supports stand empty. The 8 is one corner
+  shop's jobs (`com-low-1`, the first low-commercial entry in the catalog).
 - **Residential** = 0.3 + (jobs − workforce) ÷ max(200, population × 0.5) +
   (happiness − 50) ÷ 150 − (resTax − 9%) × 4. People follow work: empty jobs
   pull residents in, and a workforce with no work for it turns them away. The
@@ -132,9 +132,13 @@ sector's tax rate, and city-wide happiness, with no randomness:
 Jobs in buildings still under construction count as supply on both sides —
 industrial ones against the basic jobs wanted, commercial ones against the
 local jobs supported — because a developer sees the building going up next
-door. Only open industry supports shops: its wages start when it opens. A
-building is the least a town can grow by, so a sector may overshoot what it
-supports by at most the one building that fills its last gap.
+door. Only open industry supports shops: its wages start when it opens. The
+two gaps — the local jobs supported less those open or going up, and the
+basic jobs wanted less those open or going up — are the **room** the economy
+has for each sector's jobs, and the spawner reads them: a business opens
+only where its jobs fit the room, so a sector may overshoot what it supports
+by at most the smallest building that fits a lot, the one that fills its
+last gap.
 
 Every result is clamped to -1..1. So a new town grows the way a farming or
 mill town does: its first households arrive, the industry they need follows,
@@ -157,7 +161,12 @@ detached house, a duplex and a fourplex on low-density land, say — and the
 ones whose footprint fits unobstructed at the tile, every tile of it zoned
 the same, are the lot's candidates. A building never spills onto ground
 beside its zone, so a strip zoned one tile wide grows only what is one tile
-wide.
+wide. A commercial or industrial candidate must also fit the economy: its
+jobs must be within the sector's room (see
+[Demand](#demand-the-rci-model)), except the smallest kind that fits the
+lot, which is always a candidate so that growth never stalls at a gap smaller
+than any building. The room counts down as the pass builds, like spare
+supply, so two lots on one pass cannot both fill it.
 One is drawn by its `share`, the kind's weight in the real stock, with one
 roll of the growth rng against the candidates' cumulative weights in catalog
 order; a kind alone among the candidates needs no roll. At least one tile of
@@ -244,8 +253,9 @@ or 190 (to reach level 3); residential buildings reaching level 3
 additionally need the tile's education field over 60. A catalog entry of the
 same kind at the next level must also exist and be unlocked at or below the
 current milestone: a building keeps its kind for life, so a duplex levels up
-into a better duplex and never into a house or a block. The building's old
-footprint is cleared to test the new,
+into a better duplex and never into a house or a block. A commercial or
+industrial building also needs the town to have room for the jobs the bigger
+building adds. The building's old footprint is cleared to test the new,
 possibly larger one in its place, every tile of it zoned the same; if the
 new footprint does not fit, the
 level-up is abandoned and the old building is restored exactly as it

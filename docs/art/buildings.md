@@ -77,10 +77,19 @@ procedural house kit:
   builds. The detached levels are a 2×2, a 2×3 and a 3×3; a duplex and a
   fourplex take a 1×2, then a 2×2; rows are 1×2, 1×4 and 1×6.
 
-**Commercial.** The first commercial level is a **storefront**: a canopy over
-the frontage plus a signage band above it, on top of the stage-1 ground-floor
-storefront treatment shared by every archetype. The second level and up is a
-**retail block**: the signage band alone, no canopy.
+**Commercial.** A commercial building's kind decides its archetype. A shop,
+a shopping strip, a supermarket and a restaurant are **storefronts**: a canopy
+over the frontage plus a signage band above it, on top of the stage-1
+ground-floor storefront treatment shared by every archetype, and the car park
+of the bay row in front. A **filling station** is a kiosk behind a **fuel
+canopy**: a tall flat canopy on four posts standing off the kiosk's frontage
+over the forecourt, with two pump islands under it, so the cars of the bay row
+stand at the pumps. An **office** is a glass block with no shopfront parts at
+all. A **hotel** is a block with a canopy at its entrance and a sign band —
+the storefront parts on a tall body. What each kind measures is under
+[Commercial kinds](#commercial-kinds). A commercial entry with no kind keeps
+the old ladder: a storefront at its first level, a **retail block** — the
+signage band alone — above it.
 
 **Industrial.** Its own facade language, distinct from the general wall
 palette above:
@@ -230,6 +239,25 @@ A tower's podium is a massing tier two storeys tall at the lot's full fill,
 drawn under the slab by the same instancer as the setback tiers above; it
 carries the body's wall colour and lifecycle tint, so the tower reads as one
 building standing on its base.
+
+## Commercial kinds
+
+| Kind            | Body                                              | Storeys    | Parts                                     | On the lot                            |
+| --------------- | ------------------------------------------------- | ---------- | ----------------------------------------- | ------------------------------------- |
+| Shop            | 13.6 m per tile (1×1, 1×2, 2×2)                   | 1          | canopy, sign band                         | bay row in front                      |
+| Shopping strip  | 13.6 m per tile, long and shallow (3×2 to 5×2)    | 1          | canopy, sign band                         | bay row in front                      |
+| Supermarket     | 13.6 m per tile (3×3 to 5×4), 4.7 m tall          | 1          | canopy, sign band                         | bay row in front                      |
+| Restaurant      | 13.6 m per tile capped at 24 m a side             | 1 / 1 / 2  | canopy, sign band                         | bay row; the rest of the lot car park |
+| Filling station | 35% of the lot each way, capped at 16 m           | 1          | fuel canopy on four posts, two pump islands | bay row under the canopy            |
+| Office          | 13.6 m per tile                                   | 5 / 8 / 16 | none                                      | bay row in front                      |
+| Hotel           | 13.6 m per tile                                   | 4 / 6 / 8  | canopy, sign band                         | bay row in front                      |
+
+The fuel canopy stands 2 m off the kiosk's frontage wall and runs 10 m out
+over the forecourt and 90% of the way across it, 5.2 m up on four 0.4 m posts
+inset at its corners; the two pump islands, 1 × 3 m and 1.4 m tall, stand
+under it a quarter of its span either side of centre, behind the bay row.
+Every part is a box from the shared kit, in the chart's colours: the canopy
+and its posts in white brick, the pumps in the red accent.
 
 ## Residential lots
 
