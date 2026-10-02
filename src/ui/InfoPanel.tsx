@@ -29,6 +29,8 @@ const PROBLEM_LABELS: ReadonlyArray<{ flag: number; label: string }> = [
   { flag: Problem.PowerShortage, label: 'Power Shortage' },
   { flag: Problem.NoWater, label: 'No Water' },
   { flag: Problem.WaterShortage, label: 'Water Shortage' },
+  { flag: Problem.NoSewer, label: 'No Sewer' },
+  { flag: Problem.SewerShortage, label: 'Sewer Shortage' },
   { flag: Problem.NoRoad, label: 'No Road' },
   { flag: Problem.HighCrime, label: 'High Crime' },
   { flag: Problem.HighPollution, label: 'High Pollution' },
@@ -205,6 +207,9 @@ export function InfoPanel(): JSX.Element | null {
           )}
           {entry?.utility?.waterKL !== undefined && (
             <Row label="Output" value={`${entry.utility.waterKL} kL`} />
+          )}
+          {entry?.utility?.sewerKL !== undefined && (
+            <Row label="Drains" value={`${entry.utility.sewerKL} kL`} />
           )}
 
           {info?.occupancy.households && (

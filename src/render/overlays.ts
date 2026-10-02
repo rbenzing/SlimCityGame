@@ -1,10 +1,10 @@
 /**
  * Data-lens overlay renderer. A single DataTexture sized MAP_SIZE² backs a
  * ground-hugging
- * quad. Two lens families share it (LensId = FieldId | 'power' | 'watered'):
+ * quad. Two lens families share it (LensId = FieldId | 'power' | 'watered' | 'sewered'):
  *  - FieldId lenses: setFieldData() re-ramps and uploads a full-map scalar
  *    byte array through the perceptual blue->green->yellow->red ramp.
- *  - 'power'/'watered' coverage lenses: setCoverage() folds incoming
+ *  - 'power'/'watered'/'sewered' coverage lenses: setCoverage() folds incoming
  *    SimSnapshot ZonePatch[] rectangles (0/1 coverage bytes) into a cached
  *    full-map layer per kind, then — if that lens is the active one —
  *    re-ramps it through a two-tone ramp (covered = accent, uncovered = dim
@@ -100,7 +100,7 @@ export function soilColor(grade: number): [number, number, number] {
   return [...(SOIL_COLORS[grade] ?? SOIL_COLORS[0]!)];
 }
 
-export type CoverageKind = 'power' | 'watered' | 'trash';
+export type CoverageKind = 'power' | 'watered' | 'sewered' | 'trash';
 
 /** Coverage kinds painted as a graded 0..255 heatmap (rampColor) rather than the two-tone on/off ramp. */
 const GRADED_COVERAGE: ReadonlySet<CoverageKind> = new Set<CoverageKind>(['trash']);
@@ -113,6 +113,7 @@ export class OverlayRenderer {
   private readonly coverageCache: Record<CoverageKind, Uint8Array> = {
     power: new Uint8Array(MAP_SIZE * MAP_SIZE),
     watered: new Uint8Array(MAP_SIZE * MAP_SIZE),
+    sewered: new Uint8Array(MAP_SIZE * MAP_SIZE),
     trash: new Uint8Array(MAP_SIZE * MAP_SIZE),
   };
   /** The render mirror's live soil grades, read whenever the Soil lens paints. */
@@ -260,7 +261,7 @@ export class OverlayRenderer {
   }
 
   private isCoverageKind(lens: LensId): lens is CoverageKind {
-    return lens === 'power' || lens === 'watered' || lens === 'trash';
+    return lens === 'power' || lens === 'watered' || lens === 'sewered' || lens === 'trash';
   }
 
   private paintCoverage(kind: CoverageKind): void {

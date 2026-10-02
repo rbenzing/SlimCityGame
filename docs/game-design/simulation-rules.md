@@ -178,8 +178,8 @@ supply, so two lots on one pass cannot both fill it.
 One is drawn by its `share`, the kind's weight in the real stock, with one
 roll of the growth rng against the candidates' cumulative weights in catalog
 order; a kind alone among the candidates needs no roll. At least one tile of
-the chosen footprint must already be reached by both power and piped water —
-piped water only where the building draws city water, which a
+the chosen footprint must already be reached by power, by piped water and by
+a drain — water and drain only where the building draws city water, which a
 [house on a well](#a-house-on-a-well) does not — checking the whole
 footprint rather than just its origin corner, so a lot's service does not
 depend on which side of it the street happens to sit. A lot that fails the
@@ -237,18 +237,20 @@ So a low-density house draws no city water when both of these hold:
   beside any tile of its lot. That is exactly where the network hands water
   to a lot, so a house that a main could reach is never on a well.
 
-A house on a well needs only its road and power. Nothing refuses it, holds it
-back or flags it for want of water. It takes no place in the water line and
-adds nothing to water demand. Only the roads decide, never the supply, and
-they are read afresh every time. A house whose main is bulldozed goes onto a
-well, and a house that levels up onto a lot a main runs beside goes onto the
-mains. A shortage never puts a house on a well: a house the mains serve stays
-in the water line and loses its water like any other.
+A house on a well is on a septic tank too, and needs only its road and
+power. Nothing refuses it, holds it back or flags it for want of water or a
+drain. It takes no place in the water line or the sewer line and adds
+nothing to either demand. Only the roads and pipes decide, never the supply,
+and they are read afresh every time. A house whose main is bulldozed goes
+onto a well, and a house that levels up onto a lot a main runs beside goes
+onto the mains. A shortage never puts a house on a well: a house the mains
+serve stays in the water line and loses its water like any other.
 
-A house with a main beside its lot is on the mains like any other, even where
-a dirt road also serves it, and waits for water while that main is dry. Only
-the detached houses of the low-density zone go on a well. Terraces, flats,
-mixed blocks, shops and industry need the mains wherever they stand.
+A house with a main beside its lot — a road that carries water, or a water
+pipe — is on the mains like any other, even where a dirt road also serves
+it, and waits for water while that main is dry. Only the detached houses of
+the low-density zone go on a well. Terraces, flats, mixed blocks, shops and
+industry need the mains wherever they stand.
 
 ## Levels, construction, and abandonment
 
@@ -287,11 +289,14 @@ A farm levels up by taking more land:
   the pass, since a bigger farm is the town adding basic jobs.
 
 Every pass also recomputes each Active or Abandoned building's problems: no
-power or no piped water reaching its footprint (piped water only for a
-building that draws city water), no street within Manhattan distance 3 (for a farm,
-no dirt road within 3 of its lot), crime over 170, pollution over 170
-(residential lots only), and sector demand under -0.5. An Active building carrying a power, water, or
-road blocker for 3 consecutive passes becomes Abandoned. An Abandoned
+power, no piped water or no drain reaching its footprint (water and drain
+only for a building that draws city water), no street within Manhattan
+distance 3 (for a farm, no dirt road within 3 of its lot), crime over 170,
+pollution over 170 (residential lots only), and sector demand under -0.5. An
+Active building carrying a power, water, or road blocker for 3 consecutive
+passes becomes Abandoned; a missing drain is never a blocker, since the
+consequence of no sewer is no growth and a fouled ground, not a dead
+building. An Abandoned
 building returns to Active as soon as its blocker is gone; otherwise, after
 10 consecutive still-blocked passes, it is removed and its footprint freed.
 Abandoning never removes a shortage: an abandoned building keeps its place

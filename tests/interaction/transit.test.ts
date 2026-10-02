@@ -7,6 +7,7 @@ import {
   GROWTH_TIMEOUT_MS,
   initialized,
   latestSaveGrid,
+  pondAndDrain,
   roadRow,
   rows,
   run,
@@ -79,6 +80,7 @@ describe('a tramway crossing another street', () => {
     run(h, 4, [
       { kind: 'placeBuilding', catalogId: 'wind-turbine', x: AVENUE_X - 1, z: 60, rotation: 0 },
       { kind: 'placeBuilding', catalogId: 'water-tower', x: AVENUE_X - 2, z: 61, rotation: 0 },
+      ...pondAndDrain({ x: AVENUE_X - 2, z: 63 }, { x: AVENUE_X - 1, z: 63 }),
       {
         kind: 'paintZone',
         zone: ZoneType.ResLow,

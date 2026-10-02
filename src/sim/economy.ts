@@ -23,6 +23,7 @@ import { isPresetProfileId, roadPriceOf } from '../shared/roadprofile';
 import {
   LANDFILL_UPKEEP_PER_TILE,
   POWER_LINE_UPKEEP_PER_TILE,
+  WATER_PIPE_UPKEEP_PER_TILE,
   LOAN_MONTHLY_INTEREST,
   MAP_TILES,
   MAX_LOAN,
@@ -288,16 +289,23 @@ export class EconomySystem {
 
       // Landfill: monthly upkeep scales with the painted area.
       let landfillUpkeep = 0;
-      // Power lines: the utility owns the wire, the city pays to keep it up.
+      // Power lines and water pipes: the utility owns them, the city pays to keep them up.
       let powerLineUpkeep = 0;
+      let waterPipeUpkeep = 0;
       for (let i = 0; i < MAP_TILES; i++) {
         if (g.landfill[i] === 1) landfillUpkeep += LANDFILL_UPKEEP_PER_TILE;
         if (g.powerLine[i] === 1) powerLineUpkeep += POWER_LINE_UPKEEP_PER_TILE;
+        if (g.waterPipe[i] === 1) waterPipeUpkeep += WATER_PIPE_UPKEEP_PER_TILE;
       }
 
       const loanInterest = stats.loanBalance * LOAN_MONTHLY_INTEREST;
       const expenses =
-        buildingUpkeep + roadUpkeep + landfillUpkeep + powerLineUpkeep + loanInterest;
+        buildingUpkeep +
+        roadUpkeep +
+        landfillUpkeep +
+        powerLineUpkeep +
+        waterPipeUpkeep +
+        loanInterest;
 
       funds += income - expenses;
       statsPatch.monthlyIncome = income;

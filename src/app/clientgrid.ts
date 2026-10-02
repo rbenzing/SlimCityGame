@@ -82,6 +82,8 @@ export class ClientGridMirror {
 
   /** Where a power line stands (see GridState.powerLine); what stands the poles. */
   readonly powerLine: Uint8Array;
+  /** Where a water pipe is laid (see GridState.waterPipe); what the pipe overlay draws. */
+  readonly waterPipe: Uint8Array;
   readonly buildingId: Uint32Array;
   /** The worker's road network as last received; absent until the first snapshot. */
   roads?: RoadNet;
@@ -122,6 +124,7 @@ export class ClientGridMirror {
     this.roadFlow = new Uint8Array(n);
     this.power = new Uint8Array(n);
     this.powerLine = new Uint8Array(n);
+    this.waterPipe = new Uint8Array(n);
     this.buildingId = new Uint32Array(n);
     this.roadFootprint = new Uint8Array(n);
     this.roadSeparate = new Uint8Array(n);
@@ -160,10 +163,38 @@ export class ClientGridMirror {
 
   /** Every tile carrying a line, row-major — what the renderer stands poles on. */
   powerLineTiles(): TilePoint[] {
+    return this.tilesWhere(this.powerLine);
+  }
+
+  /** Folds the worker's pipe rectangles in, the shape every painted layer travels in. */
+  applyWaterPipePatches(patches: readonly ZonePatch[]): void {
+    for (const patch of patches) {
+      for (let dz = 0; dz < patch.h; dz++) {
+        for (let dx = 0; dx < patch.w; dx++) {
+          const x = patch.x + dx;
+          const z = patch.z + dz;
+          if (!this.inBounds(x, z)) continue;
+          this.waterPipe[this.idx(x, z)] = patch.data[dz * patch.w + dx] ?? 0;
+        }
+      }
+    }
+  }
+
+  /** Whether a water pipe is laid at (x, z); false off the map. */
+  waterPipeAt(x: number, z: number): boolean {
+    return this.inBounds(x, z) && this.waterPipe[this.idx(x, z)] === 1;
+  }
+
+  /** Every tile carrying a pipe, row-major — what the pipe overlay draws. */
+  waterPipeTiles(): TilePoint[] {
+    return this.tilesWhere(this.waterPipe);
+  }
+
+  private tilesWhere(layer: Uint8Array): TilePoint[] {
     const out: TilePoint[] = [];
     for (let z = 0; z < this.size; z++) {
       for (let x = 0; x < this.size; x++) {
-        if (this.powerLine[this.idx(x, z)] === 1) out.push({ x, z });
+        if (layer[this.idx(x, z)] === 1) out.push({ x, z });
       }
     }
     return out;

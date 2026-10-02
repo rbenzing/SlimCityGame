@@ -114,6 +114,7 @@ import { FarmRenderer } from './render/farms';
 import { ZoneGridRenderer } from './render/zonegrid';
 import { LampRenderer } from './render/lamps';
 import { PowerLineRenderer } from './render/powerlines';
+import { PipeOverlayRenderer } from './render/pipes';
 import { computeSignPlacements, RoadFurnitureRenderer } from './render/roadfurniture';
 import { SoundWallRenderer } from './render/soundwalls';
 import { SelectionOutline } from './render/outline';
@@ -245,7 +246,13 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // kit renderer claims are handed to BuildingInstancer as plinthIds so the
   // instancer draws only a low plinth slab under them (picking/outline/
   // bulldoze still flow through the instancer path).
-  const utilityKits = new UtilityKitRenderer(world.scene, heightAt, catalog);
+  const utilityKits = new UtilityKitRenderer(
+    world.scene,
+    heightAt,
+    catalog,
+    // A shore building turns to face the water beside it.
+    (x, z) => inBounds(x, z) && clientGrid.water[z * clientGrid.size + x] === 1,
+  );
   const instancer = new BuildingInstancer(
     world.scene,
     catalog,
@@ -289,6 +296,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const zoneGrid = new ZoneGridRenderer(world.scene, heightAt);
   const lamps = new LampRenderer(world.scene, roadSurfaceAt);
   const powerLines = new PowerLineRenderer(world.scene, heightAt);
+  const pipes = new PipeOverlayRenderer(world.scene, heightAt);
   const roadFurniture = new RoadFurnitureRenderer(world.scene, roadSurfaceAt);
   const soundWalls = new SoundWallRenderer(world.scene, roadSurfaceAt);
   const selectionOutline = new SelectionOutline(world.scene);
@@ -461,6 +469,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         // a screenshot shows poles but never says whether anything flows.
         power: Array.from(clientGrid.power),
         powerLine: Array.from(clientGrid.powerLine),
+        // Where the pipe runs: a screenshot shows two strips but never says
+        // whether a tile carries pipe or only paint.
+        waterPipe: Array.from(clientGrid.waterPipe),
         // The roads passing over crossing tiles: a screenshot of a deck says
         // nothing about which road the world thinks is on top.
         overRoads: clientGrid.overRoadTiles(),
@@ -886,6 +897,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     const { overlay, selectedTool } = store.getState();
     transitRenderer.setVisible(overlay === 'transit' || selectedTool.startsWith('transit.'));
     districtsRenderer.setVisible(overlay === 'districts' || selectedTool === 'district.paint');
+    // The pipes show while the player works on the water: a water lens, the
+    // pipe tool, or any building of the Water tab in hand.
+    pipes.setVisible(
+      overlay === 'watered' ||
+        overlay === 'sewered' ||
+        selectedTool === 'water.pipe' ||
+        selectedTool.startsWith('plop.water-'),
+    );
   };
   refreshEpicVisibility(); // start hidden until their lens/tool is selected
   /** seq -> the player edit awaiting its ack (drives the undo stack). */
@@ -940,8 +959,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   /** Counts down to the next advisor re-rank (see ADVISOR_REFRESH_SNAPSHOTS). */
   let snapshotsSinceAdvice = 0;
   /** What growth last said it is holding back for want of supply, for the advisor. */
-  let growthWaiting: GrowthWaiting = { power: 0, water: 0 };
-  let zonedUnserved: ZonedUnserved = { power: 0, water: 0 };
+  let growthWaiting: GrowthWaiting = { power: 0, water: 0, sewer: 0 };
+  let zonedUnserved: ZonedUnserved = { power: 0, water: 0, sewer: 0 };
   /** Latest flattened transit stop tile-points, mirrored so pedestrian
    * idlers can be re-applied on building-only deltas (PedestrianRenderer does
    * not cache stops itself — same pattern as knownBuildings above). */
@@ -1105,6 +1124,20 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
    * to make a dual carriageway. These get flow arrows on the placement ghost.
    */
   const isDirectionalTier = (tier: RoadTier): boolean => roadSpecByTier.get(tier)?.oneWay === true;
+
+  /**
+   * Whether the tile carries water for the pipe overlay to join a pipe to: a
+   * pipe, a street whose main carries water, or a building the pipe feeds.
+   */
+  const carriesWaterAt = (x: number, z: number): boolean => {
+    if (!inBounds(x, z)) return false;
+    if (clientGrid.waterPipeAt(x, z)) return true;
+    const i = z * clientGrid.size + x;
+    if (clientGrid.buildingId[i] !== 0) return true;
+    const tier = (clientGrid.roadTier[i] ?? 0) as RoadTier;
+    return isStreetTier(tier) && roadSpecByTier.get(tier)?.carriesWater !== false;
+  };
+  const rebuildPipes = (): void => pipes.rebuild(clientGrid.waterPipeTiles(), carriesWaterAt);
 
   const ghostKindFor = (tool: ToolId): GhostKind => {
     if (tool === 'bulldoze') return 'bulldoze';
@@ -1311,8 +1344,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       const i = tile.z * clientGrid.size + tile.x;
       return clientGrid.roadTier[i] !== RoadTier.None || clientGrid.buildingId[i] !== 0;
     },
-    // So the cursor quotes only the tiles a power-line drag would change.
+    // So the cursor quotes only the tiles a power-line or pipe drag would change.
     powerLineAt: (x, z) => clientGrid.powerLineAt(x, z),
+    waterPipeAt: (x, z) => clientGrid.waterPipeAt(x, z),
   };
   const toolManager = new ToolManager(env);
   toolManager.setBrush(store.getState().brushSettings);
@@ -1577,6 +1611,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       clientGrid.applyPowerLinePatches(snap.powerLines);
       powerLines.rebuild(clientGrid.powerLineTiles());
     }
+    // A pipe's drawn joins read the roads and buildings beside it, so the
+    // overlay follows those too.
+    if (snap.waterPipes) clientGrid.applyWaterPipePatches(snap.waterPipes);
+    if (snap.waterPipes || snap.roads || snap.buildings) rebuildPipes();
     if (snap.power) {
       overlays.setCoverage('power', snap.power);
       // Supply also decides which streets carry a lamp, so the mirror keeps it
@@ -1587,6 +1625,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       rebuildLamps();
     }
     if (snap.watered) overlays.setCoverage('watered', snap.watered);
+    if (snap.sewered) overlays.setCoverage('sewered', snap.sewered);
     if (snap.vehicles) {
       vehicles.setBuffer(snap.vehicles);
       latestVehicles = snap.vehicles;

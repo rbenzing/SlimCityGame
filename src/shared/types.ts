@@ -358,6 +358,16 @@ export interface GridState {
    */
   powerLine: Uint8Array;
   /**
+   * Water pipes: 1 where a pipe is laid. A pipe is to water and sewage what
+   * the power line is to electricity: it carries both between its own tiles
+   * and into any road or building it touches, so a shore intake or outfall
+   * joins the mains without a street. ADDITIVE layer: serialized last in the
+   * grid save (SAVE_VERSION 14); older saves load with no pipes.
+   */
+  waterPipe: Uint8Array;
+  /** 1 where a drain's reach covers the tile. Derived on every utility pass, never saved. */
+  sewered: Uint8Array;
+  /**
    * The road passing OVER this tile's road, where one does: its tier, profile
    * id, stored flow byte and deck height in metres above terrain. Zero
    * everywhere but a crossing tile, which is the only place a tile holds two
@@ -658,6 +668,9 @@ export type Command =
   // Power: string (on) or pull down (off) a run of power line. Charged per
   // tile that actually changes, so dragging back over a run is free.
   | { kind: 'stringPowerLine'; tiles: TilePoint[]; on: boolean }
+  // Water: lay (on) or pull up (off) a run of pipe, which carries water and
+  // sewage. Charged per tile that actually changes, like the power line.
+  | { kind: 'layWaterPipe'; tiles: TilePoint[]; on: boolean }
   // Sandbox mode: when on, every build item is placeable regardless of milestone.
   | { kind: 'setSandbox'; on: boolean }
   // Unlimited money (testing): when on, funds/cost gates are ignored so anything
@@ -702,6 +715,9 @@ export interface CityStats {
   powerDemand: number;
   waterSupply: number; // kL
   waterDemand: number;
+  /** Sewage the drains take a day, and the sewage the buildings they reach make, kL. */
+  sewerSupply: number;
+  sewerDemand: number;
   milestoneLevel: number; // index into MILESTONES
   milestoneProgress: number; // 0..1 toward next
   loanBalance: number;
@@ -728,6 +744,10 @@ export const Problem = {
   PowerShortage: 64,
   /** Beside NoWater: the mains reach it, but the supply ran out before it did. */
   WaterShortage: 128,
+  /** No drain reaches it: its sewage runs in the ditches. Never abandons a building on its own. */
+  NoSewer: 256,
+  /** Beside NoSewer: a drain's network reaches it, but the drains ran out before it did. */
+  SewerShortage: 512,
 } as const;
 
 export interface BuildingInstance {
@@ -840,6 +860,10 @@ export interface SimSnapshot {
   vehicles?: Float32Array; // MAX_VEHICLES * VEHICLE_STRIDE
   power?: ZonePatch[]; // powered-coverage patches (data: 0/1)
   watered?: ZonePatch[];
+  /** Drained-coverage patches (data: 0/1), the sewer's `watered`. */
+  sewered?: ZonePatch[];
+  /** The pipe layer's changed region, like `powerLines`. */
+  waterPipes?: ZonePatch[];
   /**
    * terrain updates (worker -> render): regions whose heights changed —
    * emitted after terraform strokes, after terraformSet restores (undo/redo),
@@ -952,14 +976,17 @@ export interface SimSnapshot {
 export interface GrowthWaiting {
   power: number;
   water: number;
+  sewer: number;
 }
 
 /** Empty zoned tiles beside a road yet without a utility, with the first of each by tile index. */
 export interface ZonedUnserved {
   power: number;
   water: number;
+  sewer: number;
   powerAt?: TilePoint;
   waterAt?: TilePoint;
+  sewerAt?: TilePoint;
 }
 
 export interface CityNotification {
@@ -1034,6 +1061,8 @@ export interface ServiceLoad {
 export interface UtilitySpec {
   powerMW?: number; // produced
   waterKL?: number; // produced
+  /** Sewage taken a day, kL: what a drain pipe carries off. */
+  sewerKL?: number;
 }
 
 /**
@@ -1120,9 +1149,11 @@ export interface BuildingCatalogEntry {
    * Absent for everything that goes anywhere buildable, which is every
    * ploppable to date — a utility "needs a road" only in the sense that the
    * road carries its power, not as a placement gate. `'rail'` is the first real
-   * one: a station off the track is not a station, it is a shed.
+   * one: a station off the track is not a station, it is a shed. `'water'` is
+   * the second: an intake or an outfall stands on a shore, touching the water
+   * it draws from or empties into.
    */
-  requiresAdjacent?: 'rail';
+  requiresAdjacent?: 'rail' | 'water';
 }
 
 // ---------------------------------------------------------------------------
@@ -1469,6 +1500,8 @@ export type ToolId =
   | 'zone.mixed'
   | 'zone.agriculture'
   | 'zone.indHeavy'
+  // Water: lay a run of pipe, which carries water and sewage where a street does not.
+  | 'water.pipe'
   // landscaping: the four real terraform brushes.
   // Slope is a stretch goal, deliberately not a ToolId yet.
   | 'terraform.raise'
@@ -1522,7 +1555,8 @@ export interface ReversibleEdit {
  * (overTier, overProfile, overFlow, overElevation) a crossing tile holds;
  * version 13 the road network (src/world/roadnet.ts), appended after the
  * tiles, in place of every road tile layer — tier, mask, deck, profile, flow
- * and the four over-road layers — which are derived from it on load.
+ * and the four over-road layers — which are derived from it on load;
+ * version 14 GridState.waterPipe.
  *
  * Migration: src/world/grid.ts deserializeGrid still accepts every older
  * buffer, defaulting each absent trailing layer to all-zero — so a pre-v4 save
@@ -1534,9 +1568,10 @@ export interface ReversibleEdit {
  * what every road was. serializeGrid always writes the current version. Up to
  * v12 no layer's byte layout or order changed, so every older buffer is the v12
  * layout with trailing layers trimmed; v13 is the v12 layout without its road
- * layers, and a pre-v13 save's roads convert to a network on load.
+ * layers, and a pre-v13 save's roads convert to a network on load; v14 is v13
+ * with the pipe layer appended to the tiles, which a v13 save loads empty.
  */
-export const SAVE_VERSION = 13;
+export const SAVE_VERSION = 14;
 
 export interface SaveHeader {
   version: number;
@@ -1662,7 +1697,8 @@ export interface CursorChip {
  * additive — existing members unchanged. 'soil' is the farming grade of the
  * ground, which the render thread works out from its own mirror.
  */
-export type LensId = FieldId | 'power' | 'watered' | 'transit' | 'districts' | 'trash' | 'soil';
+export type LensId =
+  FieldId | 'power' | 'watered' | 'sewered' | 'transit' | 'districts' | 'trash' | 'soil';
 
 // ---------------------------------------------------------------------------
 // Landscaping & water. Additive contracts only.

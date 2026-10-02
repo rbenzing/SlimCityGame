@@ -70,6 +70,8 @@ export function createGrid(size?: number): GridState {
     junctionTurns: new Uint16Array(n),
     junctionLaneTurns: new Uint16Array(n * ARMS_PER_TILE),
     powerLine: new Uint8Array(n),
+    waterPipe: new Uint8Array(n),
+    sewered: new Uint8Array(n),
     overTier: new Uint8Array(n),
     overProfile: new Uint16Array(n),
     overFlow: new Uint8Array(n),
@@ -98,7 +100,10 @@ const BYTES_PER_TILE_V12 = 53;
 // flow 1, and the over road's tier 1, profile 2, flow 1, deck 4 — which are
 // derived from the road network saved after the tiles.
 const ROAD_LAYER_BYTES = 17;
-const BYTES_PER_TILE = BYTES_PER_TILE_V12 - ROAD_LAYER_BYTES;
+const BYTES_PER_TILE_V13 = BYTES_PER_TILE_V12 - ROAD_LAYER_BYTES;
+// v14 is v13 with the trailing waterPipe layer, which loads empty so an older
+// city has no pipes and its water travels its streets alone.
+const BYTES_PER_TILE = BYTES_PER_TILE_V13 + 1;
 const U32_BYTES = 4;
 /** Arms a junction has, and so entries the per-lane layer keeps per tile. */
 export const ARMS_PER_TILE = 4;
@@ -150,6 +155,7 @@ export const BYTES_PER_TILE_BY_VERSION: readonly number[] = [
   BYTES_PER_TILE_V10,
   BYTES_PER_TILE_V11,
   BYTES_PER_TILE_V12,
+  BYTES_PER_TILE_V13,
   BYTES_PER_TILE,
 ];
 
@@ -268,6 +274,11 @@ function writeTiles(g: GridState, buffer: ArrayBuffer, version: number, roads: b
     view.setUint16(offset + i * 2, g.junctionLaneTurns[i]!, true);
   }
   offset += n * ARMS_PER_TILE * 2;
+  // waterPipe (v14): one byte per tile — whether a pipe is laid here.
+  if (version >= 14) {
+    bytes.set(g.waterPipe, offset);
+    offset += n;
+  }
   if (!roads) return;
   // The road passing over a crossing tile (v12): tier, profile, flow, deck.
   bytes.set(g.overTier, offset);
@@ -287,7 +298,11 @@ export function savedRoadNetwork(buf: ArrayBuffer): Uint8Array | null {
   const view = new DataView(buf);
   const version = view.getUint32(0, true);
   if (version < 13) return null;
-  const tiles = bufferBytesFor(view.getUint32(4, true));
+  // The tiles are as wide as the SAVE's version made them, not today's: a
+  // v13 save has no pipe layer, and measuring it at v14's width reads the
+  // network's length from inside the network.
+  const bytesPerTile = BYTES_PER_TILE_BY_VERSION[version] ?? BYTES_PER_TILE;
+  const tiles = bufferBytesFor(view.getUint32(4, true), bytesPerTile);
   const length = view.getUint32(tiles, true);
   return new Uint8Array(buf, tiles + U32_BYTES, length);
 }
@@ -317,6 +332,7 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
   const hasPowerLine = version >= 10;
   const hasJunctionLaneTurns = version >= 11;
   const hasOverRoads = version >= 12;
+  const hasWaterPipe = version >= 14;
   // From v13 the roads are the network after the tiles, and every road layer
   // loads empty here for roadnet.ts to derive.
   const hasRoadLayers = version <= 12;
@@ -432,6 +448,10 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
     }
     offset += n * ARMS_PER_TILE * 2;
   }
+  // Pipe layer (v14+). An older buffer has none, so the city's water travels
+  // its streets alone until the player lays some.
+  const waterPipe = hasWaterPipe ? bytes.slice(offset, offset + n) : new Uint8Array(n);
+  if (hasWaterPipe) offset += n;
   // Over-road layers (v12+). An older buffer has no overpasses.
   const overTier = new Uint8Array(n);
   const overProfile = new Uint16Array(n);
@@ -468,6 +488,9 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
     junctionTurns,
     junctionLaneTurns,
     powerLine,
+    waterPipe,
+    // Derived on every utility pass, from the drains and what carries water.
+    sewered: new Uint8Array(n),
     overTier,
     overProfile,
     overFlow,
@@ -603,6 +626,34 @@ export function hasAdjacentTier(
       if (!inBoundsOf(g.size, tx, tz)) continue;
       if (inNetwork((g.roadTier[indexOf(g.size, tx, tz)] ?? RoadTier.None) as RoadTier))
         return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * True when any tile orthogonally touching the w x d footprint at (x, z) is
+ * water: the shore an intake draws from or an outfall empties into. The
+ * footprint itself still has to stand on land; this is the same ring
+ * `hasAdjacentTier` walks, asked of the water mask.
+ */
+export function hasAdjacentWater(
+  g: GridState,
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+): boolean {
+  for (let dz = -1; dz <= d; dz++) {
+    for (let dx = -1; dx <= w; dx++) {
+      const insideX = dx >= 0 && dx < w;
+      const insideZ = dz >= 0 && dz < d;
+      if (insideX && insideZ) continue;
+      if ((dx === -1 || dx === w) && (dz === -1 || dz === d)) continue;
+      const tx = x + dx;
+      const tz = z + dz;
+      if (!inBoundsOf(g.size, tx, tz)) continue;
+      if (g.water[indexOf(g.size, tx, tz)] === 1) return true;
     }
   }
   return false;

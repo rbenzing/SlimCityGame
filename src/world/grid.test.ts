@@ -21,6 +21,7 @@ import {
   serializeGridV12,
   setZones,
 } from './grid';
+import { createRoadNetwork, loadGrid, saveGrid } from './roadnet';
 
 /** The last save version that stored roads on the tiles; older ones trim it. */
 const V12 = 12;
@@ -169,6 +170,30 @@ describe('serializeGrid / deserializeGrid', () => {
     const view = new DataView(buf);
     view.setUint32(0, SAVE_VERSION + 1, true);
     expect(() => deserializeGrid(buf)).toThrow();
+  });
+
+  it('round-trips the pipe layer (v14), and a v13 save loads with no pipes', () => {
+    const g = createGrid(5);
+    g.waterPipe[7] = 1;
+    g.waterPipe[18] = 1;
+    const current = saveGrid(g, createRoadNetwork());
+    expect(new DataView(current).getUint32(0, true)).toBe(SAVE_VERSION);
+    const back = loadGrid(current).grid;
+    expect(Array.from(back.waterPipe)).toEqual(Array.from(g.waterPipe));
+    // The drained layer is derived every utility pass, never carried in a save.
+    expect(Array.from(back.sewered)).toEqual(new Array(25).fill(0));
+
+    // A v13 buffer is the same tiles without the trailing pipe layer, then the
+    // network; it loads with the pipes the city never had: none.
+    const n = 25;
+    const tileBytes = 8 + n * BYTES_PER_TILE_BY_VERSION[SAVE_VERSION]!;
+    const older = new Uint8Array(current.byteLength - n);
+    older.set(new Uint8Array(current, 0, tileBytes - n), 0);
+    older.set(new Uint8Array(current, tileBytes), tileBytes - n);
+    new DataView(older.buffer).setUint32(0, 13, true);
+    const old = loadGrid(older.buffer).grid;
+    expect(Array.from(old.waterPipe)).toEqual(new Array(25).fill(0));
+    expect(BYTES_PER_TILE_BY_VERSION[14]).toBe(BYTES_PER_TILE_BY_VERSION[13]! + 1);
   });
 
   it('migrates a v1 buffer (no district/landfill/elevation layers) — loads them all-zero, other layers intact', () => {

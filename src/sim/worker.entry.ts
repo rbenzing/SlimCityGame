@@ -25,6 +25,8 @@ import {
   LANDFILL_MIN_AREA_TILES,
   LANDFILL_PAINT_COST_PER_TILE,
   POWER_LINE_COST_PER_TILE,
+  WATER_PIPE_COST_PER_TILE,
+  SEWAGE_POLLUTION_PER_KL,
   LANDFILL_TRUCKS_BASE,
   LANDFILL_TRUCKS_MAX,
   LANDFILL_TRUCKS_PER_TILES,
@@ -51,6 +53,7 @@ import {
   SAVE_VERSION,
   BuildingState,
   FieldId,
+  Problem,
   flowsAlong,
   RoadFlow,
   RoadTier,
@@ -127,6 +130,7 @@ import {
   canPlaceFootprint,
   ARMS_PER_TILE,
   hasAdjacentTier,
+  hasAdjacentWater,
   clearTiles,
   createGrid,
   isBridgeBuildable,
@@ -192,7 +196,7 @@ import { computeDemand, jobRoom } from './demand';
 import { GrowthSystem, type GrowthSupply } from './growth';
 import { ServiceSim, nearestRoadTile } from './services';
 import { EconomySystem, buildingMonthlyTax, type Occupancy } from './economy';
-import { recomputeUtilities } from './network';
+import { recomputeUtilities, sewageOf } from './network';
 import { TrafficSystem } from './traffic';
 import { TransitSystem, type PopulationJobsAccessor, type TransitTickResult } from './transit';
 import { DispatchSystem, MAX_SERVICE_VEHICLES } from './dispatch';
@@ -207,6 +211,7 @@ import {
   type LandfillArea,
 } from '../world/landfill';
 import { canStringLine, stringPowerLine } from '../world/powerline';
+import { canLayPipe, layWaterPipe } from '../world/waterpipe';
 import { regradeSoil, soilGrades } from '../shared/soil';
 import {
   GarbageSystem,
@@ -307,6 +312,8 @@ function initialStats(): CityStats {
     powerDemand: 0,
     waterSupply: 0,
     waterDemand: 0,
+    sewerSupply: 0,
+    sewerDemand: 0,
     milestoneLevel: 0,
     milestoneProgress: 0,
     loanBalance: 0,
@@ -478,6 +485,7 @@ class SimWorld implements WorkerSim {
   private landfillDirty: DirtyRect | null = null;
   /** Where power line has been strung or pulled down since the last snapshot. */
   private powerLineDirty: DirtyRect | null = null;
+  private waterPipeDirty: DirtyRect | null = null;
   /** Cached landfill areas (office/entrance + dump routes) — dropped when landfill paint or road edits change them. */
   private landfillAreasCache: LandfillArea[] | null = null;
   private garbageDirty = false;
@@ -533,8 +541,10 @@ class SimWorld implements WorkerSim {
   private pendingHeightPatches: HeightPatch[] = [];
   private prevPower = new Uint8Array(this.grid.power.length);
   private prevWatered = new Uint8Array(this.grid.watered.length);
+  private prevSewered = new Uint8Array(this.grid.sewered.length);
   private powerDirty = false;
   private wateredDirty = false;
+  private seweredDirty = false;
   private utilitiesDirty = false;
   /** Jobs by sector, open and going up, as the last economy pass (or load) counted them, for demand. */
   private occupancy: Occupancy = {
@@ -546,6 +556,7 @@ class SimWorld implements WorkerSim {
   private supply: GrowthSupply = {
     power: { cut: new Set(), spare: 0 },
     water: { cut: new Set(), spare: 0 },
+    sewer: { cut: new Set(), spare: 0 },
   };
 
   constructor(post: WorkerPost) {
@@ -791,11 +802,13 @@ class SimWorld implements WorkerSim {
     this.landfillAreasCache = null;
     this.landfillDirty = { minX: 0, minZ: 0, maxX: MAP_SIZE - 1, maxZ: MAP_SIZE - 1 };
     this.powerLineDirty = { minX: 0, minZ: 0, maxX: MAP_SIZE - 1, maxZ: MAP_SIZE - 1 };
+    this.waterPipeDirty = { minX: 0, minZ: 0, maxX: MAP_SIZE - 1, maxZ: MAP_SIZE - 1 };
     this.garbageDirty = true;
     this.recomputeUtilitiesNow();
     this.occupancy = this.economy.occupancy(this.registry.all());
     this.powerDirty = true;
     this.wateredDirty = true;
+    this.seweredDirty = true;
 
     this.postSnapshot();
   }
@@ -809,13 +822,16 @@ class SimWorld implements WorkerSim {
     this.pendingHeightPatches = [];
     this.prevPower = new Uint8Array(this.grid.power.length);
     this.prevWatered = new Uint8Array(this.grid.watered.length);
+    this.prevSewered = new Uint8Array(this.grid.sewered.length);
     this.powerDirty = false;
     this.wateredDirty = false;
+    this.seweredDirty = false;
     this.utilitiesDirty = false;
     this.districtDirty = null;
     this.districtDefsChanged = false;
     this.landfillDirty = null;
     this.powerLineDirty = null;
+    this.waterPipeDirty = null;
     this.garbageDirty = false;
   }
 
@@ -883,6 +899,16 @@ class SimWorld implements WorkerSim {
         // pattern as pollution, feeding the Noise diffusion pass.
         if (entry?.noise) {
           this.fieldSim.emit(g, FieldId.Noise, inst.x, inst.z, entry.noise);
+        }
+        // A building nothing drains has cesspits and foul ditches: its raw
+        // sewage fouls the ground around it in proportion, never less than a
+        // unit, so an undrained street is never nothing on the lens.
+        if (entry && (inst.problems & Problem.NoSewer) !== 0) {
+          const { w, d } = footprintForRotation(entry, inst.rotation);
+          const stink = Math.ceil(
+            sewageOf(g, entry, inst.x, inst.z, w, d) * SEWAGE_POLLUTION_PER_KL,
+          );
+          if (stink > 0) this.fieldSim.emit(g, FieldId.Pollution, inst.x, inst.z, stink);
         }
       }
       // Road noise, on the same EMIT cadence: every road tile
@@ -1041,10 +1067,12 @@ class SimWorld implements WorkerSim {
     this.stats.powerDemand = totals.powerDemand;
     this.stats.waterSupply = totals.waterSupply;
     this.stats.waterDemand = totals.waterDemand;
-    this.supply = { power: totals.power, water: totals.water };
+    this.stats.sewerSupply = totals.sewerSupply;
+    this.stats.sewerDemand = totals.sewerDemand;
+    this.supply = { power: totals.power, water: totals.water, sewer: totals.sewer };
     this.utilitiesDirty = false;
 
-    const { power, watered } = this.grid;
+    const { power, watered, sewered } = this.grid;
     if (!bytesEqual(power, this.prevPower)) {
       this.prevPower.set(power);
       this.powerDirty = true;
@@ -1052,6 +1080,10 @@ class SimWorld implements WorkerSim {
     if (!bytesEqual(watered, this.prevWatered)) {
       this.prevWatered.set(watered);
       this.wateredDirty = true;
+    }
+    if (!bytesEqual(sewered, this.prevSewered)) {
+      this.prevSewered.set(sewered);
+      this.seweredDirty = true;
     }
   }
 
@@ -1206,6 +1238,10 @@ class SimWorld implements WorkerSim {
       snap.powerLines = [this.powerLinePatchFor(this.powerLineDirty)];
       this.powerLineDirty = null;
     }
+    if (this.waterPipeDirty) {
+      snap.waterPipes = [this.layerPatchFor(this.grid.waterPipe, this.waterPipeDirty)];
+      this.waterPipeDirty = null;
+    }
 
     // The profile table travels with (and is applied before) the road deltas
     // that refer into it.
@@ -1250,6 +1286,10 @@ class SimWorld implements WorkerSim {
     if (this.wateredDirty) {
       snap.watered = [fullMapPatch(this.grid.watered)];
       this.wateredDirty = false;
+    }
+    if (this.seweredDirty) {
+      snap.sewered = [fullMapPatch(this.grid.sewered)];
+      this.seweredDirty = false;
     }
     if (this.pendingHeightPatches.length > 0) {
       snap.heightPatches = this.pendingHeightPatches;
@@ -1346,12 +1386,17 @@ class SimWorld implements WorkerSim {
 
   /** Power-line membership patch: same shape/loop as landfillPatchFor, reading grid.powerLine. */
   private powerLinePatchFor(rect: DirtyRect): ZonePatch {
+    return this.layerPatchFor(this.grid.powerLine, rect);
+  }
+
+  /** A per-tile byte layer's membership over `rect`, the shape every painted layer travels in. */
+  private layerPatchFor(layer: Uint8Array, rect: DirtyRect): ZonePatch {
     const w = rect.maxX - rect.minX + 1;
     const h = rect.maxZ - rect.minZ + 1;
     const data = new Uint8Array(w * h);
     for (let dz = 0; dz < h; dz++) {
       for (let dx = 0; dx < w; dx++) {
-        data[dz * w + dx] = this.grid.powerLine[tileIndex(rect.minX + dx, rect.minZ + dz)] ?? 0;
+        data[dz * w + dx] = layer[tileIndex(rect.minX + dx, rect.minZ + dz)] ?? 0;
       }
     }
     return { x: rect.minX, z: rect.minZ, w, h, data };
@@ -2230,6 +2275,8 @@ class SimWorld implements WorkerSim {
         return this.cmdPaintLandfill(command.tiles, command.on);
       case 'stringPowerLine':
         return this.cmdStringPowerLine(command.tiles, command.on);
+      case 'layWaterPipe':
+        return this.cmdLayWaterPipe(command.tiles, command.on);
       case 'setDistrictPolicy': {
         this.policyStore.setPolicy(command.districtId, command.policy, command.on);
         return {
@@ -2378,6 +2425,35 @@ class SimWorld implements WorkerSim {
       ok: true,
       cost,
       inverse: [{ kind: 'stringPowerLine', tiles: changed, on: !on }],
+    };
+  }
+
+  /**
+   * Lays or pulls up a run of water pipe: the power line's command for the
+   * mains, charged and undone per tile that changes.
+   */
+  private cmdLayWaterPipe(tiles: TilePoint[], on: boolean): CommandResult {
+    const g = this.grid;
+    let wouldChange = 0;
+    for (const t of tiles) {
+      if (!inBounds(t.x, t.z)) continue;
+      const now = (g.waterPipe[tileIndex(t.x, t.z)] ?? 0) === 1;
+      if (now !== on && (!on || canLayPipe(g, t.x, t.z))) wouldChange += 1;
+    }
+    const cost = on ? wouldChange * WATER_PIPE_COST_PER_TILE : 0;
+    if (on && !this.sandbox && !this.unlimitedMoney && cost > this.stats.funds) {
+      return { ok: false, cost: 0, inverse: [], reason: 'funds' };
+    }
+
+    const changed = layWaterPipe(g, tiles, on);
+    if (changed.length === 0) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+
+    this.waterPipeDirty = growRect(this.waterPipeDirty, changed);
+    this.utilitiesDirty = true;
+    return {
+      ok: true,
+      cost,
+      inverse: [{ kind: 'layWaterPipe', tiles: changed, on: !on }],
     };
   }
 
@@ -3000,6 +3076,13 @@ class SimWorld implements WorkerSim {
       this.powerLineDirty = growRect(this.powerLineDirty, pulledDown);
       inverse.push({ kind: 'stringPowerLine', tiles: pulledDown, on: true });
     }
+    // And the pipe under them, the same way.
+    const pulledUp = layWaterPipe(g, clearedTiles, false);
+    if (pulledUp.length > 0) {
+      refund += pulledUp.length * WATER_PIPE_COST_PER_TILE * BULLDOZE_REFUND_RATE;
+      this.waterPipeDirty = growRect(this.waterPipeDirty, pulledUp);
+      inverse.push({ kind: 'layWaterPipe', tiles: pulledUp, on: true });
+    }
 
     inverse.push(...lifted.inverse);
     refund += lifted.refund;
@@ -3068,6 +3151,11 @@ class SimWorld implements WorkerSim {
     // A station has to touch the track it serves; everything else goes anywhere
     // buildable, exactly as before.
     if (entry.requiresAdjacent === 'rail' && !hasAdjacentTier(this.grid, x, z, w, d, isRailTier)) {
+      return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+    }
+    // An intake or an outfall stands on a shore: its footprint on land, the
+    // water it draws from or empties into orthogonally beside it.
+    if (entry.requiresAdjacent === 'water' && !hasAdjacentWater(this.grid, x, z, w, d)) {
       return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
     }
     const inst = this.registry.place(this.grid, entry, x, z, rotation);

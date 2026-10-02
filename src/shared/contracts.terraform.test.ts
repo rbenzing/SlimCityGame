@@ -148,6 +148,8 @@ describe('SimSnapshot.heightPatches (worker -> render terrain updates)', () => {
     powerDemand: 0,
     waterSupply: 0,
     waterDemand: 0,
+    sewerSupply: 0,
+    sewerDemand: 0,
     milestoneLevel: 0,
     milestoneProgress: 0,
     loanBalance: 0,

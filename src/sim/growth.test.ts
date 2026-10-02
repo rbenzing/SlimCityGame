@@ -28,12 +28,13 @@ function makeGrid(): GridState {
   return createGrid();
 }
 
-/** Stamps road/power/water/zone directly at (x, z) -- and only there. */
+/** Stamps road/power/water/sewer/zone directly at (x, z) -- and only there. */
 function serviceTile(g: GridState, x: number, z: number, zone: ZoneType): void {
   const idx = tileIndex(x, z);
   g.zone[idx] = zone;
   g.power[idx] = 1;
   g.watered[idx] = 1;
+  g.sewered[idx] = 1;
   g.roadTier[idx] = RoadTier.TwoLane;
 }
 
@@ -45,6 +46,7 @@ function keepServiced(g: GridState, x: number, z: number, zone: ZoneType = ZoneT
   g.zone[idx] = zone;
   g.power[idx] = 1;
   g.watered[idx] = 1;
+  g.sewered[idx] = 1;
   g.roadTier[idx] = RoadTier.TwoLane;
 }
 
@@ -186,6 +188,7 @@ describe('GrowthSystem', () => {
       g.zone[idx] = ZoneType.ResLow;
       g.power[idx] = 1;
       g.watered[idx] = 1;
+      g.sewered[idx] = 1;
       // roadTier left at 0 everywhere.
       const registry = new BuildingRegistry(growthCatalog);
       const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
@@ -199,6 +202,18 @@ describe('GrowthSystem', () => {
       const g = makeGrid();
       serviceTile(g, 0, 0, ZoneType.ResLow);
       g.power[tileIndex(0, 0)] = 0;
+      const registry = new BuildingRegistry(growthCatalog);
+      const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
+
+      const delta = growth.tick(g, registry, neutralDemand, 0, 0);
+      expect(delta.added).toEqual([]);
+      expect(registry.all()).toHaveLength(0);
+    });
+
+    it('does not spawn when the tile has no sewer, since its sewage would have nowhere to go', () => {
+      const g = makeGrid();
+      serviceTile(g, 0, 0, ZoneType.ResLow);
+      g.sewered[tileIndex(0, 0)] = 0;
       const registry = new BuildingRegistry(growthCatalog);
       const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
 
@@ -389,6 +404,7 @@ describe('GrowthSystem', () => {
       const inst = registry.place(g, resL1, 3, 3, 0, BuildingState.Active)!;
       const idx = tileIndex(3, 3);
       g.watered[idx] = 1;
+      g.sewered[idx] = 1;
       g.roadTier[idx] = RoadTier.TwoLane;
       g.power[idx] = 0; // persistently unpowered
       const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
@@ -423,6 +439,7 @@ describe('GrowthSystem', () => {
       const inst = registry.place(g, resL1, 3, 3, 0, BuildingState.Active)!;
       const idx = tileIndex(3, 3);
       g.watered[idx] = 1;
+      g.sewered[idx] = 1;
       g.roadTier[idx] = RoadTier.TwoLane;
       g.power[idx] = 0; // persistently unpowered, never restored
       const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
@@ -645,6 +662,7 @@ describe('GrowthSystem', () => {
           const idx = tileIndex(rx + ox, rz + oz);
           g.power[idx] = 1;
           g.watered[idx] = 1;
+          g.sewered[idx] = 1;
         }
       }
     }
@@ -798,14 +816,16 @@ describe('GrowthSystem', () => {
   });
 });
 
-/** What a utility pass left: `spare` in utility units (thousandths), and whom it cut. */
+/** What a utility pass left: `spare` in utility units (millionths), and whom it cut. */
 function supplyOf(
   power: { spare: number; cut?: number[] },
   water: { spare: number; cut?: number[] } = { spare: Infinity },
+  sewer: { spare: number; cut?: number[] } = { spare: Infinity },
 ): GrowthSupply {
   return {
     power: { spare: power.spare, cut: new Set(power.cut ?? []) },
     water: { spare: water.spare, cut: new Set(water.cut ?? []) },
+    sewer: { spare: sewer.spare, cut: new Set(sewer.cut ?? []) },
   };
 }
 
@@ -829,17 +849,21 @@ describe('GrowthSystem: zoned land its road brings nothing', () => {
     expect(counted).toEqual({
       power: 6,
       water: 6,
+      sewer: 6,
       powerAt: { x: 6, z: 0 },
       waterAt: { x: 6, z: 0 },
+      sewerAt: { x: 6, z: 0 },
     });
   });
 
   it('counts each utility the road fails, and leaves out what it brings', () => {
     const g = zonedDownADryStreet();
     for (let z = 0; z < 6; z++) g.watered[tileIndex(6, z)] = 1;
-    expect(growth().zonedUnserved(g)).toMatchObject({ power: 6, water: 0 });
+    expect(growth().zonedUnserved(g)).toMatchObject({ power: 6, water: 0, sewer: 6 });
+    for (let z = 0; z < 6; z++) g.sewered[tileIndex(6, z)] = 1;
+    expect(growth().zonedUnserved(g)).toMatchObject({ power: 6, water: 0, sewer: 0 });
     for (let z = 0; z < 6; z++) g.power[tileIndex(6, z)] = 1;
-    expect(growth().zonedUnserved(g)).toEqual({ power: 0, water: 0 });
+    expect(growth().zonedUnserved(g)).toEqual({ power: 0, water: 0, sewer: 0 });
   });
 
   it('leaves out a tile something is already built on', () => {
@@ -856,13 +880,18 @@ describe('GrowthSystem: zoned land its road brings nothing', () => {
       { ...resL1, id: 'farm', zone: ZoneType.Agriculture, waterUse: 0, kind: 'pasture' },
     ];
     const counted = new GrowthSystem(farmCatalog, constantRng(0), alwaysTrue).zonedUnserved(g);
-    expect(counted).toEqual({ power: 6, water: 0, powerAt: { x: 6, z: 0 } });
+    expect(counted).toEqual({ power: 6, water: 0, sewer: 0, powerAt: { x: 6, z: 0 } });
   });
 
-  it('never asks water for a house a dirt road serves, which is on a well', () => {
+  it('never asks water or a sewer for a house a dirt road serves, which is on a well and a septic tank', () => {
     const g = zonedDownADryStreet();
     for (let z = 0; z < 6; z++) g.roadTier[tileIndex(5, z)] = RoadTier.Gravel;
-    expect(growth().zonedUnserved(g)).toEqual({ power: 6, water: 0, powerAt: { x: 6, z: 0 } });
+    expect(growth().zonedUnserved(g)).toEqual({
+      power: 6,
+      water: 0,
+      sewer: 0,
+      powerAt: { x: 6, z: 0 },
+    });
   });
 
   it('asks water down a dirt road for anything denser than a house', () => {
@@ -876,7 +905,7 @@ describe('GrowthSystem: zoned land its road brings nothing', () => {
       constantRng(0),
       alwaysTrue,
     ).zonedUnserved(g);
-    expect(counted).toMatchObject({ power: 6, water: 6 });
+    expect(counted).toMatchObject({ power: 6, water: 6, sewer: 6 });
   });
 });
 
@@ -930,7 +959,7 @@ describe('GrowthSystem: a house on a well', () => {
     const registry = new BuildingRegistry(catalog);
     const dry = supplyOf({ spare: Infinity }, { spare: 0 });
     expect(growth.tick(g, registry, wantsHomes, 0, 0, dry).added).toHaveLength(1);
-    expect(growth.waitingFor(g, registry, dry)).toEqual({ power: 0, water: 0 });
+    expect(growth.waitingFor(g, registry, dry)).toEqual({ power: 0, water: 0, sewer: 0 });
   });
 
   it('still needs power, which the dirt road does not bring', () => {
@@ -956,6 +985,9 @@ describe('GrowthSystem: a house on a well', () => {
     g.roadTier[tileIndex(0, 2)] = RoadTier.TwoLane; // a dry street behind the lot
     expect(grow(g).all()).toHaveLength(0);
     g.watered[tileIndex(0, 1)] = 1;
+    // On the mains it is on the sewer too, and waits for a drain the same way.
+    expect(grow(g).all()).toHaveLength(0);
+    g.sewered[tileIndex(0, 1)] = 1;
     expect(grow(g).all()).toHaveLength(1);
   });
 
@@ -1002,12 +1034,12 @@ describe('GrowthSystem: a grid too small for its city', () => {
     const room = supplyOf({ spare: 100_000 });
 
     expect(growth.tick(g, registry, fullResDemand, 0, 0, full).added).toEqual([]);
-    expect(growth.waitingFor(g, registry, full)).toEqual({ power: 1, water: 0 });
+    expect(growth.waitingFor(g, registry, full)).toEqual({ power: 1, water: 0, sewer: 0 });
     // Measured against what is spare now, so more supply ends the wait at once.
-    expect(growth.waitingFor(g, registry, room)).toEqual({ power: 0, water: 0 });
+    expect(growth.waitingFor(g, registry, room)).toEqual({ power: 0, water: 0, sewer: 0 });
 
     expect(growth.tick(g, registry, fullResDemand, 0, SWEEP_TICKS, room).added).toHaveLength(1);
-    expect(growth.waitingFor(g, registry, full)).toEqual({ power: 0, water: 0 });
+    expect(growth.waitingFor(g, registry, full)).toEqual({ power: 0, water: 0, sewer: 0 });
   });
 
   it('waits for water the same way', () => {
@@ -1018,7 +1050,17 @@ describe('GrowthSystem: a grid too small for its city', () => {
     const dry = supplyOf({ spare: Infinity }, { spare: 0 });
 
     expect(growth.tick(g, registry, fullResDemand, 0, 0, dry).added).toEqual([]);
-    expect(growth.waitingFor(g, registry, dry)).toEqual({ power: 0, water: 1 });
+    expect(growth.waitingFor(g, registry, dry)).toEqual({ power: 0, water: 1, sewer: 0 });
+  });
+
+  it('waits for a drain the same way', () => {
+    const g = makeGrid();
+    serviceTile(g, 0, 0, ZoneType.ResLow);
+    const registry = new BuildingRegistry(growthCatalog);
+    const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
+    const choked = supplyOf({ spare: Infinity }, { spare: Infinity }, { spare: 0 });
+    expect(growth.tick(g, registry, fullResDemand, 0, 0, choked).added).toEqual([]);
+    expect(growth.waitingFor(g, registry, choked)).toEqual({ power: 0, water: 0, sewer: 1 });
   });
 
   it("hands a pass's spare supply out once, not to every lot that asks", () => {
@@ -1033,6 +1075,7 @@ describe('GrowthSystem: a grid too small for its city', () => {
     expect(growth.waitingFor(g, registry, supplyOf({ spare: 50_000 }))).toEqual({
       power: 1,
       water: 0,
+      sewer: 0,
     });
   });
 
@@ -1082,12 +1125,12 @@ describe('GrowthSystem: a grid too small for its city', () => {
     expect(held.added).toEqual([]);
     expect(registry.get(inst.id)!.level).toBe(1);
     expect(g.buildingId[tileIndex(5, 5)]).toBe(inst.id);
-    expect(growth.waitingFor(g, registry, tight)).toEqual({ power: 1, water: 0 });
+    expect(growth.waitingFor(g, registry, tight)).toEqual({ power: 1, water: 0, sewer: 0 });
 
     const grown = growth.tick(g, registry, neutralDemand, 0, 10, supplyOf({ spare: 200_000 }));
     expect(grown.added).toHaveLength(1);
     expect(grown.added[0]!.level).toBe(2);
-    expect(growth.waitingFor(g, registry, tight)).toEqual({ power: 0, water: 0 });
+    expect(growth.waitingFor(g, registry, tight)).toEqual({ power: 0, water: 0, sewer: 0 });
   });
 
   it('settles a short city: the far house goes dark and stays dark, and nothing flips back', () => {
@@ -1100,7 +1143,7 @@ describe('GrowthSystem: a grid too small for its city', () => {
       color: 0,
       powerUse: 0,
       waterUse: 0,
-      utility: { powerMW: 0.35, waterKL: 100 }, // power for three houses of four
+      utility: { powerMW: 0.35, waterKL: 100, sewerKL: 100 }, // power for three houses of four
       cost: 0,
       upkeep: 0,
       unlockMilestone: 0,
@@ -1120,11 +1163,11 @@ describe('GrowthSystem: a grid too small for its city', () => {
     // The worker's own order: the utility pass every 10 ticks, then growth.
     const farStates: BuildingState[] = [];
     let totals = recomputeUtilities(g, registry.all(), catalog);
-    let supply: GrowthSupply = { power: totals.power, water: totals.water };
+    let supply: GrowthSupply = { power: totals.power, water: totals.water, sewer: totals.sewer };
     for (let t = 1; t <= 500; t++) {
       if (t % 10 === 0) {
         totals = recomputeUtilities(g, registry.all(), catalog);
-        supply = { power: totals.power, water: totals.water };
+        supply = { power: totals.power, water: totals.water, sewer: totals.sewer };
       }
       growth.tick(g, registry, fullResDemand, 0, t, supply);
       const b = registry.get(far);
@@ -1140,7 +1183,7 @@ describe('GrowthSystem: a grid too small for its city', () => {
     }
     // Its lot is not rebuilt into the same shortage; it waits.
     expect(g.buildingId[tileIndex(20, 6)]).toBe(0);
-    expect(growth.waitingFor(g, registry, supply)).toEqual({ power: 1, water: 0 });
+    expect(growth.waitingFor(g, registry, supply)).toEqual({ power: 1, water: 0, sewer: 0 });
   });
 });
 
@@ -1354,6 +1397,7 @@ describe('the lot picks its building', () => {
         g.zone[i] = ZoneType.ResLow;
         g.power[i] = 1;
         g.watered[i] = 1;
+        g.sewered[i] = 1;
       }
     }
     return g;
@@ -1470,6 +1514,7 @@ describe('a business opens where the town has room for its jobs', () => {
         g.zone[i] = zone;
         g.power[i] = 1;
         g.watered[i] = 1;
+        g.sewered[i] = 1;
       }
     }
     return g;

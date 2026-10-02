@@ -1,251 +1,186 @@
 # Water and sewage — design
 
-- **Status:** Draft
-- **Date:** 2026-09-18
+- **Status:** Agreed 2026-10-02; pipes, the pumping station, the drain pipe and sewerage built 2026-10-02; the river's contamination and the treatment plant follow in their own change
+- **Date:** 2026-09-18, rewritten 2026-10-02
 
 ## What the player gets
 
-Water becomes a loop instead of a tap. The city draws it out of a river, and
-what it has drunk comes back out the other end — either through a cheap pipe
-that spoils the water, or through a works that costs five times as much and does
-not. A player who puts the outfall beside the intake poisons their own drinking
-water and can see it happen, in the colour of the river, before anything
-abandons. Epic 1 of the programme in
-[municipal-services.md](municipal-services.md).
+Water becomes a loop instead of a tap. The city draws it from a **pumping
+station** on a shore or from a **water tower** on its borehole, carries it
+along its streets and, where no street goes, along **pipes** the player lays;
+and what the city has drunk comes back out as sewage, along the same mains
+and pipes, to a **drain pipe** on a shore. A lot grows only where a drain
+reaches it. A building nothing drains stinks, and nothing new grows beside
+it until the player gives the town a sewer.
+
+Epic 1 of the programme in [municipal-services.md](municipal-services.md),
+started where the player asked for it: an intake, an outfall and the pipe
+that joins them to the town.
 
 ## Why it earns its place
 
-The city produces water and distributes it, and there the system stops. There is
-no consequence to drawing water and none to using it, so the only question the
-player ever answers about water is "have I built enough towers?" — one dial with
-one right answer. Closing the loop turns that into a siting problem with a
-visible cost: sewage has to go somewhere, somewhere is always water, and water
-is where the city's own intake is. That is the whole feature — two facilities
-that both want the riverbank, for opposite reasons.
+The city produced water and distributed it, and there the system stopped.
+There was no consequence to drawing water and none to using it, so the only
+question the player ever answered about water was "have I built enough
+towers?" — one dial with one right answer. Closing the loop turns that into
+a siting problem with a visible cost: sewage has to go somewhere, somewhere
+is always water, and water is where the city's own intake is. The pipe makes
+both reachable, since the shore is rarely where the streets are.
 
 Serves pillar 3, **the city is legible through data lenses**, in
-[../gdd.md](../gdd.md) — and serves it without a lens, which is the point: a
-river gone bad is visible on the water itself. It is first among the content
-epics because it is a pure system, adding no new UI idiom — everything the player
-does is place a building on a shore.
+[../gdd.md](../gdd.md): a Water lens and a Sewer lens, and the pipes drawn on
+the ground whenever the player is working on the water.
 
 ## How it works, for the player
 
-**Every building that uses water now makes sewage.** Not a new number to learn —
-it is 80% of the water the building drinks, the published return-to-sewer
-fraction (range 70–85%; we take 80%, a compact city losing little to irrigation).
+### Pipes
 
-**Sewage arrives by sewer, and a sewer follows the road.** A drainage facility
-collects from every building it can reach over the road network, exactly as a
-garbage facility already collects trash. A district on a road the works cannot
-reach is not drained, however close it looks.
+A **water pipe** is painted like a power line, dragged along a run of tiles
+for a few coins a tile, and it does for water what the line does for power:
+it carries water, and the sewage coming back, between its own tiles and into
+any street or building it touches. One pipe carries both flows; on the
+ground, while a water tool is in hand or a water lens is on, it shows as a
+blue run beside a brown one. Streets keep their mains, so a town that has
+never laid a pipe loses nothing; pipe is for reaching a shore, crossing a
+motorway or a railway that carries no main, or serving a lot down a lane no
+main runs along. A pipe may not cross open water and will not stand on a
+building; the bulldozer pulls it up with a refund, and undo lays it back.
 
-**Sewage that nothing collects does not kill the city — it stinks.** Unserviced
-sewage raises ordinary Pollution around the buildings producing it, in proportion
-to the volume. A village with no outfall has cesspits and foul ditches, land
-value falls, and the player gets a legible problem rather than a dead city —
-which is also what makes the epic safe to drop into an older city.
+### Water in
 
-**There are two ways to get rid of it**, and they cost very differently:
+- **Water Tower.** A 100,000-gallon elevated tank on its borehole, the
+  standard small-town size, stands anywhere and supplies 378.5 kL a day, the
+  one day's average demand a tank is sized to hold: about 1,100 people.
+- **Water Pumping Station.** A surface-water intake of the smallest class,
+  one million gallons a day, 3,785 kL, that must stand on a shore, its
+  footprint touching the water it draws from. From Small Town.
 
-|                | Sewage Outfall | Sewage Treatment Works (small) |
-| -------------- | -------------- | ------------------------------ |
-| Volume handled | 640 kL         | 700 kL                         |
-| Cost           | ¢1,800         | ¢9,000                         |
-| What comes out | all of it, raw | one tenth of it                |
+### Sewage out
 
-The volumes are deliberately near-identical. The choice is entirely about what
-comes out the far end, and the outfall is always the cheaper answer to the
-question the player is actually asked, which is why real cities built them for a
-century.
+Every building that draws city water makes sewage: **88% of what it draws**,
+the share public supply does not consume. A house on a well is on a septic
+tank and makes none for the town; a farm makes none.
 
-**Contaminated water spreads along the water, and only along the water**, out to
-about 500 m from the discharge and fading to nothing. It does not cross land: a
-lake on the far side of a ridge is unaffected however close it looks.
+- **Water Drain Pipe.** An outfall of the same one-million-gallon class that
+  must stand on a shore, taking 3,785 kL of sewage a day and emptying it, raw,
+  into the water. Available from the first day: a town's first civic works.
+  It fouls the ground around it as any dirty plant does, 176 on the pollution
+  scale, so nobody wants to live beside it.
 
-**A contaminated intake delivers less.** A pumping station's output is scaled by
-how bad the water is where it draws — a station five tiles below a raw outfall
-delivers a fifth of its rating — and that punishment is self-inflicted, the
-player having chosen both sites. **A water treatment plant buys the mistake back,
-up to a point**: it restores contaminated supply to full, up to its own rated
-throughput and no further. It cleans what the city drinks, not the river.
+**Sewage is the third utility.** A drain reaches the buildings along the
+streets and pipes connected to it, as a tower reaches theirs; the buildings
+it reaches line up by distance; when they make more sewage than the drains
+take, the far end of the line is cut, exactly as water is. The City Info
+popover reads the sewage drained against the sewage made, the inspector
+reads what a drain takes, and the Sewer lens paints what the drains reach.
 
-### The ladder
+### What happens without a drain
 
-**Supply.** The water tower stays what it is, the cheapest source in the game and
-the one a village starts with. Above it sit two intakes that must stand on a
-shore.
-
-| Building                 | Serves | Capacity         | Cost / upkeep  | Unlocks at   |
-| ------------------------ | ------ | ---------------- | -------------- | ------------ |
-| Water Tower _(existing)_ | 5,000  | 400 kL           | ¢2,500 / ¢120  | Tiny Village |
-| Water Pumping Station    | 8,000  | 640 kL           | ¢3,600 / ¢180  | Small Town   |
-| Water Pumping Works      | 32,000 | 2,560 kL         | ¢11,000 / ¢560 | Big Town     |
-| Water Treatment Plant    | 40,000 | 3,200 kL treated | ¢18,000 / ¢900 | Big Town     |
-
-**Drainage.** Three rungs, the first not a treatment facility at all — it is what
-every city has before it has a conscience.
-
-| Building                 | Serves | Capacity   | Reach    | Cost / upkeep    | Unlocks at    |
-| ------------------------ | ------ | ---------- | -------- | ---------------- | ------------- |
-| Sewage Outfall           | 10,000 | 640 kL raw | 24 tiles | ¢1,800 / ¢90     | Tiny Village  |
-| Sewage Treatment Works   | 11,000 | 700 kL     | 36 tiles | ¢9,000 / ¢520    | Busy Township |
-| Regional Treatment Works | 36,000 | 2,300 kL   | 56 tiles | ¢24,000 / ¢1,300 | Small City    |
-
-The large works costs 2.7× the small one and handles 3.3× the sewage: cheaper per
-person, and it only pays back once there are people to put through it — the
-ladder rule the programme sets for every service.
-
-### What goes wrong, and when the player sees it
-
-In this order, over many minutes, so none of it is a surprise:
-
-1. **The water changes colour.** Contaminated tiles tint toward brown-green and
-   lose their sparkle, strongest at the discharge and fading along the water.
-   Nothing has to be opened to see it.
-2. **The intake gauge falls.** A pumping station's inspector reads rated against
-   delivered — `2,560 kL rated / 510 kL delivered` — one click from the symptom.
-3. **A warning fires** below 75% of rating, a critical notification below 40%.
-4. **Only then does the city suffer.** Delivered water falls below demand and
-   the existing shortage rule does what it already does: consumers cut from
-   the far end of the mains, and after three growth passes without water,
-   abandonment.
-
-On land the outfall has its own smell: it emits ordinary Pollution on its own
-footprint like any other dirty building, so land value falls around it and
-nobody wants to live there — a second siting problem, needing no new machinery.
+- **Nothing new grows there.** A lot grows and a building levels up only
+  where a drain reaches it with room for its sewage, as they already need
+  power and water. The Advisor counts the zoned land and the growth a missing
+  or full drain holds back, like a short grid.
+- **What already stands, stinks.** A building no drain reaches is flagged
+  **No Sewer** and fouls the ground around it in proportion to its sewage:
+  cesspits and foul ditches. Land value falls, the lens shows it, and the
+  building is never abandoned for it. A city saved before this change loads
+  standing, a little dirtier, and stops growing until it builds a drain.
 
 ## What it interacts with
 
-**The existing water network.** Supply, road-borne propagation and the shortage
-cut order in [../../world-sim/utilities-model.md](../../world-sim/utilities-model.md)
-are unchanged. A pumping station is an ordinary water source whose output varies;
-nothing downstream of it needs to know why.
-
-**The water model.** Water is derived from terrain height and has no flow —
-[../../world-sim/world-model.md](../../world-sim/world-model.md) excludes a flow
-simulation deliberately, for performance. So there is no _downstream_:
-contamination spreads by connectivity in every direction, said plainly rather
-than pretending to a current. There is no fresh/salt distinction either, so a
-coastal city may drink the sea. Simplifications, not oversights.
-
-**Pollution.** The existing Pollution field carries what an outfall does to the
-air and the land around it, through the ordinary per-building emission pass. What
-it does to the river is a separate quantity travelling a different way — see
-[../../engineering/features/water-and-sewage.md](../../engineering/features/water-and-sewage.md).
-
-**Epic 0, service capacity.** The drainage half consumes it directly: a works
-collects along the road network from the buildings within reach, the walk
-[service-capacity.md](service-capacity.md) exists to make cheap. The supply half
-does not — water already has a supply-against-demand budget and a cut order, the
-same idea one layer down, and a coverage field would be a second source of truth
-for one fact.
-
-**The funding sliders.** Water and sewage get none, a decision rather than an
-omission. A slider scales a service's reach and, after epic 0, its throughput; a
-works that runs at half flow because the budget says so is not a thing that
-happens to a treatment works. The money here is the plant's capital cost and
-monthly upkeep, booked through the existing expense pass in
-[../economy.md](../economy.md). No new `ServiceKind`, and no new coverage field.
-
-**Growth.** Unserviced sewage reaches growth only through Pollution, which
-already gates residential lots at 170; nothing new gates growth.
+- **The existing water network.** Supply, road-borne propagation and the
+  far-end cut in [../../world-sim/utilities-model.md](../../world-sim/utilities-model.md)
+  are unchanged; pipes join the walk as a second conductor, and the sewer is
+  the same walk from the drains.
+- **Wells.** A low-density house on a dirt road with no main beside its lot
+  is on a well; a pipe beside the lot is a main, and puts the house on the
+  mains and the sewer both.
+- **Pollution.** An undrained building and an outfall emit into the ordinary
+  Pollution field through the per-building emission pass, so land value and
+  happiness respond with no new machinery. What an outfall does to the river
+  is the next change.
+- **Growth.** Sewer coverage and spare drain capacity join power and water
+  as conditions for a spawn and a level-up; a lot held back only by a drain
+  is waiting for supply like one held back by a tower.
+- **Saves.** The pipe layer is appended to the tile record (save version 14);
+  an older save loads with no pipes. The drained coverage is derived every
+  utility pass and never saved.
 
 ## Tuning
 
-Every figure below is derived from a published municipal standard and our own
-20 m tile. The settled values belong in [../balancing.md](../balancing.md).
+Every figure below is derived from a published source and our own 20 m tile;
+the settled values are in [../balancing.md](../balancing.md#water-and-sewer).
 
-**Per-capita water.** Domestic consumption for an urban household with full
-plumbing is a published planning figure of **150 L per person per day**; total
-municipal supply adds commercial, industrial and public use plus unaccounted-for
-water, conventionally **1.6–1.8× domestic**. At 1.7 that is 255, taken as
-**250 L per person per day**.
+**Return to sewer.** Public supply consumes 12% of what it withdraws, 0.08
+to 0.23 by region, the rest returning as wastewater
+([USGS, water years 2010–20](https://pubs.usgs.gov/publication/pp1894D/full));
+the engineering range is 60–90%
+([WEF MOP 8, as applied by a facilities plan](https://portal.ct.gov/-/media/DEEP/water/municipal_wastewater/Bridgeport-FP-Section-05-112430.pdf)).
+We take the national figure: **0.88**.
 
-**Sewage.** **80%** of water supplied returns to the sewer (range 70–85%),
-giving **200 L per person per day**. A collection system carries a further
-**10% infiltration** allowance, so a works is _rated_ at 220 L/p/d.
+**The tower.** Elevated tanks come in standard sizes from 50,000 to
+2,000,000 gallons, 100,000 among them
+([Caldwell Tanks](https://www.caldwelltanks.com/tank_types/multi-column-elevated-storage-tank-leg),
+[Phoenix Fabricators](https://phoenixtank.com/elevated-water-storage-tanks/standards-specifications/)),
+and the water-works standard sizes storage at one day's average consumption
+([Recommended Standards for Water Works §7.0.1](https://www.mass.gov/doc/guidelines-for-public-water-systems-chapter-8-finished-water-storage-0/download)).
+A 100,000-gallon tank turned over once a day is **378.5 kL**: at 0.34 kL a
+person, about 1,100 people. Its borehole pumps draw a groundwater system's
+1,800 kWh per million gallons
+([EPA, energy at public water systems](https://www.epa.gov/sites/default/files/2015-04/documents/epa816f13004.pdf)):
+180 kWh a day, **7.5 kW**.
 
-**Reconciling with the catalog — the figures disagree, and by how much.** Every
-zoned building carries a `waterUse` in kL; divided by residents, every
-residential entry but the smallest house sits between 0.053 and 0.063 kL per
-resident, so the settled figure is **0.060**. Commercial and industrial run about
-0.043 kL per job, and a balanced city employs about half its population, adding
-0.021. So the catalog's implied demand is **0.080 kL per head per day — 80
-litres** — against the standard's 250: light by a factor of **3.1**, stated here
-rather than rounded away.
+**The pumping station.** Small surface-water plants are built in the
+1 MGD class, serving 2,000–2,750 people each in one state's register
+([NH DES, surface water systems](https://www.des.nh.gov/sites/g/files/ehbemt341/files/documents/2020-01/dwgb-13-2.pdf));
+we take 1 MGD, **3,785 kL a day**, delivered as the design capacity it is. A
+surface-water system draws 1,500 kWh per million gallons (EPA, above): **62.5
+kW**.
 
-We do **not** propose changing it: multiplying every `waterUse` by 3.1 would put
-every existing city into an instant water deficit and abandon buildings on load,
-against the programme's rule that a save loads after an epic as it did before.
-The factor is written down once instead, as `WATER_DEMAND_SCALE = 3.1`, with
-every capacity here derived at the real standard and converted through it — so a
-retune is one constant, not thirty-eight numbers.
+**The drain.** Lift stations and outfalls are classed from 1 MGD up
+([Aurora lift-station guidelines](https://cdnsm5-hosted.civiclive.com/UserFiles/Servers/Server_1881137/File/Business%20Services/Development%20Center/Water%20&%20Other%20Utilities/2022/LS%20Guidelines%20Oct%202022-%20FINAL.pdf),
+[Cedar Rapids](https://www.cedar-rapids.org/local_government/departments_g_-_v/public_works/lift_stations.php));
+the smallest, **3,785 kL a day**, takes the sewage of 12,600 people at 0.3 kL
+each. A gravity outfall pumps nothing.
 
-**Reconciling with the existing water tower.** 400 kL ÷ 0.080 = **5,000
-people**, who at the real standard need 1,250 kL a day — a 1.25 ML tank, which
-is an entirely ordinary municipal elevated tank: published sizes run 0.5 to
-4 ML, and a common rule sizes storage at one day's average demand. So the number
-is right and the _unit_ is wrong; 400 kL is a tank volume being used as a
-production rate, and a tank produces nothing. We keep it producing anyway —
-reframing it as storage would leave every existing city with no source — and
-give it a reading that holds: a borehole with a tank on top, which is how small
-settlements really are supplied.
+**What raw sewage fouls.** Medium-strength domestic sewage carries about
+200 mg/L of five-day oxygen demand (100–300:
+[OSU Extension](https://ohioline.osu.edu/factsheet/aex-768); 110–190 in the
+standard text) — 0.2 kg a kL, **161 lb a year per kL a day**. On the scale
+the coal plant sets, 140 for an electric utility's 484,000 lb a year, that
+is 0.0466 a kL a day: an outfall at its rated 3,785 kL emits **176**, and an
+undrained building its own sewage's share, never less than one unit. The
+secondary-treatment limit a works meets is 30 mg/L
+([40 CFR 133.102](https://www.law.cornell.edu/cfr/text/40/133.102)), which is
+what the treatment plant will buy in the next change.
 
-**Facility capacities**, each a real plant rating in megalitres per day converted
-to people and then to catalog kL at 0.080/head (supply) or 0.064 (sewage):
+**Pipe.** A pipe costs and keeps what a power line does, ¢12 a tile and
+¢0.5 a month, for the same reason: it has to be the cheapest thing that
+reaches a shore, or a street gets laid to the water instead. Real mains run
+about $410 a foot for water and $350 for sewer
+([Phoenix unit cost study, 2024](https://www.phoenix.gov/content/dam/phoenix/pddsite/documents/impact-fees/2025-if-update/Water%20and%20Wastewater%20Unit%20Cost%20Study_08142024_v2.pdf)),
+and water main and sanitary sewer share the street corridor in separate
+trenches ten feet apart
+([Recommended Standards for Wastewater Facilities §38.31](https://www.health.state.mn.us/communities/environment/water/docs/tenstates/tenstatestan2014.pdf)),
+which is why a street's main is also its sewer here.
 
-| Facility        | Real rating | ÷ per-capita | People | × catalog rate | Catalog      |
-| --------------- | ----------- | ------------ | ------ | -------------- | ------------ |
-| Pumping Station | 2 ML/d      | 250 L/p/d    | 8,000  | 0.080          | **640 kL**   |
-| Pumping Works   | 8 ML/d      | 250 L/p/d    | 32,000 | 0.080          | **2,560 kL** |
-| Treatment Plant | 10 ML/d     | 250 L/p/d    | 40,000 | 0.080          | **3,200 kL** |
-| Sewage Outfall  | 2.2 ML/d    | 220 L/p/d    | 10,000 | 0.064          | **640 kL**   |
-| Treatment Works | 2.4 ML/d    | 220 L/p/d    | 11,000 | 0.064          | **700 kL**   |
-| Regional Works  | 8 ML/d      | 220 L/p/d    | 36,000 | 0.064          | **2,300 kL** |
-
-**How much cleaner a works is.** Raw municipal sewage carries a BOD₅ of about
-**250 mg/L** (medium-strength domestic, range 110–400), and a secondary
-discharge consent is commonly **25 mg/L**, so a conventional works removes about
-**90%**: **treated effluent fouls at one tenth the rate of raw, per kL.**
-
-**How far it spreads.** A discharge consent normally has to meet its standard
-within a mixing zone of about **500 m**. 500 ÷ 20 = **25 tiles** of connected
-water, falling linearly from full strength at the discharge to nothing at the
-edge.
-
-**How fast it clears.** The classic first-order BOD decay coefficient is
-**k₁ ≈ 0.23 per day** at 20 °C. A calendar day is 200 ticks, so on a period-4
-pass (50 a day) the per-pass survival is e^(−0.23/50) = 0.9954 — 255/256 in the
-fixed point the fields already use, and the slowest decay in the game. A river
-recovers over days, which is why an outfall is a lasting decision.
-
-**Sewer reach.** A foul sewer runs at a minimum self-cleansing gradient of about
-**1 in 150**, bounded by the depth it may reach before a lift station is needed
-— about 5 m, so 5 × 150 = **750 m ≈ 36 tiles** for the small works, and **24
-tiles** for an outfall serving one district. With a lift station the large works
-would reach 1,500 m, or 75 tiles: a third of the map, and no siting decision at
-all, so it is **capped at 56 tiles**, the longest range already in the catalog —
-an override stated rather than hidden in a rounded number.
-
-**Building sizes** come from the formula in
-[../../art/civic-massing.md](../../art/civic-massing.md) against the anchors in
-[../../art/README.md](../../art/README.md); the arithmetic, and why a tank field
-is not sized by floor area, is in
-[../../engineering/features/water-and-sewage.md](../../engineering/features/water-and-sewage.md).
+**Costs and upkeep** of the station (¢3,600 / ¢180) and the drain (¢1,800 /
+¢90) are the programme's ladder dials, kept from the first draft: the
+cheapest answer to "where does it go" is the outfall, which is why real
+cities built them for a century.
 
 ## What it is not
 
-- **Not a flow model.** No current, no direction, no floods; real flow is a
-  heightfield simulation the world model rejects on cost.
-- **Not a water-quality simulation.** One byte per water tile, one number the
-  player can reason about. Nitrates, temperature, dissolved oxygen and salinity
-  are all real and all invisible on a 20 m tile.
-- **Not a pipe network**, and not a rework of the shortage rule. Water travels
-  the road, as power does, and short supply is cut in the order it already is.
-- **Not drinking-water illness.** Contaminated supply reduces what a station
-  delivers; it makes nobody sick, there being no illness system. Health is
+- **Not a flow model.** No current, no direction, no downstream; real flow
+  is a heightfield simulation the world model rejects on cost.
+- **Not the river's contamination, and not treatment** — yet. What an
+  outfall does to the water, an intake drinking it, and the treatment plant
+  that buys the mistake back are the next change; the first draft's design
+  for them stands.
+- **Not pipes instead of streets.** A street carries its main as it always
+  did; the pipe reaches where the street does not. Re-piping every street
+  would have put every existing city dry.
+- **Not abandonment for a missing sewer.** The consequence is no growth and a
+  dirtier town, so a city from before this change loads whole.
+- **Not drinking-water illness.** There is no illness system; health is
   epic 2.
-- **Not a retune of `waterUse`.** The 3.1× discrepancy is documented and left
-  alone; fixing it is a separate decision — see
-  [../../DESIGN.md](../../DESIGN.md).

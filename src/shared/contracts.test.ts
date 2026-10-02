@@ -12,6 +12,7 @@ import {
   BuildingState,
   FIELD_COUNT,
   FieldId,
+  type BuildingCatalogEntry,
   type CursorChip,
   type LensId,
   type MainToWorker,
@@ -23,10 +24,13 @@ import {
   LAMP_SPACING_TILES,
   NIGHT_WINDOW_LIT_MAX,
   NIGHT_WINDOW_LIT_MIN,
+  SEWAGE_POLLUTION_PER_KL,
+  SEWAGE_RETURN_FRACTION,
   TICKS_PER_DAY,
   TICK_RATE,
   VISUAL_DAY_TICKS,
 } from './constants';
+import catalogData from '../data/catalog.json';
 
 describe('night-cycle constants (UI-SPEC §6.5)', () => {
   it('VISUAL_DAY_TICKS is 2400 — ~2 min per full cycle at 1×', () => {
@@ -189,7 +193,7 @@ describe('CursorChip (UI-SPEC §6)', () => {
 describe('LensId (infoview lens union)', () => {
   const acceptLens = (lens: LensId): LensId => lens;
 
-  it('accepts every FieldId plus the power/watered coverage channels', () => {
+  it('accepts every FieldId plus the power/watered/sewered coverage channels', () => {
     const lenses: LensId[] = [
       FieldId.LandValue,
       FieldId.Pollution,
@@ -202,12 +206,67 @@ describe('LensId (infoview lens union)', () => {
       FieldId.Happiness,
       'power',
       'watered',
+      'sewered',
     ];
-    expect(lenses).toHaveLength(FIELD_COUNT + 2);
+    expect(lenses).toHaveLength(FIELD_COUNT + 3);
     expect(acceptLens('power')).toBe('power');
     expect(acceptLens(FieldId.Happiness)).toBe(FieldId.Happiness);
     // 'zones' is a snapshot channel, not a lens.
     // @ts-expect-error not part of LensId
     expect(() => acceptLens('zones')).not.toThrow();
+  });
+});
+
+describe('the water utilities (water-and-sewage): every figure derived', () => {
+  const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+  const byId = (id: string): BuildingCatalogEntry => catalog.find((e) => e.id === id)!;
+  const GAL_TO_KL = 0.003785;
+  /** The smallest class of surface intake, outfall and lift station: one million gallons a day. */
+  const ONE_MGD_KL = 1_000_000 * GAL_TO_KL;
+  /** A standard 100,000-gallon elevated tank, turned over once a day as the storage rule sizes it. */
+  const TANK_GAL = 100_000;
+  /** kWh per million gallons: a groundwater system, and a surface-water one (EPA). */
+  const GROUNDWATER_KWH_PER_MG = 1_800;
+  const SURFACE_KWH_PER_MG = 1_500;
+  const HOURS_PER_DAY = 24;
+  /** Raw sewage's oxygen demand, lb a year per kL a day, on the coal plant's scale. */
+  const SEWAGE_LB_PER_YEAR_PER_KL_DAY = 161;
+  const POLLUTION_PER_LB = 140 / 484_000;
+
+  it('rates the water tower as a 100,000-gallon tank and powers its borehole pumps', () => {
+    const tower = byId('water-tower');
+    expect(tower.utility?.waterKL).toBeCloseTo(TANK_GAL * GAL_TO_KL, 9);
+    const kw = ((TANK_GAL / 1_000_000) * GROUNDWATER_KWH_PER_MG) / HOURS_PER_DAY;
+    expect(Math.abs(tower.powerUse - kw / 1000)).toBeLessThanOrEqual(0.0003);
+    expect(tower.requiresAdjacent).toBeUndefined();
+  });
+
+  it('rates the pumping station and the drain pipe at the one-million-gallon class, on a shore', () => {
+    const pump = byId('water-pump');
+    const drain = byId('water-drain');
+    expect(pump.utility?.waterKL).toBe(ONE_MGD_KL);
+    expect(drain.utility?.sewerKL).toBe(ONE_MGD_KL);
+    expect(pump.requiresAdjacent).toBe('water');
+    expect(drain.requiresAdjacent).toBe('water');
+    const kw = (1 * SURFACE_KWH_PER_MG) / HOURS_PER_DAY;
+    expect(Math.abs(pump.powerUse - kw / 1000)).toBeLessThanOrEqual(0.0003);
+    expect(drain.powerUse).toBe(0);
+    // The station waits for a Small Town; a drain is wanted from the first day.
+    expect(pump.unlockMilestone).toBe(1);
+    expect(drain.unlockMilestone).toBe(0);
+  });
+
+  it("fouls the ground at a raw outfall by its sewage's oxygen demand, on the coal plant's scale", () => {
+    const drain = byId('water-drain');
+    const expected = Math.round(ONE_MGD_KL * SEWAGE_LB_PER_YEAR_PER_KL_DAY * POLLUTION_PER_LB);
+    expect(drain.pollution).toBe(expected);
+    expect(SEWAGE_POLLUTION_PER_KL).toBeCloseTo(
+      SEWAGE_LB_PER_YEAR_PER_KL_DAY * POLLUTION_PER_LB,
+      12,
+    );
+  });
+
+  it('returns 88% of the water drawn as sewage: what public supply does not consume', () => {
+    expect(SEWAGE_RETURN_FRACTION).toBe(1 - 0.12);
   });
 });

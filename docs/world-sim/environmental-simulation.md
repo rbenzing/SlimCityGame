@@ -86,6 +86,12 @@ through this same ordinary per-building pass while it burns (see
 district's `greenEnergy` policy multiplies the emitted amount by
 `GREEN_ENERGY_POLLUTION_MULT = 0.5` for buildings inside it
 (`effectivePollution`, `src/sim/policy.ts`) before it ever reaches `emit()`.
+On the same cadence, an Active building carrying `NoSewer` emits its own
+sewage's oxygen demand on the coal plant's scale — `SEWAGE_POLLUTION_PER_KL`
+per kL a day, and never less than one unit, so an undrained street is never
+nothing on the lens — and a drain pipe emits its catalog figure, the same
+derivation at its rated flow (see
+[utilities-model.md](utilities-model.md#sewage)).
 Decays at 0.97/tick on its own slot. **Readers:** growth's `HighPollution`
 problem (> 170, residential lots only) and spawn desirability weighting,
 LandValue's loss term, the Happiness formula, and — as the closest existing

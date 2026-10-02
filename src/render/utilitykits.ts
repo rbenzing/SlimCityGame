@@ -59,6 +59,8 @@ import { InstancedSlotPool } from './massing';
 export const UTILITY_KIT_CATALOG_IDS: readonly string[] = [
   'wind-turbine',
   'water-tower',
+  'water-pump',
+  'water-drain',
   'coal-plant',
   'incinerator',
   'small-park',
@@ -70,6 +72,10 @@ export type UtilityKitPartKind =
   | 'turbineBeacon'
   | 'waterLegs'
   | 'waterTank'
+  | 'pumpHouse'
+  | 'pumpIntake'
+  | 'drainHeadwall'
+  | 'drainOutfall'
   | 'coalHall'
   | 'coalSmokestack'
   | 'coalHeap'
@@ -452,6 +458,104 @@ function buildWaterTankGeometry(): THREE.BufferGeometry {
   parts.push(cap);
 
   return mergeParts(parts);
+}
+
+// ---------------------------------------------------------------------------
+// water-pump and water-drain: the two buildings that stand on a shore. Each
+// kit is built in a local frame whose +Z points at the water, and the
+// instance is turned so that +Z faces the water tile its footprint touches.
+// ---------------------------------------------------------------------------
+
+/** A pump house with a plant room on its roof, and the intake pipe running out of its water-facing wall. */
+const PUMP_HOUSE_SIZE = { w: 18, h: 7, d: 12 };
+const PUMP_PLANT_ROOM_SIZE = { w: 7, h: 2.2, d: 6 };
+export const PUMP_INTAKE_RADIUS = 0.9;
+/** The intake runs from the house wall to this far past the footprint's water-side edge. */
+export const PUMP_INTAKE_OVERHANG = 6;
+/** A drain's headwall at the water's edge, and the outfall pipe through it. */
+const DRAIN_HEADWALL_SIZE = { w: 6, h: 2.4, d: 1.6 };
+export const DRAIN_OUTFALL_RADIUS = 0.8;
+export const DRAIN_OUTFALL_OVERHANG = 4;
+const DRAIN_OUTFALL_BACK = 3;
+
+const PUMP_HOUSE_RGB: RGB = [0.78, 0.78, 0.76];
+const PUMP_PLANT_ROOM_RGB: RGB = [0.5, 0.52, 0.55];
+const PIPE_STEEL_RGB: RGB = [0.33, 0.36, 0.4];
+const HEADWALL_RGB: RGB = [0.6, 0.6, 0.58];
+
+/**
+ * Which way a shore building faces: the rotation (as rotateLocalXZ counts it,
+ * so local +Z lands on the water) toward the first water tile orthogonally
+ * beside the footprint, south first; 0 when none is beside it. Pure.
+ */
+export function waterSideOf(
+  x: number,
+  z: number,
+  footprint: FootprintSize,
+  waterAt: (tx: number, tz: number) => boolean,
+): 0 | 1 | 2 | 3 {
+  const { w, d } = footprint;
+  for (let dx = 0; dx < w; dx++) if (waterAt(x + dx, z + d)) return 0; // south: +Z
+  for (let dz = 0; dz < d; dz++) if (waterAt(x + w, z + dz)) return 1; // east: +X
+  for (let dx = 0; dx < w; dx++) if (waterAt(x + dx, z - 1)) return 2; // north: -Z
+  for (let dz = 0; dz < d; dz++) if (waterAt(x - 1, z + dz)) return 3; // west: -X
+  return 0;
+}
+
+/** A horizontal pipe along local +Z from z0 to z1, resting at `y`. */
+function buildPipeAlongZ(radius: number, z0: number, z1: number, y: number): THREE.BufferGeometry {
+  const length = z1 - z0;
+  const pipe = new THREE.CylinderGeometry(radius, radius, length, 10);
+  pipe.rotateX(Math.PI / 2);
+  pipe.translate(0, y, z0 + length / 2);
+  paintVertexColor(pipe, hexFromRgb(PIPE_STEEL_RGB));
+  return pipe;
+}
+
+function buildPumpHouseGeometry(): THREE.BufferGeometry {
+  const { w, h, d } = PUMP_HOUSE_SIZE;
+  const house = new THREE.BoxGeometry(w, h, d);
+  house.translate(0, h / 2, 0);
+  paintVertexColor(house, hexFromRgb(PUMP_HOUSE_RGB));
+  const room = new THREE.BoxGeometry(
+    PUMP_PLANT_ROOM_SIZE.w,
+    PUMP_PLANT_ROOM_SIZE.h,
+    PUMP_PLANT_ROOM_SIZE.d,
+  );
+  room.translate(-w / 4, h + PUMP_PLANT_ROOM_SIZE.h / 2, 0);
+  paintVertexColor(room, hexFromRgb(PUMP_PLANT_ROOM_RGB));
+  return mergeParts([house, room]);
+}
+
+/** The intake: from the house's water-facing wall to the overhang past the footprint's edge. */
+function buildPumpIntakeGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { halfD } = footprintHalfExtents(footprint);
+  return buildPipeAlongZ(
+    PUMP_INTAKE_RADIUS,
+    PUMP_HOUSE_SIZE.d / 2,
+    halfD + PUMP_INTAKE_OVERHANG,
+    PUMP_INTAKE_RADIUS,
+  );
+}
+
+function buildDrainHeadwallGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { halfD } = footprintHalfExtents(footprint);
+  const { w, h, d } = DRAIN_HEADWALL_SIZE;
+  const wall = new THREE.BoxGeometry(w, h, d);
+  wall.translate(0, h / 2, halfD - d / 2);
+  paintVertexColor(wall, hexFromRgb(HEADWALL_RGB));
+  return wall;
+}
+
+/** The outfall: through the headwall and out over the water. */
+function buildDrainOutfallGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { halfD } = footprintHalfExtents(footprint);
+  return buildPipeAlongZ(
+    DRAIN_OUTFALL_RADIUS,
+    halfD - DRAIN_OUTFALL_BACK,
+    halfD + DRAIN_OUTFALL_OVERHANG,
+    DRAIN_OUTFALL_RADIUS,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -857,6 +961,8 @@ const _zAxis = new THREE.Vector3(0, 0, 1);
 export class UtilityKitRenderer {
   private readonly scene: THREE.Scene;
   private readonly heightAt: (x: number, z: number) => number;
+  /** Whether a tile is water, so a shore building turns to face it; the default sees none. */
+  private readonly waterAt: (x: number, z: number) => boolean;
   private readonly registryIds = new Set(UTILITY_KIT_CATALOG_IDS);
   private readonly kits = new Map<string, KitDefinition>();
   private readonly instances = new Map<number, InstanceRecord>();
@@ -874,9 +980,11 @@ export class UtilityKitRenderer {
     scene: THREE.Scene,
     heightAt: (x: number, z: number) => number,
     catalog: BuildingCatalogEntry[],
+    waterAt?: (x: number, z: number) => boolean,
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
+    this.waterAt = waterAt ?? ((): boolean => false);
     for (const entry of catalog) {
       if (this.registryIds.has(entry.id)) this.kits.set(entry.id, this.buildKit(entry));
     }
@@ -942,6 +1050,11 @@ export class UtilityKitRenderer {
     return this.kits.get(catalogId)?.pools[kind]?.instanceCount() ?? 0;
   }
 
+  /** The shared geometry one kit part is instanced from, or null if that (catalogId, kind) has no pool. */
+  partGeometry(catalogId: string, kind: UtilityKitPartKind): THREE.BufferGeometry | null {
+    return this.kits.get(catalogId)?.pools[kind]?.getMesh().geometry ?? null;
+  }
+
   /** The material's absolute emissive color as a hex, or null if that (catalogId, kind) has no pool — used to prove non-turbine kits carry no emissive color at all. */
   partEmissiveHex(catalogId: string, kind: UtilityKitPartKind): number | null {
     const pool = this.kits.get(catalogId)?.pools[kind];
@@ -966,6 +1079,10 @@ export class UtilityKitRenderer {
         return this.buildTurbineKit(entry);
       case 'water-tower':
         return this.buildWaterTowerKit(entry);
+      case 'water-pump':
+        return this.buildPumpKit(entry);
+      case 'water-drain':
+        return this.buildDrainKit(entry);
       case 'coal-plant':
         return this.buildCoalPlantKit(entry);
       case 'incinerator':
@@ -1023,6 +1140,50 @@ export class UtilityKitRenderer {
         waterTank: new InstancedSlotPool(
           this.scene,
           buildWaterTankGeometry(),
+          lambert(),
+          INITIAL_KIT_CAPACITY,
+        ),
+      },
+    };
+  }
+
+  private buildPumpKit(entry: BuildingCatalogEntry): KitDefinition {
+    const lambert = (): THREE.MeshLambertMaterial =>
+      new THREE.MeshLambertMaterial({ vertexColors: true });
+    return {
+      entry,
+      pools: {
+        pumpHouse: new InstancedSlotPool(
+          this.scene,
+          buildPumpHouseGeometry(),
+          lambert(),
+          INITIAL_KIT_CAPACITY,
+        ),
+        pumpIntake: new InstancedSlotPool(
+          this.scene,
+          buildPumpIntakeGeometry(entry.footprint),
+          lambert(),
+          INITIAL_KIT_CAPACITY,
+        ),
+      },
+    };
+  }
+
+  private buildDrainKit(entry: BuildingCatalogEntry): KitDefinition {
+    const lambert = (): THREE.MeshLambertMaterial =>
+      new THREE.MeshLambertMaterial({ vertexColors: true });
+    return {
+      entry,
+      pools: {
+        drainHeadwall: new InstancedSlotPool(
+          this.scene,
+          buildDrainHeadwallGeometry(entry.footprint),
+          lambert(),
+          INITIAL_KIT_CAPACITY,
+        ),
+        drainOutfall: new InstancedSlotPool(
+          this.scene,
+          buildDrainOutfallGeometry(entry.footprint),
           lambert(),
           INITIAL_KIT_CAPACITY,
         ),
@@ -1159,6 +1320,21 @@ export class UtilityKitRenderer {
       case 'water-tower':
         this.applyWaterTower(kit, building, centerX, groundY, centerZ, rotation);
         return;
+      case 'water-pump':
+        this.applyShorePair(kit, building, entry, 'pumpHouse', 'pumpIntake', centerX, groundY, centerZ);
+        return;
+      case 'water-drain':
+        this.applyShorePair(
+          kit,
+          building,
+          entry,
+          'drainHeadwall',
+          'drainOutfall',
+          centerX,
+          groundY,
+          centerZ,
+        );
+        return;
       case 'coal-plant':
         this.applyCoalPlant(kit, building, entry, centerX, groundY, centerZ, rotation);
         return;
@@ -1237,6 +1413,33 @@ export class UtilityKitRenderer {
     this.instances.set(building.id, {
       catalogId: building.catalogId,
       slots: { waterLegs: [legsSlot], waterTank: [tankSlot] },
+    });
+  }
+
+  /**
+   * A shore building's two parts, both turned so the kit's local +Z faces the
+   * water beside the footprint — never the rotation the player placed it at,
+   * since an intake pointing inland would draw from nothing.
+   */
+  private applyShorePair(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    bodyKind: UtilityKitPartKind,
+    pipeKind: UtilityKitPartKind,
+    centerX: number,
+    groundY: number,
+    centerZ: number,
+  ): void {
+    const bodyPool = kit.pools[bodyKind];
+    const pipePool = kit.pools[pipeKind];
+    if (!bodyPool || !pipePool) return;
+    const facing = waterSideOf(building.x, building.z, entry.footprint, this.waterAt);
+    const bodySlot = this.placeAt(bodyPool, centerX, groundY, centerZ, facing);
+    const pipeSlot = this.placeAt(pipePool, centerX, groundY, centerZ, facing);
+    this.instances.set(building.id, {
+      catalogId: building.catalogId,
+      slots: { [bodyKind]: [bodySlot], [pipeKind]: [pipeSlot] },
     });
   }
 

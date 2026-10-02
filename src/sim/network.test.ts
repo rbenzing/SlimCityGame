@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { BuildingCatalogEntry, BuildingInstance, GridState, TilePoint } from '../shared/types';
 import { BuildingState, RoadTier } from '../shared/types';
-import { tileIndex } from '../shared/constants';
-import { recomputeUtilities } from './network';
+import { SEWAGE_RETURN_FRACTION, tileIndex } from '../shared/constants';
+import { cityWaterUse, recomputeUtilities, sewageOf, utilityCanDeliver } from './network';
 import { createGrid } from '../world/grid';
 import { tileCentreCm } from '../shared/roadgeom';
 import { applyRoad, settleArms } from '../world/roads';
@@ -264,6 +264,162 @@ describe('recomputeUtilities: power lines', () => {
 
     recomputeUtilities(g, buildings, catalog);
     expect(g.watered[tileIndex(15, 6)]).toBe(0);
+  });
+});
+
+describe('recomputeUtilities: water pipes', () => {
+  /** Lays a straight run of pipe from x0..x1 inclusive at row z. */
+  function layPipe(g: GridState, x0: number, x1: number, z: number): void {
+    for (let x = x0; x <= x1; x++) g.waterPipe[tileIndex(x, z)] = 1;
+  }
+
+  it('carries water to an island no road reaches, as a line carries power', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'water-tower', 5, 5, 1, 1);
+    paintRoadRow(g, 6, 10, 5);
+    paintRoadRow(g, 30, 34, 5);
+    placeBuilding(g, buildings, 2, 'house', 32, 6, 1, 1);
+
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.watered[tileIndex(32, 6)]).toBe(0);
+
+    layPipe(g, 10, 30, 5);
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.watered[tileIndex(32, 6)]).toBe(1);
+  });
+
+  it('reaches a lot straight off the tower, with no road at all, and breaks where the pipe does', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'water-tower', 5, 5, 1, 1);
+    layPipe(g, 6, 12, 5);
+    layPipe(g, 14, 20, 5);
+    placeBuilding(g, buildings, 2, 'house', 18, 6, 1, 1);
+
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.watered[tileIndex(18, 6)]).toBe(0);
+    g.waterPipe[tileIndex(13, 5)] = 1;
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.watered[tileIndex(18, 6)]).toBe(1);
+  });
+
+  it('carries no power — it is a pipe, not a line', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'power-plant', 5, 5, 1, 1);
+    layPipe(g, 6, 20, 5);
+    placeBuilding(g, buildings, 2, 'house', 15, 6, 1, 1);
+
+    recomputeUtilities(g, buildings, catalog);
+    expect(g.power[tileIndex(15, 6)]).toBe(0);
+  });
+
+  it('is a main: a house beside a pipe is on the mains, not on a well', () => {
+    const g = makeGrid();
+    // A dirt road within reach, and only a pipe beside the lot.
+    paintRoad(g, 1, 1, RoadTier.Gravel);
+    g.waterPipe[tileIndex(2, 3)] = 1;
+    expect(cityWaterUse(g, house, 2, 2, 1, 1)).toBe(house.waterUse);
+    g.waterPipe[tileIndex(2, 3)] = 0;
+    expect(cityWaterUse(g, house, 2, 2, 1, 1)).toBe(0);
+  });
+
+  it('is a way out for a water tower, so one on a pipe alone is not stranded', () => {
+    const g = makeGrid();
+    expect(utilityCanDeliver(g, waterTower.utility!, [tileIndex(5, 5)])).toBe(false);
+    g.waterPipe[tileIndex(6, 5)] = 1;
+    expect(utilityCanDeliver(g, waterTower.utility!, [tileIndex(5, 5)])).toBe(true);
+  });
+});
+
+describe('recomputeUtilities: the sewer', () => {
+  const drain: BuildingCatalogEntry = {
+    id: 'drain',
+    name: 'Drain',
+    category: 'utility',
+    footprint: { w: 1, d: 1 },
+    height: 4,
+    color: 0,
+    powerUse: 0,
+    waterUse: 0,
+    utility: { sewerKL: 4 },
+    cost: 0,
+    upkeep: 0,
+    unlockMilestone: 0,
+  };
+  const sewered = [...catalog, drain];
+  /** A house makes SEWAGE_RETURN_FRACTION of the 2 kL it draws. */
+  const houseSewage = house.waterUse * SEWAGE_RETURN_FRACTION;
+
+  it('a building makes sewage from the city water it draws, and none on a well or a farm', () => {
+    const g = makeGrid();
+    paintRoad(g, 2, 1);
+    expect(sewageOf(g, house, 2, 2, 1, 1)).toBeCloseTo(houseSewage, 9);
+    // The same house down a dirt road is on a well and a septic tank.
+    const lane = makeGrid();
+    paintRoad(lane, 1, 1, RoadTier.Gravel);
+    expect(sewageOf(lane, house, 2, 2, 1, 1)).toBe(0);
+    expect(sewageOf(g, { ...house, waterUse: 0 }, 2, 2, 1, 1)).toBe(0);
+  });
+
+  it('runs back along the mains and the pipes the water came down, from the drain', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'drain', 5, 5, 1, 1);
+    paintRoadRow(g, 6, 10, 5);
+    for (let x = 10; x <= 20; x++) g.waterPipe[tileIndex(x, 5)] = 1;
+    paintRoad(g, 30, 5);
+    placeBuilding(g, buildings, 2, 'house', 8, 6, 1, 1);
+    placeBuilding(g, buildings, 3, 'house', 18, 6, 1, 1);
+    placeBuilding(g, buildings, 4, 'house', 30, 6, 1, 1);
+
+    const totals = recomputeUtilities(g, buildings, sewered);
+    expect(totals.sewerSupply).toBe(4);
+    expect(g.sewered[tileIndex(8, 6)]).toBe(1);
+    expect(g.sewered[tileIndex(18, 6)]).toBe(1);
+    expect(g.sewered[tileIndex(30, 6)]).toBe(0);
+    expect(totals.sewerDemand).toBeCloseTo(2 * houseSewage, 9);
+    expect(totals.sewer.cut.size).toBe(0);
+  });
+
+  it('cuts from the far end when the drains run out, exactly as the water cut does', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    // A drain taking 4 kL against houses making 1.76 each: room for two of three.
+    placeBuilding(g, buildings, 1, 'drain', 5, 5, 1, 1);
+    paintRoadRow(g, 6, 20, 5);
+    placeBuilding(g, buildings, 10, 'house', 18, 6, 1, 1); // the oldest, at the far end
+    placeBuilding(g, buildings, 20, 'house', 7, 6, 1, 1);
+    placeBuilding(g, buildings, 30, 'house', 12, 6, 1, 1);
+
+    const totals = recomputeUtilities(g, buildings, sewered);
+    expect(totals.sewer.cut).toEqual(new Set([10]));
+    expect(g.sewered[tileIndex(7, 6)]).toBe(1);
+    expect(g.sewered[tileIndex(12, 6)]).toBe(1);
+    expect(g.sewered[tileIndex(18, 6)]).toBe(0);
+    expect(totals.sewer.spare).toBeLessThan(0);
+  });
+
+  it('counts a house on a well as nothing in the sewer line', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'drain', 5, 5, 1, 1);
+    paintRoadRow(g, 6, 10, 5);
+    // A lane off the street: the house there is reached by the drain's walk
+    // but on a septic tank.
+    paintRoad(g, 11, 5, RoadTier.Gravel);
+    paintRoad(g, 12, 5, RoadTier.Gravel);
+    placeBuilding(g, buildings, 2, 'house', 12, 6, 1, 1);
+    const totals = recomputeUtilities(g, buildings, sewered);
+    expect(totals.sewerDemand).toBe(0);
+  });
+
+  it('a drain with no main or pipe beside it is stranded, like a tower', () => {
+    const g = makeGrid();
+    expect(utilityCanDeliver(g, drain.utility!, [tileIndex(5, 5)])).toBe(false);
+    paintRoad(g, 6, 5);
+    expect(utilityCanDeliver(g, drain.utility!, [tileIndex(5, 5)])).toBe(true);
   });
 });
 

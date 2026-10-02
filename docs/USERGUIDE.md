@@ -24,9 +24,10 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
 ## First five minutes
 
 1. Draw a **two-lane road** out into the map (Roads category, or press `1`).
-2. Place a **power source** (a wind turbine to start) and a **water source**
-   (a water tower) — **each must sit on a tile directly next to a road**, or the
-   road network won't carry its power/water and nothing will grow.
+2. Place a **power source** (a wind turbine to start), a **water source** (a
+   water tower) and a **drain** (a water drain pipe, on a shore) — **each must
+   sit on a tile directly next to a road**, or on a pipe laid to one, or the
+   network won't carry its power, water or sewage and nothing will grow.
 3. **Paint a residential zone** (Zoning, or `2`) in a band along the road, then a
    little **commercial** and **industry** so residents have shops and jobs.
 4. Unpause (`Space`) and let it run. Keep an eye on the RCI demand bars and your
@@ -256,6 +257,21 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   from its far end: the buildings furthest along the wires from a plant go dark
   first, abandon if it lasts, and nothing new moves in until there is supply to
   spare. The Advisor says how far short you are.
+- **Water, in and out** — a **water tower** stands anywhere and supplies about
+  1,100 people from its borehole; a **water pumping station** (from Small Town)
+  must stand on a shore, touching the water it draws, and supplies ten times
+  that. Every building that drinks city water makes sewage, and the sewage has
+  to go somewhere: a **water drain pipe**, also on a shore, takes it and empties
+  it raw into the water, fouling the ground beside it. Sewage travels the same
+  mains as the water, so a drain on any connected street drains the whole
+  street network. **Nothing grows where no drain reaches**, and a building left
+  without one stinks up its block (it is never abandoned for it) — the Advisor
+  tells you. The **Water Pipe** carries water and sewage where the streets do
+  not: drag a run from a street to a shore for the station or the drain, across
+  a motorway or a railway (which carry no main), or down a lane. It shows on the
+  ground, blue beside brown, whenever a water tool is in hand or the Water or
+  Sewer lens is on. Houses on a dirt road with no main beside them are on wells
+  and septic tanks and need neither.
 - **Services** — fire, police, health, education, and parks. Each projects a
   coverage/effect field around it; gaps in coverage show up in the infoview
   lenses and drag down happiness.

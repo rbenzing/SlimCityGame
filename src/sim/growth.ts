@@ -33,6 +33,7 @@ import type { JobsBySector } from './economy';
 import {
   cityWaterUse,
   dirtRoadWithinReach,
+  sewageOf,
   utilityCanDeliver,
   utilityUnits,
   type UtilityLine,
@@ -261,18 +262,21 @@ function footprintServed(layer: Uint8Array, x: number, z: number, w: number, d: 
 export interface GrowthSupply {
   power: UtilityLine;
   water: UtilityLine;
+  sewer: UtilityLine;
 }
 
 /** A grid with room for anything and nobody cut, for callers that run no utility pass. */
 export const UNMETERED_SUPPLY: GrowthSupply = {
   power: { cut: new Set(), spare: Infinity },
   water: { cut: new Set(), spare: Infinity },
+  sewer: { cut: new Set(), spare: Infinity },
 };
 
 /** What a pass still has to hand out, in utility units; it counts down as the pass builds. */
 interface Spare {
   power: number;
   water: number;
+  sewer: number;
 }
 
 /** An economy with room for any business, for callers that run no demand model. */
@@ -306,7 +310,8 @@ interface Waiting {
 function shortageOf(supply: GrowthSupply, id: number): number {
   return (
     (supply.power.cut.has(id) ? Problem.PowerShortage : 0) |
-    (supply.water.cut.has(id) ? Problem.WaterShortage : 0)
+    (supply.water.cut.has(id) ? Problem.WaterShortage : 0) |
+    (supply.sewer.cut.has(id) ? Problem.SewerShortage : 0)
   );
 }
 
@@ -329,6 +334,9 @@ function computeProblems(
   if (!footprintServed(g.power, x, z, w, d)) problems |= Problem.NoPower;
   if (cityWaterUse(g, entry, x, z, w, d) > 0 && !footprintServed(g.watered, x, z, w, d)) {
     problems |= Problem.NoWater;
+  }
+  if (sewageOf(g, entry, x, z, w, d) > 0 && !footprintServed(g.sewered, x, z, w, d)) {
+    problems |= Problem.NoSewer;
   }
   if (!reached) problems |= Problem.NoRoad;
   if (fieldAt(g, FieldId.Crime, idx) > HIGH_CRIME) problems |= Problem.HighCrime;
@@ -425,6 +433,7 @@ export class GrowthSystem {
   private readonly waiting = {
     power: new Map<number, Waiting>(),
     water: new Map<number, Waiting>(),
+    sewer: new Map<number, Waiting>(),
   };
 
   constructor(
@@ -461,7 +470,11 @@ export class GrowthSystem {
 
     if (tickNo % GROWTH_INTERVAL === 0) {
       const pass = Math.floor(tickNo / GROWTH_INTERVAL);
-      const spare: Spare = { power: supply.power.spare, water: supply.water.spare };
+      const spare: Spare = {
+        power: supply.power.spare,
+        water: supply.water.spare,
+        sewer: supply.sewer.spare,
+      };
       // The room, like the spare supply, is handed out once per pass.
       const roomLeft: JobsBySector = { ...room };
       this.forgetStaleWaits(pass);
@@ -475,9 +488,9 @@ export class GrowthSystem {
   }
 
   /**
-   * How many lots and buildings are waiting for power and for water: held
-   * back within the last sweep, still standing as they were, and still
-   * wanting more than the grid has spare now.
+   * How many lots and buildings are waiting for power, for water and for a
+   * drain: held back within the last sweep, still standing as they were, and
+   * still wanting more than the grid has spare now.
    */
   waitingFor(g: GridState, registry: BuildingRegistry, supply: GrowthSupply): GrowthWaiting {
     const stillThere = (key: number): boolean =>
@@ -501,17 +514,19 @@ export class GrowthSystem {
     return {
       power: count(this.waiting.power, supply.power.spare),
       water: count(this.waiting.water, supply.water.spare),
+      sewer: count(this.waiting.sewer, supply.sewer.spare),
     };
   }
 
   /**
    * Empty zoned tiles standing beside a road yet without power, or without
-   * water where their zone's buildings draw it. A served road hands its
-   * utility to every tile beside it, so a tile here is one its own road fails:
-   * a gravel road carries no cable, and a street the mains never reach carries
-   * no water. A tile a house would stand on a well on wants no water. Ground
-   * zoned too deep to touch the road is left out, since more supply would not
-   * grow it either.
+   * water or a drain where their zone's buildings draw it. A served road hands
+   * its utility to every tile beside it, so a tile here is one its own road
+   * fails: a gravel road carries no cable, a street the mains never reach
+   * carries no water, and a street no drain reaches carries no sewer. A tile a
+   * house would stand on a well on wants no water and no sewer. Ground zoned
+   * too deep to touch the road is left out, since more supply would not grow
+   * it either.
    */
   zonedUnserved(g: GridState): ZonedUnserved {
     const cells = g.roads ? roadCellsOf(g) : null;
@@ -521,7 +536,7 @@ export class GrowthSystem {
       if (isStreetTier(readTile(g.roadTier, idx))) return true;
       return cells !== null && freeCellsOn(cells, idx).some((c) => isStreetTier(cells.tier[c]!));
     };
-    const out: ZonedUnserved = { power: 0, water: 0 };
+    const out: ZonedUnserved = { power: 0, water: 0, sewer: 0 };
     for (let z = 0; z < g.size; z++) {
       for (let x = 0; x < g.size; x++) {
         const idx = tileIndex(x, z);
@@ -531,18 +546,24 @@ export class GrowthSystem {
         const lacksPower = !readTile(g.power, idx);
         const drinks = this.waterEntries.get(zone);
         const dry = drinks !== undefined && !readTile(g.watered, idx);
-        if (!lacksPower && !dry) continue;
+        const undrained = drinks !== undefined && !readTile(g.sewered, idx);
+        if (!lacksPower && !dry && !undrained) continue;
         if (!isRoad(x - 1, z) && !isRoad(x + 1, z) && !isRoad(x, z - 1) && !isRoad(x, z + 1)) {
           continue;
         }
-        const lacksWater = dry && cityWaterUse(g, drinks, x, z, 1, 1) > 0;
+        // A tile a house would stand on a well on wants neither water nor a sewer.
+        const onMains = drinks !== undefined && cityWaterUse(g, drinks, x, z, 1, 1) > 0;
         if (lacksPower) {
           out.power += 1;
           out.powerAt ??= { x, z };
         }
-        if (lacksWater) {
+        if (dry && onMains) {
           out.water += 1;
           out.waterAt ??= { x, z };
+        }
+        if (undrained && onMains) {
+          out.sewer += 1;
+          out.sewerAt ??= { x, z };
         }
       }
     }
@@ -551,7 +572,7 @@ export class GrowthSystem {
 
   /** Drops waits a sweep old, or from a later pass than this one (a load went back in time). */
   private forgetStaleWaits(pass: number): void {
-    for (const held of [this.waiting.power, this.waiting.water]) {
+    for (const held of [this.waiting.power, this.waiting.water, this.waiting.sewer]) {
       for (const [key, wait] of held) {
         if (pass - wait.pass >= SCAN_STRIDE || wait.pass > pass) held.delete(key);
       }
@@ -561,12 +582,13 @@ export class GrowthSystem {
   private forgetWait(key: number): void {
     this.waiting.power.delete(key);
     this.waiting.water.delete(key);
+    this.waiting.sewer.delete(key);
   }
 
   /**
-   * Whether the pass has spare supply for `power` and `water` more (utility
-   * units), recording `key` — standing on `tiles` — as waiting for whichever
-   * it lacks.
+   * Whether the pass has spare supply for `power`, `water` and `sewer` more
+   * (utility units), recording `key` — standing on `tiles` — as waiting for
+   * whichever it lacks.
    */
   private suppliedFor(
     key: number,
@@ -575,12 +597,15 @@ export class GrowthSystem {
     spare: Spare,
     power: number,
     water: number,
+    sewer: number,
   ): boolean {
     const lacksPower = power > spare.power;
     const lacksWater = water > spare.water;
+    const lacksSewer = sewer > spare.sewer;
     if (lacksPower) this.waiting.power.set(key, { pass, use: power, tiles });
     if (lacksWater) this.waiting.water.set(key, { pass, use: water, tiles });
-    return !lacksPower && !lacksWater;
+    if (lacksSewer) this.waiting.sewer.set(key, { pass, use: sewer, tiles });
+    return !lacksPower && !lacksWater && !lacksSewer;
   }
 
   private advanceConstruction(registry: BuildingRegistry, updated: BuildingInstance[]): void {
@@ -782,9 +807,12 @@ export class GrowthSystem {
     const water =
       utilityUnits(cityWaterUse(g, nextEntry, x, z, newFootprint.w, newFootprint.d)) -
       utilityUnits(cityWaterUse(g, entry, x, z, oldFootprint.w, oldFootprint.d));
+    const sewer =
+      utilityUnits(sewageOf(g, nextEntry, x, z, newFootprint.w, newFootprint.d)) -
+      utilityUnits(sewageOf(g, entry, x, z, oldFootprint.w, oldFootprint.d));
     if (
       !fits ||
-      !this.suppliedFor(waitKey, [], pass, spare, power, water) ||
+      !this.suppliedFor(waitKey, [], pass, spare, power, water, sewer) ||
       (farm !== null && this.rng.next() >= demand.ind)
     ) {
       writeStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
@@ -801,6 +829,7 @@ export class GrowthSystem {
     }
     spare.power -= power;
     spare.water -= water;
+    spare.sewer -= sewer;
     if (sector !== 'res') room[sector] -= jobsAdded;
 
     this.constructing.set(placed.id, CONSTRUCTION_TICKS);
@@ -853,9 +882,12 @@ export class GrowthSystem {
       const { w, d } = footprintForRotation(entry, 0);
       // Service is judged over the whole lot, so it cannot depend on which
       // side of the building the street happens to sit (see footprintServed).
+      // A lot a drain does not reach grows nothing: its sewage would have
+      // nowhere to go.
       if (
         !footprintServed(g.power, x, z, w, d) ||
-        (cityWaterUse(g, entry, x, z, w, d) > 0 && !footprintServed(g.watered, x, z, w, d))
+        (cityWaterUse(g, entry, x, z, w, d) > 0 && !footprintServed(g.watered, x, z, w, d)) ||
+        (sewageOf(g, entry, x, z, w, d) > 0 && !footprintServed(g.sewered, x, z, w, d))
       ) {
         continue;
       }
@@ -945,17 +977,19 @@ export class GrowthSystem {
   ): void {
     if (probability <= 0) return;
     const { w, d } = footprintForRotation(entry, 0);
-    // Nobody moves into a home the grid cannot light or water.
+    // Nobody moves into a home the grid cannot light, water or drain.
     const power = utilityUnits(entry.powerUse);
     const water = utilityUnits(cityWaterUse(g, entry, x, z, w, d));
+    const sewer = utilityUnits(sewageOf(g, entry, x, z, w, d));
     const lot = lotTiles(x, z, w, d);
-    if (!this.suppliedFor(tileIndex(x, z), lot, pass, spare, power, water)) return;
+    if (!this.suppliedFor(tileIndex(x, z), lot, pass, spare, power, water, sewer)) return;
     if (this.rng.next() >= probability) return;
 
     const placed = registry.place(g, entry, x, z, 0, BuildingState.Constructing);
     if (!placed) return;
     spare.power -= power;
     spare.water -= water;
+    spare.sewer -= sewer;
     const sector = entry.zone === undefined ? null : zoneSector(entry.zone);
     if (sector && sector !== 'res') room[sector] -= entry.jobs ?? 0;
     this.constructing.set(placed.id, CONSTRUCTION_TICKS);

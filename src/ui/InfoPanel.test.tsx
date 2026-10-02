@@ -223,7 +223,37 @@ describe('InfoPanel', () => {
       problems: 0,
     });
     render(<InfoPanel />);
-    expect(screen.getByText('400 kL')).toBeInTheDocument();
+    expect(screen.getByText('378.5 kL')).toBeInTheDocument();
+  });
+
+  it('shows what a drain takes, and names the sewer problems', () => {
+    useCityStore.getState().setSelectedBuilding({
+      id: 2,
+      catalogId: 'water-drain',
+      x: 0,
+      z: 0,
+      rotation: 0,
+      level: 1,
+      state: BuildingState.Active,
+      problems: 0,
+    });
+    render(<InfoPanel />);
+    expect(screen.getByText('Drains')).toBeInTheDocument();
+    expect(screen.getByText('3785 kL')).toBeInTheDocument();
+    cleanup();
+    useCityStore.getState().setSelectedBuilding({
+      id: 3,
+      catalogId: 'res-low-1',
+      x: 0,
+      z: 0,
+      rotation: 0,
+      level: 1,
+      state: BuildingState.Active,
+      problems: Problem.NoSewer | Problem.SewerShortage,
+    });
+    render(<InfoPanel />);
+    expect(screen.getByText('No Sewer')).toBeInTheDocument();
+    expect(screen.getByText('Sewer Shortage')).toBeInTheDocument();
   });
 
   it('shows UPKEEP unconditionally from the catalog', () => {

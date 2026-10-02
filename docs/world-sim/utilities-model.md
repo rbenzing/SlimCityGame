@@ -1,28 +1,35 @@
 # Utilities model
 
-Power and water production, road-borne coverage, power lines and conducting
-roads, and brownouts.
+Power, water and sewage production, road-borne coverage, power lines, pipes
+and conducting roads, and brownouts.
 
 ## Production and demand
 
-A utility building generates power (MW) or water (kL); its footprint is a
-source the network reaches out from. The starting catalog holds a coal plant
-(4×4, 60 MW, 140 pollution, ¢12,000 to build, ¢800/month upkeep), a wind
-turbine (1×1, 6 MW, no pollution, ¢3,000, ¢100/month) and a water tower (2×2,
-400 kL, ¢2,500, ¢120/month); all three are available from the first
-milestone. Demand is the sum of the catalog `powerUse`/`waterUse` of every
-building the network reaches — abandoned ones included, since they keep their
-place in line (see [Brownouts](#brownouts)) — and of nothing it does not
-reach, which draws nothing. It is recomputed with supply on every utility
-pass. A building whose catalog entry draws no water — a farm, which pumps its
-own well — needs none: it is never held back or flagged `NoWater` for the
-want of a pipe.
+A utility building generates power (MW) or water (kL a day), or takes sewage
+(kL a day); its footprint is a source the network reaches out from. The
+catalog holds a coal plant (4×4, 60 MW, 140 pollution, ¢12,000 to build,
+¢800/month upkeep), a wind turbine (1×1, 6 MW, no pollution, ¢3,000,
+¢100/month), a water tower (2×2, 378.5 kL — a 100,000-gallon tank on its
+borehole, turned over once a day — ¢2,500, ¢120/month), a water pumping
+station (2×2, 3,785 kL, the smallest one-million-gallon-a-day surface intake,
+on a shore, from Small Town, ¢3,600, ¢180/month) and a water drain pipe
+(1×1, taking 3,785 kL of sewage a day, on a shore, raw into the water,
+¢1,800, ¢90/month); where each figure comes from is in
+[../game-design/features/water-and-sewage.md](../game-design/features/water-and-sewage.md).
+Demand is the sum of the catalog `powerUse`/`waterUse` of every building the
+network reaches — abandoned ones included, since they keep their place in
+line (see [Brownouts](#brownouts)) — and of nothing it does not reach, which
+draws nothing. Sewage demand is the return-to-sewer share of each reached
+building's city water (see [Sewage](#sewage)). All of it is recomputed with
+supply on every utility pass. A building whose catalog entry draws no water
+— a farm, which pumps its own well — needs none: it is never held back or
+flagged `NoWater` for the want of a pipe, and makes no sewage.
 
 Supply is a single city-wide total and **every generator counts towards it,
 connected or not**. That is deliberate — it keeps supply a property of what
 the city has built rather than of the order things were built in — but on its
 own it is a trap: a water tower set one tile clear of the road reports its
-full 400 kL while not one tile is watered, so the figures read healthy, the
+full 378.5 kL while not one tile is watered, so the figures read healthy, the
 city quietly refuses to grow, and nothing on screen contradicts the player.
 
 So a generator that cannot deliver has to say so. A utility whose footprint
@@ -34,38 +41,56 @@ is unchanged; what changes is that the mistake is visible.
 Touching a road is not the test, because not every road carries everything: a
 motorway and a ramp carry no water, an unsealed lane conducts no power, and a
 power line carries electricity and nothing else. A water tower beside a
-motorway is as stranded as one in a field. So the check asks the same
-predicates the coverage walk above seeds its search from, rather than a second
-idea of "connected" that could drift away from the first — a generator making
-both power and water needs a conductor for each. A generator reached only by a
-power line strung across the valley is connected for electricity and flags
-nothing.
+motorway is as stranded as one in a field, and so is a drain. So the check
+asks the same predicates the coverage walk above seeds its search from,
+rather than a second idea of "connected" that could drift away from the first
+— a generator making both power and water needs a conductor for each. A
+generator reached only by a power line strung across the valley is connected
+for electricity and flags nothing; a tower or a drain reached only by a pipe
+is connected for water and flags nothing.
 
 ## Coverage: a walk along the road network
 
-Power and water do not radiate from a utility building as a plain-radius
-circle. Coverage is computed identically for both: a breadth-first walk
-starts from every tile of the network (road or power line, see
-[Conducting roads and power lines](#conducting-roads-and-power-lines))
+Power, water and sewage do not radiate from a utility building as a
+plain-radius circle. Coverage is computed identically for all three: a
+breadth-first walk starts from every tile of the network (road, power line or
+pipe, see [Conducting roads, power lines and pipes](#conducting-roads-power-lines-and-pipes))
 orthogonally adjacent to a generator's footprint, crosses every connected
 tile that conducts — along a road, only where the road network joins one
 road to the next ([road-network.md](road-network.md)), so never across to a
-road that merely lies alongside or sits at another level; a power line hands
-supply to whatever stands beside it — and then radiates one further orthogonal step onto
-non-road tiles around each reached tile — which is how an off-road building
-or zoned lot picks up supply from the street beside it. A building counts as
-served if any one tile of its footprint is covered, not all of them.
+road that merely lies alongside or sits at another level; a line or a pipe
+hands supply to whatever stands beside it — and then radiates one further
+orthogonal step onto non-road tiles around each reached tile — which is how
+an off-road building or zoned lot picks up supply from the street beside it.
+A building counts as served if any one tile of its footprint is covered, not
+all of them.
 
-## Conducting roads and power lines
+## Conducting roads, power lines and pipes
 
 Water conducts along every street-tier road tile whose spec does not set
-`carriesWater: false`. In the current road set the dirt road, the highway and
-the ramp are excluded, so a paved street of any tier carries water and a
-dirt track or a motorway does not. A dirt road has no main under it, just as
-it has no cable, and the houses along one pump their own wells (see
+`carriesWater: false`, and along every water pipe tile. In the current road
+set the dirt road, the highway and the ramp are excluded, so a paved street
+of any tier carries water and a dirt track or a motorway does not. A dirt
+road has no main under it, just as it has no cable, and the houses along one
+pump their own wells (see
 [a house on a well](../game-design/simulation-rules.md#a-house-on-a-well)).
-A tile that fails to conduct is not merely unsupplied — it is not a
-bridge either, so the network cannot pass through it to reach a tile beyond.
+A street's main is also its sewer — the manhole covers say so — so the sewage
+walk below runs over exactly the tiles the water walk does. A tile that fails
+to conduct is not merely unsupplied — it is not a bridge either, so the
+network cannot pass through it to reach a tile beyond.
+
+A **water pipe** is a network of its own, laid as the power line is strung:
+not a road, carrying no traffic and no tier, conducting water and sewage
+between its own tiles and into any road or building footprint it touches, and
+nothing else. It is how an intake on a shore or an outfall at the water's
+edge joins the mains, how water crosses a motorway or a railway that carries
+none, and how a lot down a lane no main runs along is served. A pipe beside
+a lot is a main, so a house there is on the mains and the sewer, not on a
+well. Laying it costs ¢12 a tile and ¢0.5 a tile a month, the power line's
+figures for the power line's reason; it will not cross open water or stand on
+a building's footprint, and dragging back over a laid run charges nothing.
+It is buried: the ground shows it, as a blue run beside a brown one, only
+while a water tool is in hand or the Water or Sewer lens is on.
 
 Power is stricter: a road conducts it only if the road is **sealed**, read
 directly from the road class's own `surface` field (`paved` conducts,
@@ -91,6 +116,35 @@ A road tile with no power supply carries no street lamp: the lamp-placement
 pass skips any tile the grid reports as unpowered, so the network's reach
 reads directly off the street after dark. See [../art/README.md](../art/README.md)
 for what a lit or dark pole looks like.
+
+## Sewage
+
+Sewage is the third utility, and it runs the other way. Every building that
+draws city water makes sewage — `SEWAGE_RETURN_FRACTION`, 0.88, of its
+`cityWaterUse`, the share public supply does not consume — so a house on a
+well, which draws none, makes none for the town (it is on a septic tank), and
+a farm makes none. Nothing is stored: a building's sewage is derived from the
+one water figure the catalog carries.
+
+A drain's `sewerKL` is the sewage it takes a day, summed over every Active or
+Constructing drain into a city-wide total as water is. A drain reaches along
+the same roads that carry water and the same pipes, by the same walk, and the
+buildings it reaches line up by steps from the nearest drain; when they make
+more than the drains take, the far end of the line loses its sewer on its
+footprint tiles only, exactly as the water cut below. The drained coverage is
+`g.sewered`, derived on every utility pass and never saved.
+
+A building a drain does not reach, or the drains ran out before, carries
+`NoSewer` (and `SewerShortage` beside it where the network reaches it but
+the capacity did not). Neither abandons it. What they do: a lot grows, and a
+building levels up, only where a drain reaches it with room for its sewage,
+so the town stops growing where it has no sewer; and a standing building
+nothing drains fouls the ground around it in proportion to its sewage
+(`SEWAGE_POLLUTION_PER_KL` per kL a day, never less than one unit a pass),
+through the ordinary emission pass in
+[environmental-simulation.md](environmental-simulation.md#pollution-fieldidpollution--1).
+A city saved before there were drains therefore loads standing, every home
+flagged and a little dirtier, and the Advisor says to build a drain.
 
 ## Brownouts
 
@@ -129,7 +183,7 @@ small from a network with a gap in it. The shortage flag only says why; the
 `NoPower` or `NoWater` beside it is what counts towards abandonment.
 
 A building that goes three consecutive growth passes without power, water,
-or road access while Active abandons. Growth does not build into a shortage:
-a lot develops, and a building levels up, only when the grid has the spare
-supply for it (see
-[the spawner](../game-design/simulation-rules.md#the-spawner-how-a-lot-is-chosen)).
+or road access while Active abandons; one without a sewer never does. Growth
+does not build into a shortage: a lot develops, and a building levels up,
+only when the grid has the spare supply — power, water and drain — for it
+(see [the spawner](../game-design/simulation-rules.md#the-spawner-how-a-lot-is-chosen)).

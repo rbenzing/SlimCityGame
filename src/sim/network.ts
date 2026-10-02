@@ -9,17 +9,22 @@
  * SEALED road tile (highways included — street lighting) and along a power
  * line, which is not a road at all; an unsealed road has no cable in it and
  * so conducts nothing. Water conducts across every road tile EXCEPT ones on
- * a spec with `carriesWater === false` (a dirt road and the motorway network). A tile that
+ * a spec with `carriesWater === false` (a dirt road and the motorway network),
+ * and along a water pipe, which is the power line's counterpart. A tile that
  * does not conduct neither receives the utility itself nor lets it propagate
  * through to tiles beyond.
+ *
+ * Sewage is the third utility and runs the other way: a drain takes what the
+ * buildings its network reaches make, over the same mains and pipes water
+ * travels, since a street's main is also its sewer.
  *
  * When the buildings the network reaches ask for more than the supply, the
  * grid gives out from its far end: buildings line up by network steps from
  * the nearest generator, and the ones past the end of the supply lose
  * coverage on their own footprint tiles only.
  *
- * Power and water are computed identically (module the water-conduction
- * filter) but fully independently.
+ * Power, water and sewer are computed identically (modulo each one's
+ * conduction filter) but fully independently.
  */
 
 import type {
@@ -31,7 +36,13 @@ import type {
   UtilitySpec,
 } from '../shared/types';
 import { BuildingState, RoadTier, ZoneType, isStreetTier } from '../shared/types';
-import { MAP_SIZE, ROAD_CHECK_RADIUS, inBounds, tileIndex } from '../shared/constants';
+import {
+  MAP_SIZE,
+  ROAD_CHECK_RADIUS,
+  SEWAGE_RETURN_FRACTION,
+  inBounds,
+  tileIndex,
+} from '../shared/constants';
 import { footprintForRotation, lotTiles } from './buildings';
 import { roadStep } from '../world/roads';
 import { cellTile, freeCellsOn, neighbours, roadCellsOf } from '../world/roadnet';
@@ -109,8 +120,11 @@ export interface UtilityTotals {
   powerDemand: number;
   waterSupply: number;
   waterDemand: number;
+  sewerSupply: number;
+  sewerDemand: number;
   power: UtilityLine;
   water: UtilityLine;
+  sewer: UtilityLine;
 }
 
 /** Building-id -> footprint tile indices, derived from the grid's occupancy layer. */
@@ -164,8 +178,11 @@ function radiate(g: GridState, sources: ReadonlyMap<number, number>): Int32Array
   return out;
 }
 
-/** Whether a cell carries a utility: a road cell or a power-line tile, by its predicate. */
+/** Whether a cell carries a utility: a road cell or a line tile, by its predicate. */
 type Conducts = (cells: RoadCells, id: number) => boolean;
+
+/** Whether a bare tile — no road on it — carries the utility's own line: a power line, a pipe. */
+type IsLine = (tile: number) => boolean;
 
 /** The tiles orthogonally next to `tile`. */
 function besideTile(tile: number): number[] {
@@ -204,11 +221,11 @@ function networkCellsAdjacentTo(
  * highway for water, a road for neither) are excluded entirely — they neither
  * receive the utility nor act as a bridge to anything beyond them.
  *
- * Power travels two ways: along the roads built to carry it, where it goes
+ * A utility travels two ways: along the roads built to carry it, where it goes
  * only where the road network joins one road to the next — over a road it
  * crosses and never down into it, and never across to a road that merely lies
- * alongside — and along a power line, which is not a road and hands it on to
- * whatever stands next to it.
+ * alongside — and along its own line (a power line, a water pipe), which is
+ * not a road and hands it on to whatever stands next to it.
  *
  * Returns each reached tile with its steps along the network: a seed is 1,
  * each cell beyond one more.
@@ -218,15 +235,15 @@ function reachableNetworkTiles(
   cells: RoadCells,
   seeds: readonly number[],
   conducts: Conducts,
+  isLine: IsLine,
 ): Map<number, number> {
   const steps = new Map<number, number>(seeds.map((s) => [s, 1]));
   const queue: number[] = [...seeds];
   const n = MAP_SIZE * MAP_SIZE;
   const keys = 2 * n;
-  const isLine = (tile: number): boolean => g.roadTier[tile] === 0 && g.powerLine[tile] === 1;
   const onward = (cur: number): number[] => {
     if (cells.tier[cur] === 0) {
-      // A power line: the roads and lines next to it, on the grid or off it.
+      // A line: the roads and lines next to it, on the grid or off it.
       const out: number[] = [];
       for (const [ddx, ddz] of ORTHOGONAL) {
         const next = roadStep(g, cur, ddx, ddz);
@@ -277,14 +294,27 @@ function computeReach(
   g: GridState,
   footprintTiles: readonly number[],
   conducts: Conducts,
+  isLine: IsLine,
 ): Int32Array {
   if (footprintTiles.length === 0) return new Int32Array(MAP_SIZE * MAP_SIZE).fill(-1);
   const cells = roadCellsOf(g);
   const seeds = networkCellsAdjacentTo(cells, footprintTiles, conducts);
-  const sources = reachableNetworkTiles(g, cells, seeds, conducts);
+  const sources = reachableNetworkTiles(g, cells, seeds, conducts, isLine);
   for (const tile of footprintTiles) sources.set(tile, 0);
   return radiate(g, sources);
 }
+
+/** A bare tile carrying a power line. */
+const isPowerLine =
+  (g: GridState): IsLine =>
+  (tile) =>
+    g.roadTier[tile] === 0 && g.powerLine[tile] === 1;
+
+/** A bare tile carrying a water pipe. */
+const isWaterPipe =
+  (g: GridState): IsLine =>
+  (tile) =>
+    g.roadTier[tile] === 0 && g.waterPipe[tile] === 1;
 
 /**
  * Electricity travels along a SEALED street — a made-up road has a cable in
@@ -301,23 +331,30 @@ function conductsPower(g: GridState, cells: RoadCells, id: number): boolean {
   return isStreetTier(tier) && tierIsSealed(tier as RoadTier);
 }
 
-/** Only drivable streets whose spec carries water conduct it (no dirt road or motorway; rail is not a street, and neither is a power line). */
-function conductsWater(cells: RoadCells, id: number): boolean {
+/**
+ * Water, and the sewage that comes back, travel along a drivable street whose
+ * spec carries water (no dirt road or motorway; rail is not a street) and
+ * along a water pipe, which carries both and nothing else.
+ */
+function conductsWater(g: GridState, cells: RoadCells, id: number): boolean {
+  if (id < g.size * g.size && g.waterPipe[id] === 1) return true;
   const tier = cells.tier[id] ?? 0;
   return isStreetTier(tier) && tierCarriesWater(tier as RoadTier);
 }
 
 /**
- * A road that carries water orthogonally beside any of `tiles`, on the grid or
- * off it: the very adjacency the network hands water to a lot across.
+ * A main orthogonally beside any of `tiles` — a road that carries water, on
+ * the grid or off it, or a pipe: the very adjacency the network hands water to
+ * a lot across.
  */
 function mainBeside(g: GridState, tiles: readonly number[]): boolean {
   const cells = g.roads ? roadCellsOf(g) : null;
   for (const idx of tiles) {
     for (const ni of besideTile(idx)) {
+      if (g.waterPipe[ni] === 1) return true;
       const tier = g.roadTier[ni]!;
       if (isStreetTier(tier) && tierCarriesWater(tier as RoadTier)) return true;
-      if (cells && freeCellsOn(cells, ni).some((c) => conductsWater(cells, c))) return true;
+      if (cells && freeCellsOn(cells, ni).some((c) => conductsWater(g, cells, c))) return true;
     }
   }
   return false;
@@ -368,7 +405,24 @@ export function cityWaterUse(
 }
 
 /**
- * Whether a generator's footprint touches a tile that conducts what it makes.
+ * The sewage a w×d building at (x, z) sends to the city's drains, in kL a
+ * day: the return-to-sewer share of the city water it draws. A house on a
+ * well is on a septic tank and sends none; a farm sends none.
+ */
+export function sewageOf(
+  g: GridState,
+  entry: BuildingCatalogEntry,
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+): number {
+  return cityWaterUse(g, entry, x, z, w, d) * SEWAGE_RETURN_FRACTION;
+}
+
+/**
+ * Whether a generator's footprint touches a tile that conducts what it makes
+ * (or, for a drain, what it takes).
  *
  * This is the very adjacency `computeCoverage` seeds its walk from, asked of
  * the same conduction predicates, so a generator reads as connected exactly
@@ -385,12 +439,13 @@ export function utilityCanDeliver(
 ): boolean {
   const cells = roadCellsOf(g);
   const power: Conducts = (c, i) => conductsPower(g, c, i);
+  const water: Conducts = (c, i) => conductsWater(g, c, i);
   if (utility.powerMW && networkCellsAdjacentTo(cells, footprintTiles, power).length === 0) {
     return false;
   }
   if (
-    utility.waterKL &&
-    networkCellsAdjacentTo(cells, footprintTiles, conductsWater).length === 0
+    (utility.waterKL || utility.sewerKL) &&
+    networkCellsAdjacentTo(cells, footprintTiles, water).length === 0
   ) {
     return false;
   }
@@ -450,9 +505,10 @@ function cutFromTheFarEnd(
 }
 
 /**
- * Recomputes power/water supply, demand, and per-tile coverage (g.power,
- * g.watered) for the current instant. Pure function of the grid + building
- * registry; safe to call every tick or on-demand after edits.
+ * Recomputes power, water and sewer supply, demand, and per-tile coverage
+ * (g.power, g.watered, g.sewered) for the current instant. Pure function of
+ * the grid + building registry; safe to call every tick or on-demand after
+ * edits.
  */
 export function recomputeUtilities(
   g: GridState,
@@ -464,8 +520,10 @@ export function recomputeUtilities(
 
   let powerSupply = 0;
   let waterSupply = 0;
+  let sewerSupply = 0;
   const powerFootprints: number[] = [];
   const waterFootprints: number[] = [];
+  const sewerFootprints: number[] = [];
   for (const b of buildings) {
     if (b.state !== BuildingState.Active && b.state !== BuildingState.Constructing) continue;
     const spec = catalogMap.get(b.catalogId);
@@ -480,12 +538,24 @@ export function recomputeUtilities(
       waterSupply += spec.utility.waterKL;
       waterFootprints.push(...tiles);
     }
+    if (spec.utility.sewerKL) {
+      sewerSupply += spec.utility.sewerKL;
+      sewerFootprints.push(...tiles);
+    }
   }
 
-  const powerReach = computeReach(g, powerFootprints, (c, i) => conductsPower(g, c, i));
-  const waterReach = computeReach(g, waterFootprints, conductsWater);
+  const water: Conducts = (c, i) => conductsWater(g, c, i);
+  const powerReach = computeReach(
+    g,
+    powerFootprints,
+    (c, i) => conductsPower(g, c, i),
+    isPowerLine(g),
+  );
+  const waterReach = computeReach(g, waterFootprints, water, isWaterPipe(g));
+  // The sewer runs back along the mains and pipes the water came down.
+  const sewerReach = computeReach(g, sewerFootprints, water, isWaterPipe(g));
 
-  const { demand: powerDemand, ...power } = cutFromTheFarEnd(
+  const { demand: powerDemand, ...powerLine } = cutFromTheFarEnd(
     g.power,
     powerReach,
     buildings,
@@ -494,7 +564,7 @@ export function recomputeUtilities(
     powerSupply,
     (s) => s.powerUse,
   );
-  const { demand: waterDemand, ...water } = cutFromTheFarEnd(
+  const { demand: waterDemand, ...waterLine } = cutFromTheFarEnd(
     g.watered,
     waterReach,
     buildings,
@@ -506,6 +576,28 @@ export function recomputeUtilities(
       return cityWaterUse(g, s, b.x, b.z, w, d);
     },
   );
+  const { demand: sewerDemand, ...sewerLine } = cutFromTheFarEnd(
+    g.sewered,
+    sewerReach,
+    buildings,
+    catalogMap,
+    footprints,
+    sewerSupply,
+    (s, b) => {
+      const { w, d } = footprintForRotation(s, b.rotation);
+      return sewageOf(g, s, b.x, b.z, w, d);
+    },
+  );
 
-  return { powerSupply, powerDemand, waterSupply, waterDemand, power, water };
+  return {
+    powerSupply,
+    powerDemand,
+    waterSupply,
+    waterDemand,
+    sewerSupply,
+    sewerDemand,
+    power: powerLine,
+    water: waterLine,
+    sewer: sewerLine,
+  };
 }

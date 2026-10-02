@@ -148,6 +148,18 @@ function CardPictogram({ card }: { card: AssetCard }): JSX.Element {
       </div>
     );
   }
+  if (card.id === 'water.pipe') {
+    // The pipe as the lens draws it: a run of blue beside a run of brown.
+    return (
+      <div
+        className="flex h-11 flex-col items-center justify-center gap-1 rounded-[6px] bg-[#1a2230]"
+        aria-hidden="true"
+      >
+        <div className="h-1.5 w-4/5 rounded-sm bg-[var(--color-rci-com)]" />
+        <div className="h-1.5 w-4/5 rounded-sm bg-[#8a5a2b]" />
+      </div>
+    );
+  }
   if (card.id === 'district.paint') {
     return (
       <div

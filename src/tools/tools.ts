@@ -14,6 +14,7 @@ import {
   TERRAFORM_STRENGTH_MIN,
   LANDFILL_PAINT_COST_PER_TILE,
   POWER_LINE_COST_PER_TILE,
+  WATER_PIPE_COST_PER_TILE,
   BRIDGE_MAX_ELEVATION,
   BRIDGE_COST_PER_METER_TILE,
   BRIDGE_MAX_GRADE,
@@ -214,6 +215,8 @@ export interface ToolEnv {
    * quotes the whole run, which is what a fresh one costs anyway.
    */
   powerLineAt?(x: number, z: number): boolean;
+  /** Whether a water pipe is already laid on a tile, for the same reason. */
+  waterPipeAt?(x: number, z: number): boolean;
   /**
    * The id to lay a composed cross-section under — an existing custom id with
    * this exact shape, or the next free one. Optional: an env that omits it
@@ -778,6 +781,11 @@ function isPaintLandfillTool(tool: ToolId): boolean {
  */
 function isPowerLineTool(tool: ToolId): boolean {
   return tool === 'power.line';
+}
+
+/** Water-pipe tool: the power line's drag, for the mains. */
+function isWaterPipeTool(tool: ToolId): boolean {
+  return tool === 'water.pipe';
 }
 
 /** A minimum of 2 stops makes a routable bus line (mirrors sim/transit.ts). */
@@ -1852,6 +1860,16 @@ export class ToolManager {
       return;
     }
 
+    if (isWaterPipeTool(tool)) {
+      const startTile = this.dragStart ?? current;
+      const tiles = this.roadPath(startTile, current);
+      const fresh = tiles.filter((t) => !this.env.waterPipeAt?.(t.x, t.z));
+      const cost = fresh.length * WATER_PIPE_COST_PER_TILE;
+      const { valid, invalidReason } = this.evaluate(tiles, cost, 0, true);
+      this.env.onPreview({ tiles, valid, cost, label: 'Water pipe', invalidReason });
+      return;
+    }
+
     const start = this.dragStart ?? current;
     if (tool === 'bulldoze') {
       const { tiles, refusal } = this.bulldozeOutline(rectTiles(start, current));
@@ -2254,6 +2272,10 @@ export class ToolManager {
       // only for the ones that change.
       this.env.send('Power line', [
         { kind: 'stringPowerLine', tiles: this.roadPath(start, end), on: true },
+      ]);
+    } else if (isWaterPipeTool(tool)) {
+      this.env.send('Water pipe', [
+        { kind: 'layWaterPipe', tiles: this.roadPath(start, end), on: true },
       ]);
     }
     this.env.onPreview(null);

@@ -86,6 +86,23 @@ Every figure is sourced in [features/building-types.md](features/building-types.
 | `share`              | warehouse 55, workshop 22, factory 8, flex 9; food 43, chemicals 26, metals 6, paper 6                 | ULI floor-space shares, manufacturing split 3:1 by firm size (SUSB); BLS establishments in thousands.                | `src/data/catalog.json` |
 | Heavy Industrial     | unlocks at milestone 2                                                                                 | A Busy Township's workforce (600) supports about 330 basic jobs, a plant or two.                                     | `src/ui/categories.ts`  |
 
+## Water and sewer
+
+Every figure is sourced in [features/water-and-sewage.md](features/water-and-sewage.md#tuning).
+
+| Constant                       | Value                                      | Meaning                                                                                                     | File                      |
+| ------------------------------ | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------- | ------------------------- |
+| water tower                    | 378.5 kL a day; 7.5 kW                     | A 100,000-gallon tank turned over once a day, the storage rule's one day of demand; a groundwater system's 1,800 kWh/MG. | `src/data/catalog.json`   |
+| water pumping station          | 3,785 kL a day; 62.5 kW; on a shore; M1    | The 1 MGD class of small surface intake; a surface-water system's 1,500 kWh/MG.                              | `src/data/catalog.json`   |
+| water drain pipe               | 3,785 kL of sewage a day; on a shore; M0   | The 1 MGD class of outfall and lift station; a gravity outfall pumps nothing.                                | `src/data/catalog.json`   |
+| `SEWAGE_RETURN_FRACTION`       | 0.88                                       | The share of city water that comes back as sewage: public supply consumes 12% (USGS).                        | `src/shared/constants.ts` |
+| `SEWAGE_POLLUTION_PER_KL`      | 0.0466 per kL a day                        | 200 mg/L of oxygen demand = 161 lb a year per kL a day, on the coal plant's scale (140 per 484,000 lb).      | `src/shared/constants.ts` |
+| outfall pollution              | 176                                        | The drain's rated 3,785 kL a day at that figure, emitted like any plant's.                                   | `src/data/catalog.json`   |
+| undrained emission             | `ceil(sewage × 0.0466)`, at least 1        | What a building no drain reaches fouls the ground with, each emission pass.                                 | `src/sim/worker.entry.ts` |
+| `WATER_PIPE_COST_PER_TILE`     | ¢12                                        | The power line's figure: a pipe has to be the cheapest thing that reaches a shore.                          | `src/shared/constants.ts` |
+| `WATER_PIPE_UPKEEP_PER_TILE`   | ¢0.5 a month                               | The power line's figure.                                                                                    | `src/shared/constants.ts` |
+| station / drain cost, upkeep   | ¢3,600 / ¢180; ¢1,800 / ¢90                | The programme's ladder dials: the outfall is always the cheaper answer.                                      | `src/data/catalog.json`   |
+
 ## Soil and farms
 
 Every figure is sourced in [features/farms.md](features/farms.md).

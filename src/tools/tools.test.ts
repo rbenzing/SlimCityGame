@@ -5,6 +5,7 @@ import {
   BRIDGE_COST_PER_METER_TILE,
   TERRAFORM_COST_PER_METER_TILE,
   TILE_METERS,
+  WATER_PIPE_COST_PER_TILE,
 } from '../shared/constants';
 import {
   interchangeLayout,
@@ -593,6 +594,24 @@ describe('zone rectangle preview + commit', () => {
         { x: 1, z: 0 },
       ],
     });
+  });
+
+  it('lays a run of water pipe along the drag, quoting only the fresh tiles', () => {
+    const { env, previews, sent } = makeEnv();
+    env.waterPipeAt = (x, z) => x === 1 && z === 0;
+    const tm = new ToolManager(env);
+    tm.setTool('water.pipe');
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(3, 0, 0);
+    const preview = previews.at(-1)!;
+    expect(preview.label).toBe('Water pipe');
+    expect(preview.tiles).toHaveLength(4);
+    // One of the four is laid already, so three tiles' worth is quoted.
+    expect(preview.cost).toBe(3 * WATER_PIPE_COST_PER_TILE);
+    tm.pointerUp(3, 0, 0);
+    expect(sent[0]?.label).toBe('Water pipe');
+    expect(sent[0]?.commands[0]).toMatchObject({ kind: 'layWaterPipe', on: true });
+    expect((sent[0]?.commands[0] as { tiles: unknown[] }).tiles).toHaveLength(4);
   });
 
   it('maps each zone tool id to its ZoneType', () => {
