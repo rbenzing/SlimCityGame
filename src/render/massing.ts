@@ -114,7 +114,9 @@ const DEFAULT_BODY_RULE: BodyRule = { perTileM: DEFAULT_BODY_M_PER_TILE };
 /**
  * The duplex, fourplex and multiplex sizes are the types' own building
  * dimensions; a restaurant is a box on a lot that is mostly car park, and a
- * filling station a kiosk behind its forecourt.
+ * filling station a kiosk behind its forecourt. A flex building sits in its
+ * car park at the type's 25–40% site coverage, and a chemical plant leaves
+ * half its site to its tank farm and yards.
  */
 const BODY_RULES: Partial<Record<BuildingKind, BodyRule>> = {
   detached: { perTileM: RES_LOW_BODY_M_PER_TILE },
@@ -123,6 +125,8 @@ const BODY_RULES: Partial<Record<BuildingKind, BodyRule>> = {
   multiplex: { perTileM: DEFAULT_BODY_M_PER_TILE, capM: 24 },
   restaurant: { perTileM: DEFAULT_BODY_M_PER_TILE, capM: 24 },
   fuel: { fill: 0.35, capM: 16 },
+  flex: { fill: 0.55 },
+  chemical: { fill: 0.5 },
 };
 
 function bodyAxisMetres(tiles: number, rule: BodyRule): number {

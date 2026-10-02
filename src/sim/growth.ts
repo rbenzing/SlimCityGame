@@ -86,6 +86,7 @@ function zoneSector(zone: ZoneType): Sector | null {
       return 'com';
     // A farm's jobs are the basic jobs a small town lives by, like a mill's.
     case ZoneType.Industrial:
+    case ZoneType.IndHeavy:
     case ZoneType.Agriculture:
       return 'ind';
     default:
@@ -338,8 +339,9 @@ function computeProblems(
 }
 
 /**
- * Land value alone clears L2. Res L3 additionally needs Education > 60
- * (a stand-in for "services present"); other sectors' L3 is land value alone.
+ * For homes and shops, land value alone clears L2. Res L3 additionally needs
+ * Education > 60 (a stand-in for "services present"); commercial L3 is land
+ * value alone. Industry never asks: it grows on demand and room.
  */
 function meetsLevelUpRequirement(
   g: GridState,
@@ -742,11 +744,12 @@ export class GrowthSystem {
 
     const targetLevel = inst.level + 1;
     const farm = farmKindOf(entry);
-    // A farm grows by taking more land while the town wants more basic work;
-    // land value, which pushes real farms out, plays no part.
-    if (farm === null) {
-      if (!meetsLevelUpRequirement(g, inst.x, inst.z, sector, targetLevel)) return false;
-    } else if (demand.ind <= 0) {
+    // Industry grows on its order book: a works or a farm levels up while the
+    // town wants more basic work, and land value, which pushes real industry
+    // out of town, plays no part. Homes and shops still need the land value.
+    if (sector === 'ind') {
+      if (demand.ind <= 0) return false;
+    } else if (!meetsLevelUpRequirement(g, inst.x, inst.z, sector, targetLevel)) {
       return false;
     }
 

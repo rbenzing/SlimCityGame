@@ -101,6 +101,9 @@ const RCI_MIXED_RGB = hexToRgb01(0x3fc9a8);
 // Farmland — a wheat-field olive, between the industrial amber its jobs count
 // as and the green of the land it is.
 const RCI_FARM_RGB = hexToRgb01(0xa4b04a);
+// Heavy industry — the industrial amber burnt down to rust: the same family,
+// and plainly the dirtier end of it.
+const RCI_IND_HEAVY_RGB = hexToRgb01(0xb5632b);
 
 /** RCI tint color for a painted zone, or null for ZoneType.None (unpainted —
  * not drawn on the tint layer). Pure and exported for tests. */
@@ -122,6 +125,8 @@ export function zoneTintColor(zone: ZoneType): readonly [number, number, number]
       return RCI_IND_RGB;
     case ZoneType.Agriculture:
       return RCI_FARM_RGB;
+    case ZoneType.IndHeavy:
+      return RCI_IND_HEAVY_RGB;
     default:
       return null;
   }

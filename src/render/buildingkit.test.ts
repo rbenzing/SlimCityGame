@@ -9,6 +9,11 @@ import {
   FUEL_CANOPY_GAP_M,
   FUEL_CANOPY_HEIGHT_M,
   FUEL_CANOPY_THICKNESS_M,
+  TANK_COUNT,
+  TANK_DIAMETER_M,
+  TANK_GAP_M,
+  TANK_HEIGHT_M,
+  TANK_SPACING_M,
 } from './buildingkit';
 import type { SetbackBox } from './massing';
 import { BuildingState, type BuildingCatalogEntry, type BuildingInstance } from '../shared/types';
@@ -163,6 +168,43 @@ describe('computePartPlacements', () => {
     for (const p of computePartPlacements(station, kiosk, kiosk, 'E')) {
       expect(p.offset[0], p.part).toBeGreaterThan(kiosk.w / 2);
     }
+  });
+
+  it("stands a workshop's roller doors on the ground, since it has no dock", () => {
+    const workshop = entry({ kind: 'workshop', level: 1, pollution: 20 });
+    const placed = computePartPlacements(workshop, base, top, 'S');
+    expect(partsOf(placed)).toEqual(Array(DOOR_COUNT).fill('rollUpDoors'));
+    for (const door of placed) expect(door.offset[1] - door.size[1] / 2).toBeCloseTo(0, 9);
+  });
+
+  it("puts a plant's tank farm in the yard behind it, off the wall opposite the street", () => {
+    const plant = entry({ kind: 'chemical', level: 1, pollution: 120 });
+    for (const [side, sign] of [
+      ['S', -1],
+      ['N', 1],
+    ] as const) {
+      const tanks = computePartPlacements(plant, base, top, side);
+      expect(tanks).toHaveLength(TANK_COUNT);
+      for (const tank of tanks) {
+        expect(tank.part).toBe('tanks');
+        expect(tank.size).toEqual([TANK_DIAMETER_M, TANK_HEIGHT_M, TANK_DIAMETER_M]);
+        // Standing on the ground, the gap off the back wall, never inside the body.
+        expect(tank.offset[1] - tank.size[1] / 2).toBeCloseTo(0, 9);
+        expect(Math.sign(tank.offset[2])).toBe(sign);
+        expect(Math.abs(tank.offset[2]) - TANK_DIAMETER_M / 2).toBeCloseTo(
+          base.d / 2 + TANK_GAP_M,
+          9,
+        );
+      }
+      const along = tanks.map((t) => t.offset[0]).sort((a, b) => a - b);
+      expect(along[1]).toBeCloseTo(0, 9);
+      expect(along[2]! - along[0]!).toBeCloseTo((TANK_COUNT - 1) * TANK_SPACING_M, 9);
+    }
+    // An east frontage puts the yard on the west.
+    for (const tank of computePartPlacements(plant, base, top, 'E')) {
+      expect(tank.offset[0]).toBeLessThan(-base.w / 2);
+    }
+    expect(computePartPlacements(plant, base, top, null)).toEqual([]);
   });
 
   it('gives an archetype with no parts nothing at all', () => {

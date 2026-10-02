@@ -45,6 +45,10 @@ describe('subTabsFor', () => {
     expect(tabs.find((t) => t.id === 'agriculture')?.cards.map((c) => c.id)).toEqual([
       'zone.agriculture',
     ]);
+    expect(tabs.find((t) => t.id === 'industrial')?.cards.map((c) => c.id)).toEqual([
+      'zone.industrial',
+      'zone.indHeavy',
+    ]);
     expect(tabs.every((t) => t.cards.length > 0)).toBe(true);
     expect(tabs.find((t) => t.id === 'residential')?.cards.map((c) => c.id)).toEqual([
       'zone.resLow',
@@ -70,6 +74,8 @@ describe('subTabsFor', () => {
     expect(byId('zone.industrial')?.unlockMilestone).toBe(0);
     // A town can be a farm town from its first day.
     expect(byId('zone.agriculture')?.unlockMilestone).toBe(0);
+    // Heavy industry waits for a township whose workforce can staff a plant.
+    expect(byId('zone.indHeavy')?.unlockMilestone).toBe(2);
   });
 
   it('groups Roads by the family a road belongs to (empty Maintenance dropped)', () => {

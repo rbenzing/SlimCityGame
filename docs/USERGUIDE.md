@@ -227,8 +227,15 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   town can support them, shopping strips and supermarkets; high commercial
   grows offices and hotels. A business only opens where the town's economy has
   room for its jobs, so a village gets a corner shop before a shopping strip.
-  Zone narrow strips if you want the small stuff and big blocks if you want
-  towers and strips.
+  Industrial grows light industry — workshop yards and depots from the start,
+  factories once you are a Small Town, flex and research buildings at Big
+  Town — and it is nearly clean. The plants that foul the air and make noise
+  (food plants, chemical plants, steelworks, paper mills) grow only in
+  **Industrial (Heavy)**, a second industrial zone that unlocks at Busy
+  Township: zone it away from the homes, and give it water towers of its own,
+  since a plant drinks like a small town. Industry levels up when the town
+  wants more work, not when land values rise. Zone narrow strips if you want
+  the small stuff and big blocks if you want towers and strips.
   Zoned tiles only develop if they have road access, power, and water. The exception
   is a low-density house off a **dirt road** with no water main beside it: it
   has its own well, so it needs only road access and power.

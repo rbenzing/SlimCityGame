@@ -194,6 +194,16 @@ describe('zoneTintColor (UI-SPEC §8 RCI palette)', () => {
     }
   });
 
+  it('tints heavy industry a darker shade of the industrial amber', () => {
+    const heavy = zoneTintColor(ZoneType.IndHeavy)!;
+    const light = zoneTintColor(ZoneType.Industrial)!;
+    expect(heavy).not.toEqual(light);
+    // Same family: red-dominant over green over blue, and every channel darker.
+    expect(heavy[0]).toBeGreaterThan(heavy[1]);
+    expect(heavy[1]).toBeGreaterThan(heavy[2]);
+    for (let c = 0; c < 3; c++) expect(heavy[c]).toBeLessThan(light[c]!);
+  });
+
   it('maps residential (low + high) to the green-dominant RCI R color', () => {
     for (const zone of [ZoneType.ResLow, ZoneType.ResHigh]) {
       const color = zoneTintColor(zone);

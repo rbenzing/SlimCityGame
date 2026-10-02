@@ -2,10 +2,11 @@
  * The shared part kit an archetype is assembled from (render/archetypes.ts
  * picks the recipe; this builds it).
  *
- * Every part is a box, placed in the building's own UNROTATED footprint frame
- * and rotated with it — the same convention props.ts uses for roof clutter. The
- * placements are pure functions of the building's boxes and its road-facing
- * side, so a warehouse's dock is testable without a scene.
+ * Every part is a box (a tank, a cylinder), placed in the building's own
+ * UNROTATED footprint frame and rotated with it — the same convention props.ts
+ * uses for roof clutter. The placements are pure functions of the building's
+ * boxes and its road-facing side, so a warehouse's dock is testable without a
+ * scene.
  *
  * Budget: a part is one box, twelve triangles. A whole assembly is under a
  * hundred, which is why the reference's 65,536-vertex mesh cap is never the
@@ -42,6 +43,12 @@ const PART_COLOR: Readonly<Record<BuildingPart, number>> = {
   signageBand: materialHex('whiteBrick'),
   fuelCanopy: materialHex('whiteBrick'),
   pumps: materialHex('redPlaster'),
+  tanks: materialHex('whitePlaster'),
+};
+
+/** A part's unit geometry, scaled per instance: a box unless the part is round. */
+const PART_GEOMETRY: Partial<Record<BuildingPart, () => THREE.BufferGeometry>> = {
+  tanks: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 14),
 };
 
 // --- part dimensions, world meters -----------------------------------------
@@ -87,12 +94,33 @@ const FUEL_POST_INSET_M = 1;
 export const PUMP_ISLAND_SIZE_M: readonly [number, number, number] = [1, 1.4, 3];
 const PUMP_OUT_FROM_WALL_M = 4.5;
 
+/** A tank farm: three tanks in a row off the wall opposite the street, in the yard behind the plant. */
+export const TANK_COUNT = 3;
+export const TANK_DIAMETER_M = 6;
+export const TANK_HEIGHT_M = 5;
+export const TANK_GAP_M = 2;
+export const TANK_SPACING_M = 7.5;
+
 export interface PartPlacement {
   readonly part: BuildingPart;
   /** Box size in world meters (w along X, h along Y, d along Z), unrotated. */
   readonly size: readonly [number, number, number];
   /** Center offset from the building's footprint center, unrotated, meters. */
   readonly offset: readonly [number, number, number];
+}
+
+/** The side across the footprint from `side`: the back of a building that fronts `side`. */
+function oppositeSide(side: Side): Side {
+  switch (side) {
+    case 'N':
+      return 'S';
+    case 'S':
+      return 'N';
+    case 'E':
+      return 'W';
+    default:
+      return 'E';
+  }
 }
 
 /** Outward unit normal of a footprint side, in the unrotated frame. */
@@ -155,8 +183,11 @@ export function computePartPlacements(
 ): PartPlacement[] {
   const out: PartPlacement[] = [];
   const roofY = topBox.yOffset + topBox.h;
+  const parts = partsFor(entry);
+  // Doors stand on the dock where there is one, and on the ground where not.
+  const doorSill = parts.includes('loadingDock') ? DOCK_HEIGHT_M : 0;
 
-  for (const part of partsFor(entry)) {
+  for (const part of parts) {
     switch (part) {
       case 'monitorRoof': {
         const alongZ = topBox.d >= topBox.w;
@@ -202,7 +233,7 @@ export function computePartPlacements(
         const outDist = halfDepthTo(baseBox, side) + DOOR_THICKNESS_M / 2;
         const alongX = side === 'N' || side === 'S';
         const span = facadeSpan(baseBox, side);
-        // Doors sit above the dock platform, evenly spaced across the frontage.
+        // Doors sit on their sill, evenly spaced across the frontage.
         const usable = span * DOCK_FRONTAGE_FRACTION;
         const pitch = usable / DOOR_COUNT;
         for (let i = 0; i < DOOR_COUNT; i += 1) {
@@ -215,9 +246,25 @@ export function computePartPlacements(
               : [DOOR_THICKNESS_M, DOOR_HEIGHT_M, width],
             offset: [
               alongX ? along : nx * outDist,
-              DOCK_HEIGHT_M + DOOR_HEIGHT_M / 2,
+              doorSill + DOOR_HEIGHT_M / 2,
               alongX ? nz * outDist : along,
             ],
+          });
+        }
+        break;
+      }
+      case 'tanks': {
+        if (!side) break;
+        const back = oppositeSide(side);
+        const { nx, nz } = sideNormal(back);
+        const alongX = back === 'N' || back === 'S';
+        const outDist = halfDepthTo(baseBox, back) + TANK_GAP_M + TANK_DIAMETER_M / 2;
+        for (let i = 0; i < TANK_COUNT; i += 1) {
+          const along = (i - (TANK_COUNT - 1) / 2) * TANK_SPACING_M;
+          out.push({
+            part,
+            size: [TANK_DIAMETER_M, TANK_HEIGHT_M, TANK_DIAMETER_M],
+            offset: [alongX ? along : nx * outDist, TANK_HEIGHT_M / 2, alongX ? nz * outDist : along],
           });
         }
         break;
@@ -396,7 +443,8 @@ export class BuildingKitRenderer {
   private poolFor(part: BuildingPart): InstancedSlotPool {
     let pool = this.pools.get(part);
     if (!pool) {
-      pool = new InstancedSlotPool(this.scene, unitBox(), this.material, INITIAL_PART_CAPACITY);
+      const geometry = PART_GEOMETRY[part]?.() ?? unitBox();
+      pool = new InstancedSlotPool(this.scene, geometry, this.material, INITIAL_PART_CAPACITY);
       this.pools.set(part, pool);
     }
     return pool;

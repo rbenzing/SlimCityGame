@@ -100,24 +100,30 @@ palette above:
   at two-thirds height, which is the kit's signature.
 - **Palette**: steel blue, light grey or off-white walls (the same
   desaturation rule applies), grey roof plates.
-- The first industrial level is a **warehouse**: a loading dock and a bank of
-  wide roll-up/sectional loading doors repeating across every face, which
-  override the ground-floor windows there — the loading-dock read. The
-  second level and up is a **factory**: a monitor roof over the same
-  smokestack-and-silo massing below.
-- Any industrial building at level 2 or higher gets a **smokestack** (a tall
-  cylinder with a warning-light emissive at night — see
-  [lighting.md](../visual-render/lighting.md)); a large industrial footprint (3×3 or bigger)
-  may additionally get a 3–4-silo cluster at one footprint corner,
-  deterministic from the building id. Rooftop vents follow the general
-  roofs-everywhere rule above.
-- **Clean industry is read from what it emits, not from its name or level.**
-  The top industrial archetype, Green Works, is simply the industrial
-  building whose pollution figure is zero — and its smokestack is gated on
-  that same figure, so a stack on the skyline always means pollution in the
-  air and the silhouette can never disagree with the simulation. It gets a
-  roof array instead of a stack, and pointedly no stack at all, and it sits
-  above the factory in jobs offered — something to grow into, not a reskin.
+- An industrial building's archetype is its **kind** (see
+  [Industrial kinds](#industrial-kinds)): a **workshop** is a low shed with
+  roller doors at grade; a **warehouse** a loading dock with a bank of wide
+  roll-up doors above it, which override the ground-floor windows there; a
+  **factory** a monitor roof over the shed; a **flex** building a roof array
+  and no stack. The heavy kinds are plants: a **food plant** is a warehouse
+  with silos; a **chemical plant** a block with a tank farm in its yard; a
+  **steelworks** a long, tall monitor-roofed shed; a **paper mill** a tall
+  monitor-roofed hall with tanks behind it. An industrial entry with no
+  kind keeps the old ladder: a warehouse at its first level, a factory
+  above it, a roof array where it emits nothing.
+- A **smokestack** (a tall cylinder with a warning-light emissive at night —
+  see [lighting.md](../visual-render/lighting.md)) stands on every plant of
+  the Heavy Industrial zone, twice the height of the old one, and on a
+  kindless industrial building that pollutes from level 2 up. The light
+  kinds release a few units and raise none. A food plant, and a kindless
+  industrial footprint 3×3 or bigger, gets a 3–4-silo cluster at one
+  footprint corner, deterministic from the building id. Rooftop vents
+  follow the general roofs-everywhere rule above.
+- **A stack is read from what the building emits, never from its name or
+  level.** It is gated on the building's own pollution figure, so a stack on
+  the skyline always means pollution in the air and the silhouette can never
+  disagree with the simulation. The flex building is the clean kind: its
+  pollution figure is zero and it gets a roof array.
 
 **Farms.** A farm counts as industry and never looks like it. Every renderer
 that dresses industry — the lot pad, the setback tiers, roof props and
@@ -258,6 +264,29 @@ inset at its corners; the two pump islands, 1 × 3 m and 1.4 m tall, stand
 under it a quarter of its span either side of centre, behind the bay row.
 Every part is a box from the shared kit, in the chart's colours: the canopy
 and its posts in white brick, the pumps in the red accent.
+
+## Industrial kinds
+
+| Kind           | Zone  | Body                                           | Height (m)        | Parts                             | Props                                  |
+| -------------- | ----- | ---------------------------------------------- | ----------------- | --------------------------------- | -------------------------------------- |
+| Workshop       | light | 13.6 m per tile (2×2, 3×2, 3×3)                | 6.1               | roller doors at grade             | none                                   |
+| Warehouse      | light | 13.6 m per tile (3×3, 4×3, 5×4)                | 7.3 / 9.8 / 12.2  | loading dock, roll-up doors       | none                                   |
+| Factory        | light | 13.6 m per tile (2×3, 3×3, 4×3)                | 6.1 / 7.3 / 7.3   | monitor roof                      | none                                   |
+| Flex / R&D     | light | 55% of the lot each way (2×2, 3×2, 3×4)        | 6.4 / 6.4 / 9.6   | roof array                        | none                                   |
+| Food plant     | heavy | 13.6 m per tile (3×3, 4×3, 5×4)                | 8 / 9 / 10        | loading dock, roll-up doors       | tall stack, silo cluster               |
+| Chemical plant | heavy | 50% of the lot each way (3×3, 4×4, 5×4)        | 10 / 12 / 15      | tank farm behind the body         | tall stack                             |
+| Steelworks     | heavy | 13.6 m per tile, long and shallow (3×3 to 5×3) | 12 / 15 / 18      | monitor roof                      | tall stack                             |
+| Paper mill     | heavy | 13.6 m per tile (3×3, 4×4, 5×4)                | 10 / 13 / 15      | monitor roof, tank farm           | tall stack                             |
+
+A warehouse's heights are the clear heights of its generation — 24, 32 and
+40 ft — and the flex building's are two and three storeys; the rest are the
+ceiling heights of the type (ULI: light manufacturing 14–24 ft clear, heavy
+16–60 ft). A tank farm is three cylinders 6 m across and 5 m tall standing
+2 m off the wall opposite the street, in the yard the body leaves behind
+it; the roller doors of a workshop stand on the ground, where a warehouse's
+stand on its dock. The tall stack is 12 m to the kindless works' 6. Every
+other part is the shared kit's box, in the chart's colours: tanks in white
+plaster like the silos.
 
 ## Residential lots
 

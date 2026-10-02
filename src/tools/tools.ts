@@ -353,6 +353,7 @@ export const ZONE_TOOL_TO_TYPE: Record<string, ZoneType> = {
   'zone.resMedium': ZoneTypeValue.ResMedium,
   'zone.mixed': ZoneTypeValue.Mixed,
   'zone.agriculture': ZoneTypeValue.Agriculture,
+  'zone.indHeavy': ZoneTypeValue.IndHeavy,
 };
 
 const ZONE_TOOL_TO_LABEL: Record<string, string> = {
@@ -367,6 +368,7 @@ const ZONE_TOOL_TO_LABEL: Record<string, string> = {
   'zone.resMedium': 'Residential (Medium)',
   'zone.mixed': 'Mixed-Use',
   'zone.agriculture': 'Agriculture',
+  'zone.indHeavy': 'Industrial (Heavy)',
 };
 
 /** Road tool id -> the tier it lays. Exported so the integration layer can ask

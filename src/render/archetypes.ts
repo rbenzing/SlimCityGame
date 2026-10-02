@@ -14,12 +14,22 @@ import { ZoneType, type BuildingCatalogEntry } from '../shared/types';
 import { isHouseKind } from '../shared/buildingkind';
 
 export type BuildingArchetype =
-  /** Low slab, roll-up doors, a loading dock. Industry at its first level. */
+  /** Small industrial units: a low shed with roller doors at grade and no dock. */
+  | 'workshop'
+  /** Low slab, roll-up doors, a loading dock. Distribution, and kindless industry at its first level. */
   | 'warehouse'
   /** Monitor roof and a stack: industry that processes something. */
   | 'factory'
-  /** Clean industry — a roof array and, pointedly, no stack. */
+  /** Clean industry — flex and R&D — a roof array and, pointedly, no stack. */
   | 'greenWorks'
+  /** A food plant: a dock and doors like a warehouse, with silos and a stack. */
+  | 'foodPlant'
+  /** A chemical plant: a block with a tank farm in its yard and a stack. */
+  | 'chemicalPlant'
+  /** A steelworks: a long, tall monitor-roofed shed and a stack. */
+  | 'steelworks'
+  /** A paper mill: a tall monitor-roofed hall with tanks behind it and a stack. */
+  | 'paperMill'
   /** A shop at street level: canopy over the frontage, signage above it. */
   | 'storefront'
   /** Bigger retail and offices: a signage band, no canopy. */
@@ -48,7 +58,8 @@ export type BuildingPart =
   | 'canopy'
   | 'signageBand'
   | 'fuelCanopy'
-  | 'pumps';
+  | 'pumps'
+  | 'tanks';
 
 /**
  * Whether an industrial building is the CLEAN kind, taken from whether it
@@ -69,6 +80,11 @@ export function isFarmEntry(entry: BuildingCatalogEntry): boolean {
   return entry.zone === ZoneType.Agriculture;
 }
 
+/** A plant of the Heavy Industrial zone, which carries a stack at every level. */
+export function isHeavyIndustryEntry(entry: BuildingCatalogEntry): boolean {
+  return entry.zone === ZoneType.IndHeavy;
+}
+
 /**
  * A home rather than a block: a detached house, a duplex, a fourplex or a row
  * of townhouses, by the entry's kind. A home keeps a pitched roof and a lot
@@ -81,8 +97,27 @@ export function isHouseEntry(entry: BuildingCatalogEntry): boolean {
 export function archetypeFor(entry: BuildingCatalogEntry): BuildingArchetype {
   if (isFarmEntry(entry)) return 'farm';
   if (entry.category === 'ind') {
-    if (isCleanIndustry(entry)) return 'greenWorks';
-    return (entry.level ?? 1) >= 2 ? 'factory' : 'warehouse';
+    switch (entry.kind) {
+      case 'workshop':
+        return 'workshop';
+      case 'warehouse':
+        return 'warehouse';
+      case 'factory':
+        return 'factory';
+      case 'flex':
+        return 'greenWorks';
+      case 'foodplant':
+        return 'foodPlant';
+      case 'chemical':
+        return 'chemicalPlant';
+      case 'metals':
+        return 'steelworks';
+      case 'paper':
+        return 'paperMill';
+      default:
+        if (isCleanIndustry(entry)) return 'greenWorks';
+        return (entry.level ?? 1) >= 2 ? 'factory' : 'warehouse';
+    }
   }
   if (entry.category === 'com') {
     switch (entry.kind) {
@@ -108,9 +143,14 @@ export function archetypeFor(entry: BuildingCatalogEntry): BuildingArchetype {
 }
 
 const PARTS: Readonly<Record<BuildingArchetype, readonly BuildingPart[]>> = {
+  workshop: ['rollUpDoors'],
   warehouse: ['loadingDock', 'rollUpDoors'],
   factory: ['monitorRoof'],
   greenWorks: ['roofArray'],
+  foodPlant: ['loadingDock', 'rollUpDoors'],
+  chemicalPlant: ['tanks'],
+  steelworks: ['monitorRoof'],
+  paperMill: ['monitorRoof', 'tanks'],
   storefront: ['canopy', 'signageBand'],
   retailBlock: ['signageBand'],
   fuelStation: ['fuelCanopy', 'pumps'],

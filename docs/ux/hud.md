@@ -260,8 +260,9 @@ category or tool is active.
 - A dark translucent panel with rounded top corners and a close button.
 - A **sub-tab row** at the top for categories with more than one real
   group (Roads: small roads / large roads / maintenance; Zoning:
-  residential / commercial / industrial / de-zone). A category with only
-  one group renders no tab row at all.
+  residential / commercial / industrial / agriculture / mixed-use /
+  de-zone, the industrial tab holding the light and the heavy zone). A
+  category with only one group renders no tab row at all.
 - A **card grid** below: thumbnail cards roughly 96×72, each a flat-shaded
   pictogram of the item — a road's cross-section as tier-width stripes, a
   zone as a colored cell block, a building as a simple tinted silhouette —

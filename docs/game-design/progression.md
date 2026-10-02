@@ -23,10 +23,11 @@ top of whatever funds the city already has:
 | Metropolis    |     50,000 | ¢120,000 |
 
 Every catalog entry, zone tier and tool carries its own `unlockMilestone`.
-Representative examples: townhouses and the second industrial tier unlock at
-Small Town; medium apartments at Busy Township; mixed-use, the third
-industrial tier, the incinerator and the rail station at Big Town; high-rise
-residential and commercial at Small City; the airport at Grand City.
+Representative examples: townhouses and factories unlock at Small Town;
+medium apartments and the Heavy Industrial zone at Busy Township; mixed-use,
+flex and R&D buildings, the incinerator and the rail station at Big Town;
+high-rise residential and commercial at Small City; the airport at Grand
+City.
 Districts, power lines, terraforming and de-zoning are available from the
 very first milestone. Nothing in the current catalog or road set is gated
 specifically on Metropolis — it is the top of the population ladder rather

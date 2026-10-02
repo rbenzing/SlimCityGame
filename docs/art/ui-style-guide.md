@@ -22,6 +22,8 @@ same Tailwind-utility idiom as the rest of `src/ui`.
 | `--color-rci-res`  | `#63c96a` | residential demand and zone tint — the dock's R bar and every res zone card.     |
 | `--color-rci-com`  | `#4a9fe3` | commercial demand and zone tint — the dock's C bar and every com zone card.      |
 | `--color-rci-ind`  | `#e3a44a` | industrial demand and zone tint — the dock's I bar and the industrial zone card. |
+| `--color-rci-farm` | `#a4b04a` | the Agriculture zone card: farmland's wheat-field olive.                         |
+| `--color-rci-ind-heavy` | `#b5632b` | the Heavy Industrial zone card: the industrial amber burnt down to rust.    |
 
 The RCI colors are the one place a single token drives both a status
 readout (the dock's demand bars) and a content color (the zone cards in the

@@ -157,6 +157,8 @@ const ZONE_CARDS = {
   comLow: { id: 'zone.comLow', name: 'Commercial (Low)', cost: 0, unlockMilestone: 0 },
   comHigh: { id: 'zone.comHigh', name: 'Commercial (High)', cost: 0, unlockMilestone: 4 },
   industrial: { id: 'zone.industrial', name: 'Industrial', cost: 0, unlockMilestone: 0 },
+  // Heavy industry waits for a township whose workforce can staff a plant.
+  indHeavy: { id: 'zone.indHeavy', name: 'Industrial (Heavy)', cost: 0, unlockMilestone: 2 },
   agriculture: { id: 'zone.agriculture', name: 'Agriculture', cost: 0, unlockMilestone: 0 },
   mixed: { id: 'zone.mixed', name: 'Mixed-Use', cost: 0, unlockMilestone: 3 },
   dezone: { id: 'zone.dezone', name: 'De-zone', cost: 0, unlockMilestone: 0 },
@@ -256,7 +258,7 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
       cards: [ZONE_CARDS.resLow, ZONE_CARDS.resMediumRow, ZONE_CARDS.resMedium, ZONE_CARDS.resHigh],
     },
     { id: 'commercial', label: 'Commercial', cards: [ZONE_CARDS.comLow, ZONE_CARDS.comHigh] },
-    { id: 'industrial', label: 'Industrial', cards: [ZONE_CARDS.industrial] },
+    { id: 'industrial', label: 'Industrial', cards: [ZONE_CARDS.industrial, ZONE_CARDS.indHeavy] },
     // Farmland: the basic industry of a small town, laid off its dirt roads.
     { id: 'agriculture', label: 'Agriculture', cards: [ZONE_CARDS.agriculture] },
     // Mixed Housing gets its own sub-tab (carries both residents+jobs).

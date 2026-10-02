@@ -39,6 +39,12 @@ function zoneDisplayName(entry: BuildingCatalogEntry | undefined): string {
   switch (entry?.zone) {
     case ZoneType.ResLow:
       return 'Low Density Residential';
+    case ZoneType.ResMediumRow:
+      return 'Medium Density Row Housing';
+    case ZoneType.ResMedium:
+      return 'Medium Density Residential';
+    case ZoneType.Mixed:
+      return 'Mixed Housing';
     case ZoneType.ResHigh:
       return 'High Density Residential';
     case ZoneType.ComLow:
@@ -47,6 +53,8 @@ function zoneDisplayName(entry: BuildingCatalogEntry | undefined): string {
       return 'High Density Commercial';
     case ZoneType.Industrial:
       return 'Industrial';
+    case ZoneType.IndHeavy:
+      return 'Heavy Industrial';
     case ZoneType.Agriculture:
       return 'Farm';
     default:
