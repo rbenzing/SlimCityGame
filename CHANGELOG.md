@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.28.0...slimcity-v1.29.0) (2026-10-02)
+
+
+### Features
+
+* **growth:** commercial kinds, and a business that fits the town ([bd34409](https://github.com/rbenzing/SlimCityGame/commit/bd34409c13fab85931ec141e8c4105d2df430167))
+
 ## [1.28.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.27.0...slimcity-v1.28.0) (2026-10-02)
 
 
