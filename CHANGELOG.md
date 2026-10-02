@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.27.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.26.0...slimcity-v1.27.0) (2026-10-02)
+
+
+### Features
+
+* **growth:** a house off a dirt road pumps its own well ([6a73bc7](https://github.com/rbenzing/SlimCityGame/commit/6a73bc7c99841c1305ca13686984c02552b3e7fc))
+
 ## [1.26.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.25.0...slimcity-v1.26.0) (2026-10-01)
 
 
