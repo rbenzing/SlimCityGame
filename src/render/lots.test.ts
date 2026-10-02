@@ -93,16 +93,21 @@ describe('lotSurfaceFor', () => {
   it('gives industry a yard, commerce a car park, apartments a forecourt', () => {
     expect(lotSurfaceFor(entry({ category: 'ind' }))).toBe('darkAsphalt');
     expect(lotSurfaceFor(entry({ category: 'com' }))).toBe('brightAsphalt');
-    expect(lotSurfaceFor(entry({ category: 'res', zone: ZoneType.ResHigh }))).toBe(
-      'stainedConcrete',
-    );
+    expect(
+      lotSurfaceFor(entry({ category: 'res', zone: ZoneType.ResHigh, kind: 'midrise' })),
+    ).toBe('stainedConcrete');
   });
 
   it('gives a house a garden rather than paving it over', () => {
-    expect(lotSurfaceFor(entry({ category: 'res', zone: ZoneType.ResLow }))).toBe('mownLawn');
-    expect(lotSurfaceFor(entry({ category: 'res', zone: ZoneType.ResMediumRow }))).toBe(
+    expect(
+      lotSurfaceFor(entry({ category: 'res', zone: ZoneType.ResLow, kind: 'detached' })),
+    ).toBe('mownLawn');
+    expect(lotSurfaceFor(entry({ category: 'res', zone: ZoneType.ResLow, kind: 'duplex' }))).toBe(
       'mownLawn',
     );
+    expect(
+      lotSurfaceFor(entry({ category: 'res', zone: ZoneType.ResMediumRow, kind: 'townhouse' })),
+    ).toBe('mownLawn');
   });
 
   it('leaves ground it does not own alone', () => {
@@ -112,13 +117,13 @@ describe('lotSurfaceFor', () => {
   });
 
   it('never paves a farm like the industry its jobs count as', () => {
-    expect(lotSurfaceFor(entry({ category: 'ind', zone: ZoneType.Agriculture, farm: 'crops' }))).toBeNull();
+    expect(lotSurfaceFor(entry({ category: 'ind', zone: ZoneType.Agriculture, kind: 'crops' }))).toBeNull();
   });
 });
 
 describe('a farm’s ground', () => {
   const farmEntry = (kind: FarmKind): BuildingCatalogEntry =>
-    entry({ category: 'ind', zone: ZoneType.Agriculture, farm: kind, level: 1, footprint: { w: 4, d: 5 } });
+    entry({ category: 'ind', zone: ZoneType.Agriculture, kind, level: 1, footprint: { w: 4, d: 5 } });
   const dirtNorth = (_x: number, z: number): boolean => z === 5;
   const laid = (kind: FarmKind, state: BuildingState): Array<{ rect: FarmRect; name: string }> => {
     const plan = planFarm(building({ state }), farmEntry(kind), dirtNorth)!;
@@ -254,7 +259,12 @@ describe('LotRenderer', () => {
   });
 
   describe('a home beside a street', () => {
-    const home = entry({ category: 'res', zone: ZoneType.ResLow, footprint: { w: 2, d: 2 } });
+    const home = entry({
+      category: 'res',
+      zone: ZoneType.ResLow,
+      kind: 'detached',
+      footprint: { w: 2, d: 2 },
+    });
     // The street runs along row 8, just south of a 2x2 lot at (4, 6).
     const roadAt = (_x: number, z: number): boolean => z === 8;
     const street = (_x: number, z: number) =>

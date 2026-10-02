@@ -20,7 +20,7 @@ commercial or industrial total (or, for a category-`res` entry that also
 carries a `jobs` figure — a Mixed-zone building — to commercial jobs too,
 since a mixed building's ground floor is commercial regardless of what sits
 above it). Residents count whatever the building's category: a farm is an
-industrial workplace with its family living on it, so its four residents
+industrial workplace with its family living on it, so its three residents
 join the population and its jobs the industrial total. Population is never incremented or decremented as an event; it is
 **re-summed wholesale** every tick, so it is always exactly the sum of every
 Active building's catalog figure at that instant — nothing about it can
@@ -46,9 +46,9 @@ nothing at all; only `Active` buildings count, in full. There is no partial
 occupancy, no lease-up curve, and no vacancy rate within a single building —
 `selectionOccupancy` (`src/sim/worker.entry.ts`), which drives the building
 inspector's occupancy readout, makes this explicit: a residential building
-reports `residents` and a derived `households` capacity
-(`ceil(catalogResidents / 4)`, occupied count equal to that same capacity
-while Active, zero while not) purely as a display convenience — the
+reports `residents` and a `households` capacity that is the catalog's
+`units`, the homes in the building (occupied count equal to that same
+capacity while Active, zero while not) purely as a display convenience — the
 simulation itself never tracks anything at finer grain than "this building
 is Active or it isn't."
 

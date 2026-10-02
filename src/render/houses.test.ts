@@ -28,6 +28,7 @@ function entry(over: Partial<BuildingCatalogEntry> = {}): BuildingCatalogEntry {
     name: 'Small House',
     category: 'res',
     zone: ZoneType.ResLow,
+    kind: 'detached',
     level: 1,
     footprint: { w: 2, d: 2 },
     height: 5,
@@ -77,19 +78,22 @@ const EVERY_PART: readonly HousePart[] = [
 ];
 
 describe('houses — which buildings are homes', () => {
-  it('caps detached (ResLow) and attached-row (ResMediumRow) homes, never apartments/towers/mixed/commercial/industrial', () => {
-    expect(isHouseEntry(entry({ zone: ZoneType.ResLow }))).toBe(true);
-    expect(isHouseEntry(entry({ zone: ZoneType.ResMediumRow }))).toBe(true);
-    for (const zone of [
-      ZoneType.ResMedium,
-      ZoneType.ResHigh,
-      ZoneType.Mixed,
-      ZoneType.ComLow,
-      ZoneType.Industrial,
-    ]) {
-      expect(isHouseEntry(entry({ zone }))).toBe(false);
+  it('caps the house-scale kinds — detached, duplex, fourplex, townhouse — never a block, mixed, commercial or industrial', () => {
+    expect(isHouseEntry(entry({ zone: ZoneType.ResLow, kind: 'detached' }))).toBe(true);
+    expect(isHouseEntry(entry({ zone: ZoneType.ResLow, kind: 'duplex' }))).toBe(true);
+    expect(isHouseEntry(entry({ zone: ZoneType.ResLow, kind: 'fourplex' }))).toBe(true);
+    expect(isHouseEntry(entry({ zone: ZoneType.ResMediumRow, kind: 'townhouse' }))).toBe(true);
+    expect(isHouseEntry(entry({ zone: ZoneType.ResMedium, kind: 'multiplex' }))).toBe(false);
+    expect(isHouseEntry(entry({ zone: ZoneType.ResMedium, kind: 'garden' }))).toBe(false);
+    expect(isHouseEntry(entry({ zone: ZoneType.ResHigh, kind: 'midrise' }))).toBe(false);
+    expect(isHouseEntry(entry({ zone: ZoneType.ResHigh, kind: 'tower' }))).toBe(false);
+    expect(isHouseEntry(entry({ zone: ZoneType.Mixed, kind: 'mixed' }))).toBe(false);
+    for (const zone of [ZoneType.ComLow, ZoneType.Industrial]) {
+      expect(isHouseEntry(entry({ zone, kind: undefined }))).toBe(false);
     }
-    expect(isHouseEntry(entry({ zone: undefined, category: 'service' }))).toBe(false);
+    expect(isHouseEntry(entry({ zone: undefined, kind: undefined, category: 'service' }))).toBe(
+      false,
+    );
   });
 });
 
@@ -178,8 +182,14 @@ describe('HouseRoofRenderer', () => {
   const catalog = [
     entry({ id: 'res-low-1', zone: ZoneType.ResLow, footprint: { w: 2, d: 2 }, height: 4 }),
     entry({ id: 'res-low-3', zone: ZoneType.ResLow, footprint: { w: 3, d: 3 }, height: 6.5 }),
-    entry({ id: 'row', zone: ZoneType.ResMediumRow, footprint: { w: 1, d: 4 }, height: 9 }),
-    entry({ id: 'apt', zone: ZoneType.ResHigh, footprint: { w: 2, d: 2 }, height: 28 }),
+    entry({
+      id: 'row',
+      zone: ZoneType.ResMediumRow,
+      kind: 'townhouse',
+      footprint: { w: 1, d: 4 },
+      height: 9,
+    }),
+    entry({ id: 'apt', zone: ZoneType.ResHigh, kind: 'midrise', footprint: { w: 2, d: 2 }, height: 28 }),
   ];
   // A street along row 2, south of every 2-deep lot at z=0.
   const { roadAt, street } = streetAlong(2);

@@ -21,7 +21,7 @@ const farm = (kind: FarmKind, level: number, w: number, d: number): BuildingCata
   category: 'ind',
   zone: ZoneType.Agriculture,
   level,
-  farm: kind,
+  kind,
   footprint: { w, d },
   height: 9 + level,
   color: 0x7a3a2c,
@@ -311,7 +311,7 @@ describe('FarmRenderer', () => {
       ...farm('crops', 1, 2, 2),
       id: 'house',
       zone: ZoneType.ResLow,
-      farm: undefined,
+      kind: 'detached' as const,
     };
     const r = new FarmRenderer(new THREE.Scene(), flat, [house], dirtNorth);
     r.apply({ added: [standing('house')], updated: [], removed: [] });

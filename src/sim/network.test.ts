@@ -187,7 +187,7 @@ describe('recomputeUtilities: a house on a well', () => {
     const totals = recomputeUtilities(g, buildings, withFlats);
     expect(g.watered[tileIndex(5, 6)]).toBe(1);
     expect(totals.waterDemand).toBe(0);
-    expect(totals.water.spare).toBe(10_000);
+    expect(totals.water.spare).toBe(10_000_000);
   });
 
   it('puts the house in the line once a main runs beside its lot', () => {
@@ -513,7 +513,7 @@ describe('recomputeUtilities: brownout', () => {
     expect(g2.power[tileIndex(18, 6)]).toBe(0);
   });
 
-  it('counts in thousandths, so a grid that exactly meets its load cuts nobody', () => {
+  it('counts in whole millionths, so a grid that exactly meets its load cuts nobody', () => {
     const g = makeGrid();
     const buildings: BuildingInstance[] = [];
     // 0.1 + 0.1 + 0.1 is 0.30000000000000004 in floating point.
@@ -541,14 +541,14 @@ describe('recomputeUtilities: brownout', () => {
     expect(totals.powerDemand).toBe(0.3);
   });
 
-  it('reports what the grid has spare, and how far short it is, in thousandths', () => {
+  it('reports what the grid has spare, and how far short it is, in watts', () => {
     const g = makeGrid();
     const buildings: BuildingInstance[] = [];
     placeBuilding(g, buildings, 1, 'power-plant', 5, 5, 1, 1); // 10 MW
     paintRoadRow(g, 6, 20, 5);
     placeBuilding(g, buildings, 10, 'house', 7, 6, 1, 1); // 3 MW
 
-    expect(recomputeUtilities(g, buildings, catalog).power.spare).toBe(7000);
+    expect(recomputeUtilities(g, buildings, catalog).power.spare).toBe(7_000_000);
 
     for (const [id, x] of [
       [11, 9],
@@ -558,7 +558,7 @@ describe('recomputeUtilities: brownout', () => {
       placeBuilding(g, buildings, id, 'house', x, 6, 1, 1);
     }
     const short = recomputeUtilities(g, buildings, catalog);
-    expect(short.power.spare).toBe(-2000);
+    expect(short.power.spare).toBe(-2_000_000);
     expect([...short.power.cut]).toEqual([13]);
   });
 

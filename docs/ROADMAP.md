@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,461 tests passing across 154 test files, run 2026-10-01.
+**Test suite:** 4,533 tests passing across 154 test files, run 2026-10-02.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -66,8 +66,21 @@ slip road carries a sound wall that cuts the noise behind it
 ([`shared/soundwall.ts`](../src/shared/soundwall.ts)). Full detail in
 History, §10 below.
 
+**Building types** are under way: a zoned lot draws a kind of building by lot
+fit and real-world share, and keeps it for life
+([building-types.md](game-design/features/building-types.md)). The
+residential kinds are built; commercial kinds, then industrial kinds with a
+Heavy Industrial zone, follow in their own changes.
+
 **Open:**
 
+- The water tower's 400 kL a day is unsourced. Against sourced household
+  draw (0.34 kL a person a day) it serves about 1,200 people, so a city
+  needs one tower per 1,200; the ploppable utilities want the same
+  re-derivation the zoned catalog had.
+- Commercial building kinds (shop formats and layouts) and industrial kinds
+  by business type, with a Heavy Industrial zone: the next two changes of the
+  building-types epic.
 - A walled motorway draws no auxiliary lane beside its slip roads: the wall
   stands at the edge of the road's own section and takes the room the lane
   would use. The lane is drawing only, so no traffic figure changes.
@@ -228,6 +241,36 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Residential building kinds (asked for and built 2026-10-01)
+
+A zoned lot grows a **kind** of building: among the zone's level-1 kinds that
+are unlocked and fit the lot, one is drawn by its share of the real housing
+stock, and the building keeps its kind through every level-up, as a farm
+already did. The farm's `farm` field became the general `kind`.
+
+- **Nine residential kinds**, every figure sourced: detached house, duplex
+  and fourplex on low-density land; townhouse rows two to a lot; multiplex
+  and courtyard apartments at medium density; mid-rise flats and towers at
+  high density; shopfront flats in the mixed zone. Lots and storeys follow
+  the missing-middle typology and the building code; homes per block come
+  from the plate and the median new apartment; residents from the census
+  household; power from the residential energy survey; water from USGS and
+  EPA per-person figures.
+- **The decisions:** kind by lot fit plus real-world share, not by level or
+  by a policy; heavy industry will get its own zone; every existing zoned
+  figure re-derived rather than only the new ones; one change per sector,
+  residential first.
+- **What moved:** a detached house holds 3 people where it held 4 and draws
+  1.4 kW where it drew 100 kW; a tower holds up to 848. Households are the
+  building's homes. Supply and use count in watts, so the house's draw is
+  not rounded away. A building now stands only on tiles zoned for it, at
+  spawn and at level-up: before, a 2×2 house grew from one zoned tile onto
+  the unzoned ground beside it, which is why a one-tile strip never grew
+  the one-tile kinds that fit it.
+- **On screen:** a duplex and a fourplex show two doors and two drives; a
+  townhouse row holds two homes per lot tile; a tower rises from a two-storey
+  podium; each kind's body is its type's own size.
 
 ### Houses on a well down a dirt road (asked for and built 2026-10-01)
 

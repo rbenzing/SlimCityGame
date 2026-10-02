@@ -32,6 +32,26 @@ agree everywhere they overlap.
 | `ZONE_DEPTH`                     | 4                                                                      | Tiles a frontage march reaches back from the road.                                                                                            | `src/world/zonable.ts`    |
 | `MAX_BUILD_SLOPE`                | 4 m                                                                    | Per-tile height delta ceiling for zoning and building.                                                                                        | `src/shared/constants.ts` |
 
+## Residential kinds
+
+Every figure is sourced in [features/building-types.md](features/building-types.md).
+
+| Constant               | Value                                                        | Meaning                                                                                          | File                    |
+| ---------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ | ----------------------- |
+| household, owned       | 2.63                                                         | People in a detached house, a townhouse or a farmhouse (ACS 2024, owner-occupied).               | `src/data/catalog.json` |
+| household, rented      | 2.26                                                         | People in a home of any other kind (ACS 2024, renter-occupied).                                  | `src/data/catalog.json` |
+| residents              | `round(units × household)`                                   | A building's population.                                                                         | `src/data/catalog.json` |
+| homes per floor        | 7 on a 2×2 plate, 15 on a 3×3                                | A 93 m² median new apartment on a 740 or 1,665 m² plate at 85% efficiency.                       | `src/data/catalog.json` |
+| homes per frontage     | 2 per tile                                                   | Townhouses 6.8 m wide, inside the type's 18–25 ft.                                               | `src/render/houselot.ts` |
+| power per home         | detached 1.4, attached 0.97, 2–4 units 0.76, 5+ units 0.70 kW | RECS 2020 annual electricity per household, over 8,760 h.                                        | `src/data/catalog.json` |
+| water per person       | 0.34 kL a day                                                | 90 US gallons, the middle of USGS's 80–100 indoor gallons a day.                                 | `src/data/catalog.json` |
+| retail floor power     | 12.6 kWh per sq ft a year                                    | CBECS 2018 median electricity for a non-mall retail building; a mixed block's ground floor.      | `src/data/catalog.json` |
+| retail jobs            | net 80% of plate ÷ 17.5 m² per FTE                           | HCA Employment Density Guide, high-street retail 15–20 m² NIA per FTE.                           | `src/data/catalog.json` |
+| water per job          | 0.104 kL a day                                               | 27.5 gallons, the middle of EPA's 20–35 gallons an employee a day.                               | `src/data/catalog.json` |
+| `share`                | detached 61.1, duplex 1.6, fourplex 1.2, townhouse 1.6, multiplex 0.63, garden 0.30, midrise 0.11, tower 0.07, mixed 1 | A kind's weight in the lot draw: its ACS share of units ÷ homes per building. | `src/data/catalog.json` |
+| farm power             | the detached house's draw × 2/3/4 (crops), 2/3/5 (orchard), 3/6/15 (pasture) | A farmstead's draw, in the ratio it always had to the small house.                               | `src/data/catalog.json` |
+| farm residents         | 3                                                            | One owner household.                                                                             | `src/data/catalog.json` |
+
 ## Soil and farms
 
 Every figure is sourced in [features/farms.md](features/farms.md).
@@ -48,8 +68,8 @@ Every figure is sourced in [features/farms.md](features/farms.md).
 | farm grade by kind  | crops very fertile, orchard fertile, pasture somewhat          | What the soil must be for a farm to start, or to grow onto more land (`FARM_GRADE`).             | `src/sim/growth.ts`       |
 | farm lots           | 4×5, 5×6, 6×7                                                  | Tiles a farm takes at levels 1–3, every kind alike.                                              | `src/data/catalog.json`   |
 | farm jobs           | crops 1/2/2, orchard 1/2/4, pasture 1/2/5                      | Annual labour hours over 2,000 h a job, at each level's stated scale.                            | `src/data/catalog.json`   |
-| farm residents      | 4                                                              | One farm household, at every level.                                                              | `src/data/catalog.json`   |
-| farm power          | crops 0.2/0.3/0.4, orchard 0.2/0.3/0.5, pasture 0.3/0.6/1.5 MW | A farmstead's draw, against the small house's 0.1 MW; a dairy's milking and cooling.             | `src/data/catalog.json`   |
+| farm residents      | 3                                                              | One farm household, at every level (see [Residential kinds](#residential-kinds)).                | `src/data/catalog.json`   |
+| farm power          | crops 2.8/4.2/5.6, orchard 2.8/4.2/7.0, pasture 4.2/8.4/21 kW  | A farmstead's draw, in ratio to the detached house's 1.4 kW; a dairy's milking and cooling.      | `src/data/catalog.json`   |
 | farm water          | 0                                                              | A farm pumps its own well.                                                                       | `src/data/catalog.json`   |
 | pasture pollution   | 12                                                             | A fifth of a workshop's 60; crops and orchards emit none.                                        | `src/data/catalog.json`   |
 

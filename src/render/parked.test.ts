@@ -678,7 +678,7 @@ describe('a farm on the road', () => {
     const farm = makeCatalogEntry({
       category: 'ind',
       zone: ZoneType.Agriculture,
-      farm: 'crops',
+      kind: 'crops',
       footprint: { w: 4, d: 5 },
     });
     const renderer = new ParkedCarRenderer(new THREE.Scene(), flatHeightAt, [farm], roadAtTiles([[5, 4]]));
@@ -791,6 +791,7 @@ describe('ParkedCarRenderer', () => {
     const flats = makeCatalogEntry({
       category: 'res',
       zone: ZoneType.ResMedium,
+      kind: 'garden',
       footprint: { w: 2, d: 2 },
     });
     const renderer = new ParkedCarRenderer(scene, flatHeightAt, [flats], roadAtTiles([[5, 4]]), () =>
@@ -807,11 +808,17 @@ describe('ParkedCarRenderer', () => {
 
   it('keeps every home off the kerb, even the smallest — a home parks on its own drive', () => {
     const scene = new THREE.Scene();
-    const small = makeCatalogEntry({ category: 'res', zone: ZoneType.ResLow, footprint: { w: 2, d: 2 } });
+    const small = makeCatalogEntry({
+      category: 'res',
+      zone: ZoneType.ResLow,
+      kind: 'detached',
+      footprint: { w: 2, d: 2 },
+    });
     const row = makeCatalogEntry({
       id: 'row',
       category: 'res',
       zone: ZoneType.ResMediumRow,
+      kind: 'townhouse',
       footprint: { w: 1, d: 2 },
     });
     const renderer = new ParkedCarRenderer(
@@ -833,6 +840,7 @@ describe('ParkedCarRenderer', () => {
     const flats = makeCatalogEntry({
       category: 'res',
       zone: ZoneType.ResMedium,
+      kind: 'garden',
       footprint: { w: 2, d: 2 },
     });
     const laned: RoadProfile = {
@@ -873,6 +881,7 @@ describe('ParkedCarRenderer', () => {
     const garaged = makeCatalogEntry({
       category: 'res',
       zone: ZoneType.ResLow,
+      kind: 'detached',
       footprint: { w: 2, d: 3 },
     });
     const renderer = new ParkedCarRenderer(
@@ -889,7 +898,12 @@ describe('ParkedCarRenderer', () => {
 
   it('keeps every home off the kerb of a street that forbids parking', () => {
     const scene = new THREE.Scene();
-    const home = makeCatalogEntry({ category: 'res', zone: 1, footprint: { w: 2, d: 2 } });
+    const home = makeCatalogEntry({
+      category: 'res',
+      zone: 1,
+      kind: 'detached',
+      footprint: { w: 2, d: 2 },
+    });
     const renderer = new ParkedCarRenderer(scene, flatHeightAt, [home], roadAtTiles([[5, 4]]), () =>
       RoadTier.Highway,
     );
@@ -1297,12 +1311,14 @@ describe('hasOwnLotParking', () => {
   });
 
   it('counts every home, detached or in a row, whatever its size — each has its drive', () => {
-    for (const [zone, footprint] of [
-      [ZoneType.ResLow, { w: 2, d: 2 }],
-      [ZoneType.ResLow, { w: 2, d: 3 }],
-      [ZoneType.ResMediumRow, { w: 1, d: 4 }],
+    for (const [zone, kind, footprint] of [
+      [ZoneType.ResLow, 'detached', { w: 2, d: 2 }],
+      [ZoneType.ResLow, 'detached', { w: 2, d: 3 }],
+      [ZoneType.ResLow, 'duplex', { w: 1, d: 2 }],
+      [ZoneType.ResLow, 'fourplex', { w: 1, d: 2 }],
+      [ZoneType.ResMediumRow, 'townhouse', { w: 1, d: 4 }],
     ] as const) {
-      const entry = makeCatalogEntry({ category: 'res', zone, footprint });
+      const entry = makeCatalogEntry({ category: 'res', zone, kind, footprint });
       const roadAt = roadSouthOf(4, 6, footprint.w, footprint.d);
       expect(hasOwnLotParking(entry, 4, 6, roadAt), `zone ${zone}`).toBe(true);
     }
@@ -1312,6 +1328,7 @@ describe('hasOwnLotParking', () => {
     const flats = makeCatalogEntry({
       category: 'res',
       zone: ZoneType.ResMedium,
+      kind: 'garden',
       footprint: { w: 2, d: 2 },
     });
     expect(hasOwnLotParking(flats, 4, 6, roadSouthOf(4, 6, 2, 2))).toBe(false);
@@ -1388,6 +1405,7 @@ describe('usesRoadsideParking', () => {
   const smallHome = makeCatalogEntry({
     category: 'res',
     zone: ZoneType.ResMedium,
+    kind: 'garden',
     footprint: { w: 2, d: 2 },
   });
 
@@ -1396,7 +1414,12 @@ describe('usesRoadsideParking', () => {
   });
 
   it('keeps a home off the kerb, the smallest included', () => {
-    const cottage = makeCatalogEntry({ category: 'res', zone: ZoneType.ResLow, footprint: { w: 2, d: 2 } });
+    const cottage = makeCatalogEntry({
+      category: 'res',
+      zone: ZoneType.ResLow,
+      kind: 'detached',
+      footprint: { w: 2, d: 2 },
+    });
     expect(usesRoadsideParking(cottage, 4, 6, roadSouth, tierIs(RoadTier.TwoLane))).toBe(false);
   });
 
@@ -1410,6 +1433,7 @@ describe('usesRoadsideParking', () => {
     const garaged = makeCatalogEntry({
       category: 'res',
       zone: ZoneType.ResLow,
+      kind: 'detached',
       footprint: { w: 2, d: 3 },
     });
     expect(usesRoadsideParking(garaged, 4, 6, roadSouth, tierIs(RoadTier.TwoLane))).toBe(false);

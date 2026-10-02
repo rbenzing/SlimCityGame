@@ -116,8 +116,12 @@ three growth passes and is removed ten passes after that; nothing nearer the
 source is touched, and nothing flips back and forth. More supply relights the
 line from the source outward.
 
-Supply and use are counted in thousandths — kilowatts and litres — so a grid
-that exactly meets its load is never cut by a rounding error.
+Supply and use are counted in whole millionths — watts and millilitres — so
+a grid that exactly meets its load is never cut by a rounding error, and a
+house's 1.4 kW counts as 1,400 W rather than rounding to 1 kW. A building's
+`powerUse` is its average draw in MW and its `waterUse` its average draw in
+kL a day; where those figures come from is in
+[../game-design/features/building-types.md](../game-design/features/building-types.md).
 
 A building the cut leaves dark carries `PowerShortage` (or `WaterShortage`)
 beside `NoPower` (or `NoWater`), so the advisor can tell a grid that is too

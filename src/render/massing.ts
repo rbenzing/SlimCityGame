@@ -32,11 +32,11 @@ import {
   BuildingCatalogEntry,
   BuildingDelta,
   BuildingInstance,
+  BuildingKind,
   BuildingState,
-  ZoneType,
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
-import { deriveFacadeParams } from './facade';
+import { deriveFacadeParams, FLOOR_HEIGHT_METERS } from './facade';
 import { maxHeightOverFootprint } from './footprint';
 import { findRoadFacingEdge, findStreetFacingEdge, NO_STREETS, type StreetLookup } from './frontage';
 import { frontageInsetTiles } from './parked';
@@ -60,6 +60,8 @@ export interface SetbackBox {
 export interface SetbackResult {
   /** Bottom-to-top: boxes[0] is the base tier (full footprint), boxes[last] is the roof tier. */
   boxes: SetbackBox[];
+  /** A tower's base: a wider tier at ground, under the slab, filling the lot. */
+  podium?: SetbackBox;
 }
 
 /**
@@ -96,15 +98,59 @@ export const MASSING_FOOTPRINT_SHRINK = fillFor(DEFAULT_BODY_M_PER_TILE);
 export const RES_LOW_FOOTPRINT_SHRINK = fillFor(RES_LOW_BODY_M_PER_TILE);
 
 /**
- * Zone-aware footprint fill: the fraction of a building's tile footprint its
- * rendered mass occupies. Detached homes (ResLow) leave a yard; everything
- * else nearly fills its lot. The single source of truth shared by
- * BuildingInstancer, the massing tiers, and the pitched-roof kit so a house's
- * body, setbacks, and roof all stay flush. Pure.
+ * How a kind's body is sized on each lot axis: so many metres per lot tile,
+ * or a share of the lot, either way no more than a cap. The missing-middle
+ * kinds are fixed-size buildings on whatever lot they got; a block fills its
+ * plate.
  */
-export function footprintShrinkFor(entry: BuildingCatalogEntry): number {
-  return entry.zone === ZoneType.ResLow ? RES_LOW_FOOTPRINT_SHRINK : MASSING_FOOTPRINT_SHRINK;
+interface BodyRule {
+  perTileM?: number;
+  fill?: number;
+  capM?: number;
 }
+
+const DEFAULT_BODY_RULE: BodyRule = { perTileM: DEFAULT_BODY_M_PER_TILE };
+
+/** The duplex, fourplex and multiplex sizes are the types' own building dimensions. */
+const BODY_RULES: Partial<Record<BuildingKind, BodyRule>> = {
+  detached: { perTileM: RES_LOW_BODY_M_PER_TILE },
+  duplex: { fill: 0.6, capM: 16 },
+  fourplex: { fill: 0.7, capM: 18 },
+  multiplex: { perTileM: DEFAULT_BODY_M_PER_TILE, capM: 24 },
+};
+
+function bodyAxisMetres(tiles: number, rule: BodyRule): number {
+  const lotM = tiles * TILE_METERS;
+  const wanted =
+    rule.perTileM !== undefined ? rule.perTileM * tiles : (rule.fill ?? MAX_FOOTPRINT_FILL) * lotM;
+  return Math.min(wanted, rule.capM ?? Infinity, MAX_FOOTPRINT_FILL * lotM);
+}
+
+/**
+ * The body's size in metres on each lot axis, by the entry's kind. The single
+ * source of truth shared by BuildingInstancer, the massing tiers, the lot
+ * plan and the pitched-roof kit, so a building's body, setbacks and roof all
+ * stay flush. Pure.
+ */
+export function bodyMetresFor(entry: BuildingCatalogEntry): { w: number; d: number } {
+  const rule = (entry.kind && BODY_RULES[entry.kind]) || DEFAULT_BODY_RULE;
+  return {
+    w: bodyAxisMetres(entry.footprint.w, rule),
+    d: bodyAxisMetres(entry.footprint.d, rule),
+  };
+}
+
+/** The share of its lot a body covers on each axis: the body over the lot. */
+export function bodyFillFor(entry: BuildingCatalogEntry): { x: number; z: number } {
+  const body = bodyMetresFor(entry);
+  return {
+    x: body.w / (entry.footprint.w * TILE_METERS),
+    z: body.d / (entry.footprint.d * TILE_METERS),
+  };
+}
+
+/** A tower stands on a podium this many storeys tall that fills its lot. */
+export const PODIUM_STOREYS = 2;
 
 /**
  * How far a home's front wall stands behind the sidewalk (behind the
@@ -159,8 +205,10 @@ export function frontageSetbackFor(
   const insetTiles = frontageInsetTiles(entry.category, edge);
   if (!edge || insetTiles <= 0) return ZERO_FRONTAGE_SETBACK;
 
-  const axisTiles = edge.side === 'N' || edge.side === 'S' ? entry.footprint.d : entry.footprint.w;
-  const marginTiles = (axisTiles * (1 - footprintShrinkFor(entry))) / 2;
+  const fill = bodyFillFor(entry);
+  const alongDepth = edge.side === 'N' || edge.side === 'S';
+  const axisTiles = alongDepth ? entry.footprint.d : entry.footprint.w;
+  const marginTiles = (axisTiles * (1 - (alongDepth ? fill.z : fill.x))) / 2;
   const setbackM = Math.max(0, insetTiles - marginTiles) * TILE_METERS;
   switch (edge.side) {
     case 'N':
@@ -191,9 +239,10 @@ function houseFrontShift(
   const vergeM = edge ? street(edge.roadTileX, edge.roadTileZ)?.vergeM : undefined;
   if (!edge || vergeM === undefined) return ZERO_FRONTAGE_SETBACK;
 
-  const lotDepthM =
-    (edge.side === 'N' || edge.side === 'S' ? entry.footprint.d : entry.footprint.w) * TILE_METERS;
-  const bodyDepthM = lotDepthM * footprintShrinkFor(entry);
+  const alongDepth = edge.side === 'N' || edge.side === 'S';
+  const lotDepthM = (alongDepth ? entry.footprint.d : entry.footprint.w) * TILE_METERS;
+  const body = bodyMetresFor(entry);
+  const bodyDepthM = alongDepth ? body.d : body.w;
   const centredFrontM = (lotDepthM - bodyDepthM) / 2;
   const frontM = Math.min(lotDepthM - bodyDepthM, Math.max(0, HOUSE_FRONT_YARD_M - vergeM));
   const towardStreetM = centredFrontM - frontM;
@@ -259,9 +308,9 @@ export function computeSetbacks(
   const totalHeight = entry.height;
   const tierHeight = totalHeight / level;
 
-  const shrink = footprintShrinkFor(entry);
-  const baseW = entry.footprint.w * TILE_METERS * shrink - (frontage?.spanXM ?? 0);
-  const baseD = entry.footprint.d * TILE_METERS * shrink - (frontage?.spanZM ?? 0);
+  const body = bodyMetresFor(entry);
+  const baseW = body.w - (frontage?.spanXM ?? 0);
+  const baseD = body.d - (frontage?.spanZM ?? 0);
 
   const boxes: SetbackBox[] = [];
   let w = baseW;
@@ -279,7 +328,16 @@ export function computeSetbacks(
     yOffset += h;
   }
 
-  return { boxes };
+  if (entry.kind !== 'tower') return { boxes };
+  // The podium fills the lot to the ceiling every body keeps, less the same
+  // frontage setback the slab takes, so it never stands in the bay row.
+  const podium: SetbackBox = {
+    w: entry.footprint.w * TILE_METERS * MAX_FOOTPRINT_FILL - (frontage?.spanXM ?? 0),
+    d: entry.footprint.d * TILE_METERS * MAX_FOOTPRINT_FILL - (frontage?.spanZM ?? 0),
+    h: Math.min(totalHeight, PODIUM_STOREYS * FLOOR_HEIGHT_METERS),
+    yOffset: 0,
+  };
+  return { boxes, podium };
 }
 
 // ---------------------------------------------------------------------------
@@ -525,8 +583,11 @@ export class MassingRenderer {
     if (!entry || isFarmEntry(entry)) return;
 
     const frontage = frontageSetbackFor(entry, building.x, building.z, this.roadAt, this.street);
-    const { boxes } = computeSetbacks(entry, building.id, frontage);
-    if (boxes.length <= 1) return; // level 1 / ploppables: nothing beyond the base BuildingInstancer already draws
+    const { boxes, podium } = computeSetbacks(entry, building.id, frontage);
+    // The base tier is the body BuildingInstancer already draws; everything
+    // else here is an upper tier or a podium.
+    const tiers = [...boxes.slice(1), ...(podium ? [podium] : [])];
+    if (tiers.length === 0) return;
 
     const heightScale =
       building.state === BuildingState.Constructing ? CONSTRUCTING_MASSING_HEIGHT_SCALE : 1;
@@ -546,8 +607,7 @@ export class MassingRenderer {
     );
 
     const slots: number[] = [];
-    for (let tier = 1; tier < boxes.length; tier++) {
-      const box = boxes[tier]!;
+    for (const box of tiers) {
       const slot = this.pool.allocate();
 
       const scaledYOffset = box.yOffset * heightScale;

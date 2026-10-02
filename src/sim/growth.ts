@@ -27,6 +27,7 @@ import type {
   Sector,
   ZonedUnserved,
 } from '../shared/types';
+import { farmKindOf } from '../shared/buildingkind';
 import { BuildingRegistry, footprintForRotation, lotTiles } from './buildings';
 import {
   cityWaterUse,
@@ -130,14 +131,33 @@ export function lotGrade(g: GridState, x: number, z: number, w: number, d: numbe
   return SoilGrade.Unfit;
 }
 
-/** Every tile of the lot on the map, zoned Agriculture and on soil a farm can work. */
-function isFarmLot(g: GridState, x: number, z: number, w: number, d: number): boolean {
+/**
+ * Every tile of the w×d lot at (x, z) on the map and zoned `zone`: a building
+ * stands only on land zoned for it, never spilling onto the ground beside.
+ */
+function isZonedLot(
+  g: GridState,
+  zone: ZoneType,
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+): boolean {
   for (let dz = 0; dz < d; dz++) {
     for (let dx = 0; dx < w; dx++) {
       if (!inBounds(x + dx, z + dz)) return false;
-      const idx = tileIndex(x + dx, z + dz);
-      if (readTile(g.zone, idx) !== ZoneType.Agriculture) return false;
-      if (!isFarmable(readTile(g.soil, idx))) return false;
+      if (readTile(g.zone, tileIndex(x + dx, z + dz)) !== zone) return false;
+    }
+  }
+  return true;
+}
+
+/** Every tile of the lot on the map, zoned Agriculture and on soil a farm can work. */
+function isFarmLot(g: GridState, x: number, z: number, w: number, d: number): boolean {
+  if (!isZonedLot(g, ZoneType.Agriculture, x, z, w, d)) return false;
+  for (let dz = 0; dz < d; dz++) {
+    for (let dx = 0; dx < w; dx++) {
+      if (!isFarmable(readTile(g.soil, tileIndex(x + dx, z + dz)))) return false;
     }
   }
   return true;
@@ -281,7 +301,7 @@ function computeProblems(
   const idx = tileIndex(x, z);
   const sector = entry.zone === undefined ? null : zoneSector(entry.zone);
   const reached =
-    entry.farm !== undefined
+    farmKindOf(entry) !== null
       ? dirtRoadWithinReach(g, x, z, w, d)
       : hasNearbyRoad(g, x, z, ROAD_CHECK_RADIUS);
   let problems = 0;
@@ -316,6 +336,38 @@ function meetsLevelUpRequirement(
     return fieldAt(g, FieldId.Education, idx) > RES_L3_EDUCATION;
   }
   return true;
+}
+
+/**
+ * The kinds a lot may grow: the zone's level-1 entries unlocked at
+ * `milestoneLevel` whose footprint `fits` the lot, in catalog order.
+ */
+export function spawnCandidates(
+  catalog: readonly BuildingCatalogEntry[],
+  zone: ZoneType,
+  milestoneLevel: number,
+  fits: (entry: BuildingCatalogEntry) => boolean,
+): BuildingCatalogEntry[] {
+  return catalog.filter(
+    (e) => e.zone === zone && e.level === 1 && e.unlockMilestone <= milestoneLevel && fits(e),
+  );
+}
+
+/**
+ * One of `candidates` by its `share` of the real stock: `roll` in [0, 1)
+ * against their cumulative weights. A candidate with no share weighs 1.
+ */
+export function drawKind(
+  candidates: readonly BuildingCatalogEntry[],
+  roll: number,
+): BuildingCatalogEntry {
+  const total = candidates.reduce((sum, e) => sum + (e.share ?? 1), 0);
+  let threshold = roll * total;
+  for (const e of candidates) {
+    threshold -= e.share ?? 1;
+    if (threshold < 0) return e;
+  }
+  return candidates[candidates.length - 1]!;
 }
 
 /** 0..1: land value helps, pollution hurts (res most, com some, ind none). */
@@ -663,17 +715,18 @@ export class GrowthSystem {
     if (!sector) return false;
 
     const targetLevel = inst.level + 1;
-    const farm = entry.farm;
+    const farm = farmKindOf(entry);
     // A farm grows by taking more land while the town wants more basic work;
     // land value, which pushes real farms out, plays no part.
-    if (farm === undefined) {
+    if (farm === null) {
       if (!meetsLevelUpRequirement(g, inst.x, inst.z, sector, targetLevel)) return false;
     } else if (demand.ind <= 0) {
       return false;
     }
 
+    // A building keeps its kind for life: the next level of the same kind.
     const nextEntry = this.catalog.find(
-      (e) => e.zone === zone && e.level === targetLevel && e.farm === farm,
+      (e) => e.zone === zone && e.level === targetLevel && e.kind === entry.kind,
     );
     if (!nextEntry || nextEntry.unlockMilestone > milestoneLevel) return false;
 
@@ -687,9 +740,10 @@ export class GrowthSystem {
     const fits =
       this.canPlace(g, x, z, newFootprint.w, newFootprint.d) &&
       footprintFree(g, x, z, newFootprint.w, newFootprint.d) &&
-      (farm === undefined ||
-        (isFarmLot(g, x, z, newFootprint.w, newFootprint.d) &&
-          lotGrade(g, x, z, newFootprint.w, newFootprint.d) >= FARM_GRADE[farm]));
+      (farm === null
+        ? isZonedLot(g, zone, x, z, newFootprint.w, newFootprint.d)
+        : isFarmLot(g, x, z, newFootprint.w, newFootprint.d) &&
+          lotGrade(g, x, z, newFootprint.w, newFootprint.d) >= FARM_GRADE[farm]);
     // A bigger building draws more, and nobody builds it on a grid that
     // cannot carry the difference.
     const power = utilityUnits(nextEntry.powerUse) - utilityUnits(entry.powerUse);
@@ -699,7 +753,7 @@ export class GrowthSystem {
     if (
       !fits ||
       !this.suppliedFor(waitKey, [], pass, spare, power, water) ||
-      (farm !== undefined && this.rng.next() >= demand.ind)
+      (farm !== null && this.rng.next() >= demand.ind)
     ) {
       writeStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
       return false;
@@ -751,13 +805,16 @@ export class GrowthSystem {
       }
       if (!hasNearbyRoad(g, x, z, ROAD_CHECK_RADIUS)) continue;
 
-      const entry = this.catalog.find(
-        (e) => e.zone === zone && e.level === 1 && e.unlockMilestone <= milestoneLevel,
-      );
-      if (!entry) continue;
+      // The lot picks its building: among the zone's kinds that fit here, on
+      // land zoned for them, one is drawn by how common it is in the real stock.
+      const candidates = spawnCandidates(this.catalog, zone, milestoneLevel, (e) => {
+        const { w, d } = footprintForRotation(e, 0);
+        return isZonedLot(g, zone, x, z, w, d) && this.canPlace(g, x, z, w, d);
+      });
+      if (candidates.length === 0) continue;
+      const entry = drawKind(candidates, candidates.length > 1 ? this.rng.next() : 0);
 
       const { w, d } = footprintForRotation(entry, 0);
-      if (!this.canPlace(g, x, z, w, d)) continue;
       // Service is judged over the whole lot, so it cannot depend on which
       // side of the building the street happens to sit (see footprintServed).
       if (
@@ -817,7 +874,7 @@ export class GrowthSystem {
       (e) =>
         e.zone === ZoneType.Agriculture &&
         e.level === 1 &&
-        e.farm === kind &&
+        e.kind === kind &&
         e.unlockMilestone <= milestoneLevel,
     );
     if (!entry) return;

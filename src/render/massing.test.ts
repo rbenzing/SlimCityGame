@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import {
+  bodyFillFor,
+  bodyMetresFor,
   computeSetbacks,
   DEFAULT_BODY_M_PER_TILE,
-  footprintShrinkFor,
   frontageSetbackFor,
   InstancedSlotPool,
   massingLifecycleTint,
@@ -15,13 +16,13 @@ import {
   RES_LOW_BODY_M_PER_TILE,
 } from './massing';
 import { BAY_DEPTH_TILES } from './parked';
-import { deriveFacadeParams } from './facade';
+import { deriveFacadeParams, FLOOR_HEIGHT_METERS } from './facade';
 import {
   BuildingCatalogEntry,
   BuildingDelta,
   BuildingInstance,
+  BuildingKind,
   BuildingState,
-  ZoneType,
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import catalogData from '../data/catalog.json';
@@ -776,36 +777,56 @@ describe('InstancedSlotPool bounding-sphere invalidation', () => {
 });
 
 describe('a building keeps its real proportions whatever the tile measures', () => {
-  const zoned = (zone: ZoneType): BuildingCatalogEntry =>
-    ({ id: `e-${zone}`, zone, footprint: { w: 1, d: 1 }, height: 10 }) as BuildingCatalogEntry;
+  const sized = (kind: BuildingKind | undefined, w = 1, d = 1): BuildingCatalogEntry =>
+    ({ id: `e-${kind ?? 'plain'}`, kind, footprint: { w, d }, height: 10 }) as BuildingCatalogEntry;
 
   it('gives a body a size in metres rather than a share of the tile', () => {
     // The fill is only ever the last step. What is fixed is the body: a home
     // covers RES_LOW_BODY_M_PER_TILE of each lot tile, and resizing the grid
     // moves the fill so the building itself does not move.
-    expect(footprintShrinkFor(zoned(ZoneType.ResLow)) * TILE_METERS).toBeCloseTo(
-      RES_LOW_BODY_M_PER_TILE,
-      9,
-    );
-    expect(footprintShrinkFor(zoned(ZoneType.ComLow)) * TILE_METERS).toBeCloseTo(
-      DEFAULT_BODY_M_PER_TILE,
-      9,
-    );
+    expect(bodyMetresFor(sized('detached')).w).toBeCloseTo(RES_LOW_BODY_M_PER_TILE, 9);
+    expect(bodyMetresFor(sized(undefined)).w).toBeCloseTo(DEFAULT_BODY_M_PER_TILE, 9);
+    expect(bodyFillFor(sized('detached')).x * TILE_METERS).toBeCloseTo(RES_LOW_BODY_M_PER_TILE, 9);
   });
 
   it('keeps a detached home the narrower of the two, so a yard survives', () => {
     expect(RES_LOW_BODY_M_PER_TILE).toBeLessThan(DEFAULT_BODY_M_PER_TILE);
-    expect(footprintShrinkFor(zoned(ZoneType.ResLow))).toBeLessThan(
-      footprintShrinkFor(zoned(ZoneType.ComLow)),
-    );
+    expect(bodyMetresFor(sized('detached')).w).toBeLessThan(bodyMetresFor(sized(undefined)).w);
   });
 
   it('never lets a body fill its lot outright, however the tile is cut', () => {
-    for (const zone of [ZoneType.ResLow, ZoneType.ComLow, ZoneType.Industrial]) {
-      const fill = footprintShrinkFor(zoned(zone));
-      expect(fill).toBeGreaterThan(0);
-      expect(fill).toBeLessThanOrEqual(MAX_FOOTPRINT_FILL);
+    for (const kind of [
+      'detached',
+      'duplex',
+      'fourplex',
+      'multiplex',
+      'tower',
+      undefined,
+    ] as const) {
+      for (const [w, d] of [
+        [1, 1],
+        [1, 2],
+        [2, 2],
+        [3, 3],
+      ]) {
+        const fill = bodyFillFor(sized(kind, w, d));
+        expect(fill.x).toBeGreaterThan(0);
+        expect(fill.x).toBeLessThanOrEqual(MAX_FOOTPRINT_FILL);
+        expect(fill.z).toBeGreaterThan(0);
+        expect(fill.z).toBeLessThanOrEqual(MAX_FOOTPRINT_FILL);
+      }
     }
+  });
+
+  it('sizes a duplex, a fourplex and a multiplex as the fixed buildings their types are', () => {
+    // A duplex is 28-55 by 28-60 ft, a fourplex 34-56 by 32-60, a multiplex
+    // 50-80 by 35-75: a share of a small lot, and no bigger on a big one.
+    expect(bodyMetresFor(sized('duplex', 1, 2))).toEqual({ w: 12, d: 16 });
+    expect(bodyMetresFor(sized('duplex', 2, 2))).toEqual({ w: 16, d: 16 });
+    expect(bodyMetresFor(sized('fourplex', 1, 2))).toEqual({ w: 14, d: 18 });
+    expect(bodyMetresFor(sized('fourplex', 2, 2))).toEqual({ w: 18, d: 18 });
+    expect(bodyMetresFor(sized('multiplex', 2, 2))).toEqual({ w: 24, d: 24 });
+    expect(bodyMetresFor(sized('multiplex', 2, 3))).toEqual({ w: 24, d: 24 });
   });
 
   it('stands a storey tall against a plan that is no longer stretched under it', () => {
@@ -816,12 +837,44 @@ describe('a building keeps its real proportions whatever the tile measures', () 
     // frontage is two of these. Anchored against the 4.0 m car at the kerb, a
     // detached home is 9-14 m across the front — wider than that and it reads
     // as a hall, whatever the roof on top says.
-    const home = zoned(ZoneType.ResLow);
-    const frontageM = 2 * TILE_METERS * footprintShrinkFor(home);
+    const frontageM = bodyMetresFor(sized('detached', 2, 2)).w;
     expect(frontageM).toBeCloseTo(2 * RES_LOW_BODY_M_PER_TILE, 9);
     expect(frontageM).toBeGreaterThanOrEqual(9);
     expect(frontageM).toBeLessThanOrEqual(14);
     // And it is never taller in plan than the biggest ResLow lot allows.
-    expect(3 * TILE_METERS * footprintShrinkFor(home)).toBeLessThanOrEqual(15);
+    expect(bodyMetresFor(sized('detached', 3, 3)).w).toBeLessThanOrEqual(15);
+  });
+});
+
+describe('a tower stands on a podium', () => {
+  const tower = (level: number): BuildingCatalogEntry =>
+    ({
+      id: `tower-${level}`,
+      kind: 'tower',
+      level,
+      footprint: { w: 2, d: 2 },
+      height: 38.4,
+    }) as BuildingCatalogEntry;
+
+  it('adds a two-storey tier at ground that fills the lot to the ceiling, under the slab', () => {
+    const { boxes, podium } = computeSetbacks(tower(1), 7);
+    expect(boxes).toHaveLength(1);
+    expect(podium).toEqual({
+      w: 2 * TILE_METERS * MAX_FOOTPRINT_FILL,
+      d: 2 * TILE_METERS * MAX_FOOTPRINT_FILL,
+      h: 2 * FLOOR_HEIGHT_METERS,
+      yOffset: 0,
+    });
+    expect(podium!.w).toBeGreaterThan(boxes[0]!.w);
+  });
+
+  it('keeps the podium out of the bay row the slab keeps out of', () => {
+    const frontage = { spanXM: 0, spanZM: 4, centerXM: 0, centerZM: 2 };
+    const { podium } = computeSetbacks(tower(2), 7, frontage);
+    expect(podium!.d).toBeCloseTo(2 * TILE_METERS * MAX_FOOTPRINT_FILL - 4, 9);
+  });
+
+  it('gives no podium to a block that is not a tower', () => {
+    expect(computeSetbacks({ ...tower(1), kind: 'midrise' }, 7).podium).toBeUndefined();
   });
 });

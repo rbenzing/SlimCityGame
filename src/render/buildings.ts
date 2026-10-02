@@ -29,11 +29,10 @@ import {
   BuildingDelta,
   BuildingInstance,
   BuildingState,
-  ZoneType,
 } from '../shared/types';
 import { NIGHT_WINDOW_LIT_MAX, NIGHT_WINDOW_LIT_MIN, TILE_METERS } from '../shared/constants';
 import { encodeId, buildIdColorArray } from './picking';
-import { footprintShrinkFor, frontageSetbackFor } from './massing';
+import { bodyMetresFor, frontageSetbackFor } from './massing';
 import { NO_STREETS, type StreetLookup } from './frontage';
 import { maxHeightOverFootprint, maxHeightOverRect } from './footprint';
 import { isFarmEntry } from './archetypes';
@@ -153,7 +152,7 @@ const ROW_HOUSE_WINDOW_COLS_PER_TILE = 3;
  * share a 1-tile-wide footprint. Pure, exported for tests.
  */
 export function isRowHouseArchetype(entry: BuildingCatalogEntry): boolean {
-  return entry.zone === ZoneType.ResMediumRow;
+  return entry.kind === 'townhouse';
 }
 
 /** Window grid (cols x rows) derived from a catalog entry's footprint x height. Pure. */
@@ -882,13 +881,13 @@ export class BuildingInstancer {
     // carries the real visual identity beside it.
     const baseHeight = this.plinthIds.has(entry.id) ? PLINTH_PAD_HEIGHT : entry.height;
     const height = baseHeight * heightScale;
-    const shrink = footprintShrinkFor(entry);
+    const body = bodyMetresFor(entry);
     // Commercial/industrial bodies pull back from their road-facing edge so
     // the parked-car bay row (parked.ts) sits flush in front of the facade
     // instead of underneath it; every other category gets a zero setback.
     const frontage = frontageSetbackFor(entry, instance.x, instance.z, this.roadAt, this.street);
-    const spanX = entry.footprint.w * TILE_METERS * shrink - frontage.spanXM;
-    const spanZ = entry.footprint.d * TILE_METERS * shrink - frontage.spanZM;
+    const spanX = body.w - frontage.spanXM;
+    const spanZ = body.d - frontage.spanZM;
     const centerX = (instance.x + entry.footprint.w / 2) * TILE_METERS + frontage.centerXM;
     const centerZ = (instance.z + entry.footprint.d / 2) * TILE_METERS + frontage.centerZM;
     // Seat the base at the highest terrain under the footprint so no slope can

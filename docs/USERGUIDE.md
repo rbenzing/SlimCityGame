@@ -217,8 +217,14 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   a short stub, rounded at both ends, lying the way you dragged it (east-west if
   you just clicked), with the same lines and kerbs it would carry anywhere else.
 - **Zoning** — residential, commercial, industrial and agriculture. Denser residential
-  variants (row / medium / mixed-use / high) unlock as you pass milestones. Zoned
-  tiles only develop if they have road access, power, and water. The exception
+  variants (row / medium / mixed-use / high) unlock as you pass milestones. What
+  grows on a lot is drawn from the kinds of building its zone allows that fit
+  the lot, weighted by how common each is in real cities: low density is mostly
+  detached houses, with a duplex or a fourplex where only a narrow lot is left;
+  row housing is townhouses two to a lot; medium density grows multiplexes and
+  courtyard apartments; high density grows mid-rise slabs and towers. Zone
+  narrow strips if you want the small stuff and big blocks if you want towers.
+  Zoned tiles only develop if they have road access, power, and water. The exception
   is a low-density house off a **dirt road** with no water main beside it: it
   has its own well, so it needs only road access and power.
 - **Agriculture** — farmland, painted like any zone, and the other way a small

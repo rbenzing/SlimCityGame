@@ -53,11 +53,17 @@ keeps the kit reading consistently across a whole city. A part that hangs on
 the road-facing wall (a dock, a canopy, a sign) is skipped entirely when a
 building fronts no street; roof parts need no frontage and always appear.
 
-**Residential.** Row houses render narrow, low and attached; medium-density
-zones render as mid-rise blocks; high-density zones render as tall towers;
-Mixed housing tints a commercial base with a residential tint above it,
-because the building carries both a shopfront and apartments. Every
-detached and row home additionally carries the procedural house kit:
+**Residential.** A residential building's kind — the catalog's `kind`,
+drawn when the lot grows (see
+[../game-design/features/building-types.md](../game-design/features/building-types.md))
+— decides which of two languages it speaks. The house-scale kinds (a
+detached house, a duplex, a fourplex, a townhouse row) carry the house kit
+below; the block kinds (a multiplex, courtyard apartments, mid-rise flats, a
+tower) are flat-roofed and lotted like any block. Mixed housing tints a
+commercial base with a residential tint above it, because the building
+carries both a shopfront and apartments. What each kind looks like is under
+[Residential kinds](#residential-kinds). Every house-scale home carries the
+procedural house kit:
 
 - A **pitched roof** (gable or hip) sized to the body footprint, seeded per
   building for gable-vs-hip, orientation and roof colour. Denser residential
@@ -68,8 +74,8 @@ detached and row home additionally carries the procedural house kit:
   wall/roof colour are all seeded per building id from a bounded variant set,
   so a residential street reads as individual homes, not clones.
 - Detached homes have a hard **2×2 minimum footprint** — nothing smaller ever
-  builds. The low-density levels are a 2×2, a 2×3 and a 3×3; rows are 1×2,
-  1×4 and 1×6.
+  builds. The detached levels are a 2×2, a 2×3 and a 3×3; a duplex and a
+  fourplex take a 1×2, then a 2×2; rows are 1×2, 1×4 and 1×6.
 
 **Commercial.** The first commercial level is a **storefront**: a canopy over
 the frontage plus a signage band above it, on top of the stage-1 ground-floor
@@ -188,6 +194,43 @@ several existing materials had drifted well past the cap (a silo at
 216/212/200, an AC unit at 206/210/213, a garage wall at 207/199/182, an
 airport structure at 202/197/184), which is why lit roofs used to blow out.
 
+## Residential kinds
+
+Each kind is identifiable at the default camera pitch without its label, by
+its body and by what stands on its lot. A body's size is set per kind, in
+metres, and the lot takes the rest:
+
+| Kind                 | Body                                                        | Roof    | On the lot                                                       |
+| -------------------- | ----------------------------------------------------------- | ------- | ---------------------------------------------------------------- |
+| Detached house       | 4.75 m per lot tile each way (9.5 × 9.5 m on a 2×2 lot)     | pitched | lawn, one drive and its cover, a yard                            |
+| Duplex               | 60% of each lot axis, capped at 16 m (12 × 16 m on 1×2)     | pitched | two front doors, one drive per home                              |
+| Fourplex             | 70% of each lot axis, capped at 18 m (14 × 18 m on 1×2)     | pitched | two front doors, one drive per door                              |
+| Townhouse row        | 13.6 m per tile; two homes per 20 m of frontage, 6.8 m each | pitched | a door, a front pad and by seed a garage door per home           |
+| Multiplex            | 13.6 m per tile, capped at 24 m each way                    | flat    | a lot pad; cars at the kerb                                      |
+| Courtyard apartments | 13.6 m per tile                                             | flat    | a lot pad; cars at the kerb                                      |
+| Mid-rise flats       | 13.6 m per tile                                             | flat    | a lot pad; cars at the kerb                                      |
+| Tower                | 13.6 m per tile, rising from a two-storey podium at 85%     | flat    | the podium fills the lot to the 85% ceiling; cars at the kerb    |
+
+The body sizes are the missing-middle types' own: a duplex is 28–55 ft by
+28–60 ft, a fourplex 34–56 by 32–60, a multiplex 50–80 by 35–75, and a
+townhouse 18–25 ft wide; a block fills its plate as the office and the
+civic buildings do. No body exceeds 85% of its lot on either axis, so
+neighbours never touch. A home whose body is drawn from a fill rather than a
+per-tile rule stands centred across its frontage and at the house-kit setback
+from the street like any other home.
+
+Two homes share a duplex or a fourplex body: each has its own door, its
+front pad and its drive across the verge, as the homes of a row do, whether
+the body's long side or its 12 m end faces the street. Only a body too narrow
+for a pad and a door per home — none in the catalog — falls back to one home
+with a side drive. A fourplex's two upper homes are reached from inside, so
+it shows the same two doors as a duplex and reads taller.
+
+A tower's podium is a massing tier two storeys tall at the lot's full fill,
+drawn under the slab by the same instancer as the setback tiers above; it
+carries the body's wall colour and lifecycle tint, so the tower reads as one
+building standing on its base.
+
 ## Residential lots
 
 A detached home or a row of homes is laid out on its lot from the street it
@@ -229,8 +272,9 @@ the home:
   3 m behind the house's back wall, 4 × 6 m, its door facing down the drive.
   The car stands just in front of the garage door, under the carport, or on
   the spot. A cover the lot has no depth for is not chosen.
-- **A row facing the street along its length** is one home per lot tile of
-  frontage, each a share of the row's body. Each home gets its own short
+- **A row facing the street along its length** is two homes per lot tile of
+  frontage, each a share of the row's body; a duplex or a fourplex is two
+  homes across its frontage the same way. Each home gets its own short
   drive to its front wall — a front pad, the car on it — and some of them, by
   seed, an integral garage door in the facade behind the pad.
 

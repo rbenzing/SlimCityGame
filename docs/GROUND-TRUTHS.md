@@ -527,7 +527,9 @@ MUTCD citations below use 11th-edition section numbers.
   [entities.md](world-sim/entities.md)
 - A zoned tile develops only when it is zoned, served with power and water on
   its footprint, and within Manhattan distance 3 of a street, on the grid or
-  off it. One zonability predicate decides; the zoning grid visual and the
+  off it, and a building stands only on tiles zoned the same, at spawn and at
+  every level-up: it never spills onto the ground beside its zone. One
+  zonability predicate decides; the zoning grid visual and the
   `paintZone` command both defer to it and may never disagree, so the render
   thread reads roads off the grid from the network the worker sends, never
   from its road tiles. A road off the grid fronts lots square to its centre
@@ -556,6 +558,19 @@ MUTCD citations below use 11th-edition section numbers.
   from the same constants, so the ground's colour and its soil cannot
   disagree. — [world-model.md](world-sim/world-model.md#soil);
   `src/shared/soil.ts`
+- A zoned building has a `kind`, drawn when its lot grows: among the zone's
+  level-1 catalog entries that are unlocked and whose footprint fits the lot,
+  one roll of the growth rng against their `share` weights, in catalog
+  order. The kind is kept through every level-up; a level-up looks for the
+  same zone and kind at the next level. The player never picks a kind. —
+  [building-types.md](game-design/features/building-types.md),
+  [simulation-rules.md](game-design/simulation-rules.md#the-spawner-how-a-lot-is-chosen);
+  `spawnCandidates`, `drawKind` in `src/sim/growth.ts`
+- Every zoned catalog figure is derived from a published source by the rules
+  in [balancing.md](game-design/balancing.md#residential-kinds): residents are
+  `round(units × household)`, a building's households are its `units`, and
+  power and water are per-home survey figures. A number in `catalog.json`
+  with no derivation is a bug. — [building-types.md](game-design/features/building-types.md)
 - Farmland is painted only where a dirt road's frontage reaches, up to
   `FARM_DEPTH`, and only on soil a farm can work. A paved road fronts no
   farmland, though a field may run up to it. A farm's jobs are industrial
@@ -607,7 +622,8 @@ MUTCD citations below use 11th-edition section numbers.
   network steps from the nearest generator, furthest first, ties by id,
   footprint tiles only, as a hard cut, never a dim. An abandoned building
   keeps its place in that line, so abandoning never hands a building its own
-  supply back. Supply and use are summed in thousandths, never as floats. —
+  supply back. Supply and use are summed in whole millionths (watts,
+  millilitres), never as floats. —
   [utilities-model.md](world-sim/utilities-model.md#brownouts),
   [power-generation.md](engineering/features/power-generation.md);
   `recomputeUtilities` in `src/sim/network.ts`

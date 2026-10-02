@@ -375,13 +375,16 @@ schema is `BuildingCatalogEntry` in `src/shared/types.ts`:
 | `category`         | yes      | `'res' \| 'com' \| 'ind' \| 'service' \| 'utility' \| 'park' \| 'transit'`.       |
 | `zone`             | no       | `ZoneType`; set for zone-grown buildings, absent for ploppables.                  |
 | `level`            | no       | `1..3` for grown buildings.                                                       |
+| `kind`             | no       | `BuildingKind`; set for every zone-grown building: what it is (a duplex, a tower, a crop farm). Three levels per kind. |
+| `units`            | no       | Homes in the building; residential and mixed entries, and `1` on a farm.          |
+| `share`            | no       | The kind's draw weight among the kinds that fit a lot; on its level-1 entry.      |
 | `footprint`        | yes      | `{ w, d }` in tiles.                                                              |
 | `height`           | yes      | Metres, for the box mesh.                                                         |
 | `color`            | yes      | Packed hex RGB.                                                                   |
 | `residents`        | no       | Population added when active.                                                     |
 | `jobs`             | no       | Jobs added when active.                                                           |
-| `powerUse`         | yes      | MW.                                                                               |
-| `waterUse`         | yes      | kL.                                                                               |
+| `powerUse`         | yes      | Average draw, MW.                                                                 |
+| `waterUse`         | yes      | Average draw, kL a day.                                                           |
 | `pollution`        | no       | `0..255` emitted at source into the Pollution field.                              |
 | `noise`            | no       | `0..255` emitted at source into the Noise field.                                  |
 | `landValueBonus`   | no       | `0..255` emitted into the LandValue field.                                        |

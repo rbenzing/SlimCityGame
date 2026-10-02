@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { archetypeFor, hasPart, isCleanIndustry, partsFor } from './archetypes';
-import { ZoneType, type BuildingCatalogEntry } from '../shared/types';
+import { ZoneType, type BuildingCatalogEntry, type BuildingKind } from '../shared/types';
 import catalogData from '../data/catalog.json';
 
 function entry(over: Partial<BuildingCatalogEntry> = {}): BuildingCatalogEntry {
@@ -50,10 +50,16 @@ describe('archetypeFor', () => {
   });
 
   it('splits housing into pitched-roof homes and flat-topped density', () => {
-    expect(archetypeFor(entry({ category: 'res', zone: ZoneType.ResLow }))).toBe('house');
-    expect(archetypeFor(entry({ category: 'res', zone: ZoneType.ResMediumRow }))).toBe('house');
-    expect(archetypeFor(entry({ category: 'res', zone: ZoneType.ResHigh }))).toBe('apartment');
-    expect(archetypeFor(entry({ category: 'res', zone: ZoneType.Mixed }))).toBe('apartment');
+    const res = (zone: ZoneType, kind: BuildingKind) => entry({ category: 'res', zone, kind });
+    expect(archetypeFor(res(ZoneType.ResLow, 'detached'))).toBe('house');
+    expect(archetypeFor(res(ZoneType.ResLow, 'duplex'))).toBe('house');
+    expect(archetypeFor(res(ZoneType.ResLow, 'fourplex'))).toBe('house');
+    expect(archetypeFor(res(ZoneType.ResMediumRow, 'townhouse'))).toBe('house');
+    expect(archetypeFor(res(ZoneType.ResMedium, 'multiplex'))).toBe('apartment');
+    expect(archetypeFor(res(ZoneType.ResMedium, 'garden'))).toBe('apartment');
+    expect(archetypeFor(res(ZoneType.ResHigh, 'midrise'))).toBe('apartment');
+    expect(archetypeFor(res(ZoneType.ResHigh, 'tower'))).toBe('apartment');
+    expect(archetypeFor(res(ZoneType.Mixed, 'mixed'))).toBe('apartment');
   });
 
   it('says nothing about ground it does not own', () => {

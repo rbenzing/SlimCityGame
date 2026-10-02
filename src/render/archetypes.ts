@@ -11,6 +11,7 @@
  * choice is testable without a scene and identical on every machine.
  */
 import { ZoneType, type BuildingCatalogEntry } from '../shared/types';
+import { isHouseKind } from '../shared/buildingkind';
 
 export type BuildingArchetype =
   /** Low slab, roll-up doors, a loading dock. Industry at its first level. */
@@ -61,12 +62,12 @@ export function isFarmEntry(entry: BuildingCatalogEntry): boolean {
 }
 
 /**
- * A home rather than a block: a detached house or a row of attached ones. A
- * home keeps a pitched roof and a lot laid out from its street; anything
- * denser is flat-topped.
+ * A home rather than a block: a detached house, a duplex, a fourplex or a row
+ * of townhouses, by the entry's kind. A home keeps a pitched roof and a lot
+ * laid out from its street; anything denser is flat-topped.
  */
 export function isHouseEntry(entry: BuildingCatalogEntry): boolean {
-  return entry.zone === ZoneType.ResLow || entry.zone === ZoneType.ResMediumRow;
+  return isHouseKind(entry.kind);
 }
 
 export function archetypeFor(entry: BuildingCatalogEntry): BuildingArchetype {

@@ -80,6 +80,7 @@ Outside the programme:
 | [interchanges.md](interchanges.md)   | no          | no              |
 | [roundabouts.md](roundabouts.md)     | no          | additive        |
 | [sound-barriers.md](sound-barriers.md) | no        | no              |
+| [building-types.md](building-types.md) | no        | no              |
 
 Farms add a zone and derive the soil it grows on, so neither contract moves.
 An interchange is a batch of the road commands that already exist. A compact

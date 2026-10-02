@@ -3,9 +3,11 @@ import { BuildingState, Problem, RoadTier, ZoneType } from '../../src/shared/typ
 import { BASE_MULTIPLIER, COMMERCIAL_SPAN_JOBS } from '../../src/sim/demand';
 import {
   catalog,
+  column,
   entryOf,
   GROWTH_TIMEOUT_MS,
   initialized,
+  initializedAtMilestone5,
   roadRow,
   rows,
   send,
@@ -120,7 +122,7 @@ describe('a farming town', () => {
       expect(farms.some((b) => b.state === BuildingState.Active)).toBe(true);
       // Level ground here is very fertile and its stony patches only somewhat:
       // crop farms and pasture, and no orchard on the flat.
-      expect(farms.map((b) => entryOf(b).farm)).not.toContain('orchard');
+      expect(farms.map((b) => entryOf(b).kind)).not.toContain('orchard');
       // All of it south of the dirt road, with no water ever reaching it.
       for (const b of farms) expect(b.z).toBeGreaterThan(60);
       expect(farms.every((b) => (b.problems & Problem.NoWater) === 0)).toBe(true);
@@ -130,6 +132,40 @@ describe('a farming town', () => {
         .reduce((sum, b) => sum + (entryOf(b).jobs ?? 0), 0);
       expect(h.lastSnapshot()!.stats.jobs).toBeGreaterThanOrEqual(farmJobs);
       expect(farmJobs).toBeGreaterThan(0);
+    },
+    GROWTH_TIMEOUT_MS,
+  );
+});
+
+describe('a low-density strip one tile wide', () => {
+  it(
+    'grows the house-scale kinds that fit it, a duplex or a fourplex, and never a detached house',
+    () => {
+      const h = initializedAtMilestone5();
+      send(h, 1, [
+        { kind: 'setSandbox', on: true },
+        { kind: 'setUnlimitedMoney', on: true },
+        { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 60, 12) },
+      ]);
+      h.ticks(1);
+      send(h, 2, [
+        { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 59, rotation: 0 },
+        { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 58, rotation: 0 },
+        // One tile wide, four deep: a 2×2 house can never fit, a 1×2 can.
+        { kind: 'paintZone', zone: ZoneType.ResLow, tiles: column(66, 61, 4) },
+      ]);
+      h.ticks(2);
+      expect(h.ackFor(2)!.ok).toBe(true);
+      h.ticks(2000);
+
+      const homes = [...standingBuildings(h).values()].filter(
+        (b) => entryOf(b).zone === ZoneType.ResLow,
+      );
+      expect(homes.length).toBeGreaterThan(0);
+      for (const b of homes) {
+        expect(['duplex', 'fourplex']).toContain(entryOf(b).kind);
+        expect(entryOf(b).footprint).toEqual({ w: 1, d: 2 });
+      }
     },
     GROWTH_TIMEOUT_MS,
   );
