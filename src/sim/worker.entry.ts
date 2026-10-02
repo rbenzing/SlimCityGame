@@ -188,7 +188,7 @@ import {
 } from '../world/terraform';
 import { FieldSim } from './fields';
 import { BuildingRegistry, footprintForRotation, settleBuildingDelta } from './buildings';
-import { computeDemand } from './demand';
+import { computeDemand, jobRoom } from './demand';
 import { GrowthSystem, type GrowthSupply } from './growth';
 import { ServiceSim, nearestRoadTile } from './services';
 import { EconomySystem, buildingMonthlyTax, type Occupancy } from './economy';
@@ -834,13 +834,14 @@ class SimWorld implements WorkerSim {
       this.recomputeUtilitiesNow();
     }
 
-    this.stats.demand = computeDemand({
+    const demandInput = {
       population: this.stats.population,
       jobs: this.occupancy.jobs,
       pipeline: this.occupancy.pipeline,
       taxRates: this.stats.taxRates,
       happiness: this.stats.happiness,
-    });
+    };
+    this.stats.demand = computeDemand(demandInput);
 
     const growthDelta = this.growth.tick(
       g,
@@ -849,6 +850,7 @@ class SimWorld implements WorkerSim {
       this.stats.milestoneLevel,
       t,
       this.supply,
+      jobRoom(demandInput),
     );
     if (
       growthDelta.added.length > 0 ||

@@ -16,7 +16,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import type { BuildingCatalogEntry, ResidentialKind } from './types';
+import type { BuildingCatalogEntry, CommercialKind, ResidentialKind } from './types';
 import { ZoneType } from './types';
 import { MILESTONES } from './constants';
 import catalogData from '../data/catalog.json';
@@ -198,8 +198,132 @@ const RESIDENTIAL_KINDS: ReadonlyArray<{
 /** A person's 90 US gallons a day, and an employee's 27.5, in kL. */
 const WATER_PER_PERSON_KL = 0.34;
 const WATER_PER_JOB_KL = 0.104;
-/** A retail floor's draw: 12.6 kWh per square foot a year on a 740 or 1,665 m² plate. */
-const RETAIL_FLOOR_KW: Readonly<Record<number, number>> = { 2: 11.5, 3: 25.8 };
+/** A retail floor's draw: 16.7 kWh per square foot a year on a 740 or 1,665 m² plate. */
+const RETAIL_FLOOR_KW: Readonly<Record<number, number>> = { 2: 15.2, 3: 34.2 };
+
+const SQ_FT_PER_M2 = 10.764;
+const HOURS_PER_YEAR = 8760;
+/** Net floor is 80% of the plate; a shop job takes 17.5 m² of it, an office job 13. */
+const NET_FLOOR = 0.8;
+const RETAIL_M2_PER_JOB = 17.5;
+const OFFICE_M2_PER_JOB = 13;
+/** A hotel room is 52 m² gross; its staff by class is one per 5, 3 or 2 rooms. */
+const HOTEL_M2_PER_ROOM = 52;
+const HOTEL_ROOMS_PER_JOB = [5, 3, 2];
+const HOTEL_WATER_PER_ROOM_KL = 0.5;
+const RESTAURANT_WATER_KL = [7.3, 22.0, 44.0];
+
+/** Every commercial kind: zone, unlock, weight, the survey's kWh per square foot, and each level's lot, body plate and storeys. */
+const COMMERCIAL_KINDS: ReadonlyArray<{
+  kind: CommercialKind;
+  zone: ZoneType;
+  unlock: number;
+  share: number;
+  kwhPerSqFt: number;
+  lots: ReadonlyArray<readonly [number, number]>;
+  /** The body's plate in m² at each level, from the kind's body rule. */
+  plates: readonly number[];
+  storeys: readonly number[];
+}> = [
+  {
+    kind: 'shop',
+    zone: ZoneType.ComLow,
+    unlock: 0,
+    share: 350,
+    kwhPerSqFt: 16.7,
+    lots: [
+      [1, 1],
+      [1, 2],
+      [2, 2],
+    ],
+    plates: [185, 370, 740],
+    storeys: [1, 1, 1],
+  },
+  {
+    kind: 'restaurant',
+    zone: ZoneType.ComLow,
+    unlock: 0,
+    share: 286,
+    kwhPerSqFt: 44.2,
+    lots: [
+      [1, 2],
+      [2, 2],
+      [3, 2],
+    ],
+    plates: [326.4, 576, 576],
+    storeys: [1, 1, 2],
+  },
+  {
+    kind: 'fuel',
+    zone: ZoneType.ComLow,
+    unlock: 0,
+    share: 123,
+    kwhPerSqFt: 53.3,
+    lots: [
+      [2, 2],
+      [3, 2],
+      [3, 3],
+    ],
+    plates: [196, 224, 256],
+    storeys: [1, 1, 1],
+  },
+  {
+    kind: 'strip',
+    zone: ZoneType.ComLow,
+    unlock: 1,
+    share: 166,
+    kwhPerSqFt: 16.7,
+    lots: [
+      [3, 2],
+      [4, 2],
+      [5, 2],
+    ],
+    plates: [1110, 1480, 1850],
+    storeys: [1, 1, 1],
+  },
+  {
+    kind: 'supermarket',
+    zone: ZoneType.ComLow,
+    unlock: 1,
+    share: 46,
+    kwhPerSqFt: 16.7,
+    lots: [
+      [3, 3],
+      [4, 3],
+      [5, 4],
+    ],
+    plates: [1665, 2220, 3699],
+    storeys: [1, 1, 1],
+  },
+  {
+    kind: 'office',
+    zone: ZoneType.ComHigh,
+    unlock: 4,
+    share: 970,
+    kwhPerSqFt: 13.6,
+    lots: [
+      [2, 2],
+      [3, 3],
+      [3, 3],
+    ],
+    plates: [740, 1665, 1665],
+    storeys: [5, 8, 16],
+  },
+  {
+    kind: 'hotel',
+    zone: ZoneType.ComHigh,
+    unlock: 4,
+    share: 107,
+    kwhPerSqFt: 14.4,
+    lots: [
+      [2, 2],
+      [2, 2],
+      [3, 3],
+    ],
+    plates: [740, 740, 1665],
+    storeys: [4, 6, 8],
+  },
+];
 
 describe('Residential kinds (building-types): three levels per kind, every figure derived', () => {
   const ofKind = (kind: ResidentialKind) =>
@@ -284,6 +408,85 @@ describe('Residential kinds (building-types): three levels per kind, every figur
     expect(byId('res-medium-1')!.kind).toBe('garden');
     expect(byId('res-high-1')!.kind).toBe('midrise');
     expect(byId('mixed-1')!.kind).toBe('mixed');
+  });
+});
+
+describe('Commercial kinds (building-types): three levels per kind, every figure derived', () => {
+  const ofKind = (kind: CommercialKind) =>
+    catalog.filter((e) => e.kind === kind).sort((a, b) => (a.level ?? 0) - (b.level ?? 0));
+  const floorM2 = (k: (typeof COMMERCIAL_KINDS)[number], i: number) => k.plates[i]! * k.storeys[i]!;
+
+  it('gives every commercial entry a kind, and keeps the corner shop first for the demand span', () => {
+    const com = catalog.filter((e) => e.category === 'com');
+    for (const e of com) expect(e.kind, e.id).toBeDefined();
+    expect(com.find((e) => e.zone === ZoneType.ComLow)!.id).toBe('com-low-1');
+    expect(byId('com-low-1')!.kind).toBe('shop');
+    expect(byId('com-low-2')!.kind).toBe('shop');
+    expect(byId('com-high-1')!.kind).toBe('office');
+    expect(byId('com-high-2')!.kind).toBe('office');
+  });
+
+  it.each(COMMERCIAL_KINDS)('$kind: three levels in one zone, unlocked together', (k) => {
+    const levels = ofKind(k.kind);
+    expect(levels.map((e) => e.level)).toEqual([1, 2, 3]);
+    for (const e of levels) {
+      expect(e.zone).toBe(k.zone);
+      expect(e.category).toBe('com');
+      expect(e.unlockMilestone).toBe(k.unlock);
+      expect(e.residents).toBeUndefined();
+      expect(e.cost).toBe(0);
+    }
+    expect(levels[0]!.share).toBe(k.share);
+    expect(levels[1]!.share).toBeUndefined();
+    expect(levels[2]!.share).toBeUndefined();
+  });
+
+  it.each(COMMERCIAL_KINDS)('$kind: takes the lots and storeys its type takes', (k) => {
+    const levels = ofKind(k.kind);
+    expect(levels.map((e) => [e.footprint.w, e.footprint.d])).toEqual(k.lots);
+    for (const [i, e] of levels.entries()) {
+      expect(Math.max(1, Math.round(e.height / 3.2)), e.id).toBe(k.storeys[i]);
+    }
+  });
+
+  it.each(COMMERCIAL_KINDS)('$kind: jobs are its net floor at the density guide', (k) => {
+    for (const [i, e] of ofKind(k.kind).entries()) {
+      const floor = floorM2(k, i);
+      const expected =
+        k.kind === 'office'
+          ? Math.round((floor * NET_FLOOR) / OFFICE_M2_PER_JOB)
+          : k.kind === 'hotel'
+            ? Math.floor(Math.round(floor / HOTEL_M2_PER_ROOM) / HOTEL_ROOMS_PER_JOB[i]!)
+            : Math.round((floor * NET_FLOOR) / RETAIL_M2_PER_JOB);
+      expect(e.jobs, e.id).toBe(expected);
+    }
+  });
+
+  it.each(COMMERCIAL_KINDS)('$kind: draws per square foot what the survey says', (k) => {
+    for (const [i, e] of ofKind(k.kind).entries()) {
+      const kw = (floorM2(k, i) * SQ_FT_PER_M2 * k.kwhPerSqFt) / HOURS_PER_YEAR;
+      expect(Math.abs(e.powerUse - kw / 1000), e.id).toBeLessThanOrEqual(0.0003);
+    }
+  });
+
+  it.each(COMMERCIAL_KINDS)('$kind: draws water for its staff, its diners or its rooms', (k) => {
+    for (const [i, e] of ofKind(k.kind).entries()) {
+      const expected =
+        k.kind === 'restaurant'
+          ? RESTAURANT_WATER_KL[i]!
+          : k.kind === 'hotel'
+            ? Math.round(floorM2(k, i) / HOTEL_M2_PER_ROOM) * HOTEL_WATER_PER_ROOM_KL
+            : e.jobs! * WATER_PER_JOB_KL;
+      expect(Math.abs(e.waterUse - expected), e.id).toBeLessThanOrEqual(0.06);
+    }
+  });
+
+  it('adds jobs with every level of every business', () => {
+    for (const k of COMMERCIAL_KINDS) {
+      const [l1, l2, l3] = ofKind(k.kind);
+      expect(l1!.jobs!).toBeLessThan(l2!.jobs!);
+      expect(l2!.jobs!).toBeLessThan(l3!.jobs!);
+    }
   });
 });
 

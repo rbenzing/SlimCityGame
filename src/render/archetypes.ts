@@ -24,6 +24,12 @@ export type BuildingArchetype =
   | 'storefront'
   /** Bigger retail and offices: a signage band, no canopy. */
   | 'retailBlock'
+  /** A filling station: a kiosk behind a tall canopy over the pump islands. */
+  | 'fuelStation'
+  /** An office block or tower: glass, and no shopfront parts at all. */
+  | 'office'
+  /** A hotel: a canopy at its entrance and a sign, on a tall body. */
+  | 'hotel'
   /** Detached and row housing, which already carries a pitched roof. */
   | 'house'
   /** Denser housing: flat-roofed, no shopfront. */
@@ -40,7 +46,9 @@ export type BuildingPart =
   | 'monitorRoof'
   | 'roofArray'
   | 'canopy'
-  | 'signageBand';
+  | 'signageBand'
+  | 'fuelCanopy'
+  | 'pumps';
 
 /**
  * Whether an industrial building is the CLEAN kind, taken from whether it
@@ -77,7 +85,21 @@ export function archetypeFor(entry: BuildingCatalogEntry): BuildingArchetype {
     return (entry.level ?? 1) >= 2 ? 'factory' : 'warehouse';
   }
   if (entry.category === 'com') {
-    return (entry.level ?? 1) >= 2 ? 'retailBlock' : 'storefront';
+    switch (entry.kind) {
+      case 'fuel':
+        return 'fuelStation';
+      case 'office':
+        return 'office';
+      case 'hotel':
+        return 'hotel';
+      case 'shop':
+      case 'strip':
+      case 'supermarket':
+      case 'restaurant':
+        return 'storefront';
+      default:
+        return (entry.level ?? 1) >= 2 ? 'retailBlock' : 'storefront';
+    }
   }
   if (entry.category === 'res') {
     return isHouseEntry(entry) ? 'house' : 'apartment';
@@ -91,6 +113,9 @@ const PARTS: Readonly<Record<BuildingArchetype, readonly BuildingPart[]>> = {
   greenWorks: ['roofArray'],
   storefront: ['canopy', 'signageBand'],
   retailBlock: ['signageBand'],
+  fuelStation: ['fuelCanopy', 'pumps'],
+  office: [],
+  hotel: ['canopy', 'signageBand'],
   house: [],
   apartment: [],
   farm: [],

@@ -14,6 +14,7 @@ import {
   MAX_SETBACK_INSET,
   MIN_SETBACK_INSET,
   RES_LOW_BODY_M_PER_TILE,
+  TIER_LID_GAP_M,
 } from './massing';
 import { BAY_DEPTH_TILES } from './parked';
 import { deriveFacadeParams, FLOOR_HEIGHT_METERS } from './facade';
@@ -129,16 +130,18 @@ describe('computeSetbacks', () => {
     expect(boxes[0]!.d).toBeCloseTo(3 * TILE_METERS * MASSING_FOOTPRINT_SHRINK, 9);
   });
 
-  it('preserves total height exactly: boxes stack bottom-to-top with no gap/overlap and the last box reaches entry.height', () => {
+  it('stacks the boxes bottom-to-top with no gap or overlap, the top tier stopping a hair under the roof', () => {
     for (const level of [1, 2, 3]) {
-      for (const height of [5, 12, 30, 46.5]) {
+      for (const height of [4.7, 5, 12, 30, 46.5]) {
         const { boxes } = computeSetbacks(entry({ level, height }), 42);
         let cursor = 0;
         for (const box of boxes) {
           expect(box.yOffset).toBeCloseTo(cursor, 6);
           cursor += box.h;
         }
-        expect(cursor).toBeCloseTo(height, 6);
+        // The base tier is the body and reaches the roof; an inset tier's lid
+        // never shares the roof's plane, or the two fight for the pixels.
+        expect(cursor).toBeCloseTo(level === 1 ? height : height - TIER_LID_GAP_M, 6);
       }
     }
   });
@@ -827,6 +830,17 @@ describe('a building keeps its real proportions whatever the tile measures', () 
     expect(bodyMetresFor(sized('fourplex', 2, 2))).toEqual({ w: 18, d: 18 });
     expect(bodyMetresFor(sized('multiplex', 2, 2))).toEqual({ w: 24, d: 24 });
     expect(bodyMetresFor(sized('multiplex', 2, 3))).toEqual({ w: 24, d: 24 });
+  });
+
+  it('keeps a restaurant a box on its car park and a filling station a kiosk behind its forecourt', () => {
+    expect(bodyMetresFor(sized('restaurant', 1, 2))).toEqual({ w: 13.6, d: 24 });
+    expect(bodyMetresFor(sized('restaurant', 2, 2))).toEqual({ w: 24, d: 24 });
+    expect(bodyMetresFor(sized('restaurant', 3, 2))).toEqual({ w: 24, d: 24 });
+    expect(bodyMetresFor(sized('fuel', 2, 2))).toEqual({ w: 14, d: 14 });
+    expect(bodyMetresFor(sized('fuel', 3, 2))).toEqual({ w: 16, d: 14 });
+    expect(bodyMetresFor(sized('fuel', 3, 3))).toEqual({ w: 16, d: 16 });
+    // A strip and a supermarket fill their plates like any block.
+    expect(bodyMetresFor(sized('strip', 5, 2))).toEqual({ w: 68, d: 27.2 });
   });
 
   it('stands a storey tall against a plan that is no longer stretched under it', () => {

@@ -7,6 +7,7 @@ import {
   COMMERCIAL_SPAN_JOBS,
   INDUSTRIAL_SPAN_JOBS,
   computeDemand,
+  jobRoom,
   type DemandInput,
 } from './demand';
 
@@ -104,6 +105,21 @@ describe('computeDemand: economic base', () => {
     expect(demand.ind).toBeCloseTo(0, 10);
     expect(demand.com).toBeCloseTo(0, 10);
     expect(demand.res).toBeCloseTo(0.3, 10);
+  });
+
+  it('reports the room each business sector has, in jobs, which the spawner reads', () => {
+    // 100 open industrial jobs support 81 local ones; 30 shop jobs are open and
+    // 10 going up, so there is room for 41 more. The 200-strong workforce calls
+    // for 110 basic jobs, 100 open, so 10 more.
+    const room = jobRoom({
+      population: 400,
+      jobs: { com: 30, ind: 100 },
+      pipeline: { com: 10, ind: 0 },
+      taxRates: { res: DEFAULT_TAX_RATE, com: DEFAULT_TAX_RATE, ind: DEFAULT_TAX_RATE },
+      happiness: 50,
+    });
+    expect(room.com).toBeCloseTo(100 * 0.81 - 40, 6);
+    expect(room.ind).toBeCloseTo(200 / 1.81 - 100, 6);
   });
 
   it('reads its spans from the first industrial and commercial buildings in the catalog', () => {

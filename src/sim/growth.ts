@@ -29,6 +29,7 @@ import type {
 } from '../shared/types';
 import { farmKindOf } from '../shared/buildingkind';
 import { BuildingRegistry, footprintForRotation, lotTiles } from './buildings';
+import type { JobsBySector } from './economy';
 import {
   cityWaterUse,
   dirtRoadWithinReach,
@@ -273,6 +274,25 @@ interface Spare {
   water: number;
 }
 
+/** An economy with room for any business, for callers that run no demand model. */
+export const UNLIMITED_ROOM: JobsBySector = { com: Infinity, ind: Infinity };
+
+/**
+ * The business kinds among `candidates` whose jobs fit the sector's `room`,
+ * plus the smallest of them whatever the room, so growth never stalls at a
+ * gap smaller than any building. Residential kinds pass untouched.
+ */
+export function withinRoom(
+  candidates: readonly BuildingCatalogEntry[],
+  sector: Sector,
+  room: JobsBySector,
+): BuildingCatalogEntry[] {
+  if (sector === 'res' || candidates.length === 0) return [...candidates];
+  const smallest = Math.min(...candidates.map((e) => e.jobs ?? 0));
+  const limit = Math.max(room[sector], smallest);
+  return candidates.filter((e) => (e.jobs ?? 0) <= limit);
+}
+
 /** Something growth would build or level up but for the supply: the pass it last asked in, and what it wanted, in utility units. */
 interface Waiting {
   pass: number;
@@ -429,6 +449,7 @@ export class GrowthSystem {
     milestoneLevel: number,
     tickNo: number,
     supply: GrowthSupply = UNMETERED_SUPPLY,
+    room: JobsBySector = UNLIMITED_ROOM,
   ): BuildingDelta {
     const added: BuildingInstance[] = [];
     const removed: number[] = [];
@@ -439,11 +460,13 @@ export class GrowthSystem {
     if (tickNo % GROWTH_INTERVAL === 0) {
       const pass = Math.floor(tickNo / GROWTH_INTERVAL);
       const spare: Spare = { power: supply.power.spare, water: supply.water.spare };
+      // The room, like the spare supply, is handed out once per pass.
+      const roomLeft: JobsBySector = { ...room };
       this.forgetStaleWaits(pass);
       this.processProblemsAndAbandonment(g, registry, demand, supply, removed, updated);
       this.flagUnservedUtilities(g, registry, updated);
-      this.runLevelUps(g, registry, demand, milestoneLevel, pass, spare, added, removed);
-      this.runSpawnScan(g, registry, demand, milestoneLevel, pass, spare, added);
+      this.runLevelUps(g, registry, demand, milestoneLevel, pass, spare, roomLeft, added, removed);
+      this.runSpawnScan(g, registry, demand, milestoneLevel, pass, spare, roomLeft, added);
     }
 
     return { added, removed, updated };
@@ -673,6 +696,7 @@ export class GrowthSystem {
     milestoneLevel: number,
     pass: number,
     spare: Spare,
+    room: JobsBySector,
     added: BuildingInstance[],
     removed: number[],
   ): void {
@@ -687,6 +711,7 @@ export class GrowthSystem {
         milestoneLevel,
         pass,
         spare,
+        room,
         inst,
         entry,
         added,
@@ -702,6 +727,7 @@ export class GrowthSystem {
     milestoneLevel: number,
     pass: number,
     spare: Spare,
+    room: JobsBySector,
     inst: BuildingInstance,
     entry: BuildingCatalogEntry,
     added: BuildingInstance[],
@@ -729,6 +755,9 @@ export class GrowthSystem {
       (e) => e.zone === zone && e.level === targetLevel && e.kind === entry.kind,
     );
     if (!nextEntry || nextEntry.unlockMilestone > milestoneLevel) return false;
+    // A business grows only where the town has room for the jobs it adds.
+    const jobsAdded = (nextEntry.jobs ?? 0) - (entry.jobs ?? 0);
+    if (sector !== 'res' && farm === null && jobsAdded > room[sector]) return false;
 
     const { x, z, rotation } = inst;
     const oldFootprint = footprintForRotation(entry, rotation);
@@ -769,6 +798,7 @@ export class GrowthSystem {
     }
     spare.power -= power;
     spare.water -= water;
+    if (sector !== 'res') room[sector] -= jobsAdded;
 
     this.constructing.set(placed.id, CONSTRUCTION_TICKS);
     this.blockerStreak.delete(inst.id);
@@ -784,6 +814,7 @@ export class GrowthSystem {
     milestoneLevel: number,
     pass: number,
     spare: Spare,
+    room: JobsBySector,
     added: BuildingInstance[],
   ): void {
     const size = g.size;
@@ -800,17 +831,19 @@ export class GrowthSystem {
       const x = flat % size;
       const z = Math.floor(flat / size);
       if (zone === ZoneType.Agriculture) {
-        this.trySpawnFarm(g, registry, demand, milestoneLevel, pass, spare, added, x, z);
+        this.trySpawnFarm(g, registry, demand, milestoneLevel, pass, spare, room, added, x, z);
         continue;
       }
       if (!hasNearbyRoad(g, x, z, ROAD_CHECK_RADIUS)) continue;
 
       // The lot picks its building: among the zone's kinds that fit here, on
-      // land zoned for them, one is drawn by how common it is in the real stock.
-      const candidates = spawnCandidates(this.catalog, zone, milestoneLevel, (e) => {
+      // land zoned for them and within the room the economy has for their
+      // jobs, one is drawn by how common it is in the real stock.
+      const fitting = spawnCandidates(this.catalog, zone, milestoneLevel, (e) => {
         const { w, d } = footprintForRotation(e, 0);
         return isZonedLot(g, zone, x, z, w, d) && this.canPlace(g, x, z, w, d);
       });
+      const candidates = withinRoom(fitting, sector, room);
       if (candidates.length === 0) continue;
       const entry = drawKind(candidates, candidates.length > 1 ? this.rng.next() : 0);
 
@@ -836,6 +869,7 @@ export class GrowthSystem {
         demandForSector * desirability,
         pass,
         spare,
+        room,
         added,
       );
     }
@@ -853,6 +887,7 @@ export class GrowthSystem {
     milestoneLevel: number,
     pass: number,
     spare: Spare,
+    room: JobsBySector,
     added: BuildingInstance[],
     x: number,
     z: number,
@@ -887,6 +922,7 @@ export class GrowthSystem {
       demand.ind * FARM_DESIRABILITY[grade],
       pass,
       spare,
+      room,
       added,
     );
   }
@@ -901,6 +937,7 @@ export class GrowthSystem {
     probability: number,
     pass: number,
     spare: Spare,
+    room: JobsBySector,
     added: BuildingInstance[],
   ): void {
     if (probability <= 0) return;
@@ -916,6 +953,8 @@ export class GrowthSystem {
     if (!placed) return;
     spare.power -= power;
     spare.water -= water;
+    const sector = entry.zone === undefined ? null : zoneSector(entry.zone);
+    if (sector && sector !== 'res') room[sector] -= entry.jobs ?? 0;
     this.constructing.set(placed.id, CONSTRUCTION_TICKS);
     added.push(placed);
   }

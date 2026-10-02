@@ -1,16 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import { tileIndex } from '../shared/constants';
 import { BuildingState, FieldId, Problem, RoadTier, ZoneType } from '../shared/types';
-import type { BuildingCatalogEntry, DemandLevels, FarmKind, GridState } from '../shared/types';
+import type {
+  BuildingCatalogEntry,
+  BuildingKind,
+  DemandLevels,
+  FarmKind,
+  GridState,
+} from '../shared/types';
 import { SoilGrade } from '../shared/soil';
 import { BuildingRegistry } from './buildings';
 import {
   GrowthSystem,
+  UNLIMITED_ROOM,
   UNMETERED_SUPPLY,
   drawKind,
   farmKindFor,
   lotGrade,
   spawnCandidates,
+  withinRoom,
 } from './growth';
 import { recomputeUtilities } from './network';
 import type { GrowthSupply, Rng } from './growth';
@@ -1411,6 +1419,115 @@ describe('the lot picks its building', () => {
     new GrowthSystem(kinds, constantRng(0), onZonedGround).tick(g, registry, wantsHomes, 1, 0);
     expect(registry.get(inst.id)).toBeUndefined();
     expect(registry.all().map((b) => b.catalogId)).toEqual(['duplex-2']);
+  });
+});
+
+describe('a business opens where the town has room for its jobs', () => {
+  const wantsShops: DemandLevels = { res: 0, com: 1, ind: 0 };
+  const business = (
+    id: string,
+    kind: BuildingKind,
+    zone: ZoneType,
+    level: number,
+    w: number,
+    d: number,
+    jobs: number,
+    share?: number,
+  ): BuildingCatalogEntry => ({
+    ...resL1,
+    id,
+    category: 'com',
+    zone,
+    kind,
+    level,
+    share,
+    footprint: { w, d },
+    residents: undefined,
+    jobs,
+  });
+  const shop = business('shop-1', 'shop', ZoneType.ComLow, 1, 1, 1, 8, 1);
+  const strip = business('strip-1', 'strip', ZoneType.ComLow, 1, 3, 2, 51, 1000);
+  const office1 = business('office-1', 'office', ZoneType.ComHigh, 1, 2, 2, 228, 1);
+  const office2 = business('office-2', 'office', ZoneType.ComHigh, 2, 3, 3, 820);
+  const catalog = [shop, strip, office1, office2];
+  const onZoned =
+    (zone: ZoneType) => (g: GridState, x: number, z: number, w: number, d: number) => {
+      for (let dz = 0; dz < d; dz++) {
+        for (let dx = 0; dx < w; dx++) {
+          if (g.zone[tileIndex(x + dx, z + dz)] !== zone) return false;
+        }
+      }
+      return true;
+    };
+  /** A street along z = 0 and a served block of `zone` below it, as desirable as land gets. */
+  function block(zone: ZoneType, w: number, d: number): GridState {
+    const g = makeGrid();
+    g.fields[FieldId.LandValue]!.fill(255);
+    for (let x = 0; x < w + 2; x++) g.roadTier[tileIndex(x, 0)] = RoadTier.TwoLane;
+    for (let z = 1; z <= d; z++) {
+      for (let x = 0; x < w; x++) {
+        const i = tileIndex(x, z);
+        g.zone[i] = zone;
+        g.power[i] = 1;
+        g.watered[i] = 1;
+      }
+    }
+    return g;
+  }
+
+  it('keeps only the kinds whose jobs fit the room, and always the smallest', () => {
+    expect(withinRoom([shop, strip], 'com', { com: 10, ind: 0 })).toEqual([shop]);
+    expect(withinRoom([shop, strip], 'com', { com: 60, ind: 0 })).toEqual([shop, strip]);
+    expect(withinRoom([shop, strip], 'com', { com: -5, ind: 0 })).toEqual([shop]);
+    expect(withinRoom([strip], 'com', { com: 0, ind: 0 })).toEqual([strip]);
+    expect(withinRoom([shop, strip], 'res', { com: 0, ind: 0 })).toEqual([shop, strip]);
+    expect(withinRoom([shop, strip], 'com', UNLIMITED_ROOM)).toEqual([shop, strip]);
+  });
+
+  it('grows a corner shop, not a shopping strip, where the town supports ten jobs', () => {
+    const g = block(ZoneType.ComLow, 6, 2);
+    const registry = new BuildingRegistry(catalog);
+    // A roll near one would pick the strip, the heavier kind, whenever it is a candidate.
+    const growth = new GrowthSystem(catalog, constantRng(0.99), onZoned(ZoneType.ComLow));
+    growth.tick(g, registry, wantsShops, 1, 0, UNMETERED_SUPPLY, { com: 10, ind: 0 });
+    const grown = registry.all().map((b) => b.catalogId);
+    expect(grown.length).toBeGreaterThan(0);
+    expect(new Set(grown)).toEqual(new Set(['shop-1']));
+  });
+
+  it('grows the strip where the town has room for it, and hands the room out once a pass', () => {
+    const g = block(ZoneType.ComLow, 6, 4);
+    const registry = new BuildingRegistry(catalog);
+    const growth = new GrowthSystem(catalog, constantRng(0.99), onZoned(ZoneType.ComLow));
+    // Room for one strip and a little over: the first lot takes it, the next gets a shop.
+    growth.tick(g, registry, wantsShops, 1, 0, UNMETERED_SUPPLY, { com: 60, ind: 0 });
+    expect(registry.all().map((b) => b.catalogId)).toEqual(['strip-1', 'shop-1']);
+  });
+
+  it('lets a business level up only with room for the jobs it adds', () => {
+    const g = block(ZoneType.ComHigh, 3, 3);
+    const registry = new BuildingRegistry(catalog);
+    const inst = registry.place(g, office1, 0, 1, 0, BuildingState.Active)!;
+    g.fields[FieldId.LandValue]![tileIndex(0, 1)] = 200;
+    const growth = new GrowthSystem(catalog, constantRng(0), onZoned(ZoneType.ComHigh));
+
+    growth.tick(g, registry, wantsShops, 4, 0, UNMETERED_SUPPLY, { com: 500, ind: 0 });
+    expect(registry.get(inst.id)!.level).toBe(1);
+
+    growth.tick(g, registry, wantsShops, 4, 10, UNMETERED_SUPPLY, { com: 592, ind: 0 });
+    expect(registry.get(inst.id)).toBeUndefined();
+    expect(registry.all().map((b) => b.catalogId)).toEqual(['office-2']);
+  });
+
+  it('never holds a home to the room: homes follow residential demand alone', () => {
+    const g = block(ZoneType.ResLow, 2, 2);
+    const registry = new BuildingRegistry(growthCatalog);
+    const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
+    growth.tick(g, registry, { res: 1, com: 0, ind: 0 }, 0, 0, UNMETERED_SUPPLY, {
+      com: -100,
+      ind: -100,
+    });
+    expect(registry.all().length).toBeGreaterThan(0);
   });
 });
 

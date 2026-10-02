@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,533 tests passing across 154 test files, run 2026-10-02.
+**Test suite:** 4,580 tests passing across 154 test files, run 2026-10-02.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -69,8 +69,9 @@ History, §10 below.
 **Building types** are under way: a zoned lot draws a kind of building by lot
 fit and real-world share, and keeps it for life
 ([building-types.md](game-design/features/building-types.md)). The
-residential kinds are built; commercial kinds, then industrial kinds with a
-Heavy Industrial zone, follow in their own changes.
+residential and commercial kinds are built, and a business opens only where
+the town has room for its jobs; industrial kinds with a Heavy Industrial zone
+follow in their own change.
 
 **Open:**
 
@@ -78,9 +79,14 @@ Heavy Industrial zone, follow in their own changes.
   draw (0.34 kL a person a day) it serves about 1,200 people, so a city
   needs one tower per 1,200; the ploppable utilities want the same
   re-derivation the zoned catalog had.
-- Commercial building kinds (shop formats and layouts) and industrial kinds
-  by business type, with a Heavy Industrial zone: the next two changes of the
-  building-types epic.
+- Industrial kinds by business type, with a Heavy Industrial zone: the last
+  change of the building-types epic.
+- The level 2 and 3 setback tiers (`computeSetbacks`) stand inside the
+  full-height body the instancer draws, so the stepped silhouette
+  [art/buildings.md](art/buildings.md) describes under "Silhouette variety"
+  never shows; only their lids did, fighting the roof, until they were
+  stopped a hair under it. Either the body should stop at the base tier or
+  the art doc should stop promising the steps.
 - A walled motorway draws no auxiliary lane beside its slip roads: the wall
   stands at the edge of the road's own section and takes the room the lane
   would use. The lane is drawing only, so no traffic figure changes.
@@ -241,6 +247,34 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Commercial building kinds, and a business that fits the town (2026-10-02)
+
+The second building-types change. A commercial lot draws a kind the way a
+residential one does, and a business opens only where the economy has room
+for its jobs.
+
+- **Seven commercial kinds**, every figure sourced: shop, restaurant and
+  filling station from the first milestone, shopping strip and supermarket
+  from the second, office and hotel at high density. Lots and plates follow
+  the DOE reference buildings and the survey's sizes; jobs follow the
+  employment density guide; power is the survey's electricity per square foot
+  by activity; water is per employee, per diner or per room.
+- **Room.** The demand model's two gaps — local jobs supported and basic jobs
+  wanted, less those open or going up — reach growth as the jobs each sector
+  has room for. A kind is a candidate only if its jobs fit, except the
+  smallest that fits the lot; a business levels up only with room for what it
+  adds; the room counts down as the pass builds. Before this a strip mall of
+  eighty jobs could open in a village that supported ten.
+- **On screen:** a filling station is a kiosk behind a tall canopy on four
+  posts, two pump islands under it and the cars at the pumps; an office is a
+  glass block with no shopfront; a hotel has its entrance canopy and sign;
+  the strip, the supermarket and the restaurant are storefronts on lots that
+  are mostly car park.
+- **Found on the way:** a level-3 store one storey tall showed hatching across
+  its roof, where the top setback tier's lid lay exactly in the roof's plane;
+  the tiers now stop a hair under the roof. The mixed block's shops drew the
+  all-buildings electricity figure by mistake; they draw the mercantile one.
 
 ### Residential building kinds (asked for and built 2026-10-01)
 

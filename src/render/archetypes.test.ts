@@ -44,7 +44,21 @@ describe('archetypeFor', () => {
     expect(isCleanIndustry(entry({ category: 'park' }))).toBe(false);
   });
 
-  it('splits commerce into a shopfront and a bigger block', () => {
+  it('reads a business off its kind: storefronts, a filling station, an office, a hotel', () => {
+    const com = (kind: BuildingKind, level = 1) => entry({ category: 'com', kind, level });
+    for (const kind of ['shop', 'strip', 'supermarket', 'restaurant'] as const) {
+      expect(archetypeFor(com(kind))).toBe('storefront');
+      expect(archetypeFor(com(kind, 3))).toBe('storefront');
+    }
+    expect(archetypeFor(com('fuel'))).toBe('fuelStation');
+    expect(partsFor(com('fuel'))).toEqual(['fuelCanopy', 'pumps']);
+    expect(archetypeFor(com('office', 3))).toBe('office');
+    expect(partsFor(com('office'))).toEqual([]);
+    expect(archetypeFor(com('hotel'))).toBe('hotel');
+    expect(partsFor(com('hotel'))).toEqual(['canopy', 'signageBand']);
+  });
+
+  it('splits commerce with no kind into a shopfront and a bigger block, as before', () => {
     expect(archetypeFor(entry({ category: 'com', level: 1 }))).toBe('storefront');
     expect(archetypeFor(entry({ category: 'com', level: 2 }))).toBe('retailBlock');
   });
