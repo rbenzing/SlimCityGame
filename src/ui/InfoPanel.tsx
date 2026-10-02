@@ -208,8 +208,20 @@ export function InfoPanel(): JSX.Element | null {
           {entry?.utility?.waterKL !== undefined && (
             <Row label="Output" value={`${entry.utility.waterKL} kL`} />
           )}
+          {entry?.utility?.waterKL !== undefined && info?.intakeYield !== undefined && (
+            <Row
+              label="Delivers"
+              value={`${Math.round(entry.utility.waterKL * info.intakeYield)} kL${
+                info.intakeYield < 1 ? ' (fouled water)' : ''
+              }`}
+              testId="intake-yield-row"
+            />
+          )}
           {entry?.utility?.sewerKL !== undefined && (
             <Row label="Drains" value={`${entry.utility.sewerKL} kL`} />
+          )}
+          {entry?.utility?.effluent !== undefined && (
+            <Row label="Effluent" value={`${Math.round(entry.utility.effluent * 100)}% of raw`} />
           )}
 
           {info?.occupancy.households && (

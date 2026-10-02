@@ -101,6 +101,54 @@ export function depthColor(depth: number): [number, number, number] {
 }
 
 // ---------------------------------------------------------------------------
+// Fouling: where the city's drains empty, the surface goes from its depth
+// colour toward a murky brown, by the sim's 0..255 fouling of the tiles that
+// meet at each vertex.
+// ---------------------------------------------------------------------------
+
+/** The colour of water fully fouled by raw sewage: a murky brown, warm enough to read against the blue at distance. */
+export const FOUL_WATER_COLOR: readonly [number, number, number] = [0.36, 0.28, 0.14];
+
+/**
+ * How far toward the foul colour the surface goes for a fouling of `foul`
+ * (0..1): the square root, so a village's few units read as a visible smudge
+ * and a saturated outfall is fully brown. The sim's figure stays linear; this
+ * is the eye's curve only. Pure.
+ */
+export function foulMix(foul: number): number {
+  return Math.sqrt(clamp01(foul));
+}
+
+/** The surface colour at `depth` once fouled by `foul` (0..1): the depth colour mixed toward the foul colour by foulMix. Pure. */
+export function fouledColor(depth: number, foul: number): [number, number, number] {
+  return lerp3(depthColor(depth), FOUL_WATER_COLOR, foulMix(foul));
+}
+
+/**
+ * The fouling a vertex carries, 0..1: the worst of the (up to four) tiles
+ * that meet at it, so a stain never falls between vertices. `tx`/`tz` is the
+ * tile corner the vertex stands on. Pure.
+ */
+export function vertexFouling(
+  waterFoul: Uint8Array,
+  sizeTiles: number,
+  tx: number,
+  tz: number,
+): number {
+  let worst = 0;
+  for (let dz = -1; dz <= 0; dz++) {
+    for (let dx = -1; dx <= 0; dx++) {
+      const x = tx + dx;
+      const z = tz + dz;
+      if (x < 0 || z < 0 || x >= sizeTiles || z >= sizeTiles) continue;
+      const v = waterFoul[z * sizeTiles + x] ?? 0;
+      if (v > worst) worst = v;
+    }
+  }
+  return worst / 255;
+}
+
+// ---------------------------------------------------------------------------
 // Gentle sine-sum vertex swell (amplitude <= SWELL_AMPLITUDE_BUDGET_M total,
 // 0.35m) — the actual vertical bob of the surface, low
 // frequency/long wavelength.
@@ -353,6 +401,8 @@ export class WaterRenderer {
   private readonly skyHorizonUniform = uniform(new THREE.Vector3(...DEFAULT_SKY_HORIZON_COLOR));
   private readonly sunLight: THREE.DirectionalLight | null;
   private readonly scratchLightDir = new THREE.Vector3();
+  private readonly foulAttribute: THREE.BufferAttribute;
+  private readonly sizeTiles: number;
 
   constructor(scene: THREE.Scene, heightAt: HeightSampler, mapSizeTiles: number = MAP_SIZE) {
     this.sunLight = findDirectionalLight(scene);
@@ -376,6 +426,10 @@ export class WaterRenderer {
       depths[i] = Math.max(0, SEA_LEVEL - heightAt(worldX, worldZ));
     }
     geometry.setAttribute('waterDepth', new THREE.BufferAttribute(depths, 1));
+    this.foulAttribute = new THREE.BufferAttribute(new Float32Array(position.count), 1);
+    this.foulAttribute.setUsage(THREE.DynamicDrawUsage);
+    geometry.setAttribute('waterFoul', this.foulAttribute);
+    this.sizeTiles = mapSizeTiles;
 
     this.material = this.createMaterial();
 
@@ -394,6 +448,28 @@ export class WaterRenderer {
    * the same light the day/night cycle drives; falls back to a fixed
    * overhead direction if the scene has none, e.g. in isolated tests).
    */
+  /**
+   * Retints the surface from the sim's fouling layer (0..255 per tile): each
+   * vertex takes the worst of the tiles that meet at it. Called only when a
+   * snapshot carries a new layer, so the attribute is rewritten rarely.
+   */
+  setFouling(waterFoul: Uint8Array): void {
+    const position = this.mesh.geometry.attributes.position;
+    if (!position) return;
+    const values = this.foulAttribute.array as Float32Array;
+    for (let i = 0; i < position.count; i++) {
+      const tx = Math.round(position.getX(i) / TILE_METERS);
+      const tz = Math.round(position.getZ(i) / TILE_METERS);
+      values[i] = vertexFouling(waterFoul, this.sizeTiles, tx, tz);
+    }
+    this.foulAttribute.needsUpdate = true;
+  }
+
+  /** The fouling the surface currently carries at a vertex, 0..1, for checks. */
+  foulingAtVertex(index: number): number {
+    return (this.foulAttribute.array as Float32Array)[index] ?? 0;
+  }
+
   update(dtMs: number, nightFactor: number): void {
     this.timeUniform.value += Math.max(0, dtMs) / 1000;
     this.nightFactorUniform.value = clamp01(nightFactor);
@@ -450,9 +526,13 @@ export class WaterRenderer {
     // color, the sky-reflection fresnel weight, and the shoreline foam.
     const depthAttr = attribute<'float'>('waterDepth', 'float');
 
-    // Depth-keyed base color (shallow teal near shores -> deep navy over depth).
+    // Depth-keyed base color (shallow teal near shores -> deep navy over depth),
+    // then fouled toward the sewage brown by the per-vertex fouling — mirrors
+    // fouledColor exactly.
     const depthT = clamp(depthAttr.div(MAX_WATER_DEPTH_VIS), 0, 1);
-    const baseColor = mix(vec3(...SHALLOW_WATER_COLOR), vec3(...DEEP_WATER_COLOR), depthT);
+    const cleanColor = mix(vec3(...SHALLOW_WATER_COLOR), vec3(...DEEP_WATER_COLOR), depthT);
+    const foulAttr = attribute<'float'>('waterFoul', 'float');
+    const baseColor = mix(cleanColor, vec3(...FOUL_WATER_COLOR), clamp(foulAttr, 0, 1).sqrt());
 
     // Positional phase warp shared by every wave/foam phase below —
     // mirrors phaseWarp(x, z) exactly (see its doc for why: straight

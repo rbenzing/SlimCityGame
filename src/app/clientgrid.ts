@@ -84,6 +84,8 @@ export class ClientGridMirror {
   readonly powerLine: Uint8Array;
   /** Where a water pipe is laid (see GridState.waterPipe); what the pipe overlay draws. */
   readonly waterPipe: Uint8Array;
+  /** How fouled each water tile is, 0..255 (see GridState.waterFoul); what tints the water surface. */
+  readonly waterFoul: Uint8Array;
   readonly buildingId: Uint32Array;
   /** The worker's road network as last received; absent until the first snapshot. */
   roads?: RoadNet;
@@ -125,6 +127,7 @@ export class ClientGridMirror {
     this.power = new Uint8Array(n);
     this.powerLine = new Uint8Array(n);
     this.waterPipe = new Uint8Array(n);
+    this.waterFoul = new Uint8Array(n);
     this.buildingId = new Uint32Array(n);
     this.roadFootprint = new Uint8Array(n);
     this.roadSeparate = new Uint8Array(n);
@@ -168,13 +171,22 @@ export class ClientGridMirror {
 
   /** Folds the worker's pipe rectangles in, the shape every painted layer travels in. */
   applyWaterPipePatches(patches: readonly ZonePatch[]): void {
+    this.applyLayerPatches(this.waterPipe, patches);
+  }
+
+  /** Folds the worker's fouling rectangles in: how fouled each water tile is now. */
+  applyWaterFoulPatches(patches: readonly ZonePatch[]): void {
+    this.applyLayerPatches(this.waterFoul, patches);
+  }
+
+  private applyLayerPatches(layer: Uint8Array, patches: readonly ZonePatch[]): void {
     for (const patch of patches) {
       for (let dz = 0; dz < patch.h; dz++) {
         for (let dx = 0; dx < patch.w; dx++) {
           const x = patch.x + dx;
           const z = patch.z + dz;
           if (!this.inBounds(x, z)) continue;
-          this.waterPipe[this.idx(x, z)] = patch.data[dz * patch.w + dx] ?? 0;
+          layer[this.idx(x, z)] = patch.data[dz * patch.w + dx] ?? 0;
         }
       }
     }

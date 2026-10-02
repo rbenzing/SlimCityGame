@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,693 tests passing across 156 test files, run 2026-10-02.
+**Test suite:** 4,710 tests passing across 156 test files, run 2026-10-02.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -81,17 +81,18 @@ painted on open ground carries water and sewage together between them and
 the streets, the way a power line carries power. Every zoned building sends
 88% of its water back as sewage, a lot with no drain to take it never
 grows, and a building left without one stinks. The water tower is
-re-derived from a standard 100,000-gallon tank; the figures and their
-sources are in
+re-derived from a standard 100,000-gallon tank. **And the water remembers:**
+where a drain empties, the water goes brown for 500 m along the shore, on
+the surface itself, and a pumping station drinking from that stretch
+delivers less the browner it is. The **sewage treatment works** takes the
+same sewage at five times the price and fouls the water at a seventh of
+the rate. The figures and their sources are in
 [water-and-sewage.md](game-design/features/water-and-sewage.md).
 
 **Open:**
 
-- **The rest of the water loop**, in the order the water-and-sewage design
-  agreed: a river spoiled where a drain pipe empties into it and an intake
-  that draws less from fouled water, with a **sewage treatment plant** that
-  cleans what it takes before it goes back; then the power ploppables
-  re-derived the way the water ones were — a generator's supply as its
+- **The power ploppables re-derived** the way the water ones were, the last
+  of the three water-and-sewage changes: a generator's supply as its
   nameplate times a published capacity factor, the wind turbine a real
   3 MW-class machine drawn at its real size, costs from published $/kW.
 - The coal plant's and the incinerator's pollution figures (140, 120) are
@@ -122,8 +123,7 @@ sources are in
 
 Before writing "not built" anywhere in this document, check the code.
 
-**Next:** the rest of the water loop, first in the Open list above — a
-spoiled shore and a treatment plant, then the power ploppables re-derived.
+**Next:** the power ploppables re-derived, first in the Open list above.
 After that the [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper
 industry, more transit modes) and AI raster map packs, facade-atlas stage 2
 and screen-space AO/reflections are the shelf to pick from.
@@ -266,6 +266,39 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The water remembers: a fouled shore, a fouled intake, and a works (built 2026-10-02)
+
+The second of three water-and-sewage changes
+([water-and-sewage.md](game-design/features/water-and-sewage.md)).
+
+- **The water carries what the drains empty.** Every drain or works the
+  network reaches discharges its share of the sewage actually drained into
+  the water beside it, and the fouling spreads over connected water only,
+  worst at the mouth and fading to nothing 25 tiles (500 m) along, two
+  stains meeting taking the worse. A drain taking nothing fouls nothing. It
+  is a derived layer (`g.waterFoul`), rebuilt every utility pass and never
+  saved, so an old save fouls its water from its own drains on loading.
+- **The water surface shows it without a lens**: each vertex of the water
+  plane carries the worst fouling of the tiles meeting at it, and the
+  surface colour mixes toward a murky brown by it.
+- **A pumping station drinking fouled water delivers less**: its yield is
+  its rating scaled by the worst fouling beside it, the yield is what the
+  water supply counts and the water cut runs on, and the tower on its
+  borehole is never scaled. The sewer pass now runs before the water pass.
+  The inspector reads what a station delivers, the City Info popover's
+  water line counts what fouling cost, and the Advisor names the remedies:
+  move the drain, or treat the sewage.
+- **The Sewage Treatment Works** (2×2, Busy Township, ¢9,000) takes the
+  drain's 3,785 kL a day on a shore and discharges 15% of the load, the
+  secondary-treatment standard against raw sewage, for 93 kW: it fouls the
+  ground at 26 and the water at a seventh of a drain's rate. Its kit is two
+  clarifier tanks, a control house and the outfall pipe, facing the water.
+- **Tests**: the spread, the share, the stranded drain, the yield and the
+  pass order; the surface colour and the vertex tint; the works' figures
+  against their sources; the kits; the inspector, the popover and the
+  Advisor; a town drinking beside its drain, then treating its sewage; and
+  the small town building the works on its quay.
 
 ### Clipped text shows in full on hover (asked for and built 2026-10-02)
 

@@ -61,6 +61,7 @@ export const UTILITY_KIT_CATALOG_IDS: readonly string[] = [
   'water-tower',
   'water-pump',
   'water-drain',
+  'sewage-works',
   'coal-plant',
   'incinerator',
   'small-park',
@@ -76,6 +77,8 @@ export type UtilityKitPartKind =
   | 'pumpIntake'
   | 'drainHeadwall'
   | 'drainOutfall'
+  | 'worksBody'
+  | 'worksOutfall'
   | 'coalHall'
   | 'coalSmokestack'
   | 'coalHeap'
@@ -477,8 +480,17 @@ const DRAIN_HEADWALL_SIZE = { w: 6, h: 2.4, d: 1.6 };
 export const DRAIN_OUTFALL_RADIUS = 0.8;
 export const DRAIN_OUTFALL_OVERHANG = 4;
 const DRAIN_OUTFALL_BACK = 3;
+/** A works' two round clarifiers, side by side on the land side, and its control house by the outfall. */
+export const WORKS_CLARIFIER_RADIUS = 6;
+const WORKS_CLARIFIER_HEIGHT = 3;
+const WORKS_CLARIFIER_SPACING = 18;
+const WORKS_CLARIFIER_SETBACK = -7;
+const WORKS_HOUSE_SIZE = { w: 10, h: 5, d: 7 };
+const WORKS_HOUSE_OFFSET = { x: 11, z: 9 };
 
 const PUMP_HOUSE_RGB: RGB = [0.78, 0.78, 0.76];
+const CLARIFIER_RGB: RGB = [0.7, 0.71, 0.7];
+const CLARIFIER_WATER_RGB: RGB = [0.3, 0.42, 0.45];
 const PUMP_PLANT_ROOM_RGB: RGB = [0.5, 0.52, 0.55];
 const PIPE_STEEL_RGB: RGB = [0.33, 0.36, 0.4];
 const HEADWALL_RGB: RGB = [0.6, 0.6, 0.58];
@@ -556,6 +568,42 @@ function buildDrainOutfallGeometry(footprint: FootprintSize): THREE.BufferGeomet
     halfD + DRAIN_OUTFALL_OVERHANG,
     DRAIN_OUTFALL_RADIUS,
   );
+}
+
+/**
+ * The works: two round clarifier tanks side by side toward the land, each a
+ * concrete ring with a disc of settled water inside, and a control house by
+ * the water, in the pumping station's pale concrete.
+ */
+function buildWorksBodyGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  for (const sx of [-1, 1]) {
+    const x = (sx * WORKS_CLARIFIER_SPACING) / 2;
+    const ring = new THREE.CylinderGeometry(
+      WORKS_CLARIFIER_RADIUS,
+      WORKS_CLARIFIER_RADIUS,
+      WORKS_CLARIFIER_HEIGHT,
+      20,
+    );
+    ring.translate(x, WORKS_CLARIFIER_HEIGHT / 2, WORKS_CLARIFIER_SETBACK);
+    paintVertexColor(ring, hexFromRgb(CLARIFIER_RGB));
+    parts.push(ring);
+    const pool = new THREE.CylinderGeometry(
+      WORKS_CLARIFIER_RADIUS - 0.6,
+      WORKS_CLARIFIER_RADIUS - 0.6,
+      0.2,
+      20,
+    );
+    pool.translate(x, WORKS_CLARIFIER_HEIGHT + 0.1, WORKS_CLARIFIER_SETBACK);
+    paintVertexColor(pool, hexFromRgb(CLARIFIER_WATER_RGB));
+    parts.push(pool);
+  }
+  const { w, h, d } = WORKS_HOUSE_SIZE;
+  const house = new THREE.BoxGeometry(w, h, d);
+  house.translate(WORKS_HOUSE_OFFSET.x, h / 2, WORKS_HOUSE_OFFSET.z);
+  paintVertexColor(house, hexFromRgb(PUMP_HOUSE_RGB));
+  parts.push(house);
+  return mergeParts(parts);
 }
 
 // ---------------------------------------------------------------------------
@@ -1083,6 +1131,8 @@ export class UtilityKitRenderer {
         return this.buildPumpKit(entry);
       case 'water-drain':
         return this.buildDrainKit(entry);
+      case 'sewage-works':
+        return this.buildWorksKit(entry);
       case 'coal-plant':
         return this.buildCoalPlantKit(entry);
       case 'incinerator':
@@ -1182,6 +1232,28 @@ export class UtilityKitRenderer {
           INITIAL_KIT_CAPACITY,
         ),
         drainOutfall: new InstancedSlotPool(
+          this.scene,
+          buildDrainOutfallGeometry(entry.footprint),
+          lambert(),
+          INITIAL_KIT_CAPACITY,
+        ),
+      },
+    };
+  }
+
+  private buildWorksKit(entry: BuildingCatalogEntry): KitDefinition {
+    const lambert = (): THREE.MeshLambertMaterial =>
+      new THREE.MeshLambertMaterial({ vertexColors: true });
+    return {
+      entry,
+      pools: {
+        worksBody: new InstancedSlotPool(
+          this.scene,
+          buildWorksBodyGeometry(),
+          lambert(),
+          INITIAL_KIT_CAPACITY,
+        ),
+        worksOutfall: new InstancedSlotPool(
           this.scene,
           buildDrainOutfallGeometry(entry.footprint),
           lambert(),
@@ -1330,6 +1402,18 @@ export class UtilityKitRenderer {
           entry,
           'drainHeadwall',
           'drainOutfall',
+          centerX,
+          groundY,
+          centerZ,
+        );
+        return;
+      case 'sewage-works':
+        this.applyShorePair(
+          kit,
+          building,
+          entry,
+          'worksBody',
+          'worksOutfall',
           centerX,
           groundY,
           centerZ,

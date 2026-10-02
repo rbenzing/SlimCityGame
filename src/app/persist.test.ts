@@ -66,6 +66,7 @@ function sampleMeta(): SaveMeta {
       waterDemand: 0.8,
       sewerSupply: 0,
       sewerDemand: 0,
+      waterFouled: 0,
       milestoneLevel: 0,
       milestoneProgress: 0.02,
       loanBalance: 0,

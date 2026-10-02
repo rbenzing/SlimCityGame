@@ -144,6 +144,7 @@ export function createInitialStats(): CityStats {
     waterDemand: 0,
     sewerSupply: 0,
     sewerDemand: 0,
+    waterFouled: 0,
     milestoneLevel: 0,
     milestoneProgress: 0,
     loanBalance: 0,

@@ -226,6 +226,37 @@ describe('InfoPanel', () => {
     expect(screen.getByText('378.5 kL')).toBeInTheDocument();
   });
 
+  it('shows what a shore intake delivers against its rating, and a works’ effluent', () => {
+    const pump = {
+      id: 7,
+      catalogId: 'water-pump',
+      x: 0,
+      z: 0,
+      rotation: 0 as const,
+      level: 1,
+      state: BuildingState.Active,
+      problems: 0,
+    };
+    useCityStore.getState().setSelectedBuilding(pump);
+    useCityStore.getState().setSelectionInfo({
+      building: pump,
+      happiness: 50,
+      monthlyTax: 0,
+      monthlyUpkeep: 180,
+      occupancy: {},
+      intakeYield: 0.5,
+    });
+    render(<InfoPanel />);
+    expect(screen.getByTestId('intake-yield-row')).toHaveTextContent('1893 kL (fouled water)');
+    cleanup();
+    useCityStore.getState().setSelectedBuilding({ ...pump, id: 8, catalogId: 'sewage-works' });
+    useCityStore.getState().setSelectionInfo(null);
+    render(<InfoPanel />);
+    expect(screen.getByText('Effluent')).toBeInTheDocument();
+    expect(screen.getByText('15% of raw')).toBeInTheDocument();
+    expect(screen.queryByTestId('intake-yield-row')).not.toBeInTheDocument();
+  });
+
   it('shows what a drain takes, and names the sewer problems', () => {
     useCityStore.getState().setSelectedBuilding({
       id: 2,

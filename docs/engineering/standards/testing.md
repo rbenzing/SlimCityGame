@@ -94,7 +94,8 @@ could have sent:
   the ramp road and the motorway cross the river;
 - power (a coal plant and a wind turbine) and water towers, with a water
   pumping station on the river bank, a water pipe carrying the river's water
-  to the avenue, and a water drain pipe sending the town's sewage back;
+  to the avenue, a water drain pipe sending the town's sewage back, and a
+  sewage treatment works on the quay beside it;
 - every zone: low- and high-density homes and shops, row housing, apartments,
   mixed housing, light and heavy industry, and farmland;
 - farms off a dirt road that no road joins to the town, so no water main

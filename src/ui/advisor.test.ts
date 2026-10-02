@@ -27,6 +27,7 @@ function healthyStats(overrides: Partial<CityStats> = {}): CityStats {
     waterDemand: 50,
     sewerSupply: 100,
     sewerDemand: 50,
+    waterFouled: 0,
     milestoneLevel: 1,
     milestoneProgress: 0.5,
     loanBalance: 0,
@@ -244,6 +245,18 @@ describe('a grid too small for its city', () => {
 
   it('says nothing when growth is waiting for none of them', () => {
     expect(cityIssues([], healthyStats(), { power: 0, water: 0, sewer: 0 })).toEqual([]);
+  });
+
+  it('warns when an intake is drinking fouled water, and names the two remedies', () => {
+    const issues = cityIssues([], healthyStats({ waterFouled: 1500 }));
+    const fouled = issues.find((i) => i.id === 'intake-fouled');
+    expect(fouled?.severity).toBe('warning');
+    expect(fouled?.detail).toContain('1500 kL');
+    expect(fouled?.detail).toContain('Move the drain pipe');
+    expect(fouled?.detail).toContain('treat the sewage');
+    expect(
+      cityIssues([], healthyStats({ waterFouled: 0 })).some((i) => i.id === 'intake-fouled'),
+    ).toBe(false);
   });
 });
 

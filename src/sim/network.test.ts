@@ -1,8 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import type { BuildingCatalogEntry, BuildingInstance, GridState, TilePoint } from '../shared/types';
 import { BuildingState, RoadTier } from '../shared/types';
-import { SEWAGE_RETURN_FRACTION, tileIndex } from '../shared/constants';
-import { cityWaterUse, recomputeUtilities, sewageOf, utilityCanDeliver } from './network';
+import {
+  SEWAGE_RETURN_FRACTION,
+  WATER_FOUL_PER_KL,
+  WATER_FOUL_REACH_TILES,
+  tileIndex,
+} from '../shared/constants';
+import {
+  cityWaterUse,
+  foulingAt,
+  foulingOf,
+  intakeYieldOf,
+  recomputeUtilities,
+  sewageOf,
+  spreadFouling,
+  utilityCanDeliver,
+  waterBeside,
+} from './network';
 import { createGrid } from '../world/grid';
 import { tileCentreCm } from '../shared/roadgeom';
 import { applyRoad, settleArms } from '../world/roads';
@@ -420,6 +435,167 @@ describe('recomputeUtilities: the sewer', () => {
     expect(utilityCanDeliver(g, drain.utility!, [tileIndex(5, 5)])).toBe(false);
     paintRoad(g, 6, 5);
     expect(utilityCanDeliver(g, drain.utility!, [tileIndex(5, 5)])).toBe(true);
+  });
+});
+
+describe('recomputeUtilities: the fouled water', () => {
+  /** A one-million-gallon outfall, and a works of the same size keeping back 85% of the load. */
+  const outfall: BuildingCatalogEntry = {
+    id: 'outfall',
+    name: 'Outfall',
+    category: 'utility',
+    footprint: { w: 1, d: 1 },
+    height: 4,
+    color: 0,
+    powerUse: 0,
+    waterUse: 0,
+    utility: { sewerKL: 3785 },
+    cost: 0,
+    upkeep: 0,
+    unlockMilestone: 0,
+    requiresAdjacent: 'water',
+  };
+  const works: BuildingCatalogEntry = {
+    ...outfall,
+    id: 'works',
+    name: 'Works',
+    utility: { sewerKL: 3785, effluent: 0.15 },
+  };
+  /** A shore intake of the same class, and a tower that reads no water. */
+  const intake: BuildingCatalogEntry = {
+    ...outfall,
+    id: 'intake',
+    name: 'Intake',
+    footprint: { w: 2, d: 1 },
+    utility: { waterKL: 3785 },
+  };
+  const tower: BuildingCatalogEntry = {
+    ...outfall,
+    id: 'tower',
+    name: 'Tower',
+    utility: { waterKL: 378.5 },
+    requiresAdjacent: undefined,
+  };
+  /** A plant drinking enough that its sewage alone fills the outfall. */
+  const plant: BuildingCatalogEntry = {
+    ...house,
+    id: 'plant',
+    name: 'Plant',
+    waterUse: 4300,
+  };
+  const fouling = [...catalog, outfall, works, intake, tower, plant];
+
+  /** A pond along row 3 from x0 to x1, with the bank at row 4 and a street at row 5. */
+  function pond(g: GridState, x0: number, x1: number, z = 3): void {
+    for (let x = x0; x <= x1; x++) g.water[tileIndex(x, z)] = 1;
+  }
+
+  it('fades in a straight line to nothing at the reach, and saturates at a full outfall', () => {
+    expect(foulingOf(3785)).toBe(255);
+    expect(foulingOf(3785 * 0.15)).toBe(Math.round(3785 * 0.15 * WATER_FOUL_PER_KL));
+    expect(foulingOf(0)).toBe(0);
+    expect(foulingAt(255, 0)).toBe(255);
+    expect(foulingAt(255, 5)).toBe(204);
+    expect(foulingAt(255, WATER_FOUL_REACH_TILES - 1)).toBe(10);
+    expect(foulingAt(255, WATER_FOUL_REACH_TILES)).toBe(0);
+  });
+
+  it('spreads along connected water only, and two stains meeting take the worse', () => {
+    const g = makeGrid();
+    pond(g, 0, 40);
+    pond(g, 0, 5, 10); // a second pond, over land
+    spreadFouling(g, new Map([[tileIndex(5, 3), 255]]));
+    expect(g.waterFoul[tileIndex(5, 3)]).toBe(255);
+    expect(g.waterFoul[tileIndex(10, 3)]).toBe(204);
+    expect(g.waterFoul[tileIndex(29, 3)]).toBe(10);
+    expect(g.waterFoul[tileIndex(30, 3)]).toBe(0);
+    expect(g.waterFoul[tileIndex(5, 4)]).toBe(0); // the bank
+    expect(g.waterFoul[tileIndex(2, 10)]).toBe(0); // the other pond
+
+    spreadFouling(
+      g,
+      new Map([
+        [tileIndex(5, 3), 255],
+        [tileIndex(9, 3), 100],
+      ]),
+    );
+    expect(g.waterFoul[tileIndex(7, 3)]).toBe(Math.max(foulingAt(255, 2), foulingAt(100, 2)));
+    expect(g.waterFoul[tileIndex(12, 3)]).toBe(Math.max(foulingAt(255, 7), foulingAt(100, 3)));
+    // A pass with nothing emitting leaves the water clean.
+    spreadFouling(g, new Map());
+    expect(g.waterFoul[tileIndex(5, 3)]).toBe(0);
+  });
+
+  it('a drain empties its share of the sewage actually drained, a works a seventh of it, and an idle drain nothing', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    pond(g, 0, 40);
+    placeBuilding(g, buildings, 1, 'outfall', 5, 4, 1, 1);
+    paintRoadRow(g, 5, 20, 5);
+    let totals = recomputeUtilities(g, buildings, fouling);
+    expect(totals.sewerDemand).toBe(0);
+    expect(g.waterFoul[tileIndex(5, 3)]).toBe(0);
+
+    placeBuilding(g, buildings, 2, 'plant', 8, 6, 1, 1);
+    totals = recomputeUtilities(g, buildings, fouling);
+    const sewage = 4300 * SEWAGE_RETURN_FRACTION;
+    expect(totals.sewerDemand).toBeCloseTo(sewage, 6);
+    expect(g.waterFoul[tileIndex(5, 3)]).toBe(foulingOf(sewage));
+    expect(g.waterFoul[tileIndex(6, 3)]).toBe(foulingAt(foulingOf(sewage), 1));
+
+    // Two outfalls share the same sewage between them.
+    placeBuilding(g, buildings, 3, 'outfall', 30, 4, 1, 1);
+    paintRoadRow(g, 21, 30, 5);
+    recomputeUtilities(g, buildings, fouling);
+    expect(g.waterFoul[tileIndex(30, 3)]).toBe(foulingOf(sewage / 2));
+
+    // The works in the second outfall's place empties 15% of its share.
+    buildings.pop();
+    g.buildingId[tileIndex(30, 4)] = 0;
+    placeBuilding(g, buildings, 4, 'works', 30, 4, 1, 1);
+    recomputeUtilities(g, buildings, fouling);
+    expect(g.waterFoul[tileIndex(30, 3)]).toBe(foulingOf((sewage / 2) * 0.15));
+
+    // A stranded outfall, off every main and pipe, takes no share and fouls
+    // nothing itself: the water beside it carries only the works' stain,
+    // eight tiles along, and the other two keep their shares.
+    placeBuilding(g, buildings, 5, 'outfall', 38, 4, 1, 1);
+    recomputeUtilities(g, buildings, fouling);
+    const worksEmit = foulingOf((sewage / 2) * 0.15);
+    expect(g.waterFoul[tileIndex(38, 3)]).toBe(foulingAt(worksEmit, 8));
+    expect(g.waterFoul[tileIndex(30, 3)]).toBe(worksEmit);
+    expect(g.waterFoul[tileIndex(5, 3)]).toBe(foulingOf(sewage / 2));
+  });
+
+  it('an intake yields its rating less the worst fouling beside it, a tower never, and the water is cut on the yield', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    pond(g, 0, 40);
+    placeBuilding(g, buildings, 1, 'outfall', 5, 4, 1, 1);
+    const pump = placeBuilding(g, buildings, 2, 'intake', 6, 4, 2, 1);
+    placeBuilding(g, buildings, 3, 'tower', 12, 4, 1, 1);
+    paintRoadRow(g, 8, 20, 5);
+    g.waterPipe[tileIndex(6, 5)] = 1;
+    g.waterPipe[tileIndex(7, 5)] = 1;
+    g.waterPipe[tileIndex(5, 5)] = 1;
+    const factory = placeBuilding(g, buildings, 4, 'plant', 10, 6, 1, 1);
+
+    const totals = recomputeUtilities(g, buildings, fouling);
+    expect(waterBeside(g, [tileIndex(6, 4), tileIndex(7, 4)])).toEqual([
+      tileIndex(6, 3),
+      tileIndex(7, 3),
+    ]);
+    const emit = foulingOf(4300 * SEWAGE_RETURN_FRACTION);
+    expect(emit).toBe(255);
+    const worst = foulingAt(emit, 1);
+    const yieldFraction = 1 - worst / 255;
+    expect(intakeYieldOf(g, [tileIndex(6, 4), tileIndex(7, 4)])).toBeCloseTo(yieldFraction, 9);
+    expect(totals.intakeYield.get(pump.id)).toBeCloseTo(yieldFraction, 9);
+    expect(totals.intakeYield.has(3)).toBe(false);
+    expect(totals.waterSupply).toBeCloseTo(3785 * yieldFraction + 378.5, 6);
+    expect(totals.waterFouled).toBeCloseTo(3785 * (1 - yieldFraction), 6);
+    // The plant wants 4,300 kL; the fouled intake and the tower together make far less.
+    expect(totals.water.cut).toEqual(new Set([factory.id]));
   });
 });
 

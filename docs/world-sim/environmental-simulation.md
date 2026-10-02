@@ -90,8 +90,11 @@ On the same cadence, an Active building carrying `NoSewer` emits its own
 sewage's oxygen demand on the coal plant's scale — `SEWAGE_POLLUTION_PER_KL`
 per kL a day, and never less than one unit, so an undrained street is never
 nothing on the lens — and a drain pipe emits its catalog figure, the same
-derivation at its rated flow (see
-[utilities-model.md](utilities-model.md#sewage)).
+derivation at its rated flow, a sewage treatment works the same at its
+effluent share (see [utilities-model.md](utilities-model.md#sewage)). What
+either does to the water is not this field: the water's fouling is its own
+derived layer, read only by the intakes and the water surface (see
+[utilities-model.md](utilities-model.md#the-fouled-water)).
 Decays at 0.97/tick on its own slot. **Readers:** growth's `HighPollution`
 problem (> 170, residential lots only) and spawn desirability weighting,
 LandValue's loss term, the Happiness formula, and — as the closest existing

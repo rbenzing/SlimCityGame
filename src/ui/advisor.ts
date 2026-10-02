@@ -306,6 +306,18 @@ function cityWideIssues(stats: CityStats): CityIssue[] {
     });
   }
 
+  // An intake drinking fouled water makes less than it is rated for: the
+  // city's own sewage, emptied too near it.
+  if (stats.waterFouled > 0) {
+    issues.push({
+      id: 'intake-fouled',
+      severity: 'warning',
+      title: 'A pumping station is drinking fouled water',
+      detail: `Sewage emptied near an intake costs the city ${amount(stats.waterFouled, 'kL')} of water a day. Move the drain pipe further along the shore, or treat the sewage at a works.`,
+      count: 0,
+    });
+  }
+
   // Only meaningful once there are people: a brand-new map has no workers and
   // no jobs, and neither is a problem yet. Both sides are measured against the
   // workforce, since the other residents are not looking for work.

@@ -6,6 +6,7 @@ import {
   DEEP_WATER_COLOR,
   DEFAULT_SKY_HORIZON_COLOR,
   DEFAULT_SKY_ZENITH_COLOR,
+  FOUL_WATER_COLOR,
   MOON_GLINT_FRACTION,
   OPACITY_AT_GRAZING_ANGLE,
   OPACITY_AT_NORMAL_INCIDENCE,
@@ -17,6 +18,9 @@ import {
   WaterRenderer,
   depthColor,
   foamStrength,
+  foulMix,
+  fouledColor,
+  vertexFouling,
   glancingOpacity,
   glintScale,
   glintSpecular,
@@ -54,6 +58,60 @@ describe('depthColor', () => {
 
   it('clamps negative depth to the shallow anchor', () => {
     expect(depthColor(-3)).toEqual(depthColor(0));
+  });
+});
+
+describe('fouledColor', () => {
+  const closeTo = (
+    got: readonly [number, number, number],
+    want: readonly [number, number, number],
+  ): void => {
+    for (let i = 0; i < 3; i++) expect(got[i]).toBeCloseTo(want[i]!, 9);
+  };
+
+  it('is the depth colour on clean water and the foul brown on water fully fouled', () => {
+    closeTo(fouledColor(0, 0), SHALLOW_WATER_COLOR);
+    closeTo(fouledColor(MAX_WATER_DEPTH_VIS, 0), DEEP_WATER_COLOR);
+    closeTo(fouledColor(3, 1), FOUL_WATER_COLOR);
+    closeTo(fouledColor(3, 2), FOUL_WATER_COLOR);
+  });
+
+  it('mixes by the square root of the fouling, so a quarter fouled is half brown and a smudge still shows', () => {
+    const clean = depthColor(3);
+    const quarter = fouledColor(3, 0.25);
+    for (let i = 0; i < 3; i++) {
+      expect(quarter[i]).toBeCloseTo((clean[i]! + FOUL_WATER_COLOR[i]!) / 2, 9);
+    }
+    expect(foulMix(0.25)).toBeCloseTo(0.5, 9);
+    // Two units of 255 are under 1% of the scale and about 9% of the mix.
+    expect(foulMix(2 / 255)).toBeGreaterThan(0.08);
+    expect(foulMix(0)).toBe(0);
+    expect(foulMix(1)).toBe(1);
+  });
+
+  it('reads as a brown: more red than green, more green than blue', () => {
+    expect(FOUL_WATER_COLOR[0]).toBeGreaterThan(FOUL_WATER_COLOR[1]);
+    expect(FOUL_WATER_COLOR[1]).toBeGreaterThan(FOUL_WATER_COLOR[2]);
+  });
+});
+
+describe('vertexFouling', () => {
+  it('takes the worst of the tiles meeting at the vertex, so a stain never falls between vertices', () => {
+    const size = 4;
+    const layer = new Uint8Array(size * size);
+    layer[1 * size + 1] = 255; // tile (1, 1)
+    layer[2 * size + 2] = 51; // tile (2, 2)
+    expect(vertexFouling(layer, size, 1, 1)).toBe(1); // corner shared by tiles (0..1, 0..1)
+    expect(vertexFouling(layer, size, 2, 2)).toBe(1); // shared by (1..2, 1..2): the worse wins
+    expect(vertexFouling(layer, size, 3, 3)).toBeCloseTo(0.2, 9);
+    expect(vertexFouling(layer, size, 0, 0)).toBe(0);
+  });
+
+  it('clamps at the map edge instead of reading off it', () => {
+    const size = 2;
+    const layer = new Uint8Array([255, 0, 0, 0]);
+    expect(vertexFouling(layer, size, 0, 0)).toBe(1);
+    expect(vertexFouling(layer, size, 2, 2)).toBe(0);
   });
 });
 
@@ -352,6 +410,32 @@ describe('WaterRenderer', () => {
     }
     expect(maxX).toBeCloseTo(4 * TILE_METERS, 5);
     expect(maxZ).toBeCloseTo(4 * TILE_METERS, 5);
+  });
+
+  it('retints its vertices from the fouling layer, and only the ones a fouled tile meets', () => {
+    const scene = new THREE.Scene();
+    const renderer = new WaterRenderer(scene, flatHeightAt, 4);
+    const mesh = scene.children[0] as THREE.Mesh;
+    const foul = mesh.geometry.getAttribute('waterFoul');
+    expect(foul).toBeDefined();
+    const layer = new Uint8Array(16);
+    layer[1 * 4 + 1] = 255; // tile (1, 1)
+    renderer.setFouling(layer);
+    const position = mesh.geometry.attributes.position!;
+    let atCorner = -1;
+    let atOrigin = -1;
+    for (let i = 0; i < position.count; i++) {
+      const tx = Math.round(position.getX(i) / TILE_METERS);
+      const tz = Math.round(position.getZ(i) / TILE_METERS);
+      const onCorner =
+        Math.abs(position.getX(i) - TILE_METERS) < 1e-6 &&
+        Math.abs(position.getZ(i) - TILE_METERS) < 1e-6;
+      if (onCorner && tx === 1 && tz === 1) atCorner = i;
+      if (position.getX(i) === 0 && position.getZ(i) === 0) atOrigin = i;
+    }
+    expect(atCorner).toBeGreaterThanOrEqual(0);
+    expect(renderer.foulingAtVertex(atCorner)).toBe(1);
+    expect(renderer.foulingAtVertex(atOrigin)).toBe(0);
   });
 
   it('defaults mapSizeTiles to MAP_SIZE when omitted', () => {
