@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.31.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.31.0...slimcity-v1.31.1) (2026-10-02)
+
+
+### Bug Fixes
+
+* **dev:** the grid read-back hook's type names the pipe layer ([bf74074](https://github.com/rbenzing/SlimCityGame/commit/bf7407492ef5bfd043ec865c8523925292c486f4))
+
 ## [1.31.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.30.0...slimcity-v1.31.0) (2026-10-02)
 
 
