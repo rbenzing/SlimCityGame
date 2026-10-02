@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.28.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.27.0...slimcity-v1.28.0) (2026-10-02)
+
+
+### Features
+
+* **growth:** a zoned lot grows a kind of building, residential kinds first ([0379d1c](https://github.com/rbenzing/SlimCityGame/commit/0379d1cb8424df5e0f66fbfa62fbb154fc9be0c1))
+
 ## [1.27.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.26.0...slimcity-v1.27.0) (2026-10-02)
 
 
