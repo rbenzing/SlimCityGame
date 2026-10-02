@@ -6,7 +6,7 @@
       "postedKmh": { "min": 20, "max": 40, "default": 30 },
       "laneFlow": { "vehPerHour": 250 },
       "zonable": true,
-      "carriesWater": true,
+      "carriesWater": false,
       "surface": "gravel",
       "kerbReturnM": 4.5,
       "admits": ["travel", "verge"],
@@ -239,6 +239,7 @@
       "capacity": 200,
       "unlockMilestone": 0,
       "noiseMult": 2,
+      "carriesWater": false,
       "surface": "gravel",
       "roadsideParking": true,
       "profile": {

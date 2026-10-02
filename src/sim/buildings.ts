@@ -27,6 +27,17 @@ export function footprintForRotation(
   return rotation % 2 === 1 ? { w: d, d: w } : { w, d };
 }
 
+/** Every in-bounds tile index of the w×d lot at (x, z). */
+export function lotTiles(x: number, z: number, w: number, d: number): number[] {
+  const tiles: number[] = [];
+  for (let dz = 0; dz < d; dz++) {
+    for (let dx = 0; dx < w; dx++) {
+      if (inBounds(x + dx, z + dz)) tiles.push(tileIndex(x + dx, z + dz));
+    }
+  }
+  return tiles;
+}
+
 /**
  * The building changes since the last snapshot as one delta the render thread
  * can apply in any order: every id in exactly one list, carrying the building

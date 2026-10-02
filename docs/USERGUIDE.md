@@ -218,7 +218,9 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   you just clicked), with the same lines and kerbs it would carry anywhere else.
 - **Zoning** — residential, commercial, industrial and agriculture. Denser residential
   variants (row / medium / mixed-use / high) unlock as you pass milestones. Zoned
-  tiles only develop if they have road access, power, and water.
+  tiles only develop if they have road access, power, and water. The exception
+  is a low-density house off a **dirt road** with no water main beside it: it
+  has its own well, so it needs only road access and power.
 - **Agriculture** — farmland, painted like any zone, and the other way a small
   town earns its living besides a mill. It goes only on land a **dirt road**
   reaches, up to 8 tiles back from it, and only on soil that can be farmed:
@@ -379,10 +381,13 @@ nothing you add gets committed.
 - If a zone won't develop, check the three requirements in order: **road access,
   power, water**. The most common mistake is a utility placed a tile or two away
   from any road — move it flush against one.
-- **Gravel roads carry no electricity** — there is no cable in a dirt track.
-  Anything down a gravel lane stays dark until you run a power line to it, and
-  power won't travel _through_ a gravel stretch to the paved road beyond. Water
-  still runs down one; a pipe and a cable are not the same thing.
+- **Gravel roads carry no electricity and no water**: a dirt track has no
+  cable in it and no main under it. Anything down a gravel lane stays dark
+  until you run a power line to it, and neither power nor water will travel
+  _through_ a gravel stretch to the paved road beyond. Houses and farms down a
+  dirt road need only that power line, because each has its own well.
+  Anything denser, and every shop and workshop, needs a paved street for its
+  water.
 - **Power lines** (Electricity) reach what a road cannot: drag a run from your
   generators out to the lot, the district or the pump that a street doesn't
   connect. A line is cheaper per tile than the cheapest road, but it charges a

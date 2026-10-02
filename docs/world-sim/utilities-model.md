@@ -59,9 +59,12 @@ served if any one tile of its footprint is covered, not all of them.
 ## Conducting roads and power lines
 
 Water conducts along every street-tier road tile whose spec does not set
-`carriesWater: false`; in the current road set only the highway and the ramp
-are excluded, so a suburban street of any tier carries water and a highway
-does not. A tile that fails to conduct is not merely unsupplied — it is not a
+`carriesWater: false`. In the current road set the dirt road, the highway and
+the ramp are excluded, so a paved street of any tier carries water and a
+dirt track or a motorway does not. A dirt road has no main under it, just as
+it has no cable, and the houses along one pump their own wells (see
+[a house on a well](../game-design/simulation-rules.md#a-house-on-a-well)).
+A tile that fails to conduct is not merely unsupplied — it is not a
 bridge either, so the network cannot pass through it to reach a tile beyond.
 
 Power is stricter: a road conducts it only if the road is **sealed**, read
@@ -101,7 +104,9 @@ against the supply, and the moment the running total exceeds it, that
 building — and every building after it — loses coverage on its own footprint
 tiles only. The streets, and every building nearer the source, keep what they
 have. A building the network does not reach is not in the line: it has no
-supply to lose and takes none from anyone else.
+supply to lose and takes none from anyone else. Nor is a house on a private
+well in the water line, even where the network reaches its lot: it draws
+nothing from the mains.
 
 A building keeps its place in the line whatever its state. One under
 construction is about to draw its share, and an abandoned one would draw it

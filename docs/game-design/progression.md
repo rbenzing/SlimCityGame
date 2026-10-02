@@ -84,8 +84,9 @@ Zoned land can also sit empty because its own road brings it nothing. A
 gravel road carries no cable, and a street the mains never reach carries no
 water, so the lots along them can never grow, and no building stands there
 yet to carry a flag. A warning counts every empty zoned tile that stands
-beside a road yet lacks a utility its zone needs (power for every zone,
-water for every zone but farmland), from the snapshot's `zonedUnserved`, and
+beside a road yet lacks a utility its zone needs (power for every zone;
+water for every zone but farmland, and never where a house would stand on
+[a well](simulation-rules.md#a-house-on-a-well)), from the snapshot's `zonedUnserved`, and
 points at the first such tile. Ground zoned too deep to reach the road is not
 counted: the road is not what fails it.
 

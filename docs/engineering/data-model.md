@@ -431,7 +431,7 @@ reproduce:
 | `profile`         | no       | The `RoadProfile` cross-section — present for all 12 current specs. |
 | `noiseMult`       | no       | Noise-field emission multiplier; default `1`.                       |
 | `oneWay`          | no       | Directed edge; default `false`.                                     |
-| `carriesWater`    | no       | Default `true`; highway/ramp set `false`.                           |
+| `carriesWater`    | no       | Default `true`; gravel road, highway and ramp set `false`.          |
 | `surface`         | no       | `'paved' \| 'gravel'`; default `'paved'`.                           |
 | `roadsideParking` | no       | Default `false` — earned explicitly, not by omission.               |
 

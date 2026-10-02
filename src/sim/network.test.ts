@@ -141,15 +141,18 @@ describe('recomputeUtilities: only a sealed road carries a cable', () => {
     expect(g.power[tileIndex(16, 5)]).toBe(0); // and everything past it
   });
 
-  it('still carries water down a gravel lane — a cable and a pipe are not the same thing', () => {
+  it('carries no water down a gravel lane, nor through one: a dirt road has no main', () => {
     const g = makeGrid();
     const buildings: BuildingInstance[] = [];
     placeBuilding(g, buildings, 1, 'water-tower', 5, 5, 1, 1);
-    for (let x = 6; x <= 14; x++) paintRoad(g, x, 5, RoadTier.Gravel);
-    placeBuilding(g, buildings, 2, 'house', 12, 6, 1, 1);
+    for (let x = 6; x <= 9; x++) paintRoad(g, x, 5, RoadTier.TwoLane);
+    for (let x = 10; x <= 12; x++) paintRoad(g, x, 5, RoadTier.Gravel);
+    for (let x = 13; x <= 18; x++) paintRoad(g, x, 5, RoadTier.TwoLane);
 
     recomputeUtilities(g, buildings, catalog);
-    expect(g.watered[tileIndex(12, 6)]).toBe(1);
+    expect(g.watered[tileIndex(8, 5)]).toBe(1); // this side of the gap
+    expect(g.watered[tileIndex(11, 6)]).toBe(0); // beside the gravel
+    expect(g.watered[tileIndex(16, 5)]).toBe(0); // and everything past it
   });
 
   it('a motorway still conducts — it lights itself', () => {
@@ -160,6 +163,42 @@ describe('recomputeUtilities: only a sealed road carries a cable', () => {
 
     recomputeUtilities(g, buildings, catalog);
     expect(g.power[tileIndex(12, 5)]).toBe(1);
+  });
+});
+
+describe('recomputeUtilities: a house on a well', () => {
+  /**
+   * A house at (5, 6) beside a tower at (5, 5), whose water radiates onto it,
+   * and a dirt road along z = 8 serving it.
+   */
+  function houseBesideATower(catalogId = 'house'): { g: GridState; buildings: BuildingInstance[] } {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'water-tower', 5, 5, 1, 1);
+    placeBuilding(g, buildings, 2, catalogId, 5, 6, 1, 1);
+    for (let x = 3; x <= 8; x++) paintRoad(g, x, 8, RoadTier.Gravel);
+    return { g, buildings };
+  }
+  const flats: BuildingCatalogEntry = { ...house, id: 'flats', zone: 7 };
+  const withFlats = [...catalog, flats];
+
+  it('leaves a house a dirt road serves out of the water line, even where the water reaches it', () => {
+    const { g, buildings } = houseBesideATower();
+    const totals = recomputeUtilities(g, buildings, withFlats);
+    expect(g.watered[tileIndex(5, 6)]).toBe(1);
+    expect(totals.waterDemand).toBe(0);
+    expect(totals.water.spare).toBe(10_000);
+  });
+
+  it('puts the house in the line once a main runs beside its lot', () => {
+    const { g, buildings } = houseBesideATower();
+    paintRoad(g, 6, 6, RoadTier.TwoLane);
+    expect(recomputeUtilities(g, buildings, withFlats).waterDemand).toBe(2);
+  });
+
+  it('keeps anything denser than a house in the line down a dirt road', () => {
+    const { g, buildings } = houseBesideATower('flats');
+    expect(recomputeUtilities(g, buildings, withFlats).waterDemand).toBe(2);
   });
 });
 

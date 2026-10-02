@@ -154,7 +154,9 @@ A candidate tile must be zoned to a sector, carry no building yet, and sit
 within Manhattan distance 3 of a street tile. The sector's level-1 catalog
 entry unlocked at or below the current milestone supplies a footprint; that
 footprint must fit unobstructed at the tile, and at least one of its tiles
-must already be reached by both power and piped water — checking the whole
+must already be reached by both power and piped water — piped water only
+where the building draws city water, which a
+[house on a well](#a-house-on-a-well) does not — checking the whole
 footprint rather than just its origin corner, so a lot's service does not
 depend on which side of it the street happens to sit.
 
@@ -194,6 +196,33 @@ A **farm** is chosen differently, from its land rather than its tile:
 - **The draw.** The probability is industrial demand times the lot's soil
   desirability — 1.0, 0.8 or 0.6 by grade — in place of land value.
 
+### A house on a well
+
+A dirt road carries no water main, just as it carries no cable. The homes
+along one are where the mains stop. More than 43 million people, about 15
+percent of the US population, drink from a private domestic well
+([USGS](https://www.usgs.gov/mission-areas/water-resources/science/domestic-private-supply-wells)).
+So a low-density house draws no city water when both of these hold:
+
+- **A dirt road serves it.** One lies within Manhattan distance 3 of any
+  tile of its lot, the same reach a farm has to its road.
+- **No main runs beside it.** No road that carries water lies orthogonally
+  beside any tile of its lot. That is exactly where the network hands water
+  to a lot, so a house that a main could reach is never on a well.
+
+A house on a well needs only its road and power. Nothing refuses it, holds it
+back or flags it for want of water. It takes no place in the water line and
+adds nothing to water demand. Only the roads decide, never the supply, and
+they are read afresh every time. A house whose main is bulldozed goes onto a
+well, and a house that levels up onto a lot a main runs beside goes onto the
+mains. A shortage never puts a house on a well: a house the mains serve stays
+in the water line and loses its water like any other.
+
+A house with a main beside its lot is on the mains like any other, even where
+a dirt road also serves it, and waits for water while that main is dry. Only
+the detached houses of the low-density zone go on a well. Terraces, flats,
+mixed blocks, shops and industry need the mains wherever they stand.
+
 ## Levels, construction, and abandonment
 
 A newly spawned or newly leveled-up building spends `CONSTRUCTION_TICKS` =
@@ -226,7 +255,7 @@ pushes real farms out:
 
 Every pass also recomputes each Active or Abandoned building's problems: no
 power or no piped water reaching its footprint (piped water only for a
-building that draws any), no street within Manhattan distance 3 (for a farm,
+building that draws city water), no street within Manhattan distance 3 (for a farm,
 no dirt road within 3 of its lot), crime over 170, pollution over 170
 (residential lots only), and sector demand under -0.5. An Active building carrying a power, water, or
 road blocker for 3 consecutive passes becomes Abandoned. An Abandoned

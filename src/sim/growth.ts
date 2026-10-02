@@ -13,8 +13,8 @@
  * ticks, over a rotating stride-window of the grid so a full map is
  * covered over many passes rather than rescanned every time.
  */
-import { inBounds, tileIndex } from '../shared/constants';
-import { BuildingState, FieldId, Problem, RoadTier, ZoneType, isStreetTier } from '../shared/types';
+import { ROAD_CHECK_RADIUS, inBounds, tileIndex } from '../shared/constants';
+import { BuildingState, FieldId, Problem, ZoneType, isStreetTier } from '../shared/types';
 import { SoilGrade, isFarmable } from '../shared/soil';
 import type {
   BuildingCatalogEntry,
@@ -27,8 +27,14 @@ import type {
   Sector,
   ZonedUnserved,
 } from '../shared/types';
-import { BuildingRegistry, footprintForRotation } from './buildings';
-import { utilityCanDeliver, utilityUnits, type UtilityLine } from './network';
+import { BuildingRegistry, footprintForRotation, lotTiles } from './buildings';
+import {
+  cityWaterUse,
+  dirtRoadWithinReach,
+  utilityCanDeliver,
+  utilityUnits,
+  type UtilityLine,
+} from './network';
 import { freeCellsOn, roadCellsOf } from '../world/roadnet';
 
 /**
@@ -49,7 +55,6 @@ export interface Rng {
 
 const GROWTH_INTERVAL = 10;
 const CONSTRUCTION_TICKS = 100;
-const ROAD_CHECK_RADIUS = 3;
 const ABANDON_BLOCKER_STREAK = 3;
 const DESPAWN_ABANDONED_PASSES = 10;
 /** Number of GROWTH_INTERVAL passes needed to sweep the whole map once. */
@@ -112,7 +117,7 @@ const FARM_DESIRABILITY: Readonly<Record<SoilGrade, number>> = {
 /** The grade at least half the w×d lot at (x, z) reaches. */
 export function lotGrade(g: GridState, x: number, z: number, w: number, d: number): SoilGrade {
   const counts = [0, 0, 0, 0];
-  const tiles = footprintTiles(x, z, w, d);
+  const tiles = lotTiles(x, z, w, d);
   for (const idx of tiles) {
     const grade = readTile(g.soil, idx);
     counts[grade] = (counts[grade] ?? 0) + 1;
@@ -136,36 +141,6 @@ function isFarmLot(g: GridState, x: number, z: number, w: number, d: number): bo
     }
   }
   return true;
-}
-
-/** A dirt road — the only road a farm's gate opens onto — within `radius` of the lot. */
-function hasNearbyDirtRoad(
-  g: GridState,
-  x: number,
-  z: number,
-  w: number,
-  d: number,
-  radius: number,
-): boolean {
-  const cells = g.roads ? roadCellsOf(g) : null;
-  for (let tz = z - radius; tz < z + d + radius; tz++) {
-    for (let tx = x - radius; tx < x + w + radius; tx++) {
-      if (!inBounds(tx, tz)) continue;
-      const out = Math.max(x - tx, 0, tx - (x + w - 1)) + Math.max(z - tz, 0, tz - (z + d - 1));
-      if (out > radius) continue;
-      const idx = tileIndex(tx, tz);
-      if (readTile(g.roadTier, idx) === RoadTier.Gravel) return true;
-      if (cells && freeCellsOn(cells, idx).some((c) => cells.tier[c] === RoadTier.Gravel)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-/** Whether a building needs the city's water: a farm pumps its own well. */
-function needsWater(entry: BuildingCatalogEntry): boolean {
-  return entry.waterUse > 0;
 }
 
 /** Safe read of a possibly-out-of-range typed array slot (noUncheckedIndexedAccess). */
@@ -196,20 +171,6 @@ function hasNearbyRoad(g: GridState, x: number, z: number, radius: number): bool
     }
   }
   return false;
-}
-
-/** Every in-bounds tile index of the w*d footprint at (x, z). */
-function footprintTiles(x: number, z: number, w: number, d: number): number[] {
-  const tiles: number[] = [];
-  for (let dz = 0; dz < d; dz++) {
-    for (let dx = 0; dx < w; dx++) {
-      const tx = x + dx;
-      const tz = z + dz;
-      if (!inBounds(tx, tz)) continue;
-      tiles.push(tileIndex(tx, tz));
-    }
-  }
-  return tiles;
 }
 
 /** True only if every tile of the w*d footprint at (x, z) is in bounds and unstamped. */
@@ -300,17 +261,6 @@ interface Waiting {
   tiles: readonly number[];
 }
 
-/** Tile indices of a w×d footprint at (x, z), clipped to the map. */
-function footprintTilesAt(x: number, z: number, w: number, d: number): number[] {
-  const tiles: number[] = [];
-  for (let dz = 0; dz < d; dz++) {
-    for (let dx = 0; dx < w; dx++) {
-      if (inBounds(x + dx, z + dz)) tiles.push(tileIndex(x + dx, z + dz));
-    }
-  }
-  return tiles;
-}
-
 /** The shortage bits for a building the utility pass cut. */
 function shortageOf(supply: GrowthSupply, id: number): number {
   return (
@@ -332,11 +282,13 @@ function computeProblems(
   const sector = entry.zone === undefined ? null : zoneSector(entry.zone);
   const reached =
     entry.farm !== undefined
-      ? hasNearbyDirtRoad(g, x, z, w, d, ROAD_CHECK_RADIUS)
+      ? dirtRoadWithinReach(g, x, z, w, d)
       : hasNearbyRoad(g, x, z, ROAD_CHECK_RADIUS);
   let problems = 0;
   if (!footprintServed(g.power, x, z, w, d)) problems |= Problem.NoPower;
-  if (needsWater(entry) && !footprintServed(g.watered, x, z, w, d)) problems |= Problem.NoWater;
+  if (cityWaterUse(g, entry, x, z, w, d) > 0 && !footprintServed(g.watered, x, z, w, d)) {
+    problems |= Problem.NoWater;
+  }
   if (!reached) problems |= Problem.NoRoad;
   if (fieldAt(g, FieldId.Crime, idx) > HIGH_CRIME) problems |= Problem.HighCrime;
   if (sector === 'res' && fieldAt(g, FieldId.Pollution, idx) > HIGH_POLLUTION)
@@ -379,8 +331,8 @@ function desirabilityFor(g: GridState, x: number, z: number, sector: Sector): nu
 export class GrowthSystem {
   private readonly catalog: BuildingCatalogEntry[];
   private readonly catalogIndex: Map<string, BuildingCatalogEntry>;
-  /** Zones whose first building draws city water: a farm pumps its own well. */
-  private readonly waterZones: ReadonlySet<ZoneType>;
+  /** Each zone's first building that draws water at all: a farm pumps its own well. */
+  private readonly waterEntries: ReadonlyMap<ZoneType, BuildingCatalogEntry>;
   private readonly rng: Rng;
   private readonly canPlace: (g: GridState, x: number, z: number, w: number, d: number) => boolean;
 
@@ -408,11 +360,12 @@ export class GrowthSystem {
   ) {
     this.catalog = catalog;
     this.catalogIndex = new Map(catalog.map((entry) => [entry.id, entry]));
-    this.waterZones = new Set(
-      catalog
-        .filter((e) => e.zone !== undefined && e.level === 1 && needsWater(e))
-        .map((e) => e.zone!),
-    );
+    const waterEntries = new Map<ZoneType, BuildingCatalogEntry>();
+    for (const e of catalog) {
+      if (e.zone === undefined || e.level !== 1 || e.waterUse <= 0) continue;
+      if (!waterEntries.has(e.zone)) waterEntries.set(e.zone, e);
+    }
+    this.waterEntries = waterEntries;
     this.rng = rng;
     this.canPlace = canPlace;
   }
@@ -479,8 +432,9 @@ export class GrowthSystem {
    * water where their zone's buildings draw it. A served road hands its
    * utility to every tile beside it, so a tile here is one its own road fails:
    * a gravel road carries no cable, and a street the mains never reach carries
-   * no water. Ground zoned too deep to touch the road is left out, since more
-   * supply would not grow it either.
+   * no water. A tile a house would stand on a well on wants no water. Ground
+   * zoned too deep to touch the road is left out, since more supply would not
+   * grow it either.
    */
   zonedUnserved(g: GridState): ZonedUnserved {
     const cells = g.roads ? roadCellsOf(g) : null;
@@ -498,11 +452,13 @@ export class GrowthSystem {
         const zone = readTile(g.zone, idx) as ZoneType;
         if (zoneSector(zone) === null) continue;
         const lacksPower = !readTile(g.power, idx);
-        const lacksWater = this.waterZones.has(zone) && !readTile(g.watered, idx);
-        if (!lacksPower && !lacksWater) continue;
+        const drinks = this.waterEntries.get(zone);
+        const dry = drinks !== undefined && !readTile(g.watered, idx);
+        if (!lacksPower && !dry) continue;
         if (!isRoad(x - 1, z) && !isRoad(x + 1, z) && !isRoad(x, z - 1) && !isRoad(x, z + 1)) {
           continue;
         }
+        const lacksWater = dry && cityWaterUse(g, drinks, x, z, 1, 1) > 0;
         if (lacksPower) {
           out.power += 1;
           out.powerAt ??= { x, z };
@@ -650,7 +606,7 @@ export class GrowthSystem {
       if (!entry?.utility) continue;
 
       const { w, d } = footprintForRotation(entry, inst.rotation);
-      const delivers = utilityCanDeliver(g, entry.utility, footprintTiles(inst.x, inst.z, w, d));
+      const delivers = utilityCanDeliver(g, entry.utility, lotTiles(inst.x, inst.z, w, d));
       const problems = delivers ? inst.problems & ~Problem.NoRoad : inst.problems | Problem.NoRoad;
       if (problems === inst.problems) continue;
       inst.problems = problems;
@@ -737,7 +693,9 @@ export class GrowthSystem {
     // A bigger building draws more, and nobody builds it on a grid that
     // cannot carry the difference.
     const power = utilityUnits(nextEntry.powerUse) - utilityUnits(entry.powerUse);
-    const water = utilityUnits(nextEntry.waterUse) - utilityUnits(entry.waterUse);
+    const water =
+      utilityUnits(cityWaterUse(g, nextEntry, x, z, newFootprint.w, newFootprint.d)) -
+      utilityUnits(cityWaterUse(g, entry, x, z, oldFootprint.w, oldFootprint.d));
     if (
       !fits ||
       !this.suppliedFor(waitKey, [], pass, spare, power, water) ||
@@ -804,7 +762,7 @@ export class GrowthSystem {
       // side of the building the street happens to sit (see footprintServed).
       if (
         !footprintServed(g.power, x, z, w, d) ||
-        (needsWater(entry) && !footprintServed(g.watered, x, z, w, d))
+        (cityWaterUse(g, entry, x, z, w, d) > 0 && !footprintServed(g.watered, x, z, w, d))
       ) {
         continue;
       }
@@ -850,7 +808,7 @@ export class GrowthSystem {
     if (!first) return;
     const { w, d } = footprintForRotation(first, 0);
     if (!isFarmLot(g, x, z, w, d) || !this.canPlace(g, x, z, w, d)) return;
-    if (!hasNearbyDirtRoad(g, x, z, w, d, ROAD_CHECK_RADIUS)) return;
+    if (!dirtRoadWithinReach(g, x, z, w, d)) return;
     if (!footprintServed(g.power, x, z, w, d)) return;
 
     const grade = lotGrade(g, x, z, w, d);
@@ -892,8 +850,8 @@ export class GrowthSystem {
     const { w, d } = footprintForRotation(entry, 0);
     // Nobody moves into a home the grid cannot light or water.
     const power = utilityUnits(entry.powerUse);
-    const water = utilityUnits(entry.waterUse);
-    const lot = footprintTilesAt(x, z, w, d);
+    const water = utilityUnits(cityWaterUse(g, entry, x, z, w, d));
+    const lot = lotTiles(x, z, w, d);
     if (!this.suppliedFor(tileIndex(x, z), lot, pass, spare, power, water)) return;
     if (this.rng.next() >= probability) return;
 

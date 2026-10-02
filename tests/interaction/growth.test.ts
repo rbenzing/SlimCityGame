@@ -134,3 +134,39 @@ describe('a farming town', () => {
     GROWTH_TIMEOUT_MS,
   );
 });
+
+describe('a country lane', () => {
+  it(
+    'grows houses off a dirt road on a pole line, each on its own well',
+    () => {
+      const h = initialized();
+      send(h, 1, [
+        { kind: 'setSandbox', on: true },
+        { kind: 'setUnlimitedMoney', on: true },
+        // A dirt road, a turbine and a line strung along it, and no water
+        // tower anywhere on the map.
+        { kind: 'buildRoad', tier: RoadTier.Gravel, tiles: roadRow(60, 60, 32) },
+      ]);
+      h.ticks(1);
+      send(h, 2, [
+        { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 59, rotation: 0 },
+        { kind: 'stringPowerLine', tiles: roadRow(60, 60, 32), on: true },
+        { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(61, 61, 30, 2) },
+      ]);
+      h.ticks(2);
+      expect(h.ackFor(2)!.ok).toBe(true);
+      h.ticks(2000);
+
+      const homes = [...standingBuildings(h).values()].filter(
+        (b) => entryOf(b).zone === ZoneType.ResLow,
+      );
+      expect(homes.some((b) => b.state === BuildingState.Active)).toBe(true);
+      expect(homes.every((b) => (b.problems & Problem.NoWater) === 0)).toBe(true);
+      // Every one of them pumps its own: the mains carry nothing.
+      const stats = h.lastSnapshot()!.stats;
+      expect(stats.waterSupply).toBe(0);
+      expect(stats.waterDemand).toBe(0);
+    },
+    GROWTH_TIMEOUT_MS,
+  );
+});
