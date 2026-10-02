@@ -116,6 +116,9 @@ describe('MusicPanel', () => {
     renderPanel(player);
 
     expect(screen.getByLabelText('Now playing')).toHaveTextContent('Beta');
+    // Both lines are cut to the panel's width, so each carries its full title as a tooltip.
+    expect(screen.getByLabelText('Now playing')).toHaveAttribute('title', 'Beta');
+    expect(screen.getByRole('button', { name: 'Alpha' })).toHaveAttribute('title', 'Alpha');
     fireEvent.click(screen.getByRole('button', { name: 'Next track' }));
     fireEvent.click(screen.getByRole('button', { name: 'Previous track' }));
     fireEvent.click(screen.getByRole('button', { name: 'Pause' })); // playing -> pause label

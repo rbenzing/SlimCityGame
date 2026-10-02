@@ -267,6 +267,14 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 
 ## 10. History (newest first)
 
+### Clipped text shows in full on hover (asked for and built 2026-10-02)
+
+Every label the layout cuts short carries its full text as a tooltip: an
+asset card's name (the lock tooltip now adds the milestone after the
+name), the music panel's now-playing line and each playlist title. Written
+down as a ground truth and in [components.md](ux/components.md), so the
+next clipped label gets one too.
+
 ### Water in, and sewage out (asked for and built 2026-10-02)
 
 The first of three water-and-sewage changes

@@ -97,10 +97,13 @@ read.
   reachable from a controller.
 - **A locked asset card's lock state is a `title` tooltip, not an
   announced state.** The card sets `disabled` (which a screen reader does
-  announce) and a lock icon plus a `title` naming the unlocking milestone,
-  but `title` attributes are not reliably surfaced by screen readers — the
-  _reason_ a card is locked is, in practice, a sighted-mouse-hover-only
-  affordance today.
+  announce) and a lock icon plus a `title` naming the unlocking milestone
+  after the card's name, but `title` attributes are not reliably surfaced
+  by screen readers — the _reason_ a card is locked is, in practice, a
+  sighted-mouse-hover-only affordance today. The same `title` is how every
+  label the layout cuts short (a card's name, a track's title) offers its
+  full text, so a screen reader hears the clipped span's full content
+  while a sighted player gets it on hover.
 - **Emoji placeholders remain non-final chrome.** The happiness face and a
   few numeric-readout glyphs are literal emoji rather than the project's
   own icon set, explicitly called out as placeholders in

@@ -50,10 +50,16 @@ chip. Three states, each a distinct visual treatment rather than a shared
 "disabled" look:
 
 - **Selected** — accent border + accent-tinted fill (`aria-pressed=true`).
-- **Gated by milestone** — 40% opacity, a lock icon, and a `title` naming
-  the milestone that unlocks it; still clickable-looking but refuses the
-  click (`disabled`).
+- **Gated by milestone** — 40% opacity, a lock icon, and a `title` that
+  adds the milestone that unlocks it after the name; still clickable-looking
+  but refuses the click (`disabled`).
 - **Plain** — transparent border, a faint hover fill.
+
+In every state the card's `title` carries its full name, because the name
+is cut to the card's width. That is the general rule for the overlay: any
+text a layout may cut short — a `truncate`d label, a track title in the
+music panel — offers its full text as a `title` tooltip, so nothing the
+player can see clipped is unreadable.
 
 This is the only card component in the overlay; every buildable/paintable
 thing in every drawer category renders through it.

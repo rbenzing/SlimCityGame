@@ -267,11 +267,12 @@ category or tool is active.
   pictogram of the item — a road's cross-section as tier-width stripes, a
   zone as a colored cell block, a building as a simple tinted silhouette —
   the item's name beneath, and a cost chip at the bottom right (zones
-  carry no cost chip, since zoning itself is free). A selected card gets
-  the accent border-and-fill treatment; a card gated by milestone renders
-  at 40% opacity with a lock icon and a tooltip naming the milestone that
-  unlocks it (see [`interaction.md`](interaction.md) for the disabled-vs-gated
-  distinction).
+  carry no cost chip, since zoning itself is free). The name is cut to the
+  card's width, so every card carries its full name as a tooltip. A
+  selected card gets the accent border-and-fill treatment; a card gated by
+  milestone renders at 40% opacity with a lock icon, and its tooltip adds
+  the milestone that unlocks it after the name (see
+  [`interaction.md`](interaction.md) for the disabled-vs-gated distinction).
 - A selected card is always on the sub-tab in view. The drawer opens on the
   sub-tab holding the selected tool, and opening a sub-tab that does not hold
   it puts the tool down (back to select), so no card is left selected out of
@@ -418,7 +419,8 @@ Audio also embeds a full music player, wherever one is wired in:
 transport (previous, play/pause, next, a seek bar disabled until a track
 is actually chosen, and an elapsed/total time readout), the full playlist
 with the current track picked out — reading "Nothing playing" until one
-actually is — shuffle and repeat toggles (repeat cycles off → all → one)
+actually is, and every title cut to the panel's width shown in full as a
+tooltip — shuffle and repeat toggles (repeat cycles off → all → one)
 that persist alongside the rest of the settings, and a Rescan action for
 the `public/songs/` folder. A drop zone on the panel accepts `.mp3`/`.wav`
 files dragged in for the current session only; those tracks are labeled
