@@ -4,7 +4,7 @@ import { BuildingState, FieldId, Problem, RoadTier, ZoneType } from '../shared/t
 import type { BuildingCatalogEntry, DemandLevels, FarmKind, GridState } from '../shared/types';
 import { SoilGrade } from '../shared/soil';
 import { BuildingRegistry } from './buildings';
-import { GrowthSystem, farmKindFor, lotGrade } from './growth';
+import { GrowthSystem, UNMETERED_SUPPLY, farmKindFor, lotGrade } from './growth';
 import { recomputeUtilities } from './network';
 import type { GrowthSupply, Rng } from './growth';
 import { createGrid } from '../world/grid';
@@ -790,11 +790,11 @@ function supplyOf(
 const SWEEP_TICKS = 32 * 10;
 
 describe('GrowthSystem: zoned land its road brings nothing', () => {
-  /** A gravel road down x = 5 and homes zoned three deep along its east side, nothing served. */
-  function zonedDownGravel(): GridState {
+  /** A street down x = 5 that nothing supplies, and homes zoned three deep along its east side. */
+  function zonedDownADryStreet(): GridState {
     const g = makeGrid();
     for (let z = 0; z < 6; z++) {
-      g.roadTier[tileIndex(5, z)] = RoadTier.Gravel;
+      g.roadTier[tileIndex(5, z)] = RoadTier.TwoLane;
       for (let x = 6; x <= 8; x++) g.zone[tileIndex(x, z)] = ZoneType.ResLow;
     }
     return g;
@@ -802,7 +802,7 @@ describe('GrowthSystem: zoned land its road brings nothing', () => {
   const growth = (): GrowthSystem => new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
 
   it('counts only the row beside the road, not ground zoned too deep to reach it', () => {
-    const counted = growth().zonedUnserved(zonedDownGravel());
+    const counted = growth().zonedUnserved(zonedDownADryStreet());
     expect(counted).toEqual({
       power: 6,
       water: 6,
@@ -812,7 +812,7 @@ describe('GrowthSystem: zoned land its road brings nothing', () => {
   });
 
   it('counts each utility the road fails, and leaves out what it brings', () => {
-    const g = zonedDownGravel();
+    const g = zonedDownADryStreet();
     for (let z = 0; z < 6; z++) g.watered[tileIndex(6, z)] = 1;
     expect(growth().zonedUnserved(g)).toMatchObject({ power: 6, water: 0 });
     for (let z = 0; z < 6; z++) g.power[tileIndex(6, z)] = 1;
@@ -820,13 +820,13 @@ describe('GrowthSystem: zoned land its road brings nothing', () => {
   });
 
   it('leaves out a tile something is already built on', () => {
-    const g = zonedDownGravel();
+    const g = zonedDownADryStreet();
     new BuildingRegistry(growthCatalog).place(g, resL1, 6, 0, 0, BuildingState.Active);
     expect(growth().zonedUnserved(g).power).toBe(5);
   });
 
   it('never asks water for farmland, which draws none', () => {
-    const g = zonedDownGravel();
+    const g = zonedDownADryStreet();
     for (let z = 0; z < 6; z++) g.zone[tileIndex(6, z)] = ZoneType.Agriculture;
     const farmCatalog: BuildingCatalogEntry[] = [
       ...growthCatalog,
@@ -834,6 +834,117 @@ describe('GrowthSystem: zoned land its road brings nothing', () => {
     ];
     const counted = new GrowthSystem(farmCatalog, constantRng(0), alwaysTrue).zonedUnserved(g);
     expect(counted).toEqual({ power: 6, water: 0, powerAt: { x: 6, z: 0 } });
+  });
+
+  it('never asks water for a house a dirt road serves, which is on a well', () => {
+    const g = zonedDownADryStreet();
+    for (let z = 0; z < 6; z++) g.roadTier[tileIndex(5, z)] = RoadTier.Gravel;
+    expect(growth().zonedUnserved(g)).toEqual({ power: 6, water: 0, powerAt: { x: 6, z: 0 } });
+  });
+
+  it('asks water down a dirt road for anything denser than a house', () => {
+    const g = zonedDownADryStreet();
+    for (let z = 0; z < 6; z++) {
+      g.roadTier[tileIndex(5, z)] = RoadTier.Gravel;
+      g.zone[tileIndex(6, z)] = ZoneType.ResMedium;
+    }
+    const counted = new GrowthSystem(
+      [...growthCatalog, resMediumL1],
+      constantRng(0),
+      alwaysTrue,
+    ).zonedUnserved(g);
+    expect(counted).toMatchObject({ power: 6, water: 6 });
+  });
+});
+
+describe('GrowthSystem: a house on a well', () => {
+  const wantsHomes: DemandLevels = { res: 1, com: 0, ind: 0 };
+  const flats: BuildingCatalogEntry = {
+    ...resMediumL1,
+    footprint: { w: 1, d: 1 },
+    unlockMilestone: 0,
+  };
+  const catalog = [...growthCatalog, flats];
+
+  /**
+   * Homes zoned along z = 1 behind a dirt road along z = 0, power on (0, 1) —
+   * the lot the first pass scans — and no water anywhere.
+   */
+  function downADirtRoad(zone: ZoneType = ZoneType.ResLow): GridState {
+    const g = makeGrid();
+    for (let x = 0; x < 8; x++) {
+      g.roadTier[tileIndex(x, 0)] = RoadTier.Gravel;
+      g.zone[tileIndex(x, 1)] = zone;
+    }
+    g.power[tileIndex(0, 1)] = 1;
+    return g;
+  }
+  const grow = (
+    g: GridState,
+    registry = new BuildingRegistry(catalog),
+    supply: GrowthSupply = UNMETERED_SUPPLY,
+  ): BuildingRegistry => {
+    new GrowthSystem(catalog, constantRng(0), alwaysTrue).tick(
+      g,
+      registry,
+      wantsHomes,
+      0,
+      0,
+      supply,
+    );
+    return registry;
+  };
+
+  it('grows a house off a dirt road on power alone', () => {
+    const homes = grow(downADirtRoad()).all();
+    expect(homes).toHaveLength(1);
+    expect(homes[0]).toMatchObject({ catalogId: 'res-l1', x: 0, z: 1 });
+  });
+
+  it('draws nothing from the mains, so a dry grid never holds it back', () => {
+    const g = downADirtRoad();
+    const growth = new GrowthSystem(catalog, constantRng(0), alwaysTrue);
+    const registry = new BuildingRegistry(catalog);
+    const dry = supplyOf({ spare: Infinity }, { spare: 0 });
+    expect(growth.tick(g, registry, wantsHomes, 0, 0, dry).added).toHaveLength(1);
+    expect(growth.waitingFor(g, registry, dry)).toEqual({ power: 0, water: 0 });
+  });
+
+  it('still needs power, which the dirt road does not bring', () => {
+    const g = downADirtRoad();
+    g.power[tileIndex(0, 1)] = 0;
+    expect(grow(g).all()).toHaveLength(0);
+  });
+
+  it('never flags a standing house on a well for water', () => {
+    const g = downADirtRoad();
+    const registry = new BuildingRegistry(catalog);
+    const house = registry.place(g, resL1, 0, 1, 0, BuildingState.Active)!;
+    grow(g, registry);
+    expect(house.problems & Problem.NoWater).toBe(0);
+  });
+
+  it('puts denser homes on the mains, which a dirt road does not bring', () => {
+    expect(grow(downADirtRoad(ZoneType.ResMedium)).all()).toHaveLength(0);
+  });
+
+  it('puts a house on the mains when a main runs beside its lot, and it waits for the water', () => {
+    const g = downADirtRoad();
+    g.roadTier[tileIndex(0, 2)] = RoadTier.TwoLane; // a dry street behind the lot
+    expect(grow(g).all()).toHaveLength(0);
+    g.watered[tileIndex(0, 1)] = 1;
+    expect(grow(g).all()).toHaveLength(1);
+  });
+
+  it('never moves a house the mains serve onto a well when the water runs short', () => {
+    const g = downADirtRoad();
+    g.roadTier[tileIndex(0, 2)] = RoadTier.TwoLane;
+    const registry = new BuildingRegistry(catalog);
+    const house = registry.place(g, resL1, 0, 1, 0, BuildingState.Active)!;
+    // The cut has taken its water.
+    grow(g, registry, supplyOf({ spare: Infinity }, { spare: -100, cut: [house.id] }));
+    const both = Problem.NoWater | Problem.WaterShortage;
+    expect(house.problems & both).toBe(both);
   });
 });
 

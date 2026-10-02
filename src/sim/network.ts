@@ -9,7 +9,7 @@
  * SEALED road tile (highways included — street lighting) and along a power
  * line, which is not a road at all; an unsealed road has no cable in it and
  * so conducts nothing. Water conducts across every road tile EXCEPT ones on
- * a spec with `carriesWater === false` (highways by default). A tile that
+ * a spec with `carriesWater === false` (a dirt road and the motorway network). A tile that
  * does not conduct neither receives the utility itself nor lets it propagate
  * through to tiles beyond.
  *
@@ -30,8 +30,9 @@ import type {
   RoadSpec,
   UtilitySpec,
 } from '../shared/types';
-import { BuildingState, RoadTier, isStreetTier } from '../shared/types';
-import { MAP_SIZE, inBounds, tileIndex } from '../shared/constants';
+import { BuildingState, RoadTier, ZoneType, isStreetTier } from '../shared/types';
+import { MAP_SIZE, ROAD_CHECK_RADIUS, inBounds, tileIndex } from '../shared/constants';
+import { footprintForRotation, lotTiles } from './buildings';
 import { roadStep } from '../world/roads';
 import { cellTile, freeCellsOn, neighbours, roadCellsOf } from '../world/roadnet';
 import type { RoadCells } from '../world/roadnet';
@@ -299,10 +300,70 @@ function conductsPower(g: GridState, cells: RoadCells, id: number): boolean {
   return isStreetTier(tier) && tierIsSealed(tier as RoadTier);
 }
 
-/** Only drivable streets whose spec carries water conduct it (highways excluded by default; rail is not a street, and neither is a power line). */
+/** Only drivable streets whose spec carries water conduct it (no dirt road or motorway; rail is not a street, and neither is a power line). */
 function conductsWater(cells: RoadCells, id: number): boolean {
   const tier = cells.tier[id] ?? 0;
   return isStreetTier(tier) && tierCarriesWater(tier as RoadTier);
+}
+
+/**
+ * A road that carries water orthogonally beside any of `tiles`, on the grid or
+ * off it: the very adjacency the network hands water to a lot across.
+ */
+function mainBeside(g: GridState, tiles: readonly number[]): boolean {
+  const cells = g.roads ? roadCellsOf(g) : null;
+  for (const idx of tiles) {
+    for (const ni of besideTile(idx)) {
+      const tier = g.roadTier[ni]!;
+      if (isStreetTier(tier) && tierCarriesWater(tier as RoadTier)) return true;
+      if (cells && freeCellsOn(cells, ni).some((c) => conductsWater(cells, c))) return true;
+    }
+  }
+  return false;
+}
+
+/** A dirt road, on the grid or off it, within ROAD_CHECK_RADIUS of any tile of the w×d lot at (x, z). */
+export function dirtRoadWithinReach(
+  g: GridState,
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+): boolean {
+  const cells = g.roads ? roadCellsOf(g) : null;
+  const r = ROAD_CHECK_RADIUS;
+  for (let tz = z - r; tz < z + d + r; tz++) {
+    for (let tx = x - r; tx < x + w + r; tx++) {
+      if (!inBounds(tx, tz)) continue;
+      const out = Math.max(x - tx, 0, tx - (x + w - 1)) + Math.max(z - tz, 0, tz - (z + d - 1));
+      if (out > r) continue;
+      const idx = tileIndex(tx, tz);
+      if (g.roadTier[idx] === RoadTier.Gravel) return true;
+      if (cells && freeCellsOn(cells, idx).some((c) => cells.tier[c] === RoadTier.Gravel)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * What a w×d building at (x, z) draws from the city's water, in kL. A
+ * low-density house that a dirt road serves and no main runs beside is on a
+ * private well and draws nothing, as a farm does. Only the roads decide, never
+ * the supply, so a shortage never moves a house onto a well.
+ */
+export function cityWaterUse(
+  g: GridState,
+  entry: BuildingCatalogEntry,
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+): number {
+  if (entry.waterUse <= 0 || entry.zone !== ZoneType.ResLow) return entry.waterUse;
+  if (mainBeside(g, lotTiles(x, z, w, d))) return entry.waterUse;
+  return dirtRoadWithinReach(g, x, z, w, d) ? 0 : entry.waterUse;
 }
 
 /**
@@ -353,7 +414,7 @@ function cutFromTheFarEnd(
   catalogMap: ReadonlyMap<string, BuildingCatalogEntry>,
   footprints: ReadonlyMap<number, number[]>,
   supply: number,
-  usageOf: (spec: BuildingCatalogEntry) => number,
+  usageOf: (spec: BuildingCatalogEntry, building: BuildingInstance) => number,
 ): UtilityLine & { demand: number } {
   for (let i = 0; i < reach.length; i++) target[i] = reach[i]! >= 0 ? 1 : 0;
 
@@ -361,7 +422,7 @@ function cutFromTheFarEnd(
   for (const b of buildings) {
     const spec = catalogMap.get(b.catalogId);
     if (!spec) continue;
-    const use = utilityUnits(usageOf(spec));
+    const use = utilityUnits(usageOf(spec, b));
     if (use <= 0) continue;
     const tiles = footprints.get(b.id);
     if (!tiles) continue;
@@ -439,7 +500,10 @@ export function recomputeUtilities(
     catalogMap,
     footprints,
     waterSupply,
-    (s) => s.waterUse,
+    (s, b) => {
+      const { w, d } = footprintForRotation(s, b.rotation);
+      return cityWaterUse(g, s, b.x, b.z, w, d);
+    },
   );
 
   return { powerSupply, powerDemand, waterSupply, waterDemand, power, water };

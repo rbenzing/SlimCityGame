@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,448 tests passing across 154 test files, run 2026-10-01.
+**Test suite:** 4,461 tests passing across 154 test files, run 2026-10-01.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -228,6 +228,26 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Houses on a well down a dirt road (asked for and built 2026-10-01)
+
+A dirt road now carries no water main, just as it carries no cable. A
+low-density house that a dirt road serves, with no main beside its lot, pumps
+its own well, so it grows on a power line alone, the way a farm does. More
+than 43 million people, about 15 percent of the US population, drink from a
+private domestic well (USGS).
+
+- **The road.** The dirt class and the gravel preset say
+  `carriesWater: false`. Water no longer runs down a dirt road or through a
+  gravel stretch to the paved road beyond. This reverses the old rule that
+  "a pipe and a cable are not the same thing".
+- **The house.** `cityWaterUse` in `src/sim/network.ts` is the one answer to
+  who draws city water, and growth, the Advisor's unserved count and the
+  water line all read it. It looks only at the roads, so a shortage never
+  moves a house onto a well.
+- **Only houses.** Terraces, flats, mixed blocks, shops and industry down a
+  dirt road still need the mains, which now means a paved street. A save with
+  such buildings fed down a dirt road will see them lose their water.
 
 ### Two check scripts build what they check again (2026-10-01)
 

@@ -96,6 +96,8 @@ export const SERVICE_FUNDING_MAX = 1.5;
 
 // --- buildability -----------------------------------------------------------
 export const MAX_BUILD_SLOPE = 4; // max height delta (m) across a tile's corners
+/** Manhattan tiles a lot may stand from the road that serves it. */
+export const ROAD_CHECK_RADIUS = 3;
 export const SEA_LEVEL = 0;
 /** Land this close above sea level is beach: the ground draws it as sand, and nothing is farmed on it. */
 export const SAND_BAND_METERS = 3;

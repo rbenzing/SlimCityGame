@@ -134,9 +134,9 @@ describe('class table sanity', () => {
     }
   });
 
-  it('only highway and ramp refuse water and zoning; only dirt is gravel, only rail ballast', () => {
+  it('only dirt, highway and ramp refuse water, only highway, ramp and rail zoning; only dirt is gravel, only rail ballast', () => {
     const dry = ROAD_CLASSES.filter((c) => !c.carriesWater).map((c) => c.id);
-    expect(dry.sort()).toEqual(['highway', 'ramp']);
+    expect(dry.sort()).toEqual(['dirt', 'highway', 'ramp']);
     const unzonable = ROAD_CLASSES.filter((c) => !c.zonable).map((c) => c.id);
     expect(unzonable.sort()).toEqual(['highway', 'rail', 'ramp']);
     expect(ROAD_CLASSES.filter((c) => c.surface === 'gravel').map((c) => c.id)).toEqual(['dirt']);

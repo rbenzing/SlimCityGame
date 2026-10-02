@@ -536,7 +536,16 @@ MUTCD citations below use 11th-edition section numbers.
   exempt from the frontage check so a zone can always be removed. A farm
   departs from this twice: its lot needs a dirt road within 3 tiles, and
   it needs no water, since a building whose entry draws none never waits
-  for it. — [simulation-rules.md](game-design/simulation-rules.md)
+  for it. A low-density house is on a private well, and needs no water
+  either, when a dirt road lies within 3 tiles of its lot and no road that
+  carries water lies beside any tile of it. — [simulation-rules.md](game-design/simulation-rules.md)
+- Who draws city water is one predicate, `cityWaterUse`, read by growth and
+  the water line alike. It looks only at the roads, never at the supply, so
+  a shortage never moves a house onto a well. A house on a well draws
+  nothing: it is never refused, held back or flagged for water, and takes no
+  place in the water line. —
+  [simulation-rules.md](game-design/simulation-rules.md#a-house-on-a-well);
+  `src/sim/network.ts`
 - A tile's soil grade is derived from its height, the water beside it and the
   map seed, and never saved. It is graded by one function, `soilGradeAt`,
   for the worker, the render mirror, the Soil lens, farmland painting and
@@ -587,7 +596,7 @@ MUTCD citations below use 11th-edition section numbers.
   is never called, drawn or computed as a radius. —
   [services-model.md](world-sim/services-model.md)
 - Water conducts along every street tier unless its spec says
-  `carriesWater: false` (highway, ramp). Power conducts only where the class
+  `carriesWater: false` (dirt road, highway, ramp). Power conducts only where the class
   surface is `paved`, read from the spec, never from a separate flag. Rail
   conducts neither. — [utilities-model.md](world-sim/utilities-model.md);
   `src/sim/network.ts`

@@ -257,18 +257,19 @@ describe('roads.json catalog v3 (UI-SPEC §6.7 Roads v3)', () => {
     expect(highway?.surface).toBeUndefined(); // paved by default
   });
 
-  it('carries water everywhere but the motorway network', () => {
+  it('carries water everywhere but a dirt road and the motorway network', () => {
     // A main under a road is a main a crew reaches from the street. Nobody
-    // digs up a motorway or its slip road for one.
+    // digs up a motorway or its slip road for one, and a dirt track has none:
+    // the homes along it are on wells.
+    const dry: number[] = [RoadTier.Gravel, RoadTier.Highway, RoadTier.Ramp];
     for (const spec of specs) {
-      if (spec.tier !== RoadTier.Highway && spec.tier !== RoadTier.Ramp) {
-        expect(spec.carriesWater).not.toBe(false);
-      }
+      if (!dry.includes(spec.tier)) expect(spec.carriesWater).not.toBe(false);
     }
     expect(byTier(RoadTier.Ramp)?.carriesWater).toBe(false);
+    expect(byTier(RoadTier.Gravel)?.carriesWater).toBe(false);
   });
 
-  it('Gravel Road: ¢8/tile, 0.15 upkeep, speed 8, capacity 200, M0, 2× noise, gravel surface', () => {
+  it('Gravel Road: ¢8/tile, 0.15 upkeep, speed 8, capacity 200, M0, 2× noise, no water, gravel surface', () => {
     expect(byTier(RoadTier.Gravel)).toEqual({
       tier: 4,
       name: 'Gravel Road',
@@ -278,6 +279,7 @@ describe('roads.json catalog v3 (UI-SPEC §6.7 Roads v3)', () => {
       capacity: 200,
       unlockMilestone: 0,
       noiseMult: 2,
+      carriesWater: false,
       surface: 'gravel',
       roadsideParking: true,
     });
