@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
   COAL_SMOKESTACK_COUNT,
+  DRAIN_OUTFALL_OVERHANG,
   PARK_BENCH_COUNT,
+  PUMP_INTAKE_OVERHANG,
   PARK_TREE_MAX,
   PARK_TREE_MIN,
   TURBINE_BLADE_COUNT,
@@ -25,6 +27,7 @@ import {
   footprintHalfExtents,
   rotateLocalXZ,
   turbineBeaconLocal,
+  waterSideOf,
   turbineHubLocal,
   turbineRotorAngle,
   turbineRotorPhase,
@@ -46,6 +49,10 @@ const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'turbineBeacon',
   'waterLegs',
   'waterTank',
+  'pumpHouse',
+  'pumpIntake',
+  'drainHeadwall',
+  'drainOutfall',
   'coalHall',
   'coalSmokestack',
   'coalHeap',
@@ -126,6 +133,45 @@ function makeIncineratorEntry(overrides: Partial<BuildingCatalogEntry> = {}): Bu
     cost: 40000,
     upkeep: 1500,
     unlockMilestone: 3,
+    ...overrides,
+  };
+}
+
+function makePumpEntry(overrides: Partial<BuildingCatalogEntry> = {}): BuildingCatalogEntry {
+  return {
+    id: 'water-pump',
+    name: 'Water Pumping Station',
+    category: 'utility',
+    footprint: { w: 2, d: 2 },
+    height: 8,
+    color: 0x6f8aa0,
+    powerUse: 0.0625,
+    waterUse: 0,
+    utility: { waterKL: 3785 },
+    cost: 3600,
+    upkeep: 180,
+    unlockMilestone: 1,
+    requiresAdjacent: 'water',
+    ...overrides,
+  };
+}
+
+function makeDrainEntry(overrides: Partial<BuildingCatalogEntry> = {}): BuildingCatalogEntry {
+  return {
+    id: 'water-drain',
+    name: 'Water Drain Pipe',
+    category: 'utility',
+    footprint: { w: 1, d: 1 },
+    height: 4,
+    color: 0x7a7f84,
+    powerUse: 0,
+    waterUse: 0,
+    pollution: 176,
+    utility: { sewerKL: 3785 },
+    cost: 1800,
+    upkeep: 90,
+    unlockMilestone: 0,
+    requiresAdjacent: 'water',
     ...overrides,
   };
 }
@@ -219,10 +265,12 @@ function decomposeQuaternion(m: THREE.Matrix4): THREE.Quaternion {
 // ---------------------------------------------------------------------------
 
 describe('UTILITY_KIT_CATALOG_IDS', () => {
-  it('is exactly the 5 silhouette-kit ids (UI-SPEC §6.15)', () => {
+  it('is exactly the 7 silhouette-kit ids (UI-SPEC §6.15)', () => {
     expect(UTILITY_KIT_CATALOG_IDS).toEqual([
       'wind-turbine',
       'water-tower',
+      'water-pump',
+      'water-drain',
       'coal-plant',
       'incinerator',
       'small-park',
@@ -1071,10 +1119,12 @@ describe('removal exactness', () => {
 // ---------------------------------------------------------------------------
 
 describe('multiple kits coexisting', () => {
-  it('builds and applies all 5 kits from one catalog + one delta without cross-talk', () => {
+  it('builds and applies all 7 kits from one catalog + one delta without cross-talk', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
       makeTurbineEntry(),
       makeWaterTowerEntry(),
+      makePumpEntry(),
+      makeDrainEntry(),
       makeCoalPlantEntry(),
       makeIncineratorEntry(),
       makeSmallParkEntry(),
@@ -1086,6 +1136,8 @@ describe('multiple kits coexisting', () => {
         makeInstance(3, 'coal-plant', { x: 10, z: 0 }),
         makeInstance(4, 'incinerator', { x: 15, z: 0 }),
         makeInstance(5, 'small-park', { x: 20, z: 0 }),
+        makeInstance(6, 'water-pump', { x: 25, z: 0 }),
+        makeInstance(7, 'water-drain', { x: 30, z: 0 }),
       ),
     );
 
@@ -1095,5 +1147,70 @@ describe('multiple kits coexisting', () => {
     expect(renderer.partSlotsFor(3, 'coalSmokestack')).toHaveLength(2);
     expect(renderer.partSlotsFor(4, 'incineratorStack')).toHaveLength(1);
     expect(renderer.partSlotsFor(5, 'parkBench')).toHaveLength(2);
+    expect(renderer.partSlotsFor(6, 'pumpIntake')).toHaveLength(1);
+    expect(renderer.partSlotsFor(7, 'drainOutfall')).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The shore kits: a pumping station and a drain pipe, each facing the water
+// ---------------------------------------------------------------------------
+
+describe('a shore building faces the water it touches', () => {
+  const pond = (wx: number, wz: number) => (x: number, z: number) => x === wx && z === wz;
+  const footprint = { w: 2, d: 2 };
+
+  it('turns its intake toward whichever side the water lies on, south first', () => {
+    expect(waterSideOf(10, 10, footprint, pond(10, 12))).toBe(0); // south: +Z
+    expect(waterSideOf(10, 10, footprint, pond(12, 11))).toBe(1); // east: +X
+    expect(waterSideOf(10, 10, footprint, pond(11, 9))).toBe(2); // north: -Z
+    expect(waterSideOf(10, 10, footprint, pond(9, 10))).toBe(3); // west: -X
+    expect(waterSideOf(10, 10, footprint, () => false)).toBe(0);
+    // A corner touches nothing.
+    expect(waterSideOf(10, 10, footprint, pond(12, 12))).toBe(0);
+  });
+
+  it('turns the whole kit, never the rotation the player placed it at', () => {
+    const scene = new THREE.Scene();
+    const waterEast = (x: number, z: number): boolean => x === 12 && z === 10;
+    const renderer = new UtilityKitRenderer(scene, flatHeightAt, [makePumpEntry()], waterEast);
+    renderer.apply(deltaAdd(makeInstance(1, 'water-pump', { x: 10, z: 10, rotation: 2 })));
+    const m = new THREE.Matrix4();
+    const slot = renderer.partSlotsFor(1, 'pumpIntake')[0]!;
+    renderer.getPartMatrix('water-pump', 'pumpIntake', slot, m);
+    const q = new THREE.Quaternion();
+    m.decompose(new THREE.Vector3(), q, new THREE.Vector3());
+    // The intake is built along local +Z; facing east turns that onto +X.
+    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+    expect(forward.x).toBeCloseTo(1, 6);
+    expect(forward.z).toBeCloseTo(0, 6);
+  });
+
+  it('runs the intake and the outfall out past the footprint over the water', () => {
+    const scene = new THREE.Scene();
+    const renderer = new UtilityKitRenderer(scene, flatHeightAt, [
+      makePumpEntry(),
+      makeDrainEntry(),
+    ]);
+    renderer.apply(
+      deltaAdd(
+        makeInstance(1, 'water-pump', { x: 0, z: 0 }),
+        makeInstance(2, 'water-drain', { x: 5, z: 0 }),
+      ),
+    );
+    for (const [id, catalogId, kind, halfD, overhang] of [
+      [1, 'water-pump', 'pumpIntake', TILE_METERS, PUMP_INTAKE_OVERHANG],
+      [2, 'water-drain', 'drainOutfall', TILE_METERS / 2, DRAIN_OUTFALL_OVERHANG],
+    ] as const) {
+      const pool = renderer.kitIds().has(catalogId);
+      expect(pool).toBe(true);
+      const slot = renderer.partSlotsFor(id, kind)[0]!;
+      const m = new THREE.Matrix4();
+      renderer.getPartMatrix(catalogId, kind, slot, m);
+      const geometry = renderer.partGeometry(catalogId, kind)!;
+      geometry.computeBoundingBox();
+      const far = geometry.boundingBox!.max.z;
+      expect(far).toBeCloseTo(halfD + overhang, 6);
+    }
   });
 });

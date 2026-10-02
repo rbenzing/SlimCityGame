@@ -144,6 +144,7 @@ export function feedMirror(mirror: ClientGridMirror): (msg: WorkerToMain) => voi
     if (snap.buildings) mirror.applyBuildingDelta(snap.buildings, (id) => byId.get(id));
     if (snap.zones) mirror.applyZonePatches(snap.zones);
     if (snap.powerLines) mirror.applyPowerLinePatches(snap.powerLines);
+    if (snap.waterPipes) mirror.applyWaterPipePatches(snap.waterPipes);
     if (snap.power) mirror.applyPowerPatches(snap.power);
   };
 }
@@ -166,6 +167,20 @@ export function run(h: Harness, seq: number, commands: Command[]): CommandAck {
   const ack = h.ackFor(seq);
   if (!ack) throw new Error(`no ack for batch ${seq}`);
   return ack;
+}
+
+/**
+ * A pond dug on the dry test map and a drain pipe stood on its bank, the way a
+ * player gives a town its sewer: one lowering stroke takes the pond tile 6 m
+ * below the 5 m flat, under sea level, and eases the bank around it down 3 m
+ * so the drain can still stand there; the drain goes on the tile orthogonally
+ * beside the pond, which must also touch a road or pipe that carries water.
+ */
+export function pondAndDrain(pond: TilePoint, drain: TilePoint): Command[] {
+  return [
+    { kind: 'terraform', mode: 'lower', center: pond, radius: 2, strength: 12 },
+    { kind: 'placeBuilding', catalogId: 'water-drain', x: drain.x, z: drain.z, rotation: 0 },
+  ];
 }
 
 /** A fresh sim in the sandbox, where every road and building is unlocked. */

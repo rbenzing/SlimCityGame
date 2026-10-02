@@ -259,6 +259,26 @@ export const POWER_LINE_COST_PER_TILE = 12;
  * the mechanic exists to put in front of the player.
  */
 export const POWER_LINE_UPKEEP_PER_TILE = 0.5;
+/**
+ * ¢ to lay one tile of water pipe, and ¢/month to keep it: the power line's
+ * figures, for the same reason — a pipe has to be the cheapest thing that
+ * reaches a shore, or a street is laid to the water instead.
+ */
+export const WATER_PIPE_COST_PER_TILE = 12;
+export const WATER_PIPE_UPKEEP_PER_TILE = 0.5;
+/**
+ * The share of the water a building draws that comes back as sewage: public
+ * supply consumes 12% of what it withdraws (USGS), and the rest returns.
+ */
+export const SEWAGE_RETURN_FRACTION = 0.88;
+/**
+ * Pollution per kL a day of raw sewage, for a building nothing drains and for
+ * an outfall: medium-strength sewage carries 200 mg/L of oxygen demand, 161 lb
+ * a year per kL a day, on the scale that puts an electric utility's 484,000 lb
+ * a year at the coal plant's 140. A building emits at least one unit of it, so
+ * a cesspit is never nothing.
+ */
+export const SEWAGE_POLLUTION_PER_KL = (161 * 140) / 484_000;
 /** Cosmetic trucks a landfill area fields: base + one per LANDFILL_TRUCKS_PER_TILES painted tiles, capped. */
 export const LANDFILL_TRUCKS_BASE = 1;
 export const LANDFILL_TRUCKS_PER_TILES = 16;

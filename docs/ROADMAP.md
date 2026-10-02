@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,649 tests passing across 154 test files, run 2026-10-02.
+**Test suite:** 4,692 tests passing across 156 test files, run 2026-10-02.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -74,17 +74,31 @@ the new **Heavy Industrial** zone holding the plants that pollute; a
 business opens only where the town has room for its jobs, and industry
 levels up on demand rather than land value.
 
+**Water goes in and comes out.** A **water pumping station** on a shore
+draws a million gallons a day from the water beside it, a **water drain
+pipe** on a shore takes the city's sewage back out, and a **water pipe**
+painted on open ground carries water and sewage together between them and
+the streets, the way a power line carries power. Every zoned building sends
+88% of its water back as sewage, a lot with no drain to take it never
+grows, and a building left without one stinks. The water tower is
+re-derived from a standard 100,000-gallon tank; the figures and their
+sources are in
+[water-and-sewage.md](game-design/features/water-and-sewage.md).
+
 **Open:**
 
-- The water tower's 400 kL a day is unsourced. Against sourced household
-  draw (0.34 kL a person a day) it serves about 1,200 people, so a city
-  needs one tower per 1,200, and a heavy plant drinks 80–770 kL a day on
-  its own; the ploppable utilities want the same re-derivation the zoned
-  catalog had.
+- **The rest of the water loop**, in the order the water-and-sewage design
+  agreed: a river spoiled where a drain pipe empties into it and an intake
+  that draws less from fouled water, with a **sewage treatment plant** that
+  cleans what it takes before it goes back; then the power ploppables
+  re-derived the way the water ones were — a generator's supply as its
+  nameplate times a published capacity factor, the wind turbine a real
+  3 MW-class machine drawn at its real size, costs from published $/kW.
 - The coal plant's and the incinerator's pollution figures (140, 120) are
   unsourced, and the zoned pollution scale now hangs off the coal plant's:
   140 for an electric utility's 484,000 lb of releases a year. Re-deriving
-  the ploppables would move every plant's figure with them.
+  the ploppables would move every plant's figure with them; the power
+  re-derivation above is where that happens.
 - The level 2 and 3 setback tiers (`computeSetbacks`) stand inside the
   full-height body the instancer draws, so the stepped silhouette
   [art/buildings.md](art/buildings.md) describes under "Silhouette variety"
@@ -108,10 +122,11 @@ levels up on demand rather than land value.
 
 Before writing "not built" anywhere in this document, check the code.
 
-**Next:** nothing else is queued, so the next item is whatever is asked for
-next. The [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry,
-more transit modes) and AI raster map packs, facade-atlas stage 2 and
-screen-space AO/reflections are the shelf to pick from.
+**Next:** the rest of the water loop, first in the Open list above — a
+spoiled shore and a treatment plant, then the power ploppables re-derived.
+After that the [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper
+industry, more transit modes) and AI raster map packs, facade-atlas stage 2
+and screen-space AO/reflections are the shelf to pick from.
 
 ---
 
@@ -251,6 +266,48 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Water in, and sewage out (asked for and built 2026-10-02)
+
+The first of three water-and-sewage changes
+([water-and-sewage.md](game-design/features/water-and-sewage.md)): the
+pipe layer, the two shore buildings, and sewage as the third utility.
+
+- **A water pipe** is a painted layer like the power line, laid on open
+  ground with the water tab's pipe card at ¢12 a tile and ¢0.5 a tile a
+  month. One tile of pipe carries water and sewage both — it is drawn as a
+  blue strip beside a brown one — and conducts them into any road or
+  building it touches, so a pipe from a shore to the nearest street puts
+  the whole street's network on the water. Pipes stay out of water and out
+  of footprints; a bulldozed pipe refunds and the undo lays it back.
+- **A water pumping station** (2×2, Small Town) stands on a shore and
+  makes 3,785 kL a day — a million gallons, the small surface-water plant
+  of the public energy audits — drawing 62.5 kW. **A water drain pipe**
+  (1×1, from the start) stands on a shore and takes 3,785 kL a day of
+  sewage back out, polluting as a facility that discharges that much raw
+  sewage does. Both refuse any tile with no water beside the footprint,
+  and both kits turn to face whichever side the water is on.
+- **The water tower** is re-derived: a standard 100,000-gallon elevated
+  tank holding the day's average draw, 378.5 kL a day, for 7.5 kW.
+- **Sewage is the third utility.** A zoned building returns 88% of its
+  water as sewage (the water-industry's indoor return figure); houses on
+  wells and farms return none. A drain's reach is the same street walk the
+  water takes, cut from the far end like power and water when the drains
+  are overfilled. A lot with no sewer, or none to spare, does not grow and
+  does not level up; a standing building without one carries **NoSewer**,
+  emits pollution for the sewage it cannot send anywhere, and is never
+  abandoned for it, so a city saved before this loads standing.
+- **Seen and said**: a Sewer lens, a Drains row in the city panel, Sewer in
+  the building popover, and Advisor rules for a sewer shortage, buildings
+  without a drain, growth waiting on one, and zoned land no drain reaches.
+- **Saved**: the pipe layer appends to the tile record, `SAVE_VERSION` 14;
+  a v13 save loads with no pipes. Reading a saved road network now measures
+  the tile record at the save's own version, which it did not before.
+- **Tests**: the pipe layer and tool, pipe strips, the network walk over
+  pipes and the sewer cut, the v14 round trip and a v13 buffer, the kits'
+  facing, the lens grid, the city panel and the Advisor, and the small town
+  grading its river bank and taking its water from the river and sending
+  its sewage back.
 
 ### Industrial building kinds, and a Heavy Industrial zone (2026-10-02)
 

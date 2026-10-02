@@ -17,6 +17,8 @@ function makeStats(overrides: Partial<CityStats> = {}): CityStats {
     powerDemand: 8,
     waterSupply: 10,
     waterDemand: 8,
+    sewerSupply: 10,
+    sewerDemand: 8,
     milestoneLevel: 1,
     milestoneProgress: 0.3,
     loanBalance: 0,

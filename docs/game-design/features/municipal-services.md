@@ -69,7 +69,7 @@ turns red.
 | Service            | Today                 | After                                                                        |
 | ------------------ | --------------------- | ---------------------------------------------------------------------------- |
 | **Power**          | Two generators        | A thermal tier between them, and generation that can be outgrown             |
-| **Water & sewage** | Water only            | The other half of the loop: collection, treatment, and a river you can spoil |
+| **Water & sewage** | Water only            | The other half of the loop: pipes, a shore intake and an outfall are built (2026-10-02); treatment and a river you can spoil follow |
 | **Healthcare**     | One clinic            | Clinic → hospital, plus care for the old and the dead                        |
 | **Education**      | Elementary            | Primary → secondary → tertiary, each gating the next, plus a library         |
 | **Emergency**      | One police, one fire  | A station ladder for each, sized on response time                            |

@@ -50,6 +50,8 @@ from the road network saved after the tiles — see
 | `junctionControl`   | `Uint8Array`                                                    | Player's control override: `0` = none (the warrant decides), `1..6` a code — see [Junctions](#junctions).                                | v8                                                                    | `0`                                       |
 | `junctionTurns`     | `Uint16Array`                                                   | Turn restrictions, one nibble per arm (N/E/S/W), a `MovementSet` bitmask each.                                                           | v9                                                                    | `0` (unrestricted)                        |
 | `powerLine`         | `Uint8Array`                                                    | `1` = a power line stands on this tile.                                                                                                  | v10                                                                   | `0`                                       |
+| `waterPipe`         | `Uint8Array`                                                    | `1` = a water pipe is laid under this tile; it carries water and sewage.                                                                 | v14                                                                   | `0`                                       |
+| `sewered` *         | `Uint8Array`                                                    | `1` = a drain's reach covers the tile. Derived on every utility pass.                                                                    | never — recomputed every utility pass                                 | `0`                                       |
 | `junctionLaneTurns` | `Uint16Array`, length `n * ARMS_PER_TILE` (`ARMS_PER_TILE = 4`) | Per-lane turn restrictions: one packed entry per arm, four lanes at a nibble apiece.                                                     | v11                                                                   | `0` (each lane takes its derived default) |
 | `overTier` †        | `Uint8Array`                                                    | The tier of the road passing over this tile's road; `0` everywhere but a crossing tile. See [overpasses.md](../world-sim/overpasses.md). | v12                                                                   | `0` (no overpass)                         |
 | `overProfile` †     | `Uint16Array`                                                   | That road's profile id.                                                                                                                  | v12                                                                   | `0`                                       |
@@ -140,8 +142,8 @@ blocks defaulted on saves written before they existed: `garbage`
 
 ### Save version and per-tile width
 
-The current `SAVE_VERSION` is **13** (`src/shared/types.ts`), and the
-current per-tile width is **36 bytes** (`BYTES_PER_TILE` in
+The current `SAVE_VERSION` is **14** (`src/shared/types.ts`), and the
+current per-tile width is **37 bytes** (`BYTES_PER_TILE` in
 `src/world/grid.ts`), followed by the road network. The width for every version is exported as
 `BYTES_PER_TILE_BY_VERSION` (`src/world/grid.ts`) — a single array, indexed
 by version number, that both `deserializeGrid` and the grid migration tests
@@ -161,7 +163,8 @@ read rather than each keeping its own count. Reproduced exactly:
 | 10             | 37         | `powerLine` (+1 byte).                                                                                            |
 | 11             | 45         | `junctionLaneTurns`, 4 arms x `Uint16` (+8 bytes).                                                                |
 | 12             | 53         | The over-road layers: `overTier`, `overProfile` (`Uint16`), `overFlow`, `overElevation` (`Float32`) (+8 bytes).   |
-| 13 (current)   | 36         | Drops every road layer (−17 bytes); the road network follows the tiles.                                           |
+| 13             | 36         | Drops every road layer (−17 bytes); the road network follows the tiles.                                           |
+| 14 (current)   | 37         | `waterPipe` (+1 byte), appended to the tile record ahead of the network.                                          |
 
 Up to v12, every new layer was appended as the last thing the serializer
 wrote, in version order: an older save's tile record is exactly a
@@ -169,7 +172,10 @@ byte-for-byte prefix of the v12 record, just missing the layers added after it
 was saved. `serializeGridV12` still writes that layout, and the migration tests
 trim it. v13 is the one break in the pattern: it takes the road layers out of
 the tile record, because they are derived from the road network now, and an
-older save's roads convert to a network on load.
+older save's roads convert to a network on load. From v14 the pattern
+resumes: a new layer is appended to the tile record, and the network after
+it moves along by the same bytes — which is why `savedRoadNetwork` measures
+the tile record at the save's own version width, never today's.
 `deserializeGrid` reads the version out of the header, looks up its width in
 `BYTES_PER_TILE_BY_VERSION`, and for each layer added after that version
 substitutes the default from the table above instead of reading bytes that
@@ -389,12 +395,12 @@ schema is `BuildingCatalogEntry` in `src/shared/types.ts`:
 | `noise`            | no       | `0..255` emitted at source into the Noise field.                                  |
 | `landValueBonus`   | no       | `0..255` emitted into the LandValue field.                                        |
 | `service`          | no       | `{ kind, strength: 0..255, range }` — a service building's spec.                  |
-| `utility`          | no       | `{ powerMW?, waterKL? }` produced.                                                |
+| `utility`          | no       | `{ powerMW?, waterKL?, sewerKL? }` — power and water produced, sewage taken, a day. |
 | `garbage`          | no       | `{ collectionRange, bufferCapacity, burnRate, trucks }` — the incinerator's spec. |
 | `cost`             | yes      | `0` for grown buildings, plopping cost otherwise.                                 |
 | `upkeep`           | yes      | Per month.                                                                        |
 | `unlockMilestone`  | yes      | Index into `MILESTONES` (`src/shared/constants.ts`) required to build.            |
-| `requiresAdjacent` | no       | Currently only `'rail'` — the footprint must touch that transport tier.           |
+| `requiresAdjacent` | no       | `'rail'` — the footprint must touch that transport tier; `'water'` — it must touch a water tile (an intake, an outfall). |
 
 ### `src/data/roads.json`
 

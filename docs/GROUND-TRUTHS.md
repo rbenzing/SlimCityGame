@@ -383,9 +383,10 @@ MUTCD citations below use 11th-edition section numbers.
   `CANTILEVER_FACE_Z`, `cantileverSide`, `flowFacingYaw` and
   `signWorldTransform` in `src/render/roadfurniture.ts`
 - A manhole cover is the top of a sewer and is drawn only on a road whose
-  class carries water. A motorway and a ramp carry none, so they carry no
-  covers; the test is the water flag, never a tier list. —
-  [road-model.md](world-sim/road-model.md); `src/render/roadfurniture.ts`
+  class carries water: a street's main is also its sewer, which is why a
+  drain reaches along the same roads a tower does. A motorway and a ramp
+  carry none, so they carry no covers; the test is the water flag, never a
+  tier list. — [road-model.md](world-sim/road-model.md); `src/render/roadfurniture.ts`
 - A broken line is 3.05 m of paint and a 9.15 m gap (a 12.2 m period), 0.15 m
   wide, with its phase anchored at world metre 0 across every seam. —
   [road-model.md](world-sim/road-model.md); `src/render/roadsmesh.ts`
@@ -519,15 +520,16 @@ MUTCD citations below use 11th-edition section numbers.
   [environmental-simulation.md](world-sim/environmental-simulation.md),
   [parks-and-recreation.md](engineering/features/parks-and-recreation.md)
 - Only `NoRoad`, `NoPower` or `NoWater` for three consecutive growth passes
-  abandon an `Active` building. `LowDemand` is display-only and stays toothless.
-  — [population-model.md](world-sim/population-model.md);
+  abandon an `Active` building. `LowDemand` is display-only and stays
+  toothless, and `NoSewer` stops growth and dirties the ground but never
+  abandons. — [population-model.md](world-sim/population-model.md);
   `ABANDON_BLOCKER_STREAK` in `src/sim/growth.ts`
 - Building ids are monotonic from 1 and never reused in a session. The
   `buildingId` layer is the only spatial index. —
   [entities.md](world-sim/entities.md)
-- A zoned tile develops only when it is zoned, served with power and water on
-  its footprint, and within Manhattan distance 3 of a street, on the grid or
-  off it, and a building stands only on tiles zoned the same, at spawn and at
+- A zoned tile develops only when it is zoned, served with power, water and
+  a drain on its footprint, and within Manhattan distance 3 of a street, on
+  the grid or off it, and a building stands only on tiles zoned the same, at spawn and at
   every level-up: it never spills onto the ground beside its zone. One
   zonability predicate decides; the zoning grid visual and the
   `paintZone` command both defer to it and may never disagree, so the render
@@ -537,17 +539,39 @@ MUTCD citations below use 11th-edition section numbers.
   its footprint. Clearing a zone is
   exempt from the frontage check so a zone can always be removed. A farm
   departs from this twice: its lot needs a dirt road within 3 tiles, and
-  it needs no water, since a building whose entry draws none never waits
-  for it. A low-density house is on a private well, and needs no water
-  either, when a dirt road lies within 3 tiles of its lot and no road that
-  carries water lies beside any tile of it. — [simulation-rules.md](game-design/simulation-rules.md)
+  it needs no water or drain, since a building whose entry draws none never
+  waits for it. A low-density house is on a private well and a septic tank,
+  and needs no water or drain either, when a dirt road lies within 3 tiles
+  of its lot and no main — a road that carries water, or a pipe — lies
+  beside any tile of it. — [simulation-rules.md](game-design/simulation-rules.md)
 - Who draws city water is one predicate, `cityWaterUse`, read by growth and
-  the water line alike. It looks only at the roads, never at the supply, so
-  a shortage never moves a house onto a well. A house on a well draws
-  nothing: it is never refused, held back or flagged for water, and takes no
-  place in the water line. —
+  the water line alike. It looks only at the roads and pipes, never at the
+  supply, so a shortage never moves a house onto a well. A house on a well
+  draws nothing: it is never refused, held back or flagged for water, and
+  takes no place in the water line. A building's sewage is `sewageOf`, the
+  return-to-sewer share of that same figure, so a house on a well makes
+  none and a farm makes none. —
   [simulation-rules.md](game-design/simulation-rules.md#a-house-on-a-well);
   `src/sim/network.ts`
+- Sewage is the third utility and runs on the water's own network: a drain
+  reaches along every road that carries water and every pipe, the buildings
+  it reaches line up by steps from the nearest drain, and the far end is cut
+  when the drains run out, exactly as the water is. A lot grows and a
+  building levels up only where a drain reaches it with room for its sewage.
+  A standing building nothing drains carries `NoSewer`, fouls the ground
+  around it in proportion to its sewage, and is **never abandoned for it**,
+  so a city saved before there were drains loads standing. —
+  [water-and-sewage.md](game-design/features/water-and-sewage.md),
+  [utilities-model.md](world-sim/utilities-model.md#sewage); `recomputeUtilities`
+  in `src/sim/network.ts`, `tryLevelUp` and `runSpawnScan` in `src/sim/growth.ts`
+- A water pipe is to water and sewage what the power line is to power: a
+  painted layer, not a road, that conducts between its own tiles and into
+  any road or building it touches. It stands on no water and no footprint,
+  and laying over a laid tile changes and charges nothing. A pumping station
+  and a drain pipe stand only where their footprint touches water
+  (`requiresAdjacent: 'water'`), as a station stands only on the rails. —
+  [utilities-model.md](world-sim/utilities-model.md#conducting-roads-power-lines-and-pipes);
+  `src/world/waterpipe.ts`, `hasAdjacentWater` in `src/world/grid.ts`
 - A tile's soil grade is derived from its height, the water beside it and the
   map seed, and never saved. It is graded by one function, `soilGradeAt`,
   for the worker, the render mirror, the Soil lens, farmland painting and
@@ -604,13 +628,15 @@ MUTCD citations below use 11th-edition section numbers.
 
 ## Utilities and services
 
-- Power, water and every service reach the city only along the street-tier road
-  network: a breadth-first search from the road tiles orthogonally adjacent to
-  the footprint, radiating one step (utilities) or two steps (services) onto
-  non-road tiles. Never a straight-line radius. The search follows the road
-  network's links (`roadCellsOf`), so it goes only where roads join: never
-  across to a road that merely lies alongside, never between two levels. A
-  power line is not a road, and passes power to whatever stands beside it. —
+- Power, water, sewage and every service reach the city only along the
+  street-tier road network: a breadth-first search from the road tiles
+  orthogonally adjacent to the footprint, radiating one step (utilities) or
+  two steps (services) onto non-road tiles. Never a straight-line radius. The
+  search follows the road network's links (`roadCellsOf`), so it goes only
+  where roads join: never across to a road that merely lies alongside, never
+  between two levels. A power line is not a road, and passes power to
+  whatever stands beside it; a water pipe is not a road, and passes water
+  and sewage the same way. —
   [utilities-model.md](world-sim/utilities-model.md),
   [services-model.md](world-sim/services-model.md),
   [ADR-0009](engineering/adr/0009-utilities-propagate-along-roads.md);
@@ -621,11 +647,12 @@ MUTCD citations below use 11th-edition section numbers.
 - Service range is a road-hop count in tiles, scaled by funding and floored. It
   is never called, drawn or computed as a radius. —
   [services-model.md](world-sim/services-model.md)
-- Water conducts along every street tier unless its spec says
-  `carriesWater: false` (dirt road, highway, ramp). Power conducts only where the class
-  surface is `paved`, read from the spec, never from a separate flag. Rail
-  conducts neither. — [utilities-model.md](world-sim/utilities-model.md);
-  `src/sim/network.ts`
+- Water, and the sewage coming back, conduct along every street tier unless
+  its spec says `carriesWater: false` (dirt road, highway, ramp), and along
+  a water pipe. Power conducts only where the class surface is `paved`, read
+  from the spec, never from a separate flag, and along a power line. Rail
+  conducts neither; a line carries no water and a pipe no power. —
+  [utilities-model.md](world-sim/utilities-model.md); `src/sim/network.ts`
 - Utility supply is one city-wide total and an unconnected generator still
   counts. Demand is what the network reaches: every building it reaches,
   abandoned ones included, and nothing it does not. When demand exceeds
@@ -644,10 +671,11 @@ MUTCD citations below use 11th-edition section numbers.
   [utilities-model.md](world-sim/utilities-model.md#brownouts)
 - Because supply counts it anyway, a generator that cannot deliver must say
   so: a utility whose footprint touches no tile that conducts **what it
-  produces** carries `Problem.NoRoad`. Touching a road is not enough — a
-  motorway and a ramp carry no water, an unsealed lane conducts no power, and
-  a power line carries electricity only — so the test is the same predicate
-  the coverage walk seeds from, never a second idea of "connected". Otherwise
+  produces** (or, for a drain, takes) carries `Problem.NoRoad`. Touching a
+  road is not enough — a motorway and a ramp carry no water, an unsealed
+  lane conducts no power, and a power line carries electricity only — so the
+  test is the same predicate the coverage walk seeds from, never a second
+  idea of "connected". Otherwise
   the supply figures read healthy while nothing is served and the city
   silently stops growing. —
   [utilities-model.md](world-sim/utilities-model.md); `utilityCanDeliver` in

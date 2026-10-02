@@ -11,6 +11,7 @@ export type IconName =
   | 'roads'
   | 'electricity'
   | 'water'
+  | 'sewer'
   | 'health'
   | 'fire'
   | 'police'
@@ -90,6 +91,15 @@ const GLYPHS: Record<IconName, Glyph> = {
   water: (p) => (
     <Base {...p}>
       <path d="M12 3c3 4 6 8.2 6 11.5a6 6 0 1 1-12 0C6 11.2 9 7 12 3Z" />
+    </Base>
+  ),
+  // A pipe elbow draining into a channel: the sewer's lens and its pipe card.
+  sewer: (p) => (
+    <Base {...p}>
+      <path d="M3 6h8a4 4 0 0 1 4 4v4" />
+      <path d="M3 10h8" />
+      <path d="M15 10v4" />
+      <path d="M4 19c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0" />
     </Base>
   ),
   health: (p) => (

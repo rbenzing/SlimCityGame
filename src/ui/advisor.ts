@@ -95,6 +95,23 @@ const PROBLEM_RULES: {
     detail: () => 'Add a water tower within reach, or connect the road that carries the supply.',
   },
   {
+    flag: Problem.SewerShortage,
+    id: 'sewer-short',
+    severity: 'warning',
+    title: (n) => `${n} building${n === 1 ? '' : 's'} at the far end of the sewers without a drain`,
+    detail: (s) =>
+      `Not enough drainage: the city makes ${amount(s.sewerDemand, 'kL')} of sewage and drains ${amount(s.sewerSupply, 'kL')} — build another drain pipe.`,
+  },
+  {
+    flag: Problem.NoSewer,
+    unless: Problem.SewerShortage,
+    id: 'no-sewer',
+    severity: 'warning',
+    title: (n) => `${n} building${n === 1 ? '' : 's'} with no sewer`,
+    detail: () =>
+      'Their sewage runs in the ditches and fouls the ground, and nothing new grows there. Build a drain pipe on a shore and lay pipe or road to it.',
+  },
+  {
     flag: Problem.HighCrime,
     id: 'high-crime',
     severity: 'warning',
@@ -128,8 +145,8 @@ function countsAsProblem(building: BuildingInstance): boolean {
   return building.state !== BuildingState.Constructing;
 }
 
-const NOTHING_WAITING: GrowthWaiting = { power: 0, water: 0 };
-const NOTHING_UNSERVED: ZonedUnserved = { power: 0, water: 0 };
+const NOTHING_WAITING: GrowthWaiting = { power: 0, water: 0, sewer: 0 };
+const NOTHING_UNSERVED: ZonedUnserved = { power: 0, water: 0, sewer: 0 };
 
 /**
  * Ranked list of what is wrong with the city. Empty when nothing is — an
@@ -206,8 +223,17 @@ function waitingIssues(waiting: GrowthWaiting): CityIssue[] {
       id: 'water-waiting',
       severity: 'warning',
       title: 'Growth is waiting for water',
-      detail: `${lots(waiting.water)} more water than the mains have spare — add a water tower.`,
+      detail: `${lots(waiting.water)} more water than the mains have spare — add a water tower or a pumping station.`,
       count: waiting.water,
+    });
+  }
+  if (waiting.sewer > 0) {
+    issues.push({
+      id: 'sewer-waiting',
+      severity: 'warning',
+      title: 'Growth is waiting for a drain',
+      detail: `${lots(waiting.sewer)} more drainage than the drains have spare — build another drain pipe.`,
+      count: waiting.sewer,
     });
   }
   return issues;
@@ -238,9 +264,21 @@ function unservedIssues(unserved: ZonedUnserved): CityIssue[] {
       id: 'zoned-no-water',
       severity: 'warning',
       title: tiles(unserved.water, 'water'),
-      detail: 'Nothing can grow there until the road joins the mains of a water tower.',
+      detail:
+        'Nothing can grow there until the road joins the mains of a water tower or a pumping station.',
       count: unserved.water,
       focus: unserved.waterAt,
+    });
+  }
+  if (unserved.sewer > 0) {
+    issues.push({
+      id: 'zoned-no-sewer',
+      severity: 'warning',
+      title: tiles(unserved.sewer, 'sewer'),
+      detail:
+        'Nothing can grow there until a drain pipe reaches the road — build one on a shore and lay pipe to it.',
+      count: unserved.sewer,
+      focus: unserved.sewerAt,
     });
   }
   return issues;

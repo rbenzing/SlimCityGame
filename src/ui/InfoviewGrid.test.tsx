@@ -16,9 +16,9 @@ afterEach(() => {
 });
 
 describe('InfoviewGrid', () => {
-  it('renders a button per FieldId lens (9) plus Power, Watered, Trash, Soil, Transit, Districts and None (16 total), None active by default', () => {
+  it('renders a button per FieldId lens (9) plus Power, Water, Sewer, Trash, Soil, Transit, Districts and None (17 total), None active by default', () => {
     render(<InfoviewGrid />);
-    expect(screen.getAllByRole('button')).toHaveLength(16);
+    expect(screen.getAllByRole('button')).toHaveLength(17);
     expect(screen.getByRole('button', { name: /None/ })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: /Traffic/ })).toHaveAttribute(
       'aria-pressed',
@@ -26,10 +26,17 @@ describe('InfoviewGrid', () => {
     );
   });
 
-  it('gains Power and Water lens buttons alongside the nine scalar fields (UI-SPEC §2)', () => {
+  it('gains Power, Water and Sewer lens buttons alongside the nine scalar fields (UI-SPEC §2)', () => {
     render(<InfoviewGrid />);
     expect(screen.getByRole('button', { name: /^Power$/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Water$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Sewer$/ })).toBeInTheDocument();
+  });
+
+  it('clicking the Sewer lens sets overlay to the "sewered" LensId', () => {
+    render(<InfoviewGrid />);
+    fireEvent.click(screen.getByRole('button', { name: /^Sewer$/ }));
+    expect(useCityStore.getState().overlay).toBe('sewered');
   });
 
   it('clicking the Power lens sets overlay to the "power" LensId', () => {

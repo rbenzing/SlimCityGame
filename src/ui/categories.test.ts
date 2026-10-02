@@ -160,7 +160,14 @@ describe('subTabsFor', () => {
       // they make.
     ).toEqual(['plop.coal-plant', 'plop.wind-turbine', 'power.line'].sort());
     expect(subTabsFor('water')).toHaveLength(1);
-    expect(subTabsFor('water')[0]?.cards.map((c) => c.id)).toEqual(['plop.water-tower']);
+    // The tower and the shore intake, the drain that takes the sewage back,
+    // and the pipe that carries both where the streets do not.
+    expect(subTabsFor('water')[0]?.cards.map((c) => c.id)).toEqual([
+      'plop.water-tower',
+      'plop.water-pump',
+      'plop.water-drain',
+      'water.pipe',
+    ]);
     expect(subTabsFor('bulldoze')).toHaveLength(1);
     expect(subTabsFor('bulldoze')[0]?.cards.map((c) => c.id)).toEqual(['bulldoze']);
   });

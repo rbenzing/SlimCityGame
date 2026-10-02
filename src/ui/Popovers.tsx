@@ -81,6 +81,7 @@ export function CityInfoPopover(): JSX.Element {
       {row('Jobs', `${Math.round(stats.employed)}/${Math.round(stats.jobs)}`)}
       {row('Power', `${Math.round(stats.powerSupply)}/${Math.round(stats.powerDemand)} MW`)}
       {row('Water', `${Math.round(stats.waterSupply)}/${Math.round(stats.waterDemand)} kL`)}
+      {row('Sewer', `${Math.round(stats.sewerSupply)}/${Math.round(stats.sewerDemand)} kL`)}
       {row('Loan', formatFunds(stats.loanBalance))}
     </PopoverFrame>
   );

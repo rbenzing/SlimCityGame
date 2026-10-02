@@ -25,6 +25,8 @@ function healthyStats(overrides: Partial<CityStats> = {}): CityStats {
     powerDemand: 50,
     waterSupply: 100,
     waterDemand: 50,
+    sewerSupply: 100,
+    sewerDemand: 50,
     milestoneLevel: 1,
     milestoneProgress: 0.5,
     loanBalance: 0,
@@ -152,7 +154,7 @@ describe('cityIssues', () => {
   });
 
   it('city-wide issues carry no focus tile — there is no one place to look', () => {
-    const issues = cityIssues([], healthyStats(), { power: 3, water: 0 });
+    const issues = cityIssues([], healthyStats(), { power: 3, water: 0, sewer: 0 });
     const waiting = issues.find((i) => i.id === 'power-waiting');
     expect(waiting).toBeDefined();
     expect(waiting?.focus).toBeUndefined();
@@ -206,7 +208,7 @@ describe('a grid too small for its city', () => {
   });
 
   it('warns while growth waits for supply though nothing is dark yet', () => {
-    const issues = cityIssues([], healthyStats(), { power: 4, water: 0 });
+    const issues = cityIssues([], healthyStats(), { power: 4, water: 0, sewer: 0 });
     expect(idsOf(issues)).toEqual(['power-waiting']);
     expect(issues[0]!.severity).toBe('warning');
     expect(issues[0]!.count).toBe(4);
@@ -216,23 +218,43 @@ describe('a grid too small for its city', () => {
   });
 
   it('warns for water the same way, in the singular for one', () => {
-    const issues = cityIssues([], healthyStats(), { power: 0, water: 1 });
+    const issues = cityIssues([], healthyStats(), { power: 0, water: 1, sewer: 0 });
     expect(idsOf(issues)).toEqual(['water-waiting']);
     expect(issues[0]!.detail).toContain('1 new or growing building needs more water');
   });
 
-  it('says nothing when growth is waiting for neither', () => {
-    expect(cityIssues([], healthyStats(), { power: 0, water: 0 })).toEqual([]);
+  it('warns for a drain the same way, and names the sewage figures when the drains ran out', () => {
+    const waiting = cityIssues([], healthyStats(), { power: 0, water: 0, sewer: 2 });
+    expect(idsOf(waiting)).toEqual(['sewer-waiting']);
+    expect(waiting[0]!.detail).toContain('2 new or growing buildings need more drainage');
+
+    const choked = Problem.NoSewer | Problem.SewerShortage;
+    const issues = cityIssues(
+      [building(choked), building(Problem.NoSewer)],
+      healthyStats({ sewerDemand: 120, sewerSupply: 100 }),
+    );
+    expect(issues.find((i) => i.id === 'sewer-short')?.count).toBe(1);
+    expect(issues.find((i) => i.id === 'sewer-short')?.detail).toContain(
+      'makes 120 kL of sewage and drains 100 kL',
+    );
+    expect(issues.find((i) => i.id === 'no-sewer')?.count).toBe(1);
+    // Nothing abandons for a missing sewer, so neither is critical.
+    for (const issue of issues) expect(issue.severity).toBe('warning');
+  });
+
+  it('says nothing when growth is waiting for none of them', () => {
+    expect(cityIssues([], healthyStats(), { power: 0, water: 0, sewer: 0 })).toEqual([]);
   });
 });
 
 describe('zoned land its road brings no power or water', () => {
-  const none = { power: 0, water: 0 };
+  const none = { power: 0, water: 0, sewer: 0 };
 
   it('warns, counts the tiles, says why, and points at the first', () => {
     const issues = cityIssues([], healthyStats(), none, {
       power: 9,
       water: 0,
+      sewer: 0,
       powerAt: { x: 71, z: 51 },
     });
     expect(idsOf(issues)).toEqual(['zoned-no-power']);
@@ -250,11 +272,25 @@ describe('zoned land its road brings no power or water', () => {
     const issues = cityIssues([], healthyStats(), none, {
       power: 0,
       water: 1,
+      sewer: 0,
       waterAt: { x: 3, z: 4 },
     });
     expect(idsOf(issues)).toEqual(['zoned-no-water']);
     expect(issues[0]!.title).toBe('1 zoned tile has no water from the road beside it');
     expect(issues[0]!.focus).toEqual({ x: 3, z: 4 });
+  });
+
+  it('warns for a sewer the same way, pointing at a shore', () => {
+    const issues = cityIssues([], healthyStats(), none, {
+      power: 0,
+      water: 0,
+      sewer: 4,
+      sewerAt: { x: 8, z: 9 },
+    });
+    expect(idsOf(issues)).toEqual(['zoned-no-sewer']);
+    expect(issues[0]!.title).toBe('4 zoned tiles have no sewer from the road beside them');
+    expect(issues[0]!.detail).toContain('drain pipe');
+    expect(issues[0]!.focus).toEqual({ x: 8, z: 9 });
   });
 
   it('says nothing when every zoned tile beside a road is served', () => {
@@ -340,7 +376,7 @@ describe('criticalCount', () => {
         building(Problem.LowDemand),
       ],
       healthyStats({ powerDemand: 500 }),
-      { power: 2, water: 0 },
+      { power: 2, water: 0, sewer: 0 },
     );
     expect(criticalCount(issues)).toBe(2); // no-power + power-short; waiting is a warning
   });

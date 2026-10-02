@@ -24,6 +24,7 @@ const LENSES: ReadonlyArray<{ id: LensId; label: string; icon: IconName }> = [
   { id: FieldId.Happiness, label: 'Happiness', icon: 'happiness' },
   { id: 'power', label: 'Power', icon: 'electricity' },
   { id: 'watered', label: 'Water', icon: 'water' },
+  { id: 'sewered', label: 'Sewer', icon: 'sewer' },
   { id: 'trash', label: 'Trash', icon: 'pollution' },
   { id: 'soil', label: 'Soil', icon: 'soil' },
   // Transit / Districts overlays.

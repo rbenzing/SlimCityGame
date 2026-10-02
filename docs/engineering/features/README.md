@@ -58,7 +58,7 @@ first.
 | #   | Document                                                     | Save format           | Worker protocol |
 | --- | ------------------------------------------------------------ | --------------------- | --------------- |
 | 0   | [service-capacity.md](service-capacity.md)                   | no                    | additive        |
-| 1   | [water-and-sewage.md](water-and-sewage.md)                   | additive              | additive        |
+| 1   | [water-and-sewage.md](water-and-sewage.md)                   | additive (v14, built) | additive        |
 | 2   | [healthcare-and-death-care.md](healthcare-and-death-care.md) | additive              | additive        |
 | 3   | [education-ladder.md](education-ladder.md)                   | additive              | additive        |
 | 4   | [emergency-services.md](emergency-services.md)               | no                    | additive        |

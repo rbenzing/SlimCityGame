@@ -106,6 +106,12 @@ of the generic building facade box:
 - **Wind turbine**: a tapered mast, a nacelle, and a 3-blade rotor that spins
   slowly (a deterministic phase per instance), in pale bone-white.
 - **Water tower**: 4 splayed legs, a banded cylindrical tank, a domed cap.
+- **Water pumping station**: a pale pump house with a plant room on its roof,
+  and a steel intake pipe running out of its water-facing wall and 6 m past
+  the footprint's edge over the water. The kit turns to face whichever side
+  of its footprint the water lies on, never the rotation it was placed at.
+- **Water drain pipe**: a low concrete headwall at the water's edge with the
+  outfall pipe through it, 4 m out over the water, turned the same way.
 - **Coal plant**: a dark boiler hall, 2 striped smokestacks in the industrial
   chimney language from [buildings.md](buildings.md), and a coal-heap wedge.
 - **Small park**: a flat lawn plate, a cross-shaped walking path, 2–3 trees,

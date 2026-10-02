@@ -92,9 +92,11 @@ could have sent:
   a motorway with an on-ramp, rail track, and a six-lane road laid as two
   carriageways with main street crossing it — with bridges where the avenue,
   the ramp road and the motorway cross the river;
-- power (a coal plant and a wind turbine) and water towers;
+- power (a coal plant and a wind turbine) and water towers, with a water
+  pumping station on the river bank, a water pipe carrying the river's water
+  to the avenue, and a water drain pipe sending the town's sewage back;
 - every zone: low- and high-density homes and shops, row housing, apartments,
-  mixed housing, industry, and farmland;
+  mixed housing, light and heavy industry, and farmland;
 - farms off a dirt road that no road joins to the town, so no water main
   reaches it, powered by a line strung from the avenue's end along the road;
 - every building a player places: police, fire, a clinic, a school, parks,

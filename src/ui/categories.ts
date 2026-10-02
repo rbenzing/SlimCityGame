@@ -7,7 +7,11 @@ import catalogData from '../data/catalog.json';
 import roadsData from '../data/roads.json';
 import type { BuildingCatalogEntry, RoadSpec, RoadTier, ToolId } from '../shared/types';
 import { RoadTier as RoadTierValue } from '../shared/types';
-import { LANDFILL_PAINT_COST_PER_TILE, POWER_LINE_COST_PER_TILE } from '../shared/constants';
+import {
+  LANDFILL_PAINT_COST_PER_TILE,
+  POWER_LINE_COST_PER_TILE,
+  WATER_PIPE_COST_PER_TILE,
+} from '../shared/constants';
 import type { IconName } from './icons';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
@@ -221,6 +225,18 @@ const POWER_LINE_CARD: AssetCard = {
   unlockMilestone: 0,
 };
 
+/**
+ * Water pipe (lays GridState.waterPipe); one pipe carries water out and
+ * sewage back. Cost is per tile of run, shown live on the cursor chip like the
+ * power line's.
+ */
+const WATER_PIPE_CARD: AssetCard = {
+  id: 'water.pipe',
+  name: 'Water Pipe',
+  cost: WATER_PIPE_COST_PER_TILE,
+  unlockMilestone: 0,
+};
+
 /** Landfill area brush (paints GridState.landfill); cost is per painted tile. */
 const LANDFILL_PAINT_CARD: AssetCard = {
   id: 'landfill.paint',
@@ -323,7 +339,16 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
     {
       id: 'all',
       label: 'Water',
-      cards: catalogCards((e) => e.category === 'utility' && e.utility?.waterKL !== undefined),
+      cards: [
+        // What makes the water, what takes the sewage back, and the pipe that
+        // carries both where the streets do not.
+        ...catalogCards(
+          (e) =>
+            e.category === 'utility' &&
+            (e.utility?.waterKL !== undefined || e.utility?.sewerKL !== undefined),
+        ),
+        WATER_PIPE_CARD,
+      ],
     },
   ],
   // Garbage: the landfill-area brush + garbage-processing ploppables (incinerator).

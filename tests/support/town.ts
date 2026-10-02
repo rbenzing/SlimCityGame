@@ -39,6 +39,8 @@ export const WALLED_MOTORWAY = composeProfile(presetProfileForTier(RoadTier.High
  *   z  41–43   a landfill between the track and the station road
  *   z  44      station road, homes and shops along its south side
  *   z  57      the road out to the motorway ramp, x 130–151
+ *   z  68–69   a pumping station on the north bank at x 95–96, piped to the
+ *              avenue along z 68, and a drain pipe at x 89 beside the avenue
  *   z  70–74   a river, which the avenue and the ramp road bridge
  *   z  85      tramway, x 50–129, drawn after the avenue and crossing it
  *   z 100      main street (two-lane), x 50–130, the town centre, carried on
@@ -84,6 +86,9 @@ export const TOWN = {
   soundWall: { z0: 80 },
   ramp: { x: 151, z0: 58, z1: 62 },
   rampRoad: { z: 57, x0: 130, x1: 151 },
+  pump: { x: 95, z: 68 },
+  pipe: { z: 68, x0: 91, x1: 94 },
+  drain: { x: 89, z: 69 },
   busStopWest: { x: 52, z: 101 },
   busStopEast: { x: 129, z: 131 },
   landfill: { x0: 64, z0: 41, w: 24, d: 3 },
@@ -309,6 +314,37 @@ export function townSteps(): TownStep[] {
         place('wind-turbine', { x: 131, z: 99 }),
         place('water-tower', { x: 102, z: 101 }),
         place('water-tower', { x: 106, z: 101 }),
+      ],
+    },
+    {
+      // The bank drops 8 m to the riverbed, too steep to build on, so the
+      // waterworks' stretch of it is graded down to a 1 m quay first; the
+      // avenue's own tile is left to the road.
+      label: 'grading the river bank for the waterworks',
+      commands: Array.from({ length: 10 }, (_, i) => t.drain.x - 1 + i)
+        .filter((x) => x !== t.avenue.x)
+        .map((x): Command => ({
+          kind: 'terraform',
+          mode: 'level',
+          center: { x, z: t.drain.z },
+          radius: 0,
+          strength: 4,
+          targetHeight: 1,
+        })),
+    },
+    {
+      // The pumping station stands on the quay off any street, joined to the
+      // avenue by a run of pipe; the drain stands on the quay beside the
+      // avenue and empties into the river.
+      label: 'water from the river, and the sewage back to it',
+      commands: [
+        place('water-pump', t.pump),
+        {
+          kind: 'layWaterPipe',
+          tiles: roadRow(t.pipe.x0, t.pipe.z, span(t.pipe.x0, t.pipe.x1)),
+          on: true,
+        },
+        place('water-drain', t.drain),
       ],
     },
     {
