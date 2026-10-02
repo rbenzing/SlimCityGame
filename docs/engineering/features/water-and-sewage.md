@@ -1,6 +1,6 @@
 # Water and sewage — technical design
 
-- **Status:** Agreed 2026-10-02; pipes, the pumping station, the drain pipe and sewerage built 2026-10-02
+- **Status:** Agreed 2026-10-02; pipes, the pumping station, the drain pipe and sewerage built 2026-10-02; the fouled water, the intake yield and the sewage treatment works built 2026-10-02
 - **Date:** 2026-09-18, rewritten 2026-10-02
 - **Author:** Claude, from the player-facing design in
   [../../game-design/features/water-and-sewage.md](../../game-design/features/water-and-sewage.md)
@@ -22,6 +22,13 @@ water figures and the sewage that follows from them finally mean something,
 and because the first draft of this design, which collected sewage by a
 radius, predates both that and the player's ask for pipes.
 
+The second change closes the loop on the water itself: a **fouling** value
+on every water tile, spread along connected water from each discharge and
+derived every utility pass; a **pumping station's yield** scaled by the
+fouling at its intake; and a **sewage treatment works**, a drain whose
+discharge carries a fraction of the raw load. The water surface tints with
+the fouling, so the consequence is visible without a lens.
+
 ## What it touches
 
 | Module                                             | Change                                                                                                                                                                                                                                                  |
@@ -42,6 +49,22 @@ radius, predates both that and the player's ask for pipes.
 | `src/tools/tools.ts`                               | The `water.pipe` tool: the power line's drag, preview and send                                                                                                                                                                                          |
 | `src/ui/`                                          | The pipe card and the two buildings on the Water tab; the Sewer lens; the sewer rows in the inspector, the popover and the Advisor                                                                                                                       |
 | Tests                                              | `waterpipe.test.ts`, `network.test.ts`, `growth.test.ts`, `grid.test.ts` (v13 loads with no pipes), `utilitykits.test.ts`, `pipes.test.ts`, `advisor.test.ts`, `categories.test.ts`, `tools.test.ts`; interaction `utilities.test.ts`; the small town |
+
+The second change touches these again, and nothing new:
+
+| Module                                 | Change                                                                                                                                                                                                                                      |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/shared/types.ts`                  | `GridState.waterFoul` (derived); `UtilitySpec.effluent`; `SimSnapshot.waterFoul`; `CityStats.waterFouled`; `SelectionInfo.intakeYield`                                                                                                     |
+| `src/shared/constants.ts`              | `WATER_FOUL_PER_KL`, `WATER_FOUL_REACH_TILES`                                                                                                                                                                                                |
+| `src/world/grid.ts`                    | Allocates `waterFoul` beside `sewered`; never serialized                                                                                                                                                                                     |
+| `src/sim/network.ts`                   | The sewer pass runs before the water pass; each drain's discharge is its share of the sewage drained; `spreadFouling` writes `g.waterFoul`; an intake's `waterKL` is scaled by the fouling beside it; `UtilityTotals.intakeYield`, `.waterFouled` |
+| `src/sim/worker.entry.ts`              | `waterFoul` snapshot channel when it changes; `waterFouled` stat; `intakeYield` on a selected intake                                                                                                                                         |
+| `src/data/catalog.json`                | `sewage-works` (Sewage Treatment Works): `sewerKL`, `effluent: 0.15`, `requiresAdjacent: "water"`                                                                                                                                            |
+| `src/app/clientgrid.ts`, `src/main.ts` | The fouling layer mirrored and handed to the water renderer                                                                                                                                                                                  |
+| `src/render/water.ts`                  | A per-vertex `waterFoul` attribute mixed into the surface colour toward a murky brown; `setFouling(layer)`                                                                                                                                  |
+| `src/render/utilitykits.ts`            | The works' kit: two clarifier tanks and a control house, with the drain's outfall pipe toward the water                                                                                                                                      |
+| `src/ui/`                              | The works' card on the Water tab; the inspector's Delivers row on an intake and Effluent row on a works; the popover's water line counts what fouling cost; Advisor rule `intake-fouled`                                                       |
+| Tests                                  | `network.test.ts` (spread, share, yield, order), `water.test.ts` (foul colour), `contracts.test.ts` (the works' figures), `utilitykits.test.ts`, `advisor.test.ts`, `InfoPanel.test.tsx`, `categories.test.ts`; interaction `utilities.test.ts`; the small town builds the works |
 
 **Save format: additive.** `waterPipe` is appended as the last tile layer at
 `SAVE_VERSION` 14; a v13 save loads with no pipes. `sewered` is derived on
@@ -162,6 +185,54 @@ tile, as the Electricity tab lists the power line.
   `waterSideOf(footprint, waterAt)` picks it, so it is testable without a
   scene.
 
+### The fouled water
+
+```ts
+// GridState. 0..255 where water[i] === 1, 0 elsewhere: how fouled the water
+// is. Derived each utility pass from what the drains discharge; never saved.
+waterFoul: Uint8Array;
+
+// UtilitySpec. The share of a drain's sewage load that reaches the water:
+// absent means 1 (a raw outfall); the works carries 0.15.
+effluent?: number;
+```
+
+- **Order.** The utility pass runs power, then sewer, then water. The sewer
+  cut decides how much sewage the drains actually take; that discharge sets
+  the fouling; the fouling sets what the intakes yield; the water cut runs on
+  that supply. `sewageOf` reads the catalog, not the water delivered, so
+  there is no cycle.
+- **Discharge.** The sewage drained is `min(sewerDemand, sewerSupply)`. Each
+  drain or works discharges its share of it, `drained × sewerKL / sewerSupply`,
+  times its `effluent` (1 when absent). The fouling it emits is
+  `discharge × WATER_FOUL_PER_KL`, saturating at 255, at every water tile
+  orthogonally beside its footprint. A drain taking nothing emits nothing.
+- **Spread.** `spreadFouling(g, emitters)`: `g.waterFoul` is zeroed, then one
+  multi-source walk over tiles with `water[i] === 1`, four-connected, seeded
+  from every emitter at once with its emission, writing
+  `max(held, emit × (1 − hops / WATER_FOUL_REACH_TILES))` and stopping at the
+  reach. It never leaves the water, and two stains meeting take the worse. It
+  is a pure function of the grid and the discharges, so a loaded city's water
+  is as fouled as its drains make it the moment it loads.
+- **Yield.** An intake is a utility building with `waterKL` and
+  `requiresAdjacent: 'water'`. Its yield is `waterKL × (1 − foul / 255)`,
+  where `foul` is the worst fouling on the water tiles beside its footprint,
+  the water it draws. Its yield, not its rating, goes into `waterSupply`;
+  the difference sums into `waterFouled`; `intakeYield` keeps each intake's
+  fraction for the inspector. The tower has no water beside it to read and
+  is never scaled.
+- **Rendering.** The water plane has one vertex every two tiles; `setFouling`
+  gives each vertex the worst fouling of the tiles that meet at it, as a
+  0..1 attribute, and the colour graph mixes the depth-keyed base colour
+  toward the foul colour by the square root of it before the sky
+  reflection, so a few units read and a full outfall is brown. Nothing else
+  in the graph changes, and the attribute is rewritten only when the
+  snapshot carries a new layer.
+- **Catalog.** `sewage-works` is a drain with `effluent: 0.15`: the same
+  `sewerKL` as the outfall, its own cost, upkeep, power and `pollution`, from
+  Busy Township. The contract test checks its pollution is the drain's
+  times its effluent, and the works and the drain take the same sewage.
+
 ### The rules the implementation must satisfy
 
 1. A pipe conducts water and sewage between its tiles and into any road or
@@ -180,8 +251,22 @@ tile, as the Electricity tab lists the power line.
    round-trips its pipes.
 7. The pipe overlay and the Sewer lens are visible only while a water tool
    or lens is active.
+8. Fouling spreads only over connected water, fades to nothing at the reach,
+   and is the worst of what reaches a tile, never the sum; a drain that takes
+   no sewage fouls nothing, and a works fouls at its effluent share.
+9. An intake yields its rating scaled by the worst fouling beside it, the
+   tower is never scaled, and the water cut runs on the yield.
+10. The fouling layer is derived every utility pass and never saved; a save
+    from before this change loads and fouls its water from its own drains.
+11. The sewer pass runs before the water pass.
 
 ## Risks
+
+- **The works wants a shore too.** Every sewage building discharges to
+  water, so a town with one short bank crowds its intake, its drain and its
+  works onto it, which is exactly the siting problem the feature is for. A
+  works 25 tiles from the intake keeps the water clean enough; the Advisor
+  says so when it is not.
 
 - **Every existing city has no drain.** It loads with every home flagged
   `NoSewer`, a little dirtier, and stops growing until a drain is built; the

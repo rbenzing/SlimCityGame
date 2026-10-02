@@ -264,7 +264,12 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   to go somewhere: a **water drain pipe**, also on a shore, takes it and empties
   it raw into the water, fouling the ground beside it. Sewage travels the same
   mains as the water, so a drain on any connected street drains the whole
-  street network. **Nothing grows where no drain reaches**, and a building left
+  street network. **The water remembers**: the shore goes brown for a few
+  hundred metres around a drain, and a pumping station drinking from that
+  stretch delivers less, the browner the water the less. Keep the drain far
+  from the intake, or build a **sewage treatment works** (from Busy Township)
+  instead: the same sewage at five times the price, and what comes out fouls
+  the water at a seventh of the rate. **Nothing grows where no drain reaches**, and a building left
   without one stinks up its block (it is never abandoned for it) — the Advisor
   tells you. The **Water Pipe** carries water and sewage where the streets do
   not: drag a run from a street to a shore for the station or the drain, across

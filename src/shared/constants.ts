@@ -279,6 +279,14 @@ export const SEWAGE_RETURN_FRACTION = 0.88;
  * a cesspit is never nothing.
  */
 export const SEWAGE_POLLUTION_PER_KL = (161 * 140) / 484_000;
+/**
+ * How fouled the water beside a discharge is, per kL a day of raw sewage it
+ * empties, on the 0..255 fouling layer: a full one-million-gallon outfall
+ * (3,785 kL) saturates its tile.
+ */
+export const WATER_FOUL_PER_KL = 255 / 3785;
+/** How far along connected water a discharge's fouling reaches before it fades to nothing, in tiles. */
+export const WATER_FOUL_REACH_TILES = 25;
 /** Cosmetic trucks a landfill area fields: base + one per LANDFILL_TRUCKS_PER_TILES painted tiles, capped. */
 export const LANDFILL_TRUCKS_BASE = 1;
 export const LANDFILL_TRUCKS_PER_TILES = 16;

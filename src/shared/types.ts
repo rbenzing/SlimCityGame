@@ -368,6 +368,12 @@ export interface GridState {
   /** 1 where a drain's reach covers the tile. Derived on every utility pass, never saved. */
   sewered: Uint8Array;
   /**
+   * 0..255 on a water tile: how fouled the water is, spread along connected
+   * water from what the drains and works discharge. 0 on land. Derived on
+   * every utility pass, never saved.
+   */
+  waterFoul: Uint8Array;
+  /**
    * The road passing OVER this tile's road, where one does: its tier, profile
    * id, stored flow byte and deck height in metres above terrain. Zero
    * everywhere but a crossing tile, which is the only place a tile holds two
@@ -718,6 +724,8 @@ export interface CityStats {
   /** Sewage the drains take a day, and the sewage the buildings they reach make, kL. */
   sewerSupply: number;
   sewerDemand: number;
+  /** Water the intakes would make but for the fouling beside them, kL a day. */
+  waterFouled: number;
   milestoneLevel: number; // index into MILESTONES
   milestoneProgress: number; // 0..1 toward next
   loanBalance: number;
@@ -862,6 +870,8 @@ export interface SimSnapshot {
   watered?: ZonePatch[];
   /** Drained-coverage patches (data: 0/1), the sewer's `watered`. */
   sewered?: ZonePatch[];
+  /** The water's fouling (data: 0..255 on water tiles), for the surface's tint. */
+  waterFoul?: ZonePatch[];
   /** The pipe layer's changed region, like `powerLines`. */
   waterPipes?: ZonePatch[];
   /**
@@ -1063,6 +1073,11 @@ export interface UtilitySpec {
   waterKL?: number; // produced
   /** Sewage taken a day, kL: what a drain pipe carries off. */
   sewerKL?: number;
+  /**
+   * The share of the sewage's load that reaches the water: absent means 1,
+   * a raw outfall; a treatment works carries what its effluent still holds.
+   */
+  effluent?: number;
 }
 
 /**
@@ -1626,6 +1641,11 @@ export interface SelectionInfo {
    * Absent for anything that is not a capped facility with a reach.
    */
   serviceLoad?: number;
+  /**
+   * An intake's yield as a fraction of its rating, 0..1: what the fouling of
+   * the water beside it leaves. Absent for anything but a shore intake.
+   */
+  intakeYield?: number;
 }
 
 /**

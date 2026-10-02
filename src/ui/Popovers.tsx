@@ -80,7 +80,12 @@ export function CityInfoPopover(): JSX.Element {
     <PopoverFrame title="City Info">
       {row('Jobs', `${Math.round(stats.employed)}/${Math.round(stats.jobs)}`)}
       {row('Power', `${Math.round(stats.powerSupply)}/${Math.round(stats.powerDemand)} MW`)}
-      {row('Water', `${Math.round(stats.waterSupply)}/${Math.round(stats.waterDemand)} kL`)}
+      {row(
+        'Water',
+        `${Math.round(stats.waterSupply)}/${Math.round(stats.waterDemand)} kL${
+          stats.waterFouled > 0 ? ` (${Math.round(stats.waterFouled)} lost to fouled water)` : ''
+        }`,
+      )}
       {row('Sewer', `${Math.round(stats.sewerSupply)}/${Math.round(stats.sewerDemand)} kL`)}
       {row('Loan', formatFunds(stats.loanBalance))}
     </PopoverFrame>

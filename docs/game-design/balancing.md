@@ -102,6 +102,10 @@ Every figure is sourced in [features/water-and-sewage.md](features/water-and-sew
 | `WATER_PIPE_COST_PER_TILE`     | ¢12                                        | The power line's figure: a pipe has to be the cheapest thing that reaches a shore.                          | `src/shared/constants.ts` |
 | `WATER_PIPE_UPKEEP_PER_TILE`   | ¢0.5 a month                               | The power line's figure.                                                                                    | `src/shared/constants.ts` |
 | station / drain cost, upkeep   | ¢3,600 / ¢180; ¢1,800 / ¢90                | The programme's ladder dials: the outfall is always the cheaper answer.                                      | `src/data/catalog.json`   |
+| sewage treatment works         | 3,785 kL of sewage a day; `effluent` 0.15; 93 kW; pollution 26; ¢9,000 / ¢520; on a shore; M2 | The drain's class, discharging 30 mg/L against 200 in (40 CFR 133.102); an activated-sludge plant's 2,236 kWh/MG (EPRI). | `src/data/catalog.json`   |
+| `WATER_FOUL_PER_KL`            | 255 / 3,785 per kL a day                   | A full raw one-million-gallon outfall saturates the water beside it.                                        | `src/shared/constants.ts` |
+| `WATER_FOUL_REACH_TILES`       | 25 tiles (500 m)                           | How far a discharge's fouling reaches along the water before fading to nothing, between the statutory intake setbacks of 500 ft and five miles. | `src/shared/constants.ts` |
+| intake yield                   | `waterKL × (1 − foul / 255)`               | A shore intake's supply, scaled by the worst fouling on the water beside it; the tower is never scaled.      | `src/sim/network.ts`      |
 
 ## Soil and farms
 

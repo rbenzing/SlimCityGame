@@ -23,6 +23,16 @@ no flow.
 - **Sky reflection**: an analytic, fresnel-weighted blend of the sky's zenith
   and horizon colours into the water's own colour, fed every frame from the
   same time-of-day ramp — no render pass, no cubemap.
+- **Fouling**: where the city's drains empty, the surface goes from its
+  depth-keyed colour toward a murky brown. Each vertex (one every two tiles)
+  carries the worst fouling of the tiles that meet at it, 0..1, from the
+  sim's derived `waterFoul` layer, and the base colour is mixed toward the
+  foul colour by the **square root** of it before the sky reflection, so a
+  village's few units out of 255 read as a visible smudge and a saturated
+  outfall is fully brown; the sim's own figure stays linear. The attribute
+  is rewritten only when a snapshot carries a new layer. It is the one thing
+  on the water the player can change, and it reads from the air without a
+  lens — see [the sewage model](../world-sim/utilities-model.md#the-fouled-water).
 
 The long-wavelength chop layer is the one that matters most and the least
 obvious: without it the surface animates at wavelengths too short to read from

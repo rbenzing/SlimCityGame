@@ -24,8 +24,8 @@ top of whatever funds the city already has:
 
 Every catalog entry, zone tier and tool carries its own `unlockMilestone`.
 Representative examples: townhouses, factories and the water pumping station
-unlock at Small Town; medium apartments and the Heavy Industrial zone at
-Busy Township; mixed-use,
+unlock at Small Town; medium apartments, the Heavy Industrial zone and the
+sewage treatment works at Busy Township; mixed-use,
 flex and R&D buildings, the incinerator and the rail station at Big Town;
 high-rise residential and commercial at Small City; the airport at Grand
 City.

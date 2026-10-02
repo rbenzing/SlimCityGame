@@ -314,6 +314,7 @@ function initialStats(): CityStats {
     waterDemand: 0,
     sewerSupply: 0,
     sewerDemand: 0,
+    waterFouled: 0,
     milestoneLevel: 0,
     milestoneProgress: 0,
     loanBalance: 0,
@@ -542,10 +543,14 @@ class SimWorld implements WorkerSim {
   private prevPower = new Uint8Array(this.grid.power.length);
   private prevWatered = new Uint8Array(this.grid.watered.length);
   private prevSewered = new Uint8Array(this.grid.sewered.length);
+  private prevWaterFoul = new Uint8Array(this.grid.waterFoul.length);
   private powerDirty = false;
   private wateredDirty = false;
   private seweredDirty = false;
+  private waterFoulDirty = false;
   private utilitiesDirty = false;
+  /** Each shore intake's yield fraction from the last utility pass, for the inspector. */
+  private intakeYield: ReadonlyMap<number, number> = new Map();
   /** Jobs by sector, open and going up, as the last economy pass (or load) counted them, for demand. */
   private occupancy: Occupancy = {
     population: 0,
@@ -809,6 +814,7 @@ class SimWorld implements WorkerSim {
     this.powerDirty = true;
     this.wateredDirty = true;
     this.seweredDirty = true;
+    this.waterFoulDirty = true;
 
     this.postSnapshot();
   }
@@ -823,9 +829,11 @@ class SimWorld implements WorkerSim {
     this.prevPower = new Uint8Array(this.grid.power.length);
     this.prevWatered = new Uint8Array(this.grid.watered.length);
     this.prevSewered = new Uint8Array(this.grid.sewered.length);
+    this.prevWaterFoul = new Uint8Array(this.grid.waterFoul.length);
     this.powerDirty = false;
     this.wateredDirty = false;
     this.seweredDirty = false;
+    this.waterFoulDirty = false;
     this.utilitiesDirty = false;
     this.districtDirty = null;
     this.districtDefsChanged = false;
@@ -1069,10 +1077,16 @@ class SimWorld implements WorkerSim {
     this.stats.waterDemand = totals.waterDemand;
     this.stats.sewerSupply = totals.sewerSupply;
     this.stats.sewerDemand = totals.sewerDemand;
+    this.stats.waterFouled = totals.waterFouled;
+    this.intakeYield = totals.intakeYield;
     this.supply = { power: totals.power, water: totals.water, sewer: totals.sewer };
     this.utilitiesDirty = false;
 
-    const { power, watered, sewered } = this.grid;
+    const { power, watered, sewered, waterFoul } = this.grid;
+    if (!bytesEqual(waterFoul, this.prevWaterFoul)) {
+      this.prevWaterFoul.set(waterFoul);
+      this.waterFoulDirty = true;
+    }
     if (!bytesEqual(power, this.prevPower)) {
       this.prevPower.set(power);
       this.powerDirty = true;
@@ -1291,6 +1305,10 @@ class SimWorld implements WorkerSim {
       snap.sewered = [fullMapPatch(this.grid.sewered)];
       this.seweredDirty = false;
     }
+    if (this.waterFoulDirty) {
+      snap.waterFoul = [fullMapPatch(this.grid.waterFoul)];
+      this.waterFoulDirty = false;
+    }
     if (this.pendingHeightPatches.length > 0) {
       snap.heightPatches = this.pendingHeightPatches;
       this.pendingHeightPatches = [];
@@ -1334,6 +1352,8 @@ class SimWorld implements WorkerSim {
     const landValueByte = this.grid.fields[FieldId.LandValue]?.[idx] ?? 0;
     // A capped facility's own load, worked out by the service pass this tick.
     const facilityLoad = this.services.facilityLoad(inst.id);
+    // A shore intake's yield, as the last utility pass read the water beside it.
+    const intakeYield = this.intakeYield.get(inst.id);
     const info: SelectionInfo = {
       building: { ...inst },
       happiness: Math.round((happinessByte / 255) * 100),
@@ -1342,6 +1362,7 @@ class SimWorld implements WorkerSim {
       monthlyUpkeep: entry.zone !== undefined ? 0 : entry.upkeep,
       occupancy: selectionOccupancy(entry, inst.state),
       ...(facilityLoad !== undefined ? { serviceLoad: facilityLoad } : {}),
+      ...(intakeYield !== undefined ? { intakeYield } : {}),
     };
     this.post({ type: 'selection', info });
   }

@@ -72,6 +72,7 @@ export function createGrid(size?: number): GridState {
     powerLine: new Uint8Array(n),
     waterPipe: new Uint8Array(n),
     sewered: new Uint8Array(n),
+    waterFoul: new Uint8Array(n),
     overTier: new Uint8Array(n),
     overProfile: new Uint16Array(n),
     overFlow: new Uint8Array(n),
@@ -491,6 +492,7 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
     waterPipe,
     // Derived on every utility pass, from the drains and what carries water.
     sewered: new Uint8Array(n),
+    waterFoul: new Uint8Array(n),
     overTier,
     overProfile,
     overFlow,

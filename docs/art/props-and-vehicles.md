@@ -112,6 +112,9 @@ of the generic building facade box:
   of its footprint the water lies on, never the rotation it was placed at.
 - **Water drain pipe**: a low concrete headwall at the water's edge with the
   outfall pipe through it, 4 m out over the water, turned the same way.
+- **Sewage treatment works**: two round clarifier tanks beside a low control
+  house, in the pumping station's pale concrete, with the drain's outfall
+  pipe out of the water-facing edge, turned the same way.
 - **Coal plant**: a dark boiler hall, 2 striped smokestacks in the industrial
   chimney language from [buildings.md](buildings.md), and a coal-heap wedge.
 - **Small park**: a flat lawn plate, a cross-shaped walking path, 2–3 trees,

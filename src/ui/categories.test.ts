@@ -166,6 +166,7 @@ describe('subTabsFor', () => {
       'plop.water-tower',
       'plop.water-pump',
       'plop.water-drain',
+      'plop.sewage-works',
       'water.pipe',
     ]);
     expect(subTabsFor('bulldoze')).toHaveLength(1);

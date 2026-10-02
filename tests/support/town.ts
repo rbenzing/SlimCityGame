@@ -89,6 +89,8 @@ export const TOWN = {
   pump: { x: 95, z: 68 },
   pipe: { z: 68, x0: 91, x1: 94 },
   drain: { x: 89, z: 69 },
+  works: { x: 86, z: 68 },
+  worksPipe: { z: 68, x0: 88, x1: 89 },
   busStopWest: { x: 52, z: 101 },
   busStopEast: { x: 129, z: 131 },
   landfill: { x0: 64, z0: 41, w: 24, d: 3 },
@@ -321,7 +323,7 @@ export function townSteps(): TownStep[] {
       // waterworks' stretch of it is graded down to a 1 m quay first; the
       // avenue's own tile is left to the road.
       label: 'grading the river bank for the waterworks',
-      commands: Array.from({ length: 10 }, (_, i) => t.drain.x - 1 + i)
+      commands: Array.from({ length: 12 }, (_, i) => t.works.x + i)
         .filter((x) => x !== t.avenue.x)
         .map((x): Command => ({
           kind: 'terraform',
@@ -335,7 +337,9 @@ export function townSteps(): TownStep[] {
     {
       // The pumping station stands on the quay off any street, joined to the
       // avenue by a run of pipe; the drain stands on the quay beside the
-      // avenue and empties into the river.
+      // avenue and empties into the river; the treatment works stands on the
+      // quay west of the drain, joined to the avenue by its own pipe, and
+      // empties what it has treated into the same river.
       label: 'water from the river, and the sewage back to it',
       commands: [
         place('water-pump', t.pump),
@@ -345,6 +349,12 @@ export function townSteps(): TownStep[] {
           on: true,
         },
         place('water-drain', t.drain),
+        place('sewage-works', t.works),
+        {
+          kind: 'layWaterPipe',
+          tiles: roadRow(t.worksPipe.x0, t.worksPipe.z, span(t.worksPipe.x0, t.worksPipe.x1)),
+          on: true,
+        },
       ],
     },
     {

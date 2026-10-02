@@ -1,6 +1,6 @@
 # Water and sewage — design
 
-- **Status:** Agreed 2026-10-02; pipes, the pumping station, the drain pipe and sewerage built 2026-10-02; the river's contamination and the treatment plant follow in their own change
+- **Status:** Agreed 2026-10-02; pipes, the pumping station, the drain pipe and sewerage built 2026-10-02; the fouled water, the intake that drinks it and the sewage treatment works agreed and built 2026-10-02
 - **Date:** 2026-09-18, rewritten 2026-10-02
 
 ## What the player gets
@@ -12,6 +12,14 @@ and what the city has drunk comes back out as sewage, along the same mains
 and pipes, to a **drain pipe** on a shore. A lot grows only where a drain
 reaches it. A building nothing drains stinks, and nothing new grows beside
 it until the player gives the town a sewer.
+
+And the water remembers. Where a drain empties, the water goes brown for
+hundreds of metres along the shore, and a pumping station drinking from
+that stretch delivers less of its rating the browner the water is. A player
+who puts the outfall beside the intake poisons their own supply and can see
+it happen on the water itself, before any lens. The way out is siting, or
+the **sewage treatment works**: five times the price of a drain for the same
+sewage, and what comes out of it fouls the water at a seventh of the rate.
 
 Epic 1 of the programme in [municipal-services.md](municipal-services.md),
 started where the player asked for it: an intake, an outfall and the pipe
@@ -66,6 +74,18 @@ tank and makes none for the town; a farm makes none.
   into the water. Available from the first day: a town's first civic works.
   It fouls the ground around it as any dirty plant does, 176 on the pollution
   scale, so nobody wants to live beside it.
+- **Sewage Treatment Works.** A secondary treatment plant of the same
+  one-million-gallon class, 3,785 kL of sewage a day, that must also stand on
+  a shore, since what it has treated still goes back to the water. It takes
+  the same sewage as a drain at five times the price and real upkeep, draws
+  power for its aeration, and what it discharges carries 15% of the raw
+  load: it fouls the ground at 26 and the water at a seventh of a drain's
+  rate. From Busy Township.
+
+The two are deliberately the same size. The choice between them is entirely
+about what comes out the far end, and the drain is always the cheaper answer
+to the question the player is actually asked, which is why real cities built
+outfalls for a century.
 
 **Sewage is the third utility.** A drain reaches the buildings along the
 streets and pipes connected to it, as a tower reaches theirs; the buildings
@@ -73,6 +93,37 @@ it reaches line up by distance; when they make more sewage than the drains
 take, the far end of the line is cut, exactly as water is. The City Info
 popover reads the sewage drained against the sewage made, the inspector
 reads what a drain takes, and the Sewer lens paints what the drains reach.
+
+### What the water carries
+
+**Fouling spreads along the water, and only along the water.** Each drain
+and works empties the sewage it actually takes into the water tile beside
+it, and the fouling spreads from there across connected water, strongest at
+the mouth and fading to nothing 25 tiles away, 500 m. It never crosses land:
+a lake over a ridge is untouched however close it looks, and two fouled
+stretches that meet simply take the worse of the two. The water shows it
+without a lens, the surface going from its blue toward a murky brown with
+the fouling, so a spoiled shore reads from the air the way a smoking plant
+does.
+
+A drain that takes nothing fouls nothing: the stain grows with the town's
+sewage, so a village's first outfall is a smudge and a city's is a brown
+reach, and treating the sewage shrinks it the day the works opens. There is
+no current and no downstream. Real flow is a heightfield simulation the
+world model rejects on cost, so the fouling spreads the same way in every
+direction, and the player's lever is distance, or treatment.
+
+**A fouled intake delivers less.** A pumping station draws from the water
+beside it, and delivers its rating scaled by how clean that water is: a
+station five tiles from a drain emptying a full million gallons of raw
+sewage delivers a fifth of its 3,785 kL, and one 25 tiles away delivers all
+of it. The water tower, on its borehole, is untouched. The inspector reads
+what the station delivers against its rating, the City Info popover's water
+line counts what the fouling cost, and the Advisor says a station is
+drinking fouled water and names the two remedies: move the outfall, or
+treat the sewage. Nothing is abandoned for it directly; a city short of
+water from a fouled intake is short of water, and the ordinary far-end cut
+and its advice apply.
 
 ### What happens without a drain
 
@@ -95,16 +146,21 @@ reads what a drain takes, and the Sewer lens paints what the drains reach.
 - **Wells.** A low-density house on a dirt road with no main beside its lot
   is on a well; a pipe beside the lot is a main, and puts the house on the
   mains and the sewer both.
-- **Pollution.** An undrained building and an outfall emit into the ordinary
-  Pollution field through the per-building emission pass, so land value and
-  happiness respond with no new machinery. What an outfall does to the river
-  is the next change.
+- **Pollution.** An undrained building, an outfall and a works emit into the
+  ordinary Pollution field through the per-building emission pass, so land
+  value and happiness respond with no new machinery. The water's fouling is
+  its own layer, read by the intakes and the water surface and by nothing
+  else: there is no illness system, and a fouled shore costs the city its
+  water, not its health.
 - **Growth.** Sewer coverage and spare drain capacity join power and water
   as conditions for a spawn and a level-up; a lot held back only by a drain
-  is waiting for supply like one held back by a tower.
+  is waiting for supply like one held back by a tower. A fouled intake
+  lowers the water supply the spawner has to hand out, and nothing else.
 - **Saves.** The pipe layer is appended to the tile record (save version 14);
-  an older save loads with no pipes. The drained coverage is derived every
-  utility pass and never saved.
+  an older save loads with no pipes. The drained coverage and the water's
+  fouling are derived every utility pass from what stands, and never saved:
+  a loaded city's water is as fouled as its drains make it the moment it
+  loads.
 
 ## Tuning
 
@@ -149,10 +205,53 @@ each. A gravity outfall pumps nothing.
 standard text) — 0.2 kg a kL, **161 lb a year per kL a day**. On the scale
 the coal plant sets, 140 for an electric utility's 484,000 lb a year, that
 is 0.0466 a kL a day: an outfall at its rated 3,785 kL emits **176**, and an
-undrained building its own sewage's share, never less than one unit. The
-secondary-treatment limit a works meets is 30 mg/L
-([40 CFR 133.102](https://www.law.cornell.edu/cfr/text/40/133.102)), which is
-what the treatment plant will buy in the next change.
+undrained building its own sewage's share, never less than one unit.
+
+**The works.** Secondary treatment must leave no more than 30 mg/L of
+five-day oxygen demand in its effluent and remove at least 85% of what came
+in ([40 CFR 133.102](https://www.law.cornell.edu/cfr/text/40/133.102));
+against raw sewage at 200 mg/L that is **15% of the load** reaching the
+water, so the works' `effluent` is 0.15 and it fouls the ground at 176 ×
+0.15 = **26**. It takes the same 3,785 kL a day as the drain, so the choice
+between them is only what comes out. An activated-sludge plant of the
+one-million-gallon class draws **2,236 kWh per million gallons**, against
+about 1,000 at a hundred times the size
+([EPRI, via ACEEE](https://www.aceee.org/files/proceedings/2009/data/papers/6_83.pdf)):
+at 1 MGD, 2,236 kWh a day, **93 kW**. Its land is the vessel sum of the
+first draft, a 2×2, and not the 2–5 acres a planner reserves per million
+gallons, which is buffer and perimeter rather than plant. It unlocks at Busy
+Township: a town builds a drain first and a conscience second.
+
+**What the water carries, and how far.** The fouling layer runs 0..255 and
+saturates where a full raw outfall empties: `WATER_FOUL_PER_KL` is
+255 / 3,785, so a works at its rating emits 38 and a village's first drain a
+unit or two. It fades to nothing **25 tiles**, 500 m, along the water.
+Real rivers recover over days of travel (oxygen demand decays at
+0.05–0.5 a day
+([Streeter–Phelps](https://en.wikipedia.org/wiki/Streeter%E2%80%93Phelps_equation)),
+with the oxygen sag worst two to three days downstream), which is tens of
+kilometres and off any map we have; and what the statutes actually regulate
+is the siting. One state keeps an intake **500 ft** from a treatment plant
+([30 Tex. Admin. Code §290.41](https://www.law.cornell.edu/regulations/texas/30-Tex-Admin-Code-SS-290-41)),
+another five miles below one
+([401 KAR 8:100](https://www.law.cornell.edu/regulations/kentucky/401-KAR-8-100)).
+Our 500 m sits between them on purpose: at the Texas setback, eight tiles,
+a station below a works keeps 90% of its yield, and one below a raw outfall
+keeps a third, which is the difference the setback was written for. The
+fading is linear because nothing flows: there is no current to carry the
+load away or dilute it, so the stain is the same in every direction and the
+only lever is distance.
+
+**A fouled intake.** Utilities shut or derate a surface intake when the raw
+water turns: one city closed its river intakes for 38 hours during a spill
+upstream and ran on its groundwater plant
+([Cincinnati, 2014](https://www.cincinnati-oh.gov/water/news/west-virginia-chemical-spill/)),
+another switches its whole supply to wells for a week or more whenever
+turbidity rises
+([Portland Water Bureau](https://www.portland.gov/water/about-portlands-water-system/groundwater-use)).
+The station's yield falls in a straight line with the fouling beside it,
+`waterKL × (1 − foul / 255)`, and the tower on its borehole is the
+groundwater plant those cities fall back on, never scaled.
 
 **Pipe.** A pipe costs and keeps what a power line does, ¢12 a tile and
 ¢0.5 a month, for the same reason: it has to be the cheapest thing that
@@ -164,19 +263,27 @@ trenches ten feet apart
 ([Recommended Standards for Wastewater Facilities §38.31](https://www.health.state.mn.us/communities/environment/water/docs/tenstates/tenstatestan2014.pdf)),
 which is why a street's main is also its sewer here.
 
-**Costs and upkeep** of the station (¢3,600 / ¢180) and the drain (¢1,800 /
-¢90) are the programme's ladder dials, kept from the first draft: the
-cheapest answer to "where does it go" is the outfall, which is why real
-cities built them for a century.
+**Costs and upkeep** of the station (¢3,600 / ¢180), the drain (¢1,800 /
+¢90) and the works (¢9,000 / ¢520) are the programme's ladder dials, kept
+from the first draft: the cheapest answer to "where does it go" is the
+outfall, which is why real cities built them for a century. The works at
+five times the drain understates the real gap, if anything: a secondary
+plant of this class costs $12–21 million per million gallons a day to build
+([a 1.2 MGD plant, 2024](https://fbmud142.com/posts/2024-12-02/wastewater-treatment-plant-expansion-to-12-million-gallon-per-day-mgd/),
+[an engineering rule of thumb](https://www.fehrgraham.com/about-us/blog/calculating-wastewater-treatment-plant-construction-costs-fg))
+and $700–2,000 per million gallons to run, where an outfall is a pipe and a
+headwall.
 
 ## What it is not
 
 - **Not a flow model.** No current, no direction, no downstream; real flow
-  is a heightfield simulation the world model rejects on cost.
-- **Not the river's contamination, and not treatment** — yet. What an
-  outfall does to the water, an intake drinking it, and the treatment plant
-  that buys the mistake back are the next change; the first draft's design
-  for them stands.
+  is a heightfield simulation the world model rejects on cost. The fouling
+  spreads evenly along the water and the player's lever is distance.
+- **Not a drinking-water treatment plant.** The works treats sewage before
+  it goes back; nothing cleans fouled water on its way in. An intake
+  drinking fouled water is a siting mistake, bought back by moving one end
+  or treating the other, not by a third building. A larger, cleaner supply
+  rung belongs to the water ladder with the power ladder's re-derivation.
 - **Not pipes instead of streets.** A street carries its main as it always
   did; the pipe reaches where the street does not. Re-piping every street
   would have put every existing city dry.

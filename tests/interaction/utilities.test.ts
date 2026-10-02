@@ -2,13 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { tileIndex } from '../../src/shared/constants';
 import { Problem, RoadTier, ZoneType } from '../../src/shared/types';
 import {
+  GROWTH_TIMEOUT_MS,
   column,
   initialized,
   latestSaveGrid,
   pondAndDrain,
   roadRow,
+  rows,
   run,
   send,
+  standingBuildings,
   waterTowerEntry,
   type Harness,
 } from '../support/sim';
@@ -236,4 +239,94 @@ describe('water and sewage on pipes', () => {
       run(h, 6, [{ kind: 'placeBuilding', catalogId: 'water-pump', x: 67, z: 43, rotation: 0 }]).ok,
     ).toBe(true);
   });
+});
+
+describe('the fouled water', () => {
+  /**
+   * A street with a coal plant, a pond dug off it with a drain on the near
+   * bank joined to the street by pipe, a pumping station on the pond's other
+   * bank joined the same way, and homes zoned along the street. The station
+   * drinks from the very water the drain empties into.
+   */
+  function townDrinkingBesideItsDrain(): Harness {
+    const h = initialized();
+    const ack = run(h, 1, [
+      { kind: 'setSandbox', on: true },
+      { kind: 'setUnlimitedMoney', on: true },
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 49, 21) },
+      { kind: 'placeBuilding', catalogId: 'coal-plant', x: 60, z: 45, rotation: 0 },
+      ...pondAndDrain({ x: 66, z: 44 }, { x: 66, z: 45 }),
+      { kind: 'layWaterPipe', tiles: column(66, 46, 3), on: true },
+      { kind: 'placeBuilding', catalogId: 'water-pump', x: 67, z: 43, rotation: 0 },
+      { kind: 'layWaterPipe', tiles: column(69, 43, 6), on: true },
+      { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(60, 50, 20, 2) },
+    ]);
+    expect(ack.ok).toBe(true);
+    h.ticks(1500);
+    return h;
+  }
+
+  /** The fouling the last snapshot carried for one tile, or 0 when none travelled yet. */
+  function foulAt(h: Harness, x: number, z: number): number {
+    for (let i = h.messages.length - 1; i >= 0; i--) {
+      const m = h.messages[i]!;
+      if (m.type !== 'snapshot' || !m.snap.waterFoul) continue;
+      const patch = m.snap.waterFoul[0]!;
+      return patch.data[(z - patch.z) * patch.w + (x - patch.x)] ?? 0;
+    }
+    return 0;
+  }
+
+  function placedIdAt(h: Harness, x: number, z: number): number {
+    for (const b of standingBuildings(h).values()) {
+      if (b.x === x && b.z === z) return b.id;
+    }
+    throw new Error(`nothing stands at ${x},${z}`);
+  }
+
+  it(
+    'fouls the pond from the drain, and the station drinking from it delivers less than its rating',
+    () => {
+      const h = townDrinkingBesideItsDrain();
+      const snap = h.lastSnapshot()!;
+      expect(snap.stats.sewerDemand).toBeGreaterThan(0);
+      // The water beside the drain is fouled; the bank the drain stands on is not water and never is.
+      expect(foulAt(h, 66, 44)).toBeGreaterThan(0);
+      expect(foulAt(h, 66, 45)).toBe(0);
+      // The station's yield is scaled, and the city counts what the fouling cost it.
+      expect(snap.stats.waterFouled).toBeGreaterThan(0);
+      expect(snap.stats.waterSupply).toBeCloseTo(3785 - snap.stats.waterFouled, 6);
+      h.sim.handleMessage({ type: 'select', buildingId: placedIdAt(h, 67, 43) });
+      const selection = h.messages.filter((m) => m.type === 'selection').at(-1)!;
+      expect(selection.type).toBe('selection');
+      if (selection.type === 'selection') {
+        expect(selection.info?.intakeYield).toBeLessThan(1);
+        expect(selection.info?.intakeYield).toBeGreaterThan(0);
+      }
+    },
+    GROWTH_TIMEOUT_MS,
+  );
+
+  it(
+    'a treatment works in the drain’s place takes the same sewage and fouls the pond at a seventh of the rate',
+    () => {
+      const h = townDrinkingBesideItsDrain();
+      const before = foulAt(h, 66, 44);
+      expect(before).toBeGreaterThan(0);
+      expect(run(h, 2, [{ kind: 'bulldoze', tiles: [{ x: 66, z: 45 }] }]).ok).toBe(true);
+      // The works is 2×2; it stands on the pond's west bank, where the station
+      // stands on the east, and a short pipe joins it to the drain's old run.
+      const built = run(h, 3, [
+        { kind: 'placeBuilding', catalogId: 'sewage-works', x: 64, z: 43, rotation: 0 },
+        { kind: 'layWaterPipe', tiles: roadRow(65, 45, 2), on: true },
+      ]);
+      expect(built.ok).toBe(true);
+      h.ticks(4);
+      const snap = h.lastSnapshot()!;
+      expect(snap.stats.sewerSupply).toBe(3785);
+      expect(foulAt(h, 66, 44)).toBeLessThanOrEqual(Math.ceil(before * 0.15));
+      expect(snap.stats.waterFouled).toBeLessThan(3785 * (before / 255) + 1e-6);
+    },
+    GROWTH_TIMEOUT_MS,
+  );
 });

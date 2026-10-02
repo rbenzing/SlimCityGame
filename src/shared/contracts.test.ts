@@ -28,7 +28,10 @@ import {
   SEWAGE_RETURN_FRACTION,
   TICKS_PER_DAY,
   TICK_RATE,
+  TILE_METERS,
   VISUAL_DAY_TICKS,
+  WATER_FOUL_PER_KL,
+  WATER_FOUL_REACH_TILES,
 } from './constants';
 import catalogData from '../data/catalog.json';
 
@@ -268,5 +271,30 @@ describe('the water utilities (water-and-sewage): every figure derived', () => {
 
   it('returns 88% of the water drawn as sewage: what public supply does not consume', () => {
     expect(SEWAGE_RETURN_FRACTION).toBe(1 - 0.12);
+  });
+
+  it('rates the treatment works as a drain of the same class whose effluent meets the secondary standard', () => {
+    const drain = byId('water-drain');
+    const works = byId('sewage-works');
+    /** 40 CFR 133.102: 30 mg/L out against 200 mg/L in. */
+    const SECONDARY_EFFLUENT_MG_L = 30;
+    const RAW_SEWAGE_MG_L = 200;
+    /** EPRI: an activated-sludge plant of the one-million-gallon class draws 2,236 kWh per million gallons. */
+    const ACTIVATED_SLUDGE_KWH_PER_MG = 2_236;
+    expect(works.utility?.sewerKL).toBe(drain.utility?.sewerKL);
+    expect(works.utility?.effluent).toBeCloseTo(SECONDARY_EFFLUENT_MG_L / RAW_SEWAGE_MG_L, 9);
+    expect(works.pollution).toBe(Math.round(drain.pollution! * works.utility!.effluent!));
+    const kw = (1 * ACTIVATED_SLUDGE_KWH_PER_MG) / HOURS_PER_DAY;
+    expect(Math.abs(works.powerUse - kw / 1000)).toBeLessThanOrEqual(0.0003);
+    expect(works.requiresAdjacent).toBe('water');
+    expect(works.unlockMilestone).toBe(2);
+    // The programme's ladder dial: the works costs five times the drain it replaces.
+    expect(works.cost).toBe(5 * drain.cost);
+    expect(works.footprint).toEqual({ w: 2, d: 2 });
+  });
+
+  it('fouls the water to saturation at a full raw outfall, fading over 500 m', () => {
+    expect(WATER_FOUL_PER_KL).toBeCloseTo(255 / ONE_MGD_KL, 9);
+    expect(WATER_FOUL_REACH_TILES * TILE_METERS).toBe(500);
   });
 });

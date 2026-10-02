@@ -572,6 +572,17 @@ MUTCD citations below use 11th-edition section numbers.
   (`requiresAdjacent: 'water'`), as a station stands only on the rails. —
   [utilities-model.md](world-sim/utilities-model.md#conducting-roads-power-lines-and-pipes);
   `src/world/waterpipe.ts`, `hasAdjacentWater` in `src/world/grid.ts`
+- The water's fouling (`g.waterFoul`) spreads only over connected water,
+  from each drain's and works' discharge, fading to nothing at
+  `WATER_FOUL_REACH_TILES`; it is the worst of what reaches a tile, never
+  the sum; it is derived every utility pass and never saved. A drain that
+  takes no sewage fouls nothing, and a works fouls at its `effluent` share.
+  An intake yields its rating scaled by the worst fouling beside it; the
+  tower is never scaled; the sewer pass runs before the water pass so the
+  yield is known when the water is cut. There is no current and no
+  downstream. — [water-and-sewage.md](game-design/features/water-and-sewage.md),
+  [utilities-model.md](world-sim/utilities-model.md#the-fouled-water);
+  `spreadFouling` and `recomputeUtilities` in `src/sim/network.ts`
 - A tile's soil grade is derived from its height, the water beside it and the
   map seed, and never saved. It is graded by one function, `soilGradeAt`,
   for the worker, the render mirror, the Soil lens, farmland painting and

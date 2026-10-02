@@ -415,6 +415,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       setTool: (tool: ToolId): void => {
         useCityStore.getState().setTool(tool);
       },
+      // Paints a fouling layer straight onto the water surface, so a
+      // screenshot check can see the tint at a stain size the sim takes a
+      // city to make. The next sim snapshot that moves the layer overrides it.
+      setWaterFouling: (data: ArrayLike<number>): void => {
+        water.setFouling(Uint8Array.from(data));
+      },
       setSpeed: (speed: 0 | 1 | 2 | 4): void => {
         useCityStore.getState().setSpeed(speed);
       },
@@ -446,6 +452,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         power: number[];
         powerLine: number[];
         waterPipe: number[];
+        waterFoul: number[];
         overRoads: ReturnType<typeof clientGrid.overRoadTiles>;
       } => ({
         size: clientGrid.size,
@@ -473,6 +480,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         // Where the pipe runs: a screenshot shows two strips but never says
         // whether a tile carries pipe or only paint.
         waterPipe: Array.from(clientGrid.waterPipe),
+        // How fouled each water tile is, as the sim last said.
+        waterFoul: Array.from(clientGrid.waterFoul),
         // The roads passing over crossing tiles: a screenshot of a deck says
         // nothing about which road the world thinks is on top.
         overRoads: clientGrid.overRoadTiles(),
@@ -1616,6 +1625,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // overlay follows those too.
     if (snap.waterPipes) clientGrid.applyWaterPipePatches(snap.waterPipes);
     if (snap.waterPipes || snap.roads || snap.buildings) rebuildPipes();
+    // The drains' fouling, on the water itself: the surface retints only when it moves.
+    if (snap.waterFoul) {
+      clientGrid.applyWaterFoulPatches(snap.waterFoul);
+      water.setFouling(clientGrid.waterFoul);
+    }
     if (snap.power) {
       overlays.setCoverage('power', snap.power);
       // Supply also decides which streets carry a lamp, so the mirror keeps it

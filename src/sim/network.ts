@@ -40,6 +40,8 @@ import {
   MAP_SIZE,
   ROAD_CHECK_RADIUS,
   SEWAGE_RETURN_FRACTION,
+  WATER_FOUL_PER_KL,
+  WATER_FOUL_REACH_TILES,
   inBounds,
   tileIndex,
 } from '../shared/constants';
@@ -118,13 +120,18 @@ export interface UtilityLine {
 export interface UtilityTotals {
   powerSupply: number;
   powerDemand: number;
+  /** What the water sources yield, the intakes scaled by the fouling beside them. */
   waterSupply: number;
   waterDemand: number;
+  /** The water the intakes would make but for that fouling. */
+  waterFouled: number;
   sewerSupply: number;
   sewerDemand: number;
   power: UtilityLine;
   water: UtilityLine;
   sewer: UtilityLine;
+  /** Each shore intake's yield as a fraction of its rating, by building id. */
+  intakeYield: ReadonlyMap<number, number>;
 }
 
 /** Building-id -> footprint tile indices, derived from the grid's occupancy layer. */
@@ -420,6 +427,90 @@ export function sewageOf(
   return cityWaterUse(g, entry, x, z, w, d) * SEWAGE_RETURN_FRACTION;
 }
 
+/** The water tiles orthogonally beside a footprint: what a shore building draws from or empties into. */
+export function waterBeside(g: GridState, footprintTiles: readonly number[]): number[] {
+  const seen = new Set<number>();
+  const out: number[] = [];
+  for (const tile of footprintTiles) {
+    for (const n of besideTile(tile)) {
+      if (g.water[n] === 1 && !seen.has(n)) {
+        seen.add(n);
+        out.push(n);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * How fouled a discharge leaves the water beside it, 0..255: its sewage a
+ * day at WATER_FOUL_PER_KL, saturating. Pure.
+ */
+export function foulingOf(dischargeKL: number): number {
+  return Math.min(255, Math.round(Math.max(0, dischargeKL) * WATER_FOUL_PER_KL));
+}
+
+/**
+ * How fouled the water is `hops` tiles along the water from a discharge of
+ * `emit`: fading in a straight line to nothing at the reach. Pure.
+ */
+export function foulingAt(emit: number, hops: number): number {
+  if (hops >= WATER_FOUL_REACH_TILES) return 0;
+  return Math.round(emit * (1 - hops / WATER_FOUL_REACH_TILES));
+}
+
+/**
+ * Rebuilds g.waterFoul from the discharges: each emitter (a water tile, its
+ * fouling) spreads over the connected water, four-connected, every tile
+ * taking the worst of what reaches it, and nothing crossing land. One walk
+ * per emitter, bounded by the reach; a city has a handful of drains.
+ */
+export function spreadFouling(g: GridState, emitters: ReadonlyMap<number, number>): void {
+  g.waterFoul.fill(0);
+  if (emitters.size === 0) return;
+  const n = g.size * g.size;
+  const hopsTo = new Int32Array(n).fill(-1);
+  const queue = new Int32Array(n);
+  const touched: number[] = [];
+  for (const [source, emit] of emitters) {
+    if (emit <= 0 || g.water[source] !== 1) continue;
+    let head = 0;
+    let tail = 0;
+    queue[tail++] = source;
+    hopsTo[source] = 0;
+    touched.push(source);
+    while (head < tail) {
+      const tile = queue[head++]!;
+      const hops = hopsTo[tile]!;
+      const value = foulingAt(emit, hops);
+      if (value > g.waterFoul[tile]!) g.waterFoul[tile] = value;
+      if (hops + 1 >= WATER_FOUL_REACH_TILES) continue;
+      for (const next of besideTile(tile)) {
+        if (g.water[next] !== 1 || hopsTo[next]! >= 0) continue;
+        hopsTo[next] = hops + 1;
+        touched.push(next);
+        queue[tail++] = next;
+      }
+    }
+    for (const t of touched) hopsTo[t] = -1;
+    touched.length = 0;
+  }
+}
+
+/**
+ * A shore intake's yield as a fraction of its rating: the worst fouling on
+ * the water beside its footprint, taken off. A borehole, with no water
+ * beside it, yields everything. Pure.
+ */
+export function intakeYieldOf(g: GridState, footprintTiles: readonly number[]): number {
+  let worst = 0;
+  for (const tile of waterBeside(g, footprintTiles)) {
+    const foul = g.waterFoul[tile]!;
+    if (foul > worst) worst = foul;
+  }
+  return 1 - worst / 255;
+}
+
 /**
  * Whether a generator's footprint touches a tile that conducts what it makes
  * (or, for a drain, what it takes).
@@ -519,11 +610,12 @@ export function recomputeUtilities(
   const footprints = footprintsByBuildingId(g);
 
   let powerSupply = 0;
-  let waterSupply = 0;
   let sewerSupply = 0;
   const powerFootprints: number[] = [];
   const waterFootprints: number[] = [];
   const sewerFootprints: number[] = [];
+  const sources: { b: BuildingInstance; spec: UtilitySpec; tiles: number[] }[] = [];
+  const drains: { spec: UtilitySpec; tiles: number[] }[] = [];
   for (const b of buildings) {
     if (b.state !== BuildingState.Active && b.state !== BuildingState.Constructing) continue;
     const spec = catalogMap.get(b.catalogId);
@@ -535,12 +627,13 @@ export function recomputeUtilities(
       powerFootprints.push(...tiles);
     }
     if (spec.utility.waterKL) {
-      waterSupply += spec.utility.waterKL;
+      sources.push({ b, spec: spec.utility, tiles });
       waterFootprints.push(...tiles);
     }
     if (spec.utility.sewerKL) {
       sewerSupply += spec.utility.sewerKL;
       sewerFootprints.push(...tiles);
+      drains.push({ spec: spec.utility, tiles });
     }
   }
 
@@ -551,10 +644,6 @@ export function recomputeUtilities(
     (c, i) => conductsPower(g, c, i),
     isPowerLine(g),
   );
-  const waterReach = computeReach(g, waterFootprints, water, isWaterPipe(g));
-  // The sewer runs back along the mains and pipes the water came down.
-  const sewerReach = computeReach(g, sewerFootprints, water, isWaterPipe(g));
-
   const { demand: powerDemand, ...powerLine } = cutFromTheFarEnd(
     g.power,
     powerReach,
@@ -564,18 +653,11 @@ export function recomputeUtilities(
     powerSupply,
     (s) => s.powerUse,
   );
-  const { demand: waterDemand, ...waterLine } = cutFromTheFarEnd(
-    g.watered,
-    waterReach,
-    buildings,
-    catalogMap,
-    footprints,
-    waterSupply,
-    (s, b) => {
-      const { w, d } = footprintForRotation(s, b.rotation);
-      return cityWaterUse(g, s, b.x, b.z, w, d);
-    },
-  );
+
+  // The sewer runs back along the mains and pipes the water came down, and
+  // it is cut first: what the drains take is what they empty into the water,
+  // and the water the intakes then yield depends on it.
+  const sewerReach = computeReach(g, sewerFootprints, water, isWaterPipe(g));
   const { demand: sewerDemand, ...sewerLine } = cutFromTheFarEnd(
     g.sewered,
     sewerReach,
@@ -589,15 +671,66 @@ export function recomputeUtilities(
     },
   );
 
+  // Each drain the network reaches empties its share of the sewage actually
+  // drained, less what a works keeps back, into the water beside it; a drain
+  // taking nothing fouls nothing, and a stranded one takes nothing.
+  const drained = Math.min(sewerDemand, sewerSupply);
+  const delivering = drains.filter((drain) => utilityCanDeliver(g, drain.spec, drain.tiles));
+  const deliveringKL = delivering.reduce((sum, drain) => sum + drain.spec.sewerKL!, 0);
+  const emitters = new Map<number, number>();
+  for (const drain of delivering) {
+    const share = deliveringKL > 0 ? (drained * drain.spec.sewerKL!) / deliveringKL : 0;
+    const emit = foulingOf(share * (drain.spec.effluent ?? 1));
+    if (emit <= 0) continue;
+    for (const tile of waterBeside(g, drain.tiles)) {
+      if (emit > (emitters.get(tile) ?? 0)) emitters.set(tile, emit);
+    }
+  }
+  spreadFouling(g, emitters);
+
+  // A shore intake yields its rating less the fouling beside it; a borehole
+  // reads no water and yields everything.
+  let waterSupply = 0;
+  let waterFouled = 0;
+  const intakeYield = new Map<number, number>();
+  for (const source of sources) {
+    const rated = source.spec.waterKL!;
+    const catalogEntry = catalogMap.get(source.b.catalogId);
+    if (catalogEntry?.requiresAdjacent === 'water') {
+      const fraction = intakeYieldOf(g, source.tiles);
+      intakeYield.set(source.b.id, fraction);
+      waterSupply += rated * fraction;
+      waterFouled += rated * (1 - fraction);
+    } else {
+      waterSupply += rated;
+    }
+  }
+
+  const waterReach = computeReach(g, waterFootprints, water, isWaterPipe(g));
+  const { demand: waterDemand, ...waterLine } = cutFromTheFarEnd(
+    g.watered,
+    waterReach,
+    buildings,
+    catalogMap,
+    footprints,
+    waterSupply,
+    (s, b) => {
+      const { w, d } = footprintForRotation(s, b.rotation);
+      return cityWaterUse(g, s, b.x, b.z, w, d);
+    },
+  );
+
   return {
     powerSupply,
     powerDemand,
     waterSupply,
     waterDemand,
+    waterFouled,
     sewerSupply,
     sewerDemand,
     power: powerLine,
     water: waterLine,
     sewer: sewerLine,
+    intakeYield,
   };
 }

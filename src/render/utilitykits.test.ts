@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import {
   COAL_SMOKESTACK_COUNT,
   DRAIN_OUTFALL_OVERHANG,
+  WORKS_CLARIFIER_RADIUS,
   PARK_BENCH_COUNT,
   PUMP_INTAKE_OVERHANG,
   PARK_TREE_MAX,
@@ -53,6 +54,8 @@ const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'pumpIntake',
   'drainHeadwall',
   'drainOutfall',
+  'worksBody',
+  'worksOutfall',
   'coalHall',
   'coalSmokestack',
   'coalHeap',
@@ -151,6 +154,26 @@ function makePumpEntry(overrides: Partial<BuildingCatalogEntry> = {}): BuildingC
     cost: 3600,
     upkeep: 180,
     unlockMilestone: 1,
+    requiresAdjacent: 'water',
+    ...overrides,
+  };
+}
+
+function makeWorksEntry(overrides: Partial<BuildingCatalogEntry> = {}): BuildingCatalogEntry {
+  return {
+    id: 'sewage-works',
+    name: 'Sewage Treatment Works',
+    category: 'utility',
+    footprint: { w: 2, d: 2 },
+    height: 9,
+    color: 0x8f9ba8,
+    powerUse: 0.0932,
+    waterUse: 0,
+    pollution: 26,
+    utility: { sewerKL: 3785, effluent: 0.15 },
+    cost: 9000,
+    upkeep: 520,
+    unlockMilestone: 2,
     requiresAdjacent: 'water',
     ...overrides,
   };
@@ -265,12 +288,13 @@ function decomposeQuaternion(m: THREE.Matrix4): THREE.Quaternion {
 // ---------------------------------------------------------------------------
 
 describe('UTILITY_KIT_CATALOG_IDS', () => {
-  it('is exactly the 7 silhouette-kit ids (UI-SPEC §6.15)', () => {
+  it('is exactly the 8 silhouette-kit ids (UI-SPEC §6.15)', () => {
     expect(UTILITY_KIT_CATALOG_IDS).toEqual([
       'wind-turbine',
       'water-tower',
       'water-pump',
       'water-drain',
+      'sewage-works',
       'coal-plant',
       'incinerator',
       'small-park',
@@ -1119,12 +1143,13 @@ describe('removal exactness', () => {
 // ---------------------------------------------------------------------------
 
 describe('multiple kits coexisting', () => {
-  it('builds and applies all 7 kits from one catalog + one delta without cross-talk', () => {
+  it('builds and applies all 8 kits from one catalog + one delta without cross-talk', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
       makeTurbineEntry(),
       makeWaterTowerEntry(),
       makePumpEntry(),
       makeDrainEntry(),
+      makeWorksEntry(),
       makeCoalPlantEntry(),
       makeIncineratorEntry(),
       makeSmallParkEntry(),
@@ -1138,6 +1163,7 @@ describe('multiple kits coexisting', () => {
         makeInstance(5, 'small-park', { x: 20, z: 0 }),
         makeInstance(6, 'water-pump', { x: 25, z: 0 }),
         makeInstance(7, 'water-drain', { x: 30, z: 0 }),
+        makeInstance(8, 'sewage-works', { x: 35, z: 0 }),
       ),
     );
 
@@ -1149,6 +1175,8 @@ describe('multiple kits coexisting', () => {
     expect(renderer.partSlotsFor(5, 'parkBench')).toHaveLength(2);
     expect(renderer.partSlotsFor(6, 'pumpIntake')).toHaveLength(1);
     expect(renderer.partSlotsFor(7, 'drainOutfall')).toHaveLength(1);
+    expect(renderer.partSlotsFor(8, 'worksBody')).toHaveLength(1);
+    expect(renderer.partSlotsFor(8, 'worksOutfall')).toHaveLength(1);
   });
 });
 
@@ -1191,16 +1219,19 @@ describe('a shore building faces the water it touches', () => {
     const renderer = new UtilityKitRenderer(scene, flatHeightAt, [
       makePumpEntry(),
       makeDrainEntry(),
+      makeWorksEntry(),
     ]);
     renderer.apply(
       deltaAdd(
         makeInstance(1, 'water-pump', { x: 0, z: 0 }),
         makeInstance(2, 'water-drain', { x: 5, z: 0 }),
+        makeInstance(3, 'sewage-works', { x: 10, z: 0 }),
       ),
     );
     for (const [id, catalogId, kind, halfD, overhang] of [
       [1, 'water-pump', 'pumpIntake', TILE_METERS, PUMP_INTAKE_OVERHANG],
       [2, 'water-drain', 'drainOutfall', TILE_METERS / 2, DRAIN_OUTFALL_OVERHANG],
+      [3, 'sewage-works', 'worksOutfall', TILE_METERS, DRAIN_OUTFALL_OVERHANG],
     ] as const) {
       const pool = renderer.kitIds().has(catalogId);
       expect(pool).toBe(true);
@@ -1212,5 +1243,21 @@ describe('a shore building faces the water it touches', () => {
       const far = geometry.boundingBox!.max.z;
       expect(far).toBeCloseTo(halfD + overhang, 6);
     }
+  });
+
+  it('keeps the works’ clarifiers and house inside its footprint, on the land side of the outfall', () => {
+    const scene = new THREE.Scene();
+    const renderer = new UtilityKitRenderer(scene, flatHeightAt, [makeWorksEntry()]);
+    renderer.apply(deltaAdd(makeInstance(1, 'sewage-works', { x: 0, z: 0 })));
+    const body = renderer.partGeometry('sewage-works', 'worksBody')!;
+    body.computeBoundingBox();
+    const box = body.boundingBox!;
+    expect(box.max.x).toBeLessThanOrEqual(TILE_METERS);
+    expect(box.min.x).toBeGreaterThanOrEqual(-TILE_METERS);
+    expect(box.max.z).toBeLessThanOrEqual(TILE_METERS);
+    expect(box.min.z).toBeGreaterThanOrEqual(-TILE_METERS);
+    // The clarifiers are round tanks wide enough to read as tanks, not drums.
+    expect(WORKS_CLARIFIER_RADIUS).toBeGreaterThanOrEqual(5);
+    expect(box.min.y).toBeGreaterThanOrEqual(0);
   });
 });

@@ -12,9 +12,12 @@ catalog holds a coal plant (4×4, 60 MW, 140 pollution, ¢12,000 to build,
 ¢100/month), a water tower (2×2, 378.5 kL — a 100,000-gallon tank on its
 borehole, turned over once a day — ¢2,500, ¢120/month), a water pumping
 station (2×2, 3,785 kL, the smallest one-million-gallon-a-day surface intake,
-on a shore, from Small Town, ¢3,600, ¢180/month) and a water drain pipe
+on a shore, from Small Town, ¢3,600, ¢180/month), a water drain pipe
 (1×1, taking 3,785 kL of sewage a day, on a shore, raw into the water,
-¢1,800, ¢90/month); where each figure comes from is in
+¢1,800, ¢90/month) and a sewage treatment works (2×2, taking the same
+3,785 kL a day on a shore and discharging 15% of its load, 93 kW, 26
+pollution, from Busy Township, ¢9,000, ¢520/month); where each figure comes
+from is in
 [../game-design/features/water-and-sewage.md](../game-design/features/water-and-sewage.md).
 Demand is the sum of the catalog `powerUse`/`waterUse` of every building the
 network reaches — abandoned ones included, since they keep their place in
@@ -145,6 +148,44 @@ through the ordinary emission pass in
 [environmental-simulation.md](environmental-simulation.md#pollution-fieldidpollution--1).
 A city saved before there were drains therefore loads standing, every home
 flagged and a little dirtier, and the Advisor says to build a drain.
+
+A **sewage treatment works** is a drain with `utility.effluent`: the share
+of its sewage's load that reaches the water, 0.15 for secondary treatment
+against the raw outfall's implicit 1. It takes the same 3,785 kL a day the
+drain does, reaches and is cut the same way, and differs only in what it
+costs and what comes out, below.
+
+## The fouled water
+
+What the drains empty comes back on the water. On every utility pass, after
+the sewer cut and before the water pass, `recomputeUtilities` works out how
+much sewage the drains actually took — `min(sewerDemand, sewerSupply)` — and
+gives each drain or works its share by rated capacity, times its effluent.
+That discharge, at `WATER_FOUL_PER_KL` per kL a day and saturating at 255,
+is emitted at every water tile orthogonally beside the building's footprint,
+and `spreadFouling` carries it across connected water: one multi-source walk
+over `g.water`, four-connected, seeded from every discharge at once, each
+tile taking `max(held, emit × (1 − hops / WATER_FOUL_REACH_TILES))` and the
+walk stopping at the reach, 25 tiles. It never crosses land, two stains that
+meet take the worse, and a drain that takes nothing emits nothing. The
+result is `g.waterFoul`, 0..255 on water and 0 on land, zeroed and rebuilt
+each pass and never saved; it travels to the render thread as a full-map
+patch when it changes, and the water surface tints toward brown with it.
+
+A **pumping station** draws from the water beside it, so its yield is
+`waterKL × (1 − foul / 255)` for the worst fouling on the water tiles beside
+its footprint, and the yield, not the rating, is what `waterSupply` sums;
+the difference sums into `waterFouled`, and each intake's fraction is kept
+for the inspector. The water tower, on its borehole, has no water beside it
+and is never scaled. The sewer pass therefore runs before the water pass:
+the discharge needs the sewer cut, the yield needs the discharge, and the
+water cut needs the yield. There is no cycle, because a building's sewage is
+a share of the water its catalog entry draws, not of the water delivered.
+
+There is no current and no downstream — real flow is a heightfield
+simulation the world model rejects on cost — so the fouling spreads the same
+way in every direction, and a player's remedy for an intake drinking fouled
+water is distance, or treating the sewage before it goes back.
 
 ## Brownouts
 
