@@ -45,6 +45,7 @@ export const WALLED_MOTORWAY = composeProfile(presetProfileForTier(RoadTier.High
  *              east to x 140 across a six-lane road at x 134–135, z 88–111
  *   z 101–129  one-way street (x 60), alley (x 70), bus lane (x 120)
  *   z 115      bike lane, x 91–119
+ *   z 126–129  heavy industry, x 96–119, north of the four-lane road
  *   z 130      four-lane road, x 50–130, industry, power and the incinerator
  *   z 146–151  an airfield beside the avenue
  *   z 160      dirt road, x 50–130, farms south of it — joined to the town by a
@@ -375,6 +376,10 @@ export function townSteps(): TownStep[] {
         zone(ZoneType.Industrial, rows(50, 131, 40, 4)),
         zone(ZoneType.Industrial, rows(96, 131, 14, 4)),
       ],
+    },
+    {
+      label: 'heavy industry, across the four-lane road from the works',
+      commands: [zone(ZoneType.IndHeavy, rows(96, 126, 24, 4))],
     },
     {
       label: 'farmland off the dirt road',

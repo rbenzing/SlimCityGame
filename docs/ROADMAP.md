@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,580 tests passing across 154 test files, run 2026-10-02.
+**Test suite:** 4,649 tests passing across 154 test files, run 2026-10-02.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -66,21 +66,25 @@ slip road carries a sound wall that cuts the noise behind it
 ([`shared/soundwall.ts`](../src/shared/soundwall.ts)). Full detail in
 History, §10 below.
 
-**Building types** are under way: a zoned lot draws a kind of building by lot
+**Building types** are complete: a zoned lot draws a kind of building by lot
 fit and real-world share, and keeps it for life
-([building-types.md](game-design/features/building-types.md)). The
-residential and commercial kinds are built, and a business opens only where
-the town has room for its jobs; industrial kinds with a Heavy Industrial zone
-follow in their own change.
+([building-types.md](game-design/features/building-types.md)). Homes come
+in nine kinds, businesses in seven, and industry in eight across two zones,
+the new **Heavy Industrial** zone holding the plants that pollute; a
+business opens only where the town has room for its jobs, and industry
+levels up on demand rather than land value.
 
 **Open:**
 
 - The water tower's 400 kL a day is unsourced. Against sourced household
   draw (0.34 kL a person a day) it serves about 1,200 people, so a city
-  needs one tower per 1,200; the ploppable utilities want the same
-  re-derivation the zoned catalog had.
-- Industrial kinds by business type, with a Heavy Industrial zone: the last
-  change of the building-types epic.
+  needs one tower per 1,200, and a heavy plant drinks 80–770 kL a day on
+  its own; the ploppable utilities want the same re-derivation the zoned
+  catalog had.
+- The coal plant's and the incinerator's pollution figures (140, 120) are
+  unsourced, and the zoned pollution scale now hangs off the coal plant's:
+  140 for an electric utility's 484,000 lb of releases a year. Re-deriving
+  the ploppables would move every plant's figure with them.
 - The level 2 and 3 setback tiers (`computeSetbacks`) stand inside the
   full-height body the instancer draws, so the stepped silhouette
   [art/buildings.md](art/buildings.md) describes under "Silhouette variety"
@@ -247,6 +251,34 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Industrial building kinds, and a Heavy Industrial zone (2026-10-02)
+
+The last of the three building-types changes
+([building-types.md](game-design/features/building-types.md)).
+
+- **Eight industrial kinds**, every figure sourced: workshop, warehouse,
+  factory and flex in the Industrial zone; food plant, chemical plant,
+  steelworks and paper mill in a new **Heavy Industrial** zone
+  (`ZoneType.IndHeavy`, 10, appended; unlocks at Busy Township). Types and
+  site coverage from the ULI classification, jobs from the employment
+  density guide, power from the manufacturing energy survey's electricity
+  per employee by sector, water from a state survey's gallons per employee
+  by sector, pollution from the toxics inventory's releases per plant on a
+  scale anchored to the coal plant, noise from the 75 dBA industrial
+  standard against a motorway at capacity.
+- **Industry grows on its order book:** an industrial level-up needs
+  industrial demand and room, never land value; before, a polluting
+  factory could not reach its third level because it lowered the land
+  value around itself.
+- **Render:** archetypes by kind; a tank-farm part (the kit's first
+  cylinders) behind chemical plants and paper mills; a tall stack at every
+  level of a heavy plant and none on any light works; silos only on food
+  plants; workshop doors at grade; the heavy zone's rust tint and card.
+- **Consequences:** light industry is nearly clean (1–5 where it emitted
+  60–90) and draws kilowatts where it drew megawatts; a heavy plant draws
+  0.3–2.4 MW and hundreds of kL of water a day. The inspector now names the
+  medium and mixed zones, which it called "Unzoned".
 
 ### Commercial building kinds, and a business that fits the town (2026-10-02)
 

@@ -58,6 +58,24 @@ describe('archetypeFor', () => {
     expect(partsFor(com('hotel'))).toEqual(['canopy', 'signageBand']);
   });
 
+  it('reads industry off its kind: light works by what they do, heavy plants by their industry', () => {
+    const ind = (kind: BuildingKind, level = 1, pollution = 40) =>
+      entry({ category: 'ind', kind, level, pollution });
+    expect(archetypeFor(ind('workshop'))).toBe('workshop');
+    expect(partsFor(ind('workshop'))).toEqual(['rollUpDoors']);
+    expect(archetypeFor(ind('warehouse', 3))).toBe('warehouse');
+    expect(archetypeFor(ind('factory', 1))).toBe('factory');
+    expect(archetypeFor(ind('flex', 1, 0))).toBe('greenWorks');
+    expect(archetypeFor(ind('foodplant'))).toBe('foodPlant');
+    expect(partsFor(ind('foodplant'))).toEqual(['loadingDock', 'rollUpDoors']);
+    expect(archetypeFor(ind('chemical'))).toBe('chemicalPlant');
+    expect(partsFor(ind('chemical'))).toEqual(['tanks']);
+    expect(archetypeFor(ind('metals'))).toBe('steelworks');
+    expect(partsFor(ind('metals'))).toEqual(['monitorRoof']);
+    expect(archetypeFor(ind('paper'))).toBe('paperMill');
+    expect(partsFor(ind('paper'))).toEqual(['monitorRoof', 'tanks']);
+  });
+
   it('splits commerce with no kind into a shopfront and a bigger block, as before', () => {
     expect(archetypeFor(entry({ category: 'com', level: 1 }))).toBe('storefront');
     expect(archetypeFor(entry({ category: 'com', level: 2 }))).toBe('retailBlock');
@@ -121,7 +139,8 @@ describe('partsFor', () => {
 
 describe('the shipped catalog', () => {
   const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
-  // The Industrial zone's ladder; farms count as industry but are a zone of their own.
+  const byId = (id: string) => catalog.find((e) => e.id === id);
+  // The Industrial zone's light kinds; farms count as industry but are a zone of their own.
   const industrial = catalog.filter((e) => e.zone === ZoneType.Industrial);
 
   it('draws every farm as a farm, never as the works its jobs count alongside', () => {
@@ -134,22 +153,30 @@ describe('the shipped catalog', () => {
     }
   });
 
-  it('carries the whole industrial ladder: warehouse, factory, green works', () => {
+  it('carries the four light kinds: workshop, warehouse, factory and the clean flex building', () => {
     const found = new Set(industrial.map((e) => archetypeFor(e)));
-    expect(found).toEqual(new Set(['warehouse', 'factory', 'greenWorks']));
+    expect(found).toEqual(new Set(['workshop', 'warehouse', 'factory', 'greenWorks']));
   });
 
-  it('has exactly one clean industrial building, and it emits nothing', () => {
+  it('dresses every heavy plant as its own industry', () => {
+    const heavy = catalog.filter((e) => e.zone === ZoneType.IndHeavy);
+    expect(heavy).toHaveLength(12);
+    const found = new Set(heavy.map((e) => archetypeFor(e)));
+    expect(found).toEqual(new Set(['foodPlant', 'chemicalPlant', 'steelworks', 'paperMill']));
+    for (const e of heavy) expect(isCleanIndustry(e), e.id).toBe(false);
+  });
+
+  it('calls only what emits nothing clean: the flex buildings and the warehouses', () => {
     const clean = industrial.filter(isCleanIndustry);
-    expect(clean).toHaveLength(1);
-    expect(clean[0]!.pollution ?? 0).toBe(0);
+    expect(new Set(clean.map((e) => e.kind))).toEqual(new Set(['flex', 'warehouse']));
+    for (const e of clean) expect(e.pollution ?? 0).toBe(0);
   });
 
-  it('makes the clean one the top of the ladder, so it is something to grow into', () => {
-    const clean = industrial.find(isCleanIndustry)!;
-    for (const dirty of industrial.filter((e) => !isCleanIndustry(e))) {
-      expect(clean.level ?? 1).toBeGreaterThan(dirty.level ?? 1);
-      expect(clean.jobs ?? 0).toBeGreaterThan(dirty.jobs ?? 0);
+  it('makes the research campus, the clean top of the zone, the biggest employer of any light works', () => {
+    const campus = byId('ind-3')!;
+    expect(archetypeFor(campus)).toBe('greenWorks');
+    for (const other of industrial.filter((e) => e.id !== campus.id)) {
+      expect(campus.jobs ?? 0).toBeGreaterThan(other.jobs ?? 0);
     }
   });
 });

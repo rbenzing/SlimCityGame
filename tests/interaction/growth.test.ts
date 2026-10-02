@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BuildingState, Problem, RoadTier, ZoneType } from '../../src/shared/types';
+import { BuildingState, FieldId, Problem, RoadTier, ZoneType } from '../../src/shared/types';
+import { tileIndex } from '../../src/shared/constants';
 import { BASE_MULTIPLIER, COMMERCIAL_SPAN_JOBS } from '../../src/sim/demand';
 import {
   catalog,
@@ -165,6 +166,66 @@ describe('a low-density strip one tile wide', () => {
       for (const b of homes) {
         expect(['duplex', 'fourplex']).toContain(entryOf(b).kind);
         expect(entryOf(b).footprint).toEqual({ w: 1, d: 2 });
+      }
+    },
+    GROWTH_TIMEOUT_MS,
+  );
+});
+
+describe('a heavy industrial estate', () => {
+  it(
+    'grows plants by their industry that pollute and make noise, and never a light works',
+    () => {
+      const h = initializedAtMilestone5();
+      send(h, 1, [
+        { kind: 'setSandbox', on: true },
+        { kind: 'setUnlimitedMoney', on: true },
+        { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(40, 60, 60) },
+      ]);
+      h.ticks(1);
+      send(h, 2, [
+        { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 40, z: 59, rotation: 0 },
+        // Heavy plants drink by the hundreds of kL a day: towers enough for a few.
+        ...[44, 47, 50, 53, 56, 59].map((x) => ({
+          kind: 'placeBuilding' as const,
+          catalogId: 'water-tower',
+          x,
+          z: 58,
+          rotation: 0 as const,
+        })),
+        // Homes for the hands, and an estate four deep for the plants.
+        { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(64, 61, 36, 2) },
+        { kind: 'paintZone', zone: ZoneType.IndHeavy, tiles: rows(40, 61, 24, 4) },
+      ]);
+      h.ticks(2);
+      expect(h.ackFor(2)!.ok).toBe(true);
+      h.ticks(3000);
+
+      const plants = [...standingBuildings(h).values()].filter(
+        (b) => entryOf(b).zone === ZoneType.IndHeavy,
+      );
+      expect(plants.length).toBeGreaterThan(0);
+      expect(plants.some((b) => b.state === BuildingState.Active)).toBe(true);
+      for (const b of plants) {
+        const e = entryOf(b);
+        expect(['foodplant', 'chemical', 'metals', 'paper']).toContain(e.kind);
+        expect(e.pollution ?? 0).toBeGreaterThanOrEqual(10);
+        expect(e.noise).toBe(38);
+        // Every tile of the plant stands on the estate, never on the homes beside it.
+        for (let dz = 0; dz < e.footprint.d; dz++) {
+          for (let dx = 0; dx < e.footprint.w; dx++) {
+            expect(b.x + dx).toBeLessThan(64);
+          }
+        }
+      }
+
+      // The air over the estate carries what the plants release.
+      const active = plants.find((b) => b.state === BuildingState.Active)!;
+      h.sim.handleMessage({ type: 'requestField', field: FieldId.Pollution });
+      const field = h.messages.filter((m) => m.type === 'field').at(-1);
+      expect(field?.type).toBe('field');
+      if (field?.type === 'field') {
+        expect(field.data[tileIndex(active.x, active.z)]).toBeGreaterThan(0);
       }
     },
     GROWTH_TIMEOUT_MS,

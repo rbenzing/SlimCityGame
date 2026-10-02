@@ -73,8 +73,8 @@ they're the byte identity a save reads back:
 | `ResMediumRow` | 6     | `OneWay`    | 6     |            |       |
 | `ResMedium`    | 7     | `FourLane`  | 7     |            |       |
 | `Mixed`        | 8     | `BusLane`   | 8     |            |       |
-|                |       | `BikeLane`  | 9     |            |       |
-|                |       | `Tram`      | 10    |            |       |
+| `Agriculture`  | 9     | `BikeLane`  | 9     |            |       |
+| `IndHeavy`     | 10    | `Tram`      | 10    |            |       |
 |                |       | `RailTrack` | 11    |            |       |
 |                |       | `Ramp`      | 12    |            |       |
 

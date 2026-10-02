@@ -1,6 +1,6 @@
 # Building types — design
 
-- **Status:** Agreed 2026-10-01; residential kinds built 2026-10-01; commercial kinds built 2026-10-02
+- **Status:** Agreed 2026-10-01; residential kinds built 2026-10-01; commercial kinds built 2026-10-02; industrial kinds and the Heavy Industrial zone built 2026-10-02
 - **Date:** 2026-10-01
 
 ## What the player gets
@@ -18,9 +18,13 @@ corner shops and stores, shopping strips with their car parks in front,
 grocers and supermarkets, fast food and restaurants, filling stations under
 their canopies; office blocks and towers and hotels at high density. A
 business opens only where the town has room for its jobs, so a village gets
-a corner shop before a shopping strip. Industry gets the same treatment in
-its own change: industry by the kind of business it is, with a separate
-heavy-industry zone for the polluters.
+a corner shop before a shopping strip. Industry grows by the business it is:
+workshop yards, warehouses with their docks, factories under monitor roofs
+and flex buildings in their car parks in the Industrial zone, and in a
+**Heavy Industrial** zone of its own the plants that pollute and make
+noise — food plants with their silos, chemical plants with their tank farms,
+steelworks and paper mills under their stacks — so the player decides what
+stands next to the housing.
 
 ## Why it earns its place
 
@@ -260,6 +264,166 @@ taken for every room, the load the mains are sized for.
 - an **office** as a glass block or tower with no shopfront;
 - a **hotel** as a block with a canopy at its entrance and a sign.
 
+### Heavy industry gets its own zone
+
+The Industrial zone grows light industry. The plants that pollute and make
+noise grow only in the **Heavy Industrial** zone, a tenth zone painted like
+any other and served the same way, on the industrial sub-tab beside the
+light one. It unlocks at Busy Township (1,200 people), when a town's
+workforce can staff a plant, and it pulls on industrial demand: its jobs are
+the basic jobs a town lives by, like a mill's or a farm's. Nothing stops a
+player zoning it beside the homes; the zone is the choice, and the air and
+the noise are the consequence.
+
+### Industry grows on its order book
+
+A home or a shop levels up where land value has risen; industry never did
+that in life, and now never does here. A works, a plant or a farm levels up
+while the town wants more basic work (industrial demand above zero) and has
+room for the jobs the bigger building adds, and land value, which pushes
+real industry out of town, plays no part. Before this the land-value gate
+meant a polluting factory, which lowers the land value around itself, could
+never reach its third level.
+
+### The industrial kinds
+
+| Kind           | Zone  | From | Weight | Lot (tiles) L1 / L2 / L3 | Height (m)       | Jobs           |
+| -------------- | ----- | ---- | ------ | ------------------------ | ---------------- | -------------- |
+| Workshop       | light | M0   | 22     | 2×2 / 3×2 / 3×3          | 6.1              | 16 / 24 / 35   |
+| Warehouse      | light | M0   | 55     | 3×3 / 4×3 / 5×4          | 7.3 / 9.8 / 12.2 | 24 / 29 / 39   |
+| Factory        | light | M1   | 8      | 2×3 / 3×3 / 4×3          | 6.1 / 7.3 / 7.3  | 31 / 46 / 62   |
+| Flex / R&D     | light | M3   | 9      | 2×2 / 3×2 / 3×4          | 6.4 / 6.4 / 9.6  | 19 / 29 / 87   |
+| Food plant     | heavy | M2   | 43     | 3×3 / 4×3 / 5×4          | 8 / 9 / 10       | 46 / 62 / 103  |
+| Chemical plant | heavy | M2   | 26     | 3×3 / 4×4 / 5×4          | 10 / 12 / 15     | 25 / 44 / 56   |
+| Steelworks     | heavy | M2   | 6      | 3×3 / 4×3 / 5×3          | 12 / 15 / 18     | 46 / 62 / 77   |
+| Paper mill     | heavy | M2   | 6      | 3×3 / 4×4 / 5×4          | 10 / 13 / 15     | 46 / 82 / 103  |
+
+**Where the kinds come from.** The industry's own classification of its
+property sorts it into warehouse distribution (over 55% of the floor space),
+manufacturing (30%) and flex (9%), and within those names the types here: the
+multi-tenant building of small units (about 80,000 sq ft in units of
+5,000–15,000, 16–24 ft ceilings, covering half its site) that is the
+workshop yard; the regional and bulk warehouses (16–24 ft and over 20 ft
+clear, covering up to half the site); light manufacturing (under 300,000
+sq ft, 14–24 ft ceilings, covering about 40%); heavy manufacturing (over
+300,000 sq ft on average, 16–60 ft, covering 40–50%); and R&D flex, one or
+two storeys with 25–70% office and parking that holds its coverage to 25–40%
+([ULI, Guide to Classifying Industrial Property](http://courses.washington.edu/cee320ag/warehousing/WarehouseClassification.pdf)).
+The heavy kinds are the four manufacturing industries that release the most:
+chemicals, primary metals, paper and food
+([EPA TRI 2023, releases by industry](https://enviro.epa.gov/triexplorer/release_industry?BGCOLOR=&COUNTY=All+counties&FLD=RELLBY&FLD=TSFDSP&LINESPP=&STATE=All+states&TAB_RPT=1&TopN=50&chemical=_ALL_&epa_region=&p_view=USSC&report=&sort=RE_TOLBY&sort_fmt=2&trilib=TRIQ1&year=2023)),
+and together the most energy-intensive
+([MECS 2018, table 6.1](https://www.eia.gov/consumption/manufacturing/data/2018/pdf/Table6_1.pdf)).
+
+**Lots, bodies and heights.** A warehouse fills its plate like any block,
+13.6 m per lot tile, which covers 46% of its site, inside the type's half;
+a factory, a food plant, a steelworks and a paper mill do the same, inside
+heavy manufacturing's 40–50%; a flex building fills 55% of each side, 30%
+of its site; a chemical plant half of each side, a quarter, and the rest is
+its tank farm and yards. A warehouse's heights are the clear heights of its
+generations: half the national stock is 27 ft clear or lower
+([Cushman & Wakefield](https://www.cushmanwakefield.com/en/united-states/insights/the-industrial-spec-sweet-spot-what-tenants-want)),
+new buildings are 36–40 ft
+([NAIOP](https://www.naiop.org/research-and-publications/magazine/2024/spring-2024/development-ownership/new-noteworthy-projects/)),
+so 24, 32 and 40 ft. The workshop and the factory sit at light
+manufacturing's 20–24 ft, the flex building at two and three storeys, and
+the plants inside heavy manufacturing's 16–60 ft, a steel mill the tallest.
+The light lots keep to what a warehouse averages, 17,400 sq ft, with 69% of
+them under 10,000
+([CBECS 2018, warehouses](https://www.eia.gov/consumption/commercial/pba/warehouse-and-storage.php));
+the heavy lots are the biggest the zone depth holds, since a real plant's
+300,000 sq ft fits no lot here.
+
+**Jobs.** From the employment density guide, in gross floor per full-time
+job: general industrial 36 m², small business units 47 m², research and
+development 40–60 m² (taken at 50), and distribution 70 m² for a final-mile
+depot, 77 m² regional and 95 m² national
+([HCA Employment Density Guide, 3rd ed.](https://www.gov.uk/government/publications/employment-densities-guide-3rd-edition)).
+A flex building's floor is its plate times its storeys; every other works
+is one working floor.
+
+**Weight.** In the light zone the weight is the type's share of the
+industrial floor space, 55 warehouse, 30 manufacturing and 9 flex (ULI,
+above), with manufacturing split between the workshop and the factory by
+the firms: about three-quarters of manufacturing firms have fewer than 20
+employees ([NAM, from the Census SUSB 2022](https://nam.org/mfgdata/facts-about-manufacturing-expanded/)),
+so 22 and 8. In the heavy zone it is each industry's count of
+establishments, in thousands: food 43, chemicals 26, primary metals 6,
+paper 6
+([BLS QCEW, food](https://www.bls.gov/iag/tgs/iag311.htm),
+[chemicals](https://www.bls.gov/iag/tgs/iag325.htm),
+[primary metals](https://www.bls.gov/iag/tgs/iag331.htm),
+[paper](https://www.bls.gov/iag/tgs/iag322.htm)).
+
+### What a works draws from the grid, and what it puts into the air
+
+**Electricity** is each industry's grid electricity per employee from the
+manufacturing energy survey, its energy per employee times the share of
+that energy that is purchased electricity
+([MECS 2018, table 6.1](https://www.eia.gov/consumption/manufacturing/data/2018/pdf/Table6_1.pdf),
+[table 3.2](https://www.eia.gov/consumption/manufacturing/data/2018/pdf/Table3_2.pdf)):
+machinery 22,600 kWh a year, fabricated metal 24,900, food 62,600, paper
+161,800, chemicals 193,200, primary metals 273,500. A workshop yard draws
+like a small machinery shop, a factory like a fabricated-metal plant, and a
+plant like its industry; `powerUse` is jobs × that figure over 8,760 hours.
+A warehouse draws the survey's median 5.8 kWh per square foot a year
+([CBECS 2018, table C14](https://www.eia.gov/consumption/commercial/data/2018/ce/pdf/c14.pdf))
+and a flex building, half office and half warehouse, 9.7, over its floor.
+
+**Water** is each industry's use per employee per working day from the one
+public coefficient table that covers every sector, a state water survey:
+machinery 110 gallons, fabricated metal 738, chemicals 833, paper 1,000,
+primary metals 1,318, food 1,967
+([Pacific Institute, Waste Not, Want Not, appendix C](https://pacinst.org/wp-content/uploads/2013/02/appendix_c.pdf));
+a warehouse and a flex building use the 27.5 gallons an employee of the
+domestic figure ([EPA](https://www.epa.gov/sustainability/lean-water-toolkit-appendix-c)).
+A plant draws it from the mains, the load the mains are sized for: a food
+plant drinks like a town of two thousand, which is what a food plant does.
+
+**Pollution** is each industry's toxic releases per reporting plant, from
+the inventory's 2023 pounds by industry over its facilities: machinery
+7,200 lb a year, fabricated metal 13,500, food 88,600, chemicals 119,900,
+primary metals 210,700, paper 416,300
+([EPA TRI 2023, releases by industry](https://enviro.epa.gov/triexplorer/release_industry?BGCOLOR=&COUNTY=All+counties&FLD=RELLBY&FLD=TSFDSP&LINESPP=&STATE=All+states&TAB_RPT=1&TopN=50&chemical=_ALL_&epa_region=&p_view=USSC&report=&sort=RE_TOLBY&sort_fmt=2&trilib=TRIQ1&year=2023),
+[facility counts](https://enviro.epa.gov/triexplorer/release_fac?p_view=USFA&trilib=TRIQ1&sort=_VIEW_&sort_fmt=1&state=All+states&county=All+counties&zipcode=&epa_region=&chemical=All+chemicals&industry=322&fedcode=&year=2023&V_NA_INDICATOR=.&tab_rpt=1&fld=RELLBY&fld=TSFDSP)).
+The scale is the one the coal plant already sets: an electric utility
+releases 484,000 lb a year on the same measure, and the coal plant emits
+140, so a plant's level-2 figure is its industry's releases at 140 per
+484,000 lb, and its other levels scale with their jobs. A warehouse and a
+flex building release nothing; a workshop or a factory emits a few units,
+which is what light industry's releases are next to a paper mill's. No
+light works raises a stack; every heavy plant does. The Industrial zone is
+therefore nearly clean, and the Heavy Industrial zone is where the air goes
+bad.
+
+**Noise.** The loudest tile the roads make, a motorway at capacity, is
+taken as 80 dBA, the federal emission limit for a heavy truck at 50 ft
+([FHWA](https://www.fhwa.dot.gov/environment/noise/regulations_and_guidance/probresp.cfm)).
+Manufacturing runs at the 75 dBA daytime property-line standard most codes
+set for industry, 5 dB under it, so a works or a plant emits 10^(−5/10) of a
+motorway tile's 120: **38**. A loading dock measures 68 dB at 50 ft, 12 dB
+under, so a warehouse emits **8**; a flex building, an office in all but
+zoning, emits none.
+
+### What the player sees, on an industrial estate
+
+- a **workshop yard** as a low shed with roller doors at the ground;
+- a **warehouse** as a tall slab with a loading dock and a bank of roll-up
+  doors above it, taller with every level;
+- a **factory** as a shed under a monitor roof;
+- a **flex building** as a two- or three-storey block with a roof array in
+  its car park;
+- a **food plant** as a dock and doors with a silo cluster at one corner and
+  a tall stack;
+- a **chemical plant** as a block with three tanks in the yard behind it and
+  a tall stack;
+- a **steelworks** as a long, tall monitor-roofed shed with a tall stack;
+- a **paper mill** as a tall monitor-roofed hall with tanks behind it and a
+  tall stack.
+
+The building inspector names the kind — "Depot", "Chemical Works", "Paper
+Mill" — and the zone, "Heavy Industrial".
+
 ### What a home draws from the grid
 
 **Electricity** is the average draw of a household of that kind, from the
@@ -313,40 +477,67 @@ The building inspector names the kind: "Duplex", "Courtyard Apartments",
 
 - **Zoning.** Nothing changes about where a zone may be painted; the kinds
   take the lots the zone already offers. A player who wants duplexes zones
-  narrow strips; one who wants towers zones high density on big blocks.
+  narrow strips; one who wants towers zones high density on big blocks. The
+  one new zone, Heavy Industrial, is painted like the Industrial zone and
+  sits beside it on the industrial sub-tab, in a rust shade of its amber.
 - **Milestones.** The missing-middle kinds arrive at Small Town (M1) and the
   denser blocks with their zones, so a Tiny Village is detached houses only.
-- **Demand and growth.** Unchanged in rule. In figures, a detached house
-  holds 3 people where it held 4, and a tower holds up to 848 where it held
-  150, so a town of houses reaches each milestone a little later and a city
-  of towers much sooner. The level ladder no longer adds people to a house;
-  it adds homes to a block.
+  Factories arrive at Small Town, the Heavy Industrial zone at Busy Township
+  (M2), flex and R&D buildings at Big Town (M3); a village's industry is
+  workshop yards and depots.
+- **Demand and growth.** Unchanged in rule for homes and shops. Industry
+  levels up on demand and room, never on land value (above). In figures, a
+  detached house holds 3 people where it held 4, and a tower holds up to 848
+  where it held 150, so a town of houses reaches each milestone a little
+  later and a city of towers much sooner. The level ladder no longer adds
+  people to a house; it adds homes to a block.
 - **Utilities.** A home's draw falls to its real average: a detached house
   draws 1.4 kW where it drew 100 kW, so one 6 MW turbine lights about 4,000
   houses. Water stays near its old figure per person, so a 400 kL water tower
-  serves about 1,200 people.
+  serves about 1,200 people. Light industry draws tens of kilowatts where it
+  drew megawatts; a heavy plant draws 0.3–2.4 MW and hundreds of kL of water
+  a day, so a heavy estate needs a tower or two of its own.
+- **Pollution.** The Industrial zone's buildings emit a few units where they
+  emitted 60 and 90, and the heavy plants 19–151, the paper mill above the
+  coal plant's 140 at its third level. A town's air now goes bad where the
+  player zoned heavy industry, the power station and the incinerator, and
+  nowhere else.
 - **Saves.** A saved building keeps its catalog id, and every old id maps to
   a kind: the old low-density houses are detached houses, the old row houses
   townhouses, the old medium blocks courtyard apartments, the old high blocks
-  mid-rise flats. Their residents and draw change to the sourced figures on
-  load, like any catalog change.
+  mid-rise flats; the old Workshop Yard is a workshop, the old Factory Hall a
+  factory and the old Green Works a flex building, the Research Campus.
+  Their residents and draw change to the sourced figures on load, like any
+  catalog change.
 
 ## Tuning
 
 The weights are in the catalog on each kind's first level (`share`), and the
 household sizes, per-home draws and the floor-plate arithmetic are in
-[../balancing.md](../balancing.md#residential-kinds). The one dial a designer
-is likely to turn is the weight: the national stock is mostly detached houses,
-and a town that wants more missing-middle variety gets it by raising the
-duplex and fourplex weights, or by zoning the narrow lots they fit.
+[../balancing.md](../balancing.md#residential-kinds), with the commercial
+and industrial rules beside them. The one dial a designer is likely to turn
+is the weight: the national stock is mostly detached houses, and a town that
+wants more missing-middle variety gets it by raising the duplex and fourplex
+weights, or by zoning the narrow lots they fit. The other is the pollution
+scale, 140 per 484,000 lb, which is the coal plant's figure and moves with
+it.
 
 ## What it is not
 
-- Not a new zone. Density is still the zone the player paints; the kind is
-  drawn inside it. (Heavy industry does get a zone, in its own change.)
+- Not new zones for density. Density is still the zone the player paints;
+  the kind is drawn inside it. Heavy industry is the one new zone, because
+  what it separates is the player's to decide.
 - Not malls or big-box stores. An enclosed mall is under 1% of mercantile
   buildings and a supercentre averages 178,000 sq ft on a lot no zone depth
   here holds; the superstore at 40,000 sq ft is the biggest low-rise retail.
+- Not supply chains. A plant is a typology and its figures, not a consumer
+  of ore or a producer of goods; deeper industry stays in
+  [../../DESIGN.md](../../DESIGN.md).
+- Not every industrial type. Truck terminals, cold storage, data centres,
+  refineries and mines are in the classification and not here: a terminal
+  and a data centre employ almost nobody per lot, a refinery and a mine are
+  resource-sited, and cold storage is a warehouse that draws four times the
+  power.
 - Not player-placed housing, and not a type picker: pillar one.
 - Not manufactured homes or mobile-home parks, 5.4% of the stock, which
   belong where land is cheap and would need a land-value rule the draw does

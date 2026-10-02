@@ -8,7 +8,7 @@ loop; the tuning constants it names are gathered in
 
 ## Zone types
 
-Nine zone types exist, grouped into three demand sectors — residential,
+Ten zone types exist, grouped into three demand sectors — residential,
 commercial, and industrial — each gated behind a milestone (a city-size
 tier reached by population; milestone 0 is reached at 0 population,
 milestone 1 at 400, milestone 2 at 1,200, milestone 3 at 3,500, and
@@ -29,17 +29,25 @@ milestone 4 at 8,000):
 - **Low Density Business** (`ComLow`) — stores and shops. Milestone 0.
 - **High Density Business** (`ComHigh`) — malls, offices, and hotels.
   Milestone 4.
-- **Industrial** (`Industrial`) — one zone whose three levels unlock across
-  milestones 0, 1, and 3 rather than as a single block.
+- **Industrial** (`Industrial`) — light industry: workshops and warehouses
+  from milestone 0, factories from Small Town (milestone 1), flex and R&D
+  buildings from Big Town (milestone 3). Its jobs are the basic jobs a town
+  lives by.
+- **Heavy Industrial** (`IndHeavy`) — the plants that pollute and make
+  noise, kept off the housing by the player's own hand: food plants, chemical
+  plants, steelworks and paper mills. It pulls on industrial demand like the
+  Industrial zone, its jobs are basic jobs, and it is zoned and served the
+  same way. Milestone 2, Busy Township, when a town's workforce can staff a
+  plant.
 - **Agriculture** (`Agriculture`) — farmland off a dirt road, on soil that
   can be farmed. It pulls on industrial demand, and its farms' jobs are
   industrial jobs: a farm is the basic industry of a small town, as a mill
   is. The soil under a lot decides whether it grows row crops, an orchard or
   pasture. Milestone 0.
 
-`ZoneType` numbers 1–5 (the original five zones), 6–8 (the next three) and 9
-(Agriculture) are stored in the tile grid, in saves, and in zone-paint
-patches, so they are never renumbered or reused.
+`ZoneType` numbers 1–5 (the original five zones), 6–8 (the next three), 9
+(Agriculture) and 10 (Heavy Industrial) are stored in the tile grid, in
+saves, and in zone-paint patches, so they are never renumbered or reused.
 
 ## Frontage and zonability
 
@@ -248,9 +256,12 @@ A newly spawned or newly leveled-up building spends `CONSTRUCTION_TICKS` =
 100 ticks Constructing before it becomes Active.
 
 Every growth pass, an Active building below level 3 is checked for a
-level-up: the land value over its tile must exceed 140 (to reach level 2)
-or 190 (to reach level 3); residential buildings reaching level 3
-additionally need the tile's education field over 60. A catalog entry of the
+level-up. A home or a shop needs the land value over its tile to exceed 140
+(to reach level 2) or 190 (to reach level 3); residential buildings reaching
+level 3 additionally need the tile's education field over 60. **Industry
+grows on its order book, not its neighbourhood:** a works levels up while
+industrial demand is above zero, and land value, which pushes real industry
+out of town, plays no part, for a plant as for a farm. A catalog entry of the
 same kind at the next level must also exist and be unlocked at or below the
 current milestone: a building keeps its kind for life, so a duplex levels up
 into a better duplex and never into a house or a block. A commercial or
@@ -264,8 +275,7 @@ draws beyond the smaller one; one that cannot is restored the same way and
 waits for supply like a lot does. A successful level-up replaces the
 building in place and re-enters Constructing.
 
-A farm levels up by taking more land, never by land value, which is what
-pushes real farms out:
+A farm levels up by taking more land:
 
 - The next level is the same kind of farm on a larger lot at the same corner
   (5×6, then 6×7).

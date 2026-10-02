@@ -36,6 +36,8 @@ export const ZoneType = {
   Mixed: 8,
   /** Farmland: grows farms on fertile soil off a dirt road; its jobs are industrial. */
   Agriculture: 9,
+  /** Heavy industry: the plants that pollute and make noise, kept off the housing; its jobs are industrial. */
+  IndHeavy: 10,
 } as const;
 export type ZoneType = (typeof ZoneType)[keyof typeof ZoneType];
 
@@ -1071,10 +1073,18 @@ export type CommercialKind =
   'shop' | 'strip' | 'supermarket' | 'restaurant' | 'fuel' | 'office' | 'hotel';
 
 /**
+ * The kinds of works an industrial zone grows: light industry by what the
+ * building does, then the heavy plants of the Heavy Industrial zone by the
+ * industry they belong to.
+ */
+export type IndustrialKind =
+  'workshop' | 'warehouse' | 'factory' | 'flex' | 'foodplant' | 'chemical' | 'metals' | 'paper';
+
+/**
  * What a zoned building IS. A lot draws one of its zone's kinds when it grows
  * and keeps it through every level-up, so each kind has its own three levels.
  */
-export type BuildingKind = FarmKind | ResidentialKind | CommercialKind;
+export type BuildingKind = FarmKind | ResidentialKind | CommercialKind | IndustrialKind;
 
 export interface BuildingCatalogEntry {
   id: string;
@@ -1458,6 +1468,7 @@ export type ToolId =
   | 'zone.resMedium'
   | 'zone.mixed'
   | 'zone.agriculture'
+  | 'zone.indHeavy'
   // landscaping: the four real terraform brushes.
   // Slope is a stretch goal, deliberately not a ToolId yet.
   | 'terraform.raise'

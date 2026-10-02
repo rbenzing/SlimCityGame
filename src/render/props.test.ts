@@ -6,6 +6,7 @@ import {
   computeRoofPropCount,
   computeSiloClusterPlacements,
   hasAntenna,
+  hasSiloCluster,
   hasSmokestack,
   MIN_SILO_FOOTPRINT_TILES,
   MIN_SMOKESTACK_LEVEL,
@@ -23,6 +24,7 @@ import {
   siloClusterCount,
   siloCorner,
   smokestackCorner,
+  smokestackSize,
 } from './props';
 import { computeSetbacks, frontageSetbackFor, SetbackBox } from './massing';
 import {
@@ -30,6 +32,7 @@ import {
   BuildingDelta,
   BuildingInstance,
   BuildingState,
+  ZoneType,
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import catalogData from '../data/catalog.json';
@@ -671,7 +674,7 @@ describe('RoofPropRenderer', () => {
     expect(renderer.slotsFor(1, 'ac')).toHaveLength(0);
   });
 
-  it('constructs and applies against the full production catalog without throwing (ind-2 exercises every feature)', () => {
+  it('constructs and applies against the full production catalog without throwing (the factory hall and the food plant exercise every feature)', () => {
     const realCatalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
     const scene = new THREE.Scene();
     const renderer = new RoofPropRenderer(scene, flatHeightAt, realCatalog);
@@ -679,13 +682,18 @@ describe('RoofPropRenderer', () => {
       building({ id: i + 1, catalogId: catalogEntry.id, x: i * 8, level: catalogEntry.level ?? 1 }),
     );
     expect(() => renderer.apply(deltaAdd(...added))).not.toThrow();
+    const idOf = (catalogId: string): number => {
+      const index = realCatalog.findIndex((c) => c.id === catalogId);
+      expect(index).toBeGreaterThanOrEqual(0);
+      return index + 1;
+    };
 
-    const ind2Index = realCatalog.findIndex((c) => c.id === 'ind-2');
-    expect(ind2Index).toBeGreaterThanOrEqual(0);
-    const ind2Id = ind2Index + 1;
-
-    expect(renderer.slotsFor(ind2Id, 'smokestack')).toHaveLength(1); // level 2
-    const siloCount = renderer.slotsFor(ind2Id, 'silo').length; // footprint 3x3
+    // A level-2 factory: a light works raises no stack, and no silos for one that stores no grain.
+    expect(renderer.slotsFor(idOf('ind-2'), 'smokestack')).toHaveLength(0);
+    expect(renderer.slotsFor(idOf('ind-2'), 'silo')).toHaveLength(0);
+    // A food plant at level 1: heavy industry's stack from the start, and its silos.
+    expect(renderer.slotsFor(idOf('heavy-food-1'), 'smokestack')).toHaveLength(1);
+    const siloCount = renderer.slotsFor(idOf('heavy-food-1'), 'silo').length;
     expect(siloCount).toBeGreaterThanOrEqual(3);
     expect(siloCount).toBeLessThanOrEqual(4);
   });
@@ -821,5 +829,54 @@ describe('a stack means emissions', () => {
 
   it('never puts a stack on anything that is not industry', () => {
     expect(hasSmokestack(entry({ category: 'com', level: 3, pollution: 50 }))).toBe(false);
+  });
+
+  it("gives a heavy plant a stack at every level, twice as tall as a light works'", () => {
+    const plant = entry({
+      id: 'heavy-1',
+      category: 'ind',
+      zone: ZoneType.IndHeavy,
+      kind: 'chemical',
+      level: 1,
+      footprint: { w: 3, d: 3 },
+      height: 10,
+      pollution: 150,
+    });
+    const works = entry({ ...plant, id: 'ind-1', zone: ZoneType.Industrial, kind: 'workshop' });
+    expect(hasSmokestack(plant)).toBe(true);
+    expect(hasSmokestack(works)).toBe(false);
+    // A light works releases a few units and raises no stack at any level; a
+    // kindless one keeps the old ladder.
+    expect(hasSmokestack({ ...works, level: 3, pollution: 3 })).toBe(false);
+    expect(hasSmokestack({ ...works, kind: 'factory', level: 2, pollution: 4 })).toBe(false);
+    expect(hasSmokestack({ ...works, kind: undefined, level: 2, pollution: 90 })).toBe(true);
+    expect(smokestackSize(plant).h).toBe(2 * smokestackSize({ ...works, level: 2 }).h);
+    // A clean plant would carry none, whatever its zone.
+    expect(hasSmokestack({ ...plant, pollution: 0 })).toBe(false);
+  });
+});
+
+describe('silos hold what a plant stores', () => {
+  const ind = (over: Partial<BuildingCatalogEntry>) =>
+    entry({
+      category: 'ind',
+      level: 1,
+      footprint: { w: 3, d: 3 },
+      height: 9,
+      pollution: 40,
+      ...over,
+    });
+
+  it('gives a food plant a silo cluster and a warehouse or a steelworks none', () => {
+    expect(hasSiloCluster(ind({ kind: 'foodplant', zone: ZoneType.IndHeavy }))).toBe(true);
+    expect(hasSiloCluster(ind({ kind: 'warehouse' }))).toBe(false);
+    expect(hasSiloCluster(ind({ kind: 'metals', zone: ZoneType.IndHeavy }))).toBe(false);
+    expect(hasSiloCluster(ind({ kind: 'chemical', zone: ZoneType.IndHeavy }))).toBe(false);
+  });
+
+  it('keeps the cluster on a kindless industrial footprint big enough to hold it', () => {
+    expect(hasSiloCluster(ind({}))).toBe(true);
+    expect(hasSiloCluster(ind({ footprint: { w: 2, d: 3 } }))).toBe(false);
+    expect(hasSiloCluster(ind({ kind: 'foodplant', footprint: { w: 2, d: 2 } }))).toBe(false);
   });
 });

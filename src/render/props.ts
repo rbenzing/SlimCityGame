@@ -6,8 +6,9 @@
  * building gets a vent, a 2+-floor building gets area-scaled AC units plus an
  * occasional antenna (its tip a warning-light emissive that switches on with
  * setNightFactor, exactly like lamps.ts's head glow); industrial buildings
- * additionally get a smokestack (level 2+) and/or a silo cluster (footprint
- * >= 3x3), each at its own deterministic footprint corner.
+ * additionally get a smokestack (every level of a heavy plant, or a kindless
+ * works at level 2+) and/or a silo cluster (a food plant, or a kindless
+ * footprint >= 3x3), each at its own deterministic footprint corner.
  *
  * All positions/counts are PURE functions of (topBox, buildingId[, propIndex])
  * — no THREE/DOM dependency, no Math.random/Date.now — mirroring facade.ts's
@@ -35,7 +36,7 @@ import {
   SetbackBox,
 } from './massing';
 import { materialHex } from './palette';
-import { isCleanIndustry, isFarmEntry, isHouseEntry } from './archetypes';
+import { isCleanIndustry, isFarmEntry, isHeavyIndustryEntry, isHouseEntry } from './archetypes';
 
 // ---------------------------------------------------------------------------
 // Deterministic hashing (never Math.random/Date.now) — each render/*.ts file
@@ -178,23 +179,39 @@ export type Corner = 0 | 1 | 2 | 3;
 /** 3-4 silo cluster. */
 export const SILO_CLUSTER_MIN = 3;
 export const SILO_CLUSTER_MAX = 4;
-/** Industrial level >= 2 adds a smokestack. */
+/** A kindless industrial building at level >= 2 adds a smokestack; a heavy plant carries one at every level. */
 export const MIN_SMOKESTACK_LEVEL = 2;
 
 /**
- * Whether this building gets a stack: big enough industry that actually emits
- * something. Clean industry never does, which is the entire silhouette
- * difference between it and the factory it grew out of — and it is read from
- * the building's own pollution figure, so a stack on the skyline always means
- * pollution in the air.
+ * Whether this building gets a stack: every heavy plant, and a kindless
+ * industrial building that emits something from level 2 up. The light kinds
+ * release a few units and raise none; clean industry never does. A stack is
+ * read from the building's own pollution figure, so one on the skyline always
+ * means pollution in the air.
  */
 export function hasSmokestack(entry: BuildingCatalogEntry): boolean {
-  if (entry.category !== 'ind' || isFarmEntry(entry)) return false;
-  if ((entry.level ?? 1) < MIN_SMOKESTACK_LEVEL) return false;
-  return !isCleanIndustry(entry);
+  if (entry.category !== 'ind' || isFarmEntry(entry) || isCleanIndustry(entry)) return false;
+  if (isHeavyIndustryEntry(entry)) return true;
+  return entry.kind === undefined && (entry.level ?? 1) >= MIN_SMOKESTACK_LEVEL;
 }
 /** Large industrial (>= 3x3) may get a silo cluster. */
 export const MIN_SILO_FOOTPRINT_TILES = 3;
+
+/**
+ * Whether this building gets a silo cluster: a food plant, or an industrial
+ * entry with no kind, on a footprint big enough to hold one. A warehouse or a
+ * steelworks stores nothing in silos.
+ */
+export function hasSiloCluster(entry: BuildingCatalogEntry): boolean {
+  if (entry.category !== 'ind' || isFarmEntry(entry)) return false;
+  if (
+    entry.footprint.w < MIN_SILO_FOOTPRINT_TILES ||
+    entry.footprint.d < MIN_SILO_FOOTPRINT_TILES
+  ) {
+    return false;
+  }
+  return entry.kind === undefined || entry.kind === 'foodplant';
+}
 
 /** Keeps corner props inset from the top box's own edge, same spirit as PLACEMENT_MARGIN_FRACTION. */
 const CORNER_MARGIN_FRACTION = 0.15;
@@ -295,7 +312,7 @@ const ALL_PROP_KINDS: readonly PropKind[] = [
   'silo',
 ];
 
-interface PropSize {
+export interface PropSize {
   w: number;
   h: number;
   d: number;
@@ -305,7 +322,14 @@ const VENT_SIZE: PropSize = { w: 0.6, h: 0.4, d: 0.6 };
 const AC_SIZE: PropSize = { w: 1.0, h: 0.7, d: 1.0 };
 const ANTENNA_SIZE: PropSize = { w: 0.1, h: 2.5, d: 0.1 };
 const SMOKESTACK_SIZE: PropSize = { w: 1.6, h: 6, d: 1.6 };
+/** A heavy plant's stack: twice the height of a light works', and wider for it. */
+const HEAVY_SMOKESTACK_SIZE: PropSize = { w: 2, h: 12, d: 2 };
 const SILO_SIZE: PropSize = { w: 2.2, h: 4, d: 2.2 };
+
+/** The stack this building carries, by its zone. Exported for tests. */
+export function smokestackSize(entry: BuildingCatalogEntry): Readonly<PropSize> {
+  return isHeavyIndustryEntry(entry) ? HEAVY_SMOKESTACK_SIZE : SMOKESTACK_SIZE;
+}
 const WARNING_LIGHT_DIAMETER = 0.3;
 
 const VENT_COLOR = 0x53585d;
@@ -585,6 +609,7 @@ export class RoofPropRenderer {
         const rotated = rotateLocalOffset(local.x, local.z, building.rotation);
         const worldX = centerX + rotated.x;
         const worldZ = centerZ + rotated.z;
+        const stack = smokestackSize(entry);
 
         slots.smokestack.push(
           this.place(
@@ -593,18 +618,15 @@ export class RoofPropRenderer {
             roofY,
             worldZ,
             building.rotation,
-            SMOKESTACK_SIZE,
+            stack,
             SMOKESTACK_COLOR,
             tint,
           ),
         );
-        slots.warningLight.push(this.placeWarningLight(worldX, roofY + SMOKESTACK_SIZE.h, worldZ));
+        slots.warningLight.push(this.placeWarningLight(worldX, roofY + stack.h, worldZ));
       }
 
-      if (
-        entry.footprint.w >= MIN_SILO_FOOTPRINT_TILES &&
-        entry.footprint.d >= MIN_SILO_FOOTPRINT_TILES
-      ) {
+      if (hasSiloCluster(entry)) {
         for (const local of computeSiloClusterPlacements(topBox, building.id)) {
           const rotated = rotateLocalOffset(local.x, local.z, building.rotation);
           slots.silo.push(

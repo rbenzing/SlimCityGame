@@ -1,6 +1,6 @@
 # Building types — technical design
 
-- **Status:** Agreed 2026-10-01; residential kinds built 2026-10-01; commercial kinds built 2026-10-02
+- **Status:** Agreed 2026-10-01; residential kinds built 2026-10-01; commercial kinds built 2026-10-02; industrial kinds and the Heavy Industrial zone built 2026-10-02
 - **Date:** 2026-10-01
 - **Author:** Claude, from the player-facing design in
   [../../game-design/features/building-types.md](../../game-design/features/building-types.md)
@@ -29,13 +29,18 @@ field was this mechanism for one zone; it becomes the general one.
 | `src/render/houselot.ts`, `houses.ts`                  | Homes along the frontage by kind: two per tile for a townhouse row, two for a duplex or a fourplex; each with its door, pad and (by seed) garage door                                        |
 | `src/render/buildings.ts`, `lots.ts`, `parked.ts`      | Read the per-axis body where they read the uniform fill                                                                                                                                     |
 | `src/render/farmlot.ts`, `farms.ts`                    | Read `farmKindOf(entry)` where they read `entry.farm`                                                                                                                                       |
+| `src/shared/types.ts`, `tools.ts`, `ui/categories.ts`  | `ZoneType.IndHeavy` (10), the `zone.indHeavy` tool, the Industrial (Heavy) card on the industrial sub-tab at M2                                                                            |
+| `src/render/zonegrid.ts`, `ui/styles.css`, `AssetDrawer` | The heavy zone's rust tint and its `--color-rci-ind-heavy` token                                                                                                                          |
+| `src/render/props.ts`, `buildingkit.ts`                | A stack at every level of a heavy plant, twice as tall; silos by kind; the tank-farm part                                                                                                   |
 | `src/shared/contracts.zoning.test.ts`, growth tests    | Three levels per **kind**; residents monotonic with level for block kinds; house-scale kinds hold one household's worth                                                                     |
 | Docs                                                   | simulation-rules (the spawner, levels, lots), population-model (households), utilities-model (units), data-model (catalog fields), balancing (residential kinds), art/buildings, GROUND-TRUTHS |
 
 **Save format: unchanged.** A building is saved by catalog id, and every id
-in a save made before this change is still in the catalog, with a kind. **Worker
-protocol: unchanged.** The snapshot carries the same building fields; the
-inspector's household count comes from the catalog the client already holds.
+in a save made before this change is still in the catalog, with a kind; the
+zone byte gains the value 10, appended, which an older save never holds.
+**Worker protocol: unchanged.** The snapshot carries the same building
+fields; the inspector's household count comes from the catalog the client
+already holds.
 
 ## The design
 
@@ -46,7 +51,7 @@ export type FarmKind = 'crops' | 'orchard' | 'pasture';
 export type ResidentialKind =
   | 'detached' | 'duplex' | 'fourplex' | 'townhouse'
   | 'multiplex' | 'garden' | 'midrise' | 'tower' | 'mixed';
-export type BuildingKind = FarmKind | ResidentialKind;
+export type BuildingKind = FarmKind | ResidentialKind | CommercialKind | IndustrialKind;
 
 interface BuildingCatalogEntry {
   kind?: BuildingKind;   // every zoned entry; absent on a ploppable
@@ -155,11 +160,73 @@ growth supply bookkeeping, which compares them to each other.
 - **Bodies.** `BODY_RULES` adds `restaurant` (13.6 m per tile, cap 24 m) and
   `fuel` (fill 0.35, cap 16 m).
 
+### The industrial kinds, and the Heavy Industrial zone
+
+- `IndustrialKind` joins `BuildingKind`: `workshop`, `warehouse`, `factory`,
+  `flex` in the Industrial zone; `foodplant`, `chemical`, `metals`, `paper`
+  in the Heavy Industrial zone. The catalog keeps `ind-1` as the first
+  Industrial entry (the workshop's first level, 16 jobs as before) since
+  `INDUSTRIAL_SPAN_JOBS` is read from it, and keeps `ind-2` and `ind-3` as
+  the factory's second level and the flex building's third so saves load.
+- **The zone.** `ZoneType.IndHeavy = 10`, appended. `zoneSector` answers
+  `'ind'` for it, so demand, the room rule, taxes, growth's problems and the
+  Advisor's unserved-zone count need no other change; `zonableMaskFor`
+  treats it as any paved-road zone. The tool `zone.indHeavy` maps to it in
+  `ZONE_TOOL_TO_TYPE`, the card `Industrial (Heavy)` sits second on the
+  industrial sub-tab with `unlockMilestone: 2`, `zoneTintColor` gives it a
+  rust shade of the industrial amber, the drawer reads the same colour from
+  the `--color-rci-ind-heavy` token, and the inspector names it "Heavy
+  Industrial" (and now names the medium and mixed zones too, which it
+  called "Unzoned").
+- **Industry levels up on demand.** In `tryLevelUp`, a building whose sector
+  is `'ind'` needs `demand.ind > 0` and skips `meetsLevelUpRequirement`, as a
+  farm already did; the room rule still gates the jobs it adds. Homes and
+  shops are unchanged.
+- **Archetypes.** `archetypeFor` reads an industrial entry's kind:
+  `workshop` (parts `rollUpDoors`), `warehouse` (`loadingDock`,
+  `rollUpDoors`), `factory` (`monitorRoof`), `greenWorks` for `flex`
+  (`roofArray`), `foodPlant` (`loadingDock`, `rollUpDoors`),
+  `chemicalPlant` (`tanks`), `steelworks` (`monitorRoof`), `paperMill`
+  (`monitorRoof`, `tanks`). An industrial entry with no kind keeps the old
+  level-and-pollution rule. `isHeavyIndustryEntry` is `zone === IndHeavy`.
+- **Kit.** The `tanks` part is three cylinders (the kit's first non-box, via
+  `PART_GEOMETRY`), 6 m across and 5 m tall, standing 2 m off the wall
+  opposite the frontage at 7.5 m centres; skipped, like a dock, where the
+  building fronts no road. Roller doors stand on the dock where the
+  archetype has one and on the ground where it has not (`doorSill`).
+- **Props.** `hasSmokestack` is true at every level of a heavy plant and
+  for a kindless polluting industrial entry at level 2 and up; the light
+  kinds raise none. `smokestackSize` gives a heavy plant a 2 × 12 m stack
+  against the kindless 1.6 × 6 m. `hasSiloCluster` is true for a food
+  plant, or a kindless industrial entry, on a footprint 3×3 or bigger; a
+  warehouse or a steelworks gets none.
+- **Bodies.** `BODY_RULES` adds `flex` (fill 0.55) and `chemical` (fill
+  0.5); every other industrial kind fills its plate at 13.6 m per tile.
+- **Numbers.** The contract test derives each kind's jobs from its plate and
+  density, its power from its sector's kWh per job (or per square foot for a
+  warehouse and a flex building), its water from its sector's gallons per
+  job, its pollution from its sector's releases per plant at 140 per
+  484,000 lb scaled by jobs against the level-2 plant, and its noise from the
+  75 dBA and 68 dB figures against a motorway's 120.
+
 ### Tests
 
 - `contracts.zoning.test.ts`: every residential kind has exactly three
   levels in one zone; residents, units and footprint follow the stated rules;
   block kinds' residents rise with level; a house-scale kind's do not fall.
+  Every commercial and industrial kind likewise, with jobs, power, water,
+  pollution and noise checked against their derivations; the heavy plants,
+  and only they, pollute.
+- `growth.test.ts`, `tests/interaction/growth.test.ts`: a heavy estate at
+  milestone 5 grows plants of the four heavy kinds, every tile on the
+  estate, and the pollution field over an active plant reads above zero.
+- `archetypes.test.ts`, `buildingkit.test.ts`, `props.test.ts`,
+  `massing.test.ts`: industrial archetypes by kind; the tank farm's
+  placement and the workshop's doors at grade; heavy stacks and silos by
+  kind; the flex and chemical bodies.
+- `categories.test.ts`, `tools.test.ts`, `zonegrid.test.ts`,
+  `contracts.zoning.test.ts`: the heavy zone's card, tool, tint and number.
+- The small town zones heavy industry north of its four-lane road.
 - `growth.test.ts`: the draw lists only fitting, unlocked kinds; a narrow
   lot grows the kind that fits it; a constant rng picks the first; a
   level-up keeps the kind; farms unchanged through `kind`.
@@ -179,3 +246,12 @@ growth supply bookkeeping, which compares them to each other.
 - **Variety.** With national weights a duplex is one low-density building in
   forty. The lot fit is what makes them show: they take the slivers. The
   weight is a catalog field if that proves too few.
+- **Thirst.** A heavy plant draws 80–770 kL of water a day from the mains,
+  up to twice a water tower's 400 kL, so a heavy estate stalls for want of
+  water until the player builds towers for it. That is the sourced figure
+  and the intended consequence, but it leans on the tower's unsourced
+  rating, flagged in the ROADMAP.
+- **Clean light industry.** A workshop or a factory now emits 1–5 where it
+  emitted 60–90, so a town's air no longer goes bad around its Industrial
+  zone. That follows the inventory; a player who misses the smog zones heavy
+  industry.

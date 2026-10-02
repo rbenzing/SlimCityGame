@@ -68,6 +68,24 @@ Every figure is sourced in [features/building-types.md](features/building-types.
 | body caps            | restaurant 24 m a side; filling-station kiosk 35% of the lot to 16 m                    | A fast-food box and a convenience store on a lot that is mostly car park and forecourt.       | `src/render/massing.ts` |
 | `share`              | shop 350, restaurant 286, strip 166, fuel 123, supermarket 46; office 970, hotel 107    | CBECS 2018 building counts (thousands); NACS fuel-selling stores; FMI supermarkets.           | `src/data/catalog.json` |
 
+## Industrial kinds
+
+Every figure is sourced in [features/building-types.md](features/building-types.md#the-industrial-kinds).
+
+| Constant             | Value                                                                                                  | Meaning                                                                                                              | File                    |
+| -------------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| industrial jobs      | floor ÷ 36 m² per FTE; small units 47; R&D 50; distribution 70 / 77 / 95 by level                      | HCA Employment Density Guide, gross floor per job; a flex building's floor is plate × storeys.                       | `src/data/catalog.json` |
+| power per job        | machinery 22,600, fabricated metal 24,900, food 62,600, paper 161,800, chemicals 193,200, metals 273,500 kWh/yr | MECS 2018 energy per employee × the purchased-electricity share; workshop as machinery, factory as fabricated metal. | `src/data/catalog.json` |
+| power per sq ft      | warehouse 5.8, flex 9.7 kWh/yr                                                                         | CBECS 2018 warehouse median; flex half office (13.6) and half warehouse.                                             | `src/data/catalog.json` |
+| water per job        | machinery 110, fabricated metal 738, chemicals 833, paper 1,000, metals 1,318, food 1,967 gal a day   | Pacific Institute 2003, appendix C; warehouse and flex at the 27.5 gal domestic figure.                              | `src/data/catalog.json` |
+| pollution scale      | 140 per 484,000 lb a year                                                                              | The coal plant's 140 for the average TRI electric utility's releases; a plant's level 2 is its industry's average.   | `src/data/catalog.json` |
+| releases per plant   | machinery 7,200, fabricated metal 13,500, food 88,600, chemicals 119,900, metals 210,700, paper 416,300 lb | EPA TRI 2023 releases by industry over its reporting facilities; warehouse and flex release nothing.                 | `src/data/catalog.json` |
+| industrial noise     | manufacturing 38, warehouse 8, flex 0                                                                  | 75 dBA and a dock's 68 dB against a motorway at capacity (120) taken as 80 dBA: 10^(−5/10), 10^(−12/10).            | `src/data/catalog.json` |
+| body fills           | flex 55% a side, chemical plant 50%; the rest 13.6 m per tile                                          | ULI site coverage: R&D flex 25–40%, heavy manufacturing 40–50%, warehouse up to 50%.                                 | `src/render/massing.ts` |
+| heavy stack          | 2 × 12 m, at every level; a kindless works 1.6 × 6 m from level 2; light kinds none                    | A plant reads as a plant from its first day; a workshop's few units raise no stack.                                  | `src/render/props.ts`   |
+| `share`              | warehouse 55, workshop 22, factory 8, flex 9; food 43, chemicals 26, metals 6, paper 6                 | ULI floor-space shares, manufacturing split 3:1 by firm size (SUSB); BLS establishments in thousands.                | `src/data/catalog.json` |
+| Heavy Industrial     | unlocks at milestone 2                                                                                 | A Busy Township's workforce (600) supports about 330 basic jobs, a plant or two.                                     | `src/ui/categories.ts`  |
+
 ## Soil and farms
 
 Every figure is sourced in [features/farms.md](features/farms.md).
@@ -95,7 +113,7 @@ Every figure is sourced in [features/farms.md](features/farms.md).
 | ------------------------------------------ | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------- |
 | `DEFAULT_TAX_RATE`                         | 0.09                                                | The tax rate every sector's demand term measures against.                                                            | `src/shared/constants.ts` |
 | `BASE_MULTIPLIER`                          | 1.81                                                | Total jobs per basic (industrial) job; each supports 0.81 commercial ones. Mulligan 2008, ~200 small US communities. | `src/sim/demand.ts`       |
-| industrial span                            | 16 — one `ind-1`'s jobs, read from the catalog      | A town a whole small factory short of its basic jobs reads full industrial demand.                                   | `src/sim/demand.ts`       |
+| industrial span                            | 16 — one `ind-1`'s jobs, read from the catalog      | A town a whole workshop yard short of its basic jobs reads full industrial demand.                                   | `src/sim/demand.ts`       |
 | commercial span                            | 8 — one `com-low-1`'s jobs, read from the catalog   | A town a whole corner shop short of its supported local jobs reads full commercial demand.                           | `src/sim/demand.ts`       |
 | job room                                   | supported − open − going up, per sector             | The jobs a sector still has room for; a business kind is a spawn candidate only within it (`jobRoom`).               | `src/sim/demand.ts`       |
 | residential base term                      | 0.3                                                 | Lets a town's first households arrive before there is any work.                                                      | `src/sim/demand.ts`       |

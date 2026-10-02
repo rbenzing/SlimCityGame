@@ -606,6 +606,7 @@ describe('zone rectangle preview + commit', () => {
       ['zone.resMediumRow', ZoneType.ResMediumRow],
       ['zone.resMedium', ZoneType.ResMedium],
       ['zone.mixed', ZoneType.Mixed],
+      ['zone.indHeavy', ZoneType.IndHeavy],
     ];
     for (const [toolId, zone] of table) {
       const { env, sent } = makeEnv();

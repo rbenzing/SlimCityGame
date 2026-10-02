@@ -576,6 +576,12 @@ MUTCD citations below use 11th-edition section numbers.
   `round(units × household)`, a building's households are its `units`, and
   power and water are per-home survey figures. A number in `catalog.json`
   with no derivation is a bug. — [building-types.md](game-design/features/building-types.md)
+- Industry grows on its order book, never its neighbourhood: a works, a
+  heavy plant or a farm levels up while industrial demand is above zero and
+  the town has room for the jobs it adds, and never reads land value, which
+  pushes real industry out of town. Homes and shops keep the land-value
+  gate. — [simulation-rules.md](game-design/simulation-rules.md#levels-construction-and-abandonment);
+  `tryLevelUp` in `src/sim/growth.ts`
 - Farmland is painted only where a dirt road's frontage reaches, up to
   `FARM_DEPTH`, and only on soil a farm can work. A paved road fronts no
   farmland, though a field may run up to it. A farm's jobs are industrial

@@ -16,7 +16,12 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import type { BuildingCatalogEntry, CommercialKind, ResidentialKind } from './types';
+import type {
+  BuildingCatalogEntry,
+  CommercialKind,
+  IndustrialKind,
+  ResidentialKind,
+} from './types';
 import { ZoneType } from './types';
 import { MILESTONES } from './constants';
 import catalogData from '../data/catalog.json';
@@ -39,10 +44,12 @@ describe('ZoneType expansion (UI-SPEC §6.21) — SAVE-SAFE append', () => {
     expect(ZoneType.Industrial).toBe(5);
   });
 
-  it('appends the three new zones at 6/7/8', () => {
+  it('appends the three new zones at 6/7/8, farmland at 9 and heavy industry at 10', () => {
     expect(ZoneType.ResMediumRow).toBe(6);
     expect(ZoneType.ResMedium).toBe(7);
     expect(ZoneType.Mixed).toBe(8);
+    expect(ZoneType.Agriculture).toBe(9);
+    expect(ZoneType.IndHeavy).toBe(10);
   });
 
   it('assigns every zone a unique number (no collision after the append)', () => {
@@ -325,6 +332,198 @@ const COMMERCIAL_KINDS: ReadonlyArray<{
   },
 ];
 
+/** A US gallon in kL, as the catalog's water figures were derived. */
+const GAL_TO_KL = 0.003785;
+/** Grid electricity per job a year by sector, MECS 2018 (Table 6.1 per employee × Table 3.2's electricity share). */
+const KWH_PER_JOB: Readonly<Record<string, number>> = {
+  machinery: 22_600,
+  fabricated: 24_900,
+  food: 62_600,
+  chemicals: 193_200,
+  metals: 273_500,
+  paper: 161_800,
+};
+/** Water per job a working day by sector, US gallons (Pacific Institute 2003, table C-1). */
+const GAL_PER_JOB: Readonly<Record<string, number>> = {
+  machinery: 110,
+  fabricated: 738,
+  food: 1967,
+  chemicals: 833,
+  metals: 1318,
+  paper: 1000,
+};
+/** TRI 2023 releases per reporting facility by sector, thousand pounds a year. */
+const KLB_PER_PLANT: Readonly<Record<string, number>> = {
+  machinery: 7.2,
+  fabricated: 13.5,
+  food: 88.6,
+  chemicals: 119.9,
+  metals: 210.7,
+  paper: 416.3,
+};
+/** The pollution scale: the average TRI electric utility's 484,000 lb a year is the coal plant's 140. */
+const POLLUTION_PER_KLB = 140 / 484;
+/** A warehouse draws 5.8 kWh per square foot a year (CBECS), a flex building half office and half warehouse. */
+const WAREHOUSE_KWH_PER_SQFT = 5.8;
+const FLEX_KWH_PER_SQFT = (13.6 + 5.8) / 2;
+/** 75 dBA at the property line against a motorway at capacity taken as 80: 10^(−5/10) of its 120; a loading dock's 68 dB, 10^(−12/10). */
+const INDUSTRIAL_NOISE = 38;
+const DOCK_NOISE = 8;
+
+/** Every industrial kind: zone, unlock, weight, the sector its draw and releases follow, and each level's lot, plate, storeys and height. */
+const INDUSTRIAL_KINDS: ReadonlyArray<{
+  kind: IndustrialKind;
+  zone: ZoneType;
+  unlock: number;
+  share: number;
+  /** The MECS / Pacific Institute / TRI sector the kind draws and emits like; null where it draws per square foot and emits nothing. */
+  sector: string | null;
+  /** Gross floor per job at each level (HCA Employment Density Guide). */
+  m2PerJob: readonly number[];
+  lots: ReadonlyArray<readonly [number, number]>;
+  plates: readonly number[];
+  storeys: readonly number[];
+  heights: readonly number[];
+  noise: number;
+}> = [
+  {
+    kind: 'workshop',
+    zone: ZoneType.Industrial,
+    unlock: 0,
+    share: 22,
+    sector: 'machinery',
+    m2PerJob: [47, 47, 47],
+    lots: [
+      [2, 2],
+      [3, 2],
+      [3, 3],
+    ],
+    plates: [740, 1110, 1665],
+    storeys: [1, 1, 1],
+    heights: [6.1, 6.1, 6.1],
+    noise: INDUSTRIAL_NOISE,
+  },
+  {
+    kind: 'warehouse',
+    zone: ZoneType.Industrial,
+    unlock: 0,
+    share: 55,
+    sector: null,
+    m2PerJob: [70, 77, 95],
+    lots: [
+      [3, 3],
+      [4, 3],
+      [5, 4],
+    ],
+    plates: [1665, 2220, 3699],
+    storeys: [1, 1, 1],
+    heights: [7.3, 9.8, 12.2],
+    noise: DOCK_NOISE,
+  },
+  {
+    kind: 'factory',
+    zone: ZoneType.Industrial,
+    unlock: 1,
+    share: 8,
+    sector: 'fabricated',
+    m2PerJob: [36, 36, 36],
+    lots: [
+      [2, 3],
+      [3, 3],
+      [4, 3],
+    ],
+    plates: [1110, 1665, 2220],
+    storeys: [1, 1, 1],
+    heights: [6.1, 7.3, 7.3],
+    noise: INDUSTRIAL_NOISE,
+  },
+  {
+    kind: 'flex',
+    zone: ZoneType.Industrial,
+    unlock: 3,
+    share: 9,
+    sector: null,
+    m2PerJob: [50, 50, 50],
+    lots: [
+      [2, 2],
+      [3, 2],
+      [3, 4],
+    ],
+    plates: [484, 726, 1452],
+    storeys: [2, 2, 3],
+    heights: [6.4, 6.4, 9.6],
+    noise: 0,
+  },
+  {
+    kind: 'foodplant',
+    zone: ZoneType.IndHeavy,
+    unlock: 2,
+    share: 43,
+    sector: 'food',
+    m2PerJob: [36, 36, 36],
+    lots: [
+      [3, 3],
+      [4, 3],
+      [5, 4],
+    ],
+    plates: [1665, 2220, 3699],
+    storeys: [1, 1, 1],
+    heights: [8, 9, 10],
+    noise: INDUSTRIAL_NOISE,
+  },
+  {
+    kind: 'chemical',
+    zone: ZoneType.IndHeavy,
+    unlock: 2,
+    share: 26,
+    sector: 'chemicals',
+    m2PerJob: [36, 36, 36],
+    lots: [
+      [3, 3],
+      [4, 4],
+      [5, 4],
+    ],
+    plates: [900, 1600, 2000],
+    storeys: [1, 1, 1],
+    heights: [10, 12, 15],
+    noise: INDUSTRIAL_NOISE,
+  },
+  {
+    kind: 'metals',
+    zone: ZoneType.IndHeavy,
+    unlock: 2,
+    share: 6,
+    sector: 'metals',
+    m2PerJob: [36, 36, 36],
+    lots: [
+      [3, 3],
+      [4, 3],
+      [5, 3],
+    ],
+    plates: [1665, 2220, 2775],
+    storeys: [1, 1, 1],
+    heights: [12, 15, 18],
+    noise: INDUSTRIAL_NOISE,
+  },
+  {
+    kind: 'paper',
+    zone: ZoneType.IndHeavy,
+    unlock: 2,
+    share: 6,
+    sector: 'paper',
+    m2PerJob: [36, 36, 36],
+    lots: [
+      [3, 3],
+      [4, 4],
+      [5, 4],
+    ],
+    plates: [1665, 2960, 3699],
+    storeys: [1, 1, 1],
+    heights: [10, 13, 15],
+    noise: INDUSTRIAL_NOISE,
+  },
+];
+
 describe('Residential kinds (building-types): three levels per kind, every figure derived', () => {
   const ofKind = (kind: ResidentialKind) =>
     catalog.filter((e) => e.kind === kind).sort((a, b) => (a.level ?? 0) - (b.level ?? 0));
@@ -486,6 +685,119 @@ describe('Commercial kinds (building-types): three levels per kind, every figure
       const [l1, l2, l3] = ofKind(k.kind);
       expect(l1!.jobs!).toBeLessThan(l2!.jobs!);
       expect(l2!.jobs!).toBeLessThan(l3!.jobs!);
+    }
+  });
+});
+
+describe('Industrial kinds (building-types): three levels per kind, every figure derived', () => {
+  const ofKind = (kind: IndustrialKind) =>
+    catalog.filter((e) => e.kind === kind).sort((a, b) => (a.level ?? 0) - (b.level ?? 0));
+  const floorM2 = (k: (typeof INDUSTRIAL_KINDS)[number], i: number) => k.plates[i]! * k.storeys[i]!;
+
+  it('gives every works a kind, and keeps the workshop yard first for the demand span', () => {
+    const works = catalog.filter(
+      (e) => e.category === 'ind' && e.zone !== undefined && e.zone !== ZoneType.Agriculture,
+    );
+    for (const e of works) expect(e.kind, e.id).toBeDefined();
+    expect(works.find((e) => e.zone === ZoneType.Industrial)!.id).toBe('ind-1');
+    expect(byId('ind-1')!.kind).toBe('workshop');
+    expect(byId('ind-2')!.kind).toBe('factory');
+    expect(byId('ind-3')!.kind).toBe('flex');
+    expect(works.filter((e) => e.zone === ZoneType.IndHeavy).map((e) => e.kind)).toEqual([
+      ...Array(3).fill('foodplant'),
+      ...Array(3).fill('chemical'),
+      ...Array(3).fill('metals'),
+      ...Array(3).fill('paper'),
+    ]);
+  });
+
+  it.each(INDUSTRIAL_KINDS)('$kind: three levels in one zone, unlocked together', (k) => {
+    const levels = ofKind(k.kind);
+    expect(levels.map((e) => e.level)).toEqual([1, 2, 3]);
+    for (const e of levels) {
+      expect(e.zone).toBe(k.zone);
+      expect(e.category).toBe('ind');
+      expect(e.unlockMilestone).toBe(k.unlock);
+      expect(e.residents).toBeUndefined();
+      expect(e.cost).toBe(0);
+    }
+    expect(levels[0]!.share).toBe(k.share);
+    expect(levels[1]!.share).toBeUndefined();
+    expect(levels[2]!.share).toBeUndefined();
+  });
+
+  it.each(INDUSTRIAL_KINDS)('$kind: takes the lots and the heights its type takes', (k) => {
+    const levels = ofKind(k.kind);
+    expect(levels.map((e) => [e.footprint.w, e.footprint.d])).toEqual(k.lots);
+    expect(levels.map((e) => e.height)).toEqual(k.heights);
+  });
+
+  it.each(INDUSTRIAL_KINDS)('$kind: jobs are its floor at the density guide', (k) => {
+    for (const [i, e] of ofKind(k.kind).entries()) {
+      expect(e.jobs, e.id).toBe(Math.round(floorM2(k, i) / k.m2PerJob[i]!));
+    }
+  });
+
+  it.each(INDUSTRIAL_KINDS)(
+    '$kind: draws per job what its sector draws, or per square foot',
+    (k) => {
+      for (const [i, e] of ofKind(k.kind).entries()) {
+        const kw =
+          k.sector !== null
+            ? (e.jobs! * KWH_PER_JOB[k.sector]!) / HOURS_PER_YEAR
+            : (floorM2(k, i) *
+                SQ_FT_PER_M2 *
+                (k.kind === 'warehouse' ? WAREHOUSE_KWH_PER_SQFT : FLEX_KWH_PER_SQFT)) /
+              HOURS_PER_YEAR;
+        expect(Math.abs(e.powerUse - kw / 1000), e.id).toBeLessThanOrEqual(0.0003);
+      }
+    },
+  );
+
+  it.each(INDUSTRIAL_KINDS)(
+    '$kind: draws water per job as its sector does, or for its staff',
+    (k) => {
+      for (const e of ofKind(k.kind)) {
+        const perJob = k.sector !== null ? GAL_PER_JOB[k.sector]! * GAL_TO_KL : WATER_PER_JOB_KL;
+        expect(Math.abs(e.waterUse - e.jobs! * perJob), e.id).toBeLessThanOrEqual(0.06);
+      }
+    },
+  );
+
+  it.each(INDUSTRIAL_KINDS)(
+    "$kind: releases what its sector's average plant releases, scaled by its jobs",
+    (k) => {
+      const levels = ofKind(k.kind);
+      if (k.sector === null) {
+        for (const e of levels) expect(e.pollution ?? 0, e.id).toBe(0);
+        return;
+      }
+      const average = POLLUTION_PER_KLB * KLB_PER_PLANT[k.sector]!;
+      for (const e of levels) {
+        const expected = Math.round((average * e.jobs!) / levels[1]!.jobs!);
+        expect(Math.abs((e.pollution ?? 0) - expected), e.id).toBeLessThanOrEqual(1);
+      }
+    },
+  );
+
+  it.each(INDUSTRIAL_KINDS)('$kind: makes the noise of its trade', (k) => {
+    for (const e of ofKind(k.kind)) expect(e.noise ?? 0, e.id).toBe(k.noise);
+  });
+
+  it('adds jobs with every level of every works', () => {
+    for (const k of INDUSTRIAL_KINDS) {
+      const [l1, l2, l3] = ofKind(k.kind);
+      expect(l1!.jobs!).toBeLessThan(l2!.jobs!);
+      expect(l2!.jobs!).toBeLessThan(l3!.jobs!);
+    }
+  });
+
+  it('keeps the heavy plants, and only them, in the Heavy Industrial zone', () => {
+    const heavy = INDUSTRIAL_KINDS.filter((k) => k.zone === ZoneType.IndHeavy).map((k) => k.kind);
+    expect(heavy).toEqual(['foodplant', 'chemical', 'metals', 'paper']);
+    for (const k of INDUSTRIAL_KINDS) {
+      const polluting = ofKind(k.kind).some((e) => (e.pollution ?? 0) >= 10);
+      expect(polluting, k.kind).toBe(k.zone === ZoneType.IndHeavy);
     }
   });
 });

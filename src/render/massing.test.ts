@@ -843,6 +843,17 @@ describe('a building keeps its real proportions whatever the tile measures', () 
     expect(bodyMetresFor(sized('strip', 5, 2))).toEqual({ w: 68, d: 27.2 });
   });
 
+  it('sits a flex building in its car park and leaves a chemical plant half its site for the tank farm', () => {
+    // ULI: R&D/flex covers 25–40% of its site, heavy manufacturing 40–50%; a
+    // warehouse fills its plate like any block, at the default's 46%.
+    expect(bodyMetresFor(sized('flex', 2, 2))).toEqual({ w: 22, d: 22 });
+    expect(bodyMetresFor(sized('flex', 3, 4))).toEqual({ w: 33, d: 44 });
+    expect(bodyMetresFor(sized('chemical', 3, 3))).toEqual({ w: 30, d: 30 });
+    expect(bodyMetresFor(sized('chemical', 5, 4))).toEqual({ w: 50, d: 40 });
+    expect(bodyMetresFor(sized('warehouse', 5, 4))).toEqual({ w: 68, d: 54.4 });
+    expect(bodyMetresFor(sized('metals', 5, 3))).toEqual({ w: 68, d: 40.8 });
+  });
+
   it('stands a storey tall against a plan that is no longer stretched under it', () => {
     // The complaint this answers: heights are real metres and never scaled, so
     // when the plan grew with the tile every building flattened by the ratio.
