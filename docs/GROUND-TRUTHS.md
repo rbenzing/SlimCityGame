@@ -1072,6 +1072,10 @@ MUTCD citations below use 11th-edition section numbers.
   opacity, lock, tooltip naming the milestone) are distinct treatments and are
   never merged. — [interaction.md](ux/interaction.md),
   [components.md](ux/components.md)
+- Text the layout may cut short (a card's name, a track's title, anything
+  `truncate`d) always carries its full text as a `title` tooltip; a clipped
+  label the player cannot read in full is a broken control. —
+  [components.md](ux/components.md), [accessibility.md](ux/accessibility.md)
 - Escape is a fixed stack: leave photo mode, cancel the drag, close the drawer,
   drop the tool to select and deselect. In the pause menu Escape only means
   Resume; on the start screen it does nothing. Opening the pause overlay pauses

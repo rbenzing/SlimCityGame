@@ -69,7 +69,7 @@ export function MusicPanel({
       >
         {hasTracks ? (
           <>
-            <div className="truncate text-sm" aria-label="Now playing">
+            <div className="truncate text-sm" aria-label="Now playing" title={current?.title}>
               {current ? current.title : 'Nothing playing'}
             </div>
 
@@ -122,6 +122,7 @@ export function MusicPanel({
                     type="button"
                     onClick={() => player.play(index)}
                     aria-current={index === state.index}
+                    title={track.title}
                     className={`flex w-full items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-white/10 ${
                       index === state.index ? 'text-accent' : 'text-white/70'
                     }`}

@@ -107,9 +107,19 @@ describe('AssetDrawer', () => {
       fireEvent.click(screen.getByRole('tab', { name: 'Medium' }));
       const avenue = screen.getByRole('button', { name: /Avenue/ });
       expect(avenue).toBeDisabled();
-      expect(avenue).toHaveAttribute('title', 'Unlocks at Small Town');
+      expect(avenue).toHaveAttribute('title', 'Avenue (unlocks at Small Town)');
       fireEvent.click(avenue);
       expect(useCityStore.getState().selectedTool).toBe('select');
+    });
+  });
+
+  describe('card names', () => {
+    it('carries every card’s full name as its tooltip, since the label is cut to the card’s width', () => {
+      render(<AssetDrawer category="landscaping" onClose={vi.fn()} />);
+      for (const card of screen.getAllByRole('button', { pressed: false })) {
+        const name = within(card).getByText(/\S/, { selector: 'span.truncate' }).textContent;
+        expect(card).toHaveAttribute('title', name);
+      }
     });
 
     it('unlocks once the milestone level is high enough, and selecting it sets the tool', () => {

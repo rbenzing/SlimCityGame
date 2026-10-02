@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,692 tests passing across 156 test files, run 2026-10-02.
+**Test suite:** 4,693 tests passing across 156 test files, run 2026-10-02.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -266,6 +266,14 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Clipped text shows in full on hover (asked for and built 2026-10-02)
+
+Every label the layout cuts short carries its full text as a tooltip: an
+asset card's name (the lock tooltip now adds the milestone after the
+name), the music panel's now-playing line and each playlist title. Written
+down as a ground truth and in [components.md](ux/components.md), so the
+next clipped label gets one too.
 
 ### Water in, and sewage out (asked for and built 2026-10-02)
 
