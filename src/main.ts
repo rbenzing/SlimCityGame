@@ -445,6 +445,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         height: number[];
         power: number[];
         powerLine: number[];
+        waterPipe: number[];
         overRoads: ReturnType<typeof clientGrid.overRoadTiles>;
       } => ({
         size: clientGrid.size,
