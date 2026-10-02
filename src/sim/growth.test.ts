@@ -4,7 +4,14 @@ import { BuildingState, FieldId, Problem, RoadTier, ZoneType } from '../shared/t
 import type { BuildingCatalogEntry, DemandLevels, FarmKind, GridState } from '../shared/types';
 import { SoilGrade } from '../shared/soil';
 import { BuildingRegistry } from './buildings';
-import { GrowthSystem, UNMETERED_SUPPLY, farmKindFor, lotGrade } from './growth';
+import {
+  GrowthSystem,
+  UNMETERED_SUPPLY,
+  drawKind,
+  farmKindFor,
+  lotGrade,
+  spawnCandidates,
+} from './growth';
 import { recomputeUtilities } from './network';
 import type { GrowthSupply, Rng } from './growth';
 import { createGrid } from '../world/grid';
@@ -22,11 +29,12 @@ function serviceTile(g: GridState, x: number, z: number, zone: ZoneType): void {
   g.roadTier[idx] = RoadTier.TwoLane;
 }
 
-/** Power + water + an adjacent road, with no zone change -- keeps an
- *  already-placed grown building free of NoPower/NoWater/NoRoad problems so
- *  level-up tests aren't confounded by an incidental abandonment streak. */
-function keepServiced(g: GridState, x: number, z: number): void {
+/** Zone + power + water + an adjacent road -- keeps an already-placed grown
+ *  building free of NoPower/NoWater/NoRoad problems, on land zoned for it,
+ *  so level-up tests aren't confounded by an incidental abandonment streak. */
+function keepServiced(g: GridState, x: number, z: number, zone: ZoneType = ZoneType.ResLow): void {
   const idx = tileIndex(x, z);
+  g.zone[idx] = zone;
   g.power[idx] = 1;
   g.watered[idx] = 1;
   g.roadTier[idx] = RoadTier.TwoLane;
@@ -72,6 +80,7 @@ const resL1: BuildingCatalogEntry = {
   name: 'House',
   category: 'res',
   zone: ZoneType.ResLow,
+  kind: 'detached',
   level: 1,
   footprint: { w: 1, d: 1 },
   height: 5,
@@ -109,6 +118,7 @@ const resMediumRowL1: BuildingCatalogEntry = {
   name: 'Row House',
   category: 'res',
   zone: ZoneType.ResMediumRow,
+  kind: 'townhouse',
   level: 1,
   footprint: { w: 1, d: 2 },
   height: 7,
@@ -126,6 +136,7 @@ const resMediumL1: BuildingCatalogEntry = {
   name: 'Low Apartments',
   category: 'res',
   zone: ZoneType.ResMedium,
+  kind: 'garden',
   level: 1,
   footprint: { w: 2, d: 2 },
   height: 14,
@@ -143,6 +154,7 @@ const mixedL1: BuildingCatalogEntry = {
   name: 'Shopfront Flats',
   category: 'res',
   zone: ZoneType.Mixed,
+  kind: 'mixed',
   level: 1,
   footprint: { w: 2, d: 2 },
   height: 18,
@@ -467,7 +479,10 @@ describe('GrowthSystem', () => {
       'grows the matching catalog building on a %s tile at/above its unlock milestone',
       (_label, zone, entry, unlockMilestone) => {
         const g = makeGrid();
-        serviceTile(g, 0, 0, zone);
+        // The whole lot zoned: a building stands only on land zoned for it.
+        for (let dz = 0; dz < entry.footprint.d; dz++) {
+          for (let dx = 0; dx < entry.footprint.w; dx++) serviceTile(g, dx, dz, zone);
+        }
         g.fields[FieldId.LandValue]!.fill(255); // desirability at its max
         const registry = new BuildingRegistry(expandedZonesCatalog);
         const growth = new GrowthSystem(expandedZonesCatalog, constantRng(0), alwaysTrue);
@@ -830,7 +845,7 @@ describe('GrowthSystem: zoned land its road brings nothing', () => {
     for (let z = 0; z < 6; z++) g.zone[tileIndex(6, z)] = ZoneType.Agriculture;
     const farmCatalog: BuildingCatalogEntry[] = [
       ...growthCatalog,
-      { ...resL1, id: 'farm', zone: ZoneType.Agriculture, waterUse: 0, farm: 'pasture' },
+      { ...resL1, id: 'farm', zone: ZoneType.Agriculture, waterUse: 0, kind: 'pasture' },
     ];
     const counted = new GrowthSystem(farmCatalog, constantRng(0), alwaysTrue).zonedUnserved(g);
     expect(counted).toEqual({ power: 6, water: 0, powerAt: { x: 6, z: 0 } });
@@ -975,8 +990,8 @@ describe('GrowthSystem: a grid too small for its city', () => {
     serviceTile(g, 0, 0, ZoneType.ResLow);
     const registry = new BuildingRegistry(growthCatalog);
     const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
-    const full = supplyOf({ spare: 99 }); // a house draws 0.1 MW, 100 units
-    const room = supplyOf({ spare: 100 });
+    const full = supplyOf({ spare: 99_999 }); // a house draws 0.1 MW, 100,000 units
+    const room = supplyOf({ spare: 100_000 });
 
     expect(growth.tick(g, registry, fullResDemand, 0, 0, full).added).toEqual([]);
     expect(growth.waitingFor(g, registry, full)).toEqual({ power: 1, water: 0 });
@@ -1005,17 +1020,21 @@ describe('GrowthSystem: a grid too small for its city', () => {
     const registry = new BuildingRegistry(growthCatalog);
     const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
 
-    const delta = growth.tick(g, registry, fullResDemand, 0, 0, supplyOf({ spare: 150 }));
+    const delta = growth.tick(g, registry, fullResDemand, 0, 0, supplyOf({ spare: 150_000 }));
     expect(delta.added).toHaveLength(1);
-    expect(growth.waitingFor(g, registry, supplyOf({ spare: 50 }))).toEqual({ power: 1, water: 0 });
+    expect(growth.waitingFor(g, registry, supplyOf({ spare: 50_000 }))).toEqual({
+      power: 1,
+      water: 0,
+    });
   });
 
   it('counts overlapping candidate lots as the homes that would fit, not as tiles', () => {
     const wideHouse: BuildingCatalogEntry = { ...resL1, id: 'wide-l1', footprint: { w: 2, d: 2 } };
     const catalog = [wideHouse];
     const g = makeGrid();
-    // A 3×2 block: a 2×2 home could start on any of its six tiles.
-    for (let z = 0; z < 2; z++) for (let x = 0; x < 3; x++) serviceTile(g, x, z, ZoneType.ResLow);
+    // A 4×2 block: a 2×2 home could start on any of the three tiles whose
+    // lot stays inside it.
+    for (let z = 0; z < 2; z++) for (let x = 0; x < 4; x++) serviceTile(g, x, z, ZoneType.ResLow);
     const registry = new BuildingRegistry(catalog);
     const growth = new GrowthSystem(catalog, constantRng(0), alwaysTrue);
     const full = supplyOf({ spare: 0 });
@@ -1049,7 +1068,7 @@ describe('GrowthSystem: a grid too small for its city', () => {
     keepServiced(g, 5, 5);
     g.fields[FieldId.LandValue]![tileIndex(5, 5)] = 200;
     const growth = new GrowthSystem(catalog, constantRng(0), alwaysTrue);
-    const tight = supplyOf({ spare: 199 }); // the bigger house draws 0.2 MW more
+    const tight = supplyOf({ spare: 199_999 }); // the bigger house draws 0.2 MW more
 
     const held = growth.tick(g, registry, neutralDemand, 0, 0, tight);
     expect(held.added).toEqual([]);
@@ -1057,7 +1076,7 @@ describe('GrowthSystem: a grid too small for its city', () => {
     expect(g.buildingId[tileIndex(5, 5)]).toBe(inst.id);
     expect(growth.waitingFor(g, registry, tight)).toEqual({ power: 1, water: 0 });
 
-    const grown = growth.tick(g, registry, neutralDemand, 0, 10, supplyOf({ spare: 200 }));
+    const grown = growth.tick(g, registry, neutralDemand, 0, 10, supplyOf({ spare: 200_000 }));
     expect(grown.added).toHaveLength(1);
     expect(grown.added[0]!.level).toBe(2);
     expect(growth.waitingFor(g, registry, tight)).toEqual({ power: 0, water: 0 });
@@ -1129,7 +1148,7 @@ describe('farms', () => {
     category: 'ind',
     zone: ZoneType.Agriculture,
     level,
-    farm: kind,
+    kind,
     footprint: { w, d },
     height: 9,
     color: 0x7a3a2c,
@@ -1251,7 +1270,7 @@ describe('farms', () => {
     ): { g: GridState; registry: BuildingRegistry } {
       const g = farmland(grade);
       const registry = new BuildingRegistry(farmCatalog);
-      const entry = farmCatalog.find((e) => e.farm === kind && e.level === 1)!;
+      const entry = farmCatalog.find((e) => e.kind === kind && e.level === 1)!;
       registry.place(g, entry, 0, 1, 0, BuildingState.Active);
       return { g, registry };
     }
@@ -1283,6 +1302,115 @@ describe('farms', () => {
       expect(levelUp(g, registry, { res: 1, com: 1, ind: 0 })).toEqual(['farm-pasture-1']);
       expect(levelUp(g, registry)).toEqual(['farm-pasture-2']);
     });
+  });
+});
+
+describe('the lot picks its building', () => {
+  const wantsHomes: DemandLevels = { res: 1, com: 0, ind: 0 };
+  const house = (level: number, w: number, d: number): BuildingCatalogEntry => ({
+    ...resL1,
+    id: `house-${level}`,
+    kind: 'detached',
+    level,
+    share: level === 1 ? 61.1 : undefined,
+    units: 1,
+    footprint: { w, d },
+  });
+  const duplex = (level: number): BuildingCatalogEntry => ({
+    ...resL1,
+    id: `duplex-${level}`,
+    kind: 'duplex',
+    level,
+    share: level === 1 ? 1.6 : undefined,
+    units: 2,
+    footprint: { w: 1, d: 2 },
+    unlockMilestone: 1,
+  });
+  const kinds = [house(1, 2, 2), house(2, 2, 3), duplex(1), duplex(2)];
+  /** The only lots a building may take here are ones zoned ResLow on every tile. */
+  const onZonedGround = (g: GridState, x: number, z: number, w: number, d: number): boolean => {
+    for (let dz = 0; dz < d; dz++) {
+      for (let dx = 0; dx < w; dx++) {
+        if (g.zone[tileIndex(x + dx, z + dz)] !== ZoneType.ResLow) return false;
+      }
+    }
+    return true;
+  };
+  /** A street along z = 0 and zoned, powered, watered land in the block below it. */
+  function zoned(w: number, d: number): GridState {
+    const g = makeGrid();
+    for (let x = 0; x < w + 2; x++) g.roadTier[tileIndex(x, 0)] = RoadTier.TwoLane;
+    for (let z = 1; z <= d; z++) {
+      for (let x = 0; x < w; x++) {
+        const i = tileIndex(x, z);
+        g.zone[i] = ZoneType.ResLow;
+        g.power[i] = 1;
+        g.watered[i] = 1;
+      }
+    }
+    return g;
+  }
+
+  it('lists the kinds of the zone that are unlocked and fit the lot, in catalog order', () => {
+    const fits = (e: BuildingCatalogEntry): boolean => e.footprint.w === 1;
+    expect(spawnCandidates(kinds, ZoneType.ResLow, 1, () => true).map((e) => e.id)).toEqual([
+      'house-1',
+      'duplex-1',
+    ]);
+    expect(spawnCandidates(kinds, ZoneType.ResLow, 0, () => true).map((e) => e.id)).toEqual([
+      'house-1',
+    ]);
+    expect(spawnCandidates(kinds, ZoneType.ResLow, 1, fits).map((e) => e.id)).toEqual(['duplex-1']);
+    expect(spawnCandidates(kinds, ZoneType.ResHigh, 1, () => true)).toEqual([]);
+  });
+
+  it('draws by share: a roll walks the cumulative weights in order', () => {
+    const [h, d] = spawnCandidates(kinds, ZoneType.ResLow, 1, () => true);
+    expect(drawKind([h!, d!], 0).id).toBe('house-1');
+    expect(drawKind([h!, d!], 61 / 62.7).id).toBe('house-1');
+    expect(drawKind([h!, d!], 61.2 / 62.7).id).toBe('duplex-1');
+    expect(drawKind([h!, d!], 0.999).id).toBe('duplex-1');
+    // Without a share, a kind weighs one.
+    const plain = { ...h!, share: undefined };
+    expect(drawKind([plain, { ...d!, share: undefined }], 0.49).id).toBe('house-1');
+    expect(drawKind([plain, { ...d!, share: undefined }], 0.51).id).toBe('duplex-1');
+  });
+
+  it('grows a detached house on a wide block, the first kind a constant roll picks', () => {
+    const g = zoned(4, 4);
+    const registry = new BuildingRegistry(kinds);
+    new GrowthSystem(kinds, constantRng(0), onZonedGround).tick(g, registry, wantsHomes, 1, 0);
+    const grown = registry.all().map((b) => b.catalogId);
+    expect(grown.length).toBeGreaterThan(0);
+    expect(new Set(grown)).toEqual(new Set(['house-1']));
+  });
+
+  it('grows a duplex, never a house, on a strip one tile wide', () => {
+    const g = zoned(1, 4);
+    const registry = new BuildingRegistry(kinds);
+    const growth = new GrowthSystem(kinds, constantRng(0), onZonedGround);
+    for (let pass = 0; pass < 32; pass++) growth.tick(g, registry, wantsHomes, 1, pass * 10);
+    const grown = registry.all().map((b) => b.catalogId);
+    expect(grown.length).toBeGreaterThan(0);
+    expect(new Set(grown)).toEqual(new Set(['duplex-1']));
+  });
+
+  it('grows no duplex before its milestone, even where only a duplex fits', () => {
+    const g = zoned(1, 4);
+    const registry = new BuildingRegistry(kinds);
+    const growth = new GrowthSystem(kinds, constantRng(0), onZonedGround);
+    for (let pass = 0; pass < 32; pass++) growth.tick(g, registry, wantsHomes, 0, pass * 10);
+    expect(registry.all()).toHaveLength(0);
+  });
+
+  it('keeps its kind through a level-up: a duplex becomes a better duplex, never a house', () => {
+    const g = zoned(2, 3);
+    const registry = new BuildingRegistry(kinds);
+    const inst = registry.place(g, duplex(1), 0, 1, 0, BuildingState.Active)!;
+    g.fields[FieldId.LandValue]![tileIndex(0, 1)] = 200;
+    new GrowthSystem(kinds, constantRng(0), onZonedGround).tick(g, registry, wantsHomes, 1, 0);
+    expect(registry.get(inst.id)).toBeUndefined();
+    expect(registry.all().map((b) => b.catalogId)).toEqual(['duplex-2']);
   });
 });
 

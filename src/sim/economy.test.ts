@@ -284,7 +284,7 @@ describe('EconomySystem: population/jobs/employed aggregation', () => {
       category: 'ind',
       zone: ZoneType.Agriculture,
       level: 1,
-      farm: 'crops',
+      kind: 'crops',
       footprint: { w: 4, d: 5 },
       height: 9,
       color: 0x7a3a2c,

@@ -13,7 +13,6 @@
  * Pure: a function of (building, catalog entry, streets). No three.js.
  */
 import type { BuildingCatalogEntry, BuildingInstance } from '../shared/types';
-import { ZoneType } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import {
   edgeFrameFor,
@@ -23,8 +22,9 @@ import {
   type RoadFacingEdge,
   type StreetLookup,
 } from './frontage';
-import { footprintShrinkFor, frontageSetbackFor } from './massing';
+import { bodyMetresFor, frontageSetbackFor } from './massing';
 import { isHouseEntry } from './archetypes';
+import { homesAcrossFrontage } from '../shared/buildingkind';
 
 // Same avalanche hash every render/*.ts keeps a local copy of.
 function hash1(n: number): number {
@@ -196,12 +196,12 @@ function bodyRect(
   frame: EdgeFrame,
   street: StreetLookup,
 ): LotRect {
-  const shrink = footprintShrinkFor(entry);
+  const body = bodyMetresFor(entry);
   const shift = frontageSetbackFor(entry, building.x, building.z, () => false, street);
   const cx = (building.x + entry.footprint.w / 2) * TILE_METERS + shift.centerXM;
   const cz = (building.z + entry.footprint.d / 2) * TILE_METERS + shift.centerZM;
-  const hx = (entry.footprint.w * TILE_METERS * shrink) / 2;
-  const hz = (entry.footprint.d * TILE_METERS * shrink) / 2;
+  const hx = body.w / 2;
+  const hz = body.d / 2;
   const a = worldToLot(frame, cx - hx, cz - hz);
   const b = worldToLot(frame, cx + hx, cz + hz);
   return {
@@ -431,10 +431,22 @@ function frontPad(
   };
 }
 
-/** A row laid out along its frontage: one home per lot tile, each with its own share of the body. */
-function isRowAlongFrontage(entry: BuildingCatalogEntry, edge: RoadFacingEdge | null): boolean {
-  return entry.zone === ZoneType.ResMediumRow && edge !== null && edge.edgeTiles >= 2;
+/**
+ * How many homes share the body across its frontage, each with its own door
+ * and drive: two per tile of a townhouse row, two in a duplex or a fourplex,
+ * one in a detached house. Only a body too narrow to hold a pad and a door
+ * per home falls back to the one-home layout with a side drive.
+ */
+function homesAlongFrontage(entry: BuildingCatalogEntry, edge: RoadFacingEdge | null): number {
+  if (!edge) return 1;
+  return homesAcrossFrontage(entry.kind, edge.edgeTiles);
 }
+
+/** Where a home's front pad starts and its door stands, in from its share of the frontage. */
+const FRONT_PAD_INSET_M = 0.5;
+const FRONT_DOOR_INSET_M = 1.5;
+/** The least frontage a home needs for its pad, a metre of wall, its door and the margins. */
+const FRONT_HOME_MIN_WIDTH_M = FRONT_PAD_INSET_M + DRIVE_WIDTH_M + 1 + DOOR_WIDTH_M + 0.5;
 
 function overlaps(a: LotRect, b: LotRect): boolean {
   return a.u0 < b.u1 && b.u0 < a.u1 && a.v0 < b.v1 && b.v0 < a.v1;
@@ -715,13 +727,15 @@ export function planHouseGround(
     paths.push({ u0: u - PATH_WIDTH_M / 2, u1: u + PATH_WIDTH_M / 2, v0: -s.vergeM, v1: body.v0 });
   };
 
-  if (isRowAlongFrontage(entry, edge)) {
-    const units = edge!.edgeTiles;
+  const homes = homesAlongFrontage(entry, edge);
+  if (homes > 1 && (body.u1 - body.u0) / homes >= FRONT_HOME_MIN_WIDTH_M) {
+    const units = homes;
     const unitW = (body.u1 - body.u0) / units;
     for (let k = 0; k < units; k++) {
+      // Each home's pad sits at its near edge and its door at the far one.
       const unitU0 = body.u0 + k * unitW;
-      const padU0 = unitU0 + 1;
-      const door = { u: unitU0 + unitW - 2.5, v: body.v0 };
+      const padU0 = unitU0 + FRONT_PAD_INSET_M;
+      const door = { u: unitU0 + unitW - FRONT_DOOR_INSET_M, v: body.v0 };
       doors.push(door);
       const integral = roll(building.id, SLOT_UNIT_BASE + 4 * k) < 0.5;
       const pad = streets ? frontPad(padU0, padU0 + DRIVE_WIDTH_M, body, streets, integral) : null;

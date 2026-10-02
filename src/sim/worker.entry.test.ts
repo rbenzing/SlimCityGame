@@ -20,26 +20,28 @@ describe('selectionOccupancy (pure)', () => {
     ...base,
     category: 'res',
     zone: ZoneType.ResLow,
+    kind: 'fourplex',
+    units: 4,
     residents: 9,
   };
   const com: BuildingCatalogEntry = { ...base, category: 'com', zone: ZoneType.ComLow, jobs: 6 };
   const util: BuildingCatalogEntry = { ...base, category: 'utility', utility: { powerMW: 5 } };
 
-  it('fills residents + households for residential (capacity = ceil(residents/4))', () => {
+  it('fills residents + households for residential (capacity = the homes in the building)', () => {
     expect(selectionOccupancy(res, 1)).toEqual({
       residents: 9,
-      households: { occupied: 3, capacity: 3 },
+      households: { occupied: 4, capacity: 4 },
     });
   });
 
   it('reports zero occupied residents/households for non-Active residential', () => {
     expect(selectionOccupancy(res, 0)).toEqual({
       residents: 0,
-      households: { occupied: 0, capacity: 3 },
+      households: { occupied: 0, capacity: 4 },
     });
     expect(selectionOccupancy(res, 2)).toEqual({
       residents: 0,
-      households: { occupied: 0, capacity: 3 },
+      households: { occupied: 0, capacity: 4 },
     });
   });
 

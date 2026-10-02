@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CAR_HALF_LENGTH_M,
+  DOOR_WIDTH_M,
   DRIVE_WIDTH_M,
   POOL_RADIUS_M,
   TRAMPOLINE_RADIUS_M,
@@ -26,6 +27,7 @@ function entry(over: Partial<BuildingCatalogEntry> = {}): BuildingCatalogEntry {
     name: 'Home',
     category: 'res',
     zone: ZoneType.ResLow,
+    kind: 'detached',
     level: 1,
     footprint: { w: 2, d: 2 },
     height: 4,
@@ -69,7 +71,12 @@ function streetRow(z: number, vergeM = VERGE): {
 
 const small = entry();
 const villa = entry({ footprint: { w: 3, d: 3 }, height: 6.5 });
-const terrace = entry({ zone: ZoneType.ResMediumRow, footprint: { w: 1, d: 4 }, height: 9 });
+const terrace = entry({
+  zone: ZoneType.ResMediumRow,
+  kind: 'townhouse',
+  footprint: { w: 1, d: 4 },
+  height: 9,
+});
 
 const overlaps = (a: LotRect, b: LotRect): boolean =>
   a.u0 < b.u1 - 1e-6 && b.u0 < a.u1 - 1e-6 && a.v0 < b.v1 - 1e-6 && b.v0 < a.v1 - 1e-6;
@@ -128,8 +135,17 @@ describe('planHouseLot — where the house stands', () => {
   });
 
   it('is nothing at all for a building that is not a home', () => {
-    expect(planHouseLot(home(), entry({ zone: ZoneType.ResMedium }), roadAt, street)).toBeNull();
-    expect(planHouseLot(home(), entry({ category: 'com', zone: ZoneType.ComLow }), roadAt, street)).toBeNull();
+    expect(
+      planHouseLot(home(), entry({ zone: ZoneType.ResMedium, kind: 'garden' }), roadAt, street),
+    ).toBeNull();
+    expect(
+      planHouseLot(
+        home(),
+        entry({ category: 'com', zone: ZoneType.ComLow, kind: undefined }),
+        roadAt,
+        street,
+      ),
+    ).toBeNull();
   });
 
   it('lays the same lot out the same way every time', () => {
@@ -220,33 +236,70 @@ describe('planHouseLot — the drive', () => {
 });
 
 describe('planHouseLot — rows', () => {
-  it('makes a row along its street one home per frontage tile, each with its own pad and patio', () => {
+  it('makes a row along its street two homes per frontage tile, each with its own pad and patio', () => {
     // The row's long east side meets a street down column 5.
     const roadAt = (x: number): boolean => x === 5;
     const street: StreetLookup = (x) => (x === 5 ? { vergeM: VERGE, sidewalkM: SIDEWALK } : null);
     const plan = planHouseLot(home(), terrace, roadAt, street)!;
     expect(plan.edge?.side).toBe('E');
-    expect(plan.homes).toBe(4);
-    expect(plan.doors).toHaveLength(4);
-    expect(plan.drives).toHaveLength(4);
+    expect(plan.homes).toBe(8);
+    expect(plan.doors).toHaveLength(8);
+    expect(plan.drives).toHaveLength(8);
     for (const drive of plan.drives) {
       expect(['pad', 'integralGarage']).toContain(drive.cover);
       expect(drive.rect.v1).toBeCloseTo(plan.body.v0, 6);
     }
-    expect(plan.yard.patios).toHaveLength(4);
+    // Each home's pad and door stay inside its own share of the frontage and clear of each other.
+    const unitW = (plan.body.u1 - plan.body.u0) / 8;
+    plan.drives.forEach((drive, k) => {
+      const u0 = plan.body.u0 + k * unitW;
+      expect(drive.rect.u0).toBeGreaterThanOrEqual(u0);
+      expect(drive.rect.u1).toBeLessThan(plan.doors[k]!.u - DOOR_WIDTH_M / 2);
+      expect(plan.doors[k]!.u + DOOR_WIDTH_M / 2).toBeLessThanOrEqual(u0 + unitW);
+    });
+    expect(plan.yard.patios).toHaveLength(8);
     // A fence between each pair of neighbours, from the back wall to the back line.
     const dividers = plan.yard.fence.filter((f) => f.u0 === f.u1 && f.u0 > 1 && f.u0 < plan.edgeLenM - 1);
-    expect(dividers).toHaveLength(3);
+    expect(dividers).toHaveLength(7);
     expect(plan.yard.pool).toBeNull();
     expect(plan.yard.trampoline).toBeNull();
   });
 
-  it('treats a row whose narrow end meets the street as one home', () => {
+  it('holds two homes across a row whose narrow end meets the street', () => {
     const { roadAt, street } = streetRow(10);
     const plan = planHouseLot(home(), terrace, roadAt, street)!;
     expect(plan.edge?.side).toBe('S');
-    expect(plan.homes).toBe(1);
-    expect(plan.drives).toHaveLength(1);
+    expect(plan.homes).toBe(2);
+    expect(plan.drives).toHaveLength(2);
+  });
+
+  it('lays a duplex out as two homes across its frontage, a door and a drive each', () => {
+    const duplex = entry({ kind: 'duplex', footprint: { w: 2, d: 1 }, height: 6.4 });
+    const { roadAt, street } = streetRow(7);
+    const plan = planHouseLot(home(), duplex, roadAt, street)!;
+    expect(plan.homes).toBe(2);
+    expect(plan.doors).toHaveLength(2);
+    expect(plan.drives).toHaveLength(2);
+    expect(plan.body.u1 - plan.body.u0).toBeCloseTo(16, 9);
+  });
+
+  it('still fits two pads and two doors across a duplex end-on to the street, 12 m wide', () => {
+    const duplex = entry({ kind: 'duplex', footprint: { w: 1, d: 2 }, height: 6.4 });
+    const { roadAt, street } = streetRow(8);
+    const plan = planHouseLot(home(), duplex, roadAt, street)!;
+    expect(plan.body.u1 - plan.body.u0).toBeCloseTo(12, 9);
+    expect(plan.homes).toBe(2);
+    expect(plan.doors).toHaveLength(2);
+    expect(plan.drives).toHaveLength(2);
+    expect(plan.drives[0]!.rect.u1).toBeLessThan(plan.doors[0]!.u - DOOR_WIDTH_M / 2);
+  });
+
+  it('gives a detached house one door and one drive, whatever its lot', () => {
+    for (const plan of [...streetOf(small), ...streetOf(villa)]) {
+      expect(plan.homes).toBe(1);
+      expect(plan.doors).toHaveLength(1);
+      expect(plan.drives.length).toBeLessThanOrEqual(1);
+    }
   });
 });
 

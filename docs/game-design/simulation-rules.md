@@ -151,14 +151,24 @@ the whole map on every pass, each pass sweeps one rotating 1-in-32 stride of
 the map's tiles, so the full map is covered once every 32 passes.
 
 A candidate tile must be zoned to a sector, carry no building yet, and sit
-within Manhattan distance 3 of a street tile. The sector's level-1 catalog
-entry unlocked at or below the current milestone supplies a footprint; that
-footprint must fit unobstructed at the tile, and at least one of its tiles
-must already be reached by both power and piped water — piped water only
-where the building draws city water, which a
+within Manhattan distance 3 of a street tile. The zone's level-1 catalog
+entries unlocked at or below the current milestone are its **kinds** — a
+detached house, a duplex and a fourplex on low-density land, say — and the
+ones whose footprint fits unobstructed at the tile, every tile of it zoned
+the same, are the lot's candidates. A building never spills onto ground
+beside its zone, so a strip zoned one tile wide grows only what is one tile
+wide.
+One is drawn by its `share`, the kind's weight in the real stock, with one
+roll of the growth rng against the candidates' cumulative weights in catalog
+order; a kind alone among the candidates needs no roll. At least one tile of
+the chosen footprint must already be reached by both power and piped water —
+piped water only where the building draws city water, which a
 [house on a well](#a-house-on-a-well) does not — checking the whole
 footprint rather than just its origin corner, so a lot's service does not
-depend on which side of it the street happens to sit.
+depend on which side of it the street happens to sit. A lot that fails the
+checks after the draw is simply tried again on the next sweep, with a fresh
+draw. The kinds, their weights and where they come from are in
+[features/building-types.md](features/building-types.md).
 
 Nobody moves into a home the grid cannot light or water. The grid must also
 have spare supply for the entry's `powerUse` and `waterUse`: supply less
@@ -231,10 +241,13 @@ A newly spawned or newly leveled-up building spends `CONSTRUCTION_TICKS` =
 Every growth pass, an Active building below level 3 is checked for a
 level-up: the land value over its tile must exceed 140 (to reach level 2)
 or 190 (to reach level 3); residential buildings reaching level 3
-additionally need the tile's education field over 60. A catalog entry for
-the next level must also exist and be unlocked at or below the current
-milestone. The building's old footprint is cleared to test the new,
-possibly larger one in its place; if the new footprint does not fit, the
+additionally need the tile's education field over 60. A catalog entry of the
+same kind at the next level must also exist and be unlocked at or below the
+current milestone: a building keeps its kind for life, so a duplex levels up
+into a better duplex and never into a house or a block. The building's old
+footprint is cleared to test the new,
+possibly larger one in its place, every tile of it zoned the same; if the
+new footprint does not fit, the
 level-up is abandoned and the old building is restored exactly as it
 stood. A level-up must also find spare supply for what the bigger building
 draws beyond the smaller one; one that cannot is restored the same way and
@@ -268,9 +281,11 @@ the grid grows or the home is removed.
 ## Lots and archetypes
 
 A zoned building's mass does not fill its footprint tile: the body is a
-size in metres per lot tile — 4.75 m for a detached house, 13.6 m for
-everything else, and never more than 85% of the tile — so that neighbouring
-buildings never share a wall. The lot, not the building, claims the rest of
+size in metres set by its kind — 4.75 m per lot tile for a detached house,
+13.6 m per tile for a block, and a fixed share of the lot capped in metres
+for a duplex, a fourplex or a multiplex, never more than 85% of the tile on
+either axis (see [../art/buildings.md](../art/buildings.md#residential-kinds)) —
+so that neighbouring buildings never share a wall. The lot, not the building, claims the rest of
 the tile: a lot pad reserves the building's whole footprint, sitting under
 the body and surfacing whatever remainder the building implies — paved yard,
 parking, or planting. Adjacent lots' pads meet edge to edge with no gap
@@ -315,8 +330,8 @@ its anchor point; which way is "along the street" is read from the road
 tile's own neighbours, not the building's facing, so a corner lot still
 walks the street it actually fronts.
 
-A catalog entry's category and level select an archetype: a named assembly
-of parts drawn from one shared kit (see [../art/README.md](../art/README.md)
+A catalog entry's category, kind and level select an archetype: a named
+assembly of parts drawn from one shared kit (see [../art/README.md](../art/README.md)
 for what those parts are and look like). Two buildings of the same zone at
 different levels, or of different archetypes entirely, can therefore look
 distinct without any divergent game logic. Parts that hang on a building's

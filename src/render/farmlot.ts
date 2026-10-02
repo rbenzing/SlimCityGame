@@ -19,6 +19,7 @@
  */
 import { TILE_METERS } from '../shared/constants';
 import type { BuildingCatalogEntry, BuildingInstance, FarmKind } from '../shared/types';
+import { farmKindOf } from '../shared/buildingkind';
 import { edgeFrameFor, frameToWorld, type EdgeFrame, type Side } from './frontage';
 
 /** An axis-aligned world rectangle, low corner first. */
@@ -328,7 +329,7 @@ export function planFarm(
   entry: BuildingCatalogEntry,
   dirtAt: (tileX: number, tileZ: number) => boolean,
 ): FarmPlan | null {
-  const kind = entry.farm;
+  const kind = farmKindOf(entry);
   if (!kind) return null;
   const level = entry.level ?? 1;
   const { w, d } = entry.footprint;

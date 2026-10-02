@@ -27,7 +27,7 @@ const farm = (kind: FarmKind, level: number, w: number, d: number): BuildingCata
   category: 'ind',
   zone: ZoneType.Agriculture,
   level,
-  farm: kind,
+  kind,
   footprint: { w, d },
   height: 9,
   color: 0x7a3a2c,
@@ -86,7 +86,7 @@ describe('farmGateSide', () => {
 
 describe('planFarm', () => {
   it('plans nothing for a building that is not a farm', () => {
-    const house = { ...farm('crops', 1, 2, 2), farm: undefined };
+    const house = { ...farm('crops', 1, 2, 2), zone: ZoneType.ResLow, kind: 'detached' as const };
     expect(planFarm(at(10, 10), house, () => false)).toBeNull();
   });
 

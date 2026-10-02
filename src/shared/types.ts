@@ -1054,6 +1054,24 @@ export type BuildingCategory = 'res' | 'com' | 'ind' | 'service' | 'utility' | '
 /** What a farm grows, which the soil under its lot decides. */
 export type FarmKind = 'crops' | 'orchard' | 'pasture';
 
+/** The kinds of home a residential zone grows: house-scale, then blocks. */
+export type ResidentialKind =
+  | 'detached'
+  | 'duplex'
+  | 'fourplex'
+  | 'townhouse'
+  | 'multiplex'
+  | 'garden'
+  | 'midrise'
+  | 'tower'
+  | 'mixed';
+
+/**
+ * What a zoned building IS. A lot draws one of its zone's kinds when it grows
+ * and keeps it through every level-up, so each kind has its own three levels.
+ */
+export type BuildingKind = FarmKind | ResidentialKind;
+
 export interface BuildingCatalogEntry {
   id: string;
   name: string;
@@ -1061,8 +1079,12 @@ export interface BuildingCatalogEntry {
   /** Set for zone-grown buildings; undefined for ploppables. */
   zone?: ZoneType;
   level?: number; // 1..3, for grown buildings
-  /** Set for every Agriculture entry: which kind of farm it is. */
-  farm?: FarmKind;
+  /** Set for every zone-grown entry: which kind of building it is. */
+  kind?: BuildingKind;
+  /** Homes in the building: residential and mixed entries, and 1 on a farm. */
+  units?: number;
+  /** The kind's weight in the lot draw among the kinds that fit, on its level-1 entry. */
+  share?: number;
   footprint: { w: number; d: number }; // tiles
   height: number; // meters, for the box mesh
   color: number; // hex, flat color until stage-2 facade atlases

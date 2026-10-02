@@ -382,8 +382,8 @@ function fullMapPatch(layer: Uint8Array): ZonePatch {
 
 /**
  * Category-dependent occupancy rows (SelectionInfo.occupancy):
- * residential fills residents + households (capacity = ceil(catalog
- * residents / 4); occupied only while Active — the sim's population model is
+ * residential fills residents + households (capacity = the catalog's homes;
+ * occupied only while Active — the sim's population model is
  * all-or-nothing per building); com/ind fill jobs (Active only); services &
  * utilities leave every field unset. Pure and exported for direct testing.
  */
@@ -392,7 +392,7 @@ export function selectionOccupancy(
   state: BuildingState,
 ): SelectionInfo['occupancy'] {
   if (entry.category === 'res') {
-    const capacity = Math.ceil((entry.residents ?? 0) / 4);
+    const capacity = entry.units ?? 0;
     const active = state === BuildingState.Active;
     return {
       residents: active ? (entry.residents ?? 0) : 0,

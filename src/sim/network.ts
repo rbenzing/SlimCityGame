@@ -85,12 +85,13 @@ const ORTHOGONAL: ReadonlyArray<readonly [number, number]> = [
 ];
 
 /**
- * Supply and use are summed in thousandths (kW, litres) so a grid that exactly
- * meets its load is never cut by a floating-point remainder.
+ * Supply and use are summed in whole millionths (W, mL) so a grid that exactly
+ * meets its load is never cut by a floating-point remainder, and a house's
+ * 1.4 kW is not rounded to 1 kW.
  */
-const UNITS_PER_WHOLE = 1000;
+const UNITS_PER_WHOLE = 1_000_000;
 
-/** An amount of MW or kL in the whole thousandths the utility line counts in. */
+/** An amount of MW or kL in the whole millionths the utility line counts in. */
 export function utilityUnits(amount: number): number {
   return Math.round(amount * UNITS_PER_WHOLE);
 }
