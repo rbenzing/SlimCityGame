@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.32.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.31.1...slimcity-v1.32.0) (2026-10-02)
+
+
+### Features
+
+* **water:** a fouled shore, a fouled intake, and a sewage treatment works ([7b545e7](https://github.com/rbenzing/SlimCityGame/commit/7b545e7fccaa574ceb57aa2367d2c7668787e2d1))
+
 ## [1.31.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.31.0...slimcity-v1.31.1) (2026-10-02)
 
 
