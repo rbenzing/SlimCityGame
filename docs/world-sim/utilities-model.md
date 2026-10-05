@@ -143,17 +143,27 @@ more than the drains take, the far end of the line loses its sewer on its
 footprint tiles only, exactly as the water cut below. The drained coverage is
 `g.sewered`, derived on every utility pass and never saved.
 
-A building a drain does not reach, or the drains ran out before, carries
-`NoSewer` (and `SewerShortage` beside it where the network reaches it but
-the capacity did not). Neither abandons it. What they do: a lot grows, and a
-building levels up, only where a drain reaches it with room for its sewage,
-so the town stops growing where it has no sewer; and a standing building
-nothing drains fouls the ground around it in proportion to its sewage
-(`SEWAGE_POLLUTION_PER_KL` per kL a day, never less than one unit a pass),
-through the ordinary emission pass in
+None of this exists for a small town. Until the city is a Big Town
+(`SEWER_MILESTONE`, 3,500 people) the whole town is on septic tanks:
+`sewageOf` is zero for every building, so there is no sewer demand, no
+`NoSewer`, no stink and no sewer want on zoned land, and a street with power
+and water grows as it always did. The milestone is read in that one
+predicate and nowhere else, so the sewer passes, growth and the Advisor all
+turn over together the tick the city crosses it. The drain and the works
+unlock the rung before, at Busy Township, and the Advisor warns a Busy
+Township with no drain that it is outgrowing its septic tanks.
+
+From Big Town, a building a drain does not reach, or the drains ran out
+before, carries `NoSewer` (and `SewerShortage` beside it where the network
+reaches it but the capacity did not). Neither abandons it. What they do: a
+lot grows, and a building levels up, only where a drain reaches it with room
+for its sewage, so the town stops growing where it has no sewer; and a
+standing building nothing drains fouls the ground around it in proportion to
+its sewage (`SEWAGE_POLLUTION_PER_KL` per kL a day, never less than one unit
+a pass), through the ordinary emission pass in
 [environmental-simulation.md](environmental-simulation.md#pollution-fieldidpollution--1).
-A city saved before there were drains therefore loads standing, every home
-flagged and a little dirtier, and the Advisor says to build a drain.
+A Big Town saved before there were drains therefore loads standing, every
+home flagged and a little dirtier, and the Advisor says to build a drain.
 
 A **sewage treatment works** is a drain with `utility.effluent`: the share
 of its sewage's load that reaches the water, 0.15 for secondary treatment
@@ -232,5 +242,5 @@ small from a network with a gap in it. The shortage flag only says why; the
 A building that goes three consecutive growth passes without power, water,
 or road access while Active abandons; one without a sewer never does. Growth
 does not build into a shortage: a lot develops, and a building levels up,
-only when the grid has the spare supply — power, water and drain — for it
+only when the grid has the spare supply — power, water and, from Big Town, drain — for it
 (see [the spawner](../game-design/simulation-rules.md#the-spawner-how-a-lot-is-chosen)).

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { tileIndex } from '../shared/constants';
+import { SEWER_MILESTONE, tileIndex } from '../shared/constants';
 import { BuildingState, FieldId, Problem, RoadTier, ZoneType } from '../shared/types';
 import type {
   BuildingCatalogEntry,
@@ -210,16 +210,31 @@ describe('GrowthSystem', () => {
       expect(registry.all()).toHaveLength(0);
     });
 
-    it('does not spawn when the tile has no sewer, since its sewage would have nowhere to go', () => {
+    it('does not spawn where no drain reaches once the town is off septic tanks, since its sewage would have nowhere to go', () => {
       const g = makeGrid();
       serviceTile(g, 0, 0, ZoneType.ResLow);
       g.sewered[tileIndex(0, 0)] = 0;
       const registry = new BuildingRegistry(growthCatalog);
       const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
 
-      const delta = growth.tick(g, registry, neutralDemand, 0, 0);
+      const delta = growth.tick(g, registry, neutralDemand, SEWER_MILESTONE, 0);
       expect(delta.added).toEqual([]);
       expect(registry.all()).toHaveLength(0);
+    });
+
+    it('spawns with no drain anywhere while the town is still on septic tanks, and flags nothing for it', () => {
+      const g = makeGrid();
+      serviceTile(g, 0, 0, ZoneType.ResLow);
+      g.sewered[tileIndex(0, 0)] = 0;
+      const registry = new BuildingRegistry(growthCatalog);
+      const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
+
+      const delta = growth.tick(g, registry, neutralDemand, SEWER_MILESTONE - 1, 0);
+      expect(delta.added).toHaveLength(1);
+      const house = registry.all()[0]!;
+      house.state = BuildingState.Active;
+      growth.tick(g, registry, neutralDemand, SEWER_MILESTONE - 1, 10); // the next growth pass
+      expect(house.problems & Problem.NoSewer).toBe(0);
     });
 
     it('does not spawn when the tile has no water', () => {
@@ -845,7 +860,7 @@ describe('GrowthSystem: zoned land its road brings nothing', () => {
   const growth = (): GrowthSystem => new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
 
   it('counts only the row beside the road, not ground zoned too deep to reach it', () => {
-    const counted = growth().zonedUnserved(zonedDownADryStreet());
+    const counted = growth().zonedUnserved(zonedDownADryStreet(), SEWER_MILESTONE);
     expect(counted).toEqual({
       power: 6,
       water: 6,
@@ -856,20 +871,39 @@ describe('GrowthSystem: zoned land its road brings nothing', () => {
     });
   });
 
+  it('asks no sewer of anyone while the town is still on septic tanks', () => {
+    const counted = growth().zonedUnserved(zonedDownADryStreet(), SEWER_MILESTONE - 1);
+    expect(counted).toEqual({
+      power: 6,
+      water: 6,
+      sewer: 0,
+      powerAt: { x: 6, z: 0 },
+      waterAt: { x: 6, z: 0 },
+    });
+  });
+
   it('counts each utility the road fails, and leaves out what it brings', () => {
     const g = zonedDownADryStreet();
     for (let z = 0; z < 6; z++) g.watered[tileIndex(6, z)] = 1;
-    expect(growth().zonedUnserved(g)).toMatchObject({ power: 6, water: 0, sewer: 6 });
+    expect(growth().zonedUnserved(g, SEWER_MILESTONE)).toMatchObject({
+      power: 6,
+      water: 0,
+      sewer: 6,
+    });
     for (let z = 0; z < 6; z++) g.sewered[tileIndex(6, z)] = 1;
-    expect(growth().zonedUnserved(g)).toMatchObject({ power: 6, water: 0, sewer: 0 });
+    expect(growth().zonedUnserved(g, SEWER_MILESTONE)).toMatchObject({
+      power: 6,
+      water: 0,
+      sewer: 0,
+    });
     for (let z = 0; z < 6; z++) g.power[tileIndex(6, z)] = 1;
-    expect(growth().zonedUnserved(g)).toEqual({ power: 0, water: 0, sewer: 0 });
+    expect(growth().zonedUnserved(g, SEWER_MILESTONE)).toEqual({ power: 0, water: 0, sewer: 0 });
   });
 
   it('leaves out a tile something is already built on', () => {
     const g = zonedDownADryStreet();
     new BuildingRegistry(growthCatalog).place(g, resL1, 6, 0, 0, BuildingState.Active);
-    expect(growth().zonedUnserved(g).power).toBe(5);
+    expect(growth().zonedUnserved(g, SEWER_MILESTONE).power).toBe(5);
   });
 
   it('never asks water for farmland, which draws none', () => {
@@ -879,14 +913,17 @@ describe('GrowthSystem: zoned land its road brings nothing', () => {
       ...growthCatalog,
       { ...resL1, id: 'farm', zone: ZoneType.Agriculture, waterUse: 0, kind: 'pasture' },
     ];
-    const counted = new GrowthSystem(farmCatalog, constantRng(0), alwaysTrue).zonedUnserved(g);
+    const counted = new GrowthSystem(farmCatalog, constantRng(0), alwaysTrue).zonedUnserved(
+      g,
+      SEWER_MILESTONE,
+    );
     expect(counted).toEqual({ power: 6, water: 0, sewer: 0, powerAt: { x: 6, z: 0 } });
   });
 
   it('never asks water or a sewer for a house a dirt road serves, which is on a well and a septic tank', () => {
     const g = zonedDownADryStreet();
     for (let z = 0; z < 6; z++) g.roadTier[tileIndex(5, z)] = RoadTier.Gravel;
-    expect(growth().zonedUnserved(g)).toEqual({
+    expect(growth().zonedUnserved(g, SEWER_MILESTONE)).toEqual({
       power: 6,
       water: 0,
       sewer: 0,
@@ -904,7 +941,7 @@ describe('GrowthSystem: zoned land its road brings nothing', () => {
       [...growthCatalog, resMediumL1],
       constantRng(0),
       alwaysTrue,
-    ).zonedUnserved(g);
+    ).zonedUnserved(g, SEWER_MILESTONE);
     expect(counted).toMatchObject({ power: 6, water: 6, sewer: 6 });
   });
 });
@@ -940,7 +977,7 @@ describe('GrowthSystem: a house on a well', () => {
       g,
       registry,
       wantsHomes,
-      0,
+      SEWER_MILESTONE,
       0,
       supply,
     );
@@ -1059,8 +1096,20 @@ describe('GrowthSystem: a grid too small for its city', () => {
     const registry = new BuildingRegistry(growthCatalog);
     const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
     const choked = supplyOf({ spare: Infinity }, { spare: Infinity }, { spare: 0 });
-    expect(growth.tick(g, registry, fullResDemand, 0, 0, choked).added).toEqual([]);
+    expect(growth.tick(g, registry, fullResDemand, SEWER_MILESTONE, 0, choked).added).toEqual([]);
     expect(growth.waitingFor(g, registry, choked)).toEqual({ power: 0, water: 0, sewer: 1 });
+  });
+
+  it('never waits for a drain while the town is on septic tanks, whatever the drains have spare', () => {
+    const g = makeGrid();
+    serviceTile(g, 0, 0, ZoneType.ResLow);
+    const registry = new BuildingRegistry(growthCatalog);
+    const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
+    const choked = supplyOf({ spare: Infinity }, { spare: Infinity }, { spare: 0 });
+    expect(
+      growth.tick(g, registry, fullResDemand, SEWER_MILESTONE - 1, 0, choked).added,
+    ).toHaveLength(1);
+    expect(growth.waitingFor(g, registry, choked)).toEqual({ power: 0, water: 0, sewer: 0 });
   });
 
   it("hands a pass's spare supply out once, not to every lot that asks", () => {

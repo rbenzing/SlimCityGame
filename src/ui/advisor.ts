@@ -7,7 +7,7 @@
  * and the stats block, with no three.js, store or worker anywhere near it, so
  * the entire ranking is testable directly.
  */
-import { workforceOf } from '../shared/constants';
+import { MILESTONES, SEWER_MILESTONE, workforceOf } from '../shared/constants';
 import {
   BuildingState,
   Problem,
@@ -302,6 +302,19 @@ function cityWideIssues(stats: CityStats): CityIssue[] {
       severity: 'warning',
       title: 'Spending more than the city earns',
       detail: `Losing ¢${Math.round(stats.monthlyExpenses - stats.monthlyIncome)}/month — adjust taxes or service funding.`,
+      count: 0,
+    });
+  }
+
+  // The rung before sewers are needed, with no drain yet: the one warning a
+  // player gets before every building on the mains asks for one at once.
+  if (stats.milestoneLevel === SEWER_MILESTONE - 1 && stats.sewerSupply === 0) {
+    const sewered = MILESTONES[SEWER_MILESTONE]!;
+    issues.push({
+      id: 'septic-outgrown',
+      severity: 'info',
+      title: 'The town is outgrowing its septic tanks',
+      detail: `Septic tanks serve a town this size. From ${sewered.name} (${sewered.population.toLocaleString()} people) every building on the mains needs a drain, so build a drain pipe on a shore and lay pipe or road to it before then.`,
       count: 0,
     });
   }

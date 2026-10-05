@@ -13,9 +13,10 @@ power line, that carries water and sewage where the streets do not. A
 returns sewage to one, so the city's water starts and ends somewhere on the
 map. And **sewage as the third utility**: every building that draws city
 water makes sewage, a drain takes it, and the same network walk, supply line
-and far-end cut that power and water have decide who is drained. A lot
-grows only where a drain reaches; a building nothing drains stinks and is
-never abandoned for it.
+and far-end cut that power and water have decide who is drained. Below
+`SEWER_MILESTONE` (Big Town) the whole town is on septic tanks and makes no
+sewage; from it, a lot grows only where a drain reaches, and a building
+nothing drains stinks and is never abandoned for it.
 
 Now, because the building-types epic made every `waterUse` honest, so the
 water figures and the sewage that follows from them finally mean something,
@@ -138,13 +139,23 @@ check from pipes as well as roads.
   uses: the pounds of oxygen demand its raw sewage carries a year on the
   scale the coal plant sets, and never less than one unit, so a cesspit is
   never nothing.
+- **The septic era.** `sewageOf` takes the city's `milestoneLevel` and
+  returns zero below `SEWER_MILESTONE`, so every sewer figure downstream is
+  zero for a small town without a second switch anywhere: `recomputeUtilities`
+  and `GrowthSystem.zonedUnserved` take the level as a parameter, the growth
+  pass already had it, and `worker.entry.ts` passes `stats.milestoneLevel` at
+  all three. A caller running no economy (the network tests) gets a sewered
+  city by default. The drain's `unlockMilestone` is `SEWER_MILESTONE - 1`,
+  as the works' already was, and `cityWideIssues` adds `septic-outgrown` on
+  that rung while `sewerSupply` is zero.
 - **Growth.** `GrowthSupply.sewer`, `Spare.sewer` and `waiting.sewer` join
   power and water. A lot spawns only where `footprintServed(g.sewered)`
   holds for a kind that makes sewage, and `spawnIfSupplied` asks
   `suppliedFor` for the sewage it adds; a level-up asks for the difference.
   A lot or building held back by sewer alone is waiting for supply and is
   counted for the Advisor like the others. `zonedUnserved` gains `sewer`:
-  an empty zoned tile beside a road with no drain reaching it.
+  an empty zoned tile beside a road with no drain reaching it. All of it is
+  idle below the milestone, since nothing makes sewage.
 
 ### The buildings
 
@@ -242,10 +253,12 @@ effluent?: number;
    house on a well and a farm make none.
 3. Drains reach along roads that carry water and along pipes, and the cut
    runs from the far end exactly as the water cut does.
-4. A lot grows, and a building levels up, only where a drain reaches it
-   with spare capacity for its sewage; a standing building nothing drains is
-   flagged `NoSewer`, emits pollution in proportion to its sewage, and is
-   never abandoned for it.
+4. From `SEWER_MILESTONE`, a lot grows, and a building levels up, only where
+   a drain reaches it with spare capacity for its sewage; a standing
+   building nothing drains is flagged `NoSewer`, emits pollution in
+   proportion to its sewage, and is never abandoned for it. Below it no
+   building makes sewage, and the first town grows on power and water alone
+   (`tests/interaction/firsttown.test.ts`).
 5. A pumping station and a drain pipe refuse a site with no adjacent water.
 6. A v13 save loads with no pipes and every building standing; a v14 save
    round-trips its pipes.
@@ -268,13 +281,18 @@ effluent?: number;
   works 25 tiles from the intake keeps the water clean enough; the Advisor
   says so when it is not.
 
-- **Every existing city has no drain.** It loads with every home flagged
-  `NoSewer`, a little dirtier, and stops growing until a drain is built; the
-  Advisor says so. That is the designed behaviour, and it is why `NoSewer`
-  is not a blocker.
+- **Every existing city has no drain.** One past Big Town loads with every
+  home flagged `NoSewer`, a little dirtier, and stops growing until a drain
+  is built; the Advisor says so. That is the designed behaviour, and it is
+  why `NoSewer` is not a blocker. A smaller one is on septic tanks and
+  notices nothing.
 - **Interaction tests on the flat map.** The test map has no water, so a
-  test that grows buildings digs a pond with the terraform command and
-  stands a drain on its bank, the way a player would.
+  test about the sewer boots at `SEWER_MILESTONE`, digs a pond with the
+  terraform command and stands a drain on its bank, the way a player would.
+  A test about growth does neither: the first cut of this feature gave every
+  growth test a pond and a drain to keep it passing, which is how a gate
+  that stopped every new town growing shipped unnoticed, and the rule
+  against that is now in GROUND-TRUTHS.
 - **The pipe overlay's cost.** One merged mesh rebuilt on pipe changes, like
   the zone grid; a city will have hundreds of pipe tiles, not thousands.
 - **A fourth utility later.** The network module now has three near-identical

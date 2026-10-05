@@ -3,6 +3,7 @@ import type { BuildingCatalogEntry, BuildingInstance, GridState, TilePoint } fro
 import { BuildingState, RoadTier } from '../shared/types';
 import {
   SEWAGE_RETURN_FRACTION,
+  SEWER_MILESTONE,
   WATER_FOUL_PER_KL,
   WATER_FOUL_REACH_TILES,
   tileIndex,
@@ -370,12 +371,28 @@ describe('recomputeUtilities: the sewer', () => {
   it('a building makes sewage from the city water it draws, and none on a well or a farm', () => {
     const g = makeGrid();
     paintRoad(g, 2, 1);
-    expect(sewageOf(g, house, 2, 2, 1, 1)).toBeCloseTo(houseSewage, 9);
+    expect(sewageOf(g, house, 2, 2, 1, 1, SEWER_MILESTONE)).toBeCloseTo(houseSewage, 9);
     // The same house down a dirt road is on a well and a septic tank.
     const lane = makeGrid();
     paintRoad(lane, 1, 1, RoadTier.Gravel);
-    expect(sewageOf(lane, house, 2, 2, 1, 1)).toBe(0);
-    expect(sewageOf(g, { ...house, waterUse: 0 }, 2, 2, 1, 1)).toBe(0);
+    expect(sewageOf(lane, house, 2, 2, 1, 1, SEWER_MILESTONE)).toBe(0);
+    expect(sewageOf(g, { ...house, waterUse: 0 }, 2, 2, 1, 1, SEWER_MILESTONE)).toBe(0);
+  });
+
+  it('a whole town below the sewer milestone is on septic tanks and makes no sewage for a drain', () => {
+    const g = makeGrid();
+    paintRoad(g, 2, 1);
+    expect(sewageOf(g, house, 2, 2, 1, 1, SEWER_MILESTONE - 1)).toBe(0);
+    expect(sewageOf(g, house, 2, 2, 1, 1, 0)).toBe(0);
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'drain', 5, 1, 1, 1);
+    placeBuilding(g, buildings, 2, 'house', 2, 2, 1, 1);
+    paintRoadRow(g, 2, 5, 1);
+    expect(recomputeUtilities(g, buildings, sewered, SEWER_MILESTONE - 1).sewerDemand).toBe(0);
+    expect(recomputeUtilities(g, buildings, sewered, SEWER_MILESTONE).sewerDemand).toBeCloseTo(
+      houseSewage,
+      9,
+    );
   });
 
   it('runs back along the mains and the pipes the water came down, from the drain', () => {

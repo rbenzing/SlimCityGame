@@ -40,6 +40,7 @@ import {
   MAP_SIZE,
   ROAD_CHECK_RADIUS,
   SEWAGE_RETURN_FRACTION,
+  SEWER_MILESTONE,
   WATER_FOUL_PER_KL,
   WATER_FOUL_REACH_TILES,
   inBounds,
@@ -415,7 +416,9 @@ export function cityWaterUse(
 /**
  * The sewage a w×d building at (x, z) sends to the city's drains, in kL a
  * day: the return-to-sewer share of the city water it draws. A house on a
- * well is on a septic tank and sends none; a farm sends none.
+ * well is on a septic tank and sends none; a farm sends none; and until the
+ * city reaches SEWER_MILESTONE the whole town is on septic tanks and sends
+ * none, so a small town grows on power and water alone.
  */
 export function sewageOf(
   g: GridState,
@@ -424,7 +427,9 @@ export function sewageOf(
   z: number,
   w: number,
   d: number,
+  milestoneLevel: number,
 ): number {
+  if (milestoneLevel < SEWER_MILESTONE) return 0;
   return cityWaterUse(g, entry, x, z, w, d) * SEWAGE_RETURN_FRACTION;
 }
 
@@ -600,12 +605,14 @@ function cutFromTheFarEnd(
  * Recomputes power, water and sewer supply, demand, and per-tile coverage
  * (g.power, g.watered, g.sewered) for the current instant. Pure function of
  * the grid + building registry; safe to call every tick or on-demand after
- * edits.
+ * edits. `milestoneLevel` decides whether the town is off septic tanks yet;
+ * a caller running no economy gets a sewered city.
  */
 export function recomputeUtilities(
   g: GridState,
   buildings: BuildingInstance[],
   catalog: BuildingCatalogEntry[],
+  milestoneLevel: number = SEWER_MILESTONE,
 ): UtilityTotals {
   const catalogMap = new Map(catalog.map((c) => [c.id, c] as const));
   const footprints = footprintsByBuildingId(g);
@@ -668,7 +675,7 @@ export function recomputeUtilities(
     sewerSupply,
     (s, b) => {
       const { w, d } = footprintForRotation(s, b.rotation);
-      return sewageOf(g, s, b.x, b.z, w, d);
+      return sewageOf(g, s, b.x, b.z, w, d, milestoneLevel);
     },
   );
 

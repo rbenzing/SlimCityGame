@@ -178,9 +178,11 @@ supply, so two lots on one pass cannot both fill it.
 One is drawn by its `share`, the kind's weight in the real stock, with one
 roll of the growth rng against the candidates' cumulative weights in catalog
 order; a kind alone among the candidates needs no roll. At least one tile of
-the chosen footprint must already be reached by power, by piped water and by
-a drain — water and drain only where the building draws city water, which a
-[house on a well](#a-house-on-a-well) does not — checking the whole
+the chosen footprint must already be reached by power, by piped water and,
+once the city is a Big Town, by a drain — water and drain only where the
+building draws city water, which a [house on a well](#a-house-on-a-well)
+does not, and a drain never before Big Town, when the whole town is on
+septic tanks — checking the whole
 footprint rather than just its origin corner, so a lot's service does not
 depend on which side of it the street happens to sit. A lot that fails the
 checks after the draw is simply tried again on the next sweep, with a fresh
@@ -239,7 +241,11 @@ So a low-density house draws no city water when both of these hold:
 
 A house on a well is on a septic tank too, and needs only its road and
 power. Nothing refuses it, holds it back or flags it for want of water or a
-drain. It takes no place in the water line or the sewer line and adds
+drain. So is every building in a town below Big Town (`SEWER_MILESTONE`,
+3,500 people), whatever road it stands on: a small town makes no sewage for
+the city, and sees no sewer until it has outgrown its tanks
+([progression.md](progression.md#milestones)). A house on a well takes no
+place in the water line or the sewer line and adds
 nothing to either demand. Only the roads and pipes decide, never the supply,
 and they are read afresh every time. A house whose main is bulldozed goes
 onto a well, and a house that levels up onto a lot a main runs beside goes
@@ -290,7 +296,8 @@ A farm levels up by taking more land:
 
 Every pass also recomputes each Active or Abandoned building's problems: no
 power, no piped water or no drain reaching its footprint (water and drain
-only for a building that draws city water), no street within Manhattan
+only for a building that draws city water, and a drain only from Big Town),
+no street within Manhattan
 distance 3 (for a farm, no dirt road within 3 of its lot), crime over 170,
 pollution over 170 (residential lots only), and sector demand under -0.5. An
 Active building carrying a power, water, or road blocker for 3 consecutive

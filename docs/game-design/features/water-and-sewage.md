@@ -9,9 +9,12 @@ Water becomes a loop instead of a tap. The city draws it from a **pumping
 station** on a shore or from a **water tower** on its borehole, carries it
 along its streets and, where no street goes, along **pipes** the player lays;
 and what the city has drunk comes back out as sewage, along the same mains
-and pipes, to a **drain pipe** on a shore. A lot grows only where a drain
-reaches it. A building nothing drains stinks, and nothing new grows beside
-it until the player gives the town a sewer.
+and pipes, to a **drain pipe** on a shore. A small town is on septic tanks
+and needs none of this: a street with power and water grows, as it always
+did. From **Big Town** (3,500 people) the town has outgrown its tanks: a lot
+grows only where a drain reaches it, a building nothing drains stinks, and
+nothing new grows beside it until the player gives the town a sewer. The
+drain unlocks one rung before, and the Advisor says what is coming.
 
 And the water remembers. Where a drain empties, the water goes brown for
 hundreds of metres along the shore, and a pumping station drinking from
@@ -125,7 +128,22 @@ treat the sewage. Nothing is abandoned for it directly; a city short of
 water from a fouled intake is short of water, and the ordinary far-end cut
 and its advice apply.
 
-### What happens without a drain
+### Septic tanks until Big Town
+
+A town of a few hundred or a couple of thousand people is on septic tanks,
+as about one American household in five still is and most communities
+under the Census' old urban line of 2,500 people are. Below **Big Town**
+(3,500, `SEWER_MILESTONE`) nothing in the city makes sewage: there is no
+drain to want, nothing is flagged, nothing stinks, and a street with power
+and water grows. The drain pipe and the treatment works unlock the rung
+before, at Busy Township, and a Busy Township with no drain hears from the
+Advisor that it is outgrowing its septic tanks and where to build one. The
+tick the city becomes a Big Town, every building on the mains is on the
+sewer at once: a town that listened is ready, and one that did not stops
+growing until it builds a drain. A city loaded past that line without a
+drain does the same.
+
+### What happens without a drain, from Big Town
 
 - **Nothing new grows there.** A lot grows and a building levels up only
   where a drain reaches it with room for its sewage, as they already need
@@ -134,8 +152,9 @@ and its advice apply.
 - **What already stands, stinks.** A building no drain reaches is flagged
   **No Sewer** and fouls the ground around it in proportion to its sewage:
   cesspits and foul ditches. Land value falls, the lens shows it, and the
-  building is never abandoned for it. A city saved before this change loads
-  standing, a little dirtier, and stops growing until it builds a drain.
+  building is never abandoned for it. A Big Town saved before this change
+  loads standing, a little dirtier, and stops growing until it builds a
+  drain.
 
 ## What it interacts with
 
@@ -152,10 +171,14 @@ and its advice apply.
   its own layer, read by the intakes and the water surface and by nothing
   else: there is no illness system, and a fouled shore costs the city its
   water, not its health.
-- **Growth.** Sewer coverage and spare drain capacity join power and water
-  as conditions for a spawn and a level-up; a lot held back only by a drain
-  is waiting for supply like one held back by a tower. A fouled intake
-  lowers the water supply the spawner has to hand out, and nothing else.
+- **Growth.** From Big Town, sewer coverage and spare drain capacity join
+  power and water as conditions for a spawn and a level-up; a lot held back
+  only by a drain is waiting for supply like one held back by a tower. Below
+  it growth asks for power and water alone, as the first-town guard in
+  `tests/interaction/firsttown.test.ts` holds it to. A fouled intake lowers
+  the water supply the spawner has to hand out, and nothing else.
+- **Progression.** The one place a milestone changes a rule rather than an
+  unlock ([progression.md](../progression.md#milestones)).
 - **Saves.** The pipe layer is appended to the tile record (save version 14);
   an older save loads with no pipes. The drained coverage and the water's
   fouling are derived every utility pass from what stands, and never saved:
@@ -289,5 +312,10 @@ headwall.
   would have put every existing city dry.
 - **Not abandonment for a missing sewer.** The consequence is no growth and a
   dirtier town, so a city from before this change loads whole.
+- **Not a sewer from the first day.** The first cut of this feature asked
+  every town for a drain from its first house, and both drains want a shore,
+  so a new town inland could never grow and nothing on screen said why;
+  1.31.0 shipped that way. A town is on septic tanks until Big Town instead,
+  and the first-town guard keeps the opening free of any such prerequisite.
 - **Not drinking-water illness.** There is no illness system; health is
   epic 2.

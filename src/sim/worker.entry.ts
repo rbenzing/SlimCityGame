@@ -914,7 +914,8 @@ class SimWorld implements WorkerSim {
         if (entry && (inst.problems & Problem.NoSewer) !== 0) {
           const { w, d } = footprintForRotation(entry, inst.rotation);
           const stink = Math.ceil(
-            sewageOf(g, entry, inst.x, inst.z, w, d) * SEWAGE_POLLUTION_PER_KL,
+            sewageOf(g, entry, inst.x, inst.z, w, d, this.stats.milestoneLevel) *
+              SEWAGE_POLLUTION_PER_KL,
           );
           if (stink > 0) this.fieldSim.emit(g, FieldId.Pollution, inst.x, inst.z, stink);
         }
@@ -1070,7 +1071,12 @@ class SimWorld implements WorkerSim {
   }
 
   private recomputeUtilitiesNow(): void {
-    const totals = recomputeUtilities(this.grid, this.registry.all(), CATALOG);
+    const totals = recomputeUtilities(
+      this.grid,
+      this.registry.all(),
+      CATALOG,
+      this.stats.milestoneLevel,
+    );
     this.stats.powerSupply = totals.powerSupply;
     this.stats.powerDemand = totals.powerDemand;
     this.stats.waterSupply = totals.waterSupply;
@@ -1219,7 +1225,7 @@ class SimWorld implements WorkerSim {
     // rather than only the ones that happen to land on it.
     if (this.serviceLoad) snap.serviceLoad = { ...this.serviceLoad };
     snap.growthWaiting = this.growth.waitingFor(this.grid, this.registry, this.supply);
-    snap.zonedUnserved = this.growth.zonedUnserved(this.grid);
+    snap.zonedUnserved = this.growth.zonedUnserved(this.grid, this.stats.milestoneLevel);
     // District patches + defs (mirrors the zones patch convention).
     if (this.districtDirty || this.districtDefsChanged) {
       snap.districts = {

@@ -158,6 +158,13 @@ export const MILESTONES: readonly Milestone[] = [
   { name: 'Grand City', population: 20_000, reward: 75_000 },
   { name: 'Metropolis', population: 50_000, reward: 120_000 },
 ] as const;
+/**
+ * The milestone from which a building on the mains needs a drain. Below it
+ * the whole town is on septic tanks, as a community under the Census' old
+ * urban line of 2,500 people mostly is; Big Town, 3,500, is the first rung
+ * past that line.
+ */
+export const SEWER_MILESTONE = MILESTONES.findIndex((m) => m.name === 'Big Town');
 
 // --- camera -----------------------------------------------------------------
 export const CAMERA_MIN_DISTANCE = 40;

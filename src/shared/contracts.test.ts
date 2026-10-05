@@ -22,10 +22,12 @@ import {
 } from './types';
 import {
   LAMP_SPACING_TILES,
+  MILESTONES,
   NIGHT_WINDOW_LIT_MAX,
   NIGHT_WINDOW_LIT_MIN,
   SEWAGE_POLLUTION_PER_KL,
   SEWAGE_RETURN_FRACTION,
+  SEWER_MILESTONE,
   TICKS_PER_DAY,
   TICK_RATE,
   TILE_METERS,
@@ -255,9 +257,15 @@ describe('the water utilities (water-and-sewage): every figure derived', () => {
     const kw = (1 * SURFACE_KWH_PER_MG) / HOURS_PER_DAY;
     expect(Math.abs(pump.powerUse - kw / 1000)).toBeLessThanOrEqual(0.0003);
     expect(drain.powerUse).toBe(0);
-    // The station waits for a Small Town; a drain is wanted from the first day.
+    // The station waits for a Small Town. A town is on septic tanks until it
+    // is a Big Town, past the Census' old urban line of 2,500 people, and the
+    // drain and the works unlock the rung before, so the player has one
+    // milestone's warning.
     expect(pump.unlockMilestone).toBe(1);
-    expect(drain.unlockMilestone).toBe(0);
+    expect(MILESTONES[SEWER_MILESTONE]).toMatchObject({ name: 'Big Town', population: 3_500 });
+    expect(MILESTONES[SEWER_MILESTONE - 1]!.population).toBeLessThan(2_500);
+    expect(drain.unlockMilestone).toBe(SEWER_MILESTONE - 1);
+    expect(byId('sewage-works').unlockMilestone).toBe(SEWER_MILESTONE - 1);
   });
 
   it("fouls the ground at a raw outfall by its sewage's oxygen demand, on the coal plant's scale", () => {

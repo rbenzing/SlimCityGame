@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { SEWER_MILESTONE } from '../shared/constants';
 import { cityIssues, criticalCount, type CityIssue } from './advisor';
 import {
   BuildingState,
@@ -245,6 +246,20 @@ describe('a grid too small for its city', () => {
 
   it('says nothing when growth is waiting for none of them', () => {
     expect(cityIssues([], healthyStats(), { power: 0, water: 0, sewer: 0 })).toEqual([]);
+  });
+
+  it('tells a town one rung below the sewer milestone, with no drain yet, that it is outgrowing its septic tanks', () => {
+    const outgrowing = healthyStats({ milestoneLevel: SEWER_MILESTONE - 1, sewerSupply: 0 });
+    const issue = cityIssues([], outgrowing).find((i) => i.id === 'septic-outgrown');
+    expect(issue?.severity).toBe('info');
+    expect(issue?.detail).toContain('Big Town (3,500 people)');
+    expect(issue?.detail).toContain('build a drain pipe');
+    // With a drain already built, or on any other rung, it says nothing.
+    const quiet = (overrides: Partial<CityStats>): boolean =>
+      cityIssues([], healthyStats(overrides)).some((i) => i.id === 'septic-outgrown');
+    expect(quiet({ milestoneLevel: SEWER_MILESTONE - 1, sewerSupply: 3785 })).toBe(false);
+    expect(quiet({ milestoneLevel: SEWER_MILESTONE - 2, sewerSupply: 0 })).toBe(false);
+    expect(quiet({ milestoneLevel: SEWER_MILESTONE, sewerSupply: 0 })).toBe(false);
   });
 
   it('warns when an intake is drinking fouled water, and names the two remedies', () => {

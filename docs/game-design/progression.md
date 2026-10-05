@@ -24,11 +24,21 @@ top of whatever funds the city already has:
 
 Every catalog entry, zone tier and tool carries its own `unlockMilestone`.
 Representative examples: townhouses, factories and the water pumping station
-unlock at Small Town; medium apartments, the Heavy Industrial zone and the
-sewage treatment works at Busy Township; mixed-use,
+unlock at Small Town; medium apartments, the Heavy Industrial zone, the
+water drain pipe and the sewage treatment works at Busy Township; mixed-use,
 flex and R&D buildings, the incinerator and the rail station at Big Town;
 high-rise residential and commercial at Small City; the airport at Grand
 City.
+
+One rule rides the ladder rather than unlocking on it. A town is on septic
+tanks until it is a **Big Town** (`SEWER_MILESTONE`): below that, nothing
+makes sewage, no drain is needed and a street with power and water grows.
+From Big Town every building on the mains needs a drain, so the drain and
+the works unlock one rung before, and the Advisor tells a Busy Township with
+no drain that it is outgrowing its septic tanks. The line sits where it does
+because a community under the Census' old urban threshold of 2,500 people is
+mostly on septic systems and one past it mostly on sewers; Big Town, at
+3,500, is the first rung past that line.
 Districts, power lines, terraforming and de-zoning are available from the
 very first milestone. Nothing in the current catalog or road set is gated
 specifically on Metropolis — it is the top of the population ladder rather
