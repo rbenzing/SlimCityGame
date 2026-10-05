@@ -144,6 +144,53 @@ to a city that has just unlocked it.** A derived figure that makes the first
 school unbuyable is a wrong figure for this game, and the plan says so rather
 than quietly rounding it.
 
+### What the facilities draw (derived 2026-10-05)
+
+Every ploppable's `powerUse` and `waterUse` is now a surveyed figure, the way
+the zoned catalog's and the generators' are. The method is the massing rule
+run backwards: a building's floor is its footprint times 185 m² a tile times
+its storeys at 3.2 m, and that floor draws the electricity the national
+building survey measures for its activity
+([CBECS 2018, table C14](https://www.eia.gov/consumption/commercial/data/2018/ce/pdf/c14.pdf))
+and the water the federal benchmarking programme measures for it
+([EPA WaterSense at Work, benchmarking](https://www.epa.gov/system/files/documents/2024-03/ws-commercial-bmp-watersenseatwork_section2.3_benchmarking.pdf)),
+averaged over the year. Before this a police station drew 0.6 MW, the power of
+430 houses, and the airport 8 MW, the power of a town of six thousand.
+
+| Building              | Floor      | Electricity                                        | Draw      | Water                                            | Draw     |
+| --------------------- | ---------- | -------------------------------------------------- | --------- | ------------------------------------------------ | -------- |
+| Police station (2×2)  | 29,900 sf  | public order and safety, 13.9 kWh/sf               | 47 kW     | office, 14.5 gal/sf a year                       | 4.5 kL   |
+| Fire station (2×2)    | 29,900 sf  | public order and safety, 13.9 kWh/sf               | 47 kW     | fire station, 28.9 gal/sf a year                 | 9 kL     |
+| Clinic (2×2)          | 34,800 sf  | health care, outpatient, 17.4 kWh/sf               | 69 kW     | medical office, 23.4 gal/sf a year               | 8.5 kL   |
+| School (3×3)          | 56,000 sf  | education, 9.4 kWh/sf                              | 60 kW     | K-12 school, 10.8 gal/sf a year                  | 6.3 kL   |
+| Rail station (2×3)    | 33,600 sf  | transport terminal, 8.4 kWh/sf                     | 32 kW     | office, 14.5 gal/sf a year                       | 5 kL     |
+| Airport (8×6)         | 418,000 sf | transport terminal, 8.4 kWh/sf                     | 400 kW    | 4 million passengers a year at 4.2 gal each      | 175 kL   |
+| Incinerator (4×4)     | —          | a 250 ton-a-day combustor's own 63 kWh a ton       | 660 kW    | kept at 2 kL: no figure found                    | 2 kL     |
+| Coal plant (4×4)      | —          | —                                                  | —         | fifty staff at 13 gal a day; cooling water is its own, raw | 2.5 kL |
+
+The transport terminal's electricity is ENERGY STAR's 56.2 kBtu/sf site
+median for a terminal or station
+([US national median table](https://portfoliomanager.energystar.gov/pdf/reference/US%20National%20Median%20Table.pdf))
+at public assembly's 51% electric share. The airport's passengers come from
+its terminal: one regional terminal is sized at 125,000 sf for 600,000
+enplanements
+([Minot, in the FAA's NPIAS](https://www.faa.gov/sites/faa.gov/files/NPIAS-2023-2027-Appendix-C.pdf)),
+so a 418,000 sf terminal boards two million and sees four million, each
+drinking what a large hub's do, 4.2 gallons
+([an airport water tally](https://www.chicagofaucets.com/airports-water-management-statistics-usa)).
+The incinerator is the largest small municipal waste combustor the Clean Air
+Act defines, 250 tons a day
+([40 CFR 60 subpart AAAA](https://www.ecfr.gov/current/title-40/chapter-I/subchapter-C/part-60/subpart-AAAA)),
+using the share of its own generation a waste-to-energy fleet consumes, 17%
+of about 370 kWh a ton
+([a national fleet study](https://www.nature.com/articles/s41467-026-69897-w));
+its water stays a dial because no figure was found. Staff water is the
+office median of 13 gallons a worker a day
+([ENERGY STAR DataTrends](https://www.energystar.gov/sites/default/files/buildings/tools/DataTrends_Water_20121002.pdf)).
+The pocket park's 0.2 kL and the bus stop's nothing are unchanged and
+unsourced; a lit shelter draws single watts. Each row is re-derived by the
+catalog contract test, so a figure cannot drift from its method.
+
 ## What it is not
 
 - **Not a building catalogue.** The point is the systems behind the buildings.

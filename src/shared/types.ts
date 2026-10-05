@@ -1069,7 +1069,13 @@ export interface ServiceLoad {
 }
 
 export interface UtilitySpec {
-  powerMW?: number; // produced
+  /** Nameplate generation, MW: what the plant is rated for. */
+  powerMW?: number;
+  /**
+   * The share of the nameplate a plant of this kind actually delivers over
+   * a year, 0..1: absent means 1. The grid counts powerMW × capacityFactor.
+   */
+  capacityFactor?: number;
   waterKL?: number; // produced
   /** Sewage taken a day, kL: what a drain pipe carries off. */
   sewerKL?: number;

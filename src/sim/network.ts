@@ -45,6 +45,7 @@ import {
   inBounds,
   tileIndex,
 } from '../shared/constants';
+import { averageOutputMW } from '../shared/power';
 import { footprintForRotation, lotTiles } from './buildings';
 import { roadStep } from '../world/roads';
 import { cellTile, freeCellsOn, neighbours, roadCellsOf } from '../world/roadnet';
@@ -623,7 +624,7 @@ export function recomputeUtilities(
     const tiles = footprints.get(b.id);
     if (!tiles) continue;
     if (spec.utility.powerMW) {
-      powerSupply += spec.utility.powerMW;
+      powerSupply += averageOutputMW(spec.utility);
       powerFootprints.push(...tiles);
     }
     if (spec.utility.waterKL) {

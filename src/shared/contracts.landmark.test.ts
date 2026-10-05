@@ -120,9 +120,9 @@ describe('airport landmark catalog entry (UI-SPEC §6.10)', () => {
     expect(airport?.service?.strength).toBeLessThanOrEqual(255);
   });
 
-  it('draws power 8 MW and water 6 kL', () => {
-    expect(airport?.powerUse).toBe(8);
-    expect(airport?.waterUse).toBe(6);
+  it('draws the power of its terminal floor and the water of its passengers (derived in contracts.test)', () => {
+    expect(airport?.powerUse).toBe(0.4);
+    expect(airport?.waterUse).toBe(175);
   });
 
   it('costs ¢60000 with ¢2500/month upkeep — a real ploppable, not grown', () => {

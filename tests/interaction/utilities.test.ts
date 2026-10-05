@@ -137,8 +137,9 @@ describe('a grid too small for its city — the snapshot says what growth waits 
       { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 48, rotation: 0 },
       { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 47, rotation: 0 },
       ...pondAndDrain({ x: 64, z: 47 }, { x: 64, z: 48 }),
-      // 8 MW on a 6 MW grid: nothing is spare for anyone else.
-      { kind: 'placeBuilding', catalogId: 'airport', x: 70, z: 43, rotation: 0 },
+      // Two combustors drawing 1.3 MW on a turbine delivering 1.1: nothing is spare for anyone else.
+      { kind: 'placeBuilding', catalogId: 'incinerator', x: 70, z: 45, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'incinerator', x: 75, z: 45, rotation: 0 },
       {
         kind: 'paintZone',
         zone: ZoneType.ResLow,

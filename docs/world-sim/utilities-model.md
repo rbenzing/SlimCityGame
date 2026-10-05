@@ -6,10 +6,16 @@ and conducting roads, and brownouts.
 ## Production and demand
 
 A utility building generates power (MW) or water (kL a day), or takes sewage
-(kL a day); its footprint is a source the network reaches out from. The
-catalog holds a coal plant (4×4, 60 MW, 140 pollution, ¢12,000 to build,
-¢800/month upkeep), a wind turbine (1×1, 6 MW, no pollution, ¢3,000,
-¢100/month), a water tower (2×2, 378.5 kL — a 100,000-gallon tank on its
+(kL a day); its footprint is a source the network reaches out from. A
+generator's `powerMW` is its nameplate and its `capacityFactor` the published
+share of the year a plant of its kind runs at rating; the grid counts the
+product (`averageOutputMW`), and the inspector shows both. The catalog holds a
+coal plant (4×4, 60 MW nameplate at 42.6%, so 25.6 MW delivered, 140
+pollution, ¢12,000 to build, ¢800/month upkeep), a wind turbine (1×1, the
+average new onshore machine: 3.4 MW at 33.5%, so 1.14 MW, drawn at its 103 m
+hub and 134 m rotor, no pollution, ¢320, ¢9/month — every figure derived in
+[../game-design/features/power-generation.md](../game-design/features/power-generation.md#the-generators-re-derived)),
+a water tower (2×2, 378.5 kL — a 100,000-gallon tank on its
 borehole, turned over once a day — ¢2,500, ¢120/month), a water pumping
 station (2×2, 3,785 kL, the smallest one-million-gallon-a-day surface intake,
 on a shore, from Small Town, ¢3,600, ¢180/month), a water drain pipe

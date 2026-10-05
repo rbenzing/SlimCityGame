@@ -226,6 +226,23 @@ describe('InfoPanel', () => {
     expect(screen.getByText('378.5 kL')).toBeInTheDocument();
   });
 
+  it('shows a generator’s nameplate and what it delivers over the year', () => {
+    useCityStore.getState().setSelectedBuilding({
+      id: 5,
+      catalogId: 'wind-turbine',
+      x: 0,
+      z: 0,
+      rotation: 0,
+      level: 1,
+      state: BuildingState.Active,
+      problems: 0,
+    });
+    render(<InfoPanel />);
+    expect(screen.getByText('Nameplate')).toBeInTheDocument();
+    expect(screen.getByText('3.4 MW')).toBeInTheDocument();
+    expect(screen.getByTestId('plant-output-row')).toHaveTextContent('1.1 MW (34% of the year)');
+  });
+
   it('shows what a shore intake delivers against its rating, and a works’ effluent', () => {
     const pump = {
       id: 7,

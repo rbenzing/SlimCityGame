@@ -34,6 +34,7 @@ import {
   WATER_FOUL_REACH_TILES,
 } from './constants';
 import catalogData from '../data/catalog.json';
+import { averageOutputMW } from './power';
 
 describe('night-cycle constants (UI-SPEC §6.5)', () => {
   it('VISUAL_DAY_TICKS is 2400 — ~2 min per full cycle at 1×', () => {
@@ -296,5 +297,141 @@ describe('the water utilities (water-and-sewage): every figure derived', () => {
   it('fouls the water to saturation at a full raw outfall, fading over 500 m', () => {
     expect(WATER_FOUL_PER_KL).toBeCloseTo(255 / ONE_MGD_KL, 9);
     expect(WATER_FOUL_REACH_TILES * TILE_METERS).toBe(500);
+  });
+});
+
+describe('the civic ploppables (honest both sides): every draw from floor area and a surveyed intensity', () => {
+  const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+  const byId = (id: string): BuildingCatalogEntry => catalog.find((e) => e.id === id)!;
+  /** civic-massing: one tile of footprint is a 185 m² plate, a storey 3.2 m. */
+  const PLATE_M2_PER_TILE = 185;
+  const STOREY_M = 3.2;
+  const SQFT_PER_M2 = 10.7639;
+  const HOURS_PER_YEAR = 8_760;
+  const DAYS_PER_YEAR = 365;
+  const KL_PER_GAL = 0.003785;
+  /** CBECS 2018 Table C14: electricity, kWh per square foot a year, by principal building activity. */
+  const CBECS_KWH_PER_SF = { publicOrderSafety: 13.9, outpatient: 17.4, education: 9.4 };
+  /** A transport terminal: ENERGY STAR's 56.2 kBtu/sf site median, electricity at public assembly's 51% share, in kWh. */
+  const TERMINAL_KWH_PER_SF = (56.2 * (12.1 / (81.1 / 3.412))) / 3.412;
+  /** EPA WaterSense at Work: median water use, gallons per square foot a year. */
+  const WATERSENSE_GAL_PER_SF = {
+    office: 14.48,
+    fireStation: 28.9,
+    medicalOffice: 23.4,
+    school: 10.84,
+  };
+  /** One regional terminal's floor per yearly enplanement, passengers at twice that, 4.2 gallons each. */
+  const TERMINAL_SF_PER_ENPLANEMENT = 125_000 / 600_000;
+  const GAL_PER_PASSENGER = 4.2;
+  /** EPA's largest small municipal waste combustor, and a plant's own use of the power it could make. */
+  const SMALL_COMBUSTOR_TONS_PER_DAY = 250;
+  const COMBUSTOR_KWH_PER_TON = 63;
+
+  const floorSqft = (e: BuildingCatalogEntry): number =>
+    e.footprint.w * e.footprint.d * PLATE_M2_PER_TILE * (e.height / STOREY_M) * SQFT_PER_M2;
+  const mwFrom = (sqft: number, kwhPerSf: number): number =>
+    (sqft * kwhPerSf) / HOURS_PER_YEAR / 1000;
+  const klFrom = (sqft: number, galPerSfYear: number): number =>
+    ((sqft * galPerSfYear) / DAYS_PER_YEAR) * KL_PER_GAL;
+  const close = (got: number, want: number, places: number): void =>
+    expect(Math.abs(got - want)).toBeLessThanOrEqual(0.5 * 10 ** -places + 1e-12);
+
+  it('draws what a station of its floor area draws: police and fire, clinic, school, rail station', () => {
+    for (const [id, kwh, gal, mwPlaces, klPlaces] of [
+      ['police-station', CBECS_KWH_PER_SF.publicOrderSafety, WATERSENSE_GAL_PER_SF.office, 4, 1],
+      ['fire-station', CBECS_KWH_PER_SF.publicOrderSafety, WATERSENSE_GAL_PER_SF.fireStation, 4, 0],
+      ['clinic', CBECS_KWH_PER_SF.outpatient, WATERSENSE_GAL_PER_SF.medicalOffice, 4, 1],
+      ['school', CBECS_KWH_PER_SF.education, WATERSENSE_GAL_PER_SF.school, 4, 1],
+      ['rail-station', TERMINAL_KWH_PER_SF, WATERSENSE_GAL_PER_SF.office, 4, 0],
+    ] as const) {
+      const entry = byId(id);
+      const sqft = floorSqft(entry);
+      close(entry.powerUse, mwFrom(sqft, kwh), mwPlaces);
+      close(entry.waterUse, klFrom(sqft, gal), klPlaces);
+    }
+  });
+
+  it("draws the airport's terminal as a transport terminal, and its passengers' water", () => {
+    const airport = byId('airport');
+    const sqft = floorSqft(airport);
+    close(airport.powerUse, mwFrom(sqft, TERMINAL_KWH_PER_SF), 1);
+    const passengers = (sqft / TERMINAL_SF_PER_ENPLANEMENT) * 2;
+    close(airport.waterUse, ((passengers * GAL_PER_PASSENGER) / DAYS_PER_YEAR) * KL_PER_GAL, 0);
+  });
+
+  it("draws the incinerator as a small combustor's own use of the power it burns", () => {
+    const incinerator = byId('incinerator');
+    const kwhPerDay = SMALL_COMBUSTOR_TONS_PER_DAY * COMBUSTOR_KWH_PER_TON;
+    close(incinerator.powerUse, kwhPerDay / 24 / 1000, 2);
+  });
+
+  it("draws the coal plant's staff water, not its cooling water", () => {
+    const coal = byId('coal-plant');
+    const STAFF = 50;
+    const GAL_PER_WORKER_DAY = 13;
+    close(coal.waterUse, STAFF * GAL_PER_WORKER_DAY * KL_PER_GAL, 1);
+  });
+});
+
+describe('the generators (honest both sides): nameplate, capacity factor, cost and upkeep derived', () => {
+  const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+  const byId = (id: string): BuildingCatalogEntry => catalog.find((e) => e.id === id)!;
+  /** LBNL Land-Based Wind Market Report (2024 ed.): the average turbine installed in 2023. */
+  const LBNL_NAMEPLATE_MW = 3.4;
+  const LBNL_HUB_HEIGHT_M = 103;
+  const LBNL_FLEET_CAPACITY_FACTOR = 0.335;
+  /** EIA Electric Power Monthly 6.07.A: coal's 2024 capacity factor. */
+  const EIA_COAL_CAPACITY_FACTOR = 0.426;
+  /** EIA AEO2023 overnight capital cost, 2022 $/kW, and fixed/variable O&M. */
+  const WIND_USD_PER_KW = 2_098;
+  const COAL_USD_PER_KW = 4_507;
+  const WIND_FOM_USD_PER_KW_YR = 29.64;
+  const COAL_FOM_USD_PER_KW_YR = 45.68;
+  const COAL_VOM_USD_PER_MWH = 5.06;
+  const COAL_HEAT_RATE_BTU_PER_KWH = 8_638;
+  /** EIA Electric Power Annual 7.4: delivered coal, $/MMBtu, 2024. */
+  const COAL_USD_PER_MMBTU = 2.47;
+  const HOURS_PER_YEAR = 8_760;
+
+  it('rates the wind turbine as the average new machine, drawn at its hub height, delivering a third of its nameplate', () => {
+    const turbine = byId('wind-turbine');
+    expect(turbine.utility?.powerMW).toBe(LBNL_NAMEPLATE_MW);
+    expect(turbine.utility?.capacityFactor).toBe(LBNL_FLEET_CAPACITY_FACTOR);
+    expect(turbine.height).toBe(LBNL_HUB_HEIGHT_M);
+    expect(averageOutputMW(turbine.utility!)).toBeCloseTo(1.139, 3);
+    expect(turbine.pollution ?? 0).toBe(0);
+  });
+
+  it('keeps the coal plant a 60 MW small unit at the fleet capacity factor, its figures the anchors', () => {
+    const coal = byId('coal-plant');
+    expect(coal.utility?.powerMW).toBe(60);
+    expect(coal.utility?.capacityFactor).toBe(EIA_COAL_CAPACITY_FACTOR);
+    expect(averageOutputMW(coal.utility!)).toBeCloseTo(25.56, 2);
+    expect(coal.cost).toBe(12_000);
+    expect(coal.upkeep).toBe(800);
+    expect(coal.pollution).toBe(140);
+  });
+
+  it("prices the turbine from published capital cost against the coal plant's anchor, to the nearest ten", () => {
+    const coal = byId('coal-plant');
+    const turbine = byId('wind-turbine');
+    const coalUsd = COAL_USD_PER_KW * coal.utility!.powerMW! * 1000;
+    const windUsd = WIND_USD_PER_KW * turbine.utility!.powerMW! * 1000;
+    const derived = (coal.cost * windUsd) / coalUsd;
+    expect(turbine.cost).toBe(Math.round(derived / 10) * 10);
+  });
+
+  it("keeps the turbine from published operating cost against the coal plant's anchor", () => {
+    const coal = byId('coal-plant');
+    const turbine = byId('wind-turbine');
+    const coalMwh = coal.utility!.powerMW! * coal.utility!.capacityFactor! * HOURS_PER_YEAR;
+    const coalUsdPerYear =
+      COAL_FOM_USD_PER_KW_YR * coal.utility!.powerMW! * 1000 +
+      COAL_VOM_USD_PER_MWH * coalMwh +
+      (coalMwh * COAL_HEAT_RATE_BTU_PER_KWH * COAL_USD_PER_MMBTU) / 1000;
+    const windUsdPerYear = WIND_FOM_USD_PER_KW_YR * turbine.utility!.powerMW! * 1000;
+    const derived = (coal.upkeep * windUsdPerYear) / coalUsdPerYear;
+    expect(turbine.upkeep).toBe(Math.round(derived));
   });
 });
