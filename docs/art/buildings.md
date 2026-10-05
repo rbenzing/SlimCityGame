@@ -26,9 +26,13 @@ building, so windows are guaranteed to align between the two:
   road-facing side.
 - **Parapet**: the top 0.4 m is a darker band; the flat roof itself tints
   slightly darker than the walls.
-- **Silhouette variety**: buildings grown to level 2–3 render as 2–3 stacked
-  boxes with 10–20% setbacks (deterministic from the building id) — one extra
-  instance per tier, same instancer.
+- **Silhouette variety**: a flat-roofed building grown to level 2–3 renders
+  as 2–3 stacked boxes with 10–20% setbacks (deterministic from the building
+  id) — one instance per tier in the body instancer's own bucket, so each
+  tier carries the building's windows and a terrace roof, with the
+  storefront band, the entrance and any loading doors on the base tier only.
+  A house keeps one body whatever its level, since its pitched roof has
+  nowhere to step; so does a farm.
 - **Palette preset**: the base city reads deliberately desaturated —
   off-white/bone/grey walls with beige/tan accents and rare dark accents
   (industrial) — so that saturation stays reserved for zone tints, overlays,
@@ -242,9 +246,10 @@ with a side drive. A fourplex's two upper homes are reached from inside, so
 it shows the same two doors as a duplex and reads taller.
 
 A tower's podium is a massing tier two storeys tall at the lot's full fill,
-drawn under the slab by the same instancer as the setback tiers above; it
-carries the body's wall colour and lifecycle tint, so the tower reads as one
-building standing on its base.
+drawn under the slab by the massing renderer, the one thing it still draws
+now that the setback tiers are the body instancer's; it carries the body's
+wall colour and lifecycle tint, so the tower reads as one building standing
+on its base.
 
 ## Commercial kinds
 
