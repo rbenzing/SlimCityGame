@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.33.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.32.0...slimcity-v1.33.0) (2026-10-05)
+
+
+### Features
+
+* **power:** honest on both sides — capacity factors, a real turbine, and every civic draw sourced ([ab9ed93](https://github.com/rbenzing/SlimCityGame/commit/ab9ed9321fd5984ea68398fb7d36a5e0076a06fe))
+
 ## [1.32.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.31.1...slimcity-v1.32.0) (2026-10-02)
 
 
