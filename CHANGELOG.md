@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.33.2](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.33.1...slimcity-v1.33.2) (2026-10-05)
+
+
+### Bug Fixes
+
+* **render:** kerb cars ask the furniture's junction test, so a corridor's other half is not a crossing ([2ad3fb9](https://github.com/rbenzing/SlimCityGame/commit/2ad3fb95a11e46e19a26410ce8dd83747e4b5ab1))
+
 ## [1.33.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.33.0...slimcity-v1.33.1) (2026-10-05)
 
 
