@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,735 tests passing across 158 test files, run 2026-10-05.
+**Test suite:** 4,742 tests passing across 158 test files, run 2026-10-05.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -121,20 +121,6 @@ not a test to fix.
   keeps them 1.1 tip heights from a boundary. Sixty turbines on sixty
   adjacent tiles is the honest way to power a Metropolis today; a spacing
   rule is the next step if that turns out to be the dominant strategy.
-- The level 2 and 3 setback tiers (`computeSetbacks`) stand inside the
-  full-height body the instancer draws, so the stepped silhouette
-  [art/buildings.md](art/buildings.md) describes under "Silhouette variety"
-  never shows; only their lids did, fighting the roof, until they were
-  stopped a hair under it. Either the body should stop at the base tier or
-  the art doc should stop promising the steps.
-- A roundabout's delay curve, `4 + 10x³`, is not the HCM's. The manual's
-  single-lane entry delay (HCM 7th edition, Eq. 22-17) is
-  `3600/c + 900T[(x − 1) + √((x − 1)² + (3600/c)x / 450T)] + 5·min(x, 1)`,
-  which costs 3–6 times as much at moderate to high v/c, about 63 s against
-  14 s at capacity. It now reads the HCM entry capacity, but the curve itself
-  is the sim's own, the same reduced kind every other control's is. Adopting
-  the manual's would make roundabouts far slower than signals and stops at
-  load, so it needs a decision with the other controls in view.
 
 Before writing "not built" anywhere in this document, check the code.
 
@@ -283,6 +269,33 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The roundabout keeps the sim's own delay curve (decided 2026-10-05)
+
+An Open item closed by a decision, not a change. The roundabout's
+`4 + 10x³` is not the HCM's single-lane entry delay (7th edition,
+Eq. 22-17), which costs three to six times as much at moderate to high
+v/c. Every control's curve is the sim's own reduced form, and the controls
+are compared against each other, so adopting the manual's for the
+roundabout alone would make it far slower than a signal or a stop at load
+and misstate the choice between them. The user chose to keep the reduced
+curves; the road model says so, and adopting the manual's forms is now a
+change to all the controls together or none.
+
+### The stepped silhouette shows (decided and built 2026-10-05)
+
+The level 2 and 3 setback tiers stood inside the full-height body the
+instancer drew, so the silhouette the art doc promised never showed. Asked,
+the user chose the body stopping at the base tier. The tiers are now the
+body instancer's: one instance per tier in the entry's own facade bucket,
+with window rows cut to a tier's height, each tier numbered (`aTier`) so its
+lit pattern is its own and the storefront band, the entrance and the loading
+doors stay on the base tier, and a terrace roof on each step. A house keeps
+one body for its pitched roof, as does a farm; a tower's podium is all the
+massing renderer still draws. Picking works through every tier, and
+removal frees them all. Looked at: a row of level-2 and 3 blocks beside a
+street at noon, stepping in twice with windows on every tier, the villa
+beside them one body.
 
 ### A walled motorway grows its auxiliary lane (2026-10-05)
 
