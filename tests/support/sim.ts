@@ -191,21 +191,26 @@ export function sandboxed(): Harness {
 }
 
 /**
- * Boots a sim whose treasury and milestone level allow the latest unlocks
- * (¢100,000 at milestone 5): save a fresh sim, patch the persisted stats, and
- * loadSave it back — milestoneLevel only ever ratchets up in EconomySystem,
- * so the patched level sticks across subsequent ticks.
+ * Boots a sim already at `milestoneLevel` with ¢100,000 in hand: save a fresh
+ * sim, patch the persisted stats, and loadSave it back — milestoneLevel only
+ * ever ratchets up in EconomySystem, so the patched level sticks across
+ * subsequent ticks.
  */
-export function initializedAtMilestone5(): Harness {
+export function initializedAtMilestone(milestoneLevel: number): Harness {
   const h = initialized();
   h.sim.handleMessage({ type: 'requestSave' });
   const saveMsg = h.messages.find((m) => m.type === 'save');
   if (!saveMsg || saveMsg.type !== 'save') throw new Error('no save message');
   const payload = decodeSave(saveMsg.data);
-  payload.meta.stats.milestoneLevel = 5;
+  payload.meta.stats.milestoneLevel = milestoneLevel;
   payload.meta.stats.funds = 100_000;
   h.sim.handleMessage({ type: 'loadSave', data: encodeSave(payload) });
   return h;
+}
+
+/** A sim whose milestone level allows the latest unlocks. */
+export function initializedAtMilestone5(): Harness {
+  return initializedAtMilestone(5);
 }
 
 /** The bytes of the most recent 'save' message in the harness. */

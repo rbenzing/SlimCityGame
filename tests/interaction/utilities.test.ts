@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { tileIndex } from '../../src/shared/constants';
+import { SEWER_MILESTONE, tileIndex } from '../../src/shared/constants';
 import { Problem, RoadTier, ZoneType } from '../../src/shared/types';
 import {
   GROWTH_TIMEOUT_MS,
   column,
   initialized,
+  initializedAtMilestone,
   latestSaveGrid,
   pondAndDrain,
   roadRow,
@@ -68,15 +69,18 @@ describe('a generator that cannot deliver says so', () => {
 });
 
 describe('zoning down a gravel road, which carries no power', () => {
-  /** A street with a turbine, a tower and a drain on it, a gravel road south off it, and homes zoned down the gravel. */
-  function townDownAGravelRoad(drain = true): Harness {
-    const h = initialized();
+  /**
+   * A street with a turbine and a tower on it and no drain, a gravel road
+   * south off it, and homes zoned down the gravel; a new town unless told
+   * otherwise, so on septic tanks.
+   */
+  function townDownAGravelRoad(milestoneLevel = 0): Harness {
+    const h = milestoneLevel === 0 ? initialized() : initializedAtMilestone(milestoneLevel);
     const ack = run(h, 1, [
       { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 49, 21) },
       { kind: 'buildRoad', tier: RoadTier.Gravel, tiles: column(70, 50, 10) },
       { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 48, rotation: 0 },
       { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 47, rotation: 0 },
-      ...(drain ? pondAndDrain({ x: 64, z: 47 }, { x: 64, z: 48 }) : []),
       { kind: 'paintZone', zone: ZoneType.ResLow, tiles: column(71, 50, 10) },
     ]);
     expect(ack.ok).toBe(true);
@@ -104,8 +108,13 @@ describe('zoning down a gravel road, which carries no power', () => {
     expect(h.lastSnapshot()!.zonedUnserved).toEqual({ power: 0, water: 0, sewer: 0 });
   });
 
-  it('reports the one tile on the mains with no drain, and not the nine on septic tanks', () => {
-    const snap = townDownAGravelRoad(false).lastSnapshot()!;
+  it('asks no sewer of a new town, which is on septic tanks until it is a Big Town', () => {
+    const snap = townDownAGravelRoad().lastSnapshot()!;
+    expect(snap.zonedUnserved).toEqual({ power: 9, water: 0, sewer: 0, powerAt: { x: 71, z: 51 } });
+  });
+
+  it('once a Big Town, reports the one tile on the mains with no drain, and not the nine on septic tanks', () => {
+    const snap = townDownAGravelRoad(SEWER_MILESTONE).lastSnapshot()!;
     // The corner tile is on the street's main, so it is on its sewer too, and
     // nothing drains it; the tiles down the gravel are on wells and septic tanks.
     expect(snap.zonedUnserved).toEqual({
@@ -136,7 +145,6 @@ describe('a grid too small for its city — the snapshot says what growth waits 
     send(h, 2, [
       { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 48, rotation: 0 },
       { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 47, rotation: 0 },
-      ...pondAndDrain({ x: 64, z: 47 }, { x: 64, z: 48 }),
       // Two combustors drawing 1.3 MW on a turbine delivering 1.1: nothing is spare for anyone else.
       { kind: 'placeBuilding', catalogId: 'incinerator', x: 70, z: 45, rotation: 0 },
       { kind: 'placeBuilding', catalogId: 'incinerator', x: 75, z: 45, rotation: 0 },
@@ -160,12 +168,13 @@ describe('a grid too small for its city — the snapshot says what growth waits 
 
 describe('water and sewage on pipes', () => {
   /**
-   * A street with power and a tower on it, a pond dug three tiles off the
-   * street with a drain on its bank, and homes zoned along the street. The
-   * drain touches no street, so only a pipe can join it to the mains.
+   * A Big Town, so off septic tanks: a street with power and a tower on it, a
+   * pond dug three tiles off the street with a drain on its bank, and homes
+   * zoned along the street. The drain touches no street, so only a pipe can
+   * join it to the mains.
    */
   function townWithADrainOffTheStreet(): Harness {
-    const h = initialized();
+    const h = initializedAtMilestone(SEWER_MILESTONE);
     const ack = run(h, 1, [
       { kind: 'setSandbox', on: true },
       { kind: 'setUnlimitedMoney', on: true },
@@ -244,13 +253,14 @@ describe('water and sewage on pipes', () => {
 
 describe('the fouled water', () => {
   /**
-   * A street with a coal plant, a pond dug off it with a drain on the near
-   * bank joined to the street by pipe, a pumping station on the pond's other
-   * bank joined the same way, and homes zoned along the street. The station
-   * drinks from the very water the drain empties into.
+   * A Big Town, so off septic tanks: a street with a coal plant, a pond dug
+   * off it with a drain on the near bank joined to the street by pipe, a
+   * pumping station on the pond's other bank joined the same way, and homes
+   * zoned along the street. The station drinks from the very water the drain
+   * empties into.
    */
   function townDrinkingBesideItsDrain(): Harness {
-    const h = initialized();
+    const h = initializedAtMilestone(SEWER_MILESTONE);
     const ack = run(h, 1, [
       { kind: 'setSandbox', on: true },
       { kind: 'setUnlimitedMoney', on: true },

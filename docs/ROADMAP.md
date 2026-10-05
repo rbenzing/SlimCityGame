@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,721 tests passing across 157 test files, run 2026-10-05.
+**Test suite:** 4,730 tests passing across 158 test files, run 2026-10-05.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -99,6 +99,16 @@ national building survey's intensity, so a police station draws 47 kW where
 it drew 600, and the airport 0.4 MW where it drew 8. The derivations are in
 [power-generation.md](game-design/features/power-generation.md#the-generators-re-derived)
 and [municipal-services.md](game-design/features/municipal-services.md#what-the-facilities-draw-derived-2026-10-05).
+
+**A new town grows again.** Release 1.31.0 made the sewer a hard gate on
+growth from the first house, and both drains want a shore, so a new town on
+power and water grew nothing and nothing on screen said why. A town is on
+septic tanks until Big Town (3,500 people) instead; from there the sewer
+gates growth as designed, with the drain unlocked and the Advisor's warning
+one rung before. The first-town scenario is now a frozen guard
+(`tests/interaction/firsttown.test.ts`), and the ground truths say that a
+test which needs a new setup step to keep passing has found a rule change,
+not a test to fix.
 
 **Open:**
 
@@ -279,6 +289,31 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Septic tanks until Big Town: the growth engine restored (2026-10-05)
+
+A regression, bisected by growing the same first town at each release:
+1.30.0 grows it on power and water, 1.31.0 (#94) grows nothing. The sewer
+had become a prerequisite for every spawn and level-up from the first
+house, both drains need a shoreline, and the Advisor's sewer lines hang off
+standing buildings, so an empty zoned town was silent. The fix follows the
+rule the user set: septic until the city is big enough.
+
+- **One predicate.** `sewageOf` reads the milestone and returns zero below
+  `SEWER_MILESTONE` (Big Town, 3,500; the first rung past the Census' old
+  urban line of 2,500). Nothing else changed shape: the sewer passes, the
+  flag, the stink, the waits and the Advisor's counts all follow from it.
+- **Warned one rung before.** The drain unlocks at Busy Township with the
+  works, and a Busy Township with no drain hears it is outgrowing its septic
+  tanks (`septic-outgrown`).
+- **Guarded.** `tests/interaction/firsttown.test.ts` plays the opening with
+  nothing but a street, two turbines, a tower and three zones, from a fresh
+  game with no sandbox and no terraform, and asserts all three sectors grow;
+  the same town as a Big Town grows nothing until it drains. The scenario
+  checks itself against the opening's command set. Two ground truths: a
+  street with power and water is all a new town needs, and a passing test
+  that needs a new setup step has found a rule change. The ponds the growth
+  tests were given in 1.31.0 are gone again.
 
 ### Power honest on both sides (agreed 2026-10-02, built 2026-10-05)
 

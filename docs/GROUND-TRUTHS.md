@@ -527,8 +527,18 @@ MUTCD citations below use 11th-edition section numbers.
 - Building ids are monotonic from 1 and never reused in a session. The
   `buildingId` layer is the only spatial index. —
   [entities.md](world-sim/entities.md)
-- A zoned tile develops only when it is zoned, served with power, water and
-  a drain on its footprint, and within Manhattan distance 3 of a street, on
+- **A street with power and water on it is all a new town needs to grow.**
+  Those are the only utilities growth waits for from the opening, and no
+  system may add a prerequisite to them: a new utility or service may flag,
+  foul, cut, slow or cost, and may gate growth only from a milestone the
+  player is warned of one rung before, never the first town. The frozen
+  scenario in `tests/interaction/firsttown.test.ts` is the guard; a change
+  that needs a step added to it has changed this rule and stops here first.
+  — [simulation-rules.md](game-design/simulation-rules.md),
+  [water-and-sewage.md](game-design/features/water-and-sewage.md)
+- A zoned tile develops only when it is zoned, served with power and water
+  on its footprint (and, from `SEWER_MILESTONE`, a drain), and within
+  Manhattan distance 3 of a street, on
   the grid or off it, and a building stands only on tiles zoned the same, at spawn and at
   every level-up: it never spills onto the ground beside its zone. One
   zonability predicate decides; the zoning grid visual and the
@@ -550,14 +560,20 @@ MUTCD citations below use 11th-edition section numbers.
   draws nothing: it is never refused, held back or flagged for water, and
   takes no place in the water line. A building's sewage is `sewageOf`, the
   return-to-sewer share of that same figure, so a house on a well makes
-  none and a farm makes none. —
+  none and a farm makes none; and below `SEWER_MILESTONE` (Big Town, 3,500
+  people) the whole town is on septic tanks and makes none, so a new town
+  never sees a sewer. That one predicate is the only place the milestone is
+  read; growth, the sewer line, the flag, the stink and the Advisor's counts
+  all follow from it. —
   [simulation-rules.md](game-design/simulation-rules.md#a-house-on-a-well);
   `src/sim/network.ts`
 - Sewage is the third utility and runs on the water's own network: a drain
   reaches along every road that carries water and every pipe, the buildings
   it reaches line up by steps from the nearest drain, and the far end is cut
-  when the drains run out, exactly as the water is. A lot grows and a
-  building levels up only where a drain reaches it with room for its sewage.
+  when the drains run out, exactly as the water is. From Big Town a lot grows
+  and a building levels up only where a drain reaches it with room for its
+  sewage; the drain and the works unlock the rung before, at Busy Township,
+  and the Advisor warns there that the town is outgrowing its septic tanks.
   A standing building nothing drains carries `NoSewer`, fouls the ground
   around it in proportion to its sewage, and is **never abandoned for it**,
   so a city saved before there were drains loads standing. —
@@ -1134,6 +1150,13 @@ MUTCD citations below use 11th-edition section numbers.
   step to the small town in `tests/support/town.ts`. —
   [naming.md](engineering/standards/naming.md),
   [testing.md](engineering/standards/testing.md)
+- A passing test that a new feature can only keep passing by adding a setup
+  step is not a test to fix but a rule the feature has changed: stop, name
+  the rule, and move it in [GROUND-TRUTHS.md](GROUND-TRUTHS.md) and its spec
+  before the test. The sewer gate shipped in 1.31.0 by giving every growth
+  test a pond and a drain, and no new town could grow until 1.32. —
+  [testing.md](engineering/standards/testing.md);
+  `tests/interaction/firsttown.test.ts`
 - Files are lowercase run-together (`roadprofile.ts`); React components are
   `PascalCase.tsx`; only `worker.entry.ts` carries a dot suffix; constants are
   `UPPER_SNAKE_CASE`, and a derived constant is computed from its source

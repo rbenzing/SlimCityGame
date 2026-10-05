@@ -13,7 +13,7 @@
  * ticks, over a rotating stride-window of the grid so a full map is
  * covered over many passes rather than rescanned every time.
  */
-import { ROAD_CHECK_RADIUS, inBounds, tileIndex } from '../shared/constants';
+import { ROAD_CHECK_RADIUS, SEWER_MILESTONE, inBounds, tileIndex } from '../shared/constants';
 import { BuildingState, FieldId, Problem, ZoneType, isStreetTier } from '../shared/types';
 import { SoilGrade, isFarmable } from '../shared/soil';
 import type {
@@ -321,6 +321,7 @@ function computeProblems(
   z: number,
   entry: BuildingCatalogEntry,
   demandForSector: number,
+  milestoneLevel: number,
   w = 1,
   d = 1,
 ): number {
@@ -335,7 +336,10 @@ function computeProblems(
   if (cityWaterUse(g, entry, x, z, w, d) > 0 && !footprintServed(g.watered, x, z, w, d)) {
     problems |= Problem.NoWater;
   }
-  if (sewageOf(g, entry, x, z, w, d) > 0 && !footprintServed(g.sewered, x, z, w, d)) {
+  if (
+    sewageOf(g, entry, x, z, w, d, milestoneLevel) > 0 &&
+    !footprintServed(g.sewered, x, z, w, d)
+  ) {
     problems |= Problem.NoSewer;
   }
   if (!reached) problems |= Problem.NoRoad;
@@ -478,7 +482,15 @@ export class GrowthSystem {
       // The room, like the spare supply, is handed out once per pass.
       const roomLeft: JobsBySector = { ...room };
       this.forgetStaleWaits(pass);
-      this.processProblemsAndAbandonment(g, registry, demand, supply, removed, updated);
+      this.processProblemsAndAbandonment(
+        g,
+        registry,
+        demand,
+        supply,
+        milestoneLevel,
+        removed,
+        updated,
+      );
       this.flagUnservedUtilities(g, registry, updated);
       this.runLevelUps(g, registry, demand, milestoneLevel, pass, spare, roomLeft, added, removed);
       this.runSpawnScan(g, registry, demand, milestoneLevel, pass, spare, roomLeft, added);
@@ -524,11 +536,13 @@ export class GrowthSystem {
    * its utility to every tile beside it, so a tile here is one its own road
    * fails: a gravel road carries no cable, a street the mains never reach
    * carries no water, and a street no drain reaches carries no sewer. A tile a
-   * house would stand on a well on wants no water and no sewer. Ground zoned
-   * too deep to touch the road is left out, since more supply would not grow
-   * it either.
+   * house would stand on a well on wants no water and no sewer, and no tile
+   * wants a sewer while the town is still on septic tanks. Ground zoned too
+   * deep to touch the road is left out, since more supply would not grow it
+   * either.
    */
-  zonedUnserved(g: GridState): ZonedUnserved {
+  zonedUnserved(g: GridState, milestoneLevel: number): ZonedUnserved {
+    const sewered = milestoneLevel >= SEWER_MILESTONE;
     const cells = g.roads ? roadCellsOf(g) : null;
     const isRoad = (x: number, z: number): boolean => {
       if (!inBounds(x, z)) return false;
@@ -546,7 +560,7 @@ export class GrowthSystem {
         const lacksPower = !readTile(g.power, idx);
         const drinks = this.waterEntries.get(zone);
         const dry = drinks !== undefined && !readTile(g.watered, idx);
-        const undrained = drinks !== undefined && !readTile(g.sewered, idx);
+        const undrained = sewered && drinks !== undefined && !readTile(g.sewered, idx);
         if (!lacksPower && !dry && !undrained) continue;
         if (!isRoad(x - 1, z) && !isRoad(x + 1, z) && !isRoad(x, z - 1) && !isRoad(x, z + 1)) {
           continue;
@@ -629,6 +643,7 @@ export class GrowthSystem {
     registry: BuildingRegistry,
     demand: DemandLevels,
     supply: GrowthSupply,
+    milestoneLevel: number,
     removed: number[],
     updated: BuildingInstance[],
   ): void {
@@ -641,8 +656,16 @@ export class GrowthSystem {
       const demandForSector = sector ? demand[sector] : 0;
       const footprint = footprintForRotation(entry, inst.rotation);
       const newProblems =
-        computeProblems(g, inst.x, inst.z, entry, demandForSector, footprint.w, footprint.d) |
-        shortageOf(supply, inst.id);
+        computeProblems(
+          g,
+          inst.x,
+          inst.z,
+          entry,
+          demandForSector,
+          milestoneLevel,
+          footprint.w,
+          footprint.d,
+        ) | shortageOf(supply, inst.id);
       const hasBlocker = (newProblems & (Problem.NoPower | Problem.NoWater | Problem.NoRoad)) !== 0;
 
       if (inst.state === BuildingState.Active) {
@@ -808,8 +831,8 @@ export class GrowthSystem {
       utilityUnits(cityWaterUse(g, nextEntry, x, z, newFootprint.w, newFootprint.d)) -
       utilityUnits(cityWaterUse(g, entry, x, z, oldFootprint.w, oldFootprint.d));
     const sewer =
-      utilityUnits(sewageOf(g, nextEntry, x, z, newFootprint.w, newFootprint.d)) -
-      utilityUnits(sewageOf(g, entry, x, z, oldFootprint.w, oldFootprint.d));
+      utilityUnits(sewageOf(g, nextEntry, x, z, newFootprint.w, newFootprint.d, milestoneLevel)) -
+      utilityUnits(sewageOf(g, entry, x, z, oldFootprint.w, oldFootprint.d, milestoneLevel));
     if (
       !fits ||
       !this.suppliedFor(waitKey, [], pass, spare, power, water, sewer) ||
@@ -882,12 +905,13 @@ export class GrowthSystem {
       const { w, d } = footprintForRotation(entry, 0);
       // Service is judged over the whole lot, so it cannot depend on which
       // side of the building the street happens to sit (see footprintServed).
-      // A lot a drain does not reach grows nothing: its sewage would have
-      // nowhere to go.
+      // Once the town is off septic tanks, a lot a drain does not reach grows
+      // nothing: its sewage would have nowhere to go.
       if (
         !footprintServed(g.power, x, z, w, d) ||
         (cityWaterUse(g, entry, x, z, w, d) > 0 && !footprintServed(g.watered, x, z, w, d)) ||
-        (sewageOf(g, entry, x, z, w, d) > 0 && !footprintServed(g.sewered, x, z, w, d))
+        (sewageOf(g, entry, x, z, w, d, milestoneLevel) > 0 &&
+          !footprintServed(g.sewered, x, z, w, d))
       ) {
         continue;
       }
@@ -902,6 +926,7 @@ export class GrowthSystem {
         x,
         z,
         demandForSector * desirability,
+        milestoneLevel,
         pass,
         spare,
         room,
@@ -955,6 +980,7 @@ export class GrowthSystem {
       x,
       z,
       demand.ind * FARM_DESIRABILITY[grade],
+      milestoneLevel,
       pass,
       spare,
       room,
@@ -970,6 +996,7 @@ export class GrowthSystem {
     x: number,
     z: number,
     probability: number,
+    milestoneLevel: number,
     pass: number,
     spare: Spare,
     room: JobsBySector,
@@ -980,7 +1007,7 @@ export class GrowthSystem {
     // Nobody moves into a home the grid cannot light, water or drain.
     const power = utilityUnits(entry.powerUse);
     const water = utilityUnits(cityWaterUse(g, entry, x, z, w, d));
-    const sewer = utilityUnits(sewageOf(g, entry, x, z, w, d));
+    const sewer = utilityUnits(sewageOf(g, entry, x, z, w, d, milestoneLevel));
     const lot = lotTiles(x, z, w, d);
     if (!this.suppliedFor(tileIndex(x, z), lot, pass, spare, power, water, sewer)) return;
     if (this.rng.next() >= probability) return;
