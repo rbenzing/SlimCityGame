@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.33.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.33.0...slimcity-v1.33.1) (2026-10-05)
+
+
+### Bug Fixes
+
+* **growth:** a town is on septic tanks until Big Town, and the first town is a guarded scenario ([5e13079](https://github.com/rbenzing/SlimCityGame/commit/5e130799b8f79cde8d08bc817e47debca7b7769d))
+
 ## [1.33.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.32.0...slimcity-v1.33.0) (2026-10-05)
 
 
