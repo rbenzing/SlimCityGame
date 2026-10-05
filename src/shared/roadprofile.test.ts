@@ -37,6 +37,7 @@ import {
   parkingLaneOffset,
   parkingSides,
   rankedTogether,
+  AUXILIARY_SHOULDER_MIN_M,
   canGainAuxiliaryLane,
   hasKerbs,
   KERB_RESERVE_M,
@@ -1552,10 +1553,59 @@ describe('the auxiliary lane a motorway grows beside a slip road', () => {
       'shoulder',
     ]);
     // And the edge line still lands on the shoulder's inner face, with the new
-    // lane inside it.
+    // lane inside it at the class's full width, the shoulder lending the few
+    // centimetres the verge was short of.
     const widened = withAuxiliaryLane(motorway, 1)!;
-    expect(widened.pieces[4]).toMatchObject({ kind: 'travel' });
-    expect(widened.pieces[5]).toMatchObject({ kind: 'shoulder', width: 3 });
+    expect(widened.pieces[4]).toMatchObject({ kind: 'travel', width: laneWidthFor('highway') });
+    expect(widened.pieces[5]!.kind).toBe('shoulder');
+    expect(widened.pieces[5]!.width).toBeLessThan(3);
+    expect(widened.pieces[5]!.width).toBeGreaterThan(AUXILIARY_SHOULDER_MIN_M);
+  });
+
+  describe('beside a sound wall, which spends the verge the lane came out of', () => {
+    const motorway = presetProfileForTier(RoadTier.Highway);
+    const walled = composeProfile(motorway, {
+      ...NO_EDITS,
+      soundWall: 'both',
+      soundWallHeight: 4.5,
+    });
+    const kinds = (p: RoadProfile): string[] => p.pieces.map((x) => x.kind);
+
+    it('narrows the hard shoulder to make room, never below the floor a shoulder keeps beside such a lane', () => {
+      const widened = withAuxiliaryLane(walled, 1);
+      expect(widened).not.toBeNull();
+      expect(kinds(widened!)).toEqual([
+        'soundWall',
+        'shoulder',
+        'travel',
+        'travel',
+        'travel',
+        'travel',
+        'shoulder',
+        'soundWall',
+      ]);
+      expect(widened!.pieces[5]).toMatchObject({ kind: 'travel', width: laneWidthFor('highway') });
+      const shoulder = widened!.pieces[6]!;
+      expect(shoulder.width).toBeGreaterThanOrEqual(AUXILIARY_SHOULDER_MIN_M - 1e-9);
+      expect(shoulder.width).toBeLessThan(3);
+      // The wall still fits inside the tile with its kerb reserve.
+      expect(profileWidth(widened!)).toBeLessThanOrEqual(TILE_METERS - 2 * KERB_RESERVE_M + 1e-9);
+    });
+
+    it('gives the shoulder back as the lane closes over its taper', () => {
+      const half = withAuxiliaryLane(walled, 1, 0.5)!;
+      const full = withAuxiliaryLane(walled, 1)!;
+      const lent = (p: RoadProfile): number => 3 - p.pieces[6]!.width;
+      expect(lent(half)).toBeCloseTo(lent(full) / 2, 6);
+      expect(profileWidth(half)).toBeLessThanOrEqual(TILE_METERS - 2 * KERB_RESERVE_M + 1e-9);
+    });
+
+    it('grows none on the median side, whose shoulder is already at the floor', () => {
+      // 1.2 m has nothing to lend, and the verge beside a walled road is short.
+      expect(withAuxiliaryLane(walled, -1)).toBeNull();
+      expect(canGainAuxiliaryLane(walled, -1)).toBe(false);
+      expect(canGainAuxiliaryLane(walled, 1)).toBe(true);
+    });
   });
 });
 

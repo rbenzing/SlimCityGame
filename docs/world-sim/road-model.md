@@ -805,7 +805,12 @@ both uncontrolled two-approach nodes:
 The auxiliary lane is added and painted automatically wherever the tool
 detects a ramp meeting a highway — the player draws the ramp and the
 highway grows the lane and paints the gore on its own, so the merge length
-costs land and nothing else. A ramp's other end is a **terminal**: an
+costs land and nothing else. The lane's width comes from the verge the tile
+has not spent, and then from the hard shoulder on that side, which narrows
+to no less than 1.2 m (the motorway's own median-side shoulder, and the 4 ft
+a constrained section may narrow an outside shoulder to beside such a lane),
+so a walled motorway grows the lane inside its wall; a side whose shoulder
+is already at that floor, with no verge to spare, grows none. A ramp's other end is a **terminal**: an
 ordinary node on the surface network, taking an ordinary warranted control
 and ordinary approach lanes like any other junction.
 
@@ -1208,10 +1213,12 @@ and a height ([sound-barriers.md](../game-design/features/sound-barriers.md)).
   the south or east edge. A wall stands only on an edge no arm leaves by, so it
   opens across a slip road's mouth and round the inside of a corner. Across
   the tile, its base runs 0.6 m out from the carriageway's edge, plus the
-  corridor shift. It is read off the road's own section, so the worker and the
-  renderer ask the same thing (`soundWallsAt` in `src/shared/soundwallsites.ts`).
-  It takes the room an auxiliary lane would use, so a walled three-lane
-  motorway draws none beside its slip roads.
+  corridor shift. Which edge is read off the road's own section, so the worker
+  and the renderer ask the same thing (`soundWallsAt` in
+  `src/shared/soundwallsites.ts`); how far across follows the drawn section,
+  so where the motorway grows an auxiliary lane beside a slip road the lane
+  runs inside the wall and the wall's base steps out with it, the hard
+  shoulder narrowing to make the room.
 - **Room.** On every walled side the carriageway's half-width plus 0.6 m must
   fit inside half a tile. Three or four lanes at the motorway's 3.6 m have
   room both sides, and so do the outer halves of a five- or six-lane

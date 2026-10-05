@@ -323,6 +323,7 @@ export class ClientGridMirror {
       sectionAt: (x, z) => this.ownProfileAt(x, z),
       flowAt: (x, z) => this.flowAt(x, z),
       maskAt: (x, z) => (this.inBounds(x, z) ? (this.roadMask[this.idx(x, z)] ?? 0) : 0),
+      drawnAt: (x, z) => this.drawnProfileAt(x, z),
     };
     const walls: PlacedWall[] = [];
     for (let i = 0; i < this.roadTier.length; i++) {

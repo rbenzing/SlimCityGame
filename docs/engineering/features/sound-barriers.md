@@ -68,11 +68,17 @@ neighbour mask. For each end of that section that holds a wall:
   plus the corridor shift for half of a motorway nothing divides
   (`carriagewayShiftOf`).
 
-A wall is read off the road's own section, never the drawn one, so the sim
-and the renderer agree without either needing the approach walk. The cost is
-that the wall takes the room an auxiliary lane would use: `withAuxiliaryLane`
-finds no slack beside a walled three-lane motorway, so none is drawn. The
-auxiliary lane is drawing only; no traffic figure reads it.
+Which edge a wall stands on is read off the road's own section, so the sim
+and the renderer agree without either needing the approach walk. How far
+across the tile its base stands is the renderer's question alone, and the
+mirror's reader answers it from the drawn section (`drawnAt`), so where the
+motorway grows an auxiliary lane the wall's face steps out to the drawn
+carriageway's edge and the lane runs inside it. The room comes from
+`withAuxiliaryLane`, which takes the verge first and then the hard shoulder
+on that side down to `AUXILIARY_SHOULDER_MIN_M` (1.2 m); a walled three-lane
+motorway's 3 m shoulder narrows to about 1.75 m beside the lane. The noise
+field's reader has no `drawnAt` and needs none, since the field reads edges.
+The auxiliary lane is drawing only; no traffic figure reads it.
 
 Only the ground layer carries a wall. Where a motorway passes over another
 road, on the over layer, its wall stops for that tile.
@@ -165,8 +171,9 @@ price is `roadPriceOf`'s, so it includes the walls.
   edge, so it cannot.
 - **A wall the sim and the screen disagree about.** Both call `soundWallsAt`
   over readers of the same layers.
-- **The lost auxiliary lane** reads as a regression to a player who knew the
-  road without a wall. It is said in the user guide.
+- **The lost auxiliary lane** read as a regression to a player who knew the
+  road without a wall, and was one until 2026-10-05, when the lane learnt to
+  narrow the shoulder and the wall to follow the drawn edge.
 
 ## Alternatives
 
