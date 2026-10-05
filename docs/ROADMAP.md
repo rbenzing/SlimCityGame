@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,730 tests passing across 158 test files, run 2026-10-05.
+**Test suite:** 4,731 tests passing across 158 test files, run 2026-10-05.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -138,9 +138,6 @@ not a test to fix.
   is the sim's own, the same reduced kind every other control's is. Adopting
   the manual's would make roundabouts far slower than signals and stops at
   load, so it needs a decision with the other controls in view.
-- Roadside parked cars beside a building skip a corridor tile:
-  `kerbTileAllowsParking` in `src/render/parked.ts` counts every road tile beside
-  it as a crossing road, the way the furniture once did.
 
 Before writing "not built" anywhere in this document, check the code.
 
@@ -289,6 +286,22 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Kerb cars ask the furniture's junction test (2026-10-05)
+
+The last Open item from the corridor furniture work. `kerbTileAllowsParking`
+counted road tiles beside a kerb tile to find a junction, so the other half
+of a corridor read as a crossing road and every tile of the street refused
+its cars. It now takes a junction test, and the game hands it the
+furniture's `hasCrossingRoad`, which asks whether a neighbouring road tile
+joins this one; the neighbour count stays as the fallback for a caller with
+no road index. Proven by a synthetic corridor in the unit test: the count
+refuses the kerb, the join-aware test keeps it and still refuses the tile a
+side street joins. No screenshot could show it: no road in the current set
+can be a corridor and carry a parking lane or a kerb that allows parking (an
+arterial carries no parking piece, and a four-lane with one is too wide for
+the tile and its class admits no corridor), so the fix waits for a road that
+can.
 
 ### Septic tanks until Big Town: the growth engine restored (2026-10-05)
 
@@ -650,9 +663,9 @@ lamp, a kerbside board or a signal head on its own approach.
   only on lanes running toward the junction, the stop line's own rule, so the
   half running away carries none. That also took the board off a one-way
   street leaving a junction, which had one facing traffic that never came.
-- **Not changed:** roadside parked cars beside a building still skip a
-  corridor tile. They decide on their own, by counting road tiles beside it,
-  and a corridor with a parking lane is rare.
+- **Not changed then, changed 2026-10-05:** roadside parked cars beside a
+  building skipped a corridor tile, deciding on their own by counting road
+  tiles beside it. They now ask the furniture's own join-aware test.
 
 ### A corridor bulldozed whole, and a bulldoze undone the way it stood (2026-10-01)
 
