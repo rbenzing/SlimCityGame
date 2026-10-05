@@ -4,6 +4,7 @@ import {
   BAY_DEPTH_TILES,
   BAY_END_MARGIN_TILES,
   BAY_PITCH_TILES,
+  adjacentRoadsCross,
   bayRowStart,
   CAR_PALETTE,
   computeRoadsideStallCount,
@@ -49,6 +50,14 @@ import { TILE_METERS } from '../shared/constants';
 import type { RoadProfile } from '../shared/types';
 import { carriagewayHalfWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
 import { sizeForKind, variantScaleForKind } from './vehicles';
+import { buildTileSet, hasCrossingRoad, type FurnitureRoadTile } from './roadfurniture';
+import { RoadFlow, storedFlow } from '../shared/types';
+import {
+  composeProfile,
+  corridorHalfProfile,
+  NO_EDITS,
+  presetProfileForTier,
+} from '../shared/roadprofile';
 
 const COM_PITCH = BAY_PITCH_TILES.com;
 const COM_DEPTH = BAY_DEPTH_TILES.com;
@@ -245,9 +254,7 @@ describe('vergeDepthMeters / sidewalkDepthMeters', () => {
     // A two-lane tile is mostly verge. A motorway is the widest thing the grid
     // lays and keeps only a kerb, so what is left beside it is verge too —
     // grass, not somewhere to walk, which is the point of it being a kerb.
-    expect(vergeDepthMeters(RoadTier.TwoLane)).toBeGreaterThan(
-      vergeDepthMeters(RoadTier.Highway),
-    );
+    expect(vergeDepthMeters(RoadTier.TwoLane)).toBeGreaterThan(vergeDepthMeters(RoadTier.Highway));
     expect(sidewalkDepthMeters(RoadTier.Highway)).toBeLessThan(SIDEWALK_WIDTH_M);
   });
 
@@ -666,8 +673,7 @@ describe('ParkedCarRenderer frontage apron', () => {
     // strip, so together they reach exactly the carriageway and no further.
     // The two are measured from the same answer, which is what stops a band
     // being left that is neither and nothing covers.
-    const roadside =
-      vergeDepthMeters(RoadTier.Highway) + sidewalkDepthMeters(RoadTier.Highway);
+    const roadside = vergeDepthMeters(RoadTier.Highway) + sidewalkDepthMeters(RoadTier.Highway);
     expect(roadside).toBeCloseTo(TILE_METERS / 2 - carriagewayHalfWidthMeters(RoadTier.Highway), 6);
     expect(minZ).toBeCloseTo(5 * TILE_METERS - roadside, 3);
   });
@@ -681,7 +687,12 @@ describe('a farm on the road', () => {
       kind: 'crops',
       footprint: { w: 4, d: 5 },
     });
-    const renderer = new ParkedCarRenderer(new THREE.Scene(), flatHeightAt, [farm], roadAtTiles([[5, 4]]));
+    const renderer = new ParkedCarRenderer(
+      new THREE.Scene(),
+      flatHeightAt,
+      [farm],
+      roadAtTiles([[5, 4]]),
+    );
     renderer.apply(deltaAdd(makeBuilding({ id: 1, level: 1 })));
     expect(renderer.stallSlotsFor(1)).toHaveLength(0);
     expect(hasOwnLotParking(farm, 5, 5, roadAtTiles([[5, 4]]))).toBe(false);
@@ -794,8 +805,12 @@ describe('ParkedCarRenderer', () => {
       kind: 'garden',
       footprint: { w: 2, d: 2 },
     });
-    const renderer = new ParkedCarRenderer(scene, flatHeightAt, [flats], roadAtTiles([[5, 4]]), () =>
-      RoadTier.TwoLane,
+    const renderer = new ParkedCarRenderer(
+      scene,
+      flatHeightAt,
+      [flats],
+      roadAtTiles([[5, 4]]),
+      () => RoadTier.TwoLane,
     );
 
     renderer.apply(deltaAdd(makeBuilding({ id: 1, level: 2 })));
@@ -854,8 +869,12 @@ describe('ParkedCarRenderer', () => {
         { kind: 'sidewalk', width: 1.875 },
       ],
     };
-    const plain = new ParkedCarRenderer(scene, flatHeightAt, [flats], roadAtTiles([[5, 4]]), () =>
-      RoadTier.TwoLane,
+    const plain = new ParkedCarRenderer(
+      scene,
+      flatHeightAt,
+      [flats],
+      roadAtTiles([[5, 4]]),
+      () => RoadTier.TwoLane,
     );
     const painted = new ParkedCarRenderer(
       scene,
@@ -904,8 +923,12 @@ describe('ParkedCarRenderer', () => {
       kind: 'detached',
       footprint: { w: 2, d: 2 },
     });
-    const renderer = new ParkedCarRenderer(scene, flatHeightAt, [home], roadAtTiles([[5, 4]]), () =>
-      RoadTier.Highway,
+    const renderer = new ParkedCarRenderer(
+      scene,
+      flatHeightAt,
+      [home],
+      roadAtTiles([[5, 4]]),
+      () => RoadTier.Highway,
     );
 
     renderer.apply(deltaAdd(makeBuilding({ id: 1, level: 2 })));
@@ -1397,10 +1420,7 @@ describe('kerbside rhythms', () => {
 
 describe('usesRoadsideParking', () => {
   const roadSouth = (x: number, z: number): boolean => z === 8 && x >= 4 && x < 6;
-  const tierIs =
-    (tier: RoadTier) =>
-    (): RoadTier =>
-      tier;
+  const tierIs = (tier: RoadTier) => (): RoadTier => tier;
 
   const smallHome = makeCatalogEntry({
     category: 'res',
@@ -1498,25 +1518,70 @@ describe('kerbside placement', () => {
 describe('a kerbside car never leaves the tarmac', () => {
   const edge: RoadFacingEdge = { side: 'S', edgeTiles: 4, roadTileX: 4, roadTileZ: 8 };
   const allTiers = (): boolean => true;
+  const allows = (
+    x: number,
+    z: number,
+    roadAt: (x: number, z: number) => boolean,
+    parkable: (x: number, z: number) => boolean = allTiers,
+  ): boolean => kerbTileAllowsParking(x, z, roadAt, parkable, adjacentRoadsCross(roadAt));
 
   it('refuses a junction tile, which has no kerb at all', () => {
     // Road on both axes through (4,8): a turn, a T or a crossroads.
     const roadAt = (x: number, z: number): boolean => z === 8 || x === 4;
-    expect(kerbTileAllowsParking(4, 8, roadAt, allTiers)).toBe(false);
+    expect(allows(4, 8, roadAt)).toBe(false);
   });
 
   it('accepts a straight run', () => {
     const roadAt = (_x: number, z: number): boolean => z === 8;
-    expect(kerbTileAllowsParking(4, 8, roadAt, allTiers)).toBe(true);
+    expect(allows(4, 8, roadAt)).toBe(true);
   });
 
   it('refuses a tile with no road on it — that is the grass', () => {
-    expect(kerbTileAllowsParking(4, 8, () => false, allTiers)).toBe(false);
+    expect(allows(4, 8, () => false)).toBe(false);
   });
 
   it('refuses a kerb the street does not let anyone park at', () => {
     const roadAt = (_x: number, z: number): boolean => z === 8;
-    expect(kerbTileAllowsParking(4, 8, roadAt, () => false)).toBe(false);
+    expect(allows(4, 8, roadAt, () => false)).toBe(false);
+  });
+
+  // The defect: a corridor's two halves lie side by side, so counting road
+  // tiles beside a kerb tile saw road on both axes and called every tile of
+  // the street a junction. The furniture's own test knows the far half is a
+  // road beside this one, not a road through it.
+  it('parks beside a corridor, whose other half is a road alongside and not a crossing', () => {
+    const arterial = composeProfile(presetProfileForTier(RoadTier.FourLane), {
+      ...NO_EDITS,
+      lanes: 4,
+      parking: 'both',
+    });
+    // Four lanes heading east on rows 8 and 9, and a side street joining at x = 10.
+    const tiles: FurnitureRoadTile[] = [];
+    for (const [z, half] of [
+      [8, 'left'],
+      [9, 'right'],
+    ] as const) {
+      for (let x = 0; x < 20; x++) {
+        tiles.push({
+          x,
+          z,
+          tier: RoadTier.FourLane,
+          flow: storedFlow(RoadFlow.East, half),
+          profile: corridorHalfProfile(arterial, half),
+        });
+      }
+    }
+    for (let z = 4; z < 8; z++) tiles.push({ x: 10, z, tier: RoadTier.TwoLane });
+    const tileSet = buildTileSet(tiles);
+    const roadAt = (x: number, z: number): boolean => tileSet.has(x * 100_000 + z);
+    const joinAware = (x: number, z: number): boolean => hasCrossingRoad(tileSet, x, z);
+
+    // Counting neighbours refuses the whole street; the join-aware test keeps
+    // the kerb and still refuses the tile the side street joins.
+    expect(kerbTileAllowsParking(4, 8, roadAt, allTiers, adjacentRoadsCross(roadAt))).toBe(false);
+    expect(kerbTileAllowsParking(4, 8, roadAt, allTiers, joinAware)).toBe(true);
+    expect(kerbTileAllowsParking(4, 9, roadAt, allTiers, joinAware)).toBe(true);
+    expect(kerbTileAllowsParking(10, 8, roadAt, allTiers, joinAware)).toBe(false);
   });
 
   // The defect: a frontage is a straight line of tiles, but the street it faces
@@ -1527,7 +1592,7 @@ describe('a kerbside car never leaves the tarmac', () => {
     const roadAt = (x: number, z: number): boolean => z === 8 && x >= 4 && x < 6;
     const all = computeRoadsideStallPlacements(4, 6, 4, 2, edge, RoadTier.TwoLane, 8);
     const vetted = computeRoadsideStallPlacements(4, 6, 4, 2, edge, RoadTier.TwoLane, 8, (tx, tz) =>
-      kerbTileAllowsParking(tx, tz, roadAt, allTiers),
+      allows(tx, tz, roadAt),
     );
 
     expect(all.length).toBe(8);
@@ -1543,7 +1608,7 @@ describe('a kerbside car never leaves the tarmac', () => {
     // An L meeting at (4,8): only that tile has road on both axes.
     const roadAt = (x: number, z: number): boolean => z === 8 || x === 4;
     const vetted = computeRoadsideStallPlacements(4, 6, 4, 2, edge, RoadTier.TwoLane, 8, (tx, tz) =>
-      kerbTileAllowsParking(tx, tz, roadAt, allTiers),
+      allows(tx, tz, roadAt),
     );
 
     expect(vetted.length).toBeGreaterThan(0);

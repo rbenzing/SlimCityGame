@@ -40,12 +40,7 @@ import {
   type RoadFacingEdge,
   type Side,
 } from './frontage';
-import {
-  sizeForKind,
-  variantScaleForKind,
-  VehicleKitPool,
-  VEHICLE_PALETTE_HEX,
-} from './vehicles';
+import { sizeForKind, variantScaleForKind, VehicleKitPool, VEHICLE_PALETTE_HEX } from './vehicles';
 import { materialUnit } from './palette';
 import { pushConformingQuad } from './groundquad';
 
@@ -483,9 +478,28 @@ export function computeRoadsideStallCount(edgeTiles: number): number {
 }
 
 /**
+ * A junction test that counts road tiles beside this one: road on both axes
+ * means a turn, a T or a crossroads. It cannot tell a road that joins this
+ * one from a road that merely lies beside it — the other half of a corridor,
+ * a separate carriageway — so it is the fallback for a caller with no road
+ * network to ask; the renderer in the game is handed the furniture's own
+ * join-aware test instead.
+ */
+export function adjacentRoadsCross(
+  roadAt: (x: number, z: number) => boolean,
+): (x: number, z: number) => boolean {
+  return (x, z) => {
+    const hasEW = roadAt(x - 1, z) || roadAt(x + 1, z);
+    const hasNS = roadAt(x, z - 1) || roadAt(x, z + 1);
+    return hasEW && hasNS;
+  };
+}
+
+/**
  * Whether a car may stand at the kerb of THIS tile: there has to be a road
  * here, its kerb has to be parkable (`parkable` — the street's rule for the
- * kerb in question), and it must not be a tile the road crosses on both axes.
+ * kerb in question), and it must not be a junction (`junctionAt` — a tile the
+ * road runs through on both axes).
  *
  * A turn, a T or a crossroads has no kerb — the lateral offset that clears one
  * carriageway lands inside the other — which is the same rule that keeps lamps
@@ -499,12 +513,11 @@ export function kerbTileAllowsParking(
   tileZ: number,
   roadAt: (x: number, z: number) => boolean,
   parkable: (x: number, z: number) => boolean,
+  junctionAt: (x: number, z: number) => boolean,
 ): boolean {
   if (!roadAt(tileX, tileZ)) return false;
   if (!parkable(tileX, tileZ)) return false;
-  const hasEW = roadAt(tileX - 1, tileZ) || roadAt(tileX + 1, tileZ);
-  const hasNS = roadAt(tileX, tileZ - 1) || roadAt(tileX, tileZ + 1);
-  return !(hasEW && hasNS);
+  return !junctionAt(tileX, tileZ);
 }
 
 /**
@@ -617,6 +630,7 @@ export class ParkedCarRenderer {
 
   private readonly roadTierAt: (x: number, z: number) => RoadTier;
   private readonly roadProfileAt: (x: number, z: number) => RoadProfile | null;
+  private readonly junctionAt: (x: number, z: number) => boolean;
 
   private readonly pools = new Map<number, VehicleKitPool>();
   private readonly buildingSlots = new Map<number, LotRecord>();
@@ -633,12 +647,19 @@ export class ParkedCarRenderer {
     roadTierAt: (x: number, z: number) => RoadTier = () => RoadTier.TwoLane,
     /** The street's own cross-section where it carries a composed one; kerb rows sit at ITS edge. */
     roadProfileAt: (x: number, z: number) => RoadProfile | null = () => null,
+    /**
+     * Whether the road runs through a tile on both axes, so it has no kerb.
+     * The game passes the furniture's join-aware test, which knows the other
+     * half of a corridor is a road beside this one and not a road through it.
+     */
+    junctionAt: (x: number, z: number) => boolean = adjacentRoadsCross(roadAt),
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
     this.roadAt = roadAt;
     this.roadTierAt = roadTierAt;
     this.roadProfileAt = roadProfileAt;
+    this.junctionAt = junctionAt;
     this.catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
   }
 
@@ -879,7 +900,7 @@ export class ParkedCarRenderer {
       edge,
       tier,
       count,
-      (tileX, tileZ) => kerbTileAllowsParking(tileX, tileZ, this.roadAt, parkable),
+      (tileX, tileZ) => kerbTileAllowsParking(tileX, tileZ, this.roadAt, parkable, this.junctionAt),
       profile ?? undefined,
       profile ? (parkingLaneOffset(profile, side) ?? undefined) : undefined,
     );

@@ -115,7 +115,13 @@ import { ZoneGridRenderer } from './render/zonegrid';
 import { LampRenderer } from './render/lamps';
 import { PowerLineRenderer } from './render/powerlines';
 import { PipeOverlayRenderer } from './render/pipes';
-import { computeSignPlacements, RoadFurnitureRenderer } from './render/roadfurniture';
+import {
+  buildTileSet,
+  computeSignPlacements,
+  hasCrossingRoad,
+  RoadFurnitureRenderer,
+  type RoadTileIndex,
+} from './render/roadfurniture';
 import { SoundWallRenderer } from './render/soundwalls';
 import { SelectionOutline } from './render/outline';
 import { MapPin } from './render/pin';
@@ -338,6 +344,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         : RoadTier.None,
     // The tile's OWN section: on a corridor that is its half of the road.
     (x, z) => clientGrid.ownProfileAt(x, z),
+    // The furniture's junction test, so a kerb beside a corridor's other half
+    // keeps its cars the way it keeps its lamps.
+    (x, z) => hasCrossingRoad(latestRoadTileSet, x, z),
   );
   // Residential house kit: the roof, what each drive ends at, the car, the
   // front door and the yard, stood on the lot plan laid out from the street the
@@ -933,6 +942,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
    */
   let drivewayTiles: ReadonlySet<number> = new Set();
   let latestRoadTiles: ReturnType<typeof clientGrid.roadTiles> = [];
+  /** The same tiles indexed the way the furniture reads them; kept in step with latestRoadTiles. */
+  let latestRoadTileSet: RoadTileIndex = new Map();
+  const setLatestRoadTiles = (tiles: ReturnType<typeof clientGrid.roadTiles>): void => {
+    latestRoadTiles = tiles;
+    latestRoadTileSet = buildTileSet(tiles);
+  };
   /** The vehicle buffer as the worker last sent it. */
   let latestVehicles: Float32Array = new Float32Array(0);
   /** Every street lamp: the grid's, from its road tiles, and those along roads off the grid. */
@@ -1552,7 +1567,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         roadsMesh.invalidateHeights(raised.map((t) => ({ x: t.x, z: t.z, w: 1, h: 1 })));
       zoneGrid.rebuild(clientGrid);
       const roadTiles = clientGrid.roadTiles();
-      latestRoadTiles = roadTiles;
+      setLatestRoadTiles(roadTiles);
       rebuildLamps();
       roadFurniture.rebuild(roadTiles, freeJunctionTiles);
       bridges.rebuild(clientGrid.deckTiles());
@@ -1564,7 +1579,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // A junction can change control with no tile changing at all — the
       // traffic through it grew. Only the signs care, and, where a
       // roundabout came or went, the lamps.
-      latestRoadTiles = clientGrid.roadTiles();
+      setLatestRoadTiles(clientGrid.roadTiles());
       roadFurniture.rebuild(latestRoadTiles, freeJunctionTiles);
       if (snap.roundabouts) rebuildLamps();
     }
@@ -1636,7 +1651,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // and the lamps are rebuilt when it moves — a district coming on line
       // lights up without waiting for someone to touch a road.
       clientGrid.applyPowerPatches(snap.power);
-      latestRoadTiles = clientGrid.roadTiles();
+      setLatestRoadTiles(clientGrid.roadTiles());
       rebuildLamps();
     }
     if (snap.watered) overlays.setCoverage('watered', snap.watered);
