@@ -655,6 +655,15 @@ MUTCD citations below use 11th-edition section numbers.
 - A facility with no street-tier road within two orthogonal steps of its
   footprint covers nothing. — [services-model.md](world-sim/services-model.md);
   `NEAR_ROAD_RADIUS` in `src/sim/services.ts`
+- A generator is worth its **nameplate × capacity factor** to the grid, the
+  published share of the year a plant of its kind runs at rating, never its
+  nameplate alone; the inspector shows both. Every ploppable's draw and every
+  generator's rating, factor, cost and upkeep is derived from a published
+  figure the way the zoned catalog's are, and the wind turbine is drawn at
+  the size of the machine its figures describe. —
+  [power-generation.md](game-design/features/power-generation.md#the-generators-re-derived),
+  [utilities-model.md](world-sim/utilities-model.md#production-and-demand);
+  `averageOutputMW` in `src/shared/power.ts`
 - Service range is a road-hop count in tiles, scaled by funding and floored. It
   is never called, drawn or computed as a radius. —
   [services-model.md](world-sim/services-model.md)

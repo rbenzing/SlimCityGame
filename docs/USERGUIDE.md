@@ -253,7 +253,10 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   and workshops alike. A farm grows larger as the town wants more work, but
   only onto land as good as its kind needs.
 - **Power & Water** — generators and water sources placed next to a road feed the
-  connected network. If the city asks for more than it makes, the grid gives out
+  connected network. A generator counts for what it delivers over a year, not
+  the number on the machine: a wind turbine is rated 3.4 MW and delivers about
+  1.1, enough for eight hundred houses, and the coal plant is rated 60 and
+  delivers about 26. The inspector shows both. If the city asks for more than it makes, the grid gives out
   from its far end: the buildings furthest along the wires from a plant go dark
   first, abandon if it lasts, and nothing new moves in until there is supply to
   spare. The Advisor says how far short you are.

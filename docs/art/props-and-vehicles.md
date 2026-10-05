@@ -104,7 +104,12 @@ kit — merged low-poly geometry, deterministic from the instance id — instead
 of the generic building facade box:
 
 - **Wind turbine**: a tapered mast, a nacelle, and a 3-blade rotor that spins
-  slowly (a deterministic phase per instance), in pale bone-white.
+  slowly (a deterministic phase per instance), in pale bone-white, at the
+  size of the machine it is: the hub 103 m up on a 4.5 m base and the rotor
+  134 m across, the averages of the onshore turbines installed in 2023. It is
+  the one placeable drawn above the skyline on purpose; a real turbine towers
+  over a town three times over, and the blades sweep three tiles either side
+  of the tile it stands on.
 - **Water tower**: 4 splayed legs, a banded cylindrical tank, a domed cap.
 - **Water pumping station**: a pale pump house with a plant room on its roof,
   and a steel intake pipe running out of its water-facing wall and 6 m past

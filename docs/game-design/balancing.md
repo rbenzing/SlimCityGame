@@ -107,6 +107,31 @@ Every figure is sourced in [features/water-and-sewage.md](features/water-and-sew
 | `WATER_FOUL_REACH_TILES`       | 25 tiles (500 m)                           | How far a discharge's fouling reaches along the water before fading to nothing, between the statutory intake setbacks of 500 ft and five miles. | `src/shared/constants.ts` |
 | intake yield                   | `waterKL × (1 − foul / 255)`               | A shore intake's supply, scaled by the worst fouling on the water beside it; the tower is never scaled.      | `src/sim/network.ts`      |
 
+## Power
+
+Every figure is derived in [features/power-generation.md](features/power-generation.md#the-generators-re-derived).
+
+| Constant                 | Value                                              | Meaning                                                                                                         | File                     |
+| ------------------------ | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| supply                   | `powerMW × capacityFactor`, summed                 | A plant counts for what it delivers over a year, never its nameplate.                                           | `src/shared/power.ts`    |
+| wind turbine             | 3.4 MW × 0.335 = 1.14 MW; 103 m hub, 134 m rotor; ¢320 / ¢9 | The average onshore machine installed in 2023 (LBNL) at the modern fleet's capacity factor; cost and upkeep from EIA $/kW against the coal plant's anchors. | `src/data/catalog.json`  |
+| coal plant               | 60 MW × 0.426 = 25.6 MW; ¢12,000 / ¢800; pollution 140; 5 kL water | A small unit at coal's 2024 fleet capacity factor (EIA); its cost, upkeep and pollution are the anchors everything else is scaled to; its staff's water. | `src/data/catalog.json`  |
+| ¢ per $ of capital       | ¢12,000 ≙ $270 million (60 MW × $4,507/kW)         | The scale a new generator's cost is derived on.                                                                 | `src/data/catalog.json`  |
+| ¢ per $ of operation     | ¢800 a month ≙ $8.65 million a year                | Coal's fixed and variable O&M plus fuel at 42.6%; the scale a new generator's upkeep is derived on.             | `src/data/catalog.json`  |
+
+## Civic draw
+
+Every figure is derived in [features/municipal-services.md](features/municipal-services.md#what-the-facilities-draw-derived-2026-10-05).
+
+| Building             | Power     | Water   | Meaning                                                                                              | File                    |
+| -------------------- | --------- | ------- | ---------------------------------------------------------------------------------------------------- | ----------------------- |
+| police, fire station | 0.0474 MW | 4.5, 9 kL | The floor the massing rule gives a 2×2 at 12 m, at CBECS's public-order intensity; office and fire-station water benchmarks. | `src/data/catalog.json` |
+| clinic               | 0.0692 MW | 8.5 kL  | Outpatient health care's intensity; the medical-office water benchmark.                              | `src/data/catalog.json` |
+| school               | 0.0601 MW | 6.3 kL  | Education's intensity; the K-12 water benchmark.                                                     | `src/data/catalog.json` |
+| rail station         | 0.0322 MW | 5 kL    | A transport terminal's intensity; office water.                                                      | `src/data/catalog.json` |
+| airport              | 0.4 MW    | 175 kL  | A 418,000 sf terminal; four million passengers a year at 4.2 gallons.                               | `src/data/catalog.json` |
+| incinerator          | 0.66 MW   | 2 kL    | A 250 ton-a-day combustor's own use at 63 kWh a ton; water unsourced.                               | `src/data/catalog.json` |
+
 ## Soil and farms
 
 Every figure is sourced in [features/farms.md](features/farms.md).

@@ -9,6 +9,7 @@ import type { JSX } from 'react';
 import catalogData from '../data/catalog.json';
 import { BuildingState, Problem, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingState as BuildingStateValue } from '../shared/types';
+import { averageOutputMW, formatMW } from '../shared/power';
 import { happinessFace } from './format';
 import { Icon, type IconName } from './icons';
 import { useCityStore } from './store';
@@ -203,7 +204,18 @@ export function InfoPanel(): JSX.Element | null {
             />
           )}
           {entry?.utility?.powerMW !== undefined && (
-            <Row label="Output" value={`${entry.utility.powerMW} MW`} />
+            <Row label="Nameplate" value={`${entry.utility.powerMW} MW`} />
+          )}
+          {entry?.utility?.powerMW !== undefined && (
+            <Row
+              label="Delivers"
+              value={`${formatMW(averageOutputMW(entry.utility))} MW${
+                entry.utility.capacityFactor !== undefined
+                  ? ` (${Math.round(entry.utility.capacityFactor * 100)}% of the year)`
+                  : ''
+              }`}
+              testId="plant-output-row"
+            />
           )}
           {entry?.utility?.waterKL !== undefined && (
             <Row label="Output" value={`${entry.utility.waterKL} kL`} />

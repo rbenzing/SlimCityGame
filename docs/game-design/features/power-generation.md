@@ -1,7 +1,7 @@
 # Power generation — design
 
-- **Status:** Draft
-- **Date:** 2026-09-18
+- **Status:** Draft; the two existing generators re-derived from published figures, the grid sized on nameplate × capacity factor and the turbine drawn at the size of its machine, agreed 2026-10-02 and built 2026-10-05 (see [The generators, re-derived](#the-generators-re-derived))
+- **Date:** 2026-09-18, baseline rewritten 2026-10-05
 
 ## What the player gets
 
@@ -14,28 +14,32 @@ willing to sit downwind of".
 
 ## Why it earns its place
 
-The city has two generators and nothing between them: a 6 MW wind turbine and a
-60 MW coal plant, both available at the first milestone, both placeable for ever.
-There is no rung above coal, so growth is answered by repetition.
+The city has two generators and nothing between them: a wind turbine that
+delivers 1.1 MW on average and a coal plant that delivers 26, both available at
+the first milestone, both placeable for ever. There is no rung above coal, so
+growth is answered by repetition.
 
-The arithmetic says how badly. Every zoned building carries a `powerUse` in MW,
-working out at 0.020 MW per resident across every residential entry above level
-1, plus roughly 0.035 MW per commercial job and 0.072 MW per industrial job. At
-the mix the growth rules produce — about 0.45 jobs per resident, split 60/40
-between commercial and industrial — a city draws about **0.044 MW per resident,
-all sectors**. So:
+The arithmetic is now honest on both sides. The building-types work made every
+zoned `powerUse` a surveyed average — a detached house 1.4 kW, a shop or a
+workshop tens of kilowatts, a heavy plant a megawatt or two — and the
+re-derivation below made every generator deliver its nameplate times the
+published share of the year its kind actually runs. A developed economy draws
+about 1.4 kW per person across every sector, so:
 
-| Milestone  | Residents | Peak demand | Coal plants | Tiles of coal plant |
-| ---------- | --------- | ----------- | ----------- | ------------------- |
-| Small Town | 400       | 18 MW       | 1           | 16                  |
-| Small City | 8,000     | 352 MW      | 6           | 96                  |
-| Grand City | 20,000    | 880 MW      | 15          | 240                 |
-| Metropolis | 50,000    | 2,200 MW    | 37          | 592                 |
+| Milestone  | Residents | Average demand | Coal plants | Turbines |
+| ---------- | --------- | -------------- | ----------- | -------- |
+| Small Town | 400       | 0.6 MW         | 1           | 1        |
+| Small City | 8,000     | 11 MW          | 1           | 10       |
+| Grand City | 20,000    | 28 MW          | 2           | 25       |
+| Metropolis | 50,000    | 70 MW          | 3           | 62       |
 
-Thirty-seven coal plants is 592 tiles of boiler hall and 37 × 140 pollution laid
-over the map — not a decision the player makes but a chore the map absorbs. The
-ladder replaces it: a Metropolis on two nuclear stations is 128 tiles and no
-smoke at all, and the whole game is what it costs to get there.
+Three coal plants is not a chore, so the ladder's case is no longer count. It
+is **choice**: a Metropolis on three coal plants is 420 pollution laid over
+three neighbourhoods and ¢2,400 a month in coal; on sixty-two turbines it is
+sixty-two machines 170 m tall and the land they stand over; the ladder is what
+sits between — a plant a town can afford, a station that carries a district
+cleanly, and the one project that carries half a city and has to be sited on the
+water.
 
 Serves the **city as a system** pillar in [../gdd.md](../gdd.md). A player who
 chose cheap-and-dirty over expensive-and-clean can trace the haze over their east
@@ -48,15 +52,20 @@ changes is what the player can build to answer it.
 
 ### The ladder
 
-| Plant                      | Output       | Footprint | Height   | Pollution | Cost         | Upkeep      | Unlocks at     |
-| -------------------------- | ------------ | --------- | -------- | --------- | ------------ | ----------- | -------------- |
-| Wind Turbine               | 6 MW         | 1×1       | 40 m     | —         | ¢3,000       | ¢100        | Tiny Village   |
-| **Gas Turbine**            | **30 MW**    | **2×2**   | **14 m** | **17**    | **¢1,600**   | **¢680**    | **Small Town** |
-| Coal Power Plant           | 60 MW        | 4×4       | 22 m     | 140       | ¢12,000      | ¢800        | Tiny Village   |
-| **Combined-Cycle Station** | **250 MW**   | **5×5**   | **28 m** | **41**    | **¢17,500**  | **¢3,500**  | **Small City** |
-| **Nuclear Station**        | **1,100 MW** | **8×8**   | **40 m** | **—**     | **¢535,000** | **¢11,600** | **Grand City** |
+| Plant                      | Nameplate    | Delivers    | Footprint | Height    | Pollution | Cost         | Upkeep      | Unlocks at     |
+| -------------------------- | ------------ | ----------- | --------- | --------- | --------- | ------------ | ----------- | -------------- |
+| Wind Turbine               | 3.4 MW       | 1.1 MW      | 1×1       | 103 m hub | —         | ¢320         | ¢9          | Tiny Village   |
+| **Gas Turbine**            | **30 MW**    | _to derive_ | **2×2**   | **14 m**  | **17**    | **¢1,600**   | **¢680**    | **Small Town** |
+| Coal Power Plant           | 60 MW        | 26 MW       | 4×4       | 22 m      | 140       | ¢12,000      | ¢800        | Tiny Village   |
+| **Combined-Cycle Station** | **250 MW**   | _to derive_ | **5×5**   | **28 m**  | **41**    | **¢17,500**  | **¢3,500**  | **Small City** |
+| **Nuclear Station**        | **1,100 MW** | _to derive_ | **8×8**   | **40 m**  | **—**     | **¢535,000** | **¢11,600** | **Grand City** |
 
-Bold rows are new. The three existing entries are untouched.
+Bold rows are new. The two existing entries carry the re-derived figures below;
+the new rows keep the draft's nameplate figures and will take capacity factors
+of their own when they are built — a gas turbine is a peaker that runs 14% of
+the year, a combined-cycle block 60%, a reactor 91%
+([EIA, Electric Power Monthly 6.07.A/B](https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_6_07_a)),
+which reorders the ladder's economics and is this draft's next revision.
 
 **The gas turbine is the cheap thing to build and the dear thing to run.** It
 costs ¢54 per MW against the coal plant's ¢200, and ¢22.70 per MW per month
@@ -128,34 +137,28 @@ belong in [../balancing.md](../balancing.md) once they stop moving.
 
 **Per-capita demand.** A developed economy consumes about 12,000 kWh of
 electricity per person per year, all sectors, which over 8,760 hours is an
-average draw of **1.37 kW**. National grids run an annual load factor of 0.55 to
-0.65, so peak is 1.5 to 1.8 times average; taking 1.6 gives a **peak of 2.2 kW,
-or 0.0022 MW, per person**. The catalog charges 0.044 MW per resident — **twenty
-times** that. A Small House at 0.1 MW is drawing 100 kW against a real
-household's 1.2 kW average and roughly 5 kW peak. The existing numbers are not
-realistic.
+average draw of **1.37 kW**. The catalog now draws that: the building-types
+work put every zoned entry on a surveyed average, and
+[the re-derivation below](#the-generators-re-derived) put every ploppable on
+one too. Supply is an average as well, a plant's nameplate times its capacity
+factor, so the grid compares like with like and a plant here serves the people
+its real counterpart does. The old convention — one catalog megawatt as the
+peak draw of twenty-three residents, kept because dividing demand by twenty
+would have deleted the problem — is gone, and the problem is smaller than the
+first draft said: see the table above.
 
-**We keep them, and state the convention instead.** One catalog megawatt is the
-peak draw of about **23 residents and their share of the city's jobs**. Three
-reasons. Dividing demand by twenty would make a single existing coal plant carry
-a city of 27,000 and delete the problem this epic exists to solve. `powerUse`
-sits on more than thirty catalog entries and is read directly by the cut rule
-above, so rescaling it is a whole-economy rebalance wearing a power epic's
-clothes. And the inflation is at least _consistent_ — every residential entry
-above level 1 lands on exactly 0.020 MW per resident, a convention rather than an
-accident. Water, by contrast, is honest: the tower's 400 kL serves 4,000
-residents at 0.1 each against a real 150 litres per person per day. Power is the
-one inflated dial.
-
-**Capacities** stay at real nameplate, which is where the gap shows up as
-gameplay: a plant here serves a twentieth of the people its real counterpart
-does, and that is what makes generation something a city can outgrow. An
-industrial gas turbine package runs 20–40 MW; we take **30**. A single-shaft
-combined-cycle block on an F-class machine runs 250–450 MW; we take the low end,
-**250**, so it does not swallow the ladder. A modern single-unit pressurised
-water reactor is the 1,100 MWe class. The existing 6 MW turbine is a real modern
-onshore machine and the existing 60 MW coal plant a real single subcritical unit,
-so both stay.
+**Capacities** are nameplate × capacity factor. An industrial gas turbine
+package runs 20–40 MW; we take **30**. A single-shaft combined-cycle block on
+an F-class machine runs 250–450 MW; we take the low end, **250**, so it does
+not swallow the ladder. A modern single-unit pressurised water reactor is the
+1,100 MWe class. The wind turbine is the average onshore machine installed in
+2023, **3.4 MW**, and the coal plant a **60 MW** unit at the small end of what
+is built and retired: the units retired in 2015 averaged 133 MW
+([EIA](https://www.eia.gov/todayinEnergy/detail.php?id=25272)), a 99 MW lignite
+unit opened in 2014
+([Great River Energy](https://greatriverenergy.com/electricity-sources/combined-heat-power/)),
+and the Department of Energy's small-modular coal band runs 50–350 MW
+([DOE](https://www.energy.gov/hgeo/articles/small-scale-modular-coal-fired-plants-future)).
 
 **Footprints** come from the plant's built plate at grade, not from floor area.
 [../../art/civic-massing.md](../../art/civic-massing.md) sizes a building by
@@ -184,16 +187,17 @@ reactor's 8×8 **breaks the six-tile rule deliberately**: that rule protects the
 siting of services a growing city needs everywhere, and a reactor is the one
 building meant to demand cleared ground.
 
-**The wind turbine's 1×1 is right and its 40 m is a period piece.** A modern
-turbine's spread footing is 18–22 m across, which is one tile exactly — the one
-catalog entry whose footprint is the tile rather than the 13.6 m body. But the
-kit builds a 34 m mast with 8.5 m blades, a rotor sweeping 266 m², and at the
-400–450 W per swept m² modern machines achieve that is a **110 kW turbine
-carrying a 6 MW nameplate**. An honest 6 MW rotor is 134 m across — **6.7
-tiles** — on a 110 m hub, more than twice the height of the tallest building in
-the catalog. We do not build that: the art bible's scale read is anchored on a
-46–52 m skyline, and one prop four times taller would break every proportion
-under it. The turbine stays a small machine with a large number on it.
+**The wind turbine's 1×1 is right, and it is now drawn at the size of its
+machine.** A modern turbine's spread footing is 18–22 m across, which is one
+tile exactly — the one catalog entry whose footprint is the tile rather than the
+13.6 m body. The first draft kept a 34 m mast with 8.5 m blades, a rotor
+sweeping 266 m² that at modern power densities is a 110 kW machine, because one
+prop three times the height of the tallest building would break the art bible's
+scale read. The decision went the other way on 2026-10-02: a real turbine
+towers over a town three times over, that is what it looks like, and a player
+should see the thing their figure describes. The kit now builds the 2023
+average — a 103 m hub, a 134 m rotor sweeping three tiles either side — and the
+art bible notes it as the one placeable drawn above the skyline on purpose.
 
 **Pollution** is derived from local air-pollutant intensity — nitrogen oxides,
 sulphur dioxide and fine particulates per MWh, with the controls a modern plant
@@ -216,23 +220,83 @@ is the first upgrade rather than the opening move), the combined-cycle station a
 Small City (352 MW), the reactor at Grand City (880 MW, one station covering it).
 
 **Costs** come from published overnight capital cost per kilowatt, scaled so the
-coal plant keeps its ¢12,000: ¢200 per MW stands for its $3,700/kW. A combustion
-turbine at $1,000/kW is 0.27 of that, a combined-cycle block at $1,300/kW is
-0.35, a reactor at $9,000/kW is 2.43. Published nuclear figures span $7,000/kW
-for an nth-of-a-kind estimate to $15,000/kW for recent Western first-of-a-kind
-actuals; we take the middle, because the low end makes the reactor strictly
-dominant and the high end makes it unbuyable.
+coal plant keeps its ¢12,000: ¢200 per MW stands for its $4,507/kW
+([EIA, AEO2023 cost and performance](https://www.eia.gov/outlooks/aeo/assumptions/pdf/elec_cost_perf.pdf)),
+¢1 for about $22,500. The draft's figures for the new rungs ($1,000/kW for a
+combustion turbine, $1,300/kW combined-cycle, $9,000/kW nuclear, the middle of
+a $7,000–15,000 range because the low end makes the reactor strictly dominant
+and the high end makes it unbuyable) are to be redone from the same table when
+they are built.
 
-**Upkeep** is fixed operations and maintenance plus fuel at full output, since
-the simulation runs every plant at nameplate continuously. Coal's $228 per kW per
-year anchors its ¢800 a month. A combustion turbine at a 10,500 Btu/kWh heat rate
-comes to $388 — the dearest on the list to run, a peaking plant's character
-exactly; a combined-cycle block at 6,400 Btu/kWh to $238, and a reactor to $181.
+**Upkeep** is fixed operations and maintenance plus fuel at the output a plant
+actually delivers. Coal's $8.65 million a year — $45.68 per kW-year fixed,
+$5.06 per MWh variable, and 8,638 Btu per kWh of coal at $2.47 per million Btu
+([EIA, Electric Power Annual 7.4](https://www.eia.gov/electricity/annual/html/epa_07_04.html))
+over the 224,000 MWh a 60 MW unit makes at 42.6% — anchors its ¢800 a month, ¢1
+a month for about $900 a year. The draft's gas, combined-cycle and nuclear
+figures assumed full output and will be redone with their factors.
 
-The wind turbine's ¢3,000 and ¢100 are **wrong on purpose**: the same method
-gives it ¢550 and ¢15, and a turbine delivering 6 MW every hour of every year for
-¢550 would dominate the ladder from one tile. Those figures are the correction
-for a capacity factor the simulation does not model, and they stay.
+The wind turbine is now the same method, honestly: $2,098/kW gives **¢320**,
+and $29.64 per kW-year of fixed cost with nothing to burn gives **¢9 a month**,
+for 1.1 MW delivered. It is the cheapest electricity on the list per megawatt,
+as onshore wind is, and it is no longer a free lunch on one tile because it
+delivers a third of the nameplate the first draft paid it for.
+
+## The generators, re-derived
+
+Built 2026-10-05, ahead of the ladder, as the last of the three
+water-and-sewage changes: once every zoned draw and every water figure was a
+surveyed average, the two generators were the last catalog numbers nobody
+could point at a source for. Each figure below is in `catalog.json` and
+checked by the catalog contract test.
+
+**Supply is nameplate × capacity factor.** `UtilitySpec.capacityFactor` is
+the published share of the year a plant of its kind runs at rating; the grid
+sums `powerMW × capacityFactor` and the inspector shows both. Coal's fleet ran
+at **42.6%** in 2024
+([EIA, Electric Power Monthly 6.07.A](https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_6_07_a)),
+so the 60 MW plant delivers **25.6 MW**. Wind's whole fleet, old small
+machines included, ran at 25%
+([6.07.B](https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_6_07_b));
+the modern fleet the catalog's turbine belongs to ran at **33.5%** in 2023,
+and the newest projects at 38%
+([LBNL, Land-Based Wind Market Report, 2024 edition](https://www.energy.gov/eere/wind/land-based-wind-market-report-2024-edition)).
+We take the modern fleet's figure, so the turbine delivers **1.14 MW**.
+
+**The turbine is the average new machine.** Turbines installed in the United
+States in 2023 averaged **3.4 MW**, a **103 m** hub and a **134 m** rotor
+(LBNL, above). A representative machine of that class has a 12.8 × 4.2 ×
+6.9 m nacelle, 66.7 m blades and a 4.2–4.3 m tower base
+([Vestas V136-3.45](https://www.vestas.ca/en-ca/onshore-wind-turbines/4-mw-platform/V136-3-45-MW)),
+which is what the kit draws. Its cost and upkeep are derived in Tuning above.
+
+**What a turbine costs in land is not modelled, and the design says so.** A
+wind project spreads 34 ha per megawatt, with turbines 5 to 10 rotor diameters
+apart, though only 0.3 ha per megawatt is pad and road
+([NREL, Denholm 2009](https://docs.nlr.gov/docs/fy09osti/45834.pdf)). One
+state's siting code keeps a turbine 1.1 tip heights from a property line and
+3.1 tip heights, or 1,250 ft, from a neighbour's house, for a night limit of
+45 dBA
+([Wisconsin PSC 128.13–14](https://docs.legis.wisconsin.gov/document/administrativecode/PSC%20128.14)).
+The catalog's turbine stays a one-tile placeable with no spacing rule: at the
+game's noise anchor distance its 104–106 dB(A) of sound power
+([Vestas V136-4.2](https://www.vestas.com/en/energy-solutions/onshore-wind-turbines/4-mw-platform/V136-4-2-MW))
+arrives from a hub 103 m up at about 54 dBA, below the noise field's floor,
+so it carries no `noise`; and a project-area rule would make a one-tile card
+absurd. A spacing rule is the honest next step if sixty turbines on sixty
+tiles turns out to be the dominant strategy.
+
+**The coal plant keeps its anchors.** Its ¢12,000, ¢800 and pollution of 140
+were chosen before any of this and everything else is scaled to them; the
+pollution anchor is itself tied to the Toxics Release Inventory (an electric
+utility released about half a million pounds in 2023, 388 facilities
+([EPA TRI](https://www.epa.gov/trinationalanalysis/electric-utilities-waste-management-trend))),
+which is where the zoned plants' figures hang. What it drinks is its staff's
+water: a plant of this size runs on about fifty people, and its cooling water
+is raw water from its own intake, not the city's, so `waterUse` is 5 kL a
+day, not the thousand a cooling tower evaporates. The incinerator's 120 stays
+a dial: municipal waste-to-energy plants do not report to the Inventory, so
+there is no like-for-like figure to derive it from.
 
 ## What it is not
 

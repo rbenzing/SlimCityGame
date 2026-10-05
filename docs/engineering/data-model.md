@@ -396,7 +396,7 @@ schema is `BuildingCatalogEntry` in `src/shared/types.ts`:
 | `noise`            | no       | `0..255` emitted at source into the Noise field.                                  |
 | `landValueBonus`   | no       | `0..255` emitted into the LandValue field.                                        |
 | `service`          | no       | `{ kind, strength: 0..255, range }` — a service building's spec.                  |
-| `utility`          | no       | `{ powerMW?, waterKL?, sewerKL?, effluent? }` — power and water produced, sewage taken, a day; `effluent` the share of a drain's load that reaches the water, `1` when absent (a raw outfall), `0.15` on the treatment works. |
+| `utility`          | no       | `{ powerMW?, capacityFactor?, waterKL?, sewerKL?, effluent? }` — nameplate power, water produced and sewage taken, a day; `capacityFactor` the share of the year a plant runs at rating (`1` when absent), the grid counting `powerMW × capacityFactor`; `effluent` the share of a drain's load that reaches the water, `1` when absent (a raw outfall), `0.15` on the treatment works. |
 | `garbage`          | no       | `{ collectionRange, bufferCapacity, burnRate, trucks }` — the incinerator's spec. |
 | `cost`             | yes      | `0` for grown buildings, plopping cost otherwise.                                 |
 | `upkeep`           | yes      | Per month.                                                                        |

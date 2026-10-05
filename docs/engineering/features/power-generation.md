@@ -1,6 +1,6 @@
 # Power generation — technical design
 
-- **Status:** Draft
+- **Status:** Draft; the baseline it builds on changed 2026-10-05 (nameplate × capacity factor, every ploppable's draw sourced, the turbine drawn at size)
 - **Date:** 2026-09-18
 - **Author:** Claude Opus 5
 
@@ -180,10 +180,15 @@ station of that class, and creates the same "site it out of town and run a line"
 decision.
 
 **Rescaling `powerUse` to reality**, and **raising the coal plant to a real
-600 MW unit.** Both rejected. Dividing demand by twenty makes one existing coal
-plant carry a city of 27,000 and deletes the problem; multiplying coal by ten
-makes the 6 MW turbine a hundredth of the next rung and collapses the bottom of
-the ladder, which is the half a new player actually meets.
+600 MW unit.** The first was rejected here and then done anyway, by the
+building-types work for every zoned entry and by the generators'
+re-derivation (2026-10-02) for every ploppable, and supply was made honest with
+it: a plant delivers nameplate × `capacityFactor`, read through
+`averageOutputMW` in `src/shared/power.ts`. The ladder's case moved from count
+to choice, and its rows take factors of their own when built. Raising the coal
+plant to 600 MW stays rejected: multiplying coal by ten makes the turbine's
+1.1 MW a two-hundredth of the next rung and collapses the bottom of the ladder,
+which is the half a new player actually meets.
 
 **Per-network supply islands.** Rejected here as its own epic — it changes what
 supply _means_ for every existing city, exactly the contract change this epic is
@@ -239,8 +244,9 @@ Looked at in a browser, because all three render:
 
 - Changing the cut rule, adding storage or a reserve margin, or making any supply
   vary with time.
-- Rescaling `powerUse` on any existing catalog entry, and re-sizing the coal plant
-  or the wind turbine — both are checked in the design document and stay.
+- Re-sizing the coal plant's nameplate. (Rescaling `powerUse`, the capacity
+  factor and the turbine's real size were done before this epic, by the
+  generators' re-derivation; this epic builds on them.)
 - Per-network supply islands, transmission losses, and anything that makes supply
   other than a single city-wide total. Settled dials live in
   [../../game-design/balancing.md](../../game-design/balancing.md); anything that

@@ -492,7 +492,8 @@ The building inspector names the kind: "Duplex", "Courtyard Apartments",
   later and a city of towers much sooner. The level ladder no longer adds
   people to a house; it adds homes to a block.
 - **Utilities.** A home's draw falls to its real average: a detached house
-  draws 1.4 kW where it drew 100 kW, so one 6 MW turbine lights about 4,000
+  draws 1.4 kW where it drew 100 kW, so one wind turbine, delivering 1.1 MW
+  on average once its capacity factor was modelled, lights about 800
   houses. Water stays near its old figure per person, so a 400 kL water tower
   serves about 1,200 people. Light industry draws tens of kilowatts where it
   drew megawatts; a heavy plant draws 0.3–2.4 MW and hundreds of kL of water

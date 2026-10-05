@@ -264,27 +264,37 @@ function buildStrutGeometry(
 // spinning slowly, pale bone white; a small red nacelle beacon at night.
 // ---------------------------------------------------------------------------
 
-export const TURBINE_MAST_HEIGHT = 34; // "~34m"
-const TURBINE_MAST_RADIUS_BOTTOM = 2; // "~2m base"
-const TURBINE_MAST_RADIUS_TOP = 1; // "-> 1m top"
-const TURBINE_NACELLE_SIZE = { w: 2.4, h: 2.2, d: 5.5 };
-const TURBINE_NACELLE_Z_OFFSET = -1.4; // nacelle center sits slightly ahead of the mast centerline
-const TURBINE_ROTOR_FORWARD_GAP = 0.6; // hub sits this far past the nacelle's own front face
-const TURBINE_HUB_RADIUS = 0.7;
+/**
+ * A real onshore machine of the class now being installed: the hub 103 m up
+ * and the rotor 134 m across, the averages of the turbines built in the
+ * United States in 2023 (Lawrence Berkeley National Laboratory, Land-Based
+ * Wind Market Report). The tallest building in the catalog stands 32 m; a
+ * turbine is meant to tower over a town, because a real one does.
+ */
+export const TURBINE_HUB_HEIGHT = 103;
+export const TURBINE_ROTOR_DIAMETER = 134;
+const TURBINE_NACELLE_SIZE = { w: 4.2, h: 4, d: 13 };
+export const TURBINE_MAST_HEIGHT = TURBINE_HUB_HEIGHT - TURBINE_NACELLE_SIZE.h / 2;
+const TURBINE_MAST_RADIUS_BOTTOM = 2.25; // a 4.5 m base
+const TURBINE_MAST_RADIUS_TOP = 1.5;
+const TURBINE_NACELLE_Z_OFFSET = -2.5; // nacelle center sits ahead of the mast centerline
+const TURBINE_ROTOR_FORWARD_GAP = 1.0; // hub sits this far past the nacelle's own front face
+const TURBINE_HUB_RADIUS = 1.8;
 export const TURBINE_BLADE_COUNT = 3; // "3-blade rotor"
-const TURBINE_BLADE_LENGTH = 8.5;
-const TURBINE_BLADE_ROOT_WIDTH = 0.9;
-const TURBINE_BLADE_TIP_WIDTH = 0.3;
-const TURBINE_BLADE_THICKNESS = 0.28;
-const TURBINE_BEACON_RADIUS = 0.5;
+/** Root to tip, so that the tip sweeps the rotor's radius from the hub's centre. */
+const TURBINE_BLADE_LENGTH = TURBINE_ROTOR_DIAMETER / 2 - TURBINE_HUB_RADIUS * 0.6;
+const TURBINE_BLADE_ROOT_WIDTH = 3.6;
+const TURBINE_BLADE_TIP_WIDTH = 0.7;
+const TURBINE_BLADE_THICKNESS = 1.3;
+const TURBINE_BEACON_RADIUS = 0.6;
 
 /** Pale bone white — same values as facade.ts's ROOF_PALETTE off-white/bone entry, duplicated locally per this subsystem's convention. */
 const TURBINE_BODY_RGB: RGB = [0.93, 0.91, 0.87];
 const TURBINE_ROTOR_RGB: RGB = [0.85, 0.83, 0.79];
 const TURBINE_BEACON_COLOR = 0xff2a2a;
 
-/** Slow ~0.5 rad/s. */
-export const TURBINE_ROTOR_ANGULAR_SPEED = 0.5;
+/** About 6 rpm, the slow end of a 3 MW-class rotor's 6–16 rpm; a 134 m rotor any faster reads as frantic from the air. */
+export const TURBINE_ROTOR_ANGULAR_SPEED = 0.65;
 const TURBINE_HASH_MULT = 4096;
 const TURBINE_HASH_SLOT_PHASE = 1;
 

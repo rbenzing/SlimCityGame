@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,710 tests passing across 156 test files, run 2026-10-02.
+**Test suite:** 4,721 tests passing across 157 test files, run 2026-10-05.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -89,17 +89,28 @@ same sewage at five times the price and fouls the water at a seventh of
 the rate. The figures and their sources are in
 [water-and-sewage.md](game-design/features/water-and-sewage.md).
 
+**Power is honest on both sides.** A generator counts for its nameplate times
+the published share of the year its kind runs: the wind turbine is the
+average new onshore machine, 3.4 MW at 33.5%, drawn at its 103 m hub and
+134 m rotor and priced from published $/kW at ¢320 and ¢9 a month; the coal
+plant keeps its 60 MW nameplate and its anchors and delivers 25.6 MW. Every
+civic ploppable's draw is now a surveyed figure too, floor area times the
+national building survey's intensity, so a police station draws 47 kW where
+it drew 600, and the airport 0.4 MW where it drew 8. The derivations are in
+[power-generation.md](game-design/features/power-generation.md#the-generators-re-derived)
+and [municipal-services.md](game-design/features/municipal-services.md#what-the-facilities-draw-derived-2026-10-05).
+
 **Open:**
 
-- **The power ploppables re-derived** the way the water ones were, the last
-  of the three water-and-sewage changes: a generator's supply as its
-  nameplate times a published capacity factor, the wind turbine a real
-  3 MW-class machine drawn at its real size, costs from published $/kW.
-- The coal plant's and the incinerator's pollution figures (140, 120) are
-  unsourced, and the zoned pollution scale now hangs off the coal plant's:
-  140 for an electric utility's 484,000 lb of releases a year. Re-deriving
-  the ploppables would move every plant's figure with them; the power
-  re-derivation above is where that happens.
+- The incinerator's pollution of 120 and its 2 kL of water are dials:
+  municipal waste-to-energy plants do not report to the Toxics Release
+  Inventory, so there is no like-for-like figure, and no water figure was
+  found. The pocket park's 0.2 kL is a dial too.
+- A wind turbine is a one-tile placeable with no spacing rule, while a real
+  project keeps turbines five to ten rotor diameters apart and a state code
+  keeps them 1.1 tip heights from a boundary. Sixty turbines on sixty
+  adjacent tiles is the honest way to power a Metropolis today; a spacing
+  rule is the next step if that turns out to be the dominant strategy.
 - The level 2 and 3 setback tiers (`computeSetbacks`) stand inside the
   full-height body the instancer draws, so the stepped silhouette
   [art/buildings.md](art/buildings.md) describes under "Silhouette variety"
@@ -123,10 +134,12 @@ the rate. The figures and their sources are in
 
 Before writing "not built" anywhere in this document, check the code.
 
-**Next:** the power ploppables re-derived, first in the Open list above.
-After that the [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper
-industry, more transit modes) and AI raster map packs, facade-atlas stage 2
-and screen-space AO/reflections are the shelf to pick from.
+**Next:** nothing is queued, so the next item is whatever is asked for next.
+The municipal services programme's epics
+([municipal-services.md](game-design/features/municipal-services.md)), the
+[DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
+transit modes) and AI raster map packs, facade-atlas stage 2 and screen-space
+AO/reflections are the shelf to pick from.
 
 ---
 
@@ -266,6 +279,33 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Power honest on both sides (agreed 2026-10-02, built 2026-10-05)
+
+The last of the three water-and-sewage changes
+([power-generation.md](game-design/features/power-generation.md#the-generators-re-derived)).
+
+- **A generator counts for nameplate × capacity factor**, the published
+  share of the year its kind runs at rating (`UtilitySpec.capacityFactor`,
+  `averageOutputMW`). The inspector shows a plant's nameplate and what it
+  delivers. The coal plant keeps its 60 MW, its ¢12,000, ¢800 and 140 as
+  the anchors, and delivers 25.6 MW at coal's 42.6%.
+- **The wind turbine is the average machine installed in 2023**: 3.4 MW at
+  the modern fleet's 33.5%, so 1.14 MW, enough for eight hundred houses;
+  ¢320 and ¢9 a month from published $/kW against the coal plant's anchors;
+  and drawn at its real size, a 103 m hub and a 134 m rotor sweeping three
+  tiles either side, the one placeable above the skyline on purpose.
+- **Every civic ploppable's draw is a surveyed figure**: floor area from the
+  massing rule times the national building survey's electricity intensity
+  for its activity, and water from the federal benchmarks. Police and fire
+  stations draw 47 kW and 4.5 and 9 kL, the clinic 69 kW, the school 60 kW,
+  the rail station 32 kW, the airport 0.4 MW and 175 kL for its four million
+  passengers, the incinerator a combustor's own 0.66 MW. Before this a
+  grown small town of 114 people drew 14 MW, almost all of it services.
+- **Tests**: the generators' and the civic figures each re-derived from
+  their sources in the catalog contract test; the helper; the inspector's
+  rows; the kit at its new size; and the full-grid fixture rebuilt on
+  honest figures.
 
 ### The water remembers: a fouled shore, a fouled intake, and a works (built 2026-10-02)
 
