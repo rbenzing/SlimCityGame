@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.33.3](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.33.2...slimcity-v1.33.3) (2026-10-05)
+
+
+### Bug Fixes
+
+* **roads:** a walled motorway grows its auxiliary lane, narrowing the shoulder, and the wall steps out with it ([2fe572b](https://github.com/rbenzing/SlimCityGame/commit/2fe572b91e10a2ad1aaa57743b923ff8fcc014a1))
+
 ## [1.33.2](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.33.1...slimcity-v1.33.2) (2026-10-05)
 
 
