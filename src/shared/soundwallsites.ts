@@ -1,8 +1,9 @@
 /**
  * Where a road's sound walls stand on the grid: which edge of a tile, and how
- * far across it. One answer for the noise field and the renderer alike, read
- * off the road's own section, never the drawn one, so neither needs the
- * approach walk to agree with the other.
+ * far across it. Which edge is one answer for the noise field and the renderer
+ * alike, read off the road's own section, so neither needs the approach walk
+ * to agree with the other; how far across is the renderer's alone, and follows
+ * the drawn section where the reader has one.
  */
 import { carriagewayHalfWidthOf, carriagewayShiftOf } from './roadprofile';
 import { flowDirection, RoadFlow, type RoadProfile } from './types';
@@ -26,6 +27,14 @@ export interface SoundWallReader {
   flowAt(x: number, z: number): number;
   /** Which neighbours the tile's road joins, one bit per edge. */
   maskAt(x: number, z: number): number;
+  /**
+   * The cross-section as drawn on this tile, with the auxiliary lane a slip
+   * road makes the motorway grow; the wall's face stands at ITS edge, so the
+   * lane runs inside the wall rather than under it. A reader that runs no
+   * approach walk (the noise field, which cares only which edge) leaves it
+   * out and the own section stands in.
+   */
+  drawnAt?(x: number, z: number): RoadProfile | null;
 }
 
 export interface SoundWallSite {
@@ -66,8 +75,9 @@ export function soundWallsAt(x: number, z: number, reader: SoundWallReader): Sou
 
   const mask = reader.maskAt(x, z);
   const alongX = runsAlongX(reader.flowAt(x, z), mask);
-  const shift = carriagewayShiftOf(section);
-  const reach = carriagewayHalfWidthOf(section);
+  const drawn = reader.drawnAt?.(x, z) ?? section;
+  const shift = carriagewayShiftOf(drawn);
+  const reach = carriagewayHalfWidthOf(drawn);
   const sites: SoundWallSite[] = [];
   const add = (edge: WallEdge, heightM: number, outward: -1 | 1): void => {
     if ((mask & edge) !== 0) return;

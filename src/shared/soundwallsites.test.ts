@@ -5,6 +5,7 @@ import {
   corridorHalfProfile,
   NO_EDITS,
   presetProfileForTier,
+  withAuxiliaryLane,
   worldOrderedProfile,
 } from './roadprofile';
 import { soundWallsAt, WALL_EDGE, type SoundWallReader } from './soundwallsites';
@@ -79,6 +80,27 @@ describe('where across the tile a wall stands', () => {
     expect(sites.map((s) => [s.outward, s.faceOffsetM])).toEqual([
       [-1, -reach],
       [1, reach],
+    ]);
+  });
+
+  it('follows the drawn section outward where the motorway grows an auxiliary lane, so the lane runs inside the wall', () => {
+    const own = tile(walled('both'), RoadFlow.East, EAST_WEST);
+    const section = own.sectionAt(0, 0)!;
+    const grown = withAuxiliaryLane(section, 1)!;
+    const sites = soundWallsAt(0, 0, { ...own, drawnAt: () => grown });
+    // The same two edges as ever: which edge is the own section's answer.
+    expect(sites.map((s) => s.edge)).toEqual([WALL_EDGE.north, WALL_EDGE.south]);
+    // The faces stand at the drawn carriageway's edges, which moved out by half
+    // the lane's width each; the one on the lane's side has the lane inside it.
+    const reach = carriagewayHalfWidthOf(grown);
+    expect(reach).toBeGreaterThan(carriagewayHalfWidthOf(section));
+    expect(sites.map((s) => s.faceOffsetM)).toEqual([-reach, reach]);
+    for (const site of sites)
+      expect(Math.abs(site.faceOffsetM) + 0.6).toBeLessThanOrEqual(10 + 1e-9);
+    // A reader with no drawn section, the noise field's, gets the own section's answer as before.
+    expect(soundWallsAt(0, 0, own).map((s) => s.faceOffsetM)).toEqual([
+      -carriagewayHalfWidthOf(section),
+      carriagewayHalfWidthOf(section),
     ]);
   });
 

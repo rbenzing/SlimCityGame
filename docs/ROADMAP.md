@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,731 tests passing across 158 test files, run 2026-10-05.
+**Test suite:** 4,735 tests passing across 158 test files, run 2026-10-05.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -127,9 +127,6 @@ not a test to fix.
   never shows; only their lids did, fighting the roof, until they were
   stopped a hair under it. Either the body should stop at the base tier or
   the art doc should stop promising the steps.
-- A walled motorway draws no auxiliary lane beside its slip roads: the wall
-  stands at the edge of the road's own section and takes the room the lane
-  would use. The lane is drawing only, so no traffic figure changes.
 - A roundabout's delay curve, `4 + 10x³`, is not the HCM's. The manual's
   single-lane entry delay (HCM 7th edition, Eq. 22-17) is
   `3600/c + 900T[(x − 1) + √((x − 1)² + (3600/c)x / 450T)] + 5·min(x, 1)`,
@@ -286,6 +283,21 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### A walled motorway grows its auxiliary lane (2026-10-05)
+
+The Open item the sound walls left. The lane is a width budget: it comes
+from the verge the tile has not spent, and a wall spends 0.6 m of that on
+each side, which left a walled three-lane motorway 0.7 m short of a lane.
+Now `withAuxiliaryLane` takes the verge first and then the hard shoulder on
+that side, down to 1.2 m, the motorway's own median-side shoulder and the
+4 ft a constrained section may narrow an outside shoulder to beside such a
+lane; the shoulder gives back what it lent as the lane closes over its
+taper, and the median side, already at the floor, grows none. The wall's
+base follows the drawn section out (`SoundWallReader.drawnAt`, which only
+the mirror supplies; the noise field reads edges and needs none), so the
+lane runs inside the wall. Looked at: the sound wall shots' ramp scene shows
+the lane inside the wall and the wall stepping out along the taper.
 
 ### Kerb cars ask the furniture's junction test (2026-10-05)
 
@@ -719,7 +731,9 @@ the height a choice ([design](game-design/features/sound-barriers.md),
   one InstancedMesh each, a bay at a time on the road's surface. A lamp column
   stands on the barrier in front of the panels, and a gantry spans over them.
 - **The town** walls its motorway past the town, laid over it with Replace.
-- **Open:** a walled motorway draws no auxiliary lane beside its slip roads.
+- **Open then, built 2026-10-05:** a walled motorway drew no auxiliary lane
+  beside its slip roads; it now narrows its shoulder for one and the wall
+  steps out with it.
 
 ### Lenses the right way up, and zoned land that says why it is empty (found and fixed 2026-10-01)
 

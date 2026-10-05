@@ -897,13 +897,16 @@ export function withCentreTurn(profile: RoadProfile): RoadProfile | null {
  *
  * It goes OUTSIDE everything the road already carries on that side, because
  * that is where the slip road arrives; the width comes from the verge the tile
- * has not spent, and never from the kerb reserve, since the lane still needs a
- * kerb outside it. `openness` is how far open it is, 0 to 1, the same taper a
- * turn bay opens over.
+ * has not spent, then from the hard shoulder on that side down to the least a
+ * shoulder keeps beside an auxiliary lane, and never from the kerb reserve,
+ * since the lane still needs a kerb outside it. `openness` is how far open it
+ * is, 0 to 1, the same taper a turn bay opens over; the shoulder gives back
+ * what it lent as the lane closes.
  *
  * Null where the width is not there. A tile that can afford the widest street
  * can afford this too, so the four-lane motorway — the road a slip road most
- * often meets — grows one; a cross-section already spending the tile does not.
+ * often meets — grows one, walled or not; a cross-section already spending the
+ * tile, with no shoulder to narrow, does not.
  */
 export function withAuxiliaryLane(
   profile: RoadProfile,
@@ -916,28 +919,53 @@ export function withAuxiliaryLane(
   const minimum = Math.min(target, TURN_POCKET_MIN_WIDTH_M);
   const reserve = hasFootway(profile) ? 0 : 2 * KERB_RESERVE_M;
   const slack = Math.max(0, TILE_METERS - profileWidth(profile) - reserve);
-  if (slack + 1e-9 < minimum) return null;
-  const width = Math.min(target, slack);
-
-  const flows = profile.pieces.filter((p) => p.kind === 'travel').map((p) => p.flow);
-  const lane: LanePiece = { kind: 'travel', width: width * open };
-  // It carries the traffic of the half it is added to, which is the half whose
-  // kerb it stands against.
-  const beside = side > 0 ? flows[flows.length - 1] : flows[0];
-  if (beside) lane.flow = beside;
 
   // Outside every running lane on that side, and inside everything that is not
   // one — a lane does not go behind the pavement, and it does not go outside
   // the hard shoulder either: a driver getting up to speed is on the road, not
   // past the line they are meant to pull over behind.
   const pieces = [...profile.pieces];
-  const at =
-    side > 0
-      ? lastIndexWhere(pieces, (p) => p.kind === 'travel') + 1
-      : firstIndexWhere(pieces, (p) => p.kind === 'travel');
+  const isTravel = (p: LanePiece): boolean => p.kind === 'travel';
+  const at = side > 0 ? lastIndexWhere(pieces, isTravel) + 1 : firstIndexWhere(pieces, isTravel);
+
+  // The shoulder the lane goes inside of lends what it has over the floor.
+  let shoulderAt = -1;
+  if (side > 0) {
+    shoulderAt = pieces.findIndex((p, i) => i >= at && p.kind === 'shoulder');
+  } else {
+    for (let i = at - 1; i >= 0; i--) {
+      if (pieces[i]!.kind === 'shoulder') {
+        shoulderAt = i;
+        break;
+      }
+    }
+  }
+  const shoulder = shoulderAt >= 0 ? pieces[shoulderAt]! : undefined;
+  const lendable = shoulder ? Math.max(0, shoulder.width - AUXILIARY_SHOULDER_MIN_M) : 0;
+  if (slack + lendable + 1e-9 < minimum) return null;
+  const width = Math.min(target, slack + lendable);
+  const borrowed = Math.max(0, width - slack);
+  if (shoulder && borrowed > 0) {
+    pieces[shoulderAt] = { ...shoulder, width: shoulder.width - borrowed * open };
+  }
+
+  const flows = profile.pieces.filter(isTravel).map((p) => p.flow);
+  const lane: LanePiece = { kind: 'travel', width: width * open };
+  // It carries the traffic of the half it is added to, which is the half whose
+  // kerb it stands against.
+  const beside = side > 0 ? flows[flows.length - 1] : flows[0];
+  if (beside) lane.flow = beside;
+
   pieces.splice(Math.max(0, at), 0, lane);
   return { ...profile, pieces };
 }
+
+/**
+ * The least a hard shoulder keeps beside an auxiliary lane, metres: 1.2 m, the
+ * motorway's own median-side shoulder and the 4 ft a constrained freeway
+ * section is allowed to narrow an outside shoulder to beside such a lane.
+ */
+export const AUXILIARY_SHOULDER_MIN_M = 1.2;
 
 /** Whether this cross-section can find the width for an auxiliary lane. */
 export function canGainAuxiliaryLane(profile: RoadProfile, side: -1 | 1): boolean {
