@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,753 tests passing across 158 test files, run 2026-10-06.
+**Test suite:** 4,754 tests passing across 158 test files, run 2026-10-06.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -117,6 +117,32 @@ not a test to fix.
   report to the Toxics Release Inventory, so there is no like-for-like
   figure, and no water figure was found. The pocket park's 0.2 kL is a dial
   too.
+- **The garbage scale is unsourced and fills a landfill in a day.** Found
+  by playing a whole city from the opening (2026-10-06): at 2/4/8 trash
+  units a building every 10 ticks, a town of 700 filled a 72-tile landfill
+  (43,200 units) before Small Town, after which every bin in its reach
+  backed up for good, and a 40-tile one was full by 1,800 people. The
+  units, the 600 a tile, the incinerator's 4,000 a pass and its 400,000
+  buffer are all dials with no real figure behind them, which the garbage
+  model says plainly. The sourced targets for the garbage-recovery epic
+  ([garbage-recovery.md](game-design/features/garbage-recovery.md)) to size
+  the whole chain on at once, since each number scales the others: US
+  municipal solid waste is 4.9 lb (2.2 kg) a person a day
+  ([EPA, Facts and Figures 2018](https://www.epa.gov/facts-and-figures-about-materials-waste-and-recycling/national-overview-facts-and-figures-materials));
+  waste compacted in place in a landfill is counted at 1,200 lb a cubic yard,
+  about 0.7 t/m³
+  ([Wis. Admin. Code NR 520.15](https://www.law.cornell.edu/regulations/wisconsin/Wis-Admin-Code-SS-NR-520-15)),
+  so a 400 m² tile piled 6 m holds about 1,700 t, some 760,000 person-days
+  of waste; the sixty US waste-to-energy plants average 34 MW
+  ([EIA](https://www.eia.gov/todayinenergy/detail.php?id=55900)), and about
+  2,200 t a day feeds a 50 MW plant
+  ([WtERT](https://wtert.org/wp-content/uploads/2020/10/nawtec07-16.pdf)),
+  so a typical plant burns roughly 1,500 t a day, the waste of some 700,000
+  people. On those figures a 40-tile landfill lasts a Metropolis about two
+  years and one incinerator serves any city the map can hold; a unit of 1 kg
+  with the per-tile lens byte rescaled is the simplest way to carry them.
+  Deferred to the epic because the pile height, the lens, the trucks and the
+  incinerator plume all read the same unit.
 
 Before writing "not built" anywhere in this document, check the code.
 
@@ -269,6 +295,24 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Three decisions from the whole-city play (decided 2026-10-06)
+
+The remaining findings of the validation run, each decided on the docs
+rather than changed on a hunch. **A zone over a built block** was refused
+as `invalid` when every tile under the stroke held a house; the rule — a
+building keeps the zone it grew on for life, a zone changes only empty land
+— stands, since a block densifies by the bulldozer as a real one does, and
+the refusal now says so and names the bulldozer, while a stroke with a gap
+in it still takes the gap. **The Small Town's deficit** — four services and
+a coal plant at 600 people cost ¢2,970 a month against ¢1,190 of tax — is
+the intended shape and is written into the economy with the measured
+figures: the grant and a loan carry the town, it is in surplus by 2,000
+people, and the unlock is permission, not advice. **The garbage scale**,
+which fills a landfill in a game day, is an Open item with the sourced
+figures (EPA 4.9 lb a person a day, 1,200 lb a cubic yard in place, EIA's
+34 MW average plant) for the garbage-recovery epic to size the whole chain
+on, since the pile, the lens, the trucks and the plume all read one unit.
 
 ### The zoning depth is the distance a lot may stand from its street (found and decided 2026-10-06)
 

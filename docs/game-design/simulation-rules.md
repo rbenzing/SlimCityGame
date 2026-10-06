@@ -105,7 +105,12 @@ and carry no road; painting anything other than a de-zone additionally
 requires the tile to be free of a building and inside the
 frontage-reachable set above. Clearing a zone is exempt from the frontage
 check, so a zone can always be removed, even from a tile a road no longer
-reaches. The zoning grid itself is drawn only while a zoning tool is the
+reaches. A zone therefore changes only empty land: a building keeps the
+zone it grew on for life, and a denser zone painted over a built-up block
+takes only the gaps, while the houses stand and level up as the kind they
+are. A stroke that falls wholly on buildings changes nothing and is refused
+with a reason that says so; the way to densify a built block is the
+bulldozer, as it is in a real town. The zoning grid itself is drawn only while a zoning tool is the
 active tool.
 
 ## Demand: the RCI model

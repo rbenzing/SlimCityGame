@@ -238,6 +238,9 @@ const ROAD_SPECS = (roadsData as { specs: RoadSpec[] }).specs;
 
 /** The road tool's refusal when its path crosses a standing building. */
 export const ROAD_THROUGH_BUILDING = 'A building stands in the way. Bulldoze it first.';
+/** The zone brush's refusal when every tile under it already holds a building. */
+export const ZONE_UNDER_BUILDINGS =
+  'Buildings stand on every tile. A zone changes only empty land; bulldoze first.';
 
 /** Ticks between snapshots: 20 ticks/s over 10 snapshots/s = 2. */
 const SNAPSHOT_TICKS = Math.max(1, Math.round(TICK_RATE / SNAPSHOT_HZ));
@@ -3149,7 +3152,13 @@ class SimWorld implements WorkerSim {
 
     const applied = setZones(g, tiles, zone, restore);
     if (applied.length === 0) {
-      return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+      // A zone changes only empty land: a building keeps the zone it grew on
+      // for life. A repaint over a built-up block changes nothing, and says so
+      // rather than reading as a stroke that missed.
+      const built =
+        zone !== ZoneType.None &&
+        tiles.some((t) => inBounds(t.x, t.z) && (g.buildingId[tileIndex(t.x, t.z)] ?? 0) !== 0);
+      return { ok: false, cost: 0, inverse: [], reason: built ? ZONE_UNDER_BUILDINGS : 'invalid' };
     }
 
     const byPrevZone = new Map<number, TilePoint[]>();
