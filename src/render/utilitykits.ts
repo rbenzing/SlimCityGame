@@ -265,28 +265,29 @@ function buildStrutGeometry(
 // ---------------------------------------------------------------------------
 
 /**
- * A real onshore machine of the class now being installed: the hub 103 m up
- * and the rotor 134 m across, the averages of the turbines built in the
- * United States in 2023 (Lawrence Berkeley National Laboratory, Land-Based
- * Wind Market Report). The tallest building in the catalog stands 32 m; a
- * turbine is meant to tower over a town, because a real one does.
+ * A real distributed-wind machine, the class a town or a works puts up for
+ * itself rather than a wind farm's: the EWT DW61, 1 MW on a 61 m rotor at a
+ * 69 m hub. The tallest building in the catalog stands 32 m; a turbine still
+ * stands over a town, as a real one does, but its blades sweep a tile and a
+ * half either side rather than three. The nacelle and the tower base are
+ * read off the machine's proportions, not a published drawing.
  */
-export const TURBINE_HUB_HEIGHT = 103;
-export const TURBINE_ROTOR_DIAMETER = 134;
-const TURBINE_NACELLE_SIZE = { w: 4.2, h: 4, d: 13 };
+export const TURBINE_HUB_HEIGHT = 69;
+export const TURBINE_ROTOR_DIAMETER = 61;
+const TURBINE_NACELLE_SIZE = { w: 3, h: 3, d: 7 };
 export const TURBINE_MAST_HEIGHT = TURBINE_HUB_HEIGHT - TURBINE_NACELLE_SIZE.h / 2;
-const TURBINE_MAST_RADIUS_BOTTOM = 2.25; // a 4.5 m base
-const TURBINE_MAST_RADIUS_TOP = 1.5;
-const TURBINE_NACELLE_Z_OFFSET = -2.5; // nacelle center sits ahead of the mast centerline
-const TURBINE_ROTOR_FORWARD_GAP = 1.0; // hub sits this far past the nacelle's own front face
-const TURBINE_HUB_RADIUS = 1.8;
+const TURBINE_MAST_RADIUS_BOTTOM = 1.65; // a 3.3 m base
+const TURBINE_MAST_RADIUS_TOP = 1.1;
+const TURBINE_NACELLE_Z_OFFSET = -1.5; // nacelle center sits ahead of the mast centerline
+const TURBINE_ROTOR_FORWARD_GAP = 0.8; // hub sits this far past the nacelle's own front face
+const TURBINE_HUB_RADIUS = 1.2;
 export const TURBINE_BLADE_COUNT = 3; // "3-blade rotor"
 /** Root to tip, so that the tip sweeps the rotor's radius from the hub's centre. */
 const TURBINE_BLADE_LENGTH = TURBINE_ROTOR_DIAMETER / 2 - TURBINE_HUB_RADIUS * 0.6;
-const TURBINE_BLADE_ROOT_WIDTH = 3.6;
-const TURBINE_BLADE_TIP_WIDTH = 0.7;
-const TURBINE_BLADE_THICKNESS = 1.3;
-const TURBINE_BEACON_RADIUS = 0.6;
+const TURBINE_BLADE_ROOT_WIDTH = 2.2;
+const TURBINE_BLADE_TIP_WIDTH = 0.5;
+const TURBINE_BLADE_THICKNESS = 0.9;
+const TURBINE_BEACON_RADIUS = 0.5;
 
 /** Pale bone white — same values as facade.ts's ROOF_PALETTE off-white/bone entry, duplicated locally per this subsystem's convention. */
 const TURBINE_BODY_RGB: RGB = [0.93, 0.91, 0.87];
@@ -831,7 +832,11 @@ function buildIncineratorStackGeometry(): THREE.BufferGeometry {
 
 /** Low tipping-bay box + a flat overhanging roof cap, merged; local Y=0 is the GROUND plane. */
 function buildIncineratorBayGeometry(): THREE.BufferGeometry {
-  const body = new THREE.BoxGeometry(INCINERATOR_BAY_WIDTH, INCINERATOR_BAY_HEIGHT, INCINERATOR_BAY_DEPTH);
+  const body = new THREE.BoxGeometry(
+    INCINERATOR_BAY_WIDTH,
+    INCINERATOR_BAY_HEIGHT,
+    INCINERATOR_BAY_DEPTH,
+  );
   body.translate(0, INCINERATOR_BAY_HEIGHT / 2, 0);
   paintVertexColor(body, hexFromRgb(INCINERATOR_BAY_RGB));
 
@@ -1403,7 +1408,16 @@ export class UtilityKitRenderer {
         this.applyWaterTower(kit, building, centerX, groundY, centerZ, rotation);
         return;
       case 'water-pump':
-        this.applyShorePair(kit, building, entry, 'pumpHouse', 'pumpIntake', centerX, groundY, centerZ);
+        this.applyShorePair(
+          kit,
+          building,
+          entry,
+          'pumpHouse',
+          'pumpIntake',
+          centerX,
+          groundY,
+          centerZ,
+        );
         return;
       case 'water-drain':
         this.applyShorePair(
@@ -1612,7 +1626,11 @@ export class UtilityKitRenderer {
 
     this.instances.set(building.id, {
       catalogId: building.catalogId,
-      slots: { incineratorHall: [hallSlot], incineratorStack: [stackSlot], incineratorBay: [baySlot] },
+      slots: {
+        incineratorHall: [hallSlot],
+        incineratorStack: [stackSlot],
+        incineratorBay: [baySlot],
+      },
     });
   }
 

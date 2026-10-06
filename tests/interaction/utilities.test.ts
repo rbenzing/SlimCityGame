@@ -68,6 +68,33 @@ describe('a generator that cannot deliver says so', () => {
   });
 });
 
+describe('a wind turbine keeps its rotor out of its neighbour’s', () => {
+  it('refuses a second turbine with fewer than three clear tiles between, in any direction, and takes one at three', () => {
+    const h = initialized();
+    const turbine = (x: number, z: number) =>
+      run(h, x * 1000 + z, [
+        { kind: 'placeBuilding', catalogId: 'wind-turbine', x, z, rotation: 0 },
+      ]).ok;
+    expect(
+      run(h, 1, [
+        { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 60, 20) },
+        { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 64, z: 59, rotation: 0 },
+      ]).ok,
+    ).toBe(true);
+    // One or two clear tiles along the street, or two diagonally, are too close.
+    expect(turbine(66, 59)).toBe(false);
+    expect(turbine(67, 59)).toBe(false);
+    expect(turbine(67, 56)).toBe(false);
+    // Three clear tiles put the centres 80 m apart, more than a rotor: it stands.
+    expect(turbine(68, 59)).toBe(true);
+    // Another kind of building may stand right beside a turbine.
+    expect(
+      run(h, 5, [{ kind: 'placeBuilding', catalogId: 'water-tower', x: 65, z: 57, rotation: 0 }])
+        .ok,
+    ).toBe(true);
+  });
+});
+
 describe('zoning down a gravel road, which carries no power', () => {
   /**
    * A street with a turbine and a tower on it and no drain, a gravel road

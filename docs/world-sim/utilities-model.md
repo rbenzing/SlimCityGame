@@ -11,9 +11,10 @@ generator's `powerMW` is its nameplate and its `capacityFactor` the published
 share of the year a plant of its kind runs at rating; the grid counts the
 product (`averageOutputMW`), and the inspector shows both. The catalog holds a
 coal plant (4×4, 60 MW nameplate at 42.6%, so 25.6 MW delivered, 140
-pollution, ¢12,000 to build, ¢800/month upkeep), a wind turbine (1×1, the
-average new onshore machine: 3.4 MW at 33.5%, so 1.14 MW, drawn at its 103 m
-hub and 134 m rotor, no pollution, ¢320, ¢9/month — every figure derived in
+pollution, ¢12,000 to build, ¢800/month upkeep), a wind turbine (1×1, a
+distributed-wind machine: 1 MW at 20%, so 0.2 MW, drawn at its 69 m hub and
+61 m rotor, no pollution, ¢190, ¢3/month, keeping three clear tiles from any
+other turbine so no rotor sweeps another's — every figure derived in
 [../game-design/features/power-generation.md](../game-design/features/power-generation.md#the-generators-re-derived)),
 a water tower (2×2, 378.5 kL — a 100,000-gallon tank on its
 borehole, turned over once a day — ¢2,500, ¢120/month), a water pumping
