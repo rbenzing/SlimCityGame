@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FieldSim } from './fields';
+import { FieldSim, LAND_VALUE_BANK, LAND_VALUE_BASE } from './fields';
 import { FieldId, FIELD_COUNT, type GraphEdge, type GridState } from '../shared/types';
 import { MAP_SIZE, tileIndex } from '../shared/constants';
 import { createGrid } from '../world/grid';
@@ -299,6 +299,37 @@ describe('FieldSim land value proximity formula', () => {
     expect(lv[idxA]).toBe(23);
     // B: gain = (255-200)>>5=1, +0, +0 => 1; loss = 200>>3=25 + floor(180/12)=15 + floor(150/10)=15 => 55
     expect(lv[idxB]).toBe(0); // 0 + 1 - 55 clamps to 0
+  });
+
+  it('settles: bare clean ground below the level-2 threshold, a river bank above it, a polluted tile near nothing', () => {
+    const sim = new FieldSim();
+    const g = makeGrid();
+    const clean = tileIndex(128, 128);
+    const bank = tileIndex(60, 60);
+    const dirty = tileIndex(200, 200);
+    // A river two tiles wide, so the bank is a line and not a lone tile.
+    for (let z = 20; z < 100; z++) g.water[tileIndex(61, z)] = g.water[tileIndex(62, z)] = 1;
+    // Only land value's own slots run, with the pollution over the dirty
+    // block held where a light works would keep its neighbourhood.
+    for (let tick = 0; tick < 8 * 400; tick += 8) {
+      for (let dz = -4; dz <= 4; dz++) {
+        for (let dx = -4; dx <= 4; dx++) {
+          g.fields[FieldId.Pollution]![tileIndex(200 + dx, 200 + dz)] = 40;
+        }
+      }
+      sim.tick(g, tick);
+    }
+    const lv = g.fields[FieldId.LandValue]!;
+    expect(lv[clean]).toBe(LAND_VALUE_BASE);
+    expect(lv[clean]).toBeLessThan(140);
+    expect(lv[bank]).toBe(LAND_VALUE_BANK);
+    expect(lv[bank]).toBeGreaterThan(140);
+    expect(lv[bank]).toBeLessThan(190);
+    expect(lv[dirty]).toBeLessThan(60);
+    // Nowhere on an empty, waterless map does the field saturate.
+    let saturated = 0;
+    for (let i = 0; i < lv.length; i++) if (lv[i] === 255) saturated++;
+    expect(saturated).toBe(0);
   });
 });
 

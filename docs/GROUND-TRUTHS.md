@@ -531,6 +531,16 @@ MUTCD citations below use 11th-edition section numbers.
   `(period, offset)` slot. —
   [environmental-simulation.md](world-sim/environmental-simulation.md);
   `src/sim/fields.ts`
+- A field fed a gain every pass has an equilibrium only through its decay,
+  and the decay is set for the thresholds that read the field. Land value's
+  (243/256) settles bare clean ground at 119, under the level-2 line, and a
+  river bank at 181, over it: a level-up is earned by water, trees, a park or
+  a clean quiet street, never by waiting. At 255/256 the field saturated the
+  whole map within thirty seconds of a new game and every reader of it —
+  level-ups, spawn desirability, the tax factor — read a constant. —
+  [environmental-simulation.md](world-sim/environmental-simulation.md);
+  `LAND_VALUE_DECAY_NUM`, `LAND_VALUE_BASE` and `LAND_VALUE_BANK` in
+  `src/sim/fields.ts`
 - Happiness is rewritten wholesale by `computeHappiness` every pass. No feature
   writes to it, diffuses it or emits into it; services and recreation reach it
   only through the fields it reads. —

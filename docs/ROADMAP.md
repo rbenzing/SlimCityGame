@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,752 tests passing across 158 test files, run 2026-10-06.
+**Test suite:** 4,753 tests passing across 158 test files, run 2026-10-06.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -269,6 +269,21 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Land value settles, so a level-up is earned (found and decided 2026-10-06)
+
+The whole-city play read land value 255 over homes, industry and the empty
+far corner alike, and an empty map reached 255 by tick 600. The field is fed
+a gain of up to seven on every tile every pass and decayed at 255/256, so it
+had no equilibrium short of saturation, and the level-up thresholds, spawn
+desirability, the tax factor and the lots-and-land bands all read a
+constant. The decay is now 243/256, chosen for the thresholds that read the
+field: bare clean ground settles at 119, under the level-2 line, a river
+bank at 181, over it and under the level-3 line, a block under a works'
+pollution below 60. Nothing else in the formula moved. The spec, the
+balancing table, the simulation rules and the lots design say what the
+figures are and why; the growth and town suites pass unchanged, since their
+towns level up on the parks, water and clean streets they already have.
 
 ### A road through a building is refused, not laid in pieces (found and fixed 2026-10-06)
 

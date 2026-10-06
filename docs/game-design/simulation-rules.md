@@ -266,7 +266,11 @@ A newly spawned or newly leveled-up building spends `CONSTRUCTION_TICKS` =
 Every growth pass, an Active building below level 3 is checked for a
 level-up. A home or a shop needs the land value over its tile to exceed 140
 (to reach level 2) or 190 (to reach level 3); residential buildings reaching
-level 3 additionally need the tile's education field over 60. **Industry
+level 3 additionally need the tile's education field over 60. Land value is
+earned, not waited for: bare clean ground settles at 119, under the first
+line, a river bank at 181, over it, and only a park, trees or the shore
+together with a quiet clean street carry a tile past the second
+([../world-sim/environmental-simulation.md](../world-sim/environmental-simulation.md#landvalue-fieldidlandvalue--0)). **Industry
 grows on its order book, not its neighbourhood:** a works levels up while
 industrial demand is above zero, and land value, which pushes real industry
 out of town, plays no part, for a plant as for a farm. A catalog entry of the

@@ -66,6 +66,19 @@ loss = pollution >> 3                // −pollution/8
 next = clamp(diffused + gain − loss)
 ```
 
+The field is fed a gain on every tile every pass, so its decay is what gives
+it an equilibrium, and the decay is set for the thresholds that read it:
+`LAND_VALUE_DECAY_NUM` = 243/256 settles bare, clean, quiet, treeless ground
+away from water at **119**, under the level-2 line of 140, and a tile along a
+straight river bank at **181**, over it and under the level-3 line of 190
+(the bank's +6 is shared with the row behind by diffusion, so a lone water
+tile is worth much less than a shore). A block under a light works' 40
+pollution settles below 60; a street's 24 noise alone holds ground near 80.
+A level-up is earned by water, trees, a park or a clean quiet street, never
+by waiting: at the old decay of 255/256 the field had no equilibrium short
+of saturation and the whole map read 255 within thirty seconds of a new
+game, so every reader of it was reading a constant.
+
 A park's coverage additionally adds a flat bonus directly to this field
 (quarter of coverage value, plus a one-time `landValueBonus` on the park's
 own footprint) — see [services-model.md](services-model.md#coverage-and-funding).
