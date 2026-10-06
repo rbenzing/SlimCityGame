@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.35.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.35.0...slimcity-v1.35.1) (2026-10-06)
+
+
+### Bug Fixes
+
+* **lots:** lots stand on their ground ([9dc829d](https://github.com/rbenzing/SlimCityGame/commit/9dc829dc63990847e6b99ebe42cd88b1a6b85b3a))
+* **lots:** lots stand on their ground ([fbc89fe](https://github.com/rbenzing/SlimCityGame/commit/fbc89feac4285c9a5220c71392d1b182d2788786))
+* **pedestrians:** people walk the footway and go in by the door ([bdd4d6c](https://github.com/rbenzing/SlimCityGame/commit/bdd4d6c668fb8fef133932ab429afb132d86b908))
+* **pedestrians:** people walk the footway and go in by the door ([4d25769](https://github.com/rbenzing/SlimCityGame/commit/4d2576950b0f5074ba50ea685dd6bb08b26cafe2))
+
 ## [1.35.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.34.0...slimcity-v1.35.0) (2026-10-06)
 
 
