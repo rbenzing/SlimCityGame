@@ -4,7 +4,7 @@ import {
   PedestrianRenderer,
   computeIdlePlacements,
   computeWalkAnchor,
-  computeWalkOffset,
+  computeWalkPath,
   computeWalkerBuildingIds,
   idleCountForStop,
   idleOffset,
@@ -12,6 +12,9 @@ import {
   isWalkerBuilding,
   walkAnchorOffset,
   walkerTint,
+  walkSample,
+  WALK_CYCLE_WITH_DOOR_MS,
+  WALK_PERIOD_MS,
   WALK_ANCHOR_SEARCH_TILES,
   IDLE_MIN_PER_STOP,
   IDLE_MAX_PER_STOP,
@@ -231,79 +234,93 @@ describe('isWalkerBuilding / computeWalkerBuildingIds (pure)', () => {
   });
 });
 
-describe('computeWalkOffset / walkAnchorOffset (pure)', () => {
-  it('is deterministic for the same (buildingId, tMs)', () => {
-    expect(computeWalkOffset(7, 3000)).toEqual(computeWalkOffset(7, 3000));
+describe('computeWalkPath / walkSample (pure)', () => {
+  // A two-lane street as the frontage lookup reads it: 4.35 m of verge, then
+  // a 1.875 m footway, then the kerb — so the footway's middle is 4.7 m in
+  // from the road tile's centre toward the lot.
+  const twoLane = (): { vergeM: number; sidewalkM: number } => ({ vergeM: 4.35, sidewalkM: 1.875 });
+
+  it('anchors on the footway INSIDE the road tile, never on the lot', () => {
+    const b = building(5, 10, 10);
+    // The street runs east-west along z = 9, right against the house.
+    const roadAt = (x: number, z: number): boolean => z === 9 && x >= 0 && x <= 20;
+    const plan = computeWalkPath(b, roadAt, twoLane);
+    // From the road tile's centre, toward the house (+z), past verge and kerb.
+    expect(plan.anchor.z).toBeCloseTo((9 + 0.5) * TILE_METERS + (10 - 4.35 - 1.875 / 2), 6);
+    expect(plan.anchor.x).toBeCloseTo((10 + 0.5) * TILE_METERS, 6);
+    expect(plan.alongX).toBe(true);
+    // Which is the road tile's own ground, not the house's tile.
+    expect(plan.anchor.z).toBeLessThan(10 * TILE_METERS);
   });
 
-  it('advances (changes) as tMs increases', () => {
-    const a = computeWalkOffset(7, 0);
-    const b = computeWalkOffset(7, 4000);
-    const c = computeWalkOffset(7, 8000);
-    expect(a).not.toEqual(b);
-    expect(b).not.toEqual(c);
+  it('without a street section, puts the footway a footway-width in from the tile edge', () => {
+    const b = building(5, 10, 10);
+    const roadAt = (x: number, z: number): boolean => x === 12 && z >= 0 && z <= 20;
+    const plan = computeWalkPath(b, roadAt);
+    expect(plan.anchor.x).toBeCloseTo(12 * TILE_METERS + 1.875 / 2, 6);
+    expect(plan.alongX).toBe(false);
   });
 
-  // Walkers range along the pavement and barely at all across it: that is what
-  // reads as walking down a street rather than pacing rings around a house.
-  // Still bounded, so nobody wanders off across the map.
-  it('ranges along the pavement but stays on it across', () => {
-    const alongBound = TILE_METERS * 1.8 + 1e-6; // max half-length
-    const acrossBound = TILE_METERS * 0.11 * 1.3 + 1e-6; // max half-width
-    for (const alongX of [true, false]) {
-      let alongSeen = 0;
-      for (let t = 0; t < 40000; t += 777) {
-        const s = computeWalkOffset(11, t, alongX);
-        const along = alongX ? s.dx : s.dz;
-        const across = alongX ? s.dz : s.dx;
-        expect(Math.abs(along)).toBeLessThanOrEqual(alongBound);
-        expect(Math.abs(across)).toBeLessThanOrEqual(acrossBound);
-        alongSeen = Math.max(alongSeen, Math.abs(along));
-      }
-      // And they really do cover ground, rather than shuffling on the spot.
-      expect(alongSeen).toBeGreaterThan(TILE_METERS * 0.5);
+  it('strolls along the pavement and barely across it, and covers ground', () => {
+    const plan = computeWalkPath(building(11, 10, 10), (_x, z) => z === 9, twoLane);
+    let alongSeen = 0;
+    for (let t = 0; t < 40000; t += 777) {
+      const s = walkSample(plan, 11, t);
+      const along = Math.abs(s.x - plan.anchor.x);
+      const across = Math.abs(s.z - plan.anchor.z);
+      expect(along).toBeLessThanOrEqual(TILE_METERS * 1.8 + 1e-6);
+      expect(across).toBeLessThanOrEqual(0.6 + 1e-6);
+      alongSeen = Math.max(alongSeen, along);
     }
+    expect(alongSeen).toBeGreaterThan(TILE_METERS * 0.5);
   });
 
-  it('walks the axis of the pavement it was given', () => {
-    const ew = computeWalkOffset(11, 3000, true);
-    const ns = computeWalkOffset(11, 3000, false);
-    // The same walker on a north-south street travels in z where an east-west
-    // one travels in x — the path is mirrored across the diagonal, not reused.
-    expect(ns.dz).toBeCloseTo(ew.dx, 6);
-    expect(ns.dx).toBeCloseTo(ew.dz, 6);
+  it('is deterministic and periodic: the same clock gives the same place, a full cycle later too', () => {
+    const plan = computeWalkPath(building(7, 10, 10), (_x, z) => z === 9, twoLane);
+    expect(walkSample(plan, 7, 3000)).toEqual(walkSample(plan, 7, 3000));
+    const a = walkSample(plan, 7, 1234);
+    const b = walkSample(plan, 7, 1234 + WALK_PERIOD_MS);
+    expect(b.x).toBeCloseTo(a.x, 6);
+    expect(b.z).toBeCloseTo(a.z, 6);
+    expect(walkSample(plan, 7, 0)).not.toEqual(walkSample(plan, 7, 4000));
   });
 
-  it('traces a CLOSED loop (position returns after one full period) — not an open back-and-forth line', () => {
-    const period = 16_000;
-    const a = computeWalkOffset(11, 1234);
-    const b = computeWalkOffset(11, 1234 + period);
-    expect(b.dx).toBeCloseTo(a.dx, 6);
-    expect(b.dz).toBeCloseTo(a.dz, 6);
-  });
-
-  it('heading turns smoothly around the loop rather than snapping between two opposite directions', () => {
-    // Sample many headings; the old ping-pong produced only 2 distinct values.
+  it('turns smoothly at each end rather than snapping between two headings', () => {
+    const plan = computeWalkPath(building(11, 10, 10), (_x, z) => z === 9, twoLane);
     const headings = new Set<number>();
-    for (let t = 0; t < 16_000; t += 500) {
-      headings.add(Math.round(computeWalkOffset(11, t).heading * 100));
+    for (let t = 0; t < WALK_PERIOD_MS; t += 250) {
+      headings.add(Math.round(walkSample(plan, 11, t).heading * 100));
     }
     expect(headings.size).toBeGreaterThan(8);
+  });
+
+  it('with a front door, walks the straight path from the pavement to the door and back', () => {
+    const door = { x: (10 + 0.5) * TILE_METERS, z: 10 * TILE_METERS + 5.5 };
+    const plan = computeWalkPath(building(11, 10, 10), (_x, z) => z === 9, twoLane, door);
+    expect(plan.door).toEqual(door);
+    let reachedDoor = false;
+    let farthestFromPavement = 0;
+    for (let t = 0; t < WALK_CYCLE_WITH_DOOR_MS; t += 50) {
+      const s = walkSample(plan, 11, t);
+      if (Math.hypot(s.x - door.x, s.z - door.z) < 0.05) reachedDoor = true;
+      const offPavement = s.z - plan.anchor.z;
+      farthestFromPavement = Math.max(farthestFromPavement, offPavement);
+      // Off the pavement means on the path: the straight line to the door.
+      if (offPavement > 1) expect(Math.abs(s.x - door.x)).toBeLessThan(0.05);
+    }
+    expect(reachedDoor).toBe(true);
+    expect(farthestFromPavement).toBeCloseTo(door.z - plan.anchor.z, 1);
+    // And the cycle closes where it opened.
+    const a = walkSample(plan, 11, 500);
+    const b = walkSample(plan, 11, 500 + WALK_CYCLE_WITH_DOOR_MS);
+    expect(b.x).toBeCloseTo(a.x, 6);
+    expect(b.z).toBeCloseTo(a.z, 6);
   });
 
   it('walkAnchorOffset is deterministic and nonzero', () => {
     const a = walkAnchorOffset(3);
     expect(walkAnchorOffset(3)).toEqual(a);
     expect(Math.hypot(a.x, a.z)).toBeGreaterThan(0);
-  });
-
-  it('computeWalkAnchor lands on the frontage tile next to the nearest road (one step back toward the building)', () => {
-    const b = building(5, 10, 10);
-    // A road tile two east of the building; frontage is one east (10+1, 10).
-    const roadAt = (x: number, z: number): boolean => x === 12 && z === 10;
-    const anchor = computeWalkAnchor(b, roadAt);
-    expect(anchor.x).toBeCloseTo((11 + 0.5) * TILE_METERS, 6); // tileToWorld(11)
-    expect(anchor.z).toBeCloseTo((10 + 0.5) * TILE_METERS, 6);
   });
 
   it('computeWalkAnchor falls back beside the building when no road is within search range', () => {
@@ -316,7 +333,6 @@ describe('computeWalkOffset / walkAnchorOffset (pure)', () => {
 
   it('WALK_ANCHOR_SEARCH_TILES bounds the road search', () => {
     const b = building(5, 10, 10);
-    // Road just past the search radius -> not found -> fallback.
     const far = 10 + WALK_ANCHOR_SEARCH_TILES + 1;
     const anchor = computeWalkAnchor(b, (x, z) => x === far && z === 10);
     const off = walkAnchorOffset(5);

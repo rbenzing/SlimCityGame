@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,755 tests passing across 158 test files, run 2026-10-06.
+**Test suite:** 4,754 tests passing across 158 test files, run 2026-10-06.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -295,6 +295,21 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### People walk the footway and go in by the door (reported and fixed 2026-10-06)
+
+The user's screenshot again: people walking through houses. A walker's
+stroll was anchored on "the tile one step back from the road toward the
+building", which is the lot's first row — the lawn, or for a house whose
+footprint touches the street, the house. The footway is on the road tile,
+between the street's verge and its kerb, where the street lookup already
+measures it for the house kit's lawn and drive; the walker now anchors there
+and strolls out and back along it, barely across it. And since the house kit
+draws a front door and a path to it, the walker uses them: each cycle leaves
+the pavement, walks the kit's straight path to the door and comes back, so
+the people and the lot plan agree about where the door is. The dev-hook
+audit now checks the anchor stands on a road tile. Looked at: a person on
+the footway strip in front of their house, off the lawn.
 
 ### Lots stand on their ground (reported and fixed 2026-10-06)
 
