@@ -31,9 +31,10 @@ guardRoadNetwork();
  */
 const FIRST_TOWN: Command[] = [
   { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 49, 32) },
+  // Two turbines, three clear tiles apart so their rotors clear each other.
   { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 48, rotation: 0 },
-  { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 61, z: 48, rotation: 0 },
-  { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 47, rotation: 0 },
+  { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 64, z: 48, rotation: 0 },
+  { kind: 'placeBuilding', catalogId: 'water-tower', x: 66, z: 47, rotation: 0 },
   { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(60, 50, 16, 2) },
   { kind: 'paintZone', zone: ZoneType.Industrial, tiles: rows(76, 50, 16, 2) },
   { kind: 'paintZone', zone: ZoneType.ComLow, tiles: rows(66, 47, 26, 2) },

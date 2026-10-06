@@ -32,8 +32,8 @@ describe('a small town grows the way a farming or mill town does', () => {
       h.ticks(1);
       send(h, 2, [
         { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 48, rotation: 0 },
-        { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 61, z: 48, rotation: 0 },
-        { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 47, rotation: 0 },
+        { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 64, z: 48, rotation: 0 },
+        { kind: 'placeBuilding', catalogId: 'water-tower', x: 66, z: 47, rotation: 0 },
         { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(60, 50, 16, 2) },
         { kind: 'paintZone', zone: ZoneType.Industrial, tiles: rows(76, 50, 16, 2) },
         { kind: 'paintZone', zone: ZoneType.ComLow, tiles: rows(66, 47, 26, 2) },
@@ -187,7 +187,8 @@ describe('a heavy industrial estate', () => {
       ]);
       h.ticks(1);
       send(h, 2, [
-        { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 40, z: 59, rotation: 0 },
+        // Heavy plants draw by the megawatt: a coal plant, not a village turbine.
+        { kind: 'placeBuilding', catalogId: 'coal-plant', x: 64, z: 56, rotation: 0 },
         ...pondAndDrain({ x: 42, z: 58 }, { x: 42, z: 59 }),
         // Heavy plants drink by the hundreds of kL a day: towers enough for a few.
         ...[44, 47, 50, 53, 56, 59].map((x) => ({

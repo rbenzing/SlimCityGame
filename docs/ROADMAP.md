@@ -117,11 +117,6 @@ not a test to fix.
   report to the Toxics Release Inventory, so there is no like-for-like
   figure, and no water figure was found. The pocket park's 0.2 kL is a dial
   too.
-- A wind turbine is a one-tile placeable with no spacing rule, while a real
-  project keeps turbines five to ten rotor diameters apart and a state code
-  keeps them 1.1 tip heights from a boundary. Sixty turbines on sixty
-  adjacent tiles is the honest way to power a Metropolis today; a spacing
-  rule is the next step if that turns out to be the dominant strategy.
 
 Before writing "not built" anywhere in this document, check the code.
 
@@ -270,6 +265,26 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The turbine sized to the map, with a rotor's clearance (asked for and built 2026-10-05)
+
+The 3.4 MW wind-farm machine of 2026-10-02 was too large for the map once
+played: a city block under one rotor, and no honest spacing rule under nine
+tiles. The user asked for a correctly scaled turbine and a spacing a row of
+them could still be joined by power lines. The machine is now sized to the
+map and the figures follow it: a distributed-wind machine, the EWT DW61,
+1 MW on a 61 m rotor at a 69 m hub, at the distributed-wind reports' 20%
+and $4,310/kW, so ¢190, ¢3 a month and 0.2 MW delivered, about a hundred and
+forty houses. A new catalog field, `spacing`, keeps clear tiles between a
+building and another of its kind; the turbine's three put centres 80 m apart
+against a 61 m rotor, the physical minimum, with the wake loss a real farm
+pays for packing that tight not modelled and said so. The worker refuses the
+fourth turbine two tiles from the third. The first-town guard's two turbines
+moved three tiles apart, which the spacing rule required and the guard's
+rule allows, since spacing is a placement rule and not a prerequisite to
+growth; the heavy industrial estate's test runs on a coal plant, since a
+village turbine never could. Looked at: three turbines beside a coal plant
+and a water tower, rotors clear of each other, standing over the plant twice.
 
 ### Incinerators share the load, and smoke only for what they burn (asked for and built 2026-10-05)
 

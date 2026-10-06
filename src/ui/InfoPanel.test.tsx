@@ -239,8 +239,8 @@ describe('InfoPanel', () => {
     });
     render(<InfoPanel />);
     expect(screen.getByText('Nameplate')).toBeInTheDocument();
-    expect(screen.getByText('3.4 MW')).toBeInTheDocument();
-    expect(screen.getByTestId('plant-output-row')).toHaveTextContent('1.1 MW (34% of the year)');
+    expect(screen.getByText('1 MW')).toBeInTheDocument();
+    expect(screen.getByTestId('plant-output-row')).toHaveTextContent('0.2 MW (20% of the year)');
   });
 
   it('shows what a shore intake delivers against its rating, and a works’ effluent', () => {

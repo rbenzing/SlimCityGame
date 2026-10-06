@@ -385,15 +385,19 @@ describe('the civic ploppables (honest both sides): every draw from floor area a
 describe('the generators (honest both sides): nameplate, capacity factor, cost and upkeep derived', () => {
   const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
   const byId = (id: string): BuildingCatalogEntry => catalog.find((e) => e.id === id)!;
-  /** LBNL Land-Based Wind Market Report (2024 ed.): the average turbine installed in 2023. */
-  const LBNL_NAMEPLATE_MW = 3.4;
-  const LBNL_HUB_HEIGHT_M = 103;
-  const LBNL_FLEET_CAPACITY_FACTOR = 0.335;
+  /** EWT DW61-1MW, a distributed-wind machine: 1 MW on a 61 m rotor at a 69 m hub. */
+  const DW61_NAMEPLATE_MW = 1;
+  const DW61_HUB_HEIGHT_M = 69;
+  const DW61_ROTOR_M = 61;
+  /** PNNL Distributed Wind Market Report: projects using midsize turbines (101 kW–1 MW) average 20%. */
+  const DISTRIBUTED_MIDSIZE_CAPACITY_FACTOR = 0.2;
   /** EIA Electric Power Monthly 6.07.A: coal's 2024 capacity factor. */
   const EIA_COAL_CAPACITY_FACTOR = 0.426;
+  /** PNNL Distributed Wind Market Report (2024 ed.): midsize and large distributed projects, 2015–2022, capacity-weighted. */
+  const WIND_USD_PER_KW = 4_310;
   /** EIA AEO2023 overnight capital cost, 2022 $/kW, and fixed/variable O&M. */
-  const WIND_USD_PER_KW = 2_098;
   const COAL_USD_PER_KW = 4_507;
+  /** EIA AEO2023 onshore wind fixed O&M, the published $/kW-year a distributed machine is held to for want of its own. */
   const WIND_FOM_USD_PER_KW_YR = 29.64;
   const COAL_FOM_USD_PER_KW_YR = 45.68;
   const COAL_VOM_USD_PER_MWH = 5.06;
@@ -402,13 +406,24 @@ describe('the generators (honest both sides): nameplate, capacity factor, cost a
   const COAL_USD_PER_MMBTU = 2.47;
   const HOURS_PER_YEAR = 8_760;
 
-  it('rates the wind turbine as the average new machine, drawn at its hub height, delivering a third of its nameplate', () => {
+  it('rates the wind turbine as a distributed-wind machine, drawn at its hub height, delivering a fifth of its nameplate', () => {
     const turbine = byId('wind-turbine');
-    expect(turbine.utility?.powerMW).toBe(LBNL_NAMEPLATE_MW);
-    expect(turbine.utility?.capacityFactor).toBe(LBNL_FLEET_CAPACITY_FACTOR);
-    expect(turbine.height).toBe(LBNL_HUB_HEIGHT_M);
-    expect(averageOutputMW(turbine.utility!)).toBeCloseTo(1.139, 3);
+    expect(turbine.utility?.powerMW).toBe(DW61_NAMEPLATE_MW);
+    expect(turbine.utility?.capacityFactor).toBe(DISTRIBUTED_MIDSIZE_CAPACITY_FACTOR);
+    expect(turbine.height).toBe(DW61_HUB_HEIGHT_M);
+    expect(averageOutputMW(turbine.utility!)).toBeCloseTo(0.2, 6);
     expect(turbine.pollution ?? 0).toBe(0);
+  });
+
+  it('keeps its rotor out of its neighbour’s: the clear tiles between two turbines hold a rotor', () => {
+    const turbine = byId('wind-turbine');
+    expect(turbine.spacing).toBe(3);
+    // Centres stand spacing + 1 tiles apart, which is at least one rotor.
+    expect((turbine.spacing! + 1) * TILE_METERS).toBeGreaterThanOrEqual(DW61_ROTOR_M);
+    expect(turbine.spacing! * TILE_METERS).toBeLessThan(DW61_ROTOR_M);
+    expect(catalog.filter((e) => e.spacing !== undefined).map((e) => e.id)).toEqual([
+      'wind-turbine',
+    ]);
   });
 
   it('keeps the coal plant a 60 MW small unit at the fleet capacity factor, its figures the anchors', () => {

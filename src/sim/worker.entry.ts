@@ -3163,6 +3163,30 @@ class SimWorld implements WorkerSim {
     return { ok: true, cost: 0, inverse };
   }
 
+  /**
+   * Whether a w×d footprint at (x, z) comes within `entry.spacing` clear tiles
+   * of another standing building of the same entry, in any direction.
+   */
+  private crowdsItsKind(
+    entry: BuildingCatalogEntry,
+    x: number,
+    z: number,
+    w: number,
+    d: number,
+  ): boolean {
+    const gap = entry.spacing ?? 0;
+    for (const other of this.registry.all()) {
+      if (other.catalogId !== entry.id) continue;
+      const theirs = footprintForRotation(entry, other.rotation);
+      const dx = Math.max(other.x - (x + w), x - (other.x + theirs.w));
+      const dz = Math.max(other.z - (z + d), z - (other.z + theirs.d));
+      // dx and dz are the clear tiles between the two footprints on each axis,
+      // negative where they overlap on that axis.
+      if (Math.max(dx, dz) < gap) return true;
+    }
+    return false;
+  }
+
   private cmdPlaceBuilding(
     catalogId: string,
     x: number,
@@ -3189,6 +3213,11 @@ class SimWorld implements WorkerSim {
     // An intake or an outfall stands on a shore: its footprint on land, the
     // water it draws from or empties into orthogonally beside it.
     if (entry.requiresAdjacent === 'water' && !hasAdjacentWater(this.grid, x, z, w, d)) {
+      return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+    }
+    // A turbine keeps its rotor out of its neighbour's: nothing of the same
+    // entry within its spacing, in any direction.
+    if (entry.spacing !== undefined && this.crowdsItsKind(entry, x, z, w, d)) {
       return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
     }
     const inst = this.registry.place(this.grid, entry, x, z, rotation);

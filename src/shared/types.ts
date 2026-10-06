@@ -1175,6 +1175,14 @@ export interface BuildingCatalogEntry {
    * it draws from or empties into.
    */
   requiresAdjacent?: 'rail' | 'water';
+  /**
+   * The clear tiles this entry keeps between its footprint and the footprint
+   * of another building of the same entry, every direction. A wind turbine
+   * keeps its rotor out of its neighbour's: three tiles, so centres stand
+   * 80 m apart against a 61 m rotor. Absent for everything that may stand
+   * wall to wall with its own kind.
+   */
+  spacing?: number;
 }
 
 // ---------------------------------------------------------------------------

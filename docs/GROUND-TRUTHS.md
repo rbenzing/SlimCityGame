@@ -678,10 +678,16 @@ MUTCD citations below use 11th-edition section numbers.
   nameplate alone; the inspector shows both. Every ploppable's draw and every
   generator's rating, factor, cost and upkeep is derived from a published
   figure the way the zoned catalog's are, and the wind turbine is drawn at
-  the size of the machine its figures describe. —
+  the size of the machine its figures describe: a distributed-wind machine
+  sized to the map, not a wind farm's. A catalog entry with `spacing` keeps
+  that many clear tiles between its footprint and another of its own kind in
+  every direction, read at placement by the worker; the turbine's three keep
+  one rotor out of another's and nothing more, and no other entry carries
+  one. —
   [power-generation.md](game-design/features/power-generation.md#the-generators-re-derived),
   [utilities-model.md](world-sim/utilities-model.md#production-and-demand);
-  `averageOutputMW` in `src/shared/power.ts`
+  `averageOutputMW` in `src/shared/power.ts`, `crowdsItsKind` in
+  `src/sim/worker.entry.ts`
 - Service range is a road-hop count in tiles, scaled by funding and floored. It
   is never called, drawn or computed as a radius. —
   [services-model.md](world-sim/services-model.md)
