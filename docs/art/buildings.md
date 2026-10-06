@@ -201,7 +201,18 @@ small to hold a curve, samples the real terrain height at every corner, and
 splits each cell on the same diagonal the terrain mesh itself uses, so
 nothing laid on the ground clips through a slope or floats over a dip. (Roads
 and buildings level their own footprint on placement for the same reason —
-see [vegetation.md](../visual-render/vegetation.md) for that terrain-side half of the rule.)
+see [terrain.md](../visual-render/terrain.md#levelling-under-structures) for
+that terrain-side half of the rule.)
+
+**A body stands on the ground under the body.** Every renderer that seats a
+building — the body stack, its podium, its roof props, its kit and a home's
+own parts — samples the highest terrain under the base tier's own rectangle,
+set back inside the footprint as it is drawn, through one helper
+(`maxHeightUnderBody`). Sampling the whole footprint instead let a higher far
+corner the body never touched — a street climbing past the lot, a
+neighbour's plateau — lift the house, and every dock and bollard with it, off
+the pad it stands on; that is what a hillside house hanging over its downhill
+side, and a works' loading dock floating over its car park, were.
 
 **Material palette calibration.** One module (`render/palette.ts`) is the
 single source of truth for every material colour in the world — buildings,

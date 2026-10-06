@@ -1056,6 +1056,17 @@ MUTCD citations below use 11th-edition section numbers.
   samples real terrain height per vertex and splits on the terrain's own
   diagonal. — [buildings.md](art/buildings.md),
   [lighting.md](visual-render/lighting.md), [streets.md](art/streets.md)
+- Every building levels its footprint when it is placed, grown or plopped,
+  spawn or level-up: the footprint's own vertices and the far-edge vertices
+  open ground owns, never one a road, another building or water owns. A body
+  and everything that stands with it (podium, roof props, kit, a home's
+  parts) is seated on the highest ground under the body's own rectangle
+  through `maxHeightUnderBody`, never under the whole footprint. A grown
+  house on a hillside hung over its downhill side, and a works' dock floated
+  over its car park, until both held. —
+  [terrain.md](visual-render/terrain.md#levelling-under-structures),
+  [buildings.md](art/buildings.md#lots-and-paved-ground);
+  `computeFlattenPatch` in `src/sim/worker.entry.ts`, `src/render/footprint.ts`
 - A data lens paints tile (x, z) over tile (x, z): the lens texture's column x
   and row z are that tile, so the quad's u runs with world x and its v with
   world z, set from its own positions. Built on a rotated plane's stock UVs,

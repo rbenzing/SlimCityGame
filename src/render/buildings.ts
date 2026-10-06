@@ -40,7 +40,7 @@ import {
   type SetbackBox,
 } from './massing';
 import { NO_STREETS, type StreetLookup } from './frontage';
-import { maxHeightOverFootprint, maxHeightOverRect } from './footprint';
+import { maxHeightOverRect, maxHeightUnderBody } from './footprint';
 import { isFarmEntry } from './archetypes';
 import { BARN_EAVE_SHARE, planFarm, type FarmRect } from './farmlot';
 import {
@@ -951,19 +951,44 @@ export class BuildingInstancer {
         h: PLINTH_PAD_HEIGHT,
         yOffset: 0,
       };
-      this.writeTier(bucket, slots[0]!, 0, slab, instance, heightScale);
+      this.writeTier(bucket, slots[0]!, 0, slab, instance, heightScale, this.seatFor(entry, instance, slab));
       return;
     }
     // Commercial/industrial bodies pull back from their road-facing edge so
     // the parked-car bay row (parked.ts) sits flush in front of the facade
     // instead of underneath it; every other category gets a zero setback.
     // The boxes already carry that setback, from computeSetbacks.
+    const seat = this.seatFor(entry, instance, boxes[0]!);
     for (let tier = 0; tier < boxes.length; tier++) {
-      this.writeTier(bucket, slots[tier]!, tier, boxes[tier]!, instance, heightScale);
+      this.writeTier(bucket, slots[tier]!, tier, boxes[tier]!, instance, heightScale, seat);
     }
   }
 
-  /** One tier of the body: a box of the stack, seated on the footprint's highest ground. */
+  /**
+   * Where a body's base stands: its centre, shifted by the frontage setback,
+   * and the highest terrain under the base itself, so no slope can poke up
+   * through the body and no ground beyond the body lifts it off its pad.
+   */
+  private seatFor(
+    entry: BuildingCatalogEntry,
+    instance: BuildingInstance,
+    base: SetbackBox,
+  ): { centerX: number; centerZ: number; groundY: number } {
+    const frontage = frontageSetbackFor(entry, instance.x, instance.z, this.roadAt, this.street);
+    const centerX = (instance.x + entry.footprint.w / 2) * TILE_METERS + frontage.centerXM;
+    const centerZ = (instance.z + entry.footprint.d / 2) * TILE_METERS + frontage.centerZM;
+    const groundY = maxHeightUnderBody(
+      this.heightAt,
+      centerX,
+      centerZ,
+      base.w,
+      base.d,
+      instance.rotation,
+    );
+    return { centerX, centerZ, groundY };
+  }
+
+  /** One tier of the body: a box of the stack, seated where the base tier stands. */
   private writeTier(
     bucket: Bucket,
     slot: number,
@@ -971,21 +996,9 @@ export class BuildingInstancer {
     box: SetbackBox,
     instance: BuildingInstance,
     heightScale: number,
+    seat: { centerX: number; centerZ: number; groundY: number },
   ): void {
-    const entry = bucket.entry;
-    const frontage = frontageSetbackFor(entry, instance.x, instance.z, this.roadAt, this.street);
-    const centerX = (instance.x + entry.footprint.w / 2) * TILE_METERS + frontage.centerXM;
-    const centerZ = (instance.z + entry.footprint.d / 2) * TILE_METERS + frontage.centerZM;
-    // Seat the base at the highest terrain under the footprint so no slope can
-    // poke up through the body (sampling only the centre lets uphill corners
-    // spike through). Roofs/props key off this same value via the same helper.
-    const groundY = maxHeightOverFootprint(
-      this.heightAt,
-      instance.x,
-      instance.z,
-      entry.footprint.w,
-      entry.footprint.d,
-    );
+    const { centerX, centerZ, groundY } = seat;
     const h = box.h * heightScale;
     _position.set(centerX, groundY + box.yOffset * heightScale + h / 2, centerZ);
     _quaternion.setFromAxisAngle(_yAxis, instance.rotation * (Math.PI / 2));

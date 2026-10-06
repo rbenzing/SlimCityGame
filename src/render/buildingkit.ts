@@ -26,7 +26,7 @@ import {
   type SetbackBox,
 } from './massing';
 import { TILE_METERS } from '../shared/constants';
-import { maxHeightOverFootprint } from './footprint';
+import { maxHeightUnderBody } from './footprint';
 import { findRoadFacingEdge, type Side } from './frontage';
 import { materialHex } from './palette';
 import { partsFor, type BuildingPart } from './archetypes';
@@ -478,15 +478,19 @@ export class BuildingKitRenderer {
     const placements = computePartPlacements(entry, baseBox, topBox, edge?.side ?? null);
     if (placements.length === 0) return;
 
-    const groundY = maxHeightOverFootprint(
-      this.heightAt,
-      building.x,
-      building.z,
-      entry.footprint.w,
-      entry.footprint.d,
-    );
     const centerX = (building.x + entry.footprint.w / 2) * TILE_METERS;
     const centerZ = (building.z + entry.footprint.d / 2) * TILE_METERS;
+    // The kit stands where the body stands: on the ground under the base
+    // tier, as the instancer seats it, so a dock or a pump never hangs over
+    // the downhill side of a lot its body is level on.
+    const groundY = maxHeightUnderBody(
+      this.heightAt,
+      centerX + frontage.centerXM,
+      centerZ + frontage.centerZM,
+      baseBox.w,
+      baseBox.d,
+      building.rotation,
+    );
     // Kit only goes on finished buildings — a loading dock on a quarter-built
     // shell reads as debris — so the lifecycle tint is always the Active one.
     const held: { part: BuildingPart; slot: number }[] = [];

@@ -28,7 +28,7 @@ import {
   BuildingState,
   VehicleKind,
 } from '../shared/types';
-import { maxHeightOverFootprint } from './footprint';
+import { maxHeightOverRect } from './footprint';
 import {
   CONSTRUCTING_MASSING_HEIGHT_SCALE,
   InstancedSlotPool,
@@ -453,14 +453,15 @@ export class HouseRoofRenderer {
     const tint = massingLifecycleTint(building.state);
     const heightScale =
       building.state === BuildingState.Constructing ? CONSTRUCTING_MASSING_HEIGHT_SCALE : 1;
-    // The body's own base: the highest ground under the footprint, which is
-    // where BuildingInstancer seats it.
-    const bodyGround = maxHeightOverFootprint(
+    // The body's own base: the highest ground under the body itself, which is
+    // where BuildingInstancer seats it; the lot around it follows the ground.
+    const bodyRect = worldBox(plan, plan.body);
+    const bodyGround = maxHeightOverRect(
       this.heightAt,
-      building.x,
-      building.z,
-      entry.footprint.w,
-      entry.footprint.d,
+      bodyRect.x - bodyRect.sx / 2,
+      bodyRect.z - bodyRect.sz / 2,
+      bodyRect.x + bodyRect.sx / 2,
+      bodyRect.z + bodyRect.sz / 2,
     );
 
     const put = (

@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,754 tests passing across 158 test files, run 2026-10-06.
+**Test suite:** 4,755 tests passing across 158 test files, run 2026-10-06.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -295,6 +295,24 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Lots stand on their ground (reported and fixed 2026-10-06)
+
+The user's screenshots: houses lifted off the ground, and a works' loading
+dock and bollards floating over its car park. Two causes, one rule. The
+terrain spec says a building levels its footprint on placement, but only a
+plopped one did; a grown house never levelled anything, and even a plopped
+one levelled only its own tiles' vertices, which are the north and west
+edges, leaving the south and east edges to the neighbouring tiles. Every
+renderer then seated the body on the highest of all nine corners, so a far
+corner the body never touched lifted it, and its kit with it. Now a grown
+building levels its ground at spawn and level-up like a plopped one, the
+levelling reaches the far-edge vertices open ground owns and leaves a road's,
+a neighbour's or the water's alone, and body, podium, roof props, kit and
+house parts all sit on the ground under the body's own rectangle through one
+helper. Looked at: a grown house on a sloped street meeting its lawn, a
+works on its pad with the bays in front; the town suite's byte-for-byte
+replay is unchanged in kind, since the levelling is deterministic.
 
 ### Three decisions from the whole-city play (decided 2026-10-06)
 

@@ -38,7 +38,7 @@ import {
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { deriveFacadeParams, FLOOR_HEIGHT_METERS } from './facade';
-import { maxHeightOverFootprint } from './footprint';
+import { maxHeightUnderBody } from './footprint';
 import {
   findRoadFacingEdge,
   findStreetFacingEdge,
@@ -616,11 +616,12 @@ export class MassingRenderer {
     if (!entry || isFarmEntry(entry)) return;
 
     const frontage = frontageSetbackFor(entry, building.x, building.z, this.roadAt, this.street);
-    const { podium } = computeSetbacks(entry, building.id, frontage);
+    const { boxes, podium } = computeSetbacks(entry, building.id, frontage);
     // Every tier of the stack is BuildingInstancer's, drawn with the
     // building's own facade; only the podium is left to draw here.
     const tiers = podium ? [podium] : [];
     if (tiers.length === 0) return;
+    const base = boxes[0]!;
 
     const heightScale =
       building.state === BuildingState.Constructing ? CONSTRUCTING_MASSING_HEIGHT_SCALE : 1;
@@ -629,14 +630,15 @@ export class MassingRenderer {
 
     const centerX = (building.x + entry.footprint.w / 2) * TILE_METERS + frontage.centerXM;
     const centerZ = (building.z + entry.footprint.d / 2) * TILE_METERS + frontage.centerZM;
-    // Match BuildingInstancer's footprint-max base so setback tiers stack on
-    // the same ground the body sits on (no slope poke-through / float).
-    const groundY = maxHeightOverFootprint(
+    // Match BuildingInstancer's seat — the highest ground under the base tier
+    // itself — so the podium stands on the same ground the body sits on.
+    const groundY = maxHeightUnderBody(
       this.heightAt,
-      building.x,
-      building.z,
-      entry.footprint.w,
-      entry.footprint.d,
+      centerX,
+      centerZ,
+      base.w,
+      base.d,
+      building.rotation,
     );
 
     const slots: number[] = [];
