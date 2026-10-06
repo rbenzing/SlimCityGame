@@ -32,7 +32,13 @@ import {
 } from '../shared/types';
 import { NIGHT_WINDOW_LIT_MAX, NIGHT_WINDOW_LIT_MIN, TILE_METERS } from '../shared/constants';
 import { encodeId, buildIdColorArray } from './picking';
-import { bodyMetresFor, frontageSetbackFor } from './massing';
+import {
+  bodyMetresFor,
+  computeSetbacks,
+  frontageSetbackFor,
+  tierHeightOf,
+  type SetbackBox,
+} from './massing';
 import { NO_STREETS, type StreetLookup } from './frontage';
 import { maxHeightOverFootprint, maxHeightOverRect } from './footprint';
 import { isFarmEntry } from './archetypes';
@@ -71,6 +77,8 @@ const CONSTRUCTING_HEIGHT_SCALE = 0.25;
  * pickable/outlinable slab through the shared instancer path.
  */
 const PLINTH_PAD_HEIGHT = 0.25;
+/** The one box a barn or a plinth is drawn as; its size is written when the slot is, not read from here. */
+const ONE_BOX: SetbackBox = { w: 1, d: 1, h: 1, yOffset: 0 };
 
 const TINT_ACTIVE: readonly [number, number, number] = [1, 1, 1];
 const TINT_CONSTRUCTING: readonly [number, number, number] = [0.55, 0.55, 0.55];
@@ -165,9 +173,11 @@ export function windowGridSize(entry: BuildingCatalogEntry): { cols: number; row
     MAX_WINDOW_COLS,
     Math.max(MIN_WINDOW_COLS, Math.round(avgFootprintTiles * colsPerTile)),
   );
+  // Rows are cut to one tier of the body: a level-2 or 3 building is drawn
+  // as stacked tiers in this same bucket, each carrying its own rows.
   const rows = Math.min(
     MAX_WINDOW_ROWS,
-    Math.max(MIN_WINDOW_ROWS, Math.round(entry.height / WINDOW_FLOOR_HEIGHT_METERS)),
+    Math.max(MIN_WINDOW_ROWS, Math.round(tierHeightOf(entry) / WINDOW_FLOOR_HEIGHT_METERS)),
   );
   return { cols, rows };
 }
@@ -357,22 +367,25 @@ interface Bucket {
   mesh: THREE.InstancedMesh;
   capacity: number;
   count: number;
-  /** slot -> building id, valid for indices [0, count). */
+  /** slot -> building id, valid for indices [0, count). A building with stacked tiers holds one slot per tier. */
   slotToId: number[];
-  /** building id -> slot, inverse of slotToId. */
-  idToSlot: Map<number, number>;
+  /** building id -> its slots, base tier first; the inverse of slotToId. */
+  idToSlots: Map<number, number[]>;
   /** slot -> normalized (0..1) RGB, encodeId(id)/255. Not yet GPU-uploaded. */
   idColor: Float32Array;
   /** Per-instance building id (float), read by the window-emissive shader. */
   windowSeed: THREE.InstancedBufferAttribute;
   /** Per-instance 1=Active/0=Constructing|Abandoned; gates window emissive so only Active buildings light up. */
   windowActive: THREE.InstancedBufferAttribute;
+  /** Per-instance tier index, 0 for the base: the ground floor and entrance are its alone, and each tier's windows are its own. */
+  tier: THREE.InstancedBufferAttribute;
 }
 
 interface BucketMesh {
   mesh: THREE.InstancedMesh;
   windowSeed: THREE.InstancedBufferAttribute;
   windowActive: THREE.InstancedBufferAttribute;
+  tier: THREE.InstancedBufferAttribute;
 }
 
 // Reused scratch objects: apply()/copySlot() run synchronously and never
@@ -443,6 +456,7 @@ export class BuildingInstancer {
       if (bucket.mesh.instanceColor) bucket.mesh.instanceColor.needsUpdate = true;
       bucket.windowSeed.needsUpdate = true;
       bucket.windowActive.needsUpdate = true;
+      bucket.tier.needsUpdate = true;
       // Invalidate the frustum-culling sphere so three.js recomputes it from
       // the new instance set on the next cull pass (it caches the sphere the
       // first time it's null — a bucket first rendered empty would otherwise
@@ -510,7 +524,7 @@ export class BuildingInstancer {
       this.plinthIds.has(entry.id) || isFarmEntry(entry)
         ? this.createPlinthMaterial(entry)
         : this.createMaterial(entry);
-    const { mesh, windowSeed, windowActive } = this.createMesh(material, INITIAL_CAPACITY);
+    const { mesh, windowSeed, windowActive, tier } = this.createMesh(material, INITIAL_CAPACITY);
     this.scene.add(mesh);
     return {
       entry,
@@ -519,10 +533,11 @@ export class BuildingInstancer {
       capacity: INITIAL_CAPACITY,
       count: 0,
       slotToId: new Array(INITIAL_CAPACITY).fill(0),
-      idToSlot: new Map(),
+      idToSlots: new Map(),
       idColor: new Float32Array(INITIAL_CAPACITY * 3),
       windowSeed,
       windowActive,
+      tier,
     };
   }
 
@@ -549,16 +564,26 @@ export class BuildingInstancer {
     // nodes reading the real aBuildingId attribute, exactly like the night
     // code already mirrors windowHash's CPU formula with the TSL `hash()`.)
     const { family, windowInset, spandrel } = deriveFacadeParams(entry, 0);
-    const groundBandThreshold = groundFloorBand(entry.height);
-    const parapetThreshold = parapetBand(entry.height);
+    // The bands are cut to one tier: every tier of a stacked body is one
+    // instance of this bucket, so the parapet lip crowns each terrace while
+    // the storefront band, below, is gated to the base tier.
+    const tierHeight = tierHeightOf(entry);
+    const groundBandThreshold = groundFloorBand(tierHeight);
+    const parapetThreshold = parapetBand(tierHeight);
 
     const buildingIdAttr = attribute<'float'>('aBuildingId', 'float');
     const activeAttr = attribute<'float'>('aActive', 'float');
+    const tierAttr = attribute<'float'>('aTier', 'float');
+    const isBaseTier = tierAttr.lessThan(0.5);
 
     const uvNode = uv();
     const col = floor(uvNode.x.mul(cols));
     const row = floor(uvNode.y.mul(rows));
-    const windowIndex = row.mul(cols).add(col);
+    // Windows are numbered on up the stack, so a tier's lit pattern is its own.
+    const windowIndex = row
+      .mul(cols)
+      .add(col)
+      .add(tierAttr.mul(cols * rows));
     const windowSeed = buildingIdAttr.mul(WINDOW_SEED_SLOTS).add(windowIndex);
 
     const litThreshold = hash(windowSeed);
@@ -586,7 +611,7 @@ export class BuildingInstancer {
     // real windows. windowInset (punched vs curtain-wall) and the ground
     // floor's taller storefront glazing change the inset margin; industrial
     // additionally thins the pane population via an independently-salted hash.
-    const isGroundFloor = uvNode.y.lessThan(groundBandThreshold);
+    const isGroundFloor = uvNode.y.lessThan(groundBandThreshold).and(isBaseTier);
     const cellU = fract(uvNode.x.mul(cols));
     const cellV = fract(uvNode.y.mul(rows));
     const baseMargin = isIndustrial
@@ -682,7 +707,7 @@ export class BuildingInstancer {
       .greaterThan(0.5 - ENTRANCE_HALF_WIDTH)
       .and(uvNode.x.lessThan(0.5 + ENTRANCE_HALF_WIDTH));
     const isEntranceY = uvNode.y.lessThan(groundBandThreshold * ENTRANCE_HEIGHT_FRACTION);
-    const isEntrance = isEntranceFace.and(isEntranceX).and(isEntranceY);
+    const isEntrance = isEntranceFace.and(isEntranceX).and(isEntranceY).and(isBaseTier);
     let withEntrance: Node<'vec3'> = select(isEntrance, vec3(...DOOR_COLOR), wallWithWindows);
 
     // Industrial overhang doors: a repeating row of wide roll-up loading doors
@@ -694,7 +719,7 @@ export class BuildingInstancer {
         .greaterThan(INDUSTRIAL_DOOR_MARGIN)
         .and(bay.lessThan(1 - INDUSTRIAL_DOOR_MARGIN));
       const inDoorY = uvNode.y.lessThan(groundBandThreshold * INDUSTRIAL_DOOR_HEIGHT_FRACTION);
-      const isOverhangDoor = inBayX.and(inDoorY);
+      const isOverhangDoor = inBayX.and(inDoorY).and(isBaseTier);
       withEntrance = select(isOverhangDoor, vec3(...INDUSTRIAL_DOOR_COLOR), withEntrance);
     }
 
@@ -743,8 +768,10 @@ export class BuildingInstancer {
     const geometry = this.geometry.clone(); // per-bucket: each archetype's window-seed attribute is its own
     const windowSeed = new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1);
     const windowActive = new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1);
+    const tier = new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1);
     geometry.setAttribute('aBuildingId', windowSeed);
     geometry.setAttribute('aActive', windowActive);
+    geometry.setAttribute('aTier', tier);
 
     const mesh = new THREE.InstancedMesh(geometry, material, capacity);
     mesh.count = 0;
@@ -756,7 +783,7 @@ export class BuildingInstancer {
     mesh.receiveShadow = true;
     const colorArray = new Float32Array(capacity * 3).fill(1);
     mesh.instanceColor = new THREE.InstancedBufferAttribute(colorArray, 3);
-    return { mesh, windowSeed, windowActive };
+    return { mesh, windowSeed, windowActive, tier };
   }
 
   private grow(bucket: Bucket): void {
@@ -766,6 +793,7 @@ export class BuildingInstancer {
       mesh: newMesh,
       windowSeed: newWindowSeed,
       windowActive: newWindowActive,
+      tier: newTier,
     } = this.createMesh(bucket.material, newCapacity);
 
     newMesh.instanceMatrix.array.set(bucket.mesh.instanceMatrix.array);
@@ -774,6 +802,7 @@ export class BuildingInstancer {
     }
     newWindowSeed.array.set(bucket.windowSeed.array);
     newWindowActive.array.set(bucket.windowActive.array);
+    newTier.array.set(bucket.tier.array);
     newMesh.count = bucket.mesh.count;
     newMesh.visible = bucket.mesh.visible;
 
@@ -782,6 +811,7 @@ export class BuildingInstancer {
     bucket.mesh = newMesh;
     bucket.windowSeed = newWindowSeed;
     bucket.windowActive = newWindowActive;
+    bucket.tier = newTier;
     bucket.capacity = newCapacity;
 
     bucket.slotToId.length = newCapacity;
@@ -801,17 +831,28 @@ export class BuildingInstancer {
       throw new Error(`BuildingInstancer: unknown catalogId "${instance.catalogId}"`);
     }
 
-    let slot = bucket.idToSlot.get(instance.id);
-    if (slot === undefined) {
-      if (bucket.count === bucket.capacity) this.grow(bucket);
-      slot = bucket.count;
-      bucket.count += 1;
-      bucket.idToSlot.set(instance.id, slot);
-      bucket.slotToId[slot] = instance.id;
+    const boxes = this.boxesFor(bucket.entry, instance);
+    let slots = bucket.idToSlots.get(instance.id);
+    if (slots !== undefined && slots.length !== boxes.length) {
+      // The same entry, drawn as a different number of tiers (a farm plan or
+      // a plinth changing under it): start its slots over.
+      this.removeId(instance.id, touched);
+      slots = undefined;
+    }
+    if (slots === undefined) {
+      slots = [];
+      for (let tier = 0; tier < boxes.length; tier++) {
+        if (bucket.count === bucket.capacity) this.grow(bucket);
+        const slot = bucket.count;
+        bucket.count += 1;
+        bucket.slotToId[slot] = instance.id;
+        slots.push(slot);
+      }
+      bucket.idToSlots.set(instance.id, slots);
       this.idLocation.set(instance.id, instance.catalogId);
     }
 
-    this.writeInstance(bucket, slot, instance);
+    this.writeInstance(bucket, slots, boxes, instance);
     touched.add(bucket);
   }
 
@@ -823,24 +864,40 @@ export class BuildingInstancer {
       this.idLocation.delete(id);
       return;
     }
-    const slot = bucket.idToSlot.get(id);
-    if (slot === undefined) {
+    const slots = bucket.idToSlots.get(id);
+    if (slots === undefined) {
       this.idLocation.delete(id);
       return;
     }
 
-    const lastSlot = bucket.count - 1;
-    if (slot !== lastSlot) {
-      this.copySlot(bucket, lastSlot, slot);
-      const movedId = this.slotId(bucket, lastSlot);
-      bucket.idToSlot.set(movedId, slot);
-      bucket.slotToId[slot] = movedId;
+    // Highest slot first, so the last slot is never one of this building's
+    // own still waiting to go: by the time a lower slot is freed, every slot
+    // above it belongs to someone else or is gone.
+    for (const slot of [...slots].sort((a, b) => b - a)) {
+      const lastSlot = bucket.count - 1;
+      if (slot !== lastSlot) {
+        this.copySlot(bucket, lastSlot, slot);
+        const movedId = this.slotId(bucket, lastSlot);
+        const movedSlots = bucket.idToSlots.get(movedId);
+        if (movedSlots) movedSlots[movedSlots.indexOf(lastSlot)] = slot;
+        bucket.slotToId[slot] = movedId;
+      }
+      bucket.count -= 1;
     }
 
-    bucket.idToSlot.delete(id);
-    bucket.count -= 1;
+    bucket.idToSlots.delete(id);
     this.idLocation.delete(id);
     touched.add(bucket);
+  }
+
+  /**
+   * The boxes a building is drawn as: its stacked tiers, or the one body a
+   * farm's barn and a plinth collapse to.
+   */
+  private boxesFor(entry: BuildingCatalogEntry, instance: BuildingInstance): readonly SetbackBox[] {
+    if (planFarm(instance, entry, this.dirtAt) || this.plinthIds.has(entry.id)) return [ONE_BOX];
+    const frontage = frontageSetbackFor(entry, instance.x, instance.z, this.roadAt, this.street);
+    return computeSetbacks(entry, instance.id, frontage).boxes;
   }
 
   private slotId(bucket: Bucket, slot: number): number {
@@ -859,9 +916,15 @@ export class BuildingInstancer {
     bucket.idColor[to * 3 + 2] = bucket.idColor[from * 3 + 2] ?? 0;
     bucket.windowSeed.array[to] = bucket.windowSeed.array[from] ?? 0;
     bucket.windowActive.array[to] = bucket.windowActive.array[from] ?? 0;
+    bucket.tier.array[to] = bucket.tier.array[from] ?? 0;
   }
 
-  private writeInstance(bucket: Bucket, slot: number, instance: BuildingInstance): void {
+  private writeInstance(
+    bucket: Bucket,
+    slots: readonly number[],
+    boxes: readonly SetbackBox[],
+    instance: BuildingInstance,
+  ): void {
     const entry = bucket.entry;
     const heightScale =
       instance.state === BuildingState.Constructing ? CONSTRUCTING_HEIGHT_SCALE : 1;
@@ -869,7 +932,7 @@ export class BuildingInstancer {
     if (farm) {
       this.writeBarn(
         bucket,
-        slot,
+        slots[0]!,
         instance,
         farm.barn,
         entry.height * BARN_EAVE_SHARE * heightScale,
@@ -879,15 +942,38 @@ export class BuildingInstancer {
     // Plinth-designated ids collapse to a low slab (picking/outline/bulldoze
     // keep working through this same instancer path) while utilitykits.ts
     // carries the real visual identity beside it.
-    const baseHeight = this.plinthIds.has(entry.id) ? PLINTH_PAD_HEIGHT : entry.height;
-    const height = baseHeight * heightScale;
-    const body = bodyMetresFor(entry);
+    if (this.plinthIds.has(entry.id)) {
+      const body = bodyMetresFor(entry);
+      const frontage = frontageSetbackFor(entry, instance.x, instance.z, this.roadAt, this.street);
+      const slab: SetbackBox = {
+        w: body.w - frontage.spanXM,
+        d: body.d - frontage.spanZM,
+        h: PLINTH_PAD_HEIGHT,
+        yOffset: 0,
+      };
+      this.writeTier(bucket, slots[0]!, 0, slab, instance, heightScale);
+      return;
+    }
     // Commercial/industrial bodies pull back from their road-facing edge so
     // the parked-car bay row (parked.ts) sits flush in front of the facade
     // instead of underneath it; every other category gets a zero setback.
+    // The boxes already carry that setback, from computeSetbacks.
+    for (let tier = 0; tier < boxes.length; tier++) {
+      this.writeTier(bucket, slots[tier]!, tier, boxes[tier]!, instance, heightScale);
+    }
+  }
+
+  /** One tier of the body: a box of the stack, seated on the footprint's highest ground. */
+  private writeTier(
+    bucket: Bucket,
+    slot: number,
+    tier: number,
+    box: SetbackBox,
+    instance: BuildingInstance,
+    heightScale: number,
+  ): void {
+    const entry = bucket.entry;
     const frontage = frontageSetbackFor(entry, instance.x, instance.z, this.roadAt, this.street);
-    const spanX = body.w - frontage.spanXM;
-    const spanZ = body.d - frontage.spanZM;
     const centerX = (instance.x + entry.footprint.w / 2) * TILE_METERS + frontage.centerXM;
     const centerZ = (instance.z + entry.footprint.d / 2) * TILE_METERS + frontage.centerZM;
     // Seat the base at the highest terrain under the footprint so no slope can
@@ -900,13 +986,13 @@ export class BuildingInstancer {
       entry.footprint.w,
       entry.footprint.d,
     );
-
-    _position.set(centerX, groundY + height / 2, centerZ);
+    const h = box.h * heightScale;
+    _position.set(centerX, groundY + box.yOffset * heightScale + h / 2, centerZ);
     _quaternion.setFromAxisAngle(_yAxis, instance.rotation * (Math.PI / 2));
-    _scale.set(spanX, height, spanZ);
+    _scale.set(box.w, h, box.d);
     _matrix.compose(_position, _quaternion, _scale);
     bucket.mesh.setMatrixAt(slot, _matrix);
-    this.writeIdentity(bucket, slot, instance);
+    this.writeIdentity(bucket, slot, instance, tier);
   }
 
   /**
@@ -927,11 +1013,16 @@ export class BuildingInstancer {
     _scale.set(barn.x1 - barn.x0, eave, barn.z1 - barn.z0);
     _matrix.compose(_position, _quaternion, _scale);
     bucket.mesh.setMatrixAt(slot, _matrix);
-    this.writeIdentity(bucket, slot, instance);
+    this.writeIdentity(bucket, slot, instance, 0);
   }
 
-  /** Lifecycle tint, picking colour and window seeds for one slot. */
-  private writeIdentity(bucket: Bucket, slot: number, instance: BuildingInstance): void {
+  /** Lifecycle tint, picking colour, window seeds and tier for one slot. */
+  private writeIdentity(
+    bucket: Bucket,
+    slot: number,
+    instance: BuildingInstance,
+    tier: number,
+  ): void {
     const [tr, tg, tb] = tintFor(instance.state);
     _color.setRGB(tr, tg, tb);
     bucket.mesh.setColorAt(slot, _color);
@@ -943,5 +1034,6 @@ export class BuildingInstancer {
 
     bucket.windowSeed.array[slot] = instance.id;
     bucket.windowActive.array[slot] = isBuildingLitEligible(instance.state) ? 1 : 0;
+    bucket.tier.array[slot] = tier;
   }
 }

@@ -9,14 +9,15 @@
  *    vertically-stacked tiers, each upper tier inset 10-20% narrower than
  *    the tier directly below it (deterministic from buildingId).
  *
- *  - `MassingRenderer` instances the UPPER tiers only (index >= 1). The
- *    base tier (index 0) is already the single full-height box
- *    BuildingInstancer draws for every building regardless of level (see
- *    buildings.ts's writeInstance) — massing.ts never edits buildings.ts,
- *    it overlays 1-2 additional inset volumes on top for level-2/3
- *    buildings, colored with the SAME wall-color family (facade.ts's
- *    deriveFacadeParams) and lifecycle tint as the base instancer, so the
- *    extra tiers read as part of the same building rather than an add-on.
+ *  - `BuildingInstancer` (buildings.ts) draws every tier of the stack, one
+ *    instance per tier in the entry's own facade bucket, so each tier carries
+ *    the building's windows and the stepped silhouette actually shows; the
+ *    ground floor, the entrance and the loading doors stay on the base tier.
+ *
+ *  - `MassingRenderer` instances only what is not a tier: a tower's podium,
+ *    colored with the SAME wall-color family (facade.ts's deriveFacadeParams)
+ *    and lifecycle tint as the base instancer, so it reads as part of the
+ *    same building rather than an add-on.
  *
  * `InstancedSlotPool` is a small generic capacity-doubling instanced-mesh
  * slot allocator factored out here because both this file and props.ts need
@@ -38,7 +39,12 @@ import {
 import { TILE_METERS } from '../shared/constants';
 import { deriveFacadeParams, FLOOR_HEIGHT_METERS } from './facade';
 import { maxHeightOverFootprint } from './footprint';
-import { findRoadFacingEdge, findStreetFacingEdge, NO_STREETS, type StreetLookup } from './frontage';
+import {
+  findRoadFacingEdge,
+  findStreetFacingEdge,
+  NO_STREETS,
+  type StreetLookup,
+} from './frontage';
 import { frontageInsetTiles } from './parked';
 import { isFarmEntry, isHouseEntry } from './archetypes';
 
@@ -163,11 +169,20 @@ export function bodyFillFor(entry: BuildingCatalogEntry): { x: number; z: number
 export const PODIUM_STOREYS = 2;
 
 /**
- * The setback tiers stand inside the full-height body, so the top tier's lid
- * stops this far under the roof: a lid exactly in the roof's plane fought it
- * for the pixels, which read as hatching across a one-storey store's roof.
+ * How many stacked tiers a building's body is drawn as: its level, 1 to 3,
+ * for a flat-roofed grown building; one for a ploppable, which has no level,
+ * for a house, whose pitched roof has nowhere to step, and for a farm, whose
+ * buildings are its own kit.
  */
-export const TIER_LID_GAP_M = 0.02;
+export function tierCountOf(entry: BuildingCatalogEntry): number {
+  if (isHouseEntry(entry) || isFarmEntry(entry)) return 1;
+  return Math.min(3, Math.max(1, Math.round(entry.level ?? 1)));
+}
+
+/** The height of one tier of the body, which is what its window rows and bands are cut to. */
+export function tierHeightOf(entry: BuildingCatalogEntry): number {
+  return entry.height / tierCountOf(entry);
+}
 
 /**
  * How far a home's front wall stands behind the sidewalk (behind the
@@ -305,25 +320,26 @@ function setbackInsetFraction(buildingId: number, tierIndex: number): number {
 /**
  * Full stacked-box massing for one building instance. Pure;
  * deterministic in (entry, buildingId). level 1 (and ploppables, whose
- * catalog entries carry no `level` at all) return a single box; level 2/3
- * split entry.height across 2/3 vertically-stacked tiers — the split is even
- * (height / tierCount) except the LAST tier, which absorbs `entry.height -
- * yOffset` exactly so the stack's total height always equals entry.height
- * exactly (no floating-point drift from repeated addition). Each tier after
- * the first is inset 10-20% narrower than the tier directly below it, the
- * fraction independently re-drawn per tier from buildingId so a level-3
- * building's second setback isn't just a repeat of its first. An optional
- * `frontage` setback (frontageSetbackFor) narrows the base tier along the
- * frontage axis so every tier stays within the road-set-back body.
+ * catalog entries carry no `level` at all, and houses, whose pitched roof
+ * has nowhere to step) return a single box; level 2/3 split entry.height
+ * across 2/3 vertically-stacked tiers — the split is even (height /
+ * tierCount) except the LAST tier, which absorbs `entry.height - yOffset`
+ * exactly so the stack's total height always equals entry.height exactly (no
+ * floating-point drift from repeated addition). Each tier after the first is
+ * inset 10-20% narrower than the tier directly below it, the fraction
+ * independently re-drawn per tier from buildingId so a level-3 building's
+ * second setback isn't just a repeat of its first. An optional `frontage`
+ * setback (frontageSetbackFor) narrows the base tier along the frontage axis
+ * so every tier stays within the road-set-back body.
  */
 export function computeSetbacks(
   entry: BuildingCatalogEntry,
   buildingId: number,
   frontage?: FrontageSetback,
 ): SetbackResult {
-  const level = Math.min(3, Math.max(1, Math.round(entry.level ?? 1)));
+  const level = tierCountOf(entry);
   const totalHeight = entry.height;
-  const tierHeight = totalHeight / level;
+  const tierHeight = tierHeightOf(entry);
 
   const body = bodyMetresFor(entry);
   const baseW = body.w - (frontage?.spanXM ?? 0);
@@ -340,10 +356,7 @@ export function computeSetbacks(
       d *= 1 - inset;
     }
     const isLast = tier === level - 1;
-    // The base tier is the body itself and reaches the roof; an upper tier's
-    // lid stops a hair under it.
-    const lidGap = isLast && tier > 0 ? TIER_LID_GAP_M : 0;
-    const h = isLast ? totalHeight - yOffset - lidGap : tierHeight;
+    const h = isLast ? totalHeight - yOffset : tierHeight;
     boxes.push({ w, d, h, yOffset });
     yOffset += h;
   }
@@ -603,10 +616,10 @@ export class MassingRenderer {
     if (!entry || isFarmEntry(entry)) return;
 
     const frontage = frontageSetbackFor(entry, building.x, building.z, this.roadAt, this.street);
-    const { boxes, podium } = computeSetbacks(entry, building.id, frontage);
-    // The base tier is the body BuildingInstancer already draws; everything
-    // else here is an upper tier or a podium.
-    const tiers = [...boxes.slice(1), ...(podium ? [podium] : [])];
+    const { podium } = computeSetbacks(entry, building.id, frontage);
+    // Every tier of the stack is BuildingInstancer's, drawn with the
+    // building's own facade; only the podium is left to draw here.
+    const tiers = podium ? [podium] : [];
     if (tiers.length === 0) return;
 
     const heightScale =

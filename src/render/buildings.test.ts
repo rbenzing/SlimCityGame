@@ -18,9 +18,11 @@ import { decodeId } from './picking';
 import { BARN_EAVE_SHARE, planFarm } from './farmlot';
 import { BAY_DEPTH_TILES } from './parked';
 import {
+  computeSetbacks,
   DEFAULT_BODY_M_PER_TILE,
   MASSING_FOOTPRINT_SHRINK,
   RES_LOW_BODY_M_PER_TILE,
+  tierCountOf,
 } from './massing';
 import {
   BuildingCatalogEntry,
@@ -785,13 +787,15 @@ describe('day facade (UI-SPEC §6.6 Stage 1) — extends the §6.5 material, no 
     );
     instancer.apply({ added, removed: [], updated: [] });
 
-    expect(instancer.instanceCount()).toBe(FULL_CATALOG.length);
+    // One instance per tier of the body: a level-2 or 3 building is two or
+    // three, in its own bucket, so the draw-call count is still one per entry.
+    expect(instancer.instanceCount()).toBe(FULL_CATALOG.reduce((n, e) => n + tierCountOf(e), 0));
     const pickables = instancer.getPickables();
     expect(pickables.length).toBe(FULL_CATALOG.length); // still exactly one mesh per archetype
     for (const catalogEntry of FULL_CATALOG) {
       const pick = pickables.find((p) => p.catalogId === catalogEntry.id);
       expect(pick).toBeDefined();
-      expect((pick?.mesh as THREE.InstancedMesh).count).toBe(1);
+      expect((pick?.mesh as THREE.InstancedMesh).count).toBe(tierCountOf(catalogEntry));
     }
   });
 
@@ -839,11 +843,16 @@ describe('day facade (UI-SPEC §6.6 Stage 1) — extends the §6.5 material, no 
     );
     expect(() => instancer.apply({ added, removed: [], updated: [] })).not.toThrow();
 
-    expect(instancer.instanceCount()).toBe(realCatalog.length);
+    expect(instancer.instanceCount()).toBe(realCatalog.reduce((n, e) => n + tierCountOf(e), 0));
     expect(instancer.getPickables().length).toBe(realCatalog.length);
     for (let i = 0; i < realCatalog.length; i++) {
       const catalogEntry = realCatalog[i]!;
-      expect(instancer.buildingIdAt({ catalogId: catalogEntry.id, instanceIndex: 0 })).toBe(i + 1);
+      // Every tier of the stack picks as the building it belongs to.
+      for (let tier = 0; tier < tierCountOf(catalogEntry); tier++) {
+        expect(instancer.buildingIdAt({ catalogId: catalogEntry.id, instanceIndex: tier })).toBe(
+          i + 1,
+        );
+      }
     }
   });
 
@@ -871,7 +880,7 @@ describe('day facade (UI-SPEC §6.6 Stage 1) — extends the §6.5 material, no 
     );
     expect(() => instancer.apply({ added, removed: [], updated: [] })).not.toThrow();
 
-    expect(instancer.instanceCount()).toBe(newZoneEntries.length);
+    expect(instancer.instanceCount()).toBe(newZoneEntries.reduce((n, e) => n + tierCountOf(e), 0));
     for (const entry of newZoneEntries) {
       const bucket = instancer.getPickables().find((p) => p.catalogId === entry.id);
       expect(bucket).toBeDefined();
@@ -1219,6 +1228,141 @@ describe('frontage parking setback — additive-only 5th constructor arg, defaul
     meshOf(withRoadAt, 'shop').getMatrixAt(0, mA);
     meshOf(defaultInstancer, 'shop').getMatrixAt(0, mB);
     expect(mA.elements).toEqual(mB.elements);
+  });
+});
+
+describe('BuildingInstancer draws a grown building as its stacked tiers', () => {
+  const STEPPED: BuildingCatalogEntry = {
+    ...TOWER,
+    id: 'stepped',
+    kind: 'garden',
+    level: 3,
+    height: 30,
+  };
+  const COURT: BuildingCatalogEntry = { ...STEPPED, id: 'court', level: 2, height: 20 };
+  const VILLA: BuildingCatalogEntry = { ...HOUSE, id: 'villa', kind: 'detached', level: 3 };
+  const STACKED_CATALOG = [HOUSE, TOWER, STEPPED, COURT, VILLA];
+  const meshOf = (instancer: BuildingInstancer, id: string): THREE.InstancedMesh =>
+    instancer.getPickables().find((p) => p.catalogId === id)!.mesh as THREE.InstancedMesh;
+
+  it('stands one instance per tier, each where computeSetbacks puts its box, so the setbacks show', () => {
+    const instancer = new BuildingInstancer(new THREE.Scene(), STACKED_CATALOG, flatHeightAt);
+    instancer.apply({
+      added: [instanceAt(7, 4, 4, { catalogId: 'stepped', rotation: 1 })],
+      removed: [],
+      updated: [],
+    });
+    const mesh = meshOf(instancer, 'stepped');
+    expect(mesh.count).toBe(3);
+    const { boxes } = computeSetbacks(STEPPED, 7);
+    for (let tier = 0; tier < 3; tier++) {
+      const { pos, scl } = decomposeAt(mesh, tier);
+      const box = boxes[tier]!;
+      expect(scl.x).toBeCloseTo(box.w, 5);
+      expect(scl.y).toBeCloseTo(box.h, 5);
+      expect(scl.z).toBeCloseTo(box.d, 5);
+      expect(pos.y).toBeCloseTo(box.yOffset + box.h / 2, 5);
+      // Every tier picks as the one building, and says which tier it is.
+      expect(instancer.buildingIdAt({ catalogId: 'stepped', instanceIndex: tier })).toBe(7);
+      expect(mesh.geometry.getAttribute('aTier').getX(tier)).toBe(tier);
+    }
+    // The upper tiers step in; the whole stack reaches the catalog height.
+    expect(decomposeAt(mesh, 1).scl.x).toBeLessThan(decomposeAt(mesh, 0).scl.x);
+    expect(decomposeAt(mesh, 2).scl.x).toBeLessThan(decomposeAt(mesh, 1).scl.x);
+    const top = decomposeAt(mesh, 2);
+    expect(top.pos.y + top.scl.y / 2).toBeCloseTo(STEPPED.height, 5);
+  });
+
+  it('keeps a house one full-height body whatever its level, for its pitched roof', () => {
+    const instancer = new BuildingInstancer(new THREE.Scene(), STACKED_CATALOG, flatHeightAt);
+    instancer.apply({
+      added: [instanceAt(1, 0, 0, { catalogId: 'villa' })],
+      removed: [],
+      updated: [],
+    });
+    const mesh = meshOf(instancer, 'villa');
+    expect(mesh.count).toBe(1);
+    expect(decomposeAt(mesh, 0).scl.y).toBeCloseTo(VILLA.height, 5);
+  });
+
+  it('cuts the window rows to one tier, not the whole stack', () => {
+    const oneTier = windowGridSize({ ...STEPPED, level: 1, height: 10 });
+    expect(windowGridSize(STEPPED).rows).toBe(oneTier.rows);
+    expect(windowGridSize(STEPPED).rows).toBeLessThan(
+      windowGridSize({ ...STEPPED, level: 1 }).rows,
+    );
+  });
+
+  it('scales every tier of a Constructing building down together, and tints every tier of an Abandoned one', () => {
+    const instancer = new BuildingInstancer(new THREE.Scene(), STACKED_CATALOG, flatHeightAt);
+    instancer.apply({
+      added: [
+        instanceAt(1, 0, 0, { catalogId: 'stepped', state: BuildingState.Constructing }),
+        instanceAt(2, 8, 0, { catalogId: 'stepped', state: BuildingState.Abandoned }),
+      ],
+      removed: [],
+      updated: [],
+    });
+    const mesh = meshOf(instancer, 'stepped');
+    const { boxes } = computeSetbacks(STEPPED, 1);
+    for (let tier = 0; tier < 3; tier++) {
+      const { pos, scl } = decomposeAt(mesh, tier);
+      expect(scl.y).toBeCloseTo(boxes[tier]!.h * 0.25, 5);
+      expect(pos.y).toBeCloseTo((boxes[tier]!.yOffset + boxes[tier]!.h / 2) * 0.25, 5);
+      expect(instancer.activeAt('stepped', tier)).toBe(0);
+    }
+    const color = new THREE.Color();
+    for (let tier = 3; tier < 6; tier++) {
+      mesh.getColorAt(tier, color);
+      expect(color.r).toBeCloseTo(0.25, 5);
+    }
+  });
+
+  it('frees every tier on removal and keeps the other buildings’ tiers picking right', () => {
+    const instancer = new BuildingInstancer(new THREE.Scene(), STACKED_CATALOG, flatHeightAt);
+    instancer.apply({
+      added: [
+        instanceAt(1, 0, 0, { catalogId: 'stepped' }),
+        instanceAt(2, 8, 0, { catalogId: 'stepped' }),
+        instanceAt(3, 16, 0, { catalogId: 'stepped' }),
+      ],
+      removed: [],
+      updated: [],
+    });
+    const mesh = meshOf(instancer, 'stepped');
+    expect(mesh.count).toBe(9);
+    instancer.apply({ added: [], removed: [2], updated: [] });
+    expect(mesh.count).toBe(6);
+    const ids = new Map<number, number>();
+    for (let slot = 0; slot < 6; slot++) {
+      const id = instancer.buildingIdAt({ catalogId: 'stepped', instanceIndex: slot })!;
+      ids.set(id, (ids.get(id) ?? 0) + 1);
+      // The matrix in each slot is one of its building's own tiers.
+      const { pos } = decomposeAt(mesh, slot);
+      expect(pos.x).toBeCloseTo(({ 1: 0, 3: 16 }[id]! + 1) * TILE_METERS, 5);
+    }
+    expect(ids.get(1)).toBe(3);
+    expect(ids.get(3)).toBe(3);
+    expect(ids.has(2)).toBe(false);
+  });
+
+  it('migrates a building that levels up into its new entry’s tier count', () => {
+    const instancer = new BuildingInstancer(new THREE.Scene(), STACKED_CATALOG, flatHeightAt);
+    instancer.apply({
+      added: [instanceAt(1, 0, 0, { catalogId: 'court' })],
+      removed: [],
+      updated: [],
+    });
+    expect(meshOf(instancer, 'court').count).toBe(2);
+    instancer.apply({
+      added: [],
+      removed: [],
+      updated: [instanceAt(1, 0, 0, { catalogId: 'stepped' })],
+    });
+    // An emptied bucket is no longer pickable at all.
+    expect(instancer.getPickables().some((p) => p.catalogId === 'court')).toBe(false);
+    expect(meshOf(instancer, 'stepped').count).toBe(3);
+    expect(instancer.instanceCount()).toBe(3);
   });
 });
 

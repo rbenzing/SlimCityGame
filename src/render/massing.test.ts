@@ -14,7 +14,6 @@ import {
   MAX_SETBACK_INSET,
   MIN_SETBACK_INSET,
   RES_LOW_BODY_M_PER_TILE,
-  TIER_LID_GAP_M,
 } from './massing';
 import { BAY_DEPTH_TILES } from './parked';
 import { deriveFacadeParams, FLOOR_HEIGHT_METERS } from './facade';
@@ -130,7 +129,7 @@ describe('computeSetbacks', () => {
     expect(boxes[0]!.d).toBeCloseTo(3 * TILE_METERS * MASSING_FOOTPRINT_SHRINK, 9);
   });
 
-  it('stacks the boxes bottom-to-top with no gap or overlap, the top tier stopping a hair under the roof', () => {
+  it('stacks the boxes bottom-to-top with no gap or overlap, the top tier reaching the roof exactly', () => {
     for (const level of [1, 2, 3]) {
       for (const height of [4.7, 5, 12, 30, 46.5]) {
         const { boxes } = computeSetbacks(entry({ level, height }), 42);
@@ -139,11 +138,22 @@ describe('computeSetbacks', () => {
           expect(box.yOffset).toBeCloseTo(cursor, 6);
           cursor += box.h;
         }
-        // The base tier is the body and reaches the roof; an inset tier's lid
-        // never shares the roof's plane, or the two fight for the pixels.
-        expect(cursor).toBeCloseTo(level === 1 ? height : height - TIER_LID_GAP_M, 6);
+        expect(cursor).toBeCloseTo(height, 6);
       }
     }
+  });
+
+  it('returns exactly 1 box for a house of any level, whose pitched roof has nowhere to step', () => {
+    for (const kind of ['detached', 'duplex', 'fourplex', 'townhouse'] as const) {
+      for (const level of [2, 3]) {
+        const { boxes } = computeSetbacks(entry({ level, height: 12, kind }), 3);
+        expect(boxes).toHaveLength(1);
+        expect(boxes[0]!.h).toBeCloseTo(12, 9);
+      }
+    }
+    expect(computeSetbacks(entry({ level: 3, height: 30, kind: 'garden' }), 3).boxes).toHaveLength(
+      3,
+    );
   });
 
   it('upper boxes are inset 10-20% narrower than the box directly below them', () => {
@@ -472,17 +482,36 @@ describe('MassingRenderer', () => {
     expect(renderer.upperBoxSlotsFor(1)).toHaveLength(0);
   });
 
-  it('renders exactly 1 upper-box slot for a level-2 building, positioned per computeSetbacks', () => {
+  it('renders no slot for the tiers of a level-2 or level-3 building, which are the body instancer’s', () => {
     const scene = new THREE.Scene();
-    const e = entry({ level: 2, height: 20, footprint: { w: 1, d: 1 } });
+    const two = entry({ id: 'two', level: 2, height: 20 });
+    const three = entry({ id: 'three', level: 3, height: 40 });
+    const renderer = new MassingRenderer(scene, flatHeightAt, [two, three]);
+    renderer.apply(
+      deltaAdd(
+        building({ id: 1, catalogId: 'two', level: 2 }),
+        building({ id: 2, catalogId: 'three', level: 3, x: 10, z: 10 }),
+      ),
+    );
+    expect(renderer.upperBoxSlotsFor(1)).toHaveLength(0);
+    expect(renderer.upperBoxSlotsFor(2)).toHaveLength(0);
+    expect(renderer.instanceCount()).toBe(0);
+  });
+
+  /** A tower on its podium: the one thing the renderer still draws. */
+  const tower = (overrides: Partial<BuildingCatalogEntry> = {}): BuildingCatalogEntry =>
+    entry({ kind: 'tower', level: 3, height: 40, footprint: { w: 2, d: 2 }, ...overrides });
+
+  it('renders exactly 1 slot for a tower, its podium, positioned per computeSetbacks', () => {
+    const scene = new THREE.Scene();
+    const e = tower();
     const renderer = new MassingRenderer(scene, flatHeightAt, [e]);
-    renderer.apply(deltaAdd(building({ level: 2 })));
+    renderer.apply(deltaAdd(building({ level: 3 })));
 
     const slots = renderer.upperBoxSlotsFor(1);
     expect(slots).toHaveLength(1);
 
-    const { boxes } = computeSetbacks(e, 1);
-    const upper = boxes[1]!;
+    const { podium } = computeSetbacks(e, 1);
     const m = new THREE.Matrix4();
     renderer.getBoxMatrix(slots[0]!, m);
     const { pos, scl } = decompose(m);
@@ -491,40 +520,31 @@ describe('MassingRenderer', () => {
     const centerZ = (5 + e.footprint.d / 2) * TILE_METERS;
     expect(pos.x).toBeCloseTo(centerX, 5);
     expect(pos.z).toBeCloseTo(centerZ, 5);
-    expect(pos.y).toBeCloseTo(upper.yOffset + upper.h / 2, 5);
-    expect(scl.x).toBeCloseTo(upper.w, 5);
-    expect(scl.y).toBeCloseTo(upper.h, 5);
-    expect(scl.z).toBeCloseTo(upper.d, 5);
-  });
-
-  it('renders exactly 2 upper-box slots for a level-3 building', () => {
-    const scene = new THREE.Scene();
-    const e = entry({ level: 3, height: 40 });
-    const renderer = new MassingRenderer(scene, flatHeightAt, [e]);
-    renderer.apply(deltaAdd(building({ level: 3 })));
-    expect(renderer.upperBoxSlotsFor(1)).toHaveLength(2);
+    expect(pos.y).toBeCloseTo(podium!.yOffset + podium!.h / 2, 5);
+    expect(scl.x).toBeCloseTo(podium!.w, 5);
+    expect(scl.y).toBeCloseTo(podium!.h, 5);
+    expect(scl.z).toBeCloseTo(podium!.d, 5);
   });
 
   it('follows ground height at the footprint center', () => {
     const heightAt = (): number => 8;
     const scene = new THREE.Scene();
-    const e = entry({ level: 2, height: 20 });
+    const e = tower();
     const renderer = new MassingRenderer(scene, heightAt, [e]);
-    renderer.apply(deltaAdd(building({ level: 2 })));
+    renderer.apply(deltaAdd(building({ level: 3 })));
     const slot = renderer.upperBoxSlotsFor(1)[0]!;
     const m = new THREE.Matrix4();
     renderer.getBoxMatrix(slot, m);
     const { pos } = decompose(m);
-    const { boxes } = computeSetbacks(e, 1);
-    const upper = boxes[1]!;
-    expect(pos.y).toBeCloseTo(8 + upper.yOffset + upper.h / 2, 5);
+    const { podium } = computeSetbacks(e, 1);
+    expect(pos.y).toBeCloseTo(8 + podium!.yOffset + podium!.h / 2, 5);
   });
 
-  it('rotates the upper box by rotation * 90 degrees about Y, matching the base instancer convention', () => {
+  it('rotates the podium by rotation * 90 degrees about Y, matching the base instancer convention', () => {
     const scene = new THREE.Scene();
-    const e = entry({ level: 2, height: 20 });
+    const e = tower();
     const renderer = new MassingRenderer(scene, flatHeightAt, [e]);
-    renderer.apply(deltaAdd(building({ level: 2, rotation: 1 })));
+    renderer.apply(deltaAdd(building({ level: 3, rotation: 1 })));
     const slot = renderer.upperBoxSlotsFor(1)[0]!;
     const m = new THREE.Matrix4();
     renderer.getBoxMatrix(slot, m);
@@ -538,9 +558,9 @@ describe('MassingRenderer', () => {
 
   it('tints the wall color using facade.ts wallColor for Active buildings', () => {
     const scene = new THREE.Scene();
-    const e = entry({ level: 2, height: 20, color: 0x336699 });
+    const e = tower({ color: 0x336699 });
     const renderer = new MassingRenderer(scene, flatHeightAt, [e]);
-    renderer.apply(deltaAdd(building({ level: 2, id: 9 })));
+    renderer.apply(deltaAdd(building({ level: 3, id: 9 })));
     const slot = renderer.upperBoxSlotsFor(9)[0]!;
     const c = new THREE.Color();
     renderer.getBoxColor(slot, c);
@@ -553,20 +573,19 @@ describe('MassingRenderer', () => {
 
   it('scales Constructing buildings height (and yOffset) by 0.25 and tints grey', () => {
     const scene = new THREE.Scene();
-    const e = entry({ level: 2, height: 20, color: 0xffffff });
+    const e = tower({ color: 0xffffff });
     const renderer = new MassingRenderer(scene, flatHeightAt, [e]);
-    renderer.apply(deltaAdd(building({ level: 2, state: BuildingState.Constructing })));
+    renderer.apply(deltaAdd(building({ level: 3, state: BuildingState.Constructing })));
 
     const slot = renderer.upperBoxSlotsFor(1)[0]!;
     const m = new THREE.Matrix4();
     renderer.getBoxMatrix(slot, m);
     const { pos, scl } = decompose(m);
 
-    const { boxes } = computeSetbacks(e, 1);
-    const upper = boxes[1]!;
-    expect(scl.x).toBeCloseTo(upper.w, 5); // footprint is NOT scaled during construction
-    expect(scl.y).toBeCloseTo(upper.h * 0.25, 5);
-    expect(pos.y).toBeCloseTo((upper.yOffset + upper.h / 2) * 0.25, 5);
+    const { podium } = computeSetbacks(e, 1);
+    expect(scl.x).toBeCloseTo(podium!.w, 5); // footprint is NOT scaled during construction
+    expect(scl.y).toBeCloseTo(podium!.h * 0.25, 5);
+    expect(pos.y).toBeCloseTo((podium!.yOffset + podium!.h / 2) * 0.25, 5);
 
     const c = new THREE.Color();
     renderer.getBoxColor(slot, c);
@@ -578,9 +597,9 @@ describe('MassingRenderer', () => {
 
   it('tints Abandoned buildings dark (0.25x)', () => {
     const scene = new THREE.Scene();
-    const e = entry({ level: 2, height: 20, color: 0xffffff });
+    const e = tower({ color: 0xffffff });
     const renderer = new MassingRenderer(scene, flatHeightAt, [e]);
-    renderer.apply(deltaAdd(building({ level: 2, state: BuildingState.Abandoned })));
+    renderer.apply(deltaAdd(building({ level: 3, state: BuildingState.Abandoned })));
     const slot = renderer.upperBoxSlotsFor(1)[0]!;
     const c = new THREE.Color();
     renderer.getBoxColor(slot, c);
@@ -592,7 +611,7 @@ describe('MassingRenderer', () => {
 
   it('removal frees exactly the removed building slots (zero-scale), leaving other buildings intact', () => {
     const scene = new THREE.Scene();
-    const e = entry({ level: 3, height: 40 });
+    const e = tower();
     const renderer = new MassingRenderer(scene, flatHeightAt, [e]);
     renderer.apply(
       deltaAdd(
@@ -603,8 +622,8 @@ describe('MassingRenderer', () => {
 
     const slotsA = [...renderer.upperBoxSlotsFor(1)];
     const slotsB = [...renderer.upperBoxSlotsFor(2)];
-    expect(slotsA).toHaveLength(2);
-    expect(slotsB).toHaveLength(2);
+    expect(slotsA).toHaveLength(1);
+    expect(slotsB).toHaveLength(1);
 
     renderer.apply(deltaRemove(1));
     expect(renderer.upperBoxSlotsFor(1)).toHaveLength(0);
@@ -619,29 +638,29 @@ describe('MassingRenderer', () => {
 
   it('recycles freed slots on the next add instead of growing unboundedly', () => {
     const scene = new THREE.Scene();
-    const e = entry({ level: 2, height: 20 });
+    const e = tower();
     const renderer = new MassingRenderer(scene, flatHeightAt, [e]);
-    renderer.apply(deltaAdd(building({ id: 1, x: 0, z: 0, level: 2 })));
+    renderer.apply(deltaAdd(building({ id: 1, x: 0, z: 0, level: 3 })));
     const before = renderer.instanceCount();
 
     renderer.apply(deltaRemove(1));
-    renderer.apply(deltaAdd(building({ id: 2, x: 10, z: 10, level: 2 })));
+    renderer.apply(deltaAdd(building({ id: 2, x: 10, z: 10, level: 3 })));
     expect(renderer.instanceCount()).toBe(before);
   });
 
-  it('an update that migrates a building to a higher-level catalog entry grows its slot count from 0 to 2 (levels are catalog-driven, per buildings.ts convention)', () => {
+  it('an update that migrates a building to a tower entry grows its slot count from 0 to 1 (the kind is catalog-driven, per buildings.ts convention)', () => {
     const scene = new THREE.Scene();
     const e1 = entry({ id: 'e-lvl1', level: 1, height: 10 });
-    const e3 = entry({ id: 'e-lvl3', level: 3, height: 40 });
+    const e3 = tower({ id: 'e-tower' });
     const renderer = new MassingRenderer(scene, flatHeightAt, [e1, e3]);
     renderer.apply(deltaAdd(building({ catalogId: 'e-lvl1', level: 1 })));
     expect(renderer.upperBoxSlotsFor(1)).toHaveLength(0);
 
     // Real growth re-emits the SAME building id under a different catalogId
     // (buildings.ts's own "migrates an id to a different bucket" behavior);
-    // massing reads the LEVEL FROM THE CATALOG ENTRY, not instance.level.
-    renderer.apply(deltaUpdate(building({ catalogId: 'e-lvl3', level: 3 })));
-    expect(renderer.upperBoxSlotsFor(1)).toHaveLength(2);
+    // massing reads the KIND FROM THE CATALOG ENTRY, not instance.level.
+    renderer.apply(deltaUpdate(building({ catalogId: 'e-tower', level: 3 })));
+    expect(renderer.upperBoxSlotsFor(1)).toHaveLength(1);
   });
 
   it('setNightFactor defaults to 0 and clamps to [0,1]', () => {
@@ -687,25 +706,33 @@ describe('MassingRenderer', () => {
     );
     expect(() => renderer.apply(deltaAdd(...added))).not.toThrow();
 
-    // res-high-3 is level 3 in the real catalog -> exactly 2 upper-box slots.
-    const towerIndex = realCatalog.findIndex((c) => c.id === 'res-high-3');
-    expect(towerIndex).toBeGreaterThanOrEqual(0);
-    expect(renderer.upperBoxSlotsFor(towerIndex + 1)).toHaveLength(2);
+    // Every tier is the body instancer's; only a tower's podium is drawn here.
+    for (let i = 0; i < realCatalog.length; i++) {
+      const expected = realCatalog[i]!.kind === 'tower' ? 1 : 0;
+      expect(renderer.upperBoxSlotsFor(i + 1)).toHaveLength(expected);
+    }
+    expect(realCatalog.some((c) => c.kind === 'tower')).toBe(true);
   });
 });
 
 describe('MassingRenderer frontage setback (optional roadAt)', () => {
-  const COM = entry({ category: 'com', zone: 3, footprint: { w: 2, d: 2 }, level: 2, height: 20 });
+  const COM = entry({
+    category: 'com',
+    zone: 3,
+    kind: 'tower',
+    footprint: { w: 2, d: 2 },
+    level: 3,
+    height: 40,
+  });
 
-  it('shifts the upper tiers with the set-back body when the com lot faces a road', () => {
+  it('shifts the podium with the set-back body when the com lot faces a road', () => {
     const roadAt = roadAtTiles([[5, 4]]); // N of the footprint at (5,5)
     const scene = new THREE.Scene();
     const renderer = new MassingRenderer(scene, flatHeightAt, [COM], roadAt);
-    renderer.apply(deltaAdd(building({ level: 2 })));
+    renderer.apply(deltaAdd(building({ level: 3 })));
 
     const frontage = frontageSetbackFor(COM, 5, 5, roadAt);
-    const { boxes } = computeSetbacks(COM, 1, frontage);
-    const upper = boxes[1]!;
+    const { podium } = computeSetbacks(COM, 1, frontage);
 
     const slot = renderer.upperBoxSlotsFor(1)[0]!;
     const m = new THREE.Matrix4();
@@ -713,15 +740,15 @@ describe('MassingRenderer frontage setback (optional roadAt)', () => {
     const { pos, scl } = decompose(m);
     expect(pos.x).toBeCloseTo((5 + 1) * TILE_METERS, 5);
     expect(pos.z).toBeCloseTo((5 + 1) * TILE_METERS + frontage.centerZM, 5);
-    expect(scl.x).toBeCloseTo(upper.w, 5);
-    expect(scl.z).toBeCloseTo(upper.d, 5);
+    expect(scl.x).toBeCloseTo(podium!.w, 5);
+    expect(scl.z).toBeCloseTo(podium!.d, 5);
   });
 
-  it('with roadAt present but no road nearby, tiers match the no-roadAt renderer exactly', () => {
+  it('with roadAt present but no road nearby, the podium matches the no-roadAt renderer exactly', () => {
     const withRoadAt = new MassingRenderer(new THREE.Scene(), flatHeightAt, [COM], noRoad);
     const withoutRoadAt = new MassingRenderer(new THREE.Scene(), flatHeightAt, [COM]);
-    withRoadAt.apply(deltaAdd(building({ level: 2 })));
-    withoutRoadAt.apply(deltaAdd(building({ level: 2 })));
+    withRoadAt.apply(deltaAdd(building({ level: 3 })));
+    withoutRoadAt.apply(deltaAdd(building({ level: 3 })));
 
     const mA = new THREE.Matrix4();
     const mB = new THREE.Matrix4();
@@ -731,7 +758,13 @@ describe('MassingRenderer frontage setback (optional roadAt)', () => {
   });
 
   it('leaves a road-adjacent RES building untouched even with roadAt wired', () => {
-    const res = entry({ category: 'res', footprint: { w: 2, d: 2 }, level: 2, height: 20 });
+    const res = entry({
+      category: 'res',
+      kind: 'tower',
+      footprint: { w: 2, d: 2 },
+      level: 3,
+      height: 40,
+    });
     const withRoad = new MassingRenderer(
       new THREE.Scene(),
       flatHeightAt,
@@ -739,8 +772,8 @@ describe('MassingRenderer frontage setback (optional roadAt)', () => {
       roadAtTiles([[5, 4]]),
     );
     const withoutRoad = new MassingRenderer(new THREE.Scene(), flatHeightAt, [res]);
-    withRoad.apply(deltaAdd(building({ level: 2 })));
-    withoutRoad.apply(deltaAdd(building({ level: 2 })));
+    withRoad.apply(deltaAdd(building({ level: 3 })));
+    withoutRoad.apply(deltaAdd(building({ level: 3 })));
 
     const mA = new THREE.Matrix4();
     const mB = new THREE.Matrix4();
