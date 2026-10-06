@@ -120,8 +120,12 @@ not a test to fix.
 
 Before writing "not built" anywhere in this document, check the code.
 
-**Next:** nothing is queued, so the next item is whatever is asked for next.
-The municipal services programme's epics
+**Next:** lots and land, asked for 2026-10-05 and drafted the same day for
+agreement ([lots-and-land.md](game-design/features/lots-and-land.md)): a
+zoned block platted into parcels the land's standing sizes, half lots to
+estates, on US zoning standards, with a kind assembling the parcels it
+needs and a level-up never growing the lot. After it, the municipal
+services programme's epics
 ([municipal-services.md](game-design/features/municipal-services.md)), the
 [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
 transit modes) and AI raster map packs, facade-atlas stage 2 and screen-space
