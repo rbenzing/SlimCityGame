@@ -72,11 +72,21 @@ its own orthogonal road neighbours:
   passing overhead.
 
 From every frontage side, the zonable area marches straight outward, up to
-`ZONE_DEPTH` = 4 tiles deep, and stops at the first blocking tile — water,
+`ZONE_DEPTH` = 3 tiles deep, and stops at the first blocking tile — water,
 another road, a building, out of bounds, or a slope past
 `MAX_BUILD_SLOPE`. Tiles beyond a block have no direct access from that
-frontage and are not zonable, even if they sit within the 4-tile depth. The
+frontage and are not zonable, even if they sit within the 3-tile depth. The
 zonable set is the union of every road tile's frontage marches.
+
+The depth is the same number as `ROAD_CHECK_RADIUS`, the distance a lot may
+stand from its street, and it is three because that is the deepest lot the
+catalogue holds: a lot grows only when the utilities reach a tile of it, and
+they reach one tile off the road, so every lot's first row touches the row
+beside the street and a 3×3 house or a 2×3 estate reaches exactly to the
+depth. A fourth row was land the brush painted and nothing could ever grow
+on — in one grown town, a third of everything zoned — and the second tier of
+lots behind the first belongs to the street behind the block, as it does in
+a real subdivision, never to a deeper march from the same street.
 
 **Farmland** is the same march with two differences, and the same one
 predicate (`zonableMaskFor`) decides it for the grid and for painting:

@@ -2563,7 +2563,7 @@ describe('Road guide snapping pulls a near-miss into line', () => {
   it('reaches half the zoning depth, and no further', () => {
     // Far enough to correct a stagger nobody chose; short enough that it can
     // never pull a road across ground an existing road already serves.
-    expect(GUIDE_SNAP_TILES).toBe(ZONE_DEPTH / 2);
+    expect(GUIDE_SNAP_TILES).toBe(Math.ceil(ZONE_DEPTH / 2));
   });
 
   it('pulls a drag onto the row of a road it nearly continues', () => {

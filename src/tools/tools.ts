@@ -474,7 +474,8 @@ export function buildLPath(start: TilePoint, end: TilePoint): TilePoint[] {
 }
 
 /**
- * How far a road guide reaches, in tiles — half the zoning depth.
+ * How far a road guide reaches, in tiles — half the zoning depth, rounded
+ * up to whole tiles.
  *
  * It is the furthest a snap can pull a road without destroying ground an
  * existing road already serves: inside it, the gap between two parallel
@@ -482,7 +483,7 @@ export function buildLPath(start: TilePoint, end: TilePoint): TilePoint[] {
  * player meant to leave, and moving the road there would be moving it
  * somewhere it was not pointed.
  */
-export const GUIDE_SNAP_TILES = ZONE_DEPTH / 2;
+export const GUIDE_SNAP_TILES = Math.ceil(ZONE_DEPTH / 2);
 
 /**
  * `tile` pulled into line with a nearby road, independently on each axis.
@@ -583,9 +584,9 @@ export function guidePoint(
  *
  * Derived rather than chosen: a road puts frontage ZONE_DEPTH cells out from
  * each of its sides, so two parallel streets zone everything between them when
- * the gap is twice that — eight tiles of block, plus the street itself. It is
+ * the gap is twice that — six tiles of block, plus the street itself. It is
  * the widest pitch that leaves no dead ground in the middle of a block, and at
- * 20 m tiles it comes out a 180 m block, which is a city block.
+ * 20 m tiles it comes out a 140 m block, which is a city block.
  */
 export const GRID_SPACING_TILES = 2 * ZONE_DEPTH + 1;
 

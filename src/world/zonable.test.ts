@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RoadTier, ZoneType } from '../shared/types';
-import { MAX_BUILD_SLOPE } from '../shared/constants';
+import { MAX_BUILD_SLOPE, ROAD_CHECK_RADIUS } from '../shared/constants';
 import { SoilGrade } from '../shared/soil';
 import {
   FARM_DEPTH,
@@ -39,8 +39,9 @@ function coordSet(tiles: Array<{ x: number; z: number }>): Set<string> {
 }
 
 describe('ZONE_DEPTH', () => {
-  it('is 4 per UI-SPEC §6.19', () => {
-    expect(ZONE_DEPTH).toBe(4);
+  it('is the distance a lot may stand from its street, so nothing zonable is land that can never grow', () => {
+    expect(ZONE_DEPTH).toBe(ROAD_CHECK_RADIUS);
+    expect(ZONE_DEPTH).toBe(3);
   });
 });
 
@@ -53,24 +54,22 @@ describe('computeZonableTiles — straight road', () => {
     return g;
   }
 
-  it('makes a 4-deep band on BOTH sides (E and W)', () => {
+  it('makes a 3-deep band on BOTH sides (E and W)', () => {
     const set = coordSet(computeZonableTiles(straight()));
-    // East side depth 1..4 for an interior road row.
+    // East side depth 1..3 for an interior road row.
     expect(set.has('6,4')).toBe(true);
     expect(set.has('7,4')).toBe(true);
     expect(set.has('8,4')).toBe(true);
-    expect(set.has('9,4')).toBe(true);
-    // West side depth 1..4.
+    // West side depth 1..3.
     expect(set.has('4,4')).toBe(true);
     expect(set.has('3,4')).toBe(true);
     expect(set.has('2,4')).toBe(true);
-    expect(set.has('1,4')).toBe(true);
   });
 
-  it('marks nothing at depth 5, and never the road tile itself', () => {
+  it('marks nothing at depth 4, and never the road tile itself', () => {
     const set = coordSet(computeZonableTiles(straight()));
-    expect(set.has('10,4')).toBe(false); // E depth 5
-    expect(set.has('0,4')).toBe(false); // W depth 5
+    expect(set.has('9,4')).toBe(false); // E depth 4
+    expect(set.has('1,4')).toBe(false); // W depth 4
     expect(set.has('5,4')).toBe(false); // the road tile
   });
 
@@ -165,11 +164,11 @@ describe('computeZonableTiles — T-junction & turns frontage the open sides', (
     g.roadTier[idx(size, 4, 6)] = RoadTier.TwoLane;
     g.roadTier[idx(size, 4, 7)] = RoadTier.TwoLane;
     const set = coordSet(computeZonableTiles(g));
-    // (4,5) connects W,E,S -> open side is N -> N band 1..4.
+    // (4,5) connects W,E,S -> open side is N -> N band 1..3.
     expect(set.has('4,4')).toBe(true);
     expect(set.has('4,3')).toBe(true);
     expect(set.has('4,2')).toBe(true);
-    expect(set.has('4,1')).toBe(true);
+    expect(set.has('4,1')).toBe(false);
     // Stub end (4,7) is a dangling end -> side bands E/W, never the open S end.
     expect(set.has('5,7')).toBe(true);
     expect(set.has('3,7')).toBe(true);
@@ -214,7 +213,7 @@ describe('computeZonableTiles — slope budget', () => {
     expect(set.has('7,4')).toBe(false);
     // West side stays flat and zonable.
     expect(set.has('4,4')).toBe(true);
-    expect(set.has('1,4')).toBe(true);
+    expect(set.has('2,4')).toBe(true);
   });
 });
 

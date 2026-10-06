@@ -64,8 +64,8 @@ describe('landfillPlacementMask', () => {
     const mask = landfillPlacementMask(g);
 
     expect(mask[idx(10, 3, 1)]).toBe(1); // right off the frontage
-    expect(mask[idx(10, 3, 4)]).toBe(1); // deepest frontage cell
-    expect(mask[idx(10, 3, 5)]).toBe(0); // beyond frontage depth
+    expect(mask[idx(10, 3, 3)]).toBe(1); // deepest frontage cell
+    expect(mask[idx(10, 3, 4)]).toBe(0); // beyond frontage depth
     expect(mask[idx(10, 3, 0)]).toBe(0); // the road tile itself
     expect(mask[idx(10, 3, 9)]).toBe(0); // far roadless land
   });

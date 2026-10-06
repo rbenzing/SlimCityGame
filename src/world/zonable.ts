@@ -29,13 +29,19 @@
 import { RoadTier, ZoneType, isStreetTier } from '../shared/types';
 import type { RoadNet } from '../shared/types';
 import { isFarmable } from '../shared/soil';
-import { MAX_BUILD_SLOPE, TILE_METERS } from '../shared/constants';
+import { MAX_BUILD_SLOPE, ROAD_CHECK_RADIUS, TILE_METERS } from '../shared/constants';
 import { isGridSegment, sampleCentreLine } from '../shared/roadgeom';
 import type { SegmentGeom } from '../shared/roadgeom';
 import { presetProfileForTier, profileWidth } from '../shared/roadprofile';
 
-/** Perpendicular frontage depth: cells marched out from a road side. */
-export const ZONE_DEPTH = 4;
+/**
+ * Perpendicular frontage depth: cells marched out from a road side. It is
+ * the distance a lot may stand from its street and no more, so nothing the
+ * brush paints is land that can never grow: a lot's first row must touch the
+ * tile beside the road for the utilities to reach it, and the deepest lot in
+ * the catalogue is three.
+ */
+export const ZONE_DEPTH = ROAD_CHECK_RADIUS;
 
 /**
  * The minimal read-only slice of the world grid this predicate reads. A real

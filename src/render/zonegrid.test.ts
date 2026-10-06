@@ -111,14 +111,14 @@ describe('computeZonableTiles (UI-SPEC §6.19 — delegates to world/zonable.ts)
   it('marks a perpendicular-frontage band of depth ZONE_DEPTH on both sides of a straight run, never the road tile itself', () => {
     const g = gridWithStraightRoad(12, 5, 2, 7);
     const tiles = computeZonableTiles(g);
-    expect(ZONE_DEPTH).toBe(4);
+    expect(ZONE_DEPTH).toBe(3);
     expect(has(tiles, 5, 4)).toBe(false); // the road tile itself
     expect(has(tiles, 6, 4)).toBe(true); // E depth 1
-    expect(has(tiles, 9, 4)).toBe(true); // E depth 4 (the reach boundary)
-    expect(has(tiles, 10, 4)).toBe(false); // E depth 5, one past the boundary
+    expect(has(tiles, 8, 4)).toBe(true); // E depth 3 (the reach boundary)
+    expect(has(tiles, 9, 4)).toBe(false); // E depth 4, one past the boundary
     expect(has(tiles, 4, 4)).toBe(true); // W depth 1
-    expect(has(tiles, 1, 4)).toBe(true); // W depth 4
-    expect(has(tiles, 0, 4)).toBe(false); // W depth 5
+    expect(has(tiles, 2, 4)).toBe(true); // W depth 3
+    expect(has(tiles, 1, 4)).toBe(false); // W depth 4
   });
 
   it('never zones off a dangling road end (screenshot 2 fix): nothing straight off the run axis', () => {

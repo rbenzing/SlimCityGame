@@ -573,7 +573,12 @@ MUTCD citations below use 11th-edition section numbers.
   thread reads roads off the grid from the network the worker sends, never
   from its road tiles. A road off the grid fronts lots square to its centre
   line from its kerb, out to the zoning depth, and nothing is zoned or built on
-  its footprint. Clearing a zone is
+  its footprint. The zoning depth IS that distance (`ZONE_DEPTH` =
+  `ROAD_CHECK_RADIUS` = 3): the brush never paints land no lot can stand on.
+  The utilities reach one tile off the road and a lot grows when they reach
+  any tile of it, so a lot's first row touches the row beside the street and
+  the deepest lot in the catalogue, three, reaches the depth; a fourth row
+  was a third of a grown town's zoning that could never grow. Clearing a zone is
   exempt from the frontage check so a zone can always be removed. A farm
   departs from this twice: its lot needs a dirt road within 3 tiles, and
   it needs no water or drain, since a building whose entry draws none never

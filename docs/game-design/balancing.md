@@ -30,7 +30,7 @@ agree everywhere they overlap.
 | `LOW_DEMAND`                     | -0.5                                                                   | Sector demand below which a building carries `LowDemand`.                                                                                     | `src/sim/growth.ts`       |
 | pollution weight in desirability | res 0.5, com 0.2, ind 0                                                | How much pollution discounts spawn desirability, by sector. Inline literal (`desirabilityFor`'s `pollutionWeight`), not an exported constant. | `src/sim/growth.ts`       |
 | desirability formula             | `(landValue/255) × 0.6 + 0.4 − (pollution/255) × weight`, clamped 0..1 | The exact spawn-probability multiplier; `simulation-rules.md` states its shape only. Inline literal in `desirabilityFor`.                     | `src/sim/growth.ts`       |
-| `ZONE_DEPTH`                     | 4                                                                      | Tiles a frontage march reaches back from the road.                                                                                            | `src/world/zonable.ts`    |
+| `ZONE_DEPTH`                     | 3 (= `ROAD_CHECK_RADIUS`)                                              | Tiles a frontage march reaches back from the road: the distance a lot may stand from its street, so nothing painted is land that cannot grow. | `src/world/zonable.ts`    |
 | `MAX_BUILD_SLOPE`                | 4 m                                                                    | Per-tile height delta ceiling for zoning and building.                                                                                        | `src/shared/constants.ts` |
 
 ## Residential kinds
