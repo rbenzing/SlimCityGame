@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.35.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.34.0...slimcity-v1.35.0) (2026-10-06)
+
+
+### Features
+
+* **zoning:** a zone over a built block says why it changed nothing, … ([0d78b38](https://github.com/rbenzing/SlimCityGame/commit/0d78b38f4611529973a19313e191c1fdfec42044))
+* **zoning:** a zone over a built block says why it changed nothing, and two decisions written down ([25e9f1c](https://github.com/rbenzing/SlimCityGame/commit/25e9f1c714214e09b68a8a1f2b025dd68140ab40))
+* **zoning:** the zoning depth is the distance a lot may stand from i… ([34f2ede](https://github.com/rbenzing/SlimCityGame/commit/34f2ede45c6bdc3ae7ef64203f77190982a2e502))
+* **zoning:** the zoning depth is the distance a lot may stand from its street ([4648293](https://github.com/rbenzing/SlimCityGame/commit/464829378523a3901ce1162718bd8dd931c2c57b))
+
+
+### Bug Fixes
+
+* **fields:** land value settles, so a level-up is earned ([1a7ffda](https://github.com/rbenzing/SlimCityGame/commit/1a7ffda1bcd13680d566ee6a07333a31de5ff221))
+* **fields:** land value settles, so a level-up is earned ([d64b5c0](https://github.com/rbenzing/SlimCityGame/commit/d64b5c02dbc4f2cb84c5cbd6b62d233eda429f56))
+* **roads:** a road through a building is refused whole, not laid in p… ([b636304](https://github.com/rbenzing/SlimCityGame/commit/b636304f12fe55d8de0820e04b2450585acc02d7))
+* **roads:** a road through a building is refused whole, not laid in pieces ([9cc1344](https://github.com/rbenzing/SlimCityGame/commit/9cc1344d552b0e796b5e5be16a7b3ccbce64cd58))
+* **transit:** a bus stop beside a long block finds its street ([3463344](https://github.com/rbenzing/SlimCityGame/commit/34633447870e2ddcca26a764fa85cbf2870e61be))
+* **transit:** a bus stop beside a long block finds its street ([9d31e33](https://github.com/rbenzing/SlimCityGame/commit/9d31e33a63386b70c2028a1851f42870f3f39743))
+
 ## [1.34.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.33.3...slimcity-v1.34.0) (2026-10-06)
 
 
