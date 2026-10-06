@@ -578,7 +578,11 @@ MUTCD citations below use 11th-edition section numbers.
   The utilities reach one tile off the road and a lot grows when they reach
   any tile of it, so a lot's first row touches the row beside the street and
   the deepest lot in the catalogue, three, reaches the depth; a fourth row
-  was a third of a grown town's zoning that could never grow. Clearing a zone is
+  was a third of a grown town's zoning that could never grow. A zone changes
+  only empty land: a building keeps the zone it grew on for life, a denser
+  zone painted over a built block takes only the gaps, and a stroke that
+  falls wholly on buildings is refused with a reason naming the bulldozer,
+  never silently as `invalid`. Clearing a zone is
   exempt from the frontage check so a zone can always be removed. A farm
   departs from this twice: its lot needs a dirt road within 3 tiles, and
   it needs no water or drain, since a building whose entry draws none never

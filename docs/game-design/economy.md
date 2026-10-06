@@ -41,6 +41,17 @@ priced until income recovers. There is no separate bankruptcy mechanic
 beyond that lockout: a city with negative funds keeps running, unable to
 build or plop anything priced, until income outpaces expenses again.
 
+What that means at the first unlock, measured by playing a town from the
+opening with no sandbox: a Small Town of 600 that buys the police station,
+fire station, clinic and school the milestone unlocks, plus a coal plant,
+spends about ¢2,970 a month against ¢1,190 of tax, and the Advisor says so
+at once. The ¢10,000 milestone grant and a loan carry it; by about 2,000
+people the same town takes ¢5,600 a month against ¢3,500 and is paying the
+loan down. That is the intended shape — a town grows into its services,
+and the Advisor's warning is the cue not to buy all four at once — and not a
+balance to tune away: a real town of 600 has a volunteer fire company and
+no hospital, and the unlock is permission, not advice.
+
 ## Loans
 
 A loan tops up funds against a ¢100,000 outstanding-balance ceiling; a

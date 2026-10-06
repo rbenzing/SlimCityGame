@@ -5,11 +5,14 @@ import type { Command, GridState } from '../../src/shared/types';
 import { tileIndex } from '../../src/shared/constants';
 import { decodeSave, encodeSave } from '../../src/app/persist';
 import {
+  GROWTH_TIMEOUT_MS,
   initialized,
   latestSaveGrid,
   roadRow,
+  rows,
   run,
   send,
+  standingBuildings,
   twoLaneSpec,
   windTurbine,
   type Harness,
@@ -489,4 +492,49 @@ describe('a zone comes back exactly as it was', () => {
     ]);
     expect(painted.ok).toBe(false);
   });
+});
+
+describe('a zone painted over standing buildings', () => {
+  it(
+    'changes only the empty tiles, keeps every building its own kind, and says so when nothing is empty',
+    () => {
+      const h = initialized();
+      expect(
+        run(h, 1, [
+          { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(50, 50, 20) },
+          { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 50, z: 49, rotation: 0 },
+          { kind: 'placeBuilding', catalogId: 'water-tower', x: 52, z: 48, rotation: 0 },
+          { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(56, 51, 12, 2) },
+        ]).ok,
+      ).toBe(true);
+      h.ticks(1500);
+      const before = [...standingBuildings(h).values()].filter((b) => b.catalogId.startsWith('res-'));
+      expect(before.length).toBeGreaterThan(0);
+      const builtTiles = before.flatMap((b) => [
+        { x: b.x, z: b.z },
+        { x: b.x + 1, z: b.z },
+        { x: b.x, z: b.z + 1 },
+        { x: b.x + 1, z: b.z + 1 },
+      ]);
+
+      // Over built tiles only: nothing changes, and the reason names it.
+      const refused = run(h, 2, [{ kind: 'paintZone', zone: ZoneType.ResMediumRow, tiles: builtTiles }]);
+      expect(refused.ok).toBe(false);
+      expect(refused.reason).toMatch(/bulldoze/i);
+
+      // Over the band with an empty tile in it: the empty tile takes the new
+      // zone, the houses keep theirs and stand as they were.
+      const band = [...rows(56, 51, 12, 2), { x: 54, z: 51 }];
+      const partly = run(h, 3, [{ kind: 'paintZone', zone: ZoneType.ResMediumRow, tiles: band }]);
+      expect(partly.ok).toBe(true);
+      h.sim.handleMessage({ type: 'requestSave' });
+      const g = latestSaveGrid(h);
+      expect(g.zone[tileIndex(54, 51)]).toBe(ZoneType.ResMediumRow);
+      for (const b of before) {
+        expect(g.zone[tileIndex(b.x, b.z)]).toBe(ZoneType.ResLow);
+        expect(standingBuildings(h).get(b.id)?.catalogId).toBe(b.catalogId);
+      }
+    },
+    GROWTH_TIMEOUT_MS,
+  );
 });
