@@ -270,6 +270,22 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 
 ## 10. History (newest first)
 
+### The zoning depth is the distance a lot may stand from its street (found and decided 2026-10-06)
+
+The whole-city play ended with 2,010 of 5,840 zoned tiles empty, almost all
+of them the third and fourth rows back from a street. The brush painted
+four deep while the utilities reach one tile off the road and a lot grows
+when they reach any tile of it, so the first row of every lot had to touch
+the row beside the street, and a fourth row was land nothing could ever
+stand on, with the Advisor rightly silent since no road failed it. The depth
+is now the same number as the distance a lot may stand from its street,
+`ROAD_CHECK_RADIUS` = 3, which is also the deepest lot the catalogue holds (a
+3×3 house, a 2×3 estate). Grid mode's pitch follows it to seven tiles, a
+140 m block; the guide snap still reaches two. The lots design's claim that
+four tiles held "two tiers of lots" was wrong and is corrected: the second
+tier of a real block fronts the street behind it. Looked at: the zoning grid
+three deep either side of a street.
+
 ### Land value settles, so a level-up is earned (found and decided 2026-10-06)
 
 The whole-city play read land value 255 over homes, industry and the empty

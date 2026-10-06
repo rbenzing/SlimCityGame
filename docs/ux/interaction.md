@@ -48,10 +48,10 @@ block.
 **The spacing is the zoning depth, not a taste.** A road puts frontage
 `ZONE_DEPTH` cells out from each of its sides (`world/zonable.ts`), so two
 parallel streets zone everything between them when the gap is twice that. The
-grid pitch is therefore `2 × ZONE_DEPTH + 1` = **9 tiles centre to centre** —
-eight tiles of block and the street itself. It is the widest spacing that
+grid pitch is therefore `2 × ZONE_DEPTH + 1` = **7 tiles centre to centre** —
+six tiles of block and the street itself. It is the widest spacing that
 leaves no dead ground in the middle of a block, and at 20 m tiles it is a
-180 m block, which is a city block. A tighter grid would be a choice about
+140 m block, which is a city block. A tighter grid would be a choice about
 taste; this one falls out of the rule the game already enforces.
 
 Internal streets are laid only where a whole block still fits behind them. A
@@ -200,7 +200,7 @@ direction, so a candidate only guides when its neighbour along the same axis is
 also road — otherwise a perpendicular road's one crossing tile would drag a new
 street sideways onto it.
 
-**The snap reaches two tiles**, which is half the zoning depth. That is the
+**The snap reaches two tiles**, which is half the zoning depth rounded up. That is the
 furthest it can pull a road without destroying ground an existing road already
 serves: at two tiles the strip between two parallel streets is a stagger nobody
 chose, and beyond it the offset is a block the player meant to leave. A snap

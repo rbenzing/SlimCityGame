@@ -76,9 +76,12 @@ at least 220 ft wide, and lots no deeper than 2.5 to 3 times their width
 ([Elyria](https://codelibrary.amlegal.com/codes/elyria/latest/elyria_oh/0-0-0-82287),
 [Stacy MN](https://codelibrary.amlegal.com/codes/stacy/latest/stacy_mn/0-0-0-18467)).
 On the tile: blocks of 9 to 20 tiles between cross streets, lots two deep
-either side, and no lot deeper than three tiles for one wide. The game's
-zoning depth of four tiles from the road already holds two tiers of 1×2 lots,
-or one of 2×3 — which is why the zoning depth was four.
+either side, and no lot deeper than three tiles for one wide. "Two tiers of
+lots deep" is one tier fronting each of the block's two streets, back to
+back; it is never two tiers off the same street, since a lot that does not
+front a street is not a lot. The game's zoning depth of three tiles from
+the road holds one tier: a 1×2 normal lot with a tile of garden behind it,
+or a 2×3 estate reaching to the depth.
 
 ### Commercial
 
@@ -214,9 +217,10 @@ already show.
 - **The house kit** draws the front yard, the drive and the car from the
   lot plan ([../../art/buildings.md](../../art/buildings.md)); a 1×1 lot gets
   a shallow yard and a parking spot beside the house, a 2×3 a long drive.
-- **The zoning depth** stays four tiles: two tiers of normal lots or one of
-  estate lots. A block painted only one tile deep plats half lots only,
-  whatever the land, since a normal lot needs the depth.
+- **The zoning depth** is three tiles, one tier of lots fronting the
+  street, the deepest of them an estate; the tier behind fronts the street
+  behind. A block painted only one tile deep plats half lots only, whatever
+  the land, since a normal lot needs the depth.
 - **Taxes.** Property tax is on the building as today; a lot has no separate
   value. Deferred with the land market.
 - **Saves.** The plat is derived from the zone layer and the land-value field
