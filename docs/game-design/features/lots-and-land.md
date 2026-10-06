@@ -138,7 +138,14 @@ The bands are the land-value field's own quartiles, which the lens already
 colours; the thresholds are dials. Land value is what it is today: a diffused
 field raised by parks, water, services and quiet and lowered by pollution,
 noise and crime, so a poor street is one by a works or a motorway and a good
-one is by a park on a quiet road. A zone painted across a gradient plats
+one is by a park on a quiet road. The field's equilibrium
+([../../world-sim/environmental-simulation.md](../../world-sim/environmental-simulation.md#landvalue-fieldidlandvalue--0))
+puts the bands where they read: bare clean ground settles at 119, an
+ordinary lot; a river bank at 181, a double lot; a park or trees on a quiet
+shore carry a tile past 224, an estate; and a block under a works' pollution
+sits under 64, half lots. Before the field had that equilibrium it read 255
+everywhere within thirty seconds of a new game, and every lot would have
+been an estate. A zone painted across a gradient plats
 small at one end and large at the other, as a real town does across the
 tracks.
 

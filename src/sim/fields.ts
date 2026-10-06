@@ -46,6 +46,24 @@ const NEI_NUM = 102;
 // --- traffic emission normalizer (edge.tier * 800) --------------------------
 const TRAFFIC_CAPACITY_PER_TIER = 800;
 
+/** Land value's decay numerator over 256; see the schedule below for what it settles. */
+export const LAND_VALUE_DECAY_NUM = 243;
+/** The gain a clean, quiet, treeless tile away from water is fed each pass. */
+const LAND_VALUE_CLEAN_GAIN = 7;
+/**
+ * Where such a tile settles, rising from zero: the first value whose
+ * integer decay gives the gain back, which the floor puts one past
+ * (gain − 1) × 256 / (256 − decay).
+ */
+export const LAND_VALUE_BASE =
+  Math.floor(((LAND_VALUE_CLEAN_GAIN - 1) * 256) / (256 - LAND_VALUE_DECAY_NUM)) + 1;
+/**
+ * Where a tile on a straight river bank settles: its +6 for the water is
+ * shared with the row behind by diffusion, so it lands well short of the
+ * lone-tile figure. Measured, not derived; the test pins it.
+ */
+export const LAND_VALUE_BANK = 181;
+
 /** Clamp to a valid byte, truncating any fractional part. Never wraps. */
 function clampByte(v: number): number {
   if (v <= 0) return 0;
@@ -74,7 +92,11 @@ interface DiffusingFieldSchedule {
  * value Pollution's own pass just mutated earlier in the same tick() call.
  */
 const DIFFUSING_FIELDS: readonly DiffusingFieldSchedule[] = [
-  { field: FieldId.LandValue, period: 8, offset: 0, decayNum: 255 },
+  // Land value is fed a gain every pass, so its decay is what gives it an
+  // equilibrium: at 243/256 bare clean ground settles at 119, under the
+  // level-2 threshold, a river bank at 181, over it and under the level-3 one.
+  // At 255 the whole map read 255 within thirty seconds of a new game.
+  { field: FieldId.LandValue, period: 8, offset: 0, decayNum: LAND_VALUE_DECAY_NUM },
   { field: FieldId.Crime, period: 8, offset: 1, decayNum: 252 },
   { field: FieldId.FireRisk, period: 8, offset: 2, decayNum: 253 },
   { field: FieldId.Education, period: 8, offset: 3, decayNum: 253 },
