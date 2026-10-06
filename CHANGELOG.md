@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.34.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.33.3...slimcity-v1.34.0) (2026-10-06)
+
+
+### Features
+
+* **render:** the stepped silhouette shows — every tier is the body instancer's, with its own windows ([d85955c](https://github.com/rbenzing/SlimCityGame/commit/d85955cba0e00955ec7d4e5c9926a3e9e6a79d89))
+
 ## [1.33.3](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.33.2...slimcity-v1.33.3) (2026-10-05)
 
 
