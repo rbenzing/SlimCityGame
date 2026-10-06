@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,750 tests passing across 158 test files, run 2026-10-06.
+**Test suite:** 4,752 tests passing across 158 test files, run 2026-10-06.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -269,6 +269,17 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### A road through a building is refused, not laid in pieces (found and fixed 2026-10-06)
+
+Found in the same whole-city play: a cross street dragged through a row of
+houses was acknowledged as built and laid with the houses' tiles left out,
+so it stood in three pieces that joined nothing and carried no power or
+water, while the road tool's preview had read valid, since its overlap
+check covered plops only. The world now refuses the whole drag with a
+reason that names the building and the bulldozer, and the tool's chip reads
+"Overlapping items" over a building before the click; water and other roads
+are still not in the way.
 
 ### A bus stop beside a long block finds its street (found and fixed 2026-10-06)
 

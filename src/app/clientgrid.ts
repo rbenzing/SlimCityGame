@@ -817,6 +817,19 @@ export class ClientGridMirror {
   }
 
   /**
+   * Whether a road may be dragged over these tiles: water and other roads are
+   * fine (a bridge, a junction, a replacement), a building is not — the worker
+   * refuses a path through one, so the preview must say so first.
+   */
+  isClearOfBuildings(tiles: TilePoint[]): boolean {
+    for (const t of tiles) {
+      if (!this.inBounds(t.x, t.z)) return false;
+      if (this.buildingId[this.idx(t.x, t.z)] !== 0) return false;
+    }
+    return true;
+  }
+
+  /**
    * Every tile something stands on: a road on the grid, the ground a road off
    * the grid covers, or a building. Nothing grows there — the cosmetic trees
    * are kept off exactly these, however the road or building got there.

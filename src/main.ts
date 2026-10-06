@@ -1348,8 +1348,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       }
     },
     // Cursor-chip invalid reasons: live funds/milestone from the
-    // store; geometric overlap from the client grid mirror, plop tools only
-    // (roads may overlap roads to upgrade, bulldoze/zones overlap by design).
+    // store; geometric overlap from the client grid mirror. A plop may overlap
+    // nothing; a road may overlap roads (to join or upgrade) and water (to
+    // bridge) but never a building; bulldoze and zones overlap by design.
     funds: () => store.getState().stats.funds,
     // With everything unlocked the worker builds whatever is asked for, so a
     // preview reading "Locked" is the preview lying about what the click will
@@ -1358,8 +1359,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       store.getState().settings.sandboxUnlockAll
         ? Number.POSITIVE_INFINITY
         : store.getState().stats.milestoneLevel,
-    canPlace: (tiles) =>
-      store.getState().selectedTool.startsWith('plop.') ? clientGrid.isFreeForPlop(tiles) : true,
+    canPlace: (tiles) => {
+      const tool = store.getState().selectedTool;
+      if (tool.startsWith('plop.')) return clientGrid.isFreeForPlop(tiles);
+      if (tool in ROAD_TOOL_TO_TIER) return clientGrid.isClearOfBuildings(tiles);
+      return true;
+    },
     // Terraform hooks: the Level tool's drag-start height sample (tile
     // center, same anchor the camera/buildings use) and the road/building
     // structure-exclusion check backing the brush validity chip.

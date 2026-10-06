@@ -545,6 +545,41 @@ describe('ClientGridMirror', () => {
     });
   });
 
+  describe('isClearOfBuildings', () => {
+    it('lets a road cross water and another road, but never a building', () => {
+      mirror.applyRoadDeltas([
+        {
+          x: 6,
+          z: 6,
+          tier: RoadTier.TwoLane,
+          mask: 0,
+          elevation: 0,
+          profile: RoadTier.TwoLane,
+          flow: 0,
+        },
+      ]);
+      mirror.applyBuildingDelta(
+        { added: [instance(1, 20, 20, 0)], removed: [], updated: [] },
+        entryFor,
+      );
+      expect(
+        mirror.isClearOfBuildings([
+          { x: 1, z: 1 },
+          { x: 5, z: 5 },
+          { x: 6, z: 6 },
+        ]),
+      ).toBe(true);
+      expect(mirror.isClearOfBuildings([{ x: 20, z: 20 }])).toBe(false);
+      expect(mirror.isClearOfBuildings([{ x: -1, z: 0 }])).toBe(false);
+      expect(
+        mirror.isClearOfBuildings([
+          { x: 1, z: 1 },
+          { x: 20, z: 20 },
+        ]),
+      ).toBe(false);
+    });
+  });
+
   describe('occupiedTiles', () => {
     it('is every road and building tile, row by row, and never bare ground or water', () => {
       expect(mirror.occupiedTiles()).toEqual([]);

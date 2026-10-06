@@ -146,6 +146,13 @@ MUTCD citations below use 11th-edition section numbers.
   without one. A drag through a road it does not outrank is refused whole; only
   replace mode overrides. — [road-model.md](world-sim/road-model.md);
   `CLASS_RANK` in `src/shared/roadprofile.ts`
+- A road through a standing building is refused whole, by the tool's chip
+  ("Overlapping items") and by the world with a reason that names the
+  building; it is never laid with the building's tiles left out, since that
+  leaves a road in pieces that join nothing and read as one. Water and other
+  roads are not in the way. — [road-model.md](world-sim/road-model.md);
+  `ROAD_THROUGH_BUILDING` in `src/sim/worker.entry.ts`, `isClearOfBuildings`
+  in `src/app/clientgrid.ts`
 - The `RoadTier` byte is a persisted, append-only preset id, not a hierarchy.
   Never use a tier number as rank. — [road-model.md](world-sim/road-model.md),
   [data-model.md](engineering/data-model.md)
