@@ -52,6 +52,7 @@ Outside the programme:
 | [roundabouts.md](roundabouts.md) | A compact roundabout 36 m across, laid on a street junction in one click |
 | [sound-barriers.md](sound-barriers.md) | A noise wall along a motorway or a slip road, 3 to 6 m tall, that cuts the noise behind it |
 | [building-types.md](building-types.md) | A zoned lot grows a kind of building, drawn by lot fit and real-world share; the residential kinds, sourced |
+| [lots-and-land.md](lots-and-land.md) | A zoned block platted into lots the land's standing sizes, from half lots to estates, on US zoning standards (draft for agreement) |
 
 The features built before this folder existed have no design document; their
 behaviour is described in the specs and their delivery in

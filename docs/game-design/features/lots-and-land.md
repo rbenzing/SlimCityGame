@@ -1,0 +1,247 @@
+# Lots and land — design
+
+- **Status:** Draft for agreement, 2026-10-05
+- **Date:** 2026-10-05
+
+## What the player gets
+
+A zoned block is **platted into lots** the way a real subdivision is, and the
+lots are the size the land's standing warrants. On cheap land at the edge of
+town a low-density street fills with small homes on **half lots**; an
+ordinary street with **normal lots**; a good street with **double lots**; and
+the best land, by the park or the water, with **estate lots** three times the
+normal size, one villa to each. A commercial block plats into the parcels its
+format takes, and an industrial estate into the acreage a works needs. The
+player still paints a density and lays out the blocks, as pillar one says;
+what changes is that the land's value now decides how finely a block is cut,
+and a building takes the land it would really take.
+
+## Why it earns its place
+
+Today every detached house, whatever the street, takes a 2×2 lot: 1,600 m²,
+0.4 acre, twice the lot a new American house actually sits on and four times
+a starter home's. There is no small home for a poor street and no estate for
+a rich one, so the land-value field — which the sim computes every pass and
+the player can see on a lens — decides whether a lot grows at all but never
+what grows there. A level-up then grows the lot (2×2 to 2×3 to 3×3), which
+no real house does: lots are platted once and buildings change on them.
+
+Pillars served: **you paint zones, you don't place houses** (the zone and the
+land decide the lot, the draw decides the building) and **realism grounded in
+published figures**. See [../gdd.md](../gdd.md).
+
+## The standards, and what they are on the tile
+
+A tile is 20 m square: 400 m², 4,306 sq ft, 0.099 acre, 65.6 ft a side. The
+figures below are what American zoning codes and the building survey say,
+and the tile count each one lands on.
+
+### Residential
+
+| Class, as codes name it         | Minimum lot the codes set                         | Width × depth the codes set         | On the tile       | m²    | Acre |
+| ------------------------------- | ------------------------------------------------- | ----------------------------------- | ----------------- | ----- | ---- |
+| Small lot / cottage             | 1,400–3,500 sq ft (Houston inside the Loop), 2,500–4,000 in small-lot districts | 25–40 ft × 80–100 ft | **1×1**           | 400   | 0.10 |
+| Standard single-family (R-1)    | 5,000–7,200 sq ft (Hatch 5,000; Holtville 6,000; Redlands 7,200) | 50–60 ft × 100 ft    | **1×2**           | 800   | 0.20 |
+| Large lot (R-1-15000 class)     | 12,000–15,000 sq ft                               | 80–100 ft × 150 ft                  | **2×2**           | 1,600 | 0.40 |
+| Estate (R-1A, 20,000; RE, ½–1 acre) | 20,000–43,560 sq ft (Boise R-1A 20,000; Benbrook RE one acre; Troy 30–40,000, 150 ft wide) | 150 ft × 150–300 ft | **2×3** or **3×3** | 2,400–3,600 | 0.6–0.9 |
+
+The survey agrees with the middle of that table: the median new detached
+house in 2022 sat on **8,524 sq ft**, 792 m², which is the 1×2 lot to within
+one percent; 65% of new houses in 2023 were on lots under 9,000 sq ft and
+40% under 7,000, the highest shares on record, so the normal lot is getting
+smaller, not larger
+([NAHB on the Census Survey of Construction](https://eyeonhousing.org/2024/07/share-of-smaller-lots-is-at-new-high/)).
+Houston cut its by-right minimum from 5,000 to 3,500 sq ft in 1998 and
+allows 1,400 sq ft lots in qualifying subdivisions, and nearly 80,000 houses
+have gone up on small lots since
+([Mercatus](https://mercatus.org/research/policy-briefs/learning-houstons-townhouse-reforms),
+[APA](https://planning.org/knowledgebase/resource/9293032)): the half lot
+is not a stylised idea, it is where starter homes are built. At the other
+end, estate districts run from 20,000 sq ft to five acres
+([Boise R-1A](https://cityofboise.org/departments/planning-and-development-services/planning/zoning/zoning-districts/residential-large-lot/),
+[Benbrook RE](https://www.zoneomics.com/code/benbrook-TX/chapter_8)); the
+game stops at 0.9 acre, since a five-acre lot is a farm's business.
+
+**Setbacks and coverage.** The common single-family envelope is a 20–25 ft
+front yard, 5 ft sides and a 20 ft rear, with lot coverage capped at 40–50%
+([Mesa, Winter Park, Clyde Hill](https://www.clydehill.org/departments/building/zoning-code---what-can-i-build-on-my-lot-/));
+Houston allows 65–80% on its small lots. On a 1×2 lot that is a house of up
+to 400 m² of plate behind a 7 m front yard, which is what the house kit's
+front-yard rule already draws
+([building-types.md](building-types.md#what-the-player-sees)).
+
+**Blocks.** Subdivision regulations plat blocks no longer than 600 ft without a
+mid-block path and never over 1,320 ft, two tiers of lots deep with the block
+at least 220 ft wide, and lots no deeper than 2.5 to 3 times their width
+([Elyria](https://codelibrary.amlegal.com/codes/elyria/latest/elyria_oh/0-0-0-82287),
+[Stacy MN](https://codelibrary.amlegal.com/codes/stacy/latest/stacy_mn/0-0-0-18467)).
+On the tile: blocks of 9 to 20 tiles between cross streets, lots two deep
+either side, and no lot deeper than three tiles for one wide. The game's
+zoning depth of four tiles from the road already holds two tiers of 1×2 lots,
+or one of 2×3 — which is why the zoning depth was four.
+
+### Commercial
+
+| Class                         | Minimum lot the codes set                     | Frontage | FAR            | On the tile   |
+| ----------------------------- | --------------------------------------------- | -------- | -------------- | ------------- |
+| Neighbourhood commercial (C-1) | 8,000 sq ft, capped at 80,000 in some codes   | 70 ft    | 0.05–0.5       | 1×2 to 2×2    |
+| General commercial (C-2)      | 8,000 sq ft, no cap; "Main Street" zero front setback | 70 ft | up to 1.5, 2.5 mixed | 2×2 up |
+| Strip and supermarket         | by parking: 4–5 stalls per 1,000 sq ft puts the lot at 3–4 × the floor | — | 0.2–0.3 | 3×2 to 5×4 |
+
+([Montgomery County C-2](https://www.montgomeryplanning.org/info/documents/C2_001.pdf),
+[Millwood C-1/C-2](https://www.zoneomics.com/code/millwood-WA/chapter_9),
+[Burbank](https://www.zoneomics.com/code/burbank-CA/chapter_7)). The
+commercial kinds built on 2026-10-02 already sit on these: a corner shop on
+1×1, a store on 2×2, the strip on 3×2 to 5×2 and the supermarket on 3×3 to
+5×4, each sized from its parking ratio
+([building-types.md](building-types.md#the-commercial-kinds)). Nothing in
+this feature moves them; what it adds is that a commercial lot is platted
+from the block, so a 2×2 store takes two of the block's 1×2 parcels, and a
+strip takes a run of them.
+
+### Industrial
+
+| Class                        | Minimum lot the codes set                     | Setbacks                       | On the tile |
+| ---------------------------- | --------------------------------------------- | ------------------------------ | ----------- |
+| Light industrial (I-1)       | 5,000 sq ft to 1 acre; 1 acre common          | front 25–30 ft, side 10, rear 20–25 | 2×2 to 2×5 |
+| Heavy industrial (I-2)       | 1–2 acres; 2 acres common                     | front 35–100 ft, side and rear 50 | 5×4 up   |
+
+([Anchorage I-1](https://www.muni.org/Departments/OCPD/Planning/zoning/Pages/i.aspx),
+[Calvert County](https://calvertcountymd.gov/DocumentCenter/View/42270/A8-Industrial-Districts),
+[Naples UT](https://naplescityut.gov/wp-content/uploads/2021/02/02-28-Industrial-Zone-I-2020-11-12.pdf)).
+The industrial kinds sit on 2×2 to 5×4, an acre at the top, and the heavy
+kinds on 4×4 and up; a 2-acre heavy minimum would be 5×4 at the least. This
+feature records the standard and leaves the heavy footprints to the epic
+that built them, with one change proposed below.
+
+## How it works, for the player
+
+### A block is platted when it is zoned
+
+When the player paints a zone along a street, the painted ground is cut into
+**parcels** the way a plat does it: along the street, one frontage at a time,
+to the depth the zone's lot takes, with the parcel size set by the **land's
+standing** on that frontage. The plat is derived, never stored: it is the
+same function the spawner and the zone lens both read, so the lens can draw
+the parcel lines the moment the zone is painted and the player sees how the
+block will cut before anything grows. The land's standing is the land-value
+field, which the player already has a lens for, in four bands:
+
+| Land value on the frontage | Standing   | Low-density lot | Who lives there                           |
+| -------------------------- | ---------- | --------------- | ----------------------------------------- |
+| under 64                   | poor       | **half, 1×1**   | a small home, a starter house, a cottage  |
+| 64–159                     | ordinary   | **normal, 1×2** | a house on the median lot                 |
+| 160–223                    | good       | **double, 2×2** | a family home with a yard                 |
+| 224 and over               | the best   | **estate, 2×3** | a villa; 3×3 where the block is deep      |
+
+The bands are the land-value field's own quartiles, which the lens already
+colours; the thresholds are dials. Land value is what it is today: a diffused
+field raised by parks, water, services and quiet and lowered by pollution,
+noise and crime, so a poor street is one by a works or a motorway and a good
+one is by a park on a quiet road. A zone painted across a gradient plats
+small at one end and large at the other, as a real town does across the
+tracks.
+
+### A kind takes the lots it needs
+
+The draw stays what it is ([building-types.md](building-types.md#a-lot-picks-its-building)):
+among the zone's kinds that are unlocked and fit, one is drawn by its share
+of the real stock. What "fits" now means is **whole parcels**: a building takes
+one parcel or **assembles** adjacent ones, and never straddles half of one. A
+detached house takes one parcel of whatever size the standing cut; a duplex
+or a fourplex takes a normal or a half parcel, which is why the poor street
+grows them; a multiplex or a courtyard block assembles two normal parcels
+side by side, as a developer buying two lots does; a tower assembles four. The
+land a kind takes is the land it would take, and the player reads it on the
+lens.
+
+### A house grows on its lot, not past it
+
+A level-up keeps the parcel. A detached house on a normal lot levels up into
+a bigger house on the same 1×2: more storeys, a better kit, a higher value,
+never a 2×3. Today's catalog grows the lot with the level (2×2, 2×3, 3×3) and
+that stops; the detached kinds become four **lot sizes** × three **levels**,
+with the level changing storeys and value and the lot fixed at platting. The
+same holds for every kind: the parcel is platted once, and what stands on it
+improves.
+
+### Land is acquired, and the plat can change
+
+- **Re-zoning** replats. Paint a block from low to medium density and its
+  normal lots pair up into the 2×2 parcels a multiplex takes; the standing
+  houses stay until they are bulldozed or abandoned, as they do today, and
+  the next growth takes the new parcels.
+- **Land value moving** does not replat a parcel with a building on it, since
+  the lot is the lot; it replats an **empty** one, so a poor edge that comes
+  good grows bigger houses on its empty lots from then on and keeps its small
+  ones until they go. A street that falls grows small ones in its gaps.
+- **Assembly** is what growth does when a kind needs more than one parcel: it
+  takes the parcels, and the lens shows the merged lot. There is no separate
+  land market and no price; the land's standing is already in its value, and
+  pillar one says the player never buys a lot.
+
+### What the player sees
+
+On the zone lens, the parcel lines: a block cut fine where the land is poor
+and coarse where it is good, before anything grows. On the street, the
+small homes on their small lots standing close, the villas on theirs standing
+apart, and a multiplex plainly on two lots' worth of ground. In the inspector,
+a building's lot: "Half lot, 400 m²", "Estate lot, 2,400 m²". And in the
+Advisor, nothing new: a poor street is a poor street for reasons the lenses
+already show.
+
+## What it interacts with
+
+- **The spawner and the lot-fit draw.** `isZonedLot` and the fit check read
+  parcels instead of raw tiles. The draw's weights are unchanged. A kind that
+  fits no parcel on a block never grows there, which is how a strip of half
+  lots stays a strip of small homes and duplexes.
+- **The catalog.** The detached, duplex and fourplex kinds gain a lot-size
+  axis: the level-1 house exists at 1×1, 1×2, 2×2 and 2×3, with its storeys,
+  value, residents and draw per level as today. Residents stay the household
+  of 2.63; a small home holds a small household's fewer rooms, not fewer
+  people, until the population model says otherwise.
+- **Land value.** Read, never written. The feature adds no feedback into the
+  field: a street of villas does not raise its own value by being villas.
+  That loop is real and is deferred, see below.
+- **The house kit** draws the front yard, the drive and the car from the
+  lot plan ([../../art/buildings.md](../../art/buildings.md)); a 1×1 lot gets
+  a shallow yard and a parking spot beside the house, a 2×3 a long drive.
+- **The zoning depth** stays four tiles: two tiers of normal lots or one of
+  estate lots. A block painted only one tile deep plats half lots only,
+  whatever the land, since a normal lot needs the depth.
+- **Taxes.** Property tax is on the building as today; a lot has no separate
+  value. Deferred with the land market.
+- **Saves.** The plat is derived from the zone layer and the land-value field
+  at spawn time and stored on the building as its footprint, as every footprint
+  is today, so no save layer changes; an old save loads with its 2×2 houses
+  standing, as oversized as they were.
+
+## Tuning
+
+- The four standing bands at 64, 160 and 224 on the 0–255 land-value field:
+  dials, set so a fresh town with no parks or works plats normal lots.
+- The lot per standing per zone: the table above for low density; row
+  housing 1×2 always (a townhouse row is platted as one), medium density 2×2
+  (two normal parcels), high density 2×2 and 3×3 as today.
+- The commercial parcel: 1×2 at ordinary standing and 1×1 for the corner
+  shop, assembled upward by format as today.
+- Proposed with the record, not built here: the heavy industrial minimum
+  raised to 5×4, two acres, where it is 4×4.
+
+## What it is not
+
+- Not a land market. No lot prices, no buying, no eminent domain. The
+  land's standing is its value, and the player never places a house.
+- Not an income simulation. "Poor" and "the best" are the land, not the
+  household; there are no wealth classes, wages or rents. A small home on a
+  poor street holds an ordinary household.
+- Not land value feedback from what is built. A villa does not raise the
+  value under it; that loop is deferred to the population model so the
+  plat cannot run away with itself.
+- Not new zones. The densities are the zones there are; the plat is inside
+  them.
+- Not a change to the commercial or industrial footprints, which were sized
+  from parking and plant on 2026-10-02 and already sit on the standards.
+- Not manufactured homes, which the half lot makes possible later and which
+  stay in [../../DESIGN.md](../../DESIGN.md) until asked for.
