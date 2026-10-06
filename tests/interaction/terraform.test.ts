@@ -1,16 +1,21 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MAP_SIZE, MAP_TILES, START_FUNDS, tileIndex } from '../../src/shared/constants';
-import { RoadTier } from '../../src/shared/types';
+import { RoadTier, ZoneType } from '../../src/shared/types';
 import type { GridState, MapData, TilePoint, WorkerToMain } from '../../src/shared/types';
 import { createGrid } from '../../src/world/grid';
 import { computeTerraformPatch, type TerraformCommand } from '../../src/world/terraform';
 import {
   catalog,
+  column,
+  entryOf,
+  GROWTH_TIMEOUT_MS,
   initialized,
   latestSaveGrid,
   makeHarness,
   roadRow,
+  rows,
   send,
+  standingBuildings,
   type Harness,
 } from '../support/sim';
 import { guardRoadNetwork } from '../support/guard';
@@ -247,6 +252,71 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
       expect(grid.height[tileIndex(t.x, t.z)]).toBeCloseTo(mean, 5);
     }
   });
+
+  it('levels the vertices along the far edges too, where open ground owns them, and leaves a road its own', () => {
+    const h = initializedVaried();
+    const x = 50;
+    const z = 60;
+    // A street runs along the footprint's east edge; its tiles own the
+    // vertices along that edge and keep their grade.
+    send(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(x + 2, z - 2, 6) }]);
+    h.ticks(2);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const before = latestSaveGrid(h);
+    const roadEdge = [tileIndex(x + 2, z), tileIndex(x + 2, z + 1), tileIndex(x + 2, z + 2)];
+    const roadHeights = roadEdge.map((i) => before.height[i]!);
+
+    send(h, 2, [{ kind: 'placeBuilding', catalogId: 'water-tower', x, z, rotation: 0 }]);
+    h.ticks(2);
+    expect(h.ackFor(2)!.ok).toBe(true);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const grid = latestSaveGrid(h);
+    const plateau = grid.height[tileIndex(x, z)]!;
+    // The footprint's own four vertices and the open-ground vertices along its
+    // south edge, corner included, are one plane.
+    for (const t of [
+      { x, z },
+      { x: x + 1, z },
+      { x, z: z + 1 },
+      { x: x + 1, z: z + 1 },
+      { x, z: z + 2 },
+      { x: x + 1, z: z + 2 },
+    ]) {
+      expect(grid.height[tileIndex(t.x, t.z)]).toBeCloseTo(plateau, 5);
+    }
+    // The street's vertices along the east edge are exactly as the road left them.
+    roadEdge.forEach((i, k) => expect(grid.height[i]).toBe(roadHeights[k]));
+  });
+
+  it(
+    'a grown house levels its ground as a plopped building does, so none hangs over its downhill side',
+    () => {
+      const h = initializedVaried();
+      send(h, 1, [
+        { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(50, 60, 20) },
+        { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 50, z: 59, rotation: 0 },
+        { kind: 'placeBuilding', catalogId: 'water-tower', x: 52, z: 58, rotation: 0 },
+        { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(56, 61, 12, 2) },
+      ]);
+      h.ticks(1500);
+      h.sim.handleMessage({ type: 'requestSave' });
+      const grid = latestSaveGrid(h);
+      const houses = [...standingBuildings(h).values()].filter((b) =>
+        b.catalogId.startsWith('res-'),
+      );
+      expect(houses.length).toBeGreaterThan(0);
+      for (const b of houses) {
+        const entry = entryOf(b);
+        const plateau = grid.height[tileIndex(b.x, b.z)]!;
+        for (let dz = 0; dz < entry.footprint.d; dz++) {
+          for (let dx = 0; dx < entry.footprint.w; dx++) {
+            expect(grid.height[tileIndex(b.x + dx, b.z + dz)]).toBeCloseTo(plateau, 5);
+          }
+        }
+      }
+    },
+    GROWTH_TIMEOUT_MS,
+  );
 
   /** Linear ramp climbing along +x (slope 1m/tile, well under ROAD_MAX_SLOPE=10). */
   function rampMap(): MapData {

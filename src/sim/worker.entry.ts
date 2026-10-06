@@ -238,6 +238,15 @@ const ROAD_SPECS = (roadsData as { specs: RoadSpec[] }).specs;
 
 /** The road tool's refusal when its path crosses a standing building. */
 export const ROAD_THROUGH_BUILDING = 'A building stands in the way. Bulldoze it first.';
+
+/** Every tile of a w×d footprint whose origin is (x, z), row by row. */
+function footprintTiles(x: number, z: number, w: number, d: number): TilePoint[] {
+  const tiles: TilePoint[] = [];
+  for (let dz = 0; dz < d; dz++) {
+    for (let dx = 0; dx < w; dx++) tiles.push({ x: x + dx, z: z + dz });
+  }
+  return tiles;
+}
 /** The zone brush's refusal when every tile under it already holds a building. */
 export const ZONE_UNDER_BUILDINGS =
   'Buildings stand on every tile. A zone changes only empty land; bulldoze first.';
@@ -893,6 +902,16 @@ class SimWorld implements WorkerSim {
       this.buildingsRemoved.push(...growthDelta.removed);
       if (growthDelta.added.length > 0 || growthDelta.removed.length > 0) {
         this.utilitiesDirty = true;
+      }
+      // A grown building is placed as surely as a plopped one, and levels its
+      // ground the same way; growth is not a command, so there is nothing to
+      // undo. Without this a house grown on a hillside hung over its downhill
+      // side, seated on the highest corner of a footprint nobody had levelled.
+      for (const inst of growthDelta.added) {
+        const entry = this.catalogById.get(inst.catalogId);
+        if (!entry) continue;
+        const { w, d } = footprintForRotation(entry, inst.rotation);
+        this.flattenFootprint(footprintTiles(inst.x, inst.z, w, d), false, []);
       }
     }
 
@@ -3247,10 +3266,7 @@ class SimWorld implements WorkerSim {
     this.buildingsAdded.push(inst);
     this.utilitiesDirty = true;
 
-    const footprint: TilePoint[] = [];
-    for (let dz = 0; dz < d; dz++) {
-      for (let dx = 0; dx < w; dx++) footprint.push({ x: x + dx, z: z + dz });
-    }
+    const footprint = footprintTiles(x, z, w, d);
     this.invalidateAround(footprint);
     const inverse: Command[] = [{ kind: 'bulldoze', tiles: footprint }];
     // Auto-flatten: the whole footprint, no apron.
@@ -3327,9 +3343,17 @@ class SimWorld implements WorkerSim {
    * same HeightPatch shape as terraform, so the terrain mesh + zonegrid
    * conform flat under the building.
    *
+   * A tile's height is the terrain vertex at its north-west corner, so the
+   * footprint's own tiles only reach the vertices along its north and west
+   * edges; the ones along its south and east edges belong to the tiles one
+   * past it. Those are levelled too where open ground owns them, so the
+   * whole surface under the footprint is one plane; a vertex a road, another
+   * building or water owns keeps its height, since moving it would tilt a
+   * road, unseat a neighbour or move a shoreline.
+   *
    * `tiles` are the whole footprint (already verified buildable by the
    * caller). Returns null (no patch, nothing to do) when the covered set is
-   * empty or every covered tile's height already equals the mean bit-for-bit.
+   * empty or every levelled tile's height already equals the mean bit-for-bit.
    */
   private computeFlattenPatch(tiles: TilePoint[]): HeightPatch | null {
     const g = this.grid;
@@ -3344,8 +3368,32 @@ class SimWorld implements WorkerSim {
     for (const idx of covered.keys()) sum += g.height[idx]!;
     const mean = sum / covered.size;
 
-    const rect = growRect(null, Array.from(covered.values()));
-    if (!rect) return null;
+    const footprint = growRect(null, Array.from(covered.values()));
+    if (!footprint) return null;
+    const levelled = new Set<number>(covered.keys());
+    const ownedByOpenGround = (x: number, z: number): boolean => {
+      if (!inBounds(x, z)) return false;
+      const i = tileIndex(x, z);
+      return (
+        !covered.has(i) &&
+        g.roadTier[i] === RoadTier.None &&
+        g.overTier[i] === RoadTier.None &&
+        g.roadFootprint[i] === 0 &&
+        g.buildingId[i] === 0 &&
+        g.water[i] === 0
+      );
+    };
+    for (let z = footprint.minZ; z <= footprint.maxZ + 1; z++) {
+      if (ownedByOpenGround(footprint.maxX + 1, z)) levelled.add(tileIndex(footprint.maxX + 1, z));
+    }
+    for (let x = footprint.minX; x <= footprint.maxX; x++) {
+      if (ownedByOpenGround(x, footprint.maxZ + 1)) levelled.add(tileIndex(x, footprint.maxZ + 1));
+    }
+
+    const rect = growRect(
+      null,
+      Array.from(levelled, (i) => ({ x: i % MAP_SIZE, z: Math.floor(i / MAP_SIZE) })),
+    )!;
     const w = rect.maxX - rect.minX + 1;
     const h = rect.maxZ - rect.minZ + 1;
     const heights = new Float32Array(w * h);
@@ -3356,7 +3404,7 @@ class SimWorld implements WorkerSim {
         const x = rect.minX + col;
         const idx = tileIndex(x, z);
         const local = row * w + col;
-        if (covered.has(idx)) {
+        if (levelled.has(idx)) {
           heights[local] = mean;
           if (mean !== g.height[idx]!) changed = true;
         } else {

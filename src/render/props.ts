@@ -25,7 +25,7 @@ import {
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { deriveFacadeParams } from './facade';
-import { maxHeightOverFootprint } from './footprint';
+import { maxHeightUnderBody } from './footprint';
 import {
   computeSetbacks,
   CONSTRUCTING_MASSING_HEIGHT_SCALE,
@@ -546,14 +546,15 @@ export class RoofPropRenderer {
 
     const centerX = (building.x + entry.footprint.w / 2) * TILE_METERS + frontage.centerXM;
     const centerZ = (building.z + entry.footprint.d / 2) * TILE_METERS + frontage.centerZM;
-    // Match BuildingInstancer's footprint-max base so roof props land on the
-    // actual roof plane on sloped lots, not a centre-sampled approximation.
-    const groundY = maxHeightOverFootprint(
+    // Match BuildingInstancer's seat — the highest ground under the base tier
+    // itself — so roof props land on the actual roof plane on sloped lots.
+    const groundY = maxHeightUnderBody(
       this.heightAt,
-      building.x,
-      building.z,
-      entry.footprint.w,
-      entry.footprint.d,
+      centerX,
+      centerZ,
+      boxes[0]!.w,
+      boxes[0]!.d,
+      building.rotation,
     );
     const roofY = groundY + (topBox.yOffset + topBox.h) * heightScale;
 

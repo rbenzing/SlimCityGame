@@ -9,7 +9,21 @@ never `Math.random` — so the same map always looks the same.
 
 Placing a road or a building levels its own footprint — plus a 1-tile apron
 around a road — to the mean height of the tiles it covers, so the new structure
-sits flat instead of a terrain "diamond" poking up through it.
+sits flat instead of a terrain "diamond" poking up through it. A building the
+sim grows is placed as surely as one the player plops, and levels its ground
+the same way when it spawns and when it levels up; growth is not a command,
+so there is nothing to undo.
+
+A tile's height is the terrain vertex at its north-west corner, so a
+footprint's own tiles reach only the vertices along its north and west edges;
+the vertices along its south and east edges belong to the tiles one past it.
+The levelling takes those too where open ground owns them — so the whole
+surface under the footprint is one plane — and leaves alone any that a road,
+another building or water owns, since moving it would tilt the road, unseat
+the neighbour or move the shoreline. The body is then seated on the highest
+ground under the body itself ([buildings.md](../art/buildings.md#lots-and-paved-ground)),
+never under the whole footprint, so a street climbing past the lot does not
+lift the house off the pad it stands on.
 
 Because a rendered terrain corner is shared by the two chunks that meet there,
 dirtying one tile always dirties its neighbours' chunks too: rebuild only the

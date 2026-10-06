@@ -1,25 +1,32 @@
 import { TILE_METERS } from '../shared/constants';
 
 /**
- * Highest terrain height (world meters) anywhere under a building's tile
- * footprint. A footprint's tile-corner grid lands exactly on the terrain
- * mesh's own vertices, and the mesh surface is piecewise-linear between them,
- * so the maximum over that rectangle is always attained at one of these
- * corners — sampling them is exact, not an approximation.
- *
- * Seating a building base at this height guarantees no part of the terrain can
- * poke up through the body on a slope (the alternative, sampling only the
- * footprint centre, lets uphill corners spike through). `heightAt` takes world
- * meters; `tileX`/`tileZ` are the footprint's origin tile and `w`/`d` its size
- * in tiles.
- */
-/**
  * Highest terrain height (world meters) under a world-metre rectangle that
  * need not fall on tile lines — a barn standing somewhere on its lot. The
  * surface is piecewise-linear across each tile, so its maximum over the
  * rectangle lies on a tile corner inside it or on the rectangle's own edge;
  * sampling both every tile line and every metre of the edge finds it.
  */
+/**
+ * Highest terrain under a body standing centred at (cx, cz) with local
+ * extents w across and d deep, turned by `rotation` quarter turns. A body is
+ * set back inside its footprint, so this is the ground it actually stands on;
+ * sampling the whole footprint instead let a higher far corner — a street
+ * climbing past the lot, a neighbour's plateau — lift the body off its own
+ * levelled pad.
+ */
+export function maxHeightUnderBody(
+  heightAt: (x: number, z: number) => number,
+  cx: number,
+  cz: number,
+  w: number,
+  d: number,
+  rotation: number,
+): number {
+  const [ex, ez] = rotation % 2 === 1 ? [d, w] : [w, d];
+  return maxHeightOverRect(heightAt, cx - ex / 2, cz - ez / 2, cx + ex / 2, cz + ez / 2);
+}
+
 export function maxHeightOverRect(
   heightAt: (x: number, z: number) => number,
   x0: number,
@@ -40,20 +47,3 @@ export function maxHeightOverRect(
   return max;
 }
 
-export function maxHeightOverFootprint(
-  heightAt: (x: number, z: number) => number,
-  tileX: number,
-  tileZ: number,
-  w: number,
-  d: number,
-): number {
-  let max = -Infinity;
-  for (let iz = 0; iz <= d; iz++) {
-    const worldZ = (tileZ + iz) * TILE_METERS;
-    for (let ix = 0; ix <= w; ix++) {
-      const h = heightAt((tileX + ix) * TILE_METERS, worldZ);
-      if (h > max) max = h;
-    }
-  }
-  return max;
-}
