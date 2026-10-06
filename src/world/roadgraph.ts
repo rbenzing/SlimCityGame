@@ -569,27 +569,48 @@ export class RoadNetwork implements RoadNetworkApi {
   /**
    * The node a point routes through: the nearest one by proximity, as always.
    *
-   * Failing that, a point standing ON a run snaps to the nearer END of that
-   * run. A long junction-free corridor has graph nodes only at its two ends, so
-   * proximity alone calls a stop in the middle of one off-network however
-   * plainly it is standing on the rails — which is exactly the shape of a
-   * dedicated transit corridor, and why a tram or rail line down one carried
-   * nobody. An ordinary street grid is junction-dense and never reaches here.
+   * Failing that, a point standing ON a run, or on the tile BESIDE one, snaps
+   * to the nearer END of that run. A long junction-free corridor has graph
+   * nodes only at its two ends, so proximity alone calls a stop in the middle
+   * of one off-network however plainly it is standing on the rails — which is
+   * exactly the shape of a dedicated transit corridor, and why a tram or rail
+   * line down one carried nobody. A bus stop never stands on the street at
+   * all but on the kerb tile beside it, so a stop partway down a long block
+   * needs the same fallback through its neighbour.
    */
   nearestNode(x: number, z: number): number | null {
     this.ensureFresh();
     const near = findNearestNode(this.nodes, x, z);
     if (near !== null) return near;
 
-    const edge = this.edgeCovering(x, z);
-    if (!edge) return null;
-    const a = this.nodes[edge.a];
-    const b = this.nodes[edge.b];
-    if (!a) return b?.id ?? null;
-    if (!b) return a.id;
-    const toA = Math.abs(a.x - x) + Math.abs(a.z - z);
-    const toB = Math.abs(b.x - x) + Math.abs(b.z - z);
-    return toA <= toB ? a.id : b.id;
+    let best: number | null = null;
+    let bestDist = Infinity;
+    const consider = (edge: GraphEdge | null): void => {
+      if (!edge) return;
+      for (const node of [this.nodes[edge.a], this.nodes[edge.b]]) {
+        if (!node) continue;
+        const d = Math.abs(node.x - x) + Math.abs(node.z - z);
+        if (d < bestDist) {
+          bestDist = d;
+          best = node.id;
+        }
+      }
+    };
+    consider(this.edgeCovering(x, z));
+    if (best !== null) return best;
+    for (const [dx, dz] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      const nx = x + dx;
+      const nz = z + dz;
+      const size = this.grid?.size ?? 0;
+      if (nx < 0 || nz < 0 || nx >= size || nz >= size) continue;
+      consider(this.edgeCovering(nx, nz));
+    }
+    return best;
   }
 
   findPath(

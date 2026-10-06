@@ -93,12 +93,15 @@ all, so a line that carries anyone never reads as abandoned track), one
 train per 220 riders (up to 3, same floor of one).
 
 **A stop standing mid-run, not just at the ends of a line, still finds the
-network**: a stop resolves to a graph node by proximity, and a long
-junction-free corridor — exactly the shape of a dedicated transit route —
-only has nodes at its two ends. Snapping falls back to the nearer end of
-the specific run a point stands on, so a station or a tram stop placed
-partway down a long line still routes correctly rather than carrying
-nobody.
+network**: a stop resolves to a graph node by proximity (within 8 tiles), and
+a long junction-free corridor — exactly the shape of a dedicated transit
+route — only has nodes at its two ends. Snapping falls back to the nearer end
+of the specific run a point stands on, or of a run on one of the four tiles
+beside it, since a bus stop never stands on the street but on the kerb tile
+beside it. So a station or a tram stop placed partway down a long line, and a
+bus stop partway down a long block, still route correctly rather than
+carrying nobody. A point two or more tiles from any road is off the network
+and routes to nothing.
 
 Lines are saved and restored with the world; a line created after loading
 resumes id assignment past the highest id the save restored.

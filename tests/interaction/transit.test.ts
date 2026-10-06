@@ -49,6 +49,44 @@ describe('drawing a bus line while the city is paused', () => {
   });
 });
 
+describe('a bus line down a long block', () => {
+  it(
+    'carries riders from a stop partway down the block, far from any junction',
+    () => {
+      const h = initialized();
+      // A 60-tile street with no junction, homes along it, and a stop beside
+      // its middle — more than 8 tiles from either end.
+      expect(
+        run(h, 1, [
+          { kind: 'setSandbox', on: true },
+          { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(50, 80, 60) },
+          { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 50, z: 79, rotation: 0 },
+          { kind: 'placeBuilding', catalogId: 'water-tower', x: 52, z: 78, rotation: 0 },
+          { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(56, 81, 50, 2) },
+          { kind: 'paintZone', zone: ZoneType.ComLow, tiles: rows(56, 77, 50, 2) },
+          { kind: 'placeBuilding', catalogId: 'bus-stop', x: 54, z: 81, rotation: 0 },
+          { kind: 'placeBuilding', catalogId: 'bus-stop', x: 80, z: 81, rotation: 0 },
+          {
+            kind: 'createTransitLine',
+            line: {
+              id: 0,
+              stops: [
+                { x: 54, z: 81 },
+                { x: 80, z: 81 },
+              ],
+              color: 0xd23c3c,
+              mode: 'bus',
+            },
+          },
+        ]).ok,
+      ).toBe(true);
+      h.ticks(1500);
+      expect(h.lastSnapshot()!.transit!.ridership[0]).toBeGreaterThan(0);
+    },
+    GROWTH_TIMEOUT_MS,
+  );
+});
+
 describe('a tramway crossing another street', () => {
   const AVENUE_X = 90;
   const TRAM_Z = 85;

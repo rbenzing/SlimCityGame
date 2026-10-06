@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,746 tests passing across 158 test files, run 2026-10-05.
+**Test suite:** 4,750 tests passing across 158 test files, run 2026-10-06.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -269,6 +269,19 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### A bus stop beside a long block finds its street (found and fixed 2026-10-06)
+
+Found by playing a whole city from the opening state with no sandbox: a bus
+line between two stops carried nobody for thirty thousand ticks. A stop
+resolves to a graph node within 8 tiles, and the fallback for a point
+further than that from any junction read only the run the point stood ON —
+which a station or tram stop does, and a bus stop never does, since it
+stands on the kerb tile beside the street. On a block longer than sixteen
+tiles the stop was off the network and the line's route null. The fallback
+now also reads the run under any of the stop's four neighbours, the spec
+says so, and the same line carries riders; a stop two or more tiles from a
+road is still off the network.
 
 ### The turbine sized to the map, with a rotor's clearance (asked for and built 2026-10-05)
 
