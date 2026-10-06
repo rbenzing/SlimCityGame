@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,742 tests passing across 158 test files, run 2026-10-05.
+**Test suite:** 4,746 tests passing across 158 test files, run 2026-10-05.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -112,10 +112,11 @@ not a test to fix.
 
 **Open:**
 
-- The incinerator's pollution of 120 and its 2 kL of water are dials:
-  municipal waste-to-energy plants do not report to the Toxics Release
-  Inventory, so there is no like-for-like figure, and no water figure was
-  found. The pocket park's 0.2 kL is a dial too.
+- The incinerator's pollution of 120, now what it emits at its burn ceiling,
+  and its 2 kL of water are dials: municipal waste-to-energy plants do not
+  report to the Toxics Release Inventory, so there is no like-for-like
+  figure, and no water figure was found. The pocket park's 0.2 kL is a dial
+  too.
 - A wind turbine is a one-tile placeable with no spacing rule, while a real
   project keeps turbines five to ten rotor diameters apart and a state code
   keeps them 1.1 tip heights from a boundary. Sixty turbines on sixty
@@ -269,6 +270,23 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Incinerators share the load, and smoke only for what they burn (asked for and built 2026-10-05)
+
+The user's rule: an incinerator burns more as the trash grows, up to a
+ceiling, and past it a second plant takes its share so the processing evens
+out across the group, as it should across any facility group. The burn was
+already what the plant held up to its ceiling; what changed is around it.
+Collection no longer goes to the first plant in id order: a building reached
+by several incinerators with room gives each an equal share, a unit at a
+time round the group, a full plant's share going to the others. The
+incinerators collect before the landfill, by the waste hierarchy, and the
+landfill takes what they leave. The plume follows the burn:
+`incineratorEmission` scales the catalog's 120 by the share of the ceiling
+the last pass used, so an idle plant makes none, which the recovery epic's
+draft already counted on. The service facilities already shared load, each
+dedicating its capacity to the people in its reach and a tile summing what
+reaches it, so they are unchanged and the rule is now written down for both.
 
 ### The roundabout keeps the sim's own delay curve (decided 2026-10-05)
 

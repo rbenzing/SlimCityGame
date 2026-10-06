@@ -59,16 +59,24 @@ pile models.
 
 The **incinerator** is a catalog ploppable (4×4, unlocks at milestone 3,
 ¢40,000 to build, ¢1,500/month) with its own 400,000-unit buffer. It collects
-within a 40-tile road-BFS radius and burns 4,000 units per pass, permanent as
-long as burn rate keeps pace with inflow; while active it emits 120 pollution
-through the ordinary per-building emission pass, the trade-off for a fix that
-never fills a field. A full buffer stops that facility's own collection until
-it drains.
+within a 40-tile road-BFS radius and burns what it holds up to 4,000 units a
+pass, its ceiling, so it is permanent as long as that keeps pace with inflow.
+Its smoke follows the burn: the catalog's 120 pollution is what it emits at
+the ceiling, through the ordinary per-building emission pass scaled by the
+share of the ceiling the last pass used (`incineratorEmission`), so an idle
+plant makes none and a town that outgrows one plant's ceiling sees its trash
+back up until it builds another. A full buffer stops that facility's own
+collection until it drains.
 
 **Collection** reuses the same road-BFS mechanism a service building uses
-([Coverage and funding](#coverage-and-funding)): a facility with remaining
-capacity collects the trash of every building reachable within its radius, in
-building-id order for determinism; a full facility collects nothing and trash
+([Coverage and funding](#coverage-and-funding)) and shares the load the way a
+service's capacity does. Buildings go in id order for determinism. The
+incinerators collect first, since they process what they take where a
+landfill only keeps it (the waste hierarchy's order), and a building reached
+by several incinerators with room gives each an equal share, a unit at a
+time round the group, so two plants over one town carry the same load and a
+full one's share goes to the others; the landfill then takes what they left.
+A full facility collects nothing and trash
 backs up on the source tiles. Buildings reached by no facility, or only full
 ones, keep their trash and it shows on the `'trash'` lens — but as currently
 implemented this uncollected trash does not itself feed LandValue or Happiness;

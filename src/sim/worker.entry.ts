@@ -215,6 +215,7 @@ import { canLayPipe, layWaterPipe } from '../world/waterpipe';
 import { regradeSoil, soilGrades } from '../shared/soil';
 import {
   GarbageSystem,
+  incineratorEmission,
   type GarbageBuilding,
   type GarbageFacility,
   type TrashSector,
@@ -897,10 +898,15 @@ class SimWorld implements WorkerSim {
           // greenEnergy policy: reduce pollution emission for buildings in
           // a district with the policy on (no policy -> unchanged emission).
           const districtId = this.grid.district[tileIndex(inst.x, inst.z)] ?? 0;
-          const emitted = effectivePollution(
-            entry.pollution,
-            this.policyStore.getPolicies(districtId),
-          );
+          // An incinerator's plume follows the trash it burned against its ceiling.
+          const rated = entry.garbage
+            ? incineratorEmission(
+                entry.pollution,
+                this.garbage.incineratorBurnedLast(inst.id),
+                entry.garbage.burnRate,
+              )
+            : entry.pollution;
+          const emitted = effectivePollution(rated, this.policyStore.getPolicies(districtId));
           if (emitted > 0) this.fieldSim.emit(g, FieldId.Pollution, inst.x, inst.z, emitted);
         }
         // Landmarks: catalog noise rides the same cadence/source-tile

@@ -11,9 +11,14 @@
  *
  * Incinerator facilities collect within their own road-BFS radius into a
  * per-building buffer (bufferCapacity) and burn it down at burnRate every pass;
- * a full buffer stops that facility collecting. The incinerator's catalog
- * `pollution` is emitted by the worker's normal per-building emit pass while
- * it's active — the air-pollution trade-off for the permanent fix.
+ * a full buffer stops that facility collecting. Where several incinerators
+ * reach the same building they take its trash in equal shares, so the load
+ * evens out across the group, and they collect before the landfill does: an
+ * incinerator processes what it takes, a landfill only keeps it, which is the
+ * waste hierarchy's order. The incinerator's catalog `pollution` is emitted by
+ * the worker's per-building emit pass scaled by what it burned against its
+ * ceiling (`incineratorEmission`) — an idle combustor makes no smoke, a full
+ * one makes all of it.
  *
  * `trash`, the landfill fill, and incinerator buffers are RUNTIME state (not
  * part of the grid save); they rebuild within a few ticks of a load, like
@@ -78,6 +83,24 @@ export interface GarbageSaveState {
 
 const clampTile = (v: number): number => (v < 0 ? 0 : v > TRASH_TILE_MAX ? TRASH_TILE_MAX : v);
 
+/**
+ * The pollution an incinerator emits this pass: its catalog figure scaled by
+ * the share of its burn ceiling it used on the last garbage pass, so the plume
+ * follows the trash. A combustor with no ceiling is taken as always at it.
+ */
+export function incineratorEmission(pollution: number, burned: number, burnRate: number): number {
+  if (!(burnRate > 0)) return pollution;
+  return Math.round(pollution * Math.max(0, Math.min(1, burned / burnRate)));
+}
+
+/** A collector's reach and what it can still take this pass. */
+interface Collector {
+  facility: GarbageFacility;
+  coverage: ReadonlyMap<number, number>;
+  remaining: number;
+  collected: number;
+}
+
 export class GarbageSystem {
   /** Per-tile uncollected trash, 0..TRASH_TILE_MAX. Runtime only (not saved). */
   readonly trash: Uint8Array;
@@ -93,9 +116,9 @@ export class GarbageSystem {
   }
 
   /**
-   * Generation + collection (landfill area, then incinerator facilities) +
-   * incinerator burn. Call on the GARBAGE_PERIOD cadence. `facilities` is empty
-   * when no incinerator is placed.
+   * Generation + collection (incinerator facilities in equal shares, then the
+   * landfill area for what they left) + incinerator burn. Call on the
+   * GARBAGE_PERIOD cadence. `facilities` is empty when no incinerator is placed.
    */
   tick(
     grid: GridState,
@@ -105,8 +128,8 @@ export class GarbageSystem {
     const footprints = footprintsByBuildingId(grid);
     const ordered = [...buildings].sort((a, b) => a.id - b.id);
     this.generate(footprints, ordered);
-    this.collectLandfill(grid, footprints, ordered);
     this.collectAndBurnIncinerators(grid, footprints, ordered, facilities);
+    this.collectLandfill(grid, footprints, ordered);
   }
 
   private generate(
@@ -157,11 +180,13 @@ export class GarbageSystem {
   }
 
   /**
-   * Each incinerator collects the trash of buildings within its road-BFS
-   * radius into its buffer (up to bufferCapacity), then burns burnRate off the
-   * top. Facilities are processed in building-id order for determinism; a
-   * facility whose buffer is full collects nothing (trash backs up) but still
-   * burns. Buffers for removed incinerators are dropped.
+   * The incinerators collect the trash of the buildings within their road-BFS
+   * radius into their buffers (up to bufferCapacity), then each burns burnRate
+   * off the top. A building reached by several takes an equal share to each,
+   * so two plants over one town carry the same load; a facility whose buffer
+   * is full takes nothing (its share goes to the others, or backs up) but
+   * still burns. Buildings and facilities go in id order for determinism.
+   * Buffers for removed incinerators are dropped.
    */
   private collectAndBurnIncinerators(
     grid: GridState,
@@ -173,9 +198,28 @@ export class GarbageSystem {
     for (const id of [...this.incineratorStore.keys()]) if (!live.has(id)) this.drop(id);
 
     const ordered = [...facilities].sort((a, b) => a.id - b.id);
+    const collectors: Collector[] = [];
     for (const f of ordered) {
-      let stored = this.incineratorStore.get(f.id) ?? 0;
-      stored += this.collectInto(grid, footprints, buildings, f, f.bufferCapacity - stored);
+      const remaining = f.bufferCapacity - (this.incineratorStore.get(f.id) ?? 0);
+      const coverage = remaining > 0 ? this.reachOf(grid, footprints, f) : null;
+      if (coverage) collectors.push({ facility: f, coverage, remaining, collected: 0 });
+    }
+    if (collectors.length > 0) {
+      for (const b of buildings) {
+        const btiles = footprints.get(b.id);
+        if (!btiles || btiles.length === 0) continue;
+        const reaching = collectors.filter(
+          (c) => c.remaining > 0 && btiles.some((ti) => (c.coverage.get(ti) ?? 0) > 0),
+        );
+        if (reaching.length === 0) continue;
+        const taken = this.shareOut(this.trashOn(btiles), reaching);
+        this.takeFrom(btiles, taken);
+      }
+    }
+
+    const collectedBy = new Map(collectors.map((c) => [c.facility.id, c.collected]));
+    for (const f of ordered) {
+      let stored = (this.incineratorStore.get(f.id) ?? 0) + (collectedBy.get(f.id) ?? 0);
       const burned = Math.min(stored, Math.max(0, f.burnRate));
       stored -= burned;
       this.incineratorStore.set(f.id, stored);
@@ -183,40 +227,60 @@ export class GarbageSystem {
     }
   }
 
-  /** Pulls up to `budget` units of covered trash into the given facility. */
-  private collectInto(
+  /** The tiles a facility's trucks reach, or null when it has no road to leave by. */
+  private reachOf(
     grid: GridState,
     footprints: ReadonlyMap<number, number[]>,
-    buildings: readonly GarbageBuilding[],
     f: GarbageFacility,
-    budget: number,
-  ): number {
-    if (budget <= 0) return 0;
+  ): ReadonlyMap<number, number> | null {
     const tiles = footprints.get(f.id);
-    if (!tiles || tiles.length === 0) return 0;
+    if (!tiles || tiles.length === 0) return null;
     const start = nearestRoadTile(grid, tiles);
-    if (start === null) return 0; // no road access -> can't collect
+    if (start === null) return null;
     const reached = roadBfsDistances(grid, start, f.collectionRange);
     const coverage = radiateWeighted(reached, f.collectionRange, 1);
-    if (coverage.size === 0) return 0;
+    return coverage.size === 0 ? null : coverage;
+  }
 
-    let remaining = budget;
-    let collected = 0;
-    for (const b of buildings) {
-      if (remaining <= 0) break;
-      const btiles = footprints.get(b.id);
-      if (!btiles || btiles.length === 0) continue;
-      if (!btiles.some((ti) => (coverage.get(ti) ?? 0) > 0)) continue;
-      for (const ti of btiles) {
-        if (remaining <= 0) break;
-        const amt = Math.min(this.trash[ti]!, remaining);
-        if (amt <= 0) continue;
-        this.trash[ti]! -= amt;
-        collected += amt;
-        remaining -= amt;
+  private trashOn(tiles: readonly number[]): number {
+    let total = 0;
+    for (const ti of tiles) total += this.trash[ti]!;
+    return total;
+  }
+
+  /**
+   * Divides `units` of one building's trash among the collectors reaching it,
+   * a unit at a time round the group in id order so no one is ahead by more
+   * than one, each stopping at its room; returns what was taken in all.
+   */
+  private shareOut(units: number, reaching: Collector[]): number {
+    let pool = units;
+    let taken = 0;
+    let open = reaching.filter((c) => c.remaining > 0);
+    while (pool > 0 && open.length > 0) {
+      const each = Math.max(1, Math.floor(pool / open.length));
+      for (const c of open) {
+        if (pool <= 0) break;
+        const amt = Math.min(each, c.remaining, pool);
+        c.remaining -= amt;
+        c.collected += amt;
+        pool -= amt;
+        taken += amt;
       }
+      open = open.filter((c) => c.remaining > 0);
     }
-    return collected;
+    return taken;
+  }
+
+  /** Clears `units` of trash off a building's tiles, first tile first. */
+  private takeFrom(tiles: readonly number[], units: number): void {
+    let left = units;
+    for (const ti of tiles) {
+      if (left <= 0) break;
+      const amt = Math.min(this.trash[ti]!, left);
+      this.trash[ti]! -= amt;
+      left -= amt;
+    }
   }
 
   private drop(id: number): void {

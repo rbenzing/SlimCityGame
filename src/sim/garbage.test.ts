@@ -7,7 +7,12 @@ import {
   tileIndex,
 } from '../shared/constants';
 import { createGrid } from '../world/grid';
-import { GarbageSystem, type GarbageBuilding, type GarbageFacility } from './garbage';
+import {
+  GarbageSystem,
+  incineratorEmission,
+  type GarbageBuilding,
+  type GarbageFacility,
+} from './garbage';
 
 /**
  * A full MAP_SIZE grid with a vertical road column x=10 (z 10..40), a 2-tile
@@ -157,6 +162,61 @@ describe('GarbageSystem incinerators', () => {
 
     sys.tick(g, [COM], []); // incinerator gone → buffer pruned
     expect(sys.incineratorStored(incinId)).toBe(0);
+  });
+});
+
+describe('GarbageSystem shares the load across the incinerators that reach a building', () => {
+  /** The incinerator world with a second plant further down the same road. */
+  function twoPlants(): { g: GridState; buildingTile: number; first: number; second: number } {
+    const { g, buildingTile, incinId } = incinWorld();
+    const second = 21;
+    g.buildingId[tileIndex(11, 30)] = second;
+    return { g, buildingTile, first: incinId, second };
+  }
+
+  it('gives two plants equal shares of one building, within a unit', () => {
+    const { g, buildingTile, first, second } = twoPlants();
+    const sys = new GarbageSystem(g.size);
+    const plants = [facility({ id: first, burnRate: 0 }), facility({ id: second, burnRate: 0 })];
+    for (let i = 0; i < 5; i++) sys.tick(g, [IND], plants);
+    const a = sys.incineratorStored(first);
+    const b = sys.incineratorStored(second);
+    expect(a + b).toBe(5 * TRASH_EMIT_IND);
+    expect(Math.abs(a - b)).toBeLessThanOrEqual(1);
+    expect(sys.trash[buildingTile]).toBe(0);
+  });
+
+  it('lets the plant with room take what a full one cannot', () => {
+    const { g, buildingTile, first, second } = twoPlants();
+    const sys = new GarbageSystem(g.size);
+    const full = facility({ id: first, burnRate: 0, bufferCapacity: 1 });
+    const open = facility({ id: second, burnRate: 0 });
+    sys.tick(g, [IND], [full, open]);
+    expect(sys.incineratorStored(first)).toBe(1);
+    expect(sys.incineratorStored(second)).toBe(TRASH_EMIT_IND - 1);
+    expect(sys.trash[buildingTile]).toBe(0);
+  });
+
+  it('lets the incinerators take a building before the landfill does, since they process what they take', () => {
+    const { g, buildingTile } = baseWorld();
+    const incinId = 20;
+    g.buildingId[tileIndex(11, 25)] = incinId;
+    const sys = new GarbageSystem(g.size);
+    sys.tick(g, [COM], [facility({ id: incinId, burnRate: 0 })]);
+    expect(sys.incineratorStored(incinId)).toBe(TRASH_EMIT_COM);
+    expect(sys.landfillStored()).toBe(0);
+    expect(sys.trash[buildingTile]).toBe(0);
+    // Once the incinerator is full the landfill takes what it leaves.
+    sys.tick(g, [COM], [facility({ id: incinId, burnRate: 0, bufferCapacity: TRASH_EMIT_COM })]);
+    expect(sys.landfillStored()).toBe(TRASH_EMIT_COM);
+  });
+
+  it('burns what it has up to its ceiling, and its plume follows the burn', () => {
+    expect(incineratorEmission(120, 0, 4000)).toBe(0);
+    expect(incineratorEmission(120, 2000, 4000)).toBe(60);
+    expect(incineratorEmission(120, 4000, 4000)).toBe(120);
+    expect(incineratorEmission(120, 9000, 4000)).toBe(120);
+    expect(incineratorEmission(120, 10, 0)).toBe(120);
   });
 });
 
