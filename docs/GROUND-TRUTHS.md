@@ -761,6 +761,15 @@ MUTCD citations below use 11th-edition section numbers.
 - Landfill is a painted layer, not a ploppable; a connected area under
   `LANDFILL_MIN_AREA_TILES` (4) is rejected. —
   [services-model.md](world-sim/services-model.md)
+- A facility group shares its load: a building reached by several
+  incinerators with room gives each an equal share, as a tile reached by
+  several service facilities sums what each dedicates to it. Incinerators
+  collect before the landfill, since they process what they take and a
+  landfill only keeps it. An incinerator burns what it holds up to its
+  ceiling and its pollution is its catalog figure scaled by the share of
+  that ceiling the last pass used, never a flat figure while idle. —
+  [services-model.md](world-sim/services-model.md#garbage-and-waste-management);
+  `shareOut` and `incineratorEmission` in `src/sim/garbage.ts`
 - Every figure in a service plan derives from a published municipal standard
   plus the 20 m tile, never picked to feel right, and any override is stated.
   The smallest facility of a ladder must be affordable to a city that has just
