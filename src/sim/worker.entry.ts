@@ -236,6 +236,9 @@ const DISTRICT_PALETTE: readonly number[] = [
 const CATALOG = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 const ROAD_SPECS = (roadsData as { specs: RoadSpec[] }).specs;
 
+/** The road tool's refusal when its path crosses a standing building. */
+export const ROAD_THROUGH_BUILDING = 'A building stands in the way. Bulldoze it first.';
+
 /** Ticks between snapshots: 20 ticks/s over 10 snapshots/s = 2. */
 const SNAPSHOT_TICKS = Math.max(1, Math.round(TICK_RATE / SNAPSHOT_HZ));
 /** Utility (power/water) recompute cadence. */
@@ -2598,11 +2601,19 @@ class SimWorld implements WorkerSim {
       : solveElevationProfile(g, tiles, elevation);
     if (!profile.ok) return { ok: false, cost: 0, inverse: [], reason: profile.reason };
 
+    // A road never goes through a building, and it never quietly goes round
+    // one either: laid with the building's tiles left out, it stands as two
+    // pieces that join nothing, carry nothing, and read as one road.
+    for (const t of tiles) {
+      if (inBounds(t.x, t.z) && (g.buildingId[tileIndex(t.x, t.z)] ?? 0) !== 0) {
+        return refused(ROAD_THROUGH_BUILDING);
+      }
+    }
+
     for (let i = 0; i < tiles.length; i++) {
       const t = tiles[i]!;
       if (!inBounds(t.x, t.z)) continue;
       const idx = tileIndex(t.x, t.z);
-      if ((g.buildingId[idx] ?? 0) !== 0) continue;
       const current = (g.roadTier[idx] ?? 0) as RoadTier;
       const deck = profile.elevations[i] ?? 0;
       // Road-on-slope placement: a NEW road tile uses the road-specific

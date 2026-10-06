@@ -692,6 +692,17 @@ cursor chip. The world refuses them again when the command arrives, whole and
 with the same sentence, so no command from any source — an undo, a replayed
 batch, a script — lays a street against a motorway.
 
+**A road never goes through a building, and never quietly round one.** A
+drag whose path crosses a standing building is refused whole — the cursor
+chip reads "Overlapping items" before the click, and the world's reason
+names the building and the bulldozer — rather than laid with the
+building's tiles left out. A road laid around a building that way stands as
+two pieces that join nothing and carry nothing, while reading on the map as
+one road; a town once grew for thirty thousand ticks with a cross street in
+three such pieces and the Advisor counting the zoned tiles beside them as
+unpowered. Water and other roads are not in the way: a road bridges the one
+and joins or replaces the other.
+
 The case a motorway meeting a motorway leaves open is not a refusal at all:
 **a highway lying ACROSS the way another highway runs, rather than in line
 with it, is a separate carriageway and does not connect to it.** It is decided

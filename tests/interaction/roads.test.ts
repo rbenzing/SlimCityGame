@@ -524,6 +524,28 @@ describe('which roads may touch — the world refuses, not only the tool', () =>
   });
 });
 
+describe('a road dragged through a building — refused whole, never laid around it', () => {
+  it('lays nothing and names the building, so no road ever stands in two pieces', () => {
+    const h = sandboxed();
+    run(h, 1, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 10, 20) },
+      { kind: 'placeBuilding', catalogId: 'water-tower', x: 20, z: 11, rotation: 0 },
+    ]);
+    const fundsBefore = h.lastSnapshot()!.stats.funds;
+    const ack = run(h, 2, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(20, 11, 10) },
+    ]);
+    expect(ack.ok).toBe(false);
+    expect(ack.reason).toMatch(/building/i);
+    expect(h.lastSnapshot()!.stats.funds).toBe(fundsBefore);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const g = latestSaveGrid(h);
+    // Neither the tiles the tower stands on nor the ones past it got a road.
+    for (let z = 11; z <= 20; z++) expect(g.roadTier[tileIndex(20, z)]).toBe(RoadTier.None);
+    expect(g.buildingId[tileIndex(20, 11)]).not.toBe(0);
+  });
+});
+
 describe('roads off the grid — the world lays them, undoes them and keeps them', () => {
   /** A point `x`, `z` metres into the map, in centimetres. */
   const at = (x: number, z: number): { x: number; z: number } => ({ x: x * 100, z: z * 100 });
