@@ -511,7 +511,14 @@ MUTCD citations below use 11th-edition section numbers.
   simulate nothing, and a cosmetic route is computed once and never re-solved.
   A vehicle drives the line the road network traces — grid tile centres and
   the centre lines of roads off the grid — never a straight line between two
-  tiles that are not neighbours.
+  tiles that are not neighbours. A walker walks the footway, which is on the
+  ROAD tile where the street's own section puts it, never the lot's first row
+  (the lawn, or the house), and goes in by the front door the house kit drew,
+  along that kit's own path; a walker anchored a tile back from the street
+  walked through the living room of any home that touched it. —
+  [props-and-vehicles.md](art/props-and-vehicles.md); `computeWalkPath` and
+  `walkSample` in `src/render/pedestrians.ts`, `frontDoorOf` in
+  `src/render/houselot.ts`
   Traffic is statistical assignment. —
   [ADR-0001](engineering/adr/0001-traffic-is-statistical-assignment-with-cosmetic-agents.md),
   [agent-behavior.md](world-sim/agent-behavior.md)

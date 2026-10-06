@@ -153,14 +153,19 @@ visible — a facility, not a data lens the player has to switch on.
   deterministic, with a slow walk-cycle offset. Idling people cluster around
   the shelter's own ground anchor on the sidewalk, matching how far the
   shelter itself sits from the carriageway, rather than around the stop's
-  road-tile centre. A walker's path is a loop stretched hard along the street
-  it fronts and kept narrow across it — an equal-radius loop reads as
-  orbiting the building, not walking a street — and it stays a loop rather
-  than a there-and-back path so the turn at each end stays smooth; which way
-  "along" the street points is read from the road tile itself, so a corner
-  lot's walker still follows the street it is actually standing on. Lamps
-  skip any tile a driveway crosses, so a lamp never ends up standing in the
-  kerb cut cars drive through.
+  road-tile centre. A walker walks the **footway**, which is on the road
+  tile and not the lot: the street's own cross-section puts the pavement
+  between its verge and its kerb, and the lot's first row is the house's
+  lawn — or the house. Anchored a tile back from the road instead, a walker
+  whose home touched the street walked through its living room. The stroll
+  is a stretch of pavement walked out and back along the street, barely
+  across it, with a smooth turn at each end; which way "along" points is read
+  from the road tile itself, so a corner lot's walker still follows the
+  street it is standing on. A walker from a home with a front door also goes
+  in: each cycle leaves the pavement, walks the house kit's own straight path
+  to the door and comes back, so the people and the lot plan agree about
+  where the door is. Lamps skip any tile a driveway crosses, so a lamp never
+  ends up standing in the kerb cut cars drive through.
 - **Lamp model**: a tapered pole, an arm bracket, and a real modeled lamp
   housing, not a bare box. The pole itself renders a mid charcoal (`0x50555d`)
   rather than a near-black — a tone that dark sits below the point where

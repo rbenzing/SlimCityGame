@@ -690,6 +690,23 @@ export function planHouseLot(
 }
 
 /** A home's lot without its yard — the cheap half, for callers that only need the drives. */
+/**
+ * Where a home's first front door stands, in world metres, or null for a
+ * building that is not a house or has no street to open onto. What a walker
+ * from that home heads for when they go in.
+ */
+export function frontDoorOf(
+  building: BuildingInstance,
+  entry: BuildingCatalogEntry,
+  roadAt: (x: number, z: number) => boolean,
+  street: StreetLookup,
+): { x: number; z: number } | null {
+  const plan = planHouseGround(building, entry, roadAt, street);
+  const door = plan?.doors[0];
+  if (!plan || !door) return null;
+  return lotToWorld(plan.frame, door.u, door.v);
+}
+
 export function planHouseGround(
   building: BuildingInstance,
   entry: BuildingCatalogEntry,

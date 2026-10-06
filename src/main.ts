@@ -72,6 +72,7 @@ import { BuildingInstancer } from './render/buildings';
 import { MassingRenderer } from './render/massing';
 import { RoofPropRenderer } from './render/props';
 import { HouseRoofRenderer } from './render/houses';
+import { frontDoorOf } from './render/houselot';
 import {
   curbCutTileFor,
   kerbAllowance,
@@ -353,10 +354,21 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // home fronts. Fed the same BuildingDelta stream.
   const houseRoofs = new HouseRoofRenderer(world.scene, heightAt, catalog, roadAt, street);
   // Cosmetic pedestrians: a few idlers at each bus-stop shelter + a sparse
-  // deterministic walker scatter near Active buildings, strolling a small loop
-  // on the frontage sidewalk (roadAt) near home. Fed the flattened transit stop
-  // list + the same BuildingDelta stream the other renderers get.
-  const pedestrianRenderer = new PedestrianRenderer(world.scene, roadSurfaceAt, roadAt);
+  // deterministic walker scatter near Active buildings, strolling the footway
+  // in front of home (where the street's own section puts it) and walking up
+  // the path to the front door. Fed the flattened transit stop list + the same
+  // BuildingDelta stream the other renderers get.
+  const catalogById = new Map<string, BuildingCatalogEntry>(catalog.map((e) => [e.id, e]));
+  const pedestrianRenderer = new PedestrianRenderer(
+    world.scene,
+    roadSurfaceAt,
+    roadAt,
+    street,
+    (building) => {
+      const entry = catalogById.get(building.catalogId);
+      return entry ? frontDoorOf(building, entry, roadAt, street) : null;
+    },
+  );
 
   // Landmark detail kits: terminal roof monitors,
   // control tower + pulsing beacon, apron plate, parked planes — fed the same
@@ -620,7 +632,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           samples: { id: number; tx: number; tz: number; why: string }[];
         };
         lamps: { total: number; driveways: number; onDriveway: number; samples: number[][] };
-        walkers: { total: number; noFrontage: number; wrongAxis: number };
+        walkers: { total: number; offFootway: number; wrongAxis: number };
       } => {
         const isRoad = (tx: number, tz: number): boolean =>
           inBounds(tx, tz) &&
@@ -674,26 +686,16 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           }
         }
 
-        const walkers = { total: 0, noFrontage: 0, wrongAxis: 0 };
+        const walkers = { total: 0, offFootway: 0, wrongAxis: 0 };
         for (const path of pedestrianRenderer.walkerPathsForAudit()) {
           walkers.total += 1;
-          const ax = worldToTile(path.anchor.x);
-          const az = worldToTile(path.anchor.z);
-          // The anchor stands on the frontage tile, so the street it belongs to
-          // is one of the four next door.
-          const road = (
-            [
-              [ax, az - 1],
-              [ax + 1, az],
-              [ax, az + 1],
-              [ax - 1, az],
-            ] as const
-          ).find(([rx, rz]) => isRoad(rx, rz));
-          if (!road) {
-            walkers.noFrontage += 1;
+          // The anchor stands on the footway, which is the street's own tile.
+          const rx = worldToTile(path.anchor.x);
+          const rz = worldToTile(path.anchor.z);
+          if (!isRoad(rx, rz)) {
+            walkers.offFootway += 1;
             continue;
           }
-          const [rx, rz] = road;
           const runsEW = isRoad(rx - 1, rz) || isRoad(rx + 1, rz);
           const runsNS = isRoad(rx, rz - 1) || isRoad(rx, rz + 1);
           if (path.alongX !== (runsEW || !runsNS)) walkers.wrongAxis += 1;
@@ -1139,7 +1141,6 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
 
   // --- tools -------------------------------------------------------------------
   const roadSpecByTier = new Map<number, RoadSpec>(roadSpecs.map((s) => [s.tier, s]));
-  const catalogById = new Map<string, BuildingCatalogEntry>(catalog.map((e) => [e.id, e]));
 
   /** Ghost tint/decoration family for the active tool. */
   /**
