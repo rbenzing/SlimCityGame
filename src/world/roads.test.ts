@@ -1108,9 +1108,20 @@ describe('RoadNetwork — snapping a point that stands mid-run', () => {
     expect(nodeAt(net.nearestNode(30, ROW))).toBe(32);
   });
 
+  it('snaps a point on the kerb tile beside the run the same way, as a bus stop stands', () => {
+    const net = new RoadNetwork();
+    net.rebuild(corridorGrid());
+    const nodeAt = (id: number | null): number => net.getNodes().find((n) => n.id === id)!.x;
+    expect(nodeAt(net.nearestNode(14, ROW + 1))).toBe(2);
+    expect(nodeAt(net.nearestNode(30, ROW - 1))).toBe(32);
+    const path = net.findPath({ x: 12, z: ROW + 1 }, { x: 26, z: ROW - 1 });
+    expect(path).not.toBeNull();
+  });
+
   it('still reports a point genuinely off the network as off it', () => {
     const net = new RoadNetwork();
     net.rebuild(corridorGrid());
+    expect(net.nearestNode(17, ROW + 2)).toBeNull();
     expect(net.nearestNode(17, ROW + 9)).toBeNull();
     expect(net.findPath({ x: 17, z: ROW + 9 }, { x: 24, z: ROW })).toBeNull();
   });

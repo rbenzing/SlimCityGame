@@ -204,6 +204,14 @@ MUTCD citations below use 11th-edition section numbers.
   a priced detour, and a U-turn is never offered by default. —
   [pathfinding.md](world-sim/pathfinding.md); `turnAllowed` in
   `src/world/pathfind.ts`, `src/shared/approach.ts`
+- A transit stop finds the network through the tile it stands on OR a tile
+  beside it: a node within 8 tiles by proximity, else the nearer end of the
+  run under it or under one of its four neighbours. A bus stop never stands on
+  the street but on the kerb tile beside it, so a stop partway down a block
+  longer than sixteen tiles routed to nothing and carried nobody until this
+  was so. A point two or more tiles from any road is off the network. —
+  [transit-model.md](world-sim/transit-model.md); `nearestNode` in
+  `src/world/roadgraph.ts`
 - Any grid edit invalidates the whole road graph and reassigns every node and
   edge id. Never persist an edge or node id across an edit. Tram-graph edge ids
   are a private numbering, and tram relief is recomputed over the road graph. —
