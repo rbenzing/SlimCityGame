@@ -247,7 +247,13 @@ describe('water and sewage on pipes', () => {
     const dozed = run(h, 4, [{ kind: 'bulldoze', tiles: [{ x: 66, z: 47 }] }]);
     expect(dozed.ok).toBe(true);
     h.ticks(4);
-    expect(h.lastSnapshot()!.zonedUnserved!.sewer).toBe(20);
+    // A home may grow on the row while the street is served, so the empty
+    // zoned tiles are read from the ground.
+    h.sim.handleMessage({ type: 'requestSave' });
+    const ground = latestSaveGrid(h);
+    let empty = 0;
+    for (let x = 60; x < 80; x++) if (ground.buildingId[tileIndex(x, 50)] === 0) empty++;
+    expect(h.lastSnapshot()!.zonedUnserved!.sewer).toBe(empty);
     expect(dozed.inverse.some((c) => c.kind === 'layWaterPipe' && c.on)).toBe(true);
 
     const undone = run(h, 5, dozed.inverse);

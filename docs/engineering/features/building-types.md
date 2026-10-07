@@ -57,6 +57,7 @@ interface BuildingCatalogEntry {
   kind?: BuildingKind;   // every zoned entry; absent on a ploppable
   units?: number;        // homes in the building; residential and mixed, and 1 on a farm
   share?: number;        // the kind's draw weight, on its level-1 entry
+  lot?: LotSize;         // the platted lot of a detached, duplex or fourplex entry; absent elsewhere
   …
 }
 ```
@@ -122,7 +123,12 @@ outlines. The spawner keeps a lotted candidate only
 if a parcel of its lot and footprint starts on the tile; the lotted entries
 are `lot` entries in the catalog, the normal and the estate with a turned
 twin (`res-normal-t-N`, `res-estate-t-N`) for streets running north to south,
-and the level-up lookup matches the lot and the footprint.
+and the level-up lookup matches the lot and the footprint. The duplex and the
+fourplex are lotted too: `res-duplex-N` (normal, 1×2), `res-duplex-h-N` (half,
+1×1) and `res-duplex-t-N` (normal turned, 2×1), and the same for
+`res-fourplex-…`, one footprint across the three levels. One variant per kind
+matches a platted parcel, so the draw's ratios are unchanged; a double or an
+estate parcel matches no plex.
 
 ### The renderer
 
@@ -130,8 +136,8 @@ and the level-up lookup matches the lot and the footprint.
   lot axis: a detached house 4.75 m per tile, never under 9.5 m
   (`DETACHED_BODY_MIN_M`, so a half or a normal lot's house is as wide as a
   double lot's); a duplex 60% of each
-  axis capped at 16 m (12 × 16 m on a 1×2 lot); a fourplex 70% capped at
-  18 m; a multiplex 13.6 m per tile capped at 24 m; everything else 13.6 m
+  axis capped at 16 m (12 × 12 m on a 1×1 lot, 12 × 16 m on a 1×2 lot); a
+  fourplex 70% capped at 18 m (14 × 14 m on a 1×1 lot); a multiplex 13.6 m per tile capped at 24 m; everything else 13.6 m
   per tile under the 85% ceiling. `footprintShrinkFor` keeps its callers but
   is now the body divided by the lot, per axis, so nothing else moves.
 - **Homes along the frontage.** `homesAcrossFrontage(kind, tiles)`: a

@@ -23,6 +23,9 @@ import {
 import { recomputeUtilities } from './network';
 import type { GrowthSupply, Rng } from './growth';
 import { createGrid } from '../world/grid';
+import { parcelsAnchoredAt, platOf, platSourceOf } from '../world/plat';
+import type { PlatSource } from '../world/plat';
+import catalogData from '../data/catalog.json';
 
 function makeGrid(): GridState {
   return createGrid();
@@ -1570,6 +1573,147 @@ describe('the lot picks its building', () => {
       expect(ids).toContain('half-2');
       expect(ids).not.toContain('half-1');
       expect(ids).not.toContain('double-2');
+    });
+  });
+
+  describe('a duplex or a fourplex stands on a parcel of the plat, as a house does', () => {
+    const shipped = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+    const plexes = shipped.filter(
+      (e) => e.zone === ZoneType.ResLow && (e.kind === 'duplex' || e.kind === 'fourplex'),
+    );
+    const idsOf = (registry: BuildingRegistry): string[] => registry.all().map((b) => b.catalogId);
+
+    /**
+     * Zoned, served land two tiles deep on both sides of a street through the
+     * middle of the map: along z when `northSouth`, else along x.
+     */
+    function twoSidedStreet(northSouth: boolean, landValue: number): GridState {
+      const g = makeGrid();
+      g.fields[FieldId.LandValue]!.fill(landValue);
+      const at = (along: number, across: number): number =>
+        northSouth ? tileIndex(across, along) : tileIndex(along, across);
+      for (let along = 0; along < 14; along++) {
+        g.roadTier[at(along, 5)] = RoadTier.TwoLane;
+        for (const across of [3, 4, 6, 7]) {
+          const i = at(along, across);
+          g.zone[i] = ZoneType.ResLow;
+          g.power[i] = 1;
+          g.watered[i] = 1;
+          g.sewered[i] = 1;
+        }
+      }
+      return g;
+    }
+    const growOn = (
+      g: GridState,
+      catalog: BuildingCatalogEntry[],
+      seed: number,
+    ): BuildingRegistry => {
+      const registry = new BuildingRegistry(catalog);
+      const growth = new GrowthSystem(catalog, seededRng(seed), onZonedGround);
+      for (let pass = 0; pass < 64; pass++) growth.tick(g, registry, wantsHomes, 1, pass * 10);
+      return registry;
+    };
+    const plain = (g: GridState): PlatSource => platSourceOf(g, null, g.fields[FieldId.LandValue]);
+    const parcelOfBuilding = (
+      plat: ReturnType<typeof platOf>,
+      b: { x: number; z: number },
+      entry: BuildingCatalogEntry,
+    ): boolean =>
+      (parcelsAnchoredAt(plat, b.x, b.z) ?? []).some(
+        (p) => p.lot === entry.lot && p.w === entry.footprint.w && p.d === entry.footprint.d,
+      );
+
+    it.each([
+      ['north-south', true],
+      ['east-west', false],
+    ])('grows every plex on a parcel the plat cut before any stood, on a %s street', (_, ns) => {
+      // The plat before anything stands; a building steps its parcel out of
+      // the cut, so the untouched ground is the one reading every parcel can be
+      // checked against.
+      const g = twoSidedStreet(ns, 100);
+      const plat = platOf(plain(g), ZoneType.ResLow);
+      const registry = growOn(g, plexes, 3);
+      expect(registry.all().length).toBeGreaterThan(0);
+      for (const b of registry.all()) {
+        const entry = shipped.find((e) => e.id === b.catalogId)!;
+        expect(parcelOfBuilding(plat, b, entry), `${b.catalogId} at ${b.x},${b.z}`).toBe(true);
+      }
+    });
+
+    it('turns the lot with the street: a north-south street grows 2x1 plexes, an east-west one 1x2', () => {
+      for (const seed of [1, 2]) {
+        const ns = idsOf(growOn(twoSidedStreet(true, 100), plexes, seed));
+        const ew = idsOf(growOn(twoSidedStreet(false, 100), plexes, seed));
+        expect(ns.length).toBeGreaterThan(0);
+        expect(ew.length).toBeGreaterThan(0);
+        for (const id of ns) {
+          const e = shipped.find((s) => s.id === id)!;
+          expect(id).toContain('-t-');
+          expect(e.footprint).toEqual({ w: 2, d: 1 });
+        }
+        for (const id of ew) {
+          const e = shipped.find((s) => s.id === id)!;
+          expect(id).not.toContain('-t-');
+          expect(e.footprint).toEqual({ w: 1, d: 2 });
+        }
+      }
+    });
+
+    it('grows both kinds of plex when the draw reaches them', () => {
+      const kinds = new Set(
+        [1, 2, 3, 4].flatMap((seed) =>
+          idsOf(growOn(twoSidedStreet(false, 100), plexes, seed)).map(
+            (id) => shipped.find((s) => s.id === id)!.kind,
+          ),
+        ),
+      );
+      expect(kinds).toEqual(new Set(['duplex', 'fourplex']));
+    });
+
+    it('grows half-lot plexes on a poor street, each on a half parcel of the plat', () => {
+      for (const ns of [true, false]) {
+        const g = twoSidedStreet(ns, 0);
+        const plat = platOf(plain(g), ZoneType.ResLow);
+        const registry = growOn(g, plexes, 5);
+        expect(registry.all().length).toBeGreaterThan(0);
+        for (const b of registry.all()) {
+          const entry = shipped.find((e) => e.id === b.catalogId)!;
+          expect(b.catalogId).toContain('-h-');
+          expect(entry.footprint).toEqual({ w: 1, d: 1 });
+          expect(plat.parcels.some((p) => p.x === b.x && p.z === b.z && p.lot === 'half')).toBe(
+            true,
+          );
+        }
+      }
+    });
+
+    describe('keeps its lot through a level-up', () => {
+      const levelsOf = (prefix: string): string[] => [1, 2, 3].map((n) => `${prefix}-${n}`);
+      it.each(
+        ['duplex', 'fourplex'].flatMap((kind) =>
+          [kind, `${kind}-h`, `${kind}-t`].map((stem) => [stem, kind] as const),
+        ),
+      )('%s becomes a better %s on the same lot, level by level', (stem) => {
+        const ids = levelsOf(`res-${stem}`);
+        const g = zoned(2, 3);
+        g.fields[FieldId.LandValue]!.fill(255);
+        g.fields[FieldId.Education]!.fill(255);
+        const registry = new BuildingRegistry(plexes);
+        const first = plexes.find((e) => e.id === ids[0])!;
+        registry.place(g, first, 0, 1, 0, BuildingState.Active);
+        const growth = new GrowthSystem(plexes, constantRng(0), onZonedGround);
+        const standing = (): { catalogId: string } =>
+          registry.all().find((b) => b.x === 0 && b.z === 1)!;
+        for (let level = 2; level <= 3; level++) {
+          growth.tick(g, registry, wantsHomes, 1, level * 10);
+          expect(standing().catalogId).toBe(ids[level - 1]);
+          for (const b of registry.all()) b.state = BuildingState.Active;
+        }
+        const last = plexes.find((e) => e.id === ids[2])!;
+        expect(last.footprint).toEqual(first.footprint);
+        expect(last.lot).toBe(first.lot);
+      });
     });
   });
 });

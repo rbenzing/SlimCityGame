@@ -104,34 +104,36 @@ const RESIDENTIAL_KINDS: ReadonlyArray<{
     ] as const,
     house: true,
   })),
-  {
-    kind: 'duplex',
-    zone: ZoneType.ResLow,
-    unlock: 1,
-    share: 1.6,
-    household: 2.26,
-    kwPerHome: 0.76,
-    lots: [
-      [1, 2],
-      [1, 2],
-      [2, 2],
-    ],
-    house: true,
-  },
-  {
-    kind: 'fourplex',
-    zone: ZoneType.ResLow,
-    unlock: 1,
-    share: 1.2,
-    household: 2.26,
-    kwPerHome: 0.76,
-    lots: [
-      [1, 2],
-      [1, 2],
-      [2, 2],
-    ],
-    house: true,
-  },
+  ...(
+    [
+      ['duplex', 1.6],
+      ['fourplex', 1.2],
+    ] as const
+  ).flatMap(([kind, share]) =>
+    (
+      [
+        ['half', 1, 1, false],
+        ['normal', 1, 2, false],
+        ['normal', 2, 1, true],
+      ] as const
+    ).map(([lot, w, d, turned]) => ({
+      kind,
+      lot,
+      turned,
+      zone: ZoneType.ResLow,
+      unlock: 1,
+      share,
+      household: 2.26,
+      kwPerHome: 0.76,
+      // A lot is platted once: all three levels stand on it.
+      lots: [
+        [w, d],
+        [w, d],
+        [w, d],
+      ] as const,
+      house: true,
+    })),
+  ),
   {
     kind: 'townhouse',
     zone: ZoneType.ResMediumRow,

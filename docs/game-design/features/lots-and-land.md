@@ -4,7 +4,8 @@
   detached house stands on, by the land's standing, kept through every
   level-up); second slice built 2026-10-07 (the plat cut from the street, and
   homes facing it); third slice built 2026-10-07 (the parcel lines on the
-  zone lens); assembly, replatting, the other densities' parcels and the
+  zone lens); fourth slice built 2026-10-07 (the duplex and the fourplex on
+  the plat); assembly, replatting, the medium densities' parcels and the
   inspector's lot line are not yet built
 - **Date:** 2026-10-05
 
@@ -212,8 +213,10 @@ already show.
   fits no parcel on a block never grows there, which is how a strip of half
   lots stays a strip of small homes and duplexes.
 - **The catalog.** The detached, duplex and fourplex kinds gain a lot-size
-  axis: the level-1 house exists at 1×1, 1×2, 2×2 and 2×3, with its storeys,
-  value, residents and draw per level as today. Residents stay the household
+  axis (built for all three; the duplex and the fourplex take the half and
+  normal lots, upright and turned): the level-1 house exists at 1×1, 1×2,
+  2×2 and 2×3, with its storeys, value, residents and draw per level as
+  today. Residents stay the household
   of 2.63; a small home holds a small household's fewer rooms, not fewer
   people, until the population model says otherwise.
 - **Land value.** Read, never written. The feature adds no feedback into the
@@ -288,8 +291,9 @@ A lot forms from its street, and faces it. The rules, in
   depth, are yard behind or beside a lot: no parcel starts there, so a detached
   house is never platted behind another. A tile no grid or free street fronts
   within the depth keeps the first slice's rule, the lot its land warrants.
-  The duplex and the fourplex take no part in the cut and are stepped over
-  like any building.
+  The duplex and the fourplex take a half or a normal parcel, upright or
+  turned, so a poor street grows small duplexes and fourplexes and a rich one
+  grows none: a double or an estate parcel fits no plex.
 - **Faces follow.** A home faces the street that borders the most of its edge
   ([buildings.md](../../art/buildings.md#residential-lots)), which is the street
   it was cut from, so a lot on a bend or beside a cul-de-sac turns its door to
@@ -307,12 +311,41 @@ grow. A standing house is a parcel of its own and keeps no outline; the
 rows behind the first, which no parcel starts on, show the grid alone. The
 whole plat is cut once, run by run in map order, with a claimed-tile set,
 so two streets fronting one corner never cut parcels that overlap; the
-spawner cuts it once a pass the same way. Only the detached house is lotted
-yet, so the other zones' grids show no parcels.
+spawner cuts it once a pass the same way. Only the low-density kinds are
+lotted yet, so the other zones' grids show no parcels.
+
+### The duplex and the fourplex on the plat (built 2026-10-07)
+
+The two plex kinds carry the lot axis the detached house has. Each has three
+lot variants, one footprint across all three levels: `res-duplex-N` and
+`res-fourplex-N` on the normal lot (1×2), `res-duplex-h-N` and
+`res-fourplex-h-N` on the half lot (1×1), and `res-duplex-t-N` and
+`res-fourplex-t-N` on the normal lot turned (2×1, for a street running north
+to south).
+
+- **A half or a normal parcel.** The spawner matches a catalog entry to the
+  parcel by lot and footprint, so exactly one variant of each kind matches a
+  platted parcel. A half parcel on a poor street (land value under 64) grows
+  a 1×1 duplex or fourplex; a normal parcel on a north–south street grows the
+  2×1 twin. A double or an estate parcel fits no plex, so a good street grows
+  houses and nothing else of the low-density kinds.
+- **The draw is unchanged.** The weights stay 1.6 for the duplex and 1.2 for
+  the fourplex on each level-1 entry, and one variant per kind matches, so the
+  ratios between kinds are what they were.
+- **The level never changes the lot.** The level-3 footprint went from 2×2 to
+  1×2. A level-up keeps the parcel, as the detached house does; an old save
+  keeps a standing 2×2 duplex as its stored footprint.
+- **Homes do not change with the lot.** A duplex holds 2 homes and 5
+  residents, a fourplex 4 homes and 9, on a half lot as on a normal one: a
+  small home holds a small household's fewer rooms, not fewer people.
+- **The massing rule is the same.** A duplex body is 60% of each lot axis
+  capped at 16 m (12 × 12 m on a half lot, 12 × 16 m on a normal one); a
+  fourplex 70% capped at 18 m (14 × 14 m on a half lot).
 
 ## What is built
 
-The first slice, built 2026-10-07, is the detached house alone.
+The first slice, built 2026-10-07, is the detached house alone; the duplex
+and the fourplex followed in the fourth slice, above.
 
 - **Eighteen entries, four lots.** The detached kind is the catalog's four lot
   sizes by three levels, the normal and the estate each with a turned twin
@@ -328,7 +361,7 @@ The first slice, built 2026-10-07, is the detached house alone.
   shallow or narrow for the warranted lot plats the next smaller one that
   fits, which is how a one-tile strip still grows half and normal lots, and
   nothing larger than the land warrants is ever platted. The duplex and the
-  fourplex are unchanged: they have no lot and are drawn as before.
+  fourplex joined the plat in the fourth slice, below.
 - **A level-up keeps the lot.** The next level is looked up by zone, kind
   and lot, and its footprint is the lot's, so a half-lot house becomes a
   better half-lot house and never a larger one.

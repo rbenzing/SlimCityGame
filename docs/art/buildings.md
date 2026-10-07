@@ -81,7 +81,8 @@ procedural house kit:
   2×3 — and keeps it through its three levels, which change its height and
   not its ground
   ([../game-design/features/lots-and-land.md](../game-design/features/lots-and-land.md));
-  a duplex and a fourplex take a 1×2, then a 2×2; rows are 1×2, 1×4 and 1×6.
+  a duplex and a fourplex take a half (1×1) or a normal (1×2, or 2×1 turned)
+  lot and keep it at every level; rows are 1×2, 1×4 and 1×6.
 
 **Commercial.** A commercial building's kind decides its archetype. A shop,
 a shopping strip, a supermarket and a restaurant are **storefronts**: a canopy
@@ -235,8 +236,8 @@ metres, and the lot takes the rest:
 | Kind                 | Body                                                        | Roof    | On the lot                                                       |
 | -------------------- | ----------------------------------------------------------- | ------- | ---------------------------------------------------------------- |
 | Detached house       | 4.75 m per lot tile each way, never under 9.5 m (9.5 × 9.5 m on a 1×1, 1×2 or 2×2 lot, 9.5 × 14.25 m on a 2×3) | pitched | lawn, one drive and its cover, a yard                            |
-| Duplex               | 60% of each lot axis, capped at 16 m (12 × 16 m on 1×2)     | pitched | two front doors, one drive per home                              |
-| Fourplex             | 70% of each lot axis, capped at 18 m (14 × 18 m on 1×2)     | pitched | two front doors, one drive per door                              |
+| Duplex               | 60% of each lot axis, capped at 16 m (12 × 12 m on 1×1, 12 × 16 m on 1×2) | pitched | two front doors, one drive per home                              |
+| Fourplex             | 70% of each lot axis, capped at 18 m (14 × 14 m on 1×1, 14 × 18 m on 1×2) | pitched | two front doors, one drive per door                              |
 | Townhouse row        | 13.6 m per tile; two homes per 20 m of frontage, 6.8 m each | pitched | a door, a front pad and by seed a garage door per home           |
 | Multiplex            | 13.6 m per tile, capped at 24 m each way                    | flat    | a lot pad; cars at the kerb                                      |
 | Courtyard apartments | 13.6 m per tile                                             | flat    | a lot pad; cars at the kerb                                      |

@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,846 tests passing across 162 test files, run 2026-10-07.
+**Test suite:** 4,882 tests passing across 162 test files, run 2026-10-07.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -156,10 +156,11 @@ pipe drag snaps onto the system and says what it joins
 ([underground-view.md](game-design/features/underground-view.md)).
 
 **Next:** lots and land continues
-([lots-and-land.md](game-design/features/lots-and-land.md)): three slices
+([lots-and-land.md](game-design/features/lots-and-land.md)): four slices
 are built, the detached house on the lot the land warrants, the plat cut
-from the street, and the plat drawn on the zone lens; assembly, the other
-densities' parcels, replatting and the inspector's lot line remain.
+from the street, the plat drawn on the zone lens, and the duplex and the
+fourplex on the plat; the medium-density parcels and assembly are next, and
+replatting and the inspector's lot line remain.
 After it, the municipal
 services programme's epics
 ([municipal-services.md](game-design/features/municipal-services.md)), the
@@ -305,6 +306,23 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The duplex and the fourplex on the plat (built 2026-10-07)
+
+The fourth slice of lots and land: the two plex kinds gain the lot axis the
+detached house has. Each has three variants with one footprint across all
+three levels: `res-duplex-N` on a normal lot (1×2), `res-duplex-h-N` on a
+half lot (1×1) and `res-duplex-t-N` on a normal lot turned (2×1, for a
+street running north to south), and the same for `res-fourplex-…`. The
+level-3 footprint went from 2×2 to 1×2, since a lot is platted once; an old
+save keeps a standing 2×2 as its stored footprint. The spawner's parcel
+filter already matched lot and footprint, so exactly one variant per kind
+matches a platted parcel and the draw weights (1.6 and 1.2) keep their
+ratios: a half parcel on a poor street grows a 1×1 duplex or fourplex, a
+normal parcel on a north–south street grows the 2×1 twin, and a double or an
+estate parcel fits no plex. Homes and residents do not change with the lot.
+The massing rule is unchanged, so a duplex is 12 × 12 m on a half lot and a
+fourplex 14 × 14 m.
 
 ### The plat on the zone lens (built 2026-10-07)
 

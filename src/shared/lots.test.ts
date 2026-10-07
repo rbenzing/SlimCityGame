@@ -45,6 +45,18 @@ describe('the candidates a plat allows', () => {
     expect(platCandidates([house('double'), house('estate')], 119)).toEqual([]);
   });
 
+  it('plats a duplex on the same lot axis as a detached house', () => {
+    const duplex = (lot: LotSize, id: string) =>
+      ({ ...house(lot, id), kind: 'duplex' }) as BuildingCatalogEntry;
+    const fitting = [
+      house('half', 'res-half-1'),
+      duplex('half', 'res-duplex-h-1'),
+      house('normal', 'res-normal-1'),
+      duplex('normal', 'res-duplex-1'),
+    ];
+    expect(platCandidates(fitting, 0).map((e) => e.id)).toEqual(['res-half-1', 'res-duplex-h-1']);
+  });
+
   it('leaves every kind without a lot to the draw', () => {
     const duplex = { ...house(undefined, 'duplex'), kind: 'duplex' } as BuildingCatalogEntry;
     const kept = platCandidates([duplex, ...all], 119);
