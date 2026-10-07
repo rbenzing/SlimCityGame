@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.38.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.37.0...slimcity-v1.38.0) (2026-10-07)
+
+
+### Features
+
+* **lots:** the plat on the zone lens ([d125f43](https://github.com/rbenzing/SlimCityGame/commit/d125f437600f5c6f6761bef21028ec59da44b578))
+* **lots:** the plat on the zone lens ([aacdec1](https://github.com/rbenzing/SlimCityGame/commit/aacdec14b2daf7025cbcfcefe772da87e64f33eb))
+
 ## [1.37.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.36.0...slimcity-v1.37.0) (2026-10-07)
 
 
