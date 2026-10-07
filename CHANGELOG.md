@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.37.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.36.0...slimcity-v1.37.0) (2026-10-07)
+
+
+### Features
+
+* **lots:** lots are cut from the street, and homes face it ([9ee33a3](https://github.com/rbenzing/SlimCityGame/commit/9ee33a36cc3c7535c369a53b47c0324755d3c7dc))
+* **lots:** lots are cut from the street, and homes face it ([440294d](https://github.com/rbenzing/SlimCityGame/commit/440294deb2744485a4653f09641b95d506a79ac2))
+
 ## [1.36.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.35.1...slimcity-v1.36.0) (2026-10-07)
 
 
