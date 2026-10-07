@@ -235,9 +235,19 @@ describe('a small town, built and grown, as the regression for everything togeth
     expect(byTheLandfill.length).toBeGreaterThan(0);
     expect(backedUp(byTheLandfill)).toEqual([]);
     expect(latestLandfillFill(town.h)).toBeGreaterThan(0);
-    // The industry on the four-lane road lies within the incinerator's.
+    // The industry on the four-lane road within the incinerator's collection
+    // range lies within its reach: so many road tiles from the road beside
+    // its footprint, counted here from the footprint's far side so the lots
+    // asked about are inside the reach whichever road tile the trucks leave by.
+    const incinerator = catalog.find((e) => e.id === 'incinerator')!;
+    const reach = incinerator.garbage!.collectionRange;
+    const farRoadX = TOWN.incinerator.x + incinerator.footprint.w - 1;
     const byTheIncinerator = zoned.filter(
-      (b) => b.z > TOWN.fourLane.z && b.z < TOWN.fourLane.z + 5 && entryOf(b).category === 'ind',
+      (b) =>
+        b.z > TOWN.fourLane.z &&
+        b.z < TOWN.fourLane.z + 5 &&
+        entryOf(b).category === 'ind' &&
+        Math.abs(b.x - farRoadX) <= reach,
     );
     expect(byTheIncinerator.length).toBeGreaterThan(0);
     expect(backedUp(byTheIncinerator)).toEqual([]);

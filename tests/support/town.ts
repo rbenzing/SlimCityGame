@@ -94,6 +94,7 @@ export const TOWN = {
   busStopWest: { x: 52, z: 101 },
   busStopEast: { x: 129, z: 131 },
   landfill: { x0: 64, z0: 41, w: 24, d: 3 },
+  incinerator: { x: 91, z: 126 },
   airport: { x: 91, z: 146 },
   hill: { x: 210, z: 210 },
 } as const;
@@ -388,7 +389,7 @@ export function townSteps(): TownStep[] {
     {
       label: 'garbage: an incinerator and a landfill',
       commands: [
-        place('incinerator', { x: 91, z: 126 }),
+        place('incinerator', t.incinerator),
         {
           kind: 'paintLandfill',
           tiles: rows(t.landfill.x0, t.landfill.z0, t.landfill.w, t.landfill.d),

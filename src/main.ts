@@ -24,7 +24,6 @@ import type {
   CityStats,
   Command,
   CommandAck,
-  FieldId,
   GrowthWaiting,
   ZonedUnserved,
   LensId,
@@ -36,6 +35,7 @@ import type {
   WorkerToMain,
 } from './shared/types';
 import {
+  FieldId,
   INACTIVE_VEHICLE_X,
   RoadFlow,
   RoadTier,
@@ -60,6 +60,8 @@ import {
 import { solveElevationProfile } from './world/bridges';
 import { isRoadBuildable } from './world/grid';
 import { roundaboutGroundOf } from './world/roundabouts';
+import { platOf, platSourceOf } from './world/plat';
+import { buildRoadCells, type RoadCells } from './world/roadnet';
 import { ROUNDABOUT_CODE } from './shared/roundabout';
 import { createRenderer, createWorldScene, timeOfDayColors } from './render/scene';
 import { createBloomPipeline, type BloomPipeline } from './render/bloom';
@@ -315,6 +317,29 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const cursorChip = new CursorChipStack(viewport);
 
   zoneGrid.rebuild(clientGrid); // primes its map size so zone patches apply
+  /**
+   * The plat on the zone lens: every parcel of the zone in hand, cut by the
+   * same function the spawner reads, so the lines show exactly what will
+   * grow. The land value it cuts by is asked of the worker while a zone tool
+   * is in hand, on the lens cadence, and the cut is redone whenever the
+   * zone, the roads, the buildings or the land value move.
+   */
+  let latestLandValue: Uint8Array | undefined;
+  let platCells: { version: number; cells: RoadCells } | null = null;
+  const rebuildPlat = (): void => {
+    const tool = store.getState().selectedTool;
+    const zone = ZONE_TOOL_TO_TYPE[tool];
+    if (zone === undefined || zone === ZoneType.None || !zoneGrid.isVisible()) {
+      zoneGrid.setParcels([]);
+      return;
+    }
+    const net = clientGrid.roads;
+    if (net && (platCells === null || platCells.version !== net.version)) {
+      platCells = { version: net.version, cells: buildRoadCells(net, clientGrid.size) };
+    }
+    const src = platSourceOf(clientGrid, net ? platCells!.cells : null, latestLandValue);
+    zoneGrid.setParcels(platOf(src, zone).parcels);
+  };
 
   // Landfill facility: dumping-ground tint + trash piles + the entrance office
   // kit. The entrance pick wants streets only (rail gives no frontage). It's a
@@ -629,6 +654,20 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // city it is fed still fails here.
       // The underground as drawn: whether the surface is glass, how many
       // materials went to it, what the system drew and what colour a run is.
+      // The plat as the lens draws it: the parcels of the zone in hand.
+      readPlat: (): { x: number; z: number; w: number; d: number; lot: string }[] => {
+        const zone = ZONE_TOOL_TO_TYPE[store.getState().selectedTool];
+        if (zone === undefined || zone === ZoneType.None) return [];
+        const net = clientGrid.roads;
+        const cells = net ? buildRoadCells(net, clientGrid.size) : null;
+        return platOf(platSourceOf(clientGrid, cells, latestLandValue), zone).parcels.map((p) => ({
+          x: p.x,
+          z: p.z,
+          w: p.w,
+          d: p.d,
+          lot: p.lot,
+        }));
+      },
       readUnderground: (): {
         active: boolean;
         faded: number;
@@ -1768,6 +1807,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       zoneGrid.applyZonePatches(snap.zones);
       clientGrid.applyZonePatches(snap.zones);
     }
+    // The cut follows the zone, the roads and the buildings.
+    if (snap.zones || snap.roads || snap.roadNet || snap.buildings) rebuildPlat();
     if (snap.powerLines) {
       clientGrid.applyPowerLinePatches(snap.powerLines);
       powerLines.rebuild(clientGrid.powerLineTiles());
@@ -1858,6 +1899,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         break;
       case 'field':
         overlays.setFieldData(msg.field, msg.data);
+        if (msg.field === FieldId.LandValue) {
+          latestLandValue = msg.data;
+          rebuildPlat();
+        }
         break;
       case 'save':
         void storeSave(msg.data).then((header) => {
@@ -2015,6 +2060,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       zoneGrid.setVisible(
         state.selectedTool.startsWith('zone.') || state.selectedTool === 'landfill.paint',
       );
+      rebuildPlat();
+      if (zoneGrid.isVisible()) requestField(FieldId.LandValue);
       // The dedicated overlays follow tool selection too.
       refreshEpicVisibility();
     }
@@ -2251,6 +2298,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       const overlay = store.getState().overlay;
       // FieldId lenses only — coverage lenses are push-fed (see subscription).
       if (typeof overlay === 'number') requestField(overlay);
+      // The plat cuts by land value, so the zone lens keeps it fresh too.
+      if (zoneGrid.isVisible() && overlay !== FieldId.LandValue) requestField(FieldId.LandValue);
     }
 
     if (bloomPipeline && useCityStore.getState().settings.bloom) {

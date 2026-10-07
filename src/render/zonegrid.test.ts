@@ -15,6 +15,7 @@ import {
   ZoneGridRenderer,
   zoneTintColor,
   type ZoneGridSource,
+  parcelEdges,
 } from './zonegrid';
 
 const flatHeightAt = (): number => 0;
@@ -322,11 +323,13 @@ describe('boundaryEdges (deduped tile-boundary line segments)', () => {
 });
 
 describe('ZoneGridRenderer construction', () => {
-  it('adds exactly 3 mesh layers to the scene (fill, lines, tint), all hidden and empty', () => {
+  it('adds exactly 4 mesh layers to the scene (fill, lines, tint, plat), all hidden and empty', () => {
     const scene = new THREE.Scene();
     const renderer = new ZoneGridRenderer(scene, flatHeightAt);
-    expect(scene.children.length).toBe(3);
-    const { fill, lines, tint } = renderer.layers();
+    expect(scene.children.length).toBe(4);
+    const { fill, lines, tint, plat } = renderer.layers();
+    expect(plat.visible).toBe(false);
+    expect(vertexCount(plat)).toBe(0);
     expect(fill.visible).toBe(false);
     expect(lines.visible).toBe(false);
     expect(tint.visible).toBe(false);
@@ -530,7 +533,7 @@ describe('ZoneGridRenderer — large tile counts (merged geometry, no capacity c
     expect(expected).toBeGreaterThan(256);
 
     renderer.rebuild(g);
-    expect(scene.children.length).toBe(3);
+    expect(scene.children.length).toBe(4);
     expect(vertexCount(renderer.layers().fill)).toBe(expected * VERTS_PER_CELL);
   });
 
@@ -545,7 +548,7 @@ describe('ZoneGridRenderer — large tile counts (merged geometry, no capacity c
     const data = new Array(w * h).fill(ZoneType.ResLow);
     renderer.applyZonePatches([{ x: 0, z: 0, w, h, data: Uint8Array.from(data) }]);
 
-    expect(scene.children.length).toBe(3);
+    expect(scene.children.length).toBe(4);
     expect(vertexCount(renderer.layers().tint)).toBe(w * h * VERTS_PER_CELL);
   });
 });
@@ -569,5 +572,37 @@ describe('ZoneGridRenderer frustum-culling regression (wave 6)', () => {
     expect(renderer.layers().fill.geometry.boundingSphere).toBeNull();
     expect(renderer.layers().lines.geometry.boundingSphere).toBeNull();
     expect(renderer.layers().tint.geometry.boundingSphere).toBeNull();
+  });
+});
+
+describe('parcelEdges', () => {
+  it('outlines a parcel: one edge per tile along each of its four sides', () => {
+    const edges = parcelEdges({ x: 3, z: 4, w: 2, d: 3, lot: 'estate', front: 'N' });
+    expect(edges).toHaveLength(2 * 2 + 2 * 3);
+    expect(edges.filter((e) => e.side === 'N').map((e) => e.x)).toEqual([3, 4]);
+    expect(edges.filter((e) => e.side === 'S').every((e) => e.z === 6)).toBe(true);
+    expect(edges.filter((e) => e.side === 'E').every((e) => e.x === 4)).toBe(true);
+  });
+});
+
+describe('ZoneGridRenderer.setParcels', () => {
+  it('draws a strip for every edge of every parcel on its own layer, and clears it', () => {
+    const renderer = new ZoneGridRenderer(new THREE.Scene(), flatHeightAt);
+    renderer.setParcels([
+      { x: 0, z: 0, w: 1, d: 2, lot: 'normal', front: 'N' },
+      { x: 1, z: 0, w: 1, d: 1, lot: 'half', front: 'N' },
+    ]);
+    const { plat } = renderer.layers();
+    expect(vertexCount(plat)).toBe((6 + 4) * VERTS_PER_EDGE_STRIP);
+    renderer.setParcels([]);
+    expect(vertexCount(plat)).toBe(0);
+  });
+
+  it('shows and hides the plat with the rest of the grid', () => {
+    const renderer = new ZoneGridRenderer(new THREE.Scene(), flatHeightAt);
+    expect(renderer.isVisible()).toBe(false);
+    renderer.setVisible(true);
+    expect(renderer.layers().plat.visible).toBe(true);
+    expect(renderer.isVisible()).toBe(true);
   });
 });

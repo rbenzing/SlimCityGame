@@ -40,7 +40,7 @@ import {
   type UtilityLine,
 } from './network';
 import { freeCellsOn, roadCellsOf } from '../world/roadnet';
-import { parcelsAnchoredAt, type PlatSource } from '../world/plat';
+import { parcelsAnchoredAt, platOf, platSourceOf, type Plat } from '../world/plat';
 
 /**
  * Deterministic RNG surface injected into the growth system.
@@ -196,25 +196,6 @@ function hasNearbyRoad(g: GridState, x: number, z: number, radius: number): bool
     }
   }
   return false;
-}
-
-/** What the plat reads of the grid: the zone, the buildings, the land value and the streets lots front. */
-function platSourceOf(g: GridState): PlatSource {
-  const cells = g.roads ? roadCellsOf(g) : null;
-  return {
-    size: g.size,
-    zone: g.zone,
-    buildingId: g.buildingId,
-    landValue: g.fields[FieldId.LandValue],
-    streetAt: (x, z) => {
-      if (!inBounds(x, z)) return false;
-      const idx = tileIndex(x, z);
-      // Nothing fronts a deck overhead.
-      if ((g.roadElevation[idx] ?? 0) > 0) return false;
-      if (isStreetTier(readTile(g.roadTier, idx))) return true;
-      return cells !== null && freeCellsOn(cells, idx).some((c) => isStreetTier(cells.tier[c]!));
-    },
-  };
 }
 
 /** True only if every tile of the w*d footprint at (x, z) is in bounds and unstamped. */
@@ -902,7 +883,22 @@ export class GrowthSystem {
   ): void {
     const size = g.size;
     const totalTiles = size * size;
-    const plat = platSourceOf(g);
+    // The plat is cut once a pass, per zone the pass meets, from the same
+    // reading the lens draws.
+    const platSource = platSourceOf(
+      g,
+      g.roads ? roadCellsOf(g) : null,
+      g.fields[FieldId.LandValue],
+    );
+    const plats = new Map<ZoneType, Plat>();
+    const platFor = (zone: ZoneType): Plat => {
+      let plat = plats.get(zone);
+      if (!plat) {
+        plat = platOf(platSource, zone);
+        plats.set(zone, plat);
+      }
+      return plat;
+    };
     const passIndex = pass % SCAN_STRIDE;
 
     for (let flat = passIndex; flat < totalTiles; flat += SCAN_STRIDE) {
@@ -929,7 +925,7 @@ export class GrowthSystem {
       });
       // A house stands on a parcel of the plat cut from its street, or, where
       // no street's plat reaches the tile, on the lot the land warrants.
-      const parcels = parcelsAnchoredAt(plat, zone, x, z);
+      const parcels = parcelsAnchoredAt(platFor(zone), x, z);
       const platted =
         parcels === null
           ? platCandidates(fitting, fieldAt(g, FieldId.LandValue, flat))

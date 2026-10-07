@@ -16,7 +16,43 @@
  */
 import { inBounds, tileIndex } from '../shared/constants';
 import { LOT_EXTENT, LOT_SIZES, lotForStanding } from '../shared/lots';
-import type { LotSize } from '../shared/types';
+import { isStreetTier, type LotSize } from '../shared/types';
+import { freeCellsOn, type RoadCells } from './roadnet';
+
+/** The grid layers the plat reads: the sim's grid and the render mirror both have them. */
+export interface PlatGrid {
+  size: number;
+  zone: Uint8Array;
+  buildingId: Uint32Array;
+  roadTier: Uint8Array;
+  roadElevation: Float32Array;
+}
+
+/**
+ * A plat source over a grid: a street is a street tier on the tile or a
+ * road off the grid with a cell there, and never a deck overhead. The one
+ * reading the spawner and the lens share, so what the lens draws is what
+ * grows.
+ */
+export function platSourceOf(
+  g: PlatGrid,
+  cells: RoadCells | null,
+  landValue: Uint8Array | undefined,
+): PlatSource {
+  return {
+    size: g.size,
+    zone: g.zone,
+    buildingId: g.buildingId,
+    landValue,
+    streetAt: (x, z) => {
+      if (!inBounds(x, z)) return false;
+      const idx = tileIndex(x, z);
+      if ((g.roadElevation[idx] ?? 0) > 0) return false;
+      if (isStreetTier(g.roadTier[idx] ?? 0)) return true;
+      return cells !== null && freeCellsOn(cells, idx).some((c) => isStreetTier(cells.tier[c]!));
+    },
+  };
+}
 
 /** The side of a lot that meets its street. */
 export type Front = 'N' | 'E' | 'S' | 'W';
@@ -137,10 +173,11 @@ function runThrough(
   return tiles;
 }
 
-/** Whether a lot of `lot` fits with its first frontage tile at `row[at]`. */
+/** Whether a lot of `lot` fits with its first frontage tile at `row[at]`, on ground no parcel has claimed. */
 function lotFits(
   src: PlatSource,
   zone: number,
+  claimed: Uint8Array,
   f: FrontGeometry,
   row: ReadonlyArray<[number, number]>,
   at: number,
@@ -151,7 +188,9 @@ function lotFits(
   for (let j = 0; j < frontage; j++) {
     const [rx, rz] = row[at + j]!;
     for (let k = 0; k < depth; k++) {
-      if (!freeZoned(src, zone, rx + k * f.depth[0], rz + k * f.depth[1])) return false;
+      const tx = rx + k * f.depth[0];
+      const tz = rz + k * f.depth[1];
+      if (!freeZoned(src, zone, tx, tz) || claimed[tileIndex(tx, tz)] === 1) return false;
     }
   }
   return true;
@@ -171,12 +210,14 @@ function parcelOf(f: FrontGeometry, rx: number, rz: number, lot: LotSize): Parce
 
 /**
  * The run's parcels, cut from its first tile: a building stands as a parcel of
- * its own and is stepped over, and every other stretch takes the largest lot
- * the land warrants that fits, down to the half lot, which always does.
+ * its own and is stepped over, a tile another run's parcel has claimed is
+ * stepped over too, and every other stretch takes the largest lot the land
+ * warrants that fits, down to the half lot.
  */
 function cutRun(
   src: PlatSource,
   zone: number,
+  claimed: Uint8Array,
   f: FrontGeometry,
   row: ReadonlyArray<[number, number]>,
 ): Parcel[] {
@@ -192,49 +233,78 @@ function cutRun(
     const warranted = LOT_SIZES.indexOf(lotForStanding(src.landValue?.[tileIndex(rx, rz)] ?? 0));
     let cut: LotSize | null = null;
     for (let s = warranted; s >= 0 && cut === null; s--) {
-      if (lotFits(src, zone, f, row, at, LOT_SIZES[s]!)) cut = LOT_SIZES[s]!;
+      if (lotFits(src, zone, claimed, f, row, at, LOT_SIZES[s]!)) cut = LOT_SIZES[s]!;
     }
     if (cut === null) {
       at++;
       continue;
     }
-    parcels.push(parcelOf(f, rx, rz, cut));
+    const parcel = parcelOf(f, rx, rz, cut);
+    for (let dz = 0; dz < parcel.d; dz++) {
+      for (let dx = 0; dx < parcel.w; dx++) claimed[tileIndex(parcel.x + dx, parcel.z + dz)] = 1;
+    }
+    parcels.push(parcel);
     at += LOT_EXTENT[cut].frontage;
   }
   return parcels;
+}
+
+/** The plat of one zone: its parcels, and the tiles a street's run reaches within the lot depth. */
+export interface Plat {
+  parcels: Parcel[];
+  /** The parcels by the tile index of their min corner. */
+  byAnchor: Map<number, Parcel[]>;
+  /** 1 where a run fronts the tile or lies within the lot depth behind it: the plat reaches it. */
+  reached: Uint8Array;
+}
+
+/**
+ * Every parcel of the zone over the whole map, each run cut once from its
+ * first tile, in row-major order of the tiles the runs are found from, so
+ * no two parcels share a tile: a run cut later steps over what an earlier
+ * one claimed. The spawner and the lens read the same plat.
+ */
+export function platOf(src: PlatSource, zone: number): Plat {
+  const parcels: Parcel[] = [];
+  const claimed = new Uint8Array(src.size * src.size);
+  const reached = new Uint8Array(src.size * src.size);
+  const cut = new Set<string>();
+  for (let z = 0; z < src.size; z++) {
+    for (let x = 0; x < src.size; x++) {
+      if (src.zone[tileIndex(x, z)] !== zone) continue;
+      const f = frontOf(src, x, z);
+      if (f === null) continue;
+      // The run reaches its row and the lot depth behind it.
+      for (let k = 0; k < MAX_DEPTH; k++) {
+        const tx = x + k * f.depth[0];
+        const tz = z + k * f.depth[1];
+        if (inBounds(tx, tz)) reached[tileIndex(tx, tz)] = 1;
+      }
+      const row = runThrough(src, zone, f, x, z);
+      const key = `${f.front}:${row[0]![0]},${row[0]![1]}`;
+      if (cut.has(key)) continue;
+      cut.add(key);
+      parcels.push(...cutRun(src, zone, claimed, f, row));
+    }
+  }
+  const byAnchor = new Map<number, Parcel[]>();
+  for (const p of parcels) {
+    const i = tileIndex(p.x, p.z);
+    const list = byAnchor.get(i);
+    if (list) list.push(p);
+    else byAnchor.set(i, [p]);
+  }
+  return { parcels, byAnchor, reached };
 }
 
 /**
  * The parcels whose min corner is (x, z), or null where the plat does not
  * reach the tile: no street within the lot depth fronts it, so a lot there
  * grows wherever it fits, as it did before a block was cut. A tile the plat
- * reaches that no parcel starts on returns an empty list: it is yard behind
+ * reaches that no parcel starts on gives an empty list: it is yard behind
  * or beside a lot, and no lot of the plat starts there.
  */
-export function parcelsAnchoredAt(
-  src: PlatSource,
-  zone: number,
-  x: number,
-  z: number,
-): Parcel[] | null {
-  let reached = false;
-  const found: Parcel[] = [];
-  const cut = new Set<string>();
-  for (const f of FRONTS) {
-    for (let k = 0; k < MAX_DEPTH; k++) {
-      const rx = x - k * f.depth[0];
-      const rz = z - k * f.depth[1];
-      if (!inBounds(rx, rz) || src.zone[tileIndex(rx, rz)] !== zone) continue;
-      if (frontOf(src, rx, rz)?.front !== f.front) continue;
-      reached = true;
-      const row = runThrough(src, zone, f, rx, rz);
-      const key = `${f.front}:${row[0]![0]},${row[0]![1]}`;
-      if (cut.has(key)) continue;
-      cut.add(key);
-      for (const p of cutRun(src, zone, f, row)) {
-        if (p.x === x && p.z === z) found.push(p);
-      }
-    }
-  }
-  return reached ? found : null;
+export function parcelsAnchoredAt(plat: Plat, x: number, z: number): Parcel[] | null {
+  if (!inBounds(x, z) || plat.reached[tileIndex(x, z)] !== 1) return null;
+  return plat.byAnchor.get(tileIndex(x, z)) ?? [];
 }
