@@ -695,8 +695,14 @@ MUTCD citations below use 11th-edition section numbers.
   buildings and the land value and stored nowhere; a building standing is a
   parcel the cut steps over and never moves. Round a bend each arm fronts its
   own side, and a cul-de-sac is cut down its two sides, never across its end.
-  — [lots-and-land.md](game-design/features/lots-and-land.md#the-plat-is-cut-from-the-street-built-2026-10-07);
-  `parcelsAnchoredAt` in `src/world/plat.ts`
+  The whole plat is cut once, run by run in map order, and no two parcels
+  ever share a tile: a run cut later steps over what an earlier one claimed.
+  The zone lens draws that same plat — the one function, over the render
+  mirror and the land value asked of the worker — so the lines the player
+  sees are exactly the lots that will grow. —
+  [lots-and-land.md](game-design/features/lots-and-land.md#the-plat-is-cut-from-the-street-built-2026-10-07);
+  `platOf`, `parcelsAnchoredAt` in `src/world/plat.ts`, `setParcels` in
+  `src/render/zonegrid.ts`
 - Every zoned catalog figure is derived from a published source by the rules
   in [balancing.md](game-design/balancing.md#residential-kinds): residents are
   `round(units × household)`, a building's households are its `units`, and

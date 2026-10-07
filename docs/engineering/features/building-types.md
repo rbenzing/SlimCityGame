@@ -109,11 +109,16 @@ growth supply bookkeeping, which compares them to each other.
 
 ### The plat
 
-`src/world/plat.ts` is pure: `parcelsAnchoredAt(source, zone, x, z)` returns
-the parcels whose min corner is the tile, or null where no street's plat
-reaches it. The caller supplies `streetAt`, which `platSourceOf` in
-`src/sim/growth.ts` builds from the grid's street tiles and the free road
-cells, leaving out decks overhead. The spawner keeps a lotted candidate only
+`src/world/plat.ts` is pure: `platOf(source, zone)` cuts the whole zone's
+plat once — every run in map order, over a claimed-tile set so no two
+parcels share a tile — and returns the parcels, a map by anchor tile and a
+`reached` mask; `parcelsAnchoredAt(plat, x, z)` reads it, null where no
+street's run reaches the tile. `platSourceOf(grid, cells, landValue)` builds
+the source from a grid's street tiles and the free road cells, leaving out
+decks overhead; the spawner builds it from the sim grid once a pass, the
+zone lens from the render mirror and the land-value field asked of the
+worker on the lens cadence, and `ZoneGridRenderer.setParcels` draws the
+outlines. The spawner keeps a lotted candidate only
 if a parcel of its lot and footprint starts on the tile; the lotted entries
 are `lot` entries in the catalog, the normal and the estate with a turned
 twin (`res-normal-t-N`, `res-estate-t-N`) for streets running north to south,

@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,839 tests passing across 162 test files, run 2026-10-07.
+**Test suite:** 4,846 tests passing across 162 test files, run 2026-10-07.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -156,9 +156,9 @@ pipe drag snaps onto the system and says what it joins
 ([underground-view.md](game-design/features/underground-view.md)).
 
 **Next:** lots and land continues
-([lots-and-land.md](game-design/features/lots-and-land.md)): two slices are
-built, the detached house on the lot the land warrants and the plat cut from
-the street; the parcel lines on the zone lens, assembly, the other
+([lots-and-land.md](game-design/features/lots-and-land.md)): three slices
+are built, the detached house on the lot the land warrants, the plat cut
+from the street, and the plat drawn on the zone lens; assembly, the other
 densities' parcels, replatting and the inspector's lot line remain.
 After it, the municipal
 services programme's epics
@@ -305,6 +305,27 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The plat on the zone lens (built 2026-10-07)
+
+The third slice of lots and land: with a low-density zone tool in hand the
+zone grid draws an amber outline round every lot the block cuts into, the
+moment the zone is painted and before anything grows. It is the spawner's
+own plat — one function over the render mirror and the land-value field,
+asked of the worker on the lens cadence while the tool is in hand — so the
+lines are exactly the lots that will grow. Building it found a real bug in
+the cut: runs from two streets were cut independently, so the inside
+corner of a bend held a double lot from one street and an estate from the
+other on the same ground; the lens's read-back showed two parcels at one
+anchor. The whole plat is now cut once with a claimed-tile set, run by run
+in map order, and the spawner cuts it the same way once a pass instead of
+per tile. Looked at: a fresh block cut into normal lots along its street
+with the third row left as yard; the same block grown, each house on its
+lot and the empty lots still outlined; the lines gone with the tool. The
+new cut moved the regression town's growth, and a workshop grew at the
+west end of the four-lane road beyond the incinerator's 40-tile reach; the
+garbage test had assumed no industry would stand that far, and now asks
+only about the lots inside the reach it names.
 
 ### The underground view (asked for, drafted, agreed and built 2026-10-07)
 

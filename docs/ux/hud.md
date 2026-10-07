@@ -471,7 +471,11 @@ active:
   zonable cell along a road renders as a faint translucent grid square —
   the classic zoning grid — tinted green where the hovered brush will
   paint. It is fed from grid data as an instanced layer and disappears the
-  moment the tool goes inactive.
+  moment the tool goes inactive. Over painted low-density land it also draws
+  the **plat**: an amber outline round every lot the block will cut into, by
+  the same rule the spawner grows by, so the player sees the lots before a
+  house stands on any of them; a standing house is its own lot and keeps no
+  outline.
 - **Selection highlight**: a selected building gets a green edge outline
   plus a floating map-pin sprite above its roof for as long as its info
   panel stays open.

@@ -39,6 +39,7 @@
 import * as THREE from 'three';
 import { ZoneType, type ZonePatch } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import type { Parcel } from '../world/plat';
 import {
   computeZonableTiles as computeZonableTilesFrontage,
   zonableTilesFor,
@@ -53,8 +54,11 @@ import {
 const FILL_Y_OFFSET = 0.09;
 const TINT_Y_OFFSET = 0.11;
 const LINE_Y_OFFSET = 0.13;
+const PLAT_Y_OFFSET = 0.14;
 /** Grid-line strip width in meters (thin white tile lines). */
 export const LINE_WIDTH_M = 0.35;
+/** A parcel line is twice the tile line, so the cut reads over the grid. */
+export const PLAT_LINE_WIDTH_M = 0.7;
 /**
  * One quad per tile. A tile's 4 corners land exactly on the terrain mesh's
  * own vertices, and pushConformingQuad splits on the terrain's diagonal, so a
@@ -69,11 +73,14 @@ export const CELL_SUBDIV = 1;
 const FILL_OPACITY = 0.16;
 const LINE_OPACITY = 0.55;
 const TINT_OPACITY = 0.5;
+const PLAT_OPACITY = 0.9;
 
 /** Subtle grey cell fill under the lines (the standard grey-tiles read). */
 const FILL_RGB: readonly [number, number, number] = [0.78, 0.82, 0.86];
 /** Near-white boundary lines. */
 const LINE_RGB: readonly [number, number, number] = [0.96, 0.97, 0.98];
+/** The plat's parcel lines: a surveyor's amber, read against the green tint and the grey grid alike. */
+const PLAT_RGB: readonly [number, number, number] = [0.98, 0.8, 0.3];
 
 function hexToRgb01(hex: number): [number, number, number] {
   return [((hex >> 16) & 0xff) / 255, ((hex >> 8) & 0xff) / 255, (hex & 0xff) / 255];
@@ -239,6 +246,18 @@ function pushConformingCell(
   }
 }
 
+/** The four boundary edges of a parcel, as the tile edges along its outline. Pure and exported for tests. */
+export function parcelEdges(p: Parcel): TileEdge[] {
+  const edges: TileEdge[] = [];
+  for (let i = 0; i < p.w; i++) {
+    edges.push({ x: p.x + i, z: p.z, side: 'N' }, { x: p.x + i, z: p.z + p.d - 1, side: 'S' });
+  }
+  for (let i = 0; i < p.d; i++) {
+    edges.push({ x: p.x, z: p.z + i, side: 'W' }, { x: p.x + p.w - 1, z: p.z + i, side: 'E' });
+  }
+  return edges;
+}
+
 /** Vertices one edge-line strip contributes (2 length segments × 2 tris × 3 verts). */
 export const VERTS_PER_EDGE_STRIP = 12;
 /** Vertices one cell fill/tint contributes (CELL_SUBDIV² sub-quads × 6 verts). */
@@ -246,8 +265,14 @@ export const VERTS_PER_CELL = CELL_SUBDIV * CELL_SUBDIV * 6;
 
 /** Thin conforming strip centered on a tile-boundary edge, split into two
  * length segments so its midpoint also tracks the terrain. */
-function pushEdgeStrip(positions: number[], heightAt: HeightSampler, edge: TileEdge): void {
-  const half = LINE_WIDTH_M / 2;
+function pushEdgeStrip(
+  positions: number[],
+  heightAt: HeightSampler,
+  edge: TileEdge,
+  width = LINE_WIDTH_M,
+  yOffset = LINE_Y_OFFSET,
+): void {
+  const half = width / 2;
   const x = edge.x * TILE_METERS;
   const z = edge.z * TILE_METERS;
   const alongX = edge.side === 'N' || edge.side === 'S';
@@ -257,7 +282,7 @@ function pushEdgeStrip(positions: number[], heightAt: HeightSampler, edge: TileE
   const mid = TILE_METERS / 2;
 
   if (alongX) {
-    pushConformingQuad(positions, heightAt, x, lineZ - half, x + mid, lineZ + half, LINE_Y_OFFSET);
+    pushConformingQuad(positions, heightAt, x, lineZ - half, x + mid, lineZ + half, yOffset);
     pushConformingQuad(
       positions,
       heightAt,
@@ -265,10 +290,10 @@ function pushEdgeStrip(positions: number[], heightAt: HeightSampler, edge: TileE
       lineZ - half,
       x + TILE_METERS,
       lineZ + half,
-      LINE_Y_OFFSET,
+      yOffset,
     );
   } else {
-    pushConformingQuad(positions, heightAt, lineX - half, z, lineX + half, z + mid, LINE_Y_OFFSET);
+    pushConformingQuad(positions, heightAt, lineX - half, z, lineX + half, z + mid, yOffset);
     pushConformingQuad(
       positions,
       heightAt,
@@ -276,7 +301,7 @@ function pushEdgeStrip(positions: number[], heightAt: HeightSampler, edge: TileE
       z + mid,
       lineX + half,
       z + TILE_METERS,
-      LINE_Y_OFFSET,
+      yOffset,
     );
   }
 }
@@ -287,10 +312,12 @@ export class ZoneGridRenderer {
   private readonly fillMaterial: THREE.MeshBasicMaterial;
   private readonly lineMaterial: THREE.MeshBasicMaterial;
   private readonly tintMaterial: THREE.MeshBasicMaterial;
+  private readonly platMaterial: THREE.MeshBasicMaterial;
 
   private readonly fillMesh: THREE.Mesh;
   private readonly lineMesh: THREE.Mesh;
   private readonly tintMesh: THREE.Mesh;
+  private readonly platMesh: THREE.Mesh;
 
   private gridSize = 0;
   /** Cached last-known zone byte per tile (z*size+x), fed by applyZonePatches. */
@@ -325,20 +352,31 @@ export class ZoneGridRenderer {
       side: THREE.DoubleSide,
     });
 
+    this.platMaterial = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: PLAT_OPACITY,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    this.platMaterial.color.setRGB(...PLAT_RGB);
+
     this.fillMesh = new THREE.Mesh(new THREE.BufferGeometry(), this.fillMaterial);
     this.lineMesh = new THREE.Mesh(new THREE.BufferGeometry(), this.lineMaterial);
     this.tintMesh = new THREE.Mesh(new THREE.BufferGeometry(), this.tintMaterial);
+    this.platMesh = new THREE.Mesh(new THREE.BufferGeometry(), this.platMaterial);
     this.fillMesh.name = 'zonegrid-fill';
     this.lineMesh.name = 'zonegrid-lines';
     this.tintMesh.name = 'zonegrid-tint';
+    this.platMesh.name = 'zonegrid-plat';
     this.fillMesh.visible = false;
     this.lineMesh.visible = false;
     this.tintMesh.visible = false;
+    this.platMesh.visible = false;
 
-    for (const mesh of [this.fillMesh, this.lineMesh, this.tintMesh]) {
+    for (const mesh of [this.fillMesh, this.lineMesh, this.tintMesh, this.platMesh]) {
       mesh.userData['underground'] = 'keep';
     }
-    scene.add(this.fillMesh, this.lineMesh, this.tintMesh);
+    scene.add(this.fillMesh, this.lineMesh, this.tintMesh, this.platMesh);
   }
 
   /** Recomputes the zonable-tile fill + boundary-line layers. Call once per
@@ -376,11 +414,16 @@ export class ZoneGridRenderer {
     if (wasFarm !== (zone === ZoneType.Agriculture)) this.rebuild(grid);
   }
 
+  isVisible(): boolean {
+    return this.fillMesh.visible;
+  }
+
   /** Shows/hides the zonable grid (fill + lines) and the painted-zone tint layer together. */
   setVisible(v: boolean): void {
     this.fillMesh.visible = v;
     this.lineMesh.visible = v;
     this.tintMesh.visible = v;
+    this.platMesh.visible = v;
   }
 
   /** Folds SimSnapshot.zones patches into the cached zone-per-tile state,
@@ -424,6 +467,20 @@ export class ZoneGridRenderer {
     this.setGeometry(this.tintMesh, positions, colors);
   }
 
+  /**
+   * Draws the plat: the outline of every parcel, so the player sees how a
+   * block will cut before anything grows. The parcels come from the caller,
+   * cut by the same function the spawner reads.
+   */
+  setParcels(parcels: readonly Parcel[]): void {
+    const positions: number[] = [];
+    for (const p of parcels) {
+      for (const edge of parcelEdges(p))
+        pushEdgeStrip(positions, this.heightAt, edge, PLAT_LINE_WIDTH_M, PLAT_Y_OFFSET);
+    }
+    this.setGeometry(this.platMesh, positions);
+  }
+
   /** Replaces a mesh's geometry with fresh non-indexed triangles, disposing the old one. */
   private setGeometry(mesh: THREE.Mesh, positions: number[], colors?: number[]): void {
     const geometry = new THREE.BufferGeometry();
@@ -436,7 +493,7 @@ export class ZoneGridRenderer {
   }
 
   /** Live layer meshes (fill, lines, tint), for renderOrder tuning or inspection. */
-  layers(): { fill: THREE.Mesh; lines: THREE.Mesh; tint: THREE.Mesh } {
-    return { fill: this.fillMesh, lines: this.lineMesh, tint: this.tintMesh };
+  layers(): { fill: THREE.Mesh; lines: THREE.Mesh; tint: THREE.Mesh; plat: THREE.Mesh } {
+    return { fill: this.fillMesh, lines: this.lineMesh, tint: this.tintMesh, plat: this.platMesh };
   }
 }

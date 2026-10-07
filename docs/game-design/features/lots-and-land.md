@@ -3,8 +3,9 @@
 - **Status:** Draft merged 2026-10-05; first slice built 2026-10-07 (the lot a
   detached house stands on, by the land's standing, kept through every
   level-up); second slice built 2026-10-07 (the plat cut from the street, and
-  homes facing it); parcels on the zone lens, assembly, replatting, the other
-  densities' parcels and the inspector's lot line are not yet built
+  homes facing it); third slice built 2026-10-07 (the parcel lines on the
+  zone lens); assembly, replatting, the other densities' parcels and the
+  inspector's lot line are not yet built
 - **Date:** 2026-10-05
 
 ## What the player gets
@@ -293,6 +294,21 @@ A lot forms from its street, and faces it. The rules, in
   ([buildings.md](../../art/buildings.md#residential-lots)), which is the street
   it was cut from, so a lot on a bend or beside a cul-de-sac turns its door to
   the street it runs along.
+
+### The plat on the lens (built 2026-10-07)
+
+With a low-density zone tool in hand the zone grid draws the plat: an amber
+outline round every parcel the block cuts into, the moment the zone is
+painted and before anything grows. It is the same plat the spawner reads —
+one function (`platOf` in `src/world/plat.ts`) over the render mirror's
+zone, roads and buildings and the land-value field asked of the worker
+while the tool is in hand — so the lines are exactly the lots that will
+grow. A standing house is a parcel of its own and keeps no outline; the
+rows behind the first, which no parcel starts on, show the grid alone. The
+whole plat is cut once, run by run in map order, with a claimed-tile set,
+so two streets fronting one corner never cut parcels that overlap; the
+spawner cuts it once a pass the same way. Only the detached house is lotted
+yet, so the other zones' grids show no parcels.
 
 ## What is built
 
