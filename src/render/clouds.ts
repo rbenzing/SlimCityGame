@@ -318,6 +318,7 @@ export class CloudLayer {
       // wrongly cull the whole layer once it drifts far from where the first
       // cull pass saw it.
       mesh.frustumCulled = false;
+      mesh.userData['underground'] = 'keep';
       scene.add(mesh);
       return mesh;
     });

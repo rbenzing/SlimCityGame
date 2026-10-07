@@ -352,6 +352,7 @@ export class LandfillRenderer {
 
     this.tintMesh = new THREE.Mesh(new THREE.BufferGeometry(), this.tintMaterial);
     this.tintMesh.name = 'landfill-tint';
+    this.tintMesh.userData['underground'] = 'keep';
     this.tintMesh.visible = false;
     scene.add(this.tintMesh);
 
@@ -364,6 +365,7 @@ export class LandfillRenderer {
 
     this.markMesh = new THREE.Mesh(new THREE.BufferGeometry(), this.markMaterial);
     this.markMesh.name = 'landfill-office-marks';
+    this.markMesh.userData['underground'] = 'keep';
     this.markMesh.visible = false;
     scene.add(this.markMesh);
 

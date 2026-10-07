@@ -69,6 +69,7 @@ export class SkyDome {
     this.mesh.renderOrder = SKY_DOME_RENDER_ORDER;
     this.mesh.frustumCulled = false;
     this.mesh.matrixAutoUpdate = false;
+    this.mesh.userData['underground'] = 'keep';
     scene.add(this.mesh);
 
     this.setTimeOfDay(0.5);

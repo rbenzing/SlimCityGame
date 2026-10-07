@@ -80,7 +80,7 @@ import {
   usesRoadsideParking,
   type KerbSide,
 } from './render/parked';
-import { streetLookupOf } from './render/frontage';
+import { findRoadFacingEdge, streetLookupOf } from './render/frontage';
 import {
   driveRoadTiles,
   planHouseGround,
@@ -115,7 +115,8 @@ import { FarmRenderer } from './render/farms';
 import { ZoneGridRenderer } from './render/zonegrid';
 import { LampRenderer } from './render/lamps';
 import { PowerLineRenderer } from './render/powerlines';
-import { PipeOverlayRenderer } from './render/pipes';
+import { PipeOverlayRenderer, type PipeConnection, type PipeLead } from './render/pipes';
+import { UndergroundView } from './render/underground';
 import {
   buildTileSet,
   computeSignPlacements,
@@ -304,6 +305,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const lamps = new LampRenderer(world.scene, roadSurfaceAt);
   const powerLines = new PowerLineRenderer(world.scene, heightAt);
   const pipes = new PipeOverlayRenderer(world.scene, heightAt);
+  // The surface goes to glass while the player works on the water, so the
+  // pipes under it show.
+  const underground = new UndergroundView(world.scene);
   const roadFurniture = new RoadFurnitureRenderer(world.scene, roadSurfaceAt);
   const soundWalls = new SoundWallRenderer(world.scene, roadSurfaceAt);
   const selectionOutline = new SelectionOutline(world.scene);
@@ -623,6 +627,23 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // positions come from the rendered transforms and the tiles come from the
       // live grid, so a rule that is right about a fixture and wrong about the
       // city it is fed still fails here.
+      // The underground as drawn: whether the surface is glass, how many
+      // materials went to it, what the system drew and what colour a run is.
+      readUnderground: (): {
+        active: boolean;
+        faded: number;
+        pipesVisible: boolean;
+        triangles: { water: number; sewer: number; mainWater: number; mainSewer: number };
+        risers: number;
+        waterColorAt: (x: number, z: number) => [number, number, number] | null;
+      } => ({
+        active: underground.isActive(),
+        faded: underground.fadedCount(),
+        pipesVisible: pipes.isVisible(),
+        triangles: pipes.triangleCount(),
+        risers: pipes.riserCount(),
+        waterColorAt: (x, z) => pipes.waterColorAt(x, z),
+      }),
       readKerbAudit: (): {
         cars: {
           total: number;
@@ -918,14 +939,17 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     const { overlay, selectedTool } = store.getState();
     transitRenderer.setVisible(overlay === 'transit' || selectedTool.startsWith('transit.'));
     districtsRenderer.setVisible(overlay === 'districts' || selectedTool === 'district.paint');
-    // The pipes show while the player works on the water: a water lens, the
-    // pipe tool, or any building of the Water tab in hand.
-    pipes.setVisible(
+    // The city goes underground while the player works on the water: a water
+    // lens, the pipe tool, or any building of the Water tab in hand. The
+    // pipes show only there.
+    const onWater =
       overlay === 'watered' ||
-        overlay === 'sewered' ||
-        selectedTool === 'water.pipe' ||
-        selectedTool.startsWith('plop.water-'),
-    );
+      overlay === 'sewered' ||
+      selectedTool === 'water.pipe' ||
+      selectedTool.startsWith('plop.water-');
+    if (onWater && !pipes.isVisible()) flushPipes(true);
+    pipes.setVisible(onWater);
+    underground.setActive(onWater);
   };
   refreshEpicVisibility(); // start hidden until their lens/tool is selected
   /** seq -> the player edit awaiting its ack (drives the undo stack). */
@@ -1163,7 +1187,101 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     const tier = (clientGrid.roadTier[i] ?? 0) as RoadTier;
     return isStreetTier(tier) && roadSpecByTier.get(tier)?.carriesWater !== false;
   };
-  const rebuildPipes = (): void => pipes.rebuild(clientGrid.waterPipeTiles(), carriesWaterAt);
+  /** Whether a street tile's main carries water: the town's own pipe under it. */
+  const mainAt = (x: number, z: number): boolean => {
+    if (!inBounds(x, z)) return false;
+    const i = z * clientGrid.size + x;
+    const tier = (clientGrid.roadTier[i] ?? 0) as RoadTier;
+    return isStreetTier(tier) && roadSpecByTier.get(tier)?.carriesWater !== false;
+  };
+  /** The water buildings: where the buried system comes up into a riser. */
+  const isWaterBuilding = (catalogId: string): boolean =>
+    catalogId.startsWith('water-') || catalogId === 'sewage-works';
+  /**
+   * The system as the underground draws it, read from the mirror: the mains
+   * under the streets, the laid pipes, a lead from each served building's
+   * street into its lot, and the water buildings' risers.
+   */
+  const pipeSystemView = (): Parameters<typeof pipes.rebuild>[0] => {
+    const mains: TilePoint[] = [];
+    for (let z = 0; z < clientGrid.size; z++) {
+      for (let x = 0; x < clientGrid.size; x++) if (mainAt(x, z)) mains.push({ x, z });
+    }
+    const leads: PipeLead[] = [];
+    const risers: TilePoint[] = [];
+    const connections: PipeConnection[] = [];
+    const carrierAt = (x: number, z: number): boolean =>
+      mainAt(x, z) || clientGrid.waterPipeAt(x, z);
+    for (const b of knownBuildings.values()) {
+      const entry = catalogById.get(b.catalogId);
+      if (!entry) continue;
+      const turned = b.rotation % 2 === 1;
+      const w = turned ? entry.footprint.d : entry.footprint.w;
+      const d = turned ? entry.footprint.w : entry.footprint.d;
+      if (isWaterBuilding(b.catalogId)) {
+        const riser = { x: b.x + Math.floor(w / 2), z: b.z + Math.floor(d / 2) };
+        risers.push(riser);
+        // Wherever a carrier lies just past the footprint's edge, a run of
+        // tiles from the riser to that edge tile joins them: across first,
+        // then along, which stays inside the rectangle.
+        for (let z = b.z; z < b.z + d; z++) {
+          for (let x = b.x; x < b.x + w; x++) {
+            for (const [dx, dz] of [
+              [0, -1],
+              [1, 0],
+              [0, 1],
+              [-1, 0],
+            ] as const) {
+              const ox = x + dx;
+              const oz = z + dz;
+              const outside = ox < b.x || ox >= b.x + w || oz < b.z || oz >= b.z + d;
+              if (!outside || !carrierAt(ox, oz)) continue;
+              const run: TilePoint[] = [{ ...riser }];
+              let cx = riser.x;
+              let cz = riser.z;
+              while (cx !== x) {
+                cx += Math.sign(x - cx);
+                run.push({ x: cx, z: cz });
+              }
+              while (cz !== z) {
+                cz += Math.sign(z - cz);
+                run.push({ x: cx, z: cz });
+              }
+              connections.push({ run, dx, dz });
+            }
+          }
+        }
+        continue;
+      }
+      if (entry.waterUse <= 0) continue;
+      const edge = findRoadFacingEdge(b.x, b.z, w, d, carrierAt);
+      if (!edge) continue;
+      const step = { N: [0, 1], E: [-1, 0], S: [0, -1], W: [1, 0] }[edge.side]!;
+      leads.push({ x: edge.roadTileX, z: edge.roadTileZ, dx: step[0]!, dz: step[1]! });
+    }
+    return {
+      pipes: clientGrid.waterPipeTiles(),
+      mains,
+      leads,
+      risers,
+      connections,
+      carriesWater: carriesWaterAt,
+      wet: (x, z) => overlays.coverageAt('watered', x, z),
+      drained: (x, z) => overlays.coverageAt('sewered', x, z),
+    };
+  };
+  /** The drawn system is behind what the mirror knows until the next flush. */
+  let pipesDirty = true;
+  /** Rebuilds the drawn system if it is out of date, and only while it can be seen. */
+  const flushPipes = (showing = pipes.isVisible()): void => {
+    if (!pipesDirty || !showing) return;
+    pipes.rebuild(pipeSystemView());
+    pipesDirty = false;
+  };
+  const rebuildPipes = (): void => {
+    pipesDirty = true;
+    flushPipes();
+  };
 
   const ghostKindFor = (tool: ToolId): GhostKind => {
     if (tool === 'bulldoze') return 'bulldoze';
@@ -1342,6 +1460,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           cost: preview.cost,
           lengthMeters: preview.lengthMeters,
           invalidReason: preview.invalidReason,
+          note: preview.note,
         });
       } else {
         ghosts.clear();
@@ -1378,6 +1497,17 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // So the cursor quotes only the tiles a power-line or pipe drag would change.
     powerLineAt: (x, z) => clientGrid.powerLineAt(x, z),
     waterPipeAt: (x, z) => clientGrid.waterPipeAt(x, z),
+    // Underground, a pipe drag snaps onto the system and says what it joins.
+    pipeWorld: {
+      mainAt,
+      pipeAt: (x, z) => clientGrid.waterPipeAt(x, z),
+      buildingNameAt: (x, z) => {
+        if (!inBounds(x, z)) return null;
+        const id = clientGrid.buildingId[z * clientGrid.size + x] ?? 0;
+        const b = id === 0 ? undefined : knownBuildings.get(id);
+        return b ? (catalogById.get(b.catalogId)?.name ?? null) : null;
+      },
+    },
   };
   const toolManager = new ToolManager(env);
   toolManager.setBrush(store.getState().brushSettings);
@@ -1662,6 +1792,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     }
     if (snap.watered) overlays.setCoverage('watered', snap.watered);
     if (snap.sewered) overlays.setCoverage('sewered', snap.sewered);
+    // The runs are coloured by what the water and the drains reach.
+    if (snap.watered || snap.sewered) rebuildPipes();
     if (snap.vehicles) {
       vehicles.setBuffer(snap.vehicles);
       latestVehicles = snap.vehicles;
@@ -2105,6 +2237,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     roadFurniture.setSignalPhase(signalSeconds);
 
     visualSeconds += dtMs / 1000;
+    underground.update(); // anything that came into the scene underground fades too
     selectionOutline.update(visualSeconds);
     mapPin.update(visualSeconds);
     landmarks.update(visualSeconds * 1000); // tower-beacon pulse (elapsed visual ms)

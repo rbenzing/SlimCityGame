@@ -614,6 +614,49 @@ describe('zone rectangle preview + commit', () => {
     expect((sent[0]?.commands[0] as { tiles: unknown[] }).tiles).toHaveLength(4);
   });
 
+  it('underground, snaps a pipe drag onto the system, lays nothing under a street, and says what it joins', () => {
+    const { env, previews, sent } = makeEnv();
+    // A street main along z = 2 from x = 0 to 5; the Water Tower on (6, 0).
+    env.pipeWorld = {
+      mainAt: (x, z) => z === 2 && x >= 0 && x <= 5,
+      pipeAt: () => false,
+      buildingNameAt: (x, z) => (x === 6 && z === 0 ? 'Water Tower' : null),
+    };
+    const tm = new ToolManager(env);
+    tm.setTool('water.pipe');
+    // The drag starts a tile short of the main and ends beside the tower.
+    tm.pointerDown(0, 1, 0);
+    tm.pointerMove(5, 0, 0);
+    const preview = previews.at(-1)!;
+    // The start snapped north... no: the main lies south of (0, 1), so the run begins on it.
+    expect(preview.tiles[0]).toEqual({ x: 0, z: 2 });
+    expect(preview.note).toBe('Joins a street main · reaches the Water Tower');
+    // The tile on the main is not laid or charged; the rest is.
+    const laidInPreview = preview.tiles.filter((t) => t.z !== 2);
+    expect(preview.cost).toBe(laidInPreview.length * WATER_PIPE_COST_PER_TILE);
+    tm.pointerUp(5, 0, 0);
+    const tiles = (sent[0]?.commands[0] as { tiles: { x: number; z: number }[] }).tiles;
+    expect(tiles.some((t) => t.z === 2)).toBe(false);
+    expect(tiles.length).toBe(laidInPreview.length);
+  });
+
+  it('underground, a drag wholly along a street sends nothing', () => {
+    const { env, previews, sent } = makeEnv();
+    env.pipeWorld = {
+      mainAt: (_x, z) => z === 0,
+      pipeAt: () => false,
+      buildingNameAt: () => null,
+    };
+    const tm = new ToolManager(env);
+    tm.setTool('water.pipe');
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(4, 0, 0);
+    expect(previews.at(-1)?.cost).toBe(0);
+    expect(previews.at(-1)?.note).toBe('The street carries a main');
+    tm.pointerUp(4, 0, 0);
+    expect(sent).toHaveLength(0);
+  });
+
   it('maps each zone tool id to its ZoneType', () => {
     const table: Array<[string, ZoneType]> = [
       ['zone.resLow', ZoneType.ResLow],

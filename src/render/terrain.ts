@@ -563,6 +563,8 @@ export class TerrainRenderer {
     const mesh = new THREE.Mesh(geometry, this.material);
     mesh.receiveShadow = true;
     mesh.castShadow = false;
+    // The ground stays solid underground: it is what the pipes run under.
+    mesh.userData['underground'] = 'keep';
     return mesh;
   }
 
@@ -625,6 +627,7 @@ export class TerrainRenderer {
     const geometry = this.makeSkirtGeometry(side);
     const mesh = new THREE.Mesh(geometry, this.skirtMaterial);
     mesh.name = `skirt-${side}`;
+    mesh.userData['underground'] = 'keep';
     mesh.receiveShadow = true;
     mesh.castShadow = false;
     return mesh;

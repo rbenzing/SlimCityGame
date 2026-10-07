@@ -435,6 +435,7 @@ export class WaterRenderer {
 
     this.mesh = new THREE.Mesh(geometry, this.material);
     this.mesh.name = 'water-surface';
+    this.mesh.userData['underground'] = 'keep';
     this.mesh.position.y = SEA_LEVEL;
     this.mesh.receiveShadow = true;
     this.mesh.castShadow = false;

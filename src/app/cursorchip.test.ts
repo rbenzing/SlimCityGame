@@ -71,6 +71,15 @@ describe('CursorChipStack', () => {
     expect(length.textContent).toBe('302 m · radius 152 m');
   });
 
+  it('shows a plain note line beneath the cost, and hides it when the chip has none', () => {
+    stack.setChip({ cost: 36, note: 'Joins a street main · reaches the Water Tower' });
+    const note = root().querySelector('[data-chip-note]') as HTMLElement;
+    expect(note.textContent).toBe('Joins a street main · reaches the Water Tower');
+    expect(note.style.display).not.toBe('none');
+    stack.setChip({ cost: 36 });
+    expect(note.style.display).toBe('none');
+  });
+
   it('shows the invalid reason line in orange beneath the cost', () => {
     stack.setChip({ cost: 100, invalidReason: 'Overlapping items' });
     const reason = root().querySelector('[data-chip-reason]') as HTMLElement;

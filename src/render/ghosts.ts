@@ -893,6 +893,16 @@ export class GhostRenderer {
     // Fixed scene order (base, fill, stripe, then border/inner/volume) —
     // tests rely on it; keep it if you add another layer. The arrow layer is
     // appended last for exactly that reason.
+    // A ghost keeps its own opacity underground: it is the thing being placed.
+    for (const mesh of [
+      this.baseMesh,
+      this.fillMesh,
+      this.borderMesh,
+      this.innerMesh,
+      this.volumeMesh,
+    ]) {
+      mesh.userData['underground'] = 'keep';
+    }
     scene.add(
       this.baseMesh,
       this.fillMesh,
@@ -1128,12 +1138,14 @@ export class GhostRenderer {
   private makeStripeMesh(capacity: number): THREE.InstancedMesh {
     const mesh = new THREE.InstancedMesh(this.quad, this.stripeMaterial, capacity);
     mesh.count = 0;
+    mesh.userData['underground'] = 'keep';
     return mesh;
   }
 
   private makeArrowMesh(capacity: number): THREE.InstancedMesh {
     const mesh = new THREE.InstancedMesh(this.arrowGeometry, this.arrowMaterial, capacity);
     mesh.count = 0;
+    mesh.userData['underground'] = 'keep';
     return mesh;
   }
 

@@ -335,6 +335,9 @@ export class ZoneGridRenderer {
     this.lineMesh.visible = false;
     this.tintMesh.visible = false;
 
+    for (const mesh of [this.fillMesh, this.lineMesh, this.tintMesh]) {
+      mesh.userData['underground'] = 'keep';
+    }
     scene.add(this.fillMesh, this.lineMesh, this.tintMesh);
   }
 

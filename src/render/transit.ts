@@ -771,6 +771,7 @@ export class TransitRenderer {
     if (!merged) return;
 
     const mesh = new THREE.Mesh(merged, this.ribbonMaterialFor());
+    mesh.userData['underground'] = 'keep';
     this.ribbonMesh = mesh;
     this.scene.add(mesh);
   }

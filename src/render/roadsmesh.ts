@@ -6744,6 +6744,7 @@ export class RoadMeshRenderer {
     geometry.computeVertexNormals();
     const mesh = new THREE.Mesh(geometry, this.material);
     mesh.receiveShadow = true; // pavement takes cast shadows from cars/lamps/buildings
+    mesh.userData['underground'] = 'road';
     chunk.mesh = mesh;
     this.scene.add(mesh);
   }
