@@ -670,11 +670,21 @@ MUTCD citations below use 11th-edition section numbers.
   1×2), double (160–223, 2×2) or estate (224 and over, 2×3), or the next
   smaller lot that fits, never a larger one than the land warrants. The three
   levels of a lot share its footprint, a level-up looks up the same zone,
-  kind and lot, and no building ever grows its lot. A house body is 9.5 m
-  across the front whatever its lot. —
+  kind and lot and footprint, and no building ever grows its lot. A house
+  body is 9.5 m across the front whatever its lot. —
   [lots-and-land.md](game-design/features/lots-and-land.md);
   `lotForStanding`, `platCandidates` in `src/shared/lots.ts`, `tryLevelUp` in
   `src/sim/growth.ts`
+- A lot forms from its street: the tiles along a street that front the same
+  side are cut a frontage at a time, from one end, into parcels, and a
+  detached house grows only on the tile a parcel starts on, with its frontage
+  along the street (a turned twin on a street running north to south), never
+  behind another house. The plat is derived from the zone, the streets, the
+  buildings and the land value and stored nowhere; a building standing is a
+  parcel the cut steps over and never moves. Round a bend each arm fronts its
+  own side, and a cul-de-sac is cut down its two sides, never across its end.
+  — [lots-and-land.md](game-design/features/lots-and-land.md#the-plat-is-cut-from-the-street-built-2026-10-07);
+  `parcelsAnchoredAt` in `src/world/plat.ts`
 - Every zoned catalog figure is derived from a published source by the rules
   in [balancing.md](game-design/balancing.md#residential-kinds): residents are
   `round(units × household)`, a building's households are its `units`, and
@@ -1103,8 +1113,12 @@ MUTCD citations below use 11th-edition section numbers.
   sidewalk, its front wall stands 5.5 m behind the sidewalk (never outside its
   lot), its door faces the street, and a drive — dirt or concrete — crosses
   the sidewalk and verge to the carriageway. Its car stands on that drive,
-  never at the kerb. A home that fronts no street has no drive and no car. —
-  [buildings.md](art/buildings.md#residential-lots)
+  never at the kerb. A home that fronts no street has no drive and no car.
+  The street it fronts is the one bordering the most of its edge, so a home
+  on a bend or beside a cul-de-sac faces the street it runs along; ties go
+  north, east, south, west. —
+  [buildings.md](art/buildings.md#residential-lots); `findRoadFacingEdge` in
+  `src/render/frontage.ts`
 - A kerb takes cars at any hour only where the street paints a parking lane on
   that side; a street whose tier allows parking but paints no lane takes short
   daytime stays and nothing overnight; every other road takes none. —

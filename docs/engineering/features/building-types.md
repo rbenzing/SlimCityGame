@@ -107,6 +107,18 @@ rounds to 1 kW there, 30% out on the commonest building, so the line now
 sums in millionths. Nothing reads the units outside `network.ts` and the
 growth supply bookkeeping, which compares them to each other.
 
+### The plat
+
+`src/world/plat.ts` is pure: `parcelsAnchoredAt(source, zone, x, z)` returns
+the parcels whose min corner is the tile, or null where no street's plat
+reaches it. The caller supplies `streetAt`, which `platSourceOf` in
+`src/sim/growth.ts` builds from the grid's street tiles and the free road
+cells, leaving out decks overhead. The spawner keeps a lotted candidate only
+if a parcel of its lot and footprint starts on the tile; the lotted entries
+are `lot` entries in the catalog, the normal and the estate with a turned
+twin (`res-normal-t-N`, `res-estate-t-N`) for streets running north to south,
+and the level-up lookup matches the lot and the footprint.
+
 ### The renderer
 
 - **Body size by kind.** `bodyMetresFor(entry): { w, d }` in metres, per

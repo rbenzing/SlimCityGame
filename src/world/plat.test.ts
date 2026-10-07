@@ -1,0 +1,162 @@
+import { describe, expect, it } from 'vitest';
+import { MAP_SIZE, tileIndex } from '../shared/constants';
+import { parcelsAnchoredAt, type Parcel, type PlatSource } from './plat';
+
+const ZONE = 1;
+
+/** A world with the streets and zoned tiles it is told of, and land worth `value` everywhere. */
+function world(opts: {
+  streets: Array<[number, number]>;
+  zoned: Array<[number, number]>;
+  value?: number;
+  built?: Array<[number, number, number]>;
+}): PlatSource {
+  const zone = new Uint8Array(MAP_SIZE * MAP_SIZE);
+  const buildingId = new Uint32Array(MAP_SIZE * MAP_SIZE);
+  const landValue = new Uint8Array(MAP_SIZE * MAP_SIZE).fill(opts.value ?? 119);
+  const streets = new Set(opts.streets.map(([x, z]) => `${x},${z}`));
+  for (const [x, z] of opts.zoned) zone[tileIndex(x, z)] = ZONE;
+  for (const [x, z, id] of opts.built ?? []) buildingId[tileIndex(x, z)] = id;
+  return {
+    size: MAP_SIZE,
+    zone,
+    buildingId,
+    landValue,
+    streetAt: (x, z) => streets.has(`${x},${z}`),
+  };
+}
+
+const block = (x0: number, z0: number, w: number, d: number): Array<[number, number]> => {
+  const tiles: Array<[number, number]> = [];
+  for (let z = z0; z < z0 + d; z++) for (let x = x0; x < x0 + w; x++) tiles.push([x, z]);
+  return tiles;
+};
+
+/** Every parcel of the plat over `zoned`, found by asking each tile what starts there. */
+function platOf(src: PlatSource, zoned: Array<[number, number]>): Parcel[] {
+  return zoned.flatMap(([x, z]) => parcelsAnchoredAt(src, ZONE, x, z) ?? []);
+}
+
+describe('the plat of a straight street', () => {
+  const street = block(10, 10, 12, 1);
+
+  it('cuts normal lots one frontage at a time along a street north of the block', () => {
+    const zoned = block(10, 11, 12, 3);
+    const parcels = platOf(world({ streets: street, zoned }), zoned);
+    expect(parcels).toHaveLength(12);
+    expect(parcels.every((p) => p.lot === 'normal' && p.w === 1 && p.d === 2)).toBe(true);
+    expect(parcels.every((p) => p.front === 'N' && p.z === 11)).toBe(true);
+    expect(parcels.map((p) => p.x)).toEqual([10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]);
+  });
+
+  it('cuts the lot the land warrants: half where it is poor, estates where it is the best', () => {
+    const zoned = block(10, 11, 12, 3);
+    const poor = platOf(world({ streets: street, zoned, value: 10 }), zoned);
+    expect(poor).toHaveLength(12);
+    expect(poor.every((p) => p.lot === 'half' && p.w === 1 && p.d === 1)).toBe(true);
+    const best = platOf(world({ streets: street, zoned, value: 240 }), zoned);
+    expect(best.map((p) => p.x)).toEqual([10, 12, 14, 16, 18, 20]);
+    expect(best.every((p) => p.lot === 'estate' && p.w === 2 && p.d === 3)).toBe(true);
+  });
+
+  it('turns the lot to a street that runs north to south, its frontage along the street', () => {
+    const avenue = block(10, 10, 1, 12);
+    const zoned = block(11, 10, 3, 12);
+    const parcels = platOf(world({ streets: avenue, zoned }), zoned);
+    expect(parcels).toHaveLength(12);
+    expect(parcels.every((p) => p.front === 'W' && p.lot === 'normal')).toBe(true);
+    expect(parcels.every((p) => p.w === 2 && p.d === 1 && p.x === 11)).toBe(true);
+  });
+
+  it('anchors a lot on the far side of a street by its far row, nearest the street', () => {
+    const zoned = block(10, 6, 12, 3);
+    const parcels = platOf(world({ streets: street, zoned }), zoned);
+    expect(parcels.every((p) => p.front === 'S' && p.z === 7 && p.d === 2)).toBe(true);
+  });
+
+  it('cuts only half lots where the block is painted one tile deep', () => {
+    const zoned = block(10, 11, 6, 1);
+    const parcels = platOf(world({ streets: street, zoned }), zoned);
+    expect(parcels).toHaveLength(6);
+    expect(parcels.every((p) => p.lot === 'half')).toBe(true);
+  });
+
+  it('is yard, not a lot, behind the lot: no parcel starts on the deeper rows', () => {
+    const zoned = block(10, 11, 4, 3);
+    const src = world({ streets: street, zoned });
+    expect(parcelsAnchoredAt(src, ZONE, 10, 11)).toHaveLength(1);
+    expect(parcelsAnchoredAt(src, ZONE, 10, 12)).toEqual([]);
+    expect(parcelsAnchoredAt(src, ZONE, 10, 13)).toEqual([]);
+  });
+
+  it('does not reach ground no street fronts', () => {
+    const zoned = block(40, 40, 4, 3);
+    expect(parcelsAnchoredAt(world({ streets: street, zoned }), ZONE, 40, 40)).toBeNull();
+  });
+});
+
+describe('the plat steps over what stands and fits what is left', () => {
+  const street = block(10, 10, 12, 1);
+
+  it('treats a building as a parcel of its own and cuts the gaps either side', () => {
+    const zoned = block(10, 11, 7, 3);
+    // A house two tiles wide stands at x 12–13.
+    const built: Array<[number, number, number]> = [
+      [12, 11, 7],
+      [13, 11, 7],
+      [12, 12, 7],
+      [13, 12, 7],
+    ];
+    const parcels = platOf(world({ streets: street, zoned, built }), zoned);
+    expect(parcels.map((p) => [p.x, p.w])).toEqual([
+      [10, 1],
+      [11, 1],
+      [14, 1],
+      [15, 1],
+      [16, 1],
+    ]);
+  });
+
+  it('cuts the largest smaller lot that fits where the warranted one runs out of room', () => {
+    // An estate needs two tiles of frontage; one tile is left at the run's end.
+    const zoned = block(10, 11, 3, 3);
+    const parcels = platOf(world({ streets: street, zoned, value: 240 }), zoned);
+    expect(parcels.map((p) => [p.x, p.lot])).toEqual([
+      [10, 'estate'],
+      [12, 'normal'],
+    ]);
+  });
+});
+
+describe('the plat follows the street round a bend and a cul-de-sac', () => {
+  it('fronts each arm of a bend on its own side, and the inside tile its longer arm', () => {
+    // A street along z = 10 from x = 10 to 20, turning south down x = 20.
+    const turn = [...block(10, 10, 11, 1), ...block(20, 10, 1, 9)];
+    const zoned = block(12, 11, 8, 3);
+    const parcels = platOf(world({ streets: turn, zoned }), zoned);
+    const fronts = new Set(parcels.map((p) => p.front));
+    expect(fronts.has('N')).toBe(true);
+    expect(fronts.has('E')).toBe(true);
+    // Every lot touches the street it fronts.
+    for (const p of parcels) {
+      const touches =
+        p.front === 'N'
+          ? turn.some(([sx, sz]) => sz === p.z - 1 && sx >= p.x && sx < p.x + p.w)
+          : turn.some(([sx, sz]) => sx === p.x + p.w && sz >= p.z && sz < p.z + p.d);
+      expect(touches, `${p.front} lot at ${p.x},${p.z}`).toBe(true);
+    }
+  });
+
+  it('fronts the sides of a cul-de-sac and never cuts a lot across its end', () => {
+    // A street along z = 10 that stops at x = 16; blocks above and below it.
+    const dead = block(10, 10, 7, 1);
+    const zoned = [...block(10, 11, 9, 3), ...block(10, 7, 9, 3)];
+    const parcels = platOf(world({ streets: dead, zoned }), zoned);
+    const north = parcels.filter((p) => p.front === 'S');
+    const south = parcels.filter((p) => p.front === 'N');
+    expect(north.length).toBeGreaterThan(0);
+    expect(south.length).toBeGreaterThan(0);
+    // Beyond the road's end there is no street to front along the street's axis.
+    for (const p of parcels) expect(p.front === 'W' || p.front === 'E').toBe(false);
+  });
+});

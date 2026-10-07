@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,785 tests passing across 159 test files, run 2026-10-07.
+**Test suite:** 4,814 tests passing across 160 test files, run 2026-10-07.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -298,6 +298,24 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Lots are cut from the street, and homes face it (asked for and built 2026-10-07)
+
+The user asked that homes and buildings always face the frontage of the
+road, round curves and at cul-de-sac ends, so that property forms from the
+street. Two changes. A home's front is now the street that borders the most
+of its edge, not the first one found north, east, south, west, so a lot on a
+bend or beside a street end faces the street it runs along. And the plat of
+the lots-and-land design is cut from the street: the tiles along a street
+that front the same side form a run, cut a frontage at a time into the
+largest lot the land warrants that fits, stepping over buildings, and a
+detached house grows only on the tile a parcel starts on, never behind
+another house. A street running north to south takes the turned twin of the
+normal and estate lots, so a lot's frontage is along its street. Free roads
+front lots the same way; a tile no street's plat reaches keeps the first
+slice's rule. Looked at: houses round a bend and down a street end, each
+with its door and drive to the street it borders. Still to build: the parcel
+lines on the zone lens, which need the plat in the snapshot, and assembly.
 
 ### A house stands on the lot the land warrants (first slice of lots and land, built 2026-10-07)
 
