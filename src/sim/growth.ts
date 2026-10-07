@@ -40,6 +40,7 @@ import {
   type UtilityLine,
 } from './network';
 import { freeCellsOn, roadCellsOf } from '../world/roadnet';
+import { parcelsAnchoredAt, type PlatSource } from '../world/plat';
 
 /**
  * Deterministic RNG surface injected into the growth system.
@@ -195,6 +196,25 @@ function hasNearbyRoad(g: GridState, x: number, z: number, radius: number): bool
     }
   }
   return false;
+}
+
+/** What the plat reads of the grid: the zone, the buildings, the land value and the streets lots front. */
+function platSourceOf(g: GridState): PlatSource {
+  const cells = g.roads ? roadCellsOf(g) : null;
+  return {
+    size: g.size,
+    zone: g.zone,
+    buildingId: g.buildingId,
+    landValue: g.fields[FieldId.LandValue],
+    streetAt: (x, z) => {
+      if (!inBounds(x, z)) return false;
+      const idx = tileIndex(x, z);
+      // Nothing fronts a deck overhead.
+      if ((g.roadElevation[idx] ?? 0) > 0) return false;
+      if (isStreetTier(readTile(g.roadTier, idx))) return true;
+      return cells !== null && freeCellsOn(cells, idx).some((c) => isStreetTier(cells.tier[c]!));
+    },
+  };
 }
 
 /** True only if every tile of the w*d footprint at (x, z) is in bounds and unstamped. */
@@ -806,7 +826,12 @@ export class GrowthSystem {
     // same kind on the same parcel.
     const nextEntry = this.catalog.find(
       (e) =>
-        e.zone === zone && e.level === targetLevel && e.kind === entry.kind && e.lot === entry.lot,
+        e.zone === zone &&
+        e.level === targetLevel &&
+        e.kind === entry.kind &&
+        e.lot === entry.lot &&
+        (e.lot === undefined ||
+          (e.footprint.w === entry.footprint.w && e.footprint.d === entry.footprint.d)),
     );
     if (!nextEntry || nextEntry.unlockMilestone > milestoneLevel) return false;
     // A business grows only where the town has room for the jobs it adds.
@@ -877,6 +902,7 @@ export class GrowthSystem {
   ): void {
     const size = g.size;
     const totalTiles = size * size;
+    const plat = platSourceOf(g);
     const passIndex = pass % SCAN_STRIDE;
 
     for (let flat = passIndex; flat < totalTiles; flat += SCAN_STRIDE) {
@@ -901,8 +927,19 @@ export class GrowthSystem {
         const { w, d } = footprintForRotation(e, 0);
         return isZonedLot(g, zone, x, z, w, d) && this.canPlace(g, x, z, w, d);
       });
-      // A house is platted on the lot the land's standing warrants.
-      const platted = platCandidates(fitting, fieldAt(g, FieldId.LandValue, flat));
+      // A house stands on a parcel of the plat cut from its street, or, where
+      // no street's plat reaches the tile, on the lot the land warrants.
+      const parcels = parcelsAnchoredAt(plat, zone, x, z);
+      const platted =
+        parcels === null
+          ? platCandidates(fitting, fieldAt(g, FieldId.LandValue, flat))
+          : fitting.filter(
+              (e) =>
+                e.lot === undefined ||
+                parcels.some(
+                  (p) => p.lot === e.lot && p.w === e.footprint.w && p.d === e.footprint.d,
+                ),
+            );
       const candidates = withinRoom(platted, sector, room);
       if (candidates.length === 0) continue;
       const entry = drawKind(candidates, candidates.length > 1 ? this.rng.next() : 0);

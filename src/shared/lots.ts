@@ -16,6 +16,14 @@ export const LOT_STANDING_FLOOR: Readonly<Record<LotSize, number>> = {
   estate: 224,
 };
 
+/** A lot's tiles along its street and in from it; the catalog's upright footprint. */
+export const LOT_EXTENT: Readonly<Record<LotSize, { frontage: number; depth: number }>> = {
+  half: { frontage: 1, depth: 1 },
+  normal: { frontage: 1, depth: 2 },
+  double: { frontage: 2, depth: 2 },
+  estate: { frontage: 2, depth: 3 },
+};
+
 /** The largest lot the land at `landValue` warrants. */
 export function lotForStanding(landValue: number): LotSize {
   let lot: LotSize = 'half';

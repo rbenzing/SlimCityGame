@@ -309,8 +309,10 @@ plaster like the silos.
 ## Residential lots
 
 A detached home or a row of homes is laid out on its lot from the street it
-fronts: the first street — any road but a railway — found along the lot's
-edges, tie-broken north, east, south, west. Everything is placed in that
+fronts: the street — any road but a railway — that borders the most of the
+lot's edge, so on a bend or beside the end of a cul-de-sac a home faces the
+street it runs along for the longest stretch; sides tied on road tiles are
+broken north, east, south, west. Everything is placed in that
 edge's frame, across the frontage and in from it, in absolute metres, and
 seeded from the building id, so the same lot always comes out the same. A
 home that fronts no street keeps its body centred on its lot and has a lawn

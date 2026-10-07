@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  findRoadFacingEdge,
   findStreetFacingEdge,
   sidewalkDepthMeters,
   streetLookupOf,
@@ -60,5 +61,72 @@ describe('findStreetFacingEdge', () => {
       () => null,
     );
     expect(findStreetFacingEdge(4, 6, 2, 2, street)?.side).toBe('S');
+  });
+});
+
+describe('findRoadFacingEdge', () => {
+  const roads = (tiles: Array<[number, number]>) => {
+    const set = new Set(tiles.map(([x, z]) => `${x},${z}`));
+    return (x: number, z: number): boolean => set.has(`${x},${z}`);
+  };
+
+  it('faces the street it borders for the longest stretch, on a bend', () => {
+    // A 2x2 lot at (4, 4) on the inside of a bend: one road tile touches its
+    // north edge, two run along its east edge.
+    const bend = roads([
+      [4, 3],
+      [6, 4],
+      [6, 5],
+    ]);
+    const edge = findRoadFacingEdge(4, 4, 2, 2, bend);
+    expect(edge?.side).toBe('E');
+    expect(edge?.edgeTiles).toBe(2);
+    expect(edge?.roadTileX).toBe(6);
+  });
+
+  it('faces the side street along a cul-de-sac rather than the road end beside it', () => {
+    // The street runs west to east and stops at x = 9; a lot at (8, 5) stands
+    // beside its last two tiles and a lot's east edge reaches nothing.
+    const street = roads([
+      [6, 4],
+      [7, 4],
+      [8, 4],
+      [9, 4],
+    ]);
+    const edge = findRoadFacingEdge(8, 5, 2, 2, street);
+    expect(edge?.side).toBe('N');
+    expect(edge?.roadTileX).toBe(8);
+  });
+
+  it('faces the road end when that is the only street the lot touches', () => {
+    const street = roads([[5, 4]]);
+    // Lot beyond the end, west of the last tile.
+    expect(findRoadFacingEdge(3, 4, 2, 1, street)?.side).toBe('E');
+  });
+
+  it('breaks a tie between sides N, then E, then S, then W', () => {
+    const corner = roads([
+      [4, 3],
+      [6, 4],
+      [4, 6],
+      [3, 4],
+    ]);
+    expect(findRoadFacingEdge(4, 4, 2, 2, corner)?.side).toBe('N');
+    expect(
+      findRoadFacingEdge(
+        4,
+        4,
+        2,
+        2,
+        roads([
+          [6, 4],
+          [4, 6],
+        ]),
+      )?.side,
+    ).toBe('E');
+  });
+
+  it('is null for a lot no street borders', () => {
+    expect(findRoadFacingEdge(4, 4, 2, 2, roads([[9, 9]]))).toBeNull();
   });
 });

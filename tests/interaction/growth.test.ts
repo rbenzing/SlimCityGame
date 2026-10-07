@@ -177,6 +177,54 @@ describe('a low-density strip one tile wide', () => {
   );
 });
 
+describe('a block cut from its streets', () => {
+  it(
+    'stands every house on a lot that touches the street it fronts, round a bend and past a street end',
+    () => {
+      const h = initializedAtMilestone5();
+      send(h, 1, [
+        { kind: 'setSandbox', on: true },
+        { kind: 'setUnlimitedMoney', on: true },
+        // A street east along z = 60 that turns south down x = 71 and stops at z = 70.
+        { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 60, 12) },
+        { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(71, 61, 10) },
+      ]);
+      h.ticks(1);
+      send(h, 2, [
+        { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 59, rotation: 0 },
+        { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 58, rotation: 0 },
+        ...pondAndDrain({ x: 68, z: 58 }, { x: 68, z: 59 }),
+        // The inside of the bend, three deep from both streets.
+        { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(64, 61, 7, 3) },
+        { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(68, 64, 3, 6) },
+      ]);
+      h.ticks(2);
+      expect(h.ackFor(2)!.ok).toBe(true);
+      h.ticks(2000);
+
+      const streets = new Set([
+        ...roadRow(60, 60, 12).map((t) => `${t.x},${t.z}`),
+        ...column(71, 61, 10).map((t) => `${t.x},${t.z}`),
+      ]);
+      const homes = [...standingBuildings(h).values()].filter(
+        (b) => entryOf(b).kind === 'detached',
+      );
+      expect(homes.length).toBeGreaterThan(0);
+      for (const b of homes) {
+        const { w, d } = entryOf(b).footprint;
+        const edge: string[] = [];
+        for (let i = 0; i < w; i++) edge.push(`${b.x + i},${b.z - 1}`, `${b.x + i},${b.z + d}`);
+        for (let i = 0; i < d; i++) edge.push(`${b.x - 1},${b.z + i}`, `${b.x + w},${b.z + i}`);
+        expect(
+          edge.some((t) => streets.has(t)),
+          `${b.catalogId} at ${b.x},${b.z}`,
+        ).toBe(true);
+      }
+    },
+    GROWTH_TIMEOUT_MS,
+  );
+});
+
 describe('a heavy industrial estate', () => {
   it(
     'grows plants by their industry that pollute and make noise, and never a light works',

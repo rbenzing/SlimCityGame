@@ -190,11 +190,13 @@ jobs must be within the sector's room (see
 lot, which is always a candidate so that growth never stalls at a gap smaller
 than any building. The room counts down as the pass builds, like spare
 supply, so two lots on one pass cannot both fill it.
-A detached house is platted first on the lot the land warrants: the land
-value at the tile, in four bands (under 64 a half lot, 1×1; 64 to 159 a normal
-lot, 1×2; 160 to 223 a double lot, 2×2; 224 and over an estate lot, 2×3),
-keeps only the lot's entries among the candidates, or the next smaller lot
-that fits where the warranted one does not
+A detached house stands on a parcel of the plat cut from its street: each run
+of tiles along a street is cut a frontage at a time into the largest lot the
+land value there warrants that fits (under 64 a half lot, 1×1; 64 to 159 a
+normal lot, 1×2; 160 to 223 a double lot, 2×2; 224 and over an estate lot,
+2×3), turned to run along its street, stepping over what already stands, and
+only the tile a parcel starts on grows that lot. A tile no street's plat
+reaches takes the lot its land warrants wherever it fits
 ([lots-and-land.md](features/lots-and-land.md)).
 One is drawn by its `share`, the kind's weight in the real stock, with one
 roll of the growth rng against the candidates' cumulative weights in catalog

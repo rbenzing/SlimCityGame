@@ -2,7 +2,8 @@
 
 - **Status:** Draft merged 2026-10-05; first slice built 2026-10-07 (the lot a
   detached house stands on, by the land's standing, kept through every
-  level-up); parcels on the zone lens, assembly, replatting, the other
+  level-up); second slice built 2026-10-07 (the plat cut from the street, and
+  homes facing it); parcels on the zone lens, assembly, replatting, the other
   densities' parcels and the inspector's lot line are not yet built
 - **Date:** 2026-10-05
 
@@ -260,12 +261,46 @@ already show.
 - Not manufactured homes, which the half lot makes possible later and which
   stay in [../../DESIGN.md](../../DESIGN.md) until asked for.
 
+### The plat is cut from the street (built 2026-10-07)
+
+A lot forms from its street, and faces it. The rules, in
+`src/world/plat.ts`:
+
+- **A row fronts one side.** Every free tile beside a street fronts it. Where
+  two streets border a tile, as on the inside of a bend, it fronts the one
+  running longer through the neighbouring tile; a tie goes north, east, south,
+  west. A deck overhead and a railway front nothing.
+- **A run is cut from one end.** The tiles along a street that front the same
+  side, in one zone, are a run. It is cut a frontage at a time into parcels,
+  each the largest lot the land value at its first tile warrants that still
+  fits the free, zoned ground in from the street, down to the half lot, which
+  always fits. A building already standing is a parcel of its own and is
+  stepped over, so the cut never moves a house. Round a bend each arm is its
+  own run with its own front, and a cul-de-sac is two runs, one down each
+  side, with no lot cut across its end.
+- **The lot is turned to its street.** An upright catalog entry's `w` is
+  the frontage and its `d` the depth. On a street running north to south the lot is its turned
+  twin (`res-normal-t-N`, 2×1; `res-estate-t-N`, 3×2), so a normal lot is 20 m
+  of frontage by 40 m deep whichever way its street runs. The square lots
+  have no twin.
+- **Only the row starts a lot.** The rows in from the first, up to the zoning
+  depth, are yard behind or beside a lot: no parcel starts there, so a detached
+  house is never platted behind another. A tile no grid or free street fronts
+  within the depth keeps the first slice's rule, the lot its land warrants.
+  The duplex and the fourplex take no part in the cut and are stepped over
+  like any building.
+- **Faces follow.** A home faces the street that borders the most of its edge
+  ([buildings.md](../../art/buildings.md#residential-lots)), which is the street
+  it was cut from, so a lot on a bend or beside a cul-de-sac turns its door to
+  the street it runs along.
+
 ## What is built
 
 The first slice, built 2026-10-07, is the detached house alone.
 
-- **Twelve entries, four lots.** The detached kind is the catalog's four lot
-  sizes by three levels: `res-half-N` on 1×1, `res-normal-N` on 1×2,
+- **Eighteen entries, four lots.** The detached kind is the catalog's four lot
+  sizes by three levels, the normal and the estate each with a turned twin
+  for a street running north to south: `res-half-N` on 1×1, `res-normal-N` on 1×2,
   `res-low-N` on 2×2 (the old ids, so a saved city keeps its houses) and
   `res-estate-N` on 2×3, each entry carrying its `lot`. All three levels of
   a lot share its footprint; a level changes the storeys and the value. The

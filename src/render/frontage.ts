@@ -72,7 +72,10 @@ export function streetLookupOf(
     const tier = tierAt(x, z);
     if (!isStreetTier(tier)) return null;
     const profile = profileAt(x, z) ?? undefined;
-    return { vergeM: vergeDepthMeters(tier, profile), sidewalkM: sidewalkDepthMeters(tier, profile) };
+    return {
+      vergeM: vergeDepthMeters(tier, profile),
+      sidewalkM: sidewalkDepthMeters(tier, profile),
+    };
   };
 }
 
@@ -87,26 +90,32 @@ export interface RoadFacingEdge {
   roadTileZ: number;
 }
 
-/** Index of the first road tile in the strip, or -1 when the strip has none. */
-function firstRoadInStrip(
+/** How many road tiles the strip holds, and the index of the first of them. */
+function roadsInStrip(
   startX: number,
   startZ: number,
   length: number,
   axis: 'x' | 'z',
   roadAt: (x: number, z: number) => boolean,
-): number {
+): { count: number; first: number } {
+  let count = 0;
+  let first = -1;
   for (let i = 0; i < length; i++) {
     const tx = axis === 'x' ? startX + i : startX;
     const tz = axis === 'z' ? startZ + i : startZ;
-    if (roadAt(tx, tz)) return i;
+    if (!roadAt(tx, tz)) continue;
+    if (first < 0) first = i;
+    count++;
   }
-  return -1;
+  return { count, first };
 }
 
 /**
- * Finds the building's road-facing footprint edge: the side
- * whose immediately-adjacent tile strip contains at least one road tile,
- * tie-broken N>E>S>W when more than one side qualifies (e.g. corner lots).
+ * Finds the building's road-facing footprint edge: the side whose
+ * immediately-adjacent tile strip holds the most road tiles, the street the
+ * lot runs along. So a lot on a bend or beside the end of a cul-de-sac faces
+ * the street it borders for the longest stretch, not whichever side happens
+ * to be searched first; sides tied on road tiles are broken N>E>S>W.
  * Returns null when no side is road-adjacent — callers park zero cars.
  */
 export function findRoadFacingEdge(
@@ -118,23 +127,23 @@ export function findRoadFacingEdge(
 ): RoadFacingEdge | null {
   if (w < 1 || d < 1) return null;
 
-  const north = firstRoadInStrip(x, z - 1, w, 'x', roadAt);
-  if (north >= 0) {
-    return { side: 'N', edgeTiles: w, roadTileX: x + north, roadTileZ: z - 1 };
+  const north = roadsInStrip(x, z - 1, w, 'x', roadAt);
+  const east = roadsInStrip(x + w, z, d, 'z', roadAt);
+  const south = roadsInStrip(x, z + d, w, 'x', roadAt);
+  const west = roadsInStrip(x - 1, z, d, 'z', roadAt);
+  const longest = Math.max(north.count, east.count, south.count, west.count);
+  if (longest === 0) return null;
+
+  if (north.count === longest) {
+    return { side: 'N', edgeTiles: w, roadTileX: x + north.first, roadTileZ: z - 1 };
   }
-  const east = firstRoadInStrip(x + w, z, d, 'z', roadAt);
-  if (east >= 0) {
-    return { side: 'E', edgeTiles: d, roadTileX: x + w, roadTileZ: z + east };
+  if (east.count === longest) {
+    return { side: 'E', edgeTiles: d, roadTileX: x + w, roadTileZ: z + east.first };
   }
-  const south = firstRoadInStrip(x, z + d, w, 'x', roadAt);
-  if (south >= 0) {
-    return { side: 'S', edgeTiles: w, roadTileX: x + south, roadTileZ: z + d };
+  if (south.count === longest) {
+    return { side: 'S', edgeTiles: w, roadTileX: x + south.first, roadTileZ: z + d };
   }
-  const west = firstRoadInStrip(x - 1, z, d, 'z', roadAt);
-  if (west >= 0) {
-    return { side: 'W', edgeTiles: d, roadTileX: x - 1, roadTileZ: z + west };
-  }
-  return null;
+  return { side: 'W', edgeTiles: d, roadTileX: x - 1, roadTileZ: z + west.first };
 }
 
 /** The edge a home fronts: the same search, over streets only — a drive never meets a railway. */
