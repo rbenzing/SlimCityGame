@@ -110,7 +110,9 @@ growth supply bookkeeping, which compares them to each other.
 ### The renderer
 
 - **Body size by kind.** `bodyMetresFor(entry): { w, d }` in metres, per
-  lot axis: a detached house 4.75 m per tile as today; a duplex 60% of each
+  lot axis: a detached house 4.75 m per tile, never under 9.5 m
+  (`DETACHED_BODY_MIN_M`, so a half or a normal lot's house is as wide as a
+  double lot's); a duplex 60% of each
   axis capped at 16 m (12 × 16 m on a 1×2 lot); a fourplex 70% capped at
   18 m; a multiplex 13.6 m per tile capped at 24 m; everything else 13.6 m
   per tile under the 85% ceiling. `footprintShrinkFor` keeps its callers but
@@ -234,7 +236,8 @@ growth supply bookkeeping, which compares them to each other.
 - `massing.test.ts`, `houselot.test.ts`: body sizes by kind; two homes on a
   duplex frontage; the tower's podium tier.
 - Interaction: the small town still grows, with the new counts; a strip one
-  tile wide grows duplexes and fourplexes and no detached house.
+  tile wide grows houses on half and normal lots, duplexes and fourplexes,
+  and no detached house on a double or an estate lot.
 
 ### Risks
 

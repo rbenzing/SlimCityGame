@@ -665,6 +665,16 @@ MUTCD citations below use 11th-edition section numbers.
   [simulation-rules.md](game-design/simulation-rules.md#the-spawner-how-a-lot-is-chosen);
   `spawnCandidates`, `drawKind` in `src/sim/growth.ts`; `jobRoom` in
   `src/sim/demand.ts`
+- A detached house is platted on the lot the land warrants and stays on it:
+  the land value at the tile picks half (under 64, 1×1), normal (64–159,
+  1×2), double (160–223, 2×2) or estate (224 and over, 2×3), or the next
+  smaller lot that fits, never a larger one than the land warrants. The three
+  levels of a lot share its footprint, a level-up looks up the same zone,
+  kind and lot, and no building ever grows its lot. A house body is 9.5 m
+  across the front whatever its lot. —
+  [lots-and-land.md](game-design/features/lots-and-land.md);
+  `lotForStanding`, `platCandidates` in `src/shared/lots.ts`, `tryLevelUp` in
+  `src/sim/growth.ts`
 - Every zoned catalog figure is derived from a published source by the rules
   in [balancing.md](game-design/balancing.md#residential-kinds): residents are
   `round(units × household)`, a building's households are its `units`, and

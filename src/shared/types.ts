@@ -1136,6 +1136,9 @@ export type IndustrialKind =
  */
 export type BuildingKind = FarmKind | ResidentialKind | CommercialKind | IndustrialKind;
 
+/** The parcel a detached house is platted on, set by the land's standing. */
+export type LotSize = 'half' | 'normal' | 'double' | 'estate';
+
 export interface BuildingCatalogEntry {
   id: string;
   name: string;
@@ -1145,6 +1148,8 @@ export interface BuildingCatalogEntry {
   level?: number; // 1..3, for grown buildings
   /** Set for every zone-grown entry: which kind of building it is. */
   kind?: BuildingKind;
+  /** A detached house's lot: its three levels share one footprint, since a lot is platted once. */
+  lot?: LotSize;
   /** Homes in the building: residential and mixed entries, and 1 on a farm. */
   units?: number;
   /** The kind's weight in the lot draw among the kinds that fit, on its level-1 entry. */

@@ -495,10 +495,10 @@ export function townSteps(): TownStep[] {
 
 /**
  * How long the town grows: every sector has a building open by tick 400 or
- * so, and this leaves room for farms to level and trash to pile up where no
- * truck reaches.
+ * so, and this leaves room for farms to level, with their construction done,
+ * and trash to pile up where no truck reaches.
  */
-export const GROW_TICKS = 2000;
+export const GROW_TICKS = 2200;
 
 export interface BuiltTown {
   h: Harness;

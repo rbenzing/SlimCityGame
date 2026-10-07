@@ -13,6 +13,7 @@ import {
   MAX_FOOTPRINT_FILL,
   MAX_SETBACK_INSET,
   MIN_SETBACK_INSET,
+  DETACHED_BODY_MIN_M,
   RES_LOW_BODY_M_PER_TILE,
 } from './massing';
 import { BAY_DEPTH_TILES } from './parked';
@@ -820,9 +821,25 @@ describe('a building keeps its real proportions whatever the tile measures', () 
     // The fill is only ever the last step. What is fixed is the body: a home
     // covers RES_LOW_BODY_M_PER_TILE of each lot tile, and resizing the grid
     // moves the fill so the building itself does not move.
-    expect(bodyMetresFor(sized('detached')).w).toBeCloseTo(RES_LOW_BODY_M_PER_TILE, 9);
+    expect(bodyMetresFor(sized('detached', 3, 3)).w).toBeCloseTo(3 * RES_LOW_BODY_M_PER_TILE, 9);
     expect(bodyMetresFor(sized(undefined)).w).toBeCloseTo(DEFAULT_BODY_M_PER_TILE, 9);
-    expect(bodyFillFor(sized('detached')).x * TILE_METERS).toBeCloseTo(RES_LOW_BODY_M_PER_TILE, 9);
+    expect(bodyFillFor(sized('detached', 3, 3)).x * TILE_METERS).toBeCloseTo(
+      (3 * RES_LOW_BODY_M_PER_TILE) / 3,
+      9,
+    );
+  });
+
+  it('stands a house on a half or a normal lot as wide as one on a double lot, and lets only the lot shrink', () => {
+    for (const [w, d] of [
+      [1, 1],
+      [1, 2],
+      [2, 2],
+    ]) {
+      const body = bodyMetresFor(sized('detached', w, d));
+      expect(body.w).toBeCloseTo(DETACHED_BODY_MIN_M, 9);
+      expect(body.d).toBeCloseTo(DETACHED_BODY_MIN_M, 9);
+    }
+    expect(bodyMetresFor(sized('detached', 2, 3)).d).toBeGreaterThan(DETACHED_BODY_MIN_M);
   });
 
   it('keeps a detached home the narrower of the two, so a yard survives', () => {

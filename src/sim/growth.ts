@@ -28,6 +28,7 @@ import type {
   ZonedUnserved,
 } from '../shared/types';
 import { farmKindOf } from '../shared/buildingkind';
+import { platCandidates } from '../shared/lots';
 import { BuildingRegistry, footprintForRotation, lotTiles } from './buildings';
 import type { JobsBySector } from './economy';
 import {
@@ -801,9 +802,11 @@ export class GrowthSystem {
       return false;
     }
 
-    // A building keeps its kind for life: the next level of the same kind.
+    // A building keeps its kind, and its lot, for life: the next level of the
+    // same kind on the same parcel.
     const nextEntry = this.catalog.find(
-      (e) => e.zone === zone && e.level === targetLevel && e.kind === entry.kind,
+      (e) =>
+        e.zone === zone && e.level === targetLevel && e.kind === entry.kind && e.lot === entry.lot,
     );
     if (!nextEntry || nextEntry.unlockMilestone > milestoneLevel) return false;
     // A business grows only where the town has room for the jobs it adds.
@@ -898,7 +901,9 @@ export class GrowthSystem {
         const { w, d } = footprintForRotation(e, 0);
         return isZonedLot(g, zone, x, z, w, d) && this.canPlace(g, x, z, w, d);
       });
-      const candidates = withinRoom(fitting, sector, room);
+      // A house is platted on the lot the land's standing warrants.
+      const platted = platCandidates(fitting, fieldAt(g, FieldId.LandValue, flat));
+      const candidates = withinRoom(platted, sector, room);
       if (candidates.length === 0) continue;
       const entry = drawKind(candidates, candidates.length > 1 ? this.rng.next() : 0);
 

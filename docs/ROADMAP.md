@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,754 tests passing across 158 test files, run 2026-10-06.
+**Test suite:** 4,785 tests passing across 159 test files, run 2026-10-07.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -146,11 +146,14 @@ not a test to fix.
 
 Before writing "not built" anywhere in this document, check the code.
 
-**Next:** lots and land, asked for 2026-10-05 and drafted the same day for
-agreement ([lots-and-land.md](game-design/features/lots-and-land.md)): a
-zoned block platted into parcels the land's standing sizes, half lots to
-estates, on US zoning standards, with a kind assembling the parcels it
-needs and a level-up never growing the lot. After it, the municipal
+**Next:** lots and land, asked for 2026-10-05
+([lots-and-land.md](game-design/features/lots-and-land.md)): a zoned block
+platted into parcels the land's standing sizes, half lots to estates, on US
+zoning standards, with a kind assembling the parcels it needs and a level-up
+never growing the lot. Its first slice is built, the detached house on the
+lot the land warrants; the parcel lines on the zone lens, assembly, the
+other densities' parcels, replatting and the inspector's lot line remain.
+After it, the municipal
 services programme's epics
 ([municipal-services.md](game-design/features/municipal-services.md)), the
 [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
@@ -295,6 +298,26 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### A house stands on the lot the land warrants (first slice of lots and land, built 2026-10-07)
+
+Every detached house took a 2×2 lot, 1,600 m², twice what a new American
+house sits on, so land value decided whether a lot grew and never what grew
+there, and a level-up grew the lot, which no real house does. The detached
+kind is now four lots by three levels: half 1×1, normal 1×2, double 2×2 (the
+old ids) and estate 2×3. At growth the land value at the tile picks the lot
+(under 64, 64–159, 160–223, 224 and over), keeping the next smaller lot that
+fits where the warranted one does not, and a level-up looks up the same
+kind and lot, so the house improves on the ground it was platted on. A body
+is 4.75 m a lot tile but never under 9.5 m, so the small lots hold the same
+house with less yard. In the regression town that is mostly normal and half
+lots, so the same ground holds more homes; its grow time went from 2,000 to
+2,200 ticks because a farm's level-up fell inside the last 100, which left
+none open at the snapshot, and the strip test now expects what a one-tile
+strip can hold: half and normal lots as well as duplexes and fourplexes.
+Looked at: half, normal and estate lots standing in the town, each house
+as wide as the others with its own yard and drive. Built next: the parcel
+lines on the zone lens, then assembly for the multi-parcel kinds.
 
 ### People walk the footway and go in by the door (reported and fixed 2026-10-06)
 

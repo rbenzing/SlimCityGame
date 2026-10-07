@@ -221,7 +221,8 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   variants (row / medium / mixed-use / high) unlock as you pass milestones. What
   grows on a lot is drawn from the kinds of building its zone allows that fit
   the lot, weighted by how common each is in real cities: low density is mostly
-  detached houses, with a duplex or a fourplex where only a narrow lot is left;
+  detached houses, on small lots where the land is cheap and on large ones
+  where it is good, with a duplex or a fourplex now and then;
   row housing is townhouses two to a lot; medium density grows multiplexes and
   courtyard apartments; high density grows mid-rise slabs and towers. Low
   commercial grows corner shops, restaurants and filling stations, and once the

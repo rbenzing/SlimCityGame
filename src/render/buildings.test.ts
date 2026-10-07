@@ -21,7 +21,7 @@ import {
   computeSetbacks,
   DEFAULT_BODY_M_PER_TILE,
   MASSING_FOOTPRINT_SHRINK,
-  RES_LOW_BODY_M_PER_TILE,
+  DETACHED_BODY_MIN_M,
   tierCountOf,
 } from './massing';
 import {
@@ -124,9 +124,9 @@ describe('BuildingInstancer', () => {
     expect(pos.x).toBeCloseTo((2 + 0.5) * TILE_METERS, 5);
     expect(pos.z).toBeCloseTo((3 + 0.5) * TILE_METERS, 5);
     expect(pos.y).toBeCloseTo(10 / 2, 5); // groundY(0) + height/2
-    expect(scl.x).toBeCloseTo(1 * RES_LOW_BODY_M_PER_TILE, 5); // ResLow detached: a house-sized body, yard around it
+    expect(scl.x).toBeCloseTo(DETACHED_BODY_MIN_M, 5); // a detached house: a house-sized body, yard around it
     expect(scl.y).toBeCloseTo(10, 5);
-    expect(scl.z).toBeCloseTo(1 * RES_LOW_BODY_M_PER_TILE, 5);
+    expect(scl.z).toBeCloseTo(DETACHED_BODY_MIN_M, 5);
   });
 
   it('draws a farm’s body as its barn walls, where its plan stands the barn, on the ground under it', () => {
@@ -309,7 +309,7 @@ describe('BuildingInstancer', () => {
       expect(pos.x).toBeCloseTo((i + 0.5) * TILE_METERS, 5);
       expect(pos.z).toBeCloseTo(0.5 * TILE_METERS, 5);
       expect(pos.y).toBeCloseTo(5, 5);
-      expect(scl.x).toBeCloseTo(RES_LOW_BODY_M_PER_TILE, 5); // ResLow detached: a house-sized body, yard around it
+      expect(scl.x).toBeCloseTo(DETACHED_BODY_MIN_M, 5); // a detached house: a house-sized body, yard around it
       expect(scl.y).toBeCloseTo(10, 5);
       // Every id must still resolve correctly post-grow.
       expect(instancer.buildingIdAt({ catalogId: 'house', instanceIndex: i })).toBe(i + 1);

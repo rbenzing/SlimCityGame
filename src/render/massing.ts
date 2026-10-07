@@ -90,6 +90,8 @@ export interface SetbackResult {
  * stops reading as a house and starts reading as a hall.
  */
 export const RES_LOW_BODY_M_PER_TILE = 4.75;
+/** A house on a half or a normal lot is as wide as one on a double lot: the lot is what shrinks. */
+export const DETACHED_BODY_MIN_M = 2 * RES_LOW_BODY_M_PER_TILE;
 export const DEFAULT_BODY_M_PER_TILE = 13.6;
 /** No body fills its lot outright, so neighbouring buildings never touch. */
 export const MAX_FOOTPRINT_FILL = 0.85;
@@ -113,6 +115,8 @@ interface BodyRule {
   perTileM?: number;
   fill?: number;
   capM?: number;
+  /** A body is never narrower than this, within the 85% of its lot. */
+  minM?: number;
 }
 
 const DEFAULT_BODY_RULE: BodyRule = { perTileM: DEFAULT_BODY_M_PER_TILE };
@@ -125,7 +129,7 @@ const DEFAULT_BODY_RULE: BodyRule = { perTileM: DEFAULT_BODY_M_PER_TILE };
  * half its site to its tank farm and yards.
  */
 const BODY_RULES: Partial<Record<BuildingKind, BodyRule>> = {
-  detached: { perTileM: RES_LOW_BODY_M_PER_TILE },
+  detached: { perTileM: RES_LOW_BODY_M_PER_TILE, minM: DETACHED_BODY_MIN_M },
   duplex: { fill: 0.6, capM: 16 },
   fourplex: { fill: 0.7, capM: 18 },
   multiplex: { perTileM: DEFAULT_BODY_M_PER_TILE, capM: 24 },
@@ -137,8 +141,9 @@ const BODY_RULES: Partial<Record<BuildingKind, BodyRule>> = {
 
 function bodyAxisMetres(tiles: number, rule: BodyRule): number {
   const lotM = tiles * TILE_METERS;
-  const wanted =
+  const sized =
     rule.perTileM !== undefined ? rule.perTileM * tiles : (rule.fill ?? MAX_FOOTPRINT_FILL) * lotM;
+  const wanted = Math.max(sized, rule.minM ?? 0);
   return Math.min(wanted, rule.capM ?? Infinity, MAX_FOOTPRINT_FILL * lotM);
 }
 
