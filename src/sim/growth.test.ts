@@ -1513,6 +1513,65 @@ describe('the lot picks its building', () => {
     expect(registry.get(inst.id)).toBeUndefined();
     expect(registry.all().map((b) => b.catalogId)).toEqual(['duplex-2']);
   });
+
+  describe('a house is platted on the lot the land warrants', () => {
+    const LOTS = [
+      ['half', 1, 1],
+      ['normal', 1, 2],
+      ['double', 2, 2],
+      ['estate', 2, 3],
+    ] as const;
+    const lotted = LOTS.flatMap(([lot, w, d]) =>
+      [1, 2].map((level) => ({ ...house(level, w, d), id: `${lot}-${level}`, lot })),
+    );
+    const setLandValue = (g: GridState, value: number): void => {
+      g.fields[FieldId.LandValue]!.fill(value);
+    };
+    const platOn = (landValue: number, w: number, d: number): string[] => {
+      const g = zoned(w, d);
+      setLandValue(g, landValue);
+      const registry = new BuildingRegistry(lotted);
+      new GrowthSystem(lotted, constantRng(0), onZonedGround).tick(g, registry, wantsHomes, 1, 0);
+      return registry.all().map((b) => b.catalogId);
+    };
+
+    it.each([
+      [10, 'half-1'],
+      [119, 'normal-1'],
+      [181, 'double-1'],
+      [240, 'estate-1'],
+    ])('at land value %i grows %s on a wide block', (landValue, expected) => {
+      expect(new Set(platOn(landValue, 4, 6))).toEqual(new Set([expected]));
+    });
+
+    it('plats a smaller lot where the warranted one cannot fit', () => {
+      // One tile wide: land warranting an estate or a double lot plats the
+      // normal lot, the largest that fits.
+      expect(new Set(platOn(240, 1, 4))).toEqual(new Set(['normal-1']));
+    });
+
+    it('keeps the lot through a level-up: a half-lot house becomes a better half-lot house', () => {
+      const g = zoned(2, 3);
+      const registry = new BuildingRegistry(lotted);
+      const inst = registry.place(
+        g,
+        lotted.find((e) => e.id === 'half-1')!,
+        0,
+        1,
+        0,
+        BuildingState.Active,
+      )!;
+      setLandValue(g, 200);
+      new GrowthSystem(lotted, constantRng(0), onZonedGround).tick(g, registry, wantsHomes, 1, 0);
+      expect(registry.get(inst.id)).toBeUndefined();
+      // Land worth a double lot grows one on the empty ground beside it, but
+      // the standing house stays on its half lot.
+      const ids = registry.all().map((b) => b.catalogId);
+      expect(ids).toContain('half-2');
+      expect(ids).not.toContain('half-1');
+      expect(ids).not.toContain('double-2');
+    });
+  });
 });
 
 describe('a business opens where the town has room for its jobs', () => {

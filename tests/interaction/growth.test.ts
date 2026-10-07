@@ -141,7 +141,7 @@ describe('a farming town', () => {
 
 describe('a low-density strip one tile wide', () => {
   it(
-    'grows the house-scale kinds that fit it, a duplex or a fourplex, and never a detached house',
+    'grows only what is one tile wide: a house on a half or normal lot, a duplex or a fourplex',
     () => {
       const h = initializedAtMilestone5();
       send(h, 1, [
@@ -155,7 +155,7 @@ describe('a low-density strip one tile wide', () => {
         { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 58, rotation: 0 },
         // A city this size is off septic tanks, so it drains to a pond.
         ...pondAndDrain({ x: 64, z: 58 }, { x: 64, z: 59 }),
-        // One tile wide, four deep: a 2×2 house can never fit, a 1×2 can.
+        // One tile wide, four deep: a double or an estate lot can never fit, a 1×2 can.
         { kind: 'paintZone', zone: ZoneType.ResLow, tiles: column(66, 61, 4) },
       ]);
       h.ticks(2);
@@ -167,8 +167,10 @@ describe('a low-density strip one tile wide', () => {
       );
       expect(homes.length).toBeGreaterThan(0);
       for (const b of homes) {
-        expect(['duplex', 'fourplex']).toContain(entryOf(b).kind);
-        expect(entryOf(b).footprint).toEqual({ w: 1, d: 2 });
+        const entry = entryOf(b);
+        expect(['detached', 'duplex', 'fourplex']).toContain(entry.kind);
+        expect(entry.footprint.w).toBe(1);
+        if (entry.kind === 'detached') expect(['half', 'normal']).toContain(entry.lot);
       }
     },
     GROWTH_TIMEOUT_MS,

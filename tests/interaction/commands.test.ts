@@ -5,6 +5,7 @@ import type { Command, GridState } from '../../src/shared/types';
 import { tileIndex } from '../../src/shared/constants';
 import { decodeSave, encodeSave } from '../../src/app/persist';
 import {
+  entryOf,
   GROWTH_TIMEOUT_MS,
   initialized,
   latestSaveGrid,
@@ -508,17 +509,19 @@ describe('a zone painted over standing buildings', () => {
         ]).ok,
       ).toBe(true);
       h.ticks(1500);
-      const before = [...standingBuildings(h).values()].filter((b) => b.catalogId.startsWith('res-'));
+      const before = [...standingBuildings(h).values()].filter((b) =>
+        b.catalogId.startsWith('res-'),
+      );
       expect(before.length).toBeGreaterThan(0);
-      const builtTiles = before.flatMap((b) => [
-        { x: b.x, z: b.z },
-        { x: b.x + 1, z: b.z },
-        { x: b.x, z: b.z + 1 },
-        { x: b.x + 1, z: b.z + 1 },
-      ]);
+      const builtTiles = before.flatMap((b) => {
+        const { w, d } = entryOf(b).footprint;
+        return rows(b.x, b.z, w, d);
+      });
 
       // Over built tiles only: nothing changes, and the reason names it.
-      const refused = run(h, 2, [{ kind: 'paintZone', zone: ZoneType.ResMediumRow, tiles: builtTiles }]);
+      const refused = run(h, 2, [
+        { kind: 'paintZone', zone: ZoneType.ResMediumRow, tiles: builtTiles },
+      ]);
       expect(refused.ok).toBe(false);
       expect(refused.reason).toMatch(/bulldoze/i);
 

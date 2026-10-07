@@ -20,6 +20,7 @@ import type {
   BuildingCatalogEntry,
   CommercialKind,
   IndustrialKind,
+  LotSize,
   ResidentialKind,
 } from './types';
 import { ZoneType } from './types';
@@ -66,6 +67,7 @@ describe('ZoneType expansion (UI-SPEC §6.21) — SAVE-SAFE append', () => {
 /** Every residential kind, the zone it grows in, when, who lives in it and what a home draws. */
 const RESIDENTIAL_KINDS: ReadonlyArray<{
   kind: ResidentialKind;
+  lot?: LotSize;
   zone: ZoneType;
   unlock: number;
   share: number;
@@ -74,20 +76,29 @@ const RESIDENTIAL_KINDS: ReadonlyArray<{
   lots: ReadonlyArray<readonly [number, number]>;
   house: boolean;
 }> = [
-  {
-    kind: 'detached',
+  ...(
+    [
+      ['half', 1, 1],
+      ['normal', 1, 2],
+      ['double', 2, 2],
+      ['estate', 2, 3],
+    ] as const
+  ).map(([lot, w, d]) => ({
+    kind: 'detached' as const,
+    lot,
     zone: ZoneType.ResLow,
     unlock: 0,
     share: 61.1,
     household: 2.63,
     kwPerHome: 1.4,
+    // A lot is platted once: all three levels stand on it.
     lots: [
-      [2, 2],
-      [2, 3],
-      [3, 3],
-    ],
+      [w, d],
+      [w, d],
+      [w, d],
+    ] as const,
     house: true,
-  },
+  })),
   {
     kind: 'duplex',
     zone: ZoneType.ResLow,
@@ -525,8 +536,10 @@ const INDUSTRIAL_KINDS: ReadonlyArray<{
 ];
 
 describe('Residential kinds (building-types): three levels per kind, every figure derived', () => {
-  const ofKind = (kind: ResidentialKind) =>
-    catalog.filter((e) => e.kind === kind).sort((a, b) => (a.level ?? 0) - (b.level ?? 0));
+  const ofKind = (kind: ResidentialKind, lot?: LotSize) =>
+    catalog
+      .filter((e) => e.kind === kind && e.lot === lot)
+      .sort((a, b) => (a.level ?? 0) - (b.level ?? 0));
 
   it('gives every residential and farm entry a kind and its homes', () => {
     for (const e of catalog) {
@@ -538,7 +551,7 @@ describe('Residential kinds (building-types): three levels per kind, every figur
   });
 
   it.each(RESIDENTIAL_KINDS)('$kind: three levels in one zone, unlocked together', (k) => {
-    const levels = ofKind(k.kind);
+    const levels = ofKind(k.kind, k.lot);
     expect(levels.map((e) => e.level)).toEqual([1, 2, 3]);
     for (const e of levels) {
       expect(e.zone).toBe(k.zone);
@@ -550,24 +563,24 @@ describe('Residential kinds (building-types): three levels per kind, every figur
   });
 
   it.each(RESIDENTIAL_KINDS)('$kind: carries its draw weight on its first level only', (k) => {
-    const [first, ...rest] = ofKind(k.kind);
+    const [first, ...rest] = ofKind(k.kind, k.lot);
     expect(first!.share).toBe(k.share);
     for (const e of rest) expect(e.share).toBeUndefined();
   });
 
   it.each(RESIDENTIAL_KINDS)('$kind: takes the lots its type takes', (k) => {
-    expect(ofKind(k.kind).map((e) => [e.footprint.w, e.footprint.d])).toEqual(k.lots);
+    expect(ofKind(k.kind, k.lot).map((e) => [e.footprint.w, e.footprint.d])).toEqual(k.lots);
   });
 
   it.each(RESIDENTIAL_KINDS)('$kind: residents are its homes times the household, rounded', (k) => {
-    for (const e of ofKind(k.kind)) {
+    for (const e of ofKind(k.kind, k.lot)) {
       // To the cent first, so 375 × 2.26 = 847.5 rounds up and not on float noise.
       expect(e.residents).toBe(Math.round(Number((e.units! * k.household).toFixed(2))));
     }
   });
 
   it.each(RESIDENTIAL_KINDS)('$kind: draws per home what the energy survey says', (k) => {
-    for (const e of ofKind(k.kind)) {
+    for (const e of ofKind(k.kind, k.lot)) {
       const retail = k.kind === 'mixed' ? RETAIL_FLOOR_KW[e.footprint.w]! : 0;
       const expectedMW = (e.units! * k.kwPerHome + retail) / 1000;
       expect(Math.abs(e.powerUse - expectedMW), e.id).toBeLessThanOrEqual(0.0001);
@@ -575,7 +588,7 @@ describe('Residential kinds (building-types): three levels per kind, every figur
   });
 
   it.each(RESIDENTIAL_KINDS)('$kind: draws water for every resident, and every shop job', (k) => {
-    for (const e of ofKind(k.kind)) {
+    for (const e of ofKind(k.kind, k.lot)) {
       const expectedKL = e.residents! * WATER_PER_PERSON_KL + (e.jobs ?? 0) * WATER_PER_JOB_KL;
       expect(Math.abs(e.waterUse - expectedKL), e.id).toBeLessThanOrEqual(0.06);
     }
@@ -583,7 +596,7 @@ describe('Residential kinds (building-types): three levels per kind, every figur
 
   it('adds homes with each level of a block, and keeps one household in a house', () => {
     for (const k of RESIDENTIAL_KINDS) {
-      const [l1, l2, l3] = ofKind(k.kind);
+      const [l1, l2, l3] = ofKind(k.kind, k.lot);
       if (k.house && k.kind !== 'townhouse') {
         expect(new Set([l1!.units, l2!.units, l3!.units]).size).toBe(1);
       } else {
@@ -594,7 +607,8 @@ describe('Residential kinds (building-types): three levels per kind, every figur
   });
 
   it('weights the draw by the real stock: detached houses first, towers rarest', () => {
-    const weight = (kind: ResidentialKind) => ofKind(kind)[0]!.share!;
+    const weight = (kind: ResidentialKind) =>
+      catalog.find((e) => e.kind === kind && e.level === 1)!.share!;
     expect(weight('detached')).toBeGreaterThan(weight('duplex'));
     expect(weight('duplex')).toBeGreaterThan(weight('fourplex'));
     expect(weight('multiplex')).toBeGreaterThan(weight('garden'));

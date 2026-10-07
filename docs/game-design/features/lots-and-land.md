@@ -1,6 +1,9 @@
 # Lots and land — design
 
-- **Status:** Draft for agreement, 2026-10-05
+- **Status:** Draft merged 2026-10-05; first slice built 2026-10-07 (the lot a
+  detached house stands on, by the land's standing, kept through every
+  level-up); parcels on the zone lens, assembly, replatting, the other
+  densities' parcels and the inspector's lot line are not yet built
 - **Date:** 2026-10-05
 
 ## What the player gets
@@ -256,3 +259,33 @@ already show.
   from parking and plant on 2026-10-02 and already sit on the standards.
 - Not manufactured homes, which the half lot makes possible later and which
   stay in [../../DESIGN.md](../../DESIGN.md) until asked for.
+
+## What is built
+
+The first slice, built 2026-10-07, is the detached house alone.
+
+- **Twelve entries, four lots.** The detached kind is the catalog's four lot
+  sizes by three levels: `res-half-N` on 1×1, `res-normal-N` on 1×2,
+  `res-low-N` on 2×2 (the old ids, so a saved city keeps its houses) and
+  `res-estate-N` on 2×3, each entry carrying its `lot`. All three levels of
+  a lot share its footprint; a level changes the storeys and the value. The
+  3×3 estate where a block is deep waits for the parcel work.
+- **The plat is read at the anchor tile.** When growth comes to an empty
+  zoned tile it reads the land value there, takes the four bands above
+  (`lotForStanding` in `src/shared/lots.ts`) and keeps only the detached
+  entries on the largest lot the land warrants that fits. A strip too
+  shallow or narrow for the warranted lot plats the next smaller one that
+  fits, which is how a one-tile strip still grows half and normal lots, and
+  nothing larger than the land warrants is ever platted. The duplex and the
+  fourplex are unchanged: they have no lot and are drawn as before.
+- **A level-up keeps the lot.** The next level is looked up by zone, kind
+  and lot, and its footprint is the lot's, so a half-lot house becomes a
+  better half-lot house and never a larger one.
+- **The body does not shrink with the lot.** A house on a half or a normal
+  lot is as wide as one on a double lot, 9.5 m, never above 85% of the lot;
+  the estate's long side is 4.75 m per tile. The lot is what changes, and
+  with it the yard, the drive and the room between neighbours.
+- **What a fresh town plats.** Bare clean ground settles at 119 and plats
+  normal lots; the small town the interaction tests grow plats mostly normal
+  and half lots, with the odd double and estate lot where the river and the
+  park raise the value.

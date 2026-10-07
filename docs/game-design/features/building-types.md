@@ -52,15 +52,16 @@ a street within reach, power and water on the lot, demand, spare supply, and
 the desirability draw.
 
 So a wide empty block grows mostly detached houses, because that is most of
-the stock; a one-tile sliver beside them, where no house fits, grows a duplex
-or a fourplex, because those are the house-scale buildings that fit a narrow
-lot. The player never picks a kind. They paint a density and lay out the
+the stock; a one-tile sliver beside them, where no double or estate lot fits,
+grows a house on a half or a normal lot, a duplex or a fourplex, because those
+are the house-scale buildings that fit a narrow lot. The player never picks a
+kind. They paint a density and lay out the
 blocks, and the shape of the blocks shapes the town.
 
 ### A kind is for life
 
 A building keeps its kind through every level-up, as a farm keeps being a crop
-farm. A duplex levels up into a better duplex, never into a house or a block.
+farm, and a detached house keeps its lot. A duplex levels up into a better duplex, never into a house or a block.
 What a level-up gives depends on the kind: a house-scale building gets a bigger
 or better house for the same household; a block gets more storeys and more
 homes.
@@ -69,7 +70,7 @@ homes.
 
 | Kind                 | Zone               | From | Weight | Lot (tiles) L1 / L2 / L3 | Storeys       | Homes       | Residents     |
 | -------------------- | ------------------ | ---- | ------ | ------------------------ | ------------- | ----------- | ------------- |
-| Detached house       | Low density        | M0   | 61.1   | 2×2 / 2×3 / 3×3          | 1 / 2 / 2     | 1           | 3             |
+| Detached house       | Low density        | M0   | 61.1   | 1×1, 1×2, 2×2 or 2×3 by the land, the same at every level ([lots-and-land.md](lots-and-land.md)) | 1 / 2 / 2     | 1           | 3             |
 | Duplex               | Low density        | M1   | 1.6    | 1×2 / 1×2 / 2×2          | 2 / 2 / 2.5   | 2           | 5             |
 | Fourplex             | Low density        | M1   | 1.2    | 1×2 / 1×2 / 2×2          | 2.5 / 2.5 / 3 | 4           | 9             |
 | Townhouse row        | Row housing        | M1   | 1.6    | 1×2 / 1×4 / 1×6          | 2 / 3 / 3.5   | 4 / 8 / 12  | 11 / 21 / 32  |
