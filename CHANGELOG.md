@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.36.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.35.1...slimcity-v1.36.0) (2026-10-07)
+
+
+### Features
+
+* **lots:** a house stands on the lot the land warrants ([6b49aad](https://github.com/rbenzing/SlimCityGame/commit/6b49aade7389dbaff8bee791be88ec4b78ee8511))
+* **lots:** a house stands on the lot the land warrants ([d3f19e3](https://github.com/rbenzing/SlimCityGame/commit/d3f19e3e6273cc09256600cf59b66d7243c98db8))
+
 ## [1.35.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.35.0...slimcity-v1.35.1) (2026-10-06)
 
 
