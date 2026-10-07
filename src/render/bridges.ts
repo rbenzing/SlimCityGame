@@ -574,6 +574,7 @@ export class BridgeRenderer {
     const mesh = new THREE.InstancedMesh(geometry, this.material(color), count);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    mesh.userData['underground'] = 'road';
     this.scene.add(mesh);
     this.meshes.push(mesh);
     return mesh;
@@ -588,6 +589,7 @@ export class BridgeRenderer {
     const mesh = new THREE.Mesh(geometry, this.material(color));
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    mesh.userData['underground'] = 'road';
     this.scene.add(mesh);
     this.meshes.push(mesh);
     return mesh;

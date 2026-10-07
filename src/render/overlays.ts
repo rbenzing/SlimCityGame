@@ -170,6 +170,7 @@ export class OverlayRenderer {
     mesh.position.y = OVERLAY_Y;
     mesh.visible = false;
     mesh.renderOrder = 10;
+    mesh.userData['underground'] = 'keep';
     scene.add(mesh);
     this.mesh = mesh;
   }
@@ -245,6 +246,12 @@ export class OverlayRenderer {
    * gate). The cache write itself always happens, regardless of which lens
    * is active — cheap, and it's what lets setActive() repaint instantly.
    */
+  /** Whether the last coverage the sim sent reaches tile (x, z); false off the map. */
+  coverageAt(kind: CoverageKind, x: number, z: number): boolean {
+    if (x < 0 || z < 0 || x >= MAP_SIZE || z >= MAP_SIZE) return false;
+    return this.coverageCache[kind][z * MAP_SIZE + x] === 1;
+  }
+
   setCoverage(kind: CoverageKind, patches: ZonePatch[]): void {
     const cache = this.coverageCache[kind];
     for (const patch of patches) {

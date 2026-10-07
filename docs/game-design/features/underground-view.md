@@ -1,6 +1,7 @@
 # The underground view — design
 
-- **Status:** Draft for agreement, 2026-10-07
+- **Status:** Agreed and built 2026-10-07
+  ([../../engineering/features/underground-view.md](../../engineering/features/underground-view.md))
 - **Date:** 2026-10-07
 
 ## What the player gets

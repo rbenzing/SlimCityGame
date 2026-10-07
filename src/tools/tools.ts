@@ -74,6 +74,7 @@ import {
 import type { EndMove } from '../world/freeroads';
 import type { CmPoint, SegmentGeom } from '../shared/roadgeom';
 import { ZONE_DEPTH } from '../world/zonable';
+import { planPipeRun, snapPipeEnd, type PipeWorld } from './pipe';
 import {
   bulldozeReach,
   corridorPartnerTile,
@@ -217,6 +218,12 @@ export interface ToolEnv {
   powerLineAt?(x: number, z: number): boolean;
   /** Whether a water pipe is already laid on a tile, for the same reason. */
   waterPipeAt?(x: number, z: number): boolean;
+  /**
+   * What stands beside a pipe run — mains, pipes and buildings — so a drag's
+   * ends snap onto the system and the cursor says what the run joins.
+   * Optional: an env that omits it lays the raw drag and quotes it plainly.
+   */
+  pipeWorld?: PipeWorld;
   /**
    * The id to lay a composed cross-section under — an existing custom id with
    * this exact shape, or the next free one. Optional: an env that omits it
@@ -1717,6 +1724,13 @@ export class ToolManager {
     return [...runs.near.map(() => near), ...runs.far.map(() => far)];
   }
 
+  /** A pipe run: the drag's path, its ends snapped onto the system where one is a tile away. */
+  private pipeRun(start: TilePoint, end: TilePoint): TilePoint[] {
+    const world = this.env.pipeWorld;
+    if (!world) return this.roadPath(start, end);
+    return this.roadPath(snapPipeEnd(start, world), snapPipeEnd(end, world));
+  }
+
   private roadPath(rawStart: TilePoint, rawEnd: TilePoint): TilePoint[] {
     // Guide snapping moves where the drag's ENDS sit, before any path is built
     // from them, so it composes with every mode rather than replacing one.
@@ -1862,8 +1876,22 @@ export class ToolManager {
     }
 
     if (isWaterPipeTool(tool)) {
-      const startTile = this.dragStart ?? current;
-      const tiles = this.roadPath(startTile, current);
+      const tiles = this.pipeRun(this.dragStart ?? current, current);
+      const world = this.env.pipeWorld;
+      if (world) {
+        // Underground the cursor quotes what the run lays and says what it joins.
+        const plan = planPipeRun(tiles, world);
+        const { valid, invalidReason } = this.evaluate(tiles, plan.cost, 0, true);
+        this.env.onPreview({
+          tiles,
+          valid,
+          cost: plan.cost,
+          label: 'Water pipe',
+          invalidReason,
+          note: plan.note,
+        });
+        return;
+      }
       const fresh = tiles.filter((t) => !this.env.waterPipeAt?.(t.x, t.z));
       const cost = fresh.length * WATER_PIPE_COST_PER_TILE;
       const { valid, invalidReason } = this.evaluate(tiles, cost, 0, true);
@@ -2275,9 +2303,13 @@ export class ToolManager {
         { kind: 'stringPowerLine', tiles: this.roadPath(start, end), on: true },
       ]);
     } else if (isWaterPipeTool(tool)) {
-      this.env.send('Water pipe', [
-        { kind: 'layWaterPipe', tiles: this.roadPath(start, end), on: true },
-      ]);
+      // A street along the run already carries a main: only the rest is laid.
+      const tiles = this.pipeRun(start, end);
+      const world = this.env.pipeWorld;
+      const laid = world ? planPipeRun(tiles, world).laid : tiles;
+      if (laid.length > 0) {
+        this.env.send('Water pipe', [{ kind: 'layWaterPipe', tiles: laid, on: true }]);
+      }
     }
     this.env.onPreview(null);
   }

@@ -1725,6 +1725,8 @@ export interface CursorChip {
    * "Overlapping items" | "Insufficient funds" | "Locked".
    */
   invalidReason?: string;
+  /** A plain line beneath the cost: what a pipe run joins, say. */
+  note?: string;
 }
 
 /**

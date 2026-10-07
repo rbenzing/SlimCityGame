@@ -3,9 +3,9 @@
  * that follows the pointer, offset {@link CHIP_POINTER_OFFSET_X}px to the
  * right of the cursor. Renders the CursorChip contract from shared/types —
  * live cost (`¢202`), an optional road length line (`137 m`, and for a curve
- * `137 m · radius 84 m`), and an orange
- * invalid-reason line ("Overlapping items" | "Insufficient funds" | "Locked")
- * beneath the cost. Pure DOM, no React — it updates on every pointer move,
+ * `137 m · radius 84 m`), a plain note line (what a pipe run joins), and an
+ * orange invalid-reason line ("Overlapping items" | "Insufficient funds" |
+ * "Locked") beneath the cost. Pure DOM, no React — it updates on every pointer move,
  * far hotter than the store/React render path.
  */
 import type { CursorChip } from '../shared/types';
@@ -37,6 +37,7 @@ export class CursorChipStack {
   private readonly root: HTMLDivElement;
   private readonly costLine: HTMLDivElement;
   private readonly lengthLine: HTMLDivElement;
+  private readonly noteLine: HTMLDivElement;
   private readonly reasonLine: HTMLDivElement;
   private pointerX = 0;
   private pointerY = 0;
@@ -69,12 +70,18 @@ export class CursorChipStack {
     this.lengthLine.style.fontWeight = '400';
     this.lengthLine.style.opacity = '0.8';
 
+    this.noteLine = document.createElement('div');
+    this.noteLine.dataset.chipNote = '';
+    this.noteLine.style.display = 'none';
+    this.noteLine.style.fontWeight = '400';
+    this.noteLine.style.opacity = '0.8';
+
     this.reasonLine = document.createElement('div');
     this.reasonLine.dataset.chipReason = '';
     this.reasonLine.style.display = 'none';
     this.reasonLine.style.color = WARNING_ORANGE;
 
-    this.root.append(this.costLine, this.lengthLine, this.reasonLine);
+    this.root.append(this.costLine, this.lengthLine, this.noteLine, this.reasonLine);
     container.appendChild(this.root);
   }
 
@@ -94,6 +101,13 @@ export class CursorChipStack {
       this.lengthLine.style.display = '';
     } else {
       this.lengthLine.style.display = 'none';
+    }
+
+    if (chip.note !== undefined) {
+      this.noteLine.textContent = chip.note;
+      this.noteLine.style.display = '';
+    } else {
+      this.noteLine.style.display = 'none';
     }
 
     if (chip.invalidReason !== undefined) {

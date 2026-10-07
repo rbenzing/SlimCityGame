@@ -636,9 +636,13 @@ MUTCD citations below use 11th-edition section numbers.
   buildings — is seen only underground, which the city goes to while a
   water tool, a water building or a water lens is in hand and leaves when
   none is. The underground is a view: it changes nothing about what carries
-  water or where a pipe may go. (Rule stated 2026-10-07; the surface strip
-  the overlay draws today is the bug.) —
-  [underground-view.md](game-design/features/underground-view.md)
+  water or where a pipe may go; the surface goes to glass by material
+  opacity, never a shader, and comes back exactly as it was. A pipe drag's
+  ends snap onto the system a tile away, a run along a street lays nothing,
+  and the cursor says what the run joins. —
+  [underground-view.md](game-design/features/underground-view.md);
+  `UndergroundView` in `src/render/underground.ts`, `PipeOverlayRenderer` in
+  `src/render/pipes.ts`, `planPipeRun` in `src/tools/pipe.ts`
 - The water's fouling (`g.waterFoul`) spreads only over connected water,
   from each drain's and works' discharge, fading to nothing at
   `WATER_FOUL_REACH_TILES`; it is the worst of what reaches a tile, never

@@ -277,10 +277,16 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   without one stinks up its block (it is never abandoned for it) — the Advisor
   tells you. The **Water Pipe** carries water and sewage where the streets do
   not: drag a run from a street to a shore for the station or the drain, across
-  a motorway or a railway (which carry no main), or down a lane. It shows on the
-  ground, blue beside brown, whenever a water tool is in hand or the Water or
-  Sewer lens is on. Houses on a dirt road with no main beside them are on wells
-  and septic tanks and need neither.
+  a motorway or a railway (which carry no main), or down a lane. Pipes are
+  buried: pick up the pipe tool, a water building or the Water or Sewer lens
+  and the city goes **underground** — buildings and roads fade to glass and
+  the whole system shows beneath them, the mains under every street, your
+  pipes brighter, a lead into every served lot and a riser on each water
+  building, blue where the water reaches and grey where it does not, brown
+  where a drain reaches. A pipe drag snaps onto the system a tile away and
+  the cursor says what it will join; dragging along a street lays nothing,
+  since the street carries a main. Houses on a dirt road with no main beside
+  them are on wells and septic tanks and need neither.
 - **Services** — fire, police, health, education, and parks. Each projects a
   coverage/effect field around it; gaps in coverage show up in the infoview
   lenses and drag down happiness.

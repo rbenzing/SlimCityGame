@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,814 tests passing across 160 test files, run 2026-10-07.
+**Test suite:** 4,839 tests passing across 162 test files, run 2026-10-07.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -146,15 +146,16 @@ not a test to fix.
 
 Before writing "not built" anywhere in this document, check the code.
 
-**Next:** the underground view, asked for 2026-10-07 and drafted the same
-day for agreement
-([underground-view.md](game-design/features/underground-view.md)): pipes
-are buried and never show at the surface; the city goes underground while a
-water tool, a water building or a water lens is in hand, the surface fades
-to glass and the whole system shows beneath it — the mains under the
-streets, the laid pipes, the water buildings' risers, blue where the water
-reaches and grey where it does not — and a pipe drag snaps to the system
-and says what it joins. Then lots and land continues
+**Pipes are underground.** Nothing at the surface shows a pipe; pick up the
+pipe tool, a water building or the Water or Sewer lens and the city goes
+underground — the surface to glass, the whole system beneath it: the mains
+under the streets, the laid pipes, a lead into every served lot, a riser on
+each water building and its run out to the pipe that joins it, blue and
+brown where the water and the drains reach, grey where they do not — and a
+pipe drag snaps onto the system and says what it joins
+([underground-view.md](game-design/features/underground-view.md)).
+
+**Next:** lots and land continues
 ([lots-and-land.md](game-design/features/lots-and-land.md)): two slices are
 built, the detached house on the lot the land warrants and the plat cut from
 the street; the parcel lines on the zone lens, assembly, the other
@@ -305,18 +306,29 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 
 ## 10. History (newest first)
 
-### The underground view (asked for and drafted 2026-10-07)
+### The underground view (asked for, drafted, agreed and built 2026-10-07)
 
 The user's rule: pipes are laid under the ground and are not visible from
-the surface. Today the pipe overlay draws a strip a hair above the road
-plates, only the laid pipes and not the mains, and only while a water tool
-or lens is in hand, so a run looks to end in the grass where it has joined
-a main and a shore building looks connected when it is not. The design
-drafted for agreement: nothing at the surface; the city goes underground
-with the water tools and lenses, the surface to glass, every carrier drawn
-as a pipe with its flow coloured wet or dry, risers on the water buildings,
-and a pipe drag that snaps to the system and names what it joins. The rule
-is in the ground truths; the view is built once the design is agreed.
+the surface. The pipe overlay drew a strip a hair above the road plates,
+only the laid pipes and not the mains, and only while a water tool or lens
+was in hand, so a run looked to end in the grass where it had joined a main
+and a shore building looked connected when it was not. Built from the
+agreed design: the strips sit under the road plates and show only
+underground, which the city goes to with the water tools and lenses — every
+mesh on the surface fades to glass by material opacity and stops casting a
+shadow, the ground, the water, the sky and every lens and ghost tagged to
+stay — and every carrier is drawn as a pipe: the mains muted, the player's
+pipes bright, a lead into each served lot, a riser on each water building
+with a run out to the edge its pipe meets, each run blue or brown where the
+water or a drain reaches and grey where none does. The pipe drag snaps its
+ends onto the system a tile away, lays nothing along a street, and says on
+the cursor what it joins. Looked at: the surface with no pipe in sight; the
+pumping station's riser joined to its pipe with the sewer run grey because
+no drain serves it; the drain's riser joined to its pipe and the avenue's
+main; leads ticking into every lot down a street. The first cut drew a hub
+both ways on every tile, which made a straight run read as a row of cross
+ticks, and the ghosts still cast solid shadows; both fixed before the look
+was called done.
 
 ### Lots are cut from the street, and homes face it (asked for and built 2026-10-07)
 

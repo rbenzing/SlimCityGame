@@ -178,13 +178,14 @@ tile, as the Electricity tab lists the power line.
 
 ### Rendering
 
-- **Pipes are underground.** `PipeOverlayRenderer` draws each pipe tile as
-  a strip through the tile centre, joined to the orthogonal neighbours that
+- **Pipes are underground.** `PipeOverlayRenderer` draws each carrier as a
+  strip through the tile centre, joined to the orthogonal neighbours that
   carry water (pipes, roads whose class carries water, and buildings), the
   strip split lengthwise into a blue half and a brown half, conforming to the
-  terrain like the zone grid's lines. It is visible while a water tool
-  (`water.pipe`, or a building on the Water tab) is in hand, and while the
-  Water or Sewer lens is on; otherwise hidden, as the zone grid is.
+  terrain under the road plates. It shows only while the city is underground
+  — a water tool in hand or the Water or Sewer lens on — when the surface
+  goes to glass; the full view, with the mains, the leads and the risers, is
+  in [underground-view.md](underground-view.md).
 - **Lenses.** `LensId` gains `'sewered'` and `CoverageKind` gains
   `'sewered'`; the Sewer lens paints the drained coverage with the same
   two-tone ramp the Water lens uses.

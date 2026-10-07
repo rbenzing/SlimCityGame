@@ -832,6 +832,7 @@ export class FreeRoadRenderer {
     geometry.computeVertexNormals();
     this.mesh = new THREE.Mesh(geometry, this.material);
     this.mesh.receiveShadow = true;
+    this.mesh.userData['underground'] = 'road';
     this.scene.add(this.mesh);
   }
 

@@ -221,6 +221,8 @@ export class DistrictsRenderer {
     this.tintMesh.visible = false;
     this.lineMesh.visible = false;
 
+    this.tintMesh.userData['underground'] = 'keep';
+    this.lineMesh.userData['underground'] = 'keep';
     scene.add(this.tintMesh, this.lineMesh);
   }
 
