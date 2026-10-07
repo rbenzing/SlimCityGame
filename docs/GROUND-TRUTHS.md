@@ -683,7 +683,11 @@ MUTCD citations below use 11th-edition section numbers.
   smaller lot that fits, never a larger one than the land warrants. The three
   levels of a lot share its footprint, a level-up looks up the same zone,
   kind and lot and footprint, and no building ever grows its lot. A house
-  body is 9.5 m across the front whatever its lot. —
+  body is 9.5 m across the front whatever its lot. A duplex and a fourplex
+  stand on one parcel of the plat too, a half or a normal lot (upright or
+  turned) with the footprint the parcel has, never on a double or an estate
+  parcel, and a level-up never changes their lot; the homes and residents of
+  a plex do not change with the lot. —
   [lots-and-land.md](game-design/features/lots-and-land.md);
   `lotForStanding`, `platCandidates` in `src/shared/lots.ts`, `tryLevelUp` in
   `src/sim/growth.ts`

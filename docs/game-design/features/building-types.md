@@ -61,7 +61,7 @@ blocks, and the shape of the blocks shapes the town.
 ### A kind is for life
 
 A building keeps its kind through every level-up, as a farm keeps being a crop
-farm, and a detached house keeps its lot. A duplex levels up into a better duplex, never into a house or a block.
+farm, and a detached house, a duplex or a fourplex keeps its lot. A duplex levels up into a better duplex, never into a house or a block.
 What a level-up gives depends on the kind: a house-scale building gets a bigger
 or better house for the same household; a block gets more storeys and more
 homes.
@@ -71,8 +71,8 @@ homes.
 | Kind                 | Zone               | From | Weight | Lot (tiles) L1 / L2 / L3 | Storeys       | Homes       | Residents     |
 | -------------------- | ------------------ | ---- | ------ | ------------------------ | ------------- | ----------- | ------------- |
 | Detached house       | Low density        | M0   | 61.1   | 1×1, 1×2, 2×2 or 2×3 by the land, the same at every level ([lots-and-land.md](lots-and-land.md)) | 1 / 2 / 2     | 1           | 3             |
-| Duplex               | Low density        | M1   | 1.6    | 1×2 / 1×2 / 2×2          | 2 / 2 / 2.5   | 2           | 5             |
-| Fourplex             | Low density        | M1   | 1.2    | 1×2 / 1×2 / 2×2          | 2.5 / 2.5 / 3 | 4           | 9             |
+| Duplex               | Low density        | M1   | 1.6    | 1×1 or 1×2, the same at every level; 2×1 turned | 2 / 2 / 2.5   | 2           | 5             |
+| Fourplex             | Low density        | M1   | 1.2    | 1×1 or 1×2, the same at every level; 2×1 turned | 2.5 / 2.5 / 3 | 4           | 9             |
 | Townhouse row        | Row housing        | M1   | 1.6    | 1×2 / 1×4 / 1×6          | 2 / 3 / 3.5   | 4 / 8 / 12  | 11 / 21 / 32  |
 | Multiplex            | Medium density     | M2   | 0.63   | 2×2 / 2×2 / 2×3          | 2.5 / 3 / 3   | 8 / 10 / 12 | 18 / 23 / 27  |
 | Courtyard apartments | Medium density     | M2   | 0.30   | 2×2 / 2×2 / 3×3          | 2 / 3 / 3.5   | 12 / 18 / 24 | 27 / 41 / 54 |
