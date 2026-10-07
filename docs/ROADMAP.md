@@ -146,13 +146,19 @@ not a test to fix.
 
 Before writing "not built" anywhere in this document, check the code.
 
-**Next:** lots and land, asked for 2026-10-05
-([lots-and-land.md](game-design/features/lots-and-land.md)): a zoned block
-platted into parcels the land's standing sizes, half lots to estates, on US
-zoning standards, with a kind assembling the parcels it needs and a level-up
-never growing the lot. Its first slice is built, the detached house on the
-lot the land warrants; the parcel lines on the zone lens, assembly, the
-other densities' parcels, replatting and the inspector's lot line remain.
+**Next:** the underground view, asked for 2026-10-07 and drafted the same
+day for agreement
+([underground-view.md](game-design/features/underground-view.md)): pipes
+are buried and never show at the surface; the city goes underground while a
+water tool, a water building or a water lens is in hand, the surface fades
+to glass and the whole system shows beneath it — the mains under the
+streets, the laid pipes, the water buildings' risers, blue where the water
+reaches and grey where it does not — and a pipe drag snaps to the system
+and says what it joins. Then lots and land continues
+([lots-and-land.md](game-design/features/lots-and-land.md)): two slices are
+built, the detached house on the lot the land warrants and the plat cut from
+the street; the parcel lines on the zone lens, assembly, the other
+densities' parcels, replatting and the inspector's lot line remain.
 After it, the municipal
 services programme's epics
 ([municipal-services.md](game-design/features/municipal-services.md)), the
@@ -298,6 +304,19 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The underground view (asked for and drafted 2026-10-07)
+
+The user's rule: pipes are laid under the ground and are not visible from
+the surface. Today the pipe overlay draws a strip a hair above the road
+plates, only the laid pipes and not the mains, and only while a water tool
+or lens is in hand, so a run looks to end in the grass where it has joined
+a main and a shore building looks connected when it is not. The design
+drafted for agreement: nothing at the surface; the city goes underground
+with the water tools and lenses, the surface to glass, every carrier drawn
+as a pipe with its flow coloured wet or dry, risers on the water buildings,
+and a pipe drag that snaps to the system and names what it joins. The rule
+is in the ground truths; the view is built once the design is agreed.
 
 ### Lots are cut from the street, and homes face it (asked for and built 2026-10-07)
 
