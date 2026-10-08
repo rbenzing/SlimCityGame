@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.47.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.46.0...slimcity-v1.47.0) (2026-10-08)
+
+
+### Features
+
+* **water:** the water tower at its real size, on one tile ([b72010f](https://github.com/rbenzing/SlimCityGame/commit/b72010f1691e8400c7911ae89377dbf82d7f1444))
+* **water:** the water tower at its real size, on one tile ([6ec1180](https://github.com/rbenzing/SlimCityGame/commit/6ec1180b1dafcda4e0e0527c5eca7097e7dca949))
+
 ## [1.46.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.45.0...slimcity-v1.46.0) (2026-10-08)
 
 
