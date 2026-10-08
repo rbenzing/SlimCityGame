@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.40.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.39.0...slimcity-v1.40.0) (2026-10-08)
+
+
+### Features
+
+* **lots:** a townhouse row stands on one normal lot, three homes at … ([39e0588](https://github.com/rbenzing/SlimCityGame/commit/39e0588e8f74851c08e29107eb558874da473df0))
+* **lots:** a townhouse row stands on one normal lot, three homes at every level ([a7ceba9](https://github.com/rbenzing/SlimCityGame/commit/a7ceba9e90891bd22101d85db4161eee7c9f246c))
+* **lots:** commercial and dense land is cut into frontage lots ([d2d837d](https://github.com/rbenzing/SlimCityGame/commit/d2d837dd8e1ebd32a0b11d4a96d6ddf456f2b218))
+* **lots:** commercial and dense land is cut into frontage lots ([d9e5d1c](https://github.com/rbenzing/SlimCityGame/commit/d9e5d1cfecc13079005f8e4a1dff3b8820a32014))
+
 ## [1.39.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.38.0...slimcity-v1.39.0) (2026-10-08)
 
 
