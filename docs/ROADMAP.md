@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 5,156 tests passing across 169 test files, run 2026-10-08.
+**Test suite:** 5,185 tests passing across 170 test files, run 2026-10-08.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -141,8 +141,9 @@ with; and a small house on prime land torn down for a plex.
 **Next:** garbage recovery
 ([garbage-recovery.md](game-design/features/garbage-recovery.md)), the
 municipal-services epic the player chose. Its first slice put the whole
-garbage chain on one real unit and its second adds the kerbside recycling
-depot; the materials recovery facility and the transfer station follow. After it, the other municipal services
+garbage chain on one real unit, its second added the kerbside recycling
+depot and its third the materials recovery facility; the transfer station
+follows. After it, the other municipal services
 programme's epics
 ([municipal-services.md](game-design/features/municipal-services.md)), the
 [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
@@ -287,6 +288,47 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The materials recovery facility (third slice of garbage recovery, built 2026-10-08)
+
+The draft's facility collected everything in its reach and diverted 21%. That
+21% is the national recovery of paper, plastics, metals and glass across every
+programme, kerbside included, so laid over the depots it would have counted
+kerbside twice, and a plant sorting mixed rubbish recovers far less. The
+player chose instead a plant that sorts what the depots collect and runs its
+own recycling round for the buildings kerbside never serves.
+
+- **Its size.** A single-stream line of 50 short tons a day: Kauai's 55-ton
+  design on 3 acres with a 27,000 sq ft hall, and Isabella County's 17 staff
+  on a 50-ton line. It is a 5×6 lot with an 11 m hall, a bale yard, an office
+  and four recycling trucks. A 100-ton plant would want 5.5 acres, and 50 tons
+  is already several times what a game city sets out.
+- **Its round.** Apartment blocks of more than four homes at 0.30 kg a home a
+  day (Hennepin County 2017, CalRecycle 2014). Jobs at 0.30 kg a day in
+  commerce and 0.25 kg in industry (CalRecycle 2014 business rates). It
+  serves them in its 48-tile reach, set aside at source like kerbside, each
+  building once, after the depots' recycling has taken its throughput.
+- **What comes out.** 87% of what is sorted is recovered and earns the
+  credit, and 13% is residue (Recycling Partnership 2024). The residue goes to
+  the nearest landfill or incinerator the plant's streets connect to, at any
+  distance. With none that has room it fills a week's store, and a full store
+  stops the plant: its round serves no one, and the depots' recycling goes
+  regional again.
+- **Kerbside's credit drops slightly.** A regional plant rejects 13% too, so a
+  depot's recycling sorted out of town now earns credit on 87% of it, not
+  100%.
+- **Power** is 20 kWh a tonne with the building. An equipment model gave 6 and
+  a survey of tiny plants 410; the gap is plant size, and measured mid-size
+  plants run 14–24 (Pressley 2015, Bradshaw 2024).
+
+Kept from the draft as dials: the 48-tile reach, ¢24,000 and ¢1,750 a month,
+pollution 20, unlocking at Grand City.
+
+Found on the way: on a sloped lot the building's plinth showed through the
+recycling depot's yard, because the plinth sat on the highest ground under
+the body and the yard on the ground at the lot's centre. A kit that paves its
+own lot (the depot and the facility) now stands on the highest ground under
+the whole lot, over a graded footing, so the yard is the only surface seen.
 
 ### Parking styles and accessible spaces (asked for and built 2026-10-08)
 

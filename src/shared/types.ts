@@ -920,6 +920,18 @@ export interface SimSnapshot {
     incinerators?: { id: number; fill: number; capacity: number }[];
     /** Each kerbside recycling depot's homes served on the last pass against its capacity. */
     depots?: { id: number; servedHomes: number; capacityHomes: number }[];
+    /**
+     * Each Materials Recovery Facility on the last pass: the units it sorted,
+     * the buildings its round served, the residue it holds, and whether a full
+     * residue store stopped it.
+     */
+    mrfs?: {
+      id: number;
+      sorted: number;
+      servedBuildings: number;
+      residue: number;
+      stopped: boolean;
+    }[];
   };
   /**
    * Power lines — ZonePatch-shaped membership regions (data bytes 0/1,
@@ -1096,6 +1108,8 @@ export interface UtilitySpec {
  * emits Pollution ∝ burn. `trucks` is the cosmetic garbage-truck count.
  * `servesHomes` marks a kerbside recycling depot: the homes it serves in all,
  * with no buffer and no burn (both 0) — it never disposes of anything.
+ * `sortRate` marks a Materials Recovery Facility: the recycling units it sorts
+ * a pass, with `bufferCapacity` its residue store and no burn.
  */
 export interface GarbageSpec {
   collectionRange: number;
@@ -1103,6 +1117,7 @@ export interface GarbageSpec {
   burnRate: number;
   trucks: number;
   servesHomes?: number;
+  sortRate?: number;
 }
 
 // 'transit' is additive — the bus-stop ploppable's category and the Transit
@@ -1172,7 +1187,7 @@ export interface BuildingCatalogEntry {
   landValueBonus?: number; // 0..255 emitted into LandValue field
   service?: ServiceSpec;
   utility?: UtilitySpec;
-  garbage?: GarbageSpec; // set for the incinerator ploppable
+  garbage?: GarbageSpec; // set for the incinerator, recycling depot and recovery facility ploppables
   cost: number; // 0 for grown buildings
   upkeep: number; // per month
   unlockMilestone: number; // MILESTONES index required

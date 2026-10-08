@@ -42,20 +42,24 @@ const depot = (id: number, x: number, z: number, budget: number): TruckDepot => 
 const target = (id: number, x: number, z: number): TruckTarget => ({ id, tile: { x, z } });
 
 describe('truckKindFor', () => {
-  it('runs recycling trucks from a kerbside depot and refuse trucks from landfill and incinerator specs', () => {
+  it('runs recycling trucks from a kerbside depot and a recovery facility, refuse trucks from landfill and incinerator specs', () => {
     const base = { collectionRange: 40, bufferCapacity: 0, burnRate: 0, trucks: 4 };
     expect(truckKindFor({ ...base, servesHomes: 38000 })).toBe(VehicleKind.Recycling);
+    expect(truckKindFor({ ...base, bufferCapacity: 165110, sortRate: 9072 })).toBe(
+      VehicleKind.Recycling,
+    );
     expect(truckKindFor({ ...base, bufferCapacity: 9000000, burnRate: 90000 })).toBe(
       VehicleKind.Garbage,
     );
   });
 
-  it('reads the catalog: the recycling depot is Recycling, the incinerator Garbage', async () => {
+  it('reads the catalog: the recycling depot and the recovery facility are Recycling, the incinerator Garbage', async () => {
     const catalog = (await import('../data/catalog.json')).default as {
       buildings: { id: string; garbage?: Parameters<typeof truckKindFor>[0] }[];
     };
     const spec = (id: string) => catalog.buildings.find((b) => b.id === id)!.garbage!;
     expect(truckKindFor(spec('recycling-depot'))).toBe(VehicleKind.Recycling);
+    expect(truckKindFor(spec('materials-recovery-facility'))).toBe(VehicleKind.Recycling);
     expect(truckKindFor(spec('incinerator'))).toBe(VehicleKind.Garbage);
   });
 });

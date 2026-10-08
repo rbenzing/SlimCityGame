@@ -10,6 +10,7 @@ import {
   RECYCLING_OFFICE_SIZE,
   RECYCLING_YARD_HEIGHT,
   RECYCLING_TRUCK_COUNT,
+  YARD_FOOTING_DEPTH,
   PARK_TREE_MAX,
   PARK_TREE_MIN,
   TURBINE_BLADE_COUNT,
@@ -38,6 +39,10 @@ import {
   computeIncineratorBayLocalPlacement,
   computeIncineratorHallLayout,
   computeIncineratorStackLocalPlacement,
+  computeMrfLayout,
+  MRF_BALE_SIZE,
+  MRF_HALL_SIZE,
+  MRF_TRUCK_COUNT,
   computeParkBenchPlacements,
   computeParkTreeCount,
   computeParkTreePlacements,
@@ -62,6 +67,7 @@ import {
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import { sizeForKind } from './vehicles';
+import { BuildingInstancer } from './buildings';
 
 const flatHeightAt = (): number => 0;
 
@@ -87,6 +93,11 @@ const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'recyclingShed',
   'recyclingOffice',
   'recyclingTruck',
+  'mrfYard',
+  'mrfHall',
+  'mrfBales',
+  'mrfOffice',
+  'mrfTruck',
   'parkGround',
   'parkTree',
   'parkBench',
@@ -181,6 +192,30 @@ function makeRecyclingDepotEntry(
     cost: 20000,
     upkeep: 800,
     unlockMilestone: 2,
+    ...overrides,
+  };
+}
+
+function makeMrfEntry(overrides: Partial<BuildingCatalogEntry> = {}): BuildingCatalogEntry {
+  return {
+    id: 'materials-recovery-facility',
+    name: 'Materials Recovery Facility',
+    category: 'utility',
+    footprint: { w: 5, d: 6 },
+    height: 11,
+    color: 0x4e6a7a,
+    powerUse: 0.0378,
+    waterUse: 0.8,
+    garbage: {
+      collectionRange: 48,
+      bufferCapacity: 165110,
+      burnRate: 0,
+      trucks: 4,
+      sortRate: 9072,
+    },
+    cost: 24000,
+    upkeep: 1750,
+    unlockMilestone: 5,
     ...overrides,
   };
 }
@@ -333,7 +368,7 @@ function decomposeQuaternion(m: THREE.Matrix4): THREE.Quaternion {
 // ---------------------------------------------------------------------------
 
 describe('UTILITY_KIT_CATALOG_IDS', () => {
-  it('is exactly the 9 silhouette-kit ids (UI-SPEC §6.15)', () => {
+  it('is exactly the 10 silhouette-kit ids', () => {
     expect(UTILITY_KIT_CATALOG_IDS).toEqual([
       'wind-turbine',
       'water-tower',
@@ -343,6 +378,7 @@ describe('UTILITY_KIT_CATALOG_IDS', () => {
       'coal-plant',
       'incinerator',
       'recycling-depot',
+      'materials-recovery-facility',
       'small-park',
     ]);
   });
@@ -1383,11 +1419,186 @@ describe('removal exactness', () => {
 });
 
 // ---------------------------------------------------------------------------
+// UtilityKitRenderer: materials-recovery-facility
+// ---------------------------------------------------------------------------
+
+describe('materials-recovery-facility kit', () => {
+  const entry = makeMrfEntry();
+  const { halfW, halfD } = footprintHalfExtents(entry.footprint);
+  const boundsOf = (kind: UtilityKitPartKind): THREE.Box3 => {
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [entry]);
+    const geometry = renderer.partGeometry('materials-recovery-facility', kind)!;
+    geometry.computeBoundingBox();
+    return geometry.boundingBox!;
+  };
+
+  it('places a yard, a hall, a bale yard, an office and four parked trucks per instance', () => {
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [entry]);
+    renderer.apply(deltaAdd(makeInstance(1, 'materials-recovery-facility')));
+    for (const kind of ['mrfYard', 'mrfHall', 'mrfBales', 'mrfOffice'] as const) {
+      expect(renderer.partSlotsFor(1, kind)).toHaveLength(1);
+    }
+    expect(renderer.partSlotsFor(1, 'mrfTruck')).toHaveLength(MRF_TRUCK_COUNT);
+    expect(MRF_TRUCK_COUNT).toBe(4);
+  });
+
+  it('is a 2,510 m² clear-span hall, 11 m to the eaves, with its bay doors on the street side', () => {
+    expect(MRF_HALL_SIZE.w * MRF_HALL_SIZE.d).toBeCloseTo(2_510, -1);
+    expect(MRF_HALL_SIZE.h).toBe(11);
+    const hall = boundsOf('mrfHall');
+    expect(hall.max.y).toBeCloseTo(11.6, 5); // 11 m eaves + the roof cap
+    const layout = computeMrfLayout(entry.footprint);
+    // The doors stand proud of the street-side (+Z) wall and nowhere else.
+    expect(hall.max.z).toBeGreaterThan(layout.hall.z + MRF_HALL_SIZE.d / 2);
+    expect(hall.min.z).toBeCloseTo(layout.hall.z - MRF_HALL_SIZE.d / 2, 5);
+    for (const truck of layout.trucks) {
+      expect(truck.z).toBeGreaterThan(layout.hall.z + MRF_HALL_SIZE.d / 2);
+    }
+  });
+
+  it('stacks bales of 1.1 x 0.75 x 1.5 m on the yard slab, some three high', () => {
+    expect(MRF_BALE_SIZE).toEqual({ w: 1.1, h: 0.75, l: 1.5 });
+    const { bales } = computeMrfLayout(entry.footprint);
+    expect(bales.length).toBeGreaterThan(100);
+    expect(Math.min(...bales.map((b) => b.y))).toBeCloseTo(RECYCLING_YARD_HEIGHT, 5);
+    expect(Math.max(...bales.map((b) => b.y))).toBeCloseTo(
+      RECYCLING_YARD_HEIGHT + 2 * MRF_BALE_SIZE.h,
+      5,
+    );
+    const geometry = boundsOf('mrfBales');
+    expect(geometry.max.y).toBeCloseTo(RECYCLING_YARD_HEIGHT + 3 * MRF_BALE_SIZE.h, 5);
+  });
+
+  it('keeps the yard, hall, bales, office and every truck inside the 5x6 lot, clear of one another', () => {
+    for (const kind of ['mrfYard', 'mrfHall', 'mrfBales', 'mrfOffice'] as const) {
+      const box = boundsOf(kind);
+      expect(box.min.x).toBeGreaterThanOrEqual(-halfW - 1e-9);
+      expect(box.max.x).toBeLessThanOrEqual(halfW + 1e-9);
+      expect(box.min.z).toBeGreaterThanOrEqual(-halfD - 1e-9);
+      expect(box.max.z).toBeLessThanOrEqual(halfD + 1e-9);
+    }
+    const yard = boundsOf('mrfYard');
+    expect([yard.min.x, yard.max.x, yard.min.z, yard.max.z]).toEqual([
+      -halfW,
+      halfW,
+      -halfD,
+      halfD,
+    ]);
+
+    const layout = computeMrfLayout(entry.footprint);
+    const [truckW, , truckL] = sizeForKind(VehicleKind.Recycling);
+    const flat = (b: THREE.Box3) => ({
+      x: (b.min.x + b.max.x) / 2,
+      z: (b.min.z + b.max.z) / 2,
+      hw: (b.max.x - b.min.x) / 2,
+      hd: (b.max.z - b.min.z) / 2,
+    });
+    const boxes = [
+      flat(boundsOf('mrfHall')),
+      flat(boundsOf('mrfBales')),
+      flat(boundsOf('mrfOffice')),
+      ...layout.trucks.map((t) => ({ ...t, hw: truckW / 2, hd: truckL / 2 })),
+    ];
+    for (const b of boxes.slice(3)) {
+      expect(b.x - b.hw).toBeGreaterThanOrEqual(-halfW);
+      expect(b.x + b.hw).toBeLessThanOrEqual(halfW);
+      expect(b.z - b.hd).toBeGreaterThanOrEqual(-halfD);
+      expect(b.z + b.hd).toBeLessThanOrEqual(halfD);
+    }
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i]!;
+        const b = boxes[j]!;
+        const overlap = Math.abs(a.x - b.x) < a.hw + b.hw && Math.abs(a.z - b.z) < a.hd + b.hd;
+        expect(overlap).toBe(false);
+      }
+    }
+  });
+
+  it('places the trucks on the yard slab at the rotated local position for each rotation, inside the turned lot', () => {
+    for (const rotation of [0, 1, 2, 3] as const) {
+      const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [entry]);
+      renderer.apply(
+        deltaAdd(makeInstance(1, 'materials-recovery-facility', { x: 0, z: 0, rotation })),
+      );
+      const lot = footprintForRotation(entry, rotation);
+      const centerX = (lot.w / 2) * TILE_METERS;
+      const centerZ = (lot.d / 2) * TILE_METERS;
+      const slots = renderer.partSlotsFor(1, 'mrfTruck');
+      const m = new THREE.Matrix4();
+      computeMrfLayout(entry.footprint).trucks.forEach((local, i) => {
+        renderer.getPartMatrix('materials-recovery-facility', 'mrfTruck', slots[i]!, m);
+        const pos = decomposePosition(m);
+        const rotated = rotateLocalXZ(local.x, local.z, rotation);
+        expect(pos.x).toBeCloseTo(centerX + rotated.x, 5);
+        expect(pos.z).toBeCloseTo(centerZ + rotated.z, 5);
+        expect(pos.y).toBeCloseTo(RECYCLING_YARD_HEIGHT, 5);
+        expect(pos.x).toBeGreaterThan(0);
+        expect(pos.x).toBeLessThan(lot.w * TILE_METERS);
+        expect(pos.z).toBeGreaterThan(0);
+        expect(pos.z).toBeLessThan(lot.d * TILE_METERS);
+      });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A kit that paves its lot, on a slope, over the instancer's plinth
+// ---------------------------------------------------------------------------
+
+describe('a paved kit on sloped ground', () => {
+  /** A 4% grade across X and 2% across Z, left unlevelled under the whole lot. */
+  const slope = (x: number, z: number): number => 0.04 * x + 0.02 * z;
+
+  for (const entry of [makeRecyclingDepotEntry(), makeMrfEntry()]) {
+    it(`keeps the plinth under the ${entry.id} yard, and the ground under its footing`, () => {
+      for (const rotation of [0, 1] as const) {
+        const scene = new THREE.Scene();
+        const kits = new UtilityKitRenderer(scene, slope, [entry]);
+        const instancer = new BuildingInstancer(scene, [entry], slope, kits.kitIds());
+        const building = makeInstance(1, entry.id, { x: 3, z: 4, rotation });
+        const delta = deltaAdd(building);
+        kits.apply(delta);
+        instancer.apply(delta);
+
+        const yardKind = entry.id === 'recycling-depot' ? 'recyclingYard' : 'mrfYard';
+        const m = new THREE.Matrix4();
+        kits.getPartMatrix(entry.id, yardKind, kits.partSlotsFor(1, yardKind)[0]!, m);
+        const yardTop = decomposePosition(m).y + RECYCLING_YARD_HEIGHT;
+        const yardBottom = decomposePosition(m).y - YARD_FOOTING_DEPTH;
+
+        const plinth = instancer.getPickables().find((p) => p.catalogId === entry.id)!.mesh;
+        const pm = new THREE.Matrix4();
+        plinth.getMatrixAt(0, pm);
+        const pos = new THREE.Vector3();
+        const scl = new THREE.Vector3();
+        pm.decompose(pos, new THREE.Quaternion(), scl);
+        expect(pos.y + scl.y / 2).toBeLessThan(yardTop);
+
+        // Every corner of the lot: the ground stays under the yard's top and
+        // above its footing's bottom, so no slope shows through or under it.
+        const lot = footprintForRotation(entry, rotation);
+        for (const [cx, cz] of [
+          [building.x, building.z],
+          [building.x + lot.w, building.z],
+          [building.x, building.z + lot.d],
+          [building.x + lot.w, building.z + lot.d],
+        ] as const) {
+          const ground = slope(cx * TILE_METERS, cz * TILE_METERS);
+          expect(ground).toBeLessThanOrEqual(yardTop);
+          expect(ground).toBeGreaterThan(yardBottom);
+        }
+      }
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Multiple kits coexisting
 // ---------------------------------------------------------------------------
 
 describe('multiple kits coexisting', () => {
-  it('builds and applies all 9 kits from one catalog + one delta without cross-talk', () => {
+  it('builds and applies all 10 kits from one catalog + one delta without cross-talk', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
       makeTurbineEntry(),
       makeWaterTowerEntry(),
@@ -1397,11 +1608,13 @@ describe('multiple kits coexisting', () => {
       makeCoalPlantEntry(),
       makeIncineratorEntry(),
       makeRecyclingDepotEntry(),
+      makeMrfEntry(),
       makeSmallParkEntry(),
     ]);
     renderer.apply(
       deltaAdd(
         makeInstance(9, 'recycling-depot', { x: 40, z: 0 }),
+        makeInstance(10, 'materials-recovery-facility', { x: 50, z: 0 }),
         makeInstance(1, 'wind-turbine', { x: 0, z: 0 }),
         makeInstance(2, 'water-tower', { x: 5, z: 0 }),
         makeInstance(3, 'coal-plant', { x: 10, z: 0 }),
@@ -1424,6 +1637,8 @@ describe('multiple kits coexisting', () => {
     expect(renderer.partSlotsFor(8, 'worksBody')).toHaveLength(1);
     expect(renderer.partSlotsFor(8, 'worksOutfall')).toHaveLength(1);
     expect(renderer.partSlotsFor(9, 'recyclingTruck')).toHaveLength(4);
+    expect(renderer.partSlotsFor(10, 'mrfTruck')).toHaveLength(4);
+    expect(renderer.partSlotsFor(9, 'mrfTruck')).toHaveLength(0);
   });
 });
 

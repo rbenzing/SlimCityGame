@@ -15,7 +15,7 @@
  * bulldoze keep working through that existing path while this file carries
  * the actual visual identity.
  *
- * Five kits today:
+ * The kits:
  *  - wind-turbine: tapered mast + nacelle ("turbineTower"), a separate
  *    "turbineRotor" InstancedMesh whose per-instance rotation advances every
  *    update(tMs) (slow spin, phase offset hashed from the building id so
@@ -40,6 +40,13 @@
  *    four parked side-loaders ("recyclingTruck", the service fleet's recycling
  *    body at its real size) in the yard, all facing local +Z — the street side
  *    once the player turns the lot to face the road.
+ *  - materials-recovery-facility: the same yard slab ("mrfYard"), a long
+ *    clear-span sorting hall with three tipping-floor bay doors on the street
+ *    side ("mrfHall"), a bale yard of stacked cubes ("mrfBales", one merged
+ *    geometry), an office at the street corner ("mrfOffice") and four parked
+ *    recycling trucks on the apron ("mrfTruck").
+ *  Both paving kits stand on the highest ground under their lot (pavesLot),
+ *  so the instancer's plinth never shows through their yard on a slope.
  *  - small-park: a flat lawn plate + path cross ("parkGround"), 2-3
  *    self-contained trees ("parkTree" — trunk+canopy built locally; this file
  *    deliberately does NOT import trees.ts), and 2 benches ("parkBench").
@@ -61,6 +68,7 @@ import {
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
+import { maxHeightOverRect } from './footprint';
 import { InstancedSlotPool } from './massing';
 import { buildServiceVehicleGeometry } from './servicevehicles';
 import { sizeForKind } from './vehicles';
@@ -79,6 +87,7 @@ export const UTILITY_KIT_CATALOG_IDS: readonly string[] = [
   'coal-plant',
   'incinerator',
   'recycling-depot',
+  'materials-recovery-facility',
   'small-park',
 ];
 
@@ -104,6 +113,11 @@ export type UtilityKitPartKind =
   | 'recyclingShed'
   | 'recyclingOffice'
   | 'recyclingTruck'
+  | 'mrfYard'
+  | 'mrfHall'
+  | 'mrfBales'
+  | 'mrfOffice'
+  | 'mrfTruck'
   | 'parkGround'
   | 'parkTree'
   | 'parkBench';
@@ -991,6 +1005,8 @@ const RECYCLING_DOOR_APRON = 6;
 
 /** The paved yard is a slab over the whole lot, standing just proud of the ground plinth so the two never z-fight. */
 export const RECYCLING_YARD_HEIGHT = 0.3;
+/** How far a yard's footing reaches below the highest ground under its lot. */
+export const YARD_FOOTING_DEPTH = 8;
 
 const RECYCLING_YARD_RGB: RGB = [0.3, 0.32, 0.33];
 const RECYCLING_SHED_RGB: RGB = [0.62, 0.64, 0.64];
@@ -1030,11 +1046,16 @@ export function computeRecyclingDepotLayout(footprint: FootprintSize): Recycling
   return { shed: { x: shedX, z: shedZ }, office, trucks };
 }
 
-/** The paved yard: one slab over the whole lot, local Y=0 the ground plane. */
+/**
+ * The paved yard: one slab over the whole lot, local Y=0 the highest ground
+ * under it, with a footing below that meets the ground on the low side of a
+ * slope (and lies buried on the flat).
+ */
 function buildRecyclingYardGeometry(footprint: FootprintSize): THREE.BufferGeometry {
   const { halfW, halfD } = footprintHalfExtents(footprint);
-  const yard = new THREE.BoxGeometry(halfW * 2, RECYCLING_YARD_HEIGHT, halfD * 2);
-  yard.translate(0, RECYCLING_YARD_HEIGHT / 2, 0);
+  const depth = RECYCLING_YARD_HEIGHT + YARD_FOOTING_DEPTH;
+  const yard = new THREE.BoxGeometry(halfW * 2, depth, halfD * 2);
+  yard.translate(0, RECYCLING_YARD_HEIGHT - depth / 2, 0);
   return paintVertexColor(yard, hexFromRgb(RECYCLING_YARD_RGB));
 }
 
@@ -1086,6 +1107,164 @@ function buildRecyclingTruckGeometry(): THREE.BufferGeometry {
   truck.scale(sx, sy, sz);
   truck.translate(0, sy / 2, 0);
   return truck;
+}
+
+// ---------------------------------------------------------------------------
+// materials-recovery-facility: a clear-span sorting hall on the back-left of a
+// paved yard, its tipping-floor bay doors facing the street (local +Z), a bale
+// yard of stacked cubes beside it, an office at the street corner and its
+// recycling trucks parked on the apron in front of the doors.
+// ---------------------------------------------------------------------------
+
+/** The hall: 54 × 46.5 m is 2,511 m², 27,000 sq ft, 11 m over the tipping floor and balers. */
+export const MRF_HALL_SIZE = { w: 54, d: 46.5, h: 11 };
+export const MRF_OFFICE_SIZE = { w: 12, d: 8, h: 4 };
+/** A baled cube: 1.1 m wide, 0.75 m tall, 1.5 m long. */
+export const MRF_BALE_SIZE = { w: 1.1, h: 0.75, l: 1.5 };
+export const MRF_TRUCK_COUNT = 4;
+/** Bale blocks across and deep in the bale yard, and bales across, deep and high in each block. */
+const MRF_BALE_BLOCKS = { across: 4, deep: 3 };
+const MRF_BALES_PER_BLOCK = { across: 5, deep: 3, high: 3 };
+const MRF_BALE_GAP = 0.12;
+const MRF_BALE_AISLE = 3;
+const MRF_EDGE_MARGIN = 3;
+/** Clear yard between the hall and the bale yard. */
+const MRF_YARD_GAP = 6;
+const MRF_ROOF_CAP_HEIGHT = 0.6;
+const MRF_DOOR_SIZE = { w: 6, h: 7.5 };
+const MRF_DOOR_THICKNESS = 0.3;
+const MRF_DOOR_COUNT = 3;
+const MRF_TRUCK_SPACING = 6.5;
+/** The tipping apron: clear yard in front of the bay doors for a truck to turn and back in. */
+const MRF_DOOR_APRON = 14;
+
+const MRF_HALL_RGB: RGB = [0.58, 0.63, 0.6];
+const MRF_ROOF_RGB: RGB = [0.36, 0.4, 0.41];
+const MRF_DOOR_RGB: RGB = [0.22, 0.28, 0.31];
+const MRF_OFFICE_RGB: RGB = [0.78, 0.76, 0.7];
+const MRF_OFFICE_ROOF_RGB: RGB = [0.4, 0.42, 0.44];
+/** One bale colour per block: cardboard, mixed paper, PET, HDPE, aluminium, steel cans. */
+const MRF_BALE_RGBS: readonly RGB[] = [
+  [0.6, 0.46, 0.3],
+  [0.8, 0.78, 0.72],
+  [0.52, 0.66, 0.78],
+  [0.78, 0.72, 0.5],
+  [0.76, 0.78, 0.8],
+  [0.5, 0.48, 0.46],
+];
+
+export interface MrfLayout {
+  /** Footprint-frame centres on the ground. */
+  hall: Vec2;
+  office: Vec2;
+  /** Footprint-frame centre of every bale, the height of its underside and its block. */
+  bales: { x: number; z: number; y: number; block: number }[];
+  /** Footprint-frame centre of each parked truck; every truck's nose points to local +Z. */
+  trucks: Vec2[];
+}
+
+/**
+ * Hall hard against the back-left corner (margin inside the lot), the bale
+ * yard beside it to the right, the office at the front-right corner, and the
+ * trucks in a row one apron in front of the bay doors. A block's back corner
+ * stack is one bale shorter, so the stacks read as stacks. Pure; fixed per
+ * footprint.
+ */
+export function computeMrfLayout(footprint: FootprintSize): MrfLayout {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const hall: Vec2 = {
+    x: -halfW + MRF_EDGE_MARGIN + MRF_HALL_SIZE.w / 2,
+    z: -halfD + MRF_EDGE_MARGIN + MRF_HALL_SIZE.d / 2,
+  };
+  const office: Vec2 = {
+    x: halfW - MRF_EDGE_MARGIN - MRF_OFFICE_SIZE.w / 2,
+    z: halfD - MRF_EDGE_MARGIN - MRF_OFFICE_SIZE.d / 2,
+  };
+  const pitchX = MRF_BALE_SIZE.w + MRF_BALE_GAP;
+  const pitchZ = MRF_BALE_SIZE.l + MRF_BALE_GAP;
+  const blockW = MRF_BALES_PER_BLOCK.across * pitchX;
+  const blockD = MRF_BALES_PER_BLOCK.deep * pitchZ;
+  const yardX = hall.x + MRF_HALL_SIZE.w / 2 + MRF_YARD_GAP;
+  const yardZ = -halfD + MRF_EDGE_MARGIN;
+  const bales: MrfLayout['bales'] = [];
+  for (let bz = 0; bz < MRF_BALE_BLOCKS.deep; bz++) {
+    for (let bx = 0; bx < MRF_BALE_BLOCKS.across; bx++) {
+      const block = bz * MRF_BALE_BLOCKS.across + bx;
+      const x0 = yardX + bx * (blockW + MRF_BALE_AISLE);
+      const z0 = yardZ + bz * (blockD + MRF_BALE_AISLE);
+      for (let k = 0; k < MRF_BALES_PER_BLOCK.deep; k++) {
+        for (let i = 0; i < MRF_BALES_PER_BLOCK.across; i++) {
+          const corner = i === MRF_BALES_PER_BLOCK.across - 1 && k === 0;
+          const high = MRF_BALES_PER_BLOCK.high - (corner ? 1 : 0);
+          for (let j = 0; j < high; j++) {
+            bales.push({
+              x: x0 + i * pitchX + MRF_BALE_SIZE.w / 2,
+              z: z0 + k * pitchZ + MRF_BALE_SIZE.l / 2,
+              y: RECYCLING_YARD_HEIGHT + j * MRF_BALE_SIZE.h,
+              block,
+            });
+          }
+        }
+      }
+    }
+  }
+  const [truckW, , truckL] = sizeForKind(VehicleKind.Recycling);
+  const truckZ = hall.z + MRF_HALL_SIZE.d / 2 + MRF_DOOR_APRON + truckL / 2;
+  const firstTruckX = -halfW + MRF_EDGE_MARGIN + truckW / 2;
+  const trucks: Vec2[] = [];
+  for (let i = 0; i < MRF_TRUCK_COUNT; i++) {
+    trucks.push({ x: firstTruckX + i * MRF_TRUCK_SPACING, z: truckZ });
+  }
+  return { hall, office, bales, trucks };
+}
+
+/** Hall box + roof cap + the tipping-floor bay doors proud of the street-side wall, merged; local Y=0 is the GROUND plane. */
+function buildMrfHallGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { hall } = computeMrfLayout(footprint);
+  const { w, d, h } = MRF_HALL_SIZE;
+
+  const body = new THREE.BoxGeometry(w, h, d);
+  body.translate(hall.x, h / 2, hall.z);
+  paintVertexColor(body, hexFromRgb(MRF_HALL_RGB));
+
+  const cap = new THREE.BoxGeometry(w, MRF_ROOF_CAP_HEIGHT, d);
+  cap.translate(hall.x, h + MRF_ROOF_CAP_HEIGHT / 2, hall.z);
+  paintVertexColor(cap, hexFromRgb(MRF_ROOF_RGB));
+
+  const parts: THREE.BufferGeometry[] = [body, cap];
+  for (let i = 0; i < MRF_DOOR_COUNT; i++) {
+    const door = new THREE.BoxGeometry(MRF_DOOR_SIZE.w, MRF_DOOR_SIZE.h, MRF_DOOR_THICKNESS);
+    const x = hall.x + (i - (MRF_DOOR_COUNT - 1) / 2) * (w / MRF_DOOR_COUNT);
+    door.translate(x, MRF_DOOR_SIZE.h / 2, hall.z + d / 2 + MRF_DOOR_THICKNESS / 2);
+    paintVertexColor(door, hexFromRgb(MRF_DOOR_RGB));
+    parts.push(door);
+  }
+  return mergeParts(parts);
+}
+
+/** Every bale in the yard as one merged geometry, coloured by its block's material; local Y=0 is the GROUND plane. */
+function buildMrfBalesGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { bales } = computeMrfLayout(footprint);
+  return mergeParts(
+    bales.map((b) => {
+      const bale = new THREE.BoxGeometry(MRF_BALE_SIZE.w, MRF_BALE_SIZE.h, MRF_BALE_SIZE.l);
+      bale.translate(b.x, b.y + MRF_BALE_SIZE.h / 2, b.z);
+      return paintVertexColor(bale, hexFromRgb(MRF_BALE_RGBS[b.block % MRF_BALE_RGBS.length]!));
+    }),
+  );
+}
+
+/** Office box + flat roof slab, merged; local Y=0 is the GROUND plane. */
+function buildMrfOfficeGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { office } = computeMrfLayout(footprint);
+  const { w, d, h } = MRF_OFFICE_SIZE;
+  const body = new THREE.BoxGeometry(w, h, d);
+  body.translate(office.x, h / 2, office.z);
+  paintVertexColor(body, hexFromRgb(MRF_OFFICE_RGB));
+  const roof = new THREE.BoxGeometry(w, MRF_ROOF_CAP_HEIGHT, d);
+  roof.translate(office.x, h + MRF_ROOF_CAP_HEIGHT / 2, office.z);
+  paintVertexColor(roof, hexFromRgb(MRF_OFFICE_ROOF_RGB));
+  return mergeParts([body, roof]);
 }
 
 // ---------------------------------------------------------------------------
@@ -1230,6 +1409,13 @@ function buildParkBenchGeometry(): THREE.BufferGeometry {
 interface KitDefinition {
   entry: BuildingCatalogEntry;
   pools: Partial<Record<UtilityKitPartKind, InstancedSlotPool>>;
+  /**
+   * The kit paves its whole lot, so it stands on the highest ground under the
+   * lot rather than at its centre: the instancer's body-sized plinth, seated on
+   * the highest ground under the body, then always lies under the yard, and the
+   * yard's footing reaches down to the ground on the low side of a slope.
+   */
+  pavesLot?: boolean;
 }
 
 interface InstanceRecord {
@@ -1391,6 +1577,8 @@ export class UtilityKitRenderer {
         return this.buildIncineratorKit(entry);
       case 'recycling-depot':
         return this.buildRecyclingDepotKit(entry);
+      case 'materials-recovery-facility':
+        return this.buildMrfKit(entry);
       case 'small-park':
         return this.buildSmallParkKit(entry);
       default:
@@ -1578,6 +1766,7 @@ export class UtilityKitRenderer {
       new THREE.MeshLambertMaterial({ vertexColors: true });
     return {
       entry,
+      pavesLot: true,
       pools: {
         recyclingYard: new InstancedSlotPool(
           this.scene,
@@ -1603,6 +1792,24 @@ export class UtilityKitRenderer {
           lambert(),
           INITIAL_KIT_CAPACITY * RECYCLING_TRUCK_COUNT,
         ),
+      },
+    };
+  }
+
+  private buildMrfKit(entry: BuildingCatalogEntry): KitDefinition {
+    const lambert = (): THREE.MeshLambertMaterial =>
+      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const pool = (geometry: THREE.BufferGeometry, capacity = INITIAL_KIT_CAPACITY) =>
+      new InstancedSlotPool(this.scene, geometry, lambert(), capacity);
+    return {
+      entry,
+      pavesLot: true,
+      pools: {
+        mrfYard: pool(buildRecyclingYardGeometry(entry.footprint)),
+        mrfHall: pool(buildMrfHallGeometry(entry.footprint)),
+        mrfBales: pool(buildMrfBalesGeometry(entry.footprint)),
+        mrfOffice: pool(buildMrfOfficeGeometry(entry.footprint)),
+        mrfTruck: pool(buildRecyclingTruckGeometry(), INITIAL_KIT_CAPACITY * MRF_TRUCK_COUNT),
       },
     };
   }
@@ -1672,7 +1879,15 @@ export class UtilityKitRenderer {
     const lot = footprintForRotation(entry, rotation);
     const centerX = (building.x + lot.w / 2) * TILE_METERS;
     const centerZ = (building.z + lot.d / 2) * TILE_METERS;
-    const groundY = this.heightAt(centerX, centerZ);
+    const groundY = kit.pavesLot
+      ? maxHeightOverRect(
+          this.heightAt,
+          building.x * TILE_METERS,
+          building.z * TILE_METERS,
+          (building.x + lot.w) * TILE_METERS,
+          (building.z + lot.d) * TILE_METERS,
+        )
+      : this.heightAt(centerX, centerZ);
 
     switch (entry.id) {
       case 'wind-turbine':
@@ -1725,6 +1940,9 @@ export class UtilityKitRenderer {
         return;
       case 'recycling-depot':
         this.applyRecyclingDepot(kit, building, entry, centerX, groundY, centerZ, rotation);
+        return;
+      case 'materials-recovery-facility':
+        this.applyMrf(kit, building, entry, centerX, groundY, centerZ, rotation);
         return;
       case 'small-park':
         this.applySmallPark(kit, building, entry, centerX, groundY, centerZ, rotation);
@@ -1947,6 +2165,38 @@ export class UtilityKitRenderer {
         recyclingTruck: truckSlots,
       },
     });
+  }
+
+  private applyMrf(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    centerX: number,
+    groundY: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+  ): void {
+    const { mrfYard, mrfHall, mrfBales, mrfOffice, mrfTruck } = kit.pools;
+    if (!mrfYard || !mrfHall || !mrfBales || !mrfOffice || !mrfTruck) return;
+
+    const slots = {
+      mrfYard: [this.placeAt(mrfYard, centerX, groundY, centerZ, rotation)],
+      mrfHall: [this.placeAt(mrfHall, centerX, groundY, centerZ, rotation)],
+      mrfBales: [this.placeAt(mrfBales, centerX, groundY, centerZ, rotation)],
+      mrfOffice: [this.placeAt(mrfOffice, centerX, groundY, centerZ, rotation)],
+      // The trucks stand on the yard slab, not in it.
+      mrfTruck: computeMrfLayout(entry.footprint).trucks.map((local) => {
+        const rotated = rotateLocalXZ(local.x, local.z, rotation);
+        return this.placeAt(
+          mrfTruck,
+          centerX + rotated.x,
+          groundY + RECYCLING_YARD_HEIGHT,
+          centerZ + rotated.z,
+          rotation,
+        );
+      }),
+    };
+    this.instances.set(building.id, { catalogId: building.catalogId, slots });
   }
 
   private applySmallPark(
