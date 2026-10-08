@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.39.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.38.0...slimcity-v1.39.0) (2026-10-08)
+
+
+### Features
+
+* **lots:** medium density assembles two parcels ([91e1a25](https://github.com/rbenzing/SlimCityGame/commit/91e1a25c88f4b88def64b613fb2e204878122b49))
+* **lots:** medium density assembles two parcels ([bcc1ab8](https://github.com/rbenzing/SlimCityGame/commit/bcc1ab8f5dde0b2adfa93bbd60ff096299f18e25))
+* **lots:** replatting holds, and the inspector names the lot ([ad6ec6b](https://github.com/rbenzing/SlimCityGame/commit/ad6ec6bb2cb881094ed9514c043d1f522c537ad7))
+* **lots:** replatting holds, and the inspector names the lot ([21dc4b2](https://github.com/rbenzing/SlimCityGame/commit/21dc4b2d5490cd940d81897a7778aa02a5bd0fda))
+* **lots:** the duplex and the fourplex on the plat ([cd5da38](https://github.com/rbenzing/SlimCityGame/commit/cd5da3801845b320ea0abf2548121c507715ae9a))
+* **lots:** the duplex and the fourplex on the plat ([66276f8](https://github.com/rbenzing/SlimCityGame/commit/66276f8f7201d794c671e059afefec63fbbcbeb9))
+
 ## [1.38.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.37.0...slimcity-v1.38.0) (2026-10-07)
 
 
