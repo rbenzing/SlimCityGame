@@ -79,9 +79,9 @@ are free, and stays as it is where they are not
 | Townhouse row        | Row housing        | M1   | 1.6    | 1×2, one normal parcel, at every level; 2×1 turned | 2 / 3 / 3.5   | 3 / 3 / 3   | 8 / 8 / 8     |
 | Multiplex            | Medium density     | M2   | 0.63   | 2×2, two normal parcels, at every level | 2.5 / 3 / 3   | 8 / 10 / 12 | 18 / 23 / 27  |
 | Courtyard apartments | Medium density     | M2   | 0.30   | 2×2, two normal parcels, at every level | 2 / 3 / 3.5   | 12 / 18 / 24 | 27 / 41 / 54 |
-| Mid-rise flats       | High density       | M4   | 0.11   | 2×2 / 2×2 / 3×3          | 5 / 8 / 10    | 35 / 56 / 150 | 79 / 127 / 339 |
-| Tower                | High density       | M4   | 0.07   | 2×2 / 2×2 / 3×3          | 12 / 18 / 25  | 84 / 126 / 375 | 190 / 285 / 848 |
-| Shopfront flats      | Mixed              | M3   | 1      | 2×2 / 2×2 / 3×3          | 6 / 8 / 9     | 35 / 49 / 120 | 79 / 111 / 271 |
+| Mid-rise flats       | High density       | M4   | 0.11   | 2×2 / 2×2 / 3×3          | 5 / 8 / 10    | 34 / 47 / 114 | 77 / 106 / 258 |
+| Tower                | High density       | M4   | 0.07   | 2×2 / 2×2 / 3×3          | 12 / 18 / 25  | 81 / 105 / 285 | 183 / 237 / 644 |
+| Shopfront flats      | Mixed              | M3   | 1      | 2×2 / 2×2 / 3×3          | 6 / 8 / 9     | 34 / 40 / 87 | 77 / 90 / 197 |
 
 A tile is 20 m, so a 1×2 lot is 800 m² (0.2 acre), a 2×2 lot 1,600 m²
 (0.4 acre) and a 3×3 lot 3,600 m² (0.9 acre).
@@ -151,15 +151,31 @@ so the first level is a one-storey house and the levels above it two. The
 mid-rise runs 5 to 10 storeys and the tower 12 to 25, both over the code's
 high-rise line of 7 storeys for the tower.
 
-**Homes per block.** A block's floor plate is its body, 13.6 m per lot tile
-(740 m² on a 2×2 lot, 1,665 m² on a 3×3; see
-[../../art/civic-massing.md](../../art/civic-massing.md)). A new apartment
-has a median 93 m² ([Census CNH 2025](https://www.census.gov/construction/chars/highlights.html)),
-and about 15% of a residential floor is corridor, stair and plant, which
-gives 7 homes per floor on a 2×2 plate and 15 on a 3×3. A shopfront block's
-ground floor is its shops, so its homes start on the first floor. The
-missing-middle kinds take their home counts from the type, inside the ranges
-above.
+**Homes per block.** A block holds the floor it is drawn with. Its ground
+plate is its body, 13.6 m per lot tile (740 m² on a 2×2 lot, 1,665 m² on a
+3×3; see [../../art/civic-massing.md](../../art/civic-massing.md)), and a
+storey is 3.2 m, inside the 3.0–3.4 m a residential floor runs. A grown
+block is drawn as one tier for each level, the storeys shared evenly, and
+each tier above the first stands 10–20% narrower on both sides than the one
+below; the homes count each upper tier at the middle of that, 15%, so its
+floor is 72% of the tier beneath. A tower's podium is lobby and amenity and
+holds no homes, and a shopfront block's ground storey is its shops, so its
+homes start on the storey above. A new rental apartment has a median
+1,000 sq ft, 93 m² ([Census CNH 2025](https://www.census.gov/construction/chars/highlights.html)),
+and 80–85% of a residential floor is homes, the rest corridor, core and
+plant; the homes take 85%. So a block's homes are its drawn floor × 0.85 ÷
+93 m², rounded: a level-3 tower's 25 storeys on a 3×3 plate step back to
+31,100 m² and hold 285 homes, not the 375 that counting every storey at the
+ground plate gave. Its top tier is about 870 m², inside the 600–900 m² a
+residential tower's floorplate is held to
+([Vancouver](https://guidelines.vancouver.ca/bulletins/bulletin-residential-tower-floor-plates.pdf),
+[Toronto](https://urbantoronto.ca/news/2022/04/explainer-residential-vs-office-tower-floor-plates)).
+On their lots the blocks come to 86 to 128 homes an acre for the mid-rise
+and 205 to 320 for the tower, against the 90–150 of podium mid-rise and the
+140–200 and up of high-rise ([J. Haddad Partners](https://jhparch.com/density),
+[Clark County](https://websvc2.clark.wa.gov/CommunityPlanning/2025CompPlanUpdate/36702724.pdf)).
+The missing-middle kinds take their home counts from the type, inside the
+ranges above.
 
 **Residents.** A home holds an average household: 2.63 people where the
 occupant owns, 2.26 where they rent
@@ -516,7 +532,7 @@ The building inspector names the kind: "Duplex", "Courtyard Apartments",
   workshop yards and depots.
 - **Demand and growth.** Unchanged in rule for homes and shops. Industry
   levels up on demand and room, never on land value (above). In figures, a
-  detached house holds 3 people where it held 4, and a tower holds up to 848
+  detached house holds 3 people where it held 4, and a tower holds up to 644
   where it held 150, so a town of houses reaches each milestone a little
   later and a city of towers much sooner. The level ladder no longer adds
   people to a house; it adds homes to a block.

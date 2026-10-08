@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,968 tests passing across 162 test files, run 2026-10-07.
+**Test suite:** 4,978 tests passing across 162 test files, run 2026-10-07.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -161,9 +161,10 @@ are built, the detached house on the lot the land warrants, the plat cut
 from the street, the plat drawn on the zone lens, the duplex and the
 fourplex on the plat, medium density assembling two parcels, replatting
 under empty ground, the inspector's lot line, row housing on one normal
-lot, and commercial and dense land cut into frontage lots. Next is
-re-deriving the dense homes figures from floor plate × storeys × efficiency
-÷ unit size, then the 3×3 estate where a block is deep.
+lot, and commercial and dense land cut into frontage lots; and the dense
+homes are re-derived from the floor each block is drawn with. Next is a
+building that starts on fewer lots and grows onto its neighbours, or
+converts to a bigger kind, then the 3×3 estate where a block is deep.
 After it, the municipal
 services programme's epics
 ([municipal-services.md](game-design/features/municipal-services.md)), the
@@ -309,6 +310,23 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### A block holds the floor it is drawn with (built 2026-10-07)
+
+The mid-rise, tower and mixed-use homes counted every storey at the ground
+plate, but a grown block is drawn as a tier for each level, each one 10–20%
+narrower on both sides than the one below. A block's homes are now its drawn
+floor area — upper tiers at the mean 15% setback, no podium, no shop floor —
+× 85% ÷ the 93 m² median new rental apartment (Census CNH 2025), rounded.
+The level-3 tower holds 285 homes where it held 375 (644 people, not 848),
+the level-3 mid-rise 114 where it held 150, and the level-3 mixed-use block
+87 where it held 120; residents, power and water follow by their rules. The
+tower's top tier, about 870 m², is inside the 600–900 m² residential tower
+floorplates are held to (Vancouver, Toronto), and the blocks come to 86–128
+homes an acre for the mid-rise and 205–320 for the tower. A test in
+`src/render/massing.test.ts` derives every block's homes from
+`bodyMetresFor` and the setbacks, so a body or height change that forgets
+the homes fails.
 
 ### Commercial and dense land is cut into frontage lots (built 2026-10-07)
 
