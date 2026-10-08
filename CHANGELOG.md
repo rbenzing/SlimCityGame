@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.45.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.44.0...slimcity-v1.45.0) (2026-10-08)
+
+
+### Features
+
+* **garbage:** the garbage chain runs on one real unit ([062f6ff](https://github.com/rbenzing/SlimCityGame/commit/062f6ff9779f10a0568c93b603dc1fb18833929f))
+* **garbage:** the garbage chain runs on one real unit ([0665486](https://github.com/rbenzing/SlimCityGame/commit/066548692b5764cf9de8c115850c02ae6f0c96c4))
+
 ## [1.44.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.43.0...slimcity-v1.44.0) (2026-10-08)
 
 
