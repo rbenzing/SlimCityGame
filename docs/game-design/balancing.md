@@ -200,6 +200,11 @@ and [../world-sim/services-model.md](../world-sim/services-model.md#garbage-and-
 | `LANDFILL_CAPACITY_PER_TILE` | 6,835,200      | Derived: 400 m² × the 6 m pile × 0.712 t/m³ × 4,000; about 1,700 t.                            | `src/shared/constants.ts` |
 | incinerator `burnRate`       | 90,000 a pass  | 450 t a day, the middle of the 300–600 t a day a 4×4, 20 m mass-burn plant is.                 | `src/data/catalog.json`   |
 | incinerator `bufferCapacity` | 9,000,000      | Five days of burn in the pit; a dial, no published figure found.                               | `src/data/catalog.json`   |
+| `RECYCLING_KG_PER_RESIDENT_DAY` | 0.131       | 264 lb a household a year of kerbside recycling (NC FY2024-25) over a household of 2.5.        | `src/shared/constants.ts` |
+| `RECYCLING_HOMES_PER_TRUCK`  | 9,500          | 950 homes a day for a one-person side-loader, every other week; derived.                       | `src/shared/constants.ts` |
+| `KERBSIDE_MAX_HOMES`         | 4              | City kerbside covers buildings of up to three or four homes; blocks hire private haulers.      | `src/shared/constants.ts` |
+| `RECYCLING_CREDIT_PER_UNIT`  | ¢0.000164      | Derived: a landfill tile's paint cost plus 30 years of upkeep over its capacity.               | `src/shared/constants.ts` |
+| recycling depot              | 2×3, 4 trucks, 38,000 homes | 540 m² of fleet yard a truck (Calgary); cost, upkeep and pollution are dials.      | `src/data/catalog.json`   |
 
 ## Sound walls
 

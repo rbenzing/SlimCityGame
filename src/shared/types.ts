@@ -844,6 +844,7 @@ export const VehicleKind = {
   Police: 4,
   Ambulance: 5,
   Garbage: 6,
+  Recycling: 7,
 } as const;
 export type VehicleKind = (typeof VehicleKind)[keyof typeof VehicleKind];
 
@@ -917,6 +918,8 @@ export interface SimSnapshot {
     landfillFill?: number;
     trash?: ZonePatch[];
     incinerators?: { id: number; fill: number; capacity: number }[];
+    /** Each kerbside recycling depot's homes served on the last pass against its capacity. */
+    depots?: { id: number; servedHomes: number; capacityHomes: number }[];
   };
   /**
    * Power lines — ZonePatch-shaped membership regions (data bytes 0/1,
@@ -1091,12 +1094,15 @@ export interface UtilitySpec {
  * road-BFS tile radius it services; `bufferCapacity` is how much trash it can
  * hold; `burnRate` is trash burned per collection tick (0 = pure store); it
  * emits Pollution ∝ burn. `trucks` is the cosmetic garbage-truck count.
+ * `servesHomes` marks a kerbside recycling depot: the homes it serves in all,
+ * with no buffer and no burn (both 0) — it never disposes of anything.
  */
 export interface GarbageSpec {
   collectionRange: number;
   bufferCapacity: number;
   burnRate: number;
   trucks: number;
+  servesHomes?: number;
 }
 
 // 'transit' is additive — the bus-stop ploppable's category and the Transit

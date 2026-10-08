@@ -98,6 +98,45 @@ living in `src/shared/constants.ts`:
   `landfillStored` multiplied by the new capacity over 600, so the fill
   fraction is unchanged.
 
+### The kerbside recycling depot (built 2026-10-08)
+
+The first rung, replacing the draft's drop-off recycling centre (see the
+design document for why). It diverts at source and forwards nothing, so it
+needs none of the forwarding step below.
+
+- **Data.** `GarbageSpec` gains an optional `servesHomes`: an entry with it is
+  a kerbside depot, never a disposal facility, so the worker routes it apart
+  from the incinerators. Its catalog entry, `recycling-depot`, is 2×3 and 8 m,
+  `collectionRange` 32, `trucks` 4, `servesHomes` 38,000 (4 ×
+  `RECYCLING_HOMES_PER_TRUCK` 9,500), ¢3,200 to build, ¢260 a month, unlocked at
+  Busy Township, pollution 10, and draws about 4 kW and 0.2 kL (a 600 m² shed
+  at the warehouse class's 5.5 kWh a square foot a year, derived from the
+  national building survey's own totals, and an office's water for its staff).
+- **Who is served.** Each pass, depots in building-id order take, along their
+  road-BFS reach, the buildings in id order with residents and no more than
+  `KERBSIDE_MAX_HOMES` (4) homes, until their `servesHomes` is spent; a
+  building already taken by an earlier depot is skipped. No state: it is
+  recomputed every pass.
+- **Generation.** A served building's residents set out
+  `RECYCLING_KG_PER_RESIDENT_DAY` (0.131) of their 1.32 kg in the cart: its
+  pass emits the refuse rate and the recycling rate each by the same
+  cumulative floor as all generation, so a day sums exactly; the refuse goes
+  on the trash tiles, the recycling to the depot's tally. Jobs are never
+  served.
+- **The credit.** `RECYCLING_CREDIT_PER_UNIT` is derived in code from the
+  landfill's own figures — a tile's paint cost plus 30 years of upkeep over its
+  capacity, ¢0.00016 — and the economy books the month's recovered units times
+  it as income at the month boundary, then clears the tally; the tally is
+  saved (`GarbageSaveState.recoveredThisMonth`, optional) so a mid-month save
+  loses nothing.
+- **Trucks.** The depot is a `TruckDepot` like any other; its trucks take a
+  second livery, `VehicleKind.Recycling`, appended at the next free value, and
+  a mirror that does not know it draws the refuse livery.
+- **Snapshot.** `SimSnapshot.garbage` gains an optional
+  `depots: { id, servedHomes, capacityHomes }[]`.
+- **Saves.** Additive: no `SAVE_VERSION` bump; an old save has no depots and no
+  tally.
+
 ### The forwarding step
 
 One rule, in `GarbageSystem.tick` ahead of the existing disposal passes, because
@@ -225,9 +264,11 @@ figure, and the landfill matched none.
   the city behaving as it did, and its landfill fill _fraction_ unchanged — the
   pile is multiplied by the rescale ratio, not reset. **Written first**: it
   protects every existing city.
-- A city with a recycling centre in reach buries 7% less than the same city
-  without one, over the same number of passes; and a building reached by both a
-  centre and a recovery facility is diverted once, at 21% and not at 28%.
+- A street of houses in a depot's reach buries 0.131 kg a resident a day less
+  than the same street without one, exactly over a day; an apartment block, a
+  shop and a works in reach bury the same as before; a depot past its 38,000
+  homes serves no more; a house reached by two depots is served once; and a
+  month's tally books its credit once.
 - A recovery facility with no landfill or incinerator reachable collects until
   its buffer is full, then stops and trash backs up; removing it drops that
   buffer, as `drop(id)` already does.
@@ -244,8 +285,8 @@ default camera pitch:
 1. **The three facilities in a row**, with a 4.0 m car and a 9 m refuse vehicle
    on each apron: every bay door taller than the vehicle using it, and the
    [scale anchors](../../art/README.md) holding.
-2. **The recycling centre at street level**: roll-off containers and a hook-lift
-   shed reading as a drop-off yard, not a small warehouse.
+2. **The kerbside depot at street level**: a maintenance shed and parked
+   side-loaders reading as a fleet yard, not a small warehouse.
 3. **The recovery facility beside the incinerator**: a 4×6 / 11 m hall reading
    lower and longer than a 4×4 / 20 m burner — silhouette is all that tells them
    apart at distance.

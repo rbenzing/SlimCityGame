@@ -265,6 +265,21 @@ export const LANDFILL_COLLECTION_RANGE = 28;
 export const LANDFILL_PAINT_COST_PER_TILE = 40;
 /** ¢/month upkeep per painted landfill tile. */
 export const LANDFILL_UPKEEP_PER_TILE = 3;
+/** Months of post-closure care a landfill owes: 30 years. */
+export const LANDFILL_AFTERCARE_MONTHS = 360;
+/** A served resident's recyclables a day (kg): 264 lb a household a year over 2.5 people. */
+export const RECYCLING_KG_PER_RESIDENT_DAY = 0.131;
+/** Homes one recycling truck covers, collecting every other week. */
+export const RECYCLING_HOMES_PER_TRUCK = 9500;
+/** The most homes a building may hold and still get the kerbside round. */
+export const KERBSIDE_MAX_HOMES = 4;
+/**
+ * ¢ a recovered unit earns: the landfill space it does not take, priced as a
+ * tile's paint plus its aftercare over the units the tile holds.
+ */
+export const RECYCLING_CREDIT_PER_UNIT =
+  (LANDFILL_PAINT_COST_PER_TILE + LANDFILL_AFTERCARE_MONTHS * LANDFILL_UPKEEP_PER_TILE) /
+  LANDFILL_CAPACITY_PER_TILE;
 
 /**
  * ¢ to string one tile of power line. Deliberately CHEAPER than the cheapest
