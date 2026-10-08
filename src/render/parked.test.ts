@@ -55,9 +55,11 @@ import { sizeForKind, variantScaleForKind } from './vehicles';
 import { buildTileSet, hasCrossingRoad, type FurnitureRoadTile } from './roadfurniture';
 import { RoadFlow, storedFlow } from '../shared/types';
 import {
+  carriagewayHalfWidthOf,
   composeProfile,
   corridorHalfProfile,
   NO_EDITS,
+  PARKING_STYLES,
   presetProfileForTier,
 } from '../shared/roadprofile';
 
@@ -1734,6 +1736,110 @@ describe('no kerbside car stands inside a junction’s no-parking zone', () => {
     // The other kerb has no zone at that end.
     expect(kerbCarClearOfJunctions(7 * TILE_METERS - 3, kerbZ, 'low', 2, setbacks)).toBe(true);
   });
+});
+
+describe('kerbside cars in angled and head-in stalls', () => {
+  // A street along z = 4 parked on its south kerb, with flats fronting it.
+  const tiles: [number, number][] = Array.from({ length: 12 }, (_, x): [number, number] => [x, 4]);
+  const roadAt = roadAtTiles(tiles);
+  const flats = makeCatalogEntry({
+    category: 'res',
+    zone: ZoneType.ResMedium,
+    kind: 'garden',
+    footprint: { w: 2, d: 2 },
+  });
+  const TAN60 = Math.tan(Math.PI / 3);
+
+  for (const style of ['angled', 'headIn'] as const) {
+    it(`stands each car centred in a ${style} stall, at its yaw, and across no line`, () => {
+      const profile = composeProfile(presetProfileForTier(RoadTier.TwoLane), {
+        ...NO_EDITS,
+        parking: 'right',
+        parkingStyle: style,
+      });
+      const roads = new RoadMeshRenderer(new THREE.Scene(), flatHeightAt, (id) =>
+        id === 100 ? profile : null,
+      );
+      roads.apply(
+        tiles.map(([x, z]) => ({
+          x,
+          z,
+          tier: RoadTier.TwoLane,
+          mask: (roadAt(x + 1, z) ? 2 : 0) | (roadAt(x - 1, z) ? 8 : 0),
+          elevation: 0,
+          profile: 100,
+          flow: RoadFlow.None,
+        })),
+      );
+      // The south kerb's lane, travel edge to kerb, as world z.
+      const half = carriagewayHalfWidthOf(profile);
+      const inner = 4.5 * TILE_METERS + half - PARKING_STYLES[style].laneWidth;
+      const outer = 4.5 * TILE_METERS + half;
+      // Eastbound traffic keeps to this kerb; an angled line's kerb end lies west.
+      const slant = style === 'angled' ? -1 / TAN60 : 0;
+      let accessibleTaken = 0;
+      // The face's accessible stalls stand at its west end, before the flats at 0.
+      for (const x of [0, 3, 6]) {
+        const renderer = new ParkedCarRenderer(
+          new THREE.Scene(),
+          flatHeightAt,
+          [flats],
+          roadAt,
+          () => RoadTier.TwoLane,
+          (_x, z) => (z === 4 ? profile : null),
+          undefined,
+          roads,
+        );
+        renderer.apply(deltaAdd(makeBuilding({ id: 1, x, z: 5, level: 2 })));
+        const stalls = [x, x + 1].flatMap((tx) => roads.parkingStallsAt(tx, 4, 'high') ?? []);
+        const cars = renderer.stallWorldPositions(1);
+        expect(cars.length, `frontage at ${x}`).toBeGreaterThan(0);
+        const used = new Set<number>();
+        for (const car of cars) {
+          const at = stalls.findIndex((s) => Math.abs(s.centre - car.x) < 1e-6);
+          expect(at, `a car at x ${car.x} stands in no stall`).toBeGreaterThanOrEqual(0);
+          expect(used.has(at), 'two cars in one stall').toBe(false);
+          used.add(at);
+          const stall = stalls[at]!;
+          if (stall.accessible) accessibleTaken += 1;
+          // Centred across the lane's own depth, not the parallel row's.
+          expect(car.z).toBeCloseTo((inner + outer) / 2, 6);
+          // At the stall's yaw, give or take the row's small jitter.
+          const turn = Math.atan2(Math.sin(car.yaw - stall.yaw!), Math.cos(car.yaw - stall.yaw!));
+          expect(Math.abs(turn)).toBeLessThanOrEqual(YAW_JITTER_MAX + 1e-9);
+          // Every corner between the stall's two lines and inside the lane.
+          const nose: [number, number] = [Math.sin(car.yaw), Math.cos(car.yaw)];
+          const side: [number, number] = [nose[1], -nose[0]];
+          for (const [l, w] of [
+            [1, 1],
+            [1, -1],
+            [-1, 1],
+            [-1, -1],
+          ] as const) {
+            const cx = car.x + (l * car.length * nose[0]) / 2 + (w * car.width * side[0]) / 2;
+            const cz = car.z + (l * car.length * nose[1]) / 2 + (w * car.width * side[1]) / 2;
+            const depth = cz - inner;
+            expect(depth).toBeGreaterThan(0);
+            expect(depth).toBeLessThan(outer - inner);
+            expect(cx).toBeGreaterThan(stall.from + slant * depth);
+            expect(cx).toBeLessThan(stall.to + slant * depth);
+          }
+        }
+        // Backed in, an angled car's nose points out at the lane and east,
+        // with the traffic; a head-in car's nose faces the kerb.
+        for (const car of cars) {
+          if (style === 'angled') {
+            expect(Math.sin(car.yaw)).toBeGreaterThan(0.4);
+            expect(Math.cos(car.yaw)).toBeLessThan(-0.8);
+          } else {
+            expect(Math.cos(car.yaw)).toBeGreaterThan(0.99);
+          }
+        }
+      }
+      // An accessible stall takes a car like any other.
+      expect(accessibleTaken).toBeGreaterThan(0);
+    });
+  }
 });
 
 describe('a building turned a quarter parks on the lot it stands on', () => {

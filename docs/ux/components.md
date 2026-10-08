@@ -74,7 +74,7 @@ Two distinct things share the name "chip" here, and neither is a card:
   when off (`CHIP_OFF`), dimmed to 30% and unclickable when disabled
   (`CHIP_DISABLED`), used for every segmented choice in the road tool's
   option panels (`Path`, lane count, `Middle`, `Snap`, `Replace`,
-  parking/bike/bus side, tramway) and for the sub-tab row in the asset
+  parking/bike/bus side, parking style, tramway) and for the sub-tab row in the asset
   drawer's own header treatment. `CHIP_STEP` is the same shape for a step
   +/− control (posted speed, road elevation) rather than an on/off toggle.
   Reach for these for any small inline choice that lives inside another

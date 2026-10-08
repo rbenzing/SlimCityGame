@@ -69,7 +69,12 @@ Static parked cars are an occupancy signal, not decoration:
   [the farms spec](../engineering/features/farms.md).
 - **Orientation**: a stall is parallel street parking — the car's long axis
   runs along the road, not perpendicular to it — the standard read for a car
-  actually parked at a kerb or in a row.
+  actually parked at a kerb or in a row. Where the street paints an angled or
+  head-in parking lane, a kerbside car stands at its stall's angle instead,
+  centred in the stall across the lane's own depth: in an angled (60°) stall
+  it has backed in, so its nose points out toward the travel lane and along
+  the traffic; in a head-in (90°) stall its nose faces the kerb. Accessible
+  stalls take cars by the same occupancy rule as any other stall.
 - **A car stands on its own lot, or at the kerb, never both.** Where a
   building's own frontage doesn't serve its parking (no bay row, no garage),
   its cars park at the kerb instead: past the verge and the sidewalk,

@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 5,121 tests passing across 167 test files, run 2026-10-08.
+**Test suite:** 5,156 tests passing across 169 test files, run 2026-10-08.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -287,6 +287,40 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Parking styles and accessible spaces (asked for and built 2026-10-08)
+
+The player asked for parking beyond parallel, and for accessible parking, and
+chose a style choice in the road tool. Beside Parking side there is now a
+Style row: Parallel, Angled 60° (back-in) or Head-in 90°. The style is a
+field on the profile's parking piece, so saves keep it, and an old save
+reads as parallel without a version bump.
+
+- **Stalls** are 8.5 × 18 ft (2.6 × 5.5 m). An angled lane is 6.0 m deep
+  with a stall every 3.0 m of kerb. Its stalls slant with the kerb end
+  upstream, so a car backs in and leaves nose-first with the traffic beside
+  it, read from the road's stored flow (MUTCD R7-10, 9B.10). A head-in lane
+  is 5.5 m deep with a stall every 2.6 m. The deeper lane counts against the
+  tile's width, so a Two-Lane with footways takes angled or head-in parking
+  on one side only (17.3 m), and the tool refuses both sides with its
+  reason.
+- **No-parking zones** still apply: a stall is marked only where its whole
+  footprint is clear of them.
+- **Accessible spaces** are counted per block face to PROWAG R211: 1 for up
+  to 25 stalls, 2 for up to 50, and so on, then 4% beyond 200. They stand at
+  the end nearest the crosswalk. A parallel one is 7.3 m long (R310.2.1); an
+  angled one is 3.35 m wide with a 1.5 m aisle (R310.4); a head-in one has a
+  2.4 m aisle (R310.3). The aisle is hatched white on the passenger side.
+  Each carries the International Symbol of Accessibility on a blue square,
+  drawn as geometry (3B.22).
+- **One layout for paint and cars.** The paint and the parked cars read the
+  same stall layout, and cars stand centred in their stalls at the stall's
+  angle.
+
+A block face too short for an accessible space marks none. Angled and
+head-in stalls are not marked where a turn pocket narrows the lane. Editing
+a road now redraws the whole block face it belongs to, since the accessible
+count depends on it.
 
 ### Streets keep their width to the junction, marked to the manual (asked for and built 2026-10-08)
 

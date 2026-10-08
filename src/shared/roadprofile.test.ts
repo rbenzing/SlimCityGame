@@ -76,6 +76,7 @@ import {
   withTurnPocket,
   roadPriceOf,
   transitLanesOf,
+  parkingStyleOn,
   type ProfileEdits,
 } from './roadprofile';
 import type { LanePiece, RoadClassId, RoadProfile, RoadSpec } from './types';
@@ -434,6 +435,7 @@ describe('composing a profile from a preset and the player’s edits', () => {
   it('reads a preset back the way edits are written', () => {
     expect(editsOf(presetProfileForTier(RoadTier.BikeLane))).toEqual({
       parking: 'none',
+      parkingStyle: 'parallel',
       bike: 'both',
       footways: true,
       lanes: 1,
@@ -449,6 +451,7 @@ describe('composing a profile from a preset and the player’s edits', () => {
     // opposing half for `lanesBack` to be different from.
     expect(editsOf(presetProfileForTier(RoadTier.Highway))).toEqual({
       parking: 'none',
+      parkingStyle: 'parallel',
       bike: 'none',
       footways: false,
       lanes: 3,
@@ -2091,5 +2094,81 @@ describe('rankedTogether', () => {
     expect(rankedTogether('rail', 'rail')).toBe(true);
     expect(rankedTogether('rail', 'local')).toBe(false);
     expect(rankedTogether('dirt', 'rail')).toBe(false);
+  });
+});
+
+describe('parking styles — a field on the parking piece the width budget reads', () => {
+  const twoLane = (): RoadProfile => presetProfile(RoadTier.TwoLane);
+  const parked = (edits: Partial<ProfileEdits>): RoadProfile =>
+    composeProfile(twoLane(), { ...NO_EDITS, ...edits });
+  const parkingWidths = (p: RoadProfile): number[] =>
+    p.pieces.filter((q) => q.kind === 'parking').map((q) => q.width);
+
+  it('lays a parallel lane as it always has, an angled one 6.0 m deep and a head-in one 5.5 m', () => {
+    expect(parkingWidths(parked({ parking: 'both' }))).toEqual([2.25, 2.25]);
+    expect(parkingWidths(parked({ parking: 'both', parkingStyle: 'parallel' }))).toEqual([
+      2.25, 2.25,
+    ]);
+    expect(parkingWidths(parked({ parking: 'right', parkingStyle: 'angled' }))).toEqual([6]);
+    expect(parkingWidths(parked({ parking: 'left', parkingStyle: 'headIn' }))).toEqual([5.5]);
+    // Both kerbs take the same style.
+    const both = parked({ parking: 'both', parkingStyle: 'headIn' });
+    expect(parkingStyleOn(both, 'low')).toBe('headIn');
+    expect(parkingStyleOn(both, 'high')).toBe('headIn');
+  });
+
+  it('writes no style on a parallel piece, so a parallel road is the road it always was', () => {
+    const p = parked({ parking: 'both', parkingStyle: 'parallel' });
+    expect(p.pieces.some((q) => 'parking' in q)).toBe(false);
+    expect(profilesEqual(composeProfile(p, { ...NO_EDITS, parkingStyle: 'parallel' }), p)).toBe(
+      true,
+    );
+  });
+
+  it('reads the style back the way edits are written, and goes back to parallel at the base’s width', () => {
+    const angled = parked({ parking: 'right', parkingStyle: 'angled' });
+    expect(editsOf(angled)).toMatchObject({ parking: 'right', parkingStyle: 'angled' });
+    const back = composeProfile(angled, { ...NO_EDITS, parkingStyle: 'parallel' });
+    expect(parkingWidths(back)).toEqual([2.25]);
+    expect(parkingStyleOn(back, 'high')).toBe('parallel');
+  });
+
+  it('tells two profiles that differ only in style apart', () => {
+    const angled = parked({ parking: 'right', parkingStyle: 'angled' });
+    const relabelled: RoadProfile = {
+      ...angled,
+      pieces: angled.pieces.map((q) => (q.kind === 'parking' ? { ...q, parking: 'headIn' } : q)),
+    };
+    expect(profilesEqual(angled, relabelled)).toBe(false);
+    expect(profilesEqual(angled, { ...angled, pieces: angled.pieces.map((q) => ({ ...q })) })).toBe(
+      true,
+    );
+  });
+
+  it('refuses angled or head-in on both kerbs of a Two-Lane with footways, and lays either on one', () => {
+    // 11.25 m of street: angled both sides is 23.25 m, head-in 22.25 m, and
+    // one side of either 17.25 m or 16.75 m, against a 20 m tile.
+    expect(profileWidth(twoLane())).toBeCloseTo(11.25, 9);
+    for (const [style, deep] of [
+      ['angled', 6],
+      ['headIn', 5.5],
+    ] as const) {
+      const both = parked({ parking: 'both', parkingStyle: style });
+      expect(profileWidth(both)).toBeCloseTo(11.25 + 2 * deep, 9);
+      expect(layRefusal(both)).toBe('Too wide for the tile');
+      const one = parked({ parking: 'right', parkingStyle: style });
+      expect(profileWidth(one)).toBeCloseTo(11.25 + deep, 9);
+      expect(layRefusal(one)).toBeNull();
+    }
+    expect(layRefusal(parked({ parking: 'both', parkingStyle: 'parallel' }))).toBeNull();
+  });
+
+  it('drops the style with the parking on a class that parks nowhere', () => {
+    const motorway = composeProfile(presetProfile(RoadTier.Highway), {
+      ...NO_EDITS,
+      parking: 'both',
+      parkingStyle: 'angled',
+    });
+    expect(motorway.pieces.some((q) => q.kind === 'parking')).toBe(false);
   });
 });

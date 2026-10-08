@@ -430,6 +430,55 @@ describe('RoadToolOptions — what one choice allows of another', () => {
     expect(useCityStore.getState().roadProfileEdits.bus).toBe('right');
   });
 
+  it('asks the parking style only while a kerb parks, and lays the one picked', () => {
+    useCityStore.getState().setTool('road.two');
+    render(<RoadToolOptions />);
+    expect(screen.queryByRole('group', { name: 'Parking style' })).toBeNull();
+    const parking = screen.getByRole('group', { name: 'Parking lanes' });
+    fireEvent.click(within(parking).getByRole('button', { name: 'Right' }));
+    const style = screen.getByRole('group', { name: 'Parking style' });
+    expect(within(style).getByRole('button', { name: 'Parallel' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.click(within(style).getByRole('button', { name: 'Angled 60°' }));
+    expect(useCityStore.getState().roadProfileEdits.parkingStyle).toBe('angled');
+    // The deeper lane is the road the next drag lays.
+    const composed = composeProfile(
+      presetProfileForTier(RoadTier.TwoLane),
+      useCityStore.getState().roadProfileEdits,
+    );
+    expect(composed.pieces.find((p) => p.kind === 'parking')).toMatchObject({
+      width: 6,
+      parking: 'angled',
+    });
+    expect(screen.getByLabelText('Profile width')).toHaveTextContent('17.3 / 20 m');
+    fireEvent.click(within(parking).getByRole('button', { name: 'None' }));
+    expect(screen.queryByRole('group', { name: 'Parking style' })).toBeNull();
+  });
+
+  it('refuses a parking style the tile cannot hold on both kerbs, and says why', () => {
+    useCityStore.getState().setTool('road.two');
+    render(<RoadToolOptions />);
+    const parking = screen.getByRole('group', { name: 'Parking lanes' });
+    fireEvent.click(within(parking).getByRole('button', { name: 'Both' }));
+    const style = screen.getByRole('group', { name: 'Parking style' });
+    for (const name of ['Angled 60°', 'Head-in 90°']) {
+      const chip = within(style).getByRole('button', { name });
+      expect(chip).toBeDisabled();
+      expect(chip).toHaveAttribute('title', 'Too wide for the tile');
+      fireEvent.click(chip);
+      expect(useCityStore.getState().roadProfileEdits.parkingStyle).toBeNull();
+    }
+    // One kerb holds it, and the other kerb is then the refused choice.
+    fireEvent.click(within(parking).getByRole('button', { name: 'Right' }));
+    fireEvent.click(within(style).getByRole('button', { name: 'Head-in 90°' }));
+    expect(useCityStore.getState().roadProfileEdits.parkingStyle).toBe('headIn');
+    const both = within(parking).getByRole('button', { name: 'Both' });
+    expect(both).toBeDisabled();
+    expect(both).toHaveAttribute('title', 'Too wide for the tile');
+  });
+
   it('never disables the choice already made', () => {
     useCityStore.getState().setTool('road.two');
     render(<RoadToolOptions />);

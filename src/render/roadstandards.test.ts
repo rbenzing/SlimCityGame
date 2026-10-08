@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
+  ACCESSIBLE_PAINT_COLOR,
   BIKE_LANE_PAINT_COLOR,
   carriagewayHalfWidthMeters,
   isLaneGlyphTile,
@@ -39,6 +40,7 @@ const key = (c: readonly [number, number, number]): string => c.map((q) => q.toF
 const WHITE = key(MARKING_COLOR);
 const GREEN = key(BIKE_LANE_PAINT_COLOR);
 const KERB = key(SIDEWALK_COLOR);
+const BLUE = key(ACCESSIBLE_PAINT_COLOR);
 
 /** The street in the report: two-way, no footways, a bike lane left and parking right. */
 const CUSTOM = composeProfile(presetProfileForTier(RoadTier.TwoLane), {
@@ -136,22 +138,28 @@ function carriagewayReach(row: readonly Sample[], centre: number): { lo: number;
 /**
  * The middle of each short run of white along a row: one per stall tick. A
  * longer run is something else crossing the row, a lane-use arrow in the
- * turn bay beside the parking lane, say.
+ * turn bay beside the parking lane, say; a run on blue is part of an
+ * accessible stall's symbol.
  */
 function tickRuns(row: readonly Sample[]): number[] {
   const at: number[] = [];
   let run: number[] = [];
-  const close = (): void => {
-    if (run.length && run[run.length - 1]! - run[0]! < 0.4) {
+  let before: string | null = null;
+  const close = (after: string | null): void => {
+    const onSymbol = before === BLUE || after === BLUE;
+    if (run.length && run[run.length - 1]! - run[0]! < 0.4 && !onSymbol) {
       at.push((run[0]! + run[run.length - 1]!) / 2);
     }
     run = [];
   };
   for (const s of row) {
     if (s.colour === WHITE) run.push(s.at);
-    else close();
+    else {
+      close(s.colour);
+      before = s.colour;
+    }
   }
-  close();
+  close(null);
   return at;
 }
 

@@ -14,6 +14,7 @@ import type {
   LanePiece,
   LanePieceKind,
   CorridorHalf,
+  ParkingStyle,
   RoadClassId,
   RoadClassSpec,
   RoadProfile,
@@ -658,15 +659,29 @@ export function parkingSides(profile: RoadProfile): { low: boolean; high: boolea
  * bike lane.
  */
 export function parkingLaneOffset(profile: RoadProfile, side: 'low' | 'high'): number | null {
+  return kerbParkingLane(profile, side)?.fromEdge ?? null;
+}
+
+/** The style of one side's parking lane, the one nearest the kerb, or null when that side has none. */
+export function parkingStyleOn(profile: RoadProfile, side: 'low' | 'high'): ParkingStyle | null {
+  const lane = kerbParkingLane(profile, side);
+  return lane ? parkingStyleOf(lane.piece) : null;
+}
+
+/** One side's parking piece nearest the kerb, and how far in from the carriageway's edge its centre is. */
+function kerbParkingLane(
+  profile: RoadProfile,
+  side: 'low' | 'high',
+): { piece: LanePiece; fromEdge: number } | null {
   const half = carriagewayHalfWidthOf(profile);
   const centres = pieceCentres(profile);
-  let best: number | null = null;
+  let best: { piece: LanePiece; fromEdge: number } | null = null;
   profile.pieces.forEach((p, i) => {
     const at = centres[i];
     if (p.kind !== 'parking' || at === null || at === undefined) return;
     if (side === 'low' ? at >= 0 : at < 0) return;
     const fromEdge = side === 'low' ? at + half : half - at;
-    if (best === null || fromEdge < best) best = fromEdge;
+    if (best === null || fromEdge < best.fromEdge) best = { piece: p, fromEdge };
   });
   return best;
 }
@@ -1037,10 +1052,13 @@ export interface ProfileEdits {
   soundWall: SideChoice | null;
   /** The sound wall's height, metres. null = as the preset has, or the default. */
   soundWallHeight: number | null;
+  /** How both kerbs' parking lanes park their cars. null = as the preset has. */
+  parkingStyle: ParkingStyle | null;
 }
 
 export const NO_EDITS: ProfileEdits = {
   parking: null,
+  parkingStyle: null,
   bike: null,
   footways: null,
   lanes: null,
@@ -1137,11 +1155,37 @@ export function laneOptionsFor(classId: RoadClassId): readonly number[] {
   return fits.length > 0 ? fits : inRange.slice(0, 1);
 }
 
+/** The common US parking stall, 8.5 × 18 ft: its width and its length, metres. */
+export const PARKING_STALL_WIDTH_M = 2.6;
+export const PARKING_STALL_DEPTH_M = 5.5;
+
+/**
+ * Each parking style's geometry: the stall's angle to the kerb, how deep the
+ * lane is from its travel edge to the kerb, and how much kerb one stall takes.
+ * A parallel lane is the parking piece's own 2.25 m, and its stall is 22 ft
+ * (6.7 m) along the kerb, the 2009 MUTCD's Figure 3B-21. The others lay the
+ * 2.6 × 5.5 m stall at their angle: at 60° the lane is 5.5·sin 60° +
+ * 2.6·cos 60° ≈ 6.0 m deep and a stall takes 2.6 ÷ sin 60° ≈ 3.0 m of kerb; at
+ * 90° the lane is the stall's 5.5 m and a stall takes its 2.6 m.
+ */
+export const PARKING_STYLES: Readonly<
+  Record<ParkingStyle, { angleDeg: number; laneWidth: number; pitch: number }>
+> = {
+  parallel: { angleDeg: 0, laneWidth: 2.25, pitch: 6.7 },
+  angled: { angleDeg: 60, laneWidth: 6.0, pitch: 3.0 },
+  headIn: { angleDeg: 90, laneWidth: PARKING_STALL_DEPTH_M, pitch: PARKING_STALL_WIDTH_M },
+};
+
+/** The style a parking piece parks in; a piece that names none is parallel. */
+export function parkingStyleOf(piece: LanePiece): ParkingStyle {
+  return piece.parking ?? 'parallel';
+}
+
 /** Real-world default widths, metres, for a piece a player adds. */
 export const DEFAULT_PIECE_WIDTHS: Readonly<Record<LanePieceKind, number>> = {
   travel: 3.5,
   centreTurn: 3.6,
-  parking: 2.25,
+  parking: PARKING_STYLES.parallel.laneWidth,
   bike: 1.6,
   bus: 3.5,
   tram: 3.5,
@@ -1173,6 +1217,7 @@ function hasSide(choice: SideChoice, side: 'left' | 'right'): boolean {
 /** Edits with every field decided — what a profile actually holds. */
 export interface ResolvedEdits {
   parking: SideChoice;
+  parkingStyle: ParkingStyle;
   bike: SideChoice;
   footways: boolean;
   lanes: number;
@@ -1240,8 +1285,10 @@ export function editsOf(profile: RoadProfile): ResolvedEdits {
   const core = first >= 0 ? profile.pieces.slice(first, last + 1) : [];
   const busOn = (which: 'left' | 'right'): boolean =>
     (which === 'left' ? core[0] : core[core.length - 1])?.kind === 'bus';
+  const parkingPiece = profile.pieces.find((p) => p.kind === 'parking');
   return {
     parking: choice('parking'),
+    parkingStyle: parkingPiece ? parkingStyleOf(parkingPiece) : 'parallel',
     bike: choice('bike'),
     bus:
       busOn('left') && busOn('right')
@@ -1394,6 +1441,7 @@ export function composeProfile(base: RoadProfile, edits: ProfileEdits): RoadProf
   const forKind = <T extends string>(kind: LanePieceKind, choice: T, none: T): T =>
     admits.has(kind) ? choice : none;
   const parking = forKind('parking', edits.parking ?? current.parking, 'none');
+  const parkingStyle = edits.parkingStyle ?? current.parkingStyle;
   const bike = forKind('bike', edits.bike ?? current.bike, 'none');
   const footways = edits.footways ?? current.footways;
   const lanes = edits.lanes ?? current.lanes;
@@ -1414,6 +1462,17 @@ export function composeProfile(base: RoadProfile, edits: ProfileEdits): RoadProf
   // no changes gives the preset back; a piece the player adds gets the default.
   const widthOf = (kind: LanePieceKind): number =>
     base.pieces.find((p) => p.kind === kind)?.width ?? DEFAULT_PIECE_WIDTHS[kind];
+  // A parallel lane keeps the base's own parallel width; an angled or head-in
+  // one is as deep as its stall at its angle, whatever the base had.
+  const parkingLane = (): LanePiece =>
+    parkingStyle === 'parallel'
+      ? {
+          kind: 'parking',
+          width:
+            base.pieces.find((p) => p.kind === 'parking' && parkingStyleOf(p) === 'parallel')
+              ?.width ?? DEFAULT_PIECE_WIDTHS.parking,
+        }
+      : { kind: 'parking', width: PARKING_STYLES[parkingStyle].laneWidth, parking: parkingStyle };
 
   // Mixed running is a FLAG on the lanes the road already has — the rails go
   // in the lane and nothing moves — so it is applied to the core rather than
@@ -1459,7 +1518,7 @@ export function composeProfile(base: RoadProfile, edits: ProfileEdits): RoadProf
     }
     if (footways) out.push({ kind: 'sidewalk', width: widthOf('sidewalk') });
     if (hasSide(bike, side)) out.push({ kind: 'bike', width: widthOf('bike'), flow });
-    if (hasSide(parking, side)) out.push({ kind: 'parking', width: widthOf('parking') });
+    if (hasSide(parking, side)) out.push(parkingLane());
     return out;
   };
 
@@ -1495,7 +1554,8 @@ export function profilesEqual(a: RoadProfile, b: RoadProfile): boolean {
       Math.abs(p.width - q.width) < 1e-9 &&
       (p.flow ?? null) === (q.flow ?? null) &&
       (p.tram ?? false) === (q.tram ?? false) &&
-      (p.height ?? null) === (q.height ?? null)
+      (p.height ?? null) === (q.height ?? null) &&
+      parkingStyleOf(p) === parkingStyleOf(q)
     );
   });
 }
