@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.47.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.47.0...slimcity-v1.47.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* **roads:** streets keep their width to the junction, marked to the m… ([054e7ce](https://github.com/rbenzing/SlimCityGame/commit/054e7cec90fe279507921ebc2206a4cd7934d1bd))
+* **roads:** streets keep their width to the junction, marked to the manual ([b6a7a42](https://github.com/rbenzing/SlimCityGame/commit/b6a7a4225b58b698e4563f25de7124538417c79a))
+
 ## [1.47.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.46.0...slimcity-v1.47.0) (2026-10-08)
 
 
