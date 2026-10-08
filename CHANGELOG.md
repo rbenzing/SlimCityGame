@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.44.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.43.0...slimcity-v1.44.0) (2026-10-08)
+
+
+### Features
+
+* **lots:** the best land is cut into acre lots where the frontage ha… ([27013c0](https://github.com/rbenzing/SlimCityGame/commit/27013c0e16f7e80200e366f665bed0721560ae1e))
+* **lots:** the best land is cut into acre lots where the frontage has room ([4386973](https://github.com/rbenzing/SlimCityGame/commit/43869733bec7c13ee88a3e512ee5156fd164aa51))
+
 ## [1.43.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.42.0...slimcity-v1.43.0) (2026-10-08)
 
 
