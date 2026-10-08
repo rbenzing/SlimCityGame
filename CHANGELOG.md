@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.48.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.47.1...slimcity-v1.48.0) (2026-10-08)
+
+
+### Features
+
+* **roads:** parking styles and accessible spaces ([87d2461](https://github.com/rbenzing/SlimCityGame/commit/87d2461564aa67b8be55bd42318321f2b58962c7))
+* **roads:** parking styles and accessible spaces ([10f24c7](https://github.com/rbenzing/SlimCityGame/commit/10f24c763f7a0f84207b428b2b2a37e7fc260705))
+
 ## [1.47.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.47.0...slimcity-v1.47.1) (2026-10-08)
 
 
