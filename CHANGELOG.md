@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.41.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.40.0...slimcity-v1.41.0) (2026-10-08)
+
+
+### Features
+
+* **lots:** a dense block holds the floor it is drawn with ([0bcf59a](https://github.com/rbenzing/SlimCityGame/commit/0bcf59a2891239634e7fd208c3b8fa8400e43aef))
+* **lots:** a dense block holds the floor it is drawn with ([192c59a](https://github.com/rbenzing/SlimCityGame/commit/192c59a04b7f5a5a825b172a0298a607c3f88040))
+
 ## [1.40.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.39.0...slimcity-v1.40.0) (2026-10-08)
 
 
