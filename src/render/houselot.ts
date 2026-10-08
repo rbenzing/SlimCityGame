@@ -113,7 +113,8 @@ export type DriveSurface = 'dirt' | 'concrete';
  * attached `garage` or a `detachedGarage`; a front drive is a `pad`, with or
  * without an `integralGarage` door in the facade behind it.
  */
-export type DriveCover = 'spot' | 'carport' | 'garage' | 'detachedGarage' | 'pad' | 'integralGarage';
+export type DriveCover =
+  'spot' | 'carport' | 'garage' | 'detachedGarage' | 'pad' | 'integralGarage';
 
 export interface HomeDrive {
   /** The drive on the ground, from the lot's edge (out across the verge) to where it ends. */
@@ -157,7 +158,7 @@ export interface HouseGroundPlan {
   edgeLenM: number;
   lotDepthM: number;
   body: LotRect;
-  /** How many homes the lot holds: one, or one per frontage tile for a row along its street. */
+  /** How many homes the lot holds: one, or three per frontage tile for a row along its street. */
   homes: number;
   /** Where each home's front door stands on the front wall. */
   doors: LotPoint[];
@@ -180,7 +181,13 @@ export function lotToWorld(frame: EdgeFrame, u: number, v: number): { x: number;
 /** The frame yaw that points a vehicle's nose (+Z) into the lot, away from the street. */
 export function inwardYaw(frame: EdgeFrame): number {
   // Inward is -outward: along world Z for a frame running along X, else X.
-  return frame.alongX ? (frame.outwardSign === -1 ? 0 : Math.PI) : frame.outwardSign === 1 ? -Math.PI / 2 : Math.PI / 2;
+  return frame.alongX
+    ? frame.outwardSign === -1
+      ? 0
+      : Math.PI
+    : frame.outwardSign === 1
+      ? -Math.PI / 2
+      : Math.PI / 2;
 }
 
 function worldToLot(frame: EdgeFrame, x: number, z: number): LotPoint {
@@ -213,7 +220,14 @@ function bodyRect(
 }
 
 /** The road tile across the frontage from the lot tile at along-index `i`. */
-function roadTileAcross(edge: RoadFacingEdge, x: number, z: number, w: number, d: number, i: number) {
+function roadTileAcross(
+  edge: RoadFacingEdge,
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+  i: number,
+) {
   switch (edge.side) {
     case 'N':
       return { x: x + i, z: z - 1 };
@@ -261,7 +275,11 @@ function streetsAcross(
  * straight street. Its verge and sidewalk are the deepest of the tiles it
  * crosses, so it reaches the carriageway everywhere along its width.
  */
-function driveReach(streets: Streets, u0: number, u1: number): { vergeM: number; sidewalkM: number } | null {
+function driveReach(
+  streets: Streets,
+  u0: number,
+  u1: number,
+): { vergeM: number; sidewalkM: number } | null {
   const first = Math.floor(u0 / TILE_METERS);
   const last = Math.floor((u1 - 1e-6) / TILE_METERS);
   let vergeM = 0;
@@ -433,13 +451,14 @@ function frontPad(
 
 /**
  * How many homes share the body across its frontage, each with its own door
- * and drive: two per tile of a townhouse row, two in a duplex or a fourplex,
- * one in a detached house. Only a body too narrow to hold a pad and a door
- * per home falls back to the one-home layout with a side drive.
+ * and drive: three in a townhouse row, two in a duplex or a fourplex, one in
+ * a detached house, whichever edge meets the street. Only a body too narrow
+ * to hold a pad and a door per home falls back to the one-home layout with a
+ * side drive.
  */
 function homesAlongFrontage(entry: BuildingCatalogEntry, edge: RoadFacingEdge | null): number {
   if (!edge) return 1;
-  return homesAcrossFrontage(entry.kind, edge.edgeTiles);
+  return homesAcrossFrontage(entry.kind);
 }
 
 /** Where a home's front pad starts and its door stands, in from its share of the frontage. */
@@ -506,7 +525,11 @@ function fenceAround(runs: readonly FenceRun[], keepClear: readonly LotRect[]): 
       const crossLo = (alongU ? r.v0 : r.u0) - FENCE_GAP_M;
       const crossHi = (alongU ? r.v1 : r.u1) + FENCE_GAP_M;
       if (line <= crossLo || line >= crossHi) continue;
-      gaps.push(alongU ? [r.u0 - FENCE_GAP_M, r.u1 + FENCE_GAP_M] : [r.v0 - FENCE_GAP_M, r.v1 + FENCE_GAP_M]);
+      gaps.push(
+        alongU
+          ? [r.u0 - FENCE_GAP_M, r.u1 + FENCE_GAP_M]
+          : [r.v0 - FENCE_GAP_M, r.v1 + FENCE_GAP_M],
+      );
     }
     let from = lo;
     for (const [g0, g1] of gaps.sort((a, b) => a[0] - b[0])) {
@@ -560,7 +583,12 @@ function detachedYard(
   const patioW = Math.min(PATIO_MAX_WIDTH_M, bodyW - 1);
   const patio =
     roll(id, SLOT_PATIO) < 0.7 && patioW > 1 && body.v1 + PATIO_DEPTH_M < lotDepthM - 1
-      ? { u0: bodyUc - patioW / 2, u1: bodyUc + patioW / 2, v0: body.v1, v1: body.v1 + PATIO_DEPTH_M }
+      ? {
+          u0: bodyUc - patioW / 2,
+          u1: bodyUc + patioW / 2,
+          v0: body.v1,
+          v1: body.v1 + PATIO_DEPTH_M,
+        }
       : null;
   const grill =
     patio && roll(id, SLOT_GRILL) < 0.6 ? { u: patio.u1 - 0.6, v: patio.v1 - 0.6 } : null;
@@ -653,7 +681,8 @@ function rowYard(
     const uc = body.u0 + (k + 0.5) * unitW;
     const patio = { u0: uc - 2.5, u1: uc + 2.5, v0: body.v1, v1: body.v1 + patioDepth };
     patios.push(patio);
-    if (roll(id, SLOT_UNIT_BASE + 4 * k + 1) < 0.5) grills.push({ u: patio.u1 - 0.6, v: patio.v1 - 0.6 });
+    if (roll(id, SLOT_UNIT_BASE + 4 * k + 1) < 0.5)
+      grills.push({ u: patio.u1 - 0.6, v: patio.v1 - 0.6 });
   }
   return {
     fence: fenceAround(runs, driveFootprints(drives)),
@@ -759,7 +788,19 @@ export function planHouseGround(
       if (pad) drives.push(pad);
       pathTo(door.u);
     }
-    return { frame, edge, edgeLenM, lotDepthM, body, homes: units, doors, paths, vergeLawn, drives, surface };
+    return {
+      frame,
+      edge,
+      edgeLenM,
+      lotDepthM,
+      body,
+      homes: units,
+      doors,
+      paths,
+      vergeLawn,
+      drives,
+      surface,
+    };
   }
 
   const door = { u: (body.u0 + body.u1) / 2, v: body.v0 };
@@ -771,7 +812,19 @@ export function planHouseGround(
     if (drive) drives.push(drive);
     pathTo(door.u);
   }
-  return { frame, edge, edgeLenM, lotDepthM, body, homes: 1, doors, paths, vergeLawn, drives, surface };
+  return {
+    frame,
+    edge,
+    edgeLenM,
+    lotDepthM,
+    body,
+    homes: 1,
+    doors,
+    paths,
+    vergeLawn,
+    drives,
+    surface,
+  };
 }
 
 /** The road tiles a home's drives cross — where a lamp must not stand. */
@@ -789,7 +842,9 @@ export function driveRoadTiles(
     for (let i = first; i <= last; i++) {
       if (seen.has(i)) continue;
       seen.add(i);
-      out.push(roadTileAcross(plan.edge, building.x, building.z, entry.footprint.w, entry.footprint.d, i));
+      out.push(
+        roadTileAcross(plan.edge, building.x, building.z, entry.footprint.w, entry.footprint.d, i),
+      );
     }
   }
   return out;

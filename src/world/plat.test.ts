@@ -253,6 +253,26 @@ describe('the plat of medium density', () => {
   });
 });
 
+describe('the plat of row housing', () => {
+  const street = block(10, 10, 12, 1);
+  const row = ZoneType.ResMediumRow;
+
+  it('cuts normal lots on land worth nothing and on the best land alike', () => {
+    const zoned = block(10, 11, 12, 2);
+    for (const value of [0, 255]) {
+      const { parcels } = platOf(world({ streets: street, zoned, value, zone: row }), row);
+      expect(parcels).toHaveLength(12);
+      expect(parcels.every((p) => p.lot === 'normal' && p.w === 1 && p.d === 2)).toBe(true);
+    }
+  });
+
+  it('cuts nothing where the strip is too shallow for a normal lot', () => {
+    const zoned = block(10, 11, 12, 1);
+    const { parcels } = platOf(world({ streets: street, zoned, zone: row }), row);
+    expect(parcels).toEqual([]);
+  });
+});
+
 describe('a building takes whole parcels', () => {
   const street = block(10, 10, 12, 1);
   const medium = ZoneType.ResMedium;

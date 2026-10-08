@@ -117,7 +117,13 @@ interface BodyRule {
   capM?: number;
   /** A body is never narrower than this, within the 85% of its lot. */
   minM?: number;
+  /** Replaces the usual 85% ceiling for a kind that builds closer to its lot lines. */
+  maxFill?: number;
 }
+
+/** A townhouse row's body: three 6 m homes, a lot wide and as deep, on a 20 m frontage. */
+const TOWNHOUSE_BODY_CAP_M = 18;
+const TOWNHOUSE_MAX_FILL = 0.9;
 
 const DEFAULT_BODY_RULE: BodyRule = { perTileM: DEFAULT_BODY_M_PER_TILE };
 
@@ -132,6 +138,7 @@ const BODY_RULES: Partial<Record<BuildingKind, BodyRule>> = {
   detached: { perTileM: RES_LOW_BODY_M_PER_TILE, minM: DETACHED_BODY_MIN_M },
   duplex: { fill: 0.6, capM: 16 },
   fourplex: { fill: 0.7, capM: 18 },
+  townhouse: { fill: TOWNHOUSE_MAX_FILL, maxFill: TOWNHOUSE_MAX_FILL, capM: TOWNHOUSE_BODY_CAP_M },
   multiplex: { perTileM: DEFAULT_BODY_M_PER_TILE, capM: 24 },
   restaurant: { perTileM: DEFAULT_BODY_M_PER_TILE, capM: 24 },
   fuel: { fill: 0.35, capM: 16 },
@@ -144,7 +151,7 @@ function bodyAxisMetres(tiles: number, rule: BodyRule): number {
   const sized =
     rule.perTileM !== undefined ? rule.perTileM * tiles : (rule.fill ?? MAX_FOOTPRINT_FILL) * lotM;
   const wanted = Math.max(sized, rule.minM ?? 0);
-  return Math.min(wanted, rule.capM ?? Infinity, MAX_FOOTPRINT_FILL * lotM);
+  return Math.min(wanted, rule.capM ?? Infinity, (rule.maxFill ?? MAX_FOOTPRINT_FILL) * lotM);
 }
 
 /**

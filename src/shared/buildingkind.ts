@@ -30,15 +30,19 @@ export function isHouseKind(kind: BuildingKind | undefined): kind is Residential
   return kind !== undefined && HOUSE_KINDS.has(kind);
 }
 
+/** The homes in a townhouse row on its normal lot, about 6 m of frontage each. */
+const TOWNHOUSE_ROW_HOMES = 3;
+
 /**
- * How many homes stand across a house-scale building's frontage: two per
- * 20 m of a townhouse row, two sharing a duplex or a fourplex, one for a
- * detached house. Each is laid out with its own door and drive.
+ * How many homes stand across a house-scale building's frontage: three in a
+ * townhouse row, two sharing a duplex or a fourplex, one for a detached
+ * house, whichever edge of the lot meets the street. Each is laid out with
+ * its own door and drive.
  */
-export function homesAcrossFrontage(kind: BuildingKind | undefined, frontageTiles: number): number {
+export function homesAcrossFrontage(kind: BuildingKind | undefined): number {
   switch (kind) {
     case 'townhouse':
-      return 2 * frontageTiles;
+      return TOWNHOUSE_ROW_HOMES;
     case 'duplex':
     case 'fourplex':
       return 2;

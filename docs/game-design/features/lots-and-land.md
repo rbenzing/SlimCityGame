@@ -9,9 +9,9 @@
   normal parcels, and the lens draws the plat for the zones whose kinds stand
   on it); sixth slice built 2026-10-07 (replatting holds: the plat is re-cut
   every pass and moves only empty ground); seventh slice built 2026-10-07
-  (the inspector's lot line). Not yet built: the other densities' parcels
-  (row housing, high density, mixed, commercial) and the 3×3 estate where a
-  block is deep
+  (the inspector's lot line); eighth slice built 2026-10-07 (row housing
+  stands on one normal lot at every level). Not yet built: high density,
+  mixed and commercial parcels, and the 3×3 estate where a block is deep
 - **Date:** 2026-10-05
 
 ## What the player gets
@@ -252,8 +252,9 @@ already show.
 - The four standing bands at 64, 160 and 224 on the 0–255 land-value field:
   dials, set so a fresh town with no parks or works plats normal lots.
 - The lot per standing per zone: the table above for low density; row
-  housing 1×2 always (a townhouse row is platted as one), medium density 2×2
-  (two normal parcels; built), high density 2×2 and 3×3 as today.
+  housing 1×2 always, one normal parcel holding three homes at every level
+  (built); medium
+  density 2×2 (two normal parcels; built), high density 2×2 and 3×3 as today.
 - The commercial parcel: 1×2 at ordinary standing and 1×1 for the corner
   shop, assembled upward by format as today.
 - Proposed with the record, not built here: the heavy industrial minimum
@@ -312,7 +313,7 @@ A lot forms from its street, and faces it. The rules, in
 
 ### The plat on the lens (built 2026-10-07)
 
-With a low-density or medium-density zone tool in hand the zone grid draws
+With a low-density, row-housing or medium-density zone tool in hand the zone grid draws
 the plat: an amber outline round every parcel the block cuts into, the
 moment the zone is painted and before anything grows. It is the same plat the spawner reads —
 one function (`platOf` in `src/world/plat.ts`) over the render mirror's
@@ -323,8 +324,8 @@ rows behind the first, which no parcel starts on, show the grid alone. The
 whole plat is cut once, run by run in map order, with a claimed-tile set,
 so two streets fronting one corner never cut parcels that overlap; the
 spawner cuts it once a pass the same way. The grid draws the plat only for
-the zones whose kinds stand on it, low density and medium density; the other
-zones' grids show no parcels until their kinds are lotted.
+the zones whose kinds stand on it, low density, row housing and medium
+density; the other zones' grids show no parcels until their kinds are lotted.
 
 ### The duplex and the fourplex on the plat (built 2026-10-07)
 
@@ -382,7 +383,8 @@ the plat takes whole parcels only.
 - **The lens draws the plat where kinds stand on it.** The zone grid shows
   parcels for low density and medium density, the zones whose kinds are
   lotted, and nothing for the others. Before this slice the lens cut a
-  low-density band under every zone tool, which nothing read.
+  low-density band under every zone tool, which nothing read. Row housing
+  joined them in the eighth slice, below.
 
 ### The plat changes under empty ground (built 2026-10-07)
 
@@ -419,11 +421,56 @@ row, for a building whose catalog entry carries a lot.
   building or a kind not yet lotted, shows no row. The panel is
   `src/ui/InfoPanel.tsx`.
 
+### Row housing stands on one normal lot (built 2026-10-07)
+
+The eighth slice: the townhouse row stands on the plat, one parcel at every
+level.
+
+- **A normal lot at every standing.** Row housing (zone 6) is platted as
+  normal lots, 1×2 (2×1 turned for a street running north to south), whatever
+  the land's value, as medium density is. A strip too shallow for a normal lot
+  plats nothing in row housing, and the zone lens draws its parcels under the
+  row-housing zone tool.
+- **One parcel, upright or turned.** A townhouse row (`res-medium-row-N`) takes
+  one normal parcel at every level: 1×2 upright, or the turned twin
+  `res-medium-row-t-N` at 2×1 for a street running north to south. It was
+  1×2, 1×4 and 1×6 by level, growing deeper with each level-up, which broke
+  "a level keeps its lot".
+- **Three homes at every level; the level adds storeys, never homes or
+  length.** A row on its normal lot (20 m frontage by 40 m deep, 0.198 acre)
+  holds three homes and 8 residents at every level, each home about 6 m
+  (20–22 ft) wide: 15 homes an acre, inside the type's net 11–25. It stands
+  7, 9 and 11 m tall at 2, 3 and 3.5 storeys, so a taller row is more floor
+  per home. Sourced: Opticos gives units 18–25 ft wide on lots 85–120 ft deep
+  at 2–3.5 storeys
+  ([townhouse](https://missingmiddlehousing.com/types/townhouse/));
+  fee-simple townhouse lots run 20–24 ft wide
+  ([Alva, OK](https://codelibrary.amlegal.com/codes/alvaok/latest/alva_ok/0-0-0-12052),
+  [Big Timber, MT](https://www.zoneomics.com/code/big-timber-MT/chapter_16));
+  zoning caps a row at 4–8 units
+  ([Garfield, NJ](https://www.zoneomics.com/code/garfield-NJ/chapter_12),
+  [Utah toolkit](https://luau.utah.gov/wp-content/uploads/UMH_MMH-Toolkit_NeighborhoodTypes_Central.pdf));
+  the median new attached home is 1,800 sq ft
+  ([NAHB](https://www.nahb.org/blog/2020/12/where-are-the-largest-homes-built)).
+- **Why not 4, 8 and 12.** Those homes belonged to rows that grew along the
+  street, two homes a tile at 1×2, 1×4 and 1×6, about 20 an acre. On a fixed
+  20 m frontage they would have packed four units into 20 m and tripled the
+  density by level 3.
+- **A long terrace is neighbouring parcels in a run.** That is how row
+  housing is platted: each parcel's building is a run of three, with side
+  yards between runs.
+- **The draw is unchanged.** The weight stays 1.6 on level 1. An old save
+  keeps a standing 1×4 or 1×6 row as its stored footprint.
+- **Still to come.** High density, mixed use and commercial have level-3
+  footprints larger than level 1, the same conflict with "a level keeps its
+  lot"; that needs a decision on their footprints before it is built. After
+  that, the 3×3 estate where a block is deep.
+
 ## What is built
 
 The first slice, built 2026-10-07, is the detached house alone; the duplex
 and the fourplex followed in the fourth slice, above. The 3×3 estate and the
-other densities' parcels are still to build.
+parcels of high density, mixed use and commercial are still to build.
 
 - **Eighteen entries, four lots.** The detached kind is the catalog's four lot
   sizes by three levels, the normal and the estate each with a turned twin

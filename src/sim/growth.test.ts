@@ -1864,6 +1864,98 @@ describe('the lot picks its building', () => {
     });
   });
 
+  describe('a townhouse row stands on one normal lot', () => {
+    const row = ZoneType.ResMediumRow;
+    const rows = shipped.filter((e) => e.zone === row);
+    const MILESTONE = 1;
+    const growRows = (northSouth: boolean, landValue: number): BuildingRegistry => {
+      const g = twoSidedStreet(northSouth, landValue, row);
+      const plat = platOf(plain(g), row);
+      const registry = growOn(g, rows, 3, row, MILESTONE);
+      expect(registry.all().length).toBeGreaterThan(0);
+      const [w, d] = northSouth ? [2, 1] : [1, 2];
+      for (const b of registry.all()) {
+        const entry = shipped.find((e) => e.id === b.catalogId)!;
+        expect(b.catalogId, `${b.x},${b.z}`).toMatch(
+          northSouth ? /^res-medium-row-t-\d$/ : /^res-medium-row-\d$/,
+        );
+        expect(entry.footprint, b.catalogId).toEqual({ w, d });
+        expect(entry.lot, b.catalogId).toBe('normal');
+        expect(
+          takesWholeParcels(plat, b.x, b.z, w, d, 'normal'),
+          `${b.catalogId} ${b.x},${b.z}`,
+        ).toBe(true);
+        const first = plat.parcelAt[tileIndex(b.x, b.z)]!;
+        const last = plat.parcelAt[tileIndex(b.x + w - 1, b.z + d - 1)]!;
+        expect(last, `${b.catalogId} ${b.x},${b.z}`).toBe(first);
+      }
+      return registry;
+    };
+
+    it('grows 1x2 rows on one normal parcel along an east-west street', () => {
+      growRows(false, 100);
+    });
+
+    it('grows 2x1 turned rows on one normal parcel along a north-south street', () => {
+      growRows(true, 100);
+    });
+
+    it.each([0, 255])('cuts the same normal lot at land value %i', (landValue) => {
+      growRows(false, landValue);
+      growRows(true, landValue);
+    });
+
+    it('grows nothing on a strip one tile deep, however many passes', () => {
+      const g = makeGrid();
+      for (let x = 0; x < 14; x++) {
+        g.roadTier[tileIndex(x, 5)] = RoadTier.TwoLane;
+        const i = tileIndex(x, 6);
+        g.zone[i] = row;
+        g.power[i] = 1;
+        g.watered[i] = 1;
+        g.sewered[i] = 1;
+      }
+      expect(growOn(g, rows, 3, row, MILESTONE).all()).toEqual([]);
+    });
+
+    describe('keeps its lot through a level-up', () => {
+      it.each(['res-medium-row', 'res-medium-row-t'])(
+        '%s stays on the same footprint, three homes at every level, height rising',
+        (stem) => {
+          const ids = [1, 2, 3].map((n) => `${stem}-${n}`);
+          const g = twoSidedStreet(stem.endsWith('-t'), 255, row);
+          g.fields[FieldId.Education]!.fill(255);
+          const registry = new BuildingRegistry(rows);
+          const first = rows.find((e) => e.id === ids[0])!;
+          expect(registry.place(g, first, 3, 3, 0, BuildingState.Active)).not.toBeNull();
+          const onRow = (gg: GridState, x: number, z: number, w: number, d: number): boolean => {
+            for (let dz = 0; dz < d; dz++) {
+              for (let dx = 0; dx < w; dx++) {
+                if (gg.zone[tileIndex(x + dx, z + dz)] !== row) return false;
+              }
+            }
+            return true;
+          };
+          const growth = new GrowthSystem(rows, constantRng(0), onRow);
+          for (let level = 2; level <= 3; level++) {
+            growth.tick(g, registry, wantsHomes, MILESTONE, level * 10);
+            const standing = registry.all().find((b) => b.x === 3 && b.z === 3)!;
+            expect(standing.catalogId).toBe(ids[level - 1]);
+            for (const b of registry.all()) b.state = BuildingState.Active;
+          }
+          const entries = ids.map((id) => rows.find((e) => e.id === id)!);
+          for (const e of entries) {
+            expect(e.footprint).toEqual(first.footprint);
+            expect(e.lot).toBe('normal');
+          }
+          expect(entries.map((e) => e.units)).toEqual([3, 3, 3]);
+          expect(entries[0]!.height).toBeLessThan(entries[1]!.height);
+          expect(entries[1]!.height).toBeLessThan(entries[2]!.height);
+        },
+      );
+    });
+  });
+
   describe('the plat changes under empty ground only', () => {
     const entry = (id: string): BuildingCatalogEntry => shipped.find((e) => e.id === id)!;
     const stand = (

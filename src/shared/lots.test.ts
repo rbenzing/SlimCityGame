@@ -48,13 +48,21 @@ describe('the lots a zone plats', () => {
     expect(lotsOfZone(ZoneType.ResMedium)).toEqual(['normal']);
   });
 
+  it('plats row housing as normal lots whatever the standing', () => {
+    expect(warrantedLot(ZoneType.ResMediumRow, 0)).toBe('normal');
+    expect(warrantedLot(ZoneType.ResMediumRow, 255)).toBe('normal');
+    expect(lotsOfZone(ZoneType.ResMediumRow)).toEqual(['normal']);
+  });
+
   it('leaves every other zone every lot size', () => {
     expect(lotsOfZone(ZoneType.ResLow)).toEqual(LOT_SIZES);
     expect(lotsOfZone(ZoneType.ResHigh)).toEqual(LOT_SIZES);
   });
 
-  it('names low and medium density as the platted zones', () => {
-    expect([...PLATTED_ZONES].sort()).toEqual([ZoneType.ResLow, ZoneType.ResMedium].sort());
+  it('names low density, row housing and medium density as the platted zones', () => {
+    expect([...PLATTED_ZONES].sort()).toEqual(
+      [ZoneType.ResLow, ZoneType.ResMedium, ZoneType.ResMediumRow].sort(),
+    );
   });
 });
 
@@ -103,5 +111,13 @@ describe('the candidates a plat allows', () => {
     const fitting = [house('half'), house('normal')];
     expect(platCandidates(fitting, ZoneType.ResMedium, 0).map((e) => e.lot)).toEqual(['normal']);
     expect(platCandidates(fitting, ZoneType.ResMedium, 255).map((e) => e.lot)).toEqual(['normal']);
+  });
+
+  it('plats row housing on normal lots only, even on land worth nothing', () => {
+    const fitting = [house('half'), house('normal')];
+    expect(platCandidates(fitting, ZoneType.ResMediumRow, 0).map((e) => e.lot)).toEqual(['normal']);
+    expect(platCandidates(fitting, ZoneType.ResMediumRow, 255).map((e) => e.lot)).toEqual([
+      'normal',
+    ]);
   });
 });

@@ -136,8 +136,14 @@ multiplex (`res-multiplex-N`) and the courtyard block (`res-medium-N`) are
 lot normal and 2×2 at every level, so they assemble two normal parcels side
 by side; medium density plats normal lots at every standing
 (`warrantedLot(zone, landValue)`, `lotsOfZone(zone)` in `src/shared/lots.ts`)
-and a strip too shallow for one plats nothing. The zone lens draws the plat
-for `PLATTED_ZONES` only, low and medium density.
+and a strip too shallow for one plats nothing. Row housing is platted the same
+way: the townhouse row (`res-medium-row-N`, 1×2) and its turned twin
+(`res-medium-row-t-N`, 2×1) are lot normal and take one parcel at every level,
+and each holds three homes and 8 residents, so the level adds storeys and
+never homes or length; an old save keeps a standing 1×4 or 1×6 row as its
+stored footprint. The zone lens draws
+the plat for `PLATTED_ZONES` only, low density, row housing and medium
+density.
 
 ### The renderer
 
@@ -146,15 +152,17 @@ for `PLATTED_ZONES` only, low and medium density.
   (`DETACHED_BODY_MIN_M`, so a half or a normal lot's house is as wide as a
   double lot's); a duplex 60% of each
   axis capped at 16 m (12 × 12 m on a 1×1 lot, 12 × 16 m on a 1×2 lot); a
-  fourplex 70% capped at 18 m (14 × 14 m on a 1×1 lot); a multiplex 13.6 m per tile capped at 24 m; everything else 13.6 m
-  per tile under the 85% ceiling. `footprintShrinkFor` keeps its callers but
+  fourplex 70% capped at 18 m (14 × 14 m on a 1×1 lot); a townhouse row 90%
+  capped at 18 m (18 × 18 m on its 1×2 or 2×1, three 6 m homes); a multiplex
+  13.6 m per tile capped at 24 m; everything else 13.6 m per tile under the
+  85% ceiling. `footprintShrinkFor` keeps its callers but
   is now the body divided by the lot, per axis, so nothing else moves.
-- **Homes along the frontage.** `homesAcrossFrontage(kind, tiles)`: a
-  townhouse row has two homes per frontage tile; a duplex and a fourplex have
-  two; a detached house one. The row plan already lays a door, a front pad
-  and a seeded integral garage door per home, each pad at its home's near
-  edge and its door at the far one so a 6.8 m home holds both; the duplex and
-  the fourplex take that plan.
+- **Homes along the frontage.** `homesAcrossFrontage(kind)`: a
+  townhouse row has three homes, each about 6 m wide, whichever edge of its
+  lot meets the street (so a corner row facing its long side keeps three); a duplex and a fourplex have two; a detached house one. The row plan
+  lays a door, a front pad and a seeded integral garage door per home, each
+  pad at its home's near edge and its door at the far one so a 6 m home
+  holds both; the duplex and the fourplex take that plan.
 - **House kinds.** `isHouseEntry` is true for detached, duplex, fourplex and
   townhouse, which carry the pitched roof and the lot plan; the block kinds
   are `apartment` and flat-roofed.

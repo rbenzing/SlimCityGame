@@ -17,7 +17,7 @@ milestone 4 at 8,000):
 - **Low Density Housing** (`ResLow`) — single and semi-detached houses.
   Milestone 0.
 - **Medium Density Row Housing** (`ResMediumRow`) — narrow attached row
-  houses, 1×2 to 1×6 tiles. Milestone 1.
+  houses, three homes on one normal 1×2 lot at every level. Milestone 1.
 - **Medium Density Housing** (`ResMedium`) — small apartment blocks.
   Milestone 2.
 - **Mixed Housing** (`Mixed`) — commercial ground floor with apartments
