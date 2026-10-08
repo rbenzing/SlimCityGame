@@ -239,8 +239,8 @@ metres, and the lot takes the rest:
 | Duplex               | 60% of each lot axis, capped at 16 m (12 × 12 m on 1×1, 12 × 16 m on 1×2) | pitched | two front doors, one drive per home                              |
 | Fourplex             | 70% of each lot axis, capped at 18 m (14 × 14 m on 1×1, 14 × 18 m on 1×2) | pitched | two front doors, one drive per door                              |
 | Townhouse row        | 13.6 m per tile; two homes per 20 m of frontage, 6.8 m each | pitched | a door, a front pad and by seed a garage door per home           |
-| Multiplex            | 13.6 m per tile, capped at 24 m each way                    | flat    | a lot pad; cars at the kerb                                      |
-| Courtyard apartments | 13.6 m per tile                                             | flat    | a lot pad; cars at the kerb                                      |
+| Multiplex            | 13.6 m per tile, capped at 24 m each way (24 × 24 m on its 2×2) | flat    | a lot pad; cars at the kerb                                      |
+| Courtyard apartments | 13.6 m per tile (27.2 × 27.2 m on its 2×2 at every level)   | flat    | a lot pad; cars at the kerb                                      |
 | Mid-rise flats       | 13.6 m per tile                                             | flat    | a lot pad; cars at the kerb                                      |
 | Tower                | 13.6 m per tile, rising from a two-storey podium at 85%     | flat    | the podium fills the lot to the 85% ceiling; cars at the kerb    |
 

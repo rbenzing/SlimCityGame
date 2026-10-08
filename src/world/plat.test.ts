@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { MAP_SIZE, tileIndex } from '../shared/constants';
-import { RoadTier } from '../shared/types';
-import { parcelsAnchoredAt, platOf, platSourceOf, type Parcel, type PlatSource } from './plat';
+import { RoadTier, ZoneType } from '../shared/types';
+import {
+  parcelsAnchoredAt,
+  platOf,
+  platSourceOf,
+  takesWholeParcels,
+  type Parcel,
+  type PlatSource,
+} from './plat';
 
-const ZONE = 1;
+const ZONE = ZoneType.ResLow;
 
 /** A world with the streets and zoned tiles it is told of, and land worth `value` everywhere. */
 function world(opts: {
@@ -11,12 +18,13 @@ function world(opts: {
   zoned: Array<[number, number]>;
   value?: number;
   built?: Array<[number, number, number]>;
+  zone?: number;
 }): PlatSource {
   const zone = new Uint8Array(MAP_SIZE * MAP_SIZE);
   const buildingId = new Uint32Array(MAP_SIZE * MAP_SIZE);
   const landValue = new Uint8Array(MAP_SIZE * MAP_SIZE).fill(opts.value ?? 119);
   const streets = new Set(opts.streets.map(([x, z]) => `${x},${z}`));
-  for (const [x, z] of opts.zoned) zone[tileIndex(x, z)] = ZONE;
+  for (const [x, z] of opts.zoned) zone[tileIndex(x, z)] = opts.zone ?? ZONE;
   for (const [x, z, id] of opts.built ?? []) buildingId[tileIndex(x, z)] = id;
   return {
     size: MAP_SIZE,
@@ -222,5 +230,98 @@ describe('runs from two streets never share ground', () => {
       }
     }
     expect(new Set(parcels.map((p) => p.front))).toEqual(new Set(['N', 'E']));
+  });
+});
+
+describe('the plat of medium density', () => {
+  const street = block(10, 10, 12, 1);
+  const medium = ZoneType.ResMedium;
+
+  it('cuts normal lots on land worth nothing and on the best land alike', () => {
+    const zoned = block(10, 11, 12, 2);
+    for (const value of [0, 255]) {
+      const { parcels } = platOf(world({ streets: street, zoned, value, zone: medium }), medium);
+      expect(parcels).toHaveLength(12);
+      expect(parcels.every((p) => p.lot === 'normal' && p.w === 1 && p.d === 2)).toBe(true);
+    }
+  });
+
+  it('cuts nothing where the strip is too shallow for a normal lot, never a half lot', () => {
+    const zoned = block(10, 11, 12, 1);
+    const { parcels } = platOf(world({ streets: street, zoned, zone: medium }), medium);
+    expect(parcels).toEqual([]);
+  });
+});
+
+describe('a building takes whole parcels', () => {
+  const street = block(10, 10, 12, 1);
+  const medium = ZoneType.ResMedium;
+  const zoned = block(10, 11, 12, 2);
+  const plat = platOf(world({ streets: street, zoned, zone: medium }), medium);
+
+  it('takes its own parcel as a 1 by 2 house does', () => {
+    expect(takesWholeParcels(plat, 10, 11, 1, 2, 'normal')).toBe(true);
+  });
+
+  it('takes two parcels side by side along a north front', () => {
+    expect(takesWholeParcels(plat, 10, 11, 2, 2, 'normal')).toBe(true);
+    expect(takesWholeParcels(plat, 11, 11, 2, 2, 'normal')).toBe(true);
+  });
+
+  it('takes two turned parcels stacked along an east or west front', () => {
+    const avenue = block(10, 10, 1, 12);
+    const side = platOf(
+      world({ streets: avenue, zoned: block(11, 10, 2, 12), zone: medium }),
+      medium,
+    );
+    expect(side.parcels.every((p) => p.front === 'W' && p.w === 2 && p.d === 1)).toBe(true);
+    expect(takesWholeParcels(side, 11, 10, 2, 2, 'normal')).toBe(true);
+  });
+
+  it('never takes half a parcel', () => {
+    expect(takesWholeParcels(plat, 10, 12, 2, 2, 'normal')).toBe(false);
+    expect(takesWholeParcels(plat, 10, 11, 1, 1, 'normal')).toBe(false);
+  });
+
+  it('takes only parcels of its own lot', () => {
+    expect(takesWholeParcels(plat, 10, 11, 2, 2, 'half')).toBe(false);
+  });
+
+  it('is false off the map and where no parcel stands', () => {
+    expect(takesWholeParcels(plat, -1, 0, 2, 2, 'normal')).toBe(false);
+    expect(takesWholeParcels(plat, 40, 40, 2, 2, 'normal')).toBe(false);
+  });
+
+  it('is false across a corner where the parcels front different sides', () => {
+    const mixed = {
+      ...plat,
+      parcels: [
+        { x: 10, z: 11, w: 1, d: 2, lot: 'normal', front: 'N' },
+        { x: 11, z: 11, w: 1, d: 2, lot: 'normal', front: 'S' },
+      ] as Parcel[],
+      parcelAt: new Int32Array(MAP_SIZE * MAP_SIZE).fill(-1),
+    };
+    mixed.parcelAt[tileIndex(10, 11)] = 0;
+    mixed.parcelAt[tileIndex(10, 12)] = 0;
+    mixed.parcelAt[tileIndex(11, 11)] = 1;
+    mixed.parcelAt[tileIndex(11, 12)] = 1;
+    expect(takesWholeParcels(mixed, 10, 11, 2, 2, 'normal')).toBe(false);
+  });
+
+  it('is false where a building stands on one of the parcels', () => {
+    const built: Array<[number, number, number]> = [
+      [10, 11, 7],
+      [10, 12, 7],
+    ];
+    const withHouse = platOf(world({ streets: street, zoned, built, zone: medium }), medium);
+    expect(takesWholeParcels(withHouse, 10, 11, 2, 2, 'normal')).toBe(false);
+    expect(takesWholeParcels(withHouse, 11, 11, 2, 2, 'normal')).toBe(true);
+  });
+
+  it('records each parcel on its tiles', () => {
+    expect(plat.parcelAt[tileIndex(10, 11)]).toBe(0);
+    expect(plat.parcelAt[tileIndex(10, 12)]).toBe(0);
+    expect(plat.parcelAt[tileIndex(11, 12)]).toBe(1);
+    expect(plat.parcelAt[tileIndex(10, 13)]).toBe(-1);
   });
 });

@@ -128,7 +128,16 @@ fourplex are lotted too: `res-duplex-N` (normal, 1×2), `res-duplex-h-N` (half,
 1×1) and `res-duplex-t-N` (normal turned, 2×1), and the same for
 `res-fourplex-…`, one footprint across the three levels. One variant per kind
 matches a platted parcel, so the draw's ratios are unchanged; a double or an
-estate parcel matches no plex.
+estate parcel matches no plex. A kind takes whole parcels:
+`takesWholeParcels(plat, x, z, w, d, lot)` in `src/world/plat.ts` is true
+where parcels of the entry's lot, all fronting one street, tile its footprint
+exactly (`Plat.parcelAt` reads each, `platReaches` bounds the search). The
+multiplex (`res-multiplex-N`) and the courtyard block (`res-medium-N`) are
+lot normal and 2×2 at every level, so they assemble two normal parcels side
+by side; medium density plats normal lots at every standing
+(`warrantedLot(zone, landValue)`, `lotsOfZone(zone)` in `src/shared/lots.ts`)
+and a strip too shallow for one plats nothing. The zone lens draws the plat
+for `PLATTED_ZONES` only, low and medium density.
 
 ### The renderer
 

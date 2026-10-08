@@ -11,12 +11,16 @@
  * side, and is derived from the zone, the roads, the buildings and the land
  * value alone: nothing is stored.
  *
+ * Medium density is cut as normal lots whatever the land value, and a kind
+ * larger than one parcel takes whole parcels side by side along the street,
+ * never half of one.
+ *
  * Pure: no sim, no three.js. The caller says what a street is, so grid roads
  * and roads off the grid front lots alike.
  */
 import { inBounds, tileIndex } from '../shared/constants';
-import { LOT_EXTENT, LOT_SIZES, lotForStanding } from '../shared/lots';
-import { isStreetTier, type LotSize } from '../shared/types';
+import { LOT_EXTENT, LOT_SIZES, lotsOfZone, warrantedLot } from '../shared/lots';
+import { isStreetTier, type LotSize, type ZoneType } from '../shared/types';
 import { freeCellsOn, type RoadCells } from './roadnet';
 
 /** The grid layers the plat reads: the sim's grid and the render mirror both have them. */
@@ -142,7 +146,7 @@ function frontOf(src: PlatSource, x: number, z: number): FrontGeometry | null {
 }
 
 /** True for a tile on the map in `zone`, with no building and no street on it. */
-function freeZoned(src: PlatSource, zone: number, x: number, z: number): boolean {
+function freeZoned(src: PlatSource, zone: ZoneType, x: number, z: number): boolean {
   if (!inBounds(x, z)) return false;
   const i = tileIndex(x, z);
   return src.zone[i] === zone && src.buildingId[i] === 0 && !src.streetAt(x, z);
@@ -151,7 +155,7 @@ function freeZoned(src: PlatSource, zone: number, x: number, z: number): boolean
 /** The row tiles of the run through (x, z): the tiles along its street that front the same side. */
 function runThrough(
   src: PlatSource,
-  zone: number,
+  zone: ZoneType,
   f: FrontGeometry,
   x: number,
   z: number,
@@ -176,7 +180,7 @@ function runThrough(
 /** Whether a lot of `lot` fits with its first frontage tile at `row[at]`, on ground no parcel has claimed. */
 function lotFits(
   src: PlatSource,
-  zone: number,
+  zone: ZoneType,
   claimed: Uint8Array,
   f: FrontGeometry,
   row: ReadonlyArray<[number, number]>,
@@ -216,7 +220,7 @@ function parcelOf(f: FrontGeometry, rx: number, rz: number, lot: LotSize): Parce
  */
 function cutRun(
   src: PlatSource,
-  zone: number,
+  zone: ZoneType,
   claimed: Uint8Array,
   f: FrontGeometry,
   row: ReadonlyArray<[number, number]>,
@@ -230,10 +234,14 @@ function cutRun(
       while (at < row.length && src.buildingId[tileIndex(row[at]![0], row[at]![1])] === id) at++;
       continue;
     }
-    const warranted = LOT_SIZES.indexOf(lotForStanding(src.landValue?.[tileIndex(rx, rz)] ?? 0));
+    const warranted = LOT_SIZES.indexOf(
+      warrantedLot(zone, src.landValue?.[tileIndex(rx, rz)] ?? 0),
+    );
+    const allowed = lotsOfZone(zone);
     let cut: LotSize | null = null;
     for (let s = warranted; s >= 0 && cut === null; s--) {
-      if (lotFits(src, zone, claimed, f, row, at, LOT_SIZES[s]!)) cut = LOT_SIZES[s]!;
+      const size = LOT_SIZES[s]!;
+      if (allowed.includes(size) && lotFits(src, zone, claimed, f, row, at, size)) cut = size;
     }
     if (cut === null) {
       at++;
@@ -256,6 +264,8 @@ export interface Plat {
   byAnchor: Map<number, Parcel[]>;
   /** 1 where a run fronts the tile or lies within the lot depth behind it: the plat reaches it. */
   reached: Uint8Array;
+  /** The index into `parcels` of the parcel on each tile, -1 where none stands. */
+  parcelAt: Int32Array;
 }
 
 /**
@@ -264,7 +274,7 @@ export interface Plat {
  * no two parcels share a tile: a run cut later steps over what an earlier
  * one claimed. The spawner and the lens read the same plat.
  */
-export function platOf(src: PlatSource, zone: number): Plat {
+export function platOf(src: PlatSource, zone: ZoneType): Plat {
   const parcels: Parcel[] = [];
   const claimed = new Uint8Array(src.size * src.size);
   const reached = new Uint8Array(src.size * src.size);
@@ -294,7 +304,46 @@ export function platOf(src: PlatSource, zone: number): Plat {
     if (list) list.push(p);
     else byAnchor.set(i, [p]);
   }
-  return { parcels, byAnchor, reached };
+  const parcelAt = new Int32Array(src.size * src.size).fill(-1);
+  parcels.forEach((p, n) => {
+    for (let dz = 0; dz < p.d; dz++) {
+      for (let dx = 0; dx < p.w; dx++) parcelAt[tileIndex(p.x + dx, p.z + dz)] = n;
+    }
+  });
+  return { parcels, byAnchor, reached, parcelAt };
+}
+
+/** Whether the plat reaches the tile: a street within the lot depth fronts it. */
+export function platReaches(plat: Plat, x: number, z: number): boolean {
+  return inBounds(x, z) && plat.reached[tileIndex(x, z)] === 1;
+}
+
+/**
+ * Whether the rectangle at (x, z), w by d, is exactly tiled by parcels of
+ * `lot` that share one front and lie wholly inside it: a building takes whole
+ * parcels, never half of one.
+ */
+export function takesWholeParcels(
+  plat: Plat,
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+  lot: LotSize,
+): boolean {
+  if (!inBounds(x, z) || !inBounds(x + w - 1, z + d - 1)) return false;
+  let front: Front | null = null;
+  for (let dz = 0; dz < d; dz++) {
+    for (let dx = 0; dx < w; dx++) {
+      const n = plat.parcelAt[tileIndex(x + dx, z + dz)]!;
+      if (n < 0) return false;
+      const p = plat.parcels[n]!;
+      if (p.lot !== lot || (front !== null && p.front !== front)) return false;
+      if (p.x < x || p.z < z || p.x + p.w > x + w || p.z + p.d > z + d) return false;
+      front = p.front;
+    }
+  }
+  return true;
 }
 
 /**

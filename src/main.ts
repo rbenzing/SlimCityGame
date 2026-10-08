@@ -44,6 +44,7 @@ import {
   flowDirection,
   isStreetTier,
 } from './shared/types';
+import { PLATTED_ZONES } from './shared/lots';
 import { carriagewayWidth, profilesEqual } from './shared/roadprofile';
 import { laneMovementsFor, pocketLaneMovements } from './shared/approach';
 import catalogData from './data/catalog.json';
@@ -329,7 +330,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const rebuildPlat = (): void => {
     const tool = store.getState().selectedTool;
     const zone = ZONE_TOOL_TO_TYPE[tool];
-    if (zone === undefined || zone === ZoneType.None || !zoneGrid.isVisible()) {
+    if (zone === undefined || !PLATTED_ZONES.includes(zone) || !zoneGrid.isVisible()) {
       zoneGrid.setParcels([]);
       return;
     }
@@ -657,7 +658,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // The plat as the lens draws it: the parcels of the zone in hand.
       readPlat: (): { x: number; z: number; w: number; d: number; lot: string }[] => {
         const zone = ZONE_TOOL_TO_TYPE[store.getState().selectedTool];
-        if (zone === undefined || zone === ZoneType.None) return [];
+        if (zone === undefined || !PLATTED_ZONES.includes(zone)) return [];
         const net = clientGrid.roads;
         const cells = net ? buildRoadCells(net, clientGrid.size) : null;
         return platOf(platSourceOf(clientGrid, cells, latestLandValue), zone).parcels.map((p) => ({

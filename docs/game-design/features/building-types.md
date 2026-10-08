@@ -74,8 +74,8 @@ homes.
 | Duplex               | Low density        | M1   | 1.6    | 1×1 or 1×2, the same at every level; 2×1 turned | 2 / 2 / 2.5   | 2           | 5             |
 | Fourplex             | Low density        | M1   | 1.2    | 1×1 or 1×2, the same at every level; 2×1 turned | 2.5 / 2.5 / 3 | 4           | 9             |
 | Townhouse row        | Row housing        | M1   | 1.6    | 1×2 / 1×4 / 1×6          | 2 / 3 / 3.5   | 4 / 8 / 12  | 11 / 21 / 32  |
-| Multiplex            | Medium density     | M2   | 0.63   | 2×2 / 2×2 / 2×3          | 2.5 / 3 / 3   | 8 / 10 / 12 | 18 / 23 / 27  |
-| Courtyard apartments | Medium density     | M2   | 0.30   | 2×2 / 2×2 / 3×3          | 2 / 3 / 3.5   | 12 / 18 / 24 | 27 / 41 / 54 |
+| Multiplex            | Medium density     | M2   | 0.63   | 2×2, two normal parcels, at every level | 2.5 / 3 / 3   | 8 / 10 / 12 | 18 / 23 / 27  |
+| Courtyard apartments | Medium density     | M2   | 0.30   | 2×2, two normal parcels, at every level | 2 / 3 / 3.5   | 12 / 18 / 24 | 27 / 41 / 54 |
 | Mid-rise flats       | High density       | M4   | 0.11   | 2×2 / 2×2 / 3×3          | 5 / 8 / 10    | 35 / 56 / 150 | 79 / 127 / 339 |
 | Tower                | High density       | M4   | 0.07   | 2×2 / 2×2 / 3×3          | 12 / 18 / 25  | 84 / 126 / 375 | 190 / 285 / 848 |
 | Shopfront flats      | Mixed              | M3   | 1      | 2×2 / 2×2 / 3×3          | 6 / 8 / 9     | 35 / 49 / 120 | 79 / 111 / 271 |
@@ -119,7 +119,9 @@ inside the type's 11–25. A multiplex of 5–12 homes takes a lot 95–120 by
 ([multiplex](https://missingmiddlehousing.com/types/multiplex-small/),
 [courtyard](https://missingmiddlehousing.com/types/courtyard-apartments/)):
 a 2×2 lot each, at 20 and 30 homes to the acre against the types' 12–70 and
-26–70.
+26–70. The 2×2 is two normal parcels of the plat assembled side by side, and
+it stays two at every level
+([lots-and-land.md](lots-and-land.md#medium-density-assembles-two-parcels-built-2026-10-07)).
 
 **Storeys.** Opticos gives the duplex and fourplex 2–2.5 storeys, the
 townhouse 2–3.5, the multiplex 2–2.5 and the courtyard building 1–3.5, with

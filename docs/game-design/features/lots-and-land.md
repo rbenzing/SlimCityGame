@@ -5,8 +5,10 @@
   level-up); second slice built 2026-10-07 (the plat cut from the street, and
   homes facing it); third slice built 2026-10-07 (the parcel lines on the
   zone lens); fourth slice built 2026-10-07 (the duplex and the fourplex on
-  the plat); assembly, replatting, the medium densities' parcels and the
-  inspector's lot line are not yet built
+  the plat); fifth slice built 2026-10-07 (medium density assembles two
+  normal parcels, and the lens draws the plat for the zones whose kinds stand
+  on it); replatting, the other densities' parcels (row housing, high
+  density, mixed, commercial) and the inspector's lot line are not yet built
 - **Date:** 2026-10-05
 
 ## What the player gets
@@ -242,7 +244,7 @@ already show.
   dials, set so a fresh town with no parks or works plats normal lots.
 - The lot per standing per zone: the table above for low density; row
   housing 1×2 always (a townhouse row is platted as one), medium density 2×2
-  (two normal parcels), high density 2×2 and 3×3 as today.
+  (two normal parcels; built), high density 2×2 and 3×3 as today.
 - The commercial parcel: 1×2 at ordinary standing and 1×1 for the corner
   shop, assembled upward by format as today.
 - Proposed with the record, not built here: the heavy industrial minimum
@@ -301,9 +303,9 @@ A lot forms from its street, and faces it. The rules, in
 
 ### The plat on the lens (built 2026-10-07)
 
-With a low-density zone tool in hand the zone grid draws the plat: an amber
-outline round every parcel the block cuts into, the moment the zone is
-painted and before anything grows. It is the same plat the spawner reads —
+With a low-density or medium-density zone tool in hand the zone grid draws
+the plat: an amber outline round every parcel the block cuts into, the
+moment the zone is painted and before anything grows. It is the same plat the spawner reads —
 one function (`platOf` in `src/world/plat.ts`) over the render mirror's
 zone, roads and buildings and the land-value field asked of the worker
 while the tool is in hand — so the lines are exactly the lots that will
@@ -311,8 +313,9 @@ grow. A standing house is a parcel of its own and keeps no outline; the
 rows behind the first, which no parcel starts on, show the grid alone. The
 whole plat is cut once, run by run in map order, with a claimed-tile set,
 so two streets fronting one corner never cut parcels that overlap; the
-spawner cuts it once a pass the same way. Only the low-density kinds are
-lotted yet, so the other zones' grids show no parcels.
+spawner cuts it once a pass the same way. The grid draws the plat only for
+the zones whose kinds stand on it, low density and medium density; the other
+zones' grids show no parcels until their kinds are lotted.
 
 ### The duplex and the fourplex on the plat (built 2026-10-07)
 
@@ -341,6 +344,36 @@ to south).
 - **The massing rule is the same.** A duplex body is 60% of each lot axis
   capped at 16 m (12 × 12 m on a half lot, 12 × 16 m on a normal one); a
   fourplex 70% capped at 18 m (14 × 14 m on a half lot).
+
+### Medium density assembles two parcels (built 2026-10-07)
+
+The fifth slice: the multiplex and the courtyard block stand on the plat, and
+the plat takes whole parcels only.
+
+- **A normal lot at every standing.** Medium density (zone 7) is platted as
+  normal lots, 1×2 (2×1 turned for a street running north to south), whatever
+  the land's value: the standing bands are a low-density thing. A strip too
+  shallow for a normal lot plats nothing in medium density; it never falls
+  back to a half lot, so a block of one-tile depth grows no multiplex.
+- **A kind takes whole parcels.** A lotted entry stands where parcels of its
+  lot size, all fronting the same street, tile its footprint exactly. A
+  detached house, a duplex or a fourplex takes one parcel. A multiplex
+  (`res-multiplex-N`) or a courtyard block (`res-medium-N`), lot normal and
+  2×2 at every level, assembles two normal parcels side by side, as a
+  developer buying two lots does, and never half of one. The lens shows the
+  parcels; the building stands across the pair.
+- **The level never changes the lots.** The level-3 multiplex went from 2×3 to
+  2×2 and the level-3 courtyard block from 3×3 to 2×2, so a level-up keeps
+  the two parcels. Units, residents and heights are unchanged: 12 and 24
+  homes at level 3. An old save keeps a standing 2×3 or 3×3 block as its
+  stored footprint.
+- **The draw is unchanged.** The weights stay 0.63 for the multiplex and 0.30
+  for the courtyard block. A multiplex body is 13.6 m per tile capped at
+  24 m, so 24 × 24 m on 2×2 as before.
+- **The lens draws the plat where kinds stand on it.** The zone grid shows
+  parcels for low density and medium density, the zones whose kinds are
+  lotted, and nothing for the others. Before this slice the lens cut a
+  low-density band under every zone tool, which nothing read.
 
 ## What is built
 

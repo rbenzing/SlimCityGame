@@ -150,20 +150,23 @@ const RESIDENTIAL_KINDS: ReadonlyArray<{
   },
   {
     kind: 'multiplex',
+    lot: 'normal',
     zone: ZoneType.ResMedium,
     unlock: 2,
     share: 0.63,
     household: 2.26,
     kwPerHome: 0.7,
+    // Two normal parcels side by side.
     lots: [
       [2, 2],
       [2, 2],
-      [2, 3],
+      [2, 2],
     ],
     house: false,
   },
   {
     kind: 'garden',
+    lot: 'normal',
     zone: ZoneType.ResMedium,
     unlock: 2,
     share: 0.3,
@@ -172,7 +175,7 @@ const RESIDENTIAL_KINDS: ReadonlyArray<{
     lots: [
       [2, 2],
       [2, 2],
-      [3, 3],
+      [2, 2],
     ],
     house: false,
   },

@@ -3,7 +3,7 @@
  * land-value field, picks one of four parcel sizes. Shared so the spawner and
  * anything that shows the plat read the same bands.
  */
-import type { BuildingCatalogEntry, LotSize } from './types';
+import { ZoneType, type BuildingCatalogEntry, type LotSize } from './types';
 
 /** Smallest to largest, the order a lot gives way to a smaller one that fits. */
 export const LOT_SIZES: readonly LotSize[] = ['half', 'normal', 'double', 'estate'];
@@ -33,19 +33,36 @@ export function lotForStanding(landValue: number): LotSize {
   return lot;
 }
 
+/** The zones whose kinds stand on the plat. */
+export const PLATTED_ZONES: readonly ZoneType[] = [ZoneType.ResLow, ZoneType.ResMedium];
+
+/** The lot sizes a zone plats: medium density is cut as normal lots only, every other zone any size. */
+export function lotsOfZone(zone: ZoneType): readonly LotSize[] {
+  return zone === ZoneType.ResMedium ? ['normal'] : LOT_SIZES;
+}
+
+/** The lot the plat warrants in `zone` at `landValue`: medium density is normal whatever the standing. */
+export function warrantedLot(zone: ZoneType, landValue: number): LotSize {
+  return zone === ZoneType.ResMedium ? 'normal' : lotForStanding(landValue);
+}
+
 /**
  * The candidates the plat allows: every kind that is not lotted, and of the
- * lotted ones only those on the largest lot the land warrants that has one
- * that fits, so a strip too shallow for the warranted lot plats the next
- * smaller one instead of nothing.
+ * lotted ones only those on the largest lot the zone's land warrants that has
+ * one that fits, so a strip too shallow for the warranted lot plats the next
+ * smaller one instead of nothing. A lot the zone does not plat is never a
+ * candidate's lot.
  */
 export function platCandidates(
   fitting: readonly BuildingCatalogEntry[],
+  zone: ZoneType,
   landValue: number,
 ): BuildingCatalogEntry[] {
-  const warranted = LOT_SIZES.indexOf(lotForStanding(landValue));
+  const warranted = LOT_SIZES.indexOf(warrantedLot(zone, landValue));
+  const allowed = lotsOfZone(zone);
   let lot = -1;
   for (const e of fitting) {
+    if (e.lot !== undefined && !allowed.includes(e.lot)) continue;
     const rank = e.lot === undefined ? -1 : LOT_SIZES.indexOf(e.lot);
     if (rank <= warranted && rank > lot) lot = rank;
   }
