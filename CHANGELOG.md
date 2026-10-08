@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.43.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.42.0...slimcity-v1.43.0) (2026-10-08)
+
+
+### Features
+
+* **lots:** a small house on prime land becomes a plex ([7007054](https://github.com/rbenzing/SlimCityGame/commit/700705403f019df5fe2bf7e7e67ce0d22d15d323))
+* **lots:** a small house on prime land becomes a plex ([e780a15](https://github.com/rbenzing/SlimCityGame/commit/e780a1516a75bc3d2aeef64c4e3fe62b562fa6b3))
+
 ## [1.42.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.41.0...slimcity-v1.42.0) (2026-10-08)
 
 
