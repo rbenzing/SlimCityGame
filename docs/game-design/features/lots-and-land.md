@@ -10,8 +10,10 @@
   on it); sixth slice built 2026-10-07 (replatting holds: the plat is re-cut
   every pass and moves only empty ground); seventh slice built 2026-10-07
   (the inspector's lot line); eighth slice built 2026-10-07 (row housing
-  stands on one normal lot at every level). Not yet built: high density,
-  mixed and commercial parcels, and the 3×3 estate where a block is deep
+  stands on one normal lot at every level); ninth slice built 2026-10-07
+  (commercial and dense land is cut into frontage lots, and a building that
+  grows redevelops onto whole lots). Not yet built: the dense homes figures
+  re-derived from the plate, and the 3×3 estate where a block is deep
 - **Date:** 2026-10-05
 
 ## What the player gets
@@ -111,7 +113,8 @@ commercial kinds built on 2026-10-02 already sit on these: a corner shop on
 ([building-types.md](building-types.md#the-commercial-kinds)). Nothing in
 this feature moves them; what it adds is that a commercial lot is platted
 from the block, so a 2×2 store takes two of the block's 1×2 parcels, and a
-strip takes a run of them.
+strip takes a run of them (built, see
+[the frontage lots](#commercial-and-dense-land-is-cut-into-frontage-lots-built-2026-10-07)).
 
 ### Industrial
 
@@ -183,15 +186,29 @@ a bigger house on the same 1×2: more storeys, a better kit, a higher value,
 never a 2×3. Today's catalog grows the lot with the level (2×2, 2×3, 3×3) and
 that stops; the detached kinds become four **lot sizes** × three **levels**,
 with the level changing storeys and value and the lot fixed at platting. The
-same holds for every kind: the parcel is platted once, and what stands on it
-improves.
+same holds for every home built on a parcel: the parcel is platted once, and
+what stands on it improves.
+
+**Commercial and dense kinds redevelop instead.** A shop, a restaurant, a
+strip, a supermarket, a tower or a mixed block does not keep its lot; a level
+that needs a larger footprint is a **redevelopment** that assembles whole lots
+beside the old building (see
+[the frontage lots](#commercial-and-dense-land-is-cut-into-frontage-lots-built-2026-10-07)).
+That is how real sites intensify: by demolishing and assembling neighbouring
+lots, and vertical additions are not common
+([Montgomery County on land assembly](https://www.montgomerycountymd.gov/council/resources/files/res/2013/20131105_17-932.pdf)).
+A change of format is a relocation or a redevelopment, and only 3–5% of
+stores remodel in place a year (FMI via Supermarket News; NACS puts it at 2.8%
+in 2023, [How much does it cost to build](https://www.nacsmagazine.com/Issues/May-2025/How-Much-Does-It-Cost-to-Build)).
+A level-up that keeps its footprint still improves in place.
 
 ### Land is acquired, and the plat can change
 
 Built 2026-10-07: re-zoning and land value both replat, through the one
 re-cut the plat already gets every pass; see
 [the plat changes under empty ground](#the-plat-changes-under-empty-ground-built-2026-10-07).
-Assembly is built for medium density only.
+Assembly is built for medium density, and for commercial and dense kinds,
+which also redevelop onto whole lots.
 
 - **Re-zoning** replats. Paint a block from low to medium density and its
   normal lots pair up into the 2×2 parcels a multiplex takes; the standing
@@ -255,8 +272,11 @@ already show.
   housing 1×2 always, one normal parcel holding three homes at every level
   (built); medium
   density 2×2 (two normal parcels; built), high density 2×2 and 3×3 as today.
-- The commercial parcel: 1×2 at ordinary standing and 1×1 for the corner
-  shop, assembled upward by format as today.
+- The commercial parcel: a normal lot, 1×2, at every standing, falling back
+  to a half lot on a strip one tile deep so a corner shop still grows there;
+  a building takes whole lots along its frontage and is redeveloped onto more
+  of them as it grows (built, below). High density, high commercial and mixed
+  use are cut the same way.
 - Proposed with the record, not built here: the heavy industrial minimum
   raised to 5×4, two acres, where it is 4×4.
 
@@ -273,7 +293,9 @@ already show.
 - Not new zones. The densities are the zones there are; the plat is inside
   them.
 - Not a change to the commercial or industrial footprints, which were sized
-  from parking and plant on 2026-10-02 and already sit on the standards.
+  from parking and plant on 2026-10-02 and already sit on the standards. Still
+  true after the ninth slice: the footprints stand, and so do the draw
+  weights; what the lots decide is where a footprint may stand.
 - Not manufactured homes, which the half lot makes possible later and which
   stay in [../../DESIGN.md](../../DESIGN.md) until asked for.
 
@@ -324,8 +346,9 @@ rows behind the first, which no parcel starts on, show the grid alone. The
 whole plat is cut once, run by run in map order, with a claimed-tile set,
 so two streets fronting one corner never cut parcels that overlap; the
 spawner cuts it once a pass the same way. The grid draws the plat only for
-the zones whose kinds stand on it, low density, row housing and medium
-density; the other zones' grids show no parcels until their kinds are lotted.
+the zones whose kinds stand on it: low density, row housing and medium
+density, and from the ninth slice low and high commercial, high density and
+mixed use; industrial and farm grids show no parcels.
 
 ### The duplex and the fourplex on the plat (built 2026-10-07)
 
@@ -461,16 +484,72 @@ level.
   yards between runs.
 - **The draw is unchanged.** The weight stays 1.6 on level 1. An old save
   keeps a standing 1×4 or 1×6 row as its stored footprint.
-- **Still to come.** High density, mixed use and commercial have level-3
-  footprints larger than level 1, the same conflict with "a level keeps its
-  lot"; that needs a decision on their footprints before it is built. After
-  that, the 3×3 estate where a block is deep.
+- **Still to come.** High density, mixed use and commercial were decided in
+  the ninth slice, below: they redevelop onto assembled lots. After that, the
+  dense homes figures are re-derived and then the 3×3 estate where a block is
+  deep.
+
+### Commercial and dense land is cut into frontage lots (built 2026-10-07)
+
+The ninth slice: low commercial (zone 3), high commercial (4), high density
+(2) and mixed use (8) join the plat, and their buildings take whole lots.
+
+- **Why redevelopment.** Three options were researched; real sites intensify
+  by demolishing and assembling neighbouring lots, not by growing in place
+  ([Montgomery County](https://www.montgomerycountymd.gov/council/resources/files/res/2013/20131105_17-932.pdf)).
+  Format changes are relocation or redevelopment, and only 3–5% of stores
+  remodel in place a year (FMI via Supermarket News; NACS 2.8% in 2023,
+  [NACS](https://www.nacsmagazine.com/Issues/May-2025/How-Much-Does-It-Cost-to-Build)).
+  So a level that outgrows its footprint takes more lots, and a level that
+  does not improves in place.
+- **Cut into normal lots at every standing.** These zones' runs are cut into
+  normal lots, 1×2 (2×1 turned), whatever the land's value, as medium density
+  is. Low commercial falls back to a half lot on a strip one tile deep, so a
+  corner shop still grows there. The lens draws their parcels
+  (`PLATTED_ZONES`).
+- **Why a normal lot.** Main-street lots are 24–25 ft minimum width and
+  100–150 ft deep
+  ([Petaluma SmartCode](https://petaluma.municipal.codes/SmartCode/4.80.140)),
+  so one normal lot, 65 ft by 130 ft, holds two or three storefronts.
+  Fast-food and bank pads run 0.5–1.2 acres and a filling station 1–3 acres
+  ([Sheetz](https://www.sheetz.com/real-estate)), a few lots; a
+  grocery-anchored centre is one master-planned assembled site of 12–15 acres.
+  Podium mid-rise runs 60–120 homes an acre
+  ([WBDG](https://www.wbdg.org/node/3401)).
+- **A building takes whole lots along its frontage.** A commercial or dense
+  catalog entry, which carries no `lot`, stands where whole lots tile its
+  frontage (`takesFrontageLots` in `src/world/plat.ts`): every lot it touches
+  fronts the same street, lies wholly within its width and starts at its front
+  edge. Where the building is shallower than its lots, the rest of them is its
+  yard, for parking and service; where it is deeper, it runs into the
+  unparcelled ground behind. It never takes half a lot's frontage. A corner
+  shop stands on one lot, its back half a yard; a shopping strip (3×2) takes
+  three lots; a grocery (3×3) takes three and the row behind; a superstore
+  (5×4) takes five and two rows behind.
+- **Turned to the street.** On a street running north to south these
+  buildings grow turned, so a strip's long side runs along the street. The
+  catalog has no turned twins for them, unlike the houses: the building
+  stands at a quarter turn.
+- **A level-up that grows is a redevelopment.** One that keeps its footprint
+  improves in place. One that grows its footprint must take whole lots by the
+  same rule, only where they are free, and the old building's ground is part
+  of it. A fast-food restaurant becomes a restaurant on two lots only when the
+  lot beside it is empty; otherwise it stays.
+- **What does not change.** Houses, plexes, rows and the medium-density blocks
+  keep their exact rule: they tile their parcels exactly. Industrial and farm
+  zones are not platted. The sourced catalog footprints and the draw weights
+  are unchanged.
+- **Next.** The dense homes figures are re-derived from floor plate × storeys
+  × efficiency ÷ unit size in the next PR: the level-3 tower's 375 homes is
+  about twice what its plate holds. After that comes the 3×3 estate where a
+  block is deep.
 
 ## What is built
 
 The first slice, built 2026-10-07, is the detached house alone; the duplex
 and the fourplex followed in the fourth slice, above. The 3×3 estate and the
-parcels of high density, mixed use and commercial are still to build.
+parcels of high density, mixed use and commercial followed in the ninth,
+above. The 3×3 estate is still to build.
 
 - **Eighteen entries, four lots.** The detached kind is the catalog's four lot
   sizes by three levels, the normal and the estate each with a turned twin

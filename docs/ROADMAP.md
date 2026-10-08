@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,938 tests passing across 162 test files, run 2026-10-07.
+**Test suite:** 4,968 tests passing across 162 test files, run 2026-10-07.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -156,15 +156,14 @@ pipe drag snaps onto the system and says what it joins
 ([underground-view.md](game-design/features/underground-view.md)).
 
 **Next:** lots and land continues
-([lots-and-land.md](game-design/features/lots-and-land.md)): eight slices
+([lots-and-land.md](game-design/features/lots-and-land.md)): nine slices
 are built, the detached house on the lot the land warrants, the plat cut
 from the street, the plat drawn on the zone lens, the duplex and the
 fourplex on the plat, medium density assembling two parcels, replatting
-under empty ground, the inspector's lot line, and row housing on one normal
-lot. Next are high density, mixed and commercial, whose level-3 footprints
-are larger than level 1, the same conflict with "a level keeps its lot", so
-that slice needs a decision on those footprints first. Then the 3×3 estate
-where a block is deep.
+under empty ground, the inspector's lot line, row housing on one normal
+lot, and commercial and dense land cut into frontage lots. Next is
+re-deriving the dense homes figures from floor plate × storeys × efficiency
+÷ unit size, then the 3×3 estate where a block is deep.
 After it, the municipal
 services programme's epics
 ([municipal-services.md](game-design/features/municipal-services.md)), the
@@ -310,6 +309,35 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Commercial and dense land is cut into frontage lots (built 2026-10-07)
+
+The ninth slice of lots and land. Low commercial (zone 3), high commercial
+(4), high density (2) and mixed use (8) join the plat (`PLATTED_ZONES`): their
+runs are cut into normal lots at every standing, low commercial falling back
+to a half lot on a strip one tile deep so a corner shop still grows there, and
+the zone lens draws their parcels. A commercial or dense building, which has
+no `lot`, takes whole lots along its frontage (`takesFrontageLots` in
+`src/world/plat.ts`): every lot it touches fronts the same street, lies wholly
+within its width and starts at its front edge, the rest of them being its
+yard and any depth beyond running into the ground behind. A corner shop stands
+on one lot, a shopping strip takes three, a grocery three and the row behind,
+a superstore five and two rows behind. On a street running north to south they
+stand at a quarter turn. A level-up that keeps its footprint improves in
+place; one that grows it is a redevelopment onto whole lots, only where they
+are free, so a fast-food restaurant becomes a restaurant on two lots only when
+the lot beside it is empty. The research behind it: real sites intensify by
+demolishing and assembling neighbouring lots and vertical additions are not
+common (Montgomery County), format changes are relocation or redevelopment
+and only 3–5% of stores remodel in place a year (FMI; NACS 2.8% in 2023),
+main-street lots are 24–25 ft wide and 100–150 ft deep (Petaluma SmartCode),
+fast-food and bank pads are 0.5–1.2 acres and a filling station 1–3 acres
+(Sheetz), and podium mid-rise runs 60–120 homes an acre (WoodWorks, WBDG).
+Houses, plexes, rows and medium-density blocks keep their exact rule,
+industrial and farm zones are not platted, and the catalog footprints and draw
+weights are unchanged. Next, the dense homes figures are re-derived from the
+plate, since the level-3 tower's 375 homes is about twice what its plate
+holds.
 
 ### Row housing stands on one normal lot (built 2026-10-07)
 

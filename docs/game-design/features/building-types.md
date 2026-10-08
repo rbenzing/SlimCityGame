@@ -64,7 +64,10 @@ A building keeps its kind through every level-up, as a farm keeps being a crop
 farm, and a detached house, a duplex or a fourplex keeps its lot. A duplex levels up into a better duplex, never into a house or a block.
 What a level-up gives depends on the kind: a house-scale building gets a bigger
 or better house for the same household; a block gets more storeys and more
-homes.
+homes. A commercial or dense building whose next level is larger on the ground
+is redeveloped: the growing level takes whole lots beside it, only where they
+are free, and stays as it is where they are not
+([lots-and-land.md](lots-and-land.md#commercial-and-dense-land-is-cut-into-frontage-lots-built-2026-10-07)).
 
 ### The residential kinds
 
@@ -191,6 +194,12 @@ shopping strip, and the strip comes when the town's industry supports its
 eighty jobs.
 
 ### The commercial kinds
+
+A commercial kind's lot column is its footprint at each level, and a level
+whose footprint is larger is a redevelopment: the building takes whole lots of
+the plat beside it, a fast-food box becoming a restaurant on two lots only
+when the lot beside it is empty
+([lots-and-land.md](lots-and-land.md#commercial-and-dense-land-is-cut-into-frontage-lots-built-2026-10-07)).
 
 | Kind              | Zone             | From | Weight | Lot (tiles) L1 / L2 / L3 | Storeys     | Jobs             |
 | ----------------- | ---------------- | ---- | ------ | ------------------------ | ----------- | ---------------- |

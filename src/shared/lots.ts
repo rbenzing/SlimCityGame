@@ -38,20 +38,32 @@ export const PLATTED_ZONES: readonly ZoneType[] = [
   ZoneType.ResLow,
   ZoneType.ResMedium,
   ZoneType.ResMediumRow,
+  ZoneType.ResHigh,
+  ZoneType.ComLow,
+  ZoneType.ComHigh,
+  ZoneType.Mixed,
 ];
 
-/** The zones cut as normal lots at every standing: medium density and row housing. */
+/** The zones cut as normal lots at every standing. */
 const NORMAL_LOT_ZONES: ReadonlySet<ZoneType> = new Set([
   ZoneType.ResMedium,
   ZoneType.ResMediumRow,
+  ZoneType.ResHigh,
+  ZoneType.ComLow,
+  ZoneType.ComHigh,
+  ZoneType.Mixed,
 ]);
 
-/** The lot sizes a zone plats: medium density and row housing are cut as normal lots only, every other zone any size. */
+/** The zones that also cut a half lot, so a strip one tile deep still grows a corner shop. */
+const HALF_LOT_ZONES: ReadonlySet<ZoneType> = new Set([ZoneType.ComLow]);
+
+/** The lot sizes a zone plats: the normal-lot zones are cut as normal lots (shops also as half lots), every other zone any size. */
 export function lotsOfZone(zone: ZoneType): readonly LotSize[] {
+  if (HALF_LOT_ZONES.has(zone)) return ['half', 'normal'];
   return NORMAL_LOT_ZONES.has(zone) ? ['normal'] : LOT_SIZES;
 }
 
-/** The lot the plat warrants in `zone` at `landValue`: medium density and row housing are normal whatever the standing. */
+/** The lot the plat warrants in `zone` at `landValue`: the normal-lot zones are normal whatever the standing. */
 export function warrantedLot(zone: ZoneType, landValue: number): LotSize {
   return NORMAL_LOT_ZONES.has(zone) ? 'normal' : lotForStanding(landValue);
 }

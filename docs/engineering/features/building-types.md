@@ -142,8 +142,26 @@ way: the townhouse row (`res-medium-row-N`, 1×2) and its turned twin
 and each holds three homes and 8 residents, so the level adds storeys and
 never homes or length; an old save keeps a standing 1×4 or 1×6 row as its
 stored footprint. The zone lens draws
-the plat for `PLATTED_ZONES` only, low density, row housing and medium
-density.
+the plat for `PLATTED_ZONES` only: low density, row housing, medium density,
+low and high commercial, high density and mixed use (industrial and farm
+zones are not platted). The commercial and dense kinds carry no `lot`;
+`takesFrontageLots` in `src/world/plat.ts` is true where whole lots, all
+fronting one street and wholly within the building's width, start at its front
+edge, the rest of them being its yard and any depth beyond them running into
+unparcelled ground. On a street running north to south these entries are
+placed at rotation 1, a quarter turn, as they have no turned twins. The
+spawner considers them only at a tile on a parcel's street row and sets the
+building's corner from the front (north and west: the scanned tile; south:
+`d − 1` back; east: `w − 1` back), so on every side of a street a corner
+shop and a filling station compete at the same tile; scanning from the
+building's back corner would hand a south or east block to the deeper kinds
+first. A level-up that keeps its footprint improves in place; one that grows
+it is a redevelopment in `tryLevelUp` (`src/sim/growth.ts`) that keeps its
+street edge fixed (a south- or east-fronting building grows back from the
+street, not into it) and is valid only where the larger footprint takes whole
+lots that are free, the old building's ground counting as part of them; a
+level-up that only deepens into its own yard touches no new lot and is
+allowed when the building fronts a street.
 
 ### The renderer
 

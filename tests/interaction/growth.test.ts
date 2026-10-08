@@ -12,6 +12,7 @@ import {
   pondAndDrain,
   roadRow,
   rows,
+  run,
   send,
   standingBuildings,
 } from '../support/sim';
@@ -219,6 +220,61 @@ describe('a block cut from its streets', () => {
           edge.some((t) => streets.has(t)),
           `${b.catalogId} at ${b.x},${b.z}`,
         ).toBe(true);
+      }
+    },
+    GROWTH_TIMEOUT_MS,
+  );
+});
+
+describe('a commercial block three deep', () => {
+  // Each block stands alone, since the first shops a town is owed go to
+  // whichever block is tried first and use up the demand.
+  const blocks = [
+    { front: 'S', x0: 70, z0: 67, w: 19, d: 3 },
+    { front: 'N', x0: 70, z0: 71, w: 19, d: 3 },
+    { front: 'E', x0: 89, z0: 76, w: 3, d: 15 },
+    { front: 'W', x0: 93, z0: 76, w: 3, d: 15 },
+  ];
+  it.each(blocks)(
+    'grows shops on a block fronting $front, long side along the street',
+    (block) => {
+      const h = initialized();
+      // The first town, a street on south from its east end and a cross street
+      // off that, so the block is powered and watered; its commercial strip is
+      // swapped for the block under test.
+      const ack = run(h, 1, [
+        { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 49, 32) },
+        { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(92, 49, 48) },
+        { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 70, 32) },
+        { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 48, rotation: 0 },
+        { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 64, z: 48, rotation: 0 },
+        { kind: 'placeBuilding', catalogId: 'water-tower', x: 66, z: 47, rotation: 0 },
+        { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(60, 50, 16, 2) },
+        { kind: 'paintZone', zone: ZoneType.Industrial, tiles: rows(76, 50, 16, 2) },
+        {
+          kind: 'paintZone',
+          zone: ZoneType.ComLow,
+          tiles: rows(block.x0, block.z0, block.w, block.d),
+        },
+      ]);
+      expect(ack.ok, JSON.stringify(ack)).toBe(true);
+      h.ticks(1000);
+
+      const shops = [...standingBuildings(h).values()].filter((b) =>
+        b.catalogId.startsWith('com-'),
+      );
+      expect(shops.length, `no shops on the ${block.front}-fronting block`).toBeGreaterThan(0);
+      for (const b of shops) {
+        expect(b.x).toBeGreaterThanOrEqual(block.x0);
+        expect(b.x).toBeLessThan(block.x0 + block.w);
+        expect(b.z).toBeGreaterThanOrEqual(block.z0);
+        expect(b.z).toBeLessThan(block.z0 + block.d);
+        const { w, d } = entryOf(b).footprint;
+        if (w !== d) {
+          expect(b.rotation, `${b.catalogId} on ${block.front}`).toBe(
+            block.front === 'E' || block.front === 'W' ? 1 : 0,
+          );
+        }
       }
     },
     GROWTH_TIMEOUT_MS,

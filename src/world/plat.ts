@@ -347,6 +347,55 @@ export function takesWholeParcels(
 }
 
 /**
+ * Whether a building covering the rectangle at (x, z), w by d, stands on the
+ * frontage of the parcels it touches: it touches at least one (or none, for a
+ * building growing into its own yard when `allowNone`), they all front the
+ * same side (the given `front`, when one is), none is split across the
+ * frontage, and each starts at the building's street-side edge. A building
+ * shallower than its parcels leaves the rest of them as its yard, and a deeper
+ * one runs into the unparcelled ground behind them; every rectangle tile in no
+ * parcel is such ground or the building's own old tiles, which the cut steps
+ * over, so none is tested.
+ */
+export function takesFrontageLots(
+  plat: Plat,
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+  front?: Front,
+  allowNone = false,
+): boolean {
+  if (!inBounds(x, z) || !inBounds(x + w - 1, z + d - 1)) return false;
+  let seen: Front | null = front ?? null;
+  let touched = false;
+  for (let dz = 0; dz < d; dz++) {
+    for (let dx = 0; dx < w; dx++) {
+      const n = plat.parcelAt[tileIndex(x + dx, z + dz)]!;
+      if (n < 0) continue;
+      touched = true;
+      const p = plat.parcels[n]!;
+      if (seen !== null && p.front !== seen) return false;
+      seen = p.front;
+      const alongInside =
+        seen === 'N' || seen === 'S'
+          ? p.x >= x && p.x + p.w <= x + w
+          : p.z >= z && p.z + p.d <= z + d;
+      const atStreet =
+        seen === 'N'
+          ? p.z === z
+          : seen === 'S'
+            ? p.z + p.d === z + d
+            : seen === 'W'
+              ? p.x === x
+              : p.x + p.w === x + w;
+      if (!alongInside || !atStreet) return false;
+    }
+  }
+  return touched || allowNone;
+}
+
+/**
  * The parcels whose min corner is (x, z), or null where the plat does not
  * reach the tile: no street within the lot depth fronts it, so a lot there
  * grows wherever it fits, as it did before a block was cut. A tile the plat
