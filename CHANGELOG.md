@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.42.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.41.0...slimcity-v1.42.0) (2026-10-08)
+
+
+### Features
+
+* **lots:** a block starts on one lot and assembles its neighbours ([d39109a](https://github.com/rbenzing/SlimCityGame/commit/d39109acf67785179e0346586b7d7cadad913e5d))
+* **lots:** a block starts on one lot and assembles its neighbours ([292f629](https://github.com/rbenzing/SlimCityGame/commit/292f6295d58f1f1ed2a3db265d2633262e0f2ae1))
+
+
+### Bug Fixes
+
+* **render:** a turned building stands on its own lot ([173fa52](https://github.com/rbenzing/SlimCityGame/commit/173fa52e120969a5137e0b98635e470cd6f462ad))
+
 ## [1.41.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.40.0...slimcity-v1.41.0) (2026-10-08)
 
 
