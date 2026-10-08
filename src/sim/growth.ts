@@ -29,7 +29,8 @@ import type {
 } from '../shared/types';
 import { farmKindOf } from '../shared/buildingkind';
 import { PLATTED_ZONES, platCandidates } from '../shared/lots';
-import { BuildingRegistry, footprintForRotation, lotTiles } from './buildings';
+import { footprintForRotation } from '../shared/footprint';
+import { BuildingRegistry, lotTiles } from './buildings';
 import type { JobsBySector } from './economy';
 import {
   cityWaterUse,
@@ -952,18 +953,35 @@ export class GrowthSystem {
     // Temporarily clear this building's own stamp so the (possibly larger)
     // new footprint can be checked on a clean grid, then commit or roll back.
     clearStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
-    const fits =
+    const fitsAt = (ax: number, az: number): boolean =>
       (plat === null ||
         !platReaches(plat, x, z) ||
         sides.some((f) =>
-          takesFrontageLots(plat, nx, nz, newFootprint.w, newFootprint.d, f, front !== undefined),
+          takesFrontageLots(plat, ax, az, newFootprint.w, newFootprint.d, f, front !== undefined),
         )) &&
-      this.canPlace(g, nx, nz, newFootprint.w, newFootprint.d) &&
-      footprintFree(g, nx, nz, newFootprint.w, newFootprint.d) &&
+      this.canPlace(g, ax, az, newFootprint.w, newFootprint.d) &&
+      footprintFree(g, ax, az, newFootprint.w, newFootprint.d) &&
       (farm === null
-        ? isZonedLot(g, zone, nx, nz, newFootprint.w, newFootprint.d)
-        : isFarmLot(g, nx, nz, newFootprint.w, newFootprint.d) &&
-          lotGrade(g, nx, nz, newFootprint.w, newFootprint.d) >= FARM_GRADE[farm]);
+        ? isZonedLot(g, zone, ax, az, newFootprint.w, newFootprint.d)
+        : isFarmLot(g, ax, az, newFootprint.w, newFootprint.d) &&
+          lotGrade(g, ax, az, newFootprint.w, newFootprint.d) >= FARM_GRADE[farm]);
+    // Growing along the street may take the free lots on either side: try
+    // each shift from the min corner outward, nearest to the old spot first.
+    const alongGrowth =
+      front === 'N' || front === 'S'
+        ? newFootprint.w - oldFootprint.w
+        : front === 'W' || front === 'E'
+          ? newFootprint.d - oldFootprint.d
+          : 0;
+    const anchors = Array.from({ length: Math.max(alongGrowth, 0) + 1 }, (_, k) =>
+      front === 'N' || front === 'S' ? { ax: nx - k, az: nz } : { ax: nx, az: nz - k },
+    );
+    const anchor = anchors.find((a) => fitsAt(a.ax, a.az));
+    const fits = anchor !== undefined;
+    if (anchor !== undefined) {
+      nx = anchor.ax;
+      nz = anchor.az;
+    }
     // A bigger building draws more, and nobody builds it on a grid that
     // cannot carry the difference.
     const power = utilityUnits(nextEntry.powerUse) - utilityUnits(entry.powerUse);

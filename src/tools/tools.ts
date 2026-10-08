@@ -22,6 +22,7 @@ import {
   TILE_METERS,
   tileToWorld,
 } from '../shared/constants';
+import { footprintForRotation } from '../shared/footprint';
 import type {
   BrushSettings,
   BuildingCatalogEntry,
@@ -688,9 +689,7 @@ export function footprintTiles(
   entry: BuildingCatalogEntry,
   rotation: 0 | 1 | 2 | 3,
 ): TilePoint[] {
-  const swapped = rotation === 1 || rotation === 3;
-  const w = swapped ? entry.footprint.d : entry.footprint.w;
-  const d = swapped ? entry.footprint.w : entry.footprint.d;
+  const { w, d } = footprintForRotation(entry, rotation);
   const tiles: TilePoint[] = [];
   for (let dz = 0; dz < d; dz++) {
     for (let dx = 0; dx < w; dx++) {

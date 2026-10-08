@@ -544,6 +544,43 @@ The ninth slice: low commercial (zone 3), high commercial (4), high density
   ([building-types.md](building-types.md#the-residential-kinds)). After that
   comes the 3×3 estate where a block is deep.
 
+### A block starts on one lot and assembles its neighbours (built 2026-10-07)
+
+Asked for by the player: a building can start on less ground and take more as
+it grows. Each kind's first level was checked against the smallest site that
+kind is really built on.
+
+- **Mid-rise flats start on one normal lot.** A five-storey walk-up on one
+  urban lot is a long-standing American form, and Seattle's single-stair rule
+  builds up to six storeys of flats on a 50 × 100 ft lot, four homes a floor
+  ([Mercatus](https://www.mercatus.org/research/policy-briefs/seattle-special-us-citys-unique-approach-small-infill-lots));
+  one such building holds 21 homes on 5,000 sq ft
+  ([Sightline](https://www.sightline.org/2025/01/08/sunlight-suites-a-simple-change-could-unlock-these-beautiful-homes-photos/)).
+  A normal lot is 65 × 131 ft, so the first mid-rise is five storeys on one
+  lot, 17 homes by the floor rule. Its second level assembles a second lot
+  (2×2) and its third a 3×3.
+- **Shopfront flats start on one normal lot.** A main-street building is one
+  lot wide, two to four storeys, shops below and flats above
+  ([Petaluma SmartCode](https://petaluma.municipal.codes/SmartCode/4.80.140),
+  [Parolek, form-based codes](https://newpartners.org/2012/docs/presentations//Thursday/10.30am%20-%2012pm/Thursday%202nd%20%20%2010.30%20-Noon%20%20Rural%20to%20Urban/NP12_Parolek.pdf)):
+  the first is four storeys on one lot, a shop floor of 17 jobs under 10
+  homes, and it grows to 2×2 and then 3×3 as the mid-rise does.
+- **The tower does not start smaller.** A residential tower is held 24–25 m
+  from its neighbours and its site wants at least 130 ft (39.6 m) of frontage
+  ([Vancouver West End](https://guidelines.vancouver.ca/bulletins/bulletin-west-end-tower-form-siting-setbacks.pdf),
+  [Toronto](https://www.toronto.ca/legdocs/mmis/2014/te/bgrd/backgroundfile-68799.pdf)),
+  two tiles: it stays 2×2, 2×2, 3×3.
+- **Nor do the multiplex and the courtyard building.** They take lots 95–135
+  ft wide ([multiplex](https://missingmiddlehousing.com/?p=4283),
+  [courtyard](https://missingmiddlehousing.com/?p=4286)), wider than one
+  normal lot, so they keep their two lots at every level. Commercial and
+  industrial kinds already start small and grow by level.
+- **Either neighbour.** Land is assembled lot by lot from whichever owner
+  sells ([Lindenthal et al., land assembly in Amsterdam](https://www.repository.cam.ac.uk/handle/1810/263523)),
+  so a level-up that grows along its street may take the free lots on either
+  side of it, keeping its street edge; it tries its own corner first. Where
+  both neighbours stand, it waits.
+
 ## What is built
 
 The first slice, built 2026-10-07, is the detached house alone; the duplex

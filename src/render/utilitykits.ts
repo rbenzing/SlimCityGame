@@ -49,6 +49,7 @@
 import * as THREE from 'three';
 import { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { footprintForRotation } from '../shared/footprint';
 import { InstancedSlotPool } from './massing';
 
 // ---------------------------------------------------------------------------
@@ -1395,10 +1396,11 @@ export class UtilityKitRenderer {
     if (!kit) return; // registry says kit-owned, but no matching catalog entry was provided — nothing to build
 
     const entry = kit.entry;
-    const centerX = (building.x + entry.footprint.w / 2) * TILE_METERS;
-    const centerZ = (building.z + entry.footprint.d / 2) * TILE_METERS;
-    const groundY = this.heightAt(centerX, centerZ);
     const rotation = building.rotation;
+    const lot = footprintForRotation(entry, rotation);
+    const centerX = (building.x + lot.w / 2) * TILE_METERS;
+    const centerZ = (building.z + lot.d / 2) * TILE_METERS;
+    const groundY = this.heightAt(centerX, centerZ);
 
     switch (entry.id) {
       case 'wind-turbine':
@@ -1542,7 +1544,8 @@ export class UtilityKitRenderer {
     const bodyPool = kit.pools[bodyKind];
     const pipePool = kit.pools[pipeKind];
     if (!bodyPool || !pipePool) return;
-    const facing = waterSideOf(building.x, building.z, entry.footprint, this.waterAt);
+    const lot = footprintForRotation(entry, building.rotation);
+    const facing = waterSideOf(building.x, building.z, lot, this.waterAt);
     const bodySlot = this.placeAt(bodyPool, centerX, groundY, centerZ, facing);
     const pipeSlot = this.placeAt(pipePool, centerX, groundY, centerZ, facing);
     this.instances.set(building.id, {

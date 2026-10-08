@@ -1382,3 +1382,99 @@ describe('BuildingInstancer frustum-culling regression (wave 6)', () => {
     expect((mesh as THREE.InstancedMesh).boundingSphere).toBeNull();
   });
 });
+
+describe('a building turned a quarter stands on the tiles it was stamped on', () => {
+  const SHOP: BuildingCatalogEntry = {
+    id: 'shop',
+    name: 'Shopfront',
+    category: 'com',
+    zone: ZoneType.ComLow,
+    level: 1,
+    footprint: { w: 1, d: 2 },
+    height: 10,
+    color: 0xf1b2b6,
+    jobs: 20,
+    powerUse: 0.8,
+    waterUse: 0.8,
+    cost: 0,
+    upkeep: 0,
+    unlockMilestone: 0,
+  };
+  const STRIP: BuildingCatalogEntry = { ...SHOP, id: 'strip', footprint: { w: 3, d: 2 } };
+  const SQUARE: BuildingCatalogEntry = { ...SHOP, id: 'square', footprint: { w: 2, d: 2 } };
+  const TURNED_CATALOG = [SHOP, STRIP, SQUARE];
+
+  /** The body's centre and its extent along the map's x and z axes. */
+  function bodyOnMap(
+    instancer: BuildingInstancer,
+    catalogId: string,
+  ): { x: number; z: number; spanX: number; spanZ: number } {
+    const mesh = instancer.getPickables().find((p) => p.catalogId === catalogId)
+      ?.mesh as THREE.InstancedMesh;
+    const { pos, quat, scl } = decomposeAt(mesh, 0);
+    const alongX = new THREE.Vector3(scl.x, 0, 0).applyQuaternion(quat);
+    const alongZ = new THREE.Vector3(0, 0, scl.z).applyQuaternion(quat);
+    return {
+      x: pos.x,
+      z: pos.z,
+      spanX: Math.abs(alongX.x) + Math.abs(alongZ.x),
+      spanZ: Math.abs(alongX.z) + Math.abs(alongZ.z),
+    };
+  }
+
+  const cases = [
+    { entry: SHOP, rotation: 0 as const, lot: { w: 1, d: 2 } },
+    { entry: SHOP, rotation: 1 as const, lot: { w: 2, d: 1 } },
+    { entry: STRIP, rotation: 0 as const, lot: { w: 3, d: 2 } },
+    { entry: STRIP, rotation: 1 as const, lot: { w: 2, d: 3 } },
+    { entry: SQUARE, rotation: 1 as const, lot: { w: 2, d: 2 } },
+  ];
+
+  for (const { entry, rotation, lot } of cases) {
+    it(`${entry.id} at rotation ${rotation} is centred on its ${lot.w}x${lot.d} lot`, () => {
+      const instancer = new BuildingInstancer(new THREE.Scene(), TURNED_CATALOG, flatHeightAt);
+      instancer.apply({
+        added: [instanceAt(1, 5, 7, { catalogId: entry.id, rotation })],
+        removed: [],
+        updated: [],
+      });
+      const body = bodyOnMap(instancer, entry.id);
+      expect(body.x).toBeCloseTo((5 + lot.w / 2) * TILE_METERS, 5);
+      expect(body.z).toBeCloseTo((7 + lot.d / 2) * TILE_METERS, 5);
+      expect(body.spanX).toBeLessThanOrEqual(lot.w * TILE_METERS);
+      expect(body.spanZ).toBeLessThanOrEqual(lot.d * TILE_METERS);
+    });
+  }
+
+  it('sets the body back from a road on the map side it fronts, whatever its turn', () => {
+    // Road down the west edge: the setback comes off the body's map-x extent,
+    // which is the local depth once the building is turned.
+    const westRoad = (x: number, z: number): boolean => x === 4 && (z === 7 || z === 8);
+    const upright = new BuildingInstancer(new THREE.Scene(), TURNED_CATALOG, flatHeightAt);
+    const turned = new BuildingInstancer(
+      new THREE.Scene(),
+      TURNED_CATALOG,
+      flatHeightAt,
+      undefined,
+      westRoad,
+    );
+    upright.apply({
+      added: [instanceAt(1, 5, 7, { catalogId: 'strip', rotation: 1 })],
+      removed: [],
+      updated: [],
+    });
+    turned.apply({
+      added: [instanceAt(1, 5, 7, { catalogId: 'strip', rotation: 1 })],
+      removed: [],
+      updated: [],
+    });
+    const bare = bodyOnMap(upright, 'strip');
+    const fronted = bodyOnMap(turned, 'strip');
+    const setbackM = BAY_DEPTH_TILES.com * TILE_METERS;
+    expect(fronted.spanZ).toBeCloseTo(bare.spanZ, 5);
+    expect(fronted.spanX).toBeLessThan(bare.spanX);
+    // The body's west face stands at the end of the bay row, east face where it was.
+    expect(fronted.x - fronted.spanX / 2).toBeCloseTo(5 * TILE_METERS + setbackM, 3);
+    expect(fronted.x + fronted.spanX / 2).toBeCloseTo(bare.x + bare.spanX / 2, 3);
+  });
+});

@@ -44,6 +44,7 @@ import {
   flowDirection,
   isStreetTier,
 } from './shared/types';
+import { footprintForRotation } from './shared/footprint';
 import { PLATTED_ZONES } from './shared/lots';
 import { carriagewayWidth, profilesEqual } from './shared/roadprofile';
 import { laneMovementsFor, pocketLaneMovements } from './shared/approach';
@@ -711,7 +712,17 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           // Only kerbside cars are the street's business — a bay-row car stands
           // on its owner's lot and has no kerb rule to break.
           const profileOf = (tx: number, tz: number) => clientGrid.ownProfileAt(tx, tz);
-          if (!usesRoadsideParking(entry, building.x, building.z, roadAt, tierOf, profileOf)) {
+          if (
+            !usesRoadsideParking(
+              entry,
+              building.x,
+              building.z,
+              roadAt,
+              tierOf,
+              profileOf,
+              building.rotation,
+            )
+          ) {
             continue;
           }
           for (const stall of parkedCars.stallWorldPositions(building.id)) {
@@ -1255,9 +1266,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     for (const b of knownBuildings.values()) {
       const entry = catalogById.get(b.catalogId);
       if (!entry) continue;
-      const turned = b.rotation % 2 === 1;
-      const w = turned ? entry.footprint.d : entry.footprint.w;
-      const d = turned ? entry.footprint.w : entry.footprint.d;
+      const { w, d } = footprintForRotation(entry, b.rotation);
       if (isWaterBuilding(b.catalogId)) {
         const riser = { x: b.x + Math.floor(w / 2), z: b.z + Math.floor(d / 2) };
         risers.push(riser);
@@ -1784,7 +1793,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       for (const inst of knownBuildings.values()) {
         const entry = catalogById.get(inst.catalogId);
         if (!entry) continue;
-        const cut = curbCutTileFor(entry, inst.x, inst.z, roadAt);
+        const cut = curbCutTileFor(entry, inst.x, inst.z, roadAt, inst.rotation);
         if (cut) nextDriveways.add(cut.x * 100_000 + cut.z);
         const home = planHouseGround(inst, entry, roadAt, street);
         if (!home) continue;
@@ -2040,12 +2049,13 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (!entry) return;
     // Same ground-center anchor BuildingInstancer computes per instance
     // (outline.ts documents this contract).
-    const centerX = (building.x + entry.footprint.w / 2) * TILE_METERS;
-    const centerZ = (building.z + entry.footprint.d / 2) * TILE_METERS;
+    const lot = footprintForRotation(entry, building.rotation);
+    const centerX = (building.x + lot.w / 2) * TILE_METERS;
+    const centerZ = (building.z + lot.d / 2) * TILE_METERS;
     const groundY = heightAt(centerX, centerZ);
     selectionOutline.highlight({
       position: { x: centerX, y: groundY, z: centerZ },
-      footprint: entry.footprint,
+      footprint: lot,
       height: entry.height,
     });
     mapPin.showAt(centerX, groundY + entry.height, centerZ);

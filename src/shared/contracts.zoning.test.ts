@@ -195,7 +195,7 @@ const RESIDENTIAL_KINDS: ReadonlyArray<{
     household: 2.26,
     kwPerHome: 0.7,
     lots: [
-      [2, 2],
+      [1, 2],
       [2, 2],
       [3, 3],
     ],
@@ -223,7 +223,7 @@ const RESIDENTIAL_KINDS: ReadonlyArray<{
     household: 2.26,
     kwPerHome: 0.7,
     lots: [
-      [2, 2],
+      [1, 2],
       [2, 2],
       [3, 3],
     ],
@@ -234,8 +234,8 @@ const RESIDENTIAL_KINDS: ReadonlyArray<{
 /** A person's 90 US gallons a day, and an employee's 27.5, in kL. */
 const WATER_PER_PERSON_KL = 0.34;
 const WATER_PER_JOB_KL = 0.104;
-/** A retail floor's draw: 16.7 kWh per square foot a year on a 740 or 1,665 m² plate. */
-const RETAIL_FLOOR_KW: Readonly<Record<number, number>> = { 2: 15.2, 3: 34.2 };
+/** A retail floor's draw: 16.7 kWh per square foot a year on a 370, 740 or 1,665 m² plate. */
+const RETAIL_FLOOR_KW: Readonly<Record<number, number>> = { 1: 7.6, 2: 15.2, 3: 34.2 };
 
 const SQ_FT_PER_M2 = 10.764;
 const HOURS_PER_YEAR = 8760;
@@ -942,11 +942,11 @@ describe('Mixed Housing catalog (zone 8, §6.21)', () => {
     }
   });
 
-  it('reads as mid/high-rise mixed-use: 2×2..3×3 footprint, 18..30m', () => {
+  it('reads as main-street to mid-rise mixed-use: 1×2..3×3 footprint, 12..30m', () => {
     for (const e of mixed) {
-      expect(e.footprint.w).toBeGreaterThanOrEqual(2);
+      expect(e.footprint.w).toBeGreaterThanOrEqual(1);
       expect(e.footprint.w).toBeLessThanOrEqual(3);
-      expect(e.height).toBeGreaterThanOrEqual(18);
+      expect(e.height).toBeGreaterThanOrEqual(12);
       expect(e.height).toBeLessThanOrEqual(30);
     }
   });

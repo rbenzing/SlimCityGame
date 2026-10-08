@@ -742,9 +742,12 @@ MUTCD citations below use 11th-edition section numbers.
   that keeps its footprint improves in place; one that grows its footprint
   is a redevelopment that keeps its street edge fixed and must take whole
   lots by the same rule, only where they are free, the old building's ground
-  counting as part of them, and it never happens where a neighbour stands. The catalog footprints
-  and draw weights do not change with the plat. —
-  [lots-and-land.md](game-design/features/lots-and-land.md#commercial-and-dense-land-is-cut-into-frontage-lots-built-2026-10-07);
+  counting as part of them, and it never happens where a neighbour stands.
+  Along its street it may grow toward either side, its own corner tried
+  first. A kind's first level stands on the smallest site that kind is built
+  on: mid-rise and shopfront flats start on one normal lot. —
+  [lots-and-land.md](game-design/features/lots-and-land.md#commercial-and-dense-land-is-cut-into-frontage-lots-built-2026-10-07),
+  [a block starts on one lot](game-design/features/lots-and-land.md#a-block-starts-on-one-lot-and-assembles-its-neighbours-built-2026-10-07);
   `takesFrontageLots` in `src/world/plat.ts`, `tryLevelUp` in
   `src/sim/growth.ts`
 - Every zoned catalog figure is derived from a published source by the rules
@@ -1070,6 +1073,12 @@ MUTCD citations below use 11th-edition section numbers.
   [ADR-0006](engineering/adr/0006-rendering-is-instancedmesh-everywhere-with-gpu-id-picking.md),
   [asset-guidelines.md](art/asset-guidelines.md),
   [rendering-architecture.md](visual-render/rendering-architecture.md)
+- A building turned a quarter (rotation 1 or 3) stands on its catalog
+  footprint with width and depth swapped. Whatever places it on the map —
+  its centre, its pad, its bays, its road-facing edge — uses that turned
+  footprint (`footprintForRotation`, shared by the sim and the renderer);
+  only the body's own box, sized before the rotation is applied, keeps the
+  catalog's axes. — `src/shared/footprint.ts`, `src/render/buildings.ts`
 - Picking is a CPU raycast against the instanced mesh cross-checked against a
   24-bit RGB id colour per instance, never a per-object mesh. —
   [ADR-0006](engineering/adr/0006-rendering-is-instancedmesh-everywhere-with-gpu-id-picking.md);

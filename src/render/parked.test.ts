@@ -12,6 +12,7 @@ import {
   computeStallCount,
   computeStallPlacements,
   CURB_CUT_WIDTH_M,
+  curbCutTileFor,
   roadsideDepthTiles,
   frontageInsetTiles,
   hasOwnLotParking,
@@ -1615,5 +1616,22 @@ describe('a kerbside car never leaves the tarmac', () => {
     for (const p of vetted) {
       expect(Math.floor(p.worldX / TILE_METERS), 'a car stands in the junction').not.toBe(4);
     }
+  });
+});
+
+describe('a building turned a quarter parks on the lot it stands on', () => {
+  // A 1x2 shopfront at (5, 5): upright it holds (5,5) and (5,6); turned a
+  // quarter it holds (5,5) and (6,5). Only the turned lot has (6,4) beside it.
+  const shop = makeCatalogEntry({ category: 'com', footprint: { w: 1, d: 2 } });
+  const roadAboveSecondTile = (x: number, z: number): boolean => x === 6 && z === 4;
+
+  it('looks for its road on the turned footprint', () => {
+    expect(hasOwnLotParking(shop, 5, 5, roadAboveSecondTile, 0)).toBe(false);
+    expect(hasOwnLotParking(shop, 5, 5, roadAboveSecondTile, 1)).toBe(true);
+  });
+
+  it('puts the curb cut on the road tile beside the turned footprint', () => {
+    expect(curbCutTileFor(shop, 5, 5, roadAboveSecondTile, 0)).toBeNull();
+    expect(curbCutTileFor(shop, 5, 5, roadAboveSecondTile, 1)).toEqual({ x: 6, z: 4 });
   });
 });

@@ -37,12 +37,14 @@ import {
   BuildingState,
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { footprintForRotation } from '../shared/footprint';
 import { deriveFacadeParams, FLOOR_HEIGHT_METERS } from './facade';
 import { maxHeightUnderBody } from './footprint';
 import {
   findRoadFacingEdge,
   findStreetFacingEdge,
   NO_STREETS,
+  type Side,
   type StreetLookup,
 } from './frontage';
 import { frontageInsetTiles } from './parked';
@@ -240,21 +242,29 @@ export function frontageSetbackFor(
   z: number,
   roadAt: (tileX: number, tileZ: number) => boolean,
   street: StreetLookup = NO_STREETS,
+  rotation: 0 | 1 | 2 | 3 = 0,
 ): FrontageSetback {
-  if (isHouseEntry(entry)) return houseFrontShift(entry, x, z, street);
+  if (isHouseEntry(entry)) return houseFrontShift(entry, x, z, street, rotation);
   if (isFarmEntry(entry)) return ZERO_FRONTAGE_SETBACK;
   if (entry.category !== 'com' && entry.category !== 'ind') return ZERO_FRONTAGE_SETBACK;
 
-  const edge = findRoadFacingEdge(x, z, entry.footprint.w, entry.footprint.d, roadAt);
+  const lot = footprintForRotation(entry, rotation);
+  const edge = findRoadFacingEdge(x, z, lot.w, lot.d, roadAt);
   const insetTiles = frontageInsetTiles(entry.category, edge);
   if (!edge || insetTiles <= 0) return ZERO_FRONTAGE_SETBACK;
 
-  const fill = bodyFillFor(entry);
+  const body = worldBodyFor(entry, rotation);
   const alongDepth = edge.side === 'N' || edge.side === 'S';
-  const axisTiles = alongDepth ? entry.footprint.d : entry.footprint.w;
-  const marginTiles = (axisTiles * (1 - (alongDepth ? fill.z : fill.x))) / 2;
+  const axisTiles = alongDepth ? lot.d : lot.w;
+  const bodyM = alongDepth ? body.d : body.w;
+  const marginTiles = (axisTiles - bodyM / TILE_METERS) / 2;
   const setbackM = Math.max(0, insetTiles - marginTiles) * TILE_METERS;
-  switch (edge.side) {
+  return turnedSetback(onMapSetback(edge.side, setbackM), rotation);
+}
+
+/** The setback worked out along the map's axes for a frontage on `side`. */
+function onMapSetback(side: Side, setbackM: number): FrontageSetback {
+  switch (side) {
     case 'N':
       return { spanXM: 0, spanZM: setbackM, centerXM: 0, centerZM: setbackM / 2 };
     case 'S':
@@ -264,6 +274,25 @@ export function frontageSetbackFor(
     default: // 'W'
       return { spanXM: setbackM, spanZM: 0, centerXM: setbackM / 2, centerZM: 0 };
   }
+}
+
+/** The body's size along the map's x and z axes once the building is turned. */
+function worldBodyFor(
+  entry: BuildingCatalogEntry,
+  rotation: 0 | 1 | 2 | 3,
+): { w: number; d: number } {
+  const body = bodyMetresFor(entry);
+  return rotation % 2 === 1 ? { w: body.d, d: body.w } : body;
+}
+
+/**
+ * A setback worked out along the map's axes, restated for the body's own
+ * frame: the span comes off the body's local box, and a quarter turn swaps
+ * which local axis lies along the map's x. The centre shift stays on the map.
+ */
+function turnedSetback(setback: FrontageSetback, rotation: 0 | 1 | 2 | 3): FrontageSetback {
+  if (rotation % 2 === 0) return setback;
+  return { ...setback, spanXM: setback.spanZM, spanZM: setback.spanXM };
 }
 
 /**
@@ -278,14 +307,16 @@ function houseFrontShift(
   x: number,
   z: number,
   street: StreetLookup,
+  rotation: 0 | 1 | 2 | 3,
 ): FrontageSetback {
-  const edge = findStreetFacingEdge(x, z, entry.footprint.w, entry.footprint.d, street);
+  const lot = footprintForRotation(entry, rotation);
+  const edge = findStreetFacingEdge(x, z, lot.w, lot.d, street);
   const vergeM = edge ? street(edge.roadTileX, edge.roadTileZ)?.vergeM : undefined;
   if (!edge || vergeM === undefined) return ZERO_FRONTAGE_SETBACK;
 
   const alongDepth = edge.side === 'N' || edge.side === 'S';
-  const lotDepthM = (alongDepth ? entry.footprint.d : entry.footprint.w) * TILE_METERS;
-  const body = bodyMetresFor(entry);
+  const lotDepthM = (alongDepth ? lot.d : lot.w) * TILE_METERS;
+  const body = worldBodyFor(entry, rotation);
   const bodyDepthM = alongDepth ? body.d : body.w;
   const centredFrontM = (lotDepthM - bodyDepthM) / 2;
   const frontM = Math.min(lotDepthM - bodyDepthM, Math.max(0, HOUSE_FRONT_YARD_M - vergeM));
@@ -627,7 +658,14 @@ export class MassingRenderer {
     // A farm's buildings are its own kit (farms.ts), never stacked tiers.
     if (!entry || isFarmEntry(entry)) return;
 
-    const frontage = frontageSetbackFor(entry, building.x, building.z, this.roadAt, this.street);
+    const frontage = frontageSetbackFor(
+      entry,
+      building.x,
+      building.z,
+      this.roadAt,
+      this.street,
+      building.rotation,
+    );
     const { boxes, podium } = computeSetbacks(entry, building.id, frontage);
     // Every tier of the stack is BuildingInstancer's, drawn with the
     // building's own facade; only the podium is left to draw here.
@@ -640,8 +678,9 @@ export class MassingRenderer {
     const tint = massingLifecycleTint(building.state);
     const { wallColor } = deriveFacadeParams(entry, building.id);
 
-    const centerX = (building.x + entry.footprint.w / 2) * TILE_METERS + frontage.centerXM;
-    const centerZ = (building.z + entry.footprint.d / 2) * TILE_METERS + frontage.centerZM;
+    const lot = footprintForRotation(entry, building.rotation);
+    const centerX = (building.x + lot.w / 2) * TILE_METERS + frontage.centerXM;
+    const centerZ = (building.z + lot.d / 2) * TILE_METERS + frontage.centerZM;
     // Match BuildingInstancer's seat — the highest ground under the base tier
     // itself — so the podium stands on the same ground the body sits on.
     const groundY = maxHeightUnderBody(

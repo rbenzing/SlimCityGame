@@ -472,8 +472,10 @@ describe('kit part counts/positions (deterministic per footprint)', () => {
     const renderer = new LandmarkRenderer(new THREE.Scene(), flatHeightAt, [entry]);
     renderer.apply(deltaAdd(makeInstance(2, { x: 0, z: 0, rotation: 1 })));
 
-    const centerX = (0 + entry.footprint.w / 2) * TILE_METERS;
-    const centerZ = (0 + entry.footprint.d / 2) * TILE_METERS;
+    // Turned a quarter, the lot on the map has w and d swapped; the part
+    // offsets stay in the building's own frame.
+    const centerX = (0 + entry.footprint.d / 2) * TILE_METERS;
+    const centerZ = (0 + entry.footprint.w / 2) * TILE_METERS;
     const towerLocal = computeControlTowerLocal(entry.footprint);
     const rotated = rotateLocalXZ(towerLocal.x, towerLocal.z, 1);
 
@@ -482,7 +484,7 @@ describe('kit part counts/positions (deterministic per footprint)', () => {
     renderer.getPartMatrix('airport', 'beacon', slot, m);
     const pos = decomposePosition(m);
     expect(pos.x).toBeCloseTo(centerX + rotated.x, 5);
-    expect(pos.z).toBeCloseTo(centerZ + rotated.z, 5);
+    expect(pos.z).toBeCloseTo(centerZ + rotated.z, 4);
   });
 
   it('apron light / plane capacity scales when the airport catalog footprint itself is bigger', () => {

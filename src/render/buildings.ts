@@ -31,11 +31,13 @@ import {
   BuildingState,
 } from '../shared/types';
 import { NIGHT_WINDOW_LIT_MAX, NIGHT_WINDOW_LIT_MIN, TILE_METERS } from '../shared/constants';
+import { footprintForRotation } from '../shared/footprint';
 import { encodeId, buildIdColorArray } from './picking';
 import {
   bodyMetresFor,
   computeSetbacks,
   frontageSetbackFor,
+  type FrontageSetback,
   tierHeightOf,
   type SetbackBox,
 } from './massing';
@@ -896,8 +898,19 @@ export class BuildingInstancer {
    */
   private boxesFor(entry: BuildingCatalogEntry, instance: BuildingInstance): readonly SetbackBox[] {
     if (planFarm(instance, entry, this.dirtAt) || this.plinthIds.has(entry.id)) return [ONE_BOX];
-    const frontage = frontageSetbackFor(entry, instance.x, instance.z, this.roadAt, this.street);
+    const frontage = this.frontageOf(entry, instance);
     return computeSetbacks(entry, instance.id, frontage).boxes;
+  }
+
+  private frontageOf(entry: BuildingCatalogEntry, instance: BuildingInstance): FrontageSetback {
+    return frontageSetbackFor(
+      entry,
+      instance.x,
+      instance.z,
+      this.roadAt,
+      this.street,
+      instance.rotation,
+    );
   }
 
   private slotId(bucket: Bucket, slot: number): number {
@@ -944,14 +957,22 @@ export class BuildingInstancer {
     // carries the real visual identity beside it.
     if (this.plinthIds.has(entry.id)) {
       const body = bodyMetresFor(entry);
-      const frontage = frontageSetbackFor(entry, instance.x, instance.z, this.roadAt, this.street);
+      const frontage = this.frontageOf(entry, instance);
       const slab: SetbackBox = {
         w: body.w - frontage.spanXM,
         d: body.d - frontage.spanZM,
         h: PLINTH_PAD_HEIGHT,
         yOffset: 0,
       };
-      this.writeTier(bucket, slots[0]!, 0, slab, instance, heightScale, this.seatFor(entry, instance, slab));
+      this.writeTier(
+        bucket,
+        slots[0]!,
+        0,
+        slab,
+        instance,
+        heightScale,
+        this.seatFor(entry, instance, slab),
+      );
       return;
     }
     // Commercial/industrial bodies pull back from their road-facing edge so
@@ -974,9 +995,10 @@ export class BuildingInstancer {
     instance: BuildingInstance,
     base: SetbackBox,
   ): { centerX: number; centerZ: number; groundY: number } {
-    const frontage = frontageSetbackFor(entry, instance.x, instance.z, this.roadAt, this.street);
-    const centerX = (instance.x + entry.footprint.w / 2) * TILE_METERS + frontage.centerXM;
-    const centerZ = (instance.z + entry.footprint.d / 2) * TILE_METERS + frontage.centerZM;
+    const frontage = this.frontageOf(entry, instance);
+    const lot = footprintForRotation(entry, instance.rotation);
+    const centerX = (instance.x + lot.w / 2) * TILE_METERS + frontage.centerXM;
+    const centerZ = (instance.z + lot.d / 2) * TILE_METERS + frontage.centerZM;
     const groundY = maxHeightUnderBody(
       this.heightAt,
       centerX,

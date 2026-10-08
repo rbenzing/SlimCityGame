@@ -10,6 +10,7 @@
  * so the zoning grid reads the same frontage zone painting does.
  */
 import { SEA_LEVEL, TILE_METERS, worldToTile } from '../shared/constants';
+import { footprintForRotation } from '../shared/footprint';
 import { regradeSoil, soilGrades } from '../shared/soil';
 import { corridorHalfOf, flowDirection, RoadFlow, RoadTier } from '../shared/types';
 import { approachZoneTiles, armSlot } from '../shared/approach';
@@ -852,9 +853,7 @@ export class ClientGridMirror {
 
   private stampFootprint(inst: BuildingInstance, entry: BuildingCatalogEntry | undefined): void {
     if (!entry) return;
-    const swapped = inst.rotation === 1 || inst.rotation === 3;
-    const w = swapped ? entry.footprint.d : entry.footprint.w;
-    const d = swapped ? entry.footprint.w : entry.footprint.d;
+    const { w, d } = footprintForRotation(entry, inst.rotation);
     const indices: number[] = [];
     for (let dz = 0; dz < d; dz++) {
       for (let dx = 0; dx < w; dx++) {

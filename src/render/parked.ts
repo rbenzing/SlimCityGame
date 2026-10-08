@@ -27,6 +27,7 @@ import {
 import roadsData from '../data/roads.json';
 import type { RoadProfile } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { footprintForRotation } from '../shared/footprint';
 import { ROAD_Y_OFFSET } from './roadsmesh';
 import { parkingLaneOffset } from '../shared/roadprofile';
 import { isFarmEntry, isHouseEntry } from './archetypes';
@@ -131,10 +132,12 @@ export function curbCutTileFor(
   x: number,
   z: number,
   roadAt: (tileX: number, tileZ: number) => boolean,
+  rotation: 0 | 1 | 2 | 3 = 0,
 ): { x: number; z: number } | null {
   if (entry.category !== 'com' && entry.category !== 'ind') return null;
-  if (!hasOwnLotParking(entry, x, z, roadAt)) return null;
-  const edge = findRoadFacingEdge(x, z, entry.footprint.w, entry.footprint.d, roadAt);
+  if (!hasOwnLotParking(entry, x, z, roadAt, rotation)) return null;
+  const lot = footprintForRotation(entry, rotation);
+  const edge = findRoadFacingEdge(x, z, lot.w, lot.d, roadAt);
   return edge ? { x: edge.roadTileX, z: edge.roadTileZ } : null;
 }
 
@@ -157,10 +160,12 @@ export function hasOwnLotParking(
   x: number,
   z: number,
   roadAt: (tileX: number, tileZ: number) => boolean,
+  rotation: 0 | 1 | 2 | 3 = 0,
 ): boolean {
   if (isFarmEntry(entry)) return false;
   if (entry.category === 'com' || entry.category === 'ind') {
-    const edge = findRoadFacingEdge(x, z, entry.footprint.w, entry.footprint.d, roadAt);
+    const lot = footprintForRotation(entry, rotation);
+    const edge = findRoadFacingEdge(x, z, lot.w, lot.d, roadAt);
     return edge !== null && frontageInsetTiles(entry.category, edge) > 0;
   }
   return isHouseEntry(entry);
@@ -178,6 +183,7 @@ export function roadsideAllowance(
   roadAt: (tileX: number, tileZ: number) => boolean,
   roadTierAt: (tileX: number, tileZ: number) => RoadTier,
   roadProfileAt: (tileX: number, tileZ: number) => RoadProfile | null = () => null,
+  rotation: 0 | 1 | 2 | 3 = 0,
 ): KerbAllowance {
   // Only buildings whose people own cars. A water tower, a park or a civic
   // plinth has nobody to park, and lining the kerb outside one would read as
@@ -185,8 +191,9 @@ export function roadsideAllowance(
   if (!PARKING_CATEGORIES.has(entry.category)) return 'none';
   // A farm's truck stands in its own yard, never at a kerb.
   if (isFarmEntry(entry)) return 'none';
-  if (hasOwnLotParking(entry, x, z, roadAt)) return 'none';
-  const edge = findRoadFacingEdge(x, z, entry.footprint.w, entry.footprint.d, roadAt);
+  if (hasOwnLotParking(entry, x, z, roadAt, rotation)) return 'none';
+  const lot = footprintForRotation(entry, rotation);
+  const edge = findRoadFacingEdge(x, z, lot.w, lot.d, roadAt);
   if (!edge) return 'none';
   const { roadTileX: rx, roadTileZ: rz } = edge;
   return kerbAllowance(roadTierAt(rx, rz), roadProfileAt(rx, rz), kerbSideFacing(edge.side));
@@ -200,8 +207,9 @@ export function usesRoadsideParking(
   roadAt: (tileX: number, tileZ: number) => boolean,
   roadTierAt: (tileX: number, tileZ: number) => RoadTier,
   roadProfileAt: (tileX: number, tileZ: number) => RoadProfile | null = () => null,
+  rotation: 0 | 1 | 2 | 3 = 0,
 ): boolean {
-  return roadsideAllowance(entry, x, z, roadAt, roadTierAt, roadProfileAt) !== 'none';
+  return roadsideAllowance(entry, x, z, roadAt, roadTierAt, roadProfileAt, rotation) !== 'none';
 }
 
 /** Max absolute per-car yaw jitter, radians — parked cars sit nearly straight in their bays. */
@@ -784,13 +792,8 @@ export class ParkedCarRenderer {
     }
     const category: LotCategory = entry.category;
 
-    const edge = findRoadFacingEdge(
-      building.x,
-      building.z,
-      entry.footprint.w,
-      entry.footprint.d,
-      this.roadAt,
-    );
+    const tiles = footprintForRotation(entry, building.rotation);
+    const edge = findRoadFacingEdge(building.x, building.z, tiles.w, tiles.d, this.roadAt);
     if (!edge) {
       this.applyRoadside(building, entry);
       return;
@@ -804,8 +807,8 @@ export class ParkedCarRenderer {
     const placements = computeStallPlacements(
       building.x,
       building.z,
-      entry.footprint.w,
-      entry.footprint.d,
+      tiles.w,
+      tiles.d,
       edge,
       count,
       pitchTiles,
@@ -870,16 +873,12 @@ export class ParkedCarRenderer {
       this.roadAt,
       this.roadTierAt,
       this.roadProfileAt,
+      building.rotation,
     );
     if (allowance === 'none') return;
 
-    const edge = findRoadFacingEdge(
-      building.x,
-      building.z,
-      entry.footprint.w,
-      entry.footprint.d,
-      this.roadAt,
-    );
+    const tiles = footprintForRotation(entry, building.rotation);
+    const edge = findRoadFacingEdge(building.x, building.z, tiles.w, tiles.d, this.roadAt);
     if (!edge) return;
 
     const tier = this.roadTierAt(edge.roadTileX, edge.roadTileZ);
@@ -895,8 +894,8 @@ export class ParkedCarRenderer {
     const placements = computeRoadsideStallPlacements(
       building.x,
       building.z,
-      entry.footprint.w,
-      entry.footprint.d,
+      tiles.w,
+      tiles.d,
       edge,
       tier,
       count,
@@ -962,13 +961,8 @@ export class ParkedCarRenderer {
     pitchTiles: number,
     depthTiles: number,
   ): void {
-    const frame = edgeFrameFor(
-      edge.side,
-      building.x,
-      building.z,
-      entry.footprint.w,
-      entry.footprint.d,
-    );
+    const tiles = footprintForRotation(entry, building.rotation);
+    const frame = edgeFrameFor(edge.side, building.x, building.z, tiles.w, tiles.d);
     const positions: number[] = [];
     const colors: number[] = [];
 
