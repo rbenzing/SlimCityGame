@@ -692,8 +692,12 @@ MUTCD citations below use 11th-edition section numbers.
   one: a multiplex or a courtyard block (lot normal, 2×2 at every level)
   assembles two normal parcels side by side. Medium density plats normal
   lots at every standing, and a strip too shallow for one plats nothing,
-  never a half lot. The zone lens draws the plat only for the zones whose
-  kinds stand on it (`PLATTED_ZONES`). —
+  never a half lot. Row housing plats normal lots at every standing, like
+  medium density, and a townhouse row takes one normal parcel at every level
+  (1×2, or 2×1 turned) and holds three homes at every level: the level adds
+  storeys, never homes or length. The
+  zone lens draws the plat only for the zones whose kinds stand on it, low
+  density, row housing and medium density (`PLATTED_ZONES`). —
   [lots-and-land.md](game-design/features/lots-and-land.md);
   `lotForStanding`, `platCandidates`, `warrantedLot`, `lotsOfZone`,
   `PLATTED_ZONES` in `src/shared/lots.ts`, `takesWholeParcels`, `platReaches`

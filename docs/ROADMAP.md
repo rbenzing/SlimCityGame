@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,920 tests passing across 162 test files, run 2026-10-07.
+**Test suite:** 4,938 tests passing across 162 test files, run 2026-10-07.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -156,15 +156,15 @@ pipe drag snaps onto the system and says what it joins
 ([underground-view.md](game-design/features/underground-view.md)).
 
 **Next:** lots and land continues
-([lots-and-land.md](game-design/features/lots-and-land.md)): seven slices
+([lots-and-land.md](game-design/features/lots-and-land.md)): eight slices
 are built, the detached house on the lot the land warrants, the plat cut
 from the street, the plat drawn on the zone lens, the duplex and the
 fourplex on the plat, medium density assembling two parcels, replatting
-under empty ground, and the inspector's lot line. Next are the other
-densities' parcels (row housing, high density, mixed, commercial). The
-townhouse row today grows 1×2, 1×4 and 1×6 across its levels, which
-conflicts with "a level keeps its lot", so that slice needs a decision
-first. Then the 3×3 estate where a block is deep.
+under empty ground, the inspector's lot line, and row housing on one normal
+lot. Next are high density, mixed and commercial, whose level-3 footprints
+are larger than level 1, the same conflict with "a level keeps its lot", so
+that slice needs a decision on those footprints first. Then the 3×3 estate
+where a block is deep.
 After it, the municipal
 services programme's epics
 ([municipal-services.md](game-design/features/municipal-services.md)), the
@@ -310,6 +310,30 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Row housing stands on one normal lot (built 2026-10-07)
+
+The eighth slice of lots and land. Row housing is platted as normal lots at
+every standing, like medium density: `PLATTED_ZONES` gains it, and
+`lotsOfZone` and `warrantedLot` in `src/shared/lots.ts` cut it normal only. A
+townhouse row takes one normal parcel at every level, 1×2 upright or the
+turned twin `res-medium-row-t-N` at 2×1 for a street running north to south.
+It was 1×2, 1×4 and 1×6 by level, growing deeper with each level-up, which
+broke "a level keeps its lot". The row now holds three homes at every level,
+8 residents, each home about 6 m wide (15 homes an acre, inside the type's net
+11–25), and the levels add storeys and value only, 7, 9 and 11 m tall. The
+research behind it: Opticos townhouse units are 18–25 ft wide at 2–3.5
+storeys in runs of 2 to 16, municipal fee-simple townhouse lots are 20–24 ft
+wide, zoning caps a row at 4–8 units and the median new attached home is 1,800
+sq ft. The earlier 4, 8 and 12 homes belonged to rows that grew along the
+street, two homes a tile at about 20 an acre; on a fixed 20 m frontage they
+would have packed four units into 20 m and tripled the density by level 3. On
+the street the body is 18 × 18 m on the 1×2 lot with three homes to 20 m of
+frontage, each with its own door and drive, where it was two homes a tile on a
+13.6 m-per-tile body. A long terrace is neighbouring parcels in a run, each a
+run of three with side yards between runs. The draw weight is unchanged at 1.6
+on level 1, and an old save keeps a standing 1×4 or 1×6 row as its stored
+footprint. The zone lens draws parcels under the row-housing zone tool too.
 
 ### Replatting holds, and the inspector names the lot (built 2026-10-07)
 

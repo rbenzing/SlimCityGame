@@ -882,6 +882,11 @@ describe('a building keeps its real proportions whatever the tile measures', () 
     expect(bodyMetresFor(sized('multiplex', 2, 3))).toEqual({ w: 24, d: 24 });
   });
 
+  it('sizes a townhouse row as three homes on one 20 m tile, upright and turned alike', () => {
+    expect(bodyMetresFor(sized('townhouse', 1, 2))).toEqual({ w: 18, d: 18 });
+    expect(bodyMetresFor(sized('townhouse', 2, 1))).toEqual({ w: 18, d: 18 });
+  });
+
   it('keeps a restaurant a box on its car park and a filling station a kiosk behind its forecourt', () => {
     expect(bodyMetresFor(sized('restaurant', 1, 2))).toEqual({ w: 13.6, d: 24 });
     expect(bodyMetresFor(sized('restaurant', 2, 2))).toEqual({ w: 24, d: 24 });

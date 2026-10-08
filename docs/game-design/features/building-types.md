@@ -8,7 +8,7 @@
 A zoned lot grows a **kind** of building, not just a level of one. Paint a
 low-density residential street and it fills with detached houses, with the odd
 duplex and fourplex where a house would not fit. Row housing comes up as
-townhouses two to a lot. Medium density grows multiplexes and courtyard
+townhouses, three homes to a lot. Medium density grows multiplexes and courtyard
 apartments; high density grows mid-rise slabs and towers on podiums. Each kind
 is a real building type with its own lot, massing, population and draw on the
 grid, and every figure comes from a published source.
@@ -73,7 +73,7 @@ homes.
 | Detached house       | Low density        | M0   | 61.1   | 1×1, 1×2, 2×2 or 2×3 by the land, the same at every level ([lots-and-land.md](lots-and-land.md)) | 1 / 2 / 2     | 1           | 3             |
 | Duplex               | Low density        | M1   | 1.6    | 1×1 or 1×2, the same at every level; 2×1 turned | 2 / 2 / 2.5   | 2           | 5             |
 | Fourplex             | Low density        | M1   | 1.2    | 1×1 or 1×2, the same at every level; 2×1 turned | 2.5 / 2.5 / 3 | 4           | 9             |
-| Townhouse row        | Row housing        | M1   | 1.6    | 1×2 / 1×4 / 1×6          | 2 / 3 / 3.5   | 4 / 8 / 12  | 11 / 21 / 32  |
+| Townhouse row        | Row housing        | M1   | 1.6    | 1×2, one normal parcel, at every level; 2×1 turned | 2 / 3 / 3.5   | 3 / 3 / 3   | 8 / 8 / 8     |
 | Multiplex            | Medium density     | M2   | 0.63   | 2×2, two normal parcels, at every level | 2.5 / 3 / 3   | 8 / 10 / 12 | 18 / 23 / 27  |
 | Courtyard apartments | Medium density     | M2   | 0.30   | 2×2, two normal parcels, at every level | 2 / 3 / 3.5   | 12 / 18 / 24 | 27 / 41 / 54 |
 | Mid-rise flats       | High density       | M4   | 0.11   | 2×2 / 2×2 / 3×3          | 5 / 8 / 10    | 35 / 56 / 150 | 79 / 127 / 339 |
@@ -111,10 +111,26 @@ which is the 2×2 lot at 2.5 to the acre. A duplex takes a lot 45–75 ft wide
 by 100–150 ft deep and a fourplex 50–75 by 100–150
 ([duplex](https://missingmiddlehousing.com/types/duplex-stacked/),
 [fourplex](https://missingmiddlehousing.com/types/fourplex/)): a 20 × 40 m
-tile pair. A townhouse unit is 18–25 ft wide
-([townhouse](https://missingmiddlehousing.com/types/townhouse/)), so a 20 m
-frontage holds two at 6.8 m, which puts a 1×2 row at 20 homes to the acre,
-inside the type's 11–25. A multiplex of 5–12 homes takes a lot 95–120 by
+tile pair. A townhouse unit is 18–25 ft wide on a lot 85–120 ft deep, at a
+net 11–25 homes to the acre, in runs of 2 to 16
+([townhouse](https://missingmiddlehousing.com/types/townhouse/)).
+Municipal fee-simple townhouse lots run 1,600–2,000 sq ft and 20–24 ft wide
+([Alva, OK](https://codelibrary.amlegal.com/codes/alvaok/latest/alva_ok/0-0-0-12052),
+[Big Timber, MT](https://www.zoneomics.com/code/big-timber-MT/chapter_16)),
+zoning caps a row at 4–8 units
+([Garfield, NJ](https://www.zoneomics.com/code/garfield-NJ/chapter_12),
+[Utah missing-middle toolkit](https://luau.utah.gov/wp-content/uploads/UMH_MMH-Toolkit_NeighborhoodTypes_Central.pdf)),
+and the median new single-family attached home is 1,800 sq ft
+([NAHB on the Census SOC, 2019](https://www.nahb.org/blog/2020/12/where-are-the-largest-homes-built)).
+So the 1×2 normal parcel, 20 m of frontage by 40 m deep (0.198 acre), holds
+**three homes at every level**, each about 6 m (20–22 ft) wide: 15 homes to the
+acre, inside the type's 11–25. The level adds storeys and value, never homes
+or length; Opticos gives the same unit width at 2 to 3.5 storeys, so a taller
+townhouse is more floor per home. A long terrace is neighbouring parcels in a
+run, which is how row housing is platted: each parcel's building is a run of
+three, with side yards between runs
+([lots-and-land.md](lots-and-land.md#row-housing-stands-on-one-normal-lot-built-2026-10-07)).
+A multiplex of 5–12 homes takes a lot 95–120 by
 100–150 ft and a courtyard building of 6–25 homes one of 100–135 by 110–150
 ([multiplex](https://missingmiddlehousing.com/types/multiplex-small/),
 [courtyard](https://missingmiddlehousing.com/types/courtyard-apartments/)):
@@ -125,7 +141,8 @@ it stays two at every level
 
 **Storeys.** Opticos gives the duplex and fourplex 2–2.5 storeys, the
 townhouse 2–3.5, the multiplex 2–2.5 and the courtyard building 1–3.5, with
-eave heights the ladder above stays inside. Half of new detached houses are
+eave heights the ladder above stays inside; a townhouse row's storeys 2, 3
+and 3.5 stand at 7, 9 and 11 m on the same three homes. Half of new detached houses are
 two storeys ([NAHB](https://eyeonhousing.org/2025/07/two-or-more-story-home-starts-rebound-in-2024/)),
 so the first level is a one-storey house and the levels above it two. The
 mid-rise runs 5 to 10 storeys and the tower 12 to 25, both over the code's
@@ -466,8 +483,8 @@ Each kind reads as itself at the default camera, without a label (see
 - a **duplex** as two homes in one body with two front doors and two drives;
 - a **fourplex** as a two-and-a-half-storey house-form block with two front
   doors and two drives;
-- a **townhouse row** as attached homes two to a lot tile, each with its door
-  and pad;
+- a **townhouse row** as three attached homes to a 20 m frontage, each with its
+  own door and drive;
 - a **multiplex** as a low flat-roofed block; **courtyard apartments** as a
   wider, lower block;
 - **mid-rise flats** as a slab, and a **tower** rising from a two-storey

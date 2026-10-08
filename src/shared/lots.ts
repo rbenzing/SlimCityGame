@@ -34,16 +34,26 @@ export function lotForStanding(landValue: number): LotSize {
 }
 
 /** The zones whose kinds stand on the plat. */
-export const PLATTED_ZONES: readonly ZoneType[] = [ZoneType.ResLow, ZoneType.ResMedium];
+export const PLATTED_ZONES: readonly ZoneType[] = [
+  ZoneType.ResLow,
+  ZoneType.ResMedium,
+  ZoneType.ResMediumRow,
+];
 
-/** The lot sizes a zone plats: medium density is cut as normal lots only, every other zone any size. */
+/** The zones cut as normal lots at every standing: medium density and row housing. */
+const NORMAL_LOT_ZONES: ReadonlySet<ZoneType> = new Set([
+  ZoneType.ResMedium,
+  ZoneType.ResMediumRow,
+]);
+
+/** The lot sizes a zone plats: medium density and row housing are cut as normal lots only, every other zone any size. */
 export function lotsOfZone(zone: ZoneType): readonly LotSize[] {
-  return zone === ZoneType.ResMedium ? ['normal'] : LOT_SIZES;
+  return NORMAL_LOT_ZONES.has(zone) ? ['normal'] : LOT_SIZES;
 }
 
-/** The lot the plat warrants in `zone` at `landValue`: medium density is normal whatever the standing. */
+/** The lot the plat warrants in `zone` at `landValue`: medium density and row housing are normal whatever the standing. */
 export function warrantedLot(zone: ZoneType, landValue: number): LotSize {
-  return zone === ZoneType.ResMedium ? 'normal' : lotForStanding(landValue);
+  return NORMAL_LOT_ZONES.has(zone) ? 'normal' : lotForStanding(landValue);
 }
 
 /**

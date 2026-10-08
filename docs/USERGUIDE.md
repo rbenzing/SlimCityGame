@@ -224,7 +224,7 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   detached houses, on small lots where the land is cheap and on large ones
   where it is good, with a duplex or a fourplex now and then (the building's
   info panel names its lot, such as "Normal lot, 800 m²");
-  row housing is townhouses two to a lot; medium density grows multiplexes and
+  row housing is townhouses, three to a lot; medium density grows multiplexes and
   courtyard apartments; high density grows mid-rise slabs and towers. Low
   commercial grows corner shops, restaurants and filling stations, and once the
   town can support them, shopping strips and supermarkets; high commercial

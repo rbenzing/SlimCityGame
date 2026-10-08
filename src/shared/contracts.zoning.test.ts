@@ -134,20 +134,28 @@ const RESIDENTIAL_KINDS: ReadonlyArray<{
       house: true,
     })),
   ),
-  {
-    kind: 'townhouse',
+  ...(
+    [
+      [1, 2, false],
+      [2, 1, true],
+    ] as const
+  ).map(([w, d, turned]) => ({
+    kind: 'townhouse' as const,
+    lot: 'normal' as const,
+    turned,
     zone: ZoneType.ResMediumRow,
     unlock: 1,
     share: 1.6,
     household: 2.63,
     kwPerHome: 0.97,
+    // One normal parcel at every level: the levels add storeys and homes.
     lots: [
-      [1, 2],
-      [1, 4],
-      [1, 6],
-    ],
+      [w, d],
+      [w, d],
+      [w, d],
+    ] as const,
     house: true,
-  },
+  })),
   {
     kind: 'multiplex',
     lot: 'normal',
@@ -609,7 +617,7 @@ describe('Residential kinds (building-types): three levels per kind, every figur
   it('adds homes with each level of a block, and keeps one household in a house', () => {
     for (const k of RESIDENTIAL_KINDS) {
       const [l1, l2, l3] = ofKind(k.kind, k.lot, k.turned);
-      if (k.house && k.kind !== 'townhouse') {
+      if (k.house) {
         expect(new Set([l1!.units, l2!.units, l3!.units]).size).toBe(1);
       } else {
         expect(l1!.units!).toBeLessThan(l2!.units!);
@@ -831,12 +839,16 @@ describe('Industrial kinds (building-types): three levels per kind, every figure
 describe('Medium Density Row Housing catalog (zone 6, §6.21)', () => {
   const rows = catalog.filter((e) => e.zone === ZoneType.ResMediumRow);
 
-  it('has exactly 3 levels of townhouse row, res category, M1 gated', () => {
-    expect(rows).toHaveLength(3);
-    expect(rows.map((e) => e.level).sort()).toEqual([1, 2, 3]);
+  const upright = rows.filter((e) => !e.id.includes('-t-'));
+
+  it('has 3 levels of townhouse row, upright and turned, res category, M1 gated, each on a normal lot', () => {
+    expect(rows).toHaveLength(6);
+    expect(upright).toHaveLength(3);
+    expect(rows.map((e) => e.level).sort()).toEqual([1, 1, 2, 2, 3, 3]);
     for (const e of rows) {
       expect(e.category).toBe('res');
       expect(e.kind).toBe('townhouse');
+      expect(e.lot).toBe('normal');
       expect(e.unlockMilestone).toBe(1);
     }
   });
@@ -850,20 +862,23 @@ describe('Medium Density Row Housing catalog (zone 6, §6.21)', () => {
     }
   });
 
-  it('reads as NARROW attached rows: width 1, depth 2..6, low height 7..11m', () => {
+  it('reads as attached rows: one tile of frontage on a normal lot, 1×2 upright or 2×1 turned, low height 7..11m', () => {
     for (const e of rows) {
-      expect(e.footprint.w).toBe(1);
-      expect(e.footprint.d).toBeGreaterThanOrEqual(2);
-      expect(e.footprint.d).toBeLessThanOrEqual(6);
+      const turned = e.id.includes('-t-');
+      expect(e.footprint).toEqual(turned ? { w: 2, d: 1 } : { w: 1, d: 2 });
       expect(e.height).toBeGreaterThanOrEqual(7);
       expect(e.height).toBeLessThanOrEqual(11);
     }
   });
 
-  it('scales residents monotonically with level', () => {
-    const sorted = [...rows].sort((a, b) => (a.level ?? 0) - (b.level ?? 0));
-    expect(sorted[0]!.residents!).toBeLessThan(sorted[1]!.residents!);
-    expect(sorted[1]!.residents!).toBeLessThan(sorted[2]!.residents!);
+  it('holds three homes and their residents steady across levels while height rises', () => {
+    for (const set of [upright, rows.filter((e) => e.id.includes('-t-'))]) {
+      const sorted = [...set].sort((a, b) => (a.level ?? 0) - (b.level ?? 0));
+      expect(new Set(sorted.map((e) => e.units)), 'units').toEqual(new Set([3]));
+      expect(new Set(sorted.map((e) => e.residents)).size, 'residents').toBe(1);
+      expect(sorted[0]!.height).toBeLessThan(sorted[1]!.height);
+      expect(sorted[1]!.height).toBeLessThan(sorted[2]!.height);
+    }
   });
 });
 
@@ -956,7 +971,7 @@ describe('Residential zone families read as distinct greens (§6.21 tints)', () 
     // (save-safe continuity — their colors are not retinted here).
     const greenZones: ZoneType[] = [ZoneType.ResMediumRow, ZoneType.ResMedium];
     const greens = catalog.filter((e) => e.zone !== undefined && greenZones.includes(e.zone));
-    expect(greens.length).toBe(9);
+    expect(greens.length).toBe(12);
     for (const e of greens) {
       const { r, g, b } = rgb(e.color);
       expect(g).toBeGreaterThan(r);

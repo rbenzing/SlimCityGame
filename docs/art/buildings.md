@@ -82,7 +82,10 @@ procedural house kit:
   not its ground
   ([../game-design/features/lots-and-land.md](../game-design/features/lots-and-land.md));
   a duplex and a fourplex take a half (1×1) or a normal (1×2, or 2×1 turned)
-  lot and keep it at every level; rows are 1×2, 1×4 and 1×6.
+  lot and keep it at every level; a townhouse row takes one normal lot (1×2,
+  or 2×1 turned) at every level and holds three homes on it, and a long
+  terrace is neighbouring parcels in a run, each a run of three with side
+  yards between runs.
 
 **Commercial.** A commercial building's kind decides its archetype. A shop,
 a shopping strip, a supermarket and a restaurant are **storefronts**: a canopy
@@ -238,7 +241,7 @@ metres, and the lot takes the rest:
 | Detached house       | 4.75 m per lot tile each way, never under 9.5 m (9.5 × 9.5 m on a 1×1, 1×2 or 2×2 lot, 9.5 × 14.25 m on a 2×3) | pitched | lawn, one drive and its cover, a yard                            |
 | Duplex               | 60% of each lot axis, capped at 16 m (12 × 12 m on 1×1, 12 × 16 m on 1×2) | pitched | two front doors, one drive per home                              |
 | Fourplex             | 70% of each lot axis, capped at 18 m (14 × 14 m on 1×1, 14 × 18 m on 1×2) | pitched | two front doors, one drive per door                              |
-| Townhouse row        | 13.6 m per tile; two homes per 20 m of frontage, 6.8 m each | pitched | a door, a front pad and by seed a garage door per home           |
+| Townhouse row        | 90% of each lot axis, capped at 18 m (18 × 18 m on its 1×2); three homes per 20 m of frontage, 6 m each | pitched | a door, a front pad and by seed a garage door per home           |
 | Multiplex            | 13.6 m per tile, capped at 24 m each way (24 × 24 m on its 2×2) | flat    | a lot pad; cars at the kerb                                      |
 | Courtyard apartments | 13.6 m per tile (27.2 × 27.2 m on its 2×2 at every level)   | flat    | a lot pad; cars at the kerb                                      |
 | Mid-rise flats       | 13.6 m per tile                                             | flat    | a lot pad; cars at the kerb                                      |
@@ -350,7 +353,7 @@ the home:
   3 m behind the house's back wall, 4 × 6 m, its door facing down the drive.
   The car stands just in front of the garage door, under the carport, or on
   the spot. A cover the lot has no depth for is not chosen.
-- **A row facing the street along its length** is two homes per lot tile of
+- **A row facing the street along its length** is three homes to the 20 m of
   frontage, each a share of the row's body; a duplex or a fourplex is two
   homes across its frontage the same way. Each home gets its own short
   drive to its front wall — a front pad, the car on it — and some of them, by
