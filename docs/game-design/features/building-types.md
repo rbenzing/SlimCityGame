@@ -79,9 +79,9 @@ are free, and stays as it is where they are not
 | Townhouse row        | Row housing        | M1   | 1.6    | 1×2, one normal parcel, at every level; 2×1 turned | 2 / 3 / 3.5   | 3 / 3 / 3   | 8 / 8 / 8     |
 | Multiplex            | Medium density     | M2   | 0.63   | 2×2, two normal parcels, at every level | 2.5 / 3 / 3   | 8 / 10 / 12 | 18 / 23 / 27  |
 | Courtyard apartments | Medium density     | M2   | 0.30   | 2×2, two normal parcels, at every level | 2 / 3 / 3.5   | 12 / 18 / 24 | 27 / 41 / 54 |
-| Mid-rise flats       | High density       | M4   | 0.11   | 2×2 / 2×2 / 3×3          | 5 / 8 / 10    | 34 / 47 / 114 | 77 / 106 / 258 |
+| Mid-rise flats       | High density       | M4   | 0.11   | 1×2 / 2×2 / 3×3, assembling its neighbours | 5 / 8 / 10    | 17 / 47 / 114 | 38 / 106 / 258 |
 | Tower                | High density       | M4   | 0.07   | 2×2 / 2×2 / 3×3          | 12 / 18 / 25  | 81 / 105 / 285 | 183 / 237 / 644 |
-| Shopfront flats      | Mixed              | M3   | 1      | 2×2 / 2×2 / 3×3          | 6 / 8 / 9     | 34 / 40 / 87 | 77 / 90 / 197 |
+| Shopfront flats      | Mixed              | M3   | 1      | 1×2 / 2×2 / 3×3, assembling its neighbours | 4 / 8 / 9     | 10 / 40 / 87 | 23 / 90 / 197 |
 
 A tile is 20 m, so a 1×2 lot is 800 m² (0.2 acre), a 2×2 lot 1,600 m²
 (0.4 acre) and a 3×3 lot 3,600 m² (0.9 acre).
@@ -492,7 +492,7 @@ well draw none (see
 A shopfront block's shops add the draw of a retail floor: a mercantile
 building uses 16.7 kWh per square foot a year (derived above from
 [CBECS 2018](https://www.eia.gov/consumption/commercial/pba/mercantile.php)),
-15.2 kW on a 740 m² floor; and 27.5 gallons a day per employee, the middle of
+7.6 kW on a 370 m² floor and 15.2 kW on a 740 m² one; and 27.5 gallons a day per employee, the middle of
 the 20–35 the EPA gives for domestic use at a workplace
 ([EPA](https://www.epa.gov/sustainability/lean-water-toolkit-appendix-c)).
 Its shop jobs are the floor's net area, 80% of its plate, at 17.5 m² per

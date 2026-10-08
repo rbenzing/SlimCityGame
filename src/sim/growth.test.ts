@@ -2590,6 +2590,106 @@ describe('a business opens where the town has room for its jobs', () => {
       });
     });
   });
+
+  describe('dense flats start on one normal lot and assemble their neighbours', () => {
+    const shippedAll = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+    const resHigh = shippedAll.filter((e) => e.zone === ZoneType.ResHigh);
+    const mixed = shippedAll.filter((e) => e.zone === ZoneType.Mixed);
+    const one = (id: string): BuildingCatalogEntry => shippedAll.find((e) => e.id === id)!;
+    const flats1 = one('res-high-1');
+    const tick = (
+      g: GridState,
+      registry: BuildingRegistry,
+      cat: BuildingCatalogEntry[],
+      zone: ZoneType,
+      demand: DemandLevels,
+    ): void => {
+      new GrowthSystem(cat, constantRng(0), onZoned(zone)).tick(
+        g,
+        registry,
+        demand,
+        4,
+        0,
+        UNMETERED_SUPPLY,
+        UNLIMITED_ROOM,
+      );
+    };
+    const noDemand: DemandLevels = { res: 0, com: 0, ind: 0 };
+    /** A flats at (1,1) facing the street at z = 0 in a three-lot run, with chosen neighbours on its east and west lots. */
+    const flatsBetween = (
+      east: boolean,
+      west: boolean,
+    ): { g: GridState; registry: BuildingRegistry; id: number } => {
+      const g = block(ZoneType.ResHigh, 3, 2);
+      const registry = new BuildingRegistry(resHigh);
+      const inst = registry.place(g, flats1, 1, 1, 0, BuildingState.Active)!;
+      if (east) registry.place(g, flats1, 2, 1, 0, BuildingState.Active);
+      if (west) registry.place(g, flats1, 0, 1, 0, BuildingState.Active);
+      tick(g, registry, resHigh, ZoneType.ResHigh, noDemand);
+      return { g, registry, id: inst.id };
+    };
+    const grownFlats = (registry: BuildingRegistry): BuildingInstance | undefined =>
+      registry.all().find((b) => b.catalogId === 'res-high-2');
+
+    it('takes the free lot to its west when the east lot is built on', () => {
+      const { registry } = flatsBetween(true, false);
+      const grown = grownFlats(registry)!;
+      expect([grown.x, grown.z]).toEqual([0, 1]);
+    });
+
+    it('takes the free lot to its east when the west lot is built on', () => {
+      const { registry } = flatsBetween(false, true);
+      const grown = grownFlats(registry)!;
+      expect([grown.x, grown.z]).toEqual([1, 1]);
+    });
+
+    it('stays as it is when both neighbours are built on', () => {
+      const { registry, id } = flatsBetween(true, true);
+      expect(grownFlats(registry)).toBeUndefined();
+      const old = registry.get(id)!;
+      expect([old.catalogId, old.x, old.z]).toEqual(['res-high-1', 1, 1]);
+    });
+
+    it('takes the free lot north of it on an east-fronting street', () => {
+      const g = makeGrid();
+      g.fields[FieldId.LandValue]!.fill(255);
+      for (let z = 0; z < 8; z++) g.roadTier[tileIndex(3, z)] = RoadTier.TwoLane;
+      for (let z = 1; z < 7; z++) {
+        for (let x = 1; x <= 2; x++) {
+          const i = tileIndex(x, z);
+          g.zone[i] = ZoneType.ResHigh;
+          g.power[i] = 1;
+          g.watered[i] = 1;
+          g.sewered[i] = 1;
+        }
+      }
+      const registry = new BuildingRegistry(resHigh);
+      registry.place(g, flats1, 1, 3, 1, BuildingState.Active);
+      registry.place(g, flats1, 1, 4, 1, BuildingState.Active);
+      tick(g, registry, resHigh, ZoneType.ResHigh, noDemand);
+      const grown = grownFlats(registry)!;
+      expect([grown.x, grown.z, grown.rotation]).toEqual([1, 2, 1]);
+    });
+
+    it.each([
+      ['high-density flats', ZoneType.ResHigh, resHigh],
+      ['shopfront flats', ZoneType.Mixed, mixed],
+    ])('opens %s on one normal lot', (_name, zone, cat) => {
+      const g = block(zone, 8, 2);
+      const plat = platOf(platSourceOf(g, null, g.fields[FieldId.LandValue]), zone);
+      const registry = new BuildingRegistry(cat);
+      tick(g, registry, cat, zone, { res: 1, com: 1, ind: 0 });
+      const first = registry.all();
+      expect(first.length).toBeGreaterThan(0);
+      for (const b of first) {
+        expect(b.level).toBe(1);
+        expect(b.catalogId).toBe(zone === ZoneType.ResHigh ? 'res-high-1' : 'mixed-1');
+        expect(takesFrontageLots(plat, b.x, b.z, 1, 2, 'N'), `${b.x},${b.z}`).toBe(true);
+        const p = plat.parcels[plat.parcelAt[tileIndex(b.x, b.z)]!]!;
+        expect(p.lot).toBe('normal');
+      }
+    });
+  });
 });
 
 describe('farmKindFor', () => {

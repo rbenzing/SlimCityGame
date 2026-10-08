@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,978 tests passing across 162 test files, run 2026-10-07.
+**Test suite:** 5,001 tests passing across 163 test files, run 2026-10-07.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -162,9 +162,10 @@ from the street, the plat drawn on the zone lens, the duplex and the
 fourplex on the plat, medium density assembling two parcels, replatting
 under empty ground, the inspector's lot line, row housing on one normal
 lot, and commercial and dense land cut into frontage lots; and the dense
-homes are re-derived from the floor each block is drawn with. Next is a
-building that starts on fewer lots and grows onto its neighbours, or
-converts to a bigger kind, then the 3×3 estate where a block is deep.
+homes are re-derived from the floor each block is drawn with; and mid-rise
+and shopfront flats start on one lot and assemble their neighbours. Next is
+a building that converts to a bigger kind as its area grows (its trigger
+waits on a decision), then the 3×3 estate where a block is deep.
 After it, the municipal
 services programme's epics
 ([municipal-services.md](game-design/features/municipal-services.md)), the
@@ -324,6 +325,23 @@ moved to `src/shared/footprint.ts`, and everything that places a building on
 the map uses it: the body's seat, its frontage setback (swapped back into the
 body's own axes), the lot pad, the parking bays and kerb cut, the shopfront
 kit's road side, props, landmarks, utility kits and the selection outline.
+
+### A block starts on one lot and assembles its neighbours (asked for and built 2026-10-07)
+
+Asked for by the player: a building should be able to start on less ground
+and take more as it grows. Each kind's first level was checked against the
+smallest site it is really built on. Mid-rise flats now start as a
+five-storey walk-up on one normal lot, 17 homes (Seattle builds six storeys
+of flats on a 50 × 100 ft lot), and shopfront flats as a four-storey
+main-street building on one lot, 17 shop jobs under 10 homes; both assemble
+a second lot at their second level and a 3×3 at their third. The tower keeps
+2×2, since a tower site wants 130 ft of frontage (Vancouver), and the
+multiplex and courtyard building keep their two lots, since they take lots
+95–135 ft wide (Opticos). A level-up that grows along its street may now take
+the free lots on either side of it, its own corner tried first, since land
+is assembled from whichever neighbour sells; before, it could only grow
+east or south. Converting a building to a bigger kind is the other half of
+the request and waits on choosing what triggers it.
 
 ### A block holds the floor it is drawn with (built 2026-10-07)
 
