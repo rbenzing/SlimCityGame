@@ -28,7 +28,7 @@ import type {
   ZonedUnserved,
 } from '../shared/types';
 import { farmKindOf } from '../shared/buildingkind';
-import { platCandidates } from '../shared/lots';
+import { PLATTED_ZONES, platCandidates } from '../shared/lots';
 import { BuildingRegistry, footprintForRotation, lotTiles } from './buildings';
 import type { JobsBySector } from './economy';
 import {
@@ -40,7 +40,15 @@ import {
   type UtilityLine,
 } from './network';
 import { freeCellsOn, roadCellsOf } from '../world/roadnet';
-import { platOf, platReaches, platSourceOf, takesWholeParcels, type Plat } from '../world/plat';
+import {
+  platOf,
+  platReaches,
+  platSourceOf,
+  takesFrontageLots,
+  takesWholeParcels,
+  type Front,
+  type Plat,
+} from '../world/plat';
 
 /**
  * Deterministic RNG surface injected into the growth system.
@@ -416,6 +424,73 @@ function desirabilityFor(g: GridState, x: number, z: number, sector: Sector): nu
   return Math.max(0, Math.min(1, raw));
 }
 
+/**
+ * The plat of a zone, cut on first ask and kept for the pass, from the same
+ * reading the lens draws.
+ */
+function platCutter(g: GridState): PlatPass {
+  const source = platSourceOf(g, g.roads ? roadCellsOf(g) : null, g.fields[FieldId.LandValue]);
+  const plats = new Map<ZoneType, Plat>();
+  return {
+    streetAt: source.streetAt,
+    platFor: (zone) => {
+      let plat = plats.get(zone);
+      if (!plat) {
+        plat = platOf(source, zone);
+        plats.set(zone, plat);
+      }
+      return plat;
+    },
+  };
+}
+
+/** The plat of the pass: a zone's cut, and the streets it was cut from. */
+interface PlatPass {
+  platFor: (zone: ZoneType) => Plat;
+  streetAt: (x: number, z: number) => boolean;
+}
+
+/** Where a building with no lot stands, and turned how. */
+interface Placement {
+  x: number;
+  z: number;
+  rotation: 0 | 1;
+}
+
+/**
+ * Where `e` stands when the scan reaches (x, z): only on a tile on its
+ * parcel's street edge, so every kind competes at the same row whichever side
+ * the street is on. The building starts there along the street, turned a
+ * quarter when the parcel fronts east or west, and its min corner steps back
+ * from the street edge on a south or east front. Null where the tile is not a
+ * street-row tile or the building takes no frontage lots there.
+ */
+function frontagePlacement(
+  plat: Plat,
+  e: BuildingCatalogEntry,
+  x: number,
+  z: number,
+): Placement | null {
+  const n = plat.parcelAt[tileIndex(x, z)] ?? -1;
+  if (n < 0) return null;
+  const p = plat.parcels[n]!;
+  const onStreetRow =
+    p.front === 'N'
+      ? z === p.z
+      : p.front === 'S'
+        ? z === p.z + p.d - 1
+        : p.front === 'W'
+          ? x === p.x
+          : x === p.x + p.w - 1;
+  if (!onStreetRow) return null;
+  const turned = (p.front === 'E' || p.front === 'W') && e.footprint.w !== e.footprint.d;
+  const rotation = turned ? 1 : 0;
+  const { w, d } = footprintForRotation(e, rotation);
+  const mx = p.front === 'E' ? x - w + 1 : x;
+  const mz = p.front === 'S' ? z - d + 1 : z;
+  return takesFrontageLots(plat, mx, mz, w, d, p.front) ? { x: mx, z: mz, rotation } : null;
+}
+
 export class GrowthSystem {
   private readonly catalog: BuildingCatalogEntry[];
   private readonly catalogIndex: Map<string, BuildingCatalogEntry>;
@@ -494,8 +569,20 @@ export class GrowthSystem {
         updated,
       );
       this.flagUnservedUtilities(g, registry, updated);
-      this.runLevelUps(g, registry, demand, milestoneLevel, pass, spare, roomLeft, added, removed);
-      this.runSpawnScan(g, registry, demand, milestoneLevel, pass, spare, roomLeft, added);
+      const plats = platCutter(g);
+      this.runLevelUps(
+        g,
+        registry,
+        demand,
+        milestoneLevel,
+        pass,
+        spare,
+        roomLeft,
+        plats,
+        added,
+        removed,
+      );
+      this.runSpawnScan(g, registry, demand, milestoneLevel, pass, spare, roomLeft, plats, added);
     }
 
     return { added, removed, updated };
@@ -749,6 +836,7 @@ export class GrowthSystem {
     pass: number,
     spare: Spare,
     room: JobsBySector,
+    plats: PlatPass,
     added: BuildingInstance[],
     removed: number[],
   ): void {
@@ -764,6 +852,7 @@ export class GrowthSystem {
         pass,
         spare,
         room,
+        plats,
         inst,
         entry,
         added,
@@ -780,6 +869,7 @@ export class GrowthSystem {
     pass: number,
     spare: Spare,
     room: JobsBySector,
+    plats: PlatPass,
     inst: BuildingInstance,
     entry: BuildingCatalogEntry,
     added: BuildingInstance[],
@@ -823,24 +913,65 @@ export class GrowthSystem {
     const oldFootprint = footprintForRotation(entry, rotation);
     const newFootprint = footprintForRotation(nextEntry, rotation);
 
+    // A building on a platted zone that grows into a new footprint still
+    // stands on the frontage of the parcels it now covers.
+    const regrown = newFootprint.w !== oldFootprint.w || newFootprint.d !== oldFootprint.d;
+    const platted = regrown && entry.lot === undefined && PLATTED_ZONES.includes(zone);
+    const plat = platted ? plats.platFor(zone) : null;
+
+    // The street edge stays where it is: on a south or east front the min
+    // corner steps back as the building grows deeper.
+    let front: Front | undefined;
+    let nx = x;
+    let nz = z;
+    if (plat !== null) {
+      const alongX = (at: number): boolean =>
+        Array.from({ length: oldFootprint.w }, (_, i) => x + i).some((tx) =>
+          plats.streetAt(tx, at),
+        );
+      const alongZ = (at: number): boolean =>
+        Array.from({ length: oldFootprint.d }, (_, i) => z + i).some((tz) =>
+          plats.streetAt(at, tz),
+        );
+      if (rotation % 2 === 0) {
+        front = alongX(z - 1) ? 'N' : alongX(z + oldFootprint.d) ? 'S' : undefined;
+      } else {
+        front = alongZ(x - 1) ? 'W' : alongZ(x + oldFootprint.w) ? 'E' : undefined;
+      }
+      if (front === 'S') nz = z + oldFootprint.d - newFootprint.d;
+      if (front === 'E') nx = x + oldFootprint.w - newFootprint.w;
+    }
+
+    // A building on a street edge may grow into its own yard and touch no
+    // parcel. With no street on its edges it must still cover parcels that
+    // front the sides its rotation faces: upright north or south, turned east
+    // or west.
+    const sides: readonly Front[] =
+      front !== undefined ? [front] : rotation % 2 === 0 ? ['N', 'S'] : ['W', 'E'];
+
     // Temporarily clear this building's own stamp so the (possibly larger)
     // new footprint can be checked on a clean grid, then commit or roll back.
     clearStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
     const fits =
-      this.canPlace(g, x, z, newFootprint.w, newFootprint.d) &&
-      footprintFree(g, x, z, newFootprint.w, newFootprint.d) &&
+      (plat === null ||
+        !platReaches(plat, x, z) ||
+        sides.some((f) =>
+          takesFrontageLots(plat, nx, nz, newFootprint.w, newFootprint.d, f, front !== undefined),
+        )) &&
+      this.canPlace(g, nx, nz, newFootprint.w, newFootprint.d) &&
+      footprintFree(g, nx, nz, newFootprint.w, newFootprint.d) &&
       (farm === null
-        ? isZonedLot(g, zone, x, z, newFootprint.w, newFootprint.d)
-        : isFarmLot(g, x, z, newFootprint.w, newFootprint.d) &&
-          lotGrade(g, x, z, newFootprint.w, newFootprint.d) >= FARM_GRADE[farm]);
+        ? isZonedLot(g, zone, nx, nz, newFootprint.w, newFootprint.d)
+        : isFarmLot(g, nx, nz, newFootprint.w, newFootprint.d) &&
+          lotGrade(g, nx, nz, newFootprint.w, newFootprint.d) >= FARM_GRADE[farm]);
     // A bigger building draws more, and nobody builds it on a grid that
     // cannot carry the difference.
     const power = utilityUnits(nextEntry.powerUse) - utilityUnits(entry.powerUse);
     const water =
-      utilityUnits(cityWaterUse(g, nextEntry, x, z, newFootprint.w, newFootprint.d)) -
+      utilityUnits(cityWaterUse(g, nextEntry, nx, nz, newFootprint.w, newFootprint.d)) -
       utilityUnits(cityWaterUse(g, entry, x, z, oldFootprint.w, oldFootprint.d));
     const sewer =
-      utilityUnits(sewageOf(g, nextEntry, x, z, newFootprint.w, newFootprint.d, milestoneLevel)) -
+      utilityUnits(sewageOf(g, nextEntry, nx, nz, newFootprint.w, newFootprint.d, milestoneLevel)) -
       utilityUnits(sewageOf(g, entry, x, z, oldFootprint.w, oldFootprint.d, milestoneLevel));
     if (
       !fits ||
@@ -852,7 +983,7 @@ export class GrowthSystem {
     }
 
     registry.remove(g, inst.id);
-    const placed = registry.place(g, nextEntry, x, z, rotation, BuildingState.Constructing);
+    const placed = registry.place(g, nextEntry, nx, nz, rotation, BuildingState.Constructing);
     if (!placed) {
       // Unreachable: footprintFree + canPlace were just confirmed true with
       // no intervening mutation. Restore rather than silently drop the tile.
@@ -879,26 +1010,11 @@ export class GrowthSystem {
     pass: number,
     spare: Spare,
     room: JobsBySector,
+    plats: PlatPass,
     added: BuildingInstance[],
   ): void {
     const size = g.size;
     const totalTiles = size * size;
-    // The plat is cut once a pass, per zone the pass meets, from the same
-    // reading the lens draws.
-    const platSource = platSourceOf(
-      g,
-      g.roads ? roadCellsOf(g) : null,
-      g.fields[FieldId.LandValue],
-    );
-    const plats = new Map<ZoneType, Plat>();
-    const platFor = (zone: ZoneType): Plat => {
-      let plat = plats.get(zone);
-      if (!plat) {
-        plat = platOf(platSource, zone);
-        plats.set(zone, plat);
-      }
-      return plat;
-    };
     const passIndex = pass % SCAN_STRIDE;
 
     for (let flat = passIndex; flat < totalTiles; flat += SCAN_STRIDE) {
@@ -919,14 +1035,28 @@ export class GrowthSystem {
       // The lot picks its building: among the zone's kinds that fit here, on
       // land zoned for them and within the room the economy has for their
       // jobs, one is drawn by how common it is in the real stock.
+      // A building with no lot of its own, in a platted zone the plat reaches,
+      // stands on the frontage of the parcels it covers, and is considered
+      // only at a street-row tile of one, wherever its min corner then falls.
+      const plat = plats.platFor(zone);
+      const frontageZone = PLATTED_ZONES.includes(zone) && platReaches(plat, x, z);
+      const placements = new Map<BuildingCatalogEntry, Placement>();
       const fitting = spawnCandidates(this.catalog, zone, milestoneLevel, (e) => {
-        const { w, d } = footprintForRotation(e, 0);
-        return isZonedLot(g, zone, x, z, w, d) && this.canPlace(g, x, z, w, d);
+        const at =
+          frontageZone && e.lot === undefined
+            ? frontagePlacement(plat, e, x, z)
+            : ({ x, z, rotation: 0 } as const);
+        if (at === null) return false;
+        const { w, d } = footprintForRotation(e, at.rotation);
+        if (!isZonedLot(g, zone, at.x, at.z, w, d) || !this.canPlace(g, at.x, at.z, w, d)) {
+          return false;
+        }
+        placements.set(e, at);
+        return true;
       });
       // A house stands on a parcel of the plat cut from its street, or, where
       // no street's plat reaches the tile, on the lot the land warrants.
       // A kind takes whole parcels of its lot, never half of one.
-      const plat = platFor(zone);
       const platted = !platReaches(plat, x, z)
         ? platCandidates(fitting, zone, fieldAt(g, FieldId.LandValue, flat))
         : fitting.filter(
@@ -938,29 +1068,31 @@ export class GrowthSystem {
       if (candidates.length === 0) continue;
       const entry = drawKind(candidates, candidates.length > 1 ? this.rng.next() : 0);
 
-      const { w, d } = footprintForRotation(entry, 0);
+      const { x: ax, z: az, rotation } = placements.get(entry)!;
+      const { w, d } = footprintForRotation(entry, rotation);
       // Service is judged over the whole lot, so it cannot depend on which
       // side of the building the street happens to sit (see footprintServed).
       // Once the town is off septic tanks, a lot a drain does not reach grows
       // nothing: its sewage would have nowhere to go.
       if (
-        !footprintServed(g.power, x, z, w, d) ||
-        (cityWaterUse(g, entry, x, z, w, d) > 0 && !footprintServed(g.watered, x, z, w, d)) ||
-        (sewageOf(g, entry, x, z, w, d, milestoneLevel) > 0 &&
-          !footprintServed(g.sewered, x, z, w, d))
+        !footprintServed(g.power, ax, az, w, d) ||
+        (cityWaterUse(g, entry, ax, az, w, d) > 0 && !footprintServed(g.watered, ax, az, w, d)) ||
+        (sewageOf(g, entry, ax, az, w, d, milestoneLevel) > 0 &&
+          !footprintServed(g.sewered, ax, az, w, d))
       ) {
         continue;
       }
 
       const demandForSector = demand[sector];
       if (demandForSector <= 0) continue;
-      const desirability = desirabilityFor(g, x, z, sector);
+      const desirability = desirabilityFor(g, ax, az, sector);
       this.spawnIfSupplied(
         g,
         registry,
         entry,
-        x,
-        z,
+        ax,
+        az,
+        rotation,
         demandForSector * desirability,
         milestoneLevel,
         pass,
@@ -1015,6 +1147,7 @@ export class GrowthSystem {
       entry,
       x,
       z,
+      0,
       demand.ind * FARM_DESIRABILITY[grade],
       milestoneLevel,
       pass,
@@ -1031,6 +1164,7 @@ export class GrowthSystem {
     entry: BuildingCatalogEntry,
     x: number,
     z: number,
+    rotation: 0 | 1,
     probability: number,
     milestoneLevel: number,
     pass: number,
@@ -1039,7 +1173,7 @@ export class GrowthSystem {
     added: BuildingInstance[],
   ): void {
     if (probability <= 0) return;
-    const { w, d } = footprintForRotation(entry, 0);
+    const { w, d } = footprintForRotation(entry, rotation);
     // Nobody moves into a home the grid cannot light, water or drain.
     const power = utilityUnits(entry.powerUse);
     const water = utilityUnits(cityWaterUse(g, entry, x, z, w, d));
@@ -1048,7 +1182,7 @@ export class GrowthSystem {
     if (!this.suppliedFor(tileIndex(x, z), lot, pass, spare, power, water, sewer)) return;
     if (this.rng.next() >= probability) return;
 
-    const placed = registry.place(g, entry, x, z, 0, BuildingState.Constructing);
+    const placed = registry.place(g, entry, x, z, rotation, BuildingState.Constructing);
     if (!placed) return;
     spare.power -= power;
     spare.water -= water;

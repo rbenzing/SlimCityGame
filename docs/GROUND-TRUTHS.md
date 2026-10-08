@@ -696,8 +696,10 @@ MUTCD citations below use 11th-edition section numbers.
   medium density, and a townhouse row takes one normal parcel at every level
   (1×2, or 2×1 turned) and holds three homes at every level: the level adds
   storeys, never homes or length. The
-  zone lens draws the plat only for the zones whose kinds stand on it, low
-  density, row housing and medium density (`PLATTED_ZONES`). —
+  zone lens draws the plat only for the zones whose kinds stand on it: low
+  density, row housing, medium density, low and high commercial, high density
+  and mixed use (`PLATTED_ZONES`); industrial and farm zones are never
+  platted. —
   [lots-and-land.md](game-design/features/lots-and-land.md);
   `lotForStanding`, `platCandidates`, `warrantedLot`, `lotsOfZone`,
   `PLATTED_ZONES` in `src/shared/lots.ts`, `takesWholeParcels`, `platReaches`
@@ -725,6 +727,26 @@ MUTCD citations below use 11th-edition section numbers.
   `platOf`, `parcelsAnchoredAt` in `src/world/plat.ts`, `setParcels` in
   `src/render/zonegrid.ts`, `cmdPaintZone` in `src/sim/worker.entry.ts`,
   `lotLine` in `src/ui/format.ts`
+- A commercial or dense building (a catalog entry with no `lot`) takes whole
+  lots along its frontage and never half of one: every lot it touches fronts
+  the same street, lies wholly within its width and starts at its front edge;
+  where it is shallower than its lots the rest is its yard, and where it is
+  deeper it runs into the unparcelled ground behind. Low commercial (3), high
+  commercial (4), high density (2) and mixed use (8) are cut into normal lots
+  at every standing, low commercial falling back to a half lot on a strip one
+  tile deep. On a street running north to south these buildings stand at
+  rotation 1, a quarter turn, since the catalog has no turned twins for them.
+  Every frontage kind is weighed at the same street-row tile on every side
+  of a street, never from the building's back corner, so a south- or
+  east-fronting block grows corner shops as a north one does. A level-up
+  that keeps its footprint improves in place; one that grows its footprint
+  is a redevelopment that keeps its street edge fixed and must take whole
+  lots by the same rule, only where they are free, the old building's ground
+  counting as part of them, and it never happens where a neighbour stands. The catalog footprints
+  and draw weights do not change with the plat. —
+  [lots-and-land.md](game-design/features/lots-and-land.md#commercial-and-dense-land-is-cut-into-frontage-lots-built-2026-10-07);
+  `takesFrontageLots` in `src/world/plat.ts`, `tryLevelUp` in
+  `src/sim/growth.ts`
 - Every zoned catalog figure is derived from a published source by the rules
   in [balancing.md](game-design/balancing.md#residential-kinds): residents are
   `round(units × household)`, a building's households are its `units`, and

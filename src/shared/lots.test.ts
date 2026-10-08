@@ -54,14 +54,35 @@ describe('the lots a zone plats', () => {
     expect(lotsOfZone(ZoneType.ResMediumRow)).toEqual(['normal']);
   });
 
-  it('leaves every other zone every lot size', () => {
-    expect(lotsOfZone(ZoneType.ResLow)).toEqual(LOT_SIZES);
-    expect(lotsOfZone(ZoneType.ResHigh)).toEqual(LOT_SIZES);
+  it('plats high density, tall shops and mixed use as normal lots whatever the standing', () => {
+    for (const zone of [ZoneType.ResHigh, ZoneType.ComHigh, ZoneType.Mixed]) {
+      expect(warrantedLot(zone, 0)).toBe('normal');
+      expect(warrantedLot(zone, 255)).toBe('normal');
+      expect(lotsOfZone(zone)).toEqual(['normal']);
+    }
   });
 
-  it('names low density, row housing and medium density as the platted zones', () => {
+  it('plats shops as normal lots, with a half lot for a strip one tile deep', () => {
+    expect(warrantedLot(ZoneType.ComLow, 0)).toBe('normal');
+    expect(warrantedLot(ZoneType.ComLow, 255)).toBe('normal');
+    expect(lotsOfZone(ZoneType.ComLow)).toEqual(['half', 'normal']);
+  });
+
+  it('leaves low density every lot size', () => {
+    expect(lotsOfZone(ZoneType.ResLow)).toEqual(LOT_SIZES);
+  });
+
+  it('names the housing and commercial zones as the platted zones', () => {
     expect([...PLATTED_ZONES].sort()).toEqual(
-      [ZoneType.ResLow, ZoneType.ResMedium, ZoneType.ResMediumRow].sort(),
+      [
+        ZoneType.ResLow,
+        ZoneType.ResMedium,
+        ZoneType.ResMediumRow,
+        ZoneType.ResHigh,
+        ZoneType.ComLow,
+        ZoneType.ComHigh,
+        ZoneType.Mixed,
+      ].sort(),
     );
   });
 });

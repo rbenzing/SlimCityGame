@@ -5,6 +5,7 @@ import {
   parcelsAnchoredAt,
   platOf,
   platSourceOf,
+  takesFrontageLots,
   takesWholeParcels,
   type Parcel,
   type PlatSource,
@@ -343,5 +344,86 @@ describe('a building takes whole parcels', () => {
     expect(plat.parcelAt[tileIndex(10, 12)]).toBe(0);
     expect(plat.parcelAt[tileIndex(11, 12)]).toBe(1);
     expect(plat.parcelAt[tileIndex(10, 13)]).toBe(-1);
+  });
+});
+
+describe('a building takes frontage lots', () => {
+  const street = block(10, 10, 12, 1);
+  const medium = ZoneType.ResMedium;
+  const plat = platOf(
+    world({ streets: street, zoned: block(10, 11, 12, 3), zone: medium }),
+    medium,
+  );
+
+  it('stands a 1 by 1 on one parcel, its back tile left as yard', () => {
+    expect(takesFrontageLots(plat, 10, 11, 1, 1)).toBe(true);
+  });
+
+  it('stands a 3 by 2 over three adjacent parcels on a north front', () => {
+    expect(takesFrontageLots(plat, 10, 11, 3, 2)).toBe(true);
+    expect(takesFrontageLots(plat, 11, 11, 3, 2)).toBe(true);
+  });
+
+  it('runs a 3 by 3 into the unparcelled ground behind three parcels', () => {
+    expect(plat.parcelAt[tileIndex(10, 13)]).toBe(-1);
+    expect(takesFrontageLots(plat, 10, 11, 3, 3)).toBe(true);
+  });
+
+  it('never splits a parcel along the street', () => {
+    const doubled = platOf(
+      world({ streets: street, zoned: block(10, 11, 12, 2), value: 200, zone: ZONE }),
+      ZONE,
+    );
+    expect(doubled.parcels[0]).toMatchObject({ x: 10, z: 11, w: 2, d: 2 });
+    expect(takesFrontageLots(doubled, 10, 11, 2, 2)).toBe(true);
+    expect(takesFrontageLots(doubled, 10, 11, 1, 2)).toBe(false);
+    expect(takesFrontageLots(doubled, 11, 11, 2, 2)).toBe(false);
+  });
+
+  it('starts at the street edge', () => {
+    expect(takesFrontageLots(plat, 10, 12, 3, 2)).toBe(false);
+  });
+
+  it('is false where the parcels front different sides', () => {
+    const mixed = {
+      ...plat,
+      parcels: [
+        { x: 10, z: 11, w: 1, d: 2, lot: 'normal', front: 'N' },
+        { x: 11, z: 11, w: 1, d: 2, lot: 'normal', front: 'S' },
+      ] as Parcel[],
+      parcelAt: new Int32Array(MAP_SIZE * MAP_SIZE).fill(-1),
+    };
+    mixed.parcelAt[tileIndex(10, 11)] = 0;
+    mixed.parcelAt[tileIndex(10, 12)] = 0;
+    mixed.parcelAt[tileIndex(11, 11)] = 1;
+    mixed.parcelAt[tileIndex(11, 12)] = 1;
+    expect(takesFrontageLots(mixed, 10, 11, 2, 2)).toBe(false);
+  });
+
+  it('takes only parcels of the front it is given', () => {
+    expect(takesFrontageLots(plat, 10, 11, 3, 2, 'N')).toBe(true);
+    expect(takesFrontageLots(plat, 10, 11, 3, 2, 'S')).toBe(false);
+  });
+
+  it('takes no parcel at all only when allowed, as a building growing into its yard', () => {
+    expect(takesFrontageLots(plat, 10, 13, 3, 1)).toBe(false);
+    expect(takesFrontageLots(plat, 10, 13, 3, 1, 'N')).toBe(false);
+    expect(takesFrontageLots(plat, 10, 13, 3, 1, 'N', true)).toBe(true);
+    expect(takesFrontageLots(plat, 10, 12, 3, 2, 'N', true)).toBe(false);
+  });
+
+  it('is false where no parcel is touched, and off the map', () => {
+    expect(takesFrontageLots(plat, 10, 14, 2, 2)).toBe(false);
+    expect(takesFrontageLots(plat, -1, 0, 2, 2)).toBe(false);
+  });
+
+  it('stands a turned rectangle over parcels along an east front', () => {
+    const east = platOf(
+      world({ streets: block(13, 10, 1, 12), zoned: block(11, 10, 2, 12), zone: medium }),
+      medium,
+    );
+    expect(east.parcels.every((p) => p.front === 'E' && p.w === 2 && p.d === 1)).toBe(true);
+    expect(takesFrontageLots(east, 11, 10, 2, 3)).toBe(true);
+    expect(takesFrontageLots(east, 11, 10, 3, 2)).toBe(false);
   });
 });

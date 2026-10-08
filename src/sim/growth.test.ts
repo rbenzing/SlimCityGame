@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { SEWER_MILESTONE, tileIndex } from '../shared/constants';
 import { BuildingState, FieldId, Problem, RoadTier, ZoneType } from '../shared/types';
+import type { JobsBySector } from './economy';
 import type {
   BuildingCatalogEntry,
+  BuildingInstance,
   BuildingKind,
   DemandLevels,
   FarmKind,
@@ -23,7 +25,13 @@ import {
 import { recomputeUtilities } from './network';
 import type { GrowthSupply, Rng } from './growth';
 import { createGrid, setZones } from '../world/grid';
-import { parcelsAnchoredAt, platOf, platSourceOf, takesWholeParcels } from '../world/plat';
+import {
+  parcelsAnchoredAt,
+  platOf,
+  platSourceOf,
+  takesFrontageLots,
+  takesWholeParcels,
+} from '../world/plat';
 import type { PlatSource } from '../world/plat';
 import catalogData from '../data/catalog.json';
 
@@ -2241,12 +2249,138 @@ describe('a business opens where the town has room for its jobs', () => {
   });
 
   it('grows the strip where the town has room for it, and hands the room out once a pass', () => {
-    const g = block(ZoneType.ComLow, 6, 4);
+    const g = block(ZoneType.ComLow, 6, 3);
+    // A second street fronts the far row, a strip one tile deep that only a shop fits.
+    for (let x = 0; x < 8; x++) g.roadTier[tileIndex(x, 4)] = RoadTier.TwoLane;
     const registry = new BuildingRegistry(catalog);
     const growth = new GrowthSystem(catalog, constantRng(0.99), onZoned(ZoneType.ComLow));
     // Room for one strip and a little over: the first lot takes it, the next gets a shop.
     growth.tick(g, registry, wantsShops, 1, 0, UNMETERED_SUPPLY, { com: 60, ind: 0 });
     expect(registry.all().map((b) => b.catalogId)).toEqual(['strip-1', 'shop-1']);
+  });
+
+  it('turns a strip a quarter to stand on the frontage of a north-south street', () => {
+    const g = makeGrid();
+    g.fields[FieldId.LandValue]!.fill(255);
+    for (let z = 0; z < 12; z++) g.roadTier[tileIndex(0, z)] = RoadTier.TwoLane;
+    for (let z = 0; z < 12; z++) {
+      for (let x = 1; x <= 2; x++) {
+        const i = tileIndex(x, z);
+        g.zone[i] = ZoneType.ComLow;
+        g.power[i] = 1;
+        g.watered[i] = 1;
+        g.sewered[i] = 1;
+      }
+    }
+    const registry = new BuildingRegistry([strip]);
+    const growth = new GrowthSystem([strip], constantRng(0.99), onZoned(ZoneType.ComLow));
+    for (let pass = 0; pass < 32; pass++) {
+      growth.tick(g, registry, wantsShops, 1, pass * 10, UNMETERED_SUPPLY, UNLIMITED_ROOM);
+    }
+    const grown = registry.all();
+    expect(grown.length).toBeGreaterThan(0);
+    for (const b of grown) {
+      expect(b.rotation).toBe(1);
+      expect(b.x).toBe(1);
+    }
+  });
+
+  /** A served ComLow block `depth` deep on `side` of its one street: z in 1..depth, street below it for 'S'; x in 1..depth, street right of it for 'E'. */
+  function fronting(side: 'S' | 'E', depth: number): GridState {
+    const g = makeGrid();
+    g.fields[FieldId.LandValue]!.fill(255);
+    for (let i = 0; i < 8; i++) {
+      const [sx, sz] = side === 'S' ? [i, depth + 1] : [depth + 1, i];
+      g.roadTier[tileIndex(sx, sz)] = RoadTier.TwoLane;
+    }
+    for (let along = side === 'S' ? 0 : 1; along <= 6; along++) {
+      for (let across = 1; across <= depth; across++) {
+        const i = side === 'S' ? tileIndex(along, across) : tileIndex(across, along);
+        g.zone[i] = ZoneType.ComLow;
+        g.power[i] = 1;
+        g.watered[i] = 1;
+        g.sewered[i] = 1;
+      }
+    }
+    return g;
+  }
+  const growAcrossPasses = (
+    g: GridState,
+    cat: BuildingCatalogEntry[],
+    rng = constantRng(0.99),
+    room: JobsBySector = UNLIMITED_ROOM,
+    passes = 32,
+  ): BuildingRegistry => {
+    const registry = new BuildingRegistry(cat);
+    const growth = new GrowthSystem(cat, rng, onZoned(ZoneType.ComLow));
+    for (let pass = 0; pass < passes; pass++) {
+      growth.tick(g, registry, wantsShops, 1, pass * 10, UNMETERED_SUPPLY, room);
+    }
+    return registry;
+  };
+
+  it('grows corner shops on the street row of a block fronting south', () => {
+    const registry = growAcrossPasses(fronting('S', 2), [shop]);
+    const grown = registry.all();
+    expect(grown.length).toBeGreaterThan(0);
+    for (const b of grown) expect(b.z).toBe(2);
+  });
+
+  it('grows corner shops on the street row of a block fronting east', () => {
+    const registry = growAcrossPasses(fronting('E', 2), [shop]);
+    const grown = registry.all();
+    expect(grown.length).toBeGreaterThan(0);
+    for (const b of grown) expect(b.x).toBe(2);
+  });
+
+  it('lets a corner shop and a deeper kind compete at the same south-front street-row tile', () => {
+    const fuel = business('fuel-1', 'fuel', ZoneType.ComLow, 1, 1, 2, 9, 1);
+    const one = business('shop-1', 'shop', ZoneType.ComLow, 1, 1, 1, 9, 1);
+    const draw = (roll: number): BuildingCatalogEntry => {
+      const registry = growAcrossPasses(
+        fronting('S', 2),
+        [one, fuel],
+        constantRng(roll),
+        { com: 9, ind: 0 },
+        1,
+      );
+      expect(registry.all()).toHaveLength(1);
+      return catalog.concat([one, fuel]).find((e) => e.id === registry.all()[0]!.catalogId)!;
+    };
+    expect(draw(0).id).toBe('shop-1');
+    expect(draw(0.99).id).toBe('fuel-1');
+  });
+
+  describe('a shop levels up deeper on its own street edge', () => {
+    const fuel2 = business('fuel-2', 'fuel', ZoneType.ComLow, 2, 3, 2, 20);
+    const fuel3 = business('fuel-3', 'fuel', ZoneType.ComLow, 3, 3, 3, 30);
+    const levelUp = (g: GridState, z: number): BuildingInstance => {
+      const cat = [fuel2, fuel3];
+      const registry = new BuildingRegistry(cat);
+      expect(registry.place(g, fuel2, 0, z, 0, BuildingState.Active)).not.toBeNull();
+      const growth = new GrowthSystem(cat, constantRng(0), onZoned(ZoneType.ComLow));
+      growth.tick(g, registry, wantsShops, 1, 0, UNMETERED_SUPPLY, UNLIMITED_ROOM);
+      expect(registry.all().map((b) => b.catalogId)).toEqual(['fuel-3']);
+      return registry.all()[0]!;
+    };
+
+    it('keeps the south edge and moves the min corner back', () => {
+      const g = fronting('S', 3);
+      const grown = levelUp(g, 2);
+      expect(grown.z).toBe(1);
+      expect(grown.x).toBe(0);
+    });
+
+    it('keeps the north edge and the anchor on a north front', () => {
+      const g = fronting('S', 3);
+      for (let x = 0; x < 8; x++) {
+        g.roadTier[tileIndex(x, 4)] = 0;
+        g.roadTier[tileIndex(x, 0)] = RoadTier.TwoLane;
+      }
+      const grown = levelUp(g, 1);
+      expect(grown.z).toBe(1);
+      expect(grown.x).toBe(0);
+    });
   });
 
   it('lets a business level up only with room for the jobs it adds', () => {
@@ -2266,6 +2400,7 @@ describe('a business opens where the town has room for its jobs', () => {
 
   it('never holds a home to the room: homes follow residential demand alone', () => {
     const g = block(ZoneType.ResLow, 2, 2);
+    g.fields[FieldId.LandValue]!.fill(100);
     const registry = new BuildingRegistry(growthCatalog);
     const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
     growth.tick(g, registry, { res: 1, com: 0, ind: 0 }, 0, 0, UNMETERED_SUPPLY, {
@@ -2273,6 +2408,187 @@ describe('a business opens where the town has room for its jobs', () => {
       ind: -100,
     });
     expect(registry.all().length).toBeGreaterThan(0);
+  });
+
+  describe('a business takes whole lots along its frontage', () => {
+    const shippedAll = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+    const comLow = shippedAll.filter((e) => e.zone === ZoneType.ComLow);
+    const one = (id: string): BuildingCatalogEntry => shippedAll.find((e) => e.id === id)!;
+    const preGrowthPlat = (g: GridState): ReturnType<typeof platOf> =>
+      platOf(platSourceOf(g, null, g.fields[FieldId.LandValue]), ZoneType.ComLow);
+    const grow = (g: GridState, catalog: BuildingCatalogEntry[], passes = 32): BuildingRegistry => {
+      const registry = new BuildingRegistry(catalog);
+      const growth = new GrowthSystem(catalog, constantRng(0.99), onZoned(ZoneType.ComLow));
+      for (let pass = 0; pass < passes; pass++) {
+        growth.tick(g, registry, wantsShops, 1, pass * 10, UNMETERED_SUPPLY, UNLIMITED_ROOM);
+      }
+      return registry;
+    };
+    /** The distinct parcels under the row of tiles a building stands on along its street. */
+    const rowParcels = (plat: ReturnType<typeof platOf>, cells: [number, number][]): Set<number> =>
+      new Set(cells.map(([x, z]) => plat.parcelAt[tileIndex(x, z)]!));
+
+    it('stands a corner shop on a half lot where the strip is one tile deep', () => {
+      const g = block(ZoneType.ComLow, 8, 1);
+      const plat = preGrowthPlat(g);
+      const registry = grow(g, comLow);
+      const grown = registry.all();
+      expect(grown.length).toBeGreaterThan(0);
+      for (const b of grown) {
+        expect(b.catalogId).toBe('com-low-1');
+        const p = plat.parcels[plat.parcelAt[tileIndex(b.x, b.z)]!]!;
+        expect([p.lot, p.x, p.z, p.w, p.d]).toEqual(['half', b.x, b.z, 1, 1]);
+      }
+    });
+
+    it('stands a shopping strip on three whole lots, upright on an east-west street', () => {
+      const g = block(ZoneType.ComLow, 9, 2);
+      const plat = preGrowthPlat(g);
+      const grown = grow(g, [one('com-strip-1')]).all();
+      expect(grown.length).toBeGreaterThan(0);
+      for (const b of grown) {
+        expect(b.rotation).toBe(0);
+        const row: [number, number][] = [0, 1, 2].map((dx) => [b.x + dx, b.z]);
+        const parcels = rowParcels(plat, row);
+        expect(parcels.size, `${b.x},${b.z}`).toBe(3);
+        for (const n of parcels) {
+          const p = plat.parcels[n]!;
+          expect(n).toBeGreaterThanOrEqual(0);
+          expect(p.lot).toBe('normal');
+          expect(p.x).toBeGreaterThanOrEqual(b.x);
+          expect(p.x + p.w).toBeLessThanOrEqual(b.x + 3);
+          expect(p.z).toBe(b.z);
+        }
+      }
+    });
+
+    it('stands a grocery on three lots and the yard behind them', () => {
+      const g = block(ZoneType.ComLow, 9, 3);
+      const plat = preGrowthPlat(g);
+      const grown = grow(g, [one('com-market-1')]).all();
+      expect(grown.length).toBeGreaterThan(0);
+      for (const b of grown) {
+        expect(b.rotation).toBe(0);
+        const front = rowParcels(
+          plat,
+          [0, 1, 2].map((dx) => [b.x + dx, b.z] as [number, number]),
+        );
+        expect(front.size, `${b.x},${b.z}`).toBe(3);
+        for (const n of front) {
+          const p = plat.parcels[n]!;
+          expect(n).toBeGreaterThanOrEqual(0);
+          expect(p.x).toBeGreaterThanOrEqual(b.x);
+          expect(p.x + p.w).toBeLessThanOrEqual(b.x + 3);
+        }
+        for (let dx = 0; dx < 3; dx++) {
+          expect(plat.parcelAt[tileIndex(b.x + dx, b.z + 2)]).toBe(-1);
+        }
+      }
+    });
+
+    it('turns a strip to lie along a north-south street on whole lots', () => {
+      const g = makeGrid();
+      g.fields[FieldId.LandValue]!.fill(255);
+      for (let z = 0; z < 12; z++) g.roadTier[tileIndex(0, z)] = RoadTier.TwoLane;
+      for (let z = 0; z < 12; z++) {
+        for (let x = 1; x <= 2; x++) {
+          const i = tileIndex(x, z);
+          g.zone[i] = ZoneType.ComLow;
+          g.power[i] = 1;
+          g.watered[i] = 1;
+          g.sewered[i] = 1;
+        }
+      }
+      const plat = preGrowthPlat(g);
+      const grown = grow(g, [one('com-strip-1')]).all();
+      expect(grown.length).toBeGreaterThan(0);
+      for (const b of grown) {
+        expect(b.rotation).toBe(1);
+        // Turned, the 3x2 footprint is 2 wide by 3 along the street.
+        expect(takesFrontageLots(plat, b.x, b.z, 2, 3), `${b.x},${b.z}`).toBe(true);
+        const parcels = rowParcels(
+          plat,
+          [0, 1, 2].map((dz) => [b.x, b.z + dz] as [number, number]),
+        );
+        expect(parcels.size).toBe(3);
+      }
+    });
+
+    describe('redevelopment', () => {
+      const restaurant1 = one('com-restaurant-1');
+      const tickOnce = (g: GridState, registry: BuildingRegistry): void => {
+        const growth = new GrowthSystem(comLow, constantRng(0.99), onZoned(ZoneType.ComLow));
+        growth.tick(g, registry, wantsShops, 1, 0, UNMETERED_SUPPLY, UNLIMITED_ROOM);
+      };
+
+      it('takes the empty lot beside it when a restaurant grows', () => {
+        const g = block(ZoneType.ComLow, 4, 2);
+        const registry = new BuildingRegistry(comLow);
+        registry.place(g, restaurant1, 0, 1, 0, BuildingState.Active);
+        tickOnce(g, registry);
+        const grown = registry.all().find((b) => b.catalogId === 'com-restaurant-2');
+        expect(grown).toBeDefined();
+        expect([grown!.x, grown!.z]).toEqual([0, 1]);
+        expect(registry.all().some((b) => b.catalogId === 'com-restaurant-1' && b.x === 0)).toBe(
+          false,
+        );
+        for (const [x, z] of [
+          [0, 1],
+          [0, 2],
+          [1, 1],
+          [1, 2],
+        ]) {
+          expect(g.buildingId[tileIndex(x!, z!)]).toBe(grown!.id);
+        }
+      });
+
+      it('stays as it is when a shop already stands on the lot beside it', () => {
+        const g = block(ZoneType.ComLow, 4, 2);
+        const registry = new BuildingRegistry(comLow);
+        const old = registry.place(g, restaurant1, 0, 1, 0, BuildingState.Active)!;
+        registry.place(g, one('com-low-1'), 1, 1, 0, BuildingState.Active);
+        tickOnce(g, registry);
+        expect(registry.get(old.id)?.catalogId).toBe('com-restaurant-1');
+        expect(registry.all().some((b) => b.catalogId === 'com-restaurant-2')).toBe(false);
+      });
+
+      /** Two deep along a north-south street at x = 0: the lots are 2 wide and 1 along it. */
+      const westStreet = (): GridState => {
+        const g = makeGrid();
+        g.fields[FieldId.LandValue]!.fill(255);
+        for (let z = 0; z < 8; z++) g.roadTier[tileIndex(0, z)] = RoadTier.TwoLane;
+        for (let z = 1; z < 7; z++) {
+          for (let x = 1; x <= 2; x++) {
+            const i = tileIndex(x, z);
+            g.zone[i] = ZoneType.ComLow;
+            g.power[i] = 1;
+            g.watered[i] = 1;
+            g.sewered[i] = 1;
+          }
+        }
+        return g;
+      };
+
+      it('grows along the street when it stands turned to it', () => {
+        const g = westStreet();
+        const registry = new BuildingRegistry(comLow);
+        registry.place(g, restaurant1, 1, 2, 1, BuildingState.Active);
+        tickOnce(g, registry);
+        const grown = registry.all().find((b) => b.catalogId === 'com-restaurant-2');
+        expect([grown?.x, grown?.z, grown?.rotation]).toEqual([1, 2, 1]);
+      });
+
+      it('never grows into the middle of lots that front another way', () => {
+        // Upright against a west-fronting street, its 2x2 would take the far
+        // half of two lots and leave the street edge to a stranger.
+        const g = westStreet();
+        const registry = new BuildingRegistry(comLow);
+        const old = registry.place(g, restaurant1, 1, 2, 0, BuildingState.Active)!;
+        tickOnce(g, registry);
+        expect(registry.get(old.id)?.catalogId).toBe('com-restaurant-1');
+        expect(registry.all().some((b) => b.catalogId === 'com-restaurant-2')).toBe(false);
+      });
+    });
   });
 });
 
