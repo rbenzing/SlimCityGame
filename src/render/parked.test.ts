@@ -18,6 +18,7 @@ import {
   hasOwnLotParking,
   IND_NIGHT_OCCUPANCY,
   kerbAllowance,
+  kerbCarClearOfJunctions,
   kerbSideFacing,
   kerbTileAllowsParking,
   lotOccupancy,
@@ -49,7 +50,7 @@ import {
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import type { RoadProfile } from '../shared/types';
-import { carriagewayHalfWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
+import { carriagewayHalfWidthMeters, RoadMeshRenderer, SIDEWALK_WIDTH_M } from './roadsmesh';
 import { sizeForKind, variantScaleForKind } from './vehicles';
 import { buildTileSet, hasCrossingRoad, type FurnitureRoadTile } from './roadfurniture';
 import { RoadFlow, storedFlow } from '../shared/types';
@@ -1616,6 +1617,122 @@ describe('a kerbside car never leaves the tarmac', () => {
     for (const p of vetted) {
       expect(Math.floor(p.worldX / TILE_METERS), 'a car stands in the junction').not.toBe(4);
     }
+  });
+});
+
+describe('no kerbside car stands inside a junction’s no-parking zone', () => {
+  // A street parked on both kerbs along z = 4, and a side street joining it
+  // from the north at x = 7 under an all-way stop. Flats at (6, 5) front the
+  // street's south kerb, the last stretch of it before the junction.
+  const laned: RoadProfile = {
+    class: 'local',
+    pieces: [
+      { kind: 'sidewalk', width: 1.875 },
+      { kind: 'parking', width: 2.25 },
+      { kind: 'travel', width: 3.75, flow: 'back' },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+      { kind: 'parking', width: 2.25 },
+      { kind: 'sidewalk', width: 1.875 },
+    ],
+  };
+  const tiles: [number, number][] = [
+    ...Array.from({ length: 13 }, (_, x): [number, number] => [x, 4]),
+    ...[0, 1, 2, 3].map((z): [number, number] => [7, z]),
+  ];
+  const roadAt = roadAtTiles(tiles);
+  const roads = new RoadMeshRenderer(new THREE.Scene(), flatHeightAt, (id) =>
+    id === 100 ? laned : null,
+  );
+  roads.setJunctionControls([{ x: 7, z: 4, control: 'allWayStop' }]);
+  roads.apply(
+    tiles.map(([x, z]) => ({
+      x,
+      z,
+      tier: RoadTier.TwoLane,
+      mask:
+        (roadAt(x, z - 1) ? 1 : 0) |
+        (roadAt(x + 1, z) ? 2 : 0) |
+        (roadAt(x, z + 1) ? 4 : 0) |
+        (roadAt(x - 1, z) ? 8 : 0),
+      elevation: 0,
+      profile: z === 4 ? 100 : RoadTier.TwoLane,
+      flow: RoadFlow.None,
+    })),
+  );
+  const flats = makeCatalogEntry({
+    category: 'res',
+    zone: ZoneType.ResMedium,
+    kind: 'garden',
+    footprint: { w: 2, d: 2 },
+  });
+  const parkedBeside = (asksTheRoad: boolean, x = 6): ParkedCarRenderer => {
+    const renderer = new ParkedCarRenderer(
+      new THREE.Scene(),
+      flatHeightAt,
+      [flats],
+      roadAt,
+      () => RoadTier.TwoLane,
+      (_x, z) => (z === 4 ? laned : null),
+      undefined,
+      asksTheRoad ? roads : null,
+    );
+    renderer.apply(deltaAdd(makeBuilding({ id: 1, x, z: 5, level: 2 })));
+    return renderer;
+  };
+  const half = sizeForKind(VehicleKind.Car)[2] / 2;
+
+  it('keeps every car clear of the zone the stall marks keep clear of', () => {
+    const setbacks = roads.parkingSetbacksAt(6, 4)!;
+    // Eastbound traffic arrives on the south kerb, which keeps 9.1 m clear
+    // before the stop line.
+    const zone = setbacks.hi![1];
+    expect(zone).toBeGreaterThan(8);
+    const junctionEdge = 7 * TILE_METERS;
+    const without = parkedBeside(false).stallWorldPositions(1);
+    const within = parkedBeside(true).stallWorldPositions(1);
+    // A row that cannot ask the road stands a car in the zone; one that asks
+    // stands none there.
+    expect(without.some((p) => p.x + half > junctionEdge - zone)).toBe(true);
+    expect(within.length).toBeGreaterThan(0);
+    for (const p of within) {
+      expect(kerbCarClearOfJunctions(p.x, p.z, 'high', half, setbacks)).toBe(true);
+    }
+  });
+
+  it('stands one car in each marked stall, centred, and none across a tick', () => {
+    for (const x of [3, 6]) {
+      // The stalls marked along this frontage, as the road paints them.
+      const stalls = [x, x + 1].flatMap((tx) => roads.parkingStallsAt(tx, 4, 'high') ?? []);
+      const front = stalls.filter(
+        (s) =>
+          (s.from + s.to) / 2 >= x * TILE_METERS && (s.from + s.to) / 2 < (x + 2) * TILE_METERS,
+      );
+      const cars = parkedBeside(true, x).stallWorldPositions(1);
+      expect(cars.length, `frontage at ${x}`).toBeGreaterThan(0);
+      const used = new Set<number>();
+      for (const car of cars) {
+        const stall = front.findIndex((s) => Math.abs((s.from + s.to) / 2 - car.x) < 1e-6);
+        expect(stall, `a car at x ${car.x} stands in no stall`).toBeGreaterThanOrEqual(0);
+        expect(used.has(stall), 'two cars in one stall').toBe(false);
+        used.add(stall);
+        expect(car.x - half).toBeGreaterThan(front[stall]!.from);
+        expect(car.x + half).toBeLessThan(front[stall]!.to);
+      }
+    }
+  });
+
+  it('measures a car by its own length, nose and tail', () => {
+    const setbacks = { alongX: true, lo: null, hi: [0, 9] as const };
+    const kerbZ = 4.5 * TILE_METERS + 5;
+    // A 4 m car whose nose reaches 9 m from the tile's east end stands in it.
+    expect(kerbCarClearOfJunctions(7 * TILE_METERS - 9 - 1.9, kerbZ, 'high', 2, setbacks)).toBe(
+      false,
+    );
+    expect(kerbCarClearOfJunctions(7 * TILE_METERS - 9 - 2.1, kerbZ, 'high', 2, setbacks)).toBe(
+      true,
+    );
+    // The other kerb has no zone at that end.
+    expect(kerbCarClearOfJunctions(7 * TILE_METERS - 3, kerbZ, 'low', 2, setbacks)).toBe(true);
   });
 });
 

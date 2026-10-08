@@ -244,6 +244,31 @@ MUTCD citations below use 11th-edition section numbers.
   broken white (§3B.06 ¶05). Every paved road carries edge lines; dirt, alley
   and rail carry no paint; one-way, highway and ramp paint no centre line. —
   [road-model.md](world-sim/road-model.md); `src/render/roadmarkings.ts`
+- An edge line is broken only across the mouth of a road that joins. On a
+  junction tile, every side with no arm keeps its edge line for the tile's
+  full length, so the far side of a T is unbroken (MUTCD 3B.09 ¶07, 3B.11
+  ¶07–08). Between two arms, the edge line follows the kerb return, bending
+  from one arm's inset to the other's. — [road-model.md](world-sim/road-model.md);
+  `src/render/roadsmesh.ts`
+- A bike lane lies between two white lines: the solid bike-lane line on the
+  travel side, and on the other the edge line or the parking lane line, or
+  the kerb where one bounds it (MUTCD 9E.01, 9E.02). Green is only a
+  supplement inside those lines (3H.06): never under a line, past one, or off
+  the pavement. — [road-model.md](world-sim/road-model.md);
+  `src/render/roadmarkings.ts`
+- A parking lane's travel side is its solid white parking lane line, and no
+  edge line runs inside the lane. Its stall marks are white ticks from that
+  line toward the kerb (MUTCD 3B.27), inside the lane and never past the
+  pavement. Stalls are 6.7 m (22 ft) long, and the stall nearest a junction is
+  6.1 m (20 ft); no marked stall is shorter than 6.1 m or longer than 7.9 m
+  (26 ft). Where the pitch leaves an odd length beside the end stall, the end
+  stall takes it up to 7.9 m and beyond that the no-parking zone grows, never
+  a stall. A car on a painted parking lane stands one to a stall, centred in
+  it. No stall is marked and no car parks within 9.1 m (30 ft) of a
+  stop line or signal, or within 6.1 m (20 ft) of a crosswalk or of the
+  junction mouth where there is no crosswalk, on either side of the junction
+  (UVC §11-1003). — [road-model.md](world-sim/road-model.md);
+  `src/render/roadsmesh.ts`, `src/render/parked.ts`
 - A motorway is ONE carriageway, not a road with two halves. Highway and ramp
   are the only classes whose lane range counts a single direction, they admit
   no median piece, and a dual carriageway is two runs laid side by side and
@@ -386,6 +411,17 @@ MUTCD citations below use 11th-edition section numbers.
   and bends to the plain motorway over the other half. —
   [road-model.md](world-sim/road-model.md); `narrowingAhead` in
   `src/shared/approachzone.ts`, `roadTileVertices` in `src/render/roadsmesh.ts`
+- A road tapers only into more of itself. A lane reduction happens away from a
+  junction (MUTCD 3B.12 ¶01), so a road keeps its full width up to the mouth
+  of any junction it meets and never narrows toward the road it crosses,
+  however much narrower that road is. The junction mouth is drawn at each
+  arm's own width, footways or not, and the corner rounds between the two at
+  the kerb return. Along one road, the pieces that end close over the taper
+  and the pieces that carry on keep their width: a lane drop never squeezes
+  the lanes that remain. The paint follows the pavement: lines and coloured
+  lanes bend with the edge across a tile and never step at a seam. —
+  [road-model.md](world-sim/road-model.md); `narrowingAhead` in
+  `src/shared/approachzone.ts`, `taperedCrossSection` in `src/shared/taper.ts`
 - A sign faces the traffic it serves (MUTCD §2A.17 ¶01), and its facing comes
   from the direction of approaching traffic, not from the roadway edge it
   stands on (§2A.17 ¶02). On a one-way carriageway — a motorway, a ramp, a
@@ -1237,7 +1273,8 @@ MUTCD citations below use 11th-edition section numbers.
   `src/render/frontage.ts`
 - A kerb takes cars at any hour only where the street paints a parking lane on
   that side; a street whose tier allows parking but paints no lane takes short
-  daytime stays and nothing overnight; every other road takes none. —
+  daytime stays and nothing overnight; every other road takes none. No car
+  stands inside a junction's no-parking setback. —
   [props-and-vehicles.md](art/props-and-vehicles.md#parked-cars-and-lot-life),
   [road-model.md](world-sim/road-model.md#furniture-and-what-gates-it)
 - Nothing kerbside stands on a tile with road on both axes (manholes excepted);

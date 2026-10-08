@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 5,090 tests passing across 166 test files, run 2026-10-08.
+**Test suite:** 5,121 tests passing across 167 test files, run 2026-10-08.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -287,6 +287,40 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Streets keep their width to the junction, marked to the manual (asked for and built 2026-10-08)
+
+Reported by the player with a picture: a two-way street with no footways, a
+bike lane on one side and parking on the other, drawn into a T. It narrowed
+toward the junction in steps, the bike lane's green lay over its white line,
+the stall marks ran off the road, parking ran up to the junction, and the
+edge line along the back of the T had a gap.
+
+- **No taper into a junction.** A road tapered toward the road it crossed,
+  as if that road were its own continuation. A lane reduction happens away
+  from a junction (MUTCD 3B.12), so a road now tapers only into more of
+  itself. Every paved arm meets the junction at its own width, footways or
+  not, and the corner rounds between the two. Where a lane does drop along a
+  road, the lane that ends closes by itself, and the paint and coloured
+  lanes bend with the pavement instead of stepping at each tile seam.
+- **Bike lanes** lie between two white lines (9E.01/9E.02), with the green
+  only inside them (3H.06). They run into the junction up to the crossing,
+  the stop line or the corner.
+- **Parking lanes** have no edge line inside them. The stall marks run from
+  the parking line toward the kerb and stop short of the edge (3B.27).
+  Stalls are 6.7 m, the end stall 6.1 m, and every stall is 6.1–7.9 m. No
+  stall and no car stands within 9.1 m of a stop line or signal, or 6.1 m of
+  a crosswalk or the junction mouth, on both sides (UVC §11-1003). Parked
+  cars stand one to a stall, centred.
+- **The back of a T** keeps its edge line for the whole junction tile; edge
+  lines break only across a joining road's mouth (3B.09, 3B.11).
+- Found on the way: a band on sloped ground showed the asphalt through it
+  where a cut-short lattice cell missed the terrain's fold; such cells now
+  split along the fold.
+
+Next, as the player chose: a parking style in the road tool (parallel,
+angled 60° back-in, head-in 90°), with accessible spaces placed to the
+federal count.
 
 ### The water tower at its size, on one tile (asked for and built 2026-10-08)
 

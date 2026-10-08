@@ -8,7 +8,7 @@
  */
 import type { LanePiece, RoadClassId, RoadProfile } from '../shared/types';
 import { RoadFlow } from '../shared/types';
-import { carriagewayHalfWidthOf, runsAgainstDrawing } from '../shared/roadprofile';
+import { carriagewayHalfWidthOf, hasKerbs, runsAgainstDrawing } from '../shared/roadprofile';
 
 /** Half the gap between the two lines of a double solid centre. */
 export const CENTRE_PAIR_OFFSET_M = 0.22;
@@ -24,6 +24,8 @@ export const MEDIAN_EDGE_LINE_INSET_M = 0.25;
 export const TURN_LANE_INNER_OFFSET_M = 0.3;
 /** A bike lane's paint is at most this wide; a wider piece keeps a buffer to the kerb. */
 export const BIKE_PAINT_MAX_WIDTH_M = 1.6;
+/** Half a painted line's width (a 6 in, 0.15 m line): where its face lies either side of it. */
+export const PAINT_HALF_WIDTH_M = 0.075;
 
 export type BandKind = 'bus' | 'bike' | 'parking' | 'tram';
 
@@ -140,6 +142,91 @@ const CLASS_MARKINGS: Readonly<Record<RoadClassId, ClassMarkings>> = {
  * there and would only lay a second line over the first.
  */
 const RESERVED_EDGE_KINDS: ReadonlySet<LanePiece['kind']> = new Set(['shoulder', 'bike', 'bus']);
+const PARKING_KINDS: ReadonlySet<LanePiece['kind']> = new Set(['parking']);
+
+/** A solid line along the kerbside of the road, and whether it bounds a parking lane. */
+interface KerbsideLine {
+  at: number;
+  parking: boolean;
+}
+
+/**
+ * Every solid line the kerbside of a section carries, each once: the edge of
+ * general traffic on each side (`travelEdge`); a line wherever a bike lane or
+ * a parking lane meets a piece of another kind — the bike-lane line, the
+ * parking lane line; and, on a road with no kerb, an edge line at the usual
+ * inset inside a bike lane that runs along the edge of the pavement, so the
+ * lane has a line on both sides of it (MUTCD 9E.01, 9E.02). A kerb bounds the
+ * lane itself, and a parking lane needs no line along its outer edge.
+ */
+function kerbsideLines(
+  pieces: readonly LanePiece[],
+  half: number,
+  kerbed: boolean,
+  travelEdge: (side: -1 | 1) => number,
+): KerbsideLine[] {
+  const boundaries: { at: number; kinds: [LanePiece['kind'], LanePiece['kind']] }[] = [];
+  let edge = -half;
+  for (let i = 0; i < pieces.length - 1; i++) {
+    edge += pieces[i]!.width;
+    boundaries.push({ at: edge, kinds: [pieces[i]!.kind, pieces[i + 1]!.kind] });
+  }
+  const at: number[] = [travelEdge(-1), travelEdge(1)];
+  for (const b of boundaries) {
+    const [a, c] = b.kinds;
+    const bike = (a === 'bike') !== (c === 'bike');
+    const parking = (a === 'parking') !== (c === 'parking');
+    if (bike || parking) at.push(b.at);
+  }
+  const first = pieces[0];
+  const last = pieces[pieces.length - 1];
+  if (!kerbed && first?.kind === 'bike' && first.width > 2 * EDGE_LINE_MARGIN_M) {
+    at.push(-(half - EDGE_LINE_MARGIN_M));
+  }
+  if (!kerbed && last?.kind === 'bike' && last.width > 2 * EDGE_LINE_MARGIN_M) {
+    at.push(half - EDGE_LINE_MARGIN_M);
+  }
+  const out: KerbsideLine[] = [];
+  for (const a of at) {
+    if (out.some((l) => Math.abs(l.at - a) < 1e-9)) continue;
+    const parking = boundaries.some(
+      (b) => Math.abs(b.at - a) < 1e-9 && b.kinds.includes('parking'),
+    );
+    out.push({ at: a, parking });
+  }
+  return out;
+}
+
+/**
+ * The green of a bike lane laid from `from` to `to`: between the inner faces
+ * of the lines that bound it, or out to the kerb where one does, and hugging
+ * the outer side where the lane is wider than the paint (MUTCD 3H.06: green
+ * only supplements the lane's own lines). Null where the lines leave no room.
+ */
+function bikeGreen(
+  from: number,
+  to: number,
+  lines: readonly KerbsideLine[],
+): { from: number; to: number } | null {
+  const mid = (from + to) / 2;
+  let lo = from;
+  let hi = to;
+  for (const l of lines) {
+    if (l.at >= from - PAINT_HALF_WIDTH_M && l.at <= mid) {
+      lo = Math.max(lo, l.at + PAINT_HALF_WIDTH_M);
+    }
+    if (l.at > mid && l.at <= to + PAINT_HALF_WIDTH_M) {
+      hi = Math.min(hi, l.at - PAINT_HALF_WIDTH_M);
+    }
+  }
+  if (hi - lo <= 1e-6) return null;
+  if (hi - lo > BIKE_PAINT_MAX_WIDTH_M) {
+    // The kerb side is the side away from the centre line.
+    if (mid < 0) hi = lo + BIKE_PAINT_MAX_WIDTH_M;
+    else lo = hi - BIKE_PAINT_MAX_WIDTH_M;
+  }
+  return { from: lo, to: hi };
+}
 
 const CARRIAGEWAY_KINDS: ReadonlySet<LanePiece['kind']> = new Set([
   'travel',
@@ -278,27 +365,32 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
   // paint, with nothing at all between it and the traffic it is there to keep
   // out.
   //
+  // A parking lane is the same: general traffic ends at the parking lane
+  // line, the solid white line along its inside edge, and no edge line runs
+  // down the lane itself, where it would lie under the parked cars.
+  //
   // Solved before the pieces are walked because the lane lines between them
   // have to know: a boundary the edge line already marks must not be dashed
   // over as well.
-  const reservedInside = (side: -1 | 1): number => {
+  const innermostOn = (side: -1 | 1, kinds: ReadonlySet<LanePiece['kind']>): number | null => {
     let edge = -half;
     let inner: number | null = null;
     for (const piece of pieces) {
       const from = edge;
       edge += piece.width;
-      if (!RESERVED_EDGE_KINDS.has(piece.kind)) continue;
+      if (!kinds.has(piece.kind)) continue;
       if (side < 0 && from < 0) inner = edge;
       if (side > 0 && edge > 0) inner ??= from;
     }
-    return inner ?? side * (half - EDGE_LINE_MARGIN_M);
+    return inner;
   };
-  const edgeLineAt: [number, number] | null =
-    style.edgeLines !== 'none' && half > EDGE_LINE_MARGIN_M
-      ? [reservedInside(-1), reservedInside(1)]
-      : null;
-  const isEdgeLine = (at: number): boolean =>
-    edgeLineAt !== null && edgeLineAt.some((e) => Math.abs(e - at) < 1e-9);
+  const travelEdge = (side: -1 | 1): number =>
+    innermostOn(side, RESERVED_EDGE_KINDS) ??
+    innermostOn(side, PARKING_KINDS) ??
+    side * (half - EDGE_LINE_MARGIN_M);
+  const paintsEdges = style.edgeLines !== 'none' && half > EDGE_LINE_MARGIN_M;
+  const lines = paintsEdges ? kerbsideLines(pieces, half, hasKerbs(profile), travelEdge) : [];
+  const isEdgeLine = (at: number): boolean => lines.some((l) => Math.abs(l.at - at) < 1e-9);
 
   // Opposing travel lanes per side decide the auto centre style.
   const back = pieces.filter((p) => isTravel(p) && flowOf(p) === 'back').length;
@@ -322,14 +414,8 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
     // assumed to be down the middle of the road.
     if (piece.kind === 'tram' || piece.tram === true) bands.push({ kind: 'tram', from, to });
     if (piece.kind === 'bike') {
-      // Paint hugs the kerb side; anything wider than the paint is a buffer.
-      const paint = Math.min(piece.width, BIKE_PAINT_MAX_WIDTH_M);
-      const kerbSide = from < 0 ? -1 : 1;
-      bands.push(
-        kerbSide < 0
-          ? { kind: 'bike', from, to: from + paint }
-          : { kind: 'bike', from: to - paint, to },
-      );
+      const green = bikeGreen(from, to, lines);
+      if (green) bands.push({ kind: 'bike', ...green });
     }
 
     // Half of a corridor nothing divides runs on across its seam into the
@@ -384,7 +470,7 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
   }
 
   let edges: readonly [MarkingLine, MarkingLine] | null = null;
-  if (edgeLineAt !== null) {
+  if (paintsEdges) {
     // The edge of a one-way carriageway that faces the median or the opposing
     // traffic is YELLOW; the one facing the roadside is white.
     //
@@ -407,19 +493,26 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
     const fallbackYellowRight = facesMedian && runsWithOffsets;
     const leftIsYellow = medianAtLeft || (!medianAtRight && fallbackYellowLeft);
     const rightIsYellow = medianAtRight || (!medianAtLeft && fallbackYellowRight);
-    const [leftAt, rightAt] = edgeLineAt;
-    const both: [MarkingLine, MarkingLine] = [
-      leftIsYellow ? yellow(leftAt) : white(leftAt),
-      rightIsYellow ? yellow(rightAt) : white(rightAt),
-    ];
-    if (profile.seam) {
-      // Half of one carriageway laid across two tiles: the edge it shares with
-      // the other half is not an edge, and only the outer one is painted.
-      solid.push(profile.seam.side < 0 ? both[1] : both[0]);
-    } else {
-      edges = both;
-      solid.push(...both);
-    }
+    // The outermost line on each side is the road's edge line and takes that
+    // side's colour; every line inside it — a bike-lane line, a parking lane
+    // line — is white. A parking lane line is white even where it is the
+    // outermost line, since it marks parking, not the edge of the roadway.
+    const painted = (side: -1 | 1, yellowSide: boolean): MarkingLine[] => {
+      const mine = lines.filter((l) => l.at * side > 0).sort((a, b) => (a.at - b.at) * side);
+      return mine.map((l, i) => {
+        const edge = i === mine.length - 1 && !l.parking;
+        return edge && yellowSide ? yellow(l.at) : white(l.at);
+      });
+    };
+    const low = painted(-1, leftIsYellow);
+    const high = painted(1, rightIsYellow);
+    // Half of one carriageway laid across two tiles: the edge it shares with
+    // the other half is not an edge, and only the outer side is painted.
+    if (!profile.seam || profile.seam.side > 0) solid.push(...low);
+    if (!profile.seam || profile.seam.side < 0) solid.push(...high);
+    const lowEdge = low[low.length - 1];
+    const highEdge = high[high.length - 1];
+    if (!profile.seam && lowEdge && highEdge) edges = [lowEdge, highEdge];
   }
 
   // The turn lane's extent across the carriageway, for the arrows painted in it.
@@ -627,9 +720,13 @@ export function seamBetween(
   there: MarkingPlan | null,
   thereHalf: number,
   hereHalf: number = thereHalf,
-): { solid: number[]; dashed: number[] } {
+): { solid: number[]; dashed: number[]; bands: { from: number; to: number }[] } {
   if (!there) {
-    return { solid: here.solid.map((l) => l.at), dashed: here.dashed.map((l) => l.at) };
+    return {
+      solid: here.solid.map((l) => l.at),
+      dashed: here.dashed.map((l) => l.at),
+      bands: here.bands.map(({ from, to }) => ({ from, to })),
+    };
   }
   const at = seamOffsets(
     [...here.solid, ...here.dashed],
@@ -637,7 +734,52 @@ export function seamBetween(
     thereHalf,
     hereHalf,
   );
-  return { solid: at.slice(0, here.solid.length), dashed: at.slice(here.solid.length) };
+  return {
+    solid: at.slice(0, here.solid.length),
+    dashed: at.slice(here.solid.length),
+    bands: bandSeams(here.bands, there.bands, thereHalf, hereHalf),
+  };
+}
+
+/**
+ * Where each of `here`'s coloured bands sits at the seam with the road in
+ * `there`, by the rule the lines follow: a band meets its opposite number —
+ * the same kind of band on the same side of the road — half way where the two
+ * roads are the same width, and at the narrower road's offsets where one is
+ * narrower, since that is where the pavement has bent to. A band the narrower
+ * road does not carry is a lane that has closed, and it closes to the edge of
+ * the pavement on its own side rather than stopping square.
+ */
+function bandSeams(
+  here: readonly MarkingBand[],
+  there: readonly MarkingBand[],
+  thereHalf: number,
+  hereHalf: number,
+): { from: number; to: number }[] {
+  const WIDTH_EPS = 1e-6;
+  const narrower =
+    thereHalf < hereHalf - WIDTH_EPS ? 'there' : hereHalf < thereHalf - WIDTH_EPS ? 'here' : null;
+  const centre = (b: MarkingBand): number => (b.from + b.to) / 2;
+  return here.map((band) => {
+    const side = Math.sign(centre(band));
+    let partner: MarkingBand | null = null;
+    for (const b of there) {
+      if (b.kind !== band.kind || Math.sign(centre(b)) !== side) continue;
+      if (
+        !partner ||
+        Math.abs(centre(b) - centre(band)) < Math.abs(centre(partner) - centre(band))
+      ) {
+        partner = b;
+      }
+    }
+    if (partner) {
+      if (narrower === 'there') return { from: partner.from, to: partner.to };
+      if (narrower === 'here') return { from: band.from, to: band.to };
+      return { from: (band.from + partner.from) / 2, to: (band.to + partner.to) / 2 };
+    }
+    if (narrower !== 'there' || side === 0) return { from: band.from, to: band.to };
+    return { from: side * thereHalf, to: side * thereHalf };
+  });
 }
 
 /** The pair of solid lines painted around the centre, or none. */

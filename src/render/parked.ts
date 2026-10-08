@@ -28,7 +28,7 @@ import roadsData from '../data/roads.json';
 import type { RoadProfile } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
-import { ROAD_Y_OFFSET } from './roadsmesh';
+import { clearOfNoParking, ROAD_Y_OFFSET, type ParkingSetbacks } from './roadsmesh';
 import { parkingLaneOffset } from '../shared/roadprofile';
 import { isFarmEntry, isHouseEntry } from './archetypes';
 import {
@@ -529,6 +529,30 @@ export function kerbTileAllowsParking(
 }
 
 /**
+ * Whether a car `halfLength` metres from its centre to either end, standing at
+ * world (worldX, worldZ) on the `side` kerb of its road tile, stands clear of a
+ * junction's no-parking zone (9.1 m before a stop line, 6.1 m from a crossing
+ * or the junction's mouth). `setbacks` are the tile's own zones; null, the
+ * tile has none to keep clear of.
+ */
+export function kerbCarClearOfJunctions(
+  worldX: number,
+  worldZ: number,
+  side: KerbSide,
+  halfLength: number,
+  setbacks: ParkingSetbacks | null,
+): boolean {
+  if (!setbacks) return true;
+  const tileX = Math.floor(worldX / TILE_METERS);
+  const tileZ = Math.floor(worldZ / TILE_METERS);
+  const along = setbacks.alongX
+    ? worldX - (tileX + 0.5) * TILE_METERS
+    : worldZ - (tileZ + 0.5) * TILE_METERS;
+  const s = side === 'low' ? 0 : 1;
+  return clearOfNoParking(along, halfLength, setbacks.lo?.[s] ?? null, setbacks.hi?.[s] ?? null);
+}
+
+/**
  * Deterministic kerbside car centres along the frontage, the row centred on it.
  * Cars sit PARALLEL to the street — yaw a quarter turn off the nose-in bay
  * yaw — because that is what fits between a moving lane and a kerb.
@@ -571,6 +595,54 @@ export function computeRoadsideStallPlacements(
     placements.push({ worldX, worldZ, baseYaw, along });
   }
   return placements;
+}
+
+/**
+ * Kerbside car centres along a frontage whose street paints its stalls: one
+ * car to a marked stall, centred in it — every stall whose middle lies along
+ * this frontage, so two neighbours never claim the same one. `stalls` are the
+ * street's own, as world coordinates along the road; `tileAllows` vets the
+ * tile each car would stand in, as for the unmarked row.
+ */
+export function computeMarkedStallPlacements(
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+  edge: RoadFacingEdge,
+  tier: RoadTier,
+  stalls: readonly { from: number; to: number }[],
+  tileAllows?: (tileX: number, tileZ: number) => boolean,
+  profile?: RoadProfile,
+  laneOffsetM?: number,
+): StallPlacement[] {
+  const frame = edgeFrameFor(edge.side, x, z, w, d);
+  const baseYaw = EDGE_BASE_YAW[edge.side] + Math.PI / 2;
+  const depth = roadsideDepthTiles(tier, profile, laneOffsetM);
+  const length = edge.edgeTiles * TILE_METERS;
+  const placements: StallPlacement[] = [];
+  for (const stall of [...stalls].sort((a, b) => a.from - b.from)) {
+    const along = (stall.from + stall.to) / 2 - frame.edgeStart;
+    if (along < 0 || along >= length) continue;
+    const { x: worldX, z: worldZ } = frameToWorld(frame, along, depth);
+    if (
+      tileAllows &&
+      !tileAllows(Math.floor(worldX / TILE_METERS), Math.floor(worldZ / TILE_METERS))
+    )
+      continue;
+    placements.push({ worldX, worldZ, baseYaw, along });
+  }
+  return placements;
+}
+
+/**
+ * What the street says about parking at its kerbs: how far each junction
+ * keeps them clear, and where its parking lane's stalls are marked. The road
+ * mesh answers both, from what it paints.
+ */
+export interface KerbParking {
+  parkingSetbacksAt(x: number, z: number): ParkingSetbacks | null;
+  parkingStallsAt(x: number, z: number, side: KerbSide): { from: number; to: number }[] | null;
 }
 
 /** Pushes a quad specified in an edge's (along, depthTiles) space instead of raw world x/z. */
@@ -639,6 +711,7 @@ export class ParkedCarRenderer {
   private readonly roadTierAt: (x: number, z: number) => RoadTier;
   private readonly roadProfileAt: (x: number, z: number) => RoadProfile | null;
   private readonly junctionAt: (x: number, z: number) => boolean;
+  private readonly kerbParking: KerbParking | null;
 
   private readonly pools = new Map<number, VehicleKitPool>();
   private readonly buildingSlots = new Map<number, LotRecord>();
@@ -661,6 +734,13 @@ export class ParkedCarRenderer {
      * half of a corridor is a road beside this one and not a road through it.
      */
     junctionAt: (x: number, z: number) => boolean = adjacentRoadsCross(roadAt),
+    /**
+     * The street's own word on its kerbs: the junctions' no-parking zones,
+     * which no car stands in, and the stalls its parking lanes mark, which
+     * cars stand in one apiece. Omitted, no tile has either, which is right
+     * for a caller with no road mesh to ask.
+     */
+    kerbParking: KerbParking | null = null,
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
@@ -668,6 +748,7 @@ export class ParkedCarRenderer {
     this.roadTierAt = roadTierAt;
     this.roadProfileAt = roadProfileAt;
     this.junctionAt = junctionAt;
+    this.kerbParking = kerbParking;
     this.catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
   }
 
@@ -891,18 +972,38 @@ export class ParkedCarRenderer {
     // further along that paints no lane does not take an overnight car.
     const parkable = (tx: number, tz: number): boolean =>
       kerbAllowance(this.roadTierAt(tx, tz), this.roadProfileAt(tx, tz), side) === allowance;
-    const placements = computeRoadsideStallPlacements(
-      building.x,
-      building.z,
-      tiles.w,
-      tiles.d,
-      edge,
-      tier,
-      count,
-      (tileX, tileZ) => kerbTileAllowsParking(tileX, tileZ, this.roadAt, parkable, this.junctionAt),
-      profile ?? undefined,
-      profile ? (parkingLaneOffset(profile, side) ?? undefined) : undefined,
-    );
+    const tileAllows = (tileX: number, tileZ: number): boolean =>
+      kerbTileAllowsParking(tileX, tileZ, this.roadAt, parkable, this.junctionAt);
+    const laneOffset = profile ? (parkingLaneOffset(profile, side) ?? undefined) : undefined;
+    // A painted parking lane marks its stalls, and its cars stand one to a
+    // stall; a kerb with no lane keeps the plain row.
+    const marked =
+      allowance === 'anyHour' ? this.markedStallsAlong(building, tiles, edge, side) : null;
+    const placements = marked
+      ? computeMarkedStallPlacements(
+          building.x,
+          building.z,
+          tiles.w,
+          tiles.d,
+          edge,
+          tier,
+          marked,
+          tileAllows,
+          profile ?? undefined,
+          laneOffset,
+        )
+      : computeRoadsideStallPlacements(
+          building.x,
+          building.z,
+          tiles.w,
+          tiles.d,
+          edge,
+          tier,
+          count,
+          tileAllows,
+          profile ?? undefined,
+          laneOffset,
+        );
     if (placements.length === 0) return;
 
     const stalls: Stall[] = [];
@@ -910,14 +1011,24 @@ export class ParkedCarRenderer {
     for (let i = 0; i < placements.length; i++) {
       const placement = placements[i]!;
       const kind = VehicleKind.Car; // a resident's car, never a box truck
-      const pool = this.poolFor(kind);
-      const slot = pool.allocate();
-
       const size = sizeForKind(kind);
       const variant = variantScaleForKind(kind, stallVariantIndex(building.id, i, kind));
       const sx = size[0] * variant[0];
       const sy = size[1] * variant[1];
       const sz = size[2] * variant[2];
+      // No car stands inside a junction's no-parking zone, nose or tail.
+      const tileX = Math.floor(placement.worldX / TILE_METERS);
+      const tileZ = Math.floor(placement.worldZ / TILE_METERS);
+      const clear = kerbCarClearOfJunctions(
+        placement.worldX,
+        placement.worldZ,
+        side,
+        sz / 2,
+        this.kerbParking?.parkingSetbacksAt(tileX, tileZ) ?? null,
+      );
+      if (!clear) continue;
+      const pool = this.poolFor(kind);
+      const slot = pool.allocate();
 
       // A kerbside car stands on the carriageway, not on an apron.
       const groundY = this.heightAt(placement.worldX, placement.worldZ) + ROAD_Y_OFFSET;
@@ -942,6 +1053,40 @@ export class ParkedCarRenderer {
     this.buildingSlots.set(building.id, lot);
     this.applyOccupancy(building.id, lot);
     for (const pool of touchedPools) pool.finalize();
+  }
+
+  /**
+   * The marked stalls of the parking lane along a building's frontage, read
+   * off the road tiles in front of it, or null where the street marks none
+   * there — no road mesh to ask, or no parking lane painted on that side.
+   */
+  private markedStallsAlong(
+    building: BuildingInstance,
+    tiles: { w: number; d: number },
+    edge: RoadFacingEdge,
+    side: KerbSide,
+  ): { from: number; to: number }[] | null {
+    if (!this.kerbParking) return null;
+    const alongX = edge.side === 'N' || edge.side === 'S';
+    const out: { from: number; to: number }[] = [];
+    let any = false;
+    for (let i = 0; i < edge.edgeTiles; i++) {
+      const tx = alongX
+        ? building.x + i
+        : edge.side === 'E'
+          ? building.x + tiles.w
+          : building.x - 1;
+      const tz = alongX
+        ? edge.side === 'N'
+          ? building.z - 1
+          : building.z + tiles.d
+        : building.z + i;
+      const stalls = this.kerbParking.parkingStallsAt(tx, tz, side);
+      if (!stalls) continue;
+      any = true;
+      out.push(...stalls);
+    }
+    return any ? out : null;
   }
 
   private poolFor(kind: number): VehicleKitPool {

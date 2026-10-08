@@ -3998,9 +3998,12 @@ describe('a ramp meeting a motorway is drawn as the motorway it is', () => {
   const anything = (): boolean => true;
 
   it('keeps its lane lines and its yellow edge running through, where a junction would stop them', () => {
-    // A motorway meeting a motorway IS a junction, and its paint stops.
+    // A motorway meeting a motorway IS a junction, and its paint stops — all
+    // but the edge line on the far side, which no road leaves by.
     const junction = node(RoadTier.Highway);
-    expect(countWhere(junction.colors, isMarkingYellow)).toBe(0);
+    const farOnly = where(junction, isMarkingYellow);
+    expect(farOnly.length).toBeGreaterThan(0);
+    expect(farOnly.every((v) => v.dx > 0)).toBe(true);
     const diverge = node(RoadTier.Ramp);
     expect(countWhere(diverge.colors, isMarkingYellow)).toBeGreaterThan(0);
     // And it runs the whole length of the tile, edge to edge.

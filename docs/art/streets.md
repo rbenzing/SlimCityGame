@@ -33,12 +33,35 @@ for the surface, the paint, the furniture and the zoning overlay.
   side paints terracotta (the universal transit-lane tint) with a periodic
   white transit-diamond glyph centred in it, and the dashed lane divider
   falls exactly at the band's inner edge, reading as the lane separator. A
-  bike lane's green edge strip on each side carries a periodic white bicycle
-  pictogram (two wheel rings, a frame, handlebar and seat bars, drawn
-  top-down). Both bands paint on straight runs only and break at junctions
-  and turns, the same as the avenue median below; the coloured band sits just
-  above the asphalt and below the white paint so markings and glyphs read on
-  top of it.
+  bike lane lies between two white lines — the solid bike-lane line on the
+  traffic side and, on the other, the parking lane line where parking lies
+  beyond, the edge line where the road has no kerb, or the kerb itself — and
+  its green fills only the space between the lines' inner faces, hugging the
+  outer side where the lane is wider than the 1.6 m of paint, and carries a
+  periodic white bicycle pictogram (two wheel rings, a frame, handlebar and
+  seat bars, drawn top-down). The green never lies under a line, past one or
+  off the pavement. Both bands paint on straight runs only and break at turns,
+  the same as the avenue median below; at a junction a bike lane, its green
+  and its lines carry on into the junction's arm up to the crossing, the stop
+  line across its lanes, or where the kerb starts to turn. The coloured band
+  sits just above the asphalt and below the white paint so markings and
+  glyphs read on top of it.
+- **Parking lanes**: a solid white parking lane line on the traffic side, and
+  no edge line inside the lane. White stall ticks run from that line toward
+  the kerb and stop at least 0.3 m short of the edge of the pavement. Stalls
+  are 6.7 m (22 ft) long, pitched from world metre 0 so they run on across
+  every seam; the stall nearest a junction is 6.1 m (20 ft), measured from
+  the edge of the junction's no-parking zone. No stall is shorter than 6.1 m
+  or longer than 7.9 m (26 ft): the end stall takes up an odd length to
+  7.9 m, and beyond that the zone grows rather than a stall. No tick is painted within
+  9.1 m before a stop line, within 6.1 m of a crosswalk, or within 6.1 m of
+  the junction's mouth where its arm has no crosswalk, on both sides of the
+  junction; the parking lane line runs on through that zone to the mouth.
+- **Tapers bend, they never step**: across a tile where a road is changing
+  width the asphalt edge bends from one width to the next, and every line and
+  every coloured band on it bends with it, so nothing steps at a seam. A road
+  never narrows toward a junction it meets; it keeps its full width to the
+  junction's mouth, and the junction is drawn at each arm's own width.
 - **Rails**: a tramway embeds two steel rails at a 1.5 m gauge plus periodic
   cross-tie sleepers, sleeper phase anchored at global world-metre zero so
   ties line up across every seam. A track belongs to the LANE that carries it,
@@ -57,7 +80,11 @@ for the surface, the paint, the furniture and the zoning overlay.
   unbroken over the crossing street's paving.
 - **Intersections**: marking strips stop at any tile whose connections number
   three or more, so the junction box itself stays clean asphalt and reads as
-  a real crossing. The one exception is a motorway tile a ramp meets — a merge
+  a real crossing — all but its edge lines. The edge line breaks only across
+  the mouth of a road that joins: every side of the junction tile with no arm
+  keeps its edge line for the tile's full length, so the far side of a T is
+  unbroken, and between two arms it follows the kerb return, bending from one
+  arm's inset to the other's where they differ. The one exception is a motorway tile a ramp meets — a merge
   or a diverge — which is not an intersection: its lines run through, it has
   no box and no rounded corners, and its edge line only opens across the
   ramp's mouth (see [road-model.md](../world-sim/road-model.md), Ramps and

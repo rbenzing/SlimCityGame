@@ -200,7 +200,10 @@ the [documentation map](README.md) — chiefly the [documentation map](README.md
   spends six tiles closing its kerbside lanes, and a motorway spends far
   more, because a lane closed at speed needs the room. A shorter stretch, a
   wide stub between a junction and a narrow street, closes over the length it
-  has, leaving the junction at its full width. The lane that is
+  has, leaving the junction at its full width. A road never narrows toward a
+  junction, however narrow the road it meets: it arrives at its full width,
+  and a parking or bike lane that ends along a road closes by itself without
+  squeezing the traffic lanes. The lane that is
   running out carries a merge arrow bending into the one beside it. A
   **motorway closes its lane differently**: the tarmac stays where it is, so
   there is still somewhere to go if you miss the taper, and the lane is shut by

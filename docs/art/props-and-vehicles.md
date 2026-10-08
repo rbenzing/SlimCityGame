@@ -75,7 +75,13 @@ Static parked cars are an occupancy signal, not decoration:
   its cars park at the kerb instead: past the verge and the sidewalk,
   parallel, with no apron and no painted bay, since the road itself is
   already paved. Kerbside cars, like the lamps and signs in
-  [streets.md](streets.md), never stand on a tile with road on both axes.
+  [streets.md](streets.md), never stand on a tile with road on both axes,
+  and never inside a junction's no-parking zone: 9.1 m before a stop line,
+  6.1 m from a crosswalk, or 6.1 m from the mouth of an arm with none, on
+  either side of the junction — the same zone the parking lane's stall marks
+  keep out of. Where the street paints a parking lane, a car stands one to a
+  marked stall, centred in it, never across a stall mark; every marked stall
+  is 6.1–7.9 m long, so a stall always holds exactly one car.
 - **The street decides when a kerb may be parked at.** Where the street
   paints a parking lane on the kerb's side, cars stand in the middle of that
   lane at any hour, and the homes that use it keep theirs there overnight:

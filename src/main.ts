@@ -379,6 +379,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // The furniture's junction test, so a kerb beside a corridor's other half
     // keeps its cars the way it keeps its lamps.
     (x, z) => hasCrossingRoad(latestRoadTileSet, x, z),
+    // The junctions' no-parking zones and the marked stalls, both read off
+    // what the road mesh paints.
+    roadsMesh,
   );
   // Residential house kit: the roof, what each drive ends at, the car, the
   // front door and the yard, stood on the lot plan laid out from the street the

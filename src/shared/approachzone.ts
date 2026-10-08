@@ -27,6 +27,8 @@ import { controlHoldsArm, isRampNode } from './junction';
 import {
   closedAt,
   dropWidth,
+  kerbsideClosedAt,
+  laneDrop,
   laneTaperTiles,
   pavedCrossSection,
   TAPER_MAX_TILES,
@@ -354,6 +356,15 @@ export function isRampNodeAt(x: number, z: number, world: ApproachSurroundings):
 }
 
 /**
+ * Whether a tile is a junction a road MEETS — three or more roads joining it —
+ * rather than more of the road: a road arriving at one keeps its own width to
+ * its mouth. A merge or a diverge is the motorway running straight on, not one.
+ */
+export function isJunctionTile(x: number, z: number, world: ApproachSurroundings): boolean {
+  return roadDegree(x, z, world) >= 3 && !isRampNodeAt(x, z, world);
+}
+
+/**
  * The junction tile `(x, z)` is an approach to, within `zone` tiles of it, or
  * undefined when it is not one.
  *
@@ -549,7 +560,14 @@ export function drawnCrossSection(
   sharedTurn?: boolean,
 ): RoadProfile {
   const base = withAuxiliary(profile, auxiliary);
-  if (narrowing) return pavedCrossSection(base, closedAt(narrowing), reversedInWorld(flow));
+  if (narrowing) {
+    return pavedCrossSection(
+      base,
+      closedAt(narrowing),
+      reversedInWorld(flow),
+      kerbsideClosedAt(narrowing),
+    );
+  }
   return pocketedCrossSection(base, approach, flow, sharedTurn);
 }
 
@@ -576,7 +594,14 @@ export function paintedCrossSection(
   sharedTurn?: boolean,
 ): RoadProfile {
   const base = withAuxiliary(profile, auxiliary);
-  if (narrowing) return taperedCrossSection(base, closedAt(narrowing), reversedInWorld(flow));
+  if (narrowing) {
+    return taperedCrossSection(
+      base,
+      closedAt(narrowing),
+      reversedInWorld(flow),
+      kerbsideClosedAt(narrowing),
+    );
+  }
   return pocketedCrossSection(base, approach, flow, sharedTurn);
 }
 
@@ -590,6 +615,12 @@ export function paintedCrossSection(
  * turn a corner, and a road that ends is not a road that narrows. Where a wide
  * stretch narrows at both ends, the nearer one claims the tile, since that is
  * the drop its lanes are closing for.
+ *
+ * A road tapers only into more of itself. A junction is where it meets another
+ * road, and a lane reduction is made away from one, so the walk stops at a
+ * junction tile without reading its width: the road keeps its own up to the
+ * mouth, however narrow the road it crosses. A merge or a diverge is not a
+ * junction, and a motorway tapers through one as it does anywhere else.
  */
 export function narrowingAhead(
   x: number,
@@ -611,7 +642,8 @@ export function narrowingAhead(
       const tz = z + dz * step;
       const theirs = world.profileAt(tx, tz);
       if (!theirs) break;
-      const drop = dropWidth(mine, theirs);
+      if (isJunctionTile(tx, tz, world)) break;
+      const { total: drop, kerbside } = laneDrop(mine, theirs);
       if (drop > 1e-6) {
         const remaining = step - 1;
         // A taper begins at full width, on the back edge of the tile before
@@ -626,7 +658,7 @@ export function narrowingAhead(
         // Only the tiles within the taper's own length are closing; the road
         // further back is simply the wide road it is.
         if (remaining < length && (!best || remaining < best.remaining)) {
-          best = { toward, remaining, length, closed: drop };
+          best = { toward, remaining, length, closed: drop, kerbside };
         }
         break;
       }
