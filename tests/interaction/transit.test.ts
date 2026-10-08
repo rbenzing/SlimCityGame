@@ -61,7 +61,7 @@ describe('a bus line down a long block', () => {
           { kind: 'setSandbox', on: true },
           { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(50, 80, 60) },
           { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 50, z: 79, rotation: 0 },
-          { kind: 'placeBuilding', catalogId: 'water-tower', x: 52, z: 78, rotation: 0 },
+          { kind: 'placeBuilding', catalogId: 'water-tower', x: 52, z: 79, rotation: 0 },
           { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(56, 81, 50, 2) },
           { kind: 'paintZone', zone: ZoneType.ComLow, tiles: rows(56, 77, 50, 2) },
           { kind: 'placeBuilding', catalogId: 'bus-stop', x: 54, z: 81, rotation: 0 },
@@ -116,7 +116,7 @@ describe('a tramway crossing another street', () => {
     expect(run(h, 3, [{ kind: 'buildRoad', tier: RoadTier.Tram, tiles: tramway }]).ok).toBe(true);
     run(h, 4, [
       { kind: 'placeBuilding', catalogId: 'wind-turbine', x: AVENUE_X - 1, z: 60, rotation: 0 },
-      { kind: 'placeBuilding', catalogId: 'water-tower', x: AVENUE_X - 2, z: 61, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'water-tower', x: AVENUE_X - 1, z: 61, rotation: 0 },
       {
         kind: 'paintZone',
         zone: ZoneType.ResLow,

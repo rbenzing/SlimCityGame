@@ -18,7 +18,20 @@ import {
   UTILITY_KIT_CATALOG_IDS,
   UtilityKitPartKind,
   UtilityKitRenderer,
+  WATER_BALCONY_OUTER_RADIUS,
+  WATER_BALCONY_Y,
+  WATER_CROWN_Y,
+  WATER_LEG_BASE_RADIUS,
   WATER_LEG_COUNT,
+  WATER_LEG_TOP_RADIUS,
+  WATER_PANEL_COUNT,
+  WATER_SHELL_TOP_Y,
+  WATER_TANK_BOTTOM_DEPTH,
+  WATER_TANK_BOTTOM_Y,
+  WATER_TANK_RADIUS,
+  WATER_TANK_SEGMENTS,
+  WATER_TANK_SHELL_HEIGHT,
+  buildWaterTowerGeometry,
   computeCoalHallLayout,
   computeCoalHeapLocalPlacement,
   computeCoalSmokestackLocalPlacements,
@@ -56,7 +69,7 @@ const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'turbineTower',
   'turbineRotor',
   'turbineBeacon',
-  'waterLegs',
+  'waterSteel',
   'waterTank',
   'pumpHouse',
   'pumpIntake',
@@ -102,8 +115,8 @@ function makeWaterTowerEntry(overrides: Partial<BuildingCatalogEntry> = {}): Bui
     id: 'water-tower',
     name: 'Water Tower',
     category: 'utility',
-    footprint: { w: 2, d: 2 },
-    height: 24,
+    footprint: { w: 1, d: 1 },
+    height: 36,
     color: 0x7495d1,
     powerUse: 0.2,
     waterUse: 0,
@@ -421,15 +434,13 @@ describe('wind turbine pure layout', () => {
 });
 
 describe('computeWaterLegPlacements (pure)', () => {
-  it('places WATER_LEG_COUNT (4) legs, splayed at the base and converging near center at the top', () => {
+  it('places WATER_LEG_COUNT (4) legs, 6 m out at the ground and 4.6 m out at the balcony ring', () => {
     const legs = computeWaterLegPlacements();
     expect(legs).toHaveLength(WATER_LEG_COUNT);
     expect(WATER_LEG_COUNT).toBe(4);
     for (const leg of legs) {
-      const baseDist = Math.hypot(leg.base.x, leg.base.z);
-      const topDist = Math.hypot(leg.top.x, leg.top.z);
-      expect(baseDist).toBeGreaterThan(topDist);
-      expect(topDist).toBeGreaterThan(0); // still under the tank, not collapsed to a point
+      expect(Math.hypot(leg.base.x, leg.base.z)).toBeCloseTo(6, 9);
+      expect(Math.hypot(leg.top.x, leg.top.z)).toBeCloseTo(4.6, 9);
     }
   });
 
@@ -830,13 +841,89 @@ describe('wind-turbine rotor spin (UI-SPEC §6.15)', () => {
 // ---------------------------------------------------------------------------
 
 describe('water-tower kit', () => {
-  it('places exactly 1 waterLegs and 1 waterTank slot per instance', () => {
+  it('places exactly 1 waterSteel and 1 waterTank slot per instance', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
       makeWaterTowerEntry(),
     ]);
     renderer.apply(deltaAdd(makeInstance(1, 'water-tower')));
-    expect(renderer.partSlotsFor(1, 'waterLegs')).toHaveLength(1);
+    expect(renderer.partSlotsFor(1, 'waterSteel')).toHaveLength(1);
     expect(renderer.partSlotsFor(1, 'waterTank')).toHaveLength(1);
+  });
+
+  it('braces the legs in 3 panels', () => {
+    expect(WATER_PANEL_COUNT).toBe(3);
+  });
+
+  describe('drawn geometry', () => {
+    const { steel, tank } = buildWaterTowerGeometry();
+    const vertices = (g: THREE.BufferGeometry): THREE.Vector3[] => {
+      const p = g.getAttribute('position');
+      return Array.from({ length: p.count }, (_, i) =>
+        new THREE.Vector3().fromBufferAttribute(p, i),
+      );
+    };
+    const steelVerts = vertices(steel);
+    const tankVerts = vertices(tank);
+
+    it('holds the tank capacity in its drawn bottom and shell', () => {
+      // Signed volume of the bottom + shell triangles, closed by the flat disc at the shell top.
+      const index = tank.getIndex()!;
+      let volume = 0;
+      for (let i = 0; i < index.count; i += 3) {
+        const [a, b, c] = [0, 1, 2].map((k) => tankVerts[index.getX(i + k)]!) as [
+          THREE.Vector3,
+          THREE.Vector3,
+          THREE.Vector3,
+        ];
+        const lowest = Math.min(a.y, b.y, c.y);
+        const highest = Math.max(a.y, b.y, c.y);
+        if (lowest >= WATER_SHELL_TOP_Y - 1e-6 || highest > WATER_SHELL_TOP_Y + 1e-6) continue;
+        volume += a.dot(new THREE.Vector3().crossVectors(b, c)) / 6;
+      }
+      const capArea =
+        0.5 *
+        WATER_TANK_SEGMENTS *
+        WATER_TANK_RADIUS ** 2 *
+        Math.sin((2 * Math.PI) / WATER_TANK_SEGMENTS);
+      volume += (capArea * WATER_SHELL_TOP_Y) / 3;
+      expect(Math.abs(volume - 378.5) / 378.5).toBeLessThan(0.02);
+    });
+
+    it('stands the shell top at 33.55 m, the crown near 36 m and the bottom at 27 m', () => {
+      expect(WATER_TANK_BOTTOM_Y + WATER_TANK_BOTTOM_DEPTH + WATER_TANK_SHELL_HEIGHT).toBeCloseTo(
+        33.55,
+        9,
+      );
+      expect(Math.min(...tankVerts.map((v) => v.y))).toBeCloseTo(27, 5);
+      const shellVerts = tankVerts.filter((v) => Math.hypot(v.x, v.z) > WATER_TANK_RADIUS - 1e-6);
+      expect(Math.max(...shellVerts.map((v) => v.y))).toBeCloseTo(33.55, 5);
+      expect(WATER_CROWN_Y).toBeCloseTo(35.85, 9);
+      const top = Math.max(...tankVerts.map((v) => v.y));
+      expect(top).toBeGreaterThanOrEqual(WATER_CROWN_Y);
+      expect(top).toBeLessThanOrEqual(36.1);
+    });
+
+    it('keeps every vertex inside the 20 m tile around the centre', () => {
+      for (const v of [...steelVerts, ...tankVerts]) {
+        expect(Math.abs(v.x)).toBeLessThanOrEqual(TILE_METERS / 2);
+        expect(Math.abs(v.z)).toBeLessThanOrEqual(TILE_METERS / 2);
+      }
+    });
+
+    it('lands the legs at 6 m out on the ground and rings the balcony at 5.55 m', () => {
+      expect(WATER_LEG_BASE_RADIUS).toBe(6);
+      expect(WATER_LEG_TOP_RADIUS).toBe(4.6);
+      expect(Math.min(...steelVerts.map((v) => v.y))).toBeGreaterThan(-0.05);
+      const atGround = steelVerts.filter((v) => v.y < 0.05 && Math.hypot(v.x, v.z) > 3);
+      const farthest = Math.max(...atGround.map((v) => Math.hypot(v.x, v.z)));
+      expect(farthest).toBeGreaterThan(6);
+      expect(farthest).toBeLessThan(6.4);
+      const atBalcony = steelVerts.filter((v) => Math.abs(v.y - WATER_BALCONY_Y) < 1e-6);
+      expect(Math.max(...atBalcony.map((v) => Math.hypot(v.x, v.z)))).toBeCloseTo(
+        WATER_BALCONY_OUTER_RADIUS,
+        6,
+      );
+    });
   });
 
   it('places both parts at the footprint center (world)', () => {

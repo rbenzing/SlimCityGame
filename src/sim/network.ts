@@ -551,6 +551,18 @@ export function utilityCanDeliver(
 }
 
 /**
+ * Whether a footprint touches a tile that carries power or water: the same
+ * adjacency every utility walk starts from.
+ */
+export function bordersUtilityNetwork(g: GridState, footprintTiles: readonly number[]): boolean {
+  const cells = roadCellsOf(g);
+  return (
+    networkCellsAdjacentTo(cells, footprintTiles, (c, i) => conductsPower(g, c, i)).length > 0 ||
+    networkCellsAdjacentTo(cells, footprintTiles, (c, i) => conductsWater(g, c, i)).length > 0
+  );
+}
+
+/**
  * Writes one utility's coverage into `target` and cuts the grid from its far
  * end. Every building the network reaches stands in one line — nearest
  * generator first, by the steps to its nearest footprint tile, ties by

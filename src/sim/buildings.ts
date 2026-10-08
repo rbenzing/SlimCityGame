@@ -241,4 +241,51 @@ export class BuildingRegistry {
     }
     return registry;
   }
+
+  /**
+   * A save keeps each building's footprint, but the renderer draws a building on
+   * its catalog footprint. When a ploppable's catalog footprint has since shrunk,
+   * the old stamp is cut back to the new one inside it, at the first position
+   * (by z, then x) whose tiles `fronts` a road, else at the origin, so the
+   * building keeps the street it was served from; the tiles it no longer covers
+   * are freed. Zoned buildings keep the footprint they were saved with.
+   */
+  restampShrunkPloppables(g: GridState, fronts: (tiles: readonly number[]) => boolean): void {
+    for (const [id, inst] of this.instances) {
+      const entry = this.catalogIndex.get(inst.catalogId);
+      const stored = this.footprints.get(id);
+      if (!entry || entry.zone !== undefined || !stored) continue;
+      const now = footprintForRotation(entry, inst.rotation);
+      if (now.w === stored.w && now.d === stored.d) continue;
+      if (now.w > stored.w || now.d > stored.d) continue;
+
+      let offX = 0;
+      let offZ = 0;
+      search: for (let oz = 0; oz <= stored.d - now.d; oz++) {
+        for (let ox = 0; ox <= stored.w - now.w; ox++) {
+          if (fronts(lotTiles(inst.x + ox, inst.z + oz, now.w, now.d))) {
+            offX = ox;
+            offZ = oz;
+            break search;
+          }
+        }
+      }
+
+      for (let dz = 0; dz < stored.d; dz++) {
+        for (let dx = 0; dx < stored.w; dx++) {
+          const tx = inst.x + dx;
+          const tz = inst.z + dz;
+          if (!inBounds(tx, tz)) continue;
+          const kept = dx >= offX && dx < offX + now.w && dz >= offZ && dz < offZ + now.d;
+          if (kept) g.buildingId[tileIndex(tx, tz)] = id;
+          else if (readU32(g.buildingId, tileIndex(tx, tz)) === id) {
+            g.buildingId[tileIndex(tx, tz)] = 0;
+          }
+        }
+      }
+      inst.x += offX;
+      inst.z += offZ;
+      this.footprints.set(id, now);
+    }
+  }
 }

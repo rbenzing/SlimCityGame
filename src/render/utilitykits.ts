@@ -23,8 +23,8 @@
  *    night (setNightFactor) — the ONE kit part in this whole file that reacts
  *    to night at all — kits stay unlit except a small red turbine
  *    nacelle beacon at night.
- *  - water-tower: 4 splayed legs ("waterLegs") + a banded cylindrical tank
- *    with a domed cap ("waterTank").
+ *  - water-tower: braced legs, balcony and riser ("waterSteel") + a white
+ *    ellipsoid-ended tank ("waterTank").
  *  - coal-plant: a dark boiler hall ("coalHall") covering ~3x4 of its 4x4
  *    footprint, 2 striped smokestacks ("coalSmokestack", chimney
  *    language), and a low coal-heap wedge ("coalHeap") in the strip beside
@@ -86,7 +86,7 @@ export type UtilityKitPartKind =
   | 'turbineTower'
   | 'turbineRotor'
   | 'turbineBeacon'
-  | 'waterLegs'
+  | 'waterSteel'
   | 'waterTank'
   | 'pumpHouse'
   | 'pumpIntake'
@@ -251,25 +251,24 @@ function mergeParts(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
 
 const UP_AXIS = new THREE.Vector3(0, 1, 0);
 
+interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
 /**
- * A tapered "strut" geometry running from `base`(baseY) to `top`(topY), local
- * Y=0 at world ground — used by the water-tower's splayed legs. A real
- * (non-stub) technique: build a vertical tapered cylinder, then rotate it
- * from +Y onto the base->top direction and translate it into place.
+ * A straight round rod from `a` to `b`, local Y=0 at world ground — the water
+ * tower's legs, struts and tie rods. Built as a vertical cylinder, then
+ * rotated from +Y onto the a->b direction and translated into place.
  */
-function buildStrutGeometry(
-  base: Vec2,
-  top: Vec2,
-  baseY: number,
-  topY: number,
-  radius: number,
-): THREE.BufferGeometry {
-  const from = new THREE.Vector3(base.x, baseY, base.z);
-  const to = new THREE.Vector3(top.x, topY, top.z);
+function buildRodGeometry(a: Vec3, b: Vec3, radius: number, sides: number): THREE.BufferGeometry {
+  const from = new THREE.Vector3(a.x, a.y, a.z);
+  const to = new THREE.Vector3(b.x, b.y, b.z);
   const delta = new THREE.Vector3().subVectors(to, from);
   const length = delta.length();
 
-  const geometry = new THREE.CylinderGeometry(radius * 0.6, radius, length, 6);
+  const geometry = new THREE.CylinderGeometry(radius, radius, length, sides);
   geometry.translate(0, length / 2, 0);
   const direction = delta.clone().normalize();
   const quaternion = new THREE.Quaternion().setFromUnitVectors(UP_AXIS, direction);
@@ -403,33 +402,45 @@ function buildTurbineRotorGeometry(): THREE.BufferGeometry {
 }
 
 // ---------------------------------------------------------------------------
-// water-tower: 4 splayed legs + banded cylindrical tank +
-// domed cap, ~22m.
+// water-tower: a multi-leg elevated tank — ellipsoidal bottom, cylindrical
+// shell, ellipsoidal roof with a vent — on a balcony ring, four braced legs
+// and a central wet riser. Sizes are absolute metres on a one-tile footprint.
 // ---------------------------------------------------------------------------
 
 export const WATER_LEG_COUNT = 4;
-const WATER_LEG_HEIGHT = 15;
-const WATER_LEG_BASE_RADIUS = 5.4;
-const WATER_LEG_TOP_RADIUS = 1.9;
-const WATER_LEG_THICKNESS = 0.55;
-const WATER_TANK_RADIUS = 6.2;
-const WATER_TANK_HEIGHT = 5.4;
-const WATER_TANK_BAND_COUNT = 3;
-const WATER_TANK_BAND_HEIGHT = 0.4;
-const WATER_TANK_BAND_RADIUS_BONUS = 0.15;
-const WATER_CAP_HEIGHT = 2.4;
+export const WATER_PANEL_COUNT = 3;
+export const WATER_TANK_RADIUS = 4.55;
+export const WATER_TANK_BOTTOM_Y = 27;
+export const WATER_TANK_BOTTOM_DEPTH = 2.3;
+export const WATER_TANK_SHELL_HEIGHT = 4.25;
+export const WATER_TANK_ROOF_HEIGHT = 2.3;
+export const WATER_BALCONY_Y = WATER_TANK_BOTTOM_Y + WATER_TANK_BOTTOM_DEPTH;
+export const WATER_SHELL_TOP_Y = WATER_BALCONY_Y + WATER_TANK_SHELL_HEIGHT;
+export const WATER_CROWN_Y = WATER_SHELL_TOP_Y + WATER_TANK_ROOF_HEIGHT;
+export const WATER_BALCONY_OUTER_RADIUS = 5.55;
+export const WATER_LEG_TOP_RADIUS = 4.6;
+export const WATER_LEG_BASE_RADIUS = 6;
+const WATER_BALCONY_THICKNESS = 0.15;
+const WATER_HANDRAIL_HEIGHT = 1.07;
+const WATER_HANDRAIL_RADIUS = WATER_BALCONY_OUTER_RADIUS - 0.1;
+const WATER_HANDRAIL_POSTS = 12;
+const WATER_VENT_RADIUS = 0.4;
+const WATER_VENT_HEIGHT = 0.3;
+const WATER_LEG_RADIUS = 0.3;
+const WATER_STRUT_RADIUS = 0.15;
+const WATER_TIE_ROD_RADIUS = 0.05;
+const WATER_RISER_RADIUS = 0.6;
+export const WATER_TANK_SEGMENTS = 32;
 
-const WATER_LEG_RGB: RGB = [0.5, 0.51, 0.52];
-const WATER_TANK_RGB: RGB = [0.84, 0.82, 0.76];
-const WATER_TANK_BAND_RGB: RGB = [0.58, 0.57, 0.54];
-const WATER_CAP_RGB: RGB = [0.76, 0.74, 0.68];
+const WATER_STEEL_RGB: RGB = [0.62, 0.64, 0.67];
+const WATER_TANK_RGB: RGB = [0.94, 0.94, 0.92];
 
 export interface LegPlacement {
   base: Vec2;
   top: Vec2;
 }
 
-/** 4 legs splayed at the ground, converging (but not meeting) near the center under the tank. Pure; fixed (no per-instance variation is called for). */
+/** 4 legs at 45 degrees + k * 90, battered: wide at the ground, drawn in to the balcony ring. Pure; fixed. */
 export function computeWaterLegPlacements(): readonly LegPlacement[] {
   const placements: LegPlacement[] = [];
   for (let i = 0; i < WATER_LEG_COUNT; i++) {
@@ -444,53 +455,143 @@ export function computeWaterLegPlacements(): readonly LegPlacement[] {
   return placements;
 }
 
-/** 4 splayed struts, merged; local Y=0 is the GROUND plane. */
-function buildWaterLegsGeometry(): THREE.BufferGeometry {
-  const parts = computeWaterLegPlacements().map(({ base, top }) => {
-    const leg = buildStrutGeometry(base, top, 0, WATER_LEG_HEIGHT, WATER_LEG_THICKNESS);
-    paintVertexColor(leg, hexFromRgb(WATER_LEG_RGB));
-    return leg;
-  });
+/** A point on leg `leg` at height y, on the straight line from its base to its top. */
+function legPointAt(leg: LegPlacement, y: number): Vec3 {
+  const t = y / WATER_BALCONY_Y;
+  return {
+    x: lerpNum(leg.base.x, leg.top.x, t),
+    y,
+    z: lerpNum(leg.base.z, leg.top.z, t),
+  };
+}
+
+/**
+ * The silver-grey steel, merged; local Y=0 is the GROUND plane: the balcony
+ * and its handrail, the legs, a ring of struts and four faces of crossed tie
+ * rods in each panel, and the wet riser.
+ */
+function buildWaterSteelGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+
+  // Balcony floor: a closed rectangular profile lathed into a ring.
+  const rim = [
+    new THREE.Vector2(WATER_TANK_RADIUS, WATER_BALCONY_Y - WATER_BALCONY_THICKNESS),
+    new THREE.Vector2(WATER_BALCONY_OUTER_RADIUS, WATER_BALCONY_Y - WATER_BALCONY_THICKNESS),
+    new THREE.Vector2(WATER_BALCONY_OUTER_RADIUS, WATER_BALCONY_Y),
+    new THREE.Vector2(WATER_TANK_RADIUS, WATER_BALCONY_Y),
+    new THREE.Vector2(WATER_TANK_RADIUS, WATER_BALCONY_Y - WATER_BALCONY_THICKNESS),
+  ];
+  parts.push(new THREE.LatheGeometry(rim, WATER_TANK_SEGMENTS));
+
+  // Handrail: a top rail ring held up by evenly spaced posts.
+  const rail = new THREE.TorusGeometry(WATER_HANDRAIL_RADIUS, 0.06, 5, WATER_TANK_SEGMENTS);
+  rail.rotateX(Math.PI / 2);
+  rail.translate(0, WATER_BALCONY_Y + WATER_HANDRAIL_HEIGHT, 0);
+  parts.push(rail);
+  for (let i = 0; i < WATER_HANDRAIL_POSTS; i++) {
+    const angle = (i / WATER_HANDRAIL_POSTS) * Math.PI * 2;
+    const x = Math.cos(angle) * WATER_HANDRAIL_RADIUS;
+    const z = Math.sin(angle) * WATER_HANDRAIL_RADIUS;
+    parts.push(
+      buildRodGeometry(
+        { x, y: WATER_BALCONY_Y, z },
+        { x, y: WATER_BALCONY_Y + WATER_HANDRAIL_HEIGHT, z },
+        0.04,
+        4,
+      ),
+    );
+  }
+
+  // Legs, then the bracing: at every panel boundary a strut joins each pair of
+  // neighbouring legs, and each panel face carries a crossed pair of tie rods.
+  const legs = computeWaterLegPlacements();
+  for (const leg of legs) {
+    parts.push(
+      buildRodGeometry(
+        { x: leg.base.x, y: 0, z: leg.base.z },
+        { x: leg.top.x, y: WATER_BALCONY_Y, z: leg.top.z },
+        WATER_LEG_RADIUS,
+        6,
+      ),
+    );
+  }
+  const panelHeight = WATER_BALCONY_Y / WATER_PANEL_COUNT;
+  for (let panel = 0; panel < WATER_PANEL_COUNT; panel++) {
+    const lowY = panel * panelHeight;
+    const highY = (panel + 1) * panelHeight;
+    for (let i = 0; i < legs.length; i++) {
+      const a = legs[i]!;
+      const b = legs[(i + 1) % legs.length]!;
+      if (panel > 0) {
+        parts.push(
+          buildRodGeometry(legPointAt(a, lowY), legPointAt(b, lowY), WATER_STRUT_RADIUS, 4),
+        );
+      }
+      parts.push(
+        buildRodGeometry(legPointAt(a, lowY), legPointAt(b, highY), WATER_TIE_ROD_RADIUS, 4),
+        buildRodGeometry(legPointAt(b, lowY), legPointAt(a, highY), WATER_TIE_ROD_RADIUS, 4),
+      );
+    }
+  }
+
+  // The wet riser: ground to the tank's lowest point.
+  parts.push(
+    buildRodGeometry(
+      { x: 0, y: 0, z: 0 },
+      { x: 0, y: WATER_TANK_BOTTOM_Y, z: 0 },
+      WATER_RISER_RADIUS,
+      10,
+    ),
+  );
+
+  for (const part of parts) paintVertexColor(part, hexFromRgb(WATER_STEEL_RGB));
   return mergeParts(parts);
 }
 
-/** Banded cylinder body + a domed cap, merged; local Y=0 is the GROUND plane (the tank sits atop WATER_LEG_HEIGHT). */
+/** White tank, merged; local Y=0 is the GROUND plane: ellipsoidal bottom, cylindrical shell, ellipsoidal roof and the vent at its crown. */
 function buildWaterTankGeometry(): THREE.BufferGeometry {
-  const bodyBottomY = WATER_LEG_HEIGHT;
+  const half = Math.PI / 2;
 
-  const body = new THREE.CylinderGeometry(
+  // Sphere halves scaled to ellipsoids: thetaStart = PI/2 sweeps equator to
+  // south pole (the bottom), thetaLength = PI/2 from the pole to the equator
+  // (the roof).
+  const bottom = new THREE.SphereGeometry(1, WATER_TANK_SEGMENTS, 8, 0, Math.PI * 2, half, half);
+  bottom.scale(WATER_TANK_RADIUS, WATER_TANK_BOTTOM_DEPTH, WATER_TANK_RADIUS);
+  bottom.translate(0, WATER_BALCONY_Y, 0);
+
+  const shell = new THREE.CylinderGeometry(
     WATER_TANK_RADIUS,
     WATER_TANK_RADIUS,
-    WATER_TANK_HEIGHT,
-    14,
+    WATER_TANK_SHELL_HEIGHT,
+    WATER_TANK_SEGMENTS,
+    1,
+    true,
   );
-  body.translate(0, bodyBottomY + WATER_TANK_HEIGHT / 2, 0);
-  paintVertexColor(body, hexFromRgb(WATER_TANK_RGB));
+  shell.translate(0, WATER_BALCONY_Y + WATER_TANK_SHELL_HEIGHT / 2, 0);
 
-  const parts: THREE.BufferGeometry[] = [body];
-  for (let i = 0; i < WATER_TANK_BAND_COUNT; i++) {
-    const t = (i + 1) / (WATER_TANK_BAND_COUNT + 1);
-    const band = new THREE.CylinderGeometry(
-      WATER_TANK_RADIUS + WATER_TANK_BAND_RADIUS_BONUS,
-      WATER_TANK_RADIUS + WATER_TANK_BAND_RADIUS_BONUS,
-      WATER_TANK_BAND_HEIGHT,
-      14,
-    );
-    band.translate(0, bodyBottomY + WATER_TANK_HEIGHT * t, 0);
-    paintVertexColor(band, hexFromRgb(WATER_TANK_BAND_RGB));
-    parts.push(band);
-  }
+  const roof = new THREE.SphereGeometry(1, WATER_TANK_SEGMENTS, 8, 0, Math.PI * 2, 0, half);
+  roof.scale(WATER_TANK_RADIUS, WATER_TANK_ROOF_HEIGHT, WATER_TANK_RADIUS);
+  roof.translate(0, WATER_SHELL_TOP_Y, 0);
 
-  // thetaLength = PI/2 sweeps from the pole to the equator: a dome bulging
-  // upward with a flat (always tank-hidden) base — same technique as
-  // landmarks.ts's roof dome.
-  const cap = new THREE.SphereGeometry(1, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-  cap.scale(WATER_TANK_RADIUS, WATER_CAP_HEIGHT, WATER_TANK_RADIUS);
-  cap.translate(0, bodyBottomY + WATER_TANK_HEIGHT, 0);
-  paintVertexColor(cap, hexFromRgb(WATER_CAP_RGB));
-  parts.push(cap);
+  const vent = new THREE.CylinderGeometry(
+    WATER_VENT_RADIUS,
+    WATER_VENT_RADIUS,
+    WATER_VENT_HEIGHT,
+    8,
+  );
+  vent.translate(0, WATER_CROWN_Y - 0.1 + WATER_VENT_HEIGHT / 2, 0);
 
+  const parts = [bottom, shell, roof, vent];
+  for (const part of parts) paintVertexColor(part, hexFromRgb(WATER_TANK_RGB));
   return mergeParts(parts);
+}
+
+/** The two merged parts of the water tower, local Y=0 at the ground. Exposed so the drawn shapes can be measured. */
+export function buildWaterTowerGeometry(): {
+  steel: THREE.BufferGeometry;
+  tank: THREE.BufferGeometry;
+} {
+  return { steel: buildWaterSteelGeometry(), tank: buildWaterTankGeometry() };
 }
 
 // ---------------------------------------------------------------------------
@@ -1334,9 +1435,9 @@ export class UtilityKitRenderer {
     return {
       entry,
       pools: {
-        waterLegs: new InstancedSlotPool(
+        waterSteel: new InstancedSlotPool(
           this.scene,
-          buildWaterLegsGeometry(),
+          buildWaterSteelGeometry(),
           lambert(),
           INITIAL_KIT_CAPACITY,
         ),
@@ -1687,16 +1788,16 @@ export class UtilityKitRenderer {
     centerZ: number,
     rotation: 0 | 1 | 2 | 3,
   ): void {
-    const legsPool = kit.pools.waterLegs;
+    const steelPool = kit.pools.waterSteel;
     const tankPool = kit.pools.waterTank;
-    if (!legsPool || !tankPool) return;
+    if (!steelPool || !tankPool) return;
 
-    const legsSlot = this.placeAt(legsPool, centerX, groundY, centerZ, rotation);
+    const steelSlot = this.placeAt(steelPool, centerX, groundY, centerZ, rotation);
     const tankSlot = this.placeAt(tankPool, centerX, groundY, centerZ, rotation);
 
     this.instances.set(building.id, {
       catalogId: building.catalogId,
-      slots: { waterLegs: [legsSlot], waterTank: [tankSlot] },
+      slots: { waterSteel: [steelSlot], waterTank: [tankSlot] },
     });
   }
 

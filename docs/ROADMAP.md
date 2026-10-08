@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 5,075 tests passing across 165 test files, run 2026-10-07.
+**Test suite:** 5,090 tests passing across 166 test files, run 2026-10-08.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -287,6 +287,25 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The water tower at its size, on one tile (asked for and built 2026-10-08)
+
+Asked for by the player, with a picture of a classic multi-leg tower: the
+water tower stood on a 2×2 lot as four splayed legs under a banded drum, 24 m
+tall. A 100,000-gallon multi-leg tank is 30 ft (9.1 m) across on four columns
+(Caldwell Tanks), so it now takes one tile, and is drawn as the type: an
+ellipsoidal bottom 2.3 m deep, a 4.25 m shell and a matching roof — 379 m³,
+the tank's own 100,000 gallons — a 1 m balcony with its rail where the bottom
+meets the shell, four battered legs braced in three panels by struts and
+crossed tie rods, and a 1.2 m wet riser into its centre. The overflow stands
+33.5 m up, as on a 110 ft trestle of the type, and the crown 36 m; the
+height, the leg circle and the steel sizes are dials, since no maker
+publishes them. The tank is white and the steel silver-grey. Its water, power
+and price are unchanged. A save from before it loads each old 2×2 tower
+re-stamped to the one tile of its old lot that still fronts the street it was
+served from (its origin when none does), the three tiles it no longer covers
+freed, so no old tower is cut off its water. That is the rule for any
+ploppable whose footprint shrinks.
 
 ### Kerbside recycling (second slice of garbage recovery, built 2026-10-08)
 

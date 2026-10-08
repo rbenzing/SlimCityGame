@@ -947,6 +947,14 @@ MUTCD citations below use 11th-edition section numbers.
 
 ## Saves and the data model
 
+- A save stores each building's footprint, and the renderer draws a building
+  on its catalog footprint, so the two must agree. When a ploppable's catalog
+  footprint shrinks, a save from before it loads that ploppable re-stamped to
+  the new footprint inside its old one, on the corner that still fronts the
+  road it was served from (its origin when no road touches it), the tiles it
+  no longer covers freed. A re-stamp never cuts a building off its street. A
+  zoned building keeps the footprint it was saved with. —
+  `src/sim/buildings.ts`, `src/sim/worker.entry.ts`
 - Enum-like value sets (`ZoneType`, `RoadTier`, `RoadFlow`, `FieldId`,
   `BuildingState`, `Problem`, `VehicleKind`, `CONTROL_BY_CODE`) are `as const`
   objects, never TypeScript enums. Members are explicitly numbered and never

@@ -110,7 +110,22 @@ of the generic building facade box:
   the skyline on purpose; a real turbine stands over a town twice, and the
   blades sweep a tile and a half either side of the tile it stands on, which
   is why two turbines keep three clear tiles between them.
-- **Water tower**: 4 splayed legs, a banded cylindrical tank, a domed cap.
+- **Water tower**: a multi-leg elevated tank at the size of the 100,000
+  gallons it holds, on one tile. The tank is 9.1 m (30 ft) across, the
+  four-column size for 100,000 gallons
+  ([Caldwell Tanks](https://caldwelltanks.com/tank_types/multi-column-elevated-storage-tank-leg)),
+  with an ellipsoidal bottom 2.3 m deep, a cylindrical shell 4.25 m tall and a
+  matching ellipsoidal roof with a vent at its crown — 379 m³, the tank's own
+  capacity. A balcony 1 m wide with a 1.07 m handrail rings the tank where its
+  bottom meets its shell. Four legs run from that ring down and out to the
+  corners of a circle 6 m in radius at the ground, braced in three panels by
+  horizontal struts and crossed tie rods on every face, and a 1.2 m wet riser
+  rises from the ground into the tank's centre. The shell's top, the overflow,
+  stands 33.5 m up and the crown 36 m, as on a 110 ft trestle of the type
+  ([NPS, Cuyuna Range towers](https://npgallery.nps.gov/GetAsset/051bc717-784c-4d0e-b4e9-3b6e9d64082a));
+  the overall height, the leg circle, the leg and riser sizes and the balcony
+  are dials, since no maker publishes them. The tank and roof are white, the
+  legs, bracing, riser and balcony silver-grey.
 - **Water pumping station**: a pale pump house with a plant room on its roof,
   and a steel intake pipe running out of its water-facing wall and 6 m past
   the footprint's edge over the water. The kit turns to face whichever side

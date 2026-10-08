@@ -199,7 +199,7 @@ import { computeDemand, jobRoom } from './demand';
 import { GrowthSystem, type GrowthSupply } from './growth';
 import { ServiceSim, nearestRoadTile } from './services';
 import { EconomySystem, buildingMonthlyTax, type Occupancy } from './economy';
-import { recomputeUtilities, sewageOf } from './network';
+import { bordersUtilityNetwork, recomputeUtilities, sewageOf } from './network';
 import { TrafficSystem } from './traffic';
 import { TransitSystem, type PopulationJobsAccessor, type TransitTickResult } from './transit';
 import { DispatchSystem, MAX_SERVICE_VEHICLES } from './dispatch';
@@ -759,6 +759,9 @@ class SimWorld implements WorkerSim {
     this.deriveFootprint();
     this.roadProfilesChanged = true;
     this.registry = BuildingRegistry.deserialize(CATALOG, payload.meta.registry);
+    this.registry.restampShrunkPloppables(this.grid, (tiles) =>
+      bordersUtilityNetwork(this.grid, tiles),
+    );
     this.stats = cloneStats(payload.meta.stats);
     this.seed = payload.header.seed;
     soilGrades(this.grid, this.seed, this.grid.soil);
