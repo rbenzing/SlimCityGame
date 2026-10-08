@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { LOT_SIZES, LOT_STANDING_FLOOR, lotForStanding, platCandidates } from './lots';
-import type { BuildingCatalogEntry, LotSize } from './types';
+import {
+  LOT_SIZES,
+  LOT_STANDING_FLOOR,
+  PLATTED_ZONES,
+  lotForStanding,
+  lotsOfZone,
+  platCandidates,
+  warrantedLot,
+} from './lots';
+import { ZoneType, type BuildingCatalogEntry, type LotSize } from './types';
 
 const house = (lot: LotSize | undefined, id = `h-${lot ?? 'none'}`): BuildingCatalogEntry =>
   ({ id, lot, kind: 'detached', level: 1, footprint: { w: 1, d: 1 } }) as BuildingCatalogEntry;
@@ -26,23 +34,48 @@ describe('the lot the land warrants', () => {
   });
 });
 
+describe('the lots a zone plats', () => {
+  it('plats low density by the land value bands', () => {
+    expect(warrantedLot(ZoneType.ResLow, 0)).toBe('half');
+    expect(warrantedLot(ZoneType.ResLow, 119)).toBe('normal');
+    expect(warrantedLot(ZoneType.ResLow, 181)).toBe('double');
+    expect(warrantedLot(ZoneType.ResLow, 255)).toBe('estate');
+  });
+
+  it('plats medium density as normal lots whatever the standing', () => {
+    expect(warrantedLot(ZoneType.ResMedium, 0)).toBe('normal');
+    expect(warrantedLot(ZoneType.ResMedium, 255)).toBe('normal');
+    expect(lotsOfZone(ZoneType.ResMedium)).toEqual(['normal']);
+  });
+
+  it('leaves every other zone every lot size', () => {
+    expect(lotsOfZone(ZoneType.ResLow)).toEqual(LOT_SIZES);
+    expect(lotsOfZone(ZoneType.ResHigh)).toEqual(LOT_SIZES);
+  });
+
+  it('names low and medium density as the platted zones', () => {
+    expect([...PLATTED_ZONES].sort()).toEqual([ZoneType.ResLow, ZoneType.ResMedium].sort());
+  });
+});
+
 describe('the candidates a plat allows', () => {
   const all = LOT_SIZES.map((s) => house(s));
+  const low = ZoneType.ResLow;
 
   it('keeps only the warranted lot among those that fit', () => {
-    expect(platCandidates(all, 119).map((e) => e.lot)).toEqual(['normal']);
-    expect(platCandidates(all, 240).map((e) => e.lot)).toEqual(['estate']);
-    expect(platCandidates(all, 10).map((e) => e.lot)).toEqual(['half']);
+    expect(platCandidates(all, low, 119).map((e) => e.lot)).toEqual(['normal']);
+    expect(platCandidates(all, low, 240).map((e) => e.lot)).toEqual(['estate']);
+    expect(platCandidates(all, low, 10).map((e) => e.lot)).toEqual(['half']);
   });
 
   it('falls to the next smaller lot that fits when the warranted one does not', () => {
     const fitting = [house('half'), house('normal')];
-    expect(platCandidates(fitting, 240).map((e) => e.lot)).toEqual(['normal']);
-    expect(platCandidates([house('half')], 240).map((e) => e.lot)).toEqual(['half']);
+    expect(platCandidates(fitting, low, 240).map((e) => e.lot)).toEqual(['normal']);
+    expect(platCandidates([house('half')], low, 240).map((e) => e.lot)).toEqual(['half']);
   });
 
   it('never plats a lot larger than the land warrants', () => {
-    expect(platCandidates([house('double'), house('estate')], 119)).toEqual([]);
+    expect(platCandidates([house('double'), house('estate')], low, 119)).toEqual([]);
   });
 
   it('plats a duplex on the same lot axis as a detached house', () => {
@@ -54,12 +87,21 @@ describe('the candidates a plat allows', () => {
       house('normal', 'res-normal-1'),
       duplex('normal', 'res-duplex-1'),
     ];
-    expect(platCandidates(fitting, 0).map((e) => e.id)).toEqual(['res-half-1', 'res-duplex-h-1']);
+    expect(platCandidates(fitting, low, 0).map((e) => e.id)).toEqual([
+      'res-half-1',
+      'res-duplex-h-1',
+    ]);
   });
 
   it('leaves every kind without a lot to the draw', () => {
     const duplex = { ...house(undefined, 'duplex'), kind: 'duplex' } as BuildingCatalogEntry;
-    const kept = platCandidates([duplex, ...all], 119);
+    const kept = platCandidates([duplex, ...all], low, 119);
     expect(kept.map((e) => e.id)).toEqual(['duplex', 'h-normal']);
+  });
+
+  it('plats medium density on normal lots only, even on land worth nothing', () => {
+    const fitting = [house('half'), house('normal')];
+    expect(platCandidates(fitting, ZoneType.ResMedium, 0).map((e) => e.lot)).toEqual(['normal']);
+    expect(platCandidates(fitting, ZoneType.ResMedium, 255).map((e) => e.lot)).toEqual(['normal']);
   });
 });

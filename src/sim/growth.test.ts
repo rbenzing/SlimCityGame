@@ -23,7 +23,7 @@ import {
 import { recomputeUtilities } from './network';
 import type { GrowthSupply, Rng } from './growth';
 import { createGrid } from '../world/grid';
-import { parcelsAnchoredAt, platOf, platSourceOf } from '../world/plat';
+import { parcelsAnchoredAt, platOf, platSourceOf, takesWholeParcels } from '../world/plat';
 import type { PlatSource } from '../world/plat';
 import catalogData from '../data/catalog.json';
 
@@ -1576,45 +1576,61 @@ describe('the lot picks its building', () => {
     });
   });
 
+  const shipped = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+  const idsOf = (registry: BuildingRegistry): string[] => registry.all().map((b) => b.catalogId);
+
+  /**
+   * Zoned, served land two tiles deep on both sides of a street through the
+   * middle of the map: along z when `northSouth`, else along x.
+   */
+  function twoSidedStreet(
+    northSouth: boolean,
+    landValue: number,
+    zone: ZoneType = ZoneType.ResLow,
+  ): GridState {
+    const g = makeGrid();
+    g.fields[FieldId.LandValue]!.fill(landValue);
+    const at = (along: number, across: number): number =>
+      northSouth ? tileIndex(across, along) : tileIndex(along, across);
+    for (let along = 0; along < 14; along++) {
+      g.roadTier[at(along, 5)] = RoadTier.TwoLane;
+      for (const across of [3, 4, 6, 7]) {
+        const i = at(along, across);
+        g.zone[i] = zone;
+        g.power[i] = 1;
+        g.watered[i] = 1;
+        g.sewered[i] = 1;
+      }
+    }
+    return g;
+  }
+  const growOn = (
+    g: GridState,
+    catalog: BuildingCatalogEntry[],
+    seed: number,
+    zone: ZoneType = ZoneType.ResLow,
+    milestone = 1,
+  ): BuildingRegistry => {
+    const registry = new BuildingRegistry(catalog);
+    const onZone = (gg: GridState, x: number, z: number, w: number, d: number): boolean => {
+      for (let dz = 0; dz < d; dz++) {
+        for (let dx = 0; dx < w; dx++) {
+          if (gg.zone[tileIndex(x + dx, z + dz)] !== zone) return false;
+        }
+      }
+      return true;
+    };
+    const growth = new GrowthSystem(catalog, seededRng(seed), onZone);
+    for (let pass = 0; pass < 64; pass++)
+      growth.tick(g, registry, wantsHomes, milestone, pass * 10);
+    return registry;
+  };
+  const plain = (g: GridState): PlatSource => platSourceOf(g, null, g.fields[FieldId.LandValue]);
+
   describe('a duplex or a fourplex stands on a parcel of the plat, as a house does', () => {
-    const shipped = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
     const plexes = shipped.filter(
       (e) => e.zone === ZoneType.ResLow && (e.kind === 'duplex' || e.kind === 'fourplex'),
     );
-    const idsOf = (registry: BuildingRegistry): string[] => registry.all().map((b) => b.catalogId);
-
-    /**
-     * Zoned, served land two tiles deep on both sides of a street through the
-     * middle of the map: along z when `northSouth`, else along x.
-     */
-    function twoSidedStreet(northSouth: boolean, landValue: number): GridState {
-      const g = makeGrid();
-      g.fields[FieldId.LandValue]!.fill(landValue);
-      const at = (along: number, across: number): number =>
-        northSouth ? tileIndex(across, along) : tileIndex(along, across);
-      for (let along = 0; along < 14; along++) {
-        g.roadTier[at(along, 5)] = RoadTier.TwoLane;
-        for (const across of [3, 4, 6, 7]) {
-          const i = at(along, across);
-          g.zone[i] = ZoneType.ResLow;
-          g.power[i] = 1;
-          g.watered[i] = 1;
-          g.sewered[i] = 1;
-        }
-      }
-      return g;
-    }
-    const growOn = (
-      g: GridState,
-      catalog: BuildingCatalogEntry[],
-      seed: number,
-    ): BuildingRegistry => {
-      const registry = new BuildingRegistry(catalog);
-      const growth = new GrowthSystem(catalog, seededRng(seed), onZonedGround);
-      for (let pass = 0; pass < 64; pass++) growth.tick(g, registry, wantsHomes, 1, pass * 10);
-      return registry;
-    };
-    const plain = (g: GridState): PlatSource => platSourceOf(g, null, g.fields[FieldId.LandValue]);
     const parcelOfBuilding = (
       plat: ReturnType<typeof platOf>,
       b: { x: number; z: number },
@@ -1714,6 +1730,137 @@ describe('the lot picks its building', () => {
         expect(last.footprint).toEqual(first.footprint);
         expect(last.lot).toBe(first.lot);
       });
+    });
+  });
+
+  describe('a multiplex or a courtyard block assembles two parcels', () => {
+    const blocks = shipped.filter((e) => e.zone === ZoneType.ResMedium);
+    const medium = ZoneType.ResMedium;
+    const MILESTONE = 2;
+    const streetBlocks = (northSouth: boolean, landValue: number, seed = 3): GridState => {
+      const g = twoSidedStreet(northSouth, landValue, medium);
+      const plat = platOf(plain(g), medium);
+      const registry = growOn(g, blocks, seed, medium, MILESTONE);
+      expect(registry.all().length).toBeGreaterThan(0);
+      for (const b of registry.all()) {
+        const entry = shipped.find((e) => e.id === b.catalogId)!;
+        expect(entry.footprint, b.catalogId).toEqual({ w: 2, d: 2 });
+        expect(entry.lot, b.catalogId).toBe('normal');
+        expect(
+          takesWholeParcels(plat, b.x, b.z, 2, 2, 'normal'),
+          `${b.catalogId} ${b.x},${b.z}`,
+        ).toBe(true);
+        const first = plat.parcels[plat.parcelAt[tileIndex(b.x, b.z)]!]!;
+        // The second parcel is the next one along the street.
+        const second = northSouth
+          ? plat.parcels[plat.parcelAt[tileIndex(b.x, b.z + 1)]!]!
+          : plat.parcels[plat.parcelAt[tileIndex(b.x + 1, b.z)]!]!;
+        expect(first).not.toBe(second);
+        expect(second.lot).toBe('normal');
+        if (northSouth) {
+          expect([first.x, second.x]).toEqual([b.x, b.x]);
+          expect([first.z, second.z]).toEqual([b.z, b.z + 1]);
+        } else {
+          expect([first.z, second.z]).toEqual([b.z, b.z]);
+          expect([first.x, second.x]).toEqual([b.x, b.x + 1]);
+        }
+      }
+      return g;
+    };
+
+    it('grows 2x2 blocks on two parcels side by side along an east-west street', () => {
+      streetBlocks(false, 100);
+    });
+
+    it('grows 2x2 blocks on two turned parcels stacked along a north-south street', () => {
+      streetBlocks(true, 100);
+    });
+
+    it.each([0, 255])('cuts the same normal parcels at land value %i', (landValue) => {
+      streetBlocks(false, landValue);
+      streetBlocks(true, landValue);
+    });
+
+    it('grows nothing on a strip one tile deep, however many passes', () => {
+      const g = makeGrid();
+      for (let x = 0; x < 14; x++) {
+        g.roadTier[tileIndex(x, 5)] = RoadTier.TwoLane;
+        const i = tileIndex(x, 6);
+        g.zone[i] = medium;
+        g.power[i] = 1;
+        g.watered[i] = 1;
+        g.sewered[i] = 1;
+      }
+      expect(growOn(g, blocks, 3, medium, MILESTONE).all()).toEqual([]);
+    });
+
+    describe('keeps its two parcels through a level-up', () => {
+      it.each(['res-multiplex', 'res-medium'])(
+        '%s stays 2x2 at the same tile, level by level',
+        (stem) => {
+          const ids = [1, 2, 3].map((n) => `${stem}-${n}`);
+          const g = twoSidedStreet(false, 255, medium);
+          g.fields[FieldId.Education]!.fill(255);
+          const registry = new BuildingRegistry(blocks);
+          const first = blocks.find((e) => e.id === ids[0])!;
+          registry.place(g, first, 3, 3, 0, BuildingState.Active);
+          const onMedium = (gg: GridState, x: number, z: number, w: number, d: number): boolean => {
+            for (let dz = 0; dz < d; dz++) {
+              for (let dx = 0; dx < w; dx++) {
+                if (gg.zone[tileIndex(x + dx, z + dz)] !== medium) return false;
+              }
+            }
+            return true;
+          };
+          const growth = new GrowthSystem(blocks, constantRng(0), onMedium);
+          for (let level = 2; level <= 3; level++) {
+            growth.tick(g, registry, wantsHomes, MILESTONE, level * 10);
+            const standing = registry.all().find((b) => b.x === 3 && b.z === 3)!;
+            expect(standing.catalogId).toBe(ids[level - 1]);
+            for (const b of registry.all()) b.state = BuildingState.Active;
+          }
+          for (const id of ids) {
+            const e = blocks.find((b) => b.id === id)!;
+            expect(e.footprint).toEqual({ w: 2, d: 2 });
+            expect(e.lot).toBe('normal');
+          }
+        },
+      );
+    });
+
+    it('never takes half a parcel when a standing building leaves an odd run', () => {
+      // Five parcels in a row on one side: a 1x2 fixture holds the second, so a
+      // block can only take parcels 3-4 or 4-5, never one parcel and a half.
+      const g = twoSidedStreet(false, 100, medium);
+      for (let x = 0; x < 14; x++) {
+        for (const z of [3, 4, 6, 7]) {
+          if (z > 4 || x > 4) g.zone[tileIndex(x, z)] = ZoneType.None;
+        }
+      }
+      const plat = platOf(plain(g), medium);
+      const registry = new BuildingRegistry(blocks);
+      const fixture: BuildingCatalogEntry = {
+        ...blocks.find((e) => e.id === 'res-multiplex-1')!,
+        id: 'fixture',
+        footprint: { w: 1, d: 2 },
+      };
+      expect(registry.place(g, fixture, 1, 3, 0, BuildingState.Active)).not.toBeNull();
+      const onMedium = (gg: GridState, x: number, z: number, w: number, d: number): boolean => {
+        for (let dz = 0; dz < d; dz++) {
+          for (let dx = 0; dx < w; dx++) {
+            if (gg.zone[tileIndex(x + dx, z + dz)] !== medium) return false;
+          }
+        }
+        return true;
+      };
+      const growth = new GrowthSystem(blocks, seededRng(3), onMedium);
+      for (let pass = 0; pass < 64; pass++)
+        growth.tick(g, registry, wantsHomes, MILESTONE, pass * 10);
+      const grown = registry.all().filter((b) => b.catalogId !== 'fixture');
+      expect(grown.length).toBeGreaterThan(0);
+      for (const b of grown) {
+        expect(takesWholeParcels(plat, b.x, b.z, 2, 2, 'normal'), `${b.x},${b.z}`).toBe(true);
+      }
     });
   });
 });

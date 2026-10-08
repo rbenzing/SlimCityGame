@@ -40,7 +40,7 @@ import {
   type UtilityLine,
 } from './network';
 import { freeCellsOn, roadCellsOf } from '../world/roadnet';
-import { parcelsAnchoredAt, platOf, platSourceOf, type Plat } from '../world/plat';
+import { platOf, platReaches, platSourceOf, takesWholeParcels, type Plat } from '../world/plat';
 
 /**
  * Deterministic RNG surface injected into the growth system.
@@ -925,17 +925,15 @@ export class GrowthSystem {
       });
       // A house stands on a parcel of the plat cut from its street, or, where
       // no street's plat reaches the tile, on the lot the land warrants.
-      const parcels = parcelsAnchoredAt(platFor(zone), x, z);
-      const platted =
-        parcels === null
-          ? platCandidates(fitting, fieldAt(g, FieldId.LandValue, flat))
-          : fitting.filter(
-              (e) =>
-                e.lot === undefined ||
-                parcels.some(
-                  (p) => p.lot === e.lot && p.w === e.footprint.w && p.d === e.footprint.d,
-                ),
-            );
+      // A kind takes whole parcels of its lot, never half of one.
+      const plat = platFor(zone);
+      const platted = !platReaches(plat, x, z)
+        ? platCandidates(fitting, zone, fieldAt(g, FieldId.LandValue, flat))
+        : fitting.filter(
+            (e) =>
+              e.lot === undefined ||
+              takesWholeParcels(plat, x, z, e.footprint.w, e.footprint.d, e.lot),
+          );
       const candidates = withinRoom(platted, sector, room);
       if (candidates.length === 0) continue;
       const entry = drawKind(candidates, candidates.length > 1 ? this.rng.next() : 0);

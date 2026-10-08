@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,882 tests passing across 162 test files, run 2026-10-07.
+**Test suite:** 4,906 tests passing across 162 test files, run 2026-10-07.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -156,11 +156,13 @@ pipe drag snaps onto the system and says what it joins
 ([underground-view.md](game-design/features/underground-view.md)).
 
 **Next:** lots and land continues
-([lots-and-land.md](game-design/features/lots-and-land.md)): four slices
+([lots-and-land.md](game-design/features/lots-and-land.md)): five slices
 are built, the detached house on the lot the land warrants, the plat cut
-from the street, the plat drawn on the zone lens, and the duplex and the
-fourplex on the plat; the medium-density parcels and assembly are next, and
-replatting and the inspector's lot line remain.
+from the street, the plat drawn on the zone lens, the duplex and the
+fourplex on the plat, and medium density assembling two parcels; replatting
+on a rezone or an empty lot's value change is next, then the other
+densities' parcels (row housing, high density, mixed, commercial), then the
+inspector's lot line.
 After it, the municipal
 services programme's epics
 ([municipal-services.md](game-design/features/municipal-services.md)), the
@@ -306,6 +308,24 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Medium density assembles two parcels (built 2026-10-07)
+
+The fifth slice of lots and land: a kind takes whole parcels of the plat,
+never half of one. A lotted entry stands where parcels of its lot size, all
+fronting one street, tile its footprint exactly (`takesWholeParcels`,
+`platReaches` and `Plat.parcelAt` in `src/world/plat.ts`). A detached house,
+a duplex or a fourplex takes one parcel; a multiplex or a courtyard block,
+lot normal and 2×2 at every level, assembles two normal parcels side by side.
+Medium density is platted as normal lots, 1×2 or 2×1 turned, at every
+standing, since the land-value bands are a low-density thing, and a strip too
+shallow for a normal lot plats nothing there. The level-3 multiplex went from
+2×3 to 2×2 and the level-3 courtyard block from 3×3 to 2×2, so a level-up
+keeps the two parcels; units, residents and heights are unchanged, and an
+old save keeps a standing 2×3 or 3×3 block as its stored footprint. The zone
+lens now draws the plat only for the zones whose kinds stand on it, low and
+medium density (`PLATTED_ZONES`); before, it drew a low-density band cut
+under every zone tool, which nothing read. The draw weights are unchanged.
 
 ### The duplex and the fourplex on the plat (built 2026-10-07)
 

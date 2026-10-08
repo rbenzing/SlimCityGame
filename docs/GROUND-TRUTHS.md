@@ -687,10 +687,17 @@ MUTCD citations below use 11th-edition section numbers.
   stand on one parcel of the plat too, a half or a normal lot (upright or
   turned) with the footprint the parcel has, never on a double or an estate
   parcel, and a level-up never changes their lot; the homes and residents of
-  a plex do not change with the lot. —
+  a plex do not change with the lot. A kind takes whole parcels of the plat,
+  all fronting one street and tiling its footprint exactly, never half of
+  one: a multiplex or a courtyard block (lot normal, 2×2 at every level)
+  assembles two normal parcels side by side. Medium density plats normal
+  lots at every standing, and a strip too shallow for one plats nothing,
+  never a half lot. The zone lens draws the plat only for the zones whose
+  kinds stand on it (`PLATTED_ZONES`). —
   [lots-and-land.md](game-design/features/lots-and-land.md);
-  `lotForStanding`, `platCandidates` in `src/shared/lots.ts`, `tryLevelUp` in
-  `src/sim/growth.ts`
+  `lotForStanding`, `platCandidates`, `warrantedLot`, `lotsOfZone`,
+  `PLATTED_ZONES` in `src/shared/lots.ts`, `takesWholeParcels`, `platReaches`
+  in `src/world/plat.ts`, `tryLevelUp` in `src/sim/growth.ts`
 - A lot forms from its street: the tiles along a street that front the same
   side are cut a frontage at a time, from one end, into parcels, and a
   detached house grows only on the tile a parcel starts on, with its frontage
