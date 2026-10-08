@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  LOT_EXTENT,
   LOT_SIZES,
   LOT_STANDING_FLOOR,
   PLATTED_ZONES,
@@ -14,7 +15,7 @@ const house = (lot: LotSize | undefined, id = `h-${lot ?? 'none'}`): BuildingCat
   ({ id, lot, kind: 'detached', level: 1, footprint: { w: 1, d: 1 } }) as BuildingCatalogEntry;
 
 describe('the lot the land warrants', () => {
-  it('cuts the 0–255 land value into four bands at 64, 160 and 224', () => {
+  it('cuts the 0–255 land value into bands at 64, 160 and 224, the top band warranting the acre', () => {
     expect(lotForStanding(0)).toBe('half');
     expect(lotForStanding(63)).toBe('half');
     expect(lotForStanding(64)).toBe('normal');
@@ -23,14 +24,20 @@ describe('the lot the land warrants', () => {
     expect(lotForStanding(160)).toBe('double');
     expect(lotForStanding(181)).toBe('double');
     expect(lotForStanding(223)).toBe('double');
-    expect(lotForStanding(224)).toBe('estate');
-    expect(lotForStanding(255)).toBe('estate');
+    expect(lotForStanding(224)).toBe('acre');
+    expect(lotForStanding(255)).toBe('acre');
   });
 
-  it('orders the lots from smallest to largest, each floor above the one before', () => {
+  it('orders the lots from smallest to largest, each floor above the one before but the acre, which shares the estate floor', () => {
     const floors = LOT_SIZES.map((s) => LOT_STANDING_FLOOR[s]);
     expect(floors).toEqual([...floors].sort((a, b) => a - b));
-    expect(new Set(floors).size).toBe(floors.length);
+    expect(new Set(floors).size).toBe(floors.length - 1);
+    expect(LOT_STANDING_FLOOR.acre).toBe(LOT_STANDING_FLOOR.estate);
+  });
+
+  it('gives the acre a 3 by 3 extent and the estate a 2 by 3', () => {
+    expect(LOT_EXTENT.acre).toEqual({ frontage: 3, depth: 3 });
+    expect(LOT_EXTENT.estate).toEqual({ frontage: 2, depth: 3 });
   });
 });
 
@@ -39,7 +46,7 @@ describe('the lots a zone plats', () => {
     expect(warrantedLot(ZoneType.ResLow, 0)).toBe('half');
     expect(warrantedLot(ZoneType.ResLow, 119)).toBe('normal');
     expect(warrantedLot(ZoneType.ResLow, 181)).toBe('double');
-    expect(warrantedLot(ZoneType.ResLow, 255)).toBe('estate');
+    expect(warrantedLot(ZoneType.ResLow, 255)).toBe('acre');
   });
 
   it('plats medium density as normal lots whatever the standing', () => {
@@ -93,7 +100,14 @@ describe('the candidates a plat allows', () => {
 
   it('keeps only the warranted lot among those that fit', () => {
     expect(platCandidates(all, low, 119).map((e) => e.lot)).toEqual(['normal']);
-    expect(platCandidates(all, low, 240).map((e) => e.lot)).toEqual(['estate']);
+    expect(platCandidates(all, low, 240).map((e) => e.lot)).toEqual(['acre']);
+    expect(
+      platCandidates(
+        all.filter((e) => e.lot !== 'acre'),
+        low,
+        240,
+      ).map((e) => e.lot),
+    ).toEqual(['estate']);
     expect(platCandidates(all, low, 10).map((e) => e.lot)).toEqual(['half']);
   });
 

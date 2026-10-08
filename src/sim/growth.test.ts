@@ -1532,6 +1532,7 @@ describe('the lot picks its building', () => {
       ['normal', 1, 2],
       ['double', 2, 2],
       ['estate', 2, 3],
+      ['acre', 3, 3],
     ] as const;
     const lotted = LOTS.flatMap(([lot, w, d]) =>
       [1, 2].map((level) => ({ ...house(level, w, d), id: `${lot}-${level}`, lot })),
@@ -1551,9 +1552,40 @@ describe('the lot picks its building', () => {
       [10, 'half-1'],
       [119, 'normal-1'],
       [181, 'double-1'],
-      [240, 'estate-1'],
+      [240, 'acre-1'],
     ])('at land value %i grows %s on a wide block', (landValue, expected) => {
       expect(new Set(platOn(landValue, 4, 6))).toEqual(new Set([expected]));
+    });
+
+    it('grows an acre house, 3 by 3, on a 3-wide 3-deep strip of top-band land', () => {
+      const g = zoned(3, 3);
+      setLandValue(g, 255);
+      const registry = new BuildingRegistry(lotted);
+      new GrowthSystem(lotted, constantRng(0), onZonedGround).tick(g, registry, wantsHomes, 1, 0);
+      const grown = registry.all();
+      expect(grown.map((b) => b.catalogId)).toEqual(['acre-1']);
+      expect(lotted.find((e) => e.id === grown[0]!.catalogId)!.footprint).toEqual({ w: 3, d: 3 });
+    });
+
+    it('grows an estate where only two tiles of frontage are free on top-band land', () => {
+      expect(new Set(platOn(255, 2, 6))).toEqual(new Set(['estate-1']));
+    });
+
+    it('keeps the acre through a level-up: an acre house becomes a better acre house', () => {
+      const g = zoned(3, 3);
+      const registry = new BuildingRegistry(lotted);
+      const inst = registry.place(
+        g,
+        lotted.find((e) => e.id === 'acre-1')!,
+        0,
+        1,
+        0,
+        BuildingState.Active,
+      )!;
+      setLandValue(g, 255);
+      new GrowthSystem(lotted, constantRng(0), onZonedGround).tick(g, registry, wantsHomes, 1, 0);
+      expect(registry.get(inst.id)).toBeUndefined();
+      expect(registry.all().map((b) => b.catalogId)).toEqual(['acre-2']);
     });
 
     it('plats a smaller lot where the warranted one cannot fit', () => {
@@ -2790,7 +2822,7 @@ describe('a house on prime land is torn down for a plex', () => {
     expect(pass('res-normal-1', { landValue: 224 }).catalogId).toMatch(/^res-(duplex|fourplex)-1$/);
   });
 
-  it.each(['res-low-1', 'res-low-3', 'res-estate-1', 'res-estate-t-1'])(
+  it.each(['res-low-1', 'res-low-3', 'res-estate-1', 'res-estate-t-1', 'res-acre-1'])(
     'leaves a %s house: no plex fits its lot',
     (id) => {
       expect(pass(id).catalogId).toBe(id);

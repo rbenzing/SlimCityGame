@@ -29,6 +29,7 @@ describe('lotLine', () => {
     ['res-low-1', 'Double lot, 1,600 m²'],
     ['res-estate-1', 'Estate lot, 2,400 m²'],
     ['res-estate-t-1', 'Estate lot, 2,400 m²'],
+    ['res-acre-1', 'Acre lot, 3,600 m²'],
     ['res-duplex-h-1', 'Half lot, 400 m²'],
     ['res-multiplex-1', 'Two normal lots, 1,600 m²'],
   ])('%s reads %s', (id, expected) => {

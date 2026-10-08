@@ -193,8 +193,9 @@ supply, so two lots on one pass cannot both fill it.
 A detached house stands on a parcel of the plat cut from its street: each run
 of tiles along a street is cut a frontage at a time into the largest lot the
 land value there warrants that fits (under 64 a half lot, 1×1; 64 to 159 a
-normal lot, 1×2; 160 to 223 a double lot, 2×2; 224 and over an estate lot,
-2×3), turned to run along its street, stepping over what already stands, and
+normal lot, 1×2; 160 to 223 a double lot, 2×2; 224 and over an acre lot,
+3×3, or an estate lot, 2×3, where only two tiles of frontage are free), turned
+to run along its street, stepping over what already stands, and
 only the tile a parcel starts on grows that lot. A tile no street's plat
 reaches takes the lot its land warrants wherever it fits
 ([lots-and-land.md](features/lots-and-land.md)).

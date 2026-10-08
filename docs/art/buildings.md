@@ -77,8 +77,8 @@ procedural house kit:
 - **Massing variety**: footprint fill, eaves height, roof pitch/type, and
   wall/roof colour are all seeded per building id from a bounded variant set,
   so a residential street reads as individual homes, not clones.
-- A detached home stands on the lot the land warrants — 1×1, 1×2, 2×2 or
-  2×3 — and keeps it through its three levels, which change its height and
+- A detached home stands on the lot the land warrants — 1×1, 1×2, 2×2, 2×3
+  or 3×3 — and keeps it through its three levels, which change its height and
   not its ground
   ([../game-design/features/lots-and-land.md](../game-design/features/lots-and-land.md));
   a duplex and a fourplex take a half (1×1) or a normal (1×2, or 2×1 turned)
@@ -238,7 +238,7 @@ metres, and the lot takes the rest:
 
 | Kind                 | Body                                                        | Roof    | On the lot                                                       |
 | -------------------- | ----------------------------------------------------------- | ------- | ---------------------------------------------------------------- |
-| Detached house       | 4.75 m per lot tile each way, never under 9.5 m (9.5 × 9.5 m on a 1×1, 1×2 or 2×2 lot, 9.5 × 14.25 m on a 2×3) | pitched | lawn, one drive and its cover, a yard                            |
+| Detached house       | 4.75 m per lot tile each way, never under 9.5 m (9.5 × 9.5 m on a 1×1, 1×2 or 2×2 lot, 9.5 × 14.25 m on a 2×3, 14.25 × 14.25 m on a 3×3) | pitched | lawn, one drive and its cover, a yard                            |
 | Duplex               | 60% of each lot axis, capped at 16 m (12 × 12 m on 1×1, 12 × 16 m on 1×2) | pitched | two front doors, one drive per home                              |
 | Fourplex             | 70% of each lot axis, capped at 18 m (14 × 14 m on 1×1, 14 × 18 m on 1×2) | pitched | two front doors, one drive per door                              |
 | Townhouse row        | 90% of each lot axis, capped at 18 m (18 × 18 m on its 1×2); three homes per 20 m of frontage, 6 m each | pitched | a door, a front pad and by seed a garage door per home           |

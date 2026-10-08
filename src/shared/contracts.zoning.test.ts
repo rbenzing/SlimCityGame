@@ -86,6 +86,7 @@ const RESIDENTIAL_KINDS: ReadonlyArray<{
       ['double', 2, 2, false],
       ['estate', 2, 3, false],
       ['estate', 3, 2, true],
+      ['acre', 3, 3, false],
     ] as const
   ).map(([lot, w, d, turned]) => ({
     kind: 'detached' as const,
