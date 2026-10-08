@@ -74,18 +74,29 @@ readings. Waste gets **no** `ServiceKind` member and no coverage field: the
 umbrella already rejected a field per service on memory grounds, and
 `collectionRange` is the reach model waste has always had.
 
-### The unit correction, first
+### The unit correction, first (built 2026-10-08)
 
 Diversion is a percentage of a base rate, so the base rate has to mean something
 before anything else lands. Both are balance, derived in the design document,
 living in `src/shared/constants.ts`:
 
-- **Generation becomes per capita**, at **9 units per resident per game day**
-  (2.25 kg at 0.25 kg a unit, against the published 2.2), with commercial and
-  industrial per job at the ratio the sector constants already set. The present
-  per-building rate implies 0.8 to 10 units a resident-day.
-- **`LANDFILL_CAPACITY_PER_TILE: 600 → 3,000,000`**, from the tile's rendered
-  2,400 m³ pile at the published light-compaction density of 0.31 t/m³.
+- **Generation is per capita**: `TRASH_KG_PER_RESIDENT_DAY` 1.32 and
+  `TRASH_KG_PER_JOB_DAY` 1.86, the 60/40 residential and commercial split of
+  the published 2.2 kg a person a day, at `TRASH_UNITS_PER_TONNE` 4,000 (0.25 kg
+  a unit) and `GARBAGE_PASSES_PER_DAY` 20. A building's rate per pass is
+  fractional, so a pass emits `floor(r × (n + 1)) − floor(r × n)` for garbage
+  pass `n`: exact over a day, deterministic, and no new state. The units are
+  spread over the footprint with the remainder on the first tiles. The sector
+  constants and the level multiplier are gone.
+- **`LANDFILL_CAPACITY_PER_TILE: 600 → 6,835,200`**, derived in code from
+  `TILE_METERS`, `LANDFILL_MAX_PILE_METERS` and `LANDFILL_DENSITY_T_PER_M3`
+  (0.712, the 1,200 lb a cubic yard of compacted fill). The 0.31 t/m³ first
+  proposed here was waste as hauled.
+- **The incinerator**: `burnRate` 90,000 a pass (450 t a day),
+  `bufferCapacity` 9,000,000 (five days), `powerUse` 1.18 MW.
+- **Saves**: `SAVE_VERSION` 15, with no new layer; a save below it loads its
+  `landfillStored` multiplied by the new capacity over 600, so the fill
+  fraction is unchanged.
 
 ### The forwarding step
 
@@ -117,12 +128,13 @@ round**, not a split-body vehicle: recyclables are 21% of the weight and about
 side and fills early on the other, and decisively, the fleet carries nothing, so
 a split payload would mean inventing a capacity model for a cosmetic system.
 
-The arithmetic, as the check on `trucks: 4`: a published round is about **1,000
-lifts a shift**; a household of 2.5 people at 2.2 kg a day sets out 38.5 kg a
-week; 1,000 lifts is 38.5 t against a published 9 t payload, 4.3 loads a shift,
-matching the published 3–5 round trips. One truck on a weekly cycle serves 5,000
-households — **12,500 residents**. So four trucks draw a fleet for 50,000 while
-`burnRate` serves 9,100 and the 4×4 / 20 m building is a plant for 136,000. The
+The arithmetic, as the check on `trucks: 4`: a residential truck makes about
+**2,000 stops a five-day week**, some 400 a day
+([Waste Today](https://www.wastetodaymagazine.com/article/smooth-rides)); a
+household of 2.5 people at 1.32 kg a resident a day sets out 23 kg a week, so
+400 stops is about 9 t, one or two loads of a 20–32 cubic yard body. One truck
+on a weekly cycle serves 2,000 households — **5,000 residents**. So four trucks
+draw a fleet for 20,000 while `burnRate` serves about 200,000. The
 fleet stays at 4: a render budget, not a capacity, with `MAX_GARBAGE_TRUCKS` 16
 citywide.
 
@@ -165,10 +177,11 @@ evidence that throughput, not head count, drives the size.
 
 **The existing incinerator checks out on size and fails on throughput.** 4×4 at
 20 m is 18,500 m², a 300–600 t/day mass-burn plant, while `burnRate: 4000` a
-pass is 80,000 units a day — **20 t/day**, 15 to 30 times too little.
-`bufferCapacity: 400000` is 100 t, exactly 5 days of that burn against published
-refuse-pit storage of 3–5 days, so the buffer is the one figure that is right.
-The building is authoritative; `burnRate` is re-derived from it.
+pass was 80,000 units a day — **20 t/day**, 15 to 30 times too little, and
+`bufferCapacity: 400000` was 100 t, five days of that burn. The building is
+authoritative; `burnRate` is re-derived from it at 450 t a day (90,000 a pass)
+and the buffer kept at five days of the new burn (9,000,000), a dial since no
+published pit figure was found.
 
 ## What could go wrong
 
@@ -203,8 +216,8 @@ merge, adopted as a shared derivation: a stock in units and a population are
 different quantities, and deriving both from one throughput figure gives one
 source of truth without pretending they are the same number. **Leaving
 `LANDFILL_CAPACITY_PER_TILE` at 600** and scaling generation down instead is
-rejected for the same reason in reverse: low-density generation already matches
-a published figure, and the landfill matches none.
+rejected for the same reason in reverse: generation is set by a published
+figure, and the landfill matched none.
 
 ## How we will know it works
 
@@ -221,7 +234,7 @@ a published figure, and the landfill matches none.
 - A transfer station forwards to a final facility outside its own
   `collectionRange`, distance does not reduce what arrives, and it diverts none.
 - Generation is per capita: a 150-resident tower generates 37.5× a 4-resident
-  house, not 3×; and a month with 1,000,000 units recovered books ¢400 once.
+  house, not 3×; and a month with 1,000,000 units recovered books ¢160 once.
 - Determinism and budget: the same city ticked twice recovers the same units in
   the same facilities, and a profile at the budget city size stays within it.
 

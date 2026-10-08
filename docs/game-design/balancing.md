@@ -134,7 +134,7 @@ Every figure is derived in [features/municipal-services.md](features/municipal-s
 | school               | 0.0601 MW | 6.3 kL  | Education's intensity; the K-12 water benchmark.                                                     | `src/data/catalog.json` |
 | rail station         | 0.0322 MW | 5 kL    | A transport terminal's intensity; office water.                                                      | `src/data/catalog.json` |
 | airport              | 0.4 MW    | 175 kL  | A 418,000 sf terminal; four million passengers a year at 4.2 gallons.                               | `src/data/catalog.json` |
-| incinerator          | 0.66 MW   | 2 kL    | A 250 ton-a-day combustor's own use at 63 kWh a ton; water unsourced.                               | `src/data/catalog.json` |
+| incinerator          | 1.18 MW   | 2 kL    | Its 450 ton-a-day burn at 63 kWh a ton; water unsourced.                                            | `src/data/catalog.json` |
 
 ## Soil and farms
 
@@ -185,6 +185,21 @@ Every figure is sourced in [features/farms.md](features/farms.md).
 | `LOAN_MONTHLY_INTEREST`      | 0.01       | Monthly interest on the outstanding loan balance.                                                                                   | `src/shared/constants.ts` |
 | `LANDFILL_UPKEEP_PER_TILE`   | ¢3/month   | Monthly upkeep per painted landfill tile.                                                                                           | `src/shared/constants.ts` |
 | `POWER_LINE_UPKEEP_PER_TILE` | ¢0.5/month | Monthly upkeep per power-line tile.                                                                                                 | `src/shared/constants.ts` |
+
+## Garbage
+
+Every figure is sourced in [features/garbage-recovery.md](features/garbage-recovery.md#what-a-trash-unit-is-and-what-the-existing-numbers-mean)
+and [../world-sim/services-model.md](../world-sim/services-model.md#garbage-and-waste-management).
+
+| Constant                     | Value          | Meaning                                                                                       | File                      |
+| ---------------------------- | -------------- | --------------------------------------------------------------------------------------------- | ------------------------- |
+| `TRASH_UNITS_PER_TONNE`      | 4,000          | A trash unit is 0.25 kg; every figure in the chain is in it.                                  | `src/shared/constants.ts` |
+| `TRASH_KG_PER_RESIDENT_DAY`  | 1.32           | 60% of EPA's 2.2 kg a person a day, the residential share.                                     | `src/shared/constants.ts` |
+| `TRASH_KG_PER_JOB_DAY`       | 1.86           | The other 40%, commercial and institutional, over 160 million jobs for 335 million people.    | `src/shared/constants.ts` |
+| `LANDFILL_DENSITY_T_PER_M3`  | 0.712          | 1,200 lb a cubic yard, compacted municipal fill (landfills measure 1,200–1,500).               | `src/shared/constants.ts` |
+| `LANDFILL_CAPACITY_PER_TILE` | 6,835,200      | Derived: 400 m² × the 6 m pile × 0.712 t/m³ × 4,000; about 1,700 t.                            | `src/shared/constants.ts` |
+| incinerator `burnRate`       | 90,000 a pass  | 450 t a day, the middle of the 300–600 t a day a 4×4, 20 m mass-burn plant is.                 | `src/data/catalog.json`   |
+| incinerator `bufferCapacity` | 9,000,000      | Five days of burn in the pit; a dial, no published figure found.                               | `src/data/catalog.json`   |
 
 ## Sound walls
 

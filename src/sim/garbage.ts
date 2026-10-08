@@ -2,8 +2,10 @@
  * Garbage & waste (§21) — trash generation + collection.
  *
  * Every GARBAGE_PERIOD ticks the worker calls tick() with the active
- * residential/commercial/industrial buildings. Each building deposits trash on
- * its footprint tiles (rate by sector × level). A painted LANDFILL area then
+ * residential/commercial/industrial buildings. A trash unit is 0.25 kg. Each
+ * building deposits trash on its footprint tiles per head: its residents and
+ * jobs each carry a daily kilogram figure, spread over the day's passes, and the
+ * whole units the running total crosses are emitted on each pass. A painted LANDFILL area then
  * collects the trash of every building within its road-BFS service radius into
  * a shared store, raising the pile; once the store is full (area capacity =
  * tiles × LANDFILL_CAPACITY_PER_TILE) it collects nothing and trash backs up.
@@ -20,19 +22,20 @@
  * ceiling (`incineratorEmission`) — an idle combustor makes no smoke, a full
  * one makes all of it.
  *
- * `trash`, the landfill fill, and incinerator buffers are RUNTIME state (not
- * part of the grid save); they rebuild within a few ticks of a load, like
- * traffic edge volume. Pure of three.js/DOM; deterministic (no
+ * The landfill fill and incinerator buffers are saved (GarbageSaveState, in the
+ * save meta); the per-tile `trash` layer and the trucks are RUNTIME state that
+ * rebuilds within a few ticks of a load. Pure of three.js/DOM; deterministic (no
  * Math.random/Date.now) — collection order is building-id-stable.
  */
 import type { GridState } from '../shared/types';
 import {
   LANDFILL_CAPACITY_PER_TILE,
   LANDFILL_COLLECTION_RANGE,
-  TRASH_EMIT_COM,
-  TRASH_EMIT_IND,
-  TRASH_EMIT_RES,
+  GARBAGE_PASSES_PER_DAY,
+  TRASH_KG_PER_JOB_DAY,
+  TRASH_KG_PER_RESIDENT_DAY,
   TRASH_TILE_MAX,
+  TRASH_UNITS_PER_TONNE,
 } from '../shared/constants';
 import { landfillTileCount, landfillTiles } from '../world/landfill';
 import {
@@ -42,20 +45,24 @@ import {
   roadBfsDistances,
 } from './services';
 
-export type TrashSector = 'res' | 'com' | 'ind';
-
-/** Per-pass trash a building adds, before its level multiplier. */
-export const TRASH_EMIT_BY_SECTOR: Readonly<Record<TrashSector, number>> = {
-  res: TRASH_EMIT_RES,
-  com: TRASH_EMIT_COM,
-  ind: TRASH_EMIT_IND,
-};
-
-/** An Active R/C/I building the worker hands to the garbage pass. */
+/** An Active R/C/I building the worker hands to the garbage pass: who lives and works in it. */
 export interface GarbageBuilding {
   id: number;
-  sector: TrashSector;
-  level: number;
+  residents: number;
+  jobs: number;
+}
+
+/**
+ * Trash units a building emits on garbage pass `pass`. Its daily trash is spread
+ * over the day's passes as a fractional rate, and each pass emits the whole
+ * units the running total crossed, so a day sums exactly with no stored remainder.
+ */
+export function unitsOnPass(b: GarbageBuilding, pass: number): number {
+  const kgPerDay = b.residents * TRASH_KG_PER_RESIDENT_DAY + b.jobs * TRASH_KG_PER_JOB_DAY;
+  // Rounded to shed float noise so an exact whole-unit day is not floored a unit short.
+  const unitsPerDay = Math.round(((kgPerDay * TRASH_UNITS_PER_TONNE) / 1000) * 1e6) / 1e6;
+  const total = (n: number): number => Math.floor((unitsPerDay * n) / GARBAGE_PASSES_PER_DAY);
+  return total(pass + 1) - total(pass);
 }
 
 /**
@@ -118,16 +125,19 @@ export class GarbageSystem {
   /**
    * Generation + collection (incinerator facilities in equal shares, then the
    * landfill area for what they left) + incinerator burn. Call on the
-   * GARBAGE_PERIOD cadence. `facilities` is empty when no incinerator is placed.
+   * GARBAGE_PERIOD cadence; `pass` is the running count of garbage passes, which
+   * fixes how much each building emits. `facilities` is empty when no incinerator
+   * is placed.
    */
   tick(
     grid: GridState,
     buildings: readonly GarbageBuilding[],
+    pass: number,
     facilities: readonly GarbageFacility[] = [],
   ): void {
     const footprints = footprintsByBuildingId(grid);
     const ordered = [...buildings].sort((a, b) => a.id - b.id);
-    this.generate(footprints, ordered);
+    this.generate(footprints, ordered, pass);
     this.collectAndBurnIncinerators(grid, footprints, ordered, facilities);
     this.collectLandfill(grid, footprints, ordered);
   }
@@ -135,13 +145,18 @@ export class GarbageSystem {
   private generate(
     footprints: ReadonlyMap<number, number[]>,
     buildings: readonly GarbageBuilding[],
+    pass: number,
   ): void {
     for (const b of buildings) {
       const tiles = footprints.get(b.id);
       if (!tiles || tiles.length === 0) continue;
-      const emit = TRASH_EMIT_BY_SECTOR[b.sector] * Math.max(1, b.level);
-      const per = Math.max(1, Math.round(emit / tiles.length));
-      for (const ti of tiles) this.trash[ti] = clampTile(this.trash[ti]! + per);
+      const units = unitsOnPass(b, pass);
+      if (units <= 0) continue;
+      const each = Math.floor(units / tiles.length);
+      const extra = units % tiles.length;
+      tiles.forEach((ti, i) => {
+        this.trash[ti] = clampTile(this.trash[ti]! + each + (i < extra ? 1 : 0));
+      });
     }
   }
 

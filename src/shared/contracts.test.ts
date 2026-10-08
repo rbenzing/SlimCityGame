@@ -332,8 +332,8 @@ describe('the civic ploppables (honest both sides): every draw from floor area a
   /** One regional terminal's floor per yearly enplanement, passengers at twice that, 4.2 gallons each. */
   const TERMINAL_SF_PER_ENPLANEMENT = 125_000 / 600_000;
   const GAL_PER_PASSENGER = 4.2;
-  /** EPA's largest small municipal waste combustor, and a plant's own use of the power it could make. */
-  const SMALL_COMBUSTOR_TONS_PER_DAY = 250;
+  /** The tonnes a day the incinerator burns, and a plant's own use of the power it could make. */
+  const SMALL_COMBUSTOR_TONS_PER_DAY = 450;
   const COMBUSTOR_KWH_PER_TON = 63;
 
   const floorSqft = (e: BuildingCatalogEntry): number =>

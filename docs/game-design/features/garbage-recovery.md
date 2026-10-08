@@ -21,12 +21,13 @@ trucks run, a landfill fills, an incinerator burns — and then nothing comes ba
 out. Burning is the only sustainable outcome, so the system reduces to one
 purchase repeated, which is a decision the player makes once.
 
-Worse, burying is not currently a _worse_ option. It is not an option at all. A
-painted landfill tile holds 600 units and a village of 400 people generates
-4,000 units a game day, so the smallest legal landfill fills in about **six real
-seconds** at 1× speed and then stops collecting forever. This epic makes burying
-a real, cheap, finite, visibly-consumed option so recovery has something to be
-better than.
+Worse, burying was not a _worse_ option. It was not an option at all. A
+painted landfill tile held 600 units and a village of 400 people generated
+4,000 units a game day, so the smallest legal landfill filled in about **six
+real seconds** at 1× speed and then stopped collecting forever. The first slice
+of this epic (built 2026-10-08, [below](#what-a-trash-unit-is-and-what-the-existing-numbers-mean))
+put the whole chain on one real unit, so burying is a real, cheap, finite,
+visibly-consumed option and recovery has something to be better than.
 
 Serves the **city as a system** pillar in [../gdd.md](../gdd.md): a recovery
 facility is the first waste building whose benefit the player traces in three
@@ -120,9 +121,22 @@ makes an eighth of a householder's rubbish. No published figure supports that;
 generation becomes per resident and per job.
 
 Taking the low-density house as the right rung, 10 units = 2.2 kg, so **one unit
-is a shade over 0.2 kg**. We settle on **0.25 kg**, making 4,000 units a tonne
-and **9 units a resident-day**. On that reading the incinerator's catalog entry
-says:
+is a shade over 0.2 kg**. We settle on **0.25 kg**, making 4,000 units a tonne.
+
+**Built 2026-10-08, the unit correction.** The 2.2 kg is all municipal waste
+over the population, and 55–65% of it comes from homes, the rest from
+businesses and institutions
+([EPA](https://archive.epa.gov/epawaste/nonhaz/municipal/web/pdf/msw_2010_rev_factsheet.pdf)).
+Charging every resident 2.2 kg and every job again would count the shops'
+waste twice, so generation splits it: **1.32 kg a resident a day** (60%), 5.28
+units, and **1.86 kg a job a day**, the other 40% over the country's 160
+million jobs for its 335 million people, 7.44 units. Together they give back
+2.2 kg a person. The per-employee planning rates California lists, 9–10 lb a
+job, are 1990s estimates the state itself calls unvalidated
+([CalRecycle](https://www2.calrecycle.ca.gov/WasteCharacterization/General/Rates)),
+and a works' process waste is not municipal waste at all, so a job is a job.
+The figures below are the ones this slice re-derived; on the 0.25 kg reading
+the incinerator's old catalog entry said:
 
 | Catalog figure           | In units   | Real terms                      | Verdict                            |
 | ------------------------ | ---------- | ------------------------------- | ---------------------------------- |
@@ -134,18 +148,28 @@ says:
 Three dimensions describing three plants, 15× apart. We trust the building: it
 is what the player looks at, and
 [../../art/civic-massing.md](../../art/civic-massing.md) is the only one of the
-three with a rule behind it. `burnRate` is re-derived from it; `trucks` stays at
-4, a render budget rather than a capacity.
+three with a rule behind it. `burnRate` is re-derived from it, at **450 t a
+day**, the middle of the building's band and about the size of the 475 t a day
+line Pasco County is adding: **90,000 units a pass**, a plant for about 200,000
+people. The pit is five days of that, **9,000,000 units** — the usual design,
+though no published figure was found, so it is a dial. Its own draw follows the
+plant: 450 t at 63 kWh a tonne is **1.18 MW**. `trucks` stays at 4, a render
+budget rather than a capacity.
 
-**The landfill is short by 5,000×.** A tile renders a pile up to 6 m over
-20 × 20 m — 2,400 m³ — and holds 600 units, which is 150 kg: 0.06 kg/m³, lighter
-than air. Published in-place density for a lightly compacted municipal fill is
-**0.3–0.5 t/m³** (0.6–0.9 with heavy compaction and daily cover); at the bottom
-of the light band, 0.31 t/m³, a tile holds 2,400 × 310 ÷ 0.25 = **2,976,000
-units**, settled at **3,000,000**. A city at the top milestone then consumes 54
-tiles a game year; after a decade its fill is a 23-tile square, plainly visible
-on a 256-tile map, and its upkeep is about 3% of income — where a published
-municipal budget puts solid waste. Burying becomes cheap, finite and visible.
+**The landfill was short by more than 10,000×.** A tile renders a pile up to
+6 m over 20 × 20 m — 2,400 m³ — and held 600 units, which is 150 kg: 0.06
+kg/m³, lighter than air. A modern landfill compacts its waste to 1,200–1,500
+lb a cubic yard: Sioux Falls calls 1,200–1,300 typical and reached 1,500,
+Chattanooga measured 1,460
+([Sioux Falls](https://www.waste360.com/landfill/sioux-falls-s-d-improves-airspace-utilization-for-regional-landfill),
+[Chattanooga](https://register.chattanooga.gov/sites/default/files/resources/Audit1508Landfill_Sustainability.pdf)).
+The 0.3–0.5 t/m³ once taken here is waste as it is hauled, before the
+compactor. At the conservative 1,200 lb, **0.712 t/m³**, a tile holds about
+1,700 t, **6,835,200 units**, derived in the code from the tile, the pile and
+the density. A city of 100,000 then fills some 47 tiles a game year, and the
+pile's 6 m is one lift, where a real landfill closes 40–150 m tall. Burying
+becomes cheap, finite and visible. A save from before the slice keeps the fill
+fraction it had: its stored units are scaled by the new capacity over the old.
 
 ### The recovery rates
 
@@ -205,11 +229,13 @@ In ¢ the credit is derived the same way, from what burying the unit would have
 cost us in our own published-in-code figures. A landfill tile costs ¢40 to paint
 and ¢3/month indefinitely, and post-closure care is a published 30-year
 obligation, so a tile's whole-life cost is ¢40 + 360 × ¢3 = ¢1,120 across
-3,000,000 units: **¢0.00037 a unit**, settled at **¢0.0004**, or **¢1.60 a tonne
-recovered**. A 50,000-person city then diverts 2,835,000 units a month and earns
-¢1,134 against ¢1,750 of upkeep — the credit covers two thirds of the plant and
-the landfill not painted pays the rest, the real relation arrived at
-independently.
+6,835,200 units: **¢0.000164 a unit**, settled at **¢0.00016**, or **¢0.66 a
+tonne recovered**. A 50,000-person city, with its 24,000 jobs, makes 13.3
+million units a month; at 21% it diverts 2.8 million and earns about ¢450
+against ¢1,750 of upkeep. The credit covers about a quarter of the plant, and
+recovery is a cost the city pays to bury less, which is the real relation: a
+recovered tonne costs about $80 to process against the $55 tipping fee it
+saves.
 
 ### Building sizes
 

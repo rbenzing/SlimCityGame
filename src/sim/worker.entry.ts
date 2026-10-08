@@ -22,6 +22,7 @@ import {
   SNAPSHOT_HZ,
   GARBAGE_PERIOD,
   GARBAGE_OFFSET,
+  LANDFILL_CAPACITY_PER_TILE,
   LANDFILL_MIN_AREA_TILES,
   LANDFILL_PAINT_COST_PER_TILE,
   POWER_LINE_COST_PER_TILE,
@@ -51,6 +52,7 @@ import {
 } from '../world/freeroads';
 import {
   SAVE_VERSION,
+  TRASH_UNIT_SAVE_VERSION,
   BuildingState,
   FieldId,
   Problem,
@@ -219,7 +221,6 @@ import {
   incineratorEmission,
   type GarbageBuilding,
   type GarbageFacility,
-  type TrashSector,
 } from './garbage';
 import {
   GarbageTruckSystem,
@@ -256,6 +257,8 @@ export const ZONE_UNDER_BUILDINGS =
 const SNAPSHOT_TICKS = Math.max(1, Math.round(TICK_RATE / SNAPSHOT_HZ));
 /** Utility (power/water) recompute cadence. */
 const UTILITY_PERIOD = 10;
+/** Landfill units a tile held before the 0.25 kg trash unit; used to rescale older saves. */
+const LEGACY_LANDFILL_CAPACITY_PER_TILE = 600;
 /** Service coverage cadence (staggered). */
 const SERVICE_PERIOD = 8;
 const SERVICE_OFFSET = 6;
@@ -819,7 +822,19 @@ class SimWorld implements WorkerSim {
     // restored from the save meta so fill survives a reload. Republish the
     // loaded landfill area as full state so the render side rebuilds it.
     this.garbage.reset();
-    this.garbage.restoreState(payload.meta.garbage);
+    // Saves before the 0.25 kg trash unit counted a landfill tile as 600 units;
+    // rescale the pile so the fill fraction the player saw carries over.
+    const savedGarbage = payload.meta.garbage;
+    this.garbage.restoreState(
+      savedGarbage && payload.header.version < TRASH_UNIT_SAVE_VERSION
+        ? {
+            ...savedGarbage,
+            landfillStored:
+              (savedGarbage.landfillStored * LANDFILL_CAPACITY_PER_TILE) /
+              LEGACY_LANDFILL_CAPACITY_PER_TILE,
+          }
+        : savedGarbage,
+    );
     this.garbageTrucks.reset();
     this.landfillAreasCache = null;
     this.landfillDirty = { minX: 0, minZ: 0, maxX: MAP_SIZE - 1, maxZ: MAP_SIZE - 1 };
@@ -990,18 +1005,15 @@ class SimWorld implements WorkerSim {
           });
           continue;
         }
-        const sector: TrashSector | null =
-          entry.category === 'res'
-            ? 'res'
-            : entry.category === 'com'
-              ? 'com'
-              : entry.category === 'ind'
-                ? 'ind'
-                : null;
-        if (sector === null) continue;
-        garbageBuildings.push({ id: inst.id, sector, level: entry.level ?? 1 });
+        if (entry.category !== 'res' && entry.category !== 'com' && entry.category !== 'ind')
+          continue;
+        garbageBuildings.push({
+          id: inst.id,
+          residents: entry.residents ?? 0,
+          jobs: entry.jobs ?? 0,
+        });
       }
-      this.garbage.tick(g, garbageBuildings, facilities);
+      this.garbage.tick(g, garbageBuildings, Math.floor(t / GARBAGE_PERIOD), facilities);
       this.garbageDirty = true;
     }
 

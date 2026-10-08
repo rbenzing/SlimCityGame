@@ -1603,9 +1603,13 @@ export interface ReversibleEdit {
  * v12 no layer's byte layout or order changed, so every older buffer is the v12
  * layout with trailing layers trimmed; v13 is the v12 layout without its road
  * layers, and a pre-v13 save's roads convert to a network on load; v14 is v13
- * with the pipe layer appended to the tiles, which a v13 save loads empty.
+ * with the pipe layer appended to the tiles, which a v13 save loads empty; v15
+ * is the v14 byte layout, the version whose landfill fill is counted in 0.25 kg
+ * trash units (older saves counted a tile as 600), rescaled on load.
  */
-export const SAVE_VERSION = 14;
+export const SAVE_VERSION = 15;
+/** The first save version whose landfill fill is in 0.25 kg trash units. */
+export const TRASH_UNIT_SAVE_VERSION = 15;
 
 export interface SaveHeader {
   version: number;

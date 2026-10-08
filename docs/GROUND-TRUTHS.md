@@ -918,6 +918,15 @@ MUTCD citations below use 11th-edition section numbers.
   that ceiling the last pass used, never a flat figure while idle. —
   [services-model.md](world-sim/services-model.md#garbage-and-waste-management);
   `shareOut` and `incineratorEmission` in `src/sim/garbage.ts`
+- Garbage is one unit end to end, 0.25 kg: generation, the per-tile backlog,
+  the landfill, the incinerator's burn and buffer all count it, so a change to
+  one is a change to the chain. A building's trash is its people's, 1.32 kg a
+  resident and 1.86 kg a job a day, never a per-building or per-level figure,
+  and a pass emits the whole units its rate has reached, exact over a day with
+  no stored remainder. A landfill tile's capacity is derived from the tile, the
+  pile and the compacted density, never set by hand. —
+  [services-model.md](world-sim/services-model.md#garbage-and-waste-management);
+  `src/shared/constants.ts`, `src/sim/garbage.ts`
 - Every figure in a service plan derives from a published municipal standard
   plus the 20 m tile, never picked to feel right, and any override is stated.
   The smallest facility of a ladder must be affordable to a city that has just
