@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.49.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.48.0...slimcity-v1.49.0) (2026-10-08)
+
+
+### Features
+
+* **garbage:** a materials recovery facility sorts the town's recycling ([a2017ce](https://github.com/rbenzing/SlimCityGame/commit/a2017ce0d8c322d58b4bbf70f07b430897bd71e1))
+* **garbage:** a materials recovery facility sorts the town's recycling ([61dce56](https://github.com/rbenzing/SlimCityGame/commit/61dce56485b88bf7d4f1cfaf1222e31544886ff8))
+
 ## [1.48.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.47.1...slimcity-v1.48.0) (2026-10-08)
 
 
