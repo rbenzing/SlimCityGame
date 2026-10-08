@@ -11,7 +11,13 @@ import type {
   TilePoint,
   WorkerToMain,
 } from '../../src/shared/types';
-import { FIRST_CUSTOM_PROFILE_ID, presetProfileForTier } from '../../src/shared/roadprofile';
+import {
+  composeProfile,
+  editsOf,
+  FIRST_CUSTOM_PROFILE_ID,
+  NO_EDITS,
+  presetProfileForTier,
+} from '../../src/shared/roadprofile';
 import { decodeSave, encodeSave } from '../../src/app/persist';
 import { serializeGridV12 } from '../../src/world/grid';
 import {
@@ -303,6 +309,55 @@ describe('road composition — profiles the worker stores, lays and saves', () =
       CUSTOM_ID,
       CUSTOM_ID,
     ]);
+  });
+
+  it('saves each parking style with its profile, and a load brings it back unchanged', () => {
+    const styles = ['parallel', 'angled', 'headIn'] as const;
+    const profiles = styles.map((style) =>
+      composeProfile(presetProfileForTier(RoadTier.TwoLane), {
+        ...NO_EDITS,
+        parking: 'right',
+        parkingStyle: style,
+      }),
+    );
+    const h = initialized();
+    profiles.forEach((profile, i) => {
+      expect(
+        run(h, 1 + 2 * i, [{ kind: 'defineRoadProfile', id: CUSTOM_ID + i, profile }]).ok,
+      ).toBe(true);
+      expect(
+        run(h, 2 + 2 * i, [
+          {
+            kind: 'buildRoad',
+            tier: RoadTier.TwoLane,
+            tiles: roadRow(10, 10 + 3 * i, 3),
+            profile: CUSTOM_ID + i,
+          },
+        ]).ok,
+      ).toBe(true);
+    });
+    // Two profiles that differ only in style are two profiles, not one.
+    expect(
+      run(h, 9, [{ kind: 'defineRoadProfile', id: CUSTOM_ID + 1, profile: profiles[2]! }]).ok,
+    ).toBe(false);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const saves = h.messages.filter(
+      (m): m is Extract<WorkerToMain, { type: 'save' }> => m.type === 'save',
+    );
+    const data = saves[saves.length - 1]!.data;
+    expect(decodeSave(data).meta.roadProfiles).toEqual(
+      profiles.map((profile, i) => ({ id: CUSTOM_ID + i, profile })),
+    );
+
+    const fresh = initialized();
+    fresh.sim.handleMessage({ type: 'loadSave', data });
+    fresh.ticks(1);
+    const table = lastTable(fresh)!;
+    styles.forEach((style, i) => {
+      const loaded = table.find((e) => e.id === CUSTOM_ID + i)!.profile;
+      expect(loaded).toEqual(profiles[i]);
+      expect(editsOf(loaded).parkingStyle).toBe(style);
+    });
   });
 
   it('replace mode lays a lesser road over a greater one, and undo puts the greater one back', () => {

@@ -298,7 +298,10 @@ category or tool is active.
   - **Carriageway** — lane count, median or turn lane, posted speed, and
     the width the section adds up to against the tile (or the two-tile
     corridor).
-  - **Kerbside** — parking and bike lane sides, and the footway toggle.
+  - **Kerbside** — parking and bike lane sides, the footway toggle, and,
+    while either kerb parks, the parking style: `Parallel`, `Angled 60°`
+    (backed in) or `Head-in 90°`. The deeper styles widen the road, so a
+    style that would overrun the tile is disabled with the reason.
   - **Transit** — bus lane sides and the tramway.
   - **Sound wall** — on a motorway or a ramp only: which sides carry a noise
     wall, and, while one does, its height (3, 4.5 or 6 m), each height's

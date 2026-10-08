@@ -57,6 +57,24 @@ for the surface, the paint, the furniture and the zoning overlay.
   9.1 m before a stop line, within 6.1 m of a crosswalk, or within 6.1 m of
   the junction's mouth where its arm has no crosswalk, on both sides of the
   junction; the parking lane line runs on through that zone to the mouth.
+- **Angled and head-in parking**: the same white parking lane line on the
+  traffic side, and white stall lines (~0.15 m) from it toward the kerb at
+  the stall's angle, stopping at least 0.3 m short of the lane's outer edge:
+  60° to the kerb every 3.0 m on an angled lane, its kerb end upstream of its
+  travel end for the traffic beside it, and 90° every 2.6 m on a head-in
+  lane. Lines are pitched from world metre 0 and follow the ground in short
+  segments. A stall whose footprint would reach into a no-parking zone is
+  not marked.
+- **Accessible stalls**: each block face's accessible stalls carry the
+  International Symbol of Accessibility — a white wheelchair figure (head,
+  seat and back, legs and a wheel ring) on a blue square about 1.5 m on a
+  side (smaller where a parallel lane is narrower than the square and its
+  margins), centred in the stall and drawn to be read from the travel lane.
+  The blue is the paint palette's accessibility blue, the one non-white,
+  non-yellow, non-lane-tint paint. An angled or head-in accessible stall has
+  its access aisle beside it on the passenger side, bounded by stall lines
+  and hatched with white diagonal lines at 45° to the kerb about every
+  0.6 m. A parallel accessible stall is the 7.3 m end stall, with no aisle.
 - **Tapers bend, they never step**: across a tile where a road is changing
   width the asphalt edge bends from one width to the next, and every line and
   every coloured band on it bends with it, so nothing steps at a seam. A road

@@ -88,7 +88,7 @@ import {
   tramCrossingAxes,
 } from '../shared/types';
 import type { CorridorHalf } from '../shared/types';
-import type { JunctionControl, TilePoint } from '../shared/types';
+import type { JunctionControl, ParkingStyle, TilePoint } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import {
   TILE_METERS,
@@ -111,6 +111,8 @@ import {
   isPaved,
   kerbWidthOf,
   medianOffsetOf,
+  PARKING_STYLES,
+  parkingStyleOn,
   PRESET_LANE_WIDTH_M,
   isServiceClass,
   presetProfileForTier,
@@ -168,6 +170,30 @@ import {
   type MarkingLine,
   type MarkingPlan,
 } from './roadmarkings';
+import {
+  downstreamBeside,
+  kerbOrientation,
+  layKerbFace,
+  NO_PARKING_BEFORE_STOP_M,
+  NO_PARKING_FROM_CROSSWALK_M,
+  PARKING_TICK_KERB_CLEARANCE_M,
+  parkingTickPositions,
+  type KerbFace,
+  type KerbStall,
+  type ParkingSetbacks,
+} from './kerbstalls';
+
+export {
+  clearOfNoParking,
+  NO_PARKING_BEFORE_STOP_M,
+  NO_PARKING_FROM_CROSSWALK_M,
+  PARKING_END_STALL_M,
+  PARKING_STALL_LENGTH_M,
+  PARKING_STALL_MAX_M,
+  PARKING_TICK_KERB_CLEARANCE_M,
+  parkingTickPositions,
+  type ParkingSetbacks,
+} from './kerbstalls';
 
 /**
  * Where a tile's planned lines sit at ONE end of its run, parallel to the
@@ -1551,22 +1577,7 @@ function emitBicycleGlyph(
  * green) between along-offsets [lo, hi]; the glyph sits centered in each band,
  * repeating every LANE_GLYPH_PERIOD_TILES tiles by global coordinate.
  */
-/**
- * A parking lane's interior stall: 22 ft, the short end of the 22–26 ft the
- * 2009 MUTCD's parallel-parking layout gives (Figure 3B-21).
- */
-export const PARKING_STALL_LENGTH_M = 6.7;
-/** The stall nearest a junction: 20 ft in the same figure. */
-export const PARKING_END_STALL_M = 6.1;
-/** The longest stall the figure marks: 26 ft. No stall is longer. */
-export const PARKING_STALL_MAX_M = 7.9;
-/** How far short of the edge of the pavement a stall tick stops, inside the lane. */
-export const PARKING_TICK_KERB_CLEARANCE_M = 0.3;
 const PARKING_TICK_HALF_LENGTH_M = 0.075;
-/** No standing within 30 ft on the approach to a stop sign or a signal (UVC §11-1003). */
-export const NO_PARKING_BEFORE_STOP_M = 9.1;
-/** No standing within 20 ft of a crosswalk at an intersection (UVC §11-1003). */
-export const NO_PARKING_FROM_CROSSWALK_M = 6.1;
 
 /**
  * How far back along a road from a junction tile's edge its kerb is kept clear
@@ -1591,103 +1602,6 @@ export function noParkingReach(arm: {
   let reach = NO_PARKING_FROM_CROSSWALK_M - mouth;
   if (arm.stopLine) reach = Math.max(reach, NO_PARKING_BEFORE_STOP_M - layout.stopLineStart);
   return Math.max(0, reach);
-}
-
-/**
- * How far each end of a road tile's kerbs is kept clear of parking: `lo` the
- * end at the low coordinate along the road and `hi` the high one, each as
- * metres for the parking on the road's low-offset side and on its high side.
- * Null at an end that meets no junction; zero at one whose zone ends inside
- * the junction's own tile, where parking runs to the tile's edge.
- */
-export interface ParkingSetbacks {
-  /** Whether the road runs along x (east-west) rather than along z. */
-  alongX: boolean;
-  lo: readonly [number, number] | null;
-  hi: readonly [number, number] | null;
-}
-
-/**
- * Whether something lying from `along − halfLength` to `along + halfLength`
- * down a tile, measured from its centre, stands clear of the no-parking zone
- * at both of the tile's ends — `setLo` and `setHi`, null where an end meets no
- * junction. The one test a stall mark and a parked car both answer to.
- */
-export function clearOfNoParking(
-  along: number,
-  halfLength: number,
-  setLo: number | null,
-  setHi: number | null,
-): boolean {
-  const EPS = 1e-6;
-  return (
-    (setLo === null || along - halfLength >= -TILE_HALF + setLo - EPS) &&
-    (setHi === null || along + halfLength <= TILE_HALF - setHi + EPS)
-  );
-}
-
-/**
- * Where a parking lane's stall ticks fall along a run from `lo` to `hi`
- * (offsets from the tile centre, `origin` the centre's world coordinate along
- * the run). Every stall is 6.1–7.9 m (20–26 ft). Interior stalls are pitched
- * 6.7 m from world metre 0, so they run on across every seam. At an end that
- * meets a junction the lane's last stall is the end stall, marked from the
- * edge of the junction's no-parking zone; where the pitch leaves an odd length
- * beside it, the end stall takes up as much as keeps it within 7.9 m, and
- * beyond that the zone grows instead, so the end stall ends on a pitch tick.
- * Where two zones leave too little room for that, as many legal stalls as fit
- * are marked from the low zone's edge. `setLo` and `setHi` are null at an end
- * that meets no junction; either may lie past the tile's own end, when the
- * junction is a tile further on.
- */
-export function parkingTickPositions(
-  origin: number,
-  lo: number,
-  hi: number,
-  setLo: number | null,
-  setHi: number | null,
-): number[] {
-  const EPS = 1e-9;
-  const pitch = PARKING_STALL_LENGTH_M;
-  const end = PARKING_END_STALL_M;
-  const longest = PARKING_STALL_MAX_M;
-  /** The pitch ticks at or after / at or before a local offset. */
-  const pitchAtOrAfter = (a: number): number =>
-    Math.ceil((origin + a) / pitch - EPS) * pitch - origin;
-  const pitchAtOrBefore = (a: number): number =>
-    Math.floor((origin + a) / pitch + EPS) * pitch - origin;
-  // Each end stall, as [near tick, far tick] in run order.
-  let loStall: [number, number] | null = null;
-  let hiStall: [number, number] | null = null;
-  const zoneLo = setLo === null ? null : -TILE_HALF + setLo;
-  const zoneHi = setHi === null ? null : TILE_HALF - setHi;
-  if (zoneLo !== null) {
-    const far = pitchAtOrAfter(zoneLo + end);
-    loStall = far - zoneLo <= longest + EPS ? [zoneLo, far] : [far - end, far];
-  }
-  if (zoneHi !== null) {
-    const near = pitchAtOrBefore(zoneHi - end);
-    hiStall = zoneHi - near <= longest + EPS ? [near, zoneHi] : [near, near + end];
-  }
-  const ticks: number[] = [];
-  if (zoneLo !== null && zoneHi !== null && loStall![1] > hiStall![0] + EPS) {
-    // The two end stalls would overlap: as many stalls as the room between
-    // the zones holds, each as long as it can be up to the longest.
-    const room = zoneHi - zoneLo;
-    const count = Math.floor(room / end + EPS);
-    const length = count > 0 ? Math.min(longest, room / count) : 0;
-    for (let k = 0; k <= count && count > 0; k++) ticks.push(zoneLo + k * length);
-  } else {
-    if (loStall) ticks.push(...loStall);
-    if (hiStall) ticks.push(...hiStall);
-    const from = loStall ? loStall[1] : lo;
-    const to = hiStall ? hiStall[0] : hi;
-    for (let a = pitchAtOrAfter(from); a <= to + EPS; a += pitch) ticks.push(a);
-  }
-  return ticks
-    .filter((a) => a >= lo - EPS && a <= hi + EPS && clearOfNoParking(a, 0, setLo, setHi))
-    .sort((a, b) => a - b)
-    .filter((a, i, all) => i === 0 || a - all[i - 1]! > 1e-6);
 }
 
 /**
@@ -1742,6 +1656,349 @@ function pushDriftingStrip(
   }
 }
 
+/** The blue square under the International Symbol of Accessibility (MUTCD 3B.22 ¶09). */
+export const ACCESSIBLE_PAINT_COLOR: readonly [number, number, number] = [0.08, 0.3, 0.68];
+/** The accessibility symbol's side, metres; a narrow parallel lane takes a smaller one. */
+const ACCESSIBLE_SYMBOL_M = 1.5;
+/** What the symbol keeps clear of the lane's edges on a parallel lane, either side. */
+const ACCESSIBLE_SYMBOL_MARGIN_M = 0.4;
+/** The hatching across an access aisle: lines at 45° to the kerb, this far apart. */
+const AISLE_HATCH_SPACING_M = 0.6;
+/** Longest piece a stall line is laid in, so a long line follows the ground. */
+const STALL_LINE_PIECE_M = 1.5;
+
+/**
+ * The block faces a straight tile's parking lanes belong to, one per side,
+ * and whether the tile is the last of each face, which paints a line that
+ * falls on its far edge.
+ */
+export interface TileKerbFaces {
+  alongX: boolean;
+  low: { face: KerbFace; last: boolean } | null;
+  high: { face: KerbFace; last: boolean } | null;
+}
+
+/** A painted line from p0 to p1, laid in short pieces so it follows the ground. */
+function pushPaintLine(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  p0: readonly [number, number],
+  p1: readonly [number, number],
+  color: readonly [number, number, number],
+  hAt: (x: number, z: number) => number,
+): void {
+  const pieces = Math.max(
+    1,
+    Math.ceil(Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) / STALL_LINE_PIECE_M),
+  );
+  for (let k = 0; k < pieces; k++) {
+    const at = (t: number): [number, number] => [
+      p0[0] + (p1[0] - p0[0]) * t,
+      p0[1] + (p1[1] - p0[1]) * t,
+    ];
+    pushBar(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      at(k / pieces),
+      at((k + 1) / pieces),
+      PAINT_HALF_WIDTH_M,
+      MARK_Y_OFFSET,
+      color,
+      hAt,
+    );
+  }
+}
+
+/** Where the line q + t·d lies inside a convex polygon, as [t0, t1], or null where it misses. */
+function clipToConvex(
+  q: readonly [number, number],
+  d: readonly [number, number],
+  polygon: readonly (readonly [number, number])[],
+): [number, number] | null {
+  const cross = (a: readonly [number, number], b: readonly [number, number]): number =>
+    a[0] * b[1] - a[1] * b[0];
+  let area = 0;
+  polygon.forEach((p, i) => (area += cross(p, polygon[(i + 1) % polygon.length]!)));
+  const turn = area > 0 ? 1 : -1;
+  let t0 = -Infinity;
+  let t1 = Infinity;
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i]!;
+    const b = polygon[(i + 1) % polygon.length]!;
+    const edge: [number, number] = [b[0] - a[0], b[1] - a[1]];
+    const inside = turn * cross(edge, [q[0] - a[0], q[1] - a[1]]);
+    const rate = turn * cross(edge, d);
+    if (Math.abs(rate) < 1e-12) {
+      if (inside < 0) return null;
+      continue;
+    }
+    const t = -inside / rate;
+    if (rate > 0) t0 = Math.max(t0, t);
+    else t1 = Math.min(t1, t);
+  }
+  return t1 > t0 ? [t0, t1] : null;
+}
+
+/**
+ * The International Symbol of Accessibility, white on a blue square, centred
+ * at local (cx, cz) and standing upright toward `up` — the way a driver in
+ * the travel lane reads it, looking into the stall.
+ */
+function emitAccessibilitySymbol(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  cx: number,
+  cz: number,
+  up: readonly [number, number],
+  size: number,
+  hAt: (x: number, z: number) => number,
+): void {
+  // The reader's right, looking along `up`.
+  const right: [number, number] = [-up[1], up[0]];
+  const P = (p: number, q: number): [number, number] => [
+    cx + size * (p * right[0] + q * up[0]),
+    cz + size * (p * right[1] + q * up[1]),
+  ];
+  pushGroundTri(
+    positions,
+    colors,
+    centerX,
+    centerZ,
+    P(-0.5, -0.5),
+    P(0.5, -0.5),
+    P(0.5, 0.5),
+    LANE_TINT_Y_OFFSET,
+    ACCESSIBLE_PAINT_COLOR,
+    hAt,
+  );
+  pushGroundTri(
+    positions,
+    colors,
+    centerX,
+    centerZ,
+    P(-0.5, -0.5),
+    P(0.5, 0.5),
+    P(-0.5, 0.5),
+    LANE_TINT_Y_OFFSET,
+    ACCESSIBLE_PAINT_COLOR,
+    hAt,
+  );
+  // A figure seated in a wheelchair, facing right: the wheel, the head, and
+  // the back, arm, thigh, shin and foot as bars.
+  const wheel = P(-0.08, -0.16);
+  pushRing(
+    positions,
+    colors,
+    centerX,
+    centerZ,
+    wheel[0],
+    wheel[1],
+    0.17 * size,
+    0.23 * size,
+    16,
+    MARK_Y_OFFSET,
+    MARKING_COLOR,
+    hAt,
+  );
+  const head = P(0, 0.33);
+  pushRing(
+    positions,
+    colors,
+    centerX,
+    centerZ,
+    head[0],
+    head[1],
+    0,
+    0.075 * size,
+    10,
+    MARK_Y_OFFSET,
+    MARKING_COLOR,
+    hAt,
+  );
+  const limbs: [number, number, number, number][] = [
+    [-0.03, 0.22, -0.08, -0.02],
+    [-0.05, 0.12, 0.14, 0.12],
+    [-0.08, -0.02, 0.16, -0.02],
+    [0.16, -0.02, 0.26, -0.28],
+    [0.26, -0.28, 0.38, -0.28],
+  ];
+  for (const [p0, q0, p1, q1] of limbs) {
+    pushBar(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      P(p0, q0),
+      P(p1, q1),
+      0.045 * size,
+      MARK_Y_OFFSET,
+      MARKING_COLOR,
+      hAt,
+    );
+  }
+}
+
+/**
+ * Paints one kerb's stall marks on this tile from its block face. A parallel
+ * lane gets ticks across the lane, every tick within the tile's run, as it
+ * always has. An angled or head-in lane gets lines at the stall's angle from
+ * the parking lane line toward the kerb, each drawn whole by the tile its
+ * travel end lies on. Each accessible stall gets the symbol, and its access
+ * aisle is hatched, by the tile its middle lies on.
+ */
+function emitKerbStalls(
+  positions: number[],
+  colors: number[],
+  vertical: boolean,
+  centerX: number,
+  centerZ: number,
+  origin: number,
+  lo: number,
+  hi: number,
+  sign: 1 | -1,
+  own: { face: KerbFace; last: boolean },
+  lane: {
+    fromAt: (along: number) => number;
+    toAt: (along: number) => number;
+    hAt: (x: number, z: number) => number;
+  },
+): void {
+  const EPS = 1e-6;
+  const { face, last } = own;
+  const { hAt } = lane;
+  const pt = (along: number, cross: number): [number, number] =>
+    vertical ? [cross, along] : [along, cross];
+  /** The lane's travel edge and its kerb edge, across the road, at a point along it. */
+  const edges = (along: number): { inner: number; outer: number } => {
+    const a = lane.fromAt(along);
+    const b = lane.toAt(along);
+    const inner = Math.abs(a) < Math.abs(b) ? a : b;
+    return { inner, outer: inner === a ? b : a };
+  };
+  const owns = (along: number): boolean => along >= lo - EPS && (along < hi - EPS || last);
+
+  if (face.style === 'parallel') {
+    for (const tick of face.lines) {
+      const along = tick - origin;
+      if (along < lo - EPS || along > hi + EPS) continue;
+      const { inner, outer } = edges(along);
+      const c0 = inner + sign * PAINT_HALF_WIDTH_M;
+      const c1 = outer - sign * PARKING_TICK_KERB_CLEARANCE_M;
+      if ((c1 - c0) * sign <= 1e-6) continue;
+      pushDriftingStrip(
+        positions,
+        colors,
+        vertical,
+        centerX,
+        centerZ,
+        () => Math.min(c0, c1),
+        () => Math.max(c0, c1),
+        Math.max(lo, along - PARKING_TICK_HALF_LENGTH_M),
+        Math.min(hi, along + PARKING_TICK_HALF_LENGTH_M),
+        MARK_Y_OFFSET,
+        MARKING_COLOR,
+        hAt,
+      );
+    }
+  } else {
+    // A line at the stall's angle: its kerb end stops short of the edge by the
+    // clearance and by the corner its width swings out at that angle.
+    const slant = face.slant;
+    const corner = (PAINT_HALF_WIDTH_M * Math.abs(slant)) / Math.hypot(1, slant);
+    /** A stall line's two ends, as (along, across), from its travel end at `along`. */
+    const lineAt = (along: number): [[number, number], [number, number]] | null => {
+      const { inner, outer } = edges(along);
+      const start = PAINT_HALF_WIDTH_M;
+      const end = Math.abs(outer - inner) - PARKING_TICK_KERB_CLEARANCE_M - corner;
+      if (end <= start) return null;
+      return [
+        [along + slant * start, inner + sign * start],
+        [along + slant * end, inner + sign * end],
+      ];
+    };
+    for (const travelEnd of face.lines) {
+      const along = travelEnd - origin;
+      if (!owns(along)) continue;
+      const ends = lineAt(along);
+      if (!ends) continue;
+      pushPaintLine(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        pt(...ends[0]),
+        pt(...ends[1]),
+        MARKING_COLOR,
+        hAt,
+      );
+    }
+    for (const stall of face.stalls) {
+      if (!stall.aisle || !owns((stall.aisle.from + stall.aisle.to) / 2 - origin)) continue;
+      const near = lineAt(stall.aisle.from - origin);
+      const far = lineAt(stall.aisle.to - origin);
+      if (!near || !far) continue;
+      const polygon = [near[0], far[0], far[1], near[1]];
+      const minAlong = Math.min(...polygon.map((p) => p[0]));
+      const maxAlong = Math.max(...polygon.map((p) => p[0]));
+      const depth = Math.abs(near[1][1] - near[0][1]);
+      // Lines at 45° to the kerb, spaced across themselves.
+      const step = AISLE_HATCH_SPACING_M * Math.SQRT2;
+      const across = near[0][1];
+      for (let a = minAlong - depth; a <= maxAlong; a += step) {
+        const q: [number, number] = [a, across];
+        const d: [number, number] = [1, sign];
+        const span = clipToConvex(q, d, polygon);
+        if (!span) continue;
+        const [t0, t1] = span;
+        if (t1 - t0 < 0.1) continue;
+        pushPaintLine(
+          positions,
+          colors,
+          centerX,
+          centerZ,
+          pt(q[0] + t0, q[1] + sign * t0),
+          pt(q[0] + t1, q[1] + sign * t1),
+          MARKING_COLOR,
+          hAt,
+        );
+      }
+    }
+  }
+
+  for (const stall of face.stalls) {
+    const along = stall.centre - origin;
+    if (!stall.accessible || !owns(along)) continue;
+    const { inner, outer } = edges(along);
+    const depth = Math.abs(outer - inner);
+    const size =
+      face.style === 'parallel'
+        ? Math.min(ACCESSIBLE_SYMBOL_M, depth - 2 * ACCESSIBLE_SYMBOL_MARGIN_M)
+        : ACCESSIBLE_SYMBOL_M;
+    if (size <= 0) continue;
+    // Upright toward the kerb along the stall: the way it is driven into.
+    const length = Math.hypot(face.slant, 1);
+    const up = pt(face.slant / length, sign / length);
+    const centre = pt(along, (inner + outer) / 2);
+    emitAccessibilitySymbol(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      centre[0],
+      centre[1],
+      up,
+      size,
+      hAt,
+    );
+  }
+}
+
 /**
  * Fills and ticks every reserved or parking lane in the plan: a terracotta
  * band with a diamond for a bus lane, a green band with a bicycle for a bike
@@ -1764,8 +2021,8 @@ function emitColoredLaneBands(
   hAt: (x: number, z: number) => number,
   /** Where each band lies at the two ends of the run; omitted, where the plan puts it. */
   seam?: { lo: MarkingSeam; hi: MarkingSeam },
-  /** The no-parking zones at the run's two ends, for the low side's parking and the high side's. */
-  noParking?: ParkingSetbacks,
+  /** The block faces this tile's parking lanes belong to; omitted, no stall is marked. */
+  kerb?: TileKerbFaces,
 ): void {
   const glyphHere = vertical ? isLaneGlyphTile(z) : isLaneGlyphTile(x);
   const origin = vertical ? centerZ : centerX;
@@ -1776,38 +2033,16 @@ function emitColoredLaneBands(
     const toAt = driftBetween(atLo.to, atHi.to, lo, hi);
     const across = (band.from + band.to) / 2;
     if (band.kind === 'parking') {
-      // The parking lane line is the plan's own; the ticks cross the lane from
-      // its face toward the kerb and stop short of the edge of the pavement.
-      const side = across < 0 ? 0 : 1;
+      // The parking lane line is the plan's own; the stall marks cross the
+      // lane from its face toward the kerb and stop short of the pavement's edge.
       const sign = across < 0 ? -1 : 1;
-      for (const along of parkingTickPositions(
-        origin,
-        lo,
-        hi,
-        noParking?.lo?.[side] ?? null,
-        noParking?.hi?.[side] ?? null,
-      )) {
-        const a = fromAt(along);
-        const b = toAt(along);
-        const inner = Math.abs(a) < Math.abs(b) ? a : b;
-        const outer = inner === a ? b : a;
-        const c0 = inner + sign * PAINT_HALF_WIDTH_M;
-        const c1 = outer - sign * PARKING_TICK_KERB_CLEARANCE_M;
-        if ((c1 - c0) * sign <= 1e-6) continue;
-        pushDriftingStrip(
-          positions,
-          colors,
-          vertical,
-          centerX,
-          centerZ,
-          () => Math.min(c0, c1),
-          () => Math.max(c0, c1),
-          Math.max(lo, along - PARKING_TICK_HALF_LENGTH_M),
-          Math.min(hi, along + PARKING_TICK_HALF_LENGTH_M),
-          MARK_Y_OFFSET,
-          MARKING_COLOR,
+      const own = sign < 0 ? kerb?.low : kerb?.high;
+      if (own) {
+        emitKerbStalls(positions, colors, vertical, centerX, centerZ, origin, lo, hi, sign, own, {
+          fromAt,
+          toAt,
           hAt,
-        );
+        });
       }
       return;
     }
@@ -4564,11 +4799,11 @@ export function roadTileVertices(
    */
   rampMouth?: RampMouth,
   /**
-   * The junctions' no-parking zones at the ends of this tile's run, which no
-   * stall mark is painted inside. Set only by a caller that can see the
-   * junctions and how they are painted.
+   * The block faces this tile's parking lanes belong to, which say where
+   * their stalls are marked. Set only by a caller that can see the whole run
+   * and its junctions; omitted, a parking lane paints its lane line alone.
    */
-  parkingSetbacks?: ParkingSetbacks,
+  kerbFaces?: TileKerbFaces,
 ): { positions: number[]; colors: number[] } {
   if (!Number.isInteger(mask) || mask < 0 || mask > 15) {
     throw new RangeError(`roadTileVertices: mask ${mask} out of the 4-bit range 0..15`);
@@ -5474,10 +5709,10 @@ export function roadTileVertices(
           : hasS
             ? rampGap(1, neighborHalves.s)
             : rampGap(-1, neighborHalves.n);
-      // The no-parking zones at each end of the run, where the road meets a
-      // junction there; none at all on a road that cannot see its junctions.
-      const noParkingAlong = (alongX: boolean): ParkingSetbacks | undefined =>
-        parkingSetbacks && parkingSetbacks.alongX === alongX ? parkingSetbacks : undefined;
+      // The stalls of the block faces along this axis; none at all on a road
+      // that cannot see its run.
+      const kerbAlong = (alongX: boolean): TileKerbFaces | undefined =>
+        kerbFaces && kerbFaces.alongX === alongX ? kerbFaces : undefined;
       if (hasVertical && (!rampNode || rampNodeVertical)) {
         const zLo = hasN ? -TILE_HALF : -coreHalf;
         const zHi = hasS ? TILE_HALF : coreHalf;
@@ -5523,7 +5758,7 @@ export function roadTileVertices(
             zHi,
             hAt,
             seam,
-            noParkingAlong(false),
+            kerbAlong(false),
           );
       }
       if (hasHorizontal && (!rampNode || !rampNodeVertical)) {
@@ -5571,7 +5806,7 @@ export function roadTileVertices(
             xHi,
             hAt,
             seam,
-            noParkingAlong(true),
+            kerbAlong(true),
           );
       }
 
@@ -6244,6 +6479,12 @@ export class RoadMeshRenderer {
   // reads nearly as uniform as the old unlit fill but now grounds its traffic.
   private readonly material = new THREE.MeshLambertMaterial({ vertexColors: true });
   private readonly chunks = new Map<number, ChunkEntry>();
+  /**
+   * Each parking lane's block face, by tile index × 2 plus its side (1 for
+   * the high side); null where that side paints none. Laid on demand and
+   * forgotten whenever the roads or their junctions change.
+   */
+  private readonly kerbFaces = new Map<number, KerbFace | null>();
 
   // Median trees: a single trunk InstancedMesh + a single
   // canopy InstancedMesh, shared geometry/material built once and reused
@@ -6314,7 +6555,41 @@ export class RoadMeshRenderer {
     }
   }
 
+  /**
+   * Adds to `dirty` every chunk along the straight runs that leave tile
+   * (x, z), and along the runs leaving the junction at each one's far end: a
+   * block face's stalls are laid along its whole run, and which end its
+   * accessible stalls stand at is decided by the junctions at both.
+   */
+  private dirtyRuns(x: number, z: number, dirty: Set<number>): void {
+    const walk = (sx: number, sz: number, dx: number, dz: number, turn: boolean): void => {
+      for (let tx = sx + dx, tz = sz + dz; ; tx += dx, tz += dz) {
+        if (tx < 0 || tz < 0 || tx >= MAP_SIZE || tz >= MAP_SIZE) return;
+        const tile = this.groundAt(tx, tz);
+        if (!tile) return;
+        dirty.add(chunkKeyOf(tx, tz));
+        const onAxis = (tile.mask & (dx !== 0 ? EAST | WEST : NORTH | SOUTH)) !== 0;
+        if (!isStraightRunMask(tile.mask) || !onAxis) {
+          if (turn) {
+            walk(tx, tz, dz, dx, false);
+            walk(tx, tz, -dz, -dx, false);
+          }
+          return;
+        }
+      }
+    };
+    for (const [dx, dz] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      walk(x, z, dx, dz, true);
+    }
+  }
+
   apply(deltas: RoadTileDelta[]): void {
+    this.kerbFaces.clear();
     const dirty = new Set<number>();
     for (const delta of deltas) {
       const key = chunkKeyOf(delta.x, delta.z);
@@ -6331,6 +6606,11 @@ export class RoadMeshRenderer {
       }
       dirty.add(key);
       this.dirtyReaders(delta.x, delta.z, dirty);
+    }
+    // Once every tile is in, so a run is walked as it now stands.
+    for (const delta of deltas) {
+      if (dirty.size >= this.chunks.size) break;
+      this.dirtyRuns(delta.x, delta.z, dirty);
     }
 
     for (const key of dirty) this.rebuildChunk(key);
@@ -6363,10 +6643,12 @@ export class RoadMeshRenderer {
 
     const dirty = new Set<number>();
     // What a control decides is painted down the approaches as well as on the
-    // junction: its restrictions on the tile before it, and the bays it earns
-    // as far back as the approach zone runs.
-    const moved = (i: number): void =>
+    // junction: its restrictions on the tile before it, the bays it earns as
+    // far back as the approach zone runs, and the parking along its arms.
+    const moved = (i: number): void => {
       this.dirtyReaders(i % MAP_SIZE, Math.floor(i / MAP_SIZE), dirty);
+      this.dirtyRuns(i % MAP_SIZE, Math.floor(i / MAP_SIZE), dirty);
+    };
     for (const [i, control] of next) {
       if (this.junctionControls.get(i) !== control) moved(i);
       if ((this.junctionTurns.get(i) ?? 0) !== (nextTurns.get(i) ?? 0)) moved(i);
@@ -6379,6 +6661,7 @@ export class RoadMeshRenderer {
     this.junctionControls = next;
     this.junctionTurns = nextTurns;
     this.junctionLaneTurns = nextLaneTurns;
+    if (dirty.size > 0) this.kerbFaces.clear();
 
     for (const key of dirty) this.rebuildChunk(key);
     if (dirty.size > 0) this.rebuildMedianTrees();
@@ -6437,6 +6720,7 @@ export class RoadMeshRenderer {
     for (const i of next) if (!this.freeJunctions.has(i)) dirty.add(chunkOf(i));
     for (const i of this.freeJunctions) if (!next.has(i)) dirty.add(chunkOf(i));
     this.freeJunctions = next;
+    if (dirty.size > 0) this.kerbFaces.clear();
     for (const key of dirty) this.rebuildChunk(key);
   }
 
@@ -6468,6 +6752,7 @@ export class RoadMeshRenderer {
     for (const [i, block] of next) if (!sameBlock(this.roundabouts.get(i), block)) moved(i);
     for (const i of this.roundabouts.keys()) if (!next.has(i)) moved(i);
     this.roundabouts = next;
+    if (dirty.size > 0) this.kerbFaces.clear();
     for (const key of dirty) this.rebuildChunk(key);
     if (dirty.size > 0) this.rebuildMedianTrees();
   }
@@ -6825,39 +7110,174 @@ export class RoadMeshRenderer {
   /**
    * The marked stalls of the parking lane on one side of the road tile at
    * (x, z), as world coordinates along the road, each stall counted on the
-   * tile its middle lies in: the stretch between two consecutive ticks, read
-   * across the tiles either side so a stall over a seam is one stall. Null
-   * where that side paints no parking lane. A parked car stands one to a
-   * stall, centred in it.
+   * tile its middle lies in, read off the block face the tile belongs to so a
+   * stall over a seam is one stall. Null where that side paints no parking
+   * lane. A parked car stands one to a stall, centred in it.
    */
-  parkingStallsAt(
-    x: number,
-    z: number,
-    side: 'low' | 'high',
-  ): { from: number; to: number }[] | null {
-    const own = this.parkingTicksAt(x, z, side);
+  parkingStallsAt(x: number, z: number, side: 'low' | 'high'): KerbStall[] | null {
+    const face = this.kerbFaceAt(x, z, side);
     const tile = this.groundAt(x, z);
-    if (!own || !tile) return null;
+    if (!face || !tile) return null;
     const alongX = (tile.mask & (EAST | WEST)) !== 0;
-    const ticks = [
-      ...(this.parkingTicksAt(alongX ? x - 1 : x, alongX ? z : z - 1, side) ?? []),
-      ...own,
-      ...(this.parkingTicksAt(alongX ? x + 1 : x, alongX ? z : z + 1, side) ?? []),
-    ]
-      .sort((a, b) => a - b)
-      .filter((t, i, all) => i === 0 || t - all[i - 1]! > 1e-6);
     const start = (alongX ? x : z) * TILE_METERS;
-    const stalls: { from: number; to: number }[] = [];
-    for (let i = 1; i < ticks.length; i++) {
-      const from = ticks[i - 1]!;
-      const to = ticks[i]!;
-      const middle = (from + to) / 2;
-      // Two ticks further apart than any stall is laid are a gap in the lane.
-      if (to - from > PARKING_STALL_MAX_M + 1e-6) continue;
-      if (middle < start || middle >= start + TILE_METERS) continue;
-      stalls.push({ from, to });
+    return face.stalls.filter((s) => s.centre >= start && s.centre < start + TILE_METERS);
+  }
+
+  /** The style of the parking lane a straight tile paints on one side, or null where it paints none. */
+  private parkingStyleAt(x: number, z: number, side: 'low' | 'high'): ParkingStyle | null {
+    const tile = this.groundAt(x, z);
+    const plan = this.planAt(x, z);
+    const drawn = this.drawnSectionAt(x, z);
+    if (!tile || !plan || !drawn || !isStraightRunMask(tile.mask)) return null;
+    const sign = side === 'low' ? -1 : 1;
+    if (!plan.bands.some((b) => b.kind === 'parking' && (b.from + b.to) * sign > 0)) return null;
+    return parkingStyleOn(drawn, side);
+  }
+
+  /**
+   * The block face the parking lane on one side of the tile at (x, z)
+   * belongs to — that kerb's parking along the straight run, as far as the
+   * tiles either way paint the same style of lane on it — laid by
+   * `layKerbFace`, or null where that side paints no parking lane. Every tile
+   * of a face shares it, so it is laid once per change to the roads.
+   */
+  private kerbFaceAt(x: number, z: number, side: 'low' | 'high'): KerbFace | null {
+    if (x < 0 || z < 0 || x >= MAP_SIZE || z >= MAP_SIZE) return null;
+    const key = tileIndex(x, z) * 2 + (side === 'high' ? 1 : 0);
+    const cached = this.kerbFaces.get(key);
+    if (cached !== undefined) return cached;
+    const style = this.parkingStyleAt(x, z, side);
+    const tile = this.groundAt(x, z);
+    if (!style || !tile) {
+      this.kerbFaces.set(key, null);
+      return null;
     }
-    return stalls;
+    const alongX = (tile.mask & (EAST | WEST)) !== 0;
+    const [dx, dz] = alongX ? [1, 0] : [0, 1];
+    const forward = alongX ? EAST : SOUTH;
+    const backward = alongX ? WEST : NORTH;
+    const inFace = (tx: number, tz: number): boolean => {
+      const t = this.groundAt(tx, tz);
+      return (
+        !!t &&
+        ((t.mask & (EAST | WEST)) !== 0) === alongX &&
+        this.parkingStyleAt(tx, tz, side) === style
+      );
+    };
+    const tiles: [number, number][] = [[x, z]];
+    for (let [tx, tz] = [x, z]; ;) {
+      if ((this.groundAt(tx, tz)!.mask & backward) === 0 || !inFace(tx - dx, tz - dz)) break;
+      tx -= dx;
+      tz -= dz;
+      tiles.unshift([tx, tz]);
+    }
+    for (let [tx, tz] = [x, z]; ;) {
+      if ((this.groundAt(tx, tz)!.mask & forward) === 0 || !inFace(tx + dx, tz + dz)) break;
+      tx += dx;
+      tz += dz;
+      tiles.push([tx, tz]);
+    }
+    const [fx, fz] = tiles[0]!;
+    const [lx, lz] = tiles[tiles.length - 1]!;
+    const s = side === 'low' ? 0 : 1;
+    const centreOf = (tx: number, tz: number): number => ((alongX ? tx : tz) + 0.5) * TILE_METERS;
+    /** Where a face tile's own run ends, world, toward the low or the high coordinate. */
+    const runEnd = (tx: number, tz: number, toward: 1 | -1): number => {
+      const bit = toward > 0 ? forward : backward;
+      const reach = (this.groundAt(tx, tz)!.mask & bit) !== 0 ? TILE_HALF : this.halfAt(tx, tz);
+      return centreOf(tx, tz) + toward * reach;
+    };
+    const firstSet = this.parkingSetbacksAt(fx, fz)?.lo?.[s] ?? null;
+    const lastSet = this.parkingSetbacksAt(lx, lz)?.hi?.[s] ?? null;
+    const lowEnd = this.junctionEndsAt(fx, fz)?.lo ?? null;
+    const highEnd = this.junctionEndsAt(lx, lz)?.hi ?? null;
+    const ticks =
+      style === 'parallel'
+        ? tiles.flatMap(([tx, tz]) => this.parkingTicksAt(tx, tz, side) ?? [])
+        : undefined;
+    // A junction end starts where its zone ends; any other end where the
+    // lane's own marking does.
+    const bound = (toward: 1 | -1): number => {
+      const [tx, tz] = toward < 0 ? [fx, fz] : [lx, lz];
+      const run = runEnd(tx, tz, toward);
+      const set = toward < 0 ? firstSet : lastSet;
+      const zone = set === null ? null : centreOf(tx, tz) + toward * (TILE_HALF - set);
+      const atJunction = toward < 0 ? lowEnd !== null : highEnd !== null;
+      if (ticks && !atJunction) {
+        const marked = toward < 0 ? ticks[0] : ticks[ticks.length - 1];
+        if (marked !== undefined) return marked;
+      }
+      if (zone === null) return run;
+      return toward < 0 ? Math.max(run, zone) : Math.min(run, zone);
+    };
+    // The accessible stalls stand nearest a crosswalk, else nearest a
+    // junction, else at the low end.
+    const accessibleEnd: 'lo' | 'hi' =
+      (lowEnd?.crossed ?? false) !== (highEnd?.crossed ?? false)
+        ? highEnd?.crossed
+          ? 'hi'
+          : 'lo'
+        : (lowEnd !== null) !== (highEnd !== null) && highEnd !== null
+          ? 'hi'
+          : 'lo';
+    const depth = PARKING_STYLES[style].laneWidth;
+    // A lane is its full depth on a tile whose band, and its neighbours' in
+    // the face, are that deep: nothing bends it in across the tile.
+    const deepTile = new Map<number, boolean>();
+    const bandDepth = (tx: number, tz: number): number => {
+      const sign = side === 'low' ? -1 : 1;
+      const band = this.planAt(tx, tz)?.bands.find(
+        (b) => b.kind === 'parking' && (b.from + b.to) * sign > 0,
+      );
+      return band ? Math.abs(band.to - band.from) : 0;
+    };
+    tiles.forEach(([tx, tz], i) => {
+      const full = (k: number): boolean => {
+        const t = tiles[k];
+        return t === undefined || bandDepth(t[0], t[1]) >= depth - 0.01;
+      };
+      deepTile.set(alongX ? tx : tz, full(i - 1) && full(i) && full(i + 1));
+    });
+    const fullDepth = (from: number, to: number): boolean => {
+      for (let t = Math.floor(from / TILE_METERS); t * TILE_METERS < to - 1e-6; t++) {
+        if (!deepTile.get(t)) return false;
+      }
+      return true;
+    };
+    const orientation = kerbOrientation(
+      style,
+      alongX,
+      side,
+      downstreamBeside(this.drawnSectionAt(fx, fz)!, this.groundAt(fx, fz)!.flow, alongX, side),
+    );
+    const face = layKerbFace({
+      style,
+      orientation,
+      depth,
+      lo: bound(-1),
+      hi: bound(1),
+      ticks,
+      fullDepth,
+      accessibleEnd,
+    });
+    for (const [tx, tz] of tiles) {
+      this.kerbFaces.set(tileIndex(tx, tz) * 2 + (side === 'high' ? 1 : 0), face);
+    }
+    return face;
+  }
+
+  /** The block faces the straight tile at (x, z) paints, and whether it is the last tile of each. */
+  private kerbFacesFor(x: number, z: number): TileKerbFaces | undefined {
+    const tile = this.groundAt(x, z);
+    if (!tile || !isStraightRunMask(tile.mask)) return undefined;
+    const alongX = (tile.mask & (EAST | WEST)) !== 0;
+    const own = (side: 'low' | 'high'): TileKerbFaces['low'] => {
+      const face = this.kerbFaceAt(x, z, side);
+      if (!face) return null;
+      const next = this.kerbFaceAt(alongX ? x + 1 : x, alongX ? z : z + 1, side);
+      return { face, last: next !== face };
+    };
+    return { alongX, low: own('low'), high: own('high') };
   }
 
   /**
@@ -6892,6 +7312,24 @@ export class RoadMeshRenderer {
 
   /** The no-parking zones of the junctions directly at either end of the tile at (x, z). */
   private junctionZonesAt(x: number, z: number): ParkingSetbacks | null {
+    const ends = this.junctionEndsAt(x, z);
+    return ends && { alongX: ends.alongX, lo: ends.lo?.zone ?? null, hi: ends.hi?.zone ?? null };
+  }
+
+  /**
+   * The junctions directly at either end of the straight tile at (x, z): the
+   * no-parking zone each keeps on this tile's two kerbs, and whether a
+   * crossing is painted across this tile's arm of it. Null at an end that
+   * meets no junction, and altogether where the tile is not a straight run.
+   */
+  private junctionEndsAt(
+    x: number,
+    z: number,
+  ): {
+    alongX: boolean;
+    lo: { zone: readonly [number, number]; crossed: boolean } | null;
+    hi: { zone: readonly [number, number]; crossed: boolean } | null;
+  } | null {
     const tile = this.groundAt(x, z);
     const own = this.profileAt(x, z);
     const drawn = this.drawnSectionAt(x, z);
@@ -6902,7 +7340,10 @@ export class RoadMeshRenderer {
     const alongX = ew;
     const flow = this.flowAt(x, z);
     const lanes = travelLaneSpans(drawn);
-    const end = (dx: number, dz: number): [number, number] | null => {
+    const end = (
+      dx: number,
+      dz: number,
+    ): { zone: readonly [number, number]; crossed: boolean } | null => {
       const jx = x + dx;
       const jz = z + dz;
       const bit = dz < 0 ? NORTH : dx > 0 ? EAST : dz > 0 ? SOUTH : WEST;
@@ -6960,7 +7401,7 @@ export class RoadMeshRenderer {
           crossed: paint.crossed,
           stopLine: paint.stops && kerbLaneArrives(s),
         });
-      return [reach(0), reach(1)];
+      return { zone: [reach(0), reach(1)] as const, crossed: paint.crossed };
     };
     return alongX
       ? { alongX, lo: end(-1, 0), hi: end(1, 0) }
@@ -7404,7 +7845,7 @@ export class RoadMeshRenderer {
         this.auxiliaryAt(tile.x, tile.z),
         this.sharedTurnAt(tile.x, tile.z),
         rampMouthAt(tile.x, tile.z, this.surroundings),
-        this.parkingSetbacksAt(tile.x, tile.z) ?? undefined,
+        this.kerbFacesFor(tile.x, tile.z),
       );
       for (const n of vertices.positions) positions.push(n);
       for (const n of vertices.colors) colors.push(n);

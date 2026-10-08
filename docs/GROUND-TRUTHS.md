@@ -269,6 +269,28 @@ MUTCD citations below use 11th-edition section numbers.
   junction mouth where there is no crosswalk, on either side of the junction
   (UVC §11-1003). — [road-model.md](world-sim/road-model.md);
   `src/render/roadsmesh.ts`, `src/render/parked.ts`
+- A parking lane is parallel, angled or head-in, and the style is part of
+  the road's profile (a field on its parking piece, parallel when absent), so
+  an old save reads as it was. The stall is 2.6 × 5.5 m (8.5 × 18 ft). An
+  angled lane parks at 60° for backing in: the lane is 6.0 m deep, one stall
+  per 3.0 m of kerb, and each stall's kerb end lies upstream of its travel
+  end, so a car leaves nose-first with the flow. A head-in lane parks at 90°:
+  5.5 m deep, one stall per 2.6 m. The deeper lane counts against the tile's
+  width like any piece, and the road tool refuses a profile that does not
+  fit. An angled or head-in stall is marked only where its whole footprint
+  stands clear of the no-parking zones. — [road-model.md](world-sim/road-model.md);
+  `src/shared/roadprofile.ts`, `src/render/roadsmesh.ts`
+- Every block face that marks stalls and has room for an accessible one
+  marks accessible ones, to PROWAG R211:
+  1 for 1–25 stalls, 2 for 26–50, 3 for 51–75, 4 for 76–100, 5 for 101–150,
+  6 for 151–200, and 4% beyond that. They stand at the end of the block face
+  nearest a crosswalk, or nearest a junction where there is none. A parallel
+  one is 7.3 m (24 ft) long (R310.2.1); an angled one is 3.35 m (11 ft) wide
+  with a 1.5 m (5 ft) aisle (R310.4); a head-in one has a 2.4 m (8 ft) aisle
+  (R310.3). The aisle is on the passenger side and hatched white. Each one
+  carries the International Symbol of Accessibility on a blue square
+  (MUTCD 3B.22 ¶08–09), drawn as geometry. — [road-model.md](world-sim/road-model.md);
+  `src/render/roadsmesh.ts`
 - A motorway is ONE carriageway, not a road with two halves. Highway and ramp
   are the only classes whose lane range counts a single direction, they admit
   no median piece, and a dual carriageway is two runs laid side by side and

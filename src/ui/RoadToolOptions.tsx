@@ -26,7 +26,7 @@ import {
   type TramChoice,
 } from '../shared/roadprofile';
 import { insertionLossDb, SOUND_WALL_HEIGHTS_M } from '../shared/soundwall';
-import type { RoadTier } from '../shared/types';
+import type { ParkingStyle, RoadTier } from '../shared/types';
 import { offersGrid, ROAD_TOOL_TO_TIER } from '../tools/tools';
 import type { ToolMode } from './store';
 import { useCityStore } from './store';
@@ -114,6 +114,16 @@ const MIDDLE_CHOICES: readonly {
   { value: 'none', label: 'None', piece: null },
   { value: 'median', label: 'Median', piece: 'median' },
   { value: 'turn', label: 'Turn lane', piece: 'centreTurn' },
+];
+
+const PARKING_STYLE_CHOICES: readonly { value: ParkingStyle; label: string; title: string }[] = [
+  { value: 'parallel', label: 'Parallel', title: 'Cars along the kerb' },
+  {
+    value: 'angled',
+    label: 'Angled 60°',
+    title: 'Backed in at 60°, leaving nose-first with the traffic — a 6.0 m deep lane',
+  },
+  { value: 'headIn', label: 'Head-in 90°', title: 'Nose to the kerb — a 5.5 m deep lane' },
 ];
 
 const TRAM_CHOICES: readonly { value: TramChoice; label: string; title: string }[] = [
@@ -409,6 +419,23 @@ function ProfileSections({ tier }: { tier: RoadTier }): JSX.Element {
       {offersKerbside ? (
         <Section title="Kerbside">
           {offersParking ? sideRow('Parking', 'parking', current.parking) : null}
+          {offersParking && current.parking !== 'none' ? (
+            <Row label="Style">
+              <div className="flex gap-1" role="group" aria-label="Parking style">
+                {PARKING_STYLE_CHOICES.map((choice) => (
+                  <Choice
+                    key={choice.value}
+                    title={choice.title}
+                    pressed={current.parkingStyle === choice.value}
+                    refusal={refusalOf({ parkingStyle: choice.value })}
+                    onClick={() => setEdits({ parkingStyle: choice.value })}
+                  >
+                    {choice.label}
+                  </Choice>
+                ))}
+              </div>
+            </Row>
+          ) : null}
           {offersBike ? sideRow('Bike', 'bike', current.bike) : null}
           {offersFootways ? (
             <Row label="Footways">

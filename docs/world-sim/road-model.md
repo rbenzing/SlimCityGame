@@ -116,7 +116,7 @@ widths urban design guidance uses:
 | ----------- | ------------- | ---------------------------------------- |
 | travel lane | 3.5 m         | 3.0–3.6 m                                |
 | centre-turn | 3.6 m         | —                                        |
-| parking     | 2.25 m        | 2.1–2.6 m                                |
+| parking     | 2.25 m        | 2.1–2.6 m parallel; see below for angled |
 | bike        | 1.6 m         | 1.5–1.8 m                                |
 | bus / tram  | 3.5 m         | —                                        |
 | median      | 1.8 m         | 1.2 m minimum, 4.9 m to hold a turn lane |
@@ -137,6 +137,28 @@ offers 2/4/6, an arterial or a divided road what its own range holds inside
 those steps, a one-way 1/2/3, a rural or local street 2, a dirt or alley road
 2 only. A motorway offers 3/4/5/6 — every step of its range, because those
 are ONE carriageway's lanes and each is a road somebody builds.
+
+A parking lane is laid in one of three **parking styles**, and the style is
+part of the profile: a field on the parking piece, `parallel` where it is
+absent, so a profile saved before styles existed reads exactly as it did. Both
+kerbs of a road take the same style. Every style parks the same car, the
+common 8.5 × 18 ft (2.6 × 5.5 m) stall, and the lane is as deep as that stall
+needs at its angle:
+
+| style    | angle to the kerb | lane depth | kerb per stall | where it comes from                                  |
+| -------- | ----------------- | ---------- | -------------- | ---------------------------------------------------- |
+| parallel | 0°                | 2.25 m     | 6.7 m          | the parking piece above                              |
+| angled   | 60°, backed in    | 6.0 m      | 3.0 m          | 5.5·sin 60° + 2.6·cos 60° ≈ 6.0; 2.6 ÷ sin 60° ≈ 3.0 |
+| head-in  | 90°               | 5.5 m      | 2.6 m          | the stall itself                                     |
+
+An angled lane is parked by **backing in**: the driver passes the stall,
+reverses into it, and leaves nose-first with the traffic, which is how a
+back-in angle is signed (MUTCD R7-10, used beside bike lanes in §9B.10) and
+why each stall's kerb end lies upstream of its travel end. The style's depth
+counts against the tile like any other piece, so the width budget alone
+decides what fits: a Two-Lane with footways is 11.25 m, which takes an angled
+lane on one kerb (17.25 m) but not on both (23.25 m, too wide for the tile),
+and head-in likewise (16.75 m one side, 22.25 m both).
 
 A profile's width against the tile decides what it can be:
 
@@ -1118,6 +1140,38 @@ per-tier:
   little room for an end stall each, as many legal stalls as fit are marked
   from one zone's edge, and none where not even one fits. The lane's 2.25 m sits inside
   the figure's 8 ft (2.4 m) stall width.
+- **An angled or head-in lane marks its stalls at their angle** (§3B.27).
+  Each stall line runs from the parking lane line, which stays as the lane's
+  travel edge, toward the kerb at the stall's angle and stops at least 0.3 m
+  short of the outer edge: at 60° every 3.0 m of kerb on an angled lane, at
+  90° every 2.6 m on a head-in one, pitched from world metre 0 like the
+  parallel ticks. On an angled lane the kerb end of each line lies upstream
+  of its travel end for the traffic in the lane beside it: on a two-way road
+  the direction of travel on that side, and on a one-way road the way it was
+  drawn, read from its stored flow and never from its shape. A stall is
+  marked only where its whole footprint, the slant's length along the kerb
+  included, stands clear of the no-parking zones below and the lane is its
+  full depth (a turn pocket carved from the lane leaves it shallower).
+- **Every block face that marks stalls marks accessible ones**, to the
+  count of PROWAG R211: 1 for 1–25 marked stalls, 2 for 26–50, 3 for
+  51–75, 4 for 76–100, 5 for 101–150, 6 for 151–200, and 4% (rounded up)
+  beyond that. A block face is one kerb's parking along a straight run, from
+  one end of its parking lane to the other — a junction or the road's end at
+  each. The accessible stalls stand together at the end of the face nearest
+  a crosswalk; where neither or both ends have one, at the end that meets a
+  junction; where that still ties, at the end with the lower world
+  coordinate. A parallel one is 7.3 m (24 ft, R310.2.1) long: the end stall,
+  lengthened, still inside the 6.1–7.9 m rule, and where the pitch leaves the
+  stall beside it too short the no-parking zone grows instead. An angled one
+  is 3.35 m (11 ft) wide across the stall with a 1.5 m (5 ft) access aisle
+  (R310.4); a head-in one is 2.6 m wide with a 2.4 m (8 ft) aisle (R310.3).
+  The aisle is on the passenger side of the parked car and hatched with
+  white diagonal lines, and the stalls after the accessible ones resume on
+  the regular pitch. Each accessible stall carries the International Symbol
+  of Accessibility, a white wheelchair on a blue square, centred in the
+  stall and read from the travel lane (MUTCD 3B.22 ¶08–09). One function
+  lays the face — regular stalls, accessible stalls and aisles — and the
+  paint and the parked cars both read it.
 - **No parking at a junction.** The Uniform Vehicle Code (§11-1003) forbids
   standing within 20 ft (6.1 m) of a crosswalk at an intersection, and within
   30 ft (9.1 m) on the approach to a stop sign or a traffic signal; the 2009
@@ -1298,6 +1352,17 @@ capacity expressed in vehicles per hour converts by one constant:
   word (for instance Oklahoma, 47 O.S. §11-1003): 20 ft (6.1 m) from a
   crosswalk at an intersection, and 30 ft (9.1 m) on the approach to a stop
   sign or a traffic signal.
+- **Angled and head-in stalls**, from the common 8.5 × 18 ft (2.6 × 5.5 m)
+  stall laid at its angle: 60° gives a lane 5.5·sin 60° + 2.6·cos 60° ≈
+  6.0 m deep and 2.6 ÷ sin 60° ≈ 3.0 m of kerb per stall; 90° gives 5.5 m and
+  2.6 m. The 60° angle is backed into (MUTCD R7-10 back-in parking, §9B.10).
+- **Accessible stalls**, from the US Access Board's public right-of-way rule
+  (PROWAG): the count per block face from Table R211; a parallel space
+  24 ft (7.3 m) long (R310.2.1); a head-in space with an 8 ft (2.4 m) access
+  aisle (R310.3); an angled space 11 ft (3.35 m) wide with a 5 ft (1.5 m)
+  aisle (R310.4). The symbol is the MUTCD's International Symbol of
+  Accessibility pavement marking, white, on a blue square (2023 §3B.22
+  ¶08–09).
 - **Turn-lane storage**, from AASHTO's 15 m minimum plus one queued vehicle
   per 20 s of red at 7.5 m each: a local approach stores 2 cars (≈ 30 m) —
   an approach zone of 2 tiles; a collector 4–5 cars (≈ 50 m) — 3 tiles; an
@@ -1356,8 +1421,10 @@ and a height ([sound-barriers.md](../game-design/features/sound-barriers.md)).
 The drawer's road category shows classes, not tiers; picking one lays its
 default profile. The tool options panel grows a profile editor — lane
 pieces as a strip across the tile's width budget, with per-side toggles for
-parking, bike lanes, lamps and sidewalks and a median picker — and its
-edits apply to the next drag. The path modes are `Straight`, `L-path`, `Grid`
+parking, bike lanes, lamps and sidewalks, a parking style (parallel, angled
+60° back-in or head-in 90°) while either kerb parks, and a median picker — and
+its edits apply to the next drag. A choice that composes a road too wide for
+the tile is offered disabled, with the reason. The path modes are `Straight`, `L-path`, `Grid`
 (not for a motorway) and `Curve`, which lays a road off the grid
 ([road-network.md](road-network.md),
 [interaction.md](../ux/interaction.md#curve-and-free-road-modes)). A replace

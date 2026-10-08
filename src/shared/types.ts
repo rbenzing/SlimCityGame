@@ -1237,12 +1237,20 @@ export type LanePieceKind =
 /** Which way a piece flows, relative to the tile's stored flow direction. */
 export type LaneFlow = 'fwd' | 'back' | 'both';
 
+/**
+ * How a parking lane parks its cars: along the kerb, at 60° backed in, or at
+ * 90° nose to the kerb.
+ */
+export type ParkingStyle = 'parallel' | 'angled' | 'headIn';
+
 export interface LanePiece {
   kind: LanePieceKind;
   /** Metres across the tile. */
   width: number;
   /** Travel/bus/bike/tram pieces only; omitted means `both` for a shared piece. */
   flow?: LaneFlow;
+  /** A parking piece's style; omitted means `parallel`. */
+  parking?: ParkingStyle;
   /** A travel lane with tram rails embedded in it, so cars and trams share the piece. */
   tram?: boolean;
   /** A sound wall's height, metres, from the road it stands beside. */

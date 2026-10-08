@@ -28,7 +28,8 @@ import roadsData from '../data/roads.json';
 import type { RoadProfile } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
-import { clearOfNoParking, ROAD_Y_OFFSET, type ParkingSetbacks } from './roadsmesh';
+import { ROAD_Y_OFFSET } from './roadsmesh';
+import { clearOfNoParking, type KerbStall, type ParkingSetbacks } from './kerbstalls';
 import { parkingLaneOffset } from '../shared/roadprofile';
 import { isFarmEntry, isHouseEntry } from './archetypes';
 import {
@@ -393,6 +394,8 @@ export interface StallPlacement {
   baseYaw: number;
   /** Bay center's along-edge coordinate, meters from the edge start. */
   along: number;
+  /** Whether the car stands across the kerb at an angled or head-in stall's angle. */
+  atAngle?: boolean;
 }
 
 /**
@@ -602,7 +605,9 @@ export function computeRoadsideStallPlacements(
  * car to a marked stall, centred in it — every stall whose middle lies along
  * this frontage, so two neighbours never claim the same one. `stalls` are the
  * street's own, as world coordinates along the road; `tileAllows` vets the
- * tile each car would stand in, as for the unmarked row.
+ * tile each car would stand in, as for the unmarked row. A car in a parallel
+ * stall lies along the kerb; one in an angled or head-in stall takes its
+ * stall's own yaw.
  */
 export function computeMarkedStallPlacements(
   x: number,
@@ -611,18 +616,18 @@ export function computeMarkedStallPlacements(
   d: number,
   edge: RoadFacingEdge,
   tier: RoadTier,
-  stalls: readonly { from: number; to: number }[],
+  stalls: readonly KerbStall[],
   tileAllows?: (tileX: number, tileZ: number) => boolean,
   profile?: RoadProfile,
   laneOffsetM?: number,
 ): StallPlacement[] {
   const frame = edgeFrameFor(edge.side, x, z, w, d);
-  const baseYaw = EDGE_BASE_YAW[edge.side] + Math.PI / 2;
+  const parallelYaw = EDGE_BASE_YAW[edge.side] + Math.PI / 2;
   const depth = roadsideDepthTiles(tier, profile, laneOffsetM);
   const length = edge.edgeTiles * TILE_METERS;
   const placements: StallPlacement[] = [];
   for (const stall of [...stalls].sort((a, b) => a.from - b.from)) {
-    const along = (stall.from + stall.to) / 2 - frame.edgeStart;
+    const along = stall.centre - frame.edgeStart;
     if (along < 0 || along >= length) continue;
     const { x: worldX, z: worldZ } = frameToWorld(frame, along, depth);
     if (
@@ -630,9 +635,30 @@ export function computeMarkedStallPlacements(
       !tileAllows(Math.floor(worldX / TILE_METERS), Math.floor(worldZ / TILE_METERS))
     )
       continue;
-    placements.push({ worldX, worldZ, baseYaw, along });
+    placements.push(
+      stall.yaw === null
+        ? { worldX, worldZ, baseYaw: parallelYaw, along }
+        : { worldX, worldZ, baseYaw: stall.yaw, along, atAngle: true },
+    );
   }
   return placements;
+}
+
+/**
+ * How far a car reaches along the road from its centre, either way: half its
+ * length for one lying along it, and what its length and width make of the
+ * angle for one standing across the kerb at `yaw`.
+ */
+export function carHalfAlongRoad(
+  halfLength: number,
+  halfWidth: number,
+  yaw: number,
+  alongX: boolean,
+): number {
+  const [nx, nz] = [Math.sin(yaw), Math.cos(yaw)];
+  return alongX
+    ? Math.abs(halfLength * nx) + Math.abs(halfWidth * nz)
+    : Math.abs(halfLength * nz) + Math.abs(halfWidth * nx);
 }
 
 /**
@@ -642,7 +668,7 @@ export function computeMarkedStallPlacements(
  */
 export interface KerbParking {
   parkingSetbacksAt(x: number, z: number): ParkingSetbacks | null;
-  parkingStallsAt(x: number, z: number, side: KerbSide): { from: number; to: number }[] | null;
+  parkingStallsAt(x: number, z: number, side: KerbSide): readonly KerbStall[] | null;
 }
 
 /** Pushes a quad specified in an edge's (along, depthTiles) space instead of raw world x/z. */
@@ -808,11 +834,20 @@ export class ParkedCarRenderer {
    * matrix, so reading the mesh would report every unoccupied car at the origin
    * — the placement is what the kerb rules are about, not the occupancy.
    */
-  stallWorldPositions(buildingId: number): { x: number; z: number }[] {
-    return (this.buildingSlots.get(buildingId)?.stalls ?? []).map((s) => ({
-      x: s.matrix.elements[12] ?? 0,
-      z: s.matrix.elements[14] ?? 0,
-    }));
+  stallWorldPositions(
+    buildingId: number,
+  ): { x: number; z: number; yaw: number; length: number; width: number }[] {
+    return (this.buildingSlots.get(buildingId)?.stalls ?? []).map((s) => {
+      s.matrix.decompose(_position, _quaternion, _scale);
+      return {
+        x: _position.x,
+        z: _position.z,
+        // A turn about the vertical alone: twice the half-angle the quaternion carries.
+        yaw: 2 * Math.atan2(_quaternion.y, _quaternion.w),
+        length: _scale.z,
+        width: _scale.x,
+      };
+    });
   }
 
   /** How many of a building's stalls hold a vehicle right now. */
@@ -1019,12 +1054,15 @@ export class ParkedCarRenderer {
       // No car stands inside a junction's no-parking zone, nose or tail.
       const tileX = Math.floor(placement.worldX / TILE_METERS);
       const tileZ = Math.floor(placement.worldZ / TILE_METERS);
+      const setbacks = this.kerbParking?.parkingSetbacksAt(tileX, tileZ) ?? null;
       const clear = kerbCarClearOfJunctions(
         placement.worldX,
         placement.worldZ,
         side,
-        sz / 2,
-        this.kerbParking?.parkingSetbacksAt(tileX, tileZ) ?? null,
+        placement.atAngle && setbacks
+          ? carHalfAlongRoad(sz / 2, sx / 2, placement.baseYaw, setbacks.alongX)
+          : sz / 2,
+        setbacks,
       );
       if (!clear) continue;
       const pool = this.poolFor(kind);
@@ -1065,10 +1103,10 @@ export class ParkedCarRenderer {
     tiles: { w: number; d: number },
     edge: RoadFacingEdge,
     side: KerbSide,
-  ): { from: number; to: number }[] | null {
+  ): KerbStall[] | null {
     if (!this.kerbParking) return null;
     const alongX = edge.side === 'N' || edge.side === 'S';
-    const out: { from: number; to: number }[] = [];
+    const out: KerbStall[] = [];
     let any = false;
     for (let i = 0; i < edge.edgeTiles; i++) {
       const tx = alongX
