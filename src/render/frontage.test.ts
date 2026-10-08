@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   findRoadFacingEdge,
   findStreetFacingEdge,
+  localSideOf,
   sidewalkDepthMeters,
   streetLookupOf,
   vergeDepthMeters,
@@ -128,5 +129,21 @@ describe('findRoadFacingEdge', () => {
 
   it('is null for a lot no street borders', () => {
     expect(findRoadFacingEdge(4, 4, 2, 2, roads([[9, 9]]))).toBeNull();
+  });
+});
+
+describe('localSideOf', () => {
+  it('is the identity for an upright building', () => {
+    for (const side of ['N', 'E', 'S', 'W'] as const) expect(localSideOf(side, 0)).toBe(side);
+  });
+
+  it('names the building side a quarter turn carries onto each map side', () => {
+    // Turned a quarter, a building's east side faces north on the map.
+    expect(localSideOf('N', 1)).toBe('E');
+    expect(localSideOf('W', 1)).toBe('N');
+    expect(localSideOf('S', 1)).toBe('W');
+    expect(localSideOf('E', 1)).toBe('S');
+    expect(localSideOf('N', 2)).toBe('S');
+    expect(localSideOf('N', 3)).toBe('W');
   });
 });

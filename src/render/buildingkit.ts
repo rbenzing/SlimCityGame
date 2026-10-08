@@ -19,15 +19,11 @@ import {
   BuildingInstance,
   BuildingState,
 } from '../shared/types';
-import {
-  computeSetbacks,
-  frontageSetbackFor,
-  InstancedSlotPool,
-  type SetbackBox,
-} from './massing';
+import { computeSetbacks, frontageSetbackFor, InstancedSlotPool, type SetbackBox } from './massing';
 import { TILE_METERS } from '../shared/constants';
+import { footprintForRotation } from '../shared/footprint';
 import { maxHeightUnderBody } from './footprint';
-import { findRoadFacingEdge, type Side } from './frontage';
+import { findRoadFacingEdge, localSideOf, NO_STREETS, type Side } from './frontage';
 import { materialHex } from './palette';
 import { partsFor, type BuildingPart } from './archetypes';
 
@@ -203,11 +199,7 @@ export function computePartPlacements(
       case 'roofArray': {
         out.push({
           part,
-          size: [
-            topBox.w * ARRAY_INSET_FRACTION,
-            ARRAY_HEIGHT_M,
-            topBox.d * ARRAY_INSET_FRACTION,
-          ],
+          size: [topBox.w * ARRAY_INSET_FRACTION, ARRAY_HEIGHT_M, topBox.d * ARRAY_INSET_FRACTION],
           offset: [0, roofY + ARRAY_HEIGHT_M / 2, 0],
         });
         break;
@@ -264,7 +256,11 @@ export function computePartPlacements(
           out.push({
             part,
             size: [TANK_DIAMETER_M, TANK_HEIGHT_M, TANK_DIAMETER_M],
-            offset: [alongX ? along : nx * outDist, TANK_HEIGHT_M / 2, alongX ? nz * outDist : along],
+            offset: [
+              alongX ? along : nx * outDist,
+              TANK_HEIGHT_M / 2,
+              alongX ? nz * outDist : along,
+            ],
           });
         }
         break;
@@ -462,24 +458,28 @@ export class BuildingKitRenderer {
     if (!entry) return;
     if (building.state !== BuildingState.Active) return;
 
-    const frontage = frontageSetbackFor(entry, building.x, building.z, this.roadAt);
+    const frontage = frontageSetbackFor(
+      entry,
+      building.x,
+      building.z,
+      this.roadAt,
+      NO_STREETS,
+      building.rotation,
+    );
     const { boxes } = computeSetbacks(entry, building.id, frontage);
     const baseBox = boxes[0];
     const topBox = boxes[boxes.length - 1];
     if (!baseBox || !topBox) return;
 
-    const edge = findRoadFacingEdge(
-      building.x,
-      building.z,
-      entry.footprint.w,
-      entry.footprint.d,
-      this.roadAt,
-    );
-    const placements = computePartPlacements(entry, baseBox, topBox, edge?.side ?? null);
+    // The edge is found on the map; the parts sit in the building's own frame.
+    const lot = footprintForRotation(entry, building.rotation);
+    const edge = findRoadFacingEdge(building.x, building.z, lot.w, lot.d, this.roadAt);
+    const localSide = edge ? localSideOf(edge.side, building.rotation) : null;
+    const placements = computePartPlacements(entry, baseBox, topBox, localSide);
     if (placements.length === 0) return;
 
-    const centerX = (building.x + entry.footprint.w / 2) * TILE_METERS;
-    const centerZ = (building.z + entry.footprint.d / 2) * TILE_METERS;
+    const centerX = (building.x + lot.w / 2) * TILE_METERS;
+    const centerZ = (building.z + lot.d / 2) * TILE_METERS;
     // The kit stands where the body stands: on the ground under the base
     // tier, as the instancer seats it, so a dock or a pump never hangs over
     // the downhill side of a lot its body is level on.

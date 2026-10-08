@@ -146,6 +146,17 @@ export function findRoadFacingEdge(
   return { side: 'W', edgeTiles: d, roadTileX: x - 1, roadTileZ: z + west.first };
 }
 
+const SIDES_CLOCKWISE: readonly Side[] = ['N', 'E', 'S', 'W'];
+
+/**
+ * A side on the map, named in the frame of a building turned `rotation`
+ * quarter turns: the side of its own unrotated footprint that ends up there.
+ * A quarter turn carries the local east side to the map's north.
+ */
+export function localSideOf(side: Side, rotation: 0 | 1 | 2 | 3): Side {
+  return SIDES_CLOCKWISE[(SIDES_CLOCKWISE.indexOf(side) + rotation) % 4]!;
+}
+
 /** The edge a home fronts: the same search, over streets only — a drive never meets a railway. */
 export function findStreetFacingEdge(
   x: number,

@@ -191,7 +191,8 @@ import {
   type TerraformSetCommand,
 } from '../world/terraform';
 import { FieldSim } from './fields';
-import { BuildingRegistry, footprintForRotation, settleBuildingDelta } from './buildings';
+import { footprintForRotation } from '../shared/footprint';
+import { BuildingRegistry, settleBuildingDelta } from './buildings';
 import { computeDemand, jobRoom } from './demand';
 import { GrowthSystem, type GrowthSupply } from './growth';
 import { ServiceSim, nearestRoadTile } from './services';

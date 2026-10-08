@@ -311,6 +311,20 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 
 ## 10. History (newest first)
 
+### A turned building stands on its own lot (found and fixed 2026-10-08)
+
+Found by the screenshots of the one-lot blocks: a building turned a quarter
+(rotation 1 or 3) is stamped by the sim with its footprint's width and depth
+swapped, but the renderer seated it on the catalog's unturned footprint, so
+a non-square one stood half the difference off its lot, over its neighbour.
+Since the ninth lots slice every commercial and dense building on a street
+running north to south grows turned, so a turned shop, strip or restaurant
+was drawn half a tile off, and so was a turned airport. `footprintForRotation`
+moved to `src/shared/footprint.ts`, and everything that places a building on
+the map uses it: the body's seat, its frontage setback (swapped back into the
+body's own axes), the lot pad, the parking bays and kerb cut, the shopfront
+kit's road side, props, landmarks, utility kits and the selection outline.
+
 ### A block holds the floor it is drawn with (built 2026-10-07)
 
 The mid-rise, tower and mixed-use homes counted every storey at the ground

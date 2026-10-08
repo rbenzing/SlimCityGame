@@ -991,3 +991,45 @@ describe('a tower stands on a podium', () => {
     expect(computeSetbacks({ ...tower(1), kind: 'midrise' }, 7).podium).toBeUndefined();
   });
 });
+
+describe('frontageSetbackFor on a building turned a quarter', () => {
+  const shop = entry({ category: 'com', zone: 3, footprint: { w: 1, d: 2 } });
+  // Turned, the 1x2 lot lies 2 tiles along x and 1 along z; a road down its west edge.
+  const westRoad = roadAtTiles([[4, 5]]);
+  const body = bodyMetresFor(shop);
+  const marginTiles = (2 * TILE_METERS - body.d) / 2 / TILE_METERS;
+  const setbackM = (BAY_DEPTH_TILES.com - marginTiles) * TILE_METERS;
+
+  it('finds the road-facing edge on the turned lot, not the upright one', () => {
+    // Upright the lot holds (5,5) and (5,6), so (6,4) is nowhere near it; turned
+    // it holds (5,5) and (6,5), and (6,4) is its north neighbour.
+    const roadAbove = roadAtTiles([[6, 4]]);
+    expect(frontageSetbackFor(shop, 5, 5, roadAbove, undefined, 0)).toEqual({
+      spanXM: 0,
+      spanZM: 0,
+      centerXM: 0,
+      centerZM: 0,
+    });
+    expect(frontageSetbackFor(shop, 5, 5, roadAbove, undefined, 1).centerZM).toBeGreaterThan(0);
+  });
+
+  it('shifts the centre away from the road on the map and cuts the body along its own depth', () => {
+    const setback = frontageSetbackFor(shop, 5, 5, westRoad, undefined, 1);
+    expect(setback.centerXM).toBeCloseTo(setbackM / 2, 9);
+    expect(setback.centerZM).toBe(0);
+    // The map's x axis is the body's local z, so the span comes off the local depth.
+    expect(setback.spanXM).toBe(0);
+    expect(setback.spanZM).toBeCloseTo(setbackM, 9);
+    const { boxes } = computeSetbacks(shop, 1, setback);
+    expect(boxes[0]!.w).toBeCloseTo(body.w, 9);
+    expect(boxes[0]!.d).toBeCloseTo(body.d - setbackM, 9);
+  });
+
+  it('leaves the stand-off from the road the same as the upright building facing it', () => {
+    // Upright 1x2 lot with the road on its north edge.
+    const upright = frontageSetbackFor(shop, 5, 5, roadAtTiles([[5, 4]]), undefined, 0);
+    const turned = frontageSetbackFor(shop, 5, 5, westRoad, undefined, 1);
+    expect(turned.spanZM).toBeCloseTo(upright.spanZM, 9);
+    expect(turned.centerXM).toBeCloseTo(upright.centerZM, 9);
+  });
+});

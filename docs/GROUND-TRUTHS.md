@@ -1070,6 +1070,12 @@ MUTCD citations below use 11th-edition section numbers.
   [ADR-0006](engineering/adr/0006-rendering-is-instancedmesh-everywhere-with-gpu-id-picking.md),
   [asset-guidelines.md](art/asset-guidelines.md),
   [rendering-architecture.md](visual-render/rendering-architecture.md)
+- A building turned a quarter (rotation 1 or 3) stands on its catalog
+  footprint with width and depth swapped. Whatever places it on the map —
+  its centre, its pad, its bays, its road-facing edge — uses that turned
+  footprint (`footprintForRotation`, shared by the sim and the renderer);
+  only the body's own box, sized before the rotation is applied, keeps the
+  catalog's axes. — `src/shared/footprint.ts`, `src/render/buildings.ts`
 - Picking is a CPU raycast against the instanced mesh cross-checked against a
   24-bit RGB id colour per instance, never a per-object mesh. —
   [ADR-0006](engineering/adr/0006-rendering-is-instancedmesh-everywhere-with-gpu-id-picking.md);

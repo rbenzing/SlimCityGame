@@ -23,6 +23,7 @@ import * as THREE from 'three';
 import { BuildingState } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { footprintForRotation } from '../shared/footprint';
 import { pushConformingQuad, conformingQuadVertexCount } from './groundquad';
 import { materialUnit, type MaterialName } from './palette';
 import { massingLifecycleTint } from './massing';
@@ -90,11 +91,12 @@ export interface LotBounds {
  * a neighbour, and no less, so it cannot leave a gap. Pure.
  */
 export function lotBounds(building: BuildingInstance, entry: BuildingCatalogEntry): LotBounds {
+  const { w, d } = footprintForRotation(entry, building.rotation);
   return {
     x0: building.x * TILE_METERS,
     z0: building.z * TILE_METERS,
-    x1: (building.x + entry.footprint.w) * TILE_METERS,
-    z1: (building.z + entry.footprint.d) * TILE_METERS,
+    x1: (building.x + w) * TILE_METERS,
+    z1: (building.z + d) * TILE_METERS,
   };
 }
 
@@ -191,7 +193,17 @@ export class LotRenderer {
       // what grows on it (layFarmGround), and is never darkened like a
       // derelict wall — a fallow field is grass, not a scorch mark.
       const lay = (r: FarmRect, y: number, name: MaterialName): void =>
-        pushConformingQuad(positions, colors, r.x0, r.z0, r.x1, r.z1, y, materialUnit(name), this.heightAt);
+        pushConformingQuad(
+          positions,
+          colors,
+          r.x0,
+          r.z0,
+          r.x1,
+          r.z1,
+          y,
+          materialUnit(name),
+          this.heightAt,
+        );
       layFarmGround(farm, building.state, lay);
       this.addMesh(building.id, positions, colors);
       return;
@@ -231,7 +243,8 @@ export class LotRenderer {
       };
       for (const strip of plan.vergeLawn) lay(strip, LOT_Y_OFFSET, surface);
       for (const path of plan.paths) lay(path, DRIVE_Y_OFFSET, 'cleanConcrete');
-      for (const patio of plan.yard.patios) lay(patio, DRIVE_Y_OFFSET, PATIO_SURFACE[plan.yard.patioStone]);
+      for (const patio of plan.yard.patios)
+        lay(patio, DRIVE_Y_OFFSET, PATIO_SURFACE[plan.yard.patioStone]);
       for (const drive of plan.drives) {
         lay(drive.rect, DRIVE_Y_OFFSET, DRIVE_SURFACE[plan.surface]);
         // Across the footway the drive is always paved: the kerb is dropped
@@ -278,7 +291,8 @@ export function layFarmGround(
     lay(plan.field, LOT_Y_OFFSET, 'brightVegetation');
   } else if (plan.kind === 'crops') {
     const crop: MaterialName = plan.ripe ? 'ripeGrain' : 'cropGreen';
-    for (const band of cropBands(plan)) lay(band.rect, LOT_Y_OFFSET, band.furrow ? 'tilledSoil' : crop);
+    for (const band of cropBands(plan))
+      lay(band.rect, LOT_Y_OFFSET, band.furrow ? 'tilledSoil' : crop);
   } else {
     lay(plan.field, LOT_Y_OFFSET, plan.kind === 'orchard' ? 'mownLawn' : 'pasture');
   }

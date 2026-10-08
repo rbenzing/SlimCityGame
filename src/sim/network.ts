@@ -47,7 +47,8 @@ import {
   tileIndex,
 } from '../shared/constants';
 import { averageOutputMW } from '../shared/power';
-import { footprintForRotation, lotTiles } from './buildings';
+import { footprintForRotation } from '../shared/footprint';
+import { lotTiles } from './buildings';
 import { roadStep } from '../world/roads';
 import { cellTile, freeCellsOn, neighbours, roadCellsOf } from '../world/roadnet';
 import type { RoadCells } from '../world/roadnet';

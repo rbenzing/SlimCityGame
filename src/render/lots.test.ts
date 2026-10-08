@@ -93,15 +93,15 @@ describe('lotSurfaceFor', () => {
   it('gives industry a yard, commerce a car park, apartments a forecourt', () => {
     expect(lotSurfaceFor(entry({ category: 'ind' }))).toBe('darkAsphalt');
     expect(lotSurfaceFor(entry({ category: 'com' }))).toBe('brightAsphalt');
-    expect(
-      lotSurfaceFor(entry({ category: 'res', zone: ZoneType.ResHigh, kind: 'midrise' })),
-    ).toBe('stainedConcrete');
+    expect(lotSurfaceFor(entry({ category: 'res', zone: ZoneType.ResHigh, kind: 'midrise' }))).toBe(
+      'stainedConcrete',
+    );
   });
 
   it('gives a house a garden rather than paving it over', () => {
-    expect(
-      lotSurfaceFor(entry({ category: 'res', zone: ZoneType.ResLow, kind: 'detached' })),
-    ).toBe('mownLawn');
+    expect(lotSurfaceFor(entry({ category: 'res', zone: ZoneType.ResLow, kind: 'detached' }))).toBe(
+      'mownLawn',
+    );
     expect(lotSurfaceFor(entry({ category: 'res', zone: ZoneType.ResLow, kind: 'duplex' }))).toBe(
       'mownLawn',
     );
@@ -117,13 +117,21 @@ describe('lotSurfaceFor', () => {
   });
 
   it('never paves a farm like the industry its jobs count as', () => {
-    expect(lotSurfaceFor(entry({ category: 'ind', zone: ZoneType.Agriculture, kind: 'crops' }))).toBeNull();
+    expect(
+      lotSurfaceFor(entry({ category: 'ind', zone: ZoneType.Agriculture, kind: 'crops' })),
+    ).toBeNull();
   });
 });
 
 describe('a farm’s ground', () => {
   const farmEntry = (kind: FarmKind): BuildingCatalogEntry =>
-    entry({ category: 'ind', zone: ZoneType.Agriculture, kind, level: 1, footprint: { w: 4, d: 5 } });
+    entry({
+      category: 'ind',
+      zone: ZoneType.Agriculture,
+      kind,
+      level: 1,
+      footprint: { w: 4, d: 5 },
+    });
   const dirtNorth = (_x: number, z: number): boolean => z === 5;
   const laid = (kind: FarmKind, state: BuildingState): Array<{ rect: FarmRect; name: string }> => {
     const plan = planFarm(building({ state }), farmEntry(kind), dirtNorth)!;
@@ -320,5 +328,25 @@ describe('LotRenderer', () => {
     r.setVisible(true);
     expect((scene.children[0] as THREE.Mesh).visible).toBe(true);
     expect(r.lotCount()).toBe(1);
+  });
+});
+
+describe('lotBounds on a building turned a quarter', () => {
+  it('covers the tiles of the turned footprint', () => {
+    const b = lotBounds(
+      building({ x: 4, z: 6, rotation: 1 }),
+      entry({ footprint: { w: 2, d: 3 } }),
+    );
+    expect(b.x0).toBe(4 * TILE_METERS);
+    expect(b.x1).toBe(7 * TILE_METERS);
+    expect(b.z0).toBe(6 * TILE_METERS);
+    expect(b.z1).toBe(8 * TILE_METERS);
+  });
+
+  it('keeps the upright and half-turn bounds the same', () => {
+    const e = entry({ footprint: { w: 2, d: 3 } });
+    expect(lotBounds(building({ rotation: 2 }), e)).toEqual(
+      lotBounds(building({ rotation: 0 }), e),
+    );
   });
 });

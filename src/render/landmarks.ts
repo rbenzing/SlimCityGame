@@ -45,6 +45,7 @@
 import * as THREE from 'three';
 import { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { footprintForRotation } from '../shared/footprint';
 import { InstancedSlotPool } from './massing';
 import { materialHex, materialUnit } from './palette';
 
@@ -900,10 +901,11 @@ export class LandmarkRenderer {
     if (!kit) return; // registry says landmark, but no matching catalog entry was provided — nothing to build
 
     const entry = kit.entry;
-    const centerX = (building.x + entry.footprint.w / 2) * TILE_METERS;
-    const centerZ = (building.z + entry.footprint.d / 2) * TILE_METERS;
-    const groundY = this.heightAt(centerX, centerZ);
     const rotation = building.rotation;
+    const lot = footprintForRotation(entry, rotation);
+    const centerX = (building.x + lot.w / 2) * TILE_METERS;
+    const centerZ = (building.z + lot.d / 2) * TILE_METERS;
+    const groundY = this.heightAt(centerX, centerZ);
 
     const roofMonitor = this.placeAt(
       kit.pools.roofMonitor,

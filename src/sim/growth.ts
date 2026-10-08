@@ -29,7 +29,8 @@ import type {
 } from '../shared/types';
 import { farmKindOf } from '../shared/buildingkind';
 import { PLATTED_ZONES, platCandidates } from '../shared/lots';
-import { BuildingRegistry, footprintForRotation, lotTiles } from './buildings';
+import { footprintForRotation } from '../shared/footprint';
+import { BuildingRegistry, lotTiles } from './buildings';
 import type { JobsBySector } from './economy';
 import {
   cityWaterUse,

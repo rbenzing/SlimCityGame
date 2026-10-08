@@ -24,8 +24,10 @@ import {
   BuildingState,
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { footprintForRotation } from '../shared/footprint';
 import { deriveFacadeParams } from './facade';
 import { maxHeightUnderBody } from './footprint';
+import { NO_STREETS } from './frontage';
 import {
   computeSetbacks,
   CONSTRUCTING_MASSING_HEIGHT_SCALE,
@@ -535,7 +537,14 @@ export class RoofPropRenderer {
 
     // Same frontage setback as the body renderers so com/ind rooftop clutter
     // stays on the set-back roof instead of floating over the parking bays.
-    const frontage = frontageSetbackFor(entry, building.x, building.z, this.roadAt);
+    const frontage = frontageSetbackFor(
+      entry,
+      building.x,
+      building.z,
+      this.roadAt,
+      NO_STREETS,
+      building.rotation,
+    );
     const { boxes } = computeSetbacks(entry, building.id, frontage);
     const topBox = boxes[boxes.length - 1]!;
     const { floors } = deriveFacadeParams(entry, building.id);
@@ -544,8 +553,9 @@ export class RoofPropRenderer {
       building.state === BuildingState.Constructing ? CONSTRUCTING_MASSING_HEIGHT_SCALE : 1;
     const tint = massingLifecycleTint(building.state);
 
-    const centerX = (building.x + entry.footprint.w / 2) * TILE_METERS + frontage.centerXM;
-    const centerZ = (building.z + entry.footprint.d / 2) * TILE_METERS + frontage.centerZM;
+    const lot = footprintForRotation(entry, building.rotation);
+    const centerX = (building.x + lot.w / 2) * TILE_METERS + frontage.centerXM;
+    const centerZ = (building.z + lot.d / 2) * TILE_METERS + frontage.centerZM;
     // Match BuildingInstancer's seat — the highest ground under the base tier
     // itself — so roof props land on the actual roof plane on sloped lots.
     const groundY = maxHeightUnderBody(
