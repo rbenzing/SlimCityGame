@@ -58,10 +58,14 @@ are the house-scale buildings that fit a narrow lot. The player never picks a
 kind. They paint a density and lay out the
 blocks, and the shape of the blocks shapes the town.
 
-### A kind is for life
+### A kind is kept through every level-up
 
 A building keeps its kind through every level-up, as a farm keeps being a crop
 farm, and a detached house, a duplex or a fourplex keeps its lot. A duplex levels up into a better duplex, never into a house or a block.
+The one change of kind is a teardown: a detached house on a half or normal
+lot whose land reaches the estate band is replaced, at 2% a year, by a duplex
+or a fourplex on the same lot
+([lots-and-land.md](lots-and-land.md#a-small-house-on-prime-land-becomes-a-plex-built-2026-10-08)).
 What a level-up gives depends on the kind: a house-scale building gets a bigger
 or better house for the same household; a block gets more storeys and more
 homes. A commercial or dense building whose next level is larger on the ground

@@ -53,6 +53,8 @@ export const SPEED_MULTIPLIERS: Readonly<Record<0 | 1 | 2 | 4, number>> = {
 export const TICKS_PER_DAY = 200; // 10s per game day at 1x
 export const DAYS_PER_MONTH = 30;
 export const TICKS_PER_MONTH = TICKS_PER_DAY * DAYS_PER_MONTH;
+export const MONTHS_PER_YEAR = 12;
+export const TICKS_PER_YEAR = TICKS_PER_MONTH * MONTHS_PER_YEAR;
 export const SNAPSHOT_HZ = 10;
 
 export interface GameDate {

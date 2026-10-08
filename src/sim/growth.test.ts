@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SEWER_MILESTONE, tileIndex } from '../shared/constants';
+import { SEWER_MILESTONE, TICKS_PER_YEAR, tileIndex } from '../shared/constants';
 import { BuildingState, FieldId, Problem, RoadTier, ZoneType } from '../shared/types';
 import type { JobsBySector } from './economy';
 import type {
@@ -13,6 +13,7 @@ import type {
 import { SoilGrade } from '../shared/soil';
 import { BuildingRegistry } from './buildings';
 import {
+  CONVERSION_CHANCE_PER_PASS,
   GrowthSystem,
   UNLIMITED_ROOM,
   UNMETERED_SUPPLY,
@@ -2689,6 +2690,169 @@ describe('a business opens where the town has room for its jobs', () => {
         expect(p.lot).toBe('normal');
       }
     });
+  });
+});
+
+describe('a house on prime land is torn down for a plex', () => {
+  const shipped = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+  // Level 2 is left out so a house on prime land stands for conversion instead
+  // of levelling up first.
+  const catalog = shipped.filter((e) => e.level !== 2);
+  const entry = (id: string): BuildingCatalogEntry => shipped.find((e) => e.id === id)!;
+  const noDemand: DemandLevels = { res: 0, com: 0, ind: 0 };
+  const PRIME = 255;
+
+  /** A street along z = 0 and powered, watered, zoned land with the given land value below it. */
+  function lotGrid(landValue: number): GridState {
+    const g = makeGrid();
+    for (let x = 0; x < 8; x++) g.roadTier[tileIndex(x, 0)] = RoadTier.TwoLane;
+    for (let z = 1; z <= 6; z++) {
+      for (let x = 0; x < 8; x++) {
+        const i = tileIndex(x, z);
+        g.zone[i] = ZoneType.ResLow;
+        g.power[i] = 1;
+        g.watered[i] = 1;
+        g.sewered[i] = 1;
+      }
+    }
+    g.fields[FieldId.LandValue]!.fill(landValue);
+    return g;
+  }
+
+  /** Stands `id` at (0, 1) and runs one growth pass; returns what stands there afterwards. */
+  function pass(
+    id: string,
+    opts: {
+      landValue?: number;
+      roll?: number;
+      milestone?: number;
+      supply?: GrowthSupply;
+      rotation?: 0 | 1 | 2 | 3;
+    } = {},
+  ): { catalogId: string; state: BuildingState; x: number; z: number; rotation: number } {
+    const g = lotGrid(opts.landValue ?? PRIME);
+    const registry = new BuildingRegistry(catalog);
+    const rotation = opts.rotation ?? 0;
+    registry.place(g, entry(id), 0, 1, rotation, BuildingState.Active);
+    new GrowthSystem(catalog, constantRng(opts.roll ?? 0), alwaysTrue).tick(
+      g,
+      registry,
+      noDemand,
+      opts.milestone ?? 1,
+      0,
+      opts.supply,
+    );
+    const here = registry.all().filter((b) => b.x === 0 && b.z === 1);
+    expect(here).toHaveLength(1);
+    return here[0]!;
+  }
+
+  it('compounds its per-pass chance to two percent a year', () => {
+    const passesPerYear = TICKS_PER_YEAR / 10;
+    const yearly = 1 - (1 - CONVERSION_CHANCE_PER_PASS) ** passesPerYear;
+    expect(yearly).toBeCloseTo(0.02, 10);
+  });
+
+  it.each([
+    ['res-normal-1', /^res-(duplex|fourplex)-1$/],
+    ['res-normal-3', /^res-(duplex|fourplex)-1$/],
+    ['res-half-1', /^res-(duplex|fourplex)-h-1$/],
+    ['res-half-3', /^res-(duplex|fourplex)-h-1$/],
+  ])('converts %s to a level-1 plex on the same footprint', (id, plex) => {
+    const b = pass(id);
+    expect(b.catalogId).toMatch(plex);
+    expect(entry(b.catalogId).footprint).toEqual(entry(id).footprint);
+    expect([b.x, b.z, b.rotation]).toEqual([0, 1, 0]);
+    expect(b.state).toBe(BuildingState.Constructing);
+  });
+
+  it('converts a turned house to a turned plex', () => {
+    const b = pass('res-normal-t-1');
+    expect(b.catalogId).toMatch(/^res-(duplex|fourplex)-t-1$/);
+    expect(b.state).toBe(BuildingState.Constructing);
+  });
+
+  it('keeps the rotation of the house it replaces', () => {
+    const b = pass('res-normal-1', { rotation: 1 });
+    expect(b.catalogId).toMatch(/^res-(duplex|fourplex)-1$/);
+    expect(b.rotation).toBe(1);
+  });
+
+  it('draws the plex by share', () => {
+    expect(pass('res-normal-1', { roll: 0 }).catalogId).toBe('res-duplex-1');
+    // Only the roll under the conversion chance converts, so the draw's own
+    // roll is the same constant: the first plex in catalog order.
+    expect(pass('res-half-1', { roll: 0 }).catalogId).toBe('res-duplex-h-1');
+  });
+
+  it('leaves the house below the estate land value', () => {
+    expect(pass('res-normal-1', { landValue: 223 }).catalogId).toBe('res-normal-1');
+    expect(pass('res-normal-1', { landValue: 224 }).catalogId).toMatch(/^res-(duplex|fourplex)-1$/);
+  });
+
+  it.each(['res-low-1', 'res-low-3', 'res-estate-1', 'res-estate-t-1'])(
+    'leaves a %s house: no plex fits its lot',
+    (id) => {
+      expect(pass(id).catalogId).toBe(id);
+    },
+  );
+
+  it('leaves the house when the roll misses', () => {
+    expect(pass('res-normal-1', { roll: 0.5 }).catalogId).toBe('res-normal-1');
+    expect(pass('res-normal-1', { roll: CONVERSION_CHANCE_PER_PASS }).catalogId).toBe(
+      'res-normal-1',
+    );
+  });
+
+  it('leaves the house when the grid cannot carry the homes it adds', () => {
+    const none = supplyOf({ spare: 0 }, { spare: 0 }, { spare: 0 });
+    expect(pass('res-normal-1', { supply: none }).catalogId).toBe('res-normal-1');
+    expect(pass('res-normal-1', { supply: supplyOf({ spare: 0 }) }).catalogId).toBe('res-normal-1');
+    expect(
+      pass('res-normal-1', { supply: supplyOf({ spare: Infinity }, { spare: 0 }) }).catalogId,
+    ).toBe('res-normal-1');
+    expect(
+      pass('res-normal-1', {
+        milestone: SEWER_MILESTONE,
+        supply: supplyOf({ spare: Infinity }, { spare: Infinity }, { spare: 0 }),
+      }).catalogId,
+    ).toBe('res-normal-1');
+  });
+
+  it('does not count a teardown the grid cannot carry as waiting', () => {
+    const g = lotGrid(PRIME);
+    // Only the house's own lot is zoned, so no empty lot waits for supply.
+    g.zone.fill(ZoneType.None);
+    g.zone[tileIndex(0, 1)] = ZoneType.ResLow;
+    g.zone[tileIndex(0, 2)] = ZoneType.ResLow;
+    const registry = new BuildingRegistry(catalog);
+    registry.place(g, entry('res-normal-1'), 0, 1, 0, BuildingState.Active);
+    const none = supplyOf({ spare: 0 }, { spare: 0 }, { spare: 0 });
+    const growth = new GrowthSystem(catalog, constantRng(0), alwaysTrue);
+    growth.tick(g, registry, noDemand, 1, 0, none);
+    expect(growth.waitingFor(g, registry, none)).toEqual({ power: 0, water: 0, sewer: 0 });
+  });
+
+  it('waits for the plex before its milestone', () => {
+    expect(pass('res-normal-1', { milestone: 0 }).catalogId).toBe('res-normal-1');
+  });
+
+  it.each([
+    'res-duplex-1',
+    'res-duplex-h-1',
+    'res-fourplex-1',
+    'res-medium-row-1',
+    'res-multiplex-1',
+    'res-medium-1',
+    'res-high-1',
+  ])('never converts a %s', (id) => {
+    const g = lotGrid(PRIME);
+    const registry = new BuildingRegistry(catalog);
+    const e = entry(id);
+    g.zone.fill(e.zone!);
+    const placed = registry.place(g, e, 0, 1, 0, BuildingState.Active)!;
+    new GrowthSystem(catalog, constantRng(0), alwaysTrue).tick(g, registry, noDemand, 4, 0);
+    expect(registry.get(placed.id)?.catalogId).toBe(id);
   });
 });
 
