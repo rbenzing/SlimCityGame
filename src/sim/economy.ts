@@ -29,6 +29,7 @@ import {
   MAX_LOAN,
   MILESTONES,
   MONTHS_PER_YEAR,
+  RECYCLING_CREDIT_PER_UNIT,
   TICKS_PER_MONTH,
   workforceOf,
 } from '../shared/constants';
@@ -58,6 +59,12 @@ export interface EconomyTickInput {
    * its size's upkeep, which is what happened before profiles existed.
    */
   profileOf?: (id: number) => RoadProfile | null;
+  /**
+   * Hands over the recycling units recovered since the last month boundary,
+   * clearing the tally. Called once, at the month boundary only, so each
+   * month's recovery is credited exactly once. Omitted, nothing is credited.
+   */
+  takeRecoveredUnits?: () => number;
 }
 
 export interface EconomyTickResult {
@@ -249,7 +256,8 @@ export class EconomySystem {
           }
         }
       }
-      const income = rawIncome * landValueFactor + taxCorrection;
+      const recyclingCredit = (input.takeRecoveredUnits?.() ?? 0) * RECYCLING_CREDIT_PER_UNIT;
+      const income = rawIncome * landValueFactor + taxCorrection + recyclingCredit;
 
       let buildingUpkeep = 0;
       for (const b of buildings) {

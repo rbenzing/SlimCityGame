@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   GarbageTruckSystem,
   MAX_GARBAGE_TRUCKS,
+  truckKindFor,
   type TruckDepot,
   type TruckTarget,
 } from './garbagetrucks';
@@ -40,6 +41,25 @@ const depot = (id: number, x: number, z: number, budget: number): TruckDepot => 
 });
 const target = (id: number, x: number, z: number): TruckTarget => ({ id, tile: { x, z } });
 
+describe('truckKindFor', () => {
+  it('runs recycling trucks from a kerbside depot and refuse trucks from landfill and incinerator specs', () => {
+    const base = { collectionRange: 40, bufferCapacity: 0, burnRate: 0, trucks: 4 };
+    expect(truckKindFor({ ...base, servesHomes: 38000 })).toBe(VehicleKind.Recycling);
+    expect(truckKindFor({ ...base, bufferCapacity: 9000000, burnRate: 90000 })).toBe(
+      VehicleKind.Garbage,
+    );
+  });
+
+  it('reads the catalog: the recycling depot is Recycling, the incinerator Garbage', async () => {
+    const catalog = (await import('../data/catalog.json')).default as {
+      buildings: { id: string; garbage?: Parameters<typeof truckKindFor>[0] }[];
+    };
+    const spec = (id: string) => catalog.buildings.find((b) => b.id === id)!.garbage!;
+    expect(truckKindFor(spec('recycling-depot'))).toBe(VehicleKind.Recycling);
+    expect(truckKindFor(spec('incinerator'))).toBe(VehicleKind.Garbage);
+  });
+});
+
 describe('GarbageTruckSystem', () => {
   it('dispatches up to the depot budget, every truck kind Garbage', () => {
     const g = makeGrid();
@@ -60,6 +80,41 @@ describe('GarbageTruckSystem', () => {
         expect(sys.vehicleBuffer[base + 4]).toBe(VehicleKind.Garbage);
       }
     }
+  });
+
+  it('dresses a depot with a recycling kind in the recycling livery and leaves the others refuse', () => {
+    const g = makeGrid();
+    straightRoad(g, 0, 0, 10);
+    const network = net(g);
+    const sys = new GarbageTruckSystem();
+
+    sys.tick({
+      network,
+      depots: [{ ...depot(1, 0, 0, 1), kind: VehicleKind.Recycling }, depot(2, 10, 0, 1)],
+      targets: [target(100, 2, 1), target(101, 8, 1)],
+    });
+
+    const kinds: number[] = [];
+    for (let slot = 0; slot < MAX_GARBAGE_TRUCKS; slot++) {
+      const base = slot * VEHICLE_STRIDE;
+      if (sys.vehicleBuffer[base] !== INACTIVE_VEHICLE_X) kinds.push(sys.vehicleBuffer[base + 4]!);
+    }
+    expect(kinds.sort()).toEqual([VehicleKind.Garbage, VehicleKind.Recycling]);
+
+    // The livery holds through the whole round, dwell and return included.
+    const lone = new GarbageTruckSystem();
+    const recyclingDepots = [{ ...depot(1, 0, 0, 1), kind: VehicleKind.Recycling }];
+    let seen = 0;
+    for (let t = 0; t < 400; t++) {
+      lone.tick({ network, depots: recyclingDepots, targets: [target(100, 2, 1)] });
+      for (let slot = 0; slot < MAX_GARBAGE_TRUCKS; slot++) {
+        const base = slot * VEHICLE_STRIDE;
+        if (lone.vehicleBuffer[base] === INACTIVE_VEHICLE_X) continue;
+        seen++;
+        expect(lone.vehicleBuffer[base + 4]).toBe(VehicleKind.Recycling);
+      }
+    }
+    expect(seen).toBeGreaterThan(0);
   });
 
   it('never exceeds the budget over a long run and keeps recycling slots', () => {

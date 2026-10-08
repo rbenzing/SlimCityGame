@@ -927,6 +927,18 @@ MUTCD citations below use 11th-edition section numbers.
   pile and the compacted density, never set by hand. —
   [services-model.md](world-sim/services-model.md#garbage-and-waste-management);
   `src/shared/constants.ts`, `src/sim/garbage.ts`
+- Kerbside recycling diverts at source and only from homes: a depot serves
+  residents of buildings of four or fewer homes in its road reach, up to its
+  homes, each served once, and their recycling never reaches the trash tiles
+  or any disposal facility. Jobs are never served. A depot is never a disposal
+  facility and forwards nothing. Its credit is the disposal it avoids, derived
+  from the landfill's own costs, booked once a month. —
+  [garbage-recovery.md](game-design/features/garbage-recovery.md#the-kerbside-recycling-depot-built-2026-10-08);
+  `src/sim/garbage.ts`
+- A facility's trucks leave from the street nearest any tile of its turned
+  lot, never only its corner: a 2×3 depot or a 4×4 incinerator whose corner
+  stands three tiles from its street still sends its fleet. —
+  `src/sim/worker.entry.ts`; `tests/interaction/depottrucks.test.ts`
 - Every figure in a service plan derives from a published municipal standard
   plus the 20 m tile, never picked to feel right, and any override is stated.
   The smallest facility of a ladder must be affordable to a city that has just

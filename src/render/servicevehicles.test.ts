@@ -64,6 +64,7 @@ describe('buildServiceVehicleGeometry', () => {
       VehicleKind.Police,
       VehicleKind.Ambulance,
       VehicleKind.Garbage,
+      VehicleKind.Recycling,
     ] as ServiceVehicleKind[]) {
       const geo = buildServiceVehicleGeometry(kind);
       expect(geo.getAttribute('position').count).toBeGreaterThan(0);
@@ -114,6 +115,36 @@ describe('buildServiceVehicleGeometry', () => {
     expect(ambulance[2]).toBeGreaterThan(0.8);
     expect(garbage[1]).toBeGreaterThan(garbage[0]); // green-dominant
     expect(garbage[1]).toBeGreaterThan(garbage[2]);
+
+    const recycling = firstPartColor(
+      buildServiceVehicleGeometry(VehicleKind.Recycling as ServiceVehicleKind),
+    );
+    expect(recycling[2]).toBeGreaterThan(recycling[0]); // teal-blue: not the refuse truck's green
+    expect(recycling[2]).toBeGreaterThan(garbage[2] + 0.2);
+    expect(recycling[1]).toBeGreaterThan(police[1] + 0.15); // and greener than the police blue
+  });
+
+  it('gives the recycling truck a white cab where every other kind has a dark one', () => {
+    function cabColor(kind: VehicleKind): [number, number, number] {
+      // The cabin box is the second part: 24 vertices after the body slab's 24.
+      const color = buildServiceVehicleGeometry(kind as ServiceVehicleKind).getAttribute('color');
+      return [color.getX(24), color.getY(24), color.getZ(24)];
+    }
+    const recycling = cabColor(VehicleKind.Recycling);
+    expect(Math.min(...recycling)).toBeGreaterThan(0.9);
+    expect(Math.max(...cabColor(VehicleKind.Garbage))).toBeLessThan(0.2);
+  });
+
+  it('draws a kind it has no livery for as a refuse truck', () => {
+    const unknown = buildServiceVehicleGeometry(99 as ServiceVehicleKind).getAttribute('color');
+    const garbage = buildServiceVehicleGeometry(
+      VehicleKind.Garbage as ServiceVehicleKind,
+    ).getAttribute('color');
+    expect([unknown.getX(0), unknown.getY(0), unknown.getZ(0)]).toEqual([
+      garbage.getX(0),
+      garbage.getY(0),
+      garbage.getZ(0),
+    ]);
   });
 });
 
@@ -139,7 +170,7 @@ describe('ServiceVehicleRenderer', () => {
     const instancedMeshes = scene.children.filter(
       (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh,
     );
-    expect(instancedMeshes.length).toBe(5); // fire + police + ambulance + garbage + incident pins
+    expect(instancedMeshes.length).toBe(6); // fire + police + ambulance + garbage + recycling + incident pins
   });
 
   it('disables frustum culling on every mesh it owns (spans the whole map, moves every frame)', () => {

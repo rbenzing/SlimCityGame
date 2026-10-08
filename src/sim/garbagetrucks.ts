@@ -13,7 +13,7 @@
  * tiebreak, and stepping mirrors DispatchSystem's segment walker exactly.
  * Trucks are runtime-only state (rebuilt after a load, like traffic volume).
  */
-import type { PathResult, RoadNetworkApi, TilePoint } from '../shared/types';
+import type { GarbageSpec, PathResult, RoadNetworkApi, TilePoint } from '../shared/types';
 import { INACTIVE_VEHICLE_X, VEHICLE_STRIDE, VehicleKind, pathRoute } from '../shared/types';
 import { TICK_RATE, TILE_METERS, tileToWorld } from '../shared/constants';
 
@@ -42,6 +42,13 @@ export interface TruckDepot {
    * despawning. Absent/empty -> trucks despawn at the depot as usual.
    */
   dumpPath?: readonly TilePoint[];
+  /** Livery of this depot's trucks; refuse trucks (Garbage) when absent. */
+  kind?: VehicleKind;
+}
+
+/** The livery of a facility's trucks: kerbside recycling depots (they serve homes) run recycling trucks, everything else refuse trucks. */
+export function truckKindFor(garbage: GarbageSpec): VehicleKind {
+  return garbage.servesHomes ? VehicleKind.Recycling : VehicleKind.Garbage;
 }
 
 /** A building a truck can visit (active R/C/I), by instance id + tile. */
@@ -71,6 +78,7 @@ interface ActiveTruck {
   targetTile: TilePoint;
   targetBuildingId: number;
   slot: number;
+  kind: VehicleKind;
   phase: TruckPhase;
   vehicle: RoutedVehicle;
   collectTicksRemaining: number;
@@ -149,19 +157,19 @@ export class GarbageTruckSystem {
       const truck = this.active[i]!;
       if (truck.phase === 'collecting') {
         truck.collectTicksRemaining -= 1;
-        this.writeSlot(truck.slot, truck.vehicle, 0);
+        this.writeSlot(truck.slot, truck.vehicle, 0, truck.kind);
         if (truck.collectTicksRemaining <= 0) this.startReturn(truck, network, i);
         continue;
       }
       if (truck.phase === 'dumping') {
         truck.dumpTicksRemaining -= 1;
-        this.writeSlot(truck.slot, truck.vehicle, 0);
+        this.writeSlot(truck.slot, truck.vehicle, 0, truck.kind);
         if (truck.dumpTicksRemaining <= 0) this.startLeavingDump(truck);
         continue;
       }
       stepVehicle(truck.vehicle);
       const arrived = vehicleArrived(truck.vehicle);
-      this.writeSlot(truck.slot, truck.vehicle, arrived ? 0 : TRUCK_SPEED_MPS);
+      this.writeSlot(truck.slot, truck.vehicle, arrived ? 0 : TRUCK_SPEED_MPS, truck.kind);
       if (!arrived) continue;
       if (truck.phase === 'toBuilding') truck.phase = 'collecting';
       else if (truck.phase === 'toDepot' && truck.dumpPath.length > 0) this.startDumpRun(truck);
@@ -250,12 +258,14 @@ export class GarbageTruckSystem {
     const slot = this.freeSlots.pop();
     if (slot === undefined) return;
     const vehicle = buildRoutedVehicle(pathRoute(pathToBuilding));
+    const kind = depot.kind ?? VehicleKind.Garbage;
     this.active.push({
       depotId: depot.id,
       sourceTile: depot.sourceTile,
       targetTile: target.tile,
       targetBuildingId: target.id,
       slot,
+      kind,
       phase: 'toBuilding',
       vehicle,
       collectTicksRemaining: COLLECT_TICKS,
@@ -263,10 +273,10 @@ export class GarbageTruckSystem {
       dumpTicksRemaining: DUMP_TICKS,
     });
     this.activeTargets.add(target.id);
-    this.writeSlot(slot, vehicle, TRUCK_SPEED_MPS);
+    this.writeSlot(slot, vehicle, TRUCK_SPEED_MPS, kind);
   }
 
-  private writeSlot(slot: number, vehicle: RoutedVehicle, speed: number): void {
+  private writeSlot(slot: number, vehicle: RoutedVehicle, speed: number, kind: VehicleKind): void {
     const segCount = vehicle.segmentLengths.length;
     const idx = Math.min(vehicle.segIndex, Math.max(segCount - 1, 0));
     const a = vehicle.points[idx] ?? { x: 0, z: 0 };
@@ -282,7 +292,7 @@ export class GarbageTruckSystem {
     this.vehicleBuffer[base + 1] = a.z + dz * t;
     this.vehicleBuffer[base + 2] = Math.atan2(dx, dz);
     this.vehicleBuffer[base + 3] = speed;
-    this.vehicleBuffer[base + 4] = VehicleKind.Garbage;
+    this.vehicleBuffer[base + 4] = kind;
   }
 
   /** Clears all trucks (e.g. on load — this state is not persisted). */

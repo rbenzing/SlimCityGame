@@ -37,6 +37,7 @@ const SERVICE_KINDS = [
   VehicleKind.Police,
   VehicleKind.Ambulance,
   VehicleKind.Garbage,
+  VehicleKind.Recycling,
 ] as const;
 export type ServiceVehicleKind = (typeof SERVICE_KINDS)[number];
 
@@ -45,7 +46,8 @@ function isServiceKind(kind: number): kind is ServiceVehicleKind {
     kind === VehicleKind.Fire ||
     kind === VehicleKind.Police ||
     kind === VehicleKind.Ambulance ||
-    kind === VehicleKind.Garbage
+    kind === VehicleKind.Garbage ||
+    kind === VehicleKind.Recycling
   );
 }
 
@@ -65,6 +67,9 @@ const POLICE_BLUE = hexToRGB(0x2f6fd6);
 const AMBULANCE_WHITE = hexToRGB(0xe9edf0);
 const GARBAGE_GREEN = hexToRGB(0x3f7d4f);
 const GARBAGE_HOPPER = hexToRGB(0x2f5e3b);
+const RECYCLING_TEAL = hexToRGB(0x1d9bb5);
+const RECYCLING_HOPPER = hexToRGB(0x15738a);
+const RECYCLING_CAB = hexToRGB(0xf2f5f7);
 const CABIN_DARK = hexToRGB(0x1a1f26);
 const LIGHTBAR_RED = hexToRGB(0xff2a20);
 const LIGHTBAR_BLUE = hexToRGB(0x274b8f);
@@ -77,11 +82,14 @@ function bodyColorForKind(kind: ServiceVehicleKind): readonly [number, number, n
       return FIRE_RED;
     case VehicleKind.Police:
       return POLICE_BLUE;
-    case VehicleKind.Garbage:
-      return GARBAGE_GREEN;
+    case VehicleKind.Recycling:
+      return RECYCLING_TEAL;
     case VehicleKind.Ambulance:
-    default:
       return AMBULANCE_WHITE;
+    case VehicleKind.Garbage:
+    default:
+      // A kind this renderer has no livery for is drawn as a refuse truck.
+      return GARBAGE_GREEN;
   }
 }
 
@@ -137,14 +145,16 @@ export function buildServiceVehicleGeometry(kind: ServiceVehicleKind): THREE.Buf
 
   const parts: THREE.BufferGeometry[] = [
     box(0.92, 0.56, 0.94, 0, -0.2, 0, body),
-    box(0.7, 0.3, 0.5, 0, 0.22, 0.05, CABIN_DARK),
+    box(0.7, 0.3, 0.5, 0, 0.22, 0.05, kind === VehicleKind.Recycling ? RECYCLING_CAB : CABIN_DARK),
     ...buildWheelParts(),
   ];
 
-  if (kind === VehicleKind.Garbage) {
-    // Refuse truck: a raised rear hopper/compactor box over the back ~40% of
-    // the body (darker green) plus a small amber beacon -- no emergency bar.
-    parts.push(box(0.86, 0.66, 0.38, 0, 0.13, -0.27, GARBAGE_HOPPER));
+  if (kind === VehicleKind.Garbage || kind === VehicleKind.Recycling) {
+    // Refuse/recycling truck: a raised rear hopper/compactor box over the back
+    // ~40% of the body (darker than the body) plus a small amber beacon -- no
+    // emergency bar.
+    const hopper = kind === VehicleKind.Recycling ? RECYCLING_HOPPER : GARBAGE_HOPPER;
+    parts.push(box(0.86, 0.66, 0.38, 0, 0.13, -0.27, hopper));
     parts.push(box(0.16, 0.1, 0.14, 0, 0.42, 0.05, BEACON_AMBER));
   } else {
     // Emergency roof light-bar (blue for police, red for fire/ambulance).

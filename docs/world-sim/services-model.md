@@ -88,6 +88,19 @@ plant makes none and a town that outgrows one plant's ceiling sees its trash
 back up until it builds another. A full buffer stops that facility's own
 collection until it drains.
 
+The **kerbside recycling depot** is a catalog ploppable (2×3, unlocks at Busy
+Township, ¢3,200 to build, ¢260/month): a fleet yard of four recycling trucks
+that serves up to 38,000 homes within a 32-tile road-BFS reach, homes in
+buildings of four or fewer (the house, the duplex, the fourplex, the
+townhouse row), never a block, a shop or a works. A served building's
+residents put 0.131 kg a day each in the recycling cart, of their 1.32 kg, so
+it never reaches the trash tiles, the landfill or the incinerator. Depots take
+buildings in id order up to their homes, and a building reached by two is
+served once. The month's recycled units earn ¢0.00016 each, the landfill's
+own whole-life cost of a unit, booked as income at the month boundary. Its
+trucks wear the recycling livery. The figures and sources are in
+[../game-design/features/garbage-recovery.md](../game-design/features/garbage-recovery.md#the-kerbside-recycling-depot-built-2026-10-08).
+
 **Collection** reuses the same road-BFS mechanism a service building uses
 ([Coverage and funding](#coverage-and-funding)) and shares the load the way a
 service's capacity does. Buildings go in id order for determinism. The

@@ -22,6 +22,11 @@
  * ceiling (`incineratorEmission`) — an idle combustor makes no smoke, a full
  * one makes all of it.
  *
+ * Kerbside recycling depots divert at source: a home they serve (few homes in
+ * the building, within the depot's road reach and remaining capacity) sets its
+ * recyclables out in the cart, so they never reach the trash tiles and are
+ * tallied as recovered for the economy to credit once a month.
+ *
  * The landfill fill and incinerator buffers are saved (GarbageSaveState, in the
  * save meta); the per-tile `trash` layer and the trucks are RUNTIME state that
  * rebuilds within a few ticks of a load. Pure of three.js/DOM; deterministic (no
@@ -29,9 +34,11 @@
  */
 import type { GridState } from '../shared/types';
 import {
+  KERBSIDE_MAX_HOMES,
   LANDFILL_CAPACITY_PER_TILE,
   LANDFILL_COLLECTION_RANGE,
   GARBAGE_PASSES_PER_DAY,
+  RECYCLING_KG_PER_RESIDENT_DAY,
   TRASH_KG_PER_JOB_DAY,
   TRASH_KG_PER_RESIDENT_DAY,
   TRASH_TILE_MAX,
@@ -45,24 +52,72 @@ import {
   roadBfsDistances,
 } from './services';
 
-/** An Active R/C/I building the worker hands to the garbage pass: who lives and works in it. */
+/**
+ * An Active R/C/I building the worker hands to the garbage pass: who lives and
+ * works in it, and how many homes it holds (0 when it is none).
+ */
 export interface GarbageBuilding {
   id: number;
   residents: number;
   jobs: number;
+  homes: number;
+}
+
+/** Trash units in `kg` kilograms, rounded to shed float noise. */
+const unitsOf = (kg: number): number =>
+  Math.round(((kg * TRASH_UNITS_PER_TONNE) / 1000) * 1e6) / 1e6;
+
+/**
+ * The whole units a daily rate of `unitsPerDay` emits on garbage pass `pass`:
+ * the rate is spread over the day's passes as a fraction and each pass emits the
+ * whole units the running total crossed, so a day sums exactly with no stored
+ * remainder.
+ */
+function emittedOnPass(unitsPerDay: number, pass: number): number {
+  const total = (n: number): number => Math.floor((unitsPerDay * n) / GARBAGE_PASSES_PER_DAY);
+  return total(pass + 1) - total(pass);
+}
+
+const totalKgPerDay = (b: GarbageBuilding): number =>
+  b.residents * TRASH_KG_PER_RESIDENT_DAY + b.jobs * TRASH_KG_PER_JOB_DAY;
+
+/** Trash units a building emits on garbage pass `pass`, all of it as refuse. */
+export function unitsOnPass(b: GarbageBuilding, pass: number): number {
+  return emittedOnPass(unitsOf(totalKgPerDay(b)), pass);
 }
 
 /**
- * Trash units a building emits on garbage pass `pass`. Its daily trash is spread
- * over the day's passes as a fractional rate, and each pass emits the whole
- * units the running total crossed, so a day sums exactly with no stored remainder.
+ * The recycling and refuse units a building served by a kerbside depot emits on
+ * garbage pass `pass`: its residents' recyclables leave the refuse rate.
  */
-export function unitsOnPass(b: GarbageBuilding, pass: number): number {
-  const kgPerDay = b.residents * TRASH_KG_PER_RESIDENT_DAY + b.jobs * TRASH_KG_PER_JOB_DAY;
-  // Rounded to shed float noise so an exact whole-unit day is not floored a unit short.
-  const unitsPerDay = Math.round(((kgPerDay * TRASH_UNITS_PER_TONNE) / 1000) * 1e6) / 1e6;
-  const total = (n: number): number => Math.floor((unitsPerDay * n) / GARBAGE_PASSES_PER_DAY);
-  return total(pass + 1) - total(pass);
+export function servedUnitsOnPass(
+  b: GarbageBuilding,
+  pass: number,
+): { recycling: number; refuse: number } {
+  const recyclingPerDay = unitsOf(b.residents * RECYCLING_KG_PER_RESIDENT_DAY);
+  const refusePerDay = Math.round((unitsOf(totalKgPerDay(b)) - recyclingPerDay) * 1e6) / 1e6;
+  return {
+    recycling: emittedOnPass(recyclingPerDay, pass),
+    refuse: emittedOnPass(refusePerDay, pass),
+  };
+}
+
+/**
+ * A placed kerbside recycling depot (catalog `garbage` spec with `servesHomes`),
+ * by building instance id: the road-BFS radius its trucks reach and the homes it
+ * can serve in all.
+ */
+export interface GarbageDepot {
+  id: number;
+  collectionRange: number;
+  servesHomes: number;
+}
+
+/** What a depot served on the last pass, for the UI readout. */
+export interface DepotServed {
+  id: number;
+  servedHomes: number;
+  capacityHomes: number;
 }
 
 /**
@@ -86,6 +141,8 @@ export interface GarbageFacility {
 export interface GarbageSaveState {
   landfillStored: number;
   incinerators: { id: number; units: number }[];
+  /** Recycling units recovered since the last month boundary; absent in older saves. */
+  recoveredThisMonth?: number;
 }
 
 const clampTile = (v: number): number => (v < 0 ? 0 : v > TRASH_TILE_MAX ? TRASH_TILE_MAX : v);
@@ -117,6 +174,10 @@ export class GarbageSystem {
   private readonly incineratorStore = new Map<number, number>();
   /** Trash each incinerator burned on the last pass (drives Pollution emit). */
   private readonly incineratorBurned = new Map<number, number>();
+  /** Recycling units recovered since the last month boundary. */
+  private recoveredUnits = 0;
+  /** What each kerbside depot served on the last pass. */
+  private depotsServed: DepotServed[] = [];
 
   constructor(size: number) {
     this.trash = new Uint8Array(size * size);
@@ -127,30 +188,78 @@ export class GarbageSystem {
    * landfill area for what they left) + incinerator burn. Call on the
    * GARBAGE_PERIOD cadence; `pass` is the running count of garbage passes, which
    * fixes how much each building emits. `facilities` is empty when no incinerator
-   * is placed.
+   * is placed, `depots` when no kerbside recycling depot is.
    */
   tick(
     grid: GridState,
     buildings: readonly GarbageBuilding[],
     pass: number,
     facilities: readonly GarbageFacility[] = [],
+    depots: readonly GarbageDepot[] = [],
   ): void {
     const footprints = footprintsByBuildingId(grid);
     const ordered = [...buildings].sort((a, b) => a.id - b.id);
-    this.generate(footprints, ordered, pass);
+    const served = this.serveKerbside(grid, footprints, ordered, depots);
+    this.generate(footprints, ordered, pass, served);
     this.collectAndBurnIncinerators(grid, footprints, ordered, facilities);
     this.collectLandfill(grid, footprints, ordered);
+  }
+
+  /**
+   * The buildings the kerbside depots serve this pass, recomputed from scratch.
+   * Depots in id order take, along their road reach, the buildings in id order
+   * with residents and few enough homes, a building once, while the depot has
+   * homes left to cover it.
+   */
+  private serveKerbside(
+    grid: GridState,
+    footprints: ReadonlyMap<number, number[]>,
+    buildings: readonly GarbageBuilding[],
+    depots: readonly GarbageDepot[],
+  ): ReadonlySet<number> {
+    const served = new Set<number>();
+    this.depotsServed = [];
+    const eligible = buildings.filter(
+      (b) => b.residents > 0 && b.homes >= 1 && b.homes <= KERBSIDE_MAX_HOMES,
+    );
+    for (const d of [...depots].sort((a, b) => a.id - b.id)) {
+      let remaining = d.servesHomes;
+      const coverage = this.reachOf(grid, footprints, d);
+      if (coverage) {
+        for (const b of eligible) {
+          if (served.has(b.id) || remaining < b.homes) continue;
+          const tiles = footprints.get(b.id);
+          if (!tiles || !tiles.some((ti) => (coverage.get(ti) ?? 0) > 0)) continue;
+          served.add(b.id);
+          remaining -= b.homes;
+        }
+      }
+      this.depotsServed.push({
+        id: d.id,
+        servedHomes: d.servesHomes - remaining,
+        capacityHomes: d.servesHomes,
+      });
+    }
+    return served;
   }
 
   private generate(
     footprints: ReadonlyMap<number, number[]>,
     buildings: readonly GarbageBuilding[],
     pass: number,
+    served: ReadonlySet<number>,
   ): void {
     for (const b of buildings) {
       const tiles = footprints.get(b.id);
       if (!tiles || tiles.length === 0) continue;
-      const units = unitsOnPass(b, pass);
+      let units: number;
+      if (served.has(b.id)) {
+        const split = servedUnitsOnPass(b, pass);
+        this.recoveredUnits += split.recycling;
+        units = split.refuse;
+      } else {
+        units = unitsOnPass(b, pass);
+      }
       if (units <= 0) continue;
       const each = Math.floor(units / tiles.length);
       const extra = units % tiles.length;
@@ -246,7 +355,7 @@ export class GarbageSystem {
   private reachOf(
     grid: GridState,
     footprints: ReadonlyMap<number, number[]>,
-    f: GarbageFacility,
+    f: { id: number; collectionRange: number },
   ): ReadonlyMap<number, number> | null {
     const tiles = footprints.get(f.id);
     if (!tiles || tiles.length === 0) return null;
@@ -313,6 +422,18 @@ export class GarbageSystem {
     return this.incineratorBurned.get(id) ?? 0;
   }
 
+  /** Returns the recycling units recovered since the last call and clears the tally. */
+  takeRecoveredThisMonth(): number {
+    const units = this.recoveredUnits;
+    this.recoveredUnits = 0;
+    return units;
+  }
+
+  /** What each kerbside depot served on the last pass. */
+  depotSnapshot(): DepotServed[] {
+    return this.depotsServed.map((d) => ({ ...d }));
+  }
+
   /** Total trash units piled in the landfill area. */
   landfillStored(): number {
     return this.landfillStoredUnits;
@@ -336,11 +457,14 @@ export class GarbageSystem {
     this.landfillStoredUnits = 0;
     this.incineratorStore.clear();
     this.incineratorBurned.clear();
+    this.recoveredUnits = 0;
+    this.depotsServed = [];
   }
 
-  /** The persistable fill state (landfill pile + incinerator buffers). */
+  /** The persistable fill state (landfill pile, incinerator buffers, month's recovery). */
   serializeState(): GarbageSaveState {
     return {
+      recoveredThisMonth: this.recoveredUnits,
       landfillStored: this.landfillStoredUnits,
       incinerators: [...this.incineratorStore.entries()]
         .sort((a, b) => a[0] - b[0])
@@ -352,6 +476,7 @@ export class GarbageSystem {
   restoreState(state: GarbageSaveState | undefined): void {
     if (!state) return;
     this.landfillStoredUnits = Math.max(0, state.landfillStored || 0);
+    this.recoveredUnits = Math.max(0, state.recoveredThisMonth || 0);
     this.incineratorStore.clear();
     for (const { id, units } of state.incinerators ?? []) {
       if (units > 0) this.incineratorStore.set(id, units);

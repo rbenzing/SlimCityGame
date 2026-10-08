@@ -1,12 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { RoadTier, type BuildingCatalogEntry, type GridState } from '../shared/types';
-import { GARBAGE_PASSES_PER_DAY, LANDFILL_CAPACITY_PER_TILE, tileIndex } from '../shared/constants';
+import {
+  GARBAGE_PASSES_PER_DAY,
+  LANDFILL_CAPACITY_PER_TILE,
+  MILESTONES,
+  RECYCLING_CREDIT_PER_UNIT,
+  RECYCLING_HOMES_PER_TRUCK,
+  RECYCLING_KG_PER_RESIDENT_DAY,
+  tileIndex,
+} from '../shared/constants';
 import { createGrid } from '../world/grid';
 import {
   GarbageSystem,
   incineratorEmission,
+  servedUnitsOnPass,
   unitsOnPass,
   type GarbageBuilding,
+  type GarbageDepot,
   type GarbageFacility,
 } from './garbage';
 import catalog from '../data/catalog.json';
@@ -28,8 +38,8 @@ function baseWorld(): { g: GridState; buildingTile: number } {
 }
 
 // 100 jobs make 744 units a day: 37 on pass 0. 500 jobs make 186 on pass 0.
-const COM: GarbageBuilding = { id: 7, residents: 0, jobs: 100 };
-const IND: GarbageBuilding = { id: 7, residents: 0, jobs: 500 };
+const COM: GarbageBuilding = { id: 7, residents: 0, jobs: 100, homes: 0 };
+const IND: GarbageBuilding = { id: 7, residents: 0, jobs: 500, homes: 0 };
 const COM_PASS = 37;
 const IND_PASS = 186;
 
@@ -45,19 +55,19 @@ describe('trash per head', () => {
   });
 
   it('100 residents emit 528 units over a day', () => {
-    expect(daySum({ id: 1, residents: 100, jobs: 0 })).toBe(528);
+    expect(daySum({ id: 1, residents: 100, jobs: 0, homes: 0 })).toBe(528);
   });
 
   it('10 jobs emit 74 units over a day (74.4 floored)', () => {
-    expect(daySum({ id: 1, residents: 0, jobs: 10 })).toBe(74);
+    expect(daySum({ id: 1, residents: 0, jobs: 10, homes: 0 })).toBe(74);
   });
 
   it('a mixed building sums both', () => {
-    expect(daySum({ id: 1, residents: 100, jobs: 10 })).toBe(528 + 74);
+    expect(daySum({ id: 1, residents: 100, jobs: 10, homes: 0 })).toBe(528 + 74);
   });
 
   it('one resident emits on some passes and not others, yet totals right over a day', () => {
-    const b = { id: 1, residents: 1, jobs: 0 };
+    const b = { id: 1, residents: 1, jobs: 0, homes: 0 };
     const perPass = Array.from({ length: GARBAGE_PASSES_PER_DAY }, (_, n) => unitsOnPass(b, n));
     expect(perPass).toContain(0);
     expect(perPass.some((u) => u > 0)).toBe(true);
@@ -65,7 +75,7 @@ describe('trash per head', () => {
   });
 
   it('is the same for the same pass', () => {
-    const b = { id: 1, residents: 37, jobs: 9 };
+    const b = { id: 1, residents: 37, jobs: 9, homes: 0 };
     expect(unitsOnPass(b, 123)).toBe(unitsOnPass(b, 123));
   });
 
@@ -73,7 +83,7 @@ describe('trash per head', () => {
     const g = createGrid();
     const tiles = [tileIndex(50, 50), tileIndex(51, 50), tileIndex(52, 50)];
     for (const t of tiles) g.buildingId[t] = 9;
-    const b = { id: 9, residents: 0, jobs: 100 }; // 37 on pass 0
+    const b = { id: 9, residents: 0, jobs: 100, homes: 0 }; // 37 on pass 0
     const sys = new GarbageSystem(g.size);
     sys.tick(g, [b], 0);
     expect(tiles.map((t) => sys.trash[t])).toEqual([13, 12, 12]);
@@ -108,7 +118,7 @@ describe('GarbageSystem', () => {
     g.buildingId[farTile] = 8;
     const sys = new GarbageSystem(g.size);
 
-    sys.tick(g, [COM, { id: 8, residents: 0, jobs: 100 }], 0);
+    sys.tick(g, [COM, { id: 8, residents: 0, jobs: 100, homes: 0 }], 0);
 
     expect(sys.trash[farTile]).toBeGreaterThan(0); // generated but never collected
   });
@@ -316,5 +326,146 @@ describe('GarbageSystem save state', () => {
     const before = sys.landfillStored();
     sys.restoreState(undefined); // no-op
     expect(sys.landfillStored()).toBe(before);
+  });
+});
+
+describe('the kerbside recycling depot', () => {
+  const DEPOT_ID = 20;
+  const depot = (over: Partial<GarbageDepot> = {}): GarbageDepot => ({
+    id: DEPOT_ID,
+    collectionRange: 32,
+    servesHomes: 38_000,
+    ...over,
+  });
+  const house = (id: number, homes = 1, residents = 500): GarbageBuilding => ({
+    id,
+    residents,
+    jobs: 0,
+    homes,
+  });
+
+  /** The base world (landfill collecting) with a depot footprint beside the road and houses along it. */
+  function depotWorld(houseIds: number[]): GridState {
+    const { g } = baseWorld();
+    g.buildingId[tileIndex(9, 22)] = 0; // the base world's lone building is replaced by the houses
+    g.buildingId[tileIndex(11, 25)] = DEPOT_ID;
+    houseIds.forEach((id, i) => {
+      g.buildingId[tileIndex(9, 23 + i)] = id;
+    });
+    return g;
+  }
+
+  /** Runs a day of passes; returns what reached the landfill and the recycling tally. */
+  function runDay(
+    g: GridState,
+    buildings: GarbageBuilding[],
+    depots: GarbageDepot[],
+  ): { buried: number; recovered: number; sys: GarbageSystem } {
+    const sys = new GarbageSystem(g.size);
+    for (let n = 0; n < GARBAGE_PASSES_PER_DAY; n++) sys.tick(g, buildings, n, [], depots);
+    return { buried: sys.landfillStored(), recovered: sys.takeRecoveredThisMonth(), sys };
+  }
+
+  const RECYCLED_PER_DAY = 500 * RECYCLING_KG_PER_RESIDENT_DAY * 4; // 262 units a day
+  const UNSERVED_PER_DAY = 2640;
+
+  it('buries exactly the recyclables less a day, and tallies them', () => {
+    const g = depotWorld([7]);
+    const without = runDay(g, [house(7)], []);
+    const withDepot = runDay(g, [house(7)], [depot()]);
+    expect(without.buried).toBe(UNSERVED_PER_DAY);
+    expect(without.recovered).toBe(0);
+    expect(withDepot.recovered).toBe(RECYCLED_PER_DAY);
+    expect(withDepot.buried).toBe(UNSERVED_PER_DAY - RECYCLED_PER_DAY);
+  });
+
+  it('takes the tally once: a second take finds it cleared', () => {
+    const g = depotWorld([7]);
+    const { sys } = runDay(g, [house(7)], [depot()]);
+    expect(sys.takeRecoveredThisMonth()).toBe(0);
+  });
+
+  it('does not serve a block, a tower, a shop or a works', () => {
+    const g = depotWorld([7, 8, 9, 10]);
+    const buildings: GarbageBuilding[] = [
+      house(7, 5), // multiplex
+      house(8, 120, 400), // tower
+      { id: 9, residents: 0, jobs: 100, homes: 0 }, // shop
+      { id: 10, residents: 0, jobs: 500, homes: 0 }, // works
+    ];
+    const { recovered, sys } = runDay(g, buildings, [depot()]);
+    expect(recovered).toBe(0);
+    expect(sys.depotSnapshot()).toEqual([{ id: DEPOT_ID, servedHomes: 0, capacityHomes: 38_000 }]);
+  });
+
+  it('serves homes until its capacity is spent, then no more', () => {
+    const g = depotWorld([7, 8, 9]);
+    const buildings = [house(7, 1), house(8, 2), house(9, 1)];
+    const sys = new GarbageSystem(g.size);
+    sys.tick(g, buildings, 0, [], [depot({ servesHomes: 3 })]);
+    expect(sys.depotSnapshot()).toEqual([{ id: DEPOT_ID, servedHomes: 3, capacityHomes: 3 }]);
+    const full = runDay(g, buildings, [depot({ servesHomes: 3 })]);
+    const all = runDay(g, buildings, [depot()]);
+    expect(full.recovered).toBe(2 * RECYCLED_PER_DAY);
+    expect(all.recovered).toBe(3 * RECYCLED_PER_DAY);
+  });
+
+  it('serves a building once when two depots overlap, by the lower id', () => {
+    const g = depotWorld([7]);
+    g.buildingId[tileIndex(11, 30)] = 21;
+    const { recovered, sys } = runDay(g, [house(7)], [depot({ id: 21 }), depot()]);
+    expect(recovered).toBe(RECYCLED_PER_DAY);
+    expect(sys.depotSnapshot()).toEqual([
+      { id: DEPOT_ID, servedHomes: 1, capacityHomes: 38_000 },
+      { id: 21, servedHomes: 0, capacityHomes: 38_000 },
+    ]);
+  });
+
+  it('does not serve a home outside the depot road reach', () => {
+    const g = depotWorld([]);
+    g.buildingId[tileIndex(200, 200)] = 7;
+    const { recovered } = runDay(g, [house(7)], [depot()]);
+    expect(recovered).toBe(0);
+  });
+
+  it('is deterministic', () => {
+    const run = (): number[] => {
+      const g = depotWorld([7, 8]);
+      const { buried, recovered } = runDay(g, [house(8, 2), house(7)], [depot()]);
+      return [buried, recovered];
+    };
+    expect(run()).toEqual(run());
+  });
+
+  it('saves the month tally and loads an old save without it as zero', () => {
+    const g = depotWorld([7]);
+    const { sys } = runDay(g, [house(7)], [depot()]);
+    const none = new GarbageSystem(g.size);
+    none.tick(g, [house(7)], 0, [], [depot()]);
+    const saved = none.serializeState();
+    expect(saved.recoveredThisMonth).toBe(servedUnitsOnPass(house(7), 0).recycling);
+    const loaded = new GarbageSystem(g.size);
+    loaded.restoreState(saved);
+    expect(loaded.takeRecoveredThisMonth()).toBe(saved.recoveredThisMonth);
+
+    expect(sys.takeRecoveredThisMonth()).toBe(0); // already taken by runDay's read
+    const old = new GarbageSystem(g.size);
+    old.restoreState({ landfillStored: 5, incinerators: [] });
+    expect(old.takeRecoveredThisMonth()).toBe(0);
+  });
+
+  it('is credited at the landfill disposal cost: a tile paint plus 30 years of upkeep over its capacity', () => {
+    expect(RECYCLING_CREDIT_PER_UNIT).toBeCloseTo(0.000164, 6);
+  });
+
+  it('is a 2x3 depot of four trucks serving 4 x 9,500 homes, open at Busy Township', () => {
+    const entry = (catalog as { buildings: BuildingCatalogEntry[] }).buildings.find(
+      (e) => e.id === 'recycling-depot',
+    )!;
+    expect(entry.footprint).toEqual({ w: 2, d: 3 });
+    expect(entry.garbage!.servesHomes).toBe(4 * RECYCLING_HOMES_PER_TRUCK);
+    expect(entry.garbage!.trucks).toBe(4);
+    expect(entry.garbage!.collectionRange).toBe(32);
+    expect(MILESTONES[entry.unlockMilestone]?.name).toBe('Busy Township');
   });
 });

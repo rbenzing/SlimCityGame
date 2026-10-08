@@ -6,6 +6,10 @@ import {
   WORKS_CLARIFIER_RADIUS,
   PARK_BENCH_COUNT,
   PUMP_INTAKE_OVERHANG,
+  RECYCLING_SHED_SIZE,
+  RECYCLING_OFFICE_SIZE,
+  RECYCLING_YARD_HEIGHT,
+  RECYCLING_TRUCK_COUNT,
   PARK_TREE_MAX,
   PARK_TREE_MIN,
   TURBINE_BLADE_COUNT,
@@ -24,6 +28,7 @@ import {
   computeParkBenchPlacements,
   computeParkTreeCount,
   computeParkTreePlacements,
+  computeRecyclingDepotLayout,
   computeWaterLegPlacements,
   footprintHalfExtents,
   rotateLocalXZ,
@@ -38,9 +43,12 @@ import {
   BuildingDelta,
   BuildingInstance,
   BuildingState,
+  VehicleKind,
   ZoneType,
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { footprintForRotation } from '../shared/footprint';
+import { sizeForKind } from './vehicles';
 
 const flatHeightAt = (): number => 0;
 
@@ -62,6 +70,10 @@ const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'incineratorHall',
   'incineratorStack',
   'incineratorBay',
+  'recyclingYard',
+  'recyclingShed',
+  'recyclingOffice',
+  'recyclingTruck',
   'parkGround',
   'parkTree',
   'parkBench',
@@ -136,6 +148,26 @@ function makeIncineratorEntry(overrides: Partial<BuildingCatalogEntry> = {}): Bu
     cost: 40000,
     upkeep: 1500,
     unlockMilestone: 3,
+    ...overrides,
+  };
+}
+
+function makeRecyclingDepotEntry(
+  overrides: Partial<BuildingCatalogEntry> = {},
+): BuildingCatalogEntry {
+  return {
+    id: 'recycling-depot',
+    name: 'Recycling Depot',
+    category: 'utility',
+    footprint: { w: 2, d: 3 },
+    height: 8,
+    color: 0x5f6f73,
+    powerUse: 0.1,
+    waterUse: 0.1,
+    garbage: { collectionRange: 40, bufferCapacity: 0, burnRate: 0, trucks: 4, servesHomes: 38000 },
+    cost: 20000,
+    upkeep: 800,
+    unlockMilestone: 2,
     ...overrides,
   };
 }
@@ -288,7 +320,7 @@ function decomposeQuaternion(m: THREE.Matrix4): THREE.Quaternion {
 // ---------------------------------------------------------------------------
 
 describe('UTILITY_KIT_CATALOG_IDS', () => {
-  it('is exactly the 8 silhouette-kit ids (UI-SPEC §6.15)', () => {
+  it('is exactly the 9 silhouette-kit ids (UI-SPEC §6.15)', () => {
     expect(UTILITY_KIT_CATALOG_IDS).toEqual([
       'wind-turbine',
       'water-tower',
@@ -297,6 +329,7 @@ describe('UTILITY_KIT_CATALOG_IDS', () => {
       'sewage-works',
       'coal-plant',
       'incinerator',
+      'recycling-depot',
       'small-park',
     ]);
   });
@@ -915,6 +948,130 @@ describe('incinerator kit', () => {
 });
 
 // ---------------------------------------------------------------------------
+// UtilityKitRenderer: recycling-depot
+// ---------------------------------------------------------------------------
+
+describe('recycling-depot kit', () => {
+  const entry = makeRecyclingDepotEntry();
+
+  it('places 1 shed, 1 office and RECYCLING_TRUCK_COUNT (4) parked trucks per instance', () => {
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [entry]);
+    renderer.apply(deltaAdd(makeInstance(1, 'recycling-depot')));
+    expect(renderer.partSlotsFor(1, 'recyclingYard')).toHaveLength(1);
+    expect(renderer.partSlotsFor(1, 'recyclingShed')).toHaveLength(1);
+    expect(renderer.partSlotsFor(1, 'recyclingOffice')).toHaveLength(1);
+    expect(renderer.partSlotsFor(1, 'recyclingTruck')).toHaveLength(RECYCLING_TRUCK_COUNT);
+    expect(RECYCLING_TRUCK_COUNT).toBe(4);
+  });
+
+  it('paves the whole 2x3 lot and stands the trucks on that pavement', () => {
+    const { halfW, halfD } = footprintHalfExtents(entry.footprint);
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [entry]);
+    const yard = renderer.partGeometry('recycling-depot', 'recyclingYard')!;
+    yard.computeBoundingBox();
+    expect(yard.boundingBox!.min.x).toBeCloseTo(-halfW, 5);
+    expect(yard.boundingBox!.max.x).toBeCloseTo(halfW, 5);
+    expect(yard.boundingBox!.min.z).toBeCloseTo(-halfD, 5);
+    expect(yard.boundingBox!.max.z).toBeCloseTo(halfD, 5);
+    expect(yard.boundingBox!.max.y).toBeCloseTo(RECYCLING_YARD_HEIGHT, 5);
+
+    renderer.apply(deltaAdd(makeInstance(1, 'recycling-depot')));
+    const m = new THREE.Matrix4();
+    for (const slot of renderer.partSlotsFor(1, 'recyclingTruck')) {
+      renderer.getPartMatrix('recycling-depot', 'recyclingTruck', slot, m);
+      expect(decomposePosition(m).y).toBeCloseTo(RECYCLING_YARD_HEIGHT, 5);
+    }
+  });
+
+  it('keeps the shed, office and every truck inside the 2x3 lot, clear of one another', () => {
+    const { halfW, halfD } = footprintHalfExtents(entry.footprint);
+    const layout = computeRecyclingDepotLayout(entry.footprint);
+    const [truckW, , truckL] = sizeForKind(VehicleKind.Recycling);
+
+    const shedHalf = { w: RECYCLING_SHED_SIZE.w / 2, d: RECYCLING_SHED_SIZE.d / 2 };
+    const officeHalf = { w: RECYCLING_OFFICE_SIZE.w / 2, d: RECYCLING_OFFICE_SIZE.d / 2 };
+    const boxes = [
+      { ...layout.shed, hw: shedHalf.w, hd: shedHalf.d },
+      { ...layout.office, hw: officeHalf.w, hd: officeHalf.d },
+      ...layout.trucks.map((t) => ({ ...t, hw: truckW / 2, hd: truckL / 2 })),
+    ];
+    for (const b of boxes) {
+      expect(b.x - b.hw).toBeGreaterThanOrEqual(-halfW);
+      expect(b.x + b.hw).toBeLessThanOrEqual(halfW);
+      expect(b.z - b.hd).toBeGreaterThanOrEqual(-halfD);
+      expect(b.z + b.hd).toBeLessThanOrEqual(halfD);
+    }
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i]!;
+        const b = boxes[j]!;
+        const overlap = Math.abs(a.x - b.x) < a.hw + b.hw && Math.abs(a.z - b.z) < a.hd + b.hd;
+        expect(overlap).toBe(false);
+      }
+    }
+  });
+
+  it('is a 30 x 20 m shed, 8 m to the eaves, with the trucks parked in front of its street-side wall', () => {
+    expect(RECYCLING_SHED_SIZE).toEqual({ w: 30, d: 20, h: 8 });
+    const layout = computeRecyclingDepotLayout(entry.footprint);
+    const shedFront = layout.shed.z + RECYCLING_SHED_SIZE.d / 2;
+    for (const truck of layout.trucks) expect(truck.z).toBeGreaterThan(shedFront);
+
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [entry]);
+    const shed = renderer.partGeometry('recycling-depot', 'recyclingShed')!;
+    shed.computeBoundingBox();
+    expect(shed.boundingBox!.max.y).toBeCloseTo(8.5, 5); // 8 m eaves + the roof cap
+  });
+
+  it('draws each truck at the recycling fleet body size', () => {
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [entry]);
+    const truck = renderer.partGeometry('recycling-depot', 'recyclingTruck')!;
+    truck.computeBoundingBox();
+    const size = truck.boundingBox!.getSize(new THREE.Vector3());
+    const [w, h, l] = sizeForKind(VehicleKind.Recycling);
+    // The body's wheels stand a little proud of the body slab, so the overall
+    // extent is the fleet size plus that, and no more.
+    expect(size.x).toBeGreaterThanOrEqual(w);
+    expect(size.x).toBeLessThanOrEqual(w * 1.15);
+    expect(size.y).toBeLessThanOrEqual(h * 1.1);
+    expect(size.z).toBeGreaterThan(l * 0.9);
+    expect(size.z).toBeLessThanOrEqual(l * 1.1);
+    expect(l).toBe(9);
+  });
+
+  it('places every part at the rotated local position for each rotation, trucks keeping the lot turned (3x2 / 2x3)', () => {
+    for (const rotation of [0, 1, 2, 3] as const) {
+      const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [entry]);
+      renderer.apply(deltaAdd(makeInstance(1, 'recycling-depot', { x: 0, z: 0, rotation })));
+      const lot = footprintForRotation(entry, rotation);
+      const centerX = (lot.w / 2) * TILE_METERS;
+      const centerZ = (lot.d / 2) * TILE_METERS;
+      const layout = computeRecyclingDepotLayout(entry.footprint);
+      const slots = renderer.partSlotsFor(1, 'recyclingTruck');
+      const m = new THREE.Matrix4();
+      layout.trucks.forEach((local, i) => {
+        renderer.getPartMatrix('recycling-depot', 'recyclingTruck', slots[i]!, m);
+        const pos = decomposePosition(m);
+        const rotated = rotateLocalXZ(local.x, local.z, rotation);
+        expect(pos.x).toBeCloseTo(centerX + rotated.x, 5);
+        expect(pos.z).toBeCloseTo(centerZ + rotated.z, 5);
+        expect(pos.x).toBeGreaterThan(0);
+        expect(pos.x).toBeLessThan(lot.w * TILE_METERS);
+        expect(pos.z).toBeGreaterThan(0);
+        expect(pos.z).toBeLessThan(lot.d * TILE_METERS);
+
+        const quat = decomposeQuaternion(m);
+        const expected = new THREE.Quaternion().setFromAxisAngle(
+          new THREE.Vector3(0, 1, 0),
+          rotation * (Math.PI / 2),
+        );
+        expect(quat.angleTo(expected)).toBeCloseTo(0, 5);
+      });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // UtilityKitRenderer: small-park
 // ---------------------------------------------------------------------------
 
@@ -1143,7 +1300,7 @@ describe('removal exactness', () => {
 // ---------------------------------------------------------------------------
 
 describe('multiple kits coexisting', () => {
-  it('builds and applies all 8 kits from one catalog + one delta without cross-talk', () => {
+  it('builds and applies all 9 kits from one catalog + one delta without cross-talk', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
       makeTurbineEntry(),
       makeWaterTowerEntry(),
@@ -1152,10 +1309,12 @@ describe('multiple kits coexisting', () => {
       makeWorksEntry(),
       makeCoalPlantEntry(),
       makeIncineratorEntry(),
+      makeRecyclingDepotEntry(),
       makeSmallParkEntry(),
     ]);
     renderer.apply(
       deltaAdd(
+        makeInstance(9, 'recycling-depot', { x: 40, z: 0 }),
         makeInstance(1, 'wind-turbine', { x: 0, z: 0 }),
         makeInstance(2, 'water-tower', { x: 5, z: 0 }),
         makeInstance(3, 'coal-plant', { x: 10, z: 0 }),
@@ -1177,6 +1336,7 @@ describe('multiple kits coexisting', () => {
     expect(renderer.partSlotsFor(7, 'drainOutfall')).toHaveLength(1);
     expect(renderer.partSlotsFor(8, 'worksBody')).toHaveLength(1);
     expect(renderer.partSlotsFor(8, 'worksOutfall')).toHaveLength(1);
+    expect(renderer.partSlotsFor(9, 'recyclingTruck')).toHaveLength(4);
   });
 });
 

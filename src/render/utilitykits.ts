@@ -34,6 +34,12 @@
  *    ("incineratorStack" — single/unstriped, unlike the coal plant's 2
  *    striped stacks), and a low tipping-bay box ("incineratorBay") in the
  *    strip beside the hall.
+ *  - recycling-depot: a paved yard slab over the whole lot ("recyclingYard"),
+ *    a maintenance shed with two tall bay doors
+ *    ("recyclingShed"), a small office block ("recyclingOffice"), and a row of
+ *    four parked side-loaders ("recyclingTruck", the service fleet's recycling
+ *    body at its real size) in the yard, all facing local +Z — the street side
+ *    once the player turns the lot to face the road.
  *  - small-park: a flat lawn plate + path cross ("parkGround"), 2-3
  *    self-contained trees ("parkTree" — trunk+canopy built locally; this file
  *    deliberately does NOT import trees.ts), and 2 benches ("parkBench").
@@ -47,10 +53,17 @@
  * renderer's swap/free convention.
  */
 import * as THREE from 'three';
-import { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../shared/types';
+import {
+  BuildingCatalogEntry,
+  BuildingDelta,
+  BuildingInstance,
+  VehicleKind,
+} from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import { InstancedSlotPool } from './massing';
+import { buildServiceVehicleGeometry } from './servicevehicles';
+import { sizeForKind } from './vehicles';
 
 // ---------------------------------------------------------------------------
 // Registry: acts ONLY on catalog ids in its registry —
@@ -65,6 +78,7 @@ export const UTILITY_KIT_CATALOG_IDS: readonly string[] = [
   'sewage-works',
   'coal-plant',
   'incinerator',
+  'recycling-depot',
   'small-park',
 ];
 
@@ -86,6 +100,10 @@ export type UtilityKitPartKind =
   | 'incineratorHall'
   | 'incineratorStack'
   | 'incineratorBay'
+  | 'recyclingYard'
+  | 'recyclingShed'
+  | 'recyclingOffice'
+  | 'recyclingTruck'
   | 'parkGround'
   | 'parkTree'
   | 'parkBench';
@@ -853,6 +871,123 @@ function buildIncineratorBayGeometry(): THREE.BufferGeometry {
 }
 
 // ---------------------------------------------------------------------------
+// recycling-depot: a maintenance shed + office on the back of a paved yard,
+// four side-loaders parked in a row in front of the bay doors. Local +Z is the
+// street side; the ground plinth under the whole lot is the yard's pavement.
+// ---------------------------------------------------------------------------
+
+export const RECYCLING_TRUCK_COUNT = 4;
+export const RECYCLING_SHED_SIZE = { w: 30, d: 20, h: 8 };
+export const RECYCLING_OFFICE_SIZE = { w: 6, d: 10, h: 3.8 };
+const RECYCLING_EDGE_MARGIN = 3;
+const RECYCLING_ROOF_CAP_HEIGHT = 0.5;
+const RECYCLING_DOOR_SIZE = { w: 5, h: 5.5 };
+const RECYCLING_DOOR_THICKNESS = 0.3;
+const RECYCLING_DOOR_COUNT = 2;
+const RECYCLING_TRUCK_SPACING = 6.5;
+/** Clear yard between the bay doors and the row of parked trucks, so a truck can pull in. */
+const RECYCLING_DOOR_APRON = 6;
+
+/** The paved yard is a slab over the whole lot, standing just proud of the ground plinth so the two never z-fight. */
+export const RECYCLING_YARD_HEIGHT = 0.3;
+
+const RECYCLING_YARD_RGB: RGB = [0.3, 0.32, 0.33];
+const RECYCLING_SHED_RGB: RGB = [0.62, 0.64, 0.64];
+const RECYCLING_ROOF_RGB: RGB = [0.36, 0.4, 0.42];
+const RECYCLING_DOOR_RGB: RGB = [0.2, 0.46, 0.55];
+const RECYCLING_OFFICE_RGB: RGB = [0.78, 0.76, 0.7];
+const RECYCLING_OFFICE_ROOF_RGB: RGB = [0.4, 0.42, 0.44];
+
+export interface RecyclingDepotLayout {
+  /** Footprint-frame centre of the shed and of the office, on the ground. */
+  shed: Vec2;
+  office: Vec2;
+  /** Footprint-frame centre of each parked truck; every truck's nose points to local +Z. */
+  trucks: Vec2[];
+}
+
+/**
+ * Shed hard against the back-left corner (margin inside the lot), office
+ * beside it, and the trucks in a row one apron in front of the bay doors.
+ * Pure; fixed per footprint.
+ */
+export function computeRecyclingDepotLayout(footprint: FootprintSize): RecyclingDepotLayout {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const shedX = -halfW + RECYCLING_EDGE_MARGIN + RECYCLING_SHED_SIZE.w / 2;
+  const shedZ = -halfD + RECYCLING_EDGE_MARGIN + RECYCLING_SHED_SIZE.d / 2;
+  const office: Vec2 = {
+    x: shedX + RECYCLING_SHED_SIZE.w / 2 + RECYCLING_OFFICE_SIZE.w / 2 + 0.5,
+    z: -halfD + RECYCLING_EDGE_MARGIN + RECYCLING_OFFICE_SIZE.d / 2,
+  };
+  const truckLength = sizeForKind(VehicleKind.Recycling)[2];
+  const truckZ = shedZ + RECYCLING_SHED_SIZE.d / 2 + RECYCLING_DOOR_APRON + truckLength / 2;
+  const firstTruckX = -halfW + RECYCLING_EDGE_MARGIN + sizeForKind(VehicleKind.Recycling)[0] / 2;
+  const trucks: Vec2[] = [];
+  for (let i = 0; i < RECYCLING_TRUCK_COUNT; i++) {
+    trucks.push({ x: firstTruckX + i * RECYCLING_TRUCK_SPACING, z: truckZ });
+  }
+  return { shed: { x: shedX, z: shedZ }, office, trucks };
+}
+
+/** The paved yard: one slab over the whole lot, local Y=0 the ground plane. */
+function buildRecyclingYardGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const yard = new THREE.BoxGeometry(halfW * 2, RECYCLING_YARD_HEIGHT, halfD * 2);
+  yard.translate(0, RECYCLING_YARD_HEIGHT / 2, 0);
+  return paintVertexColor(yard, hexFromRgb(RECYCLING_YARD_RGB));
+}
+
+/** Shed box + eaves cap + two bay doors proud of the street-side wall, merged; local Y=0 is the GROUND plane. */
+function buildRecyclingShedGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { shed } = computeRecyclingDepotLayout(footprint);
+  const { w, d, h } = RECYCLING_SHED_SIZE;
+
+  const body = new THREE.BoxGeometry(w, h, d);
+  body.translate(shed.x, h / 2, shed.z);
+  paintVertexColor(body, hexFromRgb(RECYCLING_SHED_RGB));
+
+  const cap = new THREE.BoxGeometry(w, RECYCLING_ROOF_CAP_HEIGHT, d);
+  cap.translate(shed.x, h + RECYCLING_ROOF_CAP_HEIGHT / 2, shed.z);
+  paintVertexColor(cap, hexFromRgb(RECYCLING_ROOF_RGB));
+
+  const parts: THREE.BufferGeometry[] = [body, cap];
+  for (let i = 0; i < RECYCLING_DOOR_COUNT; i++) {
+    const door = new THREE.BoxGeometry(
+      RECYCLING_DOOR_SIZE.w,
+      RECYCLING_DOOR_SIZE.h,
+      RECYCLING_DOOR_THICKNESS,
+    );
+    const x = shed.x + (i - (RECYCLING_DOOR_COUNT - 1) / 2) * (w / RECYCLING_DOOR_COUNT);
+    door.translate(x, RECYCLING_DOOR_SIZE.h / 2, shed.z + d / 2 + RECYCLING_DOOR_THICKNESS / 2);
+    paintVertexColor(door, hexFromRgb(RECYCLING_DOOR_RGB));
+    parts.push(door);
+  }
+  return mergeParts(parts);
+}
+
+/** Office box + flat roof slab, merged; local Y=0 is the GROUND plane. */
+function buildRecyclingOfficeGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { office } = computeRecyclingDepotLayout(footprint);
+  const { w, d, h } = RECYCLING_OFFICE_SIZE;
+  const body = new THREE.BoxGeometry(w, h, d);
+  body.translate(office.x, h / 2, office.z);
+  paintVertexColor(body, hexFromRgb(RECYCLING_OFFICE_RGB));
+  const roof = new THREE.BoxGeometry(w, RECYCLING_ROOF_CAP_HEIGHT, d);
+  roof.translate(office.x, h + RECYCLING_ROOF_CAP_HEIGHT / 2, office.z);
+  paintVertexColor(roof, hexFromRgb(RECYCLING_OFFICE_ROOF_RGB));
+  return mergeParts([body, roof]);
+}
+
+/** One parked side-loader: the service fleet's recycling body at its real size, nose to local +Z, centred on its own origin on the ground. */
+function buildRecyclingTruckGeometry(): THREE.BufferGeometry {
+  const [sx, sy, sz] = sizeForKind(VehicleKind.Recycling);
+  const truck = buildServiceVehicleGeometry(VehicleKind.Recycling);
+  truck.scale(sx, sy, sz);
+  truck.translate(0, sy / 2, 0);
+  return truck;
+}
+
+// ---------------------------------------------------------------------------
 // small-park: flat lawn plate (lush green), a light
 // path cross, 2-3 simple trees (self-contained), 2 benches.
 // ---------------------------------------------------------------------------
@@ -1153,6 +1288,8 @@ export class UtilityKitRenderer {
         return this.buildCoalPlantKit(entry);
       case 'incinerator':
         return this.buildIncineratorKit(entry);
+      case 'recycling-depot':
+        return this.buildRecyclingDepotKit(entry);
       case 'small-park':
         return this.buildSmallParkKit(entry);
       default:
@@ -1335,6 +1472,40 @@ export class UtilityKitRenderer {
     };
   }
 
+  private buildRecyclingDepotKit(entry: BuildingCatalogEntry): KitDefinition {
+    const lambert = (): THREE.MeshLambertMaterial =>
+      new THREE.MeshLambertMaterial({ vertexColors: true });
+    return {
+      entry,
+      pools: {
+        recyclingYard: new InstancedSlotPool(
+          this.scene,
+          buildRecyclingYardGeometry(entry.footprint),
+          lambert(),
+          INITIAL_KIT_CAPACITY,
+        ),
+        recyclingShed: new InstancedSlotPool(
+          this.scene,
+          buildRecyclingShedGeometry(entry.footprint),
+          lambert(),
+          INITIAL_KIT_CAPACITY,
+        ),
+        recyclingOffice: new InstancedSlotPool(
+          this.scene,
+          buildRecyclingOfficeGeometry(entry.footprint),
+          lambert(),
+          INITIAL_KIT_CAPACITY,
+        ),
+        recyclingTruck: new InstancedSlotPool(
+          this.scene,
+          buildRecyclingTruckGeometry(),
+          lambert(),
+          INITIAL_KIT_CAPACITY * RECYCLING_TRUCK_COUNT,
+        ),
+      },
+    };
+  }
+
   private buildSmallParkKit(entry: BuildingCatalogEntry): KitDefinition {
     const lambert = (): THREE.MeshLambertMaterial =>
       new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -1450,6 +1621,9 @@ export class UtilityKitRenderer {
         return;
       case 'incinerator':
         this.applyIncinerator(kit, building, entry, centerX, groundY, centerZ, rotation);
+        return;
+      case 'recycling-depot':
+        this.applyRecyclingDepot(kit, building, entry, centerX, groundY, centerZ, rotation);
         return;
       case 'small-park':
         this.applySmallPark(kit, building, entry, centerX, groundY, centerZ, rotation);
@@ -1633,6 +1807,43 @@ export class UtilityKitRenderer {
         incineratorHall: [hallSlot],
         incineratorStack: [stackSlot],
         incineratorBay: [baySlot],
+      },
+    });
+  }
+
+  private applyRecyclingDepot(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    centerX: number,
+    groundY: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+  ): void {
+    const yardPool = kit.pools.recyclingYard;
+    const shedPool = kit.pools.recyclingShed;
+    const officePool = kit.pools.recyclingOffice;
+    const truckPool = kit.pools.recyclingTruck;
+    if (!yardPool || !shedPool || !officePool || !truckPool) return;
+
+    const yardSlot = this.placeAt(yardPool, centerX, groundY, centerZ, rotation);
+    const shedSlot = this.placeAt(shedPool, centerX, groundY, centerZ, rotation);
+    const officeSlot = this.placeAt(officePool, centerX, groundY, centerZ, rotation);
+
+    // The trucks stand on the yard slab, not in it.
+    const truckY = groundY + RECYCLING_YARD_HEIGHT;
+    const truckSlots = computeRecyclingDepotLayout(entry.footprint).trucks.map((local) => {
+      const rotated = rotateLocalXZ(local.x, local.z, rotation);
+      return this.placeAt(truckPool, centerX + rotated.x, truckY, centerZ + rotated.z, rotation);
+    });
+
+    this.instances.set(building.id, {
+      catalogId: building.catalogId,
+      slots: {
+        recyclingYard: [yardSlot],
+        recyclingShed: [shedSlot],
+        recyclingOffice: [officeSlot],
+        recyclingTruck: truckSlots,
       },
     });
   }

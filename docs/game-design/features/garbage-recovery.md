@@ -57,18 +57,20 @@ body forces the two into the same one.
 
 ### The ladder
 
-| Building                    | Serves | Diverts | Reach    | Cost / upkeep    | Unlocks at    |
-| --------------------------- | ------ | ------- | -------- | ---------------- | ------------- |
-| Recycling Centre            | 12,000 | 7%      | 32 tiles | ¢3,200 / ¢260    | Busy Township |
-| Transfer Station            | 20,000 | none    | 40 tiles | ¢7,500 / ¢540    | Small City    |
-| Materials Recovery Facility | 40,000 | 21%     | 48 tiles | ¢24,000 / ¢1,750 | Grand City    |
+| Building                    | Serves        | Diverts                     | Reach    | Cost / upkeep    | Unlocks at    |
+| --------------------------- | ------------- | --------------------------- | -------- | ---------------- | ------------- |
+| Kerbside Recycling Depot    | 38,000 homes  | 10% of a house's waste      | 32 tiles | ¢3,200 / ¢260    | Busy Township |
+| Transfer Station            | 20,000        | none                        | 40 tiles | ¢7,500 / ¢540    | Small City    |
+| Materials Recovery Facility | 40,000        | 21%                         | 48 tiles | ¢24,000 / ¢1,750 | Grand City    |
 
-The recycling centre is a staffed drop-off yard — six roll-off containers, a
-baler, a gatehouse — and does no processing, which is why it diverts so little
-and covers so many people for so little. The transfer station diverts nothing at
-all, because what it sells is **reach**. **Overlapping catchments do not
-stack**: paper cannot be recycled twice, so a building in reach of both is
-diverted at the better rate, once.
+The first rung is a **kerbside recycling programme**, built as its depot, not
+a drop-off yard (decided 2026-10-08, see
+[below](#the-kerbside-recycling-depot-built-2026-10-08)): a drop-off yard
+measurably captures about a sixth of what kerbside does, so it would divert
+barely 2% of what it served. The transfer station diverts nothing at all,
+because what it sells is **reach**. **Overlapping catchments do not stack**:
+paper cannot be recycled twice, so a building in reach of two depots is served
+once.
 
 **What the player sees**, in order: the landfill pile grows visibly slower, on
 the terrain rather than in a panel; the incinerator's plume shrinks, because
@@ -185,19 +187,24 @@ composition. Nothing here is chosen.
 | Rubber, leather, textiles | 11.1% | 13.3%     | 1.5 pp       |
 | Metals                    | 8.8%  | 34.0%     | 3.0 pp       |
 | Wood                      | 6.2%  | 17.1%     | 1.1 pp       |
-| Glass                     | 4.2%  | 31.3%     | 1.3 pp       |
+| Glass                     | 4.2%  | 25.0%     | 1.1 pp       |
 
-The eight sum to **32.2%** against the published national recycling-and-
+The eight sum to **32.0%** against the published national recycling-and-
 composting headline of 32.1% — the derivation checks against its own source.
 **The recovery facility takes the four dry streams** — paper, plastics, metals,
-glass — for **21.1%**, settled at **21%**; the 8.5 pp in food and yard is
+glass — for **20.9%**, settled at **21%**; the 8.5 pp in food and yard is
 composting, a different building, out of scope.
 
-**The recycling centre takes the same four but only what residents bring.**
-Published participation in drop-off-only programmes runs 20–30% of households
-against 70–90% for kerbside; at the middle of each band it captures 25/80 = 31%
-of what kerbside would, so 0.31 × 21.1 = 6.5%, settled at **7%**. This is the
-softest figure here — if those bands are wrong, this number moves.
+The draft gave a drop-off recycling centre 7% of the same four streams, from a
+participation claim no source supports; measured drop-off collection is about
+a sixth of kerbside's, and the first rung became the kerbside depot (see
+[the kerbside recycling depot](#the-kerbside-recycling-depot-built-2026-10-08)).
+Of the rates above, paper, food, yard trimmings and plastics are confirmed on
+EPA's 2018 overview
+([EPA](https://www.epa.gov/facts-and-figures-about-materials-waste-and-recycling/national-overview-facts-and-figures-materials));
+glass is 25% there, not the 31.3% first written, which is the container rate;
+metals, textiles and wood are still to confirm, before the recovery facility
+is built on them.
 
 ### Catchments, and the one figure we could not derive
 
@@ -217,11 +224,14 @@ is purely that it collects where the disposal site cannot.
 
 ### What a recovered unit is worth
 
-A recovered tonne earns a blended commodity value of about **$75** for a
-residential single-stream mix against a processing cost of about **$80**, and
-prices have ranged from $40 to $180 within a decade. The two cancel _inside
-their own volatility_, so the commodity cheque is not what recovery is for. What
-recovery is for is the **avoided landfill tipping fee, about $55 a tonne** —
+A recovered tonne of residential single-stream earned $123 in the Northeast in
+the second quarter of 2024 against $86–90 to sort it, and $75 in the third
+quarter of 2025 ([NERC via Waste Dive](https://www.wastedive.com/news/nerc-commodities-mrf-value-report/727375/),
+[NERC via Packaging Dive](https://www.packagingdive.com/news/nerc-mrf-commodity-value-decreases-2025/807522/)):
+value and cost cross _inside their own volatility_, so the commodity cheque is
+not what recovery is for. What recovery is for is the **avoided landfill
+tipping fee, $57–62 a tonne** in 2023–24
+([EREF](https://erefdn.org/analyzing-municipal-solid-waste-landfill-tipping-fees/)) —
 stable, and paid whether or not anyone wants the city's cardboard. The player is
 not running a scrap business; they are not buying ground and not filling it.
 
@@ -234,8 +244,8 @@ tonne recovered**. A 50,000-person city, with its 24,000 jobs, makes 13.3
 million units a month; at 21% it diverts 2.8 million and earns about ¢450
 against ¢1,750 of upkeep. The credit covers about a quarter of the plant, and
 recovery is a cost the city pays to bury less, which is the real relation: a
-recovered tonne costs about $80 to process against the $55 tipping fee it
-saves.
+recovered tonne costs $86–90 to sort and more to collect, against the $57–62
+tipping fee it saves.
 
 ### Building sizes
 
@@ -247,18 +257,80 @@ order of magnitude every time. Arithmetic in the
 
 | Building                    | Plan area | Footprint | Height | Staff |
 | --------------------------- | --------- | --------- | ------ | ----- |
-| Recycling Centre            | 892 m²    | 2×3       | 8 m    | 3     |
+| Kerbside Recycling Depot    | 2,160 m²  | 2×3       | 8 m    | 5     |
 | Transfer Station            | 1,870 m²  | 3×4       | 9 m    | 4     |
 | Materials Recovery Facility | 3,785 m²  | 4×6       | 11 m   | 15    |
 
 Affordability holds: ¢3,200 at Busy Township, whose milestone reward is ¢15,000.
 Per recovered tonne the large facility is 25% cheaper to build, 33% to run.
 
+The depot is a fleet yard, four trucks at about 540 m² each, with a
+maintenance shed 8 m to the eaves for a side-loader's raised arm; four drivers
+and a mechanic.
+
 **Pollution** is proportional to site vehicle movements, since none of the three
-burns: 5 for the recycling centre at roughly one container pull a day, 20 for
+burns: 10 for the depot, four trucks out and back each day (a dial on the
+draft's 5 for one container pull), 20 for
 the recovery facility at three inbound loads plus diesel loaders and a glass
 breaker, and **25 for the transfer station** — dirtiest of the three despite
 doing the least, because it handles the whole stream in an open hall.
+
+### The kerbside recycling depot (built 2026-10-08)
+
+The draft's first rung was a staffed drop-off yard diverting 7%, on a claim
+that drop-off programmes reach 20–30% of households against kerbside's
+70–90%. No source supports that claim, and what programmes measure does not:
+North Carolina's drop-off sites collected 44 lb a household in FY2024-25
+against 264 for its kerbside programmes
+([NC DEQ](https://www.deq.nc.gov/environmental-assistance-and-customer-service/reports-and-studies/state-state-recycling-report-fy-2024-25/open)).
+A drop-off yard would divert about 2%, so the player chose the kerbside
+programme instead: a depot whose trucks empty household recycling carts.
+
+- **What a served home sets out.** 264 lb a household a year, North
+  Carolina's newest measured kerbside figure, near the 245 lb implied by the
+  national 32% capture of single-family recyclables in 2020
+  ([Recycling Partnership via Waste360](https://www.waste360.com/recycling/highlights-recycling-partnerships-2020-curbside-report))
+  and below the 357 lb of the 2016 national survey
+  ([State of Curbside via Waste Dive](https://www.wastedive.com/news/state-of-curbside-report-single-stream-carts-lead-to-highest-performing-r/432266/)).
+  At the national household of 2.5 that is **0.131 kg a resident a day**,
+  about 10% of a resident's 1.32 kg. It is diverted at source: a served home's
+  recyclables go in the cart, never onto the trash tiles, so the landfill and
+  the incinerator receive that much less.
+- **Which homes.** A city's kerbside service covers single-family homes up to
+  three or four units; apartment blocks and businesses hire private haulers
+  ([Chandler](https://chandleraz.gov/residents/recycling-and-trash/commercial-trash-service),
+  [Cincinnati](https://cincinnati-oh.gov/recycling/curbside/eligibility)).
+  So the depot serves buildings of **four homes or fewer** — the house, the
+  duplex, the fourplex and the townhouse row — and no block, shop or works.
+- **How many homes.** A one-person automated side-loader serves about 950
+  homes a day ([MTAS](https://www.mtas.tennessee.edu/reference/cost-and-productivity-estimates)),
+  and recycling is collected every other week, so one truck covers about
+  **9,500 homes** — derived, since no recycling-specific figure was found. A
+  fleet yard takes about 540 m² a truck all in
+  ([Calgary](https://www.calgary.ca/planning/projects/east-calgary-truck-maintenance-storages-facility.html),
+  60 trucks on 8 acres), so a 2×3 yard holds **four trucks** and the depot
+  serves **38,000 homes**, first come by building, within its 32-tile road
+  reach. A home past that waits for a second depot; one reached by two is
+  served once, by the first.
+- **What it earns.** The recyclables leave the map for a regional sorting
+  plant until a Materials Recovery Facility is built in town. The commodity
+  margin swings too far to bank on — a Northeast single-stream tonne was worth
+  $123 in the second quarter of 2024, against $86–90 to sort it
+  ([NERC via Waste Dive](https://www.wastedive.com/news/nerc-commodities-mrf-value-report/727375/)),
+  and $75 in the third quarter of 2025
+  ([NERC via Packaging Dive](https://www.packagingdive.com/news/nerc-mrf-commodity-value-decreases-2025/807522/)) —
+  so the credit is the disposal it avoids, ¢0.00016 a unit
+  ([above](#what-a-recovered-unit-is-worth)), booked once a month. A city of
+  40,000 in houses diverts about 630,000 units a month and earns about ¢100;
+  kerbside recycling costs a real city about $45 a household a year beyond
+  its refuse round
+  ([National Academies](https://www.nationalacademies.org/read/27978/chapter/6)),
+  so the programme is a cost the city pays to bury less, as it is in fact.
+  The cost and upkeep are dials on the existing ladder.
+- **What the player sees.** A depot of sheds and parked trucks, a second
+  livery of recycling trucks running the house streets, the landfill pile
+  growing a tenth slower where the houses are served, and the credit in the
+  month's income.
 
 ## What it is not
 

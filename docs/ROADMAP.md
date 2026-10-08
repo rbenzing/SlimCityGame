@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 5,051 tests passing across 164 test files, run 2026-10-07.
+**Test suite:** 5,075 tests passing across 165 test files, run 2026-10-07.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -140,9 +140,9 @@ with; and a small house on prime land torn down for a plex.
 
 **Next:** garbage recovery
 ([garbage-recovery.md](game-design/features/garbage-recovery.md)), the
-municipal-services epic the player chose. Its first slice puts the whole
-garbage chain on one real unit; the recycling centre, the transfer station
-and the recovery facility follow. After it, the other municipal services
+municipal-services epic the player chose. Its first slice put the whole
+garbage chain on one real unit and its second adds the kerbside recycling
+depot; the materials recovery facility and the transfer station follow. After it, the other municipal services
 programme's epics
 ([municipal-services.md](game-design/features/municipal-services.md)), the
 [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
@@ -287,6 +287,33 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Kerbside recycling (second slice of garbage recovery, built 2026-10-08)
+
+The draft's first rung was a drop-off recycling centre diverting 7%, from a
+claim that drop-off programmes reach 20–30% of households against kerbside's
+70–90%, which no source supports. Measured, North Carolina's drop-off sites
+collected 44 lb a household against 264 for kerbside (FY2024-25), so a
+drop-off yard would divert about 2%. The player chose a kerbside programme
+instead: the **Kerbside Recycling Depot**, a 2×3 fleet yard of four trucks
+(540 m² a truck, Calgary) serving up to 38,000 homes (950 homes a day for a
+side-loader, every other week) in a 32-tile reach. A served home's residents
+set 0.131 kg a day each in the cart, 264 lb a household a year, about 10% of
+their 1.32 kg, which never reaches the landfill or the incinerator. City
+kerbside covers buildings of up to four homes (Chandler, Cincinnati), so
+apartment blocks, shops and works are not served. The commodity margin swings
+from $123 to $75 a tonne against $86–90 to sort (NERC), so the credit is the
+disposal avoided, ¢0.00016 a unit derived from the landfill's own costs, booked
+monthly; a real programme costs $45 a household a year (National Academies),
+and this one costs the city money too. The recovery-rates table now has glass
+at EPA's 25%, not the 31.3% container rate, and the recovery value and
+tipping fee are the sourced 2024–25 figures. Its trucks run in a recycling
+livery (`VehicleKind.Recycling`, teal with a white cab), from a kit of a
+maintenance shed, an office and four parked side-loaders on a paved yard. The
+screenshots found a bug in passing: a facility's trucks looked for a street
+only within two tiles of its lot's corner, so a 2×3 depot or a 4×4
+incinerator fronting its street on the far side never sent one; they now
+leave from the street nearest any tile of the lot.
 
 ### Garbage on one real unit (first slice of garbage recovery, built 2026-10-08)
 

@@ -12,6 +12,7 @@ import {
   MAX_LOAN,
   MILESTONES,
   POWER_LINE_UPKEEP_PER_TILE,
+  RECYCLING_CREDIT_PER_UNIT,
   TICKS_PER_MONTH,
   tileIndex,
 } from '../shared/constants';
@@ -375,6 +376,50 @@ describe('EconomySystem: monthly income/expenses', () => {
       tickNo: TICKS_PER_MONTH,
     });
     expect(statsPatch.monthlyExpenses).toBeCloseTo(0, 6);
+  });
+
+  it("books the month's recovered units at the credit once, and takes the tally only at the boundary", () => {
+    const g = makeGrid();
+    const sys = new EconomySystem(catalog, roadSpecs);
+    const stats = makeStats({ funds: 10000 });
+    let tally = 1_000_000;
+    let takes = 0;
+    const takeRecoveredUnits = (): number => {
+      takes++;
+      const units = tally;
+      tally = 0;
+      return units;
+    };
+
+    const mid = sys.tick({
+      g,
+      buildings: [],
+      stats,
+      tickNo: TICKS_PER_MONTH - 1,
+      takeRecoveredUnits,
+    });
+    expect(takes).toBe(0);
+    expect(mid.statsPatch.monthlyIncome).toBeUndefined();
+
+    const first = sys.tick({
+      g,
+      buildings: [],
+      stats,
+      tickNo: TICKS_PER_MONTH,
+      takeRecoveredUnits,
+    });
+    expect(takes).toBe(1);
+    expect(first.statsPatch.monthlyIncome).toBeCloseTo(1_000_000 * RECYCLING_CREDIT_PER_UNIT, 6);
+
+    const next = sys.tick({
+      g,
+      buildings: [],
+      stats,
+      tickNo: 2 * TICKS_PER_MONTH,
+      takeRecoveredUnits,
+    });
+    expect(takes).toBe(2);
+    expect(next.statsPatch.monthlyIncome).toBeCloseTo(0, 6);
   });
 
   it('skips the monthly cycle on tick 0 and on non-boundary ticks', () => {

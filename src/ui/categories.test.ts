@@ -216,7 +216,7 @@ describe('subTabsFor', () => {
     ]);
   });
 
-  it('Garbage is a single flat group of the landfill brush + the incinerator ploppable', () => {
+  it('Garbage is a single flat group of the landfill brush + the incinerator and recycling depot ploppables', () => {
     const tabs = subTabsFor('garbage');
     expect(tabs).toHaveLength(1);
     expect(tabs[0]?.cards).toEqual([
@@ -227,6 +227,12 @@ describe('subTabsFor', () => {
         unlockMilestone: 1,
       },
       { id: 'plop.incinerator', name: 'Incinerator', cost: 40000, unlockMilestone: 3 },
+      {
+        id: 'plop.recycling-depot',
+        name: 'Kerbside Recycling Depot',
+        cost: 3200,
+        unlockMilestone: 2,
+      },
     ]);
   });
 });
