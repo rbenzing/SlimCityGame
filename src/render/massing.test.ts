@@ -843,6 +843,12 @@ describe('a building keeps its real proportions whatever the tile measures', () 
     expect(bodyMetresFor(sized('detached', 2, 3)).d).toBeGreaterThan(DETACHED_BODY_MIN_M);
   });
 
+  it('stands a house on an acre lot, 3 by 3 tiles, as 14.25 m square', () => {
+    const body = bodyMetresFor(sized('detached', 3, 3));
+    expect(body.w).toBeCloseTo(14.25, 9);
+    expect(body.d).toBeCloseTo(14.25, 9);
+  });
+
   it('keeps a detached home the narrower of the two, so a yard survives', () => {
     expect(RES_LOW_BODY_M_PER_TILE).toBeLessThan(DEFAULT_BODY_M_PER_TILE);
     expect(bodyMetresFor(sized('detached')).w).toBeLessThan(bodyMetresFor(sized(undefined)).w);

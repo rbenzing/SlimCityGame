@@ -65,8 +65,28 @@ describe('the plat of a straight street', () => {
     expect(poor).toHaveLength(12);
     expect(poor.every((p) => p.lot === 'half' && p.w === 1 && p.d === 1)).toBe(true);
     const best = parcelsOf(world({ streets: street, zoned, value: 240 }));
-    expect(best.map((p) => p.x)).toEqual([10, 12, 14, 16, 18, 20]);
-    expect(best.every((p) => p.lot === 'estate' && p.w === 2 && p.d === 3)).toBe(true);
+    expect(best.map((p) => p.x)).toEqual([10, 13, 16, 19]);
+    expect(best.every((p) => p.lot === 'acre' && p.w === 3 && p.d === 3)).toBe(true);
+  });
+
+  it('cuts an acre from three free frontage tiles, an acre then an estate from five, an estate from two', () => {
+    const three = parcelsOf(world({ streets: street, zoned: block(10, 11, 3, 3), value: 255 }));
+    expect(three.map((p) => [p.x, p.lot, p.w, p.d])).toEqual([[10, 'acre', 3, 3]]);
+    const five = parcelsOf(world({ streets: street, zoned: block(10, 11, 5, 3), value: 255 }));
+    expect(five.map((p) => [p.x, p.lot, p.w, p.d])).toEqual([
+      [10, 'acre', 3, 3],
+      [13, 'estate', 2, 3],
+    ]);
+    const two = parcelsOf(world({ streets: street, zoned: block(10, 11, 2, 3), value: 255 }));
+    expect(two.map((p) => [p.x, p.lot, p.w, p.d])).toEqual([[10, 'estate', 2, 3]]);
+  });
+
+  it('keeps the acre 3 by 3 on a north to south street and turns the estate to 3 by 2', () => {
+    const avenue = block(10, 10, 1, 12);
+    const acre = parcelsOf(world({ streets: avenue, zoned: block(11, 10, 3, 3), value: 255 }));
+    expect(acre.map((p) => [p.lot, p.w, p.d])).toEqual([['acre', 3, 3]]);
+    const estate = parcelsOf(world({ streets: avenue, zoned: block(11, 10, 3, 2), value: 255 }));
+    expect(estate.map((p) => [p.lot, p.w, p.d])).toEqual([['estate', 3, 2]]);
   });
 
   it('turns the lot to a street that runs north to south, its frontage along the street', () => {
@@ -128,12 +148,12 @@ describe('the plat steps over what stands and fits what is left', () => {
   });
 
   it('cuts the largest smaller lot that fits where the warranted one runs out of room', () => {
-    // An estate needs two tiles of frontage; one tile is left at the run's end.
-    const zoned = block(10, 11, 3, 3);
+    // An acre needs three tiles of frontage; one tile is left at the run's end.
+    const zoned = block(10, 11, 4, 3);
     const parcels = parcelsOf(world({ streets: street, zoned, value: 240 }));
     expect(parcels.map((p) => [p.x, p.lot])).toEqual([
-      [10, 'estate'],
-      [12, 'normal'],
+      [10, 'acre'],
+      [13, 'normal'],
     ]);
   });
 });

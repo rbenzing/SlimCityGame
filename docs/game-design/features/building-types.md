@@ -77,7 +77,7 @@ are free, and stays as it is where they are not
 
 | Kind                 | Zone               | From | Weight | Lot (tiles) L1 / L2 / L3 | Storeys       | Homes       | Residents     |
 | -------------------- | ------------------ | ---- | ------ | ------------------------ | ------------- | ----------- | ------------- |
-| Detached house       | Low density        | M0   | 61.1   | 1×1, 1×2, 2×2 or 2×3 by the land, the same at every level ([lots-and-land.md](lots-and-land.md)) | 1 / 2 / 2     | 1           | 3             |
+| Detached house       | Low density        | M0   | 61.1   | 1×1, 1×2, 2×2, 2×3 or 3×3 by the land, the same at every level ([lots-and-land.md](lots-and-land.md)) | 1 / 2 / 2     | 1           | 3             |
 | Duplex               | Low density        | M1   | 1.6    | 1×1 or 1×2, the same at every level; 2×1 turned | 2 / 2 / 2.5   | 2           | 5             |
 | Fourplex             | Low density        | M1   | 1.2    | 1×1 or 1×2, the same at every level; 2×1 turned | 2.5 / 2.5 / 3 | 4           | 9             |
 | Townhouse row        | Row housing        | M1   | 1.6    | 1×2, one normal parcel, at every level; 2×1 turned | 2 / 3 / 3.5   | 3 / 3 / 3   | 8 / 8 / 8     |

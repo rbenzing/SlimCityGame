@@ -679,7 +679,8 @@ MUTCD citations below use 11th-edition section numbers.
   `src/sim/demand.ts`
 - A detached house is platted on the lot the land warrants and stays on it:
   the land value at the tile picks half (under 64, 1×1), normal (64–159,
-  1×2), double (160–223, 2×2) or estate (224 and over, 2×3), or the next
+  1×2), double (160–223, 2×2) or acre (224 and over, 3×3, with the 2×3
+  estate where only two tiles of frontage are free), or the next
   smaller lot that fits, never a larger one than the land warrants. The three
   levels of a lot share its footprint, a level-up looks up the same zone,
   kind and lot and footprint, and no building ever grows its lot. A house

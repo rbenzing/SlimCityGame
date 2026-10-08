@@ -68,7 +68,7 @@ whenever a building is selected:
 - **Rows**, label left in the uppercase label style, value right:
   - `ZONE` — the zone's display name ("Low Density Residential").
   - `LOT` — the lot the building stands on, after ZONE: "Half lot, 400 m²",
-    "Normal lot, 800 m²", "Double lot, 1,600 m²", "Estate lot, 2,400 m²", and
+    "Normal lot, 800 m²", "Double lot, 1,600 m²", "Estate lot, 2,400 m²", "Acre lot, 3,600 m²", and
     "Two normal lots, 1,600 m²" for a building assembled from two parcels. It
     reads the catalog entry's lot and footprint at 400 m² a tile
     (`lotLine` in `src/ui/format.ts`). A building with no lot in the catalog

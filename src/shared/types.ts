@@ -1137,7 +1137,7 @@ export type IndustrialKind =
 export type BuildingKind = FarmKind | ResidentialKind | CommercialKind | IndustrialKind;
 
 /** The parcel a detached house is platted on, set by the land's standing. */
-export type LotSize = 'half' | 'normal' | 'double' | 'estate';
+export type LotSize = 'half' | 'normal' | 'double' | 'estate' | 'acre';
 
 export interface BuildingCatalogEntry {
   id: string;

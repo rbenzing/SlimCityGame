@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 5,025 tests passing across 163 test files, run 2026-10-07.
+**Test suite:** 5,040 tests passing across 163 test files, run 2026-10-07.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -163,9 +163,10 @@ fourplex on the plat, medium density assembling two parcels, replatting
 under empty ground, the inspector's lot line, row housing on one normal
 lot, and commercial and dense land cut into frontage lots; and the dense
 homes are re-derived from the floor each block is drawn with; mid-rise and
-shopfront flats start on one lot and assemble their neighbours; and a small
-house on prime land is torn down for a duplex or fourplex on its lot. Next
-is the 3×3 estate where a block is deep.
+shopfront flats start on one lot and assemble their neighbours; a small
+house on prime land is torn down for a duplex or fourplex on its lot; and
+the best land is cut into 3×3 acre lots where the frontage has room. The
+epic is complete.
 After it, the municipal
 services programme's epics
 ([municipal-services.md](game-design/features/municipal-services.md)), the
@@ -311,6 +312,21 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The acre lot, where the frontage has room (built 2026-10-08)
+
+The last slice of lots and land. Estate districts run from half an acre to
+an acre and more (Boise R-1A 20,000 sq ft, Benbrook RE one acre, Troy
+30,000–40,000 sq ft at 150 ft wide); the 2×3 estate is the half-acre class,
+so the acre class joins it as a 3×3 lot, 60 m square, 3,600 m² (0.89 acre).
+The player chose how it is cut: where it fits. Land at 224 and over now
+warrants the acre (`LotSize` `acre`, the same floor as the estate), and the
+plat's walk-down to the largest lot that fits cuts a 2×3 estate where only
+two tiles of frontage are free. The bands are unchanged. The house on it is
+the estate's three levels on a 3×3 (`res-acre-N`, square, so no turned
+twin), a 14.25 m villa on its lawn, and the inspector reads "Acre lot,
+3,600 m²". An acre house is never torn down for a plex, since no plex fits
+it.
 
 ### A small house on prime land becomes a plex (asked for and built 2026-10-08)
 

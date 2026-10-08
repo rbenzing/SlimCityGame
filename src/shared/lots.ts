@@ -1,19 +1,21 @@
 /**
  * The lot a detached house is platted on: the land's standing, read off the
- * land-value field, picks one of four parcel sizes. Shared so the spawner and
- * anything that shows the plat read the same bands.
+ * land-value field, picks one of five parcel sizes. The top band warrants the
+ * acre; where the frontage has only two free tiles the plat falls back to the
+ * estate. Shared so the spawner and anything that shows the plat read the same bands.
  */
 import { ZoneType, type BuildingCatalogEntry, type LotSize } from './types';
 
 /** Smallest to largest, the order a lot gives way to a smaller one that fits. */
-export const LOT_SIZES: readonly LotSize[] = ['half', 'normal', 'double', 'estate'];
+export const LOT_SIZES: readonly LotSize[] = ['half', 'normal', 'double', 'estate', 'acre'];
 
-/** The land-value floor (0–255) at which each lot size is platted; below normal's, a half lot. */
+/** The land-value floor (0–255) at which each lot size is platted; below normal's, a half lot. The acre shares the estate's floor and wins it where it fits. */
 export const LOT_STANDING_FLOOR: Readonly<Record<LotSize, number>> = {
   half: 0,
   normal: 64,
   double: 160,
   estate: 224,
+  acre: 224,
 };
 
 /** A lot's tiles along its street and in from it; the catalog's upright footprint. */
@@ -22,6 +24,7 @@ export const LOT_EXTENT: Readonly<Record<LotSize, { frontage: number; depth: num
   normal: { frontage: 1, depth: 2 },
   double: { frontage: 2, depth: 2 },
   estate: { frontage: 2, depth: 3 },
+  acre: { frontage: 3, depth: 3 },
 };
 
 /** The largest lot the land at `landValue` warrants. */

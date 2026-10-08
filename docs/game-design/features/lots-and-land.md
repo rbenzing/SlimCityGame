@@ -149,7 +149,7 @@ field, which the player already has a lens for, in four bands:
 | under 64                   | poor       | **half, 1×1**   | a small home, a starter house, a cottage  |
 | 64–159                     | ordinary   | **normal, 1×2** | a house on the median lot                 |
 | 160–223                    | good       | **double, 2×2** | a family home with a yard                 |
-| 224 and over               | the best   | **estate, 2×3** | a villa; 3×3 where the block is deep      |
+| 224 and over               | the best   | **acre, 3×3**; estate, 2×3, where only two tiles of frontage are free | a villa on its acre |
 
 The bands are the land-value field's own quartiles, which the lens already
 colours; the thresholds are dials. Land value is what it is today: a diffused
@@ -627,20 +627,44 @@ down when it is worth little next to the land under it.
   down and a duplex or fourplex goes up on its lot, under construction for
   the usual 100 ticks; the inspector names its kind and its lot.
 
+### The acre lot, where the frontage has room (built 2026-10-08)
+
+The last slice: the best land is cut into a 3×3 lot, 60 m by 60 m, 3,600 m²
+(38,750 sq ft, 0.89 acre), where its run has three tiles of frontage free.
+
+- **Why a 3×3.** Estate districts run from half an acre to an acre and more:
+  Boise's R-1A at 20,000 sq ft, Benbrook's RE at one acre, Troy at
+  30,000–40,000 sq ft and 150 ft wide (the standards table above). The 2×3,
+  25,800 sq ft and 131 ft wide, is the half-acre class; the 3×3, 197 ft by
+  197 ft, is the acre class. The zoning depth is three tiles, so both reach
+  it; what the acre adds is frontage.
+- **Where it fits.** The plat already cuts each stretch into the largest lot
+  the land warrants that fits, down to the half lot. Land at 224 and over now
+  warrants the acre, so a run on the best land is cut into acres and a stretch
+  only two tiles wide, between a standing house and the run's end, into a 2×3
+  estate. The acre is square, so it has no turned twin; it is the same lot
+  whichever way the street runs.
+- **The house on it.** The same three levels as the estate, one storey then
+  two, with the same household; the body is 4.75 m per lot tile, 14.25 m a
+  side, a two-storey villa of about 4,400 sq ft, and the rest is lawn and
+  drive. The inspector reads "Acre lot, 3,600 m²".
+- **What does not change.** The bands stay at 64, 160 and 224. A house on an
+  acre is not torn down for a plex, as an estate's is not: no plex fits it.
+
 ## What is built
 
 The first slice, built 2026-10-07, is the detached house alone; the duplex
-and the fourplex followed in the fourth slice, above. The 3×3 estate and the
-parcels of high density, mixed use and commercial followed in the ninth,
-above. The 3×3 estate is still to build.
+and the fourplex followed in the fourth slice, above. The parcels of high
+density, mixed use and commercial followed in the ninth, above, and the
+3×3 acre lot last, below.
 
-- **Eighteen entries, four lots.** The detached kind is the catalog's four lot
-  sizes by three levels, the normal and the estate each with a turned twin
+- **Twenty-one entries, five lots.** The detached kind is the catalog's five
+  lot sizes by three levels, the normal and the estate each with a turned twin
   for a street running north to south: `res-half-N` on 1×1, `res-normal-N` on 1×2,
-  `res-low-N` on 2×2 (the old ids, so a saved city keeps its houses) and
-  `res-estate-N` on 2×3, each entry carrying its `lot`. All three levels of
-  a lot share its footprint; a level changes the storeys and the value. The
-  3×3 estate where a block is deep waits for the parcel work.
+  `res-low-N` on 2×2 (the old ids, so a saved city keeps its houses),
+  `res-estate-N` on 2×3 and `res-acre-N` on 3×3, each entry carrying its
+  `lot`. All three levels of a lot share its footprint; a level changes the
+  storeys and the value.
 - **The plat is read at the anchor tile.** When growth comes to an empty
   zoned tile it reads the land value there, takes the four bands above
   (`lotForStanding` in `src/shared/lots.ts`) and keeps only the detached
