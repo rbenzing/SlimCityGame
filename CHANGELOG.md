@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.46.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.45.0...slimcity-v1.46.0) (2026-10-08)
+
+
+### Features
+
+* **garbage:** a kerbside recycling depot takes the houses' recycling ([27f8de1](https://github.com/rbenzing/SlimCityGame/commit/27f8de1e935a718edaf5a66a90dc4ce7911e99ab))
+* **garbage:** a kerbside recycling depot takes the houses' recycling ([9963466](https://github.com/rbenzing/SlimCityGame/commit/996346605113370e2b2e0ca0d6a6bd4fb6e379b3))
+
 ## [1.45.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.44.0...slimcity-v1.45.0) (2026-10-08)
 
 
