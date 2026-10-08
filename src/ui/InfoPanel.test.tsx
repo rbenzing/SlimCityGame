@@ -195,6 +195,25 @@ describe('InfoPanel', () => {
     expect(pips.map((p) => p.dataset.filled)).toEqual(['true', 'true', 'false']);
   });
 
+  it('shows the lot of a lotted building and none for a service building', () => {
+    const base = {
+      id: 1,
+      x: 0,
+      z: 0,
+      rotation: 0 as const,
+      level: 1,
+      state: BuildingState.Active,
+      problems: 0,
+    };
+    useCityStore.getState().setSelectedBuilding({ ...base, catalogId: 'res-estate-1' });
+    render(<InfoPanel />);
+    expect(screen.getByTestId('lot-row')).toHaveTextContent('Estate lot, 2,400 m²');
+    cleanup();
+    useCityStore.getState().setSelectedBuilding({ ...base, catalogId: 'police-station' });
+    render(<InfoPanel />);
+    expect(screen.queryByTestId('lot-row')).toBeNull();
+  });
+
   it('shows a COVERAGE row (kind + range) for service buildings, unconditionally from the catalog', () => {
     useCityStore.getState().setSelectedBuilding({
       id: 1,

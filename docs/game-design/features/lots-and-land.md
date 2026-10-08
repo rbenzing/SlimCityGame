@@ -7,8 +7,11 @@
   zone lens); fourth slice built 2026-10-07 (the duplex and the fourplex on
   the plat); fifth slice built 2026-10-07 (medium density assembles two
   normal parcels, and the lens draws the plat for the zones whose kinds stand
-  on it); replatting, the other densities' parcels (row housing, high
-  density, mixed, commercial) and the inspector's lot line are not yet built
+  on it); sixth slice built 2026-10-07 (replatting holds: the plat is re-cut
+  every pass and moves only empty ground); seventh slice built 2026-10-07
+  (the inspector's lot line). Not yet built: the other densities' parcels
+  (row housing, high density, mixed, commercial) and the 3×3 estate where a
+  block is deep
 - **Date:** 2026-10-05
 
 ## What the player gets
@@ -185,6 +188,11 @@ improves.
 
 ### Land is acquired, and the plat can change
 
+Built 2026-10-07: re-zoning and land value both replat, through the one
+re-cut the plat already gets every pass; see
+[the plat changes under empty ground](#the-plat-changes-under-empty-ground-built-2026-10-07).
+Assembly is built for medium density only.
+
 - **Re-zoning** replats. Paint a block from low to medium density and its
   normal lots pair up into the 2×2 parcels a multiplex takes; the standing
   houses stay until they are bulldozed or abandoned, as they do today, and
@@ -204,7 +212,8 @@ On the zone lens, the parcel lines: a block cut fine where the land is poor
 and coarse where it is good, before anything grows. On the street, the
 small homes on their small lots standing close, the villas on theirs standing
 apart, and a multiplex plainly on two lots' worth of ground. In the inspector,
-a building's lot: "Half lot, 400 m²", "Estate lot, 2,400 m²". And in the
+a building's lot: "Half lot, 400 m²", "Estate lot, 2,400 m²" (built, see
+[the inspector names the lot](#the-inspector-names-the-lot-built-2026-10-07)). And in the
 Advisor, nothing new: a poor street is a poor street for reasons the lenses
 already show.
 
@@ -375,10 +384,46 @@ the plat takes whole parcels only.
   lotted, and nothing for the others. Before this slice the lens cut a
   low-density band under every zone tool, which nothing read.
 
+### The plat changes under empty ground (built 2026-10-07)
+
+The sixth slice needs no new machinery: the plat is derived, so it is re-cut
+every growth pass from the zone, the roads, the buildings and the land value,
+and what it reads changing is what replats.
+
+- **Re-zoning replats the empty ground.** Painting a zone changes only empty
+  land, and a building keeps the zone it grew on for life
+  (`cmdPaintZone` in `src/sim/worker.entry.ts`). Paint a low-density block
+  medium and the standing houses stay on their low-density lots; the empty
+  ground is cut into normal parcels that a multiplex assembles in pairs.
+- **Land value moving re-cuts empty parcels only.** A built parcel never
+  moves, since a standing building is stepped over as a parcel of its own. A
+  street that comes good grows bigger lots in its gaps and keeps its small
+  houses until they go. A street that falls grows small homes in its gaps.
+- **Nothing is stored.** No parcel is saved, so there is nothing to migrate
+  and no save layer changes.
+- **Proved in `src/sim/growth.test.ts`**, the describe "the plat changes
+  under empty ground only".
+
+### The inspector names the lot (built 2026-10-07)
+
+The seventh slice: the building info panel shows a `Lot` row after the Zone
+row, for a building whose catalog entry carries a lot.
+
+- **The values.** "Half lot, 400 m²", "Normal lot, 800 m²", "Double lot,
+  1,600 m²" and "Estate lot, 2,400 m²". A building assembled from parcels
+  reads "Two normal lots, 1,600 m²".
+- **It reads the catalog.** `lotLine(entry)` in `src/ui/format.ts` reads the
+  entry's lot and footprint. The area is the footprint at 400 m² a tile,
+  since the on-screen building carries no footprint of its own.
+- **No lot, no row.** A building whose entry has no lot, as a service
+  building or a kind not yet lotted, shows no row. The panel is
+  `src/ui/InfoPanel.tsx`.
+
 ## What is built
 
 The first slice, built 2026-10-07, is the detached house alone; the duplex
-and the fourplex followed in the fourth slice, above.
+and the fourplex followed in the fourth slice, above. The 3×3 estate and the
+other densities' parcels are still to build.
 
 - **Eighteen entries, four lots.** The detached kind is the catalog's four lot
   sizes by three levels, the normal and the estate each with a turned twin

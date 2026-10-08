@@ -10,7 +10,7 @@ import catalogData from '../data/catalog.json';
 import { BuildingState, Problem, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingState as BuildingStateValue } from '../shared/types';
 import { averageOutputMW, formatMW } from '../shared/power';
-import { happinessFace } from './format';
+import { happinessFace, lotLine } from './format';
 import { Icon, type IconName } from './icons';
 import { useCityStore } from './store';
 import { PANEL_ROUNDED } from './theme';
@@ -145,6 +145,7 @@ export function InfoPanel(): JSX.Element | null {
 
   const entry = catalogById.get(building.catalogId);
   const name = entry?.name ?? building.catalogId;
+  const lot = entry ? lotLine(entry) : null;
   const info = selectionInfo && selectionInfo.building.id === building.id ? selectionInfo : null;
   const activeProblems = PROBLEM_LABELS.filter((p) => (building.problems & p.flag) !== 0);
   const isZoned = entry?.zone !== undefined;
@@ -178,6 +179,7 @@ export function InfoPanel(): JSX.Element | null {
 
         <div className="flex flex-col gap-0.5">
           <Row label="Zone" value={zoneDisplayName(entry)} />
+          {lot && <Row label="Lot" value={lot} testId="lot-row" />}
 
           <div className="flex items-center justify-between py-0.5">
             <span className="uppercase text-[10px] tracking-wide text-white/60">Level</span>
