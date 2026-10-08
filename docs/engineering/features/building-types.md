@@ -299,7 +299,7 @@ allowed when the building fronts a street.
 
 ### Risks
 
-- **Pacing.** A detached house holds 3 where it held 4; a tower up to 848
+- **Pacing.** A detached house holds 3 where it held 4; a tower up to 644
   where it held 150. Milestones move. The town tests are rerun and their
   expectations re-read, not loosened.
 - **Water.** A 400 kL water tower now serves about 1,200 people. The tower is

@@ -752,6 +752,13 @@ MUTCD citations below use 11th-edition section numbers.
   `round(units × household)`, a building's households are its `units`, and
   power and water are per-home survey figures. A number in `catalog.json`
   with no derivation is a bug. — [building-types.md](game-design/features/building-types.md)
+- A block's homes are the floor it is drawn with: a mid-rise, tower or
+  mixed-use block holds its drawn floor area (its body plate over its
+  storeys, each tier above the first at the mean setback, a tower's podium
+  and a mixed block's shop floor left out) × 85% ÷ a 93 m² apartment,
+  rounded. Never count every storey at the ground plate. —
+  [building-types.md](game-design/features/building-types.md#the-residential-kinds);
+  `bodyMetresFor` and `computeSetbacks` in `src/render/massing.ts`
 - Industry grows on its order book, never its neighbourhood: a works, a
   heavy plant or a farm levels up while industrial demand is above zero and
   the town has room for the jobs it adds, and never reads land value, which

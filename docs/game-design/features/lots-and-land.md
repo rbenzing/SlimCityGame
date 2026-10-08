@@ -539,10 +539,10 @@ The ninth slice: low commercial (zone 3), high commercial (4), high density
   keep their exact rule: they tile their parcels exactly. Industrial and farm
   zones are not platted. The sourced catalog footprints and the draw weights
   are unchanged.
-- **Next.** The dense homes figures are re-derived from floor plate × storeys
-  × efficiency ÷ unit size in the next PR: the level-3 tower's 375 homes is
-  about twice what its plate holds. After that comes the 3×3 estate where a
-  block is deep.
+- **Next.** The dense homes figures were then re-derived from the floor each
+  block is drawn with
+  ([building-types.md](building-types.md#the-residential-kinds)). After that
+  comes the 3×3 estate where a block is deep.
 
 ## What is built
 

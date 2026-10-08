@@ -594,7 +594,7 @@ describe('Residential kinds (building-types): three levels per kind, every figur
 
   it.each(RESIDENTIAL_KINDS)('$kind: residents are its homes times the household, rounded', (k) => {
     for (const e of ofKind(k.kind, k.lot, k.turned)) {
-      // To the cent first, so 375 × 2.26 = 847.5 rounds up and not on float noise.
+      // To the cent first, so a product ending in .5 rounds up and not on float noise.
       expect(e.residents).toBe(Math.round(Number((e.units! * k.household).toFixed(2))));
     }
   });

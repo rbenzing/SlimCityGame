@@ -15,6 +15,7 @@ import {
   MIN_SETBACK_INSET,
   DETACHED_BODY_MIN_M,
   RES_LOW_BODY_M_PER_TILE,
+  tierCountOf,
 } from './massing';
 import { BAY_DEPTH_TILES } from './parked';
 import { deriveFacadeParams, FLOOR_HEIGHT_METERS } from './facade';
@@ -923,6 +924,38 @@ describe('a building keeps its real proportions whatever the tile measures', () 
     expect(frontageM).toBeLessThanOrEqual(14);
     // And it is never taller in plan than the biggest ResLow lot allows.
     expect(bodyMetresFor(sized('detached', 3, 3)).w).toBeLessThanOrEqual(15);
+  });
+});
+
+describe('a high-density block houses what its drawn floor area holds', () => {
+  const NET_TO_GROSS = 0.85;
+  const APARTMENT_M2 = 93;
+  const STEP_INSET = (MIN_SETBACK_INSET + MAX_SETBACK_INSET) / 2;
+  const blocks = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter(
+    (e) => e.kind === 'midrise' || e.kind === 'tower' || e.kind === 'mixed',
+  );
+
+  // Homes in the stacked body: equal storeys per tier, each tier inset on both
+  // axes; a mixed block's ground storey is shops, so it holds no homes.
+  const expectedHomes = (e: BuildingCatalogEntry): number => {
+    const body = bodyMetresFor(e);
+    const tiers = tierCountOf(e);
+    const storeysPerTier = e.height / FLOOR_HEIGHT_METERS / tiers;
+    let floorAreaM2 = 0;
+    for (let tier = 0; tier < tiers; tier++) {
+      const plate = body.w * body.d * (1 - STEP_INSET) ** (2 * tier);
+      const homeStoreys = tier === 0 && e.kind === 'mixed' ? storeysPerTier - 1 : storeysPerTier;
+      floorAreaM2 += plate * homeStoreys;
+    }
+    return Math.round((floorAreaM2 * NET_TO_GROSS) / APARTMENT_M2);
+  };
+
+  it('covers every mid-rise, tower and mixed-use block', () => {
+    expect(blocks).toHaveLength(9);
+  });
+
+  it.each(blocks.map((e) => [e.id, e] as const))('%s', (id, e) => {
+    expect(e.units, id).toBe(expectedHomes(e));
   });
 });
 
