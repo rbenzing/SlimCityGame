@@ -987,12 +987,28 @@ MUTCD citations below use 11th-edition section numbers.
   `src/shared/constants.ts`, `src/sim/garbage.ts`
 - Kerbside recycling diverts at source and only from homes: a depot serves
   residents of buildings of four or fewer homes in its road reach, up to its
-  homes, each served once, and their recycling never reaches the trash tiles
-  or any disposal facility. Jobs are never served. A depot is never a disposal
+  homes, each served once, and their recycling never reaches the trash tiles,
+  and reaches a disposal facility only as a sorting plant's residue. Jobs are
+  never served. A depot is never a disposal
   facility and forwards nothing. Its credit is the disposal it avoids, derived
   from the landfill's own costs, booked once a month. —
   [garbage-recovery.md](game-design/features/garbage-recovery.md#the-kerbside-recycling-depot-built-2026-10-08);
   `src/sim/garbage.ts`
+- A Materials Recovery Facility sorts recycling; it never takes rubbish. It
+  sorts, up to its daily throughput, first the kerbside recycling of the
+  depots its streets connect to, at any distance, and then its own round's. The round serves, in its road reach and in building
+  id order, what kerbside does not: apartment blocks of more than four homes
+  at 0.30 kg a home a day, and jobs at 0.30 kg a day in commerce and 0.25 kg
+  in industry (CalRecycle 2014). Like kerbside, that recycling is set aside
+  at source and never reaches the trash tiles, and a building is served once.
+  Of everything sorted, in town or at the regional plant, 87% is recovered
+  and earns the credit (Recycling Partnership 2024). The other 13% is
+  residue. A regional plant buries its residue out of town; an MRF forwards
+  its residue to the nearest landfill or incinerator its streets connect to,
+  at any distance. With none that has room, the residue fills the MRF's own
+  store, and a full store stops it sorting. A stopped MRF's round serves no
+  one, and the depots' recycling goes regional again. —
+  [garbage-recovery.md](game-design/features/garbage-recovery.md); `src/sim/garbage.ts`
 - A facility's trucks leave from the street nearest any tile of its turned
   lot, never only its corner: a 2×3 depot or a 4×4 incinerator whose corner
   stands three tiles from its street still sends its fleet. —
@@ -1239,6 +1255,12 @@ MUTCD citations below use 11th-edition section numbers.
   that the ground, the instancer and the kit all read, so the roof sits on the
   barn and the silo stands in its yard. — [buildings.md](art/buildings.md);
   `src/render/archetypes.ts`, `src/render/farmlot.ts`
+- A utility kit that paves its whole lot (`pavesLot`: the recycling depot, the
+  recovery facility) stands on the highest ground under the lot, never its
+  centre, and its yard carries a footing down to the low side. The
+  instancer's plinth, seated on the highest ground under the smaller body, then
+  always lies under the yard; a kit seated at its centre on a slope lets the
+  plinth show through. — `src/render/utilitykits.ts`
 - Every surface colour resolves through `src/render/palette.ts`; no channel
   exceeds `MAX_MATERIAL_CHANNEL` (140) except snow (144), saturated accents stay
   at or below 102, and vehicle paint is the sole exemption. —

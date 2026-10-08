@@ -222,6 +222,7 @@ import {
   type GarbageBuilding,
   type GarbageDepot,
   type GarbageFacility,
+  type GarbageMrf,
 } from './garbage';
 import {
   GarbageTruckSystem,
@@ -997,16 +998,26 @@ class SimWorld implements WorkerSim {
       const garbageBuildings: GarbageBuilding[] = [];
       const facilities: GarbageFacility[] = [];
       const depots: GarbageDepot[] = [];
+      const mrfs: GarbageMrf[] = [];
       for (const inst of this.registry.all()) {
         if (inst.state !== BuildingState.Active) continue;
         const entry = this.catalogById.get(inst.catalogId);
         if (!entry) continue;
-        // Kerbside depots and incinerators are collection facilities, not trash sources.
+        // Kerbside depots, recovery facilities and incinerators are facilities, not trash sources.
         if (entry.garbage?.servesHomes !== undefined) {
           depots.push({
             id: inst.id,
             collectionRange: entry.garbage.collectionRange,
             servesHomes: entry.garbage.servesHomes,
+          });
+          continue;
+        }
+        if (entry.garbage?.sortRate !== undefined) {
+          mrfs.push({
+            id: inst.id,
+            collectionRange: entry.garbage.collectionRange,
+            sortRate: entry.garbage.sortRate,
+            residueCapacity: entry.garbage.bufferCapacity,
           });
           continue;
         }
@@ -1026,9 +1037,17 @@ class SimWorld implements WorkerSim {
           residents: entry.residents ?? 0,
           jobs: entry.jobs ?? 0,
           homes: entry.units ?? 0,
+          category: entry.category,
         });
       }
-      this.garbage.tick(g, garbageBuildings, Math.floor(t / GARBAGE_PERIOD), facilities, depots);
+      this.garbage.tick(
+        g,
+        garbageBuildings,
+        Math.floor(t / GARBAGE_PERIOD),
+        facilities,
+        depots,
+        mrfs,
+      );
       this.garbageDirty = true;
     }
 
@@ -1315,6 +1334,7 @@ class SimWorld implements WorkerSim {
         garbage.landfillFill = this.garbage.landfillFillFraction(this.grid);
         garbage.incinerators = this.incineratorSnapshot();
         garbage.depots = this.garbage.depotSnapshot();
+        garbage.mrfs = this.garbage.mrfSnapshot();
         this.garbageDirty = false;
       }
       snap.garbage = garbage;
@@ -1507,7 +1527,13 @@ class SimWorld implements WorkerSim {
     const out: { id: number; fill: number; capacity: number }[] = [];
     for (const inst of this.registry.all()) {
       const entry = this.catalogById.get(inst.catalogId);
-      if (!entry?.garbage || entry.garbage.servesHomes !== undefined) continue;
+      if (
+        !entry?.garbage ||
+        entry.garbage.servesHomes !== undefined ||
+        entry.garbage.sortRate !== undefined
+      ) {
+        continue;
+      }
       const capacity = entry.garbage.bufferCapacity;
       const fill =
         capacity > 0 ? Math.min(1, this.garbage.incineratorStored(inst.id) / capacity) : 0;

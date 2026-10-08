@@ -128,7 +128,9 @@ needs none of the forwarding step below.
   capacity, ¢0.00016 — and the economy books the month's recovered units times
   it as income at the month boundary, then clears the tally; the tally is
   saved (`GarbageSaveState.recoveredThisMonth`, optional) so a mid-month save
-  loses nothing.
+  loses nothing. A depot's carts are only tallied once sorted: by a Materials
+  Recovery Facility in town, or else regionally, and either way 87% of them
+  (below).
 - **Trucks.** The depot is a `TruckDepot` like any other; its trucks take a
   second livery, `VehicleKind.Recycling`, appended at the next free value, and
   a mirror that does not know it draws the refuse livery.
@@ -136,6 +138,80 @@ needs none of the forwarding step below.
   `depots: { id, servedHomes, capacityHomes }[]`.
 - **Saves.** Additive: no `SAVE_VERSION` bump; an old save has no depots and no
   tally.
+
+### The Materials Recovery Facility (built 2026-10-08)
+
+The third rung, built as a sorter of recycling rather than the draft's
+collector of everything (see the design document for why). It forwards its
+residue, so it is the first facility on the forwarding rule below, applied to
+a store of residue rather than to collected trash.
+
+- **Data.** `GarbageSpec` gains an optional `sortRate`, the units it sorts a
+  garbage pass: an entry with it is an MRF, never a disposal facility, and its
+  `bufferCapacity` is its residue store. The catalog entry,
+  `materials-recovery-facility`, is 5×6 and 11 m, `collectionRange` 48,
+  `trucks` 4, `sortRate` 9,072 (`MRF_SORT_UNITS_PER_PASS`, derived from
+  `MRF_SHORT_TONS_PER_DAY` 50, `TONNES_PER_SHORT_TON`, `TRASH_UNITS_PER_TONNE`
+  and `GARBAGE_PASSES_PER_DAY`), `bufferCapacity` 165,110
+  (`MRF_RESIDUE_STORE_UNITS`, a week of residue at that rate), `powerUse`
+  0.0378 MW (20 kWh a tonne, the day's use over 24 hours), `waterUse` 0.8 kL
+  (17 staff), pollution 20, ¢24,000, ¢1,750 a month, unlocked at Grand City
+  (milestone 5).
+- **`GarbageBuilding`** gains `category` (`res`, `com` or `ind`), the catalog
+  entry's: a job in `ind` (light and heavy industry, farms) recycles
+  `MRF_KG_PER_INDUSTRIAL_JOB_DAY` 0.25, any other job — a shop, an office, or
+  the shops of a mixed-use block, whose catalog category is `res` —
+  `MRF_KG_PER_COMMERCIAL_JOB_DAY` 0.30. A home in a building of more than
+  `KERBSIDE_MAX_HOMES` homes with residents recycles `MRF_KG_PER_HOME_DAY`
+  0.30. A building of one to four homes is never on the round.
+- **The step**, in `GarbageSystem.tick` after the kerbside depots and before
+  generation. MRFs go in id order. Each one's take this pass is `sortRate`,
+  less whatever would overfill its residue store, and nothing at all when the
+  store is full (the plant is **stopped**). It claims first the recycling this
+  pass of the depots on its road network — the depot's street reached by an
+  unbounded road walk from its own, at any distance — depot by depot in id
+  order, up to that take; then its round
+  admits the eligible buildings in its road reach (`reachOf`), in id order,
+  each once across all plants, while that building's recycling this pass fits
+  what is left. A depot's recycling no plant claims goes **regional**.
+- **Generation.** A building served by a depot or a round emits its recycling
+  and refuse each by the same cumulative floor, through one
+  `servedUnitsOnPass(building, pass, recyclingKgPerDay)`; the refuse goes on
+  the trash tiles, the recycling to whoever sorts it.
+- **Sorting.** What a plant sorts, and the regional units, split 87/13
+  (`MRF_YIELD_PERCENT` 87) on the day's running total: the recovered share of
+  a pass is `floor(87 × (before + s) / 100) − floor(87 × before / 100)` and
+  the residue is the rest, so a pass's two shares sum to what it sorted and a
+  day's recovered is exactly the floor of 87% of the day's. The running totals
+  restart each game day and are not saved; a load mid-day may move one unit
+  of that day between the two shares. The recovered share joins the month's
+  tally; the regional residue is buried out of town; a plant's residue goes to
+  its store.
+- **Forwarding.** After sorting, a plant's store forwards what it holds to the
+  final facilities on the same road network, nearest
+  first by road distance from its street to the landfill area's street or the
+  incinerator's, ties to the landfill, then by incinerator id, each taking up
+  to its room: the landfill's capacity less its pile, an incinerator's
+  `bufferCapacity` less its pit. The units count into the pile or the pit
+  before either collects that pass. One walk serves both the depots and the
+  forwarding: it runs at most once a pass for each plant, and only when a
+  depot has carts to claim or the store holds something.
+- **Snapshot.** `SimSnapshot.garbage` gains an optional
+  `mrfs: { id, sorted, servedBuildings, residue, stopped }[]`: what each plant
+  sorted on the last pass, the buildings its round served, its stored residue
+  and whether a full store stopped it. MRFs are not in the incinerator list.
+- **Trucks.** An MRF is a `TruckDepot` in the recycling livery.
+- **Saves.** `GarbageSaveState` gains an optional `mrfs: { id, residue }[]`,
+  only plants holding residue. Additive, no `SAVE_VERSION` bump; an old save
+  has none. A plant no longer placed drops its store, like an incinerator's
+  pit.
+- **Render.** A kit in `utilitykits.ts`: a yard slab over the lot, the hall
+  (54 × 46.5 m, 11 m) with three tipping-floor bay doors on the street side, a
+  bale yard of stacked 1.1 × 0.75 × 1.5 m bales, an office and four parked
+  recycling trucks, all inside the 100 × 120 m lot. Like the depot's, the kit
+  paves its lot (`pavesLot`): it stands on the highest ground under the lot
+  and its yard carries an 8 m footing, so on a slope the instancer's plinth
+  stays under the yard and the low side shows a graded pad, not a gap.
 
 ### The forwarding step
 
@@ -185,18 +261,18 @@ gross floor area is a **volume proxy** here and the sizing runs the other way:
 derive single-level plan area from throughput and vehicle movement, ÷ 185 m² a
 tile, round up to a rectangle, take height from the process's clear height.
 
-| Plan area (m²)     | Recycling Centre | Transfer Station | Recovery Facility |
-| ------------------ | ---------------- | ---------------- | ----------------- |
-| Tipping / drop-off | 269              | 550              | 625               |
-| Process            | 168              | 300              | 1,300             |
-| Aisle, load-out    | 105              | —                | 400               |
-| Weighbridge, queue | 70               | 150              | 190               |
-| Site circulation   | 280              | 790              | 1,160             |
-| Office, welfare    | —                | 80               | 110               |
-| **Total ÷ 185**    | **892** → 4.8    | **1,870** → 10.1 | **3,785** → 20.5  |
-| Footprint, height  | **2×3**, **8 m** | **3×4**, **9 m** | **4×6**, **11 m** |
-| Formula GFA        | 6×185×2.5=2,775  | 12×185×2.8=6,244 | 24×185×3.4=15,263 |
-| Occupant check     | 3 × 9.3 = 28     | 4 × 9.3 = 37     | 15 × 9.3 = 140    |
+| Plan area (m²)     | Recycling Centre | Transfer Station |
+| ------------------ | ---------------- | ---------------- |
+| Tipping / drop-off | 269              | 550              |
+| Process            | 168              | 300              |
+| Aisle, load-out    | 105              | —                |
+| Weighbridge, queue | 70               | 150              |
+| Site circulation   | 280              | 790              |
+| Office, welfare    | —                | 80               |
+| **Total ÷ 185**    | **892** → 4.8    | **1,870** → 10.1 |
+| Footprint, height  | **2×3**, **8 m** | **3×4**, **9 m** |
+| Formula GFA        | 6×185×2.5=2,775  | 12×185×2.8=6,244 |
+| Occupant check     | 3 × 9.3 = 28     | 4 × 9.3 = 37     |
 
 The drivers. **Recycling centre:** six 30 yd³ roll-offs at 2.4 m wide, each
 needing 6.7 m of container and 12 m of hook-lift pull clearance, a 7.3 m aisle
@@ -206,13 +282,11 @@ clearance. **Transfer station:** 44 t/day at one unloading stall per
 25–30 t/day is two stalls at 4.0 × 24 m, plus a one-day surge pile at 300 kg/m³
 stacked 2 m and one below-grade trailer position at 22 × 4.9 m; 9 m is inside
 the published 7.5–9 m tipping-hall clear height and above a rear loader's raised
-tailgate. **Recovery facility:** 88 t/day of which 21.1% is
-recovered, and at the published 20% MRF residue rate the inbound is 23.2 t/day,
-2.9 t/h over a shift — a line at the published 1,200–1,600 m² for the class; 4×6
-gives a workable 80 × 120 m site inside the 6-tile frontage ceiling, and 11 m
-covers 8 m clear over the tipping floor, a 4.5 m sort platform and a 9 m baler
-bay. In all three the occupant check lands at 1–4% of the plan area — the
-evidence that throughput, not head count, drives the size.
+tailgate. In both the occupant check lands at 1–4% of the plan area — the
+evidence that throughput, not head count, drives the size. **The Materials
+Recovery Facility** is sized from a built plant of its throughput instead
+(above): Kauai's 3-acre, 27,000 sq ft plan for 55 t a day, so 5×6 tiles and a
+2,510 m² hall, 11 m for 8 m clear over the tipping floor and a baler bay.
 
 **The existing incinerator checks out on size and fails on throughput.** 4×4 at
 20 m is 18,500 m², a 300–600 t/day mass-burn plant, while `burnRate: 4000` a
@@ -269,9 +343,11 @@ figure, and the landfill matched none.
   shop and a works in reach bury the same as before; a depot past its 38,000
   homes serves no more; a house reached by two depots is served once; and a
   month's tally books its credit once.
-- A recovery facility with no landfill or incinerator reachable collects until
-  its buffer is full, then stops and trash backs up; removing it drops that
-  buffer, as `drop(id)` already does.
+- A Materials Recovery Facility sorts no more than its 9,072 units a pass,
+  the depots' carts before its round; recovers 87% of it; forwards its residue
+  to the nearest connected landfill or incinerator with room, at any distance;
+  and with none, fills its store, then stops: its round serves no one and the
+  depots go regional. Removing it drops its store.
 - A transfer station forwards to a final facility outside its own
   `collectionRange`, distance does not reduce what arrives, and it diverts none.
 - Generation is per capita: a 150-resident tower generates 37.5× a 4-resident
@@ -287,7 +363,7 @@ default camera pitch:
    [scale anchors](../../art/README.md) holding.
 2. **The kerbside depot at street level**: a maintenance shed and parked
    side-loaders reading as a fleet yard, not a small warehouse.
-3. **The recovery facility beside the incinerator**: a 4×6 / 11 m hall reading
+3. **The recovery facility beside the incinerator**: a 5×6 / 11 m hall reading
    lower and longer than a 4×4 / 20 m burner — silhouette is all that tells them
    apart at distance.
 4. **A refuse round and a recycling round on one street**: two liveries

@@ -46,9 +46,9 @@ export interface TruckDepot {
   kind?: VehicleKind;
 }
 
-/** The livery of a facility's trucks: kerbside recycling depots (they serve homes) run recycling trucks, everything else refuse trucks. */
+/** The livery of a facility's trucks: kerbside recycling depots (they serve homes) and recovery facilities (they sort) run recycling trucks, everything else refuse trucks. */
 export function truckKindFor(garbage: GarbageSpec): VehicleKind {
-  return garbage.servesHomes ? VehicleKind.Recycling : VehicleKind.Garbage;
+  return garbage.servesHomes || garbage.sortRate ? VehicleKind.Recycling : VehicleKind.Garbage;
 }
 
 /** A building a truck can visit (active R/C/I), by instance id + tile. */

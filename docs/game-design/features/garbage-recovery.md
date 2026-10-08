@@ -37,16 +37,19 @@ the budget.
 ## How it works, for the player
 
 **Every facility that is not a hole in the ground forwards what it cannot
-keep.** That is the one new rule and it covers both new buildings. A recovery
-facility collects along the road network exactly as the landfill and the
-incinerator already do, keeps the fraction it can recover, and sends the rest to
-the nearest final disposal site it can reach. A transfer station keeps nothing
-and forwards everything. A landfill and an incinerator forward nothing, which is
-what makes them final.
+keep.** That is the one new rule and it covers both new buildings. A sorting
+plant never collects rubbish: it sorts recycling — the carts of the kerbside
+depots its streets connect to, then its own round of apartment blocks and
+businesses — sells the 87% a plant
+recovers, and sends the residue to the nearest final disposal site its streets
+reach. A transfer station keeps nothing and forwards everything. A landfill and
+an incinerator forward nothing, which is what makes them final.
 
 **A recovery facility with nothing behind it fills up and stops.** The residue
-has to go somewhere. Build a sorting plant and no landfill and it backs up
-within a week, and the trash lens shows it — the incinerator's existing
+has to go somewhere. Build a sorting plant and no landfill and its residue
+store, a week of it at full throughput, fills; then it stops sorting, the
+depots' carts go back to the regional plant and its round's blocks and
+businesses put their recycling back in the bin — the incinerator's existing
 full-buffer rule, which means the ladder cannot be climbed by skipping its
 bottom rung.
 
@@ -57,11 +60,16 @@ body forces the two into the same one.
 
 ### The ladder
 
-| Building                    | Serves        | Diverts                     | Reach    | Cost / upkeep    | Unlocks at    |
-| --------------------------- | ------------- | --------------------------- | -------- | ---------------- | ------------- |
-| Kerbside Recycling Depot    | 38,000 homes  | 10% of a house's waste      | 32 tiles | ¢3,200 / ¢260    | Busy Township |
-| Transfer Station            | 20,000        | none                        | 40 tiles | ¢7,500 / ¢540    | Small City    |
-| Materials Recovery Facility | 40,000        | 21%                         | 48 tiles | ¢24,000 / ¢1,750 | Grand City    |
+| Building                    | Serves                                 | Diverts                           | Reach    | Cost / upkeep    | Unlocks at    |
+| --------------------------- | -------------------------------------- | --------------------------------- | -------- | ---------------- | ------------- |
+| Kerbside Recycling Depot    | 38,000 homes                           | 10% of a house's waste            | 32 tiles | ¢3,200 / ¢260    | Busy Township |
+| Transfer Station            | 20,000                                 | none                              | 40 tiles | ¢7,500 / ¢540    | Small City    |
+| Materials Recovery Facility | 50 t a day: the depots, then its round | blocks' and businesses' recycling | 48 tiles | ¢24,000 / ¢1,750 | Grand City    |
+
+The Materials Recovery Facility is the third rung (decided 2026-10-08, see
+[below](#the-materials-recovery-facility-built-2026-10-08)): it sorts the
+depots' carts in town and runs its own round for the apartment blocks and
+businesses kerbside does not serve.
 
 The first rung is a **kerbside recycling programme**, built as its depot, not
 a drop-off yard (decided 2026-10-08, see
@@ -86,8 +94,8 @@ accurate; recovery adds a step in front of it.
 
 **The trash unit, which has to be fixed first.** A diversion percentage is
 meaningless against a base rate that is wrong, and it is wrong in two ways — see
-Tuning. Correcting it belongs here, because 21% of an incoherent number is an
-incoherent number.
+Tuning. Correcting it belongs here, because a share of an incoherent number is
+an incoherent number.
 
 **Epic 0, service capacity.** Waste already has a capacity-like mechanic in the
 incinerator's buffer, and the two are **not** the same quantity: a buffer is a
@@ -191,9 +199,13 @@ composition. Nothing here is chosen.
 
 The eight sum to **32.0%** against the published national recycling-and-
 composting headline of 32.1% — the derivation checks against its own source.
-**The recovery facility takes the four dry streams** — paper, plastics, metals,
-glass — for **20.9%**, settled at **21%**; the 8.5 pp in food and yard is
-composting, a different building, out of scope.
+The four dry streams — paper, plastics, metals, glass — come to **20.9%**, but
+that is the nation's dry recovery across every programme at once: kerbside,
+drop-off, commercial and deposit. It is kept here as context only. A sorting
+plant that diverted 21% of everything in its reach would count kerbside's
+share a second time, so no building earns it; the depot and the sorting plant
+each divert what their own programme measurably captures, below. The 8.5 pp in
+food and yard is composting, a different building, out of scope.
 
 The draft gave a drop-off recycling centre 7% of the same four streams, from a
 participation claim no source supports; measured drop-off collection is about
@@ -203,8 +215,8 @@ Of the rates above, paper, food, yard trimmings and plastics are confirmed on
 EPA's 2018 overview
 ([EPA](https://www.epa.gov/facts-and-figures-about-materials-waste-and-recycling/national-overview-facts-and-figures-materials));
 glass is 25% there, not the 31.3% first written, which is the container rate;
-metals, textiles and wood are still to confirm, before the recovery facility
-is built on them.
+metals, textiles and wood are still to confirm, though nothing built rests on
+them.
 
 ### Catchments, and the one figure we could not derive
 
@@ -240,9 +252,9 @@ cost us in our own published-in-code figures. A landfill tile costs ¢40 to pain
 and ¢3/month indefinitely, and post-closure care is a published 30-year
 obligation, so a tile's whole-life cost is ¢40 + 360 × ¢3 = ¢1,120 across
 6,835,200 units: **¢0.000164 a unit**, settled at **¢0.00016**, or **¢0.66 a
-tonne recovered**. A 50,000-person city, with its 24,000 jobs, makes 13.3
-million units a month; at 21% it diverts 2.8 million and earns about ¢450
-against ¢1,750 of upkeep. The credit covers about a quarter of the plant, and
+tonne recovered**. A sorting plant running at its full 50 t a day sorts 5.4
+million units a month, recovers 87% of them, 4.7 million, and earns about ¢780
+against ¢1,750 of upkeep. The credit covers under half the plant, and
 recovery is a cost the city pays to bury less, which is the real relation: a
 recovered tonne costs $86–90 to sort and more to collect, against the $57–62
 tipping fee it saves.
@@ -255,14 +267,15 @@ and the occupant-load method only confirms the staff fit, which it does by an
 order of magnitude every time. Arithmetic in the
 [technical document](../../engineering/features/garbage-recovery.md).
 
-| Building                    | Plan area | Footprint | Height | Staff |
-| --------------------------- | --------- | --------- | ------ | ----- |
-| Kerbside Recycling Depot    | 2,160 m²  | 2×3       | 8 m    | 5     |
-| Transfer Station            | 1,870 m²  | 3×4       | 9 m    | 4     |
-| Materials Recovery Facility | 3,785 m²  | 4×6       | 11 m   | 15    |
+| Building                    | Plan area     | Footprint | Height | Staff |
+| --------------------------- | ------------- | --------- | ------ | ----- |
+| Kerbside Recycling Depot    | 2,160 m²      | 2×3       | 8 m    | 5     |
+| Transfer Station            | 1,870 m²      | 3×4       | 9 m    | 4     |
+| Materials Recovery Facility | 2,510 m² hall | 5×6       | 11 m   | 17    |
 
-Affordability holds: ¢3,200 at Busy Township, whose milestone reward is ¢15,000.
-Per recovered tonne the large facility is 25% cheaper to build, 33% to run.
+Affordability holds: ¢3,200 at Busy Township, whose milestone reward is ¢15,000,
+and ¢24,000 at Grand City, whose reward is ¢75,000. The sorting plant is not
+sized by the massing formula but from a plant of its throughput, below.
 
 The depot is a fleet yard, four trucks at about 540 m² each, with a
 maintenance shed 8 m to the eaves for a side-loader's raised arm; four drivers
@@ -271,8 +284,9 @@ and a mechanic.
 **Pollution** is proportional to site vehicle movements, since none of the three
 burns: 10 for the depot, four trucks out and back each day (a dial on the
 draft's 5 for one container pull), 20 for
-the recovery facility at three inbound loads plus diesel loaders and a glass
-breaker, and **25 for the transfer station** — dirtiest of the three despite
+the sorting plant, a dial for its own four trucks and the depots' loads in,
+the diesel loaders on its tipping floor and its balers, and **25 for the
+transfer station** — dirtiest of the three despite
 doing the least, because it handles the whole stream in an open hall.
 
 ### The kerbside recycling depot (built 2026-10-08)
@@ -312,8 +326,12 @@ programme instead: a depot whose trucks empty household recycling carts.
   serves **38,000 homes**, first come by building, within its 32-tile road
   reach. A home past that waits for a second depot; one reached by two is
   served once, by the first.
-- **What it earns.** The recyclables leave the map for a regional sorting
-  plant until a Materials Recovery Facility is built in town. The commodity
+- **What it earns.** The recyclables go to a Materials Recovery Facility in
+  town when one the depot's streets connect to has room, and otherwise leave
+  the map for a regional sorting plant. Either way 87% of what is set out is recovered and the other 13% is
+  sorting residue ([below](#the-materials-recovery-facility-built-2026-10-08));
+  the regional plant buries its residue out of town, so a depot's credit is on
+  87% of its carts, not all of them. The commodity
   margin swings too far to bank on — a Northeast single-stream tonne was worth
   $123 in the second quarter of 2024, against $86–90 to sort it
   ([NERC via Waste Dive](https://www.wastedive.com/news/nerc-commodities-mrf-value-report/727375/)),
@@ -321,7 +339,8 @@ programme instead: a depot whose trucks empty household recycling carts.
   ([NERC via Packaging Dive](https://www.packagingdive.com/news/nerc-mrf-commodity-value-decreases-2025/807522/)) —
   so the credit is the disposal it avoids, ¢0.00016 a unit
   ([above](#what-a-recovered-unit-is-worth)), booked once a month. A city of
-  40,000 in houses diverts about 630,000 units a month and earns about ¢100;
+  40,000 in houses diverts about 630,000 units a month, recovers 550,000 of
+  them and earns about ¢90;
   kerbside recycling costs a real city about $45 a household a year beyond
   its refuse round
   ([National Academies](https://www.nationalacademies.org/read/27978/chapter/6)),
@@ -331,6 +350,83 @@ programme instead: a depot whose trucks empty household recycling carts.
   livery of recycling trucks running the house streets, the landfill pile
   growing a tenth slower where the houses are served, and the credit in the
   month's income.
+
+### The Materials Recovery Facility (built 2026-10-08)
+
+The draft's third rung collected everything in its reach and diverted 21% of
+it. That 21% is the nation's dry recovery across every programme, kerbside
+included, so a plant earning it on top of the depots would count the houses'
+recycling twice. The player chose a plant that does what a municipal sorting
+plant does: it sorts the depots' carts in town, and runs its own recycling
+round for the apartment blocks and businesses the kerbside round leaves to
+private haulers.
+
+- **How much it sorts.** **50 short tons a day**, 45.36 t: the size of a
+  small municipal single-stream plant. Kauai's evaluation sizes its start-up
+  plant at 55 t a day on 3 acres with 27,000 sq ft enclosed
+  ([Kauai MRF evaluation, HDR](https://www.kauai.gov/files/assets/public/v/1/public-works/solid-waste/recycling/documents/cofk-materials-recovery-facility-evaluation.pdf)),
+  and Isabella County's runs a 7 t an hour line one shift, about 50 t a day,
+  with 17 staff
+  ([Isabella County MRF evaluation, RRS 2023](https://www.isabellacounty.org/wp-content/uploads/2023/02/MRF-Evaluation-Full-Report-FINAL.pdf)).
+  That is 181,440 units a day, **9,072 a garbage pass**, derived in code from
+  the tons and the unit. Each pass it takes first the carts of the depots its
+  streets connect to, at any distance, depot by depot in id order, then its
+  own round, up to that figure. A depot on a road network of its own sends
+  its carts to the regional plant.
+- **Its round.** Within its 48-tile road reach, in building id order, it
+  serves what kerbside does not: an apartment block of more than four homes at
+  **0.30 kg a home a day**, and every job at **0.30 kg a day in commerce** and
+  **0.25 kg in industry**. A block with shops below is served for both. The
+  home figure is Hennepin County's measured 0.63 lb a unit a day
+  ([Hennepin County multifamily study 2017](https://www.hennepincounty.gov/-/media/hennepinus/your-government/projects-initiatives/solid-waste-planning/multifamily-waste-study-2017.pdf)),
+  under California's 0.13 t a unit a year; the job figures come from
+  California's per-employee curbside-recycling rates
+  ([CalRecycle 2014 Business Group Rates](https://www2.calrecycle.ca.gov/WasteCharacterization/BusinessGroupRates)),
+  0.08–0.30 t a year across shops, restaurants, hotels and offices (0.22–0.82
+  kg a day) and 0.05–0.16 t across manufacturing and wholesale (0.14–0.44 kg),
+  taken at a typical business of each. A house, a duplex, a fourplex or a farm
+  is never on the round: it is the depot's. A building is served once, by the
+  first plant with room for its recycling that pass, and like kerbside its
+  recycling is set aside at source and never reaches the trash tiles.
+- **What it recovers.** A plant sells **87%** of what it sorts and rejects
+  13% as residue
+  ([Recycling Partnership 2024, via National Academies](https://www.nationalacademies.org/read/27978/chapter/4)).
+  The 87% earns the avoided-disposal credit, ¢0.00016 a unit, booked once a
+  month. A regional plant does the same with the depots' carts no town plant
+  takes, burying its residue out of town.
+- **Where the residue goes.** To the nearest landfill or incinerator its
+  streets connect to, at **any distance** — a haul never binds at our map's
+  scale ([above](#catchments-and-the-one-figure-we-could-not-derive)) —
+  nearest by road from the plant's street, a landfill before an incinerator at
+  the same distance, the next nearest when one is full. It lands in the
+  landfill's pile or the incinerator's pit like collected trash. With none
+  that has room, the residue fills the plant's own store, **one week of it at
+  full throughput** (165,110 units, about 41 t, derived), and a full store
+  stops the plant: its round serves no one, those buildings put their
+  recycling back in the bin, and the depots' carts go regional again. A plant
+  that is bulldozed loses its store.
+- **The building.** **5×6 tiles**, 12,000 m², Kauai's 3-acre site; a
+  clear-span hall of **2,510 m²** (27,000 sq ft) **11 m** tall over its tipping
+  floor and balers, with bay doors on the street side, a bale yard of stacked
+  cubes, a small office and its trucks parked in the yard. **17 staff.**
+- **Its power.** **20 kWh a tonne** sorted, building included: Pressley and
+  others measured 23.8 kWh a tonne at a single-stream plant, and Bradshaw and
+  others' 2024 survey puts large plants near 10
+  ([Bradshaw et al. 2024](https://www.osti.gov/servlets/purl/3015366)). 45.36 t
+  a day is 907 kWh, a daily average of **0.0378 MW**, the incinerator's
+  convention of its day's use over 24 hours. Its water is its staff's, 13
+  gallons a worker a day, 0.8 kL.
+- **Its trucks.** **Four**, in the recycling livery: a recycling body carries
+  about 4 t a load at 180–200 kg a cubic metre in a 27 cubic yard body, so 50 t
+  a day is about 12 loads, three a truck. The trucks are cosmetic, as every
+  service fleet is.
+- **Dials.** The 48-tile reach, ¢24,000 to build and ¢1,750 a month, pollution
+  20 and the unlock at Grand City are kept from the draft.
+- **What the player sees.** A long sorting hall and a yard of bales, a second
+  fleet of recycling trucks running the blocks and the shopping streets, the
+  landfill pile growing slower again where the round runs, and a larger
+  credit; with no landfill or incinerator connected, a plant that sorts for a
+  week and then stops.
 
 ## What it is not
 

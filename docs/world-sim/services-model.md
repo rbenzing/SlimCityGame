@@ -94,12 +94,34 @@ that serves up to 38,000 homes within a 32-tile road-BFS reach, homes in
 buildings of four or fewer (the house, the duplex, the fourplex, the
 townhouse row), never a block, a shop or a works. A served building's
 residents put 0.131 kg a day each in the recycling cart, of their 1.32 kg, so
-it never reaches the trash tiles, the landfill or the incinerator. Depots take
-buildings in id order up to their homes, and a building reached by two is
-served once. The month's recycled units earn ¢0.00016 each, the landfill's
-own whole-life cost of a unit, booked as income at the month boundary. Its
-trucks wear the recycling livery. The figures and sources are in
+it never reaches the trash tiles. Depots take buildings in id order up to
+their homes, and a building reached by two is served once. The carts go to a
+Materials Recovery Facility in town when one its streets connect to has room,
+or else to a regional plant off the map. Either sorts 87% of them to market, and each recovered unit
+earns ¢0.00016, the landfill's own whole-life cost of a unit, booked as income
+at the month boundary; the regional plant buries its 13% residue out of town.
+Its trucks wear the recycling livery. The figures and sources are in
 [../game-design/features/garbage-recovery.md](../game-design/features/garbage-recovery.md#the-kerbside-recycling-depot-built-2026-10-08).
+
+The **Materials Recovery Facility** is a catalog ploppable (5×6, 11 m, unlocks
+at Grand City, ¢24,000 to build, ¢1,750/month) that never collects rubbish. It
+sorts up to 50 short tons a day, 9,072 units a pass
+(`MRF_SORT_UNITS_PER_PASS`): first the carts of the depots its streets
+connect to, at any distance, depot by depot in id order, then its own round. The round serves, within a 48-tile road-BFS reach
+and in building id order, the buildings kerbside does not: a block of more than
+four homes at 0.30 kg a home a day, and every job at 0.30 kg a day in commerce
+(a mixed-use block's shops included) and 0.25 kg in industry. A building is
+served once, by the first plant with room for its recycling that pass, and its
+recycling never reaches the trash tiles. Of what a plant sorts, 87% is
+recovered and credited and 13% is residue, split on the day's running total so
+a day's credit is exactly 87% of its sorting, floored. The residue goes to the
+nearest landfill or incinerator the plant's streets connect to, at any
+distance (a landfill first on a tie), into its pile or pit; with none that has
+room it fills the plant's own store, a week of residue (165,110 units), and a
+full store stops the plant: its round serves no one and the depots' carts go
+regional again. It draws 0.0378 MW, 20 kWh a tonne over the day, and its four
+trucks wear the recycling livery. The figures and sources are in
+[../game-design/features/garbage-recovery.md](../game-design/features/garbage-recovery.md#the-materials-recovery-facility-built-2026-10-08).
 
 **Collection** reuses the same road-BFS mechanism a service building uses
 ([Coverage and funding](#coverage-and-funding)) and shares the load the way a
@@ -126,9 +148,9 @@ routing is cosmetic and does not affect collection. See
 
 The per-tile uncollected-trash layer is runtime state, not part of the grid
 save, and rebuilds within a few ticks of a load — the same as traffic volume.
-The landfill's total stored pile and each incinerator's buffer, however, do
-round-trip through the save's meta block; a save written before that existed
-loads with fill at 0. The landfill's painted _extent_ is separately part of the
+The landfill's total stored pile, each incinerator's buffer and each recovery
+facility's residue store, however, do round-trip through the save's meta
+block; a save written before one existed loads it empty. The landfill's painted _extent_ is separately part of the
 grid itself and has been since the area was first paintable. See
 [../engineering/data-model.md](../engineering/data-model.md).
 

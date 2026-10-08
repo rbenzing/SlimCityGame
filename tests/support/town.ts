@@ -48,7 +48,8 @@ export const WALLED_MOTORWAY = composeProfile(presetProfileForTier(RoadTier.High
  *   z 101–129  one-way street (x 60), alley (x 70), bus lane (x 120)
  *   z 115      bike lane, x 91–119
  *   z 126–129  heavy industry, x 96–119, north of the four-lane road
- *   z 130      four-lane road, x 50–130, industry, power and the incinerator
+ *   z 130      four-lane road, x 50–130, industry, power, the incinerator and,
+ *              south of it at x 115–119, the recovery facility
  *   z 146–151  an airfield beside the avenue
  *   z 160      dirt road, x 50–130, farms south of it — joined to the town by a
  *              power line down from the avenue's end and along it, and by no
@@ -96,6 +97,7 @@ export const TOWN = {
   landfill: { x0: 64, z0: 41, w: 24, d: 3 },
   incinerator: { x: 91, z: 126 },
   recyclingDepot: { x: 59, z: 45 },
+  recoveryFacility: { x: 115, z: 131 },
   airport: { x: 91, z: 146 },
   hill: { x: 210, z: 210 },
 } as const;
@@ -388,10 +390,11 @@ export function townSteps(): TownStep[] {
       commands: [place('airport', t.airport)],
     },
     {
-      label: 'garbage: an incinerator, a recycling depot and a landfill',
+      label: 'garbage: an incinerator, a recycling depot, a recovery facility and a landfill',
       commands: [
         place('incinerator', t.incinerator),
         place('recycling-depot', t.recyclingDepot),
+        place('materials-recovery-facility', t.recoveryFacility),
         {
           kind: 'paintLandfill',
           tiles: rows(t.landfill.x0, t.landfill.z0, t.landfill.w, t.landfill.d),

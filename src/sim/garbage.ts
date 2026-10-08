@@ -24,11 +24,19 @@
  *
  * Kerbside recycling depots divert at source: a home they serve (few homes in
  * the building, within the depot's road reach and remaining capacity) sets its
- * recyclables out in the cart, so they never reach the trash tiles and are
- * tallied as recovered for the economy to credit once a month.
+ * recyclables out in the cart, so they never reach the trash tiles.
  *
- * The landfill fill and incinerator buffers are saved (GarbageSaveState, in the
- * save meta); the per-tile `trash` layer and the trucks are RUNTIME state that
+ * Materials Recovery Facilities sort recycling, never rubbish: each takes, up
+ * to its throughput, the depots' carts first and then its own round's — the
+ * blocks and businesses in its road reach that kerbside does not serve, whose
+ * recycling is likewise set aside at source. Whatever is sorted, in town or by
+ * the regional plant that takes the carts no MRF does, is recovered at
+ * MRF_YIELD_PERCENT and tallied for the economy to credit once a month. A town
+ * MRF's residue fills its store and is forwarded to the nearest final facility
+ * its streets reach; a full store stops it.
+ *
+ * The landfill fill, incinerator buffers and MRF residue stores are saved
+ * (GarbageSaveState, in the save meta); the per-tile `trash` layer and the trucks are RUNTIME state that
  * rebuilds within a few ticks of a load. Pure of three.js/DOM; deterministic (no
  * Math.random/Date.now) — collection order is building-id-stable.
  */
@@ -38,6 +46,10 @@ import {
   LANDFILL_CAPACITY_PER_TILE,
   LANDFILL_COLLECTION_RANGE,
   GARBAGE_PASSES_PER_DAY,
+  MRF_KG_PER_COMMERCIAL_JOB_DAY,
+  MRF_KG_PER_HOME_DAY,
+  MRF_KG_PER_INDUSTRIAL_JOB_DAY,
+  MRF_YIELD_PERCENT,
   RECYCLING_KG_PER_RESIDENT_DAY,
   TRASH_KG_PER_JOB_DAY,
   TRASH_KG_PER_RESIDENT_DAY,
@@ -54,13 +66,16 @@ import {
 
 /**
  * An Active R/C/I building the worker hands to the garbage pass: who lives and
- * works in it, and how many homes it holds (0 when it is none).
+ * works in it, how many homes it holds (0 when it is none), and its catalog
+ * category, which sets what a job recycles on an MRF round (a mixed-use block
+ * is `res`, and its jobs are shops).
  */
 export interface GarbageBuilding {
   id: number;
   residents: number;
   jobs: number;
   homes: number;
+  category: 'res' | 'com' | 'ind';
 }
 
 /** Trash units in `kg` kilograms, rounded to shed float noise. */
@@ -86,20 +101,67 @@ export function unitsOnPass(b: GarbageBuilding, pass: number): number {
   return emittedOnPass(unitsOf(totalKgPerDay(b)), pass);
 }
 
+/** A building of one to KERBSIDE_MAX_HOMES homes: the kerbside round's, never an MRF's. */
+const isKerbsideSized = (b: GarbageBuilding): boolean =>
+  b.homes >= 1 && b.homes <= KERBSIDE_MAX_HOMES;
+
+/** The recycling (kg a day) a building's residents set out in the kerbside cart. */
+export function kerbsideKgPerDay(b: GarbageBuilding): number {
+  return b.residents * RECYCLING_KG_PER_RESIDENT_DAY;
+}
+
 /**
- * The recycling and refuse units a building served by a kerbside depot emits on
- * garbage pass `pass`: its residents' recyclables leave the refuse rate.
+ * The recycling (kg a day) an MRF round takes from a building: a block's homes
+ * and every job, by its category. A building kerbside serves gives it none.
+ */
+export function roundKgPerDay(b: GarbageBuilding): number {
+  if (isKerbsideSized(b)) return 0;
+  const homes = b.residents > 0 ? b.homes * MRF_KG_PER_HOME_DAY : 0;
+  const perJob =
+    b.category === 'ind' ? MRF_KG_PER_INDUSTRIAL_JOB_DAY : MRF_KG_PER_COMMERCIAL_JOB_DAY;
+  return homes + b.jobs * perJob;
+}
+
+/**
+ * The recycling and refuse units a served building emits on garbage pass
+ * `pass` when it sets `recyclingKgPerDay` aside: each stream by its own
+ * cumulative floor, so each sums exactly over a day.
  */
 export function servedUnitsOnPass(
   b: GarbageBuilding,
   pass: number,
+  recyclingKgPerDay: number,
 ): { recycling: number; refuse: number } {
-  const recyclingPerDay = unitsOf(b.residents * RECYCLING_KG_PER_RESIDENT_DAY);
+  const recyclingPerDay = unitsOf(recyclingKgPerDay);
   const refusePerDay = Math.round((unitsOf(totalKgPerDay(b)) - recyclingPerDay) * 1e6) / 1e6;
   return {
     recycling: emittedOnPass(recyclingPerDay, pass),
     refuse: emittedOnPass(refusePerDay, pass),
   };
+}
+
+/**
+ * The recovered share of `units` sorted after `before` were sorted the same
+ * day: MRF_YIELD_PERCENT of the day's running total, floored, so a day's
+ * recovered is exact and the residue is the rest of each pass.
+ */
+export function recoveredOf(before: number, units: number): number {
+  const kept = (n: number): number => Math.floor((n * MRF_YIELD_PERCENT) / 100);
+  return kept(before + units) - kept(before);
+}
+
+/** The most an MRF can sort, up to `budget`, whose residue still fits `room`. */
+function largestTake(budget: number, room: number, before: number): number {
+  const residue = (s: number): number => s - recoveredOf(before, s);
+  if (residue(budget) <= room) return budget;
+  let lo = 0;
+  let hi = budget;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (residue(mid) <= room) lo = mid;
+    else hi = mid;
+  }
+  return lo;
 }
 
 /**
@@ -118,6 +180,27 @@ export interface DepotServed {
   id: number;
   servedHomes: number;
   capacityHomes: number;
+}
+
+/**
+ * A placed Materials Recovery Facility (catalog `garbage` spec with
+ * `sortRate`), by building instance id: its round's road-BFS radius, the units
+ * it sorts a pass and the residue its store holds.
+ */
+export interface GarbageMrf {
+  id: number;
+  collectionRange: number;
+  sortRate: number;
+  residueCapacity: number;
+}
+
+/** What an MRF did on the last pass, for the UI readout. */
+export interface MrfSorted {
+  id: number;
+  sorted: number;
+  servedBuildings: number;
+  residue: number;
+  stopped: boolean;
 }
 
 /**
@@ -143,9 +226,39 @@ export interface GarbageSaveState {
   incinerators: { id: number; units: number }[];
   /** Recycling units recovered since the last month boundary; absent in older saves. */
   recoveredThisMonth?: number;
+  /** Each MRF's stored residue, by building id; absent in older saves. */
+  mrfs?: { id: number; residue: number }[];
 }
 
 const clampTile = (v: number): number => (v < 0 ? 0 : v > TRASH_TILE_MAX ? TRASH_TILE_MAX : v);
+
+/** The street a footprint's trucks leave by, or null when no road is near it. */
+const streetOf = (grid: GridState, footprint: readonly number[] | undefined): number | null =>
+  footprint && footprint.length > 0 ? nearestRoadTile(grid, footprint) : null;
+
+/**
+ * Road distance from a footprint's street to every road tile connected to it,
+ * at any distance: the network a plant trades with. Null with no street.
+ */
+function roadNetworkOf(
+  grid: GridState,
+  footprint: readonly number[] | undefined,
+): ReadonlyMap<number, number> | null {
+  const street = streetOf(grid, footprint);
+  return street === null ? null : roadBfsDistances(grid, street, Infinity);
+}
+
+/** A depot's recycling this pass, and the street its trucks leave by. */
+interface Cart {
+  units: number;
+  street: number | null;
+}
+
+/** True when a facility's reach covers any tile of a building's footprint. */
+const reaches = (
+  coverage: ReadonlyMap<number, number>,
+  tiles: readonly number[] | undefined,
+): boolean => !!tiles && tiles.some((ti) => (coverage.get(ti) ?? 0) > 0);
 
 /**
  * The pollution an incinerator emits this pass: its catalog figure scaled by
@@ -178,17 +291,26 @@ export class GarbageSystem {
   private recoveredUnits = 0;
   /** What each kerbside depot served on the last pass. */
   private depotsServed: DepotServed[] = [];
+  /** Each MRF's stored residue, by building id. */
+  private readonly mrfResidue = new Map<number, number>();
+  /** Units each MRF has sorted so far today, which the recovered share is floored on. */
+  private readonly mrfSortedToday = new Map<number, number>();
+  /** Units the regional plant has sorted so far today. */
+  private regionalSortedToday = 0;
+  /** What each MRF did on the last pass. */
+  private mrfsSorted: MrfSorted[] = [];
 
   constructor(size: number) {
     this.trash = new Uint8Array(size * size);
   }
 
   /**
-   * Generation + collection (incinerator facilities in equal shares, then the
-   * landfill area for what they left) + incinerator burn. Call on the
-   * GARBAGE_PERIOD cadence; `pass` is the running count of garbage passes, which
-   * fixes how much each building emits. `facilities` is empty when no incinerator
-   * is placed, `depots` when no kerbside recycling depot is.
+   * Kerbside and MRF rounds + generation + collection (incinerator facilities
+   * in equal shares, then the landfill area for what they left) + incinerator
+   * burn. Call on the GARBAGE_PERIOD cadence; `pass` is the running count of
+   * garbage passes, which fixes how much each building emits. `facilities` is
+   * empty when no incinerator is placed, `depots` when no kerbside recycling
+   * depot is, `mrfs` when no Materials Recovery Facility is.
    */
   tick(
     grid: GridState,
@@ -196,11 +318,18 @@ export class GarbageSystem {
     pass: number,
     facilities: readonly GarbageFacility[] = [],
     depots: readonly GarbageDepot[] = [],
+    mrfs: readonly GarbageMrf[] = [],
   ): void {
+    if (pass % GARBAGE_PASSES_PER_DAY === 0) {
+      this.mrfSortedToday.clear();
+      this.regionalSortedToday = 0;
+    }
     const footprints = footprintsByBuildingId(grid);
     const ordered = [...buildings].sort((a, b) => a.id - b.id);
-    const served = this.serveKerbside(grid, footprints, ordered, depots);
-    this.generate(footprints, ordered, pass, served);
+    const splits = new Map<number, { recycling: number; refuse: number }>();
+    const carts = this.serveKerbside(grid, footprints, ordered, depots, pass, splits);
+    this.sortRecycling(grid, footprints, ordered, pass, carts, splits, mrfs, facilities);
+    this.generate(footprints, ordered, pass, splits);
     this.collectAndBurnIncinerators(grid, footprints, ordered, facilities);
     this.collectLandfill(grid, footprints, ordered);
   }
@@ -209,57 +338,194 @@ export class GarbageSystem {
    * The buildings the kerbside depots serve this pass, recomputed from scratch.
    * Depots in id order take, along their road reach, the buildings in id order
    * with residents and few enough homes, a building once, while the depot has
-   * homes left to cover it.
+   * homes left to cover it. Each served building's split goes into `splits`;
+   * returns each depot's recycling units this pass and the street it leaves
+   * by, in depot id order.
    */
   private serveKerbside(
     grid: GridState,
     footprints: ReadonlyMap<number, number[]>,
     buildings: readonly GarbageBuilding[],
     depots: readonly GarbageDepot[],
-  ): ReadonlySet<number> {
-    const served = new Set<number>();
+    pass: number,
+    splits: Map<number, { recycling: number; refuse: number }>,
+  ): Cart[] {
     this.depotsServed = [];
-    const eligible = buildings.filter(
-      (b) => b.residents > 0 && b.homes >= 1 && b.homes <= KERBSIDE_MAX_HOMES,
-    );
+    const carts: Cart[] = [];
+    const eligible = buildings.filter((b) => b.residents > 0 && isKerbsideSized(b));
     for (const d of [...depots].sort((a, b) => a.id - b.id)) {
       let remaining = d.servesHomes;
+      let units = 0;
       const coverage = this.reachOf(grid, footprints, d);
       if (coverage) {
         for (const b of eligible) {
-          if (served.has(b.id) || remaining < b.homes) continue;
-          const tiles = footprints.get(b.id);
-          if (!tiles || !tiles.some((ti) => (coverage.get(ti) ?? 0) > 0)) continue;
-          served.add(b.id);
+          if (splits.has(b.id) || remaining < b.homes) continue;
+          if (!reaches(coverage, footprints.get(b.id))) continue;
+          const split = servedUnitsOnPass(b, pass, kerbsideKgPerDay(b));
+          splits.set(b.id, split);
+          units += split.recycling;
           remaining -= b.homes;
         }
       }
+      carts.push({ units, street: units > 0 ? streetOf(grid, footprints.get(d.id)) : null });
       this.depotsServed.push({
         id: d.id,
         servedHomes: d.servesHomes - remaining,
         capacityHomes: d.servesHomes,
       });
     }
-    return served;
+    return carts;
+  }
+
+  /**
+   * The MRFs, in id order, each take up to their sort budget this pass — less
+   * what would overfill their residue store, and nothing once it is full: the
+   * carts of the depots their streets connect to first, at any distance, depot
+   * by depot, then their round's buildings in id
+   * order within reach, each once across all plants, while its recycling this
+   * pass fits what is left. What each sorts is recovered at MRF_YIELD_PERCENT
+   * and the residue forwarded from its store; carts no plant took are sorted
+   * regionally, their residue leaving the map. Stores of removed MRFs are dropped.
+   */
+  private sortRecycling(
+    grid: GridState,
+    footprints: ReadonlyMap<number, number[]>,
+    buildings: readonly GarbageBuilding[],
+    pass: number,
+    carts: readonly Cart[],
+    splits: Map<number, { recycling: number; refuse: number }>,
+    mrfs: readonly GarbageMrf[],
+    facilities: readonly GarbageFacility[],
+  ): void {
+    const live = new Set(mrfs.map((m) => m.id));
+    for (const id of [...this.mrfResidue.keys()]) if (!live.has(id)) this.mrfResidue.delete(id);
+    for (const id of [...this.mrfSortedToday.keys()]) {
+      if (!live.has(id)) this.mrfSortedToday.delete(id);
+    }
+    this.mrfsSorted = [];
+    const unclaimed = carts.map((c) => c.units);
+    const round = buildings.filter((b) => roundKgPerDay(b) > 0);
+    for (const m of [...mrfs].sort((a, b) => a.id - b.id)) {
+      // The plant's whole road network, walked once this pass and only if needed.
+      let walked: ReadonlyMap<number, number> | null | undefined;
+      const network = (): ReadonlyMap<number, number> | null =>
+        walked === undefined ? (walked = roadNetworkOf(grid, footprints.get(m.id))) : walked;
+      const stored = this.mrfResidue.get(m.id) ?? 0;
+      const before = this.mrfSortedToday.get(m.id) ?? 0;
+      const stopped = stored >= m.residueCapacity;
+      let room = stopped ? 0 : largestTake(m.sortRate, m.residueCapacity - stored, before);
+      let sorted = 0;
+      for (let i = 0; i < unclaimed.length && room > 0; i++) {
+        const street = carts[i]!.street;
+        if (unclaimed[i]! <= 0 || street === null || !network()?.has(street)) continue;
+        const take = Math.min(room, unclaimed[i]!);
+        unclaimed[i] = unclaimed[i]! - take;
+        room -= take;
+        sorted += take;
+      }
+      let servedBuildings = 0;
+      const coverage = room > 0 ? this.reachOf(grid, footprints, m) : null;
+      if (coverage) {
+        for (const b of round) {
+          if (room <= 0) break;
+          if (splits.has(b.id) || !reaches(coverage, footprints.get(b.id))) continue;
+          const split = servedUnitsOnPass(b, pass, roundKgPerDay(b));
+          if (split.recycling > room) continue;
+          splits.set(b.id, split);
+          room -= split.recycling;
+          sorted += split.recycling;
+          servedBuildings += 1;
+        }
+      }
+      const recovered = recoveredOf(before, sorted);
+      this.recoveredUnits += recovered;
+      this.mrfSortedToday.set(m.id, before + sorted);
+      const residue = this.forwardResidue(
+        grid,
+        footprints,
+        network,
+        stored + sorted - recovered,
+        facilities,
+      );
+      this.mrfResidue.set(m.id, residue);
+      this.mrfsSorted.push({ id: m.id, sorted, servedBuildings, residue, stopped });
+    }
+    const regional = unclaimed.reduce((sum, n) => sum + n, 0);
+    this.recoveredUnits += recoveredOf(this.regionalSortedToday, regional);
+    this.regionalSortedToday += regional;
+  }
+
+  /**
+   * Sends `units` of an MRF's residue to the final facilities on its road
+   * `network` (its street's, at any distance) — nearest first, a landfill
+   * before an incinerator at the same distance, then by incinerator id — each
+   * taking up to its room. Returns what is left in the MRF's store.
+   */
+  private forwardResidue(
+    grid: GridState,
+    footprints: ReadonlyMap<number, number[]>,
+    network: () => ReadonlyMap<number, number> | null,
+    units: number,
+    facilities: readonly GarbageFacility[],
+  ): number {
+    if (units <= 0) return 0;
+    const reached = network();
+    if (reached === null) return units;
+    const distanceTo = (footprint: readonly number[]): number | undefined => {
+      const road = streetOf(grid, footprint);
+      return road === null ? undefined : reached.get(road);
+    };
+    const sinks: { distance: number; order: number; room: number; take: (n: number) => void }[] =
+      [];
+    const capacity = landfillTileCount(grid) * LANDFILL_CAPACITY_PER_TILE;
+    if (capacity > 0) {
+      const distance = distanceTo(landfillTiles(grid).map((t) => t.z * grid.size + t.x));
+      if (distance !== undefined) {
+        sinks.push({
+          distance,
+          order: -1,
+          room: capacity - this.landfillStoredUnits,
+          take: (n) => {
+            this.landfillStoredUnits += n;
+          },
+        });
+      }
+    }
+    for (const f of facilities) {
+      const distance = distanceTo(footprints.get(f.id) ?? []);
+      if (distance === undefined) continue;
+      const held = this.incineratorStore.get(f.id) ?? 0;
+      sinks.push({
+        distance,
+        order: f.id,
+        room: f.bufferCapacity - held,
+        take: (n) => {
+          this.incineratorStore.set(f.id, (this.incineratorStore.get(f.id) ?? 0) + n);
+        },
+      });
+    }
+    sinks.sort((a, b) => a.distance - b.distance || a.order - b.order);
+    let left = units;
+    for (const sink of sinks) {
+      if (left <= 0) break;
+      const n = Math.min(left, Math.max(0, sink.room));
+      if (n <= 0) continue;
+      sink.take(n);
+      left -= n;
+    }
+    return left;
   }
 
   private generate(
     footprints: ReadonlyMap<number, number[]>,
     buildings: readonly GarbageBuilding[],
     pass: number,
-    served: ReadonlySet<number>,
+    splits: ReadonlyMap<number, { recycling: number; refuse: number }>,
   ): void {
     for (const b of buildings) {
       const tiles = footprints.get(b.id);
       if (!tiles || tiles.length === 0) continue;
-      let units: number;
-      if (served.has(b.id)) {
-        const split = servedUnitsOnPass(b, pass);
-        this.recoveredUnits += split.recycling;
-        units = split.refuse;
-      } else {
-        units = unitsOnPass(b, pass);
-      }
+      const units = splits.get(b.id)?.refuse ?? unitsOnPass(b, pass);
       if (units <= 0) continue;
       const each = Math.floor(units / tiles.length);
       const extra = units % tiles.length;
@@ -357,9 +623,7 @@ export class GarbageSystem {
     footprints: ReadonlyMap<number, number[]>,
     f: { id: number; collectionRange: number },
   ): ReadonlyMap<number, number> | null {
-    const tiles = footprints.get(f.id);
-    if (!tiles || tiles.length === 0) return null;
-    const start = nearestRoadTile(grid, tiles);
+    const start = streetOf(grid, footprints.get(f.id));
     if (start === null) return null;
     const reached = roadBfsDistances(grid, start, f.collectionRange);
     const coverage = radiateWeighted(reached, f.collectionRange, 1);
@@ -434,6 +698,16 @@ export class GarbageSystem {
     return this.depotsServed.map((d) => ({ ...d }));
   }
 
+  /** What each Materials Recovery Facility sorted, served and holds after the last pass. */
+  mrfSnapshot(): MrfSorted[] {
+    return this.mrfsSorted.map((m) => ({ ...m }));
+  }
+
+  /** Residue units stored at the given MRF (0 if unknown). */
+  mrfResidueStored(id: number): number {
+    return this.mrfResidue.get(id) ?? 0;
+  }
+
   /** Total trash units piled in the landfill area. */
   landfillStored(): number {
     return this.landfillStoredUnits;
@@ -459,9 +733,13 @@ export class GarbageSystem {
     this.incineratorBurned.clear();
     this.recoveredUnits = 0;
     this.depotsServed = [];
+    this.mrfResidue.clear();
+    this.mrfSortedToday.clear();
+    this.regionalSortedToday = 0;
+    this.mrfsSorted = [];
   }
 
-  /** The persistable fill state (landfill pile, incinerator buffers, month's recovery). */
+  /** The persistable fill state (landfill pile, incinerator buffers, MRF residue, month's recovery). */
   serializeState(): GarbageSaveState {
     return {
       recoveredThisMonth: this.recoveredUnits,
@@ -469,6 +747,10 @@ export class GarbageSystem {
       incinerators: [...this.incineratorStore.entries()]
         .sort((a, b) => a[0] - b[0])
         .map(([id, units]) => ({ id, units })),
+      mrfs: [...this.mrfResidue.entries()]
+        .filter(([, residue]) => residue > 0)
+        .sort((a, b) => a[0] - b[0])
+        .map(([id, residue]) => ({ id, residue })),
     };
   }
 
@@ -480,6 +762,10 @@ export class GarbageSystem {
     this.incineratorStore.clear();
     for (const { id, units } of state.incinerators ?? []) {
       if (units > 0) this.incineratorStore.set(id, units);
+    }
+    this.mrfResidue.clear();
+    for (const { id, residue } of state.mrfs ?? []) {
+      if (residue > 0) this.mrfResidue.set(id, residue);
     }
   }
 }

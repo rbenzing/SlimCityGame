@@ -374,6 +374,17 @@ describe('the civic ploppables (honest both sides): every draw from floor area a
     close(incinerator.powerUse, kwhPerDay / 24 / 1000, 2);
   });
 
+  it("draws the recovery facility's sorting line at 20 kWh a tonne over the day, and its staff's water", () => {
+    const mrf = byId('materials-recovery-facility');
+    /** 50 short tons a day; 20 kWh a tonne, building included (measured 23.8, large plants near 10). */
+    const TONNES_PER_DAY = 50 * 0.90718474;
+    const MRF_KWH_PER_TONNE = 20;
+    close(mrf.powerUse, (TONNES_PER_DAY * MRF_KWH_PER_TONNE) / 24 / 1000, 4);
+    const STAFF = 17;
+    const GAL_PER_WORKER_DAY = 13;
+    close(mrf.waterUse, STAFF * GAL_PER_WORKER_DAY * KL_PER_GAL, 1);
+  });
+
   it("draws the coal plant's staff water, not its cooling water", () => {
     const coal = byId('coal-plant');
     const STAFF = 50;
