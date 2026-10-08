@@ -568,18 +568,40 @@ arm rather than left on some. Turn arrows are painted from the resolved
 movement set and nothing else, so a lane with no arrow is not a legal path
 to that leg — the router treats a movement no lane offers as a banned turn.
 
-**Tapers** govern any lane drop, at a junction approach or mid-run, where a
-wider profile meets a narrower one: the extra lanes close over a length set
-by the class's own standard ratio, not by taste — 1:10 on dirt or alley,
-1:12 on rural, 1:15 on every ordinary street class (local through
-arterial), 1:30 on a divided road, 1:50 on a highway or a ramp. A 3.5 m lane
-closing at 1:50 takes 175 m, about 10 tiles; at 1:10–1:15 it takes 35–50 m,
-about 3 tiles. The outermost travel lane on each side closes first, taking
-the wider side of an uneven road down to an even one, and then the two
-directions close together, so the centre line runs straight down the taper.
-A road whose lanes all run one way closes the driver's right-hand lane
-first. Everything else the road carries (footways, parking, a reserved
-transit lane) survives the drop untouched. A taper begins at full width, never part-closed: where the wide
+**Tapers** govern a lane drop along one road, where a wider stretch of it runs
+on as a narrower one: the extra width closes over a length set by the class's
+own standard ratio, not by taste — 1:10 on dirt or alley, 1:12 on rural, 1:15
+on every ordinary street class (local through arterial), 1:30 on a divided
+road, 1:50 on a highway or a ramp. A 3.5 m lane closing at 1:50 takes 175 m,
+about 10 tiles; at 1:10–1:15 it takes 35–50 m, about 3 tiles.
+
+**A road tapers only into more of itself.** A lane reduction is made away
+from an intersection (MUTCD 2023 §3B.12 ¶01), so a road keeps its full width
+up to the mouth of any junction it meets, however much narrower the road it
+crosses is: the walk that finds a taper stops at a junction tile, or at a
+road held apart, and never takes the crossing road's width for its own. A
+merge or a diverge is not a junction (below), so a motorway still tapers
+through one exactly as before.
+
+**The pieces that end close, and the pieces that carry on keep their
+width.** A parking lane or a bike lane the narrower road does not carry
+closes itself over the taper, on its own side, and the travel lanes beside
+it are not touched; a parking lane ending needs no lane-reduction taper of
+its own (§3B.12 ¶06), so it simply narrows away with the kerb. What is left
+of the width difference is travel lanes: the outermost travel lane on each
+side closes first, taking the wider side of an uneven road down to an even
+one, and then the two directions close together, so the centre line runs
+straight down the taper. A road whose lanes all run one way closes the
+driver's right-hand lane first. A lane drop never squeezes the lanes that
+remain, and footways and reserved transit lanes survive it untouched.
+
+**The paint follows the pavement.** Each tile of a taper bends its edge from
+its own width to the next tile's over its length, and every line and every
+coloured lane on it bends the same way — the edge line, the lane lines, the
+bike lane's green, a bus lane's terracotta and a parking lane's line and stall
+marks — so nothing steps at a seam and nothing lies off the pavement.
+
+A taper begins at full width, never part-closed: where the wide
 road is shorter than its own taper, as a four-lane stub of three tiles between
 a junction and a two-lane street is, the lanes close over the length the stub
 has, steeper than the ratio. Started part-closed, the stub leaves the junction
@@ -648,13 +670,18 @@ these: it is a poor road, but it is a road, so a lane really does bend into a
 track and the pavement really does end there.
 
 **Which corner is turned.** The corner is the one the two ARMS make, and an
-arm is only as wide as its own road: where a two-lane street meets an avenue,
-the kerb it is tangent to stands 3.4 m inside the avenue's throat. So the two
-lines a return joins are the arm's kerb on one axis and the junction's on the
-other, and a junction with arms of different widths has four corners of
-different depths. An arm has to have a kerb to be tangent to — a gravel track
-has none, and the junction's kerb runs past it the way it runs past a
-driveway.
+arm is exactly as wide as its own road: where a two-lane street meets an
+avenue, the kerb it is tangent to stands 3.4 m inside the avenue's throat. So
+the two lines a return joins are the arm's kerb on one axis and the
+junction's on the other, and a junction with arms of different widths has
+four corners of different depths. Every paved arm reports its own width,
+footways or not: a street built without footways still has an edge for the
+return to be tangent to, and drawn at the junction's width instead it stepped
+2.4 m out of the street at the mouth. An arm WIDER than the junction's own
+road widens the junction's mouth to it, so a wide street meeting a narrow one
+arrives at its full width and rounds its corners from there. Only an unpaved
+gravel track has no edge to be tangent to, and the junction's kerb runs past
+it the way it runs past a driveway.
 
 The tile caps it. A return needs its full radius clear of the carriageway on
 both roads, and a 20 m tile only leaves `10 − carriageway/2` on each — 6.25 m
@@ -673,8 +700,10 @@ of — a gravel track and an alley ease into a width change exactly as a
 kerbed street does, since width is width. What is excluded is a change of
 SURFACE: a paved road meeting a gravel one keeps its paved-to-dirt band,
 which is that join's own treatment, and bending as well would draw the same
-change twice. A junction keeps its own throat rather than tapering, since a
-wide arm meeting narrow ones at a node is a flare, not a transition.
+change twice. Neither side of a junction bends toward the other: the
+junction keeps its own throat, and the road arriving keeps its own width to
+the junction's edge, where the junction takes each arm up at that width (see
+the taper rule above).
 
 Two joins are refused. A ramp will not run straight onto a dirt road or an
 alley, which could carry neither its speed nor its volume. And a **motorway
@@ -940,7 +969,9 @@ parking piece beside it takes only short daytime stays, and only on a tier
 whose catalog entry sets the per-tier flag (the two-lane road, the gravel
 road, the alley and the one-way road); everything else takes none. No
 preset paints a parking lane, so on the presets the flag alone decides, and
-only by day.
+only by day. Wherever a kerb takes cars, none stands inside a junction's
+no-parking zone (see [Markings](#markings)): the same measurement keeps the
+stall marks and the cars out of it.
 
 A junction places its own furniture by control rather than by tier: the
 road ranked highest at a node runs through with no stop marking; every arm
@@ -1042,10 +1073,10 @@ per-tier:
   running along the kerb — a shoulder, a bike lane, a bus lane — because
   that is where general traffic actually ends. On a road with a shoulder it
   is the line that tells a driver where it is safe to pull over; on one with
-  a bike or bus lane it is the line they are not to cross, and the reserved
-  lane's coloured fill lies outside it, unbroken. Only where the outermost
-  lane is an ordinary travel lane does the line fall back to a fixed inset
-  from the kerb. That inset is held all the way down a road that is CHANGING
+  a bus lane it is the line they are not to cross, and the lane's coloured
+  fill lies outside it, unbroken. Where the outermost lane is an ordinary
+  travel lane the line falls back to a fixed inset from the edge of the
+  pavement. That inset is held all the way down a road that is CHANGING
   width, which is a thing the paint and the kerb have to be told the same way:
   the carriageway settles a width difference by bending the wider tile all the
   way in to its narrower neighbour, so a line meeting its opposite number half
@@ -1053,19 +1084,72 @@ per-tier:
   — would sit half a step inside a kerb that has already moved, and the gap
   would open and close down every taper. So where one side is narrower, the
   narrower side's offsets are what both tiles paint to.
+- **A bike lane lies between two white lines** (MUTCD 2023 §9E.01, §9E.02).
+  On the travel side is the solid bike-lane line, at the lane's inside edge.
+  On the other side is whatever bounds the lane there: the parking lane line
+  where parking lies beyond it, the edge line — at its usual inset from the
+  edge of the pavement — where the road has no kerb, and nothing where a kerb
+  bounds it. The green is only a supplement to those lines (§3H.06): it fills
+  the lane between the lines' inner faces, hugging the outer side where the
+  lane is wider than the paint, and never lies under a line, past one, or off
+  the pavement. A bike lane on the left of a one-way carriageway keeps its
+  white bike-lane line, and the yellow is the left edge line beyond it. The
+  same holds on every profile with a kerbside or parking-side bike lane, the
+  Bike Lane preset and a composed one alike. The lane, its green and its
+  lines run on into the junction up to where the intersection begins for it
+  (§9E.02): the crossing over its arm, the stop line across its own lanes, or
+  else the point where its kerb starts to turn the corner; its outermost line
+  goes on round the corner with the kerb return.
+- **A parking lane's travel side is its solid white parking lane line**, and
+  no edge line runs inside the lane, where it would lay a second line through
+  the cars. Its stall marks are white (§3B.27): ticks from the parking lane
+  line toward the kerb, ending inside the lane at least 0.3 m short of the
+  edge of the pavement. The stalls follow the 2009 MUTCD's parallel-parking
+  layout (Figure 3B-21): an interior stall is 22 ft (6.7 m) long, inside the
+  figure's 22–26 ft, and the stall nearest a junction 20 ft (6.1 m). The
+  interior stalls are pitched from world metre 0, so they run on unbroken
+  across every seam; the end stall is measured from the edge of the
+  junction's no-parking zone (from the edge of the junction's tile where the
+  zone ends inside it). No marked stall is shorter than 6.1 m or longer than
+  7.9 m (26 ft). Where the pitch leaves an odd length beside the end stall,
+  the end stall takes it up as far as 7.9 m; beyond that the no-parking zone
+  grows instead, so the 6.1 m end stall ends on a pitch tick and the strip
+  between it and the zone stays unmarked and empty. Where two zones leave too
+  little room for an end stall each, as many legal stalls as fit are marked
+  from one zone's edge, and none where not even one fits. The lane's 2.25 m sits inside
+  the figure's 8 ft (2.4 m) stall width.
+- **No parking at a junction.** The Uniform Vehicle Code (§11-1003) forbids
+  standing within 20 ft (6.1 m) of a crosswalk at an intersection, and within
+  30 ft (9.1 m) on the approach to a stop sign or a traffic signal; the 2009
+  MUTCD's Figure 3B-21 draws the same two no-parking zones. So no stall is
+  marked, and no car stands, within 9.1 m before a stop line on an approach
+  a stop or a signal holds; within 6.1 m of a crosswalk; or, where an arm has
+  no crosswalk, within 6.1 m of the junction's mouth — on the approach side
+  and the departure side alike. The parking lane line itself runs on to the
+  mouth as the lane's travel edge. One function measures the zone, and the
+  paint and the parked cars both read it. A car parks one to a marked stall,
+  centred in it, the stalls read off the same layout the ticks are painted
+  from; a kerb whose street allows parking but paints no lane has no stalls,
+  and its cars keep their plain row.
+- **An edge line is broken only across the mouth of a road that joins**
+  (§3B.09 ¶07, §3B.11 ¶07–08). On a junction tile every side with no arm
+  keeps its edge line for the tile's full length, so the far side of a T is
+  unbroken: the road it runs along runs on past the junction there. It runs
+  at the edge line's own inset from the junction's kerb on that side,
+  bending from one arm's inset to the other's where the two differ.
 - **Round a junction's corners** the edge line follows the kerb return. It
   marks where the running surface ends, and at a corner the running surface
   ends along that arc, so it is the same line the arms carry rather than a
   decoration on top of it — and it is drawn as the return's own arc at a
   larger radius, which is what makes it concentric with the kerb rather than
   merely near it. It is not a control marking: an uncontrolled junction paints
-  no stop line and no crossing, and still carries this. A corner whose two
-  arms put their edge line different distances inside the kerb is left
-  unpainted, since no single arc meets them both. A parking lane is not treated this way: it already draws a
-  solid line along its own inner edge with the bays it ticks off, so an edge
-  line there would only lay a second line over the first. A kerbside bus
-  lane's inner edge is therefore marked once, solid, rather than dashed as a
-  boundary between two ordinary same-way lanes would be.
+  no stop line and no crossing, and still carries this. Where the two arms
+  put their outermost line different distances inside the kerb — a parking
+  lane line on one, an edge line on the other — the arc's inset bends from
+  one to the other round the sweep, so it leaves each arm exactly where that
+  arm's own line runs. A kerbside bus lane's inner edge is marked once,
+  solid, rather than dashed as a boundary between two ordinary same-way lanes
+  would be.
 - **Centre line** is derived per class: dirt, alley, one-way, highway,
   ramp and rail paint no centre line at all (a one-way or a motorway has no
   opposing traffic to separate, and dirt/alley carry no paint of any kind).
@@ -1203,6 +1287,17 @@ capacity expressed in vehicles per hour converts by one constant:
 - **Tapers**, from standard taper ratios: 1:50 on a highway or a ramp
   (a 3.5 m lane closes over 175 m, about 10 tiles), 1:30 on a divided road,
   1:10–1:15 on every other paved street class (35–50 m, about 3 tiles).
+  The reduction itself is made away from an intersection (MUTCD 2023
+  §3B.12 ¶01), and a parking lane that ends needs no taper of its own
+  (§3B.12 ¶06).
+- **Kerbside parking stalls**, from the 2009 MUTCD's parallel-parking layout
+  (Figure 3B-21, carried by the 2023 edition's §3B.27 on parking space
+  markings): stalls 8 ft (2.4 m) wide, an interior stall 22–26 ft and the
+  game's 22 ft (6.7 m), the end stall 20 ft (6.1 m). The no-parking zones
+  are the Uniform Vehicle Code's §11-1003, which most states adopt word for
+  word (for instance Oklahoma, 47 O.S. §11-1003): 20 ft (6.1 m) from a
+  crosswalk at an intersection, and 30 ft (9.1 m) on the approach to a stop
+  sign or a traffic signal.
 - **Turn-lane storage**, from AASHTO's 15 m minimum plus one queued vehicle
   per 20 s of red at 7.5 m each: a local approach stores 2 cars (≈ 30 m) —
   an approach zone of 2 tiles; a collector 4–5 cars (≈ 50 m) — 3 tiles; an

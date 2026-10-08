@@ -134,6 +134,7 @@ import {
   auxiliaryLaneAt,
   sharedTurnLaneAt,
   drawnCrossSection,
+  isJunctionTile,
   narrowingAhead,
   paintedCrossSection,
   rampMouthAt,
@@ -160,8 +161,10 @@ import {
   approachingSpan,
   centrePair,
   markingPlan,
+  PAINT_HALF_WIDTH_M,
   seamBetween,
   travelLanes,
+  travelLaneSpans,
   type MarkingLine,
   type MarkingPlan,
 } from './roadmarkings';
@@ -174,6 +177,8 @@ import {
 export interface MarkingSeam {
   solid: number[];
   dashed: number[];
+  /** Where each of the plan's coloured bands lies at that end, parallel to `bands`. */
+  bands?: { from: number; to: number }[];
 }
 
 /**
@@ -196,8 +201,12 @@ function seamWith(
 export const ROAD_Y_OFFSET = 0.15;
 /** Max sub-quad edge length (m) when a road quad is tessellated to follow a slope. */
 const ROAD_QUAD_MAX_CELL_M = 2;
-/** Corner+center height spread below which a quad is flat and stays one quad. */
-const ROAD_QUAD_FLAT_EPSILON_M = 0.02;
+/**
+ * Height spread below which a quad is flat and stays one quad. Below the 3 mm
+ * a coloured lane rides over the asphalt, so a flat plate and the exactly
+ * conforming band over it can never swap places.
+ */
+const ROAD_QUAD_FLAT_EPSILON_M = 0.002;
 /** Global tint the unlit road surface dims to at full night, leaving lamp pools bright. */
 const ROAD_NIGHT_DIM = 0.34;
 
@@ -236,10 +245,7 @@ export const SIDEWALK_COLOR: readonly [number, number, number] = [0.82, 0.81, 0.
 
 /** Lane paint: uniformly white across tiers, not tier-tinted. */
 export const MARKING_COLOR: readonly [number, number, number] = [0.95, 0.95, 0.96];
-/**
- * True-ratio paint width (~0.15m).
- */
-export const PAINT_HALF_WIDTH_M = 0.075;
+export { PAINT_HALF_WIDTH_M };
 
 /**
  * A broken line's metrics, at the size one is actually painted: a 10 ft
@@ -488,7 +494,18 @@ function latticeBreaks(a: number, b: number): number[] {
   return out;
 }
 
-/** One conforming sub-quad split on the terrain mesh's own (x0,z1)-(x1,z0) anti-diagonal, CCW from +Y. */
+/**
+ * One conforming sub-quad split on the terrain mesh's own (x0,z1)-(x1,z0)
+ * anti-diagonal, CCW from +Y.
+ *
+ * A full lattice cell's anti-diagonal IS the terrain's fold wherever the fold
+ * crosses it, so the cell is exact. A cell cut short — at a band's edge, a
+ * plate's edge, a kerb — is not: its own diagonal misses the fold, and two
+ * layers laid over the same ground at a few millimetres apart then disagree
+ * by more than that, so the lower pokes through the upper (asphalt showing in
+ * a bike lane's green on a slope). Such a cell is cut along the fold itself
+ * into two pieces, each lying in one terrain plane and so exact.
+ */
 function pushConformingSubQuad(
   positions: number[],
   colors: number[],
@@ -500,6 +517,61 @@ function pushConformingSubQuad(
   color: readonly [number, number, number],
   hAt: (x: number, z: number) => number,
 ): void {
+  // The terrain tile the cell lies in, and which side of its u + v = 1 fold
+  // each corner is on. The lattice never lets a cell straddle a tile edge.
+  const tx = Math.floor((x0 + x1) / 2 / TILE_METERS) * TILE_METERS;
+  const tz = Math.floor((z0 + z1) / 2 / TILE_METERS) * TILE_METERS;
+  const fold = (x: number, z: number): number => (x - tx + (z - tz)) / TILE_METERS - 1;
+  const corners: [number, number][] = [
+    [x0, z0],
+    [x0, z1],
+    [x1, z1],
+    [x1, z0],
+  ];
+  const side = corners.map(([x, z]) => fold(x, z));
+  const EPS = 1e-9;
+  const withinTile =
+    x0 >= tx - EPS &&
+    x1 <= tx + TILE_METERS + EPS &&
+    z0 >= tz - EPS &&
+    z1 <= tz + TILE_METERS + EPS;
+  /** Whether the ground actually bends where the fold crosses the cell's edges. */
+  const bends = (): boolean => {
+    for (let i = 0; i < 4; i++) {
+      const sa = side[i]!;
+      const sb = side[(i + 1) % 4]!;
+      if (!((sa > EPS && sb < -EPS) || (sa < -EPS && sb > EPS))) continue;
+      const [ax, az] = corners[i]!;
+      const [bx, bz] = corners[(i + 1) % 4]!;
+      const t = sa / (sa - sb);
+      const ha = hAt(ax, az);
+      const along = ha + (hAt(bx, bz) - ha) * t;
+      if (Math.abs(hAt(ax + (bx - ax) * t, az + (bz - az) * t) - along) > 1e-6) return true;
+    }
+    return false;
+  };
+  if (withinTile && side.some((s) => s > EPS) && side.some((s) => s < -EPS) && bends()) {
+    for (const keep of [1, -1] as const) {
+      const piece: [number, number][] = [];
+      for (let i = 0; i < 4; i++) {
+        const a = corners[i]!;
+        const b = corners[(i + 1) % 4]!;
+        const sa = side[i]! * keep;
+        const sb = side[(i + 1) % 4]! * keep;
+        if (sa >= -EPS) piece.push(a);
+        if ((sa > EPS && sb < -EPS) || (sa < -EPS && sb > EPS)) {
+          const t = sa / (sa - sb);
+          piece.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+        }
+      }
+      for (let k = 1; k + 1 < piece.length; k++) {
+        for (const [x, z] of [piece[0]!, piece[k]!, piece[k + 1]!]) {
+          pushVertex(positions, colors, x, hAt(x, z) + yOffset, z, color);
+        }
+      }
+    }
+    return;
+  }
   const y00 = hAt(x0, z0) + yOffset;
   const y10 = hAt(x1, z0) + yOffset;
   const y11 = hAt(x1, z1) + yOffset;
@@ -735,26 +807,6 @@ function pushHorizontalLine(
     paint,
     hAt,
   );
-}
-
-/**
- * Emits a solid (non-dashed) marking line across the full [lo, hi] local
- * span in one shot.
- */
-function pushSolidLine(
-  positions: number[],
-  colors: number[],
-  vertical: boolean,
-  centerX: number,
-  centerZ: number,
-  offset: number,
-  lo: number,
-  hi: number,
-  hAt: (x: number, z: number) => number,
-  paint: readonly [number, number, number] = MARKING_COLOR,
-): void {
-  if (vertical) pushVerticalLine(positions, colors, centerX, centerZ, offset, lo, hi, hAt, paint);
-  else pushHorizontalLine(positions, colors, centerX, centerZ, offset, lo, hi, hAt, paint);
 }
 
 /**
@@ -1499,16 +1551,204 @@ function emitBicycleGlyph(
  * green) between along-offsets [lo, hi]; the glyph sits centered in each band,
  * repeating every LANE_GLYPH_PERIOD_TILES tiles by global coordinate.
  */
-/** Parking bays are ticked off every this many metres along the kerb. */
-export const PARKING_BAY_PITCH_M = 6;
+/**
+ * A parking lane's interior stall: 22 ft, the short end of the 22–26 ft the
+ * 2009 MUTCD's parallel-parking layout gives (Figure 3B-21).
+ */
+export const PARKING_STALL_LENGTH_M = 6.7;
+/** The stall nearest a junction: 20 ft in the same figure. */
+export const PARKING_END_STALL_M = 6.1;
+/** The longest stall the figure marks: 26 ft. No stall is longer. */
+export const PARKING_STALL_MAX_M = 7.9;
+/** How far short of the edge of the pavement a stall tick stops, inside the lane. */
+export const PARKING_TICK_KERB_CLEARANCE_M = 0.3;
 const PARKING_TICK_HALF_LENGTH_M = 0.075;
+/** No standing within 30 ft on the approach to a stop sign or a signal (UVC §11-1003). */
+export const NO_PARKING_BEFORE_STOP_M = 9.1;
+/** No standing within 20 ft of a crosswalk at an intersection (UVC §11-1003). */
+export const NO_PARKING_FROM_CROSSWALK_M = 6.1;
+
+/**
+ * How far back along a road from a junction tile's edge its kerb is kept clear
+ * of parking: 9.1 m before a stop line where one is painted across the lanes
+ * beside that kerb, and 6.1 m from the crosswalk — or from the junction's
+ * mouth, the crossing road's kerb line, where the arm has none. Measured from
+ * where the junction tile lays them, so it is the one figure the stall marks
+ * and the parked cars both keep out of.
+ */
+export function noParkingReach(arm: {
+  /** The tile between the junction's box and its edge on this arm's side. */
+  armDepth: number;
+  /** The footway a crossing on this arm carries across the road. */
+  footwayWidth: number;
+  /** Whether a crossing is painted across the arm. */
+  crossed: boolean;
+  /** Whether a stop line is painted across the lanes beside this kerb. */
+  stopLine: boolean;
+}): number {
+  const layout = junctionArmLayout(arm.armDepth, arm.footwayWidth);
+  const mouth = arm.crossed ? layout.crosswalkStart : arm.armDepth;
+  let reach = NO_PARKING_FROM_CROSSWALK_M - mouth;
+  if (arm.stopLine) reach = Math.max(reach, NO_PARKING_BEFORE_STOP_M - layout.stopLineStart);
+  return Math.max(0, reach);
+}
+
+/**
+ * How far each end of a road tile's kerbs is kept clear of parking: `lo` the
+ * end at the low coordinate along the road and `hi` the high one, each as
+ * metres for the parking on the road's low-offset side and on its high side.
+ * Null at an end that meets no junction; zero at one whose zone ends inside
+ * the junction's own tile, where parking runs to the tile's edge.
+ */
+export interface ParkingSetbacks {
+  /** Whether the road runs along x (east-west) rather than along z. */
+  alongX: boolean;
+  lo: readonly [number, number] | null;
+  hi: readonly [number, number] | null;
+}
+
+/**
+ * Whether something lying from `along − halfLength` to `along + halfLength`
+ * down a tile, measured from its centre, stands clear of the no-parking zone
+ * at both of the tile's ends — `setLo` and `setHi`, null where an end meets no
+ * junction. The one test a stall mark and a parked car both answer to.
+ */
+export function clearOfNoParking(
+  along: number,
+  halfLength: number,
+  setLo: number | null,
+  setHi: number | null,
+): boolean {
+  const EPS = 1e-6;
+  return (
+    (setLo === null || along - halfLength >= -TILE_HALF + setLo - EPS) &&
+    (setHi === null || along + halfLength <= TILE_HALF - setHi + EPS)
+  );
+}
+
+/**
+ * Where a parking lane's stall ticks fall along a run from `lo` to `hi`
+ * (offsets from the tile centre, `origin` the centre's world coordinate along
+ * the run). Every stall is 6.1–7.9 m (20–26 ft). Interior stalls are pitched
+ * 6.7 m from world metre 0, so they run on across every seam. At an end that
+ * meets a junction the lane's last stall is the end stall, marked from the
+ * edge of the junction's no-parking zone; where the pitch leaves an odd length
+ * beside it, the end stall takes up as much as keeps it within 7.9 m, and
+ * beyond that the zone grows instead, so the end stall ends on a pitch tick.
+ * Where two zones leave too little room for that, as many legal stalls as fit
+ * are marked from the low zone's edge. `setLo` and `setHi` are null at an end
+ * that meets no junction; either may lie past the tile's own end, when the
+ * junction is a tile further on.
+ */
+export function parkingTickPositions(
+  origin: number,
+  lo: number,
+  hi: number,
+  setLo: number | null,
+  setHi: number | null,
+): number[] {
+  const EPS = 1e-9;
+  const pitch = PARKING_STALL_LENGTH_M;
+  const end = PARKING_END_STALL_M;
+  const longest = PARKING_STALL_MAX_M;
+  /** The pitch ticks at or after / at or before a local offset. */
+  const pitchAtOrAfter = (a: number): number =>
+    Math.ceil((origin + a) / pitch - EPS) * pitch - origin;
+  const pitchAtOrBefore = (a: number): number =>
+    Math.floor((origin + a) / pitch + EPS) * pitch - origin;
+  // Each end stall, as [near tick, far tick] in run order.
+  let loStall: [number, number] | null = null;
+  let hiStall: [number, number] | null = null;
+  const zoneLo = setLo === null ? null : -TILE_HALF + setLo;
+  const zoneHi = setHi === null ? null : TILE_HALF - setHi;
+  if (zoneLo !== null) {
+    const far = pitchAtOrAfter(zoneLo + end);
+    loStall = far - zoneLo <= longest + EPS ? [zoneLo, far] : [far - end, far];
+  }
+  if (zoneHi !== null) {
+    const near = pitchAtOrBefore(zoneHi - end);
+    hiStall = zoneHi - near <= longest + EPS ? [near, zoneHi] : [near, near + end];
+  }
+  const ticks: number[] = [];
+  if (zoneLo !== null && zoneHi !== null && loStall![1] > hiStall![0] + EPS) {
+    // The two end stalls would overlap: as many stalls as the room between
+    // the zones holds, each as long as it can be up to the longest.
+    const room = zoneHi - zoneLo;
+    const count = Math.floor(room / end + EPS);
+    const length = count > 0 ? Math.min(longest, room / count) : 0;
+    for (let k = 0; k <= count && count > 0; k++) ticks.push(zoneLo + k * length);
+  } else {
+    if (loStall) ticks.push(...loStall);
+    if (hiStall) ticks.push(...hiStall);
+    const from = loStall ? loStall[1] : lo;
+    const to = hiStall ? hiStall[0] : hi;
+    for (let a = pitchAtOrAfter(from); a <= to + EPS; a += pitch) ticks.push(a);
+  }
+  return ticks
+    .filter((a) => a >= lo - EPS && a <= hi + EPS && clearOfNoParking(a, 0, setLo, setHi))
+    .sort((a, b) => a - b)
+    .filter((a, i, all) => i === 0 || a - all[i - 1]! > 1e-6);
+}
+
+/**
+ * A strip of paint laid along a run whose two edges may each drift across the
+ * road as it goes — a coloured lane on a road that is changing width. Sliced
+ * on the shared lattice like every other plate; a strip that does not drift
+ * is the rectangle it always was.
+ */
+function pushDriftingStrip(
+  positions: number[],
+  colors: number[],
+  vertical: boolean,
+  centerX: number,
+  centerZ: number,
+  fromAt: (along: number) => number,
+  toAt: (along: number) => number,
+  lo: number,
+  hi: number,
+  yOffset: number,
+  paint: readonly [number, number, number],
+  hAt: (x: number, z: number) => number,
+): void {
+  if (hi <= lo) return;
+  const straight = Math.abs(fromAt(lo) - fromAt(hi)) < 1e-9 && Math.abs(toAt(lo) - toAt(hi)) < 1e-9;
+  if (straight) {
+    const [c0, c1] = [fromAt(lo), toAt(lo)];
+    if (vertical)
+      pushLocalRect(positions, colors, centerX, centerZ, c0, c1, lo, hi, yOffset, paint, hAt);
+    else pushLocalRect(positions, colors, centerX, centerZ, lo, hi, c0, c1, yOffset, paint, hAt);
+    return;
+  }
+  const centreAlong = vertical ? centerZ : centerX;
+  const pt = (along: number, cross: number): [number, number] =>
+    vertical ? [cross, along] : [along, cross];
+  const breaks = latticeBreaks(centreAlong + lo, centreAlong + hi);
+  for (let k = 0; k < breaks.length - 1; k++) {
+    const a0 = breaks[k]! - centreAlong;
+    const a1 = breaks[k + 1]! - centreAlong;
+    pushRunSlice(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      pt(a0, fromAt(a0)),
+      pt(a0, toAt(a0)),
+      pt(a1, fromAt(a1)),
+      pt(a1, toAt(a1)),
+      yOffset,
+      paint,
+      hAt,
+    );
+  }
+}
 
 /**
  * Fills and ticks every reserved or parking lane in the plan: a terracotta
  * band with a diamond for a bus lane, a green band with a bicycle for a bike
- * lane, and for a parking lane a solid line along its inner edge with a tick
- * across it at every bay — the bays are pitched by GLOBAL coordinate so they
- * run continuously across tile seams.
+ * lane, and white stall ticks across a parking lane from its parking lane
+ * line toward the kerb. Each band bends with the pavement across a tile whose
+ * road is changing width, by the same seam values the lines meet at, so no
+ * band steps at a seam or lies off the pavement.
  */
 function emitColoredLaneBands(
   positions: number[],
@@ -1522,52 +1762,80 @@ function emitColoredLaneBands(
   lo: number,
   hi: number,
   hAt: (x: number, z: number) => number,
+  /** Where each band lies at the two ends of the run; omitted, where the plan puts it. */
+  seam?: { lo: MarkingSeam; hi: MarkingSeam },
+  /** The no-parking zones at the run's two ends, for the low side's parking and the high side's. */
+  noParking?: ParkingSetbacks,
 ): void {
-  const rect = (
-    a0: number,
-    a1: number,
-    c0: number,
-    c1: number,
-    color: readonly [number, number, number],
-    y: number,
-  ): void => {
-    if (vertical) pushLocalRect(positions, colors, centerX, centerZ, c0, c1, a0, a1, y, color, hAt);
-    else pushLocalRect(positions, colors, centerX, centerZ, a0, a1, c0, c1, y, color, hAt);
-  };
-
   const glyphHere = vertical ? isLaneGlyphTile(z) : isLaneGlyphTile(x);
   const origin = vertical ? centerZ : centerX;
-  for (const band of plan.bands) {
+  plan.bands.forEach((band, i) => {
+    const atLo = seam?.lo.bands?.[i] ?? band;
+    const atHi = seam?.hi.bands?.[i] ?? band;
+    const fromAt = driftBetween(atLo.from, atHi.from, lo, hi);
+    const toAt = driftBetween(atLo.to, atHi.to, lo, hi);
     const across = (band.from + band.to) / 2;
     if (band.kind === 'parking') {
-      // The line between the parking lane and the moving lane is the edge
-      // nearer the centre; the ticks cross the lane from it to the kerb.
-      const inner = Math.abs(band.from) < Math.abs(band.to) ? band.from : band.to;
-      pushSolidLine(positions, colors, vertical, centerX, centerZ, inner, lo, hi, hAt);
-      const first = Math.ceil((origin + lo) / PARKING_BAY_PITCH_M) * PARKING_BAY_PITCH_M;
-      for (let w = first; w <= origin + hi; w += PARKING_BAY_PITCH_M) {
-        const along = w - origin;
-        rect(
-          along - PARKING_TICK_HALF_LENGTH_M,
-          along + PARKING_TICK_HALF_LENGTH_M,
-          band.from,
-          band.to,
-          MARKING_COLOR,
+      // The parking lane line is the plan's own; the ticks cross the lane from
+      // its face toward the kerb and stop short of the edge of the pavement.
+      const side = across < 0 ? 0 : 1;
+      const sign = across < 0 ? -1 : 1;
+      for (const along of parkingTickPositions(
+        origin,
+        lo,
+        hi,
+        noParking?.lo?.[side] ?? null,
+        noParking?.hi?.[side] ?? null,
+      )) {
+        const a = fromAt(along);
+        const b = toAt(along);
+        const inner = Math.abs(a) < Math.abs(b) ? a : b;
+        const outer = inner === a ? b : a;
+        const c0 = inner + sign * PAINT_HALF_WIDTH_M;
+        const c1 = outer - sign * PARKING_TICK_KERB_CLEARANCE_M;
+        if ((c1 - c0) * sign <= 1e-6) continue;
+        pushDriftingStrip(
+          positions,
+          colors,
+          vertical,
+          centerX,
+          centerZ,
+          () => Math.min(c0, c1),
+          () => Math.max(c0, c1),
+          Math.max(lo, along - PARKING_TICK_HALF_LENGTH_M),
+          Math.min(hi, along + PARKING_TICK_HALF_LENGTH_M),
           MARK_Y_OFFSET,
+          MARKING_COLOR,
+          hAt,
         );
       }
-      continue;
+      return;
     }
     // A tram lane is not painted — it carries rails, laid with the track.
-    if (band.kind === 'tram') continue;
+    if (band.kind === 'tram') return;
     const paint = band.kind === 'bus' ? BUS_LANE_PAINT_COLOR : BIKE_LANE_PAINT_COLOR;
-    rect(lo, hi, band.from, band.to, paint, LANE_TINT_Y_OFFSET);
+    pushDriftingStrip(
+      positions,
+      colors,
+      vertical,
+      centerX,
+      centerZ,
+      fromAt,
+      toAt,
+      lo,
+      hi,
+      LANE_TINT_Y_OFFSET,
+      paint,
+      hAt,
+    );
     if (glyphHere) {
+      // The glyph stands mid-tile, in the middle of the band as it lies there.
+      const mid = (fromAt(0) + toAt(0)) / 2;
       if (band.kind === 'bus')
-        emitTransitDiamond(positions, colors, centerX, centerZ, vertical, across, hAt);
-      else emitBicycleGlyph(positions, colors, centerX, centerZ, vertical, across, hAt);
+        emitTransitDiamond(positions, colors, centerX, centerZ, vertical, mid, hAt);
+      else emitBicycleGlyph(positions, colors, centerX, centerZ, vertical, mid, hAt);
     }
-  }
+  });
 }
 
 /**
@@ -1752,6 +2020,81 @@ export function crosswalkBarOffsets(carriagewayHalfWidth: number): number[] {
   const offsets: number[] = [];
   for (let i = 0; i < count; i++) offsets.push(start + i * period);
   return offsets;
+}
+
+/** One side of a junction tile, and the arm that may leave by it. */
+export type ArmSide = 'n' | 'e' | 's' | 'w';
+
+/** What decides what a junction paints across its arms. */
+export interface JunctionArms {
+  /** The junction tile's own road. */
+  tier: RoadTier;
+  /** Which sides an arm leaves by. */
+  has: Readonly<Record<ArmSide, boolean>>;
+  /** The road on each arm; None where it is not named, which reads as this tile's own. */
+  roads: NeighborTiers;
+  /** Whether each arm's road has a footway; omitted, each reads as this tile's own. */
+  footways?: Readonly<Record<ArmSide, boolean>>;
+  /** Whether the junction's own road has a footway. */
+  ownFootway: boolean;
+  /** Who gives way there; undefined or `none` where nothing controls it. */
+  control: JunctionControl | undefined;
+}
+
+/**
+ * What a junction paints across one arm: a crossing, a stop line, both or
+ * neither. The junction's own paint and the no-parking zone on the approach
+ * both read it, so a kerb is kept clear of exactly the markings it is painted.
+ */
+export function junctionArmPaint(
+  j: JunctionArms,
+  side: ArmSide,
+): { crossed: boolean; stops: boolean } {
+  const none = { crossed: false, stops: false };
+  // A stop line marks where to stop for a sign or a signal, so it is the
+  // CONTROL that decides whether one is painted, not the shape of the
+  // junction. An uncontrolled crossroads gets no paint at all; an approach
+  // that only gives way gets its crossing but no bar. A roundabout is not
+  // painted like a junction at all: no crossings on the box and no stop bars,
+  // an island in the middle and a yield line across every entry.
+  const control = j.control;
+  if (control === undefined || control === 'none' || control === 'roundabout') return none;
+  if (!j.has[side]) return none;
+  // Which arms stop. A minor road meeting a bigger one gives way to it: the
+  // side street gets the stop line and the crosswalk, and the road running
+  // through gets neither, the way a real junction reads. Where every arm
+  // ranks the same — two equal roads crossing — they all stop, which is the
+  // all-way junction.
+  const sides: readonly ArmSide[] = ['n', 'e', 's', 'w'];
+  const armRanks = sides
+    .filter((s) => j.has[s] && j.roads[s] !== RoadTier.None)
+    .map((s) => rankForTier(j.roads[s]));
+  const ranks = armRanks.length > 0 ? armRanks : [rankForTier(j.tier)];
+  const road = j.roads[side];
+  const armStops = road === RoadTier.None || armGivesWay(rankForTier(road), ranks);
+  // A signal and an all-way stop hold EVERY approach, the road running
+  // through included: it stops on red like everything else, and a stop line
+  // is where it stops. Only a give-way or a minor-road stop leaves the through
+  // road unpainted.
+  const holdsEveryArm = control === 'signal' || control === 'allWayStop';
+  if (!holdsEveryArm && !armStops) return none;
+  const stops = control === 'stop' || control === 'allWayStop' || control === 'signal';
+  // A service access carries the footway straight across its mouth rather
+  // than breaking it for a crossing, so there is no crossing to paint over
+  // one: the pavement IS the way across. An arm whose road is not named is
+  // unknown, not absent, and reads as this tile's own road — which is never a
+  // service access here.
+  const service = road !== RoadTier.None && isServiceClass(presetProfileForTier(road).class);
+  // Who walks over a crossing on this arm: the people going the other way, on
+  // the footways of the arms ACROSS from it. A road with a raised kerb but no
+  // footway — a motorway, an avenue built without one — has nobody to send
+  // over the road it meets, so its arms get no crossing.
+  const walkable = (s: ArmSide): boolean =>
+    j.has[s] &&
+    (j.roads[s] === RoadTier.None || j.footways?.[s] === undefined ? j.ownFootway : j.footways[s]);
+  const vertical = side === 'n' || side === 's';
+  const crossedOnFoot = vertical ? walkable('e') || walkable('w') : walkable('n') || walkable('s');
+  return { crossed: !service && crossedOnFoot, stops };
 }
 
 /**
@@ -2897,6 +3240,48 @@ export function kerbReturnFor(profile: RoadProfile, armDepth: number): number {
 }
 
 /**
+ * How far inside its kerb an arm paints its outermost line on one side —
+ * `side` the sign of that side's offsets in the arm's plan — or null where it
+ * paints none there. That line is the edge line, or the parking lane line on
+ * a side that parks, and it is what a junction carries round its corners.
+ */
+function edgeInsetOf(
+  armPlan: MarkingPlan | null,
+  armHalfWidth: number,
+  side: 1 | -1,
+): number | null {
+  const outer = outermostLine(armPlan, side);
+  if (!outer || armHalfWidth <= 0) return null;
+  const inset = armHalfWidth - outer.at * side;
+  return inset >= 0 ? inset : null;
+}
+
+/** The solid line a plan paints furthest out on one side, or null where it paints none there. */
+function outermostLine(plan: MarkingPlan | null, side: 1 | -1): MarkingLine | null {
+  let outer: MarkingLine | null = null;
+  for (const line of plan?.solid ?? []) {
+    if (line.at * side <= 0) continue;
+    if (!outer || line.at * side > outer.at * side) outer = line;
+  }
+  return outer;
+}
+
+/**
+ * The insets a corner's edge line runs at where it leaves each arm: `x` on the
+ * arm running north-south (kerbed across x), `z` on the one running east-west.
+ */
+interface CornerInsets {
+  x: number;
+  z: number;
+}
+
+/** 0 to 1 over `u` in 0..1 with no slope at either end, so a bend leaves a straight line tangent. */
+function easeInOut(u: number): number {
+  const t = Math.min(1, Math.max(0, u));
+  return t * t * (3 - 2 * t);
+}
+
+/**
  * The kerb return at one corner of a JUNCTION, replacing the square
  * corner-fill.
  *
@@ -2940,14 +3325,16 @@ function emitRoundedCornerFill(
   hasCurbs: boolean,
   hAt: (x: number, z: number) => number,
   /**
-   * How far inside the kerb to carry the edge line round the return, or null
-   * where this corner paints none. The line is the SAME arc at a larger
-   * radius, so it holds its distance from the kerb round the whole sweep the
-   * way it does down the straight, and meets each arm's own edge line exactly
-   * where the arc runs out — a corner drawn from its own centre and radius
-   * would have to be kept in step with this one by hand.
+   * How far inside the kerb to carry the edge line round the return, where it
+   * leaves each arm, or null where this corner paints none. The line is the
+   * SAME arc at a larger radius, so it holds its distance from the kerb round
+   * the sweep the way it does down the straight, and meets each arm's own
+   * line exactly where the arc runs out — a corner drawn from its own centre
+   * and radius would have to be kept in step with this one by hand. Where the
+   * two arms' insets differ, the radius eases from one to the other round the
+   * sweep, level at each end, so the line leaves both straights tangent.
    */
-  edgeLineInset: number | null = null,
+  edgeLineInset: CornerInsets | null = null,
   /**
    * How far from the centre the tile's own edges lie in this quadrant, across
    * x and across z: half a tile, except beside a carriageway moved off its
@@ -3040,12 +3427,13 @@ function emitRoundedCornerFill(
   // The edge line round the return. It marks where the running surface ends,
   // and at a corner the running surface ends along the kerb return, so this is
   // the same line the arms carry rather than a decoration on top of it.
-  if (edgeLineInset !== null && edgeLineInset > 0) {
+  if (edgeLineInset !== null && edgeLineInset.x > 0 && edgeLineInset.z > 0) {
     if (R > 0) {
-      const centreR = R + edgeLineInset;
+      const insetAt = (t: number): number =>
+        edgeLineInset.x + (edgeLineInset.z - edgeLineInset.x) * easeInOut(t / (Math.PI / 2));
       band(
-        () => centreR - PAINT_HALF_WIDTH_M,
-        () => centreR + PAINT_HALF_WIDTH_M,
+        (t) => R + insetAt(t) - PAINT_HALF_WIDTH_M,
+        (t) => R + insetAt(t) + PAINT_HALF_WIDTH_M,
         MARK_Y_OFFSET,
         MARKING_COLOR,
       );
@@ -3059,7 +3447,7 @@ function emitRoundedCornerFill(
     const stub = (beside: 'z' | 'x'): void => {
       const acrossSign = beside === 'z' ? signX : signZ;
       const alongSign = beside === 'z' ? signZ : signX;
-      const acrossAt = (beside === 'z' ? halfX : halfZ) - edgeLineInset;
+      const acrossAt = beside === 'z' ? halfX - edgeLineInset.x : halfZ - edgeLineInset.z;
       const alongAnchor = beside === 'z' ? anchorZ : anchorX;
       const alongEdge = beside === 'z' ? edgeZ : edgeX;
       if (acrossAt <= 0 || alongEdge - alongAnchor <= 1e-6) return;
@@ -4004,6 +4392,13 @@ export interface NeighborHalves {
    */
   footways?: { n: boolean; e: boolean; s: boolean; w: boolean };
   /**
+   * Whether each neighbour is a JUNCTION this road meets rather than more of
+   * the road. A road keeps its own width up to a junction's mouth, so it never
+   * bends in toward one, however narrow the road it crosses. Omitted, no
+   * neighbour is, which is right for a caller that cannot see the network.
+   */
+  junctions?: { n: boolean; e: boolean; s: boolean; w: boolean };
+  /**
    * What each neighbour PAINTS, so a line can meet its opposite number half
    * way across the boundary instead of stopping at this tile's edge and
    * restarting somewhere else on the other side. Omitted, every line runs at
@@ -4168,6 +4563,12 @@ export function roadTileVertices(
    * ramp's run; without it a ramp's mouth is centred on the tile.
    */
   rampMouth?: RampMouth,
+  /**
+   * The junctions' no-parking zones at the ends of this tile's run, which no
+   * stall mark is painted inside. Set only by a caller that can see the
+   * junctions and how they are painted.
+   */
+  parkingSetbacks?: ParkingSetbacks,
 ): { positions: number[]; colors: number[] } {
   if (!Number.isInteger(mask) || mask < 0 || mask > 15) {
     throw new RangeError(`roadTileVertices: mask ${mask} out of the 4-bit range 0..15`);
@@ -4340,6 +4741,55 @@ export function roadTileVertices(
     (legMask & WEST ? 1 : 0);
   const isTurn = legs === 2 && !isCollinearMask(legMask);
 
+  // How wide each arm is drawn where it meets this tile: its own road's width,
+  // footways or not, so a road arriving at a junction keeps its width to the
+  // mouth and the corners round from there. Only an arm with no edge to be
+  // tangent to keeps the junction's own: a gravel track, which is a gap in the
+  // kerb the way a driveway is, and an alley, which is an access rather than
+  // a leg. An arm whose road is not named is this tile's own.
+  const walkableArm = (has: boolean, tier: RoadTier, footway: boolean | undefined): boolean =>
+    has && (tier === RoadTier.None || footway === undefined ? true : footway);
+  const edgedArm = (has: boolean, tier: RoadTier, footway: boolean | undefined): boolean =>
+    walkableArm(has, tier, footway) ||
+    (has &&
+      tier !== RoadTier.None &&
+      !serviceArm(has, tier) &&
+      isPaved(presetProfileForTier(tier)));
+  const armHalf = (
+    has: boolean,
+    tier: RoadTier,
+    footway: boolean | undefined,
+    half: number,
+  ): number => {
+    if (half <= 0) return coreHalf;
+    // At a merge or a diverge each arm is exactly its own road: the ramp's
+    // mouth is as wide as the ramp, not as wide as the motorway it leaves.
+    if (rampNode) return Math.min(half, coreHalf);
+    return edgedArm(has, tier, footway) ? half : coreHalf;
+  };
+  const walk = neighborHalves.footways;
+  const halfN = armHalf(hasN, neighbors.n, walk?.n, neighborHalves.n);
+  const halfS = armHalf(hasS, neighbors.s, walk?.s, neighborHalves.s);
+  const halfE = armHalf(hasE, neighbors.e, walk?.e, neighborHalves.e);
+  const halfW = armHalf(hasW, neighbors.w, walk?.w, neighborHalves.w);
+  // A corner is turned where the arm is a LEG. A street no more sweeps its
+  // footway round into an alley than it does into a driveway.
+  const legN = hasN && !serviceN;
+  const legS = hasS && !serviceS;
+  const legE = hasE && !serviceE;
+  const legW = hasW && !serviceW;
+  // The radius a corner between two arms can actually turn through, in the
+  // quadrant (signX, signZ).
+  const cornerRadius = (halfX: number, halfZ: number, signX: 1 | -1, signZ: 1 | -1): number =>
+    kerbReturnFor(own, Math.min(edgeX(signX) - halfX, edgeZ(signZ) - halfZ));
+  /** The plan the arm on each side paints: its own where it has one. */
+  const armPlan = (has: boolean, neighbour: MarkingPlan | null | undefined): MarkingPlan | null =>
+    has ? (neighbour ?? plan) : null;
+  const planN = armPlan(hasN, neighborHalves.plans?.n);
+  const planS = armPlan(hasS, neighborHalves.plans?.s);
+  const planE = armPlan(hasE, neighborHalves.plans?.e);
+  const planW = armPlan(hasW, neighborHalves.plans?.w);
+
   // A lone tile has no neighbour to say which way it runs, so it runs the way
   // it was drawn; one that recorded no direction — a single click, which has
   // none to record — lies east-west. Either way it is a road with two ends
@@ -4385,19 +4835,21 @@ export function roadTileVertices(
     : connections === 2 && isCollinearMask(mask)
       ? mask
       : 0;
+  const meets = neighborHalves.junctions;
   const narrowsInto: Array<[number, 1 | -1, boolean]> = (
     [
-      [NORTH, neighbors.n, neighborHalves.n, -1, true],
-      [SOUTH, neighbors.s, neighborHalves.s, 1, true],
-      [EAST, neighbors.e, neighborHalves.e, 1, false],
-      [WEST, neighbors.w, neighborHalves.w, -1, false],
-    ] as Array<[number, RoadTier, number, 1 | -1, boolean]>
+      [NORTH, neighbors.n, neighborHalves.n, -1, true, meets?.n],
+      [SOUTH, neighbors.s, neighborHalves.s, 1, true, meets?.s],
+      [EAST, neighbors.e, neighborHalves.e, 1, false, meets?.e],
+      [WEST, neighbors.w, neighborHalves.w, -1, false, meets?.w],
+    ] as Array<[number, RoadTier, number, 1 | -1, boolean, boolean | undefined]>
   )
     .filter(
-      ([bit, nTier, nHalf]) =>
+      ([bit, nTier, nHalf, , , junction]) =>
         (runArms & mask & bit) !== 0 &&
         nTier !== RoadTier.None &&
         !surfaceChanges(nTier) &&
+        junction !== true &&
         nHalf > 0 &&
         nHalf < coreHalf - 1e-6,
     )
@@ -4497,9 +4949,20 @@ export function roadTileVertices(
     // ramp's extension is only as wide as the ramp.
     // A ramp running alongside joins over one half of the tile, so its
     // extension covers that half rather than a strip centred on the tile.
-    const extensionSpan = (arm: RoadFlow, half: number): { from: number; to: number } => {
+    // An arm WIDER than this tile's own road is drawn at its own width all the
+    // way to the box, so the road arriving never steps in at the mouth.
+    const extensionSpan = (
+      arm: RoadFlow,
+      half: number,
+      armWidth: number,
+    ): { from: number; to: number } => {
       if (rampNode && rampMouth?.arm === arm) return mouthSpan(half);
-      const h = rampNode && half > 0 ? Math.min(half, coreHalf) : coreHalf;
+      const h =
+        rampNode && half > 0
+          ? Math.min(half, coreHalf)
+          : isJunction
+            ? Math.max(coreHalf, armWidth)
+            : coreHalf;
       // Half of a corridor nothing divides, and the tiles along it, all keep
       // the edge they share with the other half; an arm narrower than this
       // tile is narrower on the far side. A street joining across the run is
@@ -4516,10 +4979,10 @@ export function roadTileVertices(
       }
       return { from: -h, to: h };
     };
-    const extN = extensionSpan(RoadFlow.North, neighborHalves.n);
-    const extS = extensionSpan(RoadFlow.South, neighborHalves.s);
-    const extE = extensionSpan(RoadFlow.East, neighborHalves.e);
-    const extW = extensionSpan(RoadFlow.West, neighborHalves.w);
+    const extN = extensionSpan(RoadFlow.North, neighborHalves.n, halfN);
+    const extS = extensionSpan(RoadFlow.South, neighborHalves.s, halfS);
+    const extE = extensionSpan(RoadFlow.East, neighborHalves.e, halfE);
+    const extW = extensionSpan(RoadFlow.West, neighborHalves.w, halfW);
     // The tile's own edges, from a centre that may have moved across the road:
     // an arm still reaches the tile it joins. Where the motorway was laid as a
     // run, only the ramp's arm is left, and it reaches in to the middle of the
@@ -4600,78 +5063,34 @@ export function roadTileVertices(
     // never reported, falls back to the junction's own half — which is the
     // square this assumed everywhere before.
     //
-    // An arm only moves the corner if it HAS a kerb for the return to be
-    // tangent to. A gravel track has none, so the junction's kerb turns at its
-    // own edge and the track is a gap in it, the way a driveway is.
-    const walkableArm = (has: boolean, tier: RoadTier, footway: boolean | undefined): boolean =>
-      has && (tier === RoadTier.None || footway === undefined ? true : footway);
-    const armHalf = (
-      has: boolean,
-      tier: RoadTier,
-      footway: boolean | undefined,
-      half: number,
-    ): number =>
-      // At a merge or a diverge each arm is exactly its own road: the ramp's
-      // mouth is as wide as the ramp, not as wide as the motorway it leaves.
-      (walkableArm(has, tier, footway) || rampNode) && half > 0
-        ? Math.min(half, coreHalf)
-        : coreHalf;
-    const walk = neighborHalves.footways;
-    const halfN = armHalf(hasN, neighbors.n, walk?.n, neighborHalves.n);
-    const halfS = armHalf(hasS, neighbors.s, walk?.s, neighborHalves.s);
-    const halfE = armHalf(hasE, neighbors.e, walk?.e, neighborHalves.e);
-    const halfW = armHalf(hasW, neighbors.w, walk?.w, neighborHalves.w);
-    // A corner is turned where the arm is a LEG. A street no more sweeps its
-    // footway round into an alley than it does into a driveway.
-    const legN = hasN && !serviceN;
-    const legS = hasS && !serviceS;
-    const legE = hasE && !serviceE;
-    const legW = hasW && !serviceW;
-    // The radius a corner between two arms can actually turn through, in the
-    // quadrant (signX, signZ).
-    const cornerRadius = (halfX: number, halfZ: number, signX: 1 | -1, signZ: 1 | -1): number =>
-      kerbReturnFor(own, Math.min(edgeX(signX) - halfX, edgeZ(signZ) - halfZ));
     // No corner turns on the middle of the road.
     const cornerOnSeam = (signX: 1 | -1, signZ: 1 | -1): boolean =>
       signX === seamAt.x || signZ === seamAt.z;
     /**
-     * How far inside its kerb an arm paints its edge line, or null where it
-     * paints none — the outermost white solid line it lays.
-     */
-    const edgeInsetOf = (armPlan: MarkingPlan | null, armHalfWidth: number): number | null => {
-      if (!armPlan || armHalfWidth <= 0) return null;
-      let nearest: number | null = null;
-      for (const line of armPlan.solid) {
-        if (line.color !== 'white') continue;
-        const inset = armHalfWidth - Math.abs(line.at);
-        if (inset < 0) continue;
-        if (nearest === null || inset < nearest) nearest = inset;
-      }
-      return nearest;
-    };
-    /**
-     * The inset the return can be painted at: the one BOTH arms use. A corner
-     * whose two arms put their edge line different distances inside the kerb
-     * has no single arc that meets them both, so it is left unpainted rather
-     * than joined to one line and left hanging off the other.
+     * The insets the return's edge line runs at: each arm's own, on the side
+     * facing the corner, so the line leaves each arm exactly where that arm's
+     * line runs and bends from one to the other round the sweep. Null where
+     * either arm paints none there.
      */
     const cornerEdgeInset = (
       planX: MarkingPlan | null,
       halfX: number,
+      signX: 1 | -1,
       planZ: MarkingPlan | null,
       halfZ: number,
-    ): number | null => {
-      const a = edgeInsetOf(planX, halfX);
-      const b = edgeInsetOf(planZ, halfZ);
+      signZ: 1 | -1,
+    ): CornerInsets | null => {
+      const a = edgeInsetOf(planX, halfX, signX);
+      const b = edgeInsetOf(planZ, halfZ, signZ);
       if (a === null || b === null) return null;
-      return Math.abs(a - b) < 1e-6 ? a : null;
+      return { x: a, z: b };
     };
     const cornerFill = (
       signX: 1 | -1,
       signZ: 1 | -1,
       halfX: number,
       halfZ: number,
-      edgeInset: number | null,
+      edgeInset: CornerInsets | null,
     ): void => {
       if (cornerOnSeam(signX, signZ)) return;
       emitRoundedCornerFill(
@@ -4692,15 +5111,6 @@ export function roadTileVertices(
         edgeZ(signZ),
       );
     };
-    /** The plan the arm on each side paints: its own where it has one. */
-    const armPlan = (
-      has: boolean,
-      neighbour: MarkingPlan | null | undefined,
-    ): MarkingPlan | null => (has ? (neighbour ?? plan) : null);
-    const planN = armPlan(hasN, neighborHalves.plans?.n);
-    const planS = armPlan(hasS, neighborHalves.plans?.s);
-    const planE = armPlan(hasE, neighborHalves.plans?.e);
-    const planW = armPlan(hasW, neighborHalves.plans?.w);
     // A kerb only turns a corner where the road it meets HAS a kerb to turn
     // into. An alley or a track has none: it is an access, not a leg of the
     // network, and a street does not sweep its footway round into a service
@@ -4710,12 +5120,59 @@ export function roadTileVertices(
     // Nothing turns at a merge or a diverge, so there is no corner to round.
     if (!rampNode) {
       if (legN && legE)
-        cornerFill(1, -1, halfN, halfE, cornerEdgeInset(planN, halfN, planE, halfE));
-      if (legS && legE) cornerFill(1, 1, halfS, halfE, cornerEdgeInset(planS, halfS, planE, halfE));
+        cornerFill(1, -1, halfN, halfE, cornerEdgeInset(planN, halfN, 1, planE, halfE, -1));
+      if (legS && legE)
+        cornerFill(1, 1, halfS, halfE, cornerEdgeInset(planS, halfS, 1, planE, halfE, 1));
       if (legS && legW)
-        cornerFill(-1, 1, halfS, halfW, cornerEdgeInset(planS, halfS, planW, halfW));
+        cornerFill(-1, 1, halfS, halfW, cornerEdgeInset(planS, halfS, -1, planW, halfW, 1));
       if (legN && legW)
-        cornerFill(-1, -1, halfN, halfW, cornerEdgeInset(planN, halfN, planW, halfW));
+        cornerFill(-1, -1, halfN, halfW, cornerEdgeInset(planN, halfN, -1, planW, halfW, -1));
+    }
+
+    // The far side of a T. An edge line is broken only across the mouth of a
+    // road that joins, so a side no road leaves by — or only an alley, which
+    // is an access the edge line runs across — is the kerb of the road
+    // running past, and its edge line runs the whole length of the tile. It
+    // holds its inset from this tile's kerb, easing from the arm's inset at
+    // one end to the other's at the other where the two differ.
+    if (isJunction && breaksMarkings && control !== 'roundabout' && spec.paved) {
+      const runsEW = hasE || hasW;
+      const runsNS = hasN || hasS;
+      const farLine = (
+        alongX: boolean,
+        side: 1 | -1,
+        planLo: MarkingPlan | null,
+        halfLo: number,
+        planHi: MarkingPlan | null,
+        halfHi: number,
+      ): void => {
+        const insetLo = edgeInsetOf(planLo, halfLo, side);
+        const insetHi = edgeInsetOf(planHi, halfHi, side);
+        if (insetLo === null || insetHi === null) return;
+        const lo = alongX ? -edgeX(-1) : -edgeZ(-1);
+        const hi = alongX ? edgeX(1) : edgeZ(1);
+        pushMarkingRun(
+          positions,
+          colors,
+          !alongX,
+          centerX,
+          centerZ,
+          side * (coreHalf - insetLo),
+          side * (coreHalf - insetHi),
+          lo,
+          hi,
+          hAt,
+          paintOf(outermostLine(planLo, side) ?? { at: 0, color: 'white' }),
+        );
+      };
+      if ((!hasS || (serviceS && runsEW)) && seamAt.z !== 1)
+        farLine(true, 1, planW, halfW, planE, halfE);
+      if ((!hasN || (serviceN && runsEW)) && seamAt.z !== -1)
+        farLine(true, -1, planW, halfW, planE, halfE);
+      if ((!hasE || (serviceE && runsNS)) && seamAt.x !== 1)
+        farLine(false, 1, planN, halfN, planS, halfS);
+      if ((!hasW || (serviceW && runsNS)) && seamAt.x !== -1)
+        farLine(false, -1, planN, halfN, planS, halfS);
     }
 
     // The footway CARRIES ON ROUND THE CORNER, through the junction.
@@ -4730,7 +5187,9 @@ export function roadTileVertices(
     //
     // Only where both roads have a footway. A crossing is for the people on a
     // pavement, and a road without one is not somewhere anybody is walking.
-    if (spec.hasCurbs && hasFootway(crossSection) && armDepth > 0) {
+    // A junction's only: on a straight run the arm it would link is the road
+    // itself carrying on, and a strip laid there paves over its kerbside lanes.
+    if (isJunction && spec.hasCurbs && hasFootway(crossSection) && armDepth > 0) {
       const link = (
         vertical: boolean,
         armHalf: number,
@@ -5015,9 +5474,27 @@ export function roadTileVertices(
           : hasS
             ? rampGap(1, neighborHalves.s)
             : rampGap(-1, neighborHalves.n);
+      // The no-parking zones at each end of the run, where the road meets a
+      // junction there; none at all on a road that cannot see its junctions.
+      const noParkingAlong = (alongX: boolean): ParkingSetbacks | undefined =>
+        parkingSetbacks && parkingSetbacks.alongX === alongX ? parkingSetbacks : undefined;
       if (hasVertical && (!rampNode || rampNodeVertical)) {
         const zLo = hasN ? -TILE_HALF : -coreHalf;
         const zHi = hasS ? TILE_HALF : coreHalf;
+        const seam = {
+          lo: seamWith(
+            plan,
+            hasN ? (neighborHalves.plans?.n ?? null) : null,
+            neighborHalves.n,
+            coreHalf,
+          ),
+          hi: seamWith(
+            plan,
+            hasS ? (neighborHalves.plans?.s ?? null) : null,
+            neighborHalves.s,
+            coreHalf,
+          ),
+        };
         emitAxisMarkings(
           positions,
           colors,
@@ -5029,20 +5506,7 @@ export function roadTileVertices(
           zHi,
           medianEligible,
           hAt,
-          {
-            lo: seamWith(
-              plan,
-              hasN ? (neighborHalves.plans?.n ?? null) : null,
-              neighborHalves.n,
-              coreHalf,
-            ),
-            hi: seamWith(
-              plan,
-              hasS ? (neighborHalves.plans?.s ?? null) : null,
-              neighborHalves.s,
-              coreHalf,
-            ),
-          },
+          seam,
           verticalGap,
         );
         if (plan.bands.length > 0)
@@ -5058,11 +5522,27 @@ export function roadTileVertices(
             zLo,
             zHi,
             hAt,
+            seam,
+            noParkingAlong(false),
           );
       }
       if (hasHorizontal && (!rampNode || !rampNodeVertical)) {
         const xLo = hasW ? -TILE_HALF : -coreHalf;
         const xHi = hasE ? TILE_HALF : coreHalf;
+        const seam = {
+          lo: seamWith(
+            plan,
+            hasW ? (neighborHalves.plans?.w ?? null) : null,
+            neighborHalves.w,
+            coreHalf,
+          ),
+          hi: seamWith(
+            plan,
+            hasE ? (neighborHalves.plans?.e ?? null) : null,
+            neighborHalves.e,
+            coreHalf,
+          ),
+        };
         emitAxisMarkings(
           positions,
           colors,
@@ -5074,20 +5554,7 @@ export function roadTileVertices(
           xHi,
           medianEligible,
           hAt,
-          {
-            lo: seamWith(
-              plan,
-              hasW ? (neighborHalves.plans?.w ?? null) : null,
-              neighborHalves.w,
-              coreHalf,
-            ),
-            hi: seamWith(
-              plan,
-              hasE ? (neighborHalves.plans?.e ?? null) : null,
-              neighborHalves.e,
-              coreHalf,
-            ),
-          },
+          seam,
           horizontalGap,
         );
         if (plan.bands.length > 0)
@@ -5103,6 +5570,8 @@ export function roadTileVertices(
             xLo,
             xHi,
             hAt,
+            seam,
+            noParkingAlong(true),
           );
       }
 
@@ -5274,75 +5743,39 @@ export function roadTileVertices(
     // are NOT junctions by this gate and keep their plain suppression/marking
     // behavior above.
     if (isJunction) {
-      // Which arms stop. A minor road meeting a bigger one gives way to it:
-      // the side street gets the stop line and the crosswalk, and the road
-      // running through gets neither, the way a real junction reads. Where
-      // every arm ranks the same — two equal roads crossing — they all stop,
-      // which is the all-way junction.
-      const armRanks = (
-        [
-          [hasN, neighbors.n],
-          [hasE, neighbors.e],
-          [hasS, neighbors.s],
-          [hasW, neighbors.w],
-        ] as Array<[boolean, RoadTier]>
-      )
-        .filter(([has, n]) => has && n !== RoadTier.None)
-        .map(([, n]) => rankForTier(n));
-      const ranks = armRanks.length > 0 ? armRanks : [rankForTier(tier)];
-      const armStops = (neighborTier: RoadTier): boolean =>
-        neighborTier === RoadTier.None || armGivesWay(rankForTier(neighborTier), ranks);
-      // A stop line marks where to stop for a sign or a signal, so it is the
-      // CONTROL that decides whether one is painted, not the shape of the
-      // junction. An uncontrolled crossroads gets no paint at all; an approach
-      // that only gives way gets its crossing but no bar.
-      // A roundabout is not painted like a junction at all: no crossings on
-      // the box and no stop bars, an island in the middle and a yield line
-      // across every entry.
-      const painted = control !== undefined && control !== 'none' && control !== 'roundabout';
-      const stopsFor = control === 'stop' || control === 'allWayStop' || control === 'signal';
-      // A signal and an all-way stop hold EVERY approach, the road running
-      // through included: it stops on red like everything else, and a stop
-      // line is where it stops. Only a give-way or a minor-road stop leaves
-      // the through road unpainted.
-      const holdsEveryArm = control === 'signal' || control === 'allWayStop';
-      // Who walks over a crossing on this arm: the people going the other way,
-      // on the footways of the arms ACROSS from it. A road with a raised kerb
-      // but no footway — a motorway, an avenue built without one — has nobody
-      // to send over the road it meets, so its arms get no crossing.
-      const ownFootway = hasFootway(crossSection);
-      const walkable = neighborHalves.footways;
-      // An arm whose road is not named is unknown, not absent: a caller that
-      // supplies no neighbours gets this tile's own road on every arm.
-      const armWalkable = (has: boolean, tier: RoadTier, footway: boolean | undefined): boolean =>
-        has && (tier === RoadTier.None || footway === undefined ? ownFootway : footway);
-      const crossedOnFoot = (vertical: boolean): boolean =>
-        vertical
-          ? armWalkable(hasE, neighbors.e, walkable?.e) ||
-            armWalkable(hasW, neighbors.w, walkable?.w)
-          : armWalkable(hasN, neighbors.n, walkable?.n) ||
-            armWalkable(hasS, neighbors.s, walkable?.s);
-      // An arm's paint is as wide as THAT ARM's carriageway, not as wide as
-      // the junction: a stop line across a side street is the width of the
-      // side street, and painting it the width of the avenue it meets makes a
-      // box round the junction instead of a bar across a road. Never wider
-      // than the junction itself, which is as far as the asphalt goes.
-      const armHalf = (neighbourHalf: number): number =>
-        neighbourHalf > 0 ? Math.min(coreHalf, neighbourHalf) : coreHalf;
+      const arms: JunctionArms = {
+        tier,
+        has: { n: hasN, e: hasE, s: hasS, w: hasW },
+        roads: neighbors,
+        footways: neighborHalves.footways,
+        ownFootway: hasFootway(crossSection),
+        control,
+      };
       // Which half of each arm is arriving here, so its stop line stops at
       // that road's centreline instead of barring the traffic leaving.
       const approaches = neighborHalves.approaches ?? presetHalves(neighbors).approaches!;
-      const arm = (
-        vertical: boolean,
-        at: (d: number) => number,
-        stops: boolean,
-        half: number,
-        approaching: ApproachSpan,
-        /** Whether a crossing belongs on this arm at all. */
-        crossed: boolean,
-        /** How far the tile runs on past the box on this arm's side. */
-        depth: number,
-      ): void =>
+      // Measured inward from the TILE edge, which is where the approach
+      // actually reaches the junction, rather than outward from the box.
+      // An arm's paint is as wide as THAT ARM's carriageway, not as wide as
+      // the junction: a stop line across a side street is the width of the
+      // side street, and painting it the width of the avenue it meets makes a
+      // box round the junction instead of a bar across a road. It is the width
+      // the arm is drawn at, which is as far as the asphalt goes.
+      const paintHalf = (drawn: number, reported: number): number =>
+        reported > 0 ? Math.min(drawn, reported) : drawn;
+      type Arm = [ArmSide, number, boolean, number, ApproachSpan, boolean];
+      // The other half of the road across its middle is not an arm to stop
+      // at or walk over: it is the same road.
+      const armAt: Arm[] = [
+        ['n', paintHalf(halfN, neighborHalves.n), true, -edgeZ(-1), approaches.n, seamAt.z === -1],
+        ['s', paintHalf(halfS, neighborHalves.s), true, edgeZ(1), approaches.s, seamAt.z === 1],
+        ['e', paintHalf(halfE, neighborHalves.e), false, edgeX(1), approaches.e, seamAt.x === 1],
+        ['w', paintHalf(halfW, neighborHalves.w), false, -edgeX(-1), approaches.w, seamAt.x === -1],
+      ];
+      for (const [side, half, vertical, edge, approaching, seam] of armAt) {
+        if (seam) continue;
+        const paint = junctionArmPaint(arms, side);
+        if (!paint.stops && !paint.crossed) continue;
         emitJunctionArmMarkings(
           positions,
           colors,
@@ -5350,51 +5783,104 @@ export function roadTileVertices(
           centerX,
           centerZ,
           half,
-          at,
+          (d: number): number => edge - Math.sign(edge) * d,
           hAt,
-          crossed && crossedOnFoot(vertical),
-          stops,
+          paint.crossed,
+          paint.stops,
           // The strip of tile between the box and the tile edge: it caps how
           // far a crossing can reach. How DEEP the crossing is comes from the
           // footway it carries across, which is the next argument.
-          depth,
+          Math.abs(edge) - coreHalf,
           kerbBand,
           approaching,
         );
-      // Measured inward from the TILE edge, which is where the approach
-      // actually reaches the junction, rather than outward from the box.
-      if (painted) {
-        type Arm = [boolean, RoadTier, number, boolean, number, ApproachSpan, boolean];
-        // The other half of the road across its middle is not an arm to stop
-        // at or walk over: it is the same road.
-        const armAt: Arm[] = [
-          [hasN, neighbors.n, neighborHalves.n, true, -edgeZ(-1), approaches.n, seamAt.z === -1],
-          [hasS, neighbors.s, neighborHalves.s, true, edgeZ(1), approaches.s, seamAt.z === 1],
-          [hasE, neighbors.e, neighborHalves.e, false, edgeX(1), approaches.e, seamAt.x === 1],
-          [hasW, neighbors.w, neighborHalves.w, false, -edgeX(-1), approaches.w, seamAt.x === -1],
-        ];
-        for (const [has, neighborTier, neighbourHalf, vertical, edge, approaching, seam] of armAt) {
-          if (!has || seam) continue;
-          const at = (d: number): number => edge - Math.sign(edge) * d;
-          if (!holdsEveryArm && !armStops(neighborTier)) continue;
-          // A service access carries the footway straight across its mouth
-          // rather than breaking it for a crossing, so there is no crossing to
-          // paint over one: the pavement IS the way across, and bars laid in
-          // that strip sit under it where nobody can see them.
-          // An arm whose road is not named is unknown, not absent, and reads as
-          // this tile's own road — which is never a service access here.
-          const service =
-            neighborTier !== RoadTier.None &&
-            isServiceClass(presetProfileForTier(neighborTier).class);
-          arm(
-            vertical,
-            at,
-            stopsFor,
-            armHalf(neighbourHalf),
-            approaching,
-            !service,
-            Math.abs(edge) - coreHalf,
-          );
+      }
+
+      // A bike lane runs on into the junction, its green and its lines, up to
+      // where the intersection begins for it: the crossing over its arm, the
+      // stop line across its own lanes, or else the point where its kerb
+      // starts to turn the corner (MUTCD 9E.02). The outermost line on its
+      // side is carried round the corner already, with the kerb return.
+      if (breaksMarkings && control !== 'roundabout') {
+        const legs = { n: legN, e: legE, s: legS, w: legW };
+        const plans = { n: planN, e: planE, s: planS, w: planW };
+        const halves = { n: halfN, e: halfE, s: halfS, w: halfW };
+        for (const [side, , vertical, edge, approaching, seam] of armAt) {
+          const armPlanHere = plans[side];
+          if (seam || !legs[side] || !armPlanHere) continue;
+          const bikes = armPlanHere.bands.filter((b) => b.kind === 'bike');
+          if (bikes.length === 0) continue;
+          const paint = junctionArmPaint(arms, side);
+          const depth = Math.abs(edge) - coreHalf;
+          const layout = junctionArmLayout(depth, kerbBand);
+          const armSign: 1 | -1 = edge < 0 ? -1 : 1;
+          for (const band of bikes) {
+            const across: 1 | -1 = band.from + band.to < 0 ? -1 : 1;
+            const turns = vertical ? (across > 0 ? legE : legW) : across > 0 ? legS : legN;
+            const otherHalf = vertical ? (across > 0 ? halfE : halfW) : across > 0 ? halfS : halfN;
+            let limit = depth;
+            if (turns) {
+              const r = vertical
+                ? cornerRadius(halves[side], otherHalf, across, armSign)
+                : cornerRadius(otherHalf, halves[side], armSign, across);
+              limit = Math.abs(edge) - (otherHalf + r);
+            }
+            if (paint.crossed) limit = Math.min(limit, layout.crosswalkStart);
+            const arrives =
+              !!approaching && (across > 0 ? approaching.to > 0.5 : approaching.from < -0.5);
+            if (paint.stops && arrives) limit = Math.min(limit, layout.stopLineStart);
+            if (limit <= 1e-6) continue;
+            const a0 = Math.min(edge, edge - armSign * limit);
+            const a1 = Math.max(edge, edge - armSign * limit);
+            if (vertical) {
+              pushLocalRect(
+                positions,
+                colors,
+                centerX,
+                centerZ,
+                band.from,
+                band.to,
+                a0,
+                a1,
+                LANE_TINT_Y_OFFSET,
+                BIKE_LANE_PAINT_COLOR,
+                hAt,
+              );
+            } else {
+              pushLocalRect(
+                positions,
+                colors,
+                centerX,
+                centerZ,
+                a0,
+                a1,
+                band.from,
+                band.to,
+                LANE_TINT_Y_OFFSET,
+                BIKE_LANE_PAINT_COLOR,
+                hAt,
+              );
+            }
+            const outer = outermostLine(armPlanHere, across);
+            for (const line of armPlanHere.solid) {
+              if (line === outer) continue;
+              if (line.at < band.from - 2 * PAINT_HALF_WIDTH_M) continue;
+              if (line.at > band.to + 2 * PAINT_HALF_WIDTH_M) continue;
+              pushMarkingRun(
+                positions,
+                colors,
+                vertical,
+                centerX,
+                centerZ,
+                line.at,
+                line.at,
+                a0,
+                a1,
+                hAt,
+                paintOf(line),
+              );
+            }
+          }
         }
       }
 
@@ -6149,6 +6635,17 @@ export class RoadMeshRenderer {
     return carriagewayHalfWidthOf(this.overProfileOf(road));
   }
 
+  /**
+   * Whether the road met along `axis` at (x, z) is a junction an arriving road
+   * meets, rather than more of that road. A road passing over a crossing is
+   * never one: nothing joins it there.
+   */
+  private junctionAlong(x: number, z: number, axis: 'x' | 'z'): boolean {
+    const road = this.roadAlong(x, z, axis);
+    if (!road || road !== this.groundAt(x, z)) return false;
+    return isJunctionTile(x, z, this.surroundings);
+  }
+
   /** `walkableAt`, but for the road met along `axis`. */
   private walkableAlong(x: number, z: number, axis: 'x' | 'z'): boolean {
     const road = this.roadAlong(x, z, axis);
@@ -6279,19 +6776,195 @@ export class RoadMeshRenderer {
   }
 
   private halfAt(x: number, z: number): number {
+    const section = this.drawnSectionAt(x, z);
+    return section ? carriagewayHalfWidthOf(section) : 0;
+  }
+
+  /** The cross-section the tile at (x, z) lays its pavement to, or null off-road. */
+  private drawnSectionAt(x: number, z: number): RoadProfile | null {
     const profile = this.profileAt(x, z);
-    if (!profile) return 0;
-    const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
-    return carriagewayHalfWidthOf(
-      drawnCrossSection(
-        profile,
-        this.approachToward(x, z),
-        this.narrowingAt(x, z),
-        flowDirection(tile?.flow ?? RoadFlow.None),
-        this.auxiliaryAt(x, z),
-        this.sharedTurnAt(x, z),
-      ),
+    if (!profile) return null;
+    return drawnCrossSection(
+      profile,
+      this.approachToward(x, z),
+      this.narrowingAt(x, z),
+      this.flowAt(x, z),
+      this.auxiliaryAt(x, z),
+      this.sharedTurnAt(x, z),
     );
+  }
+
+  /**
+   * The world positions, along the road, of the stall ticks the tile at
+   * (x, z) paints across its parking lane on one side, or null where that
+   * side paints no parking lane. The same function lays them as the mesh,
+   * from the same run, section and no-parking zones.
+   */
+  private parkingTicksAt(x: number, z: number, side: 'low' | 'high'): number[] | null {
+    const tile = this.groundAt(x, z);
+    const plan = this.planAt(x, z);
+    if (!tile || !plan || !isStraightRunMask(tile.mask)) return null;
+    const sign = side === 'low' ? -1 : 1;
+    if (!plan.bands.some((b) => b.kind === 'parking' && (b.from + b.to) * sign > 0)) return null;
+    const alongX = (tile.mask & (EAST | WEST)) !== 0;
+    const core = this.halfAt(x, z);
+    const lo = (tile.mask & (alongX ? WEST : NORTH)) !== 0 ? -TILE_HALF : -core;
+    const hi = (tile.mask & (alongX ? EAST : SOUTH)) !== 0 ? TILE_HALF : core;
+    const origin = ((alongX ? x : z) + 0.5) * TILE_METERS;
+    const setbacks = this.parkingSetbacksAt(x, z);
+    const s = side === 'low' ? 0 : 1;
+    return parkingTickPositions(
+      origin,
+      lo,
+      hi,
+      setbacks?.lo?.[s] ?? null,
+      setbacks?.hi?.[s] ?? null,
+    ).map((a) => origin + a);
+  }
+
+  /**
+   * The marked stalls of the parking lane on one side of the road tile at
+   * (x, z), as world coordinates along the road, each stall counted on the
+   * tile its middle lies in: the stretch between two consecutive ticks, read
+   * across the tiles either side so a stall over a seam is one stall. Null
+   * where that side paints no parking lane. A parked car stands one to a
+   * stall, centred in it.
+   */
+  parkingStallsAt(
+    x: number,
+    z: number,
+    side: 'low' | 'high',
+  ): { from: number; to: number }[] | null {
+    const own = this.parkingTicksAt(x, z, side);
+    const tile = this.groundAt(x, z);
+    if (!own || !tile) return null;
+    const alongX = (tile.mask & (EAST | WEST)) !== 0;
+    const ticks = [
+      ...(this.parkingTicksAt(alongX ? x - 1 : x, alongX ? z : z - 1, side) ?? []),
+      ...own,
+      ...(this.parkingTicksAt(alongX ? x + 1 : x, alongX ? z : z + 1, side) ?? []),
+    ]
+      .sort((a, b) => a - b)
+      .filter((t, i, all) => i === 0 || t - all[i - 1]! > 1e-6);
+    const start = (alongX ? x : z) * TILE_METERS;
+    const stalls: { from: number; to: number }[] = [];
+    for (let i = 1; i < ticks.length; i++) {
+      const from = ticks[i - 1]!;
+      const to = ticks[i]!;
+      const middle = (from + to) / 2;
+      // Two ticks further apart than any stall is laid are a gap in the lane.
+      if (to - from > PARKING_STALL_MAX_M + 1e-6) continue;
+      if (middle < start || middle >= start + TILE_METERS) continue;
+      stalls.push({ from, to });
+    }
+    return stalls;
+  }
+
+  /**
+   * The no-parking zones at the two ends of the road tile at (x, z): how far
+   * back from a junction at either end its kerbs are kept clear, for the
+   * parking on each side of the road. Null where the tile is not a straight
+   * run — a junction, a corner or a lone tile has no kerb to park at. The
+   * zone is measured from what the junction actually paints on the arm this
+   * tile is, by the same function its paint is decided by, so the stall marks
+   * and the parked cars keep out of exactly what is there.
+   *
+   * A junction one tile further on counts too, at its distance below this
+   * tile's end: the stall beside its end stall may reach onto this tile, and
+   * both tiles have to lay that stall in the same place.
+   */
+  parkingSetbacksAt(x: number, z: number): ParkingSetbacks | null {
+    const here = this.junctionZonesAt(x, z);
+    const tile = this.groundAt(x, z);
+    if (!here || !tile) return here;
+    const further = (dx: number, dz: number): readonly [number, number] | null => {
+      const bit = dz < 0 ? NORTH : dx > 0 ? EAST : dz > 0 ? SOUTH : WEST;
+      if ((tile.mask & bit) === 0) return null;
+      const next = this.junctionZonesAt(x + dx, z + dz);
+      if (!next || next.alongX !== here.alongX) return null;
+      const zone = dx + dz < 0 ? next.lo : next.hi;
+      return zone && [zone[0] - TILE_METERS, zone[1] - TILE_METERS];
+    };
+    return here.alongX
+      ? { alongX: true, lo: here.lo ?? further(-1, 0), hi: here.hi ?? further(1, 0) }
+      : { alongX: false, lo: here.lo ?? further(0, -1), hi: here.hi ?? further(0, 1) };
+  }
+
+  /** The no-parking zones of the junctions directly at either end of the tile at (x, z). */
+  private junctionZonesAt(x: number, z: number): ParkingSetbacks | null {
+    const tile = this.groundAt(x, z);
+    const own = this.profileAt(x, z);
+    const drawn = this.drawnSectionAt(x, z);
+    if (!tile || !own || !drawn) return null;
+    const ew = (tile.mask & (EAST | WEST)) !== 0;
+    const ns = (tile.mask & (NORTH | SOUTH)) !== 0;
+    if (ew === ns) return null;
+    const alongX = ew;
+    const flow = this.flowAt(x, z);
+    const lanes = travelLaneSpans(drawn);
+    const end = (dx: number, dz: number): [number, number] | null => {
+      const jx = x + dx;
+      const jz = z + dz;
+      const bit = dz < 0 ? NORTH : dx > 0 ? EAST : dz > 0 ? SOUTH : WEST;
+      if ((tile.mask & bit) === 0 || !this.junctionAlong(jx, jz, alongX ? 'x' : 'z')) return null;
+      const junction = this.groundAt(jx, jz)!;
+      const section = this.drawnSectionAt(jx, jz)!;
+      const toward =
+        dz < 0 ? RoadFlow.North : dx > 0 ? RoadFlow.East : dz > 0 ? RoadFlow.South : RoadFlow.West;
+      // This tile is the junction's arm on the side facing back toward it.
+      const side: ArmSide = dz < 0 ? 's' : dx > 0 ? 'w' : dz > 0 ? 'n' : 'e';
+      const paint = junctionArmPaint(
+        {
+          tier: junction.tier,
+          has: {
+            n: (junction.mask & NORTH) !== 0,
+            e: (junction.mask & EAST) !== 0,
+            s: (junction.mask & SOUTH) !== 0,
+            w: (junction.mask & WEST) !== 0,
+          },
+          roads: {
+            n: this.tierAlong(jx, jz - 1, 'z'),
+            e: this.tierAlong(jx + 1, jz, 'x'),
+            s: this.tierAlong(jx, jz + 1, 'z'),
+            w: this.tierAlong(jx - 1, jz, 'x'),
+          },
+          footways: {
+            n: this.walkableAlong(jx, jz - 1, 'z'),
+            e: this.walkableAlong(jx + 1, jz, 'x'),
+            s: this.walkableAlong(jx, jz + 1, 'z'),
+            w: this.walkableAlong(jx - 1, jz, 'x'),
+          },
+          ownFootway: hasFootway(section),
+          control: this.junctionControls.get(tileIndex(jx, jz)),
+        },
+        side,
+      );
+      const armDepth = Math.max(0, TILE_HALF - carriagewayHalfWidthOf(section));
+      const footwayWidth = Math.min(kerbWidthOf(section), armDepth);
+      // A stop line crosses only the lanes arriving, so it is only the kerb
+      // beside an arriving lane that is kept clear for it.
+      const arriving = approachingLanes(
+        drawn,
+        own,
+        flow === RoadFlow.None || flow === toward,
+        approachAxis(toward).leftSign,
+      );
+      const kerbLaneArrives = (s: 0 | 1): boolean => {
+        const lane = s === 0 ? lanes[0] : lanes[lanes.length - 1];
+        return lane !== undefined && arriving.some((a) => Math.abs(a.centre - lane.centre) < 1e-6);
+      };
+      const reach = (s: 0 | 1): number =>
+        noParkingReach({
+          armDepth,
+          footwayWidth,
+          crossed: paint.crossed,
+          stopLine: paint.stops && kerbLaneArrives(s),
+        });
+      return [reach(0), reach(1)];
+    };
+    return alongX
+      ? { alongX, lo: end(-1, 0), hi: end(1, 0) }
+      : { alongX, lo: end(0, -1), hi: end(0, 1) };
   }
 
   /**
@@ -6705,6 +7378,12 @@ export class RoadMeshRenderer {
             s: this.walkableAlong(tile.x, tile.z + 1, 'z'),
             w: this.walkableAlong(tile.x - 1, tile.z, 'x'),
           },
+          junctions: {
+            n: this.junctionAlong(tile.x, tile.z - 1, 'z'),
+            e: this.junctionAlong(tile.x + 1, tile.z, 'x'),
+            s: this.junctionAlong(tile.x, tile.z + 1, 'z'),
+            w: this.junctionAlong(tile.x - 1, tile.z, 'x'),
+          },
           plans: {
             n: inFrame(this.planAlong(tile.x, tile.z - 1, 'z'), tile.x, tile.z - 1),
             e: inFrame(this.planAlong(tile.x + 1, tile.z, 'x'), tile.x + 1, tile.z),
@@ -6725,6 +7404,7 @@ export class RoadMeshRenderer {
         this.auxiliaryAt(tile.x, tile.z),
         this.sharedTurnAt(tile.x, tile.z),
         rampMouthAt(tile.x, tile.z, this.surroundings),
+        this.parkingSetbacksAt(tile.x, tile.z) ?? undefined,
       );
       for (const n of vertices.positions) positions.push(n);
       for (const n of vertices.colors) colors.push(n);

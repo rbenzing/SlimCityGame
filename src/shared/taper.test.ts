@@ -10,6 +10,8 @@ import {
 import {
   closedAt,
   dropWidth,
+  kerbsideClosedAt,
+  laneDrop,
   laneTaperTiles,
   paintsGore,
   pavedCrossSection,
@@ -221,5 +223,71 @@ describe('a lane drop closes the driver’s right-hand lane, whichever way the r
       const wideShoulder = out.pieces.findIndex((p) => p.kind === 'shoulder' && p.width === 3);
       expect(Math.abs(narrowed - wideShoulder), `flow ${flow}`).toBe(1);
     }
+  });
+});
+
+describe('a kerbside lane that ends closes itself', () => {
+  const parked: RoadProfile = {
+    class: 'local',
+    pieces: [
+      { kind: 'parking', width: 2.25 },
+      { kind: 'travel', width: 3.75, flow: 'back' },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+      { kind: 'parking', width: 2.25 },
+    ],
+  };
+  /** The same street parked on its high side only. */
+  const parkedHigh: RoadProfile = { ...parked, pieces: parked.pieces.slice(1) };
+  const travel = (p: RoadProfile): number[] =>
+    p.pieces.filter((q) => q.kind === 'travel').map((q) => q.width);
+
+  it('drops the parking lane that ends, on its own side, and no travel lane', () => {
+    const drop = laneDrop(parked, parkedHigh);
+    expect(drop.total).toBeCloseTo(2.25, 9);
+    expect(drop.kerbside.parking).toEqual([2.25, 0]);
+    expect(dropWidth(parked, parkedHigh)).toBeCloseTo(2.25, 9);
+  });
+
+  it('narrows the parking lane over the taper and leaves the travel lanes their width', () => {
+    const step = { remaining: 1, length: 2, closed: 2.25, ...laneDrop(parked, parkedHigh) };
+    const half = taperedCrossSection(parked, closedAt(step), false, kerbsideClosedAt(step));
+    expect(half.pieces[0]).toMatchObject({ kind: 'parking', width: 1.125 });
+    expect(half.pieces[3]).toMatchObject({ kind: 'parking', width: 2.25 });
+    expect(travel(half)).toEqual([3.75, 3.75]);
+
+    const gone = taperedCrossSection(parked, 2.25, false, { parking: [2.25, 0], bike: [0, 0] });
+    expect(gone.pieces.map((p) => p.kind)).toEqual(['travel', 'travel', 'parking']);
+    expect(travel(gone)).toEqual([3.75, 3.75]);
+    expect(carriagewayWidth(gone)).toBeCloseTo(carriagewayWidth(parkedHigh), 9);
+  });
+
+  it('closes a bike lane and a parking lane that end together, and nothing else', () => {
+    const report: RoadProfile = {
+      class: 'local',
+      pieces: [
+        { kind: 'bike', width: 1.6, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'parking', width: 2.25 },
+      ],
+    };
+    const plain: RoadProfile = { class: 'local', pieces: report.pieces.slice(1, 3) };
+    const drop = laneDrop(report, plain);
+    expect(drop.kerbside).toEqual({ parking: [0, 2.25], bike: [1.6, 0] });
+    expect(drop.total).toBeCloseTo(3.85, 9);
+    const closing = taperedCrossSection(report, drop.total / 2, false, {
+      parking: [0, 1.125],
+      bike: [0.8, 0],
+    });
+    expect(travel(closing)).toEqual([3.75, 3.75]);
+    expect(closing.pieces[0]).toMatchObject({ kind: 'bike', width: 0.8 });
+  });
+
+  it('still closes travel lanes for what is left, as a lane drop always has', () => {
+    const four = presetProfileForTier(RoadTier.FourLane);
+    const two = presetProfileForTier(RoadTier.TwoLane);
+    const drop = laneDrop(four, two);
+    expect(drop.kerbside).toEqual({ parking: [0, 0], bike: [0, 0] });
+    expect(drop.total).toBeCloseTo(7.5, 9);
   });
 });

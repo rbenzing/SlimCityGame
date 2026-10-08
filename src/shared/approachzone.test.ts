@@ -442,6 +442,31 @@ describe('the lane drop a tile is running into', () => {
     });
   });
 
+  it('never tapers toward a junction, however narrow the road it meets', () => {
+    // A four-lane road running south into a T with a two-lane street: the
+    // junction tile is the street's, and a lane reduction is made away from a
+    // junction, so the four-lane keeps its width to the mouth.
+    const tee = `
+      ...#...
+      ...#...
+      ...#...
+      ...#...
+      nnnnnnn
+    `;
+    for (let z = 0; z <= 3; z++) expect(narrowingAhead(3, z, world(tee)), `z ${z}`).toBeUndefined();
+    // The same narrowing carried on straight past a lesser turning off its
+    // side is still more of itself — but the turning makes that tile a
+    // junction, and the taper stops short of it all the same.
+    const through = `
+      ..#..
+      ..#..
+      ..#..
+      ..nn.
+      ..n..
+    `;
+    expect(narrowingAhead(2, 2, world(through))).toBeUndefined();
+  });
+
   it('does not taper around a corner, since a closing lane cannot turn one', () => {
     const corner = `
       ..#..

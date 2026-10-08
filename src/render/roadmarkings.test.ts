@@ -265,7 +265,44 @@ describe('markingPlan for composed profiles', () => {
     }
   });
 
-  it('a composed bike lane narrower than the paint cap is painted edge to edge', () => {
+  it('marks a parking lane’s travel side with its parking lane line and runs no edge line inside it', () => {
+    const p = markingPlan({
+      class: 'local',
+      pieces: [
+        { kind: 'sidewalk', width: 1.875 },
+        { kind: 'parking', width: 2.25 },
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'parking', width: 2.25 },
+        { kind: 'sidewalk', width: 1.875 },
+      ],
+    });
+    close(p.solid, [-3.75, 3.75]);
+    expect(p.solid.every((l) => l.color === 'white')).toBe(true);
+    // The parking lane line is what a junction carries round its corner.
+    expect(p.edges?.map((l) => l.at)).toEqual([-3.75, 3.75]);
+  });
+
+  it('paints the report’s street: an edge line and a bike-lane line left, a parking lane line right', () => {
+    const p = markingPlan({
+      class: 'local',
+      pieces: [
+        { kind: 'bike', width: 1.6, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'parking', width: 2.25 },
+      ],
+    });
+    // Half-width 5.675: the edge line half a metre in, the bike-lane line at
+    // the lane's inside edge, and the parking lane line — and nothing inside
+    // the parking lane.
+    close(p.solid, [-5.175, -4.075, 3.425]);
+    expect(p.bands.find((b) => b.kind === 'parking')!.from).toBeCloseTo(3.425, 6);
+  });
+
+  it('a bike lane with no kerb lies between its bike-lane line and an edge line, the green between them', () => {
+    // No footway, so no kerb: the pavement's edge is bounded by nothing but
+    // paint, and the lane needs a line on both sides (MUTCD 9E.01, 9E.02).
     const p = markingPlan({
       class: 'local',
       pieces: [
@@ -274,8 +311,14 @@ describe('markingPlan for composed profiles', () => {
         { kind: 'travel', width: 3.5, flow: 'fwd' },
       ],
     });
+    const half = (1.6 + 3.5 + 3.5) / 2;
+    const bikeLine = -half + 1.6;
+    const edgeLine = -half + 0.5;
+    expect(p.solid.some((l) => Math.abs(l.at - bikeLine) < 1e-6 && l.color === 'white')).toBe(true);
+    expect(p.solid.some((l) => Math.abs(l.at - edgeLine) < 1e-6)).toBe(true);
     const band = p.bands[0]!;
-    expect(band.to - band.from).toBeCloseTo(1.6, 6);
+    expect(band.from).toBeCloseTo(edgeLine + 0.075, 6);
+    expect(band.to).toBeCloseTo(bikeLine - 0.075, 6);
   });
 });
 
@@ -420,7 +463,7 @@ describe('a line crosses a seam where the road changes', () => {
       barrier: false,
       edges: [line(-3), line(3)],
     };
-    expect(seamBetween(here, null, 0)).toEqual({ solid: [-3, 3], dashed: [0] });
+    expect(seamBetween(here, null, 0)).toEqual({ solid: [-3, 3], dashed: [0], bands: [] });
   });
 });
 

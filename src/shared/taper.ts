@@ -11,7 +11,7 @@
  * Pure: cross-sections, widths and tile counts, no grid and no graph.
  */
 import { TILE_METERS } from './constants';
-import { carriagewayWidth, laneWidthFor, roadClass } from './roadprofile';
+import { CARRIAGEWAY_KINDS, carriagewayWidth, laneWidthFor, roadClass } from './roadprofile';
 import type { LanePiece, RoadClassId, RoadProfile } from './types';
 
 /**
@@ -67,25 +67,80 @@ function isDroppable(piece: LanePiece): boolean {
 }
 
 /**
- * How much narrower `narrow` is than `wide` across the carriageway, in metres.
- * Zero when it is no narrower, which is what two roads of the same width are
- * and what a road WIDENING reads as — the taper belongs to the wide side, and
- * a road that gains a lane gains it at the transition rather than over one.
+ * The kerbside pieces a road can simply END: a parking lane and a bike lane.
+ * Where the road ahead does not carry one, it closes itself over the taper on
+ * its own side of the road, and the travel lanes beside it are not touched.
  */
-export function dropWidth(wide: RoadProfile, narrow: RoadProfile): number {
-  return Math.max(0, carriagewayWidth(wide) - carriagewayWidth(narrow));
+const ENDING_KINDS = ['parking', 'bike'] as const;
+type EndingKind = (typeof ENDING_KINDS)[number];
+
+/**
+ * Metres of each kerbside piece that ends, on the low side of the section and
+ * on the high one, in world order.
+ */
+export type KerbsideDrop = Readonly<Record<EndingKind, readonly [number, number]>>;
+
+/** How wide a road's pieces of one kind are, on its low half and its high half. */
+function widthBySide(profile: RoadProfile, kind: LanePiece['kind']): [number, number] {
+  const out: [number, number] = [0, 0];
+  let edge = -carriagewayWidth(profile) / 2;
+  for (const piece of profile.pieces) {
+    if (!CARRIAGEWAY_KINDS.has(piece.kind)) continue;
+    const centre = edge + piece.width / 2;
+    edge += piece.width;
+    if (piece.kind === kind) out[centre < 0 ? 0 : 1] += piece.width;
+  }
+  return out;
+}
+
+/** What a lane drop closes: the kerbside pieces that end, and the whole width. */
+export interface LaneDrop {
+  /** Metres of carriageway closed in all. */
+  total: number;
+  /** The share of it that is parking and bike lanes ending, side by side. */
+  kerbside: KerbsideDrop;
 }
 
 /**
- * The cross-section partway through a taper: the wide road with its outermost
- * travel lanes closed by `closed` metres between them, taken from the kerb
- * inward, which is the side a lane drops on when nobody has said otherwise —
- * traffic keeps the lanes nearest the centreline and the outside one runs out.
- * A lane closed to nothing is gone from the section entirely.
+ * What closes between `wide` and the `narrow` stretch of the same road it runs
+ * on as: each parking or bike lane the narrow road does not carry on that
+ * side, and then travel lanes for whatever width is left over. A drop is
+ * nothing where the narrow road is no narrower and ends nothing, which is what
+ * a road WIDENING reads as — a road that gains a lane gains it at the
+ * transition rather than over a taper.
+ */
+export function laneDrop(wide: RoadProfile, narrow: RoadProfile): LaneDrop {
+  const ends = (kind: EndingKind): [number, number] => {
+    const a = widthBySide(wide, kind);
+    const b = widthBySide(narrow, kind);
+    return [Math.max(0, a[0] - b[0]), Math.max(0, a[1] - b[1])];
+  };
+  const kerbside: KerbsideDrop = { parking: ends('parking'), bike: ends('bike') };
+  const ending = ENDING_KINDS.reduce((sum, k) => sum + kerbside[k][0] + kerbside[k][1], 0);
+  const travel = Math.max(0, carriagewayWidth(wide) - carriagewayWidth(narrow) - ending);
+  return { total: ending + travel, kerbside };
+}
+
+/**
+ * How much narrower `narrow` is than `wide` across the carriageway, in metres:
+ * everything a lane drop between the two closes (see {@link laneDrop}).
+ */
+export function dropWidth(wide: RoadProfile, narrow: RoadProfile): number {
+  return laneDrop(wide, narrow).total;
+}
+
+/**
+ * The cross-section partway through a taper: the wide road with `closed`
+ * metres of it closed. The parking and bike lanes that end (`kerbside`, how
+ * much of each has closed by here) narrow on their own sides; the rest comes
+ * off the outermost travel lanes, taken from the kerb inward, which is the
+ * side a lane drops on when nobody has said otherwise — traffic keeps the
+ * lanes nearest the centreline and the outside one runs out. A piece closed to
+ * nothing is gone from the section entirely.
  *
- * Only the travel lanes give way. Everything else the road carries — its
- * footways, its parking, a reserved bus lane — is the road's own and is still
- * there on the other side of the drop.
+ * Nothing that carries on gives way: a lane drop never squeezes the lanes
+ * that remain, and footways and reserved bus lanes are still there on the
+ * other side of the drop.
  */
 export function taperedCrossSection(
   wide: RoadProfile,
@@ -96,10 +151,12 @@ export function taperedCrossSection(
    * is at its LOW end.
    */
   reversed = false,
+  /** How much of each ending parking and bike lane has closed by here. */
+  kerbside?: KerbsideDrop,
 ): RoadProfile {
   if (closed <= 0) return wide;
   const pieces = wide.pieces.map((p) => ({ ...p }));
-  /** Closes up to `amount` from the lanes in `order`, first to last; returns what it could not. */
+  /** Closes up to `amount` from the pieces in `order`, first to last; returns what it could not. */
   const close = (order: readonly number[], amount: number): number => {
     let left = amount;
     for (const index of order) {
@@ -111,6 +168,30 @@ export function taperedCrossSection(
     }
     return left;
   };
+  let travelClosed = closed;
+  if (kerbside) {
+    // Each side's ending pieces close from the outside in, which is where a
+    // parking or bike lane lies: the low side from its first piece, the high
+    // side from its last.
+    let edge = -carriagewayWidth(wide) / 2;
+    const sideOf = pieces.map((p) => {
+      if (!CARRIAGEWAY_KINDS.has(p.kind)) return -1;
+      const centre = edge + p.width / 2;
+      edge += p.width;
+      return centre < 0 ? 0 : 1;
+    });
+    for (const kind of ENDING_KINDS) {
+      for (const side of [0, 1] as const) {
+        const order = pieces
+          .map((_, i) => i)
+          .filter((i) => pieces[i]!.kind === kind && sideOf[i] === side);
+        if (side === 1) order.reverse();
+        travelClosed -= kerbside[kind][side];
+        close(order, kerbside[kind][side]);
+      }
+    }
+    travelClosed = Math.max(0, travelClosed);
+  }
   const sides = directionSides(pieces, reversed);
   if (sides) {
     // A two-way road closes each direction's kerbside lane together, so its
@@ -120,15 +201,17 @@ export function taperedCrossSection(
       order.reduce((sum, i) => sum + pieces[i]!.width, 0);
     const excess = width(sides.right) - width(sides.left);
     const wider = excess > 0 ? sides.right : sides.left;
-    const evening = Math.min(closed, Math.abs(excess));
-    const rest = closed - evening + close(wider, evening);
+    const evening = Math.min(travelClosed, Math.abs(excess));
+    const rest = travelClosed - evening + close(wider, evening);
     // Half from each side; whatever one side has not got, the other gives.
     const unclosed = close(sides.right, rest / 2) + close(sides.left, rest / 2);
     close(sides.left, close(sides.right, unclosed));
   } else {
-    close(droppingOrder(pieces, reversed), closed);
+    close(droppingOrder(pieces, reversed), travelClosed);
   }
-  return { ...wide, pieces: pieces.filter((p) => !isDroppable(p) || p.width > 1e-9) };
+  const closable = (p: LanePiece): boolean =>
+    isDroppable(p) || (ENDING_KINDS as readonly string[]).includes(p.kind);
+  return { ...wide, pieces: pieces.filter((p) => !closable(p) || p.width > 1e-9) };
 }
 
 /**
@@ -190,8 +273,16 @@ export interface TaperStep {
   remaining: number;
   /** The whole taper's length in tiles. */
   length: number;
-  /** Metres of lane already closed on this tile. */
+  /** Metres of carriageway the whole drop closes. */
   closed: number;
+  /** The parking and bike lanes among them that end, side by side; none where only lanes drop. */
+  kerbside?: KerbsideDrop;
+}
+
+/** How far through its closing a tile `remaining` tiles short of the narrow road is, 0 to 1. */
+function closedShare(step: TaperStep): number {
+  if (step.length <= 0) return 1;
+  return Math.min(1, Math.max(0, (step.length - step.remaining) / step.length));
 }
 
 /**
@@ -200,9 +291,19 @@ export interface TaperStep {
  * and it is fully closed on the tile that meets the narrow road.
  */
 export function closedAt(step: TaperStep): number {
-  if (step.length <= 0) return step.closed;
-  const gone = (step.length - step.remaining) / step.length;
-  return step.closed * Math.min(1, Math.max(0, gone));
+  return step.closed * closedShare(step);
+}
+
+/** How much of each ending parking and bike lane has closed by the same tile. */
+export function kerbsideClosedAt(step: TaperStep): KerbsideDrop | undefined {
+  const kerbside = step.kerbside;
+  if (!kerbside) return undefined;
+  const share = closedShare(step);
+  const scaled = (pair: readonly [number, number]): [number, number] => [
+    pair[0] * share,
+    pair[1] * share,
+  ];
+  return { parking: scaled(kerbside.parking), bike: scaled(kerbside.bike) };
 }
 
 /**
@@ -226,6 +327,11 @@ export function paintsGore(classId: RoadClassId): boolean {
  * moves, which leaves the NEUTRAL AREA between them — the wedge a driver reads
  * as somewhere not to be, rather than as the road bending away.
  */
-export function pavedCrossSection(wide: RoadProfile, closed: number, reversed = false): RoadProfile {
-  return paintsGore(wide.class) ? wide : taperedCrossSection(wide, closed, reversed);
+export function pavedCrossSection(
+  wide: RoadProfile,
+  closed: number,
+  reversed = false,
+  kerbside?: KerbsideDrop,
+): RoadProfile {
+  return paintsGore(wide.class) ? wide : taperedCrossSection(wide, closed, reversed, kerbside);
 }
