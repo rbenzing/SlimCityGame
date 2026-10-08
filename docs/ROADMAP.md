@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 5,040 tests passing across 163 test files, run 2026-10-07.
+**Test suite:** 5,051 tests passing across 164 test files, run 2026-10-07.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -117,32 +117,6 @@ not a test to fix.
   report to the Toxics Release Inventory, so there is no like-for-like
   figure, and no water figure was found. The pocket park's 0.2 kL is a dial
   too.
-- **The garbage scale is unsourced and fills a landfill in a day.** Found
-  by playing a whole city from the opening (2026-10-06): at 2/4/8 trash
-  units a building every 10 ticks, a town of 700 filled a 72-tile landfill
-  (43,200 units) before Small Town, after which every bin in its reach
-  backed up for good, and a 40-tile one was full by 1,800 people. The
-  units, the 600 a tile, the incinerator's 4,000 a pass and its 400,000
-  buffer are all dials with no real figure behind them, which the garbage
-  model says plainly. The sourced targets for the garbage-recovery epic
-  ([garbage-recovery.md](game-design/features/garbage-recovery.md)) to size
-  the whole chain on at once, since each number scales the others: US
-  municipal solid waste is 4.9 lb (2.2 kg) a person a day
-  ([EPA, Facts and Figures 2018](https://www.epa.gov/facts-and-figures-about-materials-waste-and-recycling/national-overview-facts-and-figures-materials));
-  waste compacted in place in a landfill is counted at 1,200 lb a cubic yard,
-  about 0.7 t/m³
-  ([Wis. Admin. Code NR 520.15](https://www.law.cornell.edu/regulations/wisconsin/Wis-Admin-Code-SS-NR-520-15)),
-  so a 400 m² tile piled 6 m holds about 1,700 t, some 760,000 person-days
-  of waste; the sixty US waste-to-energy plants average 34 MW
-  ([EIA](https://www.eia.gov/todayinenergy/detail.php?id=55900)), and about
-  2,200 t a day feeds a 50 MW plant
-  ([WtERT](https://wtert.org/wp-content/uploads/2020/10/nawtec07-16.pdf)),
-  so a typical plant burns roughly 1,500 t a day, the waste of some 700,000
-  people. On those figures a 40-tile landfill lasts a Metropolis about two
-  years and one incinerator serves any city the map can hold; a unit of 1 kg
-  with the per-tile lens byte rescaled is the simplest way to carry them.
-  Deferred to the epic because the pile height, the lens, the trucks and the
-  incinerator plume all read the same unit.
 
 Before writing "not built" anywhere in this document, check the code.
 
@@ -155,20 +129,21 @@ brown where the water and the drains reach, grey where they do not — and a
 pipe drag snaps onto the system and says what it joins
 ([underground-view.md](game-design/features/underground-view.md)).
 
-**Next:** lots and land continues
-([lots-and-land.md](game-design/features/lots-and-land.md)): nine slices
-are built, the detached house on the lot the land warrants, the plat cut
-from the street, the plat drawn on the zone lens, the duplex and the
-fourplex on the plat, medium density assembling two parcels, replatting
-under empty ground, the inspector's lot line, row housing on one normal
-lot, and commercial and dense land cut into frontage lots; and the dense
-homes are re-derived from the floor each block is drawn with; mid-rise and
-shopfront flats start on one lot and assemble their neighbours; a small
-house on prime land is torn down for a duplex or fourplex on its lot; and
-the best land is cut into 3×3 acre lots where the frontage has room. The
-epic is complete.
-After it, the municipal
-services programme's epics
+**Lots and land is complete**
+([lots-and-land.md](game-design/features/lots-and-land.md)): the detached
+house on the lot the land warrants, from a half lot to a 3×3 acre; the plat
+cut from the street and drawn on the zone lens; the duplex, fourplex, rows
+and medium density on their parcels; commercial and dense land cut into
+frontage lots, its blocks starting on one lot and assembling their
+neighbours; the dense homes re-derived from the floor each block is drawn
+with; and a small house on prime land torn down for a plex.
+
+**Next:** garbage recovery
+([garbage-recovery.md](game-design/features/garbage-recovery.md)), the
+municipal-services epic the player chose. Its first slice puts the whole
+garbage chain on one real unit; the recycling centre, the transfer station
+and the recovery facility follow. After it, the other municipal services
+programme's epics
 ([municipal-services.md](game-design/features/municipal-services.md)), the
 [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
 transit modes) and AI raster map packs, facade-atlas stage 2 and screen-space
@@ -312,6 +287,39 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Garbage on one real unit (first slice of garbage recovery, built 2026-10-08)
+
+The player chose garbage recovery as the next municipal-services epic, and
+its first slice fixes the scale the whole-city play found broken: at 2/4/8
+units a building every 10 ticks a town of 700 filled a 72-tile landfill
+before Small Town. Every figure in the chain is now one unit, 0.25 kg (4,000
+to the tonne), each derived:
+
+- **Generation is per capita.** EPA's 2.2 kg a person a day (2018, its last
+  national figure) is all municipal waste over the population, 55–65% from
+  homes, so a resident makes 1.32 kg a day (60%) and a job 1.86 kg (the other
+  40% over 160 million jobs for 335 million people); together they give back
+  2.2 kg. California's 9–10 lb per employee are unvalidated 1990s planning
+  rates and a works' process waste is not municipal waste, so a job is a job.
+  The old rule's per-building, per-level figure is gone: a tower made an
+  eighth of a house's waste per resident. A pass emits the whole units its
+  rate has reached, exact over a day with no stored remainder.
+- **The landfill holds what a landfill holds.** Modern compacted fill runs
+  1,200–1,500 lb a cubic yard (Sioux Falls, Chattanooga); at 1,200, 0.712
+  t/m³, a 400 m² tile piled 6 m holds about 1,700 t, 6,835,200 units, derived
+  in code. The design's earlier 0.31 t/m³ was waste as hauled. A city of
+  100,000 fills some 47 tiles a game year.
+- **The incinerator burns what its building is.** 450 t a day, the middle of
+  the 300–600 t a day a 4×4, 20 m mass-burn plant is: 90,000 units a pass, a
+  plant for about 200,000 people, with five days in its pit (a dial) and a
+  1.18 MW draw at 63 kWh a tonne.
+- **Old saves keep their pile.** `SAVE_VERSION` 15, no new layer; an older
+  save's landfill fill is scaled by the new capacity over the old 600, so its
+  fill fraction is unchanged.
+
+The ROADMAP's open item had suggested a 1 kg unit; the design's 0.25 kg was
+kept so the per-tile lens byte (255) still reads a backlog of 64 kg.
 
 ### The acre lot, where the frontage has room (built 2026-10-08)
 

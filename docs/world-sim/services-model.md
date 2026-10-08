@@ -38,10 +38,21 @@ for the funding sliders themselves.
 
 ## Garbage and waste management
 
-Every active residential, commercial and industrial building generates trash
-every 10 ticks: 2/4/8 units per pass by sector, multiplied by the building's
-level (minimum 1×), spread evenly across its footprint tiles (rounded, at least
-1 unit/tile) and clamped at 255 per tile — the ceiling the trash lens reads.
+A trash unit is **0.25 kg**, 4,000 to the tonne, and every figure in the chain
+is in it. Every active residential, commercial and industrial building
+generates trash every 10 ticks (20 passes a game day) for the people in it:
+**1.32 kg a resident a day and 1.86 kg a job a day**, 5.28 and 7.44 units. A
+person in the United States throws away 2.2 kg (4.9 lb) of municipal waste a
+day ([EPA](https://www.epa.gov/facts-and-figures-about-materials-waste-and-recycling/national-overview-facts-and-figures-materials)),
+55–65% of it from homes and the rest from businesses and institutions
+([EPA](https://archive.epa.gov/epawaste/nonhaz/municipal/web/pdf/msw_2010_rev_factsheet.pdf));
+60% of 2.2 kg is the resident's share, and the other 40% spread over the
+country's 160 million jobs for its 335 million people is the job's. A
+works' process waste is not municipal waste and is not collected. A pass
+emits the whole units its rate has reached since the last, so a house of
+three puts out a unit some passes and none on others and exactly its share
+over a day; they are spread across the footprint's tiles, the remainder on the
+first, and clamped at 255 per tile — the ceiling the trash lens reads.
 
 **Landfill** is a painted area, not a ploppable: a brush stamps the tile layer,
 gated to the same road-frontage buildable grid the R/C/I zone brushes use, with
@@ -49,7 +60,13 @@ no cost gate beyond that. A connected area must reach 4 tiles to operate — a
 paint stroke that would leave a smaller disconnected fragment is rejected,
 though growing an existing area past the minimum is always allowed. Painting
 costs ¢40/tile and ¢3/tile/month upkeep. Capacity is the painted tile count ×
-600 units, rendered as a pile up to 6 m tall at a full tile; once the whole
+6,835,200 units: the tile's 6 m pile, 2,400 m³, at the 1,200 lb a cubic yard
+(0.712 t/m³) a compacted municipal landfill holds, which landfills measure at
+1,200–1,500 ([Sioux Falls](https://www.waste360.com/landfill/sioux-falls-s-d-improves-airspace-utilization-for-regional-landfill),
+[Chattanooga](https://register.chattanooga.gov/sites/default/files/resources/Audit1508Landfill_Sustainability.pdf)),
+about 1,700 t. A city of 100,000 fills some 47 tiles a game year. The pile is
+rendered up to 6 m tall at a full tile, one lift where a real landfill rises
+40–150 m; once the whole
 area is full its service radius stops being collected until more area is
 painted or an incinerator takes the load. A connected area derives one office
 tile (its street-adjacent member nearest the start of the search) and a dump
@@ -58,9 +75,12 @@ trash. See [../art/buildings.md](../art/buildings.md) for the gatehouse and
 pile models.
 
 The **incinerator** is a catalog ploppable (4×4, unlocks at milestone 3,
-¢40,000 to build, ¢1,500/month) with its own 400,000-unit buffer. It collects
-within a 40-tile road-BFS radius and burns what it holds up to 4,000 units a
-pass, its ceiling, so it is permanent as long as that keeps pace with inflow.
+¢40,000 to build, ¢1,500/month) with its own 9,000,000-unit buffer, five days
+of burn in its pit. It collects within a 40-tile road-BFS radius and burns
+what it holds up to 90,000 units a pass, its ceiling: 450 t a day, the middle
+of the 300–600 t a day a mass-burn plant its 4×4, 20 m size is, so one plant
+takes the waste of about 200,000 people. It is permanent as long as that
+keeps pace with inflow. It draws 1.18 MW, 63 kWh a tonne burned.
 Its smoke follows the burn: the catalog's 120 pollution is what it emits at
 the ceiling, through the ordinary per-building emission pass scaled by the
 share of the ceiling the last pass used (`incineratorEmission`), so an idle

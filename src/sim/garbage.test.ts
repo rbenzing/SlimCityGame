@@ -1,18 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { RoadTier, type GridState } from '../shared/types';
-import {
-  LANDFILL_CAPACITY_PER_TILE,
-  TRASH_EMIT_COM,
-  TRASH_EMIT_IND,
-  tileIndex,
-} from '../shared/constants';
+import { RoadTier, type BuildingCatalogEntry, type GridState } from '../shared/types';
+import { GARBAGE_PASSES_PER_DAY, LANDFILL_CAPACITY_PER_TILE, tileIndex } from '../shared/constants';
 import { createGrid } from '../world/grid';
 import {
   GarbageSystem,
   incineratorEmission,
+  unitsOnPass,
   type GarbageBuilding,
   type GarbageFacility,
 } from './garbage';
+import catalog from '../data/catalog.json';
 
 /**
  * A full MAP_SIZE grid with a vertical road column x=10 (z 10..40), a 2-tile
@@ -30,17 +27,76 @@ function baseWorld(): { g: GridState; buildingTile: number } {
   return { g, buildingTile };
 }
 
-const COM: GarbageBuilding = { id: 7, sector: 'com', level: 1 };
+// 100 jobs make 744 units a day: 37 on pass 0. 500 jobs make 186 on pass 0.
+const COM: GarbageBuilding = { id: 7, residents: 0, jobs: 100 };
+const IND: GarbageBuilding = { id: 7, residents: 0, jobs: 500 };
+const COM_PASS = 37;
+const IND_PASS = 186;
+
+const daySum = (b: GarbageBuilding): number => {
+  let sum = 0;
+  for (let n = 0; n < GARBAGE_PASSES_PER_DAY; n++) sum += unitsOnPass(b, n);
+  return sum;
+};
+
+describe('trash per head', () => {
+  it('a landfill tile holds a 20 m tile piled 6 m deep at 0.712 t a cubic metre', () => {
+    expect(LANDFILL_CAPACITY_PER_TILE).toBe(6_835_200);
+  });
+
+  it('100 residents emit 528 units over a day', () => {
+    expect(daySum({ id: 1, residents: 100, jobs: 0 })).toBe(528);
+  });
+
+  it('10 jobs emit 74 units over a day (74.4 floored)', () => {
+    expect(daySum({ id: 1, residents: 0, jobs: 10 })).toBe(74);
+  });
+
+  it('a mixed building sums both', () => {
+    expect(daySum({ id: 1, residents: 100, jobs: 10 })).toBe(528 + 74);
+  });
+
+  it('one resident emits on some passes and not others, yet totals right over a day', () => {
+    const b = { id: 1, residents: 1, jobs: 0 };
+    const perPass = Array.from({ length: GARBAGE_PASSES_PER_DAY }, (_, n) => unitsOnPass(b, n));
+    expect(perPass).toContain(0);
+    expect(perPass.some((u) => u > 0)).toBe(true);
+    expect(daySum(b)).toBe(5); // 1.32 kg a day is 5.28 units
+  });
+
+  it('is the same for the same pass', () => {
+    const b = { id: 1, residents: 37, jobs: 9 };
+    expect(unitsOnPass(b, 123)).toBe(unitsOnPass(b, 123));
+  });
+
+  it('spreads a pass over the footprint, the remainder on the first tiles', () => {
+    const g = createGrid();
+    const tiles = [tileIndex(50, 50), tileIndex(51, 50), tileIndex(52, 50)];
+    for (const t of tiles) g.buildingId[t] = 9;
+    const b = { id: 9, residents: 0, jobs: 100 }; // 37 on pass 0
+    const sys = new GarbageSystem(g.size);
+    sys.tick(g, [b], 0);
+    expect(tiles.map((t) => sys.trash[t])).toEqual([13, 12, 12]);
+  });
+
+  it('the incinerator burns 450 t a day and holds five days of it', () => {
+    const inc = (catalog as { buildings: BuildingCatalogEntry[] }).buildings.find(
+      (e) => e.id === 'incinerator',
+    )!;
+    expect(inc.garbage!.burnRate).toBe(90_000);
+    expect(inc.garbage!.bufferCapacity).toBe(9_000_000);
+  });
+});
 
 describe('GarbageSystem', () => {
   it('generates trash on a building then collects it into a road-connected landfill', () => {
     const { g, buildingTile } = baseWorld();
     const sys = new GarbageSystem(g.size);
 
-    sys.tick(g, [COM]);
+    sys.tick(g, [COM], 0);
 
-    // The com building emitted TRASH_EMIT_COM units, all collected into the landfill.
-    expect(sys.landfillStored()).toBe(TRASH_EMIT_COM);
+    // The com building emitted its pass's units, all collected into the landfill.
+    expect(sys.landfillStored()).toBe(COM_PASS);
     expect(sys.trash[buildingTile]).toBe(0);
     expect(sys.landfillFillFraction(g)).toBeGreaterThan(0);
     expect(sys.isLandfillFull(g)).toBe(false);
@@ -52,7 +108,7 @@ describe('GarbageSystem', () => {
     g.buildingId[farTile] = 8;
     const sys = new GarbageSystem(g.size);
 
-    sys.tick(g, [COM, { id: 8, sector: 'com', level: 1 }]);
+    sys.tick(g, [COM, { id: 8, residents: 0, jobs: 100 }], 0);
 
     expect(sys.trash[farTile]).toBeGreaterThan(0); // generated but never collected
   });
@@ -62,21 +118,20 @@ describe('GarbageSystem', () => {
     g.landfill.fill(0); // remove the area
     const sys = new GarbageSystem(g.size);
 
-    sys.tick(g, [COM]);
+    sys.tick(g, [COM], 0);
 
     expect(sys.landfillStored()).toBe(0);
-    expect(sys.trash[buildingTile]).toBe(TRASH_EMIT_COM);
+    expect(sys.trash[buildingTile]).toBe(COM_PASS);
   });
 
   it('stops collecting once the landfill area is full; trash then backs up on buildings', () => {
     const { g, buildingTile } = baseWorld();
     const capacity = 2 * LANDFILL_CAPACITY_PER_TILE; // 2 painted tiles
     const sys = new GarbageSystem(g.size);
-    const IND: GarbageBuilding = { id: 7, sector: 'ind', level: 1 };
 
-    // Enough passes to overfill: each pass collects up to TRASH_EMIT_IND units.
-    const passes = Math.ceil(capacity / TRASH_EMIT_IND) + 10;
-    for (let i = 0; i < passes; i++) sys.tick(g, [IND]);
+    // Start a pass's worth short of full, then overfill.
+    sys.restoreState({ landfillStored: capacity - IND_PASS, incinerators: [] });
+    for (let i = 0; i < 3; i++) sys.tick(g, [IND], i);
 
     expect(sys.landfillStored()).toBe(capacity); // capped, never exceeds capacity
     expect(sys.isLandfillFull(g)).toBe(true);
@@ -90,14 +145,12 @@ describe('GarbageSystem', () => {
     const sysA = new GarbageSystem(a.g.size);
     const sysB = new GarbageSystem(b.g.size);
     for (let i = 0; i < 5; i++) {
-      sysA.tick(a.g, [COM]);
-      sysB.tick(b.g, [COM]);
+      sysA.tick(a.g, [COM], i);
+      sysB.tick(b.g, [COM], i);
     }
     expect(sysA.landfillStored()).toBe(sysB.landfillStored());
   });
 });
-
-const IND: GarbageBuilding = { id: 7, sector: 'ind', level: 1 };
 
 /** baseWorld with the landfill removed and an incinerator footprint at (11,25). */
 function incinWorld(): { g: GridState; buildingTile: number; incinId: number } {
@@ -121,10 +174,10 @@ describe('GarbageSystem incinerators', () => {
     const { g, buildingTile, incinId } = incinWorld();
     const sys = new GarbageSystem(g.size);
 
-    sys.tick(g, [COM], [facility({ burnRate: 2 })]);
+    sys.tick(g, [COM], 0, [facility({ burnRate: 2 })]);
 
-    // COM emitted TRASH_EMIT_COM; all collected into the buffer, then 2 burned.
-    expect(sys.incineratorStored(incinId)).toBe(TRASH_EMIT_COM - 2);
+    // COM emitted its pass's units; all collected into the buffer, then 2 burned.
+    expect(sys.incineratorStored(incinId)).toBe(COM_PASS - 2);
     expect(sys.incineratorBurnedLast(incinId)).toBe(2);
     expect(sys.trash[buildingTile]).toBe(0);
   });
@@ -132,10 +185,10 @@ describe('GarbageSystem incinerators', () => {
   it('stops collecting when its buffer is full; trash backs up but it keeps its cap', () => {
     const { g, buildingTile, incinId } = incinWorld();
     const sys = new GarbageSystem(g.size);
-    const cap = 2 * TRASH_EMIT_IND;
+    const cap = 2 * IND_PASS;
     const f = facility({ burnRate: 0, bufferCapacity: cap }); // pure store → fills fast
 
-    for (let i = 0; i < 6; i++) sys.tick(g, [IND], [f]);
+    for (let i = 0; i < 6; i++) sys.tick(g, [IND], i, [f]);
 
     expect(sys.incineratorStored(incinId)).toBe(cap); // capped, never exceeds
     expect(sys.trash[buildingTile]).toBeGreaterThan(0); // collection stopped → backs up
@@ -146,10 +199,10 @@ describe('GarbageSystem incinerators', () => {
     const sys = new GarbageSystem(g.size);
     const f = facility({ burnRate: 1000 }); // >> per-pass inflow
 
-    for (let i = 0; i < 20; i++) sys.tick(g, [COM], [f]);
+    for (let i = 0; i < 20; i++) sys.tick(g, [COM], i, [f]);
 
     expect(sys.incineratorStored(incinId)).toBe(0);
-    expect(sys.incineratorBurnedLast(incinId)).toBe(TRASH_EMIT_COM);
+    expect(sys.incineratorBurnedLast(incinId)).toBe(unitsOnPass(COM, 19));
     expect(sys.trash[buildingTile]).toBe(0);
   });
 
@@ -157,10 +210,10 @@ describe('GarbageSystem incinerators', () => {
     const { g, incinId } = incinWorld();
     const sys = new GarbageSystem(g.size);
 
-    sys.tick(g, [COM], [facility({ burnRate: 0 })]);
+    sys.tick(g, [COM], 0, [facility({ burnRate: 0 })]);
     expect(sys.incineratorStored(incinId)).toBeGreaterThan(0);
 
-    sys.tick(g, [COM], []); // incinerator gone → buffer pruned
+    sys.tick(g, [COM], 1, []); // incinerator gone → buffer pruned
     expect(sys.incineratorStored(incinId)).toBe(0);
   });
 });
@@ -178,10 +231,14 @@ describe('GarbageSystem shares the load across the incinerators that reach a bui
     const { g, buildingTile, first, second } = twoPlants();
     const sys = new GarbageSystem(g.size);
     const plants = [facility({ id: first, burnRate: 0 }), facility({ id: second, burnRate: 0 })];
-    for (let i = 0; i < 5; i++) sys.tick(g, [IND], plants);
+    let emitted = 0;
+    for (let i = 0; i < 5; i++) {
+      sys.tick(g, [IND], i, plants);
+      emitted += unitsOnPass(IND, i);
+    }
     const a = sys.incineratorStored(first);
     const b = sys.incineratorStored(second);
-    expect(a + b).toBe(5 * TRASH_EMIT_IND);
+    expect(a + b).toBe(emitted);
     expect(Math.abs(a - b)).toBeLessThanOrEqual(1);
     expect(sys.trash[buildingTile]).toBe(0);
   });
@@ -191,9 +248,9 @@ describe('GarbageSystem shares the load across the incinerators that reach a bui
     const sys = new GarbageSystem(g.size);
     const full = facility({ id: first, burnRate: 0, bufferCapacity: 1 });
     const open = facility({ id: second, burnRate: 0 });
-    sys.tick(g, [IND], [full, open]);
+    sys.tick(g, [IND], 0, [full, open]);
     expect(sys.incineratorStored(first)).toBe(1);
-    expect(sys.incineratorStored(second)).toBe(TRASH_EMIT_IND - 1);
+    expect(sys.incineratorStored(second)).toBe(IND_PASS - 1);
     expect(sys.trash[buildingTile]).toBe(0);
   });
 
@@ -202,13 +259,13 @@ describe('GarbageSystem shares the load across the incinerators that reach a bui
     const incinId = 20;
     g.buildingId[tileIndex(11, 25)] = incinId;
     const sys = new GarbageSystem(g.size);
-    sys.tick(g, [COM], [facility({ id: incinId, burnRate: 0 })]);
-    expect(sys.incineratorStored(incinId)).toBe(TRASH_EMIT_COM);
+    sys.tick(g, [COM], 0, [facility({ id: incinId, burnRate: 0 })]);
+    expect(sys.incineratorStored(incinId)).toBe(COM_PASS);
     expect(sys.landfillStored()).toBe(0);
     expect(sys.trash[buildingTile]).toBe(0);
     // Once the incinerator is full the landfill takes what it leaves.
-    sys.tick(g, [COM], [facility({ id: incinId, burnRate: 0, bufferCapacity: TRASH_EMIT_COM })]);
-    expect(sys.landfillStored()).toBe(TRASH_EMIT_COM);
+    sys.tick(g, [COM], 1, [facility({ id: incinId, burnRate: 0, bufferCapacity: COM_PASS })]);
+    expect(sys.landfillStored()).toBe(unitsOnPass(COM, 1));
   });
 
   it('burns what it has up to its ceiling, and its plume follows the burn', () => {
@@ -224,7 +281,7 @@ describe('GarbageSystem save state', () => {
   it('round-trips landfill fill through serialize/restore', () => {
     const { g } = baseWorld();
     const sys = new GarbageSystem(g.size);
-    for (let i = 0; i < 3; i++) sys.tick(g, [COM]);
+    for (let i = 0; i < 3; i++) sys.tick(g, [COM], i);
     expect(sys.landfillStored()).toBeGreaterThan(0);
 
     const saved = sys.serializeState();
@@ -239,7 +296,7 @@ describe('GarbageSystem save state', () => {
   it('round-trips incinerator buffers through serialize/restore', () => {
     const { g, incinId } = incinWorld();
     const sys = new GarbageSystem(g.size);
-    for (let i = 0; i < 3; i++) sys.tick(g, [IND], [facility({ burnRate: 0 })]);
+    for (let i = 0; i < 3; i++) sys.tick(g, [IND], i, [facility({ burnRate: 0 })]);
     const stored = sys.incineratorStored(incinId);
     expect(stored).toBeGreaterThan(0);
 
@@ -255,7 +312,7 @@ describe('GarbageSystem save state', () => {
   it('ignores an absent save state (pre-Stage-A saves)', () => {
     const { g } = baseWorld();
     const sys = new GarbageSystem(g.size);
-    sys.tick(g, [COM]);
+    sys.tick(g, [COM], 0);
     const before = sys.landfillStored();
     sys.restoreState(undefined); // no-op
     expect(sys.landfillStored()).toBe(before);

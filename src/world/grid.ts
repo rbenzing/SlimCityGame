@@ -158,6 +158,8 @@ export const BYTES_PER_TILE_BY_VERSION: readonly number[] = [
   BYTES_PER_TILE_V12,
   BYTES_PER_TILE_V13,
   BYTES_PER_TILE,
+  // v15 changes no layer: it is the v14 layout.
+  BYTES_PER_TILE,
 ];
 
 function bufferBytesFor(size: number, bytesPerTile: number = BYTES_PER_TILE): number {

@@ -237,22 +237,34 @@ export const SHORELINE_BAND_METERS = 0.4;
 /** Ticks between garbage generation + collection passes (staggered like the other periodic sim work). */
 export const GARBAGE_PERIOD = 10;
 export const GARBAGE_OFFSET = 5;
-/** Trash units an active building adds per pass, by sector, before its level multiplier. */
-export const TRASH_EMIT_RES = 2;
-export const TRASH_EMIT_COM = 4;
-export const TRASH_EMIT_IND = 8;
+/** Garbage passes in one game day. */
+export const GARBAGE_PASSES_PER_DAY = TICKS_PER_DAY / GARBAGE_PERIOD;
+/** The one trash unit is 0.25 kg: 4,000 to a tonne. */
+export const TRASH_UNITS_PER_TONNE = 4000;
+/** A resident's trash a day: 2.2 kg a person, 60% of it from homes. */
+export const TRASH_KG_PER_RESIDENT_DAY = 1.32;
+/** A job's trash a day: the other 40% of the city's waste, over all jobs. */
+export const TRASH_KG_PER_JOB_DAY = 1.86;
 /** Per-tile uncollected-trash value is clamped to this (matches the 0..255 lens byte). */
 export const TRASH_TILE_MAX = 255;
-/** Trash units one landfill tile holds before it's full; area capacity = tiles × this. */
-export const LANDFILL_CAPACITY_PER_TILE = 600;
+/** Tonnes per cubic metre of modern compacted landfill (1,200 lb a cubic yard). */
+export const LANDFILL_DENSITY_T_PER_M3 = 0.712;
+/** Rendered trash-pile height (m) at a full landfill tile. */
+export const LANDFILL_MAX_PILE_METERS = 6;
+/** Trash units one landfill tile holds before it's full: a tile's footprint piled to full height. */
+export const LANDFILL_CAPACITY_PER_TILE = Math.round(
+  TILE_METERS *
+    TILE_METERS *
+    LANDFILL_MAX_PILE_METERS *
+    LANDFILL_DENSITY_T_PER_M3 *
+    TRASH_UNITS_PER_TONNE,
+);
 /** Road-BFS tile radius a landfill services — generous, so one covers a small/medium city. */
 export const LANDFILL_COLLECTION_RANGE = 28;
 /** ¢ to paint one landfill tile. */
 export const LANDFILL_PAINT_COST_PER_TILE = 40;
 /** ¢/month upkeep per painted landfill tile. */
 export const LANDFILL_UPKEEP_PER_TILE = 3;
-/** Rendered trash-pile height (m) at a full landfill tile. */
-export const LANDFILL_MAX_PILE_METERS = 6;
 
 /**
  * ¢ to string one tile of power line. Deliberately CHEAPER than the cheapest
