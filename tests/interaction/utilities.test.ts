@@ -107,7 +107,7 @@ describe('zoning down a gravel road, which carries no power', () => {
       { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 49, 21) },
       { kind: 'buildRoad', tier: RoadTier.Gravel, tiles: column(70, 50, 10) },
       { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 48, rotation: 0 },
-      { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 47, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 48, rotation: 0 },
       { kind: 'paintZone', zone: ZoneType.ResLow, tiles: column(71, 50, 10) },
     ]);
     expect(ack.ok).toBe(true);
@@ -171,7 +171,7 @@ describe('a grid too small for its city — the snapshot says what growth waits 
     h.ticks(1);
     send(h, 2, [
       { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 48, rotation: 0 },
-      { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 47, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 48, rotation: 0 },
       // Two combustors drawing 1.3 MW on a turbine delivering 1.1: nothing is spare for anyone else.
       { kind: 'placeBuilding', catalogId: 'incinerator', x: 70, z: 45, rotation: 0 },
       { kind: 'placeBuilding', catalogId: 'incinerator', x: 75, z: 45, rotation: 0 },
@@ -207,7 +207,7 @@ describe('water and sewage on pipes', () => {
       { kind: 'setUnlimitedMoney', on: true },
       { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 49, 21) },
       { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 48, rotation: 0 },
-      { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 47, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 48, rotation: 0 },
       ...pondAndDrain({ x: 66, z: 44 }, { x: 66, z: 45 }),
       { kind: 'paintZone', zone: ZoneType.ResLow, tiles: roadRow(60, 50, 20) },
     ]);
@@ -267,7 +267,7 @@ describe('water and sewage on pipes', () => {
     expect(run(h, 2, [{ kind: 'layWaterPipe', tiles: [{ x: 66, z: 44 }], on: true }]).ok).toBe(
       false,
     );
-    expect(run(h, 3, [{ kind: 'layWaterPipe', tiles: [{ x: 62, z: 47 }], on: true }]).ok).toBe(
+    expect(run(h, 3, [{ kind: 'layWaterPipe', tiles: [{ x: 62, z: 48 }], on: true }]).ok).toBe(
       false,
     );
     expect(

@@ -219,6 +219,130 @@ describe('BuildingRegistry', () => {
   });
 });
 
+describe('restampShrunkPloppables', () => {
+  const oldPark: BuildingCatalogEntry = { ...park, footprint: { w: 2, d: 2 } };
+  const oldShop: BuildingCatalogEntry = { ...shop, footprint: { w: 3, d: 2 } };
+
+  /** A registry as an older build saved it, loaded under the current catalog. */
+  function loadedFromOlderBuild(g: GridState, rotation: 0 | 1 | 2 | 3 = 0): BuildingRegistry {
+    const older = new BuildingRegistry([oldPark, oldShop, house]);
+    older.place(g, oldPark, 10, 10, rotation);
+    older.place(g, oldShop, 20, 20, 0);
+    older.place(g, house, 30, 30, 0);
+    return BuildingRegistry.deserialize(catalog, older.serialize());
+  }
+
+  const noRoad = (): boolean => false;
+  /** Fronts a road when any tile of the lot has one of `roads` orthogonally beside it. */
+  const frontsRoadAt =
+    (roads: readonly (readonly [number, number])[]) =>
+    (tiles: readonly number[]): boolean =>
+      tiles.some((t) => {
+        const x = t % MAP_SIZE;
+        const z = Math.floor(t / MAP_SIZE);
+        return roads.some(([rx, rz]) => Math.abs(rx - x) + Math.abs(rz - z) === 1);
+      });
+
+  it('cuts a shrunk ploppable back to its catalog footprint at its origin and frees the rest', () => {
+    const g = makeGrid();
+    const registry = loadedFromOlderBuild(g);
+    const id = g.buildingId[tileIndex(10, 10)]!;
+
+    registry.restampShrunkPloppables(g, noRoad);
+
+    expect(g.buildingId[tileIndex(10, 10)]).toBe(id);
+    for (const [x, z] of [
+      [11, 10],
+      [10, 11],
+      [11, 11],
+    ] as const) {
+      expect(g.buildingId[tileIndex(x, z)]).toBe(0);
+    }
+    expect(registry.serialize().buildings.find((b) => b.id === id)).toMatchObject({ w: 1, d: 1 });
+  });
+
+  it('frees the tiles a ploppable turned a quarter no longer covers', () => {
+    const g = makeGrid();
+    const registry = loadedFromOlderBuild(g, 1);
+    registry.restampShrunkPloppables(g, noRoad);
+    expect(g.buildingId[tileIndex(10, 10)]).not.toBe(0);
+    expect(g.buildingId[tileIndex(11, 11)]).toBe(0);
+  });
+
+  it('leaves a zoned building on the footprint it was saved with', () => {
+    const g = makeGrid();
+    const registry = loadedFromOlderBuild(g);
+    const before = registry.serialize().buildings.find((b) => b.catalogId === 'shop')!;
+    registry.restampShrunkPloppables(g, () => true);
+    expect(registry.serialize().buildings.find((b) => b.catalogId === 'shop')).toEqual(before);
+    expect(before).toMatchObject({ w: 3, d: 2 });
+    expect(g.buildingId[tileIndex(22, 21)]).toBe(before.id);
+  });
+
+  it('leaves a ploppable that already matches its catalog footprint alone', () => {
+    const g = makeGrid();
+    const registry = new BuildingRegistry(catalog);
+    registry.place(g, park, 5, 5, 0);
+    const stamped = g.buildingId.slice();
+    const before = registry.serialize();
+    registry.restampShrunkPloppables(g, () => true);
+    expect(registry.serialize()).toEqual(before);
+    expect(g.buildingId).toEqual(stamped);
+  });
+
+  it('does not take a tile another building has since stamped', () => {
+    const g = makeGrid();
+    const registry = loadedFromOlderBuild(g);
+    g.buildingId[tileIndex(11, 10)] = 999;
+    registry.restampShrunkPloppables(g, noRoad);
+    expect(g.buildingId[tileIndex(11, 10)]).toBe(999);
+  });
+
+  it('keeps the tile on the street when the street runs along the far (z+1) edge', () => {
+    const g = makeGrid();
+    const registry = loadedFromOlderBuild(g);
+    const id = g.buildingId[tileIndex(10, 10)]!;
+    registry.restampShrunkPloppables(g, frontsRoadAt([[10, 12]]));
+    expect(registry.get(id)).toMatchObject({ x: 10, z: 11 });
+    expect(g.buildingId[tileIndex(10, 11)]).toBe(id);
+    expect(g.buildingId[tileIndex(10, 10)]).toBe(0);
+    expect(g.buildingId[tileIndex(11, 10)]).toBe(0);
+    expect(g.buildingId[tileIndex(11, 11)]).toBe(0);
+  });
+
+  it('keeps the tile on the street when the street runs along the far (x+1) edge', () => {
+    const g = makeGrid();
+    const registry = loadedFromOlderBuild(g);
+    const id = g.buildingId[tileIndex(10, 10)]!;
+    registry.restampShrunkPloppables(g, frontsRoadAt([[12, 10]]));
+    expect(registry.get(id)).toMatchObject({ x: 11, z: 10 });
+    expect(g.buildingId[tileIndex(11, 10)]).toBe(id);
+    expect(g.buildingId[tileIndex(10, 10)]).toBe(0);
+  });
+
+  it('takes the first fronting tile by z then x when two fit', () => {
+    const g = makeGrid();
+    const registry = loadedFromOlderBuild(g);
+    const id = g.buildingId[tileIndex(10, 10)]!;
+    registry.restampShrunkPloppables(
+      g,
+      frontsRoadAt([
+        [12, 10],
+        [10, 12],
+      ]),
+    );
+    expect(registry.get(id)).toMatchObject({ x: 11, z: 10 });
+  });
+
+  it('leaves the building at its origin when no road is near', () => {
+    const g = makeGrid();
+    const registry = loadedFromOlderBuild(g);
+    const id = g.buildingId[tileIndex(10, 10)]!;
+    registry.restampShrunkPloppables(g, frontsRoadAt([[50, 50]]));
+    expect(registry.get(id)).toMatchObject({ x: 10, z: 10 });
+  });
+});
+
 describe('settleBuildingDelta', () => {
   function standingIn(registry: BuildingRegistry) {
     return (id: number) => registry.get(id);

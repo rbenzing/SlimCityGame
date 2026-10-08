@@ -193,6 +193,8 @@ describe('terraform: landscaping the ground', () => {
 
 describe('auto-flatten: the ground levels under a placed footprint', () => {
   const waterTower = catalog.find((e) => e.id === 'water-tower')!;
+  /** A 2×2 ploppable, for the tests that level a footprint of four tiles. */
+  const twoByTwo = catalog.find((e) => e.id === 'police-station')!;
 
   /** Gentle 1-2m ripple (well under MAX_BUILD_SLOPE=4) so every tile is buildable, but varied enough that a footprint's mean differs from its individual tile heights. */
   function variedHeight(x: number, z: number): number {
@@ -236,7 +238,10 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
     // Sanity: the footprint really is varied (mean differs from at least one covered tile).
     expect(footprintTiles.some((t) => variedHeight(t.x, t.z) !== mean)).toBe(true);
 
-    send(h, 1, [{ kind: 'placeBuilding', catalogId: 'water-tower', x, z, rotation: 0 }]);
+    send(h, 1, [
+      { kind: 'setSandbox', on: true },
+      { kind: 'placeBuilding', catalogId: twoByTwo.id, x, z, rotation: 0 },
+    ]);
     h.ticks(2);
     expect(h.ackFor(1)!.ok).toBe(true);
 
@@ -266,7 +271,10 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
     const roadEdge = [tileIndex(x + 2, z), tileIndex(x + 2, z + 1), tileIndex(x + 2, z + 2)];
     const roadHeights = roadEdge.map((i) => before.height[i]!);
 
-    send(h, 2, [{ kind: 'placeBuilding', catalogId: 'water-tower', x, z, rotation: 0 }]);
+    send(h, 2, [
+      { kind: 'setSandbox', on: true },
+      { kind: 'placeBuilding', catalogId: twoByTwo.id, x, z, rotation: 0 },
+    ]);
     h.ticks(2);
     expect(h.ackFor(2)!.ok).toBe(true);
     h.sim.handleMessage({ type: 'requestSave' });
@@ -295,7 +303,7 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
       send(h, 1, [
         { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(50, 60, 20) },
         { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 50, z: 59, rotation: 0 },
-        { kind: 'placeBuilding', catalogId: 'water-tower', x: 52, z: 58, rotation: 0 },
+        { kind: 'placeBuilding', catalogId: 'water-tower', x: 52, z: 59, rotation: 0 },
         { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(56, 61, 12, 2) },
       ]);
       h.ticks(1500);

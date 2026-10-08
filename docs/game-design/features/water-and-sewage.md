@@ -61,7 +61,10 @@ building; the bulldozer pulls it up with a refund, and undo lays it back.
 
 - **Water Tower.** A 100,000-gallon elevated tank on its borehole, the
   standard small-town size, stands anywhere and supplies 378.5 kL a day, the
-  one day's average demand a tank is sized to hold: about 1,100 people.
+  one day's average demand a tank is sized to hold: about 1,100 people. It
+  takes one tile: a 100,000-gallon multi-leg tank is 30 ft across on four
+  columns, and its legs stand inside a 20 m square
+  ([../../art/props-and-vehicles.md](../../art/props-and-vehicles.md)).
 - **Water Pumping Station.** A surface-water intake of the smallest class,
   one million gallons a day, 3,785 kL, that must stand on a shore, its
   footprint touching the water it draws from. From Small Town.

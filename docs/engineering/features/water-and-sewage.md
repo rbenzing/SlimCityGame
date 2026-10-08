@@ -169,7 +169,7 @@ does not.
 | ------------- | --------------------- | ------------------- | --------- | ---------------- |
 | `water-pump`  | Water Pumping Station | `waterKL`           | 2×2       | `water`          |
 | `water-drain` | Water Drain Pipe      | `sewerKL`           | 1×1       | `water`          |
-| `water-tower` | Water Tower           | `waterKL` (re-derived) | 2×2    | —                |
+| `water-tower` | Water Tower           | `waterKL` (re-derived) | 1×1    | —                |
 
 Their figures are derived in the design document and checked by the
 catalog contract test. The Water tab lists every utility entry with

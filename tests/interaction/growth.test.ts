@@ -34,7 +34,7 @@ describe('a small town grows the way a farming or mill town does', () => {
       send(h, 2, [
         { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 48, rotation: 0 },
         { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 64, z: 48, rotation: 0 },
-        { kind: 'placeBuilding', catalogId: 'water-tower', x: 66, z: 47, rotation: 0 },
+        { kind: 'placeBuilding', catalogId: 'water-tower', x: 66, z: 48, rotation: 0 },
         { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(60, 50, 16, 2) },
         { kind: 'paintZone', zone: ZoneType.Industrial, tiles: rows(76, 50, 16, 2) },
         { kind: 'paintZone', zone: ZoneType.ComLow, tiles: rows(66, 47, 26, 2) },
@@ -104,7 +104,7 @@ describe('a farming town', () => {
       h.ticks(1);
       send(h, 2, [
         { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 39, rotation: 0 },
-        { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 38, rotation: 0 },
+        { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 39, rotation: 0 },
         { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(60, 41, 24, 2) },
         { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 59, rotation: 0 },
         { kind: 'stringPowerLine', tiles: roadRow(60, 60, 32), on: true },
@@ -153,7 +153,7 @@ describe('a low-density strip one tile wide', () => {
       h.ticks(1);
       send(h, 2, [
         { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 59, rotation: 0 },
-        { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 58, rotation: 0 },
+        { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 59, rotation: 0 },
         // A city this size is off septic tanks, so it drains to a pond.
         ...pondAndDrain({ x: 64, z: 58 }, { x: 64, z: 59 }),
         // One tile wide, four deep: a double or an estate lot can never fit, a 1×2 can.
@@ -193,7 +193,7 @@ describe('a block cut from its streets', () => {
       h.ticks(1);
       send(h, 2, [
         { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 59, rotation: 0 },
-        { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 58, rotation: 0 },
+        { kind: 'placeBuilding', catalogId: 'water-tower', x: 62, z: 59, rotation: 0 },
         ...pondAndDrain({ x: 68, z: 58 }, { x: 68, z: 59 }),
         // The inside of the bend, three deep from both streets.
         { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(64, 61, 7, 3) },
@@ -248,7 +248,7 @@ describe('a commercial block three deep', () => {
         { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 70, 32) },
         { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 48, rotation: 0 },
         { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 64, z: 48, rotation: 0 },
-        { kind: 'placeBuilding', catalogId: 'water-tower', x: 66, z: 47, rotation: 0 },
+        { kind: 'placeBuilding', catalogId: 'water-tower', x: 66, z: 48, rotation: 0 },
         { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(60, 50, 16, 2) },
         { kind: 'paintZone', zone: ZoneType.Industrial, tiles: rows(76, 50, 16, 2) },
         {
@@ -301,7 +301,7 @@ describe('a heavy industrial estate', () => {
           kind: 'placeBuilding' as const,
           catalogId: 'water-tower',
           x,
-          z: 58,
+          z: 59,
           rotation: 0 as const,
         })),
         // Homes for the hands, and an estate four deep for the plants.

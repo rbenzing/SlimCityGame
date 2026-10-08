@@ -26,7 +26,7 @@ describe('depot trucks through the worker', () => {
     ]);
     run(h, 3, [
       { kind: 'placeBuilding', catalogId: 'coal-plant', x: 124, z: 96, rotation: 0 },
-      { kind: 'placeBuilding', catalogId: 'water-tower', x: 130, z: 98, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'water-tower', x: 130, z: 99, rotation: 0 },
       { kind: 'placeBuilding', catalogId: 'recycling-depot', x: 104, z: 97, rotation: 0 },
       { kind: 'placeBuilding', catalogId: 'incinerator', x: 121, z: 108, rotation: 0 },
     ]);

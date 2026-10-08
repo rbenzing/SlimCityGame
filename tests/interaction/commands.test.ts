@@ -504,7 +504,7 @@ describe('a zone painted over standing buildings', () => {
         run(h, 1, [
           { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(50, 50, 20) },
           { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 50, z: 49, rotation: 0 },
-          { kind: 'placeBuilding', catalogId: 'water-tower', x: 52, z: 48, rotation: 0 },
+          { kind: 'placeBuilding', catalogId: 'water-tower', x: 52, z: 49, rotation: 0 },
           { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(56, 51, 12, 2) },
         ]).ok,
       ).toBe(true);
