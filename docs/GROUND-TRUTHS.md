@@ -704,6 +704,14 @@ MUTCD citations below use 11th-edition section numbers.
   `lotForStanding`, `platCandidates`, `warrantedLot`, `lotsOfZone`,
   `PLATTED_ZONES` in `src/shared/lots.ts`, `takesWholeParcels`, `platReaches`
   in `src/world/plat.ts`, `tryLevelUp` in `src/sim/growth.ts`
+- A level-up never changes a building's kind; the one change of kind is a
+  teardown. A detached house on a half or normal lot whose tile's land value
+  is at the estate band (224 and over) converts, with a chance that makes 2%
+  a year, into a level-1 duplex or fourplex of the same zone on the same lot
+  and footprint, drawn by share, with spare supply for what it adds. It
+  never crosses its zone, never grows its lot, and no other kind converts. —
+  [lots-and-land.md](game-design/features/lots-and-land.md#a-small-house-on-prime-land-becomes-a-plex-built-2026-10-08);
+  `tryConvert` in `src/sim/growth.ts`
 - A lot forms from its street: the tiles along a street that front the same
   side are cut a frontage at a time, from one end, into parcels, and a
   detached house grows only on the tile a parcel starts on, with its frontage

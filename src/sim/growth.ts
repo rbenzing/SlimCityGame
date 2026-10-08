@@ -13,7 +13,13 @@
  * ticks, over a rotating stride-window of the grid so a full map is
  * covered over many passes rather than rescanned every time.
  */
-import { ROAD_CHECK_RADIUS, SEWER_MILESTONE, inBounds, tileIndex } from '../shared/constants';
+import {
+  ROAD_CHECK_RADIUS,
+  SEWER_MILESTONE,
+  TICKS_PER_YEAR,
+  inBounds,
+  tileIndex,
+} from '../shared/constants';
 import { BuildingState, FieldId, Problem, ZoneType, isStreetTier } from '../shared/types';
 import { SoilGrade, isFarmable } from '../shared/soil';
 import type {
@@ -28,7 +34,7 @@ import type {
   ZonedUnserved,
 } from '../shared/types';
 import { farmKindOf } from '../shared/buildingkind';
-import { PLATTED_ZONES, platCandidates } from '../shared/lots';
+import { LOT_STANDING_FLOOR, PLATTED_ZONES, platCandidates } from '../shared/lots';
 import { footprintForRotation } from '../shared/footprint';
 import { BuildingRegistry, lotTiles } from './buildings';
 import type { JobsBySector } from './economy';
@@ -69,6 +75,11 @@ export interface Rng {
 
 const GROWTH_INTERVAL = 10;
 const CONSTRUCTION_TICKS = 100;
+/** Share of prime-land houses torn down for a plex in a game year. */
+const CONVERSION_PER_YEAR = 0.02;
+/** The per-pass chance that compounds to CONVERSION_PER_YEAR over a year of passes. */
+export const CONVERSION_CHANCE_PER_PASS =
+  1 - (1 - CONVERSION_PER_YEAR) ** (GROWTH_INTERVAL / TICKS_PER_YEAR);
 const ABANDON_BLOCKER_STREAK = 3;
 const DESPAWN_ABANDONED_PASSES = 10;
 /** Number of GROWTH_INTERVAL passes needed to sweep the whole map once. */
@@ -842,24 +853,116 @@ export class GrowthSystem {
     removed: number[],
   ): void {
     for (const inst of registry.all()) {
-      if (inst.state !== BuildingState.Active || inst.level >= 3) continue;
+      if (inst.state !== BuildingState.Active) continue;
       const entry = this.catalogIndex.get(inst.catalogId);
       if (!entry || entry.zone === undefined) continue;
-      this.tryLevelUp(
-        g,
-        registry,
-        demand,
-        milestoneLevel,
-        pass,
-        spare,
-        room,
-        plats,
-        inst,
-        entry,
-        added,
-        removed,
-      );
+      // Level 3 has no level above it but can still be torn down for a plex.
+      const leveled =
+        inst.level < 3 &&
+        this.tryLevelUp(
+          g,
+          registry,
+          demand,
+          milestoneLevel,
+          pass,
+          spare,
+          room,
+          plats,
+          inst,
+          entry,
+          added,
+          removed,
+        );
+      if (!leveled)
+        this.tryConvert(g, registry, milestoneLevel, spare, inst, entry, added, removed);
     }
+  }
+
+  /**
+   * The power, water and sewer, in utility units, that standing `to` at
+   * (`toX`, `toZ`) draws over `from` at (`fromX`, `fromZ`).
+   */
+  private utilityDelta(
+    g: GridState,
+    milestoneLevel: number,
+    from: { entry: BuildingCatalogEntry; x: number; z: number; w: number; d: number },
+    to: { entry: BuildingCatalogEntry; x: number; z: number; w: number; d: number },
+  ): { power: number; water: number; sewer: number } {
+    return {
+      power: utilityUnits(to.entry.powerUse) - utilityUnits(from.entry.powerUse),
+      water:
+        utilityUnits(cityWaterUse(g, to.entry, to.x, to.z, to.w, to.d)) -
+        utilityUnits(cityWaterUse(g, from.entry, from.x, from.z, from.w, from.d)),
+      sewer:
+        utilityUnits(sewageOf(g, to.entry, to.x, to.z, to.w, to.d, milestoneLevel)) -
+        utilityUnits(sewageOf(g, from.entry, from.x, from.z, from.w, from.d, milestoneLevel)),
+    };
+  }
+
+  /**
+   * A detached house on land worth an estate lot may be torn down for a
+   * duplex or fourplex of the same zone and lot, on the same footprint, drawn
+   * by share. It is rebuilt under construction and only where the grid can
+   * carry the homes it adds.
+   */
+  private tryConvert(
+    g: GridState,
+    registry: BuildingRegistry,
+    milestoneLevel: number,
+    spare: Spare,
+    inst: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    added: BuildingInstance[],
+    removed: number[],
+  ): boolean {
+    if (entry.kind !== 'detached' || (entry.lot !== 'half' && entry.lot !== 'normal')) return false;
+    if (fieldAt(g, FieldId.LandValue, tileIndex(inst.x, inst.z)) < LOT_STANDING_FLOOR.estate) {
+      return false;
+    }
+    if (this.rng.next() >= CONVERSION_CHANCE_PER_PASS) return false;
+    const candidates = spawnCandidates(
+      this.catalog,
+      entry.zone!,
+      milestoneLevel,
+      (e) =>
+        (e.kind === 'duplex' || e.kind === 'fourplex') &&
+        e.lot === entry.lot &&
+        e.footprint.w === entry.footprint.w &&
+        e.footprint.d === entry.footprint.d,
+    );
+    if (candidates.length === 0) return false;
+    const plex = drawKind(candidates, candidates.length > 1 ? this.rng.next() : 0);
+
+    const { x, z, rotation } = inst;
+    const footprint = footprintForRotation(entry, rotation);
+    const at = { x, z, w: footprint.w, d: footprint.d };
+    const { power, water, sewer } = this.utilityDelta(
+      g,
+      milestoneLevel,
+      { entry, ...at },
+      { entry: plex, ...at },
+    );
+    // A teardown the grid cannot carry does not happen; unlike a lot, it is
+    // not waiting to grow.
+    if (power > spare.power || water > spare.water || sewer > spare.sewer) return false;
+
+    registry.remove(g, inst.id);
+    const placed = registry.place(g, plex, x, z, rotation, BuildingState.Constructing);
+    if (!placed) {
+      // Unreachable: the plex stands on the footprint just cleared. Restore
+      // rather than silently drop the tile.
+      writeStamp(g, x, z, footprint.w, footprint.d, inst.id);
+      return false;
+    }
+    spare.power -= power;
+    spare.water -= water;
+    spare.sewer -= sewer;
+
+    this.constructing.set(placed.id, CONSTRUCTION_TICKS);
+    this.blockerStreak.delete(inst.id);
+    removed.push(inst.id);
+    added.push(placed);
+    return true;
   }
 
   private tryLevelUp(
@@ -984,13 +1087,12 @@ export class GrowthSystem {
     }
     // A bigger building draws more, and nobody builds it on a grid that
     // cannot carry the difference.
-    const power = utilityUnits(nextEntry.powerUse) - utilityUnits(entry.powerUse);
-    const water =
-      utilityUnits(cityWaterUse(g, nextEntry, nx, nz, newFootprint.w, newFootprint.d)) -
-      utilityUnits(cityWaterUse(g, entry, x, z, oldFootprint.w, oldFootprint.d));
-    const sewer =
-      utilityUnits(sewageOf(g, nextEntry, nx, nz, newFootprint.w, newFootprint.d, milestoneLevel)) -
-      utilityUnits(sewageOf(g, entry, x, z, oldFootprint.w, oldFootprint.d, milestoneLevel));
+    const { power, water, sewer } = this.utilityDelta(
+      g,
+      milestoneLevel,
+      { entry, x, z, w: oldFootprint.w, d: oldFootprint.d },
+      { entry: nextEntry, x: nx, z: nz, w: newFootprint.w, d: newFootprint.d },
+    );
     if (
       !fits ||
       !this.suppliedFor(waitKey, [], pass, spare, power, water, sewer) ||

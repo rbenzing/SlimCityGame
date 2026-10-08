@@ -28,13 +28,13 @@ import {
   MAP_TILES,
   MAX_LOAN,
   MILESTONES,
+  MONTHS_PER_YEAR,
   TICKS_PER_MONTH,
   workforceOf,
 } from '../shared/constants';
 
 const LAND_VALUE_FACTOR_BASE = 0.75;
 const LAND_VALUE_FACTOR_SPAN = 0.5;
-const MONTHS_PER_YEAR = 12;
 const FUNDS_WARNING_THRESHOLD = 2000;
 
 export interface EconomyTickInput {

@@ -581,6 +581,52 @@ kind is really built on.
   side of it, keeping its street edge; it tries its own corner first. Where
   both neighbours stand, it waits.
 
+### A small house on prime land becomes a plex (built 2026-10-08)
+
+Asked for by the player: a house should be able to become a bigger home as
+the place around it grows. The trigger chosen is land value: a house is torn
+down when it is worth little next to the land under it.
+
+- **Why land value.** A house is a teardown when the building is a small
+  share of what the property is worth. In Vancouver's single-family stock a
+  healthy share is 60–70%; below about 10%, around a quarter of houses are
+  replaced, and at 4% a buyer is as likely to tear the house down as to keep
+  it ([UBC, Dahmen and von Bergmann](https://news.ubc.ca/2017/03/10/could-this-be-the-end-of-single-family-houses-in-vancouver/)).
+  The houses torn down are the small old ones, and they sell for the land
+  ([Dye and McMillen, Chicago](https://ideas.repec.org/a/eee/juecon/v61y2007i1p45-63.html)).
+- **The game's reading.** Land value carries no money scale, so the share is
+  read off the plat: a detached house on a half or a normal lot whose land
+  has reached the estate band (224 and over), the land where an empty parcel
+  is now cut as an estate, is a small house on land worth an estate's lot.
+  Land only reaches that band beside a park, trees or the shore on a quiet
+  clean street, so this is the city's prime ground.
+- **What it becomes.** Where middle housing is legal, the house comes down
+  for a plex on the same lot: Portland's first year of plexes in its
+  single-dwelling zones permitted 271 middle-housing homes, most in
+  fourplexes, against 102 new houses
+  ([Portland](https://www.portland.gov/bps/planning/rip/news/2023/7/5/new-study-shows-promising-housing-production-results-residential)),
+  California's lot-split law found most uptake in its high-price towns
+  ([Terner Center](https://ternercenter.berkeley.edu/research-and-policy/sb-9-turns-one-applications/)),
+  and Houston's townhouse rebuilds took one old house's lot each
+  ([Cityscape](https://www.huduser.gov/PORTAL/periodicals/cityscape/vol25num2/ch8.pdf)).
+  So the house becomes a duplex or a fourplex on its own lot, drawn by their
+  shares of the stock as any lot is, and starts again at the first level.
+  A house rebuilt as a bigger house is what a level-up already is, so
+  conversion is only to a plex. The lot does not change, so no building ever
+  grows its lot.
+- **The pace.** About a quarter of the most at-risk Vancouver houses over
+  some thirteen years is about 2% a year, so each such house converts with a
+  2% chance a year (a game year is 72,000 ticks), and the town turns over its
+  prime small houses over decades, not in a season. Like a level-up, the
+  plex needs spare supply for the homes it adds, and waits for it.
+- **Only within the zone.** A building keeps the zone it grew on, so a house
+  becomes the plexes its low-density zone grows; it never becomes a
+  multiplex, which only medium density grows, and a block of flats is never
+  torn down for a bigger one, which is too rare to have a figure.
+- **What the player sees.** A small house on the park side of town comes
+  down and a duplex or fourplex goes up on its lot, under construction for
+  the usual 100 ticks; the inspector names its kind and its lot.
+
 ## What is built
 
 The first slice, built 2026-10-07, is the detached house alone; the duplex

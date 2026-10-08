@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 5,001 tests passing across 163 test files, run 2026-10-07.
+**Test suite:** 5,025 tests passing across 163 test files, run 2026-10-07.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -162,10 +162,10 @@ from the street, the plat drawn on the zone lens, the duplex and the
 fourplex on the plat, medium density assembling two parcels, replatting
 under empty ground, the inspector's lot line, row housing on one normal
 lot, and commercial and dense land cut into frontage lots; and the dense
-homes are re-derived from the floor each block is drawn with; and mid-rise
-and shopfront flats start on one lot and assemble their neighbours. Next is
-a building that converts to a bigger kind as its area grows (its trigger
-waits on a decision), then the 3×3 estate where a block is deep.
+homes are re-derived from the floor each block is drawn with; mid-rise and
+shopfront flats start on one lot and assemble their neighbours; and a small
+house on prime land is torn down for a duplex or fourplex on its lot. Next
+is the 3×3 estate where a block is deep.
 After it, the municipal
 services programme's epics
 ([municipal-services.md](game-design/features/municipal-services.md)), the
@@ -311,6 +311,27 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### A small house on prime land becomes a plex (asked for and built 2026-10-08)
+
+The other half of the player's request: a building converts to a bigger
+kind as the place around it grows, on the trigger the player chose, land
+value. A house is torn down when it is worth little next to its land: below
+about 10% of the property's value around a quarter of Vancouver's houses are
+replaced, roughly 2% a year (UBC), and the ones torn down are small old
+houses that sell for the land (Dye and McMillen). With no money scale on
+land value, the game reads that as a detached house on a half or normal lot
+whose land has reached the estate band (224), which only a park, trees or
+the shore beside a quiet street reach. Each such house converts with a
+chance that makes 2% a year into a level-1 duplex or fourplex on the same
+lot, drawn by share, since where plexes are legal they replace houses on
+their own lots (Portland, California's lot-split law, Houston). A house
+rebuilt as a bigger house is what a level-up already is. The building keeps
+its zone and its lot, so a house never becomes a multiplex, and no other
+kind converts: a block of flats torn down for a bigger one is too rare to
+have a figure. A teardown the grid cannot carry does not happen and is not
+counted as waiting. `MONTHS_PER_YEAR` moved to the shared constants for the
+rate.
 
 ### A turned building stands on its own lot (found and fixed 2026-10-08)
 

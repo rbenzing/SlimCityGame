@@ -298,8 +298,8 @@ grows on its order book, not its neighbourhood:** a works levels up while
 industrial demand is above zero, and land value, which pushes real industry
 out of town, plays no part, for a plant as for a farm. A catalog entry of the
 same kind at the next level must also exist and be unlocked at or below the
-current milestone: a building keeps its kind for life, so a duplex levels up
-into a better duplex and never into a house or a block. A commercial or
+current milestone: a level-up keeps the building's kind, so a duplex levels
+up into a better duplex and never into a house or a block. A commercial or
 industrial building also needs the town to have room for the jobs the bigger
 building adds. The building's old footprint is cleared to test the new,
 possibly larger one in its place, every tile of it zoned the same; if the
@@ -309,6 +309,16 @@ stood. A level-up must also find spare supply for what the bigger building
 draws beyond the smaller one; one that cannot is restored the same way and
 waits for supply like a lot does. A successful level-up replaces the
 building in place and re-enters Constructing.
+
+A house on prime land is torn down for a plex. Every growth pass, an Active
+detached house on a half or a normal lot whose tile's land value is at the
+estate band (224 or over), and which did not level up that pass, converts
+with a chance that makes 2% a year (a year is 72,000 ticks, so 7,200
+passes): it is replaced, on the same footprint, by a level-1 duplex or
+fourplex of its zone and lot, drawn by share, unlocked at the current
+milestone, given spare supply for what it adds, and it enters Constructing.
+Any level converts; the lot never changes
+([features/lots-and-land.md](features/lots-and-land.md#a-small-house-on-prime-land-becomes-a-plex-built-2026-10-08)).
 
 A farm levels up by taking more land:
 
