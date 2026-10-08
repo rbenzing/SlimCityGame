@@ -67,6 +67,12 @@ whenever a building is selected:
   Constructing, Content, or Abandoned.
 - **Rows**, label left in the uppercase label style, value right:
   - `ZONE` — the zone's display name ("Low Density Residential").
+  - `LOT` — the lot the building stands on, after ZONE: "Half lot, 400 m²",
+    "Normal lot, 800 m²", "Double lot, 1,600 m²", "Estate lot, 2,400 m²", and
+    "Two normal lots, 1,600 m²" for a building assembled from two parcels. It
+    reads the catalog entry's lot and footprint at 400 m² a tile
+    (`lotLine` in `src/ui/format.ts`). A building with no lot in the catalog
+    shows no row.
   - `LEVEL` — three rounded pips, filled up to the building's level (see
     [`ui-style-guide.md`](../art/ui-style-guide.md) for the pip token).
   - Residential buildings show `HOUSEHOLDS occupied/capacity` (capacity is

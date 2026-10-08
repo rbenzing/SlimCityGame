@@ -3,7 +3,9 @@
  * No Math.random/Date.now — everything is a function of sim state
  * (stats.tick, stats.happiness, ...).
  */
-import { CLOCK_START_OFFSET_TICKS, VISUAL_DAY_TICKS } from '../shared/constants';
+import { CLOCK_START_OFFSET_TICKS, TILE_METERS, VISUAL_DAY_TICKS } from '../shared/constants';
+import { LOT_EXTENT } from '../shared/lots';
+import type { BuildingCatalogEntry } from '../shared/types';
 
 /**
  * `HH:MM` from the visual day/night cycle (decoupled from the calendar day).
@@ -54,6 +56,25 @@ export function demandPct(value: number): number {
 
 export function formatPopulation(n: number): string {
   return Math.round(n).toLocaleString('en-US');
+}
+
+const PARCEL_WORDS = ['', '', 'Two', 'Three', 'Four'];
+
+/**
+ * The inspector's lot line, e.g. "Normal lot, 800 m²" or, for a building that
+ * assembles several parcels, "Two normal lots, 1,600 m²". Null without a lot.
+ */
+export function lotLine(entry: BuildingCatalogEntry): string | null {
+  if (!entry.lot) return null;
+  const { w, d } = entry.footprint;
+  const extent = LOT_EXTENT[entry.lot];
+  const parcels = Math.round((w * d) / (extent.frontage * extent.depth));
+  const area = (w * d * TILE_METERS * TILE_METERS).toLocaleString('en-US');
+  const phrase =
+    parcels <= 1
+      ? `${entry.lot.charAt(0).toUpperCase()}${entry.lot.slice(1)} lot`
+      : `${PARCEL_WORDS[parcels] ?? String(parcels)} ${entry.lot} lots`;
+  return `${phrase}, ${area} m²`;
 }
 
 /** ¢-prefixed, comma-formatted magnitude. Sign/tinting is the caller's job. */

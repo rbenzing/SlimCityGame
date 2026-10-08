@@ -22,7 +22,7 @@ import {
 } from './growth';
 import { recomputeUtilities } from './network';
 import type { GrowthSupply, Rng } from './growth';
-import { createGrid } from '../world/grid';
+import { createGrid, setZones } from '../world/grid';
 import { parcelsAnchoredAt, platOf, platSourceOf, takesWholeParcels } from '../world/plat';
 import type { PlatSource } from '../world/plat';
 import catalogData from '../data/catalog.json';
@@ -1861,6 +1861,215 @@ describe('the lot picks its building', () => {
       for (const b of grown) {
         expect(takesWholeParcels(plat, b.x, b.z, 2, 2, 'normal'), `${b.x},${b.z}`).toBe(true);
       }
+    });
+  });
+
+  describe('the plat changes under empty ground only', () => {
+    const entry = (id: string): BuildingCatalogEntry => shipped.find((e) => e.id === id)!;
+    const stand = (
+      g: GridState,
+      registry: BuildingRegistry,
+      id: string,
+      x: number,
+      z: number,
+    ): void => {
+      expect(
+        registry.place(g, entry(id), x, z, 0, BuildingState.Active),
+        `${id} ${x},${z}`,
+      ).not.toBe(null);
+    };
+    const setLandValue = (g: GridState, value: number): void => {
+      g.fields[FieldId.LandValue]!.fill(value);
+    };
+    const onZone =
+      (zone: ZoneType) =>
+      (gg: GridState, x: number, z: number, w: number, d: number): boolean => {
+        for (let dz = 0; dz < d; dz++) {
+          for (let dx = 0; dx < w; dx++) {
+            if (gg.zone[tileIndex(x + dx, z + dz)] !== zone) return false;
+          }
+        }
+        return true;
+      };
+    /** Growth passes on a registry that already holds houses. */
+    const growMore = (
+      g: GridState,
+      registry: BuildingRegistry,
+      catalog: BuildingCatalogEntry[],
+      zone: ZoneType,
+      milestone: number,
+      seed: number,
+    ): void => {
+      const growth = new GrowthSystem(catalog, seededRng(seed), onZone(zone));
+      for (let pass = 0; pass < 64; pass++)
+        growth.tick(g, registry, wantsHomes, milestone, pass * 10);
+    };
+    const footprintTiles = (b: { x: number; z: number }, e: BuildingCatalogEntry): number[] => {
+      const tiles: number[] = [];
+      for (let dz = 0; dz < e.footprint.d; dz++) {
+        for (let dx = 0; dx < e.footprint.w; dx++) tiles.push(tileIndex(b.x + dx, b.z + dz));
+      }
+      return tiles;
+    };
+    const overlapsStanding = (
+      plat: ReturnType<typeof platOf>,
+      registry: BuildingRegistry,
+    ): string[] => {
+      const bad: string[] = [];
+      for (const b of registry.all()) {
+        for (const t of footprintTiles(b, entry(b.catalogId))) {
+          const n = plat.parcelAt[t]!;
+          if (n < 0) continue;
+          const p = plat.parcels[n]!;
+          bad.push(`${b.catalogId} ${b.x},${b.z} in ${p.lot} ${p.x},${p.z}`);
+        }
+      }
+      return bad;
+    };
+    const zoneTiles = (g: GridState, zone: ZoneType): { x: number; z: number }[] => {
+      const out: { x: number; z: number }[] = [];
+      for (let z = 0; z < g.size; z++) {
+        for (let x = 0; x < g.size; x++) if (g.zone[tileIndex(x, z)] === zone) out.push({ x, z });
+      }
+      return out;
+    };
+
+    it('re-zoning replats empty ground and leaves the standing houses where they are', () => {
+      const g = twoSidedStreet(false, 100);
+      const registry = new BuildingRegistry(shipped);
+      stand(g, registry, 'res-normal-1', 2, 6);
+      stand(g, registry, 'res-normal-1', 7, 3);
+      const before = registry.all().map((b) => ({ ...b }));
+      const houseTiles = before.flatMap((b) => footprintTiles(b, entry(b.catalogId)));
+
+      const applied = setZones(g, zoneTiles(g, ZoneType.ResLow), ZoneType.ResMedium);
+      expect(applied.length).toBe(4 * 14 - houseTiles.length);
+
+      expect(registry.all().map((b) => ({ id: b.id, c: b.catalogId, x: b.x, z: b.z }))).toEqual(
+        before.map((b) => ({ id: b.id, c: b.catalogId, x: b.x, z: b.z })),
+      );
+      for (const t of houseTiles) expect(g.zone[t]).toBe(ZoneType.ResLow);
+
+      const plat = platOf(plain(g), ZoneType.ResMedium);
+      expect(plat.parcels.length).toBeGreaterThan(0);
+      for (const p of plat.parcels) expect(p.lot).toBe('normal');
+      expect(overlapsStanding(plat, registry)).toEqual([]);
+
+      const blocks = shipped.filter((e) => e.zone === ZoneType.ResMedium);
+      const standingBefore = registry.all().length;
+      const growth = new GrowthSystem(blocks, seededRng(3), onZone(ZoneType.ResMedium));
+      const known = new Set(registry.all().map((b) => b.id));
+      for (let pass = 0; pass < 64; pass++) {
+        const cut = platOf(plain(g), ZoneType.ResMedium);
+        growth.tick(g, registry, wantsHomes, 2, pass * 10);
+        for (const b of registry.all()) {
+          if (known.has(b.id)) continue;
+          known.add(b.id);
+          expect(entry(b.catalogId).footprint).toEqual({ w: 2, d: 2 });
+          expect(takesWholeParcels(cut, b.x, b.z, 2, 2, 'normal'), `${b.x},${b.z}`).toBe(true);
+        }
+      }
+      expect(registry.all().length).toBeGreaterThan(standingBefore);
+      for (const o of before) {
+        const now = registry.get(o.id)!;
+        expect(now.catalogId).toBe(o.catalogId);
+        expect([now.x, now.z]).toEqual([o.x, o.z]);
+      }
+    });
+
+    it('land value rising re-cuts the empty ground as double lots and leaves the houses be', () => {
+      const g = twoSidedStreet(false, 100);
+      const registry = new BuildingRegistry(shipped);
+      stand(g, registry, 'res-normal-1', 2, 6);
+      stand(g, registry, 'res-normal-1', 8, 3);
+      setLandValue(g, 200);
+
+      const plat = platOf(plain(g), ZoneType.ResLow);
+      expect(plat.parcels.length).toBeGreaterThan(0);
+      // A double lot is 2x2 and each side is two deep: a double fits wherever two
+      // free tiles run along the street, and a single leftover tile cannot hold
+      // one, so it plats normal, the largest that fits.
+      for (const p of plat.parcels) {
+        expect(['double', 'normal'], `${p.lot} ${p.x},${p.z}`).toContain(p.lot);
+        if (p.lot === 'normal') expect(p.w).toBe(1);
+      }
+      expect(plat.parcels.filter((p) => p.lot === 'double').length).toBeGreaterThan(0);
+      expect(overlapsStanding(plat, registry)).toEqual([]);
+      for (const b of registry.all()) {
+        expect(b.catalogId).toBe('res-normal-1');
+        expect(footprintTiles(b, entry(b.catalogId))).toHaveLength(2);
+      }
+
+      const old = registry.all().map((b) => ({ x: b.x, z: b.z }));
+      growMore(
+        g,
+        registry,
+        shipped.filter((e) => e.zone === ZoneType.ResLow && e.kind === 'detached'),
+        ZoneType.ResLow,
+        1,
+        4,
+      );
+      const all = registry.all();
+      expect(all.length).toBeGreaterThan(old.length);
+      for (const o of old) {
+        const b = all.find((a) => a.x === o.x && a.z === o.z)!;
+        // A level-up swaps the entry but keeps the normal lot and its footprint.
+        expect(entry(b.catalogId).lot).toBe('normal');
+        expect(entry(b.catalogId).footprint).toEqual({ w: 1, d: 2 });
+      }
+      const fresh = all.filter((a) => !old.some((o) => o.x === a.x && o.z === a.z));
+      expect(fresh.length).toBeGreaterThan(0);
+      for (const b of fresh) {
+        const e = entry(b.catalogId);
+        expect(['double', 'normal'], b.catalogId).toContain(e.lot);
+        if (e.lot === 'normal') expect(e.footprint.w).toBe(1);
+      }
+      // No two buildings share a tile.
+      const used = all.flatMap((b) => footprintTiles(b, entry(b.catalogId)));
+      expect(new Set(used).size).toBe(used.length);
+    });
+
+    it('land value falling re-cuts the gaps as half lots and leaves the doubles standing', () => {
+      const g = twoSidedStreet(false, 200);
+      const registry = new BuildingRegistry(shipped);
+      for (const [x, z] of [
+        [1, 6],
+        [5, 6],
+        [3, 3],
+      ] as const) {
+        stand(g, registry, 'res-low-1', x, z);
+      }
+      const doubles = registry.all().map((b) => ({ id: b.id, x: b.x, z: b.z }));
+      setLandValue(g, 20);
+
+      const plat = platOf(plain(g), ZoneType.ResLow);
+      expect(plat.parcels.length).toBeGreaterThan(0);
+      for (const p of plat.parcels) expect(p.lot, `${p.x},${p.z}`).toBe('half');
+      expect(overlapsStanding(plat, registry)).toEqual([]);
+
+      const halfKinds = shipped.filter((e) => e.zone === ZoneType.ResLow && e.lot === 'half');
+      expect(halfKinds.length).toBeGreaterThan(0);
+      const catalog = shipped.filter((e) => e.zone === ZoneType.ResLow);
+      growMore(g, registry, catalog, ZoneType.ResLow, 1, 5);
+      const all = registry.all();
+      expect(all.length).toBeGreaterThan(doubles.length);
+      for (const d of doubles) {
+        const b = registry.get(d.id)!;
+        expect([b.x, b.z, entry(b.catalogId).lot]).toEqual([d.x, d.z, 'double']);
+        expect(entry(b.catalogId).footprint).toEqual({ w: 2, d: 2 });
+      }
+      for (const b of all.filter((a) => !doubles.some((d) => d.id === a.id))) {
+        expect(b.catalogId, `${b.x},${b.z}`).toMatch(/^res-(half|duplex-h|fourplex-h)-/);
+      }
+    });
+
+    it('cuts the same plat twice on an unchanged grid', () => {
+      const g = twoSidedStreet(false, 100);
+      const registry = new BuildingRegistry(shipped);
+      stand(g, registry, 'res-normal-1', 2, 6);
+      expect(platOf(plain(g), ZoneType.ResLow)).toEqual(platOf(plain(g), ZoneType.ResLow));
+      growMore(g, registry, shipped, ZoneType.ResLow, 1, 6);
+      expect(platOf(plain(g), ZoneType.ResLow)).toEqual(platOf(plain(g), ZoneType.ResLow));
     });
   });
 });

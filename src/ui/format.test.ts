@@ -1,14 +1,45 @@
 import { describe, expect, it } from 'vitest';
 import { CLOCK_START_OFFSET_TICKS, VISUAL_DAY_TICKS } from '../shared/constants';
+import catalogData from '../data/catalog.json';
+import type { BuildingCatalogEntry } from '../shared/types';
 import {
   demandPct,
   formatClock,
   formatFunds,
   formatPopulation,
   happinessFace,
+  lotLine,
   seasonForMonth,
   trendOf,
 } from './format';
+
+const catalogEntry = (id: string): BuildingCatalogEntry => {
+  const found = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.find(
+    (b) => b.id === id,
+  );
+  if (!found) throw new Error(`no catalog entry ${id}`);
+  return found;
+};
+
+describe('lotLine', () => {
+  it.each([
+    ['res-half-1', 'Half lot, 400 m²'],
+    ['res-normal-1', 'Normal lot, 800 m²'],
+    ['res-normal-t-1', 'Normal lot, 800 m²'],
+    ['res-low-1', 'Double lot, 1,600 m²'],
+    ['res-estate-1', 'Estate lot, 2,400 m²'],
+    ['res-estate-t-1', 'Estate lot, 2,400 m²'],
+    ['res-duplex-h-1', 'Half lot, 400 m²'],
+    ['res-multiplex-1', 'Two normal lots, 1,600 m²'],
+  ])('%s reads %s', (id, expected) => {
+    expect(lotLine(catalogEntry(id))).toBe(expected);
+  });
+
+  it('is null for a building with no lot', () => {
+    expect(lotLine(catalogEntry('com-low-1'))).toBeNull();
+    expect(lotLine(catalogEntry('police-station'))).toBeNull();
+  });
+});
 
 describe('formatClock', () => {
   it('boots at 09:00 — tick 0 renders the §6.5 morning start, not midnight', () => {

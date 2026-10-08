@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 4,906 tests passing across 162 test files, run 2026-10-07.
+**Test suite:** 4,920 tests passing across 162 test files, run 2026-10-07.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -156,13 +156,15 @@ pipe drag snaps onto the system and says what it joins
 ([underground-view.md](game-design/features/underground-view.md)).
 
 **Next:** lots and land continues
-([lots-and-land.md](game-design/features/lots-and-land.md)): five slices
+([lots-and-land.md](game-design/features/lots-and-land.md)): seven slices
 are built, the detached house on the lot the land warrants, the plat cut
 from the street, the plat drawn on the zone lens, the duplex and the
-fourplex on the plat, and medium density assembling two parcels; replatting
-on a rezone or an empty lot's value change is next, then the other
-densities' parcels (row housing, high density, mixed, commercial), then the
-inspector's lot line.
+fourplex on the plat, medium density assembling two parcels, replatting
+under empty ground, and the inspector's lot line. Next are the other
+densities' parcels (row housing, high density, mixed, commercial). The
+townhouse row today grows 1×2, 1×4 and 1×6 across its levels, which
+conflicts with "a level keeps its lot", so that slice needs a decision
+first. Then the 3×3 estate where a block is deep.
 After it, the municipal
 services programme's epics
 ([municipal-services.md](game-design/features/municipal-services.md)), the
@@ -308,6 +310,23 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Replatting holds, and the inspector names the lot (built 2026-10-07)
+
+The sixth and seventh slices of lots and land. Replatting needed no new
+machinery: the plat is re-cut every growth pass from the zone, the roads, the
+buildings and the land value, so it changes under empty ground only. Painting
+a zone changes only empty land and a building keeps the zone it grew on for
+life, so a low-density block painted medium leaves its houses on their lots
+and cuts the empty ground into normal parcels a multiplex assembles in pairs.
+Land value moving re-cuts empty parcels only; a built parcel never moves. A
+street that comes good grows bigger lots in its gaps and keeps its small
+houses until they go, and one that falls grows small homes in its gaps.
+Tests in `src/sim/growth.test.ts`, "the plat changes under empty ground
+only", prove it. The building info panel gained a `Lot` row after Zone
+("Half lot, 400 m²", "Two normal lots, 1,600 m²"), from `lotLine(entry)` in
+`src/ui/format.ts`, which reads the catalog entry's lot and footprint at
+400 m² a tile; a building with no lot shows no row.
 
 ### Medium density assembles two parcels (built 2026-10-07)
 

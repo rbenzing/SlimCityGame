@@ -710,10 +710,17 @@ MUTCD citations below use 11th-edition section numbers.
   ever share a tile: a run cut later steps over what an earlier one claimed.
   The zone lens draws that same plat — the one function, over the render
   mirror and the land value asked of the worker — so the lines the player
-  sees are exactly the lots that will grow. —
+  sees are exactly the lots that will grow. The plat is re-cut every growth
+  pass and never stored, and it re-cuts only empty ground: a built parcel
+  never moves when the land value rises or falls, and painting a zone never
+  changes a built tile, so a rezone leaves the standing houses on the lots
+  they grew on and replats only the gaps. The inspector's lot line reads the
+  catalog entry's lot and footprint, at 400 m² a tile, and a building with
+  no lot shows no row. —
   [lots-and-land.md](game-design/features/lots-and-land.md#the-plat-is-cut-from-the-street-built-2026-10-07);
   `platOf`, `parcelsAnchoredAt` in `src/world/plat.ts`, `setParcels` in
-  `src/render/zonegrid.ts`
+  `src/render/zonegrid.ts`, `cmdPaintZone` in `src/sim/worker.entry.ts`,
+  `lotLine` in `src/ui/format.ts`
 - Every zoned catalog figure is derived from a published source by the rules
   in [balancing.md](game-design/balancing.md#residential-kinds): residents are
   `round(units × household)`, a building's households are its `units`, and
