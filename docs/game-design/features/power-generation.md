@@ -1,6 +1,6 @@
 # Power generation — design
 
-- **Status:** Draft; the two existing generators re-derived from published figures, the grid sized on nameplate × capacity factor and the turbine drawn at the size of its machine, agreed 2026-10-02 and built 2026-10-05 (see [The generators, re-derived](#the-generators-re-derived))
+- **Status:** Partly built — the two existing generators re-derived from published figures, the grid sized on nameplate × capacity factor and the turbine drawn at the size of its machine, agreed 2026-10-02 and built 2026-10-05 (see [The generators, re-derived](#the-generators-re-derived)); the gas turbine, combined-cycle station and nuclear station not built
 - **Date:** 2026-09-18, baseline rewritten 2026-10-05
 
 ## What the player gets

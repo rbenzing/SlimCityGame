@@ -1,6 +1,6 @@
 # Service capacity — design
 
-- **Status:** Draft
+- **Status:** Built 2026-09-18; the Services panel built 2026-09-21
 - **Date:** 2026-09-18
 
 Epic 0 of the municipal services programme
@@ -127,46 +127,58 @@ not change — capacity is catalog data, not saved state.
 
 ## Tuning
 
-Every figure comes from a published per-capita provision standard and our own scale, and
-shows its arithmetic. Settled values belong in [../balancing.md](../balancing.md).
+Every figure comes from published staffing, workload or enrolment figures and our own
+scale, and shows its arithmetic; where no source was found, the figure is a stated dial.
+Settled values belong in [../balancing.md](../balancing.md).
 
-**Police station — 25,000 people.** Full-time sworn officers per 1,000 residents in the
-United States has sat at about **2.4** for two decades, across a range from roughly 1.8
-in low-density suburbs to 3.5 in large dense cities; we take the average, because the
-first station here serves a town. A station is built around the smallest
-establishment that patrols a town round the clock without calling on a neighbour: **60
-sworn**, which after the usual five-to-one factor for shifts, leave, training and
-non-patrol assignment puts about twelve officers on duty at any hour. 60 ÷ 2.4 × 1,000 =
-**25,000**.
+**Police station — 25,000 people.** There is no national per-capita staffing standard for
+police ([ICMA, myths vs reality](https://icma.org/myths-vs-reality)), so the station is
+sized on what towns actually field. US cities of 10,000–24,999 residents employ **1.9
+full-time sworn officers per 1,000**, in 2016 and again in 2019
+([FBI, Crime in the United States 2019, table 71](https://ucr.fbi.gov/crime-in-the-u.s/2019/crime-in-the-u.s.-2019/tables/table-71));
+the national rate across all local agencies is higher and falling, from 2.42 in 1997 to
+2.17 in 2016
+([BJS, full-time employees in law enforcement agencies 1997–2016](https://bjs.ojp.gov/library/publications/full-time-employees-law-enforcement-agencies-1997-2016)),
+and we take the small-city figure because the first station serves a town. The 25,000 is
+the dial: the top of that town class, whose whole force works out of one station. It
+holds 25 × 1.9 = **about 48 sworn**. About **68%** of local officers are assigned to
+patrol ([BJS, local police departments 2013](https://bjs.ojp.gov/content/pub/ascii/lpd13ppp.txt)),
+so 32 patrol, and one post staffed round the clock takes **5.5–6 officers**
+([Seattle, SPD staffing](https://www.seattle.gov/Documents/Departments/Council/Committees/CentralStaff/TopicPapers/6d.-SPD-Staffing.pdf)):
+32 ÷ 5.5 ≈ **6 cars on duty at every hour**, a town patrolling itself without calling on
+a neighbour.
 
-**Fire station — 13,000 people.** The national fire service standard puts **4
-firefighters** on the first-arriving engine, and that seat has to be filled every hour of
-the year: a three-platoon rotation with relief for leave and training costs about **4.5
-people per seat**, so one engine company is 4 × 4.5 = **18 career firefighters**. Career
-departments run at about **1.4 firefighters per 1,000 protected residents**. 18 ÷ 1.4 ×
-1,000 = 12,857 → **13,000**. The common rule of one engine per 20,000 would be more
-generous; we took the staffing route because it multiplies two published figures rather
-than quoting a rule of thumb.
+**Fire station — 14,000 people.** NFPA 1710 puts **4 firefighters** on an engine company,
+and that seat has to be filled every hour of the year: a 24-hour rotation with relief for
+leave and training costs about **4.5 people per seat** (Kirkland, Washington derives 4.75
+for its own department,
+[2025–26 fire overtime issue paper](https://www.kirklandwa.gov/files/sharedassets/public/v/1/finance-and-administration/budget-documents/25-26-budget/2025-2026-fire-overtime-issue-paper.pdf)),
+so one engine company is 4 × 4.5 = **18 career firefighters**. The median for
+communities of 25,000–49,999 is **1.30 career firefighters per 1,000 residents**
+([NFPA, US Fire Department Profile 2020](https://content.nfpa.org/-/media/Project/Storefront/Catalog/Files/Research/NFPA-Research/Emergency-responders/osFDProfileTables.pdf)).
+18 ÷ 1.30 × 1,000 = 13,846 → **14,000**. It agrees with the NFPA Fire Protection Handbook
+(2003), which puts 15,000–20,000 people behind each engine in large cities. The often
+quoted one engine per 20,000 is neither an ISO nor an NFPA standard, so it is not used.
 
-**Clinic — 8,000 people.** A full-time primary-care physician's registered panel is
-quoted between **1,500 and 2,500 patients**; the observed average sits near the top and
-the "reasonable panel" literature near the bottom. We take the middle, **2,000**, because
-the top end describes practices already overloaded and we are deriving what a clinic
-_can_ serve. A community clinic is **4 full-time physicians**, the smallest practice that
-covers its own rota without locum cover. 4 × 2,000 = **8,000**.
+**Clinic — 8,000 people.** A full-time primary-care physician carries a panel of about
+**2,000**, between the workable panels Altschuler and colleagues derive — **1,947**,
+1,523 and 1,387 patients as more or less care is delegated to the team
+([Annals of Family Medicine, 2012](https://www.annfammed.org/content/10/5/396)) — and the
+observed US average of about **2,300**, which describes practices already overloaded. A
+community clinic is **4 full-time physicians**, a stated dial: no source was found for
+physicians per site. 4 × 2,000 = **8,000**.
 
-**School — 5,000 people.** A primary cohort is **7 year groups** (ages 5 to 11). A single
-year of age is about **1.2%** of a stable population — an even spread over a 75-year span
-gives 1.33%, and a real city skews older. Seven year groups is 8.4% of the population, or
-**84 primary places per 1,000 residents**, which sits between the two ratios it can be
-checked against: elementary enrolment of about 7% of population (70 per 1,000), and the
-dwelling-based planning ratio of 25 primary places per 100 dwellings at 2.3 residents per
-dwelling (109 per 1,000). A standard **two-form-entry** primary is 2 classes × 7 years ×
-30 pupils = **420 places**. 420 ÷ 84 × 1,000 = **5,000**.
+**School — 7,000 people.** The average US public elementary school enrols **456** pupils
+([NCES Digest table 216.75, 2019–20](https://nces.ed.gov/programs/digest/d21/tables/dt21_216.75.asp)).
+Public enrolment in kindergarten through grade 5 was 21.34 million in fall 2022
+([NCES Digest table 203.10](https://nces.ed.gov/programs/digest/d23/tables/dt23_203.10.asp)),
+against about 333 million residents: **64 pupils per 1,000**. 456 ÷ 64 × 1,000 = 7,125 →
+**7,000**. The national count agrees: about 52,300 public elementary schools for about
+328 million people is one school per 6,300 residents.
 
 Together these say a fully served city of 25,000 holds one police station, two fire
-stations, three clinics and five schools. That is roughly the shape of a real town, and
-it is that shape because the standards say so.
+stations, three clinics and four schools. That is roughly the shape of a real town, and
+it is that shape because the published figures say so.
 
 ### Do the existing buildings match?
 
@@ -176,15 +188,15 @@ area = w × d × 185 × (height ÷ 3.2) — at the scale in
 
 | Building       | Derived area | Catalog size | Catalog area | Verdict                           |
 | -------------- | ------------ | ------------ | ------------ | --------------------------------- |
-| police-station | 1,670 m²     | 2×2 × 12 m   | 2,775 m²     | 66% over; height should be 8.0 m  |
+| police-station | 1,420 m²     | 2×2 × 12 m   | 2,775 m²     | 95% over; height should be 6.4 m  |
 | fire-station   | ~500 m²      | 2×2 × 12 m   | 2,775 m²     | height should be 6.4 m; lot right |
 | clinic         | 690 m²       | 2×2 × 14 m   | 3,238 m²     | height should be 6.4 m; lot right |
-| school         | 2,100 m²     | 3×3 × 10 m   | 5,203 m²     | height should be 6.4 m; lot right |
+| school         | 2,240 m²     | 3×3 × 10 m   | 5,203 m²     | height should be 6.4 m; lot right |
 
-- **Police**: 60 sworn + 20 civilian = 80 staff at the business occupancy factor of 13.9
-  m² gross = 1,112 m² of office and counter, plus half as much again for custody,
-  evidence, armoury, gear and garage = **1,670 m²**. Over two storeys on a 2×2 lot that
-  is 1,670 ÷ 740 × 3.2 = 7.2 m; **8.0 m** is the round.
+- **Police**: 48 sworn + 20 civilian = 68 staff at the business occupancy factor of 13.9
+  m² gross = 945 m² of office and counter, plus half as much again for custody,
+  evidence, armoury, gear and garage = **1,420 m²**. On a 2×2 lot that is 1,420 ÷ 740 ×
+  3.2 = 6.1 m; two storeys, **6.4 m**, is the round.
 - **Fire**: two back-in apparatus bays at 4.9 × 14.0 m = 137 m², quarters for five
   on-duty positions at about 35 m² each = 175 m², offices 3 × 13.9 = 42 m², plus 40% for
   circulation, gear and plant = **~500 m²**. Height comes from the bay, not the area: a
@@ -194,10 +206,9 @@ area = w × d × 185 × (height ÷ 3.2) — at the scale in
   13.9 m² gross = 514 m², plus a third for imaging, records and plant = **690 m²** over
   two storeys. The lot comes from the car park: 25 stalls at 2.7 × 5.5 m with a 7.3 m
   aisle is about 600 m² of ground.
-- **School**: 420 pupils at the classroom factor of 1.9 m² net ÷ 0.65 efficiency = 1,228
-  m²; hall and dining for half the school at a sitting, 210 × 1.4 m² net ÷ 0.65 = 452 m²;
-  30 staff at 13.9 m² = 417 m². Total **2,100 m²**, which is 5.0 m² per place — what a
-  two-form-entry primary actually is.
+- **School**: 456 pupils at the classroom factor of 1.9 m² net ÷ 0.65 efficiency = 1,333
+  m²; hall and dining for half the school at a sitting, 228 × 1.4 m² net ÷ 0.65 = 491 m²;
+  30 staff at 13.9 m² = 417 m². Total **2,240 m²**, which is 4.9 m² per place.
 
 **The contradiction is the heights, and it is all four of them.** Every existing service
 building is between 3.1 and 4.4 storeys, and none of a town police station, a firehouse,
@@ -210,8 +221,8 @@ site rather than by the massing formula, which assumes a building filling 13.6 m
 tile. Where that happens the formula over-reads the floor area, and the honest move is to
 say by how much rather than shave the height until the sum balances.
 
-The school is where a standard loses outright. Outdoor play for 420 primary pupils is
-about 10 m² each, or 4,200 m², and a 3×3 lot leaves only 1,936 m² outside the building. A
+The school is where a standard loses outright. Outdoor play for 456 elementary pupils is
+about 10 m² each, or 4,560 m², and a 3×3 lot leaves only 1,936 m² outside the building. A
 4×4 lot is still short at 3,441 m² and is 80 m of frontage no growing city can site. The
 grid wins: the school keeps 3×3 and is under-provided with playing field, and this note
 is the record of that rather than a rounded number hiding it.
@@ -224,10 +235,10 @@ those epics touch the geometry and this one deliberately does not.
 
 This epic changes no cost. It makes the existing ones comparable, because a price divided
 by a capacity is a price per person. Per 1,000 residents served, a police station costs
-¢160 to build and ¢12 a month to run; a fire station ¢346 and ¢25; a clinic ¢625 and ¢48;
-a school ¢1,200 and ¢80 — the ladder the standards imply, cheapest service first.
+¢160 to build and ¢12 a month to run; a fire station ¢321 and ¢23; a clinic ¢625 and ¢48;
+a school ¢857 and ¢57 — the ladder the published figures imply, cheapest service first.
 
-A fully served city pays about ¢165 a month per 1,000 residents across the four. The
+A fully served city pays about ¢140 a month per 1,000 residents across the four. The
 programme's affordability override — the small facility must be buyable by a city that
 has just unlocked it — does not bite here: the first school still costs ¢6,000 at the
 milestone it always did, and capacity adds nothing to the bill. It bites in the ladder

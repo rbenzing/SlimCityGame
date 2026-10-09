@@ -1,6 +1,6 @@
 # Garbage recovery — technical design
 
-- **Status:** Draft
+- **Status:** Built 2026-10-08
 - **Date:** 2026-09-18
 - **Author:** Claude Opus 5
 

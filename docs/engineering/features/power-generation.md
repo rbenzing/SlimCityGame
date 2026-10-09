@@ -1,6 +1,6 @@
 # Power generation — technical design
 
-- **Status:** Draft; the baseline it builds on changed 2026-10-05 (nameplate × capacity factor, every ploppable's draw sourced, the turbine drawn at size)
+- **Status:** Partly built — the water placement gate built 2026-10-02 for the pumping station, and the baseline it builds on changed 2026-10-05 (nameplate × capacity factor, every ploppable's draw sourced, the turbine drawn at size); the three plants and their kits not built
 - **Date:** 2026-09-18
 - **Author:** Claude Opus 5
 
@@ -12,8 +12,8 @@ which holds every derivation; this document holds the code.
 ## What we are building, and why now
 
 Three catalog entries — a 30 MW gas turbine, a 250 MW combined-cycle station and
-a 1,100 MW nuclear station — one new placement gate, and three detail kits. A
-city can then answer its own growth with a bigger plant instead of another copy
+a 1,100 MW nuclear station — and three detail kits, the station sited by the
+existing water placement gate. A city can then answer its own growth with a bigger plant instead of another copy
 of the same one. Now, because it is the smallest epic in the programme and the
 only one touching neither the save format nor the worker protocol; it can land
 before or after [service-capacity.md](service-capacity.md), since power is a
@@ -24,8 +24,8 @@ utility rather than a service field and consumes nothing that epic builds.
 | Module                      | Change                                                           |
 | --------------------------- | ---------------------------------------------------------------- |
 | `src/data/catalog.json`     | Three new `utility` entries. No existing entry changes           |
-| `src/shared/types.ts`       | `requiresAdjacent?: 'rail'` widens to `'rail' \| 'water'`        |
-| `src/sim/worker.entry.ts`   | The placement gate gains a water branch beside the rail one      |
+| `src/shared/types.ts`       | **None.** `requiresAdjacent` already takes `'rail' \| 'water'`   |
+| `src/sim/worker.entry.ts`   | **None.** The placement gate already has a water branch          |
 | `src/render/utilitykits.ts` | Three kits added to `UTILITY_KIT_CATALOG_IDS`                    |
 | `src/sim/network.ts`        | **None.** Supply already sums `utility.powerMW` over the catalog |
 | `src/app/persist.ts`        | **None.** See the save rule below                                |
@@ -92,12 +92,12 @@ air-pollutant source that a reactor has none of.
 
 ### The placement gate
 
-`requiresAdjacent` is the existing precedent and widens by one member, to
-`'rail' | 'water'`. `worker.entry.ts` already refuses a build whose footprint has
-no adjacent rail tier; the water branch is the same shape against
-`GridState.water`, already the mask that makes a tile unbuildable — so the
-footprint stands on land and merely _touches_ water. The rail path stays
-byte-identical: the water check is an added branch, not a rewrite of it.
+`requiresAdjacent` already takes `'rail' | 'water'`; the water member arrived with
+the pumping station. `worker.entry.ts` refuses a build whose footprint has no
+adjacent rail tier, and its water branch is the same shape against
+`GridState.water`, the mask that makes a tile unbuildable — so the footprint
+stands on land and merely _touches_ water. The plants set `requiresAdjacent:
+'water'` and add no gate code.
 
 ### Rendering
 
@@ -136,9 +136,9 @@ front-loaded: ¢535,000, the milestone gate, the water gate, 64 tiles. If that i
 not enough, the dial to turn is the cost, bracketed between $7,000 and $15,000
 per kW.
 
-**Widening a shipped field.** `requiresAdjacent` is read in exactly one place
-today, which makes the change small and also makes it easy to widen carelessly.
-It must not become a general placement-predicate system here.
+**Leaning on a shipped field.** `requiresAdjacent` is read in exactly one place,
+which makes it easy to widen carelessly. It must not become a general
+placement-predicate system here.
 
 **The 8×8 breaks the six-tile massing rule** in
 [../../art/civic-massing.md](../../art/civic-massing.md). The design document
@@ -204,8 +204,8 @@ from the [documentation map](../../README.md):
 - A nuclear station with no orthogonally adjacent water tile is refused; the same
   station one tile nearer the shore is accepted. The gate is adjacency, not
   occupancy — the footprint still may not stand on water.
-- `requiresAdjacent: 'rail'` behaves exactly as today. This is the regression the
-  widened union has to earn.
+- `requiresAdjacent: 'rail'` behaves exactly as today, and the pumping station,
+  drain and treatment works keep their shore gate.
 - A save written before this epic loads with every building intact and the same
   `powerSupply`, `powerDemand` and coverage grid. Written first, because it
   protects every city that already exists.

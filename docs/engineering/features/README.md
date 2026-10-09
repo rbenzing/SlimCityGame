@@ -62,7 +62,7 @@ first.
 | 2   | [healthcare-and-death-care.md](healthcare-and-death-care.md) | additive              | additive        |
 | 3   | [education-ladder.md](education-ladder.md)                   | additive              | additive        |
 | 4   | [emergency-services.md](emergency-services.md)               | no                    | additive        |
-| 5   | [garbage-recovery.md](garbage-recovery.md)                   | additive, one rescale | additive        |
+| 5   | [garbage-recovery.md](garbage-recovery.md)                   | additive, one rescale (v15, built) | additive        |
 | 6   | [power-generation.md](power-generation.md)                   | no                    | no              |
 | 7   | [transport-depots.md](transport-depots.md)                   | additive              | additive        |
 | 8   | [parks-and-recreation.md](parks-and-recreation.md)           | no                    | additive        |

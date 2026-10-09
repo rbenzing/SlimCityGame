@@ -136,6 +136,17 @@ Every figure is derived in [features/municipal-services.md](features/municipal-s
 | airport              | 0.4 MW    | 175 kL  | A 418,000 sf terminal; four million passengers a year at 4.2 gallons.                               | `src/data/catalog.json` |
 | incinerator          | 1.18 MW   | 2 kL    | Its 450 ton-a-day burn at 63 kWh a ton; water unsourced.                                            | `src/data/catalog.json` |
 
+## Service capacity
+
+Every figure is derived in [features/service-capacity.md](features/service-capacity.md#tuning).
+
+| Building       | Capacity | Meaning                                                                                                                                                     | File                    |
+| -------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| police station | 25,000   | A dial: the top of the FBI's 10,000–24,999 town class, whose 1.9 sworn per 1,000 is 48 officers and, at 68% on patrol (BJS) and 5.5–6 a post, six cars round the clock. | `src/data/catalog.json` |
+| fire station   | 14,000   | One engine of 4 (NFPA 1710) at about 4.5 people a seat is 18 firefighters, over NFPA's median 1.30 career firefighters per 1,000 for 25,000–49,999. | `src/data/catalog.json` |
+| clinic         | 8,000    | 4 physicians, a dial, at a panel of 2,000: between Altschuler's workable 1,947 and the US average of about 2,300.                                          | `src/data/catalog.json` |
+| school         | 7,000    | The average US public elementary school's 456 pupils (NCES 216.75) over K–5's 64 pupils per 1,000 residents (NCES 203.10).                                 | `src/data/catalog.json` |
+
 ## Soil and farms
 
 Every figure is sourced in [features/farms.md](features/farms.md).
