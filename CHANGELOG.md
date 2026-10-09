@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.50.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.49.0...slimcity-v1.50.0) (2026-10-09)
+
+
+### Features
+
+* **garbage:** a transfer station lends the dump its reach ([a455ede](https://github.com/rbenzing/SlimCityGame/commit/a455edee089a61b75eb126f52f0d2e872cfe1b34))
+* **garbage:** a transfer station lends the dump its reach ([898c473](https://github.com/rbenzing/SlimCityGame/commit/898c47331781a5a2d2ab0e698f414a91b302d4d8))
+
 ## [1.49.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.48.0...slimcity-v1.49.0) (2026-10-08)
 
 
