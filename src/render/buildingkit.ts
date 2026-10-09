@@ -26,6 +26,7 @@ import { maxHeightUnderBody } from './footprint';
 import { findRoadFacingEdge, localSideOf, NO_STREETS, type Side } from './frontage';
 import { materialHex } from './palette';
 import { partsFor, type BuildingPart } from './archetypes';
+import { FUEL_CANOPY_DEPTH_M, FUEL_CANOPY_GAP_M, TANK_DIAMETER_M, TANK_GAP_M } from './lotplan';
 
 const INITIAL_PART_CAPACITY = 32;
 
@@ -78,23 +79,21 @@ const SIGN_FRONTAGE_FRACTION = 0.7;
 /** The band sits just above the shopfront, i.e. above the canopy. */
 const SIGN_ABOVE_CANOPY_M = 0.5;
 
+/** The forecourt canopy's and the tank farm's ground, which the lot plan keeps clear for them. */
+export { FUEL_CANOPY_GAP_M, FUEL_CANOPY_DEPTH_M, TANK_DIAMETER_M, TANK_GAP_M };
 /** A filling station's canopy stands off the kiosk over the forecourt, on posts. */
-export const FUEL_CANOPY_GAP_M = 2;
-export const FUEL_CANOPY_DEPTH_M = 10;
 export const FUEL_CANOPY_THICKNESS_M = 0.5;
 export const FUEL_CANOPY_HEIGHT_M = 5.2;
 export const FUEL_CANOPY_FRONTAGE_FRACTION = 0.9;
 const FUEL_POST_M = 0.4;
 const FUEL_POST_INSET_M = 1;
-/** Two pump islands under the canopy, behind the bay row where the cars stand. */
+/** Two pump islands under the canopy, on the forecourt the lot plan keeps clear. */
 export const PUMP_ISLAND_SIZE_M: readonly [number, number, number] = [1, 1.4, 3];
 const PUMP_OUT_FROM_WALL_M = 4.5;
 
 /** A tank farm: three tanks in a row off the wall opposite the street, in the yard behind the plant. */
 export const TANK_COUNT = 3;
-export const TANK_DIAMETER_M = 6;
 export const TANK_HEIGHT_M = 5;
-export const TANK_GAP_M = 2;
 export const TANK_SPACING_M = 7.5;
 
 export interface PartPlacement {
@@ -501,7 +500,11 @@ export class BuildingKitRenderer {
       // The offset rotates with the footprint; the size does not, because the
       // instance quaternion already turns the box itself.
       const rotated = rotateLocal(p.offset[0], p.offset[2], building.rotation);
-      _position.set(centerX + rotated.x, groundY + p.offset[1], centerZ + rotated.z);
+      _position.set(
+        centerX + frontage.centerXM + rotated.x,
+        groundY + p.offset[1],
+        centerZ + frontage.centerZM + rotated.z,
+      );
       _quaternion.setFromAxisAngle(_yAxis, building.rotation * (Math.PI / 2));
       _scale.set(p.size[0], p.size[1], p.size[2]);
       _matrix.compose(_position, _quaternion, _scale);

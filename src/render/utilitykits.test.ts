@@ -85,7 +85,7 @@ import {
   hospitalDeckSpaces,
   type Rect,
 } from './utilitykits';
-import { adaAccessibleSpaces } from './kerbstalls';
+import { adaAccessibleSpaces } from '../shared/parkingcode';
 import catalogData from '../data/catalog.json';
 import {
   BuildingCatalogEntry,
@@ -1851,7 +1851,9 @@ describe('hospital kit', () => {
       const beside = [layout.accessible[i - 1], layout.accessible[i + 1]];
       expect(beside.some((p) => p?.kind === 'aisle')).toBe(true);
     });
-    expect(ACCESSIBLE_SPACE_M).toEqual({ car: 2.44, van: 3.35, aisle: 1.52 });
+    expect(ACCESSIBLE_SPACE_M.car).toBeCloseTo(2.4384, 9);
+    expect(ACCESSIBLE_SPACE_M.van).toBeCloseTo(3.3528, 9);
+    expect(ACCESSIBLE_SPACE_M.aisle).toBeCloseTo(1.524, 9);
   });
 
   it('keeps every part inside the lot and clear of one another: block, canopies, accessible row, deck', () => {

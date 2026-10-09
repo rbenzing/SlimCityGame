@@ -39,7 +39,7 @@
  * id]) — no Math.random/Date.now anywhere, matching every other render/*.ts
  * file. The pure layout functions below are exported so their positions/
  * counts are directly unit-testable without a THREE scene, exactly like
- * parked.ts's findRoadFacingEdge/computeStallPlacements and props.ts's
+ * parked.ts's lotStallPlacement and props.ts's
  * computePropPlacement/rotateLocalOffset.
  */
 import * as THREE from 'three';

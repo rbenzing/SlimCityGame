@@ -25,6 +25,7 @@ import type {
 } from './types';
 import { ZoneType } from './types';
 import { MILESTONES } from './constants';
+import { bodyPlateM2, grossFloorM2, SQ_FT_PER_M2, storeysOf } from './floorarea';
 import catalogData from '../data/catalog.json';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
@@ -238,7 +239,6 @@ const WATER_PER_JOB_KL = 0.104;
 /** A retail floor's draw: 16.7 kWh per square foot a year on a 370, 740 or 1,665 m² plate. */
 const RETAIL_FLOOR_KW: Readonly<Record<number, number>> = { 1: 7.6, 2: 15.2, 3: 34.2 };
 
-const SQ_FT_PER_M2 = 10.764;
 const HOURS_PER_YEAR = 8760;
 /** Net floor is 80% of the plate; a shop job takes 17.5 m² of it, an office job 13. */
 const NET_FLOOR = 0.8;
@@ -648,7 +648,15 @@ describe('Residential kinds (building-types): three levels per kind, every figur
 describe('Commercial kinds (building-types): three levels per kind, every figure derived', () => {
   const ofKind = (kind: CommercialKind) =>
     catalog.filter((e) => e.kind === kind).sort((a, b) => (a.level ?? 0) - (b.level ?? 0));
-  const floorM2 = (k: (typeof COMMERCIAL_KINDS)[number], i: number) => k.plates[i]! * k.storeys[i]!;
+  const floorM2 = (k: (typeof COMMERCIAL_KINDS)[number], i: number) =>
+    grossFloorM2(ofKind(k.kind)[i]!);
+
+  it.each(COMMERCIAL_KINDS)('$kind: its plates and storeys are the drawn floor', (k) => {
+    for (const [i, e] of ofKind(k.kind).entries()) {
+      expect(Math.abs(bodyPlateM2(e) - k.plates[i]!), e.id).toBeLessThan(1);
+      expect(storeysOf(e), e.id).toBe(k.storeys[i]);
+    }
+  });
 
   it('gives every commercial entry a kind, and keeps the corner shop first for the demand span', () => {
     const com = catalog.filter((e) => e.category === 'com');
@@ -727,7 +735,15 @@ describe('Commercial kinds (building-types): three levels per kind, every figure
 describe('Industrial kinds (building-types): three levels per kind, every figure derived', () => {
   const ofKind = (kind: IndustrialKind) =>
     catalog.filter((e) => e.kind === kind).sort((a, b) => (a.level ?? 0) - (b.level ?? 0));
-  const floorM2 = (k: (typeof INDUSTRIAL_KINDS)[number], i: number) => k.plates[i]! * k.storeys[i]!;
+  const floorM2 = (k: (typeof INDUSTRIAL_KINDS)[number], i: number) =>
+    grossFloorM2(ofKind(k.kind)[i]!);
+
+  it.each(INDUSTRIAL_KINDS)('$kind: its plates and storeys are the drawn floor', (k) => {
+    for (const [i, e] of ofKind(k.kind).entries()) {
+      expect(Math.abs(bodyPlateM2(e) - k.plates[i]!), e.id).toBeLessThan(1);
+      expect(storeysOf(e), e.id).toBe(k.storeys[i]);
+    }
+  });
 
   it('gives every works a kind, and keeps the workshop yard first for the demand span', () => {
     const works = catalog.filter(

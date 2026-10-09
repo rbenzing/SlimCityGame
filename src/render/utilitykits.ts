@@ -85,7 +85,13 @@ import { maxHeightOverRect } from './footprint';
 import { InstancedSlotPool } from './massing';
 import { buildServiceVehicleGeometry, type ServiceVehicleKind } from './servicevehicles';
 import { buildVehicleGeometry, sizeForKind, VEHICLE_PALETTE_HEX } from './vehicles';
-import { adaAccessibleSpaces, adaVanSpaces } from './kerbstalls';
+import {
+  ACCESSIBLE_AISLE_M,
+  ACCESSIBLE_CAR_WIDTH_M,
+  ACCESSIBLE_VAN_WIDTH_M,
+  adaAccessibleSpaces,
+  adaVanSpaces,
+} from '../shared/parkingcode';
 import {
   ACCESSIBLE_SYMBOL_M,
   accessibilitySymbolPaint,
@@ -1658,7 +1664,11 @@ const DECK_COLUMN_EVERY_STALLS = 3;
 const DECK_OCCUPANCY = 0.75;
 
 /** ADA 2010 §502.2: a car space 96 in wide, a van space 132 in, each beside a 60 in access aisle. */
-export const ACCESSIBLE_SPACE_M = { car: 2.44, van: 3.35, aisle: 1.52 };
+export const ACCESSIBLE_SPACE_M = {
+  car: ACCESSIBLE_CAR_WIDTH_M,
+  van: ACCESSIBLE_VAN_WIDTH_M,
+  aisle: ACCESSIBLE_AISLE_M,
+};
 const PAINT_LINE_M = 0.1;
 const PAINT_HATCH_SPACING_M = 0.6;
 

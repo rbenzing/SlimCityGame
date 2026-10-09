@@ -94,11 +94,14 @@ or a 2×3 estate reaching to the depth.
 ([Montgomery County C-2](https://www.montgomeryplanning.org/info/documents/C2_001.pdf),
 [Millwood C-1/C-2](https://www.zoneomics.com/code/millwood-WA/chapter_9),
 [Burbank](https://www.zoneomics.com/code/burbank-CA/chapter_7)). The
-commercial kinds built on 2026-10-02 already sit on these: a corner shop on
-1×1, a store on 2×2, the strip on 3×2 to 5×2 and the supermarket on 3×3 to
-5×4, each sized from its parking ratio
-([building-types.md](building-types.md#the-commercial-kinds)). Nothing in
-this feature moves them; what it adds is that a commercial lot is platted
+commercial kinds built on 2026-10-02 take a corner shop on 1×1, a store on
+2×2, the strip on 3×2 to 5×2 and the supermarket on 3×3 to 5×4, but those
+footprints were never sized from parking: every body fills 13.6 m of each lot
+tile, 46% of its lot, not the 0.2–0.3 coverage above. Measured against its
+code, every shop, restaurant, strip and supermarket lot is short of the
+spaces its floor asks for; the lots are now drawn to code and the shortfall
+is the next step's ([parking-to-code.md](parking-to-code.md)). Nothing in
+this feature moves the footprints; what it adds is that a commercial lot is platted
 from the block, so a 2×2 store takes two of the block's 1×2 parcels, and a
 strip takes a run of them (built, see
 [the frontage lots](#commercial-and-dense-land-is-cut-into-frontage-lots-built-2026-10-07)).
@@ -279,10 +282,12 @@ already show.
   plat cannot run away with itself.
 - Not new zones. The densities are the zones there are; the plat is inside
   them.
-- Not a change to the commercial or industrial footprints, which were sized
-  from parking and plant on 2026-10-02 and already sit on the standards. Still
-  true after the ninth slice: the footprints stand, and so do the draw
-  weights; what the lots decide is where a footprint may stand.
+- Not a change to the commercial or industrial footprints, which were set on
+  2026-10-02 by the uniform body fill (13.6 m a tile, 46% coverage), not by
+  parking. Still true after the ninth slice: the footprints stand, and so do
+  the draw weights; what the lots decide is where a footprint may stand.
+  Whether the lot holds its code parking is
+  [parking-to-code.md](parking-to-code.md)'s.
 - Not manufactured homes, which the half lot makes possible later and which
   stay in [../../DESIGN.md](../../DESIGN.md) until asked for.
 

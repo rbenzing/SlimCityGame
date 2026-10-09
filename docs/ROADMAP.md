@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 5,240 tests passing across 171 test files, run 2026-10-08.
+**Test suite:** 5,474 tests passing (5 pending) across 173 test files, run 2026-10-09.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -287,6 +287,34 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Suburban lots drawn to parking code (first slice of parking to code, built 2026-10-09)
+
+Asked for by the player alongside the hospital: the land around commercial
+and industrial buildings to code. A shop's or a works' car park had been one
+stall per building level plus one, along its frontage, at sizes that did not
+match their own comments. Suburban commercial and industrial lots are now
+drawn to US parking code, and downtown (dense commercial and mixed use) is
+exempt, relying on the kerb, as downtown codes allow.
+
+- **The requirement**, from the building's own floor: 5 spaces per 1,000 sq ft
+  for shops, strips and supermarkets, 10 for restaurants, 1 for
+  manufacturing, 0.5 for warehouses and 2 for flex — the code mode across
+  US municipal codes. On the lot: ADA accessible spaces nearest the door
+  (§208.2), loading berths of 12 × 50 ft on the Wadsworth tiers, a planted
+  island at every row end and every 10 spaces, a tree per 10 spaces, and a
+  24 ft curb cut, on 9 × 18 ft stalls and 24 ft aisles.
+- **One floor, one requirement.** The building's floor is now computed in one
+  place, and the renderer, the tests and the requirement all read it; the
+  building keeps its floor and its jobs, and only slides within its lot to
+  make room.
+- **What fits and what does not.** The fuel station and eight industrial kinds
+  hold their minimum at every level. Shops, restaurants, strip malls,
+  supermarkets and flex do not: lots-and-land's claim that commercial lots
+  were sized from parking was wrong — they were sized by the building fill,
+  46% coverage against a suburban 20–30%. Those kinds draw what fits; the
+  next slice gives them larger lots, crediting the kerb stalls painted along
+  their frontage, as the player chose.
 
 ### The healthcare ladder: a clinic at its size, and a hospital (first slice of healthcare and death care, built 2026-10-08)
 

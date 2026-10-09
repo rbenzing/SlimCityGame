@@ -828,7 +828,8 @@ MUTCD citations below use 11th-edition section numbers.
   and a mixed block's shop floor left out) × 85% ÷ a 93 m² apartment,
   rounded. Never count every storey at the ground plate. —
   [building-types.md](game-design/features/building-types.md#the-residential-kinds);
-  `bodyMetresFor` and `computeSetbacks` in `src/render/massing.ts`
+  `bodyMetresFor` in `src/shared/floorarea.ts`, `computeSetbacks` in
+  `src/render/massing.ts`
 - Industry grows on its order book, never its neighbourhood: a works, a
   heavy plant or a farm levels up while industrial demand is above zero and
   the town has room for the jobs it adds, and never reads land value, which
@@ -1033,7 +1034,18 @@ MUTCD citations below use 11th-edition section numbers.
   1 van space in 6. The kerbside table (PROWAG R211) is a different table and
   is never used for a lot or a deck. —
   [healthcare-and-death-care.md](game-design/features/healthcare-and-death-care.md#sizes-costs-and-the-ladder-rule);
-  `adaAccessibleSpaces` in `src/render/kerbstalls.ts`
+  `adaAccessibleSpaces` in `src/shared/parkingcode.ts`
+- A suburban commercial or industrial lot draws its code-minimum spaces (by
+  kind, from its floor: the body's plate times its storeys), its ADA
+  accessible spaces nearest the entrance, its loading berths and its planted
+  islands and trees, all from one shared requirement and one layout of
+  9 × 18 ft stalls on 24 ft aisles. The body is slid, never cut, so the
+  drawn building keeps the floor its jobs come from; a lot that cannot meet
+  its code draws as many spaces as fit, and never a space without the
+  accessible ones it owes. Downtown kinds (ComHigh's office and hotel, Mixed)
+  draw no lot parking and park at the kerb. —
+  [parking-to-code.md](game-design/features/parking-to-code.md);
+  `src/shared/parkingcode.ts`, `src/shared/lotlayout.ts`, `src/shared/floorarea.ts`
 - Every figure in a service plan derives from a published municipal standard
   plus the 20 m tile, never picked to feel right, and any override is stated.
   The smallest facility of a ladder must be affordable to a city that has just

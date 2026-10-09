@@ -15,6 +15,7 @@
  */
 import { BuildingCatalogEntry, ZoneType } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { FLOOR_HEIGHT_METERS } from '../shared/floorarea';
 import { materialUnit, saturatedUnit } from './palette';
 
 // ---------------------------------------------------------------------------
@@ -54,7 +55,7 @@ interface HSL {
 // ---------------------------------------------------------------------------
 
 /** "floors = height/3.2m"; also the window-row floor height. */
-export const FLOOR_HEIGHT_METERS = 3.2;
+export { FLOOR_HEIGHT_METERS };
 /** "bays from footprint" — a ~2.6m structural bay width. */
 export const BAY_WIDTH_METERS = 2.6;
 /** First 3.2m band gets storefront treatment. */

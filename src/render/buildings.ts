@@ -975,10 +975,9 @@ export class BuildingInstancer {
       );
       return;
     }
-    // Commercial/industrial bodies pull back from their road-facing edge so
-    // the parked-car bay row (parked.ts) sits flush in front of the facade
-    // instead of underneath it; every other category gets a zero setback.
-    // The boxes already carry that setback, from computeSetbacks.
+    // A suburban commercial or industrial body stands where its car park
+    // (lotplan.ts) leaves it room, whole; the shift is applied where the tier
+    // is written, and the boxes carry the full plate from computeSetbacks.
     const seat = this.seatFor(entry, instance, boxes[0]!);
     for (let tier = 0; tier < boxes.length; tier++) {
       this.writeTier(bucket, slots[tier]!, tier, boxes[tier]!, instance, heightScale, seat);

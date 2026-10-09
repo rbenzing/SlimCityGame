@@ -33,21 +33,21 @@ import {
   BuildingCatalogEntry,
   BuildingDelta,
   BuildingInstance,
-  BuildingKind,
   BuildingState,
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
+import {
+  bodyMetresFor,
+  DEFAULT_BODY_M_PER_TILE,
+  DETACHED_BODY_MIN_M,
+  MAX_FOOTPRINT_FILL,
+  RES_LOW_BODY_M_PER_TILE,
+} from '../shared/floorarea';
 import { deriveFacadeParams, FLOOR_HEIGHT_METERS } from './facade';
 import { maxHeightUnderBody } from './footprint';
-import {
-  findRoadFacingEdge,
-  findStreetFacingEdge,
-  NO_STREETS,
-  type Side,
-  type StreetLookup,
-} from './frontage';
-import { frontageInsetTiles } from './parked';
+import { findStreetFacingEdge, NO_STREETS, type StreetLookup } from './frontage';
+import { lotPlanFor, lotPointToWorld } from './lotplan';
 import { isFarmEntry, isHouseEntry } from './archetypes';
 
 // ---------------------------------------------------------------------------
@@ -84,19 +84,13 @@ export interface SetbackResult {
  * resized: the heights stay honest, the plans stretch under them, and a house
  * that was a house becomes a bungalow nobody drew.
  */
-/**
- * A detached home is 9–14 m across the front depending on which of the three
- * ResLow sizes grew, since the smallest of them stands on a two-tile lot: the
- * per-tile figure is half a frontage, not a whole one. Measured against the
- * 4.0 m car at the kerb and the 3.2 m storey, a house wider than about 14 m
- * stops reading as a house and starts reading as a hall.
- */
-export const RES_LOW_BODY_M_PER_TILE = 4.75;
-/** A house on a half or a normal lot is as wide as one on a double lot: the lot is what shrinks. */
-export const DETACHED_BODY_MIN_M = 2 * RES_LOW_BODY_M_PER_TILE;
-export const DEFAULT_BODY_M_PER_TILE = 13.6;
-/** No body fills its lot outright, so neighbouring buildings never touch. */
-export const MAX_FOOTPRINT_FILL = 0.85;
+export {
+  RES_LOW_BODY_M_PER_TILE,
+  DETACHED_BODY_MIN_M,
+  DEFAULT_BODY_M_PER_TILE,
+  MAX_FOOTPRINT_FILL,
+  bodyMetresFor,
+};
 
 /** The share of a lot tile a body covers, given what the tile now measures. */
 const fillFor = (bodyMetres: number): number =>
@@ -106,69 +100,6 @@ const fillFor = (bodyMetres: number): number =>
 export const MASSING_FOOTPRINT_SHRINK = fillFor(DEFAULT_BODY_M_PER_TILE);
 /** Detached single-family homes leave a visible yard; a bigger tile is a bigger yard, not a bigger house. */
 export const RES_LOW_FOOTPRINT_SHRINK = fillFor(RES_LOW_BODY_M_PER_TILE);
-
-/**
- * How a kind's body is sized on each lot axis: so many metres per lot tile,
- * or a share of the lot, either way no more than a cap. The missing-middle
- * kinds are fixed-size buildings on whatever lot they got; a block fills its
- * plate.
- */
-interface BodyRule {
-  perTileM?: number;
-  fill?: number;
-  capM?: number;
-  /** A body is never narrower than this, within the 85% of its lot. */
-  minM?: number;
-  /** Replaces the usual 85% ceiling for a kind that builds closer to its lot lines. */
-  maxFill?: number;
-}
-
-/** A townhouse row's body: three 6 m homes, a lot wide and as deep, on a 20 m frontage. */
-const TOWNHOUSE_BODY_CAP_M = 18;
-const TOWNHOUSE_MAX_FILL = 0.9;
-
-const DEFAULT_BODY_RULE: BodyRule = { perTileM: DEFAULT_BODY_M_PER_TILE };
-
-/**
- * The duplex, fourplex and multiplex sizes are the types' own building
- * dimensions; a restaurant is a box on a lot that is mostly car park, and a
- * filling station a kiosk behind its forecourt. A flex building sits in its
- * car park at the type's 25–40% site coverage, and a chemical plant leaves
- * half its site to its tank farm and yards.
- */
-const BODY_RULES: Partial<Record<BuildingKind, BodyRule>> = {
-  detached: { perTileM: RES_LOW_BODY_M_PER_TILE, minM: DETACHED_BODY_MIN_M },
-  duplex: { fill: 0.6, capM: 16 },
-  fourplex: { fill: 0.7, capM: 18 },
-  townhouse: { fill: TOWNHOUSE_MAX_FILL, maxFill: TOWNHOUSE_MAX_FILL, capM: TOWNHOUSE_BODY_CAP_M },
-  multiplex: { perTileM: DEFAULT_BODY_M_PER_TILE, capM: 24 },
-  restaurant: { perTileM: DEFAULT_BODY_M_PER_TILE, capM: 24 },
-  fuel: { fill: 0.35, capM: 16 },
-  flex: { fill: 0.55 },
-  chemical: { fill: 0.5 },
-};
-
-function bodyAxisMetres(tiles: number, rule: BodyRule): number {
-  const lotM = tiles * TILE_METERS;
-  const sized =
-    rule.perTileM !== undefined ? rule.perTileM * tiles : (rule.fill ?? MAX_FOOTPRINT_FILL) * lotM;
-  const wanted = Math.max(sized, rule.minM ?? 0);
-  return Math.min(wanted, rule.capM ?? Infinity, (rule.maxFill ?? MAX_FOOTPRINT_FILL) * lotM);
-}
-
-/**
- * The body's size in metres on each lot axis, by the entry's kind. The single
- * source of truth shared by BuildingInstancer, the massing tiers, the lot
- * plan and the pitched-roof kit, so a building's body, setbacks and roof all
- * stay flush. Pure.
- */
-export function bodyMetresFor(entry: BuildingCatalogEntry): { w: number; d: number } {
-  const rule = (entry.kind && BODY_RULES[entry.kind]) || DEFAULT_BODY_RULE;
-  return {
-    w: bodyAxisMetres(entry.footprint.w, rule),
-    d: bodyAxisMetres(entry.footprint.d, rule),
-  };
-}
 
 /** The share of its lot a body covers on each axis: the body over the lot. */
 export function bodyFillFor(entry: BuildingCatalogEntry): { x: number; z: number } {
@@ -206,9 +137,10 @@ export function tierHeightOf(entry: BuildingCatalogEntry): number {
 export const HOUSE_FRONT_YARD_M = 5.5;
 
 /**
- * World-meter body adjustments that clear the frontage parking-bay row
- * (parked.ts): span reductions along the frontage axis plus the matching
- * center shift away from the road. All zero when the building gets no bays.
+ * World-meter body adjustments on its lot: where a suburban car park laid to
+ * code (lotplan.ts) or a home's front yard moves the body, as a centre shift,
+ * and span reductions, which no rule now makes. All zero for a body centred
+ * on its lot.
  */
 export interface FrontageSetback {
   /** Meters removed from the body's X span (E/W frontage road). */
@@ -224,17 +156,13 @@ export interface FrontageSetback {
 const ZERO_FRONTAGE_SETBACK: FrontageSetback = { spanXM: 0, spanZM: 0, centerXM: 0, centerZM: 0 };
 
 /**
- * How far a building's body must pull back from its road-facing footprint
- * edge so the parked-car bay row sits in FRONT of the facade instead of
- * underneath it. The bay row runs frontageInsetTiles inward from the
- * footprint edge; the shrunk body face already sits tiles*(1-shrink)/2
- * inside that edge, so only the remainder comes off the frontage-axis span,
- * with the center shifted half that away from the road — the road-side face
- * lands exactly where the bay row ends (flush, no overlap, no gap) while the
- * other three faces stay put. Zero for buildings parked.ts gives no bays
- * (non-com/ind categories, or no road-facing edge).
+ * Where a building's body stands on its lot, as a shift from the lot's
+ * centre. A suburban commercial or industrial body stands where its car park,
+ * laid to code, leaves it room (lotplan.ts) — slid back or aside, never cut,
+ * so the floor it is drawn with is the floor its figures come from. A
+ * downtown block, and anything else, stands centred.
  *
- * A home is moved rather than cut: see houseFrontShift. Pure.
+ * A home slides to its front yard: see houseFrontShift. Pure.
  */
 export function frontageSetbackFor(
   entry: BuildingCatalogEntry,
@@ -246,34 +174,18 @@ export function frontageSetbackFor(
 ): FrontageSetback {
   if (isHouseEntry(entry)) return houseFrontShift(entry, x, z, street, rotation);
   if (isFarmEntry(entry)) return ZERO_FRONTAGE_SETBACK;
-  if (entry.category !== 'com' && entry.category !== 'ind') return ZERO_FRONTAGE_SETBACK;
+  const plan = lotPlanFor(entry, x, z, roadAt, rotation);
+  if (!plan) return ZERO_FRONTAGE_SETBACK;
 
+  const { body } = plan.layout;
+  const centre = lotPointToWorld(plan.frame, (body.u0 + body.u1) / 2, (body.v0 + body.v1) / 2);
   const lot = footprintForRotation(entry, rotation);
-  const edge = findRoadFacingEdge(x, z, lot.w, lot.d, roadAt);
-  const insetTiles = frontageInsetTiles(entry.category, edge);
-  if (!edge || insetTiles <= 0) return ZERO_FRONTAGE_SETBACK;
-
-  const body = worldBodyFor(entry, rotation);
-  const alongDepth = edge.side === 'N' || edge.side === 'S';
-  const axisTiles = alongDepth ? lot.d : lot.w;
-  const bodyM = alongDepth ? body.d : body.w;
-  const marginTiles = (axisTiles - bodyM / TILE_METERS) / 2;
-  const setbackM = Math.max(0, insetTiles - marginTiles) * TILE_METERS;
-  return turnedSetback(onMapSetback(edge.side, setbackM), rotation);
-}
-
-/** The setback worked out along the map's axes for a frontage on `side`. */
-function onMapSetback(side: Side, setbackM: number): FrontageSetback {
-  switch (side) {
-    case 'N':
-      return { spanXM: 0, spanZM: setbackM, centerXM: 0, centerZM: setbackM / 2 };
-    case 'S':
-      return { spanXM: 0, spanZM: setbackM, centerXM: 0, centerZM: -setbackM / 2 };
-    case 'E':
-      return { spanXM: setbackM, spanZM: 0, centerXM: -setbackM / 2, centerZM: 0 };
-    default: // 'W'
-      return { spanXM: setbackM, spanZM: 0, centerXM: setbackM / 2, centerZM: 0 };
-  }
+  return {
+    spanXM: 0,
+    spanZM: 0,
+    centerXM: centre.x - (x + lot.w / 2) * TILE_METERS,
+    centerZM: centre.z - (z + lot.d / 2) * TILE_METERS,
+  };
 }
 
 /** The body's size along the map's x and z axes once the building is turned. */
@@ -283,16 +195,6 @@ function worldBodyFor(
 ): { w: number; d: number } {
   const body = bodyMetresFor(entry);
   return rotation % 2 === 1 ? { w: body.d, d: body.w } : body;
-}
-
-/**
- * A setback worked out along the map's axes, restated for the body's own
- * frame: the span comes off the body's local box, and a quarter turn swaps
- * which local axis lies along the map's x. The centre shift stays on the map.
- */
-function turnedSetback(setback: FrontageSetback, rotation: 0 | 1 | 2 | 3): FrontageSetback {
-  if (rotation % 2 === 0) return setback;
-  return { ...setback, spanXM: setback.spanZM, spanZM: setback.spanXM };
 }
 
 /**
@@ -372,8 +274,8 @@ function setbackInsetFraction(buildingId: number, tierIndex: number): number {
  * inset 10-20% narrower than the tier directly below it, the fraction
  * independently re-drawn per tier from buildingId so a level-3 building's
  * second setback isn't just a repeat of its first. An optional `frontage`
- * setback (frontageSetbackFor) narrows the base tier along the frontage axis
- * so every tier stays within the road-set-back body.
+ * setback (frontageSetbackFor) narrows the base tier by its span reductions,
+ * which no lot now makes: a body is moved, never cut.
  */
 export function computeSetbacks(
   entry: BuildingCatalogEntry,
@@ -406,7 +308,7 @@ export function computeSetbacks(
 
   if (entry.kind !== 'tower') return { boxes };
   // The podium fills the lot to the ceiling every body keeps, less the same
-  // frontage setback the slab takes, so it never stands in the bay row.
+  // frontage span the slab gives up.
   const podium: SetbackBox = {
     w: entry.footprint.w * TILE_METERS * MAX_FOOTPRINT_FILL - (frontage?.spanXM ?? 0),
     d: entry.footprint.d * TILE_METERS * MAX_FOOTPRINT_FILL - (frontage?.spanZM ?? 0),
