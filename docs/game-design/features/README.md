@@ -53,6 +53,7 @@ Outside the programme:
 | [sound-barriers.md](sound-barriers.md) | A noise wall along a motorway or a slip road, 3 to 6 m tall, that cuts the noise behind it (built) |
 | [building-types.md](building-types.md) | A zoned lot grows a kind of building, drawn by lot fit and real-world share; residential, commercial and industrial kinds, sourced (built) |
 | [lots-and-land.md](lots-and-land.md) | A zoned block platted into lots the land's standing sizes, from half lots to estates, on US zoning standards (built) |
+| [parking-to-code.md](parking-to-code.md) | Suburban commercial and industrial lots drawn with the parking their code asks of their floor; downtown parks at the kerb (lots built; kerb credit and larger lots not built) |
 | [underground-view.md](underground-view.md) | Pipes are buried: the city goes underground while the player works on the water, and shows the whole system beneath a glass surface (built) |
 
 The features built before this folder existed have no design document; their

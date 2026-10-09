@@ -1,9 +1,11 @@
 /**
- * Parked cars & lot life: a static, deterministic occupancy
- * signal drawn along each Active building's road-facing footprint edge.
- * Cars are real vehicle-kit models (render/vehicles.ts geometries — wheels,
- * cabin, light quads, body-only palette tint) parked NOSE-IN, perpendicular
- * to the road, in painted parking bays on the lot's frontage apron.
+ * Parked cars & lot life: a static, deterministic occupancy signal. A
+ * suburban commercial or industrial lot's car park is drawn to code from its
+ * lot plan (lotplan.ts) — stall lines, accessible spaces, berths, planted
+ * islands and their trees — and its cars stand one to a stall, NOSE-IN; a
+ * building with nowhere of its own parks at the kerb. Cars are real
+ * vehicle-kit models (render/vehicles.ts geometries — wheels, cabin, light
+ * quads, body-only palette tint).
  *
  * Coordinate conventions (matching the rest of src/render):
  *  - `heightAt(worldX, worldZ)` takes WORLD METERS and returns world height,
@@ -28,8 +30,12 @@ import roadsData from '../data/roads.json';
 import type { RoadProfile } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
-import { ROAD_Y_OFFSET } from './roadsmesh';
+import { ACCESSIBLE_SYMBOL_M, accessibilitySymbolPaint, ROAD_Y_OFFSET } from './roadsmesh';
 import { clearOfNoParking, type KerbStall, type ParkingSetbacks } from './kerbstalls';
+import type { LotRect, LotStall, StallNose } from '../shared/lotlayout';
+import { lotPlanFor, lotPointToWorld, type LotPlan } from './lotplan';
+import { InstancedSlotPool } from './massing';
+import { buildBroadleafGeometry } from './trees';
 import { parkingLaneOffset } from '../shared/roadprofile';
 import { isFarmEntry, isHouseEntry } from './archetypes';
 import {
@@ -52,30 +58,6 @@ import { pushConformingQuad } from './groundquad';
 
 /** Lot category: commercial rows park customer cars, industrial rows mix in trucks. */
 export type LotCategory = 'com' | 'ind';
-
-/**
- * Center-to-center bay pitch along the edge, in tiles. A car is 1.8 m wide
- * (wagon variant unchanged in width), a box-truck 2.31 m — both pitches leave
- * a full walking gap between neighbors, so parked vehicles never touch.
- */
-export const BAY_PITCH_TILES: Readonly<Record<LotCategory, number>> = {
-  com: 0.1875, // 3.0 m car bays
-  ind: 0.24, // 3.84 m truck bays
-};
-
-/**
- * Bay depth (how far the paved bay runs INWARD from the footprint edge, onto
- * the lot), in tiles. Deep enough that the longest vehicle parked
- * perpendicular sits fully inside the bay: 4.6 m wagon in a 5.3 m car bay,
- * 7 m box-truck in an 8.3 m truck bay.
- */
-export const BAY_DEPTH_TILES: Readonly<Record<LotCategory, number>> = {
-  com: 0.33,
-  ind: 0.52,
-};
-
-/** Unpainted margin kept at each end of the bay row, in tiles. */
-export const BAY_END_MARGIN_TILES = 0.06;
 
 // ---------------------------------------------------------------------------
 // Where a car is allowed to stand: the road's rule, then the building's.
@@ -135,19 +117,38 @@ export function curbCutTileFor(
   roadAt: (tileX: number, tileZ: number) => boolean,
   rotation: 0 | 1 | 2 | 3 = 0,
 ): { x: number; z: number } | null {
+  const plan = parkingPlanFor(entry, x, z, roadAt, rotation);
+  if (!plan) return null;
+  const { edge, frame, layout } = plan;
+  // The road tile across the edge from the middle of the driveway.
+  const mid = lotPointToWorld(frame, (layout.curbCut.u0 + layout.curbCut.u1) / 2, 0);
+  const alongTile = Math.floor((frame.alongX ? mid.x : mid.z) / TILE_METERS);
+  const tile = frame.alongX
+    ? { x: alongTile, z: edge.roadTileZ }
+    : { x: edge.roadTileX, z: alongTile };
+  return roadAt(tile.x, tile.z) ? tile : { x: edge.roadTileX, z: edge.roadTileZ };
+}
+
+/** A building's lot plan when it parks on its own lot: suburban, fronting a road, with a space to draw. */
+function parkingPlanFor(
+  entry: BuildingCatalogEntry,
+  x: number,
+  z: number,
+  roadAt: (tileX: number, tileZ: number) => boolean,
+  rotation: 0 | 1 | 2 | 3,
+): LotPlan | null {
   if (entry.category !== 'com' && entry.category !== 'ind') return null;
-  if (!hasOwnLotParking(entry, x, z, roadAt, rotation)) return null;
-  const lot = footprintForRotation(entry, rotation);
-  const edge = findRoadFacingEdge(x, z, lot.w, lot.d, roadAt);
-  return edge ? { x: edge.roadTileX, z: edge.roadTileZ } : null;
+  const plan = lotPlanFor(entry, x, z, roadAt, rotation);
+  return plan && plan.layout.provided > 0 ? plan : null;
 }
 
 /** The categories whose occupants own cars at all. */
 const PARKING_CATEGORIES: ReadonlySet<string> = new Set(['res', 'com', 'ind']);
 
 /**
- * Whether a building parks its cars ON ITS OWN LOT — a commercial or industrial
- * bay row, or a home's drive.
+ * Whether a building parks its cars ON ITS OWN LOT — a suburban commercial or
+ * industrial car park laid to code, or a home's drive. Downtown offices and
+ * hotels park none of their own.
  *
  * This is the half of the rule the street cares about: a lot with its own
  * parking does not ALSO line the kerb outside it. Somewhere to put the car is
@@ -165,9 +166,7 @@ export function hasOwnLotParking(
 ): boolean {
   if (isFarmEntry(entry)) return false;
   if (entry.category === 'com' || entry.category === 'ind') {
-    const lot = footprintForRotation(entry, rotation);
-    const edge = findRoadFacingEdge(x, z, lot.w, lot.d, roadAt);
-    return edge !== null && frontageInsetTiles(entry.category, edge) > 0;
+    return parkingPlanFor(entry, x, z, roadAt, rotation) !== null;
   }
   return isHouseEntry(entry);
 }
@@ -236,10 +235,19 @@ const STRIPE_LINE_HALF_WIDTH_M = 0.06;
 const SIDEWALK_TOP_ABOVE_ROAD_M = 0.08;
 /** The driveway crossing rides just over the sidewalk it interrupts. */
 export const CURB_CUT_Y_OFFSET = ROAD_Y_OFFSET + SIDEWALK_TOP_ABOVE_ROAD_M + 0.01;
-/** Width of the lot's driveway entrance, in meters — two cars wide. */
-export const CURB_CUT_WIDTH_M = 7;
-
 const INITIAL_CAR_CAPACITY = 64;
+const INITIAL_TREE_CAPACITY = 64;
+
+/** A planted island's kerb, 6 in wide, round its grass; both ride over the yard's paint. */
+const ISLAND_KERB_M = 0.15;
+const ISLAND_KERB_Y_OFFSET = 0.14;
+const ISLAND_GRASS_Y_OFFSET = 0.145;
+const ISLAND_KERB_COLOR: readonly [number, number, number] = materialUnit('cleanConcrete');
+const ISLAND_GRASS_COLOR: readonly [number, number, number] = materialUnit('mownLawn');
+/** A lot's trees are planted young: the broadleaf at the scale a home's yard tree stands. */
+const LOT_TREE_SCALE = 0.8;
+/** The hatching across an access aisle, bar to bar. */
+const HATCH_SPACING_M = 0.6;
 
 // ---------------------------------------------------------------------------
 // Deterministic hashing (never Math.random/Date.now)
@@ -361,31 +369,9 @@ export function stallOccupied(
   return stallOccupancyThreshold(buildingId, stallIndex) < lotOccupancy(category, dayFraction);
 }
 
-/**
- * How deep a strip the parking-bay row claims along a building's road-facing
- * footprint edge, in tiles: BAY_DEPTH_TILES for exactly the buildings this
- * renderer paints bays for (commercial/industrial lots with a road-facing
- * edge — the same gates applyOne uses), 0 for everything else. The single
- * source of truth body renderers (buildings/massing/props) use to set the
- * base box back from the frontage edge so the bay row sits flush in FRONT of
- * the facade instead of underneath it.
- */
-export function frontageInsetTiles(category: string, edge: RoadFacingEdge | null): number {
-  if (!edge) return 0;
-  if (category !== 'com' && category !== 'ind') return 0;
-  return BAY_DEPTH_TILES[category];
-}
-
 // ---------------------------------------------------------------------------
-// Stall count & placement (pure)
+// Stall placement (pure)
 // ---------------------------------------------------------------------------
-
-/** count = min(level + 1, floor((edgeTiles - 2*margin) / pitchTiles)). */
-export function computeStallCount(level: number, edgeTiles: number, pitchTiles: number): number {
-  const usable = edgeTiles - 2 * BAY_END_MARGIN_TILES;
-  const maxByCapacity = Math.floor(usable / pitchTiles);
-  return Math.max(0, Math.min(level + 1, maxByCapacity));
-}
 
 export interface StallPlacement {
   worldX: number;
@@ -413,43 +399,48 @@ const EDGE_BASE_YAW: Record<Side, number> = {
   W: Math.PI / 2,
 };
 
-/** Along-edge coordinate (meters) of the bay row's start: the row is centered on the frontage. */
+/** Along-edge coordinate (meters) of a kerbside row's start: the row is centered on the frontage. */
 export function bayRowStart(edgeTiles: number, count: number, pitchTiles: number): number {
   const edgeLenM = edgeTiles * TILE_METERS;
   const rowLenM = count * pitchTiles * TILE_METERS;
   return (edgeLenM - rowLenM) / 2;
 }
 
+/** How far short of its stall's head a vehicle longer than the stall stops its nose. */
+const LONG_VEHICLE_NOSE_CLEARANCE_M = 0.2;
+
+/** A lot direction in world metres: `u` along the frame's edge, `v` into the lot. */
+function lotDirection(frame: EdgeFrame, du: number, dv: number): { x: number; z: number } {
+  const inward = -frame.outwardSign;
+  return frame.alongX ? { x: du, z: dv * inward } : { x: dv * inward, z: du };
+}
+
+/** The world yaw of a car whose nose points along a lot axis: `atan2(dx, dz)`, nose at +Z. */
+export function noseYaw(frame: EdgeFrame, nose: StallNose): number {
+  const sign = nose[1] === '+' ? 1 : -1;
+  const dir = nose[0] === 'u' ? lotDirection(frame, sign, 0) : lotDirection(frame, 0, sign);
+  return Math.atan2(dir.x, dir.z);
+}
+
 /**
- * Deterministic stall centers along the chosen edge: `count` bays of
- * `pitchTiles` pitch, the whole row CENTERED on the frontage, each vehicle
- * centered halfway into its bay's depth (perpendicular, nose-in). Pure
- * function of the arguments — no hashing.
+ * Where a vehicle stands in its stall: centred, nose-in, unless it is longer
+ * than the stall, when its nose stops a hand short of the stall's head and
+ * its tail stands out over the aisle, as a van's does.
  */
-export function computeStallPlacements(
-  x: number,
-  z: number,
-  w: number,
-  d: number,
-  edge: RoadFacingEdge,
-  count: number,
-  pitchTiles: number,
-  depthTiles: number,
-): StallPlacement[] {
-  if (count <= 0) return [];
-
-  const frame = edgeFrameFor(edge.side, x, z, w, d);
-  const pitchM = pitchTiles * TILE_METERS;
-  const start = bayRowStart(edge.edgeTiles, count, pitchTiles);
-  const baseYaw = EDGE_BASE_YAW[edge.side];
-
-  const placements: StallPlacement[] = [];
-  for (let i = 0; i < count; i++) {
-    const along = start + (i + 0.5) * pitchM;
-    const { x: worldX, z: worldZ } = frameToWorld(frame, along, -depthTiles / 2);
-    placements.push({ worldX, worldZ, baseYaw, along });
-  }
-  return placements;
+export function lotStallPlacement(
+  frame: EdgeFrame,
+  stall: LotStall,
+  vehicleLength: number,
+): StallPlacement {
+  const { rect, nose } = stall;
+  const along = nose[0] === 'u';
+  const length = along ? rect.u1 - rect.u0 : rect.v1 - rect.v0;
+  const back = Math.max(0, (vehicleLength - length) / 2 + LONG_VEHICLE_NOSE_CLEARANCE_M);
+  const sign = nose[1] === '+' ? 1 : -1;
+  const u = (rect.u0 + rect.u1) / 2 - (along ? sign * back : 0);
+  const v = (rect.v0 + rect.v1) / 2 - (along ? 0 : sign * back);
+  const at = lotPointToWorld(frame, u, v);
+  return { worldX: at.x, worldZ: at.z, baseYaw: noseYaw(frame, nose), along: u };
 }
 
 // ---------------------------------------------------------------------------
@@ -671,26 +662,105 @@ export interface KerbParking {
   parkingStallsAt(x: number, z: number, side: KerbSide): readonly KerbStall[] | null;
 }
 
-/** Pushes a quad specified in an edge's (along, depthTiles) space instead of raw world x/z. */
-function pushFrameQuad(
+/** Pushes a lot-frame rectangle as ground-conforming paint or paving. */
+function pushLotRect(
   positions: number[],
   colors: number[],
   frame: EdgeFrame,
-  along0: number,
-  along1: number,
-  depth0: number,
-  depth1: number,
+  r: LotRect,
   yOffset: number,
   color: readonly [number, number, number],
   heightAt: (x: number, z: number) => number,
 ): void {
-  const a = frameToWorld(frame, along0, depth0);
-  const b = frameToWorld(frame, along1, depth1);
+  const a = lotPointToWorld(frame, r.u0, r.v0);
+  const b = lotPointToWorld(frame, r.u1, r.v1);
   const x0 = Math.min(a.x, b.x);
   const x1 = Math.max(a.x, b.x);
   const z0 = Math.min(a.z, b.z);
   const z1 = Math.max(a.z, b.z);
   pushConformingQuad(positions, colors, x0, z0, x1, z1, yOffset, color, heightAt);
+}
+
+/** Pushes one flat triangle, each corner on the ground, wound to face up. */
+function pushGroundTriangle(
+  positions: number[],
+  colors: number[],
+  pts: readonly (readonly [number, number, number])[],
+  color: readonly [number, number, number],
+): void {
+  const [a, b, c] = pts as [
+    readonly [number, number, number],
+    readonly [number, number, number],
+    readonly [number, number, number],
+  ];
+  const up = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
+  for (const p of up >= 0 ? [a, b, c] : [a, c, b]) {
+    positions.push(p[0], p[1], p[2]);
+    colors.push(color[0], color[1], color[2]);
+  }
+}
+
+/**
+ * The accessibility symbol in a space, upright to a driver pulling in: turned
+ * to the space's yaw and laid on the ground under each of its vertices.
+ */
+function pushAccessibilitySymbol(
+  positions: number[],
+  colors: number[],
+  cx: number,
+  cz: number,
+  yaw: number,
+  heightAt: (x: number, z: number) => number,
+): void {
+  const symbol = accessibilitySymbolPaint(ACCESSIBLE_SYMBOL_M);
+  const cos = Math.cos(yaw);
+  const sin = Math.sin(yaw);
+  const p = symbol.positions;
+  for (let i = 0; i + 8 < p.length; i += 9) {
+    const tri = [0, 3, 6].map((o) => {
+      const lx = p[i + o]!;
+      const ly = p[i + o + 1]!;
+      const lz = p[i + o + 2]!;
+      const x = cx + lx * cos + lz * sin;
+      const z = cz - lx * sin + lz * cos;
+      return [x, heightAt(x, z) + STRIPE_LINE_Y_OFFSET + 0.005 + (ly - ROAD_Y_OFFSET), z] as const;
+    });
+    const c = symbol.colors;
+    pushGroundTriangle(positions, colors, tri, [c[i]!, c[i + 1]!, c[i + 2]!]);
+  }
+}
+
+/** Diagonal bars across an access aisle, at 45° to its sides, every HATCH_SPACING_M along it. */
+function pushHatch(
+  positions: number[],
+  colors: number[],
+  frame: EdgeFrame,
+  aisle: LotRect,
+  heightAt: (x: number, z: number) => number,
+): void {
+  const alongU = aisle.u1 - aisle.u0 > aisle.v1 - aisle.v0;
+  const width = alongU ? aisle.v1 - aisle.v0 : aisle.u1 - aisle.u0;
+  const lo = alongU ? aisle.u0 : aisle.v0;
+  const hi = alongU ? aisle.u1 : aisle.v1;
+  const half = (width * Math.SQRT2) / 2 - STRIPE_LINE_HALF_WIDTH_M;
+  for (let t = lo + width / 2; t <= hi - width / 2 + 1e-9; t += HATCH_SPACING_M) {
+    const cu = alongU ? t : (aisle.u0 + aisle.u1) / 2;
+    const cv = alongU ? (aisle.v0 + aisle.v1) / 2 : t;
+    // `s` runs along the bar, (1, 1)/√2 in the aisle's (long, short) axes; `w` across it.
+    const corner = (s: number, w: number): readonly [number, number, number] => {
+      const long = (s - w) / Math.SQRT2;
+      const short = (s + w) / Math.SQRT2;
+      const at = lotPointToWorld(frame, cu + (alongU ? long : short), cv + (alongU ? short : long));
+      return [at.x, heightAt(at.x, at.z) + STRIPE_LINE_Y_OFFSET + 0.002, at.z];
+    };
+    const w = STRIPE_LINE_HALF_WIDTH_M;
+    const a = corner(-half, -w);
+    const b = corner(half, -w);
+    const c = corner(half, w);
+    const d = corner(-half, w);
+    pushGroundTriangle(positions, colors, [a, b, c], NEAR_WHITE_STRIPE_COLOR);
+    pushGroundTriangle(positions, colors, [a, c, d], NEAR_WHITE_STRIPE_COLOR);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -742,6 +812,9 @@ export class ParkedCarRenderer {
   private readonly pools = new Map<number, VehicleKitPool>();
   private readonly buildingSlots = new Map<number, LotRecord>();
   private readonly buildingStripes = new Map<number, THREE.Mesh>();
+  /** The car parks' island trees: the broadleaf of the wild and the yards, one instanced bucket. */
+  private readonly treePool: InstancedSlotPool;
+  private readonly buildingTrees = new Map<number, number[]>();
 
   /** Time of day driving lot occupancy (0.5 = midday, the default until the clock reports in). */
   private dayFraction = 0.5;
@@ -776,6 +849,12 @@ export class ParkedCarRenderer {
     this.junctionAt = junctionAt;
     this.kerbParking = kerbParking;
     this.catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
+    this.treePool = new InstancedSlotPool(
+      scene,
+      buildBroadleafGeometry(),
+      new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
+      INITIAL_TREE_CAPACITY,
+    );
   }
 
   /**
@@ -807,6 +886,16 @@ export class ParkedCarRenderer {
     for (const id of delta.removed) this.freeBuilding(id);
     for (const building of delta.added) this.applyOne(building);
     for (const building of delta.updated) this.applyOne(building);
+    this.treePool.commit();
+  }
+
+  /** World positions of a building's car-park trees. */
+  treePositionsFor(buildingId: number): { x: number; y: number; z: number }[] {
+    return (this.buildingTrees.get(buildingId) ?? []).map((slot) => {
+      this.treePool.getMatrixAt(slot, _matrix);
+      _matrix.decompose(_position, _quaternion, _scale);
+      return { x: _position.x, y: _position.y, z: _position.z };
+    });
   }
 
   // --- test/debug accessors --------------------------------------------------
@@ -818,9 +907,9 @@ export class ParkedCarRenderer {
     return total;
   }
 
-  /** How many InstancedMeshes this renderer has added to the scene. */
+  /** How many vehicle InstancedMeshes this renderer has added to the scene: one per kind parked. */
   carMeshCount(): number {
-    return this.scene.children.filter((c) => c instanceof THREE.InstancedMesh).length;
+    return this.pools.size;
   }
 
   /** Stall refs ({kind, slot}) currently owned by a building (empty if it has no cars). */
@@ -908,33 +997,17 @@ export class ParkedCarRenderer {
     }
     const category: LotCategory = entry.category;
 
-    const tiles = footprintForRotation(entry, building.rotation);
-    const edge = findRoadFacingEdge(building.x, building.z, tiles.w, tiles.d, this.roadAt);
-    if (!edge) {
+    // A downtown building, or one that fronts no road, parks at the kerb if
+    // anywhere; a suburban lot parks in the car park its code lays out.
+    const plan = parkingPlanFor(entry, building.x, building.z, this.roadAt, building.rotation);
+    if (!plan) {
       this.applyRoadside(building, entry);
       return;
     }
 
-    const pitchTiles = BAY_PITCH_TILES[category];
-    const depthTiles = BAY_DEPTH_TILES[category];
-    const count = computeStallCount(building.level, edge.edgeTiles, pitchTiles);
-    if (count <= 0) return;
-
-    const placements = computeStallPlacements(
-      building.x,
-      building.z,
-      tiles.w,
-      tiles.d,
-      edge,
-      count,
-      pitchTiles,
-      depthTiles,
-    );
-
     const stalls: Stall[] = [];
     const touchedPools = new Set<VehicleKitPool>();
-    for (let i = 0; i < placements.length; i++) {
-      const placement = placements[i]!;
+    for (let i = 0; i < plan.layout.stalls.length; i++) {
       const kind = stallKind(category, building.id, i);
       const pool = this.poolFor(kind);
       const slot = pool.allocate();
@@ -944,6 +1017,7 @@ export class ParkedCarRenderer {
       const sx = size[0] * variant[0];
       const sy = size[1] * variant[1];
       const sz = size[2] * variant[2];
+      const placement = lotStallPlacement(plan.frame, plan.layout.stalls[i]!, sz);
 
       // Cars stand ON the apron pavement (terrain + APRON_Y_OFFSET), not on
       // the bare terrain underneath it — otherwise wheels clip into the slab.
@@ -971,7 +1045,8 @@ export class ParkedCarRenderer {
     this.applyOccupancy(building.id, lot);
     for (const pool of touchedPools) pool.finalize();
 
-    this.rebuildStripes(building, entry, edge, count, pitchTiles, depthTiles);
+    this.rebuildStripes(building, plan);
+    this.plantTrees(building, plan);
   }
 
   /**
@@ -1136,77 +1211,129 @@ export class ParkedCarRenderer {
     return pool;
   }
 
-  private rebuildStripes(
-    building: BuildingInstance,
-    entry: BuildingCatalogEntry,
-    edge: RoadFacingEdge,
-    count: number,
-    pitchTiles: number,
-    depthTiles: number,
-  ): void {
-    const tiles = footprintForRotation(entry, building.rotation);
-    const frame = edgeFrameFor(edge.side, building.x, building.z, tiles.w, tiles.d);
+  /**
+   * The car park's ground and paint, all on the lot's paved yard and
+   * conforming to it: the driveway across the verge and the sidewalk, the
+   * stall lines, each accessible space's symbol and hatched aisle, the
+   * loading berths' outlines, and the planted islands with their kerbs.
+   */
+  private rebuildStripes(building: BuildingInstance, plan: LotPlan): void {
+    const { edge, frame, layout } = plan;
     const positions: number[] = [];
     const colors: number[] = [];
+    const rect = (r: LotRect, y: number, color: readonly [number, number, number]): void =>
+      pushLotRect(positions, colors, frame, r, y, color, this.heightAt);
+    // Paint on the lot stays inside it: a line on a lot line is cut at it.
+    const { lot } = layout;
+    const line = (r: LotRect): void => {
+      const clipped = {
+        u0: Math.max(r.u0, lot.u0),
+        u1: Math.min(r.u1, lot.u1),
+        v0: Math.max(r.v0, lot.v0),
+        v1: Math.min(r.v1, lot.v1),
+      };
+      if (clipped.u1 > clipped.u0 && clipped.v1 > clipped.v0) {
+        rect(clipped, STRIPE_LINE_Y_OFFSET, NEAR_WHITE_STRIPE_COLOR);
+      }
+    };
 
-    const pitchM = pitchTiles * TILE_METERS;
-    const rowStart = bayRowStart(edge.edgeTiles, count, pitchTiles);
-    const edgeLenM = edge.edgeTiles * TILE_METERS;
-
-    // The light-grey apron: the bay row's depth, run the FULL length of the
-    // frontage and out across the grass verge to meet the sidewalk, so the lot
-    // reads as one paved forecourt rather than a strip under the cars.
+    // The apron across the verge the whole frontage long, so the lot meets the
+    // sidewalk paved; the driveway crosses the sidewalk at the curb cut.
     const tier = this.roadTierAt(edge.roadTileX, edge.roadTileZ);
     const streetProfile = this.roadProfileAt(edge.roadTileX, edge.roadTileZ) ?? undefined;
-    const vergeTiles = vergeDepthMeters(tier, streetProfile) / TILE_METERS;
-    pushFrameQuad(
-      positions,
-      colors,
-      frame,
-      0,
-      edgeLenM,
-      vergeTiles,
-      -depthTiles,
-      APRON_Y_OFFSET,
-      APRON_COLOR,
-      this.heightAt,
-    );
-
-    // Curb cut: the driveway carries the same grey across the sidewalk to the
-    // carriageway, so the street shows where vehicles enter the lot.
-    const sidewalkTiles = sidewalkDepthMeters(tier, streetProfile) / TILE_METERS;
-    if (sidewalkTiles > 0) {
-      const cutCenter = edgeLenM / 2;
-      const cutHalf = Math.min(CURB_CUT_WIDTH_M, edgeLenM) / 2;
-      pushFrameQuad(
-        positions,
-        colors,
-        frame,
-        cutCenter - cutHalf,
-        cutCenter + cutHalf,
-        vergeTiles,
-        vergeTiles + sidewalkTiles,
+    const verge = vergeDepthMeters(tier, streetProfile);
+    const sidewalk = sidewalkDepthMeters(tier, streetProfile);
+    const cut = layout.curbCut;
+    if (verge > 0) {
+      rect(
+        { u0: 0, u1: edge.edgeTiles * TILE_METERS, v0: -verge, v1: 0 },
+        APRON_Y_OFFSET,
+        APRON_COLOR,
+      );
+    }
+    if (sidewalk > 0) {
+      rect(
+        { u0: cut.u0, u1: cut.u1, v0: -verge - sidewalk, v1: -verge },
         CURB_CUT_Y_OFFSET,
         APRON_COLOR,
-        this.heightAt,
       );
     }
 
-    // Near-white bay lines: count+1 boundaries running the full bay depth,
-    // perpendicular to the road, so each vehicle sits inside a painted bay.
-    for (let i = 0; i <= count; i++) {
-      const centerAlong = rowStart + i * pitchM;
-      pushFrameQuad(
-        positions,
-        colors,
+    // Stall lines down both long sides of every space, each line drawn once.
+    const drawn = new Set<string>();
+    const sideLines = (r: LotRect, alongU: boolean): void => {
+      const sides = alongU
+        ? [
+            {
+              u0: r.u0,
+              u1: r.u1,
+              v0: r.v0 - STRIPE_LINE_HALF_WIDTH_M,
+              v1: r.v0 + STRIPE_LINE_HALF_WIDTH_M,
+            },
+            {
+              u0: r.u0,
+              u1: r.u1,
+              v0: r.v1 - STRIPE_LINE_HALF_WIDTH_M,
+              v1: r.v1 + STRIPE_LINE_HALF_WIDTH_M,
+            },
+          ]
+        : [
+            {
+              u0: r.u0 - STRIPE_LINE_HALF_WIDTH_M,
+              u1: r.u0 + STRIPE_LINE_HALF_WIDTH_M,
+              v0: r.v0,
+              v1: r.v1,
+            },
+            {
+              u0: r.u1 - STRIPE_LINE_HALF_WIDTH_M,
+              u1: r.u1 + STRIPE_LINE_HALF_WIDTH_M,
+              v0: r.v0,
+              v1: r.v1,
+            },
+          ];
+      for (const s of sides) {
+        const key = [s.u0, s.u1, s.v0, s.v1].map((n) => n.toFixed(2)).join(',');
+        if (drawn.has(key)) continue;
+        drawn.add(key);
+        line(s);
+      }
+    };
+    for (const stall of layout.stalls) sideLines(stall.rect, stall.nose[0] === 'u');
+
+    // Each accessible space: its access aisle lined and hatched, the symbol in the space.
+    layout.stalls.forEach((stall) => {
+      if (!stall.accessible) return;
+      const yaw = noseYaw(frame, stall.nose);
+      const c = lotPointToWorld(
         frame,
-        centerAlong - STRIPE_LINE_HALF_WIDTH_M,
-        centerAlong + STRIPE_LINE_HALF_WIDTH_M,
-        0,
-        -depthTiles,
-        STRIPE_LINE_Y_OFFSET,
-        NEAR_WHITE_STRIPE_COLOR,
-        this.heightAt,
+        (stall.rect.u0 + stall.rect.u1) / 2,
+        (stall.rect.v0 + stall.rect.v1) / 2,
+      );
+      pushAccessibilitySymbol(positions, colors, c.x, c.z, yaw, this.heightAt);
+    });
+    for (const aisle of layout.accessAisles) {
+      const alongU = aisle.u1 - aisle.u0 > aisle.v1 - aisle.v0;
+      sideLines(aisle, alongU);
+      pushHatch(positions, colors, frame, aisle, this.heightAt);
+    }
+
+    // Loading berths: outlined.
+    for (const b of layout.berths) {
+      const h = STRIPE_LINE_HALF_WIDTH_M;
+      line({ u0: b.u0, u1: b.u1, v0: b.v0 - h, v1: b.v0 + h });
+      line({ u0: b.u0, u1: b.u1, v0: b.v1 - h, v1: b.v1 + h });
+      line({ u0: b.u0 - h, u1: b.u0 + h, v0: b.v0, v1: b.v1 });
+      line({ u0: b.u1 - h, u1: b.u1 + h, v0: b.v0, v1: b.v1 });
+    }
+
+    // Planted islands: a concrete kerb round a bed of grass.
+    for (const island of layout.islands) {
+      rect(island, ISLAND_KERB_Y_OFFSET, ISLAND_KERB_COLOR);
+      const k = ISLAND_KERB_M;
+      rect(
+        { u0: island.u0 + k, u1: island.u1 - k, v0: island.v0 + k, v1: island.v1 - k },
+        ISLAND_GRASS_Y_OFFSET,
+        ISLAND_GRASS_COLOR,
       );
     }
 
@@ -1220,11 +1347,33 @@ export class ParkedCarRenderer {
     this.buildingStripes.set(building.id, mesh);
   }
 
+  /** One tree in each island the code plants, standing on the island's grass. */
+  private plantTrees(building: BuildingInstance, plan: LotPlan): void {
+    const slots: number[] = [];
+    for (const tree of plan.layout.trees) {
+      const at = lotPointToWorld(plan.frame, tree.u, tree.v);
+      const slot = this.treePool.allocate();
+      _position.set(at.x, this.heightAt(at.x, at.z) + ISLAND_GRASS_Y_OFFSET, at.z);
+      _quaternion.identity();
+      _scale.setScalar(LOT_TREE_SCALE);
+      _matrix.compose(_position, _quaternion, _scale);
+      this.treePool.setMatrixAt(slot, _matrix);
+      slots.push(slot);
+    }
+    if (slots.length > 0) this.buildingTrees.set(building.id, slots);
+  }
+
   private freeBuilding(buildingId: number): void {
     const lot = this.buildingSlots.get(buildingId);
     if (lot) {
       for (const stall of lot.stalls) this.pools.get(stall.ref.kind)?.free(stall.ref.slot);
       this.buildingSlots.delete(buildingId);
+    }
+
+    const trees = this.buildingTrees.get(buildingId);
+    if (trees) {
+      for (const slot of trees) this.treePool.free(slot);
+      this.buildingTrees.delete(buildingId);
     }
 
     const stripeMesh = this.buildingStripes.get(buildingId);

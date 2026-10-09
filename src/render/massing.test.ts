@@ -17,7 +17,8 @@ import {
   RES_LOW_BODY_M_PER_TILE,
   tierCountOf,
 } from './massing';
-import { BAY_DEPTH_TILES } from './parked';
+import { lotPlanFor, lotPointToWorld } from './lotplan';
+import { bodyPlateM2 } from '../shared/floorarea';
 import { deriveFacadeParams, FLOOR_HEIGHT_METERS } from './facade';
 import {
   BuildingCatalogEntry,
@@ -211,18 +212,26 @@ describe('computeSetbacks', () => {
 });
 
 // ---------------------------------------------------------------------------
-// frontageSetbackFor (pure) — body setback that clears the parking-bay row
+// frontageSetbackFor (pure) — where the car park laid to code leaves the body
 // ---------------------------------------------------------------------------
 
+/** The body's world centre the lot plan puts it at, as a shift from the lot's centre. */
+function planShift(
+  e: BuildingCatalogEntry,
+  roadAt: (x: number, z: number) => boolean,
+  rotation: 0 | 1 | 2 | 3 = 0,
+): { x: number; z: number } {
+  const plan = lotPlanFor(e, 5, 5, roadAt, rotation)!;
+  const { body } = plan.layout;
+  const at = lotPointToWorld(plan.frame, (body.u0 + body.u1) / 2, (body.v0 + body.v1) / 2);
+  const lot = rotation % 2 === 1 ? { w: e.footprint.d, d: e.footprint.w } : e.footprint;
+  return { x: at.x - (5 + lot.w / 2) * TILE_METERS, z: at.z - (5 + lot.d / 2) * TILE_METERS };
+}
+
 describe('frontageSetbackFor', () => {
-  // 2x2 footprint at (5,5): the shrunk body face sits 2*(1-fill)/2 tiles
-  // inside each footprint edge; the bay row runs BAY_DEPTH_TILES inward, so
-  // the span loses the remainder and the center shifts half of it. The margin
-  // is read from the fill rather than written down, since the fill moves with
-  // the tile to keep the body a real size.
-  const marginTiles = 1 - MASSING_FOOTPRINT_SHRINK;
-  const com = entry({ category: 'com', zone: 3, footprint: { w: 2, d: 2 } });
-  const comSetbackM = (BAY_DEPTH_TILES.com - marginTiles) * TILE_METERS;
+  // A 2x2 works at (5,5). Its car park is laid to code; the body slides where
+  // the layout leaves it room and is never cut, so no span ever comes off.
+  const com = entry({ category: 'ind', zone: 5, kind: 'workshop', footprint: { w: 2, d: 2 } });
 
   it('is all-zero when no side is road-adjacent', () => {
     expect(frontageSetbackFor(com, 5, 5, noRoad)).toEqual({
@@ -256,63 +265,49 @@ describe('frontageSetbackFor', () => {
     expect(actual.centerZM).toBeCloseTo(expected.centerZM, 9);
   }
 
-  it('N-side road: reduces the Z span and shifts the center south (away from the road)', () => {
-    expectSetback(frontageSetbackFor(com, 5, 5, roadAtTiles([[5, 4]])), {
-      spanXM: 0,
-      spanZM: comSetbackM,
-      centerXM: 0,
-      centerZM: comSetbackM / 2,
-    });
+  const sides = [
+    ['N', roadAtTiles([[5, 4]])],
+    ['S', roadAtTiles([[5, 7]])],
+    ['E', roadAtTiles([[7, 5]])],
+    ['W', roadAtTiles([[4, 5]])],
+  ] as const;
+
+  it.each(sides)(
+    '%s-side road: cuts nothing and moves the body where its lot plan puts it',
+    (_, roadAt) => {
+      const shift = planShift(com, roadAt);
+      expectSetback(frontageSetbackFor(com, 5, 5, roadAt), {
+        spanXM: 0,
+        spanZM: 0,
+        centerXM: shift.x,
+        centerZM: shift.z,
+      });
+    },
+  );
+
+  it('slides the body away from the road, never toward it', () => {
+    expect(frontageSetbackFor(com, 5, 5, roadAtTiles([[5, 4]])).centerZM).toBeGreaterThan(0);
+    expect(frontageSetbackFor(com, 5, 5, roadAtTiles([[5, 7]])).centerZM).toBeLessThan(0);
+    expect(frontageSetbackFor(com, 5, 5, roadAtTiles([[7, 5]])).centerXM).toBeLessThan(0);
+    expect(frontageSetbackFor(com, 5, 5, roadAtTiles([[4, 5]])).centerXM).toBeGreaterThan(0);
   });
 
-  it('S-side road: reduces the Z span and shifts the center north', () => {
-    expectSetback(frontageSetbackFor(com, 5, 5, roadAtTiles([[5, 7]])), {
-      spanXM: 0,
-      spanZM: comSetbackM,
-      centerXM: 0,
-      centerZM: -comSetbackM / 2,
-    });
+  it('keeps the whole body on its lot', () => {
+    const body = bodyMetresFor(com);
+    for (const [, roadAt] of sides) {
+      const s = frontageSetbackFor(com, 5, 5, roadAt);
+      const cx = 6 * TILE_METERS + s.centerXM;
+      const cz = 6 * TILE_METERS + s.centerZM;
+      expect(cx - body.w / 2).toBeGreaterThanOrEqual(5 * TILE_METERS - 1e-9);
+      expect(cx + body.w / 2).toBeLessThanOrEqual(7 * TILE_METERS + 1e-9);
+      expect(cz - body.d / 2).toBeGreaterThanOrEqual(5 * TILE_METERS - 1e-9);
+      expect(cz + body.d / 2).toBeLessThanOrEqual(7 * TILE_METERS + 1e-9);
+    }
   });
 
-  it('E-side road: reduces the X span and shifts the center west', () => {
-    expectSetback(frontageSetbackFor(com, 5, 5, roadAtTiles([[7, 5]])), {
-      spanXM: comSetbackM,
-      spanZM: 0,
-      centerXM: -comSetbackM / 2,
-      centerZM: 0,
-    });
-  });
-
-  it('W-side road: reduces the X span and shifts the center east', () => {
-    expectSetback(frontageSetbackFor(com, 5, 5, roadAtTiles([[4, 5]])), {
-      spanXM: comSetbackM,
-      spanZM: 0,
-      centerXM: comSetbackM / 2,
-      centerZM: 0,
-    });
-  });
-
-  it('lands the body road-side face exactly where the bay row ends (flush, no overlap, no gap)', () => {
-    const setback = frontageSetbackFor(com, 5, 5, roadAtTiles([[5, 4]]));
-    const spanZ = 2 * TILE_METERS * MASSING_FOOTPRINT_SHRINK - setback.spanZM;
-    const centerZ = (5 + 1) * TILE_METERS + setback.centerZM;
-    const northFace = centerZ - spanZ / 2;
-    expect(northFace).toBeCloseTo(5 * TILE_METERS + BAY_DEPTH_TILES.com * TILE_METERS, 9);
-    // The back face never moves.
-    expect(centerZ + spanZ / 2).toBeCloseTo(7 * TILE_METERS - marginTiles * TILE_METERS, 9);
-  });
-
-  it('uses the deeper industrial bay depth for ind lots', () => {
-    const ind = entry({ category: 'ind', zone: 5, footprint: { w: 2, d: 2 } });
-    const setback = frontageSetbackFor(ind, 5, 5, roadAtTiles([[5, 4]]));
-    expect(setback.spanZM).toBeCloseTo((BAY_DEPTH_TILES.ind - marginTiles) * TILE_METERS, 9);
-    expect(setback.centerZM).toBeCloseTo(setback.spanZM / 2, 9);
-  });
-
-  it('clamps to zero when the shrunk face already clears the bay row (very deep footprints)', () => {
-    // 8-tile frontage axis: margin 8*0.075 = 0.6 tiles > BAY_DEPTH_TILES.com.
-    const deep = entry({ category: 'com', zone: 3, footprint: { w: 8, d: 8 } });
-    expect(frontageSetbackFor(deep, 5, 5, roadAtTiles([[5, 4]]))).toEqual({
+  it('stands a downtown office centred: it parks at the kerb', () => {
+    const office = entry({ category: 'com', zone: 4, kind: 'office', footprint: { w: 2, d: 2 } });
+    expect(frontageSetbackFor(office, 5, 5, roadAtTiles([[5, 4]]))).toEqual({
       spanXM: 0,
       spanZM: 0,
       centerXM: 0,
@@ -328,14 +323,13 @@ describe('frontageSetbackFor', () => {
 describe('computeSetbacks with a frontage setback', () => {
   const com = entry({ category: 'com', zone: 3, footprint: { w: 2, d: 2 }, level: 2, height: 20 });
 
-  it('narrows the base tier by the frontage span reductions', () => {
+  it('keeps the base tier the whole plate its floor area is counted on', () => {
     const frontage = frontageSetbackFor(com, 5, 5, roadAtTiles([[5, 4]]));
     const { boxes } = computeSetbacks(com, 7, frontage);
-    expect(boxes[0]!.w).toBeCloseTo(2 * TILE_METERS * MASSING_FOOTPRINT_SHRINK, 9);
-    expect(boxes[0]!.d).toBeCloseTo(
-      2 * TILE_METERS * MASSING_FOOTPRINT_SHRINK - frontage.spanZM,
-      9,
-    );
+    const plate = bodyMetresFor(com);
+    expect(boxes[0]!.w).toBeCloseTo(plate.w, 9);
+    expect(boxes[0]!.d).toBeCloseTo(plate.d, 9);
+    expect(boxes[0]!.w * boxes[0]!.d).toBeCloseTo(bodyPlateM2(com), 9);
   });
 
   it('keeps every upper tier within the set-back base tier', () => {
@@ -740,7 +734,7 @@ describe('MassingRenderer frontage setback (optional roadAt)', () => {
     const m = new THREE.Matrix4();
     renderer.getBoxMatrix(slot, m);
     const { pos, scl } = decompose(m);
-    expect(pos.x).toBeCloseTo((5 + 1) * TILE_METERS, 5);
+    expect(pos.x).toBeCloseTo((5 + 1) * TILE_METERS + frontage.centerXM, 5);
     expect(pos.z).toBeCloseTo((5 + 1) * TILE_METERS + frontage.centerZM, 5);
     expect(scl.x).toBeCloseTo(podium!.w, 5);
     expect(scl.z).toBeCloseTo(podium!.d, 5);
@@ -1003,8 +997,6 @@ describe('frontageSetbackFor on a building turned a quarter', () => {
   // Turned, the 1x2 lot lies 2 tiles along x and 1 along z; a road down its west edge.
   const westRoad = roadAtTiles([[4, 5]]);
   const body = bodyMetresFor(shop);
-  const marginTiles = (2 * TILE_METERS - body.d) / 2 / TILE_METERS;
-  const setbackM = (BAY_DEPTH_TILES.com - marginTiles) * TILE_METERS;
 
   it('finds the road-facing edge on the turned lot, not the upright one', () => {
     // Upright the lot holds (5,5) and (5,6), so (6,4) is nowhere near it; turned
@@ -1016,19 +1008,22 @@ describe('frontageSetbackFor on a building turned a quarter', () => {
       centerXM: 0,
       centerZM: 0,
     });
-    expect(frontageSetbackFor(shop, 5, 5, roadAbove, undefined, 1).centerZM).toBeGreaterThan(0);
+    const turned = frontageSetbackFor(shop, 5, 5, roadAbove, undefined, 1);
+    expect(Math.hypot(turned.centerXM, turned.centerZM)).toBeGreaterThan(0);
+    expect(turned.centerXM).toBeCloseTo(planShift(shop, roadAbove, 1).x, 9);
   });
 
-  it('shifts the centre away from the road on the map and cuts the body along its own depth', () => {
+  it('shifts the centre where the turned lot plan puts it, on the map, and cuts nothing', () => {
     const setback = frontageSetbackFor(shop, 5, 5, westRoad, undefined, 1);
-    expect(setback.centerXM).toBeCloseTo(setbackM / 2, 9);
-    expect(setback.centerZM).toBe(0);
-    // The map's x axis is the body's local z, so the span comes off the local depth.
+    const shift = planShift(shop, westRoad, 1);
+    expect(setback.centerXM).toBeCloseTo(shift.x, 9);
+    expect(setback.centerZM).toBeCloseTo(shift.z, 9);
+    expect(setback.centerXM).toBeGreaterThanOrEqual(0);
     expect(setback.spanXM).toBe(0);
-    expect(setback.spanZM).toBeCloseTo(setbackM, 9);
+    expect(setback.spanZM).toBe(0);
     const { boxes } = computeSetbacks(shop, 1, setback);
     expect(boxes[0]!.w).toBeCloseTo(body.w, 9);
-    expect(boxes[0]!.d).toBeCloseTo(body.d - setbackM, 9);
+    expect(boxes[0]!.d).toBeCloseTo(body.d, 9);
   });
 
   it('leaves the stand-off from the road the same as the upright building facing it', () => {

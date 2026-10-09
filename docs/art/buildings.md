@@ -90,13 +90,15 @@ procedural house kit:
 **Commercial.** A commercial building's kind decides its archetype. A shop,
 a shopping strip, a supermarket and a restaurant are **storefronts**: a canopy
 over the frontage plus a signage band above it, on top of the stage-1
-ground-floor storefront treatment shared by every archetype, and the car park
-of the bay row in front. A **filling station** is a kiosk behind a **fuel
-canopy**: a tall flat canopy on four posts standing off the kiosk's frontage
-over the forecourt, with two pump islands under it, so the cars of the bay row
-stand at the pumps. An **office** is a glass block with no shopfront parts at
-all. A **hotel** is a block with a canopy at its entrance and a sign band —
-the storefront parts on a tall body. What each kind measures is under
+ground-floor storefront treatment shared by every archetype, standing in the
+car park its code asks for (see [Lots and paved ground](#lots-and-paved-ground)).
+A **filling station** is a kiosk behind a **fuel canopy**: a tall flat canopy
+on four posts standing off the kiosk's frontage over the forecourt, with two
+pump islands under it; the forecourt is kept clear and the kiosk's parking is
+beside it. An **office** is a glass block with no shopfront parts at all. A
+**hotel** is a block with a canopy at its entrance and a sign band — the
+storefront parts on a tall body. Offices and hotels are downtown: centred on
+their lots, they draw no car park and their cars stand at the kerb. What each kind measures is under
 [Commercial kinds](#commercial-kinds). A commercial entry with no kind keeps
 the old ladder: a storefront at its first level, a **retail block** — the
 signage band alone — above it.
@@ -194,12 +196,30 @@ developed land; each pad stops short of the road at the verge the parking
 apron already respects, except a home's lawn, which runs across the verge to
 the sidewalk (see [Residential lots](#residential-lots)).
 
-A building's body is additionally pulled back from its own road-facing edge
-by exactly the parking bay row's depth (minus the shrink margin), so the
-road-side face lands flush where the bay row ends: lot in front, building
-behind, with no overlap and no gap. The other three faces of the body do not
-move. See [props-and-vehicles.md](props-and-vehicles.md) for the bay row
-itself.
+**A suburban commercial or industrial lot is a car park laid to code**
+([parking-to-code.md](../game-design/features/parking-to-code.md)). The body
+keeps its whole plate and stands where the layout leaves it room: centred,
+held 5 ft off a lot line, or on it, slid back and to the side away from the
+drive only as far as the code needs. Around it, on the lot's paved yard and
+conforming to it like every other lot paint:
+
+- **Stalls** 9 × 18 ft at 90°, in rows on 24 ft aisles, white lines 0.12 m
+  wide down both long sides of each; a car stands in each, nose in.
+- **Accessible spaces** nearest the entrance, each with the accessibility
+  symbol (the road's own `accessibilitySymbolPaint`) upright to a driver
+  pulling in, and its 5 ft access aisle outlined and hatched at 45°, a bar
+  every 0.6 m.
+- **Loading berths**, 12 × 50 ft, outlined, at the rear along the drive.
+- **Planted islands** at every row end and after every ten spaces: a 6 in
+  concrete kerb round grass, a broadleaf at 0.8 of a mature tree's scale in
+  as many as the tree rule asks, spread over them.
+- **The drive's curb cut**, 24 ft, across the sidewalk where the drive meets
+  the street, and the apron paved across the verge the whole frontage long.
+
+A filling station keeps 12 m clear in front of its kiosk for its canopy and
+pumps; a chemical plant or paper mill keeps 8 m behind its body for its tank
+farm. Downtown kinds stand centred and paint nothing. See
+[props-and-vehicles.md](props-and-vehicles.md) for the cars.
 
 Pads, aprons, driveways and bay markings all go through one shared,
 terrain-conforming builder: it subdivides the ground quad into cells too
@@ -272,18 +292,18 @@ on its base.
 
 | Kind            | Body                                              | Storeys    | Parts                                     | On the lot                            |
 | --------------- | ------------------------------------------------- | ---------- | ----------------------------------------- | ------------------------------------- |
-| Shop            | 13.6 m per tile (1×1, 1×2, 2×2)                   | 1          | canopy, sign band                         | bay row in front                      |
-| Shopping strip  | 13.6 m per tile, long and shallow (3×2 to 5×2)    | 1          | canopy, sign band                         | bay row in front                      |
-| Supermarket     | 13.6 m per tile (3×3 to 5×4), 4.7 m tall          | 1          | canopy, sign band                         | bay row in front                      |
-| Restaurant      | 13.6 m per tile capped at 24 m a side             | 1 / 1 / 2  | canopy, sign band                         | bay row; the rest of the lot car park |
-| Filling station | 35% of the lot each way, capped at 16 m           | 1          | fuel canopy on four posts, two pump islands | bay row under the canopy            |
-| Office          | 13.6 m per tile                                   | 5 / 8 / 16 | none                                      | bay row in front                      |
-| Hotel           | 13.6 m per tile                                   | 4 / 6 / 8  | canopy, sign band                         | bay row in front                      |
+| Shop            | 13.6 m per tile (1×1, 1×2, 2×2)                   | 1          | canopy, sign band                         | car park to code, short of it (the 1×1 draws none) |
+| Shopping strip  | 13.6 m per tile, long and shallow (3×2 to 5×2)    | 1          | canopy, sign band                         | car park to code, short of it         |
+| Supermarket     | 13.6 m per tile (3×3 to 5×4), 4.7 m tall          | 1          | canopy, sign band                         | car park to code, short of it         |
+| Restaurant      | 13.6 m per tile capped at 24 m a side             | 1 / 1 / 2  | canopy, sign band                         | car park to code, short of it         |
+| Filling station | 35% of the lot each way, capped at 16 m           | 1          | fuel canopy on four posts, two pump islands | forecourt; car park to code beside it |
+| Office          | 13.6 m per tile                                   | 5 / 8 / 16 | none                                      | none: downtown, cars at the kerb      |
+| Hotel           | 13.6 m per tile                                   | 4 / 6 / 8  | canopy, sign band                         | none: downtown, cars at the kerb      |
 
 The fuel canopy stands 2 m off the kiosk's frontage wall and runs 10 m out
 over the forecourt and 90% of the way across it, 5.2 m up on four 0.4 m posts
 inset at its corners; the two pump islands, 1 × 3 m and 1.4 m tall, stand
-under it a quarter of its span either side of centre, behind the bay row.
+under it a quarter of its span either side of centre.
 Every part is a box from the shared kit, in the chart's colours: the canopy
 and its posts in white brick, the pumps in the red accent.
 

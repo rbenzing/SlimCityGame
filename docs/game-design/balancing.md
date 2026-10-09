@@ -52,7 +52,7 @@ Every figure is sourced in [features/building-types.md](features/building-types.
 | `share`                | detached 61.1, duplex 1.6, fourplex 1.2, townhouse 1.6, multiplex 0.63, garden 0.30, midrise 0.11, tower 0.07, mixed 1 | A kind's weight in the lot draw: its ACS share of units ÷ homes per building. | `src/data/catalog.json` |
 | lot floors             | half 0, normal 64, double 160, estate 224 (land value, 0–255) | The land-value bands a detached house's lot is platted at; dials, set so bare clean ground (119) plats a normal lot. | `src/shared/lots.ts`    |
 | detached lots          | half 1×1, normal 1×2, double 2×2, estate 2×3, acre 3×3       | US zoning minimums of 3,500–5,000, 5,000–7,200, 12,000–15,000, 20,000+ sq ft and one acre on the 20 m tile ([lots-and-land.md](features/lots-and-land.md)). | `src/data/catalog.json` |
-| detached body          | 4.75 m per lot tile, never under 9.5 m                        | A house is 9.5 m across the front whatever the lot; the estate's depth is 14.25 m.               | `src/render/massing.ts` |
+| detached body          | 4.75 m per lot tile, never under 9.5 m                        | A house is 9.5 m across the front whatever the lot; the estate's depth is 14.25 m.               | `src/shared/floorarea.ts` |
 | farm power             | the detached house's draw × 2/3/4 (crops), 2/3/5 (orchard), 3/6/15 (pasture) | A farmstead's draw, in the ratio it always had to the small house.                               | `src/data/catalog.json` |
 | farm residents         | 3                                                            | One owner household.                                                                             | `src/data/catalog.json` |
 
@@ -69,7 +69,7 @@ Every figure is sourced in [features/building-types.md](features/building-types.
 | power per sq ft      | retail 16.7, food service 44.2, lodging 14.4, convenience store 53.3, office 13.6 kWh/yr | CBECS 2018, by principal building activity (the first three derived from totals over stock). | `src/data/catalog.json` |
 | restaurant water     | 22.0 kL a day sit-down, 7.3 quick-service                                               | EPA WaterSense 5,800 gallons a day and a third of it.                                         | `src/data/catalog.json` |
 | hotel water          | 0.5 kL a room a day                                                                     | EPA 132 gallons per room, every room taken.                                                   | `src/data/catalog.json` |
-| body caps            | restaurant 24 m a side; filling-station kiosk 35% of the lot to 16 m                    | A fast-food box and a convenience store on a lot that is mostly car park and forecourt.       | `src/render/massing.ts` |
+| body caps            | restaurant 24 m a side; filling-station kiosk 35% of the lot to 16 m                    | A fast-food box and a convenience store on a lot that is mostly car park and forecourt.       | `src/shared/floorarea.ts` |
 | `share`              | shop 350, restaurant 286, strip 166, fuel 123, supermarket 46; office 970, hotel 107    | CBECS 2018 building counts (thousands); NACS fuel-selling stores; FMI supermarkets.           | `src/data/catalog.json` |
 
 ## Industrial kinds
@@ -85,7 +85,7 @@ Every figure is sourced in [features/building-types.md](features/building-types.
 | pollution scale      | 140 per 484,000 lb a year                                                                              | The coal plant's 140 for the average TRI electric utility's releases; a plant's level 2 is its industry's average.   | `src/data/catalog.json` |
 | releases per plant   | machinery 7,200, fabricated metal 13,500, food 88,600, chemicals 119,900, metals 210,700, paper 416,300 lb | EPA TRI 2023 releases by industry over its reporting facilities; warehouse and flex release nothing.                 | `src/data/catalog.json` |
 | industrial noise     | manufacturing 38, warehouse 8, flex 0                                                                  | 75 dBA and a dock's 68 dB against a motorway at capacity (120) taken as 80 dBA: 10^(−5/10), 10^(−12/10).            | `src/data/catalog.json` |
-| body fills           | flex 55% a side, chemical plant 50%; the rest 13.6 m per tile                                          | ULI site coverage: R&D flex 25–40%, heavy manufacturing 40–50%, warehouse up to 50%.                                 | `src/render/massing.ts` |
+| body fills           | flex 55% a side, chemical plant 50%; the rest 13.6 m per tile                                          | ULI site coverage: R&D flex 25–40%, heavy manufacturing 40–50%, warehouse up to 50%.                                 | `src/shared/floorarea.ts` |
 | heavy stack          | 2 × 12 m, at every level; a kindless works 1.6 × 6 m from level 2; light kinds none                    | A plant reads as a plant from its first day; a workshop's few units raise no stack.                                  | `src/render/props.ts`   |
 | `share`              | warehouse 55, workshop 22, factory 8, flex 9; food 43, chemicals 26, metals 6, paper 6                 | ULI floor-space shares, manufacturing split 3:1 by firm size (SUSB); BLS establishments in thousands.                | `src/data/catalog.json` |
 | Heavy Industrial     | unlocks at milestone 2                                                                                 | A Busy Township's workforce (600) supports about 330 basic jobs, a plant or two.                                     | `src/ui/categories.ts`  |
@@ -158,7 +158,22 @@ Every figure is derived in [features/healthcare-and-death-care.md](features/heal
 | spaces per bed        | 2                              | The common US zoning minimum for a hospital: 144 spaces for 72 beds.                                       | `src/render/utilitykits.ts` |
 | deck                  | 3×2 tiles, 2 levels, 3.35 m    | Ground and roof, 11 ft floor to floor, over the 2.49 m a van's route needs (ADA); 40.48 m across, half a metre past its tiles. | `src/render/utilitykits.ts` |
 | stall, aisle          | 2.74 × 5.49 m, 7.32 m          | 9 × 18 ft stalls on 24 ft two-way aisles (the 60 ft module): 72 a level after the ramp, cross-aisle and cores, 144 in all; 33.7 m² a space. | `src/render/utilitykits.ts` |
-| accessible spaces     | 5, 1 van                       | ADA 2010 §208.2 for 101–150 spaces provided (144 + 5), 1 van in 6; car 2.44 m, van 3.35 m, aisle 1.52 m.   | `src/render/kerbstalls.ts`  |
+| accessible spaces     | 5, 1 van                       | ADA 2010 §208.2 for 101–150 spaces provided (144 + 5), 1 van in 6; car 2.44 m, van 3.35 m, aisle 1.52 m.   | `src/shared/parkingcode.ts` |
+
+## Parking to code
+
+Every figure is a code figure, derived in [features/parking-to-code.md](features/parking-to-code.md).
+
+| Constant                    | Value                                   | Meaning                                                                                              | File                        |
+| --------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------- | --------------------------- |
+| `SPACES_PER_1000_SQ_FT`     | shop, strip, supermarket, fuel 5; restaurant 10; office 3; manufacturing 1; warehouse 0.5; flex 2 | Spaces a kind's gross floor asks for, rounded up; kindless commerce 5, kindless works 1. | `src/shared/parkingcode.ts` |
+| `loadingBerths`             | retail 0 / 1 / 2 / 3 to 5k / 20k / 40k / 100k sf; industrial 0 / 1 / 2 / 3 to 5k / 30k / 80k / 175k sf | Wadsworth OH's off-street loading tables.                                   | `src/shared/parkingcode.ts` |
+| `adaAccessibleSpaces`       | ADA 2010 Table 208.2; vans 1 in 6       | Accessible spaces over the spaces provided, inside the total.                                        | `src/shared/parkingcode.ts` |
+| stall, aisle, module        | 9 × 18 ft, 24 ft, 60 ft                 | `STALL_WIDTH_M` 2.74, `STALL_LENGTH_M` 5.49, `AISLE_WIDTH_M` 7.32, `DOUBLE_MODULE_M` 18.3.          | `src/shared/parkingcode.ts` |
+| berth                       | 12 × 50 ft, 14 ft clear                 | `BERTH_WIDTH_M` 3.66, `BERTH_LENGTH_M` 15.24, `BERTH_CLEARANCE_M` 4.27.                              | `src/shared/parkingcode.ts` |
+| islands, trees              | 5 ft island at row ends and every 10 spaces; 1 tree per 10 spaces | `ISLAND_WIDTH_M` 1.52, `SPACES_BETWEEN_ISLANDS`, `SPACES_PER_TREE`.                     | `src/shared/parkingcode.ts` |
+| `CURB_CUT_M`                | 24 ft                                   | The drive's width at the kerb, inside the 24–36 ft two-way range.                                    | `src/shared/parkingcode.ts` |
+| fuel forecourt, tank yard   | 12 m, 8 m                               | Kept clear in front of a filling station's kiosk (canopy 2 m off, 10 m deep) and behind a chemical plant or paper mill (tanks 2 m off, 6 m across). | `src/render/lotplan.ts` |
 
 ## Soil and farms
 

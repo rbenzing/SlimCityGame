@@ -722,7 +722,8 @@ describe('RoofPropRenderer frontage setback (optional roadAt)', () => {
     renderer.apply(deltaAdd(building({ catalogId: 'ind-road', level: MIN_SMOKESTACK_LEVEL })));
 
     const frontage = frontageSetbackFor(e, 5, 5, roadAt);
-    expect(frontage.centerZM).toBeGreaterThan(0); // the setback really is in play
+    // The car park really moves the body: the shift is in play.
+    expect(Math.hypot(frontage.centerXM, frontage.centerZM)).toBeGreaterThan(0);
     const { boxes } = computeSetbacks(e, 1, frontage);
     const topBox = boxes[boxes.length - 1]!;
     const centerX = (5 + e.footprint.w / 2) * TILE_METERS + frontage.centerXM;

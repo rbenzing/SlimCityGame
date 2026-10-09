@@ -16,9 +16,9 @@ import {
 } from './buildings';
 import { decodeId } from './picking';
 import { BARN_EAVE_SHARE, planFarm } from './farmlot';
-import { BAY_DEPTH_TILES } from './parked';
 import {
   computeSetbacks,
+  frontageSetbackFor,
   DEFAULT_BODY_M_PER_TILE,
   MASSING_FOOTPRINT_SHRINK,
   DETACHED_BODY_MIN_M,
@@ -1128,17 +1128,14 @@ describe('frontage parking setback — additive-only 5th constructor arg, defaul
       ?.mesh as THREE.InstancedMesh;
   }
 
-  // 2x2 footprint at (5,5): shrunk body face sits 2*(1-0.85)/2 = 0.15 tiles
-  // inside the footprint edge; the setback removes the rest of the bay depth.
-  const marginTiles = (2 * (1 - MASSING_FOOTPRINT_SHRINK)) / 2;
-
-  it('sets a road-facing com body back so its face lands exactly at the bay-row depth (0.33 tiles)', () => {
+  it('slides a road-facing com body where its car park leaves it room, keeping its whole plate', () => {
+    const roadAt = roadAtTiles([[5, 4]]); // road north of the footprint at (5,5)
     const instancer = new BuildingInstancer(
       new THREE.Scene(),
       SETBACK_CATALOG,
       flatHeightAt,
       undefined,
-      roadAtTiles([[5, 4]]), // road north of the footprint at (5,5)
+      roadAt,
     );
     instancer.apply({
       added: [instanceAt(1, 5, 5, { catalogId: 'shop' })],
@@ -1146,19 +1143,21 @@ describe('frontage parking setback — additive-only 5th constructor arg, defaul
       updated: [],
     });
 
-    const setbackM = (BAY_DEPTH_TILES.com - marginTiles) * TILE_METERS;
+    const shift = frontageSetbackFor(SHOP, 5, 5, roadAt);
     const { pos, scl } = decomposeAt(meshOf(instancer, 'shop'), 0);
-    expect(scl.z).toBeCloseTo(2 * TILE_METERS * MASSING_FOOTPRINT_SHRINK - setbackM, 5);
-    expect(pos.z).toBeCloseTo((5 + 1) * TILE_METERS + setbackM / 2, 5); // shifted AWAY from the road
-    // Road-side face flush with the bay row's inner end; back face unmoved.
-    expect(pos.z - scl.z / 2).toBeCloseTo((5 + BAY_DEPTH_TILES.com) * TILE_METERS, 5);
-    expect(pos.z + scl.z / 2).toBeCloseTo((7 - marginTiles) * TILE_METERS, 5);
-    // The cross axis is untouched.
+    // The plate its floor is counted on, never cut for parking.
     expect(scl.x).toBeCloseTo(2 * TILE_METERS * MASSING_FOOTPRINT_SHRINK, 5);
-    expect(pos.x).toBeCloseTo((5 + 1) * TILE_METERS, 5);
+    expect(scl.z).toBeCloseTo(2 * TILE_METERS * MASSING_FOOTPRINT_SHRINK, 5);
+    expect(pos.x).toBeCloseTo((5 + 1) * TILE_METERS + shift.centerXM, 5);
+    expect(pos.z).toBeCloseTo((5 + 1) * TILE_METERS + shift.centerZM, 5);
+    expect(shift.centerZM).toBeGreaterThan(0); // shifted AWAY from the road
+    // Still on its lot.
+    // Instance matrices are single precision: a tenth of a millimetre.
+    expect(pos.z + scl.z / 2).toBeLessThanOrEqual(7 * TILE_METERS + 1e-4);
+    expect(pos.x + scl.x / 2).toBeLessThanOrEqual(7 * TILE_METERS + 1e-4);
   });
 
-  it('uses the deeper ind bay depth (0.52 tiles) for an industrial body', () => {
+  it('slides an industrial body away from its road the same way', () => {
     const instancer = new BuildingInstancer(
       new THREE.Scene(),
       SETBACK_CATALOG,
@@ -1173,7 +1172,7 @@ describe('frontage parking setback — additive-only 5th constructor arg, defaul
     });
 
     const { pos, scl } = decomposeAt(meshOf(instancer, 'factory'), 0);
-    expect(pos.z - scl.z / 2).toBeCloseTo((5 + BAY_DEPTH_TILES.ind) * TILE_METERS, 5);
+    expect(scl.z).toBeCloseTo(2 * TILE_METERS * MASSING_FOOTPRINT_SHRINK, 5);
     expect(pos.z).toBeGreaterThan((5 + 1) * TILE_METERS); // shifted away from the N road
   });
 
@@ -1470,11 +1469,12 @@ describe('a building turned a quarter stands on the tiles it was stamped on', ()
     });
     const bare = bodyOnMap(upright, 'strip');
     const fronted = bodyOnMap(turned, 'strip');
-    const setbackM = BAY_DEPTH_TILES.com * TILE_METERS;
+    // The whole plate, slid east, away from the road down its west edge.
     expect(fronted.spanZ).toBeCloseTo(bare.spanZ, 5);
-    expect(fronted.spanX).toBeLessThan(bare.spanX);
-    // The body's west face stands at the end of the bay row, east face where it was.
-    expect(fronted.x - fronted.spanX / 2).toBeCloseTo(5 * TILE_METERS + setbackM, 3);
-    expect(fronted.x + fronted.spanX / 2).toBeCloseTo(bare.x + bare.spanX / 2, 3);
+    expect(fronted.spanX).toBeCloseTo(bare.spanX, 5);
+    expect(fronted.x).toBeGreaterThan(bare.x);
+    const shift = frontageSetbackFor(STRIP, 5, 7, westRoad, undefined, 1);
+    expect(fronted.x).toBeCloseTo(bare.x + shift.centerXM, 4);
+    expect(fronted.z).toBeCloseTo(bare.z + shift.centerZM, 4);
   });
 });

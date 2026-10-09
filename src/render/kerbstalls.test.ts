@@ -4,8 +4,6 @@ import {
   ACCESSIBLE_PARALLEL_STALL_M,
   ACCESSIBLE_STALL_WIDTH_M,
   accessibleStallCount,
-  adaAccessibleSpaces,
-  adaVanSpaces,
   downstreamBeside,
   kerbOrientation,
   layKerbFace,
@@ -15,6 +13,7 @@ import {
   type KerbFace,
   type KerbOrientation,
 } from './kerbstalls';
+import { adaAccessibleSpaces, adaVanSpaces } from '../shared/parkingcode';
 import {
   composeProfile,
   NO_EDITS,

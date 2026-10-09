@@ -51,17 +51,19 @@ civilian kit's construction above.
 
 Static parked cars are an occupancy signal, not decoration:
 
-- **Placement**: along an Active building's road-facing edge, inset 0.3 tile
-  from it and spaced roughly every 0.45 tile. Count is the building's level
-  plus one, capped by the edge's capacity. Constructing and Abandoned
-  buildings park zero cars — an empty lot is legible sim state, matching the
-  dark-window rule for abandonment in [buildings.md](buildings.md).
+- **Placement**: on a suburban commercial or industrial lot, one car to each
+  stall of the car park laid to code
+  ([parking-to-code.md](../game-design/features/parking-to-code.md)), nose
+  in, centred in its 9 × 18 ft stall; a vehicle longer than the stall stands
+  with its nose 0.2 m short of the stall's head and its tail over the aisle.
+  Constructing and Abandoned buildings park zero cars — an empty lot is
+  legible sim state, matching the dark-window rule for abandonment in
+  [buildings.md](buildings.md).
 - **Look**: simple two-box cars (body plus cabin) in the vehicle kit's
   saturated palette, picked by a hash of the building id and stall index,
-  standing on a near-white stall-line strip quad — the parking-lot read.
-  Industrial lots park box trucks instead of cars, at a scaled-up
-  ~2.4×2.4×7 m, using the same parked-vehicle silhouette; commercial lots
-  park cars. Homes never street-park: a home that fronts a street parks on
+  standing between the lot's white stall lines — the parking-lot read.
+  Industrial lots mix box trucks (7 m) and pickups in with their workers'
+  cars, using the lorry silhouette; commercial lots park cars. Homes never street-park: a home that fronts a street parks on
   its own drive — see [Residential lots](buildings.md#residential-lots).
   A farm keeps a pickup in its yard, the lorry silhouette at a full-size
   pickup's 5.31 × 2.03 × 1.91 m, which does the rounds of the yard by day and
@@ -76,7 +78,7 @@ Static parked cars are an occupancy signal, not decoration:
   the traffic; in a head-in (90°) stall its nose faces the kerb. Accessible
   stalls take cars by the same occupancy rule as any other stall.
 - **A car stands on its own lot, or at the kerb, never both.** Where a
-  building's own frontage doesn't serve its parking (no bay row, no garage),
+  building's own lot doesn't serve its parking (no car park, no garage),
   its cars park at the kerb instead: past the verge and the sidewalk,
   parallel, with no apron and no painted bay, since the road itself is
   already paved. Kerbside cars, like the lamps and signs in

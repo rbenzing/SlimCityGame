@@ -1,21 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
-  BAY_DEPTH_TILES,
-  BAY_END_MARGIN_TILES,
-  BAY_PITCH_TILES,
   adjacentRoadsCross,
-  bayRowStart,
   CAR_PALETTE,
   computeRoadsideStallCount,
   computeRoadsideStallPlacements,
-  computeStallCount,
-  computeStallPlacements,
-  CURB_CUT_WIDTH_M,
   curbCutTileFor,
   roadsideDepthTiles,
-  frontageInsetTiles,
   hasOwnLotParking,
+  lotStallPlacement,
   IND_NIGHT_OCCUPANCY,
   kerbAllowance,
   kerbCarClearOfJunctions,
@@ -62,9 +55,8 @@ import {
   PARKING_STYLES,
   presetProfileForTier,
 } from '../shared/roadprofile';
-
-const COM_PITCH = BAY_PITCH_TILES.com;
-const COM_DEPTH = BAY_DEPTH_TILES.com;
+import { CURB_CUT_M, STALL_LENGTH_M, STALL_WIDTH_M } from '../shared/parkingcode';
+import { lotPlanFor, type LotPlan } from './lotplan';
 
 const flatHeightAt = (): number => 0;
 const noRoad = (): boolean => false;
@@ -132,11 +124,6 @@ function isZeroScale(m: THREE.Matrix4): boolean {
 // ---------------------------------------------------------------------------
 // Pure function: findRoadFacingEdge (edge selection + tie-break)
 // ---------------------------------------------------------------------------
-
-/** A RoadFacingEdge for the pure-geometry tests, whose road tile is irrelevant. */
-function edgeOf(side: 'N' | 'E' | 'S' | 'W', edgeTiles: number): RoadFacingEdge {
-  return { side, edgeTiles, roadTileX: 0, roadTileZ: 0 };
-}
 
 describe('findRoadFacingEdge', () => {
   it('selects N when only the north strip is road-adjacent', () => {
@@ -348,60 +335,18 @@ describe('stallOccupied', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Pure function: frontageInsetTiles (body-setback source of truth)
-// ---------------------------------------------------------------------------
-
-describe('frontageInsetTiles', () => {
-  const N_EDGE = edgeOf('N', 2);
-
-  it('returns the com bay depth for a commercial building with a road-facing edge', () => {
-    expect(frontageInsetTiles('com', N_EDGE)).toBe(BAY_DEPTH_TILES.com);
-    expect(frontageInsetTiles('com', edgeOf('W', 1))).toBe(BAY_DEPTH_TILES.com);
-  });
-
-  it('returns the ind bay depth for an industrial building with a road-facing edge', () => {
-    expect(frontageInsetTiles('ind', N_EDGE)).toBe(BAY_DEPTH_TILES.ind);
-    expect(frontageInsetTiles('ind', edgeOf('E', 3))).toBe(BAY_DEPTH_TILES.ind);
-  });
-
-  it('returns 0 when no road-facing edge was found', () => {
-    expect(frontageInsetTiles('com', null)).toBe(0);
-    expect(frontageInsetTiles('ind', null)).toBe(0);
-  });
-
-  it('returns 0 for every category parked.ts gives no bays', () => {
-    for (const category of ['res', 'service', 'utility', 'park', 'transit']) {
-      expect(frontageInsetTiles(category, N_EDGE)).toBe(0);
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Pure function: computeStallCount
-// ---------------------------------------------------------------------------
-
-describe('computeStallCount', () => {
-  it('uses level + 1 when the edge has ample capacity', () => {
-    expect(computeStallCount(1, 20, COM_PITCH)).toBe(2);
-    expect(computeStallCount(2, 20, COM_PITCH)).toBe(3);
-    expect(computeStallCount(3, 20, COM_PITCH)).toBe(4);
-  });
-
-  it('clamps to the margin-trimmed bay capacity when it is the binding constraint', () => {
-    // floor((1 - 2*margin) / pitch) car bays fit a 1-tile edge.
-    const capacity = Math.floor((1 - 2 * BAY_END_MARGIN_TILES) / COM_PITCH);
-    expect(computeStallCount(9, 1, COM_PITCH)).toBe(capacity);
-    // Truck bays are wider, so fewer fit the same edge.
-    const truckCapacity = Math.floor((1 - 2 * BAY_END_MARGIN_TILES) / BAY_PITCH_TILES.ind);
-    expect(computeStallCount(9, 1, BAY_PITCH_TILES.ind)).toBe(truckCapacity);
-    expect(truckCapacity).toBeLessThan(capacity);
-  });
-
-  it('never returns a negative count', () => {
-    expect(computeStallCount(0, 1, COM_PITCH)).toBeGreaterThanOrEqual(0);
-  });
-});
+/** A building's lot plan at (x, z) for the tests, which must have one. */
+function planOf(
+  entry: BuildingCatalogEntry,
+  x: number,
+  z: number,
+  roadAt: (x: number, z: number) => boolean,
+  rotation: 0 | 1 | 2 | 3 = 0,
+): LotPlan {
+  const plan = lotPlanFor(entry, x, z, roadAt, rotation);
+  if (!plan) throw new Error('expected a lot plan');
+  return plan;
+}
 
 describe('stallKind / stallVariantIndex', () => {
   it('commercial lots park only cars', () => {
@@ -431,112 +376,86 @@ describe('stallKind / stallVariantIndex', () => {
     }
   });
 
-  it('parked vehicles never touch: every bay pitch exceeds the widest vehicle in it', () => {
-    // Commercial car bays vs the widest car variant.
+  it('parked vehicles never touch: a 9 ft stall is wider than the widest car or truck in it', () => {
     let maxCarW = 0;
     for (let v = 0; v < 3; v++)
       maxCarW = Math.max(
         maxCarW,
         sizeForKind(VehicleKind.Car)[0] * variantScaleForKind(VehicleKind.Car, v)[0],
       );
-    expect(COM_PITCH * TILE_METERS).toBeGreaterThan(maxCarW);
-    // Industrial truck bays vs the widest truck variant.
+    expect(STALL_WIDTH_M).toBeGreaterThan(maxCarW);
     let maxTruckW = 0;
     for (let v = 0; v < 2; v++)
       maxTruckW = Math.max(
         maxTruckW,
         sizeForKind(VehicleKind.Truck)[0] * variantScaleForKind(VehicleKind.Truck, v)[0],
       );
-    expect(BAY_PITCH_TILES.ind * TILE_METERS).toBeGreaterThan(maxTruckW);
+    expect(STALL_WIDTH_M).toBeGreaterThan(maxTruckW);
   });
 
-  it('perpendicular vehicles fit inside their bay depth (longest variant included)', () => {
+  it('every car fits inside its 18 ft stall, the longest variant included', () => {
     let maxCarL = 0;
     for (let v = 0; v < 3; v++)
       maxCarL = Math.max(
         maxCarL,
         sizeForKind(VehicleKind.Car)[2] * variantScaleForKind(VehicleKind.Car, v)[2],
       );
-    expect(COM_DEPTH * TILE_METERS).toBeGreaterThan(maxCarL);
-    let maxTruckL = 0;
-    for (let v = 0; v < 2; v++)
-      maxTruckL = Math.max(
-        maxTruckL,
-        sizeForKind(VehicleKind.Truck)[2] * variantScaleForKind(VehicleKind.Truck, v)[2],
-      );
-    expect(BAY_DEPTH_TILES.ind * TILE_METERS).toBeGreaterThan(maxTruckL);
+    expect(STALL_LENGTH_M).toBeGreaterThan(maxCarL);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Pure function: computeStallPlacements
+// Pure function: lotStallPlacement
 // ---------------------------------------------------------------------------
 
-describe('computeStallPlacements', () => {
-  const pitchM = COM_PITCH * TILE_METERS;
-  const halfDepthM = (COM_DEPTH * TILE_METERS) / 2;
-  const place = (edge: RoadFacingEdge, count: number): ReturnType<typeof computeStallPlacements> =>
-    computeStallPlacements(5, 5, 1, 1, edge, count, COM_PITCH, COM_DEPTH);
+describe('lotStallPlacement', () => {
+  /** A 2x2 works at (5, 5), its street on `side`. */
+  const works = makeCatalogEntry({
+    category: 'ind',
+    zone: ZoneType.Industrial,
+    footprint: { w: 2, d: 2 },
+  });
+  const roadOn = (side: 'N' | 'E' | 'S' | 'W'): ((x: number, z: number) => boolean) =>
+    ({
+      N: roadAtTiles([[5, 4]]),
+      S: roadAtTiles([[5, 7]]),
+      E: roadAtTiles([[7, 5]]),
+      W: roadAtTiles([[4, 5]]),
+    })[side];
 
-  it('spaces consecutive bays by the pitch', () => {
-    const edge = edgeOf('N', 5);
-    const placements = computeStallPlacements(2, 2, 5, 1, edge, 3, COM_PITCH, COM_DEPTH);
-    expect(placements).toHaveLength(3);
-    expect(placements[1]!.worldX - placements[0]!.worldX).toBeCloseTo(pitchM, 6);
-    expect(placements[2]!.worldX - placements[1]!.worldX).toBeCloseTo(pitchM, 6);
+  it('stands each car in the middle of its stall, on the lot', () => {
+    for (const side of ['N', 'E', 'S', 'W'] as const) {
+      const plan = planOf(works, 5, 5, roadOn(side));
+      for (const stall of plan.layout.stalls) {
+        const p = lotStallPlacement(plan.frame, stall, 4.0);
+        expect(p.worldX).toBeGreaterThan(5 * TILE_METERS);
+        expect(p.worldX).toBeLessThan(7 * TILE_METERS);
+        expect(p.worldZ).toBeGreaterThan(5 * TILE_METERS);
+        expect(p.worldZ).toBeLessThan(7 * TILE_METERS);
+      }
+    }
   });
 
-  it('centers the bay row on the frontage', () => {
-    const edge = edgeOf('N', 5);
-    const placements = computeStallPlacements(2, 2, 5, 1, edge, 3, COM_PITCH, COM_DEPTH);
-    const edgeCenterX = 2 * TILE_METERS + (5 * TILE_METERS) / 2;
-    const rowCenterX = (placements[0]!.worldX + placements[2]!.worldX) / 2;
-    expect(rowCenterX).toBeCloseTo(edgeCenterX, 6);
-    // bayRowStart is the pure helper behind that centering.
-    expect(bayRowStart(5, 3, COM_PITCH)).toBeCloseTo((5 * TILE_METERS - 3 * pitchM) / 2, 6);
+  it('parks every car square to its stall, nose-in along one of the lot axes', () => {
+    for (const side of ['N', 'E', 'S', 'W'] as const) {
+      const plan = planOf(works, 5, 5, roadOn(side));
+      for (const stall of plan.layout.stalls) {
+        const yaw = lotStallPlacement(plan.frame, stall, 4.0).baseYaw;
+        const quarter = yaw / (Math.PI / 2);
+        expect(Math.abs(quarter - Math.round(quarter))).toBeLessThan(1e-9);
+      }
+    }
   });
 
-  it('seats the N row half a bay depth INWARD (south, onto the lot)', () => {
-    const [p] = place(edgeOf('N', 1), 1);
-    // The building's north edge line is at tile 5; the vehicle sits centred in
-    // its bay, half the bay depth INTO the lot (larger z), never on the road.
-    expect(p!.worldZ).toBeCloseTo(5 * TILE_METERS + halfDepthM, 6);
-  });
-
-  it('seats the S row half a bay depth INWARD (north, onto the lot)', () => {
-    const [p] = place(edgeOf('S', 1), 1);
-    expect(p!.worldZ).toBeCloseTo(6 * TILE_METERS - halfDepthM, 6);
-  });
-
-  it('seats the E row half a bay depth INWARD (west, onto the lot)', () => {
-    const [p] = place(edgeOf('E', 1), 1);
-    expect(p!.worldX).toBeCloseTo(6 * TILE_METERS - halfDepthM, 6);
-  });
-
-  it('seats the W row half a bay depth INWARD (east, onto the lot)', () => {
-    const [p] = place(edgeOf('W', 1), 1);
-    expect(p!.worldX).toBeCloseTo(5 * TILE_METERS + halfDepthM, 6);
-  });
-
-  it('gives each of the four sides a distinct base yaw', () => {
-    const yaws = (['N', 'E', 'S', 'W'] as const).map(
-      (side) => place(edgeOf(side, 1), 1)[0]!.baseYaw,
-    );
-    expect(new Set(yaws).size).toBe(4);
-  });
-
-  it('base yaw points the kit nose (+Z) INWARD — perpendicular, nose-in parking', () => {
-    const yawFor = (side: 'N' | 'E' | 'S' | 'W'): number => place(edgeOf(side, 1), 1)[0]!.baseYaw;
-    // rotationY(yaw) maps local +Z to world (sin yaw, cos yaw); inward for an
-    // N-side lot (road to its north) is world +Z -> yaw 0, and so on around.
-    expect(yawFor('N')).toBeCloseTo(0, 10);
-    expect(yawFor('S')).toBeCloseTo(Math.PI, 10);
-    expect(yawFor('E')).toBeCloseTo(-Math.PI / 2, 10);
-    expect(yawFor('W')).toBeCloseTo(Math.PI / 2, 10);
-  });
-
-  it('returns an empty array for count 0', () => {
-    expect(place(edgeOf('N', 1), 0)).toEqual([]);
+  it('noses a vehicle longer than its stall up to the head and leaves its tail over the aisle', () => {
+    const plan = planOf(works, 5, 5, roadOn('N'));
+    const stall = plan.layout.stalls[0]!;
+    const centred = lotStallPlacement(plan.frame, stall, 4.0);
+    const truck = lotStallPlacement(plan.frame, stall, 7.0);
+    const nose = { x: Math.sin(centred.baseYaw), z: Math.cos(centred.baseYaw) };
+    const shift =
+      (truck.worldX - centred.worldX) * nose.x + (truck.worldZ - centred.worldZ) * nose.z;
+    expect(shift).toBeCloseTo(-((7.0 - STALL_LENGTH_M) / 2 + 0.2), 6);
   });
 });
 
@@ -638,8 +557,8 @@ describe('ParkedCarRenderer frontage apron', () => {
     // Outward (north, -Z): past the footprint edge, over the verge AND the sidewalk.
     // Positions come back through a Float32 attribute, so compare at mm scale.
     expect(minZ).toBeCloseTo(buildingEdgeZ - verge - walk, 3);
-    // Inward (south, +Z): still only as deep as the bay row.
-    expect(maxZ).toBeCloseTo(buildingEdgeZ + BAY_DEPTH_TILES.com * TILE_METERS, 3);
+    // Inward (south, +Z): never past the back of the two-deep lot.
+    expect(maxZ).toBeLessThanOrEqual(7 * TILE_METERS + 1e-3);
   });
 
   it('keeps the curb cut narrower than the frontage (an entrance, not a paved street edge)', () => {
@@ -656,9 +575,15 @@ describe('ParkedCarRenderer frontage apron', () => {
       cutMinX = Math.min(cutMinX, position.getX(i));
       cutMaxX = Math.max(cutMaxX, position.getX(i));
     }
-    expect(cutMaxX - cutMinX).toBeCloseTo(CURB_CUT_WIDTH_M, 3);
-    // Centered on the frontage.
-    expect((cutMinX + cutMaxX) / 2).toBeCloseTo(5 * TILE_METERS + (3 * TILE_METERS) / 2, 3);
+    expect(cutMaxX - cutMinX).toBeCloseTo(CURB_CUT_M, 3);
+    // Where the lot's drive meets the street.
+    const plan = planOf(
+      makeCatalogEntry({ footprint: { w: 3, d: 2 } }),
+      5,
+      5,
+      roadAtTiles([[5, 4]]),
+    );
+    expect(cutMinX).toBeCloseTo(5 * TILE_METERS + plan.layout.curbCut.u0, 3);
   });
 
   it('stops at the footprint edge when the street is wide enough to have no verge', () => {
@@ -788,17 +713,20 @@ describe('ParkedCarRenderer occupancy over the day', () => {
 });
 
 describe('ParkedCarRenderer', () => {
-  it('places min(level+1, capacity) cars for an Active, road-adjacent building', () => {
+  it('places one car per stall the lot lays out to code, for an Active, road-adjacent building', () => {
     const scene = new THREE.Scene();
-    const catalog = makeCatalogEntry({ footprint: { w: 1, d: 1 } });
-    const renderer = new ParkedCarRenderer(scene, flatHeightAt, [catalog], roadAtTiles([[5, 4]]));
+    const catalog = makeCatalogEntry({ footprint: { w: 3, d: 2 } });
+    const roadAt = roadAtTiles([[5, 4]]);
+    const renderer = new ParkedCarRenderer(scene, flatHeightAt, [catalog], roadAt);
 
     const building = makeBuilding({ id: 1, level: 1 });
     renderer.apply(deltaAdd(building));
 
-    expect(renderer.stallSlotsFor(1)).toHaveLength(2); // min(1+1, capacity 4) = 2
+    const stalls = planOf(catalog, 5, 5, roadAt).layout.stalls.length;
+    expect(stalls).toBeGreaterThan(1);
+    expect(renderer.stallSlotsFor(1)).toHaveLength(stalls);
     expect(renderer.carMeshCount()).toBe(1); // commercial lots park cars only -> one kind pool
-    expect(renderer.carInstanceCount()).toBeGreaterThanOrEqual(2);
+    expect(renderer.carInstanceCount()).toBeGreaterThanOrEqual(stalls);
   });
 
   it('gives an apartment block no bay row or apron — it parks at the kerb, not on a forecourt', () => {
@@ -998,16 +926,19 @@ describe('ParkedCarRenderer', () => {
     }
   });
 
-  it('clamps stall count to edge capacity for a high level on a short edge', () => {
+  it('parks only what fits on a lot too small for its code, whatever the level', () => {
     const scene = new THREE.Scene();
-    const catalog = makeCatalogEntry({ footprint: { w: 1, d: 1 } });
-    const renderer = new ParkedCarRenderer(scene, flatHeightAt, [catalog], roadAtTiles([[5, 4]]));
+    const catalog = makeCatalogEntry({ footprint: { w: 1, d: 2 } });
+    const roadAt = roadAtTiles([[5, 4]]);
+    const renderer = new ParkedCarRenderer(scene, flatHeightAt, [catalog], roadAt);
 
-    const building = makeBuilding({ id: 1, level: 9 }); // level+1=10, but a 1-tile edge caps out
-    renderer.apply(deltaAdd(building));
+    renderer.apply(deltaAdd(makeBuilding({ id: 1, level: 9 })));
 
-    const capacity = Math.floor((1 - 2 * BAY_END_MARGIN_TILES) / COM_PITCH);
-    expect(renderer.stallSlotsFor(1)).toHaveLength(capacity);
+    const { layout } = planOf(catalog, 5, 5, roadAt);
+    expect(layout.fits).toBe(false);
+    expect(layout.provided).toBeGreaterThan(0);
+    expect(layout.provided).toBeLessThan(layout.required);
+    expect(renderer.stallSlotsFor(1)).toHaveLength(layout.provided);
   });
 
   it('parks zero cars for a Constructing building even when road-adjacent', () => {
@@ -1046,14 +977,17 @@ describe('ParkedCarRenderer', () => {
 
   it('adds cars once a Constructing building transitions to Active via an update', () => {
     const scene = new THREE.Scene();
-    const catalog = makeCatalogEntry();
+    // A lot big enough to lay a car park (a 1x1 shop's cannot hold its accessible space).
+    const catalog = makeCatalogEntry({ footprint: { w: 3, d: 2 } });
     const renderer = new ParkedCarRenderer(scene, flatHeightAt, [catalog], roadAtTiles([[5, 4]]));
 
     renderer.apply(deltaAdd(makeBuilding({ id: 1, state: BuildingState.Constructing })));
     expect(renderer.stallSlotsFor(1)).toHaveLength(0);
 
     renderer.apply(deltaUpdate(makeBuilding({ id: 1, state: BuildingState.Active })));
-    expect(renderer.stallSlotsFor(1)).toHaveLength(2);
+    expect(renderer.stallSlotsFor(1)).toHaveLength(
+      planOf(catalog, 5, 5, roadAtTiles([[5, 4]])).layout.stalls.length,
+    );
   });
 
   it('removes cars (hides their matrix) when an Active building becomes Abandoned via an update', () => {
@@ -1078,7 +1012,7 @@ describe('ParkedCarRenderer', () => {
 
   it('removing a building frees exactly its own stalls, leaving another building intact', () => {
     const scene = new THREE.Scene();
-    const catalog = makeCatalogEntry();
+    const catalog = makeCatalogEntry({ footprint: { w: 3, d: 2 } });
     const roadAt = roadAtTiles([
       [2, 1], // N of building A at (2,2)
       [10, 9], // N of building B at (10,10)
@@ -1131,13 +1065,25 @@ describe('ParkedCarRenderer', () => {
     expect(countAfterSecond).toBe(countAfterFirst);
   });
 
-  it('produces conforming stripe geometry that grows with the bay count (apron + bay lines)', () => {
+  it('produces conforming stripe geometry that grows with the stall count (stall lines, islands)', () => {
     const scene = new THREE.Scene();
-    // A wide footprint so the edge (10 tiles) comfortably fits several stalls.
-    const catalog = makeCatalogEntry({ footprint: { w: 10, d: 1 }, level: 3 });
-    const renderer = new ParkedCarRenderer(scene, flatHeightAt, [catalog], roadAtTiles([[0, -1]]));
+    // Two works on the same lot: the bigger floor asks for, and gets, more stalls.
+    const small = makeCatalogEntry({
+      id: 'small',
+      category: 'ind',
+      zone: ZoneType.Industrial,
+      kind: 'warehouse',
+      footprint: { w: 3, d: 3 },
+    });
+    const big = makeCatalogEntry({ ...small, id: 'big', kind: 'workshop' });
+    const renderer = new ParkedCarRenderer(
+      scene,
+      flatHeightAt,
+      [small, big],
+      roadAtTiles([[0, -1]]),
+    );
 
-    renderer.apply(deltaAdd(makeBuilding({ id: 1, x: 0, z: 0, level: 3 })));
+    renderer.apply(deltaAdd(makeBuilding({ id: 1, x: 0, z: 0, catalogId: 'big' })));
     const countBig = renderer.stallSlotsFor(1).length;
     expect(countBig).toBeGreaterThan(1);
     const vertsBig = renderer.stripeVertexCountFor(1);
@@ -1145,22 +1091,22 @@ describe('ParkedCarRenderer', () => {
     expect(vertsBig).toBeGreaterThan(0);
     expect(vertsBig % 3).toBe(0);
 
-    renderer.apply(deltaUpdate(makeBuilding({ id: 1, x: 0, z: 0, level: 0 })));
+    renderer.apply(deltaUpdate(makeBuilding({ id: 1, x: 0, z: 0, catalogId: 'small' })));
     const countSmall = renderer.stallSlotsFor(1).length;
     expect(countSmall).toBeLessThan(countBig);
-    // Fewer bays -> shorter apron + fewer bay lines -> strictly less geometry.
+    // Fewer stalls -> fewer stall lines and islands -> strictly less geometry.
     expect(renderer.stripeVertexCountFor(1)).toBeLessThan(vertsBig);
   });
 
-  it('subdivides the apron into conforming cells (more than one quad even for one bay)', () => {
+  it('subdivides the apron into conforming cells (more than one quad even for a small lot)', () => {
     const scene = new THREE.Scene();
-    const catalog = makeCatalogEntry({ footprint: { w: 1, d: 1 } });
+    const catalog = makeCatalogEntry({ footprint: { w: 1, d: 2 } });
     const renderer = new ParkedCarRenderer(scene, flatHeightAt, [catalog], roadAtTiles([[5, 4]]));
 
     renderer.apply(deltaAdd(makeBuilding({ id: 1, level: 0 })));
-    expect(renderer.stallSlotsFor(1)).toHaveLength(1);
+    expect(renderer.stallSlotsFor(1).length).toBeGreaterThan(0);
     // One flat 4-corner quad would be exactly 6 vertices; the conforming
-    // subdivision (<= 2 m cells over a ~4 m x 5.3 m apron + bay lines) is far more.
+    // subdivision (<= 2 m cells over the apron, stall lines and islands) is far more.
     expect(renderer.stripeVertexCountFor(1)).toBeGreaterThan(6);
   });
 
@@ -1485,21 +1431,23 @@ describe('kerbside placement', () => {
     expect(computeRoadsideStallCount(0.4)).toBe(0);
   });
 
-  it('parks along the street, not nose-in to it', () => {
+  it('parks along the street, not square to it', () => {
     const kerb = computeRoadsideStallPlacements(4, 6, 2, 2, edge, RoadTier.TwoLane, 2);
-    const bays = computeStallPlacements(4, 6, 2, 2, edge, 2, COM_PITCH, COM_DEPTH);
-    const quarterTurn = Math.abs(kerb[0]!.baseYaw - bays[0]!.baseYaw);
-    expect(quarterTurn).toBeCloseTo(Math.PI / 2, 6);
+    // Along the S kerb a parallel car lies east-west: its nose on ±x.
+    expect(Math.abs(Math.cos(kerb[0]!.baseYaw))).toBeLessThan(1e-9);
   });
 
-  // A kerbside car stands in the street; a bay car stands on the lot. They must
+  // A kerbside car stands in the street; a lot car stands on the lot. They must
   // end up on opposite sides of the building's own footprint edge.
-  it('stands in the street, where a bay car stands on the lot', () => {
+  it('stands in the street, where a lot car stands on the lot', () => {
     const footprintEdgeZ = (6 + 2) * TILE_METERS;
     const kerb = computeRoadsideStallPlacements(4, 6, 2, 2, edge, RoadTier.TwoLane, 2);
-    const bays = computeStallPlacements(4, 6, 2, 2, edge, 2, COM_PITCH, COM_DEPTH);
+    const shop = makeCatalogEntry({ footprint: { w: 2, d: 2 } });
+    const plan = planOf(shop, 4, 6, (x, z) => z === 8 && x >= 4 && x < 6);
+    const lot = plan.layout.stalls.map((s) => lotStallPlacement(plan.frame, s, 4.0));
+    expect(lot.length).toBeGreaterThan(0);
     for (const p of kerb) expect(p.worldZ).toBeGreaterThan(footprintEdgeZ);
-    for (const p of bays) expect(p.worldZ).toBeLessThan(footprintEdgeZ);
+    for (const p of lot) expect(p.worldZ).toBeLessThan(footprintEdgeZ);
   });
 
   it('clears the verge and the sidewalk it parks beyond', () => {
