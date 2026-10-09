@@ -31,7 +31,7 @@ import type { RoadProfile } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import { ACCESSIBLE_SYMBOL_M, accessibilitySymbolPaint, ROAD_Y_OFFSET } from './roadsmesh';
-import { clearOfNoParking, type KerbStall, type ParkingSetbacks } from './kerbstalls';
+import { clearOfNoParking, type KerbStall, type ParkingSetbacks } from '../shared/kerbstalls';
 import type { LotRect, LotStall, StallNose } from '../shared/lotlayout';
 import { lotPlanFor, lotPointToWorld, type LotPlan } from './lotplan';
 import { InstancedSlotPool } from './massing';

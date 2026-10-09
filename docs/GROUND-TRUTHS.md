@@ -268,7 +268,7 @@ MUTCD citations below use 11th-edition section numbers.
   stop line or signal, or within 6.1 m (20 ft) of a crosswalk or of the
   junction mouth where there is no crosswalk, on either side of the junction
   (UVC §11-1003). — [road-model.md](world-sim/road-model.md);
-  `src/render/roadsmesh.ts`, `src/render/parked.ts`
+  `src/shared/kerbstalls.ts`, `src/shared/kerblayout.ts`, `src/render/parked.ts`
 - A parking lane is parallel, angled or head-in, and the style is part of
   the road's profile (a field on its parking piece, parallel when absent), so
   an old save reads as it was. The stall is 2.6 × 5.5 m (8.5 × 18 ft). An
@@ -279,7 +279,7 @@ MUTCD citations below use 11th-edition section numbers.
   width like any piece, and the road tool refuses a profile that does not
   fit. An angled or head-in stall is marked only where its whole footprint
   stands clear of the no-parking zones. — [road-model.md](world-sim/road-model.md);
-  `src/shared/roadprofile.ts`, `src/render/roadsmesh.ts`
+  `src/shared/roadprofile.ts`, `src/shared/kerbstalls.ts`
 - Every block face that marks stalls and has room for an accessible one
   marks accessible ones, to PROWAG R211:
   1 for 1–25 stalls, 2 for 26–50, 3 for 51–75, 4 for 76–100, 5 for 101–150,
@@ -290,7 +290,14 @@ MUTCD citations below use 11th-edition section numbers.
   (R310.3). The aisle is on the passenger side and hatched white. Each one
   carries the International Symbol of Accessibility on a blue square
   (MUTCD 3B.22 ¶08–09), drawn as geometry. — [road-model.md](world-sim/road-model.md);
-  `src/render/roadsmesh.ts`
+  `src/shared/kerbstalls.ts`, `src/render/roadsmesh.ts`
+- The kerb stall layout and its no-parking zones are computed in one shared
+  module that the renderer and the sim both call, each reading the roads
+  through a `KerbSurroundings` built by the same `roadSurroundings`; the sim
+  never infers stalls another way. Every input is grid state (the road tiles,
+  the profile table, the junction controls), never anything only the mesh
+  knows. — [parking-to-code.md](engineering/features/parking-to-code.md);
+  `src/shared/kerblayout.ts`, `src/sim/kerbsurroundings.ts`
 - A motorway is ONE carriageway, not a road with two halves. Highway and ramp
   are the only classes whose lane range counts a single direction, they admit
   no median piece, and a dual carriageway is two runs laid side by side and

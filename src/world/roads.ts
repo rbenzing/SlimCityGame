@@ -23,7 +23,8 @@ import {
   sideBySideCarriageways,
 } from '../shared/corridor';
 import type { RampJoin } from '../shared/corridor';
-import type { GridState, RoadTileDelta, TileArms, TilePoint } from '../shared/types';
+import type { GridState, OverRoadState, RoadTileDelta, TileArms, TilePoint } from '../shared/types';
+import { overRoadAt } from './overpass';
 
 // ---------------------------------------------------------------------------
 // Indexing — parameterized by the grid's own `size` (GridState.size), not a
@@ -82,6 +83,28 @@ export function computeMask(g: GridState, x: number, z: number): number {
  */
 export function computeOverMask(g: GridState, x: number, z: number): number {
   return layerMask(g, x, z, true, anyRoad);
+}
+
+/** The road on tile `idx` as the grid holds it now, as the render thread is told it. */
+export function roadTileOf(g: GridState, idx: number): RoadTileDelta {
+  const tier = tierAtIdx(g, idx);
+  return {
+    x: idx % g.size,
+    z: Math.floor(idx / g.size),
+    tier,
+    mask: g.roadMask[idx] ?? 0,
+    elevation: g.roadElevation[idx] ?? 0,
+    profile: tier === RoadTier.None ? 0 : g.roadProfile[idx] || tier,
+    flow: g.roadFlow[idx] ?? RoadFlow.None,
+  };
+}
+
+/** The road passing over tile `idx` as the render thread is told it, or undefined where none does. */
+export function overRoadStateOf(g: GridState, idx: number): OverRoadState | undefined {
+  const road = overRoadAt(g, idx);
+  if (!road) return undefined;
+  const x = idx % g.size;
+  return { ...road, mask: computeOverMask(g, x, (idx - x) / g.size) };
 }
 
 const anyRoad = (tier: RoadTier): boolean => tier !== RoadTier.None;

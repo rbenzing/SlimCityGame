@@ -2,18 +2,18 @@
  * Where a parking lane marks its stalls: the parallel ticks along a tile, and
  * the block face — one kerb's parking along a straight run — laid as regular
  * stalls in the lane's style plus the accessible stalls its count earns. Pure
- * numbers along the road; the road mesh paints from them and the parked cars
- * stand in them, so the two can never disagree.
+ * numbers along the road; the road mesh paints from them, the parked cars
+ * stand in them and the sim counts them, so none of the three can disagree.
  */
-import { TILE_METERS } from '../shared/constants';
+import { TILE_METERS } from './constants';
 import {
   isOneWayProfile,
   PARKING_STALL_WIDTH_M,
   PARKING_STYLES,
   runsAgainstDrawing,
-} from '../shared/roadprofile';
-import { flowDirection, RoadFlow } from '../shared/types';
-import type { ParkingStyle, RoadProfile } from '../shared/types';
+} from './roadprofile';
+import { flowDirection, RoadFlow } from './types';
+import type { ParkingStyle, RoadProfile } from './types';
 
 const TILE_HALF = TILE_METERS / 2;
 const EPS = 1e-6;

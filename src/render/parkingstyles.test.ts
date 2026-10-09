@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { ACCESSIBLE_PAINT_COLOR, MARKING_COLOR, RoadMeshRenderer } from './roadsmesh';
-import { PARKING_TICK_KERB_CLEARANCE_M, type KerbStall } from './kerbstalls';
+import { PARKING_TICK_KERB_CLEARANCE_M, type KerbStall } from '../shared/kerbstalls';
 import { RoadFlow, RoadTier } from '../shared/types';
 import type { JunctionControl, ParkingStyle, RoadProfile } from '../shared/types';
 import {

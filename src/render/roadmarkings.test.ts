@@ -3,18 +3,20 @@ import { corridorHalfProfile, presetProfileForTier } from '../shared/roadprofile
 import { RoadFlow, RoadTier } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import {
-  approachingLanes,
-  approachingSpan,
   CENTRE_PAIR_OFFSET_M,
   centrePair,
   MEDIAN_EDGE_LINE_INSET_M,
   markingPlan,
   seamBetween,
   seamOffsets,
-  travelLanes,
-  travelLaneSpans,
   type MarkingPlan as MarkingProfile,
 } from './roadmarkings';
+import {
+  approachingLanes,
+  approachingSpan,
+  travelLanes,
+  travelLaneSpans,
+} from '../shared/travellanes';
 
 const close = (xs: readonly { at: number }[] | number[], ys: number[]): void => {
   expect(xs.length).toBe(ys.length);

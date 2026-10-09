@@ -5,8 +5,12 @@ import {
   BIKE_LANE_PAINT_COLOR,
   carriagewayHalfWidthMeters,
   isLaneGlyphTile,
-  junctionArmLayout,
   MARKING_COLOR,
+  RoadMeshRenderer,
+  SIDEWALK_COLOR,
+} from './roadsmesh';
+import { junctionArmLayout } from '../shared/junctionpaint';
+import {
   NO_PARKING_BEFORE_STOP_M,
   NO_PARKING_FROM_CROSSWALK_M,
   PARKING_END_STALL_M,
@@ -14,9 +18,7 @@ import {
   PARKING_STALL_LENGTH_M,
   PARKING_TICK_KERB_CLEARANCE_M,
   parkingTickPositions,
-  RoadMeshRenderer,
-  SIDEWALK_COLOR,
-} from './roadsmesh';
+} from '../shared/kerbstalls';
 import { EDGE_LINE_MARGIN_M } from './roadmarkings';
 import { RoadFlow, RoadTier } from '../shared/types';
 import type { JunctionControl, RoadProfile } from '../shared/types';

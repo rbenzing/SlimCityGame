@@ -41,7 +41,8 @@ This is the API boundary every other directory reads from — types
 (`Command`, `SimSnapshot`, `MainToWorker`/`WorkerToMain`, `RoadTier`,
 `ZoneType`, …), constants (`TICK_RATE`, `MAP_SIZE`, …), and pure
 geometry/data helpers (`roadprofile.ts`, `corridor.ts`, `junction.ts`,
-`taper.ts`, `approach.ts`, `approachzone.ts`) with no three.js and no DOM
+`taper.ts`, `approach.ts`, `approachzone.ts`, `kerbstalls.ts`, `kerblayout.ts`)
+with no three.js and no DOM
 dependency, so both the worker and the render thread can share them
 verbatim. `src/shared/types.ts` additionally warns that enum-like values
 (`ZoneType`, `RoadTier`, …) are "stored in typed-array layers — values are

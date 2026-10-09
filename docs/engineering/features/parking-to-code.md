@@ -1,6 +1,6 @@
 # Parking to code — technical design
 
-- **Status:** Partly built — lots drawn to code (P1, 2026-10-08); kerb credit and larger lots for the kinds that fall short not built
+- **Status:** Partly built — lots drawn to code (P1, 2026-10-08); the kerb stall layout shared by the renderer and the sim (P2a, 2026-10-09); kerb credit in growth and larger lots for the kinds that fall short not built
 - **Date:** 2026-10-08
 - **Author:** line cook, for the coordinator
 
@@ -99,8 +99,60 @@ world direction, `atan2(dx, dz)`.
   body, and the layout is deterministic.
 - One car per stall; downtown draws no lot parking and parks at the kerb.
 
+## P2a: one kerb layout for the renderer and the sim
+
+Kerb credit counts the stalls a street paints along a lot's frontage, so the
+sim has to count exactly the stalls the paint shows. The stall layout, the
+no-parking zones that keep it off a junction, and the block face it is laid
+along are therefore worked out in `src/shared`, and the road mesh calls the
+same functions it used to hold.
+
+| Module                         | Change |
+| ------------------------------ | ------ |
+| `src/shared/kerbstalls.ts`     | Moved from `src/render`, unchanged: the stall ticks, the block-face layout in each style, the accessible stalls and the stall orientation. |
+| `src/shared/junctionpaint.ts`  | New. `junctionArmLayout`, `junctionArmPaint` and `noParkingReach`, moved from `render/roadsmesh.ts`: what a junction paints across each arm, and how far back that keeps a kerb clear. |
+| `src/shared/travellanes.ts`    | New. `carriagewaySpans`, `travelLaneSpans`, `travelLanes`, `approachingLanes` and `approachingSpan`, moved from `render/roadmarkings.ts`. |
+| `src/shared/kerblayout.ts`     | New. `KerbSurroundings` and `roadSurroundings`; the section reads (`drawnSectionAt`, `paintedSectionAt`, `halfAt`, `roadAlong`, `junctionAlong`, `walkableAlong`); `junctionEndsAt`, `parkingSetbacksAt`, `parkingTicksAt`, `parkingStyleAt`, `blockFaceAt`, `stallsOnTile` and `paintedKerbStallsAlong`. |
+| `src/sim/kerbsurroundings.ts`  | New. `gridKerbSurroundings(grid, nodes, profileById)`: the sim's surroundings. |
+| `src/world/roads.ts`           | `roadTileOf` and `overRoadStateOf`: a road tile as the render thread is told it. The worker builds its road deltas from them. |
+| `src/render/roadsmesh.ts`      | Its section, setback and block-face methods call the shared ones through one `KerbSurroundings`; it keeps its cache of laid faces. |
+
+**The surroundings.** `KerbSurroundings` is the approach zone's
+`ApproachSurroundings` plus `roadAt(x, z)`, the road tile exactly as the
+worker sends it (tier, mask, profile id, flow, the road passing over it, the
+arms held apart), and `profileById(id)`. `roadSurroundings(roads, junctions)`
+derives every other answer from those two and a junction reader (control,
+turns, lane turns), so a road reads the same on both threads. The renderer
+hands it its chunk tiles and the junction controls from the snapshots. The
+sim hands it the grid, the road graph's junctions of three arms or more
+(`control`, else `none`, and `turns`), the grid's `junctionLaneTurns` and its
+profile table. Every input is grid state: no terrain, roundabout or free-road
+junction reaches the stalls. Build a fresh sim surroundings after the roads
+change; it reads each tile once.
+
+**The entry point.** `paintedKerbStallsAlong(s, { x, z, alongX, tiles, side })`
+returns, low to high, the stalls of one kerb whose middles lie on that run of
+road tiles, each with its lane's style. They are the stalls
+`RoadMeshRenderer.parkingStallsAt` returns tile by tile. A tile that runs
+across the frontage, or paints no lane on that kerb, adds none. P2b calls it
+from growth; nothing calls it from the sim yet.
+
+**Proof.** `tests/interaction/kerbstalls.test.ts` grows a town of parked
+streets in the worker: parallel, angled and head-in parking, one-way and
+two-way roads, a minor-road stop at a T, all-way stops, signals, an
+uncontrolled T, a side road the warrant decides, and a long block along z.
+It feeds the snapshots to the road mesh the way `main.ts` does. Every tile's
+setbacks and stalls, including the accessible stalls, their aisles and the
+car yaw, must equal `kerbstalls.golden.json`, which was captured from the
+renderer before the move. The sim's surroundings must give the same setbacks
+and stalls on every tile.
+
 ## What could go wrong
 
+- **The renderer's tile lookup wraps at the map's edge.** A tile at x = −1
+  reads the chunk on the far side. The sim reads nothing there, so a parked
+  street on the map's edge row or column could count differently from what
+  is drawn.
 - **Flex falls short** at levels 1 and 3 on the geometry, though an area
   count said it fits; P2 has to add it to the kinds that get larger lots.
 - **Bodies on the lot line** can meet a neighbour's; the 85% fill ceiling
@@ -131,5 +183,5 @@ factory and a strip with cars, looked at against the rules.
 
 ## Out of scope
 
-Kerb credit and larger lot variants (P2); parking decks off the hospital;
-any sim effect of parking.
+Kerb credit in growth and larger lot variants (P2b); parking decks off the
+hospital; any sim effect of parking.

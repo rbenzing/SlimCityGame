@@ -152,10 +152,11 @@ import { noiseWallsOf } from '../world/noisewalls';
 import {
   applyRoad,
   armsApartOn,
-  computeOverMask,
   holdArmsApart,
+  overRoadStateOf,
   remaskAround,
   removeRoad,
+  roadTileOf,
   settleArms,
 } from '../world/roads';
 import { RoadNetwork, tramShape } from '../world/roadgraph';
@@ -1788,17 +1789,7 @@ class SimWorld implements WorkerSim {
 
   /** The road on tile `idx` as the grid holds it now, as the render thread is told it. */
   private roadDeltaOf(idx: number): RoadTileDelta {
-    const g = this.grid;
-    const tier = (g.roadTier[idx] ?? 0) as RoadTier;
-    return {
-      x: idx % MAP_SIZE,
-      z: Math.floor(idx / MAP_SIZE),
-      tier,
-      mask: g.roadMask[idx] ?? 0,
-      elevation: g.roadElevation[idx] ?? 0,
-      profile: tier === RoadTier.None ? 0 : g.roadProfile[idx] || tier,
-      flow: g.roadFlow[idx] ?? RoadFlow.None,
-    };
+    return roadTileOf(this.grid, idx);
   }
 
   /** The tiles the roads off the grid cover, from the network. */
@@ -1807,10 +1798,8 @@ class SimWorld implements WorkerSim {
   }
 
   private withOverRoad(d: RoadTileDelta): RoadTileDelta {
-    const idx = tileIndex(d.x, d.z);
-    const road = overRoadAt(this.grid, idx);
-    if (!road) return d;
-    return { ...d, over: { ...road, mask: computeOverMask(this.grid, d.x, d.z) } };
+    const over = overRoadStateOf(this.grid, tileIndex(d.x, d.z));
+    return over ? { ...d, over } : d;
   }
 
   /**

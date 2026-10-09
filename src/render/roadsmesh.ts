@@ -79,7 +79,6 @@
  */
 import * as THREE from 'three';
 import {
-  corridorHalfOf,
   flowDirection,
   RoadFlow,
   RoadTileDelta,
@@ -87,8 +86,7 @@ import {
   stepForFlow,
   tramCrossingAxes,
 } from '../shared/types';
-import type { CorridorHalf } from '../shared/types';
-import type { JunctionControl, ParkingStyle, TilePoint } from '../shared/types';
+import type { JunctionControl, TilePoint } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import {
   TILE_METERS,
@@ -103,7 +101,6 @@ import {
   carriagewayShiftOf,
   kerbReturnRadiusOf,
   carriagewayWidth,
-  corridorHalfProfile,
   worldOrderedProfile,
   FOOTWAY_WIDTH_M,
   hasFootway,
@@ -111,8 +108,6 @@ import {
   isPaved,
   kerbWidthOf,
   medianOffsetOf,
-  PARKING_STYLES,
-  parkingStyleOn,
   PRESET_LANE_WIDTH_M,
   isServiceClass,
   presetProfileForTier,
@@ -120,9 +115,8 @@ import {
   roadClass,
   runsAgainstDrawing,
 } from '../shared/roadprofile';
-import { armGivesWay, isRampNode } from '../shared/junction';
+import { isRampNode } from '../shared/junction';
 import {
-  approachZoneTiles,
   armSlot,
   laneMovementsFor,
   Movement,
@@ -131,12 +125,10 @@ import {
 } from '../shared/approach';
 import type { MovementSet } from '../shared/approach';
 import {
-  approachAhead,
   approachAxis,
   auxiliaryLaneAt,
   sharedTurnLaneAt,
   drawnCrossSection,
-  isJunctionTile,
   narrowingAhead,
   paintedCrossSection,
   rampMouthAt,
@@ -152,48 +144,49 @@ import {
 } from '../shared/roundabout';
 import { axisOfFlow } from '../shared/overpass';
 import type { TaperStep } from '../shared/taper';
-import type {
-  ApproachAhead,
-  ApproachSurroundings,
-  AuxiliaryLane,
-  RampMouth,
-} from '../shared/approachzone';
+import type { ApproachAhead, AuxiliaryLane, RampMouth } from '../shared/approachzone';
 import {
-  approachingLanes,
-  approachingSpan,
   centrePair,
   markingPlan,
   PAINT_HALF_WIDTH_M,
   seamBetween,
-  travelLanes,
-  travelLaneSpans,
   type MarkingLine,
   type MarkingPlan,
 } from './roadmarkings';
+import { approachingLanes, approachingSpan, travelLanes } from '../shared/travellanes';
 import {
-  downstreamBeside,
-  kerbOrientation,
-  layKerbFace,
-  NO_PARKING_BEFORE_STOP_M,
-  NO_PARKING_FROM_CROSSWALK_M,
   PARKING_TICK_KERB_CLEARANCE_M,
-  parkingTickPositions,
   type KerbFace,
   type KerbStall,
   type ParkingSetbacks,
-} from './kerbstalls';
-
-export {
-  clearOfNoParking,
-  NO_PARKING_BEFORE_STOP_M,
-  NO_PARKING_FROM_CROSSWALK_M,
-  PARKING_END_STALL_M,
-  PARKING_STALL_LENGTH_M,
-  PARKING_STALL_MAX_M,
-  PARKING_TICK_KERB_CLEARANCE_M,
-  parkingTickPositions,
-  type ParkingSetbacks,
-} from './kerbstalls';
+} from '../shared/kerbstalls';
+import {
+  junctionArmLayout,
+  junctionArmPaint,
+  type ArmSide,
+  type JunctionArms,
+} from '../shared/junctionpaint';
+import {
+  approachTowardAt,
+  blockFaceAt,
+  drawnSectionAt,
+  halfAt,
+  isCollinearMask,
+  isStraightRunMask,
+  junctionAlong,
+  overAlong,
+  overSection,
+  overTileOf,
+  ownSection,
+  paintedSectionAt,
+  parkingSetbacksAt,
+  roadAlong,
+  roadSurroundings,
+  stallsOnTile,
+  tierAlong,
+  walkableAlong,
+  type KerbSurroundings,
+} from '../shared/kerblayout';
 
 /**
  * Where a tile's planned lines sit at ONE end of its run, parallel to the
@@ -1580,31 +1573,6 @@ function emitBicycleGlyph(
 const PARKING_TICK_HALF_LENGTH_M = 0.075;
 
 /**
- * How far back along a road from a junction tile's edge its kerb is kept clear
- * of parking: 9.1 m before a stop line where one is painted across the lanes
- * beside that kerb, and 6.1 m from the crosswalk — or from the junction's
- * mouth, the crossing road's kerb line, where the arm has none. Measured from
- * where the junction tile lays them, so it is the one figure the stall marks
- * and the parked cars both keep out of.
- */
-export function noParkingReach(arm: {
-  /** The tile between the junction's box and its edge on this arm's side. */
-  armDepth: number;
-  /** The footway a crossing on this arm carries across the road. */
-  footwayWidth: number;
-  /** Whether a crossing is painted across the arm. */
-  crossed: boolean;
-  /** Whether a stop line is painted across the lanes beside this kerb. */
-  stopLine: boolean;
-}): number {
-  const layout = junctionArmLayout(arm.armDepth, arm.footwayWidth);
-  const mouth = arm.crossed ? layout.crosswalkStart : arm.armDepth;
-  let reach = NO_PARKING_FROM_CROSSWALK_M - mouth;
-  if (arm.stopLine) reach = Math.max(reach, NO_PARKING_BEFORE_STOP_M - layout.stopLineStart);
-  return Math.max(0, reach);
-}
-
-/**
  * A strip of paint laid along a run whose two edges may each drift across the
  * road as it goes — a coloured lane on a road that is changing width. Sliced
  * on the shared lattice like every other plate; a strip that does not drift
@@ -2170,84 +2138,12 @@ function emitTramTrack(
 const CROSSWALK_BAR_WIDTH_M = 0.45;
 /** Across-travel-axis gap between stripes (~0.6m). */
 const CROSSWALK_BAR_GAP_M = 0.6;
-/** Along-travel-axis stop-line thickness (~0.4m). */
-const STOP_LINE_THICKNESS_M = 0.4;
-/**
- * The shallowest a marked crossing may be, across the road it carries people
- * over. The US minimum is 6 ft; a road whose verge is thinner than that still
- * gets a crossing this deep rather than one nobody could stand in.
- */
-const CROSSWALK_MIN_DEPTH_M = 1.8;
 /**
  * The stop line is painted onto the APPROACH tile, over lane lines already
  * drawn at MARK_Y_OFFSET, so it sits a hair above them rather than fighting
  * for the same depth where the two cross.
  */
 const STOP_LINE_Y_OFFSET = MARK_Y_OFFSET + 0.002;
-/**
- * Gap between the crossing's far edge and the stop bar. The US rule is that a
- * stop line stands at least 4 ft in advance of the nearest crosswalk line.
- */
-const STOP_LINE_GAP_M = 1.2;
-
-export interface JunctionArmLayout {
-  /**
-   * Distances along the approach from the junction TILE's edge, positive
-   * inward. The crossing lies inside the tile; the stop line is NEGATIVE,
-   * back down the approach, because that is where a driver has to stop.
-   */
-  crosswalkStart: number;
-  crosswalkEnd: number;
-  stopLineStart: number;
-  stopLineEnd: number;
-}
-
-/**
- * Pure layout for one junction arm, measured INWARD from the tile's outer
- * edge: the crosswalk first, then the gap, then the stop line a driver halts
- * behind. The measurements are the real ones and never shrink — squeezing
- * them into whatever depth was left between the box and the tile edge is what
- * turned a wide road's crossing into a dashed ring hugging the box instead of
- * a crosswalk. On a road wide enough that its carriageway fills the tile the
- * crosswalk simply lies inside the junction, which is where it lies on the
- * ground too.
- */
-export function junctionArmLayout(
-  armDepth = TILE_HALF,
-  footwayWidth = SIDEWALK_WIDTH_M,
-): JunctionArmLayout {
-  // A crossing is the FOOTWAY CARRIED ACROSS THE ROAD, so it belongs where the
-  // footway is: the strip of tile between the junction box and the tile edge,
-  // which is exactly what the crossing road spends on its own footway. Painted
-  // at a fixed setback instead — which is what this did — it lands wherever
-  // that setback happens to fall, and on a road whose carriageway nearly fills
-  // its tile it misses the footway entirely and sits out in the box.
-  //
-  // It is never narrower than the minimum a marked crossing may be, so a road
-  // with a thin verge still gets a crossing a person can use; that one reaches
-  // a little into the box, which is where a crossing at a wide junction really
-  // does lie.
-  //
-  // It is as deep as that footway and no deeper. Taking the whole strip —
-  // which is what `armDepth` is — reads the leftover tile as the figure, and
-  // the leftover runs OPPOSITE to the road: a two-lane street leaves 6.25 m
-  // and an avenue 1.90 m, so the quiet street got a crossing 20 ft deep and
-  // the busy one a normal 6 ft. Same inversion the kerb return had.
-  // It sits against the KERB LINE, at the inner end of that strip — which is
-  // where the footway it carries across actually runs. Anchored at the tile
-  // edge instead it floats at the outer end and leaves a gap between itself
-  // and the road: 4.4 m of it beside a two-lane street.
-  const depth = Math.max(Math.min(armDepth, footwayWidth), CROSSWALK_MIN_DEPTH_M);
-  const crosswalkEnd = Math.max(armDepth, depth);
-  const crosswalkStart = crosswalkEnd - depth;
-  // The stop line stands IN ADVANCE of the crossing — back down the approach,
-  // outside the junction tile altogether. That is the whole point of it:
-  // stopping past the crossing is stopping on the people using it, and there
-  // is no room between the tile edge and the crossing to put it.
-  const stopLineEnd = crosswalkStart - STOP_LINE_GAP_M;
-  const stopLineStart = stopLineEnd - STOP_LINE_THICKNESS_M;
-  return { crosswalkStart, crosswalkEnd, stopLineStart, stopLineEnd };
-}
 
 /**
  * Deterministic zebra-stripe center offsets (across the travel axis, i.e.
@@ -2267,81 +2163,6 @@ export function crosswalkBarOffsets(carriagewayHalfWidth: number): number[] {
   const offsets: number[] = [];
   for (let i = 0; i < count; i++) offsets.push(start + i * period);
   return offsets;
-}
-
-/** One side of a junction tile, and the arm that may leave by it. */
-export type ArmSide = 'n' | 'e' | 's' | 'w';
-
-/** What decides what a junction paints across its arms. */
-export interface JunctionArms {
-  /** The junction tile's own road. */
-  tier: RoadTier;
-  /** Which sides an arm leaves by. */
-  has: Readonly<Record<ArmSide, boolean>>;
-  /** The road on each arm; None where it is not named, which reads as this tile's own. */
-  roads: NeighborTiers;
-  /** Whether each arm's road has a footway; omitted, each reads as this tile's own. */
-  footways?: Readonly<Record<ArmSide, boolean>>;
-  /** Whether the junction's own road has a footway. */
-  ownFootway: boolean;
-  /** Who gives way there; undefined or `none` where nothing controls it. */
-  control: JunctionControl | undefined;
-}
-
-/**
- * What a junction paints across one arm: a crossing, a stop line, both or
- * neither. The junction's own paint and the no-parking zone on the approach
- * both read it, so a kerb is kept clear of exactly the markings it is painted.
- */
-export function junctionArmPaint(
-  j: JunctionArms,
-  side: ArmSide,
-): { crossed: boolean; stops: boolean } {
-  const none = { crossed: false, stops: false };
-  // A stop line marks where to stop for a sign or a signal, so it is the
-  // CONTROL that decides whether one is painted, not the shape of the
-  // junction. An uncontrolled crossroads gets no paint at all; an approach
-  // that only gives way gets its crossing but no bar. A roundabout is not
-  // painted like a junction at all: no crossings on the box and no stop bars,
-  // an island in the middle and a yield line across every entry.
-  const control = j.control;
-  if (control === undefined || control === 'none' || control === 'roundabout') return none;
-  if (!j.has[side]) return none;
-  // Which arms stop. A minor road meeting a bigger one gives way to it: the
-  // side street gets the stop line and the crosswalk, and the road running
-  // through gets neither, the way a real junction reads. Where every arm
-  // ranks the same — two equal roads crossing — they all stop, which is the
-  // all-way junction.
-  const sides: readonly ArmSide[] = ['n', 'e', 's', 'w'];
-  const armRanks = sides
-    .filter((s) => j.has[s] && j.roads[s] !== RoadTier.None)
-    .map((s) => rankForTier(j.roads[s]));
-  const ranks = armRanks.length > 0 ? armRanks : [rankForTier(j.tier)];
-  const road = j.roads[side];
-  const armStops = road === RoadTier.None || armGivesWay(rankForTier(road), ranks);
-  // A signal and an all-way stop hold EVERY approach, the road running
-  // through included: it stops on red like everything else, and a stop line
-  // is where it stops. Only a give-way or a minor-road stop leaves the through
-  // road unpainted.
-  const holdsEveryArm = control === 'signal' || control === 'allWayStop';
-  if (!holdsEveryArm && !armStops) return none;
-  const stops = control === 'stop' || control === 'allWayStop' || control === 'signal';
-  // A service access carries the footway straight across its mouth rather
-  // than breaking it for a crossing, so there is no crossing to paint over
-  // one: the pavement IS the way across. An arm whose road is not named is
-  // unknown, not absent, and reads as this tile's own road — which is never a
-  // service access here.
-  const service = road !== RoadTier.None && isServiceClass(presetProfileForTier(road).class);
-  // Who walks over a crossing on this arm: the people going the other way, on
-  // the footways of the arms ACROSS from it. A road with a raised kerb but no
-  // footway — a motorway, an avenue built without one — has nobody to send
-  // over the road it meets, so its arms get no crossing.
-  const walkable = (s: ArmSide): boolean =>
-    j.has[s] &&
-    (j.roads[s] === RoadTier.None || j.footways?.[s] === undefined ? j.ownFootway : j.footways[s]);
-  const vertical = side === 'n' || side === 's';
-  const crossedOnFoot = vertical ? walkable('e') || walkable('w') : walkable('n') || walkable('s');
-  return { crossed: !service && crossedOnFoot, stops };
 }
 
 /**
@@ -3775,12 +3596,6 @@ export function isPlainCenterlineTier(tier: RoadTier): boolean {
   return tier === RoadTier.TwoLane || tier === RoadTier.OneWay;
 }
 
-function isCollinearMask(mask: number): boolean {
-  const hasVertical = (mask & (NORTH | SOUTH)) !== 0;
-  const hasHorizontal = (mask & (EAST | WEST)) !== 0;
-  return !(hasVertical && hasHorizontal);
-}
-
 /**
  * Straight (non-corner, non-junction) avenue run eligible for the
  * median: mask popcount in [1, 2] AND collinear. A "straight avenue run"
@@ -3793,13 +3608,6 @@ function isCollinearMask(mask: number): boolean {
  */
 export function isAvenueMedianEligible(tier: RoadTier, mask: number): boolean {
   return tier === RoadTier.Avenue && isStraightRunMask(mask);
-}
-
-/** A connected, straight, non-junction tile: one or two collinear arms. */
-function isStraightRunMask(mask: number): boolean {
-  const popcount =
-    (mask & NORTH ? 1 : 0) + (mask & EAST ? 1 : 0) + (mask & SOUTH ? 1 : 0) + (mask & WEST ? 1 : 0);
-  return popcount >= 1 && popcount <= 2 && isCollinearMask(mask);
 }
 
 /**
@@ -6416,24 +6224,6 @@ interface ChunkEntry {
   mesh: THREE.Mesh | null;
 }
 
-/**
- * The road passing over a crossing tile, shaped like a tile of its own so the
- * same drawing reads it; null where nothing passes over the tile.
- */
-function overTileOf(tile: RoadTileDelta): RoadTileDelta | null {
-  const over = tile.over;
-  if (!over) return null;
-  return {
-    x: tile.x,
-    z: tile.z,
-    tier: over.tier,
-    mask: over.mask,
-    elevation: over.elevation,
-    profile: over.profile,
-    flow: over.flow,
-  };
-}
-
 function chunkKeyOf(x: number, z: number): number {
   const cx = Math.floor(x / CHUNK_TILES);
   const cz = Math.floor(z / CHUNK_TILES);
@@ -6804,80 +6594,41 @@ export class RoadMeshRenderer {
   private junctionTurns: ReadonlyMap<number, number> = new Map();
   private junctionLaneTurns: ReadonlyMap<number, readonly number[]> = new Map();
 
-  /** The road tier at tile (x,z) across all chunks, or None — for neighbor-aware seam treatment. */
-  private tierAt(x: number, z: number): RoadTier {
-    const chunk = this.chunks.get(chunkKeyOf(x, z));
-    return chunk?.tiles.get(localTileKeyOf(x, z))?.tier ?? RoadTier.None;
-  }
-
-  /** The road network as the approach-zone walk asks about it. */
-  private get surroundings(): ApproachSurroundings {
-    return {
-      hasRoad: (x, z) => this.tierAt(x, z) !== RoadTier.None,
+  /** The road network as the approach-zone walk and the kerb stall layout ask about it. */
+  private readonly surroundings: KerbSurroundings = roadSurroundings(
+    {
+      roadAt: (x, z) => this.groundAt(x, z),
+      profileById: (id) => this.profileFor(id),
+    },
+    {
       controlAt: (x, z) => this.junctionControls.get(tileIndex(x, z)),
       turnsAt: (x, z) => this.junctionTurns.get(tileIndex(x, z)) ?? 0,
-      profileAt: (x, z) => this.profileAt(x, z),
-      flowAt: (x, z) => this.flowAt(x, z),
-      corridorHalfAt: (x, z) => this.corridorHalfAt(x, z),
-      profileIdAt: (x, z) =>
-        this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z))?.profile ?? 0,
       laneTurnsAt: (x, z, arm) => {
         const slot = armSlot(arm);
         if (slot === null) return 0;
         return this.junctionLaneTurns.get(tileIndex(x, z))?.[slot] ?? 0;
       },
-      overAxisAt: (x, z) => {
-        const over = this.groundAt(x, z)?.over;
-        return over ? axisOfFlow(over.flow) : null;
-      },
-      apartAt: (x, z) => this.groundAt(x, z)?.apart ?? 0,
-    };
-  }
-
-  /** Which half of a corridor the tile carries, `'none'` for an ordinary road. */
-  private corridorHalfAt(x: number, z: number): CorridorHalf {
-    const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
-    return corridorHalfOf(tile?.flow ?? 0);
-  }
+    },
+  );
 
   /**
-   * The cross-section a tile draws for ITSELF. A corridor is two carriageways
-   * of one road laid side by side, so each of its tiles carries only its own
-   * half of the road's section — the whole one would be drawn twice, once on
-   * each tile, at twice the width the road has.
-   */
-  private ownProfileOf(tile: RoadTileDelta, whole: RoadProfile): RoadProfile {
-    return corridorHalfProfile(worldOrderedProfile(whole, tile.flow), corridorHalfOf(tile.flow));
-  }
-
-  /**
-   * The same, for a tile whose road has no cross-section of its own: the
-   * caller draws a preset from the tier instead, so there is nothing to halve.
+   * The cross-section a tile draws for itself, for a tile whose road has a
+   * cross-section of its own; undefined where the caller draws a preset from
+   * the tier instead, so there is nothing to halve.
    */
   private ownProfileFor(tile: RoadTileDelta): RoadProfile | undefined {
     const whole = this.profileFor(tile.profile);
-    return whole ? this.ownProfileOf(tile, whole) : undefined;
+    return whole ? ownSection(tile, whole) : undefined;
   }
 
   /** The cross-section a tile carries, or null off-road. */
   private profileAt(x: number, z: number): RoadProfile | null {
-    const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
-    if (!tile) return null;
-    return this.ownProfileOf(
-      tile,
-      this.profileFor(tile.profile) ?? presetProfileForTier(tile.tier),
-    );
+    return this.surroundings.profileAt(x, z);
   }
 
-  /**
-   * The junction this tile approaches and how close it is to it, or undefined
-   * when it approaches none. How far back the zone reaches is the road's own
-   * class's, since that is what decides how long a queue it has to store.
-   */
+  /** The junction this tile approaches and how close it is to it, or undefined when it approaches none. */
   private approachToward(x: number, z: number): ApproachAhead | undefined {
-    const profile = this.profileAt(x, z);
-    if (!profile) return undefined;
-    return approachAhead(x, z, approachZoneTiles(profile.class), this.surroundings);
+    return approachTowardAt(x, z, this.surroundings);
   }
 
   /** The lane drop the tile at (x,z) is closing for, when the road ahead narrows. */
@@ -6900,24 +6651,16 @@ export class RoadMeshRenderer {
 
   /** Which way the tile at (x,z) was drawn, or None where nothing said. */
   private flowAt(x: number, z: number): RoadFlow {
-    const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
-    return flowDirection(tile?.flow ?? RoadFlow.None);
+    return this.surroundings.flowAt(x, z);
   }
 
-  /** Whether the road at (x,z) is one a pedestrian can walk beside. */
-  /**
-   * The road met by running along `axis` onto tile (x, z): the road passing
-   * over it where that one runs this way — an approach looking along its line
-   * at a crossing sees the road it climbs onto — else the tile's own road.
-   */
+  /** The road met by running along `axis` onto tile (x, z): the road passing over it that way, else its own. */
   private roadAlong(x: number, z: number, axis: 'x' | 'z'): RoadTileDelta | undefined {
-    const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
-    const over = tile ? overTileOf(tile) : null;
-    return over && axisOfFlow(over.flow) === axis ? over : tile;
+    return roadAlong(x, z, axis, this.surroundings);
   }
 
   private tierAlong(x: number, z: number, axis: 'x' | 'z'): RoadTier {
-    return this.roadAlong(x, z, axis)?.tier ?? RoadTier.None;
+    return tierAlong(x, z, axis, this.surroundings);
   }
 
   /**
@@ -6927,35 +6670,27 @@ export class RoadMeshRenderer {
    */
   private halfAlong(x: number, z: number, axis: 'x' | 'z'): number {
     if (this.roundabouts.has(tileIndex(x, z))) return 0;
-    const road = this.roadAlong(x, z, axis);
-    if (!road || road === this.groundAt(x, z)) return this.halfAt(x, z);
-    return carriagewayHalfWidthOf(this.overProfileOf(road));
+    const over = overAlong(x, z, axis, this.surroundings);
+    if (!over) return this.halfAt(x, z);
+    return carriagewayHalfWidthOf(this.overProfileOf(over));
   }
 
-  /**
-   * Whether the road met along `axis` at (x, z) is a junction an arriving road
-   * meets, rather than more of that road. A road passing over a crossing is
-   * never one: nothing joins it there.
-   */
+  /** Whether the road met along `axis` at (x, z) is a junction an arriving road meets. */
   private junctionAlong(x: number, z: number, axis: 'x' | 'z'): boolean {
-    const road = this.roadAlong(x, z, axis);
-    if (!road || road !== this.groundAt(x, z)) return false;
-    return isJunctionTile(x, z, this.surroundings);
+    return junctionAlong(x, z, axis, this.surroundings);
   }
 
-  /** `walkableAt`, but for the road met along `axis`. */
+  /** Whether the road met along `axis` at (x, z) is one a pedestrian can walk beside. */
   private walkableAlong(x: number, z: number, axis: 'x' | 'z'): boolean {
-    const road = this.roadAlong(x, z, axis);
-    if (!road || road === this.groundAt(x, z)) return this.walkableAt(x, z);
-    return hasFootway(this.overProfileOf(road));
+    return walkableAlong(x, z, axis, this.surroundings);
   }
 
   /** `planAt`, but for the road met along `axis`. */
   private planAlong(x: number, z: number, axis: 'x' | 'z'): MarkingPlan | null {
-    const road = this.roadAlong(x, z, axis);
-    if (!road || road === this.groundAt(x, z)) return this.planAt(x, z);
-    if (!isStraightRunMask(road.mask)) return null;
-    return markingPlan(this.overProfileOf(road), flowDirection(road.flow));
+    const over = overAlong(x, z, axis, this.surroundings);
+    if (!over) return this.planAt(x, z);
+    if (!isStraightRunMask(over.mask)) return null;
+    return markingPlan(this.overProfileOf(over), flowDirection(over.flow));
   }
 
   /**
@@ -6992,9 +6727,7 @@ export class RoadMeshRenderer {
 
   /** The cross-section of a road passing over a crossing, laid in world order. */
   private overProfileOf(over: RoadTileDelta): RoadProfile {
-    return (
-      this.ownProfileFor(over) ?? worldOrderedProfile(presetProfileForTier(over.tier), over.flow)
-    );
+    return overSection(over, this.surroundings);
   }
 
   /**
@@ -7050,17 +6783,6 @@ export class RoadMeshRenderer {
     );
   }
 
-  private walkableAt(x: number, z: number): boolean {
-    const profile = this.profileAt(x, z);
-    return profile !== null && hasFootway(profile);
-  }
-
-  /**
-   * The carriageway half-width of the road at (x,z), read from the
-   * cross-section that tile actually paints — a turn pocket widens the asphalt
-   * for the tiles that carry it and a taper narrows it, and the seam with the
-   * tile next door has to meet the same edge.
-   */
   /**
    * How far the road at (x,z) sits off its tile's centre, across the road:
    * nothing, but for half of a motorway laid across two tiles, pushed against
@@ -7072,51 +6794,19 @@ export class RoadMeshRenderer {
     return seam.side * Math.max(0, TILE_HALF - this.halfAt(x, z));
   }
 
+  /**
+   * The carriageway half-width of the road at (x,z), read from the
+   * cross-section that tile actually lays — a turn pocket widens the asphalt
+   * for the tiles that carry it and a taper narrows it, and the seam with the
+   * tile next door has to meet the same edge.
+   */
   private halfAt(x: number, z: number): number {
-    const section = this.drawnSectionAt(x, z);
-    return section ? carriagewayHalfWidthOf(section) : 0;
+    return halfAt(x, z, this.surroundings);
   }
 
   /** The cross-section the tile at (x, z) lays its pavement to, or null off-road. */
   private drawnSectionAt(x: number, z: number): RoadProfile | null {
-    const profile = this.profileAt(x, z);
-    if (!profile) return null;
-    return drawnCrossSection(
-      profile,
-      this.approachToward(x, z),
-      this.narrowingAt(x, z),
-      this.flowAt(x, z),
-      this.auxiliaryAt(x, z),
-      this.sharedTurnAt(x, z),
-    );
-  }
-
-  /**
-   * The world positions, along the road, of the stall ticks the tile at
-   * (x, z) paints across its parking lane on one side, or null where that
-   * side paints no parking lane. The same function lays them as the mesh,
-   * from the same run, section and no-parking zones.
-   */
-  private parkingTicksAt(x: number, z: number, side: 'low' | 'high'): number[] | null {
-    const tile = this.groundAt(x, z);
-    const plan = this.planAt(x, z);
-    if (!tile || !plan || !isStraightRunMask(tile.mask)) return null;
-    const sign = side === 'low' ? -1 : 1;
-    if (!plan.bands.some((b) => b.kind === 'parking' && (b.from + b.to) * sign > 0)) return null;
-    const alongX = (tile.mask & (EAST | WEST)) !== 0;
-    const core = this.halfAt(x, z);
-    const lo = (tile.mask & (alongX ? WEST : NORTH)) !== 0 ? -TILE_HALF : -core;
-    const hi = (tile.mask & (alongX ? EAST : SOUTH)) !== 0 ? TILE_HALF : core;
-    const origin = ((alongX ? x : z) + 0.5) * TILE_METERS;
-    const setbacks = this.parkingSetbacksAt(x, z);
-    const s = side === 'low' ? 0 : 1;
-    return parkingTickPositions(
-      origin,
-      lo,
-      hi,
-      setbacks?.lo?.[s] ?? null,
-      setbacks?.hi?.[s] ?? null,
-    ).map((a) => origin + a);
+    return drawnSectionAt(x, z, this.surroundings);
   }
 
   /**
@@ -7130,152 +6820,28 @@ export class RoadMeshRenderer {
     const face = this.kerbFaceAt(x, z, side);
     const tile = this.groundAt(x, z);
     if (!face || !tile) return null;
-    const alongX = (tile.mask & (EAST | WEST)) !== 0;
-    const start = (alongX ? x : z) * TILE_METERS;
-    return face.stalls.filter((s) => s.centre >= start && s.centre < start + TILE_METERS);
-  }
-
-  /** The style of the parking lane a straight tile paints on one side, or null where it paints none. */
-  private parkingStyleAt(x: number, z: number, side: 'low' | 'high'): ParkingStyle | null {
-    const tile = this.groundAt(x, z);
-    const plan = this.planAt(x, z);
-    const drawn = this.drawnSectionAt(x, z);
-    if (!tile || !plan || !drawn || !isStraightRunMask(tile.mask)) return null;
-    const sign = side === 'low' ? -1 : 1;
-    if (!plan.bands.some((b) => b.kind === 'parking' && (b.from + b.to) * sign > 0)) return null;
-    return parkingStyleOn(drawn, side);
+    return stallsOnTile(face, x, z, (tile.mask & (EAST | WEST)) !== 0);
   }
 
   /**
    * The block face the parking lane on one side of the tile at (x, z)
-   * belongs to — that kerb's parking along the straight run, as far as the
-   * tiles either way paint the same style of lane on it — laid by
-   * `layKerbFace`, or null where that side paints no parking lane. Every tile
-   * of a face shares it, so it is laid once per change to the roads.
+   * belongs to, or null where that side paints no parking lane. Every tile of
+   * a face shares it, so it is laid once per change to the roads.
    */
   private kerbFaceAt(x: number, z: number, side: 'low' | 'high'): KerbFace | null {
     if (x < 0 || z < 0 || x >= MAP_SIZE || z >= MAP_SIZE) return null;
     const key = tileIndex(x, z) * 2 + (side === 'high' ? 1 : 0);
     const cached = this.kerbFaces.get(key);
     if (cached !== undefined) return cached;
-    const style = this.parkingStyleAt(x, z, side);
-    const tile = this.groundAt(x, z);
-    if (!style || !tile) {
+    const laid = blockFaceAt(x, z, side, this.surroundings);
+    if (!laid) {
       this.kerbFaces.set(key, null);
       return null;
     }
-    const alongX = (tile.mask & (EAST | WEST)) !== 0;
-    const [dx, dz] = alongX ? [1, 0] : [0, 1];
-    const forward = alongX ? EAST : SOUTH;
-    const backward = alongX ? WEST : NORTH;
-    const inFace = (tx: number, tz: number): boolean => {
-      const t = this.groundAt(tx, tz);
-      return (
-        !!t &&
-        ((t.mask & (EAST | WEST)) !== 0) === alongX &&
-        this.parkingStyleAt(tx, tz, side) === style
-      );
-    };
-    const tiles: [number, number][] = [[x, z]];
-    for (let [tx, tz] = [x, z]; ;) {
-      if ((this.groundAt(tx, tz)!.mask & backward) === 0 || !inFace(tx - dx, tz - dz)) break;
-      tx -= dx;
-      tz -= dz;
-      tiles.unshift([tx, tz]);
+    for (const t of laid.tiles) {
+      this.kerbFaces.set(tileIndex(t.x, t.z) * 2 + (side === 'high' ? 1 : 0), laid.face);
     }
-    for (let [tx, tz] = [x, z]; ;) {
-      if ((this.groundAt(tx, tz)!.mask & forward) === 0 || !inFace(tx + dx, tz + dz)) break;
-      tx += dx;
-      tz += dz;
-      tiles.push([tx, tz]);
-    }
-    const [fx, fz] = tiles[0]!;
-    const [lx, lz] = tiles[tiles.length - 1]!;
-    const s = side === 'low' ? 0 : 1;
-    const centreOf = (tx: number, tz: number): number => ((alongX ? tx : tz) + 0.5) * TILE_METERS;
-    /** Where a face tile's own run ends, world, toward the low or the high coordinate. */
-    const runEnd = (tx: number, tz: number, toward: 1 | -1): number => {
-      const bit = toward > 0 ? forward : backward;
-      const reach = (this.groundAt(tx, tz)!.mask & bit) !== 0 ? TILE_HALF : this.halfAt(tx, tz);
-      return centreOf(tx, tz) + toward * reach;
-    };
-    const firstSet = this.parkingSetbacksAt(fx, fz)?.lo?.[s] ?? null;
-    const lastSet = this.parkingSetbacksAt(lx, lz)?.hi?.[s] ?? null;
-    const lowEnd = this.junctionEndsAt(fx, fz)?.lo ?? null;
-    const highEnd = this.junctionEndsAt(lx, lz)?.hi ?? null;
-    const ticks =
-      style === 'parallel'
-        ? tiles.flatMap(([tx, tz]) => this.parkingTicksAt(tx, tz, side) ?? [])
-        : undefined;
-    // A junction end starts where its zone ends; any other end where the
-    // lane's own marking does.
-    const bound = (toward: 1 | -1): number => {
-      const [tx, tz] = toward < 0 ? [fx, fz] : [lx, lz];
-      const run = runEnd(tx, tz, toward);
-      const set = toward < 0 ? firstSet : lastSet;
-      const zone = set === null ? null : centreOf(tx, tz) + toward * (TILE_HALF - set);
-      const atJunction = toward < 0 ? lowEnd !== null : highEnd !== null;
-      if (ticks && !atJunction) {
-        const marked = toward < 0 ? ticks[0] : ticks[ticks.length - 1];
-        if (marked !== undefined) return marked;
-      }
-      if (zone === null) return run;
-      return toward < 0 ? Math.max(run, zone) : Math.min(run, zone);
-    };
-    // The accessible stalls stand nearest a crosswalk, else nearest a
-    // junction, else at the low end.
-    const accessibleEnd: 'lo' | 'hi' =
-      (lowEnd?.crossed ?? false) !== (highEnd?.crossed ?? false)
-        ? highEnd?.crossed
-          ? 'hi'
-          : 'lo'
-        : (lowEnd !== null) !== (highEnd !== null) && highEnd !== null
-          ? 'hi'
-          : 'lo';
-    const depth = PARKING_STYLES[style].laneWidth;
-    // A lane is its full depth on a tile whose band, and its neighbours' in
-    // the face, are that deep: nothing bends it in across the tile.
-    const deepTile = new Map<number, boolean>();
-    const bandDepth = (tx: number, tz: number): number => {
-      const sign = side === 'low' ? -1 : 1;
-      const band = this.planAt(tx, tz)?.bands.find(
-        (b) => b.kind === 'parking' && (b.from + b.to) * sign > 0,
-      );
-      return band ? Math.abs(band.to - band.from) : 0;
-    };
-    tiles.forEach(([tx, tz], i) => {
-      const full = (k: number): boolean => {
-        const t = tiles[k];
-        return t === undefined || bandDepth(t[0], t[1]) >= depth - 0.01;
-      };
-      deepTile.set(alongX ? tx : tz, full(i - 1) && full(i) && full(i + 1));
-    });
-    const fullDepth = (from: number, to: number): boolean => {
-      for (let t = Math.floor(from / TILE_METERS); t * TILE_METERS < to - 1e-6; t++) {
-        if (!deepTile.get(t)) return false;
-      }
-      return true;
-    };
-    const orientation = kerbOrientation(
-      style,
-      alongX,
-      side,
-      downstreamBeside(this.drawnSectionAt(fx, fz)!, this.groundAt(fx, fz)!.flow, alongX, side),
-    );
-    const face = layKerbFace({
-      style,
-      orientation,
-      depth,
-      lo: bound(-1),
-      hi: bound(1),
-      ticks,
-      fullDepth,
-      accessibleEnd,
-    });
-    for (const [tx, tz] of tiles) {
-      this.kerbFaces.set(tileIndex(tx, tz) * 2 + (side === 'high' ? 1 : 0), face);
-    }
-    return face;
+    return laid.face;
   }
 
   /** The block faces the straight tile at (x, z) paints, and whether it is the last tile of each. */
@@ -7296,128 +6862,10 @@ export class RoadMeshRenderer {
    * The no-parking zones at the two ends of the road tile at (x, z): how far
    * back from a junction at either end its kerbs are kept clear, for the
    * parking on each side of the road. Null where the tile is not a straight
-   * run — a junction, a corner or a lone tile has no kerb to park at. The
-   * zone is measured from what the junction actually paints on the arm this
-   * tile is, by the same function its paint is decided by, so the stall marks
-   * and the parked cars keep out of exactly what is there.
-   *
-   * A junction one tile further on counts too, at its distance below this
-   * tile's end: the stall beside its end stall may reach onto this tile, and
-   * both tiles have to lay that stall in the same place.
+   * run.
    */
   parkingSetbacksAt(x: number, z: number): ParkingSetbacks | null {
-    const here = this.junctionZonesAt(x, z);
-    const tile = this.groundAt(x, z);
-    if (!here || !tile) return here;
-    const further = (dx: number, dz: number): readonly [number, number] | null => {
-      const bit = dz < 0 ? NORTH : dx > 0 ? EAST : dz > 0 ? SOUTH : WEST;
-      if ((tile.mask & bit) === 0) return null;
-      const next = this.junctionZonesAt(x + dx, z + dz);
-      if (!next || next.alongX !== here.alongX) return null;
-      const zone = dx + dz < 0 ? next.lo : next.hi;
-      return zone && [zone[0] - TILE_METERS, zone[1] - TILE_METERS];
-    };
-    return here.alongX
-      ? { alongX: true, lo: here.lo ?? further(-1, 0), hi: here.hi ?? further(1, 0) }
-      : { alongX: false, lo: here.lo ?? further(0, -1), hi: here.hi ?? further(0, 1) };
-  }
-
-  /** The no-parking zones of the junctions directly at either end of the tile at (x, z). */
-  private junctionZonesAt(x: number, z: number): ParkingSetbacks | null {
-    const ends = this.junctionEndsAt(x, z);
-    return ends && { alongX: ends.alongX, lo: ends.lo?.zone ?? null, hi: ends.hi?.zone ?? null };
-  }
-
-  /**
-   * The junctions directly at either end of the straight tile at (x, z): the
-   * no-parking zone each keeps on this tile's two kerbs, and whether a
-   * crossing is painted across this tile's arm of it. Null at an end that
-   * meets no junction, and altogether where the tile is not a straight run.
-   */
-  private junctionEndsAt(
-    x: number,
-    z: number,
-  ): {
-    alongX: boolean;
-    lo: { zone: readonly [number, number]; crossed: boolean } | null;
-    hi: { zone: readonly [number, number]; crossed: boolean } | null;
-  } | null {
-    const tile = this.groundAt(x, z);
-    const own = this.profileAt(x, z);
-    const drawn = this.drawnSectionAt(x, z);
-    if (!tile || !own || !drawn) return null;
-    const ew = (tile.mask & (EAST | WEST)) !== 0;
-    const ns = (tile.mask & (NORTH | SOUTH)) !== 0;
-    if (ew === ns) return null;
-    const alongX = ew;
-    const flow = this.flowAt(x, z);
-    const lanes = travelLaneSpans(drawn);
-    const end = (
-      dx: number,
-      dz: number,
-    ): { zone: readonly [number, number]; crossed: boolean } | null => {
-      const jx = x + dx;
-      const jz = z + dz;
-      const bit = dz < 0 ? NORTH : dx > 0 ? EAST : dz > 0 ? SOUTH : WEST;
-      if ((tile.mask & bit) === 0 || !this.junctionAlong(jx, jz, alongX ? 'x' : 'z')) return null;
-      const junction = this.groundAt(jx, jz)!;
-      const section = this.drawnSectionAt(jx, jz)!;
-      const toward =
-        dz < 0 ? RoadFlow.North : dx > 0 ? RoadFlow.East : dz > 0 ? RoadFlow.South : RoadFlow.West;
-      // This tile is the junction's arm on the side facing back toward it.
-      const side: ArmSide = dz < 0 ? 's' : dx > 0 ? 'w' : dz > 0 ? 'n' : 'e';
-      const paint = junctionArmPaint(
-        {
-          tier: junction.tier,
-          has: {
-            n: (junction.mask & NORTH) !== 0,
-            e: (junction.mask & EAST) !== 0,
-            s: (junction.mask & SOUTH) !== 0,
-            w: (junction.mask & WEST) !== 0,
-          },
-          roads: {
-            n: this.tierAlong(jx, jz - 1, 'z'),
-            e: this.tierAlong(jx + 1, jz, 'x'),
-            s: this.tierAlong(jx, jz + 1, 'z'),
-            w: this.tierAlong(jx - 1, jz, 'x'),
-          },
-          footways: {
-            n: this.walkableAlong(jx, jz - 1, 'z'),
-            e: this.walkableAlong(jx + 1, jz, 'x'),
-            s: this.walkableAlong(jx, jz + 1, 'z'),
-            w: this.walkableAlong(jx - 1, jz, 'x'),
-          },
-          ownFootway: hasFootway(section),
-          control: this.junctionControls.get(tileIndex(jx, jz)),
-        },
-        side,
-      );
-      const armDepth = Math.max(0, TILE_HALF - carriagewayHalfWidthOf(section));
-      const footwayWidth = Math.min(kerbWidthOf(section), armDepth);
-      // A stop line crosses only the lanes arriving, so it is only the kerb
-      // beside an arriving lane that is kept clear for it.
-      const arriving = approachingLanes(
-        drawn,
-        own,
-        flow === RoadFlow.None || flow === toward,
-        approachAxis(toward).leftSign,
-      );
-      const kerbLaneArrives = (s: 0 | 1): boolean => {
-        const lane = s === 0 ? lanes[0] : lanes[lanes.length - 1];
-        return lane !== undefined && arriving.some((a) => Math.abs(a.centre - lane.centre) < 1e-6);
-      };
-      const reach = (s: 0 | 1): number =>
-        noParkingReach({
-          armDepth,
-          footwayWidth,
-          crossed: paint.crossed,
-          stopLine: paint.stops && kerbLaneArrives(s),
-        });
-      return { zone: [reach(0), reach(1)] as const, crossed: paint.crossed };
-    };
-    return alongX
-      ? { alongX, lo: end(-1, 0), hi: end(1, 0) }
-      : { alongX, lo: end(0, -1), hi: end(0, 1) };
+    return parkingSetbacksAt(x, z, this.surroundings);
   }
 
   /**
@@ -7431,17 +6879,9 @@ export class RoadMeshRenderer {
    */
   private approachSpanAt(x: number, z: number, toward: RoadFlow): ApproachSpan {
     const own = this.profileAt(x, z);
-    if (!own) return undefined;
-    const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
-    const flow = flowDirection(tile?.flow ?? RoadFlow.None);
-    const drawn = drawnCrossSection(
-      own,
-      this.approachToward(x, z),
-      this.narrowingAt(x, z),
-      flow,
-      this.auxiliaryAt(x, z),
-      this.sharedTurnAt(x, z),
-    );
+    const drawn = this.drawnSectionAt(x, z);
+    if (!own || !drawn) return undefined;
+    const flow = this.flowAt(x, z);
     return approachingSpan(
       drawn,
       own,
@@ -7464,21 +6904,10 @@ export class RoadMeshRenderer {
    * the way in, which is worse than the step the seam exists to remove.
    */
   private planAt(x: number, z: number): MarkingPlan | null {
-    const profile = this.profileAt(x, z);
-    if (!profile) return null;
-    const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
+    const tile = this.groundAt(x, z);
     if (!tile || !isStraightRunMask(tile.mask)) return null;
-    return markingPlan(
-      paintedCrossSection(
-        profile,
-        this.approachToward(x, z),
-        this.narrowingAt(x, z),
-        flowDirection(tile?.flow ?? RoadFlow.None),
-        this.auxiliaryAt(x, z),
-        this.sharedTurnAt(x, z),
-      ),
-      flowDirection(tile?.flow ?? RoadFlow.None),
-    );
+    const painted = paintedSectionAt(x, z, this.surroundings);
+    return painted && markingPlan(painted, this.flowAt(x, z));
   }
 
   /**
@@ -7494,18 +6923,9 @@ export class RoadMeshRenderer {
     x: number,
     z: number,
   ): { lanes: number; width: number; pocket: boolean; distance: number } | null {
-    const own = this.profileAt(x, z);
-    if (!own) return null;
+    const drawn = this.drawnSectionAt(x, z);
+    if (!drawn) return null;
     const approach = this.approachToward(x, z);
-    const tile = this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
-    const drawn = drawnCrossSection(
-      own,
-      approach,
-      this.narrowingAt(x, z),
-      flowDirection(tile?.flow ?? RoadFlow.None),
-      this.auxiliaryAt(x, z),
-      this.sharedTurnAt(x, z),
-    );
     return {
       lanes: drawn.pieces.filter((p) => p.kind === 'travel').length,
       width: carriagewayWidth(drawn),
