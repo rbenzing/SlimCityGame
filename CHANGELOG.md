@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.50.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.50.0...slimcity-v1.50.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* **services:** the four capacities re-sourced, and feature docs say w… ([78c1515](https://github.com/rbenzing/SlimCityGame/commit/78c151576e47bf260032544e4bb4fc0ae5df1dee))
+* **services:** the four capacities re-sourced, and feature docs say what shipped ([431849f](https://github.com/rbenzing/SlimCityGame/commit/431849fc5682b03a1d534b35f4d59be2f7443f00))
+
 ## [1.50.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.49.0...slimcity-v1.50.0) (2026-10-09)
 
 
