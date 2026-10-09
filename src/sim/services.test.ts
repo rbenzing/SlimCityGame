@@ -15,6 +15,7 @@ import { networkFromGrid, reconcileRoads } from '../world/roadnet';
 import { laySegment, planSegment } from '../world/freeroads';
 import { EconomySystem } from './economy';
 import { createGrid } from '../world/grid';
+import catalogData from '../data/catalog.json';
 
 function makeGrid(): GridState {
   return createGrid();
@@ -524,6 +525,37 @@ describe('ServiceSim: capacity', () => {
     // 1,000 alone is half the supply they need (half strength).
     expect(two.fields[FieldId.Health]![tileIndex(0, 2)]).toBe(140);
     expect(one.fields[FieldId.Health]![tileIndex(0, 2)]).toBe(70);
+  });
+
+  it('halves a hospital reaching 60,000 people, and a second hospital on the same ground restores it', () => {
+    const hospital = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.find(
+      (e) => e.id === 'hospital',
+    )!;
+    const { strength, capacity, range } = hospital.service!;
+    expect([strength, capacity, range]).toEqual([140, 30_000, 72]);
+    const city = homeWith('city-60k', 2 * capacity!);
+    const cat = [...catalog, hospital, city];
+    const { w, d } = hospital.footprint;
+    const sim = new ServiceSim(cat);
+
+    const one = makeGrid();
+    const oneBuildings: BuildingInstance[] = [];
+    roadStrip(one, 16);
+    place(one, oneBuildings, 1, 'hospital', 0, 2, w, d);
+    place(one, oneBuildings, 2, 'city-60k', 6, 2, 1, 1);
+    const alone = sim.tick(one, oneBuildings, fullFunding(1));
+
+    const two = makeGrid();
+    const twoBuildings: BuildingInstance[] = [];
+    roadStrip(two, 16);
+    place(two, twoBuildings, 1, 'hospital', 0, 2, w, d);
+    place(two, twoBuildings, 2, 'city-60k', 6, 2, 1, 1);
+    place(two, twoBuildings, 3, 'hospital', 8, 2, w, d);
+    sim.tick(two, twoBuildings, fullFunding(1));
+
+    expect(alone.health.load).toBe(2);
+    expect(one.fields[FieldId.Health]![tileIndex(0, 0)]).toBe(strength / 2);
+    expect(two.fields[FieldId.Health]![tileIndex(0, 0)]).toBe(strength);
   });
 
   it('never writes more than its strength when it has capacity to spare', () => {

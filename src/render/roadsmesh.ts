@@ -1659,7 +1659,7 @@ function pushDriftingStrip(
 /** The blue square under the International Symbol of Accessibility (MUTCD 3B.22 ¶09). */
 export const ACCESSIBLE_PAINT_COLOR: readonly [number, number, number] = [0.08, 0.3, 0.68];
 /** The accessibility symbol's side, metres; a narrow parallel lane takes a smaller one. */
-const ACCESSIBLE_SYMBOL_M = 1.5;
+export const ACCESSIBLE_SYMBOL_M = 1.5;
 /** What the symbol keeps clear of the lane's edges on a parallel lane, either side. */
 const ACCESSIBLE_SYMBOL_MARGIN_M = 0.4;
 /** The hatching across an access aisle: lines at 45° to the kerb, this far apart. */
@@ -1842,6 +1842,18 @@ function emitAccessibilitySymbol(
       hAt,
     );
   }
+}
+
+/**
+ * The accessibility symbol on its own, centred on the origin and upright toward
+ * local +Z, as flat triangles at the heights the road paints it on (a road
+ * surface at y = ROAD_Y_OFFSET): for a lot or a deck that paints its own spaces.
+ */
+export function accessibilitySymbolPaint(size: number): { positions: number[]; colors: number[] } {
+  const positions: number[] = [];
+  const colors: number[] = [];
+  emitAccessibilitySymbol(positions, colors, 0, 0, 0, 0, [0, 1], size, () => 0);
+  return { positions, colors };
 }
 
 /**

@@ -4,6 +4,8 @@ import {
   ACCESSIBLE_PARALLEL_STALL_M,
   ACCESSIBLE_STALL_WIDTH_M,
   accessibleStallCount,
+  adaAccessibleSpaces,
+  adaVanSpaces,
   downstreamBeside,
   kerbOrientation,
   layKerbFace,
@@ -23,6 +25,47 @@ import { RoadFlow, RoadTier, storedFlow } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 
 const SIN60 = Math.sin(Math.PI / 3);
+
+describe('adaAccessibleSpaces — ADA 2010 Table 208.2', () => {
+  it('asks one per 25 to 100, one per 50 to 200, one per 100 to 500, 2% to 1,000, then 20 and one per 100', () => {
+    const table: [number, number][] = [
+      [0, 0],
+      [1, 1],
+      [25, 1],
+      [26, 2],
+      [100, 4],
+      [101, 5],
+      [149, 5],
+      [150, 5],
+      [151, 6],
+      [200, 6],
+      [201, 7],
+      [300, 7],
+      [301, 8],
+      [400, 8],
+      [401, 9],
+      [500, 9],
+      [501, 11],
+      [1_000, 20],
+      [1_001, 21],
+      [1_100, 21],
+      [1_101, 22],
+    ];
+    for (const [provided, accessible] of table) {
+      expect(adaAccessibleSpaces(provided), `${provided} spaces`).toBe(accessible);
+    }
+  });
+
+  it('parts from the kerbside table above 200 spaces, and agrees with it below', () => {
+    for (const n of [1, 26, 99, 150, 200])
+      expect(adaAccessibleSpaces(n)).toBe(accessibleStallCount(n));
+    expect(adaAccessibleSpaces(300)).toBeLessThan(accessibleStallCount(300));
+  });
+
+  it('makes one in six of them, or a fraction of six, van-accessible', () => {
+    expect([1, 5, 6, 7, 12, 13].map(adaVanSpaces)).toEqual([1, 1, 1, 2, 2, 3]);
+  });
+});
 
 describe('accessibleStallCount — PROWAG Table R211', () => {
   it('asks one space per 25 to 100, one per 50 to 200, then 4% rounded up', () => {

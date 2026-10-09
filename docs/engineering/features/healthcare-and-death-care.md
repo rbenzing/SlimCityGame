@@ -1,6 +1,6 @@
 # Healthcare and death care — technical design
 
-- **Status:** Draft
+- **Status:** Partly built — the clinic and hospital ladder (2026-10-08); death care not built
 - **Date:** 2026-09-18
 - **Author:** Claude Opus 5
 
@@ -23,6 +23,7 @@ change most likely to be got wrong on paper.
 | ----------------------- | -------------------------------------------------------------------------------------------- |
 | `src/shared/types.ts`   | `DeathCareSpec`; `BuildingInstance.occupancy`; `VehicleKind.Hearse`; `SimSnapshot.deathCare` |
 | `src/data/catalog.json` | `hospital`, `cemetery`, `crematorium` added; `clinic` resized                                |
+| `src/render/utilitykits.ts` | The hospital's kit: the block, its canopies, the parking deck and the accessible spaces  |
 | `src/sim/deathcare.ts`  | New: death accrual, hearse collection, backlog, the health penalty                           |
 | `src/sim/services.ts`   | Coverage unchanged; the backlog penalty applies after it, in the same pass                   |
 | `src/sim/economy.ts`    | Population sum weights by `occupancy`; `growth.ts` refills it on its problems pass           |
@@ -85,18 +86,36 @@ tile (400 − 185); a 90° stall all-in is 24.7 m².
 
 | Building    | Occupant load    | Gross needed | Storeys → tiles | Result     | Floor    | Site vs ground |
 | ----------- | ---------------- | ------------ | --------------- | ---------- | -------- | -------------- |
-| Clinic      | 32 @ 13.9 m²     | 445 m²       | 2 → 1.20        | 1×2, 6.4 m | 740 m²   | 148 ≤ 430 m²   |
-| Hospital    | 213 @ 22.3 m²    | 4,750 m²     | 5 → 5.14        | 2×3, 16 m  | 5,550 m² | 1,088 ≤ 1,290  |
+| Clinic      | 4 providers      | 372–557 m²   | 2 → 1.01–1.51   | 1×2, 6.4 m | 740 m²   | 148 ≤ 430 m²   |
+| Hospital    | 72 beds          | 16,700 m²    | 6, stated floor | 3×5, 27 m  | 16,700 m² | deck, 144      |
 | Crematorium | parts, see below | 626 m²       | 1 → 3.38        | 2×2, 6.4 m | 1,480 m² | 693 ≤ 860 m²   |
 | Cemetery    | gatehouse only   | 128 m²       | 1 → 0.69        | 3×3, 3.2 m | ground   | 780 plots      |
 
-**The head counts.** Clinic: 4 doctors, 2 nurses, 1 assistant, 5 reception and
-admin, plus ~20 patients present. Hospital: 72 beds, staff at 3.45 FTE per
-occupied bed (the lower US quartile; "adjusted" beds inflate the median) = 248
-FTE with ~40% on days = 99, plus **42 attenders at once — an assumption, not a
-derivation**, anchored on 2,830 admissions a year ÷ 360 = 7.9 arrivals a day.
-Crematorium: a 215 m² chapel (100 × 1.4 m² net ÷ 0.65), a 111 m² office, a 60 m²
-foyer, and **240 m² of cremator hall, plant and body store — the one number in
+**The clinic** is four providers at MGMA's 1,000–1,500 sf each, 372–557 m² net,
+which two storeys on a 1×2 lot hold with room for circulation: 2 × 185 × 2 =
+740 m² (7,965 sf).
+
+**The hospital breaks the formula on purpose.** Its floor is stated, not read
+off the footprint: 72 beds × 2,500 sf = 180,000 sf, **16,700 m²**, drawn as a
+58 × 48 m plate (2,784 m²) over six storeys at 4.5 m (inpatient floors run
+14 ft 8 in–16 ft in [one city's project record](https://www.naplesgov.com/media/98066)),
+27 m. The massing rule would read its 3×5 × 27 m as 23,400 m², so the floor the
+catalog contract test re-derives the hospital's draw from is the stated one,
+not `w × d × 185 × storeys`. Six of its fifteen tiles are the parking deck,
+3.35 m floor to floor, ground and roof, laid in the 60 ft module of 90°
+parking: four rows of 9 × 18 ft stalls (2.74 × 5.49 m) on two 24 ft (7.32 m)
+two-way aisles running to the street, then a 12 ft (3.66 m) ramp lane and its
+0.25 m parapet along the far side. That is 40.48 m across, so the deck reaches
+half a metre past its two tiles toward the block: 2,429 m² a level. Along the
+street each row holds 19 stalls, leaving a 7.58 m cross-aisle at the back; two
+stair-and-lift cores at the street corners take two stalls each, so **72 a
+level and 144 in the deck**, 2 a bed, at 33.7 m² (363 sf) a space all-in. The 5 accessible spaces
+(ADA §208.2 for 101–150 spaces provided, 1 van in 6) stand on the surface
+between the main entrance and the deck. Every count is derived in
+`src/render/utilitykits.ts` from those dimensions and checked by its tests.
+
+**The crematorium:** a 215 m² chapel (100 × 1.4 m² net ÷ 0.65), a 111 m²
+office, a 60 m² foyer, and **240 m² of cremator hall, plant and body store — the one number in
 this epic with no published source**, assumed at 6 × 10 m per unit plus 120 m²
 of plant; the 626 m² total sits inside the observed 500–800 m² band (Chingford,
 568 m² GIA). Two then break the formula deliberately: the **cemetery is sized by
@@ -105,13 +124,15 @@ graves per tile, so eight burial tiles plus a gatehouse tile is 780 plots — an
 the **crematorium's 6.4 m is one tall storey** counted as two floors, since
 chapel and cremator hall do not stack.
 
-**The existing clinic entry disagrees, and not marginally.** `clinic` is 2×2 at
-14 m = **3,237 m²**, **7.3× the 445 m² a four-doctor practice needs**; read
-back, 3,237 ÷ 13.9 = 233 occupants, which is 26 doctors and a list of 52,000 —
-above the Metropolis milestone. **At 2×2 × 14 m the clinic could never be
-oversubscribed at any city size this game reaches, and epic 0's capacity
-foundation would be dead on arrival for health.** Correct it to **1×2, 6.4 m**;
-a six-doctor practice lands there too.
+**The clinic was resized, not added.** It shipped at 2×2 × 14 m, **3,237 m²**,
+four to nine times what a four-provider practice uses, so it could never have
+been oversubscribed at any city size this game reaches. It is now **1×2,
+6.4 m**, and its draw is re-derived from the smaller floor at the same
+intensities. A save from before the resize stores the clinic's 2×2 stamp; the
+loader's existing `restampShrunkPloppables` (`src/sim/buildings.ts`) re-stamps
+any ploppable whose catalog footprint shrank onto the 1×2 inside its old
+footprint that still fronts its street, at every rotation, and frees the other
+two tiles. Nothing new was needed for it.
 
 ### Behaviour
 
@@ -177,12 +198,11 @@ real place, not a hypothetical:
   transitions above". Both become false, and a stale doc is the same class of
   defect as stale code.
 
-**Resizing `clinic` orphans grid stamps.** Footprints derive from the catalog at
-runtime (`footprintForRotation`) while the 2×2 stamp lives in the saved
-`buildingId` layer, so shrinking the entry makes `registry.remove` clear two of
-four tiles and leave two unbuildable; the loader must re-stamp placed ploppables
-from the catalog, the riskiest change here. **The backlog penalty could also
-outrun its warning** — 32 points a month is tuned so the gauge and notification
+**Resizing `clinic` would orphan grid stamps** if nothing re-stamped them: the
+2×2 stamp lives in the saved `buildingId` layer while the renderer draws the
+catalog's 1×2. The loader's re-stamp already handles it, and the clinic has its
+own test at every rotation with a street on each side. **The backlog penalty
+could outrun its warning** — 32 points a month is tuned so the gauge and notification
 land before the field moves, and raising the death rate later inverts that.
 
 ## Alternatives
@@ -228,8 +248,9 @@ Behaviour, in the order the risk sits:
 
 **This epic renders, so these have to be looked at in a browser, not read back:**
 
-- **The ladder, in one frame.** A house, a 1×2 × 6.4 m clinic and a 2×3 × 16 m
-  hospital on one street at the default pitch. If clinic and hospital are not
+- **The ladder, in one frame.** A house, a 1×2 × 6.4 m clinic and the 3×5
+  hospital, its 27 m block beside its parking deck, on one street at the
+  default pitch. If clinic and hospital are not
   obviously different buildings without labels, the ladder has failed.
 - **The cemetery as grounds.** 3×3 at 3.2 m from the default pitch, and again
   zoomed to the 1.75 m pedestrian, to confirm plot rows and a gatehouse rather

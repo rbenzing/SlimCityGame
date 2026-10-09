@@ -64,7 +64,29 @@ import {
   turbineHubLocal,
   turbineRotorAngle,
   turbineRotorPhase,
+  ACCESSIBLE_SPACE_M,
+  AMBULANCE_CANOPY,
+  DECK_LEVELS,
+  DECK_RAMP_MIN_M,
+  DECK_SLAB_M,
+  DECK_STALL,
+  DECK_STOREY_M,
+  HOSPITAL_BEDS,
+  HOSPITAL_BLOCK_SIZE,
+  DECK_AISLE_M,
+  DECK_SPANDREL,
+  HOSPITAL_SPACES_PER_BED,
+  HOSPITAL_STOREYS,
+  HOSPITAL_STOREY_M,
+  VAN_CLEARANCE_M,
+  computeHospitalLayout,
+  deckStallTaken,
+  hospitalAccessibleSpaces,
+  hospitalDeckSpaces,
+  type Rect,
 } from './utilitykits';
+import { adaAccessibleSpaces } from './kerbstalls';
+import catalogData from '../data/catalog.json';
 import {
   BuildingCatalogEntry,
   BuildingDelta,
@@ -79,6 +101,11 @@ import { sizeForKind } from './vehicles';
 import { BuildingInstancer } from './buildings';
 
 const flatHeightAt = (): number => 0;
+
+/** The hospital as the catalog ships it: the kit is laid out on its real footprint. */
+const HOSPITAL = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.find(
+  (e) => e.id === 'hospital',
+)!;
 
 const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'turbineTower',
@@ -112,6 +139,12 @@ const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'transferScale',
   'transferRig',
   'transferPacker',
+  'hospitalYard',
+  'hospitalBlock',
+  'hospitalDeck',
+  'hospitalPaint',
+  'hospitalCar',
+  'hospitalAmbulance',
   'parkGround',
   'parkTree',
   'parkBench',
@@ -406,7 +439,7 @@ function decomposeQuaternion(m: THREE.Matrix4): THREE.Quaternion {
 // ---------------------------------------------------------------------------
 
 describe('UTILITY_KIT_CATALOG_IDS', () => {
-  it('is exactly the 11 silhouette-kit ids', () => {
+  it('is exactly the 12 silhouette-kit ids', () => {
     expect(UTILITY_KIT_CATALOG_IDS).toEqual([
       'wind-turbine',
       'water-tower',
@@ -418,6 +451,7 @@ describe('UTILITY_KIT_CATALOG_IDS', () => {
       'recycling-depot',
       'materials-recovery-facility',
       'transfer-station',
+      'hospital',
       'small-park',
     ]);
   });
@@ -1725,6 +1759,210 @@ describe('transfer-station kit', () => {
 });
 
 // ---------------------------------------------------------------------------
+// hospital: the block, its canopies, the parking deck and the accessible row
+// ---------------------------------------------------------------------------
+
+describe('hospital kit', () => {
+  const { halfW, halfD } = footprintHalfExtents(HOSPITAL.footprint);
+  const layout = computeHospitalLayout(HOSPITAL.footprint);
+  const SQFT_PER_M2 = 10.7639;
+  const boundsOf = (kind: UtilityKitPartKind): THREE.Box3 => {
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [HOSPITAL]);
+    const geometry = renderer.partGeometry('hospital', kind)!;
+    geometry.computeBoundingBox();
+    return geometry.boundingBox!;
+  };
+  const inside = (r: Rect, outer: Rect): boolean =>
+    r.x0 >= outer.x0 - 1e-9 &&
+    r.x1 <= outer.x1 + 1e-9 &&
+    r.z0 >= outer.z0 - 1e-9 &&
+    r.z1 <= outer.z1 + 1e-9;
+  const overlaps = (a: Rect, b: Rect): boolean =>
+    a.x0 < b.x1 - 1e-9 && b.x0 < a.x1 - 1e-9 && a.z0 < b.z1 - 1e-9 && b.z0 < a.z1 - 1e-9;
+  const blockRect: Rect = {
+    x0: layout.block.x - HOSPITAL_BLOCK_SIZE.w / 2,
+    x1: layout.block.x + HOSPITAL_BLOCK_SIZE.w / 2,
+    z0: layout.block.z - HOSPITAL_BLOCK_SIZE.d / 2,
+    z1: layout.block.z + HOSPITAL_BLOCK_SIZE.d / 2,
+  };
+  const lotRect: Rect = { x0: -halfW, x1: halfW, z0: -halfD, z1: halfD };
+
+  it('is a 3×5 lot whose long side fronts the street: three tiles of building and two of deck', () => {
+    expect([HOSPITAL.footprint.w, HOSPITAL.footprint.d]).toEqual([5, 3]);
+    // The deck takes the last two tiles and reaches under a metre past them toward the block.
+    const deckWidth = layout.deck.x1 - layout.deck.x0;
+    expect(layout.deck.x1).toBe(halfW);
+    expect(deckWidth).toBeGreaterThanOrEqual(2 * TILE_METERS);
+    expect(deckWidth).toBeLessThan(2 * TILE_METERS + 1);
+    expect((layout.deck.z1 - layout.deck.z0) / TILE_METERS).toBe(HOSPITAL.footprint.d);
+    expect(blockRect.x1).toBeLessThanOrEqual(layout.deck.x0);
+    expect(blockRect.x1).toBeLessThanOrEqual(-halfW + 3 * TILE_METERS);
+  });
+
+  it('lays the deck to code: 9 × 18 ft stalls on 24 ft two-way aisles, the 60 ft module', () => {
+    const FT = 0.3048;
+    expect(DECK_STALL.w).toBeCloseTo(9 * FT, 9);
+    expect(DECK_STALL.l).toBeCloseTo(18 * FT, 9);
+    expect(DECK_AISLE_M).toBeCloseTo(24 * FT, 9);
+    expect(2 * DECK_STALL.l + DECK_AISLE_M).toBeCloseTo(60 * FT, 9);
+    // The ramp's lane, clear of its parapet, is at least the one-way width.
+    expect(layout.ramp.x1 - layout.ramp.x0 - DECK_SPANDREL.t).toBeGreaterThanOrEqual(
+      DECK_RAMP_MIN_M - 1e-9,
+    );
+  });
+
+  it('holds 72 beds at 2,500 sf a bed on a plate of about 2,800 m² over six 4.5 m storeys, 27 m to the parapet', () => {
+    const plate = HOSPITAL_BLOCK_SIZE.w * HOSPITAL_BLOCK_SIZE.d;
+    expect(Math.abs(plate - 2_800) / 2_800).toBeLessThan(0.02);
+    const floor = plate * HOSPITAL_STOREYS * SQFT_PER_M2;
+    expect(Math.abs(floor - HOSPITAL_BEDS * 2_500) / (HOSPITAL_BEDS * 2_500)).toBeLessThan(0.005);
+    expect(HOSPITAL_STOREYS * HOSPITAL_STOREY_M).toBe(HOSPITAL.height);
+    expect(boundsOf('hospitalBlock').max.y).toBeCloseTo(HOSPITAL.height, 5);
+  });
+
+  it('parks two cars a bed in the deck, 3.35 m a level and clear for a van', () => {
+    const spaces = hospitalDeckSpaces(HOSPITAL.footprint);
+    expect(spaces).toBeGreaterThanOrEqual(HOSPITAL_BEDS * HOSPITAL_SPACES_PER_BED);
+    expect(spaces).toBe(144);
+    const perLevel = spaces / DECK_LEVELS;
+    expect(layout.stalls.filter((s) => s.level === 0)).toHaveLength(perLevel);
+    // A level's floor over its spaces, against the 300–350 sf a structured
+    // space takes all-in: within 5% over the top of it, the cores and ramp included.
+    const deckArea = (layout.deck.x1 - layout.deck.x0) * (layout.deck.z1 - layout.deck.z0);
+    const sfPerSpace = (deckArea / perLevel) * SQFT_PER_M2;
+    expect(sfPerSpace).toBeGreaterThanOrEqual(300);
+    expect(sfPerSpace).toBeLessThan(350 * 1.05);
+    expect(DECK_STOREY_M).toBeCloseTo(11 * 0.3048, 2);
+    expect(DECK_STOREY_M - DECK_SLAB_M).toBeGreaterThanOrEqual(VAN_CLEARANCE_M);
+  });
+
+  it('marks 5 accessible spaces, 1 of them a van, by ADA §208.2 over every space provided', () => {
+    const deck = hospitalDeckSpaces(HOSPITAL.footprint);
+    const { total, vans } = hospitalAccessibleSpaces(deck);
+    expect([total, vans]).toEqual([5, 1]);
+    expect(adaAccessibleSpaces(deck + total)).toBe(total);
+    const kinds = layout.accessible.map((p) => p.kind);
+    expect(kinds.filter((k) => k === 'car')).toHaveLength(total - vans);
+    expect(kinds.filter((k) => k === 'van')).toHaveLength(vans);
+    layout.accessible.forEach((piece, i) => {
+      expect(piece.x1 - piece.x0).toBeCloseTo(ACCESSIBLE_SPACE_M[piece.kind], 9);
+      if (piece.kind === 'aisle') return;
+      // Every space has an access aisle beside it.
+      const beside = [layout.accessible[i - 1], layout.accessible[i + 1]];
+      expect(beside.some((p) => p?.kind === 'aisle')).toBe(true);
+    });
+    expect(ACCESSIBLE_SPACE_M).toEqual({ car: 2.44, van: 3.35, aisle: 1.52 });
+  });
+
+  it('keeps every part inside the lot and clear of one another: block, canopies, accessible row, deck', () => {
+    for (const kind of [
+      'hospitalYard',
+      'hospitalBlock',
+      'hospitalDeck',
+      'hospitalPaint',
+    ] as const) {
+      const box = boundsOf(kind);
+      expect(box.min.x).toBeGreaterThanOrEqual(-halfW - 1e-9);
+      expect(box.max.x).toBeLessThanOrEqual(halfW + 1e-9);
+      expect(box.min.z).toBeGreaterThanOrEqual(-halfD - 1e-9);
+      expect(box.max.z).toBeLessThanOrEqual(halfD + 1e-9);
+    }
+    const row: Rect = {
+      x0: layout.accessible[0]!.x0,
+      x1: layout.accessible[layout.accessible.length - 1]!.x1,
+      ...layout.accessibleZ,
+    };
+    const entranceCanopy: Rect = {
+      x0: layout.entrance.x - 5,
+      x1: layout.entrance.x + 5,
+      z0: blockRect.z1,
+      z1: blockRect.z1 + 4,
+    };
+    for (const r of [blockRect, layout.ambulanceCanopy, row, layout.deck, entranceCanopy]) {
+      expect(inside(r, lotRect)).toBe(true);
+    }
+    const parts = [blockRect, layout.ambulanceCanopy, row, layout.deck, entranceCanopy];
+    for (let i = 0; i < parts.length; i++) {
+      for (let j = i + 1; j < parts.length; j++) expect(overlaps(parts[i]!, parts[j]!)).toBe(false);
+    }
+    // The accessible row and the canopies stand on the street side of the block.
+    expect(row.z0).toBeGreaterThanOrEqual(blockRect.z1);
+    expect(layout.ambulanceCanopy.z0).toBeCloseTo(blockRect.z1, 9);
+    // Every stall and core is on the deck, clear of the ramp; the ambulance is under its canopy.
+    for (const s of layout.stalls) {
+      const stall: Rect = {
+        x0: s.x - DECK_STALL.l / 2,
+        x1: s.x + DECK_STALL.l / 2,
+        z0: s.z - DECK_STALL.w / 2,
+        z1: s.z + DECK_STALL.w / 2,
+      };
+      expect(inside(stall, layout.deck)).toBe(true);
+      expect(overlaps(stall, layout.ramp)).toBe(false);
+      for (const core of layout.cores) expect(overlaps(stall, core)).toBe(false);
+    }
+    const [ambW, , ambL] = sizeForKind(VehicleKind.Ambulance);
+    expect(
+      inside(
+        {
+          x0: layout.ambulance.x - ambW / 2,
+          x1: layout.ambulance.x + ambW / 2,
+          z0: layout.ambulance.z - ambL / 2,
+          z1: layout.ambulance.z + ambL / 2,
+        },
+        layout.ambulanceCanopy,
+      ),
+    ).toBe(true);
+    expect(sizeForKind(VehicleKind.Ambulance)[1]).toBeLessThan(AMBULANCE_CANOPY.clear);
+  });
+
+  it('parks its cars and its ambulance inside the turned lot at every rotation, the cars on their level', () => {
+    for (const rotation of [0, 1, 2, 3] as const) {
+      const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [HOSPITAL]);
+      renderer.apply(deltaAdd(makeInstance(7, 'hospital', { x: 0, z: 0, rotation })));
+      const lot = footprintForRotation(HOSPITAL, rotation);
+      const centerX = (lot.w / 2) * TILE_METERS;
+      const centerZ = (lot.d / 2) * TILE_METERS;
+      const taken = layout.stalls.filter((_, i) => deckStallTaken(7, i));
+      const cars = renderer.partSlotsFor(7, 'hospitalCar');
+      expect(cars).toHaveLength(taken.length);
+      expect(taken.length).toBeGreaterThan(0);
+      expect(taken.length).toBeLessThan(layout.stalls.length);
+      const m = new THREE.Matrix4();
+      const check = (kind: UtilityKitPartKind, slot: number, local: { x: number; z: number }) => {
+        renderer.getPartMatrix('hospital', kind, slot, m);
+        const pos = decomposePosition(m);
+        const rotated = rotateLocalXZ(local.x, local.z, rotation);
+        expect(pos.x).toBeCloseTo(centerX + rotated.x, 5);
+        expect(pos.z).toBeCloseTo(centerZ + rotated.z, 5);
+        expect(pos.x).toBeGreaterThan(0);
+        expect(pos.x).toBeLessThan(lot.w * TILE_METERS);
+        expect(pos.z).toBeGreaterThan(0);
+        expect(pos.z).toBeLessThan(lot.d * TILE_METERS);
+        return pos;
+      };
+      taken.forEach((stall, i) => {
+        const pos = check('hospitalCar', cars[i]!, stall);
+        expect(pos.y).toBeCloseTo(RECYCLING_YARD_HEIGHT + stall.level * DECK_STOREY_M, 5);
+      });
+      check(
+        'hospitalAmbulance',
+        renderer.partSlotsFor(7, 'hospitalAmbulance')[0]!,
+        layout.ambulance,
+      );
+    }
+  });
+
+  it('frees every slot a removed hospital owned', () => {
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [HOSPITAL]);
+    renderer.apply(deltaAdd(makeInstance(3, 'hospital')));
+    expect(renderer.hasInstance(3)).toBe(true);
+    renderer.apply({ added: [], updated: [], removed: [3] });
+    expect(renderer.hasInstance(3)).toBe(false);
+    expect(renderer.partSlotsFor(3, 'hospitalCar')).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // A kit that paves its lot, on a slope, over the instancer's plinth
 // ---------------------------------------------------------------------------
 
@@ -1736,10 +1974,11 @@ describe('a paved kit on sloped ground', () => {
     'recycling-depot': 'recyclingYard',
     'materials-recovery-facility': 'mrfYard',
     'transfer-station': 'transferYard',
+    hospital: 'hospitalYard',
   };
-  for (const entry of [makeRecyclingDepotEntry(), makeMrfEntry(), makeTransferEntry()]) {
+  for (const entry of [makeRecyclingDepotEntry(), makeMrfEntry(), makeTransferEntry(), HOSPITAL]) {
     it(`keeps the plinth under the ${entry.id} yard, and the ground under its footing`, () => {
-      for (const rotation of [0, 1] as const) {
+      for (const rotation of [0, 1, 2, 3] as const) {
         const scene = new THREE.Scene();
         const kits = new UtilityKitRenderer(scene, slope, [entry]);
         const instancer = new BuildingInstancer(scene, [entry], slope, kits.kitIds());
@@ -1785,7 +2024,7 @@ describe('a paved kit on sloped ground', () => {
 // ---------------------------------------------------------------------------
 
 describe('multiple kits coexisting', () => {
-  it('builds and applies all 11 kits from one catalog + one delta without cross-talk', () => {
+  it('builds and applies all 12 kits from one catalog + one delta without cross-talk', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
       makeTurbineEntry(),
       makeWaterTowerEntry(),
@@ -1797,6 +2036,7 @@ describe('multiple kits coexisting', () => {
       makeRecyclingDepotEntry(),
       makeMrfEntry(),
       makeTransferEntry(),
+      HOSPITAL,
       makeSmallParkEntry(),
     ]);
     renderer.apply(
@@ -1804,6 +2044,7 @@ describe('multiple kits coexisting', () => {
         makeInstance(9, 'recycling-depot', { x: 40, z: 0 }),
         makeInstance(10, 'materials-recovery-facility', { x: 50, z: 0 }),
         makeInstance(11, 'transfer-station', { x: 60, z: 0 }),
+        makeInstance(12, 'hospital', { x: 70, z: 0 }),
         makeInstance(1, 'wind-turbine', { x: 0, z: 0 }),
         makeInstance(2, 'water-tower', { x: 5, z: 0 }),
         makeInstance(3, 'coal-plant', { x: 10, z: 0 }),
@@ -1830,6 +2071,8 @@ describe('multiple kits coexisting', () => {
     expect(renderer.partSlotsFor(9, 'mrfTruck')).toHaveLength(0);
     expect(renderer.partSlotsFor(11, 'transferRig')).toHaveLength(2);
     expect(renderer.partSlotsFor(10, 'transferRig')).toHaveLength(0);
+    expect(renderer.partSlotsFor(12, 'hospitalAmbulance')).toHaveLength(1);
+    expect(renderer.partSlotsFor(11, 'hospitalAmbulance')).toHaveLength(0);
   });
 });
 

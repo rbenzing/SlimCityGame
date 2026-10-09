@@ -319,16 +319,24 @@ describe('the civic ploppables (honest both sides): every draw from floor area a
   const DAYS_PER_YEAR = 365;
   const KL_PER_GAL = 0.003785;
   /** CBECS 2018 Table C14: electricity, kWh per square foot a year, by principal building activity. */
-  const CBECS_KWH_PER_SF = { publicOrderSafety: 13.9, outpatient: 17.4, education: 9.4 };
+  const CBECS_KWH_PER_SF = {
+    publicOrderSafety: 13.9,
+    outpatient: 17.4,
+    inpatient: 28.8,
+    education: 9.4,
+  };
   /** A transport terminal: ENERGY STAR's 56.2 kBtu/sf site median, electricity at public assembly's 51% share, in kWh. */
   const TERMINAL_KWH_PER_SF = (56.2 * (12.1 / (81.1 / 3.412))) / 3.412;
-  /** EPA WaterSense at Work: median water use, gallons per square foot a year. */
+  /** EPA WaterSense at Work and ENERGY STAR Portfolio Manager (CY2019): median water use, gallons per square foot a year. */
   const WATERSENSE_GAL_PER_SF = {
     office: 14.48,
     fireStation: 28.9,
     medicalOffice: 23.4,
+    hospital: 55.71,
     school: 10.84,
   };
+  /** A floor the building's plan states rather than the massing rule's: the hospital's 72 beds at 2,500 sf a bed. */
+  const STATED_FLOOR_SQFT: Readonly<Record<string, number>> = { hospital: 72 * 2_500 };
   /** One regional terminal's floor per yearly enplanement, passengers at twice that, 4.2 gallons each. */
   const TERMINAL_SF_PER_ENPLANEMENT = 125_000 / 600_000;
   const GAL_PER_PASSENGER = 4.2;
@@ -337,6 +345,7 @@ describe('the civic ploppables (honest both sides): every draw from floor area a
   const COMBUSTOR_KWH_PER_TON = 63;
 
   const floorSqft = (e: BuildingCatalogEntry): number =>
+    STATED_FLOOR_SQFT[e.id] ??
     e.footprint.w * e.footprint.d * PLATE_M2_PER_TILE * (e.height / STOREY_M) * SQFT_PER_M2;
   const mwFrom = (sqft: number, kwhPerSf: number): number =>
     (sqft * kwhPerSf) / HOURS_PER_YEAR / 1000;
@@ -345,11 +354,12 @@ describe('the civic ploppables (honest both sides): every draw from floor area a
   const close = (got: number, want: number, places: number): void =>
     expect(Math.abs(got - want)).toBeLessThanOrEqual(0.5 * 10 ** -places + 1e-12);
 
-  it('draws what a station of its floor area draws: police and fire, clinic, school, rail station', () => {
+  it('draws what a station of its floor area draws: police and fire, clinic, hospital, school, rail station', () => {
     for (const [id, kwh, gal, mwPlaces, klPlaces] of [
       ['police-station', CBECS_KWH_PER_SF.publicOrderSafety, WATERSENSE_GAL_PER_SF.office, 4, 1],
       ['fire-station', CBECS_KWH_PER_SF.publicOrderSafety, WATERSENSE_GAL_PER_SF.fireStation, 4, 0],
       ['clinic', CBECS_KWH_PER_SF.outpatient, WATERSENSE_GAL_PER_SF.medicalOffice, 4, 1],
+      ['hospital', CBECS_KWH_PER_SF.inpatient, WATERSENSE_GAL_PER_SF.hospital, 3, 0],
       ['school', CBECS_KWH_PER_SF.education, WATERSENSE_GAL_PER_SF.school, 4, 1],
       ['rail-station', TERMINAL_KWH_PER_SF, WATERSENSE_GAL_PER_SF.office, 4, 0],
     ] as const) {
@@ -401,6 +411,45 @@ describe('the civic ploppables (honest both sides): every draw from floor area a
     const STAFF = 50;
     const GAL_PER_WORKER_DAY = 13;
     close(coal.waterUse, STAFF * GAL_PER_WORKER_DAY * KL_PER_GAL, 1);
+  });
+});
+
+describe('the healthcare ladder: a hospital serves the people its beds do, for less a head than a clinic', () => {
+  const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+  const byId = (id: string): BuildingCatalogEntry => catalog.find((e) => e.id === id)!;
+  const BEDS = 72;
+  /** KFF 2024: staffed community-hospital beds, and admissions a year, per 1,000 residents. */
+  const BEDS_PER_THOUSAND = 2.28;
+  const ADMISSIONS_PER_THOUSAND = 99;
+  /** AHA Fast Facts (2024): community hospitals' admissions over their staffed beds. */
+  const ADMISSIONS_PER_BED = 33_553_725 / 775_297;
+
+  it('serves about 5% fewer than both routes from its 72 beds give', () => {
+    const hospital = byId('hospital');
+    const byBeds = (BEDS / BEDS_PER_THOUSAND) * 1_000;
+    const byAdmissions = ((BEDS * ADMISSIONS_PER_BED) / ADMISSIONS_PER_THOUSAND) * 1_000;
+    for (const route of [byBeds, byAdmissions]) {
+      const under = 1 - hospital.service!.capacity! / route;
+      expect(under).toBeGreaterThan(0.03);
+      expect(under).toBeLessThan(0.06);
+    }
+  });
+
+  it('writes the clinic’s health strength, further and for more people', () => {
+    const clinic = byId('clinic');
+    const hospital = byId('hospital');
+    expect(hospital.service).toMatchObject({ kind: 'health', strength: clinic.service!.strength });
+    expect(hospital.service!.range).toBeGreaterThan(clinic.service!.range);
+    expect(hospital.service!.capacity).toBeGreaterThan(clinic.service!.capacity!);
+    expect(hospital.unlockMilestone).toBeGreaterThan(clinic.unlockMilestone);
+  });
+
+  it('costs less a head to build and to run than the clinic', () => {
+    const perHead = (e: BuildingCatalogEntry, of: number): number => of / e.service!.capacity!;
+    const clinic = byId('clinic');
+    const hospital = byId('hospital');
+    expect(perHead(hospital, hospital.cost)).toBeLessThan(perHead(clinic, clinic.cost));
+    expect(perHead(hospital, hospital.upkeep)).toBeLessThan(perHead(clinic, clinic.upkeep));
   });
 });
 

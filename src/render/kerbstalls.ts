@@ -63,6 +63,26 @@ export function accessibleStallCount(marked: number): number {
 }
 
 /**
+ * How many accessible spaces an off-street lot or deck of `provided` spaces
+ * marks, from ADA 2010 Table 208.2: one per 25 up to 100, one per 50 up to
+ * 200, one per 100 up to 500, 2% up to 1,000, and 20 plus one per 100 over
+ * 1,000 beyond. Not the kerbside table: the two part above 200 spaces.
+ */
+export function adaAccessibleSpaces(provided: number): number {
+  if (provided <= 0) return 0;
+  const upTo = [25, 50, 75, 100, 150, 200, 300, 400, 500];
+  const at = upTo.findIndex((n) => provided <= n);
+  if (at >= 0) return at + 1;
+  if (provided <= 1_000) return Math.ceil(provided * 0.02);
+  return 20 + Math.ceil((provided - 1_000) / 100);
+}
+
+/** Of a lot's accessible spaces, how many are van-accessible: one in six, or a fraction of six (ADA 2010 §208.2.4). */
+export function adaVanSpaces(accessible: number): number {
+  return Math.ceil(accessible / 6);
+}
+
+/**
  * How far each end of a road tile's kerbs is kept clear of parking: `lo` the
  * end at the low coordinate along the road and `hi` the high one, each as
  * metres for the parking on the road's low-offset side and on its high side.

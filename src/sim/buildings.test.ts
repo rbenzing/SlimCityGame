@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { MAP_SIZE, tileIndex } from '../shared/constants';
-import { BuildingState, ZoneType } from '../shared/types';
+import { BuildingState, RoadTier, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, GridState } from '../shared/types';
+import { footprintForRotation } from '../shared/footprint';
+import catalogData from '../data/catalog.json';
 import { BuildingRegistry, settleBuildingDelta } from './buildings';
+import { bordersUtilityNetwork } from './network';
 import { createGrid } from '../world/grid';
 
 function makeGrid(): GridState {
@@ -332,6 +335,52 @@ describe('restampShrunkPloppables', () => {
       ]),
     );
     expect(registry.get(id)).toMatchObject({ x: 11, z: 10 });
+  });
+
+  describe('the clinic, saved at 2×2 and now 1×2', () => {
+    const clinic = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.find(
+      (e) => e.id === 'clinic',
+    )!;
+    const savedClinic: BuildingCatalogEntry = { ...clinic, footprint: { w: 2, d: 2 } };
+    const OLD = { x: 10, z: 10 };
+    /** The street along one side of the old 2×2, a tile clear of its corners either way. */
+    const streets: Record<string, [number, number][]> = {
+      north: [8, 9, 10, 11, 12, 13].map((x) => [x, OLD.z - 1]),
+      south: [8, 9, 10, 11, 12, 13].map((x) => [x, OLD.z + 2]),
+      west: [8, 9, 10, 11, 12, 13].map((z) => [OLD.x - 1, z]),
+      east: [8, 9, 10, 11, 12, 13].map((z) => [OLD.x + 2, z]),
+    };
+
+    for (const rotation of [0, 1, 2, 3] as const) {
+      for (const [side, road] of Object.entries(streets)) {
+        it(`re-stamps it inside its old lot on the street to its ${side}, turned ${rotation}`, () => {
+          const g = makeGrid();
+          for (const [x, z] of road) g.roadTier[tileIndex(x, z)] = RoadTier.TwoLane;
+          const older = new BuildingRegistry([savedClinic]);
+          const id = older.place(g, savedClinic, OLD.x, OLD.z, rotation)!.id;
+          const registry = BuildingRegistry.deserialize([clinic], older.serialize());
+
+          registry.restampShrunkPloppables(g, (tiles) => bordersUtilityNetwork(g, tiles));
+
+          const now = footprintForRotation(clinic, rotation);
+          expect(now.w * now.d).toBe(2);
+          const inst = registry.get(id)!;
+          expect(registry.serialize().buildings.find((b) => b.id === id)).toMatchObject(now);
+          const kept: number[] = [];
+          for (let dz = 0; dz < 2; dz++) {
+            for (let dx = 0; dx < 2; dx++) {
+              const x = OLD.x + dx;
+              const z = OLD.z + dz;
+              const inside = x >= inst.x && x < inst.x + now.w && z >= inst.z && z < inst.z + now.d;
+              expect(g.buildingId[tileIndex(x, z)]).toBe(inside ? id : 0);
+              if (inside) kept.push(tileIndex(x, z));
+            }
+          }
+          expect(kept).toHaveLength(2);
+          expect(bordersUtilityNetwork(g, kept)).toBe(true);
+        });
+      }
+    }
   });
 
   it('leaves the building at its origin when no road is near', () => {

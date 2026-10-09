@@ -130,7 +130,8 @@ Every figure is derived in [features/municipal-services.md](features/municipal-s
 | Building             | Power     | Water   | Meaning                                                                                              | File                    |
 | -------------------- | --------- | ------- | ---------------------------------------------------------------------------------------------------- | ----------------------- |
 | police, fire station | 0.0474 MW | 4.5, 9 kL | The floor the massing rule gives a 2×2 at 12 m, at CBECS's public-order intensity; office and fire-station water benchmarks. | `src/data/catalog.json` |
-| clinic               | 0.0692 MW | 8.5 kL  | Outpatient health care's intensity; the medical-office water benchmark.                              | `src/data/catalog.json` |
+| clinic               | 0.0158 MW | 1.9 kL  | A 1×2 at 6.4 m, 7,965 sf, at outpatient health care's intensity; the medical-office water benchmark. | `src/data/catalog.json` |
+| hospital             | 0.592 MW  | 104 kL  | Its stated 180,000 sf at inpatient health care's 28.8 kWh/sf; the hospital water median, 55.71 gal/sf. | `src/data/catalog.json` |
 | school               | 0.0601 MW | 6.3 kL  | Education's intensity; the K-12 water benchmark.                                                     | `src/data/catalog.json` |
 | rail station         | 0.0322 MW | 5 kL    | A transport terminal's intensity; office water.                                                      | `src/data/catalog.json` |
 | airport              | 0.4 MW    | 175 kL  | A 418,000 sf terminal; four million passengers a year at 4.2 gallons.                               | `src/data/catalog.json` |
@@ -146,6 +147,18 @@ Every figure is derived in [features/service-capacity.md](features/service-capac
 | fire station   | 14,000   | One engine of 4 (NFPA 1710) at about 4.5 people a seat is 18 firefighters, over NFPA's median 1.30 career firefighters per 1,000 for 25,000–49,999. | `src/data/catalog.json` |
 | clinic         | 8,000    | 4 physicians, a dial, at a panel of 2,000: between Altschuler's workable 1,947 and the US average of about 2,300.                                          | `src/data/catalog.json` |
 | school         | 7,000    | The average US public elementary school's 456 pupils (NCES 216.75) over K–5's 64 pupils per 1,000 residents (NCES 203.10).                                 | `src/data/catalog.json` |
+| hospital       | 30,000   | 72 staffed beds over KFF's 2.28 community beds per 1,000 is 31,600; by AHA's 43.3 admissions a bed over KFF's 99 per 1,000, 31,500. About 5% under both. Range 72, strength 140 as the clinic's. | `src/data/catalog.json` |
+
+## Hospital parking
+
+Every figure is derived in [features/healthcare-and-death-care.md](features/healthcare-and-death-care.md#sizes-costs-and-the-ladder-rule).
+
+| Constant              | Value                          | Meaning                                                                                                   | File                        |
+| --------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------- | --------------------------- |
+| spaces per bed        | 2                              | The common US zoning minimum for a hospital: 144 spaces for 72 beds.                                       | `src/render/utilitykits.ts` |
+| deck                  | 3×2 tiles, 2 levels, 3.35 m    | Ground and roof, 11 ft floor to floor, over the 2.49 m a van's route needs (ADA); 40.48 m across, half a metre past its tiles. | `src/render/utilitykits.ts` |
+| stall, aisle          | 2.74 × 5.49 m, 7.32 m          | 9 × 18 ft stalls on 24 ft two-way aisles (the 60 ft module): 72 a level after the ramp, cross-aisle and cores, 144 in all; 33.7 m² a space. | `src/render/utilitykits.ts` |
+| accessible spaces     | 5, 1 van                       | ADA 2010 §208.2 for 101–150 spaces provided (144 + 5), 1 van in 6; car 2.44 m, van 3.35 m, aisle 1.52 m.   | `src/render/kerbstalls.ts`  |
 
 ## Soil and farms
 
