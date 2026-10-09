@@ -12,6 +12,7 @@ import {
 import { planFarm, type FarmRect } from './farmlot';
 import { TILE_METERS } from '../shared/constants';
 import { CURB_CUT_Y_OFFSET } from './parked';
+import { lotPlanFor, lotPointToWorld } from './lotplan';
 import {
   BuildingState,
   ZoneType,
@@ -312,10 +313,27 @@ describe('LotRenderer', () => {
       expect(top).toBeLessThan(CURB_CUT_Y_OFFSET);
     });
 
-    it('lays nothing beyond a shop’s own lot — its apron is the parking renderer’s', () => {
+    it('carries a shop’s ground across the verge only where its drive and its walk cross it', () => {
       const scene = new THREE.Scene();
       new LotRenderer(scene, flat, [entry()], roadAt, street).apply(delta({ added: [building()] }));
-      expect(zExtent(scene).max).toBeCloseTo(southEdge, 6);
+      const { max, top } = zExtent(scene);
+      expect(max).toBeCloseTo(southEdge + 4.375, 6);
+      // The cut across the sidewalk is the parking renderer's.
+      expect(top).toBeLessThan(CURB_CUT_Y_OFFSET);
+      const { frame, layout } = lotPlanFor(entry(), 4, 6, roadAt)!;
+      const crossings = [layout.curbCut, ...(layout.entranceWalk ? [layout.entranceWalk] : [])].map(
+        (r) => {
+          const a = lotPointToWorld(frame, r.u0, 0).x;
+          const b = lotPointToWorld(frame, r.u1, 0).x;
+          return { x0: Math.min(a, b), x1: Math.max(a, b) };
+        },
+      );
+      const position = (scene.children[0] as THREE.Mesh).geometry.getAttribute('position');
+      for (let i = 0; i < position.count; i += 1) {
+        if (position.getZ(i) <= southEdge + 1e-6) continue;
+        const x = position.getX(i);
+        expect(crossings.some((c) => x >= c.x0 - 1e-6 && x <= c.x1 + 1e-6)).toBe(true);
+      }
     });
   });
 

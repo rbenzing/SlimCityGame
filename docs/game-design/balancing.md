@@ -167,13 +167,16 @@ Every figure is a code figure, derived in [features/parking-to-code.md](features
 | Constant                    | Value                                   | Meaning                                                                                              | File                        |
 | --------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------- | --------------------------- |
 | `SPACES_PER_1000_SQ_FT`     | shop, strip, supermarket, fuel 5; restaurant 10; office 3; manufacturing 1; warehouse 0.5; flex 2 | Spaces a kind's gross floor asks for, rounded up; kindless commerce 5, kindless works 1. | `src/shared/parkingcode.ts` |
+| `SMALL_USE_EXEMPT_SQ_FT`    | 3,000 sq ft; shop and restaurant only   | Floor a single-tenant shop or restaurant parks nothing for; the rest at the full rate. Median of 13 codes (1,500–10,000): Baltimore 16-601(c), Spokane 17C.230.130, Hampton VA, New Orleans CZO 22.5.A. | `src/shared/parkingcode.ts` |
+| kerb credit                 | 1 space a painted stall, any style, no cap | Stalls on the lot's own kerb whose middle lies along its frontage; accessible spaces always on site (Bakersfield §17.58.100, Schenectady §264-42, SmartCode, Mukilteo 17B.56). | `src/shared/kerblayout.ts`, `src/shared/parkingcode.ts` |
+| larger lots                 | shop 2×2, 3×2; restaurant 2×2, 3×2, 4–6×2; strip 4–5×2, 5–6×2, 6–7×2; supermarket 4–5×3, 5–6×3, 6–7×4; flex 3×2, 4×2, 4×4 | Each short kind's lots by level, widened a lot at a time to the first that holds its code with no credit. | `src/data/catalog.json` |
 | `loadingBerths`             | retail 0 / 1 / 2 / 3 to 5k / 20k / 40k / 100k sf; industrial 0 / 1 / 2 / 3 to 5k / 30k / 80k / 175k sf | Wadsworth OH's off-street loading tables.                                   | `src/shared/parkingcode.ts` |
 | `adaAccessibleSpaces`       | ADA 2010 Table 208.2; vans 1 in 6       | Accessible spaces over the spaces provided, inside the total.                                        | `src/shared/parkingcode.ts` |
 | stall, aisle, module        | 9 × 18 ft, 24 ft, 60 ft                 | `STALL_WIDTH_M` 2.74, `STALL_LENGTH_M` 5.49, `AISLE_WIDTH_M` 7.32, `DOUBLE_MODULE_M` 18.3.          | `src/shared/parkingcode.ts` |
 | berth                       | 12 × 50 ft, 14 ft clear                 | `BERTH_WIDTH_M` 3.66, `BERTH_LENGTH_M` 15.24, `BERTH_CLEARANCE_M` 4.27.                              | `src/shared/parkingcode.ts` |
 | islands, trees              | 5 ft island at row ends and every 10 spaces; 1 tree per 10 spaces | `ISLAND_WIDTH_M` 1.52, `SPACES_BETWEEN_ISLANDS`, `SPACES_PER_TREE`.                     | `src/shared/parkingcode.ts` |
 | `CURB_CUT_M`                | 24 ft                                   | The drive's width at the kerb, inside the 24–36 ft two-way range.                                    | `src/shared/parkingcode.ts` |
-| fuel forecourt, tank yard   | 12 m, 8 m                               | Kept clear in front of a filling station's kiosk (canopy 2 m off, 10 m deep) and behind a chemical plant or paper mill (tanks 2 m off, 6 m across). | `src/render/lotplan.ts` |
+| fuel forecourt, tank yard   | 12 m, 8 m                               | Kept clear in front of a filling station's kiosk (canopy 2 m off, 10 m deep) and behind a chemical plant or paper mill (tanks 2 m off, 6 m across). | `src/shared/lotparking.ts` |
 
 ## Soil and farms
 

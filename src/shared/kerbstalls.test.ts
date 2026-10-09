@@ -13,15 +13,10 @@ import {
   type KerbFace,
   type KerbOrientation,
 } from './kerbstalls';
-import { adaAccessibleSpaces, adaVanSpaces } from '../shared/parkingcode';
-import {
-  composeProfile,
-  NO_EDITS,
-  PARKING_STYLES,
-  presetProfileForTier,
-} from '../shared/roadprofile';
-import { RoadFlow, RoadTier, storedFlow } from '../shared/types';
-import type { RoadProfile } from '../shared/types';
+import { adaAccessibleSpaces, adaVanSpaces } from './parkingcode';
+import { composeProfile, NO_EDITS, PARKING_STYLES, presetProfileForTier } from './roadprofile';
+import { RoadFlow, RoadTier, storedFlow } from './types';
+import type { RoadProfile } from './types';
 
 const SIN60 = Math.sin(Math.PI / 3);
 

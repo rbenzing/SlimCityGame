@@ -1,6 +1,8 @@
 /**
  * Lot pads: the paved (or planted) ground a building stands on, covering its
- * whole tile footprint.
+ * whole tile footprint. A suburban commercial or industrial lot laid out to
+ * its parking code is planted, and paved only where its layout uses the
+ * ground (layCarPark).
  *
  * A building's rendered mass deliberately does not fill its footprint — it
  * shrinks so neighbours don't share a wall — which left 15% of every lot edge
@@ -32,6 +34,9 @@ import { cropBands, planFarm, type FarmPlan, type FarmRect } from './farmlot';
 import { NO_STREETS, type StreetLookup } from './frontage';
 import { lotToWorld, planHouseLot, type HouseLotPlan, type LotRect } from './houselot';
 import { CURB_CUT_Y_OFFSET } from './parked';
+import type { KerbSurroundings } from '../shared/kerblayout';
+import { lotPaving } from '../shared/lotlayout';
+import { lotPlanFor, lotPointToWorld, type LotPlan } from './lotplan';
 
 /**
  * Pads ride just above the terrain overlays and BELOW everything that sits on
@@ -41,6 +46,8 @@ import { CURB_CUT_Y_OFFSET } from './parked';
 export const LOT_Y_OFFSET = 0.08;
 /** A home's drive, path and patio ride over its lawn and under the road plate (0.15). */
 export const DRIVE_Y_OFFSET = 0.1;
+/** A car park's concrete walks and slab ride over its paving, under its paint (0.135). */
+export const WALK_Y_OFFSET = 0.11;
 
 const DRIVE_SURFACE: Readonly<Record<HouseLotPlan['surface'], MaterialName>> = {
   dirt: 'dirt',
@@ -115,6 +122,8 @@ export class LotRenderer {
   private readonly street: StreetLookup;
   /** Where the dirt roads a farm's gate opens onto are; the default finds none. */
   private readonly dirtAt: (x: number, z: number) => boolean;
+  /** The stalls the streets paint, which a car park's layout counts toward its code; none without it. */
+  private readonly kerb: KerbSurroundings | null;
   private readonly material = new THREE.MeshLambertMaterial({ vertexColors: true });
   private readonly meshes = new Map<number, THREE.Mesh>();
   private visible = true;
@@ -126,6 +135,7 @@ export class LotRenderer {
     roadAt: (x: number, z: number) => boolean = () => false,
     street: StreetLookup = NO_STREETS,
     dirtAt: (x: number, z: number) => boolean = () => false,
+    kerb: KerbSurroundings | null = null,
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
@@ -133,6 +143,7 @@ export class LotRenderer {
     this.roadAt = roadAt;
     this.street = street;
     this.dirtAt = dirtAt;
+    this.kerb = kerb;
   }
 
   apply(delta: BuildingDelta): void {
@@ -212,6 +223,14 @@ export class LotRenderer {
     const surface = lotSurfaceFor(entry);
     if (surface === null) return;
     const bounds = lotBounds(building, entry);
+    const carPark = lotPlanFor(
+      entry,
+      building.x,
+      building.z,
+      this.roadAt,
+      building.rotation,
+      this.kerb,
+    );
     pushConformingQuad(
       positions,
       colors,
@@ -220,9 +239,14 @@ export class LotRenderer {
       bounds.x1,
       bounds.z1,
       LOT_Y_OFFSET,
-      tinted(surface),
+      tinted(carPark ? 'mownLawn' : surface),
       this.heightAt,
     );
+    if (carPark) {
+      this.layCarPark(carPark, surface, tinted, positions, colors);
+      this.addMesh(building.id, positions, colors);
+      return;
+    }
 
     const plan = planHouseLot(building, entry, this.roadAt, this.street);
     if (plan) {
@@ -253,6 +277,48 @@ export class LotRenderer {
       }
     }
     this.addMesh(building.id, positions, colors);
+  }
+
+  /**
+   * A suburban lot laid to its parking code: planted, with only what its
+   * layout uses paved over the grass — the yard's paving under the drive,
+   * spaces, berths, forecourt and tank farm, concrete under the body and its
+   * walks — and the verge paved where the drive and the walk cross it.
+   */
+  private layCarPark(
+    plan: LotPlan,
+    surface: MaterialName,
+    tinted: (name: MaterialName) => readonly [number, number, number],
+    positions: number[],
+    colors: number[],
+  ): void {
+    const lay = (r: LotRect, y: number, name: MaterialName): void => {
+      const a = lotPointToWorld(plan.frame, r.u0, r.v0);
+      const b = lotPointToWorld(plan.frame, r.u1, r.v1);
+      pushConformingQuad(
+        positions,
+        colors,
+        Math.min(a.x, b.x),
+        Math.min(a.z, b.z),
+        Math.max(a.x, b.x),
+        Math.max(a.z, b.z),
+        y,
+        tinted(name),
+        this.heightAt,
+      );
+    };
+    const { layout, edge } = plan;
+    const paving = lotPaving(layout);
+    for (const r of paving.yard) lay(r, DRIVE_Y_OFFSET, surface);
+    for (const r of paving.concrete) lay(r, WALK_Y_OFFSET, 'cleanConcrete');
+    const verge = this.street(edge.roadTileX, edge.roadTileZ)?.vergeM ?? 0;
+    if (verge <= 0) return;
+    if (layout.aisles.length > 0) {
+      const cut = layout.curbCut;
+      lay({ u0: cut.u0, u1: cut.u1, v0: -verge, v1: 0 }, DRIVE_Y_OFFSET, surface);
+    }
+    const walk = layout.entranceWalk;
+    if (walk) lay({ ...walk, v0: -verge, v1: 0 }, WALK_Y_OFFSET, 'cleanConcrete');
   }
 
   private addMesh(id: number, positions: number[], colors: number[]): void {

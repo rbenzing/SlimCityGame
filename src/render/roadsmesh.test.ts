@@ -8,7 +8,6 @@ import {
   emitLaneUseArrow,
   emitTurnArrow,
   crosswalkBarOffsets,
-  junctionArmLayout,
   isAvenueMedianEligible,
   hasMedianTree,
   gravelColorAt,
@@ -48,6 +47,7 @@ import {
   RING_ROADWAY_WIDTH_M,
 } from '../shared/roundabout';
 import type { NeighborHalves, NeighborTiers } from './roadsmesh';
+import { junctionArmLayout } from '../shared/junctionpaint';
 import { RoadFlow, RoadTileDelta, RoadTier, storedFlow } from '../shared/types';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 import {

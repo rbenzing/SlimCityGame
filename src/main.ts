@@ -265,15 +265,6 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // A shore building turns to face the water beside it.
     (x, z) => inBounds(x, z) && clientGrid.water[z * clientGrid.size + x] === 1,
   );
-  const instancer = new BuildingInstancer(
-    world.scene,
-    catalog,
-    heightAt,
-    utilityKits.kitIds(),
-    roadAt,
-    street,
-    dirtAt,
-  );
   // A crossing tile holds two roads; the road passing over it has a surface of
   // its own, which the ordinary sampler — answering for the road beneath —
   // cannot give.
@@ -284,6 +275,20 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     roadSurfaceAt,
     (id) => clientGrid.profileById(id),
     overSurfaceAt,
+  );
+  // The stalls the streets paint, as the road mesh lays them: a suburban car
+  // park counts those along its frontage toward its code, so every renderer
+  // that stands a body on its lot lays the lot out with the same credit.
+  const kerb = roadsMesh.kerbSurroundings();
+  const instancer = new BuildingInstancer(
+    world.scene,
+    catalog,
+    heightAt,
+    utilityKits.kitIds(),
+    roadAt,
+    street,
+    dirtAt,
+    kerb,
   );
   // Roads off the grid lie on the ground, so they sit on the terrain.
   const freeRoads = new FreeRoadRenderer(world.scene, heightAt, (id) => clientGrid.profileById(id));
@@ -356,15 +361,15 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // Lot pads go down before anything that stands on them: the building mass,
   // the parking apron, a driveway. They claim the whole footprint so a block of
   // lots meets edge to edge instead of leaving grass between properties.
-  const lots = new LotRenderer(world.scene, heightAt, catalog, roadAt, street, dirtAt);
+  const lots = new LotRenderer(world.scene, heightAt, catalog, roadAt, street, dirtAt, kerb);
   // A farm's barn roof, farmhouse, silos, bins, orchard, fence and herd.
   const farms = new FarmRenderer(world.scene, heightAt, catalog, dirtAt);
   const massing = new MassingRenderer(world.scene, heightAt, catalog, roadAt, street);
-  const roofProps = new RoofPropRenderer(world.scene, heightAt, catalog, roadAt);
+  const roofProps = new RoofPropRenderer(world.scene, heightAt, catalog, roadAt, kerb);
   // Archetype kit: the parts that make a warehouse, a factory, a green works
   // and a shopfront read as different things rather than as boxes of different
   // heights — docks and doors, a monitor roof, a roof array, a canopy and a sign.
-  const buildingKit = new BuildingKitRenderer(world.scene, heightAt, catalog, roadAt);
+  const buildingKit = new BuildingKitRenderer(world.scene, heightAt, catalog, roadAt, kerb);
   const parkedCars = new ParkedCarRenderer(
     world.scene,
     heightAt,
@@ -724,6 +729,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
               tierOf,
               profileOf,
               building.rotation,
+              kerb,
             )
           ) {
             continue;
@@ -1796,7 +1802,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       for (const inst of knownBuildings.values()) {
         const entry = catalogById.get(inst.catalogId);
         if (!entry) continue;
-        const cut = curbCutTileFor(entry, inst.x, inst.z, roadAt, inst.rotation);
+        const cut = curbCutTileFor(entry, inst.x, inst.z, roadAt, inst.rotation, kerb);
         if (cut) nextDriveways.add(cut.x * 100_000 + cut.z);
         const home = planHouseGround(inst, entry, roadAt, street);
         if (!home) continue;

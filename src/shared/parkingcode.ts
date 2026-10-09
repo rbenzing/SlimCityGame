@@ -74,6 +74,13 @@ export const CURB_CUT_MAX_M = 36 * FOOT_M;
 export const CURB_CUT_M = AISLE_WIDTH_M;
 
 /**
+ * The walk along a facade with a customer entrance, and from the public
+ * sidewalk to that entrance: 8 ft (2.44 m), the large-retail design
+ * standards' figure (Fort Collins Land Use Code 3.5.4, widely copied).
+ */
+export const ENTRANCE_WALK_M = 8 * FOOT_M;
+
+/**
  * How many accessible spaces an off-street lot or deck of `provided` spaces
  * marks, from ADA 2010 Table 208.2: one per 25 up to 100, one per 50 up to
  * 200, one per 100 up to 500, 2% up to 1,000, and 20 plus one per 100 over
@@ -101,6 +108,17 @@ export function drawsLotParking(entry: BuildingCatalogEntry): boolean {
   return entry.kind !== 'office' && entry.kind !== 'hotel';
 }
 
+/**
+ * The floor a small single-tenant shop or restaurant parks nothing for: the
+ * median of thirteen US codes surveyed (1,500–10,000 sq ft; Baltimore
+ * 16-601(c), Spokane SMC 17C.230.130, Hampton VA, New Orleans CZO 22.5.A).
+ * The floor above it parks at the full rate. A strip or a supermarket is a
+ * multi-tenant or shopping-centre configuration those codes exclude, and
+ * industry has no such exemption.
+ */
+export const SMALL_USE_EXEMPT_SQ_FT = 3_000;
+const SMALL_USE_EXEMPT_KINDS: ReadonlySet<BuildingKind> = new Set(['shop', 'restaurant']);
+
 /** Spaces a floor of `grossSqFt` asks of a kind, rounded up as the codes round. */
 export function requiredSpaces(
   kind: BuildingKind | undefined,
@@ -110,7 +128,17 @@ export function requiredSpaces(
   const fallback =
     category === 'ind' ? MANUFACTURING_SPACES_PER_1000_SQ_FT : RETAIL_SPACES_PER_1000_SQ_FT;
   const rate = (kind && SPACES_PER_1000_SQ_FT[kind]) ?? fallback;
-  return Math.ceil((rate * grossSqFt) / 1000 - 1e-9);
+  const exempt = kind && SMALL_USE_EXEMPT_KINDS.has(kind) ? SMALL_USE_EXEMPT_SQ_FT : 0;
+  return Math.max(0, Math.ceil((rate * Math.max(0, grossSqFt - exempt)) / 1000 - 1e-9));
+}
+
+/**
+ * Spaces a lot must hold on site once the kerb stalls the street paints along
+ * its frontage are credited, one for one. The accessible spaces a lot owes are
+ * counted within what it holds, never met at the kerb.
+ */
+export function onSiteSpaces(required: number, kerbCredit: number): number {
+  return Math.max(0, required - kerbCredit);
 }
 
 /** Which loading table a lot reads. */

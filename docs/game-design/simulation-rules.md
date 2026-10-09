@@ -190,6 +190,15 @@ jobs must be within the sector's room (see
 lot, which is always a candidate so that growth never stalls at a gap smaller
 than any building. The room counts down as the pass builds, like spare
 supply, so two lots on one pass cannot both fill it.
+A suburban commercial or industrial kind must also meet its parking code
+where it would stand: its lot holds the spaces its floor asks for, less the
+stalls the street paints along its frontage, with its accessible spaces and
+loading berths. A kind whose own lot falls short has larger lots in the
+catalog for the same building; it is a candidate if any of them fits, and it
+stands on the smallest that does
+([parking-to-code.md](features/parking-to-code.md#larger-lots)). Its larger
+lots are never candidates of their own, so a kind is drawn by its `share`
+once, however many lots it has.
 A detached house stands on a parcel of the plat cut from its street: each run
 of tiles along a street is cut a frontage at a time into the largest lot the
 land value there warrants that fits (under 64 a half lot, 1×1; 64 to 159 a
@@ -303,10 +312,13 @@ current milestone: a level-up keeps the building's kind, so a duplex levels
 up into a better duplex and never into a house or a block. A commercial or
 industrial building also needs the town to have room for the jobs the bigger
 building adds. The building's old footprint is cleared to test the new,
-possibly larger one in its place, every tile of it zoned the same; if the
-new footprint does not fit, the
+possibly larger one in its place, every tile of it zoned the same; a
+suburban commercial or industrial building must also meet its parking code
+at the new level, and tries the next level's lots smallest first, never one
+smaller than the lot it stands on. If no new footprint fits, the
 level-up is abandoned and the old building is restored exactly as it
-stood. A level-up must also find spare supply for what the bigger building
+stood. A building whose lot no longer meets its code — its street's kerb
+parking removed — keeps trading as it stands and is never abandoned for it. A level-up must also find spare supply for what the bigger building
 draws beyond the smaller one; one that cannot is restored the same way and
 waits for supply like a lot does. A successful level-up replaces the
 building in place and re-enters Constructing.

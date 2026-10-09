@@ -27,6 +27,7 @@ import { findRoadFacingEdge, localSideOf, NO_STREETS, type Side } from './fronta
 import { materialHex } from './palette';
 import { partsFor, type BuildingPart } from './archetypes';
 import { FUEL_CANOPY_DEPTH_M, FUEL_CANOPY_GAP_M, TANK_DIAMETER_M, TANK_GAP_M } from './lotplan';
+import type { KerbSurroundings } from '../shared/kerblayout';
 
 const INITIAL_PART_CAPACITY = 32;
 
@@ -375,6 +376,8 @@ export class BuildingKitRenderer {
   private readonly heightAt: (x: number, z: number) => number;
   private readonly catalogById: Map<string, BuildingCatalogEntry>;
   private readonly roadAt: (x: number, z: number) => boolean;
+  /** The stalls the streets paint, which a car park counts toward its code; null credits none. */
+  private readonly kerb: KerbSurroundings | null;
   private readonly pools = new Map<BuildingPart, InstancedSlotPool>();
   private readonly buildingSlots = new Map<number, { part: BuildingPart; slot: number }[]>();
   private readonly material = new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -384,11 +387,13 @@ export class BuildingKitRenderer {
     heightAt: (x: number, z: number) => number,
     catalog: readonly BuildingCatalogEntry[],
     roadAt: (x: number, z: number) => boolean,
+    kerb: KerbSurroundings | null = null,
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
     this.catalogById = new Map(catalog.map((e) => [e.id, e]));
     this.roadAt = roadAt;
+    this.kerb = kerb;
   }
 
   /**
@@ -464,6 +469,7 @@ export class BuildingKitRenderer {
       this.roadAt,
       NO_STREETS,
       building.rotation,
+      this.kerb,
     );
     const { boxes } = computeSetbacks(entry, building.id, frontage);
     const baseBox = boxes[0];

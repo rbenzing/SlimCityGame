@@ -42,6 +42,7 @@ import {
   type SetbackBox,
 } from './massing';
 import { NO_STREETS, type StreetLookup } from './frontage';
+import type { KerbSurroundings } from '../shared/kerblayout';
 import { maxHeightOverRect, maxHeightUnderBody } from './footprint';
 import { isFarmEntry } from './archetypes';
 import { BARN_EAVE_SHARE, planFarm, type FarmRect } from './farmlot';
@@ -420,6 +421,8 @@ export class BuildingInstancer {
   private readonly street: StreetLookup;
   /** Where the dirt roads a farm's gate opens onto are, which decides where its barn stands. */
   private readonly dirtAt: (x: number, z: number) => boolean;
+  /** The stalls the streets paint, which a car park counts toward its code; null credits none. */
+  private readonly kerb: KerbSurroundings | null;
 
   constructor(
     scene: THREE.Scene,
@@ -429,6 +432,7 @@ export class BuildingInstancer {
     roadAt?: (x: number, z: number) => boolean,
     street: StreetLookup = NO_STREETS,
     dirtAt: (x: number, z: number) => boolean = () => false,
+    kerb: KerbSurroundings | null = null,
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
@@ -436,6 +440,7 @@ export class BuildingInstancer {
     this.roadAt = roadAt ?? ((): boolean => false);
     this.street = street;
     this.dirtAt = dirtAt;
+    this.kerb = kerb;
     for (const entry of catalog) {
       this.buckets.set(entry.id, this.createBucket(entry));
     }
@@ -910,6 +915,7 @@ export class BuildingInstancer {
       this.roadAt,
       this.street,
       instance.rotation,
+      this.kerb,
     );
   }
 

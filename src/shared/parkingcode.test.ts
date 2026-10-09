@@ -11,8 +11,10 @@ import {
   islandsInRow,
   loadingBerths,
   lotParkingRequirement,
+  onSiteSpaces,
   requiredSpaces,
   SINGLE_MODULE_M,
+  SMALL_USE_EXEMPT_SQ_FT,
   STALL_LENGTH_M,
   STALL_WIDTH_M,
   treesFor,
@@ -30,8 +32,8 @@ describe('the parking code', () => {
   });
 
   it('asks spaces per 1,000 sq ft by kind, rounded up', () => {
-    expect(requiredSpaces('shop', 1_991)).toBe(10);
-    expect(requiredSpaces('restaurant', 3_513)).toBe(36);
+    expect(requiredSpaces('strip', 11_945)).toBe(60);
+    expect(requiredSpaces('supermarket', 17_918)).toBe(90);
     expect(requiredSpaces('warehouse', 17_918)).toBe(9);
     expect(requiredSpaces('flex', 10_420)).toBe(21);
     expect(requiredSpaces('workshop', 8_000)).toBe(8);
@@ -39,6 +41,34 @@ describe('the parking code', () => {
     // A kindless shop parks as retail, a kindless works as manufacturing.
     expect(requiredSpaces(undefined, 2_000, 'com')).toBe(10);
     expect(requiredSpaces(undefined, 2_000, 'ind')).toBe(2);
+  });
+
+  it('parks nothing for the first 3,000 sq ft of a single-tenant shop or restaurant, the rest at the full rate', () => {
+    expect(SMALL_USE_EXEMPT_SQ_FT).toBe(3_000);
+    expect(requiredSpaces('shop', 1_991)).toBe(0);
+    expect(requiredSpaces('shop', 3_000)).toBe(0);
+    expect(requiredSpaces('shop', 3_982)).toBe(5);
+    expect(requiredSpaces('restaurant', 3_513)).toBe(6);
+    // The catalog's own floors: the corner shop needs none, the fast-food stand six.
+    const floor = (id: string): number =>
+      lotParkingRequirement(catalog.find((e) => e.id === id)!)!.spaces;
+    expect(floor('com-low-1')).toBe(0);
+    expect(floor('com-restaurant-1')).toBe(6);
+  });
+
+  it('gives a strip, a supermarket and industry no small-use exemption', () => {
+    expect(requiredSpaces('strip', 2_000)).toBe(10);
+    expect(requiredSpaces('supermarket', 2_000)).toBe(10);
+    expect(requiredSpaces('flex', 2_000)).toBe(4);
+    expect(requiredSpaces('workshop', 2_000)).toBe(2);
+    expect(requiredSpaces(undefined, 2_000, 'com')).toBe(10);
+  });
+
+  it('credits the kerb one for one against what the lot must hold, never below none', () => {
+    expect(onSiteSpaces(60, 0)).toBe(60);
+    expect(onSiteSpaces(60, 9)).toBe(51);
+    expect(onSiteSpaces(5, 9)).toBe(0);
+    expect(onSiteSpaces(0, 0)).toBe(0);
   });
 
   it('reads Wadsworth OH’s loading tables', () => {

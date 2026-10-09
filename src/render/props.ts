@@ -28,6 +28,7 @@ import { footprintForRotation } from '../shared/footprint';
 import { deriveFacadeParams } from './facade';
 import { maxHeightUnderBody } from './footprint';
 import { NO_STREETS } from './frontage';
+import type { KerbSurroundings } from '../shared/kerblayout';
 import {
   computeSetbacks,
   CONSTRUCTING_MASSING_HEIGHT_SCALE,
@@ -382,6 +383,8 @@ export class RoofPropRenderer {
   private readonly heightAt: (x: number, z: number) => number;
   /** Answers "is this grid tile a road" for the frontage parking setback; the default never finds one. */
   private readonly roadAt: (x: number, z: number) => boolean;
+  /** The stalls the streets paint, which a car park counts toward its code; null credits none. */
+  private readonly kerb: KerbSurroundings | null;
   private readonly catalogById: Map<string, BuildingCatalogEntry>;
   private readonly warningLightMaterial: THREE.MeshLambertMaterial;
   private readonly pools: Record<PropKind, InstancedSlotPool>;
@@ -392,9 +395,11 @@ export class RoofPropRenderer {
     heightAt: (x: number, z: number) => number,
     catalog: BuildingCatalogEntry[],
     roadAt?: (x: number, z: number) => boolean,
+    kerb: KerbSurroundings | null = null,
   ) {
     this.heightAt = heightAt;
     this.roadAt = roadAt ?? ((): boolean => false);
+    this.kerb = kerb;
     this.catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
 
     this.warningLightMaterial = new THREE.MeshLambertMaterial({
@@ -544,6 +549,7 @@ export class RoofPropRenderer {
       this.roadAt,
       NO_STREETS,
       building.rotation,
+      this.kerb,
     );
     const { boxes } = computeSetbacks(entry, building.id, frontage);
     const topBox = boxes[boxes.length - 1]!;

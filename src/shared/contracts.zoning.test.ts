@@ -18,6 +18,7 @@ import { describe, expect, it } from 'vitest';
 
 import type {
   BuildingCatalogEntry,
+  BuildingKind,
   CommercialKind,
   IndustrialKind,
   LotSize,
@@ -645,9 +646,41 @@ describe('Residential kinds (building-types): three levels per kind, every figur
   });
 });
 
+/** A kind's own three entries, without the larger lots it may stand its building on. */
+const kindEntries = (kind: BuildingKind): BuildingCatalogEntry[] =>
+  catalog
+    .filter((e) => e.kind === kind && e.bodyFootprint === undefined)
+    .sort((a, b) => (a.level ?? 0) - (b.level ?? 0));
+
+describe('a larger lot for a kind is the same building on more car park', () => {
+  const lots = catalog.filter((e) => e.bodyFootprint !== undefined);
+
+  it('exists only for the suburban kinds whose lot falls short of its code', () => {
+    expect(new Set(lots.map((e) => e.kind))).toEqual(
+      new Set(['shop', 'restaurant', 'strip', 'supermarket', 'flex']),
+    );
+  });
+
+  it.each(lots.map((e) => [e.id, e] as const))(
+    '%s: keeps its kind entry in every figure but its id and footprint, and draws no share',
+    (_, e) => {
+      const base = kindEntries(e.kind!).find((k) => k.level === e.level)!;
+      expect(e.bodyFootprint).toEqual(base.footprint);
+      expect(e.share).toBeUndefined();
+      const own = new Set(['id', 'footprint', 'bodyFootprint', 'share']);
+      const figures = (x: BuildingCatalogEntry): [string, unknown][] =>
+        Object.entries(x).filter(([key]) => !own.has(key));
+      expect(Object.fromEntries(figures(e))).toEqual(Object.fromEntries(figures(base)));
+      expect(grossFloorM2(e)).toBeCloseTo(grossFloorM2(base), 9);
+      // Larger along the street, never shallower.
+      expect(e.footprint.w).toBeGreaterThan(base.footprint.w);
+      expect(e.footprint.d).toBe(base.footprint.d);
+    },
+  );
+});
+
 describe('Commercial kinds (building-types): three levels per kind, every figure derived', () => {
-  const ofKind = (kind: CommercialKind) =>
-    catalog.filter((e) => e.kind === kind).sort((a, b) => (a.level ?? 0) - (b.level ?? 0));
+  const ofKind = (kind: CommercialKind) => kindEntries(kind);
   const floorM2 = (k: (typeof COMMERCIAL_KINDS)[number], i: number) =>
     grossFloorM2(ofKind(k.kind)[i]!);
 
@@ -733,8 +766,7 @@ describe('Commercial kinds (building-types): three levels per kind, every figure
 });
 
 describe('Industrial kinds (building-types): three levels per kind, every figure derived', () => {
-  const ofKind = (kind: IndustrialKind) =>
-    catalog.filter((e) => e.kind === kind).sort((a, b) => (a.level ?? 0) - (b.level ?? 0));
+  const ofKind = (kind: IndustrialKind) => kindEntries(kind);
   const floorM2 = (k: (typeof INDUSTRIAL_KINDS)[number], i: number) =>
     grossFloorM2(ofKind(k.kind)[i]!);
 

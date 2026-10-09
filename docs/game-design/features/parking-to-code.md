@@ -1,6 +1,6 @@
 # Parking to code — design
 
-- **Status:** Partly built — lots drawn to code (P1, 2026-10-08); kerb credit and larger lots for the kinds that fall short not built
+- **Status:** Built 2026-10-09 — lots drawn to code (P1, 2026-10-08); the small-use exemption, kerb credit and larger lots for the kinds that fall short (P2, 2026-10-09)
 - **Date:** 2026-10-08
 
 ## What the player gets
@@ -49,6 +49,32 @@ Spaces round up. These are the modal minimums in US municipal codes (St
 Charles MO, Wadsworth OH, Stacy MN, Canby OR, North Reading MA, Columbus IN,
 Medfield MA; for example
 [Wadsworth OH chapter 25](https://www.zoneomics.com/code/wadsworth-OH/chapter_25)).
+
+- **Small uses park nothing for their first 3,000 sq ft.** A single-tenant
+  shop or restaurant owes no space for the first 3,000 sq ft of its floor,
+  and the floor above that parks at the full rate. 3,000 is the median of
+  thirteen codes surveyed, which range from 1,500 to 10,000 (Baltimore
+  16-601(c), which excludes multi-tenant buildings; Spokane SMC 17C.230.130
+  as of 2015; Hampton VA; New Orleans CZO 22.5.A, which excludes shopping
+  centres). A strip and a supermarket are the multi-tenant and
+  shopping-centre configurations those codes leave out, and industry has no
+  such exemption, so neither gets one. The corner shop (1,991 sq ft) owes
+  nothing and keeps growing on a strip one tile deep; the fast-food stand
+  (3,513 sq ft) owes 6.
+- **The kerb counts.** Every stall the street paints on the lot's own side
+  whose middle lies along the lot's frontage is one space toward its code,
+  one for one, whether the lane is parallel, angled or head-in, accessible
+  stalls included, with no cap (Bakersfield
+  [§17.58.100](https://bakersfield.municipal.codes/Code/17.58.100),
+  [Schenectady §264-42](https://www.zoneomics.com/code/schenectady-NY/chapter_6),
+  the SmartCode as El Paso, Petaluma and Chico adopt it, Mukilteo 17B.56). The
+  middle decides a stall that straddles two lots, as Hamilton MT and
+  Bloomington IN apportion one. The far kerb and the junctions' no-parking
+  zones count nothing. What the lot holds on site is the requirement less
+  that credit, never below none, and the accessible spaces it owes are
+  counted within what it holds: a kerb stall never stands in for one. A lot
+  the credit and the exemption leave nothing to hold draws no car park and
+  owes no accessible space.
 
 - **Accessible spaces** follow ADA 2010 §208.2 over the spaces the lot
   provides — one per 25 to 100, one per 50 to 200, one per 100 to 500 —
@@ -108,23 +134,49 @@ street face: the rows nearest it first, each row's spaces as one block
 centred on the door's place along it (held inside the row), and the
 accessible spaces in the nearest row that holds them, where they come
 nearest the door. A lot that
-meets its code draws exactly the spaces it owes; the rest of its yard is
-paved and unmarked.
+meets its code draws exactly the spaces it owes; the ground it does not use
+is planted (below).
 
 Loading berths stand at the rear of the lot along the drive's side, end to
 end, each beside the drive (or the first aisle) a truck reaches it from. A
 lot that falls short keeps its berths too, unless keeping them would leave it
-no space at all; then it draws the spaces and no berth.
+no space at all; then it draws the spaces and no berth. A berth reached from
+an aisle is reached along that aisle from the drive, even where no stall is
+drawn on it.
+
+### The paved ground
+
+The codes landscape the land a lot does not build on, park on, drive on or
+load from, so only what the layout uses is paved:
+
+- the body's slab, and a walk 8 ft (2.44 m) deep along its street face,
+  cut short where a parked car, an access aisle, an island or a berth stands
+  in front of it;
+- an 8 ft walk in from the street to the door, where nothing parked stands
+  across its line and no forecourt is in front — the large-retail design
+  standards' walks along a facade with a customer entrance and from the
+  public sidewalk to it (Fort Collins Land Use Code 3.5.4, widely copied);
+- the drive, its throat in from the curb cut where the drive turns along
+  the lot behind a row of stalls, and every aisle as far as the stalls and
+  berths it serves;
+- the spaces and their access aisles, the berths, and the filling station's
+  forecourt or the plant's tank farm.
+
+The rest of the lot is lawn, the islands among it, and the verge in front
+is paved only where the drive and the walk cross it. A lot whose kerb credit
+carries its whole code is lawn with its body, its walks and, where it has
+berths, their drive. Downtown kinds and every lot that parks no lot to code
+keep the pads they had.
 
 ### What the player sees
 
-The lot's paved yard (asphalt for commerce, dark asphalt for industry) with
-white stall lines down both sides of every space; the accessibility symbol in
+The lot's lawn with its paving laid on it (asphalt for commerce, dark
+asphalt for industry, concrete for the body's slab and its walks); white
+stall lines down both sides of every space; the accessibility symbol in
 each accessible space and its aisle hatched; the berths outlined; each
 island a 6 in concrete kerb round grass, a young broadleaf in as many
 islands as the tree rule asks, spread over them; and the drive's curb cut
-across the sidewalk, with the apron paved across the verge the whole
-frontage long. Cars stand one to a stall, nose in, filling over the trading
+across the sidewalk, the drive and the walk paved across the verge. Cars stand one to a stall, nose in, filling over the trading
 day or the shift as before; an industrial lot still mixes box trucks and
 pickups in with its workers' cars, and a truck longer than its stall stands
 with its nose at the stall's head and its tail over the aisle.
@@ -132,16 +184,17 @@ with its nose at the stall's head and its tail over the aisle.
 ## The audit: which kinds fit
 
 Measured on the layout itself, with each kind's catalog width along the
-street (how growth turns every unlotted kind), every level:
+street (how growth turns every unlotted kind), every level, on its own lot
+with no kerb credit (the shop and restaurant after the small-use exemption):
 
 | Kind        | L | Lot | Floor             | Spaces | Accessible | Berths | Laid | Fit / short |
 | ----------- | - | --- | ----------------- | ------ | ---------- | ------ | ---- | ----------- |
-| shop        | 1 | 1×1 | 185 m² (1,991 sf) | 10     | —          | 0      | 0    | −10         |
-| shop        | 2 | 1×2 | 370 m² (3,982 sf) | 20     | 1          | 0      | 3    | −17         |
-| shop        | 3 | 2×2 | 740 m² (7,964 sf) | 40     | 1          | 1      | 15   | −25         |
-| restaurant  | 1 | 1×2 | 326 m² (3,513 sf) | 36     | 1          | 0      | 4    | −32         |
-| restaurant  | 2 | 2×2 | 576 m² (6,200 sf) | 63     | 1          | 1      | 15   | −48         |
-| restaurant  | 3 | 3×2 | 1,152 m² (12,400 sf) | 125 | 2          | 1      | 42   | −83         |
+| shop        | 1 | 1×1 | 185 m² (1,991 sf) | 0      | —          | 0      | 0    | fits        |
+| shop        | 2 | 1×2 | 370 m² (3,982 sf) | 5      | 1          | 0      | 3    | −2          |
+| shop        | 3 | 2×2 | 740 m² (7,964 sf) | 25     | 1          | 1      | 15   | −10         |
+| restaurant  | 1 | 1×2 | 326 m² (3,513 sf) | 6      | 1          | 0      | 4    | −2          |
+| restaurant  | 2 | 2×2 | 576 m² (6,200 sf) | 33     | 1          | 1      | 15   | −18         |
+| restaurant  | 3 | 3×2 | 1,152 m² (12,400 sf) | 95  | 2          | 1      | 42   | −53         |
 | fuel        | 1 | 2×2 | 196 m² (2,110 sf) | 11     | 1          | 0      | 11   | fits        |
 | fuel        | 2 | 3×2 | 224 m² (2,411 sf) | 13     | 1          | 0      | 13   | fits        |
 | fuel        | 3 | 3×3 | 256 m² (2,756 sf) | 14     | 1          | 0      | 14   | fits        |
@@ -163,50 +216,104 @@ street (how growth turns every unlotted kind), every level:
 | paper mill  | 1–3 | 3×3, 4×4, 5×4 | 1,665–3,699 m² | 18 / 32 / 40 | 1 / 2 / 2 | 1 / 2 / 2 | all | fits |
 
 The fuel station and seven of the eight works fit at every level. The four
-retail kinds fall short at every level, and so does flex at its first and
-third: an area count (about 30 m² a space all in) said flex fits, but laid
-out in 60 ft modules with its berths and islands it does not — a 22 m body
-on a 40 m lot leaves 18 m in front, 0.3 m short of a module. Flex at its
-second level fits only with its long side on the street, as growth turns it.
-The corner shop's lot is too small for even one accessible space, so it
-draws none and its customers use the kerb.
+retail kinds fall short on their own lots at every level but the corner
+shop's, and so does flex at its first and third: an area count (about 30 m²
+a space all in) said flex fits, but laid out in 60 ft modules with its berths
+and islands it does not — a 22 m body on a 40 m lot leaves 18 m in front,
+0.3 m short of a module. Flex at its second level fits only with its long
+side on the street. The corner shop owes nothing, draws no car park and its
+customers use the kerb. The short kinds stand on larger lots, or on their
+own with kerb credit, below.
 
 The planting rules give islands of 2–11% of the paved car park, drive and
 aisles included; the codes' separate 5–10% interior-landscaping minimum
-(Chardon 5, Redmond 5–7, Forest Grove 8, Defiance 10) is not applied on top.
+(Chardon 5, Redmond 5–7, Forest Grove 8, Defiance 10) is not applied on top,
+and the interior share stays short of it. Beyond the car park the lot's
+unused ground is planted. Measured on the layout, on the lot that holds the
+whole code with no kerb credit (a short kind's larger lot), with its
+catalog width on the street, the share of the lot left planted (islands
+included; the body, its walks and all paving excluded) is:
+
+| Kind        | L1  | L2  | L3  |
+| ----------- | --- | --- | --- |
+| shop        | 45% | 60% | 24% |
+| restaurant  | 60% | 23% | 24% |
+| fuel        | 43% | 54% | 59% |
+| strip       | 21% | 12% | 9%  |
+| supermarket | 26% | 13% | 12% |
+| workshop    | 9%  | 23% | 25% |
+| warehouse   | 33% | 36% | 35% |
+| factory     | 22% | 25% | 23% |
+| flex        | 28% | 12% | 23% |
+| food plant  | 25% | 23% | 29% |
+| chemical    | 47% | 48% | 50% |
+| steelworks  | 25% | 23% | 24% |
+| paper mill  | 16% | 19% | 21% |
+
+Kerb credit plants more: with the whole code at the kerb a lot keeps 27–80%
+planted. That is lot landscaping, not the interior planting the 5–10% asks
+for, and is not counted toward it.
+
+### Larger lots
+
+A kind whose own lot falls short has larger lots in the catalog for the same
+building: the same floor, height, staff and draw, with more car park along
+its street. Each grows the frontage a lot at a time, at the kind's own depth,
+up to the first lot that holds the whole code with no kerb credit at every
+turn and frontage. The credit each lot still needs is what a street must
+paint along it (a parallel lane paints about three stalls a tile, an angled
+one about seven, a head-in one about eight, mid-block):
+
+| Kind        | L | Own lot (credit it needs) | Larger lots (credit each needs)        |
+| ----------- | - | ------------------------- | -------------------------------------- |
+| shop        | 2 | 1×2 (2)                   | 2×2 (0)                                |
+| shop        | 3 | 2×2 (10)                  | 3×2 (0)                                |
+| restaurant  | 1 | 1×2 (2)                   | 2×2 (0)                                |
+| restaurant  | 2 | 2×2 (18)                  | 3×2 (0)                                |
+| restaurant  | 3 | 3×2 (53)                  | 4×2 (26), 5×2 (1), 6×2 (0)             |
+| strip       | 1 | 3×2 (35)                  | 4×2 (9), 5×2 (0)                       |
+| strip       | 2 | 4×2 (43)                  | 5×2 (16), 6×2 (0)                      |
+| strip       | 3 | 5×2 (50)                  | 6×2 (23), 7×2 (0)                      |
+| supermarket | 1 | 3×3 (43)                  | 4×3 (2), 5×3 (0)                       |
+| supermarket | 2 | 4×3 (57)                  | 5×3 (15), 6×3 (0)                      |
+| supermarket | 3 | 5×4 (98)                  | 6×4 (43), 7×4 (0)                      |
+| flex        | 1 | 2×2 (6)                   | 3×2 (0)                                |
+| flex        | 2 | 3×2 (0 with its long side on the street, 3 across it) | 4×2 (0 either way) |
+| flex        | 3 | 3×4 (15)                  | 4×4 (0)                                |
+
+A larger lot is never a kind of its own: the lot draws a kind by its share,
+once, and the kind then stands on the smallest of its lots that meets its
+code where it would stand — its frontage on the plat's whole lots like any
+commercial building, every tile zoned for it, and its lot holding what the
+kerb credit leaves. So a strip on a street painting parallel parking takes
+four lots, and on a street painting none, five.
+
+### Growth, levels and the nonconforming lot
+
+- A suburban commercial or industrial building is built, and levels up, only
+  onto a lot that meets its code there; a level-up tries the next level's
+  lots smallest first, never one smaller than the lot it stands on.
+- A lot that no longer meets its code — the street's kerb parking painted
+  out — is legal nonconforming: it keeps trading as it stands and is never
+  abandoned for it. It draws what its lot holds; only a level-up must meet
+  the code again.
+- The sim counts exactly the stalls the street paints, through the kerb
+  stall layout the road mesh draws from, and saved buildings keep their
+  footprints.
 
 ## What it interacts with
 
 - **The body renderers** (body, tiers, kit, roof clutter) all place the body
   where the lot plan puts it, and its plate is the whole plate the floor is
-  counted on; nothing is cut off it for parking any more.
+  counted on; nothing is cut off it for parking any more. On a larger lot the
+  body keeps the size of the kind's own.
 - **The kerb**: a lot that parks on site does not also line the kerb; a
-  downtown building, and a suburban one whose lot holds no space, parks at
-  the kerb where the street allows it, as before.
+  downtown building, and a suburban one whose lot holds no space — the
+  corner shop, or a lot its kerb credit covers — parks at the kerb where the
+  street allows it.
 - **Kerb furniture** keeps off the road tile in front of the curb cut.
-- **The sim** is untouched: it never reads floor area or parking, and no
-  save or protocol changes.
-
-## The next step (P2): kerb credit and bigger lots
-
-The user chose bigger lots with kerb credit for the kinds that fall short
-(shop, restaurant, strip, supermarket, and now flex):
-
-- **Kerb credit**: one space for every full painted kerb stall on the lot's
-  own side of the street whose midpoint lies within its frontage (the
-  majority rule, as Hamilton MT and Bloomington IN apportion a stall between
-  two lots); parallel, angled and head-in stalls all count one; no cap
-  ([Bakersfield §17.58.100](https://bakersfield.municipal.codes/Code/17.58.100),
-  [Schenectady §264-42](https://www.zoneomics.com/code/schenectady-NY/chapter_6),
-  the SmartCode as El Paso, Petaluma and Chico adopt it). Accessible spaces
-  are always on the lot. A lot whose kerb parking is later removed becomes
-  legal nonconforming: it keeps trading, it is never abandoned for it.
-- **Larger lots**: each short kind gains larger catalog variants (one sized
-  for a parallel frontage credit, one for none); growth picks the smallest
-  whose lot capacity plus its actual frontage credit meets the requirement.
-  The sim counts the same painted stalls the road draws, through the kerb
-  stall layout moved to shared code, and the lot capacity through this
-  layout. Saved buildings keep their footprints.
+- **Growth** reads the floor, the code and the kerb's stalls to choose a
+  kind's lot; no save or protocol changes.
 
 ## Tuning
 

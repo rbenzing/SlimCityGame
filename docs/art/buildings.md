@@ -192,16 +192,21 @@ The footprint shrink that makes room for windows and setbacks is a body-only
 rule — a body that filled its tile would share a wall with its neighbour —
 and the pad is what claims and paves the rest. Adjacent buildings' pads meet
 edge to edge with no grass seam, so a zoned block reads as continuous
-developed land; each pad stops short of the road at the verge the parking
-apron already respects, except a home's lawn, which runs across the verge to
-the sidewalk (see [Residential lots](#residential-lots)).
+developed land; each pad stops short of the road at the verge, except a
+home's lawn, which runs across the verge to the sidewalk (see
+[Residential lots](#residential-lots)), and a car park's drive and walk,
+which cross it.
 
 **A suburban commercial or industrial lot is a car park laid to code**
-([parking-to-code.md](../game-design/features/parking-to-code.md)). The body
-keeps its whole plate and stands where the layout leaves it room: centred,
-held 5 ft off a lot line, or on it, slid back and to the side away from the
-drive only as far as the code needs. Around it, on the lot's paved yard and
-conforming to it like every other lot paint:
+([parking-to-code.md](../game-design/features/parking-to-code.md)). Its pad
+is mown lawn, and only what its layout uses is paved over it: asphalt (dark
+for industry) under the drive, its throat and aisles, the spaces and access
+aisles, the berths, the forecourt and the tank farm; concrete under the
+body and its two 8 ft walks, along the street face and in from the street to
+the door. The body keeps its whole plate and stands where the layout leaves
+it room: centred, held 5 ft off a lot line, or on it, slid back and to the
+side away from the drive only as far as the code needs. Around it, on that
+paving and conforming to it like every other lot paint:
 
 - **Stalls** 9 × 18 ft at 90°, in rows on 24 ft aisles, white lines 0.12 m
   wide down both long sides of each; a car stands in each, nose in.
@@ -214,7 +219,8 @@ conforming to it like every other lot paint:
   concrete kerb round grass, a broadleaf at 0.8 of a mature tree's scale in
   as many as the tree rule asks, spread over them.
 - **The drive's curb cut**, 24 ft, across the sidewalk where the drive meets
-  the street, and the apron paved across the verge the whole frontage long.
+  the street, with the drive and the walk paved across the verge; the rest
+  of the verge stays grass.
 
 A filling station keeps 12 m clear in front of its kiosk for its canopy and
 pumps; a chemical plant or paper mill keeps 8 m behind its body for its tank
