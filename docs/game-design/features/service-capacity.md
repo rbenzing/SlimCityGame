@@ -190,7 +190,7 @@ area = w × d × 185 × (height ÷ 3.2) — at the scale in
 | -------------- | ------------ | ------------ | ------------ | --------------------------------- |
 | police-station | 1,420 m²     | 2×2 × 12 m   | 2,775 m²     | 95% over; height should be 6.4 m  |
 | fire-station   | ~500 m²      | 2×2 × 12 m   | 2,775 m²     | height should be 6.4 m; lot right |
-| clinic         | 690 m²       | 2×2 × 14 m   | 3,238 m²     | height should be 6.4 m; lot right |
+| clinic         | 690 m²       | 2×2 × 14 m   | 3,238 m²     | now 1×2 × 6.4 m, 740 m²           |
 | school         | 2,240 m²     | 3×3 × 10 m   | 5,203 m²     | height should be 6.4 m; lot right |
 
 - **Police**: 48 sworn + 20 civilian = 68 staff at the business occupancy factor of 13.9
@@ -229,7 +229,9 @@ is the record of that rather than a rounded number hiding it.
 
 **None of these size changes are made by this epic.** Each belongs to the epic that
 rebuilds that building — emergency services, healthcare, the education ladder — because
-those epics touch the geometry and this one deliberately does not.
+those epics touch the geometry and this one deliberately does not. Healthcare has made
+its change: the clinic is 1×2 × 6.4 m, its lot sized to the practice with 430 m² of
+ground left beside the plate ([healthcare-and-death-care.md](healthcare-and-death-care.md#sizes-costs-and-the-ladder-rule)).
 
 ### Costs
 

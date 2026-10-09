@@ -100,7 +100,7 @@ could have sent:
   mixed housing, light and heavy industry, and farmland;
 - farms off a dirt road that no road joins to the town, so no water main
   reaches it, powered by a line strung from the avenue's end along the road;
-- every building a player places: police, fire, a clinic, a school, parks,
+- every building a player places: police, fire, a clinic, a hospital, a school, parks,
   an airfield, bus stops and rail stations;
 - garbage: a landfill painted between the railway and the station road, and
   an incinerator among the industry;

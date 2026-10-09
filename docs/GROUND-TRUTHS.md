@@ -1022,6 +1022,18 @@ MUTCD citations below use 11th-edition section numbers.
   lot, never only its corner: a 2×3 depot or a 4×4 incinerator whose corner
   stands three tiles from its street still sends its fleet. —
   `src/sim/worker.entry.ts`; `tests/interaction/depottrucks.test.ts`
+- A civic ploppable's power and water derive from its floor at its activity's
+  surveyed intensity. The floor is the massing rule's (footprint × 185 m² a
+  tile × storeys) unless the building's plan states one, and the hospital's
+  does: 72 beds at 2,500 sf, because six of its fifteen tiles are a parking
+  deck. — [municipal-services.md](game-design/features/municipal-services.md#what-the-facilities-draw-derived-2026-10-05);
+  `src/shared/contracts.test.ts`
+- Off-street parking is counted to code: a hospital holds 2 spaces a bed, and
+  its accessible spaces follow ADA 2010 §208.2 over the spaces it provides,
+  1 van space in 6. The kerbside table (PROWAG R211) is a different table and
+  is never used for a lot or a deck. —
+  [healthcare-and-death-care.md](game-design/features/healthcare-and-death-care.md#sizes-costs-and-the-ladder-rule);
+  `adaAccessibleSpaces` in `src/render/kerbstalls.ts`
 - Every figure in a service plan derives from a published municipal standard
   plus the 20 m tile, never picked to feel right, and any override is stated.
   The smallest facility of a ladder must be affordable to a city that has just
@@ -1245,8 +1257,14 @@ MUTCD citations below use 11th-edition section numbers.
   [asset-guidelines.md](art/asset-guidelines.md)
 - A storey is `FLOOR_HEIGHT_METERS` (3.2 m); floor count is height ÷ storey and
   a taller catalog height reads as more storeys, never a stretched box. The
-  ground-floor band is the first storey. — [buildings.md](art/buildings.md),
-  [modeling-standards.md](art/modeling-standards.md)
+  ground-floor band is the first storey. A kit whose plan states its own
+  floor to floor draws its floors at that and says so: the hospital's six
+  storeys are 4.5 m, the low end of the 14 ft 8 in–16 ft inpatient floors run
+  in a project record ([City of Naples](https://www.naplesgov.com/media/98066),
+  a single source), and its parking deck's two 3.35 m (11 ft). —
+  [buildings.md](art/buildings.md),
+  [modeling-standards.md](art/modeling-standards.md),
+  [props-and-vehicles.md](art/props-and-vehicles.md)
 - Scale anchors are absolute metres: cosmetic car 4.0 × 1.8 m, pedestrian
   1.75 m, fire appliance 10 m, garbage truck 9 m, standard lane 3.75 m, footway
   1.875 m. A person beside a car reaches just above its roof. —
@@ -1265,7 +1283,7 @@ MUTCD citations below use 11th-edition section numbers.
   barn and the silo stands in its yard. — [buildings.md](art/buildings.md);
   `src/render/archetypes.ts`, `src/render/farmlot.ts`
 - A utility kit that paves its whole lot (`pavesLot`: the recycling depot, the
-  recovery facility, the transfer station) stands on the highest ground under
+  recovery facility, the transfer station, the hospital) stands on the highest ground under
   the lot, never its centre, and its yard carries a footing down to the low
   side. The
   instancer's plinth, seated on the highest ground under the smaller body, then

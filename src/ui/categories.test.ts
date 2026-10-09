@@ -174,7 +174,10 @@ describe('subTabsFor', () => {
   });
 
   it('maps each service category to only its own catalog entries', () => {
-    expect(subTabsFor('health')[0]?.cards.map((c) => c.id)).toEqual(['plop.clinic']);
+    expect(subTabsFor('health')[0]?.cards.map((c) => c.id)).toEqual([
+      'plop.clinic',
+      'plop.hospital',
+    ]);
     expect(subTabsFor('fire')[0]?.cards.map((c) => c.id)).toEqual(['plop.fire-station']);
     expect(subTabsFor('police')[0]?.cards.map((c) => c.id)).toEqual(['plop.police-station']);
     expect(subTabsFor('education')[0]?.cards.map((c) => c.id)).toEqual(['plop.school']);

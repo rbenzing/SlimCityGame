@@ -51,6 +51,13 @@
  *    a scale house beside the weighbridge at the entry ("transferScale"), two
  *    tractor-and-trailer transfer rigs, one sunk in the bay and one waiting
  *    ("transferRig"), and two refuse packers on the apron ("transferPacker").
+ *  - hospital: the same yard slab ("hospitalYard"), a six-storey block with
+ *    a glass ribbon on every 4.5 m floor, its main entrance and ambulance
+ *    canopy on the street side ("hospitalBlock"), a two-level parking deck
+ *    with its ramp, spandrel band, cores and stall lines ("hospitalDeck"),
+ *    the accessible spaces' paint by the entrance ("hospitalPaint"), cars
+ *    in the deck's stalls ("hospitalCar") and an ambulance under its canopy
+ *    ("hospitalAmbulance").
  *  The paving kits stand on the highest ground under their lot (pavesLot),
  *  so the instancer's plinth never shows through their yard on a slope.
  *  - small-park: a flat lawn plate + path cross ("parkGround"), 2-3
@@ -77,7 +84,14 @@ import { footprintForRotation } from '../shared/footprint';
 import { maxHeightOverRect } from './footprint';
 import { InstancedSlotPool } from './massing';
 import { buildServiceVehicleGeometry, type ServiceVehicleKind } from './servicevehicles';
-import { sizeForKind } from './vehicles';
+import { buildVehicleGeometry, sizeForKind, VEHICLE_PALETTE_HEX } from './vehicles';
+import { adaAccessibleSpaces, adaVanSpaces } from './kerbstalls';
+import {
+  ACCESSIBLE_SYMBOL_M,
+  accessibilitySymbolPaint,
+  MARKING_COLOR,
+  ROAD_Y_OFFSET,
+} from './roadsmesh';
 
 // ---------------------------------------------------------------------------
 // Registry: acts ONLY on catalog ids in its registry —
@@ -95,6 +109,7 @@ export const UTILITY_KIT_CATALOG_IDS: readonly string[] = [
   'recycling-depot',
   'materials-recovery-facility',
   'transfer-station',
+  'hospital',
   'small-park',
 ];
 
@@ -130,6 +145,12 @@ export type UtilityKitPartKind =
   | 'transferScale'
   | 'transferRig'
   | 'transferPacker'
+  | 'hospitalYard'
+  | 'hospitalBlock'
+  | 'hospitalDeck'
+  | 'hospitalPaint'
+  | 'hospitalCar'
+  | 'hospitalAmbulance'
   | 'parkGround'
   | 'parkTree'
   | 'parkBench';
@@ -1405,7 +1426,7 @@ function transferDoorX(hall: Vec2, i: number): number {
 }
 
 /** A box `w` × `h` × `l` standing on `y0`, centred on (x, z), painted one colour. */
-function transferBox(
+function standingBox(
   w: number,
   h: number,
   l: number,
@@ -1430,7 +1451,7 @@ function buildTransferHallGeometry(footprint: FootprintSize): THREE.BufferGeomet
   const { hall, bay } = computeTransferLayout(footprint);
   const { w, d, h } = TRANSFER_HALL_SIZE;
   const parts: THREE.BufferGeometry[] = [
-    transferBox(w, h, d, hall.x, 0, hall.z, TRANSFER_HALL_RGB),
+    standingBox(w, h, d, hall.x, 0, hall.z, TRANSFER_HALL_RGB),
   ];
 
   const halfSpan = w / 2 + TRANSFER_ROOF_OVERHANG;
@@ -1445,7 +1466,7 @@ function buildTransferHallGeometry(footprint: FootprintSize): THREE.BufferGeomet
   parts.push(paintVertexColor(roof, hexFromRgb(TRANSFER_ROOF_RGB)));
   // The roof's skin under the eaves, so the overhang reads from below.
   parts.push(
-    transferBox(
+    standingBox(
       2 * halfSpan,
       TRANSFER_ROOF_SKIN,
       roofLength,
@@ -1458,7 +1479,7 @@ function buildTransferHallGeometry(footprint: FootprintSize): THREE.BufferGeomet
 
   for (let i = 0; i < TRANSFER_DOOR_COUNT; i++) {
     parts.push(
-      transferBox(
+      standingBox(
         TRANSFER_DOOR_SIZE.w,
         TRANSFER_DOOR_SIZE.h,
         TRANSFER_DOOR_THICKNESS,
@@ -1473,8 +1494,8 @@ function buildTransferHallGeometry(footprint: FootprintSize): THREE.BufferGeomet
   const { w: bayW, l: bayL } = TRANSFER_BAY_SIZE;
   const wall = TRANSFER_BAY_WALL;
   parts.push(
-    transferBox(bayW, 0.02, bayL, bay.x, RECYCLING_YARD_HEIGHT, bay.z, TRANSFER_BAY_FLOOR_RGB),
-    transferBox(
+    standingBox(bayW, 0.02, bayL, bay.x, RECYCLING_YARD_HEIGHT, bay.z, TRANSFER_BAY_FLOOR_RGB),
+    standingBox(
       wall.thickness,
       RECYCLING_YARD_HEIGHT + wall.height,
       bayL,
@@ -1483,7 +1504,7 @@ function buildTransferHallGeometry(footprint: FootprintSize): THREE.BufferGeomet
       bay.z,
       TRANSFER_BAY_WALL_RGB,
     ),
-    transferBox(
+    standingBox(
       bayW + wall.thickness,
       RECYCLING_YARD_HEIGHT + wall.height,
       wall.thickness,
@@ -1502,9 +1523,9 @@ function buildTransferScaleGeometry(footprint: FootprintSize): THREE.BufferGeome
   const { w, d, h } = TRANSFER_SCALE_HOUSE_SIZE;
   const bridge = TRANSFER_WEIGHBRIDGE_SIZE;
   return mergeParts([
-    transferBox(w, h, d, scaleHouse.x, 0, scaleHouse.z, TRANSFER_SCALE_HOUSE_RGB),
-    transferBox(w + 0.4, 0.3, d + 0.4, scaleHouse.x, h, scaleHouse.z, TRANSFER_SCALE_ROOF_RGB),
-    transferBox(
+    standingBox(w, h, d, scaleHouse.x, 0, scaleHouse.z, TRANSFER_SCALE_HOUSE_RGB),
+    standingBox(w + 0.4, 0.3, d + 0.4, scaleHouse.x, h, scaleHouse.z, TRANSFER_SCALE_ROOF_RGB),
+    standingBox(
       bridge.w,
       RECYCLING_YARD_HEIGHT + bridge.h,
       bridge.l,
@@ -1534,10 +1555,10 @@ function buildTransferRigGeometry(): THREE.BufferGeometry {
   const nose = half;
   const tractorZ = nose - tractor.l / 2;
   const tyre = (z: number, width: number): THREE.BufferGeometry =>
-    transferBox(width, 1.0, 1.0, 0, 0, z, TRANSFER_TYRE_RGB);
+    standingBox(width, 1.0, 1.0, 0, 0, z, TRANSFER_TYRE_RGB);
   return mergeParts([
-    transferBox(trailer.w, 0.25, trailer.l, 0, deck, trailerZ, TRANSFER_TRAILER_RGB),
-    transferBox(
+    standingBox(trailer.w, 0.25, trailer.l, 0, deck, trailerZ, TRANSFER_TRAILER_RGB),
+    standingBox(
       skin,
       wallH,
       trailer.l,
@@ -1546,7 +1567,7 @@ function buildTransferRigGeometry(): THREE.BufferGeometry {
       trailerZ,
       TRANSFER_TRAILER_RGB,
     ),
-    transferBox(
+    standingBox(
       skin,
       wallH,
       trailer.l,
@@ -1555,9 +1576,9 @@ function buildTransferRigGeometry(): THREE.BufferGeometry {
       trailerZ,
       TRANSFER_TRAILER_RGB,
     ),
-    transferBox(trailer.w, wallH, skin, 0, deck, tail + skin / 2, TRANSFER_TRAILER_RGB),
-    transferBox(trailer.w, wallH, skin, 0, deck, tail + trailer.l - skin / 2, TRANSFER_TRAILER_RGB),
-    transferBox(
+    standingBox(trailer.w, wallH, skin, 0, deck, tail + skin / 2, TRANSFER_TRAILER_RGB),
+    standingBox(trailer.w, wallH, skin, 0, deck, tail + trailer.l - skin / 2, TRANSFER_TRAILER_RGB),
+    standingBox(
       trailer.w - 2 * skin,
       1.6,
       trailer.l - 2 * skin,
@@ -1568,13 +1589,519 @@ function buildTransferRigGeometry(): THREE.BufferGeometry {
     ),
     tyre(tail + 2.0, trailer.w),
     tyre(tail + 3.3, trailer.w),
-    transferBox(1.0, 0.4, tractor.l, 0, 0.7, tractorZ, TRANSFER_TYRE_RGB),
-    transferBox(tractor.w - 0.2, 1.2, 1.8, 0, 0.9, nose - 0.9, TRANSFER_TRACTOR_RGB),
-    transferBox(tractor.w, tractor.h - 0.9, 2.4, 0, 0.9, nose - 1.8 - 1.2, TRANSFER_TRACTOR_RGB),
+    standingBox(1.0, 0.4, tractor.l, 0, 0.7, tractorZ, TRANSFER_TYRE_RGB),
+    standingBox(tractor.w - 0.2, 1.2, 1.8, 0, 0.9, nose - 0.9, TRANSFER_TRACTOR_RGB),
+    standingBox(tractor.w, tractor.h - 0.9, 2.4, 0, 0.9, nose - 1.8 - 1.2, TRANSFER_TRACTOR_RGB),
     tyre(nose - 1.3, tractor.w),
     tyre(nose - tractor.l + 1.0, tractor.w),
     tyre(nose - tractor.l + 2.3, tractor.w),
   ]);
+}
+
+// ---------------------------------------------------------------------------
+// hospital: a six-storey block on the lot's building tiles, its main entrance
+// and ambulance canopy on the street side (local +Z), a two-level parking deck
+// on the other tiles, and the accessible spaces on the surface between the
+// entrance and the deck. The yard paves the whole lot.
+// ---------------------------------------------------------------------------
+
+export const HOSPITAL_BEDS = 72;
+/** The common US zoning minimum for a hospital. */
+export const HOSPITAL_SPACES_PER_BED = 2;
+/** 58 × 48 m is 2,784 m² a floor: 16,704 m² over six storeys, 72 beds at 2,500 sf. */
+export const HOSPITAL_BLOCK_SIZE = { w: 58, d: 48 };
+export const HOSPITAL_STOREYS = 6;
+export const HOSPITAL_STOREY_M = 4.5;
+const HOSPITAL_EDGE_MARGIN = 1;
+const HOSPITAL_ROOF_CAP_M = 0.4;
+/** A ribbon of glass on every floor: its sill above the floor, its height, and how far it stands proud of the wall. */
+const HOSPITAL_WINDOW = { sill: 1.1, h: 2, proud: 0.06 };
+/** The main entrance's glazed doors and the canopy over them, centred `x` from the block's centre. */
+const HOSPITAL_ENTRANCE = { x: 2, doorW: 6, doorH: 3, canopyW: 10, canopyD: 4, canopyY: 3.6 };
+/** The ambulance canopy: over an ambulance with its rear doors open, clear of its roof lights; its west edge `inset` from the block's. */
+export const AMBULANCE_CANOPY = { inset: 4, w: 16, d: 9, clear: 4.3, slab: 0.5 };
+/** The walk along the facade, between the block and the accessible spaces' heads. */
+const HOSPITAL_FACADE_WALK_M = 0.5;
+
+/** The deck: ground and roof, 11 ft floor to floor. */
+export const DECK_LEVELS = 2;
+export const DECK_STOREY_M = 3.35;
+export const DECK_SLAB_M = 0.3;
+/** ADA 2010 §502.5: 98 in clear along a van's route. */
+export const VAN_CLEARANCE_M = 2.49;
+const FOOT_M = 0.3048;
+/** A 9 × 18 ft stall and a 24 ft two-way aisle, the 60 ft module of 90° parking; the stalls stand square to the aisle. */
+export const DECK_STALL = { w: 9 * FOOT_M, l: 18 * FOOT_M };
+export const DECK_AISLE_M = 24 * FOOT_M;
+/** Two double-loaded aisles across the deck, each a row of stalls either side. */
+const DECK_MODULES = 2;
+/** The ramp's grade, a dial; it runs along the deck's far side from the street up to the roof. */
+const DECK_RAMP_GRADE = 0.125;
+/** The ramp's one-way lane, 12 ft, a dial. */
+export const DECK_RAMP_MIN_M = 12 * FOOT_M;
+/** The perimeter wall the front row of stalls stands back from, and the roof's spandrel band. */
+const DECK_WALL_M = 0.3;
+export const DECK_SPANDREL = { below: 0.6, above: 1.07, t: 0.25 };
+/**
+ * The deck's width across the lot: two modules and the ramp beside its
+ * parapet. It reaches half a metre past its two tiles toward the block.
+ */
+export const DECK_WIDTH_M =
+  DECK_MODULES * (2 * DECK_STALL.l + DECK_AISLE_M) + DECK_RAMP_MIN_M + DECK_SPANDREL.t;
+/** A stair-and-lift core takes this many stalls of an outer row at the street end, on both levels; it rises this far above the roof. */
+const DECK_CORE_STALLS = 2;
+const DECK_CORE_RISE_M = 3;
+const DECK_COLUMN_M = 0.6;
+/** Columns stand on every third stall line. */
+const DECK_COLUMN_EVERY_STALLS = 3;
+/** The share of stalls a car stands in, by a hash of the building and the stall. */
+const DECK_OCCUPANCY = 0.75;
+
+/** ADA 2010 §502.2: a car space 96 in wide, a van space 132 in, each beside a 60 in access aisle. */
+export const ACCESSIBLE_SPACE_M = { car: 2.44, van: 3.35, aisle: 1.52 };
+const PAINT_LINE_M = 0.1;
+const PAINT_HATCH_SPACING_M = 0.6;
+
+const HOSPITAL_CLADDING_RGB: RGB = [0.8, 0.79, 0.75];
+const HOSPITAL_GLASS_RGB: RGB = [0.2, 0.27, 0.33];
+const HOSPITAL_ROOF_RGB: RGB = [0.45, 0.46, 0.47];
+const HOSPITAL_DOOR_RGB: RGB = [0.14, 0.19, 0.23];
+const HOSPITAL_CANOPY_RGB: RGB = [0.84, 0.84, 0.82];
+const HOSPITAL_POST_RGB: RGB = [0.5, 0.52, 0.54];
+const HOSPITAL_SIGN_RGB: RGB = [0.86, 0.86, 0.86];
+const HOSPITAL_CROSS_RGB: RGB = [0.4, 0.05, 0.05];
+const DECK_SLAB_RGB: RGB = [0.56, 0.56, 0.54];
+const DECK_FLOOR_RGB: RGB = [0.4, 0.41, 0.42];
+const DECK_SPANDREL_RGB: RGB = [0.72, 0.71, 0.67];
+const DECK_CORE_RGB: RGB = [0.6, 0.62, 0.65];
+
+/** A rectangle in the footprint frame, by its low and high edges. */
+export interface Rect {
+  x0: number;
+  x1: number;
+  z0: number;
+  z1: number;
+}
+
+/** One deck stall: its centre, its level (0 ground, 1 roof) and which way along X a car in it points. */
+export interface DeckStall {
+  x: number;
+  z: number;
+  level: number;
+  noseX: 1 | -1;
+}
+
+/** One piece of the accessible row, west to east: a space, or the hatched aisle beside one. */
+export interface AccessiblePiece {
+  kind: 'car' | 'van' | 'aisle';
+  x0: number;
+  x1: number;
+}
+
+export interface HospitalLayout {
+  /** The block's centre, on the ground. */
+  block: Vec2;
+  /** The main entrance's centre, on the facade. */
+  entrance: Vec2;
+  ambulanceCanopy: Rect;
+  /** Where the ambulance stands under its canopy, nose to the street. */
+  ambulance: Vec2;
+  deck: Rect;
+  ramp: Rect;
+  cores: Rect[];
+  columns: Vec2[];
+  stalls: DeckStall[];
+  /** The accessible row's pieces, and the band of depth they share. */
+  accessible: AccessiblePiece[];
+  accessibleZ: { z0: number; z1: number };
+}
+
+function stallsInDeckRow(deck: Rect): number {
+  return Math.floor((deck.z1 - deck.z0 - DECK_WALL_M - DECK_AISLE_M) / DECK_STALL.w);
+}
+
+/**
+ * How many accessible spaces a facility of `deckSpaces` other spaces needs once
+ * its accessible spaces are counted in the total it provides, and how many of
+ * them are vans.
+ */
+export function hospitalAccessibleSpaces(deckSpaces: number): { total: number; vans: number } {
+  let total = adaAccessibleSpaces(deckSpaces);
+  while (adaAccessibleSpaces(deckSpaces + total) > total) {
+    total = adaAccessibleSpaces(deckSpaces + total);
+  }
+  return { total, vans: adaVanSpaces(total) };
+}
+
+/** The deck's spaces at every level: four rows a level, less the cores. */
+export function hospitalDeckSpaces(footprint: FootprintSize): number {
+  return computeHospitalLayout(footprint).stalls.length;
+}
+
+/**
+ * The block hard against the back-left corner of the building tiles, its
+ * street front along local +Z; the ambulance canopy at the facade's west end
+ * and the main entrance near its middle; the accessible row between the
+ * entrance and the deck; the deck over the remaining tiles, its aisles open to
+ * the street, a cross-aisle at the back and the ramp along the far side. Pure;
+ * fixed per footprint.
+ */
+export function computeHospitalLayout(footprint: FootprintSize): HospitalLayout {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const { w: blockW, d: blockD } = HOSPITAL_BLOCK_SIZE;
+  const block: Vec2 = {
+    x: -halfW + HOSPITAL_EDGE_MARGIN + blockW / 2,
+    z: -halfD + HOSPITAL_EDGE_MARGIN + blockD / 2,
+  };
+  const front = block.z + blockD / 2;
+  const blockX0 = block.x - blockW / 2;
+  const blockX1 = block.x + blockW / 2;
+
+  const canopyX0 = blockX0 + AMBULANCE_CANOPY.inset;
+  const ambulanceCanopy: Rect = {
+    x0: canopyX0,
+    x1: canopyX0 + AMBULANCE_CANOPY.w,
+    z0: front,
+    z1: front + AMBULANCE_CANOPY.d,
+  };
+  const ambulanceLength = sizeForKind(VehicleKind.Ambulance)[2];
+  const ambulance: Vec2 = {
+    x: (ambulanceCanopy.x0 + ambulanceCanopy.x1) / 2,
+    z: front + 1 + ambulanceLength / 2,
+  };
+  const entrance: Vec2 = { x: block.x + HOSPITAL_ENTRANCE.x, z: front };
+
+  const deck: Rect = { x0: halfW - DECK_WIDTH_M, x1: halfW, z0: -halfD, z1: halfD };
+  const deckLayout = layDeck(deck);
+
+  // The accessible row, west to east: car pairs sharing an aisle, a single
+  // car with its own, then each van space with its aisle; its east end at the
+  // block's.
+  const { total, vans } = hospitalAccessibleSpaces(deckLayout.stalls.length);
+  const cars = total - vans;
+  const kinds: AccessiblePiece['kind'][] = [];
+  for (let i = 0; i + 1 < cars; i += 2) kinds.push('car', 'aisle', 'car');
+  if (cars % 2 === 1) kinds.push('car', 'aisle');
+  for (let i = 0; i < vans; i++) kinds.push('van', 'aisle');
+  const widthOf = (kind: AccessiblePiece['kind']): number => ACCESSIBLE_SPACE_M[kind];
+  const rowWidth = kinds.reduce((sum, kind) => sum + widthOf(kind), 0);
+  let x = blockX1 - rowWidth;
+  const accessible: AccessiblePiece[] = kinds.map((kind) => {
+    const piece = { kind, x0: x, x1: x + widthOf(kind) };
+    x = piece.x1;
+    return piece;
+  });
+  const accessibleZ = {
+    z0: front + HOSPITAL_FACADE_WALK_M,
+    z1: front + HOSPITAL_FACADE_WALK_M + DECK_STALL.l,
+  };
+
+  return {
+    block,
+    entrance,
+    ambulanceCanopy,
+    ambulance,
+    deck,
+    ...deckLayout,
+    accessible,
+    accessibleZ,
+  };
+}
+
+function layDeck(deck: Rect): Pick<HospitalLayout, 'ramp' | 'cores' | 'columns' | 'stalls'> {
+  const perRow = stallsInDeckRow(deck);
+  const stallsZ1 = deck.z1 - DECK_WALL_M;
+  const moduleW = 2 * DECK_STALL.l + DECK_AISLE_M;
+  const rampX0 = deck.x0 + DECK_MODULES * moduleW;
+  const rise = DECK_STOREY_M * (DECK_LEVELS - 1);
+  const ramp: Rect = { x0: rampX0, x1: deck.x1, z0: deck.z1 - rise / DECK_RAMP_GRADE, z1: deck.z1 };
+
+  // Each row: its low X edge and which way along X a car in it points (nose
+  // away from its aisle).
+  const rows: { x0: number; noseX: 1 | -1 }[] = [];
+  for (let m = 0; m < DECK_MODULES; m++) {
+    const x0 = deck.x0 + m * moduleW;
+    rows.push({ x0, noseX: -1 }, { x0: x0 + DECK_STALL.l + DECK_AISLE_M, noseX: 1 });
+  }
+  const outer = new Set([0, rows.length - 1]);
+  const cores: Rect[] = [...outer].map((r) => ({
+    x0: rows[r]!.x0,
+    x1: rows[r]!.x0 + DECK_STALL.l,
+    z0: stallsZ1 - DECK_CORE_STALLS * DECK_STALL.w,
+    z1: stallsZ1,
+  }));
+
+  const stalls: DeckStall[] = [];
+  for (let level = 0; level < DECK_LEVELS; level++) {
+    rows.forEach((row, r) => {
+      for (let i = 0; i < perRow; i++) {
+        if (outer.has(r) && i < DECK_CORE_STALLS) continue;
+        stalls.push({
+          x: row.x0 + DECK_STALL.l / 2,
+          z: stallsZ1 - (i + 0.5) * DECK_STALL.w,
+          level,
+          noseX: row.noseX,
+        });
+      }
+    });
+  }
+
+  const columnXs = [
+    deck.x0 + DECK_COLUMN_M / 2,
+    deck.x0 + moduleW,
+    rampX0 - DECK_COLUMN_M / 2,
+    deck.x1 - DECK_COLUMN_M / 2,
+  ];
+  const columns: Vec2[] = [];
+  for (let i = 0; i <= perRow; i += DECK_COLUMN_EVERY_STALLS) {
+    const z = stallsZ1 - i * DECK_STALL.w;
+    for (const cx of columnXs) {
+      // The far wall's columns stand only where the roof does, behind the ramp.
+      if (cx > rampX0 && z > ramp.z0) continue;
+      columns.push({ x: cx, z });
+    }
+  }
+  for (const cx of columnXs) columns.push({ x: cx, z: deck.z0 + DECK_COLUMN_M / 2 });
+  return { ramp, cores, columns, stalls };
+}
+
+/** The six-storey block, its glass ribbons, roof cap, entrance and emergency doors, the red cross over the ambulance bay, and both canopies; local Y=0 is the GROUND plane. */
+function buildHospitalBlockGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const layout = computeHospitalLayout(footprint);
+  const { block, entrance, ambulanceCanopy: bay } = layout;
+  const { w, d } = HOSPITAL_BLOCK_SIZE;
+  const height = HOSPITAL_STOREYS * HOSPITAL_STOREY_M;
+  const y0 = RECYCLING_YARD_HEIGHT;
+  const front = block.z + d / 2;
+  // The block stands on the ground through the yard slab; what stands on the
+  // yard (doors, canopies, posts) starts at its top.
+  const parts: THREE.BufferGeometry[] = [
+    standingBox(w, height - HOSPITAL_ROOF_CAP_M, d, block.x, 0, block.z, HOSPITAL_CLADDING_RGB),
+    standingBox(
+      w,
+      HOSPITAL_ROOF_CAP_M,
+      d,
+      block.x,
+      height - HOSPITAL_ROOF_CAP_M,
+      block.z,
+      HOSPITAL_ROOF_RGB,
+    ),
+  ];
+  for (let k = 0; k < HOSPITAL_STOREYS; k++) {
+    const p = HOSPITAL_WINDOW.proud;
+    parts.push(
+      standingBox(
+        w + 2 * p,
+        HOSPITAL_WINDOW.h,
+        d + 2 * p,
+        block.x,
+        k * HOSPITAL_STOREY_M + HOSPITAL_WINDOW.sill,
+        block.z,
+        HOSPITAL_GLASS_RGB,
+      ),
+    );
+  }
+  const bayX = (bay.x0 + bay.x1) / 2;
+  const doorT = 0.3;
+  for (const x of [entrance.x, bayX]) {
+    parts.push(
+      standingBox(
+        HOSPITAL_ENTRANCE.doorW,
+        HOSPITAL_ENTRANCE.doorH,
+        doorT,
+        x,
+        y0,
+        front + doorT / 2,
+        HOSPITAL_DOOR_RGB,
+      ),
+    );
+  }
+
+  // The main entrance's canopy on two posts.
+  const { canopyW, canopyD, canopyY } = HOSPITAL_ENTRANCE;
+  const canopySlab = 0.35;
+  parts.push(
+    standingBox(
+      canopyW,
+      canopySlab,
+      canopyD,
+      entrance.x,
+      y0 + canopyY,
+      front + canopyD / 2,
+      HOSPITAL_CANOPY_RGB,
+    ),
+  );
+  for (const side of [-1, 1]) {
+    parts.push(
+      standingBox(
+        0.25,
+        canopyY,
+        0.25,
+        entrance.x + side * (canopyW / 2 - 0.3),
+        y0,
+        front + canopyD - 0.3,
+        HOSPITAL_POST_RGB,
+      ),
+    );
+  }
+
+  // The ambulance canopy on two columns at its street corners.
+  const { clear, slab } = AMBULANCE_CANOPY;
+  parts.push(
+    standingBox(
+      bay.x1 - bay.x0,
+      slab,
+      bay.z1 - bay.z0,
+      bayX,
+      y0 + clear,
+      (bay.z0 + bay.z1) / 2,
+      HOSPITAL_CANOPY_RGB,
+    ),
+  );
+  for (const x of [bay.x0 + 0.4, bay.x1 - 0.4]) {
+    parts.push(standingBox(0.5, clear, 0.5, x, y0, bay.z1 - 0.4, HOSPITAL_POST_RGB));
+  }
+
+  // A red cross on a white panel over the ambulance bay.
+  const signY = y0 + clear + slab + 1.2;
+  parts.push(standingBox(3, 3, 0.15, bayX, signY, front + 0.2, HOSPITAL_SIGN_RGB));
+  parts.push(standingBox(2.2, 0.7, 0.1, bayX, signY + 1.15, front + 0.32, HOSPITAL_CROSS_RGB));
+  parts.push(standingBox(0.7, 2.2, 0.1, bayX, signY + 0.4, front + 0.32, HOSPITAL_CROSS_RGB));
+  return mergeParts(parts);
+}
+
+/**
+ * The deck: its roof slab (open over the ramp), columns, the roof's spandrel
+ * band, the ramp with its parapet, the two stair-and-lift cores and the stall
+ * lines on both levels; local Y=0 is the GROUND plane.
+ */
+function buildHospitalDeckGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { deck, ramp, cores, columns, stalls } = computeHospitalLayout(footprint);
+  const y0 = RECYCLING_YARD_HEIGHT;
+  const roofTop = y0 + DECK_STOREY_M;
+  const slabY = roofTop - DECK_SLAB_M;
+  const box = (r: Rect, yA: number, yB: number, rgb: RGB): THREE.BufferGeometry =>
+    standingBox(r.x1 - r.x0, yB - yA, r.z1 - r.z0, (r.x0 + r.x1) / 2, yA, (r.z0 + r.z1) / 2, rgb);
+  const parts: THREE.BufferGeometry[] = [
+    box({ ...deck, x1: ramp.x0 }, slabY, roofTop, DECK_FLOOR_RGB),
+    box({ ...ramp, z0: deck.z0, z1: ramp.z0 }, slabY, roofTop, DECK_FLOOR_RGB),
+  ];
+  for (const c of columns) {
+    const half = DECK_COLUMN_M / 2;
+    parts.push(
+      box(
+        { x0: c.x - half, x1: c.x + half, z0: c.z - half, z1: c.z + half },
+        y0,
+        slabY,
+        DECK_SLAB_RGB,
+      ),
+    );
+  }
+
+  // The spandrel band round the roof's edge, open where the ramp comes up.
+  const { below, above, t } = DECK_SPANDREL;
+  const bandA = roofTop - below;
+  const bandB = roofTop + above;
+  for (const edge of [
+    { x0: deck.x0, x1: deck.x0 + t, z0: deck.z0, z1: deck.z1 },
+    { x0: deck.x0, x1: deck.x1, z0: deck.z0, z1: deck.z0 + t },
+    { x0: deck.x1 - t, x1: deck.x1, z0: deck.z0, z1: ramp.z0 },
+    { x0: deck.x0, x1: ramp.x0, z0: deck.z1 - t, z1: deck.z1 },
+  ]) {
+    parts.push(box(edge, bandA, bandB, DECK_SPANDREL_RGB));
+  }
+
+  // The ramp: a slab rising from the street to the roof, a parapet on its outer edge.
+  const run = ramp.z1 - ramp.z0;
+  const rise = DECK_STOREY_M * (DECK_LEVELS - 1);
+  // Each is a box over the ramp's plan, sheared so it climbs toward -Z: it
+  // keeps the plan's edges exactly, where a turned box would overhang them.
+  const climbing = (geometry: THREE.BufferGeometry): THREE.BufferGeometry => {
+    const position = geometry.getAttribute('position');
+    for (let i = 0; i < position.count; i++) {
+      position.setY(i, position.getY(i) - position.getZ(i) * (rise / run));
+    }
+    geometry.computeVertexNormals();
+    return geometry;
+  };
+  const rampSlab = new THREE.BoxGeometry(ramp.x1 - ramp.x0 - t, DECK_SLAB_M, run);
+  rampSlab.translate(0, -DECK_SLAB_M / 2, 0);
+  climbing(rampSlab).translate((ramp.x0 + ramp.x1 - t) / 2, y0 + rise / 2, (ramp.z0 + ramp.z1) / 2);
+  parts.push(paintVertexColor(rampSlab, hexFromRgb(DECK_SLAB_RGB)));
+  const parapet = new THREE.BoxGeometry(t, above, run);
+  parapet.translate(0, above / 2, 0);
+  climbing(parapet).translate(ramp.x1 - t / 2, y0 + rise / 2, (ramp.z0 + ramp.z1) / 2);
+  parts.push(paintVertexColor(parapet, hexFromRgb(DECK_SPANDREL_RGB)));
+
+  for (const core of cores) parts.push(box(core, y0, roofTop + DECK_CORE_RISE_M, DECK_CORE_RGB));
+
+  // Stall lines on both levels, either side of every stall, each line once.
+  const drawn = new Set<string>();
+  for (const s of stalls) {
+    const floor = y0 + s.level * DECK_STOREY_M + 0.005;
+    for (const side of [-1, 1]) {
+      const z = s.z + (side * DECK_STALL.w) / 2;
+      const key = `${s.level}:${s.x.toFixed(2)}:${z.toFixed(2)}`;
+      if (drawn.has(key)) continue;
+      drawn.add(key);
+      const half = PAINT_LINE_M / 2;
+      const along = { x0: s.x - DECK_STALL.l / 2, x1: s.x + DECK_STALL.l / 2 };
+      parts.push(box({ ...along, z0: z - half, z1: z + half }, floor, floor + 0.01, MARKING_COLOR));
+    }
+  }
+  return mergeParts(parts);
+}
+
+/** The accessible row's paint: the spaces' lines, the hatched aisles and the accessibility symbol in each space. */
+function buildHospitalPaintGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { accessible, accessibleZ } = computeHospitalLayout(footprint);
+  const top = RECYCLING_YARD_HEIGHT;
+  const paintY = top + 0.005;
+  const line = (x0: number, x1: number, z0: number, z1: number): THREE.BufferGeometry =>
+    standingBox(x1 - x0, 0.01, z1 - z0, (x0 + x1) / 2, paintY, (z0 + z1) / 2, MARKING_COLOR);
+  const { z0, z1 } = accessibleZ;
+  const parts: THREE.BufferGeometry[] = [];
+  const edges = new Set<number>();
+  for (const piece of accessible) edges.add(piece.x0).add(piece.x1);
+  for (const x of edges) parts.push(line(x - PAINT_LINE_M / 2, x + PAINT_LINE_M / 2, z0, z1));
+  for (const piece of accessible) {
+    const cx = (piece.x0 + piece.x1) / 2;
+    if (piece.kind === 'aisle') {
+      const w = piece.x1 - piece.x0;
+      const hatch = Math.hypot(w, w);
+      for (let z = z0 + w / 2; z <= z1 - w / 2 + 1e-9; z += PAINT_HATCH_SPACING_M) {
+        const bar = new THREE.BoxGeometry(PAINT_LINE_M, 0.01, hatch - PAINT_LINE_M);
+        bar.rotateY(Math.PI / 4);
+        bar.translate(cx, paintY + 0.005, z);
+        parts.push(paintVertexColor(bar, hexFromRgb(MARKING_COLOR)));
+      }
+      continue;
+    }
+    const { positions, colors } = accessibilitySymbolPaint(ACCESSIBLE_SYMBOL_M);
+    const symbol = new THREE.BufferGeometry();
+    symbol.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    symbol.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    symbol.computeVertexNormals();
+    // Upright to a driver pulling in toward the building.
+    symbol.rotateY(Math.PI);
+    symbol.translate(cx, top - ROAD_Y_OFFSET + 0.01, (z0 + z1) / 2);
+    parts.push(symbol);
+  }
+  return mergeParts(parts);
+}
+
+/** One parked car at its real size, nose to local +Z, centred on its own origin on the ground. */
+function buildParkedCarGeometry(): THREE.BufferGeometry {
+  const [sx, sy, sz] = sizeForKind(VehicleKind.Car);
+  const car = buildVehicleGeometry(VehicleKind.Car);
+  car.scale(sx, sy, sz);
+  car.translate(0, sy / 2, 0);
+  return car;
+}
+
+/** Whether stall `i` of a hospital's deck has a car in it: a fixed share, by a hash of the building and the stall. */
+export function deckStallTaken(buildingId: number, i: number): boolean {
+  return hash1(buildingId * 977 + i * 131 + 7) < DECK_OCCUPANCY;
 }
 
 // ---------------------------------------------------------------------------
@@ -1753,6 +2280,7 @@ const _spinQuat = new THREE.Quaternion();
 const _unitScale = new THREE.Vector3(1, 1, 1);
 const _yAxis = new THREE.Vector3(0, 1, 0);
 const _zAxis = new THREE.Vector3(0, 0, 1);
+const _carColor = new THREE.Color();
 
 export class UtilityKitRenderer {
   private readonly scene: THREE.Scene;
@@ -1891,6 +2419,8 @@ export class UtilityKitRenderer {
         return this.buildMrfKit(entry);
       case 'transfer-station':
         return this.buildTransferKit(entry);
+      case 'hospital':
+        return this.buildHospitalKit(entry);
       case 'small-park':
         return this.buildSmallParkKit(entry);
       default:
@@ -2150,6 +2680,28 @@ export class UtilityKitRenderer {
     };
   }
 
+  private buildHospitalKit(entry: BuildingCatalogEntry): KitDefinition {
+    const lambert = (): THREE.MeshLambertMaterial =>
+      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const pool = (geometry: THREE.BufferGeometry, capacity = INITIAL_KIT_CAPACITY) =>
+      new InstancedSlotPool(this.scene, geometry, lambert(), capacity);
+    return {
+      entry,
+      pavesLot: true,
+      pools: {
+        hospitalYard: pool(buildRecyclingYardGeometry(entry.footprint)),
+        hospitalBlock: pool(buildHospitalBlockGeometry(entry.footprint)),
+        hospitalDeck: pool(buildHospitalDeckGeometry(entry.footprint)),
+        hospitalPaint: pool(buildHospitalPaintGeometry(entry.footprint)),
+        hospitalCar: pool(
+          buildParkedCarGeometry(),
+          INITIAL_KIT_CAPACITY * hospitalDeckSpaces(entry.footprint),
+        ),
+        hospitalAmbulance: pool(buildParkedTruckGeometry(VehicleKind.Ambulance)),
+      },
+    };
+  }
+
   private buildSmallParkKit(entry: BuildingCatalogEntry): KitDefinition {
     const lambert = (): THREE.MeshLambertMaterial =>
       new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -2282,6 +2834,9 @@ export class UtilityKitRenderer {
         return;
       case 'transfer-station':
         this.applyTransfer(kit, building, entry, centerX, groundY, centerZ, rotation);
+        return;
+      case 'hospital':
+        this.applyHospital(kit, building, entry, centerX, groundY, centerZ, rotation);
         return;
       case 'small-park':
         this.applySmallPark(kit, building, entry, centerX, groundY, centerZ, rotation);
@@ -2566,6 +3121,67 @@ export class UtilityKitRenderer {
       transferPacker: layout.packers.map((packer) =>
         placeLocal(transferPacker, packer, groundY + RECYCLING_YARD_HEIGHT),
       ),
+    };
+    this.instances.set(building.id, { catalogId: building.catalogId, slots });
+  }
+
+  private applyHospital(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    centerX: number,
+    groundY: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+  ): void {
+    const {
+      hospitalYard,
+      hospitalBlock,
+      hospitalDeck,
+      hospitalPaint,
+      hospitalCar,
+      hospitalAmbulance,
+    } = kit.pools;
+    if (
+      !hospitalYard ||
+      !hospitalBlock ||
+      !hospitalDeck ||
+      !hospitalPaint ||
+      !hospitalCar ||
+      !hospitalAmbulance
+    ) {
+      return;
+    }
+
+    const layout = computeHospitalLayout(entry.footprint);
+    const placeLocal = (
+      pool: InstancedSlotPool,
+      local: Vec2,
+      y: number,
+      turn: 0 | 1 | 2 | 3,
+    ): number => {
+      const rotated = rotateLocalXZ(local.x, local.z, rotation);
+      return this.placeAt(pool, centerX + rotated.x, y, centerZ + rotated.z, turn);
+    };
+    const floor = groundY + RECYCLING_YARD_HEIGHT;
+    const cars: number[] = [];
+    layout.stalls.forEach((stall, i) => {
+      if (!deckStallTaken(building.id, i)) return;
+      const turn = ((rotation + (stall.noseX > 0 ? 1 : 3)) % 4) as 0 | 1 | 2 | 3;
+      const slot = placeLocal(hospitalCar, stall, floor + stall.level * DECK_STOREY_M, turn);
+      _carColor.setHex(
+        VEHICLE_PALETTE_HEX[Math.floor(hash1(building.id * 31 + i) * VEHICLE_PALETTE_HEX.length)]!,
+      );
+      hospitalCar.setColorAt(slot, _carColor);
+      cars.push(slot);
+    });
+    const slots = {
+      hospitalYard: [this.placeAt(hospitalYard, centerX, groundY, centerZ, rotation)],
+      hospitalBlock: [this.placeAt(hospitalBlock, centerX, groundY, centerZ, rotation)],
+      hospitalDeck: [this.placeAt(hospitalDeck, centerX, groundY, centerZ, rotation)],
+      hospitalPaint: [this.placeAt(hospitalPaint, centerX, groundY, centerZ, rotation)],
+      hospitalCar: cars,
+      hospitalAmbulance: [placeLocal(hospitalAmbulance, layout.ambulance, floor, rotation)],
     };
     this.instances.set(building.id, { catalogId: building.catalogId, slots });
   }

@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 5,208 tests passing across 171 test files, run 2026-10-08.
+**Test suite:** 5,240 tests passing across 171 test files, run 2026-10-08.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -287,6 +287,40 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The healthcare ladder: a clinic at its size, and a hospital (first slice of healthcare and death care, built 2026-10-08)
+
+Healthcare was one building that could never be oversubscribed. The clinic
+stood 2×2 and 14 m tall, 3,237 m² of floor where a four-physician practice
+needs 370–560 m² (MGMA's 1,000–1,500 sq ft a provider), so it read as a list
+of 52,000 patients. It is now **1×2, two storeys, 740 m²**, still serving 8,000
+(four physicians at about 2,000, between Altschuler's workable 1,947 and the US
+average of about 2,300). An old save re-stamps each 2×2 clinic onto the tiles
+that face its street, with the rule the water tower brought.
+
+Above it stands a **hospital**: 72 staffed beds serving 30,000 people over a
+72-tile reach. 72 beds at the 2.28 community beds per 1,000 Americans have
+(KFF 2024) serve 31,600; 72 beds at 43.3 admissions a bed a year (AHA) against
+99 admissions per 1,000 serve 31,500. 30,000 sits 5% under both. The draft's UK
+figures went: the Family Doctor Charter, the UK's bed rate, and a cross-check
+that mixed two bases.
+
+- **Its size.** US hospitals run about 2,500 sq ft a bed, so 72 beds is
+  about 16,700 m². The player chose a 3×3 block of six storeys at 4.5 m
+  floor-to-floor, 27 m tall: a hospital, not a box.
+- **Its parking, to code.** Two spaces a bed is the commonest US code figure,
+  so 144. They stand in a two-level deck beside the block, 72 a level on
+  9 × 18 ft stalls and 24 ft aisles, with five accessible spaces, one for a
+  van, at the entrance (ADA §208.2). The lot is 3×5.
+- **Its draw.** 180,000 sq ft at inpatient care's 28.8 kWh (CBECS 2018) and a
+  hospital's 55.71 gallons a square foot (ENERGY STAR) is 0.59 MW and 104 kL a
+  day. The resized clinic draws 16 kW and 1.9 kL.
+- **Its price.** ¢18,000 and ¢1,300 a month, cheaper per person served than the
+  clinic to build and to run, as the services programme asks. Per tile it is
+  not: the deck is land a clinic does not need, and the design says so rather
+  than bend a price.
+
+Death care, the cemetery and the crematorium, are the slices to come.
 
 ### Service capacity, recorded and re-sourced (built 2026-09-18 and 2026-09-21, recorded 2026-10-08)
 

@@ -161,12 +161,23 @@ averaged over the year. Before this a police station drew 0.6 MW, the power of
 | --------------------- | ---------- | -------------------------------------------------- | --------- | ------------------------------------------------ | -------- |
 | Police station (2×2)  | 29,900 sf  | public order and safety, 13.9 kWh/sf               | 47 kW     | office, 14.5 gal/sf a year                       | 4.5 kL   |
 | Fire station (2×2)    | 29,900 sf  | public order and safety, 13.9 kWh/sf               | 47 kW     | fire station, 28.9 gal/sf a year                 | 9 kL     |
-| Clinic (2×2)          | 34,800 sf  | health care, outpatient, 17.4 kWh/sf               | 69 kW     | medical office, 23.4 gal/sf a year               | 8.5 kL   |
+| Clinic (1×2)          | 7,965 sf   | health care, outpatient, 17.4 kWh/sf               | 16 kW     | medical office, 23.4 gal/sf a year               | 1.9 kL   |
+| Hospital (3×5)        | 180,000 sf | health care, inpatient, 28.8 kWh/sf                | 592 kW    | hospital, 55.71 gal/sf a year                    | 104 kL   |
 | School (3×3)          | 56,000 sf  | education, 9.4 kWh/sf                              | 60 kW     | K-12 school, 10.8 gal/sf a year                  | 6.3 kL   |
 | Rail station (2×3)    | 33,600 sf  | transport terminal, 8.4 kWh/sf                     | 32 kW     | office, 14.5 gal/sf a year                       | 5 kL     |
 | Airport (8×6)         | 418,000 sf | transport terminal, 8.4 kWh/sf                     | 400 kW    | 4 million passengers a year at 4.2 gal each      | 175 kL   |
 | Incinerator (4×4)     | —          | a 250 ton-a-day combustor's own 63 kWh a ton       | 660 kW    | kept at 2 kL: no figure found                    | 2 kL     |
 | Coal plant (4×4)      | —          | —                                                  | —         | fifty staff at 13 gal a day; cooling water is its own, raw | 2.5 kL |
+
+The hospital is the one row whose floor is stated rather than read off its
+footprint: 72 beds at 2,500 sf a bed (see
+[healthcare-and-death-care.md](healthcare-and-death-care.md#sizes-costs-and-the-ladder-rule)),
+since six of its fifteen tiles are a parking deck. Its water is the general
+medical and surgical hospital median in ENERGY STAR Portfolio Manager's water
+use intensity table
+([US water use intensity by property type](https://www.energystar.gov/buildings/benchmark/understand-metrics/what-water-use-intensity-wui)),
+the table the office, medical office and fire station medians also come from:
+382 gallons a bed a day at 2,500 sf a bed.
 
 The transport terminal's electricity is ENERGY STAR's 56.2 kBtu/sf site
 median for a terminal or station

@@ -1,6 +1,6 @@
 # Healthcare and death care — design
 
-- **Status:** Draft
+- **Status:** Partly built — the clinic and hospital ladder (2026-10-08); death care not built
 - **Date:** 2026-09-18
 
 ## What the player gets
@@ -39,8 +39,8 @@ on a lens the player already reads, traced back to a building they never placed.
 **Community clinic** — primary care for a neighbourhood. The building the game
 already has, resized: four full-time doctors, a list of **8,000 people**, 40
 tiles of road reach. **Hospital** — acute inpatient care for a district: **72
-beds**, a list of **30,000 people**, 72 tiles of reach, five storeys, an
-ambulance canopy and a staff car park. It reads as a campus, not a box.
+beds**, a list of **30,000 people**, 72 tiles of reach, six storeys, an
+ambulance canopy and a two-level parking deck. It reads as a campus, not a box.
 
 **There is no third rung, and that is a decision.** The obvious candidate is
 eldercare, and it does not earn its place: the city has no age structure at all
@@ -137,12 +137,12 @@ says which end we took and why.
 ### The death rate, and what a tick is
 
 A game month is `TICKS_PER_DAY × DAYS_PER_MONTH` = 200 × 30 = **6,000 ticks**,
-so a game year is **72,000 ticks**. Crude death rates for developed, urbanised
-countries: England and Wales 9.20 per 1,000 in 2024 (ONS); the United States
-9.03 (CDC/NCHS, 2024); the world figure around 7.8 (UN World Population
-Prospects). **Take 9 per 1,000 per year** — the bottom of the developed band,
-because our population has no age structure and so cannot carry the elderly skew
-that pushes a real city toward 11.
+so a game year is **72,000 ticks**. The United States' crude death rate was
+**9.03 per 1,000** in 2024, 3,072,666 deaths
+([CDC/NCHS, FastStats](https://www.cdc.gov/nchs/FASTATS/deaths.htm)). **Take 9
+per 1,000 per year**, that rate rounded down, because our population has no age
+structure and so cannot carry the elderly skew that pushes an older town toward
+11.
 
 ```
 9 / 1,000 / 72,000 ticks = 1.25 × 10⁻⁷ deaths per resident per tick
@@ -157,22 +157,27 @@ that pushes a real city toward 11.
 
 ### Capacities
 
-**Clinic — 8,000 people.** Four full-time doctors at 2,000 patients each — the
-cap the 1966 Family Doctor Charter set, which is a _standard_. The current
-English actual is 2,176 per FTE doctor and rising (BMA, 2026), which would give
-8,700; we took the standard, not the symptom.
+**Clinic — 8,000 people.** Four full-time physicians, a stated dial, at a panel
+of about **2,000** each. Altschuler and colleagues derive the panel a primary-care
+physician can carry with the care delegated to the team as **1,947**, and observe
+a US average of about **2,300**, which describes practices already overloaded
+([Annals of Family Medicine, 2012](https://www.annfammed.org/content/10/5/396)).
+2,000 sits between the workable panel and the observed one: 4 × 2,000 = **8,000**.
 
-**Hospital — 30,000 people.** 72 beds at 2.4 acute beds per 1,000 residents (the
-UK's OECD figure; the OECD's own 4.2 is _total_ beds including psychiatric and
-long-term care, which this building is not). The lean end, deliberately: at 4.2
-the same 72 beds serve 17,000 and at Japan's 12.5 only 5,800, either of which
-collapses the ladder into the clinic. At 2.4 the hospital sits between the Grand
-City and Metropolis milestones, so a Grand City needs one and a Metropolis two.
-Cross-checked another way: 72 beds × 39.3 admissions per bed-year (AHA, 2024 US
-survey; independently 365 × 0.72 occupancy ÷ 6.5 days OECD length of stay = 40)
-= 2,830 admissions a year against an OECD curative discharge rate of 128 per
-1,000 = **22,100**. The routes bracket 22,000–30,000; we took the top so the
-hospital is a clear step, not a marginal one.
+**Hospital — 30,000 people.** **72 staffed beds**, a small community hospital:
+57% of US community hospitals have fewer than 100
+([AHA Hospital Statistics, 2023](https://kha-net.org/DataProductsandServices/STAT/HospitalCharacteristics/CommunityHospitalsbyBedSize/)).
+The United States has **2.28 staffed community-hospital beds per 1,000
+residents**
+([KFF, 2024](https://www.kff.org/other/state-indicator/beds-by-ownership/)), so
+72 beds serve 72 ÷ 2.28 × 1,000 = **31,600** people. Cross-checked by
+admissions: America's community hospitals ran 775,297 staffed beds and admitted
+33.55 million patients in 2024, **43.3 admissions a bed a year**
+([AHA Fast Facts](https://www.aha.org/statistics/fast-facts-us-hospitals)), and
+the country is admitted at **99 per 1,000** residents a year (KFF). 72 × 43.3 ÷
+99 × 1,000 = **31,500**. Both routes land within 0.3% of each other; take
+**30,000**, about 5% conservative, so the hospital sits between the Grand City
+and Metropolis milestones and a Metropolis needs two.
 
 **Cemetery — 780 plots.** A grave plot is 2.44 m × 1.22 m = 2.98 m². Gross
 density in single-grave lawn sections is 1,000 burials per gross acre (ASPO,
@@ -212,29 +217,76 @@ every published response target rather than mean. The clinic keeps its **40**
 | Building         | Footprint | Height | Gross floor | Capacity      | Cost    | Upkeep | Milestone |
 | ---------------- | --------- | ------ | ----------- | ------------- | ------- | ------ | --------- |
 | Community clinic | 1×2       | 6.4 m  | 740 m²      | 8,000 people  | ¢5,000  | ¢380   | 1         |
-| Hospital         | 2×3       | 16 m   | 5,550 m²    | 30,000 people | ¢18,000 | ¢1,300 | 3         |
+| Hospital         | 3×5       | 27 m   | 16,700 m²   | 30,000 people | ¢18,000 | ¢1,300 | 3         |
 | Cemetery         | 3×3       | 3.2 m  | ground      | 780 plots     | ¢3,500  | ¢140   | 0         |
 | Crematorium      | 2×2       | 6.4 m  | 1,480 m²    | 1,600/year    | ¢26,000 | ¢600   | 3         |
 
-Every footprint and height is derived by the civic-massing formula, and the
-arithmetic is shown once, in the technical document. **The existing clinic's
-2×2 × 14 m does not agree with the capacity derived for it** — 3,237 m² of floor
-against the 445 m² a four-doctor practice needs, seven times over, implying a
-list of 52,000 and a building that could never be oversubscribed at any city
-size this game reaches. Corrected to 1×2 × 6.4 m. The cemetery unlocks at
-**milestone 0**: a burial ground is the first public facility any settlement
-builds, and a village that meets its first death with no way to answer it and
-none to buy is a bad first hour. The programme rule is that the large facility
-costs more per tile and less per person served; both clauses hold, and only just:
+The arithmetic behind each size is shown once, in the technical document.
+
+**The clinic is 1×2 tiles, two storeys, 6.4 m: 740 m² (7,965 sf) gross.** A
+medical practice plans on **1,000–1,500 sf per provider**
+([MGMA](https://www.mgma.com/articles/size-matters-in-medical-practice-space-selection)),
+so four full-time physicians need 372–557 m² net; the rest is circulation,
+reception and plant. The clinic it replaces was 2×2 × 14 m, 3,237 m² of floor,
+four times the most a four-doctor practice uses, and a building that size
+could never have been oversubscribed at any city size this game reaches.
+
+**The hospital is a 3×5 lot: a 3×3 building and a 3×2 parking deck beside it,
+both fronting the street along the lot's 5-tile side.** The building is 72 beds
+at **2,500 sf a bed**, the US planning figure for a hospital of 50 beds or more
+([Definitive Healthcare](https://www.definitivehc.com/index%2ephp/resources/healthcare-insights/average-us-hospital-square-footage)
+puts it at about 2,400–2,600 from Medicare cost reports): 180,000 sf, **16,700
+m²**. That is a plate of about 2,800 m² over **six storeys at 4.5 m** floor to
+floor, the low end of the 14 ft 8 in–16 ft (4.5–4.9 m) inpatient floors run in
+project examples
+([City of Naples planning record](https://www.naplesgov.com/media/98066);
+a single source), so it stands **27 m**. It is the one civic building whose
+floor is stated rather than read off the massing formula: 15 tiles at 27 m would claim 23,400 m², and the
+deck is ground, not floor.
+
+The cemetery unlocks at **milestone 0**: a burial ground is the first public
+facility any settlement builds, and a village that meets its first death with no
+way to answer it and none to buy is a bad first hour. The programme rule is that
+the large facility costs less per person served and more per tile:
 
 |          | Per tile | Per person | Upkeep/tile | Upkeep/person |
 | -------- | -------- | ---------- | ----------- | ------------- |
 | Clinic   | ¢2,500   | ¢0.625     | ¢190        | ¢0.0475       |
-| Hospital | ¢3,000   | ¢0.600     | ¢217        | ¢0.0433       |
+| Hospital | ¢1,200   | ¢0.600     | ¢87         | ¢0.0433       |
 
-That is what fixed the hospital at five storeys on six tiles rather than four on
-eight: an eight-tile hospital has a 4× footprint against a 3.75× capacity, and
-no price satisfies both clauses at once.
+**The per-person clause holds; the per-tile clause does not, and it gives way
+to the deck.** A hospital is cheaper per person than the clinic to build and to
+run, which is the ladder the player feels. Per tile it is less than half the
+clinic's, because six of its fifteen tiles are a car park a clinic does not
+need; even its nine building tiles alone come to ¢2,000 a tile. Parking to code
+is worth more to this building than a price contrived to keep a ratio, so the
+price stays where the per-person figures put it.
+
+**Hospital parking is to code.** The common US zoning minimum for a hospital
+is **2 spaces a bed** (St Charles MO, Wadsworth OH, Stacy MN, Canby OR,
+Marshfield MA; for example
+[Wadsworth's chapter 25](https://www.zoneomics.com/code/wadsworth-OH/chapter_25)),
+so 72 beds need **144**. They go in a two-level deck, ground and roof, on the
+3×2 tiles. It is laid in the 60 ft module of 90° parking, 9 × 18 ft stalls
+either side of a **24 ft two-way aisle**, the width the codes ask (for example
+[Forest Lake MN](https://codelibrary.amlegal.com/codes/forestlake/latest/forestlake_mn/0-0-0-40825)).
+Two modules and a 12 ft ramp lane beside its parapet are 40.5 m, so the deck
+reaches half a metre past its two tiles toward the block: about 2,430 m² a
+level. Less a cross-aisle at the back, the ramp and two stair-and-lift cores, a
+level holds **72**, and the deck **144**: 33.7 m² (363 sf) a space all-in, about
+4% over the top of the 300–350 sf a structured space takes
+([Parking Professional, 2013](https://www.parking.org/wp-content/uploads/2016/01/TPP-2013-10-How-Much-does-a-Structure-Cost.pdf)),
+because a deck this small carries its ramp and cores over fewer spaces.
+The deck is 3.35 m (11 ft) floor to floor, which clears the 2.49 m (98 in) a
+van's route needs. The accessible spaces stand on the surface by the main
+entrance, nearer it than any deck space, as the ADA allows: 149 spaces in all
+take **5 accessible spaces, 1 of them van-accessible** (one in six), under
+[ADA 2010 §208.2](https://www.access-board.gov/ada/guides/chapter-5-parking/) —
+a car space 2.44 m wide with a 1.52 m aisle, a van space 3.35 m with the same
+aisle. The 10% that §208.2.1 asks of parking serving outpatient facilities is
+not applied: this is an inpatient hospital, and the clinic carries the
+outpatients. Beside the main entrance, on the building's street side, an
+ambulance canopy covers the emergency drop-off.
 
 ## What it is not
 
