@@ -53,7 +53,12 @@ describe('truckKindFor', () => {
     );
   });
 
-  it('reads the catalog: the recycling depot and the recovery facility are Recycling, the incinerator Garbage', async () => {
+  it('runs refuse trucks from a transfer station, which moves rubbish', () => {
+    const base = { collectionRange: 40, bufferCapacity: 362880, burnRate: 0, trucks: 4 };
+    expect(truckKindFor({ ...base, transferRate: 9072 })).toBe(VehicleKind.Garbage);
+  });
+
+  it('reads the catalog: the recycling depot and the recovery facility are Recycling, the incinerator and transfer station Garbage', async () => {
     const catalog = (await import('../data/catalog.json')).default as {
       buildings: { id: string; garbage?: Parameters<typeof truckKindFor>[0] }[];
     };
@@ -61,6 +66,7 @@ describe('truckKindFor', () => {
     expect(truckKindFor(spec('recycling-depot'))).toBe(VehicleKind.Recycling);
     expect(truckKindFor(spec('materials-recovery-facility'))).toBe(VehicleKind.Recycling);
     expect(truckKindFor(spec('incinerator'))).toBe(VehicleKind.Garbage);
+    expect(truckKindFor(spec('transfer-station'))).toBe(VehicleKind.Garbage);
   });
 });
 

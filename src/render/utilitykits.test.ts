@@ -40,6 +40,15 @@ import {
   computeIncineratorHallLayout,
   computeIncineratorStackLocalPlacement,
   computeMrfLayout,
+  computeTransferLayout,
+  TRANSFER_BAY_SIZE,
+  TRANSFER_HALL_SIZE,
+  TRANSFER_PACKER_COUNT,
+  TRANSFER_RIG_COUNT,
+  TRANSFER_RIG_LENGTH,
+  TRANSFER_ROOF_RISE,
+  TRANSFER_TRAILER_SIZE,
+  TRANSFER_WEIGHBRIDGE_SIZE,
   MRF_BALE_SIZE,
   MRF_HALL_SIZE,
   MRF_TRUCK_COUNT,
@@ -98,6 +107,11 @@ const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'mrfBales',
   'mrfOffice',
   'mrfTruck',
+  'transferYard',
+  'transferHall',
+  'transferScale',
+  'transferRig',
+  'transferPacker',
   'parkGround',
   'parkTree',
   'parkBench',
@@ -216,6 +230,30 @@ function makeMrfEntry(overrides: Partial<BuildingCatalogEntry> = {}): BuildingCa
     cost: 24000,
     upkeep: 1750,
     unlockMilestone: 5,
+    ...overrides,
+  };
+}
+
+function makeTransferEntry(overrides: Partial<BuildingCatalogEntry> = {}): BuildingCatalogEntry {
+  return {
+    id: 'transfer-station',
+    name: 'Transfer Station',
+    category: 'utility',
+    footprint: { w: 4, d: 5 },
+    height: 11,
+    color: 0x6e7364,
+    powerUse: 0.00945,
+    waterUse: 0.2,
+    garbage: {
+      collectionRange: 40,
+      bufferCapacity: 362880,
+      burnRate: 0,
+      trucks: 4,
+      transferRate: 9072,
+    },
+    cost: 7500,
+    upkeep: 540,
+    unlockMilestone: 4,
     ...overrides,
   };
 }
@@ -368,7 +406,7 @@ function decomposeQuaternion(m: THREE.Matrix4): THREE.Quaternion {
 // ---------------------------------------------------------------------------
 
 describe('UTILITY_KIT_CATALOG_IDS', () => {
-  it('is exactly the 10 silhouette-kit ids', () => {
+  it('is exactly the 11 silhouette-kit ids', () => {
     expect(UTILITY_KIT_CATALOG_IDS).toEqual([
       'wind-turbine',
       'water-tower',
@@ -379,6 +417,7 @@ describe('UTILITY_KIT_CATALOG_IDS', () => {
       'incinerator',
       'recycling-depot',
       'materials-recovery-facility',
+      'transfer-station',
       'small-park',
     ]);
   });
@@ -1543,6 +1582,149 @@ describe('materials-recovery-facility kit', () => {
 });
 
 // ---------------------------------------------------------------------------
+// UtilityKitRenderer: transfer-station
+// ---------------------------------------------------------------------------
+
+describe('transfer-station kit', () => {
+  const entry = makeTransferEntry();
+  const { halfW, halfD } = footprintHalfExtents(entry.footprint);
+  const boundsOf = (kind: UtilityKitPartKind): THREE.Box3 => {
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [entry]);
+    const geometry = renderer.partGeometry('transfer-station', kind)!;
+    geometry.computeBoundingBox();
+    return geometry.boundingBox!;
+  };
+
+  it('places a yard, a hall, a scale house, two rigs and two packers per instance', () => {
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [entry]);
+    renderer.apply(deltaAdd(makeInstance(1, 'transfer-station')));
+    for (const kind of ['transferYard', 'transferHall', 'transferScale'] as const) {
+      expect(renderer.partSlotsFor(1, kind)).toHaveLength(1);
+    }
+    expect(renderer.partSlotsFor(1, 'transferRig')).toHaveLength(TRANSFER_RIG_COUNT);
+    expect(renderer.partSlotsFor(1, 'transferPacker')).toHaveLength(TRANSFER_PACKER_COUNT);
+    expect([TRANSFER_RIG_COUNT, TRANSFER_PACKER_COUNT]).toEqual([2, 2]);
+  });
+
+  it('is a 1,500 m² hall, 10 m to the eaves, its ridge the catalog height, doors on the street side', () => {
+    expect(TRANSFER_HALL_SIZE.w * TRANSFER_HALL_SIZE.d).toBe(1_500);
+    expect(TRANSFER_HALL_SIZE.h).toBe(10);
+    expect(TRANSFER_HALL_SIZE.h + TRANSFER_ROOF_RISE).toBe(entry.height);
+    const hall = boundsOf('transferHall');
+    expect(hall.max.y).toBeCloseTo(entry.height, 5);
+    const layout = computeTransferLayout(entry.footprint);
+    // The doors stand proud of the street-side (+Z) wall.
+    expect(hall.max.z).toBeGreaterThan(layout.hall.z + TRANSFER_HALL_SIZE.d / 2);
+    for (const packer of layout.packers) {
+      expect(packer.z).toBeGreaterThan(layout.hall.z + TRANSFER_HALL_SIZE.d / 2);
+    }
+  });
+
+  it('runs a 53 ft trailer rig of about 70 ft, one sunk in the bay beside the hall and one waiting on the yard', () => {
+    expect(TRANSFER_TRAILER_SIZE.l).toBeCloseTo(53 * 0.3048, 1);
+    expect(TRANSFER_RIG_LENGTH).toBeCloseTo(70 * 0.3048, 0);
+    const rig = boundsOf('transferRig');
+    expect(rig.max.z - rig.min.z).toBeCloseTo(TRANSFER_RIG_LENGTH, 5);
+    const { hall, bay, rigs } = computeTransferLayout(entry.footprint);
+    expect(bay.x - TRANSFER_BAY_SIZE.w / 2).toBeCloseTo(hall.x + TRANSFER_HALL_SIZE.w / 2, 5);
+    expect(TRANSFER_RIG_LENGTH).toBeLessThan(TRANSFER_BAY_SIZE.l);
+    expect(rigs[0]).toEqual({ x: bay.x, z: bay.z, sunk: TRANSFER_BAY_SIZE.depth });
+    expect(rigs[1]!.sunk).toBe(0);
+
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [entry]);
+    renderer.apply(deltaAdd(makeInstance(1, 'transfer-station', { x: 0, z: 0 })));
+    const m = new THREE.Matrix4();
+    const ys = renderer.partSlotsFor(1, 'transferRig').map((slot) => {
+      renderer.getPartMatrix('transfer-station', 'transferRig', slot, m);
+      return decomposePosition(m).y;
+    });
+    expect(ys[0]).toBeCloseTo(RECYCLING_YARD_HEIGHT - TRANSFER_BAY_SIZE.depth, 5);
+    expect(ys[1]).toBeCloseTo(RECYCLING_YARD_HEIGHT, 5);
+  });
+
+  it('keeps the yard, hall, scale, rigs and packers inside the 4x5 lot, clear of one another', () => {
+    for (const kind of ['transferYard', 'transferHall', 'transferScale'] as const) {
+      const box = boundsOf(kind);
+      expect(box.min.x).toBeGreaterThanOrEqual(-halfW - 1e-9);
+      expect(box.max.x).toBeLessThanOrEqual(halfW + 1e-9);
+      expect(box.min.z).toBeGreaterThanOrEqual(-halfD - 1e-9);
+      expect(box.max.z).toBeLessThanOrEqual(halfD + 1e-9);
+    }
+    const yard = boundsOf('transferYard');
+    expect([yard.min.x, yard.max.x, yard.min.z, yard.max.z]).toEqual([
+      -halfW,
+      halfW,
+      -halfD,
+      halfD,
+    ]);
+    const scale = boundsOf('transferScale');
+    expect(scale.max.z - scale.min.z).toBeCloseTo(TRANSFER_WEIGHBRIDGE_SIZE.l, 5);
+
+    const layout = computeTransferLayout(entry.footprint);
+    const [packerW, , packerL] = sizeForKind(VehicleKind.Garbage);
+    const flat = (b: THREE.Box3) => ({
+      x: (b.min.x + b.max.x) / 2,
+      z: (b.min.z + b.max.z) / 2,
+      hw: (b.max.x - b.min.x) / 2,
+      hd: (b.max.z - b.min.z) / 2,
+    });
+    const rigHw = TRANSFER_TRAILER_SIZE.w / 2;
+    const boxes = [
+      flat(boundsOf('transferHall')),
+      flat(scale),
+      // The sunk rig stands in the bay, which is part of the hall; only the waiting one is apart.
+      { x: layout.rigs[1]!.x, z: layout.rigs[1]!.z, hw: rigHw, hd: TRANSFER_RIG_LENGTH / 2 },
+      ...layout.packers.map((p) => ({ ...p, hw: packerW / 2, hd: packerL / 2 })),
+    ];
+    for (const b of boxes) {
+      expect(b.x - b.hw).toBeGreaterThanOrEqual(-halfW);
+      expect(b.x + b.hw).toBeLessThanOrEqual(halfW);
+      expect(b.z - b.hd).toBeGreaterThanOrEqual(-halfD);
+      expect(b.z + b.hd).toBeLessThanOrEqual(halfD);
+    }
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i]!;
+        const b = boxes[j]!;
+        const overlap = Math.abs(a.x - b.x) < a.hw + b.hw && Math.abs(a.z - b.z) < a.hd + b.hd;
+        expect(overlap).toBe(false);
+      }
+    }
+    const sunk = layout.rigs[0]!;
+    expect(Math.abs(sunk.x - layout.bay.x) + rigHw).toBeLessThanOrEqual(TRANSFER_BAY_SIZE.w / 2);
+  });
+
+  it('places the rigs and packers at the rotated local position for each rotation, inside the turned lot', () => {
+    for (const rotation of [0, 1, 2, 3] as const) {
+      const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [entry]);
+      renderer.apply(deltaAdd(makeInstance(1, 'transfer-station', { x: 0, z: 0, rotation })));
+      const lot = footprintForRotation(entry, rotation);
+      const centerX = (lot.w / 2) * TILE_METERS;
+      const centerZ = (lot.d / 2) * TILE_METERS;
+      const layout = computeTransferLayout(entry.footprint);
+      const m = new THREE.Matrix4();
+      for (const [kind, locals] of [
+        ['transferRig', layout.rigs],
+        ['transferPacker', layout.packers],
+      ] as const) {
+        const slots = renderer.partSlotsFor(1, kind);
+        locals.forEach((local, i) => {
+          renderer.getPartMatrix('transfer-station', kind, slots[i]!, m);
+          const pos = decomposePosition(m);
+          const rotated = rotateLocalXZ(local.x, local.z, rotation);
+          expect(pos.x).toBeCloseTo(centerX + rotated.x, 5);
+          expect(pos.z).toBeCloseTo(centerZ + rotated.z, 5);
+          expect(pos.x).toBeGreaterThan(0);
+          expect(pos.x).toBeLessThan(lot.w * TILE_METERS);
+          expect(pos.z).toBeGreaterThan(0);
+          expect(pos.z).toBeLessThan(lot.d * TILE_METERS);
+        });
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // A kit that paves its lot, on a slope, over the instancer's plinth
 // ---------------------------------------------------------------------------
 
@@ -1550,7 +1732,12 @@ describe('a paved kit on sloped ground', () => {
   /** A 4% grade across X and 2% across Z, left unlevelled under the whole lot. */
   const slope = (x: number, z: number): number => 0.04 * x + 0.02 * z;
 
-  for (const entry of [makeRecyclingDepotEntry(), makeMrfEntry()]) {
+  const yardKinds: Record<string, UtilityKitPartKind> = {
+    'recycling-depot': 'recyclingYard',
+    'materials-recovery-facility': 'mrfYard',
+    'transfer-station': 'transferYard',
+  };
+  for (const entry of [makeRecyclingDepotEntry(), makeMrfEntry(), makeTransferEntry()]) {
     it(`keeps the plinth under the ${entry.id} yard, and the ground under its footing`, () => {
       for (const rotation of [0, 1] as const) {
         const scene = new THREE.Scene();
@@ -1561,7 +1748,7 @@ describe('a paved kit on sloped ground', () => {
         kits.apply(delta);
         instancer.apply(delta);
 
-        const yardKind = entry.id === 'recycling-depot' ? 'recyclingYard' : 'mrfYard';
+        const yardKind = yardKinds[entry.id]!;
         const m = new THREE.Matrix4();
         kits.getPartMatrix(entry.id, yardKind, kits.partSlotsFor(1, yardKind)[0]!, m);
         const yardTop = decomposePosition(m).y + RECYCLING_YARD_HEIGHT;
@@ -1598,7 +1785,7 @@ describe('a paved kit on sloped ground', () => {
 // ---------------------------------------------------------------------------
 
 describe('multiple kits coexisting', () => {
-  it('builds and applies all 10 kits from one catalog + one delta without cross-talk', () => {
+  it('builds and applies all 11 kits from one catalog + one delta without cross-talk', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
       makeTurbineEntry(),
       makeWaterTowerEntry(),
@@ -1609,12 +1796,14 @@ describe('multiple kits coexisting', () => {
       makeIncineratorEntry(),
       makeRecyclingDepotEntry(),
       makeMrfEntry(),
+      makeTransferEntry(),
       makeSmallParkEntry(),
     ]);
     renderer.apply(
       deltaAdd(
         makeInstance(9, 'recycling-depot', { x: 40, z: 0 }),
         makeInstance(10, 'materials-recovery-facility', { x: 50, z: 0 }),
+        makeInstance(11, 'transfer-station', { x: 60, z: 0 }),
         makeInstance(1, 'wind-turbine', { x: 0, z: 0 }),
         makeInstance(2, 'water-tower', { x: 5, z: 0 }),
         makeInstance(3, 'coal-plant', { x: 10, z: 0 }),
@@ -1639,6 +1828,8 @@ describe('multiple kits coexisting', () => {
     expect(renderer.partSlotsFor(9, 'recyclingTruck')).toHaveLength(4);
     expect(renderer.partSlotsFor(10, 'mrfTruck')).toHaveLength(4);
     expect(renderer.partSlotsFor(9, 'mrfTruck')).toHaveLength(0);
+    expect(renderer.partSlotsFor(11, 'transferRig')).toHaveLength(2);
+    expect(renderer.partSlotsFor(10, 'transferRig')).toHaveLength(0);
   });
 });
 

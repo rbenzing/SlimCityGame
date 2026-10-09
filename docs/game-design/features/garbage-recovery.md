@@ -42,8 +42,9 @@ plant never collects rubbish: it sorts recycling — the carts of the kerbside
 depots its streets connect to, then its own round of apartment blocks and
 businesses — sells the 87% a plant
 recovers, and sends the residue to the nearest final disposal site its streets
-reach. A transfer station keeps nothing and forwards everything. A landfill and
-an incinerator forward nothing, which is what makes them final.
+reach. A transfer station collects what no disposal site reaches, keeps it no
+longer than its tipping floor allows and forwards all of it. A landfill and an
+incinerator forward nothing, which is what makes them final.
 
 **A recovery facility with nothing behind it fills up and stops.** The residue
 has to go somewhere. Build a sorting plant and no landfill and its residue
@@ -60,11 +61,11 @@ body forces the two into the same one.
 
 ### The ladder
 
-| Building                    | Serves                                 | Diverts                           | Reach    | Cost / upkeep    | Unlocks at    |
-| --------------------------- | -------------------------------------- | --------------------------------- | -------- | ---------------- | ------------- |
-| Kerbside Recycling Depot    | 38,000 homes                           | 10% of a house's waste            | 32 tiles | ¢3,200 / ¢260    | Busy Township |
-| Transfer Station            | 20,000                                 | none                              | 40 tiles | ¢7,500 / ¢540    | Small City    |
-| Materials Recovery Facility | 50 t a day: the depots, then its round | blocks' and businesses' recycling | 48 tiles | ¢24,000 / ¢1,750 | Grand City    |
+| Building                    | Serves                                   | Diverts                           | Reach    | Cost / upkeep    | Unlocks at    |
+| --------------------------- | ---------------------------------------- | --------------------------------- | -------- | ---------------- | ------------- |
+| Kerbside Recycling Depot    | 38,000 homes                             | 10% of a house's waste            | 32 tiles | ¢3,200 / ¢260    | Busy Township |
+| Transfer Station            | 50 short tons a day, about 20,000 people | none                              | 40 tiles | ¢7,500 / ¢540    | Small City    |
+| Materials Recovery Facility | 50 t a day: the depots, then its round   | blocks' and businesses' recycling | 48 tiles | ¢24,000 / ¢1,750 | Grand City    |
 
 The Materials Recovery Facility is the third rung (decided 2026-10-08, see
 [below](#the-materials-recovery-facility-built-2026-10-08)): it sorts the
@@ -228,8 +229,11 @@ facility is within reach of every round, and the existing 28-tile landfill and
 three new reaches are calibrated against those two — 32, 40 and 48 tiles by
 facility size — an assumption, stated rather than dressed up.
 
-The transfer station inherits the finding. It pays for itself once the one-way
-haul exceeds a published 15–25 km, three to five times the width of the map, so
+The transfer station inherits the finding. EPA's costing puts its break-even
+at a **35-mile round trip**: past that, a 21 t trailer hauls more cheaply than
+the 7 t packers would drive themselves
+([EPA costing tool](https://www.epa.gov/system/files/documents/2024-05/costingtool-introduction-20180620.pdf)).
+That is about 28 km one way, more than five times the width of the map, so
 the honest translation is that it **forwards to any facility on the map at no
 distance penalty** — trailer economics never bind at our scale — and its value
 is purely that it collects where the disposal site cannot.
@@ -270,12 +274,13 @@ order of magnitude every time. Arithmetic in the
 | Building                    | Plan area     | Footprint | Height | Staff |
 | --------------------------- | ------------- | --------- | ------ | ----- |
 | Kerbside Recycling Depot    | 2,160 m²      | 2×3       | 8 m    | 5     |
-| Transfer Station            | 1,870 m²      | 3×4       | 9 m    | 4     |
+| Transfer Station            | 1,500 m² hall | 4×5       | 11 m   | 4     |
 | Materials Recovery Facility | 2,510 m² hall | 5×6       | 11 m   | 17    |
 
 Affordability holds: ¢3,200 at Busy Township, whose milestone reward is ¢15,000,
-and ¢24,000 at Grand City, whose reward is ¢75,000. The sorting plant is not
-sized by the massing formula but from a plant of its throughput, below.
+¢7,500 at Small City, whose reward is ¢40,000, and ¢24,000 at Grand City, whose
+reward is ¢75,000. The sorting plant and the transfer station are not sized by
+the massing formula but from built plants of their throughput, below.
 
 The depot is a fleet yard, four trucks at about 540 m² each, with a
 maintenance shed 8 m to the eaves for a side-loader's raised arm; four drivers
@@ -286,8 +291,14 @@ burns: 10 for the depot, four trucks out and back each day (a dial on the
 draft's 5 for one container pull), 20 for
 the sorting plant, a dial for its own four trucks and the depots' loads in,
 the diesel loaders on its tipping floor and its balers, and **25 for the
-transfer station** — dirtiest of the three despite
-doing the least, because it handles the whole stream in an open hall.
+transfer station**. All three are dials: no published figure normalises a
+waste site's pollution per tonne. The transfer station ranks above the sorting
+plant because what it handles is mixed, putrescible rubbish rather than clean
+recyclables, and below the incinerator's 120 and a landfill's nuisance,
+because it neither burns nor keeps anything and a modern station tips indoors,
+in an enclosed hall
+([EPA](https://archive.epa.gov/epawaste/nonhaz/municipal/web/html/transfer.html)).
+The painted landfill carries no pollution figure of its own yet.
 
 ### The kerbside recycling depot (built 2026-10-08)
 
@@ -427,6 +438,83 @@ private haulers.
   landfill pile growing slower again where the round runs, and a larger
   credit; with no landfill or incinerator connected, a plant that sorts for a
   week and then stops.
+
+### The transfer station (built 2026-10-08)
+
+The draft's transfer station served 20,000 on a 3×4 lot 9 m tall, from a
+participation figure and a plan-area sum. Its throughput holds up; its lot did
+not. Every figure below is re-sourced.
+
+- **What it is for.** Reach, and nothing else. It diverts nothing and is never
+  final: it collects only after the incinerators and the landfill have
+  collected, so what it takes is what no disposal site reaches, and it
+  forwards all of it to one that has room.
+- **How much it handles.** **50 short tons a day**, 45.36 t: a station in EPA's
+  small class, under 100 t a day
+  ([EPA transfer station design training](https://www.epa.gov/system/files/documents/2024-05/tribal-waste-mgmt-transfer-station-design-training-slide-deck1-4.pdf)).
+  It is the draft's 20,000 people: 20,000 at 2.2 kg is about 44 t, and a
+  typical rural station takes under 60 t a day for about 20,000 people
+  ([Waste360](https://www.waste360.com/waste-collection-transfer/rural-transfer-stations-built-for-the-long-haul)).
+  That is 181,440 units a day, **9,072 a garbage pass**, the same derivation
+  as the Materials Recovery Facility's.
+- **Whom it collects from.** Within its 40-tile road reach, in building id
+  order, up to that throughput and the room on its floor each pass. A building
+  reached by two stations gives each an equal share, as one reached by two
+  incinerators does.
+- **Its tipping floor.** EPA sizes a floor at 4,000 sq ft plus 20 sq ft for
+  each ton a day to hold one day's waste
+  ([Waste Advantage](https://wasteadvantagemag.com/determining-transfer-station-size-and-capacity/)),
+  and states cap how long waste may stay: Kansas wants the floor cleared and
+  the loaded trailers gone within 48 hours
+  ([K.A.R. 28-29-23a](https://www.law.cornell.edu/regulations/kansas/K-A-R-28-29-23a)),
+  and Oregon's Metro region allows 48 hours for dry waste. So the floor holds
+  at most **two days' throughput**, 362,880 units, about 91 t, derived; a full
+  floor stops the station collecting and the streets it served back up again.
+- **Where it sends it.** Each pass up to its throughput, to the nearest
+  landfill or incinerator its streets connect to that has room, at **any
+  distance** ([above](#catchments-and-the-one-figure-we-could-not-derive)):
+  nearest by road from its street, a landfill before an incinerator at the
+  same distance, the next nearest when one is full. Distance never reduces
+  what arrives. It lands in the landfill's pile or the incinerator's pit, and
+  the incinerator burns it on its next pass. A station that is bulldozed loses
+  its floor.
+- **The building.** **4×5 tiles**, 8,000 m², 2 acres: Isle of Wight County's
+  150 t a day station stands on 2 acres
+  ([Isle of Wight](https://www.spsava.gov/187/Isle-of-Wight)) and Mammoth
+  Lakes' on 2.42 ([CEQA](https://ceqanet.lci.ca.gov/2021050146)); the draft's
+  3×4, 4,800 m², is smaller than every real site found. A tipping hall of
+  **1,500 m²**: Becker County's 16,000 sq ft station holds three days at 55–60 t
+  a day ([CRA](https://www.cra-recycle.org/?p=5555)). It is **10 m** to the
+  eaves under a low-pitched roof, **11 m** at the ridge, because a tipping
+  packer needs 25–30 ft (7.6–9.1 m) clear
+  ([Waste Advantage](https://wasteadvantagemag.com/building-reuse-weighing-the-consequences/)).
+  Tall roll-up doors face the street; along the hall's side a sunken load-out
+  bay lets a loader push the floor down into a 53 ft (16 m) open-top transfer
+  trailer, with a second trailer waiting; a scale house and its weighbridge
+  stand at the entry. **4 staff**: the scale, the loader, a spotter and a lead
+  (North Platte, Nebraska ran 85 t a day with 6).
+- **Its power.** **5 kWh a tonne**: two small Irish stations measured 2.5–6.1
+  ([EPA Ireland](https://epawebapp.epa.ie/licences/lic_eDMS/090151b2802fc4c9.pdf)),
+  taken near the top for an enclosed, ventilated hall. 45.36 t a day is
+  227 kWh, a daily average of **0.00945 MW**, the incinerator's convention.
+  Its water is its staff's, 13 gallons a worker a day, 0.2 kL.
+- **Its trucks.** **Four**, in the refuse livery. The trucks are cosmetic, as
+  every service fleet is.
+- **Dials.** The 40-tile reach, ¢7,500 to build and ¢540 a month, pollution 25
+  and the unlock at Small City are kept from the draft. Against the sorting
+  plant both money figures sit at 0.31, near the real ratios: Becker County's
+  $2.9 million station against Kauai's $10.9 million plant is 0.27, and a
+  station's $15–25 a tonne to run — $15–20 at 100 tons a day
+  ([Waste360](https://waste360.com/archive/the-transfer-tune-up)), $25.34 in
+  Portland Metro's 2017 audit
+  ([Oregon Metro](https://www.oregonmetro.gov/sites/default/files/2019/03/12/private-transfer-station-rate-transparency-report-03122019.pdf)) —
+  against a plant's $86–90 to sort is 0.2–0.3.
+- **What the player sees.** A tipping hall with its doors to the street, a
+  transfer trailer sunk beside it and another waiting, a weighbridge at the
+  gate, refuse trucks reaching a neighbourhood the landfill's round never
+  did, that neighbourhood's trash gone from the lens and the landfill filling
+  by as much; with nothing connected behind it, a station that collects for
+  two days and then stops.
 
 ## What it is not
 

@@ -932,6 +932,18 @@ export interface SimSnapshot {
       residue: number;
       stopped: boolean;
     }[];
+    /**
+     * Each transfer station on the last pass: the units it collected and
+     * forwarded, what its tipping floor holds, and whether a full floor
+     * stopped it collecting.
+     */
+    transfers?: {
+      id: number;
+      collected: number;
+      forwarded: number;
+      stored: number;
+      stopped: boolean;
+    }[];
   };
   /**
    * Power lines — ZonePatch-shaped membership regions (data bytes 0/1,
@@ -1110,6 +1122,8 @@ export interface UtilitySpec {
  * with no buffer and no burn (both 0) — it never disposes of anything.
  * `sortRate` marks a Materials Recovery Facility: the recycling units it sorts
  * a pass, with `bufferCapacity` its residue store and no burn.
+ * `transferRate` marks a transfer station: the units it collects and forwards a
+ * pass, with `bufferCapacity` its tipping floor and no burn.
  */
 export interface GarbageSpec {
   collectionRange: number;
@@ -1118,6 +1132,7 @@ export interface GarbageSpec {
   trucks: number;
   servesHomes?: number;
   sortRate?: number;
+  transferRate?: number;
 }
 
 // 'transit' is additive — the bus-stop ploppable's category and the Transit

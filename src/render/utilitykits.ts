@@ -45,7 +45,13 @@
  *    side ("mrfHall"), a bale yard of stacked cubes ("mrfBales", one merged
  *    geometry), an office at the street corner ("mrfOffice") and four parked
  *    recycling trucks on the apron ("mrfTruck").
- *  Both paving kits stand on the highest ground under their lot (pavesLot),
+ *  - transfer-station: the same yard slab ("transferYard"), an enclosed
+ *    tipping hall under a low-pitched roof with three roll-up doors on the
+ *    street side and a sunken load-out bay along its flank ("transferHall"),
+ *    a scale house beside the weighbridge at the entry ("transferScale"), two
+ *    tractor-and-trailer transfer rigs, one sunk in the bay and one waiting
+ *    ("transferRig"), and two refuse packers on the apron ("transferPacker").
+ *  The paving kits stand on the highest ground under their lot (pavesLot),
  *  so the instancer's plinth never shows through their yard on a slope.
  *  - small-park: a flat lawn plate + path cross ("parkGround"), 2-3
  *    self-contained trees ("parkTree" — trunk+canopy built locally; this file
@@ -70,7 +76,7 @@ import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import { maxHeightOverRect } from './footprint';
 import { InstancedSlotPool } from './massing';
-import { buildServiceVehicleGeometry } from './servicevehicles';
+import { buildServiceVehicleGeometry, type ServiceVehicleKind } from './servicevehicles';
 import { sizeForKind } from './vehicles';
 
 // ---------------------------------------------------------------------------
@@ -88,6 +94,7 @@ export const UTILITY_KIT_CATALOG_IDS: readonly string[] = [
   'incinerator',
   'recycling-depot',
   'materials-recovery-facility',
+  'transfer-station',
   'small-park',
 ];
 
@@ -118,6 +125,11 @@ export type UtilityKitPartKind =
   | 'mrfBales'
   | 'mrfOffice'
   | 'mrfTruck'
+  | 'transferYard'
+  | 'transferHall'
+  | 'transferScale'
+  | 'transferRig'
+  | 'transferPacker'
   | 'parkGround'
   | 'parkTree'
   | 'parkBench';
@@ -1100,10 +1112,10 @@ function buildRecyclingOfficeGeometry(footprint: FootprintSize): THREE.BufferGeo
   return mergeParts([body, roof]);
 }
 
-/** One parked side-loader: the service fleet's recycling body at its real size, nose to local +Z, centred on its own origin on the ground. */
-function buildRecyclingTruckGeometry(): THREE.BufferGeometry {
-  const [sx, sy, sz] = sizeForKind(VehicleKind.Recycling);
-  const truck = buildServiceVehicleGeometry(VehicleKind.Recycling);
+/** One parked service-fleet truck of `kind` at its real size, nose to local +Z, centred on its own origin on the ground. */
+function buildParkedTruckGeometry(kind: ServiceVehicleKind): THREE.BufferGeometry {
+  const [sx, sy, sz] = sizeForKind(kind);
+  const truck = buildServiceVehicleGeometry(kind);
   truck.scale(sx, sy, sz);
   truck.translate(0, sy / 2, 0);
   return truck;
@@ -1265,6 +1277,304 @@ function buildMrfOfficeGeometry(footprint: FootprintSize): THREE.BufferGeometry 
   roof.translate(office.x, h + MRF_ROOF_CAP_HEIGHT / 2, office.z);
   paintVertexColor(roof, hexFromRgb(MRF_OFFICE_ROOF_RGB));
   return mergeParts([body, roof]);
+}
+
+// ---------------------------------------------------------------------------
+// transfer-station: an enclosed tipping hall on the back-left of a paved yard,
+// its roll-up doors facing the street (local +Z), a sunken load-out bay along
+// its right-hand wall with one transfer rig in it and another waiting beside
+// it, two refuse packers on the apron and a scale house beside the weighbridge
+// at the entry.
+// ---------------------------------------------------------------------------
+
+/** The tipping hall: 30 × 50 m is 1,500 m², 10 m to the eaves. */
+export const TRANSFER_HALL_SIZE = { w: 30, d: 50, h: 10 };
+/** The low-pitched roof's rise from the eaves to the ridge. */
+export const TRANSFER_ROOF_RISE = 1;
+/** A 53 ft open-top transfer trailer: 16.15 m long, 2.6 m wide, its rim 4.1 m up. */
+export const TRANSFER_TRAILER_SIZE = { w: 2.6, h: 4.1, l: 16.15 };
+/** A day-cab tractor; its fifth wheel sits under the trailer's front. */
+export const TRANSFER_TRACTOR_SIZE = { w: 2.5, h: 3.4, l: 6.5 };
+const TRANSFER_KINGPIN_OVERLAP = 1.3;
+/** A whole rig, nose to tail: about 70 ft. */
+export const TRANSFER_RIG_LENGTH =
+  TRANSFER_TRACTOR_SIZE.l + TRANSFER_TRAILER_SIZE.l - TRANSFER_KINGPIN_OVERLAP;
+/** The load-out bay along the hall: a rig drops into it to be loaded from the tipping floor. */
+export const TRANSFER_BAY_SIZE = { w: 4.9, l: 26, depth: 2.4 };
+/** A 70 ft truck scale, 11 ft wide, standing proud of the yard. */
+export const TRANSFER_WEIGHBRIDGE_SIZE = { w: 3.4, l: 21.3, h: 0.15 };
+export const TRANSFER_SCALE_HOUSE_SIZE = { w: 4, d: 6, h: 3.2 };
+export const TRANSFER_RIG_COUNT = 2;
+export const TRANSFER_PACKER_COUNT = 2;
+const TRANSFER_EDGE_MARGIN = 3;
+const TRANSFER_ROOF_OVERHANG = 0.4;
+const TRANSFER_ROOF_SKIN = 0.3;
+const TRANSFER_DOOR_SIZE = { w: 6, h: 7.5 };
+const TRANSFER_DOOR_THICKNESS = 0.3;
+const TRANSFER_DOOR_COUNT = 3;
+/** The tipping apron: clear yard in front of the doors for a packer to turn and back in. */
+const TRANSFER_DOOR_APRON = 14;
+const TRANSFER_BAY_WALL = { thickness: 0.3, height: 1.1 };
+/** Clear yard between the bay's outer wall and the waiting rig. */
+const TRANSFER_RIG_GAP = 3;
+/** Gap between the weighbridge and the scale house's window wall. */
+const TRANSFER_SCALE_GAP = 1.5;
+
+const TRANSFER_HALL_RGB: RGB = [0.55, 0.53, 0.45];
+const TRANSFER_ROOF_RGB: RGB = [0.34, 0.37, 0.38];
+const TRANSFER_DOOR_RGB: RGB = [0.25, 0.3, 0.33];
+const TRANSFER_BAY_FLOOR_RGB: RGB = [0.12, 0.12, 0.13];
+const TRANSFER_BAY_WALL_RGB: RGB = [0.5, 0.5, 0.48];
+const TRANSFER_SCALE_HOUSE_RGB: RGB = [0.7, 0.68, 0.6];
+const TRANSFER_SCALE_ROOF_RGB: RGB = [0.4, 0.42, 0.44];
+const TRANSFER_WEIGHBRIDGE_RGB: RGB = [0.42, 0.44, 0.45];
+const TRANSFER_TRACTOR_RGB: RGB = [0.48, 0.16, 0.12];
+const TRANSFER_TRAILER_RGB: RGB = [0.5, 0.52, 0.53];
+const TRANSFER_LOAD_RGB: RGB = [0.33, 0.3, 0.26];
+const TRANSFER_TYRE_RGB: RGB = [0.08, 0.08, 0.09];
+
+export interface TransferLayout {
+  /** Footprint-frame centres on the ground. */
+  hall: Vec2;
+  bay: Vec2;
+  weighbridge: Vec2;
+  scaleHouse: Vec2;
+  /** Footprint-frame centre of each rig and how far below the yard it stands; every nose points to local +Z. */
+  rigs: { x: number; z: number; sunk: number }[];
+  /** Footprint-frame centre of each parked packer; every nose points to local +Z. */
+  packers: Vec2[];
+}
+
+/**
+ * Hall hard against the back-left corner (margin inside the lot), the bay
+ * along its right-hand wall with a rig sunk in it, the waiting rig beside the
+ * bay, the packers one apron in front of the first two doors, and the
+ * weighbridge with its scale house at the front-right corner, on the way in.
+ * Pure; fixed per footprint.
+ */
+export function computeTransferLayout(footprint: FootprintSize): TransferLayout {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const hall: Vec2 = {
+    x: -halfW + TRANSFER_EDGE_MARGIN + TRANSFER_HALL_SIZE.w / 2,
+    z: -halfD + TRANSFER_EDGE_MARGIN + TRANSFER_HALL_SIZE.d / 2,
+  };
+  const bay: Vec2 = { x: hall.x + TRANSFER_HALL_SIZE.w / 2 + TRANSFER_BAY_SIZE.w / 2, z: hall.z };
+  const waitingX =
+    bay.x +
+    TRANSFER_BAY_SIZE.w / 2 +
+    TRANSFER_BAY_WALL.thickness +
+    TRANSFER_RIG_GAP +
+    TRANSFER_TRAILER_SIZE.w / 2;
+  const weighbridge: Vec2 = {
+    x:
+      halfW -
+      TRANSFER_EDGE_MARGIN -
+      TRANSFER_SCALE_HOUSE_SIZE.w -
+      TRANSFER_SCALE_GAP -
+      TRANSFER_WEIGHBRIDGE_SIZE.w / 2,
+    z: halfD - TRANSFER_EDGE_MARGIN - TRANSFER_WEIGHBRIDGE_SIZE.l / 2,
+  };
+  const scaleHouse: Vec2 = {
+    x: halfW - TRANSFER_EDGE_MARGIN - TRANSFER_SCALE_HOUSE_SIZE.w / 2,
+    z: weighbridge.z,
+  };
+  const packerL = sizeForKind(VehicleKind.Garbage)[2];
+  const packerZ = hall.z + TRANSFER_HALL_SIZE.d / 2 + TRANSFER_DOOR_APRON + packerL / 2;
+  const packers: Vec2[] = [];
+  for (let i = 0; i < TRANSFER_PACKER_COUNT; i++) {
+    packers.push({ x: transferDoorX(hall, i), z: packerZ });
+  }
+  return {
+    hall,
+    bay,
+    weighbridge,
+    scaleHouse,
+    rigs: [
+      { x: bay.x, z: bay.z, sunk: TRANSFER_BAY_SIZE.depth },
+      { x: waitingX, z: bay.z, sunk: 0 },
+    ],
+    packers,
+  };
+}
+
+/** The local X of the hall's `i`th door, the doors spread evenly across its street wall. */
+function transferDoorX(hall: Vec2, i: number): number {
+  return (
+    hall.x + (i - (TRANSFER_DOOR_COUNT - 1) / 2) * (TRANSFER_HALL_SIZE.w / TRANSFER_DOOR_COUNT)
+  );
+}
+
+/** A box `w` × `h` × `l` standing on `y0`, centred on (x, z), painted one colour. */
+function transferBox(
+  w: number,
+  h: number,
+  l: number,
+  x: number,
+  y0: number,
+  z: number,
+  rgb: RGB,
+): THREE.BufferGeometry {
+  const box = new THREE.BoxGeometry(w, h, l);
+  box.translate(x, y0 + h / 2, z);
+  return paintVertexColor(box, hexFromRgb(rgb));
+}
+
+/**
+ * The hall box, its low-pitched gable roof (ridge along the hall), the roll-up
+ * doors proud of the street-side wall, and the load-out bay along its right
+ * wall: a dark floor flush with the yard behind a low wall on its outer side
+ * and its back end, open to the street end for the rig to pull out. Local Y=0
+ * is the GROUND plane.
+ */
+function buildTransferHallGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { hall, bay } = computeTransferLayout(footprint);
+  const { w, d, h } = TRANSFER_HALL_SIZE;
+  const parts: THREE.BufferGeometry[] = [
+    transferBox(w, h, d, hall.x, 0, hall.z, TRANSFER_HALL_RGB),
+  ];
+
+  const halfSpan = w / 2 + TRANSFER_ROOF_OVERHANG;
+  const profile = new THREE.Shape();
+  profile.moveTo(-halfSpan, 0);
+  profile.lineTo(halfSpan, 0);
+  profile.lineTo(0, TRANSFER_ROOF_RISE);
+  profile.closePath();
+  const roofLength = d + 2 * TRANSFER_ROOF_OVERHANG;
+  const roof = new THREE.ExtrudeGeometry(profile, { depth: roofLength, bevelEnabled: false });
+  roof.translate(hall.x, h, hall.z - roofLength / 2);
+  parts.push(paintVertexColor(roof, hexFromRgb(TRANSFER_ROOF_RGB)));
+  // The roof's skin under the eaves, so the overhang reads from below.
+  parts.push(
+    transferBox(
+      2 * halfSpan,
+      TRANSFER_ROOF_SKIN,
+      roofLength,
+      hall.x,
+      h - TRANSFER_ROOF_SKIN,
+      hall.z,
+      TRANSFER_ROOF_RGB,
+    ),
+  );
+
+  for (let i = 0; i < TRANSFER_DOOR_COUNT; i++) {
+    parts.push(
+      transferBox(
+        TRANSFER_DOOR_SIZE.w,
+        TRANSFER_DOOR_SIZE.h,
+        TRANSFER_DOOR_THICKNESS,
+        transferDoorX(hall, i),
+        0,
+        hall.z + d / 2 + TRANSFER_DOOR_THICKNESS / 2,
+        TRANSFER_DOOR_RGB,
+      ),
+    );
+  }
+
+  const { w: bayW, l: bayL } = TRANSFER_BAY_SIZE;
+  const wall = TRANSFER_BAY_WALL;
+  parts.push(
+    transferBox(bayW, 0.02, bayL, bay.x, RECYCLING_YARD_HEIGHT, bay.z, TRANSFER_BAY_FLOOR_RGB),
+    transferBox(
+      wall.thickness,
+      RECYCLING_YARD_HEIGHT + wall.height,
+      bayL,
+      bay.x + bayW / 2 + wall.thickness / 2,
+      0,
+      bay.z,
+      TRANSFER_BAY_WALL_RGB,
+    ),
+    transferBox(
+      bayW + wall.thickness,
+      RECYCLING_YARD_HEIGHT + wall.height,
+      wall.thickness,
+      bay.x + wall.thickness / 2,
+      0,
+      bay.z - bayL / 2 - wall.thickness / 2,
+      TRANSFER_BAY_WALL_RGB,
+    ),
+  );
+  return mergeParts(parts);
+}
+
+/** The scale house (box + roof slab) and the weighbridge beside it, merged; local Y=0 is the GROUND plane. */
+function buildTransferScaleGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { scaleHouse, weighbridge } = computeTransferLayout(footprint);
+  const { w, d, h } = TRANSFER_SCALE_HOUSE_SIZE;
+  const bridge = TRANSFER_WEIGHBRIDGE_SIZE;
+  return mergeParts([
+    transferBox(w, h, d, scaleHouse.x, 0, scaleHouse.z, TRANSFER_SCALE_HOUSE_RGB),
+    transferBox(w + 0.4, 0.3, d + 0.4, scaleHouse.x, h, scaleHouse.z, TRANSFER_SCALE_ROOF_RGB),
+    transferBox(
+      bridge.w,
+      RECYCLING_YARD_HEIGHT + bridge.h,
+      bridge.l,
+      weighbridge.x,
+      0,
+      weighbridge.z,
+      TRANSFER_WEIGHBRIDGE_RGB,
+    ),
+  ]);
+}
+
+/**
+ * One transfer rig, nose to local +Z, centred on its own origin on the ground:
+ * a day-cab tractor whose fifth wheel sits under the front of a 53 ft open-top
+ * trailer, the trailer's walls round a load of rubbish, and the tyres as
+ * blocks under each axle.
+ */
+function buildTransferRigGeometry(): THREE.BufferGeometry {
+  const half = TRANSFER_RIG_LENGTH / 2;
+  const trailer = TRANSFER_TRAILER_SIZE;
+  const tractor = TRANSFER_TRACTOR_SIZE;
+  const deck = 1.0;
+  const skin = 0.08;
+  const tail = -half;
+  const trailerZ = tail + trailer.l / 2;
+  const wallH = trailer.h - deck;
+  const nose = half;
+  const tractorZ = nose - tractor.l / 2;
+  const tyre = (z: number, width: number): THREE.BufferGeometry =>
+    transferBox(width, 1.0, 1.0, 0, 0, z, TRANSFER_TYRE_RGB);
+  return mergeParts([
+    transferBox(trailer.w, 0.25, trailer.l, 0, deck, trailerZ, TRANSFER_TRAILER_RGB),
+    transferBox(
+      skin,
+      wallH,
+      trailer.l,
+      -trailer.w / 2 + skin / 2,
+      deck,
+      trailerZ,
+      TRANSFER_TRAILER_RGB,
+    ),
+    transferBox(
+      skin,
+      wallH,
+      trailer.l,
+      trailer.w / 2 - skin / 2,
+      deck,
+      trailerZ,
+      TRANSFER_TRAILER_RGB,
+    ),
+    transferBox(trailer.w, wallH, skin, 0, deck, tail + skin / 2, TRANSFER_TRAILER_RGB),
+    transferBox(trailer.w, wallH, skin, 0, deck, tail + trailer.l - skin / 2, TRANSFER_TRAILER_RGB),
+    transferBox(
+      trailer.w - 2 * skin,
+      1.6,
+      trailer.l - 2 * skin,
+      0,
+      deck + 0.25,
+      trailerZ,
+      TRANSFER_LOAD_RGB,
+    ),
+    tyre(tail + 2.0, trailer.w),
+    tyre(tail + 3.3, trailer.w),
+    transferBox(1.0, 0.4, tractor.l, 0, 0.7, tractorZ, TRANSFER_TYRE_RGB),
+    transferBox(tractor.w - 0.2, 1.2, 1.8, 0, 0.9, nose - 0.9, TRANSFER_TRACTOR_RGB),
+    transferBox(tractor.w, tractor.h - 0.9, 2.4, 0, 0.9, nose - 1.8 - 1.2, TRANSFER_TRACTOR_RGB),
+    tyre(nose - 1.3, tractor.w),
+    tyre(nose - tractor.l + 1.0, tractor.w),
+    tyre(nose - tractor.l + 2.3, tractor.w),
+  ]);
 }
 
 // ---------------------------------------------------------------------------
@@ -1579,6 +1889,8 @@ export class UtilityKitRenderer {
         return this.buildRecyclingDepotKit(entry);
       case 'materials-recovery-facility':
         return this.buildMrfKit(entry);
+      case 'transfer-station':
+        return this.buildTransferKit(entry);
       case 'small-park':
         return this.buildSmallParkKit(entry);
       default:
@@ -1788,7 +2100,7 @@ export class UtilityKitRenderer {
         ),
         recyclingTruck: new InstancedSlotPool(
           this.scene,
-          buildRecyclingTruckGeometry(),
+          buildParkedTruckGeometry(VehicleKind.Recycling),
           lambert(),
           INITIAL_KIT_CAPACITY * RECYCLING_TRUCK_COUNT,
         ),
@@ -1809,7 +2121,31 @@ export class UtilityKitRenderer {
         mrfHall: pool(buildMrfHallGeometry(entry.footprint)),
         mrfBales: pool(buildMrfBalesGeometry(entry.footprint)),
         mrfOffice: pool(buildMrfOfficeGeometry(entry.footprint)),
-        mrfTruck: pool(buildRecyclingTruckGeometry(), INITIAL_KIT_CAPACITY * MRF_TRUCK_COUNT),
+        mrfTruck: pool(
+          buildParkedTruckGeometry(VehicleKind.Recycling),
+          INITIAL_KIT_CAPACITY * MRF_TRUCK_COUNT,
+        ),
+      },
+    };
+  }
+
+  private buildTransferKit(entry: BuildingCatalogEntry): KitDefinition {
+    const lambert = (): THREE.MeshLambertMaterial =>
+      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const pool = (geometry: THREE.BufferGeometry, capacity = INITIAL_KIT_CAPACITY) =>
+      new InstancedSlotPool(this.scene, geometry, lambert(), capacity);
+    return {
+      entry,
+      pavesLot: true,
+      pools: {
+        transferYard: pool(buildRecyclingYardGeometry(entry.footprint)),
+        transferHall: pool(buildTransferHallGeometry(entry.footprint)),
+        transferScale: pool(buildTransferScaleGeometry(entry.footprint)),
+        transferRig: pool(buildTransferRigGeometry(), INITIAL_KIT_CAPACITY * TRANSFER_RIG_COUNT),
+        transferPacker: pool(
+          buildParkedTruckGeometry(VehicleKind.Garbage),
+          INITIAL_KIT_CAPACITY * TRANSFER_PACKER_COUNT,
+        ),
       },
     };
   }
@@ -1943,6 +2279,9 @@ export class UtilityKitRenderer {
         return;
       case 'materials-recovery-facility':
         this.applyMrf(kit, building, entry, centerX, groundY, centerZ, rotation);
+        return;
+      case 'transfer-station':
+        this.applyTransfer(kit, building, entry, centerX, groundY, centerZ, rotation);
         return;
       case 'small-park':
         this.applySmallPark(kit, building, entry, centerX, groundY, centerZ, rotation);
@@ -2195,6 +2534,38 @@ export class UtilityKitRenderer {
           rotation,
         );
       }),
+    };
+    this.instances.set(building.id, { catalogId: building.catalogId, slots });
+  }
+
+  private applyTransfer(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    centerX: number,
+    groundY: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+  ): void {
+    const { transferYard, transferHall, transferScale, transferRig, transferPacker } = kit.pools;
+    if (!transferYard || !transferHall || !transferScale || !transferRig || !transferPacker) return;
+
+    const layout = computeTransferLayout(entry.footprint);
+    const placeLocal = (pool: InstancedSlotPool, local: Vec2, y: number): number => {
+      const rotated = rotateLocalXZ(local.x, local.z, rotation);
+      return this.placeAt(pool, centerX + rotated.x, y, centerZ + rotated.z, rotation);
+    };
+    const slots = {
+      transferYard: [this.placeAt(transferYard, centerX, groundY, centerZ, rotation)],
+      transferHall: [this.placeAt(transferHall, centerX, groundY, centerZ, rotation)],
+      transferScale: [this.placeAt(transferScale, centerX, groundY, centerZ, rotation)],
+      // One rig stands in the sunken bay, below the yard; the other and the packers stand on it.
+      transferRig: layout.rigs.map((rig) =>
+        placeLocal(transferRig, rig, groundY + RECYCLING_YARD_HEIGHT - rig.sunk),
+      ),
+      transferPacker: layout.packers.map((packer) =>
+        placeLocal(transferPacker, packer, groundY + RECYCLING_YARD_HEIGHT),
+      ),
     };
     this.instances.set(building.id, { catalogId: building.catalogId, slots });
   }

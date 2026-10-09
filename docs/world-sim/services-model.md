@@ -123,6 +123,23 @@ regional again. It draws 0.0378 MW, 20 kWh a tonne over the day, and its four
 trucks wear the recycling livery. The figures and sources are in
 [../game-design/features/garbage-recovery.md](../game-design/features/garbage-recovery.md#the-materials-recovery-facility-built-2026-10-08).
 
+The **transfer station** is a catalog ploppable (4×5, 11 m, unlocks at Small
+City, ¢7,500 to build, ¢540/month) that lends reach and diverts nothing. It
+collects last, after the incinerators and the landfill, within a 40-tile
+road-BFS reach and in building id order, so it takes only what no disposal
+site reaches: up to 50 short tons a day, 9,072 units a pass
+(`TRANSFER_UNITS_PER_PASS`), and no more than the room on its tipping floor,
+which holds two days of that (362,880 units, `TRANSFER_FLOOR_UNITS`, the
+common 48-hour state limit). Several stations over one building share it as
+incinerators do. Each pass it forwards up to 9,072 units from its floor to the
+nearest landfill or incinerator its streets connect to that has room, at any
+distance (a landfill first on a tie, the overflow to the next), into its pile
+or pit; distance never reduces what arrives. With none that has room its floor
+fills, and a full floor stops it collecting. It draws 0.00945 MW, 5 kWh a
+tonne over the day, and its four trucks wear the refuse livery. The figures
+and sources are in
+[../game-design/features/garbage-recovery.md](../game-design/features/garbage-recovery.md#the-transfer-station-built-2026-10-08).
+
 **Collection** reuses the same road-BFS mechanism a service building uses
 ([Coverage and funding](#coverage-and-funding)) and shares the load the way a
 service's capacity does. Buildings go in id order for determinism. The
@@ -130,8 +147,9 @@ incinerators collect first, since they process what they take where a
 landfill only keeps it (the waste hierarchy's order), and a building reached
 by several incinerators with room gives each an equal share, a unit at a
 time round the group, so two plants over one town carry the same load and a
-full one's share goes to the others; the landfill then takes what they left.
-A full facility collects nothing and trash
+full one's share goes to the others; the landfill then takes what they left,
+and the transfer stations what the landfill left. A full facility collects
+nothing and trash
 backs up on the source tiles. Buildings reached by no facility, or only full
 ones, keep their trash and it shows on the `'trash'` lens — but as currently
 implemented this uncollected trash does not itself feed LandValue or Happiness;

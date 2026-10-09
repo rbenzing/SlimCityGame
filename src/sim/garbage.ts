@@ -35,7 +35,13 @@
  * MRF's residue fills its store and is forwarded to the nearest final facility
  * its streets reach; a full store stops it.
  *
- * The landfill fill, incinerator buffers and MRF residue stores are saved
+ * Transfer stations lend reach and divert nothing: they collect last, after the
+ * incinerators and the landfill, so they take only what no disposal site
+ * reaches, up to their throughput and the room on their tipping floor, and
+ * forward up to that throughput each pass to the nearest final facility their
+ * streets reach. A full floor stops a station collecting.
+ *
+ * The landfill fill, incinerator buffers, MRF residue stores and tipping floors are saved
  * (GarbageSaveState, in the save meta); the per-tile `trash` layer and the trucks are RUNTIME state that
  * rebuilds within a few ticks of a load. Pure of three.js/DOM; deterministic (no
  * Math.random/Date.now) — collection order is building-id-stable.
@@ -204,6 +210,27 @@ export interface MrfSorted {
 }
 
 /**
+ * A placed transfer station (catalog `garbage` spec with `transferRate`), by
+ * building instance id: its road-BFS reach, the units it collects and forwards
+ * a pass, and what its tipping floor holds.
+ */
+export interface GarbageTransfer {
+  id: number;
+  collectionRange: number;
+  transferRate: number;
+  floorCapacity: number;
+}
+
+/** What a transfer station did on the last pass, for the UI readout. */
+export interface TransferMoved {
+  id: number;
+  collected: number;
+  forwarded: number;
+  stored: number;
+  stopped: boolean;
+}
+
+/**
  * A placed incinerator (catalog `garbage` spec), by building instance id. Its
  * footprint tiles come from the grid, like any building; `collectionRange` is
  * the road-BFS radius it services, `bufferCapacity` how much it can hold, and
@@ -228,6 +255,8 @@ export interface GarbageSaveState {
   recoveredThisMonth?: number;
   /** Each MRF's stored residue, by building id; absent in older saves. */
   mrfs?: { id: number; residue: number }[];
+  /** What each transfer station's tipping floor holds, by building id; absent in older saves. */
+  transfers?: { id: number; stored: number }[];
 }
 
 const clampTile = (v: number): number => (v < 0 ? 0 : v > TRASH_TILE_MAX ? TRASH_TILE_MAX : v);
@@ -272,7 +301,7 @@ export function incineratorEmission(pollution: number, burned: number, burnRate:
 
 /** A collector's reach and what it can still take this pass. */
 interface Collector {
-  facility: GarbageFacility;
+  id: number;
   coverage: ReadonlyMap<number, number>;
   remaining: number;
   collected: number;
@@ -299,6 +328,10 @@ export class GarbageSystem {
   private regionalSortedToday = 0;
   /** What each MRF did on the last pass. */
   private mrfsSorted: MrfSorted[] = [];
+  /** What each transfer station's tipping floor holds, by building id. */
+  private readonly transferFloor = new Map<number, number>();
+  /** What each transfer station did on the last pass. */
+  private transfersMoved: TransferMoved[] = [];
 
   constructor(size: number) {
     this.trash = new Uint8Array(size * size);
@@ -306,11 +339,13 @@ export class GarbageSystem {
 
   /**
    * Kerbside and MRF rounds + generation + collection (incinerator facilities
-   * in equal shares, then the landfill area for what they left) + incinerator
-   * burn. Call on the GARBAGE_PERIOD cadence; `pass` is the running count of
-   * garbage passes, which fixes how much each building emits. `facilities` is
-   * empty when no incinerator is placed, `depots` when no kerbside recycling
-   * depot is, `mrfs` when no Materials Recovery Facility is.
+   * in equal shares, then the landfill area for what they left, then the
+   * transfer stations for what it left) + incinerator burn + transfer
+   * forwarding. Call on the GARBAGE_PERIOD cadence; `pass` is the running
+   * count of garbage passes, which fixes how much each building emits.
+   * `facilities` is empty when no incinerator is placed, `depots` when no
+   * kerbside recycling depot is, `mrfs` when no Materials Recovery Facility
+   * is, `transfers` when no transfer station is.
    */
   tick(
     grid: GridState,
@@ -319,6 +354,7 @@ export class GarbageSystem {
     facilities: readonly GarbageFacility[] = [],
     depots: readonly GarbageDepot[] = [],
     mrfs: readonly GarbageMrf[] = [],
+    transfers: readonly GarbageTransfer[] = [],
   ): void {
     if (pass % GARBAGE_PASSES_PER_DAY === 0) {
       this.mrfSortedToday.clear();
@@ -332,6 +368,7 @@ export class GarbageSystem {
     this.generate(footprints, ordered, pass, splits);
     this.collectAndBurnIncinerators(grid, footprints, ordered, facilities);
     this.collectLandfill(grid, footprints, ordered);
+    this.collectAndForwardTransfers(grid, footprints, ordered, transfers, facilities);
   }
 
   /**
@@ -440,7 +477,7 @@ export class GarbageSystem {
       const recovered = recoveredOf(before, sorted);
       this.recoveredUnits += recovered;
       this.mrfSortedToday.set(m.id, before + sorted);
-      const residue = this.forwardResidue(
+      const residue = this.forwardToFinal(
         grid,
         footprints,
         network,
@@ -456,12 +493,13 @@ export class GarbageSystem {
   }
 
   /**
-   * Sends `units` of an MRF's residue to the final facilities on its road
-   * `network` (its street's, at any distance) — nearest first, a landfill
-   * before an incinerator at the same distance, then by incinerator id — each
-   * taking up to its room. Returns what is left in the MRF's store.
+   * Sends `units` from a non-final facility (an MRF's residue, a transfer
+   * station's floor) to the final facilities on its road `network` (its
+   * street's, at any distance) — nearest first, a landfill before an
+   * incinerator at the same distance, then by incinerator id — each taking up
+   * to its room. Returns what is left unsent.
    */
-  private forwardResidue(
+  private forwardToFinal(
     grid: GridState,
     footprints: ReadonlyMap<number, number[]>,
     network: () => ReadonlyMap<number, number> | null,
@@ -592,28 +630,90 @@ export class GarbageSystem {
     for (const f of ordered) {
       const remaining = f.bufferCapacity - (this.incineratorStore.get(f.id) ?? 0);
       const coverage = remaining > 0 ? this.reachOf(grid, footprints, f) : null;
-      if (coverage) collectors.push({ facility: f, coverage, remaining, collected: 0 });
+      if (coverage) collectors.push({ id: f.id, coverage, remaining, collected: 0 });
     }
-    if (collectors.length > 0) {
-      for (const b of buildings) {
-        const btiles = footprints.get(b.id);
-        if (!btiles || btiles.length === 0) continue;
-        const reaching = collectors.filter(
-          (c) => c.remaining > 0 && btiles.some((ti) => (c.coverage.get(ti) ?? 0) > 0),
-        );
-        if (reaching.length === 0) continue;
-        const taken = this.shareOut(this.trashOn(btiles), reaching);
-        this.takeFrom(btiles, taken);
-      }
-    }
+    this.collectShared(footprints, buildings, collectors);
 
-    const collectedBy = new Map(collectors.map((c) => [c.facility.id, c.collected]));
+    const collectedBy = new Map(collectors.map((c) => [c.id, c.collected]));
     for (const f of ordered) {
       let stored = (this.incineratorStore.get(f.id) ?? 0) + (collectedBy.get(f.id) ?? 0);
       const burned = Math.min(stored, Math.max(0, f.burnRate));
       stored -= burned;
       this.incineratorStore.set(f.id, stored);
       this.incineratorBurned.set(f.id, burned);
+    }
+  }
+
+  /**
+   * The transfer stations, last to collect, take what the incinerators and the
+   * landfill left in their reach: each up to the lesser of its throughput and
+   * its floor's room, nothing once the floor is full, a building reached by
+   * several shared out between them. Then each, in id order, forwards up to its
+   * throughput from its floor to the final facilities its streets connect to.
+   * Floors of removed stations are dropped.
+   */
+  private collectAndForwardTransfers(
+    grid: GridState,
+    footprints: ReadonlyMap<number, number[]>,
+    buildings: readonly GarbageBuilding[],
+    transfers: readonly GarbageTransfer[],
+    facilities: readonly GarbageFacility[],
+  ): void {
+    const live = new Set(transfers.map((s) => s.id));
+    for (const id of [...this.transferFloor.keys()]) {
+      if (!live.has(id)) this.transferFloor.delete(id);
+    }
+    this.transfersMoved = [];
+    const ordered = [...transfers].sort((a, b) => a.id - b.id);
+    const collectors: Collector[] = [];
+    for (const s of ordered) {
+      const room = s.floorCapacity - (this.transferFloor.get(s.id) ?? 0);
+      const remaining = Math.min(s.transferRate, room);
+      const coverage = remaining > 0 ? this.reachOf(grid, footprints, s) : null;
+      if (coverage) collectors.push({ id: s.id, coverage, remaining, collected: 0 });
+    }
+    this.collectShared(footprints, buildings, collectors);
+
+    const collectedBy = new Map(collectors.map((c) => [c.id, c.collected]));
+    for (const s of ordered) {
+      const before = this.transferFloor.get(s.id) ?? 0;
+      const collected = collectedBy.get(s.id) ?? 0;
+      const held = before + collected;
+      const load = Math.min(held, Math.max(0, s.transferRate));
+      const network = (): ReadonlyMap<number, number> | null =>
+        roadNetworkOf(grid, footprints.get(s.id));
+      const forwarded = load - this.forwardToFinal(grid, footprints, network, load, facilities);
+      const stored = held - forwarded;
+      this.transferFloor.set(s.id, stored);
+      this.transfersMoved.push({
+        id: s.id,
+        collected,
+        forwarded,
+        stored,
+        stopped: before >= s.floorCapacity,
+      });
+    }
+  }
+
+  /**
+   * Each building in id order gives up the trash on its tiles to the
+   * collectors that reach it and still have room, shared out between them.
+   */
+  private collectShared(
+    footprints: ReadonlyMap<number, number[]>,
+    buildings: readonly GarbageBuilding[],
+    collectors: Collector[],
+  ): void {
+    if (collectors.length === 0) return;
+    for (const b of buildings) {
+      const btiles = footprints.get(b.id);
+      if (!btiles || btiles.length === 0) continue;
+      const reaching = collectors.filter(
+        (c) => c.remaining > 0 && btiles.some((ti) => (c.coverage.get(ti) ?? 0) > 0),
+      );
+      if (reaching.length === 0) continue;
+      const taken = this.shareOut(this.trashOn(btiles), reaching);
+      this.takeFrom(btiles, taken);
     }
   }
 
@@ -708,6 +808,16 @@ export class GarbageSystem {
     return this.mrfResidue.get(id) ?? 0;
   }
 
+  /** What each transfer station collected, forwarded and holds after the last pass. */
+  transferSnapshot(): TransferMoved[] {
+    return this.transfersMoved.map((s) => ({ ...s }));
+  }
+
+  /** Units on the given transfer station's tipping floor (0 if unknown). */
+  transferStored(id: number): number {
+    return this.transferFloor.get(id) ?? 0;
+  }
+
   /** Total trash units piled in the landfill area. */
   landfillStored(): number {
     return this.landfillStoredUnits;
@@ -737,9 +847,11 @@ export class GarbageSystem {
     this.mrfSortedToday.clear();
     this.regionalSortedToday = 0;
     this.mrfsSorted = [];
+    this.transferFloor.clear();
+    this.transfersMoved = [];
   }
 
-  /** The persistable fill state (landfill pile, incinerator buffers, MRF residue, month's recovery). */
+  /** The persistable fill state (landfill pile, incinerator buffers, MRF residue, tipping floors, month's recovery). */
   serializeState(): GarbageSaveState {
     return {
       recoveredThisMonth: this.recoveredUnits,
@@ -751,6 +863,10 @@ export class GarbageSystem {
         .filter(([, residue]) => residue > 0)
         .sort((a, b) => a[0] - b[0])
         .map(([id, residue]) => ({ id, residue })),
+      transfers: [...this.transferFloor.entries()]
+        .filter(([, stored]) => stored > 0)
+        .sort((a, b) => a[0] - b[0])
+        .map(([id, stored]) => ({ id, stored })),
     };
   }
 
@@ -766,6 +882,10 @@ export class GarbageSystem {
     this.mrfResidue.clear();
     for (const { id, residue } of state.mrfs ?? []) {
       if (residue > 0) this.mrfResidue.set(id, residue);
+    }
+    this.transferFloor.clear();
+    for (const { id, stored } of state.transfers ?? []) {
+      if (stored > 0) this.transferFloor.set(id, stored);
     }
   }
 }

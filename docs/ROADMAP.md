@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 5,185 tests passing across 170 test files, run 2026-10-08.
+**Test suite:** 5,208 tests passing across 171 test files, run 2026-10-08.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -140,10 +140,9 @@ with; and a small house on prime land torn down for a plex.
 
 **Next:** garbage recovery
 ([garbage-recovery.md](game-design/features/garbage-recovery.md)), the
-municipal-services epic the player chose. Its first slice put the whole
-garbage chain on one real unit, its second added the kerbside recycling
-depot and its third the materials recovery facility; the transfer station
-follows. After it, the other municipal services
+municipal-services epic the player chose, is complete: the garbage chain on
+one real unit, the kerbside recycling depot, the materials recovery facility
+and the transfer station. Next on the shelf are the other municipal services
 programme's epics
 ([municipal-services.md](game-design/features/municipal-services.md)), the
 [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
@@ -288,6 +287,36 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The transfer station (last slice of garbage recovery, built 2026-10-08)
+
+The draft's station served 20,000 people on a 3×4 lot, 9 m tall, and was
+"dirtiest per tonne" for handling the whole stream in an open hall. Its
+throughput held up and the rest was corrected:
+
+- **Throughput.** 50 short tons a day, a small station in EPA's classes, which
+  is the draft's 20,000 people at 2.2 kg each (a typical rural station is under
+  60 tons a day and serves about 20,000).
+- **Size.** A 4×5 lot of about 2 acres; real sites run 2–2.4 acres, and the
+  draft's 3×4 was smaller than every one found. The hall is about 1,500 m²
+  (Becker County's 16,000 sq ft holds three days at a similar tonnage). It is
+  11 m tall, for the 25–30 ft that trucks tipping with raised bodies need,
+  which 9 m overall could not give.
+- **Staff and power.** Four staff; 5 kWh a tonne.
+- **Pollution.** Modern stations are enclosed, so "open hall" went. Pollution
+  stays a stated dial at 25, between the recovery facility and the
+  incinerator, since nothing published compares them per tonne.
+
+The station diverts nothing; it lends reach. It collects only after the
+incinerators and the landfill, so it takes what no disposal site reaches, and
+each pass it forwards up to its throughput to the nearest landfill or
+incinerator its streets connect to, at any distance. EPA puts the haul's
+break-even at 35 miles round trip, several times the map. Its tipping floor
+holds at most two days, the common 48-hour state limit, and a full floor
+stops it collecting.
+
+This completes garbage recovery: the unit, the kerbside depot, the recovery
+facility and the transfer station.
 
 ### The materials recovery facility (third slice of garbage recovery, built 2026-10-08)
 

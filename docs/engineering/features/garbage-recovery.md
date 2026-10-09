@@ -213,6 +213,50 @@ a store of residue rather than to collected trash.
   and its yard carries an 8 m footing, so on a slope the instancer's plinth
   stays under the yard and the low side shows a graded pad, not a gap.
 
+### The transfer station (built 2026-10-08)
+
+The second rung, and the forwarding rule applied to collected rubbish. It
+diverts nothing.
+
+- **Data.** `GarbageSpec` gains an optional `transferRate`, the units it moves
+  a garbage pass: an entry with it is a transfer station, never a disposal
+  facility, and its `bufferCapacity` is its tipping floor. The catalog entry,
+  `transfer-station`, is 4×5 and 11 m, `collectionRange` 40, `trucks` 4,
+  `transferRate` 9,072 (`TRANSFER_UNITS_PER_PASS`, from
+  `TRANSFER_SHORT_TONS_PER_DAY` 50 by the same helper that derives
+  `MRF_SORT_UNITS_PER_PASS`), `bufferCapacity` 362,880
+  (`TRANSFER_FLOOR_UNITS`, `TRANSFER_FLOOR_DAYS` 2 of that), `powerUse`
+  0.00945 MW (5 kWh a tonne, the day's use over 24 hours), `waterUse` 0.2 kL
+  (4 staff), pollution 25, ¢7,500, ¢540 a month, unlocked at Small City
+  (milestone 4).
+- **The step**, in `GarbageSystem.tick` last, after the incinerators and then
+  the landfill have collected. Stations go in id order; each can take this
+  pass the lesser of `transferRate` and its floor's room, and nothing when the
+  floor is full (it is **stopped**). Buildings in its road reach (`reachOf`),
+  in id order, give up their tile trash the way they do to incinerators: one
+  reached by several stations shares out a unit at a time round them
+  (`shareOut`). Then each station, in id order, forwards up to `transferRate`
+  of its floor through the MRF's forwarding (`forwardToFinal`): the final
+  facilities on its street's road network, nearest first, ties to the
+  landfill, then by incinerator id, each up to its room. Its road network is
+  walked at most once a pass, and only when the floor holds something. What
+  reaches an incinerator's pit is burned on its next pass.
+- **Snapshot.** `SimSnapshot.garbage` gains an optional
+  `transfers: { id, collected, forwarded, stored, stopped }[]`: what each
+  station collected and forwarded on the last pass, what its floor holds, and
+  whether a full floor stopped it. Stations are not in the incinerator list.
+- **Trucks.** A station is a `TruckDepot` in the refuse livery.
+- **Saves.** `GarbageSaveState` gains an optional `transfers: { id, stored }[]`,
+  only stations holding something. Additive, no `SAVE_VERSION` bump; an old
+  save has none. A station no longer placed drops its floor.
+- **Render.** A kit in `utilitykits.ts` that paves its lot: a yard slab over
+  the 80 × 100 m lot, a 30 × 50 m tipping hall 10 m to the eaves under a
+  low-pitched roof whose ridge is the catalog's 11 m, three roll-up doors
+  7.5 m tall on the street side, a sunken load-out bay along the hall's side
+  with one tractor and 16 m open-top trailer in it and one waiting in the
+  yard, two parked refuse packers on the apron, and a scale house beside a
+  21.3 × 3.4 m weighbridge at the entry, all inside the lot.
+
 ### The forwarding step
 
 One rule, in `GarbageSystem.tick` ahead of the existing disposal passes, because
@@ -261,29 +305,36 @@ gross floor area is a **volume proxy** here and the sizing runs the other way:
 derive single-level plan area from throughput and vehicle movement, ÷ 185 m² a
 tile, round up to a rectangle, take height from the process's clear height.
 
-| Plan area (m²)     | Recycling Centre | Transfer Station |
-| ------------------ | ---------------- | ---------------- |
-| Tipping / drop-off | 269              | 550              |
-| Process            | 168              | 300              |
-| Aisle, load-out    | 105              | —                |
-| Weighbridge, queue | 70               | 150              |
-| Site circulation   | 280              | 790              |
-| Office, welfare    | —                | 80               |
-| **Total ÷ 185**    | **892** → 4.8    | **1,870** → 10.1 |
-| Footprint, height  | **2×3**, **8 m** | **3×4**, **9 m** |
-| Formula GFA        | 6×185×2.5=2,775  | 12×185×2.8=6,244 |
-| Occupant check     | 3 × 9.3 = 28     | 4 × 9.3 = 37     |
+| Plan area (m²)     | Recycling Centre | Transfer Station        |
+| ------------------ | ---------------- | ----------------------- |
+| Tipping / drop-off | 269              | 557                     |
+| Process            | 168              | —                       |
+| Aisle, load-out    | 105              | 943                     |
+| Weighbridge, queue | 70               | 100                     |
+| Site circulation   | 280              | 6,400                   |
+| Office, welfare    | —                | in the scale house      |
+| **Total ÷ 185**    | **892** → 4.8    | **8,000**, a real site  |
+| Footprint, height  | **2×3**, **8 m** | **4×5**, **11 m**       |
+| Formula GFA        | 6×185×2.5=2,775  | 20×185×3.44=12,719      |
+| Occupant check     | 3 × 9.3 = 28     | 4 × 9.3 = 37            |
 
 The drivers. **Recycling centre:** six 30 yd³ roll-offs at 2.4 m wide, each
 needing 6.7 m of container and 12 m of hook-lift pull clearance, a 7.3 m aisle
 and eight 2.7 × 5.5 m stalls; 2×3 rather than 5 tiles, because a 1×5 strip
 cannot hold a 26 m service depth, and 8 m is hook-lift tipping height plus door
-clearance. **Transfer station:** 44 t/day at one unloading stall per
-25–30 t/day is two stalls at 4.0 × 24 m, plus a one-day surge pile at 300 kg/m³
-stacked 2 m and one below-grade trailer position at 22 × 4.9 m; 9 m is inside
-the published 7.5–9 m tipping-hall clear height and above a rear loader's raised
-tailgate. In both the occupant check lands at 1–4% of the plan area — the
-evidence that throughput, not head count, drives the size. **The Materials
+clearance. **Transfer station**, sized like the recovery facility from built
+sites rather than the sum: at 50 short tons a day, EPA's 4,000 sq ft plus
+20 sq ft a ton a day for each day held gives a two-day floor of 6,000 sq ft,
+557 m²; the rest of a 1,500 m² hall (Becker County's 16,000 sq ft at 55–60 t a
+day) is push wall, loader aisle and one sunken load-out bay for a 53 ft
+(16 m) open-top trailer behind its tractor, about 22 × 4.9 m. A 21 m
+weighbridge and a scale house take about 100 m², and the rest of the site is
+queue, trailer parking and turning. Real stations of this size stand on 2–2.4
+acres (Isle of Wight's 150 t a day on 2, Mammoth Lakes on 2.42), so 4×5 tiles,
+8,000 m²; the draft's 3×4 was smaller than any. 10 m eaves and an 11 m ridge
+clear the 25–30 ft (7.6–9.1 m) a tipping packer needs. In both the occupant
+check is a sliver of the plan area, under 4% — the evidence that throughput,
+not head count, drives the size. **The Materials
 Recovery Facility** is sized from a built plant of its throughput instead
 (above): Kauai's 3-acre, 27,000 sq ft plan for 55 t a day, so 5×6 tiles and a
 2,510 m² hall, 11 m for 8 m clear over the tipping floor and a baler bay.
@@ -348,8 +399,19 @@ figure, and the landfill matched none.
   to the nearest connected landfill or incinerator with room, at any distance;
   and with none, fills its store, then stops: its round serves no one and the
   depots go regional. Removing it drops its store.
-- A transfer station forwards to a final facility outside its own
-  `collectionRange`, distance does not reduce what arrives, and it diverts none.
+- A transfer station collects only what the incinerators and the landfill
+  leave: a building the landfill reaches goes to the landfill, one only the
+  station reaches to the station. It collects no more than its 9,072 units a
+  pass and its floor's room, holds at most two days (362,880 units), and stops
+  collecting when the floor is full. It forwards up to 9,072 a pass to the
+  nearest connected landfill or incinerator with room, at any distance and
+  outside its own `collectionRange`, a landfill first on a tie, the overflow to
+  the next; with none connected its floor fills. Distance does not reduce what
+  arrives, it diverts none, and every unit it collects is forwarded or on its
+  floor. Two stations over one building share it; its floor saves, an old save
+  loads without one, and removing it drops its floor. Through the worker, a
+  neighbourhood beyond the landfill's 28-tile reach is collected and the
+  landfill fills by what it forwards; without the station that trash piles up.
 - Generation is per capita: a 150-resident tower generates 37.5× a 4-resident
   house, not 3×; and a month with 1,000,000 units recovered books ¢160 once.
 - Determinism and budget: the same city ticked twice recovers the same units in
