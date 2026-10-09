@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.51.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.50.1...slimcity-v1.51.0) (2026-10-09)
+
+
+### Features
+
+* **health:** the clinic at its size, and a hospital with its parking to code ([a2bcd21](https://github.com/rbenzing/SlimCityGame/commit/a2bcd21165b5ea29061273304199df1b75547fed))
+* **health:** the clinic at its size, and a hospital with its parking… ([b4960f4](https://github.com/rbenzing/SlimCityGame/commit/b4960f42ad012b9f8e0acefb64fa99f58fb478d1))
+
 ## [1.50.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.50.0...slimcity-v1.50.1) (2026-10-09)
 
 
