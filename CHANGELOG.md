@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.52.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.51.0...slimcity-v1.52.0) (2026-10-09)
+
+
+### Features
+
+* **lots:** suburban commercial and industrial lots drawn to parking code ([d22f2a2](https://github.com/rbenzing/SlimCityGame/commit/d22f2a205f4e52064dfb3d29a7e76dce02cde9df))
+* **lots:** suburban commercial and industrial lots drawn to parking code ([3c8d50b](https://github.com/rbenzing/SlimCityGame/commit/3c8d50bf4354baadd9eab719a0accda550376975))
+
 ## [1.51.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.50.1...slimcity-v1.51.0) (2026-10-09)
 
 
