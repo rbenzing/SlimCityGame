@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.53.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.52.0...slimcity-v1.53.0) (2026-10-09)
+
+
+### Features
+
+* **lots:** the kerb counts toward a lot's parking, and short kinds get larger lots ([4b22e78](https://github.com/rbenzing/SlimCityGame/commit/4b22e780f807d186fe5aaabfc10936313b6f24cf))
+* **lots:** the kerb counts toward a lot's parking, and short kinds get larger lots ([54c983a](https://github.com/rbenzing/SlimCityGame/commit/54c983aac1b927965348bd3cec3837c7f3e2516d))
+
 ## [1.52.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.51.0...slimcity-v1.52.0) (2026-10-09)
 
 
