@@ -296,7 +296,8 @@ MUTCD citations below use 11th-edition section numbers.
   through a `KerbSurroundings` built by the same `roadSurroundings`; the sim
   never infers stalls another way. Every input is grid state (the road tiles,
   the profile table, the junction controls), never anything only the mesh
-  knows. — [parking-to-code.md](engineering/features/parking-to-code.md);
+  knows, and nothing off the map: a lookup past the edge finds no road on
+  either thread. — [parking-to-code.md](engineering/features/parking-to-code.md);
   `src/shared/kerblayout.ts`, `src/sim/kerbsurroundings.ts`
 - A motorway is ONE carriageway, not a road with two halves. Highway and ramp
   are the only classes whose lane range counts a single direction, they admit
@@ -1053,6 +1054,40 @@ MUTCD citations below use 11th-edition section numbers.
   draw no lot parking and park at the kerb. —
   [parking-to-code.md](game-design/features/parking-to-code.md);
   `src/shared/parkingcode.ts`, `src/shared/lotlayout.ts`, `src/shared/floorarea.ts`
+- Such a lot is paved only where its layout uses the ground: the body and
+  its walks, the drive, its throat and the aisles, the spaces and access
+  aisles, the berths and the aisle that reaches them, the forecourt and the
+  tank farm, all listed by the one layout the car park is drawn from. The
+  rest of the lot is planted, and the verge is paved only where the drive
+  and the walk cross it. Downtown and non-parking lots keep their pads. —
+  [parking-to-code.md](game-design/features/parking-to-code.md#the-paved-ground);
+  `lotPaving` in `src/shared/lotlayout.ts`, `src/render/lots.ts`
+- The first 3,000 sq ft of a single-tenant shop's or restaurant's floor parks
+  nothing and the rest parks at the full rate; a strip, a supermarket and
+  industry get no exemption. So the corner shop owes no space and grows on a
+  strip one tile deep. — [parking-to-code.md](game-design/features/parking-to-code.md#the-requirement);
+  `SMALL_USE_EXEMPT_SQ_FT` in `src/shared/parkingcode.ts`
+- A lot's kerb credit is one space for every stall the street paints on the
+  lot's own side whose middle lies along the lot's frontage: parallel, angled
+  and head-in alike, accessible stalls included, no cap; the far kerb and the
+  junctions' no-parking zones count nothing. The sim and the renderer count
+  it with the one shared function over the same stalls. —
+  [parking-to-code.md](game-design/features/parking-to-code.md#the-requirement);
+  `kerbCreditFor` in `src/shared/kerblayout.ts`
+- A lot's on-site requirement is its code requirement less its kerb credit,
+  never below none, and the ADA accessible spaces it owes are counted within
+  what it holds on site: a kerb stall never meets one, and a lot left nothing
+  to hold draws no car park and owes no accessible space. A suburban
+  commercial or industrial building is built and levels up only onto a lot
+  that meets that, choosing the smallest of its kind's footprints that does;
+  a larger lot is the kind's own building (same floor, staff and draw, its
+  body sized on the kind's footprint) and never a kind of its own in the
+  draw, so a kind's share is counted once. A level-up never takes a smaller
+  lot. A lot that stops meeting its code — the kerb parking painted out — is
+  legal nonconforming: it is never abandoned for it, and only a level-up
+  must meet the code again. — [parking-to-code.md](game-design/features/parking-to-code.md#larger-lots);
+  `holdsLotParkingAt` in `src/shared/lotparking.ts`, `footprintsOf`,
+  `spawnCandidates`, `tryLevelUp` in `src/sim/growth.ts`
 - Every figure in a service plan derives from a published municipal standard
   plus the 20 m tile, never picked to feel right, and any override is stated.
   The smallest facility of a ladder must be affordable to a city that has just
@@ -1361,7 +1396,7 @@ MUTCD citations below use 11th-edition section numbers.
   on a bend or beside a cul-de-sac faces the street it runs along; ties go
   north, east, south, west. —
   [buildings.md](art/buildings.md#residential-lots); `findRoadFacingEdge` in
-  `src/render/frontage.ts`
+  `src/shared/roadedge.ts`
 - A kerb takes cars at any hour only where the street paints a parking lane on
   that side; a street whose tier allows parking but paints no lane takes short
   daytime stays and nothing overnight; every other road takes none. No car

@@ -19,6 +19,7 @@ import {
   BERTH_LENGTH_M,
   BERTH_WIDTH_M,
   CURB_CUT_M,
+  ENTRANCE_WALK_M,
   ISLAND_WIDTH_M,
   SPACES_BETWEEN_ISLANDS,
   STALL_LENGTH_M,
@@ -70,8 +71,14 @@ export interface LotLayout {
   lot: LotRect;
   body: LotRect;
   forecourt: LotRect | null;
+  /** The tank farm's ground behind the body, where the kind keeps one. */
+  rearYard: LotRect | null;
   /** Where people go in: the middle of the body's street face. */
   entrance: LotPoint;
+  /** The walk along the body's street face, as deep as the ground in front of it leaves. */
+  frontWalk: LotRect | null;
+  /** The walk from the street to the front walk, where no parked car or island stands across it. */
+  entranceWalk: LotRect | null;
   stalls: LotStall[];
   /** The hatched access aisle beside each accessible space. */
   accessAisles: LotRect[];
@@ -81,6 +88,8 @@ export interface LotLayout {
   islands: LotRect[];
   trees: LotPoint[];
   curbCut: { u0: number; u1: number };
+  /** The drive's stretch in from the curb cut where it does not start at the street; null without a drive. */
+  throat: LotRect | null;
   required: number;
   provided: number;
   /** The most spaces this lot could hold, laid out the way it is. */
@@ -289,8 +298,12 @@ interface Built {
   berths: LotRect[];
   berthsOk: boolean;
   forecourt: LotRect | null;
+  rearYard: LotRect | null;
   curbCut: { u0: number; u1: number };
+  throat: LotRect | null;
   connector: PQ;
+  /** Every aisle a berth may be reached from: the whole drive, then each module's aisle. */
+  reach: PQ[];
 }
 
 /** The runs, berths and drive a candidate yields, before any stall is chosen. */
@@ -324,12 +337,14 @@ function build(input: LotLayoutInput, c: Candidate): Built {
 
   const fixed: LotRect[] = [c.body];
   if (forecourt) fixed.push(forecourt);
-  if (input.rearYard) {
-    fixed.push({ ...c.body, v0: c.body.v1, v1: Math.min(input.depth, c.body.v1 + input.rearYard) });
-  }
-  if (o === 'v' && c.outerRow) {
-    fixed.push({ u0: curbCut.u0, u1: curbCut.u1, v0: 0, v1: L });
-  }
+  const rearYard = input.rearYard
+    ? { ...c.body, v0: c.body.v1, v1: Math.min(input.depth, c.body.v1 + input.rearYard) }
+    : null;
+  if (rearYard) fixed.push(rearYard);
+  // Rows into the lot with a row along the street: the drive turns along the
+  // lot behind that row, and its throat comes in from the curb cut to meet it.
+  const throat = o === 'v' && c.outerRow ? { u0: curbCut.u0, u1: curbCut.u1, v0: 0, v1: L } : null;
+  if (throat) fixed.push(throat);
   const obstacles = [...fixed, ...berths].map((r) => toPQ(o, r));
   const fixedPQ = fixed.map((r) => toPQ(o, r));
 
@@ -405,7 +420,7 @@ function build(input: LotLayoutInput, c: Candidate): Built {
     return reach.some((a) => touchesAlong(a, pq));
   });
 
-  return { runs, berths, berthsOk, forecourt, curbCut, connector };
+  return { runs, berths, berthsOk, forecourt, rearYard, curbCut, throat, connector, reach };
 }
 
 /** Whether a berth lies side by side with an aisle along the whole of the berth's length. */
@@ -507,9 +522,14 @@ function fillRuns(
   const stalls: LotStall[] = [];
   const accessAisles: LotRect[] = [];
   const islands: LotRect[] = [];
-  const aisles: LotRect[] = [];
   let remaining = provided;
   let farConnector = 0;
+  /** Each module aisle in use, and how far along it the stalls and berths it serves reach. */
+  const used = new Map<PQ, number>();
+  const reachAlong = (aisle: PQ, to: number): void => {
+    used.set(aisle, Math.max(used.get(aisle) ?? aisle.p0, to));
+    farConnector = Math.max(farConnector, aisle.q1);
+  };
   const door = toPQ(o, { u0: entrance.u, u1: entrance.u, v0: entrance.v, v1: entrance.v });
   runs.forEach((run, r) => {
     if (remaining <= 0) return;
@@ -541,17 +561,25 @@ function fillRuns(
       }
     }
     if (run.axis === 'p') {
-      aisles.push(toUV(o, { ...run.aisle, p1: reachTo }));
-      farConnector = Math.max(farConnector, run.aisle.q1);
+      reachAlong(run.aisle, reachTo);
     } else {
       farConnector = Math.max(farConnector, reachTo);
     }
   });
   const accessibleDrawn = stalls.filter((s) => s.accessible !== null).length;
-  for (const b of built.berths) farConnector = Math.max(farConnector, toPQ(o, b).q1);
-  if (farConnector > 0) {
-    aisles.unshift(toUV(o, { ...built.connector, q1: Math.min(built.connector.q1, farConnector) }));
+  // A berth is reached from the drive, or from the module aisle beside it,
+  // which then runs on from the drive as far as the berth.
+  for (const b of built.berthsOk ? built.berths : []) {
+    const pq = toPQ(o, b);
+    farConnector = Math.max(farConnector, pq.q1);
+    const aisle = built.reach.slice(1).find((a) => touchesAlong(a, pq));
+    if (aisle) reachAlong(aisle, Math.abs(aisle.p1 - pq.p0) < EPS ? aisle.p1 : pq.p1);
   }
+  const aisles: LotRect[] = [];
+  if (farConnector > 0) {
+    aisles.push(toUV(o, { ...built.connector, q1: Math.min(built.connector.q1, farConnector) }));
+  }
+  for (const [aisle, to] of used) aisles.push(toUV(o, { ...aisle, p1: Math.min(aisle.p1, to) }));
   return {
     stalls,
     accessAisles,
@@ -651,18 +679,29 @@ export function computeLotLayout(input: LotLayoutInput): LotLayout {
     if (best?.fits) break;
   }
   const { c, built, filled, fits } = best!;
+  const berths = built.berthsOk ? built.berths : [];
+  const entrance = { u: (c.body.u0 + c.body.u1) / 2, v: c.body.v0 };
+  const walks = walksFor(c.body, entrance, along, built.forecourt, [
+    ...filled.stalls.map((s) => s.rect),
+    ...filled.accessAisles,
+    ...filled.islands,
+    ...berths,
+  ]);
   return {
     lot: { u0: 0, u1: along, v0: 0, v1: depth },
     body: c.body,
     forecourt: built.forecourt,
-    entrance: { u: (c.body.u0 + c.body.u1) / 2, v: c.body.v0 },
+    rearYard: built.rearYard,
+    entrance,
+    ...walks,
     stalls: filled.stalls,
     accessAisles: filled.accessAisles,
     aisles: filled.aisles,
-    berths: built.berthsOk ? built.berths : [],
+    berths,
     islands: filled.islands,
     trees: treePoints(filled.islands, treesFor(filled.provided)),
     curbCut: built.curbCut,
+    throat: filled.aisles.length > 0 ? built.throat : null,
     required: input.spaces,
     provided: filled.provided,
     capacity: filled.capacity,
@@ -671,6 +710,66 @@ export function computeLotLayout(input: LotLayoutInput): LotLayout {
     berthsRequired: input.berths,
     fits,
     shortfall: Math.max(0, input.spaces - filled.provided),
+  };
+}
+
+/**
+ * The walks to the door: one along the body's street face, cut short where a
+ * parked car or an island stands in front of it, and one straight in from the
+ * street to it where nothing parked stands across its line. A forecourt is
+ * the walk in to a kiosk itself.
+ */
+function walksFor(
+  body: LotRect,
+  entrance: LotPoint,
+  along: number,
+  forecourt: LotRect | null,
+  parked: readonly LotRect[],
+): { frontWalk: LotRect | null; entranceWalk: LotRect | null } {
+  let front = Math.max(0, body.v0 - ENTRANCE_WALK_M);
+  for (const r of parked) {
+    if (r.u0 < body.u1 - EPS && body.u0 < r.u1 - EPS && r.v1 <= body.v0 + EPS) {
+      front = Math.max(front, r.v1);
+    }
+  }
+  const frontWalk = body.v0 - front > EPS ? { ...body, v0: front, v1: body.v0 } : null;
+  const reachTo = frontWalk ? frontWalk.v0 : body.v0;
+  const half = ENTRANCE_WALK_M / 2;
+  const u0 = Math.max(0, Math.min(entrance.u - half, along - ENTRANCE_WALK_M));
+  const walk = { u0, u1: u0 + ENTRANCE_WALK_M, v0: 0, v1: reachTo };
+  const entranceWalk =
+    !forecourt && reachTo > EPS && !parked.some((r) => rectsOverlap(r, walk)) ? walk : null;
+  return { frontWalk, entranceWalk };
+}
+
+/** A lot's ground as it is surfaced: the yard's paving, and the concrete of the body's slab and its walks. */
+export interface LotPaving {
+  yard: LotRect[];
+  concrete: LotRect[];
+}
+
+/**
+ * The paved ground of a laid-out lot: the drive and its aisles and throat,
+ * every space and access aisle, the berths, the forecourt and the tank farm
+ * on the yard's paving; the body and its walks in concrete. The rest of the
+ * lot, the islands among it, is planted.
+ */
+export function lotPaving(layout: LotLayout): LotPaving {
+  return {
+    yard: [
+      ...layout.aisles,
+      ...(layout.throat ? [layout.throat] : []),
+      ...layout.stalls.map((s) => s.rect),
+      ...layout.accessAisles,
+      ...layout.berths,
+      ...(layout.forecourt ? [layout.forecourt] : []),
+      ...(layout.rearYard ? [layout.rearYard] : []),
+    ],
+    concrete: [
+      layout.body,
+      ...(layout.frontWalk ? [layout.frontWalk] : []),
+      ...(layout.entranceWalk ? [layout.entranceWalk] : []),
+    ],
   };
 }
 

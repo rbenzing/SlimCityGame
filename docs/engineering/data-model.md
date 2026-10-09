@@ -371,7 +371,7 @@ etc., `src/shared/types.ts`) persists wholesale in `SaveMeta.stats`.
 
 ### `src/data/catalog.json`
 
-Shape: `{ buildings: BuildingCatalogEntry[] }` (34 entries). Read directly
+Shape: `{ buildings: BuildingCatalogEntry[] }` (155 entries). Read directly
 by `src/main.ts`, `src/sim/worker.entry.ts`, and `src/ui/categories.ts`. The
 schema is `BuildingCatalogEntry` in `src/shared/types.ts`:
 
@@ -386,6 +386,7 @@ schema is `BuildingCatalogEntry` in `src/shared/types.ts`:
 | `units`            | no       | Homes in the building; residential and mixed entries, and `1` on a farm.          |
 | `share`            | no       | The kind's draw weight among the kinds that fit a lot; on its level-1 entry.      |
 | `footprint`        | yes      | `{ w, d }` in tiles.                                                              |
+| `bodyFootprint`    | no       | `{ w, d }` the body and its floor are sized on, for a larger lot of a kind's building at a level: never drawn as a kind, chosen by growth when the kind's own lot cannot meet its parking code. |
 | `height`           | yes      | Metres, for the box mesh.                                                         |
 | `color`            | yes      | Packed hex RGB.                                                                   |
 | `residents`        | no       | Population added when active.                                                     |

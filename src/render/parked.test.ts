@@ -29,6 +29,7 @@ import {
 import {
   findRoadFacingEdge,
   sidewalkDepthMeters,
+  streetLookupOf,
   vergeDepthMeters,
   type RoadFacingEdge,
 } from './frontage';
@@ -43,7 +44,8 @@ import {
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import type { RoadProfile } from '../shared/types';
-import { carriagewayHalfWidthMeters, RoadMeshRenderer, SIDEWALK_WIDTH_M } from './roadsmesh';
+import { RoadMeshRenderer, SIDEWALK_WIDTH_M } from './roadsmesh';
+import { LotRenderer } from './lots';
 import { sizeForKind, variantScaleForKind } from './vehicles';
 import { buildTileSet, hasCrossingRoad, type FurnitureRoadTile } from './roadfurniture';
 import { RoadFlow, storedFlow } from '../shared/types';
@@ -539,12 +541,15 @@ describe('ParkedCarRenderer frontage apron', () => {
     return { renderer, scene };
   }
 
-  it('paves the FULL frontage length, not just the bay row', () => {
+  it('leaves the verge to the lot: beyond the lot line it lays only the cut across the sidewalk', () => {
     const { renderer } = northFrontingLot();
-    const { minX, maxX } = stripeBounds(renderer, 1);
-    // The lot spans tiles x=5..7, so its pavement must span that whole width.
-    expect(minX).toBeCloseTo(5 * TILE_METERS, 3);
-    expect(maxX).toBeCloseTo(8 * TILE_METERS, 3);
+    const position = renderer.stripeMeshFor(1)!.geometry.getAttribute('position')!;
+    const buildingEdgeZ = 5 * TILE_METERS;
+    const backOfSidewalk = buildingEdgeZ - vergeDepthMeters(RoadTier.TwoLane);
+    for (let i = 0; i < position.count; i++) {
+      if (position.getZ(i) >= buildingEdgeZ - 1e-3) continue;
+      expect(position.getZ(i)).toBeLessThanOrEqual(backOfSidewalk + 1e-3);
+    }
   });
 
   it('reaches out across the verge to the sidewalk, and crosses it with a curb cut', () => {
@@ -586,25 +591,44 @@ describe('ParkedCarRenderer frontage apron', () => {
     expect(cutMinX).toBeCloseTo(5 * TILE_METERS + plan.layout.curbCut.u0, 3);
   });
 
-  it('stops at the footprint edge when the street is wide enough to have no verge', () => {
+  it('meets the lot’s own crossing of the verge at the back of the sidewalk, edge to edge', () => {
+    const { renderer } = northFrontingLot();
+    const entry = makeCatalogEntry({ footprint: { w: 3, d: 2 } });
+    const roadAt = roadAtTiles([[5, 4]]);
     const scene = new THREE.Scene();
-    const catalog = makeCatalogEntry({ footprint: { w: 3, d: 2 } });
-    const renderer = new ParkedCarRenderer(
-      scene,
-      flatHeightAt,
-      [catalog],
-      roadAtTiles([[5, 4]]),
-      () => RoadTier.Highway,
+    const street = streetLookupOf(
+      (x, z) => (roadAt(x, z) ? RoadTier.TwoLane : RoadTier.None),
+      () => null,
     );
-    renderer.apply(deltaAdd(makeBuilding({ id: 1, level: 3 })));
-    const { minZ } = stripeBounds(renderer, 1);
-    // The apron crosses the verge and the kerb cut carries it over the paved
-    // strip, so together they reach exactly the carriageway and no further.
-    // The two are measured from the same answer, which is what stops a band
-    // being left that is neither and nothing covers.
-    const roadside = vergeDepthMeters(RoadTier.Highway) + sidewalkDepthMeters(RoadTier.Highway);
-    expect(roadside).toBeCloseTo(TILE_METERS / 2 - carriagewayHalfWidthMeters(RoadTier.Highway), 6);
-    expect(minZ).toBeCloseTo(5 * TILE_METERS - roadside, 3);
+    new LotRenderer(scene, flatHeightAt, [entry], roadAt, street).apply(
+      deltaAdd(makeBuilding({ id: 1, level: 3 })),
+    );
+    const lotGround = (scene.children[0] as THREE.Mesh).geometry.getAttribute('position')!;
+    const buildingEdgeZ = 5 * TILE_METERS;
+    const verge = vergeDepthMeters(RoadTier.TwoLane);
+    const cut = planOf(entry, 5, 5, roadAt).layout.curbCut;
+    // The lot paves the verge across the curb cut's width, out to the back of the sidewalk...
+    let lotMinZ = Infinity;
+    const crossing = { minX: Infinity, maxX: -Infinity };
+    for (let i = 0; i < lotGround.count; i++) {
+      lotMinZ = Math.min(lotMinZ, lotGround.getZ(i));
+      const x = lotGround.getX(i);
+      if (lotGround.getZ(i) >= buildingEdgeZ - 1e-3) continue;
+      if (x < 5 * TILE_METERS + cut.u0 - 1e-3 || x > 5 * TILE_METERS + cut.u1 + 1e-3) continue;
+      crossing.minX = Math.min(crossing.minX, x);
+      crossing.maxX = Math.max(crossing.maxX, x);
+    }
+    expect(lotMinZ).toBeCloseTo(buildingEdgeZ - verge, 3);
+    expect(crossing.minX).toBeCloseTo(5 * TILE_METERS + cut.u0, 3);
+    expect(crossing.maxX).toBeCloseTo(5 * TILE_METERS + cut.u1, 3);
+    // ...and the cut takes it on from there, so no band is left that nothing covers.
+    const position = renderer.stripeMeshFor(1)!.geometry.getAttribute('position')!;
+    let cutNearest = -Infinity;
+    for (let i = 0; i < position.count; i++) {
+      if (position.getZ(i) < buildingEdgeZ - 1e-3)
+        cutNearest = Math.max(cutNearest, position.getZ(i));
+    }
+    expect(cutNearest).toBeCloseTo(buildingEdgeZ - verge, 3);
   });
 });
 

@@ -198,6 +198,7 @@ import { footprintForRotation } from '../shared/footprint';
 import { BuildingRegistry, settleBuildingDelta } from './buildings';
 import { computeDemand, jobRoom } from './demand';
 import { GrowthSystem, type GrowthSupply } from './growth';
+import { gridKerbSurroundings } from './kerbsurroundings';
 import { ServiceSim, nearestRoadTile } from './services';
 import { EconomySystem, buildingMonthlyTax, type Occupancy } from './economy';
 import { bordersUtilityNetwork, recomputeUtilities, sewageOf } from './network';
@@ -915,6 +916,8 @@ class SimWorld implements WorkerSim {
       t,
       this.supply,
       jobRoom(demandInput),
+      // The stalls the streets paint, which a car park counts toward its code.
+      () => gridKerbSurroundings(g, this.network.getNodes(), (id) => this.profileForId(id)),
     );
     if (
       growthDelta.added.length > 0 ||

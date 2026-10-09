@@ -175,7 +175,11 @@ describe('the shipped catalog', () => {
   it('makes the research campus, the clean top of the zone, the biggest employer of any light works', () => {
     const campus = byId('ind-3')!;
     expect(archetypeFor(campus)).toBe('greenWorks');
-    for (const other of industrial.filter((e) => e.id !== campus.id)) {
+    // The campus on a larger lot is the same building, with the same staff.
+    const sameBuilding = (e: BuildingCatalogEntry): boolean =>
+      e.id === campus.id ||
+      (e.bodyFootprint !== undefined && e.kind === campus.kind && e.level === campus.level);
+    for (const other of industrial.filter((e) => !sameBuilding(e))) {
       expect(campus.jobs ?? 0).toBeGreaterThan(other.jobs ?? 0);
     }
   });

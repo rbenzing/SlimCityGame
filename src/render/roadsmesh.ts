@@ -93,6 +93,7 @@ import {
   CHUNK_TILES,
   CHUNKS_PER_SIDE,
   MAP_SIZE,
+  inBounds,
   tileIndex,
   worldToTile,
 } from '../shared/constants';
@@ -6721,7 +6722,9 @@ export class RoadMeshRenderer {
     };
   }
 
+  /** The road on the ground at a tile; nothing off the map, where a chunk key would wrap to the far side. */
   private groundAt(x: number, z: number): RoadTileDelta | undefined {
+    if (!inBounds(x, z)) return undefined;
     return this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
   }
 
@@ -6807,6 +6810,11 @@ export class RoadMeshRenderer {
   /** The cross-section the tile at (x, z) lays its pavement to, or null off-road. */
   private drawnSectionAt(x: number, z: number): RoadProfile | null {
     return drawnSectionAt(x, z, this.surroundings);
+  }
+
+  /** The roads as this mesh reads them, for the shared stall layout: a car park's kerb credit is counted from it. */
+  kerbSurroundings(): KerbSurroundings {
+    return this.surroundings;
   }
 
   /**

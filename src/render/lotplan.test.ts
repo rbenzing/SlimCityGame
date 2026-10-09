@@ -27,8 +27,12 @@ import {
   STALL_WIDTH_M,
   treesFor,
 } from '../shared/parkingcode';
-import { computeLotLayout, type LotLayout, type LotRect } from '../shared/lotlayout';
+import { computeLotLayout, lotPaving, type LotLayout, type LotRect } from '../shared/lotlayout';
+import { lotYardsFor } from '../shared/lotparking';
+import { hasPart } from './archetypes';
+import type { EdgeFrame } from './frontage';
 import { lotLayoutFor, lotPlanFor, lotPointToWorld } from './lotplan';
+import { DRIVE_Y_OFFSET, LOT_Y_OFFSET, LotRenderer, WALK_Y_OFFSET } from './lots';
 import { computeSetbacks, frontageSetbackFor } from './massing';
 import { ParkedCarRenderer } from './parked';
 
@@ -55,6 +59,17 @@ const inside = (r: LotRect, lot: LotRect): boolean =>
   r.u0 >= lot.u0 - EPS && r.u1 <= lot.u1 + EPS && r.v0 >= lot.v0 - EPS && r.v1 <= lot.v1 + EPS;
 const overlaps = (a: LotRect, b: LotRect): boolean =>
   a.u0 < b.u1 - 0.01 && b.u0 < a.u1 - 0.01 && a.v0 < b.v1 - 0.01 && b.v0 < a.v1 - 0.01;
+
+/** A street along one side of a w×d lot at (10, 10). */
+const roads: Record<
+  'N' | 'E' | 'S' | 'W',
+  (w: number, d: number) => (x: number, z: number) => boolean
+> = {
+  N: () => (x, z) => z === 9 && x >= 10,
+  S: (_, d) => (x, z) => z === 10 + d && x >= 10,
+  E: (w) => (x, z) => x === 10 + w && z >= 10,
+  W: () => (x, z) => x === 9 && z >= 10,
+};
 
 describe('every suburban commercial and industrial lot, laid out to code', () => {
   it('covers the suburban kinds and only them', () => {
@@ -86,11 +101,76 @@ describe('every suburban commercial and industrial lot, laid out to code', () =>
     expect(onStreet(flex2).fits).toBe(true);
   });
 
-  it.todo('P2: shop lots meet their code with kerb credit and larger lot variants');
-  it.todo('P2: restaurant lots meet their code with kerb credit and larger lot variants');
-  it.todo('P2: strip lots meet their code with kerb credit and larger lot variants');
-  it.todo('P2: supermarket lots meet their code with kerb credit and larger lot variants');
-  it.todo('P2: flex lots at levels 1 and 3 meet their code with larger lot variants');
+  const SHORT: readonly BuildingKind[] = ['shop', 'restaurant', 'strip', 'supermarket', 'flex'];
+  /** A short kind's entry at each level, and the lots it may stand on there, smallest first. */
+  const ladders = SHORT.flatMap((kind) =>
+    suburban
+      .filter((e) => e.kind === kind && e.bodyFootprint === undefined)
+      .map((e) => {
+        const lots = suburban
+          .filter(
+            (v) =>
+              v === e || (v.bodyFootprint !== undefined && v.kind === kind && v.level === e.level),
+          )
+          .sort((a, b) => a.footprint.w * a.footprint.d - b.footprint.w * b.footprint.d);
+        return [`${kind} L${e.level}`, e, lots] as const;
+      }),
+  );
+
+  it.each(ladders)(
+    '%s: its largest lot holds the whole code with no kerb credit, at every turn and frontage',
+    (_, e, lots) => {
+      const largest = lots[lots.length - 1]!;
+      const req = lotParkingRequirement(e)!;
+      expect(lotParkingRequirement(largest)).toEqual(req);
+      for (const rotation of [0, 1, 2, 3] as const) {
+        const lot = footprintForRotation(largest, rotation);
+        for (const side of ['N', 'E', 'S', 'W'] as const) {
+          const { layout } = lotPlanFor(largest, 10, 10, roads[side](lot.w, lot.d), rotation)!;
+          expect(layout.fits, `${largest.id} turned ${rotation}, ${side}`).toBe(true);
+          expect(layout.provided).toBe(req.spaces);
+          expect(layout.berths).toHaveLength(req.berths);
+        }
+      }
+    },
+  );
+
+  it.each(ladders)(
+    '%s: each lot holds the code once the kerb credits what it cannot, larger lots needing less',
+    (_, e, lots) => {
+      const req = lotParkingRequirement(e)!;
+      let previous = Infinity;
+      for (const lot of lots) {
+        // The least kerb credit that lets this lot, on the street as growth turns it, meet its code.
+        let credit = 0;
+        while (credit <= req.spaces && !lotLayoutFor(lot, 0, true, credit)!.fits) credit++;
+        expect(credit, lot.id).toBeLessThanOrEqual(req.spaces);
+        const layout = lotLayoutFor(lot, 0, true, credit)!;
+        expect(layout.required).toBe(req.spaces - credit);
+        expect(layout.provided).toBe(req.spaces - credit);
+        expect(credit, lot.id).toBeLessThanOrEqual(previous);
+        previous = credit;
+      }
+      // Only a kind's own lot may fall short of its code with no credit.
+      expect(lotLayoutFor(lots[lots.length - 1]!, 0, true, 0)!.fits).toBe(true);
+    },
+  );
+
+  it('lets the small-use exemption carry the corner shop: it holds nothing on site', () => {
+    const corner = suburban.find((e) => e.id === 'com-low-1')!;
+    const layout = onStreet(corner);
+    expect(layout.required).toBe(0);
+    expect(layout.fits).toBe(true);
+    expect(layout.stalls).toHaveLength(0);
+  });
+
+  it('keeps the forecourt and the tank farm where the kit stands its canopy and tanks', () => {
+    for (const e of suburban) {
+      const yards = lotYardsFor(e);
+      expect(yards.forecourtDepth !== undefined, e.id).toBe(hasPart(e, 'fuelCanopy'));
+      expect(yards.rearYard !== undefined, e.id).toBe(hasPart(e, 'tanks'));
+    }
+  });
 
   it.each(suburban.map((e) => [e.id, e] as const))(
     '%s: a short lot draws what fits and says how short it is',
@@ -189,16 +269,6 @@ describe('every suburban commercial and industrial lot, laid out to code', () =>
 });
 
 describe('the lot plan on the map', () => {
-  const roads: Record<
-    'N' | 'E' | 'S' | 'W',
-    (w: number, d: number) => (x: number, z: number) => boolean
-  > = {
-    N: () => (x, z) => z === 9 && x >= 10,
-    S: (_, d) => (x, z) => z === 10 + d && x >= 10,
-    E: (w) => (x, z) => x === 10 + w && z >= 10,
-    W: () => (x, z) => x === 9 && z >= 10,
-  };
-
   it.each(suburban.map((e) => [e.id, e] as const))(
     '%s: everything stands inside its lot and clear of the body, at every turn and frontage',
     (_, e) => {
@@ -320,6 +390,39 @@ describe('the car park as drawn', () => {
     }
   });
 
+  it('reaches every berth from a drawn aisle, and meets the street at the curb cut, however credited', () => {
+    const touchesAlong = (a: LotRect, b: LotRect): boolean => {
+      if (Math.abs(a.u0 - b.u1) < 0.01 || Math.abs(a.u1 - b.u0) < 0.01)
+        return a.v0 <= b.v0 + 0.01 && a.v1 >= b.v1 - 0.01;
+      if (Math.abs(a.v0 - b.v1) < 0.01 || Math.abs(a.v1 - b.v0) < 0.01)
+        return a.u0 <= b.u0 + 0.01 && a.u1 >= b.u1 - 0.01;
+      return false;
+    };
+    for (const e of suburban) {
+      const req = lotParkingRequirement(e)!;
+      for (const rotation of [0, 1] as const) {
+        for (const alongX of [true, false]) {
+          for (const credit of [0, Math.floor(req.spaces / 2), req.spaces]) {
+            const layout = lotLayoutFor(e, rotation, alongX, credit)!;
+            const id = `${e.id} turned ${rotation}, credit ${credit}`;
+            for (const b of layout.berths) {
+              expect(
+                layout.aisles.some((a) => touchesAlong(a, b)),
+                id,
+              ).toBe(true);
+            }
+            if (layout.aisles.length === 0) continue;
+            const cut = layout.curbCut;
+            const atStreet = [...layout.aisles, ...(layout.throat ? [layout.throat] : [])].some(
+              (a) => a.v0 < 0.01 && a.u0 < cut.u1 - 0.01 && a.u1 > cut.u0 + 0.01,
+            );
+            expect(atStreet, id).toBe(true);
+          }
+        }
+      }
+    }
+  });
+
   it('draws no car park for a downtown office: its cars stand at the kerb', () => {
     const office = catalog.find((c) => c.kind === 'office')!;
     const renderer = new ParkedCarRenderer(new THREE.Scene(), () => 0, catalog, north);
@@ -330,4 +433,221 @@ describe('the car park as drawn', () => {
       expect(car.z).toBeLessThan(10 * TILE_METERS); // in the street, not on the lot
     }
   });
+});
+
+describe('the lot’s paved ground', () => {
+  /** A lot rectangle on the map. */
+  const onMap = (
+    frame: EdgeFrame,
+    r: LotRect,
+  ): { x0: number; x1: number; z0: number; z1: number } => {
+    const a = lotPointToWorld(frame, r.u0, r.v0);
+    const b = lotPointToWorld(frame, r.u1, r.v1);
+    return {
+      x0: Math.min(a.x, b.x),
+      x1: Math.max(a.x, b.x),
+      z0: Math.min(a.z, b.z),
+      z1: Math.max(a.z, b.z),
+    };
+  };
+  const within = (
+    p: { x: number; z: number },
+    r: { x0: number; x1: number; z0: number; z1: number },
+  ): boolean => p.x > r.x0 - 1e-6 && p.x < r.x1 + 1e-6 && p.z > r.z0 - 1e-6 && p.z < r.z1 + 1e-6;
+
+  interface Tri {
+    x: number;
+    z: number;
+    y: number;
+    area: number;
+  }
+  /** The lot renderer's ground for one building on flat land: each triangle's middle, its height and its area. */
+  function groundOf(
+    e: BuildingCatalogEntry,
+    rotation: 0 | 1 | 2 | 3,
+    roadAt: (x: number, z: number) => boolean,
+  ): { tris: Tri[]; positions: number[]; colors: number[] } {
+    const scene = new THREE.Scene();
+    new LotRenderer(scene, () => 0, [e], roadAt).apply({
+      added: [
+        {
+          id: 1,
+          catalogId: e.id,
+          x: 10,
+          z: 10,
+          rotation,
+          level: e.level ?? 1,
+          state: BuildingState.Active,
+          problems: 0,
+        },
+      ],
+      removed: [],
+      updated: [],
+    });
+    const geometry = (scene.children[0] as THREE.Mesh).geometry;
+    const positions = Array.from(geometry.getAttribute('position').array as Float32Array);
+    const colors = Array.from(geometry.getAttribute('color').array as Float32Array);
+    const tris: Tri[] = [];
+    for (let i = 0; i < positions.length; i += 9) {
+      const p = (k: number): number => positions[i + k]!;
+      const [ax, ay, az, bx, bz, cx, cz] = [p(0), p(1), p(2), p(3), p(5), p(6), p(8)];
+      tris.push({
+        x: (ax + bx + cx) / 3,
+        z: (az + bz + cz) / 3,
+        y: ay,
+        area: Math.abs((bx - ax) * (cz - az) - (cx - ax) * (bz - az)) / 2,
+      });
+    }
+    return { tris, positions, colors };
+  }
+  const at = (t: Tri, y: number): boolean => Math.abs(t.y - y) < 1e-4;
+
+  /** The share of a laid-out lot left planted: everything its paving does not cover. */
+  function plantedShare(layout: LotLayout): number {
+    const { yard, concrete } = lotPaving(layout);
+    const rects = [...yard, ...concrete];
+    const us = [...new Set(rects.flatMap((r) => [r.u0, r.u1]))].sort((a, b) => a - b);
+    const vs = [...new Set(rects.flatMap((r) => [r.v0, r.v1]))].sort((a, b) => a - b);
+    let paved = 0;
+    for (let i = 0; i + 1 < us.length; i++) {
+      for (let j = 0; j + 1 < vs.length; j++) {
+        const u = (us[i]! + us[i + 1]!) / 2;
+        const v = (vs[j]! + vs[j + 1]!) / 2;
+        if (rects.some((r) => u > r.u0 && u < r.u1 && v > r.v0 && v < r.v1)) {
+          paved += (us[i + 1]! - us[i]!) * (vs[j + 1]! - vs[j]!);
+        }
+      }
+    }
+    const { lot } = layout;
+    return 1 - paved / ((lot.u1 - lot.u0) * (lot.v1 - lot.v0));
+  }
+
+  it.each(suburban.map((e) => [e.id, e] as const))(
+    '%s: credited its whole code, it paves its body, its walks and only what its berths and yards need',
+    (_, e) => {
+      const req = lotParkingRequirement(e)!;
+      for (const rotation of [0, 1, 2, 3] as const) {
+        for (const alongX of [true, false]) {
+          const layout = lotLayoutFor(e, rotation, alongX, req.spaces)!;
+          expect(layout.stalls).toHaveLength(0);
+          const { yard, concrete } = lotPaving(layout);
+          const walks = [layout.frontWalk, layout.entranceWalk].filter((w) => w !== null);
+          expect(concrete).toEqual([layout.body, ...walks]);
+          const { body, frontWalk, entranceWalk } = layout;
+          if (frontWalk) {
+            // Along the body's street face, the body's width.
+            expect(frontWalk.v1).toBeCloseTo(body.v0, 9);
+            expect([frontWalk.u0, frontWalk.u1]).toEqual([body.u0, body.u1]);
+          }
+          if (entranceWalk) {
+            // In from the street to the door.
+            expect(entranceWalk.v0).toBe(0);
+            expect(entranceWalk.v1).toBeCloseTo(frontWalk ? frontWalk.v0 : body.v0, 9);
+            expect(layout.entrance.u).toBeGreaterThanOrEqual(entranceWalk.u0);
+            expect(layout.entrance.u).toBeLessThanOrEqual(entranceWalk.u1);
+          }
+          const yards = [layout.forecourt, layout.rearYard].filter((r) => r !== null);
+          if (req.berths === 0) {
+            // No berth, so no drive: the curb cut is never cut.
+            expect(layout.aisles).toHaveLength(0);
+            expect(layout.throat).toBeNull();
+            expect(yard).toEqual(yards);
+          } else {
+            const throat = layout.throat ? [layout.throat] : [];
+            expect(yard).toEqual([...layout.aisles, ...throat, ...layout.berths, ...yards]);
+          }
+        }
+      }
+    },
+  );
+
+  it('draws a lot that holds nothing on site as lawn, the body’s slab and its walks, with no yard paving', () => {
+    const corner = suburban.find((e) => e.id === 'com-low-1')!;
+    for (const rotation of [0, 1, 2, 3] as const) {
+      const lot = footprintForRotation(corner, rotation);
+      const roadAt = roads.N(lot.w, lot.d);
+      const { tris } = groundOf(corner, rotation, roadAt);
+      const { frame, layout } = lotPlanFor(corner, 10, 10, roadAt, rotation)!;
+      const slab = [layout.body, layout.frontWalk, layout.entranceWalk]
+        .filter((r) => r !== null)
+        .map((r) => onMap(frame, r));
+      expect(tris.some((t) => at(t, DRIVE_Y_OFFSET))).toBe(false);
+      const offSlab = tris.filter((t) => at(t, WALK_Y_OFFSET) && !slab.some((r) => within(t, r)));
+      expect(offSlab).toEqual([]);
+      expect(layout.frontWalk).not.toBeNull();
+      expect(layout.entranceWalk).not.toBeNull();
+    }
+  });
+
+  const markets = suburban.filter((e) => e.kind === 'supermarket');
+  it.each(markets.map((e) => [e.id, e] as const))(
+    '%s: paves only what its layout lays, and grass covers the rest of the lot, at every turn and frontage',
+    (_, e) => {
+      for (const rotation of [0, 1, 2, 3] as const) {
+        const lot = footprintForRotation(e, rotation);
+        const bounds = {
+          x0: 10 * TILE_METERS,
+          x1: (10 + lot.w) * TILE_METERS,
+          z0: 10 * TILE_METERS,
+          z1: (10 + lot.d) * TILE_METERS,
+        };
+        for (const side of ['N', 'E', 'S', 'W'] as const) {
+          const roadAt = roads[side](lot.w, lot.d);
+          const { frame, layout } = lotPlanFor(e, 10, 10, roadAt, rotation)!;
+          const { yard, concrete } = lotPaving(layout);
+          const yardOnMap = yard.map((r) => onMap(frame, r));
+          const concreteOnMap = concrete.map((r) => onMap(frame, r));
+          const islands = layout.islands.map((r) => onMap(frame, r));
+          const { tris } = groundOf(e, rotation, roadAt);
+          const id = `${e.id} turned ${rotation}, ${side}`;
+          let lawn = 0;
+          let paved = 0;
+          const stray: Tri[] = [];
+          for (const t of tris) {
+            if (!within(t, bounds)) stray.push(t);
+            if (at(t, LOT_Y_OFFSET)) {
+              lawn += t.area;
+            } else if (at(t, DRIVE_Y_OFFSET)) {
+              paved += t.area;
+              // Paving lies on a piece of the yard, never over a planted island.
+              const onYard = yardOnMap.some((r) => within(t, r));
+              if (!onYard || islands.some((r) => within(t, r))) stray.push(t);
+            } else if (!at(t, WALK_Y_OFFSET) || !concreteOnMap.some((r) => within(t, r))) {
+              stray.push(t);
+            }
+          }
+          expect(stray, id).toEqual([]);
+          const area = (r: LotRect): number => (r.u1 - r.u0) * (r.v1 - r.v0);
+          expect(lawn).toBeCloseTo((bounds.x1 - bounds.x0) * (bounds.z1 - bounds.z0), 0);
+          // Every piece of the yard is laid, each once.
+          expect(paved).toBeCloseTo(
+            yard.reduce((s, r) => s + area(r), 0),
+            0,
+          );
+          expect(plantedShare(layout)).toBeGreaterThan(0);
+        }
+      }
+    },
+  );
+
+  it.each(suburban.map((e) => [e.id, e] as const))(
+    '%s: lays the same ground every time, at every turn, and the same planted share either way up',
+    (_, e) => {
+      for (const rotation of [0, 1, 2, 3] as const) {
+        const lot = footprintForRotation(e, rotation);
+        const roadAt = roads.N(lot.w, lot.d);
+        const first = groundOf(e, rotation, roadAt);
+        const again = groundOf(e, rotation, roadAt);
+        expect(again.positions).toEqual(first.positions);
+        expect(again.colors).toEqual(first.colors);
+        if (rotation >= 2) {
+          const turned = (r: 0 | 1 | 2 | 3): LotLayout => lotPlanFor(e, 10, 10, roadAt, r)!.layout;
+          expect(plantedShare(turned(rotation))).toBeCloseTo(
+            plantedShare(turned((rotation - 2) as 0 | 1)),
+            9,
+          );
+        }
+      }
+    },
+  );
 });

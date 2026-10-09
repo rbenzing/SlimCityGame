@@ -84,9 +84,11 @@ function bodyAxisMetres(tiles: number, rule: BodyRule): number {
  */
 export function bodyMetresFor(entry: BuildingCatalogEntry): { w: number; d: number } {
   const rule = (entry.kind && BODY_RULES[entry.kind]) || DEFAULT_BODY_RULE;
+  // A larger lot for the same building keeps the body, and so the floor, it was sized on.
+  const sizedOn = entry.bodyFootprint ?? entry.footprint;
   return {
-    w: bodyAxisMetres(entry.footprint.w, rule),
-    d: bodyAxisMetres(entry.footprint.d, rule),
+    w: bodyAxisMetres(sizedOn.w, rule),
+    d: bodyAxisMetres(sizedOn.d, rule),
   };
 }
 

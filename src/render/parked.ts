@@ -46,8 +46,9 @@ import {
   vergeDepthMeters,
   type EdgeFrame,
   type RoadFacingEdge,
-  type Side,
 } from './frontage';
+import { kerbSideFacing, type KerbSide, type Side } from '../shared/roadedge';
+import type { KerbSurroundings } from '../shared/kerblayout';
 import { sizeForKind, variantScaleForKind, VehicleKitPool, VEHICLE_PALETTE_HEX } from './vehicles';
 import { materialUnit } from './palette';
 import { pushConformingQuad } from './groundquad';
@@ -83,8 +84,7 @@ export function tierAllowsRoadsideParking(tier: RoadTier): boolean {
  */
 export type KerbAllowance = 'anyHour' | 'daytime' | 'none';
 
-/** The side of the street a kerb is on, in world order: `low` is the low-coordinate kerb. */
-export type KerbSide = 'low' | 'high';
+export { kerbSideFacing, type KerbSide } from '../shared/roadedge';
 
 export function kerbAllowance(
   tier: RoadTier,
@@ -93,13 +93,6 @@ export function kerbAllowance(
 ): KerbAllowance {
   if (profile && parkingLaneOffset(profile, side) !== null) return 'anyHour';
   return tierAllowsRoadsideParking(tier) ? 'daytime' : 'none';
-}
-
-/** Which kerb of the street across an edge a lot faces: the lot lies on that kerb's side. */
-export function kerbSideFacing(side: Side): KerbSide {
-  // The road is north of a lot on its N edge, so the lot is the road's
-  // high-z side; on its E edge the road is east, so the lot is its low-x side.
-  return side === 'N' || side === 'W' ? 'high' : 'low';
 }
 
 /**
@@ -116,8 +109,9 @@ export function curbCutTileFor(
   z: number,
   roadAt: (tileX: number, tileZ: number) => boolean,
   rotation: 0 | 1 | 2 | 3 = 0,
+  kerb: KerbSurroundings | null = null,
 ): { x: number; z: number } | null {
-  const plan = parkingPlanFor(entry, x, z, roadAt, rotation);
+  const plan = parkingPlanFor(entry, x, z, roadAt, rotation, kerb);
   if (!plan) return null;
   const { edge, frame, layout } = plan;
   // The road tile across the edge from the middle of the driveway.
@@ -129,16 +123,21 @@ export function curbCutTileFor(
   return roadAt(tile.x, tile.z) ? tile : { x: edge.roadTileX, z: edge.roadTileZ };
 }
 
-/** A building's lot plan when it parks on its own lot: suburban, fronting a road, with a space to draw. */
+/**
+ * A building's lot plan when it parks on its own lot: suburban, fronting a
+ * road, with a space to draw once its kerb credit is counted. A lot the kerb
+ * credit or the small-use exemption leaves nothing to hold draws no car park.
+ */
 function parkingPlanFor(
   entry: BuildingCatalogEntry,
   x: number,
   z: number,
   roadAt: (tileX: number, tileZ: number) => boolean,
   rotation: 0 | 1 | 2 | 3,
+  kerb: KerbSurroundings | null,
 ): LotPlan | null {
   if (entry.category !== 'com' && entry.category !== 'ind') return null;
-  const plan = lotPlanFor(entry, x, z, roadAt, rotation);
+  const plan = lotPlanFor(entry, x, z, roadAt, rotation, kerb);
   return plan && plan.layout.provided > 0 ? plan : null;
 }
 
@@ -163,10 +162,11 @@ export function hasOwnLotParking(
   z: number,
   roadAt: (tileX: number, tileZ: number) => boolean,
   rotation: 0 | 1 | 2 | 3 = 0,
+  kerb: KerbSurroundings | null = null,
 ): boolean {
   if (isFarmEntry(entry)) return false;
   if (entry.category === 'com' || entry.category === 'ind') {
-    return parkingPlanFor(entry, x, z, roadAt, rotation) !== null;
+    return parkingPlanFor(entry, x, z, roadAt, rotation, kerb) !== null;
   }
   return isHouseEntry(entry);
 }
@@ -184,6 +184,7 @@ export function roadsideAllowance(
   roadTierAt: (tileX: number, tileZ: number) => RoadTier,
   roadProfileAt: (tileX: number, tileZ: number) => RoadProfile | null = () => null,
   rotation: 0 | 1 | 2 | 3 = 0,
+  kerb: KerbSurroundings | null = null,
 ): KerbAllowance {
   // Only buildings whose people own cars. A water tower, a park or a civic
   // plinth has nobody to park, and lining the kerb outside one would read as
@@ -191,7 +192,7 @@ export function roadsideAllowance(
   if (!PARKING_CATEGORIES.has(entry.category)) return 'none';
   // A farm's truck stands in its own yard, never at a kerb.
   if (isFarmEntry(entry)) return 'none';
-  if (hasOwnLotParking(entry, x, z, roadAt, rotation)) return 'none';
+  if (hasOwnLotParking(entry, x, z, roadAt, rotation, kerb)) return 'none';
   const lot = footprintForRotation(entry, rotation);
   const edge = findRoadFacingEdge(x, z, lot.w, lot.d, roadAt);
   if (!edge) return 'none';
@@ -208,8 +209,11 @@ export function usesRoadsideParking(
   roadTierAt: (tileX: number, tileZ: number) => RoadTier,
   roadProfileAt: (tileX: number, tileZ: number) => RoadProfile | null = () => null,
   rotation: 0 | 1 | 2 | 3 = 0,
+  kerb: KerbSurroundings | null = null,
 ): boolean {
-  return roadsideAllowance(entry, x, z, roadAt, roadTierAt, roadProfileAt, rotation) !== 'none';
+  return (
+    roadsideAllowance(entry, x, z, roadAt, roadTierAt, roadProfileAt, rotation, kerb) !== 'none'
+  );
 }
 
 /** Max absolute per-car yaw jitter, radians — parked cars sit nearly straight in their bays. */
@@ -660,6 +664,8 @@ export function carHalfAlongRoad(
 export interface KerbParking {
   parkingSetbacksAt(x: number, z: number): ParkingSetbacks | null;
   parkingStallsAt(x: number, z: number, side: KerbSide): readonly KerbStall[] | null;
+  /** The roads as the stall layout reads them, which a car park's kerb credit is counted from. */
+  kerbSurroundings?(): KerbSurroundings;
 }
 
 /** Pushes a lot-frame rectangle as ground-conforming paint or paving. */
@@ -808,6 +814,8 @@ export class ParkedCarRenderer {
   private readonly roadProfileAt: (x: number, z: number) => RoadProfile | null;
   private readonly junctionAt: (x: number, z: number) => boolean;
   private readonly kerbParking: KerbParking | null;
+  /** The roads a car park's kerb credit is counted from; null credits none. */
+  private readonly kerb: KerbSurroundings | null;
 
   private readonly pools = new Map<number, VehicleKitPool>();
   private readonly buildingSlots = new Map<number, LotRecord>();
@@ -848,6 +856,7 @@ export class ParkedCarRenderer {
     this.roadProfileAt = roadProfileAt;
     this.junctionAt = junctionAt;
     this.kerbParking = kerbParking;
+    this.kerb = kerbParking?.kerbSurroundings?.() ?? null;
     this.catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
     this.treePool = new InstancedSlotPool(
       scene,
@@ -997,9 +1006,17 @@ export class ParkedCarRenderer {
     }
     const category: LotCategory = entry.category;
 
-    // A downtown building, or one that fronts no road, parks at the kerb if
+    // A downtown building, one that fronts no road, or one its kerb credit or
+    // the small-use exemption leaves nothing to hold, parks at the kerb if
     // anywhere; a suburban lot parks in the car park its code lays out.
-    const plan = parkingPlanFor(entry, building.x, building.z, this.roadAt, building.rotation);
+    const plan = parkingPlanFor(
+      entry,
+      building.x,
+      building.z,
+      this.roadAt,
+      building.rotation,
+      this.kerb,
+    );
     if (!plan) {
       this.applyRoadside(building, entry);
       return;
@@ -1065,6 +1082,7 @@ export class ParkedCarRenderer {
       this.roadTierAt,
       this.roadProfileAt,
       building.rotation,
+      this.kerb,
     );
     if (allowance === 'none') return;
 
@@ -1237,20 +1255,13 @@ export class ParkedCarRenderer {
       }
     };
 
-    // The apron across the verge the whole frontage long, so the lot meets the
-    // sidewalk paved; the driveway crosses the sidewalk at the curb cut.
+    // The driveway crosses the sidewalk at the curb cut; the lot's own ground
+    // paves the verge between them (lots.ts).
     const tier = this.roadTierAt(edge.roadTileX, edge.roadTileZ);
     const streetProfile = this.roadProfileAt(edge.roadTileX, edge.roadTileZ) ?? undefined;
     const verge = vergeDepthMeters(tier, streetProfile);
     const sidewalk = sidewalkDepthMeters(tier, streetProfile);
     const cut = layout.curbCut;
-    if (verge > 0) {
-      rect(
-        { u0: 0, u1: edge.edgeTiles * TILE_METERS, v0: -verge, v1: 0 },
-        APRON_Y_OFFSET,
-        APRON_COLOR,
-      );
-    }
     if (sidewalk > 0) {
       rect(
         { u0: cut.u0, u1: cut.u1, v0: -verge - sidewalk, v1: -verge },

@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 5,474 tests passing (5 pending) across 173 test files, run 2026-10-09.
+**Test suite:** 5,795 tests passing across 175 test files, run 2026-10-09.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -117,6 +117,15 @@ not a test to fix.
   report to the Toxics Release Inventory, so there is no like-for-like
   figure, and no water figure was found. The pocket park's 0.2 kL is a dial
   too.
+- The kerb paints stalls across curb cuts and house drives, so a lot's kerb
+  credit can count a stall a driveway would block.
+- A lot's car park is laid when its building is built or levels up; a
+  street's kerb parking repainted later does not re-lay it.
+- A kerb-credited lot's customers are drawn parked on the lot, not in the
+  kerb stalls its credit counts.
+- `tools/profile-shots.mjs` defines its custom profile as id 12, which is
+  the Ramp preset; custom profiles start at 13
+  ([`shared/roadprofile.ts`](../src/shared/roadprofile.ts)).
 
 Before writing "not built" anywhere in this document, check the code.
 
@@ -287,6 +296,35 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The kerb counts, and the short kinds get larger lots (last slice of parking to code, built 2026-10-09)
+
+The first slice left shops, restaurants, strip malls, supermarkets and flex
+short of their code on the lots they had. The player chose to give them
+larger lots and to credit the kerb, and to exempt the first 3,000 sq ft of a
+small shop or restaurant.
+
+- **Small uses exempt.** A shop or restaurant parks only for the floor over
+  3,000 sq ft, the median of thirteen US codes surveyed; strips,
+  supermarkets and industry get no exemption. The corner shop owes nothing,
+  and the fast-food stand owes 6.
+- **The kerb counts.** Every stall the street paints on the lot's side, with
+  its middle along the lot's frontage, is one space toward the code, in any
+  parking style, with no cap. The lot holds what is left, and its accessible
+  spaces are always on the lot. The sim counts exactly the stalls the road
+  mesh paints, because the kerb stall layout moved to `src/shared` behind one
+  interface, checked against a golden fingerprint of 1,269 stalls.
+- **Larger lots.** Each short kind has larger lots in the catalog for the
+  same building, up to the first lot that holds its whole code with no
+  credit. Growth builds, and levels up, onto the smallest lot that meets the
+  code where it stands. A lot whose kerb is painted out later is legal
+  nonconforming: it keeps trading and is never abandoned.
+- **Paved only where used.** A suburban lot is lawn. Only its body, walks,
+  stalls, aisles, berths, drive and yards are paved, and the verge only
+  where the drive and the entrance walk cross it. A lot whose credit covers
+  its whole code keeps 27–80% planted. Two layout bugs were fixed along the
+  way: an aisle missing to a berth no stall used, and a drive that stopped
+  short of its curb cut.
 
 ### Suburban lots drawn to parking code (first slice of parking to code, built 2026-10-09)
 

@@ -49,6 +49,7 @@ import { maxHeightUnderBody } from './footprint';
 import { findStreetFacingEdge, NO_STREETS, type StreetLookup } from './frontage';
 import { lotPlanFor, lotPointToWorld } from './lotplan';
 import { isFarmEntry, isHouseEntry } from './archetypes';
+import type { KerbSurroundings } from '../shared/kerblayout';
 
 // ---------------------------------------------------------------------------
 // computeSetbacks (pure)
@@ -171,10 +172,11 @@ export function frontageSetbackFor(
   roadAt: (tileX: number, tileZ: number) => boolean,
   street: StreetLookup = NO_STREETS,
   rotation: 0 | 1 | 2 | 3 = 0,
+  kerb: KerbSurroundings | null = null,
 ): FrontageSetback {
   if (isHouseEntry(entry)) return houseFrontShift(entry, x, z, street, rotation);
   if (isFarmEntry(entry)) return ZERO_FRONTAGE_SETBACK;
-  const plan = lotPlanFor(entry, x, z, roadAt, rotation);
+  const plan = lotPlanFor(entry, x, z, roadAt, rotation, kerb);
   if (!plan) return ZERO_FRONTAGE_SETBACK;
 
   const { body } = plan.layout;

@@ -20,7 +20,10 @@ import {
   inBounds,
   tileIndex,
 } from '../shared/constants';
-import { BuildingState, FieldId, Problem, ZoneType, isStreetTier } from '../shared/types';
+import { BuildingState, FieldId, Problem, RoadTier, ZoneType, isStreetTier } from '../shared/types';
+import type { KerbSurroundings } from '../shared/kerblayout';
+import { holdsLotParkingAt } from '../shared/lotparking';
+import { drawsLotParking } from '../shared/parkingcode';
 import { SoilGrade, isFarmable } from '../shared/soil';
 import type {
   BuildingCatalogEntry,
@@ -396,7 +399,9 @@ function meetsLevelUpRequirement(
 
 /**
  * The kinds a lot may grow: the zone's level-1 entries unlocked at
- * `milestoneLevel` whose footprint `fits` the lot, in catalog order.
+ * `milestoneLevel` whose footprint `fits` the lot, in catalog order. A larger
+ * lot for a kind's building is never a kind of its own: it is one of the
+ * footprints `footprintsOf` offers once the kind is drawn.
  */
 export function spawnCandidates(
   catalog: readonly BuildingCatalogEntry[],
@@ -405,8 +410,63 @@ export function spawnCandidates(
   fits: (entry: BuildingCatalogEntry) => boolean,
 ): BuildingCatalogEntry[] {
   return catalog.filter(
-    (e) => e.zone === zone && e.level === 1 && e.unlockMilestone <= milestoneLevel && fits(e),
+    (e) =>
+      e.zone === zone &&
+      e.level === 1 &&
+      e.bodyFootprint === undefined &&
+      e.unlockMilestone <= milestoneLevel &&
+      fits(e),
   );
+}
+
+/**
+ * The footprints a kind's building may stand on at the level `entry` is:
+ * the entry itself and every larger lot the catalog holds for the same
+ * building, smallest first (ties in catalog order).
+ */
+export function footprintsOf(
+  catalog: readonly BuildingCatalogEntry[],
+  entry: BuildingCatalogEntry,
+): BuildingCatalogEntry[] {
+  const area = (e: BuildingCatalogEntry): number => e.footprint.w * e.footprint.d;
+  const lots =
+    entry.kind === undefined
+      ? []
+      : catalog.filter(
+          (e) =>
+            e.bodyFootprint !== undefined &&
+            e.zone === entry.zone &&
+            e.kind === entry.kind &&
+            e.level === entry.level &&
+            e.lot === entry.lot,
+        );
+  return [entry, ...lots].sort((a, b) => area(a) - area(b));
+}
+
+/** Whether a building may stand at (x, z) turned `rotation` and meet its parking code there. */
+type ParkingCheck = (
+  entry: BuildingCatalogEntry,
+  x: number,
+  z: number,
+  rotation: 0 | 1 | 2 | 3,
+) => boolean;
+
+/**
+ * The parking code as one growth pass reads it: a suburban commercial or
+ * industrial footprint holds, on its lot, its requirement less the stalls the
+ * street paints along its frontage, with its accessible spaces and berths.
+ * The kerb's stalls are read once, on first ask, since nothing in a pass
+ * changes the roads.
+ */
+function parkingCheckFor(g: GridState, kerb: (() => KerbSurroundings) | null): ParkingCheck {
+  let surroundings: KerbSurroundings | null | undefined;
+  const roadAt = (x: number, z: number): boolean =>
+    inBounds(x, z) && readTile(g.roadTier, tileIndex(x, z)) !== RoadTier.None;
+  return (entry, x, z, rotation) => {
+    if (!drawsLotParking(entry)) return true;
+    if (surroundings === undefined) surroundings = kerb ? kerb() : null;
+    return holdsLotParkingAt(entry, x, z, rotation, roadAt, surroundings);
+  };
 }
 
 /**
@@ -554,6 +614,8 @@ export class GrowthSystem {
     tickNo: number,
     supply: GrowthSupply = UNMETERED_SUPPLY,
     room: JobsBySector = UNLIMITED_ROOM,
+    /** The roads as the kerb stall layout reads them, built on demand; null, no street paints a stall. */
+    kerb: (() => KerbSurroundings) | null = null,
   ): BuildingDelta {
     const added: BuildingInstance[] = [];
     const removed: number[] = [];
@@ -582,6 +644,7 @@ export class GrowthSystem {
       );
       this.flagUnservedUtilities(g, registry, updated);
       const plats = platCutter(g);
+      const parks = parkingCheckFor(g, kerb);
       this.runLevelUps(
         g,
         registry,
@@ -591,10 +654,22 @@ export class GrowthSystem {
         spare,
         roomLeft,
         plats,
+        parks,
         added,
         removed,
       );
-      this.runSpawnScan(g, registry, demand, milestoneLevel, pass, spare, roomLeft, plats, added);
+      this.runSpawnScan(
+        g,
+        registry,
+        demand,
+        milestoneLevel,
+        pass,
+        spare,
+        roomLeft,
+        plats,
+        parks,
+        added,
+      );
     }
 
     return { added, removed, updated };
@@ -849,6 +924,7 @@ export class GrowthSystem {
     spare: Spare,
     room: JobsBySector,
     plats: PlatPass,
+    parks: ParkingCheck,
     added: BuildingInstance[],
     removed: number[],
   ): void {
@@ -868,6 +944,7 @@ export class GrowthSystem {
           spare,
           room,
           plats,
+          parks,
           inst,
           entry,
           added,
@@ -974,6 +1051,7 @@ export class GrowthSystem {
     spare: Spare,
     room: JobsBySector,
     plats: PlatPass,
+    parks: ParkingCheck,
     inst: BuildingInstance,
     entry: BuildingCatalogEntry,
     added: BuildingInstance[],
@@ -999,23 +1077,100 @@ export class GrowthSystem {
 
     // A building keeps its kind, and its lot, for life: the next level of the
     // same kind on the same parcel.
-    const nextEntry = this.catalog.find(
+    const nextKind = this.catalog.find(
       (e) =>
         e.zone === zone &&
         e.level === targetLevel &&
         e.kind === entry.kind &&
         e.lot === entry.lot &&
+        e.bodyFootprint === undefined &&
         (e.lot === undefined ||
           (e.footprint.w === entry.footprint.w && e.footprint.d === entry.footprint.d)),
     );
-    if (!nextEntry || nextEntry.unlockMilestone > milestoneLevel) return false;
+    if (!nextKind || nextKind.unlockMilestone > milestoneLevel) return false;
     // A business grows only where the town has room for the jobs it adds.
-    const jobsAdded = (nextEntry.jobs ?? 0) - (entry.jobs ?? 0);
+    const jobsAdded = (nextKind.jobs ?? 0) - (entry.jobs ?? 0);
     if (sector !== 'res' && farm === null && jobsAdded > room[sector]) return false;
 
     const { x, z, rotation } = inst;
     const oldFootprint = footprintForRotation(entry, rotation);
+
+    // Temporarily clear this building's own stamp so the (possibly larger)
+    // new footprint can be checked on a clean grid, then commit or roll back.
+    clearStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
+    // Of the next level's footprints, smallest first, the first that stands
+    // here and meets its parking code. A building never gives up ground it
+    // stands on, so only those that hold its own lot are tried.
+    let chosen: { next: BuildingCatalogEntry; nx: number; nz: number } | null = null;
+    for (const next of footprintsOf(this.catalog, nextKind)) {
+      if (next.footprint.w < entry.footprint.w || next.footprint.d < entry.footprint.d) continue;
+      const at = this.levelUpSite(g, plats, parks, inst, entry, next, zone, farm);
+      if (at) {
+        chosen = { next, ...at };
+        break;
+      }
+    }
+    if (chosen === null) {
+      writeStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
+      return false;
+    }
+    const { next: nextEntry, nx, nz } = chosen;
     const newFootprint = footprintForRotation(nextEntry, rotation);
+    // A bigger building draws more, and nobody builds it on a grid that
+    // cannot carry the difference.
+    const { power, water, sewer } = this.utilityDelta(
+      g,
+      milestoneLevel,
+      { entry, x, z, w: oldFootprint.w, d: oldFootprint.d },
+      { entry: nextEntry, x: nx, z: nz, w: newFootprint.w, d: newFootprint.d },
+    );
+    if (
+      !this.suppliedFor(waitKey, [], pass, spare, power, water, sewer) ||
+      (farm !== null && this.rng.next() >= demand.ind)
+    ) {
+      writeStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
+      return false;
+    }
+
+    registry.remove(g, inst.id);
+    const placed = registry.place(g, nextEntry, nx, nz, rotation, BuildingState.Constructing);
+    if (!placed) {
+      // Unreachable: footprintFree + canPlace were just confirmed true with
+      // no intervening mutation. Restore rather than silently drop the tile.
+      writeStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
+      return false;
+    }
+    spare.power -= power;
+    spare.water -= water;
+    spare.sewer -= sewer;
+    if (sector !== 'res') room[sector] -= jobsAdded;
+
+    this.constructing.set(placed.id, CONSTRUCTION_TICKS);
+    this.blockerStreak.delete(inst.id);
+    removed.push(inst.id);
+    added.push(placed);
+    return true;
+  }
+
+  /**
+   * Where `inst` stands once it is rebuilt as `next`, its own stamp cleared:
+   * the min corner of the new footprint, or null where it does not fit. It
+   * fits on land zoned for it, on the frontage of the parcels it covers in a
+   * platted zone, and on a lot that meets its parking code.
+   */
+  private levelUpSite(
+    g: GridState,
+    plats: PlatPass,
+    parks: ParkingCheck,
+    inst: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    next: BuildingCatalogEntry,
+    zone: ZoneType,
+    farm: FarmKind | null,
+  ): { nx: number; nz: number } | null {
+    const { x, z, rotation } = inst;
+    const oldFootprint = footprintForRotation(entry, rotation);
+    const newFootprint = footprintForRotation(next, rotation);
 
     // A building on a platted zone that grows into a new footprint still
     // stands on the frontage of the parcels it now covers.
@@ -1053,9 +1208,6 @@ export class GrowthSystem {
     const sides: readonly Front[] =
       front !== undefined ? [front] : rotation % 2 === 0 ? ['N', 'S'] : ['W', 'E'];
 
-    // Temporarily clear this building's own stamp so the (possibly larger)
-    // new footprint can be checked on a clean grid, then commit or roll back.
-    clearStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
     const fitsAt = (ax: number, az: number): boolean =>
       (plat === null ||
         !platReaches(plat, x, z) ||
@@ -1067,7 +1219,8 @@ export class GrowthSystem {
       (farm === null
         ? isZonedLot(g, zone, ax, az, newFootprint.w, newFootprint.d)
         : isFarmLot(g, ax, az, newFootprint.w, newFootprint.d) &&
-          lotGrade(g, ax, az, newFootprint.w, newFootprint.d) >= FARM_GRADE[farm]);
+          lotGrade(g, ax, az, newFootprint.w, newFootprint.d) >= FARM_GRADE[farm]) &&
+      parks(next, ax, az, rotation);
     // Growing along the street may take the free lots on either side: try
     // each shift from the min corner outward, nearest to the old spot first.
     const alongGrowth =
@@ -1080,46 +1233,7 @@ export class GrowthSystem {
       front === 'N' || front === 'S' ? { ax: nx - k, az: nz } : { ax: nx, az: nz - k },
     );
     const anchor = anchors.find((a) => fitsAt(a.ax, a.az));
-    const fits = anchor !== undefined;
-    if (anchor !== undefined) {
-      nx = anchor.ax;
-      nz = anchor.az;
-    }
-    // A bigger building draws more, and nobody builds it on a grid that
-    // cannot carry the difference.
-    const { power, water, sewer } = this.utilityDelta(
-      g,
-      milestoneLevel,
-      { entry, x, z, w: oldFootprint.w, d: oldFootprint.d },
-      { entry: nextEntry, x: nx, z: nz, w: newFootprint.w, d: newFootprint.d },
-    );
-    if (
-      !fits ||
-      !this.suppliedFor(waitKey, [], pass, spare, power, water, sewer) ||
-      (farm !== null && this.rng.next() >= demand.ind)
-    ) {
-      writeStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
-      return false;
-    }
-
-    registry.remove(g, inst.id);
-    const placed = registry.place(g, nextEntry, nx, nz, rotation, BuildingState.Constructing);
-    if (!placed) {
-      // Unreachable: footprintFree + canPlace were just confirmed true with
-      // no intervening mutation. Restore rather than silently drop the tile.
-      writeStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
-      return false;
-    }
-    spare.power -= power;
-    spare.water -= water;
-    spare.sewer -= sewer;
-    if (sector !== 'res') room[sector] -= jobsAdded;
-
-    this.constructing.set(placed.id, CONSTRUCTION_TICKS);
-    this.blockerStreak.delete(inst.id);
-    removed.push(inst.id);
-    added.push(placed);
-    return true;
+    return anchor === undefined ? null : { nx: anchor.ax, nz: anchor.az };
   }
 
   private runSpawnScan(
@@ -1131,6 +1245,7 @@ export class GrowthSystem {
     spare: Spare,
     room: JobsBySector,
     plats: PlatPass,
+    parks: ParkingCheck,
     added: BuildingInstance[],
   ): void {
     const size = g.size;
@@ -1158,21 +1273,30 @@ export class GrowthSystem {
       // A building with no lot of its own, in a platted zone the plat reaches,
       // stands on the frontage of the parcels it covers, and is considered
       // only at a street-row tile of one, wherever its min corner then falls.
+      // A kind that parks to code stands on the smallest of its footprints
+      // whose lot meets its code there, the kerb's stalls along it counted.
       const plat = plats.platFor(zone);
       const frontageZone = PLATTED_ZONES.includes(zone) && platReaches(plat, x, z);
-      const placements = new Map<BuildingCatalogEntry, Placement>();
-      const fitting = spawnCandidates(this.catalog, zone, milestoneLevel, (e) => {
-        const at =
-          frontageZone && e.lot === undefined
-            ? frontagePlacement(plat, e, x, z)
-            : ({ x, z, rotation: 0 } as const);
-        if (at === null) return false;
-        const { w, d } = footprintForRotation(e, at.rotation);
-        if (!isZonedLot(g, zone, at.x, at.z, w, d) || !this.canPlace(g, at.x, at.z, w, d)) {
-          return false;
+      const placements = new Map<
+        BuildingCatalogEntry,
+        { entry: BuildingCatalogEntry } & Placement
+      >();
+      const fitting = spawnCandidates(this.catalog, zone, milestoneLevel, (kind) => {
+        for (const e of footprintsOf(this.catalog, kind)) {
+          const at =
+            frontageZone && e.lot === undefined
+              ? frontagePlacement(plat, e, x, z)
+              : ({ x, z, rotation: 0 } as const);
+          if (at === null) continue;
+          const { w, d } = footprintForRotation(e, at.rotation);
+          if (!isZonedLot(g, zone, at.x, at.z, w, d) || !this.canPlace(g, at.x, at.z, w, d)) {
+            continue;
+          }
+          if (!parks(e, at.x, at.z, at.rotation)) continue;
+          placements.set(kind, { entry: e, ...at });
+          return true;
         }
-        placements.set(e, at);
-        return true;
+        return false;
       });
       // A house stands on a parcel of the plat cut from its street, or, where
       // no street's plat reaches the tile, on the lot the land warrants.
@@ -1186,9 +1310,9 @@ export class GrowthSystem {
           );
       const candidates = withinRoom(platted, sector, room);
       if (candidates.length === 0) continue;
-      const entry = drawKind(candidates, candidates.length > 1 ? this.rng.next() : 0);
+      const kind = drawKind(candidates, candidates.length > 1 ? this.rng.next() : 0);
 
-      const { x: ax, z: az, rotation } = placements.get(entry)!;
+      const { entry, x: ax, z: az, rotation } = placements.get(kind)!;
       const { w, d } = footprintForRotation(entry, rotation);
       // Service is judged over the whole lot, so it cannot depend on which
       // side of the building the street happens to sit (see footprintServed).

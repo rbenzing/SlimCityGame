@@ -29,6 +29,7 @@ import {
   type ParkingSetbacks,
 } from './kerbstalls';
 import { axisOfFlow } from './overpass';
+import { kerbSideFacing, type Side } from './roadedge';
 import {
   carriagewayHalfWidthOf,
   corridorHalfProfile,
@@ -630,4 +631,29 @@ export function paintedKerbStallsAlong(
     for (const stall of stallsOnTile(face, x, z, frontage.alongX)) out.push({ ...stall, style });
   }
   return out;
+}
+
+/** A lot's tiles: its min corner and its size, as it stands turned. */
+export interface LotTiles {
+  x: number;
+  z: number;
+  w: number;
+  d: number;
+}
+
+/**
+ * The kerb credit a lot earns on the edge it fronts: one space for every stall
+ * the street paints on the lot's own side whose middle lies along the lot's
+ * frontage. Parallel, angled and head-in stalls count one each, accessible
+ * ones too, with no cap; the far kerb and the no-parking zones count nothing.
+ */
+export function kerbCreditFor(s: KerbSurroundings, lot: LotTiles, side: Side): number {
+  const alongX = side === 'N' || side === 'S';
+  return paintedKerbStallsAlong(s, {
+    x: side === 'E' ? lot.x + lot.w : side === 'W' ? lot.x - 1 : lot.x,
+    z: side === 'N' ? lot.z - 1 : side === 'S' ? lot.z + lot.d : lot.z,
+    alongX,
+    tiles: alongX ? lot.w : lot.d,
+    side: kerbSideFacing(side),
+  }).length;
 }

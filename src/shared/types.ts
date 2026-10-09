@@ -1191,6 +1191,13 @@ export interface BuildingCatalogEntry {
   /** The kind's weight in the lot draw among the kinds that fit, on its level-1 entry. */
   share?: number;
   footprint: { w: number; d: number }; // tiles
+  /**
+   * The footprint the body and its floor are sized on, for an entry that
+   * stands the kind's building on a larger lot to hold the car park its code
+   * asks for: one of the footprints growth chooses among for that kind and
+   * level, never drawn for on its own. Absent, the body is sized on `footprint`.
+   */
+  bodyFootprint?: { w: number; d: number };
   height: number; // meters, for the box mesh
   color: number; // hex, flat color until stage-2 facade atlases
   residents?: number;

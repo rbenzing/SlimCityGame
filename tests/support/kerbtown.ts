@@ -11,6 +11,7 @@ import { RoadMeshRenderer } from '../../src/render/roadsmesh';
 import {
   composeProfile,
   FIRST_CUSTOM_PROFILE_ID,
+  isPresetProfileId,
   NO_EDITS,
   presetProfileForTier,
   type SideChoice,
@@ -23,7 +24,21 @@ import type {
   RoadProfile,
   TilePoint,
 } from '../../src/shared/types';
-import { column, feedMirror, flatMap, roadRow, run, sandboxed, type Harness } from './sim';
+import { decodeSave } from '../../src/app/persist';
+import type { KerbSurroundings } from '../../src/shared/kerblayout';
+import { gridKerbSurroundings } from '../../src/sim/kerbsurroundings';
+import { RoadNetwork } from '../../src/world/roadgraph';
+import {
+  column,
+  feedMirror,
+  flatMap,
+  latestSaveData,
+  latestSaveGrid,
+  roadRow,
+  run,
+  sandboxed,
+  type Harness,
+} from './sim';
 
 /** The parked profiles the town lays, by name, each with the preset it is composed from. */
 const PROFILES: readonly {
@@ -115,6 +130,26 @@ export function kerbTown(): KerbTown {
   control(70, 20, 'signal');
   h.ticks(2);
 
+  return { h, ...drawnRoads(h), profiles };
+}
+
+/** A worker's roads as the sim holds them: its saved grid, its road graph and its profile table. */
+export function simKerb(h: Harness): KerbSurroundings {
+  h.sim.handleMessage({ type: 'requestSave' });
+  const table = new Map(
+    (decodeSave(latestSaveData(h)).meta.roadProfiles ?? []).map((e) => [e.id, e.profile]),
+  );
+  const profileById = (id: number): RoadProfile | null =>
+    isPresetProfileId(id) ? presetProfileForTier(id as RoadTier) : (table.get(id) ?? null);
+  const grid = latestSaveGrid(h);
+  const network = new RoadNetwork();
+  network.setProfileResolver((id) => table.get(id) ?? null);
+  network.rebuild(grid);
+  return gridKerbSurroundings(grid, network.getNodes(), profileById);
+}
+
+/** A worker's roads fed to the road mesh the way main.ts feeds it, and every tile that carries one. */
+export function drawnRoads(h: Harness): Pick<KerbTown, 'renderer' | 'roadTiles'> {
   const mirror = new ClientGridMirror(flatMap());
   const toMirror = feedMirror(mirror);
   const renderer = new RoadMeshRenderer(
@@ -138,7 +173,7 @@ export function kerbTown(): KerbTown {
     }
   }
   const roadTiles = [...roads.entries()].sort((a, b) => a[0] - b[0]).map(([, t]) => t);
-  return { h, renderer, roadTiles, profiles };
+  return { renderer, roadTiles };
 }
 
 const round = (v: number): number => Number(v.toFixed(6));
