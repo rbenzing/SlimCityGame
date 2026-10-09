@@ -385,6 +385,17 @@ describe('the civic ploppables (honest both sides): every draw from floor area a
     close(mrf.waterUse, STAFF * GAL_PER_WORKER_DAY * KL_PER_GAL, 1);
   });
 
+  it("draws the transfer station's hall at 5 kWh a tonne over the day, and its staff's water", () => {
+    const station = byId('transfer-station');
+    /** 50 short tons a day; 5 kWh a tonne, the top of two small stations' measured 2.5–6.1. */
+    const TONNES_PER_DAY = 50 * 0.90718474;
+    const TRANSFER_KWH_PER_TONNE = 5;
+    close(station.powerUse, (TONNES_PER_DAY * TRANSFER_KWH_PER_TONNE) / 24 / 1000, 5);
+    const STAFF = 4;
+    const GAL_PER_WORKER_DAY = 13;
+    close(station.waterUse, STAFF * GAL_PER_WORKER_DAY * KL_PER_GAL, 1);
+  });
+
   it("draws the coal plant's staff water, not its cooling water", () => {
     const coal = byId('coal-plant');
     const STAFF = 50;

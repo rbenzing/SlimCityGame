@@ -1009,6 +1009,15 @@ MUTCD citations below use 11th-edition section numbers.
   store, and a full store stops it sorting. A stopped MRF's round serves no
   one, and the depots' recycling goes regional again. —
   [garbage-recovery.md](game-design/features/garbage-recovery.md); `src/sim/garbage.ts`
+- A transfer station is never final and diverts nothing; it lends reach. It
+  collects only after the incinerators and the landfill have collected, so
+  it takes what no disposal site reaches, up to its daily throughput and the
+  room on its tipping floor. Each pass it forwards up to that throughput to
+  the nearest landfill or incinerator its streets connect to that has room,
+  at any distance; distance never reduces what arrives. The floor holds at
+  most two days' throughput (the common 48-hour state limit), and a full
+  floor stops it collecting. —
+  [garbage-recovery.md](game-design/features/garbage-recovery.md); `src/sim/garbage.ts`
 - A facility's trucks leave from the street nearest any tile of its turned
   lot, never only its corner: a 2×3 depot or a 4×4 incinerator whose corner
   stands three tiles from its street still sends its fleet. —
@@ -1256,8 +1265,9 @@ MUTCD citations below use 11th-edition section numbers.
   barn and the silo stands in its yard. — [buildings.md](art/buildings.md);
   `src/render/archetypes.ts`, `src/render/farmlot.ts`
 - A utility kit that paves its whole lot (`pavesLot`: the recycling depot, the
-  recovery facility) stands on the highest ground under the lot, never its
-  centre, and its yard carries a footing down to the low side. The
+  recovery facility, the transfer station) stands on the highest ground under
+  the lot, never its centre, and its yard carries a footing down to the low
+  side. The
   instancer's plinth, seated on the highest ground under the smaller body, then
   always lies under the yard; a kit seated at its centre on a slope lets the
   plinth show through. — `src/render/utilitykits.ts`

@@ -213,6 +213,11 @@ and [../world-sim/services-model.md](../world-sim/services-model.md#garbage-and-
 | `MRF_KG_PER_COMMERCIAL_JOB_DAY` | 0.30        | CalRecycle 2014 curbside recycling, 0.08–0.30 t an employee a year across shops and offices.   | `src/shared/constants.ts` |
 | `MRF_KG_PER_INDUSTRIAL_JOB_DAY` | 0.25        | CalRecycle 2014 curbside recycling, 0.05–0.16 t an employee a year across manufacturing and wholesale. | `src/shared/constants.ts` |
 | materials recovery facility  | 5×6, 11 m, 4 trucks, 0.0378 MW | Kauai's 3-acre site and 27,000 sq ft hall; 20 kWh a tonne over the day; reach 48, cost, upkeep, pollution dials. | `src/data/catalog.json`   |
+| `TRANSFER_SHORT_TONS_PER_DAY` | 50            | EPA's small class (under 100 t a day); a typical rural station, under 60 t a day for about 20,000 people. | `src/shared/constants.ts` |
+| `TRANSFER_UNITS_PER_PASS`    | 9,072          | Derived like `MRF_SORT_UNITS_PER_PASS`: 50 short tons × 4,000 units ÷ 20 passes.               | `src/shared/constants.ts` |
+| `TRANSFER_FLOOR_DAYS`        | 2              | The common 48-hour state limit on waste left at a station (Kansas K.A.R. 28-29-23a, Oregon Metro dry waste). | `src/shared/constants.ts` |
+| `TRANSFER_FLOOR_UNITS`       | 362,880        | Derived: two days at full throughput, 9,072 × 20 × 2; about 91 t.                              | `src/shared/constants.ts` |
+| transfer station             | 4×5, 11 m, 4 trucks, 0.00945 MW | 2-acre sites (Isle of Wight, Mammoth Lakes), Becker County's 16,000 sq ft hall, 5 kWh a tonne; reach 40, cost, upkeep, pollution dials. | `src/data/catalog.json`   |
 
 ## Sound walls
 

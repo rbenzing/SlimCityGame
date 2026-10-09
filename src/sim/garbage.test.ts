@@ -13,6 +13,9 @@ import {
   RECYCLING_CREDIT_PER_UNIT,
   RECYCLING_HOMES_PER_TRUCK,
   RECYCLING_KG_PER_RESIDENT_DAY,
+  TRANSFER_FLOOR_DAYS,
+  TRANSFER_FLOOR_UNITS,
+  TRANSFER_UNITS_PER_PASS,
   TRASH_UNITS_PER_TONNE,
   tileIndex,
 } from '../shared/constants';
@@ -29,6 +32,7 @@ import {
   type GarbageDepot,
   type GarbageFacility,
   type GarbageMrf,
+  type GarbageTransfer,
 } from './garbage';
 import catalog from '../data/catalog.json';
 
@@ -845,6 +849,263 @@ describe('the Materials Recovery Facility', () => {
         sys.tick(g, buildings, n, [], [depot], [mrf({ sortRate: 25 })]);
       }
       return [sys.landfillStored(), sys.takeRecoveredThisMonth(), sys.mrfSnapshot()];
+    };
+    expect(run()).toEqual(run());
+  });
+});
+
+describe('the transfer station', () => {
+  const STATION_ID = 50;
+  const NEAR = 7;
+  const FAR = 8;
+  const NEAR_TILE = tileIndex(9, 25);
+  const FAR_TILE = tileIndex(60, 41);
+  const station = (over: Partial<GarbageTransfer> = {}): GarbageTransfer => ({
+    id: STATION_ID,
+    collectionRange: 40,
+    transferRate: TRANSFER_UNITS_PER_PASS,
+    floorCapacity: TRANSFER_FLOOR_UNITS,
+    ...over,
+  });
+  // 100 jobs each: 37 units on pass 0.
+  const near = people(NEAR, 0, 100);
+  const far = people(FAR, 0, 100);
+
+  /**
+   * A road column x=10 (z 10..40) and a row z=40 out to x=250; the landfill at
+   * (11..12, 20) collects up the column, the station at (30,41) stands on the
+   * row. The building at (9,25) is in both reaches, the one at (60,41) in the
+   * station's alone.
+   */
+  function stationWorld(): GridState {
+    const g = createGrid();
+    for (let z = 10; z <= 40; z++) g.roadTier[tileIndex(10, z)] = RoadTier.TwoLane;
+    for (let x = 11; x <= 250; x++) g.roadTier[tileIndex(x, 40)] = RoadTier.TwoLane;
+    g.landfill[tileIndex(11, 20)] = 1;
+    g.landfill[tileIndex(12, 20)] = 1;
+    g.buildingId[tileIndex(30, 41)] = STATION_ID;
+    g.buildingId[NEAR_TILE] = NEAR;
+    g.buildingId[FAR_TILE] = FAR;
+    return g;
+  }
+
+  /** The row z=40 alone with the station at (30,41) holding `stored` on its floor, and no buildings. */
+  function floorWorld(stored: number): { g: GridState; sys: GarbageSystem } {
+    const g = createGrid();
+    for (let x = 10; x <= 250; x++) g.roadTier[tileIndex(x, 40)] = RoadTier.TwoLane;
+    g.buildingId[tileIndex(30, 41)] = STATION_ID;
+    const sys = new GarbageSystem(g.size);
+    sys.restoreState({
+      landfillStored: 0,
+      incinerators: [],
+      transfers: [{ id: STATION_ID, stored }],
+    });
+    return { g, sys };
+  }
+  const paintLandfillAt = (g: GridState, x: number): void => {
+    for (const dx of [0, 1]) {
+      g.landfill[tileIndex(x + dx, 41)] = 1;
+      g.landfill[tileIndex(x + dx, 42)] = 1;
+    }
+  };
+  const incinerator = (id: number, bufferCapacity = 1_000, burnRate = 0): GarbageFacility => ({
+    id,
+    collectionRange: 40,
+    bufferCapacity,
+    burnRate,
+  });
+
+  it('moves 50 short tons a day, 9,072 units a pass by the MRF derivation, onto a two-day floor', () => {
+    expect(TRANSFER_UNITS_PER_PASS).toBe(MRF_SORT_UNITS_PER_PASS);
+    expect(TRANSFER_UNITS_PER_PASS).toBe(
+      Math.round((50 * 0.90718474 * TRASH_UNITS_PER_TONNE) / GARBAGE_PASSES_PER_DAY),
+    );
+    expect(TRANSFER_FLOOR_DAYS).toBe(2);
+    expect(TRANSFER_FLOOR_UNITS).toBe(TRANSFER_UNITS_PER_PASS * GARBAGE_PASSES_PER_DAY * 2);
+    expect(TRANSFER_FLOOR_UNITS).toBe(362_880);
+  });
+
+  it('is a 4x5, 11 m station of four trucks whose catalog figures are the derived constants, open at Small City', () => {
+    const entry = (catalog as { buildings: BuildingCatalogEntry[] }).buildings.find(
+      (e) => e.id === 'transfer-station',
+    )!;
+    expect(entry.footprint).toEqual({ w: 4, d: 5 });
+    expect(entry.height).toBe(11);
+    expect(entry.garbage).toEqual({
+      collectionRange: 40,
+      bufferCapacity: TRANSFER_FLOOR_UNITS,
+      burnRate: 0,
+      trucks: 4,
+      transferRate: TRANSFER_UNITS_PER_PASS,
+    });
+    expect([entry.cost, entry.upkeep, entry.pollution]).toEqual([7_500, 540, 25]);
+    expect(MILESTONES[entry.unlockMilestone]?.name).toBe('Small City');
+  });
+
+  it('collects only what the landfill leaves: a building both reach goes to the landfill, one only it reaches to it', () => {
+    const g = stationWorld();
+    const alone = new GarbageSystem(g.size);
+    alone.tick(g, [near, far], 0);
+    expect(alone.landfillStored()).toBe(COM_PASS);
+    expect(alone.trash[FAR_TILE]).toBe(COM_PASS);
+
+    const sys = new GarbageSystem(g.size);
+    sys.tick(g, [near, far], 0, [], [], [], [station()]);
+    expect(sys.transferSnapshot()).toEqual([
+      { id: STATION_ID, collected: COM_PASS, forwarded: COM_PASS, stored: 0, stopped: false },
+    ]);
+    expect(sys.landfillStored()).toBe(2 * COM_PASS);
+    expect(sys.trash[NEAR_TILE]).toBe(0);
+    expect(sys.trash[FAR_TILE]).toBe(0);
+  });
+
+  it('collects no more than its throughput a pass', () => {
+    const g = stationWorld();
+    const sys = new GarbageSystem(g.size);
+    sys.tick(g, [far], 0, [], [], [], [station({ transferRate: 20 })]);
+    expect(sys.transferSnapshot()[0]).toMatchObject({ collected: 20, forwarded: 20, stored: 0 });
+    expect(sys.trash[FAR_TILE]).toBe(COM_PASS - 20);
+  });
+
+  it('fills its floor with nothing behind it, no further than the floor, then stops collecting', () => {
+    const g = stationWorld();
+    g.landfill.fill(0);
+    const sys = new GarbageSystem(g.size);
+    const small = station({ floorCapacity: 50 });
+    sys.tick(g, [far], 0, [], [], [], [small]);
+    expect(sys.transferSnapshot()[0]).toEqual({
+      id: STATION_ID,
+      collected: 37,
+      forwarded: 0,
+      stored: 37,
+      stopped: false,
+    });
+    sys.tick(g, [far], 1, [], [], [], [small]);
+    expect(sys.transferSnapshot()[0]).toMatchObject({ collected: 13, stored: 50, stopped: false });
+    expect(sys.trash[FAR_TILE]).toBe(unitsOnPass(far, 1) - 13);
+    sys.tick(g, [far], 2, [], [], [], [small]);
+    expect(sys.transferSnapshot()[0]).toMatchObject({ collected: 0, stored: 50, stopped: true });
+    expect(sys.trash[FAR_TILE]).toBe(unitsOnPass(far, 1) - 13 + unitsOnPass(far, 2));
+  });
+
+  it('forwards to a landfill at any distance, up to its throughput a pass', () => {
+    const { g, sys } = floorWorld(500);
+    paintLandfillAt(g, 240); // some 210 road tiles from the station
+    sys.tick(g, [], 0, [], [], [], [station({ transferRate: 300 })]);
+    expect(sys.landfillStored()).toBe(300);
+    expect(sys.transferSnapshot()[0]).toMatchObject({ collected: 0, forwarded: 300, stored: 200 });
+    sys.tick(g, [], 1, [], [], [], [station({ transferRate: 300 })]);
+    expect(sys.landfillStored()).toBe(500);
+    expect(sys.transferStored(STATION_ID)).toBe(0);
+  });
+
+  it('forwards to the nearest final facility with room first, and the overflow to the next', () => {
+    const { g, sys } = floorWorld(500);
+    paintLandfillAt(g, 240);
+    g.buildingId[tileIndex(60, 41)] = 40; // nearer than the landfill
+    sys.tick(g, [], 0, [incinerator(40, 200)], [], [], [station()]);
+    expect(sys.incineratorStored(40)).toBe(200);
+    expect(sys.landfillStored()).toBe(300);
+    expect(sys.transferStored(STATION_ID)).toBe(0);
+  });
+
+  it('forwards to the landfill before an incinerator at the same road distance', () => {
+    const { g, sys } = floorWorld(500);
+    paintLandfillAt(g, 100);
+    g.buildingId[tileIndex(100, 39)] = 40; // its street is the landfill's
+    sys.tick(g, [], 0, [incinerator(40)], [], [], [station()]);
+    expect(sys.landfillStored()).toBe(500);
+    expect(sys.incineratorStored(40)).toBe(0);
+  });
+
+  it('lands in an incinerator pit that burns it on its next pass', () => {
+    const { g, sys } = floorWorld(500);
+    g.buildingId[tileIndex(60, 41)] = 40;
+    const plant = incinerator(40, 1_000, 50);
+    sys.tick(g, [], 0, [plant], [], [], [station()]);
+    expect(sys.incineratorStored(40)).toBe(500);
+    expect(sys.incineratorBurnedLast(40)).toBe(0);
+    sys.tick(g, [], 1, [plant], [], [], [station()]);
+    expect(sys.incineratorBurnedLast(40)).toBe(50);
+    expect(sys.incineratorStored(40)).toBe(450);
+  });
+
+  it('keeps its floor when no final facility is connected', () => {
+    const { g, sys } = floorWorld(500);
+    g.buildingId[tileIndex(200, 200)] = 40; // an incinerator off every road
+    sys.tick(g, [], 0, [incinerator(40)], [], [], [station()]);
+    expect(sys.transferSnapshot()[0]).toMatchObject({ forwarded: 0, stored: 500 });
+    expect(sys.incineratorStored(40)).toBe(0);
+  });
+
+  it('diverts nothing and loses no unit: what it collects is forwarded or on its floor', () => {
+    const g = stationWorld();
+    const sys = new GarbageSystem(g.size);
+    // The landfill has room for 100 more units; then it is full and the
+    // station takes the building both reach as well.
+    const start = 2 * LANDFILL_CAPACITY_PER_TILE - 100;
+    sys.restoreState({ landfillStored: start, incinerators: [] });
+    let generated = 0;
+    let before = 0;
+    for (let n = 0; n < 5; n++) {
+      sys.tick(g, [near, far], n, [], [], [], [station()]);
+      generated += unitsOnPass(near, n) + unitsOnPass(far, n);
+      const s = sys.transferSnapshot()[0]!;
+      expect(s.collected).toBe(s.forwarded + s.stored - before);
+      before = s.stored;
+    }
+    expect(sys.takeRecoveredThisMonth()).toBe(0);
+    expect(sys.isLandfillFull(g)).toBe(true);
+    const onTiles = sys.trash[NEAR_TILE]! + sys.trash[FAR_TILE]!;
+    expect(onTiles).toBe(0);
+    expect(sys.landfillStored() - start + sys.transferStored(STATION_ID)).toBe(generated);
+  });
+
+  it('shares a building two stations reach between them', () => {
+    const g = stationWorld();
+    g.buildingId[tileIndex(31, 41)] = STATION_ID + 1;
+    const sys = new GarbageSystem(g.size);
+    sys.tick(g, [far], 0, [], [], [], [station({ id: STATION_ID + 1 }), station()]);
+    expect(sys.transferSnapshot().map((s) => [s.id, s.collected])).toEqual([
+      [STATION_ID, 19],
+      [STATION_ID + 1, 18],
+    ]);
+    expect(sys.landfillStored()).toBe(COM_PASS);
+  });
+
+  it('saves its floor, loads an old save without one as empty, and drops a removed station', () => {
+    const g = stationWorld();
+    g.landfill.fill(0);
+    const sys = new GarbageSystem(g.size);
+    for (let n = 0; n < 3; n++) sys.tick(g, [far], n, [], [], [], [station()]);
+    const held = sys.transferStored(STATION_ID);
+    expect(held).toBeGreaterThan(0);
+    const saved = sys.serializeState();
+    expect(saved.transfers).toEqual([{ id: STATION_ID, stored: held }]);
+    const loaded = new GarbageSystem(g.size);
+    loaded.restoreState(saved);
+    expect(loaded.transferStored(STATION_ID)).toBe(held);
+
+    const old = new GarbageSystem(g.size);
+    old.restoreState({ landfillStored: 5, incinerators: [] });
+    expect(old.transferStored(STATION_ID)).toBe(0);
+
+    loaded.tick(g, [far], 3, [], [], [], []);
+    expect(loaded.transferStored(STATION_ID)).toBe(0);
+    expect(loaded.serializeState().transfers).toEqual([]);
+  });
+
+  it('is deterministic', () => {
+    const run = (): unknown => {
+      const g = stationWorld();
+      g.buildingId[tileIndex(31, 41)] = STATION_ID + 1;
+      const sys = new GarbageSystem(g.size);
+      sys.restoreState({ landfillStored: 2 * LANDFILL_CAPACITY_PER_TILE - 500, incinerators: [] });
+      const stations = [station({ transferRate: 25 }), station({ id: STATION_ID + 1 })];
+      for (let n = 0; n < GARBAGE_PASSES_PER_DAY; n++) {
+        sys.tick(g, [far, near], n, [], [], [], stations);
+      }
+      return [sys.landfillStored(), sys.transferSnapshot(), sys.serializeState()];
     };
     expect(run()).toEqual(run());
   });

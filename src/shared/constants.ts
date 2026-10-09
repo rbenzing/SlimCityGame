@@ -282,12 +282,15 @@ export const RECYCLING_CREDIT_PER_UNIT =
   LANDFILL_CAPACITY_PER_TILE;
 /** Tonnes in a US short ton (2,000 lb). */
 export const TONNES_PER_SHORT_TON = 0.90718474;
+/** The units one garbage pass carries of a daily throughput in short tons. */
+const unitsPerPassOfShortTons = (shortTonsPerDay: number): number =>
+  Math.round(
+    (shortTonsPerDay * TONNES_PER_SHORT_TON * TRASH_UNITS_PER_TONNE) / GARBAGE_PASSES_PER_DAY,
+  );
 /** A Materials Recovery Facility's daily throughput, in short tons: a small single-stream plant. */
 export const MRF_SHORT_TONS_PER_DAY = 50;
 /** The units an MRF sorts in one garbage pass, its throughput spread over the day. */
-export const MRF_SORT_UNITS_PER_PASS = Math.round(
-  (MRF_SHORT_TONS_PER_DAY * TONNES_PER_SHORT_TON * TRASH_UNITS_PER_TONNE) / GARBAGE_PASSES_PER_DAY,
-);
+export const MRF_SORT_UNITS_PER_PASS = unitsPerPassOfShortTons(MRF_SHORT_TONS_PER_DAY);
 /** The percentage of what a sorting plant takes that it sells to market; the rest is residue. */
 export const MRF_YIELD_PERCENT = 87;
 /** An MRF's residue store: a week of residue at full throughput. */
@@ -300,6 +303,15 @@ export const MRF_KG_PER_HOME_DAY = 0.3;
 export const MRF_KG_PER_COMMERCIAL_JOB_DAY = 0.3;
 /** An industrial job's recycling a day (kg) on an MRF's round. */
 export const MRF_KG_PER_INDUSTRIAL_JOB_DAY = 0.25;
+/** A transfer station's daily throughput, in short tons: a station in the small class. */
+export const TRANSFER_SHORT_TONS_PER_DAY = 50;
+/** The units a transfer station collects, and forwards, in one garbage pass. */
+export const TRANSFER_UNITS_PER_PASS = unitsPerPassOfShortTons(TRANSFER_SHORT_TONS_PER_DAY);
+/** The days of throughput a tipping floor may hold: the common 48-hour limit. */
+export const TRANSFER_FLOOR_DAYS = 2;
+/** A transfer station's tipping floor, in units: its throughput over the days it may hold. */
+export const TRANSFER_FLOOR_UNITS =
+  TRANSFER_UNITS_PER_PASS * GARBAGE_PASSES_PER_DAY * TRANSFER_FLOOR_DAYS;
 
 /**
  * ¢ to string one tile of power line. Deliberately CHEAPER than the cheapest

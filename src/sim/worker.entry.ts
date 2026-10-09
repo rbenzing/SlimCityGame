@@ -223,6 +223,7 @@ import {
   type GarbageDepot,
   type GarbageFacility,
   type GarbageMrf,
+  type GarbageTransfer,
 } from './garbage';
 import {
   GarbageTruckSystem,
@@ -999,11 +1000,12 @@ class SimWorld implements WorkerSim {
       const facilities: GarbageFacility[] = [];
       const depots: GarbageDepot[] = [];
       const mrfs: GarbageMrf[] = [];
+      const transfers: GarbageTransfer[] = [];
       for (const inst of this.registry.all()) {
         if (inst.state !== BuildingState.Active) continue;
         const entry = this.catalogById.get(inst.catalogId);
         if (!entry) continue;
-        // Kerbside depots, recovery facilities and incinerators are facilities, not trash sources.
+        // Kerbside depots, recovery facilities, transfer stations and incinerators are facilities, not trash sources.
         if (entry.garbage?.servesHomes !== undefined) {
           depots.push({
             id: inst.id,
@@ -1018,6 +1020,15 @@ class SimWorld implements WorkerSim {
             collectionRange: entry.garbage.collectionRange,
             sortRate: entry.garbage.sortRate,
             residueCapacity: entry.garbage.bufferCapacity,
+          });
+          continue;
+        }
+        if (entry.garbage?.transferRate !== undefined) {
+          transfers.push({
+            id: inst.id,
+            collectionRange: entry.garbage.collectionRange,
+            transferRate: entry.garbage.transferRate,
+            floorCapacity: entry.garbage.bufferCapacity,
           });
           continue;
         }
@@ -1047,6 +1058,7 @@ class SimWorld implements WorkerSim {
         facilities,
         depots,
         mrfs,
+        transfers,
       );
       this.garbageDirty = true;
     }
@@ -1335,6 +1347,7 @@ class SimWorld implements WorkerSim {
         garbage.incinerators = this.incineratorSnapshot();
         garbage.depots = this.garbage.depotSnapshot();
         garbage.mrfs = this.garbage.mrfSnapshot();
+        garbage.transfers = this.garbage.transferSnapshot();
         this.garbageDirty = false;
       }
       snap.garbage = garbage;
@@ -1530,7 +1543,8 @@ class SimWorld implements WorkerSim {
       if (
         !entry?.garbage ||
         entry.garbage.servesHomes !== undefined ||
-        entry.garbage.sortRate !== undefined
+        entry.garbage.sortRate !== undefined ||
+        entry.garbage.transferRate !== undefined
       ) {
         continue;
       }
