@@ -1,6 +1,6 @@
 # Sound barriers — design
 
-- **Status:** Draft
+- **Status:** Built 2026-10-01
 - **Date:** 2026-10-01
 
 ## What the player gets

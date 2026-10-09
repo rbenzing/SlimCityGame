@@ -1,6 +1,6 @@
 # Service capacity — technical design
 
-- **Status:** Draft
+- **Status:** Built 2026-09-18; the Services panel built 2026-09-21
 - **Date:** 2026-09-18
 - **Author:** Claude Opus 5
 

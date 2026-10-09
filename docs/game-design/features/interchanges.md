@@ -1,6 +1,6 @@
 # Interchanges — design
 
-- **Status:** Draft
+- **Status:** Built 2026-09-30
 - **Date:** 2026-09-30
 
 ## What the player gets

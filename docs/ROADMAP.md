@@ -288,6 +288,44 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 
 ## 10. History (newest first)
 
+### Service capacity, recorded and re-sourced (built 2026-09-18 and 2026-09-21, recorded 2026-10-08)
+
+Service capacity, the programme's foundation, shipped in September and was
+never written down here, and its documents still read Draft. A facility
+serves a number of people, not just an area. Capacity pools per tile: each
+facility dedicates its capacity to the people its road walk reaches, and a
+tile sums what reaches it, so two half-loaded clinics give what one fully
+loaded clinic gives. An oversubscribed facility writes a weaker field,
+min(1, supply), and never fails at a cliff. A facility with no capacity, or
+nobody in reach, is uncapped, so every older save played the same. The
+**Services panel** (2026-09-21) put the funding dial, 0 to 150%, in reach at
+last, beside a load gauge and the worst-served district for each service.
+
+The four capacities were carried over from the draft without sources, and
+several of its inputs were wrong. Re-sourced:
+
+- **Police: 25,000, kept.** Cities of 10,000–25,000 field 1.9 sworn officers
+  per 1,000 (FBI), so about 48 for 25,000. About 68% patrol (BJS), and 5.5–6
+  officers keep one post round the clock, so about six cars are always on
+  duty. The draft's "2.4 for two decades" had fallen to 2.17 by 2016, and its
+  60-officer minimum had no source.
+- **Fire: 13,000 → 14,000.** Four on an engine (NFPA 1710) at about 4.5 people
+  a seat round the clock is 18 firefighters, and the national median for
+  communities of 25,000–50,000 is 1.30 career firefighters per 1,000 (NFPA),
+  not 1.4.
+- **Clinic: 8,000, kept.** Four physicians, each with a panel of about 2,000,
+  between Altschuler's workable 1,947 and the US average of about 2,300.
+  "1,500–2,500" misread the paper.
+- **School: 5,000 → 7,000.** The draft counted the UK's seven primary years.
+  A US elementary school averages 456 pupils (NCES) and grades K–5 are about
+  64 pupils per 1,000 residents, so a school serves about 7,100; a national
+  count of about 6,300 residents per elementary school agrees.
+
+Found on the same sweep: 14 feature documents still read Draft for features
+long built (garbage recovery, lots and land, the roundabout, interchanges,
+sound walls, service capacity), and power generation is partly built. Each
+now says what is built.
+
 ### The transfer station (last slice of garbage recovery, built 2026-10-08)
 
 The draft's station served 20,000 people on a 3×4 lot, 9 m tall, and was

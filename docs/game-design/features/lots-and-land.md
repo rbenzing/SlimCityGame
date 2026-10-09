@@ -1,19 +1,6 @@
 # Lots and land — design
 
-- **Status:** Draft merged 2026-10-05; first slice built 2026-10-07 (the lot a
-  detached house stands on, by the land's standing, kept through every
-  level-up); second slice built 2026-10-07 (the plat cut from the street, and
-  homes facing it); third slice built 2026-10-07 (the parcel lines on the
-  zone lens); fourth slice built 2026-10-07 (the duplex and the fourplex on
-  the plat); fifth slice built 2026-10-07 (medium density assembles two
-  normal parcels, and the lens draws the plat for the zones whose kinds stand
-  on it); sixth slice built 2026-10-07 (replatting holds: the plat is re-cut
-  every pass and moves only empty ground); seventh slice built 2026-10-07
-  (the inspector's lot line); eighth slice built 2026-10-07 (row housing
-  stands on one normal lot at every level); ninth slice built 2026-10-07
-  (commercial and dense land is cut into frontage lots, and a building that
-  grows redevelops onto whole lots). Not yet built: the dense homes figures
-  re-derived from the plate, and the 3×3 estate where a block is deep
+- **Status:** Draft merged 2026-10-05; built 2026-10-07 to 2026-10-08
 - **Date:** 2026-10-05
 
 ## What the player gets

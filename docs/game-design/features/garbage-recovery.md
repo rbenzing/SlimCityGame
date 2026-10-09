@@ -1,6 +1,6 @@
 # Garbage recovery — design
 
-- **Status:** Draft
+- **Status:** Built 2026-10-08
 - **Date:** 2026-09-18
 
 ## What the player gets

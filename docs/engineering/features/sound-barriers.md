@@ -1,6 +1,6 @@
 # Sound barriers — technical design
 
-- **Status:** Draft
+- **Status:** Built 2026-10-01
 - **Date:** 2026-10-01
 - **Design:** [../../game-design/features/sound-barriers.md](../../game-design/features/sound-barriers.md)
 
