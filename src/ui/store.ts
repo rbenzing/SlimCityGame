@@ -28,6 +28,7 @@ import type {
   Policy,
   SelectionInfo,
   ServiceKind,
+  ResponderLoad,
   ServiceLoad,
   SimSpeed,
   ToolFlags,
@@ -223,6 +224,11 @@ export interface CityStoreState {
    * store from a snapshot that never carried the field.
    */
   serviceLoad: Record<ServiceKind, ServiceLoad> | null;
+  /**
+   * Calls in flight over responders for each kind that has any (from
+   * SimSnapshot.responders). Null when no station of any kind offers responders.
+   */
+  responders: Partial<Record<ServiceKind, ResponderLoad>> | null;
   // --- Stats charts + Photo mode -------------------------------------------
   /** Live stats history samples (pushed by main.ts each snapshot). */
   statsSamples: StatsSample[];
@@ -282,6 +288,7 @@ export interface CityStoreState {
   toggleDistrictPolicy: (districtId: number, policy: Policy) => void;
   /** Replaces the per-kind service load from a snapshot. */
   setServiceLoad: (load: Record<ServiceKind, ServiceLoad> | null) => void;
+  setResponders: (responders: Partial<Record<ServiceKind, ResponderLoad>> | null) => void;
   /**
    * Sets a service kind's funding — clamps to what the command accepts, emits
    * setServiceFunding, and mirrors the new figure into the stats readout so the
@@ -333,6 +340,7 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   selectedDistrict: 1,
   districtPolicies: {},
   serviceLoad: null,
+  responders: null,
   statsSamples: [],
   statsOpen: false,
   photoMode: false,
@@ -424,6 +432,7 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
       return { districtPolicies: { ...state.districtPolicies, [districtId]: next } };
     }),
   setServiceLoad: (load) => set({ serviceLoad: load }),
+  setResponders: (responders) => set({ responders }),
   setServiceFunding: (service, funding) =>
     set((state) => {
       const clamped = Math.max(SERVICE_FUNDING_MIN, Math.min(SERVICE_FUNDING_MAX, funding));

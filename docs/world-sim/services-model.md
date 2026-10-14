@@ -204,13 +204,24 @@ and reinter them, and its undo restores them. See
 [../game-design/features/healthcare-and-death-care.md](../game-design/features/healthcare-and-death-care.md)
 and [../engineering/features/healthcare-and-death-care.md](../engineering/features/healthcare-and-death-care.md).
 
-## Cosmetic service dispatch
+## Service dispatch
 
-Fire, police and ambulance vehicles drive from a covering station to an
-incident and back. Incidents spawn deterministically from the existing
-coverage-gap fields (Crime, FireRisk and Pollution feed the spawn rate); a
+Fire, police and ambulance vehicles drive from a station to an incident and
+back. Incidents spawn deterministically from the existing coverage-gap fields
+(Crime, FireRisk and Pollution) at real US per-resident call rates: a building's
+chance each tick is the kind's rate ÷ `TICKS_PER_YEAR` × its occupants (residents
+plus jobs) ÷ (1 + `EMPLOYMENT_RATE`) × field ÷ `FIELD_REFERENCE` (128). A
 vehicle routes station → incident → station over the road network and the
 incident resolves after a travel-plus-service time.
+
+A station answers only within its road reach, counted in path tiles and scaled by
+the kind's funding, never by straight line or by path cost; and only while it has
+fewer calls in flight than its `responders` (a kind with none is unlimited). A
+call no station can answer still spawns, as an unanswered incident that takes no
+vehicle, retries each tick and lapses after 30 ticks. The figures are in
+[../game-design/balancing.md](../game-design/balancing.md#emergency-dispatch) and
+the design in
+[../game-design/features/emergency-services.md](../game-design/features/emergency-services.md).
 
 The system only reads Crime, FireRisk and Pollution and the building registry —
 it never writes back into service coverage or the economy. This is presentation

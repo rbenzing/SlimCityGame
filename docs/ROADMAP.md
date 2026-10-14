@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 5,937 tests passing across 181 test files, run 2026-10-14.
+**Test suite:** 5,956 tests passing across 181 test files, run 2026-10-14.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -123,6 +123,12 @@ not a test to fix.
   street's kerb parking repainted later does not re-lay it.
 - A kerb-credited lot's customers are drawn parked on the lot, not in the
   kerb stalls its credit counts.
+- An incident's on-scene time is still 10–30 ticks (1.2–3.6 game hours) for
+  every kind, longer than an average police call (Austin's assessment: about
+  26 minutes for responsive calls); re-derive it per kind, which sets how busy
+  a station's crews are.
+- Incident pins stand about 18 m tall and cover the building they mark; size
+  them against the art anchors.
 - The crematorium's upkeep of ¢600 is the design's dial: no US operating
   cost for a crematory was found (gas is 12.5–28.5 therms a cremation by one
   maker's metering, staff unpublished).
@@ -306,6 +312,33 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### A station answers what it can reach, while it has a crew free (first slice of emergency services, built 2026-10-14)
+
+The dispatcher sent the nearest station across the whole map, to any number of
+calls at once, and spawned calls hundreds of times faster than real towns make
+them. The player chose emergency services next, and real US call rates.
+
+- **Reach, by road.** A fire station answers within 120 road tiles: ISO's
+  rating schedule credits an engine within 1.5 road miles, and NFPA 1710's 240
+  seconds of travel make that 10 m/s. Medical reaches 241 tiles (NFPA's 480 s
+  for advanced life support); police borrows fire's 120, as no national
+  standard exists. Funding shortens it.
+- **Crews.** The fire station runs one call at a time (one engine company)
+  and the police station six (six cars on duty), the first rung the
+  service-capacity figures already sized. A call nobody can take waits, drawn
+  in a dull ash colour with no vehicle, is picked up when a crew frees, and
+  lapses after 30 ticks; the Services panel shows crews out beside load, and
+  the Advisor names unanswered calls.
+- **Real call rates.** 0.042 non-medical fire calls, 0.085 medical and 0.45
+  police calls per resident a year (NFPA 2023 via CFSI; Benchmark Cities),
+  weighted by each building's FireRisk, Pollution or Crime, so coverage that
+  lowers a field lowers its calls. A one-engine town of 14,000 makes about 1.6
+  fire calls a day.
+- **Decided.** The emergency design draft had treated today's stations as the
+  large rung; the built capacity figures size them as the first, so the draft
+  was re-derived and the large district stations come next. Incident pins now
+  draw in their kind's colour, which a buffer created too late had kept white.
 
 ### The crematorium, and the price of moving the dead (last slice of healthcare and death care, built 2026-10-14)
 

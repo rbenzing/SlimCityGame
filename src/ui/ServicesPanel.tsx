@@ -6,6 +6,11 @@
  * them across two screens is what kept funding invisible — it has been in the
  * simulation since the start with no control anywhere reaching it.
  *
+ * A last column, Out, reads the calls a kind has in flight over the calls it can
+ * run at once, for the kinds whose stations cap them. It is a separate number
+ * from the load: load counts the people who depend on a service, Out counts its
+ * crews on calls.
+ *
  * The slider emits setServiceFunding through the store's bound bridge and the
  * store flips its own reading at once, as the district policy toggles do; the
  * worker still owns the authoritative funding (it scales range, capacity and
@@ -55,6 +60,7 @@ export function ServicesPanel(): JSX.Element | null {
   const overlay = useCityStore((s) => s.overlay);
   const serviceFunding = useCityStore((s) => s.stats.serviceFunding);
   const serviceLoad = useCityStore((s) => s.serviceLoad);
+  const responders = useCityStore((s) => s.responders);
   const setServiceFunding = useCityStore((s) => s.setServiceFunding);
 
   const holdingService = catalogEntryForTool(selectedTool)?.service !== undefined;
@@ -76,6 +82,7 @@ export function ServicesPanel(): JSX.Element | null {
           <span className={`${LABEL} min-w-0 flex-1`}>Funding</span>
           <span className={`${LABEL} w-9 shrink-0 text-right`}>Load</span>
           <span className={`${LABEL} w-9 shrink-0 text-right`}>Worst</span>
+          <span className={`${LABEL} w-9 shrink-0 text-right`}>Out</span>
         </div>
 
         <div className="flex flex-col gap-1">
@@ -89,6 +96,10 @@ export function ServicesPanel(): JSX.Element | null {
             // it takes the danger token. 0% is the least leaned-on a service
             // can be, so it reads like any other healthy figure.
             const over = capped > 0 && load > 1;
+            // Responders are calls at once, not people: shown apart from the
+            // load, and flagged only when every one is out.
+            const crew = responders?.[kind];
+            const busy = crew !== undefined && crew.total > 0 && crew.inFlight >= crew.total;
             return (
               <div
                 key={kind}
@@ -126,6 +137,16 @@ export function ServicesPanel(): JSX.Element | null {
                   className="w-9 shrink-0 text-right text-[11px] text-white/60"
                 >
                   {loadText(worst, capped)}
+                </span>
+                <span
+                  data-testid={`service-responders-${kind}`}
+                  data-busy={busy ? 'true' : 'false'}
+                  aria-label={`${label} responders out on calls`}
+                  className={`w-9 shrink-0 text-right text-[11px] ${
+                    busy ? 'text-danger' : 'text-white/60'
+                  }`}
+                >
+                  {crew ? `${crew.inFlight}/${crew.total}` : '—'}
                 </span>
               </div>
             );

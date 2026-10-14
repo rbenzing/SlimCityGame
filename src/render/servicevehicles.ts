@@ -67,6 +67,9 @@ function hexToRGB(hex: number): readonly [number, number, number] {
 const FIRE_RED = hexToRGB(0xd9362c);
 const POLICE_BLUE = hexToRGB(0x2f6fd6);
 const AMBULANCE_WHITE = hexToRGB(0xe9edf0);
+/** An unanswered call's pin: its kind's colour dimmed toward ash, so it reads as a call nobody is coming to. */
+const UNANSWERED_ASH = 0.22;
+const UNANSWERED_KIND_SHARE = 0.2;
 const GARBAGE_GREEN = hexToRGB(0x3f7d4f);
 const GARBAGE_HOPPER = hexToRGB(0x2f5e3b);
 const RECYCLING_TEAL = hexToRGB(0x1d9bb5);
@@ -326,7 +329,13 @@ export class ServiceVehicleRenderer {
     this.incidentMesh = new THREE.InstancedMesh(pinGeometry, pinMaterial, incidentCapacity);
     this.incidentMesh.frustumCulled = false;
     this.incidentMesh.count = incidentCapacity;
-    for (let i = 0; i < incidentCapacity; i++) this.incidentMesh.setMatrixAt(i, HIDDEN_MATRIX);
+    // The colour buffer has to exist before the first draw: a material compiled
+    // without it never picks one up later, and every pin drew white.
+    _color.setRGB(1, 1, 1);
+    for (let i = 0; i < incidentCapacity; i++) {
+      this.incidentMesh.setMatrixAt(i, HIDDEN_MATRIX);
+      this.incidentMesh.setColorAt(i, _color);
+    }
     this.incidentMesh.instanceMatrix.needsUpdate = true;
     scene.add(this.incidentMesh);
   }
@@ -438,7 +447,15 @@ export class ServiceVehicleRenderer {
       this.incidentMesh.setMatrixAt(i, _matrix);
 
       const [r, g, b] = this.colorForIncident(incident.kind);
-      _color.setRGB(r, g, b);
+      if (incident.answered === false) {
+        _color.setRGB(
+          r * UNANSWERED_KIND_SHARE + UNANSWERED_ASH * (1 - UNANSWERED_KIND_SHARE),
+          g * UNANSWERED_KIND_SHARE + UNANSWERED_ASH * (1 - UNANSWERED_KIND_SHARE),
+          b * UNANSWERED_KIND_SHARE + UNANSWERED_ASH * (1 - UNANSWERED_KIND_SHARE),
+        );
+      } else {
+        _color.setRGB(r, g, b);
+      }
       this.incidentMesh.setColorAt(i, _color);
     }
     for (let i = n; i < this.incidentCapacity; i++) {

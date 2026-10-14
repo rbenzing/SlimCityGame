@@ -1,240 +1,235 @@
 # Emergency services — design
 
-- **Status:** Draft
-- **Date:** 2026-09-18
+- **Status:** Partly built — the dispatcher: reach, busy stations, unanswered calls and real call rates (2026-10-14); the station ladder not built
+- **Date:** 2026-10-14
 
 Epic 4 of the municipal services programme
 ([municipal-services.md](municipal-services.md)), after the capacity
 foundation in [service-capacity.md](service-capacity.md). The technical plan
 is [../../engineering/features/emergency-services.md](../../engineering/features/emergency-services.md).
 
+The epic is two slices. **Slice 1, built,** is the dispatcher: how far a station
+answers, how many calls it can run at once, a call nobody answered, and how often
+people really call. It works on the police and fire stations the game already has.
+**Slice 2, not built,** is the station ladder: the two existing buildings are
+resized to their sourced height and a large district rung is added above each.
+
 ## What the player gets
 
-A police and a fire service the player sizes to a district instead of ticking
-off once. Each gets a small neighbourhood station and a large district one, and
-the difference between them is how many calls they can answer at the same time —
-not how far they reach, because how far an appliance reaches is set by the road
-and the clock, and a bigger building does not change either.
+A police and a fire service whose reach and workload the player can read, and
+the first honest answer to "is anyone coming?". Today every incident is answered
+instantly by whichever station is nearest anywhere on the map, and a building no
+station can reach is immune to fire. After slice 1 a station answers only what
+it can reach by road, and only while it has a crew free; a call it cannot answer
+still starts, still shows, and stands there marked as unanswered until it lapses
+or a station frees up.
 
-The player also gets the first honest answer to "is anyone coming?". Today every
-incident is answered, instantly, by whichever station is nearest anywhere on the
-map. After this epic a station answers only what it can reach, and only while it
-has an appliance free.
+The player also stops seeing a constant rain of incidents. Today every building
+rolls a fixed chance each tick, which runs to hundreds of times the real rate;
+after slice 1 a city's calls follow what real towns of that size report.
 
 ## Why it earns its place
 
 The city already spawns fires and crimes, drives vehicles to them and draws them
-on screen, and none of it means anything. The incident is decorative: it is
-picked from the Crime and FireRisk fields, answered by a station with no limit on
-distance and no limit on how many calls it is already running, and when it
-resolves nothing has changed. A player can watch a fire engine cross the entire
-city to a building that will be exactly as it was either way.
+on screen, and none of it means anything. The incident is picked from the Crime
+and FireRisk fields, answered by a station with no limit on distance and no limit
+on how many calls it is already running, and when it resolves nothing has changed.
+A player can watch a fire engine cross the entire city to a building that will be
+exactly as it was either way.
 
-That is a system the player can see and cannot reason about, which is the
-failure the **city as a system** pillar in [../gdd.md](../gdd.md) exists to
-prevent. Emergency services are also the one service where the real municipal
-question is not "how much" but "how far, how fast, and how many at once" — and
-our coverage model already works in road distance, so that question is one we
-can actually ask.
+That is a system the player can see and cannot reason about, which is the failure
+the **city as a system** pillar in [../gdd.md](../gdd.md) exists to prevent.
+Emergency services are the one service where the real municipal question is not
+"how much" but "how far, how fast, and how many at once", and our coverage model
+already works in road distance, so that question is one we can actually ask.
+
+## How the stations are sized: the conflict, resolved
+
+The first draft of this document treated today's 2×2, 12 m police and fire
+stations as the large rung, with smaller posts added below. The built and sourced
+[service-capacity.md](service-capacity.md#tuning) sizes them the other way, and
+the catalog agrees (police 25,000, fire 14,000). The capacity document wins:
+
+- the **fire station** is one engine company: NFPA 1710's 4 firefighters on
+  an engine × 4.5 relief = 18 firefighters, over NFPA's 1.30 per 1,000, is 14,000
+  people;
+- the **police station** is a town's whole force: 1.9 sworn per 1,000 (FBI table
+  71) × 25 = 48 sworn, 68% on patrol (BJS 2013) = 32, over 5.5–6 officers to staff
+  one post round the clock (Seattle), is about 6 cars on duty;
+- both should be 6.4 m tall, a resize the capacity document leaves to this epic.
+
+So today's stations are the **first rung**, not the second. The draft's relief
+factor of 4.2, its 55% on patrol and its 2.4 sworn per 1,000 are dropped: they
+were figures for a bigger agency than the sourced ones this game has used from the
+start. Slice 2 resizes the two stations to 6.4 m and adds a large district rung
+above each, a multi-company fire station and a police district station, with
+their own derivations from the same sources.
 
 ## How it works, for the player
 
-**Two ladders, four buildings.** Each service offers a post and a station.
+**A station answers within its road reach.** Reach is a count of road tiles from
+the station to the building, and it is set by what the road and the clock allow,
+not by the building: a fire engine does not drive faster out of a bigger garage.
+A fire station and a police station both answer within 120 tiles (2.4 km) of
+road; a call that needs an ambulance is answered by a clinic or hospital within
+241 tiles. A building farther than that, or with no road to it, is out of reach.
 
-|                           | Fire post  | Fire station         | Police post | Police station |
-| ------------------------- | ---------- | -------------------- | ----------- | -------------- |
-| Footprint                 | 2×1        | 2×2                  | 2×1         | 2×2            |
-| Height                    | 8 m        | 12 m                 | 7 m         | 12 m           |
-| Appliances / patrol units | 1 engine   | 2 engines + 1 aerial | 3 units     | 9 units        |
-| Serves                    | 13,000     | 38,000               | 10,000      | 30,000         |
-| Cost                      | ¢3,600     | ¢8,600               | ¢3,200      | ¢7,700         |
-| Upkeep                    | ¢240       | ¢700                 | ¢220        | ¢630           |
-| Unlocks at                | Small Town | Small City           | Small Town  | Small City     |
+**A station has one crew's worth of calls at a time.** The fire station is one
+engine company, so it runs one call; while the engine is out, a second fire in
+the district waits for another station. The police station is about six cars on
+duty and runs six calls at once and refuses the seventh. A clinic or hospital
+has no limit of this kind: calls for the ambulance are answered as before.
 
-**Reach is the same for both rungs.** A fire post and a fire station both cover
-48 tiles of road network; both police buildings cover 42. A station does not see
-further because a fire engine does not drive faster out of a larger garage.
+**An incident you cannot reach looks like one.** A call with no station in reach,
+or with every station in reach already busy, still starts. It shows as a grey
+marker with no vehicle on its way, takes no vehicle slot, and waits. Each tick it
+looks again, so a station that finishes a call picks up the one waiting. If
+nobody comes within 30 ticks, the longest an answered call spends on scene, it
+lapses. A city with no fire station at all still sends police to a crime.
 
-**What the large one buys is simultaneity.** A post has one engine. While that
-engine is out, a second fire in its district waits for another station. The
-district station has three appliances and answers three calls at once. That is
-the decision the ladder creates: three posts spread across three neighbourhoods
-cover three separate patches of the city, while one station covers one patch
-three calls deep. A sprawling town wants posts; a dense core wants a station.
-
-**The large one is cheaper per person, but only to build.** A fire station costs
-¢8,600 for 38,000 people — ¢0.226 each — against the post's ¢3,600 for 13,000,
-or ¢0.277 each: 18% less capital per person served, because one site, one apron,
-one watch room and one set of plant carry three appliances instead of one. The
-police numbers are the same shape: ¢0.257 against ¢0.320, 20% less. Upkeep does
-not follow, and should not: a fire service's running cost is its crews, and three
-appliances need three crews wherever they are parked. Both rungs cost about
-¢0.0185 per person per month for fire and ¢0.021 for police. Buying big saves on
-the building and nothing on the people.
-
-**An incident you cannot reach now looks like one.** A fire outside every
-station's reach still starts, still shows its marker, and no vehicle comes. It
-sits there until it lapses. That is the feedback the service panel's load gauge
-cannot give, because a district with no station has no load to report.
+**Real call rates.** A building calls in proportion to the people in it and to
+how far its field is above the reference: a good coverage network, which lowers
+Crime and FireRisk, now really does cut the number of calls. A town of 14,000 at
+the reference fields has about 1.6 fire calls a day for its engine; a town of
+25,000 has about 31 police calls a day across its six cars.
 
 **Underfunding shortens the drive.** The funding slider already scales coverage
 range and upkeep; it now also scales how far a station will answer. A fire
-service at 60% funding reaches 72 tiles instead of 120, and the edges of the city
-stop being answerable before the field turns red.
+service at 60% funding reaches 72 tiles instead of 120.
+
+**The panel names the two limits apart.** The Services panel's load gauge says
+how many people depend on a service. A separate number beside it says how many of
+its crews are out on calls. They are different limits: a station can be inside its
+capacity and have nothing free to send, or over capacity and idle, and the player
+cannot work out which is biting if the two are one figure. The Advisor names
+unanswered calls by kind while any stand.
 
 ## What it interacts with
 
-**The incident dispatcher.** This is the first epic to change it, and the reason
-this epic sits fourth. Everything above — reach limits, busy stations, unanswered
-incidents — lives there. What the dispatcher still does not do is make an
-incident hurt: an unanswered fire does not destroy a building in this epic. See
-[What it is not](#what-it-is-not).
+**The incident dispatcher.** The first epic to change it. Everything above lives
+there. What the dispatcher still does not do is make an incident hurt: an
+unanswered fire does not destroy a building. See [What it is not](#what-it-is-not).
 
-**Service capacity.** The `capacity` figures above are ordinary capacity from
-epic 0 and feed the same load gauge as every other service. Appliance count is a
-second, separate limit — a station can be within its capacity and still have
-nothing free to send, which is exactly the difference between how many people
-depend on you and how many emergencies are happening at once.
+**Service capacity.** The `capacity` figures are ordinary capacity from epic 0
+and feed the same load gauge as every other service. The number of crews is a
+second, separate limit, as above.
 
 **Crime and FireRisk.** Unchanged. Both still grow passively and both are still
 reduced by coverage; see [../../world-sim/services-model.md](../../world-sim/services-model.md).
 The consequence of a fire nobody answers already exists, quietly: FireRisk keeps
-climbing on that tile, so more incidents spawn there. It is a slow statistical
-punishment rather than a dramatic one, and for this epic that is the whole of it.
+climbing on that tile, so more calls start there.
 
-**Traffic.** More appliances mean more responding vehicles on the road, which is
-the interaction the programme said not to smooth away. It also cuts the other
-way: a station is now pruned by road distance, so a district cut off by a missing
-road link is a district no station answers.
+**Traffic.** A station is pruned by road distance, so a district cut off by a
+missing road link is a district no station answers.
 
 ## Tuning
 
-Every figure below comes from a published standard and our own 20 m tile. The
-settled values belong in [../balancing.md](../balancing.md).
+Every figure below comes from a published source and our own 20 m tile; where no
+source was found it is labelled a dial. The settled values belong in
+[../balancing.md](../balancing.md).
 
-**Reach, from response time.** Published fire-service practice gives the first
-arriving engine company **240 seconds of travel time** at the 90th percentile —
-travel, measured from leaving the station, not the whole response. The same
-standards set 240 seconds for a first-responder unit with a defibrillator and 480
-for an advanced-life-support unit. Separately, the insurance rating schedule that
-grades fire protection credits built-upon area within **1.5 road miles (2,414 m)**
-of an engine company. Those two published figures pin a speed between them:
-2,414 m ÷ 240 s = **10.06 m/s, or 36.2 km/h** — a plausible average through an
-urban network with junctions and traffic yielding, and one we did not have to
-assume. The distance follows: 240 s × 10.06 m/s = 2,414 m, and 2,414 ÷ 20 m
-= **120 tiles**.
+**Reach, from response time.** NFPA 1710 gives the first arriving engine company
+**240 seconds of travel time** at the 90th percentile, travel measured from
+leaving the station. The insurance rating schedule for fire protection (ISO's
+Fire Suppression Rating Schedule,
+[criteria for deployment analysis of companies](https://www.isomitigation.com/ppc/technical/criteria-for-deployment-analysis-of-companies/))
+gives full distribution credit for a first-due engine within **1.5 road miles
+(2,414 m)**. The two pin a speed between them: 2,414 m ÷ 240 s = **10.06 m/s
+(36.2 km/h)**, a plausible urban average with junctions and traffic yielding, and
+one we did not have to assume. The distance follows: 2,414 m ÷ `TILE_METERS` (20
+m) = **120 tiles**. The 240 s figure is taken from secondary summaries
+([Fire Engineering](https://www.fireengineering.com/?p=719759); the North Davis
+Fire District 2018 agenda,
+[northdavisfireut.gov](https://www.northdavisfireut.gov/files/0933ea062/2018_agenda_amended.pdf));
+the NFPA 1710 text itself was not retrieved.
 
-That number applies to us more directly than it would elsewhere, because our
-coverage and our dispatcher both measure in road-network hops, not straight
-lines. The standard is stated in _road_ miles for the same reason. There is no
-circuity factor to apply and no isochrone to approximate: 120 hops of our road
-graph is what the standard describes.
+Both the standard and our dispatcher measure along roads, so there is no
+circuity factor and no isochrone to approximate: 120 hops of the road graph is
+what the standard describes.
 
-**Does `range: 48` survive?** Not as a response distance. Forty-eight tiles is
-960 m, which at 10.06 m/s is 95 seconds of travel — 40% of the standard. But
-`range` was never a response distance: the dispatcher ignores it entirely and
-will drive an engine across the map. What 48 turns out to be is a capacity
-district, almost exactly. The tiles within R road-hops form a diamond of about
-2R² tiles, so 48 hops reach 2 × 48² = 4,608 tiles. Our residential catalog puts
-about 8.0 residents on a residential building tile across a mixed town (1.8 at
-low density, 12.5 at medium, 17.5 at high), and roughly 35% of a covered district
-is residential building rather than road, shop, works or verge — so 2.8 residents
-per covered tile, and 4,608 × 2.8 = **12,900 people**. That is the fire post's
-derived capacity to within 1%. So `range: 48` stays for fire, as the district a
-one-engine station works, and 120 becomes a separate, new figure the dispatcher
-uses. Police moves to 42, derived below.
+**Medical** takes NFPA 1710's **480 s** for an advanced-life-support unit at the
+same speed: 480 × 10.06 = 4,829 m, or **241 tiles**.
 
-**Fire capacity.** Published national profiles put career firefighters at
-1.1–1.7 per 1,000 protected residents depending on community size; we take
-**1.3**. The suppression standard requires **4 firefighters** on an engine
-company and 4 on a ladder company. Covering a seat around the clock takes
-8,760 hours a year against about 2,080 worked, net of leave and training — a
-relief factor of **4.2 people per seat**.
+**Police** has no national response-distance standard that we found, so it
+**borrows fire's 120 tiles**. That is a borrowing, stated plainly, not a derived
+figure.
 
-- Post: 1 engine = 4 seats × 4.2 = **17 firefighters**; 17 ÷ 1.3 per 1,000 =
-  **13,000 residents**.
-- Station: 2 engines + 1 aerial = 12 seats × 4.2 = **50 firefighters**;
-  50 ÷ 1.3 = **38,000 residents**.
+The old `range: 48` is the coverage radius of the building's field and is
+untouched; it was never a response distance.
 
-Cross-check against workload: national figures give about 0.11 incidents per
-resident per year across all call types, so a post serving 13,000 answers about
-1,430 a year, or **3.9 runs a day** for one engine — the ordinary range for a
-single-company station.
+**Responders.** `responders` is the number of calls a facility can have in flight
+at once. The fire station is **1**: one engine company
+([service-capacity.md](service-capacity.md#tuning)). The police station is **6**:
+about six cars on duty at any hour, from the same document. A kind with no
+`responders` figure is unlimited, so health and the rest behave as they do today.
 
-Cross-check against density: a dense core runs 17.5 residents per residential
-tile at 50% residential, so 8.75 per covered tile, and 4,608 × 8.75 = 40,300
-against the station's derived 38,000 — 6% apart. The two rungs are the same
-district at two densities, which is precisely why the ladder is appliances and
-not radius.
+**Call rates, per resident per year.** Real US figures, replacing a fixed
+2% per building per tick at the field's maximum, which ran at hundreds of times
+reality.
 
-**Police capacity.** Published national figures give about **2.4 full-time sworn
-officers per 1,000 residents** in cities, of which roughly **55%** are assigned
-to patrol. That is 1.32 patrol officers per 1,000; at the same 4.2 relief factor,
-a round-the-clock one-officer unit needs 4.2 of them, so the city fields
-1.32 ÷ 4.2 = 0.314 units per 1,000 residents — **one unit per 3,180 people**.
+| Kind                                  | Rate  | Source                                                                                                                                                                                                                                                                                    |
+| ------------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fire (non-medical fire-dept calls)    | 0.042 | NFPA 2023 fire-department calls: 42,412,500 total, 28,405,000 medical aid, 1,388,500 fires, cited by [CFSI](https://cfsi.org/legislation-advocacy/current-legislation/afg-and-safer/). Non-medical is 14.0 M ÷ about 334.9 M US residents = 0.042.                                          |
+| Medical                               | 0.085 | The same source: 28.4 M ÷ 334.9 M = 0.085, a floor, since it counts fire-department EMS only.                                                                                                                                                                                             |
+| Police (phone-in calls for service)   | 0.45  | The Benchmark Cities average, 451.8 per 1,000 in 2019 (via Henderson NV's benchmark report). Vera's "more than 240 million 911 calls a year" ([Vera](https://vera.org/newsroom/vera-report-defines-landscape-of-911-calls-for-police-service)) is a ceiling: it includes non-police traffic. |
 
-- Post: 3 units × 3,180 = **10,000 residents**; roster 3 × 4.2 ÷ 0.55 =
-  **24 sworn**.
-- Station: 9 units × 3,180 = **30,000 residents**; roster 9 × 4.2 ÷ 0.55 =
-  **69 sworn**.
+NFPA's own tables were unreadable, so the NFPA figures are as CFSI cites them.
+The 2023 population is an estimate not confirmed on a Census page; the Census's
+Vintage 2025 figure of 341.8 M gives 0.041 and 0.083. The USFA's NFIRS 2020 run
+profile ([fire department run
+profile](https://www.usfa.fema.gov/statistics/reports/firefighters-departments/fire-department-run-profile-v22i1.html))
+is the cross-check: EMS 64.2% of runs, fire 3.9%.
 
-Police range follows from those capacities and the same density: 10,000 ÷ 2.8 =
-3,571 tiles, and 2R² = 3,571 gives R = 42.3, so **42 tiles**. The dense-core
-check agrees: 30,000 ÷ 8.75 = 3,429 tiles, R = 41.4. Police reach is smaller
-than fire because a patrol unit covers fewer people than an engine company does,
-which is what the per-1,000 figures say.
+A building's chance of a call each tick is:
 
-A calls-per-officer cross-check is weaker and we flag it as an assumption:
-municipal agencies report calls for service in the region of 0.75 per resident
-per year, which puts 7,500 calls a year against the post's 12.6 patrol officers,
-or 1.6 per officer per day. It is the right order of magnitude and no more.
+> rate ÷ `TICKS_PER_YEAR` × occupants ÷ (1 + `EMPLOYMENT_RATE`) × field ÷ `FIELD_REFERENCE`
 
-**Sizes, from the massing rule.** All four are derived by
-[../../art/civic-massing.md](../../art/civic-massing.md); the arithmetic is in
-[the technical plan](../../engineering/features/emergency-services.md). The
-short version is that a fire station is its apparatus bays. A back-in bay is
-4.9 × 14.0 m and a drive-through bay 4.9 × 18.3 m, so the post's two bays are
-137 m² and the station's three are 269 m² before a single office is drawn, and
-the bay hall alone sets both the width and the height. Three 4.9 m bays plus
-piers are 16.5 m wide, which does not fit the 13.6 m body of a one-tile-wide
-building — that is what makes the district station 2×2 and the post 2×1.
+where occupants are the residents living in it plus the jobs it holds. Dividing
+by 1 + the employment rate makes a balanced city's occupants add up to about its
+population, so the city-wide rate matches the per-resident figure above.
+`FIELD_REFERENCE` is **128**, the field value at which a building calls at the
+national average, and a **dial**: no source ties a field byte to a rate.
 
-The existing catalog entries are both 2×2 and 12 m. Checked against the
-derivation they are **correct for the district station and wrong for the post**:
-2×2 at 12 m is 2,775 m² gross, which is a three-bay fire station, not a
-one-engine one. So the existing `fire-station` and `police-station` entries keep
-their geometry and become the large rung, and the two posts are new and smaller.
-Their prices move with them, which is a balance change on existing cities and is
-called out in the technical plan.
+Checks. A one-engine town of 14,000 at reference fields makes 14,000 × 0.042 =
+**588 non-medical fire calls a year, 1.6 a day**; at the existing on-scene time
+(below) that keeps its one engine busy about 16% of the time. A town of 25,000
+makes 25,000 × 0.45 = **11,250 police calls a year, 31 a day**; at an hour a call
+that is 11,250 car-hours of 6 × 8,760 = 52,560, **about 21% busy**.
 
-**The affordability override.** The post must be buyable at the milestone that
-unlocks it. Small Town pays ¢10,000 on arrival, so ¢3,600 and ¢3,200 leave a city
-able to build one of each and still lay road. That is why the post, not the
-station, unlocks first, and why the station waits for Small City.
+**On-scene time is unchanged.** A call still takes 10 + severity × 20 ticks on
+scene, 1.2 to 3.6 game hours. That is longer than an average police call:
+Austin's assessment gives about 26 minutes for responsive calls. It is flagged
+for a later slice and not changed here; at the current figure the six police cars
+would be about half busy rather than a fifth.
+
+**The lapse.** An unanswered call lapses after **30 ticks**, the longest an
+answered call spends on scene (10 + 20). It is a **dial**: it makes an unanswered
+call visible for as long as an answered one would have been. Unanswered calls are
+capped at 32, so they can never starve the pool the answered calls use.
+
+## Slice 2: the station ladder
+
+Not built. Slice 2 resizes the police and fire stations to 6.4 m, as
+[service-capacity.md](service-capacity.md#do-the-existing-buildings-match) asks,
+and adds a large rung above each: a multi-company fire station and a police
+district station. What the large rung buys is simultaneity, more calls at once
+inside the same reach, since a bigger building does not make an engine faster.
+Its footprint, capacity, `responders`, cost and unlock milestone are to be derived
+from the same sourced figures, and the station models drawn then. Nothing about
+the large rung is settled in this document.
 
 ## What it is not
 
 - **Not consequential incidents.** An unanswered fire does not destroy the
-  building it started in, and this epic does not add one. Making it do so means
-  the dispatcher writing into buildings and fields for the first time, which
-  breaks its read-only contract, and it means designing how a city loses
-  buildings to a rolling process — a question that belongs beside death care,
-  not bolted onto a reach limit. The smaller thing that is worth shipping is
-  reach, busy stations and a visibly unanswered call.
-- **Not a prison.** It is a real municipal facility and it is still the wrong
-  building here. Detention above a few hours is a county or state function, not a
-  city one; the municipal part is the holding cells, and those are already inside
-  the police station's derived floor area. More to the point, a prison in our
-  model could only subtract from Crime, which the police station already does —
-  a second building doing the first one's job with a larger number, which is
-  exactly what the programme said an epic slot is not for. Crime here is a scalar
-  field with passive growth, not a stock of offenders, so there is nothing for a
-  prison to hold. Giving it something would mean modelling arrests and a detained
-  population, and that has an ugly failure mode: one full building raising crime
-  across the whole city is a global coupling from a local decision. If that model
-  is ever wanted it is its own epic.
-- **Not disaster response.** No catastrophe exists to respond to; see the note
-  in [municipal-services.md](municipal-services.md).
+  building it started in. Making it do so means the dispatcher writing into
+  buildings and fields for the first time, which breaks its read-only contract,
+  and it means designing how a city loses buildings to a rolling process, a
+  question that belongs beside death care.
+- **Not a prison.** Detention above a few hours is a county or state function,
+  and a prison in our model could only subtract from Crime, which the police
+  station already does. Crime is a scalar field, not a stock of offenders.
+- **Not disaster response.** No catastrophe exists to respond to; see the note in
+  [municipal-services.md](municipal-services.md).
 - **Not simulated travel time.** A calendar day is 200 ticks, so one tick is 7.2
   game minutes and a four-minute drive is half a tick. The standard gives us a
   distance we can test and a duration we can hold; it cannot give us a stopwatch.

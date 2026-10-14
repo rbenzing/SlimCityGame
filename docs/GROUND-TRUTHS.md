@@ -1036,6 +1036,19 @@ MUTCD citations below use 11th-edition section numbers.
   the registry, and never writes a field, a building, coverage or the economy.
   — [services-model.md](world-sim/services-model.md),
   [emergency-services.md](engineering/features/emergency-services.md)
+- A station answers only within its road reach, counted in path tiles
+  (`path.points.length - 1`) and scaled by the kind's funding, never by
+  straight line and never by `path.cost`, which is congestion-scaled time and
+  not a distance. — [emergency-services.md](engineering/features/emergency-services.md)
+- `ServiceSpec.responders` caps the calls a facility has in flight; absent is
+  unlimited. A call no station can answer still spawns as unanswered
+  (`answered: false`), takes no vehicle slot and lapses; unanswered calls are
+  capped apart from the answered pool. —
+  [emergency-services.md](engineering/features/emergency-services.md)
+- Incidents spawn at real per-resident rates (fire 0.042, medical 0.085,
+  police 0.45 a year) scaled by occupants and by field ÷ `FIELD_REFERENCE`,
+  never at a flat chance per building. —
+  [balancing.md](game-design/balancing.md#emergency-dispatch)
 - Derived per-tick figures (service load, population in reach, provision) live
   on `SimSnapshot`, never in `CityStats` or the save. —
   [service-capacity.md](engineering/features/service-capacity.md)

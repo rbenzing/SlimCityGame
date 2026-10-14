@@ -20,6 +20,7 @@ import {
   type CityStats,
   type DeathCareReport,
   type GrowthWaiting,
+  type Incident,
   type ZonedUnserved,
 } from '../shared/types';
 
@@ -165,6 +166,7 @@ export function cityIssues(
   waiting: GrowthWaiting = NOTHING_WAITING,
   unserved: ZonedUnserved = NOTHING_UNSERVED,
   deathCare: DeathCareReport = NO_DEATH_CARE,
+  incidents: readonly Incident[] = [],
 ): CityIssue[] {
   const counts = new Map<number, number>();
   const focus = new Map<number, BuildingInstance>();
@@ -202,6 +204,7 @@ export function cityIssues(
     ...waitingIssues(waiting),
     ...unservedIssues(unserved),
     ...deathCareIssues(deathCare, stats),
+    ...unansweredCallIssues(incidents),
     ...cityWideIssues(stats),
   );
 
@@ -346,6 +349,38 @@ function deathCareIssues(report: DeathCareReport, stats: CityStats): CityIssue[]
   }
 
   return issues;
+}
+
+const CALL_NAMES: Readonly<Record<Incident['kind'], string>> = {
+  fire: 'fire',
+  crime: 'police',
+  medical: 'medical',
+};
+
+/**
+ * Calls standing with no station on the way, named by kind: a fire, a crime or a
+ * medical emergency that no station in reach is free to answer.
+ */
+function unansweredCallIssues(incidents: readonly Incident[]): CityIssue[] {
+  const unanswered = incidents.filter((i) => i.answered === false);
+  if (unanswered.length === 0) return [];
+
+  const byKind = (Object.keys(CALL_NAMES) as Incident['kind'][])
+    .map((kind) => ({ kind, n: unanswered.filter((i) => i.kind === kind).length }))
+    .filter(({ n }) => n > 0)
+    .map(({ kind, n }) => `${n} ${CALL_NAMES[kind]}`);
+  const first = unanswered[0]!;
+  return [
+    {
+      id: 'calls-unanswered',
+      severity: 'warning',
+      title: `${unanswered.length} ${unanswered.length === 1 ? 'call stands' : 'calls stand'} unanswered: ${byKind.join(', ')}`,
+      detail:
+        'No station reaches them by road, or every station that does is out on a call. Build a station on a street that connects to them, or raise the service funding to lengthen its reach.',
+      count: unanswered.length,
+      focus: { x: first.x, z: first.z },
+    },
+  ];
 }
 
 /** The problems that live in the totals rather than on any one building. */

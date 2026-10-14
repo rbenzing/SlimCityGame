@@ -1,6 +1,6 @@
 # Municipal services — design
 
-- **Status:** In progress — epics 0 (service capacity), 1 (water and sewage) and 5 (garbage recovery) built, 6 (power generation) partly built; 2, 3, 4, 7 and 8 not started
+- **Status:** In progress — epics 0 (service capacity), 1 (water and sewage), 2 (healthcare and death care) and 5 (garbage recovery) built, 4 (emergency services) and 6 (power generation) partly built; 3, 7 and 8 not started
 - **Date:** 2026-09-18
 
 ## What the player gets
