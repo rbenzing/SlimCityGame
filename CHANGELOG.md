@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.58.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.57.0...slimcity-v1.58.0) (2026-10-14)
+
+
+### Features
+
+* **services:** district fire and police stations, and stations drawn as stations ([26ed928](https://github.com/rbenzing/SlimCityGame/commit/26ed9283c4f57575bb0dfb23dfef8d7914bda45e))
+* **services:** district fire and police stations, and stations drawn as stations ([d60a7d9](https://github.com/rbenzing/SlimCityGame/commit/d60a7d986ac42d9d2f362116a513577ae7ae4f2a))
+
 ## [1.57.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.56.0...slimcity-v1.57.0) (2026-10-14)
 
 
