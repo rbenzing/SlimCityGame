@@ -369,6 +369,25 @@ describe('GrowthSystem', () => {
       expect(g.buildingId[tileIndex(5, 5)]).toBe(grown.id);
     });
 
+    it('rebuilds a levelled-up home full: the old building’s vacancies do not carry over', () => {
+      const g = makeGrid();
+      const registry = new BuildingRegistry(growthCatalog);
+      const original = registry.place(g, resL1, 5, 5, 0, BuildingState.Active)!;
+      original.vacancies = 3;
+      keepServiced(g, 5, 5);
+      g.fields[FieldId.LandValue]![tileIndex(5, 5)] = 200;
+      const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
+
+      const grown = growth.tick(g, registry, neutralDemand, 0, 0).added[0]!;
+      expect(grown.vacancies).toBeUndefined();
+
+      // It finishes construction full too, whatever it was holding.
+      grown.vacancies = 2;
+      for (let t = 1; t <= 100; t++) growth.tick(g, registry, neutralDemand, 0, t);
+      expect(registry.get(grown.id)!.state).toBe(BuildingState.Active);
+      expect(registry.get(grown.id)!.vacancies).toBeUndefined();
+    });
+
     it('does not level up when land value is below the threshold', () => {
       const g = makeGrid();
       const registry = new BuildingRegistry(growthCatalog);
@@ -468,6 +487,28 @@ describe('GrowthSystem', () => {
       expect(recovered).toBeDefined();
       expect(recovered!.state).toBe(BuildingState.Active);
       expect(recovered!.problems & 1).toBe(0); // NoPower bit cleared
+    });
+
+    it('flags LowDemand on a shrinking city’s homes and abandons none of them', () => {
+      const g = makeGrid();
+      const registry = new BuildingRegistry(growthCatalog);
+      const homes = [3, 6, 9].map((x) => {
+        const inst = registry.place(g, resL1, x, 3, 0, BuildingState.Active)!;
+        inst.vacancies = 3;
+        keepServiced(g, x, 3);
+        return inst;
+      });
+      const shrinking: DemandLevels = { res: -1, com: -1, ind: -1 };
+      const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
+
+      for (let pass = 0; pass < 40; pass++) growth.tick(g, registry, shrinking, 0, pass * 10);
+
+      for (const home of homes) {
+        const now = registry.get(home.id)!;
+        expect(now.state).toBe(BuildingState.Active);
+        expect(now.problems & Problem.LowDemand).toBe(Problem.LowDemand);
+        expect(now.vacancies).toBe(3);
+      }
     });
 
     it('despawns an abandoned building after 10 further passes without recovery', () => {

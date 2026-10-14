@@ -20,6 +20,7 @@ import type {
   TransitLine,
 } from '../shared/types';
 import type { SerializedBuildingRegistry } from '../sim/buildings';
+import type { DeathCareSaveState } from '../sim/deathcare';
 import type { GarbageSaveState } from '../sim/garbage';
 
 // ---------------------------------------------------------------------------
@@ -32,6 +33,8 @@ export interface SaveMeta {
   stats: CityStats;
   /** Garbage fill: the landfill pile plus incinerator buffers. Absent in older saves. */
   garbage?: GarbageSaveState;
+  /** The death and re-let counters. Absent in older saves, which load with all of them at zero. */
+  deathCare?: DeathCareSaveState;
   /**
    * Player-built transit lines, bus and rail. Absent in saves written before
    * lines persisted, which load with none — exactly what every save did before,

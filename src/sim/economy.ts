@@ -19,6 +19,7 @@ import type {
   RoadSpec,
 } from '../shared/types';
 import { BuildingState, FieldId, RoadTier } from '../shared/types';
+import { occupiedResidents } from '../shared/occupancy';
 import { isPresetProfileId, roadPriceOf } from '../shared/roadprofile';
 import {
   LANDFILL_UPKEEP_PER_TILE,
@@ -99,15 +100,15 @@ export interface Occupancy {
  */
 export function buildingMonthlyTax(
   entry: BuildingCatalogEntry,
-  state: BuildingState,
+  inst: Pick<BuildingInstance, 'state' | 'vacancies'>,
   taxRates: Record<'res' | 'com' | 'ind', number>,
   landValueByte: number,
 ): number {
-  if (state !== BuildingState.Active) return 0;
+  if (inst.state !== BuildingState.Active) return 0;
   let occupants: number;
   let rate: number;
   if (entry.category === 'res') {
-    occupants = entry.residents ?? 0;
+    occupants = occupiedResidents(entry, inst);
     rate = taxRates.res;
   } else if (entry.category === 'com') {
     occupants = entry.jobs ?? 0;
@@ -157,7 +158,7 @@ export class EconomySystem {
       const open = b.state === BuildingState.Active;
       const tally = open ? jobs : pipeline;
       // Whoever lives in it, whatever it is: a farm's family live on the farm.
-      if (open) population += spec.residents ?? 0;
+      population += occupiedResidents(spec, b);
       if (spec.category === 'res') {
         // Mixed housing: a res-category building may carry
         // commercial ground-floor jobs. Count those into commercial jobs so
@@ -239,7 +240,7 @@ export class EconomySystem {
           let occupants: number;
           let rate: number;
           if (spec.category === 'res') {
-            occupants = spec.residents ?? 0;
+            occupants = occupiedResidents(spec, b);
             rate = stats.taxRates.res;
           } else if (spec.category === 'com') {
             occupants = spec.jobs ?? 0;

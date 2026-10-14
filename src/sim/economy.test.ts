@@ -558,32 +558,99 @@ describe('EconomySystem: loans', () => {
 describe('buildingMonthlyTax', () => {
   const rates = { res: 0.1, com: 0.2, ind: 0.3 };
 
+  const active = { state: BuildingState.Active };
+
   it('taxes an Active residential building: residents x res rate x 12 x land-value factor', () => {
     // Land value 0 -> factor 0.75 (LAND_VALUE_FACTOR_BASE).
-    expect(buildingMonthlyTax(resHouse, BuildingState.Active, rates, 0)).toBeCloseTo(
-      10 * 0.1 * 12 * 0.75,
-    );
+    expect(buildingMonthlyTax(resHouse, active, rates, 0)).toBeCloseTo(10 * 0.1 * 12 * 0.75);
     // Land value 255 -> factor 1.25 (base + full span).
-    expect(buildingMonthlyTax(resHouse, BuildingState.Active, rates, 255)).toBeCloseTo(
-      10 * 0.1 * 12 * 1.25,
+    expect(buildingMonthlyTax(resHouse, active, rates, 255)).toBeCloseTo(10 * 0.1 * 12 * 1.25);
+  });
+
+  it('taxes only the residents still living there, and nothing on a wholly empty building', () => {
+    expect(buildingMonthlyTax(resHouse, { ...active, vacancies: 4 }, rates, 0)).toBeCloseTo(
+      6 * 0.1 * 12 * 0.75,
     );
+    expect(buildingMonthlyTax(resHouse, { ...active, vacancies: 10 }, rates, 0)).toBe(0);
   });
 
   it('taxes com and ind buildings on jobs at their sector rates', () => {
-    expect(buildingMonthlyTax(comShop, BuildingState.Active, rates, 0)).toBeCloseTo(
-      5 * 0.2 * 12 * 0.75,
-    );
-    expect(buildingMonthlyTax(indYard, BuildingState.Active, rates, 0)).toBeCloseTo(
-      3 * 0.3 * 12 * 0.75,
-    );
+    expect(buildingMonthlyTax(comShop, active, rates, 0)).toBeCloseTo(5 * 0.2 * 12 * 0.75);
+    expect(buildingMonthlyTax(indYard, active, rates, 0)).toBeCloseTo(3 * 0.3 * 12 * 0.75);
   });
 
   it('returns 0 for ploppables (services/utilities) regardless of state', () => {
-    expect(buildingMonthlyTax(police, BuildingState.Active, rates, 255)).toBe(0);
+    expect(buildingMonthlyTax(police, active, rates, 255)).toBe(0);
   });
 
   it('returns 0 for non-Active buildings (Constructing/Abandoned pay no tax)', () => {
-    expect(buildingMonthlyTax(resHouse, BuildingState.Constructing, rates, 128)).toBe(0);
-    expect(buildingMonthlyTax(resHouse, BuildingState.Abandoned, rates, 128)).toBe(0);
+    expect(buildingMonthlyTax(resHouse, { state: BuildingState.Constructing }, rates, 128)).toBe(0);
+    expect(buildingMonthlyTax(resHouse, { state: BuildingState.Abandoned }, rates, 128)).toBe(0);
+  });
+});
+
+describe('EconomySystem: a city that loses residents', () => {
+  const emptied = (
+    id: number,
+    vacancies: number,
+    buildings: BuildingInstance[],
+    g: GridState,
+  ): BuildingInstance => {
+    const inst = place(g, buildings, id, 'big-res', id, 0);
+    inst.vacancies = vacancies;
+    return inst;
+  };
+  const sys = new EconomySystem([...catalog, bigRes], roadSpecs);
+
+  it('sums the residents still living in each building', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    emptied(1, 100, buildings, g);
+    emptied(2, 500, buildings, g);
+    expect(sys.occupancy(buildings).population).toBe(400);
+  });
+
+  it('collects no rent on empty flats: income follows the occupied residents', () => {
+    const rentOf = (vacancies: number): number => {
+      const g = makeGrid();
+      const buildings: BuildingInstance[] = [];
+      emptied(1, vacancies, buildings, g);
+      const { statsPatch } = sys.tick({
+        g,
+        buildings,
+        stats: makeStats({ funds: 0, milestoneLevel: 5 }),
+        tickNo: TICKS_PER_MONTH,
+        taxMultiplier: () => 2,
+      });
+      return (statsPatch.monthlyIncome ?? 0) + (statsPatch.monthlyExpenses ?? 0);
+    };
+    const full = rentOf(0);
+    expect(rentOf(250)).toBeCloseTo(full / 2, 6);
+    expect(rentOf(500)).toBeCloseTo(0, 6);
+  });
+
+  it('never lowers the milestone level when the city shrinks below its threshold', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    emptied(1, 450, buildings, g); // 50 left, under MILESTONES[1].population (400)
+    const stats = makeStats({ milestoneLevel: 1, funds: 777 });
+    const { statsPatch, notifications } = sys.tick({ g, buildings, stats, tickNo: 1 });
+    expect(statsPatch.population).toBe(50);
+    expect(statsPatch.milestoneLevel).toBe(1);
+    expect(statsPatch.funds).toBe(777);
+    expect(notifications).toHaveLength(0);
+  });
+
+  it('reports 0 progress, not a negative or invented figure, below the threshold it stands on', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    emptied(1, 450, buildings, g);
+    const { statsPatch } = sys.tick({
+      g,
+      buildings,
+      stats: makeStats({ milestoneLevel: 1 }),
+      tickNo: 1,
+    });
+    expect(statsPatch.milestoneProgress).toBe(0);
   });
 });

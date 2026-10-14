@@ -1,6 +1,6 @@
 # Healthcare and death care — design
 
-- **Status:** Partly built — the clinic and hospital ladder (2026-10-08); death care not built
+- **Status:** Partly built — the clinic and hospital ladder (2026-10-08); deaths and occupancy (2026-10-14); collection, cemetery and crematorium not built
 - **Date:** 2026-09-18
 
 ## What the player gets
@@ -115,6 +115,22 @@ At 9 deaths per 1,000 a year against positive residential demand the sink is a
 slow leak, not a collapse: in-migration refills homes faster than deaths empty
 them. Population only truly falls when demand is at or below zero — **a city
 that has stopped attracting residents now shrinks instead of standing still.**
+
+**How a home empties and fills.** A death takes one resident out of a building,
+chosen in proportion to who lives where, so a tower loses people in proportion
+to its size; the building stands, its flats a little emptier, and pays rent on
+the people still in it. While the city is attracting residents (residential
+demand above zero) each empty place is let again after **41 game days** on
+average. That is RentCafe's 2025 national average of 41 days to rent a vacant
+apartment across 137 markets
+([Multifamily Executive](https://www.multifamilyexecutive.com/apartment-trends/rentcafe-miami-hottest-rental-market-2025)),
+and the National Association of Realtors' 2025 Profile of Home Buyers and
+Sellers, a median of four weeks on the market, agrees within a fortnight. How
+strongly the city attracts does not speed it up: any positive demand re-lets at
+the market's pace, and demand at or below zero re-lets nothing. A city holding
+steady therefore carries about one empty place in a thousand; one that stops
+attracting residents loses them at the death rate, 9 in 1,000 a year, until
+demand returns.
 
 **Traffic, and the garbage system.** Hearses are new traffic in exactly the
 densest districts, which generate the most deaths — the interesting version of

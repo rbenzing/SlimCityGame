@@ -549,18 +549,41 @@ MUTCD citations below use 11th-edition section numbers.
   [tick.md](world-sim/tick.md), [time-system.md](world-sim/time-system.md)
 - The tick order is fixed: commands, utilities, demand, growth, emission,
   services, garbage, traffic, transit, dispatch, trucks, traffic bake, fields,
-  economy, snapshot. A new system is slotted into that order explicitly. —
+  economy, deaths and re-lets, snapshot. A new system is slotted into that order explicitly. —
   [tick.md](world-sim/tick.md); `tick()` in `src/sim/worker.entry.ts`
 - The calendar is 200 ticks a day and 30 days a month. `VISUAL_DAY_TICKS` and
   `CLOCK_START_OFFSET_TICKS` are display-only and never drive a sim rule. —
   [time-system.md](world-sim/time-system.md)
 - There are no citizen agents: no person, household, commute or age exists in
-  the sim. Population is re-summed every tick from the catalog residents of
+  the sim. Population is re-summed every tick from the occupied residents of
   `Active` buildings; `Constructing` and `Abandoned` contribute nothing; it is
   never incremented as an event and never persisted as authoritative. —
   [population-model.md](world-sim/population-model.md),
   [agent-behavior.md](world-sim/agent-behavior.md),
   [ADR-0001](engineering/adr/0001-traffic-is-statistical-assignment-with-cosmetic-agents.md)
+- One helper decides who lives in a building: `occupiedResidents(spec, inst)`,
+  0 unless the building is `Active`, else the catalog's residents less the
+  building's vacancies. Population, rent, the tax correction, the capacity
+  pooling, the inspector, ridership, garbage and the registry totals all ask
+  it, and nothing else reads `spec.residents` to count people. —
+  [population-model.md](world-sim/population-model.md);
+  `occupiedResidents` in `src/shared/occupancy.ts`
+- Population can fall, and the milestone level never does. Deaths and re-lets
+  change who lives in a building and never whether it stands; a city that has
+  shrunk below a threshold keeps the milestone's unlocks and reports 0
+  progress toward the next. A shrinking city abandons nothing, since
+  `LowDemand` stays toothless. —
+  [population-model.md](world-sim/population-model.md),
+  [healthcare-and-death-care.md](engineering/features/healthcare-and-death-care.md);
+  `EconomySystem.tick` in `src/sim/economy.ts`
+- Deaths are accrued, never rolled: a city counter advances by population
+  times the death rate each tick and a death falls when it passes 1, at a
+  resident chosen by a fixed stride over the occupied residents in building-id
+  order, so a run is identical across a save and reload and no RNG is drawn.
+  A vacancy is re-let by the same method, at a fixed 41 days, only while
+  residential demand is above zero, and never faster for a larger demand. —
+  [healthcare-and-death-care.md](engineering/features/healthcare-and-death-care.md);
+  `src/sim/deathcare.ts`
 - The workforce is `floor(population × EMPLOYMENT_RATE)`, one constant in
   `src/shared/constants.ts`. Employment, demand and the Advisor's labour
   checks all measure against the workforce, never against every resident. —

@@ -767,6 +767,8 @@ export interface BuildingInstance {
   level: number; // 1..3 for grown buildings, 1 for ploppables
   state: BuildingState;
   problems: number; // Problem bit-flags
+  /** Residents the building has lost and not had replaced, 0..catalog residents; absent is 0 (full). */
+  vacancies?: number;
 }
 
 export interface BuildingDelta {

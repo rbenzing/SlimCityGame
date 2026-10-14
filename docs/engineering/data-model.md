@@ -137,13 +137,14 @@ writes and reads it through `saveGrid` and `loadGrid` in
 **Meta** (`SaveMeta`): everything else that isn't a grid layer —
 `registry` (the building table), `stats` (`CityStats`), and three optional
 blocks defaulted on saves written before they existed: `garbage`
-(landfill + incinerator fill), `transitLines` (player-built lines), and
-`roadProfiles` (player-composed road cross-sections). Each is covered in
+(landfill + incinerator fill), `transitLines` (player-built lines),
+`roadProfiles` (player-composed road cross-sections) and `deathCare` (the
+death and re-let counters). Each is covered in
 [Entities beyond the grid](#entities-beyond-the-grid).
 
 ### Save version and per-tile width
 
-The current `SAVE_VERSION` is **14** (`src/shared/types.ts`), and the
+The current `SAVE_VERSION` is **15** (`src/shared/types.ts`), and the
 current per-tile width is **37 bytes** (`BYTES_PER_TILE` in
 `src/world/grid.ts`), followed by the road network. The width for every version is exported as
 `BYTES_PER_TILE_BY_VERSION` (`src/world/grid.ts`) — a single array, indexed
@@ -165,7 +166,8 @@ read rather than each keeping its own count. Reproduced exactly:
 | 11             | 45         | `junctionLaneTurns`, 4 arms x `Uint16` (+8 bytes).                                                                |
 | 12             | 53         | The over-road layers: `overTier`, `overProfile` (`Uint16`), `overFlow`, `overElevation` (`Float32`) (+8 bytes).   |
 | 13             | 36         | Drops every road layer (−17 bytes); the road network follows the tiles.                                           |
-| 14 (current)   | 37         | `waterPipe` (+1 byte), appended to the tile record ahead of the network.                                          |
+| 14             | 37         | `waterPipe` (+1 byte), appended to the tile record ahead of the network.                                          |
+| 15 (current)   | 37         | No layer: the v14 layout. Marks landfill fill counted in 0.25 kg trash units, rescaled on load from older saves.  |
 
 Up to v12, every new layer was appended as the last thing the serializer
 wrote, in version order: an older save's tile record is exactly a
@@ -236,8 +238,12 @@ of a save record, and neither is versioned or migrated the way saves are.
 
 `BuildingInstance` (`src/shared/types.ts`), owned by `BuildingRegistry`
 (`src/sim/buildings.ts`): `id`, `catalogId`, `x`/`z` (origin tile),
-`rotation`, `level`, `state` (`Constructing` / `Active` / `Abandoned`), and
-`problems` (a `Problem` bit-flag mask). An id is assigned by an
+`rotation`, `level`, `state` (`Constructing` / `Active` / `Abandoned`),
+`problems` (a `Problem` bit-flag mask) and the optional `vacancies`: the
+residents the building has lost to death and not had replaced, an integer from
+0 to the catalog's `residents`, absent meaning 0 (full). It is serialized only
+when above 0, so a save without it loads every building full, and a stored
+value above the catalog's current `residents` is clamped down on load. An id is assigned by an
 auto-incrementing `nextId` starting at 1 and is never reused within a
 session; `nextId` itself is part of `SerializedBuildingRegistry`, so ids stay
 unique across a save/load too. `BuildingRegistry.place` stamps the building's
@@ -352,6 +358,14 @@ fresh `Map` on load via `adoptCustomProfiles` (see
 `src/sim/garbage.ts`) persists in `SaveMeta.garbage`. The per-tile
 uncollected-trash layer (`GarbageSystem.trash`) and the cosmetic garbage
 trucks are **not** persisted; both rebuild within a few ticks of a load.
+
+### Death care
+
+`DeathCareSaveState` (`src/sim/deathcare.ts`) persists in `SaveMeta.deathCare`:
+`deathRemainder` and `reletRemainder` (the fractional counters, each below 1),
+and `deaths` and `relets` (the running counts that position the stride walk).
+Absent, all four are zero. The per-building vacancies are in the registry, not
+here. Slice 2 extends the block with per-facility interments and the backlog.
 
 ### Vehicles and incidents
 
