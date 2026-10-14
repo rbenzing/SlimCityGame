@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.55.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.54.0...slimcity-v1.55.0) (2026-10-14)
+
+
+### Features
+
+* **services:** bodies, a regional funeral service until Big Town, th… ([dd82fbc](https://github.com/rbenzing/SlimCityGame/commit/dd82fbc4f500a4f572cf911f0b537336193413ea))
+* **services:** bodies, a regional funeral service until Big Town, the cemetery and the hearse ([9d07009](https://github.com/rbenzing/SlimCityGame/commit/9d070092238f8930003ef3bcf7963a637305d3bd))
+
 ## [1.54.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.53.0...slimcity-v1.54.0) (2026-10-14)
 
 
