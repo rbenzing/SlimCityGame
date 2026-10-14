@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   GarbageTruckSystem,
   MAX_GARBAGE_TRUCKS,
+  MAX_HEARSES,
   truckKindFor,
   type TruckDepot,
   type TruckTarget,
@@ -125,6 +126,33 @@ describe('GarbageTruckSystem', () => {
       }
     }
     expect(seen).toBeGreaterThan(0);
+  });
+
+  it('runs a smaller pool of hearses: a depot in the hearse livery, reporting which building it is visiting', () => {
+    const g = makeGrid();
+    straightRoad(g, 0, 0, 10);
+    const network = net(g);
+    const hearses = new GarbageTruckSystem(MAX_HEARSES);
+    expect(hearses.vehicleBuffer.length).toBe(MAX_HEARSES * VEHICLE_STRIDE);
+
+    hearses.tick({
+      network,
+      depots: [{ ...depot(1, 0, 0, 2), kind: VehicleKind.Hearse }],
+      targets: [target(100, 4, 1)],
+    });
+
+    expect(hearses.isVisiting(100)).toBe(true);
+    expect(hearses.isVisiting(101)).toBe(false);
+    const kinds: number[] = [];
+    for (let slot = 0; slot < MAX_HEARSES; slot++) {
+      const base = slot * VEHICLE_STRIDE;
+      if (hearses.vehicleBuffer[base] !== INACTIVE_VEHICLE_X)
+        kinds.push(hearses.vehicleBuffer[base + 4]!);
+    }
+    expect(kinds).toEqual([VehicleKind.Hearse]);
+    // The round ends, the building is free to be visited again.
+    for (let t = 0; t < 200; t++) hearses.tick({ network, depots: [], targets: [] });
+    expect(hearses.isVisiting(100)).toBe(false);
   });
 
   it('never exceeds the budget over a long run and keeps recycling slots', () => {

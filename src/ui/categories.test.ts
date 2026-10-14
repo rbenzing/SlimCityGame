@@ -177,6 +177,8 @@ describe('subTabsFor', () => {
     expect(subTabsFor('health')[0]?.cards.map((c) => c.id)).toEqual([
       'plop.clinic',
       'plop.hospital',
+      // Death care rides the health department, so its burial ground is listed here.
+      'plop.cemetery',
     ]);
     expect(subTabsFor('fire')[0]?.cards.map((c) => c.id)).toEqual(['plop.fire-station']);
     expect(subTabsFor('police')[0]?.cards.map((c) => c.id)).toEqual(['plop.police-station']);

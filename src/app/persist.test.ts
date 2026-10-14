@@ -165,6 +165,26 @@ describe('save payload codec', () => {
     expect(decoded.meta.deathCare).toEqual(meta.deathCare);
   });
 
+  it('carries the interments, the backlog of bodies and the month through a round trip', () => {
+    const meta: SaveMeta = {
+      ...sampleMeta(),
+      deathCare: {
+        deathRemainder: 0.4375,
+        deaths: 90,
+        reletRemainder: 0.125,
+        relets: 12,
+        interments: [{ id: 14, count: 780 }],
+        backlog: [
+          { tile: 4_120, count: 2, sinceTick: 61_000 },
+          { tile: 9_001, count: 1, sinceTick: 70_500 },
+        ],
+        regionalThisMonth: 7,
+      },
+    };
+    const decoded = decodeSave(encodeSave({ header: sampleHeader(), grid: sampleGrid(), meta }));
+    expect(decoded.meta.deathCare).toEqual(meta.deathCare);
+  });
+
   it('reads a save written before deaths: no deathCare block', () => {
     const decoded = decodeSave(
       encodeSave({ header: sampleHeader(), grid: sampleGrid(), meta: sampleMeta() }),

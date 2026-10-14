@@ -400,6 +400,27 @@ describe('InfoPanel', () => {
       expect(screen.getByTestId('service-load-row')).toHaveTextContent('138%');
     });
 
+    it('shows a selected cemetery its plots used against its plots', () => {
+      const cemetery = { ...building, id: 56, catalogId: 'cemetery' };
+      useCityStore.getState().setSelectedBuilding(cemetery);
+      useCityStore.getState().setSelectionInfo({
+        ...info,
+        building: cemetery,
+        occupancy: {},
+        deathCare: { used: 212, total: 780 },
+      });
+      render(<InfoPanel />);
+      expect(screen.getByTestId('plots-row')).toHaveTextContent('212 of 780 used');
+    });
+
+    it('shows no plots row for anything that is not a burial facility', () => {
+      const station = { ...building, id: 55, catalogId: 'police-station' };
+      useCityStore.getState().setSelectedBuilding(station);
+      useCityStore.getState().setSelectionInfo({ ...info, building: station, occupancy: {} });
+      render(<InfoPanel />);
+      expect(screen.queryByTestId('plots-row')).not.toBeInTheDocument();
+    });
+
     it('shows no load row for a facility with no reading (uncapped, or nobody in reach)', () => {
       const station = { ...building, id: 55, catalogId: 'police-station' };
       useCityStore.getState().setSelectedBuilding(station);

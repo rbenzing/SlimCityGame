@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 5,836 tests passing across 177 test files, run 2026-10-14.
+**Test suite:** 5,899 tests passing across 180 test files, run 2026-10-14.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -123,6 +123,10 @@ not a test to fix.
   street's kerb parking repainted later does not re-lay it.
 - A kerb-credited lot's customers are drawn parked on the lot, not in the
   kerb stalls its credit counts.
+- The ambulance is drawn 6.2 × 2.2 × 2.7 m (`KIND_SIZE` in
+  [`render/vehicles.ts`](../src/render/vehicles.ts)) while the healthcare
+  technical design gives 6.5 × 2.1 × 2.8 m from a UK fleet; re-source it from
+  a US Type III ambulance and make the two agree.
 - `tools/profile-shots.mjs` defines its custom profile as id 12, which is
   the Ramp preset; custom profiles start at 13
   ([`shared/roadprofile.ts`](../src/shared/roadprofile.ts)).
@@ -296,6 +300,33 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Bodies, the cemetery and the hearse (third slice of healthcare and death care, built 2026-10-14)
+
+A death now leaves a body where it fell, and someone has to come for it.
+
+- **A regional funeral service until Big Town**, as the player chose, the way
+  septic tanks stand in for the sewer: an off-map provider collects every body
+  the tick it falls for ¢3.6 each, Crow Wing County MN's 2026 contract
+  ($2,900 cremation, $3,900 burial) weighted by the 2025 US cremation share,
+  62.8%, on the game's operating scale. From Big Town it stops, and the
+  Advisor says so one rung before. No prerequisite is added to a first town.
+- **The cemetery**, 3×3 from the start: a gatehouse, a 20 ft drive, a fence
+  and 780 graves of at least 42 × 96 in, whose headstones stand as the plots
+  fill. Its hearses collect along the road network within 40 tiles, nearest
+  cemetery with room first; a full one collects nothing, and the inspector
+  shows plots used. The 780 is about 1,000 single graves an acre (PAS 16,
+  1950, now cited as single-grave sections rather than "gross"; a county
+  appraisal default of 1,000 per usable acre and about 940 at Forest Lawn OH
+  agree).
+- **The hearse**, 6.2 × 1.9 × 1.9 m, black, long and low beside the
+  ambulance.
+- **A body left lying** takes 32 Health a month (a dial) off its tile and the
+  two around it, after coverage, so no clinic can paper over it; it never
+  feeds the death rate. The Advisor warns at the first body nobody reaches
+  and at a full cemetery.
+- Saves carry the interments and the bodies waiting; older saves load with
+  neither. The crematorium and the exhumation charge are the last slice.
 
 ### Deaths, and homes that empty and fill (second slice of healthcare and death care, built 2026-10-14)
 

@@ -19,6 +19,8 @@ import { TICK_RATE, TILE_METERS, tileToWorld } from '../shared/constants';
 
 /** Own small pool, overlaid onto the shared snapshot buffer just before the service-vehicle slice. */
 export const MAX_GARBAGE_TRUCKS = 16;
+/** The cemeteries' hearse fleet: a second, smaller pool of the same system, overlaid just before the garbage slice. */
+export const MAX_HEARSES = 8;
 const TICK_SECONDS = 1 / TICK_RATE;
 /** One tile per tick — the same simple, testable speed model as service vehicles. */
 const TRUCK_SPEED_MPS = TILE_METERS * TICK_RATE;
@@ -126,7 +128,7 @@ function manhattan(a: TilePoint, b: TilePoint): number {
 }
 
 export class GarbageTruckSystem {
-  /** MAX_GARBAGE_TRUCKS * VEHICLE_STRIDE floats, same per-slot layout as SimSnapshot.vehicles. */
+  /** `slots * VEHICLE_STRIDE` floats, same per-slot layout as SimSnapshot.vehicles. */
   readonly vehicleBuffer: Float32Array;
 
   private readonly freeSlots: number[] = [];
@@ -134,12 +136,15 @@ export class GarbageTruckSystem {
   /** Building ids a truck is currently visiting — one truck per building at a time. */
   private readonly activeTargets = new Set<number>();
 
-  constructor() {
-    this.vehicleBuffer = new Float32Array(MAX_GARBAGE_TRUCKS * VEHICLE_STRIDE);
-    for (let slot = MAX_GARBAGE_TRUCKS - 1; slot >= 0; slot--) {
-      this.freeSlots.push(slot);
-      this.vehicleBuffer[slot * VEHICLE_STRIDE] = INACTIVE_VEHICLE_X;
-    }
+  /** `slots` is the pool's size: MAX_GARBAGE_TRUCKS for the refuse fleet, a smaller one for another. */
+  constructor(private readonly slots: number = MAX_GARBAGE_TRUCKS) {
+    this.vehicleBuffer = new Float32Array(slots * VEHICLE_STRIDE);
+    this.reset();
+  }
+
+  /** True while a truck is on its way to, or at, the target with this id. */
+  isVisiting(targetId: number): boolean {
+    return this.activeTargets.has(targetId);
   }
 
   /** One sim tick: advance active trucks, then top each depot up to its budget. */
@@ -300,7 +305,7 @@ export class GarbageTruckSystem {
     this.active = [];
     this.activeTargets.clear();
     this.freeSlots.length = 0;
-    for (let slot = MAX_GARBAGE_TRUCKS - 1; slot >= 0; slot--) {
+    for (let slot = this.slots - 1; slot >= 0; slot--) {
       this.freeSlots.push(slot);
       this.vehicleBuffer[slot * VEHICLE_STRIDE] = INACTIVE_VEHICLE_X;
     }

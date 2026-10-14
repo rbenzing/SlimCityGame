@@ -1,8 +1,8 @@
 /**
- * Service-dispatch vehicle rendering: fire/police/ambulance/garbage
+ * Service-dispatch vehicle rendering: fire/police/ambulance/garbage/hearse
  * liveries riding the SAME shared vehicle buffer (SimSnapshot.vehicles) as
  * cosmetic cars/trucks/buses -- distinguished only by VehicleKind.Fire/
- * Police/Ambulance/Garbage (see shared/types.ts's contract note). This file owns a
+ * Police/Ambulance/Garbage/Hearse (see shared/types.ts's contract note). This file owns a
  * SEPARATE set of InstancedMeshes from render/vehicles.ts's VehicleRenderer:
  * VehicleRenderer's ALL_KINDS list is [Car, Truck, Bus] only, so it already
  * harmlessly hides any slot whose kind is a service kind (no match in its
@@ -38,6 +38,7 @@ const SERVICE_KINDS = [
   VehicleKind.Ambulance,
   VehicleKind.Garbage,
   VehicleKind.Recycling,
+  VehicleKind.Hearse,
 ] as const;
 export type ServiceVehicleKind = (typeof SERVICE_KINDS)[number];
 
@@ -47,7 +48,8 @@ function isServiceKind(kind: number): kind is ServiceVehicleKind {
     kind === VehicleKind.Police ||
     kind === VehicleKind.Ambulance ||
     kind === VehicleKind.Garbage ||
-    kind === VehicleKind.Recycling
+    kind === VehicleKind.Recycling ||
+    kind === VehicleKind.Hearse
   );
 }
 
@@ -133,6 +135,98 @@ function buildWheelParts(): THREE.BufferGeometry[] {
   return centers.map(([cx, cy, cz]) => box(0.16, 0.34, 0.34, cx, cy, cz, CABIN_DARK));
 }
 
+// The hearse's livery is the game's own choice: no source for a coach colour
+// was found, so it is the black of the funeral trade with chrome-grey trim.
+const HEARSE_BLACK = hexToRGB(0x0d0d10);
+const HEARSE_ROOF = hexToRGB(0x1d1d22);
+const HEARSE_GLASS = hexToRGB(0x34424f);
+const HEARSE_CHROME = hexToRGB(0xb9bec4);
+const HEARSE_TYRE = hexToRGB(0x15171a);
+const HEARSE_HEADLIGHT = hexToRGB(0xf0ecd8);
+const HEARSE_TAILLIGHT = hexToRGB(0x8c1f1f);
+
+/**
+ * The hearse in unit-box space like every other service body, drawn in metres
+ * on the ground and normalised by the kind's own size: a long hood, a short
+ * cabin, and a closed landau coach behind it with a padded roof, tinted rear
+ * glass and chrome landau bars. No light bar, no cross. The body, wheels and
+ * trim reach the whole of the 1.9 × 1.9 × 6.2 m the kind is sized to.
+ */
+function buildHearseGeometry(): THREE.BufferGeometry {
+  const [sx, sy, sz] = sizeForKind(VehicleKind.Hearse);
+  const hw = sx / 2;
+  const hl = sz / 2;
+  // Metre extents (x0..x1 across, y0..y1 up from the road, z0..z1 front-to-rear with +z the nose).
+  const slab = (
+    x0: number,
+    x1: number,
+    y0: number,
+    y1: number,
+    z0: number,
+    z1: number,
+    colorRGB: readonly [number, number, number],
+  ): THREE.BufferGeometry =>
+    box(
+      (x1 - x0) / sx,
+      (y1 - y0) / sy,
+      (z1 - z0) / sz,
+      (x0 + x1) / 2 / sx,
+      (y0 + y1) / 2 / sy - 0.5,
+      (z0 + z1) / 2 / sz,
+      colorRGB,
+    );
+  const body = hw - 0.02;
+  const parts: THREE.BufferGeometry[] = [
+    slab(-body, body, 0.3, 1.05, -hl + 0.1, hl - 0.1, HEARSE_BLACK),
+    // The coach: closed sides to the roofline, a padded landau roof over it.
+    slab(-body + 0.02, body - 0.02, 1.05, 1.82, -hl + 0.1, 0.45, HEARSE_BLACK),
+    slab(-body + 0.06, body - 0.06, 1.82, sy, -hl + 0.15, 0.4, HEARSE_ROOF),
+    // The cabin's glass and its roof.
+    slab(-body + 0.04, body - 0.04, 1.05, 1.56, 0.45, 1.9, HEARSE_GLASS),
+    slab(-body + 0.04, body - 0.04, 1.56, 1.62, 0.4, 1.95, HEARSE_BLACK),
+  ];
+  for (const side of [-1, 1]) {
+    const outer = side * body;
+    const x0 = Math.min(outer, outer + side * 0.02);
+    const x1 = Math.max(outer, outer + side * 0.02);
+    // Tinted rear side glass and the chrome landau bars either end of it.
+    parts.push(slab(x0, x1, 1.2, 1.65, -hl + 0.55, 0.15, HEARSE_GLASS));
+    parts.push(slab(x0, x1, 1.1, 1.8, 0.15, 0.3, HEARSE_CHROME));
+    parts.push(slab(x0, x1, 1.1, 1.8, -hl + 0.4, -hl + 0.55, HEARSE_CHROME));
+    // The tyres reach the full width; head and tail lamps sit in the nose and tail.
+    const tyreOuter = side * hw;
+    const tyreInner = tyreOuter - side * 0.3;
+    for (const z of [2.0, -1.9]) {
+      parts.push(
+        slab(
+          Math.min(tyreOuter, tyreInner),
+          Math.max(tyreOuter, tyreInner),
+          0,
+          0.7,
+          z - 0.35,
+          z + 0.35,
+          HEARSE_TYRE,
+        ),
+      );
+    }
+    parts.push(slab(side * 0.55, side * 0.85, 0.65, 0.85, hl - 0.12, hl, HEARSE_HEADLIGHT));
+    parts.push(slab(side * 0.55, side * 0.85, 0.65, 0.85, -hl, -hl + 0.12, HEARSE_TAILLIGHT));
+  }
+  // The chrome beltline the full width, grille and the two bumpers.
+  parts.push(slab(-hw, hw, 1.05, 1.1, -hl + 0.1, hl - 0.1, HEARSE_CHROME));
+  parts.push(slab(-0.45, 0.45, 0.5, 0.9, hl - 0.12, hl, HEARSE_CHROME));
+  parts.push(slab(-hw + 0.05, hw - 0.05, 0.3, 0.55, hl - 0.1, hl, HEARSE_CHROME));
+  parts.push(slab(-hw + 0.05, hw - 0.05, 0.3, 0.55, -hl, -hl + 0.1, HEARSE_CHROME));
+  // The rear glass in the tail.
+  parts.push(slab(-0.75, 0.75, 1.2, 1.65, -hl + 0.08, -hl + 0.1, HEARSE_GLASS));
+
+  const merged = mergeGeometries(parts, false);
+  for (const part of parts) part.dispose();
+  if (!merged)
+    throw new Error('buildServiceVehicleGeometry: mergeGeometries failed for the hearse');
+  return merged;
+}
+
 /**
  * Builds the merged multi-part geometry for one service-vehicle kind: body
  * slab (livery color) + cabin/window band (dark) + 4 simple wheel boxes, all
@@ -141,6 +235,7 @@ function buildWheelParts(): THREE.BufferGeometry[] {
  * accent color); garbage adds a raised rear hopper + amber beacon instead.
  */
 export function buildServiceVehicleGeometry(kind: ServiceVehicleKind): THREE.BufferGeometry {
+  if (kind === VehicleKind.Hearse) return buildHearseGeometry();
   const body = bodyColorForKind(kind);
 
   const parts: THREE.BufferGeometry[] = [

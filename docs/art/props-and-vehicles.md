@@ -47,6 +47,24 @@ above, built from the same body + cabin-band + wheel-box parts:
 All four share the dark cabin/window band and simple wheel boxes from the
 civilian kit's construction above.
 
+**The hearse** is a fifth service body with its own construction, **6.2 × 1.9 ×
+1.9 m** at real size: a long hood, a short glazed cabin and a closed landau coach
+behind it with a padded roof, tinted rear glass and chrome landau bars, chrome
+bumpers and grille, a black body. No light bar and no cross. 6.2 m is the
+simulation's own figure, between a Cadillac XTS-based US coach (6.32 m) and a UK
+Coleman Milne coach. The **livery, black with chrome-grey trim, is the game's own
+choice**; no source for a coach colour was found. It reads apart from the
+ambulance (white, red light-bar, 2.7 m tall) by height and colour, and from a car
+(4.0 m, 1.5 m tall) by length.
+
+| Kind      | Size (w × h × l, m) | Livery                          |
+| --------- | ------------------- | ------------------------------- |
+| Car       | 1.8 × 1.5 × 4.0     | randomized palette              |
+| Ambulance | 2.2 × 2.7 × 6.2     | white, red light-bar, red cross |
+| Hearse    | 1.9 × 1.9 × 6.2     | black, chrome-grey trim, no bar |
+
+Like every kind it is one InstancedMesh, in the service-vehicle renderer.
+
 ## Parked cars and lot life
 
 Static parked cars are an occupancy signal, not decoration:

@@ -527,6 +527,7 @@ const EXPECTED_ARCHETYPE: Record<number, number> = {
   [VehicleKind.Ambulance]: VehicleKind.Truck,
   [VehicleKind.Garbage]: VehicleKind.Truck,
   [VehicleKind.Recycling]: VehicleKind.Truck,
+  [VehicleKind.Hearse]: VehicleKind.Truck,
 };
 
 describe('sizeForKind (every kind is a real vehicle class)', () => {
@@ -550,6 +551,14 @@ describe('sizeForKind (every kind is a real vehicle class)', () => {
 
   it('sizes the recycling side-loader as the refuse truck it replaces', () => {
     expect(sizeForKind(VehicleKind.Recycling)).toEqual(sizeForKind(VehicleKind.Garbage));
+  });
+
+  it('sizes the hearse as a 6.2 × 1.9 × 1.9 m coach, within 0.3 m of an ambulance in length', () => {
+    expect(VehicleKind.Hearse).toBe(8);
+    expect(sizeForKind(VehicleKind.Hearse)).toEqual([1.9, 1.9, 6.2]);
+    expect(
+      Math.abs(sizeForKind(VehicleKind.Hearse)[2] - sizeForKind(VehicleKind.Ambulance)[2]),
+    ).toBeLessThanOrEqual(0.3);
   });
 
   it('orders every kind physically: longer than it is wide, and lower than it is long', () => {

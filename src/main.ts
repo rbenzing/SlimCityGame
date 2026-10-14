@@ -24,6 +24,7 @@ import type {
   CityStats,
   Command,
   CommandAck,
+  DeathCareReport,
   GrowthWaiting,
   ZonedUnserved,
   LensId,
@@ -37,6 +38,7 @@ import type {
 import {
   FieldId,
   INACTIVE_VEHICLE_X,
+  MAX_VEHICLES,
   RoadFlow,
   RoadTier,
   VEHICLE_STRIDE,
@@ -483,6 +485,27 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       },
       setSpeed: (speed: 0 | 1 | 2 | 4): void => {
         useCityStore.getState().setSpeed(speed);
+      },
+      // Stands a cemetery's interments at an exact count, so a screenshot can
+      // see a few hundred headstones without the years of deaths that fill
+      // them. The next snapshot that carries death care puts the real count back.
+      setInterments: (id: number, used: number): void => {
+        utilityKits.setInterments([{ id, used }]);
+      },
+      // Parks vehicles of any kind on the road, stopped, so a screenshot can set
+      // a hearse beside an ambulance and a car. The next snapshot that carries
+      // vehicles replaces them.
+      setVehicles: (list: { x: number; z: number; heading: number; kind: number }[]): void => {
+        const buf = new Float32Array(MAX_VEHICLES * VEHICLE_STRIDE);
+        for (let slot = 0; slot < MAX_VEHICLES; slot++)
+          buf[slot * VEHICLE_STRIDE] = INACTIVE_VEHICLE_X;
+        list.forEach((v, slot) => buf.set([v.x, v.z, v.heading, 0, v.kind], slot * VEHICLE_STRIDE));
+        for (let pass = 0; pass < 2; pass++) {
+          vehicles.setBuffer(buf);
+          serviceVehicles.setBuffer(buf);
+        }
+        latestVehicles = buf;
+        snapshotAgeMs = 0;
       },
       getStats: (): CityStats => useCityStore.getState().stats,
       setOverlay: (overlay: LensId | null): void => {
@@ -1072,6 +1095,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   /** What growth last said it is holding back for want of supply, for the advisor. */
   let growthWaiting: GrowthWaiting = { power: 0, water: 0, sewer: 0 };
   let zonedUnserved: ZonedUnserved = { power: 0, water: 0, sewer: 0 };
+  let deathCare: DeathCareReport = { facilities: [], uncollected: 0, regionalThisMonth: 0 };
   /** Latest flattened transit stop tile-points, mirrored so pedestrian
    * idlers can be re-applied on building-only deltas (PedestrianRenderer does
    * not cache stops itself — same pattern as knownBuildings above). */
@@ -1650,10 +1674,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // cheap, but a problem list that reshuffles ten times a second is unreadable.
     if (snap.growthWaiting) growthWaiting = snap.growthWaiting;
     if (snap.zonedUnserved) zonedUnserved = snap.zonedUnserved;
+    if (snap.deathCare) deathCare = snap.deathCare;
     if (++snapshotsSinceAdvice >= ADVISOR_REFRESH_SNAPSHOTS) {
       snapshotsSinceAdvice = 0;
       state.setAdvisorIssues(
-        cityIssues(knownBuildings.values(), snap.stats, growthWaiting, zonedUnserved),
+        cityIssues(knownBuildings.values(), snap.stats, growthWaiting, zonedUnserved, deathCare),
       );
     }
 
@@ -1822,6 +1847,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       }
     }
     if (snap.roads || snap.roadNet || snap.buildings) keepTreesOffOccupied();
+    if (snap.deathCare) utilityKits.setInterments(snap.deathCare.facilities);
     if (snap.zones) {
       zoneGrid.applyZonePatches(snap.zones);
       clientGrid.applyZonePatches(snap.zones);

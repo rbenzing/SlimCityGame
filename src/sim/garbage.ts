@@ -67,6 +67,7 @@ import {
   footprintsByBuildingId,
   nearestRoadTile,
   radiateWeighted,
+  reachOfFootprint,
   roadBfsDistances,
 } from './services';
 
@@ -723,11 +724,7 @@ export class GarbageSystem {
     footprints: ReadonlyMap<number, number[]>,
     f: { id: number; collectionRange: number },
   ): ReadonlyMap<number, number> | null {
-    const start = streetOf(grid, footprints.get(f.id));
-    if (start === null) return null;
-    const reached = roadBfsDistances(grid, start, f.collectionRange);
-    const coverage = radiateWeighted(reached, f.collectionRange, 1);
-    return coverage.size === 0 ? null : coverage;
+    return reachOfFootprint(grid, footprints.get(f.id), f.collectionRange);
   }
 
   private trashOn(tiles: readonly number[]): number {

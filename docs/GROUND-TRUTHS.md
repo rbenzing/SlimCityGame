@@ -549,7 +549,9 @@ MUTCD citations below use 11th-edition section numbers.
   [tick.md](world-sim/tick.md), [time-system.md](world-sim/time-system.md)
 - The tick order is fixed: commands, utilities, demand, growth, emission,
   services, garbage, traffic, transit, dispatch, trucks, traffic bake, fields,
-  economy, deaths and re-lets, snapshot. A new system is slotted into that order explicitly. —
+  economy, deaths and re-lets (with the collection of the bodies they leave),
+  snapshot. The uncollected-body penalty rides the services step, after
+  coverage. A new system is slotted into that order explicitly. —
   [tick.md](world-sim/tick.md); `tick()` in `src/sim/worker.entry.ts`
 - The calendar is 200 ticks a day and 30 days a month. `VISUAL_DAY_TICKS` and
   `CLOCK_START_OFFSET_TICKS` are display-only and never drive a sim rule. —
@@ -583,6 +585,34 @@ MUTCD citations below use 11th-edition section numbers.
   A vacancy is re-let by the same method, at a fixed 41 days, only while
   residential demand is above zero, and never faster for a larger demand. —
   [healthcare-and-death-care.md](engineering/features/healthcare-and-death-care.md);
+  `src/sim/deathcare.ts`
+- Death care is collected along the road network, never by a straight-line
+  radius: a cemetery reaches the buildings its streets connect to within its
+  `collectionRange` by the road BFS garbage uses, one body is one interment, a
+  full cemetery collects nothing, and bodies are taken in building-id order,
+  each into the nearest cemetery with room, ties by facility id. A building cut off by road is not collected
+  however near it stands. —
+  [healthcare-and-death-care.md](engineering/features/healthcare-and-death-care.md),
+  [services-model.md](world-sim/services-model.md#death-care);
+  `DeathCareSystem.collect` in `src/sim/deathcare.ts`
+- The regional funeral service ends at Big Town, and it is the one rung, like
+  septic: below `DEATH_CARE_MILESTONE` (the same `BIG_TOWN_MILESTONE` as
+  `SEWER_MILESTONE`) every body no cemetery collected is taken off the map the
+  tick it falls, with no penalty, and billed at the sourced `REGIONAL_FUNERAL_FEE`
+  in the month's expenses; from Big Town it stops and a body stays where it
+  fell. Never add a second rung or a prerequisite to first-town growth. —
+  [healthcare-and-death-care.md](game-design/features/healthcare-and-death-care.md);
+  `src/shared/constants.ts`
+- Coverage precedes the penalty: the uncollected-body penalty is subtracted
+  from the Health field after every kind's coverage has been written, in the
+  same services pass, so a clinic placed on a penalised tile never erases it,
+  in any placement order. —
+  [healthcare-and-death-care.md](engineering/features/healthcare-and-death-care.md);
+  `ServiceSim.tick` in `src/sim/services.ts`
+- The body penalty never feeds the death rate. Deaths accrue from population
+  alone; no field, backlog or health reading changes the rate, since a death
+  spiral is a trap and not a lesson. The 32 points a body a month is a dial. —
+  [healthcare-and-death-care.md](game-design/features/healthcare-and-death-care.md);
   `src/sim/deathcare.ts`
 - The workforce is `floor(population × EMPLOYMENT_RATE)`, one constant in
   `src/shared/constants.ts`. Employment, demand and the Advisor's labour

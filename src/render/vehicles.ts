@@ -177,6 +177,7 @@ const KIND_SIZE: Record<VehicleKind, readonly [number, number, number]> = {
   [VehicleKind.Ambulance]: [2.2, 2.7, 6.2],
   [VehicleKind.Garbage]: [2.5, 3.2, 9.0],
   [VehicleKind.Recycling]: [2.5, 3.2, 9.0],
+  [VehicleKind.Hearse]: [1.9, 1.9, 6.2],
 };
 
 /**
@@ -206,6 +207,7 @@ const KIND_ARCHETYPE: Record<VehicleKind, VehicleKind> = {
   [VehicleKind.Ambulance]: VehicleKind.Truck,
   [VehicleKind.Garbage]: VehicleKind.Truck,
   [VehicleKind.Recycling]: VehicleKind.Truck,
+  [VehicleKind.Hearse]: VehicleKind.Truck,
 };
 
 /** Same corrupt-slot fallback as sizeForKind: an unknown number is drawn as a car. */
@@ -331,6 +333,7 @@ const KIND_VARIANT_SCALE: Record<VehicleKind, readonly (readonly [number, number
   [VehicleKind.Ambulance]: SINGLE_VARIANT_SCALE,
   [VehicleKind.Garbage]: SINGLE_VARIANT_SCALE,
   [VehicleKind.Recycling]: SINGLE_VARIANT_SCALE,
+  [VehicleKind.Hearse]: SINGLE_VARIANT_SCALE,
 };
 
 function variantTableForKind(kind: number): readonly (readonly [number, number, number])[] {

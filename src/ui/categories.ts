@@ -363,7 +363,10 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
     {
       id: 'all',
       label: 'Health',
-      cards: catalogCards((e) => e.category === 'service' && e.service?.kind === 'health'),
+      // Death care rides the health department: its burial ground is listed beside the clinic.
+      cards: catalogCards(
+        (e) => e.category === 'service' && (e.service?.kind === 'health' || !!e.deathCare),
+      ),
     },
   ],
   fire: [

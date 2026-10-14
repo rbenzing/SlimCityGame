@@ -847,6 +847,7 @@ export const VehicleKind = {
   Ambulance: 5,
   Garbage: 6,
   Recycling: 7,
+  Hearse: 8,
 } as const;
 export type VehicleKind = (typeof VehicleKind)[keyof typeof VehicleKind];
 
@@ -1009,6 +1010,22 @@ export interface SimSnapshot {
    * say so. Sent on every snapshot.
    */
   zonedUnserved?: ZonedUnserved;
+  /** Death care: what each cemetery holds, the bodies waiting and the month's regional collection. Sent on every snapshot. */
+  deathCare?: DeathCareReport;
+}
+
+/**
+ * Death care as the Advisor and the panel read it. `facilities` is one entry
+ * per cemetery: interments `used` over `total` plots. `uncollected` is the
+ * bodies still where they fell, `uncollectedAt` the tile of the oldest, and
+ * `regionalThisMonth` the bodies the regional funeral service has taken since
+ * the last settlement.
+ */
+export interface DeathCareReport {
+  facilities: { id: number; used: number; total: number }[];
+  uncollected: number;
+  uncollectedAt?: TilePoint;
+  regionalThisMonth: number;
 }
 
 /** Lots and buildings growth would build or level up but for the supply. */
@@ -1137,6 +1154,20 @@ export interface GarbageSpec {
   transferRate?: number;
 }
 
+/**
+ * Death-care facility descriptor (cemetery, crematorium). `collectionRange` is
+ * the road-BFS tile radius it collects bodies within; a burial facility holds
+ * `plots` interments before it is full, a cremation one has `rate`
+ * cremations a tick and never fills; `hearses` is the cosmetic fleet.
+ */
+export interface DeathCareSpec {
+  mode: 'burial' | 'cremation';
+  collectionRange: number;
+  plots?: number;
+  rate?: number;
+  hearses: number;
+}
+
 // 'transit' is additive — the bus-stop ploppable's category and the Transit
 // dock category. Existing members unchanged.
 export type BuildingCategory = 'res' | 'com' | 'ind' | 'service' | 'utility' | 'park' | 'transit';
@@ -1212,6 +1243,7 @@ export interface BuildingCatalogEntry {
   service?: ServiceSpec;
   utility?: UtilitySpec;
   garbage?: GarbageSpec; // set for the incinerator, recycling depot and recovery facility ploppables
+  deathCare?: DeathCareSpec; // set for the cemetery ploppable
   cost: number; // 0 for grown buildings
   upkeep: number; // per month
   unlockMilestone: number; // MILESTONES index required
@@ -1717,6 +1749,8 @@ export interface SelectionInfo {
    * Absent for anything that is not a capped facility with a reach.
    */
   serviceLoad?: number;
+  /** A cemetery's interments over its plots. Absent for anything that is not a burial facility. */
+  deathCare?: { used: number; total: number };
   /**
    * An intake's yield as a fraction of its rating, 0..1: what the fouling of
    * the water beside it leaves. Absent for anything but a shore intake.

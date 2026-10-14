@@ -7,7 +7,7 @@ import type {
   ServiceKind,
 } from '../shared/types';
 import { BuildingState, FieldId, RoadTier, ZoneType } from '../shared/types';
-import { tileIndex } from '../shared/constants';
+import { TICKS_PER_MONTH, tileIndex } from '../shared/constants';
 import { ServiceSim, nearestRoadTile, roadBfsDistances } from './services';
 import { tileCentreCm } from '../shared/roadgeom';
 import { applyRoad } from '../world/roads';
@@ -1026,5 +1026,101 @@ describe('roadBfsDistances along a road off the grid', () => {
     expect(reached.has(tileIndex(110, 100))).toBe(false);
     // A facility beside the free road finds it to start from.
     expect(nearestRoadTile(g, [tileIndex(111, 106)])).not.toBeNull();
+  });
+});
+
+describe('ServiceSim: the uncollected-body penalty', () => {
+  const FOUR_MONTHS = 4 * TICKS_PER_MONTH;
+  const at = (x: number, z: number): number => tileIndex(x, z);
+  const health = (g: GridState, x: number, z: number): number =>
+    g.fields[FieldId.Health]![tileIndex(x, z)]!;
+
+  it('takes 128 from Health at the tile of one body four game months old, and from the tiles two steps round it', () => {
+    const g = makeGrid();
+    g.fields[FieldId.Health]!.fill(200);
+    new ServiceSim(catalog).tick(
+      g,
+      [],
+      fullFunding(1),
+      [{ tile: at(50, 50), count: 1, sinceTick: 0 }],
+      FOUR_MONTHS,
+    );
+    expect(health(g, 50, 50)).toBe(72);
+    expect(health(g, 52, 50)).toBe(72);
+    expect(health(g, 51, 51)).toBe(72);
+    expect(health(g, 53, 50)).toBe(200);
+    expect(health(g, 52, 52)).toBe(200);
+  });
+
+  it('takes nothing for a body collected a tick earlier, and nothing for one that has not lain a tick', () => {
+    const g = makeGrid();
+    g.fields[FieldId.Health]!.fill(200);
+    const sim = new ServiceSim(catalog);
+    sim.tick(g, [], fullFunding(1), [], FOUR_MONTHS);
+    expect(health(g, 50, 50)).toBe(200);
+    sim.tick(
+      g,
+      [],
+      fullFunding(1),
+      [{ tile: at(50, 50), count: 3, sinceTick: FOUR_MONTHS }],
+      FOUR_MONTHS,
+    );
+    expect(health(g, 50, 50)).toBe(200);
+  });
+
+  it('adds up the bodies of a tile, each by its own age, and never takes more than the field holds', () => {
+    const g = makeGrid();
+    g.fields[FieldId.Health]!.fill(200);
+    new ServiceSim(catalog).tick(
+      g,
+      [],
+      fullFunding(1),
+      [
+        { tile: at(50, 50), count: 2, sinceTick: 0 },
+        { tile: at(50, 50), count: 2, sinceTick: TICKS_PER_MONTH },
+      ],
+      3 * TICKS_PER_MONTH,
+    );
+    // 2 bodies × 32 × 3 months + 2 × 32 × 2 months = 320, capped at 255: the field is emptied.
+    expect(health(g, 50, 50)).toBe(0);
+    expect(health(g, 60, 60)).toBe(200);
+  });
+
+  it('comes after coverage, so a clinic on a penalised tile never erases it, in any placement order', () => {
+    const body = { tile: at(1, 1), count: 1, sinceTick: 0 };
+    const withClinic = (g: GridState): BuildingInstance[] => {
+      const buildings: BuildingInstance[] = [];
+      place(g, buildings, 1, 'clinic', 0, 0, 1, 1);
+      return buildings;
+    };
+    const build = (): GridState => {
+      const g = makeGrid();
+      paintPath(
+        g,
+        Array.from({ length: 8 }, (_, i) => [1 + i, 0] as const),
+      );
+      return g;
+    };
+    const sim = new ServiceSim(catalog);
+
+    // The clinic was there first, and the body fell after.
+    const clinicFirst = build();
+    const buildings = withClinic(clinicFirst);
+    sim.tick(clinicFirst, buildings, fullFunding(1), [], FOUR_MONTHS);
+    expect(health(clinicFirst, 1, 1)).toBe(140);
+    sim.tick(clinicFirst, buildings, fullFunding(1), [body], FOUR_MONTHS + 8);
+
+    // The body was there first, and the clinic was built after.
+    const bodyFirst = build();
+    sim.tick(bodyFirst, [], fullFunding(1), [body], FOUR_MONTHS);
+    expect(health(bodyFirst, 1, 1)).toBe(0);
+    sim.tick(bodyFirst, withClinic(bodyFirst), fullFunding(1), [body], FOUR_MONTHS + 8);
+
+    // Either way: the clinic's 140, less four months and a little of one body's 32 a month.
+    const lying = FOUR_MONTHS + 8;
+    const expected = Math.round(140 - (32 * lying) / TICKS_PER_MONTH);
+    expect(health(clinicFirst, 1, 1)).toBe(expected);
+    expect(health(bodyFirst, 1, 1)).toBe(expected);
+    expect(expected).toBeGreaterThan(0);
   });
 });

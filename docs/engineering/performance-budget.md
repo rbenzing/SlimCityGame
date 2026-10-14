@@ -28,6 +28,12 @@ target nobody currently checks by automation.
 - **Memory**: all grid layers for a 256² map are a few MB — called
   "trivial"; instance buffers are expected to dominate instead. — _stated,
   not measured._ No test asserts a memory ceiling.
+- **Death care adds two InstancedMeshes, permanently**: one for the hearse (a
+  sixth service-vehicle kind, one mesh per kind) and one for every cemetery's
+  headstones together (a slot per interment, at most 780 a cemetery, resized
+  only when a count changes). The cemetery kit's other parts (lawn and drive,
+  gatehouse, fence, trees) are one mesh each, instanced per cemetery, like the
+  hospital's. _Counted, not timed._
 
 ## What the code actually verifies
 

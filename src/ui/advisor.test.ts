@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { SEWER_MILESTONE } from '../shared/constants';
+import { DEATH_CARE_MILESTONE, SEWER_MILESTONE } from '../shared/constants';
 import { cityIssues, criticalCount, type CityIssue } from './advisor';
 import {
   BuildingState,
   Problem,
   type BuildingInstance,
   type CityStats,
+  type DeathCareReport,
   type Sector,
   type ServiceKind,
 } from '../shared/types';
@@ -260,6 +261,63 @@ describe('a grid too small for its city', () => {
     expect(quiet({ milestoneLevel: SEWER_MILESTONE - 1, sewerSupply: 3785 })).toBe(false);
     expect(quiet({ milestoneLevel: SEWER_MILESTONE - 2, sewerSupply: 0 })).toBe(false);
     expect(quiet({ milestoneLevel: SEWER_MILESTONE, sewerSupply: 0 })).toBe(false);
+  });
+
+  it('tells a town one rung below Big Town with no cemetery that the regional funeral service ends there', () => {
+    const none = { power: 0, water: 0, sewer: 0 };
+    const empty: DeathCareReport = { facilities: [], uncollected: 0, regionalThisMonth: 4 };
+    const find = (stats: Partial<CityStats>, report = empty): CityIssue | undefined =>
+      cityIssues([], healthyStats(stats), none, none, report).find(
+        (i) => i.id === 'funeral-service-ending',
+      );
+
+    const issue = find({ milestoneLevel: DEATH_CARE_MILESTONE - 1 });
+    expect(issue?.severity).toBe('info');
+    expect(issue?.detail).toContain('Big Town (3,500 people)');
+    expect(issue?.detail).toContain('build a cemetery');
+    // With a cemetery placed, or on any other rung, it says nothing.
+    const cemetery = { ...empty, facilities: [{ id: 3, used: 0, total: 780 }] };
+    expect(find({ milestoneLevel: DEATH_CARE_MILESTONE - 1 }, cemetery)).toBeUndefined();
+    expect(find({ milestoneLevel: DEATH_CARE_MILESTONE - 2 })).toBeUndefined();
+    expect(find({ milestoneLevel: DEATH_CARE_MILESTONE })).toBeUndefined();
+  });
+
+  it('raises a warning the moment the first body lies uncollected, pointing at it', () => {
+    const none = { power: 0, water: 0, sewer: 0 };
+    const quiet = { facilities: [], uncollected: 0, regionalThisMonth: 0 };
+    expect(cityIssues([], healthyStats(), none, none, quiet)).toEqual([]);
+
+    const one = { ...quiet, uncollected: 1, uncollectedAt: { x: 40, z: 41 } };
+    const issues = cityIssues([], healthyStats(), none, none, one);
+    expect(idsOf(issues)).toEqual(['bodies-uncollected']);
+    expect(issues[0]).toMatchObject({
+      severity: 'warning',
+      count: 1,
+      title: '1 body lies uncollected',
+      focus: { x: 40, z: 41 },
+    });
+    const many = cityIssues([], healthyStats(), none, none, { ...one, uncollected: 3 });
+    expect(many[0]!.title).toBe('3 bodies lie uncollected');
+  });
+
+  it('raises another for a full cemetery with bodies still waiting, and not for one that is full and idle', () => {
+    const none = { power: 0, water: 0, sewer: 0 };
+    const full = { id: 3, used: 780, total: 780 };
+    const roomy = { id: 4, used: 12, total: 780 };
+    const waiting = { facilities: [full, roomy], uncollected: 2, regionalThisMonth: 0 };
+    const issues = cityIssues([], healthyStats(), none, none, waiting);
+    expect(idsOf(issues).sort()).toEqual(['bodies-uncollected', 'cemetery-full']);
+    expect(issues.find((i) => i.id === 'cemetery-full')).toMatchObject({
+      severity: 'warning',
+      title: 'A cemetery is full',
+    });
+
+    const idle = { ...waiting, uncollected: 0 };
+    expect(cityIssues([], healthyStats(), none, none, idle)).toEqual([]);
+    const notFull = { ...waiting, facilities: [roomy] };
+    expect(idsOf(cityIssues([], healthyStats(), none, none, notFull))).toEqual([
+      'bodies-uncollected',
+    ]);
   });
 
   it('warns when an intake is drinking fouled water, and names the two remedies', () => {

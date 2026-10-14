@@ -66,6 +66,7 @@ import {
   ZoneType,
   MAX_VEHICLES,
   VEHICLE_STRIDE,
+  VehicleKind,
 } from '../shared/types';
 import type {
   BuildingCatalogEntry,
@@ -73,6 +74,7 @@ import type {
   CityStats,
   Command,
   CommandAck,
+  DeathCareReport,
   District,
   GraphEdge,
   GridState,
@@ -201,7 +203,7 @@ import { GrowthSystem, type GrowthSupply } from './growth';
 import { gridKerbSurroundings } from './kerbsurroundings';
 import { ServiceSim, nearestRoadTile } from './services';
 import { EconomySystem, buildingMonthlyTax, type Occupancy } from './economy';
-import { DeathCareSystem } from './deathcare';
+import { DeathCareSystem, type DeathCareFacility } from './deathcare';
 import { occupiedResidents } from '../shared/occupancy';
 import { bordersUtilityNetwork, recomputeUtilities, sewageOf } from './network';
 import { TrafficSystem } from './traffic';
@@ -232,6 +234,7 @@ import {
 import {
   GarbageTruckSystem,
   MAX_GARBAGE_TRUCKS,
+  MAX_HEARSES,
   truckKindFor,
   type TruckDepot,
   type TruckTarget,
@@ -515,6 +518,10 @@ class SimWorld implements WorkerSim {
   /** Garbage: trash generation + landfill collection. Runtime state (not saved). */
   private readonly garbage = new GarbageSystem(MAP_SIZE);
   private readonly garbageTrucks = new GarbageTruckSystem();
+  /** The cemeteries' hearses: a second fleet of the same system, runtime only. */
+  private readonly hearses = new GarbageTruckSystem(MAX_HEARSES);
+  /** Buildings a cemetery has taken a body from and no hearse has set out for yet, by tile index. */
+  private hearseVisits: TruckTarget[] = [];
   private landfillDirty: DirtyRect | null = null;
   /** Where power line has been strung or pulled down since the last snapshot. */
   private powerLineDirty: DirtyRect | null = null;
@@ -723,6 +730,7 @@ class SimWorld implements WorkerSim {
     this.districtDefById.clear();
     this.registry = new BuildingRegistry(CATALOG);
     this.deathCare.reset();
+    this.resetHearses();
     this.stats = initialStats();
     this.tickNo = 0;
     this.speed = 1;
@@ -853,6 +861,7 @@ class SimWorld implements WorkerSim {
         : savedGarbage,
     );
     this.garbageTrucks.reset();
+    this.resetHearses();
     this.landfillAreasCache = null;
     this.landfillDirty = { minX: 0, minZ: 0, maxX: MAP_SIZE - 1, maxZ: MAP_SIZE - 1 };
     this.powerLineDirty = { minX: 0, minZ: 0, maxX: MAP_SIZE - 1, maxZ: MAP_SIZE - 1 };
@@ -1004,7 +1013,13 @@ class SimWorld implements WorkerSim {
     }
 
     if (t % SERVICE_PERIOD === SERVICE_OFFSET) {
-      this.serviceLoad = this.services.tick(g, this.registry.all(), this.stats.serviceFunding);
+      this.serviceLoad = this.services.tick(
+        g,
+        this.registry.all(),
+        this.stats.serviceFunding,
+        this.deathCare.backlog,
+        t,
+      );
     }
 
     if (t % GARBAGE_PERIOD === GARBAGE_OFFSET) {
@@ -1086,17 +1101,11 @@ class SimWorld implements WorkerSim {
       const entry = this.catalogById.get(inst.catalogId);
       if (!entry) continue;
       if (entry.garbage) {
-        // Any tile of the lot may be the one beside the street: a depot turned
-        // to face a road has its origin corner a lot-depth away from it.
-        const lot = footprintForRotation(entry, inst.rotation);
-        const road = nearestRoadTile(
-          this.grid,
-          footprintTiles(inst.x, inst.z, lot.w, lot.d).map((p) => tileIndex(p.x, p.z)),
-        );
-        if (road !== null) {
+        const sourceTile = this.depotStreet(inst, entry);
+        if (sourceTile) {
           garbageDepots.push({
             id: inst.id,
-            sourceTile: { x: road % MAP_SIZE, z: Math.floor(road / MAP_SIZE) },
+            sourceTile,
             budget: entry.garbage.trucks,
             kind: truckKindFor(entry.garbage),
           });
@@ -1147,6 +1156,13 @@ class SimWorld implements WorkerSim {
       depots: garbageDepots,
       targets: garbageTargets,
     });
+    this.hearses.tick({
+      network: this.network,
+      depots: this.hearseDepots(),
+      targets: this.hearseVisits,
+    });
+    // A visit leaves the queue once a hearse has set out for it.
+    this.hearseVisits = this.hearseVisits.filter((v) => !this.hearses.isVisiting(v.id));
 
     if (t % TRAFFIC_FIELD_PERIOD === TRAFFIC_FIELD_OFFSET) {
       this.fieldSim.applyTraffic(g, this.network.getEdges());
@@ -1166,19 +1182,112 @@ class SimWorld implements WorkerSim {
         this.policyStore.taxMultiplierFor(this.grid.district[tileIndex(x, z)] ?? 0),
       profileOf: (id: number) => this.profileForId(id),
       takeRecoveredUnits: () => this.garbage.takeRecoveredThisMonth(),
+      takeRegionalBodies: () => this.deathCare.takeRegionalThisMonth(),
     });
     Object.assign(this.stats, econ.statsPatch);
     this.occupancy = econ.occupancy;
     for (const note of econ.notifications) {
       this.post({ type: 'notify', note });
     }
-    this.deathCare.tick(this.registry.all(), this.stats.population, this.stats.demand.res);
+    this.deathCare.tick(this.registry.all(), this.stats.population, this.stats.demand.res, t);
+    this.collectBodies(t);
 
     this.stats.tick = t;
 
     if (t % SNAPSHOT_TICKS === 0) {
       this.postSnapshot();
     }
+  }
+
+  /** The street tile a facility's vehicles leave by, or null when no road is near its lot. */
+  private depotStreet(inst: BuildingInstance, entry: BuildingCatalogEntry): TilePoint | null {
+    // Any tile of the lot may be the one beside the street: a depot turned
+    // to face a road has its origin corner a lot-depth away from it.
+    const lot = footprintForRotation(entry, inst.rotation);
+    const road = nearestRoadTile(
+      this.grid,
+      footprintTiles(inst.x, inst.z, lot.w, lot.d).map((p) => tileIndex(p.x, p.z)),
+    );
+    return road === null ? null : { x: road % MAP_SIZE, z: Math.floor(road / MAP_SIZE) };
+  }
+
+  private resetHearses(): void {
+    this.hearses.reset();
+    this.hearseVisits = [];
+  }
+
+  /** Every Active burial facility, as the collection pass takes them. */
+  private burialFacilities(): DeathCareFacility[] {
+    const facilities: DeathCareFacility[] = [];
+    for (const inst of this.registry.all()) {
+      if (inst.state !== BuildingState.Active) continue;
+      const spec = this.catalogById.get(inst.catalogId)?.deathCare;
+      if (spec?.mode !== 'burial' || spec.plots === undefined) continue;
+      facilities.push({ id: inst.id, collectionRange: spec.collectionRange, plots: spec.plots });
+    }
+    return facilities;
+  }
+
+  /**
+   * The bodies this tick's deaths left are collected, and a hearse is queued
+   * for each building a cemetery took one from. The regional service sends none.
+   */
+  private collectBodies(t: number): void {
+    const visits = this.deathCare.collect(
+      this.grid,
+      t,
+      this.stats.milestoneLevel,
+      this.burialFacilities(),
+    );
+    for (const { tile } of visits) {
+      if (this.hearseVisits.some((v) => v.id === tile)) continue;
+      this.hearseVisits.push({
+        id: tile,
+        tile: { x: tile % MAP_SIZE, z: Math.floor(tile / MAP_SIZE) },
+      });
+    }
+    // A queue nobody can reach stays bounded: the oldest visits are dropped.
+    const kept = 4 * MAX_HEARSES;
+    if (this.hearseVisits.length > kept)
+      this.hearseVisits.splice(0, this.hearseVisits.length - kept);
+  }
+
+  /** Each cemetery is a depot for its hearses, leaving by the street beside it. */
+  private hearseDepots(): TruckDepot[] {
+    const depots: TruckDepot[] = [];
+    for (const inst of this.registry.all()) {
+      if (inst.state !== BuildingState.Active) continue;
+      const entry = this.catalogById.get(inst.catalogId);
+      if (!entry?.deathCare) continue;
+      const sourceTile = this.depotStreet(inst, entry);
+      if (sourceTile) {
+        depots.push({
+          id: inst.id,
+          sourceTile,
+          budget: entry.deathCare.hearses,
+          kind: VehicleKind.Hearse,
+        });
+      }
+    }
+    return depots;
+  }
+
+  /** What each cemetery holds, the bodies waiting and the month's regional collection. */
+  private deathCareReport(): DeathCareReport {
+    const facilities = this.burialFacilities().map((f) => ({
+      id: f.id,
+      used: this.deathCare.intermentsOf(f.id),
+      total: f.plots,
+    }));
+    const at = this.deathCare.oldestUncollectedTile;
+    return {
+      facilities,
+      uncollected: this.deathCare.uncollected,
+      ...(at !== undefined
+        ? { uncollectedAt: { x: at % MAP_SIZE, z: Math.floor(at / MAP_SIZE) } }
+        : {}),
+      regionalThisMonth: this.deathCare.regionalThisMonth,
+    };
   }
 
   private recomputeUtilitiesNow(): void {
@@ -1303,6 +1412,11 @@ class SimWorld implements WorkerSim {
       this.garbageTrucks.vehicleBuffer,
       (MAX_VEHICLES - MAX_SERVICE_VEHICLES - MAX_GARBAGE_TRUCKS) * VEHICLE_STRIDE,
     );
+    // The cemeteries' hearses sit in the slice just below the garbage trucks.
+    vehicles.set(
+      this.hearses.vehicleBuffer,
+      (MAX_VEHICLES - MAX_SERVICE_VEHICLES - MAX_GARBAGE_TRUCKS - MAX_HEARSES) * VEHICLE_STRIDE,
+    );
     const snap: SimSnapshot = {
       stats: cloneStats(this.stats),
       vehicles,
@@ -1337,6 +1451,7 @@ class SimWorld implements WorkerSim {
     if (this.serviceLoad) snap.serviceLoad = { ...this.serviceLoad };
     snap.growthWaiting = this.growth.waitingFor(this.grid, this.registry, this.supply);
     snap.zonedUnserved = this.growth.zonedUnserved(this.grid, this.stats.milestoneLevel);
+    snap.deathCare = this.deathCareReport();
     // District patches + defs (mirrors the zones patch convention).
     if (this.districtDirty || this.districtDefsChanged) {
       snap.districts = {
@@ -1482,6 +1597,11 @@ class SimWorld implements WorkerSim {
       monthlyUpkeep: entry.zone !== undefined ? 0 : entry.upkeep,
       occupancy: selectionOccupancy(entry, inst),
       ...(facilityLoad !== undefined ? { serviceLoad: facilityLoad } : {}),
+      ...(entry.deathCare?.plots !== undefined
+        ? {
+            deathCare: { used: this.deathCare.intermentsOf(inst.id), total: entry.deathCare.plots },
+          }
+        : {}),
       ...(intakeYield !== undefined ? { intakeYield } : {}),
     };
     this.post({ type: 'selection', info });

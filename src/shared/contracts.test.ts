@@ -25,6 +25,7 @@ import {
   MILESTONES,
   NIGHT_WINDOW_LIT_MAX,
   NIGHT_WINDOW_LIT_MIN,
+  REGIONAL_FUNERAL_FEE,
   SEWAGE_POLLUTION_PER_KL,
   SEWAGE_RETURN_FRACTION,
   SEWER_MILESTONE,
@@ -404,6 +405,51 @@ describe('the civic ploppables (honest both sides): every draw from floor area a
     const STAFF = 4;
     const GAL_PER_WORKER_DAY = 13;
     close(station.waterUse, STAFF * GAL_PER_WORKER_DAY * KL_PER_GAL, 1);
+  });
+
+  it("draws the cemetery's gatehouse as an office of 128 m², and its grounds nothing", () => {
+    const cemetery = byId('cemetery');
+    const gatehouseSqft = 128 * SQFT_PER_M2;
+    /** CBECS 2018 table C14: an office's electricity, the zoned catalog's own figure. */
+    const OFFICE_KWH_PER_SF = 13.6;
+    close(cemetery.powerUse, mwFrom(gatehouseSqft, OFFICE_KWH_PER_SF), 4);
+    close(cemetery.waterUse, klFrom(gatehouseSqft, WATERSENSE_GAL_PER_SF.office), 1);
+    expect(cemetery.footprint).toEqual({ w: 3, d: 3 });
+    expect(cemetery.height).toBe(3.2);
+  });
+
+  it('prices the cemetery on the civic ladder, reaching as the clinic does, at 780 plots', () => {
+    const cemetery = byId('cemetery');
+    /** ASPO PAS Report 16: about 1,000 single graves an acre. */
+    const GRAVES_PER_ACRE = 1_000;
+    const SQ_M_PER_ACRE = 4_046.8564224;
+    const gravesPerTile = Math.floor(400 / (SQ_M_PER_ACRE / GRAVES_PER_ACRE));
+    expect(gravesPerTile).toBe(98);
+    // Eight burial tiles and a gatehouse tile of the 3×3: 784, taken down to 780.
+    expect(8 * gravesPerTile).toBe(784);
+    expect(cemetery.deathCare).toEqual({
+      mode: 'burial',
+      collectionRange: byId('clinic').service!.range,
+      plots: 780,
+      hearses: 2,
+    });
+    expect(cemetery.service).toBeUndefined();
+    expect(cemetery.unlockMilestone).toBe(0);
+    expect(cemetery.cost).toBe(3_500);
+    expect(cemetery.upkeep).toBe(140);
+    expect(cemetery.cost).toBeLessThan(byId('clinic').cost);
+  });
+
+  it("bills a regional burial at the county's weighted cost on the game's operating scale", () => {
+    const CREMATION_USD = 2_900;
+    const BURIAL_USD = 3_900;
+    const CREMATION_SHARE = 0.628;
+    const weighted = CREMATION_SHARE * CREMATION_USD + (1 - CREMATION_SHARE) * BURIAL_USD;
+    expect(weighted).toBeCloseTo(3_272, 6);
+    // ¢800 a month stands for $8.65 million a year: $901 to the ¢.
+    const usdPerCent = 8_650_000 / 12 / 800;
+    expect(Math.round((weighted / usdPerCent) * 10) / 10).toBe(REGIONAL_FUNERAL_FEE);
+    expect(1_500 / usdPerCent).toBeLessThan(REGIONAL_FUNERAL_FEE);
   });
 
   it("draws the coal plant's staff water, not its cooling water", () => {
