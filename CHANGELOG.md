@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.60.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.59.0...slimcity-v1.60.0) (2026-10-14)
+
+
+### Features
+
+* **render:** the schools, the college and the library drawn as campuses ([ac25a10](https://github.com/rbenzing/SlimCityGame/commit/ac25a101f9f0aa9dfd8744c6e0ac07c574520e42))
+* **render:** the schools, the college and the library drawn as campuses ([453d21d](https://github.com/rbenzing/SlimCityGame/commit/453d21d681db78c7ed241639bcc30e58be724725))
+
 ## [1.59.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.58.0...slimcity-v1.59.0) (2026-10-14)
 
 
