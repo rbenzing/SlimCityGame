@@ -1,7 +1,7 @@
 /**
  * SlimCity scalar-field simulation.
  *
- * Nine Uint8 layers per tile (see FieldId in shared/types.ts) that emit,
+ * Twelve Uint8 layers per tile (see FieldId in shared/types.ts) that emit,
  * diffuse and decay each tick - the classic diffusing-field trick. All math is
  * integer/fixed-point so the sim stays deterministic across machines.
  *
@@ -20,7 +20,7 @@
  *   Crime      0.985 -> 252/256 (0.98438)
  *   FireRisk   0.99  -> 253/256 (0.98828)
  *   LandValue  0.995 -> 255/256 (0.99609)
- *   Education  0.99  -> 253/256 (0.98828)
+ *   Education  0.99  -> 253/256 (0.98828)  (and the middle, high and college planes)
  *   Health     0.99  -> 253/256 (0.98828)
  *
  * Neighbor averaging is 4-neighbor (von Neumann: N/E/S/W, no corners) so the
@@ -100,6 +100,11 @@ const DIFFUSING_FIELDS: readonly DiffusingFieldSchedule[] = [
   { field: FieldId.Crime, period: 8, offset: 1, decayNum: 252 },
   { field: FieldId.FireRisk, period: 8, offset: 2, decayNum: 253 },
   { field: FieldId.Education, period: 8, offset: 3, decayNum: 253 },
+  // The other rungs of the ladder are the same kind of coverage and decay as
+  // Education does, on its slot: the free period-8 offsets are taken.
+  { field: FieldId.MiddleEducation, period: 8, offset: 3, decayNum: 253 },
+  { field: FieldId.HighEducation, period: 8, offset: 3, decayNum: 253 },
+  { field: FieldId.CollegeEducation, period: 8, offset: 3, decayNum: 253 },
   { field: FieldId.Health, period: 8, offset: 4, decayNum: 253 },
   { field: FieldId.Pollution, period: 4, offset: 0, decayNum: 248 },
   { field: FieldId.Noise, period: 4, offset: 1, decayNum: 230 },

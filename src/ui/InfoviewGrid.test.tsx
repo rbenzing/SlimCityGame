@@ -16,9 +16,9 @@ afterEach(() => {
 });
 
 describe('InfoviewGrid', () => {
-  it('renders a button per FieldId lens (9) plus Power, Water, Sewer, Trash, Soil, Transit, Districts and None (17 total), None active by default', () => {
+  it('renders a button per FieldId lens (12) plus Power, Water, Sewer, Trash, Soil, Transit, Districts and None (20 total), None active by default', () => {
     render(<InfoviewGrid />);
-    expect(screen.getAllByRole('button')).toHaveLength(17);
+    expect(screen.getAllByRole('button')).toHaveLength(20);
     expect(screen.getByRole('button', { name: /None/ })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: /Traffic/ })).toHaveAttribute(
       'aria-pressed',
@@ -31,6 +31,20 @@ describe('InfoviewGrid', () => {
     expect(screen.getByRole('button', { name: /^Power$/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Water$/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Sewer$/ })).toBeInTheDocument();
+  });
+
+  it('has a lens for each education rung, each reading its own field', () => {
+    render(<InfoviewGrid />);
+    const rungs: [RegExp, number][] = [
+      [/^Elementary$/, FieldId.Education],
+      [/^Middle$/, FieldId.MiddleEducation],
+      [/^High School$/, FieldId.HighEducation],
+      [/^College$/, FieldId.CollegeEducation],
+    ];
+    for (const [name, field] of rungs) {
+      fireEvent.click(screen.getByRole('button', { name }));
+      expect(useCityStore.getState().overlay).toBe(field);
+    }
   });
 
   it('clicking the Sewer lens sets overlay to the "sewered" LensId', () => {

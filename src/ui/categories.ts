@@ -6,6 +6,7 @@
 import catalogData from '../data/catalog.json';
 import roadsData from '../data/roads.json';
 import type { BuildingCatalogEntry, RoadSpec, RoadTier, ToolId } from '../shared/types';
+import { EDUCATION_KINDS } from '../shared/schooling';
 import { RoadTier as RoadTierValue } from '../shared/types';
 import {
   LANDFILL_PAINT_COST_PER_TILE,
@@ -387,7 +388,13 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
     {
       id: 'all',
       label: 'Education',
-      cards: catalogCards((e) => e.category === 'service' && e.service?.kind === 'education'),
+      // The four schools and the library, which the Education department funds.
+      cards: catalogCards(
+        (e) =>
+          e.category === 'service' &&
+          e.service !== undefined &&
+          EDUCATION_KINDS.has(e.service.kind),
+      ),
     },
   ],
   parks: [{ id: 'all', label: 'Parks', cards: catalogCards((e) => e.category === 'park') }],

@@ -24,6 +24,7 @@ import { BuildingState, FieldId, Problem, RoadTier, ZoneType, isStreetTier } fro
 import type { KerbSurroundings } from '../shared/kerblayout';
 import { holdsLotParkingAt } from '../shared/lotparking';
 import { drawsLotParking } from '../shared/parkingcode';
+import { missingSchooling, type EducationRung } from '../shared/schooling';
 import { SoilGrade, isFarmable } from '../shared/soil';
 import type {
   BuildingCatalogEntry,
@@ -89,7 +90,6 @@ const DESPAWN_ABANDONED_PASSES = 10;
 const SCAN_STRIDE = 32;
 const LEVEL_2_LAND_VALUE = 140;
 const LEVEL_3_LAND_VALUE = 190;
-const RES_L3_EDUCATION = 60;
 const HIGH_CRIME = 170;
 const HIGH_POLLUTION = 170;
 const LOW_DEMAND = -0.5;
@@ -376,25 +376,39 @@ function computeProblems(
 }
 
 /**
- * For homes and shops, land value alone clears L2. Res L3 additionally needs
- * Education > 60 (a stand-in for "services present"); commercial L3 is land
- * value alone. Industry never asks: it grows on demand and room.
+ * For homes and shops, land value alone clears L2. L3 additionally needs the
+ * schooling its zone waits on, each rung's own field over the gate (see
+ * `level3Schooling`). Industry never asks: it grows on demand and room.
  */
 function meetsLevelUpRequirement(
   g: GridState,
   x: number,
   z: number,
-  sector: Sector,
+  zone: ZoneType,
   targetLevel: number,
 ): boolean {
   const idx = tileIndex(x, z);
   const landValue = fieldAt(g, FieldId.LandValue, idx);
   const threshold = targetLevel >= 3 ? LEVEL_3_LAND_VALUE : LEVEL_2_LAND_VALUE;
   if (landValue <= threshold) return false;
-  if (sector === 'res' && targetLevel >= 3) {
-    return fieldAt(g, FieldId.Education, idx) > RES_L3_EDUCATION;
-  }
-  return true;
+  return targetLevel < 3 || schoolsMissingAt(g, idx, zone).length === 0;
+}
+
+/** The schools a zone's level 3 still lacks on tile `idx`. */
+export function schoolsMissingAt(g: GridState, idx: number, zone: ZoneType): EducationRung[] {
+  return missingSchooling(zone, (field) => fieldAt(g, field, idx));
+}
+
+/**
+ * Whether a building at level 2 is held there by its schooling alone: land value
+ * clears level 3 and a school its zone waits on is missing.
+ */
+function heldBySchooling(g: GridState, x: number, z: number, zone: ZoneType): boolean {
+  const idx = tileIndex(x, z);
+  return (
+    fieldAt(g, FieldId.LandValue, idx) > LEVEL_3_LAND_VALUE &&
+    schoolsMissingAt(g, idx, zone).length > 0
+  );
 }
 
 /**
@@ -842,7 +856,11 @@ export class GrowthSystem {
           milestoneLevel,
           footprint.w,
           footprint.d,
-        ) | shortageOf(supply, inst.id);
+        ) |
+        shortageOf(supply, inst.id) |
+        (inst.level === 2 && heldBySchooling(g, inst.x, inst.z, entry.zone)
+          ? Problem.NeedsSchool
+          : 0);
       const hasBlocker = (newProblems & (Problem.NoPower | Problem.NoWater | Problem.NoRoad)) !== 0;
 
       if (inst.state === BuildingState.Active) {
@@ -1072,7 +1090,7 @@ export class GrowthSystem {
     // out of town, plays no part. Homes and shops still need the land value.
     if (sector === 'ind') {
       if (demand.ind <= 0) return false;
-    } else if (!meetsLevelUpRequirement(g, inst.x, inst.z, sector, targetLevel)) {
+    } else if (!meetsLevelUpRequirement(g, inst.x, inst.z, zone, targetLevel)) {
       return false;
     }
 

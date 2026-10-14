@@ -77,6 +77,7 @@ import type {
   CommandAck,
   DeathCareReport,
   District,
+  FundingKey,
   GraphEdge,
   GridState,
   Incident,
@@ -200,7 +201,7 @@ import { FieldSim } from './fields';
 import { footprintForRotation } from '../shared/footprint';
 import { BuildingRegistry, settleBuildingDelta } from './buildings';
 import { computeDemand, jobRoom } from './demand';
-import { GrowthSystem, type GrowthSupply } from './growth';
+import { GrowthSystem, schoolsMissingAt, type GrowthSupply } from './growth';
 import { gridKerbSurroundings } from './kerbsurroundings';
 import { ServiceSim, nearestRoadTile } from './services';
 import { EconomySystem, buildingMonthlyTax, type Occupancy } from './economy';
@@ -1624,6 +1625,9 @@ class SimWorld implements WorkerSim {
           ? { deathCare: { cremated: this.deathCare.crematedBy(inst.id) } }
           : {}),
       ...(intakeYield !== undefined ? { intakeYield } : {}),
+      ...(inst.problems & Problem.NeedsSchool && entry.zone !== undefined
+        ? { missingSchools: schoolsMissingAt(this.grid, idx, entry.zone).map((rung) => rung.kind) }
+        : {}),
     };
     this.post({ type: 'selection', info });
   }
@@ -2507,7 +2511,7 @@ class SimWorld implements WorkerSim {
         this.stats.serviceFunding = {
           ...this.stats.serviceFunding,
           [command.service]: funding,
-        } as Record<ServiceKind, number>;
+        } as Record<FundingKey, number>;
         return { ok: true, cost: 0, inverse: [] };
       }
       case 'takeLoan':

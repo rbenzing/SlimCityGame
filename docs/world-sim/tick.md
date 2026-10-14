@@ -126,7 +126,7 @@ not whether the call happens.
 | LandValue diffusion                                     | period 8, offset 0                              | every 8 ticks             | `fields.ts`'s `DIFFUSING_FIELDS` |
 | Crime diffusion                                         | period 8, offset 1                              | every 8 ticks             | `fields.ts`                      |
 | FireRisk diffusion                                      | period 8, offset 2                              | every 8 ticks             | `fields.ts`                      |
-| Education diffusion                                     | period 8, offset 3                              | every 8 ticks             | `fields.ts`                      |
+| Education diffusion (elementary, middle, high, college) | period 8, offset 3, the four planes together    | every 8 ticks             | `fields.ts`                      |
 | Health diffusion                                        | period 8, offset 4                              | every 8 ticks             | `fields.ts`                      |
 | Happiness recompute                                     | `HAPPINESS_PERIOD` / `HAPPINESS_OFFSET`         | every 8 ticks, offset 5   | `fields.ts`                      |
 | Pollution diffusion                                     | period 4, offset 0                              | every 4 ticks             | `fields.ts`                      |

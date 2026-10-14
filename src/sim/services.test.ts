@@ -3,8 +3,8 @@ import type {
   BuildingCatalogEntry,
   BuildingInstance,
   CityStats,
+  FundingKey,
   GridState,
-  ServiceKind,
 } from '../shared/types';
 import { BuildingState, FieldId, RoadTier, ZoneType } from '../shared/types';
 import { TICKS_PER_MONTH, tileIndex } from '../shared/constants';
@@ -57,7 +57,7 @@ function place(
   return instance;
 }
 
-const fullFunding = (v: number): Record<ServiceKind, number> => ({
+const fullFunding = (v: number): Record<FundingKey, number> => ({
   police: v,
   fire: v,
   health: v,

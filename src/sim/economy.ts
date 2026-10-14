@@ -18,7 +18,7 @@ import type {
   RoadProfile,
   RoadSpec,
 } from '../shared/types';
-import { BuildingState, FieldId, RoadTier } from '../shared/types';
+import { BuildingState, FieldId, RoadTier, fundingKeyOf } from '../shared/types';
 import { occupiedResidents } from '../shared/occupancy';
 import { isPresetProfileId, roadPriceOf } from '../shared/roadprofile';
 import {
@@ -273,7 +273,7 @@ export class EconomySystem {
         const spec = this.catalog.get(b.catalogId);
         if (!spec) continue;
         let upkeep = spec.upkeep;
-        if (spec.service) upkeep *= stats.serviceFunding[spec.service.kind];
+        if (spec.service) upkeep *= stats.serviceFunding[fundingKeyOf(spec.service.kind)];
         buildingUpkeep += upkeep;
       }
 

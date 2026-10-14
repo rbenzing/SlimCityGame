@@ -42,11 +42,25 @@ function loads(
     fire: partial.fire ?? zero,
     health: partial.health ?? zero,
     education: partial.education ?? zero,
+    'middle-education': partial['middle-education'] ?? zero,
+    'high-education': partial['high-education'] ?? zero,
+    'college-education': partial['college-education'] ?? zero,
+    library: partial.library ?? zero,
     park: partial.park ?? zero,
   };
 }
 
-const KINDS: readonly ServiceKind[] = ['police', 'fire', 'health', 'education', 'park'];
+const KINDS: readonly ServiceKind[] = [
+  'police',
+  'fire',
+  'health',
+  'education',
+  'middle-education',
+  'high-education',
+  'college-education',
+  'library',
+  'park',
+];
 
 describe('ServicesPanel', () => {
   it('stays shut until a service tool is in hand or a service lens is on', () => {
@@ -68,6 +82,10 @@ describe('ServicesPanel', () => {
         fire: { load: 0.62, worst: 0.9, capped: 1 },
         health: { load: 1.0, worst: 1.2, capped: 3 },
         education: { load: 0.5, worst: 0.75, capped: 1 },
+        'middle-education': { load: 3.1, worst: 3.4, capped: 1 },
+        'high-education': { load: 0.8, worst: 0.9, capped: 1 },
+        'college-education': { load: 0.05, worst: 0.05, capped: 1 },
+        library: { load: 1.5, worst: 1.5, capped: 2 },
         park: { load: 0.25, worst: 0.3, capped: 1 },
       }),
     );
@@ -78,10 +96,76 @@ describe('ServicesPanel', () => {
       fire: '62%',
       health: '100%',
       education: '50%',
+      'middle-education': '310%',
+      'high-education': '80%',
+      'college-education': '5%',
+      library: '150%',
       park: '25%',
     };
     for (const kind of KINDS) {
       expect(screen.getByTestId(`service-load-${kind}`)).toHaveTextContent(expected[kind]);
+    }
+  });
+
+  it('splits Education into a row per rung and the library, each its own load, and funds them all from one slider', () => {
+    open();
+    useCityStore
+      .getState()
+      .setServiceLoad(loads({ 'middle-education': { load: 3.1, worst: 3.4, capped: 1 } }));
+    render(<ServicesPanel />);
+
+    for (const [kind, label] of [
+      ['education', 'Elementary'],
+      ['middle-education', 'Middle'],
+      ['high-education', 'High'],
+      ['college-education', 'College'],
+      ['library', 'Library'],
+    ] as const) {
+      expect(screen.getByTestId(`service-load-${kind}`)).toBeInTheDocument();
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+    // A rung that is leaned on is flagged without the others being touched.
+    expect(screen.getByTestId('service-load-middle-education')).toHaveAttribute(
+      'data-over',
+      'true',
+    );
+    expect(screen.getByTestId('service-load-high-education')).toHaveAttribute('data-over', 'false');
+    // One department, one slider: the rungs read its funding rather than own one.
+    expect(screen.getAllByRole('slider', { name: /education funding/i })).toHaveLength(1);
+    expect(screen.queryByRole('slider', { name: /middle funding/i })).toBeNull();
+    expect(screen.getByTestId('service-funding-college-education')).toHaveTextContent('1.00');
+  });
+
+  it('moves every education row together when the one Education slider moves, and sends the department key', () => {
+    open();
+    const { sent } = bindSpy();
+    render(<ServicesPanel />);
+
+    fireEvent.change(screen.getByRole('slider', { name: /education funding/i }), {
+      target: { value: '1.35' },
+    });
+
+    expect(sent[0]!.commands).toEqual([
+      { kind: 'setServiceFunding', service: 'education', funding: 1.35 },
+    ]);
+    for (const kind of ['education', 'middle-education', 'high-education', 'college-education']) {
+      expect(screen.getByTestId(`service-funding-${kind}`)).toHaveTextContent('1.35');
+    }
+    expect(screen.getByTestId('service-funding-library')).toHaveTextContent('1.35');
+    expect(screen.getByTestId('service-funding-police')).toHaveTextContent('1.00');
+  });
+
+  it('opens on each rung’s own lens', () => {
+    for (const field of [
+      FieldId.MiddleEducation,
+      FieldId.HighEducation,
+      FieldId.CollegeEducation,
+    ]) {
+      cleanup();
+      resetCityStore();
+      useCityStore.getState().setOverlay(field);
+      render(<ServicesPanel />);
+      expect(screen.getByTestId('service-load-library')).toBeInTheDocument();
     }
   });
 

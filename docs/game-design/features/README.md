@@ -36,7 +36,7 @@ is the frame; the nine below are its epics, in the order they are built.
 | 0   | [service-capacity.md](service-capacity.md)                   | A facility serves people, not just an area (built)        |
 | 1   | [water-and-sewage.md](water-and-sewage.md)                   | The other half of the water loop (built)                  |
 | 2   | [healthcare-and-death-care.md](healthcare-and-death-care.md) | A hospital ladder, and the first population sink (the ladder built; death care not built) |
-| 3   | [education-ladder.md](education-ladder.md)                   | Primary, secondary, tertiary, each gating the next        |
+| 3   | [education-ladder.md](education-ladder.md)                   | Elementary, middle, high, college and a library, each rung its own field |
 | 4   | [emergency-services.md](emergency-services.md)               | Station ladders sized on response time                    |
 | 5   | [garbage-recovery.md](garbage-recovery.md)                   | Recovery, so burying is the worst option and not the only (built) |
 | 6   | [power-generation.md](power-generation.md)                   | A thermal tier, and generation a city can outgrow (the two existing generators re-derived; the new plants not built) |

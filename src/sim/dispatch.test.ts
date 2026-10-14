@@ -15,7 +15,7 @@ import type {
   Incident,
   PathResult,
   RoadNetworkApi,
-  ServiceKind,
+  FundingKey,
   TilePoint,
 } from '../shared/types';
 import {
@@ -121,7 +121,7 @@ function straightRoad(g: GridState, x0: number, z: number, tiles: number): void 
   }
 }
 
-const FULL_FUNDING: Readonly<Record<ServiceKind, number>> = {
+const FULL_FUNDING: Readonly<Record<FundingKey, number>> = {
   police: 1,
   fire: 1,
   health: 1,
@@ -200,7 +200,7 @@ function step(
   g: GridState,
   buildings: BuildingInstance[],
   network: RoadNetworkApi,
-  funding: Readonly<Record<ServiceKind, number>> = FULL_FUNDING,
+  funding: Readonly<Record<FundingKey, number>> = FULL_FUNDING,
 ): Incident[] {
   return sys.tick({ grid: g, buildings, network, funding });
 }
@@ -427,7 +427,7 @@ class CountingNetwork extends RoadNetwork {
  */
 function fireCallAt(
   incidentX: number,
-  funding: Readonly<Record<ServiceKind, number>>,
+  funding: Readonly<Record<FundingKey, number>>,
   network?: () => RoadNetwork,
 ): { out: Incident[]; network: RoadNetwork } {
   const g = makeGrid();

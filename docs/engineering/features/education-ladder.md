@@ -1,249 +1,264 @@
 # Education ladder — technical design
 
-- **Status:** Draft
-- **Date:** 2026-09-18
+- **Status:** Partly built — the ladder in the sim: four schools, the library, the gates (2026-10-14); the school buildings drawn in slice 2
+- **Date:** 2026-10-14
 - **Author:** Claude Opus 5
 
 Epic 3 of [municipal-services.md](municipal-services.md), built on epic 0,
-[service-capacity.md](service-capacity.md). The design it implements is
+[service-capacity.md](service-capacity.md). The design it implements, with every
+source and every derivation, is
 [../../game-design/features/education-ladder.md](../../game-design/features/education-ladder.md).
+This document is the plan for the code, and it replaces the 2026-09-18 draft,
+whose English figures and two-field scheme are withdrawn.
 
 ## What we are building, and why now
 
-Three education buildings where there is one, and a library that extends their
-reach. Each rung gates a higher tier of zone growth, so a player can look at a
-stalled block and name the building that would unstall it. Now, because
-education is the only service that already gates growth — every other epic adds
-a mechanism; this one extends one that has shipped.
+Four schools where there is one, and a library that extends their reach. Each
+rung gates a higher tier of zone growth, so a player can look at a stalled block
+and name the building that would unstall it. Now, because education is the only
+service that already gates growth — every other epic adds a mechanism; this one
+extends one that has shipped.
+
+**Slice 1, built:** the sim, catalog, save, panels and Advisor. **Slice 2, not
+built:** the kits, and the screenshots that judge them. Until then the four new
+buildings draw as the generic catalog box.
 
 ## What it touches
 
-| Module                   | Change                                                                                                                                                                                         |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/shared/types.ts`    | `ServiceKind` gains `'higher-education'`; `FieldId` gains `HigherEducation = 9`, `FIELD_COUNT` 9 → 10; `Problem` gains `NeedsSchool`, the next free bit when it is built; `SAVE_VERSION` bumps |
-| `src/sim/growth.ts`      | Two thresholds beside `RES_L3_EDUCATION`; `meetsLevelUpRequirement` picks the gate by zone; the new problem bit is set                                                                         |
-| `src/sim/services.ts`    | Library pass before the coverage loop; per-road-tile range uplift in `radiateWeighted`; `higher-education` case in `applyCoverage`                                                             |
-| `src/world/grid.ts`      | Tenth field plane in `serializeGrid`/`deserializeGrid`; `BYTES_PER_TILE_BY_VERSION` gains an entry                                                                                             |
-| `src/data/catalog.json`  | `school` corrected; `secondary-school`, `university`, `library` added                                                                                                                          |
-| `src/ui/`, `src/render/` | The Education row splits into three; the overlay draws gate contours; campus and public-counter meshes for the four buildings                                                                  |
+| Module                      | Change                                                                                                                                                                                                                      |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/shared/types.ts`       | `FieldId` gains `MiddleEducation` 9, `HighEducation` 10, `CollegeEducation` 11; `FIELD_COUNT` 9 → 12; `ServiceKind` gains `middle-education`, `high-education`, `college-education`, `library`; `FundingKey`; `Problem.NeedsSchool` 1024; `SAVE_VERSION` 15 → 16 |
+| `src/shared/schooling.ts`   | New: the rungs, the gate, and which rungs a zone needs for level 3. One source for the sim, the panels and the Advisor                                                                                                       |
+| `src/sim/growth.ts`         | `meetsLevelUpRequirement` takes the zone and asks `schooling`; `NeedsSchool` is set and cleared with the other problems                                                                                                      |
+| `src/sim/services.ts`       | Four school kinds write their own field; the library pass runs before the schools; per-road-tile range uplift in `radiateWeighted`                                                                                           |
+| `src/sim/fields.ts`         | The three new fields diffuse and decay as `Education` does                                                                                                                                                                   |
+| `src/world/grid.ts`         | The three planes are serialized at the end of the tile record; `BYTES_PER_TILE_BY_VERSION` gains v16                                                                                                                         |
+| `src/data/catalog.json`     | `school` re-ranged; `middle-school`, `high-school`, `college`, `library` added                                                                                                                                               |
+| `src/sim/worker.entry.ts`   | The inspector's list of missing schools                                                                                                                                                                                      |
+| `src/ui/`                   | The Education row splits into rows per rung and the library; three lenses; the `Needs School` marker; the Advisor's per-rung count                                                                                           |
+| `src/render/`               | Nothing in slice 1                                                                                                                                                                                                           |
 
-**Save format: yes, additively.** Field planes are contiguous, so a tenth
-lengthens the buffer by one byte per tile: `SAVE_VERSION` + 1 when it is built,
-and `BYTES_PER_TILE_BY_VERSION` gains an entry, as every layer since v2 has.
-`deserializeGrid` reads nine planes at any earlier version, leaves the tenth
-zero-filled, and continues into the trailing layers at the old offset. **A save
-written before this epic loads after it, with higher education absent rather
-than the save rejected** — the city never had a university, and a zero plane is
-that statement. `CityStats.serviceFunding` gains a key, defaulting to 1, never 0. See [../data-model.md](../data-model.md).
+**Save format: yes, additively, at the end.** The three new field planes are
+**appended to the tile record, after `waterPipe` and before the road network**, and
+never inserted between the nine existing field planes, although in memory they
+are `FieldId` 9–11 beside them. A new grid layer goes last
+([../data-model.md](../data-model.md#save-version-and-per-tile-width)): an older
+save's tile record is then a byte-for-byte prefix of the new one, and no byte
+that was in an old save moves. `SAVE_VERSION` goes 15 → 16 by exactly one,
+`BYTES_PER_TILE_BY_VERSION` gains v16 at three bytes more, and
+`deserializeGrid` zero-fills the planes for any save at v15 or earlier.
+**A save written before this epic loads after it with no middle, high or college
+coverage** — the city never had a middle school, and a zero plane says exactly
+that — and every building intact.
 
-**Worker protocol: yes, additively.** No new message: the field channel carries
-a `FieldId` already, load figures are epic 0's keyed here by catalog id, and
-`Problem` rides `BuildingDelta`. See [../interfaces.md](../interfaces.md).
+`CityStats.serviceFunding` gains **no key**: every school and the library share
+the Education slider. One department pays for them, so there is no new default to
+load and no old save to migrate.
+
+**Worker protocol: yes, additively.** No new message: the field channel carries a
+`FieldId` already, `serviceLoad` is keyed by `ServiceKind` and so gains four keys,
+`Problem` rides `BuildingDelta`, and `SelectionInfo` gains an optional list of the
+schools a held building is missing. See [../interfaces.md](../interfaces.md).
 
 ## The design
 
-### Why higher education is a second field
+### One field per rung
 
-Three ordered gates do not fit on one 0–255 field. A rung must never clear the
-rung above it at any distance, so `S₁ ≤ T₂ ≤ S₂ ≤ T₃ ≤ S₃ ≤ 255`; a rung's
-catchment radius is `range × (1 − T/S)`, so squeezing the third against the
-ceiling collapses it to a handful of tiles. Two planes dissolve that —
-`Education` carries two rungs, `HigherEducation` one, alone:
+A rung must never clear the rung above it at any distance. The draft got that by
+ordering gates on one field and a second field for the third rung, which put a
+secondary school's strength at 255 and closed its gate at 170% load. It is
+withdrawn for the simpler rule: **a field per rung**, so no rung can substitute for
+another by construction, and every school can write the same 150.
 
-| Rung       | Field           | Strength | Threshold | Range | Catchment                          |
-| ---------- | --------------- | -------- | --------- | ----- | ---------------------------------- |
-| Primary    | Education       | 150      | 60        | 50    | 50 × (1 − 60/150) = **30 tiles**   |
-| Secondary  | Education       | 255      | 150       | 100   | 100 × (1 − 150/255) = **41 tiles** |
-| University | HigherEducation | 150      | 60        | 100   | 100 × (1 − 60/150) = **60 tiles**  |
+| Rung       | Kind                | Field              | Strength | Gate | Range | Catchment (0.6 × range) |
+| ---------- | ------------------- | ------------------ | -------- | ---- | ----- | ----------------------- |
+| Elementary | `education`         | `Education` 6      | 150      | > 60 | 59    | 35.4                    |
+| Middle     | `middle-education`  | `MiddleEducation` 9 | 150     | > 60 | 93    | 55.8                    |
+| High       | `high-education`    | `HighEducation` 10 | 150      | > 60 | 86    | 51.6                    |
+| College    | `college-education` | `CollegeEducation` 11 | 150   | > 60 | 156   | 93.6                    |
 
-A tenth plane costs 65,536 bytes of memory and one byte per tile of save. **The
-strict comparison is load-bearing**: a primary writes exactly 150 at its door
-and the secondary gate is `> 150`; if that `>` becomes `>=` the ladder collapses.
+`Education` keeps its number and its meaning, elementary, so no save moves a byte
+of it. `FIELD_COUNT` is 12. The three planes cost 196,608 bytes of memory and three
+bytes a tile of save. The new fields run on the `Education` slot (period 8, offset
+3, decay 253/256) rather than each taking a slot: the free period-8 offsets are
+used up, and the four diffuse together as the one kind of coverage they are.
+
+### Funding is one key
+
+`ServiceKind` is the set of facility kinds the services pass runs, nine of them.
+`FundingKey` is the set of departments the player funds: police, fire, health,
+education and park. `fundingKeyOf(kind)` maps the four new kinds to `education`,
+and `economy.ts`, `dispatch.ts`, the `setServiceFunding` command and the store all
+speak `FundingKey`. A school's range and capacity scale with the Education slider
+whichever rung it is, and its upkeep follows.
 
 ### Growth
 
 `growth.ts` has one education constant, `RES_L3_EDUCATION = 60`, read in
-`meetsLevelUpRequirement` as `fieldAt(g, FieldId.Education, idx) >
-RES_L3_EDUCATION` and applied only when `sector === 'res' && targetLevel >= 3`;
-land value gates are untouched at 140 and 190. It becomes three constants chosen
-by zone rather than sector, because the ladder distinguishes densities:
+`meetsLevelUpRequirement` for every residential zone at level 3. It becomes the
+shared `SCHOOLING_GATE`, and the gate is chosen by **zone** rather than sector:
 
-| Zone                                      | Level 3 also needs                               |
-| ----------------------------------------- | ------------------------------------------------ |
-| `ResLow`, `ResMediumRow`                  | `Education > 60` — `RES_L3_EDUCATION`, unchanged |
-| `ResMedium`, `ResHigh`, `Mixed`, `ComLow` | `Education > 150` — `DENSE_L3_EDUCATION`         |
-| `ComHigh`                                 | `HigherEducation > 60` — `HIGHER_L3_EDUCATION`   |
-| `Industrial`                              | nothing — land value only, deliberately          |
+| Zone                                      | Level 3 also needs                         |
+| ----------------------------------------- | ------------------------------------------ |
+| `ResLow`, `ResMediumRow`                  | `Education > 60`                           |
+| `ResMedium`, `ResHigh`, `Mixed`, `ComLow` | `MiddleEducation > 60` and `HighEducation > 60` |
+| `ComHigh`                                 | `CollegeEducation > 60`                    |
+| `Industrial`, `IndHeavy`, `Agriculture`   | nothing                                    |
 
-Level 2 stays ungated at every density. `meetsLevelUpRequirement` already runs
-each pass for every building below level 3, so when land value clears and only
-education fails the caller sets `Problem.NeedsSchool`, at no extra cost.
+Level 2 is ungated at every density; the land-value gates, 140 and 190, are
+untouched. `src/shared/schooling.ts` holds the table (`level3Schooling(zone)`), so
+the growth pass, the inspector and the Advisor all ask one place which rungs a
+zone waits on.
+
+`Problem.NeedsSchool` is `1024`, the next free bit. `processProblemsAndAbandonment`
+sets it on an Active building whose next level would be 3, whose land value clears
+190, and which fails only its schooling; it clears when a school reaches it. It is
+never a blocker: it does not feed the abandonment streak.
+
+**What changes on an existing city.** Before, every residential zone needed
+`Education > 60` at level 3 and commercial needed land value alone. Now the
+dense residential zones need the middle and the high school instead of the
+elementary school, local commercial needs the same two, and high-density
+commercial needs the college. Nothing loses a level. A town below Big Town cannot
+build a middle or a high school, so a dense or commercial building waiting on one
+stays at level 2, and the marker says why. That is the one place the epic gates
+growth by a building the player cannot yet buy, and it is level 3, never the
+opening.
 
 ### The library
 
-A library writes no field. Before the coverage loop, `ServiceSim.tick` walks
-each library once into a per-road-tile uplift map, `1 + 0.20 × (1 − d/R)` — 1.20
-at its door, 1.00 at its range edge, the strongest winning where two overlap.
-Each education building then BFS-walks to `ceil(range × 1.20)` and uses the
-local uplifted range in the existing falloff,
-`strength × (1 − d / (range × uplift[roadTile]))`; non-positive values drop as
-today, so the wider cap costs nothing where no library reaches.
+A library writes no field. Before any school radiates, `ServiceSim.tick` runs the
+library kind first, whatever the order of the registry: each library walks once
+from its nearest road tile and radiates `strength × (1 − d/R)` as every service
+does, and that map is the **uplift** in percent, 20 at its door and 0 at its range
+edge, the strongest winning where two overlap. The library's `strength` in the
+catalog, 20, **is** the uplift dial, and it is **unsourced**: nothing quantifies a
+library's effect on attainment.
 
-The multiplier is on **range**, never strength, and that is what makes it safe:
-a library cannot raise a building's peak value, so it cannot carry a tile across
-a gate that building could not reach alone. The 0.20 has no published basis —
-nothing quantifies a library's effect on attainment — so it is an assumption,
-set to move a catchment edge visibly (a primary's goes 30 → 36 tiles) and no
-further.
+The library follows the existing **supply-share model** rather than a model of its
+own. Its map is scaled by `min(1, capacity × funding ÷ people in reach)` like any
+facility's, so a library at 200% load gives half its uplift, and its load shows in
+the Services panel with the rest. Radiation to two tiles around each road tile
+applies to it as it does to every service.
+
+Each school then walks to `ceil(range × (1 + maxUplift ÷ 100))`, the widest
+reach any library's strength allows, and uses the local range in the falloff:
+`strength × (1 − d / (range × (1 + uplift[roadTile] ÷ 100)))`. Non-positive values
+drop as today. With no library in the city the cap is `range` and every figure is
+what it was. The multiplier is on **range**, never strength, which is what makes it
+safe: a library cannot raise a school's peak value, so it cannot carry a tile across
+a gate that school could not reach alone.
 
 ### Capacity and overload
 
-Epic 0's rule applies unchanged: `effectiveStrength = strength × min(1, 1/load)`,
-capacities pooling across facilities reaching the same ground. Weakening strength
-shrinks the catchment, and it reaches zero at `strength ÷ threshold`:
-
-| Rung       | Capacity | Catchment at 150%     | Gate closes at           |
-| ---------- | -------- | --------------------- | ------------------------ |
-| Primary    | 5,000    | 20 tiles (400 m)      | 250%                     |
-| Secondary  | 15,000   | 11 tiles (240 m)      | 170%                     |
-| University | 50,000   | 40 tiles (800 m)      | 250%                     |
-| Library    | 15,000   | uplift halves at 200% | never — it holds no gate |
-
-The secondary school's 170% is the balance risk worth naming: its threshold is
-59% of its strength where the others' are 40%. At the other end the tertiary
-gauge barely moves — one campus serves the whole top milestone.
-
-### Sizes
-
-Sizes are `w × d × 185 × (height ÷ 3.2)` from
-[../../art/civic-massing.md](../../art/civic-massing.md) against the anchors in
-[../../art/README.md](../../art/README.md), campus ground counted as footprint.
-Occupancy factors are that document's — classroom 1.9 m² net, laboratory 4.6,
-assembly 1.4, business 13.9 gross, civic net-to-gross 65%, a 90° stall with a
-shared aisle 24.75 m² — and head counts are roll plus staff, at the primary's
-all-staff ratio of one to fourteen pupils and the university's of one to seven.
-
-| Building                 | Floor, derived                                                                                                | Gross         | Storeys | Block                         |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------- | ------------- | ------- | ----------------------------- |
-| Primary, 420 places      | 420 × 1.9 ÷ 0.65 = 1,228; hall 210 × 1.4 ÷ 0.65 = 452; 30 staff × 13.9 = 417                                  | **2,100 m²**  | 2       | ÷185 ÷2 = 5.7 → **6 tiles**   |
-| Secondary, 900 places    | (900 × 0.8 × 1.9 + 900 × 0.2 × 4.6) ÷ 0.65 = 3,378; hall 450 × 1.4 ÷ 0.65 = 969; 64 staff × 13.9 = 890        | **5,237 m²**  | 3       | ÷185 ÷3 = 9.4 → **10 tiles**  |
-| University, 2,100 places | (2,100 × 0.5 × 4.6 + 2,100 × 0.5 × 1.9) ÷ 0.65 = 10,500; study 1,932 ÷ 0.65 = 2,972; 300 staff × 13.9 = 4,170 | **17,642 m²** | 5       | ÷185 ÷5 = 19.1 → **20 tiles** |
-| Library                  | 15,000 people × 30 m² per 1,000                                                                               | **450 m²**    | 1       | ÷185 = 2.4 → **3 tiles**      |
-
-A school is a campus, so its site is the block plus its ground:
-
-| Building   | Block | Playing field                           | Parking                            | Site   | Lot given |
-| ---------- | ----- | --------------------------------------- | ---------------------------------- | ------ | --------- |
-| Primary    | 6     | 4,200 m² play at 10 m²/pupil = 11       | 15 spaces = 371 m² = 1             | **18** | 3×3 = 9   |
-| Secondary  | 10    | 90 × 45 m pitch = 4,050 m² = 5 × 3 = 15 | 32 spaces + coach bay = 834 m² = 3 | **28** | 6×5 = 30  |
-| University | 20    | one pitch = 15                          | 600 spaces = 14,850 m² = 37        | **72** | 6×6 = 36  |
-| Library    | 3     | —                                       | 16 spaces = 396 m² = 1             | **4**  | 2×2 = 4   |
-
-The formula over-reads every campus, because it assumes a body filling 13.6 m of
-every tile, and **two results are overrides stated rather than rounded away**.
-The existing school's 3×3 lot survives and its 10 m height does not — 3.125
-storeys where a primary school is two, so 6.4 m — and the lot keeps its play
-area half provided, because 18 tiles is 100 m of frontage a growing city cannot
-site. The university needs 72 tiles and the frontage ceiling gives 36, so its
-parking is cut to 16 tiles (240 spaces, 40%) and its pitch dropped, assuming
-students arrive on the transit the city builds; five storeys is the other half.
+The existing supply-share model is unchanged: a facility's capacity, scaled by
+funding, is divided among the people in its reach, every value it writes is scaled
+by `min(1, supply)`, and supplies add where facilities overlap. There is no
+`effectiveStrength`. For one school at load `L` the value at distance `d` is
+`150 × (1 − d/range) ÷ L`, the gate `> 60` holds out to `range × (1 − 0.4 L)`, and
+it closes at **250%** for every rung, since every rung has the same strength and the
+same gate.
 
 ### Catalog
 
-| id                 | footprint | height | kind             | strength | range | capacity | cost   | upkeep | milestone |
-| ------------------ | --------- | ------ | ---------------- | -------- | ----- | -------- | ------ | ------ | --------- |
-| `school`           | 3×3       | 6.4    | education        | 150      | 50    | 5,000    | 6,000  | 400    | 1         |
-| `library`          | 2×2       | 4.5    | education        | —        | 80    | 15,000   | 1,300  | 80     | 2         |
-| `secondary-school` | 6×5       | 9.6    | education        | 255      | 100   | 15,000   | 15,000 | 850    | 3         |
-| `university`       | 6×6       | 16     | higher-education | 150      | 100   | 50,000   | 50,000 | 4,000  | 5         |
+| id              | footprint | height | kind                | strength | range | capacity | cost    | upkeep | milestone     |
+| --------------- | --------- | ------ | ------------------- | -------- | ----- | -------- | ------- | ------ | ------------- |
+| `school`        | 3×3       | 10     | `education`         | 150      | 59    | 7,000    | 6,000   | 400    | Small Town    |
+| `middle-school` | 4×4       | 9.6    | `middle-education`  | 150      | 93    | 17,700   | 7,870   | 525    | Big Town      |
+| `high-school`   | 5×4       | 9.6    | `high-education`    | 150      | 86    | 15,200   | 10,230  | 608    | Big Town      |
+| `college`       | 6×5       | 9.6    | `college-education` | 150      | 156   | 50,000   | 12,400  | 2,185  | Grand City    |
+| `library`       | 3×2       | 3.2    | `library`           | 20       | 60    | 20,500   | 785     | 54     | Busy Township |
 
-`school` is renamed Primary School and keeps its id, so no save migrates a
-building id. Costs scale from the entry the game is already balanced around:
-¢2.86 per m² of floor and ¢13.30 per staff member per month. Settled figures go
-to [../../game-design/balancing.md](../../game-design/balancing.md); the rules
-above are the spec entry, from the [documentation map](../../README.md).
+`school` keeps its id and its name, Elementary School, so no save migrates a
+building id; its range goes 56 → 59. The milestone column is looked up by name in
+`MILESTONES`, never written as a number in a test. Every derivation is in the design
+document; settled figures go to
+[../../game-design/balancing.md](../../game-design/balancing.md).
 
 ## What could go wrong
 
-**Two tightenings land on every existing city.** The primary school's range
-drops from 56 to 50, so its catchment goes 33 tiles to 30 and blocks 30–33 out
-stop clearing the gate; and dense zones are education-gated for the first time,
-so a city with `ResHigh` or `ComHigh` at level 2 and land value over 190 needs a
-secondary school it never needed. Nothing loses a level — growth gates level-up,
-not level-down — but growth stops where it was fine, so the marker and the
-notification land in the same change as the gate.
+**The load counts the whole reach.** Capacity is divided among the people on every
+tile a school's coverage reaches, which is the full range, while the gate and the
+catchment are 0.6 of it. A school ranged at its catchment's 100% therefore reads
+about 280% over a fully built district, and one over 250% closes its own gate. The
+ranges are derived at a 35% residential share of the covered ground, a stated
+assumption, and a road network is not a diamond, so a real district reads less; but
+the first school to sit in a dense grid is the case to watch. Changing what load
+counts is a change to the supply-share model, not to this epic.
 
-**A tenth plane in the middle of the save layout.** Field planes precede the
-trailing layers, so a tenth shifts every byte after it, and the risk is an older
-buffer read at the new offsets producing a plausible corrupt city rather than an
-error. The length check catches it, so `BYTES_PER_TILE_BY_VERSION` must gain its
-entry in the same commit.
+A lone school in a fully built district therefore reads about 280%, because its
+reach covers about 2.8 times the people its catchment holds. Schools spaced at
+catchment distance pool their places over the ground they share, and a district
+served that way settles at about 100%, so a built-out district needs one school
+per capacity's worth of people. That is the capacity model working as designed,
+not a defect: the load figure is asking the player for the second school.
 
-**The library pass, both ways.** Uplift must be known before any school
-radiates, so `ServiceSim.tick` gains an ordering dependency, and getting it
-wrong is silent. Walking to `range × 1.20` also reaches up to 44% more road
-tiles per education building — one traversal, not two, but it lands on the
-per-tick cost the programme flagged as tight, gated by
-[../performance-budget.md](../performance-budget.md).
+**Two tightenings land on every existing city.** The elementary range goes from 56
+to 59, a small widening; and the dense and commercial zones change which rung they
+wait on. Nothing loses a level, but growth stops where it was fine, so the marker
+and the Advisor land in the same change as the gate.
+
+**A plane at the end of the record.** The risk is an older buffer read at the new
+offsets producing a plausible corrupt city rather than an error. The length check
+catches it, and `BYTES_PER_TILE_BY_VERSION` gains its entry in the same commit.
+Writing the planes last is what keeps every earlier version a prefix.
+
+**The library pass, both ways.** Uplift must be known before any school radiates,
+so `ServiceSim.tick` gains an ordering dependency, and getting it wrong is silent.
+Walking to `range × 1.20` also reaches up to 44% more road tiles per school, but only
+while a library exists, and the traversal is still one per school.
+
+**A school nobody can build.** A town below Big Town holds dense and commercial
+buildings at level 2 for want of a middle and a high school. That is the design, and
+it is the first place a service gates growth by a rung the player has not yet reached,
+so the Advisor names it. The opening of the game, level 2 and the first town,
+is untouched: `tests/interaction/firsttown.test.ts` is unchanged.
 
 ## Alternatives
 
-**Three thresholds on the existing field.** Rejected on the arithmetic above:
-the ordering constraint against a 255 ceiling leaves the third rung a catchment
-of a few tiles. Revisit only if a field widens beyond a byte.
+**Three thresholds on the existing field, then a second field.** Rejected: ordering
+gates on one 0–255 field forced a strength of 255 on one rung and a 170% closing
+point, and made the rungs substitutable at the margin. A field per rung has neither problem.
 
-**The library as a floor on the education field.** Rejected, and it was the
-first idea. Coverage blends by maximum, so a floor below the bottom gate is
-inert and a floor above it is a cheaper school — no floor value is both useful
-and not a substitute, hence a multiplier on range.
+**Funding a key per rung.** Rejected: one department, one slider. It would also have
+added keys to `serviceFunding` and a default to load.
 
-**Requiring the rung below to be built before the next unlocks, and gating
-industry on education.** Both rejected: the first needs a new catalog field and
-refusal mode, and a hard lock teaches less than a soft one; the second chokes
-the sector a young city can least afford to unblock.
+**The library as a floor on the education field.** Rejected: coverage blends by
+maximum, so a floor below the bottom gate is inert and a floor above it is a
+cheaper school. Hence a multiplier on range.
+
+**Requiring the rung below to be built, and gating industry on education.** Both
+rejected: the first needs a new catalog field and a refusal mode, and a hard lock
+teaches less than a soft one; the second chokes the sector a young city can least
+afford to unblock.
 
 ## How we will know it works
 
-- A save written before this epic loads and plays identically bar the two
-  documented tightenings. Written first — it protects every existing city.
-- A `ResHigh` lot at land value 200 and education 150 does not reach level 3 and
-  at 151 it does; and no quantity of primary schools opens one, because four
-  overlapping leave the field at 150, not 600.
-- A primary school on a straight road gates level 3 out to 30 road tiles and not
-  31; a library at its door makes it 36, and a library with no school in reach
-  changes no field and no lot.
-- A primary school covering 12,500 people gates nothing anywhere — 250% load,
-  effective strength 60, gate `> 60`. At 10,000 it gates out to 10 tiles, and
-  two schools at 100% each produce the same field as one at 200%.
-- A building clearing land value for level 3 and failing only the education gate
-  carries `Problem.NeedsSchool`, and loses it when a school reaches it.
-- Libraries resolve before any education building radiates whatever order the
-  registry returns, and a profile at the performance-budget city size stays
-  within budget with the wider BFS cap and the tenth plane.
+- A v15 save loads with zero middle, high and college planes and every building
+  intact. Written first, since it protects every existing city.
+- A v16 save round-trips the three planes.
+- A `ResHigh` lot at land value 200 with only middle coverage stays at level 2 with
+  `NeedsSchool`; with middle and high it reaches level 3; and no number of
+  elementary schools opens it.
+- `ComHigh` needs the college; industry and level 2 are never gated.
+- A library at a school's door stretches the gate catchment — by a fifth of range at
+  the library and less with every tile from it, so about 7% at a 35-tile edge; a
+  library no school's road reaches changes nothing, and one with no school at all
+  writes no field, in any registry order.
+- A school's load closes its gate as the supply-share model says.
+- The catalog holds the capacities, prices, upkeep, draws and milestones above.
+- The Services panel shows a row per rung and the library.
 
-**What has to be looked at in a browser**, every mesh here being new:
-
-- The primary school at 3×3 and 6.4 m from the default camera pitch, beside a
-  4.0 m car and a 1.75 m person: two storeys, not three, and a school rather than
-  an office. The library at 2×2 and 4.5 m in the same shot: entrance, steps and
-  mast, and not a shed.
-- The secondary school at 6×5 and 9.6 m: the campus read — a long low block with
-  the pitch and apron beside it, **not one mass filling the lot**. If the body
-  fills all 30 tiles the mesh is wrong however right the numbers are.
-- The university at 6×6 and 16 m sited inside a built-up grid, not on open
-  ground: the largest civic mass in the game against 120 m of frontage, and
-  whether a player can place it in a city that exists. Then all four at night.
-- The education overlay over a city with both schools: three gate contours with
-  visible edges, and the primary contour retreating toward its school when that
-  school is pushed past 150% load.
+**What has to be looked at in a browser in slice 2**, every mesh being new: the
+elementary school at 3×3 and 10 m beside a 4.0 m car and a 1.75 m person; the middle
+and high schools as campuses, a long low block and not one mass filling the lot; the
+college sited inside a built-up grid, the largest civic mass in the game; the library
+at 3×2 and 3.2 m as a library and not a shed; then all five at night.
 
 ## Out of scope
 
-- New zone levels; the ladder gates the three that exist. Resizing the other
-  three service buildings, which belong to their own epics.
-- Education as an economic input — productivity, wages, crime. Those are demand
-  and economy questions; anything that should never be built belongs in
-  [../../DESIGN.md](../../DESIGN.md).
+- New zone levels; the ladder gates the three that exist.
+- Education as an economic input — productivity, wages, crime.
 - School buses, catchment drawing, term time, admissions, per-pupil simulation.
-  Load is people in reach against places provided.
 - Reworking coverage: road-network walking is unchanged, only range is uplifted.
+- The kits and screenshots, which are slice 2.

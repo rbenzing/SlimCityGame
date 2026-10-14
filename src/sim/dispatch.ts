@@ -31,6 +31,7 @@
 import type {
   BuildingCatalogEntry,
   BuildingInstance,
+  FundingKey,
   GridState,
   Incident,
   PathResult,
@@ -99,7 +100,7 @@ export const UNANSWERED_LAPSE_TICKS = SERVICE_TICKS_BASE + SERVICE_TICKS_SEVERIT
 
 const INCIDENT_KINDS: readonly Incident['kind'][] = ['fire', 'crime', 'medical'];
 
-const SERVICE_KIND_FOR_INCIDENT: Readonly<Record<Incident['kind'], ServiceKind>> = {
+const SERVICE_KIND_FOR_INCIDENT: Readonly<Record<Incident['kind'], FundingKey>> = {
   fire: 'fire',
   crime: 'police',
   medical: 'health',
@@ -123,7 +124,7 @@ const FIELD_FOR_INCIDENT: Readonly<Record<Incident['kind'], FieldId>> = {
  */
 export function responseReach(
   kind: Incident['kind'],
-  funding: Readonly<Record<ServiceKind, number>>,
+  funding: Readonly<Record<FundingKey, number>>,
 ): number {
   const scale = funding[SERVICE_KIND_FOR_INCIDENT[kind]];
   return Math.floor(RESPONSE_REACH_TILES[kind] * scale + 1e-9);
@@ -271,7 +272,7 @@ export class DispatchSystem {
     grid: GridState;
     buildings: readonly BuildingInstance[];
     network: RoadNetworkApi;
-    funding: Readonly<Record<ServiceKind, number>>;
+    funding: Readonly<Record<FundingKey, number>>;
   }): Incident[] {
     const { grid, buildings, network, funding } = input;
     const live = buildings
@@ -402,7 +403,7 @@ export class DispatchSystem {
   private answerWaiting(
     stations: readonly Station[],
     network: RoadNetworkApi,
-    funding: Readonly<Record<ServiceKind, number>>,
+    funding: Readonly<Record<FundingKey, number>>,
   ): void {
     if (this.waiting.length === 0) return;
     const still: WaitingIncident[] = [];
@@ -430,7 +431,7 @@ export class DispatchSystem {
     targets: readonly BuildingInstance[],
     stations: readonly Station[],
     network: RoadNetworkApi,
-    funding: Readonly<Record<ServiceKind, number>>,
+    funding: Readonly<Record<FundingKey, number>>,
   ): void {
     for (const target of targets) {
       const answerable = this.freeSlots.length > 0;
@@ -485,7 +486,7 @@ export class DispatchSystem {
     incidentTile: TilePoint,
     stations: readonly Station[],
     network: RoadNetworkApi,
-    funding: Readonly<Record<ServiceKind, number>>,
+    funding: Readonly<Record<FundingKey, number>>,
   ): Responder | null {
     const serviceKind = SERVICE_KIND_FOR_INCIDENT[kind];
     const reach = responseReach(kind, funding);

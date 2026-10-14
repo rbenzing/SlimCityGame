@@ -16,6 +16,11 @@ Every road tile reached, plus every tile within 2 further orthogonal steps of
 one, receives coverage that fades linearly with hop distance:
 `strength × (1 − hopDistance / range)`.
 
+Education is four kinds, each writing its own field — elementary, middle, high
+and college — and a library writes none: its coverage is a per-road-tile
+uplift of up to a fifth on every school's range, resolved before any school
+radiates ([education-ladder.md](../game-design/features/education-ladder.md)).
+
 Coverage is blended into its field differently by kind: education and health
 take the higher of the field's existing value and the new one (a ceiling, not a
 stack); police and fire subtract half the coverage value from Crime and

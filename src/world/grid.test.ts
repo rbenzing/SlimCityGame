@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { MAP_SIZE, MAX_BUILD_SLOPE, ROAD_MAX_SLOPE } from '../shared/constants';
 import {
+  CORE_FIELD_COUNT,
   FIELD_COUNT,
+  FieldId,
   isRailTier,
   isStreetTier,
   RoadTier,
@@ -39,6 +41,22 @@ function asVersion(current: ArrayBuffer, version: number, n: number): ArrayBuffe
   const older = current.slice(0, current.byteLength - drop * n);
   new DataView(older).setUint32(0, version, true);
   return older;
+}
+
+/**
+ * A current save cut back to an older version's tile record: the trailing layers
+ * that version lacked are dropped from the end of the tiles, ahead of the road
+ * network, and the header is stamped as that version. Only valid from v13, where
+ * every new layer is appended to the tile record.
+ */
+function olderTileRecord(current: ArrayBuffer, version: number, n: number): ArrayBuffer {
+  const drop = (BYTES_PER_TILE_BY_VERSION[SAVE_VERSION]! - BYTES_PER_TILE_BY_VERSION[version]!) * n;
+  const tileEnd = 8 + n * BYTES_PER_TILE_BY_VERSION[SAVE_VERSION]!;
+  const older = new Uint8Array(current.byteLength - drop);
+  older.set(new Uint8Array(current, 0, tileEnd - drop), 0);
+  older.set(new Uint8Array(current, tileEnd), tileEnd - drop);
+  new DataView(older.buffer).setUint32(0, version, true);
+  return older.buffer;
 }
 
 describe('createGrid', () => {
@@ -137,8 +155,12 @@ describe('serializeGrid / deserializeGrid', () => {
     // Deck heights survive to the fraction — quantizing them bows a level span.
     expect(Array.from(back.roadElevation)).toEqual(Array.from(g.roadElevation));
     expect(back.fields.length).toBe(g.fields.length);
-    for (let f = 0; f < g.fields.length; f++) {
+    // A v12 buffer predates the education planes, which load zero.
+    for (let f = 0; f < CORE_FIELD_COUNT; f++) {
       expect(Array.from(back.fields[f]!)).toEqual(Array.from(g.fields[f]!));
+    }
+    for (let f = CORE_FIELD_COUNT; f < FIELD_COUNT; f++) {
+      expect(back.fields[f]!.every((v) => v === 0)).toBe(true);
     }
   });
 
@@ -185,15 +207,62 @@ describe('serializeGrid / deserializeGrid', () => {
 
     // A v13 buffer is the same tiles without the trailing pipe layer, then the
     // network; it loads with the pipes the city never had: none.
-    const n = 25;
-    const tileBytes = 8 + n * BYTES_PER_TILE_BY_VERSION[SAVE_VERSION]!;
-    const older = new Uint8Array(current.byteLength - n);
-    older.set(new Uint8Array(current, 0, tileBytes - n), 0);
-    older.set(new Uint8Array(current, tileBytes), tileBytes - n);
-    new DataView(older.buffer).setUint32(0, 13, true);
-    const old = loadGrid(older.buffer).grid;
+    const old = loadGrid(olderTileRecord(current, 13, 25)).grid;
     expect(Array.from(old.waterPipe)).toEqual(new Array(25).fill(0));
     expect(BYTES_PER_TILE_BY_VERSION[14]).toBe(BYTES_PER_TILE_BY_VERSION[13]! + 1);
+  });
+
+  it('loads a v15 save with no middle, high or college coverage and every building intact', () => {
+    const size = 5;
+    const n = size * size;
+    const g = createGrid(size);
+    fillDeterministic(g);
+    // Coverage that only a v16 save can hold: it has to be gone from the old one.
+    for (const f of [FieldId.MiddleEducation, FieldId.HighEducation, FieldId.CollegeEducation]) {
+      g.fields[f]!.fill(200);
+    }
+    g.waterPipe[7] = 1;
+    const current = saveGrid(g, createRoadNetwork());
+
+    const v15 = olderTileRecord(current, 15, n);
+    expect(new DataView(v15).getUint32(0, true)).toBe(15);
+    const back = loadGrid(v15).grid;
+
+    for (const f of [FieldId.MiddleEducation, FieldId.HighEducation, FieldId.CollegeEducation]) {
+      expect(back.fields[f]!.length).toBe(n);
+      expect(back.fields[f]!.every((v) => v === 0)).toBe(true);
+    }
+    // Every byte that was in a v15 save sits where it was, so the city is the city.
+    expect(Array.from(back.buildingId)).toEqual(Array.from(g.buildingId));
+    expect(Array.from(back.zone)).toEqual(Array.from(g.zone));
+    expect(Array.from(back.waterPipe)).toEqual(Array.from(g.waterPipe));
+    for (let f = 0; f < CORE_FIELD_COUNT; f++) {
+      expect(Array.from(back.fields[f]!)).toEqual(Array.from(g.fields[f]!));
+    }
+  });
+
+  it('round-trips the three education planes at v16, saved after the pipe layer', () => {
+    const size = 5;
+    const n = size * size;
+    const g = createGrid(size);
+    fillDeterministic(g);
+    g.waterPipe[3] = 1;
+    const current = saveGrid(g, createRoadNetwork());
+    expect(new DataView(current).getUint32(0, true)).toBe(16);
+    expect(BYTES_PER_TILE_BY_VERSION[16]).toBe(BYTES_PER_TILE_BY_VERSION[15]! + 3);
+
+    const back = loadGrid(current).grid;
+    expect(back.fields.length).toBe(FIELD_COUNT);
+    for (let f = 0; f < FIELD_COUNT; f++) {
+      expect(Array.from(back.fields[f]!)).toEqual(Array.from(g.fields[f]!));
+    }
+    // The planes are the last three bytes-per-tile of the record, ahead of the network.
+    const tileEnd = 8 + n * BYTES_PER_TILE_BY_VERSION[SAVE_VERSION]!;
+    const tail = new Uint8Array(current, tileEnd - 3 * n, 3 * n);
+    const planes = [FieldId.MiddleEducation, FieldId.HighEducation, FieldId.CollegeEducation];
+    planes.forEach((f, i) => {
+      expect(Array.from(tail.subarray(i * n, (i + 1) * n))).toEqual(Array.from(g.fields[f]!));
+    });
   });
 
   it('migrates a v1 buffer (no district/landfill/elevation layers) — loads them all-zero, other layers intact', () => {
@@ -222,7 +291,7 @@ describe('serializeGrid / deserializeGrid', () => {
     expect(Array.from(back.zone)).toEqual(Array.from(g.zone));
     expect(Array.from(back.buildingId)).toEqual(Array.from(g.buildingId));
     expect(Array.from(back.watered)).toEqual(Array.from(g.watered));
-    for (let f = 0; f < g.fields.length; f++) {
+    for (let f = 0; f < CORE_FIELD_COUNT; f++) {
       expect(Array.from(back.fields[f]!)).toEqual(Array.from(g.fields[f]!));
     }
   });

@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 6,023 tests passing across 183 test files, run 2026-10-14.
+**Test suite:** 6,085 tests passing across 184 test files, run 2026-10-14.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -319,6 +319,36 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The education ladder in the simulation (first slice of the education ladder, built 2026-10-14)
+
+The player chose a US ladder of four schools and a library, priced by real
+cost ratios. The 2026-09-18 draft was written on English schools and
+statutes; it is re-derived on NCES figures, and the built elementary school
+keeps its sourced 7,000.
+
+- **One field per rung**, so no rung stands in for another: elementary (the
+  existing education field), and new middle, high-school and college fields,
+  serialized at the end of the tile record (save version 16). An older save
+  loads with none of the three.
+- **The gates, level 3 only.** Houses need an elementary in reach; dense
+  housing, mixed use and shops need a middle school and a high school; office
+  towers need a college. Level 2, industry and farms are never gated, so a
+  first town grows as before. A lot held only by schooling says which school
+  it waits for.
+- **Capacities from NCES:** elementary 7,000; middle 17,700 (599 pupils ÷
+  33.8 per 1,000); high 15,200 (693 ÷ 45.7); college 50,000 (2,730 places at
+  5.46% enrolled, sized to the top milestone); library 20,500 (one public
+  library outlet per 20,500 Americans). Reach is the district that holds that
+  capacity at the catalog's density: 59, 93, 86 and 156 tiles.
+- **Prices by real cost ratios** to the elementary's ¢6,000: middle ¢7,870
+  and high ¢10,230 (School Planning & Management's cost per pupil by level),
+  college ¢12,400 and library ¢785 (floor at a school's $/sf, stated as
+  assumptions); upkeep by all-staff ratio (NCES 7.3 pupils per staff, 8.0
+  students per community-college staff).
+- **A library writes no field.** It stretches every school's reach near it, by
+  a 20% dial at its door. One Education slider funds the whole ladder.
+- The schools draw as plain boxes until the next slice.
 
 ### District stations, and the stations drawn as stations (last slice of emergency services, built 2026-10-14)
 

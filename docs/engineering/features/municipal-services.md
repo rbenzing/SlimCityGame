@@ -1,6 +1,6 @@
 # Municipal services — technical design
 
-- **Status:** In progress — epics 0 (service capacity), 1 (water and sewage) and 5 (garbage recovery) built, 6 (power generation) partly built; 2, 3, 4, 7 and 8 not started
+- **Status:** In progress — epics 0 (service capacity), 1 (water and sewage), 2 (healthcare and death care), 4 (emergency services) and 5 (garbage recovery) built, 3 (education ladder) and 6 (power generation) partly built; 7 and 8 not started
 - **Date:** 2026-09-18
 - **Author:** Claude Opus 5
 

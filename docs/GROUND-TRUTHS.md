@@ -1032,6 +1032,24 @@ MUTCD citations below use 11th-edition section numbers.
   switches to additive stacking, and LandValue is never floored at a park
   value. — [services-model.md](world-sim/services-model.md),
   [environmental-simulation.md](world-sim/environmental-simulation.md)
+- Education is one field per rung — elementary (`Education`), middle, high and
+  college — and a school writes only its own, so no rung ever substitutes for
+  another at any quantity. Every school writes 150 and every gate is the field
+  over 60, so a catchment is 0.6 of the range at any rung. A library writes no
+  field: it lifts the range of every school in its reach by up to a fifth,
+  resolved before any school radiates, and does nothing where no school is. All
+  rungs and the library share the one Education funding slider. —
+  [education-ladder.md](game-design/features/education-ladder.md),
+  [education-ladder.md](engineering/features/education-ladder.md);
+  `src/shared/schooling.ts`, `ServiceSim.tick` in `src/sim/services.ts`
+- Level 2 is never gated by schooling, at any density. Only level 3 asks for
+  it, by zone: elementary for detached and row housing, middle and high both
+  for denser housing, mixed use and local commercial, college for high-density
+  commercial, and nothing for industry or farms. A building that clears land
+  value and fails only its schooling carries `Problem.NeedsSchool`, which never
+  counts toward abandonment. —
+  [simulation-rules.md](game-design/simulation-rules.md);
+  `level3Schooling` in `src/shared/schooling.ts`
 - Dispatch is read-only presentation: it reads Crime, FireRisk, Pollution and
   the registry, and never writes a field, a building, coverage or the economy.
   — [services-model.md](world-sim/services-model.md),
@@ -1201,6 +1219,13 @@ MUTCD citations below use 11th-edition section numbers.
   [data-model.md](engineering/data-model.md),
   [ADR-0007](engineering/adr/0007-saves-are-versioned-typed-arrays-with-trailing-additive-layers.md);
   `src/world/grid.ts`
+- A new scalar field plane is serialized at the END of the tile record, after
+  the last layer and before the road network, even though in memory it is a
+  `FieldId` beside the others. The first nine field planes stay contiguous
+  where they were, so an older save is a byte prefix of a newer one; the three
+  education planes of v16 follow `waterPipe`, and an older save loads them
+  all zero. — [data-model.md](engineering/data-model.md);
+  `writeTiles` in `src/world/grid.ts`
 - `SAVE_VERSION` is taken as current + 1 at build time; no plan owns a number in
   advance. —
   [municipal-services.md](engineering/features/municipal-services.md)

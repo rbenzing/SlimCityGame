@@ -6,8 +6,9 @@
  * tile through the connected road network — BFS hop distance (not
  * euclidean), capped at a funding-scaled range — radiating 2 tiles around
  * every reached road tile. Coverage blends into the relevant scalar field
- * per service kind (education/health: max-blend; police/fire: subtract;
- * park: additive, plus a flat bonus at the source).
+ * per service kind (education, one field per rung, and health: max-blend;
+ * police/fire: subtract; park: additive, plus a flat bonus at the source). A
+ * library writes no field: it lengthens the range of every school it reaches.
  *
  * A facility also serves a number of PEOPLE. Each tile's supply is the sum,
  * over the facilities reaching it, of the capacity each dedicates to the
@@ -19,11 +20,12 @@
 import type {
   BuildingCatalogEntry,
   BuildingInstance,
+  FundingKey,
   GridState,
   ServiceKind,
   ServiceLoad,
 } from '../shared/types';
-import { BuildingState, FieldId, ZoneType, isStreetTier } from '../shared/types';
+import { BuildingState, FieldId, ZoneType, fundingKeyOf, isStreetTier } from '../shared/types';
 import {
   BODY_HEALTH_PENALTY_PER_MONTH,
   MAP_SIZE,
@@ -42,6 +44,14 @@ const COVERAGE_RADIATE_RANGE = 2;
 const CRIME_GROWTH = 2;
 const FIRE_GROWTH = 1;
 const CRIME_GROWTH_LAND_VALUE_CEILING = 90;
+
+/** The field each school kind writes; its own, so no rung stands in for another. */
+const SCHOOL_FIELD: Readonly<Partial<Record<ServiceKind, FieldId>>> = {
+  education: FieldId.Education,
+  'middle-education': FieldId.MiddleEducation,
+  'high-education': FieldId.HighEducation,
+  'college-education': FieldId.CollegeEducation,
+};
 
 /**
  * Rounds (not truncates) before clamping to [0,255]. Coverage math routinely
@@ -142,15 +152,20 @@ export function roadBfsDistances(
   return byTile;
 }
 
-/** Per-tile coverage: max over reached road tiles within COVERAGE_RADIATE_RANGE of strength*(1 - dist/range). */
+/**
+ * Per-tile coverage: max over reached road tiles within COVERAGE_RADIATE_RANGE of
+ * strength*(1 - dist/range). `rangeAt` gives a road tile its own range where a
+ * library has stretched it; absent, every tile falls off over `range`.
+ */
 export function radiateWeighted(
   reached: ReadonlyMap<number, number>,
   range: number,
   strength: number,
+  rangeAt?: (roadIdx: number) => number,
 ): Map<number, number> {
   const out = new Map<number, number>();
   for (const [roadIdx, d] of reached) {
-    const value = strength * (1 - d / range);
+    const value = strength * (1 - d / (rangeAt ? rangeAt(roadIdx) : range));
     if (value <= 0) continue;
     forTilesAround(roadIdx, (ni) => {
       const prev = out.get(ni) ?? 0;
@@ -260,6 +275,13 @@ export class ServiceSim {
    * entry per facility and spares the selection channel a second traversal.
    */
   private readonly loadByFacility = new Map<number, number>();
+  /**
+   * The range uplift each library leaves on the tiles it reaches this tick, in
+   * percent, and the widest of them. Filled by the library pass, before any
+   * school radiates.
+   */
+  private readonly uplift = new Map<number, number>();
+  private maxUplift = 0;
 
   constructor(catalog: BuildingCatalogEntry[], bfs: RoadBfs = roadBfsDistances) {
     this.catalog = new Map(catalog.map((c) => [c.id, c] as const));
@@ -290,12 +312,13 @@ export class ServiceSim {
   tick(
     g: GridState,
     buildings: BuildingInstance[],
-    funding: Record<ServiceKind, number>,
+    funding: Record<FundingKey, number>,
     bodies: readonly UncollectedBody[] = [],
     tickNo = 0,
   ): Record<ServiceKind, ServiceLoad> {
     this.growFields(g);
     this.loadByFacility.clear();
+    this.uplift.clear();
 
     const footprints = footprintsByBuildingId(g);
     const residentsById = residentsByBuildingId(buildings, this.catalog);
@@ -304,6 +327,10 @@ export class ServiceSim {
       fire: [],
       health: [],
       education: [],
+      'middle-education': [],
+      'high-education': [],
+      'college-education': [],
+      library: [],
       park: [],
     };
     const active = buildings
@@ -314,19 +341,31 @@ export class ServiceSim {
       if (spec?.service) byKind[spec.service.kind].push(b);
     }
 
-    const load = {
-      police: this.tickKind(g, 'police', byKind.police, footprints, residentsById, funding.police),
-      fire: this.tickKind(g, 'fire', byKind.fire, footprints, residentsById, funding.fire),
-      health: this.tickKind(g, 'health', byKind.health, footprints, residentsById, funding.health),
-      education: this.tickKind(
-        g,
-        'education',
-        byKind.education,
-        footprints,
-        residentsById,
-        funding.education,
-      ),
-      park: this.tickKind(g, 'park', byKind.park, footprints, residentsById, funding.park),
+    // Libraries first, whatever order the registry gives: every school reads the
+    // uplift they leave, so one that radiated before them would not see it.
+    const libraries = this.tickKind(
+      g,
+      'library',
+      byKind.library,
+      footprints,
+      residentsById,
+      funding.education,
+    );
+    this.maxUplift = 0;
+    for (const value of this.uplift.values()) this.maxUplift = Math.max(this.maxUplift, value);
+
+    const run = (kind: ServiceKind): ServiceLoad =>
+      this.tickKind(g, kind, byKind[kind], footprints, residentsById, funding[fundingKeyOf(kind)]);
+    const load: Record<ServiceKind, ServiceLoad> = {
+      police: run('police'),
+      fire: run('fire'),
+      health: run('health'),
+      education: run('education'),
+      'middle-education': run('middle-education'),
+      'high-education': run('high-education'),
+      'college-education': run('college-education'),
+      library: libraries,
+      park: run('park'),
     };
     // Last: coverage max-blends the field, so a penalty written before it would
     // be erased by any clinic whose reach covered the tile.
@@ -386,8 +425,18 @@ export class ServiceSim {
       const start = nearestRoadTile(g, footprint);
       if (start === null) continue;
 
-      const reached = this.bfs(g, start, range);
-      const coverage = radiateWeighted(reached, range, spec.service.strength);
+      // A library stretches a school's range where its own reach is: the walk is
+      // cut at the widest range any library allows, and each road tile falls off
+      // over the range it has locally. With no library both are the plain range.
+      const school = SCHOOL_FIELD[kind] !== undefined;
+      const reach = school ? Math.ceil(range * (1 + this.maxUplift / 100)) : range;
+      const reached = this.bfs(g, start, reach);
+      const coverage = radiateWeighted(
+        reached,
+        range,
+        spec.service.strength,
+        school ? (tile) => range * (1 + (this.uplift.get(tile) ?? 0) / 100) : undefined,
+      );
       if (coverage.size === 0) continue;
       entry.coverage = coverage;
 
@@ -469,10 +518,19 @@ export class ServiceSim {
     kind: ServiceKind,
     coverage: ReadonlyMap<number, number>,
   ): void {
+    const schoolField = SCHOOL_FIELD[kind];
+    if (schoolField !== undefined) {
+      const field = g.fields[schoolField]!;
+      for (const [tile, value] of coverage) field[tile] = clamp255(Math.max(field[tile]!, value));
+      return;
+    }
     switch (kind) {
-      case 'education': {
-        const field = g.fields[FieldId.Education]!;
-        for (const [tile, value] of coverage) field[tile] = clamp255(Math.max(field[tile]!, value));
+      case 'library': {
+        // A library writes no field: its coverage, in percent, is the range uplift
+        // the schools read, the strongest where two reach a tile.
+        for (const [tile, value] of coverage) {
+          this.uplift.set(tile, Math.max(this.uplift.get(tile) ?? 0, value));
+        }
         break;
       }
       case 'health': {

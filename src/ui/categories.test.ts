@@ -189,7 +189,13 @@ describe('subTabsFor', () => {
       'plop.police-station',
       'plop.police-station-district',
     ]);
-    expect(subTabsFor('education')[0]?.cards.map((c) => c.id)).toEqual(['plop.school']);
+    expect(subTabsFor('education')[0]?.cards.map((c) => c.id)).toEqual([
+      'plop.school',
+      'plop.middle-school',
+      'plop.high-school',
+      'plop.college',
+      'plop.library',
+    ]);
     // The airport landmark is a park-category ploppable, so it joins
     // the Parks drawer alongside the pocket park (catalog order).
     expect(subTabsFor('parks')[0]?.cards.map((c) => c.id)).toEqual([

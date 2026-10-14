@@ -41,7 +41,8 @@ from the road network saved after the tiles — see
 | `buildingId`        | `Uint32Array`                                                   | `0` = none, else the `BuildingInstance.id` occupying the tile.                                                                           | v1                                                                    | `0`                                       |
 | `power` *           | `Uint8Array`                                                    | `1` = powered.                                                                                                                           | v1                                                                    | `0`                                       |
 | `watered` *         | `Uint8Array`                                                    | `1` = water service reaches the tile.                                                                                                    | v1                                                                    | `0`                                       |
-| `fields[0..8]`      | `Uint8Array` x9                                                 | The 9 scalar fields, `FieldId` order — see [Scalar fields](#the-scalar-fields).                                                          | v1                                                                    | `0`                                       |
+| `fields[0..8]`      | `Uint8Array` x9                                                 | The first 9 scalar fields, `FieldId` order — see [Scalar fields](#the-scalar-fields).                                                    | v1                                                                    | `0`                                       |
+| `fields[9..11]`     | `Uint8Array` x3                                                 | Middle, high and college education coverage. In memory beside the others; saved **last**, after `waterPipe` — see the v16 row below.    | v16                                                                   | `0` (no coverage)                         |
 | `district`          | `Uint8Array`                                                    | District id, `0` (unassigned) or `1..255` — see [Districts](#districts--policies).                                                       | v2                                                                    | `0`                                       |
 | `landfill`          | `Uint8Array`                                                    | `1` = landfill area tile that collected trash piles up on.                                                                               | v3                                                                    | `0`                                       |
 | `roadElevation` †   | `Float32Array`                                                  | Deck height in metres above this tile's terrain; `0` = at grade.                                                                         | v4 (v4 stored it as one byte, whole metres; widened to a float in v5) | `0`                                       |
@@ -145,8 +146,8 @@ month's regional count). Each is covered in
 
 ### Save version and per-tile width
 
-The current `SAVE_VERSION` is **15** (`src/shared/types.ts`), and the
-current per-tile width is **37 bytes** (`BYTES_PER_TILE` in
+The current `SAVE_VERSION` is **16** (`src/shared/types.ts`), and the
+current per-tile width is **40 bytes** (`BYTES_PER_TILE_V16` in
 `src/world/grid.ts`), followed by the road network. The width for every version is exported as
 `BYTES_PER_TILE_BY_VERSION` (`src/world/grid.ts`) — a single array, indexed
 by version number, that both `deserializeGrid` and the grid migration tests
@@ -168,7 +169,8 @@ read rather than each keeping its own count. Reproduced exactly:
 | 12             | 53         | The over-road layers: `overTier`, `overProfile` (`Uint16`), `overFlow`, `overElevation` (`Float32`) (+8 bytes).   |
 | 13             | 36         | Drops every road layer (−17 bytes); the road network follows the tiles.                                           |
 | 14             | 37         | `waterPipe` (+1 byte), appended to the tile record ahead of the network.                                          |
-| 15 (current)   | 37         | No layer: the v14 layout. Marks landfill fill counted in 0.25 kg trash units, rescaled on load from older saves.  |
+| 15             | 37         | No layer: the v14 layout. Marks landfill fill counted in 0.25 kg trash units, rescaled on load from older saves.  |
+| 16 (current)   | 40         | `fields[9..11]`, the middle, high and college education planes (+3 bytes), appended after `waterPipe`.            |
 
 Up to v12, every new layer was appended as the last thing the serializer
 wrote, in version order: an older save's tile record is exactly a
@@ -483,9 +485,11 @@ ordered kerb-to-kerb list of `LanePiece`s (`{ kind, width, flow?, tram? }`);
 
 ## The scalar fields
 
-Nine `Uint8Array` layers, `0..255`, indexed by `FieldId`
-(`src/shared/types.ts`) into `GridState.fields`; all nine are the persisted
-`fields[0..8]` grid layer (see [The tile grid](#the-tile-grid), and the
+Twelve `Uint8Array` layers, `0..255`, indexed by `FieldId`
+(`src/shared/types.ts`) into `GridState.fields`; all twelve are persisted — the
+first nine as the `fields[0..8]` grid layer, and the three education planes
+added by v16 as `fields[9..11]`, **serialized at the end of the tile record**
+and never between the first nine (see [The tile grid](#the-tile-grid), and the
 Traffic-field caveat in
 [What survives a save, and what doesn't](#what-survives-a-save-and-what-doesnt)).
 `FieldSim` (`src/sim/fields.ts`) runs the simulation; the emission,
@@ -500,9 +504,12 @@ the specs — but the shape below is part of the data model:
 | `Traffic`   | 3         | Rebuilt wholesale each pass from road-network edge volumes (not additive emission).                    | 0.92/tick    |
 | `Crime`     | 4         | Ambient growth on zoned tiles below a land-value ceiling; reduced by police coverage.                  | 0.985/tick   |
 | `FireRisk`  | 5         | Ambient growth on any occupied tile; reduced by fire-station coverage.                                 | 0.99/tick    |
-| `Education` | 6         | School building coverage only.                                                                         | 0.99/tick    |
+| `Education` | 6         | Elementary school coverage only.                                                                       | 0.99/tick    |
 | `Health`    | 7         | Hospital building coverage only.                                                                       | 0.99/tick    |
 | `Happiness` | 8         | Not emitted into — a pure per-tile recompute from the other 8 fields each time its schedule slot runs. | not diffused |
+| `MiddleEducation` | 9   | Middle school coverage only. Gates level 3 with `HighEducation` for dense housing, mixed use and local commercial. | 0.99/tick    |
+| `HighEducation`   | 10  | High school coverage only.                                                                             | 0.99/tick    |
+| `CollegeEducation` | 11 | College coverage only. Gates level 3 of high-density commercial.                                       | 0.99/tick    |
 
 Every field but `Happiness` diffuses on its own staggered schedule via the
 same 4-neighbor (von Neumann) blend — 0.6 self weight, 0.4 neighbor average —
