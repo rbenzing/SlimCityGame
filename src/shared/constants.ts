@@ -177,12 +177,40 @@ export const MILESTONES: readonly Milestone[] = [
   { name: 'Metropolis', population: 50_000, reward: 120_000 },
 ] as const;
 /**
+ * The index of Big Town, 3,500 people: the rung from which a town runs its own
+ * public works. One source for every rule that cuts over there.
+ */
+export const BIG_TOWN_MILESTONE = MILESTONES.findIndex((m) => m.name === 'Big Town');
+/**
  * The milestone from which a building on the mains needs a drain. Below it
  * the whole town is on septic tanks, as a community under the Census' old
  * urban line of 2,500 people mostly is; Big Town, 3,500, is the first rung
  * past that line.
  */
-export const SEWER_MILESTONE = MILESTONES.findIndex((m) => m.name === 'Big Town');
+export const SEWER_MILESTONE = BIG_TOWN_MILESTONE;
+/**
+ * The milestone from which the regional funeral service stops: below it every
+ * body no cemetery of the town's own collected is taken off the map the tick it
+ * falls, from it the body stays where it fell.
+ */
+export const DEATH_CARE_MILESTONE = BIG_TOWN_MILESTONE;
+/**
+ * ¢ the regional funeral service bills for a body. Crow Wing County MN's 2026
+ * indigent contract pays $2,900 for a cremation and $3,900 for a burial
+ * (Brainerd Dispatch, 3 Feb 2026); weighted by the 2025 US cremation share of
+ * 62.8% (CANA 2026) that is 0.628 × 2,900 + 0.372 × 3,900 = $3,272, which at
+ * the game's operating scale of about $901 to the ¢ is ¢3.6. Laramie County
+ * WY's $1,500 flat rate is the low cross-check.
+ */
+export const REGIONAL_FUNERAL_FEE = 3.6;
+/**
+ * Health points an uncollected body takes from its tile and the two tiles
+ * around it for each game month it lies there. A dial: no published figure
+ * stands behind it. It is never fed back into the death rate.
+ */
+export const BODY_HEALTH_PENALTY_PER_MONTH = 32;
+/** Ticks between offers of the bodies still waiting to the cemeteries; a body is offered the tick it falls. */
+export const DEATH_CARE_PERIOD = 10;
 
 // --- camera -----------------------------------------------------------------
 export const CAMERA_MIN_DISTANCE = 40;

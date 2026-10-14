@@ -46,7 +46,8 @@ export const WALLED_MOTORWAY = composeProfile(presetProfileForTier(RoadTier.High
  *   z 100      main street (two-lane), x 50–130, the town centre, carried on
  *              east to x 140 across a six-lane road at x 134–135, z 88–111
  *   z 101–129  one-way street (x 60), alley (x 70), bus lane (x 120), and a
- *              hospital on main street's south side at x 110–114, z 101–103
+ *              hospital on main street's south side at x 110–114, z 101–103 and
+ *              a cemetery beside it at x 93–95, z 101–103
  *   z 115      bike lane, x 91–119
  *   z 126–129  heavy industry, x 96–119, north of the four-lane road
  *   z 130      four-lane road, x 50–130, industry, power, the incinerator and,
@@ -103,6 +104,7 @@ export const TOWN = {
   transferStation: { x: 91, z: 131 },
   airport: { x: 91, z: 146 },
   hospital: { x: 110, z: 101 },
+  cemetery: { x: 93, z: 101 },
   hill: { x: 210, z: 210 },
 } as const;
 
@@ -385,6 +387,7 @@ export function townSteps(): TownStep[] {
         place('fire-station', { x: 71, z: 105 }),
         place('clinic', { x: 91, z: 101 }),
         place('hospital', t.hospital),
+        place('cemetery', t.cemetery),
         place('school', { x: 91, z: 116 }),
         place('small-park', { x: 100, z: 101 }),
         place('small-park', { x: 56, z: 86 }),

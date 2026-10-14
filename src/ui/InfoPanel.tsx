@@ -99,7 +99,7 @@ function iconForEntry(entry: BuildingCatalogEntry | undefined): IconName {
         case 'park':
           return 'parks';
         default:
-          return 'city';
+          return entry.deathCare ? 'health' : 'city';
       }
     default:
       return 'city';
@@ -203,6 +203,13 @@ export function InfoPanel(): JSX.Element | null {
               label="Load"
               value={`${Math.round(info.serviceLoad * 100)}%`}
               testId="service-load-row"
+            />
+          )}
+          {info?.deathCare && (
+            <Row
+              label="Plots"
+              value={`${info.deathCare.used} of ${info.deathCare.total} used`}
+              testId="plots-row"
             />
           )}
           {entry?.utility?.powerMW !== undefined && (

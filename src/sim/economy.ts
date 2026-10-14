@@ -31,6 +31,7 @@ import {
   MILESTONES,
   MONTHS_PER_YEAR,
   RECYCLING_CREDIT_PER_UNIT,
+  REGIONAL_FUNERAL_FEE,
   TICKS_PER_MONTH,
   workforceOf,
 } from '../shared/constants';
@@ -66,6 +67,12 @@ export interface EconomyTickInput {
    * month's recovery is credited exactly once. Omitted, nothing is credited.
    */
   takeRecoveredUnits?: () => number;
+  /**
+   * Hands over the bodies the regional funeral service has collected since the
+   * last month boundary, clearing the tally; each is billed REGIONAL_FUNERAL_FEE
+   * as an expense. Called once, at the month boundary only. Omitted, nothing is billed.
+   */
+  takeRegionalBodies?: () => number;
 }
 
 export interface EconomyTickResult {
@@ -308,12 +315,14 @@ export class EconomySystem {
       }
 
       const loanInterest = stats.loanBalance * LOAN_MONTHLY_INTEREST;
+      const funeralFees = (input.takeRegionalBodies?.() ?? 0) * REGIONAL_FUNERAL_FEE;
       const expenses =
         buildingUpkeep +
         roadUpkeep +
         landfillUpkeep +
         powerLineUpkeep +
         waterPipeUpkeep +
+        funeralFees +
         loanInterest;
 
       funds += income - expenses;

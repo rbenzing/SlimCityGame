@@ -46,7 +46,9 @@ Inside `tick()`, in exactly this order:
 6. **Service coverage** — `ServiceSim.tick()` (`src/sim/services.ts`:
    police/fire/health/education/park coverage, plus ambient Crime/FireRisk
    growth) runs when `tickNo % SERVICE_PERIOD === SERVICE_OFFSET`
-   (`SERVICE_PERIOD = 8`, `SERVICE_OFFSET = 6`). See
+   (`SERVICE_PERIOD = 8`, `SERVICE_OFFSET = 6`). After every kind's coverage
+   is written, the same pass subtracts the uncollected-body penalty from
+   `Health` (coverage first, penalty second). See
    [services-model.md](services-model.md).
 7. **Garbage generation + collection** — `GarbageSystem.tick()`
    (`src/sim/garbage.ts`: trash generation, landfill collection, incinerator
@@ -85,11 +87,17 @@ Inside `tick()`, in exactly this order:
     (`TICKS_PER_MONTH = TICKS_PER_DAY × DAYS_PER_MONTH = 6,000`). See
     [population-model.md](population-model.md) and
     [../game-design/economy.md](../game-design/economy.md).
-15. **Deaths and re-lets** — `DeathCareSystem.tick()` (`src/sim/deathcare.ts`)
-    runs **every tick, unconditionally**, after the economy so it reads the
-    population and the demand of the same tick: it accrues deaths against the
-    population and, while residential demand is above zero, re-lets vacancies.
-    See [population-model.md](population-model.md).
+15. **Deaths, collection and re-lets** — `DeathCareSystem.tick()`
+    (`src/sim/deathcare.ts`) runs **every tick, unconditionally**, after the
+    economy so it reads the population and the demand of the same tick: it
+    accrues deaths against the population, leaving a body at each, and, while
+    residential demand is above zero, re-lets vacancies. `collect()` follows
+    in the same tick: the cemeteries take the bodies they reach (the tick a
+    body falls, then every `DEATH_CARE_PERIOD = 10` ticks) and, below Big
+    Town, the regional funeral service takes the rest. The month's regional
+    fees are billed by the next settlement at step 14. See
+    [population-model.md](population-model.md) and
+    [services-model.md](services-model.md#death-care).
 16. **`stats.tick = tickNo`**.
 17. **Snapshot** — `postSnapshot()` runs when
     `tickNo % SNAPSHOT_TICKS === 0`, where
@@ -112,6 +120,7 @@ not whether the call happens.
 | Building + road noise emission                          | `EMIT_PERIOD` / `EMIT_OFFSET`                   | every 4 ticks, offset 3   | `worker.entry.ts`                |
 | Service coverage (police/fire/health/education/park)    | `SERVICE_PERIOD` / `SERVICE_OFFSET`             | every 8 ticks, offset 6   | `worker.entry.ts`                |
 | Garbage generation + collection                         | `GARBAGE_PERIOD` / `GARBAGE_OFFSET`             | every 10 ticks, offset 5  | `src/shared/constants.ts`        |
+| Cemetery collection of bodies still waiting             | `DEATH_CARE_PERIOD`                             | every 10 ticks, offset 0 (and the tick a body falls) | `src/shared/constants.ts` |
 | Traffic volume decay + control re-warrant               | `TICKS_PER_DAY`                                 | every 200 ticks, offset 0 | `src/shared/constants.ts`        |
 | Traffic field bake                                      | `TRAFFIC_FIELD_PERIOD` / `TRAFFIC_FIELD_OFFSET` | every 4 ticks, offset 1   | `worker.entry.ts`                |
 | LandValue diffusion                                     | period 8, offset 0                              | every 8 ticks             | `fields.ts`'s `DIFFUSING_FIELDS` |

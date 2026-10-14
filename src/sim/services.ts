@@ -24,7 +24,14 @@ import type {
   ServiceLoad,
 } from '../shared/types';
 import { BuildingState, FieldId, ZoneType, isStreetTier } from '../shared/types';
-import { MAP_SIZE, MAP_TILES, inBounds, tileIndex } from '../shared/constants';
+import {
+  BODY_HEALTH_PENALTY_PER_MONTH,
+  MAP_SIZE,
+  MAP_TILES,
+  TICKS_PER_MONTH,
+  inBounds,
+  tileIndex,
+} from '../shared/constants';
 import { occupiedResidents } from '../shared/occupancy';
 import { cellTile, freeCellsOn, neighbours, roadCellsOf } from '../world/roadnet';
 
@@ -145,21 +152,52 @@ export function radiateWeighted(
   for (const [roadIdx, d] of reached) {
     const value = strength * (1 - d / range);
     if (value <= 0) continue;
-    const x = roadIdx % MAP_SIZE;
-    const z = Math.floor(roadIdx / MAP_SIZE);
-    for (let dz = -COVERAGE_RADIATE_RANGE; dz <= COVERAGE_RADIATE_RANGE; dz++) {
-      const remaining = COVERAGE_RADIATE_RANGE - Math.abs(dz);
-      for (let dx = -remaining; dx <= remaining; dx++) {
-        const nx = x + dx;
-        const nz = z + dz;
-        if (!inBounds(nx, nz)) continue;
-        const ni = tileIndex(nx, nz);
-        const prev = out.get(ni) ?? 0;
-        if (value > prev) out.set(ni, value);
-      }
-    }
+    forTilesAround(roadIdx, (ni) => {
+      const prev = out.get(ni) ?? 0;
+      if (value > prev) out.set(ni, value);
+    });
   }
   return out;
+}
+
+/** Visits every on-map tile within COVERAGE_RADIATE_RANGE orthogonal steps of `idx`, itself included: the shape coverage radiates in. */
+function forTilesAround(idx: number, visit: (tile: number) => void): void {
+  const x = idx % MAP_SIZE;
+  const z = Math.floor(idx / MAP_SIZE);
+  for (let dz = -COVERAGE_RADIATE_RANGE; dz <= COVERAGE_RADIATE_RANGE; dz++) {
+    const remaining = COVERAGE_RADIATE_RANGE - Math.abs(dz);
+    for (let dx = -remaining; dx <= remaining; dx++) {
+      const nx = x + dx;
+      const nz = z + dz;
+      if (!inBounds(nx, nz)) continue;
+      visit(tileIndex(nx, nz));
+    }
+  }
+}
+
+/** Bodies that fell on one tile (a grid index) in one tick and have not been collected. */
+export interface UncollectedBody {
+  tile: number;
+  count: number;
+  sinceTick: number;
+}
+
+/**
+ * The tiles a facility's vehicles reach: the road walk from the street beside
+ * `footprint`, `range` hops at most, radiated two tiles, strongest (1) at the
+ * street and fading to 0 at `range`. Null with no footprint, no street, or
+ * nothing in reach.
+ */
+export function reachOfFootprint(
+  g: GridState,
+  footprint: readonly number[] | undefined,
+  range: number,
+): Map<number, number> | null {
+  if (!footprint || footprint.length === 0) return null;
+  const start = nearestRoadTile(g, footprint);
+  if (start === null) return null;
+  const coverage = radiateWeighted(roadBfsDistances(g, start, range), range, 1);
+  return coverage.size === 0 ? null : coverage;
 }
 
 /** The road walk a facility's reach is built from; injectable so a tick's traversals can be counted. */
@@ -253,6 +291,8 @@ export class ServiceSim {
     g: GridState,
     buildings: BuildingInstance[],
     funding: Record<ServiceKind, number>,
+    bodies: readonly UncollectedBody[] = [],
+    tickNo = 0,
   ): Record<ServiceKind, ServiceLoad> {
     this.growFields(g);
     this.loadByFacility.clear();
@@ -274,7 +314,7 @@ export class ServiceSim {
       if (spec?.service) byKind[spec.service.kind].push(b);
     }
 
-    return {
+    const load = {
       police: this.tickKind(g, 'police', byKind.police, footprints, residentsById, funding.police),
       fire: this.tickKind(g, 'fire', byKind.fire, footprints, residentsById, funding.fire),
       health: this.tickKind(g, 'health', byKind.health, footprints, residentsById, funding.health),
@@ -288,6 +328,34 @@ export class ServiceSim {
       ),
       park: this.tickKind(g, 'park', byKind.park, footprints, residentsById, funding.park),
     };
+    // Last: coverage max-blends the field, so a penalty written before it would
+    // be erased by any clinic whose reach covered the tile.
+    this.applyBodyPenalty(g, bodies, tickNo);
+    return load;
+  }
+
+  /**
+   * Each tile holding uncollected bodies loses `min(255, bodies × dial × months
+   * lying)` of Health there and on the tiles round it, every body aged by its
+   * own tick. The loss comes off whatever coverage has just written.
+   */
+  private applyBodyPenalty(g: GridState, bodies: readonly UncollectedBody[], tickNo: number): void {
+    const owed = new Map<number, number>();
+    for (const body of bodies) {
+      const months = Math.max(0, tickNo - body.sinceTick) / TICKS_PER_MONTH;
+      owed.set(
+        body.tile,
+        (owed.get(body.tile) ?? 0) + body.count * BODY_HEALTH_PENALTY_PER_MONTH * months,
+      );
+    }
+    const health = g.fields[FieldId.Health]!;
+    for (const [tile, loss] of owed) {
+      const penalty = Math.min(255, loss);
+      if (penalty <= 0) continue;
+      forTilesAround(tile, (ni) => {
+        health[ni] = clamp255(health[ni]! - penalty);
+      });
+    }
   }
 
   private tickKind(

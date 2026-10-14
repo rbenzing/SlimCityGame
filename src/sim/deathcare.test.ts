@@ -69,9 +69,10 @@ function run(
   ticks: number,
   population: number,
   demand = 0,
+  fromTick = 0,
 ): void {
   const buildings = registry.all();
-  for (let t = 0; t < ticks; t++) system.tick(buildings, population, demand);
+  for (let t = fromTick; t < fromTick + ticks; t++) system.tick(buildings, population, demand, t);
 }
 
 describe('DeathCareSystem: saves', () => {
@@ -91,8 +92,22 @@ describe('DeathCareSystem: saves', () => {
       deaths: 0,
       reletRemainder: 0,
       relets: 0,
+      interments: [],
+      backlog: [],
+      regionalThisMonth: 0,
     });
     expect(system.totalDeaths).toBe(0);
+    expect(system.uncollected).toBe(0);
+  });
+
+  it('loads a slice-1 save, four counters and nothing else, with no interments and nothing uncollected', () => {
+    const system = new DeathCareSystem(byId);
+    system.restoreState({ deathRemainder: 0.5, deaths: 12, reletRemainder: 0.25, relets: 3 });
+    expect(system.totalDeaths).toBe(12);
+    expect(system.uncollected).toBe(0);
+    expect(system.backlog).toEqual([]);
+    expect(system.regionalThisMonth).toBe(0);
+    expect(system.serializeState()).toMatchObject({ interments: [], backlog: [] });
   });
 
   it('loads damaged counters as zero rather than carrying them', () => {
@@ -131,7 +146,7 @@ describe('DeathCareSystem: deaths accrue', () => {
     // 10,000 residents: one death every 800 ticks.
     const perTick = Array.from(
       { length: 1700 },
-      () => system.tick(registry.all(), 10_000, 0).deaths,
+      (_, t) => system.tick(registry.all(), 10_000, 0, t).deaths,
     );
     expect(perTick.reduce((a, b) => a + b, 0)).toBe(2);
     expect(perTick.filter((d) => d > 0)).toHaveLength(2);
@@ -154,7 +169,7 @@ describe('DeathCareSystem: deaths accrue', () => {
     );
     const secondHalf = new DeathCareSystem(byId);
     secondHalf.restoreState(JSON.parse(JSON.stringify(firstHalf.serializeState())));
-    run(secondHalf, registry, TICKS_PER_YEAR / 2, 10_000);
+    run(secondHalf, registry, TICKS_PER_YEAR / 2, 10_000, 0, TICKS_PER_YEAR / 2);
 
     expect(secondHalf.totalDeaths).toBe(wholeSystem.totalDeaths);
     expect(vacanciesById(registry)).toEqual(vacanciesById(whole.registry));
@@ -169,8 +184,8 @@ describe('DeathCareSystem: deaths accrue', () => {
     const system = new DeathCareSystem(byId);
 
     // 1,200 residents, 300 of them in the tower; deaths until 90 have fallen.
-    while (system.totalDeaths < 90)
-      system.tick(registry.all(), 1.5 / DEATH_RATE_PER_RESIDENT_PER_TICK, 0);
+    for (let t = 0; system.totalDeaths < 90; t++)
+      system.tick(registry.all(), 1.5 / DEATH_RATE_PER_RESIDENT_PER_TICK, 0, t);
 
     const towerDeaths = tower!.vacancies ?? 0;
     const houseDeaths = houses.reduce((sum, h) => sum + (h.vacancies ?? 0), 0);
@@ -190,11 +205,12 @@ describe('DeathCareSystem: deaths accrue', () => {
     const system = new DeathCareSystem(byId);
 
     // Kill everyone, and then some: the city runs out of people before it runs out of time.
+    let t = 0;
     while (registry.totals().residents > 0) {
-      system.tick(registry.all(), 1.5 / DEATH_RATE_PER_RESIDENT_PER_TICK, 0);
+      system.tick(registry.all(), 1.5 / DEATH_RATE_PER_RESIDENT_PER_TICK, 0, t++);
       expect(empty!.vacancies).toBe(3);
     }
-    system.tick(registry.all(), 1.5 / DEATH_RATE_PER_RESIDENT_PER_TICK, 0);
+    system.tick(registry.all(), 1.5 / DEATH_RATE_PER_RESIDENT_PER_TICK, 0, t);
 
     expect(system.totalDeaths).toBe(12);
     // Every house ends exactly empty: none went below 0 residents, none above 3 vacancies.
@@ -209,8 +225,8 @@ describe('DeathCareSystem: deaths accrue', () => {
     const [abandoned] = lay(registry, g, BLOCK, 1, 2, BuildingState.Abandoned);
     const system = new DeathCareSystem(byId);
 
-    while (system.totalDeaths < 50)
-      system.tick(registry.all(), 1.5 / DEATH_RATE_PER_RESIDENT_PER_TICK, 0);
+    for (let t = 0; system.totalDeaths < 50; t++)
+      system.tick(registry.all(), 1.5 / DEATH_RATE_PER_RESIDENT_PER_TICK, 0, t);
 
     expect(live!.vacancies).toBe(system.totalDeaths);
     expect(building!.vacancies).toBeUndefined();
@@ -225,8 +241,8 @@ describe('DeathCareSystem: deaths accrue', () => {
     const listedForward = forward.registry.all();
     const listedBackward = reversed.registry.all().reverse();
     for (let t = 0; t < 30_000; t++) {
-      a.tick(listedForward, 10_000, 0);
-      b.tick(listedBackward, 10_000, 0);
+      a.tick(listedForward, 10_000, 0, t);
+      b.tick(listedBackward, 10_000, 0, t);
     }
     expect(a.totalDeaths).toBeGreaterThan(0);
     expect(vacanciesById(reversed.registry)).toEqual(vacanciesById(forward.registry));
@@ -259,7 +275,7 @@ describe('DeathCareSystem: vacancies re-let while the town attracts residents', 
       const system = new DeathCareSystem(byId);
       // Deaths elsewhere keep the stock at 200: put back what was re-let.
       for (let t = 0; t < RELET_TICKS; t++) {
-        const { relets } = system.tick(registry.all(), 0, demand);
+        const { relets } = system.tick(registry.all(), 0, demand, t);
         tower!.vacancies = (tower!.vacancies ?? 0) + relets;
       }
       return system.totalRelets;
@@ -365,7 +381,7 @@ describe('a city that stops attracting residents shrinks, and recovers when it s
         stats = { ...stats, ...statsPatch };
       }
       stats.demand = { res: demand, com: 0, ind: 0 };
-      deathCare.tick(buildings, stats.population, demand);
+      deathCare.tick(buildings, stats.population, demand, tickNo);
     };
 
     step(0);

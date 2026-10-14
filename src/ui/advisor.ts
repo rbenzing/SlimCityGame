@@ -7,12 +7,18 @@
  * and the stats block, with no three.js, store or worker anywhere near it, so
  * the entire ranking is testable directly.
  */
-import { MILESTONES, SEWER_MILESTONE, workforceOf } from '../shared/constants';
+import {
+  DEATH_CARE_MILESTONE,
+  MILESTONES,
+  SEWER_MILESTONE,
+  workforceOf,
+} from '../shared/constants';
 import {
   BuildingState,
   Problem,
   type BuildingInstance,
   type CityStats,
+  type DeathCareReport,
   type GrowthWaiting,
   type ZonedUnserved,
 } from '../shared/types';
@@ -147,6 +153,7 @@ function countsAsProblem(building: BuildingInstance): boolean {
 
 const NOTHING_WAITING: GrowthWaiting = { power: 0, water: 0, sewer: 0 };
 const NOTHING_UNSERVED: ZonedUnserved = { power: 0, water: 0, sewer: 0 };
+const NO_DEATH_CARE: DeathCareReport = { facilities: [], uncollected: 0, regionalThisMonth: 0 };
 
 /**
  * Ranked list of what is wrong with the city. Empty when nothing is — an
@@ -157,6 +164,7 @@ export function cityIssues(
   stats: CityStats,
   waiting: GrowthWaiting = NOTHING_WAITING,
   unserved: ZonedUnserved = NOTHING_UNSERVED,
+  deathCare: DeathCareReport = NO_DEATH_CARE,
 ): CityIssue[] {
   const counts = new Map<number, number>();
   const focus = new Map<number, BuildingInstance>();
@@ -190,7 +198,12 @@ export function cityIssues(
     });
   }
 
-  issues.push(...waitingIssues(waiting), ...unservedIssues(unserved), ...cityWideIssues(stats));
+  issues.push(
+    ...waitingIssues(waiting),
+    ...unservedIssues(unserved),
+    ...deathCareIssues(deathCare, stats),
+    ...cityWideIssues(stats),
+  );
 
   const order = new Map(PROBLEM_RULES.map((rule, index) => [rule.id, index]));
   return issues.sort((a, b) => {
@@ -281,6 +294,53 @@ function unservedIssues(unserved: ZonedUnserved): CityIssue[] {
       focus: unserved.sewerAt,
     });
   }
+  return issues;
+}
+
+/**
+ * The dead: bodies no cemetery has collected (the first one is enough, before
+ * any field has moved), a cemetery that is full with bodies still waiting, and
+ * the rung before the regional funeral service ends with no cemetery placed.
+ */
+function deathCareIssues(report: DeathCareReport, stats: CityStats): CityIssue[] {
+  const issues: CityIssue[] = [];
+  const n = report.uncollected;
+
+  if (n > 0) {
+    issues.push({
+      id: 'bodies-uncollected',
+      severity: 'warning',
+      title: `${n} ${n === 1 ? 'body lies' : 'bodies lie'} uncollected`,
+      detail:
+        'No cemetery with room reaches by road the building where they fell, and each one costs the health of the streets around it every month. Build a cemetery on a street that connects to it.',
+      count: n,
+      focus: report.uncollectedAt,
+    });
+  }
+
+  const full = report.facilities.filter((f) => f.used >= f.total).length;
+  if (n > 0 && full > 0) {
+    issues.push({
+      id: 'cemetery-full',
+      severity: 'warning',
+      title: `${full === 1 ? 'A cemetery is' : `${full} cemeteries are`} full`,
+      detail:
+        'A full cemetery collects nothing more — build another, on ground the town can spare.',
+      count: full,
+    });
+  }
+
+  if (stats.milestoneLevel === DEATH_CARE_MILESTONE - 1 && report.facilities.length === 0) {
+    const town = MILESTONES[DEATH_CARE_MILESTONE]!;
+    issues.push({
+      id: 'funeral-service-ending',
+      severity: 'info',
+      title: `The regional funeral service ends at ${town.name}`,
+      detail: `The county buries the town's dead until ${town.name} (${town.population.toLocaleString()} people). From then on a body no cemetery collects stays where it fell and fouls the health of the street, so build a cemetery on a road before then.`,
+      count: 0,
+    });
+  }
+
   return issues;
 }
 

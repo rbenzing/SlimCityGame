@@ -58,6 +58,12 @@
  *    the accessible spaces' paint by the entrance ("hospitalPaint"), cars
  *    in the deck's stalls ("hospitalCar") and an ambulance under its canopy
  *    ("hospitalAmbulance").
+ *  - cemetery: one lawn plate over the lot with the drive, the forecourt and a
+ *    turf patch on every grave space ("cemeteryGrounds"), a gabled gatehouse
+ *    ("cemeteryGatehouse"), the perimeter fence and its gate piers
+ *    ("cemeteryFence"), a few trees ("cemeteryTree", the park's tree) and one
+ *    headstone per interment ("cemeteryStone"): a single InstancedMesh for every
+ *    cemetery's stones, whose count follows setInterments, not the building delta.
  *  The paving kits stand on the highest ground under their lot (pavesLot),
  *  so the instancer's plinth never shows through their yard on a slope.
  *  - small-park: a flat lawn plate + path cross ("parkGround"), 2-3
@@ -116,6 +122,7 @@ export const UTILITY_KIT_CATALOG_IDS: readonly string[] = [
   'materials-recovery-facility',
   'transfer-station',
   'hospital',
+  'cemetery',
   'small-park',
 ];
 
@@ -157,6 +164,11 @@ export type UtilityKitPartKind =
   | 'hospitalPaint'
   | 'hospitalCar'
   | 'hospitalAmbulance'
+  | 'cemeteryGrounds'
+  | 'cemeteryGatehouse'
+  | 'cemeteryFence'
+  | 'cemeteryTree'
+  | 'cemeteryStone'
   | 'parkGround'
   | 'parkTree'
   | 'parkBench';
@@ -2115,6 +2127,355 @@ export function deckStallTaken(buildingId: number, i: number): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// cemetery: a lawn of burial sections cut by a two-way drive from the street,
+// a gatehouse and forecourt on the street side of the lot, an ornamental
+// fence round the lot with a gap for the drive, a few trees, and a headstone
+// at the head of each grave that holds an interment. The grounds are one lawn
+// plate on the highest ground under the lot, so the headstones, fence and
+// buildings all stand on one level on a slope.
+// ---------------------------------------------------------------------------
+
+const INCH_M = 0.0254;
+/** The least a grave space may be: 42 × 96 in (Florida Statutes 497.274), rounded up to the centimetre. */
+export const GRAVE_SPACE = { w: 1.07, l: 2.44 };
+/** A private interior road of two lanes: 20 ft (Montgomery County, MD). */
+export const CEMETERY_DRIVE_M = 20 * FOOT_M;
+/** Cemetery fences run 4-6 ft (Roslyn WA caps them at 6 ft); this is the game's 1.5 m, a little under 5 ft. */
+export const CEMETERY_FENCE_HEIGHT_M = 1.5;
+/** The gatehouse: one storey, 128 m² on the floor, under the catalog's 3.2 m. */
+export const CEMETERY_GATEHOUSE = { w: 12, d: 10.67, h: 3.2, wall: 2.6, eave: 0.4 };
+/** The paved forecourt between the gatehouse door and the lot's front fence. */
+const CEMETERY_FORECOURT_DEPTH_M = 6;
+/** An upright headstone of the common US single-upright range (24-36 in tall, 20-30 in wide, 6-8 in thick). */
+export const HEADSTONE = {
+  w: 24 * INCH_M,
+  t: 8 * INCH_M,
+  h: 30 * INCH_M,
+  baseW: 24 * INCH_M + 0.1,
+  baseT: 8 * INCH_M + 0.1,
+  baseH: 0.1,
+};
+/** Graves in one burial tile, and how they are laid in it: columns across, rows deep, the gap between neighbours and between rows. */
+export const GRAVES_PER_SECTION = 98;
+const SECTION_GRAVE_COLS = 14;
+const SECTION_GRAVE_ROWS = GRAVES_PER_SECTION / SECTION_GRAVE_COLS;
+const GRAVE_GAP_M = 0.08;
+const GRAVE_AISLE_M = 0.3;
+/** The fence stands this far in from the lot's edge; graves keep this much clear of it. */
+const CEMETERY_FENCE_INSET_M = 0.25;
+const CEMETERY_FENCE_CLEAR_M = 0.4;
+/** Headstone sits this far along its grave space from the head end. */
+const HEADSTONE_HEAD_SETBACK_M = 0.2;
+export const CEMETERY_LAWN_HEIGHT = 0.3;
+const CEMETERY_PAVING_PROUD_M = 0.02;
+const CEMETERY_PATCH_PROUD_M = 0.012;
+const CEMETERY_FENCE_POST_SPACING_M = 2.5;
+const CEMETERY_PICKET_SPACING_M = 0.5;
+const CEMETERY_GATE_PIER_M = 0.45;
+
+const CEMETERY_LAWN_RGB: RGB = [0.2, 0.46, 0.2];
+const CEMETERY_PATCH_RGB: RGB = [0.15, 0.38, 0.17];
+const CEMETERY_DRIVE_RGB: RGB = [0.27, 0.28, 0.3];
+const CEMETERY_FORECOURT_RGB: RGB = [0.62, 0.6, 0.55];
+const CEMETERY_FENCE_RGB: RGB = [0.1, 0.11, 0.12];
+const CEMETERY_PIER_RGB: RGB = [0.56, 0.56, 0.54];
+const GATEHOUSE_WALL_RGB: RGB = [0.8, 0.74, 0.62];
+const GATEHOUSE_ROOF_RGB: RGB = [0.3, 0.33, 0.37];
+const GATEHOUSE_DOOR_RGB: RGB = [0.22, 0.14, 0.1];
+const GATEHOUSE_GLASS_RGB: RGB = [0.22, 0.3, 0.36];
+const HEADSTONE_RGB: RGB = [0.58, 0.59, 0.61];
+const HEADSTONE_BASE_RGB: RGB = [0.46, 0.47, 0.49];
+
+/** One grave space in the footprint frame: its centre and the burial section (tile) it lies in. */
+export interface GraveSpace extends Vec2 {
+  section: number;
+}
+
+/** The plots a cemetery draws: its catalog count, or a full 98 on every burial tile when the entry carries none. */
+export function cemeteryPlots(entry: BuildingCatalogEntry): number {
+  return entry.deathCare?.plots ?? (entry.footprint.w * entry.footprint.d - 1) * GRAVES_PER_SECTION;
+}
+
+export interface CemeteryLayout {
+  /** The drive's rectangle, street edge to the back fence. */
+  drive: Rect;
+  gatehouse: Rect;
+  forecourt: Rect;
+  /** The gap the fence leaves for the drive. */
+  gate: { x0: number; x1: number };
+  /** Every grave space, in the order interments fill them: front section first. */
+  graves: GraveSpace[];
+  trees: Vec2[];
+}
+
+/**
+ * The drive runs the depth of the lot along the line between the last two
+ * columns of tiles, the gatehouse and its forecourt fill the street-side tile
+ * of the last column beside it, and the other tiles are burial sections:
+ * 14 × 7 graves centred in the tile's clear ground. Sections fill front row
+ * first, left to right, and each fills front row to back, left to right.
+ * Pure; fixed per footprint; `plots` clips the last section.
+ */
+export function computeCemeteryLayout(footprint: FootprintSize, plots: number): CemeteryLayout {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const tile = TILE_METERS;
+  const driveX = halfW - tile;
+  const drive: Rect = {
+    x0: driveX - CEMETERY_DRIVE_M / 2,
+    x1: driveX + CEMETERY_DRIVE_M / 2,
+    z0: -halfD + CEMETERY_FENCE_INSET_M,
+    z1: halfD,
+  };
+
+  const sections: { c: number; r: number; rect: Rect }[] = [];
+  for (let r = footprint.d - 1; r >= 0; r--) {
+    for (let c = 0; c < footprint.w; c++) {
+      if (c === footprint.w - 1 && r === footprint.d - 1) continue;
+      const rect: Rect = {
+        x0: -halfW + c * tile,
+        x1: -halfW + (c + 1) * tile,
+        z0: -halfD + r * tile,
+        z1: -halfD + (r + 1) * tile,
+      };
+      if (c === 0) rect.x0 += CEMETERY_FENCE_CLEAR_M;
+      if (c === footprint.w - 1) rect.x1 -= CEMETERY_FENCE_CLEAR_M;
+      if (r === 0) rect.z0 += CEMETERY_FENCE_CLEAR_M;
+      if (r === footprint.d - 1) rect.z1 -= CEMETERY_FENCE_CLEAR_M;
+      if (c === footprint.w - 2) rect.x1 = drive.x0;
+      if (c === footprint.w - 1) rect.x0 = drive.x1;
+      sections.push({ c, r, rect });
+    }
+  }
+
+  const spanX = SECTION_GRAVE_COLS * GRAVE_SPACE.w + (SECTION_GRAVE_COLS - 1) * GRAVE_GAP_M;
+  const spanZ = SECTION_GRAVE_ROWS * GRAVE_SPACE.l + (SECTION_GRAVE_ROWS - 1) * GRAVE_AISLE_M;
+  const graves: GraveSpace[] = [];
+  sections.forEach(({ rect }, section) => {
+    const x0 = (rect.x0 + rect.x1) / 2 - spanX / 2;
+    const z1 = (rect.z0 + rect.z1) / 2 + spanZ / 2;
+    for (let row = 0; row < SECTION_GRAVE_ROWS; row++) {
+      for (let col = 0; col < SECTION_GRAVE_COLS; col++) {
+        graves.push({
+          section,
+          x: x0 + GRAVE_SPACE.w / 2 + col * (GRAVE_SPACE.w + GRAVE_GAP_M),
+          z: z1 - GRAVE_SPACE.l / 2 - row * (GRAVE_SPACE.l + GRAVE_AISLE_M),
+        });
+      }
+    }
+  });
+
+  // The gatehouse hard against the drive's side of its tile, its back a metre in from the tile's.
+  const lotX1 = halfW - CEMETERY_FENCE_CLEAR_M;
+  const gx0 = drive.x1 + 0.9;
+  const gz0 = halfD - tile + 1;
+  const gatehouse: Rect = {
+    x0: gx0,
+    x1: gx0 + CEMETERY_GATEHOUSE.w,
+    z0: gz0,
+    z1: gz0 + CEMETERY_GATEHOUSE.d,
+  };
+  const forecourt: Rect = {
+    x0: drive.x1,
+    x1: gatehouse.x1 + 1,
+    z0: gatehouse.z1,
+    z1: gatehouse.z1 + CEMETERY_FORECOURT_DEPTH_M,
+  };
+  const treeX = (gatehouse.x1 + lotX1) / 2;
+  // Between the first two columns of burial sections the grids leave a clear lane.
+  const gridEdge = (c: number, side: 'x0' | 'x1'): number => {
+    const rect = sections.find((s) => s.c === c)!.rect;
+    const centre = (rect.x0 + rect.x1) / 2;
+    return side === 'x0' ? centre - spanX / 2 : centre + spanX / 2;
+  };
+  const gapX = (gridEdge(0, 'x1') + gridEdge(1, 'x0')) / 2;
+  const trees: Vec2[] = [
+    { x: treeX, z: gatehouse.z0 + 3 },
+    { x: treeX, z: gatehouse.z0 + 8 },
+    ...[-1, 0, 1].map((k) => ({ x: gapX, z: k * tile })),
+  ];
+
+  return {
+    drive,
+    gatehouse,
+    forecourt,
+    gate: { x0: drive.x0, x1: drive.x1 },
+    graves: graves.slice(0, plots),
+    trees,
+  };
+}
+
+/** A box `w` long on X, `rise` tall, `d` deep, its top drawn in to a ridge along X: a gabled roof from the eaves up. */
+function gableRoof(
+  w: number,
+  rise: number,
+  d: number,
+  x: number,
+  y0: number,
+  z: number,
+  rgb: RGB,
+): THREE.BufferGeometry {
+  const roof = new THREE.BoxGeometry(w, rise, d);
+  const position = roof.getAttribute('position');
+  for (let i = 0; i < position.count; i++) {
+    if (position.getY(i) > 0) position.setZ(i, 0);
+  }
+  roof.computeVertexNormals();
+  roof.translate(x, y0 + rise / 2, z);
+  return paintVertexColor(roof, hexFromRgb(rgb));
+}
+
+/** One flat quad of a grave patch, `w` × `l`, `y` above the ground. */
+function flatQuad(
+  w: number,
+  l: number,
+  x: number,
+  y: number,
+  z: number,
+  rgb: RGB,
+): THREE.BufferGeometry {
+  const quad = new THREE.PlaneGeometry(w, l);
+  quad.rotateX(-Math.PI / 2);
+  quad.translate(x, y, z);
+  return paintVertexColor(quad, hexFromRgb(rgb));
+}
+
+/** The lawn over the whole lot with its footing, the drive, the forecourt and a patch of darker turf on every grave space; local Y=0 is the highest ground under the lot. */
+function buildCemeteryGroundsGeometry(
+  footprint: FootprintSize,
+  plots: number,
+): THREE.BufferGeometry {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const { drive, forecourt, graves } = computeCemeteryLayout(footprint, plots);
+  const top = CEMETERY_LAWN_HEIGHT;
+  const depth = top + YARD_FOOTING_DEPTH;
+  const lawn = new THREE.BoxGeometry(halfW * 2, depth, halfD * 2);
+  lawn.translate(0, top - depth / 2, 0);
+  const box = (r: Rect, rgb: RGB): THREE.BufferGeometry =>
+    standingBox(
+      r.x1 - r.x0,
+      CEMETERY_PAVING_PROUD_M,
+      r.z1 - r.z0,
+      (r.x0 + r.x1) / 2,
+      top,
+      (r.z0 + r.z1) / 2,
+      rgb,
+    );
+  const parts: THREE.BufferGeometry[] = [
+    paintVertexColor(lawn, hexFromRgb(CEMETERY_LAWN_RGB)),
+    box(drive, CEMETERY_DRIVE_RGB),
+    box(forecourt, CEMETERY_FORECOURT_RGB),
+  ];
+  for (const g of graves) {
+    parts.push(
+      flatQuad(
+        GRAVE_SPACE.w - 0.1,
+        GRAVE_SPACE.l - 0.1,
+        g.x,
+        top + CEMETERY_PATCH_PROUD_M,
+        g.z,
+        CEMETERY_PATCH_RGB,
+      ),
+    );
+  }
+  return mergeParts(parts);
+}
+
+/** The gatehouse: walls, gabled roof with eaves, a door and windows on the forecourt side; local Y=0 is the lawn plate's top. */
+function buildCemeteryGatehouseGeometry(
+  footprint: FootprintSize,
+  plots: number,
+): THREE.BufferGeometry {
+  const { gatehouse } = computeCemeteryLayout(footprint, plots);
+  const { w, d, h, wall, eave } = CEMETERY_GATEHOUSE;
+  const y0 = CEMETERY_LAWN_HEIGHT;
+  const cx = (gatehouse.x0 + gatehouse.x1) / 2;
+  const cz = (gatehouse.z0 + gatehouse.z1) / 2;
+  const front = gatehouse.z1;
+  const parts: THREE.BufferGeometry[] = [
+    standingBox(w, wall, d, cx, y0, cz, GATEHOUSE_WALL_RGB),
+    gableRoof(w + 2 * eave, h - wall, d + 2 * eave, cx, y0 + wall, cz, GATEHOUSE_ROOF_RGB),
+    standingBox(1.1, 2.1, 0.1, cx, y0, front + 0.05, GATEHOUSE_DOOR_RGB),
+  ];
+  for (const dx of [-4.6, -2.6, 2.6, 4.6]) {
+    parts.push(standingBox(1.5, 1.2, 0.1, cx + dx, y0 + 0.9, front + 0.05, GATEHOUSE_GLASS_RGB));
+  }
+  return mergeParts(parts);
+}
+
+/**
+ * The fence round the lot: posts every 2.5 m, two rails and pickets between,
+ * all 1.5 m, open for the drive where two stone piers stand each side of it;
+ * local Y=0 is the lawn plate's top.
+ */
+function buildCemeteryFenceGeometry(footprint: FootprintSize, plots: number): THREE.BufferGeometry {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const { gate } = computeCemeteryLayout(footprint, plots);
+  const y0 = CEMETERY_LAWN_HEIGHT;
+  const edge = CEMETERY_FENCE_INSET_M;
+  const x0 = -halfW + edge;
+  const x1 = halfW - edge;
+  const zBack = -halfD + edge;
+  const zFront = halfD - edge;
+  const height = CEMETERY_FENCE_HEIGHT_M;
+  const rail = 0.06;
+  const parts: THREE.BufferGeometry[] = [];
+
+  // One run along X or Z from `a` to `b` at a fixed cross coordinate.
+  const run = (a: number, b: number, fixed: number, alongX: boolean): void => {
+    const length = b - a;
+    const mid = (a + b) / 2;
+    const at = (along: number, w: number, hgt: number, y: number, thick: number): void => {
+      parts.push(
+        alongX
+          ? standingBox(w, hgt, thick, along, y0 + y, fixed, CEMETERY_FENCE_RGB)
+          : standingBox(thick, hgt, w, fixed, y0 + y, along, CEMETERY_FENCE_RGB),
+      );
+    };
+    at(mid, length, rail, height - rail, rail);
+    at(mid, length, rail, 0.25, rail);
+    const posts = Math.max(1, Math.round(length / CEMETERY_FENCE_POST_SPACING_M));
+    for (let i = 0; i <= posts; i++) at(a + (i * length) / posts, 0.1, height, 0, 0.1);
+    const pickets = Math.floor(length / CEMETERY_PICKET_SPACING_M);
+    for (let i = 1; i < pickets; i++) {
+      at(a + (i * length) / pickets, 0.03, height - 0.2, 0.1, 0.03);
+    }
+  };
+  run(x0, gate.x0 - CEMETERY_GATE_PIER_M, zFront, true);
+  run(gate.x1 + CEMETERY_GATE_PIER_M, x1, zFront, true);
+  run(x0, x1, zBack, true);
+  run(zBack, zFront, x0, false);
+  run(zBack, zFront, x1, false);
+
+  for (const px of [gate.x0 - CEMETERY_GATE_PIER_M / 2, gate.x1 + CEMETERY_GATE_PIER_M / 2]) {
+    parts.push(
+      standingBox(
+        CEMETERY_GATE_PIER_M,
+        height,
+        CEMETERY_GATE_PIER_M,
+        px,
+        y0,
+        zFront,
+        CEMETERY_PIER_RGB,
+      ),
+    );
+  }
+  return mergeParts(parts);
+}
+
+/** One upright headstone on its base, its foot at local Y=0 and its centre on the origin; the stone faces +Z. */
+function buildHeadstoneGeometry(): THREE.BufferGeometry {
+  return mergeParts([
+    standingBox(HEADSTONE.baseW, HEADSTONE.baseH, HEADSTONE.baseT, 0, 0, 0, HEADSTONE_BASE_RGB),
+    standingBox(HEADSTONE.w, HEADSTONE.h, HEADSTONE.t, 0, HEADSTONE.baseH, 0, HEADSTONE_RGB),
+  ]);
+}
+
+/** Where the headstone of grave `g` stands: at the head (back) end of its space, in the footprint frame. */
+export function headstoneAt(g: Vec2): Vec2 {
+  return { x: g.x, z: g.z - GRAVE_SPACE.l / 2 + HEADSTONE_HEAD_SETBACK_M };
+}
+
+// ---------------------------------------------------------------------------
 // small-park: flat lawn plate (lush green), a light
 // path cross, 2-3 simple trees (self-contained), 2 benches.
 // ---------------------------------------------------------------------------
@@ -2270,6 +2631,15 @@ interface InstanceRecord {
   slots: Partial<Record<UtilityKitPartKind, number[]>>;
 }
 
+interface CemeteryPlacement {
+  centerX: number;
+  /** Ground level the lawn plate's top stands on. */
+  floorY: number;
+  centerZ: number;
+  rotation: 0 | 1 | 2 | 3;
+  graves: GraveSpace[];
+}
+
 interface TurbineAnim {
   buildingId: number;
   rotorSlot: number;
@@ -2301,6 +2671,10 @@ export class UtilityKitRenderer {
   private readonly kits = new Map<string, KitDefinition>();
   private readonly instances = new Map<number, InstanceRecord>();
   private readonly turbineAnims = new Map<number, TurbineAnim>();
+  /** Interments each cemetery holds, by building id: kept for a cemetery whose building arrives after its count. */
+  private readonly interments = new Map<number, number>();
+  /** Where each placed cemetery stands, so its headstones can be added or taken away without a building delta. */
+  private readonly cemeteries = new Map<number, CemeteryPlacement>();
   private readonly beaconMaterial = new THREE.MeshLambertMaterial({
     color: TURBINE_BEACON_COLOR,
     emissive: TURBINE_BEACON_COLOR,
@@ -2333,6 +2707,26 @@ export class UtilityKitRenderer {
     for (const kit of this.kits.values()) {
       for (const pool of Object.values(kit.pools)) pool?.commit();
     }
+  }
+
+  /**
+   * Sets how many interments each cemetery holds: one headstone per interment,
+   * the first graves in fill order, never more than the cemetery has graves.
+   * Only a cemetery whose count changed is touched, so calling this on every
+   * snapshot costs a map lookup per cemetery.
+   */
+  setInterments(facilities: readonly { id: number; used: number }[]): void {
+    for (const { id, used } of facilities) {
+      if (this.interments.get(id) === used) continue;
+      this.interments.set(id, used);
+      this.fitHeadstones(id);
+    }
+    for (const kit of this.kits.values()) kit.pools.cemeteryStone?.commit();
+  }
+
+  /** How many headstones a cemetery stands now. */
+  headstoneCount(buildingId: number): number {
+    return this.instances.get(buildingId)?.slots.cemeteryStone?.length ?? 0;
   }
 
   /** 0 (day) .. 1 (night): only the turbine beacon reacts (kits stay unlit except a small red turbine nacelle beacon). */
@@ -2431,6 +2825,8 @@ export class UtilityKitRenderer {
         return this.buildTransferKit(entry);
       case 'hospital':
         return this.buildHospitalKit(entry);
+      case 'cemetery':
+        return this.buildCemeteryKit(entry);
       case 'small-park':
         return this.buildSmallParkKit(entry);
       default:
@@ -2712,6 +3108,25 @@ export class UtilityKitRenderer {
     };
   }
 
+  private buildCemeteryKit(entry: BuildingCatalogEntry): KitDefinition {
+    const lambert = (): THREE.MeshLambertMaterial =>
+      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const pool = (geometry: THREE.BufferGeometry, capacity = INITIAL_KIT_CAPACITY) =>
+      new InstancedSlotPool(this.scene, geometry, lambert(), capacity);
+    const plots = cemeteryPlots(entry);
+    return {
+      entry,
+      pavesLot: true,
+      pools: {
+        cemeteryGrounds: pool(buildCemeteryGroundsGeometry(entry.footprint, plots)),
+        cemeteryGatehouse: pool(buildCemeteryGatehouseGeometry(entry.footprint, plots)),
+        cemeteryFence: pool(buildCemeteryFenceGeometry(entry.footprint, plots)),
+        cemeteryTree: pool(buildParkTreeGeometry(), INITIAL_MULTI_PART_CAPACITY),
+        cemeteryStone: pool(buildHeadstoneGeometry(), plots),
+      },
+    };
+  }
+
   private buildSmallParkKit(entry: BuildingCatalogEntry): KitDefinition {
     const lambert = (): THREE.MeshLambertMaterial =>
       new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -2847,6 +3262,9 @@ export class UtilityKitRenderer {
         return;
       case 'hospital':
         this.applyHospital(kit, building, entry, centerX, groundY, centerZ, rotation);
+        return;
+      case 'cemetery':
+        this.applyCemetery(kit, building, entry, centerX, groundY, centerZ, rotation);
         return;
       case 'small-park':
         this.applySmallPark(kit, building, entry, centerX, groundY, centerZ, rotation);
@@ -3196,6 +3614,89 @@ export class UtilityKitRenderer {
     this.instances.set(building.id, { catalogId: building.catalogId, slots });
   }
 
+  private applyCemetery(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    centerX: number,
+    groundY: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+  ): void {
+    const { cemeteryGrounds, cemeteryGatehouse, cemeteryFence, cemeteryTree, cemeteryStone } =
+      kit.pools;
+    if (
+      !cemeteryGrounds ||
+      !cemeteryGatehouse ||
+      !cemeteryFence ||
+      !cemeteryTree ||
+      !cemeteryStone
+    ) {
+      return;
+    }
+
+    const layout = computeCemeteryLayout(entry.footprint, cemeteryPlots(entry));
+    const trees = layout.trees.map((local) => {
+      const rotated = rotateLocalXZ(local.x, local.z, rotation);
+      return this.placeAt(
+        cemeteryTree,
+        centerX + rotated.x,
+        groundY + CEMETERY_LAWN_HEIGHT,
+        centerZ + rotated.z,
+        rotation,
+      );
+    });
+    this.cemeteries.set(building.id, {
+      centerX,
+      floorY: groundY + CEMETERY_LAWN_HEIGHT,
+      centerZ,
+      rotation,
+      graves: layout.graves,
+    });
+    this.instances.set(building.id, {
+      catalogId: building.catalogId,
+      slots: {
+        cemeteryGrounds: [this.placeAt(cemeteryGrounds, centerX, groundY, centerZ, rotation)],
+        cemeteryGatehouse: [this.placeAt(cemeteryGatehouse, centerX, groundY, centerZ, rotation)],
+        cemeteryFence: [this.placeAt(cemeteryFence, centerX, groundY, centerZ, rotation)],
+        cemeteryTree: trees,
+        cemeteryStone: [],
+      },
+    });
+    this.fitHeadstones(building.id);
+  }
+
+  /**
+   * Stands exactly as many headstones as the cemetery has interments, the
+   * first graves in fill order: adds at the tail or takes the tail away, so a
+   * stone already standing is never rewritten.
+   */
+  private fitHeadstones(buildingId: number): void {
+    const record = this.instances.get(buildingId);
+    const placement = this.cemeteries.get(buildingId);
+    const pool = record ? this.kits.get(record.catalogId)?.pools.cemeteryStone : undefined;
+    const slots = record?.slots.cemeteryStone;
+    if (!record || !placement || !pool || !slots) return;
+
+    const want = Math.min(this.interments.get(buildingId) ?? 0, placement.graves.length);
+    while (slots.length > want) pool.free(slots.pop()!);
+    while (slots.length < want) {
+      const i = slots.length;
+      const stone = headstoneAt(placement.graves[i]!);
+      const rotated = rotateLocalXZ(stone.x, stone.z, placement.rotation);
+      const slot = this.placeAt(
+        pool,
+        placement.centerX + rotated.x,
+        placement.floorY,
+        placement.centerZ + rotated.z,
+        placement.rotation,
+      );
+      _carColor.setScalar(0.85 + 0.2 * hash1(buildingId * 8191 + i));
+      pool.setColorAt(slot, _carColor);
+      slots.push(slot);
+    }
+  }
+
   private applySmallPark(
     kit: KitDefinition,
     building: BuildingInstance,
@@ -3249,5 +3750,6 @@ export class UtilityKitRenderer {
       this.instances.delete(buildingId);
     }
     this.turbineAnims.delete(buildingId);
+    this.cemeteries.delete(buildingId);
   }
 }

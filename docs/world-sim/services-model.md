@@ -172,6 +172,31 @@ block; a save written before one existed loads it empty. The landfill's painted 
 grid itself and has been since the area was first paintable. See
 [../engineering/data-model.md](../engineering/data-model.md).
 
+## Death care
+
+Each death leaves a body where it fell, and bodies are collected the way trash
+is: a cemetery reaches the road tiles its street connects to within its
+`collectionRange` (`roadBfsDistances`, radiated two tiles by `radiateWeighted`),
+never a straight-line radius, and takes the bodies of every building it reaches
+in building-id order, each into the reaching cemetery with room that stands
+nearest (ties by facility id). One body is one interment and a full cemetery
+takes none. Where garbage runs on `GARBAGE_PERIOD`, death care runs the tick a
+body falls and then every `DEATH_CARE_PERIOD` (10) ticks for what waits.
+
+Below Big Town (`DEATH_CARE_MILESTONE`, the same rung as the septic cut-over) a
+regional funeral service takes off the map whatever no cemetery collected, the
+tick it falls, and the month's count is billed at ¢3.6 a body in the monthly
+settlement; from Big Town it stops. A body still waiting costs the health
+field: after coverage is written, each tile holding bodies loses
+`min(255, count × 32 × ticksUncollected ÷ 6000)` from `Health` there and on the
+two tiles around it, so coverage always precedes the penalty and the penalty
+never feeds the death rate. Cosmetic hearses route cemetery → building →
+cemetery over the road graph like garbage trucks, and routing does not affect
+collection. The backlog, each cemetery's interments and the month's regional
+count persist in the save's `deathCare` block. See
+[../game-design/features/healthcare-and-death-care.md](../game-design/features/healthcare-and-death-care.md)
+and [../engineering/features/healthcare-and-death-care.md](../engineering/features/healthcare-and-death-care.md).
+
 ## Cosmetic service dispatch
 
 Fire, police and ambulance vehicles drive from a covering station to an

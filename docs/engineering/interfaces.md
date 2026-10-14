@@ -84,7 +84,7 @@ Messages other than `init` are ignored until the worker has initialized
 | `field`     | `field: FieldId`, `data: Uint8Array` | Once per `requestField`.                                                                                                                                     |
 | `save`      | `data: ArrayBuffer`                  | Once per `requestSave`.                                                                                                                                      |
 | `notify`    | `note: CityNotification`             | Whenever the economy system raises one (unbounded; the UI store caps its own history at 50).                                                                 |
-| `selection` | `info: SelectionInfo \| null`        | Once per `select`, then re-sent on every later snapshot while a selection is held; `null` ends the stream (demolition, or an id the registry no longer has). |
+| `selection` | `info: SelectionInfo \| null`        | Once per `select`, then re-sent on every later snapshot while a selection is held; `null` ends the stream (demolition, or an id the registry no longer has). A cemetery's selection carries `deathCare: { used, total }`. |
 
 ## 3. Commands
 
@@ -406,9 +406,9 @@ determinism boundary.
 
 ## 7. The simulation snapshot
 
-`SimSnapshot` (`src/shared/types.ts`) has **20 top-level fields**: one
-required (`stats`) and 19 optional channels. Four of the nineteen —
-`vehicles`, `transit`, `growthWaiting` and `zonedUnserved` — are typed optional but the worker sets them on
+`SimSnapshot` (`src/shared/types.ts`) has **21 top-level fields**: one
+required (`stats`) and 20 optional channels. Five of the twenty —
+`vehicles`, `transit`, `growthWaiting`, `zonedUnserved` and `deathCare` — are typed optional but the worker sets them on
 _every_ snapshot regardless; the rest are genuinely conditional. `SimSnapshot`
 carries deltas only; the full state of everything arrives once, as one giant
 patch/delta of each kind, immediately after `init` or `loadSave`.
@@ -437,6 +437,7 @@ patch/delta of each kind, immediately after `init` or `loadSave`.
 | `roundabouts`   | the set of compact roundabouts, each by the north-west tile of its block, differs from what was last sent; the whole list travels, and `[]` means there are none                                                                                |
 | `serviceLoad`   | the service pass has run at least once since `init`/`loadSave` — ten numbers, one `{ load, worst }` pair per service kind, re-sent every snapshot thereafter                                                                                    |
 | `growthWaiting` | always — three counts, the lots and buildings growth is holding back for want of power, of water and of a drain against what the grid has spare now, for the Advisor                                                                           |
+| `deathCare`     | always — each cemetery's `{ id, used, total }` interments over plots, the bodies uncollected (and the tile of the oldest), and the bodies the regional funeral service has taken this month, for the Advisor and the gauge                  |
 | `zonedUnserved` | always — three counts, the empty zoned tiles beside a road yet without power, without water where their zone needs it, and without a drain where it makes sewage, each with the first such tile, for the Advisor                                   |
 
 `buildings` names each id in exactly one of `added`, `updated` and `removed`,

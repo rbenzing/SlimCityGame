@@ -1,6 +1,6 @@
 # Healthcare and death care — design
 
-- **Status:** Partly built — the clinic and hospital ladder (2026-10-08); deaths and occupancy (2026-10-14); collection, cemetery and crematorium not built
+- **Status:** Partly built — the clinic and hospital ladder (2026-10-08); deaths and occupancy (2026-10-14); bodies, the regional service and the cemetery (2026-10-14); crematorium and exhumation not built
 - **Date:** 2026-09-18
 
 ## What the player gets
@@ -62,6 +62,31 @@ hearse comes from the nearest death-care facility that can still take one, by
 road, the way a garbage truck comes — so the split between burial and cremation
 is not a dial, it is what the player built.
 
+**Until Big Town the county does it.** A village does not run a funeral service:
+below Big Town (3,500 people) every body is taken off the map the tick it falls
+by a regional funeral service, and the city is billed **¢3.6 a body** in the
+monthly settlement. Nothing is left lying and nothing hurts the health field.
+From Big Town the service stops, and a body no cemetery of the town's own
+collects stays where it fell. The cemetery unlocks at the very start, so a town
+that would rather bury its own can switch early, and the advisor warns one rung
+before Big Town if it has not. This is the same rung the drains have, for the
+same reason: a town of a few thousand buys the service in, and one past that
+line is expected to run it.
+
+The fee is what a county pays. Crow Wing County, Minnesota, paid **$2,900** for
+an indigent immediate cremation and **$3,900** for an immediate burial in 2026
+([Brainerd Dispatch, 3 Feb 2026](https://www.brainerddispatch.com/news/local/crow-wing-county-board-county-tweaks-indigent-burial-policy)).
+Cremation was 62.8% of US dispositions in 2025
+([CANA 2026 report, via Kates-Boylston](https://www.kates-boylston.com/industry_news/cana-releases-2026-annual-cremation-statistics-report/article_ccaf21d4-a825-4050-8148-cfc549653411.html)),
+so the weighted cost of a body is 0.628 × $2,900 + 0.372 × $3,900 =
+**$3,272**. On the game's operating scale (¢800 a month stands for $8.65
+million a year, [balancing.md](../balancing.md#power)), $901 to the ¢,
+that is **¢3.6**. Laramie County, Wyoming's flat $1,500 rotation rate in 2026
+is the low cross-check, ¢1.7. A city of 3,500 loses 31 residents a year and
+pays about ¢9 a month for them, less than one cemetery's ¢140 upkeep: the
+regional service is the cheap way to be a village, and the cemetery is what a
+town builds because it must.
+
 **Cemetery** — 3×3 tiles of ground, a gatehouse, **780 burial plots**. Cheap to
 place, cheap to run, and it fills: a city of 20,000 fills one in four game
 years. **Crematorium** — 2×2 tiles, a chapel, two cremators, an abatement flue.
@@ -75,7 +100,9 @@ has three answers.
 tiles never come back. Demolishing one that holds interments costs **¢10 per
 interment** to exhume and reinter, so clearing a full cemetery costs ¢7,800,
 twice what it cost to build; an empty one demolishes normally. Burial is cheap
-to start and expensive to undo, which is exactly what it is.
+to start and expensive to undo, which is exactly what it is. (The charge is not
+built yet: until it is, demolishing a cemetery drops its interments with it and
+costs nothing.)
 
 **Build a crematorium.** ¢26,000 and four tiles, once. Its upkeep is worse than
 four cemeteries' and better than five, so a city that keeps burying overtakes it
@@ -195,11 +222,24 @@ the country is admitted at **99 per 1,000** residents a year (KFF). 72 × 43.3 �
 **30,000**, about 5% conservative, so the hospital sits between the Grand City
 and Metropolis milestones and a Metropolis needs two.
 
-**Cemetery — 780 plots.** A grave plot is 2.44 m × 1.22 m = 2.98 m². Gross
-density in single-grave lawn sections is 1,000 burials per gross acre (ASPO,
-_Cemeteries in the City Plan_, 1950) = 2,471 per hectare = **4.05 m² of cemetery
-land per grave**, which the same source's land-use split confirms independently
-(2.98 m² ÷ 73% saleable = 4.08 m²). A cemetery is ground, so it uses the whole
+**Cemetery — 780 plots.** A modern grave plot is 2.44 m × 1.22 m = 2.98 m². The
+source is ASPO's _Cemeteries in the City Plan_ (Planning Advisory Service Report
+16, 1950,
+[planning.org](https://www.planning.org/pas/reports/report16.htm)), which says
+that "the burials per acre devoted to single-graves will probably be around
+1,000". Its overall figure, 620 burials per gross acre, describes family-lot
+cemeteries (Hare and Hare's 62 lots of 20 × 20 ft, ten burials each, to the
+gross acre), which is not what a modern lawn cemetery is: that is laid in single
+graves. So take **about 1,000 graves an acre**, 2,471 a hectare, **4.05 m² of
+cemetery land per grave**, roads and paths inside it. Cross-checks, each a
+single source: Cabarrus County, North Carolina's appraisal guidance puts a
+cemetery at 900–1,100 graves per usable acre, default 1,000; Forest Lawn
+Memorial Park in Ohio has about 44,000 graves on 47 developed acres, about 940.
+The same report's land-use split for a typical cemetery (roads 10–15%, paths
+10–12%, saleable lots 70–77%) agrees with the plot: 2.98 m² ÷ 73% saleable is
+4.08 m². (The report's own single grave is a smaller 20–25 sq ft, 2.5–3 × 8
+ft, so its 1,000 is not the ceiling of the arithmetic, only the density it
+reports.) A cemetery is ground, so it uses the whole
 400 m² tile rather than a building's 185 m² plate: 400 ÷ 4.05 = 98 graves per
 tile, and over a 3×3 site with one tile given to the gatehouse, 8 × 98 = 784 →
 **780 plots**. Deliberately smaller than the planning standard — ASPO's "one
@@ -259,6 +299,21 @@ project examples
 a single source), so it stands **27 m**. It is the one civic building whose
 floor is stated rather than read off the massing formula: 15 tiles at 27 m would claim 23,400 m², and the
 deck is ground, not floor.
+
+**The cemetery's reach, draw and price.** Its **collection range is 40 tiles**,
+the health ladder's clinic band: no published standard gives a cemetery's reach,
+so this is the game's band, taken because death care rides the health
+department. Its **¢3,500 and ¢140 a month** are priced on the civic ladder beside
+the recycling depot, the clinic and the transfer station, not on the generators'
+dollar scale. Its draw is the gatehouse's alone, one 128 m² floor (1,378 sf) at
+the office intensity of 13.6 kWh/sf a year (CBECS 2018, table C14) and 14.48
+gal/sf a year (EPA WaterSense at Work), the method
+[municipal-services.md](municipal-services.md#what-the-facilities-draw-derived-2026-10-05)
+runs for every civic building: 18,738 kWh over 8,760 hours is 2.14 kW, **0.0021
+MW**, and 19,950 gallons over 365 days is 54.7 a day, **0.2 kL**. The grounds
+draw nothing. A body's penalty, **32 points a month**, is a dial with no
+published figure behind it, set so that one body left four months all but
+cancels a clinic's 140; it never feeds the death rate.
 
 The cemetery unlocks at **milestone 0**: a burial ground is the first public
 facility any settlement builds, and a village that meets its first death with no

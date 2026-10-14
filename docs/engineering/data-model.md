@@ -139,7 +139,8 @@ writes and reads it through `saveGrid` and `loadGrid` in
 blocks defaulted on saves written before they existed: `garbage`
 (landfill + incinerator fill), `transitLines` (player-built lines),
 `roadProfiles` (player-composed road cross-sections) and `deathCare` (the
-death and re-let counters). Each is covered in
+death and re-let counters, the interments, the backlog of bodies and the
+month's regional count). Each is covered in
 [Entities beyond the grid](#entities-beyond-the-grid).
 
 ### Save version and per-tile width
@@ -365,7 +366,18 @@ trucks are **not** persisted; both rebuild within a few ticks of a load.
 `deathRemainder` and `reletRemainder` (the fractional counters, each below 1),
 and `deaths` and `relets` (the running counts that position the stride walk).
 Absent, all four are zero. The per-building vacancies are in the registry, not
-here. Slice 2 extends the block with per-facility interments and the backlog.
+here. Three optional fields follow, each absent in an older save and loaded as
+empty: `interments` (`{ id, count }[]`, the burials each cemetery holds, by
+building id), `backlog` (`{ tile, count, sinceTick }[]`, the bodies not yet
+collected, `tile` a grid index and `sinceTick` the tick they fell, so a body's
+age survives a load) and `regionalThisMonth` (the bodies the regional funeral
+service has taken since the last monthly settlement). A malformed value loads as
+zero, and a backlog entry with a tile off the map or a count or tick that is not
+a whole number is dropped. A cemetery's interments are dropped with the
+building. No grid layer is added, so `SAVE_VERSION` stays 15.
+
+`VehicleKind` (`src/shared/types.ts`) gained `Hearse = 8`, appended after
+`Recycling = 7`. It is not persisted.
 
 ### Vehicles and incidents
 

@@ -12,7 +12,7 @@ import {
   VehicleKind,
   type Incident,
 } from '../shared/types';
-import { laneOffset } from './vehicles';
+import { laneOffset, sizeForKind } from './vehicles';
 import { ROAD_Y_OFFSET } from './roadsmesh';
 
 const flatHeightAt = (): number => 0;
@@ -135,6 +135,40 @@ describe('buildServiceVehicleGeometry', () => {
     expect(Math.max(...cabColor(VehicleKind.Garbage))).toBeLessThan(0.2);
   });
 
+  describe('the hearse', () => {
+    const geo = buildServiceVehicleGeometry(VehicleKind.Hearse as ServiceVehicleKind);
+    geo.computeBoundingBox();
+    const [sx, sy, sz] = sizeForKind(VehicleKind.Hearse);
+    const size = geo.boundingBox!.getSize(new THREE.Vector3());
+
+    it('is 6.2 × 1.9 × 1.9 m once scaled, standing from the road up', () => {
+      expect(size.x * sx).toBeCloseTo(1.9, 2);
+      expect(size.y * sy).toBeCloseTo(1.9, 2);
+      expect(size.z * sz).toBeCloseTo(6.2, 2);
+      expect(geo.boundingBox!.min.y).toBeCloseTo(-0.5, 6);
+      expect(geo.boundingBox!.max.y).toBeCloseTo(0.5, 6);
+    });
+
+    it('is black, with no light bar and no red cross, and its own livery against the ambulance', () => {
+      const color = geo.getAttribute('color');
+      let red = 0;
+      let dark = 0;
+      for (let i = 0; i < color.count; i++) {
+        const [r, g, b] = [color.getX(i), color.getY(i), color.getZ(i)];
+        if (r > 0.7 && g < 0.3 && b < 0.3) red++;
+        if (Math.max(r, g, b) < 0.15) dark++;
+      }
+      expect(red).toBe(0);
+      expect(dark / color.count).toBeGreaterThan(0.3);
+      expect(color.getX(0)).toBeLessThan(0.1);
+    });
+
+    it('stands lower than the ambulance and the fire engine, and taller than a car', () => {
+      expect(sy).toBeLessThan(sizeForKind(VehicleKind.Ambulance)[1] - 0.5);
+      expect(sy).toBeGreaterThan(sizeForKind(VehicleKind.Car)[1]);
+    });
+  });
+
   it('draws a kind it has no livery for as a refuse truck', () => {
     const unknown = buildServiceVehicleGeometry(99 as ServiceVehicleKind).getAttribute('color');
     const garbage = buildServiceVehicleGeometry(
@@ -170,7 +204,35 @@ describe('ServiceVehicleRenderer', () => {
     const instancedMeshes = scene.children.filter(
       (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh,
     );
-    expect(instancedMeshes.length).toBe(6); // fire + police + ambulance + garbage + recycling + incident pins
+    expect(instancedMeshes.length).toBe(7); // fire + police + ambulance + garbage + recycling + hearse + incident pins
+    for (const kind of Object.values(VehicleKind).filter(
+      (k) => k !== VehicleKind.Car && k !== VehicleKind.Truck && k !== VehicleKind.Bus,
+    )) {
+      expect(scene.children.filter((c) => c.userData.vehicleKind === kind)).toHaveLength(1);
+    }
+  });
+
+  it('places an active Hearse-kit slot in the hearse mesh only, at the hearse size on the road plate', () => {
+    const scene = new THREE.Scene();
+    const renderer = new ServiceVehicleRenderer(scene, flatHeightAt);
+    renderer.setBuffer(makeBuffer({ 3: [32, 48, 0, 5, VehicleKind.Hearse] }));
+    renderer.update(0);
+
+    expect(isHiddenAt(meshForKind(scene, VehicleKind.Hearse), 3)).toBe(false);
+    for (const kind of [
+      VehicleKind.Fire,
+      VehicleKind.Police,
+      VehicleKind.Ambulance,
+      VehicleKind.Garbage,
+      VehicleKind.Recycling,
+    ]) {
+      expect(isHiddenAt(meshForKind(scene, kind), 3)).toBe(true);
+    }
+    const { pos, scl } = decomposeAt(meshForKind(scene, VehicleKind.Hearse), 3);
+    expect(scl.x).toBeCloseTo(1.9, 5);
+    expect(scl.y).toBeCloseTo(1.9, 5);
+    expect(scl.z).toBeCloseTo(6.2, 5);
+    expect(pos.y).toBeCloseTo(ROAD_Y_OFFSET + 0.95, 5);
   });
 
   it('disables frustum culling on every mesh it owns (spans the whole map, moves every frame)', () => {

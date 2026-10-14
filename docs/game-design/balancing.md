@@ -271,6 +271,22 @@ Derived and argued in [features/healthcare-and-death-care.md](features/healthcar
 | `DEATH_RATE_PER_RESIDENT_PER_TICK`  | 1.25 × 10⁻⁷   | Derived: 9 ÷ 1,000 ÷ `TICKS_PER_YEAR` (72,000); a city of 10,000 loses 90 residents a game year.                                                | `src/shared/constants.ts` |
 | `VACANCY_RELET_DAYS`                | 41            | RentCafe 2025: 41 days on average to rent a vacant apartment, 137 markets; NAR 2025 Profile of Home Buyers and Sellers, a median 4 weeks on market, as the cross-check. Applies only while residential demand is above zero, and never scales with its size. | `src/shared/constants.ts` |
 
+## Death care
+
+Derived and argued in [features/healthcare-and-death-care.md](features/healthcare-and-death-care.md#death-care-and-what-happens-when-a-cemetery-fills).
+
+| Constant                       | Value                          | Meaning                                                                                                                                                                                                                  | File                      |
+| ------------------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
+| `DEATH_CARE_MILESTONE`         | Big Town (index 3)             | Below it the regional funeral service collects every body the town's own cemeteries did not; from it, it stops. The same Big Town index as `SEWER_MILESTONE`, one source (`BIG_TOWN_MILESTONE`).                           | `src/shared/constants.ts` |
+| `REGIONAL_FUNERAL_FEE`         | ¢3.6 a body                    | Crow Wing County MN 2026 indigent contract, $2,900 cremation and $3,900 burial (Brainerd Dispatch, 3 Feb 2026), weighted by the 2025 US cremation share 62.8% (CANA 2026): 0.628 × 2,900 + 0.372 × 3,900 = $3,272, at $901 to the ¢ ($8.65 million a year ≙ ¢800 a month) is ¢3.6. Low cross-check: Laramie County WY's $1,500 flat rate, ¢1.7. | `src/shared/constants.ts` |
+| `BODY_HEALTH_PENALTY_PER_MONTH` | 32 points per body per game month | A dial: no published figure. One body four months old takes 128 from Health at its tile and the two tiles round it, nearly a clinic's 140. Never feeds the death rate. | `src/shared/constants.ts` |
+| `DEATH_CARE_PERIOD`            | 10 ticks                       | How often bodies still waiting are offered to the cemeteries again (a body is offered the tick it falls).                                                                                                                  | `src/shared/constants.ts` |
+| cemetery plots                 | 780                            | About 1,000 single graves an acre (ASPO PAS Report 16, 1950; Cabarrus County NC 900–1,100; Forest Lawn OH about 940) is 4.05 m² a grave, 98 a tile; 8 burial tiles and a gatehouse tile of the 3×3.                       | `src/data/catalog.json`   |
+| cemetery `collectionRange`     | 40 tiles                       | The health ladder's clinic band, the game's own: no published standard gives a cemetery's reach.                                                                                                                         | `src/data/catalog.json`   |
+| cemetery, cost and upkeep      | ¢3,500, ¢140 a month           | The civic ladder (recycling depot ¢3,200, clinic ¢5,000, transfer station ¢7,500), not the generators' dollar scale. Dials.                                                                                              | `src/data/catalog.json`   |
+| cemetery, power and water      | 0.0021 MW, 0.2 kL              | The gatehouse's 128 m² (1,378 sf) at office intensity, 13.6 kWh/sf a year and 14.48 gal/sf a year; the grounds draw nothing.                                                                                              | `src/data/catalog.json`   |
+| hearse                         | 6.2 × 1.9 × 1.9 m, 2 a cemetery | A Cadillac XT5 coach is 6.32 m, the US anchor; cosmetic. The size entry is the minimal one the vehicle tables need; the render ticket draws it. | `src/render/vehicles.ts`  |
+
 ## Sound walls
 
 | Constant                     | Value       | Meaning                                                                                                          | File                      |
