@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.59.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.58.0...slimcity-v1.59.0) (2026-10-14)
+
+
+### Features
+
+* **services:** a US education ladder of four schools and a library, gating level 3 ([df1cf96](https://github.com/rbenzing/SlimCityGame/commit/df1cf96b9de70b32f80ffad4840f0c91fb92ab67))
+* **services:** a US education ladder of four schools and a library, gating level 3 ([d04ec3d](https://github.com/rbenzing/SlimCityGame/commit/d04ec3da748aad8b0852436060cf6f4ebd05722d))
+
 ## [1.58.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.57.0...slimcity-v1.58.0) (2026-10-14)
 
 
