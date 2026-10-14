@@ -162,6 +162,40 @@ describe('ServicesPanel', () => {
     expect(screen.getByTestId('service-worst-education')).toHaveTextContent('240%');
   });
 
+  it('reads the calls a kind has in flight over the calls it can run, apart from its load', () => {
+    open();
+    useCityStore.getState().setServiceLoad(loads({ fire: { load: 0.62, worst: 0.9, capped: 1 } }));
+    useCityStore.getState().setResponders({
+      fire: { inFlight: 1, total: 1 },
+      police: { inFlight: 2, total: 6 },
+    });
+    render(<ServicesPanel />);
+
+    expect(screen.getByTestId('service-responders-fire')).toHaveTextContent('1/1');
+    expect(screen.getByTestId('service-responders-police')).toHaveTextContent('2/6');
+    // The load is its own number: it never moves with the responders.
+    expect(screen.getByTestId('service-load-fire')).toHaveTextContent('62%');
+    // Only a kind with every responder out is flagged.
+    expect(screen.getByTestId('service-responders-fire')).toHaveAttribute('data-busy', 'true');
+    expect(screen.getByTestId('service-responders-police')).toHaveAttribute('data-busy', 'false');
+  });
+
+  it('reads an em dash for a kind with no responders figure, and for every kind before any arrive', () => {
+    open();
+    useCityStore.getState().setResponders({ fire: { inFlight: 0, total: 1 } });
+    render(<ServicesPanel />);
+
+    expect(screen.getByTestId('service-responders-fire')).toHaveTextContent('0/1');
+    expect(screen.getByTestId('service-responders-health')).toHaveTextContent('—');
+    cleanup();
+
+    useCityStore.getState().setResponders(null);
+    render(<ServicesPanel />);
+    for (const kind of KINDS) {
+      expect(screen.getByTestId(`service-responders-${kind}`)).toHaveTextContent('—');
+    }
+  });
+
   it('sends setServiceFunding and shows the new value before the worker confirms', () => {
     open();
     const { sent } = bindSpy();

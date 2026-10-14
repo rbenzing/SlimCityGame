@@ -149,6 +149,28 @@ Every figure is derived in [features/service-capacity.md](features/service-capac
 | school         | 7,000    | The average US public elementary school's 456 pupils (NCES 216.75) over K–5's 64 pupils per 1,000 residents (NCES 203.10).                                                                       | `src/data/catalog.json` |
 | hospital       | 30,000   | 72 staffed beds over KFF's 2.28 community beds per 1,000 is 31,600; by AHA's 43.3 admissions a bed over KFF's 99 per 1,000, 31,500. About 5% under both. Range 72, strength 140 as the clinic's. | `src/data/catalog.json` |
 
+## Emergency dispatch
+
+Derived and argued in [features/emergency-services.md](features/emergency-services.md#tuning).
+
+| Constant                       | Value                                  | Meaning                                                                                                                                                                                                       | File                      |
+| ------------------------------ | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| fire and police reach          | 120 tiles                              | NFPA 1710's 240 s for the first engine (secondary summaries; the text was not retrieved) at 10.06 m/s, the speed the ISO schedule's 1.5 road miles (2,414 m) implies, over the 20 m tile. Police borrows it: no standard exists. | `src/shared/constants.ts` |
+| medical reach                  | 241 tiles                              | NFPA 1710's 480 s for advanced life support at the same 10.06 m/s: 4,829 m.                                                                                                                                   | `src/shared/constants.ts` |
+| funding on reach               | `floor(reach × funding)`               | 60% funding is 72 tiles of fire reach.                                                                                                                                                                        | `src/sim/dispatch.ts`     |
+| `responders`, fire station     | 1                                      | One engine company ([service capacity](#service-capacity)).                                                                                                                                                   | `src/data/catalog.json`   |
+| `responders`, police station   | 6                                      | About six cars on duty at any hour (same). A kind with no figure is unlimited.                                                                                                                                | `src/data/catalog.json`   |
+| fire call rate                 | 0.042 a resident a year                | NFPA 2023: 14.0 M non-medical fire-department calls (42,412,500 less 28,405,000 medical) over about 334.9 M residents, via CFSI; NFPA's own tables were unreadable.                                           | `src/shared/constants.ts` |
+| medical call rate              | 0.085 a resident a year                | 28.4 M medical-aid calls over 334.9 M: a floor, fire-department EMS only. NFIRS 2020 cross-check: EMS 64.2% of runs, fire 3.9%.                                                                               | `src/shared/constants.ts` |
+| police call rate               | 0.45 a resident a year                 | Benchmark Cities, 451.8 phone-in calls for service per 1,000 in 2019 (via Henderson NV). Vera's 240 M 911 calls a year is a ceiling.                                                                          | `src/shared/constants.ts` |
+| `FIELD_REFERENCE`              | 128                                    | A dial: the field value at which a building calls at the national rate. No source ties a field byte to a rate.                                                                                                 | `src/shared/constants.ts` |
+| `UNANSWERED_LAPSE_TICKS`       | 30 ticks                               | A dial: the longest on-scene time an answered call takes (10 + 20), so an unanswered call is as visible as an answered one.                                                                                   | `src/sim/dispatch.ts`     |
+| `MAX_UNANSWERED_INCIDENTS`     | 32                                     | A dial: held apart from the 32 answered vehicle slots so it can never starve them.                                                                                                                            | `src/sim/dispatch.ts`     |
+
+A one-engine town of 14,000 at reference fields makes about 588 non-medical fire
+calls a year, 1.6 a day; a town of 25,000 makes about 11,250 police calls a year,
+31 a day, about 21% of six cars' hours at an hour a call.
+
 ## Hospital parking
 
 Every figure is derived in [features/healthcare-and-death-care.md](features/healthcare-and-death-care.md#sizes-costs-and-the-ladder-rule).

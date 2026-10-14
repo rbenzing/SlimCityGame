@@ -1151,6 +1151,7 @@ class SimWorld implements WorkerSim {
       grid: g,
       buildings: this.registry.all(),
       network: this.network,
+      funding: this.stats.serviceFunding,
     });
     this.garbageTrucks.tick({
       network: this.network,
@@ -1465,6 +1466,8 @@ class SimWorld implements WorkerSim {
     // it — the services tick on their own period, so this rides every snapshot
     // rather than only the ones that happen to land on it.
     if (this.serviceLoad) snap.serviceLoad = { ...this.serviceLoad };
+    const responders = this.dispatch.responderLoad(this.registry.all());
+    if (Object.keys(responders).length > 0) snap.responders = responders;
     snap.growthWaiting = this.growth.waitingFor(this.grid, this.registry, this.supply);
     snap.zonedUnserved = this.growth.zonedUnserved(this.grid, this.stats.milestoneLevel);
     snap.deathCare = this.deathCareReport();

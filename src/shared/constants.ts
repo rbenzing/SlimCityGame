@@ -82,6 +82,43 @@ export const MAX_TAX_RATE = 0.3;
  */
 export const EMPLOYMENT_RATE = 0.5;
 
+/**
+ * How far an emergency vehicle gets from its station in the time a standard
+ * allows, in tiles of road. NFPA 1710 gives a first engine 240 s of travel at
+ * the 90th percentile and 480 s to an advanced-life-support unit; the ISO fire
+ * rating schedule credits a first-due engine within 1.5 road miles (2,414 m),
+ * which fixes the speed at 2,414 / 240 = 10.06 m/s. Police has no response
+ * distance standard and borrows fire's.
+ */
+const FIRST_DUE_DISTANCE_M = 2_414;
+const FIRST_DUE_TRAVEL_S = 240;
+const LIFE_SUPPORT_TRAVEL_S = 480;
+const RESPONSE_SPEED_MPS = FIRST_DUE_DISTANCE_M / FIRST_DUE_TRAVEL_S;
+const fromSeconds = (seconds: number): number =>
+  Math.floor((seconds * RESPONSE_SPEED_MPS) / TILE_METERS);
+export const RESPONSE_REACH_TILES: Readonly<Record<'fire' | 'crime' | 'medical', number>> = {
+  fire: fromSeconds(FIRST_DUE_TRAVEL_S),
+  crime: fromSeconds(FIRST_DUE_TRAVEL_S),
+  medical: fromSeconds(LIFE_SUPPORT_TRAVEL_S),
+};
+
+/**
+ * Calls a year per resident: the fire department's non-medical calls and its
+ * medical ones (NFPA 2023, 14.0 M and 28.4 M over about 334.9 M residents), and
+ * police calls for service (Benchmark Cities, 451.8 per 1,000 in 2019).
+ */
+export const CALLS_PER_RESIDENT_PER_YEAR: Readonly<Record<'fire' | 'crime' | 'medical', number>> = {
+  fire: 0.042,
+  crime: 0.45,
+  medical: 0.085,
+};
+
+/**
+ * The field value at which a building calls at the national rate: a dial, since
+ * no source ties a field byte to a rate.
+ */
+export const FIELD_REFERENCE = 128;
+
 /** The residents who work: what employment, industrial demand and the Advisor measure against. */
 export function workforceOf(population: number): number {
   return Math.floor(population * EMPLOYMENT_RATE);

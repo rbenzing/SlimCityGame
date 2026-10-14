@@ -26,6 +26,7 @@ import type {
   CommandAck,
   DeathCareReport,
   GrowthWaiting,
+  Incident,
   ZonedUnserved,
   LensId,
   MainToWorker,
@@ -447,6 +448,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // When set, pins the day/night phase (0..1) so lighting can be screenshotted
   // at an exact time instead of waiting on the sim clock; null = clock-driven.
   let devDayTOverride: number | null = null;
+  // Incident markers a screenshot has stood by hand; null = the sim's own.
+  let devIncidents: readonly Incident[] | null = null;
   if (import.meta.env.DEV) {
     (window as unknown as Record<string, unknown>).__slimcity = {
       map,
@@ -485,6 +488,13 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       },
       setSpeed: (speed: 0 | 1 | 2 | 4): void => {
         useCityStore.getState().setSpeed(speed);
+      },
+      // Stands incident markers by hand, answered or not, so a screenshot can
+      // set an unanswered call beside an answered one without waiting for the
+      // sim to roll either. Holds against every snapshot until set to null.
+      setIncidents: (list: Incident[] | null): void => {
+        devIncidents = list;
+        serviceVehicles.setIncidents(list ?? []);
       },
       // Stands a cemetery's interments at an exact count, so a screenshot can
       // see a few hundred headstones without the years of deaths that fill
@@ -1096,6 +1106,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   let growthWaiting: GrowthWaiting = { power: 0, water: 0, sewer: 0 };
   let zonedUnserved: ZonedUnserved = { power: 0, water: 0, sewer: 0 };
   let deathCare: DeathCareReport = { facilities: [], uncollected: 0, regionalThisMonth: 0 };
+  let incidents: readonly Incident[] = [];
   /** Latest flattened transit stop tile-points, mirrored so pedestrian
    * idlers can be re-applied on building-only deltas (PedestrianRenderer does
    * not cache stops itself — same pattern as knownBuildings above). */
@@ -1688,10 +1699,19 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (snap.growthWaiting) growthWaiting = snap.growthWaiting;
     if (snap.zonedUnserved) zonedUnserved = snap.zonedUnserved;
     if (snap.deathCare) deathCare = snap.deathCare;
+    // Incidents travel only while any stand, so absent is none.
+    incidents = snap.incidents ?? [];
     if (++snapshotsSinceAdvice >= ADVISOR_REFRESH_SNAPSHOTS) {
       snapshotsSinceAdvice = 0;
       state.setAdvisorIssues(
-        cityIssues(knownBuildings.values(), snap.stats, growthWaiting, zonedUnserved, deathCare),
+        cityIssues(
+          knownBuildings.values(),
+          snap.stats,
+          growthWaiting,
+          zonedUnserved,
+          deathCare,
+          incidents,
+        ),
       );
     }
 
@@ -1927,7 +1947,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       });
     }
     // Incidents: place/clear the marker pins (empty array clears them).
-    serviceVehicles.setIncidents(snap.incidents ?? []);
+    serviceVehicles.setIncidents(devIncidents ?? snap.incidents ?? []);
     // Districts: fold patches into the tint/boundary overlay + publish defs.
     if (snap.districts) {
       districtsRenderer.applyDistrictPatches(snap.districts.patches, snap.districts.defs);
@@ -1942,6 +1962,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // until the first service pass has run, which leaves the rows unread rather
     // than reading zero.
     if (snap.serviceLoad) state.setServiceLoad(snap.serviceLoad);
+    state.setResponders(snap.responders ?? null);
   };
 
   worker.onmessage = (ev: MessageEvent<WorkerToMain>) => {

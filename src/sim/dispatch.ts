@@ -1,9 +1,14 @@
 /**
  * SlimCity service dispatch: deterministically spawns
- * incidents from the existing coverage-gap fields (Crime/FireRisk/Pollution),
- * routes a service vehicle station -> incident -> station over
- * the road network, and resolves the incident after travel + on-scene
- * service ticks.
+ * incidents from the existing coverage-gap fields (Crime/FireRisk/Pollution)
+ * at real per-resident call rates, routes a service vehicle station ->
+ * incident -> station over the road network, and resolves the incident after
+ * travel + on-scene service ticks.
+ *
+ * A station answers only within its road reach (path tiles, scaled by the
+ * kind's funding) and only while it has fewer calls in flight than its
+ * `responders`. A call no station can answer waits, unanswered and without a
+ * vehicle, retries each tick and lapses.
  *
  * Cosmetic, by design: this system only READS GridState.fields and the
  * building registry snapshot -- it never writes a field, never touches a
@@ -29,6 +34,7 @@ import type {
   GridState,
   Incident,
   PathResult,
+  ResponderLoad,
   RoadNetworkApi,
   ServiceKind,
   TilePoint,
@@ -41,7 +47,17 @@ import {
   VehicleKind,
   pathRoute,
 } from '../shared/types';
-import { TICK_RATE, TILE_METERS, tileIndex } from '../shared/constants';
+import {
+  CALLS_PER_RESIDENT_PER_YEAR,
+  EMPLOYMENT_RATE,
+  FIELD_REFERENCE,
+  RESPONSE_REACH_TILES,
+  TICKS_PER_YEAR,
+  TICK_RATE,
+  TILE_METERS,
+  tileIndex,
+} from '../shared/constants';
+import { occupiedResidents } from '../shared/occupancy';
 
 /** Seeded random source, injected -- see project rule: never Math.random/Date.now. */
 export interface Rng {
@@ -64,15 +80,8 @@ const TICK_SECONDS = 1 / TICK_RATE;
  * shared snapshot vehicle buffer.
  */
 export const MAX_SERVICE_VEHICLES = 32;
-/** Concurrent active incidents cap -- one incident consumes one vehicle slot. */
-const MAX_ACTIVE_INCIDENTS = MAX_SERVICE_VEHICLES;
-
-/**
- * Per-(target building, incident-kind)-per-tick spawn probability at the
- * relevant field's max value (255). Tuned so incidents are an occasional
- * event, not a constant stream, at TICK_RATE=20.
- */
-const SPAWN_BASE_CHANCE = 0.02;
+/** Unanswered calls held at once, apart from the vehicle pool so they can never starve it. */
+export const MAX_UNANSWERED_INCIDENTS = 32;
 
 /** Service vehicles move exactly one tile per tick -- a deliberate, simple, testable speed model (not congestion-aware; distinct from TrafficSystem's cosmetic cars). */
 const SERVICE_VEHICLE_SPEED_MPS = TILE_METERS * TICK_RATE;
@@ -80,6 +89,13 @@ const SERVICE_VEHICLE_SPEED_MPS = TILE_METERS * TICK_RATE;
 /** On-scene service duration, in ticks: BASE + severity(0..1) * SEVERITY_SCALE. */
 const SERVICE_TICKS_BASE = 10;
 const SERVICE_TICKS_SEVERITY_SCALE = 20;
+
+/**
+ * How long an unanswered call stands before it lapses: the longest an answered
+ * call spends on scene, so it is visible for as long as an answered one would
+ * have been. A dial.
+ */
+export const UNANSWERED_LAPSE_TICKS = SERVICE_TICKS_BASE + SERVICE_TICKS_SEVERITY_SCALE;
 
 const INCIDENT_KINDS: readonly Incident['kind'][] = ['fire', 'crime', 'medical'];
 
@@ -98,6 +114,20 @@ const FIELD_FOR_INCIDENT: Readonly<Record<Incident['kind'], FieldId>> = {
   // -> more health incidents).
   medical: FieldId.Pollution,
 };
+
+/**
+ * How far a station answers a call of this kind, in road tiles: the standard's
+ * reach scaled by the funding of the service that answers. The small epsilon
+ * keeps a product that is a whole number in exact arithmetic (120 x 0.35) from
+ * flooring one tile short in floating point.
+ */
+export function responseReach(
+  kind: Incident['kind'],
+  funding: Readonly<Record<ServiceKind, number>>,
+): number {
+  const scale = funding[SERVICE_KIND_FOR_INCIDENT[kind]];
+  return Math.floor(RESPONSE_REACH_TILES[kind] * scale + 1e-9);
+}
 
 export const VEHICLE_KIND_FOR_INCIDENT: Readonly<Record<Incident['kind'], number>> = {
   fire: VehicleKind.Fire,
@@ -131,9 +161,33 @@ interface ActiveIncident {
   vehicle: RoutedVehicle;
   serviceTicksRemaining: number;
   stationTile: TilePoint;
+  /** The BuildingInstance.id of the responding station -- the key its in-flight count is held under. */
+  stationId: number;
   incidentTile: TilePoint;
   /** The BuildingInstance.id this incident targets -- gates re-spawning at the same building while it's still active. */
   targetBuildingId: number;
+}
+
+/** A call no station has taken: no vehicle, no slot, waiting for a responder in reach to be free. */
+interface WaitingIncident {
+  kind: Incident['kind'];
+  severity: number;
+  incidentTile: TilePoint;
+  targetBuildingId: number;
+  /** Ticks stood unanswered; the call lapses at UNANSWERED_LAPSE_TICKS. */
+  waited: number;
+}
+
+interface Station {
+  building: BuildingInstance;
+  kind: ServiceKind;
+  /** Calls it can have in flight; undefined is unlimited. */
+  responders: number | undefined;
+}
+
+interface Responder {
+  station: Station;
+  path: PathResult;
 }
 
 function buildRoutedVehicle(path: PathResult): RoutedVehicle {
@@ -183,6 +237,10 @@ export class DispatchSystem {
   private readonly rng: Rng;
   private readonly freeSlots: number[] = [];
   private active: ActiveIncident[] = [];
+  /** Unanswered calls, oldest first. */
+  private waiting: WaitingIncident[] = [];
+  /** Calls in flight per station building id -- the count `responders` caps. */
+  private readonly inFlight = new Map<number, number>();
   /** Building ids currently the target of an unresolved incident -- prevents re-spawning on the same building while it's still being handled. */
   private readonly activeTargets = new Set<number>();
   /**
@@ -205,21 +263,67 @@ export class DispatchSystem {
 
   /**
    * One sim tick: advances every active incident's vehicle (arrival/service/
-   * return/resolution), then attempts new incident spawns. Returns the
-   * current active-incident list, ready to drop straight into
-   * SimSnapshot.incidents.
+   * return/resolution), offers each waiting call to a responder now free, then
+   * attempts new incident spawns. Returns the answered incidents followed by
+   * the unanswered ones, ready to drop straight into SimSnapshot.incidents.
    */
   tick(input: {
     grid: GridState;
     buildings: readonly BuildingInstance[];
     network: RoadNetworkApi;
+    funding: Readonly<Record<ServiceKind, number>>;
   }): Incident[] {
-    const { grid, buildings, network } = input;
+    const { grid, buildings, network, funding } = input;
+    const live = buildings
+      .filter((b) => b.state === BuildingState.Active)
+      .sort((a, b) => a.id - b.id);
+    const stations: Station[] = [];
+    const targets: BuildingInstance[] = [];
+    for (const building of live) {
+      const entry = this.catalog.get(building.catalogId);
+      if (!entry) continue;
+      const service = entry.service;
+      if (service) stations.push({ building, kind: service.kind, responders: service.responders });
+      else targets.push(building);
+    }
+
     this.advance(network);
-    this.trySpawn(grid, buildings, network);
+    this.answerWaiting(stations, network, funding);
+    this.trySpawn(grid, targets, stations, network, funding);
     for (const id of this.resolvedThisTick) this.activeTargets.delete(id);
     this.resolvedThisTick.length = 0;
-    return this.active.map((a) => ({ kind: a.kind, x: a.x, z: a.z, severity: a.severity }));
+    return [
+      ...this.active.map((a) => ({
+        kind: a.kind,
+        x: a.x,
+        z: a.z,
+        severity: a.severity,
+        answered: true,
+      })),
+      ...this.waiting.map((w) => ({
+        kind: w.kind,
+        x: w.incidentTile.x,
+        z: w.incidentTile.z,
+        severity: w.severity,
+        answered: false,
+      })),
+    ];
+  }
+
+  /** Calls in flight over the responders the Active stations offer, for each kind that caps them. */
+  responderLoad(
+    buildings: readonly BuildingInstance[],
+  ): Partial<Record<ServiceKind, ResponderLoad>> {
+    const out: Partial<Record<ServiceKind, ResponderLoad>> = {};
+    for (const b of buildings) {
+      if (b.state !== BuildingState.Active) continue;
+      const service = this.catalog.get(b.catalogId)?.service;
+      if (service?.responders === undefined) continue;
+      const load = (out[service.kind] ??= { inFlight: 0, total: 0 });
+      load.inFlight += this.inFlight.get(b.id) ?? 0;
+      load.total += service.responders;
+    }
+    return out;
   }
 
   private advance(network: RoadNetworkApi): void {
@@ -270,6 +374,7 @@ export class DispatchSystem {
     this.vehicleBuffer[base + 3] = 0;
     this.vehicleBuffer[base + 4] = 0;
     this.freeSlots.push(inc.slot);
+    this.inFlight.set(inc.stationId, (this.inFlight.get(inc.stationId) ?? 1) - 1);
     this.resolvedThisTick.push(inc.targetBuildingId);
     this.active.splice(index, 1);
   }
@@ -293,25 +398,48 @@ export class DispatchSystem {
     this.vehicleBuffer[base + 4] = kind;
   }
 
+  /** Offers each waiting call, oldest first, to a responder; one nobody takes ages a tick and lapses at the limit. */
+  private answerWaiting(
+    stations: readonly Station[],
+    network: RoadNetworkApi,
+    funding: Readonly<Record<ServiceKind, number>>,
+  ): void {
+    if (this.waiting.length === 0) return;
+    const still: WaitingIncident[] = [];
+    for (const call of this.waiting) {
+      const responder =
+        this.freeSlots.length > 0
+          ? this.findResponder(call.kind, call.incidentTile, stations, network, funding)
+          : null;
+      if (responder) {
+        this.dispatchIncident(call, responder);
+        continue;
+      }
+      call.waited += 1;
+      if (call.waited >= UNANSWERED_LAPSE_TICKS) {
+        this.resolvedThisTick.push(call.targetBuildingId);
+      } else {
+        still.push(call);
+      }
+    }
+    this.waiting = still;
+  }
+
   private trySpawn(
     grid: GridState,
-    buildings: readonly BuildingInstance[],
+    targets: readonly BuildingInstance[],
+    stations: readonly Station[],
     network: RoadNetworkApi,
+    funding: Readonly<Record<ServiceKind, number>>,
   ): void {
-    if (this.active.length >= MAX_ACTIVE_INCIDENTS || this.freeSlots.length === 0) return;
-
-    const targets = buildings
-      .filter((b) => b.state === BuildingState.Active)
-      .slice()
-      .sort((a, b) => a.id - b.id);
-
     for (const target of targets) {
-      if (this.active.length >= MAX_ACTIVE_INCIDENTS || this.freeSlots.length === 0) return;
+      const answerable = this.freeSlots.length > 0;
+      if (!answerable && this.waiting.length >= MAX_UNANSWERED_INCIDENTS) return;
       if (this.activeTargets.has(target.id)) continue;
 
-      const entry = this.catalog.get(target.catalogId);
-      if (!entry || entry.service) continue; // service buildings themselves are never incident sites
-
+      const entry = this.catalog.get(target.catalogId)!;
+      const occupants = occupiedResidents(entry, target) + (entry.jobs ?? 0);
+      if (occupants <= 0) continue;
       const incidentTile: TilePoint = { x: target.x, z: target.z };
 
       for (const kind of INCIDENT_KINDS) {
@@ -319,75 +447,95 @@ export class DispatchSystem {
           grid.fields[FIELD_FOR_INCIDENT[kind]]?.[tileIndex(target.x, target.z)] ?? 0;
         if (fieldValue <= 0) continue;
 
-        const chance = SPAWN_BASE_CHANCE * (fieldValue / 255);
+        const chance =
+          (CALLS_PER_RESIDENT_PER_YEAR[kind] / TICKS_PER_YEAR) *
+          (occupants / (1 + EMPLOYMENT_RATE)) *
+          (fieldValue / FIELD_REFERENCE);
         if (this.rng.next() >= chance) continue;
 
-        const station = this.findNearestStation(kind, incidentTile, buildings, network);
-        if (!station) continue; // no responder available for this service kind -- incident does not spawn
+        const responder = answerable
+          ? this.findResponder(kind, incidentTile, stations, network, funding)
+          : null;
+        if (!responder && this.waiting.length >= MAX_UNANSWERED_INCIDENTS) continue;
 
-        this.spawnIncident(kind, target.id, incidentTile, station.tile, station.path);
+        const call: WaitingIncident = {
+          kind,
+          severity: this.rng.next(),
+          incidentTile,
+          targetBuildingId: target.id,
+          waited: 0,
+        };
+        this.activeTargets.add(target.id);
+        if (responder) this.dispatchIncident(call, responder);
+        else this.waiting.push(call);
         break; // at most one incident spawned per building per tick
       }
     }
   }
 
-  /** Nearest (by road-network path cost) Active building whose catalog service.kind matches, ties broken by ascending building id. */
-  private findNearestStation(
+  /**
+   * The responder for a call: of the Active stations of the matching service kind
+   * that are not at their `responders` limit and lie within the kind's reach,
+   * the one with the lowest path cost, ties to the lowest building id. Reach is
+   * a count of path tiles; cost is congestion-scaled time and only picks between
+   * stations already in reach.
+   */
+  private findResponder(
     kind: Incident['kind'],
     incidentTile: TilePoint,
-    buildings: readonly BuildingInstance[],
+    stations: readonly Station[],
     network: RoadNetworkApi,
-  ): { tile: TilePoint; path: PathResult } | null {
+    funding: Readonly<Record<ServiceKind, number>>,
+  ): Responder | null {
     const serviceKind = SERVICE_KIND_FOR_INCIDENT[kind];
-    let best: { tile: TilePoint; path: PathResult } | null = null;
+    const reach = responseReach(kind, funding);
+    let best: Responder | null = null;
 
-    const stations = buildings
-      .filter((b) => b.state === BuildingState.Active)
-      .slice()
-      .sort((a, b) => a.id - b.id);
-
-    for (const b of stations) {
-      const entry = this.catalog.get(b.catalogId);
-      if (!entry?.service || entry.service.kind !== serviceKind) continue;
-      const tile: TilePoint = { x: b.x, z: b.z };
-      const path = network.findPath(tile, incidentTile);
-      if (!path) continue;
-      if (best === null || path.cost < best.path.cost) {
-        best = { tile, path };
+    for (const station of stations) {
+      if (station.kind !== serviceKind) continue;
+      const { building } = station;
+      if (
+        station.responders !== undefined &&
+        (this.inFlight.get(building.id) ?? 0) >= station.responders
+      ) {
+        continue;
       }
+      // Road distance is never less than Manhattan distance, so this skips the
+      // search for a station that cannot be in reach.
+      const manhattan =
+        Math.abs(building.x - incidentTile.x) + Math.abs(building.z - incidentTile.z);
+      if (manhattan > reach) continue;
+      const path = network.findPath({ x: building.x, z: building.z }, incidentTile);
+      if (!path || path.points.length - 1 > reach) continue;
+      if (best === null || path.cost < best.path.cost) best = { station, path };
     }
     return best;
   }
 
-  private spawnIncident(
-    kind: Incident['kind'],
-    targetBuildingId: number,
-    incidentTile: TilePoint,
-    stationTile: TilePoint,
-    pathToIncident: PathResult,
-  ): void {
+  private dispatchIncident(call: WaitingIncident, responder: Responder): void {
     const slot = this.freeSlots.pop();
     if (slot === undefined) return;
 
-    const severity = this.rng.next();
-    const vehicle = buildRoutedVehicle(pathToIncident);
+    const { station, path } = responder;
+    const vehicle = buildRoutedVehicle(path);
     const incident: ActiveIncident = {
-      kind,
-      x: incidentTile.x,
-      z: incidentTile.z,
-      severity,
+      kind: call.kind,
+      x: call.incidentTile.x,
+      z: call.incidentTile.z,
+      severity: call.severity,
       slot,
       phase: 'toIncident',
       vehicle,
       serviceTicksRemaining: Math.round(
-        SERVICE_TICKS_BASE + severity * SERVICE_TICKS_SEVERITY_SCALE,
+        SERVICE_TICKS_BASE + call.severity * SERVICE_TICKS_SEVERITY_SCALE,
       ),
-      stationTile,
-      incidentTile,
-      targetBuildingId,
+      stationTile: { x: station.building.x, z: station.building.z },
+      stationId: station.building.id,
+      incidentTile: call.incidentTile,
+      targetBuildingId: call.targetBuildingId,
     };
-    this.activeTargets.add(targetBuildingId);
+    this.inFlight.set(station.building.id, (this.inFlight.get(station.building.id) ?? 0) + 1);
     this.active.push(incident);
-    this.writeSlot(slot, vehicle, VEHICLE_KIND_FOR_INCIDENT[kind], SERVICE_VEHICLE_SPEED_MPS);
+    this.writeSlot(slot, vehicle, VEHICLE_KIND_FOR_INCIDENT[call.kind], SERVICE_VEHICLE_SPEED_MPS);
   }
 }

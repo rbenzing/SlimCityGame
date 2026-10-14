@@ -398,5 +398,33 @@ describe('ServiceVehicleRenderer', () => {
       expect(isHiddenAt(pinMesh, 0)).toBe(false);
       expect(isHiddenAt(pinMesh, 1)).toBe(true);
     });
+
+    it('draws an unanswered call in a different, duller colour than an answered one of the same kind', () => {
+      const scene = new THREE.Scene();
+      const renderer = new ServiceVehicleRenderer(scene, flatHeightAt, 8);
+      renderer.setIncidents([
+        { kind: 'fire', x: 4, z: 4, severity: 0.5, answered: true },
+        { kind: 'fire', x: 6, z: 4, severity: 0.5, answered: false },
+        { kind: 'fire', x: 8, z: 4, severity: 0.5 },
+      ]);
+      const pinMesh = scene.children.find(
+        (c): c is THREE.InstancedMesh =>
+          c instanceof THREE.InstancedMesh && !('vehicleKind' in c.userData),
+      )!;
+      // The colour buffer exists before any call: without it a material that
+      // has already drawn never picks one up.
+      expect(pinMesh.instanceColor).not.toBeNull();
+      const colour = (i: number): THREE.Color => {
+        const c = new THREE.Color();
+        pinMesh.getColorAt(i, c);
+        return c;
+      };
+      const answeredFire = colour(0);
+      const lapsing = colour(1);
+      expect(lapsing.equals(answeredFire)).toBe(false);
+      expect(lapsing.r).toBeLessThan(answeredFire.r);
+      // Absent means answered, as it does everywhere else.
+      expect(colour(2).equals(answeredFire)).toBe(true);
+    });
   });
 });

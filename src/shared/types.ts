@@ -1011,6 +1011,11 @@ export interface SimSnapshot {
    */
   serviceLoad?: Record<ServiceKind, ServiceLoad>;
   /**
+   * Calls in flight over responders, for each kind whose facilities have a
+   * `responders` figure. Optional: a mirror that does not understand it ignores it.
+   */
+  responders?: Partial<Record<ServiceKind, ResponderLoad>>;
+  /**
    * How many lots and buildings growth is holding back for want of power and
    * of water, against what the grid has spare now — the Advisor's word that a
    * full grid is what stops the city growing. Sent on every snapshot.
@@ -1111,6 +1116,22 @@ export interface ServiceSpec {
    * entry carried a figure has to keep playing as it did.
    */
   capacity?: number;
+  /**
+   * The incidents this facility can have in flight at once: a fire station's
+   * engine company, a police station's cars on duty. Absent means unlimited,
+   * so a kind that never carried a figure answers as it always did.
+   */
+  responders?: number;
+}
+
+/**
+ * How many of a service kind's responders are out on calls, over how many its
+ * Active facilities offer. Apart from ServiceLoad on purpose: that counts the
+ * people who depend on a service, this counts the calls it can run at once.
+ */
+export interface ResponderLoad {
+  inFlight: number;
+  total: number;
 }
 
 /**
@@ -1910,6 +1931,11 @@ export interface Incident {
   x: number;
   z: number;
   severity: number; // 0..1
+  /**
+   * False when no station has taken the call: it has no vehicle and is waiting
+   * for one in reach to be free. Absent means answered.
+   */
+  answered?: boolean;
 }
 
 /**

@@ -7,6 +7,7 @@ import {
   type BuildingInstance,
   type CityStats,
   type DeathCareReport,
+  type Incident,
   type Sector,
   type ServiceKind,
 } from '../shared/types';
@@ -332,6 +333,46 @@ describe('a grid too small for its city', () => {
     expect(
       cityIssues([], healthyStats({ waterFouled: 0 })).some((i) => i.id === 'intake-fouled'),
     ).toBe(false);
+  });
+});
+
+describe('calls no station has answered', () => {
+  const none = { power: 0, water: 0, sewer: 0 };
+  const quiet = { facilities: [], uncollected: 0, regionalThisMonth: 0 };
+  const issuesFor = (incidents: Incident[]): CityIssue[] =>
+    cityIssues([], healthyStats(), none, none, quiet, incidents);
+
+  it('says nothing while every call has a vehicle on the way, or there are none', () => {
+    expect(issuesFor([])).toEqual([]);
+    expect(
+      issuesFor([
+        { kind: 'fire', x: 3, z: 4, severity: 0.5, answered: true },
+        { kind: 'crime', x: 5, z: 6, severity: 0.2 },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('names the unanswered calls by kind and points at the first', () => {
+    const issues = issuesFor([
+      { kind: 'fire', x: 3, z: 4, severity: 0.5, answered: false },
+      { kind: 'crime', x: 5, z: 6, severity: 0.2, answered: true },
+      { kind: 'fire', x: 7, z: 8, severity: 0.9, answered: false },
+      { kind: 'medical', x: 9, z: 1, severity: 0.1, answered: false },
+    ]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      id: 'calls-unanswered',
+      severity: 'warning',
+      count: 3,
+      title: '3 calls stand unanswered: 2 fire, 1 medical',
+      focus: { x: 3, z: 4 },
+    });
+    expect(issues[0]!.detail).toContain('Build a station');
+  });
+
+  it('reads in the singular for one call', () => {
+    const [issue] = issuesFor([{ kind: 'crime', x: 1, z: 2, severity: 0.5, answered: false }]);
+    expect(issue!.title).toBe('1 call stands unanswered: 1 police');
   });
 });
 
