@@ -1,6 +1,6 @@
 # Education ladder — technical design
 
-- **Status:** Partly built — the ladder in the sim: four schools, the library, the gates (2026-10-14); the school buildings drawn in slice 2
+- **Status:** Built — the ladder in the sim: four schools, the library, the gates; the school buildings drawn as campuses (2026-10-14)
 - **Date:** 2026-10-14
 - **Author:** Claude Opus 5
 
@@ -19,9 +19,9 @@ and name the building that would unstall it. Now, because education is the only
 service that already gates growth — every other epic adds a mechanism; this one
 extends one that has shipped.
 
-**Slice 1, built:** the sim, catalog, save, panels and Advisor. **Slice 2, not
-built:** the kits, and the screenshots that judge them. Until then the four new
-buildings draw as the generic catalog box.
+**Slice 1, built:** the sim, catalog, save, panels and Advisor. **Slice 2,
+built:** the five kits, and the screenshots that judge them
+(`tools/education-shots.mjs`).
 
 ## What it touches
 
@@ -36,7 +36,7 @@ buildings draw as the generic catalog box.
 | `src/data/catalog.json`     | `school` re-ranged; `middle-school`, `high-school`, `college`, `library` added                                                                                                                                               |
 | `src/sim/worker.entry.ts`   | The inspector's list of missing schools                                                                                                                                                                                      |
 | `src/ui/`                   | The Education row splits into rows per rung and the library; three lenses; the `Needs School` marker; the Advisor's per-rung count                                                                                           |
-| `src/render/`               | Nothing in slice 1                                                                                                                                                                                                           |
+| `src/render/utilitykits.ts` | Slice 2: five pure layouts and kits — wings, gyms, grounds, the school bus — claimed in `UTILITY_KIT_CATALOG_IDS`, so the building instancer draws their plinth; windows on the stations' night material. The art is [../../art/civic-massing.md](../../art/civic-massing.md#the-schools-the-college-and-the-library) |
 
 **Save format: yes, additively, at the end.** The three new field planes are
 **appended to the tile record, after `waterPipe` and before the road network**, and
@@ -249,6 +249,11 @@ afford to unblock.
 - The catalog holds the capacities, prices, upkeep, draws and milestones above.
 - The Services panel shows a row per rung and the library.
 
+**Slice 2's tests:** each layout is deterministic and every part stays inside its
+lot at all four rotations; no two building masses overlap; the floor as drawn
+(wings × 3, gyms × 2, the library × 1) is within 1% of the stated floor; the
+stalls and the bus pull-in clear every building; the five ids are kit-owned.
+
 **What has to be looked at in a browser in slice 2**, every mesh being new: the
 elementary school at 3×3 and 10 m beside a 4.0 m car and a 1.75 m person; the middle
 and high schools as campuses, a long low block and not one mass filling the lot; the
@@ -261,4 +266,5 @@ at 3×2 and 3.2 m as a library and not a shed; then all five at night.
 - Education as an economic input — productivity, wages, crime.
 - School buses, catchment drawing, term time, admissions, per-pupil simulation.
 - Reworking coverage: road-network walking is unchanged, only range is uplifted.
-- The kits and screenshots, which are slice 2.
+- A pedestrian dev hook for the scale shots: the parked cars, the school bus and
+  the kerb car carry the scale.

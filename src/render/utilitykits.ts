@@ -75,6 +75,13 @@
  *    the turbine beacon that follows setNightFactor), a hose tower or radio pole
  *    ("stationMast"), the appliance parked before the doors ("stationApparatus")
  *    and staff cars in the stalls ("stationCar").
+ *  - school, middle-school, high-school, college, library: a lawn plate with the
+ *    paving, courts, quad and stall paint ("schoolGrounds"), the classroom wings,
+ *    gym, canopy or portico and doors ("schoolBuilding"), the flagpole, play
+ *    structure, tennis nets and book drop ("schoolProps"), every window, gym band,
+ *    clerestory and door pane as one lit part on the stations' night material
+ *    ("schoolLit"), the park's tree on the quad ("schoolTree"), staff cars in the
+ *    stalls ("schoolCar") and a school bus in the pull-in ("schoolBus").
  *  The paving kits stand on the highest ground under their lot (pavesLot),
  *  so the instancer's plinth never shows through their yard on a slope.
  *  - small-park: a flat lawn plate + path cross ("parkGround"), 2-3
@@ -139,6 +146,11 @@ export const UTILITY_KIT_CATALOG_IDS: readonly string[] = [
   'fire-station-district',
   'police-station',
   'police-station-district',
+  'school',
+  'middle-school',
+  'high-school',
+  'college',
+  'library',
   'small-park',
 ];
 
@@ -194,6 +206,13 @@ export type UtilityKitPartKind =
   | 'stationMast'
   | 'stationApparatus'
   | 'stationCar'
+  | 'schoolGrounds'
+  | 'schoolBuilding'
+  | 'schoolProps'
+  | 'schoolLit'
+  | 'schoolTree'
+  | 'schoolCar'
+  | 'schoolBus'
   | 'parkGround'
   | 'parkTree'
   | 'parkBench';
@@ -3246,6 +3265,960 @@ export function stationHasMast(entry: BuildingCatalogEntry): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// the schools, the college and the library: double-loaded classroom wings round
+// a courtyard, a gym, and the grounds the lot is read by: a playground, a bus
+// pull-in with its bus, tennis courts, a quad, a car park. Each turns with the
+// lot, local +Z the street side, and stands on a lawn plate on the highest
+// ground under the lot. Every window, the gyms' high bands, the library's
+// clerestory and the door panes are the one lit part, on the stations' night
+// material.
+// ---------------------------------------------------------------------------
+
+/** A classroom wing is 20.7 m (68 ft) deep: two 30 ft bays either side of an 8 ft corridor. */
+export const EDU_WING_DEPTH_M = 20.7;
+export const EDU_STOREY_M = 3.2;
+export const EDU_WING_STOREYS = 3;
+/** A gym is one storey of 7.3 m (24 ft), counted as two floors. */
+export const EDU_GYM = { height: 7.3, floors: 2 };
+/** Every building keeps this far clear of the lot's edge. */
+export const EDU_EDGE_M = 2;
+/** A bus pull-in is 9.1 m (30 ft) deep along the frontage. */
+export const EDU_PULL_IN_M = 9.1;
+/** Two paired tennis courts, each 78 × 36 ft with its run-back: 36.6 × 32.9 m together. */
+export const EDU_TENNIS_PAIR = { w: 36.6, d: 32.9 };
+/** A flagpole stands 9.1 m (30 ft) from the ground. */
+export const FLAGPOLE_HEIGHT_M = 9.1;
+/** A Type C school bus, 36 ft conventional. */
+export const SCHOOL_BUS_SIZE = { w: 2.44, h: 3.2, l: 11 };
+/** The library's plate and the reading room's share of its length. */
+export const EDU_LIBRARY = { w: 42, d: 27.2, reading: 24, readingHeight: 6 };
+
+const EDU_PARAPET_M = 0.4;
+const EDU_CAP_M = 0.2;
+const EDU_BACK_CLEAR_M = 3;
+const EDU_WALK_M = 2.44;
+const EDU_CANOPY = { w: 6, d: 3, y: 3, slab: 0.25 };
+const EDU_PORTICO = { w: 14, d: 4, columns: 6, columnY: 6, entablature: 0.9, rise: 2.2 };
+const EDU_WINDOW = { w: 2.2, h: 1.6, sill: 1, pitch: 3.05, end: 1.5, margin: 0.3 };
+const EDU_GYM_BAND = { y: 5, h: 1.2, end: 1 };
+const EDU_PANE_T = 0.12;
+const EDU_DOOR_SKIP_M = 4.2;
+const EDU_ASPHALT_M = 0.03;
+const EDU_CONCRETE_M = 0.045;
+const EDU_PATCH_M = 0.02;
+const EDU_LINE_M = 0.015;
+const EDU_LINE_W = 0.1;
+const EDU_TREE_CLEAR_M = 3.4;
+
+const EDU_BRICK_RGB: RGB = [0.5, 0.3, 0.23];
+const EDU_LIMESTONE_RGB: RGB = [0.84, 0.78, 0.64];
+const EDU_LIBRARY_RGB: RGB = [0.74, 0.62, 0.45];
+const EDU_COLUMN_RGB: RGB = [0.88, 0.86, 0.8];
+const EDU_CAP_RGB: RGB = [0.42, 0.4, 0.38];
+const EDU_BELT_RGB: RGB = [0.72, 0.7, 0.64];
+const EDU_CANOPY_RGB: RGB = [0.84, 0.84, 0.82];
+const EDU_FRAME_RGB: RGB = [0.2, 0.2, 0.22];
+const EDU_DOOR_RGB: RGB = [0.16, 0.18, 0.24];
+const EDU_ASPHALT_RGB: RGB = [0.24, 0.25, 0.27];
+const EDU_CONCRETE_RGB: RGB = [0.66, 0.64, 0.6];
+const EDU_FIELD_RGB: RGB = [0.26, 0.52, 0.24];
+const EDU_COURT_RGB: RGB = [0.18, 0.44, 0.3];
+const EDU_LINE_RGB: RGB = [0.9, 0.9, 0.86];
+const EDU_MULCH_RGB: RGB = [0.45, 0.3, 0.18];
+const EDU_PATH_RGB: RGB = [0.74, 0.7, 0.62];
+const EDU_POLE_RGB: RGB = [0.85, 0.85, 0.88];
+const EDU_FLAG_RGBS: readonly RGB[] = [
+  [0.75, 0.12, 0.14],
+  [0.92, 0.92, 0.9],
+  [0.15, 0.22, 0.55],
+];
+const EDU_PLAY_RED_RGB: RGB = [0.8, 0.15, 0.12];
+const EDU_PLAY_BLUE_RGB: RGB = [0.15, 0.3, 0.75];
+const EDU_PLAY_YELLOW_RGB: RGB = [0.95, 0.75, 0.1];
+const EDU_NET_RGB: RGB = [0.92, 0.92, 0.9];
+const EDU_BOOK_DROP_RGB: RGB = [0.15, 0.25, 0.5];
+const BUS_YELLOW_RGB: RGB = [0.96, 0.72, 0.06];
+const BUS_BLACK_RGB: RGB = [0.08, 0.08, 0.09];
+const BUS_GLASS_RGB: RGB = [0.12, 0.16, 0.2];
+const BUS_AMBER_RGB: RGB = [0.95, 0.6, 0.1];
+const BUS_RED_RGB: RGB = [0.75, 0.1, 0.1];
+const BUS_LAMP_RGB: RGB = [0.9, 0.88, 0.7];
+
+export type EducationKind = 'elementary' | 'middle' | 'high' | 'college' | 'library';
+
+/** A solid building mass on the ground: its plan, its height and the floors it counts for. */
+export interface EducationMass {
+  rect: Rect;
+  height: number;
+  floors: number;
+}
+
+/** One car stall: its centre, which way a car in it turns (0 nose to +Z, 1 to +X, 2 to -Z, 3 to -X), its width across and whether it is the accessible one. */
+export interface EducationStall extends Vec2 {
+  turn: 0 | 1 | 2 | 3;
+  across: number;
+  accessible: boolean;
+}
+
+/** A lit pane: its centre on the plan, its size on the plan, the height of its underside above the floor, and its height. */
+export interface EducationPane {
+  x: number;
+  z: number;
+  w: number;
+  d: number;
+  y: number;
+  h: number;
+}
+
+/** A path from `a` to `b`, `w` wide. */
+export interface EducationPath {
+  a: Vec2;
+  b: Vec2;
+  w: number;
+}
+
+/** A door on a wall: its centre on the wall and the wall's outward normal. */
+export interface EducationDoor extends Vec2 {
+  nx: -1 | 0 | 1;
+  nz: -1 | 0 | 1;
+}
+
+export interface EducationLayout {
+  kind: EducationKind;
+  masses: EducationMass[];
+  /** The ground the wings and the gym enclose, open to the street; null on a library. */
+  courtyard: Rect | null;
+  door: EducationDoor;
+  /** The canopy over the door, or the college's portico. */
+  canopy: Rect;
+  asphalt: Rect[];
+  concrete: Rect[];
+  mulch: Rect | null;
+  playStructure: Vec2 | null;
+  field: Rect | null;
+  tennis: Rect[];
+  quad: Rect | null;
+  paths: EducationPath[];
+  pullIn: Rect | null;
+  /** The parked school bus, its nose turned like a stall's. */
+  bus: (Vec2 & { turn: 0 | 1 | 2 | 3 }) | null;
+  stalls: EducationStall[];
+  /** The hatched access aisle beside the accessible stall. */
+  accessibleAisle: Rect | null;
+  flagpole: Vec2 | null;
+  bookDrop: Rect | null;
+  trees: Vec2[];
+  panes: EducationPane[];
+}
+
+interface EducationPlan {
+  kind: EducationKind;
+  sideLength: number;
+  gym: { w: number; d: number } | null;
+}
+
+/** Side wings and gyms from the table of stated floors: the plate each building's floor over its storeys asks. */
+const EDUCATION_PLANS: Readonly<Record<string, EducationPlan>> = {
+  school: { kind: 'elementary', sideLength: 16, gym: { w: 16, d: 23 } },
+  'middle-school': { kind: 'middle', sideLength: 42.6, gym: { w: 24, d: 32 } },
+  'high-school': { kind: 'high', sideLength: 54.6, gym: { w: 32, d: 40 } },
+  college: { kind: 'college', sideLength: 72.7, gym: null },
+};
+
+type Face = 'x0' | 'x1' | 'z0' | 'z1';
+const FACES: readonly Face[] = ['x0', 'x1', 'z0', 'z1'];
+
+interface FaceFrame {
+  a0: number;
+  a1: number;
+  coord: number;
+  nx: -1 | 0 | 1;
+  nz: -1 | 0 | 1;
+}
+
+function faceFrame(r: Rect, face: Face): FaceFrame {
+  switch (face) {
+    case 'z0':
+      return { a0: r.x0, a1: r.x1, coord: r.z0, nx: 0, nz: -1 };
+    case 'z1':
+      return { a0: r.x0, a1: r.x1, coord: r.z1, nx: 0, nz: 1 };
+    case 'x0':
+      return { a0: r.z0, a1: r.z1, coord: r.x0, nx: -1, nz: 0 };
+    case 'x1':
+      return { a0: r.z0, a1: r.z1, coord: r.x1, nx: 1, nz: 0 };
+  }
+}
+
+/** Whether another mass stands against `m`'s face over [lo, hi] and rises above height `y`, so a window there would be walled in. */
+function walledIn(
+  masses: readonly EducationMass[],
+  m: EducationMass,
+  face: Face,
+  lo: number,
+  hi: number,
+  y: number,
+): boolean {
+  const f = faceFrame(m.rect, face);
+  return masses.some((o) => {
+    if (o === m || o.height - 0.05 <= y) return false;
+    const r = o.rect;
+    const against = { z0: r.z1, z1: r.z0, x0: r.x1, x1: r.x0 }[face];
+    if (Math.abs(against - f.coord) > 1e-6) return false;
+    const [o0, o1] = f.nz !== 0 ? [r.x0, r.x1] : [r.z0, r.z1];
+    return lo < o1 && hi > o0;
+  });
+}
+
+function paneOnFace(f: FaceFrame, along: number, w: number, y: number, h: number): EducationPane {
+  return f.nz !== 0
+    ? { x: along, z: f.coord, w, d: EDU_PANE_T, y, h }
+    : { x: f.coord, z: along, w: EDU_PANE_T, d: w, y, h };
+}
+
+/** A box on a door's wall, `a` along the wall from the door's centre and `proud` out of it: its plan centre and size. */
+function wallPlan(
+  door: EducationDoor,
+  a: number,
+  w: number,
+  thick: number,
+  proud: number,
+): { x: number; z: number; w: number; d: number } {
+  const alongX = door.nz !== 0;
+  return {
+    x: door.x + (alongX ? a : proud * door.nx),
+    z: door.z + (alongX ? proud * door.nz : a),
+    w: alongX ? w : thick,
+    d: alongX ? thick : w,
+  };
+}
+
+/** A row of window bays along one face at one height, none where another mass walls the face in nor by the door at ground. */
+function faceBays(
+  masses: readonly EducationMass[],
+  m: EducationMass,
+  face: Face,
+  y: number,
+  h: number,
+  door: EducationDoor,
+): EducationPane[] {
+  const f = faceFrame(m.rect, face);
+  const len = f.a1 - f.a0;
+  const count = Math.floor((len - 2 * EDU_WINDOW.end) / EDU_WINDOW.pitch) + 1;
+  const start = f.a0 + (len - (count - 1) * EDU_WINDOW.pitch) / 2;
+  const onDoorWall =
+    door.nx === f.nx &&
+    door.nz === f.nz &&
+    Math.abs((door.nx !== 0 ? door.x : door.z) - f.coord) < 1e-6;
+  const doorAlong = door.nx !== 0 ? door.z : door.x;
+  const panes: EducationPane[] = [];
+  for (let k = 0; k < count; k++) {
+    const c = start + k * EDU_WINDOW.pitch;
+    const reach = EDU_WINDOW.w / 2 + EDU_WINDOW.margin;
+    if (walledIn(masses, m, face, c - reach, c + reach, y)) continue;
+    if (onDoorWall && y < EDU_STOREY_M && Math.abs(c - doorAlong) < EDU_DOOR_SKIP_M) continue;
+    panes.push(paneOnFace(f, c, EDU_WINDOW.w, y, h));
+  }
+  return panes;
+}
+
+/** One continuous band of high windows along a free face of a gym. */
+function faceBand(masses: readonly EducationMass[], m: EducationMass, face: Face): EducationPane[] {
+  const f = faceFrame(m.rect, face);
+  const lo = f.a0 + EDU_GYM_BAND.end;
+  const hi = f.a1 - EDU_GYM_BAND.end;
+  if (walledIn(masses, m, face, lo, hi, EDU_GYM_BAND.y)) return [];
+  return [paneOnFace(f, (lo + hi) / 2, hi - lo, EDU_GYM_BAND.y, EDU_GYM_BAND.h)];
+}
+
+/**
+ * Every lit pane: a ribbon of windows on each storey of both long faces of a
+ * wing, a band of high windows on a gym's free faces, windows and a clerestory
+ * on the library, and the glazing of the door.
+ */
+function educationPanes(masses: readonly EducationMass[], door: EducationDoor): EducationPane[] {
+  const panes: EducationPane[] = [];
+  for (const m of masses) {
+    const r = m.rect;
+    if (m.floors === EDU_WING_STOREYS) {
+      const faces: Face[] = r.x1 - r.x0 >= r.z1 - r.z0 ? ['z0', 'z1'] : ['x0', 'x1'];
+      for (const face of faces) {
+        for (let f = 0; f < EDU_WING_STOREYS; f++) {
+          const y = f * EDU_STOREY_M + EDU_WINDOW.sill;
+          panes.push(...faceBays(masses, m, face, y, EDU_WINDOW.h, door));
+        }
+      }
+    } else if (m.floors === EDU_GYM.floors) {
+      for (const face of FACES) panes.push(...faceBand(masses, m, face));
+    } else {
+      const clerestory = m.height - EDU_STOREY_M - 0.9;
+      for (const face of FACES) {
+        panes.push(...faceBays(masses, m, face, 0.9, EDU_WINDOW.h, door));
+        if (clerestory > 0) {
+          panes.push(...faceBays(masses, m, face, EDU_STOREY_M + 0.4, clerestory, door));
+        }
+      }
+    }
+  }
+  for (const side of [-1, 1]) {
+    const p = wallPlan(door, side * 0.7, 1.1, 0.4, 0.2);
+    panes.push({ ...p, y: 0.2, h: 2 });
+  }
+  return panes;
+}
+
+function stallsAlongX(x0: number, count: number, z0: number, turn: 0 | 2): EducationStall[] {
+  return Array.from({ length: count }, (_, i) => ({
+    x: x0 + (i + 0.5) * DECK_STALL.w,
+    z: z0 + DECK_STALL.l / 2,
+    turn,
+    across: DECK_STALL.w,
+    accessible: false,
+  }));
+}
+
+/** A stall's plan: its width across its length. */
+export function educationStallRect(s: EducationStall): Rect {
+  const nosesAlongX = s.turn % 2 === 1;
+  const hx = (nosesAlongX ? DECK_STALL.l : s.across) / 2;
+  const hz = (nosesAlongX ? s.across : DECK_STALL.l) / 2;
+  return { x0: s.x - hx, x1: s.x + hx, z0: s.z - hz, z1: s.z + hz };
+}
+
+function distanceToPath(p: Vec2, path: EducationPath): number {
+  const dx = path.b.x - path.a.x;
+  const dz = path.b.z - path.a.z;
+  const t = Math.min(
+    1,
+    Math.max(0, ((p.x - path.a.x) * dx + (p.z - path.a.z) * dz) / (dx * dx + dz * dz)),
+  );
+  return Math.hypot(p.x - (path.a.x + t * dx), p.z - (path.a.z + t * dz));
+}
+
+/**
+ * Where everything stands on a school's, the college's or the library's lot, in
+ * the footprint frame with +Z to the street. Each building's wings are drawn to
+ * the floor its design states, a back wing across the lot and side wings
+ * forward from it; the courtyard they enclose opens to the street. Pure; fixed
+ * per catalog entry.
+ */
+export function computeEducationLayout(entry: BuildingCatalogEntry): EducationLayout {
+  if (entry.id === 'library') return computeLibraryLayout(entry);
+  const plan = EDUCATION_PLANS[entry.id];
+  if (!plan) throw new RangeError(`utilitykits: no education plan for "${entry.id}"`);
+  const { halfW, halfD } = footprintHalfExtents(entry.footprint);
+  const W = halfW - EDU_EDGE_M;
+  const D = halfD - EDU_EDGE_M;
+  const backZ1 = -D + EDU_WING_DEPTH_M;
+  const wing = (x0: number, x1: number, z0: number, z1: number): EducationMass => ({
+    rect: { x0, x1, z0, z1 },
+    height: entry.height,
+    floors: EDU_WING_STOREYS,
+  });
+  const leftWing = wing(-W, -W + EDU_WING_DEPTH_M, backZ1, backZ1 + plan.sideLength);
+  const masses: EducationMass[] = [wing(-W, W, -D, backZ1), leftWing];
+  const college = plan.kind === 'college';
+  if (college) {
+    masses.push(wing(W - EDU_WING_DEPTH_M, W, backZ1, backZ1 + plan.sideLength));
+  }
+  const gym: EducationMass | null = plan.gym
+    ? {
+        rect: { x0: W - plan.gym.w, x1: W, z0: backZ1, z1: backZ1 + plan.gym.d },
+        height: EDU_GYM.height,
+        floors: EDU_GYM.floors,
+      }
+    : null;
+  if (gym) masses.push(gym);
+  const courtyard: Rect = {
+    x0: leftWing.rect.x1,
+    x1: gym ? gym.rect.x0 : W - EDU_WING_DEPTH_M,
+    z0: backZ1,
+    z1: halfD,
+  };
+  const midX = (courtyard.x0 + courtyard.x1) / 2;
+  const layout: EducationLayout = {
+    kind: plan.kind,
+    masses,
+    courtyard,
+    door: { x: midX, z: backZ1, nx: 0, nz: 1 },
+    canopy: {
+      x0: midX - EDU_CANOPY.w / 2,
+      x1: midX + EDU_CANOPY.w / 2,
+      z0: backZ1,
+      z1: backZ1 + EDU_CANOPY.d,
+    },
+    asphalt: [],
+    concrete: [],
+    mulch: null,
+    playStructure: null,
+    field: null,
+    tennis: [],
+    quad: null,
+    paths: [],
+    pullIn: null,
+    bus: null,
+    stalls: [],
+    accessibleAisle: null,
+    flagpole: null,
+    bookDrop: null,
+    trees: [],
+    panes: [],
+  };
+
+  if (plan.kind === 'elementary') {
+    const side = leftWing.rect;
+    layout.concrete.push({
+      x0: midX - EDU_WALK_M / 2,
+      x1: midX + EDU_WALK_M / 2,
+      z0: backZ1,
+      z1: halfD,
+    });
+    layout.asphalt.push({
+      x0: -W,
+      x1: layout.canopy.x0 - 0.5,
+      z0: side.z1 + 1.3,
+      z1: D,
+    });
+    const mulchZ0 = side.z1 + 6.3;
+    layout.mulch = { x0: -W + 3, x1: -W + 13, z0: mulchZ0, z1: mulchZ0 + 10.5 };
+    layout.playStructure = { x: -W + 8, z: mulchZ0 + 4.5 };
+    layout.flagpole = { x: midX + 5, z: backZ1 + 14 };
+  } else if (plan.kind === 'middle' || plan.kind === 'high') {
+    const g = gym!.rect;
+    const pullIn: Rect = {
+      x0: courtyard.x0,
+      x1: courtyard.x1,
+      z0: D - EDU_PULL_IN_M,
+      z1: halfD,
+    };
+    const fieldZ0 = backZ1 + EDU_BACK_CLEAR_M;
+    const plaza: Rect = {
+      x0: courtyard.x0,
+      x1: courtyard.x1,
+      z0: fieldZ0 + EDU_TENNIS_PAIR.d,
+      z1: pullIn.z0,
+    };
+    layout.pullIn = pullIn;
+    layout.asphalt.push(pullIn);
+    layout.concrete.push(plaza);
+    layout.bus = { x: midX, z: pullIn.z0 + 2.5, turn: 1 };
+    layout.door = { x: courtyard.x0, z: plaza.z0 + 3.7, nx: 1, nz: 0 };
+    layout.canopy = {
+      x0: courtyard.x0,
+      x1: courtyard.x0 + EDU_CANOPY.d,
+      z0: layout.door.z - EDU_CANOPY.w / 2,
+      z1: layout.door.z + EDU_CANOPY.w / 2,
+    };
+    layout.flagpole = { x: courtyard.x0 + 12, z: plaza.z0 + 6.6 };
+    if (plan.kind === 'middle') {
+      layout.field = {
+        x0: courtyard.x0 + 1.5,
+        x1: courtyard.x1 - 1.5,
+        z0: fieldZ0,
+        z1: plaza.z0 - 1.5,
+      };
+    } else {
+      const x0 = midX - EDU_TENNIS_PAIR.w / 2;
+      for (let i = 0; i < 2; i++) {
+        layout.tennis.push({
+          x0,
+          x1: x0 + EDU_TENNIS_PAIR.w,
+          z0: fieldZ0 + (i * EDU_TENNIS_PAIR.d) / 2,
+          z1: fieldZ0 + ((i + 1) * EDU_TENNIS_PAIR.d) / 2,
+        });
+      }
+    }
+    // The staff car park before the gym: a row of 90° stalls on a 24 ft aisle, two rows in a deep lot.
+    const count = Math.floor((g.x1 - g.x0 - 1) / DECK_STALL.w);
+    const row1 = g.z1 + 2;
+    layout.stalls.push(...stallsAlongX(g.x0 + 1, count, row1, 2));
+    if (plan.kind === 'middle') {
+      layout.stalls.push(...stallsAlongX(g.x0 + 1, count, row1 + DECK_STALL.l + DECK_AISLE_M, 0));
+    }
+    layout.asphalt.push({ x0: g.x0 + 0.5, x1: g.x1, z0: g.z1 + 0.5, z1: halfD });
+  } else {
+    const quad: Rect = { ...courtyard, z1: backZ1 + plan.sideLength };
+    const cross = (quad.z0 + quad.z1) / 2;
+    layout.quad = quad;
+    layout.canopy = {
+      x0: -EDU_PORTICO.w / 2,
+      x1: EDU_PORTICO.w / 2,
+      z0: backZ1,
+      z1: backZ1 + EDU_PORTICO.d,
+    };
+    layout.concrete.push(layout.canopy);
+    layout.paths.push(
+      { a: { x: 0, z: layout.canopy.z1 }, b: { x: 0, z: halfD }, w: 3 },
+      { a: { x: quad.x0, z: cross }, b: { x: quad.x1, z: cross }, w: 3 },
+      { a: { x: quad.x0 + 3, z: quad.z0 + 3 }, b: { x: quad.x1 - 3, z: quad.z1 - 3 }, w: 2.4 },
+      { a: { x: quad.x1 - 3, z: quad.z0 + 3 }, b: { x: quad.x0 + 3, z: quad.z1 - 3 }, w: 2.4 },
+    );
+    const pole: Vec2 = { x: 11, z: backZ1 + 8 };
+    layout.flagpole = pole;
+    const along = 4.8;
+    const candidates: Vec2[] = [];
+    for (let z = backZ1 + 8; z <= halfD - 2.5; z += 9) {
+      candidates.push({ x: -along, z }, { x: along, z });
+    }
+    for (let x = quad.x0 + 8; x <= quad.x1 - 8 + 1e-9; x += 9) {
+      candidates.push({ x, z: cross - along }, { x, z: cross + along });
+    }
+    layout.trees = candidates.filter(
+      (t) =>
+        layout.paths.every((p) => distanceToPath(t, p) >= EDU_TREE_CLEAR_M) &&
+        Math.hypot(t.x - pole.x, t.z - pole.z) >= EDU_TREE_CLEAR_M,
+    );
+  }
+  layout.panes = educationPanes(masses, layout.door);
+  return layout;
+}
+
+/**
+ * The library: one storey on a 42 × 27.2 m plate across the back of the lot, its
+ * reading room raised under a clerestory between two flat flanks, the car park
+ * of one aisle beside it. The accessible space is a van space with its access
+ * aisle, so the column of stalls holds whole stalls after it.
+ */
+function computeLibraryLayout(entry: BuildingCatalogEntry): EducationLayout {
+  const { halfW, halfD } = footprintHalfExtents(entry.footprint);
+  const W = halfW - EDU_EDGE_M;
+  const D = halfD - EDU_EDGE_M;
+  const z0 = -D;
+  const z1 = z0 + EDU_LIBRARY.d;
+  const flank = (EDU_LIBRARY.w - EDU_LIBRARY.reading) / 2;
+  const mass = (x0: number, x1: number, height: number): EducationMass => ({
+    rect: { x0, x1, z0, z1 },
+    height,
+    floors: 1,
+  });
+  const masses = [
+    mass(-W, -W + flank, entry.height),
+    mass(-W + flank, -W + flank + EDU_LIBRARY.reading, EDU_LIBRARY.readingHeight),
+    mass(-W + flank + EDU_LIBRARY.reading, -W + EDU_LIBRARY.w, entry.height),
+  ];
+  const door: EducationDoor = { x: -W + flank + EDU_LIBRARY.reading / 2, z: z1, nx: 0, nz: 1 };
+  const plateX1 = -W + EDU_LIBRARY.w;
+
+  const van = ACCESSIBLE_VAN_WIDTH_M;
+  const regular = Math.floor((2 * D - van - ACCESSIBLE_AISLE_M) / DECK_STALL.w);
+  const stallX = W - DECK_STALL.l / 2;
+  const stalls: EducationStall[] = Array.from({ length: regular }, (_, i) => ({
+    x: stallX,
+    z: z0 + (i + 0.5) * DECK_STALL.w,
+    turn: 3,
+    across: DECK_STALL.w,
+    accessible: false,
+  }));
+  const vanZ0 = z0 + regular * DECK_STALL.w;
+  stalls.push({ x: stallX, z: vanZ0 + van / 2, turn: 3, across: van, accessible: true });
+
+  const layout: EducationLayout = {
+    kind: 'library',
+    masses,
+    courtyard: null,
+    door,
+    canopy: {
+      x0: door.x - 4,
+      x1: door.x + 4,
+      z0: z1,
+      z1: z1 + EDU_CANOPY.d,
+    },
+    asphalt: [{ x0: plateX1 + 0.5, x1: W, z0, z1: halfD }],
+    concrete: [{ x0: door.x - EDU_WALK_M / 2, x1: door.x + EDU_WALK_M / 2, z0: z1, z1: halfD }],
+    mulch: null,
+    playStructure: null,
+    field: null,
+    tennis: [],
+    quad: null,
+    paths: [],
+    pullIn: null,
+    bus: null,
+    stalls,
+    accessibleAisle: {
+      x0: W - DECK_STALL.l,
+      x1: W,
+      z0: vanZ0 + van,
+      z1: vanZ0 + van + ACCESSIBLE_AISLE_M,
+    },
+    flagpole: { x: door.x - 9, z: z1 + 5.5 },
+    bookDrop: { x0: door.x + 7.5, x1: door.x + 8.5, z0: z1, z1: z1 + 0.7 },
+    trees: [],
+    panes: [],
+  };
+  layout.panes = educationPanes(masses, door);
+  return layout;
+}
+
+/** The floor of a layout as drawn, m²: each mass's plan over the floors it counts for. */
+export function educationFloorArea(layout: EducationLayout): number {
+  return layout.masses.reduce(
+    (sum, m) => sum + (m.rect.x1 - m.rect.x0) * (m.rect.z1 - m.rect.z0) * m.floors,
+    0,
+  );
+}
+
+/** A flat patch of ground on the lawn plate: `rise` above the lawn, `thick` deep. */
+function groundPatch(r: Rect, rise: number, thick: number, rgb: RGB): THREE.BufferGeometry {
+  return standingBox(
+    r.x1 - r.x0,
+    thick,
+    r.z1 - r.z0,
+    (r.x0 + r.x1) / 2,
+    RECYCLING_YARD_HEIGHT + rise,
+    (r.z0 + r.z1) / 2,
+    rgb,
+  );
+}
+
+/** The white lines of a rectangle, on top of a patch: its four edges, `w` wide. */
+function outlineLines(r: Rect, rise: number, w: number): THREE.BufferGeometry[] {
+  const line = (x0: number, x1: number, z0: number, z1: number): THREE.BufferGeometry =>
+    groundPatch({ x0, x1, z0, z1 }, rise, EDU_LINE_M, EDU_LINE_RGB);
+  return [
+    line(r.x0, r.x1, r.z0, r.z0 + w),
+    line(r.x0, r.x1, r.z1 - w, r.z1),
+    line(r.x0, r.x0 + w, r.z0, r.z1),
+    line(r.x1 - w, r.x1, r.z0, r.z1),
+  ];
+}
+
+/** The markings of one tennis court inside its rect: baselines, singles and doubles sidelines, service lines and the centre mark. */
+function tennisLines(court: Rect): THREE.BufferGeometry[] {
+  const cx = (court.x0 + court.x1) / 2;
+  const cz = (court.z0 + court.z1) / 2;
+  const rise = EDU_ASPHALT_M;
+  const line = (x0: number, x1: number, z0: number, z1: number): THREE.BufferGeometry =>
+    groundPatch({ x0, x1, z0, z1 }, rise, EDU_LINE_M, EDU_LINE_RGB);
+  const hl = 11.885;
+  const hw = 5.485;
+  const hs = 4.115;
+  const service = 6.4;
+  const t = 0.05;
+  const parts: THREE.BufferGeometry[] = [];
+  for (const s of [-1, 1]) {
+    parts.push(
+      line(cx + s * hl - t, cx + s * hl + t, cz - hw, cz + hw),
+      line(cx - hl, cx + hl, cz + s * hw - t, cz + s * hw + t),
+      line(cx - hl, cx + hl, cz + s * hs - t, cz + s * hs + t),
+      line(cx + s * service - t, cx + s * service + t, cz - hs, cz + hs),
+    );
+  }
+  parts.push(line(cx - service, cx + service, cz - t, cz + t));
+  return parts;
+}
+
+/** The stall lines of every stall, one line a shared edge, and the library's hatched aisle and symbol. */
+function stallPaint(layout: EducationLayout): THREE.BufferGeometry[] {
+  const parts: THREE.BufferGeometry[] = [];
+  const seen = new Set<string>();
+  const rise = EDU_ASPHALT_M;
+  for (const s of layout.stalls) {
+    const r = educationStallRect(s);
+    const alongX = s.turn % 2 === 1;
+    const edges = alongX ? [r.z0, r.z1] : [r.x0, r.x1];
+    for (const e of edges) {
+      const key = `${alongX}:${e.toFixed(3)}:${(alongX ? s.x : s.z).toFixed(3)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      parts.push(
+        alongX
+          ? groundPatch(
+              { x0: r.x0, x1: r.x1, z0: e - EDU_LINE_W / 2, z1: e + EDU_LINE_W / 2 },
+              rise,
+              EDU_LINE_M,
+              EDU_LINE_RGB,
+            )
+          : groundPatch(
+              { x0: e - EDU_LINE_W / 2, x1: e + EDU_LINE_W / 2, z0: r.z0, z1: r.z1 },
+              rise,
+              EDU_LINE_M,
+              EDU_LINE_RGB,
+            ),
+      );
+    }
+  }
+  const top = RECYCLING_YARD_HEIGHT + EDU_ASPHALT_M;
+  const aisle = layout.accessibleAisle;
+  const accessible = layout.stalls.find((s) => s.accessible);
+  if (aisle) {
+    const depth = aisle.z1 - aisle.z0;
+    const bar = depth * Math.SQRT2 - EDU_LINE_W;
+    for (
+      let x = aisle.x0 + depth / 2;
+      x <= aisle.x1 - depth / 2 + 1e-9;
+      x += PAINT_HATCH_SPACING_M
+    ) {
+      const hatch = new THREE.BoxGeometry(bar, 0.01, EDU_LINE_W);
+      hatch.rotateY(Math.PI / 4);
+      hatch.translate(x, top + 0.005, (aisle.z0 + aisle.z1) / 2);
+      parts.push(paintVertexColor(hatch, hexFromRgb(MARKING_COLOR)));
+    }
+  }
+  if (accessible) {
+    const { positions, colors } = accessibilitySymbolPaint(ACCESSIBLE_SYMBOL_M);
+    const symbol = new THREE.BufferGeometry();
+    symbol.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    symbol.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    symbol.computeVertexNormals();
+    // Upright to a driver pulling in nose to -X.
+    symbol.rotateY((3 * Math.PI) / 2);
+    symbol.translate(accessible.x, top - ROAD_Y_OFFSET + 0.01, accessible.z);
+    parts.push(symbol);
+  }
+  return parts;
+}
+
+/** The lawn plate with its footing, the paving, courts, field, quad, paths and every stall's paint; local Y=0 is the highest ground under the lot. */
+function buildEducationGroundsGeometry(entry: BuildingCatalogEntry): THREE.BufferGeometry {
+  const layout = computeEducationLayout(entry);
+  const { halfW, halfD } = footprintHalfExtents(entry.footprint);
+  const top = RECYCLING_YARD_HEIGHT;
+  const depth = top + YARD_FOOTING_DEPTH;
+  const lawn = new THREE.BoxGeometry(halfW * 2, depth, halfD * 2);
+  lawn.translate(0, top - depth / 2, 0);
+  const parts: THREE.BufferGeometry[] = [paintVertexColor(lawn, hexFromRgb(CEMETERY_LAWN_RGB))];
+  if (layout.quad) parts.push(groundPatch(layout.quad, 0, EDU_PATCH_M, EDU_FIELD_RGB));
+  for (const r of layout.asphalt) parts.push(groundPatch(r, 0, EDU_ASPHALT_M, EDU_ASPHALT_RGB));
+  for (const r of layout.concrete) parts.push(groundPatch(r, 0, EDU_CONCRETE_M, EDU_CONCRETE_RGB));
+  if (layout.mulch) parts.push(groundPatch(layout.mulch, EDU_ASPHALT_M, EDU_LINE_M, EDU_MULCH_RGB));
+  if (layout.field) {
+    parts.push(groundPatch(layout.field, 0, EDU_PATCH_M, EDU_FIELD_RGB));
+    parts.push(...outlineLines(layout.field, EDU_PATCH_M, EDU_LINE_W));
+  }
+  for (const court of layout.tennis) {
+    parts.push(groundPatch(court, 0, EDU_ASPHALT_M, EDU_COURT_RGB), ...tennisLines(court));
+  }
+  for (const path of layout.paths) {
+    const dx = path.b.x - path.a.x;
+    const dz = path.b.z - path.a.z;
+    const slab = new THREE.BoxGeometry(path.w, EDU_ASPHALT_M, Math.hypot(dx, dz));
+    slab.rotateY(Math.atan2(dx, dz));
+    slab.translate(
+      (path.a.x + path.b.x) / 2,
+      top + EDU_PATCH_M + EDU_ASPHALT_M / 2,
+      (path.a.z + path.b.z) / 2,
+    );
+    parts.push(paintVertexColor(slab, hexFromRgb(EDU_PATH_RGB)));
+  }
+  parts.push(...stallPaint(layout));
+  return mergeParts(parts);
+}
+
+/** The roof cap of a mass: a parapet over the elementary's three storeys, a thin slab otherwise. */
+function educationCap(m: EducationMass): number {
+  return m.height > EDU_WING_STOREYS * EDU_STOREY_M + 1e-9 ? EDU_PARAPET_M : EDU_CAP_M;
+}
+
+/** The masses with their caps and belt courses, the door and its canopy or portico; local Y=0 is the ground, the floor 0.3 m up on the lawn plate. */
+function buildEducationBuildingGeometry(entry: BuildingCatalogEntry): THREE.BufferGeometry {
+  const layout = computeEducationLayout(entry);
+  const y0 = RECYCLING_YARD_HEIGHT;
+  const wall =
+    layout.kind === 'college'
+      ? EDU_LIMESTONE_RGB
+      : layout.kind === 'library'
+        ? EDU_LIBRARY_RGB
+        : EDU_BRICK_RGB;
+  const parts: THREE.BufferGeometry[] = [];
+  for (const m of layout.masses) {
+    const r = m.rect;
+    const w = r.x1 - r.x0;
+    const d = r.z1 - r.z0;
+    const cx = (r.x0 + r.x1) / 2;
+    const cz = (r.z0 + r.z1) / 2;
+    const cap = educationCap(m);
+    parts.push(
+      standingBox(w, m.height - cap, d, cx, y0, cz, wall),
+      standingBox(w + 0.4, cap, d + 0.4, cx, y0 + m.height - cap, cz, EDU_CAP_RGB),
+    );
+    if (m.floors === EDU_WING_STOREYS) {
+      for (let f = 1; f < EDU_WING_STOREYS; f++) {
+        parts.push(
+          standingBox(w + 0.1, 0.2, d + 0.1, cx, y0 + f * EDU_STOREY_M - 0.1, cz, EDU_BELT_RGB),
+        );
+      }
+    }
+  }
+
+  const { door, canopy } = layout;
+  const frame = wallPlan(door, 0, 3.2, 0.3, 0.15);
+  const leaf = wallPlan(door, 0, 2.8, 0.34, 0.17);
+  parts.push(
+    standingBox(frame.w, 2.7, frame.d, frame.x, y0, frame.z, EDU_FRAME_RGB),
+    standingBox(leaf.w, 2.5, leaf.d, leaf.x, y0, leaf.z, EDU_DOOR_RGB),
+  );
+  const cx = (canopy.x0 + canopy.x1) / 2;
+  const cz = (canopy.z0 + canopy.z1) / 2;
+  if (layout.kind === 'college') {
+    const { w, d, columns, columnY, entablature, rise } = EDU_PORTICO;
+    for (let k = 0; k < columns; k++) {
+      const column = new THREE.CylinderGeometry(0.35, 0.4, columnY, 10);
+      column.translate(cx + (k - (columns - 1) / 2) * 2.4, y0 + columnY / 2, canopy.z1 - 0.8);
+      parts.push(paintVertexColor(column, hexFromRgb(EDU_COLUMN_RGB)));
+    }
+    parts.push(standingBox(w, entablature, d, cx, y0 + columnY, cz, EDU_COLUMN_RGB));
+    // The pediment is a gable whose ridge runs front to back.
+    const pediment = gableRoof(d, rise, w, 0, 0, 0, EDU_COLUMN_RGB);
+    pediment.rotateY(Math.PI / 2);
+    pediment.translate(cx, y0 + columnY + entablature, cz);
+    parts.push(pediment);
+  } else {
+    parts.push(
+      standingBox(
+        canopy.x1 - canopy.x0,
+        EDU_CANOPY.slab,
+        canopy.z1 - canopy.z0,
+        cx,
+        y0 + EDU_CANOPY.y,
+        cz,
+        EDU_CANOPY_RGB,
+      ),
+    );
+    const outerX = door.nx > 0 ? canopy.x1 : canopy.x0;
+    const outerZ = door.nz > 0 ? canopy.z1 : canopy.z0;
+    const posts: Vec2[] =
+      door.nz !== 0
+        ? [
+            { x: canopy.x0 + 0.3, z: outerZ - door.nz * 0.3 },
+            { x: canopy.x1 - 0.3, z: outerZ - door.nz * 0.3 },
+          ]
+        : [
+            { x: outerX - door.nx * 0.3, z: canopy.z0 + 0.3 },
+            { x: outerX - door.nx * 0.3, z: canopy.z1 - 0.3 },
+          ];
+    for (const p of posts) {
+      parts.push(standingBox(0.25, EDU_CANOPY.y, 0.25, p.x, y0, p.z, EDU_POLE_RGB));
+    }
+  }
+  return mergeParts(parts);
+}
+
+/** The flagpole, the play structure, the tennis nets and the book drop, each on the ground it stands on. */
+function buildEducationPropsGeometry(entry: BuildingCatalogEntry): THREE.BufferGeometry {
+  const layout = computeEducationLayout(entry);
+  const y0 = RECYCLING_YARD_HEIGHT;
+  const parts: THREE.BufferGeometry[] = [];
+  if (layout.flagpole) {
+    const { x, z } = layout.flagpole;
+    const finial = 0.14;
+    const shaft = FLAGPOLE_HEIGHT_M - finial;
+    const pole = new THREE.CylinderGeometry(0.07, 0.1, shaft, 8);
+    pole.translate(x, y0 + shaft / 2, z);
+    const ball = new THREE.SphereGeometry(finial, 8, 6);
+    ball.translate(x, y0 + shaft, z);
+    parts.push(
+      paintVertexColor(pole, hexFromRgb(EDU_POLE_RGB)),
+      paintVertexColor(ball, hexFromRgb(EDU_PLAY_YELLOW_RGB)),
+    );
+    EDU_FLAG_RGBS.forEach((rgb, i) => {
+      parts.push(standingBox(1.5, 0.3, 0.03, x + 0.78, y0 + shaft - 1.1 + i * 0.3, z, rgb));
+    });
+  }
+  if (layout.playStructure) {
+    const { x, z } = layout.playStructure;
+    const base = y0 + EDU_ASPHALT_M + EDU_LINE_M;
+    const deckY = 1.5;
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        parts.push(
+          standingBox(0.12, deckY, 0.12, x + sx * 1.85, base, z + sz * 1.35, EDU_PLAY_BLUE_RGB),
+        );
+      }
+    }
+    parts.push(
+      standingBox(4, 0.1, 3, x, base + deckY, z, EDU_PLAY_RED_RGB),
+      standingBox(4, 0.9, 0.06, x, base + deckY + 0.1, z - 1.47, EDU_PLAY_BLUE_RGB),
+      standingBox(0.06, 0.9, 3, x - 1.97, base + deckY + 0.1, z, EDU_PLAY_BLUE_RGB),
+      standingBox(0.06, 0.9, 3, x + 1.97, base + deckY + 0.1, z, EDU_PLAY_BLUE_RGB),
+    );
+    const run = 2.6;
+    const drop = deckY + 0.1 - 0.15;
+    const slide = new THREE.BoxGeometry(0.7, 0.08, Math.hypot(run, drop));
+    slide.rotateX(Math.atan2(drop, run));
+    slide.translate(x, base + 0.15 + drop / 2, z + 1.5 + run / 2);
+    parts.push(paintVertexColor(slide, hexFromRgb(EDU_PLAY_YELLOW_RGB)));
+  }
+  for (const court of layout.tennis) {
+    const cx = (court.x0 + court.x1) / 2;
+    const cz = (court.z0 + court.z1) / 2;
+    const base = y0 + EDU_ASPHALT_M;
+    parts.push(standingBox(0.03, 0.9, 10.97, cx, base, cz, EDU_NET_RGB));
+    for (const s of [-1, 1]) {
+      parts.push(standingBox(0.1, 1.07, 0.1, cx, base, cz + s * 5.935, EDU_FRAME_RGB));
+    }
+  }
+  if (layout.bookDrop) {
+    const b = layout.bookDrop;
+    parts.push(
+      standingBox(
+        b.x1 - b.x0,
+        1.2,
+        b.z1 - b.z0,
+        (b.x0 + b.x1) / 2,
+        y0,
+        (b.z0 + b.z1) / 2,
+        EDU_BOOK_DROP_RGB,
+      ),
+      standingBox(0.6, 0.12, 0.06, (b.x0 + b.x1) / 2, y0 + 0.8, b.z1 + 0.01, EDU_FRAME_RGB),
+    );
+  }
+  return mergeParts(parts);
+}
+
+/** Every lit pane, one geometry for the one emissive material. */
+function buildEducationLitGeometry(entry: BuildingCatalogEntry): THREE.BufferGeometry {
+  return mergeParts(
+    computeEducationLayout(entry).panes.map((p) =>
+      standingBox(p.w, p.h, p.d, p.x, RECYCLING_YARD_HEIGHT + p.y, p.z, EDU_POLE_RGB),
+    ),
+  );
+}
+
+/**
+ * A Type C school bus, nose to local +Z, centred on its own origin on the
+ * ground: a flat-fronted body in school-bus yellow behind a lower hood, black
+ * rub rails and skirt, a row of side windows, a door at the front on the right,
+ * and the amber and red warning lamps over the glass.
+ */
+function buildSchoolBusGeometry(): THREE.BufferGeometry {
+  const { w, h, l } = SCHOOL_BUS_SIZE;
+  const hl = l / 2;
+  const hood = 2.3;
+  const frontBody = hl - hood;
+  const bodyLen = l - hood;
+  const bodyCz = (-hl + frontBody) / 2;
+  const parts: THREE.BufferGeometry[] = [
+    standingBox(w, h - 0.6, bodyLen, 0, 0.6, bodyCz, BUS_YELLOW_RGB),
+    standingBox(w - 0.04, 0.3, bodyLen - 0.2, 0, 0.3, bodyCz, BUS_BLACK_RGB),
+    standingBox(2.1, 1.25, hood, 0, 0.65, frontBody + hood / 2, BUS_YELLOW_RGB),
+    standingBox(2.2, 1.05, 0.08, 0, 1.95, frontBody + 0.02, BUS_GLASS_RGB),
+    standingBox(w, 0.3, 0.3, 0, 0.35, hl - 0.15, BUS_BLACK_RGB),
+    standingBox(w, 0.3, 0.3, 0, 0.4, -hl + 0.15, BUS_BLACK_RGB),
+    standingBox(1.2, 0.6, 0.06, 0, 0.7, hl - 0.03, BUS_BLACK_RGB),
+  ];
+  for (const s of [-1, 1]) {
+    parts.push(
+      standingBox(0.3, 0.15, 0.06, s * 0.9, 3, frontBody + 0.03, BUS_AMBER_RGB),
+      standingBox(0.3, 0.15, 0.06, s * 0.9, 3, -hl + 0.03, BUS_RED_RGB),
+      standingBox(0.3, 0.25, 0.06, s * 0.75, 0.8, hl - 0.03, BUS_LAMP_RGB),
+      standingBox(0.1, 0.08, hood, s * (1.05 - 0.05), 1.15, frontBody + hood / 2, BUS_BLACK_RGB),
+      standingBox(0.32, 1, 1, s * 1.04, 0, hl - 1.6, BUS_BLACK_RGB),
+      standingBox(0.32, 1, 1, s * 1.04, 0, -hl + 2.3, BUS_BLACK_RGB),
+    );
+    for (const y of [0.75, 1.2, 1.75]) {
+      parts.push(standingBox(0.1, 0.08, bodyLen, s * (w / 2 - 0.05), y, bodyCz, BUS_BLACK_RGB));
+    }
+    const windows = s > 0 ? 6 : 8;
+    for (let k = 0; k < windows; k++) {
+      parts.push(
+        standingBox(0.06, 0.8, 0.85, s * (w / 2 - 0.03), 1.85, -hl + 0.6 + 0.5 + k, BUS_GLASS_RGB),
+      );
+    }
+  }
+  parts.push(standingBox(0.07, 2, 1, w / 2 - 0.035, 0.7, frontBody - 0.9, BUS_GLASS_RGB));
+  return mergeParts(parts);
+}
+
+// ---------------------------------------------------------------------------
 // small-park: flat lawn plate (lush green), a light
 // path cross, 2-3 simple trees (self-contained), 2 benches.
 // ---------------------------------------------------------------------------
@@ -3451,7 +4424,7 @@ export class UtilityKitRenderer {
     emissiveIntensity: 0,
   });
 
-  /** The panes of every station: dark glass by day, a warm light that follows the night factor. */
+  /** The panes of every station, school and library: dark glass by day, a warm light that follows the night factor. */
   private readonly stationLightMaterial = new THREE.MeshLambertMaterial({
     color: STATION_GLASS_COLOR,
     emissive: STATION_LIGHT_COLOR,
@@ -3506,7 +4479,7 @@ export class UtilityKitRenderer {
     return this.instances.get(buildingId)?.slots.cemeteryStone?.length ?? 0;
   }
 
-  /** 0 (day) .. 1 (night): the turbine beacon and the stations' lit panes react; every other kit stays unlit. */
+  /** 0 (day) .. 1 (night): the turbine beacon and the lit panes of the stations, schools and library react; every other kit stays unlit. */
   setNightFactor(nightFactor: number): void {
     this.nightFactorValue = Math.min(1, Math.max(0, nightFactor));
     this.beaconMaterial.emissiveIntensity = this.nightFactorValue;
@@ -3617,6 +4590,12 @@ export class UtilityKitRenderer {
       case 'police-station':
       case 'police-station-district':
         return this.buildStationKit(entry);
+      case 'school':
+      case 'middle-school':
+      case 'high-school':
+      case 'college':
+      case 'library':
+        return this.buildEducationKit(entry);
       case 'small-park':
         return this.buildSmallParkKit(entry);
       default:
@@ -3962,6 +4941,39 @@ export class UtilityKitRenderer {
     return { entry, pavesLot: true, pools };
   }
 
+  private buildEducationKit(entry: BuildingCatalogEntry): KitDefinition {
+    const lambert = (): THREE.MeshLambertMaterial =>
+      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const pool = (
+      geometry: THREE.BufferGeometry,
+      material: THREE.Material = lambert(),
+      capacity = INITIAL_KIT_CAPACITY,
+    ) => new InstancedSlotPool(this.scene, geometry, material, capacity);
+    const layout = computeEducationLayout(entry);
+    const pools: KitDefinition['pools'] = {
+      schoolGrounds: pool(buildEducationGroundsGeometry(entry)),
+      schoolBuilding: pool(buildEducationBuildingGeometry(entry)),
+      schoolProps: pool(buildEducationPropsGeometry(entry)),
+      schoolLit: pool(buildEducationLitGeometry(entry), this.stationLightMaterial),
+    };
+    if (layout.stalls.length > 0) {
+      pools.schoolCar = pool(
+        buildParkedCarGeometry(),
+        lambert(),
+        INITIAL_KIT_CAPACITY * layout.stalls.length,
+      );
+    }
+    if (layout.bus) pools.schoolBus = pool(buildSchoolBusGeometry());
+    if (layout.trees.length > 0) {
+      pools.schoolTree = pool(
+        buildParkTreeGeometry(),
+        lambert(),
+        INITIAL_KIT_CAPACITY * layout.trees.length,
+      );
+    }
+    return { entry, pavesLot: true, pools };
+  }
+
   private buildSmallParkKit(entry: BuildingCatalogEntry): KitDefinition {
     const lambert = (): THREE.MeshLambertMaterial =>
       new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -4109,6 +5121,13 @@ export class UtilityKitRenderer {
       case 'police-station':
       case 'police-station-district':
         this.applyStation(kit, building, entry, centerX, groundY, centerZ, rotation);
+        return;
+      case 'school':
+      case 'middle-school':
+      case 'high-school':
+      case 'college':
+      case 'library':
+        this.applyEducation(kit, building, entry, centerX, groundY, centerZ, rotation);
         return;
       case 'small-park':
         this.applySmallPark(kit, building, entry, centerX, groundY, centerZ, rotation);
@@ -4535,6 +5554,87 @@ export class UtilityKitRenderer {
           placeLocal(stationApparatus, spot, rotation),
         ),
         stationCar: cars,
+      },
+    });
+  }
+
+  private applyEducation(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    centerX: number,
+    groundY: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+  ): void {
+    const {
+      schoolGrounds,
+      schoolBuilding,
+      schoolProps,
+      schoolLit,
+      schoolTree,
+      schoolCar,
+      schoolBus,
+    } = kit.pools;
+    if (!schoolGrounds || !schoolBuilding || !schoolProps || !schoolLit) return;
+
+    const layout = computeEducationLayout(entry);
+    const lawn = groundY + RECYCLING_YARD_HEIGHT;
+    const paved = lawn + EDU_ASPHALT_M;
+    const placeLocal = (
+      pool: InstancedSlotPool,
+      local: Vec2,
+      y: number,
+      turn: 0 | 1 | 2 | 3,
+    ): number => {
+      const rotated = rotateLocalXZ(local.x, local.z, rotation);
+      return this.placeAt(pool, centerX + rotated.x, y, centerZ + rotated.z, turn);
+    };
+    const cars: number[] = [];
+    if (schoolCar) {
+      layout.stalls.forEach((stall, i) => {
+        if (!deckStallTaken(building.id, i)) return;
+        const slot = placeLocal(
+          schoolCar,
+          stall,
+          paved,
+          ((rotation + stall.turn) % 4) as 0 | 1 | 2 | 3,
+        );
+        _carColor.setHex(
+          VEHICLE_PALETTE_HEX[
+            Math.floor(hash1(building.id * 31 + i) * VEHICLE_PALETTE_HEX.length)
+          ]!,
+        );
+        schoolCar.setColorAt(slot, _carColor);
+        cars.push(slot);
+      });
+    }
+    const whole = (pool: InstancedSlotPool): number[] => [
+      this.placeAt(pool, centerX, groundY, centerZ, rotation),
+    ];
+    this.instances.set(building.id, {
+      catalogId: building.catalogId,
+      slots: {
+        schoolGrounds: whole(schoolGrounds),
+        schoolBuilding: whole(schoolBuilding),
+        schoolProps: whole(schoolProps),
+        schoolLit: whole(schoolLit),
+        schoolCar: cars,
+        ...(schoolBus && layout.bus
+          ? {
+              schoolBus: [
+                placeLocal(
+                  schoolBus,
+                  layout.bus,
+                  paved,
+                  ((rotation + layout.bus.turn) % 4) as 0 | 1 | 2 | 3,
+                ),
+              ],
+            }
+          : {}),
+        ...(schoolTree
+          ? { schoolTree: layout.trees.map((tree) => placeLocal(schoolTree, tree, lawn, rotation)) }
+          : {}),
       },
     });
   }

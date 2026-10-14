@@ -121,6 +121,10 @@ const STATIONS = (catalogData as { buildings: BuildingCatalogEntry[] }).building
   ),
 );
 
+const EDUCATION = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter((e) =>
+  ['school', 'middle-school', 'high-school', 'college', 'library'].includes(e.id),
+);
+
 const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'turbineTower',
   'turbineRotor',
@@ -461,7 +465,7 @@ function decomposeQuaternion(m: THREE.Matrix4): THREE.Quaternion {
 // ---------------------------------------------------------------------------
 
 describe('UTILITY_KIT_CATALOG_IDS', () => {
-  it('is exactly the 18 silhouette-kit ids', () => {
+  it('is exactly the 23 silhouette-kit ids', () => {
     expect(UTILITY_KIT_CATALOG_IDS).toEqual([
       'wind-turbine',
       'water-tower',
@@ -480,6 +484,11 @@ describe('UTILITY_KIT_CATALOG_IDS', () => {
       'fire-station-district',
       'police-station',
       'police-station-district',
+      'school',
+      'middle-school',
+      'high-school',
+      'college',
+      'library',
       'small-park',
     ]);
   });
@@ -2054,7 +2063,7 @@ describe('a paved kit on sloped ground', () => {
 // ---------------------------------------------------------------------------
 
 describe('multiple kits coexisting', () => {
-  it('builds and applies all 18 kits from one catalog + one delta without cross-talk', () => {
+  it('builds and applies all 23 kits from one catalog + one delta without cross-talk', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
       makeTurbineEntry(),
       makeWaterTowerEntry(),
@@ -2070,10 +2079,16 @@ describe('multiple kits coexisting', () => {
       CEMETERY,
       CREMATORIUM,
       ...STATIONS,
+      ...EDUCATION,
       makeSmallParkEntry(),
     ]);
     renderer.apply(
       deltaAdd(
+        makeInstance(19, 'school', { x: 150, z: 0 }),
+        makeInstance(20, 'middle-school', { x: 160, z: 0 }),
+        makeInstance(21, 'high-school', { x: 170, z: 0 }),
+        makeInstance(22, 'college', { x: 180, z: 0 }),
+        makeInstance(23, 'library', { x: 190, z: 0 }),
         makeInstance(15, 'fire-station', { x: 110, z: 0 }),
         makeInstance(16, 'fire-station-district', { x: 120, z: 0 }),
         makeInstance(17, 'police-station', { x: 130, z: 0 }),
@@ -2118,6 +2133,10 @@ describe('multiple kits coexisting', () => {
     expect(renderer.partSlotsFor(10, 'transferRig')).toHaveLength(0);
     expect(renderer.partSlotsFor(12, 'hospitalAmbulance')).toHaveLength(1);
     expect(renderer.partSlotsFor(11, 'hospitalAmbulance')).toHaveLength(0);
+    expect(renderer.partSlotsFor(20, 'schoolBus')).toHaveLength(1);
+    expect(renderer.partSlotsFor(19, 'schoolBus')).toHaveLength(0);
+    expect(renderer.partSlotsFor(22, 'schoolBuilding')).toHaveLength(1);
+    expect(renderer.partSlotsFor(23, 'schoolLit')).toHaveLength(1);
   });
 });
 

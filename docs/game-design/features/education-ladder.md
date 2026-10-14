@@ -1,6 +1,6 @@
 # Education ladder — design
 
-- **Status:** Partly built — the ladder in the sim: four schools, the library, the gates (2026-10-14); the school buildings drawn in slice 2
+- **Status:** Built — the ladder in the sim: four schools, the library, the gates; the school buildings drawn as campuses (2026-10-14)
 - **Date:** 2026-10-14
 
 Epic 3 of the programme in [municipal-services.md](municipal-services.md), on the
@@ -11,9 +11,10 @@ capacity foundation of epic 0 — [service-capacity.md](service-capacity.md) and
 
 The epic is two slices. **Slice 1, built,** is everything the sim, the catalog,
 the save, the panels and the Advisor need: the four schools, the library, the
-gates and the problem that tells a player which school is missing. The new
-buildings draw as the generic catalog box. **Slice 2, not built,** is their
-kits and the screenshots that prove them.
+gates and the problem that tells a player which school is missing. **Slice 2,
+built,** draws the five buildings: classroom wings at their stated floor, gyms,
+and grounds a player reads them by — see
+[../../art/civic-massing.md](../../art/civic-massing.md#the-schools-the-college-and-the-library).
 
 The 2026-09-18 draft was built on English sources. It is rewritten here on the
 United States' own: NCES enrolment and school counts, a US school construction
@@ -408,5 +409,6 @@ benchmark, 14.48 gal/sf.
   [../../DESIGN.md](../../DESIGN.md).
 - **Not school buses, catchment drawing, or term time.** Each is a system of its
   own and none changes what this epic is for.
-- **Not the buildings' own look.** Slice 2 draws the schools, the college and the
-  library; until then each is the generic catalog box at its true size.
+- **Not a real school site.** A track, a football field and a baseball diamond fit
+  none of the lots, and neither does the parking a real campus asks; the grid wins,
+  and the kits draw what fits.
