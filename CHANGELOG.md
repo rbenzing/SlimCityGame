@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.54.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.53.0...slimcity-v1.54.0) (2026-10-14)
+
+
+### Features
+
+* **sim:** residents die, and the homes they empty are let again ([6c92b05](https://github.com/rbenzing/SlimCityGame/commit/6c92b05d18029c4cd54b5bdd34afbea837fd936a))
+* **sim:** residents die, and the homes they empty are let again ([5fdb750](https://github.com/rbenzing/SlimCityGame/commit/5fdb750ad406dfc42442b748c28261cf4540408a))
+
 ## [1.53.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.52.0...slimcity-v1.53.0) (2026-10-09)
 
 
