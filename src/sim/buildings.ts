@@ -5,6 +5,7 @@
  */
 import { inBounds, tileIndex } from '../shared/constants';
 import { footprintForRotation, type Footprint } from '../shared/footprint';
+import { clampedVacancies, occupiedResidents } from '../shared/occupancy';
 import { BuildingState } from '../shared/types';
 import type {
   BuildingCatalogEntry,
@@ -77,6 +78,8 @@ export interface SerializedBuildingInstance {
   level: number;
   state: BuildingState;
   problems: number;
+  /** Written only when above 0; absent in older saves, which load every building full. */
+  vacancies?: number;
   w: number;
   d: number;
 }
@@ -192,7 +195,7 @@ export class BuildingRegistry {
       if (inst.state !== BuildingState.Active) continue;
       const entry = this.catalogIndex.get(inst.catalogId);
       if (!entry) continue;
-      residents += entry.residents ?? 0;
+      residents += occupiedResidents(entry, inst);
       jobs += entry.jobs ?? 0;
     }
     return { residents, jobs };
@@ -212,6 +215,7 @@ export class BuildingRegistry {
         level: inst.level,
         state: inst.state,
         problems: inst.problems,
+        ...(inst.vacancies ? { vacancies: inst.vacancies } : {}),
         w: footprint.w,
         d: footprint.d,
       });
@@ -236,6 +240,9 @@ export class BuildingRegistry {
         state: b.state,
         problems: b.problems,
       };
+      const spec = registry.catalogIndex.get(b.catalogId);
+      const vacancies = spec ? clampedVacancies(spec, b.vacancies) : 0;
+      if (vacancies > 0) instance.vacancies = vacancies;
       registry.instances.set(b.id, instance);
       registry.footprints.set(b.id, { w: b.w, d: b.d });
     }

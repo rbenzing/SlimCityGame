@@ -201,6 +201,8 @@ import { GrowthSystem, type GrowthSupply } from './growth';
 import { gridKerbSurroundings } from './kerbsurroundings';
 import { ServiceSim, nearestRoadTile } from './services';
 import { EconomySystem, buildingMonthlyTax, type Occupancy } from './economy';
+import { DeathCareSystem } from './deathcare';
+import { occupiedResidents } from '../shared/occupancy';
 import { bordersUtilityNetwork, recomputeUtilities, sewageOf } from './network';
 import { TrafficSystem } from './traffic';
 import { TransitSystem, type PopulationJobsAccessor, type TransitTickResult } from './transit';
@@ -416,28 +418,31 @@ function fullMapPatch(layer: Uint8Array): ZonePatch {
 
 /**
  * Category-dependent occupancy rows (SelectionInfo.occupancy):
- * residential fills residents + households (capacity = the catalog's homes;
- * occupied only while Active — the sim's population model is
- * all-or-nothing per building); com/ind fill jobs (Active only); services &
- * utilities leave every field unset. Pure and exported for direct testing.
+ * residential fills residents (those living there now) + households (capacity
+ * = the catalog's homes; occupied = the homes the residents fill, rounded up);
+ * com/ind fill jobs (Active only); services & utilities leave every field
+ * unset. Pure and exported for direct testing.
  */
 export function selectionOccupancy(
   entry: BuildingCatalogEntry,
-  state: BuildingState,
+  inst: Pick<BuildingInstance, 'state' | 'vacancies'>,
 ): SelectionInfo['occupancy'] {
+  const residents = occupiedResidents(entry, inst);
   if (entry.category === 'res') {
     const capacity = entry.units ?? 0;
-    const active = state === BuildingState.Active;
+    const full = entry.residents ?? 0;
     return {
-      residents: active ? (entry.residents ?? 0) : 0,
-      households: { occupied: active ? capacity : 0, capacity },
+      residents,
+      households: {
+        occupied: full > 0 ? Math.ceil((capacity * residents) / full) : 0,
+        capacity,
+      },
     };
   }
   if (entry.category === 'com' || entry.category === 'ind') {
-    const active = state === BuildingState.Active;
-    const jobs = active ? (entry.jobs ?? 0) : 0;
+    const jobs = inst.state === BuildingState.Active ? (entry.jobs ?? 0) : 0;
     // A farm is a workplace with its family living on it.
-    return entry.residents ? { jobs, residents: active ? entry.residents : 0 } : { jobs };
+    return entry.residents ? { jobs, residents } : { jobs };
   }
   return {};
 }
@@ -467,6 +472,7 @@ class SimWorld implements WorkerSim {
   private readonly fieldSim = new FieldSim();
   private readonly services = new ServiceSim(CATALOG);
   private readonly economy = new EconomySystem(CATALOG, ROAD_SPECS);
+  private readonly deathCare = new DeathCareSystem(this.catalogById);
   private readonly network = new RoadNetwork();
   /** The junctions as last sent, so an unchanged set travels no further. */
   private lastJunctions: JunctionSnapshot[] = [];
@@ -538,7 +544,7 @@ class SimWorld implements WorkerSim {
         if (dx * dx + dz * dz > r2) continue;
         const entry = this.catalogById.get(b.catalogId);
         if (!entry) continue;
-        total += (entry.residents ?? 0) + (entry.jobs ?? 0);
+        total += occupiedResidents(entry, b) + (entry.jobs ?? 0);
       }
       return total;
     },
@@ -716,6 +722,7 @@ class SimWorld implements WorkerSim {
     this.districtDefs = [];
     this.districtDefById.clear();
     this.registry = new BuildingRegistry(CATALOG);
+    this.deathCare.reset();
     this.stats = initialStats();
     this.tickNo = 0;
     this.speed = 1;
@@ -763,6 +770,7 @@ class SimWorld implements WorkerSim {
     this.deriveFootprint();
     this.roadProfilesChanged = true;
     this.registry = BuildingRegistry.deserialize(CATALOG, payload.meta.registry);
+    this.deathCare.restoreState(payload.meta.deathCare);
     this.registry.restampShrunkPloppables(this.grid, (tiles) =>
       bordersUtilityNetwork(this.grid, tiles),
     );
@@ -1049,7 +1057,7 @@ class SimWorld implements WorkerSim {
           continue;
         garbageBuildings.push({
           id: inst.id,
-          residents: entry.residents ?? 0,
+          residents: occupiedResidents(entry, inst),
           jobs: entry.jobs ?? 0,
           homes: entry.units ?? 0,
           category: entry.category,
@@ -1164,6 +1172,7 @@ class SimWorld implements WorkerSim {
     for (const note of econ.notifications) {
       this.post({ type: 'notify', note });
     }
+    this.deathCare.tick(this.registry.all(), this.stats.population, this.stats.demand.res);
 
     this.stats.tick = t;
 
@@ -1468,10 +1477,10 @@ class SimWorld implements WorkerSim {
     const info: SelectionInfo = {
       building: { ...inst },
       happiness: Math.round((happinessByte / 255) * 100),
-      monthlyTax: buildingMonthlyTax(entry, inst.state, this.stats.taxRates, landValueByte),
+      monthlyTax: buildingMonthlyTax(entry, inst, this.stats.taxRates, landValueByte),
       // The catalog upkeep charge; grown buildings (zone set) carry none.
       monthlyUpkeep: entry.zone !== undefined ? 0 : entry.upkeep,
-      occupancy: selectionOccupancy(entry, inst.state),
+      occupancy: selectionOccupancy(entry, inst),
       ...(facilityLoad !== undefined ? { serviceLoad: facilityLoad } : {}),
       ...(intakeYield !== undefined ? { intakeYield } : {}),
     };
@@ -1616,6 +1625,7 @@ class SimWorld implements WorkerSim {
         registry: this.registry.serialize(),
         stats: cloneStats(this.stats),
         garbage: this.garbage.serializeState(),
+        deathCare: this.deathCare.serializeState(),
         transitLines: this.transit.getLines().map((l) => ({ ...l, stops: [...l.stops] })),
         roadProfiles: this.roadProfileTable(),
       },

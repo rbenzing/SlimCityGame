@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 5,795 tests passing across 175 test files, run 2026-10-09.
+**Test suite:** 5,836 tests passing across 177 test files, run 2026-10-14.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -296,6 +296,30 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Deaths, and homes that empty and fill (second slice of healthcare and death care, built 2026-10-14)
+
+Population had only ever gone up. Now residents die at the US crude death
+rate, 9 per 1,000 a year (CDC/NCHS, 9.03 in 2024), so a city of 10,000 loses
+90 a game year. No bodies yet: collection, the cemetery and the crematorium
+are the next slices.
+
+- **Accrued, never rolled.** A city counter advances by population times the
+  rate each tick, and each death falls at a resident chosen by a fixed stride
+  over who lives where, in building-id order. A tower loses people in
+  proportion to its size, and a run is identical across a save and reload.
+- **Vacancies.** A death leaves a building one resident short. While
+  residential demand is above zero each empty place is let again in 41 game
+  days (RentCafe 2025's national average, NAR's 4-week median as the
+  cross-check); at or below zero nothing is let, and the city shrinks. Old
+  saves load with every home full.
+- **One count of residents.** Population, rent, the tax correction, service
+  capacity, the inspector, ridership, garbage and the registry totals all read
+  one helper, so the city no longer collects rent on empty flats.
+- **Decided, not assumed.** The milestone level never falls; progress shows 0
+  while a city is below its own threshold; a shrinking city abandons nothing.
+- The data model's save-version table now records v15, the garbage
+  trash-unit version that added no layer.
 
 ### The kerb counts, and the short kinds get larger lots (last slice of parking to code, built 2026-10-09)
 

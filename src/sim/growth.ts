@@ -809,6 +809,7 @@ export class GrowthSystem {
       const inst = registry.get(id);
       if (inst && inst.state === BuildingState.Constructing) {
         inst.state = BuildingState.Active;
+        delete inst.vacancies;
         updated.push(inst);
       }
     }

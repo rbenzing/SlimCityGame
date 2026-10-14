@@ -1,6 +1,6 @@
 # Healthcare and death care — technical design
 
-- **Status:** Partly built — the clinic and hospital ladder (2026-10-08); death care not built
+- **Status:** Partly built — the clinic and hospital ladder (2026-10-08); deaths and occupancy (2026-10-14); collection, cemetery and crematorium not built
 - **Date:** 2026-09-18
 - **Author:** Claude Opus 5
 
@@ -21,25 +21,36 @@ change most likely to be got wrong on paper.
 
 | Module                  | Change                                                                                       |
 | ----------------------- | -------------------------------------------------------------------------------------------- |
-| `src/shared/types.ts`   | `DeathCareSpec`; `BuildingInstance.occupancy`; `VehicleKind.Hearse`; `SimSnapshot.deathCare` |
+| `src/shared/types.ts`   | `DeathCareSpec`; `BuildingInstance.vacancies`; `VehicleKind.Hearse`; `SimSnapshot.deathCare` |
+| `src/shared/occupancy.ts` | `occupiedResidents`: the one helper that says how many people live in a building         |
 | `src/data/catalog.json` | `hospital`, `cemetery`, `crematorium` added; `clinic` resized                                |
 | `src/render/utilitykits.ts` | The hospital's kit: the block, its canopies, the parking deck and the accessible spaces  |
-| `src/sim/deathcare.ts`  | New: death accrual, hearse collection, backlog, the health penalty                           |
-| `src/sim/services.ts`   | Coverage unchanged; the backlog penalty applies after it, in the same pass                   |
-| `src/sim/economy.ts`    | Population sum weights by `occupancy`; `growth.ts` refills it on its problems pass           |
-| `src/app/persist.ts`    | `SaveMeta.deathCare`; `occupancy` on serialized instances                                    |
+| `src/sim/deathcare.ts`  | New: death accrual and the re-let of vacancies (built); hearse collection, backlog, the health penalty (not built) |
+| `src/sim/services.ts`   | Capacity pooling reads `occupiedResidents`; coverage unchanged; the backlog penalty applies after it, in the same pass (not built) |
+| `src/sim/economy.ts`    | Population, rent and the tax correction read `occupiedResidents`                             |
+| `src/sim/worker.entry.ts` | Slots the deaths-and-re-let pass after the economy; the inspector, ridership and garbage inputs read `occupiedResidents` |
+| `src/app/persist.ts`    | `SaveMeta.deathCare`; `vacancies` on serialized instances                                    |
 | `src/ui/`               | Cemetery fill gauge in the service panel; the uncollected-dead notification                  |
 
 **Save format: yes, additively, and the grid is untouched.** No tile layer is
 added, so `SAVE_VERSION` and `BYTES_PER_TILE` stay where they are
-([../data-model.md](../data-model.md)). Two optional `SaveMeta` additions,
-defaulted the way the `garbage` block was: `deathCare` — per-facility interments
-plus the backlog as a sparse list of `{ tile, count, sinceTick }` — defaults to
-empty, and `occupancy` on each `BuildingInstance` **defaults to 1.0**. **A save
-written before this epic loads after it with the new service absent rather than
-the save rejected**: the programme rule, and the first test written. The backlog
-cannot be runtime state the way trash is — trash regenerates on load, a body is a
-historical fact.
+([../data-model.md](../data-model.md)). Two optional additions, defaulted the
+way the `garbage` block was.
+
+- **`SaveMeta.deathCare`** holds the city counters of the deaths-and-re-let
+  pass: the death remainder, the running death count, the re-let remainder and
+  the running re-let count. Absent, all four are zero. Slice 2 extends the same
+  block with per-facility interments and the backlog as a sparse list of
+  `{ tile, count, sinceTick }`; the backlog cannot be runtime state the way
+  trash is, since trash regenerates on load and a body is a historical fact.
+- **`vacancies`** on each serialized building instance: the residents the
+  building has lost, an integer from 0 to the catalog's `residents`. It is
+  written only when above 0, and absent means 0, so **an old save loads with
+  every building full**. A value above the catalog's current `residents` is
+  clamped down on load.
+
+**A save written before this epic loads after it with the new service absent
+rather than the save rejected**: the programme rule, and the first test written.
 
 **Worker protocol: yes, additively.** `SimSnapshot` gains an optional
 `deathCare` block (per-facility used/total plus the uncollected count) so the
@@ -65,7 +76,8 @@ export interface DeathCareSpec {
 ```
 
 `BuildingCatalogEntry` gains `deathCare?: DeathCareSpec`; `BuildingInstance`
-gains `occupancy: number` in 0..1; `VehicleKind` gains **`Hearse`**, at the next
+gains the optional `vacancies?: number`, an integer from 0 to the catalog's
+`residents` where absent means 0 (full); `VehicleKind` gains **`Hearse`**, at the next
 free `VehicleKind` value when it is built, appended because values are stable
 and never reordered. The kind is not persisted, so it
 costs nothing in the save — it costs **one more InstancedMesh, permanently**,
@@ -136,10 +148,51 @@ two tiles. Nothing new was needed for it.
 
 ### Behaviour
 
+**One helper decides who lives in a building.** `occupiedResidents(spec, inst)`
+(`src/shared/occupancy.ts`) is 0 unless the building is Active, else
+`max(0, spec.residents − vacancies)`, a vacancy being one resident the building
+has lost. Nothing else reads `spec.residents` to count people: population,
+rent, the tax correction, the capacity pooling, the inspector, transit
+ridership, garbage generation and the registry totals all ask it. Gates that
+used to differ between those readers (some tested Active, some did not) are now
+the helper's one gate. A farm is counted like any home, since its family lives
+on it.
+
 **Deaths accrue, they are not rolled.** A fractional city counter advances each
-tick by `population × 1.25e-7`; when it passes 1, one body is emitted and 1
-subtracted — no RNG, deterministic across save and reload, attributed by a
-rotating index over Active residential instances in id order.
+tick by `population × DEATH_RATE_PER_RESIDENT_PER_TICK` (9 per 1,000 a year over
+`TICKS_PER_YEAR`, 1.25e-7, derived from the calendar constants and not
+written as a literal). When it passes 1, 1 is subtracted and one death is
+emitted, and a persisted running count _n_ advances. The _n_-th death goes to the
+occupied resident at position `(n × 7919) mod population`, found by walking the
+Active buildings in id order and summing `occupiedResidents`; that building's
+`vacancies` rises by 1. There is no RNG, so the run is identical across a save
+and reload, and the walk is proportional to residents: a 300-resident tower
+takes a hundred deaths to a three-resident house's one. A building with no
+occupied residents takes none. Deaths this tick and in total are exposed so
+slice 2 can hang bodies on them.
+
+**In-migration re-lets vacancies at a sourced rate.** While `demand.res > 0`,
+each vacancy is let again in **41 game days** on average: RentCafe's 2025
+figure, a 41-day national average to rent a vacant apartment across 137
+markets
+([Multifamily Executive](https://www.multifamilyexecutive.com/apartment-trends/rentcafe-miami-hottest-rental-market-2025)),
+cross-checked by NAR's 2025 Profile of Home Buyers and Sellers, a median of four
+weeks on the market. A city re-let counter advances each tick by
+`totalVacancies ÷ (41 × TICKS_PER_DAY)` and not at all while `demand.res ≤ 0`;
+when it passes 1, 1 is subtracted and one vacancy is filled, chosen by the same
+stride walk over the vacancies in id order with its own persisted count. **The
+magnitude of demand does not scale the rate**; that would be an unsourced dial,
+so any positive demand re-lets at the market's pace and none does not. The
+pass lives in `deathcare.ts` beside the deaths, not in growth's problems pass:
+growth runs every tenth tick and does not see demand and population fall in the
+same call, and the two counters share one walk, so one module owns both halves
+of the loop.
+
+**Where it runs.** After the economy and before the snapshot, so it reads the
+population and the demand of the same tick and nothing downstream sees a
+half-updated city. A building completing construction moves in full, and a
+level-up or a rebuilt building is a new instance, so it too starts with none;
+loading clamps a stored value to the catalog's `residents`.
 
 **Collection reuses garbage's mechanism, not the dispatcher's.** A facility with
 room collects every building within its `collectionRange` road-BFS radius, in
@@ -155,17 +208,28 @@ from `FieldId.Health` there and on the two tiles around it — the radiation the
 coverage pass already computes. **Order is a rule, not an accident:** coverage
 first, penalty second, or building id order decides the outcome.
 
-**Population becomes occupancy-weighted.** `EconomySystem.tick` sums
-`round(residents × occupancy)`; a death reduces its building's occupancy by
-`1 / residents`; occupancy refills on growth's existing problems pass by
-`0.002 × max(0, demand.res)`, clamped to 1. In-migration refills homes before
-new ones are built — right municipally, and the smallest blast radius.
+**Population becomes the sum of occupied residents.** `EconomySystem.tick`
+sums `occupiedResidents`; a death adds a vacancy to its building and a re-let
+removes one. In-migration re-lets homes before new ones are built — right
+municipally, and the smallest blast radius.
 
 **The rules the implementation must satisfy**, which become the tests below and
 the spec entry reached from the [documentation map](../../README.md): an old
 save loads unchanged; deaths accrue deterministically across a save boundary; a
 full cemetery collects nothing; coverage precedes the penalty; and population is
-the occupancy-weighted sum.
+the sum of occupied residents.
+
+**Decisions taken when slice 1 was built.**
+
+- The milestone level stays a ratchet and never falls. `computeMilestoneProgress`
+  keeps measuring from the current milestone's threshold toward the next, so a
+  city that has shrunk below its threshold reports 0, which is the truth: none
+  of the way to the next. The earlier plan for progress to "report more than a
+  flat zero" is dropped; it would have been a second, invented measure.
+- `Problem.LowDemand` stays display-only. A shrinking city abandons nothing for
+  it, and a test holds that.
+- Vacancies are whole residents, not a fractional occupancy, so the sum stays an
+  integer and the save carries an integer.
 
 ## What could go wrong
 
@@ -173,14 +237,18 @@ the occupancy-weighted sum.
 real place, not a hypothetical:
 
 - **`economy.ts`, the milestone ratchet** only ever climbs, so a shrinking city
-  keeps the unlocks of the milestone it has left: probably right, never a
-  _decision_. Worse, **`computeMilestoneProgress`** clamps to 0, so a city below
-  its own threshold shows a flat zero, indistinguishable from having just
-  arrived. The first visible bug, and one line.
+  keeps the unlocks of the milestone it has left. Decided: the level never
+  falls. **`computeMilestoneProgress`** clamps to 0, so a city below its own
+  threshold shows a flat zero, which is the truth, none of the way to the next
+  milestone; it is kept, and a test holds it.
 - **`demand.ts`, every denominator.** The `max(200, …)`, `max(400, …)` and
   `max(600, …)` floors guard divide-by-zero for a city starting at zero, not one
   shrinking toward it: as population falls, `employed` falls and the denominator
-  with it, so residential demand _rises_ — chosen by nobody.
+  with it, so residential demand _rises_. Intended, and it is the labour-market
+  pull that re-lets homes: fewer workers for the same jobs is the empty-jobs
+  signal the residential term already reads, and the re-let rule asks only
+  whether demand is positive. It is also what keeps a slow leak from becoming a
+  collapse.
 - **`demand.ts`, the commercial term.** Population falling against constant jobs
   drives com demand sharply negative, lighting `LowDemand` on commercial
   buildings, which (if armed) removes jobs, which raises res demand — an
@@ -190,12 +258,13 @@ real place, not a hypothetical:
   buildings at once for the first time; it must stay toothless.
 - **`economy.ts` monthly tax, `worker.entry.ts` `selectionOccupancy` and
   `traffic.ts` `tripsForTick`** read population or occupancy directly: tax must
-  use the occupancy-weighted figure or the city collects rent on empty flats,
-  the inspector must read the instance, and thinning traffic is expected.
+  use `occupiedResidents` or the city collects rent on empty flats, the
+  inspector must read the instance, and thinning traffic is expected. All now do.
 - **[../../world-sim/population-model.md](../../world-sim/population-model.md)**
   states as fact that there is "no partial occupancy … no vacancy rate within a
   single building", and that population "only ever changes through the state
-  transitions above". Both become false, and a stale doc is the same class of
+  transitions above". Both became false with slice 1, and the document now
+  describes vacancies, deaths and the re-let; a stale doc is the same class of
   defect as stale code.
 
 **Resizing `clinic` would orphan grid stamps** if nothing re-stamped them: the
@@ -228,12 +297,24 @@ the current model's strength.
 
 Behaviour, in the order the risk sits:
 
-- A save written before this epic loads, every building fully occupied, no
-  facility holding interments, nothing uncollected. Written first.
+- A save written before this epic, with no `vacancies` and no `deathCare`,
+  loads with every building full and every counter at zero; no facility holds
+  interments and nothing is uncollected. Written first.
 - A city of 10,000 run for one game year (72,000 ticks) produces 90 deaths, ±1
-  for the fractional remainder, and the same run split by a save and reload
-  produces the same 90. A cemetery of 780 plots stops collecting on the 781st
-  body; a crematorium run for ten game years has collected every body.
+  for the fractional remainder, and the same run split by a serialize and
+  restore of the registry and the `deathCare` block produces the same count
+  and the same vacancies in every building. (Slice 1.) A cemetery of 780 plots
+  stops collecting on the 781st body; a crematorium run for ten game years has
+  collected every body. (Slice 2.)
+- Deaths land in proportion to residents (a 300-resident tower against
+  3-resident houses); vacancies never exceed residents nor fall below 0; a fully
+  vacant building takes no death. (Slice 1.)
+- With `demand.res > 0` one vacancy is re-let in about 41 game days, the count
+  over a long run within ±1 of the expectation; with `demand.res ≤ 0` nothing is.
+  (Slice 1.)
+- A building with vacancies pays rent on its occupied residents only, and the
+  capacity pooling, the inspector, ridership and garbage read the same figure.
+  (Slice 1.)
 - One uncollected body four game months old subtracts 128 from `Health` at its
   tile; the same body collected a tick earlier subtracts nothing. A clinic
   placed on a penalised tile does not erase it, in any placement order.
@@ -241,8 +322,9 @@ Behaviour, in the order the risk sits:
   hospital plus a second covering the same tiles does not — the contract from
   [service-capacity.md](service-capacity.md), exercised by its first consumer.
 - Population falls when residential demand is at or below zero and deaths
-  continue, and recovers when demand turns positive; milestone level does not
-  fall with it, and milestone _progress_ reports more than a flat zero.
+  continue, and recovers when demand turns positive; the milestone level does
+  not fall with it, and milestone _progress_ is 0 below the threshold. A
+  shrinking city abandons nothing for `LowDemand`. (Slice 1.)
 - Demolishing a cemetery holding 780 interments charges ¢7,800 and an empty one
   does not; a resized `clinic` loaded from a save leaves no orphan tile stamp.
 

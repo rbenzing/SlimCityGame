@@ -86,6 +86,22 @@ export const EMPLOYMENT_RATE = 0.5;
 export function workforceOf(population: number): number {
   return Math.floor(population * EMPLOYMENT_RATE);
 }
+
+/**
+ * Deaths per 1,000 residents a year: the US crude death rate, 9.03 per 1,000 in
+ * 2024 (CDC/NCHS FastStats), taken as 9 since the population has no age
+ * structure to skew it older.
+ */
+export const DEATHS_PER_1000_PER_YEAR = 9;
+/** A resident's chance of dying in one tick, as a rate: 1.25e-7. */
+export const DEATH_RATE_PER_RESIDENT_PER_TICK = DEATHS_PER_1000_PER_YEAR / 1000 / TICKS_PER_YEAR;
+/**
+ * Game days a vacant home takes to be let again while the town attracts
+ * residents: RentCafe 2025, 41 days on average to rent a vacant apartment
+ * across 137 markets; NAR's 2025 Profile of Home Buyers and Sellers (median 4
+ * weeks on market) is the cross-check.
+ */
+export const VACANCY_RELET_DAYS = 41;
 export const MAX_LOAN = 100_000;
 export const LOAN_MONTHLY_INTEREST = 0.01;
 /**

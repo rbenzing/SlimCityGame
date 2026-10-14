@@ -85,16 +85,21 @@ Inside `tick()`, in exactly this order:
     (`TICKS_PER_MONTH = TICKS_PER_DAY × DAYS_PER_MONTH = 6,000`). See
     [population-model.md](population-model.md) and
     [../game-design/economy.md](../game-design/economy.md).
-15. **`stats.tick = tickNo`**.
-16. **Snapshot** — `postSnapshot()` runs when
+15. **Deaths and re-lets** — `DeathCareSystem.tick()` (`src/sim/deathcare.ts`)
+    runs **every tick, unconditionally**, after the economy so it reads the
+    population and the demand of the same tick: it accrues deaths against the
+    population and, while residential demand is above zero, re-lets vacancies.
+    See [population-model.md](population-model.md).
+16. **`stats.tick = tickNo`**.
+17. **Snapshot** — `postSnapshot()` runs when
     `tickNo % SNAPSHOT_TICKS === 0`, where
     `SNAPSHOT_TICKS = round(TICK_RATE / SNAPSHOT_HZ) = round(20 / 10) = 2` —
     every other tick, i.e. 10 times a real second at the reference 1×
     pacing.
 
 A system not listed as gated above (demand, growth's construction advance,
-economy's population/jobs/milestone aggregation, traffic, transit, dispatch,
-garbage trucks, the fields' own per-tick scheduler call) is invoked every
+economy's population/jobs/milestone aggregation, deaths and re-lets, traffic,
+transit, dispatch, garbage trucks, the fields' own per-tick scheduler call) is invoked every
 tick; what varies per-field or per-system is what happens _inside_ that call,
 not whether the call happens.
 

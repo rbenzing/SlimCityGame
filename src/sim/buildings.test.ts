@@ -214,6 +214,52 @@ describe('BuildingRegistry', () => {
     expect(next.id).toBe(4);
   });
 
+  it('totals counts only the residents still living in a building', () => {
+    const g = makeGrid();
+    const registry = new BuildingRegistry(catalog);
+    registry.place(g, house, 0, 0, 0)!.vacancies = 3;
+    expect(registry.totals().residents).toBe(1);
+  });
+
+  it('loads a save with no vacancies as every building full', () => {
+    const g = makeGrid();
+    const registry = new BuildingRegistry(catalog);
+    registry.place(g, house, 0, 0, 0);
+    const data = registry.serialize();
+    expect(data.buildings.every((b) => !('vacancies' in b))).toBe(true);
+
+    const restored = BuildingRegistry.deserialize(catalog, data);
+    expect(restored.all().every((b) => b.vacancies === undefined)).toBe(true);
+    expect(restored.totals().residents).toBe(4);
+  });
+
+  it('writes vacancies only when above 0, and round-trips them', () => {
+    const g = makeGrid();
+    const registry = new BuildingRegistry(catalog);
+    const hurt = registry.place(g, house, 0, 0, 0)!;
+    hurt.vacancies = 2;
+    registry.place(g, house, 5, 5, 0);
+
+    const data = registry.serialize();
+    expect(data.buildings[0]!.vacancies).toBe(2);
+    expect('vacancies' in data.buildings[1]!).toBe(false);
+
+    const restored = BuildingRegistry.deserialize(catalog, data);
+    expect(restored.get(hurt.id)!.vacancies).toBe(2);
+  });
+
+  it('clamps a stored vacancy count to what the catalog says the building holds', () => {
+    const g = makeGrid();
+    const registry = new BuildingRegistry(catalog);
+    registry.place(g, house, 0, 0, 0);
+    const data = registry.serialize();
+    data.buildings[0]!.vacancies = 99;
+    expect(BuildingRegistry.deserialize(catalog, data).all()[0]!.vacancies).toBe(4);
+
+    data.buildings[0]!.vacancies = -3;
+    expect(BuildingRegistry.deserialize(catalog, data).all()[0]!.vacancies).toBeUndefined();
+  });
+
   it('places a ploppable with no explicit state as Active by default', () => {
     const g = makeGrid();
     const registry = new BuildingRegistry(catalog);

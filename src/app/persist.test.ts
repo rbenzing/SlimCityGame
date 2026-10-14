@@ -155,6 +155,22 @@ describe('save payload codec', () => {
     );
     expect(decoded.meta.transitLines).toBeUndefined(); // loads with none, as it always did
   });
+
+  it('carries the death and re-let counters through a round trip', () => {
+    const meta: SaveMeta = {
+      ...sampleMeta(),
+      deathCare: { deathRemainder: 0.4375, deaths: 90, reletRemainder: 0.125, relets: 12 },
+    };
+    const decoded = decodeSave(encodeSave({ header: sampleHeader(), grid: sampleGrid(), meta }));
+    expect(decoded.meta.deathCare).toEqual(meta.deathCare);
+  });
+
+  it('reads a save written before deaths: no deathCare block', () => {
+    const decoded = decodeSave(
+      encodeSave({ header: sampleHeader(), grid: sampleGrid(), meta: sampleMeta() }),
+    );
+    expect(decoded.meta.deathCare).toBeUndefined(); // the worker loads that as all zeros
+  });
 });
 
 describe('AutoSaver', () => {

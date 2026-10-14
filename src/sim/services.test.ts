@@ -502,6 +502,27 @@ describe('ServiceSim: capacity', () => {
     expect(summary.health.load).toBeCloseTo(statsPatch.population! / 1000, 10);
   });
 
+  it('pools the residents still living in a home, matching the population the economy reports', () => {
+    const cat = [...catalog, clinicWith('clinic-1000', 1000), home500];
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    roadStrip(g, 9);
+    place(g, buildings, 1, 'clinic-1000', 0, 0, 1, 1);
+    place(g, buildings, 2, 'home-500', 2, 2, 1, 1).vacancies = 200;
+    place(g, buildings, 3, 'home-500', 3, 2, 1, 1).vacancies = 500;
+
+    const { statsPatch } = new EconomySystem(cat, []).tick({
+      g,
+      buildings,
+      stats: makeStats(),
+      tickNo: 1,
+    });
+    const summary = new ServiceSim(cat).tick(g, buildings, fullFunding(1));
+
+    expect(statsPatch.population).toBe(300); // 300 in the first home, none in the second
+    expect(summary.health.load).toBeCloseTo(0.3, 10);
+  });
+
   it('sums the capacities reaching a tile before dividing by the people there', () => {
     const cat = [...catalog, clinicWith('clinic-1000', 1000), home500];
     const sim = new ServiceSim(cat);

@@ -25,6 +25,7 @@ import type {
 } from '../shared/types';
 import { BuildingState, FieldId, ZoneType, isStreetTier } from '../shared/types';
 import { MAP_SIZE, MAP_TILES, inBounds, tileIndex } from '../shared/constants';
+import { occupiedResidents } from '../shared/occupancy';
 import { cellTile, freeCellsOn, neighbours, roadCellsOf } from '../world/roadnet';
 
 /** Radius (orthogonal steps) searched around a building's footprint for its nearest road tile. */
@@ -175,10 +176,9 @@ function residentsByBuildingId(
 ): Map<number, number> {
   const out = new Map<number, number>();
   for (const b of buildings) {
-    if (b.state !== BuildingState.Active) continue;
     const spec = catalog.get(b.catalogId);
     if (!spec) continue;
-    const residents = spec.residents ?? 0;
+    const residents = occupiedResidents(spec, b);
     if (residents > 0) out.set(b.id, residents);
   }
   return out;

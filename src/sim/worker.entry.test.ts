@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ZoneType } from '../shared/types';
-import type { BuildingCatalogEntry } from '../shared/types';
+import { BuildingState, ZoneType } from '../shared/types';
+import type { BuildingCatalogEntry, BuildingInstance } from '../shared/types';
 import { roadNoiseEmission, selectionOccupancy } from './worker.entry';
 
 describe('selectionOccupancy (pure)', () => {
@@ -27,31 +27,57 @@ describe('selectionOccupancy (pure)', () => {
   const com: BuildingCatalogEntry = { ...base, category: 'com', zone: ZoneType.ComLow, jobs: 6 };
   const util: BuildingCatalogEntry = { ...base, category: 'utility', utility: { powerMW: 5 } };
 
+  const state = (
+    s: BuildingState,
+    vacancies?: number,
+  ): Pick<BuildingInstance, 'state' | 'vacancies'> =>
+    vacancies === undefined ? { state: s } : { state: s, vacancies };
+
   it('fills residents + households for residential (capacity = the homes in the building)', () => {
-    expect(selectionOccupancy(res, 1)).toEqual({
+    expect(selectionOccupancy(res, state(1))).toEqual({
       residents: 9,
       households: { occupied: 4, capacity: 4 },
     });
   });
 
   it('reports zero occupied residents/households for non-Active residential', () => {
-    expect(selectionOccupancy(res, 0)).toEqual({
+    expect(selectionOccupancy(res, state(0))).toEqual({
       residents: 0,
       households: { occupied: 0, capacity: 4 },
     });
-    expect(selectionOccupancy(res, 2)).toEqual({
+    expect(selectionOccupancy(res, state(2))).toEqual({
       residents: 0,
       households: { occupied: 0, capacity: 4 },
     });
+  });
+
+  it('reports the residents still living there, and the homes they fill, once some have died', () => {
+    expect(selectionOccupancy(res, state(1, 2))).toEqual({
+      residents: 7,
+      households: { occupied: 4, capacity: 4 },
+    });
+    expect(selectionOccupancy(res, state(1, 5))).toEqual({
+      residents: 4,
+      households: { occupied: 2, capacity: 4 },
+    });
+    expect(selectionOccupancy(res, state(1, 9))).toEqual({
+      residents: 0,
+      households: { occupied: 0, capacity: 4 },
+    });
+  });
+
+  it('reads a farm family the same way', () => {
+    const farm: BuildingCatalogEntry = { ...com, residents: 3 };
+    expect(selectionOccupancy(farm, state(1, 1))).toEqual({ jobs: 6, residents: 2 });
   });
 
   it('fills jobs for com/ind, Active only', () => {
-    expect(selectionOccupancy(com, 1)).toEqual({ jobs: 6 });
-    expect(selectionOccupancy(com, 2)).toEqual({ jobs: 0 });
+    expect(selectionOccupancy(com, state(1))).toEqual({ jobs: 6 });
+    expect(selectionOccupancy(com, state(2))).toEqual({ jobs: 0 });
   });
 
   it('leaves all fields unset for services and utilities', () => {
-    expect(selectionOccupancy(util, 1)).toEqual({});
+    expect(selectionOccupancy(util, state(1))).toEqual({});
   });
 });
 
