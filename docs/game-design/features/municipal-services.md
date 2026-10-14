@@ -1,6 +1,6 @@
 # Municipal services — design
 
-- **Status:** In progress — epics 0 (service capacity), 1 (water and sewage), 2 (healthcare and death care) and 5 (garbage recovery) built, 4 (emergency services) and 6 (power generation) partly built; 3, 7 and 8 not started
+- **Status:** In progress — epics 0 (service capacity), 1 (water and sewage), 2 (healthcare and death care), 4 (emergency services) and 5 (garbage recovery) built, 6 (power generation) partly built; 3, 7 and 8 not started
 - **Date:** 2026-09-18
 
 ## What the player gets
@@ -159,8 +159,10 @@ averaged over the year. Before this a police station drew 0.6 MW, the power of
 
 | Building              | Floor      | Electricity                                        | Draw      | Water                                            | Draw     |
 | --------------------- | ---------- | -------------------------------------------------- | --------- | ------------------------------------------------ | -------- |
-| Police station (2×2)  | 29,900 sf  | public order and safety, 13.9 kWh/sf               | 47 kW     | office, 14.5 gal/sf a year                       | 4.5 kL   |
-| Fire station (2×2)    | 29,900 sf  | public order and safety, 13.9 kWh/sf               | 47 kW     | fire station, 28.9 gal/sf a year                 | 9 kL     |
+| Police station (2×2)  | 15,285 sf  | public order and safety, 13.9 kWh/sf               | 24 kW     | office, 14.5 gal/sf a year                       | 2.3 kL   |
+| Police district (3×3) | 38,000 sf  | public order and safety, 13.9 kWh/sf               | 60 kW     | office, 14.5 gal/sf a year                       | 5.7 kL   |
+| Fire station (2×2)    | 5,382 sf   | public order and safety, 13.9 kWh/sf               | 8.5 kW    | fire station, 28.9 gal/sf a year                 | 1.6 kL   |
+| Fire district (3×2)   | 15,733 sf  | public order and safety, 13.9 kWh/sf               | 25 kW     | fire station, 28.9 gal/sf a year                 | 4.7 kL   |
 | Clinic (1×2)          | 7,965 sf   | health care, outpatient, 17.4 kWh/sf               | 16 kW     | medical office, 23.4 gal/sf a year               | 1.9 kL   |
 | Hospital (3×5)        | 180,000 sf | health care, inpatient, 28.8 kWh/sf                | 592 kW    | hospital, 55.71 gal/sf a year                    | 104 kL   |
 | School (3×3)          | 56,000 sf  | education, 9.4 kWh/sf                              | 60 kW     | K-12 school, 10.8 gal/sf a year                  | 6.3 kL   |
@@ -169,8 +171,12 @@ averaged over the year. Before this a police station drew 0.6 MW, the power of
 | Incinerator (4×4)     | —          | a 250 ton-a-day combustor's own 63 kWh a ton       | 660 kW    | kept at 2 kL: no figure found                    | 2 kL     |
 | Coal plant (4×4)      | —          | —                                                  | —         | fifty staff at 13 gal a day; cooling water is its own, raw | 2.5 kL |
 
-The hospital is the one row whose floor is stated rather than read off its
-footprint: 72 beds at 2,500 sf a bed (see
+The four stations are stated floors too, since their lots are set by bays,
+apron and car park rather than by the floor (see
+[emergency-services.md](emergency-services.md#slice-2-the-station-ladder)): the
+first rungs' 1,420 m² and about 500 m² from
+[service-capacity.md](service-capacity.md#do-the-existing-buildings-match), the
+district rungs' exemplar floors. The hospital's floor is stated as well: 72 beds at 2,500 sf a bed (see
 [healthcare-and-death-care.md](healthcare-and-death-care.md#sizes-costs-and-the-ladder-rule)),
 since six of its fifteen tiles are a parking deck. Its water is the general
 medical and surgical hospital median in ENERGY STAR Portfolio Manager's water

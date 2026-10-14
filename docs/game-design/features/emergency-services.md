@@ -1,6 +1,6 @@
 # Emergency services — design
 
-- **Status:** Partly built — the dispatcher: reach, busy stations, unanswered calls and real call rates (2026-10-14); the station ladder not built
+- **Status:** Built 2026-10-14 — the dispatcher; the station ladder
 - **Date:** 2026-10-14
 
 Epic 4 of the municipal services programme
@@ -11,7 +11,7 @@ is [../../engineering/features/emergency-services.md](../../engineering/features
 The epic is two slices. **Slice 1, built,** is the dispatcher: how far a station
 answers, how many calls it can run at once, a call nobody answered, and how often
 people really call. It works on the police and fire stations the game already has.
-**Slice 2, not built,** is the station ladder: the two existing buildings are
+**Slice 2, built,** is the station ladder: the two existing buildings are
 resized to their sourced height and a large district rung is added above each.
 
 ## What the player gets
@@ -45,7 +45,7 @@ already works in road distance, so that question is one we can actually ask.
 
 ## How the stations are sized: the conflict, resolved
 
-The first draft of this document treated today's 2×2, 12 m police and fire
+The first draft of this document treated the 2×2, 12 m police and fire
 stations as the large rung, with smaller posts added below. The built and sourced
 [service-capacity.md](service-capacity.md#tuning) sizes them the other way, and
 the catalog agrees (police 25,000, fire 14,000). The capacity document wins:
@@ -56,12 +56,12 @@ the catalog agrees (police 25,000, fire 14,000). The capacity document wins:
 - the **police station** is a town's whole force: 1.9 sworn per 1,000 (FBI table
   71) × 25 = 48 sworn, 68% on patrol (BJS 2013) = 32, over 5.5–6 officers to staff
   one post round the clock (Seattle), is about 6 cars on duty;
-- both should be 6.4 m tall, a resize the capacity document leaves to this epic.
+- both are 6.4 m tall, the resize the capacity document left to this epic.
 
-So today's stations are the **first rung**, not the second. The draft's relief
+So the existing stations are the **first rung**, not the second. The draft's relief
 factor of 4.2, its 55% on patrol and its 2.4 sworn per 1,000 are dropped: they
 were figures for a bigger agency than the sourced ones this game has used from the
-start. Slice 2 resizes the two stations to 6.4 m and adds a large district rung
+start. Slice 2 resized the two stations to 6.4 m and added a large district rung
 above each, a multi-company fire station and a police district station, with
 their own derivations from the same sources.
 
@@ -209,14 +209,82 @@ capped at 32, so they can never starve the pool the answered calls use.
 
 ## Slice 2: the station ladder
 
-Not built. Slice 2 resizes the police and fire stations to 6.4 m, as
-[service-capacity.md](service-capacity.md#do-the-existing-buildings-match) asks,
-and adds a large rung above each: a multi-company fire station and a police
-district station. What the large rung buys is simultaneity, more calls at once
-inside the same reach, since a bigger building does not make an engine faster.
-Its footprint, capacity, `responders`, cost and unlock milestone are to be derived
-from the same sourced figures, and the station models drawn then. Nothing about
-the large rung is settled in this document.
+Built 2026-10-14. The police and fire stations are resized to 6.4 m, as
+[service-capacity.md](service-capacity.md#do-the-existing-buildings-match) asks, and
+a large rung stands above each: a multi-company fire station and a police district
+station, both unlocked at Small City. A save with the first rungs loads unchanged:
+same id, 2×2 lot, tiles and rotation; only the height and the drawing change.
+
+What the large rung buys is **crews at once**, 2 and 11 where the first rungs have 1
+and 6, from one site, inside the same reach: a bigger building does not make an
+engine faster. It does **not** buy a cheaper person. On real figures the large rungs
+cost more per person to build, because a modern station carries more floor for each
+crew member:
+
+| Station                 | Capacity | Responders | Cost    | Upkeep | Build per person | Upkeep per 1,000 |
+| ----------------------- | -------- | ---------- | ------- | ------ | ---------------- | ---------------- |
+| Fire station            | 14,000   | 1          | ¢4,500  | ¢320   | ¢0.32            | ¢22.9            |
+| District fire station   | 31,000   | 2          | ¢13,150 | ¢720   | ¢0.42            | ¢23.2            |
+| Police station          | 25,000   | 6          | ¢4,000  | ¢300   | ¢0.16            | ¢12.0            |
+| Police district station | 47,000   | 11         | ¢9,950  | ¢563   | ¢0.21            | ¢12.0            |
+
+The 2026-09-18 draft's rule that a large rung is 18 to 20% cheaper per person is
+**withdrawn**: the figures do not support it.
+
+### The district fire station: Indianapolis Fire Station 20
+
+The exemplar is Indianapolis Fire Station 20, groundbreaking April 2025: $8M,
+15,733 sf of operating space, three apparatus bays, housing Engine 20, Ladder 20 and
+a battalion chief
+([Fire Apparatus Magazine](https://www.fireapparatusmagazine.com/the-fire-station/indianapolis-in-fd-breaks-ground-on-new-8m-fire-station-20/)),
+about $509 a square foot. The cross-checks: Indianapolis Station 32, about $7.5M for
+about 14,000 sf and three bays; Hambden Township OH, 2026, $8.75M, about 18,000 sf,
+five bays; Montgomery County MD's Glenmont FS18, 22,564 sf, four double-deep
+drive-through bays.
+
+- **Capacity.** An engine and a ladder at NFPA 1710's 4 seats each, and a battalion
+  chief: 9 seats × 4.5 relief = 40.5 firefighters, over NFPA's 1.30 per 1,000 =
+  31,154, taken down to **31,000**.
+- **`responders` 2.** The two companies roll; the chief is not a call unit. Range
+  stays **48**, strength 160: reach belongs to the appliance and the road.
+- **Cost.** Priced by floor at one source's dollars a square foot: 15,733 ÷ 5,380 sf
+  (today's ~500 m²) = 2.92 × ¢4,500 = ¢13,160, to the nearest ¢50 **¢13,150**.
+- **Upkeep.** By staffing: 40.5 ÷ 18 = 2.25 × ¢320 = **¢720**.
+- **Draw.** 15,733 sf at CBECS's public order and safety 13.9 kWh/sf over the year =
+  25 kW; the fire-station water median, 28.9 gal/sf a year, = 4.7 kL a day.
+
+The first rung's draw is re-derived on its ~500 m² (5,382 sf): 8.5 kW and 1.6 kL. It
+had been 47 kW and 9 kL on the 12 m box's 2,775 m², a floor the building never had.
+
+### The district police station: Concord NH
+
+The exemplar is Concord NH's new police station, about 38,000 sf for its 90 sworn
+officers, where the existing station is 20,000 sf (groundbreaking April 2026,
+[concordnh.gov](https://www.concordnh.gov/2069)). The cross-check is Glen Ellyn IL, 29,000 sf for 40 sworn,
+$13.5M in 2017, about $466 a square foot.
+
+- **Capacity.** 90 sworn over the FBI's 1.9 per 1,000 (table 71) = 47,368, taken
+  down to **47,000**.
+- **`responders` 11.** 68% on patrol of 90 is 61, over 5.5 to staff one post round
+  the clock: 11 cars. Range 48, strength 160.
+- **Cost.** 38,000 ÷ 15,280 sf (today's 1,420 m²) = 2.49 × ¢4,000 = ¢9,948, **¢9,950**.
+- **Upkeep.** 90 ÷ 48 sworn = 1.875 × ¢300 = **¢563**.
+- **Draw.** 38,000 sf: 60 kW at 13.9 kWh/sf, 5.7 kL a day at the office benchmark
+  of 14.48 gal/sf.
+
+### The sizes and the models
+
+The lots come from the floors, the bays and the apron, with the arithmetic and the
+sources in [../../art/civic-massing.md](../../art/civic-massing.md#the-fire-and-police-stations):
+the district fire station is 3×2 at two storeys, the district police station 3×3 at
+three. The first rungs keep their 2×2 lots; their heights are 6.4 m.
+
+Each station is drawn as what it is. A fire station is read by framed bay doors,
+lighter than the wall and taller than the engine they shelter, two on the first rung
+and three on the district one, with the apron before them and the appliance parked on
+it; the district station has a hose tower. A police station is read by its entrance
+with a canopy, its sally port, and the staff and public stalls before it. At night
+the windows and the glazing of the doors light.
 
 ## What it is not
 

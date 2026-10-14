@@ -1,6 +1,6 @@
 # Emergency services — technical design
 
-- **Status:** Partly built — the dispatcher: reach, busy stations, unanswered calls and real call rates (2026-10-14); the station ladder not built
+- **Status:** Built 2026-10-14 — the dispatcher; the station ladder
 - **Date:** 2026-10-14
 - **Author:** Claude Opus 5
 
@@ -13,7 +13,7 @@ which also records how the station sizes were settled.
 
 The epic is two slices. **Slice 1, built,** is the dispatcher in
 `src/sim/dispatch.ts`, working on the existing `police-station` and
-`fire-station`. **Slice 2, not built,** is the station ladder.
+`fire-station`. **Slice 2, built,** is the station ladder.
 
 ## What we are building, and why now
 
@@ -24,7 +24,7 @@ is the only epic that changes a system somebody else's tests pin.
 
 ## The station sizes, resolved
 
-An earlier draft of this document treated today's 2×2, 12 m stations as the large
+An earlier draft of this document treated the 2×2, 12 m stations as the large
 rung, with smaller posts below them, on a 4.2 relief factor, 55% on patrol and
 2.4 sworn per 1,000. The built and sourced
 [service-capacity.md](service-capacity.md) sizes them as the **first rung**
@@ -35,7 +35,7 @@ code and that document win:
   1,000 = 14,000; `responders` is **1**;
 - police: 1.9 sworn per 1,000 × 25 = 48 sworn, 68% on patrol = 32, ÷ 5.5–6 per
   round-the-clock post, about 6 cars on duty; `responders` is **6**;
-- slice 2 resizes both to 6.4 m and adds a large district rung above each. The
+- slice 2 resized both to 6.4 m and added a large district rung above each. The
   draft's posts, its derived footprint table and its re-priced stations are
   withdrawn; they rested on the withdrawn figures.
 
@@ -231,15 +231,39 @@ unanswered marker beside an answered one with its vehicle must be tellable apart
 
 ## Slice 2: the station ladder
 
-Not built. The two stations are resized to 6.4 m and a large rung is added above
-each (a multi-company fire station, a police district station), with the footprint,
-`capacity`, `responders`, cost, upkeep and milestone derived from the sources in
-[service-capacity.md](../../game-design/features/service-capacity.md#tuning), the models drawn, and the
-massing arithmetic in [../../art/civic-massing.md](../../art/civic-massing.md)
-applied to them. The withdrawn draft's table is not to be reused.
+Built. The two stations are resized to 6.4 m and a large rung stands above each:
+`fire-station-district` (3×2, 6.4 m, capacity 31,000, `responders` 2, ¢13,150, upkeep
+¢720) and `police-station-district` (3×3, 9.6 m, 47,000, 11, ¢9,950, ¢563), both at the
+`MILESTONES` entry named Small City. Every figure and its sources are in the design
+document and [../../art/civic-massing.md](../../art/civic-massing.md#the-fire-and-police-stations).
+The withdrawn draft's table is not reused.
+
+| Module                    | Change                                                                                                                  |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `src/data/catalog.json`   | Two entries; the first rungs at 6.4 m with their draw re-derived on stated floors. Catalog shape unchanged.             |
+| `src/render/utilitykits.ts` | The four stations are kit ids; `computeStationLayout` is the one pure layout, and the yard, building, lit panes, mast, appliance and car pools are drawn from it |
+| `src/render/utilitykits.test.ts`, `stations.test.ts` | Registry, layout, bay door heights, lot containment at four rotations, the night light |
+| `tests/support/town.ts`   | The regression town stands both district stations on main street's north side                                          |
+
+**Save format: no.** `SAVE_VERSION` stays 15. A building is saved by id, tile and
+rotation, so a save with first-rung stations loads with those unchanged
+(`tests/interaction/emergency.test.ts`); only the height and the drawing differ.
+
+**The kit.** The station is a paved lot with the building on its back and left;
+local +Z is the street. The bay doors are 16 × 15 ft, framed and lighter than the
+wall, taller than the 3.3 m engine and over the 14 × 14 ft least. The windows and the
+door panes are one merged mesh on a shared emissive material that follows
+`setNightFactor`, the same pattern as the turbine beacon. Everything is an
+`InstancedMesh`; there are no textures and no custom shaders. Appliances and cars on
+the lot are static decoration, like the hospital's ambulance: the dispatcher's own
+vehicles still leave from the station's origin and are drawn by the service-vehicle
+renderer.
 
 ## Out of scope
 
+- A ladder truck. The district station is sized on an engine and a ladder, but the
+  game has no ladder-truck `VehicleKind`: its second responder is drawn as a second
+  engine. A follow-up would append one `VehicleKind` and a body for it.
 - Consequences. No building is damaged, abandoned or destroyed by an incident, and
   there is no travel-time model.
 - Disasters, and any service that exists only to respond to them.

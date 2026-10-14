@@ -340,7 +340,15 @@ describe('the civic ploppables (honest both sides): every draw from floor area a
     school: 10.84,
   };
   /** A floor the building's plan states rather than the massing rule's: the hospital's 72 beds at 2,500 sf a bed. */
-  const STATED_FLOOR_SQFT: Readonly<Record<string, number>> = { hospital: 72 * 2_500 };
+  const STATED_FLOOR_SQFT: Readonly<Record<string, number>> = {
+    hospital: 72 * 2_500,
+    // service-capacity.md's derived floors for the first rungs.
+    'police-station': 1_420 * SQFT_PER_M2,
+    'fire-station': 500 * SQFT_PER_M2,
+    // The district rungs' exemplars: Indianapolis Fire Station 20, 15,733 sf; Concord NH's police station, 38,000 sf.
+    'fire-station-district': 15_733,
+    'police-station-district': 38_000,
+  };
   /** One regional terminal's floor per yearly enplanement, passengers at twice that, 4.2 gallons each. */
   const TERMINAL_SF_PER_ENPLANEMENT = 125_000 / 600_000;
   const GAL_PER_PASSENGER = 4.2;
@@ -361,7 +369,21 @@ describe('the civic ploppables (honest both sides): every draw from floor area a
   it('draws what a station of its floor area draws: police and fire, clinic, hospital, school, rail station', () => {
     for (const [id, kwh, gal, mwPlaces, klPlaces] of [
       ['police-station', CBECS_KWH_PER_SF.publicOrderSafety, WATERSENSE_GAL_PER_SF.office, 4, 1],
-      ['fire-station', CBECS_KWH_PER_SF.publicOrderSafety, WATERSENSE_GAL_PER_SF.fireStation, 4, 0],
+      [
+        'police-station-district',
+        CBECS_KWH_PER_SF.publicOrderSafety,
+        WATERSENSE_GAL_PER_SF.office,
+        4,
+        1,
+      ],
+      ['fire-station', CBECS_KWH_PER_SF.publicOrderSafety, WATERSENSE_GAL_PER_SF.fireStation, 4, 1],
+      [
+        'fire-station-district',
+        CBECS_KWH_PER_SF.publicOrderSafety,
+        WATERSENSE_GAL_PER_SF.fireStation,
+        4,
+        1,
+      ],
       ['clinic', CBECS_KWH_PER_SF.outpatient, WATERSENSE_GAL_PER_SF.medicalOffice, 4, 1],
       ['hospital', CBECS_KWH_PER_SF.inpatient, WATERSENSE_GAL_PER_SF.hospital, 3, 0],
       ['school', CBECS_KWH_PER_SF.education, WATERSENSE_GAL_PER_SF.school, 4, 1],
@@ -560,6 +582,126 @@ describe('the healthcare ladder: a hospital serves the people its beds do, for l
     const hospital = byId('hospital');
     expect(perHead(hospital, hospital.cost)).toBeLessThan(perHead(clinic, clinic.cost));
     expect(perHead(hospital, hospital.upkeep)).toBeLessThan(perHead(clinic, clinic.upkeep));
+  });
+});
+
+describe('the emergency ladder: a district station buys crews at once, and costs more a head than the first rung', () => {
+  const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+  const byId = (id: string): BuildingCatalogEntry => catalog.find((e) => e.id === id)!;
+  const fire = byId('fire-station');
+  const fireDistrict = byId('fire-station-district');
+  const police = byId('police-station');
+  const policeDistrict = byId('police-station-district');
+  const SMALL_CITY = MILESTONES.findIndex((m) => m.name === 'Small City');
+  /** The nearest 1,000 people and the nearest 50 coins. */
+  const toThousand = (n: number): number => Math.round(n / 1_000) * 1_000;
+  const toFifty = (n: number): number => Math.round(n / 50) * 50;
+  const SQ_M_PER_SQ_FT = 0.09290304;
+
+  it('leaves the first rungs as service-capacity.md sized them, resized to two storeys', () => {
+    expect(fire).toMatchObject({
+      footprint: { w: 2, d: 2 },
+      height: 6.4,
+      cost: 4_500,
+      upkeep: 320,
+    });
+    expect(fire.service).toMatchObject({
+      capacity: 14_000,
+      responders: 1,
+      range: 48,
+      strength: 160,
+    });
+    expect(police).toMatchObject({
+      footprint: { w: 2, d: 2 },
+      height: 6.4,
+      cost: 4_000,
+      upkeep: 300,
+    });
+    expect(police.service).toMatchObject({
+      capacity: 25_000,
+      responders: 6,
+      range: 48,
+      strength: 160,
+    });
+    expect(fire.unlockMilestone).toBe(1);
+    expect(police.unlockMilestone).toBe(1);
+  });
+
+  it('sizes the district fire station on an engine, a ladder and a battalion chief at NFPA 1.30 per 1,000', () => {
+    const SEATS = 4 + 4 + 1;
+    const RELIEF = 4.5;
+    const firefighters = SEATS * RELIEF;
+    expect(firefighters).toBe(40.5);
+    expect(toThousand((firefighters / 1.3) * 1_000)).toBe(31_000);
+    expect(fireDistrict.service).toMatchObject({
+      kind: 'fire',
+      capacity: 31_000,
+      responders: 2,
+      range: fire.service!.range,
+      strength: fire.service!.strength,
+    });
+  });
+
+  it('sizes the district police station on 90 sworn at 1.9 per 1,000, 68% on patrol, 5.5 to a post', () => {
+    const SWORN = 90;
+    expect(toThousand((SWORN / 1.9) * 1_000)).toBe(47_000);
+    expect(Math.floor((0.68 * SWORN) / 5.5)).toBe(11);
+    expect(policeDistrict.service).toMatchObject({
+      kind: 'police',
+      capacity: 47_000,
+      responders: 11,
+      range: police.service!.range,
+      strength: police.service!.strength,
+    });
+  });
+
+  it("prices each by its floor against the first rung's, and runs it by its staffing", () => {
+    expect(toFifty((15_733 / 5_380) * fire.cost)).toBe(13_150);
+    expect(fireDistrict.cost).toBe(13_150);
+    expect(Math.round((40.5 / 18) * fire.upkeep)).toBe(720);
+    expect(fireDistrict.upkeep).toBe(720);
+    expect(toFifty((38_000 / 15_280) * police.cost)).toBe(9_950);
+    expect(policeDistrict.cost).toBe(9_950);
+    expect(Math.round((90 / 48) * police.upkeep)).toBe(563);
+    expect(policeDistrict.upkeep).toBe(563);
+  });
+
+  it('costs more a head to build than the first rung; what it buys is crews at once', () => {
+    const perHead = (e: BuildingCatalogEntry): number => e.cost / e.service!.capacity!;
+    expect(perHead(fire)).toBeCloseTo(0.32, 2);
+    expect(perHead(fireDistrict)).toBeCloseTo(0.42, 2);
+    expect(perHead(police)).toBeCloseTo(0.16, 2);
+    expect(perHead(policeDistrict)).toBeCloseTo(0.21, 2);
+    expect(fireDistrict.service!.responders).toBeGreaterThan(fire.service!.responders!);
+    expect(policeDistrict.service!.responders).toBeGreaterThan(police.service!.responders!);
+  });
+
+  it('unlocks both at Small City, above the first rungs', () => {
+    expect(SMALL_CITY).toBeGreaterThan(fire.unlockMilestone);
+    expect(fireDistrict.unlockMilestone).toBe(SMALL_CITY);
+    expect(policeDistrict.unlockMilestone).toBe(SMALL_CITY);
+    expect(MILESTONES[SMALL_CITY]!.name).toBe('Small City');
+  });
+
+  it('derives each lot from the stated floor, the storeys and the site', () => {
+    const PLATE_M2_PER_TILE = 185;
+    const STOREY_M = 3.2;
+    const storeys = (e: BuildingCatalogEntry): number => e.height / STOREY_M;
+    const plateM2 = (e: BuildingCatalogEntry): number =>
+      e.footprint.w * e.footprint.d * PLATE_M2_PER_TILE;
+    // Fire: 1,462 m² over two storeys is a 731 m² plate; the bays and apron then ask 36.6 m of frontage, past a 2×2 lot's 34 m.
+    const fireFloor = 15_733 * SQ_M_PER_SQ_FT;
+    expect(fireFloor).toBeCloseTo(1_462, 0);
+    expect(storeys(fireDistrict)).toBeCloseTo(2, 9);
+    expect(fireFloor / storeys(fireDistrict)).toBeLessThan(plateM2(fireDistrict));
+    expect(fireDistrict.footprint).toEqual({ w: 3, d: 2 });
+    // Police: 3,530 m² over three storeys is 1,177 m², which a 3×3 holds; over two it is 1,765 m², which it does not.
+    const policeFloor = 38_000 * SQ_M_PER_SQ_FT;
+    expect(policeFloor).toBeCloseTo(3_530, 0);
+    expect(storeys(policeDistrict)).toBeCloseTo(3, 9);
+    expect(policeFloor / 3).toBeLessThan(plateM2(policeDistrict));
+    expect(policeFloor / 2).toBeGreaterThan(plateM2(policeDistrict));
+    expect(policeDistrict.footprint).toEqual({ w: 3, d: 3 });
   });
 });
 
