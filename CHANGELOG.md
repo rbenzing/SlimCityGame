@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.57.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.56.0...slimcity-v1.57.0) (2026-10-14)
+
+
+### Features
+
+* **services:** stations answer within road reach, while a crew is free, at real call rates ([6d0232b](https://github.com/rbenzing/SlimCityGame/commit/6d0232b9b5f931b4f421ca3ef44f2bff168516e2))
+* **services:** stations answer within road reach, while a crew is free, at real call rates ([a48f0d7](https://github.com/rbenzing/SlimCityGame/commit/a48f0d72f3f35d12e8b5ee165cc48b04b1408a44))
+
 ## [1.56.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.55.0...slimcity-v1.56.0) (2026-10-14)
 
 
