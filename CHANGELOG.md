@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.56.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.55.0...slimcity-v1.56.0) (2026-10-14)
+
+
+### Features
+
+* **services:** the crematorium, and an exhumation charge to clear a cemetery ([d97e9de](https://github.com/rbenzing/SlimCityGame/commit/d97e9de209bcdef7ff119becbb6741ebda687c2e))
+* **services:** the crematorium, and an exhumation charge to clear a cemetery ([ce3a175](https://github.com/rbenzing/SlimCityGame/commit/ce3a1759173a606eab1b3849c56c8133b2d82bf4))
+
 ## [1.55.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.54.0...slimcity-v1.55.0) (2026-10-14)
 
 
