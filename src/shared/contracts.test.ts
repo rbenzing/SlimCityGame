@@ -784,3 +784,91 @@ describe('the generators (honest both sides): nameplate, capacity factor, cost a
     expect(turbine.upkeep).toBe(Math.round(derived));
   });
 });
+
+describe('the power ladder: four generators beside the coal plant and the turbine', () => {
+  const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+  const byId = (id: string): BuildingCatalogEntry => catalog.find((e) => e.id === id)!;
+  const milestoneNamed = (name: string): number => MILESTONES.findIndex((m) => m.name === name);
+
+  const LADDER = [
+    {
+      id: 'solar-farm',
+      name: 'Solar Farm',
+      powerMW: 1,
+      capacityFactor: 0.232,
+      footprint: { w: 6, d: 6 },
+      height: 2.9,
+      pollution: undefined,
+      waterUse: 0,
+      cost: 97,
+      upkeep: 2,
+      milestone: 'Tiny Village',
+      requiresAdjacent: undefined,
+    },
+    {
+      id: 'gas-turbine',
+      name: 'Gas Turbine',
+      powerMW: 50,
+      capacityFactor: 0.139,
+      footprint: { w: 2, d: 2 },
+      height: 14,
+      pollution: 5,
+      waterUse: 0,
+      cost: 3170,
+      upkeep: 256,
+      milestone: 'Small Town',
+      requiresAdjacent: undefined,
+    },
+    {
+      id: 'combined-cycle',
+      name: 'Combined-Cycle Station',
+      powerMW: 89,
+      capacityFactor: 0.605,
+      footprint: { w: 4, d: 3 },
+      height: 24,
+      pollution: 26,
+      waterUse: 1.2,
+      cost: 5260,
+      upkeep: 1030,
+      milestone: 'Small City',
+      requiresAdjacent: undefined,
+    },
+    {
+      id: 'nuclear-plant',
+      name: 'Nuclear Station',
+      powerMW: 77,
+      capacityFactor: 0.908,
+      footprint: { w: 6, d: 5 },
+      height: 24,
+      pollution: undefined,
+      waterUse: 4.9,
+      cost: 68_800,
+      upkeep: 1314,
+      milestone: 'Grand City',
+      requiresAdjacent: 'water',
+    },
+  ] as const;
+
+  it.each(LADDER)('holds every derived figure of the $name', (row) => {
+    const entry = byId(row.id);
+    expect(entry.name).toBe(row.name);
+    expect(entry.category).toBe('utility');
+    expect(entry.powerUse).toBe(0);
+    expect(entry.utility?.powerMW).toBe(row.powerMW);
+    expect(entry.utility?.capacityFactor).toBe(row.capacityFactor);
+    expect(entry.footprint).toEqual(row.footprint);
+    expect(entry.height).toBe(row.height);
+    expect('pollution' in entry ? entry.pollution : undefined).toBe(row.pollution);
+    expect(entry.waterUse).toBe(row.waterUse);
+    expect(entry.cost).toBe(row.cost);
+    expect(entry.upkeep).toBe(row.upkeep);
+    expect(entry.unlockMilestone).toBe(milestoneNamed(row.milestone));
+    expect(entry.requiresAdjacent).toBe(row.requiresAdjacent);
+    expect(entry.spacing).toBeUndefined();
+  });
+
+  it('climbs the milestones in step with the size of the plant', () => {
+    const rungs = LADDER.map((row) => byId(row.id).unlockMilestone);
+    expect(rungs).toEqual([...rungs].sort((a, b) => a - b));
+  });
+});

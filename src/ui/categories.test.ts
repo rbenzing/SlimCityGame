@@ -158,7 +158,17 @@ describe('subTabsFor', () => {
         .sort(),
       // The power line is listed with the generators, being what carries what
       // they make.
-    ).toEqual(['plop.coal-plant', 'plop.wind-turbine', 'power.line'].sort());
+    ).toEqual(
+      [
+        'plop.coal-plant',
+        'plop.wind-turbine',
+        'plop.solar-farm',
+        'plop.gas-turbine',
+        'plop.combined-cycle',
+        'plop.nuclear-plant',
+        'power.line',
+      ].sort(),
+    );
     expect(subTabsFor('water')).toHaveLength(1);
     // The tower and the shore intake, the drain that takes the sewage back,
     // and the pipe that carries both where the streets do not.

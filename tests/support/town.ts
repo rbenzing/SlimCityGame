@@ -96,6 +96,10 @@ export const TOWN = {
   soundWall: { z0: 80 },
   ramp: { x: 151, z0: 58, z1: 62 },
   rampRoad: { z: 57, x0: 130, x1: 151 },
+  reactor: { x: 91, z: 75 },
+  solarFarm: { x: 121, z: 124 },
+  gasTurbine: { x: 121, z: 131 },
+  combinedCycle: { x: 123, z: 131 },
   pump: { x: 95, z: 68 },
   pipe: { z: 68, x0: 91, x1: 94 },
   drain: { x: 89, z: 69 },
@@ -337,9 +341,30 @@ export function townSteps(): TownStep[] {
       commands: [
         place('coal-plant', { x: 110, z: 131 }),
         place('wind-turbine', { x: 131, z: 99 }),
+        place('solar-farm', t.solarFarm),
+        place('gas-turbine', t.gasTurbine),
+        place('combined-cycle', t.combinedCycle),
         place('water-tower', { x: 102, z: 101 }),
         place('water-tower', { x: 106, z: 101 }),
       ],
+    },
+    {
+      // The south bank drops 8 m to the riverbed, so the row the reactor's
+      // shore side stands on is graded down to a 1 m quay first; the avenue
+      // runs along its west edge.
+      label: 'grading the south bank for the reactor',
+      commands: Array.from({ length: 6 }, (_, i) => t.reactor.x + i).map((x): Command => ({
+        kind: 'terraform',
+        mode: 'level',
+        center: { x, z: t.reactor.z },
+        radius: 0,
+        strength: 4,
+        targetHeight: 1,
+      })),
+    },
+    {
+      label: 'a nuclear station on the south bank, beside the avenue',
+      commands: [place('nuclear-plant', t.reactor)],
     },
     {
       // The bank drops 8 m to the riverbed, too steep to build on, so the

@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 6,166 tests passing across 185 test files, run 2026-10-14.
+**Test suite:** 6,191 tests passing across 186 test files, run 2026-10-14.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -323,6 +323,31 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The power ladder in the simulation (first slice of power generation, built 2026-10-14)
+
+Four new generators, each a real small unit chosen to fit the cities the game
+can grow, at its 2024 US capacity factor (EIA). The player chose real small
+units over the draft's 250 MW and 1,100 MW machines, which would have powered
+110,000 and 730,000 people, and asked for solar.
+
+- **Solar farm** (Tiny Village): a 1 MWac fixed-tilt array on 6×6 at LBNL's
+  2019 density; delivers 0.23 MW; ¢97, ¢2 a month; no smoke. The cheapest power
+  per megawatt, and the hungriest for land.
+- **Gas turbine** (Small Town): a GE LM6000 peaker, 50 MW at 13.9%; delivers
+  6.95 MW; ¢3,170, ¢256; pollution 5.
+- **Combined-cycle station** (Small City): a Siemens SCC-800 1x1, 89 MW at
+  60.5%; delivers 53.8 MW; ¢5,260, ¢1,030; pollution 26. It supersedes coal.
+- **Nuclear station** (Grand City): one NuScale module, 77 MW at 90.8%; delivers
+  69.9 MW, a Metropolis; ¢68,800 at the real project cost the player chose;
+  ¢1,314; no smoke; must touch water.
+- Costs and upkeep sit on the coal plant's EIA anchors. Pollution now follows
+  the energy a plant makes, at federal and permit emission limits.
+- Solar and wind count for their year's average, so supply never varies with
+  the hour.
+- **Docs drift fixed:** the stale wind turbine and the coal plant's water in
+  the balancing table.
+- The plants draw as the generic box until the next slice.
 
 ### The schools drawn as campuses (last slice of the education ladder, built 2026-10-14)
 
