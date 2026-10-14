@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   BIG_TOWN_MILESTONE,
+  CREMATIONS_PER_YEAR,
+  CREMATION_CREDIT_CAP,
   DEATH_CARE_MILESTONE,
   DEATH_CARE_PERIOD,
   DEATH_RATE_PER_RESIDENT_PER_TICK,
@@ -383,5 +385,207 @@ describe('the backlog and the interments persist', () => {
     });
     expect(notLists.uncollected).toBe(0);
     expect(notLists.serializeState().interments).toEqual([]);
+  });
+});
+
+describe('the crematorium', () => {
+  const crematoriumEntry = entries.find((e) => e.id === 'crematorium')!;
+  const RATE = crematoriumEntry.deathCare!.rate!;
+  const CREMATORIUM_ID = 1;
+  const crematorium = (id = CREMATORIUM_ID): DeathCareFacility => ({
+    id,
+    collectionRange: crematoriumEntry.deathCare!.collectionRange,
+    rate: RATE,
+  });
+  /** A system holding bodies and a crematorium with `credit` banked. */
+  const burning = (
+    bodies: { tile: number; count: number; sinceTick: number }[],
+    credit: number,
+    id = CREMATORIUM_ID,
+  ): DeathCareSystem => {
+    const system = withBodies(bodies);
+    system.restoreState({
+      ...system.serializeState(),
+      cremation: [{ id, credit, cremated: 0 }],
+    });
+    return system;
+  };
+
+  it('throughputs 2,080 cremations a year: two retorts, four a day each, 260 working days', () => {
+    expect(CREMATIONS_PER_YEAR).toBe(2 * 4 * 260);
+    expect(RATE * TICKS_PER_YEAR).toBeCloseTo(CREMATIONS_PER_YEAR, 4);
+  });
+
+  it('cremates every body its roads reach for ten game years of a city well under its throughput', () => {
+    const g = town();
+    const registry = new BuildingRegistry([HOUSE]);
+    for (let z = 11; z <= 20; z++) {
+      registry.place(g, HOUSE, 9, z, 0);
+      registry.place(g, HOUSE, 8, z, 0);
+    }
+    const system = new DeathCareSystem(byId);
+    const facilities = [crematorium()];
+    for (let t = 1; t <= 10 * TICKS_PER_YEAR; t++) {
+      system.tick(registry.all(), 12_000, 1, t);
+      system.collect(g, t, DEATH_CARE_MILESTONE, facilities);
+    }
+    expect(system.totalDeaths).toBeGreaterThan(1_000);
+    expect(system.totalDeaths).toBeLessThan(CREMATIONS_PER_YEAR);
+    expect(system.crematedBy(CREMATORIUM_ID)).toBe(system.totalDeaths);
+    expect(system.uncollected).toBe(0);
+  }, 120_000);
+
+  it('leaves the body of a building no road connects to it, however much throughput it has banked', () => {
+    const g = town();
+    const inland = tileIndex(16, 22);
+    const system = burning([{ tile: inland, count: 1, sinceTick: 5 }], 8);
+    system.collect(g, 5, DEATH_CARE_MILESTONE, [crematorium()]);
+    expect(system.crematedBy(CREMATORIUM_ID)).toBe(0);
+    expect(system.uncollected).toBe(1);
+  });
+
+  it('drains a backlog of 300 at its throughput, not faster', () => {
+    const g = town();
+    const system = withBodies([{ tile: house, count: 300, sinceTick: 0 }]);
+    const span = 5_000;
+    for (let t = 0; t < span; t++) system.collect(g, t, DEATH_CARE_MILESTONE, [crematorium()]);
+    expect(Math.abs(system.crematedBy(CREMATORIUM_ID) - RATE * span)).toBeLessThanOrEqual(1);
+    expect(system.uncollected).toBe(300 - system.crematedBy(CREMATORIUM_ID));
+
+    // 300 bodies at 2,080 a year are 300 ÷ (2,080 ÷ 12) = 1.73 game months.
+    const months = 300 / (CREMATIONS_PER_YEAR / 12);
+    let t = span;
+    while (system.uncollected > 0 && t < 5 * TICKS_PER_YEAR) {
+      system.collect(g, t, DEATH_CARE_MILESTONE, [crematorium()]);
+      t++;
+    }
+    const drainedAt = t;
+    expect(system.crematedBy(CREMATORIUM_ID)).toBe(300);
+    expect(Math.abs(drainedAt - months * (TICKS_PER_YEAR / 12))).toBeLessThanOrEqual(
+      DEATH_CARE_PERIOD + 1,
+    );
+  });
+
+  it('banks no more than one working day, and an idle crematorium stores nothing past it', () => {
+    expect(CREMATION_CREDIT_CAP).toBe(8);
+    const g = town();
+    const system = withBodies([]);
+    for (let t = 1; t <= 3 * TICKS_PER_YEAR; t++) {
+      system.collect(g, t, DEATH_CARE_MILESTONE, [crematorium()]);
+    }
+    expect(system.serializeState().cremation).toEqual([
+      { id: CREMATORIUM_ID, credit: CREMATION_CREDIT_CAP, cremated: 0 },
+    ]);
+    // A rush of 20 bodies takes the 8 banked, and the rest wait for throughput.
+    system.restoreState({
+      ...system.serializeState(),
+      backlog: [{ tile: house, count: 20, sinceTick: 9 }],
+    });
+    system.collect(g, 9, DEATH_CARE_MILESTONE, [crematorium()]);
+    expect(system.crematedBy(CREMATORIUM_ID)).toBe(8);
+    expect(system.uncollected).toBe(12);
+  });
+
+  it('has room for as many bodies as its whole credit, so a fraction takes none', () => {
+    const g = town();
+    const system = burning([{ tile: house, count: 2, sinceTick: 5 }], 0.5);
+    system.collect(g, 5, DEATH_CARE_MILESTONE, [crematorium()]);
+    expect(system.crematedBy(CREMATORIUM_ID)).toBe(0);
+    expect(system.uncollected).toBe(2);
+    expect(system.cremationRoom(CREMATORIUM_ID)).toBe(0);
+  });
+
+  it('competes with cemeteries on reach, then facility id', () => {
+    const g = town();
+    // A second lot far down the street, 15 road tiles from main street's middle.
+    lot(g, 2, 11, 50);
+    const midway = tileIndex(9, 35);
+    g.buildingId[midway] = 9;
+
+    // The nearer wins whatever its kind and id: the cemetery beside the house beats a crematorium far off.
+    const near = burning([{ tile: house, count: 1, sinceTick: 5 }], 8, 2);
+    near.collect(g, 5, DEATH_CARE_MILESTONE, [cemetery(1), crematorium(2)]);
+    expect(near.intermentsOf(1)).toBe(1);
+    expect(near.crematedBy(2)).toBe(0);
+
+    // Level on reach, the lower id wins: crematorium 1 over cemetery 2, and the reverse.
+    const crematoriumFirst = burning([{ tile: midway, count: 1, sinceTick: 5 }], 8, 1);
+    crematoriumFirst.collect(g, 5, DEATH_CARE_MILESTONE, [cemetery(2), crematorium(1)]);
+    expect(crematoriumFirst.crematedBy(1)).toBe(1);
+    expect(crematoriumFirst.intermentsOf(2)).toBe(0);
+
+    const cemeteryFirst = burning([{ tile: midway, count: 1, sinceTick: 5 }], 8, 2);
+    cemeteryFirst.collect(g, 5, DEATH_CARE_MILESTONE, [cemetery(1), crematorium(2)]);
+    expect(cemeteryFirst.intermentsOf(1)).toBe(1);
+    expect(cemeteryFirst.crematedBy(2)).toBe(0);
+  });
+
+  it('falls through to the cemetery when its throughput is spent, and never fills', () => {
+    const g = town();
+    lot(g, 2, 11, 50);
+    const system = burning([{ tile: house, count: 10, sinceTick: 5 }], 3, 1);
+    system.collect(g, 5, DEATH_CARE_MILESTONE, [crematorium(1), cemetery(2)]);
+    expect(system.crematedBy(1)).toBe(3);
+    expect(system.intermentsOf(2)).toBe(7);
+    expect(system.uncollected).toBe(0);
+  });
+
+  it('saves its credit and its count, and drops them when the building is gone', () => {
+    const g = town();
+    const system = burning([], 5);
+    system.collect(g, 1, DEATH_CARE_MILESTONE, [crematorium()]);
+    const reloaded = new DeathCareSystem(byId);
+    reloaded.restoreState(JSON.parse(JSON.stringify(system.serializeState())));
+    expect(reloaded.serializeState().cremation).toEqual(system.serializeState().cremation);
+    reloaded.collect(g, 2, DEATH_CARE_MILESTONE, []);
+    expect(reloaded.serializeState().cremation).toEqual([]);
+  });
+
+  it('loads a save from before it with no crematorium state, and malformed entries as nothing', () => {
+    const slice2 = new DeathCareSystem(byId);
+    slice2.restoreState({
+      deathRemainder: 0.25,
+      deaths: 4,
+      reletRemainder: 0,
+      relets: 1,
+      interments: [{ id: 3, count: 9 }],
+      backlog: [{ tile: 12, count: 2, sinceTick: 8 }],
+      regionalThisMonth: 2,
+    });
+    expect(slice2.serializeState().cremation).toEqual([]);
+    expect(slice2.crematedBy(1)).toBe(0);
+    expect(slice2.cremationRoom(1)).toBe(0);
+
+    const slice1 = new DeathCareSystem(byId);
+    slice1.restoreState({ deathRemainder: 0, deaths: 4, reletRemainder: 0, relets: 1 });
+    expect(slice1.serializeState().cremation).toEqual([]);
+
+    const bad = new DeathCareSystem(byId);
+    bad.restoreState({
+      deathRemainder: 0,
+      deaths: 0,
+      reletRemainder: 0,
+      relets: 0,
+      cremation: [
+        { id: 0, credit: 1, cremated: 1 },
+        { id: 1.5, credit: 1, cremated: 1 },
+        { id: 2, credit: Number.NaN, cremated: -4 },
+        { id: 3, credit: 400, cremated: 7 },
+      ],
+    });
+    expect(bad.serializeState().cremation).toEqual([
+      { id: 2, credit: 0, cremated: 0 },
+      { id: 3, credit: CREMATION_CREDIT_CAP, cremated: 7 },
+    ]);
+
+    const notAList = new DeathCareSystem(byId);
+    notAList.restoreState({
+      deathRemainder: 0,
+      deaths: 0,
+      reletRemainder: 0,
+      relets: 0,
+      cremation: 'burn' as never,
+    });
+    expect(notAList.serializeState().cremation).toEqual([]);
   });
 });

@@ -95,6 +95,7 @@ describe('DeathCareSystem: saves', () => {
       interments: [],
       backlog: [],
       regionalThisMonth: 0,
+      cremation: [],
     });
     expect(system.totalDeaths).toBe(0);
     expect(system.uncollected).toBe(0);

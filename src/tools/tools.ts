@@ -18,6 +18,7 @@ import {
   BRIDGE_MAX_ELEVATION,
   BRIDGE_COST_PER_METER_TILE,
   BRIDGE_MAX_GRADE,
+  EXHUMATION_FEE_PER_INTERMENT,
   ROAD_ELEVATION_STEP_M,
   TILE_METERS,
   tileToWorld,
@@ -255,6 +256,12 @@ export interface ToolEnv {
    * reads every tile as at grade, and the world still decides what goes.
    */
   overRoadAt?(tile: TilePoint): { flow: number; profile: number } | null;
+  /**
+   * The graves of every cemetery standing on `tiles`, which a bulldoze there
+   * has to exhume and is charged for. Optional: without it the bulldoze
+   * preview quotes nothing, and the world still charges.
+   */
+  gravesUnder?(tiles: readonly TilePoint[]): number;
   /**
    * The grid as an interchange is laid out on it. Optional: without it the
    * Interchange tool previews nothing and lays nothing.
@@ -1901,10 +1908,19 @@ export class ToolManager {
     const start = this.dragStart ?? current;
     if (tool === 'bulldoze') {
       const { tiles, refusal } = this.bulldozeOutline(rectTiles(start, current));
-      const evaluated = this.evaluate(tiles, 0, 0, true);
+      const graves = this.env.gravesUnder?.(tiles) ?? 0;
+      const cost = graves * EXHUMATION_FEE_PER_INTERMENT;
+      const evaluated = this.evaluate(tiles, cost, 0, true);
       const valid = evaluated.valid && refusal === null;
       const invalidReason = refusal ?? evaluated.invalidReason;
-      this.env.onPreview({ tiles, valid, cost: 0, label: 'Bulldoze', invalidReason });
+      this.env.onPreview({
+        tiles,
+        valid,
+        cost,
+        label: 'Bulldoze',
+        invalidReason,
+        ...(graves > 0 ? { note: `Exhumes ${graves.toLocaleString('en-US')} graves` } : {}),
+      });
     } else if (tool in ROAD_TOOL_TO_TIER) {
       // A drag at any angle that has left its row or column runs off the grid.
       const free =

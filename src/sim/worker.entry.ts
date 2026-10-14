@@ -32,6 +32,7 @@ import {
   LANDFILL_TRUCKS_MAX,
   LANDFILL_TRUCKS_PER_TILES,
   BRIDGE_COST_PER_METER_TILE,
+  EXHUMATION_FEE_PER_INTERMENT,
   TILE_METERS,
   inBounds,
   tileIndex,
@@ -1216,14 +1217,18 @@ class SimWorld implements WorkerSim {
     this.hearseVisits = [];
   }
 
-  /** Every Active burial facility, as the collection pass takes them. */
-  private burialFacilities(): DeathCareFacility[] {
+  /** Every Active cemetery and crematorium, as the collection pass takes them. */
+  private deathCareFacilities(): DeathCareFacility[] {
     const facilities: DeathCareFacility[] = [];
     for (const inst of this.registry.all()) {
       if (inst.state !== BuildingState.Active) continue;
       const spec = this.catalogById.get(inst.catalogId)?.deathCare;
-      if (spec?.mode !== 'burial' || spec.plots === undefined) continue;
-      facilities.push({ id: inst.id, collectionRange: spec.collectionRange, plots: spec.plots });
+      if (!spec) continue;
+      if (spec.mode === 'burial' && spec.plots !== undefined) {
+        facilities.push({ id: inst.id, collectionRange: spec.collectionRange, plots: spec.plots });
+      } else if (spec.mode === 'cremation' && spec.rate !== undefined) {
+        facilities.push({ id: inst.id, collectionRange: spec.collectionRange, rate: spec.rate });
+      }
     }
     return facilities;
   }
@@ -1237,7 +1242,7 @@ class SimWorld implements WorkerSim {
       this.grid,
       t,
       this.stats.milestoneLevel,
-      this.burialFacilities(),
+      this.deathCareFacilities(),
     );
     for (const { tile } of visits) {
       if (this.hearseVisits.some((v) => v.id === tile)) continue;
@@ -1274,14 +1279,25 @@ class SimWorld implements WorkerSim {
 
   /** What each cemetery holds, the bodies waiting and the month's regional collection. */
   private deathCareReport(): DeathCareReport {
-    const facilities = this.burialFacilities().map((f) => ({
-      id: f.id,
-      used: this.deathCare.intermentsOf(f.id),
-      total: f.plots,
-    }));
+    const all = this.deathCareFacilities();
+    const facilities = all
+      .filter((f) => f.plots !== undefined)
+      .map((f) => ({
+        id: f.id,
+        used: this.deathCare.intermentsOf(f.id),
+        total: f.plots ?? 0,
+      }));
+    const crematoria = all
+      .filter((f) => f.rate !== undefined)
+      .map((f) => ({
+        id: f.id,
+        cremated: this.deathCare.crematedBy(f.id),
+        room: this.deathCare.cremationRoom(f.id),
+      }));
     const at = this.deathCare.oldestUncollectedTile;
     return {
       facilities,
+      crematoria,
       uncollected: this.deathCare.uncollected,
       ...(at !== undefined
         ? { uncollectedAt: { x: at % MAP_SIZE, z: Math.floor(at / MAP_SIZE) } }
@@ -1601,7 +1617,9 @@ class SimWorld implements WorkerSim {
         ? {
             deathCare: { used: this.deathCare.intermentsOf(inst.id), total: entry.deathCare.plots },
           }
-        : {}),
+        : entry.deathCare?.mode === 'cremation'
+          ? { deathCare: { cremated: this.deathCare.crematedBy(inst.id) } }
+          : {}),
       ...(intakeYield !== undefined ? { intakeYield } : {}),
     };
     this.post({ type: 'selection', info });
@@ -2466,7 +2484,13 @@ class SimWorld implements WorkerSim {
       case 'paintZone':
         return this.cmdPaintZone(command.zone, command.tiles, command.restore === true);
       case 'placeBuilding':
-        return this.cmdPlaceBuilding(command.catalogId, command.x, command.z, command.rotation);
+        return this.cmdPlaceBuilding(
+          command.catalogId,
+          command.x,
+          command.z,
+          command.rotation,
+          command.interments,
+        );
       case 'setTaxRate': {
         const rate = Math.max(0, Math.min(MAX_TAX_RATE, command.rate));
         this.stats.taxRates = { ...this.stats.taxRates, [command.sector]: rate };
@@ -3195,6 +3219,22 @@ class SimWorld implements WorkerSim {
     return { ok: true, cost: -refund, inverse: [inverse] };
   }
 
+  /** ¢ to exhume the graves of every cemetery standing on `tiles`. */
+  private exhumationCharge(tiles: readonly TilePoint[]): number {
+    const seen = new Set<number>();
+    let graves = 0;
+    for (const t of tiles) {
+      const id = this.grid.buildingId[tileIndex(t.x, t.z)] ?? 0;
+      if (id === 0 || seen.has(id)) continue;
+      seen.add(id);
+      const inst = this.registry.get(id);
+      if (inst && this.catalogById.get(inst.catalogId)?.deathCare?.plots !== undefined) {
+        graves += this.deathCare.intermentsOf(id);
+      }
+    }
+    return graves * EXHUMATION_FEE_PER_INTERMENT;
+  }
+
   private cmdBulldoze(tiles: TilePoint[], layer?: 'over'): CommandResult {
     const g = this.grid;
     const reachable = tiles.filter((t) => inBounds(t.x, t.z));
@@ -3212,12 +3252,17 @@ class SimWorld implements WorkerSim {
     );
     if (reach.refusal) return { ok: false, cost: 0, inverse: [], reason: reach.refusal };
     const crossing = reach.over;
-    const lifted = this.removeOverRoads(crossing);
     // Only the tiles asked for are cleared of what stands beside the road; a
     // corridor partner brought in loses its road and nothing else.
     const asked = new Set(reachable.map((t) => tileIndex(t.x, t.z)));
     const inBoundsTiles = reach.ground;
     const clearedTiles = inBoundsTiles.filter((t) => asked.has(tileIndex(t.x, t.z)));
+    // Exhuming a cemetery's graves is paid in hand, before anything is taken down.
+    const exhumation = this.exhumationCharge(clearedTiles);
+    if (!this.unlimitedMoney && this.stats.funds < exhumation) {
+      return { ok: false, cost: 0, inverse: [], reason: 'funds' };
+    }
+    const lifted = this.removeOverRoads(crossing);
     if (inBoundsTiles.length === 0) {
       if (crossing.length === 0) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
       this.stats.funds += lifted.refund;
@@ -3324,12 +3369,19 @@ class SimWorld implements WorkerSim {
       this.buildingsRemoved.push(id);
       const entry = this.catalogById.get(inst.catalogId);
       if (entry) refund += entry.cost * BULLDOZE_REFUND_RATE;
+      // A cemetery's graves are exhumed and reinterred for a fee, and the
+      // undo stands it back up with them and returns the fee.
+      const interments =
+        entry?.deathCare?.plots !== undefined ? this.deathCare.intermentsOf(id) : 0;
+      refund -= interments * EXHUMATION_FEE_PER_INTERMENT;
+      this.deathCare.setInterments(id, 0);
       inverse.push({
         kind: 'placeBuilding',
         catalogId: inst.catalogId,
         x: inst.x,
         z: inst.z,
         rotation: inst.rotation,
+        ...(interments > 0 ? { interments } : {}),
       });
     }
 
@@ -3430,13 +3482,18 @@ class SimWorld implements WorkerSim {
     x: number,
     z: number,
     rotation: 0 | 1 | 2 | 3,
+    interments = 0,
   ): CommandResult {
     const entry = this.catalogById.get(catalogId);
     if (!entry) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
     if (!this.sandbox && entry.unlockMilestone > this.stats.milestoneLevel) {
       return { ok: false, cost: 0, inverse: [], reason: 'locked' };
     }
-    if (!this.unlimitedMoney && this.stats.funds < entry.cost)
+    // A cemetery put back with its burials gets the exhumation charge back.
+    const plots = entry.deathCare?.plots;
+    const restored = plots === undefined ? 0 : Math.max(0, Math.min(Math.floor(interments), plots));
+    const price = entry.cost - restored * EXHUMATION_FEE_PER_INTERMENT;
+    if (!this.unlimitedMoney && this.stats.funds < price)
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
 
     const { w, d } = footprintForRotation(entry, rotation);
@@ -3461,7 +3518,8 @@ class SimWorld implements WorkerSim {
     const inst = this.registry.place(this.grid, entry, x, z, rotation);
     if (!inst) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
 
-    this.stats.funds -= entry.cost;
+    this.stats.funds -= price;
+    if (restored > 0) this.deathCare.setInterments(inst.id, restored);
     this.buildingsAdded.push(inst);
     this.utilitiesDirty = true;
 
@@ -3470,7 +3528,7 @@ class SimWorld implements WorkerSim {
     const inverse: Command[] = [{ kind: 'bulldoze', tiles: footprint }];
     // Auto-flatten: the whole footprint, no apron.
     this.flattenFootprint(footprint, false, inverse);
-    return { ok: true, cost: entry.cost, inverse };
+    return { ok: true, cost: price, inverse };
   }
 
   /**

@@ -211,6 +211,24 @@ export const REGIONAL_FUNERAL_FEE = 3.6;
 export const BODY_HEALTH_PENALTY_PER_MONTH = 32;
 /** Ticks between offers of the bodies still waiting to the cemeteries; a body is offered the tick it falls. */
 export const DEATH_CARE_PERIOD = 10;
+/**
+ * ¢ to exhume and reinter one grave when a cemetery holding interments is
+ * demolished. The median of four municipal fee schedules for an adult
+ * disinterment plus reinterment, Salt Lake City FY2026-27 $3,500, Richmond VA
+ * 2021 $2,000, Lorain OH $4,200 and Douglas GA $2,200, is $2,850; on the
+ * death-care capital scale of $200 to the ¢ (the cemetery's own ¢3,500 for 780
+ * plots) that is ¢14.25, taken down to 14.
+ */
+export const EXHUMATION_FEE_PER_INTERMENT = 14;
+/** A crematorium's two retorts, the cremations each runs in a working day, and the days it works a year. */
+export const CREMATORIUM_RETORTS = 2;
+export const CREMATIONS_PER_RETORT_DAY = 4;
+export const CREMATORIUM_WORKING_DAYS = 260;
+/** Cremations a crematorium does in a year: 2 × 4 × 260 = 2,080. */
+export const CREMATIONS_PER_YEAR =
+  CREMATORIUM_RETORTS * CREMATIONS_PER_RETORT_DAY * CREMATORIUM_WORKING_DAYS;
+/** The most throughput a crematorium banks: one working day's cremations, so an idle one stores nothing. */
+export const CREMATION_CREDIT_CAP = CREMATORIUM_RETORTS * CREMATIONS_PER_RETORT_DAY;
 
 // --- camera -----------------------------------------------------------------
 export const CAMERA_MIN_DISTANCE = 40;

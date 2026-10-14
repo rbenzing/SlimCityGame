@@ -64,6 +64,10 @@
  *    ("cemeteryFence"), a few trees ("cemeteryTree", the park's tree) and one
  *    headstone per interment ("cemeteryStone"): a single InstancedMesh for every
  *    cemetery's stones, whose count follows setInterments, not the building delta.
+ *  - crematorium: the same lawn plate with a paved forecourt
+ *    ("crematoriumGrounds"), a gabled chapel, a flat-roofed cremator hall with
+ *    its exhaust duct, a foyer and an office, merged ("crematoriumBuilding"),
+ *    and the one 7.6 m flue ("crematoriumFlue").
  *  The paving kits stand on the highest ground under their lot (pavesLot),
  *  so the instancer's plinth never shows through their yard on a slope.
  *  - small-park: a flat lawn plate + path cross ("parkGround"), 2-3
@@ -123,6 +127,7 @@ export const UTILITY_KIT_CATALOG_IDS: readonly string[] = [
   'transfer-station',
   'hospital',
   'cemetery',
+  'crematorium',
   'small-park',
 ];
 
@@ -169,6 +174,9 @@ export type UtilityKitPartKind =
   | 'cemeteryFence'
   | 'cemeteryTree'
   | 'cemeteryStone'
+  | 'crematoriumGrounds'
+  | 'crematoriumBuilding'
+  | 'crematoriumFlue'
   | 'parkGround'
   | 'parkTree'
   | 'parkBench';
@@ -2476,6 +2484,237 @@ export function headstoneAt(g: Vec2): Vec2 {
 }
 
 // ---------------------------------------------------------------------------
+// crematorium: a chapel with a gabled roof, a flat-roofed cremator hall with
+// its one flue, a foyer and an office, on a lawn plate with a paved forecourt
+// on the street side (local +Z). The plate is on the highest ground under the
+// lot, like the cemetery's, so the buildings stand on one level on a slope.
+// ---------------------------------------------------------------------------
+
+/**
+ * The rooms' floor areas, m²: the chapel (100 seats at 1.4 m² net over 0.65),
+ * the office, the foyer and the cremator hall with its plant and body store.
+ * The hall's 240 m² is assumed, at 6 × 10 m for each of two retorts plus 120 m²
+ * of plant; no published figure stands behind it.
+ */
+export const CREMATORIUM_ROOMS = {
+  chapel: { w: 15, d: 14.33 },
+  office: { w: 12, d: 9.25 },
+  foyer: { w: 8, d: 7.5 },
+  hall: { w: 16, d: 15 },
+};
+/** The flue stands 7.6 m (25 ft) above grade: inside the 18-25 ft of US crematory air permits, over 3 ft above the roof. */
+export const CREMATORIUM_FLUE_HEIGHT_M = 7.6;
+/** An 8-sided stack about 0.9 m (36 in) across at its mouth: the game's own choice of diameter. */
+const CREMATORIUM_FLUE_RADIUS = { bottom: 0.5, top: 0.45 };
+const CREMATORIUM_FLUE_SIDES = 8;
+const CREMATORIUM_FLUE_RIM = { height: 0.4, bonus: 0.12 };
+const CREMATORIUM_DUCT = { w: 5, h: 0.9, d: 0.9 };
+const CREMATORIUM_EDGE_MARGIN_M = 3;
+const CREMATORIUM_ROOM_GAP_M = 2;
+/** The chapel's ridge is the building's 6.4 m: one tall storey, counted as two floors. */
+export const CREMATORIUM_RIDGE_M = 6.4;
+const CREMATORIUM_CHAPEL_EAVE_M = 3.6;
+/** The flat-roofed cremator hall is 4.5 m (15 ft), the game's own height: enough to clear a retort and its breeching duct. */
+export const CREMATORIUM_HALL_HEIGHT_M = 4.5;
+const CREMATORIUM_FOYER_HEIGHT_M = 3.6;
+const CREMATORIUM_OFFICE_HEIGHT_M = 3.2;
+export const CREMATORIUM_ROOF_CAP_M = 0.3;
+const CREMATORIUM_FORECOURT_WIDTH_M = 9;
+
+const CREMATORIUM_CHAPEL_WALL_RGB: RGB = [0.8, 0.76, 0.68];
+const CREMATORIUM_CHAPEL_ROOF_RGB: RGB = [0.3, 0.33, 0.37];
+const CREMATORIUM_HALL_RGB: RGB = [0.5, 0.5, 0.52];
+const CREMATORIUM_CAP_RGB: RGB = [0.28, 0.29, 0.31];
+const CREMATORIUM_FOYER_RGB: RGB = [0.72, 0.68, 0.6];
+const CREMATORIUM_OFFICE_RGB: RGB = [0.66, 0.62, 0.56];
+const CREMATORIUM_GLASS_RGB: RGB = [0.22, 0.3, 0.36];
+const CREMATORIUM_DOOR_RGB: RGB = [0.22, 0.14, 0.1];
+const CREMATORIUM_FLUE_RGB: RGB = [0.62, 0.64, 0.67];
+const CREMATORIUM_FLUE_RIM_RGB: RGB = [0.18, 0.18, 0.2];
+const CREMATORIUM_DUCT_RGB: RGB = [0.36, 0.37, 0.4];
+const CREMATORIUM_FORECOURT_RGB: RGB = [0.62, 0.6, 0.55];
+
+export interface CrematoriumLayout {
+  chapel: Rect;
+  hall: Rect;
+  foyer: Rect;
+  office: Rect;
+  forecourt: Rect;
+  /** The flue's centre, over the back of the cremator hall. */
+  flue: Vec2;
+}
+
+/**
+ * The hall at the back left and the chapel beside it share a front line; the
+ * foyer joins them between and the office stands before the hall. Pure; fixed
+ * per footprint, in the footprint frame with +Z toward the street.
+ */
+export function computeCrematoriumLayout(footprint: FootprintSize): CrematoriumLayout {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const { chapel, office, foyer, hall } = CREMATORIUM_ROOMS;
+  const hallX0 = -halfW + CREMATORIUM_EDGE_MARGIN_M;
+  const back = -halfD + CREMATORIUM_EDGE_MARGIN_M;
+  const front = back + hall.d;
+  const chapelX0 = hallX0 + hall.w + CREMATORIUM_ROOM_GAP_M;
+  const foyerX0 = (hallX0 + hall.w + chapelX0) / 2 - foyer.w / 2;
+  const foyerZ1 = front + foyer.d;
+  return {
+    hall: { x0: hallX0, x1: hallX0 + hall.w, z0: back, z1: front },
+    chapel: { x0: chapelX0, x1: chapelX0 + chapel.w, z0: front - chapel.d, z1: front },
+    foyer: { x0: foyerX0, x1: foyerX0 + foyer.w, z0: front, z1: foyerZ1 },
+    office: { x0: hallX0, x1: hallX0 + office.w, z0: front, z1: front + office.d },
+    forecourt: {
+      x0: foyerX0 + foyer.w / 2 - CREMATORIUM_FORECOURT_WIDTH_M / 2,
+      x1: foyerX0 + foyer.w / 2 + CREMATORIUM_FORECOURT_WIDTH_M / 2,
+      z0: foyerZ1,
+      z1: halfD,
+    },
+    flue: { x: hallX0 + hall.w - 2, z: front - 1.5 },
+  };
+}
+
+/** The lawn plate with its footing and the paved forecourt; local Y=0 is the highest ground under the lot. */
+function buildCrematoriumGroundsGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const { forecourt } = computeCrematoriumLayout(footprint);
+  const top = CEMETERY_LAWN_HEIGHT;
+  const depth = top + YARD_FOOTING_DEPTH;
+  const lawn = new THREE.BoxGeometry(halfW * 2, depth, halfD * 2);
+  lawn.translate(0, top - depth / 2, 0);
+  return mergeParts([
+    paintVertexColor(lawn, hexFromRgb(CEMETERY_LAWN_RGB)),
+    standingBox(
+      forecourt.x1 - forecourt.x0,
+      CEMETERY_PAVING_PROUD_M,
+      forecourt.z1 - forecourt.z0,
+      (forecourt.x0 + forecourt.x1) / 2,
+      top,
+      (forecourt.z0 + forecourt.z1) / 2,
+      CREMATORIUM_FORECOURT_RGB,
+    ),
+  ]);
+}
+
+/** A room's box on the lawn plate, from its rect. */
+function roomBox(r: Rect, height: number, rgb: RGB): THREE.BufferGeometry {
+  return standingBox(
+    r.x1 - r.x0,
+    height,
+    r.z1 - r.z0,
+    (r.x0 + r.x1) / 2,
+    CEMETERY_LAWN_HEIGHT,
+    (r.z0 + r.z1) / 2,
+    rgb,
+  );
+}
+
+/**
+ * The chapel under its gable (ridge along X, at the catalog's 6.4 m), the
+ * cremator hall under a flat roof with its duct to the flue, the foyer with
+ * its glass and door on the street side, and the office; local Y=0 is the
+ * ground, the rooms standing on the lawn plate.
+ */
+function buildCrematoriumBuildingGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { chapel, hall, foyer, office, flue } = computeCrematoriumLayout(footprint);
+  const y0 = CEMETERY_LAWN_HEIGHT;
+  const cx = (chapel.x0 + chapel.x1) / 2;
+  const cz = (chapel.z0 + chapel.z1) / 2;
+  const parts: THREE.BufferGeometry[] = [
+    roomBox(chapel, CREMATORIUM_CHAPEL_EAVE_M, CREMATORIUM_CHAPEL_WALL_RGB),
+    gableRoof(
+      chapel.x1 - chapel.x0,
+      CREMATORIUM_RIDGE_M - CREMATORIUM_CHAPEL_EAVE_M,
+      chapel.z1 - chapel.z0,
+      cx,
+      y0 + CREMATORIUM_CHAPEL_EAVE_M,
+      cz,
+      CREMATORIUM_CHAPEL_ROOF_RGB,
+    ),
+    roomBox(hall, CREMATORIUM_HALL_HEIGHT_M, CREMATORIUM_HALL_RGB),
+    standingBox(
+      hall.x1 - hall.x0,
+      CREMATORIUM_ROOF_CAP_M,
+      hall.z1 - hall.z0,
+      (hall.x0 + hall.x1) / 2,
+      y0 + CREMATORIUM_HALL_HEIGHT_M,
+      (hall.z0 + hall.z1) / 2,
+      CREMATORIUM_CAP_RGB,
+    ),
+    // The duct that carries the retorts' exhaust along the roof to the flue.
+    standingBox(
+      CREMATORIUM_DUCT.w,
+      CREMATORIUM_DUCT.h,
+      CREMATORIUM_DUCT.d,
+      flue.x - CREMATORIUM_DUCT.w / 2,
+      y0 + CREMATORIUM_HALL_HEIGHT_M + CREMATORIUM_ROOF_CAP_M,
+      flue.z,
+      CREMATORIUM_DUCT_RGB,
+    ),
+    roomBox(foyer, CREMATORIUM_FOYER_HEIGHT_M, CREMATORIUM_FOYER_RGB),
+    standingBox(
+      1.8,
+      2.4,
+      0.1,
+      (foyer.x0 + foyer.x1) / 2,
+      y0,
+      foyer.z1 + 0.05,
+      CREMATORIUM_DOOR_RGB,
+    ),
+    roomBox(office, CREMATORIUM_OFFICE_HEIGHT_M, CREMATORIUM_OFFICE_RGB),
+  ];
+  for (const dx of [-3, 3]) {
+    parts.push(
+      standingBox(
+        1.4,
+        1.2,
+        0.1,
+        (foyer.x0 + foyer.x1) / 2 + dx,
+        y0 + 1,
+        foyer.z1 + 0.05,
+        CREMATORIUM_GLASS_RGB,
+      ),
+    );
+  }
+  for (const dx of [-3.5, 0, 3.5]) {
+    parts.push(
+      standingBox(
+        1.5,
+        1.2,
+        0.1,
+        (office.x0 + office.x1) / 2 + dx,
+        y0 + 0.9,
+        office.z1 + 0.05,
+        CREMATORIUM_GLASS_RGB,
+      ),
+    );
+  }
+  return mergeParts(parts);
+}
+
+/** The flue: a tapered steel stack with a dark rim at its mouth, 7.6 m from its base on the lawn plate. */
+function buildCrematoriumFlueGeometry(): THREE.BufferGeometry {
+  const y0 = CEMETERY_LAWN_HEIGHT;
+  const flue = new THREE.CylinderGeometry(
+    CREMATORIUM_FLUE_RADIUS.top,
+    CREMATORIUM_FLUE_RADIUS.bottom,
+    CREMATORIUM_FLUE_HEIGHT_M,
+    CREMATORIUM_FLUE_SIDES,
+  );
+  flue.translate(0, y0 + CREMATORIUM_FLUE_HEIGHT_M / 2, 0);
+  paintVertexColor(flue, hexFromRgb(CREMATORIUM_FLUE_RGB));
+  const rimRadius = CREMATORIUM_FLUE_RADIUS.top + CREMATORIUM_FLUE_RIM.bonus;
+  const rim = new THREE.CylinderGeometry(
+    rimRadius,
+    rimRadius,
+    CREMATORIUM_FLUE_RIM.height,
+    CREMATORIUM_FLUE_SIDES,
+  );
+  rim.translate(0, y0 + CREMATORIUM_FLUE_HEIGHT_M - CREMATORIUM_FLUE_RIM.height / 2, 0);
+  paintVertexColor(rim, hexFromRgb(CREMATORIUM_FLUE_RIM_RGB));
+  return mergeParts([flue, rim]);
+}
+
+// ---------------------------------------------------------------------------
 // small-park: flat lawn plate (lush green), a light
 // path cross, 2-3 simple trees (self-contained), 2 benches.
 // ---------------------------------------------------------------------------
@@ -2827,6 +3066,8 @@ export class UtilityKitRenderer {
         return this.buildHospitalKit(entry);
       case 'cemetery':
         return this.buildCemeteryKit(entry);
+      case 'crematorium':
+        return this.buildCrematoriumKit(entry);
       case 'small-park':
         return this.buildSmallParkKit(entry);
       default:
@@ -3127,6 +3368,22 @@ export class UtilityKitRenderer {
     };
   }
 
+  private buildCrematoriumKit(entry: BuildingCatalogEntry): KitDefinition {
+    const lambert = (): THREE.MeshLambertMaterial =>
+      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const pool = (geometry: THREE.BufferGeometry) =>
+      new InstancedSlotPool(this.scene, geometry, lambert(), INITIAL_KIT_CAPACITY);
+    return {
+      entry,
+      pavesLot: true,
+      pools: {
+        crematoriumGrounds: pool(buildCrematoriumGroundsGeometry(entry.footprint)),
+        crematoriumBuilding: pool(buildCrematoriumBuildingGeometry(entry.footprint)),
+        crematoriumFlue: pool(buildCrematoriumFlueGeometry()),
+      },
+    };
+  }
+
   private buildSmallParkKit(entry: BuildingCatalogEntry): KitDefinition {
     const lambert = (): THREE.MeshLambertMaterial =>
       new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -3265,6 +3522,9 @@ export class UtilityKitRenderer {
         return;
       case 'cemetery':
         this.applyCemetery(kit, building, entry, centerX, groundY, centerZ, rotation);
+        return;
+      case 'crematorium':
+        this.applyCrematorium(kit, building, entry, centerX, groundY, centerZ, rotation);
         return;
       case 'small-park':
         this.applySmallPark(kit, building, entry, centerX, groundY, centerZ, rotation);
@@ -3612,6 +3872,40 @@ export class UtilityKitRenderer {
       hospitalAmbulance: [placeLocal(hospitalAmbulance, layout.ambulance, floor, rotation)],
     };
     this.instances.set(building.id, { catalogId: building.catalogId, slots });
+  }
+
+  private applyCrematorium(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    centerX: number,
+    groundY: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+  ): void {
+    const { crematoriumGrounds, crematoriumBuilding, crematoriumFlue } = kit.pools;
+    if (!crematoriumGrounds || !crematoriumBuilding || !crematoriumFlue) return;
+
+    const flueLocal = computeCrematoriumLayout(entry.footprint).flue;
+    const flueRotated = rotateLocalXZ(flueLocal.x, flueLocal.z, rotation);
+    this.instances.set(building.id, {
+      catalogId: building.catalogId,
+      slots: {
+        crematoriumGrounds: [this.placeAt(crematoriumGrounds, centerX, groundY, centerZ, rotation)],
+        crematoriumBuilding: [
+          this.placeAt(crematoriumBuilding, centerX, groundY, centerZ, rotation),
+        ],
+        crematoriumFlue: [
+          this.placeAt(
+            crematoriumFlue,
+            centerX + flueRotated.x,
+            groundY,
+            centerZ + flueRotated.z,
+            rotation,
+          ),
+        ],
+      },
+    });
   }
 
   private applyCemetery(

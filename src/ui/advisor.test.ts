@@ -278,6 +278,8 @@ describe('a grid too small for its city', () => {
     // With a cemetery placed, or on any other rung, it says nothing.
     const cemetery = { ...empty, facilities: [{ id: 3, used: 0, total: 780 }] };
     expect(find({ milestoneLevel: DEATH_CARE_MILESTONE - 1 }, cemetery)).toBeUndefined();
+    const crematorium = { ...empty, crematoria: [{ id: 4, cremated: 0, room: 8 }] };
+    expect(find({ milestoneLevel: DEATH_CARE_MILESTONE - 1 }, crematorium)).toBeUndefined();
     expect(find({ milestoneLevel: DEATH_CARE_MILESTONE - 2 })).toBeUndefined();
     expect(find({ milestoneLevel: DEATH_CARE_MILESTONE })).toBeUndefined();
   });

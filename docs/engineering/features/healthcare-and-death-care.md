@@ -1,6 +1,6 @@
 # Healthcare and death care — technical design
 
-- **Status:** Partly built — the clinic and hospital ladder (2026-10-08); deaths and occupancy (2026-10-14); bodies, the regional service and the cemetery (2026-10-14); crematorium and exhumation not built
+- **Status:** Built 2026-10-14 — the clinic and hospital ladder; deaths and occupancy; bodies, the regional service and the cemetery; the hearse; the crematorium and the exhumation charge
 - **Date:** 2026-09-18
 - **Author:** Claude Opus 5
 
@@ -26,7 +26,7 @@ change most likely to be got wrong on paper.
 | `src/data/catalog.json`         | `hospital`, `cemetery`, `crematorium` added; `clinic` resized                                                                                                                                                                        |
 | `src/render/utilitykits.ts`     | The hospital's kit: the block, its canopies, the parking deck and the accessible spaces; the cemetery's kit: lawn, drive, gatehouse, fence, trees and the headstones, whose count `setInterments` takes from `SimSnapshot.deathCare` |
 | `src/render/servicevehicles.ts` | The hearse mesh, the sixth service-vehicle kind                                                                                                                                                                                      |
-| `src/sim/deathcare.ts`          | New: death accrual and the re-let of vacancies; the bodies, the road-BFS collection into cemeteries, the regional service (built); the cremation throughput (not built)                                                              |
+| `src/sim/deathcare.ts`          | New: death accrual and the re-let of vacancies; the bodies, the road-BFS collection into cemeteries, the regional service (built); the cremation throughput credit (built)                                                           |
 | `src/sim/services.ts`           | Capacity pooling reads `occupiedResidents`; coverage unchanged; the backlog penalty applies after it, in the same pass (built)                                                                                                       |
 | `src/sim/economy.ts`            | Population, rent and the tax correction read `occupiedResidents`; the month's regional funeral fees are an expense                                                                                                                   |
 | `src/sim/garbagetrucks.ts`      | `GarbageTruckSystem` takes its pool size, so a second instance drives the hearses                                                                                                                                                    |
@@ -50,6 +50,11 @@ way the `garbage` block was.
   optional: a slice-1 save, or one with no `deathCare` at all, loads with no
   interments, nothing uncollected and no regional count; a malformed value
   loads as zero, and a backlog entry with a bad tile, count or tick is dropped.
+  Slice 3 adds `cremation` (`{ id, credit, cremated }` per crematorium): its
+  banked throughput, a fraction capped at one working day's 8, and the
+  cremations it has done. Absent, a save loads with no crematorium state; a
+  malformed entry is dropped or loads as zero, and a credit above the cap loads
+  at the cap.
 - **`vacancies`** on each serialized building instance: the residents the
   building has lost, an integer from 0 to the catalog's `residents`. It is
   written only when above 0, and absent means 0, so **an old save loads with
@@ -60,9 +65,11 @@ way the `garbage` block was.
 rather than the save rejected**: the programme rule, and the first test written.
 
 **Worker protocol: yes, additively.** `SimSnapshot` gains an optional
-`deathCare` block (per-facility used/total plus the uncollected count) so the
-panel reads a gauge without a round trip. **No new `Command`**, since
-`placeBuilding` and `bulldoze` exist ([../interfaces.md](../interfaces.md)), and
+`deathCare` block (per-facility used/total plus the uncollected count, and the
+crematoria) so the panel reads a gauge without a round trip. **No new
+`Command`**, since `placeBuilding` and `bulldoze` exist
+([../interfaces.md](../interfaces.md)); `placeBuilding` gains an optional
+`interments`, sent only by the undo of demolishing a cemetery that held some, and
 **no new `ServiceKind`**, since death care writes no coverage field and rides
 the `health` funding.
 
@@ -266,8 +273,10 @@ the penalty comes off that, in any placement order. The 32 is a **dial**, with
 no published figure behind it, and it is never fed back into the death rate.
 
 **Visibility.** `SelectionInfo.deathCare` is `{ used, total }` for a selected
-cemetery (interments over `plots`). `SimSnapshot.deathCare` is sent on every
-snapshot: `facilities` (`{ id, used, total }` per cemetery), `uncollected` (the
+cemetery (interments over `plots`) and `{ cremated }` for a crematorium.
+`SimSnapshot.deathCare` is sent on every snapshot: `facilities`
+(`{ id, used, total }` per cemetery), `crematoria` (`{ id, cremated, room }` per
+crematorium, `room` the bodies it could take now), `uncollected` (the
 bodies in the backlog), `regionalThisMonth`, and `uncollectedAt`, the tile of
 the oldest. The advisor reads it with the stats, as pure functions: the first
 uncollected body raises a warning at once, a full cemetery with bodies
@@ -275,8 +284,31 @@ uncollected raises another, and one rung before Big Town with no cemetery placed
 an info issue says the regional funeral service ends at Big Town, the way
 `septic-outgrown` does for the drains.
 
-**Demolishing a cemetery** drops its interments with it for now; the exhumation
-charge is slice 3.
+**Cremation is a throughput credit, not a capacity.** A crematorium's `rate`
+is `CREMATIONS_PER_YEAR ÷ TICKS_PER_YEAR` (2 retorts × 4 a day × 260 working
+days = 2,080 over 72,000 ticks), written in the catalog and checked against the
+constants by a contract test. Each tick `collect` adds `rate` to every
+crematorium's credit, capped at `CREMATION_CREDIT_CAP` (one working day, 8), so
+an idle one banks nothing past a day. A crematorium "has room" for `floor(credit)`
+bodies; the collection pass offers each body to the reaching facilities with
+room in the one order cemeteries use, the highest road reach first, ties by
+facility id, cemeteries and crematoria in the one list. A cremation spends one
+credit and adds one to the crematorium's count, which the inspector and the
+snapshot's `crematoria` report; there is no interment count and it never fills.
+No random draw is involved, so a run is identical across a save and reload.
+Hearses depot at a crematorium exactly as at a cemetery.
+
+**Demolishing a cemetery charges the exhumation.** `cmdBulldoze` sums the graves
+of every cemetery standing on the tiles it clears and charges
+`EXHUMATION_FEE_PER_INTERMENT` (¢14) each, in hand before anything is taken
+down: with funds short of the charge the whole bulldoze is refused for funds
+and nothing changes. The 50% refund of build price stands, and the charge is
+subtracted from it, so the ack's cost is the net. The inverse is a
+`placeBuilding` carrying `interments`, which stands the cemetery back with
+them (`DeathCareSystem.setInterments`) and prices the placement at the build
+cost less the charge, handing the charge back exactly. The bulldoze tool asks the
+env for `gravesUnder(tiles)` and quotes the charge, with the number of graves,
+in the cursor chip before it is paid.
 
 **Population becomes the sum of occupied residents.** `EconomySystem.tick`
 sums `occupiedResidents`; a death adds a vacancy to its building and a re-let
@@ -315,8 +347,28 @@ the sum of occupied residents.
 - `collectionRange` is 40 tiles, the health ladder's clinic band. No published
   standard gives a cemetery's reach; this is the game's band, chosen because
   death care rides the health department.
-- Interments are saved per facility id and dropped when that building is gone;
-  nothing is refunded and nothing is charged.
+- Interments are saved per facility id and dropped when that building is gone.
+
+**Decisions taken when slice 3 was built.**
+
+- The crematorium's price, ¢3,800, and the exhumation fee, ¢14, are on the
+  death-care capital scale of $200 to the ¢ that the cemetery's own price sets;
+  both are derived in the design document. A crematorium costs about one
+  cemetery to build, and the trade is land and running cost.
+- Its draw is the 1,480 m² at CBECS service intensity and the office water
+  benchmark, 0.0131 MW and 2.4 kL; the retorts' natural gas is not modelled.
+- Its pollution is 1, the field's smallest nonzero value, rounded up from 0.07
+  on the coal plant's scale because a real emission should register.
+- The funds check for a demolition is against the charge alone, before the
+  refund, so the preview and the world agree.
+- The kit is three InstancedMeshes: lawn plate with forecourt, the merged
+  building (chapel, cremator hall with its duct, foyer, office) and the flue.
+  The cremator hall's 240 m² has no published source. Its flat roof is 4.5 m
+  (15 ft), the game's own height and unsourced, enough to clear a retort and
+  its breeching duct; the gabled chapel keeps the 6.4 m ridge, the catalog
+  height. The one flue is 7.6 m, 3.1 m clear of the hall roof deck, an 8-sided
+  steel stack about 0.9 m across (the game's own diameter) on the hall's
+  street-side roof edge, so it shows from the default pitch.
 
 ## What could go wrong
 
@@ -412,9 +464,14 @@ Behaviour, in the order the risk sits:
   continue, and recovers when demand turns positive; the milestone level does
   not fall with it, and milestone _progress_ is 0 below the threshold. A
   shrinking city abandons nothing for `LowDemand`. (Slice 1.)
-- Demolishing a cemetery holding 780 interments charges ¢7,800 and an empty one
-  does not (slice 3: until then the interments vanish with it); a resized
-  `clinic` loaded from a save leaves no orphan tile stamp.
+- Demolishing a cemetery holding 780 interments charges ¢10,920, ¢9,170 net of
+  the refund, and an empty one does not; the undo stands it back with 780
+  interments and hands the charge back; a refused demolition changes nothing
+  (slice 3). A resized `clinic` loaded from a save leaves no orphan tile stamp.
+- A crematorium over ten game years of deaths below its throughput cremates
+  every body its roads reach; a backlog of 300 drains at the rate, in about
+  10,400 ticks; an idle one banks no more than 8; a save from before it loads
+  with no crematorium state (slice 3).
 - Below Big Town every body is collected regionally the tick it falls and billed
   ¢3.6 in the month's expenses, with no penalty; from Big Town with no cemetery
   the bodies stay. A building inside 40 straight-line tiles of a cemetery but cut
@@ -444,10 +501,9 @@ Behaviour, in the order the risk sits:
   are a rate, and nothing here creates a demographic model.
 - Eldercare as a building, and grave reuse beyond the demolition charge, both
   for the reasons the design document gives.
-- Not built yet: the crematorium and its throughput; the exhumation charge on
-  demolishing a cemetery (until then its interments vanish with it); the
-  fill gauge in the services panel. The cemetery's kit, its headstones and the
-  hearse mesh are drawn: see [../../art/civic-massing.md](../../art/civic-massing.md)
-  and [../../art/props-and-vehicles.md](../../art/props-and-vehicles.md).
+- Not built: the fill gauge in the services panel. The cemetery's and the
+  crematorium's kits, the headstones and the hearse mesh are drawn: see
+  [../../art/civic-massing.md](../../art/civic-massing.md) and
+  [../../art/props-and-vehicles.md](../../art/props-and-vehicles.md).
 - Giving `Problem.LowDemand` teeth, named above precisely because this epic must
   not be what arms it; and reworking coverage or the road-network BFS.

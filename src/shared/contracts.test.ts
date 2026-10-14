@@ -21,6 +21,8 @@ import {
   type WorkerToMain,
 } from './types';
 import {
+  BIG_TOWN_MILESTONE,
+  CREMATIONS_PER_YEAR,
   LAMP_SPACING_TILES,
   MILESTONES,
   NIGHT_WINDOW_LIT_MAX,
@@ -30,6 +32,7 @@ import {
   SEWAGE_RETURN_FRACTION,
   SEWER_MILESTONE,
   TICKS_PER_DAY,
+  TICKS_PER_YEAR,
   TICK_RATE,
   TILE_METERS,
   VISUAL_DAY_TICKS,
@@ -438,6 +441,67 @@ describe('the civic ploppables (honest both sides): every draw from floor area a
     expect(cemetery.cost).toBe(3_500);
     expect(cemetery.upkeep).toBe(140);
     expect(cemetery.cost).toBeLessThan(byId('clinic').cost);
+  });
+
+  it("prices the crematorium at the cemetery's dollar scale, about one cemetery to build, its upkeep a dial", () => {
+    const crematorium = byId('crematorium');
+    const cemetery = byId('cemetery');
+    // Homer AK, Memo 15-205: $628,500 to develop 700 plots, land excluded.
+    const usdPerCent = (780 * (628_500 / 700)) / cemetery.cost;
+    expect(Math.round(usdPerCent)).toBe(200);
+    // Forest Hill Cemetery (Oneida NY) filing, 2021: a crematory at most $757,712 → ¢3,789, to the hundred.
+    expect(Math.round(757_712 / 200 / 100) * 100).toBe(crematorium.cost);
+    expect(crematorium.cost).toBe(3_800);
+    // Mount Calvary, 2023: three retorts with their building, $804,616; two with theirs bracket the price.
+    expect(((804_616 / 3) * 2) / 200).toBeGreaterThan(2_500);
+    expect(804_616 / 200).toBeGreaterThan(crematorium.cost);
+    expect(crematorium.cost / cemetery.cost).toBeCloseTo(1.09, 2);
+    expect(crematorium.upkeep).toBe(600);
+    expect(crematorium.unlockMilestone).toBe(BIG_TOWN_MILESTONE);
+    expect(MILESTONES[crematorium.unlockMilestone]!.name).toBe('Big Town');
+  });
+
+  it('throughputs the crematorium at two retorts four a day over 260 days, per tick from the calendar', () => {
+    const crematorium = byId('crematorium');
+    expect(crematorium.deathCare).toEqual({
+      mode: 'cremation',
+      collectionRange: byId('cemetery').deathCare!.collectionRange,
+      rate: expect.closeTo((2 * 4 * 260) / TICKS_PER_YEAR, 9),
+      hearses: 2,
+    });
+    expect(CREMATIONS_PER_YEAR).toBe(2_080);
+    expect(crematorium.deathCare!.rate! * TICKS_PER_YEAR).toBeCloseTo(2_080, 4);
+    expect(crematorium.deathCare!.plots).toBeUndefined();
+    expect(crematorium.service).toBeUndefined();
+    // A Metropolis makes 450 deaths a year: one crematorium covers it four times over.
+    expect(Math.floor(2_080 / 450)).toBe(4);
+  });
+
+  it("draws the crematorium's 1,480 m² as an office at CBECS service intensity and the office water benchmark", () => {
+    const crematorium = byId('crematorium');
+    const sqft = floorSqft(crematorium);
+    expect(crematorium.footprint).toEqual({ w: 2, d: 2 });
+    expect(crematorium.height).toBe(6.4);
+    expect(sqft / SQFT_PER_M2).toBeCloseTo(1_480, 6);
+    expect(Math.round(sqft)).toBe(15_931);
+    /** CBECS 2018: electricity for the "service" principal activity, kWh per square foot a year. */
+    const SERVICE_KWH_PER_SF = 7.2;
+    close(crematorium.powerUse, mwFrom(sqft, SERVICE_KWH_PER_SF), 4);
+    expect(crematorium.powerUse).toBe(0.0131);
+    close(crematorium.waterUse, klFrom(sqft, WATERSENSE_GAL_PER_SF.office), 1);
+    expect(crematorium.waterUse).toBe(2.4);
+  });
+
+  it("rounds the crematorium's measured emissions up to the field's smallest nonzero value", () => {
+    /** 0.12 lb/hr particulate (WV DEP source test) over a 2,080-hour year, and 0.0028 lb of mercury a cremation (Ohio EPA) over 2,080 cremations. */
+    const poundsPerYear = 0.12 * 2_080 + 0.0028 * 2_080;
+    expect(poundsPerYear).toBeGreaterThan(240);
+    expect(poundsPerYear).toBeLessThan(260);
+    // The coal plant's 484,000 lb a year stands for 140.
+    const onTheCoalScale = (poundsPerYear * byId('coal-plant').pollution!) / 484_000;
+    expect(onTheCoalScale).toBeCloseTo(0.07, 2);
+    expect(Math.round(onTheCoalScale)).toBe(0);
+    expect(byId('crematorium').pollution).toBe(1);
   });
 
   it("bills a regional burial at the county's weighted cost on the game's operating scale", () => {

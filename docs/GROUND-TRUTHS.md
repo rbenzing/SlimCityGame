@@ -590,11 +590,29 @@ MUTCD citations below use 11th-edition section numbers.
   radius: a cemetery reaches the buildings its streets connect to within its
   `collectionRange` by the road BFS garbage uses, one body is one interment, a
   full cemetery collects nothing, and bodies are taken in building-id order,
-  each into the nearest cemetery with room, ties by facility id. A building cut off by road is not collected
-  however near it stands. —
+  each into the nearest facility with room, ties by facility id. A building cut off by road is not collected
+  however near it stands. A crematorium never fills: it has a throughput credit
+  that accrues per tick at its `rate` (`CREMATIONS_PER_YEAR ÷ TICKS_PER_YEAR`),
+  capped at one working day (`CREMATION_CREDIT_CAP`, 8), it has room for its
+  whole credit, and each cremation spends one; it competes with cemeteries in the
+  same order and draws no random number. —
   [healthcare-and-death-care.md](engineering/features/healthcare-and-death-care.md),
   [services-model.md](world-sim/services-model.md#death-care);
   `DeathCareSystem.collect` in `src/sim/deathcare.ts`
+- Demolishing a cemetery that holds interments charges the exhumation,
+  `EXHUMATION_FEE_PER_INTERMENT` (¢14) a grave, in hand before anything comes
+  down (short of funds, the whole bulldoze is refused and nothing changes), on
+  top of the usual 50% refund of its build price. Its undo restores the cemetery
+  with every interment and hands the charge back exactly; the bulldoze cursor
+  quotes the charge before it is paid. An empty cemetery demolishes as before. —
+  [healthcare-and-death-care.md](engineering/features/healthcare-and-death-care.md);
+  `cmdBulldoze` and `cmdPlaceBuilding` in `src/sim/worker.entry.ts`
+- Death-care capital prices are read on one scale, about $200 to the ¢, set by
+  the cemetery's own price (¢3,500 for 780 plots at Homer AK's $898 a plot). A
+  crematorium costs about one cemetery; the trade is land and running cost, not
+  the build price. A real nonzero emission registers as at least 1 on the
+  pollution field, however small on the coal plant's scale. —
+  [balancing.md](game-design/balancing.md#death-care)
 - The regional funeral service ends at Big Town, and it is the one rung, like
   septic: below `DEATH_CARE_MILESTONE` (the same `BIG_TOWN_MILESTONE` as
   `SEWER_MILESTONE`) every body no cemetery collected is taken off the map the

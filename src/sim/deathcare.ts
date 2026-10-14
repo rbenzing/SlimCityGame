@@ -11,12 +11,13 @@
  * across a save and reload and proportional to where people live.
  *
  * Each death leaves a body at the building where it fell. A cemetery with room
- * interments the bodies of every building its roads reach, nearest cemetery
- * first; below the regional-service milestone whatever it did not take is
+ * interments, and a crematorium with throughput banked cremates, the bodies of
+ * every building its roads reach, nearest facility first; below the regional-service milestone whatever it did not take is
  * collected off the map the tick it falls and counted for the month's bill, and
  * from it the body stays where it fell, costing the tile its health.
  */
 import {
+  CREMATION_CREDIT_CAP,
   DEATH_CARE_MILESTONE,
   DEATH_CARE_PERIOD,
   DEATH_RATE_PER_RESIDENT_PER_TICK,
@@ -51,6 +52,8 @@ export interface DeathCareSaveState {
   backlog?: UncollectedBody[];
   /** Bodies the regional funeral service has taken since the last settlement. */
   regionalThisMonth?: number;
+  /** Each crematorium's banked throughput and the cremations it has done, by building id. */
+  cremation?: { id: number; credit: number; cremated: number }[];
 }
 
 /** What one tick of the pass did. */
@@ -59,11 +62,22 @@ export interface DeathCareTick {
   relets: number;
 }
 
-/** A placed burial facility: its road reach and how many interments it holds before it is full. */
+/**
+ * A placed death-care facility and its road reach. A cemetery holds `plots`
+ * interments before it is full; a crematorium has `rate` cremations of
+ * throughput a tick and never fills.
+ */
 export interface DeathCareFacility {
   id: number;
   collectionRange: number;
-  plots: number;
+  plots?: number;
+  rate?: number;
+}
+
+/** A crematorium's banked throughput and its running count of cremations. */
+interface CremationState {
+  credit: number;
+  cremated: number;
 }
 
 /** One body taken into a facility: the cemetery it goes to and the tile of the building it came from. */
@@ -104,6 +118,8 @@ export class DeathCareSystem {
   private bodies: UncollectedBody[] = [];
   /** Burials each cemetery holds, by building id. */
   private readonly interments = new Map<number, number>();
+  /** Banked throughput and cremations done by each crematorium, by building id. */
+  private readonly cremations = new Map<number, CremationState>();
   private regionalBodies = 0;
 
   constructor(private readonly catalog: ReadonlyMap<string, BuildingCatalogEntry>) {}
@@ -158,6 +174,22 @@ export class DeathCareSystem {
     return this.interments.get(id) ?? 0;
   }
 
+  /** Puts back the burials a rebuilt cemetery held, as an undone demolition does. */
+  setInterments(id: number, count: number): void {
+    if (count > 0) this.interments.set(id, count);
+    else this.interments.delete(id);
+  }
+
+  /** Cremations the given crematorium has done (0 if unknown). */
+  crematedBy(id: number): number {
+    return this.cremations.get(id)?.cremated ?? 0;
+  }
+
+  /** Whole bodies the given crematorium could take this tick. */
+  cremationRoom(id: number): number {
+    return Math.floor(this.cremations.get(id)?.credit ?? 0);
+  }
+
   reset(): void {
     this.restoreState(undefined);
   }
@@ -174,6 +206,9 @@ export class DeathCareSystem {
         .map(([id, count]) => ({ id, count })),
       backlog: this.bodies.map((b) => ({ ...b })),
       regionalThisMonth: this.regionalBodies,
+      cremation: [...this.cremations.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([id, state]) => ({ id, credit: state.credit, cremated: state.cremated })),
     };
   }
 
@@ -196,6 +231,21 @@ export class DeathCareSystem {
       const id = wholeAtLeast(entry?.id, 1);
       const burials = wholeAtLeast(entry?.count, 1);
       if (id !== null && burials !== null) this.interments.set(id, burials);
+    }
+
+    this.cremations.clear();
+    const burnt = Array.isArray(state?.cremation) ? state.cremation : [];
+    for (const entry of burnt) {
+      const id = wholeAtLeast(entry?.id, 1);
+      if (id === null) continue;
+      const credit = entry?.credit;
+      this.cremations.set(id, {
+        credit:
+          typeof credit === 'number' && Number.isFinite(credit) && credit > 0
+            ? Math.min(CREMATION_CREDIT_CAP, credit)
+            : 0,
+        cremated: count(entry?.cremated),
+      });
     }
 
     this.bodies = [];
@@ -288,6 +338,13 @@ export class DeathCareSystem {
   ): DeathCareVisit[] {
     const live = new Set(facilities.map((f) => f.id));
     for (const id of [...this.interments.keys()]) if (!live.has(id)) this.interments.delete(id);
+    for (const id of [...this.cremations.keys()]) if (!live.has(id)) this.cremations.delete(id);
+    for (const f of facilities) {
+      if (f.rate === undefined) continue;
+      const state = this.cremations.get(f.id) ?? { credit: 0, cremated: 0 };
+      state.credit = Math.min(CREMATION_CREDIT_CAP, state.credit + f.rate);
+      this.cremations.set(f.id, state);
+    }
     if (this.bodies.length === 0) return [];
 
     const visits: DeathCareVisit[] = [];
@@ -307,7 +364,10 @@ export class DeathCareSystem {
     facilities: readonly DeathCareFacility[],
     visits: DeathCareVisit[],
   ): void {
-    const room = (f: DeathCareFacility): number => f.plots - (this.interments.get(f.id) ?? 0);
+    const room = (f: DeathCareFacility): number =>
+      f.rate !== undefined
+        ? Math.floor(this.cremations.get(f.id)?.credit ?? 0)
+        : (f.plots ?? 0) - (this.interments.get(f.id) ?? 0);
     const open = facilities.filter((f) => room(f) > 0).sort((a, b) => a.id - b.id);
     if (open.length === 0) return;
     const footprints = footprintsByBuildingId(grid);
@@ -332,7 +392,16 @@ export class DeathCareSystem {
         }
         if (best === null) break;
         const taken = Math.min(body.count, room(best.facility));
-        this.interments.set(best.facility.id, (this.interments.get(best.facility.id) ?? 0) + taken);
+        const cremation = this.cremations.get(best.facility.id);
+        if (best.facility.rate !== undefined && cremation) {
+          cremation.credit -= taken;
+          cremation.cremated += taken;
+        } else {
+          this.interments.set(
+            best.facility.id,
+            (this.interments.get(best.facility.id) ?? 0) + taken,
+          );
+        }
         body.count -= taken;
         visits.push({ facilityId: best.facility.id, tile: body.tile });
       }

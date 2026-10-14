@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 5,899 tests passing across 180 test files, run 2026-10-14.
+**Test suite:** 5,937 tests passing across 181 test files, run 2026-10-14.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -123,6 +123,9 @@ not a test to fix.
   street's kerb parking repainted later does not re-lay it.
 - A kerb-credited lot's customers are drawn parked on the lot, not in the
   kerb stalls its credit counts.
+- The crematorium's upkeep of ¢600 is the design's dial: no US operating
+  cost for a crematory was found (gas is 12.5–28.5 therms a cremation by one
+  maker's metering, staff unpublished).
 - The ambulance is drawn 6.2 × 2.2 × 2.7 m (`KIND_SIZE` in
   [`render/vehicles.ts`](../src/render/vehicles.ts)) while the healthcare
   technical design gives 6.5 × 2.1 × 2.8 m from a UK fleet; re-source it from
@@ -155,8 +158,11 @@ with; and a small house on prime land torn down for a plex.
 ([garbage-recovery.md](game-design/features/garbage-recovery.md)), the
 municipal-services epic the player chose, is complete: the garbage chain on
 one real unit, the kerbside recycling depot, the materials recovery facility
-and the transfer station. Next on the shelf are the other municipal services
-programme's epics
+and the transfer station. So is healthcare and death care
+([healthcare-and-death-care.md](game-design/features/healthcare-and-death-care.md)):
+the clinic and hospital ladder, deaths that empty homes, a regional funeral
+service until Big Town, the cemetery, the hearse and the crematorium. Next on
+the shelf are the other municipal services programme's epics
 ([municipal-services.md](game-design/features/municipal-services.md)), the
 [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
 transit modes) and AI raster map packs, facade-atlas stage 2 and screen-space
@@ -300,6 +306,31 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The crematorium, and the price of moving the dead (last slice of healthcare and death care, built 2026-10-14)
+
+Healthcare and death care is complete: the clinic and hospital ladder,
+deaths and vacancies, bodies and the regional service, the cemetery, and now
+the crematorium. The player chose to price death care by real US cost ratios,
+anchored on the cemetery's ¢3,500: Homer AK spent $898 a plot developing its
+cemetery in 2015, so the ladder runs about $200 to the ¢.
+
+- **The crematorium**, 2×2 from Big Town, **¢3,800**: a New York cemetery
+  board filing puts a complete crematory at $757,712 (Forest Hill, 2021),
+  against the design's ¢26,000. It costs about one cemetery to build; the
+  trade is land against running cost. Two retorts at 4 cremations a day, 260
+  days a year, burn **2,080 a year**, banking at most a day's 8 while idle,
+  so it never fills and covers the largest city four times over. A chapel,
+  a 4.5 m cremator hall and a 7.6 m (25 ft) steel stack, the top of US
+  crematory air permits. Pollution 1: crematories do not report to the
+  Toxics Release Inventory and their ~255 lb a year is 0.07 on its scale,
+  rounded up to register.
+- **Exhumation**: demolishing a cemetery that holds graves charges **¢14 a
+  grave**, the median of four city fee schedules for adult disinterment and
+  reinterment ($2,850), so a full one costs ¢10,920 to clear, about three
+  times its price. The bulldoze tool shows the charge and the graves before
+  it is paid, refuses it when the city cannot pay, and its undo stands the
+  cemetery back with every grave and the charge returned.
 
 ### Bodies, the cemetery and the hearse (third slice of healthcare and death care, built 2026-10-14)
 
