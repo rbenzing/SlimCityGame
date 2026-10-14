@@ -111,6 +111,10 @@ const CEMETERY = (catalogData as { buildings: BuildingCatalogEntry[] }).building
   (e) => e.id === 'cemetery',
 )!;
 
+const CREMATORIUM = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.find(
+  (e) => e.id === 'crematorium',
+)!;
+
 const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'turbineTower',
   'turbineRotor',
@@ -154,6 +158,9 @@ const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'cemeteryFence',
   'cemeteryTree',
   'cemeteryStone',
+  'crematoriumGrounds',
+  'crematoriumBuilding',
+  'crematoriumFlue',
   'parkGround',
   'parkTree',
   'parkBench',
@@ -448,7 +455,7 @@ function decomposeQuaternion(m: THREE.Matrix4): THREE.Quaternion {
 // ---------------------------------------------------------------------------
 
 describe('UTILITY_KIT_CATALOG_IDS', () => {
-  it('is exactly the 13 silhouette-kit ids', () => {
+  it('is exactly the 14 silhouette-kit ids', () => {
     expect(UTILITY_KIT_CATALOG_IDS).toEqual([
       'wind-turbine',
       'water-tower',
@@ -462,6 +469,7 @@ describe('UTILITY_KIT_CATALOG_IDS', () => {
       'transfer-station',
       'hospital',
       'cemetery',
+      'crematorium',
       'small-park',
     ]);
   });
@@ -2036,7 +2044,7 @@ describe('a paved kit on sloped ground', () => {
 // ---------------------------------------------------------------------------
 
 describe('multiple kits coexisting', () => {
-  it('builds and applies all 13 kits from one catalog + one delta without cross-talk', () => {
+  it('builds and applies all 14 kits from one catalog + one delta without cross-talk', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
       makeTurbineEntry(),
       makeWaterTowerEntry(),
@@ -2050,10 +2058,12 @@ describe('multiple kits coexisting', () => {
       makeTransferEntry(),
       HOSPITAL,
       CEMETERY,
+      CREMATORIUM,
       makeSmallParkEntry(),
     ]);
     renderer.apply(
       deltaAdd(
+        makeInstance(14, 'crematorium', { x: 100, z: 0 }),
         makeInstance(13, 'cemetery', { x: 90, z: 0 }),
         makeInstance(9, 'recycling-depot', { x: 40, z: 0 }),
         makeInstance(10, 'materials-recovery-facility', { x: 50, z: 0 }),
@@ -2081,6 +2091,8 @@ describe('multiple kits coexisting', () => {
     expect(renderer.partSlotsFor(8, 'worksBody')).toHaveLength(1);
     expect(renderer.partSlotsFor(8, 'worksOutfall')).toHaveLength(1);
     expect(renderer.partSlotsFor(13, 'cemeteryGatehouse')).toHaveLength(1);
+    expect(renderer.partSlotsFor(14, 'crematoriumFlue')).toHaveLength(1);
+    expect(renderer.partSlotsFor(13, 'crematoriumFlue')).toHaveLength(0);
     expect(renderer.partSlotsFor(9, 'recyclingTruck')).toHaveLength(4);
     expect(renderer.partSlotsFor(10, 'mrfTruck')).toHaveLength(4);
     expect(renderer.partSlotsFor(9, 'mrfTruck')).toHaveLength(0);

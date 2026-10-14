@@ -1,6 +1,6 @@
 # Healthcare and death care — design
 
-- **Status:** Partly built — the clinic and hospital ladder (2026-10-08); deaths and occupancy (2026-10-14); bodies, the regional service and the cemetery (2026-10-14); crematorium and exhumation not built
+- **Status:** Built 2026-10-14 — the clinic and hospital ladder; deaths and occupancy; bodies, the regional service and the cemetery; the hearse; the crematorium and the exhumation charge
 - **Date:** 2026-09-18
 
 ## What the player gets
@@ -89,25 +89,29 @@ town builds because it must.
 
 **Cemetery** — 3×3 tiles of ground, a gatehouse, **780 burial plots**. Cheap to
 place, cheap to run, and it fills: a city of 20,000 fills one in four game
-years. **Crematorium** — 2×2 tiles, a chapel, two cremators, an abatement flue.
-No capacity at all, only a throughput of **1,600 cremations a year**, more than
-three times what the largest city this game names can produce. It never fills,
-costs about seven cemeteries to build, emits a little pollution, and is the only
+years. **Crematorium** — 2×2 tiles, a chapel, two retorts, a flue. Unlocked at
+Big Town. No capacity at all, only a throughput of **2,080 cremations a year**,
+four times what the largest city this game names can produce. It never fills,
+costs about one cemetery to build, emits a little pollution, and is the only
 permanent answer. A full cemetery is the decision this epic exists for, and it
 has three answers.
 
 **Build another cemetery.** ¢3,500 and nine more tiles, permanently — those
-tiles never come back. Demolishing one that holds interments costs **¢10 per
-interment** to exhume and reinter, so clearing a full cemetery costs ¢7,800,
-twice what it cost to build; an empty one demolishes normally. Burial is cheap
-to start and expensive to undo, which is exactly what it is. (The charge is not
-built yet: until it is, demolishing a cemetery drops its interments with it and
-costs nothing.)
+tiles never come back. Demolishing one that holds interments costs **¢14 per
+interment** to exhume and reinter, on top of the usual half refund of its build
+price, so clearing a full cemetery costs ¢10,920, about three times what it cost
+to build; an empty one demolishes normally. The charge is paid in hand before
+anything comes down, the bulldoze cursor quotes it with the number of graves, and
+undoing the demolition stands the cemetery back with every interment and hands
+the charge back. Burial is cheap to start and expensive to undo, which is
+exactly what it is.
 
-**Build a crematorium.** ¢26,000 and four tiles, once. Its upkeep is worse than
-four cemeteries' and better than five, so a city that keeps burying overtakes it
-around its fifth — having committed 45 tiles, 1.8 hectares, to ground it can
-never rezone. Or **do nothing,** and find out what that costs.
+**Build a crematorium.** ¢3,800 and four tiles, once — about the price of one
+cemetery, where the first plan had it at seven. The trade is no longer the
+build price: it is land and running cost. Its upkeep of ¢600 a month is more
+than four cemeteries' ¢140, so a city that keeps burying overtakes it around its
+fifth, having committed 45 tiles, 1.8 hectares, to ground it can never rezone.
+Or **do nothing,** and find out what that costs.
 
 ### What happens when the dead are not collected
 
@@ -184,8 +188,7 @@ so a game year is **72,000 ticks**. The United States' crude death rate was
 **9.03 per 1,000** in 2024, 3,072,666 deaths
 ([CDC/NCHS, FastStats](https://www.cdc.gov/nchs/FASTATS/deaths.htm)). **Take 9
 per 1,000 per year**, that rate rounded down, because our population has no age
-structure and so cannot carry the elderly skew that pushes an older town toward
-11.
+structure and so cannot carry the elderly skew that pushes an older town toward 11.
 
 ```
 9 / 1,000 / 72,000 ticks = 1.25 × 10⁻⁷ deaths per resident per tick
@@ -247,17 +250,55 @@ acre per 1,000 population" would last 111 game years at our death rate, past
 even the 30–40 the ICCM asks authorities to secure — because a cemetery must
 fill inside a session or it is not a system.
 
-**Crematorium — 1,600 cremations a year**, i.e. `1,600 / 72,000` = **0.0222 per
-tick**, 133 per game month. 522,733 cremations across the British Isles in 2024
-over 325 crematoria = 1,608 each (Cremation Society of Great Britain).
-Cross-check: two cremators at the UK's average 90-minute cycle over an
-eight-hour day is 2,670 a year, and 1,608 is 60% of that — matching both the
-80%-of-practical-capacity ceiling planning inspectors apply and the fact that
-chapel slots, not cremators, are usually what binds. Say plainly what that means
-here: a Metropolis produces 450 deaths a year, so **one crematorium covers the
-largest city in the game three and a half times over.** Throughput never binds
-at our scale; the decision is siting and money. The figure earns its place as
-the rate a backlog drains at — 300 uncollected bodies clear in 2.3 months.
+**Crematorium — 2,080 cremations a year**: two retorts, four cremations a day
+each, 260 working days, `2,080 / 72,000` = **0.0289 per tick**, 173 per game
+month, derived from the calendar constants. A Pyrox X1000 retort is rated four
+to five cremations a day and over 1,000 a year on an eight-hour, five-day
+schedule (vendor figures), a 70–100 minute cycle; the lower end of the rating,
+four, is taken. The throughput is **credit**: it accrues at that rate each tick
+and is capped at one working day's cremations, 8, so an idle crematorium banks
+nothing past a day. It has room for as many bodies as its whole credit, and each
+cremation spends one. The US average is 1,917,413 cremations in 2024 over 3,721
+crematories, about 515 each (CANA via cremation.org.uk): that is demand, not
+capacity. A Metropolis produces 450 deaths a year, so **one crematorium covers
+the largest city in the game four times over.** Throughput never binds at our
+scale; the decision is siting and money. The figure earns its place as the rate
+a backlog drains at — 300 uncollected bodies clear in 1.7 months.
+
+Cremation competes with burial for each body on the same terms: the nearest
+facility with room by road reach, ties by facility id, a cemetery and a
+crematorium alike. A crematorium with its credit spent takes no more that tick;
+what it cannot take goes to the next facility, or waits. It counts the
+cremations it has done, which the inspector shows.
+
+**The price ladder, in dollars.** Death care's capital prices sit on one scale,
+set by the cemetery's own: Homer, Alaska, Memo 15-205 (December 2015), put
+**$628,500** to develop 700 plots, land excluded, **$898 a plot**
+([memo](https://www.cityofhomer-ak.gov/memorandum/memorandum-15-205-hickerson-memorial-cemetery-expansion)).
+The cemetery's ¢3,500 for 780 plots therefore stands for 780 × $898 = $700,440,
+about **$200 to the ¢**. The crematorium's **¢3,800** is a New York Department
+of State cemetery-board filing, Forest Hill Cemetery (Oneida), April 2021: a
+crematory at most **$757,712**
+([filing](https://dos.ny.gov/system/files/documents/2021/05/33-063-forest-hill-cemetery-crematory-4-23-21.pdf),
+figure from the filing summary), $757,712 ÷ $200 = ¢3,789, to ¢3,800.
+Cross-check: Mount Calvary (Erie) in 2023 replaced three retorts with
+construction for **$804,616**, about $268,000 a retort
+([packet](https://dos.ny.gov/system/files/documents/2023/09/15-066-mount-calvary-retort-packet-82523.pdf));
+two retorts with their building come to about $536,000–844,000. A crematorium
+now costs about one cemetery to build, against the seven the first plan had; the
+trade is land and running cost, not the build price. Its **¢600** upkeep is the
+first plan's figure; no US crematory operating cost was found, so it is a dial.
+
+**Exhumation — ¢14 a grave.** The median of four municipal fee schedules for an
+adult disinterment plus reinterment: Salt Lake City FY2026-27, $3,500
+([slc.gov](https://www.slc.gov/cemetery/city-cemetery-fees/)); Richmond VA 2021,
+$1,200 + $800 ([rva.gov](https://www.rva.gov/sites/default/files/2021-06/Cemetery%20Fees%202021.pdf));
+Lorain OH, $3,000 + $1,200 ([cityoflorain.org](https://cityoflorain.org/200/Pricing));
+Douglas GA, $1,300 + $900 ([cityofdouglas.org](https://cityofdouglas.org/178/Cemetery-Fees)).
+The median of {2,000, 2,200, 3,500, 4,200} is **$2,850**, ÷ $200 = ¢14.25, to
+**¢14**. Whole-cemetery relocations at about $4,300–5,000 a grave (Hunter Army
+Airfield; Bibb County, Georgia) are the cross-check that this is not high. A full
+cemetery of 780 costs ¢10,920 to clear.
 
 **Ranges.** A hospital catchment in the world is a 20–30 minute drive, 8–15 km,
 which is 400–750 of our tiles; the whole map is 256 tiles, 5.12 km across. **The
@@ -275,7 +316,7 @@ every published response target rather than mean. The clinic keeps its **40**
 | Community clinic | 1×2       | 6.4 m  | 740 m²      | 8,000 people  | ¢5,000  | ¢380   | 1         |
 | Hospital         | 3×5       | 27 m   | 16,700 m²   | 30,000 people | ¢18,000 | ¢1,300 | 3         |
 | Cemetery         | 3×3       | 3.2 m  | ground      | 780 plots     | ¢3,500  | ¢140   | 0         |
-| Crematorium      | 2×2       | 6.4 m  | 1,480 m²    | 1,600/year    | ¢26,000 | ¢600   | 3         |
+| Crematorium      | 2×2       | 6.4 m  | 1,480 m²    | 2,080/year    | ¢3,800  | ¢600   | 3         |
 
 The arithmetic behind each size is shown once, in the technical document.
 
@@ -314,6 +355,25 @@ MW**, and 19,950 gallons over 365 days is 54.7 a day, **0.2 kL**. The grounds
 draw nothing. A body's penalty, **32 points a month**, is a dial with no
 published figure behind it, set so that one body left four months all but
 cancels a clinic's 140; it never feeds the death rate.
+
+**The crematorium's draw and emissions.** Its floor is the massing rule's, 2 × 2
+× 185 × 2 = 1,480 m², 15,931 sf. Power at CBECS 2018's "service" intensity, 7.2
+kWh/sf a year: 114,700 kWh over 8,760 hours is 13.1 kW, **0.0131 MW**. Water at
+the office benchmark, 14.48 gal/sf a year: 230,700 gallons over 365 days is 632
+a day, **2.4 kL**. The retorts burn natural gas, 12.5–28.5 therms a cremation
+(American Crematory), which the game's power model does not carry, so the draw
+is the building's alone. **Pollution 1.** Crematories do not report to the Toxics
+Release Inventory (40 CFR 372.23 lists no NAICS 8122xx), so there is no TRI
+figure; measured emissions are about 0.12 lb/hr particulate (a WV DEP source
+test, [permit evaluation](https://dep.wv.gov/daq/Documents/August%202016%20Draft%20Permits/3327-Eval.pdf))
+and about 0.0028 lb of mercury a cremation (Ohio EPA GP-23.1, second-hand). Over
+a 2,080-hour year that is about 255 lb, which on the scale where the coal plant's
+484,000 lb stands for 140 is **0.07**. It is **rounded up to 1**, the field's
+smallest nonzero value, because a real nonzero emission should register. The
+flue is one stack, **7.6 m (25 ft)** above grade, inside the 18–25 ft range of
+US crematory air permits (Mojave AQMD 18 ft, Auburn ME 23 ft, SW Clean Air 24.7
+ft) and at least 3 ft above the roof (Michigan general permit). The crematorium's
+hearses are the cemetery's: two, collecting from it as from a cemetery.
 
 The cemetery unlocks at **milestone 0**: a burial ground is the first public
 facility any settlement builds, and a village that meets its first death with no

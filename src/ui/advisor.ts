@@ -312,7 +312,7 @@ function deathCareIssues(report: DeathCareReport, stats: CityStats): CityIssue[]
       severity: 'warning',
       title: `${n} ${n === 1 ? 'body lies' : 'bodies lie'} uncollected`,
       detail:
-        'No cemetery with room reaches by road the building where they fell, and each one costs the health of the streets around it every month. Build a cemetery on a street that connects to it.',
+        'No cemetery or crematorium with room reaches by road the building where they fell, and each one costs the health of the streets around it every month. Build one on a street that connects to it.',
       count: n,
       focus: report.uncollectedAt,
     });
@@ -330,7 +330,11 @@ function deathCareIssues(report: DeathCareReport, stats: CityStats): CityIssue[]
     });
   }
 
-  if (stats.milestoneLevel === DEATH_CARE_MILESTONE - 1 && report.facilities.length === 0) {
+  if (
+    stats.milestoneLevel === DEATH_CARE_MILESTONE - 1 &&
+    report.facilities.length === 0 &&
+    !report.crematoria?.length
+  ) {
     const town = MILESTONES[DEATH_CARE_MILESTONE]!;
     issues.push({
       id: 'funeral-service-ending',

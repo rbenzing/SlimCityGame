@@ -413,6 +413,20 @@ describe('InfoPanel', () => {
       expect(screen.getByTestId('plots-row')).toHaveTextContent('212 of 780 used');
     });
 
+    it('shows a selected crematorium its cremations to date, and no plots', () => {
+      const crematorium = { ...building, id: 57, catalogId: 'crematorium' };
+      useCityStore.getState().setSelectedBuilding(crematorium);
+      useCityStore.getState().setSelectionInfo({
+        ...info,
+        building: crematorium,
+        occupancy: {},
+        deathCare: { cremated: 1234 },
+      });
+      render(<InfoPanel />);
+      expect(screen.getByTestId('cremations-row')).toHaveTextContent('1,234 to date');
+      expect(screen.queryByTestId('plots-row')).not.toBeInTheDocument();
+    });
+
     it('shows no plots row for anything that is not a burial facility', () => {
       const station = { ...building, id: 55, catalogId: 'police-station' };
       useCityStore.getState().setSelectedBuilding(station);

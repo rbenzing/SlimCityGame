@@ -633,7 +633,19 @@ export type Command =
        */
       restore?: true;
     }
-  | { kind: 'placeBuilding'; catalogId: string; x: number; z: number; rotation: 0 | 1 | 2 | 3 }
+  | {
+      kind: 'placeBuilding';
+      catalogId: string;
+      x: number;
+      z: number;
+      rotation: 0 | 1 | 2 | 3;
+      /**
+       * Burials a cemetery stands with, and the exhumation charge for them
+       * handed back. Only the undo of demolishing a cemetery that held
+       * interments sends it.
+       */
+      interments?: number;
+    }
   | { kind: 'setTaxRate'; sector: Sector; rate: number } // 0..0.3
   | { kind: 'setServiceFunding'; service: ServiceKind; funding: number } // 0..1.5
   | { kind: 'takeLoan'; amount: number }
@@ -1016,13 +1028,20 @@ export interface SimSnapshot {
 
 /**
  * Death care as the Advisor and the panel read it. `facilities` is one entry
- * per cemetery: interments `used` over `total` plots. `uncollected` is the
+ * per cemetery: interments `used` over `total` plots; `crematoria` is one per
+ * crematorium. `uncollected` is the
  * bodies still where they fell, `uncollectedAt` the tile of the oldest, and
  * `regionalThisMonth` the bodies the regional funeral service has taken since
  * the last settlement.
  */
 export interface DeathCareReport {
   facilities: { id: number; used: number; total: number }[];
+  /**
+   * One entry per crematorium, which never fills: the cremations it has done
+   * and the bodies it could take this tick. Absent in a report from before
+   * the crematorium.
+   */
+  crematoria?: { id: number; cremated: number; room: number }[];
   uncollected: number;
   uncollectedAt?: TilePoint;
   regionalThisMonth: number;
@@ -1243,7 +1262,7 @@ export interface BuildingCatalogEntry {
   service?: ServiceSpec;
   utility?: UtilitySpec;
   garbage?: GarbageSpec; // set for the incinerator, recycling depot and recovery facility ploppables
-  deathCare?: DeathCareSpec; // set for the cemetery ploppable
+  deathCare?: DeathCareSpec; // set for the cemetery and crematorium ploppables
   cost: number; // 0 for grown buildings
   upkeep: number; // per month
   unlockMilestone: number; // MILESTONES index required
@@ -1749,8 +1768,11 @@ export interface SelectionInfo {
    * Absent for anything that is not a capped facility with a reach.
    */
   serviceLoad?: number;
-  /** A cemetery's interments over its plots. Absent for anything that is not a burial facility. */
-  deathCare?: { used: number; total: number };
+  /**
+   * A cemetery's interments over its plots, or the cremations a crematorium
+   * has done. Absent for anything that is not a death-care facility.
+   */
+  deathCare?: { used: number; total: number } | { cremated: number };
   /**
    * An intake's yield as a fraction of its rating, 0..1: what the fouling of
    * the water beside it leaves. Absent for anything but a shore intake.

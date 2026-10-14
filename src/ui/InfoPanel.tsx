@@ -205,11 +205,18 @@ export function InfoPanel(): JSX.Element | null {
               testId="service-load-row"
             />
           )}
-          {info?.deathCare && (
+          {info?.deathCare && 'total' in info.deathCare && (
             <Row
               label="Plots"
               value={`${info.deathCare.used} of ${info.deathCare.total} used`}
               testId="plots-row"
+            />
+          )}
+          {info?.deathCare && 'cremated' in info.deathCare && (
+            <Row
+              label="Cremations"
+              value={`${info.deathCare.cremated.toLocaleString('en-US')} to date`}
+              testId="cremations-row"
             />
           )}
           {entry?.utility?.powerMW !== undefined && (

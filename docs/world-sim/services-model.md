@@ -180,8 +180,13 @@ is: a cemetery reaches the road tiles its street connects to within its
 never a straight-line radius, and takes the bodies of every building it reaches
 in building-id order, each into the reaching cemetery with room that stands
 nearest (ties by facility id). One body is one interment and a full cemetery
-takes none. Where garbage runs on `GARBAGE_PERIOD`, death care runs the tick a
-body falls and then every `DEATH_CARE_PERIOD` (10) ticks for what waits.
+takes none. A crematorium collects the same way and never fills: it has a
+throughput credit that accrues at 2,080 cremations a year per tick, capped at one
+working day's 8, room for as many bodies as its whole credit, and each cremation
+spends one. Cemeteries and crematoria compete in the one order, highest road
+reach first, ties by facility id. Where garbage runs on `GARBAGE_PERIOD`, death
+care runs the tick a body falls and then every `DEATH_CARE_PERIOD` (10) ticks
+for what waits.
 
 Below Big Town (`DEATH_CARE_MILESTONE`, the same rung as the septic cut-over) a
 regional funeral service takes off the map whatever no cemetery collected, the
@@ -192,8 +197,10 @@ field: after coverage is written, each tile holding bodies loses
 two tiles around it, so coverage always precedes the penalty and the penalty
 never feeds the death rate. Cosmetic hearses route cemetery → building →
 cemetery over the road graph like garbage trucks, and routing does not affect
-collection. The backlog, each cemetery's interments and the month's regional
-count persist in the save's `deathCare` block. See
+collection. The backlog, each cemetery's interments, each crematorium's credit
+and count, and the month's regional count persist in the save's `deathCare`
+block. Demolishing a cemetery that holds interments charges ¢14 each to exhume
+and reinter them, and its undo restores them. See
 [../game-design/features/healthcare-and-death-care.md](../game-design/features/healthcare-and-death-care.md)
 and [../engineering/features/healthcare-and-death-care.md](../engineering/features/healthcare-and-death-care.md).
 

@@ -3,6 +3,7 @@ import { corridorHalfOf, flowDirection, RoadFlow, RoadTier, ZoneType } from '../
 import type { BuildingCatalogEntry, Command, RoadSpec, TilePoint } from '../shared/types';
 import {
   BRIDGE_COST_PER_METER_TILE,
+  EXHUMATION_FEE_PER_INTERMENT,
   TERRAFORM_COST_PER_METER_TILE,
   TILE_METERS,
   WATER_PIPE_COST_PER_TILE,
@@ -712,6 +713,45 @@ describe('bulldoze tool', () => {
     expect(sent).toEqual([
       { label: expect.any(String), commands: [{ kind: 'bulldoze', tiles: preview?.tiles }] },
     ]);
+  });
+
+  describe('over a cemetery holding graves', () => {
+    it('quotes the exhumation at ¢14 a grave before it is paid, and says how many', () => {
+      const { env, previews } = makeEnv();
+      env.gravesUnder = () => 780;
+      env.funds = () => 100_000;
+      const tm = new ToolManager(env);
+      tm.setTool('bulldoze');
+      tm.pointerDown(0, 0, 0);
+      tm.pointerMove(2, 2, 0);
+      expect(previews.at(-1)).toMatchObject({
+        cost: 780 * EXHUMATION_FEE_PER_INTERMENT,
+        valid: true,
+        note: 'Exhumes 780 graves',
+      });
+    });
+
+    it('is invalid for want of funds when the charge is more than the town holds', () => {
+      const { env, previews } = makeEnv();
+      env.gravesUnder = () => 780;
+      env.funds = () => 10_919;
+      const tm = new ToolManager(env);
+      tm.setTool('bulldoze');
+      tm.pointerDown(0, 0, 0);
+      tm.pointerMove(2, 2, 0);
+      expect(previews.at(-1)).toMatchObject({ valid: false, invalidReason: 'Insufficient funds' });
+    });
+
+    it('quotes nothing over an empty cemetery or any other ground', () => {
+      const { env, previews } = makeEnv();
+      env.gravesUnder = () => 0;
+      const tm = new ToolManager(env);
+      tm.setTool('bulldoze');
+      tm.pointerDown(0, 0, 0);
+      tm.pointerMove(2, 2, 0);
+      expect(previews.at(-1)?.cost).toBe(0);
+      expect(previews.at(-1)?.note).toBeUndefined();
+    });
   });
 
   describe('over a corridor', () => {

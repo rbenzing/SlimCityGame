@@ -1396,6 +1396,19 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         ? (clientGrid.roadProfile[tile.z * clientGrid.size + tile.x] ?? 0)
         : 0,
     overRoadAt: (tile) => clientGrid.overRoadAt(tile.x, tile.z),
+    gravesUnder: (tiles) => {
+      const interred = new Map(deathCare.facilities.map((f) => [f.id, f.used]));
+      const seen = new Set<number>();
+      let graves = 0;
+      for (const t of tiles) {
+        if (!inBounds(t.x, t.z)) continue;
+        const id = clientGrid.buildingId[t.z * clientGrid.size + t.x] ?? 0;
+        if (id === 0 || seen.has(id)) continue;
+        seen.add(id);
+        graves += interred.get(id) ?? 0;
+      }
+      return graves;
+    },
     roadMaskAt: (tile) =>
       inBounds(tile.x, tile.z) ? (clientGrid.roadMask[tile.z * clientGrid.size + tile.x] ?? 0) : 0,
     roadElevationAt: (tile) =>
