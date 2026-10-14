@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 6,085 tests passing across 184 test files, run 2026-10-14.
+**Test suite:** 6,166 tests passing across 185 test files, run 2026-10-14.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -174,7 +174,11 @@ the clinic and hospital ladder, deaths that empty homes, a regional funeral
 service until Big Town, the cemetery, the hearse and the crematorium. So is
 emergency services
 ([emergency-services.md](game-design/features/emergency-services.md)): road
-reach, crews, real call rates and a two-rung station ladder. Next on the shelf
+reach, crews, real call rates and a two-rung station ladder. So is the
+education ladder
+([education-ladder.md](game-design/features/education-ladder.md)): elementary,
+middle and high schools, a college and a library, each gating level 3 for the
+zones that need it and drawn as a campus. Next on the shelf
 are the other municipal services programme's epics
 ([municipal-services.md](game-design/features/municipal-services.md)), the
 [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
@@ -319,6 +323,27 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The schools drawn as campuses (last slice of the education ladder, built 2026-10-14)
+
+The five education buildings get their own models, in place of the generic
+box. Each is drawn to the floor its design states, and read by its grounds.
+
+- **Classroom wings** 20.7 m deep (two 30 ft classroom bays either side of an
+  8 ft corridor), three storeys, around a courtyard open to the street; a gym
+  of one tall 7.3 m storey at each school. Floors as drawn are within 0.1% of
+  the design's.
+- **Grounds:**
+  - **Elementary:** a blacktop and a play structure.
+  - **Middle and high:** a bus pull-in with a parked Type C school bus, and a
+    staff car park. The middle school has a play field; the high school has
+    two tennis courts.
+  - **College:** a quad of about 75 × 73 m with paths, trees and a portico.
+  - **Library:** a reading room raised to 6.0 m under high windows, a door
+    canopy, a book drop, and a 12-stall car park.
+- **A real site does not fit.** A track, a football field or a full car park
+  fits none of these lots. The grid wins, and the overflow parks at the kerb.
+- Windows light at night; nothing else does.
 
 ### The education ladder in the simulation (first slice of the education ladder, built 2026-10-14)
 

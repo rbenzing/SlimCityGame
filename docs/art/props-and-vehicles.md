@@ -185,7 +185,11 @@ of the generic building facade box:
   doors, an apron and the parked engine for fire; an entrance with a canopy, a
   sally port and the car park for police; windows and door panes that light at
   night. See [civic-massing.md](civic-massing.md#the-fire-and-police-stations).
-- Everything else — clinic, school, and every zoned-growth building — keeps the
+- **The four schools and the library** are kits: classroom wings at their stated
+  floor, a gym, and grounds — playground, bus pull-in with a parked school bus,
+  tennis courts, a college quad, a library's raised reading room. See
+  [civic-massing.md](civic-massing.md#the-schools-the-college-and-the-library).
+- Everything else — the clinic and every zoned-growth building — keeps the
   standard facade system, because those genuinely are buildings.
 
 For a kit-owned catalog entry, the building instancer draws a low plinth
@@ -193,7 +197,8 @@ For a kit-owned catalog entry, the building instancer draws a low plinth
 shader) beneath the kit instead of a full facade box, so the kit carries the
 visual identity while selection and outline still land on the right
 footprint. Kit parts stay unlit at night, except a small red beacon on the
-wind turbine's nacelle and the stations' windows and door panes.
+wind turbine's nacelle and the stations', schools' and library's windows and
+door panes.
 
 **The landfill** renders as an operated facility rather than a tint. Its
 office tile — the area's street-adjacent entrance — carries a gatehouse kit:
