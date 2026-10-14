@@ -181,16 +181,19 @@ of the generic building facade box:
   deck lie the five accessible spaces, each painted with the accessibility
   symbol the kerbside stalls use, the van space wider, every access aisle
   hatched. The kit paves its whole lot.
-- Everything else — police, fire, clinic, school, and every zoned-growth
-  building — keeps the standard facade system, because those genuinely are
-  buildings.
+- **The four fire and police stations** are kits on a paved lot: framed bay
+  doors, an apron and the parked engine for fire; an entrance with a canopy, a
+  sally port and the car park for police; windows and door panes that light at
+  night. See [civic-massing.md](civic-massing.md#the-fire-and-police-stations).
+- Everything else — clinic, school, and every zoned-growth building — keeps the
+  standard facade system, because those genuinely are buildings.
 
 For a kit-owned catalog entry, the building instancer draws a low plinth
 (about 8% of the catalog height, a plain desaturated slab with no window
 shader) beneath the kit instead of a full facade box, so the kit carries the
 visual identity while selection and outline still land on the right
 footprint. Kit parts stay unlit at night, except a small red beacon on the
-wind turbine's nacelle.
+wind turbine's nacelle and the stations' windows and door panes.
 
 **The landfill** renders as an operated facility rather than a tint. Its
 office tile — the area's street-adjacent entrance — carries a gatehouse kit:

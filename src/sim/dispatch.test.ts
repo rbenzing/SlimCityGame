@@ -36,6 +36,7 @@ import {
 } from '../shared/constants';
 import { RoadNetwork } from '../world/roadgraph';
 import { createGrid } from '../world/grid';
+import catalogData from '../data/catalog.json';
 
 // ---------------------------------------------------------------------------
 // Test doubles (mirrors src/sim/traffic.test.ts's conventions)
@@ -525,6 +526,42 @@ describe('DispatchSystem: a station runs only as many calls as it has responders
     expect(answered(out)).toHaveLength(6);
     expect(unanswered(out).map((i) => i.x)).toEqual([8]);
     expect(sys.responderLoad(buildings)).toEqual({ police: { inFlight: 6, total: 6 } });
+  });
+
+  describe('the district rungs, from the catalog', () => {
+    const rung = (id: string): BuildingCatalogEntry =>
+      (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.find((e) => e.id === id)!;
+    const districtCatalog = [
+      ...CATALOG,
+      rung('fire-station-district'),
+      rung('police-station-district'),
+    ];
+
+    /** A station at the road's start and `calls` houses in a row beyond its lot, each on fire or each a crime scene. */
+    function districtCalls(stationId: string, field: FieldId, calls: number): Incident[] {
+      const g = makeGrid();
+      const buildings: BuildingInstance[] = [];
+      straightRoad(g, 0, 0, calls + 5);
+      place(g, buildings, 1, stationId, 0, 1);
+      for (let i = 0; i < calls; i++) {
+        place(g, buildings, 2 + i, 'house', 4 + i, 1);
+        g.fields[field]![tileIndex(4 + i, 1)] = 255;
+      }
+      const sys = new DispatchSystem(districtCatalog, scriptedCalls(new Array(calls).fill(0.5)));
+      return step(sys, g, buildings, railed(g));
+    }
+
+    it('the district fire station answers two calls at once and refuses the third', () => {
+      const out = districtCalls('fire-station-district', FieldId.FireRisk, 3);
+      expect(answered(out)).toHaveLength(2);
+      expect(unanswered(out).map((i) => i.x)).toEqual([6]);
+    });
+
+    it('the district police station answers eleven calls at once and refuses the twelfth', () => {
+      const out = districtCalls('police-station-district', FieldId.Crime, 12);
+      expect(answered(out)).toHaveLength(11);
+      expect(unanswered(out).map((i) => i.x)).toEqual([15]);
+    });
   });
 
   it('a waiting call is taken when a call resolves, with the severity it was rolled at and no re-roll', () => {

@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 5,956 tests passing across 181 test files, run 2026-10-14.
+**Test suite:** 6,023 tests passing across 183 test files, run 2026-10-14.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -123,6 +123,10 @@ not a test to fix.
   street's kerb parking repainted later does not re-lay it.
 - A kerb-credited lot's customers are drawn parked on the lot, not in the
   kerb stalls its credit counts.
+- The district fire station's second company rolls as a second engine: there
+  is no ladder-truck vehicle kind yet (an aerial is 51 ft and up, 13 ft high,
+  per one feasibility study). The engines parked on station aprons are
+  decoration and stay put when the station dispatches.
 - An incident's on-scene time is still 10–30 ticks (1.2–3.6 game hours) for
   every kind, longer than an average police call (Austin's assessment: about
   26 minutes for responsive calls); re-derive it per kind, which sets how busy
@@ -167,8 +171,11 @@ one real unit, the kerbside recycling depot, the materials recovery facility
 and the transfer station. So is healthcare and death care
 ([healthcare-and-death-care.md](game-design/features/healthcare-and-death-care.md)):
 the clinic and hospital ladder, deaths that empty homes, a regional funeral
-service until Big Town, the cemetery, the hearse and the crematorium. Next on
-the shelf are the other municipal services programme's epics
+service until Big Town, the cemetery, the hearse and the crematorium. So is
+emergency services
+([emergency-services.md](game-design/features/emergency-services.md)): road
+reach, crews, real call rates and a two-rung station ladder. Next on the shelf
+are the other municipal services programme's epics
 ([municipal-services.md](game-design/features/municipal-services.md)), the
 [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
 transit modes) and AI raster map packs, facade-atlas stage 2 and screen-space
@@ -312,6 +319,31 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### District stations, and the stations drawn as stations (last slice of emergency services, built 2026-10-14)
+
+Emergency services is complete. Today's fire and police stations stay the
+first rung, now at the 6.4 m two storeys their floors call for, and a district
+rung goes above each, priced by real cost ratios as the player chose:
+
+- **District Fire Station**, 3×2 from Small City: Indianapolis Station 20
+  (2025), an engine, a ladder and a battalion chief in 15,733 sf for $8M.
+  Nine seats at 4.5 relief are 40.5 firefighters, 31,000 people at NFPA's 1.30
+  per 1,000; two companies answer at once; ¢13,150 (2.92 times the first
+  rung's floor at the same $/sf) and ¢720 a month (2.25 times its staff).
+- **Police District Station**, 3×3 at 9.6 m from Small City: Concord NH's new
+  station, about 38,000 sf for 90 sworn, 47,000 people at 1.9 per 1,000, eleven
+  cars on duty; ¢9,950 and ¢563 a month.
+- **Decided, on the figures.** The large rungs cost more per person to build
+  than the small (fire ¢0.42 against ¢0.32, police ¢0.21 against ¢0.16):
+  modern stations carry more floor per crew member. What they buy is crews at
+  once from one site. The draft's "18–20% cheaper per person" is withdrawn.
+- **Drawn as stations.** Fire stations have sectional bay doors of 16 × 15 ft
+  (the trade guidance asks 14 × 14 at least), framed and lighter than the wall,
+  taller than the 3.3 m engine on the apron, and a hose tower on the district
+  rung; police stations an entrance canopy, a sally port and a staff car park.
+  Windows light at night. All four stations' draws are re-derived on their
+  real floors, so today's stations draw less than the 12 m box did.
 
 ### A station answers what it can reach, while it has a crew free (first slice of emergency services, built 2026-10-14)
 

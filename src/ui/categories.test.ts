@@ -181,8 +181,14 @@ describe('subTabsFor', () => {
       'plop.cemetery',
       'plop.crematorium',
     ]);
-    expect(subTabsFor('fire')[0]?.cards.map((c) => c.id)).toEqual(['plop.fire-station']);
-    expect(subTabsFor('police')[0]?.cards.map((c) => c.id)).toEqual(['plop.police-station']);
+    expect(subTabsFor('fire')[0]?.cards.map((c) => c.id)).toEqual([
+      'plop.fire-station',
+      'plop.fire-station-district',
+    ]);
+    expect(subTabsFor('police')[0]?.cards.map((c) => c.id)).toEqual([
+      'plop.police-station',
+      'plop.police-station-district',
+    ]);
     expect(subTabsFor('education')[0]?.cards.map((c) => c.id)).toEqual(['plop.school']);
     // The airport landmark is a park-category ploppable, so it joins
     // the Parks drawer alongside the pocket park (catalog order).

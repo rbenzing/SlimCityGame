@@ -20,9 +20,8 @@
  *    "turbineRotor" InstancedMesh whose per-instance rotation advances every
  *    update(tMs) (slow spin, phase offset hashed from the building id so
  *    turbines don't sync), and a small "turbineBeacon" that only glows at
- *    night (setNightFactor) — the ONE kit part in this whole file that reacts
- *    to night at all — kits stay unlit except a small red turbine
- *    nacelle beacon at night.
+ *    night (setNightFactor); apart from the stations' lit panes, the only kit
+ *    part in this file that reacts to night.
  *  - water-tower: braced legs, balcony and riser ("waterSteel") + a white
  *    ellipsoid-ended tank ("waterTank").
  *  - coal-plant: a dark boiler hall ("coalHall") covering ~3x4 of its 4x4
@@ -68,6 +67,14 @@
  *    ("crematoriumGrounds"), a gabled chapel, a flat-roofed cremator hall with
  *    its exhaust duct, a foyer and an office, merged ("crematoriumBuilding"),
  *    and the one 7.6 m flue ("crematoriumFlue").
+ *  - fire-station, fire-station-district, police-station,
+ *    police-station-district: the paved lot ("stationYard", with the apron or
+ *    sally drive and the stall lines), the building under its parapet with its
+ *    framed bay doors or its entrance, canopy and sally port ("stationBuilding"),
+ *    the lit panes and door glazing ("stationLit", the one kit material besides
+ *    the turbine beacon that follows setNightFactor), a hose tower or radio pole
+ *    ("stationMast"), the appliance parked before the doors ("stationApparatus")
+ *    and staff cars in the stalls ("stationCar").
  *  The paving kits stand on the highest ground under their lot (pavesLot),
  *  so the instancer's plinth never shows through their yard on a slope.
  *  - small-park: a flat lawn plate + path cross ("parkGround"), 2-3
@@ -128,6 +135,10 @@ export const UTILITY_KIT_CATALOG_IDS: readonly string[] = [
   'hospital',
   'cemetery',
   'crematorium',
+  'fire-station',
+  'fire-station-district',
+  'police-station',
+  'police-station-district',
   'small-park',
 ];
 
@@ -177,6 +188,12 @@ export type UtilityKitPartKind =
   | 'crematoriumGrounds'
   | 'crematoriumBuilding'
   | 'crematoriumFlue'
+  | 'stationYard'
+  | 'stationBuilding'
+  | 'stationLit'
+  | 'stationMast'
+  | 'stationApparatus'
+  | 'stationCar'
   | 'parkGround'
   | 'parkTree'
   | 'parkBench';
@@ -2715,6 +2732,520 @@ function buildCrematoriumFlueGeometry(): THREE.BufferGeometry {
 }
 
 // ---------------------------------------------------------------------------
+// fire and police stations: one building on a paved lot, local +Z the street
+// side. A fire station is read by its bay doors and the apron before them, a
+// police station by its entrance and its sally port. The windows and the
+// glazing of the doors are the one lit part, on a material that follows the
+// night factor.
+// ---------------------------------------------------------------------------
+
+/** A bay is 18 ft (5.49 m) from door to door: the width preferred, never under 14 ft. */
+export const STATION_BAY_PITCH_M = 18 * FOOT_M;
+/** The doors of an apparatus bay, 16 ft wide and 15 ft high: over the 14 × 14 ft least. */
+export const STATION_BAY_DOOR = { w: 16 * FOOT_M, h: 15 * FOOT_M };
+/** A sally port's vehicle door: 14 ft wide, 12 ft high, a patrol car being 1.6 m. */
+export const STATION_SALLY_DOOR = { w: 14 * FOOT_M, h: 12 * FOOT_M };
+const STATION_ENTRANCE = { w: 2.4, h: 2.4 };
+/** The lot's margin round the building, and the roof's parapet. */
+const STATION_EDGE_M = 3;
+const STATION_CAP_M = 0.4;
+/** How far a door's frame shows beyond its leaf, and how far each stands proud of the wall. */
+const STATION_FRAME_M = 0.35;
+const STATION_FRAME_PROUD_M = 0.1;
+const STATION_LEAF_PROUD_M = 0.2;
+const STATION_WINDOW = { w: 2, h: 1.4, pitch: 4.2 };
+const STATION_STOREY_M = 3.2;
+/** A hose tower of four storeys, 4 m square: the game's own choice. */
+export const STATION_TOWER = { size: 4, height: 12.8 };
+const STATION_POLE_M = 5;
+const STATION_WALK_M = 2.44;
+const STATION_SALLY_CLEAR_M = 1;
+
+const STATION_FIRE_WALL_RGB: RGB = [0.58, 0.27, 0.22];
+const STATION_POLICE_WALL_RGB: RGB = [0.56, 0.6, 0.66];
+const STATION_CAP_RGB: RGB = [0.42, 0.4, 0.38];
+const STATION_BAND_RGB: RGB = [0.18, 0.3, 0.55];
+const STATION_BELT_RGB: RGB = [0.72, 0.72, 0.7];
+const STATION_FRAME_RGB: RGB = [0.2, 0.2, 0.22];
+const STATION_FIRE_DOOR_RGB: RGB = [0.9, 0.9, 0.86];
+const STATION_SALLY_DOOR_RGB: RGB = [0.82, 0.84, 0.86];
+const STATION_GROOVE_RGB: RGB = [0.62, 0.63, 0.62];
+const STATION_ENTRANCE_RGB: RGB = [0.2, 0.2, 0.24];
+const STATION_PAVING_RGB: RGB = [0.62, 0.62, 0.6];
+const STATION_LINE_RGB: RGB = [0.88, 0.88, 0.84];
+const STATION_TOWER_RGB: RGB = [0.5, 0.23, 0.19];
+const STATION_POLE_RGB: RGB = [0.45, 0.47, 0.5];
+const STATION_GLASS_COLOR = 0x2c3d4a;
+const STATION_LIGHT_COLOR = 0xffd98a;
+
+export type StationService = 'fire' | 'police';
+
+/** A door on the street face of the building: its centre along X, width and clear height. */
+export interface StationDoor {
+  x: number;
+  w: number;
+  h: number;
+}
+
+/** A lit pane on the street face: centre along X, height of its underside above the floor, size, and how far it stands out of the wall. */
+export interface StationPane {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  out: number;
+}
+
+/** One car stall: its centre, and which way a car in it turns (0 nose to +Z, 2 nose to -Z). */
+export interface StationStall extends Vec2 {
+  turn: 0 | 2;
+}
+
+interface StallRow {
+  x0: number;
+  x1: number;
+  z0: number;
+  turn: 0 | 2;
+  gaps: readonly (readonly [number, number])[];
+}
+
+export interface StationLayout {
+  service: StationService;
+  plate: Rect;
+  height: number;
+  bayDoors: StationDoor[];
+  entrance: StationDoor;
+  sallyPort: StationDoor | null;
+  /** Concrete before the doors: the apron, the sally drive and the entrance walk. */
+  paving: Rect[];
+  panes: StationPane[];
+  /** Centres of the appliances or patrol cars parked before the doors, nose to +Z. */
+  apparatus: Vec2[];
+  stalls: StationStall[];
+  tower: Rect | null;
+  pole: Vec2 | null;
+}
+
+interface StationPlan {
+  service: StationService;
+  /** The building's plate on the ground, metres: the floor over its storeys. */
+  plate: { w: number; d: number };
+  bays: number;
+  apparatus: number;
+  /** Police only: how far in from the plate's right end the sally port stands. */
+  sallyInset: number;
+  tower: boolean;
+  rows: (plate: Rect, gaps: StallRow['gaps']) => StallRow[];
+}
+
+/**
+ * The plates are each building's stated floor over its storeys: fire ~500 m² and
+ * 1,420 m² for the first rungs (two storeys: 252 and 714 m²), 1,462 m² and 3,530 m²
+ * for the district rungs (two storeys: 732 m², three: 1,177 m²). The plate sits
+ * 3 m inside the lot's back and left edges; the bays, the apron and the car
+ * park take the ground that is left.
+ */
+const STATION_PLANS: Readonly<Record<string, StationPlan>> = {
+  'fire-station': {
+    service: 'fire',
+    plate: { w: 18, d: 14 },
+    bays: 2,
+    apparatus: 1,
+    sallyInset: 0,
+    tower: false,
+    rows: (plate) => [
+      { x0: plate.x1 + 2, x1: plate.x1 + 2 + 5 * DECK_STALL.w, z0: plate.z0, turn: 0, gaps: [] },
+    ],
+  },
+  'fire-station-district': {
+    service: 'fire',
+    plate: { w: 36.6, d: 20 },
+    bays: 3,
+    apparatus: 2,
+    sallyInset: 0,
+    tower: true,
+    rows: (plate) => {
+      const x0 = plate.x1 + 1.8;
+      const x1 = x0 + 6 * DECK_STALL.w;
+      const second = plate.z0 + DECK_STALL.l + DECK_AISLE_M;
+      return [
+        { x0, x1, z0: plate.z0, turn: 2, gaps: [] },
+        { x0, x1, z0: second, turn: 0, gaps: [] },
+        { x0, x1, z0: second + DECK_STALL.l, turn: 2, gaps: [] },
+      ];
+    },
+  },
+  'police-station': {
+    service: 'police',
+    plate: { w: 34, d: 21 },
+    bays: 0,
+    apparatus: 1,
+    sallyInset: 6,
+    tower: false,
+    rows: (plate, gaps) => [{ x0: plate.x0, x1: plate.x1, z0: plate.z1 + 3.2, turn: 2, gaps }],
+  },
+  'police-station-district': {
+    service: 'police',
+    plate: { w: 54, d: 21.8 },
+    bays: 0,
+    apparatus: 2,
+    sallyInset: 7,
+    tower: false,
+    rows: (plate, gaps) => [
+      { x0: plate.x0, x1: plate.x1, z0: plate.z1 + 6, turn: 2, gaps },
+      {
+        x0: plate.x0,
+        x1: plate.x1,
+        z0: plate.z1 + 6 + DECK_STALL.l + DECK_AISLE_M,
+        turn: 0,
+        gaps,
+      },
+    ],
+  },
+};
+
+/** The stalls of a row: whole stalls along X, none over a gap. */
+function stallsOfRow(row: StallRow): StationStall[] {
+  const stalls: StationStall[] = [];
+  for (let x = row.x0; x + DECK_STALL.w <= row.x1 + 1e-9; x += DECK_STALL.w) {
+    if (row.gaps.some(([a, b]) => x < b && x + DECK_STALL.w > a)) continue;
+    stalls.push({ x: x + DECK_STALL.w / 2, z: row.z0 + DECK_STALL.l / 2, turn: row.turn });
+  }
+  return stalls;
+}
+
+/**
+ * Where everything stands on a station's lot, in the footprint frame with +Z to
+ * the street. A fire station's bays run along the front from the left, the wing
+ * of quarters beside them, the apron before the doors out to the street and the
+ * staff stalls to the right. A police station is one plate across the back with
+ * its entrance at the middle, its sally port at the right and a car park before
+ * it. Pure; fixed per catalog entry.
+ */
+export function computeStationLayout(entry: BuildingCatalogEntry): StationLayout {
+  const plan = STATION_PLANS[entry.id];
+  if (!plan) throw new RangeError(`utilitykits: no station plan for "${entry.id}"`);
+  const { halfW, halfD } = footprintHalfExtents(entry.footprint);
+  const plate: Rect = {
+    x0: -halfW + STATION_EDGE_M,
+    x1: -halfW + STATION_EDGE_M + plan.plate.w,
+    z0: -halfD + STATION_EDGE_M,
+    z1: -halfD + STATION_EDGE_M + plan.plate.d,
+  };
+  const front = plate.z1;
+  const bayDoors: StationDoor[] = [];
+  for (let i = 0; i < plan.bays; i++) {
+    bayDoors.push({
+      x: plate.x0 + (i + 0.5) * STATION_BAY_PITCH_M,
+      w: STATION_BAY_DOOR.w,
+      h: STATION_BAY_DOOR.h,
+    });
+  }
+  const bayBlockEnd = plate.x0 + plan.bays * STATION_BAY_PITCH_M;
+  const fire = plan.service === 'fire';
+  const entrance: StationDoor = {
+    x: fire ? (bayBlockEnd + plate.x1) / 2 : (plate.x0 + plate.x1) / 2,
+    ...STATION_ENTRANCE,
+  };
+  const sallyPort: StationDoor | null =
+    plan.sallyInset > 0 ? { x: plate.x1 - plan.sallyInset, ...STATION_SALLY_DOOR } : null;
+
+  const walk: Rect = {
+    x0: entrance.x - STATION_WALK_M / 2,
+    x1: entrance.x + STATION_WALK_M / 2,
+    z0: front,
+    z1: halfD,
+  };
+  const paving: Rect[] = [walk];
+  if (fire) paving.push({ x0: plate.x0, x1: bayBlockEnd + 1, z0: front, z1: halfD });
+  if (sallyPort) {
+    paving.push({
+      x0: sallyPort.x - sallyPort.w / 2 - 1,
+      x1: sallyPort.x + sallyPort.w / 2 + 1,
+      z0: front,
+      z1: halfD,
+    });
+  }
+
+  const gaps: [number, number][] = [];
+  if (sallyPort) {
+    const reach = sallyPort.w / 2 + 1 + STATION_SALLY_CLEAR_M;
+    gaps.push([entrance.x - STATION_WALK_M / 2 - 0.3, entrance.x + STATION_WALK_M / 2 + 0.3]);
+    gaps.push([sallyPort.x - reach, sallyPort.x + reach]);
+  }
+  const stalls = plan.rows(plate, gaps).flatMap(stallsOfRow);
+
+  const panes: StationPane[] = [];
+  for (const door of bayDoors) {
+    for (let k = 0; k < 4; k++) {
+      panes.push({ x: door.x + (k - 1.5) * 1.1, y: door.h - 1, w: 0.95, h: 0.55, out: 0.3 });
+    }
+  }
+  for (const dx of [-0.6, 0.6]) {
+    panes.push({ x: entrance.x + dx, y: 0.4, w: 1, h: 1.7, out: 0.2 });
+  }
+  const storeys = Math.round(entry.height / STATION_STOREY_M);
+  const wallFrom = fire ? bayBlockEnd + 1.6 : plate.x0 + 2.2;
+  const wallTo = fire ? plate.x1 - 1.6 : plate.x1 - 2.2;
+  for (let f = 0; f < storeys; f++) {
+    for (let x = wallFrom + 1; x + 1 <= wallTo + 1e-9; x += STATION_WINDOW.pitch) {
+      const clear = (door: StationDoor, margin: number): boolean =>
+        Math.abs(x - door.x) > door.w / 2 + margin + STATION_WINDOW.w / 2;
+      if (f === 0 && !clear(entrance, 1.5)) continue;
+      if (f === 0 && sallyPort && !clear(sallyPort, 1)) continue;
+      panes.push({
+        x,
+        y: f * STATION_STOREY_M + 1.2,
+        w: STATION_WINDOW.w,
+        h: STATION_WINDOW.h,
+        out: 0.05,
+      });
+    }
+  }
+
+  const apparatus: Vec2[] = [];
+  for (let i = 0; i < plan.apparatus; i++) {
+    apparatus.push(
+      fire
+        ? { x: bayDoors[i]!.x, z: front + 1.5 + sizeForKind(VehicleKind.Fire)[2] / 2 }
+        : { x: sallyPort!.x, z: front + 3 + i * 7 + sizeForKind(VehicleKind.Police)[2] / 2 },
+    );
+  }
+
+  return {
+    service: plan.service,
+    plate,
+    height: entry.height,
+    bayDoors,
+    entrance,
+    sallyPort,
+    paving,
+    panes,
+    apparatus,
+    stalls,
+    tower: plan.tower
+      ? {
+          x0: plate.x1 - STATION_TOWER.size,
+          x1: plate.x1,
+          z0: plate.z0,
+          z1: plate.z0 + STATION_TOWER.size,
+        }
+      : null,
+    pole: fire ? null : { x: plate.x0 + 3, z: plate.z0 + 3 },
+  };
+}
+
+/** The paved lot: the asphalt slab, the concrete before the doors and the white lines of every stall. */
+function buildStationYardGeometry(entry: BuildingCatalogEntry): THREE.BufferGeometry {
+  const layout = computeStationLayout(entry);
+  const top = RECYCLING_YARD_HEIGHT;
+  const parts: THREE.BufferGeometry[] = [buildRecyclingYardGeometry(entry.footprint)];
+  for (const r of layout.paving) {
+    parts.push(
+      standingBox(
+        r.x1 - r.x0,
+        0.03,
+        r.z1 - r.z0,
+        (r.x0 + r.x1) / 2,
+        top,
+        (r.z0 + r.z1) / 2,
+        STATION_PAVING_RGB,
+      ),
+    );
+  }
+  for (const stall of layout.stalls) {
+    for (const side of [-1, 1]) {
+      parts.push(
+        standingBox(
+          0.1,
+          0.04,
+          DECK_STALL.l,
+          stall.x + (side * DECK_STALL.w) / 2,
+          top,
+          stall.z,
+          STATION_LINE_RGB,
+        ),
+      );
+    }
+  }
+  return mergeParts(parts);
+}
+
+/** A door on the street face: a dark frame, a lighter leaf proud of it and, for a bay, the panel seams across the leaf. */
+function stationDoorParts(
+  door: StationDoor,
+  front: number,
+  y0: number,
+  leafRgb: RGB,
+  seams: boolean,
+): THREE.BufferGeometry[] {
+  const parts = [
+    standingBox(
+      door.w + 2 * STATION_FRAME_M,
+      door.h + STATION_FRAME_M,
+      0.2,
+      door.x,
+      y0,
+      front + STATION_FRAME_PROUD_M,
+      STATION_FRAME_RGB,
+    ),
+    standingBox(door.w, door.h, 0.12, door.x, y0, front + STATION_LEAF_PROUD_M, leafRgb),
+  ];
+  if (seams) {
+    for (let k = 1; k <= 5; k++) {
+      parts.push(
+        standingBox(
+          door.w,
+          0.06,
+          0.04,
+          door.x,
+          y0 + (door.h * k) / 6,
+          front + STATION_LEAF_PROUD_M + 0.07,
+          STATION_GROOVE_RGB,
+        ),
+      );
+    }
+  }
+  return parts;
+}
+
+/** The building: walls to the catalog height under a parapet, the doors, and for a police station the belt courses, the blue band and the entrance canopy. */
+function buildStationBuildingGeometry(entry: BuildingCatalogEntry): THREE.BufferGeometry {
+  const layout = computeStationLayout(entry);
+  const { plate, height } = layout;
+  const fire = layout.service === 'fire';
+  const y0 = RECYCLING_YARD_HEIGHT;
+  const cx = (plate.x0 + plate.x1) / 2;
+  const cz = (plate.z0 + plate.z1) / 2;
+  const w = plate.x1 - plate.x0;
+  const d = plate.z1 - plate.z0;
+  const front = plate.z1;
+  const parts: THREE.BufferGeometry[] = [
+    standingBox(
+      w,
+      height - STATION_CAP_M,
+      d,
+      cx,
+      y0,
+      cz,
+      fire ? STATION_FIRE_WALL_RGB : STATION_POLICE_WALL_RGB,
+    ),
+    standingBox(
+      w + 0.4,
+      STATION_CAP_M,
+      d + 0.4,
+      cx,
+      y0 + height - STATION_CAP_M,
+      cz,
+      STATION_CAP_RGB,
+    ),
+  ];
+  for (const door of layout.bayDoors) {
+    parts.push(...stationDoorParts(door, front, y0, STATION_FIRE_DOOR_RGB, true));
+  }
+  if (layout.sallyPort) {
+    parts.push(...stationDoorParts(layout.sallyPort, front, y0, STATION_SALLY_DOOR_RGB, true));
+  }
+  const { entrance } = layout;
+  parts.push(
+    standingBox(entrance.w, entrance.h, 0.12, entrance.x, y0, front + 0.1, STATION_ENTRANCE_RGB),
+  );
+  if (!fire) {
+    const storeys = Math.round(height / STATION_STOREY_M);
+    for (let f = 1; f < storeys; f++) {
+      parts.push(
+        standingBox(
+          w + 0.1,
+          0.2,
+          d + 0.1,
+          cx,
+          y0 + f * STATION_STOREY_M - 0.1,
+          cz,
+          STATION_BELT_RGB,
+        ),
+      );
+    }
+    parts.push(
+      standingBox(
+        w + 0.1,
+        0.9,
+        d + 0.1,
+        cx,
+        y0 + height - STATION_CAP_M - 1.3,
+        cz,
+        STATION_BAND_RGB,
+      ),
+      standingBox(5, 0.25, 3, entrance.x, y0 + 3, front + 1.5, STATION_CAP_RGB),
+    );
+    for (const sx of [-1, 1]) {
+      parts.push(
+        standingBox(0.25, 3, 0.25, entrance.x + sx * 2.4, y0, front + 2.8, STATION_POLE_RGB),
+      );
+    }
+  }
+  return mergeParts(parts);
+}
+
+/** Every lit pane on the street face, one geometry for the one emissive material. */
+function buildStationLitGeometry(entry: BuildingCatalogEntry): THREE.BufferGeometry {
+  const { plate, panes } = computeStationLayout(entry);
+  return mergeParts(
+    panes.map((pane) =>
+      standingBox(
+        pane.w,
+        pane.h,
+        0.06,
+        pane.x,
+        RECYCLING_YARD_HEIGHT + pane.y,
+        plate.z1 + pane.out,
+        STATION_POLE_RGB,
+      ),
+    ),
+  );
+}
+
+/** The hose tower of a fire station, or the radio pole on a police station's roof. */
+function buildStationMastGeometry(entry: BuildingCatalogEntry): THREE.BufferGeometry {
+  const { tower, pole, height } = computeStationLayout(entry);
+  const y0 = RECYCLING_YARD_HEIGHT;
+  if (tower) {
+    return mergeParts([
+      standingBox(
+        tower.x1 - tower.x0,
+        STATION_TOWER.height,
+        tower.z1 - tower.z0,
+        (tower.x0 + tower.x1) / 2,
+        y0,
+        (tower.z0 + tower.z1) / 2,
+        STATION_TOWER_RGB,
+      ),
+      standingBox(
+        tower.x1 - tower.x0 + 0.4,
+        STATION_CAP_M,
+        tower.z1 - tower.z0 + 0.4,
+        (tower.x0 + tower.x1) / 2,
+        y0 + STATION_TOWER.height,
+        (tower.z0 + tower.z1) / 2,
+        STATION_CAP_RGB,
+      ),
+    ]);
+  }
+  if (!pole) throw new RangeError('utilitykits: a station mast needs a tower or a pole');
+  const roof = y0 + height;
+  return mergeParts([
+    standingBox(0.3, STATION_POLE_M, 0.3, pole.x, roof, pole.z, STATION_POLE_RGB),
+    standingBox(2.2, 0.15, 0.15, pole.x, roof + STATION_POLE_M - 1, pole.z, STATION_POLE_RGB),
+    standingBox(1.4, 0.15, 0.15, pole.x, roof + STATION_POLE_M - 2, pole.z, STATION_POLE_RGB),
+  ]);
+}
+
+/** Whether a station kit has a tower or a pole to draw. */
+export function stationHasMast(entry: BuildingCatalogEntry): boolean {
+  const layout = computeStationLayout(entry);
+  return layout.tower !== null || layout.pole !== null;
+}
+
+// ---------------------------------------------------------------------------
 // small-park: flat lawn plate (lush green), a light
 // path cross, 2-3 simple trees (self-contained), 2 benches.
 // ---------------------------------------------------------------------------
@@ -2920,6 +3451,13 @@ export class UtilityKitRenderer {
     emissiveIntensity: 0,
   });
 
+  /** The panes of every station: dark glass by day, a warm light that follows the night factor. */
+  private readonly stationLightMaterial = new THREE.MeshLambertMaterial({
+    color: STATION_GLASS_COLOR,
+    emissive: STATION_LIGHT_COLOR,
+    emissiveIntensity: 0,
+  });
+
   private nightFactorValue = 0;
   private lastTMs = 0;
 
@@ -2968,10 +3506,16 @@ export class UtilityKitRenderer {
     return this.instances.get(buildingId)?.slots.cemeteryStone?.length ?? 0;
   }
 
-  /** 0 (day) .. 1 (night): only the turbine beacon reacts (kits stay unlit except a small red turbine nacelle beacon). */
+  /** 0 (day) .. 1 (night): the turbine beacon and the stations' lit panes react; every other kit stays unlit. */
   setNightFactor(nightFactor: number): void {
     this.nightFactorValue = Math.min(1, Math.max(0, nightFactor));
     this.beaconMaterial.emissiveIntensity = this.nightFactorValue;
+    this.stationLightMaterial.emissiveIntensity = this.nightFactorValue;
+  }
+
+  /** How brightly the stations' panes glow now. */
+  stationLightIntensity(): number {
+    return this.stationLightMaterial.emissiveIntensity;
   }
 
   /** Advances the wind-turbine rotor spin; call every frame with elapsed visual time in ms (never Date.now — the caller owns a deterministic clock, exactly like landmarks.ts/water.ts/clouds.ts). */
@@ -3068,6 +3612,11 @@ export class UtilityKitRenderer {
         return this.buildCemeteryKit(entry);
       case 'crematorium':
         return this.buildCrematoriumKit(entry);
+      case 'fire-station':
+      case 'fire-station-district':
+      case 'police-station':
+      case 'police-station-district':
+        return this.buildStationKit(entry);
       case 'small-park':
         return this.buildSmallParkKit(entry);
       default:
@@ -3384,6 +3933,35 @@ export class UtilityKitRenderer {
     };
   }
 
+  private buildStationKit(entry: BuildingCatalogEntry): KitDefinition {
+    const lambert = (): THREE.MeshLambertMaterial =>
+      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const pool = (
+      geometry: THREE.BufferGeometry,
+      material: THREE.Material = lambert(),
+      capacity = INITIAL_KIT_CAPACITY,
+    ) => new InstancedSlotPool(this.scene, geometry, material, capacity);
+    const layout = computeStationLayout(entry);
+    const apparatusKind = layout.service === 'fire' ? VehicleKind.Fire : VehicleKind.Police;
+    const pools: KitDefinition['pools'] = {
+      stationYard: pool(buildStationYardGeometry(entry)),
+      stationBuilding: pool(buildStationBuildingGeometry(entry)),
+      stationLit: pool(buildStationLitGeometry(entry), this.stationLightMaterial),
+      stationApparatus: pool(
+        buildParkedTruckGeometry(apparatusKind),
+        lambert(),
+        INITIAL_KIT_CAPACITY * layout.apparatus.length,
+      ),
+      stationCar: pool(
+        buildParkedCarGeometry(),
+        lambert(),
+        INITIAL_KIT_CAPACITY * layout.stalls.length,
+      ),
+    };
+    if (stationHasMast(entry)) pools.stationMast = pool(buildStationMastGeometry(entry));
+    return { entry, pavesLot: true, pools };
+  }
+
   private buildSmallParkKit(entry: BuildingCatalogEntry): KitDefinition {
     const lambert = (): THREE.MeshLambertMaterial =>
       new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -3525,6 +4103,12 @@ export class UtilityKitRenderer {
         return;
       case 'crematorium':
         this.applyCrematorium(kit, building, entry, centerX, groundY, centerZ, rotation);
+        return;
+      case 'fire-station':
+      case 'fire-station-district':
+      case 'police-station':
+      case 'police-station-district':
+        this.applyStation(kit, building, entry, centerX, groundY, centerZ, rotation);
         return;
       case 'small-park':
         this.applySmallPark(kit, building, entry, centerX, groundY, centerZ, rotation);
@@ -3904,6 +4488,53 @@ export class UtilityKitRenderer {
             rotation,
           ),
         ],
+      },
+    });
+  }
+
+  private applyStation(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    centerX: number,
+    groundY: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+  ): void {
+    const { stationYard, stationBuilding, stationLit, stationMast, stationApparatus, stationCar } =
+      kit.pools;
+    if (!stationYard || !stationBuilding || !stationLit || !stationApparatus || !stationCar) return;
+
+    const layout = computeStationLayout(entry);
+    const floor = groundY + RECYCLING_YARD_HEIGHT;
+    const placeLocal = (pool: InstancedSlotPool, local: Vec2, turn: 0 | 1 | 2 | 3): number => {
+      const rotated = rotateLocalXZ(local.x, local.z, rotation);
+      return this.placeAt(pool, centerX + rotated.x, floor, centerZ + rotated.z, turn);
+    };
+    const cars: number[] = [];
+    layout.stalls.forEach((stall, i) => {
+      if (!deckStallTaken(building.id, i)) return;
+      const slot = placeLocal(stationCar, stall, ((rotation + stall.turn) % 4) as 0 | 1 | 2 | 3);
+      _carColor.setHex(
+        VEHICLE_PALETTE_HEX[Math.floor(hash1(building.id * 31 + i) * VEHICLE_PALETTE_HEX.length)]!,
+      );
+      stationCar.setColorAt(slot, _carColor);
+      cars.push(slot);
+    });
+    const whole = (pool: InstancedSlotPool): number[] => [
+      this.placeAt(pool, centerX, groundY, centerZ, rotation),
+    ];
+    this.instances.set(building.id, {
+      catalogId: building.catalogId,
+      slots: {
+        stationYard: whole(stationYard),
+        stationBuilding: whole(stationBuilding),
+        stationLit: whole(stationLit),
+        ...(stationMast ? { stationMast: whole(stationMast) } : {}),
+        stationApparatus: layout.apparatus.map((spot) =>
+          placeLocal(stationApparatus, spot, rotation),
+        ),
+        stationCar: cars,
       },
     });
   }
