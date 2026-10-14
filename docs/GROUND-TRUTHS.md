@@ -968,6 +968,12 @@ MUTCD citations below use 11th-edition section numbers.
   [utilities-model.md](world-sim/utilities-model.md#production-and-demand);
   `averageOutputMW` in `src/shared/power.ts`, `crowdsItsKind` in
   `src/sim/worker.entry.ts`
+- Supply never varies with the hour: solar and wind count for their year's
+  average, their night and calm inside the capacity factor, because the cut rule
+  abandons districts rather than dimming them. A generator's pollution follows the
+  energy it makes — emission intensity times the megawatts it delivers, on the coal
+  plant's anchor of 140 — never its nameplate. —
+  [power-generation.md](game-design/features/power-generation.md#tuning)
 - Service range is a road-hop count in tiles, scaled by funding and floored. It
   is never called, drawn or computed as a radius. —
   [services-model.md](world-sim/services-model.md)

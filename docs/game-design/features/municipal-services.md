@@ -1,6 +1,6 @@
 # Municipal services — design
 
-- **Status:** In progress — epics 0 (service capacity), 1 (water and sewage), 2 (healthcare and death care), 4 (emergency services) and 5 (garbage recovery) built, 3 (education ladder) and 6 (power generation) partly built; 7 and 8 not started
+- **Status:** In progress — epics 0 (service capacity), 1 (water and sewage), 2 (healthcare and death care), 3 (education ladder), 4 (emergency services) and 5 (garbage recovery) built, 6 (power generation) partly built; 7 and 8 not started
 - **Date:** 2026-09-18
 
 ## What the player gets
@@ -68,10 +68,10 @@ turns red.
 
 | Service            | Today                 | After                                                                        |
 | ------------------ | --------------------- | ---------------------------------------------------------------------------- |
-| **Power**          | Two generators        | A thermal tier between them, and generation that can be outgrown             |
+| **Power**          | Two generators        | A solar farm, a gas turbine, a combined-cycle station and a reactor, each a real small unit |
 | **Water & sewage** | Water only            | The other half of the loop: pipes, a shore intake and an outfall are built (2026-10-02); treatment and a river you can spoil follow |
 | **Healthcare**     | One clinic            | Clinic → hospital, plus care for the old and the dead                        |
-| **Education**      | Elementary            | Elementary → middle → high → college, each its own field, plus a library (the schools are in the sim; drawn in slice 2) |
+| **Education**      | Elementary            | Elementary → middle → high → college, each its own field, plus a library, each drawn as a campus |
 | **Emergency**      | One police, one fire  | A station ladder for each, sized on response time                            |
 | **Garbage**        | Landfill, incinerator | Recovery, so burying is the worst option rather than the only one            |
 | **Transport**      | Stops                 | Depots, so a line has somewhere its vehicles come from                       |
