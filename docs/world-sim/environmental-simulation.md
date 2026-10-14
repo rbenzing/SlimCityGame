@@ -33,6 +33,7 @@ when `tickNo % period === offset`:
 | Crime                      | 8      | 1      | 0.985              | 252                      |
 | FireRisk                   | 8      | 2      | 0.99               | 253                      |
 | Education                  | 8      | 3      | 0.99               | 253                      |
+| MiddleEducation, HighEducation, CollegeEducation | 8 | 3 (with Education) | 0.99 | 253                |
 | Health                     | 8      | 4      | 0.99               | 253                      |
 | Happiness (recompute only) | 8      | 5      | — (never diffused) | —                        |
 | Pollution                  | 4      | 0      | 0.97               | 248                      |
@@ -201,10 +202,17 @@ FireRisk is not a growth problem flag and not a Happiness input.
 Emitted only by school buildings' coverage, blended as a **ceiling** (max of
 existing value and new coverage), never additive — a second school over the
 same ground cannot double the field. No ambient growth or decay input
-beyond the standard 0.99/tick. **Readers:** growth's residential
-level-3 requirement (education field > 60, in addition to the land-value
-threshold — [../game-design/simulation-rules.md](../game-design/simulation-rules.md)),
+beyond the standard 0.99/tick. **Readers:** growth's level-3 requirement
+(the field over 60, in addition to the land-value threshold —
+[../game-design/simulation-rules.md](../game-design/simulation-rules.md)),
 and the Happiness formula.
+
+The field is elementary school coverage. Middle, high and college schools each
+write their own field (`MiddleEducation = 9`, `HighEducation = 10`,
+`CollegeEducation = 11`), with the same max-blend and the same diffusion and
+decay, on the same slot; a rung never writes another rung's field, which is why no
+rung can stand in for another. Each is read only by growth's level-3 gate for its
+zones. Happiness reads `Education` alone.
 
 ## Health (`FieldId.Health = 7`)
 

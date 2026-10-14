@@ -18,19 +18,27 @@
  */
 import type { JSX } from 'react';
 import { SERVICE_FUNDING_MAX, SERVICE_FUNDING_MIN } from '../shared/constants';
-import { FieldId } from '../shared/types';
+import { FieldId, fundingKeyOf } from '../shared/types';
 import type { LensId, ServiceKind } from '../shared/types';
 import { catalogEntryForTool } from './categories';
 import { Icon } from './icons';
 import { useCityStore } from './store';
 import { LABEL, PANEL_ROUNDED } from './theme';
 
-/** Every kind gets a row, capped or not — a park's row is where its slider is. */
-const SERVICE_DEFS: ReadonlyArray<{ kind: ServiceKind; label: string }> = [
+/**
+ * Every kind gets a row, capped or not — a park's row is where its slider is.
+ * Education is one department with five rows: the elementary row carries its
+ * slider, and the other schools and the library read the same funding.
+ */
+const SERVICE_DEFS: ReadonlyArray<{ kind: ServiceKind; label: string; department?: string }> = [
   { kind: 'police', label: 'Police' },
   { kind: 'fire', label: 'Fire' },
   { kind: 'health', label: 'Health' },
-  { kind: 'education', label: 'Education' },
+  { kind: 'education', label: 'Elementary', department: 'Education' },
+  { kind: 'middle-education', label: 'Middle' },
+  { kind: 'high-education', label: 'High' },
+  { kind: 'college-education', label: 'College' },
+  { kind: 'library', label: 'Library' },
   { kind: 'park', label: 'Parks' },
 ];
 
@@ -40,6 +48,9 @@ const SERVICE_LENSES: ReadonlySet<LensId> = new Set<LensId>([
   FieldId.FireRisk,
   FieldId.Health,
   FieldId.Education,
+  FieldId.MiddleEducation,
+  FieldId.HighEducation,
+  FieldId.CollegeEducation,
 ]);
 
 /** Coarse enough to drag on a narrow panel, fine enough to land on 1.0 and 1.5. */
@@ -78,7 +89,7 @@ export function ServicesPanel(): JSX.Element | null {
         </div>
 
         <div className="flex items-center gap-1.5 px-2">
-          <span className={`${LABEL} w-14 shrink-0`}>Service</span>
+          <span className={`${LABEL} w-16 shrink-0`}>Service</span>
           <span className={`${LABEL} min-w-0 flex-1`}>Funding</span>
           <span className={`${LABEL} w-9 shrink-0 text-right`}>Load</span>
           <span className={`${LABEL} w-9 shrink-0 text-right`}>Worst</span>
@@ -86,8 +97,10 @@ export function ServicesPanel(): JSX.Element | null {
         </div>
 
         <div className="flex flex-col gap-1">
-          {SERVICE_DEFS.map(({ kind, label }) => {
-            const funding = serviceFunding[kind];
+          {SERVICE_DEFS.map(({ kind, label, department }) => {
+            const key = fundingKeyOf(kind);
+            const ownsSlider = key === kind;
+            const funding = serviceFunding[key];
             const reading = serviceLoad?.[kind];
             const load = reading?.load ?? 0;
             const worst = reading?.worst ?? 0;
@@ -105,17 +118,23 @@ export function ServicesPanel(): JSX.Element | null {
                 key={kind}
                 className="flex items-center gap-1.5 rounded-md bg-white/5 px-2 py-1 text-[12px]"
               >
-                <span className="w-14 shrink-0">{label}</span>
-                <input
-                  type="range"
-                  aria-label={`${label} funding`}
-                  min={SERVICE_FUNDING_MIN}
-                  max={SERVICE_FUNDING_MAX}
-                  step={FUNDING_STEP}
-                  value={funding}
-                  onChange={(e) => setServiceFunding(kind, Number(e.target.value))}
-                  className="min-w-0 flex-1 accent-accent"
-                />
+                <span className="w-16 shrink-0">{label}</span>
+                {ownsSlider ? (
+                  <input
+                    type="range"
+                    aria-label={`${department ?? label} funding`}
+                    min={SERVICE_FUNDING_MIN}
+                    max={SERVICE_FUNDING_MAX}
+                    step={FUNDING_STEP}
+                    value={funding}
+                    onChange={(e) => setServiceFunding(key, Number(e.target.value))}
+                    className="min-w-0 flex-1 accent-accent"
+                  />
+                ) : (
+                  <span className="min-w-0 flex-1 truncate text-[11px] text-white/40">
+                    Education funding
+                  </span>
+                )}
                 <span
                   data-testid={`service-funding-${kind}`}
                   className="w-9 shrink-0 text-right text-[11px] text-white/60"

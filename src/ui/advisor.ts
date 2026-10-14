@@ -7,15 +7,18 @@
  * and the stats block, with no three.js, store or worker anywhere near it, so
  * the entire ranking is testable directly.
  */
+import catalogData from '../data/catalog.json';
 import {
   DEATH_CARE_MILESTONE,
   MILESTONES,
   SEWER_MILESTONE,
   workforceOf,
 } from '../shared/constants';
+import { level3Schooling, type EducationRung } from '../shared/schooling';
 import {
   BuildingState,
   Problem,
+  type BuildingCatalogEntry,
   type BuildingInstance,
   type CityStats,
   type DeathCareReport,
@@ -147,6 +150,53 @@ function amount(value: number, unit: string): string {
   return `${shown} ${unit}`;
 }
 
+const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+const catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
+
+/** Buildings held at level 2 by schooling, gathered by the rungs their zone waits on. */
+interface SchoolingGroup {
+  rungs: readonly EducationRung[];
+  count: number;
+  focus: BuildingInstance;
+}
+
+/** "a middle school and a high school", the rungs as a player reads them. */
+function rungsText(rungs: readonly EducationRung[]): string {
+  return rungs.map((rung) => `a ${rung.school}`).join(' and ');
+}
+
+/**
+ * Buildings that clear the land value for level 3 and wait on a school, one issue
+ * per set of rungs their zone needs. Which rung of a pair is the one missing is for
+ * the building's own inspector; the Advisor says what the zone waits on, and when
+ * the town cannot yet build it, when it unlocks.
+ */
+function schoolingIssues(
+  groups: ReadonlyMap<string, SchoolingGroup>,
+  stats: CityStats,
+): CityIssue[] {
+  const issues: CityIssue[] = [];
+  for (const [id, { rungs, count, focus }] of groups) {
+    const locked = rungs
+      .map((rung) => catalog.find((e) => e.service?.kind === rung.kind))
+      .filter((e): e is BuildingCatalogEntry => e !== undefined)
+      .filter((e) => e.unlockMilestone > stats.milestoneLevel);
+    const unlock =
+      locked.length > 0
+        ? ` ${locked.map((e) => e.name).join(' and ')} unlock${locked.length === 1 ? 's' : ''} at ${MILESTONES[Math.max(...locked.map((e) => e.unlockMilestone))]!.name}.`
+        : '';
+    issues.push({
+      id,
+      severity: 'info',
+      title: `${count} building${count === 1 ? '' : 's'} held at level 2 for want of ${rungsText(rungs)}`,
+      detail: `They have the land value to level up and are waiting on schooling. Build ${rungsText(rungs)} on a street that connects to them.${unlock}`,
+      count,
+      focus: { x: focus.x, z: focus.z },
+    });
+  }
+  return issues;
+}
+
 /** Buildings still going up have not had their services judged yet. */
 function countsAsProblem(building: BuildingInstance): boolean {
   return building.state !== BuildingState.Constructing;
@@ -170,9 +220,23 @@ export function cityIssues(
 ): CityIssue[] {
   const counts = new Map<number, number>();
   const focus = new Map<number, BuildingInstance>();
+  const schooling = new Map<string, SchoolingGroup>();
 
   for (const building of buildings) {
     if (!countsAsProblem(building)) continue;
+    if ((building.problems & Problem.NeedsSchool) !== 0) {
+      const zone = catalogById.get(building.catalogId)?.zone;
+      const rungs = zone === undefined ? [] : level3Schooling(zone);
+      if (rungs.length > 0) {
+        const id = `needs-school-${rungs.map((rung) => rung.kind).join('+')}`;
+        const held = schooling.get(id);
+        if (!held) schooling.set(id, { rungs, count: 1, focus: building });
+        else {
+          held.count += 1;
+          if (building.id < held.focus.id) held.focus = building;
+        }
+      }
+    }
     for (const rule of PROBLEM_RULES) {
       if ((building.problems & rule.flag) === 0) continue;
       if (rule.unless !== undefined && (building.problems & rule.unless) !== 0) continue;
@@ -201,6 +265,7 @@ export function cityIssues(
   }
 
   issues.push(
+    ...schoolingIssues(schooling, stats),
     ...waitingIssues(waiting),
     ...unservedIssues(unserved),
     ...deathCareIssues(deathCare, stats),

@@ -1,6 +1,6 @@
 /**
- * Infoviews lens grid: opened from the main dock's ◐ toggle. The 9 FieldId
- * heatmap lenses plus the Power/Watered coverage lenses, the Soil lens and a
+ * Infoviews lens grid: opened from the main dock's ◐ toggle. The 12 FieldId
+ * heatmap lenses (education has one per rung) plus the Power/Watered coverage lenses, the Soil lens and a
  * None entry.
  * Selecting a lens sets the store's overlay; clicking the
  * active lens again turns it back off.
@@ -19,7 +19,10 @@ const LENSES: ReadonlyArray<{ id: LensId; label: string; icon: IconName }> = [
   { id: FieldId.Traffic, label: 'Traffic', icon: 'traffic' },
   { id: FieldId.Crime, label: 'Crime', icon: 'crime' },
   { id: FieldId.FireRisk, label: 'Fire Risk', icon: 'fire' },
-  { id: FieldId.Education, label: 'Education', icon: 'education' },
+  { id: FieldId.Education, label: 'Elementary', icon: 'education' },
+  { id: FieldId.MiddleEducation, label: 'Middle', icon: 'education' },
+  { id: FieldId.HighEducation, label: 'High School', icon: 'education' },
+  { id: FieldId.CollegeEducation, label: 'College', icon: 'education' },
   { id: FieldId.Health, label: 'Health', icon: 'health' },
   { id: FieldId.Happiness, label: 'Happiness', icon: 'happiness' },
   { id: 'power', label: 'Power', icon: 'electricity' },

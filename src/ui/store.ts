@@ -22,6 +22,7 @@ import type {
   CityStats,
   Command,
   District,
+  FundingKey,
   JunctionControl,
   LensId,
   RoadFlow,
@@ -294,7 +295,7 @@ export interface CityStoreState {
    * setServiceFunding, and mirrors the new figure into the stats readout so the
    * slider moves under the player's hand rather than on the next snapshot.
    */
-  setServiceFunding: (service: ServiceKind, funding: number) => void;
+  setServiceFunding: (service: FundingKey, funding: number) => void;
   /** Replaces the live stats-history samples. */
   setStatsSamples: (samples: StatsSample[]) => void;
   /** Opens/closes the stats charts panel. */

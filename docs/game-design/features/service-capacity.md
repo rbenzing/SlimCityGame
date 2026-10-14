@@ -191,7 +191,7 @@ area = w × d × 185 × (height ÷ 3.2) — at the scale in
 | police-station | 1,420 m²     | 2×2 × 6.4 m  | 1,480 m²     | resized to 6.4 m (emergency epic) |
 | fire-station   | ~500 m²      | 2×2 × 6.4 m  | 1,480 m²     | resized to 6.4 m; lot right       |
 | clinic         | 690 m²       | 2×2 × 14 m   | 3,238 m²     | now 1×2 × 6.4 m, 740 m²           |
-| school         | 2,240 m²     | 3×3 × 10 m   | 5,203 m²     | height should be 6.4 m; lot right |
+| school         | 4,400–5,900 m² | 3×3 × 10 m | 5,203 m²     | kept: 56,000 sf is 456 × 123 sf   |
 
 - **Police**: 48 sworn + 20 civilian = 68 staff at the business occupancy factor of 13.9
   m² gross = 945 m² of office and counter, plus half as much again for custody,
@@ -206,14 +206,19 @@ area = w × d × 185 × (height ÷ 3.2) — at the scale in
   13.9 m² gross = 514 m², plus a third for imaging, records and plant = **690 m²** over
   two storeys. The lot comes from the car park: 25 stalls at 2.7 × 5.5 m with a 7.3 m
   aisle is about 600 m² of ground.
-- **School**: 456 pupils at the classroom factor of 1.9 m² net ÷ 0.65 efficiency = 1,333
-  m²; hall and dining for half the school at a sitting, 228 × 1.4 m² net ÷ 0.65 = 491 m²;
-  30 staff at 13.9 m² = 417 m². Total **2,240 m²**, which is 4.9 m² per place.
+- **School**: 456 pupils at 104–140 sf a pupil, the US space-allocation guidelines
+  (Maine DOE 2025 gives 140 sf for an elementary school; Connecticut's ranges are the
+  cross-check) — 47,400 to 63,800 sf, **4,400 to 5,900 m²**. The school's 3×3 × 10 m is
+  5,203 m², 56,000 sf, 456 × 123 sf, inside it. The first pass here derived 2,240 m² from an
+  English classroom factor and called the 10 m height wrong; **that verdict is superseded**
+  by the US floor-per-pupil figures, and the school keeps its height
+  ([education-ladder.md](education-ladder.md#sizes-and-draw)).
 
-**The contradiction is the heights, and it is all four of them.** Every existing service
-building is between 3.1 and 4.4 storeys, and none of a town police station, a firehouse,
-a community clinic or a primary school is a four-storey building. The corrected heights
-above are the fix.
+**The contradiction was the heights, and it is three of the four.** Three of these
+buildings were between 3.1 and 4.4 storeys, and none of a town police station, a firehouse
+or a community clinic is a four-storey building. The corrected heights above are the fix.
+The school is not one of them: an elementary school of 456 pupils is a three-storey-high
+mass of 56,000 sf on a 3×3 lot.
 
 **The footprints are right, for a reason worth stating.** Three of these need more ground
 than floor — a fire apron, a clinic car park, a school field — so their lot is set by the

@@ -10,6 +10,7 @@ import catalogData from '../data/catalog.json';
 import { BuildingState, Problem, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingState as BuildingStateValue } from '../shared/types';
 import { averageOutputMW, formatMW } from '../shared/power';
+import { schoolNameOf } from '../shared/schooling';
 import { happinessFace, lotLine } from './format';
 import { Icon, type IconName } from './icons';
 import { useCityStore } from './store';
@@ -36,6 +37,7 @@ const PROBLEM_LABELS: ReadonlyArray<{ flag: number; label: string }> = [
   { flag: Problem.HighCrime, label: 'High Crime' },
   { flag: Problem.HighPollution, label: 'High Pollution' },
   { flag: Problem.LowDemand, label: 'Low Demand' },
+  { flag: Problem.NeedsSchool, label: 'Needs School' },
 ];
 
 function zoneDisplayName(entry: BuildingCatalogEntry | undefined): string {
@@ -95,6 +97,10 @@ function iconForEntry(entry: BuildingCatalogEntry | undefined): IconName {
         case 'health':
           return 'health';
         case 'education':
+        case 'middle-education':
+        case 'high-education':
+        case 'college-education':
+        case 'library':
           return 'education';
         case 'park':
           return 'parks';
@@ -203,6 +209,13 @@ export function InfoPanel(): JSX.Element | null {
               label="Load"
               value={`${Math.round(info.serviceLoad * 100)}%`}
               testId="service-load-row"
+            />
+          )}
+          {info?.missingSchools && info.missingSchools.length > 0 && (
+            <Row
+              label="Waiting on"
+              value={info.missingSchools.map(schoolNameOf).join(' and ')}
+              testId="missing-schools-row"
             />
           )}
           {info?.deathCare && 'total' in info.deathCare && (

@@ -240,9 +240,17 @@ export const FieldId = {
   Education: 6,
   Health: 7,
   Happiness: 8,
+  /** Middle school coverage. Saved after the tile's other layers (SAVE_VERSION 16), not beside the first nine. */
+  MiddleEducation: 9,
+  /** High school coverage. Saved with MiddleEducation. */
+  HighEducation: 10,
+  /** College coverage. Saved with MiddleEducation. */
+  CollegeEducation: 11,
 } as const;
 export type FieldId = (typeof FieldId)[keyof typeof FieldId];
-export const FIELD_COUNT = 9;
+export const FIELD_COUNT = 12;
+/** The field planes saved together in the tile record's body; the rest follow its last layer. */
+export const CORE_FIELD_COUNT = 9;
 
 /**
  * The road network: nodes and segments, the one place a road is stored, as
@@ -474,7 +482,28 @@ export interface MapData {
 // ---------------------------------------------------------------------------
 
 export type Sector = 'res' | 'com' | 'ind';
-export type ServiceKind = 'police' | 'fire' | 'health' | 'education' | 'park';
+/** The departments the player funds: one slider each. */
+export type FundingKey = 'police' | 'fire' | 'health' | 'education' | 'park';
+/**
+ * The kinds of facility the service pass runs. `education` is the elementary
+ * school; the other schools and the library are their own kinds so each reads its
+ * own load, yet all of them are paid for by the one Education slider.
+ */
+export type ServiceKind =
+  FundingKey | 'middle-education' | 'high-education' | 'college-education' | 'library';
+
+/** The department that funds a facility kind. */
+export function fundingKeyOf(kind: ServiceKind): FundingKey {
+  switch (kind) {
+    case 'middle-education':
+    case 'high-education':
+    case 'college-education':
+    case 'library':
+      return 'education';
+    default:
+      return kind;
+  }
+}
 
 export type Command =
   // `elevation` raises a deliberate viaduct (metres, 0 = follow the ground and
@@ -647,7 +676,7 @@ export type Command =
       interments?: number;
     }
   | { kind: 'setTaxRate'; sector: Sector; rate: number } // 0..0.3
-  | { kind: 'setServiceFunding'; service: ServiceKind; funding: number } // 0..1.5
+  | { kind: 'setServiceFunding'; service: FundingKey; funding: number } // 0..1.5
   | { kind: 'takeLoan'; amount: number }
   | { kind: 'repayLoan'; amount: number }
   // landscaping: one brush stroke — smoothstep falloff kernel over the
@@ -742,7 +771,7 @@ export interface CityStats {
   milestoneProgress: number; // 0..1 toward next
   loanBalance: number;
   taxRates: Record<Sector, number>;
-  serviceFunding: Record<ServiceKind, number>;
+  serviceFunding: Record<FundingKey, number>;
 }
 
 export const BuildingState = {
@@ -768,6 +797,8 @@ export const Problem = {
   NoSewer: 256,
   /** Beside NoSewer: a drain's network reaches it, but the drains ran out before it did. */
   SewerShortage: 512,
+  /** Land value clears level 3 and only its schooling is missing. Never abandons a building. */
+  NeedsSchool: 1024,
 } as const;
 
 export interface BuildingInstance {
@@ -1730,9 +1761,11 @@ export interface ReversibleEdit {
  * layers, and a pre-v13 save's roads convert to a network on load; v14 is v13
  * with the pipe layer appended to the tiles, which a v13 save loads empty; v15
  * is the v14 byte layout, the version whose landfill fill is counted in 0.25 kg
- * trash units (older saves counted a tile as 600), rescaled on load.
+ * trash units (older saves counted a tile as 600), rescaled on load; v16
+ * appends the middle, high and college education planes after the pipe layer,
+ * which an older save loads zero.
  */
-export const SAVE_VERSION = 15;
+export const SAVE_VERSION = 16;
 /** The first save version whose landfill fill is in 0.25 kg trash units. */
 export const TRASH_UNIT_SAVE_VERSION = 15;
 
@@ -1799,6 +1832,12 @@ export interface SelectionInfo {
    * the water beside it leaves. Absent for anything but a shore intake.
    */
   intakeYield?: number;
+  /**
+   * The schools a building held at level 2 by its schooling still lacks, as the
+   * facility kinds that would answer it. Absent for any building not carrying
+   * `Problem.NeedsSchool`.
+   */
+  missingSchools?: ServiceKind[];
 }
 
 /**

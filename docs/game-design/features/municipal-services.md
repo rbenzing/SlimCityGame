@@ -1,6 +1,6 @@
 # Municipal services — design
 
-- **Status:** In progress — epics 0 (service capacity), 1 (water and sewage), 2 (healthcare and death care), 4 (emergency services) and 5 (garbage recovery) built, 6 (power generation) partly built; 3, 7 and 8 not started
+- **Status:** In progress — epics 0 (service capacity), 1 (water and sewage), 2 (healthcare and death care), 4 (emergency services) and 5 (garbage recovery) built, 3 (education ladder) and 6 (power generation) partly built; 7 and 8 not started
 - **Date:** 2026-09-18
 
 ## What the player gets
@@ -71,7 +71,7 @@ turns red.
 | **Power**          | Two generators        | A thermal tier between them, and generation that can be outgrown             |
 | **Water & sewage** | Water only            | The other half of the loop: pipes, a shore intake and an outfall are built (2026-10-02); treatment and a river you can spoil follow |
 | **Healthcare**     | One clinic            | Clinic → hospital, plus care for the old and the dead                        |
-| **Education**      | Elementary            | Primary → secondary → tertiary, each gating the next, plus a library         |
+| **Education**      | Elementary            | Elementary → middle → high → college, each its own field, plus a library (the schools are in the sim; drawn in slice 2) |
 | **Emergency**      | One police, one fire  | A station ladder for each, sized on response time                            |
 | **Garbage**        | Landfill, incinerator | Recovery, so burying is the worst option rather than the only one            |
 | **Transport**      | Stops                 | Depots, so a line has somewhere its vehicles come from                       |
@@ -105,8 +105,8 @@ up as the size of the area served, and the load only turns when the area stops
 growing.
 
 **Demand and growth.** Education already gates what a zone can grow into.
-Adding secondary and tertiary education extends that ladder rather than
-replacing it; adding death care creates the first _downward_ pressure on
+The middle and high schools, the college and the library extend that ladder
+rather than replacing it; adding death care creates the first _downward_ pressure on
 population the city has ever had.
 
 **Traffic.** Every service that dispatches vehicles — ambulances, fire engines,

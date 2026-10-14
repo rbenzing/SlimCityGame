@@ -1892,7 +1892,9 @@ describe('the lot picks its building', () => {
         (stem) => {
           const ids = [1, 2, 3].map((n) => `${stem}-${n}`);
           const g = twoSidedStreet(false, 255, medium);
-          g.fields[FieldId.Education]!.fill(255);
+          // Medium-density housing waits on a middle and a high school.
+          g.fields[FieldId.MiddleEducation]!.fill(255);
+          g.fields[FieldId.HighEducation]!.fill(255);
           const registry = new BuildingRegistry(blocks);
           const first = blocks.find((e) => e.id === ids[0])!;
           registry.place(g, first, 3, 3, 0, BuildingState.Active);
@@ -2453,6 +2455,9 @@ describe('a business opens where the town has room for its jobs', () => {
       const cat = [fuel2, fuel3];
       const registry = new BuildingRegistry(cat);
       expect(registry.place(g, fuel2, 0, z, 0, BuildingState.Active)).not.toBeNull();
+      // Local commercial waits on a middle and a high school for level 3.
+      g.fields[FieldId.MiddleEducation]!.fill(255);
+      g.fields[FieldId.HighEducation]!.fill(255);
       const growth = new GrowthSystem(cat, constantRng(0), onZoned(ZoneType.ComLow));
       growth.tick(g, registry, wantsShops, 1, 0, UNMETERED_SUPPLY, UNLIMITED_ROOM);
       expect(registry.all().map((b) => b.catalogId)).toEqual(['fuel-3']);

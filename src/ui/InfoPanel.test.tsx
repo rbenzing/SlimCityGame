@@ -323,6 +323,55 @@ describe('InfoPanel', () => {
     expect(screen.getByText('Sewer Shortage')).toBeInTheDocument();
   });
 
+  it('marks a building held at level 2 by schooling, and names the school it is missing', () => {
+    const held = {
+      id: 4,
+      catalogId: 'res-high-2',
+      x: 0,
+      z: 0,
+      rotation: 0 as const,
+      level: 2,
+      state: BuildingState.Active,
+      problems: Problem.NeedsSchool,
+    };
+    useCityStore.getState().setSelectedBuilding(held);
+    useCityStore.getState().setSelectionInfo({
+      building: held,
+      happiness: 60,
+      monthlyTax: 10,
+      monthlyUpkeep: 0,
+      occupancy: {},
+      missingSchools: ['high-education'],
+    });
+    render(<InfoPanel />);
+    expect(screen.getByText('Needs School')).toBeInTheDocument();
+    expect(screen.getByTestId('missing-schools-row')).toHaveTextContent('high school');
+    expect(screen.getByTestId('missing-schools-row')).not.toHaveTextContent('middle');
+    cleanup();
+
+    // Both missing, both named.
+    useCityStore.getState().setSelectionInfo({
+      building: held,
+      happiness: 60,
+      monthlyTax: 10,
+      monthlyUpkeep: 0,
+      occupancy: {},
+      missingSchools: ['middle-education', 'high-education'],
+    });
+    render(<InfoPanel />);
+    expect(screen.getByTestId('missing-schools-row')).toHaveTextContent(
+      'middle school and high school',
+    );
+    cleanup();
+
+    // A building that is not held says nothing of schools.
+    useCityStore.getState().setSelectedBuilding({ ...held, problems: 0 });
+    useCityStore.getState().setSelectionInfo(null);
+    render(<InfoPanel />);
+    expect(screen.queryByText('Needs School')).toBeNull();
+    expect(screen.queryByTestId('missing-schools-row')).toBeNull();
+  });
+
   it('shows UPKEEP unconditionally from the catalog', () => {
     useCityStore.getState().setSelectedBuilding({
       id: 1,

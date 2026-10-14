@@ -211,8 +211,10 @@ Health, Education) is on. Like them it carries no close button.
 
 - **Header**: the city glyph and the "Services" label, then a caption row
   naming the four columns — Service, Funding, Load, Worst.
-- **One row per service** — Police, Fire, Health, Education, Parks — each
-  carrying all four together, because the slider and the gauge are the two
+- **One row per service** — Police, Fire, Health, then Elementary, Middle, High,
+  College and Library, then Parks — each carrying all four together, the
+  schools and the library reading one shared Education slider on the Elementary
+  row (one department, so one funding), each its own load, because the slider and the gauge are the two
   answers to one question and splitting them across screens is what kept
   funding invisible:
   - a **funding slider**, 0 to 1.5 in steps of 0.05, with its value beside

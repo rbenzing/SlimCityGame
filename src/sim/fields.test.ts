@@ -110,6 +110,36 @@ describe('FieldSim diffusion', () => {
   });
 });
 
+describe('FieldSim education rungs', () => {
+  it('diffuses and decays every rung exactly as it does Education, on the same slot', () => {
+    const sim = new FieldSim();
+    const g = makeGrid();
+    const rungs = [
+      FieldId.Education,
+      FieldId.MiddleEducation,
+      FieldId.HighEducation,
+      FieldId.CollegeEducation,
+    ];
+    for (const rung of rungs) sim.emit(g, rung, 80, 80, 200);
+    sim.tick(g, 3);
+    const education = g.fields[FieldId.Education]!;
+    expect(education[tileIndex(80, 80)]!).toBeLessThan(200);
+    expect(education[tileIndex(81, 80)]!).toBeGreaterThan(0);
+    for (const rung of rungs) {
+      expect(g.fields[rung]).toEqual(education);
+    }
+  });
+
+  it('leaves a rung untouched off the Education slot', () => {
+    const sim = new FieldSim();
+    const g = makeGrid();
+    sim.emit(g, FieldId.HighEducation, 80, 80, 200);
+    const before = g.fields[FieldId.HighEducation]!.slice();
+    sim.tick(g, 2);
+    expect(g.fields[FieldId.HighEducation]).toEqual(before);
+  });
+});
+
 describe('FieldSim decay with no sources', () => {
   it('pollution mass strictly decays and eventually reaches exactly zero', () => {
     const sim = new FieldSim();

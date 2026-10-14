@@ -298,8 +298,15 @@ A newly spawned or newly leveled-up building spends `CONSTRUCTION_TICKS` =
 
 Every growth pass, an Active building below level 3 is checked for a
 level-up. A home or a shop needs the land value over its tile to exceed 140
-(to reach level 2) or 190 (to reach level 3); residential buildings reaching
-level 3 additionally need the tile's education field over 60. Land value is
+(to reach level 2) or 190 (to reach level 3). Reaching level 3 additionally
+needs schooling, by zone, each field over 60: detached and row housing the
+elementary field; medium and high-density housing, mixed use and local
+commercial the middle **and** the high school fields; high-density commercial
+the college field; industry, heavy industry and farms nothing. Level 2 is never
+gated by schooling. Each rung is its own field, so no rung stands in for another
+([education-ladder.md](features/education-ladder.md)). A building that clears the
+land value for level 3 and fails only its schooling carries `NeedsSchool`.
+Land value is
 earned, not waited for: bare clean ground settles at 119, under the first
 line, a river bank at 181, over it, and only a park, trees or the shore
 together with a quiet clean street carry a tile past the second

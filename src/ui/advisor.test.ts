@@ -165,6 +165,58 @@ describe('cityIssues', () => {
   });
 });
 
+describe('buildings held at level 2 by schooling', () => {
+  const held = (catalogId: string, overrides: Partial<BuildingInstance> = {}): BuildingInstance =>
+    building(Problem.NeedsSchool, { catalogId, level: 2, ...overrides });
+
+  it('counts them by the rungs their zone waits on, one issue per rung set', () => {
+    const issues = cityIssues(
+      [
+        held('res-half-2'),
+        held('res-medium-row-2'),
+        held('res-high-2'),
+        held('mixed-2'),
+        held('com-shop-2'),
+        held('com-office-2'),
+      ],
+      healthyStats({ milestoneLevel: 6 }),
+    );
+    const byId = new Map(issues.map((i) => [i.id, i]));
+    expect(byId.get('needs-school-education')?.count).toBe(2);
+    expect(byId.get('needs-school-middle-education+high-education')?.count).toBe(3);
+    expect(byId.get('needs-school-college-education')?.count).toBe(1);
+    expect(byId.get('needs-school-middle-education+high-education')?.title).toContain(
+      'a middle school and a high school',
+    );
+  });
+
+  it('says when a rung the town cannot build yet unlocks, and says nothing of it once it can', () => {
+    const early = cityIssues([held('res-high-2')], healthyStats({ milestoneLevel: 1 }));
+    expect(early[0]?.detail).toContain('unlock at Big Town');
+    const later = cityIssues([held('res-high-2')], healthyStats({ milestoneLevel: 3 }));
+    expect(later[0]?.detail).not.toContain('unlock');
+  });
+
+  it('points at the lowest-id building whatever order the mirror is in', () => {
+    const a = held('res-high-2', { x: 4, z: 5 });
+    const b = held('res-high-2', { x: 40, z: 50 });
+    const issues = cityIssues([b, a], healthyStats());
+    expect(issues[0]?.focus).toEqual({ x: 4, z: 5 });
+  });
+
+  it('is only information, and says nothing for industry, which never asks for a school', () => {
+    const issues = cityIssues([held('res-high-2')], healthyStats());
+    expect(issues[0]?.severity).toBe('info');
+    expect(cityIssues([held('ind-workshop-2')], healthyStats())).toEqual([]);
+  });
+
+  it('ignores a building still going up', () => {
+    expect(
+      cityIssues([held('res-high-2', { state: BuildingState.Constructing })], healthyStats()),
+    ).toEqual([]);
+  });
+});
+
 describe('a grid too small for its city', () => {
   const short = Problem.NoPower | Problem.PowerShortage;
   const dry = Problem.NoWater | Problem.WaterShortage;

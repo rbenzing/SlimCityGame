@@ -6,6 +6,7 @@
 
 import { MAP_SIZE, MAX_BUILD_SLOPE, ROAD_MAX_SLOPE } from '../shared/constants';
 import {
+  CORE_FIELD_COUNT,
   FIELD_COUNT,
   RoadFlow,
   RoadTier,
@@ -105,6 +106,9 @@ const BYTES_PER_TILE_V13 = BYTES_PER_TILE_V12 - ROAD_LAYER_BYTES;
 // v14 is v13 with the trailing waterPipe layer, which loads empty so an older
 // city has no pipes and its water travels its streets alone.
 const BYTES_PER_TILE = BYTES_PER_TILE_V13 + 1;
+// v16 is v14 with the education planes beyond the first nine — one byte each —
+// appended after the pipe layer, so every older tile record is a prefix of it.
+const BYTES_PER_TILE_V16 = BYTES_PER_TILE + 3;
 const U32_BYTES = 4;
 /** Arms a junction has, and so entries the per-lane layer keeps per tile. */
 export const ARMS_PER_TILE = 4;
@@ -160,9 +164,10 @@ export const BYTES_PER_TILE_BY_VERSION: readonly number[] = [
   BYTES_PER_TILE,
   // v15 changes no layer: it is the v14 layout.
   BYTES_PER_TILE,
+  BYTES_PER_TILE_V16,
 ];
 
-function bufferBytesFor(size: number, bytesPerTile: number = BYTES_PER_TILE): number {
+function bufferBytesFor(size: number, bytesPerTile: number = BYTES_PER_TILE_V16): number {
   return HEADER_BYTES + size * size * bytesPerTile;
 }
 
@@ -230,7 +235,7 @@ function writeTiles(g: GridState, buffer: ArrayBuffer, version: number, roads: b
   bytes.set(g.watered, offset);
   offset += n;
 
-  for (let f = 0; f < FIELD_COUNT; f++) {
+  for (let f = 0; f < CORE_FIELD_COUNT; f++) {
     bytes.set(g.fields[f]!, offset);
     offset += n;
   }
@@ -282,6 +287,14 @@ function writeTiles(g: GridState, buffer: ArrayBuffer, version: number, roads: b
     bytes.set(g.waterPipe, offset);
     offset += n;
   }
+  // The education planes past the first nine (v16): written last, whatever their
+  // FieldId, so no byte of an older save's record moves.
+  if (version >= 16) {
+    for (let f = CORE_FIELD_COUNT; f < FIELD_COUNT; f++) {
+      bytes.set(g.fields[f]!, offset);
+      offset += n;
+    }
+  }
   if (!roads) return;
   // The road passing over a crossing tile (v12): tier, profile, flow, deck.
   bytes.set(g.overTier, offset);
@@ -304,7 +317,7 @@ export function savedRoadNetwork(buf: ArrayBuffer): Uint8Array | null {
   // The tiles are as wide as the SAVE's version made them, not today's: a
   // v13 save has no pipe layer, and measuring it at v14's width reads the
   // network's length from inside the network.
-  const bytesPerTile = BYTES_PER_TILE_BY_VERSION[version] ?? BYTES_PER_TILE;
+  const bytesPerTile = BYTES_PER_TILE_BY_VERSION[version] ?? BYTES_PER_TILE_V16;
   const tiles = bufferBytesFor(view.getUint32(4, true), bytesPerTile);
   const length = view.getUint32(tiles, true);
   return new Uint8Array(buf, tiles + U32_BYTES, length);
@@ -336,13 +349,14 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
   const hasJunctionLaneTurns = version >= 11;
   const hasOverRoads = version >= 12;
   const hasWaterPipe = version >= 14;
+  const hasEducationPlanes = version >= 16;
   // From v13 the roads are the network after the tiles, and every road layer
   // loads empty here for roadnet.ts to derive.
   const hasRoadLayers = version <= 12;
 
   const size = view.getUint32(4, true);
   const n = size * size;
-  const bytesPerTile = BYTES_PER_TILE_BY_VERSION[version] ?? BYTES_PER_TILE;
+  const bytesPerTile = BYTES_PER_TILE_BY_VERSION[version] ?? BYTES_PER_TILE_V16;
   const tileBytes = bufferBytesFor(size, bytesPerTile);
   const networkBytes =
     hasRoadLayers || buf.byteLength < tileBytes + U32_BYTES
@@ -386,7 +400,7 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
   offset += n;
 
   const fields: Uint8Array[] = [];
-  for (let f = 0; f < FIELD_COUNT; f++) {
+  for (let f = 0; f < CORE_FIELD_COUNT; f++) {
     fields.push(bytes.slice(offset, offset + n));
     offset += n;
   }
@@ -455,6 +469,12 @@ export function deserializeGrid(buf: ArrayBuffer): GridState {
   // its streets alone until the player lays some.
   const waterPipe = hasWaterPipe ? bytes.slice(offset, offset + n) : new Uint8Array(n);
   if (hasWaterPipe) offset += n;
+  // Education planes beyond the first nine (v16+). An older buffer has none, so
+  // the city loads with no middle, high or college coverage until a school writes it.
+  for (let f = CORE_FIELD_COUNT; f < FIELD_COUNT; f++) {
+    fields.push(hasEducationPlanes ? bytes.slice(offset, offset + n) : new Uint8Array(n));
+    if (hasEducationPlanes) offset += n;
+  }
   // Over-road layers (v12+). An older buffer has no overpasses.
   const overTier = new Uint8Array(n);
   const overProfile = new Uint16Array(n);

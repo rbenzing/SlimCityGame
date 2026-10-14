@@ -5,6 +5,7 @@ import type { BuildingInstance, GridState, TransitMode } from '../../src/shared/
 import { SoilGrade, soilGrades } from '../../src/shared/soil';
 import { decodeSave } from '../../src/app/persist';
 import { loadGrid } from '../../src/world/roadnet';
+import { recomputeUtilities } from '../../src/sim/network';
 import { noiseWallsOf } from '../../src/world/noisewalls';
 import { isPresetProfileId, presetProfileForTier } from '../../src/shared/roadprofile';
 import { noiseTransmission, OPEN_EDGE } from '../../src/shared/soundwall';
@@ -304,8 +305,27 @@ describe('a small town, built and grown, as the regression for everything togeth
     // A load finishes whatever was being built, since construction countdowns
     // are not saved, and keeps no incinerator buffer that holds nothing.
     const expected = structuredClone(before.meta);
+    let finished = 0;
     for (const b of expected.registry.buildings) {
-      if (b.state === BuildingState.Constructing) b.state = BuildingState.Active;
+      if (b.state === BuildingState.Constructing) {
+        b.state = BuildingState.Active;
+        finished += 1;
+      }
+    }
+    if (finished > 0) {
+      // A home under construction houses nobody and so draws nothing; finished at
+      // load it draws, and the load recomputes the utilities at once. The expected
+      // demand is the sim's own utility pass run over the finished registry.
+      const totals = recomputeUtilities(
+        loadGrid(before.grid).grid,
+        expected.registry.buildings,
+        catalog,
+        expected.stats.milestoneLevel,
+      );
+      for (const key of ['powerDemand', 'waterDemand', 'sewerDemand'] as const) {
+        expect(after.meta.stats[key]).toBeCloseTo(totals[key], 9);
+        expected.stats[key] = after.meta.stats[key];
+      }
     }
     if (expected.garbage) {
       expected.garbage.incinerators = expected.garbage.incinerators.filter((i) => i.units > 0);
