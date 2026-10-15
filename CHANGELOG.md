@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.63.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.62.0...slimcity-v1.63.0) (2026-10-15)
+
+
+### Features
+
+* **render:** the storefront kit's parts, each commercial kind read from its car park ([ac3c1b0](https://github.com/rbenzing/SlimCityGame/commit/ac3c1b01e430dffc719064b244b502e9a614341b))
+* **render:** the storefront kit's parts, each commercial kind read from its car park ([d98531b](https://github.com/rbenzing/SlimCityGame/commit/d98531b3d6a6a1a0f9b7fe956996b7bd976a7f2f))
+
 ## [1.62.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.61.0...slimcity-v1.62.0) (2026-10-15)
 
 
