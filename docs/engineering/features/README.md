@@ -83,6 +83,7 @@ Outside the programme:
 | [building-types.md](building-types.md) | no        | no              |
 | [underground-view.md](underground-view.md) | no    | no              |
 | [parking-to-code.md](parking-to-code.md) | no          | no              |
+| [building-detail.md](building-detail.md) | no          | no              |
 
 Farms add a zone and derive the soil it grows on, so neither contract moves.
 An interchange is a batch of the road commands that already exist. A compact
