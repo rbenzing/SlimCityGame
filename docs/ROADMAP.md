@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 6,527 tests passing across 188 test files, run 2026-10-15.
+**Test suite:** 6,565 tests passing across 189 test files, run 2026-10-15.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -354,6 +354,38 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Industry and farms, drawn as the plants and farmsteads they are (industry slice of building detail, built 2026-10-15)
+
+The industrial kit gains the parts each kind is known by, at sourced sizes,
+and the farmstead its barn, silos, bins and house as the Midwest builds
+them. Nothing in the simulation changes.
+
+- **Dock banks on the loading side.** A warehouse or food plant's dock
+  doors (9 × 10 ft at 14 ft centres, with shelters, bumpers and a dock
+  light each) move to the lot's loading wall, and the truck court there is
+  striped into 12 × 55 ft trailer stalls by the lot layout where ground is
+  left over. The street face gets a two-storey glazed office corner under a
+  canopy, panel reveals every 25 ft and a 3 ft parapet band; the food
+  plant adds two rooftop condensers.
+- **Metal buildings.** The workshop and factory take roll-up doors by
+  centres with a walk door beside them, a wainscot, gutters, downspouts
+  every 20 ft, a ridge vent, and on the factory a lit clerestory on the
+  monitor; the flex building an entry canopy.
+- **Heavy plant.** The chemical yard gets its bund wall, an LPG bullet on
+  saddles, a two-tier pipe rack and a process column; the steelworks a
+  furnace tower with three stoves, a skip bridge and a duct to the stack;
+  the paper mill a chip pile and stacker where the yard has 25 m clear,
+  which no shipped lot does yet.
+- **The farmstead.** A true gambrel barn with its loft door, two cupolas
+  and sliding doors; hoops on the silos and rings on the bins in vertex
+  colour; a 30° bin cone; a foursquare farmhouse with its hipped roof,
+  front dormer and full-width porch; an equipment shed on crop farms; a
+  48 in cattle fence.
+- A new **farm tier of 40,000 triangles** counts everything on the lot,
+  orchard trees included; the heaviest farm is 23,000. Every industrial
+  block stays under 1,140 against its 1,500 tier. The Metropolis gains
+  46 draw calls and 0.7 M triangles in the oblique views.
 
 ### The storefronts, drawn as the shops they are (storefronts slice of building detail, built 2026-10-15)
 

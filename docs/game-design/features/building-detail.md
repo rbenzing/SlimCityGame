@@ -1,6 +1,6 @@
 # Building detail — design
 
-- **Status:** The measurement, the performance slice, the houses and the storefronts built 2026-10-15; industry and farms next
+- **Status:** The measurement, the performance slice, the houses, the storefronts and industry and farms built 2026-10-15; apartment blocks and towers next
 - **Date:** 2026-10-14
 
 ## What the player gets
@@ -140,9 +140,16 @@ one; the slice's document says which it used.
    porte-cochère; rooftop units on every flat roof; signs that light at
    night. The spec is
    [the storefront kit's parts](../../art/buildings.md#the-storefront-kits-parts).
-5. **Industry and farms.** Dock doors at centres, truck courts, the metal
-   building's ribs and roll-ups, pipe racks, the furnace and stoves, the
-   gambrel barn and silo.
+5. **Industry and farms** (built 2026-10-15). Dock banks on the loading
+   side with levellers, bumpers and lights, and the truck court striped into
+   trailer stalls; the metal building's wainscot, gutters, downspouts, ridge
+   vent and roll-ups by centres; the office corner, reveals and parapet
+   band; the chemical yard's bund, bullet, pipe rack and column; the furnace
+   with its stoves, skip bridge and duct; the gambrel barn with loft door,
+   cupolas and sliding doors; hooped silos, coned bins, the foursquare
+   farmhouse, the equipment shed and the cattle fence. The spec is
+   [the industrial kit's parts](../../art/buildings.md#the-industrial-kits-parts)
+   and [the farmstead's parts](../../art/buildings.md#the-farmsteads-parts).
 6. **Apartment blocks and towers.** The garden apartment's breezeways, the
    5-over-1's panel bays and podium, the tower's balconies and base.
 7. **The kitless ploppables.** Clinic, rail station and bus stop. The airport

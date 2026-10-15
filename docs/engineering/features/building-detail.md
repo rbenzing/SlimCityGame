@@ -1,6 +1,6 @@
 # Building detail — technical design
 
-- **Status:** The measurement, the performance slice, the houses and the storefronts built 2026-10-15; industry and farms next
+- **Status:** The measurement, the performance slice, the houses, the storefronts and industry and farms built 2026-10-15; apartment blocks and towers next
 - **Date:** 2026-10-14
 - **Author:** Claude Fable 5.1
 
@@ -280,6 +280,50 @@ above is read with that correction.
   from above, a filling station, an office and a hotel downtown, each at
   the default pitch beside the 4 m car; the same at night, where sign bands,
   the pylon and the lobby glow and the rest does not.
+- `tools/frame-budget.mjs` before and after.
+
+### Industry and farms
+
+Industry extends the commercial kit as the storefronts did; the farms
+extend their own kit in `src/render/farms.ts` from the plan in
+`src/render/farmlot.ts`, which already draws the barn, house, silos, bins,
+orchard and paddock.
+
+- `PART` kinds gain wainscot, walkDoor, gutter, downspout, ridgeVent,
+  dockShelter, dockBumper, dockLight, officeCorner, officeCanopy,
+  panelReveal, parapetBand, clerestory, entryCanopy, condenser, bundWall,
+  bullet, pipeRack, processColumn, furnace, stove, skipBridge, duct,
+  chipPile, stacker; the existing loadingDock, rollUpDoors, monitorRoof,
+  roofArray and tanks stay. Industrial parts get a per-kind table like
+  `STOREFRONT_PARTS`.
+- **The loading side.** `kitPlanFor` already carries the lot plan; the
+  dock bank reads the plan's loading berths and stands on that side, the
+  office corner on the street face. `lotlayout.ts` stripes trailer stalls
+  3.66 × 16.8 m in the truck court where the berths are, in the lot mesh.
+  Without berths the dock keeps the street face.
+- **Lit parts:** the office corner's glazing and the factory's clerestory
+  go on `kitLightMaterial`.
+- **The farms:** `farms.ts` gains the loft door, cupola, sliding doors,
+  silo chute, bin cone and cap, the foursquare's porch and dormer, and the
+  equipment shed as pools; the silo and bin geometry gain vertex-colour
+  bands; the barn's roof profile and the fence's rail height take the
+  figures in [../../art/buildings.md](../../art/buildings.md#the-farmsteads-parts).
+  The farmhouse's trim follows the house kit's `trimColor`.
+- Tests: each industrial kind's part list; the dock bank on the loading
+  side with doors at 4.3 m centres and on the street face without berths;
+  trailer stalls in the lot plan; door counts by frontage; the furnace,
+  stoves and column heights as multiples of the body; the chip pile only
+  where the yard has room; lit parts on the lit material and nothing else;
+  all four street sides; determinism; the block tier. Farms: the gambrel
+  rise, the loft door in the yard gable, cupola count by ridge length, the
+  porch's depth and floor, fence rail at 1.22 m, the orchard's tree count,
+  and a farm tier of 40,000 that the geometry test gains rows for, with the
+  measured figures reported.
+- Shots, `tools/industry-shots.mjs`: a warehouse from its truck court and
+  from the street, a workshop, a factory, a flex building, a food plant, a
+  chemical plant, a steelworks and a paper mill, each at the default pitch
+  beside a 7 m box truck; a crop farm, an orchard and a pasture with their
+  farmsteads; the same at night.
 - `tools/frame-budget.mjs` before and after.
 
 ### Each slice, the same shape

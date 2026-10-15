@@ -85,7 +85,32 @@ export type BuildingPart =
   | 'coolingTower'
   | 'porteCochere'
   | 'rooftopUnit'
-  | 'roofHatch';
+  | 'roofHatch'
+  | 'wainscot'
+  | 'walkDoor'
+  | 'gutter'
+  | 'downspout'
+  | 'ridgeVent'
+  | 'dockShelter'
+  | 'dockBumper'
+  | 'dockLight'
+  | 'officeCorner'
+  | 'officeCanopy'
+  | 'panelReveal'
+  | 'parapetBand'
+  | 'clerestory'
+  | 'entryCanopy'
+  | 'condenser'
+  | 'bundWall'
+  | 'bullet'
+  | 'pipeRack'
+  | 'processColumn'
+  | 'furnace'
+  | 'stove'
+  | 'skipBridge'
+  | 'duct'
+  | 'chipPile'
+  | 'stacker';
 
 /**
  * Whether an industrial building is the CLEAN kind, taken from whether it
@@ -236,6 +261,37 @@ const STOREFRONT_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
   ],
 };
 
+/** The dock bank a distribution centre and a food plant share: doors on a platform, each framed, bumped and lit. */
+const DOCK_BANK_PARTS: readonly BuildingPart[] = [
+  'loadingDock',
+  'rollUpDoors',
+  'dockShelter',
+  'dockBumper',
+  'dockLight',
+  'officeCorner',
+  'officeCanopy',
+];
+
+/** An industrial building of a known kind is dressed by its kind; one of no kind keeps its archetype's plain parts. */
+const INDUSTRY_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
+  workshop: ['rollUpDoors', 'walkDoor', 'wainscot', 'gutter', 'downspout', 'ridgeVent'],
+  warehouse: [...DOCK_BANK_PARTS, 'panelReveal', 'parapetBand'],
+  factory: [
+    'monitorRoof',
+    'clerestory',
+    'rollUpDoors',
+    'walkDoor',
+    'wainscot',
+    'gutter',
+    'downspout',
+  ],
+  flex: ['roofArray', 'entryCanopy', 'wainscot'],
+  foodplant: [...DOCK_BANK_PARTS, 'condenser'],
+  chemical: ['tanks', 'bundWall', 'bullet', 'pipeRack', 'processColumn'],
+  metals: ['monitorRoof', 'furnace', 'stove', 'skipBridge', 'duct'],
+  paper: ['monitorRoof', 'tanks', 'chipPile', 'stacker'],
+};
+
 /** An office tower, the third level, stands a screened cooling tower on its roof in place of rooftop units. */
 const OFFICE_TOWER_PARTS: readonly BuildingPart[] = [
   'lobbyPortal',
@@ -247,6 +303,9 @@ const OFFICE_TOWER_PARTS: readonly BuildingPart[] = [
 export function partsFor(entry: BuildingCatalogEntry): readonly BuildingPart[] {
   const archetype = archetypeFor(entry);
   if (archetype === 'storefront') return STOREFRONT_PARTS[entry.kind ?? ''] ?? PARTS.storefront;
+  if (entry.category === 'ind' && !isFarmEntry(entry)) {
+    return INDUSTRY_PARTS[entry.kind ?? ''] ?? PARTS[archetype];
+  }
   if (archetype === 'office' && isOfficeTower(entry)) return OFFICE_TOWER_PARTS;
   return PARTS[archetype];
 }

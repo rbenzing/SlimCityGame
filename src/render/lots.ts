@@ -33,7 +33,12 @@ import { isFarmEntry, isHouseEntry } from './archetypes';
 import { cropBands, planFarm, type FarmPlan, type FarmRect } from './farmlot';
 import { NO_STREETS, type StreetLookup } from './frontage';
 import { lotToWorld, planHouseLot, type HouseLotPlan, type LotRect } from './houselot';
-import { CURB_CUT_Y_OFFSET } from './parked';
+import {
+  CURB_CUT_Y_OFFSET,
+  NEAR_WHITE_STRIPE_COLOR,
+  STRIPE_LINE_HALF_WIDTH_M,
+  STRIPE_LINE_Y_OFFSET,
+} from './parked';
 import type { KerbSurroundings } from '../shared/kerblayout';
 import { lotPaving } from '../shared/lotlayout';
 import { lotPlanFor, lotPointToWorld, type LotPlan } from './lotplan';
@@ -319,6 +324,21 @@ export class LotRenderer {
     for (const r of paving.yard) lay(r, DRIVE_Y_OFFSET, surface);
     for (const r of paving.concrete) lay(r, WALK_Y_OFFSET, 'cleanConcrete');
     for (const r of paving.lane) lay(r, LANE_Y_OFFSET, 'darkAsphalt');
+    for (const r of trailerStripes(layout.trailerStalls)) {
+      const a = lotPointToWorld(plan.frame, r.u0, r.v0);
+      const b = lotPointToWorld(plan.frame, r.u1, r.v1);
+      pushConformingQuad(
+        positions,
+        colors,
+        Math.min(a.x, b.x),
+        Math.min(a.z, b.z),
+        Math.max(a.x, b.x),
+        Math.max(a.z, b.z),
+        STRIPE_LINE_Y_OFFSET,
+        NEAR_WHITE_STRIPE_COLOR,
+        this.heightAt,
+      );
+    }
     const verge = this.street(edge.roadTileX, edge.roadTileZ)?.vergeM ?? 0;
     if (verge <= 0) return;
     if (layout.aisles.length > 0) {
@@ -390,6 +410,29 @@ interface LotGround {
 interface LotChunk {
   lots: Map<number, LotGround>;
   mesh: THREE.Mesh | null;
+}
+
+/**
+ * The paint of a truck court's trailer stalls: each stall outlined by lines
+ * centred on its edges, a line two stalls share drawn once.
+ */
+export function trailerStripes(stalls: readonly LotRect[]): LotRect[] {
+  const h = STRIPE_LINE_HALF_WIDTH_M;
+  const drawn = new Set<string>();
+  const lines: LotRect[] = [];
+  const line = (r: LotRect): void => {
+    const key = [r.u0, r.u1, r.v0, r.v1].map((n) => n.toFixed(2)).join(',');
+    if (drawn.has(key)) return;
+    drawn.add(key);
+    lines.push(r);
+  };
+  for (const s of stalls) {
+    line({ u0: s.u0, u1: s.u1, v0: s.v0 - h, v1: s.v0 + h });
+    line({ u0: s.u0, u1: s.u1, v0: s.v1 - h, v1: s.v1 + h });
+    line({ u0: s.u0 - h, u1: s.u0 + h, v0: s.v0, v1: s.v1 });
+    line({ u0: s.u1 - h, u1: s.u1 + h, v0: s.v0, v1: s.v1 });
+  }
+  return lines;
 }
 
 function chunkKeyOf(tileX: number, tileZ: number): number {

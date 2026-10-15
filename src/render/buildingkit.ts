@@ -32,6 +32,7 @@ import { maxHeightUnderBody } from './footprint';
 import { findRoadFacingEdge, localSideOf, NO_STREETS, type Side } from './frontage';
 import { materialHex } from './palette';
 import { partsFor, type BuildingPart } from './archetypes';
+import { computeCornerOffset, hasSmokestack, smokestackCorner } from './props';
 import {
   FUEL_CANOPY_DEPTH_M,
   FUEL_CANOPY_GAP_M,
@@ -45,6 +46,16 @@ import { DRIVE_THROUGH_LANE_M, DRIVE_THROUGH_STACK_M, type LotRect } from '../sh
 import type { KerbSurroundings } from '../shared/kerblayout';
 
 const INITIAL_PART_CAPACITY = 32;
+
+/**
+ * New galvanised sheet. Not a chart swatch: the kit's lambert lighting takes
+ * most of a chart colour's value, and a unit at the chart's brightest read
+ * black from above against the roof's own lit shader.
+ */
+const GALVANISED = 0xe2e0da;
+const RUST = 0x7a4430;
+/** The kit's dark: reveals, shelter frames, bumpers and the bund. */
+const KIT_DARK = materialHex('darkBitumen');
 
 /** Colours, all from the calibrated chart. */
 const PART_COLOR: Readonly<Record<BuildingPart, number>> = {
@@ -81,16 +92,41 @@ const PART_COLOR: Readonly<Record<BuildingPart, number>> = {
   roofScreen: materialHex('metalPlates'),
   coolingTower: materialHex('metalPlates'),
   porteCochere: materialHex('whiteBrick'),
-  // New galvanised sheet. Not a chart swatch: the kit's lambert lighting takes
-  // most of a chart colour's value, and a unit at the chart's brightest read
-  // black from above against the roof's own lit shader.
-  rooftopUnit: 0xe2e0da,
+  rooftopUnit: GALVANISED,
   roofHatch: materialHex('metalPlates'),
+  // The industrial kit: the wainscot is the industrial roof plate's own grey.
+  wainscot: materialHex('metalPlates'),
+  walkDoor: materialHex('stainedConcrete'),
+  gutter: GALVANISED,
+  downspout: GALVANISED,
+  ridgeVent: GALVANISED,
+  dockShelter: KIT_DARK,
+  dockBumper: KIT_DARK,
+  dockLight: GALVANISED,
+  officeCorner: materialHex('whiteBrick'),
+  officeCanopy: materialHex('whiteBrick'),
+  panelReveal: KIT_DARK,
+  parapetBand: KIT_DARK,
+  clerestory: materialHex('whiteBrick'),
+  entryCanopy: materialHex('whiteBrick'),
+  condenser: GALVANISED,
+  bundWall: KIT_DARK,
+  bullet: materialHex('whitePlaster'),
+  pipeRack: materialHex('metalPlates'),
+  processColumn: materialHex('whitePlaster'),
+  // A dark rust: the chart's rusted metal read black at the lit side's own value, so it is lifted.
+  furnace: RUST,
+  stove: RUST,
+  skipBridge: materialHex('metalPlates'),
+  duct: materialHex('metalPlates'),
+  chipPile: materialHex('brightWood'),
+  stacker: materialHex('metalPlates'),
 };
 
 /**
  * The parts that glow: sign bands, the pylon and price-sign faces, the
- * supermarket tower's glazing and the office lobby portal. They share the
+ * supermarket tower's glazing, the office lobby portal, a distribution
+ * centre's glazed office corner and a factory's clerestory. They share the
  * kit's emissive material, which follows the night factor as a window does.
  */
 export const LIT_PARTS: ReadonlySet<BuildingPart> = new Set<BuildingPart>([
@@ -99,6 +135,8 @@ export const LIT_PARTS: ReadonlySet<BuildingPart> = new Set<BuildingPart>([
   'priceSign',
   'towerGlazing',
   'lobbyPortal',
+  'officeCorner',
+  'clerestory',
 ]);
 
 /** A lit cabinet is white by day on whichever side the sun is: its glow never falls below this share. */
@@ -132,11 +170,37 @@ function awningGeometry(): THREE.BufferGeometry {
   return geometry;
 }
 
+/**
+ * A horizontal pressure vessel along Z: a cylinder closed by shallow domes, in
+ * the proportion of a 3 m bullet 15 m long, scaled per instance to that.
+ */
+function bulletGeometry(): THREE.BufferGeometry {
+  const radius = 0.5;
+  const capDepth = BULLET_DIAMETER_M / BULLET_LENGTH_M / 2;
+  const half = 0.5 - capDepth;
+  const profile: THREE.Vector2[] = [];
+  const steps = 4;
+  for (let i = 0; i <= steps; i += 1) {
+    const a = (i / steps) * (Math.PI / 2);
+    profile.push(new THREE.Vector2(radius * Math.sin(a), -half - capDepth * Math.cos(a)));
+  }
+  for (let i = steps; i >= 0; i -= 1) {
+    const a = (i / steps) * (Math.PI / 2);
+    profile.push(new THREE.Vector2(radius * Math.sin(a), half + capDepth * Math.cos(a)));
+  }
+  return new THREE.LatheGeometry(profile, 14).rotateX(Math.PI / 2);
+}
+
 /** A part's unit geometry, scaled per instance: a box unless the part is round or sloped. */
 const PART_GEOMETRY: Partial<Record<BuildingPart, () => THREE.BufferGeometry>> = {
   tanks: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 14),
   bollard: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 8),
   awning: awningGeometry,
+  processColumn: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 14),
+  furnace: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 16),
+  stove: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 14),
+  bullet: bulletGeometry,
+  chipPile: () => new THREE.ConeGeometry(0.5, 1, 16),
 };
 
 // --- part dimensions, world meters -----------------------------------------
@@ -289,6 +353,91 @@ export const TANK_COUNT = 3;
 export const TANK_HEIGHT_M = 5;
 export const TANK_SPACING_M = 7.5;
 
+// The industrial kit's parts, absolute metres.
+
+/** A metal building: a wainscot round every face, gutters along both eaves, downspouts, a ridge vent. */
+export const WAINSCOT_HEIGHT_M = 1;
+const WAINSCOT_PROUD_M = 0.08;
+export const GUTTER_M = 0.2;
+export const DOWNSPOUT_M = 0.13;
+export const DOWNSPOUT_SPACING_M = 6;
+export const RIDGE_VENT_THROAT_M = 0.23;
+const RIDGE_VENT_CAP_M = 0.18;
+const RIDGE_VENT_HEIGHT_M = 0.3;
+/** A service bay's door is 10 × 10 ft, a factory's 12 × 12 ft, a walk door 3070. */
+export const SHOP_DOOR_M = 3.05;
+export const SHOP_DOOR_SPACING_M = 6;
+export const SHOP_DOOR_MAX = 4;
+export const FACTORY_DOOR_M = 3.66;
+export const FACTORY_DOOR_COUNT = 2;
+export const WALK_DOOR_WIDTH_M = 0.9;
+export const WALK_DOOR_HEIGHT_M = 2.1;
+const WALK_DOOR_GAP_M = 1.5;
+/** A dock door is 9 × 10 ft at 14 ft centres, with a shelter frame 0.3 m proud, two bumpers and a light. */
+export const DOCK_DOOR_WIDTH_M = 2.74;
+export const DOCK_DOOR_HEIGHT_M = 3.05;
+export const DOCK_DOOR_CENTRES_M = 4.3;
+export const SHELTER_PROUD_M = 0.3;
+const SHELTER_FRAME_M = 0.3;
+export const BUMPER_SIZE_M: readonly [number, number, number] = [0.3, 0.25, 0.11];
+const BUMPER_OFFSET_M = 0.9;
+const DOCK_LIGHT_SIZE_M: readonly [number, number, number] = [0.25, 0.2, 0.4];
+const DOCK_LIGHT_ABOVE_M = 0.45;
+/** The glazed office corner of a distribution centre: two storeys, 8 × 8 m, standing half out of the street face. */
+export const OFFICE_CORNER_M = 8;
+export const OFFICE_CORNER_HEIGHT_M = 7.3;
+export const OFFICE_CORNER_PROUD_M = 4;
+export const OFFICE_CANOPY_SIZE_M: readonly [number, number, number] = [3, 0.2, 1.5];
+export const OFFICE_CANOPY_HEIGHT_M = 3;
+export const PANEL_REVEAL_SPACING_M = 7.6;
+const PANEL_REVEAL_WIDTH_M = 0.1;
+const PANEL_REVEAL_PROUD_M = 0.05;
+export const PARAPET_BAND_HEIGHT_M = 1;
+const PARAPET_BAND_PROUD_M = 0.1;
+/** A factory's clerestory: a lit band along both sides of the monitor. */
+export const CLERESTORY_HEIGHT_M = 0.6;
+const CLERESTORY_PROUD_M = 0.1;
+export const ENTRY_CANOPY_SIZE_M: readonly [number, number, number] = [3, 0.2, 1.5];
+export const ENTRY_CANOPY_HEIGHT_M = 3;
+/** A food plant's evaporative condensers, a 700-ton unit. */
+export const CONDENSER_SIZE_M: readonly [number, number, number] = [6, 3, 3.6];
+export const CONDENSER_COUNT = 2;
+/** The chemical plant's bund, bullet, pipe rack and process column. */
+export const BUND_HEIGHT_M = 1;
+export const BUND_MARGIN_M = 2;
+const BUND_THICKNESS_M = 0.3;
+export const BULLET_DIAMETER_M = 3;
+export const BULLET_LENGTH_M = 15;
+const BULLET_SADDLE_M = 0.8;
+export const RACK_WIDTH_M = 6;
+export const RACK_BENT_SPACING_M = 6;
+export const RACK_CLEAR_M = 5.5;
+const RACK_TIER_GAP_M = 1.5;
+const RACK_BEAM_M = 0.4;
+const RACK_COLUMN_M = 0.3;
+export const COLUMN_DIAMETER_M = 3;
+export const COLUMN_RISE = 1.6;
+/** The steelworks' blast furnace, stoves, skip bridge and duct. */
+export const FURNACE_DIAMETER_M = 8;
+export const FURNACE_RISE = 1.8;
+export const STOVE_DIAMETER_M = 5;
+export const STOVE_RISE = 1.4;
+export const STOVE_COUNT = 3;
+const STOVE_GAP_M = 1.5;
+export const SKIP_BRIDGE_M = 1.5;
+const SKIP_BRIDGE_PITCH = Math.PI / 3;
+export const DUCT_M = 1.5;
+/** The paper mill's wood chip pile and its stacker. */
+export const CHIP_PILE_DIAMETER_M = 25;
+export const CHIP_PILE_HEIGHT_M = 8;
+export const STACKER_M = 1.2;
+/** How far from the pile's crown the stacker's foot stands on the yard. */
+const STACKER_REACH_M = 15.5;
+/** How far up the stack's shaft the duct enters it. */
+const STACK_DUCT_HEIGHT_M = 9;
+/** The gap a yard plant keeps off the body and off its neighbours. */
+const PLANT_GAP_M = 1;
+
 export interface PartPlacement {
   readonly part: BuildingPart;
   /** Box size in world meters (w along X, h along Y, d along Z), unrotated, before any yaw. */
@@ -297,6 +446,8 @@ export interface PartPlacement {
   readonly offset: readonly [number, number, number];
   /** Turn about the vertical, radians, in the unrotated frame, for a part with a front such as an awning. */
   readonly yaw?: number;
+  /** Elevation of the part's +Z end above its -Z end, radians, for a bridge or a duct that runs on the slant. */
+  readonly pitch?: number;
 }
 
 /** A rectangle in the building's unrotated frame, metres from its footprint centre. */
@@ -336,6 +487,12 @@ export interface KitLot {
   islands: LocalRect[];
   /** Where the loading berths are, when there are any. */
   dock: LocalPoint | null;
+  /** The way the wall the berths lie beside faces, as a unit step out of the body; null without berths. */
+  loadingFacing: LocalPoint | null;
+  /** Trailer stalls striped in the truck court before the loading wall. */
+  trailers: LocalRect[];
+  /** Ground a car, a truck or a trailer stands on: stalls, aisles, berths, trailer stalls and the planted islands, but no walk. */
+  hard: LocalRect[];
   lane: KitLane | null;
   /** Ground a stall, aisle, berth, walk, yard or the lane is laid on, which a part on the ground must not stand on; planted islands are left to them. */
   taken: LocalRect[];
@@ -463,8 +620,18 @@ function atPoint(
 /** The plan extent of a placement in the unrotated frame, its yaw taken into account. */
 export function placementBounds(p: PartPlacement): LocalRect {
   const quarter = Math.abs(Math.round((p.yaw ?? 0) / (Math.PI / 2))) % 2 === 1;
-  const w = quarter ? p.size[2] : p.size[0];
-  const d = quarter ? p.size[0] : p.size[2];
+  const pitch = p.pitch ?? 0;
+  // A part on the slant runs its length along the plan by the cosine of its pitch, and its height adds the sine.
+  const length = p.size[2] * Math.cos(pitch) + p.size[1] * Math.sin(Math.abs(pitch));
+  const yaw = p.yaw ?? 0;
+  const square = Math.abs(yaw / (Math.PI / 2) - Math.round(yaw / (Math.PI / 2))) < 1e-9;
+  let w = quarter ? length : p.size[0];
+  let d = quarter ? p.size[0] : length;
+  if (!square) {
+    // A part on the diagonal covers the box that holds it.
+    w = Math.abs(Math.cos(yaw)) * p.size[0] + Math.abs(Math.sin(yaw)) * length;
+    d = Math.abs(Math.sin(yaw)) * p.size[0] + Math.abs(Math.cos(yaw)) * length;
+  }
   return {
     x0: p.offset[0] - w / 2,
     x1: p.offset[0] + w / 2,
@@ -777,13 +944,571 @@ function dumpsterSpot(
   return best ? { centre: best.centre, away: best.away } : null;
 }
 
+/** The wall a vector out of the body faces, in the unrotated frame. */
+function sideOfFacing(f: LocalPoint): Side {
+  if (Math.abs(f.x) > Math.abs(f.z)) return f.x > 0 ? 'E' : 'W';
+  return f.z > 0 ? 'S' : 'N';
+}
+
+/** Whether `p` stands inside the lot and clear of the ground a car, truck or trailer stands on; true without a lot. */
+function standsFree(p: PartPlacement | readonly PartPlacement[], lot: KitLot | null): boolean {
+  if (!lot) return true;
+  const list = 'part' in p ? [p] : p;
+  return list.every((q) => {
+    const b = placementBounds(q);
+    return rectInside(b, lot.lot) && !lot.hard.some((h) => rectsOverlap(h, b));
+  });
+}
+
+/** A dock bank: where along which wall it stands, and how many doors it holds. */
+interface DockBank {
+  wall: Side;
+  /** The middle of the dock along its wall. */
+  along: number;
+  /** The platform's length. */
+  length: number;
+  doors: number;
+  /** Whether the bank stands on the lot's loading side rather than the street face. */
+  loading: boolean;
+}
+
+/** The doors a dock of `length` holds at 14 ft centres. */
+const dockDoors = (length: number): number =>
+  Math.max(1, Math.floor((length + 1e-9) / DOCK_DOOR_CENTRES_M));
+
+/** The end of the street face a distribution centre's office stands at: the one beside the drive, away from a loading wall on a side. */
+function officeEnd(side: Side, lot: KitLot | null, loadingWall: Side | null): 1 | -1 {
+  const alongX = isAlongX(side);
+  if (loadingWall && isAlongX(loadingWall) !== alongX) {
+    const n = sideNormal(loadingWall);
+    return (alongX ? n.nx : n.nz) > 0 ? -1 : 1;
+  }
+  const cut = lot?.curbCut;
+  const drive = cut ? (alongX ? cut.x0 + cut.x1 : cut.z0 + cut.z1) / 2 : 0;
+  return drive < 0 ? -1 : 1;
+}
+
+/**
+ * Where a warehouse's or food plant's dock bank stands: on the wall the lot's
+ * berths lie beside when the platform stands inside the lot, else on the
+ * street face, clear of the office corner at its end.
+ */
+function dockBankOf(baseBox: SetbackBox, side: Side, lot: KitLot | null): DockBank {
+  if (lot?.loadingFacing && lot.dock) {
+    const wall = sideOfFacing(lot.loadingFacing);
+    const span = facadeSpan(baseBox, wall);
+    const doors = dockDoors(span * DOCK_FRONTAGE_FRACTION);
+    const length = doors * DOCK_DOOR_CENTRES_M;
+    const reach = Math.max(0, (span - length) / 2);
+    const want = isAlongX(wall) ? lot.dock.x : lot.dock.z;
+    const along = Math.max(-reach, Math.min(reach, want));
+    const platform = againstFacade(
+      'loadingDock',
+      baseBox,
+      wall,
+      length,
+      DOCK_DEPTH_M,
+      DOCK_HEIGHT_M,
+      DOCK_HEIGHT_M / 2,
+      along,
+    );
+    if (rectInside(placementBounds(platform), lot.lot)) {
+      return { wall, along, length, doors, loading: true };
+    }
+  }
+  const span = facadeSpan(baseBox, side);
+  const room = span - OFFICE_CORNER_M - 1;
+  const doors = dockDoors(Math.min(span * DOCK_FRONTAGE_FRACTION, room));
+  const length = doors * DOCK_DOOR_CENTRES_M;
+  const end = officeEnd(side, lot, null);
+  return { wall: side, along: (-end * OFFICE_CORNER_M) / 2, length, doors, loading: false };
+}
+
+/**
+ * A distribution centre's glazed office corner at one end of the street face,
+ * half out of the wall so it reads as a block, with its canopy at the door;
+ * the block shortens its projection where the car park is in the way, and
+ * stands nowhere where even that does not clear.
+ */
+function officeCorner(
+  baseBox: SetbackBox,
+  side: Side,
+  lot: KitLot | null,
+  bank: DockBank,
+  roofY: number,
+): { corner: PartPlacement; canopy: PartPlacement } | null {
+  const span = facadeSpan(baseBox, side);
+  if (span < OFFICE_CORNER_M * 2) return null;
+  const end = officeEnd(side, lot, bank.loading ? bank.wall : null);
+  const along = end * (span / 2 - OFFICE_CORNER_M / 2);
+  const height = Math.min(OFFICE_CORNER_HEIGHT_M, roofY - 0.4);
+  const half = halfDepthTo(baseBox, side);
+  for (const proud of [OFFICE_CORNER_PROUD_M, OFFICE_CORNER_PROUD_M / 2]) {
+    const corner = onSide(
+      'officeCorner',
+      side,
+      along,
+      half + proud - OFFICE_CORNER_M / 2,
+      OFFICE_CORNER_M,
+      OFFICE_CORNER_M,
+      height,
+      height / 2,
+    );
+    const [cw, ch, cd] = OFFICE_CANOPY_SIZE_M;
+    const canopy = onSide(
+      'officeCanopy',
+      side,
+      along,
+      half + proud + cd / 2,
+      cw,
+      cd,
+      ch,
+      OFFICE_CANOPY_HEIGHT_M + ch / 2,
+    );
+    // Only what stands out of the wall must be clear: the part inside it is the body's.
+    const outside = onSide(
+      'officeCorner',
+      side,
+      along,
+      half + proud / 2,
+      OFFICE_CORNER_M,
+      proud,
+      height,
+      height / 2,
+    );
+    if (standsFree([outside, canopy], lot)) return { corner, canopy };
+  }
+  return null;
+}
+
+/** The faces of a body, each as the side it stands on and the span it runs. */
+function facesOf(baseBox: SetbackBox): readonly { side: Side; span: number }[] {
+  return (['N', 'S', 'E', 'W'] as const).map((s) => ({ side: s, span: facadeSpan(baseBox, s) }));
+}
+
+/** The two faces a metal building's eaves run along: the long walls. */
+function eaveFaces(baseBox: SetbackBox): readonly Side[] {
+  return baseBox.d > baseBox.w ? ['E', 'W'] : ['N', 'S'];
+}
+
+/** The service doors across a frontage of `span`: a workshop's one per 6 m, at most four, and a factory's two. */
+export function serviceDoorCount(kind: 'workshop' | 'factory', span: number): number {
+  if (kind === 'factory') return FACTORY_DOOR_COUNT;
+  const fitting = Math.floor((span - 2 * WALK_DOOR_GAP_M) / SHOP_DOOR_SPACING_M);
+  return Math.max(1, Math.min(SHOP_DOOR_MAX, Math.floor(span / SHOP_DOOR_SPACING_M), fitting));
+}
+
+/** A row of service doors across a frontage, centred, with a walk door at its end: the doors' centres and the walk door's. */
+function doorRow(span: number, count: number): { doors: number[]; walk: number } {
+  const pitch = SHOP_DOOR_SPACING_M;
+  const total = count * pitch + 2 * WALK_DOOR_GAP_M;
+  const start = -total / 2;
+  return {
+    doors: Array.from({ length: count }, (_, i) => start + pitch / 2 + i * pitch),
+    walk: Math.min(span / 2 - WALK_DOOR_WIDTH_M, start + count * pitch + WALK_DOOR_GAP_M),
+  };
+}
+
+/** The positions of a metal building's downspouts along an eave: at each corner and every 6 m between. */
+export function downspoutPositions(length: number): number[] {
+  const inset = DOWNSPOUT_M;
+  const ends = length / 2 - inset;
+  const out: number[] = [];
+  for (let at = -ends; at < ends - 1; at += DOWNSPOUT_SPACING_M) out.push(at);
+  out.push(ends);
+  return out;
+}
+
+/** Where the stack's shaft stands on the roof in the building's frame, which the duct runs to; null for a building with none. */
+function stackBase(
+  entry: BuildingCatalogEntry,
+  topBox: SetbackBox,
+  buildingId: number,
+): { x: number; z: number } | null {
+  return hasSmokestack(entry) ? computeCornerOffset(topBox, smokestackCorner(buildingId)) : null;
+}
+
+/** The ground a plant's parts stand on, in the frame of the wall at the back of the building. */
+interface Rear {
+  baseBox: SetbackBox;
+  side: Side;
+  back: Side;
+  lot: KitLot | null;
+  roofY: number;
+}
+
+/** A box at the back of the building: `along` its back wall from the middle, `out` from the wall to its middle. */
+function atRear(
+  r: Rear,
+  part: BuildingPart,
+  along: number,
+  out: number,
+  span: number,
+  depth: number,
+  height: number,
+  centerY: number,
+): PartPlacement {
+  return onSide(
+    part,
+    r.back,
+    along,
+    halfDepthTo(r.baseBox, r.back) + out,
+    span,
+    depth,
+    height,
+    centerY,
+  );
+}
+
+/** How far the lot runs behind the back wall, and how far to either side along it, from the middle of the wall; unbounded without a lot. */
+function rearRoom(r: Rear): { out: number; low: number; high: number } {
+  if (!r.lot) return { out: Infinity, low: Infinity, high: Infinity };
+  const { nx, nz } = sideNormal(r.back);
+  const { lot } = r.lot;
+  const alongX = isAlongX(r.back);
+  const edge = alongX ? (nz > 0 ? lot.z1 : -lot.z0) : nx > 0 ? lot.x1 : -lot.x0;
+  return {
+    out: edge - halfDepthTo(r.baseBox, r.back),
+    low: alongX ? -lot.x0 : -lot.z0,
+    high: alongX ? lot.x1 : lot.z1,
+  };
+}
+
+/**
+ * A chemical plant's yard: a bund wall round the tank farm, a pipe rack over
+ * the middle tank to the body, a bullet on saddles and a process column
+ * beside the farm, each where the lot has room for it.
+ */
+function chemicalYard(r: Rear): PartPlacement[] {
+  const out: PartPlacement[] = [];
+  const room = rearRoom(r);
+  const farmHalf = ((TANK_COUNT - 1) / 2) * TANK_SPACING_M + TANK_DIAMETER_M / 2;
+  const farmDepth = TANK_GAP_M + TANK_DIAMETER_M;
+
+  // The bund stands BUND_MARGIN_M outside the tanks, or as near as the lot lets it.
+  const margin = Math.min(
+    BUND_MARGIN_M,
+    room.out - farmDepth - BUND_THICKNESS_M / 2,
+    Math.min(room.low, room.high) - farmHalf - BUND_THICKNESS_M / 2,
+  );
+  const half = farmHalf + margin;
+  if (margin >= 0.5) {
+    out.push(
+      atRear(
+        r,
+        'bundWall',
+        0,
+        farmDepth + margin,
+        2 * half + BUND_THICKNESS_M,
+        BUND_THICKNESS_M,
+        BUND_HEIGHT_M,
+        BUND_HEIGHT_M / 2,
+      ),
+    );
+    for (const k of [-1, 1]) {
+      out.push(
+        atRear(
+          r,
+          'bundWall',
+          k * half,
+          (farmDepth + margin) / 2,
+          BUND_THICKNESS_M,
+          farmDepth + margin,
+          BUND_HEIGHT_M,
+          BUND_HEIGHT_M / 2,
+        ),
+      );
+    }
+  }
+
+  // Two tiers over the middle tank, from the far edge of the farm to the body.
+  const rackY = RACK_CLEAR_M + RACK_BEAM_M / 2;
+  const topTier = rackY + RACK_TIER_GAP_M;
+  for (const y of [rackY, topTier]) {
+    out.push(atRear(r, 'pipeRack', 0, farmDepth / 2, RACK_WIDTH_M, farmDepth, RACK_BEAM_M, y));
+  }
+  const columnTop = topTier + RACK_BEAM_M / 2;
+  for (let bent = RACK_COLUMN_M * 1.2; bent < farmDepth; bent += RACK_BENT_SPACING_M) {
+    for (const k of [-1, 1]) {
+      out.push(
+        atRear(
+          r,
+          'pipeRack',
+          (k * (RACK_WIDTH_M + RACK_COLUMN_M)) / 2,
+          bent,
+          RACK_COLUMN_M,
+          RACK_COLUMN_M,
+          columnTop,
+          columnTop / 2,
+        ),
+      );
+    }
+  }
+
+  // A bullet and a process column take the ground either side of the farm, on whichever side the lot leaves room.
+  const clearOf = (p: PartPlacement | readonly PartPlacement[]): boolean => standsFree(p, r.lot);
+  const bulletPieces = (along: number): PartPlacement[] => {
+    const centre = BULLET_DIAMETER_M / 2 + BULLET_SADDLE_M + PLANT_GAP_M;
+    const alongX = isAlongX(r.back);
+    const bullet = atRear(
+      r,
+      'bullet',
+      along,
+      BULLET_DIAMETER_M / 2 + PLANT_GAP_M,
+      BULLET_LENGTH_M,
+      BULLET_DIAMETER_M,
+      BULLET_DIAMETER_M,
+      centre,
+    );
+    // The vessel's length runs along the wall, which is X on a back wall that faces N or S.
+    const placed: PartPlacement[] = [
+      {
+        ...bullet,
+        size: [BULLET_DIAMETER_M, BULLET_DIAMETER_M, BULLET_LENGTH_M],
+        yaw: alongX ? Math.PI / 2 : 0,
+      },
+    ];
+    for (const k of [-1, 1]) {
+      placed.push(
+        atRear(
+          r,
+          'pipeRack',
+          along + k * (BULLET_LENGTH_M / 2 - 3),
+          BULLET_DIAMETER_M / 2 + PLANT_GAP_M,
+          0.6,
+          BULLET_DIAMETER_M * 0.7,
+          BULLET_SADDLE_M,
+          BULLET_SADDLE_M / 2,
+        ),
+      );
+    }
+    return placed;
+  };
+  const columnHeight = r.roofY * COLUMN_RISE;
+  const columnAt = (along: number): PartPlacement =>
+    atRear(
+      r,
+      'processColumn',
+      along,
+      COLUMN_DIAMETER_M / 2 + PLANT_GAP_M,
+      COLUMN_DIAMETER_M,
+      COLUMN_DIAMETER_M,
+      columnHeight,
+      columnHeight / 2,
+    );
+  const bulletAlong = half + PLANT_GAP_M + BULLET_LENGTH_M / 2;
+  const columnAlong = half + PLANT_GAP_M + COLUMN_DIAMETER_M / 2;
+  const sides = room.high >= room.low ? [1, -1] : [-1, 1];
+  const bulletSide = sides.find((k) => clearOf(bulletPieces(k * bulletAlong)));
+  if (bulletSide) out.push(...bulletPieces(bulletSide * bulletAlong));
+  const columnSide = [-(bulletSide ?? -1), bulletSide ?? 1].find((k) =>
+    clearOf(columnAt(k * columnAlong)),
+  );
+  if (columnSide) out.push(columnAt(columnSide * columnAlong));
+  return out;
+}
+
+/** Where a steelworks' furnace may stand, in the frame of its back wall: along it and out from it, and where each stove stands. */
+interface YardSite {
+  end: 1 | -1;
+  furnace: readonly [number, number];
+  stove: (i: number) => readonly [number, number];
+}
+
+/**
+ * A steelworks' yard: the furnace at one end of the back wall, three stoves
+ * in a row beside it, the skip bridge up its far side and the duct to the
+ * stack, each where the lot has room; without the furnace, none of the rest
+ * that hangs on it.
+ */
+function steelworksYard(r: Rear, stack: { x: number; z: number } | null): PartPlacement[] {
+  const out: PartPlacement[] = [];
+  const span = facadeSpan(r.baseBox, r.back);
+  const alongX = isAlongX(r.back);
+  const furnaceH = r.roofY * FURNACE_RISE;
+  const stoveH = r.roofY * STOVE_RISE;
+  const furnaceR = FURNACE_DIAMETER_M / 2;
+  const stoveR = STOVE_DIAMETER_M / 2;
+  const round = (
+    part: 'furnace' | 'stove',
+    a: number,
+    o: number,
+    diameter: number,
+    height: number,
+  ): PartPlacement => atRear(r, part, a, o, diameter, diameter, height, height / 2);
+  /**
+   * The furnace stands at one end of the hall: behind its back wall at either
+   * end, or failing that beside either end wall level with the back; the stoves
+   * march from it toward the middle of the wall, or toward the street.
+   */
+  const marched = (i: number): number =>
+    furnaceR + STOVE_GAP_M + stoveR + i * (STOVE_DIAMETER_M + STOVE_GAP_M);
+  const sites: YardSite[] = [];
+  for (const e of [1, -1] as const) {
+    const a = e * (span / 2 - furnaceR - PLANT_GAP_M);
+    sites.push({
+      end: e,
+      furnace: [a, furnaceR + PLANT_GAP_M],
+      stove: (i) => [a - e * marched(i), stoveR + PLANT_GAP_M],
+    });
+  }
+  for (const e of [1, -1] as const) {
+    const o = -(furnaceR + PLANT_GAP_M);
+    sites.push({
+      end: e,
+      furnace: [e * (span / 2 + furnaceR + PLANT_GAP_M), o],
+      stove: (i) => [e * (span / 2 + stoveR + PLANT_GAP_M), o - marched(i)],
+    });
+  }
+  const site = sites.find((s) =>
+    standsFree(round('furnace', ...s.furnace, FURNACE_DIAMETER_M, furnaceH), r.lot),
+  );
+  if (!site) return out;
+  const end = site.end;
+  const furnace = round('furnace', ...site.furnace, FURNACE_DIAMETER_M, furnaceH);
+  out.push(furnace);
+  for (let i = 0; i < STOVE_COUNT; i += 1) {
+    const stove = round('stove', ...site.stove(i), STOVE_DIAMETER_M, stoveH);
+    if (standsFree(stove, r.lot)) out.push(stove);
+  }
+
+  // The skip bridge rises to the furnace's far rim from the yard, steeper where the lot is short of room.
+  const { nx, nz } = sideNormal(r.back);
+  const bridgeDirs = [
+    { x: alongX ? 0 : nx, z: alongX ? nz : 0 },
+    { x: alongX ? end : 0, z: alongX ? 0 : end },
+  ];
+  const bridge = (dir: LocalPoint, pitch: number): PartPlacement => {
+    const length = furnaceH / Math.sin(pitch);
+    const run = furnaceH / Math.tan(pitch);
+    // The top lands on the furnace's rim on the side the bridge comes from.
+    const top = {
+      x: furnace.offset[0] + dir.x * furnaceR,
+      z: furnace.offset[2] + dir.z * furnaceR,
+    };
+    const mid = { x: top.x + (dir.x * run) / 2, z: top.z + (dir.z * run) / 2 };
+    return {
+      part: 'skipBridge',
+      size: [SKIP_BRIDGE_M, SKIP_BRIDGE_M, length],
+      offset: [mid.x, furnaceH / 2 + (SKIP_BRIDGE_M / 2) * Math.cos(pitch), mid.z],
+      // The +Z end is the high one: turned so +Z points back at the furnace.
+      yaw: Math.atan2(-dir.x, -dir.z),
+      pitch,
+    };
+  };
+  for (const dir of bridgeDirs) {
+    const found = [SKIP_BRIDGE_PITCH, (70 * Math.PI) / 180, (80 * Math.PI) / 180]
+      .map((p) => bridge(dir, p))
+      .find(
+        (b) =>
+          standsFree(b, r.lot) &&
+          !out.some((o) => o !== furnace && rectsOverlap(placementBounds(o), placementBounds(b))),
+      );
+    if (found) {
+      out.push(found);
+      break;
+    }
+  }
+
+  // The duct runs from the furnace's flank to the stack's shaft, on the slant.
+  if (stack) {
+    const from = { x: furnace.offset[0], y: furnaceH - furnaceR / 2, z: furnace.offset[2] };
+    const to = { x: stack.x, y: r.roofY + STACK_DUCT_HEIGHT_M, z: stack.z };
+    const dx = to.x - from.x;
+    const dz = to.z - from.z;
+    const run = Math.hypot(dx, dz);
+    const dy = to.y - from.y;
+    out.push({
+      part: 'duct',
+      size: [DUCT_M, DUCT_M, Math.hypot(run, dy)],
+      offset: [(from.x + to.x) / 2, (from.y + to.y) / 2, (from.z + to.z) / 2],
+      yaw: Math.atan2(dx, dz),
+      pitch: Math.atan2(dy, run),
+    });
+  }
+  return out;
+}
+
+/**
+ * A paper mill's chip pile and the stacker over it, on the clear ground
+ * nearest the middle of the back wall that holds the pile and the boom
+ * inside the lot, clear of the body, the tank farm and the car park;
+ * nothing where the lot has no such ground.
+ */
+function chipYard(r: Rear): PartPlacement[] {
+  const radius = CHIP_PILE_DIAMETER_M / 2;
+  const reach = STACKER_REACH_M;
+  const back = sideNormal(r.back);
+  const tanks = [...Array(TANK_COUNT).keys()].map((i) =>
+    atRear(
+      r,
+      'tanks',
+      (i - (TANK_COUNT - 1) / 2) * TANK_SPACING_M,
+      TANK_GAP_M + TANK_DIAMETER_M / 2,
+      TANK_DIAMETER_M,
+      TANK_DIAMETER_M,
+      TANK_HEIGHT_M,
+      TANK_HEIGHT_M / 2,
+    ),
+  );
+  const body = {
+    x0: -r.baseBox.w / 2 - PLANT_GAP_M,
+    x1: r.baseBox.w / 2 + PLANT_GAP_M,
+    z0: -r.baseBox.d / 2 - PLANT_GAP_M,
+    z1: r.baseBox.d / 2 + PLANT_GAP_M,
+  };
+  const pieces = (x: number, z: number): PartPlacement[] => {
+    const pile: PartPlacement = {
+      part: 'chipPile',
+      size: [CHIP_PILE_DIAMETER_M, CHIP_PILE_HEIGHT_M, CHIP_PILE_DIAMETER_M],
+      offset: [x, CHIP_PILE_HEIGHT_M / 2, z],
+    };
+    // The boom runs from the crown down to the yard on the side toward the body.
+    const top = CHIP_PILE_HEIGHT_M + STACKER_M / 2;
+    const length = Math.hypot(reach, top);
+    const toward = { x: -back.nx, z: -back.nz };
+    return [
+      pile,
+      {
+        part: 'stacker',
+        size: [STACKER_M, STACKER_M, length],
+        offset: [x + (toward.x * reach) / 2, top / 2, z + (toward.z * reach) / 2],
+        yaw: Math.atan2(-toward.x, -toward.z),
+        pitch: Math.atan2(top, reach),
+      },
+    ];
+  };
+  const half = halfDepthTo(r.baseBox, r.back);
+  const target = {
+    x: back.nx * (half + reach + PLANT_GAP_M),
+    z: back.nz * (half + reach + PLANT_GAP_M),
+  };
+  const lot = r.lot;
+  if (!lot) return pieces(target.x, target.z);
+  let best: { at: PartPlacement[]; cost: number } | null = null;
+  for (let x = Math.ceil(lot.lot.x0 + radius); x <= lot.lot.x1 - radius; x += 1) {
+    for (let z = Math.ceil(lot.lot.z0 + radius); z <= lot.lot.z1 - radius; z += 1) {
+      const cost = Math.hypot(x - target.x, z - target.z);
+      if (best && cost >= best.cost) continue;
+      const at = pieces(x, z);
+      const bounds = at.map(placementBounds);
+      const pileBounds = bounds[0]!;
+      if (bounds.some((b) => rectsOverlap(b, body))) continue;
+      if (tanks.some((t) => rectsOverlap(placementBounds(t), pileBounds))) continue;
+      if (!standsFree(at, lot)) continue;
+      best = { at, cost };
+    }
+  }
+  return best?.at ?? [];
+}
+
 /**
  * Every part this building's archetype calls for, placed. `topBox` carries the
  * roof parts, `baseBox` the facade ones; `side` is the frontage, without which
  * a dock or a canopy would face nothing and is skipped. `lot` is the building's
  * car park where it parks one to code: the parts that stand on the lot (a
  * pylon at the drive, cart corrals, a drive-through) need it, and stand
- * nowhere without it.
+ * nowhere without it. `buildingId` finds the stack a steelworks' duct runs to.
  */
 export function computePartPlacements(
   entry: BuildingCatalogEntry,
@@ -791,6 +1516,7 @@ export function computePartPlacements(
   topBox: SetbackBox,
   side: Side | null,
   lot: KitLot | null = null,
+  buildingId: number | null = null,
 ): PartPlacement[] {
   const out: PartPlacement[] = [];
   const roofY = topBox.yOffset + topBox.h;
@@ -799,6 +1525,24 @@ export function computePartPlacements(
   // Doors stand on the dock where there is one, and on the ground where not.
   const doorSill = parts.includes('loadingDock') ? DOCK_HEIGHT_M : 0;
   const span = side ? facadeSpan(baseBox, side) : 0;
+  // A kind's dock bank stands on the lot's loading side; a kindless one keeps the old dock on the street face.
+  const bank =
+    side && entry.kind && parts.includes('loadingDock') ? dockBankOf(baseBox, side, lot) : null;
+  const office = bank && side ? officeCorner(baseBox, side, lot, bank, roofY) : null;
+  const rear: Rear | null = side ? { baseBox, side, back: oppositeSide(side), lot, roofY } : null;
+  let yard: PartPlacement[] | null = null;
+  const yardOf = (part: BuildingPart): PartPlacement[] => {
+    if (!rear) return [];
+    if (!yard) {
+      if (entry.kind === 'chemical') yard = chemicalYard(rear);
+      else if (entry.kind === 'metals') {
+        const stack = buildingId === null ? null : stackBase(entry, topBox, buildingId);
+        yard = steelworksYard(rear, stack);
+      } else if (entry.kind === 'paper') yard = chipYard(rear);
+      else yard = [];
+    }
+    return yard.filter((p) => p.part === part);
+  };
 
   for (const part of parts) {
     switch (part) {
@@ -823,6 +1567,21 @@ export function computePartPlacements(
       }
       case 'loadingDock': {
         if (!side) break;
+        if (bank) {
+          out.push(
+            againstFacade(
+              part,
+              baseBox,
+              bank.wall,
+              bank.length,
+              DOCK_DEPTH_M,
+              DOCK_HEIGHT_M,
+              DOCK_HEIGHT_M / 2,
+              bank.along,
+            ),
+          );
+          break;
+        }
         out.push(
           againstFacade(
             part,
@@ -838,6 +1597,36 @@ export function computePartPlacements(
       }
       case 'rollUpDoors': {
         if (!side) break;
+        if (bank) {
+          // The dock bank's doors, 9 × 10 ft at 14 ft centres along the platform.
+          for (let i = 0; i < bank.doors; i += 1) {
+            const along = bank.along + (i - (bank.doors - 1) / 2) * DOCK_DOOR_CENTRES_M;
+            out.push(
+              againstFacade(
+                part,
+                baseBox,
+                bank.wall,
+                DOCK_DOOR_WIDTH_M,
+                DOOR_THICKNESS_M,
+                DOCK_DOOR_HEIGHT_M,
+                DOCK_HEIGHT_M + DOCK_DOOR_HEIGHT_M / 2,
+                along,
+              ),
+            );
+          }
+          break;
+        }
+        if (entry.kind === 'workshop' || entry.kind === 'factory') {
+          // Service bays on the ground: a workshop's one 10 ft door per 6 m of frontage, a factory's two 12 ft.
+          const door = entry.kind === 'factory' ? FACTORY_DOOR_M : SHOP_DOOR_M;
+          const count = serviceDoorCount(entry.kind, span);
+          for (const along of doorRow(span, count).doors) {
+            out.push(
+              againstFacade(part, baseBox, side, door, DOOR_THICKNESS_M, door, door / 2, along),
+            );
+          }
+          break;
+        }
         const { nx, nz } = sideNormal(side);
         const outDist = halfDepthTo(baseBox, side) + DOOR_THICKNESS_M / 2;
         const alongX = isAlongX(side);
@@ -1353,10 +2142,290 @@ export function computePartPlacements(
       case 'signPole':
         // Poles are placed with the sign, board, bar or corral they hold up.
         break;
+      case 'wainscot': {
+        if (!side) break;
+        // A metal building's wainscot runs round every face, the end walls over the corners.
+        for (const face of facesOf(baseBox)) {
+          const corner = isAlongX(face.side) ? 2 * WAINSCOT_PROUD_M : 0;
+          out.push(
+            againstFacade(
+              part,
+              baseBox,
+              face.side,
+              face.span + corner,
+              WAINSCOT_PROUD_M,
+              WAINSCOT_HEIGHT_M,
+              WAINSCOT_HEIGHT_M / 2,
+            ),
+          );
+        }
+        break;
+      }
+      case 'walkDoor': {
+        if (!side || (entry.kind !== 'workshop' && entry.kind !== 'factory')) break;
+        const count = serviceDoorCount(entry.kind, span);
+        out.push(
+          againstFacade(
+            part,
+            baseBox,
+            side,
+            WALK_DOOR_WIDTH_M,
+            DOOR_THICKNESS_M,
+            WALK_DOOR_HEIGHT_M,
+            WALK_DOOR_HEIGHT_M / 2,
+            doorRow(span, count).walk,
+          ),
+        );
+        break;
+      }
+      case 'gutter': {
+        if (!side) break;
+        for (const eave of eaveFaces(baseBox)) {
+          out.push(
+            againstFacade(
+              part,
+              baseBox,
+              eave,
+              facadeSpan(baseBox, eave),
+              GUTTER_M,
+              GUTTER_M,
+              baseTop - GUTTER_M / 2,
+            ),
+          );
+        }
+        break;
+      }
+      case 'downspout': {
+        if (!side) break;
+        for (const eave of eaveFaces(baseBox)) {
+          for (const along of downspoutPositions(facadeSpan(baseBox, eave))) {
+            out.push(
+              againstFacade(
+                part,
+                baseBox,
+                eave,
+                DOWNSPOUT_M,
+                DOWNSPOUT_M,
+                baseTop - GUTTER_M,
+                (baseTop - GUTTER_M) / 2,
+                along,
+              ),
+            );
+          }
+        }
+        break;
+      }
+      case 'ridgeVent': {
+        const alongZ = topBox.d > topBox.w;
+        const length = (alongZ ? topBox.d : topBox.w) - 1;
+        const width = RIDGE_VENT_THROAT_M + 2 * RIDGE_VENT_CAP_M;
+        out.push({
+          part,
+          size: alongZ
+            ? [width, RIDGE_VENT_HEIGHT_M, length]
+            : [length, RIDGE_VENT_HEIGHT_M, width],
+          offset: [0, roofY + RIDGE_VENT_HEIGHT_M / 2, 0],
+        });
+        break;
+      }
+      case 'dockShelter': {
+        if (!bank) break;
+        const half = halfDepthTo(baseBox, bank.wall);
+        const frameTop = DOCK_HEIGHT_M + DOCK_DOOR_HEIGHT_M + SHELTER_FRAME_M;
+        for (let i = 0; i < bank.doors; i += 1) {
+          const along = bank.along + (i - (bank.doors - 1) / 2) * DOCK_DOOR_CENTRES_M;
+          const jamb = (DOCK_DOOR_WIDTH_M + SHELTER_FRAME_M) / 2;
+          for (const k of [-1, 1]) {
+            out.push(
+              onSide(
+                part,
+                bank.wall,
+                along + k * jamb,
+                half + SHELTER_PROUD_M / 2,
+                SHELTER_FRAME_M,
+                SHELTER_PROUD_M,
+                frameTop - DOCK_HEIGHT_M,
+                (frameTop + DOCK_HEIGHT_M) / 2,
+              ),
+            );
+          }
+          out.push(
+            onSide(
+              part,
+              bank.wall,
+              along,
+              half + SHELTER_PROUD_M / 2,
+              DOCK_DOOR_WIDTH_M + 2 * SHELTER_FRAME_M,
+              SHELTER_PROUD_M,
+              SHELTER_FRAME_M,
+              frameTop - SHELTER_FRAME_M / 2,
+            ),
+          );
+        }
+        break;
+      }
+      case 'dockBumper': {
+        if (!bank) break;
+        const [bw, bh, bd] = BUMPER_SIZE_M;
+        const faceOut = halfDepthTo(baseBox, bank.wall) + DOCK_DEPTH_M + bd / 2;
+        for (let i = 0; i < bank.doors; i += 1) {
+          const along = bank.along + (i - (bank.doors - 1) / 2) * DOCK_DOOR_CENTRES_M;
+          for (const k of [-1, 1]) {
+            out.push(
+              onSide(
+                part,
+                bank.wall,
+                along + k * BUMPER_OFFSET_M,
+                faceOut,
+                bw,
+                bd,
+                bh,
+                DOCK_HEIGHT_M - bh / 2 - 0.05,
+              ),
+            );
+          }
+        }
+        break;
+      }
+      case 'dockLight': {
+        if (!bank) break;
+        const [lw, lh, ld] = DOCK_LIGHT_SIZE_M;
+        const half = halfDepthTo(baseBox, bank.wall);
+        const y = DOCK_HEIGHT_M + DOCK_DOOR_HEIGHT_M + SHELTER_FRAME_M + DOCK_LIGHT_ABOVE_M;
+        for (let i = 0; i < bank.doors; i += 1) {
+          const along = bank.along + (i - (bank.doors - 1) / 2) * DOCK_DOOR_CENTRES_M;
+          out.push(onSide(part, bank.wall, along, half + ld / 2, lw, ld, lh, y));
+        }
+        break;
+      }
+      case 'officeCorner':
+        if (office) out.push(office.corner);
+        break;
+      case 'officeCanopy':
+        if (office) out.push(office.canopy);
+        break;
+      case 'panelReveal': {
+        if (!side) break;
+        // A dark strip every 25 ft panel on every face, left out behind the dock, the office and anything else standing on the wall.
+        const standing = out.map(placementBounds);
+        for (const face of facesOf(baseBox)) {
+          for (
+            let at = -face.span / 2 + PANEL_REVEAL_SPACING_M;
+            at < face.span / 2 - 1;
+            at += PANEL_REVEAL_SPACING_M
+          ) {
+            const strip = againstFacade(
+              part,
+              baseBox,
+              face.side,
+              PANEL_REVEAL_WIDTH_M,
+              PANEL_REVEAL_PROUD_M,
+              baseTop,
+              baseTop / 2,
+              at,
+            );
+            if (!standing.some((b) => rectsOverlap(b, placementBounds(strip)))) out.push(strip);
+          }
+        }
+        break;
+      }
+      case 'parapetBand': {
+        if (!side) break;
+        for (const face of facesOf(baseBox)) {
+          const corner = isAlongX(face.side) ? 2 * PARAPET_BAND_PROUD_M : 0;
+          out.push(
+            againstFacade(
+              part,
+              baseBox,
+              face.side,
+              face.span + corner,
+              PARAPET_BAND_PROUD_M,
+              PARAPET_BAND_HEIGHT_M,
+              baseTop - PARAPET_BAND_HEIGHT_M / 2,
+            ),
+          );
+        }
+        break;
+      }
+      case 'clerestory': {
+        // A lit band 0.6 m tall on each long side of the monitor, at the middle of its height.
+        const alongZ = topBox.d >= topBox.w;
+        const w = alongZ ? topBox.w * MONITOR_WIDTH_FRACTION : topBox.w * MONITOR_LENGTH_FRACTION;
+        const d = alongZ ? topBox.d * MONITOR_LENGTH_FRACTION : topBox.d * MONITOR_WIDTH_FRACTION;
+        for (const k of [-1, 1]) {
+          out.push({
+            part,
+            size: alongZ
+              ? [CLERESTORY_PROUD_M, CLERESTORY_HEIGHT_M, d]
+              : [w, CLERESTORY_HEIGHT_M, CLERESTORY_PROUD_M],
+            offset: [
+              alongZ ? k * (w / 2 + CLERESTORY_PROUD_M / 2) : 0,
+              roofY + MONITOR_HEIGHT_M / 2,
+              alongZ ? 0 : k * (d / 2 + CLERESTORY_PROUD_M / 2),
+            ],
+          });
+        }
+        break;
+      }
+      case 'entryCanopy': {
+        if (!side) break;
+        const [cw, ch, cd] = ENTRY_CANOPY_SIZE_M;
+        out.push(againstFacade(part, baseBox, side, cw, cd, ch, ENTRY_CANOPY_HEIGHT_M + ch / 2));
+        break;
+      }
+      case 'condenser': {
+        if (!bank) break;
+        // Two evaporative condensers on the roof by the dock side, 2 m in from the parapet.
+        const [cw, ch, cd] = CONDENSER_SIZE_M;
+        const alongX = isAlongX(bank.wall);
+        const spanTop = alongX ? topBox.w : topBox.d;
+        const reach = spanTop / 2 - ROOF_INSET_M - cw - 0.5;
+        if (reach < 0) break;
+        const halfOut = (alongX ? topBox.d : topBox.w) / 2;
+        const centre = Math.max(-reach, Math.min(reach, bank.along));
+        for (const k of [-1, 1]) {
+          out.push(
+            onSide(
+              part,
+              bank.wall,
+              centre + k * (cw / 2 + 0.5),
+              halfOut - ROOF_INSET_M - cd / 2,
+              cw,
+              cd,
+              ch,
+              roofY + ch / 2,
+            ),
+          );
+        }
+        break;
+      }
+      case 'bundWall':
+      case 'bullet':
+      case 'pipeRack':
+      case 'processColumn':
+      case 'furnace':
+      case 'stove':
+      case 'skipBridge':
+      case 'duct':
+      case 'chipPile':
+      case 'stacker':
+        out.push(...yardOf(part));
+        break;
     }
   }
-  return out;
+  // What wraps the walls is proud of them, so a wall on the lot line leaves it off.
+  if (!lot) return out;
+  return out.filter((p) => !WALL_WRAP_PARTS.has(p.part) || rectInside(placementBounds(p), lot.lot));
 }
+
+/** The parts that stand proud on every face of the body, where the lot is as wide as the body. */
+const WALL_WRAP_PARTS: ReadonlySet<BuildingPart> = new Set<BuildingPart>([
+  'wainscot',
+  'gutter',
+  'downspout',
+  'panelReveal',
+  'parapetBand',
+]);
 
 /** The two stretches of a supermarket's frontage either side of its entry tower. */
 function towerWings(span: number): { along: number; width: number }[] {
@@ -1519,6 +2588,18 @@ export function kitLotOf(plan: LotPlan, centre: LocalPoint, rotation: 0 | 1 | 2 
         }
       : null;
 
+  const trailers = layout.trailerStalls.map(rect);
+  const wallStep = (du: number, dv: number): LocalPoint => {
+    const a = toLocal(0, 0);
+    const b = toLocal(du, dv);
+    return { x: b.x - a.x, z: b.z - a.z };
+  };
+  const loadingFacing = layout.loadingWall
+    ? layout.loadingWall === 'v+'
+      ? wallStep(0, 1)
+      : wallStep(layout.loadingWall === 'u+' ? 1 : -1, 0)
+    : null;
+
   const through = layout.driveThrough;
   let lane: KitLane | null = null;
   const laneRects = through ? through.rects.map(rect) : [];
@@ -1545,6 +2626,17 @@ export function kitLotOf(plan: LotPlan, centre: LocalPoint, rotation: 0 | 1 | 2 
     curbCut: rect({ u0: layout.curbCut.u0, u1: layout.curbCut.u1, v0: 0, v1: 1 }),
     islands,
     dock,
+    loadingFacing,
+    trailers,
+    hard: [
+      ...layout.stalls.map((s) => rect(s.rect)),
+      ...layout.accessAisles.map(rect),
+      ...layout.aisles.map(rect),
+      ...(layout.throat ? [rect(layout.throat)] : []),
+      ...berths,
+      ...trailers,
+      ...layout.islands.map(rect),
+    ],
     lane,
     taken: [
       ...layout.stalls.map((s) => rect(s.rect)),
@@ -1552,6 +2644,7 @@ export function kitLotOf(plan: LotPlan, centre: LocalPoint, rotation: 0 | 1 | 2 
       ...layout.aisles.map(rect),
       ...(layout.throat ? [rect(layout.throat)] : []),
       ...berths,
+      ...trailers,
       ...(layout.forecourt ? [rect(layout.forecourt)] : []),
       ...(layout.rearYard ? [rect(layout.rearYard)] : []),
       ...(layout.frontWalk ? [rect(layout.frontWalk)] : []),
@@ -1612,7 +2705,7 @@ export function kitPlanFor(
     z: (building.z + lot.d / 2) * TILE_METERS + frontage.centerZM,
   };
   const kitLot = plan ? kitLotOf(plan, centre, building.rotation) : null;
-  const placements = computePartPlacements(entry, baseBox, topBox, localSide, kitLot);
+  const placements = computePartPlacements(entry, baseBox, topBox, localSide, kitLot, building.id);
 
   const back = ((4 - building.rotation) % 4) as 0 | 1 | 2 | 3;
   const corner = (tx: number, tz: number): LocalPoint =>
@@ -1634,6 +2727,8 @@ const _quaternion = new THREE.Quaternion();
 const _scale = new THREE.Vector3();
 const _color = new THREE.Color();
 const _yAxis = new THREE.Vector3(0, 1, 0);
+const _xAxis = new THREE.Vector3(1, 0, 0);
+const _pitch = new THREE.Quaternion();
 
 /** A unit box anchored at its own center, scaled per instance. */
 function unitBox(): THREE.BoxGeometry {
@@ -1794,6 +2889,7 @@ export class BuildingKitRenderer {
         centerZ + frontage.centerZM + rotated.z,
       );
       _quaternion.setFromAxisAngle(_yAxis, building.rotation * (Math.PI / 2) + (p.yaw ?? 0));
+      if (p.pitch) _quaternion.multiply(_pitch.setFromAxisAngle(_xAxis, -p.pitch));
       _scale.set(p.size[0], p.size[1], p.size[2]);
       _matrix.compose(_position, _quaternion, _scale);
       pool.setMatrixAt(slot, _matrix);

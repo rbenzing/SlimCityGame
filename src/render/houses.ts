@@ -128,7 +128,7 @@ const STOOP_COLOR = materialHex('cleanConcrete');
 const PORCH_FLOOR_COLOR = materialHex('brightestWood');
 /** What trim, shutters, the garage leaf, the front door and the fascia are painted: black, white, a dark green, or the roof's own colour. */
 const TRIM_BLACK = 0x22242a;
-const TRIM_WHITE = 0xd6d6d0;
+export const TRIM_WHITE = 0xd6d6d0;
 const TRIM_GREEN = 0x1e3a28;
 /** The dormer's glazing, over its wall colour. */
 const DORMER_GLASS_COLOR = 0x4a4a4a;

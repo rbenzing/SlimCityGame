@@ -38,7 +38,8 @@ buildings that ship.
 | Tier      | Buildings                                 | Triangles, the whole lot | Held by                                 |
 | --------- | ----------------------------------------- | ------------------------ | --------------------------------------- |
 | House     | detached, duplex, fourplex, townhouse row | 3,000                    | `src/render/geometrybudget.test.ts`     |
-| Block     | every other zoned kind                    | 1,500                    | `src/render/geometrybudget.test.ts`     |
+| Block     | every other zoned kind but a farm         | 1,500                    | `src/render/geometrybudget.test.ts`     |
+| Farm      | a crop, orchard or pasture farm           | 40,000                   | `src/render/geometrybudget.test.ts`     |
 | Ploppable | every kit                                 | 30,000                   | `src/render/geometrybudget.test.ts`     |
 | The city  | a Metropolis, about 10,000 buildings      | the frame                | `tools/frame-budget.mjs`, run per slice |
 

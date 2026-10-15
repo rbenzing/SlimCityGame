@@ -3,7 +3,20 @@ import { describe, expect, it } from 'vitest';
 import { BuildingState, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingInstance, FarmKind } from '../shared/types';
 import {
+  BIN_CAP_M,
+  BIN_RING_M,
+  BIN_ROOF_PITCH,
+  CHUTE_CAP_M,
+  CHUTE_M,
+  FENCE_TOP_RAIL_M,
   FarmRenderer,
+  LOFT_DOOR_H_M,
+  LOFT_DOOR_W_M,
+  SILO_HOOP_M,
+  SLIDING_LEAF_H_M,
+  SLIDING_LEAF_W_M,
+  cupolaBase,
+  cupolaCount,
   TRUCK_SPEED_M_PER_S,
   TRUCK_STOP_S,
   cowPose,
@@ -13,7 +26,25 @@ import {
   truckWorkingAt,
 } from './farms';
 import { isWindowCool, isWindowLit } from './buildings';
-import { orchardTrees, paddockHerd, planFarm, type FarmRect } from './farmlot';
+import {
+  BARN_EAVE_SHARE,
+  GAMBREL_RISE_RATIO,
+  HOUSE_D_M,
+  HOUSE_EAVE_M,
+  HOUSE_ROOF_PITCH,
+  HOUSE_ROOF_RISE_M,
+  PORCH_DEPTH_M,
+  PORCH_FLOOR_M,
+  PORCH_POST_HEIGHT_M,
+  PORCH_POST_M,
+  SHED_DEPTH_M,
+  SHED_LENGTH_M,
+  SHED_POST_SPACING_M,
+  orchardTrees,
+  paddockHerd,
+  planFarm,
+  type FarmRect,
+} from './farmlot';
 
 const farm = (kind: FarmKind, level: number, w: number, d: number): BuildingCatalogEntry => ({
   id: `farm-${kind}-${level}`,
@@ -50,6 +81,156 @@ const flat = (): number => 3;
 function renderer(): FarmRenderer {
   return new FarmRenderer(new THREE.Scene(), flat, catalog, dirtNorth);
 }
+
+describe('the farmstead’s detail', () => {
+  const crops = (level: 1 | 3 = 1): BuildingCatalogEntry =>
+    catalog.find((e) => e.id === `farm-crops-${level}`)!;
+
+  it('rises the gambrel 1.9 times the wall under it', () => {
+    expect(BARN_EAVE_SHARE).toBeCloseTo(1 / 2.9, 12);
+    expect((1 - BARN_EAVE_SHARE) / BARN_EAVE_SHARE).toBeCloseTo(GAMBREL_RISE_RATIO, 12);
+    expect(GAMBREL_RISE_RATIO).toBe(1.9);
+  });
+
+  it('hangs a loft door in the gable, two sliding leaves on the yard face, white trim, and a rail above', () => {
+    const r = renderer();
+    r.apply({ added: [standing('farm-crops-1')], updated: [], removed: [] });
+    expect(r.partCount('loftDoor')).toBe(1);
+    expect(r.partCount('slidingDoor')).toBe(2);
+    expect(r.partCount('doorRail')).toBe(1);
+    // Four corners, three on the sliding doors' frame and three on the loft door's, and the house's porch.
+    expect(r.partCount('trim')).toBeGreaterThanOrEqual(10);
+    expect(LOFT_DOOR_W_M).toBe(1.8);
+    expect(LOFT_DOOR_H_M).toBe(2.1);
+    expect(SLIDING_LEAF_W_M).toBe(1.8);
+    expect(SLIDING_LEAF_H_M).toBe(3.6);
+  });
+
+  it('sizes a cupola an inch to the foot of the ridge it serves, and puts two on a ridge over 32 ft', () => {
+    expect(cupolaCount(9)).toBe(1);
+    expect(cupolaCount(10)).toBe(2);
+    // A 30 ft ridge takes a 30 in cupola.
+    expect(cupolaBase(30 * 0.3048, 1)).toBeCloseTo(30 * 0.0254, 9);
+    expect(cupolaBase(18, 2)).toBeCloseTo((9 / 0.3048) * 0.0254, 9);
+    const r = renderer();
+    r.apply({ added: [standing('farm-crops-1')], updated: [], removed: [] });
+    expect(r.partCount('cupola')).toBe(2);
+    expect(r.partCount('cupolaLouvre')).toBe(2);
+    expect(r.partCount('cupolaCap')).toBe(2);
+  });
+
+  it('banks a silo’s hoops in vertex colour at 0.76 m and gives it an unloader chute and cap', () => {
+    const r = renderer();
+    r.apply({ added: [standing('farm-crops-3')], updated: [], removed: [] });
+    expect(r.partCount('chute')).toBe(2);
+    expect(r.partCount('chuteCap')).toBe(2);
+    expect(CHUTE_M).toBe(0.6);
+    expect(CHUTE_CAP_M).toBe(1);
+    expect(SILO_HOOP_M).toBe(0.76);
+    const scene = new THREE.Scene();
+    new FarmRenderer(scene, flat, catalog, dirtNorth).apply({
+      added: [standing('farm-crops-3')],
+      updated: [],
+      removed: [],
+    });
+    const banded = scene.children.filter(
+      (c): c is THREE.InstancedMesh =>
+        c instanceof THREE.InstancedMesh && c.geometry.hasAttribute('color') && c.count > 0,
+    );
+    // The silo and the bin carry their bands, stave and hoop, in the geometry rather than in more instances.
+    const twoShades = banded.filter((m) => {
+      const colors = m.geometry.getAttribute('color');
+      const shades = new Set<number>();
+      for (let i = 0; i < colors.count; i += 1) shades.add(Math.round(colors.getX(i) * 100));
+      return shades.size === 2;
+    });
+    expect(twoShades).toHaveLength(2);
+  });
+
+  it('roofs a bin at 30° with a 0.4 m cap on its peak', () => {
+    expect(BIN_ROOF_PITCH).toBeCloseTo(Math.PI / 6, 12);
+    expect(BIN_CAP_M).toBe(0.4);
+    expect(BIN_RING_M).toBe(1.1);
+    const r = renderer();
+    r.apply({ added: [standing('farm-crops-3')], updated: [], removed: [] });
+    expect(r.partCount('binCap')).toBe(2);
+  });
+
+  it('builds the farmhouse a foursquare: two storeys, a hipped 6:12 roof, a dormer, and a full-width porch 2.4 m deep on 0.2 m posts', () => {
+    expect(HOUSE_EAVE_M).toBeCloseTo(2 * 2.7, 9);
+    expect(HOUSE_ROOF_PITCH).toBe(0.5);
+    expect(HOUSE_ROOF_RISE_M).toBeCloseTo(0.5 * (HOUSE_D_M / 2 + 0.4), 9);
+    expect(PORCH_DEPTH_M).toBe(2.4);
+    expect(PORCH_FLOOR_M).toBe(0.45);
+    expect(PORCH_POST_M).toBe(0.2);
+    expect(PORCH_POST_HEIGHT_M).toBe(2.4);
+    const r = renderer();
+    r.apply({ added: [standing('farm-crops-1')], updated: [], removed: [] });
+    expect(r.partCount('houseRoof')).toBe(1);
+    expect(r.partCount('porchFloor')).toBe(1);
+    expect(r.partCount('porchStep')).toBe(1);
+    expect(r.partCount('porchPost')).toBe(4);
+    expect(r.partCount('porchRoof')).toBe(1);
+    expect(r.partCount('dormer')).toBe(1);
+    expect(r.partCount('dormerRoof')).toBe(1);
+    expect(r.partCount('dormerGlass')).toBe(1);
+  });
+
+  it('stands an equipment shed 12 × 6 m on a crop farm where the yard has room, and none on the other kinds', () => {
+    const level1 = planFarm(standing('farm-crops-1'), crops(), dirtNorth)!;
+    expect(level1.shed).not.toBeNull();
+    const shed = level1.shed!;
+    const dims = [shed.x1 - shed.x0, shed.z1 - shed.z0].sort((a, b) => a - b);
+    expect(dims[0]).toBeCloseTo(SHED_DEPTH_M, 9);
+    expect(dims[1]).toBeCloseTo(SHED_LENGTH_M, 9);
+    const inside = (a: FarmRect, b: FarmRect): boolean =>
+      a.x0 >= b.x0 - 1e-6 && a.x1 <= b.x1 + 1e-6 && a.z0 >= b.z0 - 1e-6 && a.z1 <= b.z1 + 1e-6;
+    const apart = (a: FarmRect, b: FarmRect): boolean =>
+      a.x1 <= b.x0 || b.x1 <= a.x0 || a.z1 <= b.z0 || b.z1 <= a.z0;
+    expect(inside(shed, level1.apron)).toBe(true);
+    expect(apart(shed, level1.barn)).toBe(true);
+    expect(apart(shed, level1.house)).toBe(true);
+    const r = renderer();
+    r.apply({ added: [standing('farm-crops-1')], updated: [], removed: [] });
+    // Posts every 3.7 m or less along the open side, walls on the other three.
+    expect(r.partCount('shedPost')).toBe(Math.ceil(SHED_LENGTH_M / SHED_POST_SPACING_M) + 1);
+    expect(r.partCount('shedWall')).toBe(3);
+    expect(r.partCount('shedRoof')).toBe(1);
+    for (const kind of ['orchard', 'pasture'] as const) {
+      const entry = catalog.find((e) => e.kind === kind)!;
+      expect(planFarm(standing(entry.id), entry, dirtNorth)!.shed).toBeNull();
+    }
+  });
+
+  it('puts the paddock fence’s top rail at 1.22 m, posts every 4 m', () => {
+    expect(FENCE_TOP_RAIL_M).toBe(1.22);
+    const scene = new THREE.Scene();
+    new FarmRenderer(scene, flat, catalog, dirtNorth).apply({
+      added: [standing('farm-pasture-2')],
+      updated: [],
+      removed: [],
+    });
+    const rails = scene.children.find(
+      (c): c is THREE.InstancedMesh =>
+        c instanceof THREE.InstancedMesh &&
+        c.count > 0 &&
+        c.count % 2 === 0 &&
+        (() => {
+          const m = new THREE.Matrix4();
+          c.getMatrixAt(0, m);
+          const s = new THREE.Vector3().setFromMatrixScale(m);
+          return Math.abs(s.y - 0.08) < 1e-6;
+        })(),
+    )!;
+    let top = 0;
+    const m = new THREE.Matrix4();
+    for (let i = 0; i < rails.count; i += 1) {
+      rails.getMatrixAt(i, m);
+      top = Math.max(top, new THREE.Vector3().setFromMatrixPosition(m).y - 3 + 0.04);
+    }
+    expect(top).toBeCloseTo(1.22, 5);
+  });
+});
 
 describe('cowPose', () => {
   const paddock: FarmRect = { x0: 200, z0: 230, x1: 300, z1: 320 };

@@ -24,6 +24,8 @@ export const TANK_DIAMETER_M = 6;
 /** The kinds that keep a forecourt in front of the body, and those that keep a tank farm behind it. */
 const FORECOURT_KINDS: ReadonlySet<BuildingKind> = new Set(['fuel']);
 const TANK_FARM_KINDS: ReadonlySet<BuildingKind> = new Set(['chemical', 'paper']);
+/** The kinds that dock trailers at a bank of doors and keep a truck court before it. */
+const TRUCK_COURT_KINDS: ReadonlySet<BuildingKind> = new Set(['warehouse', 'foodplant']);
 
 /** The ground a kind keeps clear of its car park: a forecourt in front, a tank farm behind. */
 export function lotYardsFor(entry: BuildingCatalogEntry): {
@@ -63,6 +65,7 @@ export function lotLayoutFor(
     berths: requirement.berths,
     ...lotYardsFor(entry),
     ...(entry.kind === 'restaurant' ? { driveThrough: true } : {}),
+    ...(entry.kind && TRUCK_COURT_KINDS.has(entry.kind) ? { trailerCourt: true } : {}),
   });
 }
 

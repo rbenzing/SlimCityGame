@@ -12,8 +12,11 @@ import {
   kitPlanFor,
   LIT_DAY_FLOOR,
   LIT_PARTS,
+  downspoutPositions,
   placementBounds,
   rooftopUnitCount,
+  serviceDoorCount,
+  type KitLot,
   type KitPlan,
   type PartPlacement,
   FUEL_CANOPY_DEPTH_M,
@@ -28,7 +31,12 @@ import {
   TANK_SPACING_M,
 } from './buildingkit';
 import type { SetbackBox } from './massing';
-import { BuildingState, type BuildingCatalogEntry, type BuildingInstance } from '../shared/types';
+import {
+  BuildingState,
+  ZoneType,
+  type BuildingCatalogEntry,
+  type BuildingInstance,
+} from '../shared/types';
 
 function entry(over: Partial<BuildingCatalogEntry> = {}): BuildingCatalogEntry {
   return {
@@ -186,11 +194,15 @@ describe('computePartPlacements', () => {
     }
   });
 
+  // A workshop's doors are counted by its frontage now (one per 6 m, at most four),
+  // so the 40 m face here holds four and a walk door; they still stand on the ground.
   it("stands a workshop's roller doors on the ground, since it has no dock", () => {
     const workshop = entry({ kind: 'workshop', level: 1, pollution: 20 });
     const placed = computePartPlacements(workshop, base, top, 'S');
-    expect(partsOf(placed)).toEqual(Array(DOOR_COUNT).fill('rollUpDoors'));
-    for (const door of placed) expect(door.offset[1] - door.size[1] / 2).toBeCloseTo(0, 9);
+    const doors = placed.filter((p) => p.part === 'rollUpDoors');
+    expect(doors).toHaveLength(4);
+    for (const door of doors) expect(door.offset[1] - door.size[1] / 2).toBeCloseTo(0, 9);
+    expect(partsOf(placed)).not.toContain('loadingDock');
   });
 
   it("puts a plant's tank farm in the yard behind it, off the wall opposite the street", () => {
@@ -199,7 +211,8 @@ describe('computePartPlacements', () => {
       ['S', -1],
       ['N', 1],
     ] as const) {
-      const tanks = computePartPlacements(plant, base, top, side);
+      // The yard has more than the farm now: only the tanks are counted here.
+      const tanks = computePartPlacements(plant, base, top, side).filter((p) => p.part === 'tanks');
       expect(tanks).toHaveLength(TANK_COUNT);
       for (const tank of tanks) {
         expect(tank.part).toBe('tanks');
@@ -299,6 +312,10 @@ const commercial = (catalogData as { buildings: BuildingCatalogEntry[] }).buildi
   (e) => e.category === 'com',
 );
 const byId = (id: string): BuildingCatalogEntry => commercial.find((e) => e.id === id)!;
+/** The Industrial and Heavy Industrial zones' kinds; a farm has its own kit. */
+const industrial = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter(
+  (e) => e.category === 'ind' && e.zone !== ZoneType.Agriculture,
+);
 
 type StreetSide = 'N' | 'E' | 'S' | 'W';
 const STREET_SIDES: readonly StreetSide[] = ['N', 'E', 'S', 'W'];
@@ -887,10 +904,10 @@ describe('a restaurant’s drive-through', () => {
   });
 });
 
-describe('the storefront kit on the map', () => {
-  const road = (x: number, z: number): boolean => z === 40 && x >= 0 && x < 300;
-  /** One of each kind, each fronting the street along z = 40. */
-  const row = commercial.filter((e) => e.bodyFootprint === undefined);
+describe('the storefront and industrial kits on the map', () => {
+  const road = (x: number, z: number): boolean => z === 40 && x >= 0 && x < 1000;
+  /** One of each kind, commercial and industrial, each fronting the street along z = 40. */
+  const row = [...commercial, ...industrial].filter((e) => e.bodyFootprint === undefined);
   const inst = (
     e: BuildingCatalogEntry,
     i: number,
@@ -907,7 +924,7 @@ describe('the storefront kit on the map', () => {
       problems: 0,
     }) as BuildingInstance;
   const make = (): BuildingKitRenderer =>
-    new BuildingKitRenderer(new THREE.Scene(), () => 0, commercial, road);
+    new BuildingKitRenderer(new THREE.Scene(), () => 0, row, road);
   const allParts = [...new Set(row.flatMap((e) => partsFor(e)))];
 
   it('draws the lit parts on the lit material and nothing else on it', () => {
@@ -962,5 +979,274 @@ describe('the storefront kit on the map', () => {
     r.apply({ added: [], updated: [], removed: row.map((_, i) => i + 1) });
     expect(r.trackedIds()).toEqual([]);
     for (const part of allParts) expect(r.instanceCount(part), part).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The industrial kit
+// ---------------------------------------------------------------------------
+
+const indById = (id: string): BuildingCatalogEntry => industrial.find((e) => e.id === id)!;
+
+describe('the industrial kit: where every part stands', () => {
+  const standing = industrial.filter((e) => e.bodyFootprint === undefined);
+
+  it('stands every part inside its lot and above the ground, at every turn and street side', () => {
+    const outside: string[] = [];
+    for (const e of standing) {
+      for (const rotation of TURNS) {
+        for (const side of STREET_SIDES) {
+          const plan = kitOf(e, rotation, side);
+          for (const p of plan.placements) {
+            const b = placementBounds(p);
+            const t = plan.tiles;
+            const inside =
+              b.x0 >= t.x0 - 1e-6 &&
+              b.x1 <= t.x1 + 1e-6 &&
+              b.z0 >= t.z0 - 1e-6 &&
+              b.z1 <= t.z1 + 1e-6;
+            if (!inside || bottomOf(p) < -1e-9)
+              outside.push(`${e.id} ${rotation}${side} ${p.part}`);
+          }
+        }
+      }
+    }
+    expect(outside).toEqual([]);
+  });
+
+  it('is the same every time', () => {
+    for (const e of standing) expect(kitOf(e, 1, 'E')).toEqual(kitOf(e, 1, 'E'));
+  });
+
+  it('stands nothing against a wall where there is no street, only on the roof', () => {
+    const roofOnly: readonly BuildingPart[] = [
+      'monitorRoof',
+      'roofArray',
+      'ridgeVent',
+      'clerestory',
+    ];
+    for (const e of standing) {
+      const plan = kitPlanFor(e, { id: 7, x: 10, z: 10, rotation: 0 }, () => false)!;
+      expect(
+        plan.placements.filter((p) => !roofOnly.includes(p.part)),
+        e.id,
+      ).toEqual([]);
+    }
+  });
+});
+
+describe('a workshop and a factory', () => {
+  it('cuts a workshop’s doors by its frontage: one 10 ft door per 6 m, at most four, and a walk door', () => {
+    expect([8, 12, 20, 27.2, 40].map((s) => serviceDoorCount('workshop', s))).toEqual([
+      1, 1, 2, 4, 4,
+    ]);
+    for (const id of ['ind-1', 'ind-workshop-2', 'ind-workshop-3']) {
+      const plan = southern(indById(id));
+      const doors = only(plan, 'rollUpDoors');
+      expect(doors).toHaveLength(serviceDoorCount('workshop', plan.baseBox.w));
+      for (const d of doors) {
+        expect(d.size[0]).toBeCloseTo(3.05, 9);
+        expect(d.size[1]).toBeCloseTo(3.05, 9);
+        expect(bottomOf(d)).toBeCloseTo(0, 9);
+      }
+      const [walk] = only(plan, 'walkDoor');
+      expect(walk!.size[0]).toBeCloseTo(0.9, 9);
+      expect(walk!.size[1]).toBeCloseTo(2.1, 9);
+      for (const d of doors) {
+        expect(overlap(placementBounds(d), placementBounds(walk!))).toBe(false);
+      }
+    }
+  });
+
+  it('has a 1 m wainscot round every face, gutters along both eaves, a downspout at each corner and every 6 m, and a ridge vent', () => {
+    // On a lot as wide as the body a wall on the lot line leaves the wainscot off it, so this one stands free.
+    const plan = southern(indById('ind-workshop-2'));
+    expect(only(plan, 'wainscot').length).toBeGreaterThan(0);
+    const wide: SetbackBox = { w: 27.2, d: 27.2, h: 6.1, yOffset: 0 };
+    const placed = computePartPlacements(indById('ind-workshop-2'), wide, wide, 'S', null);
+    expect(placed.filter((p) => p.part === 'wainscot')).toHaveLength(4);
+    for (const w of placed.filter((p) => p.part === 'wainscot'))
+      expect(w.size[1]).toBeCloseTo(1, 9);
+    const gutters = only(plan, 'gutter');
+    expect(gutters).toHaveLength(2);
+    for (const g of gutters) expect(g.size[1]).toBeCloseTo(0.2, 9);
+    const spouts = downspoutPositions(plan.baseBox.w);
+    expect(spouts[0]).toBeCloseTo(-spouts[spouts.length - 1]!, 9);
+    for (let i = 1; i < spouts.length; i += 1) {
+      expect(spouts[i]! - spouts[i - 1]!).toBeLessThanOrEqual(6 + 1e-9);
+    }
+    expect(only(plan, 'downspout')).toHaveLength(2 * spouts.length);
+    for (const s of only(plan, 'downspout')) {
+      expect(Math.min(s.size[0], s.size[2])).toBeCloseTo(0.13, 9);
+    }
+    const [vent] = only(plan, 'ridgeVent');
+    expect(bottomOf(vent!)).toBeCloseTo(plan.topBox.yOffset + plan.topBox.h, 9);
+  });
+
+  it('gives a factory two 12 ft doors, a walk door, and a lit clerestory 0.6 m tall down both sides of the monitor', () => {
+    for (const id of ['ind-factory-1', 'ind-2', 'ind-factory-3']) {
+      const plan = southern(indById(id));
+      const doors = only(plan, 'rollUpDoors');
+      expect(doors).toHaveLength(2);
+      for (const d of doors) expect(d.size[0]).toBeCloseTo(3.66, 9);
+      expect(only(plan, 'walkDoor')).toHaveLength(1);
+      const bands = only(plan, 'clerestory');
+      expect(bands).toHaveLength(2);
+      for (const b of bands) expect(b.size[1]).toBeCloseTo(0.6, 9);
+    }
+    expect(LIT_PARTS.has('clerestory')).toBe(true);
+  });
+
+  it('gives a flex building an entry canopy 3 × 1.5 m at 3 m and a wainscot', () => {
+    const plan = southern(indById('ind-flex-2'));
+    const [canopy] = only(plan, 'entryCanopy');
+    expect(canopy!.size[0]).toBeCloseTo(3, 9);
+    expect(canopy!.size[2]).toBeCloseTo(1.5, 9);
+    expect(bottomOf(canopy!)).toBeCloseTo(3, 9);
+    expect(only(plan, 'wainscot').length).toBeGreaterThan(0);
+  });
+});
+
+describe('a warehouse and a food plant', () => {
+  const docked = industrial
+    .filter(
+      (e) => e.bodyFootprint === undefined && (e.kind === 'warehouse' || e.kind === 'foodplant'),
+    )
+    .flatMap((e) => TURNS.map((rotation) => ({ e, rotation, plan: kitOf(e, rotation, 'S') })));
+
+  it('stands the dock bank on the loading side with doors 2.74 × 3.05 m at 4.3 m centres, each framed, bumped and lit', () => {
+    let onSide = 0;
+    for (const { e, plan } of docked) {
+      const f = plan.lot!.loadingFacing;
+      if (!f) continue;
+      const alongX = Math.abs(f.x) > Math.abs(f.z);
+      const doors = only(plan, 'rollUpDoors');
+      const half = alongX ? plan.baseBox.w / 2 : plan.baseBox.d / 2;
+      for (const d of doors) {
+        const out = alongX ? Math.sign(f.x) * d.offset[0] : Math.sign(f.z) * d.offset[2];
+        expect(out, e.id).toBeGreaterThan(half);
+        expect(Math.max(d.size[0], d.size[2]), e.id).toBeCloseTo(2.74, 9);
+        expect(d.size[1]).toBeCloseTo(3.05, 9);
+      }
+      const at = doors.map((d) => (alongX ? d.offset[2] : d.offset[0])).sort((a, b) => a - b);
+      for (let i = 1; i < at.length; i += 1) expect(at[i]! - at[i - 1]!).toBeCloseTo(4.3, 9);
+      expect(only(plan, 'dockShelter')).toHaveLength(3 * doors.length);
+      expect(only(plan, 'dockBumper')).toHaveLength(2 * doors.length);
+      expect(only(plan, 'dockLight')).toHaveLength(doors.length);
+      onSide += 1;
+    }
+    expect(onSide).toBeGreaterThan(0);
+  });
+
+  it('keeps the dock on the street face where there are no berths, clear of the office corner', () => {
+    const facing = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] } as const;
+    for (const id of ['ind-warehouse-1', 'heavy-food-2']) {
+      const e = indById(id);
+      const body: SetbackBox = { w: 40.8, d: 40.8, h: e.height, yOffset: 0 };
+      for (const side of STREET_SIDES) {
+        const placed = computePartPlacements(e, body, body, side, null);
+        const doors = placed.filter((p) => p.part === 'rollUpDoors');
+        expect(doors.length).toBeGreaterThan(0);
+        for (const d of doors) {
+          const [fx, fz] = facing[side];
+          expect(fx * d.offset[0] + fz * d.offset[2]).toBeGreaterThan(20.4);
+        }
+        const office = placed.find((p) => p.part === 'officeCorner')!;
+        for (const d of doors) {
+          expect(overlap(placementBounds(d), placementBounds(office))).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('carries an office corner 8 × 8 m, two storeys, on the lit material, with a canopy over its door', () => {
+    const withOffice = docked.filter(({ plan }) => only(plan, 'officeCorner').length > 0);
+    expect(withOffice.length).toBeGreaterThan(0);
+    for (const { e, plan } of withOffice) {
+      const [corner] = only(plan, 'officeCorner');
+      expect(corner!.size[0], e.id).toBeCloseTo(8, 9);
+      expect(corner!.size[2]).toBeCloseTo(8, 9);
+      expect(corner!.size[1]).toBeGreaterThan(6);
+      expect(only(plan, 'officeCanopy')).toHaveLength(1);
+    }
+    expect(LIT_PARTS.has('officeCorner')).toBe(true);
+  });
+
+  it('draws panel reveals and a parapet band on a distribution centre, and two condensers 6 × 3.6 × 3 m on a food plant’s roof', () => {
+    const plan = southern(indById('ind-warehouse-2'));
+    expect(only(plan, 'panelReveal').length).toBeGreaterThan(10);
+    for (const r of only(plan, 'parapetBand')) expect(r.size[1]).toBeCloseTo(1, 9);
+    const food = southern(indById('heavy-food-2'));
+    const condensers = only(food, 'condenser');
+    expect(condensers).toHaveLength(2);
+    for (const c of condensers) {
+      expect([...c.size].sort((a, b) => a - b)).toEqual([3, 3.6, 6]);
+      expect(bottomOf(c)).toBeCloseTo(food.topBox.yOffset + food.topBox.h, 9);
+    }
+  });
+});
+
+describe('a chemical plant, a steelworks and a paper mill', () => {
+  it('walls its tank farm in a 1 m bund, puts a bullet on saddles beside it, a rack over it and a column 1.6 times the body', () => {
+    const body: SetbackBox = { w: 40, d: 40, h: 12, yOffset: 0 };
+    const placed = computePartPlacements(indById('heavy-chem-2'), body, body, 'S', null);
+    const of = (part: string): PartPlacement[] => placed.filter((p) => p.part === part);
+    expect(of('bundWall')).toHaveLength(3);
+    for (const w of of('bundWall')) expect(w.size[1]).toBeCloseTo(1, 9);
+    expect(of('bullet')[0]!.size).toEqual([3, 3, 15]);
+    expect(of('pipeRack').filter((p) => p.size[1] === 0.8)).toHaveLength(2);
+    const tiers = of('pipeRack').filter((p) => p.size[0] === 6 && p.size[1] === 0.4);
+    expect(tiers).toHaveLength(2);
+    expect(bottomOf(tiers[0]!)).toBeCloseTo(5.5, 9);
+    const [column] = of('processColumn');
+    expect(column!.size[0]).toBeCloseTo(3, 9);
+    expect(topOf(column!)).toBeCloseTo(1.6 * 12, 9);
+  });
+
+  it('stands a steelworks furnace 8 m across to 1.8 times the body with three stoves to 1.4, and a duct to the stack', () => {
+    const e = indById('heavy-metals-2');
+    const body: SetbackBox = { w: 54, d: 40, h: 15, yOffset: 0 };
+    const placed = computePartPlacements(e, body, body, 'S', null, 7);
+    const of = (part: string): PartPlacement[] => placed.filter((p) => p.part === part);
+    const [furnace] = of('furnace');
+    expect(furnace!.size[0]).toBeCloseTo(8, 9);
+    expect(topOf(furnace!)).toBeCloseTo(1.8 * 15, 9);
+    expect(of('stove')).toHaveLength(3);
+    for (const s of of('stove')) {
+      expect(s.size[0]).toBeCloseTo(5, 9);
+      expect(topOf(s)).toBeCloseTo(1.4 * 15, 9);
+    }
+    expect(of('skipBridge')[0]!.size[0]).toBeCloseTo(1.5, 9);
+    expect(of('skipBridge')[0]!.pitch).toBeGreaterThan(0);
+    expect(of('duct')[0]!.size[0]).toBeCloseTo(1.5, 9);
+    // Without a building id there is no stack to run the duct to.
+    expect(computePartPlacements(e, body, body, 'S', null).map((p) => p.part)).not.toContain(
+      'duct',
+    );
+  });
+
+  it('piles chips 25 m across and 8 m tall with a stacker, only where the lot has room', () => {
+    const e = indById('heavy-paper-2');
+    const body: SetbackBox = { w: 40, d: 40, h: 13, yOffset: 0 };
+    const lotOf = (half: number): KitLot => ({
+      lot: { x0: -half, x1: half, z0: -half, z1: half },
+      curbCut: { x0: 0, x1: 4, z0: 20, z1: 21 },
+      islands: [],
+      dock: null,
+      loadingFacing: null,
+      trailers: [],
+      hard: [],
+      lane: null,
+      taken: [],
+    });
+    const placed = computePartPlacements(e, body, body, 'S', lotOf(60));
+    expect(placed.find((p) => p.part === 'chipPile')!.size).toEqual([25, 8, 25]);
+    expect(placed.filter((p) => p.part === 'stacker')).toHaveLength(1);
+    for (const p of placed.filter((q) => q.part === 'chipPile' || q.part === 'stacker')) {
+      const b = placementBounds(p);
+      expect(b.x0 >= -60 && b.x1 <= 60 && b.z0 >= -60 && b.z1 <= 60).toBe(true);
+    }
+    const tight = computePartPlacements(e, body, body, 'S', lotOf(30));
+    expect(tight.filter((p) => p.part === 'chipPile')).toEqual([]);
   });
 });

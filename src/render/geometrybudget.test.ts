@@ -12,6 +12,8 @@ import {
 } from './trees';
 import { MassingRenderer } from './massing';
 import { RoofPropRenderer } from './props';
+import { FarmRenderer } from './farms';
+import { LotRenderer } from './lots';
 import { UTILITY_KIT_CATALOG_IDS, UtilityKitRenderer, cemeteryPlots } from './utilitykits';
 import { isHouseEntry } from './archetypes';
 import { streetLookupOf } from './frontage';
@@ -21,6 +23,7 @@ import {
   type BuildingCatalogEntry,
   type BuildingDelta,
   type BuildingInstance,
+  ZoneType,
 } from '../shared/types';
 
 const CATALOG = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
@@ -29,6 +32,8 @@ const CATALOG = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings
 const KIT_TIER = 30000;
 const BLOCK_TIER = 1500;
 const HOUSE_TIER = 3000;
+/** A farm counts everything on its lot: an orchard of about 370 trees at 92 triangles each is the heaviest. */
+const FARM_TIER = 40000;
 /** The triangles a commercial block's own parts add: awnings, canopy, pylon, units, lane furniture. */
 const COMMERCIAL_KIT_CEILING = 500;
 const NORMAL_LOT_HOME_CEILING = 1300;
@@ -120,8 +125,33 @@ function kitTriangles(entry: BuildingCatalogEntry): number {
   return drawnTriangles(scene);
 }
 
-const zoned = CATALOG.filter((e) => (e.zone ?? 0) > 0 && e.zone !== 9);
+const zoned = CATALOG.filter((e) => (e.zone ?? 0) > 0 && e.zone !== ZoneType.Agriculture);
+const farms = CATALOG.filter((e) => e.zone === ZoneType.Agriculture);
 const kits = UTILITY_KIT_CATALOG_IDS.map((id) => CATALOG.find((e) => e.id === id)!);
+
+interface FarmParts {
+  body: number;
+  land: number;
+  kit: number;
+  total: number;
+}
+
+/** Everything a farm stands with on its lot: the barn's body, its ground, and the farm kit with every tree, post and part. */
+function farmParts(entry: BuildingCatalogEntry): FarmParts {
+  // A dirt road along the lot's north edge is the gate every farm opens onto.
+  const dirtAt = (_x: number, z: number): boolean => z === ORIGIN.z - 1;
+  const delta: BuildingDelta = { added: [instanceOf(entry, 1)], updated: [], removed: [] };
+  const parts = {
+    body: drawnBy((s) =>
+      new BuildingInstancer(s, CATALOG, flat, undefined, undefined, undefined, dirtAt).apply(delta),
+    ),
+    land: drawnBy((s) =>
+      new LotRenderer(s, flat, CATALOG, undefined, undefined, dirtAt).apply(delta),
+    ),
+    kit: drawnBy((s) => new FarmRenderer(s, flat, CATALOG, dirtAt).apply(delta)),
+  };
+  return { ...parts, total: Object.values(parts).reduce((a, b) => a + b, 0) };
+}
 
 /** The densest of a home's yards, which vary by id; every other building draws the same each time. */
 const zonedCeiling = (entry: BuildingCatalogEntry): ZonedParts => {
@@ -140,16 +170,32 @@ describe('geometry budget: triangles per building, every part', () => {
     const parts = zonedCeiling(entry);
     return { entry, parts, triangles: parts.total };
   });
+  const farmRows = farms.map((entry) => ({ entry, parts: farmParts(entry) }));
 
-  it('reports every kit and zoned building against its tier', () => {
+  it('reports every kit, zoned building and farm against its tier', () => {
     const table: Record<string, Record<string, number | string>> = {};
     for (const { entry, triangles } of kitRows) table[entry.id] = { tier: 'kit', total: triangles };
     for (const { entry, parts } of zonedRows) {
       table[entry.id] = { tier: isHouseEntry(entry) ? 'house' : 'block', ...parts };
     }
+    for (const { entry, parts } of farmRows) table[entry.id] = { tier: 'farm', ...parts };
     // eslint-disable-next-line no-console
     console.table(table);
-    expect(Object.keys(table).length).toBe(kits.length + zoned.length);
+    expect(Object.keys(table).length).toBe(kits.length + zoned.length + farms.length);
+  });
+
+  it.each(farmRows.map((r) => [r.entry.id, r.parts.total] as const))(
+    'farm %s stays within the farm tier',
+    (_id, triangles) => {
+      expect(triangles).toBeGreaterThan(0);
+      expect(triangles).toBeLessThanOrEqual(FARM_TIER);
+    },
+  );
+
+  it('stands an orchard in trees by the hundred and still inside its tier', () => {
+    const orchard = farmRows.find((r) => r.entry.id === 'farm-orchard-3')!;
+    expect(orchard.parts.kit).toBeGreaterThan(10000);
+    expect(orchard.parts.total).toBeLessThanOrEqual(FARM_TIER);
   });
 
   it('names every kit in the registry', () => {

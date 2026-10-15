@@ -561,7 +561,14 @@ describe('the lot’s paved ground', () => {
             expect(yard).toEqual(yards);
           } else {
             const throat = layout.throat ? [layout.throat] : [];
-            expect(yard).toEqual([...layout.aisles, ...throat, ...layout.berths, ...yards]);
+            // The trailer stalls striped in the truck court are the yard's paving too.
+            expect(yard).toEqual([
+              ...layout.aisles,
+              ...throat,
+              ...layout.berths,
+              ...layout.trailerStalls,
+              ...yards,
+            ]);
           }
         }
       }
