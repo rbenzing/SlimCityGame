@@ -1385,6 +1385,15 @@ MUTCD citations below use 11th-edition section numbers.
   24-bit RGB id colour per instance, never a per-object mesh. —
   [ADR-0006](engineering/adr/0006-rendering-is-instancedmesh-everywhere-with-gpu-id-picking.md);
   `src/render/picking.ts`
+- Nothing on the ground is a mesh per building. Terrain, roads and lot paving
+  are each batched one mesh per 16-tile chunk and a chunk is rebuilt when
+  something in it changes; a renderer that adds a `THREE.Mesh` per lot or per
+  building puts thousands of draw calls into the overview, which is how the
+  first frame measurement found the lots. Every building, part and prop is
+  an instance in a shared bucket, and every piece of geometry has a triangle
+  ceiling the geometry test holds. —
+  [modeling-standards.md](art/modeling-standards.md#geometry-budget);
+  `src/render/geometrybudget.test.ts`, `tools/frame-budget.mjs`
 - No custom shaders: no `ShaderMaterial`, GLSL or `onBeforeCompile`. Effects
   come from stock materials, TSL node graphs on `MeshStandardNodeMaterial`,
   vertex colour and instance colour. — [shaders.md](visual-render/shaders.md),

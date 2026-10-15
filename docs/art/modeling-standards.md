@@ -70,10 +70,41 @@ of every kit, placed by command on seed 7, the sim paused. The record is
 | Overview       | 38.5 ms     | 4,118      | 44.4 M    | +3,956 calls, +30.5 M |
 | Oblique, night | 26.1 ms     | 583        | 40.7 M    | +505 calls, +26.9 M   |
 
-The empty map draws 13.8 M triangles of terrain, water and scattered trees
+The second reading, the same seed, views and flags after the performance
+slice (lots one mesh per chunk, the species and yard parts at their
+ceilings, the solar row and fence thinned; the record is
+`tools/shots-framebudget/result.md`, the first kept beside it as
+`result-2026-10-15-before.md`):
+
+| View           | Frame, mean, before → after | Draw calls, before → after | Triangles, before → after |
+| -------------- | --------------------------- | -------------------------- | ------------------------- |
+| Street         | 27 → 24 ms                  | 809 → 282                  | 38.0 → 27.2 M             |
+| Oblique        | 29 → 28 ms                  | 575 → 389                  | 40.7 → 30.3 M             |
+| Overview       | 45 → 44 ms                  | 4,118 → 1,125              | 44.4 → 34.4 M             |
+| Oblique, night | 29 → 28 ms                  | 583 → 397                  | 40.7 → 30.3 M             |
+
+The before and after are the means of three interleaved runs of each build
+on one machine in one session (`result-runs.md` holds all of them). The
+draw calls fall by half to two-thirds and every view sheds 10 M triangles;
+the frame falls 2–3 ms at the street and holds on the overview, which is now
+bound by triangles on this GPU, at roughly 1.2–1.4 G a second. The empty
+map's 13.8 M triangles fell to 8.4 M, which is the trees. The next gain is
+triangles, not calls, and the overview still draws three times the
+oblique's calls.
+
+**Reading a single frame's percentiles.** A build that submits fewer calls
+lets the browser queue frames ahead of the GPU, and the animation loop's
+deltas then alternate fast and slow: the single-frame median falls to
+13–26 ms and the 95th percentile rises to 67–98 ms while the mean stays the
+real cost. The tool therefore reports the 95th percentile of eight-frame
+averages beside the single-frame figures, and that is the percentile to
+read; the lot renderer's chunk flush was checked and does nothing when
+nothing changed, held by a test.
+
+The empty map drew 13.8 M triangles of terrain, water and scattered trees
 at 66–162 calls; its frame time is a CPU submission rate and is not
 comparable, so the buildings' share is read from calls and triangles. What
-the figures say:
+the first reading said:
 
 - The frame is **23–38 ms, 26–43 fps**, before the building-detail
   programme adds a triangle; the stated 60 fps and ~300 draw calls in
@@ -95,9 +126,12 @@ The commonly cited per-mesh vertex cap is never the binding constraint
 here: every building instance shares one `InstancedMesh` bucket per part
 regardless of how many exist (see
 [asset-guidelines.md](asset-guidelines.md)), so the cost of a part is its
-triangles times its instances, in a handful of draw calls. The merged
-**ground geometry** each renderer batches per chunk (terrain, roads, lots)
-is the other large cost, and the overview above is where it shows.
+triangles times its instances, in a handful of draw calls. The **ground**
+is the other cost, and it is batched **one mesh per 16-tile chunk** per
+renderer — terrain, roads, and from the performance slice the lots too.
+Nothing on the ground is a mesh per building: the overview's 4,118 calls
+were the lots, one mesh each, and the fix is the chunk the roads already
+use. A chunk is rebuilt when a lot in it changes, as a road chunk is.
 
 ## Topology
 

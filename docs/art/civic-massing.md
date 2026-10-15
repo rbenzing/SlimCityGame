@@ -322,7 +322,10 @@ and stated as assumptions where not; the figures behind them are in
   LBNL's 40–50% for fixed tilt: 4.29 m of plan over 9.5 m. **Every row faces the
   sun's noon side of the scene at every rotation of the lot**, as a real array
   faces south; on a square lot the rows always fit. Panels are near-black blue
-  with a lighter frame edge, on slim posts. A 4 m gravel track runs in from the
+  with a lighter frame edge, on slim posts at 6 m (the game's own spacing);
+  the module seams are the frame's colour, not geometry, so a row is under
+  100 triangles and the farm, which a solar city builds by the hundred, under
+  2,000. A 4 m gravel track runs in from the
   street to the inverter skid, an SMA medium-voltage station on a 20 ft skid
   (6.06 × 2.44 × 2.9 m), and a 7 ft (2.1 m) chain-link fence closes the lot, with a
   gate on the track. One instance per row, so a farm is a dozen.

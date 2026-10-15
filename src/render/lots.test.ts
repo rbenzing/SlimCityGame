@@ -337,6 +337,77 @@ describe('LotRenderer', () => {
     });
   });
 
+  describe('batched per 16-tile chunk', () => {
+    const lotMeshes = (scene: THREE.Scene): THREE.Mesh[] =>
+      scene.children.filter((c): c is THREE.Mesh => c instanceof THREE.Mesh);
+
+    it('holds many lots in one chunk as one mesh on one material', () => {
+      const scene = new THREE.Scene();
+      const r = new LotRenderer(scene, flat, [entry()]);
+      const added = Array.from({ length: 12 }, (_, i) =>
+        building({ id: i + 1, x: (i % 4) * 3, z: Math.floor(i / 4) * 3 }),
+      );
+      r.apply(delta({ added }));
+      expect(r.lotCount()).toBe(12);
+      expect(lotMeshes(scene)).toHaveLength(1);
+    });
+
+    it('gives lots in two chunks two meshes', () => {
+      const scene = new THREE.Scene();
+      const r = new LotRenderer(scene, flat, [entry()]);
+      r.apply(delta({ added: [building({ id: 1, x: 2 }), building({ id: 2, x: 20 })] }));
+      expect(lotMeshes(scene)).toHaveLength(2);
+    });
+
+    it('rebuilds only the chunk a lot leaves, and leaves none for an emptied chunk', () => {
+      const scene = new THREE.Scene();
+      const r = new LotRenderer(scene, flat, [entry()]);
+      r.apply(
+        delta({
+          added: [building({ id: 1, x: 2 }), building({ id: 2, x: 6 }), building({ id: 3, x: 20 })],
+        }),
+      );
+      const [near, far] = lotMeshes(scene);
+      const farGeometry = far!.geometry;
+      const nearGeometry = near!.geometry;
+      const nearVertices = nearGeometry.getAttribute('position').count;
+
+      r.apply(delta({ removed: [1] }));
+      const after = lotMeshes(scene);
+      expect(after).toHaveLength(2);
+      expect(after.some((m) => m.geometry === farGeometry)).toBe(true);
+      expect(after.some((m) => m.geometry === nearGeometry)).toBe(false);
+      const rebuilt = after.find((m) => m.geometry !== farGeometry)!;
+      expect(rebuilt.geometry.getAttribute('position').count).toBeLessThan(nearVertices);
+
+      r.apply(delta({ removed: [3] }));
+      expect(lotMeshes(scene)).toHaveLength(1);
+      r.apply(delta({ removed: [2] }));
+      expect(lotMeshes(scene)).toHaveLength(0);
+    });
+
+    it('rebuilds nothing for a delta that changes nothing, and one chunk for a lot changed twice', () => {
+      const scene = new THREE.Scene();
+      const r = new LotRenderer(scene, flat, [entry()]);
+      r.apply(delta({ added: [building({ id: 1, x: 2 }), building({ id: 2, x: 6 })] }));
+      expect(r.rebuiltChunks()).toBe(1);
+      r.apply(delta());
+      r.apply(delta({ removed: [99] }));
+      expect(r.rebuiltChunks()).toBe(1);
+      r.apply(delta({ updated: [building({ id: 1, x: 2 }), building({ id: 1, x: 2 })] }));
+      expect(r.rebuiltChunks()).toBe(2);
+    });
+
+    it('moves a lot between chunks when it is updated onto another', () => {
+      const scene = new THREE.Scene();
+      const r = new LotRenderer(scene, flat, [entry()]);
+      r.apply(delta({ added: [building({ id: 1, x: 2 })] }));
+      r.apply(delta({ updated: [building({ id: 1, x: 20 })] }));
+      expect(lotMeshes(scene)).toHaveLength(1);
+      expect(r.lotCount()).toBe(1);
+    });
+  });
+
   it('hides and shows every pad without dropping them', () => {
     const scene = new THREE.Scene();
     const r = new LotRenderer(scene, flat, [entry()]);

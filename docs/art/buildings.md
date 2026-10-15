@@ -408,6 +408,16 @@ offers in the back yard, clear of the drive, its cover and the patio, and a
 part with no free spot is left out. A row's yards are about 5 m deep, which
 holds a patio and a grill but not a pool or a trampoline.
 
+**What the yard costs.** Six thousand of these stand in a Metropolis, so the
+yard's parts are drawn for 40 m: the pool a twelve-sided drum (under 60
+triangles), the trampoline a twelve-sided mat on six legs (under 110), the
+trees and bushes at the species ceilings in
+[vegetation.md](../visual-render/vegetation.md#trees). With its roof, its
+cover, its car and its yard, a home on a normal lot stays under 900 triangles
+and on an acre under 1,500, inside the house tier of
+[modeling-standards.md](modeling-standards.md#geometry-budget), and the test
+there holds it.
+
 **Through the lifecycle.** The roof, garage and carport share the body's
 day/night tint and its construction grey; the fence, the yard parts, the
 trees and the car are lit like any other prop. A home under construction has

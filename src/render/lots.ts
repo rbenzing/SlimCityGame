@@ -24,7 +24,7 @@
 import * as THREE from 'three';
 import { BuildingState } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../shared/types';
-import { TILE_METERS } from '../shared/constants';
+import { CHUNK_TILES, CHUNKS_PER_SIDE, TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import { pushConformingQuad, conformingQuadVertexCount } from './groundquad';
 import { materialUnit, type MaterialName } from './palette';
@@ -125,7 +125,11 @@ export class LotRenderer {
   /** The stalls the streets paint, which a car park's layout counts toward its code; none without it. */
   private readonly kerb: KerbSurroundings | null;
   private readonly material = new THREE.MeshLambertMaterial({ vertexColors: true });
-  private readonly meshes = new Map<number, THREE.Mesh>();
+  /** One merged mesh per 16-tile chunk, keyed by the chunk of a lot's low corner. */
+  private readonly chunks = new Map<number, LotChunk>();
+  private readonly lotChunk = new Map<number, number>();
+  private readonly dirty = new Set<number>();
+  private rebuilds = 0;
   private visible = true;
 
   constructor(
@@ -153,38 +157,39 @@ export class LotRenderer {
       this.remove(building.id);
       this.place(building);
     }
+    this.flush();
   }
 
   setVisible(visible: boolean): void {
     this.visible = visible;
-    for (const mesh of this.meshes.values()) mesh.visible = visible;
+    for (const chunk of this.chunks.values()) if (chunk.mesh) chunk.mesh.visible = visible;
   }
 
   lotCount(): number {
-    return this.meshes.size;
+    return this.lotChunk.size;
   }
 
-  /** Vertices in the largest pad currently built — the number the cap binds. */
+  /** Vertices in the largest single lot currently built — the number the cap binds. */
   largestMeshVertices(): number {
     let largest = 0;
-    for (const mesh of this.meshes.values()) {
-      const position = mesh.geometry.getAttribute('position');
-      if (position) largest = Math.max(largest, position.count);
+    for (const chunk of this.chunks.values()) {
+      for (const lot of chunk.lots.values()) largest = Math.max(largest, lot.positions.length / 3);
     }
     return largest;
   }
 
   dispose(): void {
-    for (const id of Array.from(this.meshes.keys())) this.remove(id);
+    for (const id of Array.from(this.lotChunk.keys())) this.remove(id);
+    this.flush();
     this.material.dispose();
   }
 
   private remove(id: number): void {
-    const mesh = this.meshes.get(id);
-    if (!mesh) return;
-    this.scene.remove(mesh);
-    mesh.geometry.dispose();
-    this.meshes.delete(id);
+    const key = this.lotChunk.get(id);
+    if (key === undefined) return;
+    this.chunks.get(key)?.lots.delete(id);
+    this.lotChunk.delete(id);
+    this.dirty.add(key);
   }
 
   private place(building: BuildingInstance): void {
@@ -216,7 +221,7 @@ export class LotRenderer {
           this.heightAt,
         );
       layFarmGround(farm, building.state, lay);
-      this.addMesh(building.id, positions, colors);
+      this.store(building, positions, colors);
       return;
     }
 
@@ -244,7 +249,7 @@ export class LotRenderer {
     );
     if (carPark) {
       this.layCarPark(carPark, surface, tinted, positions, colors);
-      this.addMesh(building.id, positions, colors);
+      this.store(building, positions, colors);
       return;
     }
 
@@ -276,7 +281,7 @@ export class LotRenderer {
         if (drive.cut.v1 > drive.cut.v0) lay(drive.cut, CURB_CUT_Y_OFFSET, 'cleanConcrete');
       }
     }
-    this.addMesh(building.id, positions, colors);
+    this.store(building, positions, colors);
   }
 
   /**
@@ -321,18 +326,71 @@ export class LotRenderer {
     if (walk) lay({ ...walk, v0: -verge, v1: 0 }, WALK_Y_OFFSET, 'cleanConcrete');
   }
 
-  private addMesh(id: number, positions: number[], colors: number[]): void {
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    geometry.computeVertexNormals();
-
-    const mesh = new THREE.Mesh(geometry, this.material);
-    mesh.receiveShadow = true;
-    mesh.visible = this.visible;
-    this.scene.add(mesh);
-    this.meshes.set(id, mesh);
+  /** Files a lot's laid ground under its chunk; the chunk's mesh is rebuilt by `flush`. */
+  private store(building: BuildingInstance, positions: number[], colors: number[]): void {
+    const key = chunkKeyOf(building.x, building.z);
+    let chunk = this.chunks.get(key);
+    if (!chunk) {
+      chunk = { lots: new Map(), mesh: null };
+      this.chunks.set(key, chunk);
+    }
+    chunk.lots.set(building.id, { positions, colors });
+    this.lotChunk.set(building.id, key);
+    this.dirty.add(key);
   }
+
+  /** Chunk meshes built so far: a delta that changes nothing builds none. */
+  rebuiltChunks(): number {
+    return this.rebuilds;
+  }
+
+  /** Rebuilds the mesh of every chunk a lot was added to, changed in or removed from. */
+  private flush(): void {
+    for (const key of this.dirty) {
+      const chunk = this.chunks.get(key);
+      if (!chunk) continue;
+      if (chunk.mesh) {
+        this.scene.remove(chunk.mesh);
+        chunk.mesh.geometry.dispose();
+        chunk.mesh = null;
+      }
+      if (chunk.lots.size === 0) {
+        this.chunks.delete(key);
+        continue;
+      }
+      const positions: number[] = [];
+      const colors: number[] = [];
+      for (const lot of chunk.lots.values()) {
+        for (const v of lot.positions) positions.push(v);
+        for (const v of lot.colors) colors.push(v);
+      }
+      this.rebuilds += 1;
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      geometry.computeVertexNormals();
+      const mesh = new THREE.Mesh(geometry, this.material);
+      mesh.receiveShadow = true;
+      mesh.visible = this.visible;
+      this.scene.add(mesh);
+      chunk.mesh = mesh;
+    }
+    this.dirty.clear();
+  }
+}
+
+interface LotGround {
+  positions: number[];
+  colors: number[];
+}
+
+interface LotChunk {
+  lots: Map<number, LotGround>;
+  mesh: THREE.Mesh | null;
+}
+
+function chunkKeyOf(tileX: number, tileZ: number): number {
+  return Math.floor(tileZ / CHUNK_TILES) * CHUNKS_PER_SIDE + Math.floor(tileX / CHUNK_TILES);
 }
 
 /**

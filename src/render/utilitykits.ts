@@ -4335,7 +4335,7 @@ function buildGeneratorGroundsGeometry(
   return mergeParts(parts);
 }
 
-/** One run of chain-link along X or Z: posts, and a top, middle and bottom rail. */
+/** One run of chain-link along X or Z: posts every `postSpacing`, and a top, middle and bottom rail. */
 function fenceRun(
   parts: THREE.BufferGeometry[],
   a: number,
@@ -4343,6 +4343,7 @@ function fenceRun(
   fixed: number,
   alongX: boolean,
   height: number,
+  postSpacing: number,
 ): void {
   const length = b - a;
   if (length <= 0) return;
@@ -4357,23 +4358,29 @@ function fenceRun(
   for (const y of [height - GEN_FENCE_RAIL_M, height / 2, 0.15]) {
     at(mid, length, GEN_FENCE_RAIL_M, y, GEN_FENCE_RAIL_M);
   }
-  const posts = Math.max(1, Math.ceil(length / GEN_FENCE_POST_SPACING_M));
+  const posts = Math.max(1, Math.ceil(length / postSpacing));
   for (let i = 0; i <= posts; i++) {
     at(a + (i * length) / posts, GEN_FENCE_POST_M, height, 0, GEN_FENCE_POST_M);
   }
 }
 
 /** A fence round `r`, open for a gate on its +Z (street) side where `gate` is given. */
-function fenceLoop(parts: THREE.BufferGeometry[], r: Rect, height: number, gate: Gap | null): void {
-  fenceRun(parts, r.x0, r.x1, r.z0, true, height);
-  fenceRun(parts, r.z0, r.z1, r.x0, false, height);
-  fenceRun(parts, r.z0, r.z1, r.x1, false, height);
+function fenceLoop(
+  parts: THREE.BufferGeometry[],
+  r: Rect,
+  height: number,
+  gate: Gap | null,
+  postSpacing = GEN_FENCE_POST_SPACING_M,
+): void {
+  fenceRun(parts, r.x0, r.x1, r.z0, true, height, postSpacing);
+  fenceRun(parts, r.z0, r.z1, r.x0, false, height, postSpacing);
+  fenceRun(parts, r.z0, r.z1, r.x1, false, height, postSpacing);
   if (!gate) {
-    fenceRun(parts, r.x0, r.x1, r.z1, true, height);
+    fenceRun(parts, r.x0, r.x1, r.z1, true, height, postSpacing);
     return;
   }
-  fenceRun(parts, r.x0, gate.x0, r.z1, true, height);
-  fenceRun(parts, gate.x1, r.x1, r.z1, true, height);
+  fenceRun(parts, r.x0, gate.x0, r.z1, true, height, postSpacing);
+  fenceRun(parts, gate.x1, r.x1, r.z1, true, height, postSpacing);
   for (const x of [gate.x0, gate.x1]) {
     parts.push(standingBox(0.25, height + 0.15, 0.25, x, 0, r.z1, GEN_FENCE_RGB));
   }
@@ -4439,9 +4446,12 @@ const SOLAR_SKID_GAP_M = 1.2;
 const SOLAR_FRAME_M = 0.05;
 const SOLAR_SLAB_M = 0.04;
 const SOLAR_SEAM_PROUD_M = 0.012;
-const SOLAR_SEAM_MODULES = 8;
+/** The panel quad rides this far over the slab's top face, which is the frame's band. */
+const SOLAR_PANEL_LIFT_M = 0.008;
 const SOLAR_SUPPORT_SPACING_M = 6;
 const SOLAR_POST_M = 0.1;
+/** A solar farm's fence runs round a 120 m lot: its rails carry it, and a post every 10 m holds them. */
+const SOLAR_FENCE_POST_SPACING_M = 10;
 
 const SOLAR_PANEL_RGB: RGB = [0.06, 0.09, 0.17];
 const SOLAR_FRAME_RGB: RGB = [0.5, 0.54, 0.58];
@@ -4537,59 +4547,65 @@ function buildSolarSiteGeometry(footprint: FootprintSize): THREE.BufferGeometry 
   for (const dx of [-1.4, 1.4]) {
     parts.push(standingBox(1.6, 2.2, 0.1, c.x + dx, 0, skid.z1 + 0.05, SOLAR_SKID_DOOR_RGB));
   }
-  fenceLoop(parts, lotRect(footprint, GEN_FENCE_INSET_M), GEN_FENCE_HEIGHT_M, gate);
+  fenceLoop(
+    parts,
+    lotRect(footprint, GEN_FENCE_INSET_M),
+    GEN_FENCE_HEIGHT_M,
+    gate,
+    SOLAR_FENCE_POST_SPACING_M,
+  );
   return mergeParts(parts);
 }
 
 /**
- * One row: a slab of two modules' height tilted to the facing (+Z) with its low
- * edge at `SOLAR_LOW_EDGE_M`, a lighter frame round it, a seam between the two
- * modules and one every few, on slim posts. Local Y=0 is the plate's top, the
- * row's centre on the origin, panels facing +Z.
+ * One row, drawn for 100 m: a frame-coloured slab of two modules' height tilted
+ * to the facing (+Z) with its low edge at `SOLAR_LOW_EDGE_M`, the panel a quad
+ * laid on it inside the frame's band, the seam between the two modules a quad
+ * in the frame's colour (the module seams along the row are not geometry), on a
+ * line of posts every `SOLAR_SUPPORT_SPACING_M`
+ * under the slab's middle, each a two-sided strip. Local Y=0 is the plate's top,
+ * the row's centre on the origin, panels facing +Z.
  */
 function buildSolarRowGeometry(length: number): THREE.BufferGeometry {
   const mid = SOLAR_LOW_EDGE_M + (SOLAR_SLOPE_M / 2) * Math.sin(SOLAR_TILT);
   const half = SOLAR_SLOPE_M / 2;
-  // A box on the panel's plane: `s` runs down the slope (negative toward the high, back edge), `p` off its surface.
-  const piece = (
+  const hl = length / 2;
+  const f = SOLAR_FRAME_M;
+  // Both on the panel's plane: `s` runs down the slope (negative toward the high, back edge), `p` off its surface.
+  const onPlane = (geometry: THREE.BufferGeometry, rgb: RGB): THREE.BufferGeometry => {
+    geometry.rotateX(SOLAR_TILT);
+    geometry.translate(0, mid, 0);
+    return paintVertexColor(geometry, hexFromRgb(rgb));
+  };
+  const slab = new THREE.BoxGeometry(2 * hl, SOLAR_SLAB_M, 2 * half);
+  slab.translate(0, -SOLAR_SLAB_M / 2, 0);
+  const quad = (
     x0: number,
     x1: number,
     s0: number,
     s1: number,
-    p0: number,
-    p1: number,
-    rgb: RGB,
+    p: number,
   ): THREE.BufferGeometry => {
-    const box = new THREE.BoxGeometry(x1 - x0, p1 - p0, s1 - s0);
-    box.translate((x0 + x1) / 2, (p0 + p1) / 2, (s0 + s1) / 2);
-    box.rotateX(SOLAR_TILT);
-    box.translate(0, mid, 0);
-    return paintVertexColor(box, hexFromRgb(rgb));
+    const plane = new THREE.PlaneGeometry(x1 - x0, s1 - s0);
+    plane.rotateX(-Math.PI / 2);
+    plane.translate((x0 + x1) / 2, p, (s0 + s1) / 2);
+    return plane;
   };
-  const hl = length / 2;
-  const f = SOLAR_FRAME_M;
   const parts: THREE.BufferGeometry[] = [
-    piece(-hl + f, hl - f, -half + f, half - f, -SOLAR_SLAB_M, 0, SOLAR_PANEL_RGB),
-    piece(-hl, hl, -half, -half + f, -SOLAR_SLAB_M, 0, SOLAR_FRAME_RGB),
-    piece(-hl, hl, half - f, half, -SOLAR_SLAB_M, 0, SOLAR_FRAME_RGB),
-    piece(-hl, -hl + f, -half + f, half - f, -SOLAR_SLAB_M, 0, SOLAR_FRAME_RGB),
-    piece(hl - f, hl, -half + f, half - f, -SOLAR_SLAB_M, 0, SOLAR_FRAME_RGB),
-    piece(-hl + f, hl - f, -0.03, 0.03, -0.02, SOLAR_SEAM_PROUD_M, SOLAR_FRAME_RGB),
+    onPlane(slab, SOLAR_FRAME_RGB),
+    onPlane(quad(-hl + f, hl - f, -half + f, half - f, SOLAR_PANEL_LIFT_M), SOLAR_PANEL_RGB),
+    onPlane(
+      quad(-hl + f, hl - f, -0.03, 0.03, SOLAR_PANEL_LIFT_M + SOLAR_SEAM_PROUD_M),
+      SOLAR_FRAME_RGB,
+    ),
   ];
-  const seam = SOLAR_SEAM_MODULES * SOLAR_MODULE_M.wide;
-  for (let k = 1; k < SOLAR_ROW_MODULES / SOLAR_SEAM_MODULES; k++) {
-    const x = -hl + k * seam;
-    parts.push(
-      piece(x - 0.02, x + 0.02, -half + f, half - f, -0.02, SOLAR_SEAM_PROUD_M, SOLAR_FRAME_RGB),
-    );
-  }
-  // Posts under the slab, two to a support line: the slab's underside at each post's z.
-  const tan = Math.tan(SOLAR_TILT);
+  // The slab's underside at the middle line, where each post stops.
+  const top = mid - SOLAR_SLAB_M / Math.cos(SOLAR_TILT) + 0.02;
   for (let x = -hl + SOLAR_SUPPORT_SPACING_M / 2; x < hl; x += SOLAR_SUPPORT_SPACING_M) {
-    for (const z of [-SOLAR_PLAN_M * 0.3, SOLAR_PLAN_M * 0.3]) {
-      const top = mid - z * tan - SOLAR_SLAB_M / Math.cos(SOLAR_TILT) + 0.02;
-      parts.push(standingBox(SOLAR_POST_M, top, SOLAR_POST_M, x, 0, z, SOLAR_POST_RGB));
-    }
+    const post = new THREE.CylinderGeometry(SOLAR_POST_M / 2, SOLAR_POST_M / 2, top, 2, 1, true);
+    post.rotateY(Math.PI / 2);
+    post.translate(x, top / 2, 0);
+    parts.push(paintVertexColor(post, hexFromRgb(SOLAR_POST_RGB)));
   }
   return mergeParts(parts);
 }
