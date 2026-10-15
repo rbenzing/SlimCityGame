@@ -1,6 +1,6 @@
 # Power generation — design
 
-- **Status:** Partly built — the two existing generators re-derived from published figures, the grid sized on nameplate × capacity factor and the turbine drawn at the size of its machine (built 2026-10-05, see [The generators, re-derived](#the-generators-re-derived)); the ladder re-derived on real small units and a solar farm added 2026-10-14 (the solar farm, gas turbine, combined-cycle station and nuclear station not built)
+- **Status:** Partly built — the two existing generators re-derived from published figures, the grid sized on nameplate × capacity factor and the turbine drawn at the size of its machine (built 2026-10-05, see [The generators, re-derived](#the-generators-re-derived)); the ladder re-derived on real small units and a solar farm added, the four plants built and drawn, 2026-10-14
 - **Date:** 2026-09-18, baseline rewritten 2026-10-05, ladder rewritten 2026-10-14
 
 ## What the player gets

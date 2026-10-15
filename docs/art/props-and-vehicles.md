@@ -168,6 +168,11 @@ of the generic building facade box:
   pipe out of the water-facing edge, turned the same way.
 - **Coal plant**: a dark boiler hall, 2 striped smokestacks in the industrial
   chimney language from [buildings.md](buildings.md), and a coal-heap wedge.
+- **Solar farm, gas turbine, combined-cycle station, nuclear station**: rows of
+  tilted panels facing the sun at every rotation; a turbine package and one slim
+  stack; a heat-recovery boiler, a taller stack and a cooling tower; a domeless
+  reactor building, a switchyard and a shore intake. See
+  [civic-massing.md](civic-massing.md#the-generators-solar-gas-combined-cycle-and-the-reactor).
 - **Small park**: a flat lawn plate, a cross-shaped walking path, 2–3 trees,
   and benches, replacing a plain slab.
 - **Hospital**: a six-storey block of about 2,800 m² a floor in light

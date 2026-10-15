@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 6,191 tests passing across 186 test files, run 2026-10-14.
+**Test suite:** 6,238 tests passing across 187 test files, run 2026-10-14.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -133,6 +133,13 @@ not a test to fix.
   a station's crews are.
 - Incident pins stand about 18 m tall and cover the building they mark; size
   them against the art anchors.
+- The placement ghost does not read `requiresAdjacent`: a reactor, pumping
+  station, drain or treatment works shows as placeable over dry land, and only
+  the commit is refused, with a toast. The ghost should refuse it as it refuses
+  an overlap.
+- In the shared test town's south-bank shot, trees stand in the water of the
+  river. Find whether tree scatter can land on water on generated maps or only
+  where the fixture changes the shore after the scatter.
 - The crematorium's upkeep of ¢600 is the design's dial: no US operating
   cost for a crematory was found (gas is 12.5–28.5 therms a cremation by one
   maker's metering, staff unpublished).
@@ -178,8 +185,11 @@ reach, crews, real call rates and a two-rung station ladder. So is the
 education ladder
 ([education-ladder.md](game-design/features/education-ladder.md)): elementary,
 middle and high schools, a college and a library, each gating level 3 for the
-zones that need it and drawn as a campus. Next on the shelf
-are the other municipal services programme's epics
+zones that need it and drawn as a campus. So is power generation
+([power-generation.md](game-design/features/power-generation.md)): a solar
+farm, a gas turbine, a combined-cycle station and a reactor, each a real small
+unit sized to the game's cities. Next on the shelf are the programme's last two
+epics, transport depots and parks and recreation
 ([municipal-services.md](game-design/features/municipal-services.md)), the
 [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
 transit modes) and AI raster map packs, facade-atlas stage 2 and screen-space
@@ -323,6 +333,27 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The power plants drawn as plants (last slice of power generation, built 2026-10-14)
+
+Power generation is complete. The four new generators get their own models,
+each read by its plant; none lights at night.
+
+- **Solar farm:** 12 east–west rows of fixed-tilt panels, 20° from a 0.6 m low
+  edge to a 2.16 m top, at a 45% ground coverage ratio. The rows face the sun's
+  noon side at every rotation of the lot, as a real array faces south. A gravel
+  track runs to the inverter skid, inside a 2.1 m chain-link fence.
+- **Gas turbine:** the LM6000 package, a 14 m inlet house, a catalyst housing
+  and one 30.5 m stack.
+- **Combined-cycle station:** a 24 m heat-recovery boiler, a 40 m stack, a
+  steam-turbine hall, a three-cell cooling tower, and three transformers on the
+  street side.
+- **Nuclear station:** a light-concrete reactor building at 19 m with a crane
+  hall to 24 m, and no dome; a blue-grey turbine hall; a switchyard; a double
+  security fence; and a cooling-water intake on the edge that touches the water.
+- The sun's direction now lives in its own module, so the models never load
+  the renderer.
+- Twenty solar farms cost about 2 ms a frame on one measured machine.
 
 ### The power ladder in the simulation (first slice of power generation, built 2026-10-14)
 

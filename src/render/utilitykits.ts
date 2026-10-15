@@ -82,6 +82,18 @@
  *    clerestory and door pane as one lit part on the stations' night material
  *    ("schoolLit"), the park's tree on the quad ("schoolTree"), staff cars in the
  *    stalls ("schoolCar") and a school bus in the pull-in ("schoolBus").
+ *  - solar-farm: a scrub plate with the gravel track and the skid's pad
+ *    ("solarGrounds"), one instance per row of tilted panels ("solarRow", world-
+ *    aligned: every row faces the sun's noon side at every rotation of the lot),
+ *    and the inverter skid with the chain-link fence ("solarSite").
+ *  - gas-turbine, combined-cycle: a gravel plate with the paved pad and drive
+ *    ("gasGrounds", "combinedGrounds"), the package, inlet house, boiler, hall,
+ *    cooling tower, transformers and fence merged ("gasPlant", "combinedPlant"),
+ *    and the one tall stack ("gasStack", "combinedStack").
+ *  - nuclear-plant: the plate with its apron and drive ("nuclearGrounds"), the
+ *    reactor and turbine buildings, switchyard, guard house and the double
+ *    security fence ("nuclearPlant"), and the cooling-water intake on the edge
+ *    that touches the water ("nuclearIntake").
  *  The paving kits stand on the highest ground under their lot (pavesLot),
  *  so the instancer's plinth never shows through their yard on a slope.
  *  - small-park: a flat lawn plate + path cross ("parkGround"), 2-3
@@ -107,6 +119,7 @@ import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import { maxHeightOverRect } from './footprint';
 import { InstancedSlotPool } from './massing';
+import { sunDirection } from './sun';
 import { buildServiceVehicleGeometry, type ServiceVehicleKind } from './servicevehicles';
 import { buildVehicleGeometry, sizeForKind, VEHICLE_PALETTE_HEX } from './vehicles';
 import {
@@ -151,6 +164,10 @@ export const UTILITY_KIT_CATALOG_IDS: readonly string[] = [
   'high-school',
   'college',
   'library',
+  'solar-farm',
+  'gas-turbine',
+  'combined-cycle',
+  'nuclear-plant',
   'small-park',
 ];
 
@@ -213,6 +230,18 @@ export type UtilityKitPartKind =
   | 'schoolTree'
   | 'schoolCar'
   | 'schoolBus'
+  | 'solarGrounds'
+  | 'solarRow'
+  | 'solarSite'
+  | 'gasGrounds'
+  | 'gasPlant'
+  | 'gasStack'
+  | 'combinedGrounds'
+  | 'combinedPlant'
+  | 'combinedStack'
+  | 'nuclearGrounds'
+  | 'nuclearPlant'
+  | 'nuclearIntake'
   | 'parkGround'
   | 'parkTree'
   | 'parkBench';
@@ -4219,6 +4248,853 @@ function buildSchoolBusGeometry(): THREE.BufferGeometry {
 }
 
 // ---------------------------------------------------------------------------
+// The generators: a solar farm, a gas turbine, a combined-cycle station and a
+// reactor. Each stands on a plate over the whole lot, on the highest ground
+// under it, local +Z the street side; every part but the plate has its local
+// Y=0 on the plate's top. None of them lights at night. The farm's rows are
+// world-aligned, not lot-aligned: they face the sun's noon side of the scene
+// at every rotation of the lot.
+// ---------------------------------------------------------------------------
+
+/** The plate's top over the highest ground under the lot. */
+export const GEN_PLATE_M = RECYCLING_YARD_HEIGHT;
+const GEN_PROUD_M = 0.03;
+export const GEN_FENCE_HEIGHT_M = 2.1;
+export const GEN_SECURITY_FENCE_HEIGHT_M = 2.4;
+const GEN_FENCE_INSET_M = 0.6;
+const GEN_FENCE_POST_SPACING_M = 4;
+const GEN_FENCE_RAIL_M = 0.06;
+const GEN_FENCE_POST_M = 0.12;
+const GEN_GATE_M = 5;
+
+const GEN_GRAVEL_RGB: RGB = [0.4, 0.4, 0.36];
+const GEN_SCRUB_RGB: RGB = [0.34, 0.4, 0.27];
+const GEN_CONCRETE_RGB: RGB = [0.5, 0.5, 0.49];
+const GEN_DRIVE_RGB: RGB = [0.5, 0.47, 0.4];
+const GEN_FENCE_RGB: RGB = [0.5, 0.52, 0.54];
+const GEN_STEEL_RGB: RGB = [0.4, 0.42, 0.45];
+const GEN_ENCLOSURE_RGB: RGB = [0.52, 0.54, 0.53];
+const GEN_GENERATOR_RGB: RGB = [0.46, 0.5, 0.5];
+const GEN_FILTER_RGB: RGB = [0.47, 0.5, 0.52];
+const GEN_LOUVRE_RGB: RGB = [0.3, 0.33, 0.36];
+const GEN_STACK_RGB: RGB = [0.52, 0.53, 0.55];
+const GEN_STACK_RIM_RGB: RGB = [0.18, 0.18, 0.2];
+const GEN_TRANSFORMER_RGB: RGB = [0.36, 0.4, 0.38];
+const GEN_BUSHING_RGB: RGB = [0.5, 0.42, 0.34];
+const GEN_CAP_RGB: RGB = [0.3, 0.31, 0.33];
+const GEN_GLASS_RGB: RGB = [0.22, 0.3, 0.36];
+
+/** A stretch of the lot's local X, where a gate stands. */
+interface Gap {
+  x0: number;
+  x1: number;
+}
+
+/** The lot in the footprint frame, drawn in `inset` metres on every side. */
+function lotRect(footprint: FootprintSize, inset = 0): Rect {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  return { x0: -halfW + inset, x1: halfW - inset, z0: -halfD + inset, z1: halfD - inset };
+}
+
+const rectCentre = (r: Rect): Vec2 => ({ x: (r.x0 + r.x1) / 2, z: (r.z0 + r.z1) / 2 });
+
+/** A room's box from its rect, standing on `y0` (the plate's top is 0). */
+function rectBox(r: Rect, y0: number, height: number, rgb: RGB): THREE.BufferGeometry {
+  const c = rectCentre(r);
+  return standingBox(r.x1 - r.x0, height, r.z1 - r.z0, c.x, y0, c.z, rgb);
+}
+
+/** A flat patch laid on the plate, `GEN_PROUD_M` proud of it. */
+function platePatch(r: Rect, rgb: RGB): THREE.BufferGeometry {
+  return rectBox(r, GEN_PLATE_M, GEN_PROUD_M, rgb);
+}
+
+/** The roof slab of a flat-roofed building: its top is `height`. */
+function cappedBox(
+  r: Rect,
+  height: number,
+  rgb: RGB,
+  cap = 0.3,
+  capRgb: RGB = GEN_CAP_RGB,
+): THREE.BufferGeometry[] {
+  return [rectBox(r, 0, height - cap, rgb), rectBox(r, height - cap, cap, capRgb)];
+}
+
+/** The plate over the whole lot with its footing, and the paved patches on it; local Y=0 is the highest ground under the lot. */
+function buildGeneratorGroundsGeometry(
+  footprint: FootprintSize,
+  base: RGB,
+  patches: readonly { rect: Rect; rgb: RGB }[],
+): THREE.BufferGeometry {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const depth = GEN_PLATE_M + YARD_FOOTING_DEPTH;
+  const plate = new THREE.BoxGeometry(halfW * 2, depth, halfD * 2);
+  plate.translate(0, GEN_PLATE_M - depth / 2, 0);
+  const parts = [paintVertexColor(plate, hexFromRgb(base))];
+  for (const p of patches) parts.push(platePatch(p.rect, p.rgb));
+  return mergeParts(parts);
+}
+
+/** One run of chain-link along X or Z: posts, and a top, middle and bottom rail. */
+function fenceRun(
+  parts: THREE.BufferGeometry[],
+  a: number,
+  b: number,
+  fixed: number,
+  alongX: boolean,
+  height: number,
+): void {
+  const length = b - a;
+  if (length <= 0) return;
+  const mid = (a + b) / 2;
+  const at = (along: number, w: number, h: number, y: number, thick: number): void => {
+    parts.push(
+      alongX
+        ? standingBox(w, h, thick, along, y, fixed, GEN_FENCE_RGB)
+        : standingBox(thick, h, w, fixed, y, along, GEN_FENCE_RGB),
+    );
+  };
+  for (const y of [height - GEN_FENCE_RAIL_M, height / 2, 0.15]) {
+    at(mid, length, GEN_FENCE_RAIL_M, y, GEN_FENCE_RAIL_M);
+  }
+  const posts = Math.max(1, Math.ceil(length / GEN_FENCE_POST_SPACING_M));
+  for (let i = 0; i <= posts; i++) {
+    at(a + (i * length) / posts, GEN_FENCE_POST_M, height, 0, GEN_FENCE_POST_M);
+  }
+}
+
+/** A fence round `r`, open for a gate on its +Z (street) side where `gate` is given. */
+function fenceLoop(parts: THREE.BufferGeometry[], r: Rect, height: number, gate: Gap | null): void {
+  fenceRun(parts, r.x0, r.x1, r.z0, true, height);
+  fenceRun(parts, r.z0, r.z1, r.x0, false, height);
+  fenceRun(parts, r.z0, r.z1, r.x1, false, height);
+  if (!gate) {
+    fenceRun(parts, r.x0, r.x1, r.z1, true, height);
+    return;
+  }
+  fenceRun(parts, r.x0, gate.x0, r.z1, true, height);
+  fenceRun(parts, gate.x1, r.x1, r.z1, true, height);
+  for (const x of [gate.x0, gate.x1]) {
+    parts.push(standingBox(0.25, height + 0.15, 0.25, x, 0, r.z1, GEN_FENCE_RGB));
+  }
+}
+
+/** A tapered stack standing on `y0` to `top`, a dark rim at its mouth, centred on (x, z). */
+function buildStackGeometry(
+  x: number,
+  z: number,
+  y0: number,
+  top: number,
+  radiusBottom: number,
+  radiusTop: number,
+): THREE.BufferGeometry {
+  const rim = 0.6;
+  const shaftHeight = top - y0 - rim;
+  const shaft = new THREE.CylinderGeometry(radiusTop, radiusBottom, shaftHeight, 20);
+  shaft.translate(x, y0 + shaftHeight / 2, z);
+  const band = new THREE.CylinderGeometry(radiusTop + 0.12, radiusTop + 0.12, rim, 20);
+  band.translate(x, top - rim / 2, z);
+  return mergeParts([
+    paintVertexColor(shaft, hexFromRgb(GEN_STACK_RGB)),
+    paintVertexColor(band, hexFromRgb(GEN_STACK_RIM_RGB)),
+  ]);
+}
+
+/** A transformer: tank, radiator bank on its +X end, and three bushings on the lid. */
+function transformerParts(r: Rect, height: number): THREE.BufferGeometry[] {
+  const c = rectCentre(r);
+  const parts = [
+    rectBox({ ...r, x1: r.x1 - 0.8 }, 0, height, GEN_TRANSFORMER_RGB),
+    standingBox(0.8, height * 0.75, r.z1 - r.z0 - 0.6, r.x1 - 0.4, 0.2, c.z, GEN_STEEL_RGB),
+  ];
+  for (const dz of [-1, 0, 1]) {
+    const bushing = new THREE.CylinderGeometry(0.18, 0.18, 1.1, 8);
+    bushing.translate((r.x0 + r.x1 - 0.8) / 2, height + 0.55, c.z + dz * ((r.z1 - r.z0) / 4));
+    parts.push(paintVertexColor(bushing, hexFromRgb(GEN_BUSHING_RGB)));
+  }
+  return parts;
+}
+
+// --- solar farm -------------------------------------------------------------
+
+/** A 2.28 × 1.13 m module, two high in portrait: 4.56 m of panel on the slope. */
+export const SOLAR_MODULE_M = { long: 2.28, wide: 1.13 };
+export const SOLAR_MODULES_HIGH = 2;
+export const SOLAR_TILT = (20 * Math.PI) / 180;
+export const SOLAR_SLOPE_M = SOLAR_MODULE_M.long * SOLAR_MODULES_HIGH;
+/** A low fixed-tilt rack's low edge, 24 in off the ground. */
+export const SOLAR_LOW_EDGE_M = 0.6;
+export const SOLAR_TOP_EDGE_M = SOLAR_LOW_EDGE_M + SOLAR_SLOPE_M * Math.sin(SOLAR_TILT);
+/** What a row covers in plan, 4.29 m, pitched at 9.5 m for a 45% ground coverage ratio. */
+export const SOLAR_PLAN_M = SOLAR_SLOPE_M * Math.cos(SOLAR_TILT);
+export const SOLAR_PITCH_M = 9.5;
+export const SOLAR_ROW_MODULES = 88;
+export const SOLAR_ROW_LENGTH_M = SOLAR_ROW_MODULES * SOLAR_MODULE_M.wide;
+/** The band at the street end of the farm that holds the track and the inverter skid. */
+const SOLAR_END_MARGIN_M = 5.5;
+const SOLAR_TRACK = { w: 4, depth: SOLAR_END_MARGIN_M - 0.5 };
+/** An SMA medium-voltage station on a 20 ft skid. */
+export const SOLAR_SKID = { w: 6.06, d: 2.44, h: 2.9 };
+const SOLAR_SKID_GAP_M = 1.2;
+const SOLAR_FRAME_M = 0.05;
+const SOLAR_SLAB_M = 0.04;
+const SOLAR_SEAM_PROUD_M = 0.012;
+const SOLAR_SEAM_MODULES = 8;
+const SOLAR_SUPPORT_SPACING_M = 6;
+const SOLAR_POST_M = 0.1;
+
+const SOLAR_PANEL_RGB: RGB = [0.06, 0.09, 0.17];
+const SOLAR_FRAME_RGB: RGB = [0.5, 0.54, 0.58];
+const SOLAR_POST_RGB: RGB = [0.45, 0.47, 0.5];
+const SOLAR_SKID_RGB: RGB = [0.5, 0.52, 0.5];
+const SOLAR_SKID_DOOR_RGB: RGB = [0.26, 0.3, 0.32];
+
+/**
+ * The horizontal direction of the sun at noon, as an axis of the scene: the way
+ * the array faces, as a real one faces south. Read from the scene's own sun, so
+ * the rows and the light cannot disagree.
+ */
+const NOON_SUN = sunDirection(0.5);
+export const SOLAR_NOON_FACING: Vec2 =
+  Math.abs(NOON_SUN.x) > Math.abs(NOON_SUN.z)
+    ? { x: Math.sign(NOON_SUN.x), z: 0 }
+    : { x: 0, z: Math.sign(NOON_SUN.z) };
+
+/** The quarter turn, as rotateLocalXZ counts, that carries a local +Z onto an axis-aligned direction. */
+function turnToFace(facing: Vec2): 0 | 1 | 2 | 3 {
+  if (facing.z > 0) return 0;
+  if (facing.x > 0) return 1;
+  if (facing.z < 0) return 2;
+  return 3;
+}
+
+export interface SolarLayout {
+  /** Row centres as offsets from the lot's centre, in WORLD axes: a lot's rotation never moves them. */
+  rows: Vec2[];
+  /** The quarter turn that points each row's local +Z (its panels' face) along the facing. */
+  turn: 0 | 1 | 2 | 3;
+  /** The track from the street, the skid beside its end and the fence's gate, in the lot's own frame. */
+  track: Rect;
+  skid: Rect;
+  gate: Gap;
+}
+
+/**
+ * Rows stand pitched along the facing axis and run across it, as many as fit
+ * between the street-end bands, centred on the lot. Pure; `rotation` only
+ * swaps the lot's width and depth, and the facing is an input.
+ */
+export function computeSolarLayout(
+  footprint: FootprintSize,
+  rotation: 0 | 1 | 2 | 3,
+  facing: Vec2 = SOLAR_NOON_FACING,
+): SolarLayout {
+  const turned = rotation % 2 === 1 ? { w: footprint.d, d: footprint.w } : footprint;
+  const { halfW, halfD } = footprintHalfExtents(turned);
+  const alongZ = facing.z !== 0;
+  const span = (alongZ ? halfD : halfW) * 2 - 2 * SOLAR_END_MARGIN_M;
+  const count = Math.max(0, Math.floor((span - SOLAR_PLAN_M) / SOLAR_PITCH_M) + 1);
+  const rows: Vec2[] = [];
+  for (let i = 0; i < count; i++) {
+    const s = (i - (count - 1) / 2) * SOLAR_PITCH_M;
+    rows.push(alongZ ? { x: 0, z: s } : { x: s, z: 0 });
+  }
+  const local = footprintHalfExtents(footprint);
+  const skidX0 = SOLAR_TRACK.w / 2 + SOLAR_SKID_GAP_M;
+  const skidZ0 = local.halfD - SOLAR_END_MARGIN_M + 0.9;
+  return {
+    rows,
+    turn: turnToFace(facing),
+    track: {
+      x0: -SOLAR_TRACK.w / 2,
+      x1: SOLAR_TRACK.w / 2,
+      z0: local.halfD - SOLAR_TRACK.depth,
+      z1: local.halfD,
+    },
+    skid: { x0: skidX0, x1: skidX0 + SOLAR_SKID.w, z0: skidZ0, z1: skidZ0 + SOLAR_SKID.d },
+    gate: { x0: -GEN_GATE_M / 2, x1: GEN_GATE_M / 2 },
+  };
+}
+
+/** The ground: scrub over the plate, the gravel track and the skid's concrete pad. */
+function buildSolarGroundsGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { track, skid } = computeSolarLayout(footprint, 0);
+  const pad = { x0: skid.x0 - 0.4, x1: skid.x1 + 0.4, z0: skid.z0 - 0.4, z1: skid.z1 + 0.4 };
+  return buildGeneratorGroundsGeometry(footprint, GEN_SCRUB_RGB, [
+    { rect: track, rgb: GEN_DRIVE_RGB },
+    { rect: pad, rgb: GEN_CONCRETE_RGB },
+  ]);
+}
+
+/** The inverter skid with its doors and roof vent, and the chain-link fence with its gate. */
+function buildSolarSiteGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { skid, gate } = computeSolarLayout(footprint, 0);
+  const c = rectCentre(skid);
+  const parts: THREE.BufferGeometry[] = [
+    rectBox(skid, 0, SOLAR_SKID.h, SOLAR_SKID_RGB),
+    standingBox(1.4, 0.35, 1.2, c.x - 1.2, SOLAR_SKID.h, c.z, GEN_STEEL_RGB),
+  ];
+  for (const dx of [-1.4, 1.4]) {
+    parts.push(standingBox(1.6, 2.2, 0.1, c.x + dx, 0, skid.z1 + 0.05, SOLAR_SKID_DOOR_RGB));
+  }
+  fenceLoop(parts, lotRect(footprint, GEN_FENCE_INSET_M), GEN_FENCE_HEIGHT_M, gate);
+  return mergeParts(parts);
+}
+
+/**
+ * One row: a slab of two modules' height tilted to the facing (+Z) with its low
+ * edge at `SOLAR_LOW_EDGE_M`, a lighter frame round it, a seam between the two
+ * modules and one every few, on slim posts. Local Y=0 is the plate's top, the
+ * row's centre on the origin, panels facing +Z.
+ */
+function buildSolarRowGeometry(length: number): THREE.BufferGeometry {
+  const mid = SOLAR_LOW_EDGE_M + (SOLAR_SLOPE_M / 2) * Math.sin(SOLAR_TILT);
+  const half = SOLAR_SLOPE_M / 2;
+  // A box on the panel's plane: `s` runs down the slope (negative toward the high, back edge), `p` off its surface.
+  const piece = (
+    x0: number,
+    x1: number,
+    s0: number,
+    s1: number,
+    p0: number,
+    p1: number,
+    rgb: RGB,
+  ): THREE.BufferGeometry => {
+    const box = new THREE.BoxGeometry(x1 - x0, p1 - p0, s1 - s0);
+    box.translate((x0 + x1) / 2, (p0 + p1) / 2, (s0 + s1) / 2);
+    box.rotateX(SOLAR_TILT);
+    box.translate(0, mid, 0);
+    return paintVertexColor(box, hexFromRgb(rgb));
+  };
+  const hl = length / 2;
+  const f = SOLAR_FRAME_M;
+  const parts: THREE.BufferGeometry[] = [
+    piece(-hl + f, hl - f, -half + f, half - f, -SOLAR_SLAB_M, 0, SOLAR_PANEL_RGB),
+    piece(-hl, hl, -half, -half + f, -SOLAR_SLAB_M, 0, SOLAR_FRAME_RGB),
+    piece(-hl, hl, half - f, half, -SOLAR_SLAB_M, 0, SOLAR_FRAME_RGB),
+    piece(-hl, -hl + f, -half + f, half - f, -SOLAR_SLAB_M, 0, SOLAR_FRAME_RGB),
+    piece(hl - f, hl, -half + f, half - f, -SOLAR_SLAB_M, 0, SOLAR_FRAME_RGB),
+    piece(-hl + f, hl - f, -0.03, 0.03, -0.02, SOLAR_SEAM_PROUD_M, SOLAR_FRAME_RGB),
+  ];
+  const seam = SOLAR_SEAM_MODULES * SOLAR_MODULE_M.wide;
+  for (let k = 1; k < SOLAR_ROW_MODULES / SOLAR_SEAM_MODULES; k++) {
+    const x = -hl + k * seam;
+    parts.push(
+      piece(x - 0.02, x + 0.02, -half + f, half - f, -0.02, SOLAR_SEAM_PROUD_M, SOLAR_FRAME_RGB),
+    );
+  }
+  // Posts under the slab, two to a support line: the slab's underside at each post's z.
+  const tan = Math.tan(SOLAR_TILT);
+  for (let x = -hl + SOLAR_SUPPORT_SPACING_M / 2; x < hl; x += SOLAR_SUPPORT_SPACING_M) {
+    for (const z of [-SOLAR_PLAN_M * 0.3, SOLAR_PLAN_M * 0.3]) {
+      const top = mid - z * tan - SOLAR_SLAB_M / Math.cos(SOLAR_TILT) + 0.02;
+      parts.push(standingBox(SOLAR_POST_M, top, SOLAR_POST_M, x, 0, z, SOLAR_POST_RGB));
+    }
+  }
+  return mergeParts(parts);
+}
+
+// --- gas turbine and combined cycle ------------------------------------------
+
+/** The LM6000's package, 20 × 5 m, enclosed to 5 m (an assumption). */
+export const GAS_PACKAGE = { w: 20, d: 5, h: 5 };
+/** The inlet filter house over the intake end, rising to the catalog's 14 m. */
+export const GAS_INLET = { w: 6.5, d: 6, h: 14 };
+const GAS_GENERATOR = { w: 7.4, d: 5.8, h: 5.8 };
+const GAS_CATALYST = { w: 6, d: 6, h: 8 };
+const GAS_DUCT = { d: 2, y0: 2.2, h: 2 };
+const GAS_TRANSFORMER = { w: 5.5, d: 3.5, h: 3.8 };
+/** Wallingford's 100 ft minimum stack, 3 m across. */
+export const GAS_STACK_HEIGHT_M = 30.5;
+export const GAS_STACK_RADIUS_M = 1.5;
+export const GAS_PLATE = { w: 40, d: 18 };
+
+/** The boiler casing, 25 × 10 m, to the catalog's 24 m, and its 40 m, 5 m wide stack. */
+export const CC_BOILER = { w: 25, d: 10, h: 24 };
+export const CC_STACK_HEIGHT_M = 40;
+export const CC_STACK_RADIUS_M = 2.5;
+export const CC_HALL = { w: 30, d: 20, h: 15 };
+/** Three mechanical-draft cells, 36 × 12 × 12 m, a fan stack on each. */
+export const CC_TOWER = { w: 36, d: 12, h: 12, cells: 3 };
+const CC_FAN = { radius: 3.4, h: 2.4 };
+const CC_TRANSFORMER = { w: 5, d: 4, h: 4.2 };
+const CC_RIB = { w: 0.5, d: 0.3, y0: 1, h: 22 };
+
+/** The gas package, its inlet house over the intake end and its generator enclosure, in the footprint frame. */
+export interface GasSet {
+  package: Rect;
+  inlet: Rect;
+  generator: Rect;
+}
+
+/** The set with the package's west (intake) end at `x0`, its axis along X at `zc`. */
+function gasSet(x0: number, zc: number): GasSet {
+  const across = (d: number): { z0: number; z1: number } => ({ z0: zc - d / 2, z1: zc + d / 2 });
+  return {
+    package: { x0, x1: x0 + GAS_PACKAGE.w, ...across(GAS_PACKAGE.d) },
+    inlet: { x0: x0 - 0.5, x1: x0 - 0.5 + GAS_INLET.w, ...across(GAS_INLET.d) },
+    generator: {
+      x0: x0 + GAS_PACKAGE.w - GAS_GENERATOR.w + 0.4,
+      x1: x0 + GAS_PACKAGE.w + 0.4,
+      ...across(GAS_GENERATOR.d),
+    },
+  };
+}
+
+function gasSetParts(set: GasSet): THREE.BufferGeometry[] {
+  const inlet = rectCentre(set.inlet);
+  const parts: THREE.BufferGeometry[] = [
+    rectBox(set.package, 0, GAS_PACKAGE.h, GEN_ENCLOSURE_RGB),
+    rectBox(set.generator, 0, GAS_GENERATOR.h, GEN_GENERATOR_RGB),
+    rectBox(set.inlet, 0, GAS_INLET.h, GEN_FILTER_RGB),
+  ];
+  for (const z of [set.inlet.z0 - 0.06, set.inlet.z1 + 0.06]) {
+    parts.push(standingBox(4.5, 5, 0.12, inlet.x, 6, z, GEN_LOUVRE_RGB));
+  }
+  const pc = rectCentre(set.package);
+  for (const dx of [-3, 0]) {
+    parts.push(standingBox(1.6, 0.9, 1.6, pc.x + dx, GAS_PACKAGE.h, pc.z, GEN_STEEL_RGB));
+  }
+  return parts;
+}
+
+export interface GasTurbineLayout {
+  set: GasSet;
+  duct: Rect;
+  catalyst: Rect;
+  stack: Vec2;
+  transformer: Rect;
+  /** The 40 × 18 m paved plate under the package. */
+  plate: Rect;
+  drive: Rect;
+  fence: Rect;
+  gate: Gap;
+}
+
+/** The gas turbine in its 2×2, in the footprint frame: the package at the back, the transformer before it. Pure. */
+export function computeGasTurbineLayout(footprint: FootprintSize): GasTurbineLayout {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const plateZ0 = -halfD + 7;
+  const zc = plateZ0 + 9;
+  const set = gasSet(-halfW + 6, zc);
+  const catalyst = {
+    x0: set.generator.x1 + 1.6,
+    x1: set.generator.x1 + 1.6 + GAS_CATALYST.w,
+    z0: zc - GAS_CATALYST.d / 2,
+    z1: zc + GAS_CATALYST.d / 2,
+  };
+  const plate = { x0: -halfW, x1: -halfW + GAS_PLATE.w, z0: plateZ0, z1: plateZ0 + GAS_PLATE.d };
+  return {
+    set,
+    duct: {
+      x0: set.generator.x1 - 0.2,
+      x1: catalyst.x0 + 0.2,
+      z0: zc - GAS_DUCT.d / 2,
+      z1: zc + GAS_DUCT.d / 2,
+    },
+    catalyst,
+    stack: { x: (catalyst.x0 + catalyst.x1) / 2, z: zc },
+    transformer: {
+      x0: catalyst.x0 + 1,
+      x1: catalyst.x0 + 1 + GAS_TRANSFORMER.w,
+      z0: plate.z1 - 0.2 - GAS_TRANSFORMER.d,
+      z1: plate.z1 - 0.2,
+    },
+    plate,
+    drive: { x0: -GEN_GATE_M / 2, x1: GEN_GATE_M / 2, z0: plate.z1, z1: halfD },
+    fence: lotRect(footprint, GEN_FENCE_INSET_M),
+    gate: { x0: -GEN_GATE_M / 2, x1: GEN_GATE_M / 2 },
+  };
+}
+
+function buildGasTurbineGroundsGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { plate, drive } = computeGasTurbineLayout(footprint);
+  return buildGeneratorGroundsGeometry(footprint, GEN_GRAVEL_RGB, [
+    { rect: plate, rgb: GEN_CONCRETE_RGB },
+    { rect: drive, rgb: GEN_DRIVE_RGB },
+  ]);
+}
+
+function buildGasTurbinePlantGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const layout = computeGasTurbineLayout(footprint);
+  const parts = [
+    ...gasSetParts(layout.set),
+    rectBox(layout.duct, GAS_DUCT.y0, GAS_DUCT.h, GEN_STEEL_RGB),
+    rectBox(layout.catalyst, 0, GAS_CATALYST.h, GEN_STEEL_RGB),
+    ...transformerParts(layout.transformer, GAS_TRANSFORMER.h),
+  ];
+  fenceLoop(parts, layout.fence, GEN_FENCE_HEIGHT_M, layout.gate);
+  return mergeParts(parts);
+}
+
+function buildGasTurbineStackGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { stack } = computeGasTurbineLayout(footprint);
+  return buildStackGeometry(
+    stack.x,
+    stack.z,
+    GAS_CATALYST.h - 0.2,
+    GAS_STACK_HEIGHT_M,
+    GAS_STACK_RADIUS_M + 0.1,
+    GAS_STACK_RADIUS_M,
+  );
+}
+
+export interface CombinedCycleLayout {
+  set: GasSet;
+  boiler: Rect;
+  stack: Vec2;
+  hall: Rect;
+  /** The steam line from the boiler to the hall. */
+  pipe: Rect;
+  tower: Rect;
+  fans: Vec2[];
+  transformers: Rect[];
+  plate: Rect;
+  basin: Rect;
+  drive: Rect;
+  fence: Rect;
+  gate: Gap;
+}
+
+/** The combined-cycle station in its 4×3, in the footprint frame: gas set and boiler along the middle, the hall beside, the tower behind, the transformers on the street. Pure. */
+export function computeCombinedCycleLayout(footprint: FootprintSize): CombinedCycleLayout {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const zc = -halfD + 22;
+  const set = gasSet(-halfW + 1.5, zc);
+  const boilerX0 = set.generator.x1 - 0.3;
+  const boiler = {
+    x0: boilerX0,
+    x1: boilerX0 + CC_BOILER.w,
+    z0: zc - CC_BOILER.d / 2,
+    z1: zc + CC_BOILER.d / 2,
+  };
+  const hallX0 = boiler.x1 + 1.4;
+  const hall = { x0: hallX0, x1: hallX0 + CC_HALL.w, z0: zc - 10, z1: zc - 10 + CC_HALL.d };
+  const towerZ0 = -halfD + 1.5;
+  const tower = {
+    x0: -halfW + 2,
+    x1: -halfW + 2 + CC_TOWER.w,
+    z0: towerZ0,
+    z1: towerZ0 + CC_TOWER.d,
+  };
+  const cell = CC_TOWER.w / CC_TOWER.cells;
+  const gateX0 = 16;
+  return {
+    set,
+    boiler,
+    stack: { x: boiler.x1 - 3, z: zc },
+    hall,
+    pipe: { x0: boiler.x1 - 0.2, x1: hall.x0 + 0.2, z0: zc - 1, z1: zc + 1 },
+    tower,
+    fans: Array.from({ length: CC_TOWER.cells }, (_, i) => ({
+      x: tower.x0 + cell / 2 + i * cell,
+      z: (tower.z0 + tower.z1) / 2,
+    })),
+    transformers: [-16, -6, 4].map((x) => ({
+      x0: x - CC_TRANSFORMER.w / 2,
+      x1: x + CC_TRANSFORMER.w / 2,
+      z0: 9,
+      z1: 9 + CC_TRANSFORMER.d,
+    })),
+    plate: { x0: -halfW + 1, x1: halfW - 1, z0: -19, z1: 15 },
+    basin: { x0: tower.x0 - 0.5, x1: tower.x1 + 0.5, z0: -halfD + 0.8, z1: -19 },
+    drive: { x0: gateX0 + 0.5, x1: gateX0 + GEN_GATE_M + 1 - 0.5, z0: 15, z1: halfD },
+    fence: lotRect(footprint, GEN_FENCE_INSET_M),
+    gate: { x0: gateX0, x1: gateX0 + GEN_GATE_M + 1 },
+  };
+}
+
+function buildCombinedCycleGroundsGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { plate, basin, drive } = computeCombinedCycleLayout(footprint);
+  return buildGeneratorGroundsGeometry(footprint, GEN_GRAVEL_RGB, [
+    { rect: plate, rgb: GEN_CONCRETE_RGB },
+    { rect: basin, rgb: GEN_CONCRETE_RGB },
+    { rect: drive, rgb: GEN_DRIVE_RGB },
+  ]);
+}
+
+function buildCombinedCyclePlantGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const layout = computeCombinedCycleLayout(footprint);
+  const { boiler, hall, tower } = layout;
+  const parts: THREE.BufferGeometry[] = [
+    ...gasSetParts(layout.set),
+    rectBox(boiler, 0, CC_BOILER.h, GEN_FILTER_RGB),
+    rectBox(layout.pipe, 8, 1.4, GEN_STEEL_RGB),
+    ...cappedBox(hall, CC_HALL.h, GEN_ENCLOSURE_RGB, 0.4),
+    standingBox(6, 7, 0.2, (hall.x0 + hall.x1) / 2, 0, hall.z1 + 0.1, GEN_LOUVRE_RGB),
+    standingBox(
+      CC_HALL.w - 4,
+      1.2,
+      0.1,
+      (hall.x0 + hall.x1) / 2,
+      10,
+      hall.z1 + 0.05,
+      GEN_GLASS_RGB,
+    ),
+    rectBox(tower, 0, CC_TOWER.h, GEN_ENCLOSURE_RGB),
+  ];
+  // Stiffening ribs up the boiler's two long faces.
+  for (let i = 0; i < 5; i++) {
+    const x = boiler.x0 + 2.5 + i * 5;
+    for (const z of [boiler.z0 - CC_RIB.d / 2, boiler.z1 + CC_RIB.d / 2]) {
+      parts.push(standingBox(CC_RIB.w, CC_RIB.h, CC_RIB.d, x, CC_RIB.y0, z, GEN_STEEL_RGB));
+    }
+  }
+  // The tower's louvres on both long faces, and a fan stack on each cell.
+  const tc = rectCentre(tower);
+  for (const z of [tower.z0 - 0.06, tower.z1 + 0.06]) {
+    parts.push(standingBox(CC_TOWER.w - 2, 5, 0.12, tc.x, 1.5, z, GEN_LOUVRE_RGB));
+  }
+  for (const fan of layout.fans) {
+    const ring = new THREE.CylinderGeometry(CC_FAN.radius, CC_FAN.radius, CC_FAN.h, 16);
+    ring.translate(fan.x, CC_TOWER.h + CC_FAN.h / 2, fan.z);
+    parts.push(paintVertexColor(ring, hexFromRgb(GEN_STEEL_RGB)));
+    const mouth = new THREE.CylinderGeometry(CC_FAN.radius - 0.4, CC_FAN.radius - 0.4, 0.1, 16);
+    mouth.translate(fan.x, CC_TOWER.h + CC_FAN.h + 0.02, fan.z);
+    parts.push(paintVertexColor(mouth, hexFromRgb(GEN_STACK_RIM_RGB)));
+  }
+  for (const t of layout.transformers) parts.push(...transformerParts(t, CC_TRANSFORMER.h));
+  fenceLoop(parts, layout.fence, GEN_FENCE_HEIGHT_M, layout.gate);
+  return mergeParts(parts);
+}
+
+function buildCombinedCycleStackGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { stack } = computeCombinedCycleLayout(footprint);
+  return buildStackGeometry(
+    stack.x,
+    stack.z,
+    CC_BOILER.h - 0.2,
+    CC_STACK_HEIGHT_M,
+    CC_STACK_RADIUS_M + 0.1,
+    CC_STACK_RADIUS_M,
+  );
+}
+
+// --- nuclear station ---------------------------------------------------------
+
+/** The flat-roofed reactor building, 40 × 30 m, its main roof at 19 m, with no dome; a narrower crane hall along its long axis rises to the catalog's 24 m. */
+export const NUCLEAR_REACTOR = { w: 40, d: 30, h: 24, mainH: 19, craneW: 36, craneD: 14 };
+export const NUCLEAR_TURBINE = { w: 40, d: 20, h: 15 };
+const NUCLEAR_TRANSFORMER = { w: 7, d: 4.5, h: 5 };
+const NUCLEAR_GANTRY = { span: 8, h: 12 };
+/** The two security lines, 8 and 14 m in from the lot edge: a 6 m isolation zone between. */
+const NUCLEAR_OUTER_INSET_M = 8;
+const NUCLEAR_INNER_INSET_M = 14;
+const NUCLEAR_GATE_M = 10;
+/** The cooling-water intake: its house, the screens on its water face and the conduit running inland. */
+export const NUCLEAR_INTAKE = {
+  along: 30,
+  house: { w: 8, d: 6, h: 4.5, setback: 1 },
+  screen: { w: 3, h: 3.2, depth: 0.6 },
+  conduit: { w: 2.6, h: 1.4, reach: 15 },
+};
+
+const NUCLEAR_WALL_RGB: RGB = [0.5, 0.5, 0.48];
+/** The reactor building is the lightest mass on the site; the turbine hall is blue-grey metal under a darker band. */
+const NUCLEAR_REACTOR_RGB: RGB = [0.9, 0.89, 0.85];
+const NUCLEAR_REACTOR_CAP_RGB: RGB = [0.72, 0.72, 0.7];
+const NUCLEAR_CLADDING_RGB: RGB = [0.3, 0.4, 0.52];
+const NUCLEAR_CLADDING_BAND_RGB: RGB = [0.14, 0.2, 0.28];
+const NUCLEAR_PLINTH_RGB: RGB = [0.4, 0.4, 0.4];
+const NUCLEAR_SCREEN_RGB: RGB = [0.22, 0.25, 0.27];
+
+export interface NuclearLayout {
+  reactor: Rect;
+  crane: Rect;
+  turbine: Rect;
+  pipe: Rect;
+  /** The gantries' centres and the transformers between them. */
+  gantries: Vec2[];
+  transformers: Rect[];
+  switchyard: Rect;
+  guard: Rect;
+  apron: Rect;
+  drive: Rect;
+  outer: Rect;
+  inner: Rect;
+  gate: Gap;
+}
+
+/** The station in its 6×5, in the footprint frame: the buildings at the back, the switchyard before them inside the fences, the guard house at the gate. Pure. */
+export function computeNuclearLayout(footprint: FootprintSize): NuclearLayout {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const rx0 = -halfW + 16;
+  const rz0 = -halfD + 18;
+  const reactor = { x0: rx0, x1: rx0 + NUCLEAR_REACTOR.w, z0: rz0, z1: rz0 + NUCLEAR_REACTOR.d };
+  const turbine = {
+    x0: reactor.x1 + 4,
+    x1: reactor.x1 + 4 + NUCLEAR_TURBINE.w,
+    z0: rz0 + 5,
+    z1: rz0 + 5 + NUCLEAR_TURBINE.d,
+  };
+  const gantryZ = reactor.z1 + 18;
+  const transformerZ0 = gantryZ + 6;
+  const transformers = [-27, -9, 9, 27].map((x) => ({
+    x0: x - NUCLEAR_TRANSFORMER.w / 2,
+    x1: x + NUCLEAR_TRANSFORMER.w / 2,
+    z0: transformerZ0,
+    z1: transformerZ0 + NUCLEAR_TRANSFORMER.d,
+  }));
+  const gantries = [-30, -20, 20, 30].map((x) => ({ x, z: gantryZ }));
+  const inner = lotRect(footprint, NUCLEAR_INNER_INSET_M);
+  return {
+    reactor,
+    crane: {
+      x0: rectCentre(reactor).x - NUCLEAR_REACTOR.craneW / 2,
+      x1: rectCentre(reactor).x + NUCLEAR_REACTOR.craneW / 2,
+      z0: rectCentre(reactor).z - NUCLEAR_REACTOR.craneD / 2,
+      z1: rectCentre(reactor).z + NUCLEAR_REACTOR.craneD / 2,
+    },
+    turbine,
+    pipe: { x0: reactor.x1 - 0.2, x1: turbine.x0 + 0.2, z0: rz0 + 12, z1: rz0 + 14 },
+    gantries,
+    transformers,
+    switchyard: {
+      x0: -30 - NUCLEAR_GANTRY.span / 2 - 0.5,
+      x1: 30 + NUCLEAR_GANTRY.span / 2 + 0.5,
+      z0: gantryZ - 0.5,
+      z1: transformerZ0 + NUCLEAR_TRANSFORMER.d,
+    },
+    guard: { x0: 7, x1: 12, z0: halfD - 6.5, z1: halfD - 2.5 },
+    apron: { x0: inner.x0, x1: inner.x1, z0: inner.z0, z1: -1 },
+    drive: { x0: -4, x1: 4, z0: -1, z1: halfD },
+    outer: lotRect(footprint, NUCLEAR_OUTER_INSET_M),
+    inner,
+    gate: { x0: -NUCLEAR_GATE_M / 2, x1: NUCLEAR_GATE_M / 2 },
+  };
+}
+
+function buildNuclearGroundsGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { apron, drive } = computeNuclearLayout(footprint);
+  return buildGeneratorGroundsGeometry(footprint, GEN_GRAVEL_RGB, [
+    { rect: apron, rgb: GEN_CONCRETE_RGB },
+    { rect: drive, rgb: GEN_DRIVE_RGB },
+  ]);
+}
+
+function buildNuclearPlantGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const layout = computeNuclearLayout(footprint);
+  const { reactor, crane, turbine } = layout;
+  const parts: THREE.BufferGeometry[] = [
+    ...cappedBox(reactor, NUCLEAR_REACTOR.mainH, NUCLEAR_REACTOR_RGB, 0.3, NUCLEAR_REACTOR_CAP_RGB),
+    rectBox(
+      crane,
+      NUCLEAR_REACTOR.mainH,
+      NUCLEAR_REACTOR.h - NUCLEAR_REACTOR.mainH - 0.3,
+      NUCLEAR_REACTOR_RGB,
+    ),
+    rectBox(crane, NUCLEAR_REACTOR.h - 0.3, 0.3, NUCLEAR_REACTOR_CAP_RGB),
+    standingBox(
+      reactor.x1 - reactor.x0 + 0.2,
+      4,
+      reactor.z1 - reactor.z0 + 0.2,
+      rectCentre(reactor).x,
+      0,
+      rectCentre(reactor).z,
+      NUCLEAR_PLINTH_RGB,
+    ),
+    ...cappedBox(turbine, NUCLEAR_TURBINE.h, NUCLEAR_CLADDING_RGB, 0.4),
+    // A darker band round the cladding, proud of every face.
+    standingBox(
+      NUCLEAR_TURBINE.w + 0.2,
+      2,
+      NUCLEAR_TURBINE.d + 0.2,
+      rectCentre(turbine).x,
+      7,
+      rectCentre(turbine).z,
+      NUCLEAR_CLADDING_BAND_RGB,
+    ),
+    rectBox(layout.pipe, 6, 1.4, GEN_STEEL_RGB),
+    standingBox(
+      layout.guard.x1 - layout.guard.x0,
+      3.2,
+      layout.guard.z1 - layout.guard.z0,
+      rectCentre(layout.guard).x,
+      0,
+      rectCentre(layout.guard).z,
+      GEN_ENCLOSURE_RGB,
+    ),
+  ];
+  for (const g of layout.gantries) {
+    for (const s of [-1, 1]) {
+      parts.push(
+        standingBox(
+          0.6,
+          NUCLEAR_GANTRY.h,
+          0.6,
+          g.x + (s * NUCLEAR_GANTRY.span) / 2,
+          0,
+          g.z,
+          GEN_STEEL_RGB,
+        ),
+      );
+    }
+    parts.push(
+      standingBox(
+        NUCLEAR_GANTRY.span + 0.6,
+        0.6,
+        0.6,
+        g.x,
+        NUCLEAR_GANTRY.h - 0.6,
+        g.z,
+        GEN_STEEL_RGB,
+      ),
+    );
+  }
+  for (const t of layout.transformers) parts.push(...transformerParts(t, NUCLEAR_TRANSFORMER.h));
+  fenceLoop(parts, layout.outer, GEN_SECURITY_FENCE_HEIGHT_M, layout.gate);
+  fenceLoop(parts, layout.inner, GEN_SECURITY_FENCE_HEIGHT_M, layout.gate);
+  return mergeParts(parts);
+}
+
+/**
+ * The cooling-water intake in a frame whose +Z is the water: the lot's edge is
+ * z = 0, the house stands just inside it with its screens on the water face,
+ * and a low conduit runs inland under the security lines. Placed on the edge
+ * that touches the water, turned the way a shore building is.
+ */
+function buildNuclearIntakeGeometry(): THREE.BufferGeometry {
+  const { along, house, screen, conduit } = NUCLEAR_INTAKE;
+  const front = -house.setback;
+  const back = front - house.d;
+  const parts: THREE.BufferGeometry[] = [
+    standingBox(house.w, house.h - 0.3, house.d, along, 0, (front + back) / 2, NUCLEAR_WALL_RGB),
+    standingBox(house.w, 0.3, house.d, along, house.h - 0.3, (front + back) / 2, GEN_CAP_RGB),
+    standingBox(
+      conduit.w,
+      conduit.h,
+      conduit.reach - house.setback - house.d + 0.2,
+      along,
+      0,
+      back - (conduit.reach - house.setback - house.d) / 2 + 0.1,
+      NUCLEAR_PLINTH_RGB,
+    ),
+  ];
+  for (const s of [-1, 1]) {
+    parts.push(
+      standingBox(
+        screen.w,
+        screen.h,
+        screen.depth,
+        along + s * (screen.w / 2 + 0.3),
+        0.5,
+        front + screen.depth / 2 - 0.05,
+        NUCLEAR_SCREEN_RGB,
+      ),
+    );
+  }
+  return mergeParts(parts);
+}
+
+/** The parts of each generator that stand on the lot as it was built, turned with it; the plate is the one whose Y=0 is the ground. */
+const GENERATOR_LOT_PARTS: Readonly<Record<string, readonly UtilityKitPartKind[]>> = {
+  'solar-farm': ['solarGrounds', 'solarSite'],
+  'gas-turbine': ['gasGrounds', 'gasPlant', 'gasStack'],
+  'combined-cycle': ['combinedGrounds', 'combinedPlant', 'combinedStack'],
+  'nuclear-plant': ['nuclearGrounds', 'nuclearPlant'],
+};
+
+// ---------------------------------------------------------------------------
 // small-park: flat lawn plate (lush green), a light
 // path cross, 2-3 simple trees (self-contained), 2 benches.
 // ---------------------------------------------------------------------------
@@ -4596,6 +5472,11 @@ export class UtilityKitRenderer {
       case 'college':
       case 'library':
         return this.buildEducationKit(entry);
+      case 'solar-farm':
+      case 'gas-turbine':
+      case 'combined-cycle':
+      case 'nuclear-plant':
+        return this.buildGeneratorKit(entry);
       case 'small-park':
         return this.buildSmallParkKit(entry);
       default:
@@ -4974,6 +5855,40 @@ export class UtilityKitRenderer {
     return { entry, pavesLot: true, pools };
   }
 
+  private buildGeneratorKit(entry: BuildingCatalogEntry): KitDefinition {
+    const lambert = (): THREE.MeshLambertMaterial =>
+      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const pool = (geometry: THREE.BufferGeometry, capacity = INITIAL_KIT_CAPACITY) =>
+      new InstancedSlotPool(this.scene, geometry, lambert(), capacity);
+    const { footprint } = entry;
+    const pools: KitDefinition['pools'] = {};
+    switch (entry.id) {
+      case 'solar-farm':
+        pools.solarGrounds = pool(buildSolarGroundsGeometry(footprint));
+        pools.solarSite = pool(buildSolarSiteGeometry(footprint));
+        pools.solarRow = pool(
+          buildSolarRowGeometry(SOLAR_ROW_LENGTH_M),
+          INITIAL_KIT_CAPACITY * computeSolarLayout(footprint, 0).rows.length,
+        );
+        break;
+      case 'gas-turbine':
+        pools.gasGrounds = pool(buildGasTurbineGroundsGeometry(footprint));
+        pools.gasPlant = pool(buildGasTurbinePlantGeometry(footprint));
+        pools.gasStack = pool(buildGasTurbineStackGeometry(footprint));
+        break;
+      case 'combined-cycle':
+        pools.combinedGrounds = pool(buildCombinedCycleGroundsGeometry(footprint));
+        pools.combinedPlant = pool(buildCombinedCyclePlantGeometry(footprint));
+        pools.combinedStack = pool(buildCombinedCycleStackGeometry(footprint));
+        break;
+      default:
+        pools.nuclearGrounds = pool(buildNuclearGroundsGeometry(footprint));
+        pools.nuclearPlant = pool(buildNuclearPlantGeometry(footprint));
+        pools.nuclearIntake = pool(buildNuclearIntakeGeometry());
+    }
+    return { entry, pavesLot: true, pools };
+  }
+
   private buildSmallParkKit(entry: BuildingCatalogEntry): KitDefinition {
     const lambert = (): THREE.MeshLambertMaterial =>
       new THREE.MeshLambertMaterial({ vertexColors: true });
@@ -5128,6 +6043,12 @@ export class UtilityKitRenderer {
       case 'college':
       case 'library':
         this.applyEducation(kit, building, entry, centerX, groundY, centerZ, rotation);
+        return;
+      case 'solar-farm':
+      case 'gas-turbine':
+      case 'combined-cycle':
+      case 'nuclear-plant':
+        this.applyGenerator(kit, building, entry, centerX, groundY, centerZ, rotation);
         return;
       case 'small-park':
         this.applySmallPark(kit, building, entry, centerX, groundY, centerZ, rotation);
@@ -5720,6 +6641,49 @@ export class UtilityKitRenderer {
       pool.setColorAt(slot, _carColor);
       slots.push(slot);
     }
+  }
+
+  /**
+   * A generator's whole-lot parts turn with the lot. A solar farm's rows do not:
+   * each stands at a world offset from the lot's centre, turned to the facing.
+   * A reactor's intake is turned as a shore building is, onto the edge that
+   * touches the water.
+   */
+  private applyGenerator(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    centerX: number,
+    groundY: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+  ): void {
+    const slots: Partial<Record<UtilityKitPartKind, number[]>> = {};
+    const plateY = groundY + GEN_PLATE_M;
+    for (const kind of GENERATOR_LOT_PARTS[entry.id] ?? []) {
+      const pool = kit.pools[kind];
+      if (!pool) return;
+      slots[kind] = [
+        this.placeAt(pool, centerX, kind.endsWith('Grounds') ? groundY : plateY, centerZ, rotation),
+      ];
+    }
+    const rowPool = kit.pools.solarRow;
+    if (rowPool) {
+      const layout = computeSolarLayout(entry.footprint, rotation);
+      slots.solarRow = layout.rows.map((row) =>
+        this.placeAt(rowPool, centerX + row.x, plateY, centerZ + row.z, layout.turn),
+      );
+    }
+    const intakePool = kit.pools.nuclearIntake;
+    if (intakePool) {
+      const lot = footprintForRotation(entry, rotation);
+      const facing = waterSideOf(building.x, building.z, lot, this.waterAt);
+      const edge = rotateLocalXZ(0, ((facing % 2 === 0 ? lot.d : lot.w) * TILE_METERS) / 2, facing);
+      slots.nuclearIntake = [
+        this.placeAt(intakePool, centerX + edge.x, plateY, centerZ + edge.z, facing),
+      ];
+    }
+    this.instances.set(building.id, { catalogId: building.catalogId, slots });
   }
 
   private applySmallPark(
