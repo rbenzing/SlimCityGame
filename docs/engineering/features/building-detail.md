@@ -1,6 +1,6 @@
 # Building detail — technical design
 
-- **Status:** Slice 1, the measurement, built 2026-10-15; the performance slice next, then the recipes
+- **Status:** Slice 1, the measurement, and the performance slice built 2026-10-15; the houses next
 - **Date:** 2026-10-14
 - **Author:** Claude Fable 5.1
 
@@ -132,19 +132,48 @@ houses, chosen by the player on 2026-10-15: the frame is already past the
 stated target on a laptop GPU, so the detail is paid for by what this slice
 saves, and the budget the houses build to is the improved frame.
 
-- **The overview's draw calls.** 4,118 against 575 for the oblique of the
-  same city: ground geometry is batched per chunk in several materials.
-  Find which (lots, paint, kerbs, roads), merge per chunk into as few
-  meshes as the materials allow, and re-read the overview.
-- **The yard.** A house's trees, bushes and cars are 1,000–2,700 of its
-  triangles. Read where the cost is (segments per tree, bushes per yard,
-  cars) and bring it down without losing the read; a tree at 40 m needs
-  fewer segments than it has.
-- **The solar farm.** 9,000 triangles from drawing every module's frame;
-  the frame seams become colour, as the stations' panel seams are, and the
-  farm lands near a thousand.
-- Re-run `tools/frame-budget.mjs`; the standard's table gains the second
-  reading beside the first.
+- **The overview's draw calls are the lots.** `src/render/lots.ts` adds a
+  `THREE.Mesh` per building for its paving, so the overview draws thousands
+  of them where the oblique's frustum holds a few hundred; terrain and roads
+  are already one mesh per 16-tile chunk (`src/render/terrain.ts`,
+  `src/render/roadsmesh.ts`). The lot renderer takes the road renderer's
+  shape: one merged mesh per chunk on the one lot material, a chunk rebuilt
+  when a lot in it is added, changed or removed. A test asserts a scene of
+  many lots in one chunk holds one lot mesh, and that removing a lot
+  rebuilds only its chunk. The overview's calls fall to the order of the
+  oblique's.
+- **The yard.** A broadleaf is 192 triangles (three seven-by-five sphere
+  blobs), a bush 56, a pool about 160, a trampoline up to 360, under every
+  yard and, for the trees, across every forest. The species take the
+  ceilings in
+  [../../visual-render/vegetation.md](../../visual-render/vegetation.md#trees)
+  (broadleaf 100, pine 40, poplar 50, shrub 30) and the yard parts the
+  ceilings in
+  [../../art/buildings.md](../../art/buildings.md#residential-lots) (pool
+  under 60, trampoline under 110); a home on a normal lot lands under 900
+  triangles and on an acre under 1,500. The geometry test gains a row per
+  species and the house rows take the new ceilings. The species and pool and
+  trampoline alone were not enough: the fence's panels (up to 80 on an acre,
+  twelve triangles each) are cut at 5 m and drawn without their underside,
+  and the grill's legs lose theirs. Built figures: a home on a normal lot is
+  894 triangles at most and on an acre 1,370.
+- **The solar farm.** 9,000 triangles: 34 post boxes and 10 seam boxes a
+  row. A row is a frame-coloured slab, the panel and the module seam as
+  quads, on one line of two-sided posts every 6 m: 84 triangles. The
+  chain-link fence round the lot, which was most of the rest, takes a post
+  every 10 m. The farm is 1,944, held by the geometry test under 2,000.
+- `tools/frame-budget.mjs` ran again on the same seed and views, three
+  interleaved runs of each build; the standard's table holds both readings
+  and the lesson about single-frame percentiles (a cheaper CPU side lets
+  the browser queue frames, so the tool now reports the 95th percentile of
+  eight-frame averages). The shots were looked at: the lots are identical,
+  and the trees, bushes, pools and trampolines read at the street.
+- **Built 2026-10-15.** Draw calls fell by half to two-thirds and every
+  view shed 10 M triangles; the frame fell 2–3 ms at the street and held on
+  the overview, which is now triangle-bound on the measured GPU. The
+  overview still draws three times the oblique's calls, not the same order;
+  that, and the triangles the city still adds over the empty map, are the
+  next performance work, logged in the ROADMAP rather than taken here.
 
 ### Each slice, the same shape
 
@@ -209,8 +238,8 @@ for the tiered, measured budget.
   Metropolis city by day and night, and `modeling-standards.md` and
   `performance-budget.md` say what it measured.
 - The performance slice: the overview's draw calls fall to the order of the
-  oblique's, the house tier's low end drops, the solar farm counts near a
-  thousand, and the frame-budget table shows both readings.
+  oblique's, the house tier's low end drops, the solar farm counts under
+  2,000, and the frame-budget table shows both readings.
 - Every slice: the tests above, the shots looked at, the frame figure
   before and after in the PR.
 - The first-town test is untouched throughout: nothing here touches growth.

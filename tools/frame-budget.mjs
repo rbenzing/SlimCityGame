@@ -585,7 +585,17 @@ try {
             last = now;
             if (dts.length < frames + warm) requestAnimationFrame(tick);
             else {
-              const s = dts.slice(warm).sort((a, b) => a - b);
+              const timed = dts.slice(warm);
+              const s = [...timed].sort((a, b) => a - b);
+              const median = s[Math.floor(s.length * 0.5)];
+              // Where in the run the frames over twice the median fell: a periodic stall and a slow start look different here.
+              const slowAt = timed.flatMap((d, i) => (d > 2 * median ? [i] : []));
+              // A GPU-bound run lets the CPU queue frames ahead and then stall, so single-frame deltas alternate fast and slow while their average is the true cost; the 95th percentile of eight-frame averages is the stall-free read of the slow end.
+              const windows = [];
+              for (let i = 0; i + 8 <= timed.length; i += 8) {
+                windows.push(timed.slice(i, i + 8).reduce((a, b) => a + b, 0) / 8);
+              }
+              windows.sort((a, b) => a - b);
               const mean = s.reduce((a, b) => a + b, 0) / s.length;
               const info = window.__slimcity.renderInfo();
               resolve({
@@ -593,6 +603,8 @@ try {
                 p50Ms: s[Math.floor(s.length * 0.5)],
                 p95Ms: s[Math.floor(s.length * 0.95)],
                 frames: s.length,
+                slowAt,
+                p95Of8Ms: windows[Math.floor(windows.length * 0.95)],
                 drawCalls: info.drawCalls,
                 triangles: info.triangles,
               });
@@ -745,17 +757,17 @@ try {
     '',
     `Machine: ${result.machine.webglRenderer ?? 'unknown GPU'} / ${result.machine.userAgent}`,
     '',
-    '| View | Case | mean ms | p50 ms | p95 ms | draw calls | triangles |',
-    '| ---- | ---- | ------- | ------ | ------ | ---------- | --------- |',
+    '| View | Case | mean ms | p50 ms | p95 ms | p95 of 8 ms | draw calls | triangles |',
+    '| ---- | ---- | ------- | ------ | ------ | ----------- | ---------- | --------- |',
   ];
   for (const [i, v] of VIEWS.entries()) {
     const b = result.baseline[i];
     const c = result.city[i];
     const row = (tag, r) =>
-      `| ${v.name} | ${tag} | ${f(r.meanMs)} | ${f(r.p50Ms)} | ${f(r.p95Ms)} | ${r.drawCalls} | ${r.triangles} |`;
+      `| ${v.name} | ${tag} | ${f(r.meanMs)} | ${f(r.p50Ms)} | ${f(r.p95Ms)} | ${f(r.p95Of8Ms)} | ${r.drawCalls} | ${r.triangles} |`;
     lines.push(row('empty map', b), row('city', c));
     lines.push(
-      `| ${v.name} | difference | ${f(c.meanMs - b.meanMs)} | ${f(c.p50Ms - b.p50Ms)} | ${f(c.p95Ms - b.p95Ms)} | ${c.drawCalls - b.drawCalls} | ${c.triangles - b.triangles} |`,
+      `| ${v.name} | difference | ${f(c.meanMs - b.meanMs)} | ${f(c.p50Ms - b.p50Ms)} | ${f(c.p95Ms - b.p95Ms)} | ${f(c.p95Of8Ms - b.p95Of8Ms)} | ${c.drawCalls - b.drawCalls} | ${c.triangles - b.triangles} |`,
     );
   }
   const markdown = lines.join('\n');

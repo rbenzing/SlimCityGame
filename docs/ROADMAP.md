@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 6,394 tests passing across 188 test files, run 2026-10-15.
+**Test suite:** 6,412 tests passing across 188 test files, run 2026-10-15.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -133,12 +133,16 @@ not a test to fix.
   a station's crews are.
 - Incident pins stand about 18 m tall and cover the building they mark; size
   them against the art anchors.
-- The frame measurement (2026-10-15) found the overview drawing 4,118 calls
-  against the oblique's 575 of the same city, so ground geometry is batched
-  per chunk in several materials; a house's yard (trees, bushes, cars) at
-  1,000–2,700 triangles against a 12-triangle body; and the solar farm at
-  9,000 triangles for its module frames. All three are the building-detail
-  programme's performance slice.
+- After the performance slice (2026-10-15) the Metropolis is triangle-bound
+  on the measured laptop GPU: the city still adds 19–26 M triangles over the
+  empty map's 8.4 M, and the overview still draws three times the oblique's
+  calls (1,125 against 389). The next performance gain is triangles, in the
+  roads' and lots' merged geometry and the wild trees, not calls.
+- The frame tool reads frame time from animation-loop deltas, so a build
+  that submits fewer calls shows alternating fast and slow frames (the
+  browser queueing ahead of the GPU); the tool reports an eight-frame
+  windowed 95th percentile for that reason. A GPU timestamp query would read
+  the frame itself.
 - Placing a district-edge column of road across the street rows in
   `tools/frame-budget.mjs` logs about 27 "road network (command): tile(s)
   derived differently … roadMask" errors at the junctions; the city stands,
@@ -350,6 +354,30 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The ground batched, the yard thinned (performance slice of building detail, built 2026-10-15)
+
+The player chose, on the first measurement, to fix the frame before drawing
+any detail. Three costs it found, fixed and re-measured on the same seed:
+
+- **Lots are one mesh per chunk**, as roads and terrain already were: the
+  lot renderer drew a mesh per building, which was the overview's 4,118 draw
+  calls. A chunk is rebuilt only when a lot in it changes, and a test holds
+  that an unchanged delta rebuilds nothing. A new ground truth: nothing on
+  the ground is a mesh per building.
+- **Trees and yards drawn for 40 m.** A broadleaf goes from 192 triangles to
+  92, a poplar to 48, a shrub to 30; the pool from 160 to 48, the trampoline
+  to 84; a fence panel is cut at 5 m. A home on a normal lot is 894
+  triangles, down from 1,678, and on an acre 1,370, down from 2,758.
+- **The solar farm** from 9,000 triangles to 1,944: a row is 84 (one line of
+  posts at 6 m, the module seam a colour), the fence a post every 10 m.
+- **Measured, three interleaved runs of each build:** draw calls fall by
+  half to two-thirds (the overview 4,118 → 1,125, the street 809 → 282),
+  every view sheds 10 M triangles, the frame falls 2–3 ms at the street and
+  holds on the overview, which is now triangle-bound on the measured GPU.
+  The frame tool gained a windowed 95th percentile, because a cheaper CPU
+  side lets the browser queue frames and the single-frame percentile then
+  lies.
 
 ### The frame, measured (first slice of building detail, built 2026-10-15)
 

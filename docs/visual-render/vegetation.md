@@ -18,6 +18,14 @@ textures:
 - A hash tiebreak mixes the bands naturally instead of drawing a hard species
   line, and everywhere else falls back to broadleaf.
 
+A tree is read at 40 m or more, where its silhouette is a trunk and a mass,
+so each species has a triangle ceiling the geometry test holds, chosen in the
+performance slice of the building-detail programme (2026-10-15) after the
+first frame measurement found a 192-triangle broadleaf under every yard and
+across every forest: **broadleaf 100** (a six-sided trunk and two or three
+blobs at five by four segments), **pine 40**, **poplar 50**, **shrub 30**. A
+yard tree is the same geometry as the wild one, in its own pool.
+
 Placement reads as natural stands rather than a lattice. A smooth, seeded
 value-noise field over tile coordinates multiplies each tile's base tree count
 by 0.0–1.6×, so equal-density map regions still produce clearings, thickets and

@@ -473,8 +473,10 @@ export function seasonalTint(month: number): [number, number, number] {
 // ---------------------------------------------------------------------------
 
 const RADIAL_SEGMENTS = 6;
-const BLOB_WIDTH_SEGMENTS = 7;
-const BLOB_HEIGHT_SEGMENTS = 5;
+const BLOB_WIDTH_SEGMENTS = 5;
+const BLOB_HEIGHT_SEGMENTS = 4;
+/** The last, smallest broadleaf blob sits in the cluster's shadow and takes one ring fewer. */
+const SMALL_BLOB_HEIGHT_SEGMENTS = 3;
 
 const TRUNK_COLOR = 0x6b4a2f;
 const BROADLEAF_CANOPY_COLOR = 0x2f6b3a;
@@ -483,7 +485,10 @@ const POPLAR_COLOR = 0x5c8a4a;
 const SHRUB_COLOR = 0x6b7a3f;
 
 /** Paints every vertex of `geometry` the same absolute color (RGB baked in, not a multiplier). */
-export function paintVertexColor(geometry: THREE.BufferGeometry, hex: number): THREE.BufferGeometry {
+export function paintVertexColor(
+  geometry: THREE.BufferGeometry,
+  hex: number,
+): THREE.BufferGeometry {
   const c = new THREE.Color(hex);
   const position = geometry.getAttribute('position');
   const count = position.count;
@@ -597,17 +602,21 @@ export function buildBroadleafGeometry(): THREE.BufferGeometry {
     BROADLEAF_TRUNK_RADIUS_BOTTOM,
     BROADLEAF_TRUNK_HEIGHT,
     RADIAL_SEGMENTS,
+    1,
+    true,
   );
   trunk.translate(0, BROADLEAF_TRUNK_HEIGHT / 2, 0);
   paintVertexColor(trunk, TRUNK_COLOR);
 
   const parts: THREE.BufferGeometry[] = [trunk];
-  for (const [ox, oy, oz, radius] of BROADLEAF_CANOPY_BLOBS) {
-    const blob = new THREE.SphereGeometry(radius, BLOB_WIDTH_SEGMENTS, BLOB_HEIGHT_SEGMENTS);
+  BROADLEAF_CANOPY_BLOBS.forEach(([ox, oy, oz, radius], i) => {
+    const rings =
+      i === BROADLEAF_CANOPY_BLOBS.length - 1 ? SMALL_BLOB_HEIGHT_SEGMENTS : BLOB_HEIGHT_SEGMENTS;
+    const blob = new THREE.SphereGeometry(radius, BLOB_WIDTH_SEGMENTS, rings);
     blob.translate(ox, BROADLEAF_TRUNK_HEIGHT + oy, oz);
     paintVertexColor(blob, BROADLEAF_CANOPY_COLOR);
     parts.push(blob);
-  }
+  });
 
   return mergeGeometryParts(parts);
 }
@@ -622,7 +631,7 @@ const PINE_TIERS: ReadonlyArray<{ height: number; radius: number }> = [
 const PINE_TIER_OVERLAP = 0.62;
 
 /** Pine: 3 stacked narrowing cones, tall — placed above PINE_ELEVATION_METERS. */
-function buildPineGeometry(): THREE.BufferGeometry {
+export function buildPineGeometry(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   let baseY = 0;
   for (const tier of PINE_TIERS) {
@@ -639,8 +648,8 @@ const POPLAR_HALF_HEIGHT = 2.6;
 const POPLAR_RADIUS = 0.55;
 
 /** Poplar: a single tall, columnar ellipsoid — placed near water. */
-function buildPoplarGeometry(): THREE.BufferGeometry {
-  const ellipsoid = new THREE.SphereGeometry(1, 8, 6);
+export function buildPoplarGeometry(): THREE.BufferGeometry {
+  const ellipsoid = new THREE.SphereGeometry(1, 6, 5);
   ellipsoid.scale(POPLAR_RADIUS, POPLAR_HALF_HEIGHT, POPLAR_RADIUS);
   ellipsoid.translate(0, POPLAR_HALF_HEIGHT, 0);
   paintVertexColor(ellipsoid, POPLAR_COLOR);
@@ -652,7 +661,7 @@ const SHRUB_RADIUS = 0.75;
 
 /** Shrub: a single low, near-groundcover blob — forest edges / low density. */
 export function buildShrubGeometry(): THREE.BufferGeometry {
-  const blob = new THREE.SphereGeometry(1, 7, 5);
+  const blob = new THREE.SphereGeometry(1, 5, 4);
   blob.scale(SHRUB_RADIUS, SHRUB_HALF_HEIGHT, SHRUB_RADIUS);
   blob.translate(0, SHRUB_HALF_HEIGHT, 0);
   paintVertexColor(blob, SHRUB_COLOR);

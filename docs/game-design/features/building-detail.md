@@ -1,6 +1,6 @@
 # Building detail — design
 
-- **Status:** Slice 1, the measurement, built 2026-10-15; the performance slice next, then the buildings
+- **Status:** Slice 1, the measurement, and the performance slice built 2026-10-15; the houses next
 - **Date:** 2026-10-14
 
 ## What the player gets
@@ -117,10 +117,12 @@ one; the slice's document says which it used.
    frame already at 23–38 ms on a laptop GPU before any detail, an overview
    drawing seven times the calls of the oblique, and yards costing more than
    houses ([the figures](../../art/modeling-standards.md#what-the-measurement-read)).
-2. **Performance** (chosen 2026-10-15, on the measurement). The overview's
-   draw calls, the yard's cost and the solar farm's 9,000 triangles, fixed
-   and re-measured, so the detail that follows is paid for by what this
-   slice saves and the houses build to the improved frame.
+2. **Performance** (chosen 2026-10-15 on the measurement, built the same
+   day). The lots batched one mesh per chunk as the roads are, the trees
+   and yard parts at ceilings drawn for 40 m, the solar farm from 9,000
+   triangles to under 2,000. Draw calls fell by half to two-thirds and
+   every view shed 10 M triangles; the frame fell 2–3 ms at the street and
+   held on the overview, which is triangle-bound on the measured GPU.
 3. **Houses.** The detached house as a ranch at level 1 and a colonial above
    it; the duplex, fourplex and townhouse row. Porches, garages, chimneys,
    dormers, eaves, shutters, trim; the parts that vary by seed. The first

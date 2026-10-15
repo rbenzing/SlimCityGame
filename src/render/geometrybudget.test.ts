@@ -3,7 +3,13 @@ import * as THREE from 'three';
 import catalogData from '../data/catalog.json';
 import { BuildingInstancer } from './buildings';
 import { BuildingKitRenderer } from './buildingkit';
-import { HouseRoofRenderer } from './houses';
+import { HouseRoofRenderer, buildPoolGeometry, buildTrampolineGeometry } from './houses';
+import {
+  buildBroadleafGeometry,
+  buildPineGeometry,
+  buildPoplarGeometry,
+  buildShrubGeometry,
+} from './trees';
 import { MassingRenderer } from './massing';
 import { RoofPropRenderer } from './props';
 import { UTILITY_KIT_CATALOG_IDS, UtilityKitRenderer, cemeteryPlots } from './utilitykits';
@@ -23,6 +29,9 @@ const CATALOG = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings
 const KIT_TIER = 30000;
 const BLOCK_TIER = 1500;
 const HOUSE_TIER = 3000;
+const NORMAL_LOT_HOME_CEILING = 900;
+const ACRE_HOME_CEILING = 1500;
+const SOLAR_FARM_CEILING = 2000;
 
 const ORIGIN = { x: 10, z: 10 };
 const HOME_IDS = 16;
@@ -160,4 +169,45 @@ describe('geometry budget: triangles per building, every part', () => {
       expect(triangles).toBeLessThanOrEqual(house ? HOUSE_TIER : BLOCK_TIER);
     },
   );
+
+  it.each(
+    zonedRows
+      .filter((r) => /^res-normal-\d$/.test(r.entry.id))
+      .map((r) => [r.entry.id, r.triangles] as const),
+  )('detached home %s on a normal lot stays under its ceiling', (_id, triangles) => {
+    expect(triangles).toBeLessThanOrEqual(NORMAL_LOT_HOME_CEILING);
+  });
+
+  it.each(
+    zonedRows
+      .filter((r) => /^res-acre-\d$/.test(r.entry.id))
+      .map((r) => [r.entry.id, r.triangles] as const),
+  )('detached home %s on an acre stays under its ceiling', (_id, triangles) => {
+    expect(triangles).toBeLessThanOrEqual(ACRE_HOME_CEILING);
+  });
+
+  it('holds a solar farm to its ceiling', () => {
+    const farm = kitRows.find((r) => r.entry.id === 'solar-farm')!;
+    expect(farm.triangles).toBeLessThanOrEqual(SOLAR_FARM_CEILING);
+  });
+});
+
+describe('geometry budget: triangles per tree species and yard part', () => {
+  const triangles = (geometry: THREE.BufferGeometry): number =>
+    (geometry.index?.count ?? geometry.getAttribute('position').count) / 3;
+
+  const species = [
+    ['broadleaf', buildBroadleafGeometry, 100],
+    ['pine', buildPineGeometry, 40],
+    ['poplar', buildPoplarGeometry, 50],
+    ['shrub', buildShrubGeometry, 30],
+    ['pool', buildPoolGeometry, 60],
+    ['trampoline', buildTrampolineGeometry, 110],
+  ] as const;
+
+  it.each(species)('%s stays within its ceiling', (_name, build, ceiling) => {
+    const count = triangles(build());
+    expect(count).toBeGreaterThan(0);
+    expect(count).toBeLessThanOrEqual(ceiling);
+  });
 });

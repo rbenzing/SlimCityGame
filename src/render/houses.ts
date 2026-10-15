@@ -35,12 +35,7 @@ import {
   massingLifecycleTint,
 } from './massing';
 import { isHouseEntry } from './archetypes';
-import {
-  sizeForKind,
-  variantScaleForKind,
-  VehicleKitPool,
-  VEHICLE_PALETTE_HEX,
-} from './vehicles';
+import { sizeForKind, variantScaleForKind, VehicleKitPool, VEHICLE_PALETTE_HEX } from './vehicles';
 import { materialHex, rgb255ToHex, SATURATED } from './palette';
 import { NO_STREETS, type StreetLookup } from './frontage';
 import {
@@ -62,6 +57,9 @@ import {
   mergeGeometryParts,
   paintVertexColor,
 } from './trees';
+
+/** Sides of the pool's drum and the trampoline's mat and ring, drawn for 40 m. */
+const YARD_DISC_SEGMENTS = 12;
 
 // Same avalanche hash every render/*.ts keeps a local copy of.
 function hash1(n: number): number {
@@ -129,7 +127,7 @@ const PANEL_DEPTH_M = 0.06;
 export const FENCE_HEIGHT_M = 1.6;
 const FENCE_THICKNESS_M = 0.08;
 /** A long fence run is cut into panels no longer than this, each seated on the ground under it. */
-const FENCE_PANEL_MAX_M = 2.5;
+const FENCE_PANEL_MAX_M = 5;
 const CARPORT_HEIGHT_M = 2.4;
 const POOL_HEIGHT_M = 1.2;
 const TRAMPOLINE_MAT_HEIGHT_M = 0.9;
@@ -192,6 +190,18 @@ function buildUnitBoxGeometry(): THREE.BoxGeometry {
   return geometry;
 }
 
+/** A box without the face on the ground, which nothing sees. */
+function withoutUnderside(box: THREE.BoxGeometry): THREE.BoxGeometry {
+  // Faces run +x, -x, +y, -y, +z, -z, six indices each: the underside is the fourth.
+  box.setIndex(Array.from(box.getIndex()!.array).filter((_, i) => Math.floor(i / 6) !== 3));
+  return box;
+}
+
+/** The fence's panels, a few hundred to a street, are unit boxes with no underside. */
+function buildFencePanelGeometry(): THREE.BufferGeometry {
+  return withoutUnderside(buildUnitBoxGeometry());
+}
+
 /** A carport in metres, base-anchored: four posts and a flat roof, its width along local X. */
 export function buildCarportGeometry(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
@@ -220,9 +230,17 @@ export function buildCarportGeometry(): THREE.BufferGeometry {
  * in from its edge, so the rim reads as a ring round it from above.
  */
 export function buildPoolGeometry(): THREE.BufferGeometry {
-  const wall = new THREE.CylinderGeometry(POOL_RADIUS_M, POOL_RADIUS_M, POOL_HEIGHT_M, 20);
+  const wall = new THREE.CylinderGeometry(
+    POOL_RADIUS_M,
+    POOL_RADIUS_M,
+    POOL_HEIGHT_M,
+    YARD_DISC_SEGMENTS,
+  );
+  // The side then the top cap: the underside never faces anything.
+  wall.setIndex(Array.from(wall.getIndex()!.array).slice(0, YARD_DISC_SEGMENTS * 9));
   wall.translate(0, POOL_HEIGHT_M / 2, 0);
-  const water = new THREE.CylinderGeometry(POOL_RADIUS_M - 0.15, POOL_RADIUS_M - 0.15, 0.02, 20);
+  const water = new THREE.CircleGeometry(POOL_RADIUS_M - 0.15, YARD_DISC_SEGMENTS);
+  water.rotateX(-Math.PI / 2);
   water.translate(0, POOL_HEIGHT_M + 0.01, 0);
   return mergeGeometryParts([
     paintVertexColor(wall, materialHex('bluePlaster')),
@@ -236,7 +254,7 @@ export function buildTrampolineGeometry(): THREE.BufferGeometry {
   const frame = materialHex('metalPlates');
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * Math.PI * 2;
-    const leg = new THREE.CylinderGeometry(0.04, 0.04, TRAMPOLINE_MAT_HEIGHT_M, 5);
+    const leg = new THREE.CylinderGeometry(0.04, 0.04, TRAMPOLINE_MAT_HEIGHT_M, 4, 1, true);
     leg.translate(
       Math.cos(a) * (TRAMPOLINE_RADIUS_M - 0.1),
       TRAMPOLINE_MAT_HEIGHT_M / 2,
@@ -244,16 +262,19 @@ export function buildTrampolineGeometry(): THREE.BufferGeometry {
     );
     parts.push(paintVertexColor(leg, frame));
   }
-  const ring = new THREE.CylinderGeometry(TRAMPOLINE_RADIUS_M, TRAMPOLINE_RADIUS_M, 0.08, 20, 1, true);
+  const ring = new THREE.CylinderGeometry(
+    TRAMPOLINE_RADIUS_M,
+    TRAMPOLINE_RADIUS_M,
+    0.08,
+    YARD_DISC_SEGMENTS,
+    1,
+    true,
+  );
   ring.translate(0, TRAMPOLINE_MAT_HEIGHT_M, 0);
   parts.push(paintVertexColor(ring, frame));
-  const mat = new THREE.CylinderGeometry(
-    TRAMPOLINE_RADIUS_M - 0.15,
-    TRAMPOLINE_RADIUS_M - 0.15,
-    0.02,
-    20,
-  );
-  mat.translate(0, TRAMPOLINE_MAT_HEIGHT_M - 0.02, 0);
+  const mat = new THREE.CircleGeometry(TRAMPOLINE_RADIUS_M - 0.15, YARD_DISC_SEGMENTS);
+  mat.rotateX(-Math.PI / 2);
+  mat.translate(0, TRAMPOLINE_MAT_HEIGHT_M - 0.01, 0);
   parts.push(paintVertexColor(mat, materialHex('coal')));
   return mergeGeometryParts(parts);
 }
@@ -268,7 +289,7 @@ export function buildGrillGeometry(): THREE.BufferGeometry {
     [-0.25, 0.2],
     [0.25, 0.2],
   ] as const) {
-    const leg = new THREE.BoxGeometry(0.04, 0.6, 0.04);
+    const leg = withoutUnderside(new THREE.BoxGeometry(0.04, 0.6, 0.04));
     leg.translate(x, 0.3, z);
     parts.push(paintVertexColor(leg, legColour));
   }
@@ -312,7 +333,10 @@ interface HouseSlots {
 }
 
 /** A frame rectangle as a world-space, axis-aligned box: its centre and its X and Z extents. */
-function worldBox(plan: HouseLotPlan, r: LotRect): { x: number; z: number; sx: number; sz: number } {
+function worldBox(
+  plan: HouseLotPlan,
+  r: LotRect,
+): { x: number; z: number; sx: number; sz: number } {
   const a = lotToWorld(plan.frame, r.u0, r.v0);
   const b = lotToWorld(plan.frame, r.u1, r.v1);
   return {
@@ -359,7 +383,7 @@ export class HouseRoofRenderer {
       door: kit(buildUnitBoxGeometry()),
       fence: new InstancedSlotPool(
         scene,
-        buildUnitBoxGeometry(),
+        buildFencePanelGeometry(),
         new THREE.MeshLambertMaterial(),
         INITIAL_KIT_CAPACITY,
       ),
@@ -527,7 +551,18 @@ export class HouseRoofRenderer {
       if (drive.coverRect && (drive.cover === 'garage' || drive.cover === 'detachedGarage')) {
         const g = worldBox(plan, drive.coverRect);
         doorGround = this.heightAt(g.x, g.z);
-        put('garage', g.x, doorGround, g.z, 0, g.sx, GARAGE_HEIGHT_M, g.sz, GARAGE_WALL_COLOR, true);
+        put(
+          'garage',
+          g.x,
+          doorGround,
+          g.z,
+          0,
+          g.sx,
+          GARAGE_HEIGHT_M,
+          g.sz,
+          GARAGE_WALL_COLOR,
+          true,
+        );
       } else if (drive.coverRect && drive.cover === 'carport') {
         const c = worldBox(plan, drive.coverRect);
         put('carport', c.x, this.heightAt(c.x, c.z), c.z, carportYaw, 1, 1, 1, CARPORT_COLOR, true);
@@ -583,12 +618,34 @@ export class HouseRoofRenderer {
           ? { u0: a, u1: b, v0: run.v0 - t, v1: run.v0 + t }
           : { u0: run.u0 - t, u1: run.u0 + t, v0: a, v1: b };
         const f = worldBox(plan, rect);
-        put('fence', f.x, this.heightAt(f.x, f.z), f.z, 0, f.sx, FENCE_HEIGHT_M, f.sz, fenceHex, false);
+        put(
+          'fence',
+          f.x,
+          this.heightAt(f.x, f.z),
+          f.z,
+          0,
+          f.sx,
+          FENCE_HEIGHT_M,
+          f.sz,
+          fenceHex,
+          false,
+        );
       }
     }
     const stand = (part: HousePart, u: number, v: number, scale: number, lift = 0): void => {
       const at = lotToWorld(plan.frame, u, v);
-      put(part, at.x, this.heightAt(at.x, at.z) + lift, at.z, 0, scale, scale, scale, 0xffffff, false);
+      put(
+        part,
+        at.x,
+        this.heightAt(at.x, at.z) + lift,
+        at.z,
+        0,
+        scale,
+        scale,
+        scale,
+        0xffffff,
+        false,
+      );
     };
     for (const bush of yard.bushes) stand('bush', bush.u, bush.v, bush.scale);
     for (const tree of yard.trees) stand('tree', tree.u, tree.v, tree.scale * YARD_TREE_SCALE);
