@@ -58,6 +58,54 @@ interface HSL {
 export { FLOOR_HEIGHT_METERS };
 /** "bays from footprint" — a ~2.6m structural bay width. */
 export const BAY_WIDTH_METERS = 2.6;
+/** Each punched window leaves this share of its grid cell as wall on every side. */
+export const MULLION_MARGIN_PUNCHED = 0.22;
+
+/** Upper-floor mullion/frame colour: the wall colour darkened, which is most of what a wall shows. */
+export const FRAME_DARKEN = 0.55;
+
+const MIN_WINDOW_COLS = 2;
+const MAX_WINDOW_COLS = 8;
+const MIN_WINDOW_ROWS = 1;
+const MAX_WINDOW_ROWS = 15; // MAX_WINDOW_COLS * MAX_WINDOW_ROWS stays under the window seed's fraction slot
+const WINDOW_COLS_PER_TILE = 2;
+/**
+ * Row-house massing: a terrace's narrow attached footprints are one stretched
+ * box like any other archetype, and the general per-tile density would read as
+ * one big building with a sparse, over-wide window grid. A tighter density
+ * gives each unit its own narrow bay so the rhythm reads as separate houses.
+ */
+const ROW_HOUSE_WINDOW_COLS_PER_TILE = 3;
+
+/** Is this the attached-row-house archetype? Keyed off the catalog's own `kind`, never the footprint's shape. */
+export function isRowHouseArchetype(entry: BuildingCatalogEntry): boolean {
+  return entry.kind === 'townhouse';
+}
+
+/**
+ * The window grid every face of a building's body is cut into (columns across
+ * a face, rows up one tier of `tierHeight` metres). The facade material draws
+ * exactly this grid, and the house kit's shutters stand on it.
+ */
+export function windowGrid(
+  entry: BuildingCatalogEntry,
+  tierHeight: number,
+): { cols: number; rows: number } {
+  const avgFootprintTiles = (entry.footprint.w + entry.footprint.d) / 2;
+  const colsPerTile = isRowHouseArchetype(entry)
+    ? ROW_HOUSE_WINDOW_COLS_PER_TILE
+    : WINDOW_COLS_PER_TILE;
+  const cols = Math.min(
+    MAX_WINDOW_COLS,
+    Math.max(MIN_WINDOW_COLS, Math.round(avgFootprintTiles * colsPerTile)),
+  );
+  const rows = Math.min(
+    MAX_WINDOW_ROWS,
+    Math.max(MIN_WINDOW_ROWS, Math.round(tierHeight / FLOOR_HEIGHT_METERS)),
+  );
+  return { cols, rows };
+}
+
 /** First 3.2m band gets storefront treatment. */
 export const GROUND_FLOOR_METERS = FLOOR_HEIGHT_METERS;
 /** Top 0.4m darker band. */

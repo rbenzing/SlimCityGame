@@ -22,6 +22,7 @@ import {
   industrialWallBase,
   parapetBand,
   rgbToHsl,
+  windowGrid,
 } from './facade';
 
 function entry(overrides: Partial<BuildingCatalogEntry> = {}): BuildingCatalogEntry {
@@ -134,6 +135,31 @@ describe('deriveFacadeParams: bays', () => {
     const small = deriveFacadeParams(entry({ footprint: { w: 1, d: 1 } }), 1).bays;
     const big = deriveFacadeParams(entry({ footprint: { w: 4, d: 4 } }), 1).bays;
     expect(big).toBeGreaterThan(small);
+  });
+});
+
+describe('windowGrid: the bays and storeys the material draws', () => {
+  it('cuts a face into columns by the footprint and a tier into rows of a storey', () => {
+    // 1 x 2 tiles: 1.5 tiles average, two columns a tile.
+    expect(windowGrid(entry({ footprint: { w: 1, d: 2 } }), 6.5)).toEqual({ cols: 3, rows: 2 });
+    expect(windowGrid(entry({ footprint: { w: 1, d: 2 } }), 4)).toEqual({ cols: 3, rows: 1 });
+    expect(windowGrid(entry({ footprint: { w: 2, d: 2 } }), 9.6)).toEqual({ cols: 4, rows: 3 });
+  });
+
+  it('is denser across a terrace, so each home reads as its own', () => {
+    const plain = windowGrid(entry({ footprint: { w: 1, d: 2 } }), 9);
+    const row = windowGrid(entry({ footprint: { w: 1, d: 2 }, kind: 'townhouse' }), 9);
+    expect(row.cols).toBeGreaterThan(plain.cols);
+    expect(row.rows).toBe(plain.rows);
+  });
+
+  it('stays inside its clamps, so the window seed slots hold', () => {
+    const huge = windowGrid(entry({ footprint: { w: 9, d: 9 } }), 400);
+    expect(huge.cols).toBeLessThanOrEqual(8);
+    expect(huge.rows).toBeLessThanOrEqual(15);
+    const tiny = windowGrid(entry({ footprint: { w: 1, d: 1 } }), 0.5);
+    expect(tiny.cols).toBeGreaterThanOrEqual(2);
+    expect(tiny.rows).toBe(1);
   });
 });
 

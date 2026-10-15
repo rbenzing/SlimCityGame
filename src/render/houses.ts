@@ -4,19 +4,22 @@
  * each body box with its facade shader; this stands up everything else that
  * makes a home read as a home, on the lot plan houselot.ts lays out from the
  * street the home fronts:
- *   - a pitched GABLE ROOF over the body;
+ *   - a pitched GABLE ROOF over the body, by the house it is (a ranch, a Cape,
+ *     a colonial, a row), with its fascia, chimney and dormers;
  *   - what each drive ends at — a carport, an attached or detached garage, a
  *     garage door in a row's facade — and the resident's car on the drive;
- *   - a front door on the street-facing wall;
+ *   - a front door on the street-facing wall, its stoop, portico or porch,
+ *     and shutters on the street face's windows;
  *   - the yard: fence, above-ground pool, trampoline, grill, bushes and trees.
  * The drive, path, patio and lawn are ground surfaces and belong to lots.ts.
  *
  * Every repeated part is an InstancedSlotPool, fed the same BuildingDelta
- * stream as the other building renderers. The roof, garage, carport and doors
- * share the body's night tint (one uniform, the same colorNode mix as the
- * massing tiers); the yard parts, the fence and the cars are lit like any
- * other prop. Everything is a pure function of (entry, building, streets) — no
- * Math.random, no Date.now — so a home's kit is the same on every load.
+ * stream as the other building renderers. The roof, garage, carport, doors
+ * and every part on the body share its night tint (one uniform, the same
+ * colorNode mix as the massing tiers); the yard parts, the fence and the cars
+ * are lit like any other prop. Everything is a pure function of (entry,
+ * building, streets) — no Math.random, no Date.now — so a home's kit is the
+ * same on every load.
  */
 import * as THREE from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
@@ -37,17 +40,32 @@ import {
 import { isHouseEntry } from './archetypes';
 import { sizeForKind, variantScaleForKind, VehicleKitPool, VEHICLE_PALETTE_HEX } from './vehicles';
 import { materialHex, rgb255ToHex, SATURATED } from './palette';
+import { FRAME_DARKEN, deriveFacadeParams } from './facade';
 import { NO_STREETS, type StreetLookup } from './frontage';
 import {
   CARPORT_DEPTH_M,
   CARPORT_WIDTH_M,
   DOOR_WIDTH_M,
+  DORMER_DEPTH_M,
+  DORMER_WALL_M,
+  DORMER_WIDTH_M,
+  GARAGE_LEAF_DEPTH_M,
+  GARAGE_LEAF_HEIGHT_M,
+  GARAGE_LEAF_ROW_WIDTH_M,
+  GARAGE_LEAF_WIDTH_M,
   POOL_RADIUS_M,
+  PORTICO_DEPTH_M,
+  PORTICO_HOOD_M,
+  PORTICO_WIDTH_M,
+  POST_M,
+  RISER_M,
   TRAMPOLINE_RADIUS_M,
   inwardYaw,
   lotToWorld,
+  outwardYaw,
   planHouseLot,
   type HouseLotPlan,
+  type KitBox,
   type LotRect,
 } from './houselot';
 import { DRIVE_Y_OFFSET } from './lots';
@@ -70,10 +88,10 @@ function hash1(n: number): number {
   return h / 4294967296;
 }
 
-const HASH_SLOT_ROOF_PITCH = 71;
 const HASH_SLOT_ROOF_COLOR = 72;
 const HASH_SLOT_CAR_COLOR = 73;
 const HASH_SLOT_CAR_VARIANT = 74;
+const HASH_SLOT_TRIM = 75;
 
 const INITIAL_KIT_CAPACITY = 64;
 /**
@@ -87,13 +105,6 @@ const INITIAL_KIT_CAPACITY = 64;
  * visual constants" convention.
  */
 export const NIGHT_ROOF_TINT: readonly [number, number, number] = [0.34, 0.38, 0.46];
-
-/** Roof rise as a fraction of the SHORTER base span (sets the pitch angle), before per-building jitter. */
-const ROOF_PITCH_FRACTION = 0.42;
-/** Per-building rise jitter around the base pitch, so a street of homes isn't one uniform angle. */
-const ROOF_PITCH_JITTER = 0.28;
-/** A gable roof never rises more than this share of the base — keeps a 1x6 terrace from spiking. */
-const ROOF_MAX_RISE_METERS = 4.5;
 
 /**
  * Roof-tile palette, spread across the calibrated range rather than bunched at
@@ -111,8 +122,16 @@ const ROOF_PALETTE: readonly number[] = [
 /** Garage wall — plaster, distinct from the roof. */
 const GARAGE_WALL_COLOR = materialHex('whitePlaster');
 const CARPORT_COLOR = materialHex('brightWood');
-const FRONT_DOOR_COLOR = materialHex('darkWood');
-const GARAGE_DOOR_COLOR = materialHex('metalPlates');
+/** A chimney is brick red whatever the wall. */
+const CHIMNEY_COLOR = 0x8c4332;
+const STOOP_COLOR = materialHex('cleanConcrete');
+const PORCH_FLOOR_COLOR = materialHex('brightestWood');
+/** What trim, shutters, the garage leaf, the front door and the fascia are painted: black, white, a dark green, or the roof's own colour. */
+const TRIM_BLACK = 0x22242a;
+const TRIM_WHITE = 0xd6d6d0;
+const TRIM_GREEN = 0x1e3a28;
+/** The dormer's glazing, over its wall colour. */
+const DORMER_GLASS_COLOR = 0x4a4a4a;
 const FENCE_COLOR: Readonly<Record<HouseLotPlan['yard']['fenceColour'], number>> = {
   // The palest of each: a fence is a thin board seen mostly edge-on or in its
   // own shade, and a mid tone read as a black line round every garden.
@@ -122,8 +141,13 @@ const FENCE_COLOR: Readonly<Record<HouseLotPlan['yard']['fenceColour'], number>>
 
 export const GARAGE_HEIGHT_M = 2.6;
 export const DOOR_HEIGHT_M = 2.1;
-/** A door or a garage door stands this far proud of the wall it is set in. */
+/** A door stands this far proud of the wall it is set in. */
 const PANEL_DEPTH_M = 0.06;
+/** The fascia board along an eave: 1 × 8 in, a thin board standing at the roof's edge. */
+const FASCIA_DEPTH_M = 0.18;
+const FASCIA_THICKNESS_M = 0.04;
+/** A dormer's roof overhangs its walls this far on every side. */
+const DORMER_EAVE_M = 0.15;
 export const FENCE_HEIGHT_M = 1.6;
 const FENCE_THICKNESS_M = 0.08;
 /** A long fence run is cut into panels no longer than this, each seated on the ground under it. */
@@ -137,22 +161,32 @@ const YARD_TREE_SCALE = 0.8;
 /** A resident's car is painted from the same list as every other car. */
 const CAR_PALETTE: readonly number[] = VEHICLE_PALETTE_HEX;
 
-/** Ridge runs along the LONGER footprint axis (a 1xN row house ridges down the row, not across it). Pure. */
-export function roofRidgeAlongZ(entry: BuildingCatalogEntry): boolean {
-  return entry.footprint.d > entry.footprint.w;
-}
-
-/** Deterministic roof rise (meters) for a building, from the shorter base span + a per-id jitter. Pure. */
-export function computeRoofRise(baseW: number, baseD: number, buildingId: number): number {
-  const shorter = Math.min(baseW, baseD);
-  const jitter = 1 + (hash1(buildingId + HASH_SLOT_ROOF_PITCH) * 2 - 1) * ROOF_PITCH_JITTER;
-  return Math.min(ROOF_MAX_RISE_METERS, shorter * ROOF_PITCH_FRACTION * jitter);
-}
-
 /** Deterministic roof color hex for a building. Pure. */
 export function roofColorHex(buildingId: number): number {
   const i = Math.floor(hash1(buildingId + HASH_SLOT_ROOF_COLOR) * ROOF_PALETTE.length);
   return ROOF_PALETTE[Math.min(ROOF_PALETTE.length - 1, i)]!;
+}
+
+/** Relative luminance of a wall as it is mostly drawn, in its darkened frame colour. */
+export function wallLuminance(wall: readonly [number, number, number]): number {
+  return (0.2126 * wall[0] + 0.7152 * wall[1] + 0.0722 * wall[2]) * FRAME_DARKEN;
+}
+/** A wall drawn darker than this is dark enough to swallow black trim. */
+const DARK_WALL_LUMINANCE = 0.44;
+
+/**
+ * The one trim colour a house wears on its shutters, fascia, garage leaf and
+ * front door: black in 39 of 100 houses, white in 19, the rest a dark green or
+ * the roof's colour. Pure.
+ */
+export function trimColor(seed: number, wall?: readonly [number, number, number]): number {
+  // Trim has to read against the wall: a wall that draws dark gets white trim, and
+  // only a light wall leaves the colour to the seed.
+  if (wall && wallLuminance(wall) < DARK_WALL_LUMINANCE) return TRIM_WHITE;
+  const roll = hash1(seed + HASH_SLOT_TRIM);
+  if (roll < 0.39) return TRIM_BLACK;
+  if (roll < 0.58) return TRIM_WHITE;
+  return roll < 0.79 ? TRIM_GREEN : roofColorHex(seed);
 }
 
 /**
@@ -197,9 +231,78 @@ function withoutUnderside(box: THREE.BoxGeometry): THREE.BoxGeometry {
   return box;
 }
 
-/** The fence's panels, a few hundred to a street, are unit boxes with no underside. */
-function buildFencePanelGeometry(): THREE.BufferGeometry {
+/** The fence's panels, the shutters, steps and chimneys are unit boxes with no underside. */
+function buildPanelGeometry(): THREE.BufferGeometry {
   return withoutUnderside(buildUnitBoxGeometry());
+}
+
+/**
+ * A portico, base-anchored on its landing with the wall at z = 0 and the
+ * front at +Z: two posts under a gable hood, whose ridge runs out from the
+ * wall. The hood rises at the main roof's 8:12.
+ */
+export function buildPorticoGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const hoodY = PORTICO_HOOD_M - 3 * RISER_M;
+  const half = POST_M / 2;
+  for (const x of [-PORTICO_WIDTH_M / 2 + half + 0.05, PORTICO_WIDTH_M / 2 - half - 0.05]) {
+    const post = withoutUnderside(new THREE.BoxGeometry(POST_M, hoodY, POST_M));
+    post.translate(x, hoodY / 2, PORTICO_DEPTH_M - half - 0.05);
+    parts.push(post);
+  }
+  const hood = buildGableRoofGeometry();
+  hood.scale(PORTICO_DEPTH_M, (PORTICO_WIDTH_M / 2) * (8 / 12), PORTICO_WIDTH_M);
+  hood.rotateY(Math.PI / 2);
+  hood.translate(0, hoodY, PORTICO_DEPTH_M / 2);
+  parts.push(hood);
+  return mergeGeometryParts(parts);
+}
+
+/**
+ * A porch's shed roof as a wedge, unit-sized: the wall at z = 0 and the front
+ * at z = 1 (+Z), the low edge at y = 0 and the wall edge at y = 1, flat
+ * underneath over the posts.
+ */
+export function buildShedRoofGeometry(): THREE.BufferGeometry {
+  const A: [number, number, number] = [-0.5, 0, 0];
+  const B: [number, number, number] = [0.5, 0, 0];
+  const C: [number, number, number] = [0.5, 1, 0];
+  const D: [number, number, number] = [-0.5, 1, 0];
+  const F0: [number, number, number] = [-0.5, 0, 1];
+  const F1: [number, number, number] = [0.5, 0, 1];
+  const tris: [number, number, number][][] = [
+    [D, F0, C],
+    [C, F0, F1], // the slope
+    [A, B, F0],
+    [B, F1, F0], // the underside
+    [A, F0, D],
+    [B, C, F1], // the ends
+  ];
+  const positions: number[] = [];
+  for (const tri of tris) for (const v of tri) positions.push(v[0], v[1], v[2]);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+/**
+ * A gable dormer's walls, base-anchored where its front wall stands on the
+ * slope, the front at +Z and the cheeks running back into the roof. The front
+ * carries a window; wall and window are painted into the geometry, so the
+ * instance colour is the wall's. Its own gable roof is a roof instance.
+ */
+export function buildDormerGeometry(): THREE.BufferGeometry {
+  const walls = withoutUnderside(
+    new THREE.BoxGeometry(DORMER_WIDTH_M, DORMER_WALL_M, DORMER_DEPTH_M),
+  );
+  walls.translate(0, DORMER_WALL_M / 2, -DORMER_DEPTH_M / 2);
+  const window = new THREE.BoxGeometry(DORMER_WIDTH_M * 0.5, DORMER_WALL_M * 0.6, 0.04);
+  window.translate(0, DORMER_WALL_M * 0.55, 0.02);
+  return mergeGeometryParts([
+    paintVertexColor(walls, 0xffffff),
+    paintVertexColor(window, DORMER_GLASS_COLOR),
+  ]);
 }
 
 /** A carport in metres, base-anchored: four posts and a flat roof, its width along local X. */
@@ -312,7 +415,18 @@ const _yAxis = new THREE.Vector3(0, 1, 0);
 /** The parts of the kit, one pool each. */
 export type HousePart =
   | 'roof'
+  | 'fascia'
+  | 'chimney'
+  | 'stoop'
+  | 'portico'
+  | 'porch'
+  | 'porchRoof'
+  | 'dormer'
+  | 'shutter'
+  | 'parapet'
+  | 'parapetGable'
   | 'garage'
+  | 'garageLeaf'
   | 'carport'
   | 'door'
   | 'fence'
@@ -370,20 +484,31 @@ export class HouseRoofRenderer {
     this.catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
     // The structure shares one night uniform, so a house's roof, garage and
     // doors darken together with the body.
-    const kit = (geometry: THREE.BufferGeometry): InstancedSlotPool =>
-      new InstancedSlotPool(scene, geometry, this.kitMaterial(), INITIAL_KIT_CAPACITY);
+    const kit = (geometry: THREE.BufferGeometry, vertexColors = false): InstancedSlotPool =>
+      new InstancedSlotPool(scene, geometry, this.kitMaterial(vertexColors), INITIAL_KIT_CAPACITY);
     // Yard parts carry their colours in the geometry and are lit like trees.
     const yardMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     const yard = (geometry: THREE.BufferGeometry): InstancedSlotPool =>
       new InstancedSlotPool(scene, geometry, yardMaterial, INITIAL_KIT_CAPACITY);
     this.pools = {
       roof: kit(buildGableRoofGeometry()),
+      fascia: kit(buildPanelGeometry()),
+      chimney: kit(buildPanelGeometry()),
+      stoop: kit(buildPanelGeometry()),
+      portico: kit(buildPorticoGeometry()),
+      porch: kit(buildPanelGeometry()),
+      porchRoof: kit(buildShedRoofGeometry()),
+      dormer: kit(buildDormerGeometry(), true),
+      shutter: kit(buildPanelGeometry()),
+      parapet: kit(buildPanelGeometry()),
+      parapetGable: kit(buildGableRoofGeometry()),
       garage: kit(buildUnitBoxGeometry()),
+      garageLeaf: kit(buildPanelGeometry()),
       carport: kit(buildCarportGeometry()),
       door: kit(buildUnitBoxGeometry()),
       fence: new InstancedSlotPool(
         scene,
-        buildFencePanelGeometry(),
+        buildPanelGeometry(),
         new THREE.MeshLambertMaterial(),
         INITIAL_KIT_CAPACITY,
       ),
@@ -399,8 +524,8 @@ export class HouseRoofRenderer {
     this.carPool = new VehicleKitPool(scene, VehicleKind.Car, INITIAL_KIT_CAPACITY);
   }
 
-  private kitMaterial(): MeshStandardNodeMaterial {
-    const material = new MeshStandardNodeMaterial({ roughness: 1, metalness: 0 });
+  private kitMaterial(vertexColors: boolean): MeshStandardNodeMaterial {
+    const material = new MeshStandardNodeMaterial({ roughness: 1, metalness: 0, vertexColors });
     material.colorNode = mix(vec3(1, 1, 1), vec3(...NIGHT_ROOF_TINT), this.nightFactorUniform);
     return material;
   }
@@ -497,7 +622,7 @@ export class HouseRoofRenderer {
       sx: number,
       sy: number,
       sz: number,
-      hex: number,
+      colour: number | readonly [number, number, number],
       tinted: boolean,
     ): void => {
       const pool = this.pools[part];
@@ -507,7 +632,9 @@ export class HouseRoofRenderer {
       _scale.set(sx, sy, sz);
       _matrix.compose(_position, _quaternion, _scale);
       pool.setMatrixAt(slot, _matrix);
-      _color.setHex(hex);
+      // A palette hex is a swatch; a triple is the facade's own wall colour, as the body is given it.
+      if (typeof colour === 'number') _color.setHex(colour);
+      else _color.setRGB(colour[0], colour[1], colour[2]);
       if (tinted) {
         _color.r *= tint[0];
         _color.g *= tint[1];
@@ -517,23 +644,134 @@ export class HouseRoofRenderer {
       slots.parts.push({ part, slot });
     };
 
-    // --- roof ---------------------------------------------------------------
-    const body = worldBox(plan, plan.body);
-    const eavesY = bodyGround + entry.height * heightScale;
-    const rise = computeRoofRise(body.sx, body.sz, building.id) * heightScale;
-    const ridgeAlongZ = body.sz > body.sx;
-    put(
-      'roof',
-      body.x,
-      eavesY,
-      body.z,
-      ridgeAlongZ ? Math.PI / 2 : 0,
-      ridgeAlongZ ? body.sz : body.sx,
-      rise,
-      ridgeAlongZ ? body.sx : body.sz,
-      roofColorHex(building.id),
-      true,
-    );
+    // --- the roof, and what stands on and beside the body -------------------
+    const { kit } = plan;
+    const roofColour = roofColorHex(building.id);
+    const wall = deriveFacadeParams(entry, building.id).wallColor;
+    const trim = trimColor(building.id, wall);
+    // A height above the body's ground: a home going up is drawn squat, parts and all.
+    const up = (y: number): number => bodyGround + y * heightScale;
+    const boxOf = (
+      part: HousePart,
+      box: KitBox,
+      colour: number | readonly [number, number, number],
+    ): void => {
+      const b = worldBox(plan, box.rect);
+      put(part, b.x, up(box.y0), b.z, 0, b.sx, (box.y1 - box.y0) * heightScale, b.sz, colour, true);
+    };
+    // A gable roof over `rect` at `slope`, its ridge along the frontage or across it, passing through `wallTop` at the wall line.
+    const gable = (
+      rect: LotRect,
+      ridgeAlongU: boolean,
+      wallTop: number,
+      eave: number,
+      slope: number,
+    ): void => {
+      const g = worldBox(plan, rect);
+      const alongX = ridgeAlongU === plan.frame.alongX;
+      const span = alongX ? g.sz : g.sx;
+      const y = up(wallTop - eave * slope);
+      const rise = (span / 2) * slope * heightScale;
+      put(
+        'roof',
+        g.x,
+        y,
+        g.z,
+        alongX ? 0 : Math.PI / 2,
+        alongX ? g.sx : g.sz,
+        rise,
+        span,
+        roofColour,
+        true,
+      );
+    };
+    const { roof } = kit;
+    gable(roof.rect, true, kit.heightM, roof.eaveM, roof.slope);
+    const edgeY = kit.heightM - roof.eaveM * roof.slope;
+    for (const v0 of [roof.rect.v0, roof.rect.v1 - FASCIA_THICKNESS_M]) {
+      const rect = { u0: roof.rect.u0, u1: roof.rect.u1, v0, v1: v0 + FASCIA_THICKNESS_M };
+      boxOf('fascia', { rect, y0: edgeY - FASCIA_DEPTH_M, y1: edgeY }, trim);
+    }
+    for (const chimney of kit.chimneys) boxOf('chimney', chimney, CHIMNEY_COLOR);
+    for (const dormer of kit.dormers) {
+      const at = lotToWorld(plan.frame, dormer.u, dormer.v);
+      put(
+        'dormer',
+        at.x,
+        up(dormer.y),
+        at.z,
+        outwardYaw(plan.frame),
+        1,
+        heightScale,
+        1,
+        wall,
+        true,
+      );
+      const half = DORMER_WIDTH_M / 2 + DORMER_EAVE_M;
+      const rect = {
+        u0: dormer.u - half,
+        u1: dormer.u + half,
+        v0: dormer.v - DORMER_EAVE_M,
+        v1: dormer.v + DORMER_DEPTH_M,
+      };
+      gable(rect, false, dormer.y + DORMER_WALL_M, DORMER_EAVE_M, roof.slope);
+    }
+    for (const step of kit.stoops) boxOf('stoop', step, STOOP_COLOR);
+    for (const portico of kit.porticos) {
+      const at = lotToWorld(plan.frame, portico.u, portico.v);
+      put(
+        'portico',
+        at.x,
+        up(3 * RISER_M),
+        at.z,
+        outwardYaw(plan.frame),
+        1,
+        heightScale,
+        1,
+        trim,
+        true,
+      );
+    }
+    if (kit.porch) {
+      boxOf('porch', kit.porch.floor, PORCH_FLOOR_COLOR);
+      for (const post of kit.porch.posts) boxOf('porch', post, trim);
+      const { rect, lowM, wallM } = kit.porch.roof;
+      const at = lotToWorld(plan.frame, (rect.u0 + rect.u1) / 2, rect.v1);
+      put(
+        'porchRoof',
+        at.x,
+        up(lowM),
+        at.z,
+        outwardYaw(plan.frame),
+        rect.u1 - rect.u0,
+        (wallM - lowM) * heightScale,
+        rect.v1 - rect.v0,
+        roofColour,
+        true,
+      );
+    }
+    for (const shutter of kit.shutters) boxOf('shutter', shutter, trim);
+    // A party wall follows the roof, 0.76 m proud of it: a band over the eave line,
+    // and over that the roof's own gable section, stood in the wall's plane.
+    for (const parapet of kit.parapets) {
+      boxOf('parapet', parapet, wall);
+      const g = worldBox(plan, parapet.rect);
+      const alongX = plan.frame.alongX;
+      const span = alongX ? g.sz : g.sx;
+      const rise = roof.riseM * heightScale;
+      put(
+        'parapetGable',
+        g.x,
+        up(parapet.y1),
+        g.z,
+        alongX ? 0 : Math.PI / 2,
+        alongX ? g.sx : g.sz,
+        rise,
+        span,
+        wall,
+        true,
+      );
+    }
 
     // --- doors, and what each drive ends at ---------------------------------
     for (const door of plan.doors) {
@@ -543,7 +781,7 @@ export class HouseRoofRenderer {
         v0: door.v - PANEL_DEPTH_M,
         v1: door.v,
       });
-      put('door', b.x, bodyGround, b.z, 0, b.sx, DOOR_HEIGHT_M, b.sz, FRONT_DOOR_COLOR, true);
+      put('door', b.x, bodyGround, b.z, 0, b.sx, DOOR_HEIGHT_M, b.sz, trim, true);
     }
     const carportYaw = plan.frame.alongX ? 0 : Math.PI / 2;
     for (const drive of plan.drives) {
@@ -568,9 +806,18 @@ export class HouseRoofRenderer {
         put('carport', c.x, this.heightAt(c.x, c.z), c.z, carportYaw, 1, 1, 1, CARPORT_COLOR, true);
       }
       if (drive.garageDoor) {
+        // A row's single door is 8 ft wide, a house's 9 ft; both stand proud of the garage face.
         const d = drive.garageDoor;
-        const b = worldBox(plan, { u0: d.u0, u1: d.u1, v0: d.v - PANEL_DEPTH_M, v1: d.v });
-        put('door', b.x, doorGround, b.z, 0, b.sx, DOOR_HEIGHT_M, b.sz, GARAGE_DOOR_COLOR, true);
+        const centre = (d.u0 + d.u1) / 2;
+        const half =
+          (drive.cover === 'integralGarage' ? GARAGE_LEAF_ROW_WIDTH_M : GARAGE_LEAF_WIDTH_M) / 2;
+        const b = worldBox(plan, {
+          u0: centre - half,
+          u1: centre + half,
+          v0: d.v - GARAGE_LEAF_DEPTH_M,
+          v1: d.v,
+        });
+        put('garageLeaf', b.x, doorGround, b.z, 0, b.sx, GARAGE_LEAF_HEIGHT_M, b.sz, trim, true);
       }
     }
 

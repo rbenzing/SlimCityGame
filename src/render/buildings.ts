@@ -58,14 +58,18 @@ import {
   INDUSTRIAL_ACCENT_HEIGHT_FRACTION,
   INDUSTRIAL_ROOF_COLOR,
   INDUSTRIAL_WALL_PALETTE,
+  FRAME_DARKEN,
   MAX_WALL_SATURATION,
   MIN_ROOF_WALL_DISTANCE,
+  MULLION_MARGIN_PUNCHED,
   ROOF_PALETTE,
   RGB,
   deriveFacadeParams,
   groundFloorBand,
+  isRowHouseArchetype,
   parapetBand,
   rgbToHsl,
+  windowGrid,
 } from './facade';
 
 const INITIAL_CAPACITY = 64;
@@ -137,52 +141,15 @@ const INDUSTRIAL_DOOR_HEIGHT_FRACTION = 0.82;
 /** Sectional metal roll-up door tone. */
 const INDUSTRIAL_DOOR_COLOR: readonly [number, number, number] = [0.44, 0.46, 0.49];
 
-const MIN_WINDOW_COLS = 2;
-const MAX_WINDOW_COLS = 8;
-const MIN_WINDOW_ROWS = 1;
-const MAX_WINDOW_ROWS = 15; // MAX_WINDOW_COLS * MAX_WINDOW_ROWS stays < WINDOW_FRACTION_SLOT
-const WINDOW_FLOOR_HEIGHT_METERS = 3.2;
-const WINDOW_COLS_PER_TILE = 2;
-/**
- * Row-house massing: ResMediumRow's narrow attached-row footprints (1x2..1x6)
- * are a single stretched box like any other archetype — with the generic
- * per-tile window density a 1x6 "Townhouse Terrace" reads as one big building
- * with a sparse, over-wide window grid, not a row of attached houses. A
- * tighter per-tile column density (vs the general WINDOW_COLS_PER_TILE) gives
- * each unit its own narrower window bay so the repeating rhythm reads as
- * separate houses. Still bounded by MAX_WINDOW_COLS, so the WINDOW_SEED_SLOTS
- * budget invariant below holds.
- */
-const ROW_HOUSE_WINDOW_COLS_PER_TILE = 3;
+export { isRowHouseArchetype };
 
 /**
- * Is this catalog entry the ResMediumRow attached-row-house archetype? Keyed
- * directly off the catalog's own `zone` field — the hint the
- * data already carries — rather than a footprint-shape heuristic, so it can
- * never accidentally fire for an unrelated narrow ploppable that happens to
- * share a 1-tile-wide footprint. Pure, exported for tests.
+ * Window grid (cols x rows) derived from a catalog entry's footprint x height.
+ * Rows are cut to one tier of the body: a level-2 or 3 building is drawn as
+ * stacked tiers in this same bucket, each carrying its own rows. Pure.
  */
-export function isRowHouseArchetype(entry: BuildingCatalogEntry): boolean {
-  return entry.kind === 'townhouse';
-}
-
-/** Window grid (cols x rows) derived from a catalog entry's footprint x height. Pure. */
 export function windowGridSize(entry: BuildingCatalogEntry): { cols: number; rows: number } {
-  const avgFootprintTiles = (entry.footprint.w + entry.footprint.d) / 2;
-  const colsPerTile = isRowHouseArchetype(entry)
-    ? ROW_HOUSE_WINDOW_COLS_PER_TILE
-    : WINDOW_COLS_PER_TILE;
-  const cols = Math.min(
-    MAX_WINDOW_COLS,
-    Math.max(MIN_WINDOW_COLS, Math.round(avgFootprintTiles * colsPerTile)),
-  );
-  // Rows are cut to one tier of the body: a level-2 or 3 building is drawn
-  // as stacked tiers in this same bucket, each carrying its own rows.
-  const rows = Math.min(
-    MAX_WINDOW_ROWS,
-    Math.max(MIN_WINDOW_ROWS, Math.round(tierHeightOf(entry) / WINDOW_FLOOR_HEIGHT_METERS)),
-  );
-  return { cols, rows };
+  return windowGrid(entry, tierHeightOf(entry));
 }
 
 /**
@@ -251,7 +218,7 @@ export function isBuildingLitEligible(state: BuildingState): boolean {
 
 /** Punched-window inset margin as a fraction of a grid cell; larger = smaller pane, more visible frame. */
 const MULLION_MARGIN_CURTAIN = 0.06; // glass family: glazing dominates, thin mullions
-const MULLION_MARGIN_PUNCHED = 0.22; // masonry/concrete/plaster: punched openings
+// MULLION_MARGIN_PUNCHED (facade.ts): masonry/concrete/plaster punched openings
 const MULLION_MARGIN_INDUSTRIAL = 0.34; // "sparse small windows"
 const MULLION_MARGIN_GROUND_FLOOR = 0.03; // storefront: taller glazing, thin frame
 
@@ -267,7 +234,6 @@ const WINDOW_EXISTS_SALT_MUL = 17.0;
 const WINDOW_EXISTS_SALT_ADD = 7.0;
 const INDUSTRIAL_WINDOW_DENSITY = 0.32;
 
-const FRAME_DARKEN = 0.55; // upper-floor mullion/frame color: a darkened wall color
 const DARK_STOREFRONT_FRAME: RGB = [0.09, 0.09, 0.1];
 const DOOR_COLOR: RGB = [0.1, 0.08, 0.07];
 const ENTRANCE_HALF_WIDTH = 0.12; // fraction of the entrance face's width

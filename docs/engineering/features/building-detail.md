@@ -1,6 +1,6 @@
 # Building detail — technical design
 
-- **Status:** Slice 1, the measurement, and the performance slice built 2026-10-15; the houses next
+- **Status:** The measurement, the performance slice and the houses built 2026-10-15; the storefronts next
 - **Date:** 2026-10-14
 - **Author:** Claude Fable 5.1
 
@@ -21,17 +21,17 @@ player has asked for them.
 
 ## What it touches
 
-| Module                           | Change                                                                                                                                            |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/render/buildings.ts`        | The body instancer keeps drawing every zoned body on the facade material; it gains a hook that hands each body's placement to the part system     |
-| `src/render/facade.ts`           | Exports the window grid it draws (floors, bays, `BAY_WIDTH_METERS` 2.6) so parts that frame a window land on the window the material draws        |
-| `src/render/houses.ts`           | The pitched roof grows eaves, a ridge, dormers and a chimney as parts; gable-vs-hip and pitch stay seeded as today                                |
-| `src/render/buildingparts.ts`    | New: one `InstancedSlotPool` bucket per part geometry, a pure `partsFor(entry, inst, seed)` recipe per kind, placement a pure function of the lot |
-| `src/render/utilitykits.ts`      | Slices 6–7: kits for the clinic, rail station and bus stop; the earliest kits redone                                                              |
-| `src/data/catalog.json`          | **None.** No figure changes; the catalog's `kind` already names the recipe                                                                        |
-| `src/sim/`, `src/world/`, saves  | **None.** Render-only; the save holds no geometry                                                                                                 |
-| `tools/frame-budget.mjs`         | Slice 1: the frame-time measurement at a Metropolis-scale city                                                                                    |
-| `docs/art/modeling-standards.md` | Slice 1: rewritten on the measured budget; it still says a kit part is a 12-triangle box, which the water tower left behind                       |
+| Module                           | Change                                                                                                                                                              |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/render/buildings.ts`        | The body instancer keeps drawing every zoned body on the facade material; it gains a hook that hands each body's placement to the part system                       |
+| `src/render/facade.ts`           | Exports the window grid it draws (`windowGrid`: two columns a tile of footprint, a row a storey) so parts that frame a window land on the window the material draws |
+| `src/render/houses.ts`           | The pitched roof grows eaves, a ridge, dormers and a chimney as parts; gable-vs-hip and pitch stay seeded as today                                                  |
+| `src/render/buildingparts.ts`    | New: one `InstancedSlotPool` bucket per part geometry, a pure `partsFor(entry, inst, seed)` recipe per kind, placement a pure function of the lot                   |
+| `src/render/utilitykits.ts`      | Slices 6–7: kits for the clinic, rail station and bus stop; the earliest kits redone                                                                                |
+| `src/data/catalog.json`          | **None.** No figure changes; the catalog's `kind` already names the recipe                                                                                          |
+| `src/sim/`, `src/world/`, saves  | **None.** Render-only; the save holds no geometry                                                                                                                   |
+| `tools/frame-budget.mjs`         | Slice 1: the frame-time measurement at a Metropolis-scale city                                                                                                      |
+| `docs/art/modeling-standards.md` | Slice 1: rewritten on the measured budget; it still says a kit part is a 12-triangle box, which the water tower left behind                                         |
 
 **Save format and worker protocol: no change.** A building is a catalog id,
 a position, a rotation, a level and a state; every part is derived from
@@ -77,9 +77,11 @@ distinct part geometries in the game, a few dozen; slot count is buildings
 times parts, which the pool grows by doubling as the body buckets do.
 
 **Parts that frame a window agree with the material.** `facade.ts` exports
-the grid it draws — floors at 3.2 m, bays at `BAY_WIDTH_METERS` — and
-shutters, lintels and sills are placed on that grid, so the geometry and
-the material never disagree by a hand's width. Parts that are windows in
+the grid it draws as `windowGrid` — the same function the material's grid
+size comes from: two columns a tile of footprint, a row a storey, so a 9.5 m
+house face has three bays of 3.17 m — and shutters, lintels and sills are
+placed on that grid, so the geometry and the material never disagree by a
+hand's width. Parts that are windows in
 their own right (a storefront's display glass, a tower's balcony glazing)
 go on the stations' emissive material and light with the rest.
 
@@ -174,6 +176,52 @@ saves, and the budget the houses build to is the improved frame.
   overview still draws three times the oblique's calls, not the same order;
   that, and the triangles the city still adds over the empty map, are the
   next performance work, logged in the ROADMAP rather than taken here.
+
+### The houses
+
+The house kit in `src/render/houses.ts` already is the part pool the plan
+described: a `HousePart` union with one `InstancedSlotPool` per part (roof,
+garage, carport, door, fence, pool, trampoline, grill, bush, tree), placed
+from the pure `HouseLotPlan` in `src/render/houselot.ts`. The slice extends
+that rather than opening `buildingparts.ts`, which waits for the blocks:
+
+- `HousePart` gains `chimney`, `stoop`, `portico`, `porch`, `porchRoof`,
+  `dormer`, `shutter`, `garageLeaf` and `parapet`; each is one low-poly
+  geometry on the kit material (the roof's day/night tint), with the
+  dimensions in
+  [../../art/buildings.md](../../art/buildings.md#the-house-kits-parts).
+- The roof prism overhangs the walls by the eave and rake figures, and its
+  pitch is chosen by level: 5:12 for level 1 (the existing 0.42), 8:12 for
+  levels 2 and 3, under the 4.5 m rise cap.
+- `houselot.ts` grows the plan with the parts' rects: the stoop or porch at
+  the door, the chimney's plan, the dormers' positions, the parapets at a
+  row's boundaries. Pure, seeded, in metres, as the plan is today.
+- `src/render/facade.ts` exports `windowGrid(entry, tierHeight)`, the
+  function the material's own grid size comes from, so `houselot.ts` places
+  shutters on the facade's windows and a test asserts a shutter pair tiles
+  its bay. The pitch is a share of the half-span, fixed by level; the ridge
+  runs along the frontage.
+- Wall colours stay the facade's (the catalog colour desaturated with a hue
+  jitter, mirrored in the shader, so the survey's wall weights are not
+  applied); a `trimColor(seed, wall)` in `houses.ts` picks the one trim
+  colour a house, at the survey weights, white whenever the wall is dark,
+  for the shutters, fascia, garage leaf and door.
+- The geometry ceilings in `geometrybudget.test.ts` go to 1,300 (normal
+  lot) and 1,800 (acre); the house tier stays 3,000.
+- Tests, in `houses.test.ts` and `houselot.test.ts`'s style: the three
+  levels carry the three houses' parts; a ranch has no shutters and a Cape
+  two dormers; a colonial's chimney stands at a gable end and clears the
+  ridge by 0.6 m; a porch is 1.8 m deep and its floor 0.6 m up on three
+  risers; shutters land on bays; a row has parapets at its two boundaries;
+  parts follow the body through construction (hidden at the construction
+  scale as the roof is), abandonment (kept) and removal (freed); every part
+  inside the lot at all four street sides; determinism.
+- Shots, `tools/yard-shots.mjs` extended: a street of ranches, a street of
+  Capes, a street of colonials, each at the default pitch beside the 4 m
+  car; a duplex, a fourplex and a townhouse row; the same at night; a close
+  shot of a porch and a stoop beside a person-height reference (the 1.75 m
+  car-to-roof read, since no pedestrian hook exists).
+- `tools/frame-budget.mjs` before and after.
 
 ### Each slice, the same shape
 

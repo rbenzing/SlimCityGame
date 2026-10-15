@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 6,412 tests passing across 188 test files, run 2026-10-15.
+**Test suite:** 6,443 tests passing across 188 test files, run 2026-10-15.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -354,6 +354,35 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The houses, drawn as houses (houses slice of building detail, built 2026-10-15)
+
+The house kit gains the parts that make a US house readable from the
+street, each at a sourced size, placed from the lot plan and chosen by seed.
+Nothing in the simulation changes.
+
+- **Three houses, one per level**, because the catalog's three heights are
+  three real storeys: a one-storey **ranch** (5:12 roof, 18 in eaves, an
+  interior chimney, a stoop under the eave), a one-and-a-half-storey **Cape**
+  (8:12, two gable dormers on the street slope, a central chimney, a portico
+  over three risers, shutters) and a two-storey **colonial** (8:12 with boxed
+  eaves, chimneys at the gable ends, a portico or a 6 ft front porch by
+  seed, shutters on every street window).
+- **Duplexes and fourplexes** take the colonial's parts on their two-door
+  bodies; a **townhouse row** gets a party-wall parapet at each boundary
+  that follows the roof 30 in above the slope, a stoop at every door and
+  its garage leaves.
+- **Chimneys clear the ridge by the IRC's 3 ft and 2 ft; stairs keep its
+  riser and tread limits**; a 9 × 7 ft garage leaf; shutters half a window
+  wide on the exact windows the facade draws, through a grid the facade now
+  exports. One trim colour a house at the survey's shares, white whenever
+  the wall is dark.
+- **The roof** overhangs its walls by the eave and rake, carries a fascia,
+  pitches by level with no per-house jitter, and runs its ridge along the
+  frontage.
+- Homes stay inside their tier: 932–1,134 triangles on a normal lot, 1,408–
+  1,730 on an acre. The Metropolis gains 1.1 M triangles and 20 draw calls,
+  and its frame does not move.
 
 ### The ground batched, the yard thinned (performance slice of building detail, built 2026-10-15)
 
