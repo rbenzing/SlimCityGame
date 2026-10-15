@@ -17,7 +17,8 @@
  */
 import * as THREE from 'three';
 import { MAP_SIZE, TILE_METERS } from '../shared/constants';
-import { sunDirection, timeOfDayColors } from './scene';
+import { timeOfDayColors } from './scene';
+import { sunDirection } from './sun';
 
 // ---------------------------------------------------------------------------
 // SkyDome

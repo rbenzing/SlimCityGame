@@ -1,6 +1,6 @@
 # Power generation — technical design
 
-- **Status:** Partly built — the water placement gate built 2026-10-02 for the pumping station, and the baseline it builds on changed 2026-10-05 (nameplate × capacity factor, every ploppable's draw sourced, the turbine drawn at size); the ladder re-planned 2026-10-14 on real small units with a solar farm; the four plants and their kits not built
+- **Status:** Partly built — the water placement gate built 2026-10-02 for the pumping station, and the baseline it builds on changed 2026-10-05 (nameplate × capacity factor, every ploppable's draw sourced, the turbine drawn at size); the ladder re-planned 2026-10-14 on real small units with a solar farm; the four plants built 2026-10-14 (slice 1) and drawn the same day (slice 2)
 - **Date:** 2026-09-18, re-planned 2026-10-14
 - **Author:** Claude Opus 5
 
@@ -112,21 +112,12 @@ The reactor sets `requiresAdjacent: 'water'` and adds no gate code.
 Four kits join `UTILITY_KIT_CATALOG_IDS`, built the same way as the coal plant's
 and the stations': a pure layout from the catalog footprint, merged low-poly
 geometry per part, instanced, no `Math.random` and no `Date.now`. Each is read by
-its plant, per [../../art/civic-massing.md](../../art/civic-massing.md); the
-dimensions are the design document's:
-
-- **Solar farm:** east–west rows of fixed-tilt panels, two 2.28 m modules high in
-  portrait, at a 40–50% ground coverage ratio, tilted toward the sun's noon side
-  of the scene **whatever the lot's rotation**, as a real array faces south; a
-  gravel track, the 6.06 × 2.44 × 2.9 m inverter skid, and a 7 ft (2.1 m)
-  chain-link fence.
-- **Gas turbine:** the 20 × 5 m turbine package, an inlet filter house to 14 m,
-  the catalyst housing and one 30.5 m stack.
-- **Combined-cycle station:** the gas turbine package, the heat-recovery boiler at
-  24 m, a 40 m stack, a steam-turbine hall and a transformer row on the street side.
-- **Nuclear station:** a flat-roofed reactor building at 24 m — **no dome**, the
-  module sitting in a pool below grade — a turbine hall, a switchyard strip and a
-  security fence.
+its plant; every part and dimension is in
+[../../art/civic-massing.md](../../art/civic-massing.md#the-generators-solar-gas-combined-cycle-and-the-reactor).
+Two of them read the world beyond their footprint, both already done by sibling
+kits: the solar rows face the sun's noon side of the scene **whatever the lot's
+rotation**, and the reactor's cooling-water intake stands on the edge that touches
+the water, found as the sewage works finds its outfall's.
 
 The coal plant's kit stacks already stand above its catalog height, as a
 process utility's may. Nothing in picking, outline or bulldoze may assume kit
@@ -231,7 +222,8 @@ Looked at in a browser in slice 2:
    the 24 m boiler and 40 m stack against the anchors in
    [../../art/README.md](../../art/README.md).
 3. **A nuclear station on a shoreline**, camera low from across the water, a
-   Residential Tower (46 m) in frame.
+   Podium Tower (`res-tower-1`, 38.4 m) in frame; the dome-free reactor building,
+   24 m at its crane hall, stands below it, which is the honest read.
 4. **A solar farm beside houses**, then the same farm turned, rows facing the
    same way.
 5. **A field of solar farms**, frame time read.

@@ -125,6 +125,10 @@ const EDUCATION = (catalogData as { buildings: BuildingCatalogEntry[] }).buildin
   ['school', 'middle-school', 'high-school', 'college', 'library'].includes(e.id),
 );
 
+const GENERATORS = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter((e) =>
+  ['solar-farm', 'gas-turbine', 'combined-cycle', 'nuclear-plant'].includes(e.id),
+);
+
 const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'turbineTower',
   'turbineRotor',
@@ -465,7 +469,7 @@ function decomposeQuaternion(m: THREE.Matrix4): THREE.Quaternion {
 // ---------------------------------------------------------------------------
 
 describe('UTILITY_KIT_CATALOG_IDS', () => {
-  it('is exactly the 23 silhouette-kit ids', () => {
+  it('is exactly the 27 silhouette-kit ids', () => {
     expect(UTILITY_KIT_CATALOG_IDS).toEqual([
       'wind-turbine',
       'water-tower',
@@ -489,6 +493,10 @@ describe('UTILITY_KIT_CATALOG_IDS', () => {
       'high-school',
       'college',
       'library',
+      'solar-farm',
+      'gas-turbine',
+      'combined-cycle',
+      'nuclear-plant',
       'small-park',
     ]);
   });
@@ -2063,7 +2071,7 @@ describe('a paved kit on sloped ground', () => {
 // ---------------------------------------------------------------------------
 
 describe('multiple kits coexisting', () => {
-  it('builds and applies all 23 kits from one catalog + one delta without cross-talk', () => {
+  it('builds and applies all 27 kits from one catalog + one delta without cross-talk', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
       makeTurbineEntry(),
       makeWaterTowerEntry(),
@@ -2080,10 +2088,15 @@ describe('multiple kits coexisting', () => {
       CREMATORIUM,
       ...STATIONS,
       ...EDUCATION,
+      ...GENERATORS,
       makeSmallParkEntry(),
     ]);
     renderer.apply(
       deltaAdd(
+        makeInstance(24, 'solar-farm', { x: 200, z: 0 }),
+        makeInstance(25, 'gas-turbine', { x: 210, z: 0 }),
+        makeInstance(26, 'combined-cycle', { x: 220, z: 0 }),
+        makeInstance(27, 'nuclear-plant', { x: 230, z: 0 }),
         makeInstance(19, 'school', { x: 150, z: 0 }),
         makeInstance(20, 'middle-school', { x: 160, z: 0 }),
         makeInstance(21, 'high-school', { x: 170, z: 0 }),
@@ -2137,6 +2150,11 @@ describe('multiple kits coexisting', () => {
     expect(renderer.partSlotsFor(19, 'schoolBus')).toHaveLength(0);
     expect(renderer.partSlotsFor(22, 'schoolBuilding')).toHaveLength(1);
     expect(renderer.partSlotsFor(23, 'schoolLit')).toHaveLength(1);
+    expect(renderer.partSlotsFor(24, 'solarRow').length).toBeGreaterThan(10);
+    expect(renderer.partSlotsFor(25, 'gasStack')).toHaveLength(1);
+    expect(renderer.partSlotsFor(26, 'combinedStack')).toHaveLength(1);
+    expect(renderer.partSlotsFor(27, 'nuclearIntake')).toHaveLength(1);
+    expect(renderer.partSlotsFor(25, 'combinedStack')).toHaveLength(0);
   });
 });
 
