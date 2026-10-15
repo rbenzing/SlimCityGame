@@ -52,7 +52,8 @@ building, so windows are guaranteed to align between the two:
 An archetype is a recipe over one shared kit of low-poly parts — a loading
 dock, a monitor roof, a roof array, a canopy, a signage band — not a bespoke
 model per building. Parts are shared across archetypes, each part is a single
-box, and a whole assembly stays under a hundred triangles, which is what
+box, and a whole assembly stays inside its tier in
+[modeling-standards.md](modeling-standards.md#geometry-budget), which is what
 keeps the kit reading consistently across a whole city. A part that hangs on
 the road-facing wall (a dock, a canopy, a sign) is skipped entirely when a
 building fronts no street; roof parts need no frontage and always appear.

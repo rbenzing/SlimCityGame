@@ -1,6 +1,6 @@
 # Building detail — design
 
-- **Status:** Planned 2026-10-14; nothing built
+- **Status:** Slice 1, the measurement, built 2026-10-15; the performance slice next, then the buildings
 - **Date:** 2026-10-14
 
 ## What the player gets
@@ -105,29 +105,38 @@ one; the slice's document says which it used.
 
 ### The slices, in the order the player chose
 
-1. **The budget, measured.** No model lands before a frame-time test exists
-   at a full Metropolis, and the modeling standard is rewritten on what it
-   measures. Today it says a kit part is a 12-triangle box; the water tower
-   is about two thousand triangles. The player chose a **tiered, measured**
-   budget: a house about 600 triangles, a block or shed about 1,500, a
-   ploppable about 3,000, each tier held by the test rather than by the
-   number.
-2. **Houses.** The detached house as a ranch at level 1 and a colonial above
+1. **The budget, measured** (built 2026-10-15). No model lands before a
+   frame-time test exists at a full Metropolis, and the modeling standard is
+   rewritten on what it measures. It said a kit part is a 12-triangle box;
+   the water tower is about 2,500 triangles. The player chose a **tiered,
+   measured** budget, and once the measurement had counted, chose that a
+   tier counts **everything on the lot** — a house with its yard, trees and
+   cars, a cemetery with its headstones — so the tiers are set where the
+   buildings that ship were found: a house 3,000, a block 1,500, a
+   ploppable 30,000, each held by a test. The measurement itself found the
+   frame already at 23–38 ms on a laptop GPU before any detail, an overview
+   drawing seven times the calls of the oblique, and yards costing more than
+   houses ([the figures](../../art/modeling-standards.md#what-the-measurement-read)).
+2. **Performance** (chosen 2026-10-15, on the measurement). The overview's
+   draw calls, the yard's cost and the solar farm's 9,000 triangles, fixed
+   and re-measured, so the detail that follows is paid for by what this
+   slice saves and the houses build to the improved frame.
+3. **Houses.** The detached house as a ranch at level 1 and a colonial above
    it; the duplex, fourplex and townhouse row. Porches, garages, chimneys,
    dormers, eaves, shutters, trim; the parts that vary by seed. The first
    thing the player sees, and the most numerous.
-3. **Storefronts.** The Main Street shop, the drive-through restaurant, the
+4. **Storefronts.** The Main Street shop, the drive-through restaurant, the
    strip with its canopy and pylon, the supermarket's entry tower, the fuel
    canopy on real columns, the office's ribbon windows and lobby, the hotel's
    porte-cochère; rooftop units on every flat roof.
-4. **Industry and farms.** Dock doors at centres, truck courts, the metal
+5. **Industry and farms.** Dock doors at centres, truck courts, the metal
    building's ribs and roll-ups, pipe racks, the furnace and stoves, the
    gambrel barn and silo.
-5. **Apartment blocks and towers.** The garden apartment's breezeways, the
+6. **Apartment blocks and towers.** The garden apartment's breezeways, the
    5-over-1's panel bays and podium, the tower's balconies and base.
-6. **The kitless ploppables.** Clinic, rail station and bus stop. The airport
+7. **The kitless ploppables.** Clinic, rail station and bus stop. The airport
    stays a box until it has an epic of its own.
-7. **The earliest kits, redone.** Coal plant, incinerator, water pump, drain,
+8. **The earliest kits, redone.** Coal plant, incinerator, water pump, drain,
    sewage works, recycling depot, MRF and transfer station, against the
    references above. The player chose to include them, last.
 

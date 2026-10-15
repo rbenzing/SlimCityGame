@@ -14,10 +14,13 @@ target nobody currently checks by automation.
 
 - **60 fps** render at a 256×256 map with 10k buildings and 1k visible
   vehicles, via `InstancedMesh` + frustum-culled chunks, at **≤ ~300 draw
-  calls**. — _stated, not measured._ No test counts draw calls or measures
-  frame time; this is a target the instancing architecture
+  calls**. — _measured by hand, not enforced._ `tools/frame-budget.mjs`
+  builds a synthetic city by command and reads frame time, draw calls and
+  triangles over four fixed camera views, beside the same views of the empty
+  map (see below); no test or CI step fails on it. The instancing
+  architecture
   ([ADR-0006](adr/0006-rendering-is-instancedmesh-everywhere-with-gpu-id-picking.md))
-  is built to hit.
+  is what the target rests on.
 - **Sim tick ≤ 10 ms at 20 Hz** in the worker, with field diffusion
   identified as the largest cost — mitigated by staggering (not every
   field diffuses every tick). — _partially measured_: the staggering is
@@ -53,10 +56,27 @@ target nobody currently checks by automation.
 No test or CI step in this repository:
 
 - times a sim tick and fails if it exceeds a threshold,
-- counts draw calls submitted to the renderer,
+- fails on the draw calls submitted to the renderer or on frame time,
 - measures or bounds initial page-load time,
-- measures process or GPU memory,
-- runs a sustained-frame-rate benchmark.
+- measures process or GPU memory.
+
+`tools/frame-budget.mjs` is the one thing that reads frame time. Run by hand
+against a dev server, it lays a grid of streets over the dry ground of a
+generated map, places zoned buildings at their catalog footprints in the
+catalog's real mix and one of every kit, and reads frame time (mean, median
+and 95th percentile of `requestAnimationFrame` deltas with the browser's frame
+cap off), draw calls and triangles over a street-level view, the default
+oblique, a high overview and the oblique at night, then writes `result.json`
+and `result.md` beside one picture per view. The empty map is read first from
+the same views, so the buildings' cost is a difference. The renderer's counters
+come from the dev hook `window.__slimcity.renderInfo()`. The sim stays paused
+throughout: a running sim clears a city that has no power, water or zones. A
+frame time on an empty map is a CPU-submission rate and reads far under what the
+GPU takes, so only the city's figures are a frame time.
+`src/render/geometrybudget.test.ts` is the other half: it counts triangles per
+kit and per zoned building, over everything on the lot, and holds each to its
+tier in [../art/modeling-standards.md](../art/modeling-standards.md#geometry-budget),
+where the first run's figures are read.
 
 `npm test` (Vitest, `node` environment — see
 [standards/testing.md](standards/testing.md)) has no access to a real GPU
