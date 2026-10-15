@@ -29,8 +29,8 @@ const CATALOG = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings
 const KIT_TIER = 30000;
 const BLOCK_TIER = 1500;
 const HOUSE_TIER = 3000;
-const NORMAL_LOT_HOME_CEILING = 900;
-const ACRE_HOME_CEILING = 1500;
+const NORMAL_LOT_HOME_CEILING = 1300;
+const ACRE_HOME_CEILING = 1800;
 const SOLAR_FARM_CEILING = 2000;
 
 const ORIGIN = { x: 10, z: 10 };

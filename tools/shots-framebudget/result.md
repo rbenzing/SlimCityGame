@@ -4,15 +4,15 @@ Machine: ANGLE (Intel, Intel(R) Arc(TM) Pro 140T GPU (32GB) (0x00007D51) Direct3
 
 | View | Case | mean ms | p50 ms | p95 ms | p95 of 8 ms | draw calls | triangles |
 | ---- | ---- | ------- | ------ | ------ | ----------- | ---------- | --------- |
-| 1-street | empty map | 5.5 | 1.6 | 18.6 | 7.2 | 66 | 8382809 |
-| 1-street | city | 24.1 | 17.0 | 74.1 | 26.7 | 282 | 27214214 |
-| 1-street | difference | 18.6 | 15.4 | 55.5 | 19.5 | 216 | 18831405 |
-| 2-oblique | empty map | 5.5 | 1.3 | 18.7 | 6.4 | 78 | 8392025 |
-| 2-oblique | city | 27.7 | 16.2 | 79.9 | 34.1 | 389 | 30330225 |
-| 2-oblique | difference | 22.2 | 14.9 | 61.2 | 27.7 | 311 | 21938200 |
-| 3-overview | empty map | 6.2 | 2.3 | 16.0 | 7.0 | 162 | 8435033 |
-| 3-overview | city | 42.3 | 41.6 | 57.0 | 44.4 | 1125 | 34439568 |
-| 3-overview | difference | 36.1 | 39.3 | 41.0 | 37.4 | 963 | 26004535 |
-| 4-oblique-night | empty map | 5.7 | 1.6 | 19.0 | 7.5 | 78 | 8392025 |
-| 4-oblique-night | city | 26.5 | 17.1 | 68.2 | 32.1 | 397 | 30332229 |
-| 4-oblique-night | difference | 20.7 | 15.5 | 49.2 | 24.5 | 319 | 21940204 |
+| 1-street | empty map | 5.1 | 1.4 | 36.6 | 12.1 | 66 | 8382809 |
+| 1-street | city | 20.4 | 20.5 | 34.8 | 22.8 | 302 | 28351890 |
+| 1-street | difference | 15.2 | 19.1 | -1.8 | 10.6 | 236 | 19969081 |
+| 2-oblique | empty map | 6.1 | 1.4 | 18.9 | 17.8 | 78 | 8392025 |
+| 2-oblique | city | 26.7 | 22.1 | 53.6 | 29.8 | 409 | 31467901 |
+| 2-oblique | difference | 20.6 | 20.7 | 34.7 | 12.0 | 331 | 23075876 |
+| 3-overview | empty map | 5.8 | 1.9 | 16.0 | 6.6 | 162 | 8435033 |
+| 3-overview | city | 38.6 | 40.7 | 52.5 | 41.0 | 1145 | 35577244 |
+| 3-overview | difference | 32.8 | 38.8 | 36.5 | 34.3 | 983 | 27142211 |
+| 4-oblique-night | empty map | 5.7 | 1.5 | 18.7 | 6.8 | 78 | 8392025 |
+| 4-oblique-night | city | 24.7 | 25.3 | 42.5 | 26.9 | 417 | 31469905 |
+| 4-oblique-night | difference | 19.0 | 23.8 | 23.8 | 20.1 | 339 | 23077880 |
