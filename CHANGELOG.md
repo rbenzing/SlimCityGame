@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.61.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.60.0...slimcity-v1.61.0) (2026-10-15)
+
+
+### Features
+
+* **power:** a solar farm, a gas turbine, a combined-cycle station and a reactor, each a real small unit ([51f4167](https://github.com/rbenzing/SlimCityGame/commit/51f4167634166f0c2381e20adae6d89ec0cfa8c2))
+* **power:** a solar farm, a gas turbine, a combined-cycle station and a reactor, each a real small unit ([26b6892](https://github.com/rbenzing/SlimCityGame/commit/26b68924b6a9723b216c755beef838d282b19837))
+* **render:** the solar farm, gas turbine, combined-cycle station and reactor drawn as plants ([07d0e51](https://github.com/rbenzing/SlimCityGame/commit/07d0e5199dab326b93ef8e2e454eff08ec573bfe))
+* **render:** the solar farm, gas turbine, combined-cycle station and reactor drawn as plants ([8170d96](https://github.com/rbenzing/SlimCityGame/commit/8170d9684fdeb40c870c0017822114acafc0415a))
+
 ## [1.60.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.59.0...slimcity-v1.60.0) (2026-10-14)
 
 
