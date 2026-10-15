@@ -51,11 +51,84 @@ describe('archetypeFor', () => {
       expect(archetypeFor(com(kind, 3))).toBe('storefront');
     }
     expect(archetypeFor(com('fuel'))).toBe('fuelStation');
-    expect(partsFor(com('fuel'))).toEqual(['fuelCanopy', 'pumps']);
     expect(archetypeFor(com('office', 3))).toBe('office');
-    expect(partsFor(com('office'))).toEqual([]);
     expect(archetypeFor(com('hotel'))).toBe('hotel');
-    expect(partsFor(com('hotel'))).toEqual(['canopy', 'signageBand']);
+  });
+
+  it('dresses each commercial kind with its own parts', () => {
+    const com = (kind: BuildingKind, level = 1) => entry({ category: 'com', kind, level });
+    expect(partsFor(com('shop'))).toEqual([
+      'bulkhead',
+      'awning',
+      'signageBand',
+      'cornice',
+      'rooftopUnit',
+      'roofHatch',
+    ]);
+    expect(partsFor(com('strip'))).toEqual([
+      'stripCanopy',
+      'stripColumn',
+      'signageBand',
+      'anchorParapet',
+      'pylon',
+      'signPole',
+      'rooftopUnit',
+      'roofHatch',
+    ]);
+    expect(partsFor(com('supermarket'))).toEqual([
+      'entryTower',
+      'towerGlazing',
+      'anchorParapet',
+      'brickBase',
+      'cartCorral',
+      'signPole',
+      'signageBand',
+      'rooftopUnit',
+      'roofHatch',
+    ]);
+    expect(partsFor(com('restaurant'))).toEqual([
+      'awning',
+      'signageBand',
+      'menuBoard',
+      'clearanceBar',
+      'pickupCanopy',
+      'dumpsterEnclosure',
+      'signPole',
+      'rooftopUnit',
+      'roofHatch',
+    ]);
+    expect(partsFor(com('fuel'))).toEqual([
+      'fuelCanopy',
+      'fuelFascia',
+      'fuelIsland',
+      'dispenser',
+      'bollard',
+      'priceSign',
+      'signPole',
+      'awning',
+      'rooftopUnit',
+      'roofHatch',
+    ]);
+    expect(partsFor(com('office', 1))).toEqual(['lobbyPortal', 'rooftopUnit', 'roofHatch']);
+    expect(partsFor(com('office', 2))).toEqual(['lobbyPortal', 'rooftopUnit', 'roofHatch']);
+    expect(partsFor(com('hotel'))).toEqual([
+      'porteCochere',
+      'signageBand',
+      'rooftopUnit',
+      'roofHatch',
+    ]);
+  });
+
+  it('swaps an office tower its rooftop units for a screen and a cooling tower', () => {
+    const tower = entry({ category: 'com', kind: 'office', level: 3 });
+    expect(partsFor(tower)).toEqual(['lobbyPortal', 'roofScreen', 'coolingTower', 'roofHatch']);
+    expect(hasPart(tower, 'rooftopUnit')).toBe(false);
+  });
+
+  it('takes the flat canopy off a shop, which has awnings, and leaves a kindless storefront its canopy', () => {
+    expect(hasPart(entry({ category: 'com', kind: 'shop', level: 1 }), 'canopy')).toBe(false);
+    expect(hasPart(entry({ category: 'com', kind: 'shop', level: 1 }), 'awning')).toBe(true);
+    expect(hasPart(entry({ category: 'com', level: 1 }), 'canopy')).toBe(true);
   });
 
   it('reads industry off its kind: light works by what they do, heavy plants by their industry', () => {

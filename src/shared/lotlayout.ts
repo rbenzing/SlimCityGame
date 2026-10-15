@@ -64,6 +64,30 @@ export interface LotLayoutInput {
   forecourtDepth?: number;
   /** Ground the body keeps behind itself: a plant's tank farm. */
   rearYard?: number;
+  /** Lay a drive-through lane round the body, where the ground left over holds one. */
+  driveThrough?: boolean;
+}
+
+/** A drive-through lane is 12 ft (3.66 m) wide. */
+export const DRIVE_THROUGH_LANE_M = 3.66;
+/** A stacking space is 20 ft (6.1 m) and a lane holds six. */
+export const DRIVE_THROUGH_STACK_M = 6 * 6.1;
+/** The least lane worth drawing: three stacking spaces. */
+const DRIVE_THROUGH_MIN_M = 3 * 6.1;
+
+/** Which wall of the body its pickup window opens in, named by the way the wall faces. */
+export type PickupFace = 'u+' | 'u-' | 'v+';
+
+/** A lane of paving from the lot's drive along the far side of the body to a pickup window. */
+export interface DriveThrough {
+  /** The lane's ground in travel order, each piece DRIVE_THROUGH_LANE_M wide. */
+  rects: LotRect[];
+  /** The lane's centre line from where it leaves the drive to the end of the lane. */
+  path: LotPoint[];
+  /** The centre line's length, metres. */
+  length: number;
+  /** The pickup window, on the body's wall beside the lane's last stretch. */
+  pickup: { at: LotPoint; face: PickupFace };
 }
 
 export interface LotLayout {
@@ -90,6 +114,8 @@ export interface LotLayout {
   curbCut: { u0: number; u1: number };
   /** The drive's stretch in from the curb cut where it does not start at the street; null without a drive. */
   throat: LotRect | null;
+  /** A restaurant's drive-through lane, where the ground left over holds it; null otherwise. */
+  driveThrough: DriveThrough | null;
   required: number;
   provided: number;
   /** The most spaces this lot could hold, laid out the way it is. */
@@ -687,7 +713,7 @@ export function computeLotLayout(input: LotLayoutInput): LotLayout {
     ...filled.islands,
     ...berths,
   ]);
-  return {
+  const layout: LotLayout = {
     lot: { u0: 0, u1: along, v0: 0, v1: depth },
     body: c.body,
     forecourt: built.forecourt,
@@ -702,6 +728,7 @@ export function computeLotLayout(input: LotLayoutInput): LotLayout {
     trees: treePoints(filled.islands, treesFor(filled.provided)),
     curbCut: built.curbCut,
     throat: filled.aisles.length > 0 ? built.throat : null,
+    driveThrough: null,
     required: input.spaces,
     provided: filled.provided,
     capacity: filled.capacity,
@@ -711,7 +738,101 @@ export function computeLotLayout(input: LotLayoutInput): LotLayout {
     fits,
     shortfall: Math.max(0, input.spaces - filled.provided),
   };
+  // Laid last, on ground the car park left over, so the code's count never moves for it.
+  if (input.driveThrough) layout.driveThrough = driveThroughFor(layout);
+  return layout;
 }
+
+const rectsTouch = (a: LotRect, b: LotRect): boolean =>
+  a.u0 <= b.u1 + EPS && b.u0 <= a.u1 + EPS && a.v0 <= b.v1 + EPS && b.v0 <= a.v1 + EPS;
+
+/**
+ * A lane from the drive along the body's side far from the curb cut and, where
+ * the ground allows, on round its rear wall to a pickup window; or along the
+ * side alone. It takes only ground no stall, berth, island, walk, yard or the
+ * body stands on, starts where it meets the drive, and stays inside the lot.
+ */
+function driveThroughFor(layout: LotLayout): DriveThrough | null {
+  const W = DRIVE_THROUGH_LANE_M;
+  const b = layout.body;
+  const taken: LotRect[] = [
+    b,
+    ...layout.stalls.map((s) => s.rect),
+    ...layout.accessAisles,
+    ...layout.islands,
+    ...layout.berths,
+    ...(layout.forecourt ? [layout.forecourt] : []),
+    ...(layout.rearYard ? [layout.rearYard] : []),
+    ...(layout.frontWalk ? [layout.frontWalk] : []),
+    ...(layout.entranceWalk ? [layout.entranceWalk] : []),
+  ];
+  const drive: LotRect[] = [...layout.aisles, ...(layout.throat ? [layout.throat] : [])];
+  const clear = (r: LotRect): boolean =>
+    inside(r, layout.lot) && !taken.some((t) => rectsOverlap(t, r));
+
+  /** The side piece pulled toward the street until it meets the drive, or null if something stands in the way first. */
+  const joined = (side: LotRect): LotRect | null => {
+    for (let v0 = side.v0; ; v0 = Math.max(0, v0 - 0.5)) {
+      const piece = { ...side, v0 };
+      if (!clear(piece)) return null;
+      if (drive.some((d) => rectsTouch(d, piece))) return piece;
+      if (v0 <= 0) return null;
+    }
+  };
+
+  const farHigh = (layout.curbCut.u0 + layout.curbCut.u1) / 2 < (b.u0 + b.u1) / 2;
+  for (const round of [true, false]) {
+    for (const high of farHigh ? [true, false] : [false, true]) {
+      const edge = high ? b.u1 : b.u0;
+      const sideU = high ? { u0: edge, u1: edge + W } : { u0: edge - W, u1: edge };
+      const side = joined({ ...sideU, v0: b.v0, v1: b.v1 });
+      if (!side) continue;
+      const midU = (sideU.u0 + sideU.u1) / 2;
+      const startV = side.v0;
+      if (round) {
+        const farU = high ? b.u0 : b.u1;
+        const rear: LotRect = {
+          u0: Math.min(farU, sideU.u0),
+          u1: Math.max(farU, sideU.u1),
+          v0: b.v1,
+          v1: b.v1 + W,
+        };
+        if (!clear(rear)) continue;
+        const endU = high ? farU + 1 : farU - 1;
+        const rearV = b.v1 + W / 2;
+        const path = [
+          { u: midU, v: startV },
+          { u: midU, v: rearV },
+          { u: endU, v: rearV },
+        ];
+        const length = rearV - startV + Math.abs(midU - endU);
+        if (length < DRIVE_THROUGH_MIN_M) continue;
+        return {
+          rects: [side, rear],
+          path,
+          length,
+          pickup: { at: { u: high ? farU + 4 : farU - 4, v: b.v1 }, face: 'v+' },
+        };
+      }
+      const endV = b.v1 - 1;
+      const length = endV - startV;
+      if (length < DRIVE_THROUGH_MIN_M) continue;
+      return {
+        rects: [side],
+        path: [
+          { u: midU, v: startV },
+          { u: midU, v: endV },
+        ],
+        length,
+        pickup: { at: { u: edge, v: b.v1 - 4 }, face: high ? 'u+' : 'u-' },
+      };
+    }
+  }
+  return null;
+}
+
+const inside = (r: LotRect, lot: LotRect): boolean =>
+  r.u0 >= lot.u0 - EPS && r.u1 <= lot.u1 + EPS && r.v0 >= lot.v0 - EPS && r.v1 <= lot.v1 + EPS;
 
 /**
  * The walks to the door: one along the body's street face, cut short where a
@@ -746,6 +867,8 @@ function walksFor(
 export interface LotPaving {
   yard: LotRect[];
   concrete: LotRect[];
+  /** A drive-through lane, in the darker paving of a lane that is driven slowly and often. */
+  lane: LotRect[];
 }
 
 /**
@@ -770,6 +893,7 @@ export function lotPaving(layout: LotLayout): LotPaving {
       ...(layout.frontWalk ? [layout.frontWalk] : []),
       ...(layout.entranceWalk ? [layout.entranceWalk] : []),
     ],
+    lane: layout.driveThrough?.rects ?? [],
   };
 }
 

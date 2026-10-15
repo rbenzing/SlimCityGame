@@ -62,6 +62,7 @@ export function lotLayoutFor(
     spaces: onSiteSpaces(requirement.spaces, kerbCredit),
     berths: requirement.berths,
     ...lotYardsFor(entry),
+    ...(entry.kind === 'restaurant' ? { driveThrough: true } : {}),
   });
 }
 

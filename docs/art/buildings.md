@@ -263,16 +263,16 @@ Each kind is identifiable at the default camera pitch without its label, by
 its body and by what stands on its lot. A body's size is set per kind, in
 metres, and the lot takes the rest:
 
-| Kind                 | Body                                                        | Roof    | On the lot                                                       |
-| -------------------- | ----------------------------------------------------------- | ------- | ---------------------------------------------------------------- |
-| Detached house       | 4.75 m per lot tile each way, never under 9.5 m (9.5 × 9.5 m on a 1×1, 1×2 or 2×2 lot, 9.5 × 14.25 m on a 2×3, 14.25 × 14.25 m on a 3×3) | pitched | lawn, one drive and its cover, a yard                            |
-| Duplex               | 60% of each lot axis, capped at 16 m (12 × 12 m on 1×1, 12 × 16 m on 1×2) | pitched | two front doors, one drive per home                              |
-| Fourplex             | 70% of each lot axis, capped at 18 m (14 × 14 m on 1×1, 14 × 18 m on 1×2) | pitched | two front doors, one drive per door                              |
-| Townhouse row        | 90% of each lot axis, capped at 18 m (18 × 18 m on its 1×2); three homes per 20 m of frontage, 6 m each | pitched | a door, a front pad and by seed a garage door per home           |
-| Multiplex            | 13.6 m per tile, capped at 24 m each way (24 × 24 m on its 2×2) | flat    | a lot pad; cars at the kerb                                      |
-| Courtyard apartments | 13.6 m per tile (27.2 × 27.2 m on its 2×2 at every level)   | flat    | a lot pad; cars at the kerb                                      |
-| Mid-rise flats       | 13.6 m per tile                                             | flat    | a lot pad; cars at the kerb                                      |
-| Tower                | 13.6 m per tile, rising from a two-storey podium at 85%     | flat    | the podium fills the lot to the 85% ceiling; cars at the kerb    |
+| Kind                 | Body                                                                                                                                     | Roof    | On the lot                                                    |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------- |
+| Detached house       | 4.75 m per lot tile each way, never under 9.5 m (9.5 × 9.5 m on a 1×1, 1×2 or 2×2 lot, 9.5 × 14.25 m on a 2×3, 14.25 × 14.25 m on a 3×3) | pitched | lawn, one drive and its cover, a yard                         |
+| Duplex               | 60% of each lot axis, capped at 16 m (12 × 12 m on 1×1, 12 × 16 m on 1×2)                                                                | pitched | two front doors, one drive per home                           |
+| Fourplex             | 70% of each lot axis, capped at 18 m (14 × 14 m on 1×1, 14 × 18 m on 1×2)                                                                | pitched | two front doors, one drive per door                           |
+| Townhouse row        | 90% of each lot axis, capped at 18 m (18 × 18 m on its 1×2); three homes per 20 m of frontage, 6 m each                                  | pitched | a door, a front pad and by seed a garage door per home        |
+| Multiplex            | 13.6 m per tile, capped at 24 m each way (24 × 24 m on its 2×2)                                                                          | flat    | a lot pad; cars at the kerb                                   |
+| Courtyard apartments | 13.6 m per tile (27.2 × 27.2 m on its 2×2 at every level)                                                                                | flat    | a lot pad; cars at the kerb                                   |
+| Mid-rise flats       | 13.6 m per tile                                                                                                                          | flat    | a lot pad; cars at the kerb                                   |
+| Tower                | 13.6 m per tile, rising from a two-storey podium at 85%                                                                                  | flat    | the podium fills the lot to the 85% ceiling; cars at the kerb |
 
 The body sizes are the missing-middle types' own: a duplex is 28–55 ft by
 28–60 ft, a fourplex 34–56 by 32–60, a multiplex 50–80 by 35–75, and a
@@ -310,11 +310,11 @@ the figures below are the ones the kit uses.
 catalog heights are three real storeys: 4 m is a one-storey **ranch**, 5 m a
 one-and-a-half-storey **Cape**, 6.5 m a two-storey **colonial**.
 
-| Level | House    | Roof                                                  | Eaves                                        | Chimney                                                                 | Entry                                                                                      | Windows                                            |
-| ----- | -------- | ----------------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------------------- |
-| 1     | Ranch    | side gable at 5:12                                    | wide: 0.46 m (18 in) all round, exposed      | interior, 0.53 m square through the ridge, 0.9 m (3 ft) above it        | a stoop under the eave: a 1.2 × 1.5 m landing 0.2 m up, one step                            | none added                                         |
-| 2     | Cape     | side gable at 8:12                                    | 0.2 m (8 in) at the eave and the rake        | central, 0.53 m square, 0.9 m above the ridge                           | a portico: two 0.25 m posts under a 1.8 × 1.2 m gable hood, a 3-riser stoop 0.6 m up       | two gable dormers on the street slope, shutters    |
-| 3     | Colonial | side gable at 8:12                                    | boxed: 0.46 m (18 in) at the eave, 0.2 m rake | at one or both gable ends by seed, 0.53 × 0.97 m, 0.6 m (2 ft) above the ridge | the portico and stoop above, or by seed a **front porch**: 1.8 m (6 ft) deep across the frontage less 1 m each side, 0.6 m up on three risers, 0.2 m posts at 2.4 m, a shed roof off the wall at 2.9 m | shutters on every street-face window               |
+| Level | House    | Roof               | Eaves                                         | Chimney                                                                        | Entry                                                                                                                                                                                                  | Windows                                         |
+| ----- | -------- | ------------------ | --------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| 1     | Ranch    | side gable at 5:12 | wide: 0.46 m (18 in) all round, exposed       | interior, 0.53 m square through the ridge, 0.9 m (3 ft) above it               | a stoop under the eave: a 1.2 × 1.5 m landing 0.2 m up, one step                                                                                                                                       | none added                                      |
+| 2     | Cape     | side gable at 8:12 | 0.2 m (8 in) at the eave and the rake         | central, 0.53 m square, 0.9 m above the ridge                                  | a portico: two 0.25 m posts under a 1.8 × 1.2 m gable hood, a 3-riser stoop 0.6 m up                                                                                                                   | two gable dormers on the street slope, shutters |
+| 3     | Colonial | side gable at 8:12 | boxed: 0.46 m (18 in) at the eave, 0.2 m rake | at one or both gable ends by seed, 0.53 × 0.97 m, 0.6 m (2 ft) above the ridge | the portico and stoop above, or by seed a **front porch**: 1.8 m (6 ft) deep across the frontage less 1 m each side, 0.6 m up on three risers, 0.2 m posts at 2.4 m, a shed roof off the wall at 2.9 m | shutters on every street-face window            |
 
 - **Pitch.** A ranch is "always low-pitched, 4:12 to 5:12"; the Cape and the
   colonial take 8:12, the low end of the Cape's 8–12 and a middle reading of
@@ -396,35 +396,116 @@ window — and are drawn only on the street face for that reason.
 
 ## Commercial kinds
 
-| Kind            | Body                                              | Storeys    | Parts                                     | On the lot                            |
-| --------------- | ------------------------------------------------- | ---------- | ----------------------------------------- | ------------------------------------- |
-| Shop            | 13.6 m per tile (1×1, 1×2, 2×2)                   | 1          | canopy, sign band                         | car park to code, short of it (the 1×1 draws none) |
-| Shopping strip  | 13.6 m per tile, long and shallow (3×2 to 5×2)    | 1          | canopy, sign band                         | car park to code, short of it         |
-| Supermarket     | 13.6 m per tile (3×3 to 5×4), 4.7 m tall          | 1          | canopy, sign band                         | car park to code, short of it         |
-| Restaurant      | 13.6 m per tile capped at 24 m a side             | 1 / 1 / 2  | canopy, sign band                         | car park to code, short of it         |
-| Filling station | 35% of the lot each way, capped at 16 m           | 1          | fuel canopy on four posts, two pump islands | forecourt; car park to code beside it |
-| Office          | 13.6 m per tile                                   | 5 / 8 / 16 | none                                      | none: downtown, cars at the kerb      |
-| Hotel           | 13.6 m per tile                                   | 4 / 6 / 8  | canopy, sign band                         | none: downtown, cars at the kerb      |
+| Kind            | Body                                           | Storeys    | Parts                                                                              | On the lot                                         |
+| --------------- | ---------------------------------------------- | ---------- | ---------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Shop            | 13.6 m per tile (1×1, 1×2, 2×2)                | 1          | bulkhead, awnings, lit sign band, cornice                                          | car park to code, short of it (the 1×1 draws none) |
+| Shopping strip  | 13.6 m per tile, long and shallow (3×2 to 5×2) | 1          | continuous canopy, tenant sign bands, anchor, pylon sign, rooftop units            | car park to code, short of it                      |
+| Supermarket     | 13.6 m per tile (3×3 to 5×4), 4.7 m tall       | 1          | entry tower, brick base, cart corrals, lit sign band, rooftop units                | car park to code, short of it                      |
+| Restaurant      | 13.6 m per tile capped at 24 m a side          | 1 / 1 / 2  | drive-through, dumpster enclosure, awnings, lit sign band, rooftop units           | car park to code, short of it                      |
+| Filling station | 35% of the lot each way, capped at 16 m        | 1          | fuel canopy with its fascia on four posts, two islands with dispensers, price sign | forecourt; car park to code beside it              |
+| Office          | 13.6 m per tile                                | 5 / 8 / 16 | lobby portal; rooftop units, or a screen and cooling tower on the tower            | none: downtown, cars at the kerb                   |
+| Hotel           | 13.6 m per tile                                | 4 / 6 / 8  | porte-cochère, lit sign band, rooftop units                                        | none: downtown, cars at the kerb                   |
+
+The parts are specified under [the storefront kit's parts](#the-storefront-kits-parts).
 
 The fuel canopy stands 2 m off the kiosk's frontage wall and runs 10 m out
-over the forecourt and 90% of the way across it, 5.2 m up on four 0.4 m posts
-inset at its corners; the two pump islands, 1 × 3 m and 1.4 m tall, stand
-under it a quarter of its span either side of centre.
-Every part is a box from the shared kit, in the chart's colours: the canopy
-and its posts in white brick, the pumps in the red accent.
+over the forecourt and 90% of the way across it, on four 0.4 m posts inset
+at its corners; the two pump islands stand under it a quarter of its span
+either side of centre. Every part is from the shared kit, in the chart's
+colours.
+
+### The storefront kit's parts
+
+A commercial building is read from its car park by the parts the shared
+kit stands against its street face and on its roof, chosen by kind and
+level, placed in absolute metres against the road-facing wall the kit
+already finds, and skipped where a building fronts no street. The body and
+its glazing stay the facade's. The references and sources are in
+[../game-design/features/building-detail.md](../game-design/features/building-detail.md#the-reference-library);
+the figures below are the ones the kit uses, and a figure the sources did
+not settle is marked as the game's own.
+
+**On every flat commercial roof: rooftop units.** A packaged 3–5 ton unit
+is 77 × 48 × 42 in on a 14 in curb (Trane Precedent; Rheem and Carrier
+curbs), so each is a 1.95 × 1.22 × 1.07 m box on a 0.36 m curb, pale grey,
+set back 2 m from the parapet. Retail cools at about 400 sq ft a ton
+(contractors' rules of thumb, disputed 321–550), so one such unit serves
+about 1,600 sq ft; the kit draws **one unit per 2,500 sq ft (232 m²) of top
+floor, at most eight**, spaced along the roof's long axis, the rest of the
+floor's load taken as larger units the player cannot tell apart at 40 m.
+With a roof hatch, 36 × 30 in (0.9 × 0.76 m, 0.3 m tall), by the back
+parapet. No screen: a unit 1.07 m tall is under the 6 ft above which codes
+ask for one (NYC). A unit and its curb are one box in a pale galvanised
+grey, so the top face reads light from the default pitch.
+
+**Lit parts by day.** A cabinet sign is white in daylight whichever side the
+sun is on, so the kit's lit material carries a daytime emissive floor and
+rises to full at night; it is never dark grey.
+
+**Sign bands light at night.** The kit's sign band, 0.9 m tall at 3.6 m,
+becomes an internally lit cabinet: a part on the kit's own emissive
+material, the stations' pattern, white by day and glowing at night on an
+Active building and dark otherwise, as a window is. Letters are not drawn;
+the band's length is 60% of the tenant's frontage (Brentwood CA's cap, and
+the one Tempe's sign programs centre on the band), so a strip reads as a row
+of tenants.
+
+| Kind            | Parts                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shop            | a **bulkhead** 0.6 m (24 in; Knoxville 18–30, NYC 12–24) dark base band along the street face; **fabric awnings** one a bay, 1.5 m out, underside 2.45 m (8 ft, Glenview, Titusville), in the accent colour, in place of the flat canopy; the lit sign band; a **cornice** 0.5 m deep (IBC 705.2 allows 24 in at 2–5 ft) and 0.45 m tall at the parapet across the street face                                                                                                                                                                                                                                                                                                                                                                |
+| Shopping strip  | a **continuous canopy** 2.1 m deep (under Walnut Creek's 7 ft), underside 2.75 m (9 ft to the framing, Knoxville), 0.3 m fascia, on 0.3 m columns every 6 m (the game's own; no source), the full frontage; **tenants**: the frontage cut into bays of about 8 m, one lit sign band each, and an **anchor** at one end two bays wide with its parapet stepped up 1.2 m; a **pylon sign** at the drive mouth, 6.1 m tall (Fort Worth's 20 ft cap), cabinet 3.66 × 1.8 m (12 ft wide), on a 0.4 m pole, 1.5 m (5 ft, Chula Vista) in from the street edge, lit; rooftop units                                                                                                                                                                   |
+| Supermarket     | the **entry tower**: a 6 × 4 m block at the entrance rising to 1.28 × the body height, with the parapet stepped up to 1.17 × either side of it for 12 m (the Quick Chek drawings' 23 ft 6 in main, 27 ft 6 in entry and 30 ft tower, scaled to the catalog's 4.7 m); storefront glazing on the tower's face only, on the emissive material; a **brick veneer base** 1.2 m tall, 0.1 m proud, brick red, across the street face; two **cart corrals** in the first stall row by the entrance, 3.66 × 1.52 m with 1.0 m rails and a 2.3 m sign post (DeCA, VersaCart); rooftop units by the dock side; the lit sign band                                                                                                                        |
+| Restaurant      | a **drive-through**: a 3.66 m (12 ft) lane of darker paving from the lot's drive along the far side of the body to a **pickup window** with a canopy 1.8 × 2.7 m at 3.0 m (the game's own depth; Ocean View's 10 ft cap), a **menu board** 1.8 m wide × 2.1 m tall (7 ft, Santa Ana) on two posts at the head of a six-car stack (Lynnwood), a **clearance bar** at 2.74 m (9 ft) over the lane's entry, a 2.7 m (9 ft) bypass beside it (Tyler TX); a **dumpster enclosure** at the rear, 3.66 × 3.05 m (12 × 10 ft, Grand Junction, Temple) in 1.83 m (6 ft) masonry walls; awnings and the lit sign band; rooftop units. Drawn where the lot leaves the lane room; a restaurant on a lot too small for it keeps the storefront parts alone |
+| Filling station | the canopy's **fascia** 0.91 m (36 in, the state bid spec) in the accent colour, its underside at 4.27 m (14 ft clearance; Medford caps 17), posts 0.4 m; **two islands** 1.2 × 3.66 m (4 × 12 ft), 0.15 m tall, 7.6 m (25 ft, Lakehurst) apart, each with two **dispensers** 0.5 × 1.0 × 1.9 m and a bollard at each end; a **price sign** at the street, a 2.4 × 1.5 m panel on a 0.3 m pole to 6.1 m (20 ft; Paramus allows 30), lit; the kiosk's awning over its door                                                                                                                                                                                                                                                                     |
+| Office          | a **lobby portal** at the entrance: a glazed frame 4 m wide × 4.5 m tall projecting 1.5 m, on the emissive material, lit at night; rooftop units at levels 1 and 2; at level 3, the tower, a **mechanical screen** 3 m tall inset 2 m on the top tier (a unit taller than 6 ft is screened, NYC) with a **cooling tower** 6 × 3 × 3 m behind it, and no units                                                                                                                                                                                                                                                                                                                                                                                 |
+| Hotel           | a **porte-cochère** in place of the canopy: a 0.6 m slab 6.1 m wide and 6 m deep (20 × 20 ft, Naples FL) on four 0.4 m columns, its underside at 4.27 m (14 ft clear); the lit sign band; rooftop units                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+
+- **Awnings and canopies.** An awning's lowest point clears 8 ft and
+  projects at most 7 ft; a continuous canopy's framing clears 9 ft. A shop's
+  awnings are its accent colour and a strip's canopy the white the kit's
+  canopy already is.
+- **Signs.** A wall sign is at most one square foot a foot of frontage,
+  capped at 150 (Chula Vista, Anacortes), and the sign band's letters run 24
+  in on one line; the band's 0.9 m is the two-line 30 in with its margins. A
+  pylon is at most 20 ft tall and 12 ft wide with a pole at least 30% of the
+  sign's width (Durham), and stands 5 ft inside the lot line.
+- **The drive-through** is read as a lane with a board, a bar and a window
+  canopy; a stacking space is 20 × 10 ft and a lane holds six (Lynnwood), so
+  a full lane runs 37 m from the board to the window along the far side of
+  the body. The lane is the lot's paving, laid by the lot layout after the
+  car park in the ground it leaves, so the stalls the code asks for are
+  never traded for it, and it sits in the lot's own mesh. A lot that leaves
+  room for three cars (18 m) gets a short lane with the board at its head;
+  one that leaves less gets no lane, no board, no bar and no window canopy,
+  and the smallest restaurant never does. The dumpster enclosure stands on
+  whatever rear or side ground the lot leaves, nearest the back wall.
+- **The supermarket's tower** stands before the street face, so the sign
+  band and the brick base run in two wings either side of it.
+- **The menu board** is a 1.2 m panel on two 0.9 m posts, 2.1 m overall.
+- **The supermarket's heights** are the drawings' ratios, not their feet: the
+  catalog's 4.7 m body is the sim's, so the entry parapet and the tower step
+  up from it by the same proportions the real store's do.
+- **Colour.** Canopies, columns, corrals, the dumpster enclosure and the
+  rooftop units take the kit's chart colours; the accent is the kit's red;
+  the brick base is the chimney's brick; the emissive parts are white.
+
+**What it costs.** Every commercial block stood under 400 triangles before
+this; the parts add at most a few hundred (eight rooftop units are 96, a
+cart corral 40, the drive-through about 120), and every kind stays under
+the 1,500 block tier, held by the geometry test.
 
 ## Industrial kinds
 
-| Kind           | Zone  | Body                                           | Height (m)        | Parts                             | Props                                  |
-| -------------- | ----- | ---------------------------------------------- | ----------------- | --------------------------------- | -------------------------------------- |
-| Workshop       | light | 13.6 m per tile (2×2, 3×2, 3×3)                | 6.1               | roller doors at grade             | none                                   |
-| Warehouse      | light | 13.6 m per tile (3×3, 4×3, 5×4)                | 7.3 / 9.8 / 12.2  | loading dock, roll-up doors       | none                                   |
-| Factory        | light | 13.6 m per tile (2×3, 3×3, 4×3)                | 6.1 / 7.3 / 7.3   | monitor roof                      | none                                   |
-| Flex / R&D     | light | 55% of the lot each way (2×2, 3×2, 3×4)        | 6.4 / 6.4 / 9.6   | roof array                        | none                                   |
-| Food plant     | heavy | 13.6 m per tile (3×3, 4×3, 5×4)                | 8 / 9 / 10        | loading dock, roll-up doors       | tall stack, silo cluster               |
-| Chemical plant | heavy | 50% of the lot each way (3×3, 4×4, 5×4)        | 10 / 12 / 15      | tank farm behind the body         | tall stack                             |
-| Steelworks     | heavy | 13.6 m per tile, long and shallow (3×3 to 5×3) | 12 / 15 / 18      | monitor roof                      | tall stack                             |
-| Paper mill     | heavy | 13.6 m per tile (3×3, 4×4, 5×4)                | 10 / 13 / 15      | monitor roof, tank farm           | tall stack                             |
+| Kind           | Zone  | Body                                           | Height (m)       | Parts                       | Props                    |
+| -------------- | ----- | ---------------------------------------------- | ---------------- | --------------------------- | ------------------------ |
+| Workshop       | light | 13.6 m per tile (2×2, 3×2, 3×3)                | 6.1              | roller doors at grade       | none                     |
+| Warehouse      | light | 13.6 m per tile (3×3, 4×3, 5×4)                | 7.3 / 9.8 / 12.2 | loading dock, roll-up doors | none                     |
+| Factory        | light | 13.6 m per tile (2×3, 3×3, 4×3)                | 6.1 / 7.3 / 7.3  | monitor roof                | none                     |
+| Flex / R&D     | light | 55% of the lot each way (2×2, 3×2, 3×4)        | 6.4 / 6.4 / 9.6  | roof array                  | none                     |
+| Food plant     | heavy | 13.6 m per tile (3×3, 4×3, 5×4)                | 8 / 9 / 10       | loading dock, roll-up doors | tall stack, silo cluster |
+| Chemical plant | heavy | 50% of the lot each way (3×3, 4×4, 5×4)        | 10 / 12 / 15     | tank farm behind the body   | tall stack               |
+| Steelworks     | heavy | 13.6 m per tile, long and shallow (3×3 to 5×3) | 12 / 15 / 18     | monitor roof                | tall stack               |
+| Paper mill     | heavy | 13.6 m per tile (3×3, 4×4, 5×4)                | 10 / 13 / 15     | monitor roof, tank farm     | tall stack               |
 
 A warehouse's heights are the clear heights of its generation — 24, 32 and
 40 ft — and the flex building's are two and three storeys; the rest are the

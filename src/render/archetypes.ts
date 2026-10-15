@@ -30,15 +30,15 @@ export type BuildingArchetype =
   | 'steelworks'
   /** A paper mill: a tall monitor-roofed hall with tanks behind it and a stack. */
   | 'paperMill'
-  /** A shop at street level: canopy over the frontage, signage above it. */
+  /** A shop, strip, supermarket or restaurant: dressed by its kind, awnings or canopy, bands, and rooftop units. */
   | 'storefront'
   /** Bigger retail and offices: a signage band, no canopy. */
   | 'retailBlock'
   /** A filling station: a kiosk behind a tall canopy over the pump islands. */
   | 'fuelStation'
-  /** An office block or tower: glass, and no shopfront parts at all. */
+  /** An office block or tower: a lit lobby portal, and rooftop units or a screened cooling tower. */
   | 'office'
-  /** A hotel: a canopy at its entrance and a sign, on a tall body. */
+  /** A hotel: a porte-cochere at its entrance and a lit sign, on a tall body. */
   | 'hotel'
   /** Detached and row housing, which already carries a pitched roof. */
   | 'house'
@@ -58,8 +58,34 @@ export type BuildingPart =
   | 'canopy'
   | 'signageBand'
   | 'fuelCanopy'
-  | 'pumps'
-  | 'tanks';
+  | 'tanks'
+  | 'awning'
+  | 'bulkhead'
+  | 'cornice'
+  | 'stripCanopy'
+  | 'stripColumn'
+  | 'anchorParapet'
+  | 'pylon'
+  | 'entryTower'
+  | 'towerGlazing'
+  | 'brickBase'
+  | 'cartCorral'
+  | 'menuBoard'
+  | 'clearanceBar'
+  | 'pickupCanopy'
+  | 'dumpsterEnclosure'
+  | 'fuelFascia'
+  | 'fuelIsland'
+  | 'dispenser'
+  | 'bollard'
+  | 'priceSign'
+  | 'signPole'
+  | 'lobbyPortal'
+  | 'roofScreen'
+  | 'coolingTower'
+  | 'porteCochere'
+  | 'rooftopUnit'
+  | 'roofHatch';
 
 /**
  * Whether an industrial building is the CLEAN kind, taken from whether it
@@ -153,17 +179,81 @@ const PARTS: Readonly<Record<BuildingArchetype, readonly BuildingPart[]>> = {
   paperMill: ['monitorRoof', 'tanks'],
   storefront: ['canopy', 'signageBand'],
   retailBlock: ['signageBand'],
-  fuelStation: ['fuelCanopy', 'pumps'],
-  office: [],
-  hotel: ['canopy', 'signageBand'],
+  fuelStation: [
+    'fuelCanopy',
+    'fuelFascia',
+    'fuelIsland',
+    'dispenser',
+    'bollard',
+    'priceSign',
+    'signPole',
+    'awning',
+    'rooftopUnit',
+    'roofHatch',
+  ],
+  office: ['lobbyPortal', 'rooftopUnit', 'roofHatch'],
+  hotel: ['porteCochere', 'signageBand', 'rooftopUnit', 'roofHatch'],
   house: [],
   apartment: [],
   farm: [],
   plain: [],
 };
 
+/** A storefront of a known kind is dressed by its kind; one of no kind keeps the plain canopy and band. */
+const STOREFRONT_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
+  shop: ['bulkhead', 'awning', 'signageBand', 'cornice', 'rooftopUnit', 'roofHatch'],
+  strip: [
+    'stripCanopy',
+    'stripColumn',
+    'signageBand',
+    'anchorParapet',
+    'pylon',
+    'signPole',
+    'rooftopUnit',
+    'roofHatch',
+  ],
+  supermarket: [
+    'entryTower',
+    'towerGlazing',
+    'anchorParapet',
+    'brickBase',
+    'cartCorral',
+    'signPole',
+    'signageBand',
+    'rooftopUnit',
+    'roofHatch',
+  ],
+  restaurant: [
+    'awning',
+    'signageBand',
+    'menuBoard',
+    'clearanceBar',
+    'pickupCanopy',
+    'dumpsterEnclosure',
+    'signPole',
+    'rooftopUnit',
+    'roofHatch',
+  ],
+};
+
+/** An office tower, the third level, stands a screened cooling tower on its roof in place of rooftop units. */
+const OFFICE_TOWER_PARTS: readonly BuildingPart[] = [
+  'lobbyPortal',
+  'roofScreen',
+  'coolingTower',
+  'roofHatch',
+];
+
 export function partsFor(entry: BuildingCatalogEntry): readonly BuildingPart[] {
-  return PARTS[archetypeFor(entry)];
+  const archetype = archetypeFor(entry);
+  if (archetype === 'storefront') return STOREFRONT_PARTS[entry.kind ?? ''] ?? PARTS.storefront;
+  if (archetype === 'office' && isOfficeTower(entry)) return OFFICE_TOWER_PARTS;
+  return PARTS[archetype];
+}
+
+/** An office of the third level, the tower. */
+export function isOfficeTower(entry: BuildingCatalogEntry): boolean {
+  return entry.kind === 'office' && (entry.level ?? 1) >= 3;
 }
 
 export function hasPart(entry: BuildingCatalogEntry, part: BuildingPart): boolean {

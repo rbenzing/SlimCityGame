@@ -41,6 +41,11 @@ Active (see [../art/buildings.md](../art/buildings.md)). The whole system runs a
 node material plus an instance-index hash, one material per archetype
 family, at zero extra draw calls.
 
+The commercial kit's lit parts (sign bands, the pylon and price-sign faces, the
+supermarket tower's glazing and the office lobby portal) follow the window
+rule: they stand only on an Active building, and their emissive is driven by
+the night factor.
+
 ## Street lamps
 
 A lamp's glow at night comes entirely from a hot luminaire and a ground
