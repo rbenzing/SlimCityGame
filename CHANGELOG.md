@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.62.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.61.0...slimcity-v1.62.0) (2026-10-15)
+
+
+### Features
+
+* **render:** measure the frame, and hold every building to a triangle tier ([179bc11](https://github.com/rbenzing/SlimCityGame/commit/179bc117a6bb5bf85a66513d2dd96785edf65102))
+* **render:** measure the frame, and hold every building to a triangle tier ([448a76c](https://github.com/rbenzing/SlimCityGame/commit/448a76c5d3489a01922bfba0768d6705aa005847))
+* **render:** the house kit's parts, a ranch, a Cape and a colonial by level ([4d3855d](https://github.com/rbenzing/SlimCityGame/commit/4d3855d2e362009c8108895baab323ccba556c52))
+* **render:** the house kit's parts, a ranch, a Cape and a colonial by level ([d167f9f](https://github.com/rbenzing/SlimCityGame/commit/d167f9f471b4352b8a202f09b658fe7631d1b2a5))
+
+
+### Performance Improvements
+
+* **render:** lots one mesh per chunk, trees and yards drawn for 40 m, the solar farm thinned ([0c8839c](https://github.com/rbenzing/SlimCityGame/commit/0c8839c3a9b93a1236407420097969cc2c0957c5))
+* **render:** lots one mesh per chunk, trees and yards drawn for 40 m, the solar farm thinned ([36ac17c](https://github.com/rbenzing/SlimCityGame/commit/36ac17cb060cadfd4f53a4a3a9bcfc50bff09a87))
+
 ## [1.61.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.60.0...slimcity-v1.61.0) (2026-10-15)
 
 
