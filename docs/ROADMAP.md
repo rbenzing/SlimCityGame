@@ -188,8 +188,15 @@ middle and high schools, a college and a library, each gating level 3 for the
 zones that need it and drawn as a campus. So is power generation
 ([power-generation.md](game-design/features/power-generation.md)): a solar
 farm, a gas turbine, a combined-cycle station and a reactor, each a real small
-unit sized to the game's cities. Next on the shelf are the programme's last two
-epics, transport depots and parks and recreation
+unit sized to the game's cities. **Planned next, at the player's request
+(2026-10-14): building detail**
+([building-detail.md](game-design/features/building-detail.md)) — every
+zoned building and ploppable drawn as the US type it is, to the water tower's
+standard, from a sourced reference library and inside a measured triangle
+budget; seven slices, the budget measured first, then houses, storefronts,
+industry, blocks and towers, the kitless ploppables, and the earliest kits
+redone. After it, the programme's last two epics, transport depots and parks
+and recreation
 ([municipal-services.md](game-design/features/municipal-services.md)), the
 [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
 transit modes) and AI raster map packs, facade-atlas stage 2 and screen-space
