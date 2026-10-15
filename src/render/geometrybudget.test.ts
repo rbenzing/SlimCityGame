@@ -29,6 +29,8 @@ const CATALOG = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings
 const KIT_TIER = 30000;
 const BLOCK_TIER = 1500;
 const HOUSE_TIER = 3000;
+/** The triangles a commercial block's own parts add: awnings, canopy, pylon, units, lane furniture. */
+const COMMERCIAL_KIT_CEILING = 500;
 const NORMAL_LOT_HOME_CEILING = 1300;
 const ACRE_HOME_CEILING = 1800;
 const SOLAR_FARM_CEILING = 2000;
@@ -184,6 +186,16 @@ describe('geometry budget: triangles per building, every part', () => {
       .map((r) => [r.entry.id, r.triangles] as const),
   )('detached home %s on an acre stays under its ceiling', (_id, triangles) => {
     expect(triangles).toBeLessThanOrEqual(ACRE_HOME_CEILING);
+  });
+
+  it.each(
+    zonedRows
+      .filter((r) => r.entry.category === 'com')
+      .map((r) => [r.entry.id, r.parts.kit, r.triangles] as const),
+  )('commercial %s stands its storefront parts in a few hundred triangles', (_id, kit, total) => {
+    expect(kit).toBeGreaterThan(0);
+    expect(kit).toBeLessThanOrEqual(COMMERCIAL_KIT_CEILING);
+    expect(total).toBeLessThanOrEqual(BLOCK_TIER);
   });
 
   it('holds a solar farm to its ceiling', () => {

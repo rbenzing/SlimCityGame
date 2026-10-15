@@ -1,6 +1,6 @@
 # Building detail — design
 
-- **Status:** The measurement, the performance slice and the houses built 2026-10-15; the storefronts next
+- **Status:** The measurement, the performance slice, the houses and the storefronts built 2026-10-15; industry and farms next
 - **Date:** 2026-10-14
 
 ## What the player gets
@@ -131,10 +131,15 @@ one; the slice's document says which it used.
    shutters on the facade's own windows, party-wall parapets; one trim
    colour a house. The spec is
    [the house kit's parts](../../art/buildings.md#the-house-kits-parts).
-4. **Storefronts.** The Main Street shop, the drive-through restaurant, the
-   strip with its canopy and pylon, the supermarket's entry tower, the fuel
-   canopy on real columns, the office's ribbon windows and lobby, the hotel's
-   porte-cochère; rooftop units on every flat roof.
+4. **Storefronts** (built 2026-10-15). The Main Street shop's bulkhead,
+   awnings and cornice; the drive-through restaurant's lane, menu board,
+   clearance bar, pickup canopy and dumpster enclosure; the strip's canopy,
+   tenant signs, anchor and pylon; the supermarket's entry tower, brick base
+   and cart corrals; the fuel canopy's fascia, islands, dispensers and price
+   sign; the office's lobby portal and the tower's screen; the hotel's
+   porte-cochère; rooftop units on every flat roof; signs that light at
+   night. The spec is
+   [the storefront kit's parts](../../art/buildings.md#the-storefront-kits-parts).
 5. **Industry and farms.** Dock doors at centres, truck courts, the metal
    building's ribs and roll-ups, pipe racks, the furnace and stoves, the
    gambrel barn and silo.

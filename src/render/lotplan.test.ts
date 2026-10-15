@@ -27,12 +27,19 @@ import {
   STALL_WIDTH_M,
   treesFor,
 } from '../shared/parkingcode';
-import { computeLotLayout, lotPaving, type LotLayout, type LotRect } from '../shared/lotlayout';
+import {
+  computeLotLayout,
+  DRIVE_THROUGH_LANE_M,
+  lotPaving,
+  type LotLayout,
+  type LotRect,
+} from '../shared/lotlayout';
 import { lotYardsFor } from '../shared/lotparking';
 import { hasPart } from './archetypes';
 import type { EdgeFrame } from './frontage';
 import { lotLayoutFor, lotPlanFor, lotPointToWorld } from './lotplan';
-import { DRIVE_Y_OFFSET, LOT_Y_OFFSET, LotRenderer, WALK_Y_OFFSET } from './lots';
+import { DRIVE_Y_OFFSET, LANE_Y_OFFSET, LOT_Y_OFFSET, LotRenderer, WALK_Y_OFFSET } from './lots';
+import { materialUnit } from './palette';
 import { computeSetbacks, frontageSetbackFor } from './massing';
 import { ParkedCarRenderer } from './parked';
 
@@ -650,4 +657,151 @@ describe('the lot’s paved ground', () => {
       }
     },
   );
+});
+
+describe('a restaurant’s drive-through lane', () => {
+  const restaurants = suburban.filter((e) => e.kind === 'restaurant');
+  const layouts = restaurants.flatMap((e) =>
+    ([0, 1, 2, 3] as const).flatMap((rotation) =>
+      [true, false].map((alongX) => ({
+        e,
+        label: `${e.id} turned ${rotation}${alongX ? ' along x' : ''}`,
+        layout: lotLayoutFor(e, rotation, alongX)!,
+      })),
+    ),
+  );
+  const laned = layouts.filter((l) => l.layout.driveThrough !== null);
+
+  it('is laid on a lot that has room for it, and on none that has not', () => {
+    expect(laned.length).toBeGreaterThan(0);
+    expect(layouts.length - laned.length).toBeGreaterThan(0);
+    for (const e of suburban.filter((c) => c.kind !== 'restaurant')) {
+      expect(onStreet(e).driveThrough, e.id).toBeNull();
+    }
+  });
+
+  it('runs 3.66 m wide, inside the lot, on ground no stall, berth, island, walk, yard or the body stands on', () => {
+    for (const { label, layout } of laned) {
+      const lane = layout.driveThrough!;
+      const taken = [
+        layout.body,
+        ...layout.stalls.map((s) => s.rect),
+        ...layout.accessAisles,
+        ...layout.islands,
+        ...layout.berths,
+        ...[layout.forecourt, layout.rearYard, layout.frontWalk, layout.entranceWalk].filter(
+          (r) => r !== null,
+        ),
+      ];
+      expect(lane.rects.length, label).toBeGreaterThan(0);
+      expect(lane.rects.length, label).toBeLessThanOrEqual(2);
+      for (const r of lane.rects) {
+        expect(inside(r, layout.lot), label).toBe(true);
+        expect(Math.min(r.u1 - r.u0, r.v1 - r.v0), label).toBeCloseTo(DRIVE_THROUGH_LANE_M, 9);
+        for (const t of taken) expect(overlaps(r, t), label).toBe(false);
+      }
+    }
+  });
+
+  it('leaves from the drive, runs beside the body, and is long enough for three cars', () => {
+    for (const { label, layout } of laned) {
+      const lane = layout.driveThrough!;
+      const drive = [...layout.aisles, ...(layout.throat ? [layout.throat] : [])];
+      const [first] = lane.rects;
+      const touches = drive.some(
+        (a) =>
+          a.u0 <= first!.u1 + 0.01 &&
+          first!.u0 <= a.u1 + 0.01 &&
+          a.v0 <= first!.v1 + 0.01 &&
+          first!.v0 <= a.v1 + 0.01,
+      );
+      expect(touches, label).toBe(true);
+      expect(lane.length, label).toBeGreaterThanOrEqual(18.3 - 1e-9);
+      const { body } = layout;
+      const beside = (r: LotRect): boolean =>
+        Math.abs(r.u0 - body.u1) < 0.01 ||
+        Math.abs(r.u1 - body.u0) < 0.01 ||
+        Math.abs(r.v0 - body.v1) < 0.01;
+      expect(lane.rects.every(beside), label).toBe(true);
+    }
+  });
+
+  it('opens its pickup window in the body’s wall beside the lane’s last stretch', () => {
+    for (const { label, layout } of laned) {
+      const { pickup } = layout.driveThrough!;
+      const { body } = layout;
+      if (pickup.face === 'v+') {
+        expect(pickup.at.v, label).toBeCloseTo(body.v1, 9);
+        expect(pickup.at.u, label).toBeGreaterThan(body.u0);
+        expect(pickup.at.u, label).toBeLessThan(body.u1);
+      } else {
+        expect(pickup.at.u, label).toBeCloseTo(pickup.face === 'u+' ? body.u1 : body.u0, 9);
+        expect(pickup.at.v, label).toBeGreaterThan(body.v0);
+        expect(pickup.at.v, label).toBeLessThan(body.v1);
+      }
+    }
+  });
+
+  it('is laid after the car park, so the code’s count and every stall are the same with or without it', () => {
+    for (const e of restaurants) {
+      const req = lotParkingRequirement(e)!;
+      const body = bodyMetresFor(e);
+      const input = {
+        along: e.footprint.w * TILE_METERS,
+        depth: e.footprint.d * TILE_METERS,
+        bodyAlong: body.w,
+        bodyDepth: body.d,
+        spaces: req.spaces,
+        berths: req.berths,
+      };
+      const without = computeLotLayout(input);
+      const withLane = computeLotLayout({ ...input, driveThrough: true });
+      expect(withLane, e.id).toEqual({ ...without, driveThrough: withLane.driveThrough });
+      expect(without.driveThrough).toBeNull();
+    }
+  });
+
+  it('is paved in the darker drive colour, over the yard, in the chunk’s own mesh', () => {
+    const found = restaurants
+      .flatMap((e) =>
+        ([0, 1, 2, 3] as const).map((rotation) => {
+          const lot = footprintForRotation(e, rotation);
+          const roadAt = roads.N(lot.w, lot.d);
+          return { e, rotation, roadAt, plan: lotPlanFor(e, 10, 10, roadAt, rotation)! };
+        }),
+      )
+      .find((c) => c.plan.layout.driveThrough !== null)!;
+    expect(lotPaving(found.plan.layout).lane).toEqual(found.plan.layout.driveThrough!.rects);
+
+    const scene = new THREE.Scene();
+    const renderer = new LotRenderer(scene, () => 0, [found.e], found.roadAt);
+    renderer.apply({
+      added: [
+        {
+          id: 1,
+          catalogId: found.e.id,
+          x: 10,
+          z: 10,
+          rotation: found.rotation,
+          level: found.e.level ?? 1,
+          state: BuildingState.Active,
+          problems: 0,
+        },
+      ],
+      removed: [],
+      updated: [],
+    });
+    expect(scene.children.filter((c) => (c as THREE.Mesh).isMesh)).toHaveLength(1);
+    const geometry = (scene.children[0] as THREE.Mesh).geometry;
+    const positions = geometry.getAttribute('position').array as Float32Array;
+    const colors = geometry.getAttribute('color').array as Float32Array;
+    const dark = materialUnit('darkAsphalt');
+    let laneVertices = 0;
+    for (let i = 0; i < positions.length; i += 3) {
+      if (Math.abs(positions[i + 1]! - LANE_Y_OFFSET) > 1e-4) continue;
+      laneVertices += 1;
+      for (let k = 0; k < 3; k += 1) expect(colors[i + k]).toBeCloseTo(dark[k]!, 5);
+    }
+    expect(laneVertices).toBeGreaterThan(0);
+  });
 });

@@ -1758,6 +1758,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     vehicles.setNightFactor(nightFactor);
     landmarks.setNightFactor(nightFactor);
     utilityKits.setNightFactor(nightFactor);
+    buildingKit.setNightFactor(nightFactor);
     farms.setNightFactor(nightFactor);
     farms.setDayFraction(dayT); // the farm truck works sunrise to sunset
 

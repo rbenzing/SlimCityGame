@@ -48,6 +48,8 @@ export const LOT_Y_OFFSET = 0.08;
 export const DRIVE_Y_OFFSET = 0.1;
 /** A car park's concrete walks and slab ride over its paving, under its paint (0.135). */
 export const WALK_Y_OFFSET = 0.11;
+/** A drive-through lane rides over the yard's paving it starts on, under the paint (0.135). */
+export const LANE_Y_OFFSET = 0.12;
 
 const DRIVE_SURFACE: Readonly<Record<HouseLotPlan['surface'], MaterialName>> = {
   dirt: 'dirt',
@@ -316,6 +318,7 @@ export class LotRenderer {
     const paving = lotPaving(layout);
     for (const r of paving.yard) lay(r, DRIVE_Y_OFFSET, surface);
     for (const r of paving.concrete) lay(r, WALK_Y_OFFSET, 'cleanConcrete');
+    for (const r of paving.lane) lay(r, LANE_Y_OFFSET, 'darkAsphalt');
     const verge = this.street(edge.roadTileX, edge.roadTileZ)?.vergeM ?? 0;
     if (verge <= 0) return;
     if (layout.aisles.length > 0) {

@@ -1,6 +1,6 @@
 # Building detail — technical design
 
-- **Status:** The measurement, the performance slice and the houses built 2026-10-15; the storefronts next
+- **Status:** The measurement, the performance slice, the houses and the storefronts built 2026-10-15; industry and farms next
 - **Date:** 2026-10-14
 - **Author:** Claude Fable 5.1
 
@@ -221,6 +221,65 @@ that rather than opening `buildingparts.ts`, which waits for the blocks:
   car; a duplex, a fourplex and a townhouse row; the same at night; a close
   shot of a porch and a stoop beside a person-height reference (the 1.75 m
   car-to-roof read, since no pedestrian hook exists).
+- `tools/frame-budget.mjs` before and after.
+
+### The storefronts
+
+The commercial kit in `src/render/buildingkit.ts` is the part pool for the
+blocks: one `InstancedSlotPool` per part kind, placed by
+`computePartPlacements` against the road-facing wall `findRoadFacingEdge`
+finds, skipped without a frontage, drawn only while a building is Active.
+This slice extends it, as the houses slice extended `houses.ts`; the
+`buildingparts.ts` of the first plan is not needed, and the plan's table
+above is read with that correction.
+
+- `PART` kinds gain awning, bulkhead, cornice, stripCanopy, stripColumn,
+  anchorParapet, pylon, entryTower, brickBase, cartCorral, menuBoard,
+  clearanceBar, pickupCanopy, dumpsterEnclosure, fuelFascia, fuelIsland,
+  dispenser, bollard, priceSign, lobbyPortal, roofScreen, coolingTower,
+  porteCochere, rooftopUnit, roofHatch, and two the lit material needs apart
+  from the unlit body they sit on: signPole (the pole or post under a pylon,
+  price sign, menu board, clearance bar or corral sign) and towerGlazing (the
+  lit glazing on the supermarket's tower); anchorParapet also stands the
+  supermarket's stepped parapet. Each is one low-poly geometry at the
+  dimensions in
+  [../../art/buildings.md](../../art/buildings.md#the-storefront-kits-parts);
+  the unit-box pools stay as they are.
+- A **lit material** for the kit, `kitLightMaterial`, on the pattern of
+  `stationLightMaterial` in `utilitykits.ts`: emissive white driven by the
+  night factor, carrying the sign bands, the pylon and price-sign faces, the
+  supermarket tower's glazing and the office lobby portal. The kit already
+  draws only Active buildings, so a dark building has no lit sign, as
+  [../../visual-render/lighting.md](../../visual-render/lighting.md) asks of
+  windows; `lighting.md` gains the sentence that says so.
+- **Rooftop units** are placed from the top tier's rect (`massing.ts`
+  `computeSetbacks`), one per 232 m² of its plate, at most eight, spaced on
+  the long axis, 2 m inside the parapet, plus a hatch; the office tower
+  takes a screen and a cooling tower instead.
+- **The drive-through lane** is paving, so it belongs to the lot layout:
+  `src/shared/lotlayout.ts` gains a `driveThrough` path for a restaurant
+  whose lot leaves a 3.66 m lane room along the far side of the body from
+  the drive to the pickup wall, and `lots.ts` lays it in the darker drive
+  colour in the chunk mesh; the kit places the board, bar, canopy and
+  enclosure on that path, and places nothing where there is no path.
+- The strip's **tenant bays** are the frontage cut into bays of about 8 m
+  from the body width, the anchor two bays at the end away from the drive;
+  the **pylon** stands at the lot's drive mouth 1.5 m inside the street
+  edge, read from the lot plan's drive.
+- Tests, in `archetypes.test.ts` and a new `buildingkit.test.ts`: each
+  kind's part list; every part against the road-facing wall or on the roof,
+  inside the lot, at all four street sides; the awning's underside at
+  2.45 m and the canopy's at 2.75 m; the pylon 6.1 m tall and 1.5 m inside
+  the lot line; the supermarket tower at 1.28 × the body; the unit count
+  per roof area and its cap; the drive-through present on a lot with room
+  and absent without; lit parts on the lit material and nothing else; parts
+  freed on removal and absent while Constructing; determinism; the block
+  tier.
+- Shots, `tools/storefront-shots.mjs`: a Main Street of shops, a strip with
+  its pylon, a supermarket from its car park, a drive-through restaurant
+  from above, a filling station, an office and a hotel downtown, each at
+  the default pitch beside the 4 m car; the same at night, where sign bands,
+  the pylon and the lobby glow and the rest does not.
 - `tools/frame-budget.mjs` before and after.
 
 ### Each slice, the same shape

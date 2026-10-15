@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 6,443 tests passing across 188 test files, run 2026-10-15.
+**Test suite:** 6,527 tests passing across 188 test files, run 2026-10-15.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -354,6 +354,34 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The storefronts, drawn as the shops they are (storefronts slice of building detail, built 2026-10-15)
+
+The commercial kit gains the parts each kind is known by from its car park,
+at sourced sizes, against the road-facing wall and on the roof. Nothing in
+the simulation changes.
+
+- **Shops:** a dark bulkhead, fabric awnings clearing 8 ft, a cornice at
+  the parapet. **Strips:** a continuous canopy on columns, tenant bays of
+  about 8 m each with its own sign, a taller anchor, and a 20 ft pylon sign
+  at the drive. **Supermarkets:** the entry tower and stepped parapet in
+  the real store's proportions, a brick base, cart corrals in the first
+  row of stalls. **Restaurants:** a drive-through lane laid as lot paving
+  where the lot leaves room, with a menu board, a 9 ft clearance bar, a
+  pickup-window canopy and a masonry dumpster enclosure. **Filling
+  stations:** a 36 in fascia at 14 ft clearance, islands 25 ft apart with
+  dispensers and bollards, a price sign. **Offices:** a glazed lobby
+  portal, and a mechanical screen and cooling tower on the tower.
+  **Hotels:** a porte-cochère 14 ft clear.
+- **Every flat commercial roof** carries packaged rooftop units sized from
+  a 3–5 ton unit on its curb, one per 2,500 sq ft, up to eight, and a hatch.
+- **Signs light.** Sign bands, the pylon, the price sign, the supermarket
+  tower's glazing and the lobby portal sit on the kit's own emissive
+  material: near-white by day, glowing at night on an Active building and
+  dark otherwise, as windows are.
+- Every commercial block stays under 420 triangles against its 1,500 tier;
+  the Metropolis gains 52 draw calls and 1.5% triangles, and its frame does
+  not move.
 
 ### The houses, drawn as houses (houses slice of building detail, built 2026-10-15)
 
